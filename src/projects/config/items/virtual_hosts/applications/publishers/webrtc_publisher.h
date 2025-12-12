@@ -67,12 +67,10 @@ namespace cfg
 								{
 									_bandwidth_estimation_type = WebRtcBandwidthEstimationType::REMB;
 								}
-								// Not yet supported
-								// else if (_bwe.UpperCaseString() == "TRANSPORTCC")
-								// {
-								// 	_bandwidth_estimation_type = BandwidthEstimationType::TransportCc;
-									
-								// }
+								else if (_bwe.UpperCaseString() == "TRANSPORTCC")
+								{
+									_bandwidth_estimation_type = WebRtcBandwidthEstimationType::TransportCc;
+								}
 								else
 								{
 									return CreateConfigErrorPtr("Invalid value for BWE. Valid values are 'TransportCC' or 'REMB'");
@@ -87,7 +85,7 @@ namespace cfg
 					bool _jitter_buffer = false;
 					ov::String _bwe;
 
-					WebRtcBandwidthEstimationType _bandwidth_estimation_type = WebRtcBandwidthEstimationType::REMB;
+					WebRtcBandwidthEstimationType _bandwidth_estimation_type = WebRtcBandwidthEstimationType::TransportCc;
 					PlayoutDelay _playout_delay;
 					bool _create_default_playlist = true;
 				};

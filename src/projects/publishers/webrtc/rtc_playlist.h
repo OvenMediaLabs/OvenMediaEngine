@@ -124,7 +124,7 @@ public:
 	std::shared_ptr<const RtcRendition> GetNextHigherBitrateRendition(const std::shared_ptr<const RtcRendition> &base_rendition) const
 	{
 		std::shared_ptr<const RtcRendition> next_rendition = nullptr;
-		uint64_t base_bitrates							   = base_rendition->GetBitrates();
+		uint64_t base_bitrates = base_rendition->GetBitrates();
 
 		for (const auto &[name, rendition] : _rendition_map)
 		{

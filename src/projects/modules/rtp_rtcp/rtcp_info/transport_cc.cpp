@@ -171,6 +171,11 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 		}
 
 		info->_received_delta = received_delta;
+
+		// Calc arrival time in ms
+		int64_t base_time_ms = _reference_time * 64; // reference time is multiples of 64ms
+		int64_t delta_time_ms = received_delta / 4; // received delta is in 1/4000 seconds scale
+		info->_arrival_time_ms = base_time_ms + delta_time_ms;
 	}
 
 	if (offset != payload_size)
