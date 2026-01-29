@@ -54,7 +54,7 @@ namespace ocst
 
 		_idle_timer.Stop();
 
-		// Call callback outside of lock to avoid potential deadlock
+		// Note: Callback is called here with no locks held (lock_guard released at end of if/else scope)
 		return _callback->OnStreamCreated(_app_info, info);
 	}
 
@@ -78,7 +78,7 @@ namespace ocst
 			_idle_timer.Start();
 		}
 	
-		// Call callback outside of lock to avoid potential deadlock
+		// Note: Callback is called here with no locks held (lock_guard released at end of if/else scope)
 		return _callback->OnStreamDeleted(_app_info, info);
 	}
 

@@ -396,7 +396,7 @@ namespace pub
 
 	void Application::MapStreamToWorker(const std::shared_ptr<info::Stream> &info)
 	{
-		// Get worker without holding lock to avoid lock inversion with GetWorkerByStreamID
+		// Get worker first - this acquires and releases _application_worker_lock internally
 		auto app_worker = GetLowestLoadWorker();
 		if (app_worker == nullptr)
 		{
@@ -407,7 +407,7 @@ namespace pub
 		// Store worker ID before notifying to avoid race condition
 		uint32_t worker_id = app_worker->GetWorkerId();
 
-		// Acquire lock for map update
+		// Update map while holding _stream_app_worker_map_lock
 		{
 			std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
 			_stream_app_worker_map[info->GetId()] = worker_id;
