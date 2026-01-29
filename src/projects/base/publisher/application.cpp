@@ -404,17 +404,15 @@ namespace pub
 			return;
 		}
 
-		// Store worker ID before notifying to avoid race condition
-		uint32_t worker_id = app_worker->GetWorkerId();
+		// Notify worker first (increments stream count) before adding to map
+		// This ensures that if another thread looks up this stream, the worker's count is already correct
+		app_worker->OnStreamCreated(info);
 
-		// Update map while holding _stream_app_worker_map_lock
+		// Now add to map after worker is notified
 		{
 			std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
-			_stream_app_worker_map[info->GetId()] = worker_id;
+			_stream_app_worker_map[info->GetId()] = app_worker->GetWorkerId();
 		}
-
-		// Notify worker outside of lock to avoid potential deadlock
-		app_worker->OnStreamCreated(info);
 	}
 	
 	void Application::UnmapStreamToWorker(const std::shared_ptr<info::Stream> &info)

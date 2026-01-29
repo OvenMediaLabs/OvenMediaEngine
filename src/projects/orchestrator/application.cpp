@@ -62,18 +62,28 @@ namespace ocst
 	{
 		logt("DEBUG", "%s stream has been deleted: %s/%s", info->IsInputStream()?"Inbound":"Outbound", _app_info.GetVHostAppName().CStr(), info->GetName().CStr());
 
+		bool should_start_idle_timer = false;
+
 		if (info->IsInputStream())
 		{
 			std::lock_guard<std::shared_mutex> lock(_provider_stream_map_mutex);
 			_provider_stream_map.erase(info->GetName());
+			
+			// Check if both maps are empty while holding at least one lock
+			std::shared_lock<std::shared_mutex> publisher_lock(_publisher_stream_map_mutex);
+			should_start_idle_timer = _provider_stream_map.empty() && _publisher_stream_map.empty();
 		}
 		else
 		{
 			std::lock_guard<std::shared_mutex> lock(_publisher_stream_map_mutex);
 			_publisher_stream_map.erase(info->GetName());
+			
+			// Check if both maps are empty while holding at least one lock
+			std::shared_lock<std::shared_mutex> provider_lock(_provider_stream_map_mutex);
+			should_start_idle_timer = _provider_stream_map.empty() && _publisher_stream_map.empty();
 		}
 
-		if (_provider_stream_map.empty() && _publisher_stream_map.empty())
+		if (should_start_idle_timer)
 		{
 			_idle_timer.Start();
 		}
