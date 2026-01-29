@@ -44,3 +44,4 @@ misc/FFmpeg*
 
 # AMS
 src/core/local_config.mk
+_codeql_detected_source_root
