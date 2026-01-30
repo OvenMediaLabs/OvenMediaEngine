@@ -396,7 +396,6 @@ namespace pub
 
 	void Application::MapStreamToWorker(const std::shared_ptr<info::Stream> &info)
 	{
-		// Get worker first - this acquires and releases _application_worker_lock internally
 		auto app_worker = GetLowestLoadWorker();
 		if (app_worker == nullptr)
 		{
@@ -404,15 +403,10 @@ namespace pub
 			return;
 		}
 
-		// Notify worker first (increments stream count) before adding to map
-		// This ensures that if another thread looks up this stream, the worker's count is already correct
 		app_worker->OnStreamCreated(info);
 
-		// Now add to map after worker is notified
-		{
-			std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
-			_stream_app_worker_map[info->GetId()] = app_worker->GetWorkerId();
-		}
+		std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
+		_stream_app_worker_map[info->GetId()] = app_worker->GetWorkerId();
 	}
 	
 	void Application::UnmapStreamToWorker(const std::shared_ptr<info::Stream> &info)

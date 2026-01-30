@@ -625,8 +625,7 @@ bool MediaRouteApplication::OnStreamDeleted(const std::shared_ptr<MediaRouterApp
 
 bool MediaRouteApplication::DeleteInboundStream(const std::shared_ptr<info::Stream> &stream_info)
 {
-	// Delete connected stream taps - collect them first to avoid deadlock
-	std::vector<std::shared_ptr<MediaRouterStreamTap>> taps_to_stop;
+	// Delete connected stream taps
 	{
 		std::shared_lock<std::shared_mutex> lock(_stream_taps_lock);
 		auto it = _stream_taps.equal_range(stream_info->GetId());
@@ -637,17 +636,10 @@ bool MediaRouteApplication::DeleteInboundStream(const std::shared_ptr<info::Stre
 			if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
 			{
 				logtt("Deleting connected stream tap for inbound stream. %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
-				taps_to_stop.push_back(stream_tap);
+				stream_tap->Stop();
 			}
 		}
 	}
-
-	// Stop stream taps outside of the lock to avoid deadlock
-	for (auto &tap : taps_to_stop)
-	{
-		tap->Stop();
-	}
-
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 	_inbound_streams.erase(stream_info->GetId());
 

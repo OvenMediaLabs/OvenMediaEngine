@@ -305,21 +305,14 @@ namespace pvd
 
 	bool Application::DeleteAllStreams()
 	{
-		// Copy streams to avoid deadlock - don't call Stop() or NotifyStreamDeleted() while holding lock
-		std::vector<std::shared_ptr<Stream>> streams_to_delete;
-		{
-			std::unique_lock<std::shared_mutex> lock(_streams_guard);
-			for(auto it = _streams.cbegin(); it != _streams.cend(); ++it)
-			{
-				streams_to_delete.push_back(it->second);
-			}
-			_streams.clear();
-		}
+		std::unique_lock<std::shared_mutex> lock(_streams_guard);
 
-		// Now stop and notify outside of the lock
-		for(auto &stream : streams_to_delete)
+		for(auto it = _streams.cbegin(); it != _streams.cend(); )
 		{
+			auto stream = it->second;
+			it = _streams.erase(it);
 			stream->Stop();
+
 			NotifyStreamDeleted(stream);
 		}
 
