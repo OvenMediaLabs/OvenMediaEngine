@@ -351,6 +351,7 @@ namespace pvd
 			_vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		}
 
+		UpdateNamePath(_vhost_app_name);
 		_import_chunk->UpdateNamePath(GetNamePath());
 
 		if (SendWindowAcknowledgementSize(RTMP_DEFAULT_ACKNOWNLEDGEMENT_SIZE) == false)
@@ -1913,6 +1914,8 @@ namespace pvd
 
 		_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(_publish_url->Host(), _publish_url->App());
 		_stream_name = _publish_url->Stream();
+
+		UpdateNamePath(_vhost_app_name);
 
 		// Get application config
 		if (GetProvider() == nullptr)
