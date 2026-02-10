@@ -306,8 +306,8 @@ namespace mpegts
 				{
 					auto duration_msec = cue_out_event->GetDurationMsec();
 					auto main_track = GetMediaTrack(_main_track_id);
-					int64_t cue_in_timestamp = (main_segment_end_timestamp - 1) + (static_cast<double>(duration_msec) / 1000.0 * main_track->GetTimeBase().GetTimescale());
-					int64_t cue_in_timestamp_ms = (static_cast<double>(main_segment_base_timestamp - 1) / main_track->GetTimeBase().GetTimescale() * 1000.0) + duration_msec;
+					int64_t cue_in_timestamp = (main_segment_end_timestamp - 1) + (static_cast<double>(duration_msec) / 1000.0 * mpegts::TIMEBASE_DBL);
+					int64_t cue_in_timestamp_ms = (static_cast<double>(main_segment_base_timestamp - 1) / mpegts::TIMEBASE_DBL * 1000.0) + duration_msec;
 
 					auto cue_in_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, cue_in_timestamp, cue_in_timestamp_ms, CueEvent::Create(CueEvent::CueType::IN, 0)->Serialize());
 					if (cue_in_marker != nullptr)
