@@ -370,7 +370,7 @@ namespace bmff
 			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
 			if (segment->HasMarker() == true)
 			{
-				logti("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
+				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
 
 				_total_expected_duration_ms -= _config.segment_duration_ms;
 				

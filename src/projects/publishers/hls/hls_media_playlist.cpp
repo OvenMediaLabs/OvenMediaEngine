@@ -54,7 +54,7 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Seg
 
 	if (segment->HasMarker() == true)
 	{
-		logti("Marker is found in the segment %" PRIu64 " (%zu)", segment->GetNumber(), segment->GetMarkers().size());
+		logtd("Marker is found in the segment %" PRIu64 " (%zu)", segment->GetNumber(), segment->GetMarkers().size());
 	}
 
 	_segments.emplace(segment->GetNumber(), segment);

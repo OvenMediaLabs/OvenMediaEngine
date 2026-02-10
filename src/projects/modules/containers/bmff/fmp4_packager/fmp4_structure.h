@@ -194,11 +194,6 @@ namespace bmff
 			return _markers.empty() == false;
 		}
 
-		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
-		{
-			_markers = markers;
-		}
-
 		void AddMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
 		{
 			_markers.insert(_markers.end(), markers.begin(), markers.end());
@@ -207,6 +202,11 @@ namespace bmff
 		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override
 		{
 			return _markers;
+		}
+
+		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) override
+		{
+			_markers = markers;
 		}
 
 	private:

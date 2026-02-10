@@ -38,6 +38,7 @@ namespace base
 			virtual bool IsCompleted() const = 0;
 			virtual bool HasMarker() const = 0;
 			virtual const std::vector<std::shared_ptr<Marker>> &GetMarkers() const = 0;
+			virtual void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) = 0;
 			
 			// Segment must be independent
 			bool IsIndependent() const override { return true; }

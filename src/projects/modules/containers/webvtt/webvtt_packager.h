@@ -73,16 +73,22 @@ namespace webvtt
 		uint64_t GetDataLength() const override { return _vtt_text.GetLength(); }
 		const std::shared_ptr<ov::Data> GetData() const override { return _vtt_text.ToData(false); }
 		bool IsCompleted() const override { return true; }
-		bool HasMarker() const override { return false; }
 		double GetTimebaseSeconds() const override { return 1.0/1000.0; } 
 
 		void SetUrl(const ov::String &url) override { _url = url; }
 		ov::String GetUrl() const override { return _url; }
 		
-		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override 
-		{ 
-			static std::vector<std::shared_ptr<Marker>> empty; 
-			return empty; 
+		bool HasMarker() const override
+		{
+			return _markers.empty() == false;
+		}
+		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override
+		{
+			return _markers;
+		}
+		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) override
+		{
+			_markers = markers;
 		}
 
 		bool Update(int64_t start_time, double duration_ms, const ov::String &vtt_text)
@@ -154,6 +160,8 @@ namespace webvtt
 		mutable std::shared_mutex _partial_segments_guard;
 
 		ov::String _url;
+
+		std::vector<std::shared_ptr<Marker>> _markers;
 	};
 
 	class Packager : public base::modules::SegmentStorage

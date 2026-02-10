@@ -1236,7 +1236,7 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 	{
 		if (i == 1)
 		{
-			logti("InsertMarkerToAllPackagers - Estimated sequence number: %lld Max current sequence number: %lld", estimated_seq, max_current_seq);
+			logtd("InsertMarkerToAllPackagers - Estimated sequence number: %lld Max current sequence number: %lld", estimated_seq, max_current_seq);
 
 			if (max_current_seq > estimated_seq)
 			{
@@ -1283,7 +1283,7 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 			}
 			else
 			{
-				logti("Packager(%d) - Insert marker: %s Estimated sequence number: %lld", track->GetId(), marker->GetTag().CStr(), estimated_seq);
+				logtd("Packager(%d) - Insert marker: %s Estimated sequence number: %lld", track->GetId(), marker->GetTag().CStr(), estimated_seq);
 
 				marker->SetDesiredSequenceNumber(estimated_seq);
 				auto result = packager->InsertMarker(marker);
@@ -1865,10 +1865,10 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	{
 		if (segment->HasMarker() == true)
 		{
-			logti("Media chunk has markers : track_id = %d, segment_number = %d, chunk_number = %d", track_id, segment_number, chunk_number);
+			logtd("Media chunk has markers : track_id = %d, segment_number = %d, chunk_number = %d", track_id, segment_number, chunk_number);
 			for (const auto &marker : segment->GetMarkers())
 			{
-				logti("Marker : timestamp = %lld, tag = %s", marker->GetTimestamp(), marker->GetTag().CStr());
+				logtd("Marker : timestamp = %lld, tag = %s", marker->GetTimestamp(), marker->GetTag().CStr());
 			}
 			partial_info.SetMarkers(segment->GetMarkers());
 		}
@@ -1912,6 +1912,15 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 				{
 					logte("Failed to make segment for VTT track_id = %d, segment_number = %d", vtt_track_id, segment_number);
 					continue;
+				}
+
+				if (segment->HasMarker() == true)
+				{
+					auto vtt_segment = vtt_packager->GetSegment(segment_number);
+					if (vtt_segment != nullptr)
+					{
+						vtt_segment->SetMarkers(segment->GetMarkers());
+					}
 				}
 			}
 			

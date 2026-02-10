@@ -86,6 +86,11 @@ namespace mpegts
 			return _markers;
 		}
 
+		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) override
+		{
+			_markers = markers;
+		}
+
         double GetTimebaseSeconds() const override
         {
             return 1.0 / mpegts::TIMEBASE_DBL;
@@ -148,11 +153,6 @@ namespace mpegts
 		bool IsDataInFile() const
 		{
 			return _is_data_in_file;
-		}
-
-		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
-		{
-			_markers = markers;
 		}
 
     private:

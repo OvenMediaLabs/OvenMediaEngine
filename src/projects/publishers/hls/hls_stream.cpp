@@ -613,6 +613,11 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 				break;
 			}
 
+			if (segment->HasMarker() == true)
+			{
+				vtt_segment->SetMarkers(segment->GetMarkers());
+			}
+
 			auto variant_name = MakeVttVariantName(track_id);
 			if (variant_name.IsEmpty() == true)
 			{
