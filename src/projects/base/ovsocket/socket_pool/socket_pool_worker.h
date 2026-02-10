@@ -128,7 +128,7 @@ namespace ov
 
 		// Common variables
 		std::thread _epoll_thread;
-		bool _stop_epoll_thread = true;
+		std::atomic<bool> _stop_epoll_thread = true;
 		std::vector<epoll_event> _epoll_events;
 		int _last_epoll_event_count = 0;
 

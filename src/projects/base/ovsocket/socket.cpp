@@ -38,8 +38,8 @@ namespace ov
 	public:
 		void OnConnected(const std::shared_ptr<const SocketError> &error) override
 		{
+			std::atomic_store_explicit(&_error, error, std::memory_order_release);
 			_epoll_event.SetEvent();
-			_error = error;
 		}
 
 		void OnReadable() override
@@ -57,7 +57,7 @@ namespace ov
 
 		std::shared_ptr<const SocketError> GetError() const
 		{
-			return _error;
+			return std::atomic_load_explicit(&_error, std::memory_order_acquire);
 		}
 
 	protected:
