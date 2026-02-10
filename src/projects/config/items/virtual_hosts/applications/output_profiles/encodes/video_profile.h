@@ -47,6 +47,10 @@ namespace cfg
 					// 0 ~ 120 : minimum value of SkipFrames. it is automatically calculated and the SkipFrames value is changed.
 					int _skip_frames = -1;
 
+					// User-defined encoder options passed directly to the underlying encoder without validation.
+					// example: "nal-hrd=cbr:force-cfr=1"
+					ov::String _extra_options = "";
+
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetName, _name)
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsBypass, _bypass)
@@ -66,6 +70,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetProfile, _profile)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetSkipFrames, _skip_frames)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetLookahead, _lookahead)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetExtraOptions, _extra_options)
 
 					void SetName(const ov::String &name)
 					{
@@ -118,6 +123,10 @@ namespace cfg
 					void SetLookahead(int lookahead)
 					{
 						_lookahead = lookahead;
+					}
+					void SetExtraOptions(const ov::String &extra_options)
+					{
+						_extra_options = extra_options;
 					}
 
 				protected:
@@ -205,6 +214,7 @@ namespace cfg
 											   return CreateConfigErrorPtr("Profile must be baseline, main or high");
 										   });
 						Register<Optional>("Lookahead", &_lookahead);
+						Register<Optional>("ExtraOptions", &_extra_options);
 					}
 				};
 			}  // namespace oprf

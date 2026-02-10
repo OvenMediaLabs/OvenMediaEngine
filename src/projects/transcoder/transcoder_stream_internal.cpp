@@ -234,9 +234,21 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetLookaheadByConfig(profile.GetLookahead());
 	}
 
+	profile.GetExtraOptions(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetExtraEncoderOptionsByConfig(profile.GetExtraOptions());
+	}
+
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
+	}
+
+	// 
 	output_track->SetMediaType(cmn::MediaType::Video);
 	output_track->SetId(NewTrackId());
-	output_track->SetVariantName(profile.GetName());
 	output_track->SetPublicName(input_track->GetPublicName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
@@ -333,10 +345,15 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetBitrateByConfig(profile.GetBitrate());
 	}
 
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
+	}
+
 	output_track->SetMediaType(cmn::MediaType::Audio);
 	output_track->SetId(NewTrackId());
-	output_track->SetVariantName(profile.GetName());
-
+	
 	ov::String public_name = ov::String::FormatString("%s_%d", input_track->GetPublicName().CStr(), output_track->GetId());
 	output_track->SetPublicName(public_name);
 	output_track->SetLanguage(input_track->GetLanguage());
@@ -468,10 +485,15 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		}
 	}
 
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
+	}
+
 	output_track->SetPublicName(input_track->GetPublicName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
-	output_track->SetVariantName(profile.GetName());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 
 	output_track->SetMediaType(cmn::MediaType::Video);
@@ -805,7 +827,7 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{

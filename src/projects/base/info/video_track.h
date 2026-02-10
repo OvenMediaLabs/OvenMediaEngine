@@ -25,6 +25,9 @@ public:
 	void SetFrameRateByMeasured(double framerate);
 	double GetFrameRateByMeasured() const;
 
+	void AddToMeasuredFramerateWindow(double framerate);
+	std::deque<double>  GetMeasuredFramerateWindow() const;
+
 	void SetFrameRateLastSecond(double framerate);
 	double GetFrameRateLastSecond() const;
 
@@ -86,6 +89,12 @@ public:
 	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
 	int32_t GetDeltaFramesSinceLastKeyFrame() const;
 
+	void SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval);
+	int32_t GetDetectLongKeyFrameInterval() const;
+
+	void SetDetectAbnormalFramerate(bool detect_abnormal_framerate);
+	bool GetDetectAbnormalFramerate() const;
+
 	void SetBFrames(int32_t b_frames);
 	int32_t GetBFrames();
 
@@ -99,6 +108,9 @@ public:
 	void SetLookaheadByConfig(int32_t lookahead);
 	int32_t GetLookaheadByConfig() const;
 	
+	void SetExtraEncoderOptionsByConfig(const ov::String &options);
+	ov::String GetExtraEncoderOptionsByConfig() const;
+
 protected:
 
 	// framerate (measurement)
@@ -128,6 +140,9 @@ protected:
 	double _key_frame_interval_conf = 0;
 	// Delta Frame Count since last key frame
 	int32_t _delta_frame_count_since_last_key_frame = 0;
+
+	// Detect long key frame interval (set by mediarouter)
+	bool _detect_long_key_frame_interval = false;
 
 	// Key Frame Interval Type (set by user)
 	cmn::KeyFrameIntervalType _key_frame_interval_type_conf = cmn::KeyFrameIntervalType::FRAME;
@@ -166,6 +181,11 @@ protected:
 	// Lookahead (set by user)
 	int32_t _lookahead_conf = -1;
 
+	// Abnormal key frame interval detection
+	bool _detect_abnormal_framerate = false;
+	std::deque<double>  _measured_framerate_window;
+
+	ov::String _extra_encoder_options;
 public:
 	// Overlay (set by user)
 	void SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &overlays);

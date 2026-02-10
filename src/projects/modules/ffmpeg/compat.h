@@ -56,6 +56,7 @@ namespace ffmpeg
 		static AVPixelFormat ToAVPixelFormat(cmn::VideoPixelFormatId pixel_format);
 		static cmn::VideoPixelFormatId ToVideoPixelFormat(int32_t pixel_format);
 		static AVPixelFormat GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true);
+		static ov::String GetAVOptionsString(void *opts);
 
 		static std::shared_ptr<MediaTrack> CreateMediaTrack(AVStream* stream)
 		{

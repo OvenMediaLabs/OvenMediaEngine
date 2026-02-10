@@ -333,4 +333,29 @@ namespace ffmpeg
 
 		return pix_fmt;
 	}
+
+	ov::String compat::GetAVOptionsString(void *opts)
+	{
+		ov::String result;
+
+		if (opts == nullptr)
+		{
+			return result;
+		}
+
+		const AVOption *opt = NULL;
+		while ((opt = av_opt_next(opts, opt)))
+		{
+			uint8_t *value = NULL;
+
+			if (av_opt_get(opts, opt->name, 0, &value) == 0)
+			{
+				result += ov::String::FormatString("%s=%s,", opt->name, value);
+				av_free(value);
+			}
+		}
+
+		return result;
+	}
+		
 }  // namespace ffmpeg
