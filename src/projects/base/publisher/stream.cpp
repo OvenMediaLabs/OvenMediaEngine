@@ -411,6 +411,12 @@ namespace pub
 	bool Stream::AddSession(std::shared_ptr<Session> session)
 	{
 		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
+		if (_sessions.count(session->GetId()) > 0)
+		{
+			logtw("Session ID (%u) already exists, existing session will be overwritten", session->GetId());
+		}
+
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
