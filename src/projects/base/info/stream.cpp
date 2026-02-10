@@ -147,9 +147,10 @@ namespace info
 
 	void Stream::UpdateNamePath()
 	{
-		UpdateNamePath((_app_info != nullptr)
-						   ? _app_info->GetVHostAppName()
-						   : info::VHostAppName::InvalidVHostAppName());
+		if (_app_info != nullptr)
+		{
+			UpdateNamePath(_app_info->GetVHostAppName());
+		}
 	}
 
 	ov::String Stream::GetName() const

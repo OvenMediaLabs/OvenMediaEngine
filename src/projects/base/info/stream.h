@@ -183,7 +183,7 @@ namespace info
 
 	private:
 		mutable std::mutex _name_path_mutex;
-		NamePath _name_path;
+		NamePath _name_path = NamePath::UnknownNamePath();
 
 		std::chrono::system_clock::time_point _created_time;
 		std::chrono::system_clock::time_point _published_time;
