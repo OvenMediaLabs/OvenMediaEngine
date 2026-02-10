@@ -235,7 +235,7 @@ namespace info
 		}
 		catch (ov::Cron::Exception const &ex)
 		{
-			loge("%s", ex.what());
+			loge("Record", "%s", ex.what());
 			return false;
 		}
 

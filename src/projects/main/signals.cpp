@@ -177,7 +177,7 @@ static void AbortHandler(int signum, siginfo_t *si, void *context)
 		::strftime(time_buffer, OV_COUNTOF(time_buffer), "crash_%Y%m%d.dump", &local_time);
 
 		file_name = file_prefix;
-		file_name.AppendFormat(time_buffer);
+		file_name.Append(time_buffer);
 
 		if (::mkdir(file_prefix, 0755) != 0)
 		{
@@ -214,7 +214,7 @@ static void AbortHandler(int signum, siginfo_t *si, void *context)
 			file_prefix = g_dump_fallback_directory;
 
 			file_name = file_prefix;
-			file_name.AppendFormat(time_buffer);
+			file_name.Append(time_buffer);
 
 			ostream = std::ofstream(file_name, std::ofstream::app);
 

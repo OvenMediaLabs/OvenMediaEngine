@@ -10,5 +10,5 @@
 
 #define OV_LOG_TAG "Flv"
 
-#define OV_LOG_PREFIX_FORMAT "[0x%08X] "
+#define OV_LOG_PREFIX_FORMAT "[0x%08" PRIXPTR "] "
 #define OV_LOG_PREFIX_VALUE this

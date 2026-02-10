@@ -8,6 +8,8 @@
 //==============================================================================
 #include "log_internal.h"
 
+#include <inttypes.h>
+
 #include <thread>
 
 #include "platform.h"
@@ -291,7 +293,7 @@ namespace ov
 #endif	// DEBUG
 
 				// time ([mm-dd hh:mm:ss.sss])
-				"%02d-%02d %02d:%02d:%02d.%03d]"
+				"%02d-%02d %02d:%02d:%02d.%03" PRId64 "]"
 
 				// <log level>
 				" %s"

@@ -19,8 +19,8 @@ namespace mon
 		if (GetSourceType() == StreamSourceType::Ovt || GetSourceType() == StreamSourceType::RtspPull)
 		{
 			out_str.AppendFormat(
-				"\n\tElapsed time to connect to origin server : %llu ms\n"
-				"\tElapsed time to subscribe to origin server : %llu ms\n",
+				"\n\tElapsed time to connect to origin server : %" PRId64 " ms\n"
+				"\tElapsed time to subscribe to origin server : %" PRId64 " ms\n",
 				GetOriginConnectionTimeMSec(), GetOriginSubscribeTimeMSec());
 		}
 		out_str.Append("\n");
@@ -180,7 +180,7 @@ namespace mon
 		}
 		else
 		{
-			logti("A new session has started playing %s/%s on the %s publisher. %s(%u)/Stream total(%u)/App total(%u)",
+			logti("A new session has started playing %s/%s on the %s publisher. %s(%" PRIu64 ")/Stream total(%u)/App total(%u)",
 				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(),
 				  ::StringFromPublisherType(type).CStr(), ::StringFromPublisherType(type).CStr(), GetConnections(type), GetTotalConnections(), GetApplicationMetrics()->GetTotalConnections());
 		}

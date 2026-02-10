@@ -35,7 +35,7 @@ namespace http
 
 				bool result =
 					// Send the chunk header
-					Send(ov::String::FormatString("%x\r\n", data->GetLength()).ToData(false)) &&
+					Send(ov::String::FormatString("%" PRIx64 "\r\n", data->GetLength()).ToData(false)) &&
 					// Send the chunk payload
 					Send(data) &&
 					// Send a last data of chunk
@@ -71,7 +71,7 @@ namespace http
 				// RFC7230 - 3.1.2.  Status Line
 				// status-line = HTTP-version SP status-code SP reason-phrase CRLF
 				// TODO(dimiden): Replace this HTTP version with the version that received from the request
-				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", GetStatusCode(), GetReason().CStr()).ToData(false));
+				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(GetStatusCode()), GetReason().CStr()).ToData(false));
 
 				// RFC7230 - 3.2.  Header Fields
 				for (const auto &pair : GetResponseHeaderList())
@@ -120,7 +120,7 @@ namespace http
 						}
 						else
 						{
-							logte("Could not send chunked data : %d bytes", data->GetLength());
+							logte("Could not send chunked data : %zu bytes", data->GetLength());
 							return -1;
 						}
 					}
@@ -133,7 +133,7 @@ namespace http
 						}
 						else
 						{
-							logte("Could not send data : %d bytes", data->GetLength());
+							logte("Could not send data : %zu bytes", data->GetLength());
 							return -1;
 						}
 					}

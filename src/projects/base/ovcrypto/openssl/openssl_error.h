@@ -22,6 +22,11 @@ namespace ov
 		OpensslError();
 		OpensslError(ov::String message);
 
+		OpensslError(const char *format)
+			: Error(OPENSSL_ERROR_DOMAIN, ov::String(format))
+		{
+		}
+
 		template <typename... Args>
 		OpensslError(const char *format, Args... args)
 			: Error(OPENSSL_ERROR_DOMAIN, ov::String::FormatString(format, args...))

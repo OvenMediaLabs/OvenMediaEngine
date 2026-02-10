@@ -153,7 +153,7 @@ std::shared_ptr<ov::Data> Scte35Event::MakeScteData() const
 ov::String Scte35Event::ToString() const
 {
 	ov::String str = ov::String::FormatString(
-		"SCTE-35 Event: SpliceCommandType=%d, ID=%u, OutOfNetwork=%s, Timestamp=%lld ms, Duration=%lld ms, AutoReturn=%s",
+		"SCTE-35 Event: SpliceCommandType=%d, ID=%u, OutOfNetwork=%s, Timestamp=%" PRId64 " ms, Duration=%" PRId64 " ms, AutoReturn=%s",
 		static_cast<int>(_splice_command_type),
 		_id,
 		_out_of_network ? "true" : "false",

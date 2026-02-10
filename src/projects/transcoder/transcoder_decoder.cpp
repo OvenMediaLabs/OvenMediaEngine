@@ -123,11 +123,11 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDec
 	{
 		(void)(candidate);
 
-		logtt("Candidate module: %s(%d), %s(%d):%d",
+		logtt("Candidate module: %s(%u), %s(%u):%d",
 			  cmn::GetCodecIdString(candidate->GetCodecId()),
-			  candidate->GetCodecId(),
+			  ov::ToUnderlyingType(candidate->GetCodecId()),
 			  cmn::GetCodecModuleIdString(candidate->GetModuleId()),
-			  candidate->GetModuleId(),
+			  ov::ToUnderlyingType(candidate->GetModuleId()),
 			  candidate->GetDeviceId());
 	}
 

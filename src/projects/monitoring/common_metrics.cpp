@@ -66,7 +66,7 @@ namespace mon
 				continue;
 			}
 
-			out_str.AppendFormat("\t\t- %s : Bytes out(%s) Concurrent Connections (%u)\n",
+			out_str.AppendFormat("\t\t- %s : Bytes out(%s) Concurrent Connections (%" PRIu64 ")\n",
 								 ::StringFromPublisherType(static_cast<PublisherType>(i)).CStr(),
 								 ov::Converter::BytesToString(GetBytesOut(static_cast<PublisherType>(i))).CStr(),
 								 GetConnections(static_cast<PublisherType>(i)));

@@ -86,7 +86,7 @@ namespace ov
 		if (_state != State::Connected)
 		{
 			// Before encrypting data, key exchange must be done first
-			logtt("Invalid state: %d", _state);
+			logtt("Invalid state: %d", ToUnderlyingType(_state));
 			return false;
 		}
 

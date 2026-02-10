@@ -151,7 +151,7 @@ namespace ov
 		if (_state != State::Accepted)
 		{
 			// Before encrypting data, key exchange must be done first
-			logtt("Invalid state: %d", _state);
+			logtt("Invalid state: %d", ov::ToUnderlyingType(_state));
 			return false;
 		}
 
@@ -167,7 +167,7 @@ namespace ov
 		}
 		else
 		{
-			logtt("An error occurred while encrypting data: data_len(%u), error code: %d", plain_data->GetLength(), result);
+			logtt("An error occurred while encrypting data: data_len(%zu), error code: %d", plain_data->GetLength(), result);
 		}
 
 		return false;
