@@ -55,7 +55,7 @@ namespace bmff
 		return _initialization_section;
 	}
 
-	std::shared_ptr<base::modules::Segment> FMP4Storage::GetSegment(uint32_t segment_number) const
+	std::shared_ptr<base::modules::Segment> FMP4Storage::GetSegment(int64_t segment_number) const
 	{
 		return GetSegmentInternal(static_cast<int64_t>(segment_number));
 	}
@@ -102,7 +102,7 @@ namespace bmff
 		return _segments.rbegin()->second;
 	}
 
-	std::shared_ptr<base::modules::PartialSegment> FMP4Storage::GetPartialSegment(uint32_t segment_number, uint32_t partial_number) const
+	std::shared_ptr<base::modules::PartialSegment> FMP4Storage::GetPartialSegment(int64_t segment_number, int64_t partial_number) const
 	{
 		// Get Media Segement
 		auto segment = GetSegmentInternal(segment_number);
@@ -287,7 +287,7 @@ namespace bmff
 	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment()
 	{
 		// Create next segment
-		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms);
+		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, _track->GetTimeBase().GetExpr());
 		{
 			std::lock_guard<std::shared_mutex> lock(_segments_lock);
 			_segments.emplace(segment->GetNumber(), segment);

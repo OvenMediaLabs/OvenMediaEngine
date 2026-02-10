@@ -12,6 +12,7 @@
 #include <base/publisher/stream.h>
 #include <modules/containers/mpegts/mpegts_packetizer.h>
 #include <modules/containers/mpegts/mpegts_packager.h>
+#include <modules/containers/webvtt/webvtt_packager.h>
 #include <monitoring/monitoring.h>
 
 #include <base/modules/data_format/cue_event/cue_event.h>
@@ -57,8 +58,8 @@ public:
 	};
 
 	// Implement mpegts::PackagerSink
-	void OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<mpegts::Segment> &segment) override;
-	void OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<mpegts::Segment> &segment) override;
+	void OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment) override;
+	void OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment) override;
 
 	// Interface for HLS Session
 	std::tuple<RequestResult, std::shared_ptr<const ov::Data>> GetMasterPlaylistData(const ov::String &playlist_name, bool rewind);
@@ -82,8 +83,8 @@ private:
 	ov::String GetMediaPlaylistName(const ov::String &variant_name) const;
 	ov::String GetSegmentName(const ov::String &variant_name, uint32_t number) const;
 
-	std::shared_ptr<mpegts::Packetizer> GetPacketizer(const ov::String &variant_name);
-	std::shared_ptr<mpegts::Packager> GetPackager(const ov::String &variant_name);
+	std::shared_ptr<mpegts::Packetizer> GetTSPacketizer(const ov::String &variant_name);
+	std::shared_ptr<mpegts::Packager> GetTSPackager(const ov::String &variant_name);
 	std::shared_ptr<HlsMediaPlaylist> GetMediaPlaylist(const ov::String &variant_name);
 	std::shared_ptr<HlsMasterPlaylist> GetMasterPlaylist(const ov::String &playlist_name);
 
@@ -123,13 +124,13 @@ private:
 	bool _default_option_rewind = true;
 
 	// packetizer id : Packetizer
-	std::map<ov::String, std::shared_ptr<mpegts::Packetizer>> _packetizers;
+	std::map<ov::String, std::shared_ptr<mpegts::Packetizer>> _ts_packetizers;
 	// All packetizers for each track
 	std::map<uint32_t, std::vector<std::shared_ptr<mpegts::Packetizer>>> _track_packetizers;
-	std::shared_mutex _packetizers_guard;
+	std::shared_mutex _ts_packetizers_guard;
 
-	std::map<ov::String, std::shared_ptr<mpegts::Packager>> _packagers;
-	std::shared_mutex _packagers_guard;
+	std::map<ov::String, std::shared_ptr<mpegts::Packager>> _ts_packagers;
+	std::shared_mutex _ts_packagers_guard;
 
 	// playlist name : Master playlist
 	std::map<ov::String, std::shared_ptr<HlsMasterPlaylist>> _master_playlists;
@@ -150,7 +151,24 @@ private:
 
 	bool _ready_to_play = false; // true if the stream is ready to play, all playlists are ready and have enough segments
 
-
 	bool CreateOriginSessionPool();
 	bool _origin_mode = true;
+
+	// Subtitles, vtt
+	bool AddVttPackager(const std::shared_ptr<const MediaTrack> &track);
+	std::shared_ptr<webvtt::Packager> GetVttPackager(const int32_t &track_id) const;
+	ov::String MakeVttVariantName(const int32_t &track_id) const;
+
+	std::map<int32_t, std::shared_ptr<webvtt::Packager>> GetVttPackagers() const;
+
+	bool _vtt_enabled = false;
+	ov::String _vtt_reference_packager_id = ""; 
+	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
+	mutable std::shared_mutex _vtt_packagers_lock;
+
+	// mpegts packager, vtt packager
+	std::map<ov::String, std::shared_ptr<base::modules::SegmentStorage>> _storage_map;
+	mutable std::shared_mutex _storage_map_guard;
+
+	std::shared_ptr<base::modules::SegmentStorage> GetStorage(const ov::String &variant_name) const;
 };

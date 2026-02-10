@@ -193,8 +193,8 @@ bool HlsStream::Stop()
 	logtt("TsStream(%s) has been stopped", GetName().CStr());
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
-		_packetizers.clear();
+		std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+		_ts_packetizers.clear();
 		_track_packetizers.clear();
 	}
 
@@ -204,8 +204,13 @@ bool HlsStream::Stop()
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_packagers_guard);
-		_packagers.clear();
+		std::lock_guard<std::shared_mutex> lock(_ts_packagers_guard);
+		_ts_packagers.clear();
+	}
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_storage_map_guard);
+		_storage_map.clear();
 	}
 
 	{
@@ -325,7 +330,7 @@ bool HlsStream::SendBufferedPackets()
 
 bool HlsStream::AppendMediaPacket(const std::shared_ptr<MediaPacket> &media_packet)
 {
-	std::shared_lock<std::shared_mutex> lock(_packetizers_guard);
+	std::shared_lock<std::shared_mutex> lock(_ts_packetizers_guard);
 	auto& packetizers = _track_packetizers[media_packet->GetTrackId()];
 	for (auto& packetizer : packetizers)
 	{
@@ -413,7 +418,7 @@ void HlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		}
 
 		// Insert marker to all packagers
-		for (auto &it : _packagers)
+		for (auto &it : _ts_packagers)
 		{
 			auto packager = it.second;
 			auto result = packager->InsertMarker(marker);
@@ -423,6 +428,28 @@ void HlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet)
 			}
 		}
 
+		return;
+	}
+	// vtt
+	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::WebVTT)
+	{
+		// Convert DataFrame to WebVTT
+		auto webvtt_frame = WebVTTFrame::Parse(media_packet->GetData());
+		if (webvtt_frame == nullptr)
+		{
+			logte("Failed to parse WebVTT frame from data packet (track_id: %d, dts: %lld)", media_packet->GetTrackId(), media_packet->GetDts());
+			return;
+		}
+
+		// Get Packager
+		auto packager = GetVttPackager(data_track->GetId());
+		if (packager == nullptr)
+		{
+			logte("Could not find WebVTT packager for label: %s", webvtt_frame->GetLabel().CStr());
+			return;
+		}
+		
+		packager->AddFrame(webvtt_frame);
 		return;
 	}
 
@@ -467,7 +494,7 @@ std::tuple<bool, ov::String> HlsStream::ConcludeLive()
 	_concluded = true;
 
 	// Flush all packagers
-	for (auto &it : _packagers)
+	for (auto &it : _ts_packagers)
 	{
 		auto packager = it.second;
 		packager->Flush();
@@ -525,7 +552,7 @@ bool HlsStream::CheckIfAllPlaylistReady()
 	return true;
 }
 
-void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<mpegts::Segment> &segment)
+void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment)
 {
 	if (CheckIfAllPlaylistReady() == true)
 	{
@@ -543,7 +570,7 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 
 	if (playlist->GetWallclockOffset() == INT64_MIN)
 	{
-		auto first_segment_timestamp_ms = (segment->GetFirstTimestamp() / mpegts::TIMEBASE_DBL) * 1000.0;
+		auto first_segment_timestamp_ms = (segment->GetStartTimestamp() / mpegts::TIMEBASE_DBL) * 1000.0;
 
 		auto wallclock_offset_ms = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(GetInputStreamPublishedTime().time_since_epoch()).count() - first_segment_timestamp_ms);
 
@@ -557,9 +584,48 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 	logtt("Playlist : %s", playlist->ToString(false).CStr());
 
 	DumpSegmentOfAllItems(packager_id, segment->GetNumber());
+
+	if (packager_id == _vtt_reference_packager_id)
+	{
+		std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+		auto vtt_packagers = _vtt_packagers;
+		lock.unlock();
+
+		double segment_start_timestamp = static_cast<double>(segment->GetStartTimestamp()) * segment->GetTimebaseSeconds() * 1000.0;
+		double segment_duration_ms = segment->GetDurationMs();
+
+		// Create VTT segments 
+		for (auto &it : vtt_packagers)
+		{
+			auto track_id = it.first;
+			auto vtt_packager = it.second;
+			
+			if (vtt_packager->MakeSegment(segment->GetNumber(), segment_start_timestamp, segment_duration_ms) == false)
+			{
+				logte("Failed to create VTT segment for segment number: %" PRId64, segment->GetNumber());
+				break;
+			}
+
+			auto vtt_segment = vtt_packager->GetSegment(segment->GetNumber());
+			if (vtt_segment == nullptr)
+			{
+				logte("Failed to get VTT segment for segment number: %" PRId64,	segment->GetNumber());
+				break;
+			}
+
+			auto variant_name = MakeVttVariantName(track_id);
+			if (variant_name.IsEmpty() == true)
+			{
+				logte("Failed to make VTT variant name for track id: %d", track_id);
+				break;
+			}
+			
+			OnSegmentCreated(variant_name, vtt_segment);
+		}
+	}
 }
 
-void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<mpegts::Segment> &segment)
+void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment)
 {
 	auto playlist = GetMediaPlaylist(packager_id);
 	if (playlist == nullptr)
@@ -569,10 +635,58 @@ void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::share
 	}
 
 	playlist->OnSegmentDeleted(segment);
+
+	if (packager_id == _vtt_reference_packager_id)
+	{
+		std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+		auto vtt_packagers = _vtt_packagers;
+		lock.unlock();
+
+		// Delete VTT segments 
+		for (auto &it : vtt_packagers)
+		{
+			auto track_id = it.first;
+			auto vtt_packager = it.second;
+
+			auto variant_name = MakeVttVariantName(track_id);
+			if (variant_name.IsEmpty() == true)
+			{
+				logte("Failed to make VTT variant name for track id: %d", track_id);
+				break;
+			}
+
+			auto vtt_segment = vtt_packager->GetSegment(segment->GetNumber());
+			if (vtt_segment == nullptr)
+			{
+				logte("Failed to get VTT segment for segment number: %" PRId64, segment->GetNumber());
+				break;
+			}
+
+			OnSegmentDeleted(variant_name, vtt_segment);
+
+			vtt_packager->DeleteSegment(segment->GetNumber());
+		}
+	}
 }
 
 bool HlsStream::CreatePackagers()
 {
+	// VTT
+	auto &tracks = GetTracks();
+	for (const auto &[id, track] : tracks)
+	{
+		if (track->GetCodecId() != cmn::MediaCodecId::WebVTT)
+		{
+			continue;
+		}
+
+		if (AddVttPackager(track) == false)
+		{
+			logte("Failed to create VTT packager for track id: %d", track->GetId());
+			continue;
+		}
+	}
+
 	for (auto &it : GetPlaylists())
 	{
 		auto playlist = it.second;
@@ -590,6 +704,19 @@ bool HlsStream::CreatePackagers()
 
 		auto master_playlist = std::make_shared<HlsMasterPlaylist>(playlist->GetFileName(), master_playlist_config);
 		master_playlist->SetDefaultOption(_default_option_rewind);
+
+		// VTT
+		if (playlist->IsSubtitlesEnabled())
+		{
+			std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+			for (const auto &[variant_name, media_playlist] : _media_playlists)
+			{
+				if (media_playlist->HasSubtitle() == true)
+				{
+					master_playlist->AddVttPlaylist(media_playlist);
+				}
+			}
+		}
 
 		{
 			std::lock_guard<std::shared_mutex> lock(_master_playlists_guard);
@@ -645,7 +772,7 @@ bool HlsStream::CreatePackagers()
 			}
 
 			// Already created
-			if (GetPacketizer(variant_name) != nullptr)
+			if (GetTSPacketizer(variant_name) != nullptr)
 			{
 				continue;
 			}
@@ -656,7 +783,7 @@ bool HlsStream::CreatePackagers()
 			HlsMediaPlaylist::HlsMediaPlaylistConfig media_playlist_config;
 			media_playlist_config.segment_count = _ts_config.GetSegmentCount();
 			media_playlist_config.target_duration = _ts_config.GetSegmentDuration();
-			media_playlist_config.event_playlist_type = _ts_config.GetDvr().IsEventPlaylistType();
+			media_playlist_config.event_playlist_type = _ts_config.GetDvr().IsEnabled() && _ts_config.GetDvr().IsEventPlaylistType();
 
 			auto media_playlist_name = GetMediaPlaylistName(variant_name);
 			media_playlist = std::make_shared<HlsMediaPlaylist>(variant_name, media_playlist_name, media_playlist_config);
@@ -695,8 +822,13 @@ bool HlsStream::CreatePackagers()
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_packagers_guard);
-				_packagers.emplace(variant_name, packager);
+				std::lock_guard<std::shared_mutex> lock(_ts_packagers_guard);
+				_ts_packagers.emplace(variant_name, packager);
+			}
+
+			{
+				std::lock_guard<std::shared_mutex> lock(_storage_map_guard);
+				_storage_map.emplace(variant_name, packager);
 			}
 
 			packager->AddSink(mpegts::PackagerSink::GetSharedPtr());
@@ -712,8 +844,8 @@ bool HlsStream::CreatePackagers()
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
-				_packetizers.emplace(variant_name, packetizer);
+				std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+				_ts_packetizers.emplace(variant_name, packetizer);
 			}
 
 			packetizer->AddSink(packager);
@@ -735,7 +867,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
+							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -750,7 +882,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
+							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -780,7 +912,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
+							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -795,7 +927,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
+							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -811,15 +943,21 @@ bool HlsStream::CreatePackagers()
 
 				// Add to track packetizers
 				{
-					std::lock_guard<std::shared_mutex> lock(_packetizers_guard);
+					std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
 					_track_packetizers[data_track->GetId()].emplace_back(packetizer);
 				}
 			}
 
 			master_playlist->AddMediaPlaylist(media_playlist);
 			packetizer->Start();
-		}
-	}
+
+			if (_vtt_reference_packager_id.IsEmpty() == true)
+			{
+				// First created packager is used as the reference packager for VTT
+				_vtt_reference_packager_id = variant_name;
+			}
+		} // for (const auto &rendition : playlist->GetRenditionList())
+	} // for (auto &it : GetPlaylists())
 
 	return true;
 }
@@ -828,6 +966,18 @@ ov::String HlsStream::GetVariantName(const ov::String &video_variant_name, int v
 {
 	auto variant_name = ov::String::FormatString("%s%d_%s%d", video_variant_name.CStr(), video_index, audio_variant_name.CStr(), audio_index);
 	return ov::Converter::ToString(variant_name.Hash());
+}
+
+ov::String HlsStream::MakeVttVariantName(const int32_t &track_id) const
+{
+	auto track = GetTrack(track_id);
+	if (track == nullptr)
+	{
+		logte("Could not find track for id: %d", track_id);
+		return "";
+	}
+
+	return GetVariantName(track->GetPublicName(), track->GetId(), track->GetLanguage(), -1);
 }
 
 std::shared_ptr<HlsMasterPlaylist> HlsStream::GetMasterPlaylist(const ov::String &playlist_name)
@@ -850,15 +1000,22 @@ ov::String HlsStream::GetMediaPlaylistName(const ov::String &variant_name) const
 
 ov::String HlsStream::GetSegmentName(const ov::String &variant_name, uint32_t number) const
 {
-	return ov::String::FormatString("seg_%s_%u_hls.ts", variant_name.CStr(), number);
+	auto storage = GetStorage(variant_name);
+	if (storage == nullptr)
+	{
+		return "";
+	}
+
+	ov::String extension = storage->GetContainerExtension();
+	return ov::String::FormatString("seg_%s_%u_hls.%s", variant_name.CStr(), number, extension.CStr());
 }
 
-std::shared_ptr<mpegts::Packetizer> HlsStream::GetPacketizer(const ov::String &variant_name)
+std::shared_ptr<mpegts::Packetizer> HlsStream::GetTSPacketizer(const ov::String &variant_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_packetizers_guard);
+	std::shared_lock<std::shared_mutex> lock(_ts_packetizers_guard);
 
-	auto it = _packetizers.find(variant_name);
-	if (it == _packetizers.end())
+	auto it = _ts_packetizers.find(variant_name);
+	if (it == _ts_packetizers.end())
 	{
 		return nullptr;
 	}
@@ -866,12 +1023,38 @@ std::shared_ptr<mpegts::Packetizer> HlsStream::GetPacketizer(const ov::String &v
 	return it->second;
 }
 
-std::shared_ptr<mpegts::Packager> HlsStream::GetPackager(const ov::String &variant_name)
+std::shared_ptr<mpegts::Packager> HlsStream::GetTSPackager(const ov::String &variant_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_packagers_guard);
+	std::shared_lock<std::shared_mutex> lock(_ts_packagers_guard);
 
-	auto it = _packagers.find(variant_name);
-	if (it == _packagers.end())
+	auto it = _ts_packagers.find(variant_name);
+	if (it == _ts_packagers.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
+}
+
+std::shared_ptr<webvtt::Packager> HlsStream::GetVttPackager(const int32_t &track_id) const
+{
+	std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+
+	auto it = _vtt_packagers.find(track_id);
+	if (it == _vtt_packagers.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
+}
+
+std::shared_ptr<base::modules::SegmentStorage> HlsStream::GetStorage(const ov::String &variant_name) const
+{
+	std::shared_lock<std::shared_mutex> lock(_storage_map_guard);
+
+	auto it = _storage_map.find(variant_name);
+	if (it == _storage_map.end())
 	{
 		return nullptr;
 	}
@@ -928,19 +1111,19 @@ std::tuple<HlsStream::RequestResult, std::shared_ptr<const ov::Data>> HlsStream:
 
 std::tuple<HlsStream::RequestResult, std::shared_ptr<const ov::Data>> HlsStream::GetSegmentData(const ov::String &variant_name, uint32_t number)
 {
-	auto packager = GetPackager(variant_name);
-	if (packager == nullptr)
+	auto storage = GetStorage(variant_name);
+	if (storage == nullptr)
 	{
 		return std::make_tuple(RequestResult::NotFound, nullptr);
 	}
 
-	auto segment_data = packager->GetSegmentData(number);
-	if (segment_data == nullptr)
+	auto segment = storage->GetSegment(number);
+	if (segment == nullptr)
 	{
 		return std::make_tuple(RequestResult::NotFound, nullptr);
 	}
 
-	return std::make_tuple(RequestResult::Success, segment_data);
+	return std::make_tuple(RequestResult::Success, segment->GetData());
 }
 
 void HlsStream::InitializeAllDumps()
@@ -1041,18 +1224,27 @@ void HlsStream::DumpSegmentOfAllItems(const ov::String &packager_id, const uint3
 bool HlsStream::DumpSegment(const std::shared_ptr<mdl::Dump> &dump, const ov::String &packager_id, const uint32_t &segment_number)
 {
 	// Write segment data
-	auto packager = GetPackager(packager_id);  // packager_id is variant_name
-	if (!packager)
+	auto storage = GetStorage(packager_id);  // packager_id is variant_name
+	if (!storage)
 	{
 		logte("HlsStream(%s/%s) - Could not find packager for variant %s during dumping.",
 			  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), packager_id.CStr());
 		return false;
 	}
 
-	auto segment_data = packager->GetSegmentData(segment_number);
-	if (!segment_data)
+	auto segment = storage->GetSegment(segment_number);
+	if (!segment)
 	{
 		logte("HlsStream(%s/%s) - Could not get segment for dumping variant %s, segment %u",
+			  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(),
+			  packager_id.CStr(), segment_number);
+		return false;
+	}
+
+	auto segment_data = segment->GetData();
+	if (!segment_data)
+	{
+		logte("HlsStream(%s/%s) - Could not get segment data for dumping variant %s, segment %u",
 			  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(),
 			  packager_id.CStr(), segment_number);
 		return false;
@@ -1136,4 +1328,53 @@ void HlsStream::StopDump(const std::shared_ptr<mdl::Dump> &dump)
 	DumpMasterPlaylist(dump);
 
 	dump->CompleteDump();
+}
+
+bool HlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
+{
+	if (track->GetMediaType() != cmn::MediaType::Subtitle || track->GetCodecId() != cmn::MediaCodecId::WebVTT)
+	{
+		logte("Track is not WebVTT. id: %d, media_type: %s, codec_id: %s", track->GetId(), cmn::GetMediaTypeString(track->GetMediaType()), cmn::GetCodecIdString(track->GetCodecId()));
+		return false;
+	}
+
+	// packager
+	auto packager = std::make_shared<webvtt::Packager>(track);
+	{
+		std::lock_guard<std::shared_mutex> lock(_vtt_packagers_lock);
+		_vtt_packagers[track->GetId()] = packager;
+	}
+
+	auto variant_name = MakeVttVariantName(track->GetId());
+
+	// storage
+	{
+		// The VTT packager also functions as storage.
+		std::lock_guard<std::shared_mutex> storage_lock(_storage_map_guard);
+		_storage_map.emplace(variant_name, packager);
+	}
+
+	// media playlist
+	HlsMediaPlaylist::HlsMediaPlaylistConfig media_playlist_config;
+	media_playlist_config.segment_count = _ts_config.GetSegmentCount();
+	media_playlist_config.target_duration = _ts_config.GetSegmentDuration();
+	media_playlist_config.event_playlist_type = _ts_config.GetDvr().IsEventPlaylistType();
+
+	auto media_playlist_name = GetMediaPlaylistName(variant_name);
+	auto media_playlist = std::make_shared<HlsMediaPlaylist>(variant_name, media_playlist_name, media_playlist_config);
+	if (media_playlist == nullptr)
+	{
+		logte("Failed to create media playlist");
+		return false;
+	}
+
+	media_playlist->AddMediaTrackInfo(track);
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_media_playlists_guard);
+		_media_playlists.emplace(variant_name, media_playlist);
+	}
+
+
+	return true;
 }

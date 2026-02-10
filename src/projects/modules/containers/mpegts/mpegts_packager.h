@@ -10,8 +10,8 @@
 
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
-
 #include <base/modules/marker/marker_box.h>
+#include <base/modules/container/segment_storage.h>
 
 #include "mpegts_packetizer.h"
 
@@ -19,14 +19,76 @@ namespace mpegts
 {
     constexpr size_t SEGMENT_BUFFER_SIZE = 2000000;
 
-    class Segment
+    class Segment : public base::modules::Segment
     {
     public:
-        Segment(uint64_t segment_id, int64_t first_dts, double duration_ms)
+        Segment(int64_t segment_id, int64_t first_dts, double duration_ms)
         {
             _segment_id = segment_id;
             _first_dts = first_dts;
             _duration_ms = duration_ms;
+        }
+
+        int64_t GetNumber() const override
+		{
+			return _segment_id;
+		}
+
+        int64_t GetStartTimestamp() const override
+        {
+            return _first_dts;
+        }
+
+        double GetDurationMs() const override
+        {
+            return _duration_ms;
+        }
+
+        const std::shared_ptr<ov::Data> GetData() const override
+		{
+			if (_is_data_in_memory)
+			{
+				return _data;
+			}
+
+			if (_is_data_in_file)
+			{
+				// Read from file
+				auto data = ov::LoadFromFile(_file_path);
+				if (data == nullptr)
+				{
+					loge("MPEG-2 TS", "Segment::GetData - Failed to load data from file(%s)", _file_path.CStr());
+				}
+				return data;
+			}
+
+			return nullptr;
+		}
+
+        uint64_t GetDataLength() const override
+        {
+            auto data = GetData();
+            return data == nullptr ? 0 : data->GetLength();
+        }
+
+        bool IsCompleted() const override
+        {
+            return true;
+        }
+
+        bool HasMarker() const override
+		{
+			return _markers.empty() == false;
+		}
+
+        const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override
+		{
+			return _markers;
+		}
+
+        double GetTimebaseSeconds() const override
+        {
+            return 1.0 / mpegts::TIMEBASE_DBL;
         }
 
         bool AddPacketData(const std::shared_ptr<const ov::Data> &data)
@@ -43,35 +105,20 @@ namespace mpegts
             return true;
         }
 
-        uint64_t GetId() const
+        int64_t GetId() const
         {
             return _segment_id;
         }
 
-		uint64_t GetNumber() const
-		{
-			return _segment_id;
-		}
-
-		ov::String GetUrl() const
+		ov::String GetUrl() const override
 		{
 			return _url;
 		}
 
-		void SetUrl(const ov::String &url)
+		void SetUrl(const ov::String &url) override
 		{
 			_url = url;
 		}
-
-        int64_t GetFirstTimestamp() const
-        {
-            return _first_dts;
-        }
-
-        double GetDurationMs() const
-        {
-            return _duration_ms;
-        }
 
 		ov::String GetFilePath() const
 		{
@@ -103,44 +150,13 @@ namespace mpegts
 			return _is_data_in_file;
 		}
 
-		std::shared_ptr<const ov::Data> GetData() const
-		{
-			if (_is_data_in_memory)
-			{
-				return _data;
-			}
-
-			if (_is_data_in_file)
-			{
-				// Read from file
-				auto data = ov::LoadFromFile(_file_path);
-				if (data == nullptr)
-				{
-					loge("MPEG-2 TS", "Segment::GetData - Failed to load data from file(%s)", _file_path.CStr());
-				}
-				return data;
-			}
-
-			return nullptr;
-		}
-
-		bool HasMarker() const
-		{
-			return _markers.empty() == false;
-		}
-
 		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
 		{
 			_markers = markers;
 		}
 
-		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const
-		{
-			return _markers;
-		}
-
     private:
-        uint64_t _segment_id = 0;
+        int64_t _segment_id = 0;
         int64_t _first_dts = -1;
         double _duration_ms = 0;
 		ov::String _url;
@@ -369,8 +385,8 @@ namespace mpegts
 	class PackagerSink : public ov::EnableSharedFromThis<PackagerSink>
 	{
 	public:
-		virtual void OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<Segment> &segment) = 0;
-		virtual void OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<Segment> &segment) = 0;
+		virtual void OnSegmentCreated(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment) = 0;
+		virtual void OnSegmentDeleted(const ov::String &packager_id, const std::shared_ptr<base::modules::Segment> &segment) = 0;
 	};
 
     // Make mpeg-2 ts container
@@ -380,7 +396,7 @@ namespace mpegts
 	// DVR off, Retention > 0 	: Buffer --> Retention
 	// DVR on, Retention > 0	: Buffer --> DVR(file) --> Retention(file) 
 	// DVR on, Retention 0		: Buffer --> DVR(file)
-    class Packager : public PacketizerSink, public MarkerBox
+    class Packager : public PacketizerSink, public MarkerBox, public base::modules::SegmentStorage
     {
     public:
         struct Config
@@ -401,6 +417,7 @@ namespace mpegts
         ~Packager();
 
 		bool AddSink(const std::shared_ptr<PackagerSink> &sink);
+        std::shared_ptr<const ov::Data> GetSegmentData(int64_t segment_id) const;
 
         ////////////////////////////////
         // PacketizerSink interface
@@ -412,15 +429,48 @@ namespace mpegts
         void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets) override;
 
 		void Flush();
+        ////////////////////////////////
+        // SegmentStorage interface
+        ////////////////////////////////
+
+        std::shared_ptr<ov::Data> GetInitializationSection() const override
+        {
+            return nullptr;
+        }
 
 		// Get the segment data
-		std::shared_ptr<Segment> GetSegment(uint64_t segment_id) const;
-		std::shared_ptr<const ov::Data> GetSegmentData(uint64_t segment_id) const;
+		std::shared_ptr<base::modules::Segment> GetSegment(int64_t segment_number) const override;
+        std::shared_ptr<base::modules::Segment> GetLastSegment() const override;
+        uint64_t GetSegmentCount() const override;
+        int64_t GetLastSegmentNumber() const override;
+
+        // mpegts::Packager does not support partial segments
+        std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_number) const override
+        {
+            return nullptr;
+        }
+        std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override
+        {
+            return std::make_tuple(-1, -1);
+        }
+        uint64_t GetMaxPartialDurationMs() const override
+        {
+            return 0;
+        }
+		uint64_t GetMinPartialDurationMs() const override
+        {
+            return 0;
+        }
+
+        ov::String GetContainerExtension() const override 
+        { 
+            return "ts"; 
+        }
 
     private:
         const Config &GetConfig() const;
 
-        uint64_t GetNextSegmentId();
+        int64_t GetNextSegmentId();
 
         std::shared_ptr<ov::Data> MergeTsPacketData(const std::vector<std::shared_ptr<mpegts::Packet>> &ts_packets);
     
@@ -455,7 +505,7 @@ namespace mpegts
 		void BroadcastSegmentDeleted(const std::shared_ptr<Segment> &segment);
 
 		ov::String GetDvrStoragePath() const;
-		ov::String GetSegmentFilePath(uint64_t segment_id) const;
+		ov::String GetSegmentFilePath(int64_t segment_id) const;
        
         ov::String _packager_id;
         Config _config;
@@ -471,17 +521,17 @@ namespace mpegts
         std::vector<std::shared_ptr<mpegts::Packet>> _psi_packets;
         std::shared_ptr<ov::Data> _psi_packet_data;
 
-        uint64_t _last_segment_id = 0;
+        int64_t _last_segment_id = 0;
 
-        std::map<uint64_t, std::shared_ptr<Segment>> _segments;
+        std::map<int64_t, std::shared_ptr<Segment>> _segments;
 		double _total_segments_duration_ms = 0;
 		mutable std::shared_mutex _segments_guard;
 
-		std::map<uint64_t, std::shared_ptr<Segment>> _file_stored_segments;
+		std::map<int64_t, std::shared_ptr<Segment>> _file_stored_segments;
 		double _total_file_stored_segments_duration_ms = 0;
 		mutable std::shared_mutex _file_stored_segments_guard;
 
-		std::map<uint64_t, std::shared_ptr<Segment>> _retained_segments;
+		std::map<int64_t, std::shared_ptr<Segment>> _retained_segments;
 		mutable std::shared_mutex _retained_segments_guard;
 
 		std::vector<std::shared_ptr<PackagerSink>> _sinks;

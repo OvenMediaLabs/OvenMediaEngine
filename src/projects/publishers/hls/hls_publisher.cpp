@@ -201,7 +201,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 	auto http_interceptor = std::make_shared<TsHttpInterceptor>();
 
 	// Register Request Handler
-	http_interceptor->Register(http::Method::Options, R"((.+\.m3u8$)|(.+hls\.ts$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
+	http_interceptor->Register(http::Method::Options, R"((.+\.m3u8$)|(.+hls\.ts$)|(.+hls\.vtt$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
 		auto connection = exchange->GetConnection();
 		auto request = exchange->GetRequest();
 		auto response = exchange->GetResponse();
@@ -242,7 +242,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 		return http::svr::NextHandler::DoNotCall;
 	});
 
-	http_interceptor->Register(http::Method::Get, R"((.+\.m3u8$)|(.+hls\.ts$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
+	http_interceptor->Register(http::Method::Get, R"((.+\.m3u8$)|(.+hls\.ts$)|(.+hls\.vtt$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
 		auto connection = exchange->GetConnection();
 		auto request = exchange->GetRequest();
 		auto response = exchange->GetResponse();

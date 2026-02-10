@@ -18,13 +18,17 @@ namespace base
 		class PartialSegment
 		{
 		public:
-
 			virtual int64_t GetNumber() const = 0;
 			virtual int64_t GetStartTimestamp() const = 0;
 			virtual double GetDurationMs() const = 0;
 			virtual bool IsIndependent() const = 0;
 			virtual uint64_t GetDataLength() const = 0;
 			virtual const std::shared_ptr<ov::Data> GetData() const = 0;
+
+			virtual ov::String GetUrl() const { return ""; }
+			virtual void SetUrl(const ov::String &url) {}
+
+			virtual double GetTimebaseSeconds() const = 0;
 		};
 
 		class Segment : public PartialSegment
@@ -46,9 +50,9 @@ namespace base
 			virtual ~SegmentStorage() = default;
 
 			virtual std::shared_ptr<ov::Data> GetInitializationSection() const = 0;
-			virtual std::shared_ptr<Segment> GetSegment(uint32_t segment_number) const = 0;
+			virtual std::shared_ptr<Segment> GetSegment(int64_t segment_number) const = 0;
 			virtual std::shared_ptr<Segment> GetLastSegment() const = 0;
-			virtual std::shared_ptr<PartialSegment> GetPartialSegment(uint32_t segment_number, uint32_t partial_number) const = 0;
+			virtual std::shared_ptr<PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_number) const = 0;
 
 			virtual uint64_t GetSegmentCount() const = 0;
 
@@ -57,6 +61,8 @@ namespace base
 
 			virtual uint64_t GetMaxPartialDurationMs() const = 0;
 			virtual uint64_t GetMinPartialDurationMs() const = 0;
+
+			virtual ov::String GetContainerExtension() const = 0;
 		};
 	}
 }

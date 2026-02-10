@@ -34,6 +34,11 @@ namespace webvtt
 
 		void SetIndependent(bool independent) { _independent = independent; }
 
+		double GetTimebaseSeconds() const override { return 1.0/1000.0; } 
+
+		void SetUrl(const ov::String &url) override { _url = url; }
+		ov::String GetUrl() const override { return _url; }
+
 	private:
 		int64_t _segment_number;
 		int64_t _partial_segment_number;
@@ -41,6 +46,7 @@ namespace webvtt
 		double _duration_ms;
 		bool _independent = false;
 		ov::String _vtt_text; // Serialized VTT text
+		ov::String _url;
 	};
 
 	class Segment : public base::modules::Segment
@@ -68,6 +74,10 @@ namespace webvtt
 		const std::shared_ptr<ov::Data> GetData() const override { return _vtt_text.ToData(false); }
 		bool IsCompleted() const override { return true; }
 		bool HasMarker() const override { return false; }
+		double GetTimebaseSeconds() const override { return 1.0/1000.0; } 
+
+		void SetUrl(const ov::String &url) override { _url = url; }
+		ov::String GetUrl() const override { return _url; }
 		
 		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override 
 		{ 
@@ -140,8 +150,10 @@ namespace webvtt
 		bool _completed = false;
 
 		// partial segments
-		std::map<uint32_t, std::shared_ptr<webvtt::PartialSegment>> _partial_segments;
+		std::map<int64_t, std::shared_ptr<webvtt::PartialSegment>> _partial_segments;
 		mutable std::shared_mutex _partial_segments_guard;
+
+		ov::String _url;
 	};
 
 	class Packager : public base::modules::SegmentStorage
@@ -152,24 +164,25 @@ namespace webvtt
 
 		bool AddFrame(const std::shared_ptr<WebVTTFrame> &frame);
 		
-		bool MakeSegment(uint32_t segment_number, int64_t start_time_ms, int64_t duration_ms);
-		bool MakePartialSegment(uint32_t segment_number, uint32_t partial_segment_number, int64_t start_time_ms, int64_t duration_ms);
-		bool DeleteSegment(uint32_t segment_number);
+		bool MakeSegment(int64_t segment_number, int64_t start_time_ms, int64_t duration_ms);
+		bool MakePartialSegment(int64_t segment_number, int64_t partial_segment_number, int64_t start_time_ms, int64_t duration_ms);
+		bool DeleteSegment(int64_t segment_number);
 
 		// SegmentStorage overrides
 		std::shared_ptr<ov::Data> GetInitializationSection() const override;
-		std::shared_ptr<base::modules::Segment> GetSegment(uint32_t segment_number) const override;
+		std::shared_ptr<base::modules::Segment> GetSegment(int64_t segment_number) const override;
 		std::shared_ptr<base::modules::Segment> GetLastSegment() const override;
-		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(uint32_t segment_number, uint32_t partial_segment_number) const override;
+		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_segment_number) const override;
 		uint64_t GetSegmentCount() const override;
 		int64_t GetLastSegmentNumber() const override;
 		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override;
 		uint64_t GetMaxPartialDurationMs() const override;
 		uint64_t GetMinPartialDurationMs() const override;
+		ov::String GetContainerExtension() const override { return "vtt"; }
 
 	private:
-		std::shared_ptr<Segment> GetSegmentInternal(uint32_t segment_number) const;
-		std::shared_ptr<PartialSegment> GetPartialSegmentInternal(uint32_t segment_number, uint32_t partial_segment_number) const;
+		std::shared_ptr<Segment> GetSegmentInternal(int64_t segment_number) const;
+		std::shared_ptr<PartialSegment> GetPartialSegmentInternal(int64_t segment_number, int64_t partial_segment_number) const;
 
 		const ov::String MakeVTTHeader(int64_t start_time_ms);
 		const ov::String MakeCueText(int64_t start_time_ms, int64_t duration_ms, bool remove_used_frames);
@@ -179,7 +192,7 @@ namespace webvtt
 		std::map<int64_t, std::shared_ptr<WebVTTFrame>> _frames;
 		std::shared_mutex _frames_guard;
 
-		std::map<uint32_t, std::shared_ptr<Segment>> _segments;
+		std::map<int64_t, std::shared_ptr<Segment>> _segments;
 		mutable std::shared_mutex _segments_guard;
 
 		uint64_t _max_partial_duration_ms = 0;

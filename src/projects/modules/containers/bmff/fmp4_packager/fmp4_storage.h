@@ -42,18 +42,20 @@ namespace bmff
 		virtual ~FMP4Storage();
 
 		std::shared_ptr<ov::Data> GetInitializationSection() const override;
-		std::shared_ptr<base::modules::Segment> GetSegment(uint32_t segment_number) const override;
+		std::shared_ptr<base::modules::Segment> GetSegment(int64_t segment_number) const override;
 		std::shared_ptr<base::modules::Segment> GetLastSegment() const override;
-		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(uint32_t segment_number, uint32_t partial_number) const override;
+		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_number) const override;
 		uint64_t GetSegmentCount() const override;
 		int64_t GetLastSegmentNumber() const override;
-		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const;
+		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override;
 		
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &section);
 		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
 
 		uint64_t GetMaxPartialDurationMs() const override;
 		uint64_t GetMinPartialDurationMs() const override;
+
+		ov::String GetContainerExtension() const override { return "m4s"; }
 
 		double GetTargetSegmentDuration() const;
 

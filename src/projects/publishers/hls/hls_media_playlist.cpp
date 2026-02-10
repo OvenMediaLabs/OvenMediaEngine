@@ -19,7 +19,7 @@ HlsMediaPlaylist::HlsMediaPlaylist(const ov::String &id, const ov::String &playl
 {
 }
 
-void HlsMediaPlaylist::AddMediaTrackInfo(const std::shared_ptr<MediaTrack> &track)
+void HlsMediaPlaylist::AddMediaTrackInfo(const std::shared_ptr<const MediaTrack> &track)
 {
 	_media_tracks.emplace(track->GetId(), track);
 
@@ -32,6 +32,11 @@ void HlsMediaPlaylist::AddMediaTrackInfo(const std::shared_ptr<MediaTrack> &trac
 	{
 		_first_audio_track = track;
 	}
+
+	if (_subtitle_track == nullptr && track->GetMediaType() == cmn::MediaType::Subtitle)
+	{
+		_subtitle_track = track;
+	}
 }
 
 void HlsMediaPlaylist::SetEndList()
@@ -39,7 +44,7 @@ void HlsMediaPlaylist::SetEndList()
 	_end_list = true;
 }
 
-bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<mpegts::Segment> &segment)
+bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Segment> &segment)
 {
 	OV_ASSERT(_wallclock_offset_ms != INT64_MIN, "Wallclock offset is not set");
 
@@ -57,7 +62,7 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<mpegts::Segment> &
 	return true;
 }
 
-bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<mpegts::Segment> &segment)
+bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<base::modules::Segment> &segment)
 {
 	std::lock_guard<std::shared_mutex> lock(_segments_mutex);
 
@@ -93,7 +98,7 @@ ov::String HlsMediaPlaylist::ToString(bool rewind) const
 		return result;
 	}
 
-	std::shared_ptr<mpegts::Segment> first_segment = _segments.begin()->second;
+	std::shared_ptr<base::modules::Segment> first_segment = _segments.begin()->second;
 	if (rewind == false)
 	{
 		size_t segment_size = _segments.size();
@@ -134,6 +139,11 @@ bool HlsMediaPlaylist::HasVideo() const
 bool HlsMediaPlaylist::HasAudio() const
 {
 	return _first_audio_track != nullptr;
+}
+
+bool HlsMediaPlaylist::HasSubtitle() const
+{
+	return _subtitle_track != nullptr;
 }
 
 uint32_t HlsMediaPlaylist::GetBitrates() const
@@ -219,10 +229,10 @@ ov::String HlsMediaPlaylist::GetCodecsString() const
 	return result;
 }
 
-ov::String HlsMediaPlaylist::MakeSegmentString(const std::shared_ptr<mpegts::Segment> &segment) const
+ov::String HlsMediaPlaylist::MakeSegmentString(const std::shared_ptr<base::modules::Segment> &segment) const
 {
 	ov::String result;
-	auto start_time = static_cast<int64_t>(((segment->GetFirstTimestamp() / mpegts::TIMEBASE_DBL) * 1000.0) + _wallclock_offset_ms);
+	auto start_time = static_cast<int64_t>(((segment->GetStartTimestamp() * segment->GetTimebaseSeconds()) * 1000.0) + _wallclock_offset_ms);
 	std::chrono::system_clock::time_point tp{std::chrono::milliseconds{start_time}};
 	result += ov::String::FormatString("#EXT-X-PROGRAM-DATE-TIME:%s\n", ov::Converter::ToISO8601String(tp).CStr());
 	result += ov::String::FormatString("#EXTINF:%.3f,\n", segment->GetDurationMs() / 1000.0);
@@ -230,7 +240,7 @@ ov::String HlsMediaPlaylist::MakeSegmentString(const std::shared_ptr<mpegts::Seg
 	return result;
 }
 
-std::shared_ptr<mpegts::Segment> HlsMediaPlaylist::GetLatestSegment() const
+std::shared_ptr<base::modules::Segment> HlsMediaPlaylist::GetLatestSegment() const
 {
 	std::shared_lock<std::shared_mutex> lock(_segments_mutex);
 
