@@ -93,16 +93,20 @@ namespace webvtt
 
 	const ov::String Packager::MakeVTTHeader(int64_t start_time_ms)
 	{
-		ov::String vtt_text;
+		constexpr int64_t kPtsWrap = (1LL << 33); // 33-bit PTS wrap
 
+		ov::String vtt_text;
 		vtt_text = "WEBVTT\n";
-		// X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:start_time_ms*90
-		vtt_text += ov::String::FormatString("X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%" PRId64"\n", (int64_t)(start_time_ms) * 90);
+
+		// ms → 90kHz PTS (wrap to 33bit)
+		int64_t mpegts = (start_time_ms * 90) % kPtsWrap;
+		vtt_text += ov::String::FormatString("X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%" PRId64 "\n", mpegts);
+
 		vtt_text += "\n\n";
 
 		return vtt_text;
 	}
-
+	
 	const ov::String Packager::MakeCueText(int64_t start_time_ms, double duration_ms, bool remove_used_frames)
 	{
 		ov::String cue_text;
