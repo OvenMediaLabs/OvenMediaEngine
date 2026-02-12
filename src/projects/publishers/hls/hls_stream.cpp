@@ -570,7 +570,7 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 
 	if (playlist->GetWallclockOffset() == INT64_MIN)
 	{
-		auto first_segment_timestamp_ms = (segment->GetStartTimestamp() / mpegts::TIMEBASE_DBL) * 1000.0;
+		auto first_segment_timestamp_ms = (segment->GetStartTimestamp() * segment->GetTimebaseSeconds()) * 1000.0;
 
 		auto wallclock_offset_ms = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(GetInputStreamPublishedTime().time_since_epoch()).count() - first_segment_timestamp_ms);
 
