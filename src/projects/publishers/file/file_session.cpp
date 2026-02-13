@@ -163,7 +163,7 @@ namespace pub
 			// If there is no specified track, add all tracks.
 			for (auto &[track_id, media_track] : GetStream()->GetTracks())
 			{
-				if (AddTrack(media_track) == false)
+				if (AddTrack(output_format, media_track) == false)
 				{
 					continue;
 				}
@@ -187,7 +187,7 @@ namespace pub
 					continue;
 				}
 
-				if (AddTrack(media_track) == false)
+				if (AddTrack(output_format, media_track) == false)
 				{
 					continue;
 				}
@@ -203,7 +203,7 @@ namespace pub
 					continue;
 				}
 
-				if (AddTrack(media_track) == false)
+				if (AddTrack(output_format, media_track) == false)
 				{
 					continue;
 				}
@@ -574,7 +574,49 @@ namespace pub
 		return _writer;
 	}
 
-	bool FileSession::AddTrack(const std::shared_ptr<MediaTrack> &track)
+	bool FileSession::IsSupportCodec(const ov::String output_format, const cmn::MediaCodecId codec_id)
+	{
+		if (output_format == "mp4")
+		{
+			// For mp4 format, only a limited number of codecs are supported.
+			if (codec_id == cmn::MediaCodecId::H264 ||
+				codec_id == cmn::MediaCodecId::H265 ||
+				codec_id == cmn::MediaCodecId::Aac ||
+				codec_id == cmn::MediaCodecId::Mp3 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+		else if (output_format == "mpegts")
+		{
+			if (codec_id == cmn::MediaCodecId::H264 ||
+				codec_id == cmn::MediaCodecId::H265 ||
+				codec_id == cmn::MediaCodecId::Vp8 ||
+				codec_id == cmn::MediaCodecId::Vp9 ||
+				codec_id == cmn::MediaCodecId::Aac ||
+				codec_id == cmn::MediaCodecId::Mp3 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+		// Webm 지원 코덱
+		else if (output_format == "webm")
+		{
+			if (codec_id == cmn::MediaCodecId::Vp8 ||
+				codec_id == cmn::MediaCodecId::Vp9 ||
+				codec_id == cmn::MediaCodecId::Av1 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool FileSession::AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track)
 	{
 		auto writer = GetWriter();
 		if (writer == nullptr)
@@ -586,9 +628,18 @@ namespace pub
 		// Check already added track
 		if (writer->GetTrackByTrackId(track->GetId()) != nullptr)
 		{
-			logtw("Track already added. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+			logtw("Track already added. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 			return false;
 		}
+
+		if (IsSupportCodec(output_format, track->GetCodecId()) == false)
+		{
+			logtw("Could not supported codec. trackId: %u, container: %s codec: %s, variantName: %s",
+				  track->GetId(), output_format.CStr(), GetCodecIdString(track->GetCodecId()), track->GetVariantName().CStr());
+			return false;
+		}
+
+		logtd("Adding track to writer. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 
 		SelectDefaultTrack(track);
 
