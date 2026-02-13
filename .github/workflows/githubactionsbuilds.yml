@@ -43,4 +43,4 @@ jobs:
       run: |
         export VERSION=1.0.${{needs.generate_version_number.outputs.build_number}}
         echo Version: $VERSION
-        docker buildx build -f Dockerfile --platform linux/arm64,linux/amd64 -t devedse/ovenmediaengine:${{needs.generate_version_number.outputs.build_number}} -t devedse/ovenmediaengine:latest ${{ github.ref == 'refs/heads/feature/webrtc-test' && '--push' || '' }} .
+        docker buildx build -f Dockerfile --platform linux/amd64 -t devedse/ovenmediaengine:${{needs.generate_version_number.outputs.build_number}} -t devedse/ovenmediaengine:latest ${{ github.ref == 'refs/heads/feature/webrtc-test' && '--push' || '' }} .
