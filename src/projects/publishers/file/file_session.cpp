@@ -123,6 +123,12 @@ namespace pub
 			return false;
 		}
 
+		logtt("OutputFilePath : %s", record->GetOutputFilePath().CStr());
+		logtt("OutputInfoPath : %s", record->GetOutputInfoPath().CStr());
+		logtt("TmpPath        : %s", record->GetTmpPath().CStr());
+		logtt("TmpDirectory   : %s", tmp_directory.CStr());
+		logtt("TmpRealDirectory   : %s", tmp_real_directory.CStr());
+
 		auto writer = CreateWriter();
 		if (writer == nullptr)
 		{
@@ -204,7 +210,7 @@ namespace pub
 			}
 		}
 
-		logtt("Create temporary file(%s) and default track id(%d)", writer->GetUrl().CStr(), _default_track);
+		logtd("Create temporary file(%s) and default track id(%d)", writer->GetUrl().CStr(), _default_track);
 
 		if (writer->Start() == false)
 		{
@@ -214,7 +220,7 @@ namespace pub
 			return false;
 		}
 
-		logtt("Recording Started. %s", record->GetInfoString().CStr());
+		logtd("Recording Started. %s", record->GetInfoString().CStr());
 
 		return true;
 	}
@@ -300,7 +306,7 @@ namespace pub
 					return false;
 				}
 
-				logtt("Replace the temporary file name with the target file name. from: %s, to: %s", tmp_output_path.CStr(), output_path.CStr());
+				logtd("Replace the temporary file name with the target file name. from: %s, to: %s", tmp_output_path.CStr(), output_path.CStr());
 
 				// Append recorded information to the information file
 				if (FileExport::GetInstance()->ExportRecordToXml(info_path, record) == false)
@@ -308,16 +314,16 @@ namespace pub
 					logte("Failed to export xml file. path: %s", info_path.CStr());
 				}
 
-				logtt("Appends the recording result to the information file. path: %s", info_path.CStr());
+				logtd("Appends the recording result to the information file. path: %s", info_path.CStr());
 
 				record->SetState(info::Record::RecordState::Stopped);
 				
-				logtt("Recording Completed. %s", record->GetInfoString().CStr());
+				logtd("Recording Completed. %s", record->GetInfoString().CStr());
 								
 				record->IncreaseSequence();
 			}
 
-			DestoryWriter();
+			DestroyWriter();
 		}
 
 		return true;
@@ -342,7 +348,7 @@ namespace pub
 		}
 		catch (const std::bad_any_cast &e)
 		{
-			logtt("An incorrect type of packet was input from the stream. (%s)", e.what());
+			logtw("An incorrect type of packet was input from the stream. (%s)", e.what());
 
 			return;
 		}
@@ -419,7 +425,7 @@ namespace pub
 				SetState(SessionState::Error);
 				record->SetState(info::Record::RecordState::Error);
 				logte("Failed to write packet. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
-				DestoryWriter();
+				DestroyWriter();
 
 				return;
 			}
@@ -455,6 +461,13 @@ namespace pub
 	ov::String FileSession::GetOutputTempFilePath(std::shared_ptr<info::Record> &record)
 	{
 		ov::String tmp_directory = ov::PathManager::ExtractPath(record->GetOutputFilePath());
+
+		// If the tmp_directory is relative path "./", change it to empty string.
+		if (tmp_directory.HasPrefix("./") && tmp_directory.GetLength() == 2)
+		{
+			tmp_directory = "";
+		}
+
 		ov::String tmp_filename = ov::String::FormatString("tmp_%s", ov::Random::GenerateString(32).CStr());
 
 		return ov::PathManager::Combine(tmp_directory, tmp_filename);
@@ -485,7 +498,7 @@ namespace pub
 		// If FilePath config is not set, save it as the default path.
 		if (template_path.GetLength() == 0 || template_path.IsEmpty() == true)
 		{
-			template_path.Format("%s${TransactionId}_${VirtualHost}_${Application}_${Stream}_${StartTime:YYYYMMDDhhmmss}_${EndTime:YYYYMMDDhhmmss}.ts", ov::PathManager::GetAppPath("records").CStr());
+			template_path.Format("${TransactionId}_${VirtualHost}_${Application}_${Stream}_${StartTime:YYYYMMDDhhmmss}.ts");
 		}
 
 		auto result = FileMacro::ConvertMacro(std::static_pointer_cast<info::Application>(GetApplication()), std::static_pointer_cast<info::Stream>(GetStream()), record, template_path);
@@ -519,7 +532,7 @@ namespace pub
 		// If FileInfoPath config is not set, save it as the default path.
 		if (template_path.GetLength() == 0 || template_path.IsEmpty() == true)
 		{
-			template_path.Format("%s${TransactionId}_${VirtualHost}_${Application}_${Stream}.xml", ov::PathManager::GetAppPath("records").CStr());
+			template_path.Format("${TransactionId}_${VirtualHost}_${Application}_${Stream}.xml");
 		}
 
 		auto result = FileMacro::ConvertMacro(std::static_pointer_cast<info::Application>(GetApplication()), std::static_pointer_cast<info::Stream>(GetStream()), record, template_path);
@@ -545,7 +558,7 @@ namespace pub
 		return _writer;
 	}
 
-	void FileSession::DestoryWriter()
+	void FileSession::DestroyWriter()
 	{
 		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
 		if (_writer != nullptr)

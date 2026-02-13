@@ -44,7 +44,7 @@ namespace pub
 
 		std::shared_ptr<ffmpeg::Writer> CreateWriter();
 		std::shared_ptr<ffmpeg::Writer> GetWriter();
-		void DestoryWriter();
+		void DestroyWriter();
 
 	private:
 		std::shared_ptr<ffmpeg::Writer> _writer;
