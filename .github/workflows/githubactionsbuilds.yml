@@ -4,29 +4,35 @@ on: push
 
 jobs:
   generate_version_number:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     outputs:
       build_number: ${{ steps.buildnumber.outputs.build_number }}
     steps:
     - name: Generate build number
       id: buildnumber
-      uses: einaregilsson/build-number@v3
+      uses: onyxmueller/build-tag-number@v1
       with:
         token: ${{secrets.github_token}}
 
   build_docker_ovenmediaengine:
     needs: generate_version_number
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-    - uses: actions/checkout@v2
-    - name: Login to Docker Hub
-      uses: docker/login-action@v1
+    - uses: actions/checkout@v6
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
       with:
-        username: devedse
-        password: ${{ secrets.DOCKERHUBTOKEN }}
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     - name: Set up QEMU
       id: qemu
-      uses: docker/setup-qemu-action@v1
+      uses: docker/setup-qemu-action@v3
       with:
         image: tonistiigi/binfmt:latest
         platforms: all
@@ -34,13 +40,39 @@ jobs:
       run: echo ${{ steps.qemu.outputs.platforms }}
     - name: Set up Docker Buildx
       id: buildx
-      uses: docker/setup-buildx-action@v1
+      uses: docker/setup-buildx-action@v3
     - name: Builder instance name
       run: echo ${{ steps.buildx.outputs.name }}
     - name: Available platforms
       run: echo ${{ steps.buildx.outputs.platforms }}
-    - name: Run Buildx ovenmediaengine
-      run: |
-        export VERSION=1.0.${{needs.generate_version_number.outputs.build_number}}
-        echo Version: $VERSION
-        docker buildx build -f Dockerfile --platform linux/amd64 -t devedse/ovenmediaengine:${{needs.generate_version_number.outputs.build_number}} -t devedse/ovenmediaengine:latest ${{ github.ref == 'refs/heads/feature/webrtc-test' && '--push' || '' }} .
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/devedse/ovenmediaengine
+        tags: |
+          type=raw,value=1.0.${{needs.generate_version_number.outputs.build_number}}
+          type=raw,value=beta_nightly,enable=${{ github.ref != 'refs/heads/master' && github.actor != 'dependabot[bot]' }}
+          type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+          type=raw,value=beta_${{ github.ref_name }},enable=${{ github.ref != 'refs/heads/master' }}
+        labels: |
+          maintainer=${{ github.actor }}
+          org.opencontainers.image.description=OvenMediaEngine - Multi-architecture Docker image
+      env:
+        DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+        tags: ${{ steps.meta.outputs.tags }}
+        annotations: ${{ steps.meta.outputs.annotations }}
+        build-args: |
+          BUILD_VERSION=1.0.${{needs.generate_version_number.outputs.build_number}}
+        # cache-from: ${{ (github.event_name != 'workflow_dispatch' || inputs.use_cache) && 'type=gha' || '' }}
+        # cache-to: ${{ (github.event_name != 'workflow_dispatch' || inputs.use_cache) && 'type=gha,mode=max' || '' }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        provenance: false
+        sbom: false
