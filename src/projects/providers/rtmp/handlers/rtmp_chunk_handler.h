@@ -89,7 +89,8 @@ namespace pvd::rtmp
 
 		int32_t HandleData(const std::shared_ptr<const ov::Data> &data);
 
-		void SetVhostAppName(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+		void UpdateQueueAlias();
+		info::NamePath GetNamePath() const;
 
 		int GetWaitingTrackCount() const;
 
@@ -112,9 +113,10 @@ namespace pvd::rtmp
 		bool SendSetPeerBandwidth(uint32_t bandwidth);
 		bool SendStreamBegin(uint32_t stream_id);
 		bool SendStreamEnd();
-		bool SendAmfConnectSuccess(uint32_t chunk_stream_id, double transaction_id, double object_encoding);
+		bool SendSetChunkSize(uint32_t chunk_size);
+		bool SendAmfConnectSuccess(double transaction_id, double object_encoding);
 		bool SendAmfAckResult(uint32_t chunk_stream_id, double transaction_id);
-		bool SendAmfOnFCPublish(uint32_t chunk_stream_id, uint32_t stream_id, double client_id);
+		bool SendAmfOnFCPublish(double client_id);
 		bool SendAmfOnStatus(uint32_t chunk_stream_id, uint32_t stream_id, const char *level, const char *code, const char *description, double client_id);
 
 		// Unit: milliseconds

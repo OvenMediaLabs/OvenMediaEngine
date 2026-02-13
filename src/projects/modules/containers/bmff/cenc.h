@@ -88,7 +88,7 @@ namespace bmff
 
             system_id = stream.GetRemainData(16)->Clone();
 
-            logd("DEBUG", "System ID : %s", system_id->ToHexString().LowerCaseString().CStr());
+            logt("DEBUG", "System ID : %s", system_id->ToHexString().LowerCaseString().CStr());
 
             if (system_id->ToHexString().LowerCaseString() == "edef8ba979d64acea3c827dcd51d21ed")
             {

@@ -43,6 +43,8 @@ namespace pvd::rtmp
 
 		static std::shared_ptr<RtmpTrack> Create(std::shared_ptr<RtmpStreamV2> stream, uint32_t track_id, bool from_ex_header, cmn::MediaCodecId codec_id);
 
+		info::NamePath GetNamePath() const;
+
 		bool IsFromExHeader() const
 		{
 			return _from_ex_header;

@@ -171,7 +171,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerMpeg4GenericAudio::Convert(const std::s
 			header_section_offset += _index_delta_length;
 		}
 
-		logtd("MPEG4-Generic Audio Parser : header_number(%d) au_size(%d) au_index(%d) au_index_delta(%d) au_headers_len(%d)", au_number, au_size, au_index, au_index_delta, au_headers_len);
+		logtt("MPEG4-Generic Audio Parser : header_number(%d) au_size(%d) au_index(%d) au_index_delta(%d) au_headers_len(%d)", au_number, au_size, au_index, au_index_delta, au_headers_len);
 
 		// Extract raw aac data and convert to ADTS
 		if (include_adts_header == true)

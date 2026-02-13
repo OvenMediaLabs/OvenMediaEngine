@@ -35,7 +35,8 @@ namespace mpegts
 		UNKNOWN = 0,
 		SUPPORTED_SECTION = 1,
 		UNSUPPORTED_SECTION = 2,
-		PES = 3
+		PES = 3,
+		SECTION = 4
 	};
 
 	class MpegTsDepacketizer
@@ -49,14 +50,15 @@ namespace mpegts
 
 		bool IsTrackInfoAvailable();
 		bool IsESAvailable();
-
+		bool IsSectionAvailable();
+		
 		const std::shared_ptr<PAT> GetFirstPAT();
 		const std::shared_ptr<PAT> GetPAT(uint8_t program_number);
 		bool GetPMTList(uint16_t program_num, std::vector<std::shared_ptr<Section>> *pmt_list);
 		bool GetTrackList(std::map<uint16_t, std::shared_ptr<MediaTrack>> *track_list);
 
 		const std::shared_ptr<Pes> PopES();
-
+		const std::shared_ptr<Section> PopSection();
 	private:
 		PacketType GetPacketType(const std::shared_ptr<Packet> &packet);
 
@@ -113,6 +115,9 @@ namespace mpegts
 		std::shared_mutex _es_list_lock;
 		std::queue<std::shared_ptr<Pes>> _es_list;
 		
+		std::shared_mutex _section_list_lock;
+		std::queue<std::shared_ptr<Section>> _section_list;
+
 		// PMT, PES quickly search PMT, PES
 		// PID : PacketType 
 		// PMT's PID comes from PAT

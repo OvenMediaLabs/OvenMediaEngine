@@ -3,6 +3,7 @@
 #include "filter/filter_resampler.h"
 #include "filter/filter_rescaler.h"
 #include "transcoder_gpu.h"
+#include "transcoder_fault_injector.h"
 #include "transcoder_private.h"
 
 using namespace cmn;
@@ -96,9 +97,22 @@ bool TranscodeFilter::CreateInternal()
 		name.LowerCaseString());
 	_internal->SetQueueUrn(urn);
 	_internal->SetQueuePolicy(ENABLE_QUEUE_EXCEED_WAIT, MAX_QUEUE_SIZE);
-	_internal->SetCompleteHandler(bind(&TranscodeFilter::OnComplete, this, std::placeholders::_1));
+	_internal->SetCompleteHandler(bind(&TranscodeFilter::OnComplete, this, std::placeholders::_1, std::placeholders::_2));
 	_internal->SetInputTrack(GetInputTrack());
 	_internal->SetOutputTrack(GetOutputTrack());
+
+	// Fault Injection for testing
+	if (TranscodeFaultInjector::GetInstance()->IsEnabled() && (_input_stream_info != _output_stream_info))
+	{
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::FilterComponent,
+				TranscodeFaultInjector::IssueType::InitFailed,
+				GetOutputTrack()->GetCodecModuleId(),
+				GetOutputTrack()->GetCodecDeviceId()) == true)
+		{
+			return false;
+		}
+	}
 
 	return _internal->Start();
 }
@@ -162,10 +176,13 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 
 	// Check #1 - Abnormal timestamp
 	int64_t diff_timestamp = abs(curr_timestamp - last_timestamp);
-	bool is_abnormal = (last_timestamp != -1LL && diff_timestamp > _timestamp_jump_threshold) ? true : false;
+	bool is_abnormal	   = (last_timestamp != -1LL && diff_timestamp > _timestamp_jump_threshold) ? true : false;
 	if (is_abnormal)
 	{
-		logtw("The timestamp has changed unexpectedly. %lld -> %lld (%lld > %lld)", last_timestamp, buffer->GetPts(), diff_timestamp, _timestamp_jump_threshold);
+		logtw("[%s(%u)] Timestamp changed unexpectedly for track %u. last:%lld, curr:%lld, diff:%lld, threshold:%lld",
+			  _input_stream_info->GetUri().CStr(), _input_stream_info->GetId(),
+			  GetInputTrack()->GetId(), last_timestamp, curr_timestamp, diff_timestamp, _timestamp_jump_threshold);
+
 		return true;
 	}
 
@@ -177,8 +194,9 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		if (buffer->GetWidth() != (int32_t)_internal->GetInputWidth() ||
 			buffer->GetHeight() != (int32_t)_internal->GetInputHeight())
 		{
-			logti("Changed input resolution of %u track. (%dx%d -> %dx%d)", 
-				GetInputTrack()->GetId(), _internal->GetInputWidth(), _internal->GetInputHeight(), buffer->GetWidth(), buffer->GetHeight());
+			logtw("[%s(%u)] Resolution changed for track %u. (%dx%d -> %dx%d)",
+				  _input_stream_info->GetUri().CStr(), _input_stream_info->GetId(),
+				  GetInputTrack()->GetId(), _internal->GetInputWidth(), _internal->GetInputHeight(), buffer->GetWidth(), buffer->GetHeight());
 
 			GetInputTrack()->SetWidth(buffer->GetWidth());
 			GetInputTrack()->SetHeight(buffer->GetHeight());
@@ -194,7 +212,8 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		GetInputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA &&
 		GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
 	{
-		logtw("It is assumed that the XMA resource allocation failed. So, recreate the filter.");
+		logtw("[%s(%u)] It is assumed that the XMA resource allocation failed. So, recreate the filter.",
+			  _input_stream_info->GetUri().CStr(), _input_stream_info->GetId());
 
 		return true;
 	}
@@ -207,17 +226,46 @@ void TranscodeFilter::SetCompleteHandler(CompleteHandler complete_handler)
 	_complete_handler = std::move(complete_handler);
 }
 
-void TranscodeFilter::OnComplete(std::shared_ptr<MediaFrame> frame)
+void TranscodeFilter::OnComplete(TranscodeResult result, std::shared_ptr<MediaFrame> frame)
 {
-	if (_complete_handler)
+
+	// Fault Injection for testing
+	if (TranscodeFaultInjector::GetInstance()->IsEnabled())
 	{
-		// Set the codec module and device ID of the output track.
-		// This is used when encoding with hardware acceleration.
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::FilterComponent,
+				TranscodeFaultInjector::IssueType::ProcessFailed,
+				GetOutputTrack()->GetCodecModuleId(),
+				GetOutputTrack()->GetCodecDeviceId()) == true)
+		{
+			result = TranscodeResult::DataError;
+			frame  = nullptr;
+		}
+
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::FilterComponent,
+				TranscodeFaultInjector::IssueType::Lagging,
+				GetOutputTrack()->GetCodecModuleId(),
+				GetOutputTrack()->GetCodecDeviceId()) == true)
+		{
+			usleep(300 * 1000);	 // 300ms
+		}
+	}
+
+	if (!_complete_handler)
+	{
+		return;
+	}
+
+	// Set the codec module and device ID of the output track.
+	// This is used when encoding with hardware acceleration.
+	if (frame)
+	{
 		frame->SetCodecModuleId(GetOutputTrack()->GetCodecModuleId());
 		frame->SetCodecDeviceId(GetOutputTrack()->GetCodecDeviceId());
-
-		_complete_handler(_id, frame);
 	}
+
+	_complete_handler(result, _id, frame);
 }
 
 cmn::Timebase TranscodeFilter::GetInputTimebase() const
@@ -238,4 +286,14 @@ std::shared_ptr<MediaTrack>& TranscodeFilter::GetInputTrack()
 std::shared_ptr<MediaTrack>& TranscodeFilter::GetOutputTrack()
 {
 	return _output_track;
+}
+
+ov::String TranscodeFilter::GetDescription() const
+{
+	if(_internal == nullptr)
+	{
+		return "Null";
+	}
+
+	return _internal->GetDescription();
 }

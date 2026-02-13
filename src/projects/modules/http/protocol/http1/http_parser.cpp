@@ -126,14 +126,22 @@ namespace http
 					}
 				}
 
-				logtd("Headers: %ld:", _headers.size());
+				logtt("Headers: %ld:", _headers.size());
 
 				std::for_each(_headers.begin(), _headers.end(), [](const auto &pair) -> void {
-					logtd("\t>> %s: %s", pair.first.CStr(), pair.second.CStr());
+					logtt("\t>> %s: %s", pair.first.CStr(), pair.second.CStr());
 				});
 
 				_has_content_length = IsHeaderExists("CONTENT-LENGTH");
-				_content_length = ov::Converter::ToInt64(GetHeader("CONTENT-LENGTH", "0"));
+				auto content_length = ov::Converter::ToInt64(GetHeader("CONTENT-LENGTH", "0"));
+
+				if (content_length < 0)
+				{
+					logtw("Invalid Content-Length: %s", GetHeader("CONTENT-LENGTH").value_or("N/A").CStr());
+					content_length = 0;
+				}
+
+				_content_length = static_cast<size_t>(content_length);
 
 				return status_code;
 			}

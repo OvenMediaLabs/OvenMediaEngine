@@ -253,7 +253,7 @@ namespace pvd::rtmp
 					auto value = property_pair->property.GetString();
 					OV_IF_RETURN(value == "stereo", cmn::AudioChannel::Layout::LayoutStereo);
 					OV_IF_RETURN(value == "mono", cmn::AudioChannel::Layout::LayoutMono);
-					logtd("Unknown audiochannels value: %s", value.CStr());
+					logtt("Unknown audiochannels value: %s", value.CStr());
 				}
 
 				default:
@@ -505,10 +505,23 @@ namespace pvd::rtmp
 		return SendMessage(chunk_write_info);
 	}
 
-	bool RtmpChunkHandler::SendAmfConnectSuccess(uint32_t chunk_stream_id, double transaction_id, double object_encoding)
+	bool RtmpChunkHandler::SendSetChunkSize(uint32_t chunk_size)
+	{
+		auto chunk_write_info = modules::rtmp::ChunkWriteInfo::Create(
+			modules::rtmp::ChunkStreamId::Urgent,
+			modules::rtmp::MessageTypeID::SetChunkSize,
+			0,
+			sizeof(uint32_t));
+
+		chunk_write_info->AppendPayload(ov::HostToBE32(chunk_size));
+
+		return SendMessage(chunk_write_info);
+	}
+
+	bool RtmpChunkHandler::SendAmfConnectSuccess(double transaction_id, double object_encoding)
 	{
 		return SendAmfCommand(
-			modules::rtmp::ChunkWriteInfo::Create(chunk_stream_id),
+			modules::rtmp::ChunkWriteInfo::Create(modules::rtmp::ChunkStreamId::Control),
 			modules::rtmp::AmfDocumentBuilder()
 				// _result
 				.Append(modules::rtmp::EnumToString(modules::rtmp::Command::AckResult))
@@ -549,10 +562,10 @@ namespace pvd::rtmp
 				.Build());
 	}
 
-	bool RtmpChunkHandler::SendAmfOnFCPublish(uint32_t chunk_stream_id, uint32_t stream_id, double client_id)
+	bool RtmpChunkHandler::SendAmfOnFCPublish(double client_id)
 	{
 		return SendAmfCommand(
-			modules::rtmp::ChunkWriteInfo::Create(chunk_stream_id, _stream->_rtmp_stream_id),
+			modules::rtmp::ChunkWriteInfo::Create(modules::rtmp::ChunkStreamId::Control),
 			modules::rtmp::AmfDocumentBuilder()
 				.Append(modules::rtmp::EnumToString(modules::rtmp::Command::OnFCPublish))
 				.Append(0.0)
@@ -584,12 +597,17 @@ namespace pvd::rtmp
 				.Build());
 	}
 
-	void RtmpChunkHandler::SetVhostAppName(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
+	info::NamePath RtmpChunkHandler::GetNamePath() const
+	{
+		return _stream->GetNamePath();
+	}
+
+	void RtmpChunkHandler::UpdateQueueAlias()
 	{
 		// If the queue inside `_chunk_parser` becomes full before `ValidatePublishUrl()` is called,
 		// the app/stream name is set here to provide the best possible hint about which queue it is.
 		// This will later be updated using `final_url` in `ValidatePublishUrl()`.
-		auto queue_name = ov::String::FormatString("RTMP queue for %s/%s", vhost_app_name.CStr(), stream_name.CStr());
+		auto queue_name = ov::String::FormatString("RTMP queue for %s", GetNamePath().CStr());
 
 		_chunk_parser.SetMessageQueueAlias(queue_name.CStr());
 	}
@@ -621,7 +639,7 @@ namespace pvd::rtmp
 	{
 		double object_encoding = 0.0;
 
-		logtd("Received RTMP document\n%s", document.ToString().CStr());
+		logtt("Received RTMP document\n%s", document.ToString().CStr());
 
 		auto meta_property = document.GetObject(2);
 		if (meta_property == nullptr)
@@ -645,13 +663,13 @@ namespace pvd::rtmp
 
 		if (SendWindowAcknowledgementSize(DEFAULT_ACKNOWNLEDGEMENT_SIZE) == false)
 		{
-			logae("Failed to send WindowAcknowledgementSize(%u)", DEFAULT_ACKNOWNLEDGEMENT_SIZE);
+			logae("Failed to send WindowAcknowledgementSize(%zu)", DEFAULT_ACKNOWNLEDGEMENT_SIZE);
 			return false;
 		}
 
 		if (SendSetPeerBandwidth(DEFAULT_PEER_BANDWIDTH) == false)
 		{
-			logae("Failed to send SetPeerBandwidth(%u)", DEFAULT_PEER_BANDWIDTH);
+			logae("Failed to send SetPeerBandwidth(%zu)", DEFAULT_PEER_BANDWIDTH);
 			return false;
 		}
 
@@ -661,10 +679,15 @@ namespace pvd::rtmp
 			return false;
 		}
 
-		if (SendAmfConnectSuccess(header->basic_header.chunk_stream_id, transaction_id, object_encoding) == false)
+		if (SendSetChunkSize(DEFAULT_CHUNK_SIZE) == false)
 		{
-			logae("Failed to send AmfConnectResult(%u, %.2f, %.2f)",
-				  header->basic_header.chunk_stream_id,
+			logte("Failed to send SetChunkSize(%zu)", DEFAULT_CHUNK_SIZE);
+			return false;
+		}
+
+		if (SendAmfConnectSuccess(transaction_id, object_encoding) == false)
+		{
+			logae("Failed to send AmfConnectResult(%.2f, %.2f)",
 				  transaction_id,
 				  object_encoding);
 
@@ -696,7 +719,7 @@ namespace pvd::rtmp
 
 	bool RtmpChunkHandler::OnAmfDeleteStream(const std::shared_ptr<const modules::rtmp::ChunkHeader> &header, modules::rtmp::AmfDocument &document, double transaction_id)
 	{
-		logad("OnAmfDeleteStream - Delete Stream");
+		logat("OnAmfDeleteStream - Delete Stream");
 
 		_meta_data_context.ignore_packets = true;
 
@@ -792,16 +815,15 @@ namespace pvd::rtmp
 			}
 
 			// TODO: check if the chunk stream id is already exist, and generates new rtmp_stream_id and client_id.
-			if (SendAmfOnFCPublish(header->basic_header.chunk_stream_id, _stream->_rtmp_stream_id, _stream->GetChannelId()) == false)
+			if (SendAmfOnFCPublish(_stream->GetChannelId()) == false)
 			{
-				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish(%u, %u)",
-					  header->basic_header.chunk_stream_id,
-					  _stream->_rtmp_stream_id);
+				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish(%u)",
+					  _stream->GetChannelId());
 
 				return false;
 			}
 		}
-
+		
 		return _stream->PostPublish(document);
 	}
 
@@ -820,7 +842,7 @@ namespace pvd::rtmp
 				break;
 
 			default:
-				logae("OnAmfMetadata - Invalid type of metadata: %d", property->GetType());
+				logae("OnAmfMetadata - Invalid type of metadata: %d", ov::ToUnderlyingType(property->GetType()));
 				return false;
 		}
 
@@ -876,7 +898,7 @@ namespace pvd::rtmp
 				else
 				{
 					logae("Not supported audio codec: %s(%d) (raw: %s)",
-						  cmn::GetCodecIdString(value), value,
+						  cmn::GetCodecIdString(value), ov::ToUnderlyingType(value),
 						  audio.codec_raw.CStr());
 					audio.codec_id = cmn::MediaCodecId::None;
 				}
@@ -918,7 +940,7 @@ namespace pvd::rtmp
 				}
 				else
 				{
-					logae("Not supported video codec: %s(%d) (raw: %s)", cmn::GetCodecIdString(value), value, video.codec_raw.CStr());
+					logae("Not supported video codec: %s(%d) (raw: %s)", cmn::GetCodecIdString(value), ov::ToUnderlyingType(value), video.codec_raw.CStr());
 					video.codec_id = cmn::MediaCodecId::None;
 				}
 			}
@@ -954,7 +976,7 @@ namespace pvd::rtmp
 
 	void RtmpChunkHandler::GenerateEvent(const cfg::vhost::app::pvd::Event &event, const ov::String &value)
 	{
-		logad("Event generated: %s / %s", event.GetTrigger().CStr(), value.CStr());
+		logat("Event generated: %s / %s", event.GetTrigger().CStr(), value.CStr());
 
 		bool id3_enabled = false;
 		auto id3v2_event = event.GetHLSID3v2(&id3_enabled);
@@ -1054,7 +1076,7 @@ namespace pvd::rtmp
 			// AMFDataMessage.[<Property>.<Property>...<Property>.]<Object Name>.<Key Name>
 			if (trigger_list.size() < 3)
 			{
-				logad("Invalid trigger: %s", trigger.CStr());
+				logat("Invalid trigger: %s", trigger.CStr());
 				continue;
 			}
 
@@ -1070,7 +1092,7 @@ namespace pvd::rtmp
 
 					if (property == nullptr)
 					{
-						logad("Document has no property at %zu: %s", size - 1, trigger.CStr());
+						logat("Document has no property at %zu: %s", size - 1, trigger.CStr());
 						break;
 					}
 
@@ -1089,7 +1111,7 @@ namespace pvd::rtmp
 
 							if (object_array == nullptr)
 							{
-								logad("Property is not an object: %s", property->GetString().CStr());
+								logat("Property is not an object: %s", property->GetString().CStr());
 								break;
 							}
 
@@ -1109,7 +1131,7 @@ namespace pvd::rtmp
 						}
 						else
 						{
-							logad("Document property type mismatch at %d: %s", size - 1, property->GetString().CStr());
+							logat("Document property type mismatch at %zu: %s", size - 1, property->GetString().CStr());
 							break;
 						}
 					}
@@ -1117,7 +1139,7 @@ namespace pvd::rtmp
 					{
 						if (trigger_list.at(size) != property->GetString())
 						{
-							logad("Document property mismatch at %d: %s != %s", size - 1, trigger_list.at(size).CStr(), property->GetString().CStr());
+							logat("Document property mismatch at %zu: %s != %s", size - 1, trigger_list.at(size).CStr(), property->GetString().CStr());
 							break;
 						}
 					}
@@ -1312,7 +1334,7 @@ namespace pvd::rtmp
 			return true;
 		}
 
-		logad("Received RTMP metadata\n%s", document.ToString().CStr());
+		logat("Received RTMP metadata\n%s", document.ToString().CStr());
 
 		// Obtain the message name
 		ov::String message_name;
@@ -1373,7 +1395,7 @@ namespace pvd::rtmp
 		// Find it in Events
 		if (CheckEvent(message->header, document) == false)
 		{
-			logad("There were no triggered events - Message(%s / %s)", message_name.CStr(), data_name.CStr());
+			logat("There were no triggered events - Message(%s / %s)", message_name.CStr(), data_name.CStr());
 		}
 
 		return true;
@@ -1435,8 +1457,8 @@ namespace pvd::rtmp
 
 				if ((packet_type == cmn::PacketType::NALU) || (packet_type == cmn::PacketType::RAW))
 				{
-					auto pts		  = media_packet->GetPts();
-					auto dts		  = media_packet->GetDts();
+					auto pts = media_packet->GetPts();
+					auto dts = media_packet->GetDts();
 
 					_stream->AdjustTimestamp(track_id, pts, dts);
 
@@ -1604,7 +1626,7 @@ namespace pvd::rtmp
 #if DEBUG
 			if (parsed_data->video_metadata.has_value())
 			{
-				logtd("Metadata: \n%s", parsed_data->video_metadata.value().ToString().CStr());
+				logtt("Metadata: \n%s", parsed_data->video_metadata.value().ToString().CStr());
 			}
 #endif	// DEBUG
 
@@ -1813,7 +1835,7 @@ namespace pvd::rtmp
 				OV_CASE_BREAK(modules::rtmp::MessageTypeID::Amf0Command, result = HandleAmf0Command(message));
 
 				default:
-					logaw("Not handled RTMP message: %d (%s)", type_id, modules::rtmp::EnumToString(type_id));
+					logaw("Not handled RTMP message: %d (%s)", ov::ToUnderlyingType(type_id), modules::rtmp::EnumToString(type_id));
 					break;
 			}
 
@@ -1850,8 +1872,8 @@ namespace pvd::rtmp
 				case modules::rtmp::ChunkParser::ParseResult::Parsed:
 					if (HandleChunkMessage() == false)
 					{
-						logad("HandleChunkMessage Fail");
-						logat("Failed to import packet\n%s", current_data->Dump(current_data->GetLength()).CStr());
+						logat("HandleChunkMessage Fail");
+						logap("Failed to import packet\n%s", current_data->Dump(current_data->GetLength()).CStr());
 
 						return -1LL;
 					}

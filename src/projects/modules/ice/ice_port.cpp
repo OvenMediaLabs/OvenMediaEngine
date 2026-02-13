@@ -80,7 +80,7 @@ bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &se
 					if (item != bounded.end())
 					{
 						// Already opened
-						logtd("ICE port is already bound to %s/%s", ice_address.ToString().CStr(), transport.CStr());
+						logtt("ICE port is already bound to %s/%s", ice_address.ToString().CStr(), transport.CStr());
 						continue;
 					}
 
@@ -227,7 +227,7 @@ bool IcePort::Close()
 
 		if (result == false)
 		{
-			logtd("Cannot close ICE port");
+			logtt("Cannot close ICE port");
 			break;
 		}
 	}
@@ -247,7 +247,7 @@ ov::String IcePort::GenerateUfrag()
 
 		if (_ice_sessions_with_ufrag.find(ufrag) == _ice_sessions_with_ufrag.end())
 		{
-			logtd("Generated ufrag: %s", ufrag.CStr());
+			logtt("Generated ufrag: %s", ufrag.CStr());
 
 			return ufrag;
 		}
@@ -347,7 +347,7 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 		OV_ASSERT(false, "Duplicated ufrag: %s:%s, session_id: %d (existing session_id: %d)", local_ufrag.CStr(), peer_ufrag.CStr(), session_id, old_session->GetSessionID());
 	}
 
-	logtd("Trying to add session: %d (ufrag: %s:%s)...", session_id, local_ufrag.CStr(), peer_ufrag.CStr());
+	logtt("Trying to add session: %d (ufrag: %s:%s)...", session_id, local_ufrag.CStr(), peer_ufrag.CStr());
 
 	std::shared_ptr<IceSession> new_session = std::make_shared<IceSession>(session_id, role, local_sdp, peer_sdp, expired_ms, life_time_epoch_ms, user_data, observer);
 
@@ -373,7 +373,7 @@ bool IcePort::DisconnectSession(session_id_t session_id)
 	auto ice_session = FindIceSession(session_id);
 	if (ice_session == nullptr)
 	{
-		logtd("Could not find session: %d", session_id);
+		logtt("Could not find session: %d", session_id);
 		return false;
 	}
 
@@ -388,7 +388,7 @@ bool IcePort::RemoveSession(session_id_t session_id)
 	auto ice_session = FindIceSession(session_id);
 	if (ice_session == nullptr)
 	{
-		logtd("Could not find session: %d", session_id);
+		logtt("Could not find session: %d", session_id);
 		return false;
 	}
 
@@ -433,7 +433,7 @@ bool IcePort::RemoveSession(session_id_t session_id)
 		}
 	}
 
-	logti("Removed session(%u) from ICEPort | ice_seesions_with_id count(%d) ice_sessions_with_ufrag(%d) ice_sessions_with_address_pair(%d) ", session_id, ice_sessions_with_id_size, ice_sessions_with_ufrag_size, ice_sessions_with_address_pair_size);
+	logti("Removed session(%u) from ICEPort | ice_seesions_with_id count(%zu) ice_sessions_with_ufrag(%zu) ice_sessions_with_address_pair(%zu) ", session_id, ice_sessions_with_id_size, ice_sessions_with_ufrag_size, ice_sessions_with_address_pair_size);
 
 	return true;
 }
@@ -551,7 +551,7 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 	std::shared_ptr<IceSession> ice_session = FindIceSession(session_id);
 	if (ice_session == nullptr || ice_session->GetState() != IceConnectionState::Connected)
 	{
-		logtd("IcePort::Send - Could not find session: %d", session_id);
+		logtt("IcePort::Send - Could not find session: %d", session_id);
 		return false;
 	}
 
@@ -628,7 +628,7 @@ void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov
 	if (_demultiplexers.find(remote->GetNativeHandle()) == _demultiplexers.end())
 	{
 		// If the client disconnects at this time, it cannot be found.
-		logtd("TCP packet input but cannot find the demultiplexer of %s.", remote->ToString().CStr());
+		logtt("TCP packet input but cannot find the demultiplexer of %s.", remote->ToString().CStr());
 		return;
 	}
 
@@ -660,7 +660,7 @@ void IcePort::OnDatagramReceived(const std::shared_ptr<ov::Socket> &remote, cons
 
 void IcePort::OnPacketReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &gate_info, const std::shared_ptr<const ov::Data> &data)
 {
-	logtd("OnPacketReceived %s (%s)", gate_info.ToString().CStr(), address_pair.ToString().CStr());
+	logtt("OnPacketReceived %s (%s)", gate_info.ToString().CStr(), address_pair.ToString().CStr());
 
 	switch (gate_info.packet_type)
 	{
@@ -741,7 +741,7 @@ void IcePort::OnStunPacketReceived(const std::shared_ptr<ov::Socket> &remote, co
 	ov::ByteStream stream(data.get());
 	StunMessage message;
 
-	logtd("Trying to parse a STUN message from data...\n%s", data->Dump().CStr());
+	logtt("Trying to parse a STUN message from data...\n%s", data->Dump().CStr());
 
 	if (message.Parse(stream) == false)
 	{
@@ -749,7 +749,7 @@ void IcePort::OnStunPacketReceived(const std::shared_ptr<ov::Socket> &remote, co
 		return;
 	}
 
-	logtd("Received message:\n%s", message.ToString().CStr());
+	logtt("Received message:\n%s", message.ToString().CStr());
 
 	if (message.GetClass() == StunClass::ErrorResponse)
 	{
@@ -818,11 +818,11 @@ void IcePort::OnStunPacketReceived(const std::shared_ptr<ov::Socket> &remote, co
 			break;
 		case StunMethod::Data:
 			// Since this is a turn server, it does not receive a data method.
-			logtd("Bad Packet - TURN Server cannot receive the Stun Data method(%s)", remote->ToString().CStr());
+			logtt("Bad Packet - TURN Server cannot receive the Stun Data method(%s)", remote->ToString().CStr());
 			break;
 		default:
-			OV_ASSERT(false, "Not implemented method: %d", message.GetMethod());
-			logtw("Unknown method: %d", message.GetMethod());
+			OV_ASSERT(false, "Not implemented method: %d", ov::ToUnderlyingType(message.GetMethod()));
+			logtw("Unknown method: %d", ov::ToUnderlyingType(message.GetMethod()));
 			break;
 	}
 }
@@ -858,13 +858,13 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 		return false;
 	}
 
-	logtd("[%s] Received STUN binding request: %s:%s", address_pair.ToString().CStr(), local_ufrag.CStr(), peer_ufrag.CStr());
+	logtt("[%s] Received STUN binding request: %s:%s", address_pair.ToString().CStr(), local_ufrag.CStr(), peer_ufrag.CStr());
 
 	auto ice_session = FindIceSession(local_ufrag);
 	if (ice_session == nullptr || ice_session->GetPeerSdp() == nullptr || ice_session->GetLocalSdp() == nullptr)
 	{
 		// Stun may arrive first before AddSession, it is not an error
-		logtd("User not found: %s", local_ufrag.CStr());
+		logtt("User not found: %s", local_ufrag.CStr());
 		return false;
 	}
 
@@ -944,7 +944,7 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 
 		if (connected_candidate_pair->GetAddressPair() != address_pair)
 		{
-			logtd("Already connected with another address : Connected(%s) Bind Request(%s)", connected_candidate_pair->GetAddressPair().ToString().CStr(), address_pair.ToString().CStr());
+			logtt("Already connected with another address : Connected(%s) Bind Request(%s)", connected_candidate_pair->GetAddressPair().ToString().CStr(), address_pair.ToString().CStr());
 			// Didn't respond
 			return true;
 		}
@@ -958,7 +958,7 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 
 bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &gate_info, const std::shared_ptr<IceSession> &ice_session)
 {
-	logtd("IceSession : %s", ice_session->ToString().CStr());
+	logtt("IceSession : %s", ice_session->ToString().CStr());
 
 	StunMessage message;
 
@@ -1003,11 +1003,11 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 			auto use_candidate_attr = std::make_shared<StunUseCandidateAttribute>();
 			message.AddAttribute(use_candidate_attr);
 
-			logtd("Use candidate [%s] Gate [%s] State [%s]", address_pair.ToString().CStr(), gate_info.ToString().CStr(), IceConnectionStateToString(ice_session->GetState()));
+			logtt("Use candidate [%s] Gate [%s] State [%s]", address_pair.ToString().CStr(), gate_info.ToString().CStr(), IceConnectionStateToString(ice_session->GetState()));
 		}
 		else
 		{
-			logtd("Not yet use candidate [%s] Gate [%s] State [%s]", address_pair.ToString().CStr(), gate_info.ToString().CStr(), IceConnectionStateToString(ice_session->GetState()));
+			logtt("Not yet use candidate [%s] Gate [%s] State [%s]", address_pair.ToString().CStr(), gate_info.ToString().CStr(), IceConnectionStateToString(ice_session->GetState()));
 		}
 	}
 	else if (ice_session->GetRole() == IceSession::Role::CONTROLLED)
@@ -1024,7 +1024,7 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 	priority_attr->SetValue(0x627F1EFF);
 	message.AddAttribute(priority_attr);
 
-	logtd("Send Stun Binding Request : %s", address_pair.ToString().CStr());
+	logtt("Send Stun Binding Request : %s", address_pair.ToString().CStr());
 
 	// Store binding request transction
 	{
@@ -1033,7 +1033,7 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 		ov::String transaction_id_key((char *)(&transaction_id[0]), OV_STUN_TRANSACTION_ID_LENGTH);
 		_binding_requests_with_transaction_id.emplace(transaction_id_key, BindingRequestInfo(transaction_id_key, ice_session));
 
-		logtd("Send Binding Request to(%s) id(%s)", address_pair.ToString().CStr(), transaction_id_key.CStr());
+		logtt("Send Binding Request to(%s) id(%s)", address_pair.ToString().CStr(), transaction_id_key.CStr());
 	}
 
 	// TODO: apply SASLprep(password)
@@ -1058,7 +1058,7 @@ bool IcePort::OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &r
 	// Erase ended transction item
 	RemoveTransaction(transaction_id_key);
 
-	logtd("Receive stun binding response from %s, table size(%d)", address_pair.ToString().CStr(), _binding_requests_with_transaction_id.size());
+	logtt("Receive stun binding response from %s, table size(%zu)", address_pair.ToString().CStr(), _binding_requests_with_transaction_id.size());
 
 	if (message.CheckIntegrity(ice_session->GetLocalSdp()->GetIcePwd()) == false)
 	{
@@ -1066,7 +1066,7 @@ bool IcePort::OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &r
 		return false;
 	}
 
-	logtd("Client %s sent STUN binding response", address_pair.ToString().CStr());
+	logtt("Client %s sent STUN binding response", address_pair.ToString().CStr());
 
 	auto old_state = ice_session->GetState();
 	ice_session->OnReceivedStunBindingResponse(address_pair, remote);
@@ -1100,7 +1100,7 @@ bool IcePort::SendStunMessage(const std::shared_ptr<ov::Socket> &remote, const o
 		source_data = message.Serialize(integrity_key);
 	}
 
-	logtd("Send message: [%s/%s]\n%s", gate_info.ToString().CStr(), address_pair.ToString().CStr(), message.ToString().CStr());
+	logtt("Send message: [%s/%s]\n%s", gate_info.ToString().CStr(), address_pair.ToString().CStr(), message.ToString().CStr());
 
 	if (gate_info.input_method == IcePort::GateInfo::GateType::DIRECT)
 	{
@@ -1142,7 +1142,7 @@ const std::shared_ptr<const ov::Data> IcePort::CreateDataIndication(const ov::So
 
 	auto send_data = send_indication_message.Serialize();
 
-	logtd("Send Data Indication:\n%s", send_indication_message.ToString().CStr());
+	logtt("Send Data Indication:\n%s", send_indication_message.ToString().CStr());
 
 	return send_data;
 }
@@ -1315,7 +1315,7 @@ bool IcePort::OnReceivedTurnRefreshRequest(const std::shared_ptr<ov::Socket> &re
 	response_message.SetHeader(StunClass::SuccessResponse, StunMethod::Refresh, message.GetTransactionId());
 	SendStunMessage(remote, address_pair, gate_info, response_message, _hmac_key);
 
-	logtd("Turn Refresh Request : %s", lifetime_attribute->ToString().CStr());
+	logtt("Turn Refresh Request : %s", lifetime_attribute->ToString().CStr());
 
 	return true;
 }

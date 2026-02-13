@@ -38,6 +38,16 @@ VideoTrack::VideoTrack()
 void VideoTrack::SetWidth(int32_t width)
 {
 	_width = width;
+
+	if (width > _max_width)
+	{
+		_max_width = width;
+	}
+}
+
+void VideoTrack::SetMaxWidth(int32_t max_width)
+{
+	_max_width = max_width;
 }
 
 int32_t VideoTrack::GetWidth() const
@@ -45,14 +55,34 @@ int32_t VideoTrack::GetWidth() const
 	return _width;
 }
 
+int32_t VideoTrack::GetMaxWidth() const
+{
+	return _max_width;
+}
+
 void VideoTrack::SetHeight(int32_t height)
 {
 	_height = height;
+
+	if (height > _max_height)
+	{
+		_max_height = height;
+	}
+}
+
+void VideoTrack::SetMaxHeight(int32_t max_height)
+{
+	_max_height = max_height;
 }
 
 int32_t VideoTrack::GetHeight() const
 {
 	return _height;
+}
+
+int32_t VideoTrack::GetMaxHeight() const
+{
+	return _max_height;
 }
 
 void VideoTrack::SetVideoTimestampScale(double scale)
@@ -123,6 +153,23 @@ void VideoTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval)
 double VideoTrack::GetKeyFrameIntervalByMeasured() const
 {
 	return _key_frame_interval;
+}
+
+void VideoTrack::AddToMeasuredFramerateWindow(double framerate)
+{
+	size_t kAbnormalFpsCheckWindowSize = 60;
+
+	_measured_framerate_window.push_back(framerate);
+
+	if (_measured_framerate_window.size() > kAbnormalFpsCheckWindowSize)
+	{
+		_measured_framerate_window.pop_front();
+	}
+}
+
+std::deque<double> VideoTrack::GetMeasuredFramerateWindow() const
+{
+	return _measured_framerate_window;
 }
 
 void VideoTrack::SetKeyFrameIntervalLastet(double key_frame_interval)
@@ -233,6 +280,26 @@ int32_t VideoTrack::GetDeltaFramesSinceLastKeyFrame() const
 	return _delta_frame_count_since_last_key_frame;
 }
 
+void VideoTrack::SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval)
+{
+	_detect_long_key_frame_interval = detect_long_key_frame_interval;
+}
+
+int32_t VideoTrack::GetDetectLongKeyFrameInterval() const
+{
+	return _detect_long_key_frame_interval;
+}
+
+void VideoTrack::SetDetectAbnormalFramerate(bool detect_abnormal_framerate)
+{
+	_detect_abnormal_framerate = detect_abnormal_framerate;
+}
+
+bool VideoTrack::GetDetectAbnormalFramerate() const
+{
+	return _detect_abnormal_framerate;
+}
+
 void VideoTrack::SetWidthByConfig(int32_t width)
 {
 	_width_conf = width;
@@ -307,4 +374,14 @@ size_t VideoTrack::GetOverlaySignature() const
 {
 	std::shared_lock<std::shared_mutex> lock(_overlay_mutex);
 	return _overlay_signature;
+}
+
+void VideoTrack::SetExtraEncoderOptionsByConfig(const ov::String &options)
+{
+	_extra_encoder_options = options;
+}
+
+ov::String VideoTrack::GetExtraEncoderOptionsByConfig() const
+{
+	return _extra_encoder_options;
 }

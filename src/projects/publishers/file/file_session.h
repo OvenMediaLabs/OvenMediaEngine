@@ -31,19 +31,20 @@ namespace pub
 
 		void SetRecord(std::shared_ptr<info::Record> &record);
 		std::shared_ptr<info::Record> &GetRecord();
-
+		
+		bool AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track);
+		
 	private:
 		ov::String GetRootPath();
 		ov::String GetOutputTempFilePath(std::shared_ptr<info::Record> &record);
 		ov::String GetOutputFilePath();
 		ov::String GetOutputFileInfoPath();
 
-		bool IsSelectedTrack(const std::shared_ptr<MediaTrack> &track);
 		void SelectDefaultTrack(const std::shared_ptr<MediaTrack> &track);
-
+		bool IsSupportCodec(const ov::String output_format, const cmn::MediaCodecId codec_id);
 		std::shared_ptr<ffmpeg::Writer> CreateWriter();
 		std::shared_ptr<ffmpeg::Writer> GetWriter();
-		void DestoryWriter();
+		void DestroyWriter();
 
 	private:
 		std::shared_ptr<ffmpeg::Writer> _writer;

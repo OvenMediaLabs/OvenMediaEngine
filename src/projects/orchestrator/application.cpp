@@ -39,7 +39,7 @@ namespace ocst
 	// Temporarily used until Orchestrator takes stream management
 	bool Application::OnStreamCreated(const std::shared_ptr<info::Stream> &info)
 	{
-		logd("DEBUG", "%s stream has been created: %s/%s", info->IsInputStream()?"Inbound":"Outbound", _app_info.GetVHostAppName().CStr(), info->GetName().CStr());
+		logt("DEBUG", "%s stream has been created: %s/%s", info->IsInputStream()?"Inbound":"Outbound", _app_info.GetVHostAppName().CStr(), info->GetName().CStr());
 
 		if (info->IsInputStream())
 		{
@@ -59,7 +59,7 @@ namespace ocst
 
 	bool Application::OnStreamDeleted(const std::shared_ptr<info::Stream> &info)
 	{
-		logd("DEBUG", "%s stream has been deleted: %s/%s", info->IsInputStream()?"Inbound":"Outbound", _app_info.GetVHostAppName().CStr(), info->GetName().CStr());
+		logt("DEBUG", "%s stream has been deleted: %s/%s", info->IsInputStream()?"Inbound":"Outbound", _app_info.GetVHostAppName().CStr(), info->GetName().CStr());
 
 		if (info->IsInputStream())
 		{

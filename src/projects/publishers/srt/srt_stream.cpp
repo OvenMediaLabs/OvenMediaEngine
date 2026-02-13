@@ -16,12 +16,8 @@
 #include "srt_private.h"
 #include "srt_session.h"
 
-#define logat(format, ...) logtt("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
-#define logai(format, ...) logti("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
-#define logae(format, ...) logte("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%s/%s(%u)] " format, GetApplicationName(), GetName().CStr(), GetId(), ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%s/%s(%u)] "
+#define OV_LOG_PREFIX_VALUE GetApplicationName(), GetName().CStr(), GetId()
 
 namespace pub
 {
@@ -39,12 +35,12 @@ namespace pub
 		: Stream(application, info),
 		  _worker_count(worker_count)
 	{
-		logad("SrtStream has been started");
+		logat("SrtStream has been started");
 	}
 
 	SrtStream::~SrtStream()
 	{
-		logad("SrtStream has been terminated finally");
+		logat("SrtStream has been terminated finally");
 	}
 
 	std::shared_ptr<const Stream::DefaultPlaylistInfo> SrtStream::GetDefaultPlaylistInfo() const
@@ -89,7 +85,7 @@ namespace pub
 					break;
 
 				default:
-					logad("SrtStream - Ignore unsupported media type: %s", GetMediaTypeString(track->GetMediaType()));
+					logat("SrtStream - Ignore unsupported media type: %s", GetMediaTypeString(track->GetMediaType()));
 					break;
 			}
 		}
@@ -385,6 +381,9 @@ namespace pub
 			playlist->Stop();
 		}
 
+		_srt_playlist_map_by_file_name.clear();
+		_srt_playlist_map_by_track_id.clear();
+
 		auto result = Stream::Stop();
 
 		if (result)
@@ -442,7 +441,7 @@ namespace pub
 	}
 
 	void SrtStream::OnSrtPlaylistData(
-		const std::shared_ptr<SrtPlaylist> &playlist,
+		const std::weak_ptr<SrtPlaylist> &playlist,
 		const std::shared_ptr<const ov::Data> &data)
 	{
 		auto srt_data = std::make_shared<const SrtData>(playlist, data);

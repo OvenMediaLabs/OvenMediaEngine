@@ -166,7 +166,7 @@ namespace bmff
 
 			if (read_stream.IsRemained(nal_length) == false)
 			{
-				logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 				return false;
 			}
 
@@ -195,7 +195,7 @@ namespace bmff
                     
 					sub_samples.emplace_back(clear_bytes, cipher_bytes);
 
-                    logtd("VCL NAL Unit Type : %d, Clear Bytes : %u, Protected Bytes : %u", nal_header.GetNalUnitType(), clear_bytes, cipher_bytes);
+                    logtt("VCL NAL Unit Type : %d, Clear Bytes : %u, Protected Bytes : %u", ov::ToUnderlyingType(nal_header.GetNalUnitType()), clear_bytes, cipher_bytes);
 
                     clear_bytes = 0;
                     cipher_bytes = 0;
@@ -206,7 +206,7 @@ namespace bmff
                     // it will be added to the subsample of VCL NAL Unit
 					clear_bytes += nal_length_size + nal_length;
 
-					logtd("NonVCL NAL Unit Type : %d, Clear Bytes : %u", nal_header.GetNalUnitType(), clear_bytes);
+					logtt("NonVCL NAL Unit Type : %d, Clear Bytes : %u", ov::ToUnderlyingType(nal_header.GetNalUnitType()), clear_bytes);
 				}
 			}
             else
@@ -217,7 +217,7 @@ namespace bmff
 
         if (clear_bytes > 0)
         {
-            logtd("Last NAL Unit is not a video slice, clear bytes : %u", clear_bytes);
+            logtt("Last NAL Unit is not a video slice, clear bytes : %u", clear_bytes);
             sub_samples.emplace_back(clear_bytes, cipher_bytes);
             total_bytes += clear_bytes;
         }
@@ -228,7 +228,7 @@ namespace bmff
             return false;
         }
 
-		logtd("Subsample count : %d Total subsamples : %u / %u", sub_samples.size(), total_bytes, media_packet->GetDataLength());
+		logtt("Subsample count : %d Total subsamples : %u / %u", sub_samples.size(), total_bytes, media_packet->GetDataLength());
 
 		return true;
 	}
@@ -281,7 +281,7 @@ namespace bmff
     // source is a sub-sample data
     bool Encryptor::EncryptPattern(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block, std::function<bool(const uint8_t*, size_t, uint8_t*, bool)>(encrypt_func))
     {
-        logtd("EncryptPattern - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptPattern - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
 
         // Crypt Bytes Block - Skip Bytes Block
         while (source_size > 0)
@@ -335,7 +335,7 @@ namespace bmff
 
     bool Encryptor::EncryptCbc(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block)
     {
-        logtd("EncryptCbc - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptCbc - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
 
         if (_aes.IsInitialized() == false)
         {
@@ -350,7 +350,7 @@ namespace bmff
                 return false;
             }
 
-            logtd("AES Initialized");
+            logtt("AES Initialized");
         }
 
         const size_t residual_size = source_size % AES_BLOCK_SIZE;
@@ -374,7 +374,7 @@ namespace bmff
 
     bool Encryptor::EncryptCtr(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block)
     {
-        logtd("EncryptCtr - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptCtr - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
 
         for (size_t i=0; i<source_size; i++)
         {

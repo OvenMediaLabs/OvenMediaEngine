@@ -28,9 +28,10 @@ OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String 
 		[this](void *paramter) -> ov::DelayQueueAction {
 			RetryRegister();
 			NofifyStreamsAlive();
+			ProcessPendingUnregisters();
 			return ov::DelayQueueAction::Repeat;
 		},
-		2500);
+		500);
 	_update_timer.Start();
 }
 
@@ -50,27 +51,60 @@ bool OriginMapClient::NofifyStreamsAlive()
 
 bool OriginMapClient::RetryRegister()
 {
-	std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
-	if (_origin_map_candidates.size() == 0)
+	decltype(_origin_map_candidates) candidates;
+
 	{
-		return true;
+		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		if (_origin_map_candidates.empty())
+		{
+			return true;
+		}
+
+		candidates.swap(_origin_map_candidates);
 	}
 
-	std::vector<ov::String> keys_to_remove;
-	for (auto &[key, value] : _origin_map_candidates)
+	decltype(_origin_map_candidates) failed;
+
+	for (auto &kv : candidates)
 	{
-		if (Register(key, value) == true)
+		auto &key = kv.first;
+		auto &value = kv.second;
+
+		if (!Register(key, value))
 		{
-			keys_to_remove.push_back(key);
+			failed.emplace(key, std::move(value));
 		}
 	}
 
-	if (keys_to_remove.size() > 0)
+	if (failed.empty() == false)
 	{
-		for (auto &key : keys_to_remove)
+		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		for (auto &kv : failed)
 		{
-			_origin_map_candidates.erase(key);
+			_origin_map_candidates.try_emplace(kv.first, std::move(kv.second));
 		}
+	}
+
+	return true;
+}
+
+bool OriginMapClient::ProcessPendingUnregisters()
+{
+	std::deque<ov::String> candidates;
+
+	{
+		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		if (_origin_map_remove_candidates.empty())
+		{
+			return true;
+		}
+
+		candidates.swap(_origin_map_remove_candidates);
+	}
+
+	for (auto &app_stream_name : candidates)
+	{
+		Unregister(app_stream_name);
 	}
 
 	return true;
@@ -87,6 +121,13 @@ bool OriginMapClient::AddOriginMapCandidate(const ov::String &app_stream_name, c
 {
 	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
 	_origin_map_candidates[app_stream_name] = origin_host;
+	return true;
+}
+
+bool OriginMapClient::RequestUnregister(const ov::String &app_stream_name)
+{
+	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	_origin_map_remove_candidates.push_back(app_stream_name);
 	return true;
 }
 
@@ -168,6 +209,11 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 	logti("OriginMapStore: <%s> stream is registered with origin host : %s", app_stream_name.CStr(), origin_host.CStr());
 
 	return true;
+}
+
+bool OriginMapClient::RequestRegister(const ov::String &app_stream_name, const ov::String &origin_host)
+{
+	return AddOriginMapCandidate(app_stream_name, origin_host);
 }
 
 bool OriginMapClient::Update(const ov::String &app_stream_name, const ov::String &origin_host)

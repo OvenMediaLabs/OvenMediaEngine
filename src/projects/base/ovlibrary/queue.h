@@ -39,13 +39,13 @@ namespace ov
 			_last_log_time.Start();
 
 			auto shared_lock = std::shared_lock(_name_mutex);
-			logd("ov.Queue", "[%p] %s is created with threshold: %zu, interval: %d", this, _queue_name.CStr(), threshold, log_interval_in_msec);
+			logt("ov.Queue", "[%p] %s is created with threshold: %zu, interval: %d", this, _queue_name.CStr(), threshold, log_interval_in_msec);
 		}
 
 		~Queue()
 		{
 			auto shared_lock = std::shared_lock(_name_mutex);
-			logd("ov.Queue", "[%p] %s is destroyed", this, _queue_name.CStr());
+			logt("ov.Queue", "[%p] %s is destroyed", this, _queue_name.CStr());
 		}
 
 		String GetAlias() const
@@ -67,7 +67,7 @@ namespace ov
 				_queue_name.Format("Queue<%s>", Demangle(typeid(T).name()).CStr());
 			}
 
-			logd("ov.Queue", "[%p] The alias is changed to %s", this, _queue_name.CStr());
+			logt("ov.Queue", "[%p] The alias is changed to %s", this, _queue_name.CStr());
 		}
 
 		void SetThreshold(size_t threshold)
@@ -75,7 +75,7 @@ namespace ov
 			auto lock_guard = std::lock_guard(_name_mutex);
 
 			_threshold = threshold;
-			logd("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
+			logt("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
 		}
 
 		void Enqueue(const T &item)

@@ -10,27 +10,26 @@
 
 #include <main/main.h>
 
+#include "./managers/managers_controller.h"
 #include "./stats/stats_controller.h"
 #include "./vhosts/vhosts_controller.h"
 
-namespace api
+namespace api::v1
 {
-	namespace v1
+	void Controller::PrepareHandlers()
 	{
-		void Controller::PrepareHandlers()
-		{
-			RegisterGet(R"(\/version)", &Controller::OnGetVersion);
+		RegisterGet(R"(\/version)", &Controller::OnGetVersion);
 
-			CreateSubController<VHostsController>(R"(\/vhosts)");
-			CreateSubController<stats::StatsController>(R"(\/stats)");
-		};
+		CreateSubController<VHostsController>(R"(\/vhosts)");
+		CreateSubController<stats::StatsController>(R"(\/stats)");
+		CreateSubController<mgrs::ManagersController>(R"(\/managers)");
+	};
 
-		ApiResponse Controller::OnGetVersion(const std::shared_ptr<http::svr::HttpExchange> &client)
-		{
-			Json::Value response_value(Json::ValueType::objectValue);
-			response_value["version"]	 = OME_VERSION;
-			response_value["gitVersion"] = OME_GIT_VERSION;
-			return ApiResponse(response_value);
-		}
-	}  // namespace v1
-}  // namespace api
+	ApiResponse Controller::OnGetVersion(const std::shared_ptr<http::svr::HttpExchange> &client)
+	{
+		Json::Value response_value(Json::ValueType::objectValue);
+		response_value["version"]	 = OME_VERSION;
+		response_value["gitVersion"] = OME_GIT_VERSION;
+		return ApiResponse(response_value);
+	}
+}  // namespace api::v1

@@ -130,7 +130,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 	// Check keyframe
 	if(first_packet == true && (*current & 0x01) == 0)
 	{
-		logd("DEBUG", "VP8 Keyframe!");
+		logt("DEBUG", "VP8 Keyframe!");
 	}
 
 	return bitstream;

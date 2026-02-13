@@ -47,6 +47,25 @@ AdmissionWebhooks::ErrCode AdmissionWebhooks::GetErrCode() const
 	return _err_code;
 }
 
+ov::String AdmissionWebhooks::GetErrCodeString() const
+{
+	switch (_err_code)
+	{
+	case ErrCode::ALLOWED:
+		return "Allowed";
+	case ErrCode::DENIED:
+		return "Denied";
+	case ErrCode::INVALID_DATA_FORMAT:
+		return "InvalidDataFormat";
+	case ErrCode::INVALID_STATUS_CODE:
+		return "InvalidStatusCode";
+	case ErrCode::INTERNAL_ERROR:
+		return "InternalError";
+	default:
+		return "Unknown";
+	}
+}
+
 ov::String AdmissionWebhooks::GetErrReason() const
 {
 	return _err_reason;
@@ -268,6 +287,7 @@ void AdmissionWebhooks::Run()
 	client->SetMethod(http::Method::Post);
 	client->SetBlockingMode(ov::BlockingMode::Blocking);
 	client->SetConnectionTimeout(_timeout_msec);
+	client->SetRecvTimeout(_timeout_msec);
 	client->SetRequestHeader("X-OME-Signature", signature_sha1_base64);
 	client->SetRequestHeader("Content-Type", "application/json");
 	client->SetRequestHeader("Accept", "application/json");

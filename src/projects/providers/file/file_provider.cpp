@@ -35,14 +35,14 @@ namespace pvd
 	FileProvider::FileProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PullProvider(server_config, router)
 	{
-		logtd("Created File Provider module.");
+		logtt("Created File Provider module.");
 	}
 
 	FileProvider::~FileProvider()
 	{
 		Stop();
 
-		logtd("Terminated File Provider module.");
+		logtt("Terminated File Provider module.");
 	}
 
 	bool FileProvider::OnCreateHost(const info::Host &host_info)

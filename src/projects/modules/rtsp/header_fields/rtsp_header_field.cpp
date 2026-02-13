@@ -82,7 +82,7 @@ bool RtspHeaderField::Parse(const ov::String &message)
 {
 	std::shared_ptr<RtspHeaderField> field = nullptr;
 	
-	logd("DEBUG", "RtspHeaderField::Parse(%s)", message.CStr());
+	logt("DEBUG", "RtspHeaderField::Parse(%s)", message.CStr());
 
 	// Parsing
 	auto index = message.IndexOf(':');

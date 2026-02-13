@@ -163,7 +163,7 @@ namespace pvd
 		offer_sdp->AddMedia(audio_media_desc);
 
 		offer_sdp->Update();
-		logtd("Offer SDP created : %s", offer_sdp->ToString().CStr());
+		logtt("Offer SDP created : %s", offer_sdp->ToString().CStr());
 
 		return offer_sdp;
 	}

@@ -101,7 +101,7 @@ RtcStream::RtcStream(const std::shared_ptr<pub::Application> application,
 
 RtcStream::~RtcStream()
 {
-	logtd("RtcStream(%d) has been terminated finally", GetId());
+	logtt("RtcStream(%d) has been terminated finally", GetId());
 	Stop();
 }
 
@@ -256,13 +256,13 @@ bool RtcStream::Stop()
 	return Stream::Stop();
 }
 
-bool RtcStream::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
+bool RtcStream::Update(const std::shared_ptr<info::Stream> &info)
 {
 	SetMsid(info->GetMsid());
 
 	//TODO(Getroot): check if the track has changed and re-create the SDP.
 
-	return Stream::OnStreamUpdated(info);
+	return Stream::Update(info);
 }
 
 bool RtcStream::IsSupportedCodec(cmn::MediaCodecId codec_id)
@@ -889,7 +889,7 @@ void RtcStream::AddPacketizer(const std::shared_ptr<const MediaTrack> &track)
 		return;
 	}
 
-	logtd("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", track->GetCodecId(), track->GetId(), payload_type, ssrc);
+	logtt("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", track->GetCodecId(), track->GetId(), payload_type, ssrc);
 
 	auto packetizer = std::make_shared<RtpPacketizer>(RtpPacketizerInterface::GetSharedPtr());
 	packetizer->SetCodec(track->GetCodecId());

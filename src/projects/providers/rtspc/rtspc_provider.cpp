@@ -43,7 +43,7 @@ namespace pvd
 			_signalling_socket_pool->Uninitialize();
 		}
 
-		logtd("Terminated Rtspc Provider modules.");
+		logtt("Terminated Rtspc Provider modules.");
 	}
 
 	std::shared_ptr<ov::SocketPool> RtspcProvider::GetSignallingSocketPool()

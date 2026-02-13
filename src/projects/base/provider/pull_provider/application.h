@@ -41,9 +41,8 @@ namespace pvd
 	private:
 		uint32_t GetStreamMotorId(const std::shared_ptr<PullStream> &stream);
 
-		std::shared_ptr<StreamMotor> CreateStreamMotorInternal(const std::shared_ptr<PullStream> &stream);
-		std::shared_ptr<StreamMotor> GetStreamMotorInternal(const std::shared_ptr<PullStream> &stream);
-		bool DeleteStreamMotorInternal(const std::shared_ptr<PullStream> &stream);
+		bool AddStreamToMotorInternal(const std::shared_ptr<PullStream> &stream);
+		bool DeleteStreamFromMotorInternal(const std::shared_ptr<PullStream> &stream);
 	
 		// Remove unused streams
 		void WhiteElephantStreamCollector();

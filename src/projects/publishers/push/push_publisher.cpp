@@ -30,12 +30,12 @@ namespace pub
 	PushPublisher::PushPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Publisher(server_config, router)
 	{
-		logtd("PushPublisher has been create");
+		logtt("PushPublisher has been create");
 	}
 
 	PushPublisher::~PushPublisher()
 	{
-		logtd("PushPublisher has been terminated finally");
+		logtt("PushPublisher has been terminated finally");
 	}
 
 	bool PushPublisher::Start()

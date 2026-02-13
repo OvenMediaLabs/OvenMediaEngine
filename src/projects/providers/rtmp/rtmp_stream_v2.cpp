@@ -26,10 +26,9 @@ namespace pvd::rtmp
 	std::shared_ptr<RtmpStreamV2> RtmpStreamV2::Create(StreamSourceType source_type, uint32_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
 	{
 		auto stream = std::make_shared<RtmpStreamV2>(source_type, client_id, client_socket, provider);
-		if (stream != nullptr)
-		{
-			stream->Start();
-		}
+
+		stream->Start();
+
 		return stream;
 	}
 
@@ -41,14 +40,14 @@ namespace pvd::rtmp
 
 		  _remote(client_socket)
 	{
-		logad("Stream has been created");
+		logat("Stream has been created");
 
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
 	}
 
 	RtmpStreamV2::~RtmpStreamV2()
 	{
-		logad("Stream has been terminated finally");
+		logat("Stream has been terminated finally");
 	}
 
 	bool RtmpStreamV2::Start()
@@ -120,7 +119,7 @@ namespace pvd::rtmp
 			_remaining_data->Append(data);
 		}
 
-		logat("Trying to parse data\n%s", _remaining_data->Dump(_remaining_data->GetLength()).CStr());
+		logap("Trying to parse data\n%s", _remaining_data->Dump(_remaining_data->GetLength()).CStr());
 
 		while (true)
 		{
@@ -141,7 +140,7 @@ namespace pvd::rtmp
 				break;
 			}
 
-			logad("Could not process RTMP packet: size: %zu bytes, returns: %d",
+			logat("Could not process RTMP packet: size: %zu bytes, returns: %d",
 				  _remaining_data->GetLength(),
 				  bytes_used);
 
@@ -175,13 +174,17 @@ namespace pvd::rtmp
 
 		_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(url->Host(), url->App());
 
-		if (_vhost_app_name.IsValid() == false)
+		if (_vhost_app_name.IsValid())
+		{
+			UpdateNamePath(_vhost_app_name);
+		}
+		else
 		{
 			// Since vhost/app/stream may later be changed by AdmissionWebhooks,
 			// it is set in advance even if it is not valid for now
 		}
 
-		_chunk_handler.SetVhostAppName(_vhost_app_name, GetName());
+		_chunk_handler.UpdateQueueAlias();
 
 		SetRequestedUrl(url);
 
@@ -224,8 +227,7 @@ namespace pvd::rtmp
 	{
 		if (_is_post_published)
 		{
-			logtw("PostPublish has already been called for stream: %s", GetName().CStr());
-			return true;
+			return _is_post_published;
 		}
 
 		auto requested_url = GetRequestedUrl();
@@ -308,7 +310,7 @@ namespace pvd::rtmp
 			case AccessController::VerificationResult::Off:
 				return true;
 
-			case AccessController::VerificationResult::Pass:
+			case AccessController::VerificationResult::Pass: {
 				// Lifetime
 				if (admission_webhooks->GetLifetime() != 0)
 				{
@@ -321,14 +323,17 @@ namespace pvd::rtmp
 				}
 
 				// Redirect URL
-				if (admission_webhooks->GetNewURL() != nullptr)
-				{
-					SetFinalUrl(admission_webhooks->GetNewURL()->Clone());
+				auto new_url = admission_webhooks->GetNewURL();
 
-					_chunk_handler.SetVhostAppName(_vhost_app_name, GetName());
+				if (new_url != nullptr)
+				{
+					SetFinalUrl(new_url->Clone());
+
+					_chunk_handler.UpdateQueueAlias();
 				}
 
 				return true;
+			}
 		}
 
 		return false;
@@ -369,6 +374,7 @@ namespace pvd::rtmp
 		}
 
 		_vhost_app_name = app_info.GetVHostAppName();
+		UpdateNamePath(_vhost_app_name);
 		SetName(final_url->Stream());
 
 		return true;
@@ -428,7 +434,7 @@ namespace pvd::rtmp
 				rtmp_track->FillMediaTrackMetadata(media_track);
 
 				AddTrack(media_track);
-				logad("Audio track has been created: %s", media_track->GetInfoString().CStr());
+				logat("Audio track has been created: %s", media_track->GetInfoString().CStr());
 			}
 			else if (media_type == cmn::MediaType::Video)
 			{
@@ -438,7 +444,7 @@ namespace pvd::rtmp
 				rtmp_track->FillMediaTrackMetadata(media_track);
 
 				AddTrack(media_track);
-				logad("Video track has been created: %s", media_track->GetInfoString().CStr());
+				logat("Video track has been created: %s", media_track->GetInfoString().CStr());
 			}
 		}
 
@@ -454,7 +460,7 @@ namespace pvd::rtmp
 			data_track->SetOriginBitstream(cmn::BitstreamFormat::Unknown);
 
 			AddTrack(data_track);
-			logad("Data track has been created: %s", data_track->GetInfoString().CStr());
+			logat("Data track has been created: %s", data_track->GetInfoString().CStr());
 		}
 
 		return true;

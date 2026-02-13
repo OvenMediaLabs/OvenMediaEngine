@@ -56,7 +56,7 @@ namespace mpegts
 		if (packet_type == PacketType::UNSUPPORTED_SECTION || packet_type == PacketType::UNKNOWN)
 		{
 			// FFMPEG ususally sends PID 17 (DVB - SDT), but we don't use this table now
-			logtd("Ignored unsupported or unknown MPEG-TS packets.(PID: %d)", packet->PacketIdentifier());
+			logtt("Ignored unsupported or unknown MPEG-TS packets.(PID: %d)", packet->PacketIdentifier());
 			return false;
 		}
 
@@ -98,12 +98,17 @@ namespace mpegts
 		{
 			if (IsTrackInfoAvailable() == false)
 			{
+				logtt("Parsing section packet (PID: %d)", packet->PacketIdentifier());				
 				return ParseSection(packet);
 			}
 		}
 		else if (packet_type == PacketType::PES)
 		{
 			return ParsePes(packet);
+		}
+		else if (packet_type == PacketType::SECTION)
+		{
+			return ParseSection(packet);
 		}
 
 		return true;
@@ -117,6 +122,11 @@ namespace mpegts
 	bool MpegTsDepacketizer::IsESAvailable()
 	{
 		return _es_list.size() > 0;
+	}
+
+	bool MpegTsDepacketizer::IsSectionAvailable()
+	{
+		return _section_list.size() > 0;
 	}
 
 	const std::shared_ptr<PAT> MpegTsDepacketizer::GetFirstPAT()
@@ -178,6 +188,20 @@ namespace mpegts
 		_es_list.pop();
 
 		return es;
+	}
+
+	const std::shared_ptr<Section> MpegTsDepacketizer::PopSection()
+	{
+		std::lock_guard<std::shared_mutex> lock(_section_list_lock);
+		if (_section_list.size() == 0)
+		{
+			return nullptr;
+		}
+
+		auto section = _section_list.front();
+		_section_list.pop();
+
+		return section;
 	}
 
 	PacketType MpegTsDepacketizer::GetPacketType(const std::shared_ptr<Packet> &packet)
@@ -344,7 +368,7 @@ namespace mpegts
 			{
 				// This can be called if the encoder sends faster than the server starts.
 				// These packets can be ignored.
-				logtd("Could not find the pes draft (PID: %d)", packet->PacketIdentifier());
+				logtt("Could not find the pes draft (PID: %d)", packet->PacketIdentifier());
 				return false;
 			}
 
@@ -413,6 +437,7 @@ namespace mpegts
 			// PAT
 			_pat_map.emplace(pat->_program_num, section);
 			// Reserve PMT's PID
+			logtt("Registering PAT. PID: 0x%04X, PacketType::SUPPORTED_SECTION", pat->_program_map_pid);
 			_packet_type_table.emplace(pat->_program_map_pid, PacketType::SUPPORTED_SECTION);
 
 			// The last section for PAT
@@ -427,7 +452,16 @@ namespace mpegts
 			auto pmt = section->GetPMT();
 			for (const auto &es_info : pmt->_es_info_list)
 			{
-				_packet_type_table.emplace(es_info->_elementary_pid, PacketType::PES);
+				if(es_info->_stream_type == static_cast<uint8_t>(WellKnownStreamTypes::SCTE35))
+				{
+					logtt("Registering PMT. PID: 0x%04X, PacketType::SECTION", es_info->_elementary_pid);
+					_packet_type_table.emplace(es_info->_elementary_pid, PacketType::SECTION);
+				}
+				else 
+				{
+					logtt("Registering PMT. PID: 0x%04X, PacketType::PES", es_info->_elementary_pid);
+					_packet_type_table.emplace(es_info->_elementary_pid, PacketType::PES);
+				}
 			}
 
 			// PMT
@@ -549,9 +583,13 @@ namespace mpegts
 					track->SetTimeBase(1, TIMEBASE);
 					break;
 
+				case static_cast<uint8_t>(WellKnownStreamTypes::SCTE35):
+					// SCTE-35 StreamType is used to Data Track in OvenMediaEngine.  Data track is created elsewhere for common use, so track is not created here.
+					continue;
+
 				default:
 					// Doesn't support
-					logti("Unsupported stream_type has been received. (pid : %d stream_type : %d)", pid, es_info->_stream_type);
+					logtw("Unsupported stream_type has been received. (pid : %d stream_type : 0x%02x)", pid, es_info->_stream_type);
 					continue;
 			}
 

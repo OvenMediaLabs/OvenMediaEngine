@@ -130,7 +130,7 @@ namespace ffmpeg
 					}
 					else
 					{
-						logtd("Receive frame failed: %d\n", ret);
+						logtt("Receive frame failed: %d\n", ret);
 					}
 				}
 			}

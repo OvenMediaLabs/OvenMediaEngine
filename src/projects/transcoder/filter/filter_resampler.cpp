@@ -163,11 +163,11 @@ bool FilterResampler::Configure(const std::shared_ptr<MediaTrack> &input_track, 
 		return false;
 	}
 
-	logti("Resampler parameters. track(#%u -> #%u). desc(src: %s -> output: %s)",
-		  _input_track->GetId(),
-		  _output_track->GetId(),
-		  _src_args.CStr(),
-		  _filter_desc.CStr());
+	SetDescription(ov::String::FormatString("track(#%u -> #%u), params(src: %s -> output: %s)",
+				   _input_track->GetId(),
+				   _output_track->GetId(),
+				   _src_args.CStr(),
+				   _filter_desc.CStr()));
 
 	if (::avfilter_graph_parse_ptr(_filter_graph, _filter_desc, &_inputs, &_outputs, nullptr) < 0)
 	{
@@ -228,7 +228,7 @@ void FilterResampler::Stop()
 	{
 		_thread_work.join();
 
-		logtd("filter resampler thread has ended");
+		logtt("filter resampler thread has ended");
 	}
 
 	SetState(State::STOPPED);
@@ -276,6 +276,8 @@ void FilterResampler::WorkerThread()
 			logte("An error occurred while feeding the audio filtergraph: pts: %lld, linesize: %d, srate: %d, channels: %d, format: %d",
 				  av_frame->pts, av_frame->linesize[0], av_frame->sample_rate, av_frame->ch_layout.nb_channels, av_frame->format);
 
+			Complete(TranscodeResult::DataError, nullptr);
+			
 			continue;
 		}
 
@@ -301,6 +303,8 @@ void FilterResampler::WorkerThread()
 
 				SetState(State::ERROR);
 
+				Complete(TranscodeResult::DataError, nullptr);
+
 				break;
 			}
 			else
@@ -317,7 +321,7 @@ void FilterResampler::WorkerThread()
 
 				output_frame->SetSourceId(_source_id);
 
-				Complete(std::move(output_frame));
+				Complete(TranscodeResult::DataReady, std::move(output_frame));
 			}
 		}
 	}

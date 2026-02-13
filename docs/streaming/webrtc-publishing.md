@@ -4,7 +4,7 @@ OvenMediaEngine uses WebRTC to provide sub-second latency streaming. WebRTC uses
 
 OvenMediaEngine provides the following features:
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP / RTCP</td></tr><tr><td>Security</td><td>DTLS, SRTP</td></tr><tr><td>Transport</td><td>ICE</td></tr><tr><td>Error Correction</td><td>ULPFEC (VP8, H.264), In-band FEC (Opus)</td></tr><tr><td>Codec</td><td>VP8, H.264, H.265, Opus</td></tr><tr><td>Signaling</td><td>Self-Defined Signaling Protocol, Embedded WebSocket-based Server / WHEP</td></tr><tr><td>Additional Features</td><td>Simulcast</td></tr><tr><td>Default URL Pattern</td><td><code>ws[s]://{OvenMediaEngine Host}[:{Signaling Port}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP / RTCP</td></tr><tr><td>Security</td><td>DTLS, SRTP</td></tr><tr><td>Transport</td><td>ICE</td></tr><tr><td>Error Correction</td><td>ULPFEC (VP8, H.264), In-band FEC (Opus)</td></tr><tr><td>Codec</td><td>VP8, H.264, H.265, Opus</td></tr><tr><td>Signaling</td><td>Self-Defined Signaling Protocol, Embedded WebSocket-based Server</td></tr><tr><td>Additional Features</td><td>Simulcast</td></tr><tr><td>Default URL Pattern</td><td><code>ws[s]://{OvenMediaEngine Host}[:{Signaling Port}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
 
 ## Configuration
 

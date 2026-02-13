@@ -86,8 +86,9 @@ namespace ov
 		int EpollWait(int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);
 
-		void ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
+		bool ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
 
+		void AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket);
 		void EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket);
 		void EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback);
 		void EnqueueToCheckConnectionTimeOut(const std::shared_ptr<Socket> &socket, int timeout_msec);
@@ -109,24 +110,25 @@ namespace ov
 		// Since there is no longer a reference to std::shared_ptr<Socket>, the socket will be released,
 		// and after EpollWait() code will refer to the released socket.
 		// To avoid this issue, _socket_map must ensure that it is modified only in the last part of ThreadProc().
-		std::mutex _socket_map_mutex;
+		mutable std::mutex _socket_map_mutex;
 		// key: native handle of SocketWrapper
 		std::map<int, std::shared_ptr<Socket>> _socket_map;
 		std::queue<std::shared_ptr<Socket>> _sockets_to_insert;
-		std::queue<std::shared_ptr<Socket>> _sockets_to_delete;
 
 		// Socket failed to send data for too long must be forced to shut down in the future
 		StopWatch _gc_interval;
 		std::map<int, std::shared_ptr<Socket>> _gc_candidates;
 
 		// A queue for handling errors such as connection timeout in nonblocking mode.
+		inline static std::mutex _connection_callback_queue_mutex;
 		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};
+		inline static bool _is_first_connection_callback_queue_start = true;
 		std::mutex _connection_timed_out_queue_mutex;
 		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue;
 
 		// Common variables
 		std::thread _epoll_thread;
-		bool _stop_epoll_thread = true;
+		std::atomic<bool> _stop_epoll_thread = true;
 		std::vector<epoll_event> _epoll_events;
 		int _last_epoll_event_count = 0;
 

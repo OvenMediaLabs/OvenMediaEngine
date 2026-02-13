@@ -125,7 +125,7 @@ namespace pvd
         application_id = application->GetId();
         stream_id = stream->GetId();
 
-        logtd("Stream ready complete - app(%s/%u) stream(%s/%u)", internal_app_name.CStr(), application_id, stream_name.CStr(), stream_id);
+        logtt("Stream ready complete - app(%s/%u) stream(%s/%u)", internal_app_name.CStr(), application_id, stream_name.CStr(), stream_id);
 
         return true;
     }

@@ -474,7 +474,7 @@ namespace ov
 				});
 				if (!result || _stop)
 				{
-					loge(LOG_TAG, "[%s] queue is full. q.size(%d), q.threshold(%d)", _urn->ToString().CStr(), _size, _threshold);
+					loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", _urn->ToString().CStr(), _size, _threshold);
 					delete node;
 					return;
 				}
@@ -590,7 +590,7 @@ namespace ov
 						_last_logging_time = 0;
 
 						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%u] %s has exceeded the threshold and increased peak. size: %zu, threshold: %zu, peak: %zu", GetId(), _urn->ToString().CStr(), _size, _threshold, _peak);
+						logw(LOG_TAG, "[%u] %s has exceeded the threshold and increased peak. size: %zu, threshold: %zu, peak: %zu, imps: %zu, omps: %zu", GetId(), _urn->ToString().CStr(), _size, _threshold, _peak, _input_message_per_second, _output_message_per_second);
 
 						_last_logged_peak = _peak;
 					}

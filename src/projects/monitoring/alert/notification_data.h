@@ -12,7 +12,7 @@
 #include "../stream_metrics.h"
 #include "base/info/codec.h"
 #include "message.h"
-
+#include "extra_data.h"
 namespace mon::alrt
 {
 	class NotificationData
@@ -66,13 +66,13 @@ namespace mon::alrt
 				case Message::Code::EGRESS_STREAM_CREATED:
 				case Message::Code::EGRESS_STREAM_PREPARED:
 				case Message::Code::EGRESS_STREAM_DELETED:
-				case Message::Code::EGRESS_STREAM_CREATION_FAILED_BY_OUTPUT_PROFILE:
-				case Message::Code::EGRESS_STREAM_CREATION_FAILED_BY_DECODER:
-				case Message::Code::EGRESS_STREAM_CREATION_FAILED_BY_ENCODER:
-				case Message::Code::EGRESS_STREAM_CREATION_FAILED_BY_FILTER:
-				case Message::Code::EGRESS_TRANSCODE_DECODING_FAILED:
-				case Message::Code::EGRESS_TRANSCODE_ENCODING_FAILED:
-				case Message::Code::EGRESS_TRANSCODE_FILTERING_FAILED:
+				case Message::Code::EGRESS_STREAM_CREATION_FAILED_OUTPUT_PROFILE:
+				case Message::Code::EGRESS_STREAM_CREATION_FAILED_DECODER:
+				case Message::Code::EGRESS_STREAM_CREATION_FAILED_ENCODER:
+				case Message::Code::EGRESS_STREAM_CREATION_FAILED_FILTER:
+				case Message::Code::EGRESS_TRANSCODE_FAILED_DECODING:
+				case Message::Code::EGRESS_TRANSCODE_FAILED_ENCODING:
+				case Message::Code::EGRESS_TRANSCODE_FAILED_FILTERING:
 				case Message::Code::EGRESS_LLHLS_READY:
 				case Message::Code::EGRESS_HLS_READY:
 					return Type::EGRESS;
@@ -100,19 +100,14 @@ namespace mon::alrt
 			_stream_metric = stream_metric;
 		}
 
-		void SetParentSourceInfo(const std::shared_ptr<StreamMetrics> &parent_source_info)
+		void SetParentStreamMetric(const std::shared_ptr<StreamMetrics> &parent_stream_metric)
 		{
-			_parent_source_info = parent_source_info;
+			_parent_stream_metric = parent_stream_metric;
 		}
 
-		void SetOutputProfile(const std::shared_ptr<cfg::vhost::app::oprf::OutputProfile> &profile)
+		void SetExtra(const std::shared_ptr<ExtraData> &extra)
 		{
-			_output_profile = profile;
-		}
-
-		void SetCodecModules(const std::vector<std::shared_ptr<info::CodecModule>> &codec_modules)
-		{
-			_codec_modules = codec_modules;
+			_extra = extra;
 		}
 
 	private:
@@ -121,9 +116,9 @@ namespace mon::alrt
 
 		ov::String _source_uri;
 		std::shared_ptr<StreamMetrics> _stream_metric						  = nullptr;
-		std::shared_ptr<StreamMetrics> _parent_source_info					  = nullptr;
-		std::shared_ptr<cfg::vhost::app::oprf::OutputProfile> _output_profile = nullptr;
-		std::vector<std::shared_ptr<info::CodecModule>> _codec_modules;
+		std::shared_ptr<StreamMetrics> _parent_stream_metric				  = nullptr;
+		std::shared_ptr<ExtraData> _extra							  = nullptr;
+
 		std::map<uint32_t, std::shared_ptr<QueueMetrics>> _queue_metric_list;
 	};
 }  // namespace mon::alrt

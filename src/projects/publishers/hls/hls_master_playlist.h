@@ -27,6 +27,7 @@ public:
 	ov::String GetFileName() const { return _playlist_file_name; }
 	
 	void AddMediaPlaylist(const std::shared_ptr<HlsMediaPlaylist> &media_playlist);
+	void AddVttPlaylist(const std::shared_ptr<HlsMediaPlaylist> &vtt_playlist);
 
 	ov::String ToString(bool rewind) const;
 
@@ -39,4 +40,6 @@ private:
 	std::vector<std::shared_ptr<HlsMediaPlaylist>> _media_playlists;
 	mutable std::shared_mutex _media_playlists_mutex;
 
+	std::vector<std::shared_ptr<HlsMediaPlaylist>> _vtt_playlists;
+	mutable std::shared_mutex _vtt_playlists_mutex;
 };

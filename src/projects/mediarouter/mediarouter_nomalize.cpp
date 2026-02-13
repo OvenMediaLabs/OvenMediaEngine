@@ -204,7 +204,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 				}
 				else if (nal_header.GetNalUnitType() == H264NalUnitType::Sps)
 				{
-					// logtd("[SPS] %s ", ov::Base64::Encode(nalu).CStr());
+					// logtt("[SPS] %s ", ov::Base64::Encode(nalu).CStr());
 					has_sps = true;
 					if (sps_nalu == nullptr)
 					{
@@ -213,7 +213,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 				}
 				else if (nal_header.GetNalUnitType() == H264NalUnitType::Pps)
 				{
-					// logtd("[PPS] %s ", ov::Base64::Encode(nalu).CStr());
+					// logtt("[PPS] %s ", ov::Base64::Encode(nalu).CStr());
 					has_pps = true;
 					if (pps_nalu == nullptr)
 					{
@@ -346,7 +346,7 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 
 		// if (nal_header.GetNalUnitType() == H264NalUnitType::Sps || nal_header.GetNalUnitType() == H264NalUnitType::Pps)
 		// {
-		// 	logtd("NALU Type : %s", NalUnitTypeToStr(nal_header.GetNalUnitType()).CStr());
+		// 	logtt("NALU Type : %s", NalUnitTypeToStr(nal_header.GetNalUnitType()).CStr());
 		// }
 
 		if (nal_header.GetNalUnitType() == H264NalUnitType::Sps)

@@ -127,6 +127,23 @@ bool EncoderAVCx264::SetCodecParams()
 					 .CStr(),
 				 0);
 
+	// Do not use 'sliced-threads' option from encoding delay. Can't not compatible with macOS evironment.
+	ov::String extra_options = ov::String::FormatString(
+		"bframes=%d:sliced-threads=0:b-adapt=1:no-scenecut:keyint=%d:min-keyint=%d",
+		GetRefTrack()->GetBFrames(), _codec_context->gop_size, _codec_context->gop_size);
+
+	// If user has defined extra options, append them.
+	if (!GetRefTrack()->GetExtraEncoderOptionsByConfig().IsEmpty())
+	{
+		if (!GetRefTrack()->GetExtraEncoderOptionsByConfig().HasPrefix(":"))
+			extra_options += ":";
+
+		extra_options += GetRefTrack()->GetExtraEncoderOptionsByConfig();
+	}
+	::av_opt_set(_codec_context->priv_data, "x264opts", extra_options.CStr(), 0);
+
+	logtd("opts: %s", ffmpeg::compat::GetAVOptionsString(_codec_context->priv_data).CStr());
+
 	_bitstream_format = cmn::BitstreamFormat::H264_ANNEXB;
 	
 	_packet_type = cmn::PacketType::NALU;

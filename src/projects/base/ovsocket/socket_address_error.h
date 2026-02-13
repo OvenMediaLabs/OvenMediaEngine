@@ -38,7 +38,7 @@ namespace ov
 		SocketAddressError(const std::shared_ptr<Error> cause, const char *format, Args... args)
 			: Error(SOCKET_ADDRESS_ERROR_DOMAIN, cause->GetCode())
 		{
-			SetMessage(cause, std::move(String::FormatString(format, args...)));
+			SetMessage(cause, String::FormatString(format, args...));
 		}
 
 	protected:

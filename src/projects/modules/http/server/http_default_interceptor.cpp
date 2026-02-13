@@ -115,7 +115,7 @@ namespace http
 			for (auto &request_info : _request_handler_list)
 			{
 #if DEBUG
-				logtd("Check if url [%s] is matches [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
+				logtt("Check if url [%s] is matches [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
 
 				response->SetStatusCode(StatusCode::OK);
@@ -126,7 +126,7 @@ namespace http
 				if (error == nullptr)
 				{
 #if DEBUG
-					logtd("Matches: url [%s], pattern: [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
+					logtt("Matches: url [%s], pattern: [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
 
 					regex_found = true;
@@ -153,7 +153,7 @@ namespace http
 				else
 				{
 #if DEBUG
-					logtd("Not matched: url [%s], pattern: [%s] (with error: %s)", uri_target.CStr(), request_info.pattern_string.CStr(), error->What());
+					logtt("Not matched: url [%s], pattern: [%s] (with error: %s)", uri_target.CStr(), request_info.pattern_string.CStr(), error->What());
 #endif	// DEBUG
 				}
 			}

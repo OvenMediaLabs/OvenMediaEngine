@@ -2,7 +2,7 @@
 
 OvenMediaEngine can pull RTSP Stream in two ways. The first way is to use the Stream creation API, and the second way is to use `OriginMap` or `OriginMapStore`. The supported codecs are H.264, AAC (ADTS). Supported codecs will continue to be added.&#x20;
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP</td></tr><tr><td>Transport</td><td>UDP / TCP</td></tr><tr><td>Codec</td><td>H.264, Opus, AAC</td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP</td></tr><tr><td>Transport</td><td>UDP / TCP</td></tr><tr><td>Codec</td><td>H.264, H.265, Opus, AAC</td></tr></tbody></table>
 
 ## Pulling streams using the Stream Creation API
 

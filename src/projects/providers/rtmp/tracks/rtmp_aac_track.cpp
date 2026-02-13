@@ -47,7 +47,7 @@ namespace pvd::rtmp
 
 			if (packet_type == cmn::PacketType::Unknown)
 			{
-				logtd("Unknown AAC packet type: %d", static_cast<int>(audio_data->aac_packet_type));
+				logtt("Unknown AAC packet type: %d", static_cast<int>(audio_data->aac_packet_type));
 				break;
 			}
 

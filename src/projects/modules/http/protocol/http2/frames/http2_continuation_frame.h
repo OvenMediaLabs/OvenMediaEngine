@@ -68,7 +68,7 @@ namespace http
 					str += "[Continuation Frame]\n";
 					
 					// Header Block Fragment length
-					str += ov::String::FormatString("Header Block Fragment Length : %d\n", _header_block_fragment->GetLength());
+					str += ov::String::FormatString("Header Block Fragment Length : %zu\n", _header_block_fragment->GetLength());
 
 					// Flags - End Header
 					str += ov::String::FormatString("Flags : EndHeader(%s)\n",

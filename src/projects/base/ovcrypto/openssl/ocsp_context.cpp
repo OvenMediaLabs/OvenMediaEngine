@@ -19,7 +19,7 @@ namespace ov
 
 		if (_status_request_enabled)
 		{
-			logtd("OCSP stapling is enabled: %p", cert);
+			logtt("OCSP stapling is enabled: %p", cert);
 
 			if (ParseOcspUrl(cert) == false)
 			{
@@ -29,7 +29,7 @@ namespace ov
 		}
 		else
 		{
-			logtd("OCSP stapling is disabled: %p", cert);
+			logtt("OCSP stapling is disabled: %p", cert);
 		}
 	}
 
@@ -131,7 +131,7 @@ namespace ov
 		{
 			const auto aia_url = sk_OPENSSL_STRING_value(aia, 0);
 
-			logtd("Trying to parse AIA URL: %s", aia_url);
+			logtt("Trying to parse AIA URL: %s", aia_url);
 
 			int use_tls;
 			if (::OSSL_HTTP_parse_url(
@@ -147,7 +147,7 @@ namespace ov
 
 				_ssl_request_ctx.Set(use_tls ? ::SSL_CTX_new(::TLS_client_method()) : nullptr);
 
-				logtd("Parsed: host=%s, port=%s, path=%s, use_tls=%d", _host.Get(), _port.Get(), _path.Get(), _use_tls);
+				logtt("Parsed: host=%s, port=%s, path=%s, use_tls=%d", _host.Get(), _port.Get(), _path.Get(), _use_tls);
 
 				return true;
 			}
@@ -165,7 +165,7 @@ namespace ov
 	// Create a OCSP query for server certificate
 	bool OcspContext::Request(X509 *cert)
 	{
-		logtd("Trying to query OCSP request to responder: %s", _url.c_str());
+		logtt("Trying to query OCSP request to responder: %s", _url.c_str());
 
 		auto store_ctx = RaiiPtr<X509_STORE_CTX>(
 			::X509_STORE_CTX_new(),
@@ -318,7 +318,7 @@ namespace ov
 		if (_use_tls == false)
 		{
 			// Nothing to do - Do not use HTTPS for OCSP request
-			logtd("OCSP responder is not HTTPS");
+			logtt("OCSP responder is not HTTPS");
 			return bio;
 		}
 

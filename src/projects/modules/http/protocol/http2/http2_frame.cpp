@@ -128,7 +128,7 @@ namespace http
 
 				_state = Http2Frame::ParsingState::HeaderParsed;
 
-				logtd("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, _type, _flags, _stream_id);
+				logtt("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, _type, _flags, _stream_id);
 
 				return true;
 			}

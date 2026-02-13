@@ -142,7 +142,7 @@ namespace pvd
                 continue;
             }
 
-            logtd("Found schedule file : %s, mtime : %d, hash : %d", schedule_file_info._file_path.CStr(), schedule_file_info._file_stat.st_mtime, schedule_file_info._file_path.Hash());
+            logtt("Found schedule file : %s, mtime : %d, hash : %d", schedule_file_info._file_path.CStr(), schedule_file_info._file_stat.st_mtime, schedule_file_info._file_path.Hash());
 
             schedule_files.push_back(schedule_file_info);
         }

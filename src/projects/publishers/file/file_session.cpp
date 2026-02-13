@@ -39,7 +39,7 @@ namespace pub
 
 	FileSession::~FileSession()
 	{
-		logtd("FileSession(%d) has been terminated finally", GetId());
+		logtt("FileSession(%d) has been terminated finally", GetId());
 		MonitorInstance->OnSessionDisconnected(*GetStream(), PublisherType::File);
 	}
 
@@ -54,7 +54,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileSession(%d) has started.", GetId());
+		logtt("FileSession(%d) has started.", GetId());
 
 		return Session::Start();
 	}
@@ -68,7 +68,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileSession(%d) has stoped", GetId());
+		logtt("FileSession(%d) has stoped", GetId());
 
 		return Session::Stop();
 	}
@@ -123,12 +123,18 @@ namespace pub
 			return false;
 		}
 
+		logtt("OutputFilePath : %s", record->GetOutputFilePath().CStr());
+		logtt("OutputInfoPath : %s", record->GetOutputInfoPath().CStr());
+		logtt("TmpPath        : %s", record->GetTmpPath().CStr());
+		logtt("TmpDirectory   : %s", tmp_directory.CStr());
+		logtt("TmpRealDirectory   : %s", tmp_real_directory.CStr());
+
 		auto writer = CreateWriter();
 		if (writer == nullptr)
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-
+			logte("Failed to create writer. %s", record->GetInfoString().CStr());
 			return false;
 		}
 
@@ -136,7 +142,7 @@ namespace pub
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-
+			logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
 			return false;
 		}
 
@@ -151,26 +157,56 @@ namespace pub
 			writer->SetTimestampMode(ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE);
 		}
 
-		for (auto &[track_id, track] : GetStream()->GetTracks())
+		// Add Tracks
+		if (record->GetTrackIds().empty() && record->GetVariantNames().empty())
 		{
-			if(IsSelectedTrack(track) == false)
+			// If there is no specified track, add all tracks.
+			for (auto &[track_id, media_track] : GetStream()->GetTracks())
 			{
-				continue;
+				if (AddTrack(output_format, media_track) == false)
+				{
+					continue;
+				}
+			}
+		}
+		else
+		{
+			// Select tracks by VariantNames
+			for (const auto &variant_name : record->GetVariantNames())
+			{
+				// VariantName format: "variantName:index", "variantName" (index is optional). if index is not specified, 0 is used.
+				auto vars			  = variant_name.Split(":", 2);
+				ov::String variant = vars[0];
+				int32_t variant_index	  = (vars.size() >= 2) ? ov::Converter::ToInt32(vars[1], 0) : 0;
+
+				// Find MediaTrack by VariantName and Index
+				auto media_track	  = GetStream()->GetTrackByVariant(variant, variant_index);
+				if (media_track == nullptr)
+				{
+					logtw("FileSession(%d) - Could not find track by VariantName: %s : %d", GetId(), variant.CStr(), variant_index);
+					continue;
+				}
+
+				if (AddTrack(output_format, media_track) == false)
+				{
+					continue;
+				}
 			}
 
-			if (ffmpeg::compat::IsSupportCodec(output_format, track->GetCodecId()) == false)
+			// Select tracks by TrackIds
+			for (const auto &track_id : record->GetTrackIds())
 			{
-				logtd("%s format does not support the codec(%s)", output_format.CStr(), cmn::GetCodecIdString(track->GetCodecId()));
-				continue;
-			}
+				auto media_track = GetStream()->GetTrack(track_id);
+				if (media_track == nullptr)
+				{
+					logtw("FileSession(%d) - Could not find track by TrackId: %d", GetId(), track_id);
+					continue;
+				}
 
-			// Choose default track of recording stream
-			SelectDefaultTrack(track);
-
-			bool ret = writer->AddTrack(track);
-			if (ret == false)
-			{
-				logtw("Failed to add new track");
+				if (AddTrack(output_format, media_track) == false)
+				{
+					continue;
+				}
 			}
 		}
 
@@ -180,7 +216,7 @@ namespace pub
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-
+			logte("Failed to start writer. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
 			return false;
 		}
 
@@ -206,29 +242,6 @@ namespace pub
 				_default_track = _default_track_by_type[cmn::MediaType::Audio];
 			}
 		}
-	}
-
-	// Check if the track is selected for recording.
-	bool FileSession::IsSelectedTrack(const std::shared_ptr<MediaTrack> &track)
-	{
-		auto record = GetRecord();
-		if (record == nullptr)
-		{
-			return false;
-		}
-
-		auto selected_track_ids = record->GetTrackIds();
-		auto selected_track_names = record->GetVariantNames();
-		if (selected_track_ids.size() > 0 || selected_track_names.size() > 0)
-		{
-			if ((find(selected_track_ids.begin(), selected_track_ids.end(), track->GetId()) == selected_track_ids.end()) &&
-				(find(selected_track_names.begin(), selected_track_names.end(), track->GetVariantName()) == selected_track_names.end()))
-			{
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	bool FileSession::StopRecord()
@@ -310,7 +323,7 @@ namespace pub
 				record->IncreaseSequence();
 			}
 
-			DestoryWriter();
+			DestroyWriter();
 		}
 
 		return true;
@@ -335,7 +348,7 @@ namespace pub
 		}
 		catch (const std::bad_any_cast &e)
 		{
-			logtd("An incorrect type of packet was input from the stream. (%s)", e.what());
+			logtw("An incorrect type of packet was input from the stream. (%s)", e.what());
 
 			return;
 		}
@@ -411,8 +424,8 @@ namespace pub
 			{
 				SetState(SessionState::Error);
 				record->SetState(info::Record::RecordState::Error);
-
-				DestoryWriter();
+				logte("Failed to write packet. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+				DestroyWriter();
 
 				return;
 			}
@@ -448,6 +461,13 @@ namespace pub
 	ov::String FileSession::GetOutputTempFilePath(std::shared_ptr<info::Record> &record)
 	{
 		ov::String tmp_directory = ov::PathManager::ExtractPath(record->GetOutputFilePath());
+
+		// If the tmp_directory is relative path "./", change it to empty string.
+		if (tmp_directory.HasPrefix("./") && tmp_directory.GetLength() == 2)
+		{
+			tmp_directory = "";
+		}
+
 		ov::String tmp_filename = ov::String::FormatString("tmp_%s", ov::Random::GenerateString(32).CStr());
 
 		return ov::PathManager::Combine(tmp_directory, tmp_filename);
@@ -478,7 +498,7 @@ namespace pub
 		// If FilePath config is not set, save it as the default path.
 		if (template_path.GetLength() == 0 || template_path.IsEmpty() == true)
 		{
-			template_path.Format("%s${TransactionId}_${VirtualHost}_${Application}_${Stream}_${StartTime:YYYYMMDDhhmmss}_${EndTime:YYYYMMDDhhmmss}.ts", ov::PathManager::GetAppPath("records").CStr());
+			template_path.Format("${TransactionId}_${VirtualHost}_${Application}_${Stream}_${StartTime:YYYYMMDDhhmmss}.ts");
 		}
 
 		auto result = FileMacro::ConvertMacro(std::static_pointer_cast<info::Application>(GetApplication()), std::static_pointer_cast<info::Stream>(GetStream()), record, template_path);
@@ -512,7 +532,7 @@ namespace pub
 		// If FileInfoPath config is not set, save it as the default path.
 		if (template_path.GetLength() == 0 || template_path.IsEmpty() == true)
 		{
-			template_path.Format("%s${TransactionId}_${VirtualHost}_${Application}_${Stream}.xml", ov::PathManager::GetAppPath("records").CStr());
+			template_path.Format("${TransactionId}_${VirtualHost}_${Application}_${Stream}.xml");
 		}
 
 		auto result = FileMacro::ConvertMacro(std::static_pointer_cast<info::Application>(GetApplication()), std::static_pointer_cast<info::Stream>(GetStream()), record, template_path);
@@ -538,7 +558,7 @@ namespace pub
 		return _writer;
 	}
 
-	void FileSession::DestoryWriter()
+	void FileSession::DestroyWriter()
 	{
 		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
 		if (_writer != nullptr)
@@ -552,6 +572,78 @@ namespace pub
 	{
 		std::shared_lock<std::shared_mutex> lock(_writer_mutex);
 		return _writer;
+	}
+
+	bool FileSession::IsSupportCodec(const ov::String output_format, const cmn::MediaCodecId codec_id)
+	{
+		if (output_format == "mp4")
+		{
+			// For mp4 format, only a limited number of codecs are supported.
+			if (codec_id == cmn::MediaCodecId::H264 ||
+				codec_id == cmn::MediaCodecId::H265 ||
+				codec_id == cmn::MediaCodecId::Aac ||
+				codec_id == cmn::MediaCodecId::Mp3 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+		else if (output_format == "mpegts")
+		{
+			if (codec_id == cmn::MediaCodecId::H264 ||
+				codec_id == cmn::MediaCodecId::H265 ||
+				codec_id == cmn::MediaCodecId::Vp8 ||
+				codec_id == cmn::MediaCodecId::Vp9 ||
+				codec_id == cmn::MediaCodecId::Aac ||
+				codec_id == cmn::MediaCodecId::Mp3 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+		// Webm 지원 코덱
+		else if (output_format == "webm")
+		{
+			if (codec_id == cmn::MediaCodecId::Vp8 ||
+				codec_id == cmn::MediaCodecId::Vp9 ||
+				codec_id == cmn::MediaCodecId::Av1 ||
+				codec_id == cmn::MediaCodecId::Opus)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool FileSession::AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track)
+	{
+		auto writer = GetWriter();
+		if (writer == nullptr)
+		{
+			logte("Writer is not created.");
+			return false;
+		}
+
+		// Check already added track
+		if (writer->GetTrackByTrackId(track->GetId()) != nullptr)
+		{
+			logtw("Track already added. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+			return false;
+		}
+
+		if (IsSupportCodec(output_format, track->GetCodecId()) == false)
+		{
+			logtw("Could not supported codec. trackId: %u, container: %s codec: %s, variantName: %s",
+				  track->GetId(), output_format.CStr(), GetCodecIdString(track->GetCodecId()), track->GetVariantName().CStr());
+			return false;
+		}
+
+		logtd("Adding track to writer. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+
+		SelectDefaultTrack(track);
+
+		return writer->AddTrack(track);
 	}
 
 }  // namespace pub

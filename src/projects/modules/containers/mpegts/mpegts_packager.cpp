@@ -50,7 +50,7 @@ namespace mpegts
 		return true;
 	}
 
-    uint64_t Packager::GetNextSegmentId()
+    int64_t Packager::GetNextSegmentId()
     {
         return _last_segment_id ++;
     }
@@ -91,7 +91,7 @@ namespace mpegts
 
     void Packager::OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets)
     {
-        logtd("OnPsi %u tracks", tracks.size());
+        logtt("OnPsi %u tracks", tracks.size());
 
         for (const auto &track : tracks)
         {   
@@ -134,7 +134,7 @@ namespace mpegts
 		CreateSegmentIfReady(true);
 	}
 
-	std::shared_ptr<Segment> Packager::GetSegment(uint64_t segment_id) const
+	std::shared_ptr<base::modules::Segment> Packager::GetSegment(int64_t segment_id) const
 	{
 		{
 			std::shared_lock<std::shared_mutex> lock(_segments_guard);
@@ -166,7 +166,35 @@ namespace mpegts
 		return nullptr;
 	}
 
-	std::shared_ptr<const ov::Data> Packager::GetSegmentData(uint64_t segment_id) const
+	std::shared_ptr<base::modules::Segment> Packager::GetLastSegment() const
+	{
+		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		if (_segments.empty())
+		{
+			return nullptr;
+		}
+
+		return _segments.rbegin()->second;
+	}
+
+	uint64_t Packager::GetSegmentCount() const
+	{
+		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		return static_cast<uint64_t>(_segments.size());
+	}
+
+	int64_t Packager::GetLastSegmentNumber() const
+	{
+		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		if (_segments.empty())
+		{
+			return -1;
+		}
+
+		return _segments.rbegin()->first;
+	}
+
+	std::shared_ptr<const ov::Data> Packager::GetSegmentData(int64_t segment_id) const
 	{
 		auto segment = GetSegment(segment_id);
 		if (segment == nullptr)
@@ -179,7 +207,7 @@ namespace mpegts
 
     void Packager::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets)
     {
-       //logtd("OnFrame track_id %u", media_packet->GetTrackId());
+       //logtt("OnFrame track_id %u", media_packet->GetTrackId());
 
         auto track_id = media_packet->GetTrackId();
         auto track = GetMediaTrack(track_id);
@@ -263,7 +291,7 @@ namespace mpegts
 		std::vector<std::shared_ptr<Marker>> markers;
 		if (HasMarker(main_segment_end_timestamp) == true)
 		{
-			logtd("Stream(%s) Main Track(%u) main_segment_base_timestamp(%lld) main_segment_duration(%lld) main_segment_duration_ms(%f) main_segment_end_timestamp(%lld)", _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
+			logtt("Stream(%s) Main Track(%u) main_segment_base_timestamp(%lld) main_segment_duration(%lld) main_segment_duration_ms(%f) main_segment_end_timestamp(%lld)", _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
 
 			markers = PopMarkers(main_segment_end_timestamp);
 			force_create = true;
@@ -278,8 +306,8 @@ namespace mpegts
 				{
 					auto duration_msec = cue_out_event->GetDurationMsec();
 					auto main_track = GetMediaTrack(_main_track_id);
-					int64_t cue_in_timestamp = (main_segment_end_timestamp - 1) + (static_cast<double>(duration_msec) / 1000.0 * main_track->GetTimeBase().GetTimescale());
-					int64_t cue_in_timestamp_ms = (static_cast<double>(main_segment_base_timestamp - 1) / main_track->GetTimeBase().GetTimescale() * 1000.0) + duration_msec;
+					int64_t cue_in_timestamp = (main_segment_end_timestamp - 1) + (static_cast<double>(duration_msec) / 1000.0 * mpegts::TIMEBASE_DBL);
+					int64_t cue_in_timestamp_ms = (static_cast<double>(main_segment_base_timestamp - 1) / mpegts::TIMEBASE_DBL * 1000.0) + duration_msec;
 
 					auto cue_in_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, cue_in_timestamp, cue_in_timestamp_ms, CueEvent::Create(CueEvent::CueType::IN, 0)->Serialize());
 					if (cue_in_marker != nullptr)
@@ -528,7 +556,7 @@ namespace mpegts
 			return;
 		}
 
-		logtd("Saved segment to file: %s", file_path.CStr());
+		logtt("Saved segment to file: %s", file_path.CStr());
 
 		// Add segment info
 		{
@@ -597,7 +625,7 @@ namespace mpegts
 			return;
 		}
 
-		logtd("Deleted segment file: %s", file_path.CStr());
+		logtt("Deleted segment file: %s", file_path.CStr());
 	}
 
 	void Packager::SaveSegmentToRetentionBuffer(const std::shared_ptr<Segment> &segment)
@@ -606,7 +634,7 @@ namespace mpegts
 			std::lock_guard<std::shared_mutex> lock(_retained_segments_guard);
 			_retained_segments.emplace(segment->GetId(), segment);
 
-			logtd("Saved segment to retention buffer: %u", segment->GetId());
+			logtt("Saved segment to retention buffer: %u", segment->GetId());
 
 			// When a segment queues the retention buffer, it is notified that the segment has been deleted. 
 			// And the retention buffer stores this as much as count. 
@@ -676,8 +704,8 @@ namespace mpegts
 		return ov::String::FormatString("%s/%s/%s", _config.dvr_storage_path.CStr(), _config.stream_id_meta.CStr(), _packager_id.CStr());
 	}
 
-	ov::String Packager::GetSegmentFilePath(uint64_t segment_id) const
+	ov::String Packager::GetSegmentFilePath(int64_t segment_id) const
 	{
-		return ov::String::FormatString("%s/segment_%u_hls.ts", GetDvrStoragePath().CStr(), segment_id);
+		return ov::String::FormatString("%s/segment_%" PRId64 "_hls.ts", GetDvrStoragePath().CStr(), segment_id);
 	}
 }

@@ -324,7 +324,7 @@ std::tuple<bool, ov::String> MarkerBox::CanInsertMarker(const std::shared_ptr<Ma
 	auto last_out_of_network = _last_inserted_marker->IsOutOfNetwork();
 	if (last_out_of_network.has_value() == false)
 	{
-		return {false, ov::String::FormatString("Failed to get out of network value of the last inserted marker", marker->GetTag().CStr())};
+		return {false, ov::String("Failed to get out of network value of the last inserted marker")};
 	}
 	bool last_out_of_network_value = last_out_of_network.value();
 
@@ -418,7 +418,7 @@ bool MarkerBox::InsertMarker(const std::shared_ptr<Marker> &marker)
 	auto last_out_of_network = _last_inserted_marker->IsOutOfNetwork();
 	if (last_out_of_network.has_value() == false)
 	{
-		logtw("Failed to get out of network value of the last inserted marker", marker->GetTag().CStr());
+		logtw("Failed to get out of network value of the last inserted marker");
 		return false;
 	}
 	bool last_out_of_network_value = last_out_of_network.value();
@@ -585,7 +585,7 @@ void MarkerBox::RemoveExpiredMarkers(int64_t current_timestamp)
 		auto &marker = it->second;
 		if (marker->GetTimestamp() < current_timestamp)
 		{
-			logtc("Remove expired marker:(%lld) %lld - %s", current_timestamp, marker->GetTimestamp(), marker->GetTag().CStr());
+			logtc("Remove expired marker:(%" PRId64 ") %" PRId64 " - %s", current_timestamp, marker->GetTimestamp(), marker->GetTag().CStr());
 			it = _markers_by_timestamp.erase(it);
 			_markers_by_sequence_number.erase(marker->GetDesiredSequenceNumber());
 		}
@@ -641,7 +641,7 @@ int64_t MarkerBox::GetEstimatedSequenceNumber(int64_t timestamp_ms) const
 	auto prev_markers = GetMarkerCount();
 	estimated_sequence_number += prev_markers;
 
-	logtd("actual_segment_duration_ms: %f, last_sample_end_timestamp_ms: %f, time_until_marker_ms: %f, remaining_time_in_current_segment_ms: %f, estimated_sequence_number: %lld last_segment_number: %lld  last_segment_duration: %f is_last_segment_completed: %d",
+	logtt("actual_segment_duration_ms: %f, last_sample_end_timestamp_ms: %f, time_until_marker_ms: %f, remaining_time_in_current_segment_ms: %f, estimated_sequence_number: %" PRId64 " last_segment_number: %" PRId64 " last_segment_duration: %f is_last_segment_completed: %d",
 		  actual_segment_duration_ms, last_sample_end_timestamp_ms, time_until_marker_ms, remaining_time_in_current_segment_ms, estimated_sequence_number, segment_info->last_segment_number, segment_info->last_segement_duration_ms, segment_info->is_last_segment_completed);
 
 	return estimated_sequence_number;

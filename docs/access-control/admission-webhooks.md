@@ -28,6 +28,26 @@ AdmissionWebhooks can be set up on VirtualHost, as shown below.
 
 <table><thead><tr><th width="290">Key</th><th>Description</th></tr></thead><tbody><tr><td>ControlServerUrl</td><td>The HTTP Server to receive the query. HTTP and HTTPS are available.</td></tr><tr><td>SecretKey</td><td><p>The secret key used when encrypting with HMAC-SHA1</p><p>For more information, see <a href="admission-webhooks.md#security">Security</a>.</p></td></tr><tr><td>Timeout</td><td>Time to wait for a response after request (in milliseconds).</td></tr><tr><td>Enables</td><td>Enable Providers and Publishers to use AdmissionWebhooks.</td></tr></tbody></table>
 
+{% hint style="warning" %}
+If the Control Server does not respond quickly enough, AdmissionWebhooks may occupy a socket thread.\
+In this situation, increasing `WorkerCount` can distribute the load across multiple threads, but other sessions sharing the same thread may still be blocked until the Control Server responds.
+
+To avoid this issue, use the `ThreadPerSocket` option as shown in the example below.\
+This option creates and assigns a dedicated thread for each socket connection, so one session will not block others.
+
+Note that creating too many threads can increase context switching overhead. Therefore, this option is recommended only when the expected number of concurrent sessions is relatively small (typically fewer than 100 concurrent sessions, depending on the number of CPU cores)
+
+```xml
+<Bind>
+    <Providers>
+      <RTMP>
+        <Port>${env:OME_RTMP_PROV_PORT:11935}</Port>
+				<!-- <WorkerCount>8</WorkerCount> -->
+		    <ThreadPerSocket>true</ThreadPerSocket>
+      </RTMP>
+```
+{% endhint %}
+
 ## Request
 
 ### Format

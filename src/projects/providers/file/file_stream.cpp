@@ -150,7 +150,7 @@ namespace pvd
 		auto url = ov::String::FormatString("%s%s", GetApplicationInfo().GetConfig().GetProviders().GetFileProvider().GetRootPath().CStr(), _url->Path().CStr());
 
 		_format_context = nullptr;
-		logtd("%s/%s(%u) Trying to open file. path(%s)", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), url.CStr());
+		logtt("%s/%s(%u) Trying to open file. path(%s)", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), url.CStr());
 		if ((err = ::avformat_open_input(&_format_context, url.CStr(), nullptr, nullptr)) < 0)
 		{
 			SetState(State::ERROR);
@@ -209,7 +209,7 @@ namespace pvd
 				AddTrack(media_track);
 			}
 			else{
-				logtd("Duplicate media types are not used and ignored. %s", media_track->GetInfoString().CStr());
+				logtt("Duplicate media types are not used and ignored. %s", media_track->GetInfoString().CStr());
 			}
 #else
 			AddTrack(media_track);
@@ -366,7 +366,7 @@ namespace pvd
 					RequestRewind();
 
 					UpdateBaseTimestamp();
-					logtd("%s/%s(%u) Reached the end of the file. rewind to the first frame.", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+					logtt("%s/%s(%u) Reached the end of the file. rewind to the first frame.", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
 					continue;
 				}
 

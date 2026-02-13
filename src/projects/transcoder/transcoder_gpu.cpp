@@ -55,7 +55,7 @@ bool TranscodeGPU::Initialize()
 	}
 	else
 	{
-		logtw("No supported NVIDIA accelerator");
+		logtd("No supported NVIDIA accelerator");
 	}
 
 	// XMA
@@ -65,7 +65,7 @@ bool TranscodeGPU::Initialize()
 	}
 	else
 	{
-		logtw("No supported Xilinx Media accelerator");
+		logtd("No supported Xilinx Media accelerator");
 	}
 
 	// QSV
@@ -75,7 +75,7 @@ bool TranscodeGPU::Initialize()
 	}
 	else
 	{
-		logtw("No supported Intel QuickSync accelerator");
+		logtd("No supported Intel QuickSync accelerator");
 	}
 
 	// NILOGAN
@@ -85,7 +85,7 @@ bool TranscodeGPU::Initialize()
 	}
 	else
 	{
-		logtw("No supported Netint VPU accelerator");
+		logtd("No supported Netint VPU accelerator");
 	}
 
 	_initialized = true;
@@ -95,6 +95,11 @@ bool TranscodeGPU::Initialize()
 
 bool TranscodeGPU::Uninitialize()
 {
+	if (!_initialized)
+	{
+		return true;
+	}
+
 	logti("Trying to release Transcoder GPU resources");
 
 	for (int i = 0; i < MAX_DEVICE_COUNT; i++)
@@ -265,7 +270,7 @@ bool TranscodeGPU::CheckSupportedNV()
 	nvmlReturn_t result = nvmlInit();
 	if (result != NVML_SUCCESS)
 	{
-		logtd("NVML: Driver is not loaded or installed");
+		logtt("NVML: Driver is not loaded or installed");
 		return false;
 	}
 
@@ -368,7 +373,7 @@ bool TranscodeGPU::CheckSupportedXMA()
 	xrmContext* xrm_ctx = (xrmContext*)xrmCreateContext(XRM_API_VERSION_1);
 	if (xrm_ctx == NULL)
 	{
-		logtd("XMA: Driver is not loaded or installed");
+		logtt("XMA: Driver is not loaded or installed");
 		return false;
 	}
 
@@ -442,7 +447,7 @@ bool TranscodeGPU::CheckSupportedQSV()
 		av_buffer_unref(&_device_context_qsv[0]);
 		_device_context_qsv[0] = nullptr;
 
-		logtd("QSV: Driver is not loaded or installed");
+		logtt("QSV: Driver is not loaded or installed");
 
 		return false;
 	}
@@ -452,7 +457,7 @@ bool TranscodeGPU::CheckSupportedQSV()
 	[[maybe_unused]]
 	auto constraints = av_hwdevice_get_hwframe_constraints(_device_context_qsv[0], nullptr);
 
-	logtd("constraints. hw.fmt(%d), sw.fmt(%d)", *constraints->valid_hw_formats, *constraints->valid_sw_formats);
+	logtt("constraints. hw.fmt(%d), sw.fmt(%d)", *constraints->valid_hw_formats, *constraints->valid_sw_formats);
 
 	av_hwframe_constraints_free(&constraints);
 
@@ -469,7 +474,7 @@ bool TranscodeGPU::CheckSupportedNILOGAN()
 		av_buffer_unref(&_device_context_nilogan[0]);
 		_device_context_nilogan[0] = nullptr;
 
-		logtd("Netint: Driver is not loaded or installed");
+		logtt("Netint: Driver is not loaded or installed");
 		return false;
 	}
 
@@ -477,7 +482,7 @@ bool TranscodeGPU::CheckSupportedNILOGAN()
 
 	auto constraints = av_hwdevice_get_hwframe_constraints(_device_context_nilogan[0], nullptr);
 
-	logtd("constraints. hw.fmt(%d), sw.fmt(%d)", *constraints->valid_hw_formats, *constraints->valid_sw_formats);
+	logtt("constraints. hw.fmt(%d), sw.fmt(%d)", *constraints->valid_hw_formats, *constraints->valid_sw_formats);
 
 	av_hwframe_constraints_free(&constraints);
 

@@ -129,7 +129,7 @@ std::shared_ptr<ov::Data> SEIEvent::Serialize() const
 
 	// Replace ${EpochTime} with current epoch time
 	auto current_time = ov::Time::GetTimestampInMs();
-	payload_data = payload_data.Replace("${EpochTime}", ov::String::FormatString("%lld", current_time));
+	payload_data = payload_data.Replace("${EpochTime}", ov::String::FormatString("%" PRId64, current_time));
 
 	auto sei = std::make_shared<H264SEI>();
 	sei->SetPayloadType(payload_type);

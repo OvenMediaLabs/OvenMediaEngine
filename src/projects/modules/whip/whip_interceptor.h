@@ -37,4 +37,9 @@ protected:
 
 		return false;
 	}
+
+	bool IsCacheable() const override
+	{
+		return false;
+	}
 };

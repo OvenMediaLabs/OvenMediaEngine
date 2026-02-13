@@ -40,6 +40,11 @@ namespace http
 					return _parse_status;
 				}
 
+				bool IsParsing() const
+				{
+					return (_parse_status == StatusCode::PartialContent);
+				}
+
 				const HttpHeaderMap &GetHeaders() const noexcept
 				{
 					return _headers;

@@ -526,7 +526,7 @@ namespace pvd
             auto track_id = FindTrackIdByOriginId(packet.stream_index);
             if (track_id < 0)
             {
-                logtd("Scheduled Channel : %s/%s: Failed to find track %d", GetApplicationName(), GetName().CStr(), packet.stream_index);
+                logtt("Scheduled Channel : %s/%s: Failed to find track %d", GetApplicationName(), GetName().CStr(), packet.stream_index);
                 ::av_packet_unref(&packet);
                 continue;
             }
@@ -611,7 +611,7 @@ namespace pvd
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
            
             AdjustTimestampByBase(track_id, pts, dts, std::numeric_limits<int64_t>::max(), duration);
-			logtd("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
+			logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
@@ -634,7 +634,7 @@ namespace pvd
                 dts_gap = media_packet->GetDts() - last_packet->GetDts();
             }
 
-            logtd("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f, dts_ms %f, dts_gap %lld", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
+            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f, dts_ms %f, dts_gap %lld", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
 
             SendFrame(media_packet);
 
@@ -989,7 +989,7 @@ namespace pvd
             auto track_id = FindTrackIdByOriginId(origin_track_id);
             if (track_id < 0)
             {
-                logtd("Scheduled Channel : %s/%s: Failed to find track %d", GetApplicationName(), GetName().CStr(), media_packet->GetTrackId());
+                logtt("Scheduled Channel : %s/%s: Failed to find track %d", GetApplicationName(), GetName().CStr(), media_packet->GetTrackId());
                 continue;
             }
 
@@ -1051,7 +1051,7 @@ namespace pvd
 			dts = Rescale(dts, track->GetTimeBase().GetDen() * origin_tb.GetNum(), origin_tb.GetDen() * track->GetTimeBase().GetNum());
 			duration = Rescale(duration, track->GetTimeBase().GetDen() * origin_tb.GetNum(), origin_tb.GetDen() * track->GetTimeBase().GetNum());
 
-			logtd("Scheduled Channel : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, dts, pts, dts, duration, track->GetTimeBase().GetExpr());
+			logtt("Scheduled Channel : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
             if (track_first_packet_map.find(track_id) == track_first_packet_map.end())
             {
@@ -1075,7 +1075,7 @@ namespace pvd
 
 			double time_ms = (double)(dts * 1000.0 * track->GetTimeBase().GetExpr());
 
-            logtd("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
+            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
 
             SendFrame(media_packet);
 

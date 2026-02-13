@@ -23,7 +23,7 @@ namespace pub
 	FileApplication::~FileApplication()
 	{
 		Stop();
-		logtd("FileApplication(%d) has been terminated finally", GetId());
+		logtt("FileApplication(%d) has been terminated finally", GetId());
 	}
 
 	bool FileApplication::Start()
@@ -38,7 +38,7 @@ namespace pub
 
 	std::shared_ptr<pub::Stream> FileApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 	{
-		logtd("Created Stream : %s/%u", info->GetName().CStr(), info->GetId());
+		logtt("Created Stream : %s/%u", info->GetName().CStr(), info->GetId());
 
 		auto file_conifg = GetConfig().GetPublishers().GetFilePublisher();
 		auto stream_map_config = file_conifg.GetStreamMap();
@@ -120,7 +120,7 @@ namespace pub
 		auto next_session_state = session->GetState();
 		if (session_state != next_session_state)
 		{
-			logtd("Changed State. State(%d - %d)", session_state, next_session_state);
+			logtt("Changed State. State(%d - %d)", ov::ToUnderlyingType(session_state), ov::ToUnderlyingType(next_session_state));
 		}
 	}
 
@@ -141,7 +141,7 @@ namespace pub
 		auto next_session_state = session->GetState();
 		if (session_state != next_session_state)
 		{
-			logtd("Changed State. State(%d - %d)", session_state, next_session_state);
+			logtt("Changed State. State(%d - %d)", ov::ToUnderlyingType(session_state), ov::ToUnderlyingType(next_session_state));
 		}
 	}
 

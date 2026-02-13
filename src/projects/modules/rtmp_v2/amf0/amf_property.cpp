@@ -171,7 +171,7 @@ namespace modules::rtmp
 	{
 		if (byte_stream.IsRemained(8) == false)
 		{
-			logtd("Failed to decode number - not enough data (%zu bytes remained)", byte_stream.Remained());
+			logtt("Failed to decode number - not enough data (%zu bytes remained)", byte_stream.Remained());
 			return false;
 		}
 
@@ -185,7 +185,7 @@ namespace modules::rtmp
 	{
 		if (byte_stream.IsRemained(1) == false)
 		{
-			logtd("Failed to decode boolean - not enough data (%zu bytes remained)", byte_stream.Remained());
+			logtt("Failed to decode boolean - not enough data (%zu bytes remained)", byte_stream.Remained());
 			return false;
 		}
 
@@ -198,7 +198,7 @@ namespace modules::rtmp
 	{
 		if (byte_stream.IsRemained(2) == false)
 		{
-			logtd("Failed to decode string - not enough data (%zu bytes remained)", byte_stream.Remained());
+			logtt("Failed to decode string - not enough data (%zu bytes remained)", byte_stream.Remained());
 			return false;
 		}
 
@@ -206,13 +206,13 @@ namespace modules::rtmp
 
 		if (length == 0)
 		{
-			logtd("Empty string found");
+			logtt("Empty string found");
 			return true;
 		}
 
 		if (byte_stream.IsRemained(length) == false)
 		{
-			logtd("Invalid string length: %u (%zu bytes remained)", length, byte_stream.Remained());
+			logtt("Invalid string length: %u (%zu bytes remained)", length, byte_stream.Remained());
 			return false;
 		}
 
@@ -233,7 +233,7 @@ namespace modules::rtmp
 	{
 		if (encode_marker && EncodeMarker(byte_stream) == false)
 		{
-			logtd("Failed to encode marker");
+			logtt("Failed to encode marker");
 			return false;
 		}
 
@@ -290,7 +290,7 @@ namespace modules::rtmp
 
 			if (DecodeMarker(byte_stream, false) == false)
 			{
-				logtd("Failed to decode marker");
+				logtt("Failed to decode marker");
 				return false;
 			}
 		}

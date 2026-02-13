@@ -73,6 +73,11 @@ namespace info
 		return _name;
 	}
 
+	const NamePath &Application::GetNamePath() const
+	{
+		return _name.GetNamePath();
+	}
+
 	const Host &Application::GetHostInfo() const
 	{
 		return *_host_info;

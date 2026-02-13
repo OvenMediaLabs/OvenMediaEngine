@@ -28,7 +28,7 @@ namespace modules
 			// Interpret UB[4] bits as VideoPacketType instead of sound rate, size, and type.
 			// videoPacketType = UB[4] as VideoPacketType	// at byte boundary after this read
 			video_data->video_packet_type = reader.ReadAs<VideoPacketType>(4);
-			logat("videoPacketType (4 bits): %s (%d, 0x%04X)", EnumToString(video_data->video_packet_type), video_data->video_packet_type, video_data->video_packet_type);
+			logap("videoPacketType (4 bits): %s (%d, 0x%04X)", EnumToString(video_data->video_packet_type), video_data->video_packet_type, video_data->video_packet_type);
 
 			uint32_t mod_ex_data_size					= 0;
 			std::shared_ptr<const ov::Data> mod_ex_data = nullptr;
@@ -39,14 +39,14 @@ namespace modules
 				// Determine the size of the packet ModEx data (ranging from 1 to 256 bytes)
 				// modExDataSize = UI8 + 1
 				mod_ex_data_size = reader.ReadU8() + 1;
-				logat("modExDataSize (8 bits): %u (0x%02X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
+				logap("modExDataSize (8 bits): %u (0x%02X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
 
 				// If maximum 8-bit size is not sufficient, use a 16-bit value
 				if (mod_ex_data_size == 256)
 				{
 					// modExDataSize = UI16 + 1;
 					mod_ex_data_size = reader.ReadU16() + 1;
-					logat("modExDataSize (16 bits): %u (0x%04X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
+					logap("modExDataSize (16 bits): %u (0x%04X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
 				}
 
 				// Fetch the packet ModEx data based on its determined size
@@ -55,7 +55,7 @@ namespace modules
 				// fetch the VideoPacketOptionType
 				// videoPacketModExType = UB[4] as VideoPacketModExType
 				auto video_packet_mod_ex_type = reader.ReadAs<VideoPacketModExType>(4);
-				logat("videoPacketModExType (4 bits): %s (%d, 0x%01X)", EnumToString(video_packet_mod_ex_type), video_packet_mod_ex_type, video_packet_mod_ex_type);
+				logap("videoPacketModExType (4 bits): %s (%d, 0x%01X)", EnumToString(video_packet_mod_ex_type), video_packet_mod_ex_type, video_packet_mod_ex_type);
 
 				// Update videoPacketType
 				// videoPacketType = UB[4] as VideoPacketType	// at byte boundary after this read
@@ -79,7 +79,7 @@ namespace modules
 
 					// videoTimestampNanoOffset = bytesToUI24(modExData)
 					video_data->video_timestamp_nano_offset = ov::BE24ToHost(reader.ReadU24());
-					logat("videoTimestampNanoOffset (24 bits): %u (0x%06X)", video_data->video_timestamp_nano_offset, video_data->video_timestamp_nano_offset);
+					logap("videoTimestampNanoOffset (24 bits): %u (0x%06X)", video_data->video_timestamp_nano_offset, video_data->video_timestamp_nano_offset);
 
 					// TODO: Integrate this nanosecond offset into timestamp management
 					// to accurately adjust the presentation time.
@@ -94,7 +94,7 @@ namespace modules
 				{
 					auto video_command		  = reader.ReadU8As<VideoCommand>();
 					video_data->video_command = video_command;
-					logat("videoCommand (8 bits): %s (%d, 0x%02X)", EnumToString(video_command), video_command, video_command);
+					logap("videoCommand (8 bits): %s (%d, 0x%02X)", EnumToString(video_command), video_command, video_command);
 				}
 
 				// ExVideoTagBody has no payload if we got here.
@@ -104,16 +104,16 @@ namespace modules
 			else if (video_data->video_packet_type == VideoPacketType::Multitrack)
 			{
 				_is_multitrack = true;
-				logat("isMultiTrack: true");
+				logap("isMultiTrack: true");
 				// videoMultitrackType = UB[4] as AvMultitrackType
 				_multitrack_type = reader.ReadAs<AvMultitrackType>(4);
-				logat("videoMultitrackType (4 bits): %s (%d, 0x%01X)", EnumToString(_multitrack_type), _multitrack_type, _multitrack_type);
+				logap("videoMultitrackType (4 bits): %s (%d, 0x%01X)", EnumToString(_multitrack_type), _multitrack_type, _multitrack_type);
 
 				// Fetch VideoPacketType for all video tracks in the video message.
 				// This fetch MUST not result in a VideoPacketType.Multitrack
 				// videoPacketType = UB[4] as VideoPacketType
 				video_data->video_packet_type = reader.ReadAs<VideoPacketType>(4);
-				logat("videoPacketType (4 bits): %s (%d, 0x%01X)", EnumToString(video_data->video_packet_type), video_data->video_packet_type, video_data->video_packet_type);
+				logap("videoPacketType (4 bits): %s (%d, 0x%01X)", EnumToString(video_data->video_packet_type), video_data->video_packet_type, video_data->video_packet_type);
 
 				if (_multitrack_type != AvMultitrackType::ManyTracksManyCodecs)
 				{
@@ -122,7 +122,7 @@ namespace modules
 					{
 						auto video_fourcc		 = reader.ReadU32BEAs<VideoFourCc>();
 						video_data->video_fourcc = video_fourcc;
-						logat("videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
+						logap("videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
 					}
 				}
 			}
@@ -131,7 +131,7 @@ namespace modules
 				// videoFourCc = FOURCC as VideoFourCc
 				auto video_fourcc		 = reader.ReadU32BEAs<VideoFourCc>();
 				video_data->video_fourcc = video_fourcc;
-				logat("videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
+				logap("videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
 			}
 
 			return video_data;
@@ -201,17 +201,17 @@ namespace modules
 			//                               else if AVCPacketType == 2
 			//                                 Empty
 			video_data->video_packet_type = reader.ReadU8As<VideoPacketType>();
-			logat("[legacy AVC] videoPacketType (8 bits): %s (%d, 0x%02X)",
+			logap("[legacy AVC] videoPacketType (8 bits): %s (%d, 0x%02X)",
 				  EnumToString(video_data->video_packet_type), video_data->video_packet_type, video_data->video_packet_type);
 			video_data->composition_time_offset = reader.ReadS24BE();
-			logat("[legacy AVC] compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
+			logap("[legacy AVC] compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
 
 			video_data->payload = GetPayload(false, reader, 0, 0);
-			logat("[legacy AVC] payload: %zu bytes", video_data->payload->GetLength());
+			logap("[legacy AVC] payload: %zu bytes", video_data->payload->GetLength());
 
 			if (video_data->video_packet_type == VideoPacketType::SequenceStart)
 			{
-				logat("[legacy AVC] SequenceStart, parsing AVCDecoderConfigurationRecord");
+				logap("[legacy AVC] SequenceStart, parsing AVCDecoderConfigurationRecord");
 
 				auto header = std::make_shared<AVCDecoderConfigurationRecord>();
 
@@ -279,7 +279,7 @@ namespace modules
 						// videoFourCc = FOURCC as VideoFourCc
 						auto video_fourcc		 = reader.ReadU32BEAs<VideoFourCc>();
 						video_data->video_fourcc = video_fourcc;
-						logat("[MultiTrack/ManyTracksManyCodecs] videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
+						logap("[MultiTrack/ManyTracksManyCodecs] videoFourCc (32 bits): %s (%08X)", FourCcToString(video_fourcc), video_fourcc);
 					}
 
 					// Track Ordering:
@@ -297,7 +297,7 @@ namespace modules
 					{
 						auto video_track_id	 = reader.ReadU8();
 						video_data->track_id = video_track_id;
-						logat("[MultiTrack] videoTrackId (8 bits): %u", video_track_id);
+						logap("[MultiTrack] videoTrackId (8 bits): %u", video_track_id);
 					}
 
 					if (_multitrack_type != AvMultitrackType::OneTrack)
@@ -311,7 +311,7 @@ namespace modules
 						// type, the offset points to either a `fourCc` or a `trackId.`
 						// sizeOfVideoTrack = UI24
 						size_of_video_track = reader.ReadU24BE();
-						logat("[MultiTrack] sizeOfVideoTrack (24 bits): %u", size_of_video_track);
+						logap("[MultiTrack] sizeOfVideoTrack (24 bits): %u", size_of_video_track);
 
 						// Record the offset of the sizeOfVideoTrack field
 						// to calculate the size of payload
@@ -335,14 +335,14 @@ namespace modules
 					video_data->video_metadata = ParseVideoMetadata(reader);
 #if DEBUG
 					[[maybe_unused]] auto used_bits = reader.GetBitOffset() - last_bit_offset;
-					logat("[Metadata] videoMetadata (AMF): %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
+					logap("[Metadata] videoMetadata (AMF): %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
 #endif	// DEBUG
 				}
 
 				if (video_data->video_packet_type == VideoPacketType::SequenceEnd)
 				{
 					// signals end of sequence
-					logat("[SequenceEnd]");
+					logap("[SequenceEnd]");
 				}
 
 				if (video_data->video_packet_type == VideoPacketType::SequenceStart)
@@ -353,19 +353,19 @@ namespace modules
 					{
 						// body contains a VP8 configuration record to start the sequence
 						// vp8Header = [VPCodecConfigurationRecord]
-						logat("[SequenceStart] VPCodecConfigurationRecord");
+						logap("[SequenceStart] VPCodecConfigurationRecord");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Vp9)
 					{
 						// body contains a VP9 configuration record to start the sequence
 						// vp9Header = [VPCodecConfigurationRecord]
-						logat("[SequenceStart] VPCodecConfigurationRecord");
+						logap("[SequenceStart] VPCodecConfigurationRecord");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Av1)
 					{
 						// body contains a configuration record to start the sequence
 						// av1Header = [AV1CodecConfigurationRecord]
-						logat("[SequenceStart] AV1CodecConfigurationRecord");
+						logap("[SequenceStart] AV1CodecConfigurationRecord");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Avc)
 					{
@@ -375,7 +375,7 @@ namespace modules
 						// See ISO/IEC 14496-15:2019, 5.3.4.1 for the description of
 						// the AVCDecoderConfigurationRecord.
 						// avcHeader = [AVCDecoderConfigurationRecord]
-						logat("[SequenceStart] AVCDecoderConfigurationRecord");
+						logap("[SequenceStart] AVCDecoderConfigurationRecord");
 						video_data->header = ParseAVC(reader);
 
 						if (video_data->header != nullptr)
@@ -394,7 +394,7 @@ namespace modules
 						// See ISO/IEC 14496-15:2022, 8.3.3.2 for the description of
 						// the HEVCDecoderConfigurationRecord.
 						// hevcHeader = [HEVCDecoderConfigurationRecord]
-						logat("[SequenceStart] HEVCDecoderConfigurationRecord");
+						logap("[SequenceStart] HEVCDecoderConfigurationRecord");
 						video_data->header = ParseHEVC(reader);
 
 						if (video_data->header != nullptr)
@@ -423,7 +423,7 @@ namespace modules
 					}
 #if DEBUG
 					[[maybe_unused]] auto used_bits = reader.GetBitOffset() - last_bit_offset;
-					logat("[SequenceStart] ConfigurationRecord: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
+					logap("[SequenceStart] ConfigurationRecord: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
 #endif	// DEBUG
 				}
 
@@ -433,7 +433,7 @@ namespace modules
 					{
 						// body contains a video descriptor to start the sequence
 						// av1Header = [AV1VideoDescriptor]
-						logat("[MPEG2TSSequenceStart] AV1VideoDescriptor");
+						logap("[MPEG2TSSequenceStart] AV1VideoDescriptor");
 					}
 				}
 
@@ -447,19 +447,19 @@ namespace modules
 					{
 						// body contains series of coded full frames
 						// vp8CodedData = [Vp8CodedData]
-						logat("[CodedFrames] Vp8CodedData");
+						logap("[CodedFrames] Vp8CodedData");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Vp9)
 					{
 						// body contains series of coded full frames
 						// vp9CodedData = [Vp9CodedData]
-						logat("[CodedFrames] Vp9CodedData");
+						logap("[CodedFrames] Vp9CodedData");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Av1)
 					{
 						// body contains one or more OBUs representing a single temporal unit
 						// av1CodedData = [Av1CodedData]
-						logat("[CodedFrames] Av1CodedData");
+						logap("[CodedFrames] Av1CodedData");
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Avc)
 					{
@@ -467,11 +467,11 @@ namespace modules
 						// time offset. The offset in an FLV file is always in milliseconds.
 						// compositionTimeOffset = SI24
 						video_data->composition_time_offset = reader.ReadS24BE();
-						logat("[Coded Frames] AVC compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
+						logap("[Coded Frames] AVC compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
 
 						// Body contains one or more NALUs; full frames are required
 						// avcCodedData = [AvcCodedData]
-						logat("[CodedFrames] AvcCodedData (Remaining bytes: %zu)",
+						logap("[CodedFrames] AvcCodedData (Remaining bytes: %zu)",
 							  reader.GetRemainingBytes());
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Hevc)
@@ -480,11 +480,11 @@ namespace modules
 						// time offset. The offset in an FLV file is always in milliseconds.
 						// compositionTimeOffset = SI24
 						video_data->composition_time_offset = reader.ReadS24BE();
-						logat("[Coded Frames] HEVC compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
+						logap("[Coded Frames] HEVC compositionTimeOffset (24 bits): %d (0x%06X)", video_data->composition_time_offset, video_data->composition_time_offset);
 
 						// Body contains one or more NALUs; full frames are required
 						// hevcData = [HevcCodedData]
-						logat("[CodedFrames] HevcCodedData (Remaining bytes: %zu)",
+						logap("[CodedFrames] HevcCodedData (Remaining bytes: %zu)",
 							  reader.GetRemainingBytes());
 					}
 					else
@@ -501,7 +501,7 @@ namespace modules
 
 #if DEBUG
 					[[maybe_unused]] auto used_bits = reader.GetBitOffset() - last_bit_offset;
-					logat("[CodedFrames] CodedData: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
+					logap("[CodedFrames] CodedData: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
 #endif	// DEBUG
 				}
 
@@ -514,7 +514,7 @@ namespace modules
 					{
 						// Body contains one or more NALUs; full frames are required
 						// avcCodedData = [AvcCodedData]
-						logat("[CodedFramesX] AvcCodedData");
+						logap("[CodedFramesX] AvcCodedData");
 						OV_ASSERT2(false);
 						// TODO: Need to implement this
 						return nullptr;
@@ -523,7 +523,7 @@ namespace modules
 					{
 						// Body contains one or more NALUs; full frames are required
 						// hevcData = [HevcCodedData]
-						logat("[CodedFramesX] HevcCodedData");
+						logap("[CodedFramesX] HevcCodedData");
 
 #if DEBUG
 						auto current_bit_offset = reader.GetBitOffset();
@@ -538,7 +538,7 @@ namespace modules
 						video_data->payload = payload;
 #if DEBUG
 						[[maybe_unused]] auto used_bits = reader.GetBitOffset() - current_bit_offset;
-						logat("[CodedFramesX] CodedData: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
+						logap("[CodedFramesX] CodedData: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
 #endif	// DEBUG
 					}
 					else
@@ -583,14 +583,14 @@ namespace modules
 				//
 				// isExVideoHeader = UB[1]
 				_is_ex_header = reader.ReadBit();
-				logat("isExVideoHeader (1 bit): %s (%d)", _is_ex_header ? "true" : "false", _is_ex_header);
+				logap("isExVideoHeader (1 bit): %s (%d)", _is_ex_header ? "true" : "false", _is_ex_header);
 				// videoFrameType = UB[3] as VideoFrameType
 				auto video_frame_type = reader.ReadAs<VideoFrameType>(3);
-				logat("videoFrameType (3 bits): %s (%d, 0x%08X)", EnumToString(video_frame_type), video_frame_type, video_frame_type);
+				logap("videoFrameType (3 bits): %s (%d, 0x%08X)", EnumToString(video_frame_type), video_frame_type, video_frame_type);
 
 				if (_is_ex_header)
 				{
-					logat("Enhanced video header found");
+					logap("Enhanced video header found");
 
 					bool process_video_body;
 
@@ -607,7 +607,7 @@ namespace modules
 				}
 				else
 				{
-					logat("Legacy video header found");
+					logap("Legacy video header found");
 
 					// Utilize the VideoCodecId values and the bitstream description
 					// as defined in the legacy [FLV] specification. Refer to this

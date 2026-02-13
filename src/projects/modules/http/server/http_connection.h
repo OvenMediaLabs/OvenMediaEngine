@@ -72,9 +72,9 @@ namespace http
 			std::any GetUserData() const;
 
 			void AddUserData(const ov::String &key, std::any user_data);
-			std::any GetUserData(const ov::String &key) const;
+			const std::any *GetUserData(const ov::String &key) const;
 			// Get user datas
-			std::map<ov::String, std::any> GetUserDataMap() const;
+			const std::map<ov::String, std::any>& GetUserDataMap() const;
 
 		private:
 			// For HTTP 1.0 and HTTP 1.1

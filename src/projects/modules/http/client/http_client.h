@@ -20,7 +20,6 @@
 
 namespace http
 {
-
 	namespace clnt
 	{
 		class HttpClient : public ov::EnableSharedFromThis<HttpClient>,
@@ -155,8 +154,6 @@ namespace http
 			std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _request_header;
 			std::shared_ptr<ov::Data> _request_body;
 
-			// response header
-			bool _is_header_found = false;
 			// A temporary string buffer to extract headers
 			ov::String _response_string;
 			std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _response_header;

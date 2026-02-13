@@ -42,12 +42,12 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::CreatePeerInfo(peer_id_t id, const s
 
 		if (previous_peer_info != _peer_list.end())
 		{
-			logtd("Peer already exists: %s (%s)", user_agent.CStr(), peer_info->ToString().CStr());
+			logtt("Peer already exists: %s (%s)", user_agent.CStr(), peer_info->ToString().CStr());
 			peer_info = nullptr;
 		}
 		else
 		{
-			logtd("New peer: %s (%s)", user_agent.CStr(), peer_info->ToString().CStr());
+			logtt("New peer: %s (%s)", user_agent.CStr(), peer_info->ToString().CStr());
 			_peer_list[id] = peer_info;
 		}
 	}

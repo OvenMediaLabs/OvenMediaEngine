@@ -42,14 +42,14 @@ namespace modules
 		bool AudioParser::ParseLegacyAAC(ov::BitReader &reader, const std::shared_ptr<AudioData> &audio_data)
 		{
 			audio_data->aac_packet_type = reader.ReadU8As<AACPacketType>();
-			logtt("[legacy AAC] aacPacketType (8 bits): %s (%d, 0x%02X)",
+			logtp("[legacy AAC] aacPacketType (8 bits): %s (%d, 0x%02X)",
 				  EnumToString(audio_data->aac_packet_type), audio_data->aac_packet_type, audio_data->aac_packet_type);
 			audio_data->payload = GetPayload(false, reader, 0, 0);
-			logtt("[legacy AAC] payload size: %zu bytes", audio_data->payload->GetLength());
+			logtp("[legacy AAC] payload size: %zu bytes", audio_data->payload->GetLength());
 
 			if (audio_data->aac_packet_type == AACPacketType::SequenceHeader)
 			{
-				logtt("[legacy AAC] SequenceHeader found, parsing DecoderConfigurationRecord");
+				logtp("[legacy AAC] SequenceHeader found, parsing DecoderConfigurationRecord");
 
 				auto header = std::make_shared<AudioSpecificConfig>();
 
@@ -75,7 +75,7 @@ namespace modules
 			// Interpret UB[4] bits as AudioPacketType instead of sound rate, size, and type.
 			// audioPacketType = UB[4] as AudioPacketType	// at byte boundary after this read
 			audio_data->audio_packet_type = reader.ReadAs<AudioPacketType>(4);
-			logtt("audioPacketType (4 bits): %s (%d, 0x%04X)",
+			logtp("audioPacketType (4 bits): %s (%d, 0x%04X)",
 				  EnumToString(audio_data->audio_packet_type.value()),
 				  audio_data->audio_packet_type.value(),
 				  audio_data->audio_packet_type.value());
@@ -89,13 +89,13 @@ namespace modules
 				// Determine the size of the packet ModEx data (ranging from 1 to 256 bytes)
 				// modExDataSize = UI8 + 1
 				mod_ex_data_size = reader.ReadU8() + 1;
-				logtt("modExDataSize (8 bits): %u (0x%02X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
+				logtp("modExDataSize (8 bits): %u (0x%02X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
 
 				// If maximum 8-bit size is not sufficient, use a 16-bit value
 				if (mod_ex_data_size == 256)
 				{
 					// modExDataSize = UI16 + 1;
-					logtt("modExDataSize (16 bits): %u (0x%04X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
+					logtp("modExDataSize (16 bits): %u (0x%04X + 1)", mod_ex_data_size, (mod_ex_data_size - 1));
 				}
 
 				// Fetch the packet ModEx data based on its determined size
@@ -107,7 +107,7 @@ namespace modules
 				{
 					auto audio_packet_mod_ex_type		 = reader.ReadAs<AudioPacketModExType>(4);
 					audio_data->audio_packet_mod_ex_type = audio_packet_mod_ex_type;
-					logtt("audioPacketModExType (4 bits): %s (%d, 0x%01X)", EnumToString(audio_packet_mod_ex_type), audio_packet_mod_ex_type, audio_packet_mod_ex_type);
+					logtp("audioPacketModExType (4 bits): %s (%d, 0x%01X)", EnumToString(audio_packet_mod_ex_type), audio_packet_mod_ex_type, audio_packet_mod_ex_type);
 				}
 
 				// Update audioPacketType
@@ -133,7 +133,7 @@ namespace modules
 					{
 						auto audio_timestamp_nano_offset		= ov::BE24ToHost(reader.ReadU24());
 						audio_data->audio_timestamp_nano_offset = audio_timestamp_nano_offset;
-						logtt("audioTimestampNanoOffset (24 bits): %u (0x%06X)", audio_timestamp_nano_offset, audio_timestamp_nano_offset);
+						logtp("audioTimestampNanoOffset (24 bits): %u (0x%06X)", audio_timestamp_nano_offset, audio_timestamp_nano_offset);
 					}
 
 					// TODO: Integrate this nanosecond offset into timestamp management
@@ -144,10 +144,10 @@ namespace modules
 			if (audio_data->audio_packet_type == AudioPacketType::Multitrack)
 			{
 				_is_multitrack = true;
-				logtt("isMultiTrack: true");
+				logtp("isMultiTrack: true");
 				// audioMultitrackType = UB[4] as AvMultitrackType
 				_multitrack_type = reader.ReadAs<AvMultitrackType>(4);
-				logtt("audioMultitrackType (4 bits): %s (%d, 0x%01X)", EnumToString(_multitrack_type), _multitrack_type, _multitrack_type);
+				logtp("audioMultitrackType (4 bits): %s (%d, 0x%01X)", EnumToString(_multitrack_type), _multitrack_type, _multitrack_type);
 
 				// Fetch AudioPacketType for all audio tracks in the audio message.
 				// This fetch MUST not result in a AudioPacketType.Multitrack
@@ -161,7 +161,7 @@ namespace modules
 					{
 						auto audio_fourcc		 = reader.ReadU32BEAs<AudioFourCc>();
 						audio_data->audio_fourcc = audio_fourcc;
-						logtt("audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
+						logtp("audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
 					}
 				}
 			}
@@ -170,7 +170,7 @@ namespace modules
 				// audioFourCc = FOURCC as AudioFourCc
 				auto audio_fourcc		 = reader.ReadU32BEAs<AudioFourCc>();
 				audio_data->audio_fourcc = audio_fourcc;
-				logtt("audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
+				logtp("audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
 			}
 
 			return audio_data;
@@ -191,7 +191,7 @@ namespace modules
 						// audioFourCc = FOURCC as AudioFourCc
 						auto audio_fourcc		 = reader.ReadU32BEAs<AudioFourCc>();
 						audio_data->audio_fourcc = audio_fourcc;
-						logtt("[MultiTrack/ManyTracksManyCodecs] audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
+						logtp("[MultiTrack/ManyTracksManyCodecs] audioFourCc (32 bits): %s (0x%08X)", FourCcToString(audio_fourcc), audio_fourcc);
 					}
 
 					// Track Ordering:
@@ -209,7 +209,7 @@ namespace modules
 					{
 						auto audio_track_id	 = reader.ReadU8();
 						audio_data->track_id = audio_track_id;
-						logtt("[MultiTrack] audioTrackId (8 bits): %u", audio_track_id);
+						logtp("[MultiTrack] audioTrackId (8 bits): %u", audio_track_id);
 					}
 
 					if (_multitrack_type != AvMultitrackType::OneTrack)
@@ -223,7 +223,7 @@ namespace modules
 						// type, the offset points to either a `fourCc` or a `trackId.`
 						// sizeOfAudioTrack = UI24
 						size_of_audio_track = reader.ReadU24BE();
-						logtt("[MultiTrack] sizeOfAudioTrack (24 bits): %u", size_of_audio_track);
+						logtp("[MultiTrack] sizeOfAudioTrack (24 bits): %u", size_of_audio_track);
 
 						// Record the offset of the sizeOfVideoTrack field
 						// to calculate the size of payload
@@ -243,7 +243,7 @@ namespace modules
 					{
 						auto audio_channel_order		= reader.ReadU8As<AudioChannelOrder>();
 						audio_data->audio_channel_order = audio_channel_order;
-						logtt("audioChannelOrder (8 bits): %s (%d, 0x%02X)",
+						logtp("audioChannelOrder (8 bits): %s (%d, 0x%02X)",
 							  EnumToString(audio_channel_order), audio_channel_order, audio_channel_order);
 					}
 
@@ -263,7 +263,7 @@ namespace modules
 						{
 							auto audio_channel_mapping		  = reader.ReadAs<AudioChannel>(channel_count);
 							audio_data->audio_channel_mapping = audio_channel_mapping;
-							logtt("audioChannelMapping (%d bits): %s (%d, 0x%02X)",
+							logtp("audioChannelMapping (%d bits): %s (%d, 0x%02X)",
 								  channel_count * 8,
 								  EnumToString(audio_channel_mapping), audio_channel_mapping, audio_channel_mapping);
 						}
@@ -277,14 +277,14 @@ namespace modules
 						// specific audio channel is present
 						// audioChannelFlags = UI32
 						audio_data->audio_channel_flags = reader.ReadU32BE();
-						logtt("audioChannelFlags (32 bits): 0x%08X", audio_data->audio_channel_flags.value());
+						logtp("audioChannelFlags (32 bits): 0x%08X", audio_data->audio_channel_flags.value());
 					}
 				}
 
 				if (audio_data->audio_packet_type == AudioPacketType::SequenceEnd)
 				{
 					// signals end of sequence
-					logtt("[SequenceEnd]");
+					logtp("[SequenceEnd]");
 				}
 
 				if (audio_data->audio_packet_type == AudioPacketType::SequenceStart)
@@ -297,7 +297,7 @@ namespace modules
 						// The AAC audio specific config (a.k.a., AacSequenceHeader) is
 						// defined in ISO/IEC 14496-3.
 						// aacHeader = [AacSequenceHeader]
-						logtt("[SequenceStart] AacSequenceHeader");
+						logtp("[SequenceStart] AacSequenceHeader");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Flac)
@@ -313,7 +313,7 @@ namespace modules
 						// metadata block in the sequence. The FLAC audio specific bitstream format
 						// is defined at <https://xiph.org/flac/format.html>
 						// flacHeader = [FlacSequenceHeader]
-						logtt("[SequenceStart] FlacSequenceHeader");
+						logtp("[SequenceStart] FlacSequenceHeader");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Opus)
@@ -329,12 +329,12 @@ namespace modules
 						// AudioPacketType.MultichannelConfig signal for channel
 						// mapping when present; otherwise, default to mono/stereo mode.
 						// opusHeader = [OpusSequenceHeader]
-						logtt("[SequenceStart] OpusSequenceHeader");
+						logtp("[SequenceStart] OpusSequenceHeader");
 					}
 
 #if DEBUG
 					[[maybe_unused]] auto used_bits = reader.GetBitOffset() - current_bit_offset;
-					logtt("[SequenceStart] ConfigurationRecord: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
+					logtp("[SequenceStart] ConfigurationRecord: %zu bytes (%zu bits)", (used_bits + 7) / 8, used_bits);
 #endif	// DEBUG
 				}
 
@@ -345,7 +345,7 @@ namespace modules
 						// Body contains audio data as defined by the bitstream syntax
 						// in the ATSC standard for Digital Audio Compression (AC-3, E-AC-3)
 						// ac3Data = [Ac3CodedData]
-						logtt("[CodedFrames] Ac3CodedData");
+						logtp("[CodedFrames] Ac3CodedData");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Opus)
@@ -365,7 +365,7 @@ namespace modules
 						// of the Opus packets in a single audio packet MUST be
 						// constrained to have the same duration.
 						// opusData = [OpusCodedData]
-						logtt("[CodedFrames] OpusCodedData");
+						logtp("[CodedFrames] OpusCodedData");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Mp3)
@@ -374,14 +374,14 @@ namespace modules
 						// parts called frames. Each frame is a data block with its own header
 						// and audio information
 						// mp3Data = [Mp3CodedData]
-						logtt("[CodedFrames] Mp3CodedData");
+						logtp("[CodedFrames] Mp3CodedData");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Aac)
 					{
 						// The AAC audio specific bitstream format is defined in ISO/IEC 14496-3.
 						// aacData = [AacCodedData]
-						logtt("[CodedFrames] AacCodedData");
+						logtp("[CodedFrames] AacCodedData");
 					}
 
 					if (audio_data->audio_fourcc == AudioFourCc::Flac)
@@ -392,7 +392,7 @@ namespace modules
 						// channels, et cetera. The Flac audio specific bitstream format
 						// is defined at <https://xiph.org/flac/format.html>
 						// flacData = [FlacCodedData]
-						logtt("[CodedFrames] FlacCodedData");
+						logtp("[CodedFrames] FlacCodedData");
 					}
 					else
 					{
@@ -435,7 +435,7 @@ namespace modules
 
 				if (_is_ex_header)
 				{
-					logtt("Enhanced audio header found");
+					logtp("Enhanced audio header found");
 
 					bool process_audio_body;
 
@@ -452,7 +452,7 @@ namespace modules
 				}
 				else
 				{
-					logtt("Legacy audio header found");
+					logtp("Legacy audio header found");
 
 					auto audio_data		   = std::make_shared<AudioData>(_default_track_id, sound_format, false);
 

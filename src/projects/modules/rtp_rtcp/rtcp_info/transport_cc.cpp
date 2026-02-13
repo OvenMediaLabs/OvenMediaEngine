@@ -10,7 +10,7 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 
 	if(payload_size < static_cast<size_t>(MIN_TRANSPORT_CC_RTCP_SIZE))
 	{
-		logtd("Payload is too small to parse transport-cc");
+		logtt("Payload is too small to parse transport-cc");
 		return false;
 	}
 
@@ -31,13 +31,13 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 	_fb_packet_count = ByteReader<uint8_t>::ReadBigEndian(&payload[offset]);
 	offset += 1;
 
-	logtd("Transport-cc: base_sequence_number(%d), packet_status_count(%d), reference_time(%d), fb_sequence_number(%d)", _base_sequence_number, _packet_status_count, _reference_time, _fb_packet_count);
+	logtt("Transport-cc: base_sequence_number(%d), packet_status_count(%d), reference_time(%d), fb_sequence_number(%d)", _base_sequence_number, _packet_status_count, _reference_time, _fb_packet_count);
 
 	for (uint16_t i=0; i<_packet_status_count; i++)
 	{
 		if (offset + PACKET_CHUNK_BYTES > payload_size)
 		{
-			logtd("Payload is too small to parse transport-cc");
+			logtt("Payload is too small to parse transport-cc");
 			return false;
 		}
 
@@ -142,7 +142,7 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 		{
 			if (payload_size < static_cast<size_t>(offset + 1))
 			{
-				logtd("Payload is too small to parse transport-cc");
+				logtt("Payload is too small to parse transport-cc");
 				return false;
 			}
 
@@ -153,7 +153,7 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 		{
 			if (payload_size < static_cast<size_t>(offset + 2))
 			{
-				logtd("Payload is too small to parse transport-cc");
+				logtt("Payload is too small to parse transport-cc");
 				return false;
 			}
 
@@ -200,7 +200,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 	// fb pkt count
 	write_stream.WriteBE(_fb_packet_count);
 
-	logtd("Feedback - sender_ssrc(%u) media_ssrc(%u) base_sequence_number(%u) packet_status_count(%u) reference_time(%u) fb_sequence_number(%u)", 
+	logtt("Feedback - sender_ssrc(%u) media_ssrc(%u) base_sequence_number(%u) packet_status_count(%u) reference_time(%u) fb_sequence_number(%u)", 
 		_sender_ssrc, _media_ssrc, _base_sequence_number, _packet_status_count, _reference_time, _fb_packet_count);
 
 	// Make packet status chunk
@@ -215,7 +215,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 
 		CountSymbolContinuity(index, run_length, one_bit_symbol_length);
 
-		logtd("index(%u) run_length(%u) one_bit_symbol_length(%u)", index, run_length, one_bit_symbol_length);
+		logtt("index(%u) run_length(%u) one_bit_symbol_length(%u)", index, run_length, one_bit_symbol_length);
 
 		if (run_length > 14)
 		{
@@ -316,16 +316,16 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 		write_stream.WriteBE16(packet_status_chunk);
 
 		// print packet_status_chunk as binary
-		logtd("[%s]", std::bitset<16>(packet_status_chunk).to_string().c_str());
+		logtt("[%s]", std::bitset<16>(packet_status_chunk).to_string().c_str());
 
 		index += symbol_count;
 	}
 
 	// write delta
-	logtd("Feedback packet status count (%u) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
+	logtt("Feedback packet status count (%u) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
 	for (const auto &info : _packet_feedbacks)
 	{
-		logtd("Feedback - seq(%u) delta_size(%u) received_delta (%d ms)", info->_wide_sequence_number, info->_delta_size, (info->_received_delta * 250) / 1000);
+		logtt("Feedback - seq(%u) delta_size(%u) received_delta (%d ms)", info->_wide_sequence_number, info->_delta_size, (info->_received_delta * 250) / 1000);
 
 		if (info->_delta_size == 1)
 		{
@@ -346,7 +346,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 		_has_padding = true;
 	}
 
-	logtd("Feedback - packet_status_count(%u/%u) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
+	logtt("Feedback - packet_status_count(%u/%u) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
 
 	return write_stream.GetDataPointer();
 }
@@ -376,7 +376,7 @@ bool TransportCc::AddPacketFeedbackInfo(const std::shared_ptr<PacketFeedbackInfo
 		_next_sequence_number++;
 	}
 
-	logtd("AddPacketFeedbackInfo - base seq(%u) seq(%u) received(%s) delta(%d) delta_size(%d)", 
+	logtt("AddPacketFeedbackInfo - base seq(%u) seq(%u) received(%s) delta(%d) delta_size(%d)", 
 		_base_sequence_number, packet_feedback_info->_wide_sequence_number, packet_feedback_info->_received?"true":"false",
 		packet_feedback_info->_received_delta, packet_feedback_info->_delta_size);
 
@@ -457,7 +457,7 @@ void TransportCc::DebugPrint()
 {
 	for (auto& info : _packet_feedbacks)
 	{
-		logtd("PacketFeedbackInfo: reference_time=%u, fb_seq_no=%d, wide_sequence_number=%d, received=%d, delta_size=%d, received_delta=%d", 
+		logtt("PacketFeedbackInfo: reference_time=%u, fb_seq_no=%d, wide_sequence_number=%d, received=%d, delta_size=%d, received_delta=%d", 
 		_reference_time, _fb_packet_count, info->_wide_sequence_number, info->_received, info->_delta_size, info->_received_delta);
 	}
 }

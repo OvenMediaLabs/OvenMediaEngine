@@ -361,7 +361,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 			auto connection = ws_session->GetConnection();
 			auto request = ws_session->GetRequest();
 
-			logtt("The client sent a message:\n%s", message->Dump().CStr());
+			logtp("The client sent a message:\n%s", message->Dump().CStr());
 
 			auto info = ws_session->GetExtraAs<RtcSignallingInfo>();
 
@@ -396,7 +396,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 			ov::String command = ov::Converter::ToString(command_value);
 
-			logtd("Trying to dispatch command: %s...", command.CStr());
+			logtt("Trying to dispatch command: %s...", command.CStr());
 
 			auto error = DispatchCommand(ws_session, command, object, info, message);
 
@@ -667,7 +667,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 	if (_p2p_manager.IsEnabled())
 	{
-		logtd("Trying to find p2p host for client %s...", ws_session->ToString().CStr());
+		logtt("Trying to find p2p host for client %s...", ws_session->ToString().CStr());
 
 		if (info->peer_was_client == false)
 		{
@@ -695,7 +695,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 	{
 		if (_p2p_manager.IsEnabled())
 		{
-			logtd("peer %s became a host peer because there is no p2p host for client %s.", peer_info->ToString().CStr(), ws_session->ToString().CStr());
+			logtt("peer %s became a host peer because there is no p2p host for client %s.", peer_info->ToString().CStr(), ws_session->ToString().CStr());
 		}
 
 		bool tcp_relay = false;
@@ -708,7 +708,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 		if (sdp != nullptr)
 		{
-			logtd("SDP is generated successfully");
+			logtt("SDP is generated successfully");
 
 			if (_p2p_manager.IsEnabled())
 			{
@@ -811,7 +811,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 		// Found a host that can accept this client
 
 		info->peer_was_client = true;
-		logtd("[Client -> Host] A host found for the client\n    Host: %s\n    Client: %s",
+		logtt("[Client -> Host] A host found for the client\n    Host: %s\n    Client: %s",
 			  host_peer->ToString().CStr(),
 			  peer_info->ToString().CStr());
 
@@ -863,7 +863,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 
 	if ((_p2p_manager.IsEnabled() == false) || peer_info->IsHost())
 	{
-		logtd("[Host -> OME] The host peer sents a answer: %s", object.ToString().CStr());
+		logtt("[Host -> OME] The host peer sents a answer: %s", object.ToString().CStr());
 
 		auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
 
@@ -873,7 +873,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 
 			for (auto &observer : _observers)
 			{
-				logtd("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
+				logtt("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
 
 				// TODO : Improved to return detailed error cause
 				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
@@ -889,7 +889,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 	}
 	else
 	{
-		logtd("[Client -> Host] The client peer sents a answer: %s", object.ToString().CStr());
+		logtt("[Client -> Host] The client peer sents a answer: %s", object.ToString().CStr());
 
 		// The client peer sents this answer
 		auto peer_id = object.GetIntValue("peer_id");
@@ -970,7 +970,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 
 	if (peer_info == nullptr)
 	{
-		logtd("[Host -> OME] The host peer sents candidates: %s", object.ToString().CStr());
+		logtt("[Host -> OME] The host peer sents candidates: %s", object.ToString().CStr());
 
 		for (const auto &candidate_iterator : candidates_value)
 		{
@@ -979,7 +979,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 			if (candidate.IsEmpty())
 			{
 				// Even if the player does not send candidates, this does not affect the OME, so it changes the log level.
-				logtd("[Host -> OME] The host peer sents an empty candidate");
+				logtt("[Host -> OME] The host peer sents an empty candidate");
 				continue;
 			}
 
@@ -1002,7 +1002,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 	}
 	else
 	{
-		logtd("[Client -> Host] The client peer sents candidates: %s", object.ToString().CStr());
+		logtt("[Client -> Host] The client peer sents candidates: %s", object.ToString().CStr());
 
 		// Client -> (OME) -> Host
 		Json::Value value;
@@ -1061,7 +1061,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchOfferP2P(const std
 		return std::make_shared<http::HttpError>(http::StatusCode::BadRequest, "Candidates must be array, but: %d", candidates.type());
 	}
 
-	logtd("[Host -> Client] The host peer sents an offer: %s", object.ToString().CStr());
+	logtt("[Host -> Client] The host peer sents an offer: %s", object.ToString().CStr());
 
 	Json::Value value;
 
@@ -1108,7 +1108,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 		return std::make_shared<http::HttpError>(http::StatusCode::BadRequest, "Candidates must be array");
 	}
 
-	logtd("[Host -> Client] The host peer sents candidates: %s", object.ToString().CStr());
+	logtt("[Host -> Client] The host peer sents candidates: %s", object.ToString().CStr());
 
 	Json::Value candidates;
 
@@ -1117,7 +1117,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 	candidates["peer_id"] = info->id;
 	candidates["candidates"] = candidates_value;
 
-	logtd("[Host -> Client] JSON: %s", ov::Converter::ToString(candidates).CStr());
+	logtt("[Host -> Client] JSON: %s", ov::Converter::ToString(candidates).CStr());
 
 	client_peer->GetSession()->GetWebSocketResponse()->Send(candidates);
 
@@ -1132,7 +1132,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 	{
 		for (auto &observer : _observers)
 		{
-			logtd("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
+			logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
 
 			if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
 			{
@@ -1156,13 +1156,13 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 
 		if (peer_info != nullptr)
 		{
-			logtd("Deleting a peer from p2p manager...: %s", peer_info->ToString().CStr());
+			logtt("Deleting a peer from p2p manager...: %s", peer_info->ToString().CStr());
 
 			_p2p_manager.RemovePeer(peer_info);
 
 			if (peer_info->IsHost())
 			{
-				logtd("[Host -> OME] The host peer is requested stop: %s", peer_info->ToString().CStr());
+				logtt("[Host -> OME] The host peer is requested stop: %s", peer_info->ToString().CStr());
 
 				// Broadcast to client peers
 				auto client_list = _p2p_manager.GetClientPeerList(peer_info);
@@ -1186,7 +1186,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 			else
 			{
 				// Client peer -> OME
-				logtd("[Client -> OME] The client peer is requested stop: %s", peer_info->ToString().CStr());
+				logtt("[Client -> OME] The client peer is requested stop: %s", peer_info->ToString().CStr());
 
 				// Send to host peer
 				auto host_info = peer_info->GetHostPeer();

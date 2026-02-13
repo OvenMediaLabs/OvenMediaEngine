@@ -8,6 +8,7 @@
 //==============================================================================
 #include "notification.h"
 
+#include "../monitoring_private.h"
 #include <modules/http/client/http_client.h>
 #include <modules/json_serdes/converters.h>
 
@@ -50,6 +51,11 @@ namespace mon::alrt
 	{
 		_status_code  = code;
 		_error_reason = reason;
+
+		if (_status_code != StatusCode::OK)
+		{
+			logte("%s", _error_reason.CStr());
+		}
 	}
 
 	ov::String Notification::GetMessageBody()
@@ -80,6 +86,7 @@ namespace mon::alrt
 		client->SetMethod(http::Method::Post);
 		client->SetBlockingMode(ov::BlockingMode::Blocking);
 		client->SetConnectionTimeout(_timeout_msec);
+		client->SetRecvTimeout(_timeout_msec);
 		client->SetRequestHeader("X-OME-Signature", signature_sha1_base64);
 		client->SetRequestHeader("Content-Type", "application/json");
 		client->SetRequestHeader("Accept", "application/json");

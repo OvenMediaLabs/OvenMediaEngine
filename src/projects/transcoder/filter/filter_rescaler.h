@@ -28,6 +28,7 @@ public:
 	void WorkerThread();
 
 private:
+	bool InitializeFpsFilter();
 	bool InitializeSourceFilter();
 	bool InitializeFilterDescription();
 	bool InitializeSinkFilter();	

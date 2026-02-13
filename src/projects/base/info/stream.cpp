@@ -14,6 +14,9 @@
 
 #define OV_LOG_TAG "Stream"
 
+#define OV_LOG_PREFIX_FORMAT "[%s] "
+#define OV_LOG_PREFIX_VALUE GetNamePath().CStr()
+
 using namespace cmn;
 
 namespace info
@@ -32,13 +35,16 @@ namespace info
 	{
 		_app_info = std::make_shared<info::Application>(app_info);
 
-		_id = stream_id;
+		SetId(_id);
+
 		_created_time = std::chrono::system_clock::now();
 		_source_type = source;
 	}
 
 	Stream::Stream(const Stream &stream)
 	{
+		_name_path = stream.GetNamePath();
+		
 		_id = stream._id;
 		_name = stream._name;
 		_source_type = stream._source_type;
@@ -76,7 +82,7 @@ namespace info
 
 	Stream::~Stream()
 	{
-		logd("DEBUG", "Stream (%s / %s) Destroyed", GetName().CStr(), GetUUID().CStr());
+		logat("Stream has destroyed: %s", GetUUID().CStr());
 	}
 
 	bool Stream::operator==(const Stream &stream_info) const
@@ -89,9 +95,16 @@ namespace info
 		return false;
 	}
 
+	NamePath Stream::GetNamePath() const
+	{
+		std::lock_guard lock_guard(_name_path_mutex);
+		return _name_path;
+	}
+
 	void Stream::SetId(info::stream_id_t id)
 	{
 		_id = id;
+		UpdateNamePath();
 	}
 
 	info::stream_id_t Stream::GetId() const
@@ -102,7 +115,7 @@ namespace info
 	ov::String Stream::GetUri() const
 	{
 		// #vhost name#appname/stream name
-		ov::String vhost_app_name = _app_info != nullptr ? _app_info->GetVHostAppName().CStr() : "Unknown";
+		ov::String vhost_app_name = (_app_info != nullptr) ? _app_info->GetVHostAppName().CStr() : "Unknown";
 		return ov::String::FormatString("%s/%s", vhost_app_name.CStr(), GetName().CStr());
 	}
 
@@ -126,6 +139,20 @@ namespace info
 		return ov::String::FormatString("%s/%s/%s", _app_info->GetUUID().CStr(), GetName().CStr(), IsInputStream() ? "i" : "o");
 	}
 
+	void Stream::UpdateNamePath(const info::VHostAppName &vhost_app_name)
+	{
+		std::lock_guard lock_guard(_name_path_mutex);
+		_name_path = vhost_app_name.GetNamePath().Append(GetName().CStr(), _id);
+	}
+
+	void Stream::UpdateNamePath()
+	{
+		if (_app_info != nullptr)
+		{
+			UpdateNamePath(_app_info->GetVHostAppName());
+		}
+	}
+
 	ov::String Stream::GetName() const
 	{
 		return _name;
@@ -134,6 +161,8 @@ namespace info
 	void Stream::SetName(ov::String name)
 	{
 		_name = std::move(name);
+
+		UpdateNamePath();
 	}
 
 	ov::String Stream::GetMediaSource() const
@@ -513,6 +542,12 @@ namespace info
 	const std::map<ov::String, std::shared_ptr<const Playlist>> &Stream::GetPlaylists() const
 	{
 		return _playlists;
+	}
+
+	void Stream::SetApplicationInfo(const std::shared_ptr<Application> &app_info)
+	{
+		_app_info = app_info;
+		UpdateNamePath();
 	}
 
 	const char *Stream::GetApplicationName()

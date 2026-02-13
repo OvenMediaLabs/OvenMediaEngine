@@ -17,13 +17,14 @@ namespace bmff
 	class FMP4Partial : public base::modules::PartialSegment
 	{
 	public:
-		FMP4Partial(const std::shared_ptr<ov::Data> &data, int64_t number, int64_t start_timestamp, double duration_ms, bool independent)
+		FMP4Partial(const std::shared_ptr<ov::Data> &data, int64_t number, int64_t start_timestamp, double duration_ms, bool independent, double timebase_seconds)
 		{
 			_data = data;
 			_number = number;
 			_duration_ms = duration_ms;
 			_start_timestamp = start_timestamp;
 			_independent = independent;
+			_timebase_seconds = timebase_seconds;
 		}
 
 		int64_t GetNumber() const override
@@ -57,20 +58,27 @@ namespace bmff
 			return _data;
 		}
 
+		double GetTimebaseSeconds() const override
+		{
+			return _timebase_seconds;
+		}
+
 	private:
 		int64_t _number = -1;
 		int64_t _start_timestamp = 0;
 		double _duration_ms = 0;
 		bool _independent = false;
 		std::shared_ptr<ov::Data> _data;
+		double _timebase_seconds = 0.0;
 	};
 
 	class FMP4Segment : public base::modules::Segment
 	{
 	public:
-		FMP4Segment(uint64_t number, uint64_t target_duration)
+		FMP4Segment(uint64_t number, uint64_t target_duration, double timebase_seconds)
 		{
 			_number = number;
+			_timebase_seconds = timebase_seconds;
 
 			// For performance, reserve memory for 4Mbps * target_duration (sec)
 			_data = std::make_shared<ov::Data>(((1000.0 * 1000.0 * 4.0)/8.0) * (static_cast<double>(target_duration) / 1000.0));
@@ -110,7 +118,7 @@ namespace bmff
 				_start_timestamp = start_timestamp;
 			}
 
-			_partials.emplace_back(std::make_shared<FMP4Partial>(partial_data, partial_count, start_timestamp, duration_ms, independent));
+			_partials.emplace_back(std::make_shared<FMP4Partial>(partial_data, partial_count, start_timestamp, duration_ms, independent, _timebase_seconds));
 			_last_partial_number = partial_count;
 
 			lock.unlock();
@@ -151,6 +159,11 @@ namespace bmff
 			return _duration_ms;
 		}
 
+		double GetTimebaseSeconds() const override
+		{
+			return _timebase_seconds;
+		}
+
 		// Get partial segment Count
 		uint64_t GetPartialCount() const
 		{
@@ -181,11 +194,6 @@ namespace bmff
 			return _markers.empty() == false;
 		}
 
-		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
-		{
-			_markers = markers;
-		}
-
 		void AddMarkers(const std::vector<std::shared_ptr<Marker>> &markers)
 		{
 			_markers.insert(_markers.end(), markers.begin(), markers.end());
@@ -194,6 +202,11 @@ namespace bmff
 		const std::vector<std::shared_ptr<Marker>> &GetMarkers() const override
 		{
 			return _markers;
+		}
+
+		void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) override
+		{
+			_markers = markers;
 		}
 
 	private:
@@ -213,5 +226,7 @@ namespace bmff
 		std::shared_ptr<ov::Data> _data;
 
 		std::vector<std::shared_ptr<Marker>> _markers;
+
+		double _timebase_seconds = 0.0;
 	};
 }

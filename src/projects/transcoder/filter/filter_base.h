@@ -35,7 +35,7 @@ public:
 		ERROR
 	};
 
-	typedef std::function<void(std::shared_ptr<MediaFrame>)> CompleteHandler;
+	typedef std::function<void(TranscodeResult, std::shared_ptr<MediaFrame>)> CompleteHandler;
 	FilterBase() = default;
 	virtual ~FilterBase() = default;
 
@@ -107,11 +107,11 @@ public:
 		return false;
 	}
 
-	void Complete(std::shared_ptr<MediaFrame> buffer)
+	void Complete(TranscodeResult result, std::shared_ptr<MediaFrame> buffer)
 	{
 		if (_complete_handler != nullptr && _kill_flag == false)
 		{
-			_complete_handler(std::move(buffer));
+			_complete_handler(result, std::move(buffer));
 		}
 	}
 
@@ -130,8 +130,17 @@ public:
 		return _input_buffer.Size();
 	}
 
-protected:
+	void SetDescription(const ov::String &description)
+	{
+		_description = description;
+	}
 
+	ov::String GetDescription() const
+	{
+		return _description;
+	}
+
+protected:
 	std::atomic<State> _state = State::CREATED;
 
 	ov::ManagedQueue<std::shared_ptr<MediaFrame>> _input_buffer;
@@ -145,6 +154,7 @@ protected:
 	ov::String 	_src_args = "";
 	
 	ov::String 	_filter_desc = "";
+	ov::String 	_description = "";
 
 	AVFilterContext *_buffersink_ctx = nullptr;
 	AVFilterContext *_buffersrc_ctx = nullptr;
@@ -161,7 +171,7 @@ protected:
 	std::shared_ptr<MediaTrack> _input_track;
 	std::shared_ptr<MediaTrack> _output_track;
 
-	bool _kill_flag = false;
+	std::atomic<bool> _kill_flag{false};
 	std::thread _thread_work;
 
 	CompleteHandler _complete_handler;

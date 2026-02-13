@@ -68,17 +68,17 @@ namespace pvd
 
 	WebRTCStream::~WebRTCStream()
 	{
-		logtd("WebRTCStream(%s/%d) is destroyed", GetName().CStr(), GetId());
+		logtt("WebRTCStream(%s/%d) is destroyed", GetName().CStr(), GetId());
 	}
 
 	bool WebRTCStream::Start()
 	{
 		std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
 
-		logtd("[WebRTC Provider] Local SDP");
-		logtd("%s\n", _local_sdp->ToString().CStr());
-		logtd("[WebRTC Provider] Peer SDP");
-		logtd("%s", _remote_sdp->ToString().CStr());
+		logtt("[WebRTC Provider] Local SDP");
+		logtt("%s\n", _local_sdp->ToString().CStr());
+		logtt("[WebRTC Provider] Peer SDP");
+		logtt("%s", _remote_sdp->ToString().CStr());
 
 		auto local_media_desc_list = _local_sdp->GetMediaList();
 		auto remote_media_desc_list = _remote_sdp->GetMediaList();
@@ -111,7 +111,7 @@ namespace pvd
 			if(remote_media_desc->GetDirection() != MediaDescription::Direction::SendOnly &&
 				remote_media_desc->GetDirection() != MediaDescription::Direction::SendRecv)
 			{
-				logtd("Media (%s) is inactive", remote_media_desc->GetMediaTypeStr().CStr());
+				logtt("Media (%s) is inactive", remote_media_desc->GetMediaTypeStr().CStr());
 				continue;
 			}
 
@@ -349,6 +349,48 @@ namespace pvd
 		return _session_key;
 	}
 
+	void WebRTCStream::SetOvenCapabilities(const ov::String &capabilities)
+	{
+		_oven_capabilities = capabilities;
+
+		// 26.01.08
+		// Oven-Capabilities: max_width=1920, max_height=1080
+
+		// Parse and apply capabilities
+		logtt("%s - Set Oven-Capabilities: %s", GetName().CStr(), capabilities.CStr());
+
+		auto params = ov::String::Split(capabilities.CStr(), ",");
+		for (const auto &param : params)
+		{
+			auto key_value = ov::String::Split(param.CStr(), "=");
+			if (key_value.size() != 2)
+			{
+				continue;
+			}
+
+			auto key = key_value[0].Trim().LowerCaseString();
+			auto value = key_value[1].Trim();
+			if (key == "max_width")
+			{
+				auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+				if (first_video_track != nullptr)
+				{
+					first_video_track->SetWidth(static_cast<uint32_t>(std::atoi(value.CStr())));
+					logtt("%s - Set max width: %u", GetName().CStr(), first_video_track->GetMaxWidth());
+				}
+			}
+			else if (key == "max_height")
+			{
+				auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+				if (first_video_track != nullptr)
+				{
+					first_video_track->SetHeight(static_cast<uint32_t>(std::atoi(value.CStr())));
+					logtt("%s - Set max height: %u", GetName().CStr(), first_video_track->GetMaxHeight());
+				}
+			}
+		}
+	}
+
 	bool WebRTCStream::AddDepacketizer(uint32_t track_id)
 	{
 		auto track = GetTrack(track_id);
@@ -447,7 +489,7 @@ namespace pvd
 
 	bool WebRTCStream::OnDataReceived(const std::shared_ptr<const ov::Data> &data)
 	{
-		logtt("OnDataReceived (%d)", data->GetLength());
+		logtp("OnDataReceived (%d)", data->GetLength());
 		// To DTLS -> SRTP -> RTP|RTCP -> WebRTCStream::OnRtxpReceived
 
 		//It must not be called during start and stop.
@@ -469,7 +511,7 @@ namespace pvd
 		}
 		auto track_id = track_id_opt.value();
 
-		logtt("%s", first_rtp_packet->Dump().CStr());
+		logtp("%s", first_rtp_packet->Dump().CStr());
 
 		auto track = GetTrack(track_id);
 		if (track == nullptr)
@@ -488,7 +530,7 @@ namespace pvd
 		std::vector<std::shared_ptr<ov::Data>> payload_list;
 		for (const auto &packet : rtp_packets)
 		{
-			logtt("%s", packet->Dump().CStr());
+			logtp("%s", packet->Dump().CStr());
 			auto payload = std::make_shared<ov::Data>(packet->Payload(), packet->PayloadSize());
 			payload_list.push_back(payload);
 		}
@@ -559,7 +601,7 @@ namespace pvd
 			{
 				int32_t cts = cts_extension_opt.value();
 				dts = adjusted_timestamp - (cts * 90);
-				logtd("PTS(%lld) CTS(%d) DTS(%lld)", adjusted_timestamp, cts, dts);
+				logtt("PTS(%lld) CTS(%d) DTS(%lld)", adjusted_timestamp, cts, dts);
 			}
 			else
 			{
@@ -567,7 +609,7 @@ namespace pvd
 			}
 		}
 		
-		logtd("Payload Type(%d) Timestamp(%u) PTS(%u) Time scale(%f) Adjust Timestamp(%f)",
+		logtt("Payload Type(%d) Timestamp(%u) PTS(%u) Time scale(%f) Adjust Timestamp(%f)",
 			  first_rtp_packet->PayloadType(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
@@ -596,7 +638,7 @@ namespace pvd
 					{
 						auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
 
-						logtd("PTS(%lld) DTS(%lld) Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
+						logtt("PTS(%lld) DTS(%lld) Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
 
 						if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
 						{
@@ -626,7 +668,7 @@ namespace pvd
 
 	void WebRTCStream::OnFrame(const std::shared_ptr<MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet)
 	{
-		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
+		logtp("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
 
 		// This may not work since almost WebRTC browser sends SPS/PPS/VPS in-band
 		if ((track->GetCodecId() == cmn::MediaCodecId::H264 || track->GetCodecId() == cmn::MediaCodecId::H265) &&
@@ -690,7 +732,7 @@ namespace pvd
 	{
 		if (ov::Node::GetNodeState() != ov::Node::NodeState::Started)
 		{
-			logtd("Node has not started, so the received data has been canceled.");
+			logtt("Node has not started, so the received data has been canceled.");
 			return false;
 		}
 

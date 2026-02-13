@@ -109,7 +109,7 @@ bool MediaRouteApplication::Start()
 		}
 	}
 
-	logtd("[%s(%u)] Started Mediarouter application.", _application_info.GetVHostAppName().CStr(), _application_info.GetId());
+	logtt("[%s(%u)] Started Mediarouter application.", _application_info.GetVHostAppName().CStr(), _application_info.GetId());
 
 
 	return true;
@@ -155,7 +155,7 @@ bool MediaRouteApplication::Stop()
 	_connectors.clear();
 	_observers.clear();
 
-	logtd("[%s(%u)] Mediarouter application has been stopped", _application_info.GetVHostAppName().CStr(), _application_info.GetId());
+	logtt("[%s(%u)] Mediarouter application has been stopped", _application_info.GetVHostAppName().CStr(), _application_info.GetId());
 
 	return true;
 }
@@ -179,7 +179,7 @@ bool MediaRouteApplication::RegisterConnectorApp(std::shared_ptr<MediaRouterAppl
 
 	_connectors.push_back(connector);
 
-	logtd("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
+	logtt("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
 
 	return true;
 }
@@ -218,7 +218,7 @@ bool MediaRouteApplication::RegisterObserverApp(std::shared_ptr<MediaRouterAppli
 
 	_observers.push_back(observer);
 
-	logtd("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
+	logtt("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
 
 	return true;
 }
@@ -466,7 +466,7 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 		{
 			if (IS_OBSERVER_TRANSCODER(observer_type) || IS_OBSERVER_RELAY(observer_type) || IS_OBSERVER_ORCHESTRATOR(observer_type) )
 			{
-				logtd("[%s/%s(%u)] Notify created stream to relay or transcoder", stream_info->GetApplicationName(), stream_info->GetName().CStr(), stream_info->GetId());
+				logtt("[%s/%s(%u)] Notify created stream to relay or transcoder", stream_info->GetApplicationName(), stream_info->GetName().CStr(), stream_info->GetId());
 
 				observer->OnStreamCreated(stream_info);
 			}
@@ -476,7 +476,7 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 		{
 			if (IS_OBSERVER_PUBLISHER(observer_type) || IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("[%s/%s(%u)] Notify created stream to publisher", stream_info->GetApplicationName(), stream_info->GetName().CStr(), stream_info->GetId());
+				logtt("[%s/%s(%u)] Notify created stream to publisher", stream_info->GetApplicationName(), stream_info->GetName().CStr(), stream_info->GetId());
 
 				observer->OnStreamCreated(stream_info);
 			}
@@ -502,7 +502,7 @@ bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStrea
 		{
 			if (IS_OBSERVER_TRANSCODER(observer_type) || IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("[%s/%s(%u)] Notify prepared stream to transcoder", stream->GetStream()->GetApplicationName(), stream->GetStream()->GetName().CStr(), stream->GetStream()->GetId());
+				logtt("[%s/%s(%u)] Notify prepared stream to transcoder", stream->GetStream()->GetApplicationName(), stream->GetStream()->GetName().CStr(), stream->GetStream()->GetId());
 
 				observer->OnStreamPrepared(stream->GetStream());
 			}
@@ -511,7 +511,7 @@ bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStrea
 		{
 			if (IS_OBSERVER_PUBLISHER(observer_type) || IS_OBSERVER_RELAY(observer_type) || IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("[%s/%s(%u)] Notify prepared stream to publisher", stream->GetStream()->GetApplicationName(), stream->GetStream()->GetName().CStr(), stream->GetStream()->GetId());
+				logtt("[%s/%s(%u)] Notify prepared stream to publisher", stream->GetStream()->GetApplicationName(), stream->GetStream()->GetName().CStr(), stream->GetStream()->GetId());
 
 				observer->OnStreamPrepared(stream->GetStream());
 			}
@@ -635,7 +635,7 @@ bool MediaRouteApplication::DeleteInboundStream(const std::shared_ptr<info::Stre
 
 			if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
 			{
-				logtd("Deleting connected stream tap for inbound stream. %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
+				logtt("Deleting connected stream tap for inbound stream. %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				stream_tap->Stop();
 			}
 		}
@@ -674,7 +674,7 @@ bool MediaRouteApplication::NotifyStreamDeleted(const std::shared_ptr<info::Stre
 				IS_OBSERVER_RELAY(observer_type) ||
 				IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("Notify deleted stream from provider(source) to transcoder, relay, orchestrator.  %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
+				logtt("Notify deleted stream from provider(source) to transcoder, relay, orchestrator.  %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				observer->OnStreamDeleted(stream_info);
 			}
 		}
@@ -686,7 +686,7 @@ bool MediaRouteApplication::NotifyStreamDeleted(const std::shared_ptr<info::Stre
 				IS_OBSERVER_RELAY(observer_type) ||
 				IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("Notify deleted stream from transcoder, provider(relay) to publisher, relay, orchestrator.  %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
+				logtt("Notify deleted stream from transcoder, provider(relay) to publisher, relay, orchestrator.  %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				observer->OnStreamDeleted(stream_info);
 			}
 		}
@@ -720,7 +720,7 @@ bool MediaRouteApplication::NotifyStreamUpdated(const std::shared_ptr<info::Stre
 				IS_OBSERVER_RELAY(observer_type) ||
 				IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("[%s/%s] Notify updated stream from provider(source) to transcoder, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
+				logtt("[%s/%s] Notify updated stream from provider(source) to transcoder, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				observer->OnStreamUpdated(stream_info);
 			}
 		}
@@ -732,7 +732,7 @@ bool MediaRouteApplication::NotifyStreamUpdated(const std::shared_ptr<info::Stre
 				IS_OBSERVER_RELAY(observer_type) ||
 				IS_OBSERVER_ORCHESTRATOR(observer_type))
 			{
-				logtd("[%s/%s] Notify updated stream from transcoder, provider(relay) to publisher, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
+				logtt("[%s/%s] Notify updated stream from transcoder, provider(relay) to publisher, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				observer->OnStreamUpdated(stream_info);
 			}
 		}
@@ -876,7 +876,7 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 {
 	ov::logger::ThreadHelper thread_helper;
 
-	logtd("Created Inbound worker thread #%d", worker_id);
+	logtt("Created Inbound worker thread #%d", worker_id);
 
 	while (!_kill_flag)
 	{
@@ -956,14 +956,14 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 		}
 	}
 
-	logtd("Inbound worker thread #%d has been stopped", worker_id);
+	logtt("Inbound worker thread #%d has been stopped", worker_id);
 }
 
 void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 {
 	ov::logger::ThreadHelper thread_helper;
 
-	logtd("Created outbound worker thread #%d", worker_id);
+	logtt("Created outbound worker thread #%d", worker_id);
 
 	while (!_kill_flag)
 	{
@@ -1043,5 +1043,5 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 		}
 	}
 
-	logtd("Outbound worker thread #%d has been stopped", worker_id);
+	logtt("Outbound worker thread #%d has been stopped", worker_id);
 }

@@ -30,7 +30,7 @@ namespace pub
 
 	SrtPublisher::~SrtPublisher()
 	{
-		logtd("%s has finally been terminated", GetPublisherName());
+		logtt("%s has finally been terminated", GetPublisherName());
 	}
 
 	bool SrtPublisher::Start()
@@ -377,7 +377,7 @@ namespace pub
 
 		if (session == nullptr)
 		{
-			logtd("Failed to find channel to delete SRT stream (remote : %s)", remote->ToString().CStr());
+			logtt("Failed to find channel to delete SRT stream (remote : %s)", remote->ToString().CStr());
 			return;
 		}
 

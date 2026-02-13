@@ -350,7 +350,7 @@ bool HEVCDecoderConfigurationRecord::ParseV2Internal(ov::BitReader &reader)
 			auto nalu_type = static_cast<H265NALUnitType>(nal_unit_type);
 
 			// add nalUnit to _nal_units
-			logtd("NALU found: nal_unit_type: %s(%d), length: %d",
+			logtt("NALU found: nal_unit_type: %s(%d), length: %d",
 				  EnumToString(nalu_type), nalu_type,
 				  nal_unit_length);
 

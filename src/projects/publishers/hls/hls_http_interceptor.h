@@ -51,6 +51,11 @@ protected:
 			{
 				return true;
 			}
+			// *_hls.vtt is WebVTT segment file for this HLS Publisher(HLSv3)
+			else if (file.HasSuffix("_hls.vtt"))
+			{
+				return true;
+			}
 			
 		}
 

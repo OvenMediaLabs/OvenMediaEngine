@@ -51,7 +51,7 @@ public:
 		ov::String vtt_text;
 
 		// 00:00:00.000 --> 00:00:05.000
-		vtt_text += ov::String::FormatString("%02lld:%02lld:%02lld.%03lld --> %02lld:%02lld:%02lld.%03lld %s\n", 
+		vtt_text += ov::String::FormatString("%02" PRId64 ":%02" PRId64 ":%02" PRId64 ".%03" PRId64 " --> %02" PRId64 ":%02" PRId64 ":%02" PRId64 ".%03" PRId64 " %s\n", 
 			(start_time_sec / 3600), (start_time_sec % 3600) / 60, (start_time_sec % 60), start_time_sec_remainder,
 			(end_time_sec / 3600), (end_time_sec % 3600) / 60, (end_time_sec % 60), end_time_sec_remainder,
 			_settings.IsEmpty() ? "" : _settings.CStr());

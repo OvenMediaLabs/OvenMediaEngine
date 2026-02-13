@@ -16,6 +16,7 @@
 
 #include "descriptors/descriptor.h"
 #include "scte35/mpegts_splice_info.h"
+#include "scte35/mpegts_splice_insert.h"
 
 namespace mpegts
 {	
@@ -36,6 +37,43 @@ namespace mpegts
 		uint16_t	_program_map_pid; // associated PMT
 	};
 
+	/*
+	* MPEG-TS stream_type reference table
+	* -----------------------------------
+	* This table lists common stream_type values defined in ISO/IEC 13818-1
+	* and related standards (e.g., SCTE-35). It indicates how each type of
+	* stream is transmitted in the Transport Stream: either as PES packets
+	* or as Section (PSI/SI) data.
+	*
+	* Transmission Format:
+	*  - PES: Packetized Elementary Stream (for continuous data like video/audio)
+	*  - Section: PSI/SI-style table sections (for metadata, control, or signaling)
+	*
+	*  stream_type | Description                               | Transmission Format
+	*  -------------------------------------------------------------------------------
+	*     0x01     | MPEG-1 Video                              | PES
+	*     0x02     | MPEG-2 Video                              | PES
+	*     0x03     | MPEG-1 Audio                              | PES
+	*     0x04     | MPEG-2 Audio                              | PES
+	*     0x0F     | MPEG-2 AAC Audio (ADTS)                   | PES
+	*     0x11     | MPEG-4 LATM/LOAS AAC Audio                | PES
+	*     0x1B     | H.264 / AVC Video                         | PES
+	*     0x24     | H.265 / HEVC Video                        | PES
+	*     0x81     | AC-3 / Dolby Digital Audio (ATSC)         | PES
+	*     0x06     | Private PES or Private Section            | PES or Section
+	*     0x05     | Private Section (Data or Metadata)        | Section
+	*     0x0D     | DSM-CC (Data Carousel, Object Carousel)   | Section
+	*     0x86     | SCTE-35 Splice Information Table          | Section
+	*     0x95     | SCTE-104 Messages (rare)                  | Section
+	*     0x80–0xFF| Vendor-specific / Proprietary extensions  | PES or Section
+	*
+	* Notes:
+	*  - Video and audio elementary streams are always transmitted as PES.
+	*  - PSI/SI tables (PAT, PMT, SDT, EIT, NIT, SCTE-35, etc.) use Section format.
+	*  - stream_type 0x06 can represent private PES (e.g., subtitles) or
+	*    private Section data (e.g., teletext, closed captions).
+	*  - SCTE-35 (stream_type 0x86) always carries Splice Info Sections.
+	*/
 	enum class WellKnownStreamTypes : uint8_t
 	{
 		None = 0x00,
@@ -43,6 +81,7 @@ namespace mpegts
 		H265 = 0x24, // 36
 		AAC = 0x0F, // 15 AAC ADTS
 		AAC_LATM = 0x11, // 17 AAC LATM
+		SCTE35 = 0x86, // 134 SCTE-35 Splice Info Section
 		METADATA_CARRIED_IN_PES = 0x15
 	};
 

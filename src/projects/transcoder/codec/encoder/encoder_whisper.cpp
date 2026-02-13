@@ -205,7 +205,7 @@ void EncoderWhisper::CodecThread()
 			// If we have enough samples, break the loop.
 			if (pcmf32_buffer_new.size() >= static_cast<size_t>(_n_samples_step))
 			{
-				logtd("Collected %zu samples for Whisper processing. pts=%lld", pcmf32_buffer_new.size(), media_frame->GetPts());
+				logtt("Collected %zu samples for Whisper processing. pts=%lld", pcmf32_buffer_new.size(), media_frame->GetPts());
 				break;
 			}
 		}
@@ -221,7 +221,7 @@ void EncoderWhisper::CodecThread()
 			pcmf32_buffer[i] = pcmf32_buffer_old[pcmf32_buffer_old.size() - n_samples_old_keep + i];
 		}
 
-		logtd("Processing Whisper with %d old samples and %d new samples (total %zu samples)", n_samples_old_keep, n_samples_new, pcmf32_buffer.size());
+		logtt("Processing Whisper with %d old samples and %d new samples (total %zu samples)", n_samples_old_keep, n_samples_new, pcmf32_buffer.size());
 
 		// Copy new samples to the buffer.
 		memcpy(pcmf32_buffer.data() + n_samples_old_keep, pcmf32_buffer_new.data(), n_samples_new * sizeof(float));
@@ -287,15 +287,15 @@ void EncoderWhisper::CodecThread()
 		wparams.thold_ptsum		 = 0.01f;
 		wparams.max_len			 = 0;
 
-		logtd("Starting Whisper processing with %d samples", static_cast<int>(pcmf32_buffer.size()));
-		logtd("Audio buffer time range for Whisper: %lld ~ %lld (last_commit_end_cs=%lld)",
+		logtt("Starting Whisper processing with %d samples", static_cast<int>(pcmf32_buffer.size()));
+		logtt("Audio buffer time range for Whisper: %lld ~ %lld (last_commit_end_cs=%lld)",
 			buffer_start_cs, buffer_end_cs, last_commit_end_cs);
 		if (whisper_full(_whisper_ctx, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
 		{
 			logte("Failed to process audio samples with Whisper");
 			continue;
 		}
-		logtd("Whisper processing completed");
+		logtt("Whisper processing completed");
 
 		ov::String result_text;
 		
@@ -367,7 +367,7 @@ void EncoderWhisper::CodecThread()
 			last_commit_end_cs = buffer_end_cs;
 		}
 
-		logtd("[%lld] : %s", last_commit_end_cs, result_text.CStr());
+		logtt("[%lld] : %s", last_commit_end_cs, result_text.CStr());
 
 		SendVttToProvider(result_text);
 

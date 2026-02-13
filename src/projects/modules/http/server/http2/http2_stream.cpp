@@ -117,7 +117,7 @@ namespace http
 
 			bool HttpStream::SendInitialControlMessage()
 			{
-				logtd("Send Initial Control Message");
+				logtt("Send Initial Control Message");
 
 				// Settings Frame
 				auto settings_frame = std::make_shared<Http2SettingsFrame>();
@@ -217,7 +217,7 @@ namespace http
 						return false;
 				}
 
-				logtd("Frame Processing %s : %s", result?"Completed":"Error", parsed_frame->ToString().CStr());
+				logtt("Frame Processing %s : %s", result?"Completed":"Error", parsed_frame->ToString().CStr());
 
 				return true;
 			}
@@ -260,7 +260,7 @@ namespace http
 
 			bool HttpStream::OnRstStreamFrameReceived(const std::shared_ptr<const Http2RstStreamFrame> &frame)
 			{
-				logtd("%s", frame->ToString().CStr());
+				logtt("%s", frame->ToString().CStr());
 				SetStatus(HttpExchange::Status::Error);
 				return true;
 			}
@@ -314,7 +314,7 @@ namespace http
 
 			bool HttpStream::OnGoAwayFrameReceived(const std::shared_ptr<const Http2GoAwayFrame> &frame)
 			{
-				logtd("%s", frame->ToString().CStr());
+				logtt("%s", frame->ToString().CStr());
 				SetStatus(HttpExchange::Status::Error);
 				return true;
 			}

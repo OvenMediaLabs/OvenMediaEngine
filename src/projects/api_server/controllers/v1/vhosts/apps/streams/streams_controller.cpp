@@ -107,7 +107,7 @@ namespace api
 						}
 						else
 						{
-							properties->SetRetryCount(1); 
+							properties->SetRetryCount(0); 
 						}
 					}
 

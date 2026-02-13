@@ -65,7 +65,7 @@ namespace http
 					}
 				}
 
-				logtd("[Http2Response] Send header block : size(%u)", header_block->GetLength());
+				logtt("[Http2Response] Send header block : size(%u)", header_block->GetLength());
 
 				std::shared_ptr<ov::Data> head_block_fragment;
 				bool fragmented = false;
@@ -138,7 +138,7 @@ namespace http
 
 			int32_t Http2Response::SendPayload()
 			{
-				logtd("Trying to send datas...");
+				logtt("Trying to send datas...");
 
 				uint32_t sent_bytes = 0;
 
@@ -186,7 +186,7 @@ namespace http
 
 				ResetResponseData();
 
-				logtd("All datas are sent...");
+				logtt("All datas are sent...");
 
 				return sent_bytes;
 			}

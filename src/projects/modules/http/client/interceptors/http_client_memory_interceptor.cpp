@@ -22,12 +22,12 @@ namespace http
 
 			if (content_length.has_value())
 			{
-				logtd("Allocating %zu bytes for receiving response data", content_length.value());
+				logtt("Allocating %zu bytes for receiving response data", content_length.value());
 				_data = std::make_shared<ov::Data>(content_length.value());
 			}
 			else
 			{
-				logtd("Unknown content length");
+				logtt("Unknown content length");
 				_data = std::make_shared<ov::Data>();
 			}
 

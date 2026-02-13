@@ -90,7 +90,7 @@ namespace http
 					str += "[Headers Frame]\n";
 					
 					// Header Block Fragment length
-					str += ov::String::FormatString("Header Block Fragment Length : %d\n", _header_block_fragment->GetLength());
+					str += ov::String::FormatString("Header Block Fragment Length : %zu\n", _header_block_fragment->GetLength());
 
 					// Flags - End Header, End Stream, Padded, Priority
 					str += ov::String::FormatString("Flags : EndHeader(%s) EndStream(%s) Padded(%s) Priority(%s)\n",

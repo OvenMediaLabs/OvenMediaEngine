@@ -185,7 +185,7 @@ bool MediaRouter::UnregisterObserverApp(
 		return false;
 	}
 
-	// logtd("- Unregistered observer application. app_ptr(%p) name(%s)", application_observer.get(), app_name.CStr());
+	// logtt("- Unregistered observer application. app_ptr(%p) name(%s)", application_observer.get(), app_name.CStr());
 
 	auto media_route_app = GetRouteApplicationById(application_info.GetId());
 	if (media_route_app == nullptr)

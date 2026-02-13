@@ -14,15 +14,8 @@
 
 #include "srt_private.h"
 
-#define SRT_STREAM_DESC \
-	_stream_info->GetApplicationName(), _stream_info->GetName().CStr(), _stream_info->GetId()
-
-#define logat(format, ...) logtt("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
-#define logai(format, ...) logti("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
-#define logae(format, ...) logte("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%s/%s(%u)] " format, SRT_STREAM_DESC, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%s/%s(%u)] "
+#define OV_LOG_PREFIX_VALUE _stream_info->GetApplicationName(), _stream_info->GetName().CStr(), _stream_info->GetId()
 
 namespace pub
 {
@@ -52,14 +45,12 @@ namespace pub
 
 	bool SrtPlaylist::Start()
 	{
-		_packetizer->AddSink(GetSharedPtrAs<mpegts::PacketizerSink>());
-
-		return _packetizer->Start();
+		return _packetizer->AddSink(GetSharedPtrAs<mpegts::PacketizerSink>()) && _packetizer->Start();
 	}
 
 	bool SrtPlaylist::Stop()
 	{
-		return _packetizer->Stop();
+		return _packetizer->Stop() && _packetizer->RemoveSink(GetSharedPtrAs<mpegts::PacketizerSink>());
 	}
 
 	void SrtPlaylist::EnqueuePacket(const std::shared_ptr<MediaPacket> &media_packet)
@@ -97,7 +88,7 @@ namespace pub
 
 		for (auto &packet : packets)
 		{
-			auto size = _data_to_send->GetLength();
+			auto size		 = _data_to_send->GetLength();
 			const auto &data = packet->GetData();
 
 			// Broadcast if the data size exceeds the SRT's payload length
@@ -123,7 +114,7 @@ namespace pub
 			psi_data->Append(packet->GetData());
 		}
 
-		logat("OnPsi - %zu packets (total %zu bytes)", psi_packets.size(), psi_data->GetLength());
+		logap("OnPsi - %zu packets (total %zu bytes)", psi_packets.size(), psi_data->GetLength());
 
 		_psi_data = std::move(psi_data);
 
@@ -141,7 +132,7 @@ namespace pub
 			total_packet_size += packet->GetDataLength();
 		}
 
-		logat("OnFrame - %zu packets (total %zu bytes)", pes_packets.size(), total_packet_size);
+		logap("OnFrame - %zu packets (total %zu bytes)", pes_packets.size(), total_packet_size);
 #endif	// DEBUG
 
 		SendData(pes_packets);

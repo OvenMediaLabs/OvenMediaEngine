@@ -27,7 +27,7 @@ ThumbnailApplication::ThumbnailApplication(const std::shared_ptr<pub::Publisher>
 ThumbnailApplication::~ThumbnailApplication()
 {
 	Stop();
-	logtd("ThumbnailApplication(%d) has been terminated finally", GetId());
+	logtt("ThumbnailApplication(%d) has been terminated finally", GetId());
 }
 
 bool ThumbnailApplication::Start()
@@ -42,14 +42,14 @@ bool ThumbnailApplication::Stop()
 
 std::shared_ptr<pub::Stream> ThumbnailApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 {
-	logtd("Created stream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("Created stream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	return ThumbnailStream::Create(GetSharedPtrAs<pub::Application>(), *info);
 }
 
 bool ThumbnailApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 {
-	logtd("ThumbnailApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("ThumbnailApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	auto stream = std::static_pointer_cast<ThumbnailStream>(GetStream(info->GetId()));
 	if (stream == nullptr)
@@ -58,7 +58,7 @@ bool ThumbnailApplication::DeleteStream(const std::shared_ptr<info::Stream> &inf
 		return false;
 	}
 
-	logtd("ThumbnailApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
+	logtt("ThumbnailApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 	return true;
 }

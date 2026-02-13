@@ -61,7 +61,7 @@ bool AmfStrictArray::Encode(ov::ByteStream &byte_stream, bool encode_marker) con
 	{
 		if (EncodeMarker(byte_stream) == false)
 		{
-			logtd("Failed to encode marker");
+			logtt("Failed to encode marker");
 			return false;
 		}
 	}
@@ -69,7 +69,7 @@ bool AmfStrictArray::Encode(ov::ByteStream &byte_stream, bool encode_marker) con
 	// Write the count of items
 	if (byte_stream.WriteBE32(_amf_properties.size()) == false)
 	{
-		logtd("Failed to write the count of items");
+		logtt("Failed to write the count of items");
 		return false;
 	}
 
@@ -92,13 +92,13 @@ bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
 		AmfTypeMarker type;
 		if (DecodeMarker(byte_stream, false, &type) == false)
 		{
-			logtd("Failed to decode marker");
+			logtt("Failed to decode marker");
 			return false;
 		}
 
 		if (type != _amf_data_type)
 		{
-			OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", _amf_data_type, type);
+			OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", ov::ToUnderlyingType(_amf_data_type), ov::ToUnderlyingType(type));
 			return false;
 		}
 	}
@@ -106,7 +106,7 @@ bool AmfStrictArray::Decode(ov::ByteStream &byte_stream, bool decode_marker)
 	// Read the count of items
 	if (byte_stream.IsRemained(4) == false)
 	{
-		logtd("Failed to read the count of items");
+		logtt("Failed to read the count of items");
 		return false;
 	}
 

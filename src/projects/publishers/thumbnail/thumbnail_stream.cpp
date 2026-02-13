@@ -21,13 +21,13 @@ ThumbnailStream::ThumbnailStream(const std::shared_ptr<pub::Application> applica
 
 ThumbnailStream::~ThumbnailStream()
 {
-	logtd("ThumbnailStream(%s/%s) has been terminated finally",
+	logtt("ThumbnailStream(%s/%s) has been terminated finally",
 		  GetApplicationName(), GetName().CStr());
 }
 
 bool ThumbnailStream::Start()
 {
-	logtd("ThumbnailStream(%ld) has been started", GetId());
+	logtt("ThumbnailStream(%u) has been started", GetId());
 
 	if (GetState() != Stream::State::CREATED)
 	{
@@ -58,7 +58,7 @@ bool ThumbnailStream::Start()
 
 bool ThumbnailStream::Stop()
 {
-	logtd("ThumbnailStream(%u) has been stopped", GetId());
+	logtt("ThumbnailStream(%u) has been stopped", GetId());
 
 	return Stream::Stop();
 }

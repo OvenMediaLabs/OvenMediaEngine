@@ -12,12 +12,8 @@
 #include "srt_session.h"
 #include "srt_stream.h"
 
-#define logat(format, ...) logtt("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
-#define logai(format, ...) logti("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
-#define logae(format, ...) logte("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%s(%u)] " format, GetVHostAppName().CStr(), GetId(), ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%s(%u)] "
+#define OV_LOG_PREFIX_VALUE GetVHostAppName().CStr(), GetId()
 
 namespace pub
 {
@@ -39,19 +35,19 @@ namespace pub
 	{
 		Stop();
 
-		logad("SrtApplication has finally been terminated");
+		logat("SrtApplication has finally been terminated");
 	}
 
 	std::shared_ptr<Stream> SrtApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 	{
-		logad("Creating a new SRT stream: %s(%u)", info->GetName().CStr(), info->GetId());
+		logat("Creating a new SRT stream: %s(%u)", info->GetName().CStr(), info->GetId());
 
 		return SrtStream::Create(GetSharedPtrAs<Application>(), *info, worker_count);
 	}
 
 	bool SrtApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 	{
-		logad("Deleting the SRT stream: %s(%u)", info->GetName().CStr(), info->GetId());
+		logat("Deleting the SRT stream: %s(%u)", info->GetName().CStr(), info->GetId());
 
 		auto stream = std::static_pointer_cast<SrtStream>(GetStream(info->GetId()));
 
@@ -61,7 +57,7 @@ namespace pub
 			return false;
 		}
 
-		logad("The SRT stream has been deleted: %s(%u)", stream->GetName().CStr(), info->GetId());
+		logat("The SRT stream has been deleted: %s(%u)", stream->GetName().CStr(), info->GetId());
 		return true;
 	}
 }  // namespace pub

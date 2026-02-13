@@ -56,7 +56,7 @@ namespace ov
 
 		if (error == nullptr)
 		{
-			logtd("Subject: %s, Issuer: %s", _tls.GetSubjectName().CStr(), _tls.GetIssuerName().CStr());
+			logtt("Subject: %s, Issuer: %s", _tls.GetSubjectName().CStr(), _tls.GetIssuerName().CStr());
 			_state = State::Connected;
 		}
 
@@ -67,7 +67,7 @@ namespace ov
 	{
 		if (_state == State::Invalid)
 		{
-			logtd("Invalid state");
+			logtt("Invalid state");
 			return false;
 		}
 
@@ -86,11 +86,11 @@ namespace ov
 		if (_state != State::Connected)
 		{
 			// Before encrypting data, key exchange must be done first
-			logtd("Invalid state: %d", _state);
+			logtt("Invalid state: %d", ToUnderlyingType(_state));
 			return false;
 		}
 
-		logtt("Trying to encrypt the data for TLS\n%s", plain_data->Dump(32).CStr());
+		logtp("Trying to encrypt the data for TLS\n%s", plain_data->Dump(32).CStr());
 
 		size_t written_bytes = 0;
 
@@ -105,7 +105,7 @@ namespace ov
 
 	ssize_t TlsClientData::OnTlsRead(Tls *tls, void *buffer, size_t length)
 	{
-		logtt("Trying to read %zu bytes from I/O callback...", length);
+		logtp("Trying to read %zu bytes from I/O callback...", length);
 
 		if (_io_callback != nullptr)
 		{
@@ -117,7 +117,7 @@ namespace ov
 
 	ssize_t TlsClientData::OnTlsWrite(Tls *tls, const void *data, size_t length)
 	{
-		logtt("Trying to send encrypted data to I/O callback\n%s", ov::Dump(data, length, 32).CStr());
+		logtp("Trying to send encrypted data to I/O callback\n%s", ov::Dump(data, length, 32).CStr());
 
 		if (_io_callback != nullptr)
 		{
@@ -129,7 +129,7 @@ namespace ov
 
 	long TlsClientData::OnTlsCtrl(Tls *tls, int cmd, long num, void *arg)
 	{
-		logtt("[TLS] Ctrl: %d, %ld, %p", cmd, num, arg);
+		logtp("[TLS] Ctrl: %d, %ld, %p", cmd, num, arg);
 
 		switch (cmd)
 		{

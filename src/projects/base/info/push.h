@@ -108,6 +108,12 @@ namespace info
 		void SetByConfig(bool is_config);
 		bool IsByConfig();
 
+		void SetConnectionTimeout(int32_t timeout_ms);
+		int32_t GetConnectionTimeout();
+		
+		void SetSendTimeout(int32_t timeout_ms);
+		int32_t GetSendTimeout();
+
 		const ov::String GetInfoString();
 
 	private:
@@ -159,6 +165,10 @@ namespace info
 		PushState _state;
 
 		// File Session Id
-		session_id_t _session_id;		
+		session_id_t _session_id;
+
+		// Timeout
+		int32_t _connection_timeout_ms;
+		int32_t _send_timeout_ms;
 	};
 }  // namespace info

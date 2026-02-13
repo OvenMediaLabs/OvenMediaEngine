@@ -93,7 +93,7 @@ bool EncoderAVCxXMA::SetCodecParams()
 	auto preset = GetRefTrack()->GetPreset().LowerCaseString();
 	if (preset.IsEmpty() == false)
 	{
-		logtd("Xilinx encoder does not support preset");
+		logtt("Xilinx encoder does not support preset");
 	}
 
 	_bitstream_format = cmn::BitstreamFormat::H264_ANNEXB;

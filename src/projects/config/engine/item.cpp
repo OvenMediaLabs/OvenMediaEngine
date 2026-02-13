@@ -199,7 +199,7 @@ namespace cfg
 	{
 		if (_last_target != this)
 		{
-			logad("[%s] Rebuilding a list of children (last: %p, current: %p)", _item_name.ToString().CStr(), _last_target, this);
+			logat("[%s] Rebuilding a list of children (last: %p, current: %p)", _item_name.ToString().CStr(), _last_target, this);
 
 			_last_target = this;
 

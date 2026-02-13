@@ -57,14 +57,14 @@ HlsSession::HlsSession(const info::Session &session_info,
 		_session_key = ov::Random::GenerateString(8);
 	}
 
-	logtd("TsSession::TsSession (%d)", session_info.GetId());
+	logtt("TsSession::TsSession (%d)", session_info.GetId());
 	MonitorInstance->OnSessionConnected(*stream, PublisherType::Hls);
 	_number_of_players = 1;
 }
 
 HlsSession::~HlsSession()
 {
-	logtd("TsSession::~TsSession(%d)", GetId());
+	logtt("TsSession::~TsSession(%d)", GetId());
 	MonitorInstance->OnSessionsDisconnected(*GetStream(), PublisherType::Hls, _number_of_players);
 }
 
@@ -97,7 +97,7 @@ void HlsSession::UpdateLastRequest(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time[connection_id] = ov::Clock::NowMSec();
 
-	logtd("TsSession(%u) : Request updated from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("TsSession(%u) : Request updated from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
 }
 
 uint64_t HlsSession::GetLastRequestTime(uint32_t connection_id) const
@@ -118,7 +118,7 @@ void HlsSession::OnConnectionDisconnected(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time.erase(connection_id);
 
-	logtd("TsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("TsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
 }
 
 bool HlsSession::IsNoConnection() const
@@ -160,7 +160,7 @@ void HlsSession::OnMessageReceived(const std::any &message)
 		return;
 	}
 
-	logtd("TsSession::OnMessageReceived(%u) - %s", GetId(), exchange->ToString().CStr());
+	logtt("TsSession::OnMessageReceived(%u) - %s", GetId(), exchange->ToString().CStr());
 
 	auto request = exchange->GetRequest();
 	auto request_uri = request->GetParsedUri();
@@ -233,8 +233,11 @@ bool HlsSession::ParseFileName(const ov::String &file_name, RequestType &type, o
 	// * Segment File
 	// http[s]://<host>:<port>/<application_name>/<stream_name>/seg_<variant_name>_<number>_hls.ts
 
+	// * VTT File
+	// http[s]://<host>:<port>/<application_name>/<stream_name>/seg_<variant_name>_<number>_hls.vtt
+
 	auto name_ext_items = file_name.Split(".");
-	if (name_ext_items.size() < 2 || (name_ext_items[1] != "m3u8" && name_ext_items[1] != "ts"))
+	if (name_ext_items.size() < 2 || (name_ext_items[1] != "m3u8" && name_ext_items[1] != "ts" && name_ext_items[1] != "vtt"))
 	{
 		return false;
 	}
@@ -278,7 +281,7 @@ bool HlsSession::ParseFileName(const ov::String &file_name, RequestType &type, o
 	}
 	// Segment File
 	// seg_<variant_name>_<number>_hls.ts
-	else if (ext == "ts" && name_items[0] == "seg")
+	else if ((ext == "ts" && name_items[0] == "seg") || (ext == "vtt" && name_items[0] == "seg"))
 	{
 		type = RequestType::Segment;
 
@@ -389,13 +392,42 @@ void HlsSession::ResponseSegment(const std::shared_ptr<http::svr::HttpExchange> 
 		return;
 	}
 
+	auto file_name = exchange->GetRequest()->GetParsedUri()->File();
+	auto file_items = file_name.Split(".");
+	if (file_items.size() < 2)
+	{
+		logte("TsSession::ResponseSegment - Invalid file name(%s)", file_name.CStr());
+		auto response = exchange->GetResponse();
+		response->SetStatusCode(http::StatusCode::BadRequest);
+		ResponseData(exchange);
+		return;
+	}
+	auto ext = file_items[1];
+	ov::String content_type;
+	if (ext == "ts")
+	{
+		content_type = "video/mp2t";
+	}
+	else if (ext == "vtt")
+	{
+		content_type = "text/vtt";
+	}
+	else
+	{
+		logte("TsSession::ResponseSegment - Invalid segment file extension(%s)", ext.CStr());
+		auto response = exchange->GetResponse();
+		response->SetStatusCode(http::StatusCode::BadRequest);
+		ResponseData(exchange);
+		return;
+	}
+
 	auto response = exchange->GetResponse();
 
 	auto [result, segment] = stream->GetSegmentData(variant_name, number);
 	if (result == HlsStream::RequestResult::Success)
 	{
 		response->SetStatusCode(http::StatusCode::OK);
-		response->SetHeader("Content-Type", "video/mp2t");
+		response->SetHeader("Content-Type", content_type);
 		response->AppendData(segment);
 	}
 	else if (result == HlsStream::RequestResult::NotFound)
@@ -420,7 +452,7 @@ void HlsSession::ResponseData(const std::shared_ptr<http::svr::HttpExchange> &ex
 		MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Hls, sent_size);
 	}
 
-	logtd("\n%s", exchange->GetDebugInfo().CStr());
+	logtt("\n%s", exchange->GetDebugInfo().CStr());
 
 	// Terminate the HTTP/2 stream
 	exchange->Release();

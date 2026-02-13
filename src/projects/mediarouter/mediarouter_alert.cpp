@@ -92,7 +92,7 @@ bool MediaRouterAlert::DetectBBframes(const std::shared_ptr<info::Stream> &strea
 		case cmn::BitstreamFormat::H264_AVCC:
 		case cmn::BitstreamFormat::H265_ANNEXB:
 		case cmn::BitstreamFormat::HVCC:
-			if (_alert_count_bframe < 10)
+			if (_alert_count_bframe < 1)	// Reduced the number of warning log outputs from 10 to 1
 			{
 				if (media_track->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
 				{

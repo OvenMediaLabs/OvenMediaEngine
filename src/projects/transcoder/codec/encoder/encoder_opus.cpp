@@ -299,6 +299,6 @@ void EncoderOPUS::CodecThread()
 
 		_current_pts += duration;
 
-		Complete(std::move(packet_buffer));
+		Complete(TranscodeResult::DataReady, std::move(packet_buffer));
 	}
 }

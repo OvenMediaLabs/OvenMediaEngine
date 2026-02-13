@@ -40,12 +40,14 @@ namespace ov
 
 				if (pool == nullptr)
 				{
-					pool = Create("DefTcp", SocketType::Tcp, false);
+					auto new_pool = Create("DefTcp", SocketType::Tcp, false);
 
-					if (pool != nullptr)
+					if (new_pool != nullptr)
 					{
-						pool->Initialize(1);
+						new_pool->Initialize(1);
 					}
+
+					pool = new_pool;
 				}
 			}
 
@@ -63,12 +65,14 @@ namespace ov
 
 				if (pool == nullptr)
 				{
-					pool = Create("DefUdp", SocketType::Udp, false);
+					auto new_pool = Create("DefUdp", SocketType::Udp, false);
 
-					if (pool != nullptr)
+					if (new_pool != nullptr)
 					{
-						pool->Initialize(1);
+						new_pool->Initialize(1);
 					}
+
+					pool = new_pool;
 				}
 			}
 

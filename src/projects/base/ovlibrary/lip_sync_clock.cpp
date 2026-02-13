@@ -89,7 +89,7 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 
 	int64_t final_pts = pts - (int64_t)(_adjust_pts_us / clock->_timebase / 100000.0);
 
-	logtd("Calc PTS : id(%u) pts(%lld) final_pts(%lld) last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%llu)", id, pts, final_pts, clock->_last_rtp_timestamp, rtp_timestamp, delta, clock->_extended_rtp_timestamp);
+	logtt("Calc PTS : id(%u) pts(%lld) final_pts(%lld) last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%llu)", id, pts, final_pts, clock->_last_rtp_timestamp, rtp_timestamp, delta, clock->_extended_rtp_timestamp);
 
 	return final_pts; 
 }
@@ -148,7 +148,7 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 	clock->_last_rtcp_timestamp = rtcp_timestamp;
 	clock->_pts = ov::Converter::NtpTsToSeconds(ntp_msw, ntp_lsw) / clock->_timebase;
 
-	logtd("Update SR : id(%u) NTP(%u/%u) pts(%lld) rtp timestamp(%u) extended timestamp (%llu)", 
+	logtt("Update SR : id(%u) NTP(%u/%u) pts(%lld) rtp timestamp(%u) extended timestamp (%llu)", 
 			id, ntp_msw, ntp_lsw, clock->_pts, clock->_last_rtcp_timestamp, clock->_extended_rtcp_timestamp);
 
 	return true;

@@ -196,12 +196,25 @@ std::tuple<AccessController::VerificationResult, std::shared_ptr<const Admission
 		[&request_info](const ov::String &control_server_url_address,
 						const std::shared_ptr<const ov::SocketAddress> &client_address,
 						const std::shared_ptr<const AdmissionWebhooks> &admission_webhooks) {
-			logti("AdmissionWebhooks queried %s whether client %s could access %s. (Result : %s Elapsed : %u ms)",
-				  control_server_url_address.CStr(),
-				  client_address->ToString(false).CStr(),
-				  request_info->GetRequestedUrl()->ToUrlString().CStr(),
-				  (admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::ALLOWED) ? "Allow" : "Reject",
-				  admission_webhooks->GetElapsedTime());
+			if (admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::ALLOWED ||
+				admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::DENIED)
+			{
+				logti("AdmissionWebhook queried %s for client %s accessing %s (Result: %s, Elapsed: %" PRIu64 " ms)",
+					  control_server_url_address.CStr(),
+					  client_address->ToString(false).CStr(),
+					  request_info->GetRequestedUrl()->ToUrlString().CStr(),
+					  admission_webhooks->GetErrCodeString().CStr(),
+					  admission_webhooks->GetElapsedTime());
+			}
+			else 
+			{
+				logtw("Failed to query AdmissionWebhook %s for client %s accessing %s (Result: %s, Elapsed: %" PRIu64" ms)",
+					  control_server_url_address.CStr(),
+					  client_address->ToString(false).CStr(),
+					  request_info->GetRequestedUrl()->ToUrlString().CStr(),
+					  admission_webhooks->GetErrCodeString().CStr(),
+					  admission_webhooks->GetElapsedTime());
+			}
 		});
 }
 
@@ -229,12 +242,25 @@ std::tuple<AccessController::VerificationResult, std::shared_ptr<const Admission
 		[&request_info](const ov::String &control_server_url_address,
 						const std::shared_ptr<const ov::SocketAddress> &client_address,
 						const std::shared_ptr<const AdmissionWebhooks> &admission_webhooks) {
-			logti("AdmissionWebhooks notified %s that client %s has closed the connection to %s. (Response : %s Elapsed : %u ms)",
-				  control_server_url_address.CStr(),
-				  client_address->ToString(false).CStr(),
-				  request_info->GetRequestedUrl()->ToUrlString().CStr(),
-				  (admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::ALLOWED) ? "Allow" : "Reject",
-				  admission_webhooks->GetElapsedTime());
+			if (admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::ALLOWED ||
+				admission_webhooks->GetErrCode() == AdmissionWebhooks::ErrCode::DENIED)
+			{
+				logti("AdmissionWebhook notified %s that client %s closed the connection to %s (Result: %s, Elapsed: %" PRIu64 " ms)",
+					  control_server_url_address.CStr(),
+					  client_address->ToString(false).CStr(),
+					  request_info->GetRequestedUrl()->ToUrlString().CStr(),
+					  admission_webhooks->GetErrCodeString().CStr(),
+					  admission_webhooks->GetElapsedTime());
+			}
+			else 
+			{
+				logtw("Failed to notify AdmissionWebhook %s that client %s closed the connection to %s (Result: %s, Elapsed: %" PRIu64 " ms)",
+					  control_server_url_address.CStr(),
+					  client_address->ToString(false).CStr(),
+					  request_info->GetRequestedUrl()->ToUrlString().CStr(),
+					  admission_webhooks->GetErrCodeString().CStr(),
+					  admission_webhooks->GetElapsedTime());
+			}
 		});
 }
 

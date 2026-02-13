@@ -102,7 +102,7 @@ namespace pub
 		std::unique_lock<std::shared_mutex> lock(_application_map_mutex);
 		auto item = _applications.find(app_info.GetId());
 
-		logtd("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
+		logtt("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
 		if(item == _applications.end())
 		{
 			// Check the reason the app is not created is because it is disabled in the configuration
@@ -334,5 +334,22 @@ namespace pub
 		}
 
 		return _access_controller->VerifyByWebhooks(request_info);
+	}
+
+	std::shared_ptr<Session> Publisher::GetSession(const info::Session::Path &session_path)
+	{
+		auto application = GetApplicationById(session_path._application_id);
+		if (application == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto stream = application->GetStream(session_path._stream_id);
+		if (stream == nullptr)
+		{
+			return nullptr;
+		}
+
+		return stream->GetSession(session_path._session_id);
 	}
 }  // namespace pub

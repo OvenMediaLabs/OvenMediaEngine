@@ -99,7 +99,7 @@ namespace pvd
 		auto application = OnCreateProviderApplication(app_info);
 		if(application == nullptr)
 		{
-			logtd("Could not create application for [%s]", app_info.GetVHostAppName().CStr());
+			logtt("Could not create application for [%s]", app_info.GetVHostAppName().CStr());
 			// It may not be a error that the Application failed due to disabling that Publisher.
 			// Failure to create a single application should not affect the whole.
 			// TODO(Getroot): The reason for the error must be defined and handled in detail.
@@ -126,7 +126,7 @@ namespace pvd
 		std::unique_lock<std::shared_mutex> lock(_application_map_mutex);
 		auto item = _applications.find(app_info.GetId());
 
-		logtd("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
+		logtt("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
 		if(item == _applications.end())
 		{
 			// Check the reason the app is not created is because it is disabled in the configuration
@@ -147,7 +147,7 @@ namespace pvd
 			}
 
 			// It is not an error because it might not be created 
-			logtd("%s provider hasn't the %s application.", ::StringFromProviderType(GetProviderType()).CStr(), app_info.GetVHostAppName().CStr());
+			logtt("%s provider hasn't the %s application.", ::StringFromProviderType(GetProviderType()).CStr(), app_info.GetVHostAppName().CStr());
 			return true;
 		}
 

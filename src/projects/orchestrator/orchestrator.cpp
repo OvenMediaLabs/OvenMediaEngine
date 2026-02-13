@@ -279,14 +279,14 @@ namespace ocst
 		}
 
 		{
-			logtd("Notifying modules for the delete event...");
+			logtt("Notifying modules for the delete event...");
 			auto module_list = GetModuleList();
 			// Notify modules of deletion events
 			for (auto module = module_list.rbegin(); module != module_list.rend(); ++module)
 			{
 				auto module_interface = module->GetModuleInterface();
 
-				logtd("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+				logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
 
 				if (module_interface->OnDeleteApplication(app_info) == false)
 				{
@@ -297,7 +297,7 @@ namespace ocst
 				}
 				else
 				{
-					logtd("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 				}
 			}
 		}
@@ -362,7 +362,7 @@ namespace ocst
 			_media_router = media_router;
 		}
 
-		logtd("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
+		logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
 
 		return true;
 	}
@@ -382,7 +382,7 @@ namespace ocst
 				if (info->GetModuleInterface() == module_interface)
 				{
 					_module_list.erase(info);
-					logtd("%s module (%p) is unregistered", GetModuleTypeName(info->GetType()).CStr(), module_interface.get());
+					logtt("%s module (%p) is unregistered", GetModuleTypeName(info->GetType()).CStr(), module_interface.get());
 					return true;
 				}
 			}
@@ -422,7 +422,7 @@ namespace ocst
 
 		auto resolved = ResolveApplicationName(vhost_name, app_name);
 
-		logtd("Resolved application name: %s (from domain: %s, app: %s)", resolved.CStr(), domain_name.CStr(), app_name.CStr());
+		logtt("Resolved application name: %s (from domain: %s, app: %s)", resolved.CStr(), domain_name.CStr(), app_name.CStr());
 
 		return resolved;
 	}
@@ -653,7 +653,7 @@ namespace ocst
 
 	bool Orchestrator::OnStreamCreated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info)
 	{
-		logtd("%s/%s stream of %s is created", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
+		logtt("%s/%s stream of %s is created", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
 
 		return true;
 	}
@@ -667,14 +667,14 @@ namespace ocst
 
 	bool Orchestrator::OnStreamPrepared(const info::Application &app_info, const std::shared_ptr<info::Stream> &info)
 	{
-		logtd("%s/%s stream of %s is parsed", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
+		logtt("%s/%s stream of %s is parsed", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
 
 		return true;
 	}
 
 	bool Orchestrator::OnStreamUpdated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info)
 	{
-		logtd("%s/%s stream of %s is updated", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
+		logtt("%s/%s stream of %s is updated", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
 		return true;
 	}
 
@@ -841,7 +841,7 @@ namespace ocst
 
 		auto app_stream_name = ov::String::FormatString("%s/%s", vhost_app_name.GetAppName().CStr(), stream_name.CStr());
 		auto ovt_url = ov::String::FormatString("%s/%s", vhost->GetOriginBaseUrl().CStr(), app_stream_name.CStr());
-		if (client->Register(app_stream_name, ovt_url) == true)
+		if (client->RequestRegister(app_stream_name, ovt_url) == true)
 		{
 			return CommonErrorCode::SUCCESS;
 		}
@@ -873,7 +873,7 @@ namespace ocst
 
 		auto app_stream_name = ov::String::FormatString("%s/%s", vhost_app_name.GetAppName().CStr(), stream_name.CStr());
 
-		if (client->Unregister(app_stream_name) == true)
+		if (client->RequestUnregister(app_stream_name) == true)
 		{
 			return CommonErrorCode::SUCCESS;
 		}
@@ -928,7 +928,7 @@ namespace ocst
 	{
 		auto lower_scheme = scheme.LowerCaseString();
 
-		logtd("Obtaining ProviderType for scheme %s...", scheme.CStr());
+		logtt("Obtaining ProviderType for scheme %s...", scheme.CStr());
 
 		ProviderType type;
 
@@ -980,7 +980,7 @@ namespace ocst
 			}
 		}
 
-		logtw("Provider (%d) is not found for scheme %s", type, scheme.CStr());
+		logtw("Provider (%d) is not found for scheme %s", ov::ToUnderlyingType(type), scheme.CStr());
 		return nullptr;
 	}
 
@@ -991,7 +991,7 @@ namespace ocst
 
 		OV_ASSERT((provider == nullptr) || (provider_module != nullptr),
 				  "Provider (%d) must inherit from ProviderModuleInterface",
-				  provider->GetProviderType());
+				  ov::ToUnderlyingType(provider->GetProviderType()));
 
 		return provider_module;
 	}
@@ -1007,7 +1007,7 @@ namespace ocst
 			return nullptr;
 		}
 
-		logtd("Obtaining ProviderType for URL %s...", url.CStr());
+		logtt("Obtaining ProviderType for URL %s...", url.CStr());
 
 		return GetProviderForScheme(parsed_url->Scheme());
 	}
@@ -1041,11 +1041,11 @@ namespace ocst
 			{
 				auto module_interface = module.GetModuleInterface();
 
-				logtd("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+				logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 
 				if (module_interface->OnCreateHost(vhost_info))
 				{
-					logtd("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 				}
 				else
 				{
@@ -1090,11 +1090,11 @@ namespace ocst
 				{
 					auto module_interface = module.GetModuleInterface();
 
-					logtd("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+					logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 
 					if (module_interface->OnDeleteHost(vhost_info))
 					{
-						logtd("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+						logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 					}
 					else
 					{
@@ -1188,11 +1188,11 @@ namespace ocst
 			{
 				auto module_interface = module.GetModuleInterface();
 
-				logtd("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+				logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 
 				if (module_interface->OnUpdateCertificate(vhost_info))
 				{
-					logtd("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 				}
 				else
 				{
@@ -1264,7 +1264,7 @@ namespace ocst
 
 		// Find the origin using the location
 		ov::String requested_location = ov::String::FormatString("/%s/%s", vhost_app_name.GetAppName().CStr(), stream_name.CStr());
-		logtd("Trying to find the item from origin_list that match location: %s", requested_location.CStr());
+		logtt("Trying to find the item from origin_list that match location: %s", requested_location.CStr());
 		Origin found_matched_origin;
 		if (vhost->FindOriginByRequestedLocation(requested_location, found_matched_origin) == false)
 		{
@@ -1336,11 +1336,11 @@ namespace ocst
 			{
 				auto module_interface = module.GetModuleInterface();
 
-				logtd("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+				logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
 
 				if (module_interface->OnCreateApplication(app_info))
 				{
-					logtd("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 				}
 				else
 				{

@@ -51,7 +51,7 @@ namespace ocst
 		//                        ~~ <= remaining part
 		auto remaining_part = requested_location.Substring(_location.GetLength());
 
-		logtd("Found: Location: %s, Requested Location: %s, remaining_part: %s", _location.CStr(), requested_location.CStr(), remaining_part.CStr());
+		logtt("Found: Location: %s, Requested Location: %s, remaining_part: %s", _location.CStr(), requested_location.CStr(), remaining_part.CStr());
 		for (auto url : _url_list)
 		{
 			// Append the remaining_part to the URL

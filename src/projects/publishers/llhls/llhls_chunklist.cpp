@@ -25,12 +25,12 @@ LLHlsChunklist::LLHlsChunklist(const ov::String &url, const std::shared_ptr<cons
 	_map_uri = map_uri;
 	_preload_hint_enabled = preload_hint_enabled;
 
-	logtd("LLHLS Chunklist has been created. track(%s)", _track->GetVariantName().CStr());
+	logtt("LLHLS Chunklist has been created. track(%s)", _track->GetVariantName().CStr());
 }
 
 LLHlsChunklist::~LLHlsChunklist()
 {
-	logtd("Chunklist has been deleted. %s", GetTrack()->GetVariantName().CStr());
+	logtt("Chunklist has been deleted. %s", GetTrack()->GetVariantName().CStr());
 }
 
 // Set all renditions info for ABR
@@ -98,7 +98,7 @@ void LLHlsChunklist::SetPartHoldBack(const float &part_hold_back)
 
 bool LLHlsChunklist::CreateSegmentInfo(const SegmentInfo &info)
 {
-	logtd("UpdateSegmentInfo[Track : %s/%s]: %s", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), info.ToString().CStr());
+	logtt("UpdateSegmentInfo[Track : %s/%s]: %s", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), info.ToString().CStr());
 
 	// Lock
 	std::unique_lock<std::shared_mutex> lock(_segments_guard);
@@ -148,7 +148,7 @@ bool LLHlsChunklist::RemoveSegmentInfo(uint32_t segment_sequence)
 {
 	std::unique_lock<std::shared_mutex> lock(_segments_guard);
 
-	logtd("RemoveSegmentInfo[Track : %s/%s]: %lld", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), segment_sequence);
+	logtt("RemoveSegmentInfo[Track : %s/%s]: %u", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), segment_sequence);
 
 	if (_segments.empty())
 	{
@@ -158,7 +158,7 @@ bool LLHlsChunklist::RemoveSegmentInfo(uint32_t segment_sequence)
 	auto old_segment = _segments.begin()->second;
 	if (old_segment->GetSequence() != segment_sequence)
 	{
-		logtc("The sequence number of the segment to be deleted is not the first segment. segment(%lld) first(%lld)", segment_sequence, old_segment->GetSequence());
+		logtc("The sequence number of the segment to be deleted is not the first segment. segment(%u) first(%" PRId64 ")", segment_sequence, old_segment->GetSequence());
 		return false;
 	}
 
@@ -196,7 +196,7 @@ bool LLHlsChunklist::SaveOldSegmentInfo(std::shared_ptr<SegmentInfo> &segment_in
 	// no longer need partial segment info - for memory saving
 	segment_info->ClearPartialSegments();
 
-	logtd("Save old segment info: %d / %s", segment_info->GetSequence(), segment_info->GetUrl().CStr());
+	logtt("Save old segment info: %d / %s", segment_info->GetSequence(), segment_info->GetUrl().CStr());
 
 	_old_segments.emplace(segment_info->GetSequence(), segment_info);
 
@@ -464,7 +464,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
 		playlist.AppendFormat("#EXT-X-PROGRAM-DATE-TIME:%s\n", ov::Converter::ToISO8601String(tp).CStr());
 
-		logtd("MakeChunklist[Track : %s/%s]: segment(%d) duration(%.2f) url(%s) start_time(%lld) date_time(%s)",
+		logtt("MakeChunklist[Track : %s/%s]: segment(%d) duration(%.2f) url(%s) start_time(%lld) date_time(%s)",
 			_track->GetPublicName().CStr(), _track->GetVariantName().CStr(),
 			segment->GetSequence(), segment->GetDuration(), segment->GetUrl().CStr(), segment->GetStartTime(), 
 			ov::Converter::ToISO8601String(tp).CStr());

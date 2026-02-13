@@ -18,12 +18,8 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Server"
 
-#define logat(format, ...) logtt("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logad(format, ...) logtd("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logai(format, ...) logti("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
+#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
 
 namespace ov
 {
@@ -61,7 +57,7 @@ namespace ov
 
 					GetSockOpt(SO_SNDBUF, &current_send_buffer_size);
 
-					logad("TCP Server send buffer size (requested: %d, from socket: %d)", send_buffer_size * 2, current_send_buffer_size);
+					logat("TCP Server send buffer size (requested: %d, from socket: %d)", send_buffer_size * 2, current_send_buffer_size);
 				}
 
 				// Set recv buffer size if smaller than argument (0 == default)
@@ -74,7 +70,7 @@ namespace ov
 
 					GetSockOpt(SO_RCVBUF, &current_recv_buffer_size);
 
-					logad("TCP Server recv buffer size (requested: %d, from socket: %d)", recv_buffer_size * 2, current_recv_buffer_size);
+					logat("TCP Server recv buffer size (requested: %d, from socket: %d)", recv_buffer_size * 2, current_recv_buffer_size);
 				}
 				break;
 			}
@@ -191,7 +187,7 @@ namespace ov
 				return;
 			}
 
-			logad("Trying to allocate a socket for client: %s", remote_address.ToString(false).CStr());
+			logat("Trying to allocate a socket for client: %s", remote_address.ToString(false).CStr());
 
 			auto client = _pool->AllocSocket<ClientSocket>(remote_address.GetFamily(), GetSharedPtrAs<ServerSocket>(), client_socket, remote_address);
 
@@ -208,7 +204,7 @@ namespace ov
 
 				if (client->Prepare())
 				{
-					logad("Client(%s) is connected", client->ToString().CStr());
+					logat("Client(%s) is connected", client->ToString().CStr());
 				}
 				else
 				{
@@ -236,7 +232,7 @@ namespace ov
 			return false;
 		}
 
-		logad("Client(%s) is disconnected", client->ToString().CStr());
+		logat("Client(%s) is disconnected", client->ToString().CStr());
 
 		_client_list.erase(item);
 

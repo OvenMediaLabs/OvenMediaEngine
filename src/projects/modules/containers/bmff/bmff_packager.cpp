@@ -1667,19 +1667,19 @@ namespace bmff
 		// unsigned int(32) track_ID;
 		stream.WriteBE32(1);
 
-		// // unsigned int(64) base_data_offset;
+		// unsigned int(64) base_data_offset;
 
-		// // unsigned int(32) sample_description_index;
-		// stream.WriteBE32(1);
+		// unsigned int(32) sample_description_index;
+		stream.WriteBE32(1);
 
-		// // unsigned int(32) default_sample_duration;
-		// stream.WriteBE32(33);
+		// unsigned int(32) default_sample_duration;
+		stream.WriteBE32(33);
 
-		// // unsigned int(32) default_sample_size;
-		// stream.WriteBE32(0);
+		// unsigned int(32) default_sample_size;
+		stream.WriteBE32(0);
 
-		// // unsigned int(32) default_sample_flags;
-		// stream.WriteBE32(0);
+		// unsigned int(32) default_sample_flags;
+		stream.WriteBE32(0);
 
 		// tf_flags
 		// 0x000001 base-data-offset-present:
@@ -1690,7 +1690,7 @@ namespace bmff
 		// 0x010000 duration-is-empty:
 		// 0x020000 default‐base‐is‐moof: if base‐data‐offset‐present is 1, this flag is ignored. If base-data-offset-present is zero, this indicates that the base-data-offset for this track fragment is the position of the first byte of the enclosing Movie Fragment Box. Support for the default‐base‐is‐moof flag is required under the ‘iso5’ brand, and it shall not be used in brands or compatible brands earlier than iso5.
 		
-		return WriteFullBox(container_stream, "tfhd", *stream.GetData(), 0, 0); //0x2 | 0x8 | 0x10 | 0x20 |0x020000);
+		return WriteFullBox(container_stream, "tfhd", *stream.GetData(), 0, 0x2 | 0x8 | 0x10 | 0x20 |0x020000);
 	}
 
 	bool Packager::WriteTfdtBox(ov::ByteStream &container_stream, const std::shared_ptr<const Samples> &samples)

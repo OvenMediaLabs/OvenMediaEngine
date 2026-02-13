@@ -20,6 +20,7 @@
 #include <iostream>
 
 #include "./main_private.h"
+#include "./third_parties.h"
 #include "main.h"
 
 bool g_is_terminated;
@@ -176,7 +177,7 @@ static void AbortHandler(int signum, siginfo_t *si, void *context)
 		::strftime(time_buffer, OV_COUNTOF(time_buffer), "crash_%Y%m%d.dump", &local_time);
 
 		file_name = file_prefix;
-		file_name.AppendFormat(time_buffer);
+		file_name.Append(time_buffer);
 
 		if (::mkdir(file_prefix, 0755) != 0)
 		{
@@ -213,7 +214,7 @@ static void AbortHandler(int signum, siginfo_t *si, void *context)
 			file_prefix = g_dump_fallback_directory;
 
 			file_name = file_prefix;
-			file_name.AppendFormat(time_buffer);
+			file_name.Append(time_buffer);
 
 			ostream = std::ofstream(file_name, std::ofstream::app);
 
@@ -294,6 +295,47 @@ static bool InitializeForSigUsr1()
 	return (::sigaction(SIGUSR1, &sa, nullptr) == 0);
 }
 
+// Configure for SIGRT* to use jemalloc
+
+#ifdef OME_USE_JEMALLOC
+// SIGRTMIN+0: Show jemalloc stats
+static auto SIG_JEMALLOC_SHOW_STATS	  = (SIGRTMIN + 0);
+// SIGRTMIN+1: Trigger dump (This only works when `OME_USE_JEMALLOC_PROFILE` is defined)
+static auto SIG_JEMALLOC_TRIGGER_DUMP = (SIGRTMIN + 1);
+
+static void SigRtHandler(int signum, siginfo_t *si, void *unused)
+{
+	if (signum == (SIG_JEMALLOC_SHOW_STATS))
+	{
+		logtc("Jemalloc stats signal received.");
+		JemallocShowStats();
+	}
+	else if (signum == (SIG_JEMALLOC_TRIGGER_DUMP))
+	{
+		logtc("Jemalloc dump trigger signal received.");
+		JemallocTriggerDump();
+	}
+}
+#endif	// OME_USE_JEMALLOC
+
+static bool InitializeForSigRt()
+{
+#ifdef OME_USE_JEMALLOC
+	if (SIG_JEMALLOC_TRIGGER_DUMP >= SIGRTMAX)
+	{
+		logtc("Cannot initialize SIGRT handler for jemalloc: `SIGRTMAX` is too small.");
+		return false;
+	}
+
+	auto sa = ::GetSigAction(::SigRtHandler);
+
+	return (::sigaction(SIG_JEMALLOC_SHOW_STATS, &sa, nullptr) == 0) &&
+		   (::sigaction(SIG_JEMALLOC_TRIGGER_DUMP, &sa, nullptr) == 0);
+#else	// OME_USE_JEMALLOC
+	return true;
+#endif	// OME_USE_JEMALLOC
+}
+
 // Configure for SIGHUP
 static void SigHupHandler(int signum, siginfo_t *si, void *unused)
 {
@@ -360,7 +402,7 @@ static void SigIntHandler(int signum, siginfo_t *si, void *unused)
 
 	if (signal_count == TERMINATE_COUNT)
 	{
-		logtc("The termination request has been made %d times. OME is forcibly terminated.", TERMINATE_COUNT, signum);
+		logtc("The termination request has been made %d times by signal %d. OME is forcibly terminated.", TERMINATE_COUNT, signum);
 		::exit(1);
 	}
 	else
@@ -402,6 +444,7 @@ bool InitializeSignals()
 
 	return InitializeForAbortSignals() &&
 		   InitializeForSigUsr1() &&
+		   InitializeForSigRt() &&
 		   InitializeForSigHup() &&
 		   InitializeForSigTerm() &&
 		   InitializeForSigInt();

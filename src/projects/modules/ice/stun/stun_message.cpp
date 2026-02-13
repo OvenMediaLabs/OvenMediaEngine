@@ -56,7 +56,7 @@ bool StunMessage::Parse(ov::ByteStream &stream)
 
 bool StunMessage::ParseHeader(ov::ByteStream &stream)
 {
-	logtd("Trying to check STUN header length...");
+	logtt("Trying to check STUN header length...");
 
 	size_t remained = stream.Remained();
 
@@ -114,7 +114,7 @@ bool StunMessage::ParseHeader(ov::ByteStream &stream)
 		return false;
 	}
 
-	logtd("Trying to parse STUN header...");
+	logtt("Trying to parse STUN header...");
 
 	SetType(type);
 
@@ -144,12 +144,12 @@ bool StunMessage::ParseHeader(ov::ByteStream &stream)
 
 	if (stream.Remained() < _message_length)
 	{
-		logtd("Message is too short: %d (expected: %d)", stream.Remained(), _message_length);
+		logtt("Message is too short: %d (expected: %d)", stream.Remained(), _message_length);
 		_last_error_code = LastErrorCode::NOT_ENOUGH_DATA;
 		return false;
 	}
 
-	logtd("STUN header is parsed successfully");
+	logtt("STUN header is parsed successfully");
 	return true;
 }
 
@@ -208,7 +208,7 @@ std::shared_ptr<StunAttribute> StunMessage::ParseFingerprintAttribute(ov::ByteSt
 
 bool StunMessage::WriteHeader(ov::ByteStream &stream)
 {
-	logtd("Trying to write STUN header...");
+	logtt("Trying to write STUN header...");
 
 	bool result = true;
 
@@ -223,7 +223,7 @@ bool StunMessage::WriteHeader(ov::ByteStream &stream)
 
 	if (result)
 	{
-		logtd("STUN header is written");
+		logtt("STUN header is written");
 	}
 	else
 	{
@@ -259,7 +259,7 @@ bool StunMessage::WriteAttributes(ov::ByteStream &stream)
 {
 	uint8_t padding[4] = {0};
 
-	logtd("Trying to write attributes...");
+	logtt("Trying to write attributes...");
 
 	for (const auto &attribute : _attributes)
 	{
@@ -289,7 +289,7 @@ bool StunMessage::WriteAttributes(ov::ByteStream &stream)
 
 bool StunMessage::WriteMessageIntegrityAttribute(ov::ByteStream &stream, const std::shared_ptr<const ov::Data> &integrity_key)
 {
-	logtd("Trying to write message integrity attribute...");
+	logtt("Trying to write message integrity attribute...");
 
 	std::shared_ptr<StunMessageIntegrityAttribute> attribute = std::make_unique<StunMessageIntegrityAttribute>();
 
@@ -314,7 +314,7 @@ bool StunMessage::WriteMessageIntegrityAttribute(ov::ByteStream &stream, const s
 
 	bool result = true;
 
-	logtd("Computing hmac: key: %s (current message length: %d)\n%s", integrity_key->ToHexString().CStr(), _message_length, stream.GetData()->Dump().CStr());
+	logtt("Computing hmac: key: %s (current message length: %d)\n%s", integrity_key->ToHexString().CStr(), _message_length, stream.GetData()->Dump().CStr());
 
 	result = result && ov::MessageDigest::ComputeHmac(ov::CryptoAlgorithm::Sha1,
 													  integrity_key->GetData(), integrity_key->GetLength(),
@@ -333,7 +333,7 @@ bool StunMessage::WriteMessageIntegrityAttribute(ov::ByteStream &stream, const s
 
 bool StunMessage::WriteFingerprintAttribute(ov::ByteStream &stream)
 {
-	logtd("Trying to write fingerprint attribute...");
+	logtt("Trying to write fingerprint attribute...");
 
 	std::shared_ptr<StunFingerprintAttribute> attribute = std::make_unique<StunFingerprintAttribute>();
 
@@ -345,7 +345,7 @@ bool StunMessage::WriteFingerprintAttribute(ov::ByteStream &stream)
 	_message_length += attribute_length;
 	*length_field = ov::HostToNetwork16(_message_length);
 
-	logtd("Calculating CRC for STUN message:\n%s", stream.GetData()->Dump().CStr());
+	logtt("Calculating CRC for STUN message:\n%s", stream.GetData()->Dump().CStr());
 
 	uint32_t crc = ov::Crc32::Calculate(stream.GetData());
 
@@ -388,7 +388,7 @@ bool StunMessage::CalculateFingerprint(ov::ByteStream &stream, ssize_t length, u
 
 bool StunMessage::ValidateFingerprint(ov::ByteStream &stream)
 {
-	logtd("Trying to validate fingerprint...");
+	logtt("Trying to validate fingerprint...");
 
 	// stream에서 fingerprint attribute를 얻어옴 (가장 마지막 attribute)
 	ov::ByteStream fingerprint_stream(stream);
@@ -405,9 +405,9 @@ bool StunMessage::ValidateFingerprint(ov::ByteStream &stream)
 		ssize_t crc_length = stream.Remained() - (_fingerprint_attribute->GetLength(true, true));
 
 #if STUN_LOG_DATA
-		logtd("Trying to calculate crc for data:\n%s", stream.Dump(crc_length).CStr());
+		logtt("Trying to calculate crc for data:\n%s", stream.Dump(crc_length).CStr());
 #else	// STUN_LOG_DATA
-		logtd("Trying to calculate crc...");
+		logtt("Trying to calculate crc...");
 #endif	// STUN_LOG_DATA
 
 		if (CalculateFingerprint(stream, crc_length, &crc))
@@ -419,7 +419,7 @@ bool StunMessage::ValidateFingerprint(ov::ByteStream &stream)
 
 			if (crc == fingerprint)
 			{
-				logtd("Calculated CRC: %08X, Fingerprint attribute CRC: %08X", crc, fingerprint);
+				logtt("Calculated CRC: %08X, Fingerprint attribute CRC: %08X", crc, fingerprint);
 			}
 			else
 			{

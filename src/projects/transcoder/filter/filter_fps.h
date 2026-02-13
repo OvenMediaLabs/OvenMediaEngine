@@ -13,6 +13,7 @@
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
 #include "filter_base.h"
+#include "base/ovlibrary/ovlibrary.h"
 
 class FilterFps 
 {
@@ -34,9 +35,24 @@ public:
 	bool Push(std::shared_ptr<MediaFrame> media_frame);
 	std::shared_ptr<MediaFrame> Pop();
 
+	double GetOutputFramesPerSecond() const;
+	double GetExpectedOutputFramesPerSecond() const;
+
 	ov::String GetStatsString();
 	ov::String GetInfoString();
 
+public:
+	enum class OutputFrameCopyMode
+	{
+		ShallowCopy = 0,
+		DeepCopy	= 2
+	};
+
+	void SetOutputFrameCopyMode(OutputFrameCopyMode mode)
+	{
+		_output_frame_copy_mode = mode;
+	}
+	
 private:
 	cmn::Timebase _input_timebase;
 	double _input_framerate;
@@ -54,16 +70,25 @@ private:
 	// Buffer for storing frames
 	std::vector<std::shared_ptr<MediaFrame>> _frames;
 
+	// Output frame copy mode
+	OutputFrameCopyMode _output_frame_copy_mode = OutputFrameCopyMode::DeepCopy;
+
 	// The next PTS to be output
 	int64_t _curr_pts;
 	int64_t _next_pts;
-	
-	int64_t stat_input_frame_count = 0;
-	int64_t stat_output_frame_count = 0;
-	int64_t stat_skip_frame_count = 0;
-	int64_t stat_duplicate_frame_count = 0;
-	int64_t stat_discard_frame_count = 0;
 
-	int64_t _last_input_pts = AV_NOPTS_VALUE;
-	int64_t _last_input_scaled_pts = AV_NOPTS_VALUE;
+	int64_t _last_input_pts					= AV_NOPTS_VALUE;
+	int64_t _last_input_scaled_pts			= AV_NOPTS_VALUE;
+
+	int64_t _stat_input_frame_count			= 0;
+	int64_t _stat_ideal_output_frame_count	= 0;
+	int64_t _stat_actual_output_frame_count = 0;
+	int64_t _stat_skip_frame_count			= 0;
+	int64_t _stat_duplicate_frame_count		= 0;
+	int64_t _stat_discard_frame_count		= 0;
+	int64_t _last_stat_output_frame_count	= 0;
+	double _stat_output_frame_per_second	= 0.0f;
+
+	ov::StopWatch _timer;
+
 };

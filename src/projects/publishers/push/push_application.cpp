@@ -36,7 +36,7 @@ namespace pub
 	PushApplication::~PushApplication()
 	{
 		Stop();
-		logtd("PushApplication(%d) has been terminated finally", GetId());
+		logtt("PushApplication(%d) has been terminated finally", GetId());
 	}
 
 	bool PushApplication::Start()
@@ -50,7 +50,7 @@ namespace pub
 
 		if (application_enabled == false)
 		{
-			logtd("%s PushApplication is disabled", GetVHostAppName().CStr());
+			logtt("%s PushApplication is disabled", GetVHostAppName().CStr());
 			return false;
 		}
 
@@ -112,7 +112,7 @@ namespace pub
 			StopPush(push);
 		}
 
-		logtd("%s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
+		logtt("%s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 		return true;
 	}
@@ -148,6 +148,16 @@ namespace pub
 		push->SetEnable(true);
 		push->SetRemove(false);
 		push->SetByConfig(is_config);
+		auto connection_timeout = GetConfig().GetPublishers().GetPushPublisher().GetConnectionTimeoutMs();
+		auto send_timeout = GetConfig().GetPublishers().GetPushPublisher().GetSendTimeoutMs();
+		if(connection_timeout > 0)
+		{
+			push->SetConnectionTimeout(connection_timeout);
+		}
+		if(send_timeout > 0)
+		{
+			push->SetSendTimeout(send_timeout);
+		}
 
 		std::unique_lock<std::shared_mutex> lock(_push_map_mutex);
 		_pushes[push->GetId()] = push;
@@ -224,13 +234,15 @@ namespace pub
 		{
 			// State of disconnected and ready to connect
 			case pub::Session::SessionState::Ready:
-				[[fallthrough]];
+				logti("Push started. %s connectionTimeout(%d) sendTimeout(%d)", push->GetInfoString().CStr(), push->GetConnectionTimeout(), push->GetSendTimeout());
+				session->Start();			
+				break;
 			// State of stopped
 			case pub::Session::SessionState::Stopped:
 				[[fallthrough]];
 			// State of failed (connection refused, disconnected)
 			case pub::Session::SessionState::Error:
-				logti("Push started. %s", push->GetInfoString().CStr());
+				logti("Push restarted. %s connectionTimeout(%d) sendTimeout(%d)", push->GetInfoString().CStr(), push->GetConnectionTimeout(), push->GetSendTimeout());
 				session->Start();
 				break;
 			// State of Started
@@ -244,7 +256,7 @@ namespace pub
 		auto session_state = session->GetState();
 		if (prev_session_state != session_state)
 		{
-			logtd("Changed push state. (%d - %d)", prev_session_state, session_state);
+			logtt("Changed push state. (%d - %d)", ov::ToUnderlyingType(prev_session_state), ov::ToUnderlyingType(session_state));
 		}
 	}
 
@@ -271,7 +283,7 @@ namespace pub
 		auto session_state = session->GetState();
 		if (prev_session_state != session_state)
 		{
-			logtd("Changed push state. (%d - %d)", prev_session_state, session_state);
+			logtt("Changed push state. (%d - %d)", ov::ToUnderlyingType(prev_session_state), ov::ToUnderlyingType(session_state));
 		}
 	}
 
@@ -314,7 +326,7 @@ namespace pub
 					auto stream = GetStream(push->GetStreamName());
 					if (stream == nullptr || stream->GetState() != pub::Stream::State::STARTED)
 					{
-						logtd("There is no stream for Push or it has not started. %s", push->GetInfoString().CStr());
+						logtt("There is no stream for Push or it has not started. %s", push->GetInfoString().CStr());
 						push->SetState(info::Push::PushState::Ready);
 						continue;
 					}
@@ -466,6 +478,17 @@ namespace pub
 			push->SetProtocol(protocol);
 			push->SetUrl(url);
 			push->SetStreamKey(stream_key);
+
+			auto connection_timeout = GetConfig().GetPublishers().GetPushPublisher().GetConnectionTimeoutMs();
+			auto send_timeout		= GetConfig().GetPublishers().GetPushPublisher().GetSendTimeoutMs();
+			if (connection_timeout > 0)
+			{
+				push->SetConnectionTimeout(connection_timeout);
+			}
+			if (send_timeout > 0)
+			{
+				push->SetSendTimeout(send_timeout);
+			}
 
 			// logte("Push info loaded. %s", push->GetInfoString().CStr());
 

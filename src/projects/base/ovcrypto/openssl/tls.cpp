@@ -30,9 +30,9 @@ namespace ov
 		bool result = true;
 
 		// Create BIO
-		result = result && PrepareBio(callback);
+		result		= result && PrepareBio(callback);
 		// Create SSL
-		result = result && PrepareSsl(tls_context);
+		result		= result && PrepareSsl(tls_context);
 
 		if (result == false)
 		{
@@ -85,12 +85,12 @@ namespace ov
 				{
 					int result = 1;
 
-					result = result && ::BIO_meth_set_create(bio_method, TlsCreate);
-					result = result && ::BIO_meth_set_ctrl(bio_method, TlsCtrl);
-					result = result && ::BIO_meth_set_read(bio_method, TlsRead);
-					result = result && ::BIO_meth_set_write(bio_method, TlsWrite);
-					result = result && ::BIO_meth_set_puts(bio_method, TlsPuts);
-					result = result && ::BIO_meth_set_destroy(bio_method, TlsDestroy);
+					result	   = result && ::BIO_meth_set_create(bio_method, TlsCreate);
+					result	   = result && ::BIO_meth_set_ctrl(bio_method, TlsCtrl);
+					result	   = result && ::BIO_meth_set_read(bio_method, TlsRead);
+					result	   = result && ::BIO_meth_set_write(bio_method, TlsWrite);
+					result	   = result && ::BIO_meth_set_puts(bio_method, TlsPuts);
+					result	   = result && ::BIO_meth_set_destroy(bio_method, TlsDestroy);
 
 					if (result == 0)
 					{
@@ -110,11 +110,11 @@ namespace ov
 
 	bool Tls::PrepareBio(const TlsBioCallback &callback)
 	{
-		_callback = callback;
+		_callback			   = callback;
 
 		BIO_METHOD *bio_method = PrepareBioMethod();
 
-		_bio = ::BIO_new(bio_method);
+		_bio				   = ::BIO_new(bio_method);
 
 		if (_bio == nullptr)
 		{
@@ -271,21 +271,22 @@ namespace ov
 
 		unsigned char buf[1024];
 
-		size_t read_bytes = 0;
-		volatile bool stop = false;
+		bool stop = false;
 
 		while (stop == false)
 		{
-			int error = Read(buf, OV_COUNTOF(buf), &read_bytes);
-			bool append_data = false;
-			int read_errno = errno;
+			size_t read_bytes = 0;
+
+			int error		  = Read(buf, OV_COUNTOF(buf), &read_bytes);
+			bool append_data  = false;
+			int read_errno	  = errno;
 
 			switch (error)
 			{
 				case SSL_ERROR_ZERO_RETURN:
 					// Read successfully, and the connection was closed
 					append_data = true;
-					stop = true;
+					stop		= true;
 					break;
 
 				case SSL_ERROR_NONE:
@@ -300,7 +301,7 @@ namespace ov
 
 				case SSL_ERROR_SSL:
 					append_data = true;
-					stop = true;
+					stop		= true;
 
 					break;
 
@@ -313,7 +314,7 @@ namespace ov
 					if (read_errno == 0)
 					{
 						append_data = true;
-						stop = true;
+						stop		= true;
 						break;
 					}
 
@@ -367,7 +368,7 @@ namespace ov
 				// Call SSL_get_error() with the return value ret to find out the reason.
 
 				auto get_error = GetError(result);
-				logtd("Tls::Write()::SSL_write returns %d %d, errno: %d", result, get_error, errno);
+				logtt("Tls::Write()::SSL_write returns %d %d, errno: %d", result, get_error, errno);
 				return get_error;
 			}
 
@@ -474,11 +475,11 @@ namespace ov
 		OV_ASSERT2(in != nullptr);
 		OV_ASSERT2(inl >= 0);
 
-		logtt("Trying to write %d bytes...\n%s", inl, ov::Dump(in, inl).CStr());
+		logtp("Trying to write %d bytes...\n%s", inl, ov::Dump(in, inl).CStr());
 
 		auto written_bytes = DO_CALLBACK_IF_AVAILABLE(ssize_t, -1, BIO_get_data(b), write_callback, in, static_cast<size_t>(inl));
 
-		logtd("Written: %zd/%d", written_bytes, inl);
+		logtt("Written: %zd/%d", written_bytes, inl);
 
 		if (written_bytes > 0)
 		{
@@ -540,16 +541,16 @@ namespace ov
 
 		size_t capacity = (key_len + salt_len) * 2;
 
-		auto key_data = std::make_shared<ov::Data>(capacity);
+		auto key_data	= std::make_shared<ov::Data>(capacity);
 		key_data->SetLength(capacity);
 
 		auto key_buffer = key_data->GetWritableDataAs<uint8_t>();
 
-		int result = ::SSL_export_keying_material(
-			_ssl,
-			key_buffer, key_data->GetLength(),
-			label.CStr(), label.GetLength(),
-			nullptr, 0, false);
+		int result		= ::SSL_export_keying_material(
+			 _ssl,
+			 key_buffer, key_data->GetLength(),
+			 label.CStr(), label.GetLength(),
+			 nullptr, 0, false);
 
 		if (result != 1)
 		{
@@ -596,21 +597,21 @@ namespace ov
 			case SRTP_AES128_CM_SHA1_80:
 				// SRTP_AES128_CM_HMAC_SHA1_32 and SRTP_AES128_CM_HMAC_SHA1_80 are defined
 				// in RFC 5764 to use a 128 bits key and 112 bits salt for the cipher.
-				*key_len = 16L;
+				*key_len  = 16L;
 				*salt_len = 14L;
 				break;
 
 			case SRTP_AEAD_AES_128_GCM:
 				// SRTP_AEAD_AES_128_GCM is defined in RFC 7714 to use a 128 bits key and
 				// a 96 bits salt for the cipher.
-				*key_len = 16L;
+				*key_len  = 16L;
 				*salt_len = 12L;
 				break;
 
 			case SRTP_AEAD_AES_256_GCM:
 				// SRTP_AEAD_AES_256_GCM is defined in RFC 7714 to use a 256 bits key and
 				// a 96 bits salt for the cipher.
-				*key_len = 32L;
+				*key_len  = 32L;
 				*salt_len = 12L;
 				break;
 
@@ -629,7 +630,7 @@ namespace ov
 	ov::String Tls::GetSelectedAlpnName() const
 	{
 		const unsigned char *data = NULL;
-		unsigned int len = 0;
+		unsigned int len		  = 0;
 
 		SSL_get0_alpn_selected(_ssl, &data, &len);
 

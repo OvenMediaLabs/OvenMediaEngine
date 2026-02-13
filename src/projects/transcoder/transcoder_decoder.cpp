@@ -24,6 +24,7 @@
 #include "codec/decoder/decoder_vp8.h"
 #include "transcoder_gpu.h"
 #include "transcoder_modules.h"
+#include "transcoder_fault_injector.h"
 #include "transcoder_private.h"
 
 // Default is 300 (about 10 seconds for 30fps)
@@ -33,7 +34,7 @@
 
 std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDecoder::GetCandidates(bool hwaccels_enable, ov::String hwaccles_modules, std::shared_ptr<MediaTrack> track)
 {
-	logtd("Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s)",
+	logtt("Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s)",
 		  cmn::GetCodecIdString(track->GetCodecId()), hwaccels_enable ? "true" : "false", hwaccles_modules.CStr());
 
 	ov::String configuration = "";
@@ -122,38 +123,51 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDec
 	{
 		(void)(candidate);
 
-		logtd("Candidate module: %s(%d), %s(%d):%d",
+		logtt("Candidate module: %s(%u), %s(%u):%d",
 			  cmn::GetCodecIdString(candidate->GetCodecId()),
-			  candidate->GetCodecId(),
+			  ov::ToUnderlyingType(candidate->GetCodecId()),
 			  cmn::GetCodecModuleIdString(candidate->GetModuleId()),
-			  candidate->GetModuleId(),
+			  ov::ToUnderlyingType(candidate->GetModuleId()),
 			  candidate->GetDeviceId());
 	}
 
 	return candidate_modules;
 }
 
-#define CASE_CREATE_CODEC_IFNEED(MODULE_ID, CLS)           \
-	case cmn::MediaCodecModuleId::MODULE_ID:               \
-		decoder = std::make_shared<CLS>(*info);            \
-		if (decoder == nullptr)                            \
-		{                                                  \
-			break;                                         \
-		}                                                  \
-		decoder->SetDeviceID(candidate->GetDeviceId());    \
-		decoder->SetDecoderId(decoder_id);                 \
-		decoder->SetCompleteHandler(complete_handler);     \
-		track->SetCodecModuleId(decoder->GetModuleID());   \
-		track->SetCodecDeviceId(decoder->GetDeviceID());   \
-		if (decoder->Configure(track) == true)             \
-		{                                                  \
-			goto done;                                     \
-		}                                                  \
-		if (decoder != nullptr)                            \
-		{                                                  \
-			decoder->Stop();                               \
-			decoder = nullptr;                             \
-		}                                                  \
+#define CASE_CREATE_CODEC_IFNEED(MODULE_ID, CLS)                                 \
+	case cmn::MediaCodecModuleId::MODULE_ID:                                     \
+		decoder = std::make_shared<CLS>(*info);                                  \
+		if (decoder == nullptr)                                                  \
+		{                                                                        \
+			break;                                                               \
+		}                                                                        \
+		decoder->SetDeviceID(candidate->GetDeviceId());                          \
+		decoder->SetDecoderId(decoder_id);                                       \
+		decoder->SetCompleteHandler(complete_handler);                           \
+		track->SetCodecModuleId(decoder->GetModuleID());                         \
+		track->SetCodecDeviceId(decoder->GetDeviceID());                         \
+		if (decoder->Configure(track) == true)                                   \
+		{                                                                        \
+			if (TranscodeFaultInjector::GetInstance()->IsEnabled())              \
+			{                                                                    \
+				if (TranscodeFaultInjector::GetInstance()->IsTriggered(          \
+						TranscodeFaultInjector::ComponentType::DecoderComponent, \
+						TranscodeFaultInjector::IssueType::InitFailed,           \
+						decoder->GetModuleID(),                                  \
+						decoder->GetDeviceID()) == true)                         \
+				{                                                                \
+					decoder->Stop();                                             \
+					decoder = nullptr;                                           \
+					break;                                                       \
+				}                                                                \
+			}                                                                    \
+			goto done;                                                           \
+		}                                                                        \
+		if (decoder != nullptr)                                                  \
+		{                                                                        \
+			decoder->Stop();                                                     \
+			decoder = nullptr;                                                   \
+		}                                                                        \
 		break;
 
 std::shared_ptr<TranscodeDecoder> TranscodeDecoder::Create(
@@ -245,7 +259,8 @@ std::shared_ptr<TranscodeDecoder> TranscodeDecoder::Create(
 done:
 	if (decoder != nullptr)
 	{
-		logtd("The decoder has been created. track(#%d) codec(%s), module(%s:%d)",
+
+		logtt("The decoder has been created. track(#%d) codec(%s), module(%s:%d)",
 			  track->GetId(),
 			  cmn::GetCodecIdString(track->GetCodecId()),
 			  cmn::GetCodecModuleIdString(track->GetCodecModuleId()),
@@ -352,7 +367,7 @@ void TranscodeDecoder::Stop()
 	{
 		_codec_thread.join();
 
-		logtd(ov::String::FormatString("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
+		logtt(ov::String::FormatString("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
 	}
 
 	tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());	
@@ -370,14 +385,39 @@ void TranscodeDecoder::SetCompleteHandler(CompleteHandler complete_handler)
 
 void TranscodeDecoder::Complete(TranscodeResult result, std::shared_ptr<MediaFrame> frame)
 {
-	// Invoke callback function when encoding/decoding is completed.
-	if (_complete_handler)
+	// Fault Injection for testing
+	if (TranscodeFaultInjector::GetInstance()->IsEnabled())
 	{
-		if (frame != nullptr)
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::DecoderComponent,
+				TranscodeFaultInjector::IssueType::ProcessFailed,
+				GetModuleID(),
+				GetDeviceID()) == true)
 		{
-			frame->SetTrackId(_decoder_id);
+			result = TranscodeResult::DataError;
+			frame  = nullptr;
 		}
-		
-		_complete_handler(result, _decoder_id, std::move(frame));
+
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::DecoderComponent,
+				TranscodeFaultInjector::IssueType::Lagging,
+				GetModuleID(),
+				GetDeviceID()) == true)
+		{
+			usleep(300 * 1000);	 // 300ms
+		}
 	}
+
+	// Invoke callback function when encoding/decoding is completed.
+	if (!_complete_handler)
+	{
+		return;
+	}
+
+	if (frame != nullptr)
+	{
+		frame->SetTrackId(_decoder_id);
+	}
+
+	_complete_handler(result, _decoder_id, std::move(frame));
 }

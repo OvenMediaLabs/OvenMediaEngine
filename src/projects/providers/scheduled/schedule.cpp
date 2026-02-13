@@ -84,7 +84,7 @@ namespace pvd
 			return nullptr;
 		}
 
-		logti("LoadContext: File loaded successfully: %s (%lld ms)", _file_path.CStr(), sw.Elapsed());
+		logti("LoadContext: File loaded successfully: %s (%" PRId64 " ms)", _file_path.CStr(), sw.Elapsed());
 
 		return _format_context;
 	}
@@ -116,7 +116,7 @@ namespace pvd
 		} 
 
 
-		logti("GetFirstItem: Now: %lld ms, Scheduled: %lld ms, Elapsed: %lld ms, Position: %lld ms", 
+		logti("GetFirstItem: Now: %" PRId64 " ms, Scheduled: %" PRId64 " ms, Elapsed: %" PRId64 " ms, Position: %" PRId64 " ms", 
 			std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count(),
 			std::chrono::duration_cast<std::chrono::milliseconds>(_scheduled_time.time_since_epoch()).count(),
 			time_elapsed_ms_from_scheduled, position_ms);
@@ -134,7 +134,7 @@ namespace pvd
 				first_item->_start_time_ms = first_item->_start_time_ms_conf + (position_ms - current_position);
 				first_item->_duration_ms = item->_duration_ms - (position_ms - current_position);
 
-				logti("Item : %s - GetFirstItem: Found item at position: %lld ms, Item start time: %lld ms, Item duration: %lld ms", 
+				logti("Item : %s - GetFirstItem: Found item at position: %" PRId64 " ms, Item start time: %" PRId64 " ms, Item duration: %" PRId64 " ms", 
 					item->_url.CStr(), position_ms, first_item->_start_time_ms, first_item->_duration_ms);
 
 				return first_item;
@@ -956,7 +956,7 @@ namespace pvd
 		// minimum duration is 1000ms
 		if (item->_duration_ms_conf >= 0 && item->_duration_ms_conf <= 1000)
 		{
-			logtw("Item duration is too short, duration must be greater than 1000ms. url: %s, duration: %lld, it will be changed to 1000ms", item->_url.CStr(), item->_duration_ms_conf);
+			logtw("Item duration is too short, duration must be greater than 1000ms. url: %s, duration: %" PRId64 ", it will be changed to 1000ms", item->_url.CStr(), item->_duration_ms_conf);
 			item->_duration_ms_conf = 1000;
 			item->_duration_ms = 1000;
 		}

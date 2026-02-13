@@ -33,7 +33,7 @@ namespace pub
 
 	PushStream::~PushStream()
 	{
-		logtd("PushStream(%s/%s) has been terminated finally",
+		logtt("PushStream(%s/%s) has been terminated finally",
 			  GetApplicationName(), GetName().CStr());
 	}
 
@@ -49,14 +49,14 @@ namespace pub
 			return false;
 		}
 
-		logtd("PushStream(%ld) has been started", GetId());
+		logtt("PushStream(%u) has been started", GetId());
 
 		return Stream::Start();
 	}
 
 	bool PushStream::Stop()
 	{
-		logtd("PushStream(%u) has been stopped", GetId());
+		logtt("PushStream(%u) has been stopped", GetId());
 
 		if (GetState() != Stream::State::STARTED)
 		{

@@ -36,7 +36,7 @@ namespace ov
 			strftime(time_str, strlen(time_str), date_time_format, &lt);
 
 			ov::String result;
-			result.AppendFormat("%s.%u", time_str, ms.count());
+			result.AppendFormat("%s.%" PRId64, time_str, ms.count());
 
 			return result;
 		}

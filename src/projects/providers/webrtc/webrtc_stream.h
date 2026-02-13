@@ -74,6 +74,8 @@ namespace pvd
 		bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override;
 		bool OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data) override;
 
+		void SetOvenCapabilities(const ov::String &capabilities);
+
 	private:
 		bool CreateChannel(const std::shared_ptr<const MediaDescription> &local_media_desc, 
 							const std::shared_ptr<const MediaDescription> &remote_media_desc,
@@ -116,6 +118,8 @@ namespace pvd
 
 		std::map<uint32_t, std::shared_ptr<ov::Data>> _h26x_extradata_nalu;
 		std::map<uint32_t, bool> _sent_sequence_header;
+
+		ov::String _oven_capabilities;
 
 		session_id_t _ice_session_id = 0;
 	};

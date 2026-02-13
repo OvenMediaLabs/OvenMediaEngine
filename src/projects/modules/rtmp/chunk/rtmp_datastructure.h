@@ -166,16 +166,16 @@ struct RtmpChunkHeader
 	ov::String ToString() const
 	{
 #if DEBUG
-		ov::String result = ov::String::FormatString("<RtmpChunkHeader: %p, #%d(+%zuB, %zu bytes), Basic: ", this, chunk_index, from_byte_offset, message_total_bytes);
+		ov::String result = ov::String::FormatString("<RtmpChunkHeader: %p, #%" PRIu64 "(+%" PRIu64 "B, %" PRIu64 " bytes), Basic: ", this, chunk_index, from_byte_offset, message_total_bytes);
 #else	// DEBUG
 		ov::String result = ov::String::FormatString("<RtmpChunkHeader: %p, Basic: ", this);
 #endif	// DEBUG
 
 		if (basic_header_length > 0U)
 		{
-			result.AppendFormat("<%dB, Type: %d, CSID: %u, TS: %lld>, Message: ",
+			result.AppendFormat("<%dB, Type: %d, CSID: %u, TS: %" PRId64 ">, Message: ",
 								basic_header_length,
-								basic_header.format_type,
+								ov::ToUnderlyingType(basic_header.format_type),
 								basic_header.chunk_stream_id,
 								completed.timestamp);
 
@@ -189,7 +189,7 @@ struct RtmpChunkHeader
 											message_header.type_0.timestamp,
 											message_header.type_0.length,
 											StringFromRtmpMessageTypeID(message_header.type_0.type_id),
-											message_header.type_0.type_id,
+											ov::ToUnderlyingType(message_header.type_0.type_id),
 											message_header.type_0.stream_id);
 						break;
 
@@ -199,7 +199,7 @@ struct RtmpChunkHeader
 											message_header.type_1.timestamp_delta,
 											message_header.type_1.length,
 											StringFromRtmpMessageTypeID(message_header.type_1.type_id),
-											message_header.type_1.type_id);
+											ov::ToUnderlyingType(message_header.type_1.type_id));
 						break;
 
 					case RtmpMessageHeaderType::T2:
@@ -219,11 +219,11 @@ struct RtmpChunkHeader
 					result.AppendFormat(", Extended TS: %u", extended_timestamp);
 				}
 
-				result.AppendFormat(", Completed: <TS: %lld, dTS: %u, %s (%d), SID: %u, Payload: %u bytes>",
+				result.AppendFormat(", Completed: <TS: %" PRId64 ", dTS: %u, %s (%d), SID: %u, Payload: %u bytes>",
 									completed.timestamp,
 									completed.timestamp_delta,
 									StringFromRtmpMessageTypeID(completed.type_id),
-									completed.type_id,
+									ov::ToUnderlyingType(completed.type_id),
 									completed.stream_id,
 									message_length);
 			}

@@ -21,7 +21,7 @@ bool ReceiverReport::Parse(const RtcpPacket &packet)
 
 	if(payload_size < static_cast<size_t>(4 /*sender ssrc size*/ + (packet.GetReportCount() * RTCP_REPORT_BLOCK_SIZE)))
 	{
-		logtd("Payload is too small to parse receiver report");
+		logtt("Payload is too small to parse receiver report");
 		return false;
 	}
 

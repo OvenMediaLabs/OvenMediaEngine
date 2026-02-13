@@ -64,7 +64,7 @@ RtcSession::RtcSession(const info::Session &session_info,
 RtcSession::~RtcSession()
 {
 	Stop();
-	logtd("RtcSession(%d) has been terminated finally", GetId());
+	logtt("RtcSession(%d) has been terminated finally", GetId());
 }
 
 bool RtcSession::Start()
@@ -77,10 +77,10 @@ bool RtcSession::Start()
 		return false;
 	}
 
-	logtd("[WebRTC Publisher] OfferSDP");
-	logtd("%s\n", _offer_sdp->ToString().CStr());
-	logtd("[WebRTC Publisher] AnswerSDP");
-	logtd("%s", _peer_sdp->ToString().CStr());
+	logtt("[WebRTC Publisher] OfferSDP");
+	logtt("%s\n", _offer_sdp->ToString().CStr());
+	logtt("[WebRTC Publisher] AnswerSDP");
+	logtt("%s", _peer_sdp->ToString().CStr());
 
 	auto offer_media_desc_list = _offer_sdp->GetMediaList();
 	auto peer_media_desc_list  = _peer_sdp->GetMediaList();
@@ -168,7 +168,7 @@ bool RtcSession::Start()
 	SendPlaylistInfo(_playlist);
 	SendRenditionChanged(_current_rendition);
 
-	logtd("Video PT(%d) Audio PT(%d) Video TrackID(%u) Audio TrackID(%u)", _video_payload_type, _audio_payload_type,
+	logtt("Video PT(%d) Audio PT(%d) Video TrackID(%u) Audio TrackID(%u)", _video_payload_type, _audio_payload_type,
 		  current_video_track ? current_video_track->GetId() : -1,
 		  current_audio_track ? current_audio_track->GetId() : -1);
 
@@ -201,7 +201,7 @@ bool RtcSession::Stop()
 	// start and stop must be called independently.
 	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
 
-	logtd("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
+	logtt("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
 
 	if (pub::Session::GetState() != SessionState::Started && pub::Session::GetState() != SessionState::Stopping)
 	{
@@ -264,7 +264,7 @@ bool RtcSession::RequestChangeRendition(const ov::String &rendition_name)
 
 	if (rendition == _current_rendition)
 	{
-		logtd("The rendition (%s) is already selected", rendition_name.CStr());
+		logtt("The rendition (%s) is already selected", rendition_name.CStr());
 		return true;
 	}
 
@@ -296,7 +296,7 @@ bool RtcSession::RequestChangeRendition(SwitchOver switch_over)
 
 	if (next_rendition != nullptr)
 	{
-		logtd("Change rendition - EstimatedBandwidth(%f) CurrentRendition(%s - %lld) NextRendition(%s - %lld)",
+		logtt("Change rendition - EstimatedBandwidth(%f) CurrentRendition(%s - %" PRIu64 ") NextRendition(%s - %" PRIu64 ")",
 			  _estimated_bitrates, _current_rendition->GetName().CStr(), _current_rendition->GetBitrates(), next_rendition->GetName().CStr(), next_rendition->GetBitrates());
 
 		_next_rendition = next_rendition;
@@ -373,13 +373,13 @@ void RtcSession::OnMessageReceived(const std::any &message)
 	}
 	catch (const std::bad_any_cast &e)
 	{
-		logtd("An incorrect type of packet was input from the stream.");
+		logtt("An incorrect type of packet was input from the stream.");
 		return;
 	}
 
 	_received_bytes += data->GetLength();
 
-	logtd("Received %u bytes", _received_bytes);
+	logtt("Received %" PRIu64 " bytes", _received_bytes);
 
 	// RTP_RTCP -> SRTP -> DTLS -> Edge Node(RtcSession)
 	SendDataToPrevNode(data);
@@ -396,7 +396,7 @@ void RtcSession::ChangeRendition()
 
 	if (_next_rendition == _current_rendition)
 	{
-		logtd("The rendition is already selected");
+		logtt("The rendition is already selected");
 		return;
 	}
 
@@ -514,7 +514,7 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 	}
 	catch (const std::bad_any_cast &e)
 	{
-		logtd("An incorrect type of packet was input from the stream.");
+		logtt("An incorrect type of packet was input from the stream.");
 		return;
 	}
 
@@ -734,7 +734,7 @@ bool RtcSession::ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info)
 			continue;
 		}
 
-		logtd("RTX requested(%d) - TrackID(%u) PayloadType(%d) OriginSeqNo(%u)", seq_no, sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
+		logtt("RTX requested(%d) - TrackID(%u) PayloadType(%d) OriginSeqNo(%u)", seq_no, sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
 
 		auto rtx_packet = stream->GetRtxRtpPacket(sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
 		if (rtx_packet != nullptr)
@@ -763,7 +763,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 	int64_t sent_duration = 0;
 
 	// For debug
-	// logtd("TransportCC - SenderSsrc(%u) MediaSsrc(%u) PacketStatusCount(%u)", transport_cc->GetSenderSsrc(), transport_cc->GetMediaSsrc(), transport_cc->GetPacketStatusCount());
+	// logtt("TransportCC - SenderSsrc(%u) MediaSsrc(%u) PacketStatusCount(%u)", transport_cc->GetSenderSsrc(), transport_cc->GetMediaSsrc(), transport_cc->GetPacketStatusCount());
 
 	// for (size_t i = 0; i < transport_cc->GetPacketStatusCount(); i++)
 	// {
@@ -775,7 +775,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 	// 		continue;
 	// 	}
 
-	// 	logtd("%s", sent_log->ToString().CStr());
+	// 	logtt("%s", sent_log->ToString().CStr());
 	// }
 
 	// return true;
@@ -792,7 +792,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		auto prev_sent_log = TraceRtpSentByWideSeqNo(packet_status->_wide_sequence_number - 1);
 		if (prev_sent_log == nullptr)
 		{
-			logtd("TransportCC - No prev sent log found for seqno(%u)", packet_status->_wide_sequence_number - 1);
+			logtt("TransportCC - No prev sent log found for seqno(%u)", packet_status->_wide_sequence_number - 1);
 			continue;
 		}
 
@@ -808,7 +808,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		sent_bytes += sent_log->_sent_bytes;
 		sent_duration += duration;
 
-		logtd("WideSeqNo(%u) Refer(%u) RecvDelta(%u) SentDelta(%u) SentBytes(%u) Duration(%d)", packet_status->_wide_sequence_number, transport_cc->GetReferenceTime(), packet_status->_received_delta, sent_delta_time, sent_log->_sent_bytes, duration);
+		logtt("WideSeqNo(%u) Refer(%u) RecvDelta(%u) SentDelta(%u) SentBytes(%u) Duration(%d)", packet_status->_wide_sequence_number, transport_cc->GetReferenceTime(), packet_status->_received_delta, sent_delta_time, sent_log->_sent_bytes, duration);
 	}
 
 	if (sent_bytes > 0)
@@ -824,7 +824,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 			_bitrate_estimate_watch.Update();
 			ChangeRenditionIfNeeded();
 
-			logtd("Estimated Bandwidth(%f) TotalSentBytes(%u) TotalSentSeconds(%f)", static_cast<double>(_total_sent_bytes * 8) / _total_sent_seconds, _total_sent_bytes, _total_sent_seconds);
+			logtt("Estimated Bandwidth(%f) TotalSentBytes(%" PRIu64 ") TotalSentSeconds(%f)", static_cast<double>(_total_sent_bytes * 8) / _total_sent_seconds, _total_sent_bytes, _total_sent_seconds);
 
 			_total_sent_seconds = 0;
 			_total_sent_bytes	= 0;
@@ -838,7 +838,7 @@ bool RtcSession::ProcessRemb(const std::shared_ptr<RtcpInfo> &rtcp_info)
 {
 	auto remb = std::static_pointer_cast<REMB>(rtcp_info);
 
-	logtd("REMB Estimated Bandwidth(%lld)", remb->GetBitrateBps());
+	logtt("REMB Estimated Bandwidth(%" PRId64 ")", remb->GetBitrateBps());
 
 	_previous_estimated_bitrate = _estimated_bitrates;
 	_estimated_bitrates			= remb->GetBitrateBps();
@@ -867,7 +867,7 @@ void RtcSession::ChangeRenditionIfNeeded()
 		auto lower = _playlist->GetNextLowerBitrateRendition(_current_rendition);
 		if (lower != nullptr && IsNextRenditionGoodChoice(lower) == true)
 		{
-			logtd("ChangeRenditionIfNeeded - Change to low bitrate");
+			logtt("ChangeRenditionIfNeeded - Change to low bitrate");
 			if (RequestChangeRendition(SwitchOver::LOWER) == true)
 			{
 				RecordAutoSelectedRendition(lower, false);
@@ -880,7 +880,7 @@ void RtcSession::ChangeRenditionIfNeeded()
 		auto upper = _playlist->GetNextHigherBitrateRendition(_current_rendition);
 		if (upper != nullptr && IsNextRenditionGoodChoice(upper) == true)
 		{
-			logtd("ChangeRenditionIfNeeded - Change to high bitrate");
+			logtt("ChangeRenditionIfNeeded - Change to high bitrate");
 			if (RequestChangeRendition(SwitchOver::HIGHER) == true)
 			{
 				RecordAutoSelectedRendition(upper, true);
@@ -985,7 +985,7 @@ bool RtcSession::OnDataReceivedFromPrevNode(NodeType from_node, const std::share
 {
 	if (ov::Node::GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 

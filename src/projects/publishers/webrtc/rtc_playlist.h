@@ -309,7 +309,7 @@ private:
 
 	ov::String GetPlaylistKey(cmn::MediaCodecId video_codec_id, cmn::MediaCodecId audio_codec_id) const
 	{
-		return ov::String::FormatString("%d_%d", video_codec_id, audio_codec_id);
+		return ov::String::FormatString("%u_%u", ov::ToUnderlyingType(video_codec_id), ov::ToUnderlyingType(audio_codec_id));
 	}
 
 	void AddPayloadTrack(const std::shared_ptr<const MediaTrack> &track)

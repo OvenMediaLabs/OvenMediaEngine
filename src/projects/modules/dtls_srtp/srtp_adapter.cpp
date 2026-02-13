@@ -79,7 +79,7 @@ bool SrtpAdapter::SetKey(srtp_ssrc_type_t type, uint64_t crypto_suite, std::shar
 	_rtp_auth_tag_len = policy.rtp.auth_tag_len;
     _rtcp_auth_tag_len = policy.rtcp.auth_tag_len;
 
-    logtd("srtp teg size rtp(%d) rtcp(%d)", _rtp_auth_tag_len, _rtcp_auth_tag_len);
+    logtt("srtp teg size rtp(%d) rtcp(%d)", _rtp_auth_tag_len, _rtcp_auth_tag_len);
 
 
 	return true;

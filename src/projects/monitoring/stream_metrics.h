@@ -23,12 +23,12 @@ namespace mon
 		{
 			_connection_time_to_origin_msec	 = 0;
 			_subscribe_time_from_origin_msec = 0;
-			logd("DEBUG", "StreamMetric (%s / %s) Created", GetName().CStr(), GetUUID().CStr());
+			logt("DEBUG", "StreamMetric (%s / %s) Created", GetName().CStr(), GetUUID().CStr());
 		}
 
 		~StreamMetrics()
 		{
-			logd("DEBUG", "StreamMetric (%s / %s) Destroyed", GetName().CStr(), GetUUID().CStr());
+			logt("DEBUG", "StreamMetric (%s / %s) Destroyed", GetName().CStr(), GetUUID().CStr());
 			_app_metrics.reset();
 		}
 

@@ -23,7 +23,7 @@ struct ProfileTierLevel
 
 	ov::String ToString() const
 	{
-		return ov::String::FormatString("profile_space: %u, tier_flag: %u, profile_idc: %u, profile_compatibility_flags: %u, constraint_indicator_flags: %llu, level_idc: %u",
+		return ov::String::FormatString("profile_space: %u, tier_flag: %u, profile_idc: %u, profile_compatibility_flags: %u, constraint_indicator_flags: %" PRIu64 ", level_idc: %u",
 			_general_profile_space, _general_tier_flag, _general_profile_idc, _general_profile_compatibility_flags, _general_constraint_indicator_flags, _general_level_idc);
 	}
 };

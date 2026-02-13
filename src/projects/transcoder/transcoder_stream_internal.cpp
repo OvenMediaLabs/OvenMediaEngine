@@ -28,23 +28,31 @@ ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id,
 		return ov::String::FormatString("I=T%d,O=bypass", track_id);
 	}
 
-	auto unique_profile_name = ov::String::FormatString("I=%d,O=%s:%d:%.02f:%d:%d:%d",
+	auto unique_profile_name = ov::String::FormatString("I=%d,O=%s:%d:%d:%d:%.02f:%d:%d:%d:%d",
 									track_id,
 									profile.GetCodec().CStr(),
 									profile.GetBitrate(),
-									profile.GetFramerate(),
-									profile.GetSkipFrames(),
 									profile.GetWidth(),
-									profile.GetHeight());
+									profile.GetHeight(),
+									profile.GetFramerate(),
+									profile.GetKeyFrameInterval(),
+									profile.GetBFrames(),
+									profile.GetSkipFrames(),
+									profile.GetLookahead());
 
-	if(profile.GetPreset().IsEmpty() == false)
+	if (profile.GetProfile().IsEmpty() == false)
 	{
-		unique_profile_name +=  ov::String::FormatString(":%s", profile.GetPreset().CStr());
+		unique_profile_name += ov::String::FormatString(":%s", profile.GetProfile().CStr());
+	}
+	
+	if (profile.GetPreset().IsEmpty() == false)
+	{
+		unique_profile_name += ov::String::FormatString(":%s", profile.GetPreset().CStr());
 	}
 
-	if(profile.GetProfile().IsEmpty() == false)
+	if (profile.GetModules().IsEmpty() == false)
 	{
-		unique_profile_name +=  ov::String::FormatString(":%s", profile.GetProfile().CStr());
+		unique_profile_name += ov::String::FormatString(":%s", profile.GetModules().CStr());
 	}
 
 	return unique_profile_name;
@@ -181,10 +189,43 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetKeyFrameIntervalTypeByConfig(cmn::GetKeyFrameIntervalTypeByName(profile.GetKeyFrameIntervalType()));
 	}
 
+	// If SkipFrames is enabled, it affects the output track's framerate and keyframe interval.
 	profile.GetSkipFrames(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetSkipFramesByConfig(profile.GetSkipFrames());
+		auto skip_frames = profile.GetSkipFrames();
+
+		// Set ouput framerate according to the skip frames.
+		if (skip_frames >= 0)
+		{
+			output_track->SetSkipFramesByConfig(skip_frames);
+
+			// Adjust the framerate according to the skip frames. 
+			// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
+			// Round adjusted_frame_rate to 2 decimal places
+			auto adjusted_frame_rate = ::round(input_track->GetFrameRate() / (skip_frames + 1) * 100.0) / 100.0;
+
+			logtt("Adjust the output framerate %.02f -> %.02f according to the skip frames %d",
+				  input_track->GetFrameRate(),
+				  adjusted_frame_rate,
+				  skip_frames);
+			output_track->SetFrameRateByConfig(adjusted_frame_rate);
+
+#if 0 // This feature needs more consideration. It may confuse to users.
+			// Set keyframe interval according to the skip frames.
+			//  If the keyframe interval is not set, it will be automatically adjusted by the encoder.
+			if (output_track->GetKeyFrameIntervalByConfig() > 0)
+			{
+				auto adjusted_key_frame_interval = ::round(output_track->GetKeyFrameIntervalByConfig() / (skip_frames + 1));
+				logtt("Adjust the output key_frame_interval %.02f -> %.02f according to the skip frames %d",
+					  output_track->GetKeyFrameIntervalByConfig(),
+					  adjusted_key_frame_interval,
+					  skip_frames);
+
+				output_track->SetKeyFrameIntervalByConfig(adjusted_key_frame_interval);
+			}
+#endif
+		}
 	}
 
 	profile.GetLookahead(&is_parsed);
@@ -193,9 +234,21 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetLookaheadByConfig(profile.GetLookahead());
 	}
 
+	profile.GetExtraOptions(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetExtraEncoderOptionsByConfig(profile.GetExtraOptions());
+	}
+
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
+	}
+
+	// 
 	output_track->SetMediaType(cmn::MediaType::Video);
 	output_track->SetId(NewTrackId());
-	output_track->SetVariantName(profile.GetName());
 	output_track->SetPublicName(input_track->GetPublicName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
@@ -209,6 +262,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetCodecId(input_track->GetCodecId());
 		output_track->SetCodecModules(input_track->GetCodecModules());
 		output_track->SetCodecModuleId(input_track->GetCodecModuleId());
+		output_track->SetMaxWidth(input_track->GetMaxWidth());
+		output_track->SetMaxHeight(input_track->GetMaxHeight());
 		output_track->SetWidth(input_track->GetWidth());
 		output_track->SetHeight(input_track->GetHeight());
 		output_track->SetTimeBase(input_track->GetTimeBase());
@@ -237,7 +292,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		{
 			if(output_track->GetCodecModules().IsEmpty() == false)
 			{
-				output_track->SetCodecModules(ov::String::FormatString("%s,%s", cmn::GetCodecModuleIdString(module_id), output_track->GetCodecModules()));
+				output_track->SetCodecModules(ov::String::FormatString("%s,%s", cmn::GetCodecModuleIdString(module_id), output_track->GetCodecModules().CStr()));
 			}
 			else
 			{
@@ -290,10 +345,15 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetBitrateByConfig(profile.GetBitrate());
 	}
 
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
+	}
+
 	output_track->SetMediaType(cmn::MediaType::Audio);
 	output_track->SetId(NewTrackId());
-	output_track->SetVariantName(profile.GetName());
-
+	
 	ov::String public_name = ov::String::FormatString("%s_%d", input_track->GetPublicName().CStr(), output_track->GetId());
 	output_track->SetPublicName(public_name);
 	output_track->SetLanguage(input_track->GetLanguage());
@@ -386,16 +446,54 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetFrameRateByConfig(profile.GetFramerate());
 	}
 
+	// If SkipFrames is enabled, it affects the output track's framerate and keyframe interval.
 	profile.GetSkipFrames(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetSkipFramesByConfig(profile.GetSkipFrames());
+		auto skip_frames = profile.GetSkipFrames();
+
+		// Set ouput framerate according to the skip frames.
+		if (skip_frames >= 0)
+		{
+			output_track->SetSkipFramesByConfig(skip_frames);
+
+			// Adjust the framerate according to the skip frames. 
+			// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
+			// Round adjusted_frame_rate to 2 decimal places
+			auto adjusted_frame_rate = ::round(input_track->GetFrameRate() / (skip_frames + 1) * 100.0) / 100.0;
+
+			logtt("Adjust the output framerate %.02f -> %.02f according to the skip frames %d",
+				  input_track->GetFrameRate(),
+				  adjusted_frame_rate,
+				  skip_frames);
+			output_track->SetFrameRateByConfig(adjusted_frame_rate);
+
+#if 0 // This feature needs more consideration. It may confuse to users.
+			// Set keyframe interval according to the skip frames.
+			//  If the keyframe interval is not set, it will be automatically adjusted by the encoder.
+			if (output_track->GetKeyFrameIntervalByConfig() > 0)
+			{
+				auto adjusted_key_frame_interval = ::round(output_track->GetKeyFrameIntervalByConfig() / (skip_frames + 1));
+				logtt("Adjust the output key_frame_interval %.02f -> %.02f according to the skip frames %d",
+					  output_track->GetKeyFrameIntervalByConfig(),
+					  adjusted_key_frame_interval,
+					  skip_frames);
+
+				output_track->SetKeyFrameIntervalByConfig(adjusted_key_frame_interval);
+			}
+#endif
+		}
+	}
+
+	profile.GetName(&is_parsed);
+	if (is_parsed == true)
+	{
+		output_track->SetVariantName(profile.GetName());
 	}
 
 	output_track->SetPublicName(input_track->GetPublicName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
-	output_track->SetVariantName(profile.GetName());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 
 	output_track->SetMediaType(cmn::MediaType::Video);
@@ -456,6 +554,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(
 	output_track->SetCodecModules("");
 	output_track->SetCodecModuleId(input_track->GetCodecModuleId());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
+	output_track->SetMaxWidth(input_track->GetMaxWidth());
+	output_track->SetMaxHeight(input_track->GetMaxHeight());
 	output_track->SetWidth(input_track->GetWidth());
 	output_track->SetHeight(input_track->GetHeight());
 	output_track->SetFrameRateByMeasured(input_track->GetFrameRate());
@@ -727,7 +827,7 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
@@ -766,7 +866,7 @@ void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<
 		{
 			int32_t new_width = (output_track->GetWidth() / 4 + 1) * 4;
 
-			logtd("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_track->GetWidth(), new_width);
+			logtt("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_track->GetWidth(), new_width);
 
 			output_track->SetWidth(new_width);
 		}
@@ -775,7 +875,7 @@ void TranscoderStreamInternal::UpdateOutputTrackTranscode(const std::shared_ptr<
 		{
 			int32_t new_height = (output_track->GetHeight() / 4 + 1) * 4;
 
-			logtd("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_track->GetHeight(), new_height);
+			logtt("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_track->GetHeight(), new_height);
 
 			output_track->SetHeight(new_height);
 		}
@@ -844,7 +944,7 @@ bool TranscoderStreamInternal::IsKeyframeOnlyDecodable(const std::map<ov::String
 
 	GetCountByEncodingType(streams, video, video_bypass, audio, audio_bypass, image, data);
 
-	// logtd("Video:%u, Video(Bypass):%u, Audio:%u, Audio(Bypass):%u, Image:%u, Data:%u",
+	// logtt("Video:%u, Video(Bypass):%u, Audio:%u, Audio(Bypass):%u, Image:%u, Data:%u",
 	// 	  video, video_bypass, audio, audio_bypass, image, data);
 
 	if (video == 0 && image > 0)

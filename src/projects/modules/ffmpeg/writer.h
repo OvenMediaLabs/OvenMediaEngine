@@ -62,9 +62,18 @@ namespace ffmpeg
 		bool Start();
 		bool Stop();
 
+		void SetConnectionTimeout(int32_t timeout_ms);
+		int32_t GetConnectionTimeout() const;
+		
+		void SetSendTimeout(int32_t timeout_ms);
+		int32_t GetSendTimeout() const;
+				
 		bool AddTrack(const std::shared_ptr<MediaTrack> &media_track);
 		bool SendPacket(const std::shared_ptr<MediaPacket> &packet, uint64_t *sent_bytes = nullptr);
 		
+		int32_t GetTrackCountByType(cmn::MediaType media_type);
+		std::shared_ptr<MediaTrack> GetTrackByTrackId(int32_t track_id) const;
+				
 		std::chrono::high_resolution_clock::time_point GetLastPacketSentTime();
 
 		void SetTimestampMode(TimestampMode mode);
@@ -73,6 +82,9 @@ namespace ffmpeg
 		void SetState(WriterState state);
 		WriterState GetState();
 		
+		void SetErrorMessage(const ov::String &message);
+		ov::String GetErrorMessage() const;
+
 	private:
 		std::shared_ptr<AVFormatContext> GetAVFormatContext() const;
 		void SetAVFormatContext(AVFormatContext* av_format);
@@ -105,7 +117,12 @@ namespace ffmpeg
 		ov::String _output_format_name;
 		AVIOInterruptCB _interrupt_cb;
 		std::chrono::high_resolution_clock::time_point _last_packet_sent_time;
-		int32_t _connection_timeout = 5000;	// 5s
-		int32_t _send_timeout 		= 2000;	// 2s
+		int32_t _connection_timeout = 5000;	// Default 5s
+		int32_t _send_timeout 		= 2000;	// Default 2s
+
+		// For tracking last DTS per track to handle DTS monotonicity
+		std::map<int32_t, int64_t> _track_last_dts_map;
+
+		ov::String _error_message;
 	};
 }  // namespace ffmpeg

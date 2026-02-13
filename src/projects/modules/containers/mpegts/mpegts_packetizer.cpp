@@ -110,8 +110,8 @@ namespace mpegts
 
 #if 0
         // Debug
-        logtd("PAT : %s", _pat_packet->GetData()->ToHexString().CStr());
-        logtd("PMT : %s", _pmt_packet->GetData()->ToHexString().CStr());
+        logtt("PAT : %s", _pat_packet->GetData()->ToHexString().CStr());
+        logtt("PMT : %s", _pmt_packet->GetData()->ToHexString().CStr());
 #endif
 
         BroadcastPsi();
@@ -149,7 +149,7 @@ namespace mpegts
             _first_video_frame_received = true;
         }
 
-        // logtd("AppendFrame track_id %u, media_type %s, pts %lld, dts %lld", media_packet->GetTrackId(), cmn::GetMediaTypeString(media_packet->GetMediaType()), media_packet->GetPts(), media_packet->GetDts());
+        // logtt("AppendFrame track_id %u, media_type %s, pts %lld, dts %lld", media_packet->GetTrackId(), cmn::GetMediaTypeString(media_packet->GetMediaType()), media_packet->GetPts(), media_packet->GetDts());
 
         auto track = GetMediaTrack(media_packet->GetTrackId());
         if (track == nullptr)
@@ -179,11 +179,11 @@ namespace mpegts
 
 #if 0
         // debug print
-        logtd("------------------------------------------------------------------------");
-        logtd("Track(%u) / MediaPacket(%u)", media_packet->GetTrackId(), media_packet->GetDataLength());
+        logtt("------------------------------------------------------------------------");
+        logtt("Track(%u) / MediaPacket(%u)", media_packet->GetTrackId(), media_packet->GetDataLength());
         for (const auto &packet : packets)
         {
-            logtd("%s", packet->ToDebugString().CStr());
+            logtt("%s", packet->ToDebugString().CStr());
         }
 #endif
 

@@ -87,7 +87,7 @@ bool PhysicalPort::Create(const char *name,
 
 	_name = name;
 
-	logtd("Trying to start physical port [%s] on %s/%s (worker: %d, send_buffer_size: %d, recv_buffer_size: %d)...",
+	logtt("Trying to start physical port [%s] on %s/%s (worker: %d, send_buffer_size: %d, recv_buffer_size: %d)...",
 		  name,
 		  address.ToString().CStr(), ov::StringFromSocketType(type),
 		  worker_count, send_buffer_size, recv_buffer_size);
@@ -213,7 +213,7 @@ void PhysicalPort::OnClientConnectionStateChanged(const std::shared_ptr<ov::Clie
 	switch (state)
 	{
 		case ov::SocketConnectionState::Connected: {
-			logtd("New client is connected: %s", client->ToString().CStr());
+			logtt("New client is connected: %s", client->ToString().CStr());
 
 			// Notify observers
 			auto func = std::bind(&PhysicalPortObserver::OnConnected, std::placeholders::_1, std::static_pointer_cast<ov::Socket>(client));
@@ -223,7 +223,7 @@ void PhysicalPort::OnClientConnectionStateChanged(const std::shared_ptr<ov::Clie
 		}
 
 		case ov::SocketConnectionState::Disconnect: {
-			logtd("Disconnected by server: %s", client->ToString().CStr());
+			logtt("Disconnected by server: %s", client->ToString().CStr());
 
 			// Notify observers
 			auto func = bind(&PhysicalPortObserver::OnDisconnected, std::placeholders::_1, std::static_pointer_cast<ov::Socket>(client), PhysicalPortDisconnectReason::Disconnect, nullptr);
@@ -233,7 +233,7 @@ void PhysicalPort::OnClientConnectionStateChanged(const std::shared_ptr<ov::Clie
 		}
 
 		case ov::SocketConnectionState::Disconnected: {
-			logtd("Client is disconnected: %s", client->ToString().CStr());
+			logtt("Client is disconnected: %s", client->ToString().CStr());
 
 			// Notify observers
 			auto func = bind(&PhysicalPortObserver::OnDisconnected, std::placeholders::_1, std::static_pointer_cast<ov::Socket>(client), PhysicalPortDisconnectReason::Disconnected, nullptr);
@@ -243,7 +243,7 @@ void PhysicalPort::OnClientConnectionStateChanged(const std::shared_ptr<ov::Clie
 		}
 
 		case ov::SocketConnectionState::Error: {
-			logtd("Client is disconnected with error: %s (%s)", client->ToString().CStr(), (error != nullptr) ? error->What() : "N/A");
+			logtt("Client is disconnected with error: %s (%s)", client->ToString().CStr(), (error != nullptr) ? error->What() : "N/A");
 
 			// Notify observers
 			auto func = bind(&PhysicalPortObserver::OnDisconnected, std::placeholders::_1, std::static_pointer_cast<ov::Socket>(client), PhysicalPortDisconnectReason::Error, error);

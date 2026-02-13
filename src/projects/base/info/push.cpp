@@ -35,6 +35,9 @@ namespace info
 
 		_is_config = false;
 
+		_connection_timeout_ms = 5000; // 5 seconds
+		_send_timeout_ms = 2000; // 2 seconds
+
 		_state = PushState::Ready;
 	}
 
@@ -271,6 +274,26 @@ namespace info
 		return _is_config;
 	}
 
+	void Push::SetConnectionTimeout(int32_t timeout_ms)
+	{
+		_connection_timeout_ms = timeout_ms;
+	}
+
+	int32_t Push::GetConnectionTimeout()
+	{
+		return _connection_timeout_ms;
+	}
+
+	void Push::SetSendTimeout(int32_t timeout_ms)
+	{
+		_send_timeout_ms = timeout_ms;
+	}
+	
+	int32_t Push::GetSendTimeout()
+	{
+		return _send_timeout_ms;
+	}
+
 	ov::String Push::GetStateString()
 	{
 		switch (GetState())
@@ -296,7 +319,9 @@ namespace info
 	{
 		ov::String info = "";
 
-		info.AppendFormat("uid(%s) vhost(%s) app(%s) stream(%s) -> protocol(%s) url(%s) streamKey(%s)", _id.CStr(), GetVhost().CStr(), GetApplication().CStr(), GetStreamName().CStr(), GetProtocol().CStr(), GetUrl().CStr(), GetStreamKey().CStr());
+		info.AppendFormat("uid(%s), vhost(%s) app(%s) stream(%s) -> protocol(%s) url(%s) streamKey(%s) variantNames(%s)",
+						  _id.CStr(), GetVhost().CStr(), GetApplication().CStr(), GetStreamName().CStr(), GetProtocol().CStr(), GetUrl().CStr(), GetStreamKey().CStr(),
+						  GetVariantNames().empty() ? "all" : ov::String::Join(GetVariantNames(), ",").CStr());
 
 		return info;
 	}

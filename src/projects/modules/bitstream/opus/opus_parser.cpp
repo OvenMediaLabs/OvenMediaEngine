@@ -114,7 +114,7 @@ bool OPUSParser::Parse(const uint8_t *data, size_t data_length, OPUSParser &pars
 	parser._stereo_flag = (toc >> 2) & 0x01;
 	parser._frame_count_code = (toc >> 0) & 0x01;
 
-	logtd("configuration_number: %d, streo_flag: %d, frame_count_code: %d", parser._configuration_number, parser._stereo_flag, parser._frame_count_code);
+	logtt("configuration_number: %d, streo_flag: %d, frame_count_code: %d", parser._configuration_number, parser._stereo_flag, parser._frame_count_code);
 
 	return true;
 }

@@ -13,6 +13,7 @@
 #include "notification.h"
 
 #define LONG_KEY_FRAME_INTERVAL_SIZE 4.0
+#define NOTIFICATION_MAX_RETRY_COUNT 2
 
 namespace mon::alrt
 {
@@ -54,9 +55,9 @@ namespace mon::alrt
 		_rules_updater->UpdateIfNeeded();
 
 		_stop_thread_flag	 = false;
-		_event_worker_thread = std::thread(&Alert::EventWorkerThread, this);
+		_notification_thread = std::thread(&Alert::SendNotificationThread, this);
 
-		pthread_setname_np(_event_worker_thread.native_handle(), "AL");
+		pthread_setname_np(_notification_thread.native_handle(), "AL");
 
 		_timer.Push(
 			[this](void *paramter) -> ov::DelayQueueAction {
@@ -80,12 +81,12 @@ namespace mon::alrt
 
 		_timer.Stop();
 
-		_stream_event_queue.Stop();
-		_queue_event.Stop();
+		_notification_queue.Stop();
+		_queue_notification.Stop();
 
-		if (_event_worker_thread.joinable())
+		if (_notification_thread.joinable())
 		{
-			_event_worker_thread.join();
+			_notification_thread.join();
 		}
 
 		return true;
@@ -163,74 +164,59 @@ namespace mon::alrt
 		_rules_updater->UpdateIfNeeded();
 	}
 
-	void Alert::EventWorkerThread()
+	void Alert::SendNotificationThread()
 	{
 		ov::logger::ThreadHelper thread_helper;
 
 		while (!_stop_thread_flag)
 		{
-			_queue_event.Wait();
+			_queue_notification.Wait();
 
-			auto stream_event = PopStreamEvent();
-			if (stream_event == nullptr)
+			auto notification_data = PopNotificationData();
+			if (notification_data == nullptr)
 			{
 				continue;
 			}
 
-			auto code				= stream_event->_code;
-			auto stream_metric		= stream_event->_metric;
-			auto parent_source_info = stream_event->_parent_source_info;
-			auto output_profile		= stream_event->_output_profile;
-			auto codec_modules		= stream_event->_codec_modules;
+			auto alert		  = _server_config->GetAlert();
 
-			ov::String description	= Message::DescriptionFromMessageCode(code);
-			auto message			= Message::CreateMessage(code, description);
-
-			std::vector<std::shared_ptr<Message>> message_list(1, message);
-
-			ov::String messages_key;
-			if (stream_metric)
+			auto message_body = notification_data->ToJsonString();
+			if (message_body.IsEmpty())
 			{
-				messages_key = stream_metric->GetUri();
-			}
-			else if (parent_source_info)
-			{
-				messages_key = parent_source_info->GetUri();
-			}
-			else
-			{
-				logtw("Invalid stream event with null stream metric and parent source info. code: %s", Message::StringFromMessageCode(code));
+				logte("Message body is empty");
 				continue;
 			}
 
-			auto type = NotificationData::TypeFromMessageCode(code);
+			int retry_count = 0;
 
-			if (IsAlertNeeded(messages_key, message_list))
+			while (true)
 			{
-				NotificationData data(type, message_list);
-
-				if (stream_metric != nullptr)
+				// Notification
+				auto notification_server_url = ov::Url::Parse(alert.GetUrl());
+				std::shared_ptr<Notification> notification_response = Notification::Query(notification_server_url, alert.GetTimeoutMsec(), alert.GetSecretKey(), message_body);
+				if (notification_response == nullptr)
 				{
-					data.SetStreamMetric(stream_metric);
-					data.SetSourceUri(stream_metric->GetUri());
+					// Probably this doesn't happen
+					logte("Could not load Notification");
+					break;
 				}
 
-				if (parent_source_info != nullptr)
+				if (notification_response->GetStatusCode() == Notification::StatusCode::INTERNAL_ERROR)
 				{
-					data.SetParentSourceInfo(parent_source_info);
+					retry_count++;
+
+					if (NOTIFICATION_MAX_RETRY_COUNT < retry_count)
+					{
+						break;
+					}
+					else
+					{
+						logte("Notification internal error occurred. Retrying... [%d / %d]", retry_count, NOTIFICATION_MAX_RETRY_COUNT);
+						continue;
+					}
 				}
 
-				if (output_profile != nullptr)
-				{
-					data.SetOutputProfile(output_profile);
-				}
-
-				if (!codec_modules.empty())
-				{
-					data.SetCodecModules(codec_modules);
-				}
-
-				SendNotification(data);
+				break;
 			}
 		}
 	}
@@ -247,7 +233,7 @@ namespace mon::alrt
 		}
 	}
 
-	void Alert::SendStreamMessage(Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric, const std::shared_ptr<StreamMetrics> &parent_source_info, const std::shared_ptr<cfg::vhost::app::oprf::OutputProfile> &output_profile, const std::vector<std::shared_ptr<info::CodecModule>> &codec_modules)
+	void Alert::SendStreamMessage(Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric, const std::shared_ptr<StreamMetrics> &parent_stream_metric, const std::shared_ptr<ExtraData> &extra)
 	{
 		if (_stop_thread_flag)
 		{
@@ -261,8 +247,8 @@ namespace mon::alrt
 			return;
 		}
 
-		_stream_event_queue.Enqueue(std::make_shared<StreamEvent>(code, stream_metric, parent_source_info, output_profile, codec_modules));
-		_queue_event.Notify();
+		auto stream_event = std::make_shared<StreamEvent>(code, stream_metric, parent_stream_metric, extra);
+		SendStreamMessage(stream_event);
 	}
 
 	void Alert::SendStreamMessage(Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric)
@@ -279,8 +265,67 @@ namespace mon::alrt
 			return;
 		}
 
-		_stream_event_queue.Enqueue(std::make_shared<StreamEvent>(code, stream_metric));
-		_queue_event.Notify();
+		auto stream_event = std::make_shared<StreamEvent>(code, stream_metric);
+		SendStreamMessage(stream_event);
+	}
+
+	void Alert::SendStreamMessage(const std::shared_ptr<StreamEvent> &stream_event)
+	{
+		if (stream_event == nullptr)
+		{
+			return;
+		}
+
+		auto code = stream_event->_code;
+		auto stream_metric = stream_event->_metric;
+		auto parent_stream_metric = stream_event->_parent_stream_metric;
+		auto extra = stream_event->_extra;
+
+		ov::String description = Message::DescriptionFromMessageCode(code);
+		auto message = Message::CreateMessage(code, description);
+
+		std::vector<std::shared_ptr<Message>> message_list(1, message);
+
+		ov::String messages_key;
+		if (stream_metric)
+		{
+			messages_key = stream_metric->GetUri();
+		}
+		else if (parent_stream_metric)
+		{
+			messages_key = parent_stream_metric->GetUri();
+		}
+		else
+		{
+			logtw("Invalid stream event with null stream metric and parent source info. code: %s", Message::StringFromMessageCode(code));
+			return;
+		}
+
+		auto type = NotificationData::TypeFromMessageCode(code);
+
+		if (IsAlertNeeded(messages_key, message_list))
+		{
+			auto data = std::make_shared<NotificationData>(type, message_list);
+
+			if (stream_metric != nullptr)
+			{
+				data->SetStreamMetric(stream_metric);
+				data->SetSourceUri(stream_metric->GetUri());
+			}
+
+			if (parent_stream_metric != nullptr)
+			{
+				data->SetParentStreamMetric(parent_stream_metric);
+			}
+
+			if(extra != nullptr)
+			{
+				data->SetExtra(extra);
+			}
+
+			_notification_queue.Enqueue(data);
+			_queue_notification.Notify();
+		}
 	}
 
 	bool Alert::VerifyStreamEventRule(const cfg::alrt::rule::Rules &rules, Message::Code code)
@@ -318,6 +363,12 @@ namespace mon::alrt
 			}
 
 			return true;
+		}
+		else if(OV_CHECK_FLAG(raw_code, Message::EGRESS_CODE_TRANSCODE_MASK))
+		{
+			auto egress = rules.GetEgress();
+
+			return egress.IsParsed() && egress.IsTranscodeStatus();
 		}
 
 		// Invalid message code for stream
@@ -537,45 +588,16 @@ namespace mon::alrt
 		return false;
 	}
 
-	void Alert::SendNotification(const NotificationData &notificationData)
-	{
-		auto alert		  = _server_config->GetAlert();
-
-		auto message_body = notificationData.ToJsonString();
-		if (message_body.IsEmpty())
-		{
-			logte("Message body is empty");
-			return;
-		}
-
-		// Notification
-		auto notification_server_url						= ov::Url::Parse(alert.GetUrl());
-		std::shared_ptr<Notification> notification_response = Notification::Query(notification_server_url, alert.GetTimeoutMsec(), alert.GetSecretKey(), message_body);
-		if (notification_response == nullptr)
-		{
-			// Probably this doesn't happen
-			logte("Could not load Notification");
-			return;
-		}
-
-		if (notification_response->GetStatusCode() != Notification::StatusCode::OK)
-		{
-			logte("%s", notification_response->GetErrorReason().CStr());
-		}
-	}
-
 	void Alert::SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::shared_ptr<StreamMetrics> &stream_metric)
 	{
-		NotificationData data(type, message_list, source_uri, stream_metric);
-
-		SendNotification(data);
+		_notification_queue.Enqueue(std::make_shared<NotificationData>(type, message_list, source_uri, stream_metric));
+		_queue_notification.Notify();
 	}
 
 	void Alert::SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list)
 	{
-		NotificationData data(type, message_list, queue_metric_list);
-
-		SendNotification(data);
+		_notification_queue.Enqueue(std::make_shared<NotificationData>(type, message_list, queue_metric_list));
+		_queue_notification.Notify();
 	}
 
 	void Alert::CleanupReleasedMessages(const std::vector<ov::String> &new_messages_keys)
@@ -653,17 +675,17 @@ namespace mon::alrt
 		return item->second;
 	}
 
-	std::shared_ptr<Alert::StreamEvent> Alert::PopStreamEvent()
+	std::shared_ptr<NotificationData> Alert::PopNotificationData()
 	{
-		if (_stream_event_queue.IsEmpty())
+		if (_notification_queue.IsEmpty())
 		{
 			return nullptr;
 		}
 
-		auto message = _stream_event_queue.Dequeue();
-		if (message.has_value())
+		auto notification = _notification_queue.Dequeue();
+		if (notification.has_value())
 		{
-			return message.value();
+			return notification.value();
 		}
 
 		return nullptr;

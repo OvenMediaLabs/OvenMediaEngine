@@ -24,12 +24,12 @@ std::shared_ptr<HlsPublisher> HlsPublisher::Create(const cfg::Server &server_con
 HlsPublisher::HlsPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	: Publisher(server_config, router)
 {
-	logtd("HlsPublisher has been create");
+	logtt("HlsPublisher has been create");
 }
 
 HlsPublisher::~HlsPublisher()
 {
-	logtd("HlsPublisher has been terminated finally");
+	logtt("HlsPublisher has been terminated finally");
 }
 
 bool HlsPublisher::PrepareHttpServers(
@@ -201,7 +201,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 	auto http_interceptor = std::make_shared<TsHttpInterceptor>();
 
 	// Register Request Handler
-	http_interceptor->Register(http::Method::Options, R"((.+\.m3u8$)|(.+hls\.ts$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
+	http_interceptor->Register(http::Method::Options, R"((.+\.m3u8$)|(.+hls\.ts$)|(.+hls\.vtt$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
 		auto connection = exchange->GetConnection();
 		auto request = exchange->GetRequest();
 		auto response = exchange->GetResponse();
@@ -242,7 +242,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 		return http::svr::NextHandler::DoNotCall;
 	});
 
-	http_interceptor->Register(http::Method::Get, R"((.+\.m3u8$)|(.+hls\.ts$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
+	http_interceptor->Register(http::Method::Get, R"((.+\.m3u8$)|(.+hls\.ts$)|(.+hls\.vtt$))", [this](const std::shared_ptr<http::svr::HttpExchange> &exchange) -> http::svr::NextHandler {
 		auto connection = exchange->GetConnection();
 		auto request = exchange->GetRequest();
 		auto response = exchange->GetResponse();
@@ -263,7 +263,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 		}
 		auto requested_url = final_url;
 
-		logtd("HLSv3 requested(connection : %u): %s", connection->GetId(), request->GetUri().CStr());
+		logtt("HLSv3 requested(connection : %u): %s", connection->GetId(), request->GetUri().CStr());
 
 		auto vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(final_url->Host(), final_url->App());
 
@@ -401,46 +401,57 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 		// * Segment File
 		// http[s]://<host>:<port>/<application_name>/<stream_name>/seg_<variant_name>_<number>_hls.ts
 
-		// Master playlist (.m3u8 and NOT *medialist*.m3u8)
-		if (final_url->File().IndexOf(".m3u8") > 0 && final_url->File().HasPrefix("medialist") == false)
+		if (origin_mode == true)
 		{
-			session_id_t session_id = connection->GetId();
-
-			try
+			// Random session from pool
+			session = stream->GetSessionFromPool();
+			if (session == nullptr)
 			{
-				// If this connection has been used by another session in the past, it is reused.
-				session = std::any_cast<std::shared_ptr<HlsSession>>(connection->GetUserData(stream->GetStreamId()));
-			}
-			catch (const std::bad_any_cast &e)
-			{
-				session = std::static_pointer_cast<HlsSession>(stream->GetSession(session_id));
-			}
-
-			if (session == nullptr || session->GetStream() != stream)
-			{
-				// New HTTP Connection
-				session = HlsSession::Create(session_id, origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
-				if (session == nullptr)
-				{
-					logte("Could not create ts session for request: %s", request->ToString().CStr());
-					response->SetStatusCode(http::StatusCode::InternalServerError);
-					return http::svr::NextHandler::DoNotCall;
-				}
-				session->SetRequestedUrl(requested_url);
-				session->SetFinalUrl(final_url);
-
-				stream->AddSession(session);
+				logtc("Could not get hls origin session from pool for request: %s", request->ToString().CStr());
+				response->SetStatusCode(http::StatusCode::InternalServerError);
+				return http::svr::NextHandler::DoNotCall;
 			}
 		}
-		// medialist_x_hls.m3u8?session=<session id>_<key>
-		// seg_x_x_hls.ts?session=<session id>_<key>
-		else
+		else 
 		{
-			session_id_t session_id = connection->GetId();
-			ov::String session_key;
-
-			if (origin_mode == false)
+			// Master playlist (.m3u8 and NOT *medialist*.m3u8)
+			if (final_url->File().IndexOf(".m3u8") > 0 && final_url->File().HasPrefix("medialist") == false)
 			{
+				session_id_t session_id = connection->GetId();
+
+				auto session_path_ptr = std::any_cast<info::Session::Path>(connection->GetUserData(stream->GetStreamId()));
+				if (session_path_ptr != nullptr)
+				{
+					session = std::static_pointer_cast<HlsSession>(GetSession(*session_path_ptr));
+				}
+				else 
+				{
+					session = std::static_pointer_cast<HlsSession>(stream->GetSession(session_id));
+				}
+
+				if (session == nullptr || session->GetStream() != stream)
+				{
+					// New HTTP Connection
+					session = HlsSession::Create(session_id, origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
+					if (session == nullptr)
+					{
+						logte("Could not create ts session for request: %s", request->ToString().CStr());
+						response->SetStatusCode(http::StatusCode::InternalServerError);
+						return http::svr::NextHandler::DoNotCall;
+					}
+					session->SetRequestedUrl(requested_url);
+					session->SetFinalUrl(final_url);
+
+					stream->AddSession(session);
+				}
+			}
+			// medialist_x_hls.m3u8?session=<session id>_<key>
+			// seg_x_x_hls.ts?session=<session id>_<key>
+			else
+			{
+				session_id_t session_id = connection->GetId();
+				ov::String session_key;
+
 				// ?session=<session id>_<key>
 				// This collects them into one session even if one player connects through multiple connections.
 				auto query_string = final_url->GetQueryValue("session");
@@ -454,46 +465,46 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 
 				session_id = ov::Converter::ToUInt32(id_key[0].CStr());
 				session_key = id_key[1];
-			}
 
-			session = std::static_pointer_cast<HlsSession>(stream->GetSession(session_id));
-			if (session == nullptr)
-			{
-				if (access_control_enabled == true)
+				session = std::static_pointer_cast<HlsSession>(stream->GetSession(session_id));
+				if (session == nullptr)
 				{
-					logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
-					response->SetStatusCode(http::StatusCode::Unauthorized);
-					return http::svr::NextHandler::DoNotCall;
+					if (access_control_enabled == true)
+					{
+						logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
+						response->SetStatusCode(http::StatusCode::Unauthorized);
+						return http::svr::NextHandler::DoNotCall;
+					}
+					else
+					{
+						// New HTTP Connection
+						session = HlsSession::Create(session_id, origin_mode, session_key, stream->GetApplication(), stream, session_life_time);
+						if (session == nullptr)
+						{
+							logte("Could not create ts session for request: %s", request->ToString().CStr());
+							response->SetStatusCode(http::StatusCode::InternalServerError);
+							return http::svr::NextHandler::DoNotCall;
+						}
+						session->SetRequestedUrl(requested_url);
+						session->SetFinalUrl(final_url);
+						stream->AddSession(session);
+					}
 				}
 				else
 				{
-					// New HTTP Connection
-					session = HlsSession::Create(session_id, origin_mode, session_key, stream->GetApplication(), stream, session_life_time);
-					if (session == nullptr)
+					if (access_control_enabled == true && session_key != session->GetSessionKey())
 					{
-						logte("Could not create ts session for request: %s", request->ToString().CStr());
-						response->SetStatusCode(http::StatusCode::InternalServerError);
+						logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
+						response->SetStatusCode(http::StatusCode::Unauthorized);
 						return http::svr::NextHandler::DoNotCall;
 					}
-					session->SetRequestedUrl(requested_url);
-					session->SetFinalUrl(final_url);
-					stream->AddSession(session);
 				}
 			}
-			else
-			{
-				if (access_control_enabled == true && session_key != session->GetSessionKey())
-				{
-					logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
-					response->SetStatusCode(http::StatusCode::Unauthorized);
-					return http::svr::NextHandler::DoNotCall;
-				}
-			}
-		}
 
-		// It will be used in CloseHandler
-		connection->AddUserData(stream->GetStreamId(), session);
-		session->UpdateLastRequest(connection->GetId());
+			// It will be used in CloseHandler
+			connection->AddUserData(stream->GetStreamId(), std::move(session->GetSessionPath()));
+			session->UpdateLastRequest(connection->GetId());
+		}
 
 		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
 
@@ -505,22 +516,20 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 		for (auto &user_data : connection->GetUserDataMap())
 		{
 			std::shared_ptr<HlsSession> session;
-
-			try
-			{
-				session = std::any_cast<std::shared_ptr<HlsSession>>(user_data.second);
-			}
-			catch (const std::bad_any_cast &)
+			
+			auto session_path_ptr = std::any_cast<info::Session::Path>(&user_data.second);
+			if (session_path_ptr == nullptr)
 			{
 				continue;
 			}
 
+			session = std::static_pointer_cast<HlsSession>(GetSession(*session_path_ptr));
 			if (session != nullptr)
 			{
 				session->OnConnectionDisconnected(connection->GetId());
 				if (session->IsNoConnection())
 				{
-					logtd("ts session is closed : %u", session->GetId());
+					logtt("ts session is closed : %u", session->GetId());
 					// Remove session from stream
 					auto stream = session->GetStream();
 					if (stream != nullptr)

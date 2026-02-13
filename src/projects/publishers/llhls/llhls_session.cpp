@@ -63,12 +63,12 @@ LLHlsSession::LLHlsSession(const info::Session &session_info,
 		_number_of_players = 1;
 	}
 
-	logtd("LLHlsSession::LLHlsSession (%d)", session_info.GetId());
+	logtt("LLHlsSession::LLHlsSession (%d)", session_info.GetId());
 }
 
 LLHlsSession::~LLHlsSession()
 {
-	logtd("LLHlsSession::~LLHlsSession(%d)", GetId());
+	logtt("LLHlsSession::~LLHlsSession(%d)", GetId());
 	MonitorInstance->OnSessionsDisconnected(*GetStream(), PublisherType::LLHls, _number_of_players);
 }
 
@@ -91,7 +91,7 @@ bool LLHlsSession::Start()
 
 bool LLHlsSession::Stop()
 {
-	logtd("LLHlsSession(%u) : Pending request size(%d)", GetId(), _pending_requests.size());
+	logtt("LLHlsSession(%u) : Pending request size(%d)", GetId(), _pending_requests.size());
 
 	return Session::Stop();
 }
@@ -111,7 +111,7 @@ void LLHlsSession::UpdateLastRequest(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time[connection_id] = ov::Clock::NowMSec();
 
-	logtd("LLHlsSession(%u) : Request updated from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("LLHlsSession(%u) : Request updated from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
 }
 
 uint64_t LLHlsSession::GetLastRequestTime(uint32_t connection_id) const
@@ -132,7 +132,7 @@ void LLHlsSession::OnConnectionDisconnected(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time.erase(connection_id);
 
-	logtd("LLHlsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("LLHlsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
 }
 
 bool LLHlsSession::IsNoConnection() const
@@ -803,7 +803,7 @@ void LLHlsSession::ResponseData(const std::shared_ptr<http::svr::HttpExchange> &
 		MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::LLHls, sent_size);
 	}
 
-	logtd("\n%s", exchange->GetDebugInfo().CStr());
+	logtt("\n%s", exchange->GetDebugInfo().CStr());
 
 	// Terminate the HTTP/2 stream
 	exchange->Release();
@@ -811,7 +811,7 @@ void LLHlsSession::ResponseData(const std::shared_ptr<http::svr::HttpExchange> &
 
 void LLHlsSession::OnPlaylistUpdated(const int32_t &track_id, const int64_t &msn, const int64_t &part)
 {
-	logtd("LLHlsSession::OnPlaylistUpdated track_id: %d, msn: %lld, part: %lld", track_id, msn, part);
+	logtt("LLHlsSession::OnPlaylistUpdated track_id: %d, msn: %lld, part: %lld", track_id, msn, part);
 	// Find the pending request
 
 	auto it = _pending_requests.begin();
@@ -880,7 +880,7 @@ bool LLHlsSession::AddPendingRequest(const std::shared_ptr<http::svr::HttpExchan
 
 	if (_pending_requests.size() > MAX_PENDING_REQUESTS)
 	{
-		logtd("[%s/%s/%u] Too many pending requests (%u)", 
+		logtt("[%s/%s/%u] Too many pending requests (%u)", 
 				GetApplication()->GetVHostAppName().CStr(),
 				GetStream()->GetName().CStr(),
 				GetId(),

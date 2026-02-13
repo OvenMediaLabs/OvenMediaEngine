@@ -15,7 +15,7 @@
 class TranscodeEncoder : public TranscodeBase<MediaFrame, MediaPacket>
 {
 public:
-	typedef std::function<void(int32_t, std::shared_ptr<MediaPacket>)> CompleteHandler;
+	typedef std::function<void(TranscodeResult, int32_t, std::shared_ptr<MediaPacket>)> CompleteHandler;
 	static std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> GetCandidates(bool hwaccels_enable, ov::String hwaccles_modules, std::shared_ptr<MediaTrack> track);
 	static std::shared_ptr<TranscodeEncoder> Create(int32_t encoder_id, std::shared_ptr<info::Stream> info, std::shared_ptr<MediaTrack> output_track, std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> candidates, CompleteHandler complete_handler);
 
@@ -25,7 +25,7 @@ public:
 
 	void SetEncoderId(int32_t encoder_id);
 	void SetCompleteHandler(CompleteHandler complete_handler);
-	void Complete(std::shared_ptr<MediaPacket> packet);
+	void Complete(TranscodeResult result, std::shared_ptr<MediaPacket> packet);
 	std::shared_ptr<MediaTrack> &GetRefTrack();
 	cmn::Timebase GetTimebase() const;
 
@@ -62,7 +62,7 @@ protected:
 	cmn::BitstreamFormat _bitstream_format = cmn::BitstreamFormat::Unknown;
 	cmn::PacketType _packet_type = cmn::PacketType::Unknown;
 
-	bool _kill_flag = false;
+	std::atomic<bool> _kill_flag{false};
 	std::thread _codec_thread;
 
 	CompleteHandler _complete_handler;

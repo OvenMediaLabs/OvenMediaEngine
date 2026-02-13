@@ -136,6 +136,6 @@ namespace ov
 
 	void StopWatch::Print()
 	{
-		logd("StopWatch", "[%s] Elapsed: %lld (Total elapsed: %lld)", _tag.CStr(), Elapsed(), TotalElapsed());
+		logt("StopWatch", "[%s] Elapsed: %lld (Total elapsed: %lld)", _tag.CStr(), Elapsed(), TotalElapsed());
 	}
 }  // namespace ov

@@ -5,6 +5,7 @@
 #include "base/common_types.h"
 #include "base/info/media_track_group.h"
 #include "base/info/playlist.h"
+#include "vhost_app_name.h"
 
 namespace info
 {
@@ -26,6 +27,8 @@ namespace info
 		virtual ~Stream();
 
 		bool operator==(const Stream &stream_info) const;
+
+		NamePath GetNamePath() const;
 
 		void SetId(info::stream_id_t id);
 		info::stream_id_t GetId() const;
@@ -100,10 +103,7 @@ namespace info
 		ov::String GetInfoString();
 		void ShowInfo();
 
-		void SetApplicationInfo(const std::shared_ptr<Application> &app_info)
-		{
-			_app_info = app_info;
-		}
+		void SetApplicationInfo(const std::shared_ptr<Application> &app_info);
 		const Application &GetApplicationInfo() const
 		{
 			return *_app_info;
@@ -153,6 +153,12 @@ namespace info
 		}
 
 	protected:
+		// Update name path from given `vhost_app_name` and `_name`
+		void UpdateNamePath(const info::VHostAppName &vhost_app_name);
+		// Update name path using `_app_info` and `_name`
+		void UpdateNamePath();
+
+	protected:
 		info::stream_id_t _id = 0;
 		uint32_t _msid = 0;
 		ov::String _name;
@@ -176,6 +182,9 @@ namespace info
 		bool _from_origin_map_store = false;
 
 	private:
+		mutable std::mutex _name_path_mutex;
+		NamePath _name_path = NamePath::UnknownNamePath();
+
 		std::chrono::system_clock::time_point _created_time;
 		std::chrono::system_clock::time_point _published_time;
 

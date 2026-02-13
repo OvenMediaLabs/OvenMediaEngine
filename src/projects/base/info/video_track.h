@@ -25,6 +25,9 @@ public:
 	void SetFrameRateByMeasured(double framerate);
 	double GetFrameRateByMeasured() const;
 
+	void AddToMeasuredFramerateWindow(double framerate);
+	std::deque<double>  GetMeasuredFramerateWindow() const;
+
 	void SetFrameRateLastSecond(double framerate);
 	double GetFrameRateLastSecond() const;
 
@@ -32,13 +35,17 @@ public:
 	double GetFrameRateByConfig() const;
 
 	void SetWidth(int32_t width);
+	void SetMaxWidth(int32_t max_width); // for ovt sync
 	int32_t GetWidth() const;
+	int32_t GetMaxWidth() const;
 
 	void SetWidthByConfig(int32_t width);
 	int32_t GetWidthByConfig() const;
 
 	void SetHeight(int32_t height);
+	void SetMaxHeight(int32_t max_height);
 	int32_t GetHeight() const;
+	int32_t GetMaxHeight() const;
 
 	void SetHeightByConfig(int32_t height);
 	int32_t GetHeightByConfig() const;
@@ -82,6 +89,12 @@ public:
 	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
 	int32_t GetDeltaFramesSinceLastKeyFrame() const;
 
+	void SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval);
+	int32_t GetDetectLongKeyFrameInterval() const;
+
+	void SetDetectAbnormalFramerate(bool detect_abnormal_framerate);
+	bool GetDetectAbnormalFramerate() const;
+
 	void SetBFrames(int32_t b_frames);
 	int32_t GetBFrames();
 
@@ -95,6 +108,9 @@ public:
 	void SetLookaheadByConfig(int32_t lookahead);
 	int32_t GetLookaheadByConfig() const;
 	
+	void SetExtraEncoderOptionsByConfig(const ov::String &options);
+	ov::String GetExtraEncoderOptionsByConfig() const;
+
 protected:
 
 	// framerate (measurement)
@@ -107,12 +123,14 @@ protected:
 	double _video_timescale;
 	
 	// Resolution
-	int32_t _width;
-	int32_t _height;
+	int32_t _width = 0;
+	int32_t _height = 0;
+	int32_t _max_width = 0;
+	int32_t _max_height = 0;
 
 	// Resolution (set by user)
-	int32_t _width_conf;
-	int32_t _height_conf;
+	int32_t _width_conf = 0;
+	int32_t _height_conf = 0;
 
 	// Key Frame Interval Avg (measurement)
 	double _key_frame_interval = 0;
@@ -123,8 +141,11 @@ protected:
 	// Delta Frame Count since last key frame
 	int32_t _delta_frame_count_since_last_key_frame = 0;
 
+	// Detect long key frame interval (set by mediarouter)
+	bool _detect_long_key_frame_interval = false;
+
 	// Key Frame Interval Type (set by user)
-	cmn::KeyFrameIntervalType _key_frame_interval_type_conf;
+	cmn::KeyFrameIntervalType _key_frame_interval_type_conf = cmn::KeyFrameIntervalType::FRAME;
 
 	// Number of B-frame (set by user)
 	int32_t _b_frames = 0;
@@ -134,7 +155,7 @@ protected:
 
 	// Colorspace of video
 	// This variable is temporarily used in the Pixel Format defined by FFMPEG.
-	cmn::VideoPixelFormatId _colorspace;	
+	cmn::VideoPixelFormatId _colorspace = cmn::VideoPixelFormatId::None;	
 
 	// Preset for encoder (set by user)
 	ov::String _preset;
@@ -143,7 +164,7 @@ protected:
 	ov::String _profile;
 	
 	// Thread count of codec (set by user)
-	int _thread_count;	
+	int _thread_count = 0;	
 
 	// Skip frames (set by user)
 	// If the set value is greater than or equal to 0, the skip frame is automatically calculated. 
@@ -160,6 +181,11 @@ protected:
 	// Lookahead (set by user)
 	int32_t _lookahead_conf = -1;
 
+	// Abnormal key frame interval detection
+	bool _detect_abnormal_framerate = false;
+	std::deque<double>  _measured_framerate_window;
+
+	ov::String _extra_encoder_options;
 public:
 	// Overlay (set by user)
 	void SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &overlays);

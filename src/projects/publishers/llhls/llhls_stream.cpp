@@ -23,26 +23,69 @@
 #include "llhls_private.h"
 #include "llhls_session.h"
 
-std::shared_ptr<LLHlsStream> LLHlsStream::Create(const std::shared_ptr<pub::Application> application, const info::Stream &info, uint32_t worker_count)
+std::shared_ptr<LLHlsStream> LLHlsStream::Create(const std::shared_ptr<pub::Application> application, const info::Stream &info, bool origin_mode, uint32_t worker_count)
 {
-	auto stream = std::make_shared<LLHlsStream>(application, info, worker_count);
+	auto stream = std::make_shared<LLHlsStream>(application, info, origin_mode, worker_count);
 	return stream;
 }
 
-LLHlsStream::LLHlsStream(const std::shared_ptr<pub::Application> application, const info::Stream &info, uint32_t worker_count)
-	: Stream(application, info), _worker_count(worker_count)
+LLHlsStream::LLHlsStream(const std::shared_ptr<pub::Application> application, const info::Stream &info, bool origin_mode, uint32_t worker_count)
+	: Stream(application, info), _origin_mode(origin_mode), _worker_count(worker_count)
 {
 }
 
 LLHlsStream::~LLHlsStream()
 {
-	logtd("LLHlsStream(%s/%s) has been terminated finally", GetApplicationName(), GetName().CStr());
+	logtt("LLHlsStream(%s/%s) has been terminated finally", GetApplicationName(), GetName().CStr());
 }
 
 ov::String LLHlsStream::GetStreamId() const
 {
 	return ov::String::FormatString("llhls/%s", GetUri().CStr());
 }
+
+bool LLHlsStream::CreateOriginSessionPool()
+{
+	if (_origin_mode == false)
+	{
+		return false;
+	}
+
+	size_t max_pool_size = _worker_count == 0 ? 1 : _worker_count;
+
+	// Create sessions up to _worker_count
+	for (size_t i = 0; i < max_pool_size; i++)
+	{
+		auto session = LLHlsSession::Create(static_cast<session_id_t>(i),
+											_origin_mode,
+											"",
+											GetApplication(),
+											pub::Stream::GetSharedPtr(),
+											0);
+		logtd("LLHlsStream(%s/%s) - Pre-created origin mode session in pool, session id: %zu", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), i);
+		AddSession(session);
+	}
+
+	return true;
+}
+
+std::shared_ptr<LLHlsSession> LLHlsStream::GetSessionFromPool()
+{
+	// Max session pool size if _worker_count
+	size_t max_pool_size = _worker_count == 0 ? 1 : _worker_count;
+	
+	// Get random index
+	size_t index = ov::Random::GenerateUInt32() % max_pool_size;
+
+	auto session = GetSession(static_cast<session_id_t>(index));
+	if (session == nullptr)
+	{
+		return nullptr;
+	}
+
+	return std::static_pointer_cast<LLHlsSession>(session);
+}
+
 
 std::shared_ptr<const pub::Stream::DefaultPlaylistInfo> LLHlsStream::GetDefaultPlaylistInfo() const
 {
@@ -69,6 +112,15 @@ bool LLHlsStream::Start()
 	if (CreateStreamWorker(_worker_count) == false)
 	{
 		return false;
+	}
+
+	if (_origin_mode == true)
+	{
+		if (CreateOriginSessionPool() == false)
+		{
+			logte("LLHlsStream(%s/%s) - Failed to create origin session pool", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			return false;
+		}
 	}
 
 	auto config = GetApplication()->GetConfig();
@@ -115,24 +167,18 @@ bool LLHlsStream::Start()
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
 	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
+	first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+    first_audio_track = GetFirstTrackByType(cmn::MediaType::Audio);
+
+	_vtt_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
 	for (const auto &[id, track] : _tracks)
 	{
 		if (IsSupportedMediaCodec(track->GetCodecId()) == true)
 		{
 			if (AddPackager(track, data_track) == false)
 			{
-				logte("LLHlsStream(%s/%s) - Failed to add packager for track(%ld)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track->GetId());
+				logte("LLHlsStream(%s/%s) - Failed to add packager for track(%u)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track->GetId());
 				return false;
-			}
-
-			// For default llhls.m3u8
-			if (first_video_track == nullptr && track->GetMediaType() == cmn::MediaType::Video)
-			{
-				first_video_track = track;
-			}
-			else if (first_audio_track == nullptr && track->GetMediaType() == cmn::MediaType::Audio)
-			{
-				first_audio_track = track;
 			}
 		}
 		else
@@ -146,8 +192,6 @@ bool LLHlsStream::Start()
 			continue;
 		}
 	}
-
-	_vtt_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
 
 	// Set renditions to each chunklist writer
 	{
@@ -233,7 +277,7 @@ bool LLHlsStream::Start()
 
 bool LLHlsStream::Stop()
 {
-	logtd("LLHlsStream(%s) has been stopped", GetName().CStr());
+	logtt("LLHlsStream(%s) has been stopped", GetName().CStr());
 
 	{
 		std::scoped_lock lock{_packager_map_lock, _storage_map_lock, _chunklist_map_lock, _master_playlists_lock, _dumps_lock};
@@ -698,7 +742,7 @@ bool LLHlsStream::DumpSegment(const std::shared_ptr<mdl::Dump> &item, const int3
 	auto segment = storage->GetSegment(segment_number);
 	if (segment == nullptr)
 	{
-		logtw("Could not get segment(%u) for dump", segment_number);
+		logtw("Could not get segment(%" PRId64 ") for dump", segment_number);
 		return false;
 	}
 
@@ -817,12 +861,12 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 		if (msn > last_msn || (msn >= last_msn && psn > last_psn))
 		{
 			// Hold the request until a Playlist contains a Segment with the requested Sequence Number
-			logtd("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
 			return {RequestResult::Accepted, nullptr};
 		}
 		else
 		{
-			logtd("Get chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Get chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
 		}
 	}
 
@@ -867,7 +911,7 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<ov::Data>> LLHlsStream::G
 
 std::tuple<LLHlsStream::RequestResult, std::shared_ptr<ov::Data>> LLHlsStream::GetPartial(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number) const
 {
-	logtd("LLHlsStream(%s) - GetChunk(%d, %ld, %ld)", GetName().CStr(), track_id, segment_number, partial_number);
+	logtt("LLHlsStream(%s) - GetChunk(%d, %ld, %ld)", GetName().CStr(), track_id, segment_number, partial_number);
 
 	auto storage = GetStorage(track_id);
 	if (storage == nullptr)
@@ -880,13 +924,13 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<ov::Data>> LLHlsStream::G
 
 	if ((segment_number > last_segment_number) || (segment_number == last_segment_number && partial_number > last_partial_number))
 	{
-		logtd("Accepted chunk for track_id = %d, segment = %ld, chunk = %ld (last_segment = %ld, last_chunk = %ld)", track_id, segment_number, partial_number, last_segment_number, last_partial_number);
+		logtt("Accepted chunk for track_id = %d, segment = %ld, chunk = %ld (last_segment = %ld, last_chunk = %ld)", track_id, segment_number, partial_number, last_segment_number, last_partial_number);
 		// Hold the request until a Playlist contains a Segment with the requested Sequence Number
 		return {RequestResult::Accepted, nullptr};
 	}
 	else
 	{
-		logtd("Get chunk for track_id = %d, segment = %ld, chunk = %ld (last_segment = %ld, last_chunk = %ld)", track_id, segment_number, partial_number, last_segment_number, last_partial_number);
+		logtt("Get chunk for track_id = %d, segment = %ld, chunk = %ld (last_segment = %ld, last_chunk = %ld)", track_id, segment_number, partial_number, last_segment_number, last_partial_number);
 	}
 
 	auto partial = storage->GetPartialSegment(segment_number, partial_number);
@@ -912,7 +956,7 @@ void LLHlsStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaP
 
 bool LLHlsStream::SendBufferedPackets()
 {
-	logtd("SendBufferedPackets - BufferSize (%u)", _initial_media_packet_buffer.Size());
+	logtt("SendBufferedPackets - BufferSize (%zu)", _initial_media_packet_buffer.Size());
 	while (_initial_media_packet_buffer.IsEmpty() == false)
 	{
 		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
@@ -1025,10 +1069,10 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 			auto packager = GetPackager(track->GetId());
 			if (packager == nullptr)
 			{
-				logtd("Could not find packager. track id: %d", track->GetId());
+				logtt("Could not find packager. track id: %d", track->GetId());
 				continue;
 			}
-			logtd("AppendSample : track(%d) length(%d)", media_packet->GetTrackId(), media_packet->GetDataLength());
+			logtt("AppendSample : track(%u) length(%zu)", media_packet->GetTrackId(), media_packet->GetDataLength());
 
 			packager->ReserveDataPacket(media_packet);
 		}
@@ -1040,7 +1084,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 		std::shared_ptr<ov::Data> data = media_packet->GetData() != nullptr ? media_packet->GetData()->Clone() : nullptr;
 		if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), timestamp_ms, data) == false)
 		{
-			logte("Failed to insert marker to all packagers (track_id: %d, bitstream_format: %d, timestamp: %lld)", media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), media_packet->GetDts());
+			logte("Failed to insert marker to all packagers (track_id: %u, bitstream_format: %d, timestamp: %" PRId64 ")", media_packet->GetTrackId(), ov::ToUnderlyingType(media_packet->GetBitstreamFormat()), media_packet->GetDts());
 			return;
 		}
 
@@ -1063,7 +1107,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 
 				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::CUE, cue_in_timestamp_ms, cue_in_data) == false)
 				{
-					logte("Failed to insert CUE-IN marker to all packagers (track_id: %d, timestamp: %lld)", media_packet->GetTrackId(), cue_in_timestamp_ms);
+					logte("Failed to insert CUE-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), cue_in_timestamp_ms);
 					return;
 				}
 			}
@@ -1073,7 +1117,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 			auto scte35_event = Scte35Event::Parse(media_packet->GetData());
 			if (scte35_event == nullptr)
 			{
-				logte("Failed to parse scte35 event (track_id: %d, timestamp: %lld)", media_packet->GetTrackId(), media_packet->GetDts());
+				logte("Failed to parse scte35 event (track_id: %u, timestamp: %" PRId64 ")", media_packet->GetTrackId(), media_packet->GetDts());
 				return;
 			}
 
@@ -1087,7 +1131,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 				// xxx-OUT marker will create one more segment, so we need to shift the sequence number by 1
 				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::SCTE35, scte_in_timestamp_ms, scte_in_data) == false)
 				{
-					logte("Failed to insert SCTE35-IN marker to all packagers (track_id: %d, timestamp: %lld)", media_packet->GetTrackId(), scte_in_timestamp_ms);
+					logte("Failed to insert SCTE35-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), scte_in_timestamp_ms);
 					return;
 				}
 			}
@@ -1099,7 +1143,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 		auto webvtt_frame = WebVTTFrame::Parse(media_packet->GetData());
 		if (webvtt_frame == nullptr)
 		{
-			logte("Failed to parse WebVTT frame from data packet (track_id: %d, dts: %lld)", media_packet->GetTrackId(), media_packet->GetDts());
+			logte("Failed to parse WebVTT frame from data packet (track_id: %u, dts: %" PRId64 ")", media_packet->GetTrackId(), media_packet->GetDts());
 			return;
 		}
 
@@ -1140,7 +1184,7 @@ std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat b
 		auto packager = GetPackager(track->GetId());
 		if (packager == nullptr)
 		{
-			logtd("Could not find packager. track id: %d", track->GetId());
+			logtt("Could not find packager. track id: %d", track->GetId());
 			continue;
 		}
 
@@ -1155,7 +1199,7 @@ std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat b
 		auto [result, message] = packager->CanInsertMarker(marker);
 		if (result == false)
 		{
-			logte("Failed to insert marker (timestamp: %lld, tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
+			logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
 			return {false, message};
 		}
 	}
@@ -1184,11 +1228,11 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 	{
 		if (i == 1)
 		{
-			logti("InsertMarkerToAllPackagers - Estimated sequence number: %lld Max current sequence number: %lld", estimated_seq, max_current_seq);
+			logtd("InsertMarkerToAllPackagers - Estimated sequence number: %" PRId64 " Max current sequence number: %" PRId64 "", estimated_seq, max_current_seq);
 
 			if (max_current_seq > estimated_seq)
 			{
-				logtw("Estimated sequence number is smaller than the current sequence number. estimated_seq: %lld, max_current_seq: %lld", estimated_seq, max_current_seq);
+				logtw("Estimated sequence number is smaller than the current sequence number. estimated_seq: %" PRId64 ", max_current_seq: %" PRId64 "", estimated_seq, max_current_seq);
 				estimated_seq = max_current_seq;
 			}
 		}
@@ -1207,7 +1251,7 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 			auto packager = GetPackager(track->GetId());
 			if (packager == nullptr)
 			{
-				logtd("Could not find packager. track id: %d", track->GetId());
+				logtt("Could not find packager. track id: %d", track->GetId());
 				continue;
 			}
 
@@ -1225,20 +1269,20 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 				auto [result, msg] = packager->CanInsertMarker(marker);
 				if (result == false)
 				{
-					logte("Failed to insert marker (timestamp: %lld, tag: %s, msg: %s)", marker->GetTimestamp(), marker->GetTag().CStr(), msg.CStr());
+					logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s, msg: %s)", marker->GetTimestamp(), marker->GetTag().CStr(), msg.CStr());
 					return false;
 				}
 			}
 			else
 			{
-				logti("Packager(%d) - Insert marker: %s Estimated sequence number: %lld", track->GetId(), marker->GetTag().CStr(), estimated_seq);
+				logtd("Packager(%u) - Insert marker: %s Estimated sequence number: %" PRId64 "", track->GetId(), marker->GetTag().CStr(), estimated_seq);
 
 				marker->SetDesiredSequenceNumber(estimated_seq);
 				auto result = packager->InsertMarker(marker);
 				if (result == false)
 				{
 					// We checked it can be inserted, so it should not fail
-					logtc("Failed to insert marker (timestamp: %lld, tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
+					logtc("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
 					return false;
 				}
 			}
@@ -1303,7 +1347,7 @@ bool LLHlsStream::AppendMediaPacket(const std::shared_ptr<MediaPacket> &media_pa
 		return false;
 	}
 
-	logtd("AppendSample : track(%d) length(%d)", media_packet->GetTrackId(), media_packet->GetDataLength());
+	logtt("AppendSample : track(%u) length(%zu)", media_packet->GetTrackId(), media_packet->GetDataLength());
 
 	packager->AppendSample(media_packet);
 
@@ -1350,7 +1394,7 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	{
 		if (AddVttPackager(media_track) == false)
 		{
-			logte("LLHlsStream(%s/%s) - Failed to add VTT packager for track(%ld)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), media_track->GetId());
+			logte("LLHlsStream(%s/%s) - Failed to add VTT packager for track(%u)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), media_track->GetId());
 			return false;
 		}
 
@@ -1472,6 +1516,11 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// Chunklist
 	auto segment_duration = std::round(static_cast<double>(_storage_config.segment_duration_ms) / 1000.0);
 	auto chunk_duration = static_cast<double>(_packager_config.chunk_duration_ms) / 1000.0;
+	auto refer_track = GetTrack(_vtt_reference_track_id);
+	if (refer_track != nullptr)
+	{
+		chunk_duration = std::round(ComputeOptimalPartDuration(refer_track)) / 1000.0;
+	}
 
 	auto chunklist = std::make_shared<LLHlsChunklist>(GetChunklistName(track->GetId()),
 													  track,
@@ -1577,7 +1626,7 @@ ov::String LLHlsStream::GetSegmentName(const int32_t &track_id, const int64_t &s
 	}
 
 	// seg_<track id>_<segment number>_<media type>_<random str>_llhls.m4s
-	return ov::String::FormatString("seg_%d_%lld_%s_%s_llhls.%s",
+	return ov::String::FormatString("seg_%d_%" PRId64 "_%s_%s_llhls.%s",
 									track_id,
 									segment_number,
 									ov::String(cmn::GetMediaTypeString(GetTrack(track_id)->GetMediaType())).LowerCaseString().CStr(),
@@ -1598,7 +1647,7 @@ ov::String LLHlsStream::GetPartialSegmentName(const int32_t &track_id, const int
 	}
 
 	// part_<track id>_<segment number>_<partial number>_<media type>_<random str>_llhls.m4s
-	return ov::String::FormatString("part_%d_%lld_%lld_%s_%s_llhls.%s",
+	return ov::String::FormatString("part_%d_%" PRId64 "_%" PRId64 "_%s_%s_llhls.%s",
 									track_id,
 									segment_number,
 									partial_number,
@@ -1634,7 +1683,7 @@ ov::String LLHlsStream::GetNextPartialSegmentName(const int32_t &track_id, const
 	}
 
 	// part_<track id>_<segment number>_<partial number>_<media type>_<random str>_llhls.m4s
-	return ov::String::FormatString("part_%d_%lld_%lld_%s_%s_llhls.%s",
+	return ov::String::FormatString("part_%d_%d_%d_%s_%s_llhls.%s",
 									track_id,
 									next_segment_number,
 									next_partial_number,
@@ -1755,7 +1804,7 @@ void LLHlsStream::OnMediaSegmentCreated(const int32_t &track_id, const uint32_t 
 		}
 	}
 
-	logtd("Media segment updated : track_id = %d, segment_number = %d", track_id, segment_number);
+	logtt("Media segment updated : track_id = %d, segment_number = %d", track_id, segment_number);
 }
 
 void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk)
@@ -1813,10 +1862,10 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	{
 		if (segment->HasMarker() == true)
 		{
-			logti("Media chunk has markers : track_id = %d, segment_number = %d, chunk_number = %d", track_id, segment_number, chunk_number);
+			logtd("Media chunk has markers : track_id = %d, segment_number = %d, chunk_number = %d", track_id, segment_number, chunk_number);
 			for (const auto &marker : segment->GetMarkers())
 			{
-				logti("Marker : timestamp = %lld, tag = %s", marker->GetTimestamp(), marker->GetTag().CStr());
+				logtd("Marker : timestamp = %" PRId64 ", tag = %s", marker->GetTimestamp(), marker->GetTag().CStr());
 			}
 			partial_info.SetMarkers(segment->GetMarkers());
 		}
@@ -1824,7 +1873,7 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 
 	playlist->AppendPartialSegmentInfo(segment_number, partial_info);
 
-	logtd("Media chunk updated : track_id = %d, segment_number = %d, chunk_number = %d, start_timestamp = %llu, chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
+	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
 
 	// Make Subtitle
 	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
@@ -1860,6 +1909,15 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 				{
 					logte("Failed to make segment for VTT track_id = %d, segment_number = %d", vtt_track_id, segment_number);
 					continue;
+				}
+
+				if (segment->HasMarker() == true)
+				{
+					auto vtt_segment = vtt_packager->GetSegment(segment_number);
+					if (vtt_segment != nullptr)
+					{
+						vtt_segment->SetMarkers(segment->GetMarkers());
+					}
 				}
 			}
 			
@@ -1908,7 +1966,7 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 
 	playlist->RemoveSegmentInfo(segment_number);
 
-	logtd("Media segment deleted : track_id = %d, segment_number = %d", track_id, segment_number);
+	logtt("Media segment deleted : track_id = %d, segment_number = %d", track_id, segment_number);
 }
 
 void LLHlsStream::NotifyPlaylistUpdated(const int32_t &track_id, const int64_t &msn, const int64_t &part)
@@ -1984,7 +2042,7 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 	// Find minimum segment number
 	int64_t min_segment_number = GetMinimumLastSegmentNumber();
 
-	logti("Start dump requested: stream_name = %s, dump_id = %s, min_segment_number = %d", GetName().CStr(), dump_info->GetId().CStr(), min_segment_number);
+	logti("Start dump requested: stream_name = %s, dump_id = %s, min_segment_number = %" PRId64, GetName().CStr(), dump_info->GetId().CStr(), min_segment_number);
 
 	for (const auto &it : storage_map)
 	{
@@ -2009,7 +2067,7 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 				return {false, "Could not dump segment"};
 			}
 
-			logti("Dump base segment : stream_name = %s, dump_id = %s, track_id = %d, segment_number = %d, min_segment_number = %d, last_segment_number = %d", GetName().CStr(), dump_info->GetId().CStr(), track_id, segment_number, min_segment_number, last_segment_number);
+			logti("Dump base segment : stream_name = %s, dump_id = %s, track_id = %d, segment_number = %" PRId64 ", min_segment_number = %" PRId64 ", last_segment_number = %" PRId64 , GetName().CStr(), dump_info->GetId().CStr(), track_id, segment_number, min_segment_number, last_segment_number);
 		}
 	}
 

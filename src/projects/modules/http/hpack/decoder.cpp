@@ -115,7 +115,7 @@ namespace http
 			if (_table_connector.GetHeaderField(index, header_field) == true)
 			{
 				header_fields.push_back(header_field);
-				logtd("DecodeIndexedHeaderField: %s", header_field.ToString().CStr());
+				logtt("DecodeIndexedHeaderField: %s", header_field.ToString().CStr());
 				return true;
 			}
 
@@ -135,7 +135,7 @@ namespace http
 			// Indexing decoded Header Field
 			_table_connector.Index(header_field);
 
-			logtd("DecodeLiteralHeaderFieldWithIndexing: %s", header_field.ToString().CStr());
+			logtt("DecodeLiteralHeaderFieldWithIndexing: %s", header_field.ToString().CStr());
 
 			return true;
 		}
@@ -150,7 +150,7 @@ namespace http
 
 			header_fields.push_back(header_field);
 
-			logtd("DecodeLiteralHeaderFieldWithoutIndexing: %s", header_field.ToString().CStr());
+			logtt("DecodeLiteralHeaderFieldWithoutIndexing: %s", header_field.ToString().CStr());
 
 			return true;
 		}
@@ -165,7 +165,7 @@ namespace http
 
 			header_fields.push_back(header_field);
 
-			logtd("DecodeLiteralHeaderFieldNeverIndexed: %s", header_field.ToString().CStr());
+			logtt("DecodeLiteralHeaderFieldNeverIndexed: %s", header_field.ToString().CStr());
 
 			return true;
 		}
@@ -190,7 +190,7 @@ namespace http
 
 			_table_connector.UpdateDynamicTableSize(size);
 
-			logtd("DecodeDynamicTableSizeUpdate: %d", size);
+			logtt("DecodeDynamicTableSizeUpdate: %d", size);
 
 			return true;
 		}

@@ -123,7 +123,7 @@ void MediaRouterEventGenerator::MakeEvents(const std::shared_ptr<info::Stream> &
 		if (!(event->IsTrigger()))
 			continue;
 
-		logtd("%s | Event Triggered. event(%s)", stream_info->GetUri().CStr(), event->GetInfoString().CStr());
+		logtt("%s | Event Triggered. event(%s)", stream_info->GetUri().CStr(), event->GetInfoString().CStr());
 		
 		if (!event->Update())
 		{

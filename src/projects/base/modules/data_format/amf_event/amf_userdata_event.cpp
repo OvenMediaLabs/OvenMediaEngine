@@ -203,7 +203,7 @@ std::shared_ptr<ov::Data> AmfUserDataEvent::Serialize() const
 		if (_single_data->GetType() == AmfTypeMarker::String)
 		{
 			ov::String str_value = _single_data->GetString();
-			str_value			 = str_value.Replace("${EpochTime}", ov::String::FormatString("%lld", ov::Time::GetTimestampInMs()));
+			str_value			 = str_value.Replace("${EpochTime}", ov::String::FormatString("%" PRId64, ov::Time::GetTimestampInMs()));
 
 			AmfProperty single_data(str_value.CStr());
 			doc.AppendProperty(single_data);
@@ -223,7 +223,7 @@ std::shared_ptr<ov::Data> AmfUserDataEvent::Serialize() const
 			if (property.GetType() == AmfTypeMarker::String)
 			{
 				ov::String str_value = property.GetString();
-				str_value			 = str_value.Replace("${EpochTime}", ov::String::FormatString("%lld", ov::Time::GetTimestampInMs()));
+				str_value			 = str_value.Replace("${EpochTime}", ov::String::FormatString("%" PRId64, ov::Time::GetTimestampInMs()));
 
 				arrays->Append(name.CStr(), AmfProperty(str_value.CStr()));
 			}

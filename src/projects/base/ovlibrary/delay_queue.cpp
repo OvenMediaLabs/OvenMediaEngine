@@ -39,11 +39,11 @@ namespace ov
 		int64_t index = _index;
 		_index++;
 
-		logtd("Pushing new item: %p (after %d ms)", parameter, after_msec);
+		logtt("Pushing new item: %p (after %d ms)", parameter, after_msec);
 
 		_queue.emplace(index, func, parameter, after_msec);
 
-		logtd("Notifying...");
+		logtt("Notifying...");
 		_event.SetEvent();
 	}
 
@@ -123,12 +123,12 @@ namespace ov
 			lock.lock();
 			if (_queue.empty())
 			{
-				logtd("Queue is empty. Waiting for new item...");
+				logtt("Queue is empty. Waiting for new item...");
 				lock.unlock();
 
 				_event.Wait();
 
-				logtd("An item is pushed. Processing...");
+				logtt("An item is pushed. Processing...");
 			}
 			else
 			{
@@ -161,7 +161,7 @@ namespace ov
 
 					// Newly pushed items may be pointing to a time_point smaller than first_item.time_point,
 					// which needs to be recalculated
-					logtd("Another item is pushed while waiting the condition");
+					logtt("Another item is pushed while waiting the condition");
 				}
 			}
 		}

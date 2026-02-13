@@ -65,9 +65,9 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 	}
 
 #if STUN_LOG_DATA
-	logtd("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
 #else // STUN_LOG_DATA
-	logtd("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", type, length, padded_length);
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", type, length, padded_length);
 #endif // STUN_LOG_DATA
 
 #if DEBUG
@@ -91,7 +91,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 	if(attribute == nullptr)
 	{
 		// Unimplemented attributes
-		logtd("Skipping attribute (not implemented): 0x%04X (%d bytes)...", type, length);
+		logtt("Skipping attribute (not implemented): 0x%04X (%d bytes)...", type, length);
 		stream.Skip<uint8_t>(length);
 	}
 	else
@@ -102,7 +102,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 			return nullptr;
 		}
 
-		logtd("Parsed: %s", attribute->ToString().CStr());
+		logtt("Parsed: %s", attribute->ToString().CStr());
 
 		stream.Skip<uint8_t>(padded_length - length);
 	}
@@ -183,7 +183,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 					break;
 
 				default:
-					logtd("Unknown attributes: %d (%x, length: %d)", type, type, length);
+					logtt("Unknown attributes: %d (%x, length: %d)", type, type, length);
 					break;
 			}
 

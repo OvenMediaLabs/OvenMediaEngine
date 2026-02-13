@@ -117,6 +117,8 @@ namespace pub
 			return std::static_pointer_cast<T>(GetStream(application_id, stream_id));
 		}
 
+		std::shared_ptr<Session> GetSession(const info::Session::Path &session_path);
+
 		//--------------------------------------------------------------------
 		// Implementation of ModuleInterface
 		//--------------------------------------------------------------------

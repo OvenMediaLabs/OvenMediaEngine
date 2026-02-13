@@ -426,8 +426,40 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 			}
 		}
 
-		sps._width = (pic_width_in_mbs_minus1 + 1) * 16 - 2 * crop_left - 2 * crop_right;
-		sps._height = ((2 - sps._frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16) - 2 * crop_top - 2 * crop_bottom;
+		// Calculate the display width and height
+		// int64_t is used to avoid overflow for extreme cases
+		int64_t coded_width	   = (pic_width_in_mbs_minus1 + 1) * 16;
+		int64_t coded_height   = (2 - sps._frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16;
+		int64_t crop_x		   = 2 * crop_left + 2 * crop_right;
+		int64_t crop_y		   = 2 * crop_top + 2 * crop_bottom;
+		int64_t display_width  = coded_width - crop_x;
+		int64_t display_height = coded_height - crop_y;
+
+		// Validate: Check negative values
+		if (display_width < 0 || display_height < 0)
+		{
+			return false;
+		}
+
+		// Validate: Check maximum width and height (8K, 8192x4320)
+		if (display_width > 8192 || display_height > 8192)
+		{
+			return false;
+		}
+
+		// Validate: Check total pixels
+		if (display_width * display_height > 8192 * 4320)
+		{
+			return false;
+		}
+
+		logtt("Parsed SPS resolution: coded(%lld x %lld), crop(%lld x %lld), display(%lld x %lld)",
+			  coded_width, coded_height,
+			  crop_x, crop_y,
+			  display_width, display_height);
+
+		sps._width	= static_cast<uint32_t>(display_width);
+		sps._height = static_cast<uint32_t>(display_height);
 	}
 
 	// [ VUI ]
@@ -601,7 +633,9 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 
 				if (fixed_frame_rate_flag)
 				{
-					sps._fps = time_scale / (2 * num_units_in_tick);
+					sps._fps = (num_units_in_tick != 0)
+								   ? (time_scale / (2 * num_units_in_tick))
+								   : 0;
 				}
 			}
 		}

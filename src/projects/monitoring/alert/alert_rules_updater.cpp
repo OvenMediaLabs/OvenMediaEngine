@@ -61,7 +61,7 @@ namespace mon::alrt
 
 		if (ov::PathManager::IsFile(_rules_file) == false)
 		{
-			logtd("File not found: %s", _rules_file.CStr());
+			logtt("File not found: %s", _rules_file.CStr());
 			return false;
 		}
 
@@ -82,7 +82,7 @@ namespace mon::alrt
 
 		if (last_modified != modified)
 		{
-			logtd("The alert rules file has been changed (prev: %zu => new: %zu): %s, updating...",
+			logtt("The alert rules file has been changed (prev: %zu => new: %zu): %s, updating...",
 				  last_modified, modified, _rules_file.CStr());
 
 			_last_modified = modified;

@@ -40,7 +40,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	// Read transport-wide sequence number
 	auto wide_sequence_number = wide_sequence_number_opt.value();
 
-	logtd("AddReceivedRtpPacket: wide_seq(%u) %s", wide_sequence_number, packet->Dump().CStr());
+	logtt("AddReceivedRtpPacket: wide_seq(%u) %s", wide_sequence_number, packet->Dump().CStr());
 
 	// Add feedback info
 	int64_t delta = 0;
@@ -94,7 +94,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 		_last_rtp_received_time = _last_reference_time;
 
-		logtd("last rtp received time : %lld", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count());
+		logtt("last rtp received time : %lld", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count());
 	}
 	else
 	{
@@ -110,7 +110,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 		_last_rtp_received_time = now;
 
-		logtd("last rtp received time : %lld, diff(%lld), delta(%d)", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
+		logtt("last rtp received time : %lld, diff(%lld), delta(%d)", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
 	}
 
 	// delta size
@@ -176,7 +176,7 @@ std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportC
 
 	_transport_cc->SetMediaSsrc(_last_media_ssrc);
 
-	logtd("Generate Transport CC message : Sender SSRC(%u), Media SSRC(%u), Base Sequence Number(%u), Reference Time(%u), Packet Feedback Count(%u)",
+	logtt("Generate Transport CC message : Sender SSRC(%u), Media SSRC(%u), Base Sequence Number(%u), Reference Time(%u), Packet Feedback Count(%u)",
 		  _transport_cc->GetSenderSsrc(), _transport_cc->GetMediaSsrc(), _transport_cc->GetBaseSequenceNumber(), _transport_cc->GetReferenceTime(), _transport_cc->GetPacketStatusCount());
 
 	auto rtcp_packet = std::make_shared<RtcpPacket>();

@@ -133,10 +133,15 @@ void DecoderMP3::CodecThread()
 					{
 						// Nothing to do here, just continue
 					}
+					else if (ret == AVERROR_INVALIDDATA)
+					{
+						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+							  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
+					}
 					else if (ret < 0)
 					{
 						_cur_data = nullptr;
-						logte("Error error occurred while sending a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+						logte("Error occurred while sending a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
 					}
 
 					// Save first pakcet's PTS
@@ -165,6 +170,11 @@ void DecoderMP3::CodecThread()
 			no_data_to_encode = true;
 			continue;
 		}
+		else if (ret == AVERROR_INVALIDDATA)
+		{
+			logtw("Invalid data while receiving a packet for decoding");
+			continue;
+		}
 		else if (ret < 0)
 		{
 			logte("Error receiving a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
@@ -177,8 +187,7 @@ void DecoderMP3::CodecThread()
 			{
 				auto codec_info = ffmpeg::compat::CodecInfoToString(_codec_context);
 
-				logti("[%s/%s(%u)] Changed format. %s",
-					  _stream_info.GetApplicationInfo().GetVHostAppName().CStr(), _stream_info.GetName().CStr(), _stream_info.GetId(), codec_info.CStr());
+				logtd("[%s(%u)] Changed format. %s", _stream_info.GetUri().CStr(), _stream_info.GetId(), codec_info.CStr());
 			}
 
 			// The actual duration is calculated based on the number of samples in the decoded frame.

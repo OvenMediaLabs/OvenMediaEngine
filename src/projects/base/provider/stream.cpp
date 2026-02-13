@@ -83,7 +83,7 @@ namespace pvd
 		{
 			auto reconnection_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - _last_pkt_received_time).count();
 
-			logti("Time taken to reconnect is %lld milliseconds. add to the basetime", reconnection_time_us/1000);
+			logti("Time taken to reconnect is %" PRId64 " milliseconds. add to the basetime", reconnection_time_us/1000);
 
 			_base_timestamp_us += reconnection_time_us;
 		}
@@ -104,10 +104,22 @@ namespace pvd
 		// Not yet started
 		if (_last_media_timestamp_ms == -1)
 		{
+			_max_generated_timestamp_ms = -1;
 			return -1;
 		}
-		
-		return _last_media_timestamp_ms + _elapsed_from_last_media_timestamp.Elapsed();
+
+		int64_t current_estimated_ts = _last_media_timestamp_ms + _elapsed_from_last_media_timestamp.Elapsed();
+		if (current_estimated_ts <= _max_generated_timestamp_ms)
+		{
+			current_estimated_ts = _max_generated_timestamp_ms + 1;
+			logti("%s/%s(%u) Adjust current estimated timestamp to avoid going backward - last_media_timestamp_ms: %" PRId64 ", elapsed_from_last_media_timestamp: %" PRId64 ", adjusted_timestamp: %" PRId64 " ms",
+			GetApplicationName(), GetName().CStr(), GetId(),
+			_last_media_timestamp_ms, _elapsed_from_last_media_timestamp.Elapsed(), current_estimated_ts);
+		}
+
+		_max_generated_timestamp_ms = current_estimated_ts;
+
+		return _max_generated_timestamp_ms;
 	}
 
 	bool Stream::SendDataFrame(int64_t timestamp_in_ms, int64_t duration, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal, const MediaPacketFlag packet_flag)
@@ -133,7 +145,7 @@ namespace pvd
 				return false;
 			}
 
-			logtd("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %lld, elapsed_from_last_media_timestamp: %lld, timestamp: %lld ms",
+			logtt("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %lld, elapsed_from_last_media_timestamp: %lld, timestamp: %lld ms",
 				  GetApplicationName(), GetName().CStr(), GetId(),
 				  _last_media_timestamp_ms, _elapsed_from_last_media_timestamp.Elapsed(), timestamp_in_ms);
 		}
@@ -268,7 +280,7 @@ namespace pvd
 					{
 						auto old_language = track->GetLanguage();
 						track->SetLanguage(command->GetLanguage());
-						logtd("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
+						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
 					}
 				}
 
@@ -327,8 +339,17 @@ namespace pvd
 
 		_last_pkt_received_time = std::chrono::system_clock::now();
 
-		_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
-		_elapsed_from_last_media_timestamp.Restart();
+		auto master_clock_track = GetMediaTrackByOrder(cmn::MediaType::Video, 0);
+		if (master_clock_track == nullptr)
+		{
+			master_clock_track = GetMediaTrackByOrder(cmn::MediaType::Audio, 0);
+		}
+
+		if (master_clock_track != nullptr && packet->GetTrackId() == master_clock_track->GetId())
+		{
+			_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
+			_elapsed_from_last_media_timestamp.Restart();
+		}
 
 		return _application->SendFrame(GetSharedPtr(), packet);
 	}
@@ -490,7 +511,7 @@ namespace pvd
 			_start_timestamp_us = Rescale(dts, us_scale, track_scale);
 
 			// for debugging
-			logtd("[%s/%s(%d)] Get start timestamp of stream. track:%u, ts:%lld (%lld/%lld) (%lld us)",
+			logtt("[%s/%s(%d)] Get start timestamp of stream. track:%u, ts:%" PRId64 " (%" PRId64 "/%" PRId64 ") (%" PRId64 " us)",
 				  _application->GetVHostAppName().CStr(), GetName().CStr(), GetId(),
 				  track_id,
 				  dts, num_tb, den_tb,
@@ -647,7 +668,7 @@ namespace pvd
 		// First timestamp
 		if (_source_timestamp_map.find(track_id) == _source_timestamp_map.end())
 		{
-			logtd("New track timestamp(%u) : curr(%lld)", track_id, timestamp);
+			logtt("New track timestamp(%u) : curr(%lld)", track_id, timestamp);
 			_source_timestamp_map[track_id] = timestamp;
 
 			// Start with zero
@@ -662,13 +683,13 @@ namespace pvd
 			// If the last timestamp exceeds 99.99%, it is judged to be wrapped around.
 			if (_source_timestamp_map[track_id] > ((double)max_timestamp * 99.99) / 100)
 			{
-				logtd("Wrapped around(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
+				logtt("Wrapped around(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
 				delta = (max_timestamp - _source_timestamp_map[track_id]) + timestamp;
 			}
 			// Otherwise, the source might be changed. (restarted)
 			else
 			{
-				logtd("Source changed(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
+				logtt("Source changed(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
 				delta = 0;
 			}
 		}

@@ -54,6 +54,7 @@ public:
 													const Status::Code status);
 
 	ErrCode GetErrCode() const;
+	ov::String GetErrCodeString() const;
 	ov::String GetErrReason() const;
 	std::shared_ptr<ov::Url> GetNewURL() const;
 	uint64_t GetLifetime() const;

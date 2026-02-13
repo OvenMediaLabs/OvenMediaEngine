@@ -32,7 +32,7 @@ namespace pvd
 
 	WebRTCProvider::~WebRTCProvider()
 	{
-		logtd("WebRTCProvider has been terminated finally");
+		logtt("WebRTCProvider has been terminated finally");
 	}
 
 	bool WebRTCProvider::StartSignallingServers(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
@@ -277,7 +277,7 @@ namespace pvd
 		ov::String final_host_name = host_name;
 		ov::String final_stream_name = stream_name;
 
-		logtd("WebRTCProvider::OnRequestOffer");
+		logtt("WebRTCProvider::OnRequestOffer");
 		auto request = ws_session->GetRequest();
 		auto remote_address = request->GetRemote()->GetRemoteAddress();
 		auto uri = request->GetUri();
@@ -471,7 +471,7 @@ namespace pvd
 		auto final_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(final_url->Host(), final_url->App());
 		auto final_stream_name = final_url->Stream();
 
-		logtd("WebRTCProvider::OnAddRemoteDescription");
+		logtt("WebRTCProvider::OnAddRemoteDescription");
 		auto request = ws_session->GetRequest();
 		auto remote_address = request->GetRemote()->GetRemoteAddress();
 
@@ -591,7 +591,7 @@ namespace pvd
 
 	void WebRTCProvider::OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data)
 	{
-		logtd("WebRTCProvider::OnStateChanged : %d", state);
+		logtt("WebRTCProvider::OnStateChanged : %d", state);
 
 		std::shared_ptr<Application> application;
 		std::shared_ptr<WebRTCStream> stream;
@@ -765,7 +765,8 @@ namespace pvd
 			logte("Could not create %s stream in %s application", final_stream_name.CStr(), final_vhost_app_name.CStr());
 			return {http::StatusCode::InternalServerError, "Could not create stream"};
 		}
-
+	
+		stream->SetOvenCapabilities(request->GetHeader("Oven-Capabilities"));	
 		stream->SetMediaSource(request->GetRemote()->GetRemoteAddressAsUrl());
 		stream->SetRequestedUrl(requested_url);
 		stream->SetFinalUrl(final_url);
@@ -824,7 +825,7 @@ namespace pvd
 
 	void WebRTCProvider::OnDataReceived(IcePort &port, uint32_t session_id, std::shared_ptr<const ov::Data> data, std::any user_data)
 	{
-		logtt("WebRTCProvider::OnDataReceived");
+		logtp("WebRTCProvider::OnDataReceived");
 
 		std::shared_ptr<WebRTCStream> stream;
 		try

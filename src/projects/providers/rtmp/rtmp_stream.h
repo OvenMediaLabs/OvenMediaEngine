@@ -79,10 +79,10 @@ namespace pvd
 		bool SendSetPeerBandwidth(uint32_t bandwidth);
 		bool SendStreamBegin(uint32_t stream_id);
 		bool SendStreamEnd();
-		bool SendAcknowledgementSize();
+		bool SendSetChunkSize(uint32_t chunk_size);
 		bool SendAmfCommand(std::shared_ptr<RtmpMuxMessageHeader> &message_header, AmfDocument &document);
-		bool SendAmfConnectResult(uint32_t chunk_stream_id, double transaction_id, double object_encoding);
-		bool SendAmfOnFCPublish(uint32_t chunk_stream_id, uint32_t stream_id, double client_id);
+		bool SendAmfConnectResult(double transaction_id, double object_encoding);
+		bool SendAmfOnFCPublish(double client_id);
 		bool SendAmfCreateStreamResult(uint32_t chunk_stream_id, double transaction_id);
 		bool SendAmfOnStatus(uint32_t chunk_stream_id,
 							 uint32_t stream_id,
@@ -155,7 +155,7 @@ namespace pvd
 		ov::String _tc_url;
 		ov::String _app_name;
 		ov::String _domain_name;
-		info::VHostAppName _vhost_app_name;
+		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		ov::String _stream_name;
 		ov::String _device_string;
 

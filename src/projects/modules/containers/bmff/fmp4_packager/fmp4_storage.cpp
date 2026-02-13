@@ -47,7 +47,7 @@ namespace bmff
 			logti("Successfully deleted directory for LLHLS DVR: %s", dvr_path.CStr());
 		}
 
-		logtd("FMP4 Storage has been terminated successfully");
+		logtt("FMP4 Storage has been terminated successfully");
 	}
 
 	std::shared_ptr<ov::Data> FMP4Storage::GetInitializationSection() const
@@ -55,7 +55,7 @@ namespace bmff
 		return _initialization_section;
 	}
 
-	std::shared_ptr<base::modules::Segment> FMP4Storage::GetSegment(uint32_t segment_number) const
+	std::shared_ptr<base::modules::Segment> FMP4Storage::GetSegment(int64_t segment_number) const
 	{
 		return GetSegmentInternal(static_cast<int64_t>(segment_number));
 	}
@@ -102,7 +102,7 @@ namespace bmff
 		return _segments.rbegin()->second;
 	}
 
-	std::shared_ptr<base::modules::PartialSegment> FMP4Storage::GetPartialSegment(uint32_t segment_number, uint32_t partial_number) const
+	std::shared_ptr<base::modules::PartialSegment> FMP4Storage::GetPartialSegment(int64_t segment_number, int64_t partial_number) const
 	{
 		// Get Media Segement
 		auto segment = GetSegmentInternal(segment_number);
@@ -287,7 +287,7 @@ namespace bmff
 	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment()
 	{
 		// Create next segment
-		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms);
+		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, _track->GetTimeBase().GetExpr());
 		{
 			std::lock_guard<std::shared_mutex> lock(_segments_lock);
 			_segments.emplace(segment->GetNumber(), segment);
@@ -349,7 +349,7 @@ namespace bmff
 			// Force to complete the segment
 			last_chunk = true;
 			// Too long segment buffered
-			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %llu) because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
+			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
 			_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
 		}
 
@@ -359,7 +359,7 @@ namespace bmff
 			segment->SetCompleted();
 			CreateNextSegment();
 
-			logtd("Segment[%u] is created : track(%u), duration(%u) chunks(%u)", segment->GetNumber(), _track->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
+			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), _track->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
 			
 			_total_expected_duration_ms += _config.segment_duration_ms;
 			_total_segment_duration_ms += segment->GetDurationMs();
@@ -370,7 +370,7 @@ namespace bmff
 			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
 			if (segment->HasMarker() == true)
 			{
-				logti("LLHLS stream (%s) / track (%d) - segment[%u] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
+				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
 
 				_total_expected_duration_ms -= _config.segment_duration_ms;
 				
@@ -389,7 +389,7 @@ namespace bmff
 
 			double next_target_duration = _total_expected_duration_ms - _total_segment_duration_ms + _config.segment_duration_ms;
 
-			logtd("LLHLS stream (%s) / track (%d) - segment_seq(%lld) segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
+			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
 				_stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
 			
 			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
@@ -440,7 +440,7 @@ namespace bmff
 			// 	segment->SetMarkers({ marker });
 			// }
 
-			logtd("LLHLS stream (%s) / track (%d) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
+			logtt("LLHLS stream (%s) / track (%u) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
 				_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
 		}
 

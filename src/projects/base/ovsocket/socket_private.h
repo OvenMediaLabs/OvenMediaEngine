@@ -29,11 +29,18 @@
 #define CHECK_STATE2(condition1, condition2, return_value)                                                     \
 	do                                                                                                         \
 	{                                                                                                          \
-		if ((!(_state condition1)) && (!(_state condition2)))                                                  \
+		SocketState __state;                                                                                   \
+                                                                                                               \
+		{                                                                                                      \
+			std::lock_guard lock_guard(_state_mutex);                                                          \
+			__state = _state;                                                                                  \
+		}                                                                                                      \
+                                                                                                               \
+		if ((!(__state condition1)) && (!(__state condition2)))                                                \
 		{                                                                                                      \
 			logaw("%s(): Invalid state: %s (expected: _state " #condition1 " && _state " #condition2 ") - %s", \
 				  __FUNCTION__,                                                                                \
-				  StringFromSocketState(_state),                                                               \
+				  StringFromSocketState(__state),                                                              \
 				  ToString().CStr());                                                                          \
 			return return_value;                                                                               \
 		}                                                                                                      \

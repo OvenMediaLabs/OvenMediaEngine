@@ -43,7 +43,7 @@ namespace mpegts
 
 			if (data->GetLength() > 255)
 			{
-				OV_ASSERT(false, "Descriptor data length is too long(%d)", data->GetLength());
+				OV_ASSERT(false, "Descriptor data length is too long(%zu)", data->GetLength());
 				return nullptr;
 			}
 

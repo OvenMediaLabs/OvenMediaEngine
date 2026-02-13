@@ -513,9 +513,13 @@ namespace ov
 		SocketWrapper _socket;
 		SocketFamily _family;
 
+		mutable std::mutex _state_mutex;
 		SocketState _state = SocketState::Closed;
 
 		BlockingMode _blocking_mode = BlockingMode::Blocking;
+
+		std::mutex _worker_mutex;
+		bool _added_to_worker = false;
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};

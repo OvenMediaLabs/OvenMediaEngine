@@ -82,7 +82,7 @@ namespace mpegts
 		size_t offset = 0;
 		uint8_t packet_count = 0;
 
-		logtd("PES Data Length: %d", pes_data_length);
+		logtt("PES Data Length: %zu", pes_data_length);
 
 		size_t total_payload_size = 0;
 
@@ -121,10 +121,10 @@ namespace mpegts
 
 			size_t payload_size = std::min(payload_buffer_size, remaining_pes_bytes);
 
-			logtd("remaining (%d) payload_size(%d) payload_buffer_size(%d) has_adaptation_field(%d)", remaining_pes_bytes, payload_size, payload_buffer_size, has_adaptation_field);
+			logtt("remaining (%d) payload_size(%d) payload_buffer_size(%d) has_adaptation_field(%d)", remaining_pes_bytes, payload_size, payload_buffer_size, has_adaptation_field);
 
 			total_payload_size += payload_size;
-			logtd("Payload Size: %d / %d", payload_size, total_payload_size);
+			logtt("Payload Size: %d / %d", payload_size, total_payload_size);
 
 			auto packet = std::make_shared<Packet>();
 
@@ -183,7 +183,7 @@ namespace mpegts
 			}
 
 			auto total_packet_size = MPEGTS_HEADER_SIZE + packet->_adaptation_field_size + payload_size;
-			logtd("Packet: PID(%d) ContinuityCounter(%d) AdaptationFieldControl(%d) AdaptationFieldSize(%d) PayloadSize(%d) Total(%d)", packet->_packet_identifier, packet->_continuity_counter, packet->_adaptation_field_control, packet->_adaptation_field_size, payload_size, total_packet_size);
+			logtt("Packet: PID(%d) ContinuityCounter(%d) AdaptationFieldControl(%d) AdaptationFieldSize(%d) PayloadSize(%d) Total(%d)", packet->_packet_identifier, packet->_continuity_counter, packet->_adaptation_field_control, packet->_adaptation_field_size, payload_size, total_packet_size);
 
 			// Payload
 			if (payload_size > 0)

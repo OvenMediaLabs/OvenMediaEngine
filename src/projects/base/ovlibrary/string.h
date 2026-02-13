@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "./format_string.h"
+
 namespace ov
 {
 	class Data;
@@ -63,15 +65,15 @@ namespace ov
 		bool Append(const char *string, size_t length);
 
 		// Adds a string created by the format after current string
-		size_t AppendFormat(const char *format, ...);
+		size_t AppendFormat(const char *format, ...) __attribute__((format(printf, 2, 3)));
 		size_t AppendVFormat(const char *format, va_list list);
 
 		// Sets a string created by the format
-		size_t Format(const char *format, ...);
+		size_t Format(const char *format, ...) OV_PRINTF_FORMAT(2, 3);
 		size_t VFormat(const char *format, va_list list);
 
 		// Creates new instance
-		static String FormatString(const char *format, ...);
+		static String FormatString(const char *format, ...) OV_PRINTF_FORMAT(1, 2);
 
 		// Returns the position from start_position to end of the string, where the letter appears.
 		off_t IndexOf(char c, off_t start_position = 0) const noexcept;

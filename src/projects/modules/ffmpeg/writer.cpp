@@ -38,6 +38,16 @@ namespace ffmpeg
 		return _state.load();
 	}
 
+	void Writer::SetErrorMessage(const ov::String &message)
+	{
+		_error_message = message;
+	}
+
+	ov::String Writer::GetErrorMessage() const
+	{
+		return _error_message;
+	}
+
 	int Writer::InterruptCallback(void *opaque)
 	{
 		Writer *writer = (Writer *)opaque;
@@ -55,16 +65,17 @@ namespace ffmpeg
 		}
 		else if(writer->GetState() == WriterStateConnecting)
 		{
-			if(std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count() > writer->_connection_timeout)
+			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
+			if(ellapse_ms > writer->GetConnectionTimeout())
 			{
-				logte("connection timeout occurred. stop the writer. %d milliseconds. ", writer->_connection_timeout);
+				logte("connection timeout occurred. stop the writer. %d milliseconds. ", ellapse_ms);
 				return 1;
 			}
 		}
 		else if(writer->GetState() == WriterStateConnected)
 		{
 			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
-			if(ellapse_ms > writer->_send_timeout)
+			if(ellapse_ms > writer->GetSendTimeout())
 			{
 				logte("Send timeout occurred. stop the writer. %d milliseconds. ", ellapse_ms);
 				return 1;
@@ -82,7 +93,7 @@ namespace ffmpeg
 	{
 		if (!url || url.IsEmpty() == true)
 		{
-			logte("Destination url is empty");
+			SetErrorMessage("Destination url is empty");
 			return false;
 		}
 
@@ -94,8 +105,7 @@ namespace ffmpeg
 		int error = avformat_alloc_output_context2(&av_format, nullptr, (_format != nullptr) ? _format.CStr() : nullptr, _url.CStr());
 		if (error < 0)
 		{
-			logte("Could not create output context. error(%s), url(%s)", ffmpeg::compat::AVErrorToString(error).CStr(), _url.CStr());
-
+			SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
 			return false;
 		}
 
@@ -124,31 +134,28 @@ namespace ffmpeg
 		auto av_format = GetAVFormatContext();
 		if (!av_format)
 		{
-			logte("AVFormatContext is null");
+			SetErrorMessage("Context is not available");
 			return nullptr;
 		}
 
 		AVStream *new_stream = avformat_new_stream(av_format.get(), nullptr);
 		if (!new_stream)
 		{
-			logte("Could not allocate stream");
-
+			SetErrorMessage("Could not allocate stream");
 			return nullptr;
 		}
 
 		std::shared_ptr<AVStream> av_stream(new_stream, [](AVStream *av_stream) {});
 		if (!av_stream)
 		{
-			logte("Could not create AVStream");
-
+			SetErrorMessage("Could not create AVStream");
 			return nullptr;
 		}
 
 		// Convert MediaTrack to AVStream
 		if (ffmpeg::compat::ToAVStream(media_track, av_stream.get()) == false)
 		{
-			logte("Could not convert track info to AVStream");
-
+			SetErrorMessage("Could not convert track info to AVStream");
 			return nullptr;
 		}
 
@@ -160,7 +167,7 @@ namespace ffmpeg
 		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
 		_av_track_map[media_track->GetId()] = std::make_pair(av_stream, media_track);
 
-		logtd("Added %s track. id(%d), codec(%s), format(%s)",
+		logtt("Added %s track. id(%d), codec(%s), format(%s)",
 			  cmn::GetMediaTypeString(media_track->GetMediaType()),
 			  media_track->GetId(),
 			  ffmpeg::compat::GetCodecName(av_stream->codecpar->codec_id).CStr(),
@@ -174,7 +181,7 @@ namespace ffmpeg
 		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
 		_event_track_map[std::make_pair(media_track->GetId(), format)] = std::make_pair(av_stream, media_track);
 
-		logtd("Added %s track. id(%d), codec(%s), format(%s)",
+		logtt("Added %s track. id(%d), codec(%s), format(%s)",
 			  cmn::GetMediaTypeString(media_track->GetMediaType()),
 			  media_track->GetId(),
 			  ffmpeg::compat::GetCodecName(av_stream->codecpar->codec_id).CStr(),
@@ -241,6 +248,39 @@ namespace ffmpeg
 		return true;
 	}
 
+	int32_t Writer::GetTrackCountByType(cmn::MediaType media_type)
+	{
+		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		auto track_map = _av_track_map;
+		mlock.unlock();
+
+		int32_t count = 0;
+		for (const auto &[track_id, track_pair] : track_map)
+		{
+			auto &media_track = track_pair.second;
+			if (media_track->GetMediaType() == media_type)
+			{
+				count++;
+			}
+		}
+
+		return count;
+	}
+
+	std::shared_ptr<MediaTrack> Writer::GetTrackByTrackId(int32_t media_track_id) const
+	{
+		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		auto track_map = _av_track_map;
+		mlock.unlock();
+
+		if (track_map.find(media_track_id) != track_map.end())
+		{
+			return track_map[media_track_id].second;
+		}
+
+		return nullptr;
+	}
+
 	bool Writer::Start()
 	{
 		SetState(WriterStateConnecting);
@@ -252,7 +292,7 @@ namespace ffmpeg
 		auto av_format = GetAVFormatContext();
 		if (av_format == nullptr)
 		{
-			logte("AVFormatContext is null");
+			SetErrorMessage("Context is not available");
 			return false;
 		}
 
@@ -282,8 +322,8 @@ namespace ffmpeg
 			if (error < 0)
 			{
 				SetState(WriterStateError);
-				
-				logte("Error opening file. error(%s), url(%s)", ffmpeg::compat::AVErrorToString(error).CStr(), av_format->url);
+
+				SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
 
 				return false;
 			}
@@ -301,9 +341,8 @@ namespace ffmpeg
 		if (avformat_write_header(av_format.get(), &format_options) < 0)
 		{
 			SetState(WriterStateError);
-			
-			logte("Could not create header");
-			
+			SetErrorMessage("Could not create header");
+
 			return false;
 		}
 
@@ -326,6 +365,26 @@ namespace ffmpeg
 		return true;
 	}
 
+	void Writer::SetConnectionTimeout(int32_t timeout_ms)
+	{
+		_connection_timeout = timeout_ms;
+	}
+
+	int32_t Writer::GetConnectionTimeout() const
+	{
+		return _connection_timeout;
+	}
+
+	void Writer::SetSendTimeout(int32_t timeout_ms)
+	{
+		_send_timeout = timeout_ms;
+	}
+
+	int32_t Writer::GetSendTimeout() const
+	{
+		return _send_timeout;
+	}
+
 	bool Writer::SendPacket(const std::shared_ptr<MediaPacket> &packet, uint64_t *sent_bytes)
 	{
 		// Writer is not connected, but it's not an error. Waiting for initialization.
@@ -337,7 +396,7 @@ namespace ffmpeg
 
 		if (!packet)
 		{
-			logte("Packet is null");
+			SetErrorMessage("Packet is null");
 			return false;
 		}
 
@@ -368,7 +427,7 @@ namespace ffmpeg
 		AVPacket av_packet = {0};
 		if (ToAVPacket(av_packet, av_stream, packet, media_track, start_time) == false)
 		{
-			logte("Failed to convert MediaPacket to AVPacket");
+			SetErrorMessage("Failed to convert MediaPacket to AVPacket");
 			return false;
 		}
 
@@ -377,7 +436,7 @@ namespace ffmpeg
 		// But this is not treated as an error.
 		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
 		{
-			logtw("To avoid negative timestamps, the packet is dropped. track:%d, pts:%lld, dts:%lld", media_track->GetId(), av_packet.pts, av_packet.dts);
+			logtt("To avoid negative timestamps, the packet is dropped. track:%d, pts:%lld, dts:%lld", media_track->GetId(), av_packet.pts, av_packet.dts);
 			av_packet_unref(&av_packet);
 			return true;
 		}
@@ -421,10 +480,13 @@ namespace ffmpeg
 					// Related to 'com.youtube.cuepoint', 'textdata' event message
 					ov::ByteStream byte_stream(packet->GetData());
 					AmfDocument document;
-					if (document.Decode(byte_stream) == true)
+					if (document.Decode(byte_stream) == false)
 					{
-						logtd("AMF Event: %s", document.ToString().CStr());
+						loge(OV_LOG_TAG".Events","Failed to decode AMF Event");
+						return true;
 					}
+
+					logi(OV_LOG_TAG".Events","Inserted AMF Event. PTS: %lld, %s", packet->GetPts(), document.ToString().Replace("\n", " ").CStr());
 				}
 				break;
 				default:
@@ -507,6 +569,7 @@ namespace ffmpeg
 		{
 			av_packet_unref(&av_packet);
 			SetState(WriterStateError);
+			SetErrorMessage("Context is not available");
 
 			return false;
 		}
@@ -515,15 +578,35 @@ namespace ffmpeg
 
 		std::unique_lock<std::shared_mutex> mlock(_av_format_lock);
 
+		// Check DTS monotonicity. if not, drop the packet.
+		auto it = _track_last_dts_map.find(av_packet.stream_index);
+		if (it != _track_last_dts_map.end())
+		{
+			if (av_packet.dts < it->second)
+			{
+				logtw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%lld, dts:%lld, last_dts:%lld",
+					  media_track->GetId(),
+					  av_packet.pts,
+					  av_packet.dts,
+					  it->second);
+				av_packet_unref(&av_packet);
+				return true;
+			}
+		}
+
+		// Write packet
 		int error = ::av_write_frame(av_format.get(), &av_packet);
 		if (error != 0)
 		{
+			av_packet_unref(&av_packet);
 			SetState(WriterStateError);
-
-			logte("Send packet error(%s)", ffmpeg::compat::AVErrorToString(error).CStr());
+			SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
 
 			return false;
 		}
+
+		// Update last DTS for the track to handle DTS monotonicity
+		_track_last_dts_map[av_packet.stream_index] = av_packet.dts;
 
 		mlock.unlock();
 

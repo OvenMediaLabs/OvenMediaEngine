@@ -23,14 +23,16 @@
 // max initial media packet buffer size, for OOM protection
 #define MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE		10000
 
+class LLHlsSession;
 class LLHlsStream final : public pub::Stream, public bmff::FMp4StorageObserver
 {
 public:
 	static std::shared_ptr<LLHlsStream> Create(const std::shared_ptr<pub::Application> application, 
 												const info::Stream &info,
+												bool origin_mode,
 												uint32_t worker_count);
 
-	explicit LLHlsStream(const std::shared_ptr<pub::Application> application, const info::Stream &info, uint32_t worker_count);
+	explicit LLHlsStream(const std::shared_ptr<pub::Application> application, const info::Stream &info, bool origin_mode, uint32_t worker_count);
 	~LLHlsStream() final;
 
 	ov::String GetStreamId() const;
@@ -92,6 +94,9 @@ public:
 	// Check marker can be inserted
 	//////////////////////////
 	std::tuple<bool, ov::String> CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const;
+
+	/// Origin Mode Session Management
+	std::shared_ptr<LLHlsSession> GetSessionFromPool();
 
 private:
 	bool Start() override;
@@ -219,4 +224,6 @@ private:
 
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
 	mutable std::shared_mutex _vtt_packagers_lock;
+
+	bool CreateOriginSessionPool();
 };

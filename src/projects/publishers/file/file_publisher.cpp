@@ -22,12 +22,12 @@ namespace pub
 	FilePublisher::FilePublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Publisher(server_config, router)
 	{
-		logtd("FilePublisher has been create");
+		logtt("FilePublisher has been create");
 	}
 
 	FilePublisher::~FilePublisher()
 	{
-		logtd("FilePublisher has been terminated finally");
+		logtt("FilePublisher has been terminated finally");
 	}
 
 	bool FilePublisher::Start()

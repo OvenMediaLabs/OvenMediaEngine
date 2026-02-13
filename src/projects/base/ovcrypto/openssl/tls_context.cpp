@@ -267,7 +267,7 @@ namespace ov
 
 			if (protocol == key)
 			{
-				logtd("Selected ALPN protocol: %s", protocol.CStr());
+				logtt("Selected ALPN protocol: %s", protocol.CStr());
 				*out = &in[i + 1];
 				*outlen = length;
 				return true;
@@ -301,7 +301,7 @@ namespace ov
 		}
 		else
 		{
-			logtd("Server name is not specified");
+			logtt("Server name is not specified");
 		}
 
 		return SSL_TLSEXT_ERR_OK;

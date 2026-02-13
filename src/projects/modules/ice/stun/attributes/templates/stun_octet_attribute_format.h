@@ -45,7 +45,27 @@ public:
 
 	ov::String ToString() const override
 	{
-		return StunAttribute::ToString(StringFromType(GetType()), ov::String::FormatString(", value : %08X", _value).CStr());
+		using U = std::make_unsigned_t<T>;
+		const char *format_string = nullptr;
+		U value;
+
+		if constexpr (sizeof(U) == 4)
+		{
+			format_string = ", value : %08" PRIX32;
+			value = static_cast<std::uint32_t>(static_cast<U>(_value));
+		}
+		else if constexpr (sizeof(U) == 8)
+		{
+			format_string = ", value : %016" PRIX64;
+			value = static_cast<std::uint64_t>(static_cast<U>(_value));
+		}
+		else
+		{
+			format_string = ", value : %" PRIXMAX;
+			value = static_cast<std::uintmax_t>(static_cast<U>(_value));
+		}
+
+		return StunAttribute::ToString(StringFromType(GetType()), ov::String::FormatString(format_string, value).CStr());
 	}
 
 protected:

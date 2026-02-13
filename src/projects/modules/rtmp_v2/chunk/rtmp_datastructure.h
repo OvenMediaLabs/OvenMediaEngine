@@ -164,16 +164,16 @@ namespace modules::rtmp
 		ov::String ToString() const
 		{
 #if DEBUG
-			ov::String result = ov::String::FormatString("<ChunkHeader: %p, #%d(+%zuB, %zu bytes), Basic: ", this, chunk_index, from_byte_offset, message_total_bytes);
+			ov::String result = ov::String::FormatString("<ChunkHeader: %p, #%" PRIu64 "(+%" PRIu64 "B, %" PRIu64 " bytes), Basic: ", this, chunk_index, from_byte_offset, message_total_bytes);
 #else	// DEBUG
 			ov::String result = ov::String::FormatString("<ChunkHeader: %p, Basic: ", this);
 #endif	// DEBUG
 
 			if (basic_header_length > 0U)
 			{
-				result.AppendFormat("<%dB, Type: %d, CSID: %u, TS: %lld>, Message: ",
+				result.AppendFormat("<%dB, Type: %d, CSID: %u, TS: %" PRId64 ">, Message: ",
 									basic_header_length,
-									basic_header.format_type,
+									ov::ToUnderlyingType(basic_header.format_type),
 									basic_header.chunk_stream_id,
 									completed.timestamp);
 
@@ -187,7 +187,7 @@ namespace modules::rtmp
 												message_header.type_0.timestamp,
 												message_header.type_0.length,
 												modules::rtmp::EnumToString(message_header.type_0.type_id),
-												message_header.type_0.type_id,
+												ov::ToUnderlyingType(message_header.type_0.type_id),
 												message_header.type_0.stream_id);
 							break;
 
@@ -197,7 +197,7 @@ namespace modules::rtmp
 												message_header.type_1.timestamp_delta,
 												message_header.type_1.length,
 												modules::rtmp::EnumToString(message_header.type_1.type_id),
-												message_header.type_1.type_id);
+												ov::ToUnderlyingType(message_header.type_1.type_id));
 							break;
 
 						case MessageHeaderType::T2:
@@ -217,11 +217,11 @@ namespace modules::rtmp
 						result.AppendFormat(", Extended TS: %u", extended_timestamp);
 					}
 
-					result.AppendFormat(", Completed: <TS: %lld, dTS: %u, %s (%d), SID: %u, Payload: %u bytes>",
+					result.AppendFormat(", Completed: <TS: %" PRId64 ", dTS: %u, %s (%d), SID: %u, Payload: %u bytes>",
 										completed.timestamp,
 										completed.timestamp_delta,
 										modules::rtmp::EnumToString(completed.type_id),
-										completed.type_id,
+										ov::ToUnderlyingType(completed.type_id),
 										completed.stream_id,
 										message_length);
 				}

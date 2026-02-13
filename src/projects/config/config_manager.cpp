@@ -263,7 +263,7 @@ namespace cfg
 
 		CheckValidVersion(XML_ROOT_NAME, ov::Converter::ToInt32(_server->GetVersion()));
 
-		logtd("Validating omit rules...");
+		logtt("Validating omit rules...");
 		_server->ValidateOmitJsonNameRules();
 
 		LoadServerID(config_path);

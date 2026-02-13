@@ -59,7 +59,7 @@ namespace http
 				// reason-phrase  = *( HTAB / SP / VCHAR / obs-text )
 				_reason_phrase = line.Substring(second_space_index + 1);
 
-				logtd("Version: [%s], status code: [\"%s\" (%d)], reason: [%s]", _http_version.CStr(), status_code.CStr(), _status_code, _reason_phrase.CStr());
+				logtt("Version: [%s], status code: [\"%s\" (%d)], reason: [%s]", _http_version.CStr(), status_code.CStr(), _status_code, _reason_phrase.CStr());
 
 				return StatusCode::OK;
 			}

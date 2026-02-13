@@ -92,7 +92,7 @@ bool EncoderAVCxOpenH264::SetCodecParams()
 	}
 	else
 	{
-		logtd("If the preset is used in the openh264 codec, constant bitrate is not supported");
+		logtt("If the preset is used in the openh264 codec, constant bitrate is not supported");
 
 		::av_opt_set(_codec_context->priv_data, "rc_mode", "quality", 0);
 

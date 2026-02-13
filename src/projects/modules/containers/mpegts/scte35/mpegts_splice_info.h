@@ -47,6 +47,47 @@ namespace mpegts
 	{
 	public:
 		std::shared_ptr<ov::Data> Build();
+		virtual ov::String ToString() const = 0;
+
+		void SetProtocolVersion(uint8_t version)
+		{
+			_protocol_version = version;
+		}
+
+		void SetEncryptedPacket(bool encrypted)
+		{
+			_encrypted_packet = encrypted ? 1 : 0;
+		}
+
+		void SetEncryptionAlgorithm(uint8_t algorithm)
+		{
+			_encryption_algorithm = algorithm & 0x3F;
+		}
+
+		void SetPTSAdjustment(uint64_t pts_adjustment)
+		{
+			_pts_adjustment = pts_adjustment & 0x1FFFFFFFF;
+		}
+
+		void SetCWIndex(uint8_t cw_index)
+		{
+			_cw_index = cw_index;
+		}
+
+		void SetTier(uint16_t tier)
+		{
+			_tier = tier & 0x0FFF;
+		}
+
+		void SetSpliceCommandType(SpliceCommandType command_type)
+		{
+			_splice_command_type = static_cast<uint8_t>(command_type);
+		}
+
+		SpliceCommandType GetSpliceCommandType() const
+		{
+			return static_cast<SpliceCommandType>(_splice_command_type);
+		}
 
 	protected:
 		SpliceInfo(SpliceCommandType splice_command_type);

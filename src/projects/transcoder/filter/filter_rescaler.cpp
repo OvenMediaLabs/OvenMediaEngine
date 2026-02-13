@@ -19,8 +19,8 @@
 #define FILTER_FLAG_HWFRAME_AWARE (1 << 0)
 
 #define _SKIP_FRAMES_ENABLED 1
-#define _SKIP_FRAMES_CHECK_INTERVAL 500 					// 500ms
-#define _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL 10000 	// 10s
+#define _SKIP_FRAMES_CHECK_INTERVAL 2000				 // 2s
+#define _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL 10000	 // 10s
 
 FilterRescaler::FilterRescaler()
 {
@@ -313,26 +313,61 @@ bool FilterRescaler::InitializeFilterDescription()
 	return true;
 }
 
+bool FilterRescaler::InitializeFpsFilter()
+{
+	// Set input parameters
+	_fps_filter.SetInputTimebase(_input_track->GetTimeBase());
+	_fps_filter.SetInputFrameRate(_input_track->GetFrameRate());
+
+	// Configure skip frames
+	int32_t skip_frames_config = _output_track->GetSkipFramesByConfig();
+#if _SKIP_FRAMES_ENABLED
+	int32_t skip_frames = (skip_frames_config >= 0) ? skip_frames_config : -1;
+	_fps_filter.SetSkipFrames(skip_frames);
+	
+	// If skip frames is enabled, maintain input framerate; otherwise use output framerate
+	bool is_skip_enabled = (skip_frames >= 0);
+	float output_framerate = is_skip_enabled ? _input_track->GetFrameRate() : _output_track->GetFrameRate();
+	_fps_filter.SetOutputFrameRate(output_framerate);
+#else
+	_fps_filter.SetSkipFrames(-1);  // Disabled
+	_fps_filter.SetOutputFrameRate(_output_track->GetFrameRate());
+#endif
+
+	// Set frame copy mode based on resolution
+	// Use deep copy when resolutions match to prevent in-place modifications by FFmpeg filter graph
+	bool same_resolution = (_input_track->GetWidth() == _output_track->GetWidth() &&
+							_input_track->GetHeight() == _output_track->GetHeight());
+	
+	auto copy_mode = same_resolution ? FilterFps::OutputFrameCopyMode::DeepCopy 
+									 : FilterFps::OutputFrameCopyMode::ShallowCopy;
+	_fps_filter.SetOutputFrameCopyMode(copy_mode);
+	
+	return true;
+}
+
 bool FilterRescaler::Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
 {
 	SetState(State::CREATED);
 
 	_input_track = input_track;
 	_output_track = output_track;
-	_src_width = _input_track->GetWidth();
-	_src_height = _input_track->GetHeight();
-	_src_pixfmt = ffmpeg::compat::ToAVPixelFormat(_input_track->GetColorspace());
 
-	// Initialize Constant Framerate & Skip Frames Filter
-	_fps_filter.SetInputTimebase(_input_track->GetTimeBase());
-	_fps_filter.SetInputFrameRate(_input_track->GetFrameRate());
-	
-	// If the user is not the set output Framerate, use the measured Framerate
-	_fps_filter.SetOutputFrameRate(_output_track->GetFrameRateByConfig() > 0 ? _output_track->GetFrameRateByConfig() : _output_track->GetFrameRateByMeasured());
-	_fps_filter.SetSkipFrames(_output_track->GetSkipFramesByConfig() >= 0 ? _output_track->GetSkipFramesByConfig() : 0);
-	
-	// Set the threshold of the input buffer
+	// Initialize source parameters
+	_src_width	  = _input_track->GetWidth();
+	_src_height	  = _input_track->GetHeight();
+	_src_pixfmt	  = ffmpeg::compat::ToAVPixelFormat(_input_track->GetColorspace());
+
+	// Initialize input buffer queue
 	_input_buffer.SetThreshold(MAX_QUEUE_SIZE);
+
+	// Initialize FPS filter
+	if(InitializeFpsFilter() == false)
+	{
+		SetState(State::ERROR);
+
+		return false;
+	}
 
 	// Initialize the av filter graph
 	if (InitializeFilterDescription() == false)
@@ -356,18 +391,18 @@ bool FilterRescaler::Configure(const std::shared_ptr<MediaTrack> &input_track, c
 		return false;
 	}
 
-	logti("Rescaler parameters. track(#%u -> #%u), module(%s:%d -> %s:%d). desc(src:%s -> output:%s), fps(%.2f -> %.2f), skipFrames(%d)",
-		  _input_track->GetId(),
-		  _output_track->GetId(),
-		  cmn::GetCodecModuleIdString(_input_track->GetCodecModuleId()),
-		  _input_track->GetCodecDeviceId(),
-		  cmn::GetCodecModuleIdString(_output_track->GetCodecModuleId()),
-		  _output_track->GetCodecDeviceId(),
-		  _src_args.CStr(),
-		  _filter_desc.CStr(),
-		  _fps_filter.GetInputFrameRate(), 
-		  _fps_filter.GetOutputFrameRate(), 
-		  _fps_filter.GetSkipFrames());
+	SetDescription(ov::String::FormatString("track(#%u -> #%u), module(%s:%d -> %s:%d), params(src:%s -> output:%s), fps(%.2f -> %.2f), skipFrames(%d)",
+				   _input_track->GetId(),
+				   _output_track->GetId(),
+				   cmn::GetCodecModuleIdString(_input_track->GetCodecModuleId()),
+				   _input_track->GetCodecDeviceId(),
+				   cmn::GetCodecModuleIdString(_output_track->GetCodecModuleId()),
+				   _output_track->GetCodecDeviceId(),
+				   _src_args.CStr(),
+				   _filter_desc.CStr(),
+				   _fps_filter.GetInputFrameRate(),
+				   _fps_filter.GetOutputFrameRate(),
+				   _fps_filter.GetSkipFrames()));
 
 	if ((::avfilter_graph_parse_ptr(_filter_graph, _filter_desc, &_inputs, &_outputs, nullptr)) < 0)
 	{
@@ -471,8 +506,8 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
-	auto av_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
-	if (!av_frame)
+	auto src_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
+	if (!src_frame)
 	{
 		logte("Could not allocate the video frame data");
 
@@ -481,12 +516,12 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
-	AVFrame *transfer_av_frame = nullptr;
+	AVFrame *transfer_frame = nullptr;
 	// GPU Memory -> Host Memory
-	if (_use_hwframe_transfer == true && av_frame->hw_frames_ctx != nullptr)
+	if (_use_hwframe_transfer == true && src_frame->hw_frames_ctx != nullptr)
 	{
-		transfer_av_frame = ::av_frame_alloc();
-		if (::av_hwframe_transfer_data(transfer_av_frame, av_frame, 0) < 0)
+		transfer_frame = ::av_frame_alloc();
+		if (::av_hwframe_transfer_data(transfer_frame, src_frame, 0) < 0)
 		{
 			logte("Error transferring the data to system memory\n");
 
@@ -495,24 +530,50 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 			return false;
 		}
 
-		transfer_av_frame->pts = av_frame->pts;
+		transfer_frame->pts = src_frame->pts;
 	}
 
-	AVFrame *av_frame_for_filter = (transfer_av_frame != nullptr) ? transfer_av_frame : av_frame;
+	AVFrame *feed_frame = (transfer_frame != nullptr) ? transfer_frame : src_frame;
 
 	// Send to filtergraph
-	if (::av_buffersrc_write_frame(_buffersrc_ctx, av_frame_for_filter))
+	int ret = ::av_buffersrc_write_frame(_buffersrc_ctx, feed_frame);
+	if (ret == AVERROR_EOF)
 	{
-		logte("An error occurred while feeding to filtergraph: format: %d, pts: %lld, queue.size: %d", av_frame->format, av_frame->pts, _input_buffer.Size());
+		logtw("filter graph has been flushed and will not accept any more frames.");
+	}
+	else if (ret == AVERROR(EAGAIN))
+	{
+		logtw("filter graph is not able to accept the frame at this time.");
+	}
+	else if (ret == AVERROR_INVALIDDATA)
+	{
+		logtw("Invalid data while sending to filtergraph");
+	}
+	else if (ret == AVERROR(ENOMEM))
+	{
+		logte("Could not allocate memory while sending to filtergraph");
+		
+		SetState(State::ERROR);
+
+		Complete(TranscodeResult::DataError, nullptr);
+		
+		return false;
+	}
+	else if (ret < 0)
+	{
+		logte("An error occurred while feeding to filtergraph: format: %d, pts: %lld, queue.size: %d", src_frame->format, src_frame->pts, _input_buffer.Size());
 
 		SetState(State::ERROR);
+
+		Complete(TranscodeResult::DataError, nullptr);
 
 		return false;
 	}
 
-	if (transfer_av_frame != nullptr)
+	// Free the temporary AVFrame used for transfer
+	if (transfer_frame != nullptr)
 	{
-		av_frame_free(&transfer_av_frame);
+		av_frame_free(&transfer_frame);
 	}
 
 	return true;
@@ -533,46 +594,59 @@ bool FilterRescaler::PopProcess(bool is_flush)
 		{
 			break;
 		}
+		else if (ret == AVERROR_INVALIDDATA)
+		{
+			logtw("Invalid data while receiving from filtergraph");
+			break;
+		}
 		else if (ret == AVERROR_EOF)
 		{
-			if(is_flush)
-			{
+			if (is_flush)
 				break;
-			}
-			
+
 			logte("Error receiving filtered frame. error(EOF)");
+
 			SetState(State::ERROR);
+
+			return false;
+		}
+		else if (ret == AVERROR(ENOMEM))
+		{
+			logte("Could not allocate memory while receiving from filtergraph");
+
+			SetState(State::ERROR);
+
+			Complete(TranscodeResult::DataError, nullptr);
 
 			return false;
 		}
 		else if (ret < 0)
 		{
-			if(is_flush)
-			{
+			if (is_flush)
 				break;
-			}
 
-			logte("Error receiving filtered frame. error(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+			logte("Error receiving frame from filtergraph. error(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+			
 			SetState(State::ERROR);
+
+			Complete(TranscodeResult::DataError, nullptr);
 
 			return false;
 		}
-		else
+		
+		_frame->pict_type = AV_PICTURE_TYPE_NONE;
+		auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Video, _frame);
+		::av_frame_unref(_frame);
+		if (output_frame == nullptr)
 		{
-			_frame->pict_type = AV_PICTURE_TYPE_NONE;
-			auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Video, _frame);
-			::av_frame_unref(_frame);
-			if (output_frame == nullptr)
-			{
-				continue;
-			}
-
-			// Convert duration to output track timebase
-			output_frame->SetDuration((int64_t)((double)output_frame->GetDuration() * _input_track->GetTimeBase().GetExpr() / _output_track->GetTimeBase().GetExpr()));
-			output_frame->SetSourceId(_source_id);
-
-			Complete(std::move(output_frame));
+			continue;
 		}
+
+		// Convert duration to output track timebase
+		output_frame->SetDuration((int64_t)((double)output_frame->GetDuration() * _input_track->GetTimeBase().GetExpr() / _output_track->GetTimeBase().GetExpr()));
+		output_frame->SetSourceId(_source_id);
+
+		Complete(TranscodeResult::DataReady, std::move(output_frame));
 	}
 
 	return true;
@@ -602,8 +676,9 @@ void FilterRescaler::WorkerThread()
 	
 
 	// Set initial Skip Frames
-	int32_t skip_frames = _output_track->GetSkipFramesByConfig();
-	size_t  skip_frames_previous_queue_size = 0;
+	int32_t skip_frames_conf = _output_track->GetSkipFramesByConfig();
+	int32_t skip_frames = skip_frames_conf;
+	
 #endif
 
 	// XMA devices expand the memory pool when processing the first frame filtering. 
@@ -622,52 +697,76 @@ void FilterRescaler::WorkerThread()
 		auto media_frame = std::move(obj.value());
 
 #if _SKIP_FRAMES_ENABLED 
-		// If the set value is greater than or equal to 0, the skip frame is automatically calculated.
-		// The skip frame is not less than the value set by the user.
-		if(_output_track->GetSkipFramesByConfig() >= 0)
+		// Dynamic skip frames adjustment
+		if (skip_frames_conf == 0)
 		{
-			auto curr_time = ov::Time::GetTimestampInMs();
+			auto curr_time			 = ov::Time::GetTimestampInMs();
 
 			// Periodically check the status of the queue
-			// If the queue exceeds an arbitrary threshold, increase the number of skip frames quickly
-			// If the queue is stable, slowly decrease the number of skip frames.
-			// If the queue exceeds the threshold, drop the frame.
-			auto elapsed_check_time = curr_time - skip_frames_last_check_time;
+			auto elapsed_check_time	 = curr_time - skip_frames_last_check_time;
 			auto elapsed_stable_time = curr_time - skip_frames_last_changed_time;
 
+			auto threshold_rate		 = 0.75f;
 			if (elapsed_check_time > _SKIP_FRAMES_CHECK_INTERVAL)
 			{
 				skip_frames_last_check_time = curr_time;
 
-				// The frame skip should not be more than 1 second.
-				if ((skip_frames < _output_track->GetFrameRateByConfig()) &&		   // Maximum 1 second
-					(_input_buffer.GetSize() > (_input_buffer.GetThreshold() / 4)) &&  // 25% of the threshold == 0.5s
-					(_input_buffer.GetSize() >= skip_frames_previous_queue_size))	   // The queue is growing
+				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%d/%d)",
+					  skip_frames,
+					  _fps_filter.GetOutputFramesPerSecond(),
+					  _fps_filter.GetExpectedOutputFramesPerSecond(),
+					  _fps_filter.GetExpectedOutputFramesPerSecond() * threshold_rate,
+					  _input_buffer.GetSize(),
+					  _input_buffer.GetThreshold());
+
+				// If the queue is unstable, quickly increase the number of skip frames.
+				// Actual output fps is less than 75% of expected fps
+				if (_fps_filter.GetOutputFramesPerSecond() < (_fps_filter.GetExpectedOutputFramesPerSecond() * threshold_rate))
 				{
-					skip_frames++;
-					skip_frames_previous_queue_size = _input_buffer.GetSize();
 					skip_frames_last_changed_time = curr_time;
 
-					logtw("Scaler is unstable. changing skip frames %d to %d", skip_frames-1, skip_frames);
-				}
-				// If the queue is stable, slowly decrease the number of skip frames.
-				else if ((skip_frames > _output_track->GetSkipFramesByConfig()) &&
-						 (elapsed_stable_time > _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL) &&
-						 _input_buffer.GetSize() <= 1)
-				{
-					if (--skip_frames < 0)
+					// The frame skip should not be more than 1 second.
+					int32_t max_skip_frames		  = (int32_t)(_fps_filter.GetExpectedOutputFramesPerSecond() - 1);
+					if (++skip_frames > max_skip_frames)
 					{
-						skip_frames = 0;
+						skip_frames = max_skip_frames;
 					}
 
-					skip_frames_previous_queue_size = _input_buffer.GetSize();
-					skip_frames_last_changed_time = curr_time;
+					logtw("Scaler is unstable. changing skip frames %d to %d", skip_frames - 1, skip_frames);
+				}
+				// If the queue is stable, slowly decrease the number of skip frames.
+				else if ((skip_frames > 0) && (elapsed_stable_time > _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL))
+				{
+					// Queue is stable when there is only 1 or no frame in the queue
+					if (_input_buffer.GetSize() <= 1)
+					{
+						skip_frames_last_changed_time = curr_time;
 
-					logtd("Scaler is stable. changing skip frames %d to %d", skip_frames+1, skip_frames);
+						if (--skip_frames < 0)
+						{
+							skip_frames = 0;
+						}
+
+						logti("Scaler is stable. changing skip frames %d to %d", skip_frames + 1, skip_frames);
+					}
 				}
 
 				_fps_filter.SetSkipFrames(skip_frames);
 			}
+		}
+		// Static skip frames set by the user
+		else if (skip_frames_conf > 0)
+		{
+			if (_fps_filter.GetSkipFrames() != skip_frames_conf)
+			{
+				_fps_filter.SetSkipFrames(skip_frames_conf);
+
+				logti("Changed skip frames to user config value: %d", _fps_filter.GetSkipFrames());
+			}
+		}
+		else  // if (skip_frames_conf < 0)
+		{
+			// Disable skip frames
 		}
 
 		// If the user does not set the output Framerate, use the recommend framerate
@@ -678,7 +777,7 @@ void FilterRescaler::WorkerThread()
 			auto recommended_output_framerate = TranscoderStreamInternal::MeasurementToRecommendFramerate(_input_track->GetFrameRate());
 			if (_fps_filter.GetOutputFrameRate() != recommended_output_framerate)
 			{
-				logtd("Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", _input_track->GetFrameRate(), _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
+				logtt("Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", _input_track->GetFrameRate(), _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
 				_fps_filter.SetOutputFrameRate(recommended_output_framerate);
 			}
 		}

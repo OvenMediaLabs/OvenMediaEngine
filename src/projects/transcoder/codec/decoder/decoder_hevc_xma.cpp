@@ -214,6 +214,9 @@ void DecoderHEVCxXMA::CodecThread()
 				}
 				else if (ret == AVERROR_INVALIDDATA)
 				{
+					logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+						  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
+
 					// If a failure occurs due to the absence of a decoder configuration, 
 					// an Empty frame is created and transmitted. 
 					// This is used to replace a failed frame.
@@ -227,7 +230,10 @@ void DecoderHEVCxXMA::CodecThread()
 				}
 				else if (ret < 0)
 				{
-					logte("Error error occurred while sending a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+					logte("Error occurred while sending a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+					Complete(TranscodeResult::DataError, nullptr);
+
 					break;
 				}
 
@@ -249,9 +255,20 @@ void DecoderHEVCxXMA::CodecThread()
 			{
 				break;
 			}
+			else if (ret == AVERROR_INVALIDDATA) 
+			{
+				logtw("Invalid data while receiving a packet for decoding");
+
+				Complete(TranscodeResult::NoData, nullptr);
+
+				break;
+			}
 			else if (ret < 0)
 			{
 				logte("Error receiving a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+				Complete(TranscodeResult::DataError, nullptr);
+
 				continue;
 			}
 			else
@@ -261,8 +278,7 @@ void DecoderHEVCxXMA::CodecThread()
 				{
 					auto codec_info = ffmpeg::compat::CodecInfoToString(_codec_context);
 
-					logti("[%s/%s(%u)] Changed format. %s",
-						  _stream_info.GetApplicationInfo().GetVHostAppName().CStr(), _stream_info.GetName().CStr(), _stream_info.GetId(), codec_info.CStr());
+					logtd("[%s(%u)] Changed format. %s", _stream_info.GetUri().CStr(), _stream_info.GetId(), codec_info.CStr());
 				}
 
 				// If there is no duration, the duration is calculated by framerate and timebase.
@@ -274,7 +290,7 @@ void DecoderHEVCxXMA::CodecThread()
 #if USE_EXTERNAL_TIMESTAMP
 				_pts_reorder_list.sort();
 				auto ordered_pts = _pts_reorder_list.front();
-				// logtd("in: %lld, out: %lld (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
+				// logtt("in: %lld, out: %lld (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
 				_frame->pts = ordered_pts;
 				_pts_reorder_list.pop_front();
 #endif

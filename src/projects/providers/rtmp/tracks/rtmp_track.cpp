@@ -41,6 +41,11 @@ namespace pvd::rtmp
 		return nullptr;
 	}
 
+	info::NamePath RtmpTrack::GetNamePath() const
+	{
+		return _stream->GetNamePath();
+	}
+
 	std::shared_ptr<MediaPacket> RtmpTrack::CreateMediaPacket(
 		const std::shared_ptr<const ov::Data> &payload,
 		int64_t pts, int64_t dts,

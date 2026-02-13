@@ -68,7 +68,7 @@ protected:
 
 	int32_t GetDeviceIdNV(cmn::DeviceId gpu_id = 0);
 
-	bool _initialized = false;
+	std::atomic<bool> _initialized{false};
 
 	std::vector<std::pair<cmn::MediaCodecModuleId, cmn::DeviceId>> _supported_devices;
 

@@ -58,7 +58,7 @@ bool TranscodeApplication::Stop()
 	}
 	_streams.clear();
 
-	logtd("Transcoder application has been stopped. [%s]", _application_info.GetVHostAppName().CStr());
+	logtt("Transcoder application has been stopped. [%s]", _application_info.GetVHostAppName().CStr());
 
 	return true;
 }

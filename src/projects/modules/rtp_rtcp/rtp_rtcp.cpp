@@ -28,7 +28,7 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 	std::shared_lock<std::shared_mutex> lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
-		logtd("It can only be called in the ready state.");
+		logtt("It can only be called in the ready state.");
 		return false;
 	}
 
@@ -41,7 +41,7 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 
 	_sdes->AddChunk(std::make_shared<SdesChunk>(ssrc, SdesChunk::Type::CNAME, cname));
 
-	logtd("AddRtpSender : %d / %u / %u / %s", payload_type, ssrc, codec_rate, cname.CStr());
+	logtt("AddRtpSender : %d / %u / %u / %s", payload_type, ssrc, codec_rate, cname.CStr());
 
 	return true;
 }
@@ -51,7 +51,7 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 	std::shared_lock<std::shared_mutex> lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
-		logtd("It can only be called in the ready state.");
+		logtt("It can only be called in the ready state.");
 		return false;
 	}
 
@@ -108,7 +108,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -148,11 +148,11 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 		
 		if(SendDataToNextNode(NodeType::Rtcp, compound_rtcp_data) == false)
 		{
-			logd("RTCP","Send RTCP failed : pt(%d) ssrc(%u)", rtp_packet->PayloadType(), rtp_packet->Ssrc());
+			logt("RTCP","Send RTCP failed : pt(%d) ssrc(%u)", rtp_packet->PayloadType(), rtp_packet->Ssrc());
 		}
 		else
 		{
-			logd("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%d)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
+			logt("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%d)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
 		}
 	}
 
@@ -359,7 +359,7 @@ bool RtpRtcp::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_p
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -386,14 +386,14 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
 	// std::min(FIXED_HEADER_SIZE, RTCP_HEADER_SIZE)
 	if(data->GetLength() < RTCP_HEADER_SIZE)
 	{
-		logtd("It is not an RTP or RTCP packet.");
+		logtt("It is not an RTP or RTCP packet.");
 		return false;
 	}
 
@@ -430,7 +430,7 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 	}
 	else
 	{
-		logtd("It is not an RTP or RTCP packet.");
+		logtt("It is not an RTP or RTCP packet.");
 		return false;
 	}
 

@@ -117,6 +117,7 @@ int main(int argc, char *argv[])
 	INIT_EXTERNAL_MODULE("SRT", InitializeSrt);
 	INIT_EXTERNAL_MODULE("OpenSSL", InitializeOpenSsl);
 	INIT_EXTERNAL_MODULE("SRTP", InitializeSrtp);
+	INIT_EXTERNAL_MODULE("Jemalloc", InitializeJemalloc);
 	INIT_EXTERNAL_MODULE("Whisper.cpp", InitializeWhisper);
 
 	//--------------------------------------------------------------------
@@ -205,6 +206,7 @@ int main(int argc, char *argv[])
 
 	RELEASE_MODULE(media_router, "MediaRouter");
 
+	TERMINATE_EXTERNAL_MODULE("Jemalloc", TerminateJemalloc);
 	TERMINATE_EXTERNAL_MODULE("SRTP", TerminateSrtp);
 	TERMINATE_EXTERNAL_MODULE("OpenSSL", TerminateOpenSsl);
 	TERMINATE_EXTERNAL_MODULE("SRT", TerminateSrt);

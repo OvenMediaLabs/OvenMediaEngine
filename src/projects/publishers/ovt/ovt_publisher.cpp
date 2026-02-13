@@ -24,7 +24,7 @@ OvtPublisher::OvtPublisher(const cfg::Server &server_config, const std::shared_p
 
 OvtPublisher::~OvtPublisher()
 {
-	logtd("OvtPublisher has been terminated finally");
+	logtt("OvtPublisher has been terminated finally");
 }
 
 bool OvtPublisher::Start()

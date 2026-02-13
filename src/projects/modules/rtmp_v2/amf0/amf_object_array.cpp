@@ -58,7 +58,7 @@ namespace modules::rtmp
 	{
 		if (name == nullptr)
 		{
-			logtd("Could not append the property - name is null");
+			logtt("Could not append the property - name is null");
 			OV_ASSERT2(false);
 			return false;
 		}
@@ -71,7 +71,7 @@ namespace modules::rtmp
 	{
 		if (encode_marker && (EncodeMarker(byte_stream) == false))
 		{
-			logtd("Failed to encode marker");
+			logtt("Failed to encode marker");
 			OV_ASSERT2(false);
 			return false;
 		}
@@ -116,14 +116,14 @@ namespace modules::rtmp
 			AmfTypeMarker type;
 			if (DecodeMarker(byte_stream, false, &type) == false)
 			{
-				logtd("Failed to decode marker");
+				logtt("Failed to decode marker");
 				return false;
 			}
 
 			// AmfObjectArray can be either an object or an ECMA array, so we need to check the type
 			if (type != _amf_data_type)
 			{
-				OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", _amf_data_type, type);
+				OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", ov::ToUnderlyingType(_amf_data_type), ov::ToUnderlyingType(type));
 				return false;
 			}
 		}
@@ -132,7 +132,7 @@ namespace modules::rtmp
 		{
 			if (byte_stream.IsRemained(4) == false)
 			{
-				logtd("Failed to read the count of items");
+				logtt("Failed to read the count of items");
 				return false;
 			}
 
@@ -163,7 +163,7 @@ namespace modules::rtmp
 
 			if (byte_stream.IsRemained(name_length) == false)
 			{
-				logtd("Failed to read the name");
+				logtt("Failed to read the name");
 				return false;
 			}
 
@@ -177,7 +177,7 @@ namespace modules::rtmp
 			if (property.Decode(byte_stream, true) == false)
 			{
 				// Could not decode the data
-				logtd("Failed to decode the value");
+				logtt("Failed to decode the value");
 				return false;
 			}
 

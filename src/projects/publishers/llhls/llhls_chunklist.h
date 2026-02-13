@@ -189,7 +189,7 @@ public:
 
 		ov::String ToString() const
 		{
-			return ov::String::FormatString("seq(%d) start_date(%s) duration(%f) size(%lu) url(%s) next_url(%s) is_independent(%s) completed(%s)", _sequence, GetStartDate().CStr(), _duration, _size, _url.CStr(), _next_url.CStr(), _is_independent ? "true" : "false", _completed ? "true" : "false");
+			return ov::String::FormatString("seq(%" PRId64") start_date(%s) duration(%f) size(%" PRIu64 ") url(%s) next_url(%s) is_independent(%s) completed(%s)", _sequence, GetStartDate().CStr(), _duration, _size, _url.CStr(), _next_url.CStr(), _is_independent ? "true" : "false", _completed ? "true" : "false");
 		}
 
 	private:

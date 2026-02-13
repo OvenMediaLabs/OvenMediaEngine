@@ -84,6 +84,11 @@ namespace modules::rtmp
 			return Create(chunk_stream_id, 0);
 		}
 
+		static std::shared_ptr<ChunkWriteInfo> Create(ChunkStreamId chunk_stream_id)
+		{
+			return Create(ov::ToUnderlyingType(chunk_stream_id), 0);
+		}
+
 		void AppendPayload(const void *payload, size_t payload_size)
 		{
 			if (this->payload == nullptr)

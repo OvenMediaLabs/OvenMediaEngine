@@ -59,7 +59,7 @@ namespace http
 					return StatusCode::BadRequest;
 				}
 
-				logtd("Method: [%s], uri: [%s], version: [%s]", method.CStr(), _request_target.CStr(), _http_version.CStr());
+				logtt("Method: [%s], uri: [%s], version: [%s]", method.CStr(), _request_target.CStr(), _http_version.CStr());
 				return StatusCode::OK;
 			}
 		}  // namespace h1

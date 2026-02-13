@@ -280,6 +280,11 @@ namespace mpegts
 		return _pmt;
 	}
 
+	std::shared_ptr<SpliceInfo> Section::GetSpliceInfo()
+	{
+		return _splice_info;
+	}
+
 	bool Section::ParseTableHeader(BitReader *parser)
 	{
 		if (_header_parsed == true)
@@ -345,13 +350,12 @@ namespace mpegts
 				}
 				break;
 			
-			// TODO(Getroot): Connect to SpliceInfo later
-			// case static_cast<uint8_t>(WellKnownTableId::SPLICE_INFO_SECTION):
-			// 	if (ParseSpliceInfo(parser) == false)
-			// 	{
-			// 		return false;
-			// 	}
-			// 	break;
+			case static_cast<uint8_t>(WellKnownTableId::SPLICE_INFO_SECTION):
+				if (ParseSpliceInfo(parser) == false)
+				{
+					return false;
+				}
+				break;
 
 			default:
 				// Doesn't support
@@ -492,12 +496,95 @@ namespace mpegts
 				descriptors_length -= descriptor->GetPacketLength();
 			}
 
+			logtt("ES Stream Type: 0x%02X, PID: 0x%04X", es_info->_stream_type, es_info->_elementary_pid);
+
 			_pmt->_es_info_list.push_back(es_info);
 		}
 
 		return true;
 	}
 
+	bool Section::ParseSpliceInfo(BitReader *parser)
+	{
+		// not enough data size to parse
+		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
+		{
+			logtw("Could not parse Splice Info because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			return false;
+		}
+
+		// _splice_info = std::make_shared<SpliceInfo>(SpliceCommandType::SPLICE_INSERT); // SpliceCommandType will be set in Parse function
+		// Parse SpiceINfo
+		// Protocol Version : 8 bits
+		uint8_t protocol_version = parser->ReadBytes<uint8_t>();
+		// Encrypted Packet : 1 bit
+		bool encrypted_packet = parser->ReadBoolBit();
+		// Encryption Algorithm : 6 bits
+		uint8_t encryption_algorithm = parser->ReadBits<uint8_t>(6);
+		// PTS Adjustment : 33 bits
+		uint64_t pts_adjustment = parser->ReadBits<uint64_t>(33);
+		// CW Index : 8 bits
+		uint8_t cw_index = parser->ReadBytes<uint8_t>();
+		// Tier : 12 bits
+		uint16_t tier = parser->ReadBits<uint16_t>(12);
+		// Splice Command Length : 12 bits
+		uint16_t splice_command_length = parser->ReadBits<uint16_t>(12);
+		// Splice Command Type : 8 bits
+		uint8_t splice_command_type = parser->ReadBytes<uint8_t>();
+
+		// Splice Command : variable length
+		std::shared_ptr<ov::Data> splice_command;
+		if (splice_command_length > 0)
+		for(int i = 0; i < splice_command_length; i++)
+		{
+			uint8_t byte = parser->ReadBytes<uint8_t>();
+			if (splice_command == nullptr)
+			{
+				splice_command = std::make_shared<ov::Data>();
+			}
+			splice_command->Append(&byte, 1);
+		}
+
+		// Descriptor Loop Length : 16 bits
+		uint16_t descriptor_loop_length = parser->ReadBytes<uint16_t>();
+
+		logtt("Splice Info: Protocol Version: %d, Encrypted Packet: %d, Encryption Algorithm: %d, PTS Adjustment: %llu, CW Index: %d, Tier: %d, Splice Command Length: %d, Splice Command Type: %d, Descriptor Loop Length: %d",
+			  protocol_version, encrypted_packet, encryption_algorithm, pts_adjustment, cw_index, tier, splice_command_length, splice_command_type, descriptor_loop_length);
+
+		if (!splice_command || splice_command->GetLength() == 0)
+		{
+			logte("Splice Command Data is empty");
+			return false;
+		}
+		
+		if (splice_command_type == static_cast<uint8_t>(SpliceCommandType::SPLICE_INSERT))
+		{
+			auto splice_insert = SpliceInsert::ParseSpliceCommand(splice_command);
+			if (splice_insert == nullptr)
+			{
+				logte("Could not parse Splice Insert Command");
+				return false;
+			}
+			_splice_info = splice_insert;
+		}
+		else
+		{
+			logtw("Unsupported Splice Command Type: %d", splice_command_type);
+			return false;
+		}
+
+		_splice_info->SetProtocolVersion(protocol_version);
+		_splice_info->SetEncryptedPacket(encrypted_packet);
+		_splice_info->SetEncryptionAlgorithm(encryption_algorithm);
+		_splice_info->SetPTSAdjustment(pts_adjustment);
+		_splice_info->SetCWIndex(cw_index);
+		_splice_info->SetTier(tier);
+		_splice_info->SetSpliceCommandType(static_cast<SpliceCommandType>(splice_command_type));
+
+		logtt("Parsed Splice Info\n%s", _splice_info->ToString().CStr());
+
+		return true;
+	}
 	// return true when section is completed
 	bool Section::IsCompleted()
 	{

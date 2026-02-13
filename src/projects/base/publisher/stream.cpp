@@ -47,7 +47,7 @@ namespace pub
 		}
 
 		ov::String worker_name = ov::String::FormatString("%s/%s/%s", _parent->GetApplicationTypeName(), _parent->GetApplicationName(), _parent->GetName().CStr());
-		logtd("Try to stop StreamWorker thread of %s", worker_name.CStr());
+		logtt("Try to stop StreamWorker thread of %s", worker_name.CStr());
 
 		_stop_thread_flag = true;
 		// Generate Event
@@ -60,18 +60,18 @@ namespace pub
 			_worker_thread.join();
 		}
 
-		logtd("StreamWorker thread of %s has been stopped successfully", worker_name.CStr());
+		logtt("StreamWorker thread of %s has been stopped successfully", worker_name.CStr());
 
 		std::lock_guard<std::shared_mutex> lock(_session_map_mutex);
 
-		logtd("Try to stop all sessions of %s", worker_name.CStr());
+		logtt("Try to stop all sessions of %s", worker_name.CStr());
 		for (auto const &x : _sessions)
 		{
 			auto session = std::static_pointer_cast<Session>(x.second);
 			session->Stop();
 		}
 		_sessions.clear();
-		logtd("All sessions(%d) of %s has been stopped successfully", _sessions.size(), worker_name.CStr());
+		logtt("All sessions(%zu) of %s has been stopped successfully", _sessions.size(), worker_name.CStr());
 
 		return true;
 	}
@@ -219,6 +219,44 @@ namespace pub
 		return nullptr;
 	}
 
+	bool Stream::EnterStart()
+	{
+		// If it is not in the Idle state before Start, it is an abnormal situation, so Start fails
+		if (!LockIfIdle())
+		{
+			logte("Cannot start stream [%s(%u)] because it is not in the Idle state", GetName().CStr(), GetId());
+			return false;
+		}
+
+		bool ok = Start();
+
+		Unlock();
+		
+		return ok;
+	}
+
+	bool Stream::EnterStop()
+	{
+		WaitUntilIdleAndLock();
+
+		bool ok = Stop();
+
+		Unlock();
+
+		return ok;
+	}
+
+	bool Stream::EnterUpdate(const std::shared_ptr<info::Stream> &info)
+	{
+		WaitUntilIdleAndLock();
+
+		bool ok = Update(info);
+
+		Unlock();
+
+		return ok;
+	}
+
 	bool Stream::Start()
 	{
 		if (_state != State::CREATED)
@@ -230,6 +268,54 @@ namespace pub
 
 		_started_time = std::chrono::system_clock::now();
 		_state = State::STARTED;
+		return true;
+	}
+
+	bool Stream::Stop()
+	{
+		logti("Try to stop %s stream [%s(%u)]", GetApplicationTypeName(), GetName().CStr(), GetId());
+
+		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+
+		if (_state != State::STARTED)
+		{
+			return false;
+		}
+
+		_state = State::STOPPED;
+
+		for(const auto &worker : _stream_workers)
+		{
+			worker->Stop();
+		}
+
+		logti("[%s(%u)] %s - All StreamWorker has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
+
+		_stream_workers.clear();
+
+		worker_lock.unlock();
+
+		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
+		logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
+
+		for(const auto &x : _sessions)
+		{
+			auto session = x.second;
+			session->Stop();
+		}
+		_sessions.clear();
+
+		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
+
+		return true;
+	}
+
+	bool Stream::Update(const std::shared_ptr<info::Stream> &info)
+	{
+		logti("[%s(%u)] %s stream has been updated (MSID : %d)", 
+							info->GetName().CStr(), info->GetId(), GetApplicationTypeName(), info->GetMsid());
+
 		return true;
 	}
 
@@ -278,54 +364,6 @@ namespace pub
 		return true;
 	}
 
-	bool Stream::Stop()
-	{
-		logti("Try to stop %s stream [%s(%u)]", GetApplicationTypeName(), GetName().CStr(), GetId());
-
-		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
-
-		if (_state != State::STARTED)
-		{
-			return false;
-		}
-
-		_state = State::STOPPED;
-
-		for(const auto &worker : _stream_workers)
-		{
-			worker->Stop();
-		}
-
-		logti("[%s(%u)] %s - All StreamWorker has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
-
-		_stream_workers.clear();
-
-		worker_lock.unlock();
-
-		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
-
-		logti("[%s(%u)] %s - Try to stop all sessions (%d)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
-
-		for(const auto &x : _sessions)
-		{
-			auto session = x.second;
-			session->Stop();
-		}
-		_sessions.clear();
-
-		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
-
-		return true;
-	}
-
-	bool Stream::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
-	{
-		logti("[%s(%u)] %s stream has been updated (MSID : %d)", 
-							info->GetName().CStr(), info->GetId(), GetApplicationTypeName(), info->GetMsid());
-
-		return true;
-	}
-
 	std::shared_ptr<pub::Session> Stream::CreatePushSession(std::shared_ptr<info::Push> &push)
 	{
 		logtw("The function was not implemented in the child class");
@@ -363,7 +401,7 @@ namespace pub
 		size_t worker_id = session_id % _worker_count;
 		if(worker_id >= _stream_workers.size())
 		{
-			logtw("Invalid worker id : %d", worker_id);
+			logtw("Invalid worker id : %zu", worker_id);
 			return nullptr;
 		}
 
@@ -373,6 +411,12 @@ namespace pub
 	bool Stream::AddSession(std::shared_ptr<Session> session)
 	{
 		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
+		if (_sessions.count(session->GetId()) > 0)
+		{
+			logtw("Session ID (%u) already exists, existing session will be overwritten", session->GetId());
+		}
+
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
@@ -398,7 +442,7 @@ namespace pub
 			auto session_iterator = _sessions.find(id);
 			if (session_iterator == _sessions.end())
 			{
-				logtd("Cannot find session : %u", id);
+				logtt("Cannot find session : %u", id);
 				return false;
 			}
 			_sessions.erase(session_iterator);
@@ -427,7 +471,7 @@ namespace pub
 			return nullptr;
 		}
 
-		return _sessions[id];
+		return _sessions.at(id);
 	}
 
 	const std::map<session_id_t, std::shared_ptr<Session>> Stream::GetAllSessions()
@@ -504,7 +548,7 @@ namespace pub
 					{
 						auto old_language = track->GetLanguage();
 						track->SetLanguage(command->GetLanguage());
-						logtd("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
+						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
 					}
 					else
 					{

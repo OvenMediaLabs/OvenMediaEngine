@@ -137,9 +137,10 @@ namespace pub
 		virtual void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) = 0;
 		virtual void OnEvent(const std::shared_ptr<MediaEvent> &event) {}
 
-		virtual bool Start();
-		virtual bool Stop();
-		virtual bool OnStreamUpdated(const std::shared_ptr<info::Stream> &info);
+		bool EnterStart();
+		bool EnterStop();
+		bool EnterUpdate(const std::shared_ptr<info::Stream> &info);
+		
 
 		bool WaitUntilStart(uint32_t timeout_ms);
 
@@ -167,6 +168,10 @@ namespace pub
 		Stream(const std::shared_ptr<Application> application, const info::Stream &info);
 		virtual ~Stream();
 
+		virtual bool Start();
+		virtual bool Update(const std::shared_ptr<info::Stream> &info);
+		virtual bool Stop();
+
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
@@ -183,5 +188,36 @@ namespace pub
 		std::chrono::system_clock::time_point _started_time;
 
 		State _state = State::CREATED;
+
+		bool LockIfIdle()
+		{
+			std::lock_guard<std::mutex> lock(_busy_lock);
+			if (_busy)
+			{
+				return false;
+			}
+			_busy = true;
+			return true;
+		}
+
+		void WaitUntilIdleAndLock()
+		{
+			std::unique_lock<std::mutex> lock(_busy_lock);
+			_busy_condition.wait(lock, [this]() { return !_busy; });
+			_busy = true;
+		}
+
+		void Unlock()
+		{
+			{
+				std::lock_guard<std::mutex> lock(_busy_lock);
+				_busy = false;
+			}
+			_busy_condition.notify_all();
+		}
+
+		mutable std::mutex _busy_lock;
+		std::condition_variable _busy_condition;
+		bool _busy = false;
 	};
 }  // namespace pub

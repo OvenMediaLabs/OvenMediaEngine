@@ -100,7 +100,7 @@ bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 		return false;
 	}
 
-	logtd("Insert packet : %s", packet->Dump().CStr());
+	logtt("Insert packet : %s", packet->Dump().CStr());
 
 	auto order_number = GetOrderNumber(packet->SequenceNumber());
 
@@ -165,7 +165,7 @@ bool RtpFrame::CheckCompleted()
 	if (need_number_of_packets == _packets.size())
 	{
 		_completed = true;
-		logtd("Frame completed: timestamp(%u) packets(%u) need packets(%u)", _timestamp, _packets.size(), need_number_of_packets);
+		logtt("Frame completed: timestamp(%u) packets(%u) need packets(%u)", _timestamp, _packets.size(), need_number_of_packets);
 	}
 	else
 	{
@@ -206,7 +206,7 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 
 	if (it == _rtp_frames.end())
 	{
-		logtd("Create frame buffer for timestamp %llu", timestamp);
+		logtt("Create frame buffer for timestamp %llu", timestamp);
 		// First packet of frame
 		frame = std::make_shared<RtpFrame>(packet->Timestamp());
 		_rtp_frames[timestamp] = frame;
@@ -248,7 +248,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 	while (it != completed_frame_it)
 	{
 		auto frame = it->second;
-		logtd("Frame discarded (It may be PADDING frame for BWE) - timestamp(%u) packets(%d) marked(%s)", frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
+		logtt("Frame discarded (It may be PADDING frame for BWE) - timestamp(%u) packets(%d) marked(%s)", frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
 		it = _rtp_frames.erase(it);
 	}
 }
@@ -277,7 +277,7 @@ std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 	auto it = _rtp_frames.begin();
 	auto frame = it->second;
 
-	logtd("Pop frame - extended(%llu) timestamp(%u) packets(%d) frames(%u)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+	logtt("Pop frame - extended(%llu) timestamp(%u) packets(%d) frames(%u)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
 
 	// remove front frame
 	_rtp_frames.erase(it);

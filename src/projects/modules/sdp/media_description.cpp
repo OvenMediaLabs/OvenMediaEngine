@@ -629,12 +629,12 @@ bool MediaDescription::ParsingMediaLine(char type, std::string content)
 			else
 			{
 				// Other attributes are ignored because they are not required.
-				logd("SDP", "Unknown Attributes : %c=%s", type, content.c_str());
+				logt("SDP", "Unknown Attributes : %c=%s", type, content.c_str());
 			}
 
 			break;
 		default:
-			logd("SDP", "Unknown Attributes : %c=%s", type, content.c_str());
+			logt("SDP", "Unknown Attributes : %c=%s", type, content.c_str());
 			break;
 	}
 

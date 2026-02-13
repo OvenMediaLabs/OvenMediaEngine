@@ -35,20 +35,20 @@ OvtSession::OvtSession(const info::Session &session_info,
 OvtSession::~OvtSession()
 {
 	Stop();
-	logtd("OvtSession(%d) has been terminated finally", GetId());
+	logtt("OvtSession(%d) has been terminated finally", GetId());
 
 	MonitorInstance->OnSessionDisconnected(*GetStream(), PublisherType::Ovt);
 }
 
 bool OvtSession::Start()
 {
-	logtd("OvtSession(%d) has started", GetId());
+	logtt("OvtSession(%d) has started", GetId());
 	return Session::Start();
 }
 
 bool OvtSession::Stop()
 {
-	logtd("OvtSession(%d) has stopped", GetId());
+	logtt("OvtSession(%d) has stopped", GetId());
 	_connector->Close();
 	
 	return Session::Stop();
@@ -68,7 +68,7 @@ void OvtSession::SendOutgoingData(const std::any &packet)
     }
     catch(const std::bad_any_cast& e) 
 	{
-        logtd("An incorrect type of packet was input from the stream. (%s)", e.what());
+        logtt("An incorrect type of packet was input from the stream. (%s)", e.what());
 		return;
     }
 

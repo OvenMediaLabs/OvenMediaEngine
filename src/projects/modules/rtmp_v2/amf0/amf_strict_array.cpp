@@ -63,7 +63,7 @@ namespace modules::rtmp
 		{
 			if (EncodeMarker(byte_stream) == false)
 			{
-				logtd("Failed to encode marker");
+				logtt("Failed to encode marker");
 				return false;
 			}
 		}
@@ -71,7 +71,7 @@ namespace modules::rtmp
 		// Write the count of items
 		if (byte_stream.WriteBE32(_amf_properties.size()) == false)
 		{
-			logtd("Failed to write the count of items");
+			logtt("Failed to write the count of items");
 			return false;
 		}
 
@@ -94,13 +94,13 @@ namespace modules::rtmp
 			AmfTypeMarker type;
 			if (DecodeMarker(byte_stream, false, &type) == false)
 			{
-				logtd("Failed to decode marker");
+				logtt("Failed to decode marker");
 				return false;
 			}
 
 			if (type != _amf_data_type)
 			{
-				OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", _amf_data_type, type);
+				OV_ASSERT(type == _amf_data_type, "Type mismatch: expected: %d, actual: %d", ov::ToUnderlyingType(_amf_data_type), ov::ToUnderlyingType(type));
 				return false;
 			}
 		}
@@ -108,7 +108,7 @@ namespace modules::rtmp
 		// Read the count of items
 		if (byte_stream.IsRemained(4) == false)
 		{
-			logtd("Failed to read the count of items");
+			logtt("Failed to read the count of items");
 			return false;
 		}
 

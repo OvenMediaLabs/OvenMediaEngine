@@ -30,6 +30,17 @@ namespace http
 		{
 		}
 
+		static std::shared_ptr<HttpError> CreateError(StatusCode status_code, const char *message)
+		{
+			return std::make_shared<HttpError>(status_code, message);
+		}
+
+		template <typename... Args>
+		static std::shared_ptr<HttpError> CreateError(StatusCode status_code, const char *format, Args... args)
+		{
+			return std::make_shared<HttpError>(status_code, format, args...);
+		}
+
 		StatusCode GetStatusCode() const
 		{
 			return static_cast<StatusCode>(GetCode());

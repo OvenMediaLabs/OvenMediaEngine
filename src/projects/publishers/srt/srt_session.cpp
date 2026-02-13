@@ -17,12 +17,8 @@
 #include "srt_private.h"
 #include "srt_stream.h"
 
-#define logat(format, ...) logtt("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
-#define logai(format, ...) logti("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
-#define logae(format, ...) logte("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%s#%u] " format, GetAppStreamName().CStr(), GetId(), ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%s#%u] "
+#define OV_LOG_PREFIX_VALUE GetAppStreamName().CStr(), GetId()
 
 namespace pub
 {
@@ -60,7 +56,7 @@ namespace pub
 	{
 		Stop();
 
-		logad("SrtSession has finally been terminated");
+		logat("SrtSession has finally been terminated");
 
 		MonitorInstance->OnSessionDisconnected(*GetStream(), PublisherType::Srt);
 	}
@@ -79,13 +75,13 @@ namespace pub
 
 	bool SrtSession::Start()
 	{
-		logad("SrtSession will be started");
+		logat("SrtSession will be started");
 		return Session::Start();
 	}
 
 	bool SrtSession::Stop()
 	{
-		logad("SrtSession has stopped");
+		logat("SrtSession has stopped");
 		_connector->Close();
 		return Session::Stop();
 	}
@@ -96,17 +92,15 @@ namespace pub
 
 		try
 		{
-			srt_data = std::any_cast<std::shared_ptr<const SrtData>>(packet);
+			return std::any_cast<std::shared_ptr<const SrtData>>(packet);
 		}
 		catch (const std::bad_any_cast &e)
 		{
-			logad("An incorrect type of packet was input from the stream. (%s)", e.what());
+			logat("An incorrect type of packet was input from the stream. (%s)", e.what());
 
 			OV_ASSERT2(false);
 			return nullptr;
 		}
-
-		return (srt_data->playlist == _srt_playlist) ? srt_data : nullptr;
 	}
 
 	void SrtSession::SendOutgoingData(const std::any &packet)
@@ -119,12 +113,22 @@ namespace pub
 			return;
 		}
 
+		auto playlist = srt_data->playlist.lock();
+
+		if (
+			// The playlist has been destroyed
+			(playlist == nullptr) ||
+			(playlist != _srt_playlist))
+		{
+			return;
+		}
+
 		std::shared_ptr<const ov::Data> mpegts_data;
 
 		if (_need_to_send_psi)
 		{
 			_need_to_send_psi = false;
-			_connector->Send(srt_data->playlist->GetPsiData());
+			_connector->Send(playlist->GetPsiData());
 		}
 
 		mpegts_data = srt_data->data;

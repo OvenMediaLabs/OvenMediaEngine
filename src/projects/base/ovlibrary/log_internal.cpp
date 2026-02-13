@@ -8,6 +8,8 @@
 //==============================================================================
 #include "log_internal.h"
 
+#include <inttypes.h>
+
 #include <thread>
 
 #include "platform.h"
@@ -211,7 +213,7 @@ namespace ov
 			"C"};
 
 		constexpr const char *color_prefix[] = {
-			OV_LOG_COLOR_FG_BLUE,
+			OV_LOG_COLOR_FG_BR_BLACK,
 			OV_LOG_COLOR_FG_CYAN,
 			OV_LOG_COLOR_FG_WHITE,
 			OV_LOG_COLOR_FG_YELLOW,
@@ -291,7 +293,7 @@ namespace ov
 #endif	// DEBUG
 
 				// time ([mm-dd hh:mm:ss.sss])
-				"%02d-%02d %02d:%02d:%02d.%03d]"
+				"%02d-%02d %02d:%02d:%02d.%03" PRId64 "]"
 
 				// <log level>
 				" %s"

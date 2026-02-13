@@ -17,7 +17,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	const ov::String &name, const SRT_SOCKOPT option, const ov::String &value,
 	const int32_t &dummy)
 {
-	logtd("Set an option for %s: %s = %s (int32_t)", sock->ToString().CStr(), name.CStr(), value.CStr());
+	logtt("Set an option for %s: %s = %s (int32_t)", sock->ToString().CStr(), name.CStr(), value.CStr());
 
 	if (sock->SetSockOpt(option, ov::Converter::ToInt32(value)) == false)
 	{
@@ -32,7 +32,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	const ov::String &name, const SRT_SOCKOPT option, const ov::String &value,
 	const int64_t &dummy)
 {
-	logtd("Set an option for %s: %s = %s (int64_t)", sock->ToString().CStr(), name.CStr(), value.CStr());
+	logtt("Set an option for %s: %s = %s (int64_t)", sock->ToString().CStr(), name.CStr(), value.CStr());
 
 	if (sock->SetSockOpt(option, ov::Converter::ToInt64(value)) == false)
 	{
@@ -47,7 +47,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	const ov::String &name, const SRT_SOCKOPT option, const ov::String &value,
 	const bool &dummy)
 {
-	logtd("Set an option for %s: %s = %s (bool)", sock->ToString().CStr(), name.CStr(), value.CStr());
+	logtt("Set an option for %s: %s = %s (bool)", sock->ToString().CStr(), name.CStr(), value.CStr());
 
 	if (sock->SetSockOpt(option, ov::Converter::ToBool(value)) == false)
 	{
@@ -67,7 +67,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	lin.l_linger = ov::Converter::ToInt32(value);
 	lin.l_onoff = (lin.l_linger > 0) ? 1 : 0;
 
-	logtd("Set an option for %s: %s = { .l_linger = %d, .l_onoff = %d } (linger)", sock->ToString().CStr(), name.CStr(), value.CStr(), lin.l_linger, lin.l_onoff);
+	logtt("Set an option for %s: %s = { .l_linger = %d, .l_onoff = %d } (linger)", sock->ToString().CStr(), name.CStr(), value.CStr(), lin.l_linger, lin.l_onoff);
 
 	return ov::Error::CreateError(OV_LOG_TAG, "Could not set an option: %s = { .l_linger = %d, .l_onoff = %d } (linger)", name.CStr(), lin.l_linger, lin.l_onoff);
 
@@ -84,7 +84,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	const ov::String &name, const SRT_SOCKOPT option, const ov::String &value,
 	const ov::String &dummy)
 {
-	logtd("Set an option for %s: %s = \"%s\" (ov::String)", sock->ToString().CStr(), name.CStr(), value.CStr());
+	logtt("Set an option for %s: %s = \"%s\" (ov::String)", sock->ToString().CStr(), name.CStr(), value.CStr());
 
 	if (sock->SetSockOpt(option, value.CStr(), value.GetLength()) == false)
 	{

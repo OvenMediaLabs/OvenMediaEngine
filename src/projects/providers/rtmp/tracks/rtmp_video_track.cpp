@@ -31,7 +31,7 @@ namespace pvd::rtmp
 			case modules::flv::VideoPacketType::Multitrack:
 				[[fallthrough]];
 			case modules::flv::VideoPacketType::ModEx:
-				logtd("Not handled video packet type: %s", modules::flv::EnumToString(packet_type));
+				logtt("Not handled video packet type: %s", modules::flv::EnumToString(packet_type));
 				return cmn::PacketType::Unknown;
 		}
 
@@ -59,7 +59,7 @@ namespace pvd::rtmp
 
 			if (packet_type == cmn::PacketType::Unknown)
 			{
-				logtd("Unknown %S packet type: %d",
+				logtt("Unknown %s packet type: %d",
 					  cmn::GetCodecIdString(_codec_id),
 					  static_cast<int>(video_data->video_packet_type));
 				break;

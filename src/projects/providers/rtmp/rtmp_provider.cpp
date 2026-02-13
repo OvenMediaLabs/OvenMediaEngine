@@ -64,7 +64,7 @@ namespace pvd
 	RtmpProvider::RtmpProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PushProvider(server_config, router)
 	{
-		logtd("Created Rtmp Provider module.");
+		logtt("Created Rtmp Provider module.");
 	}
 
 	RtmpProvider::~RtmpProvider()
@@ -236,8 +236,8 @@ namespace pvd
 			return;
 		}
 
-		logti("The RTMP client has disconnected: [%s/%s], remote: %s",
-			  channel->GetApplicationName(), channel->GetName().CStr(),
+		logti("The RTMP client has disconnected: [%s], remote: %s",
+			  channel->GetNamePath().CStr(),
 			  remote->ToString().CStr());
 
 		PushProvider::OnChannelDeleted(remote->GetNativeHandle());

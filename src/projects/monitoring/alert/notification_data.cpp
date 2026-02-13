@@ -95,34 +95,20 @@ namespace mon::alrt
 			jv_root["internalQueues"] = jv_queues;
 		}
 
-		if (_parent_source_info != nullptr)
+		if (_parent_stream_metric != nullptr)
 		{
-			Json::Value jv_parent_source_info = ::serdes::JsonFromStream(_parent_source_info);
+			Json::Value jv_parent_source_info = ::serdes::JsonFromStream(_parent_stream_metric);
 			jv_root["parentSourceInfo"]		  = jv_parent_source_info;
 
-			if (!_parent_source_info->GetUri().IsEmpty())
+			if (!_parent_stream_metric->GetUri().IsEmpty())
 			{
-				jv_root["parentSourceUri"] = _parent_source_info->GetUri().CStr();
+				jv_root["parentSourceUri"] = _parent_stream_metric->GetUri().CStr();
 			}
 		}
 
-		if (_output_profile != nullptr)
+		if(_extra != nullptr)
 		{
-			Json::Value jv_output_profile = ::serdes::JsonFromOutputProfile(*_output_profile);
-			jv_root["outputProfile"]	  = jv_output_profile;
-		}
-
-		if (_codec_modules.size() > 0)
-		{
-			Json::Value jv_codec_modules;
-
-			for (const auto &codec_module : _codec_modules)
-			{
-				Json::Value jv_codec_module = ::serdes::JsonFromCodecModule(codec_module);
-				jv_codec_modules.append(jv_codec_module);
-			}
-
-			jv_root["codecModules"] = jv_codec_modules;
+			jv_root["extraInfo"] = _extra->ToJsonValue();
 		}
 
 		return ov::Converter::ToString(jv_root);

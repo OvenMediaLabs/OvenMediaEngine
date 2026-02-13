@@ -112,7 +112,7 @@ namespace info
 
 			if (match_result.IsMatched())
 			{
-				logtd("Matched: host_name: %s, pattern: %s",
+				logtt("Matched: host_name: %s, pattern: %s",
 					  host_name.CStr(),
 					  host_name_entry.regex.GetPattern().CStr());
 
@@ -123,7 +123,7 @@ namespace info
 
 			if (error != nullptr)
 			{
-				logtd("Not matched with error: host_name: %s, pattern: %s, error: %s",
+				logtt("Not matched with error: host_name: %s, pattern: %s, error: %s",
 					  host_name.CStr(),
 					  host_name_entry.regex.GetPattern().CStr(),
 					  error->What());

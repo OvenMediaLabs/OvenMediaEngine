@@ -54,7 +54,7 @@ public:
 private:
 	bool Start() override;
 	bool Stop() override;
-	bool OnStreamUpdated(const std::shared_ptr<info::Stream> &info) override;
+	bool Update(const std::shared_ptr<info::Stream> &info) override;
 
 	bool IsSupportedCodec(cmn::MediaCodecId codec_id);
 

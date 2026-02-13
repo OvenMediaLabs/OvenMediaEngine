@@ -44,7 +44,7 @@ namespace pub
 		std::shared_ptr<ffmpeg::Writer> CreateWriter();
 		void DestoryWriter();
 
-		bool IsSelectedTrack(const std::shared_ptr<MediaTrack> &track);
+		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
 		bool IsSupportTrack(const info::Push::ProtocolType protocol_type, const std::shared_ptr<MediaTrack> &track);
 		bool IsSupportCodec(const info::Push::ProtocolType protocol_type, cmn::MediaCodecId codec_id);
 

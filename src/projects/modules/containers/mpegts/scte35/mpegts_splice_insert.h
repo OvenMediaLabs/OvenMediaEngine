@@ -70,6 +70,54 @@ namespace mpegts
 		void SetDuration(uint64_t duration);
 		void SetAutoReturn(bool auto_return);
 
+		uint32_t GetSpliceEventId() const
+		{
+			return _splice_event_id;
+		}
+
+		uint8_t GetOutofNetworkIndicator() const
+		{
+			return _out_of_network_indicator;
+		}
+
+		uint8_t GetProgramSpliceFlag() const
+		{
+			return _program_splice_flag;
+		}
+
+		uint8_t GetDurationFlag() const
+		{
+			return _duration_flag;
+		}
+
+		uint8_t GetSpliceImmediateFlag() const
+		{
+			return _splice_immediate_flag;
+		}
+
+		uint8_t GetEventIdComplianceFlag() const
+		{
+			return _event_id_compliance_flag;
+		}
+
+		int64_t GetPTSTime() const
+		{
+			return _splice_time._pts_time;
+		}
+
+		uint64_t GetDuration() const
+		{
+			return _break_duration._duration;
+		}
+		
+		bool GetAutoReturn() const
+		{
+			return _break_duration._auto_return != 0;
+		}
+
+		static std::shared_ptr<SpliceInsert> ParseSpliceCommand(const std::shared_ptr<const ov::Data> &data);
+		ov::String ToString() const override;
+
 	private:
 		std::shared_ptr<ov::Data> BuildSpliceCommand() override;
 

@@ -24,6 +24,13 @@ public:
 	// redis_password: redis server password (ex: password!@#)
 	OriginMapClient(const ov::String &redis_host, const ov::String &redis_password);
 
+	// Non-blocking request to register origin host
+	bool RequestRegister(const ov::String &app_stream_name, const ov::String &origin_host); 
+	bool RequestUnregister(const ov::String &app_stream_name);
+
+	CommonErrorCode GetOrigin(const ov::String &app_stream_name, ov::String &origin_host);
+
+private:
 	// if return false, it means that the app_stream_name is already registered from other origin server
 	// app_stream_name : app/stream name (ex: app/stream)
 	// origin_host : OVT provided origin host info (ex: 192.168.0.160:9000)
@@ -31,21 +38,18 @@ public:
 	bool Update(const ov::String &app_stream_name, const ov::String &origin_host);
 	bool Unregister(const ov::String &app_stream_name);
 
-	CommonErrorCode GetOrigin(const ov::String &app_stream_name, ov::String &origin_host);
-
-private:
 	bool CheckConnection();
 	bool ConnectRedis();
 
 	bool NofifyStreamsAlive();
 	bool RetryRegister();
+	bool ProcessPendingUnregisters();
 
 	std::tuple<int, ov::String> CommandToRedis(const char *format, ...);
 
 	bool AddOriginMap(const ov::String &app_stream_name, const ov::String &origin_host);
 	bool AddOriginMapCandidate(const ov::String &app_stream_name, const ov::String &origin_host);
 	bool DeleteOriginMap(const ov::String &app_stream_name);
-	bool DeleteOriginMapCandidate(const ov::String &app_stream_name);
 
 	ov::String _redis_ip;
 	uint16_t _redis_port;
@@ -55,6 +59,7 @@ private:
 
 	std::map<ov::String, ov::String> _origin_map;
 	std::map<ov::String, ov::String> _origin_map_candidates;
+	std::deque<ov::String> _origin_map_remove_candidates;
 	std::recursive_mutex _origin_map_mutex;
 
 	redisContext *_redis_context = nullptr;

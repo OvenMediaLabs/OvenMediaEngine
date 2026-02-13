@@ -218,7 +218,7 @@ void PayloadAttr::SetFmtp(const ov::String &fmtp)
 			if(key_value.size() != 2)
 			{
 				// fmtp parsing error
-				logd("SDP", "fmtp parsing error : %s", fmtp.CStr());
+				logt("SDP", "fmtp parsing error : %s", fmtp.CStr());
 				continue;
 			}
 

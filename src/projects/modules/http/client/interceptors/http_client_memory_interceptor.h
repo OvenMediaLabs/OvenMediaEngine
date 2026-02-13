@@ -23,9 +23,14 @@ namespace http
 				const std::shared_ptr<const ov::Error> &error)>;
 
 		public:
-			void OnDownloaded(DownloadCallback callback)
+			void SetDownloadCallback(DownloadCallback callback)
 			{
 				_download_callback = std::move(callback);
+			}
+
+			DownloadCallback GetDownloadCallback() const
+			{
+				return _download_callback;
 			}
 
 		protected:

@@ -189,7 +189,7 @@ namespace pvd
 			return false;
 		}
 
-		logtd("Requested url[%d] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
+		logtt("Requested url[%d] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
 		if (scheme.UpperCaseString() != "RTSP")
@@ -919,7 +919,7 @@ namespace pvd
 		auto it = _response_subscriptions.find(cseq);
 		if (it == _response_subscriptions.end())
 		{
-			logtd("There is no request message to receive a response. (CSeq : %u)", cseq);
+			logtt("There is no request message to receive a response. (CSeq : %u)", cseq);
 			return nullptr;
 		}
 
@@ -1130,7 +1130,7 @@ namespace pvd
 	{
 		auto first_rtp_packet = rtp_packets.front();
 		auto channel = first_rtp_packet->GetRtspChannel();
-		logtd("%s", first_rtp_packet->Dump().CStr());
+		logtt("%s", first_rtp_packet->Dump().CStr());
 
 		auto track = GetTrack(channel);
 		if (track == nullptr)
@@ -1200,14 +1200,14 @@ namespace pvd
 		int64_t adjusted_timestamp;
 		if (AdjustRtpTimestamp(channel, first_rtp_packet->Timestamp(), std::numeric_limits<uint32_t>::max(), adjusted_timestamp) == false)
 		{
-			logtd("not yet received sr packet : %u", first_rtp_packet->Ssrc());
+			logtt("not yet received sr packet : %u", first_rtp_packet->Ssrc());
 			// Prevents the stream from being deleted because there is no input data
 			MonitorInstance->IncreaseBytesIn(*Stream::GetSharedPtr(), bitstream->GetLength());
 			return;
 		}
 		
 
-		logtd("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%lld) Time scale(%f) Adjust Timestamp(%f)",
+		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%lld) Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
@@ -1221,7 +1221,7 @@ namespace pvd
 												   bitstream_format,
 												   packet_type);
 
-		logtd("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), bitstream_format, packet_type, bitstream->GetLength(), first_rtp_packet->Timestamp());
+		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), bitstream_format, packet_type, bitstream->GetLength(), first_rtp_packet->Timestamp());
 
 		// Send SPS/PPS if stream is H264
 		if (_sent_sequence_header == false && track->GetCodecId() == cmn::MediaCodecId::H264 && _h264_extradata_nalu != nullptr)
@@ -1304,7 +1304,7 @@ namespace pvd
 	{
 		if (ov::Node::GetNodeState() != ov::Node::NodeState::Started)
 		{
-			logtd("Node has not started, so the received data has been canceled.");
+			logtt("Node has not started, so the received data has been canceled.");
 			return false;
 		}
 

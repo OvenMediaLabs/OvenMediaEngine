@@ -50,7 +50,7 @@ namespace cfg
 			return;
 		}
 
-		logad("Trying to cast %s for [%s] (value type: %s)",
+		logat("Trying to cast %s for [%s] (value type: %s)",
 			  ov::Demangle(value.GetTypeName()).CStr(),
 			  item_name.ToString().CStr(),
 			  StringFromValueType(GetType()));
@@ -146,7 +146,7 @@ namespace cfg
 			return;
 		}
 
-		logad("[%s] Trying to cast %s for [%s] (value type: %s)",
+		logat("[%s] Trying to cast %s for [%s] (value type: %s)",
 			  item_path.CStr(),
 			  ov::Demangle(value.GetTypeName()).CStr(),
 			  item_name.ToString().CStr(),

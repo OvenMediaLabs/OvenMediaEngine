@@ -136,6 +136,8 @@ endif
 # Enable jemalloc 
 ifeq ($(MAKECMDGOALS),release)
 $(call add_pkg_config,jemalloc)
+LOCAL_CFLAGS += -DOME_USE_JEMALLOC
+LOCAL_CXXFLAGS += -DOME_USE_JEMALLOC
 endif
 
 # Setup flags for spdlog

@@ -199,7 +199,6 @@ namespace http
 			std::shared_ptr<ov::Data> _request_body;
 
 			// response headers
-			bool _is_header_found = false;
 			HttpHeaderMap _response_header_map;
 			// Total received body size
 			size_t _response_body_size = 0;

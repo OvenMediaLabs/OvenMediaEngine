@@ -298,17 +298,17 @@ void Certificate::Print()
 	BIO_write(temp_memory_bio, "\0", 1);
 	char *buffer;
 	BIO_get_mem_data(temp_memory_bio, &buffer);
-	logd("CERT", "%s", buffer);
+	logt("CERT", "%s", buffer);
 	BIO_free(temp_memory_bio);
 
-	logd("CERT", "Fingerprint sha-256 : %s", GetFingerprint("sha-256").CStr());
+	logt("CERT", "Fingerprint sha-256 : %s", GetFingerprint("sha-256").CStr());
 
 	if (_private_key != nullptr)
 	{
 		BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE);
-		logd("CERT", "Public Key :");
+		logt("CERT", "Public Key :");
 		EVP_PKEY_print_public(bio_out, _private_key, 0, NULL);
-		logd("CERT", "Private Key ::");
+		logt("CERT", "Private Key ::");
 		EVP_PKEY_print_private(bio_out, _private_key, 0, NULL);
 		BIO_free(bio_out);
 	}

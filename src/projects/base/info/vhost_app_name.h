@@ -10,6 +10,8 @@
 
 #include <config/config.h>
 
+#include "./name_path.h"
+
 namespace info
 {
 	/// VHostAppName is a name that consists of the same form as "#vhost#app_name"
@@ -32,23 +34,26 @@ namespace info
 		const ov::String &GetVHostName() const;
 		const ov::String &GetAppName() const;
 
+		const NamePath &GetNamePath() const;
+
 		const ov::String &ToString() const;
 		const char *CStr() const;
 
 		std::size_t Hash() const
 		{
 			return std::hash<bool>()(_is_valid) ^
-				   std::hash<ov::String>()(_vhost_app_name) ^
-				   std::hash<ov::String>()(_vhost_name) ^
-				   std::hash<ov::String>()(_app_name);
+				   _name_path.Hash();
 		}
 
 	protected:
 		VHostAppName();
 
+		void UpdateNamePath();
+
 		bool _is_valid = false;
 
-		ov::String _vhost_app_name;
+		NamePath _name_path;
+
 		ov::String _vhost_name;
 		ov::String _app_name;
 	};

@@ -50,7 +50,7 @@ namespace http
 					{
 						if (memcmp(_buffer.GetData(), PREFACE, PREFACE_LENGTH) == 0)
 						{
-							logd("Debug", "HTTP/2.0 preface received");
+							logt("Debug", "HTTP/2.0 preface received");
 							_confirmed = true;
 						}
 						else

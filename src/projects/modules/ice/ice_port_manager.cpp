@@ -75,7 +75,7 @@ bool IcePortManager::CreateIceCandidates(
 	else
 	{
 		observer->AppendIceCandidates(ice_candidate_list);
-		logtd("IceCandidates are created successfully: %s", _ice_port->ToString().CStr());
+		logtt("IceCandidates are created successfully: %s", _ice_port->ToString().CStr());
 	}
 
 	return true;
@@ -165,7 +165,7 @@ bool IcePortManager::CreateTurnServersInternal(
 
 							if (found != bound_map.end())
 							{
-								logtd("TURN port is already bound to %s", address_string.CStr());
+								logtt("TURN port is already bound to %s", address_string.CStr());
 								continue;
 							}
 
@@ -177,7 +177,7 @@ bool IcePortManager::CreateTurnServersInternal(
 								return false;
 							}
 
-							logtd("TURN port is bound to %s", address_string.CStr());
+							logtt("TURN port is bound to %s", address_string.CStr());
 
 							tcp_relay_address_string_list.emplace_back(address_string);
 						}

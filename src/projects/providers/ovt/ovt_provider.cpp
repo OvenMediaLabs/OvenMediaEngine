@@ -45,7 +45,7 @@ namespace pvd
 			_client_socket_pool->Uninitialize();
 		}
 
-		logtd("Terminated OvtProvider modules.");
+		logtt("Terminated OvtProvider modules.");
 	}
 
 	std::shared_ptr<ov::SocketPool> OvtProvider::GetClientSocketPool()

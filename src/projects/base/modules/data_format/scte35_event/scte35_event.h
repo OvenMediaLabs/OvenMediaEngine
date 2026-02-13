@@ -28,6 +28,7 @@ class Scte35Event
 {
 public:
 	static std::shared_ptr<Scte35Event> Create(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return);
+	static std::shared_ptr<Scte35Event> Create(const std::shared_ptr<const mpegts::SpliceInfo> &splice_info);
 	static std::shared_ptr<Scte35Event> Parse(const std::shared_ptr<const ov::Data> &data);
 
 	Scte35Event(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return);

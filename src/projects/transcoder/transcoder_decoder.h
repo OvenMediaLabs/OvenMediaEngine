@@ -48,7 +48,7 @@ protected:
 
 	bool _change_format = false;
 
-	bool _kill_flag = false;
+	std::atomic<bool> _kill_flag{false};
 	std::thread _codec_thread;
 
 	//TODO(Keukhan): Use MediaBuffer instead of AVPacket

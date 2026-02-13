@@ -31,7 +31,7 @@ namespace pvd
 	MpegTsProvider::MpegTsProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PushProvider(server_config, router)
 	{
-		logtd("Created Mpegts Provider module.");
+		logtt("Created Mpegts Provider module.");
 	}
 
 	MpegTsProvider::~MpegTsProvider()

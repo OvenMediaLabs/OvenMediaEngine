@@ -47,7 +47,7 @@ namespace pub
 		// Implementation of SrtPlaylistSink
 		//--------------------------------------------------------------------
 		void OnSrtPlaylistData(
-			const std::shared_ptr<SrtPlaylist> &playlist,
+			const std::weak_ptr<SrtPlaylist> &playlist,
 			const std::shared_ptr<const ov::Data> &data) override;
 		//--------------------------------------------------------------------
 

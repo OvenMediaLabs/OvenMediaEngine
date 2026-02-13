@@ -34,7 +34,7 @@ RtcApplication::RtcApplication(const std::shared_ptr<pub::Publisher> &publisher,
 RtcApplication::~RtcApplication()
 {
 	Stop();
-	logtd("RtcApplication(%d) has been terminated finally", GetId());
+	logtt("RtcApplication(%d) has been terminated finally", GetId());
 }
 
 std::shared_ptr<Certificate> RtcApplication::GetCertificate()
@@ -44,13 +44,13 @@ std::shared_ptr<Certificate> RtcApplication::GetCertificate()
 
 std::shared_ptr<pub::Stream> RtcApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 {
-	logtd("RtcApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("RtcApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
 	return RtcStream::Create(GetSharedPtrAs<pub::Application>(), *info, worker_count);
 }
 
 bool RtcApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 {
-	logtd("DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	auto stream = std::static_pointer_cast<RtcStream>(GetStream(info->GetId()));
 	if (stream == nullptr)
@@ -70,7 +70,7 @@ bool RtcApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 		_rtc_signalling->Disconnect(GetVHostAppName(), stream->GetName(), session->GetPeerSDP());
 	}
 
-	logtd("RtcApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
+	logtt("RtcApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 	return true;
 }

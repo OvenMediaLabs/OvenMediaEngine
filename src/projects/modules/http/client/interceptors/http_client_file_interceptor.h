@@ -28,9 +28,14 @@ namespace http
 				_file_path = file_path;
 			}
 
-			void OnDownloaded(DownloadCallback callback)
+			void SetDownloadCallback(DownloadCallback callback)
 			{
 				_download_callback = std::move(callback);
+			}
+
+			DownloadCallback GetDownloadCallback() const
+			{
+				return _download_callback;
 			}
 
 		protected:

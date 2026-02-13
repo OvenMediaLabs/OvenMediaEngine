@@ -83,7 +83,7 @@ namespace ov
 				break;
 
 			default:
-				logtw("Could not create MessageDigest for algorithm: %d", algorithm);
+				logtw("Could not create MessageDigest for algorithm: %d", ToUnderlyingType(algorithm));
 				Destroy();
 				return false;
 		}

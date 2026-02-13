@@ -52,6 +52,7 @@ TranscodeWebhook::Policy TranscodeWebhook::RequestOutputProfiles(const info::Str
     client->SetMethod(http::Method::Post);
 	client->SetBlockingMode(ov::BlockingMode::Blocking);
 	client->SetConnectionTimeout(timeout_msec);
+    client->SetRecvTimeout(timeout_msec);
 	client->SetRequestHeader("X-OME-Signature", signature_sha1_base64);
 	client->SetRequestHeader("Content-Type", "application/json");
 	client->SetRequestHeader("Accept", "application/json");
@@ -173,9 +174,9 @@ bool TranscodeWebhook::MakeRequestBody(const info::Stream &input_stream_info, ov
 TranscodeWebhook::Policy TranscodeWebhook::ParseResponse(const info::Stream &input_stream_info, const std::shared_ptr<ov::Data> &data, cfg::vhost::app::oprf::OutputProfiles &output_profiles) const
 {
     ov::JsonObject object = ov::Json::Parse(data->ToString());
-    if (object.IsNull())
+    if (object.IsNull() || object.IsArray())
     {
-        logte("Json parsing error : a response in the wrong format was received.");
+        logte("Json parsing error : a response in the wrong format was received. (expected object, but array)");
         return _config.GetUseLocalProfilesOnErrorResponse() ? Policy::UseLocalProfiles : Policy::DeleteStream;
     }
 

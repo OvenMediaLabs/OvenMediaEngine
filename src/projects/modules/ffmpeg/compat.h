@@ -56,6 +56,7 @@ namespace ffmpeg
 		static AVPixelFormat ToAVPixelFormat(cmn::VideoPixelFormatId pixel_format);
 		static cmn::VideoPixelFormatId ToVideoPixelFormat(int32_t pixel_format);
 		static AVPixelFormat GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true);
+		static ov::String GetAVOptionsString(void *opts);
 
 		static std::shared_ptr<MediaTrack> CreateMediaTrack(AVStream* stream)
 		{
@@ -448,7 +449,7 @@ namespace ffmpeg
 						message.AppendFormat("%d Hz, %s, %s, ", context->sample_rate, channel_layout, ::av_get_sample_fmt_name(static_cast<AVSampleFormat>(context->sample_fmt)));
 					}
 
-					message.AppendFormat("%d kbps, ", (context->bit_rate / 1024));
+					message.AppendFormat("%" PRId64 " kbps, ", (context->bit_rate / 1024));
 
 					// timebase: 1/48000
 					message.AppendFormat("timebase: %d/%d", context->time_base.num, context->time_base.den);

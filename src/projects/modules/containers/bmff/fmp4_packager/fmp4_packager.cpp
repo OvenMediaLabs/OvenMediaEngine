@@ -44,7 +44,7 @@ namespace bmff
 
 	FMP4Packager::~FMP4Packager()
 	{
-		logtd("FMP4Packager has been terminated finally");
+		logtt("FMP4Packager has been terminated finally");
 	}
 
 	// Generate Initialization FMP4Segment
@@ -122,7 +122,7 @@ namespace bmff
 			// Convert data pts timescale to media timescale
 			auto pts = (double)data_packet->GetPts();
 
-			logtd("track(%d), pts: %lf, start_timestamp: %lf, end_timestamp: %lf", GetMediaTrack()->GetId(), pts, rescaled_start_timestamp, rescaled_end_timestamp);
+			logtt("track(%d), pts: %lf, start_timestamp: %lf, end_timestamp: %lf", GetMediaTrack()->GetId(), pts, rescaled_start_timestamp, rescaled_end_timestamp);
 
 			if (pts == -1)
 			{
@@ -160,7 +160,7 @@ namespace bmff
 	// Generate Media FMP4Segment
 	bool FMP4Packager::AppendSample(const std::shared_ptr<const MediaPacket> &media_packet)
 	{
-		logtd("MediaPacket : track(%d) pts(%lld), dts(%lld), duration(%lld), flag(%d), size(%d)", media_packet->GetTrackId(), media_packet->GetPts(), media_packet->GetDts(), media_packet->GetDuration(), media_packet->GetFlag(), media_packet->GetDataLength());
+		logtt("MediaPacket : track(%d) pts(%" PRId64 "), dts(%" PRId64 "), duration(%" PRId64 "), flag(%d), size(%zu)", media_packet->GetTrackId(), media_packet->GetPts(), media_packet->GetDts(), media_packet->GetDuration(), ov::ToUnderlyingType(media_packet->GetFlag()), media_packet->GetDataLength());
 
 		// Convert bitstream format
 		auto next_frame = ConvertBitstreamFormat(media_packet);
@@ -226,12 +226,12 @@ namespace bmff
 		{
 			// Too Late
 			// Never happen, it must be handled in the previous condition (has_marker_in_this_sequence == false && has_marker_in_next_sample == true)
-			logte("track(%d) - Too late, marker is included in the samples time range : sequence(%d), sample(%lld - %lld)", GetMediaTrack()->GetId(), last_sequence_number, samples->GetStartTimestamp(), samples->GetEndTimestamp());
+			logte("track(%u) - Too late, marker is included in the samples time range : sequence(%" PRId64 "), sample(%" PRId64 " - %" PRId64 ")", GetMediaTrack()->GetId(), last_sequence_number, samples->GetStartTimestamp(), samples->GetEndTimestamp());
 		}
 
 		if (marker_handling != kNoMarker)
 		{
-			logtd("track(%d) - Marker handling : %s, has marker in this sequence(%d), next sample(%d), current samples(%d)", GetMediaTrack()->GetId(), marker_handling_desc.CStr(), has_marker_in_this_sequence, has_marker_in_next_sample, has_marker_in_curr_samples);
+			logtt("track(%u) - Marker handling : %s, has marker in this sequence(%d), next sample(%d), current samples(%d)", GetMediaTrack()->GetId(), marker_handling_desc.CStr(), has_marker_in_this_sequence, has_marker_in_next_sample, has_marker_in_curr_samples);
 		}
 
 		if (samples != nullptr && samples->GetTotalCount() > 0)
@@ -248,13 +248,13 @@ namespace bmff
 					return false;
 				}
 
-				logtd("track(%d) - Force segment flush, has marker (start: %lld, marker:%lld (%s) end: %lld)", GetMediaTrack()->GetId(), samples->GetStartTimestamp(), marker->GetTimestamp(), marker->GetTag().CStr(), samples->GetEndTimestamp());
+				logtt("track(%u) - Force segment flush, has marker (start: %" PRId64 ", marker:%" PRId64 " (%s) end: %" PRId64 ")", GetMediaTrack()->GetId(), samples->GetStartTimestamp(), marker->GetTimestamp(), marker->GetTag().CStr(), samples->GetEndTimestamp());
 
 				if (marker->IsOutOfNetwork() == true)
 				{
 					// If a CUE-OUT marker is included, flush the samples immediately. This may cause the next segment to start with a non-keyframe, but it will be replaced by a new segment through another ad-insertion solution.
 					marker_handling = kShouldFlushImmediately;
-					logti("track(%d) - Force segment flush immediately, cue-out marker : sample duration (%f)", GetMediaTrack()->GetId(), samples->GetTotalDuration());
+					logti("track(%u) - Force segment flush immediately, cue-out marker : sample duration (%f)", GetMediaTrack()->GetId(), samples->GetTotalDuration());
 				}
 			}
 
@@ -292,7 +292,7 @@ namespace bmff
 				can_be_last_chunk = true;
 			}
 
-			logtd("track(%d), total_sample_duration_ms: %lf, next_total_sample_duration_ms: %lf, target_chunk_duration_ms: %lf, next_frame_is_idr: %d, is_last_partial_segment: %d last_segment_duration: %lf, target_segment_duration: %f", GetMediaTrack()->GetId(), total_sample_duration_ms, next_total_sample_duration_ms, _target_chunk_duration_ms, next_frame_is_idr, can_be_last_chunk, last_segment != nullptr ? last_segment->GetDurationMs() : -1, _storage->GetTargetSegmentDuration());
+			logtt("track(%d), total_sample_duration_ms: %lf, next_total_sample_duration_ms: %lf, target_chunk_duration_ms: %lf, next_frame_is_idr: %d, is_last_partial_segment: %d last_segment_duration: %lf, target_segment_duration: %f", GetMediaTrack()->GetId(), total_sample_duration_ms, next_total_sample_duration_ms, _target_chunk_duration_ms, next_frame_is_idr, can_be_last_chunk, last_segment != nullptr ? last_segment->GetDurationMs() : -1, _storage->GetTargetSegmentDuration());
 
 			// - In the last partial segment, if the next frame is a keyframe, a segment is created immediately. This allows the segment to start with a keyframe.
 			// - When adding samples, if the Part Target Duration is exceeded, a chunk is created immediately.
@@ -445,7 +445,7 @@ namespace bmff
 			{
 				_segmentation_info.last_segement_duration_ms += last_segment->GetDurationMs();
 			} 
-			logtd("track(%d) - last_segment_number: %lld, last_partial_segment_number: %lld, last_segment_duration_ms: %f", GetMediaTrack()->GetId(), _segmentation_info.last_segment_number, _segmentation_info.last_partial_segment_number, _segmentation_info.last_segement_duration_ms);
+			logtt("track(%u) - last_segment_number: %" PRId64 ", last_partial_segment_number: %" PRId64 ", last_segment_duration_ms: %f", GetMediaTrack()->GetId(), _segmentation_info.last_segment_number, _segmentation_info.last_partial_segment_number, _segmentation_info.last_segement_duration_ms);
 		}
 
 		return true;

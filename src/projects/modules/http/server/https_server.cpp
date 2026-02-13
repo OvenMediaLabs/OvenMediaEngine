@@ -53,7 +53,7 @@ namespace http
 
 			std::lock_guard lock_guard(_https_certificate_map_mutex);
 
-			logtd("Append the certificate for host: %s", certificate->ToString().CStr());
+			logtt("Append the certificate for host: %s", certificate->ToString().CStr());
 
 			// remove the certificate if it already exists
 			_https_certificate_map.erase(certificate->GetName());
@@ -66,7 +66,7 @@ namespace http
 		{
 			std::lock_guard lock_guard(_https_certificate_map_mutex);
 
-			logtd("Remove the certificate for host: %s", certificate->ToString().CStr());
+			logtt("Remove the certificate for host: %s", certificate->ToString().CStr());
 
 			_https_certificate_map.erase(certificate->GetName());
 
@@ -166,7 +166,7 @@ namespace http
 				}
 
 				// Error
-				logtd("Could not decrypt data");
+				logtt("Could not decrypt data");
 				remote->Close();
 			}
 			else
@@ -201,7 +201,7 @@ namespace http
 
 			if (https_certificate->tls_context->UseSslContext(ssl))
 			{
-				logtd("Certification found for server_name: %s, certificate: %s", server_name.CStr(), certificate->ToString().CStr());
+				logtt("Certification found for server_name: %s, certificate: %s", server_name.CStr(), certificate->ToString().CStr());
 				return true;
 			}
 

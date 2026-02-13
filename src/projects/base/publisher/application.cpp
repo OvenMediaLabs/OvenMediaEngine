@@ -33,7 +33,7 @@ namespace pub
 
 		_stream_data_queue.SetUrn(urn);
 
-		logtd("%s ApplicationWorker has been created", _worker_name.CStr());
+		logtt("%s ApplicationWorker has been created", _worker_name.CStr());
 
 		return true;
 	}
@@ -265,7 +265,7 @@ namespace pub
 		for (const auto &x : _streams)
 		{
 			auto stream = x.second;
-			stream->Stop();
+			stream->EnterStop();
 		}
 
 		_streams.clear();
@@ -300,7 +300,7 @@ namespace pub
 		if (stream_it == _streams.end())
 		{
 			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
-			logtd("OnStreamDeleted failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+			logtt("OnStreamDeleted failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
 			return true;
 		}
 
@@ -319,7 +319,7 @@ namespace pub
 		_streams.erase(info->GetId());
 
 		// Stop stream
-		stream->Stop();
+		stream->EnterStop();
 
 		return true;
 	}
@@ -332,7 +332,7 @@ namespace pub
 		if (stream_it == _streams.end())
 		{
 			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
-			logtd("OnStreamPrepared failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+			logtt("OnStreamPrepared failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
 			return true;
 		}
 
@@ -341,7 +341,7 @@ namespace pub
 		lock.unlock();
 
 		// Start stream
-		if (stream->Start() == false)
+		if (stream->EnterStart() == false)
 		{
 			stream->SetState(Stream::State::ERROR);
 			logtw("%s could not start [%s] stream.", GetApplicationTypeName(), info->GetName().CStr(), info->GetId());
@@ -353,21 +353,14 @@ namespace pub
 
 	bool Application::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_map_mutex);
-
-		auto stream_it = _streams.find(info->GetId());
-		if (stream_it == _streams.end())
+		auto stream = GetStream(info->GetId());
+		if (stream == nullptr)
 		{
-			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
-			logtd("OnStreamUpdated failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
-			return true;
+			logte("OnStreamUpdated failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+			return false;
 		}
 
-		auto stream = stream_it->second;
-
-		lock.unlock();
-
-		return stream->OnStreamUpdated(info);
+		return stream->EnterUpdate(info);
 	}
 
 	std::shared_ptr<ApplicationWorker> Application::GetLowestLoadWorker()

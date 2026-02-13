@@ -23,12 +23,8 @@ extern "C"
 
 #define OV_LOG_TAG "Writer"
 
-#define logat(format, ...) logtt("[%p] " format, this, ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%p] " format, this, ##__VA_ARGS__)
-#define logai(format, ...) logti("[%p] " format, this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%p] " format, this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[%p] " format, this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%p] " format, this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%p] "
+#define OV_LOG_PREFIX_VALUE this
 
 static AVRational RationalFromTimebase(const cmn::Timebase &timebase)
 {
@@ -291,7 +287,7 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 
 int Writer::OnWrite(const uint8_t *buf, int buf_size)
 {
-	logat("Writing %d bytes", buf_size);
+	logap("Writing %d bytes", buf_size);
 
 	if (buf_size < 0)
 	{
@@ -314,7 +310,7 @@ int Writer::OnWrite(const uint8_t *buf, int buf_size)
 #if DEBUG
 			int current_buffer_size = _buffer_size;
 
-			logad("Increasing buffer size by %d (before: %d, after: %d), data size: %zu (remained: %zu), requested: %d",
+			logat("Increasing buffer size by %d (before: %d, after: %d), data size: %zu (remained: %zu), requested: %d",
 				  increase_amount, current_buffer_size, current_buffer_size + increase_amount,
 				  data->GetLength(), remained, buf_size);
 #endif	// DEBUG
@@ -379,7 +375,7 @@ bool Writer::AddTrack(const std::shared_ptr<const MediaTrack> &media_track)
 	_track_list.emplace_back(track);
 	_track_map[media_track->GetId()] = track;
 
-	logad("Track %s is added", cmn::GetMediaTypeString(media_track->GetMediaType()));
+	logat("Track %s is added", cmn::GetMediaTypeString(media_track->GetMediaType()));
 
 	return true;
 }
@@ -540,14 +536,14 @@ int Writer::DecideBufferSize() const
 	{
 		int buffer_size = static_cast<int>(estimated_buffer_size * WRITER_BUFFER_ROOM_MULTIPLIER);
 		// Since the bitrate can vary little by little, a certain amount of room should be given
-		logad("Calculated buffer size from track list: %d, this buffer size will be used: %d",
+		logat("Calculated buffer size from track list: %d, this buffer size will be used: %d",
 			  estimated_buffer_size, buffer_size);
 
 		return buffer_size;
 	}
 
 	// Since the buffer size cannot be inferred from the track list, the default size is used
-	logad("Default buffer size is used: %d", WRITER_DEFAULT_BUFFER_SIZE);
+	logat("Default buffer size is used: %d", WRITER_DEFAULT_BUFFER_SIZE);
 	return WRITER_DEFAULT_BUFFER_SIZE;
 }
 

@@ -31,7 +31,9 @@ namespace serdes
 
 		SetString(object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
 		SetInt(object, "width", track->GetWidth());
+		SetInt(object, "maxWidth", track->GetMaxWidth());
 		SetInt(object, "height", track->GetHeight());
+		SetInt(object, "maxHeight", track->GetMaxHeight());
 		SetInt(object, "bitrate", track->GetBitrate());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
 		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());

@@ -129,7 +129,7 @@ void TranscoderEvents::RunEvent(std::shared_ptr<info::Stream> &stream, std::shar
 				packet->SetFragHeader(std::get<1>(new_data.value()).get());
 				is_inserted = true;
 
-				logtd("Inserted NALU. stream(%s), track(%u), cur.ts(%lldms), req.ts(%lldms), key(%s)",
+				logtt("Inserted NALU. stream(%s), track(%u), cur.ts(%lldms), req.ts(%lldms), key(%s)",
 					  stream->GetName().CStr(), packet->GetTrackId(), packet_time, event_time, packet->IsKeyFrame() ? "key" : "non-key");
 			}
 			else

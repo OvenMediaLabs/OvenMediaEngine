@@ -36,7 +36,7 @@ HlsApplication::HlsApplication(const std::shared_ptr<pub::Publisher> &publisher,
 HlsApplication::~HlsApplication()
 {
 	Stop();
-	logtd("HlsApplication(%d) has been terminated finally", GetId());
+	logtt("HlsApplication(%d) has been terminated finally", GetId());
 }
 
 bool HlsApplication::Start()
@@ -51,14 +51,14 @@ bool HlsApplication::Stop()
 
 std::shared_ptr<pub::Stream> HlsApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 {
-	logtd("Created stream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("Created stream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	return HlsStream::Create(GetSharedPtrAs<pub::Application>(), *info, worker_count);
 }
 
 bool HlsApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 {
-	logtd("HlsApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("HlsApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	auto stream = std::static_pointer_cast<HlsStream>(GetStream(info->GetId()));
 	if (stream == nullptr)
@@ -67,7 +67,7 @@ bool HlsApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 		return false;
 	}
 
-	logtd("HlsApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
+	logtt("HlsApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 	return true;
 }

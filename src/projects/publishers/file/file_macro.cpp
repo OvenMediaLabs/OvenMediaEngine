@@ -53,7 +53,7 @@ namespace pub
 			tmp = matches[1];
 			ov::String group = ov::String(tmp.c_str());
 
-			// logtd("Full Match(%s) => Group(%s)", full_match.CStr(), group.CStr());
+			// logtt("Full Match(%s) => Group(%s)", full_match.CStr(), group.CStr());
 
 			if (group.IndexOf("VirtualHost") != -1L)
 			{
@@ -166,7 +166,7 @@ namespace pub
 			}
 		}
 
-		// logtd("Regular Expression Result : %s", replaced_string.CStr());
+		// logtt("Regular Expression Result : %s", replaced_string.CStr());
 
 		return replaced_string;
 	}

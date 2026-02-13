@@ -62,7 +62,7 @@ namespace ov
 			}
 			else
 			{
-				logtd("Use cached OCSP response: %p", cert);
+				logtt("Use cached OCSP response: %p", cert);
 			}
 		}
 

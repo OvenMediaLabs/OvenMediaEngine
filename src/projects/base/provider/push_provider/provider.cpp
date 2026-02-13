@@ -188,7 +188,7 @@ namespace pvd
 					continue;
 				}
 
-				logtd("Checking channel %d, elapsed %d ms, timeout %d ms", channel->GetChannelId(), 
+				logtt("Checking channel %d, elapsed %d ms, timeout %d ms", channel->GetChannelId(), 
 																			channel->GetElapsedMsSinceLastReceived(),
 																			channel->GetPacketSilenceTimeoutMs());
 

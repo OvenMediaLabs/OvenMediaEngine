@@ -25,13 +25,15 @@
 #include "transcoder_stream_internal.h"
 #include "transcoder_events.h"
 #include "transcoder_overlays.h"
+#include "transcoder_alert.h"
 
 class TranscodeApplication;
 
 class TranscoderStream : public ov::EnableSharedFromThis<TranscoderStream>,
 						 public TranscoderStreamInternal,
 						 public TranscoderEvents,
-						 public TranscoderOverlays
+						 public TranscoderOverlays,
+						 public TranscoderAlerts
 {
 public:
 	class CompositeContext
@@ -133,8 +135,8 @@ private:
 	// Set the stream state
 	void SetState(State state)
 	{
-		logd("Transcoder", "%s stream state changed: %s -> %s", _log_prefix.CStr(), GetStateString(_state), GetStateString(state));
-		_state = state;
+		logt("Transcoder", "%s stream state changed: %s -> %s", _log_prefix.CStr(), GetStateString(_state), GetStateString(state));
+		_state.exchange(state);
 	}
 
 	State GetState() const
@@ -142,7 +144,7 @@ private:
 		return _state;
 	}
 
-	State _state = State::CREATED;
+	std::atomic<State> _state = State::CREATED;
 
 private:
 	ov::String _log_prefix;
@@ -239,10 +241,11 @@ private:
 
 private:
 	std::shared_ptr<MediaTrack> GetInputTrack(MediaTrackId track_id);
+	std::shared_ptr<MediaTrack> GetInputTrackByOutputTrackId(MediaTrackId output_track_id);
 	std::shared_ptr<info::Stream> GetInputStream();
 	std::shared_ptr<info::Stream> GetOutputStreamByTrackId(MediaTrackId output_track_id);
 
-	const cfg::vhost::app::oprf::OutputProfiles* RequestWebhoook();
+	const cfg::vhost::app::oprf::OutputProfiles* RequestWebhook();
 	bool StartInternal();
 	bool PrepareInternal();
 	bool UpdateInternal(const std::shared_ptr<info::Stream> &stream);
@@ -278,7 +281,7 @@ private:
 	std::optional<std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<TranscodeEncoder>>> GetEncoderSet(MediaTrackId encoder_id);
 	std::shared_ptr<TranscodeFilter> GetPostFilter(MediaTrackId encoder_id);
 	std::shared_ptr<TranscodeEncoder> GetEncoder(MediaTrackId encoder_id);
-	void SetPostFilterAndEncoder(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder);
+	void SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder);
 	void RemoveEncoders();
 	void RemoveSpecificEncoders();
 
@@ -302,14 +305,14 @@ private:
 	// Step 2: Filter (resample/rescale the decoded frame)
 	void SpreadToFilters(MediaTrackId decoder_id, std::shared_ptr<MediaFrame> frame);
 	TranscodeResult PreFilterFrame(MediaTrackId track_id, std::shared_ptr<MediaFrame> frame);
-	void OnPreFilteredFrame(MediaTrackId filter_id, std::shared_ptr<MediaFrame> decoded_frame);
+	void OnPreFilteredFrame(TranscodeResult result, MediaTrackId filter_id, std::shared_ptr<MediaFrame> decoded_frame);
 
 	TranscodeResult PostFilterFrame(std::shared_ptr<MediaFrame> frame);
-	void OnPostFilteredFrame(MediaTrackId filter_id, std::shared_ptr<MediaFrame> decoded_frame);
+	void OnPostFilteredFrame(TranscodeResult result, MediaTrackId filter_id, std::shared_ptr<MediaFrame> decoded_frame);
 
 	// Step 3: Encode (Encode the filtered frame to packets)
 	TranscodeResult EncodeFrame(std::shared_ptr<const MediaFrame> frame);
-	void OnEncodedPacket(MediaTrackId encoder_id, std::shared_ptr<MediaPacket> encoded_packet);
+	void OnEncodedPacket(TranscodeResult result, MediaTrackId encoder_id, std::shared_ptr<MediaPacket> encoded_packet);
 
 	std::vector<std::shared_ptr<MediaTrack>> GetOutputTracksByEncoderId(MediaTrackId encoder_id);
 
@@ -319,6 +322,11 @@ private:
 	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<MediaTrack> &video_track, const std::shared_ptr<MediaTrack> &audio_track);
 
 private:
+	// Async prepare handling
+	void PrepareAsync();
+	std::thread _prepare_thread;
+	std::atomic<bool> _prepare_thread_running = false;
+	
 	// Initial buffer for ready to stream
 	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
 	bool SendBufferedPackets();

@@ -219,7 +219,7 @@ namespace http
 						[&origin_header, &found_origin](const auto &cors_item) -> bool {
 							const auto result = cors_item.IsMatches(origin_header);
 
-							logtd("Checking CORS for origin header [%s] with config [%s] (%s): %s",
+							logtt("Checking CORS for origin header [%s] with config [%s] (%s): %s",
 								  origin_header.CStr(),
 								  cors_item.regex.GetPattern().CStr(), cors_item.url.CStr(),
 								  result ? "MATCHED" : "not matched");

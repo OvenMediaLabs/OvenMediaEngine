@@ -118,7 +118,7 @@ namespace pvd
 							{
 								auto failback_url = stream->GetPrimaryURL()->ToUrlString(true);
 							
-								logtd("%s/%s(%u) Attempt to connect to verify that the primary stream is available. url(%s)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), failback_url.CStr());
+								logtt("%s/%s(%u) Attempt to connect to verify that the primary stream is available. url(%s)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), failback_url.CStr());
 							
 								auto ping_props = std::make_shared<pvd::PullStreamProperties>();
 								ping_props->SetRetryCount(0);
@@ -139,7 +139,7 @@ namespace pvd
 								}
 								else 
 								{
-									logtd("%s/%s(%u) primary stream is not available.", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+									logtt("%s/%s(%u) primary stream is not available.", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
 								}
 
 								props->UpdateFailbackCheckTime();
@@ -183,56 +183,55 @@ namespace pvd
 		return hash;
 	}
 
-	std::shared_ptr<StreamMotor> PullApplication::CreateStreamMotorInternal(const std::shared_ptr<PullStream> &stream)
+	bool PullApplication::AddStreamToMotorInternal(const std::shared_ptr<PullStream> &stream)
 	{
-		auto motor_id = GetStreamMotorId(stream);
-		auto motor = std::make_shared<StreamMotor>(motor_id);
-		motor->Start();
-
 		std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
-		_stream_motors.emplace(motor_id, motor);
 
-		logti("%s application has created %u stream motor", stream->GetApplicationInfo().GetVHostAppName().CStr(), motor_id);
-
-		return motor;
-	}
-
-	std::shared_ptr<StreamMotor> PullApplication::GetStreamMotorInternal(const std::shared_ptr<PullStream> &stream)
-	{
 		std::shared_ptr<StreamMotor> motor = nullptr;
-
 		auto motor_id = GetStreamMotorId(stream);
-
-		std::shared_lock<std::shared_mutex> lock(_stream_motors_guard);
 		auto it = _stream_motors.find(motor_id);
-		if(it == _stream_motors.end())
+		if (it == _stream_motors.end())
 		{
-			logtd("Could not find stream motor : %s/%s(%u)", GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
-			return nullptr;
+			motor = std::make_shared<StreamMotor>(motor_id);
+			motor->Start();
+
+			_stream_motors.emplace(motor_id, motor);
+			logti("%s application has created %u StreamMotor", stream->GetApplicationInfo().GetVHostAppName().CStr(), motor_id);
+		}
+		else
+		{
+			motor = it->second;
 		}
 
-		motor = it->second;
-
-		return motor;
+		motor->AddStream(stream);
+		logti("%s/%s(%u) stream has been added to StreamMotor %u", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), motor_id);
+		return true;
 	}
 
-	bool PullApplication::DeleteStreamMotorInternal(const std::shared_ptr<PullStream> &stream)
+	bool PullApplication::DeleteStreamFromMotorInternal(const std::shared_ptr<PullStream> &stream)
 	{
-		auto motor = GetStreamMotorInternal(stream);
-		if(motor == nullptr)
+		std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
+
+		std::shared_ptr<StreamMotor> motor = nullptr;
+		auto motor_id = GetStreamMotorId(stream);
+		auto it = _stream_motors.find(motor_id);
+		if (it == _stream_motors.end())
 		{
-			logtc("Could not find stream motor to remove stream : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			logte("Could not find StreamMotor to remove stream : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
 			return false;
+		}
+		else
+		{
+			motor = it->second;
 		}
 
 		motor->DelStream(stream);
+		logti("%s/%s(%u) stream has been deleted from stream motor %u", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), motor_id);
 
 		if(motor->GetStreamCount() == 0)
 		{
 			motor->Stop();
 			auto motor_id = GetStreamMotorId(stream);
-
-			std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
 			_stream_motors.erase(motor_id);
 
 			logti("%s application has deleted %u stream motor", stream->GetApplicationInfo().GetVHostAppName().CStr(), motor_id);
@@ -261,20 +260,13 @@ namespace pvd
 			return nullptr;
 		}
 
-		auto motor = GetStreamMotorInternal(stream);
-		if(motor == nullptr)
+		if (AddStreamToMotorInternal(stream) == false)
 		{
-			motor = CreateStreamMotorInternal(stream);
-			if(motor == nullptr)
-			{
-				logtc("Cannot create StreamMotor : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
-				return nullptr;
-			}
+			logte("Could not add stream to motor : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			DeleteStream(stream);
+			return nullptr;
 		}
 
-		// And push data next
-		motor->AddStream(stream);
-		
 		return stream;
 	}
 
@@ -291,26 +283,21 @@ namespace pvd
 			return false;
 		}
 
-		auto motor = GetStreamMotorInternal(pull_stream);
-		if(motor == nullptr)
+		if (AddStreamToMotorInternal(pull_stream) == false)
 		{
-			// Something wrong
+			logte("Could not add stream to motor : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			DeleteStream(stream);
 			return false;
 		}
 
 		NotifyStreamUpdated(pull_stream);
-
-		if(motor->UpdateStream(pull_stream) == false)
-		{
-			return false;
-		}
 
 		return true;
 	}
 
 	bool PullApplication::DeleteStream(const std::shared_ptr<Stream> &stream)
 	{
-		DeleteStreamMotorInternal(std::dynamic_pointer_cast<PullStream>(stream));
+		DeleteStreamFromMotorInternal(std::dynamic_pointer_cast<PullStream>(stream));
 		return Application::DeleteStream(stream);
 	}
 

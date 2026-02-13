@@ -91,11 +91,9 @@ namespace pvd
 	}
 
 	RtmpStream::RtmpStream(StreamSourceType source_type, uint32_t client_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider)
-		: PushStream(source_type, client_id, provider),
-
-		  _vhost_app_name(info::VHostAppName::InvalidVHostAppName())
+		: PushStream(source_type, client_id, provider)
 	{
-		logtd("Stream has been created");
+		logat("Stream has been created");
 
 		_remote = client_socket;
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
@@ -110,7 +108,7 @@ namespace pvd
 
 	RtmpStream::~RtmpStream()
 	{
-		logtd("Stream has been terminated finally");
+		logat("Stream has been terminated finally");
 	}
 
 	bool RtmpStream::Start()
@@ -165,7 +163,7 @@ namespace pvd
 		// Check stream expired by signed policy
 		if (CheckStreamExpired() == true)
 		{
-			logti("Stream has expired by signed policy (%s/%s)", _vhost_app_name.CStr(), GetName().CStr());
+			logai("Stream has expired by signed policy");
 			Stop();
 			return false;
 		}
@@ -182,7 +180,7 @@ namespace pvd
 
 		if ((_remained_data != nullptr) && (_remained_data->GetLength() > RTMP_MAX_PACKET_SIZE))
 		{
-			logte("The packet is ignored because the size is too large: [%d]), packet size: %zu, threshold: %d",
+			logae("The packet is ignored because the size is too large: [%u]), packet size: %zu, threshold: %d",
 				  GetChannelId(), _remained_data->GetLength(), RTMP_MAX_PACKET_SIZE);
 
 			return false;
@@ -197,7 +195,7 @@ namespace pvd
 			_remained_data->Append(data);
 		}
 
-		logtt("Trying to parse data\n%s", _remained_data->Dump(_remained_data->GetLength()).CStr());
+		logap("Trying to parse data\n%s", _remained_data->Dump(_remained_data->GetLength()).CStr());
 
 		while (true)
 		{
@@ -214,9 +212,7 @@ namespace pvd
 
 			if (process_size < 0)
 			{
-				logtd("Could not process RTMP packet: [%s/%s] (%u/%u), size: %zu bytes, returns: %d",
-					  _vhost_app_name.CStr(), _stream_name.CStr(),
-					  _app_id, GetId(),
+				logat("Could not process RTMP packet: size: %zu bytes, returns: %d",
 					  _remained_data->GetLength(),
 					  process_size);
 
@@ -226,7 +222,7 @@ namespace pvd
 			else if (process_size == 0)
 			{
 				// Need more data
-				// logtd("Not enough data");
+				// logat("Not enough data");
 				break;
 			}
 
@@ -254,7 +250,7 @@ namespace pvd
 
 		if (url == nullptr)
 		{
-			logtw("Could not parse the URL: %s", _tc_url.CStr());
+			logaw("Could not parse the URL: %s", _tc_url.CStr());
 			return false;
 		}
 
@@ -280,7 +276,7 @@ namespace pvd
 		_url = url;
 		_publish_url = _url;
 		_stream_name = _url->Stream();
-		_import_chunk->SetStreamName(_stream_name);
+		_import_chunk->UpdateNamePath(GetNamePath());
 
 		SetRequestedUrl(_url);
 		SetFinalUrl(_url);
@@ -308,7 +304,13 @@ namespace pvd
 			pair = object->GetPair("app", AmfTypeMarker::String);
 			if (pair != nullptr)
 			{
-				_app_name = pair->property.GetString();
+				_app_name	  = pair->property.GetString();
+
+				auto seprator = _app_name.IndexOf('/');
+				if (seprator >= 0)
+				{
+					_app_name = _app_name.Substring(0, seprator);
+				}
 			}
 
 			// app url set
@@ -325,7 +327,6 @@ namespace pvd
 		if (_url != nullptr)
 		{
 			_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(_url->Host(), _app_name);
-			_import_chunk->SetAppName(_vhost_app_name);
 
 			//Since vhost/app/stream can be changed in AdmissionWebhooks, it is not checked here.
 			// auto app_info = ocst::Orchestrator::GetInstance()->GetApplicationInfo(_vhost_app_name);
@@ -335,43 +336,51 @@ namespace pvd
 			// }
 			// else
 			// {
-			// 	logte("%s application does not exist", _vhost_app_name.CStr());
+			// 	logae("%s application does not exist", _vhost_app_name.CStr());
 			// 	Stop();
 			// 	return;
 			// }
 		}
 		else
 		{
-			logtw("Could not obtain tcUrl from the RTMP stream: [%s]", _app_name.CStr());
+			logaw("Could not obtain tcUrl from the RTMP stream");
 
 			// TODO(dimiden): If tcUrl is not provided, it's not possible to determine which VHost the request was received,
 			// so it does not work properly.
 			// So, if there is currently one VHost associated with the RTMP Provider, we need to modify it to work without tcUrl.
-			_vhost_app_name = info::VHostAppName("", _app_name);
-			_import_chunk->SetAppName(_vhost_app_name);
+			_vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		}
+
+		UpdateNamePath(_vhost_app_name);
+		_import_chunk->UpdateNamePath(GetNamePath());
 
 		if (SendWindowAcknowledgementSize(RTMP_DEFAULT_ACKNOWNLEDGEMENT_SIZE) == false)
 		{
-			logte("SendWindowAcknowledgementSize Fail");
+			logae("SendWindowAcknowledgementSize Fail");
 			return false;
 		}
 
 		if (SendSetPeerBandwidth(_peer_bandwidth) == false)
 		{
-			logte("SendSetPeerBandwidth Fail");
+			logae("SendSetPeerBandwidth Fail");
 			return false;
 		}
 
 		if (SendStreamBegin(0) == false)
 		{
-			logte("SendStreamBegin Fail");
+			logae("SendStreamBegin Fail");
 			return false;
 		}
 
-		if (SendAmfConnectResult(header->basic_header.chunk_stream_id, transaction_id, object_encoding) == false)
+		if (SendSetChunkSize(RTMP_DEFAULT_CHUNK_SIZE) == false)
 		{
-			logte("SendAmfConnectResult Fail");
+			logae("SendSetChunkSize Fail");
+			return false;
+		}
+
+		if (SendAmfConnectResult(transaction_id, object_encoding) == false)
+		{
+			logae("SendAmfConnectResult Fail");
 			return false;
 		}
 
@@ -382,7 +391,7 @@ namespace pvd
 	{
 		if (SendAmfCreateStreamResult(header->basic_header.chunk_stream_id, transaction_id) == false)
 		{
-			logte("SendAmfCreateStreamResult Fail");
+			logae("SendAmfCreateStreamResult Fail");
 			return false;
 		}
 
@@ -400,12 +409,12 @@ namespace pvd
 		switch (signed_policy_result)
 		{
 			case AccessController::VerificationResult::Error:
-				logtw("SignedPolicy error : %s", _url->ToUrlString().CStr());
+				logaw("SignedPolicy error : %s", _url->ToUrlString().CStr());
 				Stop();
 				return false;
 
 			case AccessController::VerificationResult::Fail:
-				logtw("%s", _signed_policy->GetErrMessage().CStr());
+				logaw("%s", _signed_policy->GetErrMessage().CStr());
 				Stop();
 				return false;
 
@@ -421,12 +430,12 @@ namespace pvd
 		switch (webhooks_result)
 		{
 			case AccessController::VerificationResult::Error:
-				logtw("AdmissionWebhooks error : %s", _url->ToUrlString().CStr());
+				logaw("AdmissionWebhooks error : %s", _url->ToUrlString().CStr());
 				Stop();
 				break;
 
 			case AccessController::VerificationResult::Fail:
-				logtw("AdmissionWebhooks error : %s", _admission_webhooks->GetErrReason().CStr());
+				logaw("AdmissionWebhooks error : %s", _admission_webhooks->GetErrReason().CStr());
 				Stop();
 				break;
 
@@ -462,7 +471,7 @@ namespace pvd
 	{
 		if (_publish_url == nullptr)
 		{
-			logte("Publish URL is not set");
+			logae("Publish URL is not set");
 			return false;
 		}
 
@@ -472,7 +481,7 @@ namespace pvd
 			_publish_url->App().IsEmpty() ||
 			_publish_url->Stream().IsEmpty())
 		{
-			logte("Invalid publish URL: %s", _publish_url->ToUrlString().CStr());
+			logae("Invalid publish URL: %s", _publish_url->ToUrlString().CStr());
 			return false;
 		}
 
@@ -487,7 +496,7 @@ namespace pvd
 			return true;
 		}
 
-		logte("Could not find application: %s", vhost_app_name.CStr());
+		logae("Could not find application: %s", vhost_app_name.CStr());
 		return false;
 	}
 
@@ -499,14 +508,14 @@ namespace pvd
 
 			if (property == nullptr)
 			{
-				logte("OnAmfFCPublish - No stream name provided");
+				logae("OnAmfFCPublish - No stream name provided");
 				return false;
 			}
 
 			// TODO: check if the chunk stream id is already exist, and generates new rtmp_stream_id and client_id.
-			if (SendAmfOnFCPublish(header->basic_header.chunk_stream_id, _rtmp_stream_id, _client_id) == false)
+			if (SendAmfOnFCPublish(_client_id) == false)
 			{
-				logte("SendAmfOnFCPublish Fail");
+				logae("SendAmfOnFCPublish Fail");
 				return false;
 			}
 
@@ -530,7 +539,7 @@ namespace pvd
 			}
 			else
 			{
-				logte("OnAmfPublish - No stream name provided");
+				logae("OnAmfPublish - No stream name provided");
 
 				// Reject
 				SendAmfOnStatus(header->basic_header.chunk_stream_id,
@@ -548,7 +557,7 @@ namespace pvd
 
 		if (SendStreamBegin(_rtmp_stream_id) == false)
 		{
-			logte("SendStreamBegin Fail");
+			logae("SendStreamBegin Fail");
 			return false;
 		}
 
@@ -559,7 +568,7 @@ namespace pvd
 							"Publishing",
 							_client_id) == false)
 		{
-			logte("SendAmfOnStatus Fail");
+			logae("SendAmfOnStatus Fail");
 			return false;
 		}
 
@@ -839,11 +848,7 @@ namespace pvd
 		if ((video_available && (video_codec_type != RtmpCodecType::H264)) ||
 			(audio_available && (audio_codec_type != RtmpCodecType::AAC)))
 		{
-			logtw("AmfMeta has incompatible codec information. - stream(%s/%s) id(%u/%u) video(%s) audio(%s)",
-				  _vhost_app_name.CStr(),
-				  _stream_name.CStr(),
-				  _app_id,
-				  GetId(),
+			logaw("AmfMeta has incompatible codec information. - video(%s) audio(%s)",
 				  GetCodecString(video_codec_type).CStr(),
 				  GetCodecString(audio_codec_type).CStr());
 		}
@@ -853,7 +858,7 @@ namespace pvd
 
 	bool RtmpStream::OnAmfDeleteStream(const std::shared_ptr<const RtmpChunkHeader> &header, AmfDocument &document, double transaction_id)
 	{
-		logtd("Delete Stream - stream(%s/%s) id(%u/%u)", _vhost_app_name.CStr(), _stream_name.CStr(), _app_id, GetId());
+		logat("Delete Stream");
 
 		_media_info->video_stream_coming = false;
 		_media_info->audio_stream_coming = false;
@@ -923,38 +928,38 @@ namespace pvd
 		switch (_handshake_state)
 		{
 			case RtmpHandshakeState::Uninitialized:
-				logtd("Handshaking is started. Trying to parse for C0/C1 packets...");
+				logat("Handshaking is started. Trying to parse for C0/C1 packets...");
 				process_size = (sizeof(uint8_t) + RTMP_HANDSHAKE_PACKET_SIZE);
 				break;
 
 			case RtmpHandshakeState::S2:
-				logtd("Trying to parse for C2 packet...");
+				logat("Trying to parse for C2 packet...");
 				process_size = (RTMP_HANDSHAKE_PACKET_SIZE);
 				break;
 
 			default:
-				logte("Failed to handshake: state: %d", static_cast<int32_t>(_handshake_state));
+				logae("Failed to handshake: state: %d", static_cast<int32_t>(_handshake_state));
 				return -1LL;
 		}
 
 		if (static_cast<int32_t>(data->GetLength()) < process_size)
 		{
 			// Need more data
-			logtd("Need more data: data: %zu bytes, expected: %d bytes", data->GetLength(), process_size);
+			logat("Need more data: data: %zu bytes, expected: %d bytes", data->GetLength(), process_size);
 			return 0LL;
 		}
 
 		if (_handshake_state == RtmpHandshakeState::Uninitialized)
 		{
-			logtd("C0/C1 packets are arrived");
+			logat("C0/C1 packets are arrived");
 
 			char version = data->At(0);
 
-			logtd("Trying to check RTMP version (%d)...", RTMP_HANDSHAKE_VERSION);
+			logat("Trying to check RTMP version (%d)...", RTMP_HANDSHAKE_VERSION);
 
 			if (version != RTMP_HANDSHAKE_VERSION)
 			{
-				logte("Invalid RTMP version: %d, expected: %d", version, RTMP_HANDSHAKE_VERSION);
+				logae("Invalid RTMP version: %d, expected: %d", version, RTMP_HANDSHAKE_VERSION);
 				return -1LL;
 			}
 
@@ -964,23 +969,23 @@ namespace pvd
 
 			// S0,S1,S2 전송
 
-			logtd("Trying to send S0/S1/S2 packets...");
+			logat("Trying to send S0/S1/S2 packets...");
 
 			if (SendHandshake(send_packet) == false)
 			{
-				logte("Could not send S0/S1/S2 packets");
+				logae("Could not send S0/S1/S2 packets");
 				return -1LL;
 			}
 
 			return process_size;
 		}
 
-		logtd("C2 packet is arrived");
+		logat("C2 packet is arrived");
 
 		_handshake_state = RtmpHandshakeState::C2;
 		_handshake_state = RtmpHandshakeState::Complete;
 
-		logtd("Handshake is completed");
+		logat("Handshake is completed");
 
 		return process_size;
 	}
@@ -1000,7 +1005,7 @@ namespace pvd
 			switch (status)
 			{
 				case RtmpChunkParser::ParseResult::Error:
-					logte("An error occurred while parse RTMP data");
+					logae("An error occurred while parse RTMP data");
 					return -1;
 
 				case RtmpChunkParser::ParseResult::NeedMoreData:
@@ -1009,8 +1014,8 @@ namespace pvd
 				case RtmpChunkParser::ParseResult::Parsed:
 					if (ReceiveChunkMessage() == false)
 					{
-						logtd("ReceiveChunkMessage Fail");
-						logtt("Failed to import packet\n%s", current_data->Dump(current_data->GetLength()).CStr());
+						logat("ReceiveChunkMessage Fail");
+						logap("Failed to import packet\n%s", current_data->Dump(current_data->GetLength()).CStr());
 
 						return -1LL;
 					}
@@ -1068,7 +1073,7 @@ namespace pvd
 					result = ReceiveWindowAcknowledgementSize(message);
 					break;
 				default:
-					logtw("Unknown Type - Type(%d)", message->header->completed.type_id);
+					logaw("Unknown Type - Type(%d)", ov::ToUnderlyingType(message->header->completed.type_id));
 					break;
 			}
 
@@ -1085,13 +1090,13 @@ namespace pvd
 	{
 		if (message->payload->GetLength() < 4)
 		{
-			logte("Invalid message size (data length must be at least 4 bytes, but %zu)", message->payload->GetLength());
+			logae("Invalid message size (data length must be at least 4 bytes, but %zu)", message->payload->GetLength());
 			return false;
 		}
 
 		auto chunk_size = RtmpMuxUtil::ReadInt32(message->payload->GetData());
 
-		logti("[%s/%s] ChunkSize is changed to %u (stream id: %u)", _vhost_app_name.CStr(), _stream_name.CStr(), chunk_size, message->header->completed.stream_id);
+		logai("ChunkSize is changed to %u (stream id: %u)", chunk_size, message->header->completed.stream_id);
 
 		_import_chunk->SetChunkSize(chunk_size);
 
@@ -1113,13 +1118,13 @@ namespace pvd
 			(message_stream_id != 0) ||
 			(chunk_stream_id != 2))
 		{
-			logte("Invalid id (message stream id: %u, chunk stream id: %u)", message_stream_id, chunk_stream_id);
+			logae("Invalid id (message stream id: %u, chunk stream id: %u)", message_stream_id, chunk_stream_id);
 			return false;
 		}
 
 		if (data->GetLength() < 2)
 		{
-			logte("Invalid user control message size (data length must greater than 2 bytes, but %zu)", data->GetLength());
+			logae("Invalid user control message size (data length must greater than 2 bytes, but %zu)", data->GetLength());
 			return false;
 		}
 
@@ -1132,7 +1137,7 @@ namespace pvd
 			case UserControlMessageId::PingRequest: {
 				if (data->GetLength() != 6)
 				{
-					logte("Invalid ping message size: %zu", data->GetLength());
+					logae("Invalid ping message size: %zu", data->GetLength());
 					return false;
 				}
 
@@ -1165,7 +1170,7 @@ namespace pvd
 	{
 		if (message->payload->GetLength() < 4)
 		{
-			logte("Invalid message size (data length must be at least 4 bytes, but %zu)", message->payload->GetLength());
+			logae("Invalid message size (data length must be at least 4 bytes, but %zu)", message->payload->GetLength());
 			return false;
 		}
 
@@ -1188,7 +1193,7 @@ namespace pvd
 		{
 			OV_ASSERT2(message->payload->GetLength() == message->header->message_length);
 
-			logte("Invalid AMF0CommandMessage size (data length must be equal to message length, but %zu != %u)",
+			logae("Invalid AMF0CommandMessage size (data length must be equal to message length, but %zu != %u)",
 				  message->payload->GetLength(),
 				  message->header->message_length);
 			return false;
@@ -1199,7 +1204,7 @@ namespace pvd
 
 		if (document.Decode(byte_stream) == false)
 		{
-			logte("Could not decode AMFDocument");
+			logae("Could not decode AMFDocument");
 			return false;
 		}
 
@@ -1210,7 +1215,7 @@ namespace pvd
 
 			if (property == nullptr)
 			{
-				logtw("The message (type: %d) was ignored - the name does not exist", property->GetType());
+				logaw("The message was ignored - the name does not exist");
 				return true;
 			}
 
@@ -1259,7 +1264,7 @@ namespace pvd
 		}
 
 		// Commands not handled by OME are not treated as errors but simply ignored
-		logtw("Unknown Amf0CommandMessage - Message(%s:%.1f)", message_name.CStr(), transaction_id);
+		logaw("Unknown Amf0CommandMessage - Message(%s:%.1f)", message_name.CStr(), transaction_id);
 
 		return true;
 	}
@@ -1270,7 +1275,7 @@ namespace pvd
 		{
 			OV_ASSERT2(message->payload->GetLength() == message->header->message_length);
 
-			logte("Invalid AMF0DataMessage size (data length must be equal to message length, but %zu != %u)",
+			logae("Invalid AMF0DataMessage size (data length must be equal to message length, but %zu != %u)",
 				  message->payload->GetLength(),
 				  message->header->message_length);
 			return;
@@ -1282,7 +1287,7 @@ namespace pvd
 
 		if (decode_length == 0)
 		{
-			logte("Amf0DataMessage Document Length 0");
+			logae("Amf0DataMessage Document Length 0");
 			return;
 		}
 
@@ -1317,7 +1322,7 @@ namespace pvd
 				}
 				else
 				{
-					logtw("SetDataFrame - Data type is not object or ecma array");
+					logaw("SetDataFrame - Data type is not object or ecma array");
 				}
 				break;
 
@@ -1328,7 +1333,7 @@ namespace pvd
 				}
 				else
 				{
-					logtw("OnMetaData - Data type is not object or ecma array");
+					logaw("OnMetaData - Data type is not object or ecma array");
 				}
 				break;
 
@@ -1343,7 +1348,7 @@ namespace pvd
 		// Find it in Events
 		if (CheckEventMessage(message->header, document) == false)
 		{
-			logtd("There were no triggered events - Message(%s / %s)", message_name.CStr(), data_name.CStr());
+			logat("There were no triggered events - Message(%s / %s)", message_name.CStr(), data_name.CStr());
 		}
 	}
 
@@ -1360,7 +1365,7 @@ namespace pvd
 			// AMFDataMessage.[<Property>.<Property>...<Property>.]<Object Name>.<Key Name>
 			if (trigger_list.size() < 3)
 			{
-				logtd("Invalid trigger: %s", trigger.CStr());
+				logat("Invalid trigger: %s", trigger.CStr());
 				continue;
 			}
 
@@ -1376,7 +1381,7 @@ namespace pvd
 
 					if (property == nullptr)
 					{
-						logtd("Document has no property at %d: %s", size - 1, trigger.CStr());
+						logat("Document has no property at %zu: %s", size - 1, trigger.CStr());
 						break;
 					}
 
@@ -1391,7 +1396,7 @@ namespace pvd
 
 							if (object == nullptr)
 							{
-								logtd("Property is not object: %s", property->GetString().CStr());
+								logat("Property is not object: %s", property->GetString().CStr());
 								break;
 							}
 
@@ -1416,7 +1421,7 @@ namespace pvd
 						}
 						else
 						{
-							logtd("Document property type mismatch at %d: %s", size - 1, property->GetString().CStr());
+							logat("Document property type mismatch at %zu: %s", size - 1, property->GetString().CStr());
 							break;
 						}
 					}
@@ -1424,7 +1429,7 @@ namespace pvd
 					{
 						if (trigger_list.at(size) != property->GetString())
 						{
-							logtd("Document property mismatch at %d: %s != %s", size - 1, trigger_list.at(size).CStr(), property->GetString().CStr());
+							logat("Document property mismatch at %zu: %s != %s", size - 1, trigger_list.at(size).CStr(), property->GetString().CStr());
 
 							break;
 						}
@@ -1438,7 +1443,7 @@ namespace pvd
 
 	void RtmpStream::GenerateEvent(const cfg::vhost::app::pvd::Event &event, const ov::String &value)
 	{
-		logtd("Event generated: %s / %s", event.GetTrigger().CStr(), value.CStr());
+		logat("Event generated: %s / %s", event.GetTrigger().CStr(), value.CStr());
 
 		bool id3_enabled = false;
 		auto id3v2_event = event.GetHLSID3v2(&id3_enabled);
@@ -1494,7 +1499,7 @@ namespace pvd
 			}
 			else
 			{
-				logtw("Unsupported ID3v2 frame type: %s", id3v2_event.GetFrameType().CStr());
+				logaw("Unsupported ID3v2 frame type: %s", id3v2_event.GetFrameType().CStr());
 				return;
 			}
 
@@ -1513,7 +1518,7 @@ namespace pvd
 			}
 			else
 			{
-				logtw("Unsupported inject type: %s", id3v2_event.GetEventType().CStr());
+				logaw("Unsupported inject type: %s", id3v2_event.GetEventType().CStr());
 				return;
 			}
 
@@ -1581,9 +1586,7 @@ namespace pvd
 		if (message->header->message_length == 0)
 		{
 			// Nothing to do
-			logtw("0-byte video message received: stream(%s/%s)",
-				  _vhost_app_name.CStr(),
-				  _stream_name.CStr());
+			logaw("0-byte video message received");
 			return true;
 		}
 
@@ -1591,9 +1594,7 @@ namespace pvd
 		if ((message->header->message_length < RTMP_VIDEO_DATA_MIN_SIZE) ||
 			(message->header->message_length > RTMP_MAX_PACKET_SIZE))
 		{
-			logte("Invalid payload size: stream(%s/%s) size(%d)",
-				  _vhost_app_name.CStr(), _stream_name.CStr(),
-				  message->header->message_length);
+			logae("Invalid payload size: %d", message->header->message_length);
 			return false;
 		}
 
@@ -1607,7 +1608,7 @@ namespace pvd
 			{
 				if (PublishStream() == false)
 				{
-					logte("Input create fail -  stream(%s/%s)", _vhost_app_name.CStr(), _stream_name.CStr());
+					logae("Input create fail");
 					return false;
 				}
 			}
@@ -1618,9 +1619,7 @@ namespace pvd
 				_stream_message_cache_video_count++;
 				if (_stream_message_cache.size() > MAX_STREAM_MESSAGE_COUNT)
 				{
-					logtw("Rtmp input stream init message count over -  stream(%s/%s) size(%d:%d)",
-						  _vhost_app_name.CStr(),
-						  _stream_name.CStr(),
+					logaw("Rtmp input stream init message count over - size(%zu:%d)",
 						  _stream_message_cache.size(),
 						  MAX_STREAM_MESSAGE_COUNT);
 				}
@@ -1636,7 +1635,7 @@ namespace pvd
 			flv::VideoData flv_video;
 			if (flv_video.Parse(message->payload) == false)
 			{
-				logte("Could not parse flv video (%s/%s)", _vhost_app_name.CStr(), GetName().CStr());
+				logae("Could not parse flv video");
 				return false;
 			}
 
@@ -1644,7 +1643,7 @@ namespace pvd
 			{
 				if (_negative_cts_detected == false)
 				{
-					logtw("A negative CTS has been detected and will attempt to adjust the PTS. HLS/DASH may not play smoothly in the beginning.");
+					logaw("A negative CTS has been detected and will attempt to adjust the PTS. HLS/DASH may not play smoothly in the beginning.");
 					_negative_cts_detected = true;
 				}
 			}
@@ -1660,7 +1659,7 @@ namespace pvd
 			auto video_track = GetTrack(RTMP_VIDEO_TRACK_ID);
 			if (video_track == nullptr)
 			{
-				logte("Cannot get video track (%s/%s)", _vhost_app_name.CStr(), GetName().CStr());
+				logae("Cannot get video track");
 				return false;
 			}
 
@@ -1701,7 +1700,7 @@ namespace pvd
 
 			SendFrame(video_frame);
 
-			// logtc("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%lld) dts(%lld)",
+			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%lld) dts(%lld)",
 			// 	  _vhost_app_name.CStr(),
 			// 	  _stream_name.CStr(),
 			// 	  flv_video.PacketType(),
@@ -1783,9 +1782,7 @@ namespace pvd
 		if (message->header->message_length == 0)
 		{
 			// Nothing to do
-			logtw("0-byte audio message received: stream(%s/%s)",
-				  _vhost_app_name.CStr(),
-				  _stream_name.CStr());
+			logaw("0-byte audio message received");
 			return true;
 		}
 
@@ -1793,10 +1790,7 @@ namespace pvd
 		if ((message->header->message_length < RTMP_AAC_AUDIO_DATA_MIN_SIZE) ||
 			(message->header->message_length > RTMP_MAX_PACKET_SIZE))
 		{
-			logte("Invalid payload size: stream(%s/%s) size(%d)",
-				  _vhost_app_name.CStr(),
-				  _stream_name.CStr(),
-				  message->header->message_length);
+			logae("Invalid payload size: size(%d)", message->header->message_length);
 
 			return false;
 		}
@@ -1809,7 +1803,7 @@ namespace pvd
 			{
 				if (PublishStream() == false)
 				{
-					logte("Input create fail -  stream(%s/%s)", _vhost_app_name.CStr(), _stream_name.CStr());
+					logae("Input create fail");
 					return false;
 				}
 			}
@@ -1820,9 +1814,7 @@ namespace pvd
 				_stream_message_cache_audio_count++;
 				if (_stream_message_cache.size() > MAX_STREAM_MESSAGE_COUNT)
 				{
-					logtw("Rtmp input stream init message count over -  stream(%s/%s) size(%d:%d)",
-						  _vhost_app_name.CStr(),
-						  _stream_name.CStr(),
+					logaw("Rtmp input stream init message count over -  size(%zu:%d)",
 						  _stream_message_cache.size(),
 						  MAX_STREAM_MESSAGE_COUNT);
 				}
@@ -1838,7 +1830,7 @@ namespace pvd
 			auto audio_track = GetTrack(RTMP_AUDIO_TRACK_ID);
 			if (audio_track == nullptr)
 			{
-				logte("Cannot get audio track (%s/%s)", _vhost_app_name.CStr(), GetName().CStr());
+				logae("Cannot get audio track");
 				return false;
 			}
 
@@ -1846,7 +1838,7 @@ namespace pvd
 			flv::AudioData flv_audio;
 			if (flv_audio.Parse(message->payload) == false)
 			{
-				logte("Could not parse flv audio (%s/%s)", _vhost_app_name.CStr(), GetName().CStr());
+				logae("Could not parse flv audio");
 				return false;
 			}
 
@@ -1916,24 +1908,26 @@ namespace pvd
 	{
 		if (_publish_url == nullptr)
 		{
-			logte("Publish url is not set, stream(%s/%s)", _vhost_app_name.CStr(), _stream_name.CStr());
+			logae("Publish url is not set");
 			return false;
 		}
 
 		_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(_publish_url->Host(), _publish_url->App());
 		_stream_name = _publish_url->Stream();
 
+		UpdateNamePath(_vhost_app_name);
+
 		// Get application config
 		if (GetProvider() == nullptr)
 		{
-			logte("Could not find provider: %s/%s", _vhost_app_name.CStr(), _stream_name.CStr());
+			logae("Could not find provider");
 			return false;
 		}
 
 		auto application = GetProvider()->GetApplicationByName(_vhost_app_name);
 		if (application == nullptr)
 		{
-			logte("Could not find application: %s/%s", _vhost_app_name.CStr(), _stream_name.CStr());
+			logae("Could not find application");
 			Stop();
 			return false;
 		}
@@ -2122,7 +2116,7 @@ namespace pvd
 
 		if (SendData(dataToSend.GetData(), dataToSend.GetLength()) == false)
 		{
-			logte("Handshake Send Fail");
+			logae("Handshake Send Fail");
 			return false;
 		}
 
@@ -2147,7 +2141,7 @@ namespace pvd
 	{
 		auto body = std::make_shared<std::vector<uint8_t>>(sizeof(int));
 		auto message_header = RtmpMuxMessageHeader::Create(
-			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::WindowAcknowledgementSize, _rtmp_stream_id, body->size());
+			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::WindowAcknowledgementSize, 0, body->size());
 
 		RtmpMuxUtil::WriteInt32(body->data(), size);
 
@@ -2169,7 +2163,7 @@ namespace pvd
 	{
 		auto body = std::make_shared<std::vector<uint8_t>>(5);
 		auto message_header = RtmpMuxMessageHeader::Create(
-			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::SetPeerBandwidth, _rtmp_stream_id, body->size());
+			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::SetPeerBandwidth, 0, body->size());
 
 		RtmpMuxUtil::WriteInt32(body->data(), bandwidth);
 		RtmpMuxUtil::WriteInt8(body->data() + 4, 2);
@@ -2194,6 +2188,17 @@ namespace pvd
 
 		return SendUserControlMessage(UserControlMessageId::StreamEof, body);
 	}
+	
+	bool RtmpStream::SendSetChunkSize(uint32_t chunk_size)
+	{
+		auto body			= std::make_shared<std::vector<uint8_t>>(sizeof(int));
+		auto message_header = RtmpMuxMessageHeader::Create(
+			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::SetChunkSize, 0, body->size());
+
+		RtmpMuxUtil::WriteInt32(body->data(), chunk_size);
+
+		return SendMessagePacket(message_header, body);
+	}
 
 	bool RtmpStream::SendAmfCommand(std::shared_ptr<RtmpMuxMessageHeader> &message_header, AmfDocument &document)
 	{
@@ -2214,9 +2219,9 @@ namespace pvd
 		return SendMessagePacket(message_header, data);
 	}
 
-	bool RtmpStream::SendAmfConnectResult(uint32_t chunk_stream_id, double transaction_id, double object_encoding)
+	bool RtmpStream::SendAmfConnectResult(double transaction_id, double object_encoding)
 	{
-		auto message_header = RtmpMuxMessageHeader::Create(chunk_stream_id);
+		auto message_header = RtmpMuxMessageHeader::Create(RtmpChunkStreamId::Control);
 
 		AmfDocument document;
 
@@ -2252,10 +2257,9 @@ namespace pvd
 		return SendAmfCommand(message_header, document);
 	}
 
-	bool RtmpStream::SendAmfOnFCPublish(uint32_t chunk_stream_id, uint32_t stream_id, double client_id)
+	bool RtmpStream::SendAmfOnFCPublish(double client_id)
 	{
-		auto message_header = RtmpMuxMessageHeader::Create(
-			chunk_stream_id, RtmpMessageTypeID::Amf0Command, _rtmp_stream_id);
+		auto message_header = RtmpMuxMessageHeader::Create(RtmpChunkStreamId::Control, RtmpMessageTypeID::Amf0Command, 0);
 
 		AmfDocument document;
 

@@ -161,7 +161,7 @@ private:
 	void InboundWorkerThread(uint32_t worker_id);
 	void OutboundWorkerThread(uint32_t worker_id);
 
-	volatile bool _kill_flag;
+	std::atomic<bool> _kill_flag{false};
 	std::vector<std::thread> _inbound_threads;
 	std::vector<std::thread> _outbound_threads;
 

@@ -325,6 +325,21 @@ namespace pvd
 				}
 
 				auto rendition = std::make_shared<info::Rendition>(rendition_name_object.asString().c_str(), video_variant_name, audio_variant_name);
+
+				// VideoIndexHint
+				auto video_index_hint_object = rendition_object["videoIndexHint"];
+				if (!video_index_hint_object.isNull())
+				{
+					rendition->SetVideoIndexHint(video_index_hint_object.asInt());
+				}
+
+				// AudioIndexHint
+				auto audio_index_hint_object = rendition_object["audioIndexHint"];
+				if (!audio_index_hint_object.isNull())
+				{
+					rendition->SetAudioIndexHint(audio_index_hint_object.asInt());
+				}
+
 				playlist->AddRendition(rendition);
 			}
 
@@ -496,6 +511,21 @@ namespace pvd
 				}
 
 				auto rendition = std::make_shared<info::Rendition>(rendition_name, video_variant_name, audio_variant_name);
+				
+				// VideoIndexHint
+				auto video_index_hint_node = rendition_node.child("VideoIndexHint");
+				if (video_index_hint_node)
+				{
+					rendition->SetVideoIndexHint(video_index_hint_node.text().as_int());
+				}
+
+				// AudioIndexHint
+				auto audio_index_hint_node = rendition_node.child("AudioIndexHint");
+				if (audio_index_hint_node)
+				{
+					rendition->SetAudioIndexHint(audio_index_hint_node.text().as_int());
+				}
+
 				playlist->AddRendition(rendition);
 			}
 

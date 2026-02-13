@@ -36,7 +36,7 @@ Transcoder::Transcoder(std::shared_ptr<MediaRouterInterface> router)
 
 bool Transcoder::Start()
 {
-	logtd("Transcoder has been started");
+	logtt("Transcoder has been started");
 
 	SetModuleAvailable(true);
 
@@ -47,7 +47,7 @@ bool Transcoder::Start()
 
 bool Transcoder::Stop()
 {
-	logtd("Transcoder has been stopped");
+	logtt("Transcoder has been stopped");
 
 	TranscodeGPU::GetInstance()->Uninitialize();
 

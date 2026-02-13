@@ -9,7 +9,7 @@ bool REMB::Parse(const RtcpPacket &packet)
 
 	if(payload_size < static_cast<size_t>(MIN_REMB_RTCP_SIZE))
 	{
-		logtd("Payload is too small to parse remb");
+		logtt("Payload is too small to parse remb");
 		return false;
 	}
 
@@ -27,14 +27,14 @@ bool REMB::Parse(const RtcpPacket &packet)
 
 	if (unique_identifier != 0x52454D42) // 'R' 'E' 'M' 'B'
 	{
-		logtd("Invalid unique identifier");
+		logtt("Invalid unique identifier");
 		return false;
 	}
 
 	uint8_t num_ssrc = ByteReader<uint8_t>::ReadBigEndian(&payload[offset]);
 	if (payload_size < static_cast<size_t>(MIN_REMB_RTCP_SIZE + (num_ssrc * 4)))
 	{
-		logtd("Payload is too small to parse remb");
+		logtt("Payload is too small to parse remb");
 		return false;
 	}
 
@@ -49,7 +49,7 @@ bool REMB::Parse(const RtcpPacket &packet)
 	// check overflow
 	if (static_cast<uint64_t>(_bitrate_bps) >> exp != mantissa)
 	{
-		logtd("Overflow");
+		logtt("Overflow");
 		return false;
 	}
 

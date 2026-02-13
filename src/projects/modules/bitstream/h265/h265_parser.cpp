@@ -373,9 +373,7 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		return false;
 	}
 
-	sps._width = pic_width_in_luma_samples;
-	sps._height = pic_height_in_luma_samples;
-
+	uint32_t crop_x = 0, crop_y = 0;
 	uint32_t conf_win_left_offset, conf_win_right_offset, conf_win_top_offset, conf_win_bottom_offset;
 	if (conformance_window_flag)
 	{
@@ -415,10 +413,41 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 			sub_height_c = 1;
 		}
 
-		sps._width -= (sub_width_c * (conf_win_left_offset + conf_win_right_offset));
-		sps._height -= (sub_height_c * (conf_win_top_offset + conf_win_bottom_offset));
+		crop_x = sub_width_c * (conf_win_left_offset + conf_win_right_offset);
+		crop_y = sub_height_c * (conf_win_top_offset + conf_win_bottom_offset);
 	}
 
+	int64_t coded_width	   = pic_width_in_luma_samples;
+	int64_t coded_height   = pic_height_in_luma_samples;
+	int64_t display_width  = pic_width_in_luma_samples - crop_x;
+	int64_t display_height = pic_height_in_luma_samples - crop_y;
+
+	// Validate: Check negative values
+	if (display_width < 0 || display_height < 0)
+	{
+		return false;
+	}
+
+	// Validate: Check maximum width and height (8K, 8192x4320)
+	if (display_width > 8192 || display_height > 8192)
+	{
+		return false;
+	}
+
+	// Validate: Check total pixels
+	if (display_width * display_height > 8192 * 4320)
+	{
+		return false;
+	}
+
+	logtt("Parsed SPS resolution: coded(%lld x %lld), crop(%lld x %lld), display(%lld x %lld)",
+		  coded_width, coded_height,
+		  crop_x, crop_y,
+		  display_width, display_height);
+
+	sps._width	= static_cast<uint32_t>(display_width);
+	sps._height = static_cast<uint32_t>(display_height);
+		  
 	uint32_t bit_depth_luma_minus8;
 	if (parser.ReadUEV(bit_depth_luma_minus8) == false)
 	{

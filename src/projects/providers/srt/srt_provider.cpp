@@ -32,7 +32,7 @@ namespace pvd
 	SrtProvider::SrtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PushProvider(server_config, router)
 	{
-		logtd("Created SRT Provider module.");
+		logtt("Created SRT Provider module.");
 	}
 
 	SrtProvider::~SrtProvider()
@@ -315,7 +315,7 @@ namespace pvd
 		if (channel == nullptr)
 		{
 			// It probably rejected on OnConnected
-			logtd("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
+			logtt("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
 			return;
 		}
 

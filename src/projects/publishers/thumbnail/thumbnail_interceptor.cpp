@@ -17,7 +17,7 @@ bool ThumbnailInterceptor::IsInterceptorForRequest(const std::shared_ptr<const h
 {
 	const auto request = client->GetRequest();
 	
-	// logtd("Request Target : %s", request->GetRequestTarget().CStr());
+	// logtt("Request Target : %s", request->GetRequestTarget().CStr());
 
 	// Get Method 1.1 check
 	if(request->GetMethod() != http::Method::Get)

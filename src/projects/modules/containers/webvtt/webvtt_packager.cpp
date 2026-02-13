@@ -19,7 +19,7 @@ namespace webvtt
 
 	Packager::~Packager()
 	{
-		logtd("WebVTT Packager has been terminated finally");
+		logtt("WebVTT Packager has been terminated finally");
 	}
 
 	bool Packager::AddFrame(const std::shared_ptr<WebVTTFrame> &frame)
@@ -32,16 +32,18 @@ namespace webvtt
 		std::unique_lock<std::shared_mutex> lock(_frames_guard);
 		_frames.emplace(frame->GetStartTimeMs(), frame);
 
+		logtd("WebVTT Packager: Added frame: StartTimeMs=%" PRId64 ", EndTimeMs=%" PRId64 ", Text Length=%zu / %s", frame->GetStartTimeMs(), frame->GetEndTimeMs(), frame->GetText().GetLength(), frame->GetText().CStr());
+
 		return true;
 	}
 
-	bool Packager::MakeSegment(uint32_t segment_number, int64_t start_time_ms, int64_t duration_ms)
+	bool Packager::MakeSegment(int64_t segment_number, int64_t start_time_ms, double duration_ms)
 	{
 		ov::String vtt_text;
 
 		vtt_text = MakeVTTHeader(start_time_ms);
 		vtt_text += MakeCueText(start_time_ms, duration_ms, true);
-		
+
 		auto segment = GetSegmentInternal(segment_number);
 		if (segment != nullptr)
 		{
@@ -60,7 +62,7 @@ namespace webvtt
 		return true;
 	}
 
-	bool Packager::MakePartialSegment(uint32_t segment_number, uint32_t partial_segment_number, int64_t start_time_ms, int64_t duration_ms)
+	bool Packager::MakePartialSegment(int64_t segment_number, int64_t partial_segment_number, int64_t start_time_ms, double duration_ms)
 	{
 		ov::String vtt_text;
 
@@ -91,20 +93,24 @@ namespace webvtt
 
 	const ov::String Packager::MakeVTTHeader(int64_t start_time_ms)
 	{
-		ov::String vtt_text;
+		constexpr int64_t kPtsWrap = (1LL << 33); // 33-bit PTS wrap
 
+		ov::String vtt_text;
 		vtt_text = "WEBVTT\n";
-		// X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:start_time_ms*90
-		vtt_text += ov::String::FormatString("X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%lld\n", (int64_t)(start_time_ms) * 90);
+
+		// ms → 90kHz PTS (wrap to 33bit)
+		int64_t mpegts = (start_time_ms * 90) % kPtsWrap;
+		vtt_text += ov::String::FormatString("X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:%" PRId64 "\n", mpegts);
+
 		vtt_text += "\n\n";
 
 		return vtt_text;
 	}
-
-	const ov::String Packager::MakeCueText(int64_t start_time_ms, int64_t duration_ms, bool remove_used_frames)
+	
+	const ov::String Packager::MakeCueText(int64_t start_time_ms, double duration_ms, bool remove_used_frames)
 	{
 		ov::String cue_text;
-		int64_t end_time_ms = start_time_ms + duration_ms;
+		int64_t end_time_ms = start_time_ms + static_cast<int64_t>(llround(duration_ms));
 		bool expired_frame = false;
 		std::unique_lock<std::shared_mutex> lock(_frames_guard);
 		for (auto it = _frames.begin(); it != _frames.end();)
@@ -139,7 +145,7 @@ namespace webvtt
 			{
 				if (frame->IsUsed() == false)
 				{
-					logtw("WebVTT Packager: Removing unused frame: StartTimeMs=%lld, EndTimeMs=%lld, Text Length=%zu / %s", frame->GetStartTimeMs(), frame->GetEndTimeMs(), frame->GetText().GetLength(), frame->GetText().CStr());
+					logtw("WebVTT Packager: Removing unused frame: StartTimeMs=%" PRId64 ", EndTimeMs=%" PRId64 ", Text Length=%zu / %s", frame->GetStartTimeMs(), frame->GetEndTimeMs(), frame->GetText().GetLength(), frame->GetText().CStr());
 				}
 
 				it = _frames.erase(it);
@@ -153,7 +159,7 @@ namespace webvtt
 		return cue_text;
 	}
 
-	bool Packager::DeleteSegment(uint32_t segment_number)
+	bool Packager::DeleteSegment(int64_t segment_number)
 	{
 		std::unique_lock<std::shared_mutex> lock(_segments_guard);
 		return _segments.erase(segment_number) > 0;
@@ -164,7 +170,7 @@ namespace webvtt
 	{
 		return nullptr;
 	}
-	std::shared_ptr<base::modules::Segment> Packager::GetSegment(uint32_t segment_number) const
+	std::shared_ptr<base::modules::Segment> Packager::GetSegment(int64_t segment_number) const
 	{
 		return GetSegmentInternal(segment_number);
 	}
@@ -180,12 +186,12 @@ namespace webvtt
 		return _segments.rbegin()->second;
 	}
 
-	std::shared_ptr<base::modules::PartialSegment> Packager::GetPartialSegment(uint32_t segment_number, uint32_t partial_segment_number) const 
+	std::shared_ptr<base::modules::PartialSegment> Packager::GetPartialSegment(int64_t segment_number, int64_t partial_segment_number) const 
 	{
 		return GetPartialSegmentInternal(segment_number, partial_segment_number);
 	}
 
-	std::shared_ptr<Segment> Packager::GetSegmentInternal(uint32_t segment_number) const
+	std::shared_ptr<Segment> Packager::GetSegmentInternal(int64_t segment_number) const
 	{
 		std::shared_lock<std::shared_mutex> lock(_segments_guard);
 		
@@ -198,7 +204,7 @@ namespace webvtt
 		return nullptr;
 	}
 
-	std::shared_ptr<PartialSegment> Packager::GetPartialSegmentInternal(uint32_t segment_number, uint32_t partial_segment_number) const
+	std::shared_ptr<PartialSegment> Packager::GetPartialSegmentInternal(int64_t segment_number, int64_t partial_segment_number) const
 	{
 		std::shared_lock<std::shared_mutex> lock(_segments_guard);
 		auto it = _segments.find(segment_number);

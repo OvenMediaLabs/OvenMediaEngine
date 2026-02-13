@@ -25,14 +25,14 @@ namespace pub
 		virtual ~SrtPlaylistSink() = default;
 
 		virtual void OnSrtPlaylistData(
-			const std::shared_ptr<SrtPlaylist> &playlist,
+			const std::weak_ptr<SrtPlaylist> &playlist,
 			const std::shared_ptr<const ov::Data> &data) = 0;
 	};
 
 	struct SrtData
 	{
 		SrtData(
-			const std::shared_ptr<SrtPlaylist> &playlist,
+			const std::weak_ptr<SrtPlaylist> &playlist,
 			const std::shared_ptr<const ov::Data> &data)
 			: playlist(playlist),
 			  data(data)
@@ -40,7 +40,7 @@ namespace pub
 		}
 
 		// The playlist that this data belongs to
-		std::shared_ptr<SrtPlaylist> playlist;
+		std::weak_ptr<SrtPlaylist> playlist;
 
 		// The data to send
 		std::shared_ptr<const ov::Data> data;

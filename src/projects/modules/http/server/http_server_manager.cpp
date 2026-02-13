@@ -49,7 +49,7 @@ namespace http
 							{
 								if (physical_port->GetWorkerCount() != worker_count)
 								{
-									logtw("The number of workers in the existing physical port differs from the number of workers passed by the argument: physical port: %zu, argument: %zu",
+									logtw("The number of workers in the existing physical port differs from the number of workers passed by the argument: physical port: %d, argument: %d",
 										  physical_port->GetWorkerCount(), worker_count);
 									logtw("Because worker counts are different, the first initialized count is used: %d", physical_port->GetWorkerCount());
 								}
@@ -225,13 +225,13 @@ namespace http
 
 				for (const auto &address : address_list)
 				{
-					logtd("Attempting to create %s Server instance on %s...", http_server_name, address.ToString().CStr());
+					logtt("Attempting to create %s Server instance on %s...", http_server_name, address.ToString().CStr());
 
 					auto server = creation_function(address);
 
 					if (server != nullptr)
 					{
-						logtd("%s server is created on %s", http_server_name, address.ToString().CStr());
+						logtt("%s server is created on %s", http_server_name, address.ToString().CStr());
 
 						if (creation_callback != nullptr)
 						{

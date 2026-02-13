@@ -25,12 +25,12 @@ std::shared_ptr<ThumbnailPublisher> ThumbnailPublisher::Create(const cfg::Server
 ThumbnailPublisher::ThumbnailPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	: Publisher(server_config, router)
 {
-	logtd("ThumbnailPublisher has been create");
+	logtt("ThumbnailPublisher has been create");
 }
 
 ThumbnailPublisher::~ThumbnailPublisher()
 {
-	logtd("ThumbnailPublisher has been terminated finally");
+	logtt("ThumbnailPublisher has been terminated finally");
 }
 
 bool ThumbnailPublisher::PrepareHttpServers(

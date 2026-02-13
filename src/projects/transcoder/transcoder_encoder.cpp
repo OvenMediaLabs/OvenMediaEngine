@@ -10,17 +10,17 @@
 
 #include <utility>
 
-#include "codec/encoder/encoder_avc_x264.h"
 #include "codec/encoder/encoder_aac.h"
+#include "codec/encoder/encoder_avc_nilogan.h"
 #include "codec/encoder/encoder_avc_nv.h"
 #include "codec/encoder/encoder_avc_openh264.h"
 #include "codec/encoder/encoder_avc_qsv.h"
-#include "codec/encoder/encoder_avc_nilogan.h"
+#include "codec/encoder/encoder_avc_x264.h"
 #include "codec/encoder/encoder_avc_xma.h"
 #include "codec/encoder/encoder_ffopus.h"
+#include "codec/encoder/encoder_hevc_nilogan.h"
 #include "codec/encoder/encoder_hevc_nv.h"
 #include "codec/encoder/encoder_hevc_qsv.h"
-#include "codec/encoder/encoder_hevc_nilogan.h"
 #include "codec/encoder/encoder_hevc_xma.h"
 #include "codec/encoder/encoder_jpeg.h"
 #include "codec/encoder/encoder_opus.h"
@@ -28,7 +28,7 @@
 #include "codec/encoder/encoder_vp8.h"
 #include "codec/encoder/encoder_webp.h"
 #include "codec/encoder/encoder_whisper.h"
-
+#include "transcoder_fault_injector.h"
 #include "transcoder_gpu.h"
 #include "transcoder_modules.h"
 #include "transcoder_private.h"
@@ -41,7 +41,7 @@
 
 std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEncoder::GetCandidates(bool hwaccels_enable, ov::String hwaccles_modules, std::shared_ptr<MediaTrack> track)
 {
-	logtd("Track(%d) Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s), Encode.Modules(%s)",
+	logtt("Track(%d) Codec(%s), HWAccels.Enable(%s), HWAccels.Modules(%s), Encode.Modules(%s)",
 		  track->GetId(),
 		  cmn::GetCodecIdString(track->GetCodecId()),
 		  hwaccels_enable ? "true" : "false",
@@ -144,7 +144,7 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 	{
 		(void)(candidate);
 		
-		logtd("Candidate module: %s(%d), %s(%d):%d",
+		logtt("Candidate module: %s(%d), %s(%d):%d",
 			  cmn::GetCodecIdString(candidate->GetCodecId()),
 			  candidate->GetCodecId(),
 			  cmn::GetCodecModuleIdString(candidate->GetModuleId()),
@@ -155,26 +155,40 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 	return candidate_modules;
 }
 
-#define CASE_CREATE_CODEC_IFNEED(MODULE_ID, CLS)           \
-	case cmn::MediaCodecModuleId::MODULE_ID:               \
-		encoder = std::make_shared<CLS>(*info);            \
-		if (encoder == nullptr)                            \
-		{                                                  \
-			break;                                         \
-		}                                                  \
-		encoder->SetDeviceID(candidate->GetDeviceId());    \
-		encoder->SetEncoderId(encoder_id);                 \
-		encoder->SetCompleteHandler(complete_handler);     \
-		track->SetCodecModuleId(encoder->GetModuleID());   \
-		track->SetCodecDeviceId(encoder->GetDeviceID());   \
-		if (encoder->Configure(track) == true)             \
-		{                                                  \
-			goto done;                                     \
-		}                                                  \
-		if (encoder != nullptr) {                          \
-			encoder->Stop();                               \
-			encoder = nullptr;                             \
-		}                                                  \
+#define CASE_CREATE_CODEC_IFNEED(MODULE_ID, CLS)                                 \
+	case cmn::MediaCodecModuleId::MODULE_ID:                                     \
+		encoder = std::make_shared<CLS>(*info);                                  \
+		if (encoder == nullptr)                                                  \
+		{                                                                        \
+			break;                                                               \
+		}                                                                        \
+		encoder->SetDeviceID(candidate->GetDeviceId());                          \
+		encoder->SetEncoderId(encoder_id);                                       \
+		encoder->SetCompleteHandler(complete_handler);                           \
+		track->SetCodecModuleId(encoder->GetModuleID());                         \
+		track->SetCodecDeviceId(encoder->GetDeviceID());                         \
+		track->SetOriginBitstream(encoder->GetBitstreamFormat());                \
+		if (encoder->Configure(track) == true)                                   \
+		{                                                                        \
+			if (TranscodeFaultInjector::GetInstance()->IsEnabled())              \
+			{                                                                    \
+				if (TranscodeFaultInjector::GetInstance()->IsTriggered(          \
+						TranscodeFaultInjector::ComponentType::EncoderComponent, \
+						TranscodeFaultInjector::IssueType::InitFailed,           \
+						encoder->GetModuleID(), encoder->GetDeviceID()) == true) \
+				{                                                                \
+					encoder->Stop();                                             \
+					encoder = nullptr;                                           \
+					break;                                                       \
+				}                                                                \
+			}                                                                    \
+			goto done;                                                           \
+		}                                                                        \
+		if (encoder != nullptr)                                                  \
+		{                                                                        \
+			encoder->Stop();                                                     \
+			encoder = nullptr;                                                   \
+		}                                                                        \
 		break;
 
 
@@ -306,11 +320,12 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Create(
 done:
 	if (encoder)
 	{
-		logtd("The encoder has been created. track(#%d), codec(%s), module(%s:%d)",
-			track->GetId(),
-			cmn::GetCodecIdString(track->GetCodecId()),
-			cmn::GetCodecModuleIdString(track->GetCodecModuleId()),
-			track->GetCodecDeviceId());		
+
+		logtt("The encoder has been created. track(#%d), codec(%s), module(%s:%d)",
+			  track->GetId(),
+			  cmn::GetCodecIdString(track->GetCodecId()),
+			  cmn::GetCodecModuleIdString(track->GetCodecModuleId()),
+			  track->GetCodecDeviceId());
 	}
 
 	return encoder;
@@ -358,7 +373,6 @@ bool TranscodeEncoder::Configure(std::shared_ptr<MediaTrack> output_track)
 bool TranscodeEncoder::Configure(std::shared_ptr<MediaTrack> output_track, size_t max_queue_size)
 {
 	_track = output_track;	
-	_track->SetOriginBitstream(GetBitstreamFormat());
 
 	auto name = ov::String::FormatString("enc_%s_t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId());
 	auto urn = std::make_shared<info::ManagedQueue::URN>(_stream_info.GetApplicationInfo().GetVHostAppName(), _stream_info.GetName(), "trs", name);
@@ -406,14 +420,37 @@ void TranscodeEncoder::SetCompleteHandler(CompleteHandler complete_handler)
 	_complete_handler = std::move(complete_handler);
 }
 
-void TranscodeEncoder::Complete(std::shared_ptr<MediaPacket> packet)
+void TranscodeEncoder::Complete(TranscodeResult result, std::shared_ptr<MediaPacket> packet)
 {
+	// Fault Injection for testing
+	if (TranscodeFaultInjector::GetInstance()->IsEnabled())
+	{
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::EncoderComponent,
+				TranscodeFaultInjector::IssueType::ProcessFailed,
+				GetModuleID(),
+				GetDeviceID()) == true)
+		{
+			result = TranscodeResult::DataError;
+			packet = nullptr;
+		}
+
+		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
+				TranscodeFaultInjector::ComponentType::EncoderComponent,
+				TranscodeFaultInjector::IssueType::Lagging,
+				GetModuleID(),
+				GetDeviceID()) == true)
+		{
+			usleep(300 * 1000);	 // 300ms
+		}
+	}
+
 	if (!_complete_handler)
 	{
 		return;
 	}
 
-	_complete_handler(_encoder_id, std::move(packet));
+	_complete_handler(result, _encoder_id, std::move(packet));
 }
 
 void TranscodeEncoder::Stop()
@@ -425,7 +462,7 @@ void TranscodeEncoder::Stop()
 	if (_codec_thread.joinable())
 	{
 		_codec_thread.join();
-		logtd(ov::String::FormatString("encoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
+		logtt(ov::String::FormatString("encoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
 	}
 
 	tc::TranscodeModules::GetInstance()->OnDeleted(true, GetCodecID(), GetModuleID(), GetDeviceID());
@@ -470,12 +507,14 @@ bool TranscodeEncoder::PushProcess(std::shared_ptr<const MediaFrame> media_frame
 		if (ret < 0)
 		{
 			logte("Error sending a frame for encoding : %d", ret);
+			
 			return false;
 		}
 
 		return true;
 	}
 
+	// Convert MediaFrame to AVFrame
 	auto av_frame = ffmpeg::compat::ToAVFrame(GetRefTrack()->GetMediaType(), media_frame);
 	if (!av_frame)
 	{
@@ -502,10 +541,30 @@ bool TranscodeEncoder::PushProcess(std::shared_ptr<const MediaFrame> media_frame
 		}
 	}
 
+	// Send the frame to the encoder
 	int ret = ::avcodec_send_frame(_codec_context, av_frame);
-	if (ret < 0)
+	if (ret == AVERROR(EAGAIN))
 	{
-		logte("Error sending a frame for encoding : %d", ret);
+		logtw("Encoder internal buffer is full, need to flush packets.");
+	}
+	else if (ret == AVERROR_INVALIDDATA)
+	{
+		logtw("Invalid data while sending a frame for encoding.");
+	}
+	else if (ret == AVERROR(ENOMEM))
+	{
+		logte("Could not allocate memory while sending a frame for encoding.");
+
+		Complete(TranscodeResult::DataError, nullptr);
+
+		return false;
+	}
+	else if (ret < 0)
+	{
+		logte("Error sending a frame for encoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+		Complete(TranscodeResult::DataError, nullptr);
+
 		return false;
 	}
 
@@ -522,19 +581,39 @@ bool TranscodeEncoder::PopProcess()
 		// There is no more remain frame.
 		return false;
 	}
+	else if (ret == AVERROR_INVALIDDATA)
+	{
+		logtw("Invalid data while receiving a packet for encoding.");
+
+		return false;
+	}
+	else if (ret == AVERROR(ENOMEM))
+	{
+		logtw("Could not allocate memory while receiving a packet for encoding.");
+		Complete(TranscodeResult::DataError, nullptr);
+
+		return false;
+	}
 	else if (ret < 0)
 	{
-		logte("Error receiving a packet for decoding : %s", ffmpeg::compat::AVErrorToString(ret).CStr());
+		logte("Error receiving a packet for encoding : %s", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+		Complete(TranscodeResult::DataError, nullptr);
+
 		return false;
 	}
 
 	auto media_packet = ffmpeg::compat::ToMediaPacket(_packet, GetRefTrack()->GetMediaType(), _bitstream_format, _packet_type);
+	::av_packet_unref(_packet);
 	if (media_packet == nullptr)
 	{
 		logte("Could not allocate the media packet");
+
+		Complete(TranscodeResult::DataError, nullptr);
+
 		return false;
 	}
-	::av_packet_unref(_packet);
+
 
 	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Audio)
 	{
@@ -546,7 +625,7 @@ bool TranscodeEncoder::PopProcess()
 	}
 	
 	// Call the complete handler.
-	Complete(std::move(media_packet));
+	Complete(TranscodeResult::DataReady, std::move(media_packet));
 
 	return true;
 }
@@ -573,7 +652,14 @@ void TranscodeEncoder::CodecThread()
 		// Insert keyframe in first frame
 		_accumulate_frame_duration		 = -1;
 
-		logti("Force keyframe by time interval is enabled. interval(%lld ms)", key_frame_interval_ms);
+		if (key_frame_interval_ms > 0 && key_frame_interval_ms < 500) // 500ms 
+		{
+			logtw("Force keyframe interval(by time) is enabled. but, interval is too short (%.0f ms). It may cause quality issues.", key_frame_interval_ms);
+		}
+		else
+		{
+			logti("Force keyframe interval(by time) is enabled. interval(%.0fms)", key_frame_interval_ms);
+		}
 	}
 	else
 	{
@@ -581,7 +667,7 @@ void TranscodeEncoder::CodecThread()
 		_force_keyframe_by_time_interval = 0;
 		_accumulate_frame_duration		 = -1;
 
-		logtd("Force keyframe by time interval is disabled.");
+		logtt("Force keyframe by time interval is disabled.");
 	}
 
 	[[maybe_unused]] 

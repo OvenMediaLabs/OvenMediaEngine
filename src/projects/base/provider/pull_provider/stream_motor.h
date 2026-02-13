@@ -35,7 +35,6 @@ namespace pvd
 		bool Stop();
 
 		bool AddStream(const std::shared_ptr<PullStream> &stream);
-		bool UpdateStream(const std::shared_ptr<PullStream> &stream);
 		bool DelStream(const std::shared_ptr<PullStream> &stream);
 
 	private:

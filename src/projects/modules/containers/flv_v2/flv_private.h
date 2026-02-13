@@ -10,15 +10,5 @@
 
 #define OV_LOG_TAG "Flv"
 
-#define FLV_FORMAT_PREFIX \
-	"[0x%08X] "
-
-#define FLV_DESC \
-	this
-
-#define logat(format, ...) logtt(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
-#define logad(format, ...) logtd(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
-#define logai(format, ...) logti(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
-#define logaw(format, ...) logtw(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
-#define logae(format, ...) logte(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
-#define logac(format, ...) logtc(FLV_FORMAT_PREFIX format, FLV_DESC, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[0x%08" PRIXPTR "] "
+#define OV_LOG_PREFIX_VALUE this

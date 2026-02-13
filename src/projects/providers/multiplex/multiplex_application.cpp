@@ -198,7 +198,7 @@ namespace pvd
                 continue;
             }
 
-            logtd("Found multiplex file : %s, mtime : %d, hash : %d", multiplex_file_info._file_path.CStr(), multiplex_file_info._file_stat.st_mtime, multiplex_file_info._file_path.Hash());
+            logtt("Found multiplex file : %s, mtime : %d, hash : %d", multiplex_file_info._file_path.CStr(), multiplex_file_info._file_stat.st_mtime, multiplex_file_info._file_path.Hash());
 
             multiplex_files.push_back(multiplex_file_info);
         }

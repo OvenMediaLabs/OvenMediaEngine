@@ -13,7 +13,7 @@
 namespace info
 {
 	VHostAppName::VHostAppName()
-		: _vhost_app_name("?Unknown?")
+		: _name_path(NamePath::UnknownNamePath())
 	{
 	}
 
@@ -23,11 +23,11 @@ namespace info
 		  _vhost_name(vhost_name),
 		  _app_name(app_name)
 	{
-		_vhost_app_name.Format("#%s#%s", vhost_name.Replace("#", "_").CStr(), app_name.Replace("#", "_").CStr());
+		UpdateNamePath();
 	}
 
 	VHostAppName::VHostAppName(const ov::String &vhost_app_name)
-		: _vhost_app_name(vhost_app_name)
+		: _name_path(vhost_app_name)
 	{
 		auto tokens = vhost_app_name.Split("#");
 
@@ -49,38 +49,6 @@ namespace info
 		return vhost_app_name;
 	}
 
-#if 0
-	bool VHostAppName::Parse(ov::String *vhost_name, ov::String *app_name) const
-	{
-		if(IsInvalid())
-		{
-			return false;
-		}
-
-		auto tokens = Split("#");
-
-		if (tokens.size() == 3)
-		{
-			// #<vhost_name>#<app_name>
-			OV_ASSERT2(tokens[0] == "");
-
-			if (vhost_name != nullptr)
-			{
-				*vhost_name = tokens[1];
-			}
-
-			if (app_name != nullptr)
-			{
-				*app_name = tokens[2];
-			}
-			return true;
-		}
-
-		OV_ASSERT2(false);
-		return false;
-	}
-#endif
-
 	bool VHostAppName::IsValid() const
 	{
 		return _is_valid;
@@ -88,12 +56,12 @@ namespace info
 
 	bool VHostAppName::operator==(const VHostAppName &another) const
 	{
-		return (_is_valid == another._is_valid) && (_vhost_app_name == another._vhost_app_name);
+		return (_is_valid == another._is_valid) && (_name_path == another._name_path);
 	}
 
 	bool VHostAppName::operator<(const VHostAppName &another) const
 	{
-		return _vhost_app_name < another._vhost_app_name;
+		return _name_path < another._name_path;
 	}
 
 	const ov::String &VHostAppName::GetVHostName() const
@@ -106,13 +74,25 @@ namespace info
 		return _app_name;
 	}
 
+	const NamePath &VHostAppName::GetNamePath() const
+	{
+		return _name_path;
+	}
+
+	void VHostAppName::UpdateNamePath()
+	{
+		_name_path.Update("#%s#%s",
+						  _vhost_name.Replace("#", "_").CStr(),
+						  _app_name.Replace("#", "_").CStr());
+	}
+
 	const ov::String &VHostAppName::ToString() const
 	{
-		return _vhost_app_name;
+		return _name_path.ToString();
 	}
 
 	const char *VHostAppName::CStr() const
 	{
-		return _vhost_app_name.CStr();
+		return ToString().CStr();
 	}
 }  // namespace info

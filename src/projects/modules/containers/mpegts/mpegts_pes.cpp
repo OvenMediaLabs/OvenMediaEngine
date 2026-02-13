@@ -174,7 +174,7 @@ namespace mpegts
 		// Prevents _data from becoming too large due to malicious attacks or client bugs.
 		if (_data->GetLength() > MPEGTS_MAX_PES_PACKET_SIZE)
 		{
-			logtc("Could not append data anymore. PES packet size is too large: %d. It may be a malicious attack or client bug.", _data->GetLength());
+			logtc("Could not append data anymore. PES packet size is too large: %zu. It may be a malicious attack or client bug.", _data->GetLength());
 			return 0;
 		}
 

@@ -468,7 +468,7 @@ namespace cfg
 		  _current_file_path(current_path),
 		  _file_name(file_name)
 	{
-		logtd("Trying to create a DataSource from XML node [%s]... (%s, cwd: %s)", node.name(), file_name.CStr(), current_path.CStr());
+		logtt("Trying to create a DataSource from XML node [%s]... (%s, cwd: %s)", node.name(), file_name.CStr(), current_path.CStr());
 	}
 
 	DataSource::DataSource(const ov::String &current_path, const ov::String &file_name, const ov::String json_name, const Json::Value &json, cfg::CheckUnknownItems check_unknown_items)
@@ -481,7 +481,7 @@ namespace cfg
 		  _current_file_path(current_path),
 		  _file_name(file_name)
 	{
-		logtd("Trying to create a DataSource from JSON value [%s]... (%s, cwd: %s)", json_name.CStr(), file_name.CStr(), current_path.CStr());
+		logtt("Trying to create a DataSource from JSON value [%s]... (%s, cwd: %s)", json_name.CStr(), file_name.CStr(), current_path.CStr());
 	}
 
 	DataSource::DataSource(DataType type, const ov::String &current_path, const ov::String &file_name, const ItemName &root_name, cfg::CheckUnknownItems check_unknown_items)
@@ -510,7 +510,7 @@ namespace cfg
 			_current_file_path = ov::PathManager::ExtractPath(_full_file_path);
 		}
 
-		logtd("Trying to create a DataSource for %s from %s file: %s [cwd: %s => %s, file: %s]",
+		logtt("Trying to create a DataSource for %s from %s file: %s [cwd: %s => %s, file: %s]",
 			  root_name.ToString().CStr(),
 			  (type == DataType::Xml) ? "XML" : "JSON",
 			  _full_file_path.CStr(),
@@ -534,7 +534,7 @@ namespace cfg
 	{
 		_file_name = file_name;
 
-		logtd("Trying to load data source from %s", file_name.CStr());
+		logtt("Trying to load data source from %s", file_name.CStr());
 
 		switch (_type)
 		{
@@ -593,7 +593,7 @@ namespace cfg
 	{
 		if (_check_unknown_items == CheckUnknownItems::DontCheck)
 		{
-			logtd("Checking unknown items is skipped: %s", path.CStr());
+			logtt("Checking unknown items is skipped: %s", path.CStr());
 			return;
 		}
 
@@ -787,7 +787,7 @@ namespace cfg
 			// Load from the include file
 			ov::String include_file_path = include_file_pattern.TryCast<ov::String>();
 
-			logtd("Include file found: %s", include_file_path.CStr());
+			logtt("Include file found: %s", include_file_path.CStr());
 
 			std::vector<ov::String> file_list;
 			auto path_error = ov::PathManager::GetFileList(current_path, include_file_path, &file_list);

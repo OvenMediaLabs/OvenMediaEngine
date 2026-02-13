@@ -36,7 +36,7 @@ WebRtcPublisher::WebRtcPublisher(const cfg::Server &server_config, const std::sh
 
 WebRtcPublisher::~WebRtcPublisher()
 {
-	logtd("WebRtcPublisher has been terminated finally");
+	logtt("WebRtcPublisher has been terminated finally");
 }
 
 bool WebRtcPublisher::StartSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
@@ -430,7 +430,7 @@ bool WebRtcPublisher::OnAddRemoteDescription(const std::shared_ptr<http::svr::ws
 	auto remote_address		   = request->GetRemote()->GetRemoteAddress();
 
 	ov::String remote_sdp_text = answer_sdp->ToString();
-	logtd("OnAddRemoteDescription: %s", remote_sdp_text.CStr());
+	logtt("OnAddRemoteDescription: %s", remote_sdp_text.CStr());
 
 	auto application = GetApplicationByName(final_vhost_app_name);
 	auto stream		 = std::static_pointer_cast<RtcStream>(GetStream(final_vhost_app_name, final_stream_name));
@@ -500,7 +500,7 @@ bool WebRtcPublisher::OnChangeRendition(const std::shared_ptr<http::svr::ws::Web
 	auto final_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(parsed_url->Host(), parsed_url->App());
 	auto final_stream_name	  = parsed_url->Stream();
 
-	logtd("ChangeRendition command received : %s/%s/%u", final_vhost_app_name.CStr(), final_stream_name.CStr(), offer_sdp->GetSessionId());
+	logtt("ChangeRendition command received : %s/%s/%u", final_vhost_app_name.CStr(), final_stream_name.CStr(), offer_sdp->GetSessionId());
 
 	// Find Stream
 	auto stream = std::static_pointer_cast<RtcStream>(GetStream(final_vhost_app_name, final_stream_name));
@@ -599,7 +599,7 @@ bool WebRtcPublisher::OnIceCandidate(const std::shared_ptr<http::svr::ws::WebSoc
 
 void WebRtcPublisher::OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data)
 {
-	logtd("IcePort OnStateChanged : %d", state);
+	logtt("IcePort OnStateChanged : %d", ov::ToUnderlyingType(state));
 
 	std::shared_ptr<RtcSession> session;
 	try
@@ -653,7 +653,7 @@ void WebRtcPublisher::OnDataReceived(IcePort &port, uint32_t session_id, std::sh
 		return;
 	}
 
-	logtd("WebRtcPublisher::OnDataReceived : %d", session_id);
+	logtt("WebRtcPublisher::OnDataReceived : %d", session_id);
 
 	auto stream = session->GetStream();
 	stream->SendMessage(session, std::make_any<std::shared_ptr<const ov::Data>>(data));

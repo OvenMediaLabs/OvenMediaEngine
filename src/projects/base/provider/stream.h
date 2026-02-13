@@ -162,6 +162,7 @@ namespace pvd
 
 		int64_t _last_media_timestamp_ms = -1LL;
 		ov::StopWatch _elapsed_from_last_media_timestamp;
+		int64_t _max_generated_timestamp_ms = -1LL;
 
 		std::shared_ptr<pvd::Application> _application = nullptr;
 	};

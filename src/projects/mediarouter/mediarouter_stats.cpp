@@ -132,6 +132,6 @@ void MediaRouterStats::Update(
 
 		stat_track_str = stat_stream_str + stat_track_str;
 
-		logtd("%s", stat_track_str.CStr());
+		logtt("%s", stat_track_str.CStr());
 	}
 }

@@ -19,7 +19,7 @@ OvtApplication::OvtApplication(const std::shared_ptr<pub::Publisher> &publisher,
 OvtApplication::~OvtApplication()
 {
 	Stop();
-	logtd("OvtApplication(%d) has been terminated finally", GetId());
+	logtt("OvtApplication(%d) has been terminated finally", GetId());
 }
 
 bool OvtApplication::Start()
@@ -34,13 +34,13 @@ bool OvtApplication::Stop()
 
 std::shared_ptr<pub::Stream> OvtApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 {
-	logtd("OvtApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("OvtApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
 	return OvtStream::Create(GetSharedPtrAs<pub::Application>(), *info, worker_count);
 }
 
 bool OvtApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 {
-	logtd("OvtApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("OvtApplication::DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	auto stream = std::static_pointer_cast<OvtStream>(GetStream(info->GetId()));
 	if(stream == nullptr)
@@ -49,7 +49,7 @@ bool OvtApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 		return false;
 	}
 	
-	logtd("OvtApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
+	logtt("OvtApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 	return true;
 }

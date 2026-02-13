@@ -24,7 +24,7 @@ namespace pub
 
 	FileStream::~FileStream()
 	{
-		logtd("FileStream(%s/%s) has been terminated finally",
+		logtt("FileStream(%s/%s) has been terminated finally",
 			  GetApplicationName(), GetName().CStr());
 	}
 
@@ -35,7 +35,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileStream(%ld) has been started", GetId());
+		logtt("FileStream(%u) has been started", GetId());
 
 		if (!CreateStreamWorker(2))
 		{
@@ -54,7 +54,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileStream(%u) has been stopped", GetId());
+		logtt("FileStream(%u) has been stopped", GetId());
 
 		std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), true);
 
