@@ -24,17 +24,16 @@ namespace cfg
 			protected:
 				void MakeList() override
 				{
-					Register("Host", &_host, nullptr, 
-							[=]() -> std::shared_ptr<ConfigError> {
-								// format = host:port
-								auto tokens = _host.Split(":");
-								if (tokens.size() != 2)
-								{
-									return CreateConfigErrorPtr("Invalid host format %s > it must be host:port", _host.CStr());
-								}
-								return nullptr;
-							}
-						);
+					Register("Host", &_host, nullptr,
+							 [=]() -> std::shared_ptr<ConfigError> {
+								 // format = host:port
+								 auto tokens = _host.Split(":");
+								 if (tokens.size() != 2)
+								 {
+									 return CreateConfigErrorPtr("Invalid host format %s > it must be host:port", _host.CStr());
+								 }
+								 return nullptr;
+							 });
 					Register<Optional>("Auth", &_auth);
 				}
 
@@ -42,5 +41,5 @@ namespace cfg
 				ov::String _auth;
 			};
 		}  // namespace orgn
-	}	   // namespace vhost
+	}  // namespace vhost
 }  // namespace cfg

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "h264_nal_unit_types.h"
+#include "h264_common.h"
 
 #include <unordered_set>
-#include <cstdint>
+#include <stdint.h>
 
 class H264BitstreamAnalyzer
 {

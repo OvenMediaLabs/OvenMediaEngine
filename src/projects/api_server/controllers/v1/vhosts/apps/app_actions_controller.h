@@ -8,13 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "../../../controller.h"
+#include "../../../controller_base.h"
 
 namespace api
 {
 	namespace v1
 	{
-		class AppActionsController : public Controller<AppActionsController>
+		class AppActionsController : public ControllerBase<AppActionsController>
 		{
 		public:
 			void PrepareHandlers() override;
@@ -26,14 +26,14 @@ namespace api
 									 const std::shared_ptr<mon::ApplicationMetrics> &app);
 
 			ApiResponse OnPostRecords(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
-									 const std::shared_ptr<mon::HostMetrics> &vhost,
-									 const std::shared_ptr<mon::ApplicationMetrics> &app);
+									  const std::shared_ptr<mon::HostMetrics> &vhost,
+									  const std::shared_ptr<mon::ApplicationMetrics> &app);
 
 			// POST /v1/vhosts/<vhost_name>/apps/<app_name>:startRecord
 			ApiResponse OnPostStartRecord(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
 										  const std::shared_ptr<mon::HostMetrics> &vhost,
 										  const std::shared_ptr<mon::ApplicationMetrics> &app);
-			
+
 			// POST /v1/vhosts/<vhost_name>/apps/<app_name>:stopRecord
 			ApiResponse OnPostStopRecord(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
 										 const std::shared_ptr<mon::HostMetrics> &vhost,
@@ -45,15 +45,14 @@ namespace api
 									const std::shared_ptr<mon::ApplicationMetrics> &app);
 
 			ApiResponse OnPostPushes(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
-									const std::shared_ptr<mon::HostMetrics> &vhost,
-									const std::shared_ptr<mon::ApplicationMetrics> &app);
-						
+									 const std::shared_ptr<mon::HostMetrics> &vhost,
+									 const std::shared_ptr<mon::ApplicationMetrics> &app);
 
 			// POST /v1/vhosts/<vhost_name>/apps/<app_name>:startPush
 			ApiResponse OnPostStartPush(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
 										const std::shared_ptr<mon::HostMetrics> &vhost,
 										const std::shared_ptr<mon::ApplicationMetrics> &app);
-			
+
 			// POST /v1/vhosts/<vhost_name>/apps/<app_name>:stopPush
 			ApiResponse OnPostStopPush(const std::shared_ptr<http::svr::HttpExchange> &client, const Json::Value &request_body,
 									   const std::shared_ptr<mon::HostMetrics> &vhost,

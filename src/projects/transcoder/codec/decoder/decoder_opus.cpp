@@ -11,65 +11,54 @@
 #include "../../transcoder_private.h"
 #include "base/info/application.h"
 
-bool DecoderOPUS::Configure(std::shared_ptr<MediaTrack> context)
+bool DecoderOPUS::InitCodec()
 {
-	if (TranscodeDecoder::Configure(context) == false)
+	const AVCodec *codec = ::avcodec_find_decoder(ffmpeg::compat::ToAVCodecId(GetCodecID()));
+	if (codec == nullptr)
 	{
+		logte("Codec not found: %s", cmn::GetCodecIdString(GetCodecID()));
 		return false;
 	}
 
-	const AVCodec *_codec = ::avcodec_find_decoder(GetCodecID());
-	if (_codec == nullptr)
+	_codec_context = ::avcodec_alloc_context3(codec);
+	if (_codec_context == nullptr)
 	{
-		logte("Codec not found: %s (%d)", ::avcodec_get_name(GetCodecID()), GetCodecID());
+		logte("Could not allocate codec context for %s", cmn::GetCodecIdString(GetCodecID()));
 		return false;
 	}
 
-	_context = ::avcodec_alloc_context3(_codec);
-	if (_context == nullptr)
+	_codec_context->time_base = ffmpeg::compat::TimebaseToAVRational(GetTimebase());
+
+	if (::avcodec_open2(_codec_context, nullptr, nullptr) < 0)
 	{
-		logte("Could not allocate codec context for %s (%d)", ::avcodec_get_name(GetCodecID()), GetCodecID());
+		logte("Could not open codec: %s", cmn::GetCodecIdString(GetCodecID()));
 		return false;
 	}
 
-	_context->time_base = ffmpeg::Conv::TimebaseToAVRational(GetTimebase());
-
-	if (::avcodec_open2(_context, _codec, nullptr) < 0)
-	{
-		logte("Could not open codec: %s (%d)", ::avcodec_get_name(GetCodecID()), GetCodecID());
-		return false;
-	}
-
-	// Create packet parser
-	_parser = ::av_parser_init(_codec->id);
+	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
 	if (_parser == nullptr)
 	{
 		logte("Parser not found");
 		return false;
 	}
-
+	
 	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
 
-	// Generates a thread that reads and encodes frames in the input_buffer queue and places them in the output queue.
-	try
-	{
-		_kill_flag = false;
-
-		_codec_thread = std::thread(&TranscodeDecoder::CodecThread, this);
-		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("Dec%s", avcodec_get_name(GetCodecID())).CStr());
-	}
-	catch (const std::system_error &e)
-	{
-		logte("Failed to start decoder thread");
-		_kill_flag = true;
-		return false;
-	}
-
+	_change_format = false;
+	
 	return true;
 }
 
 void DecoderOPUS::CodecThread()
 {
+	ov::logger::ThreadHelper thread_helper;
+
+	// Initialize the codec and notify the main thread.
+	if(_codec_init_event.Submit(InitCodec()) == false)
+	{
+		return;
+	}
+	
 	bool no_data_to_encode = false;
 
 	while (!_kill_flag)
@@ -101,11 +90,13 @@ void DecoderOPUS::CodecThread()
 
 		if (_cur_data != nullptr)
 		{
-			while (_cur_data->GetLength() > _pkt_offset)
+			if (_pkt_offset < _cur_data->GetLength())
 			{
+				_pkt->size = 0;
+
 				int32_t parsed_size = ::av_parser_parse2(
 					_parser,
-					_context,
+					_codec_context,
 					&_pkt->data, &_pkt->size,
 					_cur_data->GetDataAs<uint8_t>() + _pkt_offset,
 					static_cast<int32_t>(_cur_data->GetLength() - _pkt_offset),
@@ -116,10 +107,12 @@ void DecoderOPUS::CodecThread()
 				if (parsed_size <= 0)
 				{
 					logte("Error while parsing\n");
-					_cur_pkt = nullptr;
 					_cur_data = nullptr;
-					_pkt_offset = 0;
-					break;
+				}
+				else
+				{
+					OV_ASSERT(_cur_data->GetLength() >= (size_t)parsed_size, "Current data size MUST greater than parsed_size, but data size: %ld, parsed_size: %ld", _cur_data->GetLength(), parsed_size);
+					_pkt_offset += parsed_size;
 				}
 
 				if (_pkt->size > 0)
@@ -136,48 +129,33 @@ void DecoderOPUS::CodecThread()
 						_pkt->duration = 0;
 					}
 
-					int ret = ::avcodec_send_packet(_context, _pkt);
-
+					int ret = ::avcodec_send_packet(_codec_context, _pkt);
 					if (ret == AVERROR(EAGAIN))
 					{
-						// Need more data
-						// *result = TranscodeResult::Again;
-						break;
+						// Nothing to do here, just continue
 					}
-					else if (ret == AVERROR_EOF)
+					else if (ret == AVERROR_INVALIDDATA)
 					{
-						logte("Error sending a packet for decoding : AVERROR_EOF");
-						break;
-					}
-					else if (ret == AVERROR(EINVAL))
-					{
-						logte("Error sending a packet for decoding : AVERROR(EINVAL)");
-						break;
-					}
-					else if (ret == AVERROR(ENOMEM))
-					{
-						logte("Error sending a packet for decoding : AVERROR(ENOMEM)");
-						break;
+						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+							  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
 					}
 					else if (ret < 0)
 					{
-						char err_msg[1024];
-						av_strerror(ret, err_msg, sizeof(err_msg));
-						logte("An error occurred while sending a packet for decoding: Unhandled error (%d:%s) ", ret, err_msg);
+						_cur_data = nullptr;
+						logte("Error occurred while sending a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+						Complete(TranscodeResult::DataError, nullptr);
 					}
+
+					// Save first pakcet's PTS
+					if(_first_pkt_pts == INT64_MIN)
+					{
+						_first_pkt_pts = _pkt->pts;
+					}						
 				}
-
-				if (parsed_size > 0)
-				{
-					OV_ASSERT(_cur_data->GetLength() >= (size_t)parsed_size, "Current data size MUST greater than parsed_size, but data size: %ld, parsed_size: %ld", _cur_data->GetLength(), parsed_size);
-
-					_pkt_offset += parsed_size;
-				}
-
-				break;
 			}
 
-			if (_cur_data->GetLength() <= _pkt_offset)
+			if (_cur_data == nullptr || _cur_data->GetLength() <= _pkt_offset)
 			{
 				_cur_pkt = nullptr;
 				_cur_data = nullptr;
@@ -189,63 +167,64 @@ void DecoderOPUS::CodecThread()
 		// Receive a frame from decoder
 		/////////////////////////////////////////////////////////////////////
 		// Check the decoded frame is available
-		int ret = ::avcodec_receive_frame(_context, _frame);
+		int ret = ::avcodec_receive_frame(_codec_context, _frame);
 		if (ret == AVERROR(EAGAIN))
 		{
 			no_data_to_encode = true;
 			continue;
 		}
-		else if (ret == AVERROR_EOF)
+		else if (ret == AVERROR_INVALIDDATA)
 		{
-			logte("Error receiving a packet for decoding : AVERROR_EOF");
+			logtw("Invalid data while receiving a packet for decoding");
 			continue;
 		}
 		else if (ret < 0)
 		{
-			logte("Error receiving a packet for decoding : %d", ret);
+			logte("Error receiving a packet for decoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+			Complete(TranscodeResult::DataError, nullptr);
+
 			continue;
 		}
 		else
 		{
-			bool need_to_change_notify = false;
-
 			// Update codec informations if needed
 			if (_change_format == false)
 			{
-				ret = ::avcodec_parameters_from_context(_codec_par, _context);
+				auto codec_info = ffmpeg::compat::CodecInfoToString(_codec_context);
 
-				if (ret == 0)
+				logtd("[%s(%u)] Changed format. %s", _stream_info.GetUri().CStr(), _stream_info.GetId(), codec_info.CStr());
+			}
+
+			// The actual duration is calculated based on the number of samples in the decoded frame.
+			_frame->pkt_duration = ffmpeg::compat::GetDurationPerFrame(cmn::MediaType::Audio, GetRefTrack(), _frame);
+
+			// If the decoded audio frame has no PTS, add the frame duration to the previous frame's PTS.
+			if (_frame->pts == AV_NOPTS_VALUE)
+			{
+				if(_last_pkt_pts == INT64_MIN)
 				{
-					auto codec_info = ShowCodecParameters(_context, _codec_par);
-
-					logti("[%s/%s(%u)] input stream information: %s",
-						  _stream_info.GetApplicationInfo().GetName().CStr(), _stream_info.GetName().CStr(), _stream_info.GetId(), codec_info.CStr());
-
-					_change_format = true;
-
-					// If the format is changed, notify to another module
-					need_to_change_notify = true;
+					// If the previous frame has no PTS, use the PTS of the first packet.
+					_frame->pts = _first_pkt_pts;
 				}
-				else
+				else 
 				{
-					logte("Could not obtain codec paramters from context %p", _context);
+					_frame->pts = _last_pkt_pts + _last_pkt_duration;
 				}
 			}
 
-			// If there is no duration, the duration is calculated by timebase.
-			_frame->pkt_duration = (_frame->pkt_duration <= 0LL) ? ffmpeg::Conv::GetDurationPerFrame(cmn::MediaType::Audio, GetRefTrack(), _frame) : _frame->pkt_duration;
-
-			// If the decoded audio frame does not have a PTS, Increase frame duration time in PTS of previous frame
-			_frame->pts = (_frame->pts == AV_NOPTS_VALUE) ? (_last_pkt_pts + _frame->pkt_duration) : _frame->pts;
-
-			auto output_frame = ffmpeg::Conv::ToMediaFrame(cmn::MediaType::Audio, _frame);
+			auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Audio, _frame);
 			::av_frame_unref(_frame);
 			if (output_frame == nullptr)
+			{
 				continue;
+			}
 
 			_last_pkt_pts = output_frame->GetPts();
+			_last_pkt_duration = output_frame->GetDuration();
 
-			SendOutputBuffer(need_to_change_notify ? TranscodeResult::FormatChanged : TranscodeResult::DataReady, std::move(output_frame));
+			Complete(!_change_format ? TranscodeResult::FormatChanged : TranscodeResult::DataReady, std::move(output_frame));
+			_change_format = true;
 		}
 	}
 }

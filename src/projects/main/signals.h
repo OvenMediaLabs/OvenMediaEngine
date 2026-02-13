@@ -9,3 +9,4 @@
 #pragma once
 
 bool InitializeSignals();
+void SetDumpFallbackPath(const char *path);

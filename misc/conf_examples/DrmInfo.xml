@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<DRMInfo>
+    <DRM>
+        <Name>MultiDRM</Name>
+        <VirtualHostName>default</VirtualHostName>
+        <ApplicationName>app</ApplicationName>
+        <StreamName>stream*</StreamName> <!-- Can be wildcard regular expression -->
+
+        <CencProtectScheme>cbcs</CencProtectScheme> <!-- Now only support cbcs -->
+        <KeyId>572543f964e34dc68ba9ba9ef91d4c4a</KeyId> <!-- hex -->
+        <Key>16cf4232a86364b519e1982a27d90087</Key> <!-- hex -->
+        <Iv>572547f914e34dc68ba9ba9ef91d4c4a</Iv> <!-- hex -->
+        <Pssh>0000003f7073736800000000edef8ba979d64acea3c827dcd51d21ed0000001f1210572547f964e34dc68ba9ba9ef91d4c4a1a05657a64726d48f3c6899b06</Pssh> <!-- hex, for Widevine -->
+        <!-- If you want to support fairplay, add pssh for it. -->
+
+        <FairPlayKeyUrl>skd://fiarplay_key_url</FairPlayKeyUrl> <!-- FairPlay only -->
+    </DRM>
+</DRMInfo>

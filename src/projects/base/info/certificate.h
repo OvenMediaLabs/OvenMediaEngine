@@ -23,14 +23,14 @@ namespace info
 		///
 		static std::shared_ptr<Certificate> CreateCertificate(const ov::String &certificate_name, const std::vector<ov::String> &host_name_list, const cfg::cmn::Tls &tls_config);
 
-		std::shared_ptr<CertificatePair> GetCertificatePair() const
-		{
-			return _certificate_pair;
-		}
-
 		ov::String GetName() const;
 
 		bool IsCertificateForHost(const ov::String &host_name) const;
+
+		std::shared_ptr<::Certificate> GetCertificate() const
+		{
+			return _certificate;
+		}
 
 		ov::String ToString() const;
 
@@ -50,9 +50,10 @@ namespace info
 	protected:
 		std::shared_ptr<ov::Error> PrepareCertificate(const ov::String &certificate_name, const std::vector<ov::String> &host_name_list, const cfg::cmn::Tls &tls_config);
 
+	protected:
 		ov::String _certificate_name;
 		std::vector<HostNameEntry> _host_name_entry_list;
 
-		std::shared_ptr<CertificatePair> _certificate_pair;
+		std::shared_ptr<::Certificate> _certificate;
 	};
 }  // namespace info

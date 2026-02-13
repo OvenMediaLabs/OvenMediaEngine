@@ -9,7 +9,7 @@
 
 namespace pub
 {
-	class FileStream : public pub::Stream
+	class FileStream final : public pub::Stream
 	{
 	public:
 		static std::shared_ptr<FileStream> Create(const std::shared_ptr<pub::Application> application,
@@ -22,7 +22,7 @@ namespace pub
 		void SendFrame(const std::shared_ptr<MediaPacket> &media_packet);
 		void SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet) override;
 		void SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet) override;
-		void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) override {} // Not supported
+		void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) override {}  // Not supported
 
 		std::shared_ptr<FileSession> CreateSession();
 		bool DeleteSession(uint32_t session_id);

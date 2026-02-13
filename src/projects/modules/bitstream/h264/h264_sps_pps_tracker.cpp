@@ -1,9 +1,8 @@
 #include <modules/bitstream/nalu/nal_unit_bitstream_parser.h>
-#include "h264_sps_pps_tracker.h"
-#include "h264.h"
-#include "h264_nal_unit_types.h"
-
 #include <base/ovlibrary/log.h>
+
+#include "h264_sps_pps_tracker.h"
+#include "h264_common.h"
 
 #define OV_LOG_TAG "H264SpsPpsTracker"
 

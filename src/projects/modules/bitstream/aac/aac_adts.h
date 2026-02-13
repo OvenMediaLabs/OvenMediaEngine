@@ -1,11 +1,9 @@
 #pragma once
 
-#include "aac_specific_config.h"
+#include "audio_specific_config.h"
 #include <base/ovlibrary/ovlibrary.h>
 
-#include <cstdint>
-
-
+#include <stdint.h>
 
 #define ADTS_MIN_SIZE	7
 
@@ -20,10 +18,9 @@ public:
 	uint8_t Id();
 	uint8_t Layer();
 	bool ProtectionAbsent();
-	AacObjectType Profile();
-	ov::String ProfileString();
-	AacSamplingFrequencies Samplerate();
-	uint32_t SamplerateNum();
+	AudioObjectType ObjectType();
+	AacSamplingFrequencies SamplingFrequencyIndex();
+	uint32_t Samplerate();
 	uint8_t ChannelConfiguration();
 	bool Originality();
 	bool Home();
@@ -37,7 +34,7 @@ private:
 	uint8_t _layer = 0; // 2 bits (always 0)
 	bool _protection_absent; // 1 bit (1: no CRC | 0: CRC)
 	uint8_t _profile; // 2 bits (AacObjectType - 1)
-	uint8_t _sampling_frequency_index; // 4 bits (15 is forbidden)
+	AacSamplingFrequencies _sampling_frequency_index; // 4 bits (15 is forbidden)
 	uint8_t _private_bit; // 1 bit (never to be used by MPEG, set 0: encoding ignore when decoding)
 	uint8_t _channel_configuration; // 3 bits (0 : sent via an inband PCE)
 	bool _original_copy; // 1 bit (set 0: encoding, ignore when decoding)

@@ -55,7 +55,7 @@ std::shared_ptr<RtpPacket> RtpMinimalJitterBuffer::PopAvailablePacket()
 			// Check the time spent in the buffer
 			packet_box = front_it->second;
 			
-			// If next of next packet is avaliable and wait for 1/2 buffering time in buffer
+			// If next of next packet is Available and wait for 1/2 buffering time in buffer
 			if(ov::Clock::NowMSec() - packet_box->_packaging_time_ms > _max_buffering_time_ms / 2)
 			{
 				// It is determined that the next packet is lost.

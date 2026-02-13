@@ -19,6 +19,27 @@ public:
 		UNKNOWN
 	};
 
+	static ov::String GetPacketTypeString(PacketType type)
+	{
+		switch(type)
+		{
+			case PacketType::STUN:
+				return "STUN";
+			case PacketType::ZRTP:
+				return "ZRTP";
+			case PacketType::DTLS:
+				return "DTLS";
+			case PacketType::TURN_CHANNEL_DATA:
+				return "TURN Channel Data";
+			case PacketType::RTP_RTCP:
+				return "RTP/RTCP";
+			case PacketType::UNKNOWN:
+				return "Unknown";
+			default:
+				return "Unknown";
+		}
+	}
+
 	static PacketType FindPacketType(const std::shared_ptr<const ov::Data> &data)
 	{
 		return IcePacketIdentifier::FindPacketType(*data);

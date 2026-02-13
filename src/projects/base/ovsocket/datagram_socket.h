@@ -23,10 +23,14 @@ namespace ov
 
 		~DatagramSocket() override = default;
 
-		// 특정 port로 bind
-		bool Prepare(int port, DatagramCallback datagram_callback);
-		// address에 해당하는 주소로 bind
-		bool Prepare(const SocketAddress &address, DatagramCallback datagram_callback);
+		// Bind to a specific port
+		bool Prepare(int port,
+					 SetAdditionalOptionsCallback callback,
+					 DatagramCallback datagram_callback);
+		// Bind to the address specified by address
+		bool Prepare(const SocketAddress &address,
+					 SetAdditionalOptionsCallback callback,
+					 DatagramCallback datagram_callback);
 
 		using Socket::Close;
 		using Socket::Connect;
@@ -39,6 +43,8 @@ namespace ov
 		String ToString() const override;
 
 	protected:
+		bool SetSocketOptions(SetAdditionalOptionsCallback callback);
+
 		//--------------------------------------------------------------------
 		// Overriding of Socket
 		//--------------------------------------------------------------------

@@ -27,9 +27,9 @@ class Transcoder : public ocst::TranscoderModuleInterface
 {
 	// class TranscodeApplication;
 public:
-	static std::shared_ptr<Transcoder> Create(std::shared_ptr<MediaRouteInterface> router);
+	static std::shared_ptr<Transcoder> Create(std::shared_ptr<MediaRouterInterface> router);
 
-	Transcoder(std::shared_ptr<MediaRouteInterface> router);
+	Transcoder(std::shared_ptr<MediaRouterInterface> router);
 	~Transcoder() = default;
 
 	bool Start();
@@ -48,6 +48,6 @@ private:
 	std::shared_ptr<TranscodeApplication> GetApplicationById(info::application_id_t application_id);
 
 	std::vector<info::Application> _app_info_list;
-	std::map<info::application_id_t, std::shared_ptr<TranscodeApplication>> _tracode_apps;
-	std::shared_ptr<MediaRouteInterface> _router;
+	std::map<info::application_id_t, std::shared_ptr<TranscodeApplication>> _transcode_apps;
+	std::shared_ptr<MediaRouterInterface> _router;
 };

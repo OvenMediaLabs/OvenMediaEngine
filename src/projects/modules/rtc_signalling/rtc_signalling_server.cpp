@@ -20,183 +20,250 @@
 #include "rtc_ice_candidate.h"
 #include "rtc_signalling_server_private.h"
 
-RtcSignallingServer::RtcSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_config)
+RtcSignallingServer::RtcSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_cfg)
 	: _server_config(server_config),
-	  _webrtc_config(webrtc_config),
+	  _webrtc_bind_cfg(webrtc_bind_cfg),
 	  _p2p_manager(server_config)
 {
 }
 
-bool RtcSignallingServer::Start(const ov::SocketAddress *address, const ov::SocketAddress *tls_address, int worker_count, std::shared_ptr<http::svr::ws::Interceptor> interceptor)
+bool RtcSignallingServer::PrepareForTCPRelay()
 {
-	//	const auto &webrtc_config = _server_config.GetBind().GetPublishers().GetWebrtc();
+	_ice_servers = Json::arrayValue;
+	_new_ice_servers = Json::arrayValue;
 
-	if ((_http_server != nullptr) || (_https_server != nullptr))
+	// For internal TURN/TCP relay configuration
+	const auto &ice_candidates_config = _webrtc_bind_cfg.GetIceCandidates();
+	_tcp_force = ice_candidates_config.IsTcpForce();
+
+	bool is_tcp_relay_configured = false;
+	const auto &tcp_relay_list = ice_candidates_config.GetTcpRelayList(&is_tcp_relay_configured);
+
+	if (is_tcp_relay_configured)
 	{
-		OV_ASSERT(false, "Server is already running (%p, %p)", _http_server.get(), _https_server.get());
-		return false;
-	}
+		Json::Value ice_server = Json::objectValue;
+		Json::Value new_ice_server = Json::objectValue;
+		Json::Value urls = Json::arrayValue;
 
-	if (interceptor == nullptr)
-	{
-		OV_ASSERT(false, "Interceptor must not be nullptr");
-		return false;
-	}
-
-	bool result = true;
-	auto manager = http::svr::HttpServerManager::GetInstance();
-	std::shared_ptr<http::svr::HttpServer> http_server = nullptr;
-	std::shared_ptr<http::svr::HttpsServer> https_server = nullptr;
-
-	if (address != nullptr)
-	{
-		_http_server_address = *address;
-		http_server = manager->CreateHttpServer("RtcSig", *address, worker_count);
-	}
-
-	if (tls_address != nullptr)
-	{
-		_https_server_address = *tls_address;
-		https_server = manager->CreateHttpsServer("RtcSig", *tls_address, false, worker_count);
-	}
-
-	if (SetWebSocketHandler(interceptor) == false)
-	{
-		OV_ASSERT(false, "SetWebSocketHandler failed");
-		return false;
-	}
-
-	result = result && ((http_server == nullptr) || http_server->AddInterceptor(interceptor));
-	result = result && ((https_server == nullptr) || https_server->AddInterceptor(interceptor));
-
-	if (result)
-	{
-		_ice_servers = Json::arrayValue;
-		_new_ice_servers = Json::arrayValue;
-
-		// for internal turn/tcp relay configuration
-		_tcp_force = _webrtc_config.GetIceCandidates().IsTcpForce();
-
-		bool tcp_relay_parsed = false;
-		auto tcp_relay_address = _webrtc_config.GetIceCandidates().GetTcpRelay(&tcp_relay_parsed);
-		if (tcp_relay_parsed)
+		for (auto &tcp_relay : tcp_relay_list)
 		{
-			Json::Value ice_server = Json::objectValue;
-			Json::Value new_ice_server = Json::objectValue;
-			Json::Value urls = Json::arrayValue;
-
 			// <TcpRelay>IP:Port</TcpRelay>
 			// <TcpRelay>*:Port</TcpRelay>
+			// <TcpRelay>[::]:Port</TcpRelay>
 			// <TcpRelay>${PublicIP}:Port</TcpRelay>
-			// Check tcp_relay_address is * or ${PublicIP}
-			auto address_items = tcp_relay_address.Split(":");
-			if (address_items.size() != 2)
+
+			// Check whether tcp_relay_address indicates "any address"(*, ::) or ${PublicIP}
+			const auto tcp_relay_address = ov::SocketAddress::ParseAddress(tcp_relay);
+			if (tcp_relay_address.HasPortList() == false)
 			{
+				logte("Invalid TCP relay address: %s (The TCP relay address must be in <IP>:<Port> format)", tcp_relay.CStr());
+				return false;
 			}
 
-			if (address_items[0] == "*")
+			auto address_utilities = ov::AddressUtilities::GetInstance();
+			std::vector<TurnIP> ip_list;
+
+			auto &tcp_relay_host = tcp_relay_address.host;
+			if (tcp_relay_host == OV_SOCKET_WILDCARD_IPV4)
 			{
-				auto ip_list = ov::AddressUtilities::GetInstance()->GetIpList();
-				for (const auto &ip : ip_list)
-				{
-					urls.append(ov::String::FormatString("turn:%s:%s?transport=tcp", ip.CStr(), address_items[1].CStr()).CStr());
-				}
+				// Case 1 - IPv4 wildcard
+				ip_list = TurnIP::FromIPList(ov::SocketFamily::Inet, address_utilities->GetIPv4List());
 			}
-			else if (address_items[0] == "${PublicIP}")
+			else if (tcp_relay_host == OV_SOCKET_WILDCARD_IPV6)
 			{
-				auto public_ip = ov::AddressUtilities::GetInstance()->GetMappedAddress();
-				urls.append(ov::String::FormatString("turn:%s:%s?transport=tcp", public_ip->GetIpAddress().CStr(), address_items[1].CStr()).CStr());
+				// Case 2 - IPv6 wildcard
+				ip_list = TurnIP::FromIPList(ov::SocketFamily::Inet6, address_utilities->GetIPv6List(ice_candidates_config.GetEnableLinkLocalAddress()));
+			}
+			else if (tcp_relay_host == OV_ICE_PORT_PUBLIC_IP)
+			{
+				const auto public_ip_list = address_utilities->GetMappedAddressList();
+
+				if (public_ip_list.empty() == false)
+				{
+					// Case 3 - Get an IP from external STUN server
+					for (const auto &public_ip : public_ip_list)
+					{
+						ip_list.emplace_back(public_ip);
+					}
+				}
+				else
+				{
+					// Case 4 - Could not obtain an IP from the STUN server
+					logtw(OV_ICE_PORT_PUBLIC_IP " is specified on TCP relay, but failed to obtain public IP: %s", tcp_relay.CStr());
+				}
 			}
 			else
 			{
-				urls.append(ov::String::FormatString("turn:%s?transport=tcp", tcp_relay_address.CStr()).CStr());
+				// Case 5 - Use the domain as it is
+				urls.append(ov::String::FormatString("turn:%s?transport=tcp", tcp_relay.CStr()).CStr());
 			}
 
+			// This loop runs only when Case 1/2/3
+			for (const auto &ip : ip_list)
+			{
+				tcp_relay_address.EachPort([&](const ov::String &host, const uint16_t port) -> bool {
+					if (ip.family == ov::SocketFamily::Inet6)
+					{
+						urls.append(ov::String::FormatString("turn:[%s]:%d?transport=tcp", ip.ip.CStr(), port).CStr());
+					}
+					else
+					{
+						urls.append(ov::String::FormatString("turn:%s:%d?transport=tcp", ip.ip.CStr(), port).CStr());
+					}
+					return true;
+				});
+			}
+		}
+
+		ice_server["urls"] = urls;
+		new_ice_server["urls"] = urls;
+
+		// Embedded turn server has fixed user_name and credential. Security is provided by signed policy after this. This is because the embedded turn server does not relay other servers and only transmits the local stream to tcp when transmitting to webrtc.
+
+		// "user_name" is out of specification. This is a bug and "username" is correct. "user_name" will be deprecated in the future.
+		ice_server["user_name"] = DEFAULT_RELAY_USERNAME;
+		new_ice_server["username"] = DEFAULT_RELAY_USERNAME;
+
+		ice_server["credential"] = DEFAULT_RELAY_KEY;
+		new_ice_server["credential"] = DEFAULT_RELAY_KEY;
+
+		_ice_servers.append(ice_server);
+		_new_ice_servers.append(new_ice_server);
+	}
+
+	return true;
+}
+
+bool RtcSignallingServer::PrepareForExternalIceServer()
+{
+	// for external ice server configuration
+	auto &ice_servers_config = _webrtc_bind_cfg.GetIceServers();
+	if (ice_servers_config.IsParsed())
+	{
+		for (auto ice_server_config : ice_servers_config.GetIceServerList())
+		{
+			Json::Value ice_server = Json::objectValue;
+			Json::Value new_ice_server = Json::objectValue;
+
+			// URLS
+			auto &url_list = ice_server_config.GetUrls().GetUrlList();
+
+			if (url_list.size() == 0)
+			{
+				logtw("There is no URL list in ICE Servers");
+				continue;
+			}
+
+			Json::Value urls = Json::arrayValue;
+			for (auto url : url_list)
+			{
+				urls.append(url.CStr());
+			}
 			ice_server["urls"] = urls;
 			new_ice_server["urls"] = urls;
 
-			// Embedded turn server has fixed user_name and credential. Security is provided by signed policy after this. This is because the embedded turn server does not relay other servers and only transmits the local stream to tcp when transmitting to webrtc.
+			// UserName
+			if (ice_server_config.GetUserName().IsEmpty() == false)
+			{
+				// "user_name" is out of specification. This is a bug and "username" is correct. "user_name" will be deprecated in the future.
+				ice_server["user_name"] = ice_server_config.GetUserName().CStr();
+				new_ice_server["username"] = ice_server_config.GetUserName().CStr();
+			}
 
-			// "user_name" is out of specification. This is a bug and "username" is correct. "user_name" will be deprecated in the future.
-			ice_server["user_name"] = DEFAULT_RELAY_USERNAME;
-			new_ice_server["username"] = DEFAULT_RELAY_USERNAME;
-
-			ice_server["credential"] = DEFAULT_RELAY_KEY;
-			new_ice_server["credential"] = DEFAULT_RELAY_KEY;
+			// Credential
+			if (ice_server_config.GetCredential().IsEmpty() == false)
+			{
+				ice_server["credential"] = ice_server_config.GetCredential().CStr();
+				new_ice_server["credential"] = ice_server_config.GetCredential().CStr();
+			}
 
 			_ice_servers.append(ice_server);
 			_new_ice_servers.append(new_ice_server);
 		}
-
-		// for external ice server configuration
-		auto &ice_servers_config = _webrtc_config.GetIceServers();
-		if (ice_servers_config.IsParsed())
-		{
-			for (auto ice_server_config : ice_servers_config.GetIceServerList())
-			{
-				Json::Value ice_server = Json::objectValue;
-				Json::Value new_ice_server = Json::objectValue;
-
-				// URLS
-				auto &url_list = ice_server_config.GetUrls().GetUrlList();
-
-				if (url_list.size() == 0)
-				{
-					logtw("There is no URL list in ICE Servers");
-					continue;
-				}
-
-				Json::Value urls = Json::arrayValue;
-				for (auto url : url_list)
-				{
-					urls.append(url.CStr());
-				}
-				ice_server["urls"] = urls;
-				new_ice_server["urls"] = urls;
-
-				// UserName
-				if (ice_server_config.GetUserName().IsEmpty() == false)
-				{
-					// "user_name" is out of specification. This is a bug and "username" is correct. "user_name" will be deprecated in the future.
-					ice_server["user_name"] = ice_server_config.GetUserName().CStr();
-					new_ice_server["username"] = ice_server_config.GetUserName().CStr();
-				}
-
-				// Credential
-				if (ice_server_config.GetCredential().IsEmpty() == false)
-				{
-					ice_server["credential"] = ice_server_config.GetCredential().CStr();
-					new_ice_server["credential"] = ice_server_config.GetCredential().CStr();
-				}
-
-				_ice_servers.append(ice_server);
-				_new_ice_servers.append(new_ice_server);
-			}
-		}
-
-		if (_ice_servers.empty())
-		{
-			_ice_servers = Json::nullValue;
-		}
-
-		_http_server = http_server;
-		_https_server = https_server;
 	}
-	else
+
+	if (_ice_servers.empty())
 	{
-		// Rollback
-		manager->ReleaseServer(http_server);
-		manager->ReleaseServer(https_server);
+		_ice_servers = Json::nullValue;
 	}
 
-	return result;
+	return true;
 }
 
-bool RtcSignallingServer::AppendCertificate(const std::shared_ptr<const info::Certificate> &certificate)
+bool RtcSignallingServer::Start(
+	const char *server_name, const char *server_short_name,
+	const std::vector<ov::String> &ip_list,
+	bool is_port_configured, uint16_t port,
+	bool is_tls_port_configured, uint16_t tls_port,
+	int worker_count, std::shared_ptr<http::svr::ws::Interceptor> interceptor)
 {
-	if (_https_server != nullptr && certificate != nullptr)
+	if ((_http_server_list.empty() == false) || (_https_server_list.empty() == false))
 	{
-		return _https_server->AppendCertificate(certificate) == nullptr;
+		OV_ASSERT(false, "%s is already running (%zu, %zu)",
+				  server_name,
+				  _http_server_list.size(),
+				  _https_server_list.size());
+		return false;
+	}
+
+	if (SetupWebSocketHandler(interceptor) == false)
+	{
+		OV_ASSERT(false, "SetupWebSocketHandler() failed");
+		return false;
+	}
+
+	auto http_server_manager = http::svr::HttpServerManager::GetInstance();
+
+	std::vector<std::shared_ptr<http::svr::HttpServer>> http_server_list;
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> https_server_list;
+
+	if (http_server_manager->CreateServers(
+			server_name, server_short_name,
+			&http_server_list, &https_server_list,
+			ip_list,
+			is_port_configured, port,
+			is_tls_port_configured, tls_port,
+			nullptr, false,
+			[&](const ov::SocketAddress &address, bool is_https, const std::shared_ptr<http::svr::HttpServer> &http_server) {
+				http_server->AddInterceptor(interceptor);
+			},
+			worker_count))
+	{
+		if (PrepareForTCPRelay() && PrepareForExternalIceServer())
+		{
+			std::lock_guard lock_guard{_http_server_list_mutex};
+			_http_server_list = std::move(http_server_list);
+			_https_server_list = std::move(https_server_list);
+
+			return true;
+		}
+
+		logte("Could not prepare TCP relay. Uninitializing RtcSignallingServer...");
+	}
+
+	http_server_manager->ReleaseServers(&http_server_list);
+	http_server_manager->ReleaseServers(&https_server_list);
+
+	return false;
+}
+
+bool RtcSignallingServer::InsertCertificate(const std::shared_ptr<const info::Certificate> &certificate)
+{
+	if (certificate != nullptr)
+	{
+		_http_server_list_mutex.lock();
+		auto https_server_list = _https_server_list;
+		_http_server_list_mutex.unlock();
+
+		for (auto &https_server : https_server_list)
+		{
+			auto error = https_server->InsertCertificate(certificate);
+			if (error != nullptr)
+			{
+				logte("Could not append certificate to %p: %s", https_server.get(), error->What());
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -204,16 +271,34 @@ bool RtcSignallingServer::AppendCertificate(const std::shared_ptr<const info::Ce
 
 bool RtcSignallingServer::RemoveCertificate(const std::shared_ptr<const info::Certificate> &certificate)
 {
-	if (_https_server != nullptr && certificate != nullptr)
+	if (certificate != nullptr)
 	{
-		return _https_server->RemoveCertificate(certificate) == nullptr;
+		_http_server_list_mutex.lock();
+		auto https_server_list = _https_server_list;
+		_http_server_list_mutex.unlock();
+
+		for (auto &https_server : https_server_list)
+		{
+			auto error = https_server->RemoveCertificate(certificate);
+			if (error != nullptr)
+			{
+				logte("Could not remove certificate from %p: %s", https_server.get(), error->What());
+				return false;
+			}
+		}
 	}
 
 	return true;
 }
 
-bool RtcSignallingServer::SetWebSocketHandler(std::shared_ptr<http::svr::ws::Interceptor> interceptor)
+bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::Interceptor> interceptor)
 {
+	if (interceptor == nullptr)
+	{
+		OV_ASSERT(false, "Interceptor must not be nullptr");
+		return false;
+	}
+
 	interceptor->SetConnectionHandler(
 		[this](const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session) -> bool {
 			auto request = ws_session->GetRequest();
@@ -311,7 +396,7 @@ bool RtcSignallingServer::SetWebSocketHandler(std::shared_ptr<http::svr::ws::Int
 
 			ov::String command = ov::Converter::ToString(command_value);
 
-			logtd("Trying to dispatch command: %s...", command.CStr());
+			logtt("Trying to dispatch command: %s...", command.CStr());
 
 			auto error = DispatchCommand(ws_session, command, object, info, message);
 
@@ -366,7 +451,7 @@ bool RtcSignallingServer::SetWebSocketHandler(std::shared_ptr<http::svr::ws::Int
 					  ws_session->ToString().CStr(),
 					  info->vhost_app_name.CStr(), info->stream_name.CStr(),
 					  (info->offer_sdp != nullptr) ? info->offer_sdp->GetIceUfrag().CStr() : "(N/A)",
-					  (info->peer_sdp != nullptr) ? info->peer_sdp->GetIceUfrag().CStr() : "(N/A)");
+					  (info->answer_sdp != nullptr) ? info->answer_sdp->GetIceUfrag().CStr() : "(N/A)");
 			}
 			else
 			{
@@ -413,14 +498,13 @@ bool RtcSignallingServer::RemoveObserver(const std::shared_ptr<RtcSignallingObse
 
 bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, const std::shared_ptr<const SessionDescription> &peer_sdp)
 {
-	bool disconnected = false;
+	size_t disconnected_count = 0;
 
-	if ((disconnected == false) && (_http_server != nullptr))
+	for (auto &http_server : _http_server_list)
 	{
-		disconnected = _http_server->DisconnectIf(
+		disconnected_count += http_server->DisconnectIf(
 			[vhost_app_name, stream_name, peer_sdp](const std::shared_ptr<http::svr::HttpConnection> &connection) -> bool {
-				
-				if(connection->GetConnectionType() != http::ConnectionType::WebSocket)
+				if (connection->GetConnectionType() != http::ConnectionType::WebSocket)
 				{
 					return false;
 				}
@@ -436,24 +520,22 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 				{
 					return false;
 				}
-				
+
 				return (info->vhost_app_name == vhost_app_name) &&
-						(info->stream_name == stream_name) &&
-						((info->peer_sdp != nullptr) && (*(info->peer_sdp) == *peer_sdp));
-				
+					   (info->stream_name == stream_name) &&
+					   ((info->answer_sdp != nullptr) && (*(info->answer_sdp) == *peer_sdp));
 			});
 	}
 
-	if ((disconnected == false) && (_https_server != nullptr))
+	for (auto &https_server : _https_server_list)
 	{
-		disconnected = _https_server->DisconnectIf(
+		disconnected_count += https_server->DisconnectIf(
 			[vhost_app_name, stream_name, peer_sdp](const std::shared_ptr<http::svr::HttpConnection> &connection) -> bool {
-				
-				if(connection->GetConnectionType() != http::ConnectionType::WebSocket)
+				if (connection->GetConnectionType() != http::ConnectionType::WebSocket)
 				{
 					return false;
 				}
-				
+
 				auto websocket_session = connection->GetWebSocketSession();
 				if (websocket_session == nullptr)
 				{
@@ -465,22 +547,22 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 				{
 					return false;
 				}
-				
+
 				return (info->vhost_app_name == vhost_app_name) &&
-						(info->stream_name == stream_name) &&
-						((info->peer_sdp != nullptr) && (*(info->peer_sdp) == *peer_sdp));
+					   (info->stream_name == stream_name) &&
+					   ((info->answer_sdp != nullptr) && (*(info->answer_sdp) == *peer_sdp));
 			});
 	}
 
-	if (disconnected == false)
+	if (disconnected_count == 0)
 	{
-		// May fail after http::svr::HttpServer::OnDisconnected() is handled 
-		// because the WebSocket connection is disconnected at the timing immediately 
-		// after Disconnect() is called due to ICE disconnection, 
+		// May fail after http::svr::HttpServer::OnDisconnected() is handled
+		// because the WebSocket connection is disconnected at the timing immediately
+		// after Disconnect() is called due to ICE disconnection,
 		// but before _http_server->Disconnect() is executed
 	}
 
-	return disconnected;
+	return (disconnected_count > 0);
 }
 
 int RtcSignallingServer::GetTotalPeerCount() const
@@ -495,10 +577,32 @@ int RtcSignallingServer::GetClientPeerCount() const
 
 bool RtcSignallingServer::Stop()
 {
-	auto http_result = (_http_server != nullptr) ? _http_server->Stop() : true;
-	auto https_result = (_https_server != nullptr) ? _https_server->Stop() : true;
+	_http_server_list_mutex.lock();
+	auto http_server_list = std::move(_http_server_list);
+	auto https_server_list = std::move(_https_server_list);
+	_http_server_list_mutex.unlock();
 
-	return http_result && https_result;
+	auto result = true;
+
+	for (auto &http_server : http_server_list)
+	{
+		if (http_server->IsRunning() && (http_server->Stop() == false))
+		{
+			logte("Could not stop HTTP Server: %p", http_server.get());
+			result = false;
+		}
+	}
+
+	for (auto &https_server : https_server_list)
+	{
+		if (https_server->IsRunning() && (https_server->Stop() == false))
+		{
+			logte("Could not stop HTTPS Server: %p", https_server.get());
+			result = false;
+		}
+	}
+
+	return result;
 }
 
 std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCommand(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::String &command, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info, const std::shared_ptr<const ov::Data> &message)
@@ -563,7 +667,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 	if (_p2p_manager.IsEnabled())
 	{
-		logtd("Trying to find p2p host for client %s...", ws_session->ToString().CStr());
+		logtt("Trying to find p2p host for client %s...", ws_session->ToString().CStr());
 
 		if (info->peer_was_client == false)
 		{
@@ -591,7 +695,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 	{
 		if (_p2p_manager.IsEnabled())
 		{
-			logtd("peer %s became a host peer because there is no p2p host for client %s.", peer_info->ToString().CStr(), ws_session->ToString().CStr());
+			logtt("peer %s became a host peer because there is no p2p host for client %s.", peer_info->ToString().CStr(), ws_session->ToString().CStr());
 		}
 
 		bool tcp_relay = false;
@@ -604,7 +708,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 		if (sdp != nullptr)
 		{
-			logtd("SDP is generated successfully");
+			logtt("SDP is generated successfully");
 
 			if (_p2p_manager.IsEnabled())
 			{
@@ -707,7 +811,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 		// Found a host that can accept this client
 
 		info->peer_was_client = true;
-		logtd("[Client -> Host] A host found for the client\n    Host: %s\n    Client: %s",
+		logtt("[Client -> Host] A host found for the client\n    Host: %s\n    Client: %s",
 			  host_peer->ToString().CStr(),
 			  peer_info->ToString().CStr());
 
@@ -759,20 +863,20 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 
 	if ((_p2p_manager.IsEnabled() == false) || peer_info->IsHost())
 	{
-		logtd("[Host -> OME] The host peer sents a answer: %s", object.ToString().CStr());
+		logtt("[Host -> OME] The host peer sents a answer: %s", object.ToString().CStr());
 
-		auto peer_sdp = std::make_shared<SessionDescription>();
+		auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
 
-		if (peer_sdp->FromString(sdp_value["sdp"].asCString()))
+		if (answer_sdp->FromString(sdp_value["sdp"].asCString()))
 		{
-			info->peer_sdp = peer_sdp;
+			info->answer_sdp = answer_sdp;
 
 			for (auto &observer : _observers)
 			{
-				logtd("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
+				logtt("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
 
 				// TODO : Improved to return detailed error cause
-				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->peer_sdp) == false)
+				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
 				{
 					return std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
 				}
@@ -785,7 +889,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 	}
 	else
 	{
-		logtd("[Client -> Host] The client peer sents a answer: %s", object.ToString().CStr());
+		logtt("[Client -> Host] The client peer sents a answer: %s", object.ToString().CStr());
 
 		// The client peer sents this answer
 		auto peer_id = object.GetIntValue("peer_id");
@@ -820,8 +924,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchChangeRendition(co
 	auto has_rendition_name = object.IsMember("rendition_name");
 	auto has_auto_abr = object.IsMember("auto");
 
-	ov::String rendition_name; 
-	bool auto_abr = false;  
+	ov::String rendition_name;
+	bool auto_abr = false;
 
 	if (has_rendition_name)
 	{
@@ -833,11 +937,11 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchChangeRendition(co
 		auto_abr = object.GetBoolValue("auto");
 	}
 
-	if (info->peer_sdp != nullptr)
+	if (info->answer_sdp != nullptr)
 	{
 		for (auto &observer : _observers)
 		{
-			if (observer->OnChangeRendition(ws_session, has_rendition_name, rendition_name, has_auto_abr, auto_abr, info->offer_sdp, info->peer_sdp) == false)
+			if (observer->OnChangeRendition(ws_session, has_rendition_name, rendition_name, has_auto_abr, auto_abr, info->offer_sdp, info->answer_sdp) == false)
 			{
 				return std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
 			}
@@ -866,7 +970,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 
 	if (peer_info == nullptr)
 	{
-		logtd("[Host -> OME] The host peer sents candidates: %s", object.ToString().CStr());
+		logtt("[Host -> OME] The host peer sents candidates: %s", object.ToString().CStr());
 
 		for (const auto &candidate_iterator : candidates_value)
 		{
@@ -875,7 +979,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 			if (candidate.IsEmpty())
 			{
 				// Even if the player does not send candidates, this does not affect the OME, so it changes the log level.
-				logtd("[Host -> OME] The host peer sents an empty candidate");
+				logtt("[Host -> OME] The host peer sents an empty candidate");
 				continue;
 			}
 
@@ -898,7 +1002,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 	}
 	else
 	{
-		logtd("[Client -> Host] The client peer sents candidates: %s", object.ToString().CStr());
+		logtt("[Client -> Host] The client peer sents candidates: %s", object.ToString().CStr());
 
 		// Client -> (OME) -> Host
 		Json::Value value;
@@ -957,7 +1061,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchOfferP2P(const std
 		return std::make_shared<http::HttpError>(http::StatusCode::BadRequest, "Candidates must be array, but: %d", candidates.type());
 	}
 
-	logtd("[Host -> Client] The host peer sents an offer: %s", object.ToString().CStr());
+	logtt("[Host -> Client] The host peer sents an offer: %s", object.ToString().CStr());
 
 	Json::Value value;
 
@@ -1004,7 +1108,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 		return std::make_shared<http::HttpError>(http::StatusCode::BadRequest, "Candidates must be array");
 	}
 
-	logtd("[Host -> Client] The host peer sents candidates: %s", object.ToString().CStr());
+	logtt("[Host -> Client] The host peer sents candidates: %s", object.ToString().CStr());
 
 	Json::Value candidates;
 
@@ -1013,7 +1117,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 	candidates["peer_id"] = info->id;
 	candidates["candidates"] = candidates_value;
 
-	logtd("[Host -> Client] JSON: %s", ov::Converter::ToString(candidates).CStr());
+	logtt("[Host -> Client] JSON: %s", ov::Converter::ToString(candidates).CStr());
 
 	client_peer->GetSession()->GetWebSocketResponse()->Send(candidates);
 
@@ -1024,13 +1128,13 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 {
 	bool result = true;
 
-	if (info->peer_sdp != nullptr)
+	if (info->answer_sdp != nullptr)
 	{
 		for (auto &observer : _observers)
 		{
-			logtd("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
+			logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
 
-			if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->peer_sdp) == false)
+			if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
 			{
 				result = false;
 			}
@@ -1052,13 +1156,13 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 
 		if (peer_info != nullptr)
 		{
-			logtd("Deleting a peer from p2p manager...: %s", peer_info->ToString().CStr());
+			logtt("Deleting a peer from p2p manager...: %s", peer_info->ToString().CStr());
 
 			_p2p_manager.RemovePeer(peer_info);
 
 			if (peer_info->IsHost())
 			{
-				logtd("[Host -> OME] The host peer is requested stop: %s", peer_info->ToString().CStr());
+				logtt("[Host -> OME] The host peer is requested stop: %s", peer_info->ToString().CStr());
 
 				// Broadcast to client peers
 				auto client_list = _p2p_manager.GetClientPeerList(peer_info);
@@ -1082,7 +1186,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 			else
 			{
 				// Client peer -> OME
-				logtd("[Client -> OME] The client peer is requested stop: %s", peer_info->ToString().CStr());
+				logtt("[Client -> OME] The client peer is requested stop: %s", peer_info->ToString().CStr());
 
 				// Send to host peer
 				auto host_info = peer_info->GetHostPeer();

@@ -10,7 +10,7 @@
 #include "mediarouter_application_interface.h"
 #include "mediarouter_interface.h"
 
-class MediaRouteApplicationObserver : public ov::EnableSharedFromThis<MediaRouteApplicationObserver>
+class MediaRouterApplicationObserver : public ov::EnableSharedFromThis<MediaRouterApplicationObserver>
 {
 public:
 	enum class ObserverType : int8_t

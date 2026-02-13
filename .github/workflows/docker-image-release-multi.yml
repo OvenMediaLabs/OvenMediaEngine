@@ -1,0 +1,167 @@
+name: Release Multi-Arch Docker Image
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version or tag to use (e.g., v0.19.0)'
+        required: true
+        type: string
+
+env:
+  IMAGE_NAME: airensoft/ovenmediaengine
+  VERSION: ${{ github.event.release.tag_name || github.event.inputs.version }}
+
+jobs:
+  build_amd64:
+    name: Build amd64 Image
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Notify Start (amd64)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (amd64 by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --output=type=image,push=true \
+            --tag ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-amd64 \
+            .
+
+      - name: Notify Done (amd64)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (amd64 by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+  build_arm64:
+    name: Build arm64 Image
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Notify Start (arm64)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (arm64 by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push arm64 image
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --output=type=image,push=true \
+            --tag ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-arm64 \
+            .
+
+      - name: Notify Done (arm64)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (arm64 by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+  merge_manifests:
+    name: Merge and Push Multi-Arch Manifest
+    runs-on: ubuntu-22.04
+    needs: [build_amd64, build_arm64]
+    steps:
+      - name: Notify Start (Merge)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (merge by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE_NAME }}:${{ env.VERSION }} \
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-arm64
+
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE_NAME }}:latest \
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}-arm64
+            
+      - name: Notify Done (manifest)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ env.VERSION }}",
+              "tag": "${{ env.VERSION }} (merge by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}

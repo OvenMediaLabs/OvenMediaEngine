@@ -17,13 +17,13 @@ public:
 	StunMessageIntegrityAttribute(int length);
 	virtual ~StunMessageIntegrityAttribute();
 
-	bool Parse(ov::ByteStream &stream) override;
+	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override;
 
 	// 길이가 OV_STUN_HASH_LENGTH인 데이터가 반환됨
 	const uint8_t *GetHash() const;
 	bool SetHash(const uint8_t hash[OV_STUN_HASH_LENGTH]);
 
-	bool Serialize(ov::ByteStream &stream) const noexcept override;
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override;
 
 	ov::String ToString() const override;
 

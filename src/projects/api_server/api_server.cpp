@@ -29,103 +29,10 @@ namespace api
 		}
 	};
 
-	bool Server::PrepareHttpServers(const ov::String &server_ip, const cfg::mgr::Managers &managers, const cfg::bind::mgr::API &api_bind_config)
-	{
-		auto http_server_manager = http::svr::HttpServerManager::GetInstance();
-		auto http_interceptor = CreateInterceptor();
-
-		bool http_server_result = true;
-		bool is_parsed;
-
-		auto worker_count = api_bind_config.GetWorkerCount(&is_parsed);
-		worker_count = is_parsed ? worker_count : HTTP_SERVER_USE_DEFAULT_COUNT;
-
-		auto &port = api_bind_config.GetPort(&is_parsed);
-		ov::SocketAddress address;
-		if (is_parsed)
-		{
-			address = ov::SocketAddress(server_ip, port.GetPort());
-
-			_http_server = http_server_manager->CreateHttpServer("APISvr", address, worker_count);
-
-			if (_http_server != nullptr)
-			{
-				_http_server->AddInterceptor(http_interceptor);
-			}
-			else
-			{
-				logte("Could not initialize http::svr::Server");
-				http_server_result = false;
-			}
-		}
-
-		bool https_server_result = true;
-		auto &tls_port = api_bind_config.GetTlsPort(&is_parsed);
-		ov::SocketAddress tls_address;
-		if (is_parsed)
-		{
-			auto host_name_list = std::vector<ov::String>();
-
-			for (auto &name : managers.GetHost().GetNameList())
-			{
-				host_name_list.push_back(name);
-			}
-
-			tls_address = ov::SocketAddress(server_ip, tls_port.GetPort());
-			auto certificate = info::Certificate::CreateCertificate("api_server", host_name_list, managers.GetHost().GetTls());
-
-			if (certificate != nullptr)
-			{
-				_https_server = http_server_manager->CreateHttpsServer("APIServer", tls_address, certificate, false, worker_count);
-
-				if (_https_server != nullptr)
-				{
-					_https_server->AddInterceptor(http_interceptor);
-				}
-				else
-				{
-					logte("Could not initialize http::svr::HttpsServer");
-					https_server_result = false;
-				}
-			}
-		}
-
-		if (http_server_result && https_server_result)
-		{
-			ov::String port_description;
-
-			if (_http_server != nullptr)
-			{
-				port_description.AppendFormat("%s/%s", address.ToString().CStr(), ov::StringFromSocketType(ov::SocketType::Tcp));
-			}
-
-			if (_https_server != nullptr)
-			{
-				if (port_description.IsEmpty() == false)
-				{
-					port_description.Append(", ");
-				}
-
-				port_description.AppendFormat("TLS: %s/%s", tls_address.ToString().CStr(), ov::StringFromSocketType(ov::SocketType::Tcp));
-			}
-
-			// Everything is OK
-			logti("API Server is listening on %s...", port_description.CStr());
-
-			return true;
-		}
-
-		// Rollback
-		http_server_manager->ReleaseServer(_http_server);
-		http_server_manager->ReleaseServer(_https_server);
-
-		return false;
-	}
-
-	void Server::SetupCors(const cfg::mgr::api::API &api_config)
+	bool Server::SetupCORS(const cfg::mgr::api::API &api_config)
 	{
 		bool is_cors_parsed;
-		auto cross_domains = api_config.GetCrossDomainList(&is_cors_parsed);
+		auto cross_domains = api_config.GetCrossDomains(&is_cors_parsed);
 
 		if (is_cors_parsed)
 		{
@@ -133,6 +40,8 @@ namespace api
 			auto vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 			_cors_manager.SetCrossDomains(vhost_app_name, cross_domains);
 		}
+
+		return true;
 	}
 
 	bool Server::SetupAccessToken(const cfg::mgr::api::API &api_config)
@@ -152,28 +61,115 @@ namespace api
 		return true;
 	}
 
+	std::shared_ptr<info::Certificate> Server::CreateCertificate()
+	{
+		if (_host_config.has_value() == false)
+		{
+			return nullptr;
+		}
+
+		const auto &host_config = _host_config.value();
+
+		return info::Certificate::CreateCertificate(
+			"api_server",
+			host_config.GetNameList(),
+			host_config.GetTls());
+	}
+
+	bool Server::PrepareHttpServers(
+		const std::vector<ov::String> &ip_list,
+		const bool is_port_configured, const uint16_t port,
+		const bool is_tls_port_configured, const uint16_t tls_port,
+		const int worker_count)
+	{
+		auto http_server_manager = http::svr::HttpServerManager::GetInstance();
+
+		std::vector<std::shared_ptr<http::svr::HttpServer>> http_server_list;
+		std::vector<std::shared_ptr<http::svr::HttpsServer>> https_server_list;
+
+		auto http_interceptor						   = CreateInterceptor();
+		std::shared_ptr<info::Certificate> certificate = CreateCertificate();
+
+		if (http_server_manager->CreateServers(
+				"API Server", "APISvr",
+				&http_server_list, &https_server_list,
+				ip_list,
+				is_port_configured, port,
+				is_tls_port_configured, tls_port,
+				certificate,
+				false,
+				[&](const ov::SocketAddress &address, bool is_https, const std::shared_ptr<http::svr::HttpServer> &http_server) {
+					http_server->AddInterceptor(http_interceptor);
+				},
+				worker_count))
+		{
+			std::lock_guard<std::mutex> lock(_http_server_list_mutex);
+
+			_http_server_list  = std::move(http_server_list);
+			_https_server_list = std::move(https_server_list);
+
+			return true;
+		}
+
+		http_server_manager->ReleaseServers(&http_server_list);
+		http_server_manager->ReleaseServers(&https_server_list);
+
+		return false;
+	}
+
 	bool Server::Start(const std::shared_ptr<const cfg::Server> &server_config)
 	{
 		// API Server configurations
 		const auto &managers_config = server_config->GetManagers();
-		const auto &api_config = managers_config.GetApi();
+		const auto &api_config		= managers_config.GetApi();
 
 		// Port configurations
 		const auto &api_bind_config = server_config->GetBind().GetManagers().GetApi();
 
 		if (api_bind_config.IsParsed() == false)
 		{
-			logti("API Server is disabled");
+			logti("API Server is disabled by configuration");
 			return true;
 		}
 
-		SetupCors(api_config);
-		if (SetupAccessToken(api_config) == false)
+		bool is_configured;
+		auto worker_count = api_bind_config.GetWorkerCount(&is_configured);
+		worker_count	  = is_configured ? worker_count : HTTP_SERVER_USE_DEFAULT_COUNT;
+
+		bool is_port_configured;
+		auto &port_config = api_bind_config.GetPort(&is_port_configured);
+
+		bool is_tls_port_configured;
+		auto &tls_port_config = api_bind_config.GetTlsPort(&is_tls_port_configured);
+
+		if ((is_port_configured == false) && (is_tls_port_configured == false))
 		{
-			return false;
+			logtw("API Server is disabled - No port is configured");
+			return true;
 		}
 
-		return PrepareHttpServers(server_config->GetIp(), managers_config, api_bind_config);
+		_host_config = is_tls_port_configured
+						   ? managers_config.GetHost()
+						   : static_cast<std::optional<cfg::cmn::Host>>(std::nullopt);
+
+		auto result	 = SetupCORS(api_config) &&
+					  SetupAccessToken(api_config) &&
+					  PrepareHttpServers(
+						  server_config->GetIPList(),
+						  is_port_configured, port_config.GetPort(),
+						  is_tls_port_configured, tls_port_config.GetPort(),
+						  worker_count);
+
+		if (result)
+		{
+			_server_config = server_config;
+		}
+		else
+		{
+			_host_config.reset();
+		}
+
+		return result;
 	}
 
 	std::shared_ptr<http::svr::RequestInterceptor> Server::CreateInterceptor()
@@ -183,21 +179,27 @@ namespace api
 		// CORS header processor
 		http_interceptor->Register(http::Method::All, R"(.+)", [=](const std::shared_ptr<http::svr::HttpExchange> &client) -> http::svr::NextHandler {
 			auto response = client->GetResponse();
-			auto request = client->GetRequest();
+			auto request  = client->GetRequest();
 
-			do
-			{
-				// Set default headers
-				response->SetHeader("Server", "OvenMediaEngine");
-				response->SetHeader("Content-Type", "text/html");
+			// Set default headers
+			response->SetHeader("Server", "OvenMediaEngine");
+			response->SetHeader("Content-Type", "text/html");
 
-				auto vhost_app_name = info::VHostAppName::InvalidVHostAppName();
+			// API Server uses OPTIONS/GET/POST/PUT/PATCH/DELETE methods
+			_cors_manager.SetupHttpCorsHeader(
+				info::VHostAppName::InvalidVHostAppName(),
+				request, response,
+				{http::Method::Options, http::Method::Head, http::Method::Get, http::Method::Post, http::Method::Put, http::Method::Patch, http::Method::Delete});
 
-				_cors_manager.SetupHttpCorsHeader(vhost_app_name, request, response);
+			return http::svr::NextHandler::Call;
+		});
 
-				return http::svr::NextHandler::Call;
-			} while (false);
+		// Preflight request processor
+		http_interceptor->Register(http::Method::Options, R"(.+)", [=](const std::shared_ptr<http::svr::HttpExchange> &client) -> http::svr::NextHandler {
+			// Respond 204 No Content for preflight request
+			client->GetResponse()->SetStatusCode(http::StatusCode::NoContent);
 
+			// Do not call the next handler to prevent 404 Not Found
 			return http::svr::NextHandler::DoNotCall;
 		});
 
@@ -214,16 +216,18 @@ namespace api
 	{
 		auto manager = http::svr::HttpServerManager::GetInstance();
 
-		std::shared_ptr<http::svr::HttpServer> http_server = std::move(_http_server);
-		std::shared_ptr<http::svr::HttpsServer> https_server = std::move(_https_server);
+		_http_server_list_mutex.lock();
+		auto http_server_list  = std::move(_http_server_list);
+		auto https_server_list = std::move(_https_server_list);
+		_http_server_list_mutex.unlock();
 
-		bool http_result = (http_server != nullptr) ? manager->ReleaseServer(http_server) : true;
-		bool https_result = (https_server != nullptr) ? manager->ReleaseServer(https_server) : true;
+		auto http_result			 = manager->ReleaseServers(&http_server_list);
+		auto https_result			 = manager->ReleaseServers(&https_server_list);
 
 		_is_storage_path_initialized = false;
-		_storage_path = "";
+		_storage_path				 = "";
 
-		_root_controller = nullptr;
+		_root_controller			 = nullptr;
 
 		return http_result && https_result;
 	}
@@ -265,7 +269,7 @@ namespace api
 		switch (ocst::Orchestrator::GetInstance()->DeleteVirtualHost(host_info))
 		{
 			case ocst::Result::Failed:
-				throw http::HttpError(http::StatusCode::BadRequest,
+				throw http::HttpError(http::StatusCode::InternalServerError,
 									  "Failed to delete the virtual host: [%s]",
 									  host_info.GetName().CStr());
 
@@ -273,7 +277,7 @@ namespace api
 				break;
 
 			case ocst::Result::Exists:
-				// CreateVirtDeleteVirtualHostualHost() never returns Exists
+				// CreateVirtDeleteVirtualHost() never returns Exists
 				OV_ASSERT2(false);
 				throw http::HttpError(http::StatusCode::InternalServerError,
 									  "Unknown error occurred: [%s]",
@@ -285,5 +289,45 @@ namespace api
 									  "The virtual host not exists: [%s]",
 									  host_info.GetName().CStr());
 		}
+	}
+
+	std::shared_ptr<const http::HttpError> Server::ReloadCertificate()
+	{
+		if (
+			(_host_config.has_value() == false) ||
+			(_host_config->GetTls().IsParsed() == false))
+		{
+			return http::HttpError::CreateError(http::StatusCode::BadRequest, "TLS is not enabled for the API Server");
+		}
+
+		auto certificate = CreateCertificate();
+
+		if (certificate == nullptr)
+		{
+			return http::HttpError::CreateError(http::StatusCode::InternalServerError, "Failed to create a certificate for the API Server");
+		}
+
+		std::shared_ptr<const http::HttpError> first_error;
+
+		std::vector<std::shared_ptr<http::svr::HttpsServer>> https_server_list;
+		{
+			std::lock_guard<std::mutex> lock(_http_server_list_mutex);
+			https_server_list = _https_server_list;
+		}
+		for (auto &https_server : https_server_list)
+		{
+			auto error = https_server->InsertCertificate(certificate);
+
+			if (error != nullptr)
+			{
+				logte("Could not reload certificate for API Server: %s", error->What());
+
+				first_error = (first_error == nullptr)
+								  ? http::HttpError::CreateError(http::StatusCode::InternalServerError, error->What())
+								  : first_error;
+			}
+		}
+
+		return first_error;
 	}
 }  // namespace api

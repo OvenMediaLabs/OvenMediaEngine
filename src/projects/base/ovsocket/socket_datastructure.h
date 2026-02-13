@@ -118,7 +118,7 @@ namespace ov
 		return "Unknown";
 	}
 
-	static const char *StringFromSocketState(SocketState state)
+	constexpr static const char *StringFromSocketState(SocketState state)
 	{
 		switch (state)
 		{
@@ -170,7 +170,23 @@ namespace ov
 		}
 	}
 
-	class SocketAddress;
+	static const char *StringFromSocketFamily(SocketFamily family)
+	{
+		switch (family)
+		{
+			case SocketFamily::Inet:
+				return "Inet";
+
+			case SocketFamily::Inet6:
+				return "Inet6";
+
+			case SocketFamily::Unknown:
+			default:
+				return "Unknown";
+		}
+	}
+
+	class SocketAddressPair;
 
 	// For SocketPoolWorker callback
 	enum class PostProcessMethod
@@ -197,13 +213,13 @@ namespace ov
 	class ServerSocket;
 	class ClientSocket;
 
-	typedef std::function<void(const std::shared_ptr<ov::ClientSocket> &client, SocketConnectionState state, const std::shared_ptr<ov::Error> &error)> ClientConnectionCallback;
-	typedef std::function<void(const std::shared_ptr<ov::ClientSocket> &client, const std::shared_ptr<Data> &data)> ClientDataCallback;
+	typedef std::function<void(const std::shared_ptr<ClientSocket> &client, SocketConnectionState state, const std::shared_ptr<Error> &error)> ClientConnectionCallback;
+	typedef std::function<void(const std::shared_ptr<ClientSocket> &client, const std::shared_ptr<Data> &data)> ClientDataCallback;
 
 	// For UDP sockets
 	class DatagramSocket;
 
-	typedef std::function<void(const std::shared_ptr<ov::DatagramSocket> &client, const SocketAddress &remote_address, const std::shared_ptr<Data> &data)> DatagramCallback;
+	typedef std::function<void(const std::shared_ptr<DatagramSocket> &client, const SocketAddressPair &address_pair, const std::shared_ptr<Data> &data)> DatagramCallback;
 
 	static String StringFromEpollEvent(const epoll_event &event)
 	{
@@ -224,7 +240,7 @@ namespace ov
 		OV_SOCKET_ADD_FLAG_IF(flags, event.events, EPOLLONESHOT);
 		OV_SOCKET_ADD_FLAG_IF(flags, event.events, EPOLLET);
 
-		return ov::String::Join(flags, " | ");
+		return String::Join(flags, " | ");
 	}
 
 	static String StringFromEpollEvent(const epoll_event *event)

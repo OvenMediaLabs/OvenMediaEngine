@@ -20,13 +20,13 @@
 
 #include <modules/rtp_rtcp/rtp_depacketizing_manager.h>
 #include <modules/rtp_rtcp/rtp_rtcp.h>
-#include <modules/rtp_rtcp/lip_sync_clock.h>
 
 #include <modules/sdp/session_description.h>
 
 #include <modules/rtsp/header_fields/rtsp_header_fields.h>
 
-#define RTSP_USER_AGENT_NAME	"OvenMediaEngine"
+#define RTSP_USER_AGENT_NAME				"OvenMediaEngine"
+#define DEFAULT_RTSP_SESSION_TIMEOUT_SEC	30
 namespace pvd
 {
 	class RtspcProvider;
@@ -110,9 +110,11 @@ namespace pvd
 		bool RequestStop();
 		void Release();
 
+		bool Ping(); // Send GET_PARAMETER
+
 		int32_t GetNextCSeq();
 
-		bool SendRequestMessage(const std::shared_ptr<RtspMessage> &message);
+		bool SendRequestMessage(const std::shared_ptr<RtspMessage> &message, bool wait_for_response = true);
 		std::shared_ptr<RtspMessage> ReceiveResponse(uint32_t cseq, uint64_t timeout_ms);
 
 		// Blocking, it is used before playing state
@@ -142,7 +144,9 @@ namespace pvd
 
 		ov::String _content_base;
 		ov::String _rtsp_session_id;
+		uint32_t _rtsp_session_timeout_sec = 0;
 		std::shared_ptr<ov::Data> _h264_extradata_nalu = nullptr;
+		std::shared_ptr<ov::Data> _h265_extradata_nalu = nullptr;
 		// ssrc, rtp channel id (rtcp channel id = rtp_channel_id + 1)
 		std::map<uint32_t, uint8_t> _ssrc_channel_id_map;
 
@@ -159,23 +163,13 @@ namespace pvd
 		std::map<uint8_t, uint32_t>			_last_timestamp_map;
 		std::map<uint8_t, uint32_t>			_timestamp_map;
 
-		LipSyncClock 						_lip_sync_clock;
-		ov::StopWatch						_play_request_time;
-
-		enum class PtsCalculationMethod : uint8_t
-		{
-			UNDER_DECISION,
-			SINGLE_DELTA,
-			WITH_RTCP_SR
-		};
-
-		PtsCalculationMethod				_pts_calculation_method = PtsCalculationMethod::UNDER_DECISION;
-
 		bool _sent_sequence_header = false;
 
 		// Statistics
 		int64_t _origin_request_time_msec = 0;
 		int64_t _origin_response_time_msec = 0;
 		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
+
+		ov::StopWatch _ping_timer;
 	};
 }

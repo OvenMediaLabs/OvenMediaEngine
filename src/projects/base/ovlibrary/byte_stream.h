@@ -16,10 +16,16 @@
 #include "byte_ordering.h"
 #include "data.h"
 
-#define OV_DECLARE_READ_FUNCTION(type, name, func) \
-	inline type name() noexcept                    \
-	{                                              \
-		return func(*Read<type>());                \
+#define OV_DECLARE_READ_FUNCTION(type, name, func)  \
+	inline type name() noexcept                     \
+	{                                               \
+		return func(*Read<type>());                 \
+	}                                               \
+                                                    \
+	template <typename T>                           \
+	inline T name##As() noexcept                    \
+	{                                               \
+		return static_cast<T>(func(*Read<type>())); \
 	}
 
 #define OV_DECLARE_WRITE_FUNCTION(type, name, func) \
@@ -33,7 +39,6 @@ namespace ov
 	class ByteStream
 	{
 	public:
-
 		// Create Data itself
 		explicit ByteStream(size_t reserve_size = 0);
 
@@ -71,7 +76,7 @@ namespace ov
 		///
 		/// @return 읽은 데이터 개수 (0 ~ count 사이)
 		template <typename T = uint8_t>
-		inline size_t Peek(T *buffer, size_t count)
+		inline size_t Peek(T *buffer, size_t count) const
 		{
 			size_t peek_count = std::min(Remained<T>(), count);
 
@@ -92,7 +97,7 @@ namespace ov
 		///
 		/// @return 읽은 데이터 개수 (0 ~ 1 사이)
 		template <typename T = uint8_t>
-		inline size_t Peek(T *buffer)
+		inline size_t Peek(T *buffer) const
 		{
 			return Peek<T>(buffer, 1);
 		}
@@ -201,6 +206,11 @@ namespace ov
 			value = ReadBE32();
 		}
 
+		void ReadBE(uint64_t &value)
+		{
+			value = ReadBE64();
+		}
+
 		// byte order를 고려하여 읽을 수 있는 유틸리티 함수
 		// 사용 방법)
 		// uint8_t b = stream.Read8();
@@ -286,6 +296,16 @@ namespace ov
 		/// @return 읽은 데이터를 64bit로 반환
 		OV_DECLARE_READ_FUNCTION(uint64_t, ReadNE64, NetworkToHost64);
 
+
+		/// 현재 offset 위치의 데이터를 읽음
+		///
+		/// @return 읽은 데이터를 Data 인스턴스로 반환
+		std::shared_ptr<Data> ReadData(size_t length);
+		/// 현재 offset 위치의 스트링을 읽음
+		///
+		/// @return 읽은 스트링을 반환
+		ov::String ReadString(size_t length);
+
 		/// 데이터를 현재 위치(offset)에 bytes만큼 기록함. 기록 후 현재 위치가 변경됨.
 		///
 		/// @param buffer 기록할 데이터
@@ -308,6 +328,16 @@ namespace ov
 		/// 만약, _data가 is_reference 타입이라면 false가 반환될 수 있음.
 		/// 데이터를 기록할 공간이 부족할 경우 _data에 Append() 됨.
 		bool Write(const std::shared_ptr<const Data> &data) noexcept
+		{
+			return Write(data->GetData(), data->GetLength());
+		}
+
+		bool Write(const Data &data) noexcept
+		{
+			return Write(data.GetData(), data.GetLength());
+		}
+
+		bool Write(const Data *data) noexcept
 		{
 			return Write(data->GetData(), data->GetLength());
 		}
@@ -363,6 +393,11 @@ namespace ov
 		bool WriteBE(uint32_t value)
 		{
 			return WriteBE32(value);
+		}
+
+		bool WriteBE(uint64_t value)
+		{
+			return WriteBE64(value);
 		}
 
 		/// data를 데이터 끝에 bytes만큼 기록함. 기록 후 현재 위치가 변경되지 않음.
@@ -604,9 +639,6 @@ namespace ov
 		/// @see SetOffset()
 		bool PopOffset() noexcept;
 
-	protected:
-		ByteStream(Data *data, const Data *read_only_data, std::shared_ptr<const Data> data_pointer, off_t offset);
-
 		/// 현재 버퍼 위치를 T 타입으로 얻어옴
 		///
 		/// @tparam T 데이터 타입
@@ -617,6 +649,9 @@ namespace ov
 		{
 			return reinterpret_cast<const T *>((_read_only_data->GetDataAs<const uint8_t>()) + _offset);
 		}
+
+	protected:
+		ByteStream(Data *data, const Data *read_only_data, std::shared_ptr<const Data> data_pointer, off_t offset);
 
 		/// T 타입의 데이터 1개를 현재 위치(offset)에 기록함. 기록 후 현재 위치가 변경됨.
 		///

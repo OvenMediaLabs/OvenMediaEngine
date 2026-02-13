@@ -55,19 +55,7 @@ namespace cfg
 	constexpr const char *INDENTATION = "    ";
 	ov::String MakeIndentString(int indent_count)
 	{
-		if (indent_count > 0)
-		{
-			ov::String indent_string;
-
-			for (int index = 0; index < indent_count; index++)
-			{
-				indent_string += INDENTATION;
-			}
-
-			return indent_string;
-		}
-
-		return "";
+		return ov::String::Repeat(INDENTATION, indent_count);
 	}
 
 	ov::String ToDebugString(int indent_count, const ov::String *value)

@@ -21,7 +21,7 @@ public:
 
 	// RtcpInfo must provide raw data
 	virtual std::shared_ptr<ov::Data> GetData() const = 0;
-
+	virtual bool HasPadding() const = 0;
 	virtual void DebugPrint() = 0;
 
 	// Extra Information

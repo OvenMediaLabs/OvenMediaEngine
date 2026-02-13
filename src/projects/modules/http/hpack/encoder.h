@@ -48,6 +48,8 @@ namespace http
 
 			TableConnector	_table_connector;
 			bool _need_signal_table_size_update = false;
+
+			std::mutex _encoder_lock;
 		};
 	} // namespace hpack
 } // namespace http

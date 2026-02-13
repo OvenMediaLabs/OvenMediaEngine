@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include <cstdint>
+#include <stdint.h>
 #include <vector>
 #include "base/ovlibrary/ovlibrary.h"
 #include "rtp_packet.h"
@@ -33,6 +33,15 @@ enum NaluType : uint8_t {
 	kFiller = 12,
 	kStapA = 24,
 	kFuA = 28
+};
+
+enum H265NaluType : uint8_t {
+	kVPS = 32,
+	kSPS = 33,
+	kPPS = 34,
+	kAPs = 48,
+	kFUs = 49,
+	kPACI = 50
 };
 
 enum H26XPacketizationTypes {

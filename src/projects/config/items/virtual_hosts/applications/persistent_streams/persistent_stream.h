@@ -8,7 +8,6 @@
 //==============================================================================
 #pragma once
 
-
 namespace cfg
 {
 	namespace vhost
@@ -21,7 +20,7 @@ namespace cfg
 				{
 				protected:
 					ov::String _name;
-					ov::String _origin_stream_name = "*";
+					ov::String _origin_stream_name	 = "*";
 					ov::String _fallback_stream_name = "";
 
 				public:
@@ -37,7 +36,7 @@ namespace cfg
 						Register<Optional>("FallbackStreamName", &_fallback_stream_name);
 					}
 				};
-			}  // namespace oprf
-		}	   // namespace app
-	}		   // namespace vhost
+			}  // namespace prst
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

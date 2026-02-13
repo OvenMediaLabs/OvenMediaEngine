@@ -84,7 +84,7 @@ namespace http
 				return _created_time;
 			}
 
-			ov::String ToString() const;
+			virtual ov::String ToString() const;
 
 			virtual ssize_t AppendHeaderData(const std::shared_ptr<const ov::Data> &data) = 0;
 			virtual StatusCode GetHeaderParingStatus() const = 0;

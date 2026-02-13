@@ -8,7 +8,7 @@
 //==============================================================================
 #include "http2_request.h"
 
-#include "../../http_private.h"
+#include "../http_server_private.h"
 
 namespace http
 {
@@ -114,7 +114,7 @@ namespace http
 
 			ov::String Http2Request::GetHeader(const ov::String &key) const noexcept
 			{
-				auto it = _headers.find(key.LowerCaseString());
+				auto it = _headers.find(key);
 				if (it == _headers.end())
 				{
 					return "";
@@ -125,13 +125,29 @@ namespace http
 
 			bool Http2Request::IsHeaderExists(const ov::String &key) const noexcept
 			{
-				auto it = _headers.find(key.LowerCaseString());
+				auto it = _headers.find(key);
 				if (it == _headers.end())
 				{
 					return false;
 				}
 
 				return true;
+			}
+
+			ov::String Http2Request::ToString() const
+			{
+				ov::String result; 
+
+				result = HttpRequest::ToString();
+
+				// Output all headers
+				result.AppendFormat("\n[Headers] (%zu):\n", _headers.size());
+				for (const auto &header : _headers)
+				{
+					result.AppendFormat("%s: %s\n", header.first.CStr(), header.second.CStr());
+				}
+
+				return result;
 			}
 		}  // namespace h2
 	}	   // namespace svr

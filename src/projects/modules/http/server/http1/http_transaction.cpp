@@ -8,7 +8,7 @@
 //==============================================================================
 #include "http_transaction.h"
 
-#include "../../http_private.h"
+#include "../http_server_private.h"
 #include "../http_connection.h"
 
 namespace http
@@ -75,6 +75,9 @@ namespace http
 							case InterceptorResult::Moved:
 								SetStatus(Status::Moved);
 								break;
+							case InterceptorResult::NotFound:
+								SetStatus(Status::Completed);
+								break;
 							case InterceptorResult::Error:
 							default:
 								SetStatus(Status::Error);
@@ -92,21 +95,21 @@ namespace http
 				else if (_request->GetHeaderParingStatus() == StatusCode::PartialContent)
 				{
 					// Put more data to parse header
-					auto comsumed_bytes = _request->AppendHeaderData(data);
-					_received_header_size += comsumed_bytes;
+					auto consumed_bytes = _request->AppendHeaderData(data);
+					_received_header_size += consumed_bytes;
 
 					// Check if header parsing is complete
 					if (_request->GetHeaderParingStatus() == StatusCode::PartialContent)
 					{
 						// Need more data to parse header
-						return comsumed_bytes;
+						return consumed_bytes;
 					}
 					else if (_request->GetHeaderParingStatus() == StatusCode::OK)
 					{
 						// Header parsing is done
 						if (IsWebSocketUpgradeRequest() == true)
 						{
-							logtd("Client(%s) is requested uri: [%s] for WebSocket upgrade", GetConnection()->GetSocket()->ToString().CStr(), _request->GetUri().CStr());
+							logtt("Client(%s) is requested uri: [%s] for WebSocket upgrade", GetConnection()->GetSocket()->ToString().CStr(), _request->GetUri().CStr());
 
 							if (AcceptWebSocketUpgrade() == false)
 							{
@@ -115,21 +118,17 @@ namespace http
 							}
 
 							SetStatus(Status::Upgrade);
-							return comsumed_bytes;
+							return consumed_bytes;
 						}
 						else
 						{
-							logtd("Client(%s) is requested uri: [%s]", GetConnection()->GetSocket()->ToString().CStr(), _request->GetUri().CStr());
+							logtt("Client(%s) is requested uri: [%s]", GetConnection()->GetSocket()->ToString().CStr(), _request->GetUri().CStr());
 						}
 
 						SetConnectionPolicyByRequest();
 
 						// Notify to interceptor
-						auto need_to_disconnect = OnRequestPrepared();
-						if (need_to_disconnect == false)
-						{
-							return -1;
-						}
+						OnRequestPrepared();
 
 						// Check if the request is completed
 						// If Content-length is 0, it means that the request is completed.
@@ -144,6 +143,9 @@ namespace http
 								case InterceptorResult::Moved:
 									SetStatus(Status::Moved);
 									break;
+								case InterceptorResult::NotFound:
+									SetStatus(Status::Completed);
+									break;
 								case InterceptorResult::Error:
 								default:
 									SetStatus(Status::Error);
@@ -155,7 +157,7 @@ namespace http
 							SetStatus(Status::Exchanging);
 						}
 
-						return comsumed_bytes;
+						return consumed_bytes;
 					}
 				}
 

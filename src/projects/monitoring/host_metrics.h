@@ -32,22 +32,31 @@ namespace mon
 
 		void Release()
 		{
-			for (const auto &app : _applications)
+			std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> applications;
+			{
+				std::unique_lock<std::shared_mutex> lock(_map_guard);
+				applications = std::move(_applications);
+			}
+
+			for (const auto &app : applications)
 			{
 				app.second->Release();
 			}
-			_applications.clear();
 		}
 
-		ov::String GetInfoString(bool show_children = true);
-		void ShowInfo(bool show_children = true);
+		ov::String GetInfoString(bool show_children = true) override;
+		void ShowInfo(bool show_children = true) override;
 
 		bool OnApplicationCreated(const info::Application &app_info);
 		bool OnApplicationDeleted(const info::Application &app_info);
 
 		std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> GetApplicationMetricsList();
 
-		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(const info::Application &app_info);
+		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(info::application_id_t application_id);
+		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(const info::Application &app_info)
+		{
+			return GetApplicationMetrics(app_info.GetId());
+		}
 
 	private:
 		std::shared_mutex _map_guard;

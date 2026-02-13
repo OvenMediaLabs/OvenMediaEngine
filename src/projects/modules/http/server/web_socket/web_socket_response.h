@@ -13,10 +13,11 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
 
+#include <variant>
+
+#include "../../protocol/web_socket/web_socket_frame.h"
 #include "../http_response.h"
 #include "web_socket_datastructure.h"
-#include "../../protocol/web_socket/web_socket_frame.h"
-#include <variant>
 
 namespace http
 {
@@ -34,7 +35,10 @@ namespace http
 				ssize_t Send(const std::shared_ptr<const ov::Data> &data, prot::ws::FrameOpcode opcode);
 				ssize_t Send(const ov::String &string);
 				ssize_t Send(const Json::Value &value);
+
+			protected:
+				using HttpResponse::Send;
 			};
 		}  // namespace ws
-	} // namespace svr
+	}	   // namespace svr
 }  // namespace http

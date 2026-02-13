@@ -12,12 +12,11 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <stdint.h>
 
+#include "base/mediarouter/media_type.h"
 extern "C"
 {
 #include <libavformat/avformat.h>
 }
-
-#include "base/mediarouter/media_type.h"
 
 class MediaFrame
 {
@@ -30,6 +29,16 @@ public:
 			av_frame_free(&_priv_data);
 			_priv_data = nullptr;
 		}
+	}
+
+	void SetSourceId(int32_t source_id)
+	{
+		_source_id = source_id;
+	}
+
+	int32_t GetSourceId() const
+	{
+		return _source_id;
 	}
 
 	void SetMediaType(cmn::MediaType media_type)
@@ -75,6 +84,11 @@ public:
 	void SetDuration(int64_t duration)
 	{
 		_duration = duration;
+
+		if (_priv_data)
+		{
+			_priv_data->pkt_duration = duration;
+		}
 	}
 
 	void SetWidth(int32_t width)
@@ -131,6 +145,10 @@ public:
 	void SetNbSamples(int32_t nb_samples)
 	{
 		_nb_samples = nb_samples;
+
+		if(_priv_data) {
+			_priv_data->nb_samples = nb_samples;
+		}
 	}
 
 	cmn::AudioChannel &GetChannels()
@@ -141,11 +159,6 @@ public:
 	void SetChannels(cmn::AudioChannel channels)
 	{
 		_channels = channels;
-	}
-
-	void SetChannelCount(uint32_t count)
-	{
-		_channels.SetCount(count);
 	}
 
 	uint32_t GetChannelCount() const
@@ -173,8 +186,6 @@ public:
 		return _flags;
 	}
 
-	// 데이터를 빈값으로 채움
-	// FillZero
 	void FillZeroData()
 	{
 		if(!_priv_data) {
@@ -190,16 +201,49 @@ public:
 		}
 	}
 
-	// This function should only be called before filtering (_track_id 0, 1)
-	std::shared_ptr<MediaFrame> CloneFrame()
+	void SetCodecDeviceId(cmn::DeviceId id)
+	{
+		_codec_device_id = id;
+	}
+
+	cmn::DeviceId GetCodecDeviceId() const
+	{
+		return _codec_device_id;
+	}
+
+	void SetCodecModuleId(cmn::MediaCodecModuleId id)
+	{
+		_codec_module_id = id;
+	}
+
+	cmn::MediaCodecModuleId GetCodecModuleId() const
+	{
+		return _codec_module_id;
+	}
+
+
+	// This function should only be called before filtering 
+	std::shared_ptr<MediaFrame> CloneFrame(bool deep_copy = false)
 	{
 		auto frame = std::make_shared<MediaFrame>();
 
-		if(_priv_data != nullptr){
-			frame->SetPrivData(::av_frame_clone(_priv_data));
+		if(_priv_data != nullptr)
+		{
+			// Create a new frame that references the same data as src
+			auto clone_priv_data = ::av_frame_clone(_priv_data);
+			if (clone_priv_data != nullptr)
+			{
+				if (deep_copy == true)
+				{
+					::av_frame_make_writable(clone_priv_data);
+				}
+
+				frame->SetPrivData(clone_priv_data);
+			}
 		}
 
 		frame->SetMediaType(_media_type);
+		frame->SetSourceId(_source_id);
 
 		if (_media_type == cmn::MediaType::Video)
 		{
@@ -234,23 +278,46 @@ public:
 		return _priv_data;
 	}
 
+	ov::String GetInfoString() {
+		ov::String info;
+
+		info.AppendFormat("TrackID(%d) ", GetTrackId());
+		info.AppendFormat("SourceId(%u) ", _source_id);
+		info.AppendFormat("Type(%s) ", cmn::GetMediaTypeString(GetMediaType()));
+		info.AppendFormat("PTS(%" PRId64 ") ", GetPts());
+		info.AppendFormat("Duration(%" PRId64 ") ", GetDuration());
+		if(_priv_data != nullptr) {
+			info.AppendFormat("NbSamples(%d) ", GetNbSamples());
+		}
+
+		return info;
+	}
+
 private:
 	AVFrame *_priv_data = nullptr;
 
-	// Data plane, Data
+	// This shows the ID of the module that made the media frame. It can be a decoder or a filter. 
+	// The encoder uses this value to check if the filter has changed.
+	int32_t _source_id = 0;
+
+	// Common
 	cmn::MediaType _media_type = cmn::MediaType::Unknown;
+	int32_t _flags = 0;	 // Key, non-Key
 	int32_t _track_id = 0;
 	int64_t _pts = 0LL;
 	int64_t _duration = 0LL;
 
+	cmn::MediaCodecModuleId _codec_module_id = cmn::MediaCodecModuleId::None;
+	cmn::DeviceId _codec_device_id = 0;
+
+	// Video 
 	int32_t _width = 0;
 	int32_t _height = 0;
 	int32_t _format = 0;
 
+	// Autio 
 	int32_t _bytes_per_sample = 0;
 	int32_t _nb_samples = 0;
 	cmn::AudioChannel _channels;
 	int32_t _sample_rate = 0;
-
-	int32_t _flags = 0;	 // Key, non-Key
 };

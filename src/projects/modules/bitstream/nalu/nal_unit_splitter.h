@@ -1,7 +1,7 @@
 #pragma once
 
 #include <base/ovlibrary/bit_reader.h>
-#include <cstdint>
+#include <stdint.h>
 #include <vector>
 
 class NalUnitSplitter;

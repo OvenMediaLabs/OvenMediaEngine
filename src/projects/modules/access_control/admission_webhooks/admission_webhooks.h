@@ -3,6 +3,7 @@
 #include <base/common_types.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/socket_address.h>
+#include "../request_info.h"
 
 class AdmissionWebhooks
 {
@@ -40,43 +41,40 @@ public:
 		};
 	};
 
-
 	static std::shared_ptr<AdmissionWebhooks> Query(ProviderType provider,
 													const std::shared_ptr<ov::Url> &control_server_url, uint32_t timeout_msec,
 													const ov::String secret_key,
-													const std::shared_ptr<ov::SocketAddress> &client_address,
-													const std::shared_ptr<const ov::Url> &request_url,
-													const Status::Code status = Status::Code::OPENING);
+													const std::shared_ptr<const ac::RequestInfo> &request_info,
+													const Status::Code status);
+
 	static std::shared_ptr<AdmissionWebhooks> Query(PublisherType publisher,
 													const std::shared_ptr<ov::Url> &control_server_url, uint32_t timeout_msec,
 													const ov::String secret_key,
-													const std::shared_ptr<ov::SocketAddress> &client_address,
-													const std::shared_ptr<const ov::Url> &request_url,
-													const Status::Code status = Status::Code::OPENING);
+													const std::shared_ptr<const ac::RequestInfo> &request_info,
+													const Status::Code status);
 
 	ErrCode GetErrCode() const;
+	ov::String GetErrCodeString() const;
 	ov::String GetErrReason() const;
 	std::shared_ptr<ov::Url> GetNewURL() const;
 	uint64_t GetLifetime() const;
-	uint64_t GetElpasedTime() const;
+	uint64_t GetElapsedTime() const;
 	
 private:
 	void Run();
-	ov::String GetMessageBody();
+	ov::String MakeMessageBody();
 	void SetError(ErrCode code, ov::String reason);
 
 	void ParseResponse(const std::shared_ptr<ov::Data> &data);
 
 	uint64_t _elapsed_ms = 0;
 
-	// Request
+	std::shared_ptr<const ac::RequestInfo> _request_info;
 	std::shared_ptr<ov::Url> _control_server_url = nullptr;
 	uint64_t _timeout_msec = 0;
 	ov::String _secret_key;
 	ProviderType _provider_type = ProviderType::Unknown;
 	PublisherType _publisher_type = PublisherType::Unknown;
-	std::shared_ptr<ov::SocketAddress> _client_address;
-	std::shared_ptr<const ov::Url> _requested_url;
 	Status::Code _status;
 
 	// Response

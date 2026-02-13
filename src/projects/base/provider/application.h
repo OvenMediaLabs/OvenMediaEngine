@@ -22,7 +22,7 @@ namespace pvd
 {
 	class Provider;
 	
-	class Application : public info::Application, public MediaRouteApplicationConnector
+	class Application : public info::Application, public MediaRouterApplicationConnector
 	{
 	public:
 		enum class ApplicationState : int8_t
@@ -36,13 +36,16 @@ namespace pvd
 		virtual bool Start();
 		virtual bool Stop();
 
+		// Get all streams
+		const std::map<uint32_t, std::shared_ptr<Stream>> GetStreams();
 		const std::shared_ptr<Stream> GetStreamById(uint32_t stream_id);
 		const std::shared_ptr<Stream> GetStreamByName(ov::String stream_name);
 
-		uint32_t 	IssueUniqueStreamId();
+		static uint32_t 	IssueUniqueStreamId();
 
 		virtual bool AddStream(const std::shared_ptr<Stream> &stream);
 		virtual bool DeleteStream(const std::shared_ptr<Stream> &stream);
+		virtual bool UpdateStream(const std::shared_ptr<Stream> &stream);
 		virtual bool DeleteAllStreams();
 
 		const char* GetApplicationTypeName() final;
@@ -65,11 +68,12 @@ namespace pvd
 		virtual bool NotifyStreamUpdated(const std::shared_ptr<info::Stream> &stream);
 		virtual bool NotifyStreamDeleted(const std::shared_ptr<Stream> &stream);
 
-		std::shared_mutex _streams_guard;
-		std::map<uint32_t, std::shared_ptr<Stream>> _streams;
-
+		
 	private:
 		std::shared_ptr<Provider> _provider;
 		ApplicationState		_state = ApplicationState::Idle;
+
+		std::shared_mutex _streams_guard;
+		std::map<uint32_t, std::shared_ptr<Stream>> _streams;
 	};
 }

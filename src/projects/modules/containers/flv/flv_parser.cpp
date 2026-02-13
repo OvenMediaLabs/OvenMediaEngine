@@ -1,123 +1,134 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2020 AirenSoft. All rights reserved.
+//
+//==============================================================================
 #include "flv_parser.h"
 
-#include <base/ovlibrary/ovlibrary.h>
 #include <base/ovlibrary/bit_reader.h>
+#include <base/ovlibrary/ovlibrary.h>
 
 #define OV_LOG_TAG "FlvParser"
 
-bool FlvVideoData::Parse(const uint8_t *data, size_t data_length, FlvVideoData &video_data)
+namespace flv
 {
-	if(data_length < MIN_FLV_VIDEO_DATA_LENGTH)
+	bool VideoData::Parse(const std::shared_ptr<const ov::Data> &data)
 	{
-		logte("The data inputted is too small for parsing (%d must be bigger than %d)", data_length, MIN_FLV_VIDEO_DATA_LENGTH);
-		return false;
+		if (data->GetLength() < MIN_VIDEO_DATA_LENGTH)
+		{
+			logte("The data inputted is too small for parsing (%zu must be bigger than %d)", data->GetLength(), MIN_VIDEO_DATA_LENGTH);
+			return false;
+		}
+
+		BitReader parser(data);
+
+		_frame_type = static_cast<VideoFrameType>(parser.ReadBits<uint8_t>(4));
+		_codec_id = static_cast<VideoCodecId>(parser.ReadBits<uint8_t>(4));
+
+		if (_codec_id != VideoCodecId::AVC)
+		{
+			logte("Unsupported codec : %d", static_cast<uint8_t>(_codec_id));
+			return false;
+		}
+
+		_packet_type = static_cast<AvcPacketType>(parser.ReadBytes<uint8_t>());
+
+		int32_t composition_time = static_cast<int32_t>(parser.ReadBits<uint32_t>(24));
+
+		// Need to convert UI24 to SI24
+		_composition_time = OV_CHECK_FLAG(composition_time, 0x800000) ? composition_time |= 0xFF000000 : composition_time;
+		_payload = parser.CurrentPosition();
+		_payload_length = parser.BytesRemained();
+
+		return true;
 	}
 
-	BitReader parser(data, data_length);
-
-	video_data._frame_type = static_cast<FlvVideoFrameTypes>(parser.ReadBits<uint8_t>(4));
-	video_data._codec_id = static_cast<FlvVideoCodecId>(parser.ReadBits<uint8_t>(4));
-
-	if(video_data._codec_id != FlvVideoCodecId::AVC)
+	VideoFrameType VideoData::FrameType()
 	{
-		logte("Unsupported codec : %d", static_cast<uint8_t>(video_data._codec_id));
-		return false;
+		return _frame_type;
 	}
 
-	video_data._packet_type = static_cast<FlvAvcPacketType>(parser.ReadBytes<uint8_t>());
-
-	int32_t composition_time = static_cast<int32_t>(parser.ReadBits<uint32_t>(24));
-
-	// Need to convert UI24 to SI24
-	video_data._composition_time = OV_CHECK_FLAG(composition_time, 0x800000) ? composition_time |= 0xFF000000 : composition_time;
-	video_data._payload = parser.CurrentPosition();
-	video_data._payload_length = parser.BytesReamined();
-
-	return true;
-}
-
-FlvVideoFrameTypes FlvVideoData::FrameType()
-{
-	return _frame_type;
-}
-
-FlvVideoCodecId FlvVideoData::CodecId()
-{
-	return _codec_id;
-}
-
-FlvAvcPacketType FlvVideoData::PacketType()
-{
-	return _packet_type;
-}
-
-int64_t FlvVideoData::CompositionTime()
-{
-	return _composition_time;
-}
-
-const uint8_t* FlvVideoData::Payload()
-{
-	return _payload;
-}
-size_t FlvVideoData::PayloadLength()
-{
-	return _payload_length;
-}
-
-bool FlvAudioData::Parse(const uint8_t *data, size_t data_length, FlvAudioData &audio_data)
-{
-	if(data_length < MIN_FLV_AUDIO_DATA_LENGTH)
+	VideoCodecId VideoData::CodecId()
 	{
-		logte("The data inputted is too small for parsing (%d must be bigger than %d)", data_length, MIN_FLV_AUDIO_DATA_LENGTH);
-		return false;
+		return _codec_id;
 	}
 
-	BitReader parser(data, data_length);
+	AvcPacketType VideoData::PacketType()
+	{
+		return _packet_type;
+	}
 
-	audio_data._format = static_cast<FlvSoundFormat>(parser.ReadBits<uint8_t>(4));
-	audio_data._sample_rate = static_cast<FlvSoundRate>(parser.ReadBits<uint8_t>(2));
-	audio_data._sample_size = static_cast<FlvSoundSize>(parser.ReadBit());
-	audio_data._channel = static_cast<FlvSoundType>(parser.ReadBit());
-	audio_data._packet_type = static_cast<FlvAACPacketType>(parser.ReadBytes<uint8_t>());
+	int64_t VideoData::CompositionTime()
+	{
+		return _composition_time;
+	}
 
-	audio_data._payload = parser.CurrentPosition();
-	audio_data._payload_length = parser.BytesReamined();
+	const uint8_t *VideoData::Payload()
+	{
+		return _payload;
+	}
+	size_t VideoData::PayloadLength()
+	{
+		return _payload_length;
+	}
 
-	return true;
-}
+	bool AudioData::Parse(const std::shared_ptr<const ov::Data> &data)
+	{
+		if (data->GetLength() < MIN_AUDIO_DATA_LENGTH)
+		{
+			logte("The data inputted is too small for parsing (%zu must be bigger than %d)", data->GetLength(), MIN_AUDIO_DATA_LENGTH);
+			return false;
+		}
 
-FlvSoundFormat FlvAudioData::Format()
-{
-	return _format;
-}
+		BitReader parser(data);
 
-FlvSoundRate FlvAudioData::SampleRate()
-{
-	return _sample_rate;
-}
+		_format = static_cast<SoundFormat>(parser.ReadBits<uint8_t>(4));
+		_sample_rate = static_cast<SoundRate>(parser.ReadBits<uint8_t>(2));
+		_sample_size = static_cast<SoundSize>(parser.ReadBit());
+		_channel = static_cast<SoundType>(parser.ReadBit());
+		_packet_type = static_cast<AACPacketType>(parser.ReadBytes<uint8_t>());
 
-FlvSoundSize FlvAudioData::SampleSize()
-{
-	return _sample_size;
-}
+		_payload = parser.CurrentPosition();
+		_payload_length = parser.BytesRemained();
 
-FlvSoundType FlvAudioData::Channel()
-{
-	return _channel;
-}
+		return true;
+	}
 
-FlvAACPacketType FlvAudioData::PacketType()
-{
-	return _packet_type;
-}
+	SoundFormat AudioData::Format()
+	{
+		return _format;
+	}
 
-const uint8_t* FlvAudioData::Payload()
-{
-	return _payload;
-}
+	SoundRate AudioData::SampleRate()
+	{
+		return _sample_rate;
+	}
 
-size_t FlvAudioData::PayloadLength()
-{
-	return _payload_length;
-}
+	SoundSize AudioData::SampleSize()
+	{
+		return _sample_size;
+	}
+
+	SoundType AudioData::Channel()
+	{
+		return _channel;
+	}
+
+	AACPacketType AudioData::PacketType()
+	{
+		return _packet_type;
+	}
+
+	const uint8_t *AudioData::Payload()
+	{
+		return _payload;
+	}
+
+	size_t AudioData::PayloadLength()
+	{
+		return _payload_length;
+	}
+}  // namespace flv

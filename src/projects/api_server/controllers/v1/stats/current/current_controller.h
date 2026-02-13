@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include "../../../controller.h"
+#include "../../../controller_base.h"
 
 namespace api
 {
@@ -16,7 +16,7 @@ namespace api
 	{
 		namespace stats
 		{
-			class CurrentController : public Controller<CurrentController>
+			class CurrentController : public ControllerBase<CurrentController>
 			{
 			public:
 				void PrepareHandlers() override;
@@ -24,5 +24,5 @@ namespace api
 				ApiResponse OnGetServerMetrics(const std::shared_ptr<http::svr::HttpExchange> &client);
 			};
 		}  // namespace stats
-	}	   // namespace v1
+	}  // namespace v1
 }  // namespace api

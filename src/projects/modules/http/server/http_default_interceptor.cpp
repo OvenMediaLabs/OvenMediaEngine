@@ -8,7 +8,7 @@
 //==============================================================================
 #include "http_default_interceptor.h"
 
-#include "../http_private.h"
+#include "./http_server_private.h"
 #include "http_exchange.h"
 
 // Currently, OME does not handle requests larger than 1 MB
@@ -38,6 +38,12 @@ namespace http
 
 			if (error == nullptr)
 			{
+				// if mehotd == GET, set HEAD automatically
+				if (HTTP_CHECK_METHOD(method, Method::Get))
+				{
+					method |= Method::Head;
+				}
+
 				_request_handler_list.push_back((RequestInfo) {
 #if DEBUG
 					.pattern_string = whole_pattern,
@@ -59,6 +65,11 @@ namespace http
 		bool DefaultInterceptor::IsInterceptorForRequest(const std::shared_ptr<const HttpExchange> &client)
 		{
 			// Process all requests because this is a default interceptor
+			return true;
+		}
+
+		bool DefaultInterceptor::IsCacheable() const
+		{
 			return true;
 		}
 
@@ -104,7 +115,7 @@ namespace http
 			for (auto &request_info : _request_handler_list)
 			{
 #if DEBUG
-				logtd("Check if url [%s] is matches [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
+				logtt("Check if url [%s] is matches [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
 
 				response->SetStatusCode(StatusCode::OK);
@@ -115,7 +126,7 @@ namespace http
 				if (error == nullptr)
 				{
 #if DEBUG
-					logtd("Matches: url [%s], pattern: [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
+					logtt("Matches: url [%s], pattern: [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
 
 					regex_found = true;
@@ -142,7 +153,7 @@ namespace http
 				else
 				{
 #if DEBUG
-					logtd("Not matched: url [%s], pattern: [%s] (with error: %s)", uri_target.CStr(), request_info.pattern_string.CStr(), error->What());
+					logtt("Not matched: url [%s], pattern: [%s] (with error: %s)", uri_target.CStr(), request_info.pattern_string.CStr(), error->What());
 #endif	// DEBUG
 				}
 			}

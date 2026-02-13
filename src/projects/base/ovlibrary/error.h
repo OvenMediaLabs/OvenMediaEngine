@@ -37,6 +37,11 @@ namespace ov
 
 		virtual ~Error() = default;
 
+		const String &GetDomain() const
+		{
+			return _domain;
+		}
+
 		virtual int GetCode() const;
 		virtual String GetMessage() const;
 

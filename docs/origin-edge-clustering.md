@@ -1,12 +1,10 @@
 # Clustering
 
-OvenMediaEngine supports clustering and ensures High Availability (HA) and scalability.
+OvenMediaEngine supports clustering and ensures High Availability (HA) and scalability. For this we provide the `OriginMap` and `OriginMapStore` features. [OriginMap ](origin-edge-clustering.md#originmap)is a method of configuring Origin server information in each Edge server, and [OriginMapStore ](origin-edge-clustering.md#originmapstore)is a method for Origin servers and Edge servers to dynamically share information through Redis Server.
 
-![](.gitbook/assets/image.png)
+## OriginMap
 
-OvenMediaEngine supports the Origin-Edge structure for cluster configuration and provides scalability. Also, you can set Origin as `Primary` and `Secondary` in OvenMediaEngine for HA.
-
-## Origin-Edge Configuration
+![](<.gitbook/assets/image (7) (1) (1).png>)
 
 The OvenMediaEngine running as edge pulls a stream from an external server when a user requests it. The external server could be another OvenMediaEngine with OVT enabled or another stream server that supports RTSP.&#x20;
 
@@ -44,46 +42,42 @@ OvenMediaEngine provides OVT protocol for passing streams from the origin to the
 
 The role of the edge is to receive and distribute streams from an origin. You can configure hundreds of Edge to distribute traffic to your players. As a result of testing, a single edge can stream 4-5Gbps traffic by WebRTC based on AWS C5.2XLarge. If you need to stream to thousands of people, you can configure and use multiple edges.
 
-The edge supports OVT and RTSP to pull stream from an origin. In the near future, we will support more protocols. The stream pulled through OVT or RTSP is bypassed without being encoded.&#x20;
-
-{% hint style="warning" %}
-In order to re-encode the stream created by OVT and RTSP, the function to put into an existing application will be supported in the future.
-{% endhint %}
+The edge supports OVT and RTSP to pull stream from an origin. In the near future, we will support more protocols. The stream pulled through OVT is bypassed without being encoded.&#x20;
 
 To run OvenMediaEngine as Edge, you need to add Origins elements to the configuration file as follows:
 
 ```markup
 <VirtualHosts>
-	<VirtualHost>
-		<Origins>
-			<Properties>
-				<NoInputFailoverTimeout>3000</NoInputFailoverTimeout>
-				<UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
-			</Properties>
-			<Origin>
-				<Location>/app/stream</Location>
-				<Pass>
-					<Scheme>ovt</Scheme>
-					<Urls><Url>origin.com:9000/app/stream_720p</Url></Urls>
-				</Pass>
-				<ForwardQueryParams>true</ForwardQueryParams>
-			</Origin>
-			<Origin>
-				<Location>/app/</Location>
-				<Pass>
-					<Scheme>OVT</Scheme>
-					<Urls><Url>origin.com:9000/app/</Url></Urls>
-				</Pass>
-			</Origin>
-			<Origin>
-				<Location>/</Location>
-				<Pass>
-					<Scheme>RTSP</Scheme>
-					<Urls><Url>origin2.com:9000/</Url></Urls>
-				</Pass>
-			</Origin>
-		</Origins>
-	</VirtualHost>
+    <VirtualHost>
+        <Origins>
+            <Properties>
+                <NoInputFailoverTimeout>3000</NoInputFailoverTimeout>
+                <UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
+            </Properties>
+            <Origin>
+                <Location>/app/stream</Location>
+                <Pass>
+                    <Scheme>ovt</Scheme>
+                    <Urls><Url>origin.com:9000/app/stream_720p</Url></Urls>
+                    <ForwardQueryParams>true</ForwardQueryParams>
+                </Pass>
+            </Origin>
+            <Origin>
+                <Location>/app/</Location>
+                <Pass>
+                    <Scheme>OVT</Scheme>
+                    <Urls><Url>origin.com:9000/app/</Url></Urls>
+                </Pass>
+            </Origin>
+            <Origin>
+                <Location>/</Location>
+                <Pass>
+                    <Scheme>RTSP</Scheme>
+                    <Urls><Url>origin2.com:9000/</Url></Urls>
+                </Pass>
+            </Origin>
+        </Origins>
+    </VirtualHost>
 </VirtualHosts>
 ```
 
@@ -91,54 +85,13 @@ The `<Origin>`is a rule about where to pull a stream from for what request.&#x20
 
 The `<Origin>`has the ability to automatically create an application with that name if the application you set in `<Location>` doesn't exist on the server.  If an application exists in the system, a stream will be created in the application.
 
-The automatically created application by `<Origin>` enables all providers but if you create an application yourself, you must enable the provider that matches the setting as follows.
-
-```markup
-<VirtualHosts>
-	<VirtualHost>
-		<Origins>
-			<Properties>
-				<NoInputFailoverTimeout>3000</NoInputFailoverTimeout>
-				<UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
-			</Properties>
-			<Origin>
-				<Location>/this_application/stream</Location>
-				<Pass>
-					<Scheme>OVT</Scheme>
-					<Urls><Url>origin.com:9000/app/stream_720p</Url></Urls>
-				</Pass>
-				<ForwardQueryParams>true</ForwardQueryParams>
-			</Origin>
-			<Origin>
-				<Location>/this_application/rtsp_stream</Location>
-				<Pass>
-					<Scheme>RTSP</Scheme>
-					<Urls><Url>rtsp.origin.com/145</Url></Urls>
-				</Pass>
-			</Origin>
-		</Origins>
-		<Applications>
-			<Application>
-				<Name>this_application</Name>
-				<Type>live</Type>
-				<Providers>
-					<!-- You have to enable the OVT provider 
-					because you used the ovt scheme for configuring Origin. -->
-					<OVT />
-					<!-- If you set RTSP into Scheme, 
-					you have to enable RTSPPull provider -->
-					<RTSPPull />
-				</Providers>
-		
-```
-
 #### \<Properties>
 
-<mark style="color:purple;"><mark style="color:blue;">**NoInputFailoverTimeout**<mark style="color:blue;"></mark><mark style="color:purple;">** **</mark><mark style="color:purple;">****</mark>** (default 3000)**
+<mark style="color:purple;">**NoInputFailoverTimeout**</mark>**&#x20;(default 3000)**
 
 NoInputFailoverTimeout is the time (in milliseconds) to switch to the next URL if there is no input for the set time.
 
-<mark style="color:blue;">**UnusedStreamDeletionTimeout**</mark>** (default 60000)**
+<mark style="color:blue;">**UnusedStreamDeletionTimeout**</mark>**&#x20;(default 60000)**
 
 UnusedStreamDeletionTimeout is a function that deletes a stream created with OriginMap if there is no viewer for a set amount of time (milliseconds). This helps to save network traffic and system resources for Origin and Edge.
 
@@ -164,8 +117,6 @@ You can pull the stream from the RTSP server by setting `RTSP`into the`<Scheme>`
 
 `ForwardQueryParams` is an option to determine whether to pass the query string part to the server at the URL you requested to play.(**Default : true**) Some RTSP servers classify streams according to query strings, so you may want this option to be set to false. For example, if a user requests `ws://host:port/app/stream?transport=tcp` to play WebRTC, the `?transport=tcp` may also be forwarded to the RTSP server, so the stream may not be found on the RTSP server. On the other hand, OVT does not affect anything, so you can use it as the default setting.
 
-
-
 ### Rules for generating Origin URL
 
 The final address to be requested by OvenMediaEngine is generated by combining the configured Url and user's request except for Location. For example, if the following is set
@@ -178,35 +129,74 @@ The final address to be requested by OvenMediaEngine is generated by combining t
 </Pass>
 ```
 
-If a user requests [http://edge.com/edge\_app/stream](http://edge.com/edge\_app/stream), OvenMediaEngine makes an address to ovt: //origin.com: 9000/origin\_app/stream.
+If a user requests `http://edge.com/edge_app/stream`, OvenMediaEngine makes an address to `ovt: //origin.com: 9000/origin_app/stream`.
 
 ## OriginMapStore
 
-<figure><img src=".gitbook/assets/image (2).png" alt=""><figcaption></figcaption></figure>
+<figure><img src=".gitbook/assets/image (2) (1) (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
 
-OriginMapStore is designed to make it easier to support autoscaling within a cluster. All Origin Servers and Edge Servers in the cluster share stream information and origin OVT URLs through Redis. That is, when a stream is created on the Origin server, the Origin server sets the app/stream name and OVT url to access the stream to the Redis server. Edge gets the OVT url corresponding to the app/stream from the Redis server when the user's playback request comes in.
+`OriginMapStore` is designed to make it easier to support autoscaling within a cluster. All Origin Servers and Edge Servers in the cluster share stream information and origin OVT URLs through Redis. That is, when a stream is created on the Origin server, the Origin server sets the app/stream name and OVT url to access the stream to the Redis server. Edge gets the OVT url corresponding to the `app/stream` from the Redis server when the user's playback request comes in.
 
-This means that existing settings do not need to be updated when extending Origin servers and Edge servers. Therefore, all Origins can be grouped into one domain, and all Edges can be bundled with one domain. OriginMapStore allows you to expand Origins or Edges within a cluster without any additional configuration.
+This means that existing settings do not need to be updated when extending Origin servers and Edge servers. Therefore, all Origins can be grouped into one domain, and all Edges can be bundled with one domain. `OriginMapStore` allows you to expand Origins or Edges within a cluster without any additional configuration.
 
-OriginMapStore functionality has been tested with Redis Server 5.0.7. You can enable this feature by adding the following settings to Server.xml of Origin and Edge. Note that must be set in Server.xml of the Origin server. This is used when Origin registers its own OVT url, so you just need to set a domain name or IP address that can be accessed as an OVT publisher.
+`OriginMapStore` functionality has been tested with Redis Server 5.0.7. You can enable this feature by adding the following settings to Server.xml of Origin and Edge. Note that must be set in Server.xml of the Origin server. This is used when Origin registers its own OVT url, so you just need to set a domain name or IP address that can be accessed as an OVT publisher.
 
+{% code overflow="wrap" %}
 ```xml
 <VirtualHost>
-	...
-	<OriginMapStore>
-		<!-- In order to use OriginMap, you must enable OVT Publisher in Origin and OVT Provider in Edge. -->
-		<RedisServer>
-			<Host>192.168.0.160:6379</Host>
-			<Auth>!@#ovenmediaengine</Auth>
-		</RedisServer>
-		
-		<!-- This is only needed for the origin server and used to register the ovt address of the stream.  -->
-		<OriginHostName>ome-dev.airensoft.com</OriginHostName>
-	</OriginMapStore>
-	...
+    ...
+    <OriginMapStore>
+        <!-- In order to use OriginMap, you must enable OVT Publisher in Origin and OVT Provider in Edge. -->
+        <RedisServer>
+            <Host>192.168.0.160:6379</Host>
+            <Auth>!@#ovenmediaengine</Auth>
+        </RedisServer>
+        
+        <!-- This is only needed for the origin server and used to register the ovt address of the stream.  -->
+        <OriginHostName>ome-dev.airensoft.com</OriginHostName>
+    </OriginMapStore>
+    ...
 </VirtualHost>
+```
+{% endcode %}
+
+## Dynamic Application
+
+It is either impossible or very cumbersome for edge servers to pre-configure all applications. So `OriginMap` and `OriginMapStore` have the ability to dynamically create an application if the application does not exist when creating the stream. They create a new application by copying the application configuration with `<Name>*</Name>`. That is, the special application with the name `*` is a dynamic application template.
+
+```xml
+<Applications>
+    <Application>
+        <Name>*</Name>
+        <Type>live</Type>
+        <OutputProfiles>
+            ...
+        </OutputProfiles>
+        <Providers>
+            <OVT />
+        </Providers>
+        <Publishers>
+            <AppWorkerCount>1</AppWorkerCount>
+            <StreamWorkerCount>8</StreamWorkerCount>
+            <WebRTC>
+                <Timeout>30000</Timeout>
+                <Rtx>false</Rtx>
+                <Ulpfec>false</Ulpfec>
+                <JitterBuffer>false</JitterBuffer>
+            </WebRTC>
+            <LLHLS>
+                <ChunkDuration>0.5</ChunkDuration>
+                <SegmentDuration>6</SegmentDuration>
+                <SegmentCount>10</SegmentCount>
+                <CrossDomains>
+                    <Url>*</Url>
+                </CrossDomains>
+            </LLHLS>
+        </Publishers>
+    </Application>
+</Applications>
 ```
 
 ## Load Balancer
 
-When you are configuring Load Balancer, you need to use third-party solutions such as L4 Switch, LVS, or GSLB, but we recommend using DNS Round Robin. Also, services such as cloud-based [AWS Route53](https://aws.amazon.com/route53/?nc1=h\_ls), [Azure DNS](https://azure.microsoft.com/en-us/services/dns/), or [Google Cloud DNS](https://cloud.google.com/dns/) can be a good alternative.
+When you are configuring Load Balancer, you need to use third-party solutions such as L4 Switch, LVS, or GSLB, but we recommend using DNS Round Robin. Also, services such as cloud-based [AWS Route53](https://aws.amazon.com/route53/?nc1=h_ls), [Azure DNS](https://azure.microsoft.com/en-us/services/dns/), or [Google Cloud DNS](https://cloud.google.com/dns/) can be a good alternative.

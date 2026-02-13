@@ -33,7 +33,7 @@ namespace info
 		if (error == nullptr)
 		{
 			logti(
-				"A certificate has been created for VirtualHost [%s]:\n"
+				"A certificate has been loaded for VirtualHost [%s]:\n"
 				"\tCert file path: %s\n"
 				"\tChain cert file path: %s\n"
 				"\tPrivate key file path: %s",
@@ -84,35 +84,15 @@ namespace info
 		}
 
 		auto certificate = std::make_shared<::Certificate>();
-
-		auto error = certificate->GenerateFromPem(cert_path, key_path);
+		auto error = certificate->GenerateFromPem(key_path, cert_path, chain_cert_path);
 
 		if (error != nullptr)
 		{
 			return ov::Error::CreateError(OV_LOG_TAG, "[%s] Could not create a certificate from file - %s", certificate_name.CStr(), error->What());
 		}
 
-		std::shared_ptr<::Certificate> chain_certificate;
-
-		if (chain_cert_path.IsEmpty() == false)
-		{
-			chain_certificate = std::make_shared<::Certificate>();
-
-			error = chain_certificate->GenerateFromPem(chain_cert_path, true);
-
-			if (error != nullptr)
-			{
-				return ov::Error::CreateError(OV_LOG_TAG, "[%s] Could not create a chain certificate from file - %s", certificate_name.CStr(), error->What());
-			}
-		}
-		else
-		{
-			// Chain certificate is optional, and it's not available
-		}
-
 		_certificate_name = certificate_name;
-
-		_certificate_pair = CertificatePair::CreateCertificatePair(certificate, chain_certificate);
+		_certificate = certificate;
 
 		for (auto &host_name : host_name_list)
 		{
@@ -132,7 +112,7 @@ namespace info
 
 			if (match_result.IsMatched())
 			{
-				logtd("Matched: host_name: %s, pattern: %s",
+				logtt("Matched: host_name: %s, pattern: %s",
 					  host_name.CStr(),
 					  host_name_entry.regex.GetPattern().CStr());
 
@@ -143,7 +123,7 @@ namespace info
 
 			if (error != nullptr)
 			{
-				logtd("Not matched with error: host_name: %s, pattern: %s, error: %s",
+				logtt("Not matched with error: host_name: %s, pattern: %s, error: %s",
 					  host_name.CStr(),
 					  host_name_entry.regex.GetPattern().CStr(),
 					  error->What());

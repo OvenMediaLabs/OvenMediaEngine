@@ -66,7 +66,7 @@ namespace ov
 		// TODO(Getroot): Need to optimize for performance
 		if(url == true)
 		{
-			// replace any charaters
+			// replace any characters
 			source = source.Replace("-", "+");
 			source = source.Replace("_", "/");
 

@@ -22,11 +22,12 @@
 		<HTTP2>
 			<Enable>true</Enable>
 		</HTTP2>
-
 		<LLHLS>
 			<Enable>true</Enable>
 		</LLHLS>
-
+		<DynamicAppRemoval>
+			<Enable>false</Enable>
+		</DynamicAppRemoval>
 		<!-- P2P works only in WebRTC and is experiment feature -->
 		<P2P>
 			<!-- disabled by default -->
@@ -71,8 +72,8 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>*:10000-10005/udp</IceCandidate>
-					<TcpRelay>${env:OME_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10005-10009/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
 					<TcpForce>true</TcpForce>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
@@ -86,6 +87,13 @@
 		<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 	</P2P>
 	-->
+
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
 
 	<VirtualHosts>
 		<!-- You can use wildcard like this to include multiple XMLs -->
@@ -106,13 +114,11 @@
 					-->
 					<Name>*</Name>
 				</Names>
-				<!--
 				<TLS>
-					<CertPath>path/to/file.crt</CertPath>
-					<KeyPath>path/to/file.key</KeyPath>
-					<ChainCertPath>path/to/file.crt</ChainCertPath>
+					<CertPath>./cert.crt</CertPath>
+					<KeyPath>./cert.key</KeyPath>
+					<ChainCertPath>./cert.ca-bundle</ChainCertPath>
 				</TLS>
-				-->
 			</Host>
 
 			<!-- Refer https://airensoft.gitbook.io/ovenmediaengine/signedpolicy
@@ -124,7 +130,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -136,7 +142,7 @@
 					<UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
 				</Properties>
 				<!--
-					<Origin>
+				<Origin>
 					<Location>/app/stream</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>
@@ -180,22 +186,23 @@
 					<Host>192.168.0.160:6379</Host>
 					<Auth>!@#ovenmediaengine</Auth>
 				</RedisServer>
-				
-				This is only needed for the origin server and used to register the ovt address of the stream. 
-				<OriginHostName>ome-dev.airensoft.com</OriginHostName>
 			</OriginMapStore>
 			-->
 
-			<!--
-				Apply the following settings for /app/<stream_name> requests.
+			<!-- Default CORS Settings -->
+			<CrossDomains>
+				<Url>*</Url>
+			</CrossDomains>
 
-				This demonstrates setting <OutputProfiles>/<Providers>/<Pubishers> for a specific application.
-
-				(https://github.com/AirenSoft/OvenMediaEngine/issues/621#issuecomment-1026892776)
-			-->
 			<Applications>
 				<Application>
-					<Name>app</Name>
+					<!-- 
+					Origins and OriginMapStore can dynamically create an application if no application exists 
+					when creating a stream. They create a new application by copying the Application configuration 
+					where <Name> is *. 
+					In other words, an application with <Name> as * serves as a dynamic application template.
+					-->
+					<Name>*</Name>
 					<Type>live</Type>
 					<OutputProfiles>
 						<OutputProfile>
@@ -222,6 +229,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<ChunkDuration>0.5</ChunkDuration>
@@ -230,7 +238,16 @@
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
 					</Publishers>
 				</Application>
 			</Applications>

@@ -55,7 +55,7 @@
 #define INIT_EXTERNAL_MODULE(name, func)                               \
 	if (succeeded)                                                     \
 	{                                                                  \
-		logtd("Trying to initialize " name "...");                     \
+		logtt("Trying to initialize " name "...");                     \
 		auto error = func();                                           \
                                                                        \
 		if (error != nullptr)                                          \
@@ -67,7 +67,7 @@
 
 #define TERMINATE_EXTERNAL_MODULE(name, func)                         \
 	{                                                                 \
-		logtd("Trying to terminate " name "...");                     \
+		logtt("Trying to terminate " name "...");                     \
 		auto error = func();                                          \
                                                                       \
 		if (error != nullptr)                                         \

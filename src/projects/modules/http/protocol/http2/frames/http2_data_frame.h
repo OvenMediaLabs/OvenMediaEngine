@@ -75,7 +75,7 @@ namespace http
 					str += "[DATA Frame]\n";
 					
 					// Header Block Fragment length
-					str += ov::String::FormatString("Data Length : %d\n", _data->GetLength());
+					str += ov::String::FormatString("Data Length : %zu\n", _data->GetLength());
 
 					// Flags - End Header, End Stream, Padded, Priority
 					str += ov::String::FormatString("Flags : EndStream(%s) Padded(%s) \n",

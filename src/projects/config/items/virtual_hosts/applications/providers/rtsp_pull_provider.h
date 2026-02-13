@@ -40,6 +40,6 @@ namespace cfg
 					bool _is_block_duplicate_stream_name = true;
 				};
 			}  // namespace pvd
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

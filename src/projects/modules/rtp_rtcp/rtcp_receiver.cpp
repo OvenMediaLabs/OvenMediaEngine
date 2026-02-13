@@ -50,7 +50,7 @@ bool RtcpReceiver::ParseCompoundPacket(const std::shared_ptr<const ov::Data>& pa
 				}
 				else
 				{
-					logtd("Does not support RTPFB format : %d", rtcp_packet.GetFMT());
+					logtt("Does not support RTPFB format : %d", rtcp_packet.GetFMT());
 					continue;
 				}
 
@@ -66,7 +66,7 @@ bool RtcpReceiver::ParseCompoundPacket(const std::shared_ptr<const ov::Data>& pa
 				}
 				else
 				{
-					logtd("Does not support PSFB format : %d", rtcp_packet.GetFMT());
+					logtt("Does not support PSFB format : %d", rtcp_packet.GetFMT());
 					continue;
 				}
 
@@ -77,7 +77,7 @@ bool RtcpReceiver::ParseCompoundPacket(const std::shared_ptr<const ov::Data>& pa
 			case RtcpPacketType::APP:
 			case RtcpPacketType::XR:
 			default:
-				logtd("Does not support RTCP type : %d", static_cast<uint8_t>(rtcp_packet.GetType()));
+				logtt("Does not support RTCP type : %d", static_cast<uint8_t>(rtcp_packet.GetType()));
 				continue;
 		}
 

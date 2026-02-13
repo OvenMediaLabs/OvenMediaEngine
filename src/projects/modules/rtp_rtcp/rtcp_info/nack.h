@@ -50,6 +50,11 @@ public:
 	{
 		return static_cast<uint8_t>(RTPFBFMT::NACK);
 	}
+
+	bool HasPadding() const override
+	{
+		return false;
+	}
 	
 	// Feedback
 	uint32_t GetSrcSsrc(){return _src_ssrc;}

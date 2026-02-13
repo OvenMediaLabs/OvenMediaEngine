@@ -42,6 +42,8 @@ namespace ov
 		}
 
 		void SetIoCallback(const std::shared_ptr<TlsClientDataIoCallback> &callback);
+		// For SNI
+		void SetTlsHostName(const ov::String &host_name);
 
 		std::shared_ptr<const OpensslError> Connect();
 

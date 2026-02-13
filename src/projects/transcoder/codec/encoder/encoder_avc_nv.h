@@ -13,17 +13,41 @@
 class EncoderAVCxNV : public TranscodeEncoder
 {
 public:
-	~EncoderAVCxNV();
-
-	AVCodecID GetCodecID() const noexcept override
+	EncoderAVCxNV(const info::Stream &stream_info)
+		: TranscodeEncoder(stream_info)
 	{
-		return AV_CODEC_ID_H264;
 	}
 
-	int GetSupportedFormat() const noexcept override 
+	cmn::MediaCodecId GetCodecID() const noexcept override
 	{
-		return AV_PIX_FMT_NV12;
+		return cmn::MediaCodecId::H264;
 	}
+
+	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	{
+		return cmn::MediaCodecModuleId::NVENC;
+	}
+
+	cmn::MediaType GetMediaType() const noexcept
+	{
+		return cmn::MediaType::Video;
+	}
+
+	bool IsHWAccel() const noexcept
+	{
+		return true;
+	}
+	
+	cmn::AudioSample::Format GetSupportAudioFormat() const noexcept override
+	{
+		return cmn::AudioSample::Format::None;
+	}
+
+	cmn::VideoPixelFormatId GetSupportVideoFormat() const noexcept override 
+	{
+		return cmn::VideoPixelFormatId::CUDA;
+	}
+
 
 	cmn::BitstreamFormat GetBitstreamFormat() const noexcept override
 	{
@@ -32,7 +56,7 @@ public:
 	
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
 
-	void CodecThread() override;
+	bool InitCodec() override;
 
 private:
 	bool SetCodecParams() override;	

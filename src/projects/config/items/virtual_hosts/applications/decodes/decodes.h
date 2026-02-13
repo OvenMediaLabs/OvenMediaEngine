@@ -22,8 +22,8 @@ namespace cfg
 				{
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetVideo, _video);
-					
-					// Informal Option 
+
+					// Informal Option
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetH264hasBFrames, _h264_has_bframes);
 
 				protected:
@@ -37,6 +37,6 @@ namespace cfg
 					dec::DecodeVideo _video;
 				};
 			}  // namespace dec
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

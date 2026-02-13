@@ -19,22 +19,25 @@ namespace info
 		_server_id = server_id;
 		_host_id = ov::Random::GenerateUInt32();
 
-		std::vector<ov::String> name_list;
+		LoadCertificate();
+	}
 
-		for (auto name : host_info.GetHost().GetNameList())
+	bool Host::LoadCertificate()
+	{
+		auto certificate = Certificate::CreateCertificate(GetName(), GetHost().GetNameList(), GetHost().GetTls());
+		if (certificate == nullptr)
 		{
-			name_list.push_back(name.CStr());
+			return false;
 		}
 
-		const cfg::cmn::Tls &tls_config = GetHost().GetTls();
-		std::shared_ptr<ov::Error> error = nullptr;
+		_certificate = certificate;
 
-		_certificate = Certificate::CreateCertificate(host_info.GetName(), name_list, tls_config);
+		return true;
 	}
 
 	ov::String Host::GetUUID() const
 	{
-		return ov::String::FormatString("%s/%s", _server_id.CStr(), GetName().CStr());
+		return ov::String::FormatString("%s/#%s#", _server_id.CStr(), GetName().Replace("#", "_").CStr());
 	}
 
 }  // namespace info

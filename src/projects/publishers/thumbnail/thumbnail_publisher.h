@@ -14,15 +14,21 @@
 class ThumbnailPublisher : public pub::Publisher
 {
 public:
-	static std::shared_ptr<ThumbnailPublisher> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+	static std::shared_ptr<ThumbnailPublisher> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-	ThumbnailPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+	ThumbnailPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 	~ThumbnailPublisher() override;
 	bool Stop() override;
 
+protected:
+	bool PrepareHttpServers(
+		const std::vector<ov::String> &ip_list,
+		const bool is_port_configured, const uint16_t port,
+		const bool is_tls_port_configured, const uint16_t tls_port,
+		const int worker_count);
+
 private:
 	bool Start() override;
-
 
 	//--------------------------------------------------------------------
 	// Implementation of Publisher
@@ -38,13 +44,16 @@ private:
 
 	bool OnCreateHost(const info::Host &host_info) override;
 	bool OnDeleteHost(const info::Host &host_info) override;
+	bool OnUpdateCertificate(const info::Host &host_info) override;
 	std::shared_ptr<pub::Application> OnCreatePublisherApplication(const info::Application &application_info) override;
 	bool OnDeletePublisherApplication(const std::shared_ptr<pub::Application> &application) override;
 
-	bool SetAllowOrigin(const ov::String &origin_url, std::vector<ov::String>& cors_urls, const std::shared_ptr<http::svr::HttpResponse> &response);
-
+	static ov::String MimeTypeFromMediaCodecId(const cmn::MediaCodecId &type);
+	
 private:
 	std::shared_ptr<ThumbnailInterceptor> CreateInterceptor();
-	std::shared_ptr<http::svr::HttpServer> _http_server;
-	std::shared_ptr<http::svr::HttpsServer> _https_server;
+
+	std::mutex _http_server_list_mutex;
+	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 };

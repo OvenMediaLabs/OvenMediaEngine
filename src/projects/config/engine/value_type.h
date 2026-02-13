@@ -73,56 +73,56 @@ namespace cfg
 	template <typename Tprobe, typename Tdummy = void>
 	struct ProbeType
 	{
-		static constexpr ValueType type = ValueType::Unknown;
+		static constexpr ValueType type		= ValueType::Unknown;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<ov::String>
 	{
-		static constexpr ValueType type = ValueType::String;
+		static constexpr ValueType type		= ValueType::String;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<int32_t>
 	{
-		static constexpr ValueType type = ValueType::Integer;
+		static constexpr ValueType type		= ValueType::Integer;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<int64_t>
 	{
-		static constexpr ValueType type = ValueType::Long;
+		static constexpr ValueType type		= ValueType::Long;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<bool>
 	{
-		static constexpr ValueType type = ValueType::Boolean;
+		static constexpr ValueType type		= ValueType::Boolean;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<double>
 	{
-		static constexpr ValueType type = ValueType::Double;
+		static constexpr ValueType type		= ValueType::Double;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <>
 	struct ProbeType<Attribute>
 	{
-		static constexpr ValueType type = ValueType::Attribute;
+		static constexpr ValueType type		= ValueType::Attribute;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <typename Tprobe>
 	struct ProbeType<Tprobe, std::enable_if_t<std::is_base_of_v<Text, Tprobe>>>
 	{
-		static constexpr ValueType type = ValueType::Text;
+		static constexpr ValueType type		= ValueType::Text;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
@@ -130,14 +130,14 @@ namespace cfg
 	template <typename Tprobe>
 	struct ProbeType<Tprobe, std::enable_if_t<std::is_base_of_v<Item, Tprobe>>>
 	{
-		static constexpr ValueType type = ValueType::Item;
+		static constexpr ValueType type		= ValueType::Item;
 		static constexpr ValueType sub_type = ValueType::Unknown;
 	};
 
 	template <typename Titem>
 	struct ProbeType<std::vector<Titem>>
 	{
-		static constexpr ValueType type = ValueType::List;
+		static constexpr ValueType type		= ValueType::List;
 		static constexpr ValueType sub_type = ProbeType<Titem>::type;
 	};
 	//--------------------------------------------------------------------

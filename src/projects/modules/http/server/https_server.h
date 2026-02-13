@@ -19,12 +19,12 @@ namespace http
 		class HttpsServer : public HttpServer
 		{
 		public:
-			HttpsServer(const char *server_name)
-				: HttpServer(server_name)
+			HttpsServer(const char *server_name, const char *server_short_name)
+				: HttpServer(server_name, server_short_name)
 			{
 			}
 
-			std::shared_ptr<const ov::Error> AppendCertificate(const std::shared_ptr<const info::Certificate> &certificate);
+			std::shared_ptr<const ov::Error> InsertCertificate(const std::shared_ptr<const info::Certificate> &certificate);
 			std::shared_ptr<const ov::Error> RemoveCertificate(const std::shared_ptr<const info::Certificate> &certificate);
 
 			// Deprecated

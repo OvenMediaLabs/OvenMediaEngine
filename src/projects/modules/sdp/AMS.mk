@@ -3,4 +3,6 @@ include $(DEFAULT_VARIABLES)
 
 LOCAL_TARGET := sdp
 
+$(call add_pkg_config,srt)
+
 include $(BUILD_STATIC_LIBRARY)

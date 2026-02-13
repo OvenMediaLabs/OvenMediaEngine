@@ -5,7 +5,7 @@
 #include <base/ovlibrary/data.h>
 
 #include <unordered_map>
-#include <cstdint>
+#include <stdint.h>
 
 class RtspRtpDemuxer
 {

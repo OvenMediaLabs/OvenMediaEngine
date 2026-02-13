@@ -39,7 +39,7 @@ namespace http
 
 				if (request->GetConnectionType() != ConnectionType::WebSocket)
 				{
-					logtd("%s is not websocket request", request->ToString().CStr());
+					logtt("%s is not websocket request", request->ToString().CStr());
 					return false;
 				}
 
@@ -99,7 +99,7 @@ namespace http
 				auto websocket_session = connection->GetWebSocketSession();
 				if (websocket_session == nullptr)
 				{
-					logtd("%s is already closed", connection->ToString().CStr());
+					logtt("%s is already closed", connection->ToString().CStr());
 					return;
 				}
 

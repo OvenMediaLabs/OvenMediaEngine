@@ -6,30 +6,45 @@
 //  Copyright (c) 2018 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include <base/ovlibrary/converter.h>
 #include "ice_candidate.h"
-#include "ice_private.h"
+
+#include <base/ovlibrary/converter.h>
 
 #include <algorithm>
 
-#define ICE_CANDIDATE_PREFIX                                "candidate:"
+#include "ice_private.h"
+
+#define ICE_CANDIDATE_PREFIX "candidate:"
 
 IceCandidate::IceCandidate()
-	: IceCandidate("UDP", "", 0)
+	: IceCandidate("UDP", ov::SocketAddress())
 {
+	_foundation = ov::Random::GenerateNumberString(10);
 }
 
-IceCandidate::IceCandidate(ov::String transport, ov::String ip_address, int port)
-	: _foundation("0"),
-	  _component_id(1),
+IceCandidate::IceCandidate(const ov::String &transport, const ov::SocketAddress &address)
+	: _component_id(1),
 	  _transport(std::move(transport)),
 	  _priority(50),
-	  _ip_address(std::move(ip_address)),
-	  _port(port),
-	// candidate type은 host만 지원
+	  _address(address),
+	  // candidate type은 host만 지원
 	  _candidate_types("host"),
 	  _rel_port(0)
 {
+	_foundation = ov::Random::GenerateNumberString(10);
+}
+
+// without resolving address
+IceCandidate::IceCandidate(const ov::String &transport, const ov::String &address, int port)
+	: _component_id(1),
+	  _transport(std::move(transport)),
+	  _priority(50),
+	  _address_str(std::move(address)),
+	  _port(port),
+	  _candidate_types("host"),
+	  _rel_port(0)
+{
+	_foundation = ov::Random::GenerateNumberString(10);
 }
 
 IceCandidate::IceCandidate(IceCandidate &&candidate) noexcept
@@ -48,7 +63,8 @@ void IceCandidate::Swap(IceCandidate &from) noexcept
 	std::swap(_component_id, from._component_id);
 	std::swap(_transport, from._transport);
 	std::swap(_priority, from._priority);
-	std::swap(_ip_address, from._ip_address);
+	std::swap(_address, from._address);
+	std::swap(_address_str, from._address_str);
 	std::swap(_port, from._port);
 	std::swap(_candidate_types, from._candidate_types);
 	std::swap(_rel_addr, from._rel_addr);
@@ -77,7 +93,7 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	// candidate:501616445  1   udp 2113937151  192.168.0.152   52739   typ host    generation  0   ufrag   Qy/4    network-cost    50
 	// candidate:0          1   UDP 50          192.168.0.183   10000   typ host    generation  0
 
-	if(candidate_string.HasPrefix("candidate:") == false)
+	if (candidate_string.HasPrefix("candidate:") == false)
 	{
 		// 반드시 candidate로 시작해야 함
 		logtw("Candidate string does not starts with 'candidate:' string: %s", candidate_string.CStr());
@@ -87,7 +103,7 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	// 공백을 기준으로 나눔
 	auto tokens = candidate_string.Split(" ");
 
-	if(tokens.size() < 7)
+	if (tokens.size() < 7)
 	{
 		// 다음을 위해, 최소 7개의 토큰이 있어야 함:
 		// foundation, component-id, transport, priority, connection-address, port, cand-type
@@ -100,7 +116,7 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	auto iterator = tokens.begin();
 
 	temp_candidate._foundation = *iterator++;
-	if(temp_candidate._foundation.HasPrefix(ICE_CANDIDATE_PREFIX) == false)
+	if (temp_candidate._foundation.HasPrefix(ICE_CANDIDATE_PREFIX) == false)
 	{
 		// 잘못된 foundation
 		logtw("Invalid foundation: %s", temp_candidate._foundation.CStr());
@@ -114,22 +130,52 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	temp_candidate._transport = *iterator++;
 	temp_candidate._priority = ov::Converter::ToUInt32(*iterator++);
 
-	temp_candidate._ip_address = *iterator++;
-	temp_candidate._port = ov::Converter::ToUInt16(*iterator++);
+	{
+		auto connection_address = *iterator++;
+		auto port = ov::Converter::ToUInt16(*iterator++);
+
+		temp_candidate._address_str = connection_address;
+		temp_candidate._port = port;
+
+		// Check if this is a necessary procedure
+		// try
+		// {
+		// 	auto address_list = ov::SocketAddress::Create(connection_address, port);
+
+		// 	if (address_list.empty())
+		// 	{
+		// 		logtw("Could not resolve an address from %s:%d", connection_address.CStr(), port);
+		// 		return false;
+		// 	}
+
+		// 	if (address_list.size() >= 2)
+		// 	{
+		// 		logtw("Multiple addresses are found from %s:%d. OME will use the first address", connection_address.CStr(), port);
+		// 	}
+
+		// 	temp_candidate._address = address_list[0];
+		// }
+		// catch (const ov::Error &e)
+		// {
+		// 	logtw("Invalid address: %s, port: %d - %s", connection_address.CStr(), port, e.What());
+		// 	return false;
+		// }
+	}
+
 	ov::String cand_type = *iterator++;
 
-	if(cand_type != "typ")
+	if (cand_type != "typ")
 	{
 		// 잘못된 cand_type
 		return false;
 	}
 	temp_candidate._candidate_types = *iterator++;
 
-	if((iterator != tokens.end()) && ((*iterator) == "raddr"))
+	if ((iterator != tokens.end()) && ((*iterator) == "raddr"))
 	{
 		*iterator++;
 
-		if(iterator != tokens.end())
+		if (iterator != tokens.end())
 		{
 			// "raddr" <connection-address>
 			temp_candidate._rel_addr = *iterator++;
@@ -141,11 +187,11 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 		}
 	}
 
-	if((iterator != tokens.end()) && ((*iterator) == "rport"))
+	if ((iterator != tokens.end()) && ((*iterator) == "rport"))
 	{
 		*iterator++;
 
-		if(iterator != tokens.end())
+		if (iterator != tokens.end())
 		{
 			// "rport" <port>
 			temp_candidate._rel_port = ov::Converter::ToUInt16(*iterator++);
@@ -158,11 +204,11 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	}
 
 	// extension attributes
-	while(iterator != tokens.end())
+	while (iterator != tokens.end())
 	{
 		ov::String &key = *iterator++;
 
-		if(iterator == tokens.end())
+		if (iterator == tokens.end())
 		{
 			logtw("Invalid extension value for key: '%s'", key.CStr());
 			return false;
@@ -178,11 +224,26 @@ bool IceCandidate::ParseFromString(const ov::String &candidate_string)
 	return true;
 }
 
-IceCandidate &IceCandidate::operator =(IceCandidate candidate) noexcept
+IceCandidate &IceCandidate::operator=(IceCandidate candidate) noexcept
 {
 	Swap(candidate);
 
 	return *this;
+}
+
+bool IceCandidate::operator<(const IceCandidate &candidate) const noexcept
+{
+	if (_address.IsValid())
+	{
+		return _address < candidate._address;
+	}
+
+	if (_address_str == candidate._address_str)
+	{
+		return _port < candidate._port;
+	}
+
+	return _address_str < candidate._address_str;
 }
 
 const ov::String &IceCandidate::GetFoundation() const noexcept
@@ -227,27 +288,27 @@ void IceCandidate::SetPriority(uint32_t priority)
 
 ov::SocketAddress IceCandidate::GetAddress() const
 {
-	return ov::SocketAddress(_ip_address, _port);
+	return _address;
 }
 
-ov::String IceCandidate::GetIpAddress() const
+ov::String IceCandidate::GetConnectionAddress() const
 {
-	return _ip_address;
-}
-
-void IceCandidate::SetIpAddress(const ov::String &ip_address)
-{
-	_ip_address = ip_address;
+	if (_address.IsValid())
+	{
+		return _address.GetIpAddress();
+	}
+	
+	return _address_str;
 }
 
 int IceCandidate::GetPort() const
 {
-	return _port;
-}
+	if (_address.IsValid())
+	{
+		return _address.Port();
+	}
 
-void IceCandidate::SetPort(int port)
-{
-	_port = port;
+	return _port;
 }
 
 const ov::String &IceCandidate::GetCandidateTypes() const
@@ -294,7 +355,7 @@ bool IceCandidate::RemoveExtensionAttributes(const ov::String &key)
 {
 	auto item = _extension_attributes.find(key);
 
-	if(item == _extension_attributes.end())
+	if (item == _extension_attributes.end())
 	{
 		return false;
 	}
@@ -330,26 +391,25 @@ ov::String IceCandidate::GetCandidateString() const noexcept
 		_foundation.CStr(), _component_id,
 		_transport.UpperCaseString().CStr(),
 		_priority,
-		_ip_address.CStr(),
-		_port,
-		_candidate_types.CStr()
-	);
+		GetConnectionAddress().CStr(),
+		GetPort(),
+		_candidate_types.CStr());
 
-	if(_rel_addr.IsEmpty() == false)
+	if (_rel_addr.IsEmpty() == false)
 	{
 		// [SP rel-addr]
 		// rel-addr              = "raddr" SP connection-address
 		result.AppendFormat(" raddr %s", _rel_addr.CStr());
 	}
 
-	if(_rel_port > 0)
+	if (_rel_port > 0)
 	{
 		// [SP rel-port]
 		// rel-port              = "rport" SP port
 		result.AppendFormat(" rport %d", _rel_port);
 	}
 
-	for(auto const &value : _extension_attributes)
+	for (auto const &value : _extension_attributes)
 	{
 		// *(SP extension-att-name SP
 		//   extension-att-value)

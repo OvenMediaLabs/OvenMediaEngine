@@ -8,7 +8,7 @@
 //==============================================================================
 #include "data.h"
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "./assert.h"
 #include "./dump_utilities.h"
@@ -210,6 +210,16 @@ namespace ov
 		return IsEqual(data->GetData(), data->GetLength());
 	}
 
+	bool Data::IsEqual(const std::shared_ptr<const Data> &data) const
+	{
+		return IsEqual(data->GetData(), data->GetLength());
+	}
+
+	bool Data::IsEqual(const std::shared_ptr<Data> &data) const
+	{
+		return IsEqual(data->GetData(), data->GetLength());
+	}
+
 	bool Data::IsEmpty() const
 	{
 		return (GetLength() == 0);
@@ -337,6 +347,11 @@ namespace ov
 		return (data != nullptr) ? Insert(data->GetData(), offset, data->GetLength()) : false;
 	}
 
+	bool Data::Insert(const std::shared_ptr<const Data> &data, off_t offset)
+	{
+		return Insert(data.get(), offset);
+	}
+
 	bool Data::Append(const void *data, size_t length)
 	{
 		return Insert(data, GetLength(), length);
@@ -406,8 +421,13 @@ namespace ov
 		return String(GetDataAs<const char>(), GetLength());
 	}
 
+	String Data::ToHexString(size_t length) const
+	{
+		return ov::ToHexString(GetDataAs<const uint8_t>(), std::min(GetLength(), length));
+	}
+
 	String Data::ToHexString() const
 	{
-		return ov::ToHexString(static_cast<const uint8_t *>(GetData()) + _offset, GetLength());
+		return ov::ToHexString(GetDataAs<const uint8_t>(), GetLength());
 	}
 }  // namespace ov

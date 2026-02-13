@@ -63,6 +63,9 @@ namespace http
 			/// This callback is guaranteed to be called at all times even if an error occurs.
 			virtual void OnClosed(const std::shared_ptr<HttpConnection> &connection, PhysicalPortDisconnectReason reason) = 0;
 
+			/// Is it cacheable?
+			virtual bool IsCacheable() const = 0;
+
 		protected:
 			static const std::shared_ptr<ov::Data> &GetRequestBody(const std::shared_ptr<HttpRequest> &request);
 		};

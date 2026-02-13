@@ -81,6 +81,7 @@ public:
 					auto interleaved_items = interleaved.Split("-");
 					if(interleaved_items.size() == 2)
 					{
+						_interleaved_parsed = true;
 						_interleaved_channel_start = ov::Converter::ToUInt32(interleaved_items[0].CStr());
 						_interleaved_channel_end = ov::Converter::ToUInt32(interleaved_items[1].CStr());
 					}
@@ -101,10 +102,11 @@ public:
 
 	ov::String Serialize() const override
 	{
-		return ov::String::FormatString("RTP/AVP/TCP;unicast;interleaved=%d-%d;ssrc=%X", _interleaved_channel_start, _interleaved_channel_end, _ssrc);
+		return ov::String::FormatString("Transport: RTP/AVP/TCP;unicast;interleaved=%d-%d;ssrc=%X", _interleaved_channel_start, _interleaved_channel_end, _ssrc);
 	}
 
 	uint32_t		GetSsrc() {return _ssrc;}
+	bool			IsInterleavedParsed(){return _interleaved_parsed;}
 	uint32_t		GetInterleavedChannelStart(){return _interleaved_channel_start;}
 	uint32_t		GetInterleavedChannelEnd(){return _interleaved_channel_end;}
 	bool			IsUnicast(){return _is_unicast;}
@@ -121,6 +123,7 @@ private:
 	// Parameters
 	bool			_is_unicast = true;
 	uint32_t		_ssrc = 0;
+	bool 			_interleaved_parsed = false;
 	uint32_t		_interleaved_channel_start = 0;
 	uint32_t 		_interleaved_channel_end = 0;
 	// other parameters not yet used

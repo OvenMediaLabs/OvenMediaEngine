@@ -2,6 +2,27 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
+#define RTP_HEADER_EXTENSION_FRAMEMARKING_ID	1
+#define RTP_HEADER_EXTENSION_FRAMEMARKING_ATTRIBUTE "urn:ietf:params:rtp-hdrext:framemarking"
+
+#define RTP_HEADER_EXTENSION_PLAYOUT_DELAY_ID	2
+#define RTP_HEADER_EXTENSION_PLAYOUT_DELAY_ATTRIBUTE "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
+
+#define RTP_HEADER_EXTENSION_TRANSPORT_CC_ID	3
+#define RTP_HEADER_EXTENSION_TRANSPORT_CC_ATTRIBUTE "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
+
+#define RTP_HEADER_EXTENSION_ABS_SEND_TIME_ID	4
+#define RTP_HEADER_EXTENSION_ABS_SEND_TIME_ATTRIBUTE "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
+
+#define RTP_HEADER_EXTENSION_COMPOSITION_TIME_ID	5
+#define RTP_HEADER_EXTENSION_COMPOSITION_TIME_ATTRIBUTE "uri:ietf:rtc:rtp-hdrext:video:CompositionTime"
+
+#define RTP_HEADER_EXTENSION_MID_ID	6
+#define RTP_HEADER_EXTENSION_MID_ATTRIBUTE "urn:ietf:params:rtp-hdrext:sdes:mid"
+
+#define RTP_HEADER_EXTENSION_RTP_STREAM_ID	7
+#define RTP_HEADER_EXTENSION_RTP_STREAM_ATTRIBUTE "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
+
 class RtpHeaderExtension
 {
 public:
@@ -15,12 +36,6 @@ public:
 	RtpHeaderExtension(uint8_t id)
 	{
 		_id = id;
-	}
-
-	RtpHeaderExtension(uint8_t id, std::shared_ptr<ov::Data> data)
-	{
-		_id = id;
-		SetData(data);
 	}
 
 	uint8_t GetId()
@@ -85,23 +100,15 @@ public:
 
 		return _element;
 	}
+
+	virtual bool SetData(const std::shared_ptr<ov::Data> &data) = 0;
 	
 protected:
 	// child class must implement below functions
-	virtual std::shared_ptr<ov::Data> GetData(HeaderType type)
-	{
-		return _payload_data;
-	}
-
-	virtual bool SetData(const std::shared_ptr<ov::Data> &data)
-	{
-		_payload_data = data;
-		return true;
-	}
+	virtual std::shared_ptr<ov::Data> GetData(HeaderType type) = 0;
 
 private:
-	uint8_t		_id;
-	std::shared_ptr<ov::Data> _payload_data = nullptr;
+	uint8_t	_id;
 	std::shared_ptr<ov::Data> _element = nullptr;
 
 	bool _updated = true;

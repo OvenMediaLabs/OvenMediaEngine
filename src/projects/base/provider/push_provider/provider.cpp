@@ -4,7 +4,7 @@
 
 namespace pvd
 {
-	PushProvider::PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	PushProvider::PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Provider(server_config, router)
 	{
 	}
@@ -16,11 +16,23 @@ namespace pvd
 
     bool PushProvider::Start()
     {
+		_run_task_runner = true;
+		_task_runner_thread = std::thread(&PushProvider::ChannelTaskRunner, this);
+
+		ov::String thread_name = ov::String::FormatString("PTimer-%s", StringFromProviderType(GetProviderType()).CStr());
+		pthread_setname_np(_task_runner_thread.native_handle(), thread_name.CStr());
+
         return Provider::Start();
     }
 
 	bool PushProvider::Stop()
     {
+		_run_task_runner = false;
+		if(_task_runner_thread.joinable())
+		{
+			_task_runner_thread.join();
+		}
+
         return Provider::Stop();
     }
 
@@ -29,7 +41,7 @@ namespace pvd
 		return std::static_pointer_cast<PushApplication>(Provider::GetApplicationByName(vhost_app_name));
 	}
 
-	// To be interleaved mode, a channel must have applicaiton/stream and track informaiton
+	// To be interleaved mode, a channel must have application/stream and track informaiton
 	bool PushProvider::PublishChannel(uint32_t channel_id, const info::VHostAppName &vhost_app_name, const std::shared_ptr<PushStream> &channel)
 	{
 		// Append the stream into the application
@@ -62,6 +74,8 @@ namespace pvd
 
 		_channels.emplace(channel_id, channel);
 
+		channel->SetPacketSilenceTimeoutMs(DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+
 		return true;
 	}
 
@@ -89,8 +103,6 @@ namespace pvd
 		{
 			return false;
 		}
-
-		SetChannelTimeout(channel, 0);
 
 		// Delete from stream_mold
 		std::unique_lock<std::shared_mutex> lock(_channels_lock);
@@ -154,56 +166,46 @@ namespace pvd
 		return true;
 	}
 
-	bool PushProvider::StartTimer()
+	void PushProvider::ChannelTaskRunner()
 	{
-		_stop_timer_thread_flag = false;
-		_timer_thread = std::thread(&PushProvider::TimerThread, this);
-		pthread_setname_np(_timer_thread.native_handle(), "PProviderTimer");
+		ov::logger::ThreadHelper thread_helper;
 
-		return true;
-	}
-
-	bool PushProvider::StopTimer()
-	{
-		_stop_timer_thread_flag = true;
-		if(_timer_thread.joinable())
-		{
-			_timer_thread.join();
-		}
-
-		return true;
-	}
-
-	void PushProvider::OnTimer(const std::shared_ptr<PushStream> &channel)
-	{
-		// For child function
-	}
-
-	void PushProvider::SetChannelTimeout(const std::shared_ptr<PushStream> &channel, time_t seconds)
-	{
-		channel->SetTimeoutSec(seconds);
-	}
-
-	void PushProvider::TimerThread()
-	{
 		std::shared_lock<std::shared_mutex> lock(_channels_lock, std::defer_lock);
 
-		while(_stop_timer_thread_flag == false)
+		while(_run_task_runner == true)
 		{
 			lock.lock();
 			auto channels = _channels;
 			lock.unlock();
 
-			for(const auto &x : channels)
+			for (const auto &x : channels)
 			{
 				auto channel = x.second;
-				if(channel->IsTimedOut())
+
+				if (channel->GetPacketSilenceTimeoutMs() == 0)
 				{
-					OnTimer(channel);
+					// If the packet silence timeout is 0, it means that the channel is not timed out.
+					continue;
+				}
+
+				logtt("Checking channel %d, elapsed %d ms, timeout %d ms", channel->GetChannelId(), 
+																			channel->GetElapsedMsSinceLastReceived(),
+																			channel->GetPacketSilenceTimeoutMs());
+
+				if (channel->GetElapsedMsSinceLastReceived() > channel->GetPacketSilenceTimeoutMs())
+				{
+					logtw("Channel %d is timed out, %d ms elapsed since last received, deleting it", channel->GetChannelId(), channel->GetElapsedMsSinceLastReceived());
+
+					// Notify the channel timed out
+					OnTimedOut(channel);
+					
+					// Delete the channel
+					OnChannelDeleted(channel);
 				}
 			}
 
-			sleep(1);
+			// Sleep 100ms
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
 }

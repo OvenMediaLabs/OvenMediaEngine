@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include "../../../../../../controller.h"
+#include "../../../../../../controller_base.h"
 
 namespace api
 {
@@ -16,7 +16,7 @@ namespace api
 	{
 		namespace stats
 		{
-			class StreamsController : public Controller<StreamsController>
+			class StreamsController : public ControllerBase<StreamsController>
 			{
 			public:
 				void PrepareHandlers() override;
@@ -29,5 +29,5 @@ namespace api
 										const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams);
 			};
 		}  // namespace stats
-	}	   // namespace v1
+	}  // namespace v1
 }  // namespace api

@@ -1,134 +1,122 @@
-#include "certificate.h"
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//
+//==============================================================================
+#include "./certificate.h"
 
 #include <openssl/core_names.h>
 
 #include <utility>
 
-Certificate::Certificate(X509 *x509)
+Certificate::Certificate(X509 *cert)
 {
-	_X509 = x509;
+	_certificate = cert;
 
 	// Increments the reference count
-	X509_up_ref(_X509);
+	::X509_up_ref(_certificate);
 }
 
 Certificate::~Certificate()
 {
-	OV_SAFE_FUNC(_X509, nullptr, X509_free, );
-	OV_SAFE_FUNC(_pkey, nullptr, EVP_PKEY_free, );
 }
 
-std::shared_ptr<ov::OpensslError> Certificate::GenerateFromPem(const char *cert_filename, const char *private_key_filename)
+ov::RaiiPtr<EVP_PKEY> Certificate::LoadPrivateKey(const char *pem_file)
 {
-	OV_ASSERT2(_X509 == nullptr);
-	OV_ASSERT2(_pkey == nullptr);
+	return LoadPem<EVP_PKEY>(
+		LoadType::Pkey, pem_file,
+		nullptr,
+		[](int type, const OSSL_STORE_INFO *info, EVP_PKEY *previous_value) {
+			return ::OSSL_STORE_INFO_get1_PKEY(info);
+		},
+		::EVP_PKEY_free);
+}
 
-	if ((_X509 != nullptr) || (_pkey != nullptr))
+ov::RaiiPtr<X509> Certificate::LoadCertificate(const char *pem_file)
+{
+	return LoadPem<X509>(
+		LoadType::Cert, pem_file,
+		nullptr,
+		[](int type, const OSSL_STORE_INFO *info, X509 *previous_value) {
+			// If there are multiple certificates, the first one is used
+			if (previous_value == nullptr)
+			{
+				return ::OSSL_STORE_INFO_get1_CERT(info);
+			}
+
+			return previous_value;
+		},
+		::X509_free);
+}
+
+ov::RaiiPtr<STACK_OF(X509)> Certificate::LoadChainCertificate(const char *pem_file)
+{
+	return LoadPem<STACK_OF(X509)>(
+		LoadType::Cert, pem_file,
+		sk_X509_new_null(),
+		[](int type, const OSSL_STORE_INFO *info, STACK_OF(X509) * previous_value) {
+			::X509_add_cert(previous_value, ::OSSL_STORE_INFO_get1_CERT(info), X509_ADD_FLAG_DEFAULT);
+			return previous_value;
+		},
+		X509StackFree);
+}
+
+std::shared_ptr<ov::OpensslError> Certificate::GenerateFromPem(
+	const char *private_key_filename,
+	const char *certificate_filename,
+	const char *chain_certificate_filename)
+{
+	OV_ASSERT2(_private_key == nullptr);
+	OV_ASSERT2(_certificate == nullptr);
+	OV_ASSERT2(_chain_certificate == nullptr);
+
+	if (
+		(_private_key != nullptr) ||
+		(_certificate != nullptr) ||
+		(_chain_certificate != nullptr))
 	{
 		return std::make_shared<ov::OpensslError>("Certificate is already created");
 	}
 
-	// TODO(dimiden): If a cert file contains multiple certificates, it should be processed.
-	// Read cert file
-	BIO *cert_bio = nullptr;
-	cert_bio = BIO_new(BIO_s_file());
-
-	if (BIO_read_filename(cert_bio, cert_filename) <= 0)
-	{
-		BIO_free(cert_bio);
-		return std::make_shared<ov::OpensslError>();
-	}
-
-	_X509 = PEM_read_bio_X509(cert_bio, nullptr, nullptr, nullptr);
-	BIO_free(cert_bio);
-
-	if (_X509 == nullptr)
+	auto private_key = LoadPrivateKey(private_key_filename);
+	if (private_key == nullptr)
 	{
 		return std::make_shared<ov::OpensslError>();
 	}
 
-	// Read private key file
-	BIO *pk_bio = nullptr;
-	pk_bio = BIO_new(BIO_s_file());
-
-	if (BIO_read_filename(pk_bio, private_key_filename) <= 0)
+	auto certificate = LoadCertificate(certificate_filename);
+	if (certificate == nullptr)
 	{
 		return std::make_shared<ov::OpensslError>();
 	}
 
-	_pkey = PEM_read_bio_PrivateKey(pk_bio, nullptr, nullptr, nullptr);
-
-	BIO_free(pk_bio);
-
-	if (_pkey == nullptr)
+	if ((chain_certificate_filename != nullptr) && (chain_certificate_filename[0] != '\0'))
 	{
-		return std::make_shared<ov::OpensslError>();
+		auto chain_certificate = LoadChainCertificate(chain_certificate_filename);
+		if (chain_certificate == nullptr)
+		{
+			return std::make_shared<ov::OpensslError>();
+		}
+
+		_chain_certificate = std::move(chain_certificate);
+		_chain_certificate_filename = chain_certificate_filename;
 	}
 
-	return nullptr;
-}
+	_private_key = std::move(private_key);
+	_private_key_filename = private_key_filename;
 
-std::shared_ptr<ov::OpensslError> Certificate::GenerateFromPem(const char *filename, bool aux)
-{
-	if (_X509 != nullptr)
-	{
-		return std::make_shared<ov::OpensslError>("Certificate is already created");
-	}
-
-	BIO *cert_bio = nullptr;
-	cert_bio = BIO_new(BIO_s_file());
-
-	if (BIO_read_filename(cert_bio, filename) <= 0)
-	{
-		return std::make_shared<ov::OpensslError>();
-	}
-
-	if (aux)
-	{
-		_X509 = PEM_read_bio_X509_AUX(cert_bio, nullptr, nullptr, nullptr);
-	}
-	else
-	{
-		_X509 = PEM_read_bio_X509(cert_bio, nullptr, nullptr, nullptr);
-	}
-
-	BIO_free(cert_bio);
-
-	if (_X509 == nullptr)
-	{
-		return std::make_shared<ov::OpensslError>();
-	}
-
-	// TODO(dimiden): Extract these codes to another function like GenerateFromPrivateKey()
-	//
-	//_pkey = PEM_read_bio_PrivateKey(cert_bio, nullptr, nullptr, nullptr);
-	//if(_pkey == nullptr)
-	//{
-	//	BIO_free(cert_bio);
-	//	return std::make_shared<ov::OpensslError>();
-	//}
-	//
-	//BIO_free(cert_bio);
-	//
-	//// Check Key
-	//EC_KEY *ec_key = EVP_PKEY_get1_EC_KEY(_pkey);
-	//if(!ec_key)
-	//{
-	//	return std::make_shared<ov::OpensslError>();
-	//}
-	//
-	//if(!EC_KEY_check_key(ec_key))
-	//{
-	//	EC_KEY_free(ec_key);
-	//	return std::make_shared<ov::OpensslError>();
-	//}
+	_certificate = std::move(certificate);
+	_certificate_filename = certificate_filename;
 
 	return nullptr;
 }
 
 std::shared_ptr<ov::OpensslError> Certificate::Generate()
 {
-	if (_X509 != nullptr)
+	if (_certificate != nullptr)
 	{
 		return std::make_shared<ov::OpensslError>("Certificate is already created");
 	}
@@ -145,8 +133,8 @@ std::shared_ptr<ov::OpensslError> Certificate::Generate()
 		return std::make_shared<ov::OpensslError>();
 	}
 
-	_pkey = pkey;
-	_X509 = x509;
+	_private_key = pkey;
+	_certificate = x509;
 
 	return nullptr;
 }
@@ -211,14 +199,14 @@ EVP_PKEY *Certificate::MakeKey()
 X509 *Certificate::MakeCertificate(EVP_PKEY *pkey)
 {
 	// Allocation
-	X509 *x509 = X509_new();
+	X509 *x509 = ::X509_new();
 	if (x509 == nullptr)
 	{
 		return nullptr;
 	}
 
-	// 버전 설정
-	if (!X509_set_version(x509, 2L))
+	// Set the version
+	if (X509_set_version(x509, 2L) == 0)
 	{
 		X509_free(x509);
 		return nullptr;
@@ -241,7 +229,7 @@ X509 *Certificate::MakeCertificate(EVP_PKEY *pkey)
 		return nullptr;
 	}
 
-	// 공개키를 pkey로 설정
+	// Set the public key as pkey
 	if (!X509_set_pubkey(x509, pkey))
 	{
 		X509_free(x509);
@@ -250,16 +238,16 @@ X509 *Certificate::MakeCertificate(EVP_PKEY *pkey)
 
 	ASN1_INTEGER *asn1_serial_number;
 
-	// Random 값을 뽑아서 X509 Serial Number에 사용한다.
+	// Generate a random value and use it as the X509 serial number
 	BN_rand(serial_number, 64, 0, 0);
 
-	// 인증서 내부의 Serial Number를 반환 (내부값으로 해제되면 안됨)
+	// Return the Serial Number within the certificate (it should not be released as an internal value)
 	asn1_serial_number = X509_get_serialNumber(x509);
 
-	// 상기 pseudo_rand로 생성한 serial_number를 ANS1_INTEGER로 변환하여 x509 내부 serial number 포인터에 바로 쓴다.
+	// Convert the serial_number generated by pseudo_rand to ASN1_INTEGER and directly write it to the internal serial number pointer in x509
 	BN_to_ASN1_INTEGER(serial_number, asn1_serial_number);
 
-	// 인증서에 정보를 추가한다.
+	// Add information to the certificate
 	if (!X509_NAME_add_entry_by_NID(name, NID_commonName, MBSTRING_UTF8, (unsigned char *)CERT_NAME, -1, -1, 0) ||
 		!X509_set_subject_name(x509, name) ||
 		!X509_set_issuer_name(x509, name))
@@ -270,7 +258,7 @@ X509 *Certificate::MakeCertificate(EVP_PKEY *pkey)
 		return nullptr;
 	}
 
-	// 인증서 유효기간 설정
+	// Set the validity period of the certificate
 	time_t epoch_off = 0;
 	time_t now = time(nullptr);
 
@@ -283,7 +271,7 @@ X509 *Certificate::MakeCertificate(EVP_PKEY *pkey)
 		return nullptr;
 	}
 
-	// Signing, 인증
+	// Signing, authentication
 	if (!X509_sign(x509, pkey, EVP_sha256()))
 	{
 		X509_free(x509);
@@ -306,22 +294,22 @@ void Certificate::Print()
 		loge("CERT", "Failed to allocate temporary memory bio");
 		return;
 	}
-	X509_print_ex(temp_memory_bio, _X509, XN_FLAG_SEP_CPLUS_SPC, 0);
+	X509_print_ex(temp_memory_bio, _certificate, XN_FLAG_SEP_CPLUS_SPC, 0);
 	BIO_write(temp_memory_bio, "\0", 1);
 	char *buffer;
 	BIO_get_mem_data(temp_memory_bio, &buffer);
-	logd("CERT", "%s", buffer);
+	logt("CERT", "%s", buffer);
 	BIO_free(temp_memory_bio);
 
-	logd("CERT", "Fingerprint sha-256 : %s", GetFingerprint("sha-256").CStr());
+	logt("CERT", "Fingerprint sha-256 : %s", GetFingerprint("sha-256").CStr());
 
-	if (_pkey != nullptr)
+	if (_private_key != nullptr)
 	{
 		BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE);
-		logd("CERT", "Public Key :");
-		EVP_PKEY_print_public(bio_out, _pkey, 0, NULL);
-		logd("CERT", "Private Key ::");
-		EVP_PKEY_print_private(bio_out, _pkey, 0, NULL);
+		logt("CERT", "Public Key :");
+		EVP_PKEY_print_public(bio_out, _private_key, 0, NULL);
+		logt("CERT", "Private Key ::");
+		EVP_PKEY_print_private(bio_out, _private_key, 0, NULL);
 		BIO_free(bio_out);
 	}
 }
@@ -374,24 +362,31 @@ bool Certificate::ComputeDigest(const ov::String &algorithm)
 	}
 
 	uint8_t digest[EVP_MAX_MD_SIZE];
-	X509_digest(GetX509(), md, digest, &n);
+	X509_digest(GetCertification(), md, digest, &n);
 	_digest.Append(digest, n);
 	_digest_algorithm = algorithm;
 	return true;
 }
 
-X509 *Certificate::GetX509() const
+EVP_PKEY *Certificate::GetPrivateKey() const
 {
-	return _X509;
+	return _private_key;
 }
 
-EVP_PKEY *Certificate::GetPkey() const
+X509 *Certificate::GetCertification() const
 {
-	return _pkey;
+	return _certificate;
+}
+
+STACK_OF(X509) * Certificate::GetChainCertification() const
+{
+	return _chain_certificate;
 }
 
 ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 {
+	std::unique_lock<std::mutex> lock(_digest_mutex);
+	// Create digest if not created yet
 	if (_digest.GetLength() <= 0)
 	{
 		if (!ComputeDigest(algorithm))
@@ -399,6 +394,7 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 			return "";
 		}
 	}
+	lock.unlock();
 
 	ov::String fingerprint = ov::ToHexStringWithDelimiter(&_digest, ':');
 	fingerprint.MakeUpper();

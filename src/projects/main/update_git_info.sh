@@ -12,12 +12,15 @@ SCRIPT_NAME=$(basename $0)
 # Test git command is available
 "${GIT_COMMAND}" --version >/dev/null 2>&1
 
+GENERATE=0
+
+GIT_VERSION=
+GIT_VERSION_EXTRA=
+
 if [ $? -eq 0 ]
 then
 	# Retrive git information for current branch
 	GIT_VERSION=$("${GIT_COMMAND}" describe --tags --always 2>/dev/null)
-
-	GENERATE=0
 
 	# Check previous file existance
 	if [ ! -z "${GIT_VERSION}" ]
@@ -26,7 +29,6 @@ then
 		if [ ! -f "${GIT_INFO_FILE}" ]
 		then
 			[ -e "${GIT_INFO_FILE}" ] && echo "${GIT_INFO_FILE} already exists, and it isn't a regular file" && exit 1
-			GENERATE=1
 		else
 			# GIT_INFO_FILE is exists
 			PREV_GIT_VERSION=$(cat "${GIT_INFO_FILE}" 2>/dev/null | grep OME_GIT_VERSION | grep -v OME_GIT_VERSION_EXTRA | awk ' { print $3 } ')
@@ -39,12 +41,15 @@ then
 		GIT_VERSION_EXTRA=" (${GIT_VERSION})"
 	else
 		echo "This isn't a git repository"
-		GENERATE=1
+		GIT_VERSION="(From archive)"
 	fi
 else
 	echo "Could not execute git command"
-	GENERATE=1
+
+	GIT_VERSION="(Unknown)"
 fi
+
+[ ! -f "${GIT_INFO_FILE}" ] && GENERATE=1
 
 if [ ${GENERATE} -eq 1 ]
 then

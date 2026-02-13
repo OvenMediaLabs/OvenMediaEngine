@@ -33,6 +33,6 @@ namespace cfg
 					}
 				};
 			}  // namespace prst
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

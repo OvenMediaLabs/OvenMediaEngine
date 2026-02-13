@@ -9,7 +9,7 @@ using namespace cmn;
 
 namespace pvd
 {
-    RtspProvider::RtspProvider(const cfg::Server &server_config, std::shared_ptr<MediaRouteInterface> router) : Provider(server_config, router)
+    RtspProvider::RtspProvider(const cfg::Server &server_config, std::shared_ptr<MediaRouterInterface> router) : Provider(server_config, router)
     {
     }
 
@@ -55,7 +55,7 @@ namespace pvd
         return Provider::Start();
     }
 
-    std::shared_ptr<RtspProvider> RtspProvider::Create(const cfg::Server &server_config, std::shared_ptr<MediaRouteInterface> router)
+    std::shared_ptr<RtspProvider> RtspProvider::Create(const cfg::Server &server_config, std::shared_ptr<MediaRouterInterface> router)
     {
         auto provider = std::make_shared<RtspProvider>(server_config, router);
         provider->Start();
@@ -84,7 +84,7 @@ namespace pvd
         auto application = std::dynamic_pointer_cast<RtspApplication>(GetApplicationByName(internal_app_name.CStr()));
         if(application == nullptr)
         {
-            logte("Cannot find applicaton - app(%s) stream(%s)", internal_app_name.CStr(), stream_name.CStr());
+            logte("Cannot find application - app(%s) stream(%s)", internal_app_name.CStr(), stream_name.CStr());
             return false;
         }
 
@@ -125,7 +125,7 @@ namespace pvd
         application_id = application->GetId();
         stream_id = stream->GetId();
 
-        logtd("Strem ready complete - app(%s/%u) stream(%s/%u)", internal_app_name.CStr(), application_id, stream_name.CStr(), stream_id);
+        logtt("Stream ready complete - app(%s/%u) stream(%s/%u)", internal_app_name.CStr(), application_id, stream_name.CStr(), stream_id);
 
         return true;
     }
@@ -141,7 +141,7 @@ namespace pvd
         auto application = std::dynamic_pointer_cast<RtspApplication>(GetApplicationById(application_id));
         if(application == nullptr)
         {
-            logte("Cannot find applicaton - app(%d) stream(%d)", application_id, stream_id);
+            logte("Cannot find application - app(%d) stream(%d)", application_id, stream_id);
             return false;
         }
 
@@ -174,7 +174,7 @@ namespace pvd
         auto application = std::dynamic_pointer_cast<RtspApplication>(GetApplicationById(application_id));
         if(application == nullptr)
         {
-            logte("Cannot find applicaton - app(%d) stream(%d)", application_id, stream_id);
+            logte("Cannot find application - app(%d) stream(%d)", application_id, stream_id);
             return false;
         }
 
@@ -202,7 +202,7 @@ namespace pvd
         auto application = std::dynamic_pointer_cast<RtspApplication>(GetApplicationById(application_id));
         if(application == nullptr)
         {
-            logte("Cannot find applicaton - app(%d) stream(%d)", application_id, stream_id);
+            logte("Cannot find application - app(%d) stream(%d)", application_id, stream_id);
             return false;
         }
 

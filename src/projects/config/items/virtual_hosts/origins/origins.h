@@ -33,5 +33,5 @@ namespace cfg
 				Properties _properties;
 			};
 		}  // namespace orgn
-	}	   // namespace vhost
+	}  // namespace vhost
 }  // namespace cfg

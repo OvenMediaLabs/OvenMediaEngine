@@ -31,5 +31,5 @@ namespace cfg
 				};
 			};
 		}  // namespace mgr
-	}	   // namespace bind
+	}  // namespace bind
 }  // namespace cfg

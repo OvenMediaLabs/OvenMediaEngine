@@ -7,7 +7,7 @@
 //
 //==============================================================================
 #include "http2_response.h"
-#include "../../http_private.h"
+#include "../http_server_private.h"
 
 namespace http
 {
@@ -45,7 +45,7 @@ namespace http
 				return Send(frame);
 			}
 
-			uint32_t Http2Response::SendHeader()
+			int32_t Http2Response::SendHeader()
 			{
 				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(65535);
 				size_t sent_size = 0;
@@ -65,7 +65,7 @@ namespace http
 					}
 				}
 
-				logtd("[Http2Response] Send header block : size(%u)", header_block->GetLength());
+				logtt("[Http2Response] Send header block : size(%u)", header_block->GetLength());
 
 				std::shared_ptr<ov::Data> head_block_fragment;
 				bool fragmented = false;
@@ -98,7 +98,7 @@ namespace http
 
 				if (Send(headers_frame) == false)
 				{
-					return 0;
+					return -1;
 				}
 
 				sent_size += head_block_fragment->GetLength();
@@ -124,7 +124,7 @@ namespace http
 
 						if (Send(continuation_frame) == false)
 						{
-							return 0;
+							return -1;
 						}
 
 						sent_size += fragment_size;
@@ -136,9 +136,9 @@ namespace http
 				return sent_size;
 			}
 
-			uint32_t Http2Response::SendPayload()
+			int32_t Http2Response::SendPayload()
 			{
-				logtd("Trying to send datas...");
+				logtt("Trying to send datas...");
 
 				uint32_t sent_bytes = 0;
 
@@ -186,7 +186,7 @@ namespace http
 
 				ResetResponseData();
 
-				logtd("All datas are sent...");
+				logtt("All datas are sent...");
 
 				return sent_bytes;
 			}

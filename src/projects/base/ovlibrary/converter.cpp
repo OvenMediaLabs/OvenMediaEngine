@@ -8,6 +8,8 @@
 //==============================================================================
 #include "./converter.h"
 
+#include <regex>
+
 namespace ov
 {
 	String Converter::ToString(bool flag)
@@ -137,7 +139,128 @@ namespace ov
 		int min_part = (gmtoff % 3600) / 60;
 		oss << sign << std::setfill('0') << std::setw(2) << hour_part << ":" << std::setfill('0') << std::setw(2) << min_part;
 
-		return oss.str().c_str();
+		ov::String time_string = oss.str().c_str();
+		return time_string;
+	}
+
+	// HTTP-date    = IMF-fixdate / obs-date
+	// An example of the preferred format is
+	// Sun, 06 Nov 1994 08:49:37 GMT    ; IMF-fixdate
+	// Examples of the two obsolete formats are
+	// Sunday, 06-Nov-94 08:49:37 GMT   ; obsolete RFC 850 format
+	// Sun Nov  6 08:49:37 1994         ; ANSI C's asctime() format
+	String Converter::ToRFC7231String(const std::chrono::system_clock::time_point &tp) 
+	{
+        // Convert time_point to time_t
+        auto time = std::chrono::system_clock::to_time_t(tp);
+
+        // Convert time_t to UTC (GMT) time
+        std::tm gmt_time{};
+        ::gmtime_r(&time, &gmt_time);
+
+        // Format the time in RFC 7231 format
+        std::ostringstream oss;
+        oss << std::put_time(&gmt_time, "%a, %d %b %Y %H:%M:%S GMT");
+
+		ov::String time_string = oss.str().c_str();
+        return time_string;
+    }
+
+	// From ISO8601 string to time_point
+	std::chrono::system_clock::time_point Converter::FromISO8601(const String &iso8601)
+	{
+		// Only support these formats
+		// 2023-09-27T00:00:00.000Z or 2023-09-27T00:00:00.000+09:00
+		std::string iso8601_string = iso8601.CStr();
+		std::tm tm{};
+		std::istringstream iss(iso8601_string);
+		iss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+
+		if (iss.fail())
+		{
+			throw std::invalid_argument("Invalid ISO 8601 string");
+		}
+
+		int milliseconds = 0;
+
+		// Extract milliseconds using regex - Deprecated because of performance
+		// std::regex milliseconds_regex("\\.([0-9]+)");
+		// std::smatch milliseconds_match;
+		// if (std::regex_search(iso8601_string, milliseconds_match, milliseconds_regex))
+		// {
+		// 	milliseconds = std::stoi(milliseconds_match[1]);
+		// }
+		if (iss.peek() == '.')
+		{
+			iss.ignore();  // Skip the period
+			iss >> milliseconds;
+			if (iss.fail())
+			{
+				throw std::invalid_argument("Invalid ISO 8601 string");
+			}
+		}
+
+		// Extract timezone offset using regex - Deprecated because of performance
+		// std::regex timezone_regex("([+-]\\d{2})(:?\\d{2})?");
+		// std::smatch timezone_match;
+		// if (std::regex_search(iso8601_string, timezone_match, timezone_regex))
+		// {
+		// 	int hours = std::stoi(timezone_match[1]);
+		// 	int minutes = (timezone_match.size() > 2) ? std::stoi(timezone_match[2]) : 0;
+		// 	tm.tm_hour -= hours;
+		// 	tm.tm_min -= minutes;
+		// }
+
+		if (iss.peek() == 'Z')
+		{
+			iss.ignore();  // UTC (Zulu time)
+			tm.tm_gmtoff = 0;
+		}
+		else if (iss.peek() == '+' || iss.peek() == '-')
+		{
+			char sign;
+			int hours=0, minutes=0;
+			iss >> sign;
+			
+			// Read hours
+			for (int i = 0; i < 2 && std::isdigit(iss.peek()); ++i)
+			{
+				hours = hours * 10 + (iss.get() - '0');
+			}
+
+			// Check if there are minutes
+			if (iss.peek() == ':')
+			{
+				iss.ignore();
+				if (std::isdigit(iss.peek()))
+				{
+					iss >> minutes;
+				}
+			}
+			else if (!iss.eof())
+			{
+				// Read minutes
+				for (int i = 0; i < 2 && std::isdigit(iss.peek()); ++i)
+				{
+					minutes = minutes * 10 + (iss.get() - '0');
+				}
+			}
+
+			if (sign == '-')
+			{
+				hours = -hours;
+				minutes = -minutes;
+			}
+
+			tm.tm_hour -= hours;
+			tm.tm_min -= minutes;
+		}
+
+		// Convert to time_point
+		auto time = std::chrono::system_clock::from_time_t(timegm(&tm));
+		time += std::chrono::milliseconds(milliseconds);
+
+		return time;
 	}
 
 	String Converter::ToSiString(int64_t number, int precision)
@@ -424,5 +547,10 @@ namespace ov
 		x_final = x_final | (d << 24);
 
 		return x_final;
+	}
+
+	int64_t Converter::Rescale(int64_t value, int64_t to_timescale, int64_t from_timescale)
+	{
+		return ((value / from_timescale) * to_timescale) + (((value % from_timescale) * to_timescale + (from_timescale / 2)) / from_timescale);
 	}
 }  // namespace ov

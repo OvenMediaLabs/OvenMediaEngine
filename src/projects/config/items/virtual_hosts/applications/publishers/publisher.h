@@ -30,6 +30,6 @@ namespace cfg
 					int _max_connection = 0;
 				};
 			}  // namespace pub
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

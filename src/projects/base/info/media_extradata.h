@@ -3,7 +3,7 @@
 #include "assert.h"
 #include "base/ovlibrary/memory_view.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include <vector>
 
 class H264Extradata

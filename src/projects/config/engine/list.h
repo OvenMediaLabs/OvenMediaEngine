@@ -41,14 +41,14 @@ namespace cfg
 	//--------------------------------------------------------------------
 	MAY_THROWS(cfg::ConfigError)
 	template <typename Tvalue_type, std::enable_if_t<!std::is_base_of_v<Item, Tvalue_type>, int> = 0>
-	void CopyValueToJson(Json::Value &json, const Tvalue_type *value, bool include_default_values)
+	void CopyValueToJson(Json::Value &json, const Tvalue_type *value, bool original_value, bool include_default_values)
 	{
 		// This function is declared for the specialization of this API and is not actually called
 		OV_ASSERT2(false);
 	}
 
 	MAY_THROWS(cfg::ConfigError)
-	void CopyValueToJson(Json::Value &json, const Item *value, bool include_default_values);
+	void CopyValueToJson(Json::Value &json, const Item *value, bool original_value, bool include_default_values);
 	//--------------------------------------------------------------------
 
 	void SetItemDataFromDataSource(Item *item, const ItemName &item_name, const DataSource &data_source);
@@ -58,7 +58,7 @@ namespace cfg
 	{
 	public:
 		using Tlist_item = Ttype;
-		using ListType = std::vector<Tlist_item>;
+		using ListType	 = std::vector<Tlist_item>;
 
 		List(const ItemName &item_name, const ov::String &type_name,
 			 Optional is_optional, cfg::ResolvePath resolve_path, cfg::OmitJsonName omit_json_name,
@@ -126,7 +126,7 @@ namespace cfg
 
 			const auto &another_item_list = *(from_list->_item_list);
 
-			*_item_list = another_item_list;
+			*_item_list					  = another_item_list;
 		}
 
 		ov::String GetListItemTypeName() const override
@@ -146,7 +146,7 @@ namespace cfg
 			}
 
 			auto list_item_type = GetListItemType();
-			auto item_name = _item_name.GetName(DataType::Xml);
+			auto item_name		= _item_name.GetName(DataType::Xml);
 
 			if (list_item_type == ValueType::Item)
 			{
@@ -178,7 +178,7 @@ namespace cfg
 				// Copy rest items (dynamic data, these data have appended programmatically)
 				while (list_item != list_target.end())
 				{
-					auto item = *list_item;
+					auto item	   = *list_item;
 					auto new_child = node.append_child(item_name);
 					CopyValueToXmlNode(new_child, item_name, &item, include_default_values);
 
@@ -189,7 +189,7 @@ namespace cfg
 
 		// Copy children to json array
 		MAY_THROWS(cfg::ConfigError)
-		void CopyToJsonValue(Json::Value &value, bool include_default_values) const override
+		void CopyToJsonValue(Json::Value &value, bool original_value, bool include_default_values) const override
 		{
 			const auto &list_target = *_item_list;
 
@@ -205,13 +205,13 @@ namespace cfg
 			}
 
 			auto list_item_type = GetListItemType();
-			auto child_name = GetItemName().GetName(DataType::Json);
+			auto child_name		= GetItemName().GetName(DataType::Json);
 
 			if (list_item_type == ValueType::Item)
 			{
 				for (const auto &list_item : list_target)
 				{
-					CopyValueToJson(value.append({}), &list_item, include_default_values);
+					CopyValueToJson(value.append({}), &list_item, original_value, include_default_values);
 				}
 			}
 			else
@@ -260,8 +260,8 @@ namespace cfg
 			}
 
 			const auto &list_target = *_item_list;
-			size_t index = 0;
-			ov::String indent = MakeIndentString(indent_count);
+			size_t index			= 0;
+			ov::String indent		= MakeIndentString(indent_count);
 			ov::String description;
 			bool is_item = (GetListItemType() == ValueType::Item);
 

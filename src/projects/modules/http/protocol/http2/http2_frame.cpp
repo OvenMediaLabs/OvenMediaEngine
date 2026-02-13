@@ -7,7 +7,8 @@
 //
 //==============================================================================
 #include "http2_frame.h"
-#include "../../http_private.h"
+
+#include "../http_protocol_private.h"
 
 namespace http
 {
@@ -18,7 +19,7 @@ namespace http
 			Http2Frame::Http2Frame()
 			{
 			}
-			
+
 			Http2Frame::Http2Frame(uint32_t stream_id)
 			{
 				SetStreamId(stream_id);
@@ -34,7 +35,6 @@ namespace http
 				_payload = frame->_payload;
 			}
 
-			
 			ssize_t Http2Frame::AppendData(const std::shared_ptr<const ov::Data> &data)
 			{
 				ssize_t consumed_bytes = 0;
@@ -128,7 +128,7 @@ namespace http
 
 				_state = Http2Frame::ParsingState::HeaderParsed;
 
-				logtd("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, _type, _flags, _stream_id);
+				logtt("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, _type, _flags, _stream_id);
 
 				return true;
 			}
@@ -237,5 +237,5 @@ namespace http
 			}
 
 		}  // namespace h2
-	} // namespace prot
+	}	   // namespace prot
 }  // namespace http

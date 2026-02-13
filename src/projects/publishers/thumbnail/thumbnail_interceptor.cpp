@@ -2,7 +2,7 @@
 //
 //  OvenMediaEngine
 //
-//  Created by Keukhan
+//  Created by Kwon Keuk Han
 //  Copyright (c) 2019 AirenSoft. All rights reserved.
 //
 //==============================================================================
@@ -17,17 +17,19 @@ bool ThumbnailInterceptor::IsInterceptorForRequest(const std::shared_ptr<const h
 {
 	const auto request = client->GetRequest();
 	
-	// logtd("Request Target : %s", request->GetRequestTarget().CStr());
+	// logtt("Request Target : %s", request->GetRequestTarget().CStr());
 
 	// Get Method 1.1 check
-	if(request->GetMethod() != http::Method::Get || request->GetHttpVersionAsNumber() <= 1.0)
+	if(request->GetMethod() != http::Method::Get)
 	{
 		return false;
 	}
 
-	// ts/m3u8
-	if ((request->GetRequestTarget().LowerCaseString().IndexOf(".jpg") >= 0) ||
-		(request->GetRequestTarget().LowerCaseString().IndexOf(".png") >= 0))
+	const auto target = request->GetRequestTarget().LowerCaseString();
+
+	if ((target.IndexOf(".jpg") >= 0) ||
+		(target.IndexOf(".png") >= 0) ||
+		(target.IndexOf(".webp") >= 0))
 	{
 		return true;
 	}

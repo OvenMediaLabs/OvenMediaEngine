@@ -30,6 +30,6 @@ namespace cfg
 					Register("IceServer", &_ice_server_list);
 				}
 			};
-		}  // namespace pub
-	}	   // namespace bind
+		}  // namespace cmm
+	}  // namespace bind
 }  // namespace cfg

@@ -8,7 +8,7 @@
 //==============================================================================
 #include "http_client.h"
 
-#include "../http_private.h"
+#include "./http_client_private.h"
 
 #define HTTP_CLIENT_READ_BUFFER_SIZE (64 * 1024)
 #define HTTP_CLIENT_MAX_CHUNK_HEADER_LENGTH (32)
@@ -24,6 +24,7 @@ namespace http
 		{
 			// Default request headers
 			_request_header["User-Agent"] = "OvenMediaEngine";
+			_request_header["Accept"] = "*/*";
 		}
 
 		HttpClient::HttpClient(const std::shared_ptr<ov::SocketPool> &socket_pool)
@@ -86,15 +87,6 @@ namespace http
 				return;
 			}
 
-#if DEBUG
-			auto iterator = _request_header.find(key);
-
-			if (iterator != _request_header.end())
-			{
-				logtw("Old value found: %s for key: %s", iterator->second.CStr(), key.CStr());
-			}
-#endif	// DEBUG
-
 			_request_header[key] = value;
 		}
 
@@ -150,7 +142,7 @@ namespace http
 				}
 				else
 				{
-					logtd("Could not connect TLS: %s", error->What());
+					logtt("Could not connect TLS: %s", error->What());
 					HandleError(error);
 				}
 
@@ -240,20 +232,22 @@ namespace http
 			}
 
 			auto port = parsed_url->Port();
-			if (port == 0)
+			bool use_default_port = (port == 0);
+			if (use_default_port)
 			{
 				port = is_https ? 443 : 80;
 				parsed_url->SetPort(port);
 			}
 
-			auto socket_address = ov::SocketAddress(parsed_url->Host(), port);
+			auto host_port_string = ov::String::FormatString("%s:%d", parsed_url->Host().CStr(), port);
+			auto socket_address = ov::SocketAddress::CreateAndGetFirst(host_port_string);
 
 			if (socket_address.IsValid() == false)
 			{
-				return ov::Error::CreateError("HTTP", "Invalid address: %s:%d, URL: %s", parsed_url->Host().CStr(), port, url.CStr());
+				return ov::Error::CreateError("HTTP", "Invalid address: %s, URL: %s", host_port_string.CStr(), url.CStr());
 			}
 
-			_socket = _socket_pool->AllocSocket();
+			_socket = _socket_pool->AllocSocket(socket_address.GetFamily());
 
 			if (_socket == nullptr)
 			{
@@ -276,6 +270,13 @@ namespace http
 				}
 
 				_tls_data->SetIoCallback(GetSharedPtrAs<ov::TlsClientDataIoCallback>());
+
+				const auto &hostname = socket_address.GetHostname();
+
+				if (hostname.IsEmpty() == false)
+				{
+					_tls_data->SetTlsHostName(socket_address.GetHostname());
+				}
 			}
 
 			if (address != nullptr)
@@ -286,8 +287,10 @@ namespace http
 			_url = url;
 			_parsed_url = parsed_url;
 
-			_request_header["Host"] = ov::String::FormatString(
-				"%s:%d", _parsed_url->Host().CStr(), _parsed_url->Port());
+			_request_header["Host"] =
+				use_default_port
+					? ov::String::FormatString("%s", _parsed_url->Host().CStr())
+					: ov::String::FormatString("%s:%d", _parsed_url->Host().CStr(), _parsed_url->Port());
 
 			return nullptr;
 		}
@@ -317,7 +320,7 @@ namespace http
 			ov::String request_header;
 
 			// Make HTTP 1.1 request header
-			logtd("Request resource: %s", path.CStr());
+			logtt("Request resource: %s", path.CStr());
 
 			// Pick a first method in _method
 			request_header.AppendFormat("%s %s HTTP/1.1" HTTP_CLIENT_NEW_LINE, http::StringFromMethod(_method, false).CStr(), path.CStr());
@@ -327,12 +330,12 @@ namespace http
 				_request_header["Content-Length"] = ov::Converter::ToString(_request_body->GetLength());
 			}
 
-			logtd("Request headers: %zu:", _request_header.size());
+			logtt("Request headers: total %zu item(s):", _request_header.size());
 
 			for (auto header : _request_header)
 			{
 				request_header.AppendFormat("%s: %s" HTTP_CLIENT_NEW_LINE, header.first.CStr(), header.second.CStr());
-				logtd("  >> %s: %s", header.first.CStr(), header.second.CStr());
+				logtt("  >> %s: %s", header.first.CStr(), header.second.CStr());
 			}
 
 			request_header.Append(HTTP_CLIENT_NEW_LINE);
@@ -369,7 +372,7 @@ namespace http
 				OV_ASSERT2(_url.IsEmpty() == false);
 				OV_ASSERT2(_parsed_url != nullptr);
 
-				logtd("Request an URL: %s (address: %s)...", url.CStr(), address.ToString(false).CStr());
+				logtt("Request an URL: %s (address: %s)...", url.CStr(), address.ToString(false).CStr());
 
 				// Convert milliseconds to timeval
 				_socket->SetRecvTimeout(
@@ -398,7 +401,7 @@ namespace http
 
 		ov::String HttpClient::GetResponseHeader(const ov::String &key)
 		{
-			return _parser.GetHeader(key);
+			return _parser.GetHeader(key).value_or("");
 		}
 
 		const std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> &HttpClient::GetResponseHeaders() const
@@ -430,8 +433,14 @@ namespace http
 					}
 					else if (process_data->GetLength() == 0)
 					{
-						// Need more data
-						return;
+						if (_blocking_mode == ov::BlockingMode::NonBlocking)
+						{
+							// Need more data
+							return;
+						}
+
+						// Connection has been closed
+						error = ov::Error::CreateError("HTTP", "Connection closed by the server");
 					}
 				}
 				else
@@ -729,7 +738,7 @@ namespace http
 
 		void HttpClient::PostProcess()
 		{
-			logtd("Allocating %zu bytes for receiving response data", _parser.GetContentLength());
+			logtt("Allocating %zu bytes for receiving response data", _parser.GetContentLength());
 
 			_response_body = std::make_shared<ov::Data>(_parser.GetContentLength());
 

@@ -23,7 +23,7 @@ StunRequestedTransportAttribute::~StunRequestedTransportAttribute()
 {
 }
 
-bool StunRequestedTransportAttribute::Parse(ov::ByteStream &stream)
+bool StunRequestedTransportAttribute::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	/*
 	 0                   1                   2                   3
@@ -57,9 +57,9 @@ bool StunRequestedTransportAttribute::SetProtocolNumber(const uint8_t number)
 	return true;	
 }
 
-bool StunRequestedTransportAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunRequestedTransportAttribute::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
-	return StunAttribute::Serialize(stream) && stream.Write8(_protocol_number) && stream.Write24(0);
+	return StunAttribute::Serialize(stun_message, stream) && stream.Write8(_protocol_number) && stream.Write24(0);
 }
 
 ov::String StunRequestedTransportAttribute::ToString() const

@@ -639,16 +639,11 @@ namespace ov
 		return lower;
 	}
 
-	std::vector<String> String::Split(const char *separator, size_t max_count) const
-	{
-		return String::Split(CStr(), separator, max_count);
-	}
-
-	std::vector<String> String::Split(const char *string, const char *separator, size_t max_count) const
+	std::vector<String> String::Split(const char *string, size_t string_length, const char *separator, size_t max_count)
 	{
 		std::vector<String> list;
 		const char *last;
-		size_t seperator_length;
+		size_t separator_length;
 
 		if (separator == nullptr)
 		{
@@ -660,9 +655,9 @@ namespace ov
 			return list;
 		}
 
-		seperator_length = (int)::strlen(separator);
+		separator_length = ::strlen(separator);
 
-		if (((string == nullptr) || (::strlen(string) == 0L)) || (seperator_length == 0L))
+		if (((string == nullptr) || (string_length == 0L)) || (separator_length == 0L))
 		{
 			if (string != nullptr)
 			{
@@ -679,7 +674,7 @@ namespace ov
 		{
 			last = ::strstr(string, separator);
 
-			auto length = ((last == nullptr) || (token_count == (max_count - 1))) ? (::strlen(string) * sizeof(char)) : ((last - string) * sizeof(char));
+			auto length = ((last == nullptr) || (token_count == (max_count - 1))) ? (string_length * sizeof(char)) : ((last - string) * sizeof(char));
 
 			list.emplace_back(string, length);
 
@@ -688,14 +683,26 @@ namespace ov
 				break;
 			}
 
-			string = last + seperator_length;
+			string_length -= (last - string) + separator_length;
+			string = last + separator_length;
+
 			token_count++;
 		}
 
 		return list;
 	}
 
-	String String::Join(const std::vector<String> &list, const char *seperator)
+	std::vector<String> String::Split(const char *string, const char *separator, size_t max_count)
+	{
+		return Split(string, ::strlen(string), separator, max_count);
+	}
+
+	std::vector<String> String::Split(const char *separator, size_t max_count) const
+	{
+		return Split(CStr(), GetLength(), separator, max_count);
+	}
+
+	String String::Join(const std::vector<String> &list, const char *separator)
 	{
 		String string;
 		bool is_first = true;
@@ -704,7 +711,29 @@ namespace ov
 		{
 			if (is_first == false)
 			{
-				string.Append(seperator);
+				string.Append(separator);
+			}
+			else
+			{
+				is_first = false;
+			}
+
+			string.Append(item.CStr());
+		}
+
+		return string;
+	}
+
+	String String::Join(const std::vector<String> &list, char separator)
+	{
+		String string;
+		bool is_first = true;
+
+		for (auto const &item : list)
+		{
+			if (is_first == false)
+			{
+				string.Append(separator);
 			}
 			else
 			{
@@ -722,9 +751,19 @@ namespace ov
 		return (Left(prefix.GetLength()) == prefix);
 	}
 
+	bool String::HasPrefix(char prefix) const
+	{
+		return (Get(0) == prefix);
+	}
+
 	bool String::HasSuffix(String suffix) const
 	{
 		return (Right(suffix.GetLength()) == suffix);
+	}
+
+	bool String::HasSuffix(char suffix) const
+	{
+		return (Get(GetLength() - 1) == suffix);
 	}
 
 	String String::Left(size_t length) const
@@ -772,7 +811,9 @@ namespace ov
 		}
 
 		// Because we compare the two values above to see if they are the same, none of them are nullptr here.
-		if ((str == nullptr) || (_buffer == nullptr))
+		if (
+			((str == nullptr) || (_buffer == nullptr)) &&
+			(length != _length))
 		{
 			return false;
 		}
@@ -900,6 +941,24 @@ namespace ov
 		return (_length == 0L);
 	}
 
+	bool String::IsNumeric() const noexcept
+	{
+		if (_buffer == nullptr)
+		{
+			return false;
+		}
+
+		for (size_t i = 0; i < _length; i++)
+		{
+			if (::isdigit(_buffer[i]) == 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	std::shared_ptr<Data> String::ToData(bool include_null_char) const
 	{
 		if (_buffer == nullptr)
@@ -908,6 +967,29 @@ namespace ov
 		}
 
 		return std::make_shared<ov::Data>(_buffer, _length + (include_null_char ? 1 : 0), false);
+	}
+
+	String String::Repeat(const char *str, size_t count)
+	{
+		if (count > 0)
+		{
+			auto length = ::strlen(str);
+			auto total_length = (length * count);
+			ov::String string(total_length);
+
+			string.SetLength(total_length);
+			auto buffer = string.GetBuffer();
+
+			for (size_t index = 0; index < count; index++)
+			{
+				::memcpy(buffer, str, length);
+				buffer += length;
+			}
+
+			return string;
+		}
+
+		return "";
 	}
 
 	bool String::Alloc(size_t length, bool alloc_exactly) noexcept

@@ -13,9 +13,6 @@
 
 // a=extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time
 
-#define RTP_HEADER_EXTENSION_ABS_SEND_TIME_ID	4
-#define RTP_HEADER_EXTENSION_ABS_SEND_TIME_ATTRIBUTE "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
-
 class RtpHeaderExtensionAbsSendTime : public RtpHeaderExtension
 {
 public:
@@ -29,11 +26,6 @@ public:
 	{
 		_data = std::make_shared<ov::Data>(_buffer, sizeof(_buffer), true);
 		memset(_buffer, 0, sizeof(_buffer));
-	}
-
-	RtpHeaderExtensionAbsSendTime(uint8_t id, std::shared_ptr<ov::Data> data)
-		: RtpHeaderExtension(id, data)
-	{
 	}
 
 	void SetAbsSendTime(uint32_t abs_send_time)
@@ -55,18 +47,18 @@ public:
 		return abs_send_time;
 	}
 
-protected:
-	std::shared_ptr<ov::Data> GetData(HeaderType type) override
-	{
-		return _data;
-	}
-
 	bool SetData(const std::shared_ptr<ov::Data> &data) override
 	{
 		//TODO(Getroot): Parsing
 		_data = data;
 
 		return true;
+	}
+
+protected:
+	std::shared_ptr<ov::Data> GetData(HeaderType type) override
+	{
+		return _data;
 	}
 
 private:

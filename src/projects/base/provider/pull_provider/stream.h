@@ -30,8 +30,8 @@ namespace pvd
 		};
 
 		// PullStream API
-		bool Start();
-		bool Stop();
+		bool Start() override;
+		bool Stop() override;
 		bool Resume(); // Resume with another URL
 
 		// Defines the event detection method to process media packets in Pull Stream. 
@@ -57,6 +57,11 @@ namespace pvd
 		virtual bool StartStream(const std::shared_ptr<const ov::Url> &url) = 0; // Start
 		virtual bool RestartStream(const std::shared_ptr<const ov::Url> &url) = 0; // Failover
 		virtual bool StopStream() = 0; // Stop
+
+		DirectionType GetDirectionType() override
+		{
+			return DirectionType::PULL;
+		}
 
 	private:
 		uint32_t	_restart_count = 0;

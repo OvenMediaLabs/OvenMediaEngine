@@ -16,7 +16,7 @@ namespace cfg
 		{
 		protected:
 			ov::String _scheme = "urn:mpeg:dash:utc:http-xsdate:2014";
-			ov::String _value = "/time?iso&ms";
+			ov::String _value  = "/time?iso&ms";
 
 		public:
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetScheme, _scheme)

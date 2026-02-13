@@ -36,4 +36,10 @@ namespace serdes
 		app_config->SetItemName("Application");
 		app_config->FromJson(json_value);
 	}
+
+	void OutputProfilesFromJson(const Json::Value &json_value, cfg::vhost::app::oprf::OutputProfiles *output_profile_config)
+	{
+		output_profile_config->SetItemName("OutputProfiles");
+		output_profile_config->FromJson(json_value);
+	}
 }  // namespace serdes

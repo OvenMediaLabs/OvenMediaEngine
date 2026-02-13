@@ -18,6 +18,8 @@
 
 namespace pvd
 {
+	static constexpr time_t DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS = 3000;
+
     class PushProvider : public Provider
     {
     public:
@@ -34,11 +36,11 @@ namespace pvd
 		// Get Application by name
 		std::shared_ptr<PushApplication> GetApplicationByName(const info::VHostAppName &vhost_app_name);
 
-		// To be interleaved mode, a channel must have applicaiton/stream and track informaiton
+		// To be interleaved mode, a channel must have application/stream and track informaiton
 		virtual bool PublishChannel(uint32_t channel_id, const info::VHostAppName &vhost_app_name, const std::shared_ptr<PushStream> &channel);
 
     protected:
-		PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		virtual ~PushProvider();
 
 		virtual bool OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application) override;
@@ -51,19 +53,13 @@ namespace pvd
 		bool OnChannelDeleted(const std::shared_ptr<pvd::PushStream> &channel);
 		std::shared_ptr<PushStream> GetChannel(uint32_t channel_id);
 
-		bool StartTimer();
-		bool StopTimer();
-		virtual void OnTimer(const std::shared_ptr<PushStream> &channel);
-
-		// Timer is updated when OnDataReceived is called
-		// Setting seconds to 0 disables timer
-		void SetChannelTimeout(const std::shared_ptr<PushStream> &channel, time_t seconds);
+		virtual void OnTimedOut(const std::shared_ptr<PushStream> &channel) {}
 
     private:
-		void TimerThread();
+		void ChannelTaskRunner();
 
-		bool _stop_timer_thread_flag;
-		std::thread _timer_thread;
+		bool _run_task_runner;
+		std::thread _task_runner_thread;
 
 		// All streams (signalling streams + data streams)
 		std::shared_mutex _channels_lock;

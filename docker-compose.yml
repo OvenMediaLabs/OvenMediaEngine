@@ -6,24 +6,29 @@ services:
       context: .
     image: airensoft/ovenmediaengine:latest
     ports:
-    - "1935:1935/tcp"
-    - "3333:3333/tcp"
-    - "3478:3478/tcp"
-    - "8080:8080/tcp"
-    - "9000:9000/tcp"
-    - "9999:9999/udp"
-    - "4000-4005:4000-4005/udp"
-    - "10006-10010:10006-10010/udp"
+    - "9000:9000/tcp" # OVT(Origin)
+    - "1935:1935/tcp" # RTMP Provider
+    - "9999:9999/udp" # SRT
+    - "3333:3333/tcp" # WebRTC Signaling / LLHLS
+    - "3334:3334/tcp" # TLS WebRTC Signaling / LLHLS - Optional unless TLS is enabled
+    - "3478:3478/tcp" # WebRTC TURN
+    - "10000-10004:10000-10004/udp" # WebRTC Candidate
     environment:
+    - OME_HOST_IP=192.168.0.160
     - OME_ORIGIN_PORT=9000
     - OME_RTMP_PROV_PORT=1935
     - OME_SRT_PROV_PORT=9999
-    - OME_MPEGTS_PROV_PORT=4000-4005/udp
-    - OME_HLS_STREAM_PORT=8080
-    - OME_DASH_STREAM_PORT=8080
-    - OME_SIGNALLING_PORT=3333
-    - OME_TCP_RELAY_ADDRESS=*:3478
-    - OME_ICE_CANDIDATES=*:10006-10010/udp
+    - OME_LLHLS_STREAM_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
+    - OME_WEBRTC_SIGNALLING_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
+    - OME_WEBRTC_SIGNALLING_TLS_PORT=3334 # Optional, unless using TLS
+    - OME_WEBRTC_TCP_RELAY_PORT=3478
+    - OME_WEBRTC_CANDIDATE_PORT=10000-10004/udp
+    restart: always
+    # Uncomment the following line to use your own configuration file (./origin_conf/Server.xml)
+    #volumes:
+    #- ./origin_conf:/opt/ovenmediaengine/bin/origin_conf
+    # uncomment if using SSL certification
+    #- ./sslcerts:/opt/ovenmediaengine/bin/certs
     command: /opt/ovenmediaengine/bin/OvenMediaEngine -c origin_conf
 
   edge:
@@ -31,15 +36,21 @@ services:
       context: .
     image: airensoft/ovenmediaengine:latest
     ports:
-    - "3334:3334/tcp"
-    - "3479:3479/tcp"
-    - "8090:8090/tcp"
-    - "10000-10005:10000-10005/udp"
+    - "4333:3333/tcp" # WebRTC Signaling / LLHLS
+    - "3479:3479/tcp" # WebRTC TURN
+    - "10005-10009:10005-10009/udp" # WebRTC Candidate
     environment:
+    - OME_HOST_IP=192.168.0.160
     - DEFAULT_ORIGIN_SERVER=192.168.0.160
-    - OME_HLS_STREAM_PORT=8090
-    - OME_DASH_STREAM_PORT=8090
-    - OME_SIGNALLING_PORT=3334
-    - OME_TCP_RELAY_ADDRESS=*:3479
-    - OME_ICE_CANDIDATES=*:10000-10005/udp
+    - DEFAULT_ORIGIN_PORT=9000
+    - OME_LLHLS_STREAM_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
+    - OME_WEBRTC_SIGNALLING_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
+    - OME_WEBRTC_SIGNALLING_TLS_PORT=3334 # Optional, unless using TLS
+    - OME_WEBRTC_TCP_RELAY_PORT=3479
+    - OME_WEBRTC_CANDIDATE_PORT=10005-10009/udp
+    restart: always
+    # Uncomment the following line to use your own configuration file (./edge_conf/Server.xml)
+    #volumes:
+    #- ./edge_conf:/opt/ovenmediaengine/bin/edge_conf
+    #- ./sslcerts:/opt/ovenmediaengine/bin/certs
     command: /opt/ovenmediaengine/bin/OvenMediaEngine -c edge_conf

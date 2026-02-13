@@ -14,6 +14,6 @@ namespace mon
 
 	void EventLogger::Write(const Event &event)
 	{
-		_log_writer.Write(event.SerializeToJson().CStr(), event.GetCreationTimeMSec()/1000);
+		_log_writer.Write(event.SerializeToJson().CStr(), event.GetCreationTimeMSec() / 1000);
 	}
-}
+}  // namespace mon

@@ -11,28 +11,25 @@
 
 #include <base/common_types.h>
 #include <base/ovlibrary/url.h>
+#include <base/ovlibrary/lip_sync_clock.h>
 #include <base/provider/pull_provider/application.h>
 #include <base/provider/pull_provider/stream.h>
-#include <modules/rtp_rtcp/lip_sync_clock.h>
 #include <modules/rtp_rtcp/rtp_depacketizing_manager.h>
 #include <modules/rtp_rtcp/rtp_rtcp.h>
 #include <modules/rtsp/header_fields/rtsp_header_fields.h>
 #include <modules/rtsp/rtsp_demuxer.h>
 #include <modules/rtsp/rtsp_message.h>
 #include <modules/sdp/session_description.h>
-
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-#include <libavutil/file.h>
-#include <libavutil/opt.h>
-#include <libavutil/pixdesc.h>
-}
+#include <modules/ffmpeg/compat.h>
 
 namespace pvd
 {
+	#define FILE_VIDEO_TRACK_ID		0
+	#define FILE_AUDIO_TRACK_ID		1
+	#define FILE_DATA_TRACK_ID		2
+
+	#define FILE_FIXED_TRACK_ID		true
+
 	class FileProvider;
 
 	class FileStream : public pvd::PullStream
@@ -88,12 +85,16 @@ namespace pvd
 		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
 
 	private:
-		void InitPrivBaseTimestamp();
-		void UpdatePrivBaseTimestamp();
+		void InitBaseTimestamp();
 		void UpdateTimestamp(std::shared_ptr<MediaPacket> &packet);
+		void UpdateNextTimestamp(std::shared_ptr<MediaPacket> &packet);
+		void UpdateBaseTimestamp();
 
 		// TrackID, Timestamp
 		std::map<uint8_t, int64_t> _base_timestamp;
-		std::map<uint8_t, int64_t> _last_timestamp;
+		std::map<uint8_t, int64_t> _next_timestamp;
+
+	private:
+		uint8_t GetFixedTrackIdOfMediaType(cmn::MediaType media_type);
 	};
 }  // namespace pvd

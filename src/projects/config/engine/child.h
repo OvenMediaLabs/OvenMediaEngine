@@ -23,7 +23,7 @@ namespace cfg
 	class Item;
 
 	// A callback called to determine if the value is conditional optional
-	using OptionalCallback = std::function<std::shared_ptr<ConfigError>()>;
+	using OptionalCallback	 = std::function<std::shared_ptr<ConfigError>()>;
 
 	using ValidationCallback = std::function<std::shared_ptr<ConfigError>()>;
 
@@ -57,7 +57,7 @@ namespace cfg
 
 		void CopyFrom(const std::shared_ptr<const Child> &another_child)
 		{
-			_is_parsed = another_child->_is_parsed;
+			_is_parsed		= another_child->_is_parsed;
 
 			_original_value = another_child->_original_value;
 		}
@@ -184,11 +184,11 @@ namespace cfg
 		ValueType _type = ValueType::Unknown;
 		ov::String _type_name;
 
-		cfg::Optional _is_optional = Optional::NotOptional;
-		cfg::ResolvePath _resolve_path = ResolvePath::DontResolve;
-		cfg::OmitJsonName _omit_json_name = OmitJsonName::DontOmit;
+		cfg::Optional _is_optional				= Optional::NotOptional;
+		cfg::ResolvePath _resolve_path			= ResolvePath::DontResolve;
+		cfg::OmitJsonName _omit_json_name		= OmitJsonName::DontOmit;
 
-		OptionalCallback _optional_callback = nullptr;
+		OptionalCallback _optional_callback		= nullptr;
 		ValidationCallback _validation_callback = nullptr;
 
 		// This value contains a pointer to point a member variable

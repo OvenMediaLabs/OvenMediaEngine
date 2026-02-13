@@ -10,7 +10,7 @@
 
 #include <modules/bitstream/h264/h264_parser.h>
 #include <modules/bitstream/nalu/nal_unit_fragment_header.h>
-
+#include "base/info/overlay.h"
 #include "base/common_types.h"
 
 class VideoTrack
@@ -18,75 +18,182 @@ class VideoTrack
 public:
 	VideoTrack();
 
-	void SetFrameRate(double framerate);
+	// Return the proper framerate for this track. 
+	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned	
 	double GetFrameRate() const;
 
-	void SetEstimateFrameRate(double framerate);
-	double GetEstimateFrameRate() const;
+	void SetFrameRateByMeasured(double framerate);
+	double GetFrameRateByMeasured() const;
+
+	void AddToMeasuredFramerateWindow(double framerate);
+	std::deque<double>  GetMeasuredFramerateWindow() const;
+
+	void SetFrameRateLastSecond(double framerate);
+	double GetFrameRateLastSecond() const;
+
+	void SetFrameRateByConfig(double framerate);
+	double GetFrameRateByConfig() const;
 
 	void SetWidth(int32_t width);
+	void SetMaxWidth(int32_t max_width); // for ovt sync
 	int32_t GetWidth() const;
+	int32_t GetMaxWidth() const;
+
+	void SetWidthByConfig(int32_t width);
+	int32_t GetWidthByConfig() const;
 
 	void SetHeight(int32_t height);
+	void SetMaxHeight(int32_t max_height);
 	int32_t GetHeight() const;
+	int32_t GetMaxHeight() const;
+
+	void SetHeightByConfig(int32_t height);
+	int32_t GetHeightByConfig() const;
 
 	void SetVideoTimestampScale(double scale);
 	double GetVideoTimestampScale() const;
 
-	// Codec-specific data prepared in advance for performance
-	std::shared_ptr<ov::Data> GetH264SpsPpsAnnexBFormat() const;
-	const FragmentationHeader& GetH264SpsPpsAnnexBFragmentHeader() const;
-	void SetH264SpsPpsAnnexBFormat(const std::shared_ptr<ov::Data>& data, const FragmentationHeader& header);
-	void SetH264SpsData(const std::shared_ptr<ov::Data>& data);
-	void SetH264PpsData(const std::shared_ptr<ov::Data>& data);
-	std::shared_ptr<ov::Data> GetH264SpsData() const;
-	std::shared_ptr<ov::Data> GetH264PpsData() const;
+	void SetHasBframes(bool has_bframe);
+	bool HasBframes() const;
 
-	//@Set by Configuration
+	void SetColorspace(cmn::VideoPixelFormatId colorspace);
+	cmn::VideoPixelFormatId GetColorspace() const;	
+
 	void SetPreset(ov::String preset);
 	ov::String GetPreset() const;
 
-	//@Set by mediarouter
-	void SetHasBframes(bool has_bframe);
-	bool HasBframes();
+	void SetProfile(ov::String profile);
+	ov::String GetProfile() const;
 
-	// @Set By Configuration
 	void SetThreadCount(int thread_count);
 	int GetThreadCount();
 
-	//@Set by Configuration
-	void SetKeyFrameInterval(int32_t key_frame_interval);
-	int32_t GetKeyFrameInterval();
+	// Return the proper key_frame_interval for this track. 
+	// If there is a key_frame_interval set by the user, it is returned. If not, the automatically measured key_frame_interval is returned
+	double GetKeyFrameInterval() const;
 
-	//@Set by Configuration
+	void SetKeyFrameIntervalByMeasured(double key_frame_interval);
+	double GetKeyFrameIntervalByMeasured() const;
+
+	void SetKeyFrameIntervalLastet(double key_frame_interval);
+	double GetKeyFrameIntervalLatest() const;
+	
+	void SetKeyFrameIntervalByConfig(int32_t key_frame_interval);
+	double GetKeyFrameIntervalByConfig() const;
+
+	double GetKeyframeIntervalDurationMs() const;
+
+	void SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType key_frame_interval_type);
+	cmn::KeyFrameIntervalType GetKeyFrameIntervalTypeByConfig() const;
+
+	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
+	int32_t GetDeltaFramesSinceLastKeyFrame() const;
+
+	void SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval);
+	int32_t GetDetectLongKeyFrameInterval() const;
+
+	void SetDetectAbnormalFramerate(bool detect_abnormal_framerate);
+	bool GetDetectAbnormalFramerate() const;
+
 	void SetBFrames(int32_t b_frames);
 	int32_t GetBFrames();
 
-protected:
-	double _framerate;
-	double _estimate_framerate;
-	double _video_timescale;
-	int32_t _width;
-	int32_t _height;
-	int32_t _key_frame_interval;
-	int32_t _b_frames;
-	bool _has_bframe;
+	void SetSkipFramesByConfig(int32_t skip_frames);
+	int32_t GetSkipFramesByConfig() const;
 
-	ov::String _preset;
-	std::shared_ptr<ov::Data> _h264_sps_pps_annexb_data = nullptr;
-	std::shared_ptr<ov::Data> _h264_sps_data = nullptr;
-	std::shared_ptr<ov::Data> _h264_pps_data = nullptr;
+	// decoder only parameter
+	bool IsKeyframeDecodeOnly() const;
+	void SetKeyframeDecodeOnly(bool keyframe_decode_only);
 
-	FragmentationHeader _h264_sps_pps_annexb_fragment_header;
-	H264SPS _h264_sps;
+	void SetLookaheadByConfig(int32_t lookahead);
+	int32_t GetLookaheadByConfig() const;
 	
+	void SetExtraEncoderOptionsByConfig(const ov::String &options);
+	ov::String GetExtraEncoderOptionsByConfig() const;
 
-	int _thread_count;
+protected:
 
+	// framerate (measurement)
+	double _framerate = 0;
+	// framerate (set by user)
+	double _framerate_conf = 0;
+	// framerate last one second (measurement)
+	double _framerate_last_second = 0;
+
+	double _video_timescale;
+	
+	// Resolution
+	int32_t _width = 0;
+	int32_t _height = 0;
+	int32_t _max_width = 0;
+	int32_t _max_height = 0;
+
+	// Resolution (set by user)
+	int32_t _width_conf = 0;
+	int32_t _height_conf = 0;
+
+	// Key Frame Interval Avg (measurement)
+	double _key_frame_interval = 0;
+	// Key Frame Interval Latest (measurement)
+	double _key_frame_interval_latest = 0;
+	// Key Frame Interval (set by user)
+	double _key_frame_interval_conf = 0;
+	// Delta Frame Count since last key frame
+	int32_t _delta_frame_count_since_last_key_frame = 0;
+
+	// Detect long key frame interval (set by mediarouter)
+	bool _detect_long_key_frame_interval = false;
+
+	// Key Frame Interval Type (set by user)
+	cmn::KeyFrameIntervalType _key_frame_interval_type_conf = cmn::KeyFrameIntervalType::FRAME;
+
+	// Number of B-frame (set by user)
+	int32_t _b_frames = 0;
+	
+	// B-frame (set by mediarouter)
+	bool _has_bframe = false;
+
+	// Colorspace of video
+	// This variable is temporarily used in the Pixel Format defined by FFMPEG.
+	cmn::VideoPixelFormatId _colorspace = cmn::VideoPixelFormatId::None;	
+
+	// Preset for encoder (set by user)
+	ov::String _preset;
+
+	// Profile (set by user, used for h264, h265 codec)
+	ov::String _profile;
+	
+	// Thread count of codec (set by user)
+	int _thread_count = 0;	
+
+	// Skip frames (set by user)
+	// If the set value is greater than or equal to 0, the skip frame is automatically calculated. 
+	// The skip frame is not less than the value set by the user.
+	// -1 : No SkipFrame
+	// 0 ~ 120 : minimum value of SkipFrames. it is automatically calculated and the SkipFrames value is changed.
+	int32_t _skip_frames_conf = -1;
+
+	// @decoder
+	// Keyframe Decode Only (set by user)
+	bool _keyframe_decode_only = false;
+
+	// @encoder
+	// Lookahead (set by user)
+	int32_t _lookahead_conf = -1;
+
+	// Abnormal key frame interval detection
+	bool _detect_abnormal_framerate = false;
+	std::deque<double>  _measured_framerate_window;
+
+	ov::String _extra_encoder_options;
 public:
-	void SetColorspace(int colorspace);
-	int GetColorspace() const;	
-	// Colorspace
-	// - This variable is temporarily used in the Pixel Format defined by FFMPEG.
-	int _colorspace;	
+	// Overlay (set by user)
+	void SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &overlays);
+	std::vector<std::shared_ptr<info::Overlay>> GetOverlays() const;
+	size_t GetOverlaySignature() const;
+ 
+protected:
+	std::vector<std::shared_ptr<info::Overlay>> _overlays;
+	size_t _overlay_signature; // Default is 0, meaning no overlay.
+	mutable std::shared_mutex _overlay_mutex;
 };

@@ -8,13 +8,11 @@ LOCAL_STATIC_LIBRARIES := \
 
 LOCAL_SOURCE_FILES := $(LOCAL_SOURCE_FILES) \
     $(call get_sub_source_list,admission_webhooks) \
-    $(call get_sub_source_list,signed_policy) \
-	$(call get_sub_source_list,signed_token) 
+    $(call get_sub_source_list,signed_policy) 
 
 LOCAL_HEADER_FILES := $(LOCAL_HEADER_FILES) \
     $(call get_sub_header_list,admission_webhooks) \
-    $(call get_sub_header_list,signed_policy) \
-	$(call get_sub_header_list,signed_token)
+    $(call get_sub_header_list,signed_policy) 
 
 $(call add_pkg_config,srt)
 

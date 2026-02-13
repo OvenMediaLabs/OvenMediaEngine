@@ -66,6 +66,7 @@ namespace ov
 		void Log(bool show_format, OVLogLevel level, const char *tag, const char *file, int line, const char *method, const char *format, va_list &arg_list);
 
 		void SetLogPath(const char *log_path);
+		const char *GetLogPath() const;
 
 	protected:
 		// This variable is used to avoid the problem of referencing incorrect heap if the log is written after LogInternal instance is released.

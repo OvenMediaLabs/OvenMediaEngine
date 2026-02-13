@@ -15,7 +15,7 @@
  * 		: Create PhysicalPort, OvtApplication
  *
  * OvtApplication
- * 		: Create MediaRouteApplicationConnector, OvtStream
+ * 		: Create MediaRouterApplicationConnector, OvtStream
  *
  * OvtStream
  * 		: Create by interface (PullStream)
@@ -31,9 +31,9 @@ namespace pvd
 	class OvtProvider : public pvd::PullProvider
 	{
 	public:
-		static std::shared_ptr<OvtProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<OvtProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit OvtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit OvtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~OvtProvider() override;
 
 		ProviderStreamDirection GetProviderStreamDirection() const override

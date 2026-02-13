@@ -45,7 +45,7 @@ namespace cfg
 			throw CreateConfigError("Could not load config... reason: %s [%s]", result.description(), _config_path.CStr());
 		}
 
-		logtd("Config is loaded successfully: %s", _config_path.CStr());
+		logtt("Config is loaded successfully: %s", _config_path.CStr());
 	}
 
 	const ov::String ConfigLoader::GetConfigPath() const noexcept

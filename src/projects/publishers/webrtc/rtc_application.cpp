@@ -27,14 +27,14 @@ RtcApplication::RtcApplication(const std::shared_ptr<pub::Publisher> &publisher,
 							   const std::shared_ptr<RtcSignallingServer> &rtc_signalling)
 	: Application(publisher, application_info)
 {
-	_ice_port = ice_port;
+	_ice_port		= ice_port;
 	_rtc_signalling = rtc_signalling;
 }
 
 RtcApplication::~RtcApplication()
 {
 	Stop();
-	logtd("RtcApplication(%d) has been terminated finally", GetId());
+	logtt("RtcApplication(%d) has been terminated finally", GetId());
 }
 
 std::shared_ptr<Certificate> RtcApplication::GetCertificate()
@@ -44,13 +44,13 @@ std::shared_ptr<Certificate> RtcApplication::GetCertificate()
 
 std::shared_ptr<pub::Stream> RtcApplication::CreateStream(const std::shared_ptr<info::Stream> &info, uint32_t worker_count)
 {
-	logtd("RtcApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("RtcApplication::CreateStream : %s/%u", info->GetName().CStr(), info->GetId());
 	return RtcStream::Create(GetSharedPtrAs<pub::Application>(), *info, worker_count);
 }
 
 bool RtcApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 {
-	logtd("DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
+	logtt("DeleteStream : %s/%u", info->GetName().CStr(), info->GetId());
 
 	auto stream = std::static_pointer_cast<RtcStream>(GetStream(info->GetId()));
 	if (stream == nullptr)
@@ -65,12 +65,12 @@ bool RtcApplication::DeleteStream(const std::shared_ptr<info::Stream> &info)
 		auto session = std::static_pointer_cast<RtcSession>(it->second);
 		it++;
 
-		_ice_port->RemoveSession(session->GetId());
+		_ice_port->RemoveSession(session->GetIceSessionId());
 
-		_rtc_signalling->Disconnect(GetName(), stream->GetName(), session->GetPeerSDP());
+		_rtc_signalling->Disconnect(GetVHostAppName(), stream->GetName(), session->GetPeerSDP());
 	}
 
-	logtd("RtcApplication %s/%s stream has been deleted", GetName().CStr(), stream->GetName().CStr());
+	logtt("RtcApplication %s/%s stream has been deleted", GetVHostAppName().CStr(), stream->GetName().CStr());
 
 	return true;
 }
@@ -81,7 +81,7 @@ bool RtcApplication::Start()
 	{
 		_certificate = std::make_shared<Certificate>();
 
-		auto error = _certificate->Generate();
+		auto error	 = _certificate->Generate();
 		if (error != nullptr)
 		{
 			logte("Cannot create certificate: %s", error->What());

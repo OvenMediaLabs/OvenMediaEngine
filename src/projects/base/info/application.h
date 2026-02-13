@@ -10,7 +10,10 @@
 
 #include <config/config.h>
 
+#include "audio_map_item.h"
+#include "config/items/virtual_hosts/applications/providers/track_map/audio_map.h"
 #include "vhost_app_name.h"
+#include "event_forward.h"
 
 // Forward declaration
 namespace ocst
@@ -30,44 +33,30 @@ namespace info
 	class Application
 	{
 	public:
+		virtual ~Application() = default;
+
 		virtual const char *GetApplicationTypeName()
 		{
 			return "ApplicationInfo";
 		}
 
-		bool operator==(const Application &app_info) const
+		virtual const char *GetPublisherTypeName()
 		{
-			if (_application_id == app_info._application_id)
-			{
-				return true;
-			}
-			return false;
+			return "PublisherInfo";
 		}
 
-		bool IsValid() const
-		{
-			return (_application_id != InvalidApplicationId);
-		}
+		bool operator==(const Application &app_info) const;
+		bool IsValid() const;
 
-		application_id_t GetId() const
-		{
-			return _application_id;
-		}
-
+		application_id_t GetId() const;
 		ov::String GetUUID() const;
-		
-		const VHostAppName &GetName() const
-		{
-			return _name;
-		}
-
-		const Host &GetHostInfo() const
-		{
-			return *_host_info;
-		}
+		const VHostAppName &GetVHostAppName() const;
+		const NamePath &GetNamePath() const;
+		const Host &GetHostInfo() const;
+		bool IsDynamicApp() const;
 
 		template <typename Tpublisher>
-		const Tpublisher *GetPublisher() const
+		const Tpublisher *GetPublisherCfg() const
 		{
 			Tpublisher temp_publisher;
 			const auto &publishers = _app_config.GetPublishers().GetPublisherList();
@@ -84,7 +73,7 @@ namespace info
 		}
 
 		template <typename Tprovider>
-		const Tprovider *GetProvider() const
+		const Tprovider *GetProviderCfg() const
 		{
 			Tprovider temp_provider;
 			const auto &providers = _app_config.GetProviders().GetProviderList();
@@ -99,21 +88,15 @@ namespace info
 
 			return nullptr;
 		}
+		const cfg::vhost::app::Application &GetConfig() const;
+		cfg::vhost::app::Application &GetConfig();
 
-		const cfg::vhost::app::Application &GetConfig() const
-		{
-			return _app_config;
-		}
-
-		cfg::vhost::app::Application &GetConfig()
-		{
-			return _app_config;
-		}
-
-		bool IsDynamicApp() const
-		{
-			return _is_dynamic_app;
-		}
+		// Get number of Audio Map Item
+		size_t GetAudioMapItemCount() const;
+		// Get Audio Map Item by index
+		std::shared_ptr<AudioMapItem> GetAudioMapItem(size_t index) const;
+		// Add audio map item from config
+		void AddAudioMapItems(const cfg::vhost::app::pvd::AudioMap &audio_map);
 
 	protected:
 		// These constructors will be called from Orchestrator
@@ -129,6 +112,7 @@ namespace info
 		application_id_t _application_id = InvalidApplicationId;
 		VHostAppName _name;
 		ov::String _app_type_name;
+		ov::String _publisher_type_name;
 
 		cfg::vhost::app::Application _app_config;
 
@@ -137,5 +121,17 @@ namespace info
 
 	private:
 		std::shared_ptr<Host> _host_info;
+
+		// Add audio map item
+		void AddAudioMapItem(const std::shared_ptr<AudioMapItem> &audio_map_item);
+
+		std::vector<std::shared_ptr<AudioMapItem>> _audio_map_items;
+
+	public:
+		void SetEventForwardPolicy(const std::shared_ptr<info::EventForward> &event_forward_policy);
+		std::shared_ptr<info::EventForward> GetEventForwardPolicy() const;
+
+	private:
+		std::shared_ptr<info::EventForward> _event_forward_policy = nullptr;		
 	};
 }  // namespace info

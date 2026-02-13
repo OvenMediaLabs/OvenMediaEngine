@@ -45,6 +45,11 @@ public:
 	{
 		return static_cast<uint8_t>(PSFBFMT::AFB);
 	}
+
+	bool HasPadding() const override
+	{
+		return false;
+	}
 	
 	// Common Feedback
 	uint32_t GetSrcSsrc(){return _src_ssrc;}

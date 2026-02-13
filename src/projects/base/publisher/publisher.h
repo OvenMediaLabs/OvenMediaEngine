@@ -18,10 +18,9 @@
 #include <modules/ice/ice_port_manager.h>
 #include <modules/physical_port/physical_port.h>
 
-#include <orchestrator/data_structures/data_structure.h>
+#include <orchestrator/interfaces.h>
 
 #include <modules/access_control/access_controller.h>
-#include <modules/access_control/signed_token/signed_token.h>
 
 #include <chrono>
 
@@ -118,6 +117,8 @@ namespace pub
 			return std::static_pointer_cast<T>(GetStream(application_id, stream_id));
 		}
 
+		std::shared_ptr<Session> GetSession(const info::Session::Path &session_path);
+
 		//--------------------------------------------------------------------
 		// Implementation of ModuleInterface
 		//--------------------------------------------------------------------
@@ -129,7 +130,7 @@ namespace pub
 		virtual const char *GetPublisherName() const = 0;
 
 	protected:
-		explicit Publisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit Publisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		virtual ~Publisher();
 
 		const cfg::Server &GetServerConfig() const;
@@ -141,18 +142,19 @@ namespace pub
 		bool IsAccessControlEnabled(const std::shared_ptr<const ov::Url> &request_url);
 
 		// SignedPolicy is an official feature
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const std::shared_ptr<const ac::RequestInfo> &request_info);
 		// AdmissionWebhooks is an official feature
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
-		// SingedToken is used only special purposes
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedToken>> VerifyBySignedToken(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
 
 		std::map<info::application_id_t, std::shared_ptr<Application>> 	_applications;
 		std::shared_mutex 		_application_map_mutex;
 
 		const cfg::Server _server_config;
-		std::shared_ptr<MediaRouteInterface> _router;
+		std::shared_ptr<MediaRouterInterface> _router;
 
 	private:
 		std::shared_ptr<AccessController> _access_controller = nullptr;

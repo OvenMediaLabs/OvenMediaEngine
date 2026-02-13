@@ -8,6 +8,8 @@
 //==============================================================================
 #include "log_internal.h"
 
+#include <inttypes.h>
+
 #include <thread>
 
 #include "platform.h"
@@ -53,7 +55,7 @@
 namespace ov
 {
 	LogInternal::LogInternal(std::string log_file_name) noexcept
-		: _level(OVLogLevelDebug),
+		: _level(OVLogLevelTrace),
 		  _log_file(log_file_name)
 	{
 	}
@@ -111,8 +113,8 @@ namespace ov
 			{
 				// If there is no match in the regular expression, info level is enabled (default)
 				_enable_map[tag] = (EnableItem){
-					.regex = nullptr,
-					.level = OVLogLevelInformation,
+					.regex		= nullptr,
+					.level		= OVLogLevelInformation,
 					.is_enabled = true};
 			}
 
@@ -159,14 +161,14 @@ namespace ov
 				auto reg_ex = std::make_shared<std::regex>(tag_regex);
 
 				_enable_list.emplace_back((EnableItem){
-					.regex = std::move(reg_ex),
-					.level = level,
-					.is_enabled = is_enabled,
+					.regex		  = std::move(reg_ex),
+					.level		  = level,
+					.is_enabled	  = is_enabled,
 					.regex_string = tag_regex});
 			}
 			else
 			{
-				item->level = level;
+				item->level		 = level;
 				item->is_enabled = is_enabled;
 			}
 
@@ -203,6 +205,7 @@ namespace ov
 		}
 
 		constexpr const char *log_level[] = {
+			"T",
 			"D",
 			"I",
 			"W",
@@ -210,6 +213,7 @@ namespace ov
 			"C"};
 
 		constexpr const char *color_prefix[] = {
+			OV_LOG_COLOR_FG_BR_BLACK,
 			OV_LOG_COLOR_FG_CYAN,
 			OV_LOG_COLOR_FG_WHITE,
 			OV_LOG_COLOR_FG_YELLOW,
@@ -221,11 +225,12 @@ namespace ov
 			OV_LOG_COLOR_RESET,
 			OV_LOG_COLOR_RESET,
 			OV_LOG_COLOR_RESET,
+			OV_LOG_COLOR_RESET,
 			OV_LOG_COLOR_RESET};
 
 		// Obtain current time in milliseconds
-		auto current = std::chrono::system_clock::now();
-		auto mseconds = std::chrono::duration_cast<std::chrono::milliseconds>(current.time_since_epoch()).count() % 1000;
+		auto current	 = std::chrono::system_clock::now();
+		auto mseconds	 = std::chrono::duration_cast<std::chrono::milliseconds>(current.time_since_epoch()).count() % 1000;
 
 		// Obtain current hours/minutes/seconds
 		std::time_t time = std::time(nullptr);
@@ -269,7 +274,7 @@ namespace ov
 
 		if (show_format)
 		{
-			auto tid = ov::Platform::GetThreadId();
+			auto tid  = ov::Platform::GetThreadId();
 			auto name = ov::Platform::GetThreadName();
 
 			// log format
@@ -288,7 +293,7 @@ namespace ov
 #endif	// DEBUG
 
 				// time ([mm-dd hh:mm:ss.sss])
-				"%02d-%02d %02d:%02d:%02d.%03d]"
+				"%02d-%02d %02d:%02d:%02d.%03" PRId64 "]"
 
 				// <log level>
 				" %s"
@@ -336,13 +341,13 @@ namespace ov
 		{
 			if (level < OVLogLevelWarning)
 			{
-				fprintf(stdout, "%s%s%s\n", color_prefix[level], log.CStr(), color_suffix[level]);
-				fflush(stdout);
+				::fprintf(stdout, "%s%s%s\n", color_prefix[level], log.CStr(), color_suffix[level]);
+				::fflush(stdout);
 			}
 			else
 			{
-				fprintf(stderr, "%s%s%s\n", color_prefix[level], log.CStr(), color_suffix[level]);
-				fflush(stderr);
+				::fprintf(stderr, "%s%s%s\n", color_prefix[level], log.CStr(), color_suffix[level]);
+				::fflush(stderr);
 			}
 		}
 
@@ -357,5 +362,15 @@ namespace ov
 		}
 
 		_log_file.SetLogPath(log_path);
+	}
+
+	const char *LogInternal::GetLogPath() const
+	{
+		if (_released)
+		{
+			return "";
+		}
+
+		return _log_file.GetLogPath();
 	}
 }  // namespace ov

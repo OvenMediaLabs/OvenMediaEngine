@@ -53,5 +53,5 @@ namespace cfg
 				Enables _enables;
 			};
 		}  // namespace sig
-	}	   // namespace vhost
+	}  // namespace vhost
 }  // namespace cfg

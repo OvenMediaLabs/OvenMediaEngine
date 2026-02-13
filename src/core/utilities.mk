@@ -191,3 +191,46 @@ define add_pkg_config
 		LOCAL_LDFLAGS += $(shell $(__PKG_CONFIG_PATH) pkg-config --libs $(1))
 	)
 endef
+
+# Check if pkg-config exists
+# $(call chk_pkg_exist,<LIBRARY_NAME>)
+define chk_pkg_exist
+$(strip \
+	$(shell $(__PKG_CONFIG_PATH) pkg-config --exists $(1); echo $$?) \
+)
+endef
+
+# Check if ldconfig exists
+# $(call chk_lib_exist,<LIBRARY_NAME>)
+define chk_lib_exist
+$(strip \
+	$(shell ldconfig -p | grep $(1) >/dev/null 2>&1; echo $$?) \
+)
+endef
+
+# Check if executable exists
+# $(call chk_exe_exist)
+define chk_exe_exist
+$(strip \
+	$(shell command -v $(1) >/dev/null 2>&1; echo $$?) \
+)
+endef
+
+# Check if the library is referenced in the shared object
+# $(call chk_dd_exist,<SEARCH_PATHS>,<SO_FILENAME>,<LIBRARY_NAME>)
+define chk_dd_exist
+$(strip \
+  $(shell \
+    found=0; \
+    IFS=':'; \
+    for dir in $$(echo $(1)); do \
+      full_path="$$dir/$(2)"; \
+      if [ -f "$$full_path" ]; then \
+        readelf -d "$$full_path" 2>/dev/null | grep NEEDED | awk -F'[][]' '{print $$2}' | grep -q $(3); \
+        if [ $$? -eq 0 ]; then found=1; break; fi; \
+      fi; \
+    done; \
+    if [ $$found -eq 1 ]; then echo 0; else echo 1; fi \
+  ) \
+)
+endef

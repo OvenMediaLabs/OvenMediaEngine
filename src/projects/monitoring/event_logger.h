@@ -1,10 +1,10 @@
 #pragma once
 
-#include "base/ovlibrary/ovlibrary.h"
 #include "base/ovlibrary/log_write.h"
+#include "base/ovlibrary/ovlibrary.h"
 #include "event.h"
 
-#define DEFAULT_EVENT_LOG_FILE_NAME	"events.log"
+#define DEFAULT_EVENT_LOG_FILE_NAME "events.log"
 
 namespace mon
 {
@@ -20,4 +20,4 @@ namespace mon
 	private:
 		ov::LogWrite _log_writer;
 	};
-}
+}  // namespace mon

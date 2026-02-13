@@ -20,8 +20,8 @@ namespace ov
 	public:
 		StackTrace() = delete;
 
-		static String GetStackTrace(int line_count = -1);
-		static void WriteStackTrace(std::ofstream &stream);
+		static String GetStackTrace(int offset = 0, int line_count = -1);
+		static String GetRegisters(const ucontext_t *ucontext);
 
 	private:
 		struct ParseResult

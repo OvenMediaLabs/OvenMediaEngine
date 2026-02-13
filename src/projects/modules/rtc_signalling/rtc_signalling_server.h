@@ -11,8 +11,8 @@
 #include <base/info/host.h>
 #include <base/mediarouter/mediarouter_interface.h>
 #include <base/publisher/publisher.h>
-#include <modules/http/server/http_server_manager.h>
 #include <modules/http/server/http_request_interceptors.h>
+#include <modules/http/server/http_server_manager.h>
 #include <modules/ice/ice.h>
 
 #include <memory>
@@ -24,13 +24,18 @@
 class RtcSignallingServer : public ov::EnableSharedFromThis<RtcSignallingServer>
 {
 public:
-	RtcSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_config);
+	RtcSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_cfg);
 	~RtcSignallingServer() override = default;
 
-	bool Start(const ov::SocketAddress *address, const ov::SocketAddress *tls_address, int worker_count, std::shared_ptr<http::svr::ws::Interceptor> interceptor);
+	bool Start(
+		const char *server_name, const char *server_short_name,
+		const std::vector<ov::String> &ip_list,
+		bool is_port_configured, uint16_t port,
+		bool is_tls_port_configured, uint16_t tls_port,
+		int worker_count, std::shared_ptr<http::svr::ws::Interceptor> interceptor);
 	bool Stop();
 
-	bool AppendCertificate(const std::shared_ptr<const info::Certificate> &certificate);
+	bool InsertCertificate(const std::shared_ptr<const info::Certificate> &certificate);
 	bool RemoveCertificate(const std::shared_ptr<const info::Certificate> &certificate);
 
 	bool AddObserver(const std::shared_ptr<RtcSignallingObserver> &observer);
@@ -47,7 +52,7 @@ protected:
 		RtcSignallingInfo(const info::VHostAppName &vhost_app_name,
 						  const ov::String &host_name, const ov::String &app_name, const ov::String &stream_name,
 						  peer_id_t id, std::shared_ptr<RtcPeerInfo> peer_info,
-						  std::shared_ptr<const SessionDescription> offer_sdp, std::shared_ptr<SessionDescription> peer_sdp,
+						  std::shared_ptr<const SessionDescription> offer_sdp, std::shared_ptr<SessionDescription> answer_sdp,
 						  std::vector<RtcIceCandidate> local_candidates, std::vector<RtcIceCandidate> remote_candidates)
 			: vhost_app_name(vhost_app_name),
 			  host_name(host_name),
@@ -56,7 +61,7 @@ protected:
 			  id(id),
 			  peer_info(std::move(peer_info)),
 			  offer_sdp(std::move(offer_sdp)),
-			  peer_sdp(std::move(peer_sdp)),
+			  answer_sdp(std::move(answer_sdp)),
 			  local_candidates(std::move(local_candidates)),
 			  remote_candidates(std::move(remote_candidates))
 		{
@@ -91,7 +96,7 @@ protected:
 		// Offer SDP (SDP of OME/host peer)
 		std::shared_ptr<const SessionDescription> offer_sdp;
 		// Peer SDP (SDP of host/client peer)
-		std::shared_ptr<const SessionDescription> peer_sdp;
+		std::shared_ptr<const SessionDescription> answer_sdp;
 
 		// candidates of OME/host peer
 		std::vector<RtcIceCandidate> local_candidates;
@@ -100,9 +105,42 @@ protected:
 		std::vector<RtcIceCandidate> remote_candidates;
 	};
 
+	struct TurnIP
+	{
+		ov::SocketFamily family;
+		ov::String ip;
+
+		TurnIP(const ov::SocketAddress &address)
+			: family(address.GetFamily()),
+			  ip(address.GetIpAddress())
+		{
+		}
+
+		TurnIP(const ov::SocketFamily family, const ov::String &ip)
+			: family(family),
+			  ip(ip)
+		{
+		}
+
+		static std::vector<TurnIP> FromIPList(const ov::SocketFamily family, const std::vector<ov::String> &ip_list)
+		{
+			std::vector<TurnIP> turn_ip_list;
+
+			for (const auto &ip : ip_list)
+			{
+				turn_ip_list.emplace_back(TurnIP(family, ip));
+			}
+
+			return turn_ip_list;
+		}
+	};
+
 	using SdpCallback = std::function<void(std::shared_ptr<SessionDescription> sdp, std::shared_ptr<ov::Error> error)>;
 
-	bool SetWebSocketHandler(std::shared_ptr<http::svr::ws::Interceptor> interceptor = nullptr);
+protected:
+	bool PrepareForTCPRelay();
+	bool PrepareForExternalIceServer();
+	bool SetupWebSocketHandler(std::shared_ptr<http::svr::ws::Interceptor> interceptor = nullptr);
 
 	std::shared_ptr<const ov::Error> DispatchCommand(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::String &command, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info, const std::shared_ptr<const ov::Data> &message);
 	std::shared_ptr<const ov::Error> DispatchRequestOffer(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info);
@@ -113,13 +151,13 @@ protected:
 	std::shared_ptr<const ov::Error> DispatchCandidateP2P(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info);
 	std::shared_ptr<const ov::Error> DispatchStop(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info);
 
+protected:
 	const cfg::Server _server_config;
-	const cfg::bind::cmm::Webrtc _webrtc_config;
+	const cfg::bind::cmm::Webrtc _webrtc_bind_cfg;
 
-	ov::SocketAddress _http_server_address;
-	std::shared_ptr<http::svr::HttpServer> _http_server;
-	ov::SocketAddress _https_server_address;
-	std::shared_ptr<http::svr::HttpsServer> _https_server;
+	std::recursive_mutex _http_server_list_mutex;
+	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 
 	std::vector<std::shared_ptr<RtcSignallingObserver>> _observers;
 

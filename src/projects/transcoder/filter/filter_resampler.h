@@ -21,11 +21,14 @@ public:
 	~FilterResampler();
 
 	bool Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track) override;
-
-	int32_t SendBuffer(std::shared_ptr<MediaFrame> buffer) override;
-
-	void FilterThread();
-
 	bool Start() override;
 	void Stop() override;
+
+	void WorkerThread();
+
+private:
+	bool InitializeSourceFilter();
+	bool InitializeFilterDescription();
+	bool InitializeSinkFilter();
+	
 };

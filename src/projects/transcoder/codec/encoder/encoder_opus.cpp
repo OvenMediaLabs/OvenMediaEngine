@@ -38,13 +38,8 @@ bool EncoderOPUS::SetCodecParams()
 	return true;
 }
 
-bool EncoderOPUS::Configure(std::shared_ptr<MediaTrack> context)
+bool EncoderOPUS::InitCodec()
 {
-	if (TranscodeEncoder::Configure(context) == false)
-	{
-		return false;
-	}
-
 	// Coding Mode
 	// int application = OPUS_APPLICATION_VOIP;
 	// int application = OPUS_APPLICATION_AUDIO;
@@ -115,19 +110,33 @@ bool EncoderOPUS::Configure(std::shared_ptr<MediaTrack> context)
 	_format = cmn::AudioSample::Format::None;
 	_current_pts = -1;
 
-	// Generates a thread that reads and encodes frames in the input_buffer queue and places them in the output queue.
+	return true;
+}
+
+bool EncoderOPUS::Configure(std::shared_ptr<MediaTrack> context)
+{
+	if (TranscodeEncoder::Configure(context) == false)
+	{
+		return false;
+	}
+
 	try
 	{
 		_kill_flag = false;
 
 		_codec_thread = std::thread(&EncoderOPUS::CodecThread, this);
-		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("Enc%s", avcodec_get_name(GetCodecID())).CStr());
+		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("ENC-%s-t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId()).CStr());
+		
+		// Initialize the codec and wait for completion.
+		if(_codec_init_event.Get() == false)
+		{
+			_kill_flag = true;
+			return false;
+		}
 	}
 	catch (const std::system_error &e)
 	{
-		logte("Failed to start encoder thread.");
 		_kill_flag = true;
-
 		return false;
 	}
 
@@ -136,7 +145,15 @@ bool EncoderOPUS::Configure(std::shared_ptr<MediaTrack> context)
 
 void EncoderOPUS::CodecThread()
 {
-	// Refrence : https://opus-codec.org/docs/opus_api-1.1.3/group__opus__encoder.html#gad2d6bf6a9ffb6674879d7605ed073e25
+	ov::logger::ThreadHelper thread_helper;
+
+	// Initialize the codec and notify the main thread.
+	if(_codec_init_event.Submit(InitCodec()) == false)
+	{
+		return;
+	}
+	
+	// Reference : https://opus-codec.org/docs/opus_api-1.1.3/group__opus__encoder.html#gad2d6bf6a9ffb6674879d7605ed073e25
 	// Number of samples per channel in the input signal. This must be an Opus frame size for the encoder's sampling rate.
 	// For example, at 48 kHz the permitted values are 120, 240, 480, 960, 1920, and 2880. Passing in a duration of less than 10 ms (480 samples at 48 kHz)
 
@@ -155,7 +172,7 @@ void EncoderOPUS::CodecThread()
 			OV_ASSERT2(media_frame != nullptr);
 
 			// const MediaFrame *frame = media_frame.get();
-			auto av_frame = ffmpeg::Conv::ToAVFrame(cmn::MediaType::Audio, media_frame);
+			auto av_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Audio, media_frame);
 			if (!av_frame)
 			{
 				logte("Could not allocate the frame data");
@@ -268,12 +285,20 @@ void EncoderOPUS::CodecThread()
 
 		int64_t duration = _frame_size;
 
-		auto packet_buffer = std::make_shared<MediaPacket>(0, cmn::MediaType::Audio, 0, encoded, _current_pts, _current_pts, duration, MediaPacketFlag::Key);
-		packet_buffer->SetBitstreamFormat(cmn::BitstreamFormat::OPUS);
-		packet_buffer->SetPacketType(cmn::PacketType::RAW);
+		auto packet_buffer = std::make_shared<MediaPacket>(
+			0,
+			cmn::MediaType::Audio,
+			0,
+			encoded,
+			_current_pts,
+			_current_pts,
+			duration,
+			MediaPacketFlag::Key,
+			cmn::BitstreamFormat::OPUS,
+			cmn::PacketType::RAW);
 
 		_current_pts += duration;
 
-		SendOutputBuffer(std::move(packet_buffer));
+		Complete(TranscodeResult::DataReady, std::move(packet_buffer));
 	}
 }

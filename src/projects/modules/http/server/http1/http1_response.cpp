@@ -7,7 +7,7 @@
 //
 //==============================================================================
 #include "http1_response.h"
-#include "../../http_private.h"
+#include "../http_server_private.h"
 
 namespace http
 {
@@ -35,7 +35,7 @@ namespace http
 
 				bool result =
 					// Send the chunk header
-					Send(ov::String::FormatString("%x\r\n", data->GetLength()).ToData(false)) &&
+					Send(ov::String::FormatString("%" PRIx64 "\r\n", data->GetLength()).ToData(false)) &&
 					// Send the chunk payload
 					Send(data) &&
 					// Send a last data of chunk
@@ -55,12 +55,14 @@ namespace http
 				return _chunked_transfer;
 			}
 
-			uint32_t Http1Response::SendHeader()
+			int32_t Http1Response::SendHeader()
 			{
 				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(65535);
 				ov::ByteStream stream(response.get());
 
-				if (_chunked_transfer == false)
+				if (_chunked_transfer == false && 
+						GetStatusCode() != StatusCode::NoContent && 
+						GetStatusCode() != StatusCode::NotModified)
 				{
 					// Calculate the content length
 					SetHeader("Content-Length", ov::Converter::ToString(GetResponseDataSize()));
@@ -69,7 +71,7 @@ namespace http
 				// RFC7230 - 3.1.2.  Status Line
 				// status-line = HTTP-version SP status-code SP reason-phrase CRLF
 				// TODO(dimiden): Replace this HTTP version with the version that received from the request
-				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", GetStatusCode(), GetReason().CStr()).ToData(false));
+				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(GetStatusCode()), GetReason().CStr()).ToData(false));
 
 				// RFC7230 - 3.2.  Header Fields
 				for (const auto &pair : GetResponseHeaderList())
@@ -92,18 +94,19 @@ namespace http
 
 				if (Send(response))
 				{
-					logtd("Header is sent:\n%s", response->Dump(response->GetLength()).CStr());
+					logtt("Header is sent:\n%s", response->Dump(response->GetLength()).CStr());
 					return response->GetLength();
 				}
 
-				return 0;
+				logte("Could not send header");
+				return -1;
 			}
 
-			uint32_t Http1Response::SendPayload()
+			int32_t Http1Response::SendPayload()
 			{
 				bool sent = true;
 
-				logtd("Trying to send datas...");
+				logtt("Trying to send datas...");
 
 				uint32_t sent_bytes = 0;
 				for (const auto &data : GetResponseDataList())
@@ -115,6 +118,11 @@ namespace http
 						{
 							sent_bytes += data->GetLength();
 						}
+						else
+						{
+							logte("Could not send chunked data : %zu bytes", data->GetLength());
+							return -1;
+						}
 					}
 					else
 					{
@@ -123,12 +131,17 @@ namespace http
 						{
 							sent_bytes += data->GetLength();
 						}
+						else
+						{
+							logte("Could not send data : %zu bytes", data->GetLength());
+							return -1;
+						}
 					}
 				}
 
 				ResetResponseData();
 
-				logtd("All datas are sent...");
+				logtt("All datas are sent...");
 
 				return sent_bytes;
 			}

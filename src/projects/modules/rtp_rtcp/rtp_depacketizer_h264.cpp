@@ -19,6 +19,11 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseAndAssembleFrame(std::vector
 	bool start_payload = true;
 	for(const auto &payload : payload_list)
 	{
+		if (payload->GetLength() < NAL_HEADER_SIZE)
+		{
+			continue;
+		}
+
 		uint8_t nal_type = (payload->GetDataAs<uint8_t>()[0]) & NAL_TYPE_MASK;
 		std::shared_ptr<ov::Data> result;
 
@@ -151,7 +156,17 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseStapAAndConvertToAnnexB(cons
 
 		[[maybe_unused]] uint8_t nal_type = payload_buffer[offset] & NAL_TYPE_MASK;
 
-		logd("DEBUG", "STAP-A Nal Type : %d", nal_type);
+		logt("DEBUG", "STAP-A Nal Type : %d", nal_type);
+
+		if (IsDecodingParmeterSets(nal_type) == true)
+		{
+			auto data = std::make_shared<ov::Data>();
+			data->Append(&payload_buffer[offset], nalu_size);
+
+			AddDecodingParameterSet(nal_type, data);
+
+			// logt("RtpDepacketizerH264", "Decoding Parameter Sets : %d, Map.size : %d", nal_type, GetDecodingParameterSets().size());
+		}
 
 		offset += nalu_size;
 	}
@@ -168,7 +183,42 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ConvertSingleNaluToAnnexB(const s
 	bitstream->Append(payload);
 
 	[[maybe_unused]] uint8_t nal_type = payload->GetDataAs<uint8_t>()[0] & NAL_TYPE_MASK;
-	logd("DEBUG", "Single Nal Type : %d", nal_type);
+	logt("DEBUG", "Single Nal Type : %d", nal_type);
+
+	if (IsDecodingParmeterSets(nal_type) == true)
+	{
+		auto data = std::make_shared<ov::Data>();
+		data->Append(payload);
+
+		AddDecodingParameterSet(nal_type, data);
+
+		// logt("RtpDepacketizerH264", "Decoding Parameter Sets : %d, Map.size : %d", nal_type, GetDecodingParameterSets().size());
+	}
 
 	return bitstream;
+}
+
+bool RtpDepacketizerH264::IsDecodingParmeterSets(uint8_t nal_unit_type)
+{
+	return (nal_unit_type == NaluType::kSps ||
+			nal_unit_type == NaluType::kPps);
+}
+
+std::shared_ptr<ov::Data> RtpDepacketizerH264::GetDecodingParameterSetsToAnnexB() 
+{
+	uint8_t start_prefix[ANNEXB_START_PREFIX_LENGTH] = {0, 0, 0, 1};
+
+	if(GetDecodingParameterSets().size() < 2) // It must contatin SPS, PPS
+	{
+		return nullptr;
+	}
+
+	auto data = std::make_shared<ov::Data>();
+	for (auto &it : GetDecodingParameterSets())
+	{
+		data->Append(start_prefix, ANNEXB_START_PREFIX_LENGTH);
+		data->Append(it.second->GetData(), it.second->GetLength());
+	}
+
+	return data;
 }

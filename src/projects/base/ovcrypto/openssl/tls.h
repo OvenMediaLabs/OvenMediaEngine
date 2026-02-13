@@ -22,8 +22,12 @@ namespace ov
 		bool Initialize(const std::shared_ptr<TlsContext> &tls_context, const TlsBioCallback &callback, bool is_nonblocking);
 		bool Uninitialize();
 
+		void SetTlsHostName(const ov::String &host_name);
+
 		// @return Returns SSL_ERROR_NONE on success
 		int Accept();
+
+		void Shutdown();
 
 		std::shared_ptr<const OpensslError> Connect();
 
@@ -76,7 +80,7 @@ namespace ov
 				return default_value;
 			}
 
-			auto tls = static_cast<Tls *>(tls_instance);
+			auto tls	 = static_cast<Tls *>(tls_instance);
 			auto &target = tls->_callback.*member;
 
 			if (target != nullptr)
@@ -97,12 +101,12 @@ namespace ov
 		int GetError(int code);
 
 	protected:
-		bool _is_nonblocking = false;
+		bool _is_nonblocking	= false;
 
 		X509 *_peer_certificate = nullptr;
 
-		BIO *_bio = nullptr;
-		SSL *_ssl = nullptr;
+		BIO *_bio				= nullptr;
+		SSL *_ssl				= nullptr;
 
 		TlsBioCallback _callback;
 

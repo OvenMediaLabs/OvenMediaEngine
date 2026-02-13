@@ -1,0 +1,78 @@
+# Instruction: Build OvenMediaEngine with CUDA support
+# Usage:
+# $ docker build -t airensoft/ovenmediaengine_nv:dev -f Dockerfile.cuda .
+# $ docker run -it --gpus all airensoft/ovenmediaengine_nv:dev
+
+FROM    nvidia/cuda:11.4.3-devel-ubuntu20.04 AS base
+# FROM    nvidia/cuda:12.2.0-devel-ubuntu20.04 AS base
+
+## Install libraries by package
+ENV     DEBIAN_FRONTEND=noninteractive
+RUN     apt-get update && apt-get install -y tzdata sudo curl git
+
+FROM    base AS build
+
+WORKDIR /tmp
+
+ARG     OME_VERSION=master
+ARG 	STRIP=TRUE
+
+ENV     PREFIX=/opt/ovenmediaengine
+ENV     TEMP_DIR=/tmp/ome
+
+ENV     NVIDIA_VISIBLE_DEVICES=all
+ENV     NVIDIA_REQUIRE_CUDA=cuda>=11.4
+ENV     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,compat32
+# TConfigure ldconfig to find the cuda and nvml libraries
+RUN     echo "/usr/local/cuda-11.4/targets/x86_64-linux/lib/stubs" > /etc/ld.so.conf.d/000_cuda.conf | ldconfig
+# RUN     echo "/usr/local/cuda-12.2/targets/x86_64-linux/lib/stubs" > /etc/ld.so.conf.d/000_cuda.conf | ldconfig
+
+## Download OvenMediaEngine
+RUN \
+        mkdir -p ${TEMP_DIR} && \
+        cd ${TEMP_DIR} && \
+        git clone --branch ${OME_VERSION} --single-branch --depth 1 https://github.com/AirenSoft/OvenMediaEngine .
+
+## Install dependencies
+RUN \
+        ${TEMP_DIR}/misc/prerequisites.sh  --enable-nvc
+
+## Build OvenMediaEngine
+RUN \
+        cd ${TEMP_DIR}/src && \
+        make release -j$(nproc)
+
+RUN \
+        if [ "$STRIP" = "TRUE" ] ; then strip ${TEMP_DIR}/src/bin/RELEASE/OvenMediaEngine ; fi
+
+## Make running environment
+RUN \
+        cd ${TEMP_DIR}/src && \
+        mkdir -p ${PREFIX}/bin/origin_conf && \
+        mkdir -p ${PREFIX}/bin/edge_conf && \
+        cp ./bin/RELEASE/OvenMediaEngine ${PREFIX}/bin/ && \
+        cp ../misc/conf_examples/Origin.xml ${PREFIX}/bin/origin_conf/Server.xml && \
+        cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/origin_conf/Logger.xml && \
+        cp ../misc/conf_examples/Edge.xml ${PREFIX}/bin/edge_conf/Server.xml && \
+        cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/edge_conf/Logger.xml && \
+        rm -rf ${TEMP_DIR}
+
+## Make Release Image
+FROM    nvidia/cuda:11.4.3-runtime-ubuntu20.04 AS release
+# FROM    nvidia/cuda:12.2.0-runtime-ubuntu20.04 AS release
+
+## Install libraries by package
+ENV     DEBIAN_FRONTEND=noninteractive
+RUN     apt-get update && apt-get install -y tzdata sudo
+
+WORKDIR         /opt/ovenmediaengine/bin
+EXPOSE          80/tcp 8080/tcp 8090/tcp 1935/tcp 3333/tcp 3334/tcp 4000-4005/udp 10000-10010/udp 9000/tcp
+COPY            --from=build /opt/ovenmediaengine /opt/ovenmediaengine
+
+ENV     NVIDIA_VISIBLE_DEVICES=all
+ENV     NVIDIA_REQUIRE_CUDA=cuda>=11.4
+ENV     NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,compat32
+
+# Default run as Origin mode
+CMD             ["/opt/ovenmediaengine/bin/OvenMediaEngine", "-c", "origin_conf"]
+

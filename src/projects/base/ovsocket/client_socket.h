@@ -29,10 +29,11 @@ namespace ov
 		String ToString() const override;
 
 	protected:
-		bool Create(SocketType type) override;
+		bool Create(const SocketType type, const SocketFamily family) override;
 
 		bool SetSocketOptions();
-		bool GetSrtStreamId();	// Only available if socket is SRT
+		bool StoreSrtStreamId();	// Only available if socket is SRT
+		bool RetrieveLocalAddress();
 
 		//--------------------------------------------------------------------
 		// Implementation of SocketAsyncInterface

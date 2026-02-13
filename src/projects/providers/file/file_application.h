@@ -27,9 +27,9 @@ namespace pvd
 
 		std::shared_ptr<pvd::PullStream> CreateStream(const uint32_t stream_id, const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties) override;
 
-		MediaRouteApplicationConnector::ConnectorType GetConnectorType() override
+		MediaRouterApplicationConnector::ConnectorType GetConnectorType() override
 		{
-			return MediaRouteApplicationConnector::ConnectorType::Provider;
+			return MediaRouterApplicationConnector::ConnectorType::Provider;
 		}
 
 	private:

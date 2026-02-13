@@ -331,7 +331,7 @@ namespace http
 			auto reader = std::make_shared<BitReader>(data->GetDataAs<uint8_t>(), data->GetLength());
 			auto node = _tree;
 
-			while (reader->BytesReamined() > 0)
+			while (reader->BytesRemained() > 0)
 			{
 				auto b = reader->ReadBit();
 				if (b == 1)

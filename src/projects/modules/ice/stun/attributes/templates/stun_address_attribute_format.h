@@ -14,19 +14,18 @@
 class StunAddressAttributeFormat : public StunAttribute
 {
 public:
-	virtual bool Parse(ov::ByteStream &stream) override;
+	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override;
 
 	StunAddressFamily GetFamily() const;
 	uint16_t GetPort() const;
 	const ov::SocketAddress &GetAddress() const;
-	int GetAddressLength() const;
 	bool SetParameters(const ov::SocketAddress &address);
-	bool Serialize(ov::ByteStream &stream) const noexcept override;
-	virtual ov::String ToString() const override;
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override;
+	ov::String ToString() const override;
 
 protected:
 	StunAddressAttributeFormat(StunAttributeType type, int length);
-	
+
 	ov::String ToString(const char *class_name) const;
 	ov::SocketAddress _address;
 };

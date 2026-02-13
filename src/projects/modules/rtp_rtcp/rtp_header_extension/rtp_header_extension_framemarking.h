@@ -21,9 +21,6 @@
 //
 // OvenMediaEnigne doesn't use LID and TL0PICIDX
 
-#define RTP_HEADER_EXTENSION_FRAMEMARKING_ID	1
-#define RTP_HEADER_EXTENSION_FRAMEMARKING_ATTRIBUTE "urn:ietf:params:rtp-hdrext:framemarking"
-
 class RtpHeaderExtensionFrameMarking : public RtpHeaderExtension
 {
 public:
@@ -37,11 +34,6 @@ public:
 	{
 		_data = std::make_shared<ov::Data>(_buffer, sizeof(_buffer), true);
 		memset(_buffer, 0, sizeof(_buffer));
-	}
-
-	RtpHeaderExtensionFrameMarking(uint8_t id, std::shared_ptr<ov::Data> data)
-		: RtpHeaderExtension(id, data)
-	{
 	}
 
 	void Reset()
@@ -111,12 +103,6 @@ public:
 		UpdateData();
 	}
 
-protected:
-	std::shared_ptr<ov::Data> GetData(HeaderType type) override
-	{
-		return _data;
-	}
-
 	bool SetData(const std::shared_ptr<ov::Data> &data) override
 	{
 		//TODO(Getroot): Parsing
@@ -124,6 +110,13 @@ protected:
 
 		return true;
 	}
+
+protected:
+	std::shared_ptr<ov::Data> GetData(HeaderType type) override
+	{
+		return _data;
+	}
+
 
 private:
 	std::shared_ptr<ov::Data>	_data;
@@ -137,6 +130,6 @@ private:
 	uint8_t _temporal_id = 0;
 
 	// Not used
-	uint8_t _layer_id = 0;
-	uint8_t _tl0picidx = 0;
+	[[maybe_unused]] uint8_t _layer_id = 0;
+	[[maybe_unused]] uint8_t _tl0picidx = 0;
 };

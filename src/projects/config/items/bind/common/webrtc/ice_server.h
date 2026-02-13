@@ -36,6 +36,6 @@ namespace cfg
 					Register<Optional>("Credential", &_credential);
 				}
 			};
-		}  // namespace pub
-	}	   // namespace bind
+		}  // namespace cmm
+	}  // namespace bind
 }  // namespace cfg

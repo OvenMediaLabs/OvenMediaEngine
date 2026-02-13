@@ -362,13 +362,13 @@ bool RtspServer::OnStreamTeardown(const std::string_view &app_name,
     auto stream_iterator = stream_ids_.find(stream_path);
     if (stream_iterator != stream_ids_.end())
     {
-        auto stream_contex_iterator = stream_contexts_.find(stream_iterator->second);
-        if (stream_contex_iterator == stream_contexts_.end())
+        auto stream_context_iterator = stream_contexts_.find(stream_iterator->second);
+        if (stream_context_iterator == stream_contexts_.end())
         {
             logtw("No context found for stream(%d)(%s) / application(%s)", stream_iterator->second, std::string(stream_name.data(), stream_name.size()).c_str(), std::string(app_name.data(), app_name.size()).c_str());
             return false;
         }
-        for (const auto &route : stream_contex_iterator->second.routes_)
+        for (const auto &route : stream_context_iterator->second.routes_)
         {
             std::get<0>(route)->OnStreamTeardown(std::get<1>(route), std::get<2>(route));
         }
@@ -387,12 +387,12 @@ bool RtspServer::OnVideoData(uint32_t stream_id,
         std::unique_ptr<FragmentationHeader> fragmentation_header)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto stream_contex_iterator = stream_contexts_.find(stream_id);
-    if (stream_contex_iterator == stream_contexts_.end())
+    auto stream_context_iterator = stream_contexts_.find(stream_id);
+    if (stream_context_iterator == stream_contexts_.end())
     {
         return false;
     }
-    for (const auto &route : stream_contex_iterator->second.routes_)
+    for (const auto &route : stream_context_iterator->second.routes_)
     {
         std::get<0>(route)->OnVideoData(std::get<1>(route), std::get<2>(route), track_id, timestamp, data, flags, std::move(fragmentation_header));
     }
@@ -405,12 +405,12 @@ bool RtspServer::OnAudioData(uint32_t stream_id,
         const std::shared_ptr<std::vector<uint8_t>> &data)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto stream_contex_iterator = stream_contexts_.find(stream_id);
-    if (stream_contex_iterator == stream_contexts_.end())
+    auto stream_context_iterator = stream_contexts_.find(stream_id);
+    if (stream_context_iterator == stream_contexts_.end())
     {
         return false;
     }
-    for (const auto &route : stream_contex_iterator->second.routes_)
+    for (const auto &route : stream_context_iterator->second.routes_)
     {
         std::get<0>(route)->OnAudioData(std::get<1>(route), std::get<2>(route), track_id, timestamp, data);
     }
@@ -434,12 +434,12 @@ void RtspServer::OnRtcpSenderReport(uint32_t stream_id,
     const RtcpSenderReport &rtcp_sender_report)
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto stream_contex_iterator = stream_contexts_.find(stream_id);
-    if (stream_contex_iterator == stream_contexts_.end())
+    auto stream_context_iterator = stream_contexts_.find(stream_id);
+    if (stream_context_iterator == stream_contexts_.end())
     {
         return;
     }
-    auto& stream_context = stream_contex_iterator->second;
+    auto& stream_context = stream_context_iterator->second;
     auto& track_timestamp = stream_context.track_timestamps_[track_id];
     track_timestamp.rtp_timestamp_ = rtcp_sender_report.rtp_timestamp_;
     track_timestamp.ntp_timestamp_ = rtcp_sender_report.ntp_timestamp_;
@@ -449,7 +449,7 @@ void RtspServer::OnRtcpSenderReport(uint32_t stream_id,
     {
         // We have all the timestamps, with this we should be able to obtain the initial track offsets:
         // 1) sort them by ntp time
-        // 2) substract the ntp times
+        // 2) subtract the ntp times
         // 3) get the offsets by setting the differences
         std::vector<std::reference_wrapper<RtspStreamTimestamp>> initial_timestamps;
         for (auto &track_timestamp : stream_context.track_timestamps_)

@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include "../../../common/cross_domain_support.h"
 #include "provider.h"
 
 namespace cfg
@@ -18,7 +19,7 @@ namespace cfg
 		{
 			namespace pvd
 			{
-				struct WebrtcProvider : public Provider
+				struct WebrtcProvider : public Provider, public cmn::CrossDomainSupport
 				{
 					ProviderType GetType() const override
 					{
@@ -33,11 +34,12 @@ namespace cfg
 						Provider::MakeList();
 
 						Register<Optional>("Timeout", &_timeout);
+						Register<Optional>("CrossDomains", &_cross_domains);
 					}
 
 					int _timeout = 30000;
 				};
 			}  // namespace pvd
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

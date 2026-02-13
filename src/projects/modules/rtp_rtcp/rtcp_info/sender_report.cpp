@@ -62,7 +62,7 @@ std::shared_ptr<ov::Data> SenderReport::GetData() const
 
 void SenderReport::DebugPrint()
 {
-	logtd("[RTCP-SR] SSRC(%u) MSW(%u) LSW(%u) Timestamp(%u) Packet Count(%u) Octaet Count(%u)", 
+	logti("[RTCP-SR] SSRC(%u) MSW(%u) LSW(%u) Timestamp(%u) Packet Count(%u) Octaet Count(%u)", 
 		GetSenderSsrc(), GetMsw(), GetLsw(), GetTimestamp(), GetPacketCount(), GetOctetCount());
 }
 

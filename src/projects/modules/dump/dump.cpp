@@ -6,7 +6,7 @@
 //  Copyright (c) 2022 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include <base/ovlibrary/directory.h>
+#include <base/ovlibrary/files.h>
 #include "dump.h"
 
 namespace mdl
@@ -34,13 +34,37 @@ namespace mdl
 
 	}
 
-	bool Dump::DumpData(const ov::String &file_name, const std::shared_ptr<const ov::Data> &data)
+	bool Dump::DumpData(const ov::String &file_name, const std::shared_ptr<const ov::Data> &data, bool append)
 	{
-		if (DumpToFile(GetOutputPath(), file_name, data) == false)
+		if (DumpToFile(GetOutputPath(), file_name, data, true, append) == false)
 		{
 			logw("DEBUG", "Could not dump data to file: %s/%s", GetOutputPath().CStr(), file_name.CStr());
 			return false;
 		}
+
+		// Write DumpInfo
+		if (GetInfoFileUrl().IsEmpty() == false)
+		{
+			ov::String dump_history;
+			if (MakeDumpInfo(dump_history) == false)
+			{
+				logw("DEBUG", "Could not make dump info");
+				return false;
+			}
+
+			if (DumpToFile(GetInfoFilePath(), GetInfoFileName(), dump_history.ToData(false), false) == false)
+			{
+				logw("DEBUG", "Could not dump data to file: %s/%s", GetInfoFilePath().CStr(), GetInfoFileName().CStr());
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool Dump::CompleteDump()
+	{
+		SetEnabled(false);
 
 		// Write DumpInfo
 		if (GetInfoFileUrl().IsEmpty() == false)
@@ -116,7 +140,7 @@ namespace mdl
 		return true;
 	}
 
-	bool Dump::DumpToFile(const ov::String &path, const ov::String &file_name, const std::shared_ptr<const ov::Data> &data, bool add_hitory)
+	bool Dump::DumpToFile(const ov::String &path, const ov::String &file_name, const std::shared_ptr<const ov::Data> &data, bool add_history, bool append)
 	{
 		if (ov::CreateDirectories(path) == false)
 		{
@@ -126,13 +150,13 @@ namespace mdl
 
 		auto file_path_name = ov::PathManager::Combine(path, file_name);
 
-		if (ov::DumpToFile(file_path_name, data) == nullptr)
+		if (ov::DumpToFile(file_path_name, data, 0, append) == nullptr)
 		{
 			logw("DEBUG", "Could not dump data to file: %s", file_path_name.CStr());
 			return false;
 		}
 
-		if (add_hitory == true)
+		if (add_history == true)
 		{
 			_dump_history_map.emplace_back(file_path_name);
 		}

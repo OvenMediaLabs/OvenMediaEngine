@@ -24,7 +24,7 @@ namespace pub
 
 	FileStream::~FileStream()
 	{
-		logtd("FileStream(%s/%s) has been terminated finally",
+		logtt("FileStream(%s/%s) has been terminated finally",
 			  GetApplicationName(), GetName().CStr());
 	}
 
@@ -35,7 +35,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileStream(%ld) has been started", GetId());
+		logtt("FileStream(%u) has been started", GetId());
 
 		if (!CreateStreamWorker(2))
 		{
@@ -54,7 +54,7 @@ namespace pub
 			return false;
 		}
 
-		logtd("FileStream(%u) has been stopped", GetId());
+		logtt("FileStream(%u) has been stopped", GetId());
 
 		std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), true);
 
@@ -63,6 +63,11 @@ namespace pub
 
 	void FileStream::SendFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	{
+		if (GetState() != Stream::State::STARTED)
+		{
+			return;
+		}
+
 		// Periodically check the session. Retry the session in which the error occurred.
 		if (_stop_watch.IsElapsed(5000) && _stop_watch.Update())
 		{
@@ -76,21 +81,11 @@ namespace pub
 
 	void FileStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	{
-		if (GetState() != Stream::State::STARTED)
-		{
-			return;
-		}
-
 		SendFrame(media_packet);
 	}
 
 	void FileStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	{
-		if (GetState() != Stream::State::STARTED)
-		{
-			return;
-		}
-
 		SendFrame(media_packet);
 	}
 

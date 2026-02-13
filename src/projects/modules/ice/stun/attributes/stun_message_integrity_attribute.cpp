@@ -25,7 +25,7 @@ StunMessageIntegrityAttribute::~StunMessageIntegrityAttribute()
 {
 }
 
-bool StunMessageIntegrityAttribute::Parse(ov::ByteStream &stream)
+bool StunMessageIntegrityAttribute::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	// 여기서 실제로 무결성 검사 까지는 하지 않음
 	if(stream.Read<uint8_t>(_hash, OV_COUNTOF(_hash)) != OV_COUNTOF(_hash))
@@ -48,9 +48,9 @@ bool StunMessageIntegrityAttribute::SetHash(const uint8_t hash[OV_STUN_HASH_LENG
 	return true;
 }
 
-bool StunMessageIntegrityAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunMessageIntegrityAttribute::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
-	return StunAttribute::Serialize(stream) &&
+	return StunAttribute::Serialize(stun_message, stream) &&
 	       stream.Write<uint8_t>(_hash, OV_STUN_HASH_LENGTH);
 }
 

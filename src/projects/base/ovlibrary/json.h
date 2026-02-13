@@ -8,11 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "./json_object.h"
-#include "./string.h"
+#include "./json_builder.h"
 
 namespace ov
 {
+	constexpr const char *StringFromJsonValueType(::Json::ValueType value_type);
+	const char *StringFromJsonValueType(const ::Json::Value &value);
+
 	class Json
 	{
 	public:
@@ -26,7 +28,4 @@ namespace ov
 		static JsonObject Parse(const ov::String &str);
 		static JsonObject Parse(const std::shared_ptr<const Data> &data);
 	};
-
-	const char *StringFromJsonValueType(::Json::ValueType value_type);
-	const char *StringFromJsonValueType(const ::Json::Value &value);
 }  // namespace ov

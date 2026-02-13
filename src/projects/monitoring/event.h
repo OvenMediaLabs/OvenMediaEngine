@@ -1,27 +1,37 @@
 #pragma once
 
-#include "base/ovlibrary/ovlibrary.h"
-#include "server_metrics.h"
 #include <variant>
 
-#define EVENT_VERSION		1
+#include "base/ovlibrary/ovlibrary.h"
+#include "server_metrics.h"
+
+#define EVENT_VERSION 1
 namespace mon
 {
 	enum class EventType
 	{
 		// StreamEventType
 		ServerStarted,
-		HostCreated, HostDeleted,
-		AppCreated, AppDeleted,
-		StreamCreated, StreamDeleted, StreamOriginLinkUpdated, StreamOutputsUpdated,
+		HostCreated,
+		HostDeleted,
+		AppCreated,
+		AppDeleted,
+		StreamCreated,
+		StreamDeleted,
+		StreamOriginLinkUpdated,
+		StreamOutputsUpdated,
 		// SessionEventType
-		SessionConnected, SessionDisconnected,
-		// ActoinEventType
-		ApiCalled, 
-		RecordingStarted, RecordingStopped,
-		PushStarted, PushStopped,
+		SessionConnected,
+		SessionDisconnected,
+		// ActionEventType
+		ApiCalled,
+		RecordingStarted,
+		RecordingStopped,
+		PushStarted,
+		PushStopped,
 		// NotificationEventType
-		Info, Error,
+		Info,
+		Error,
 		// StatisticsEventType
 		ServerStat
 	};
@@ -47,7 +57,6 @@ namespace mon
 		ov::String SerializeToJson() const;
 
 	private:
-
 		// Use _extra_metric_type
 		bool FillProducer(Json::Value &json_producer) const;
 		bool FillProducer(Json::Value &json_producer, const std::shared_ptr<HostMetrics> &host_metric) const;
@@ -66,7 +75,7 @@ namespace mon
 		{
 			StreamEventType,
 			SessionEventType,
-			ActoinEventType,
+			ActionEventType,
 			NotificationEventType,
 			StatisticsEventType
 		};
@@ -82,18 +91,18 @@ namespace mon
 			AppMetric,
 			StreamMetric
 		};
-		
+
 		uint64_t _creation_time_msec = 0;
 
 		// Essential metic
-		std::shared_ptr<ServerMetrics> _server_metric; 
+		std::shared_ptr<ServerMetrics> _server_metric;
 
 		// Optional metric
-		ExtraMetricType _extra_metric_type = ExtraMetricType::None;
-		std::shared_ptr<HostMetrics> _host_metric = nullptr;
+		ExtraMetricType _extra_metric_type				= ExtraMetricType::None;
+		std::shared_ptr<HostMetrics> _host_metric		= nullptr;
 		std::shared_ptr<ApplicationMetrics> _app_metric = nullptr;
-		std::shared_ptr<StreamMetrics> _stream_metric = nullptr;
+		std::shared_ptr<StreamMetrics> _stream_metric	= nullptr;
 
 		std::map<ov::String, ExtraValueType> _extra_data;
 	};
-}
+}  // namespace mon

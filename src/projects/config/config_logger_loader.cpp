@@ -58,7 +58,7 @@ namespace cfg
 		}
 
 		_log_path = logger_node.child_value("Path");
-		_version = logger_node.attribute("version").value();
+		_version  = logger_node.attribute("version").value();
 	}
 
 	void ConfigLoggerLoader::Reset()
@@ -87,8 +87,8 @@ namespace cfg
 	{
 		std::shared_ptr<LoggerTagInfo> tag_info = std::make_shared<LoggerTagInfo>();
 
-		ov::String name = ConfigUtility::StringFromAttribute(tag_node.attribute("name"));
-		ov::String level = ConfigUtility::StringFromAttribute(tag_node.attribute("level"));
+		ov::String name							= ConfigUtility::StringFromAttribute(tag_node.attribute("name"));
+		ov::String level						= ConfigUtility::StringFromAttribute(tag_node.attribute("level"));
 
 		if (LoggerTagInfo::ValidateLogLevel(level) == false)
 		{
@@ -96,7 +96,7 @@ namespace cfg
 		}
 
 		tag_info->SetName(name);
-		tag_info->SetLevel(LoggerTagInfo::OVLogLevelFromString(level));
+		tag_info->SetLevel(LoggerTagInfo::OVLogLevelFromString(level).value_or(OVLogLevelInformation));
 
 		return tag_info;
 	}

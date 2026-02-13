@@ -15,7 +15,7 @@
 
 #include "llhls_stream.h"
 
-class LLHlsApplication : public pub::Application
+class LLHlsApplication final: public pub::Application
 {
 public:
 	static std::shared_ptr<LLHlsApplication> Create(const std::shared_ptr<pub::Publisher> &publisher, const info::Application &application_info);

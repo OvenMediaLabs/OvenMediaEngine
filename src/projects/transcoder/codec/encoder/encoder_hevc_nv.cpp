@@ -10,26 +10,41 @@
 
 #include <unistd.h>
 
+#include "../../transcoder_gpu.h"
 #include "../../transcoder_private.h"
-
-EncoderHEVCxNV::~EncoderHEVCxNV()
-{
-}
 
 bool EncoderHEVCxNV::SetCodecParams()
 {
-	_codec_context->framerate = ::av_d2q((GetRefTrack()->GetFrameRate() > 0) ? GetRefTrack()->GetFrameRate() : GetRefTrack()->GetEstimateFrameRate(), AV_TIME_BASE);
+	_codec_context->framerate = ::av_d2q((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured(), AV_TIME_BASE);
 	_codec_context->bit_rate = GetRefTrack()->GetBitrate();
 	_codec_context->rc_min_rate = _codec_context->rc_max_rate = _codec_context->bit_rate;
 	_codec_context->rc_buffer_size = static_cast<int>(_codec_context->bit_rate / 2);
 	_codec_context->sample_aspect_ratio = (AVRational){1, 1};
 	_codec_context->ticks_per_frame = 2;
-	_codec_context->time_base = ::av_inv_q(::av_mul_q(_codec_context->framerate, (AVRational){_codec_context->ticks_per_frame, 1}));
+	_codec_context->time_base = ffmpeg::compat::TimebaseToAVRational(GetRefTrack()->GetTimeBase());
 	_codec_context->max_b_frames = 0;
-	_codec_context->pix_fmt = (AVPixelFormat)GetSupportedFormat();
+	_codec_context->pix_fmt = ffmpeg::compat::ToAVPixelFormat(GetSupportVideoFormat());
 	_codec_context->width = GetRefTrack()->GetWidth();
 	_codec_context->height = GetRefTrack()->GetHeight();
-	_codec_context->gop_size = (GetRefTrack()->GetKeyFrameInterval() == 0) ? (_codec_context->framerate.num / _codec_context->framerate.den) : GetRefTrack()->GetKeyFrameInterval();
+	
+	// Keyframe Interval
+	// @see transcoder_encoder.cpp / force_keyframe_by_time_interval
+	auto key_frame_interval_type = GetRefTrack()->GetKeyFrameIntervalTypeByConfig();
+	if (key_frame_interval_type == cmn::KeyFrameIntervalType::TIME)
+	{
+		_codec_context->gop_size = (int32_t)(GetRefTrack()->GetFrameRate() * (double)GetRefTrack()->GetKeyFrameInterval() / 1000 * 2);
+		::av_opt_set(_codec_context->priv_data, "forced-idr", "1", 0);
+	}
+	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
+	{
+		_codec_context->gop_size = (GetRefTrack()->GetKeyFrameInterval() == 0) ? (_codec_context->framerate.num / _codec_context->framerate.den) : GetRefTrack()->GetKeyFrameInterval();
+	}
+
+	// Lookahead
+	if (GetRefTrack()->GetLookaheadByConfig() >= 0)
+	{
+		av_opt_set_int(_codec_context->priv_data, "rc-lookahead", GetRefTrack()->GetLookaheadByConfig(), 0);
+	}
 
 	// Preset
 	if (GetRefTrack()->GetPreset() == "slower")
@@ -61,11 +76,81 @@ bool EncoderHEVCxNV::SetCodecParams()
 	::av_opt_set(_codec_context->priv_data, "tune", "ull", 0);
 	::av_opt_set(_codec_context->priv_data, "rc", "cbr", 0);
 
+	_bitstream_format = cmn::BitstreamFormat::H265_ANNEXB;
+	
+	_packet_type = cmn::PacketType::NALU;
+
 	return true;
 }
 
-// Notes.
-// - B-frame must be disabled. because, WEBRTC does not support B-Frame.
+bool EncoderHEVCxNV::InitCodec()
+{
+	const AVCodec *codec = ::avcodec_find_encoder_by_name("hevc_nvenc");
+	if (codec == nullptr)
+	{
+		logte("Could not find encoder: %s", cmn::GetCodecIdString(GetCodecID()));
+		return false;
+	}
+
+	_codec_context = ::avcodec_alloc_context3(codec);
+	if (_codec_context == nullptr)
+	{
+		logte("Could not allocate codec context for %s", cmn::GetCodecIdString(GetCodecID()));
+		return false;
+	}
+
+	if (SetCodecParams() == false)
+	{
+		logte("Could not set codec parameters for %s", cmn::GetCodecIdString(GetCodecID()));
+		return false;
+	}
+
+	auto hw_device_ctx = TranscodeGPU::GetInstance()->GetDeviceContext(cmn::MediaCodecModuleId::NVENC, GetRefTrack()->GetCodecDeviceId());
+	if(hw_device_ctx == nullptr)
+	{
+		logte("Could not get hw device context for %s", cmn::GetCodecIdString(GetCodecID()));
+
+		::avcodec_free_context(&_codec_context);
+				
+		return false;
+	}
+
+	// Assign HW device context to encoder
+	if(ffmpeg::compat::SetHwDeviceCtxOfAVCodecContext(_codec_context, hw_device_ctx) == false)
+	{
+		logte("Could not set hw device context for %s", cmn::GetCodecIdString(GetCodecID()));
+
+		::avcodec_free_context(&_codec_context);
+
+		return false;
+	}
+
+
+	// Assign HW frames context to encoder
+	if(ffmpeg::compat::SetHWFramesCtxOfAVCodecContext(_codec_context) == false)
+	{
+		logte("Could not set hw frames context for %s", cmn::GetCodecIdString(GetCodecID()));
+
+		if(_codec_context->hw_device_ctx)
+		{
+			::av_buffer_unref(&_codec_context->hw_device_ctx);
+			_codec_context->hw_device_ctx = nullptr;
+		}
+		
+		::avcodec_free_context(&_codec_context);		
+
+		return false;
+	}
+
+	if (::avcodec_open2(_codec_context, nullptr, nullptr) < 0)
+	{
+		logte("Could not open codec: %s (%d)", codec->name, codec->id);
+		return false;
+	}
+
+	return true;
+}
+
 bool EncoderHEVCxNV::Configure(std::shared_ptr<MediaTrack> context)
 {
 	if (TranscodeEncoder::Configure(context) == false)
@@ -73,110 +158,25 @@ bool EncoderHEVCxNV::Configure(std::shared_ptr<MediaTrack> context)
 		return false;
 	}
 
-	auto codec_id = GetCodecID();
-
-	const AVCodec *codec = ::avcodec_find_encoder_by_name("hevc_nvenc");
-	if (codec == nullptr)
-	{
-		logte("Could not find encoder: %d (%s)", codec_id, ::avcodec_get_name(codec_id));
-		return false;
-	}
-
-	_codec_context = ::avcodec_alloc_context3(codec);
-	if (_codec_context == nullptr)
-	{
-		logte("Could not allocate codec context for %s (%d)", ::avcodec_get_name(codec_id), codec_id);
-		return false;
-	}
-
-	if (SetCodecParams() == false)
-	{
-		logte("Could not set codec parameters for %s (%d)", ::avcodec_get_name(codec_id), codec_id);
-		return false;
-	}
-
-	if (::avcodec_open2(_codec_context, codec, nullptr) < 0)
-	{
-		logte("Could not open codec: %s (%d)", codec->name, codec->id);
-		return false;
-	}
-
-	// Generates a thread that reads and encodes frames in the input_buffer queue and places them in the output queue.
 	try
 	{
 		_kill_flag = false;
 
 		_codec_thread = std::thread(&EncoderHEVCxNV::CodecThread, this);
-		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("Enc%sNV", avcodec_get_name(GetCodecID())).CStr());
+		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("ENC-%snv-t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId()).CStr());
+		
+		// Initialize the codec and wait for completion.
+		if(_codec_init_event.Get() == false)
+		{
+			_kill_flag = true;
+			return false;
+		}
 	}
 	catch (const std::system_error &e)
 	{
-		logte("Failed to start encoder thread.");
 		_kill_flag = true;
-
 		return false;
 	}
 
 	return true;
-}
-
-void EncoderHEVCxNV::CodecThread()
-{
-	while (!_kill_flag)
-	{
-		auto obj = _input_buffer.Dequeue();
-		if (obj.has_value() == false)
-			continue;
-
-
-		auto media_frame = std::move(obj.value());
-
-		///////////////////////////////////////////////////
-		// Request frame encoding to codec
-		///////////////////////////////////////////////////
-		auto av_frame = ffmpeg::Conv::ToAVFrame(cmn::MediaType::Video, media_frame);
-		if(!av_frame)
-		{
-			logte("Could not allocate the frame data");
-			break;
-		}
-
-		int ret = ::avcodec_send_frame(_codec_context, av_frame);
-		if (ret < 0)
-		{
-			logte("Error sending a frame for encoding : %d", ret);
-		}
-
-		///////////////////////////////////////////////////
-		// The encoded packet is taken from the codec.
-		///////////////////////////////////////////////////
-		while (true)
-		{
-			// Check frame is availble
-			int ret = ::avcodec_receive_packet(_codec_context, _packet);
-			if (ret == AVERROR(EAGAIN))
-			{
-				// More packets are needed for encoding.
-				break;
-			}
-			else if (ret == AVERROR_EOF && ret < 0)
-			{
-				logte("Error receiving a packet for decoding : %d", ret);
-				break;
-			}
-			else
-			{
-				auto media_packet = ffmpeg::Conv::ToMediaPacket(_packet, cmn::MediaType::Video, cmn::BitstreamFormat::H265_ANNEXB, cmn::PacketType::NALU);
-				if (media_packet == nullptr)
-				{
-					logte("Could not allocate the media packet");
-					break;
-				}
-
-				::av_packet_unref(_packet);
-
-				SendOutputBuffer(std::move(media_packet));
-			}
-		}
-	}
 }

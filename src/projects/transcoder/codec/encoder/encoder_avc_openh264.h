@@ -13,17 +13,41 @@
 class EncoderAVCxOpenH264 : public TranscodeEncoder
 {
 public:
-	~EncoderAVCxOpenH264();
-
-	AVCodecID GetCodecID() const noexcept override
+	EncoderAVCxOpenH264(const info::Stream &stream_info)
+		: TranscodeEncoder(stream_info)
 	{
-		return AV_CODEC_ID_H264;
 	}
 
-	int GetSupportedFormat() const noexcept override
+	cmn::MediaCodecId GetCodecID() const noexcept override
 	{
-		return AV_PIX_FMT_YUV420P;
+		return cmn::MediaCodecId::H264;
 	}
+
+	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	{
+		return cmn::MediaCodecModuleId::OPENH264;
+	}
+
+	cmn::MediaType GetMediaType() const noexcept
+	{
+		return cmn::MediaType::Video;
+	}
+
+	bool IsHWAccel() const noexcept
+	{
+		return false;
+	}
+
+	cmn::AudioSample::Format GetSupportAudioFormat() const noexcept override
+	{
+		return cmn::AudioSample::Format::None;
+	}
+
+	cmn::VideoPixelFormatId GetSupportVideoFormat() const noexcept override 
+	{
+		return cmn::VideoPixelFormatId::YUV420P;
+	}
+
 
 	cmn::BitstreamFormat GetBitstreamFormat() const noexcept override
 	{
@@ -32,7 +56,7 @@ public:
 
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
 
-	void CodecThread() override;
+	bool InitCodec() override;
 
 private:
 	bool SetCodecParams() override;

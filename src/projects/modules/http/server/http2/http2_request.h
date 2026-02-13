@@ -40,6 +40,8 @@ namespace http
 				ov::String GetHeader(const ov::String &key) const noexcept override;
 				bool IsHeaderExists(const ov::String &key) const noexcept override;
 
+				ov::String ToString() const override;
+
 			private:
 				std::shared_ptr<hpack::Decoder> _hpack_decoder;
 
@@ -55,7 +57,7 @@ namespace http
 				// encoding in HTTP/2.
 
 				// So _headers is a map of case insentitive header key and value
-				std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _headers;
+				HttpHeaderMap _headers;
 				StatusCode _parse_status = StatusCode::PartialContent;
 			};
 		} // namespace h1

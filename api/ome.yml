@@ -1,0 +1,1961 @@
+openapi: 3.0.0
+info:
+  title: OvenMediaEngine REST API
+  version: v1
+  description: |
+    REST API for controlling and monitoring the OvenMediaEngine server.
+servers:
+  - url: http://{server}:{port}/v1
+    description: Unsecured API server
+    variables:
+      server:
+        default: localhost
+      port:
+        default: '8081'
+  - url: https://{server}:{tlsPort}/v1
+    description: Secured API server (TLS)
+    variables:
+      server:
+        default: localhost
+      tlsPort:
+        default: '8082'
+security:
+  - basicAuth: []
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+  parameters:
+    vhostName:
+      name: vhost
+      in: path
+      required: true
+      description: The name of the virtual host.
+      schema:
+        type: string
+    appName:
+      name: app
+      in: path
+      required: true
+      description: The name of the application.
+      schema:
+        type: string
+    streamName:
+      name: stream
+      in: path
+      required: true
+      description: The name of the stream.
+      schema:
+        type: string
+    profileName:
+      name: profile
+      in: path
+      required: true
+      description: The name of the output profile.
+      schema:
+        type: string
+  schemas:
+    HttpStatus:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode:
+          type: integer
+          description: HTTP status code (usually 200).
+        message:
+          type: string
+          description: Success message.
+    Enables:
+      type: object
+      required: [providers,publishers]
+      properties:
+        providers:
+          type: string
+        publishers:
+          type: string
+    Urls:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: array
+          items:
+            type: string
+    Pass:
+      type: object
+      required: [schema,urls]
+      properties:
+        schme:
+          type: string
+        urls:
+          $ref: '#/components/schemas/Urls'
+    Origin:
+      type: object
+      required: [location,pass]
+      properties:
+        location:
+          type: string
+        pass:
+          $ref: '#/components/schemas/Pass'
+    Origins:
+      type: object
+      required: [origin]
+      properties:
+        origin:
+          type: array
+          items:
+            $ref: '#/components/schemas/Origin'
+    Tls:
+      type: object
+      required: [certPath,chainCertPath,keyPath]
+      properties:
+        certPath:
+          type: string
+        chainCertPath:
+          type: string
+        keyPath:
+          type: string
+    Host:
+      type: object
+      required: [names]
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+        tls:
+          $ref: '#/components/schemas/Tls'
+    SignedPolicy:
+      type: object
+      properties:
+        enables:
+          $ref: '#/components/schemas/Enables'
+        policyQueryKeyName:
+          type: string
+        secretKey:
+          type: string
+        signatureQueryKeyName:
+          type: string
+    AdmissionWebhooks:
+      type: object
+      properties:
+        controlServerUrl:
+          type: string
+        secretKey:
+          type: string
+        timeout:
+          type: integer
+          format: int64
+        enables:
+          $ref: '#/components/schemas/Enables'
+    RedisServer:
+      type: object
+      required: [host]
+      properties:
+        host:
+          type: string
+        auth:
+          type: string
+    OriginMapStore:
+      type: object
+      required: [redisServer]
+      properties:
+        originHostName:
+          type: string
+        redisServer:
+          $ref: '#/components/schemas/RedisServer'
+    HlsId3v2:
+      type: object
+      required: [eventType,frameType,data]
+      properties:
+        eventType:
+          type: string
+        frameType:
+          type: string
+        info:
+          type: string
+        data:
+          type: string
+    Event:
+      type: object
+      required: [trigger]
+      properties:
+        trigger:
+          type: string
+        hlsid3v2:
+          $ref: '#/components/schemas/HlsId3v2'
+    EventGenerator:
+      type: object
+      properties:
+        event:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+    RtmpProvider:
+      type: object
+      properties:
+        blockDuplicateStreamName:
+          type: boolean
+        eventGenerator:
+          $ref: '#/components/schemas/EventGenerator'
+        passthroughOutputProfile:
+          type: boolean
+    RtspPullProvider:
+      type: object
+      properties:
+        blockDuplicateStreamName:
+          type: boolean
+    AudioMapItem:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        language:
+          type: string
+        characteristics:
+          type: string
+    AudioMap:
+      type: object
+      required: [item]
+      properties:
+        item:
+          type: array
+          items:
+            $ref: '#/components/schemas/AudioMapItem'
+    SrtProvider:
+      type: object
+      properties:
+        blockDuplicateStreamName:
+          type: boolean
+        audioMap:
+          $ref: '#/components/schemas/AudioMap'
+    StreamMapStream:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        port:
+          type: string
+    StreamMap:
+      type: object
+      required: [stream]
+      properties:
+        stream:
+          type: array
+          items:
+            $ref: '#/components/schemas/StreamMapStream'
+    Stream:
+      type: object
+      required: [name,input,outputs]
+      properties:
+        name:
+          type: string
+        input:
+          type: object
+          required: [sourceType,tracks]
+          properties:
+            createdTime:
+              type: string
+              format: date-time
+            sourceType:
+              type: string
+            sourceUrl:
+              type: string
+            tracks:
+              $ref: '#/components/schemas/Tracks'
+        outputs:
+          type: object
+          required: [name,tracks]
+          properties:
+            name:
+              type: string
+            tracks:
+              $ref: '#/components/schemas/Tracks'
+            playlists:
+              $ref: '#/components/schemas/Playlists'
+    StreamPush:
+      type: object
+      required: [stream,protocol,url]
+      properties:
+        id:
+          type: string
+        stream:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+            tracks:
+              type: array
+              items:
+                type: integer
+                format: uint32
+            variantNames:
+              type: array
+              items:
+                type: string
+        protocol:
+          type: string
+          enum: [srt,rtmp,mpegts]
+        url:
+          type: string
+        streamKey:
+          type: string
+    StreamPushed:
+      allOf:
+        - $ref: '#/components/schemas/StreamPush'
+        - required: [vhost,app]
+          properties:
+            state:
+              type: string
+              enum: [ready,connecting,pushing,stopping,stopped,error]
+            vhost:
+              type: string
+            app:
+              type: string
+            sentBytes:
+              type: integer
+              format: int64
+            sentTime:
+              type: integer
+              format: int64
+            totalSentBytes:
+              type: integer
+              format: int64
+            totalSentTime:
+              type: integer
+              format: int64
+            sequence:
+              type: integer
+              format: int32
+            startTime:
+              type: string
+              format: date-time
+            finishTime:
+              type: string
+              format: date-time
+            createdTime:
+              type: string
+              format: date-time
+            isConfig:
+              type: boolean
+    StreamRecord:
+      type: object
+      required: [id,stream]
+      properties:
+        id:
+          type: string
+        stream:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+            variantNames:
+              type: array
+              items:
+                type: string
+        interval:
+          type: integer
+          format: int32
+        filePath:
+          type: string
+        infoPath:
+          type: string
+        schedule:
+          type: string
+        metadata:
+          type: string
+        segmentationRule:
+          type: string
+          enum: [discontinuity,continuity]
+    StreamRecorded:
+      allOf:
+        - $ref: '#/components/schemas/StreamRecord'
+        - required: [vhost,app,state,outputFilePath,outputInfoPath]
+          properties:
+            state:
+              type: string
+              enum: [ready,started,stopping,stopped,error]
+            vhost:
+              type: string
+            app:
+              type: string
+            outputFilePath:
+              type: string
+            outputInfoPath:
+              type: string
+            recordBytes:
+              type: integer
+              format: int64
+            recordTime:
+              type: integer
+              format: int64
+            totalRecordBytes:
+              type: integer
+              format: int64
+            totalRecordTime:
+              type: integer
+              format: int64
+            sequence:
+              type: integer
+              format: int32
+            startTime:
+              type: string
+              format: date-time
+            finishTime:
+              type: string
+              format: date-time
+            createdTime:
+              type: string
+              format: date-time
+            isConfig:
+              type: boolean
+    MpegtsProvider:
+      type: object
+      properties:
+        streams:
+          $ref: '#/components/schemas/StreamMap'
+        audioMap:
+          $ref: '#/components/schemas/AudioMap'
+    Option:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    CrossDomains:
+      type: object
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        headers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Option'
+    WebrtcProvider:
+      type: object
+      properties:
+        timeout:
+          type: integer
+          format: int32
+        crossDomain:
+          $ref:  '#/components/schemas/CrossDomains'
+    FileProvider:
+      type: object
+      properties:
+        rootPath:
+          type: string
+        streamMap:
+          $ref: '#/components/schemas/StreamMap'
+        passthroughOutputProfile:
+          type: boolean
+    ScheduleProvider:
+      type: object
+      properties:
+        mediaRootDir:
+          type: string
+        scheduleFilesDir:
+          type: string
+    MultiplexProvider:
+      type: object
+      properties:
+        muxFilesDir:
+          type: string
+    RtspProvider:
+      type: object
+    OvtProvider:
+      type: object
+    Providers:
+      type: object
+      properties:
+        rtmp:
+          $ref: '#/components/schemas/RtmpProvider'
+        rtspPull:
+          $ref: '#/components/schemas/RtspPullProvider'
+        rtsp:
+          $ref: '#/components/schemas/RtspProvider'
+        ovt:
+          $ref: '#/components/schemas/RtspProvider'
+        srt:
+          $ref: '#/components/schemas/SrtProvider'
+        mpegts:
+          $ref: '#/components/schemas/MpegtsProvider'
+        webrtc:
+          $ref: '#/components/schemas/WebrtcProvider'
+        file:
+          $ref: '#/components/schemas/FileProvider'
+        schedule:
+          $ref: '#/components/schemas/ScheduleProvider'
+        multiplex:
+          $ref: '#/components/schemas/MultiplexProvider'
+    BypassIfMatch:
+      type: object
+      properties:
+        codec:
+          type: string
+        bitrate:
+          type: string
+        samplerate:
+          type: string
+        framerate:
+          type: string
+        channel:
+          type: string
+        width:
+          type: string
+        height:
+          type: string
+        sar:
+          type: string
+    AudioProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        bypass:
+          type: boolean
+        codec:
+          type: string
+        modules:
+          type: string
+        samplerate:
+          type: integer
+          format: int32
+        bitrate:
+          type: integer
+          format: int32
+        channel:
+          type: integer
+          format: int32x
+        bypassIfMatch:
+          $ref: '#/components/schemas/BypassIfMatch'
+    VideoProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        bypass:
+          type: boolean
+        codec:
+          type: string
+        modules:
+          type: string
+        bitrate:
+          type: string
+        width:
+          type: integer
+          format: int32
+        height:
+          type: integer
+          format: int32
+        framerate:
+          type: number
+          format: double
+        skipframe:
+          type: integer
+          format: int32
+        preset:
+          type: string
+        threadcount:
+          type: integer
+          format: int32
+        keyFrameIntervalType:
+          type: integer
+          format: int32
+        keyFrameInterval:
+          type: string
+        bframe:
+          type: integer
+          format: int32
+        bypassIfMatch:
+          $ref: '#/components/schemas/BypassIfMatch'
+        profile:
+          type: string
+        lookahead:
+          type: integer
+          format: int32
+    ImageProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        codec:
+          type: string
+        modules:
+          type: string
+        width:
+          type: integer
+          format: int32
+        height:
+          type: integer
+          format: int32
+        framerate:
+          type: number
+          format: double
+        skipframe:
+          type: integer
+          format: int32
+        bypassIfMatch:
+          $ref: '#/components/schemas/BypassIfMatch'
+    Encodes:
+      type: object
+      properties:
+        audios:
+          type: array
+          items:
+            $ref: '#/components/schemas/AudioProfile'
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoProfile'
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageProfile'
+    Decodes:
+      type: object
+      properties:
+        threadcount:
+          type: integer
+          format: int32
+        onlyKeyframe:
+          type: boolean
+    Options:
+      type: object
+      properties:
+        webRtcAutoAbr:
+          type: boolean
+        hlsChunklistPathDepth:
+          type: integer
+          format: int32
+        enableTsPackaging:
+          type: boolean
+    Timebase:
+      type: object
+      properties:
+        num:
+          type: integer
+          format: int32
+        den:
+          type: integer
+          format: int32
+    AudioTrack:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint32
+        name:
+          type: string
+        type:
+          type: string
+        audio:
+          type: object
+          properties:
+            codec:
+              type: string
+            samplerate:
+              type: integer
+              format: int32
+            channel:
+              type: integer
+              format: int32
+            bitrate:
+              type: string
+            bitrateConf:
+              type: string
+            bitrateAvg:
+              type: string
+            bitrateLatest:
+              type: string
+            timebase:
+              $ref: '#/components/schemas/Timebase'
+    VideoTrack:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: uint32
+        name:
+          type: string
+        type:
+          type: string
+        video:
+          type: object
+          properties:
+            bypass:
+              type: boolean
+            codec:
+              type: string
+            width:
+              type: integer
+              format: int32
+            height:
+              type: integer
+              format: int32
+            bitrate:
+              type: string
+            bitrateConf:
+              type: string
+            bitrateAvg:
+              type: string
+            bitrateLatest:
+              type: string
+            framerate:
+              type: number
+              format: float
+            framerateConf:
+              type: number
+              format: float
+            framerateAvg:
+              type: number
+              format: float
+            framerateLatest:
+              type: number
+              format: float
+            timebase:
+              $ref: '#/components/schemas/Timebase'
+            hasBframes:
+              type: boolean
+            keyFrameInterval:
+              type: number
+              format: float
+            keyFrameIntervalConf:
+              type: number
+              format: float
+            keyFrameIntervalAvg:
+              type: number
+              format: float
+            keyFrameIntervalLatest:
+              type: number
+              format: float
+            deltaFramesSinceLastKeyFrame:
+              type: integer
+              format: int32
+    Tracks:
+      type: array
+      items:
+        anyOf:
+          - $ref: '#/components/schemas/AudioTrack'
+          - $ref: '#/components/schemas/VideoTrack'
+    Rendition:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        videoVariantName:
+          type: string
+        video:
+          type: string
+        audio:
+          type: string
+        audioVariantName:
+          type: string
+        videoIndexHint:
+          type: integer
+          format: int32
+        audioIndexHint:
+          type: integer
+          format: int32
+    AudioTemplate:
+      type: object
+      properties:
+        variant_name:
+          type: string
+        encoding_type:
+          type: string
+        max_bitrate:
+          type: integer
+          format: int32
+        min_bitrate:
+          type: integer
+          format: int32
+        max_samplerate:
+          type: integer
+          format: int32
+        min_samplerate:
+          type: integer
+          format: int32
+        max_channel:
+          type: integer
+          format: int32
+        min_channel:
+          type: integer
+          format: int32
+    VideoTemplate:
+      type: object
+      properties:
+        variant_name:
+          type: string
+        encoding_type:
+          type: string
+        max_width:
+          type: integer
+          format: int32
+        min_width:
+          type: integer
+          format: int32
+        max_height:
+          type: integer
+          format: int32
+        min_height:
+          type: integer
+          format: int32
+        max_framerate:
+          type: integer
+          format: int32
+        min_framerate:
+          type: integer
+          format: int32
+        max_bitrate:
+          type: integer
+          format: int32
+        min_bitrate:
+          type: integer
+          format: int32
+    RenditionTemplate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        video_template:
+          $ref: '#/components/schemas/VideoTemplate'
+        audio_template:
+          $ref: '#/components/schemas/AudioTemplate'
+    Playlist:
+      type: object
+      required: [name,filename]
+      properties:
+        name:
+          type: string
+        fileName:
+          type: string
+        options:
+          $ref: '#/components/schemas/Options'
+        renditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rendition'
+        rendition_templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/RenditionTemplate'
+    Playlists:
+      type: array
+      items:
+        $ref: '#/components/schemas/Playlist'
+    OutputProfile:
+      type: object
+      properties:
+        name:
+          type: string
+        outputStreamName:
+          type: string
+        encodes:
+          $ref: '#/components/schemas/Encodes'
+        playlists:
+          $ref: '#/components/schemas/Playlists'
+    Decoder:
+      type: object
+      properties:
+        enable:
+          type: boolean
+        modules:
+          type: string
+    Encoder:
+      type: object
+      properties:
+        enable:
+          type: boolean
+        modules:
+          type: string
+    HwAccels:
+      type: object
+      properties:
+        decoder:
+          $ref: '#/components/schemas/Decoder'
+        encoder:
+          $ref: '#/components/schemas/Encoder'
+    OutputProfiles:
+      type: object
+      required: [outputprofile]
+      properties:
+        hardwareAcceleration:
+          type: boolean
+        hwaccels:
+          $ref: '#/components/schemas/HwAccels'
+        outputprofile:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutputProfile'
+        decodes:
+          $ref: '#/components/schemas/Decodes'
+    PlayoutDelay:
+      type: object
+      properties:
+        min:
+          type: integer
+          format: int32
+        max:
+          type: integer
+          format: int32
+    WebrtcPublisher:
+      type: object
+      properties:
+        timeout:
+          type: integer
+          format: int32
+        jitterBuffer:
+          type: boolean
+        rtx:
+          type: boolean
+        ulpfec:
+          type: boolean
+        playoutDelay:
+          $ref: '#/components/schemas/PlayoutDelay'
+        createDefaultPlaylist:
+          type: boolean
+        bandwidthEstimation:
+          type: string
+    Drm:
+      type: object
+      properties:
+        enable:
+          type: boolean
+        infoFile:
+          type: string
+    LlhlsPublisher:
+      type: object
+      properties:
+        chunkDuration:
+          type: number
+          format: double
+        partHoldBack:
+          type: number
+          format: double
+        enablePreloadHint:
+          type: boolean
+        drm:
+          $ref: '#/components/schemas/Drm'
+    OvtPublisher:
+      type: object
+    FilePublisher:
+      type: object
+      properties:
+        rootPath:
+          type: string
+        filePath:
+          type: string
+        infoPath:
+          type: string
+        streamMap:
+          $ref: '#/components/schemas/StreamMap'
+    ThumbnailPublisher:
+      type: object
+      properties:
+        crossDomains:
+          $ref: '#/components/schemas/CrossDomains'
+    PushPublisher:
+      type: object
+      properties:
+        streamMap:
+          $ref: '#/components/schemas/StreamMap'
+    SrtPublisher:
+      type: object
+    Publishers:
+      type: object
+      properties:
+        appWorkerCount:
+          type: integer
+          format: int32
+        streamWorkerCount:
+          type: integer
+          format: int32
+        delayBufferTimeMs:
+          type: integer
+          format: int32
+        llhls:
+          $ref: '#/components/schemas/LlhlsPublisher'
+        ovt:
+          $ref: '#/components/schemas/OvtPublisher'
+        webrtc:
+          $ref: '#/components/schemas/WebrtcPublisher'
+        file:
+          $ref: '#/components/schemas/FilePublisher'
+        thumbnail:
+          $ref: '#/components/schemas/ThumbnailPublisher'
+        push:
+          $ref: '#/components/schemas/PushPublisher'
+        srt:
+          $ref: '#/components/schemas/SrtPublisher'
+    Application:
+      type: object
+      required: [name,type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        decodes:
+          $ref: '#/components/schemas/Decodes'
+        outputProfiles:
+          $ref: '#/components/schemas/OutputProfiles'
+        providers:
+          $ref: '#/components/schemas/Providers'
+        publishers:
+          $ref: '#/components/schemas/Publishers'
+    Applications:
+      type: object
+      required: [application]
+      properties:
+        application:
+          type: array
+          items:
+            $ref: '#/components/schemas/Application'
+    VHost:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        distribution:
+          type: string
+        host:
+          $ref: '#/components/schemas/Host'
+        signedPolicy:
+          $ref: '#/components/schemas/SignedPolicy'
+        admissionWebhooks:
+          $ref: '#/components/schemas/AdmissionWebhooks'
+        origins:
+          $ref: '#/components/schemas/Origins'
+        originMapStore:
+          $ref: '#/components/schemas/OriginMapStore'
+        applications:
+          $ref: '#/components/schemas/Applications'
+    Connections:
+      type: object
+      properties:
+        webrtc:
+          type: integer
+          format: int32
+        llhls:
+          type: integer
+          format: int32
+        ovt:
+          type: integer
+          format: int32
+        file:
+          type: integer
+          format: int32
+        push:
+          type: integer
+          format: int32
+        thumbnail:
+          type: integer
+          format: int32
+        hls:
+          type: integer
+          format: int32
+        srt:
+          type: integer
+          format: int32
+    Metrics:
+      type: object
+      properties:
+        connections:
+          $ref: '#/components/schemas/Connections'
+        createdTime:
+          type: string
+          format: date-time
+        lastRecvTime:
+          type: string
+          format: date-time
+        lastSentTime:
+          type: string
+          format: date-time
+        lastUpdatedTime:
+          type: string
+          format: date-time
+        lastThroughputIn:
+          type: integer
+          format: int32
+        maxTotalConnectionTime:
+          type: string
+          format: date-time
+        maxTotalConnections:
+          type: integer
+          format: int32
+        totalBytesIn:
+          type: integer
+          format: int32
+        totalBytesOut:
+          type: integer
+          format: int32
+        totalConnections:
+          type: integer
+          format: int32
+        avgThroughputIn:
+          type: integer
+          format: int32
+        avgThroughputOut:
+          type: integer
+          format: int32
+        maxThroughputIn:
+          type: integer
+          format: int32
+        maxThroughputOut:
+          type: integer
+          format: int32
+    AdmissionState:
+      type: object
+      required: [direction,protocol,status,url]
+      properties:
+        direction:
+          type: string
+          enum: [incoming,outgoing]
+        protocol:
+          type: string
+          enum: [webrtc,rtmp,srt,llhls,thumbnail]
+        status:
+          type: string
+          enum: [opening,closing]
+        url:
+          type: string
+        new_url:
+          type: string
+        time:
+          type: string
+          format: date-time
+  requestBodies:
+    Admission:
+      description: admission request
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [client,request]
+            properties:
+              client:
+                type: object
+                required: [address,port,real_ip]
+                properties:
+                  address:
+                    type: string
+                  port:
+                    type: integer
+                    format: int
+                  real_ip:
+                    type: string
+                  user_agent:
+                    type: string
+              request:
+                $ref: '#/components/schemas/AdmissionState'
+    Transcodec:
+      description: transcoding request
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              source:
+                type: string
+              stream:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  virtualHost:
+                    type: string
+                  application:
+                    type: string
+                  sourceType:
+                    type: string
+                  createdTime:
+                    type: string
+                    format: date-time
+                  sourceUrl:
+                    type: string
+                  tracks:
+                    $ref: '#/components/schemas/Tracks'
+  responses:
+    Empty:
+      description: intentionally empty
+    Status:
+      description: response status
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/HttpStatus'
+            - properties:
+                response:
+                  type: object
+    Statuses:
+      description: response statuses
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              allOf:
+              - $ref: '#/components/schemas/HttpStatus'
+              - properties:
+                  response:
+                    type: object
+    Names:
+      description: response status and names
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/HttpStatus'
+            - properties:
+                response:
+                  type: array
+                  items:
+                    type: string
+    Admitted:
+      description: response for admission
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [allowed]
+            properties:
+              allowed:
+                type: boolean
+              new_url:
+                type: string
+              lifetime:
+                type: integer
+                format: int64
+              reason:
+                type: string
+    Transcoded:
+      description: response for transcoding
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [allowed]
+            properties:
+              allowed:
+                type: boolean
+              reason:
+                type: string
+              outputProfiles:
+                $ref: '#/components/schemas/OutputProfiles'
+paths:
+  /admissions:
+    post:
+      operationId: AdmissionsPost
+      tags: [hook]
+      summary: AdmissionWebhooks for control server to control publishing and playback admission requests.
+      requestBody:
+        $ref: '#/components/requestBodies/Admission'
+      responses:
+        '200':
+          $ref: '#/components/responses/Admitted'
+      security: []
+  /transcodecs:
+    post:
+      operationId: TranscodecsPost
+      tags: [hook]
+      summary: TranscodeWebhook customizes OutputProfiles
+      requestBody:
+        $ref:  '#/components/requestBodies/Transcodec'
+      responses:
+        '200':
+          $ref: '#/components/responses/Transcoded'
+      security: []
+  /vhosts:
+    get:
+      operationId: VHostsGet
+      tags: [api]
+      summary: Get a list of virtual hosts
+      description: Retrieves an array of configured virtual hosts.
+      responses:
+        '200':
+          $ref: '#/components/responses/Names'
+        '401':
+          $ref: '#/components/responses/Status'
+    post:
+      operationId: VHostsPost
+      tags: [api]
+      summary: Create a new virtual host
+      description: |
+        Attempts to create a new virtual host.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref:  '#/components/schemas/VHost'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref:  '#/components/schemas/VHost'
+        '207':
+          description: various status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          $ref:  '#/components/schemas/VHost'
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          type: object
+        '400':
+          $ref: '#/components/responses/Empty'
+        '401':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Empty'
+  /vhosts/{vhost}:
+    parameters:
+      - $ref: '#/components/parameters/vhostName'
+    get:
+      operationId: VHostGet
+      tags: [api]
+      summary: Get virtual host info
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      $ref:  '#/components/schemas/VHost'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    delete:
+      operationId: VHostDelete
+      tags: [api]
+      summary: Delete virtual host
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '500':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps:
+    parameters:
+      - $ref: '#/components/parameters/vhostName'
+    get:
+      operationId: VHostAppsGet
+      tags: [api]
+      summary: Get a list of applications for a virtual host
+      responses:
+        '200':
+          $ref: '#/components/responses/Names'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    post:
+      operationId: VHostAppsPost
+      tags: [api]
+      summary: Create a new application in a virtual host
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Application'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref:  '#/components/schemas/Application'
+        '207':
+          description: mulit status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          $ref:  '#/components/schemas/Application'
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          type: object
+        '400':
+          $ref: '#/components/responses/Empty'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Empty'
+  /vhosts/{vhost}/apps/{app}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    get:
+      operationId: VHostAppGet
+      tags: [api]
+      summary: Get application info
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      allOf:
+                        - $ref:  '#/components/schemas/Application'
+                        - properties:
+                            dynamic:
+                              type: boolean
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    patch:
+      operationId: VHostAppPatch
+      tags: [api]
+      summary: Modify application settings. If this request succeeds, the Application will be restarted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref:  '#/components/schemas/Application'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      $ref:  '#/components/schemas/Application'
+        '400':
+          $ref: '#/components/responses/Empty'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    delete:
+      operationId: VHostAppDelete
+      tags: [api]
+      summary: Delete application
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '500':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}/outputProfiles:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    get:
+      operationId: VHostAppOutputProfilesGet
+      tags: [api]
+      summary: Get a list of output profiles for an application
+      responses:
+        '200':
+          $ref: '#/components/responses/Names'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    post:
+      operationId: VHostAppOutputProfilesPost
+      tags: [api]
+      summary: Create a new output profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref:  '#/components/schemas/OutputProfile'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          $ref:  '#/components/schemas/OutputProfile'
+        '207':
+          description: multi status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  oneOf:
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          $ref:  '#/components/schemas/OutputProfile'
+                  - allOf:
+                    - $ref: '#/components/schemas/HttpStatus'
+                    - properties:
+                        response:
+                          type: object
+        '400':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}/outputProfiles/{profile}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    - $ref: '#/components/parameters/profileName'
+    get:
+      operationId: VHostAppOutputProfileGet
+      tags: [api]
+      summary: Get output profiles info
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref:  '#/components/schemas/OutputProfile'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    delete:
+      operationId: VHostAppOutputProfileDelete
+      tags: [api]
+      summary: Delete output profile settings. If this request succeeds, the Application will be restarted.
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}/streams:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    get:
+      operationId: VHostAppStreamsGet
+      tags: [api]
+      summary: Get all stream names in the {vhost name}/{app name} application.
+      responses:
+        '200':
+          $ref: '#/components/responses/Names'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    post:
+      operationId: VHostAppStreamsPost
+      tags: [api]
+      summary: Create a stream by pulling an external URL. External URL protocols currently support RTSP and OVT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: The name of the new stream.
+                urls:
+                  type: array
+                  items:
+                    type: string
+                properties:
+                  type: object
+                  properties:
+                    persistent:
+                      type: boolean
+                    noInputFailoverTimeoutMs:
+                      type: integer
+                      format: int64
+                    unusedStreamDeletionTimeoutMs:
+                      type: integer
+                      format: int64
+                    ignoreRtcpSRTimestamp:
+                      type: integer
+                      format: int64
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Status'
+        '502':
+          $ref: '#/components/responses/Status'
+        '500':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}/streams/{stream}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    - $ref: '#/components/parameters/streamName'
+    get:
+      operationId: VHostAppStreamGet
+      tags: [api]
+      summary: Get detailed information of stream
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref: '#/components/schemas/Stream'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+    delete:
+      operationId: VHostAppStreamDelete
+      tags: [api]
+      summary: Delete Stream. This terminates the ingress connection.
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:startPush:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppStartPushPost
+      tags: [api]
+      summary: Start Push Publishing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamPush'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      $ref: '#/components/schemas/StreamPushed'
+        '400':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:stopPush:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppStopPushPost
+      tags: [api]
+      summary: Start Push Publishing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '400':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:pushes:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppPushesPost
+      tags: [api]
+      summary: Get Push Publishing State
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref:  '#/components/schemas/StreamPushed'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:startRecord:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppStartRecordPost
+      tags: [api]
+      summary: Start Recording
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StreamRecord'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      $ref: '#/components/schemas/StreamRecorded'
+        '400':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+        '409':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:stopRecord:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppStopRecordPost
+      tags: [api]
+      summary: Stop Recording
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Status'
+        '400':
+          $ref: '#/components/responses/Status'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /vhosts/{vhost}/apps/{app}:records:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    post:
+      operationId: VHostAppRecordsPost
+      tags: [api]
+      summary: Get Recording State
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        type: array
+                        items:
+                          $ref:  '#/components/schemas/StreamRecorded'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /stats/current/vhosts/{vhost}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    get:
+      operationId: StatsVHostGet
+      tags: [api]
+      summary: Provides statistics of virtual host, application, and stream.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - properties:
+                    response:
+                      $ref: '#/components/schemas/Metrics'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /stats/current/vhosts/{vhost}/apps/{app}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    get:
+      operationId: StatsVHostAppGet
+      tags: [api]
+      summary: Provides statistics of virtual host, application, and stream.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref: '#/components/schemas/Metrics'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'
+  /stats/current/vhosts/{vhost}/apps/{app}/streams/{stream}:
+    parameters:
+    - $ref: '#/components/parameters/vhostName'
+    - $ref: '#/components/parameters/appName'
+    - $ref: '#/components/parameters/streamName'
+    get:
+      operationId: StatsVHostAppStreamGet
+      tags: [api]
+      summary: Provides statistics of virtual host, application, and stream.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HttpStatus'
+                  - properties:
+                      response:
+                        $ref: '#/components/schemas/Metrics'
+        '401':
+          $ref: '#/components/responses/Status'
+        '404':
+          $ref: '#/components/responses/Status'

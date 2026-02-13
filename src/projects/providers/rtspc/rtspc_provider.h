@@ -15,7 +15,7 @@
  * 		: Create PhysicalPort, OvtApplication
  *
  * OvtApplication
- * 		: Create MediaRouteApplicationConnector, OvtStream
+ * 		: Create MediaRouterApplicationConnector, OvtStream
  *
  * OvtStream
  * 		: Create by interface (PullStream)
@@ -32,9 +32,9 @@ namespace pvd
 	{
 
 	public:
-		static std::shared_ptr<RtspcProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<RtspcProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit RtspcProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit RtspcProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
 		~RtspcProvider() override;
 

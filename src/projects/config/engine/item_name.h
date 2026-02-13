@@ -58,7 +58,7 @@ namespace cfg
 		ov::String json_name;
 
 	protected:
-		ItemName() = default;
+		ItemName()					= default;
 
 		bool _created_from_xml_name = false;
 	};

@@ -33,5 +33,5 @@ namespace cfg
 				ov::String _alias;
 			};
 		}  // namespace app
-	}	   // namespace vhost
+	}  // namespace vhost
 }  // namespace cfg

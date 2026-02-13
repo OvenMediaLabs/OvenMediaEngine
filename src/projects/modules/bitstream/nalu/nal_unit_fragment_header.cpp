@@ -11,9 +11,9 @@ NalUnitFragmentHeader::~NalUnitFragmentHeader()
 
 }
 
-bool NalUnitFragmentHeader::Parse(const std::shared_ptr<ov::Data> &data, NalUnitFragmentHeader &fragment_hdr)
+bool NalUnitFragmentHeader::Parse(const std::shared_ptr<const ov::Data> &data, NalUnitFragmentHeader &fragment_hdr)
 {
-	return NalUnitFragmentHeader::Parse( data->GetDataAs<const uint8_t>(), data->GetLength(), fragment_hdr);
+	return NalUnitFragmentHeader::Parse( data->GetDataAs<uint8_t>(), data->GetLength(), fragment_hdr);
 }
 
 bool NalUnitFragmentHeader::Parse(const uint8_t *bitstream, size_t length, NalUnitFragmentHeader &fragment_hdr)

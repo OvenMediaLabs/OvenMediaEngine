@@ -19,16 +19,30 @@ namespace ov
 
 		++_count;
 
-		_condition.notify_one();
+		_condition.notify_all();
+	}
+
+	void Semaphore::Stop()
+	{
+		std::unique_lock<decltype(_mutex)> lock(_mutex);
+
+		_stop_flag = true;
+
+		_condition.notify_all();
 	}
 
 	void Semaphore::Wait()
 	{
 		std::unique_lock<decltype(_mutex)> lock(_mutex);
 
-		while(_count <= 0)
+		while(_count <= 0 && !_stop_flag)
 		{
 			_condition.wait(lock);
+		}
+
+		if (_stop_flag)
+		{
+			return;
 		}
 
 		OV_ASSERT2(_count > 0);
@@ -40,13 +54,18 @@ namespace ov
 	{
 		std::unique_lock<decltype(_mutex)> lock(_mutex);
 
-		while(_count <= 0)
+		while(_count <= 0 && !_stop_flag)
 		{
 			auto result = _condition.wait_for(lock, std::chrono::milliseconds(timeout_delta_msec));
 			if(result == std::cv_status::timeout)
 			{
 				return false;
 			}
+		}
+
+		if (_stop_flag)
+		{
+			return false;
 		}
 
 		OV_ASSERT2(_count > 0);
@@ -59,11 +78,17 @@ namespace ov
 	{
 		std::unique_lock<decltype(_mutex)> lock(_mutex);
 
-		if(_count > 0)
+		if (_stop_flag)
+		{
+			return false;
+		}
+
+		if (_count > 0)
 		{
 			--_count;
 			return true;
 		}
+		
 		return false;
 	}
 }

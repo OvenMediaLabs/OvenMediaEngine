@@ -6,7 +6,7 @@
 
 namespace pub
 {
-	std::shared_ptr<FilePublisher> FilePublisher::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	std::shared_ptr<FilePublisher> FilePublisher::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	{
 		auto file = std::make_shared<FilePublisher>(server_config, router);
 
@@ -19,15 +19,15 @@ namespace pub
 		return file;
 	}
 
-	FilePublisher::FilePublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	FilePublisher::FilePublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Publisher(server_config, router)
 	{
-		logtd("FilePublisher has been create");
+		logtt("FilePublisher has been create");
 	}
 
 	FilePublisher::~FilePublisher()
 	{
-		logtd("FilePublisher has been terminated finally");
+		logtt("FilePublisher has been terminated finally");
 	}
 
 	bool FilePublisher::Start()
@@ -62,13 +62,6 @@ namespace pub
 
 	bool FilePublisher::OnDeletePublisherApplication(const std::shared_ptr<pub::Application> &application)
 	{
-		auto file_application = std::static_pointer_cast<FileApplication>(application);
-		if (file_application == nullptr)
-		{
-			logte("Could not found file application. app:%s", file_application->GetName().CStr());
-			return false;
-		}
-
 		return true;
 	}
 }  // namespace pub

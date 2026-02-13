@@ -40,7 +40,7 @@ bool SrtpTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 {
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -76,7 +76,7 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 {
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -103,7 +103,7 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 	{
 		if(!_recv_session->UnprotectRtcp(decode_data))
 		{
-			logtd("RTCP unprotected fail");
+			logtt("RTCP unprotected fail");
 			return false;
 		}
 
@@ -114,7 +114,7 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 	{
 		if(!_recv_session->UnprotectRtp(decode_data))
 		{
-			logtd("RTP unprotected fail");
+			logtt("RTP unprotected fail");
 			return false;
 		}
 
@@ -126,14 +126,14 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 }
 
 // Initialize SRTP
-bool SrtpTransport::SetKeyMeterial(uint64_t crypto_suite, std::shared_ptr<ov::Data> server_key, std::shared_ptr<ov::Data> client_key)
+bool SrtpTransport::SetKeyMaterial(uint64_t crypto_suite, std::shared_ptr<ov::Data> server_key, std::shared_ptr<ov::Data> client_key)
 {
 	if(_send_session || _recv_session)
 	{
 		return false;
 	}
 
-	logtd("Try to set key meterial");
+	logtt("Try to set key material");
 
 	_send_session = std::make_shared<SrtpAdapter>();
 	if(_send_session == nullptr)

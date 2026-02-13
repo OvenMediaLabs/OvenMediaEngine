@@ -81,7 +81,7 @@ namespace http
 
 				if (length > 0LL)
 				{
-					logtd("Trying to send data\n%s", data->Dump(32).CStr());
+					logtt("Trying to send data\n%s", data->Dump(32).CStr());
 					response_data->Append(data);
 				}
 

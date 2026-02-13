@@ -40,5 +40,5 @@ namespace cfg
 				}
 			};
 		}  // namespace api
-	}	   // namespace mgr
+	}  // namespace mgr
 }  // namespace cfg

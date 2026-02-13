@@ -19,7 +19,7 @@
 		http::StatusCode::NotFound,                                          \
 		"Could not find the output profile: [%s/%s/%s]",                     \
 		vhost_metrics->GetName().CStr(),                                     \
-		app_metrics->GetName().GetAppName().CStr(),                          \
+		app_metrics->GetVHostAppName().GetAppName().CStr(),                  \
 		output_profile_name.CStr())
 
 namespace api
@@ -48,14 +48,61 @@ namespace api
 
 			MultipleStatus status_codes;
 
-			Json::Value app_json = app->GetConfig().ToJson();
+			Json::Value app_json  = app->GetConfig().ToJson();
 			auto &output_profiles = app_json["outputProfiles"]["outputProfile"];
 
 			Json::Value response(Json::ValueType::arrayValue);
 
 			for (auto &item : request_body)
 			{
-				auto name = item["name"];
+				// validate name, outputStreamName, encodes
+				if (item.isMember("name") == false || item.isMember("outputStreamName") == false || item.isMember("encodes") == false)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"name\", \"outputStreamName\", \"encodes\" are required");
+				}
+
+				auto name			  = item["name"];
+				auto outputStreamName = item["outputStreamName"];
+				auto encodes		  = item["encodes"];
+
+				if (name.isString() == false || outputStreamName.isString() == false || encodes.isObject() == false)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"name\" must be a string and \"encodes\" must be an object");
+				}
+
+				// encodes must have at least one item (videos array or audios array)
+				if (encodes.isMember("videos") == false && encodes.isMember("audios") == false)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"encodes\" must have at least one item (videos array or audios array)");
+				}
+
+				size_t encodes_count = 0;
+				if (encodes.isMember("videos"))
+				{
+					auto videos = encodes["videos"];
+					if (videos.isArray() == false)
+					{
+						throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"encodes.videos\" must be an array");
+					}
+
+					encodes_count += videos.size();
+				}
+
+				if (encodes.isMember("audios"))
+				{
+					auto audios = encodes["audios"];
+					if (audios.isArray() == false)
+					{
+						throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"encodes.audios\" must be an array");
+					}
+
+					encodes_count += audios.size();
+				}
+
+				if (encodes_count == 0)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "Invalid request body: \"encodes\" must have at least one item (videos array or audios array) and each item must have at least one item");
+				}
 
 				try
 				{
@@ -90,7 +137,7 @@ namespace api
 			std::shared_ptr<mon::ApplicationMetrics> new_app;
 			Json::Value new_app_json;
 
-			new_app = GetApplication(vhost, app->GetName().GetAppName().CStr());
+			new_app		 = GetApplication(vhost, app->GetVHostAppName().GetAppName().CStr());
 			new_app_json = new_app->GetConfig().ToJson();
 
 			for (auto &response_profile : response)
@@ -108,10 +155,10 @@ namespace api
 
 						if (FindOutputProfile(new_app_json, name, &new_profile) >= 0)
 						{
-							response_profile = Json::objectValue;
+							response_profile			   = Json::objectValue;
 							response_profile["statusCode"] = static_cast<int>(http::StatusCode::OK);
-							response_profile["message"] = StringFromStatusCode(http::StatusCode::OK);
-							response_profile["response"] = *new_profile;
+							response_profile["message"]	   = StringFromStatusCode(http::StatusCode::OK);
+							response_profile["response"]   = *new_profile;
 						}
 						else
 						{
@@ -172,7 +219,7 @@ namespace api
 				throw http::HttpError(http::StatusCode::BadRequest, "Request body must be an object");
 			}
 
-			auto profile_name = GetOutputProfileName(client);
+			auto profile_name	 = GetOutputProfileName(client);
 			Json::Value app_json = app->GetConfig().ToJson();
 			Json::Value *output_profile_json;
 
@@ -197,14 +244,14 @@ namespace api
 
 			Json::Value request_json = request_body;
 
-			request_json["name"] = std::string(profile_name);
+			request_json["name"]	 = std::string(profile_name);
 
 			// Modify the json object
-			*output_profile_json = request_json;
+			*output_profile_json	 = request_json;
 
 			RecreateApplication(vhost, app, app_json);
 
-			auto new_app = GetApplication(vhost, app->GetName().GetAppName().CStr());
+			auto new_app = GetApplication(vhost, app->GetVHostAppName().GetAppName().CStr());
 
 			Json::Value value;
 
@@ -223,14 +270,14 @@ namespace api
 			ThrowIfVirtualIsReadOnly(*(vhost.get()));
 
 			auto profile_name = GetOutputProfileName(client);
-			off_t index = FindOutputProfile(app, profile_name, nullptr);
+			off_t index		  = FindOutputProfile(app, profile_name, nullptr);
 
 			if (index < 0)
 			{
 				throw CreateNotFoundError(vhost, app, profile_name);
 			}
 
-			Json::Value app_json = app->GetConfig().ToJson();
+			Json::Value app_json  = app->GetConfig().ToJson();
 			auto &output_profiles = app_json["outputProfiles"]["outputProfile"];
 
 			if (output_profiles.removeIndex(index, nullptr) == false)

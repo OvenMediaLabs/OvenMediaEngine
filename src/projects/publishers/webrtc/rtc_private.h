@@ -1,3 +1,3 @@
 #pragma once
 
-#define OV_LOG_TAG                      "WebRTC Publisher"
+#define OV_LOG_TAG "WebRTC Publisher"

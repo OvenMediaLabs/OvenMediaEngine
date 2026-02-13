@@ -29,6 +29,8 @@ namespace info
 
 		ov::String GetUUID() const;
 
+		bool LoadCertificate();
+
 		const std::shared_ptr<Certificate> &GetCertificate() const
 		{
 			return _certificate;

@@ -30,8 +30,8 @@ namespace http
 				bool IsChunkedTransfer() const;
 
 			private:
-				uint32_t SendHeader() override;
-				uint32_t SendPayload() override;
+				int32_t SendHeader() override;
+				int32_t SendPayload() override;
 
 				bool _chunked_transfer = false;
 			};

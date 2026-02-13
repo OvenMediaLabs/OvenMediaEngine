@@ -8,12 +8,11 @@
 //==============================================================================
 
 #include "rtmp_application.h"
-#include "rtmp_stream.h"
-#include "rtmp_provider_private.h"
 
-#include "base/provider/push_provider/application.h"
 #include "base/info/stream.h"
-
+#include "base/provider/push_provider/application.h"
+#include "rtmp_provider_private.h"
+#include "rtmp_stream.h"
 
 namespace pvd
 {
@@ -31,25 +30,28 @@ namespace pvd
 
 	bool RtmpApplication::JoinStream(const std::shared_ptr<PushStream> &stream)
 	{
-		// Check duplicatied stream name
-		// If there is a same stream name 
+		// Check duplicated stream name
+		// If there is a same stream name
 		auto exist_stream = GetStreamByName(stream->GetName());
-		if(exist_stream != nullptr)
+		if (exist_stream != nullptr)
 		{
 			// Block
-			if(GetConfig().GetProviders().GetRtmpProvider().IsBlockDuplicateStreamName())
+			if (GetConfig().GetProviders().GetRtmpProvider().IsBlockDuplicateStreamName())
 			{
-				logti("Reject %s/%s stream it is a stream with a duplicate name.", GetName().CStr(), stream->GetName().CStr());		
+				logti("Reject %s/%s stream it is a stream with a duplicate name.", GetVHostAppName().CStr(), stream->GetName().CStr());
+				stream->SetApplication(GetSharedPtrAs<Application>());
+				stream->SetApplicationInfo(GetSharedPtrAs<Application>());
+				MonitorInstance->OnStreamCreationFailed(*stream);
 				return false;
 			}
 			else
 			{
 				// Disconnect exist stream
-				logti("Remove exist %s/%s stream because the stream with the same name is connected.", GetName().CStr(), stream->GetName().CStr());		
+				logti("Remove exist %s/%s stream because the stream with the same name is connected.", GetVHostAppName().CStr(), stream->GetName().CStr());
 				DeleteStream(exist_stream);
 			}
 		}
 
 		return PushApplication::JoinStream(stream);
 	}
-}
+}  // namespace pvd

@@ -15,13 +15,15 @@ public:
 		LOC = 5,
 		TOOL = 6,
 		NOTE = 7,
-		PRIV = 8
+		PRIV = 8,
+		RtpStreamId = 12,
+		RepairedRtpStreamId = 13
 	};
 
 	SdesChunk(){}
 	SdesChunk(uint32_t src, Type type, ov::String text)
 	{
-		_src = src;
+		_ssrc = src;
 		_type = type;
 		_text = text;
 	}
@@ -31,8 +33,12 @@ public:
 
 	void Print();
 
+	uint32_t GetSsrc() const { return _ssrc; }
+	Type GetType() const { return _type; }
+	ov::String GetText() const { return _text; }
+
 private:
-	uint32_t _src = 0; 
-	Type _type;	// 1 : CNAME, 2 : 
+	uint32_t _ssrc = 0; 
+	Type _type;
 	ov::String _text;
 };

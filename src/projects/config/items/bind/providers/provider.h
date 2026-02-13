@@ -22,6 +22,7 @@ namespace cfg
 				Tport _tls_port;
 
 				int _worker_count{};
+				bool _thread_per_socket{false};
 
 			public:
 				explicit Provider(const char *port)
@@ -42,6 +43,7 @@ namespace cfg
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetPort, _port);
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetTlsPort, _tls_port);
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetWorkerCount, _worker_count);
+				CFG_DECLARE_CONST_REF_GETTER_OF(IsThreadPerSocket, _thread_per_socket);
 
 			protected:
 				void MakeList() override
@@ -49,8 +51,9 @@ namespace cfg
 					Register<Optional>("Port", &_port);
 					Register<Optional>({"TLSPort", "tlsPort"}, &_tls_port);
 					Register<Optional>("WorkerCount", &_worker_count);
+					Register<Optional>("ThreadPerSocket", &_thread_per_socket);
 				};
 			};
 		}  // namespace pvd
-	}	   // namespace bind
+	}  // namespace bind
 }  // namespace cfg

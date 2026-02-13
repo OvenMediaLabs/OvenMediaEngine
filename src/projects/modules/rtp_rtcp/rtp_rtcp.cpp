@@ -15,7 +15,6 @@ RtpRtcp::RtpRtcp(const std::shared_ptr<RtpRtcpInterface> &observer)
 	        : ov::Node(NodeType::Rtp)
 {
 	_observer = observer;
-	_receiver_report_timer.Start();
 	_rtcp_send_stop_watch.Start();
 }
 
@@ -29,7 +28,7 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 	std::shared_lock<std::shared_mutex> lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
-		logtd("It can only be called in the ready state.");
+		logtt("It can only be called in the ready state.");
 		return false;
 	}
 
@@ -42,25 +41,26 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 
 	_sdes->AddChunk(std::make_shared<SdesChunk>(ssrc, SdesChunk::Type::CNAME, cname));
 
-	logtd("AddRtpSender : %d / %u / %u / %s", payload_type, ssrc, codec_rate, cname.CStr());
+	logtt("AddRtpSender : %d / %u / %u / %s", payload_type, ssrc, codec_rate, cname.CStr());
 
 	return true;
 }
 
-bool RtpRtcp::AddRtpReceiver(uint32_t track_id, const std::shared_ptr<MediaTrack> &track)
+bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const RtpTrackIdentifier &rtp_track_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
-		logtd("It can only be called in the ready state.");
+		logtt("It can only be called in the ready state.");
 		return false;
 	}
 
-	_tracks[track_id] = track;
+	auto track_id = track->GetId();
 
 	switch(track->GetOriginBitstream())
 	{
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
+		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
 		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			_rtp_frame_jitter_buffers[track_id] = std::make_shared<RtpFrameJitterBuffer>();
@@ -71,6 +71,23 @@ bool RtpRtcp::AddRtpReceiver(uint32_t track_id, const std::shared_ptr<MediaTrack
 		default:
 			logte("RTP Receiver cannot support %d input stream format", static_cast<int8_t>(track->GetOriginBitstream()));
 			return false;
+	}
+
+	if (track->GetMediaType() == cmn::MediaType::Video)
+	{
+		_video_receiver_enabled = true;
+	}
+	else if (track->GetMediaType() == cmn::MediaType::Audio)
+	{
+		_audio_receiver_enabled = true;
+	}
+
+	_tracks[track_id] = track;
+	_rtp_track_identifiers.push_back(rtp_track_id);
+	if (rtp_track_id.ssrc.has_value())
+	{
+		logti("AddRtpReceiver : %d / %u / %s / %s", track_id, rtp_track_id.ssrc.value(), rtp_track_id.mid.value_or(ov::String("")).CStr(), rtp_track_id.rid.value_or(ov::String("")).CStr());
+		ConnectSsrcToTrack(rtp_track_id.ssrc.value(), track_id);
 	}
 
 	return true;
@@ -91,7 +108,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -100,7 +117,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
     if(it != _rtcp_sr_generators.end())
     {
 		auto rtcp_sr_generator = it->second;
-		rtcp_sr_generator->AddRTPPacketAndGenerateRtcpSR(*rtp_packet);
+		rtcp_sr_generator->AddRTPPacketInfo(rtp_packet);
 	}
 
 	if(_rtcp_sent_count == 0 || _rtcp_send_stop_watch.Elapsed() > SDES_CYCLE_MS)
@@ -131,11 +148,11 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 		
 		if(SendDataToNextNode(NodeType::Rtcp, compound_rtcp_data) == false)
 		{
-			logd("RTCP","Send RTCP failed : pt(%d) ssrc(%u)", rtp_packet->PayloadType(), rtp_packet->Ssrc());
+			logt("RTCP","Send RTCP failed : pt(%d) ssrc(%u)", rtp_packet->PayloadType(), rtp_packet->Ssrc());
 		}
 		else
 		{
-			logd("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%d)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
+			logt("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%d)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
 		}
 	}
 
@@ -144,9 +161,9 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 	return SendDataToNextNode(NodeType::Rtp, rtp_packet->GetData());
 }
 
-bool RtpRtcp::SendPLI(uint32_t media_ssrc)
+bool RtpRtcp::SendPLI(uint32_t track_id)
 {
-	auto stat_it = _receive_statistics.find(media_ssrc);
+	auto stat_it = _receive_statistics.find(track_id);
 	if(stat_it == _receive_statistics.end())
 	{
 		// Never received such SSRC packet
@@ -158,7 +175,7 @@ bool RtpRtcp::SendPLI(uint32_t media_ssrc)
 	auto pli = std::make_shared<PLI>();
 
 	pli->SetSrcSsrc(stat->GetReceiverSSRC());
-	pli->SetMediaSsrc(media_ssrc);
+	pli->SetMediaSsrc(stat->GetMediaSSRC());
 
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(pli);
@@ -168,9 +185,9 @@ bool RtpRtcp::SendPLI(uint32_t media_ssrc)
 	return SendDataToNextNode(NodeType::Rtcp, rtcp_packet->GetData());
 }
 
-bool RtpRtcp::SendFIR(uint32_t media_ssrc)
+bool RtpRtcp::SendFIR(uint32_t track_id)
 {
-	auto stat_it = _receive_statistics.find(media_ssrc);
+	auto stat_it = _receive_statistics.find(track_id);
 	if(stat_it == _receive_statistics.end())
 	{
 		// Never received such SSRC packet
@@ -182,8 +199,8 @@ bool RtpRtcp::SendFIR(uint32_t media_ssrc)
 	auto fir = std::make_shared<FIR>();
 
 	fir->SetSrcSsrc(stat->GetReceiverSSRC());
-	fir->SetMediaSsrc(media_ssrc);
-	fir->AddFirMessage(media_ssrc, static_cast<uint8_t>(stat->GetNumberOfFirRequests()%256));
+	fir->SetMediaSsrc(stat->GetMediaSSRC());
+	fir->AddFirMessage(stat->GetMediaSSRC(), static_cast<uint8_t>(stat->GetNumberOfFirRequests()%256));
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(fir);
 
@@ -194,15 +211,145 @@ bool RtpRtcp::SendFIR(uint32_t media_ssrc)
 	return SendDataToNextNode(NodeType::Rtcp, rtcp_packet->GetData());
 }
 
-uint8_t RtpRtcp::GetReceivedPayloadType(uint32_t ssrc)
+bool RtpRtcp::IsTransportCcFeedbackEnabled() const
 {
-	auto stat_it = _receive_statistics.find(ssrc);
-	if(stat_it == _receive_statistics.end())
+	return _transport_cc_feedback_enabled;
+}
+
+bool RtpRtcp::EnableTransportCcFeedback(uint8_t extension_id)
+{
+	_transport_cc_feedback_extension_id = extension_id;
+	_transport_cc_feedback_enabled = true;
+
+	return true;
+}
+
+void RtpRtcp::DisableTransportCcFeedback()
+{
+	_transport_cc_feedback_enabled = false;
+}
+
+std::optional<uint32_t> RtpRtcp::GetTrackId(uint32_t ssrc) const
+{
+	auto it = _ssrc_to_track_id.find(ssrc);
+	if(it == _ssrc_to_track_id.end())
 	{
-		return 0;
+		return std::nullopt;
 	}
 
-	return stat_it->second->GetPayloadType();
+	return it->second;
+}
+
+// Find track id by mid or mid + rid
+std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const RtpPacket> &rtp_packet) const
+{
+	auto track_id = GetTrackId(rtp_packet->Ssrc());
+	if(track_id.has_value())
+	{
+		return track_id;
+	}
+
+	for (const auto &rtp_track_id : _rtp_track_identifiers)
+	{
+		// with ssrc
+		if (rtp_track_id.ssrc.has_value() && rtp_track_id.ssrc.value() == rtp_packet->Ssrc())
+		{
+			return rtp_track_id.GetTrackId();
+		}
+
+		// Get mid from rtp header extension
+		auto mid = rtp_packet->GetExtension(rtp_track_id.mid_extension_id);
+		auto rid = rtp_packet->GetExtension(rtp_track_id.rid_extension_id);
+
+		// with mid or mid + rid
+		if (rtp_track_id.mid.has_value() && mid.has_value() &&
+			mid.value().ToString() == rtp_track_id.mid.value())
+		{
+			// mid + rid
+			if (rtp_track_id.rid.has_value() && rid.has_value() &&
+				rid.value().ToString() == rtp_track_id.rid.value())
+			{
+				return rtp_track_id.GetTrackId();
+			}
+			// mid only
+			else if (rtp_track_id.rid.has_value() == false)
+			{
+				return rtp_track_id.GetTrackId();
+			}
+		}
+	}
+
+	return std::nullopt;
+}
+
+// Find track id by cname or cname + rid
+std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const Sdes> &sdes) const
+{
+	auto track_id = GetTrackId(sdes->GetRtpSsrc());
+	if(track_id.has_value())
+	{
+		return track_id;
+	}
+
+	for (const auto &rtp_track_id : _rtp_track_identifiers)
+	{
+		// with ssrc
+		if (rtp_track_id.ssrc.has_value() && rtp_track_id.ssrc.value() == sdes->GetRtpSsrc())
+		{
+			return rtp_track_id.GetTrackId();
+		}
+
+		// with cname or cname + rid
+		if (rtp_track_id.cname.has_value())
+		{
+			auto sdes_chunk = sdes->GetChunk(SdesChunk::Type::CNAME);
+			if (sdes_chunk != nullptr && sdes_chunk->GetText() == rtp_track_id.cname.value())
+			{
+				// cname + rid
+				if (rtp_track_id.rid.has_value())
+				{
+					auto rid_chunk = sdes->GetChunk(SdesChunk::Type::RtpStreamId);
+					if (rid_chunk != nullptr && rid_chunk->GetText() == rtp_track_id.rid.value())
+					{
+						return rtp_track_id.GetTrackId();
+					}
+				}
+				// cname only
+				else
+				{
+					return rtp_track_id.GetTrackId();
+				}
+			}
+		}
+	}
+
+	return std::nullopt;
+}
+
+std::optional<uint32_t> RtpRtcp::FindTrackId(uint8_t rtsp_inter_channel) const
+{
+	for (const auto &rtp_track_id : _rtp_track_identifiers)
+	{
+		// with interleaved channel
+		if (rtp_track_id.interleaved_channel.has_value() && rtp_track_id.interleaved_channel.value() == rtsp_inter_channel)
+		{
+			return rtp_track_id.GetTrackId();
+		}
+	}
+
+	return std::nullopt;
+}
+
+void RtpRtcp::ConnectSsrcToTrack(uint32_t ssrc, uint32_t track_id)
+{
+	if (_ssrc_to_track_id.find(ssrc) != _ssrc_to_track_id.end())
+	{	
+		logtw("SSRC(%u) is already connected to track ID(%u), it will be replaced.", ssrc, _ssrc_to_track_id[ssrc]);
+	}
+
+	logti("Connect SSRC(%u) to track ID(%u)", ssrc, track_id);
+
+	_ssrc_to_track_id[ssrc] = track_id;
 }
 
 // In general, since RTP_RTCP is the first node, there is no previous node. So it will not be called
@@ -212,7 +359,7 @@ bool RtpRtcp::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_p
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -239,14 +386,14 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
 	// std::min(FIXED_HEADER_SIZE, RTCP_HEADER_SIZE)
 	if(data->GetLength() < RTCP_HEADER_SIZE)
 	{
-		logtd("It is not an RTP or RTCP packet.");
+		logtt("It is not an RTP or RTCP packet.");
 		return false;
 	}
 
@@ -283,7 +430,7 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 	}
 	else
 	{
-		logtd("It is not an RTP or RTCP packet.");
+		logtt("It is not an RTP or RTCP packet.");
 		return false;
 	}
 
@@ -293,27 +440,47 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data)
 {
 	auto packet = std::make_shared<RtpPacket>(data);
-	logtd("%s", packet->Dump().CStr());
 
-	uint32_t track_id = 0;
-	if(from_node == NodeType::Rtsp)
+	std::optional<uint32_t> track_id_opt = GetTrackId(packet->Ssrc());
+	if (track_id_opt.has_value() == false)
 	{
-		auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
-		if(rtsp_data == nullptr)
+		if(from_node == NodeType::Rtsp)
 		{
-			logte("Could not convert to RtspData");
-			return false;
+			auto rtsp_data = std::static_pointer_cast<const RtspData>(data);
+			if(rtsp_data == nullptr)
+			{
+				logte("Could not convert to RtspData");
+				return false;
+			}
+
+			// RTSP Node uses channelID as trackID
+			track_id_opt = FindTrackId(rtsp_data->GetChannelId());
+			if (track_id_opt.has_value() == false)
+			{
+				logte("Could not find track ID for RTSP channel ID %u", rtsp_data->GetChannelId());
+				return false;
+			}
+		}
+		else
+		{
+			track_id_opt = FindTrackId(packet);
+			if (track_id_opt.has_value() == false)
+			{
+				logte("Could not find track ID for SSRC %u", packet->Ssrc());
+				return false;
+			}
 		}
 
-		// RTSP Node uses channelID as trackID
-		track_id = rtsp_data->GetChannelId();
-		packet->SetRtspChannel(track_id);
-	}
-	else
-	{
-		track_id = packet->Ssrc();
+		ConnectSsrcToTrack(packet->Ssrc(), track_id_opt.value());
 	}
 
+	if (from_node == NodeType::Rtsp)
+	{
+		// RTSP Node uses channelID as trackID
+		packet->SetRtspChannel(track_id_opt.value());
+	}
+
+	auto track_id = track_id_opt.value();
 	auto track_it = _tracks.find(track_id);
 	if(track_it == _tracks.end())
 	{
@@ -322,13 +489,17 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	}
 	auto track = track_it->second;
 
+	// For RTCP Receiver Report
 	std::shared_ptr<RtpReceiveStatistics> stat;
-	auto stat_it = _receive_statistics.find(packet->Ssrc());
-	if(stat_it == _receive_statistics.end())
+	auto stat_it = _receive_statistics.find(track_id);
+	if(stat_it == _receive_statistics.end() || stat_it->second->GetMediaSSRC() != packet->Ssrc())
 	{
 		// First receive
-		stat = std::make_shared<RtpReceiveStatistics>(packet->PayloadType(), packet->Ssrc(), track->GetTimeBase().GetDen());
-		_receive_statistics.emplace(packet->Ssrc(), stat);
+		// Some encoders or servers do not provide SSRC in SDP. Therefore, after receiving the packet, the ssrc can be extracted and used.
+		stat = std::make_shared<RtpReceiveStatistics>(packet->Ssrc(), track->GetTimeBase().GetDen());
+
+		// If ssrc is changed, the previous statistics should be deleted.
+		_receive_statistics[track_id] = stat;
 	}
 	else
 	{
@@ -338,7 +509,7 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	stat->AddReceivedRtpPacket(packet);
 
 	// Send ReceiverReport
-	if(stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS))
+	if (stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS) && stat->IsSenderReportReceived() == true)
 	{
 		auto report = std::make_shared<ReceiverReport>();
 		report->SetRtpSsrc(packet->Ssrc());
@@ -353,10 +524,39 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		}
 	}
 
+	// For Transport-wide CC feedback
+	if (_transport_cc_feedback_enabled == true)
+	{
+		if (_transport_cc_generator == nullptr)
+		{
+			// Since the Receiver SSRC is unknown, the same as the RR of the first track is used. Since it is a wide sequence, media ssrc may not be one. So this also just uses the first media ssrc.
+			_transport_cc_generator = std::make_shared<RtcpTransportCcFeedbackGenerator>(
+										_transport_cc_feedback_extension_id, 
+										stat->GetReceiverSSRC());
+		}
+
+		_transport_cc_generator->AddReceivedRtpPacket(packet);
+
+		// Send Transport-wide CC feedback
+		if ((_transport_cc_generator->HasElapsedSinceLastTransportCc(TRANSPORT_CC_CYCLE_MS)) && 
+			(_video_receiver_enabled ? (track->GetMediaType() == cmn::MediaType::Video && packet->Marker() == true) : true))
+		{
+			auto feedback = _transport_cc_generator->GenerateTransportCcMessage();
+			if (feedback != nullptr)
+			{
+				_last_sent_rtcp_packet = feedback;
+
+				auto feedback_data = feedback->GetData();
+				SendDataToNextNode(NodeType::Rtcp, feedback_data);
+			}
+		}
+	}
+
 	int jitter_buffer_type = 0;
 	switch(track->GetOriginBitstream())
 	{
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
+		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
 		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			jitter_buffer_type = 1;
@@ -391,7 +591,7 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			if(packet == nullptr)
 			{
 				// can not happen
-				logte("Could not get first rtp packet from jitter buffer - ssrc : %u", packet->Ssrc());
+				logtw("Could not get first rtp packet from jitter buffer - track(%u)", track_id);
 				return false;
 			}
 
@@ -443,7 +643,6 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data)
 {
-	logtd("Get RTCP Packet - length(%d)", data->GetLength());
 	// Parse RTCP Packet
 	RtcpReceiver receiver;
 	if(receiver.ParseCompoundPacket(data) == false)
@@ -454,7 +653,7 @@ bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov:
 	uint32_t rtsp_channel = 0;
 	if(from_node == NodeType::Rtsp)
 	{
-		auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+		auto rtsp_data = std::static_pointer_cast<const RtspData>(data);
 		if(rtsp_data == nullptr)
 		{
 			logte("Could not convert to RtspData");
@@ -473,11 +672,15 @@ bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov:
 		if(info->GetPacketType() == RtcpPacketType::SR)
 		{
 			auto sr = std::dynamic_pointer_cast<SenderReport>(info);
-			auto stat_it = _receive_statistics.find(sr->GetSenderSsrc());
-			if(stat_it != _receive_statistics.end())
+			auto track_id = GetTrackId(sr->GetSenderSsrc());
+			if (track_id.has_value())
 			{
-				auto stat = stat_it->second;
-				stat->AddReceivedRtcpSenderReport(sr);
+				auto stat_it = _receive_statistics.find(track_id.value());
+				if(stat_it != _receive_statistics.end())
+				{
+					auto stat = stat_it->second;
+					stat->AddReceivedRtcpSenderReport(sr);
+				}
 			}
 		}
 		

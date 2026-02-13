@@ -10,16 +10,10 @@
 
 #include "current/current_controller.h"
 
-namespace api
+namespace api::v1::stats
 {
-	namespace v1
+	void StatsController::PrepareHandlers()
 	{
-		namespace stats
-		{
-			void StatsController::PrepareHandlers()
-			{
-				CreateSubController<CurrentController>(R"(\/current)");
-			};
-		}  // namespace stats
-	}	   // namespace v1
-}  // namespace api
+		CreateSubController<CurrentController>(R"(\/current)");
+	};
+}  // namespace api::v1::stats

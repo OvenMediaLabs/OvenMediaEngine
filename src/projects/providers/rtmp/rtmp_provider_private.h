@@ -9,3 +9,6 @@
 #pragma once
 
 #define OV_LOG_TAG "RTMPProvider"
+
+#define OV_LOG_PREFIX_FORMAT "[%s] "
+#define OV_LOG_PREFIX_VALUE GetNamePath().CStr()

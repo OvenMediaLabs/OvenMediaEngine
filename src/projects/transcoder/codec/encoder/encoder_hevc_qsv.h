@@ -13,16 +13,39 @@
 class EncoderHEVCxQSV : public TranscodeEncoder
 {
 public:
-	~EncoderHEVCxQSV();
-
-	AVCodecID GetCodecID() const noexcept override
+	EncoderHEVCxQSV(const info::Stream &stream_info)
+		: TranscodeEncoder(stream_info)
 	{
-		return AV_CODEC_ID_H265;
 	}
 
-	int GetSupportedFormat() const noexcept override 
+	cmn::MediaCodecId GetCodecID() const noexcept override
 	{
-		return AV_PIX_FMT_NV12;
+		return cmn::MediaCodecId::H265;
+	}
+
+	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	{
+		return cmn::MediaCodecModuleId::QSV;
+	}
+
+	cmn::MediaType GetMediaType() const noexcept
+	{
+		return cmn::MediaType::Video;
+	}
+
+	bool IsHWAccel() const noexcept
+	{
+		return true;
+	}
+
+	cmn::AudioSample::Format GetSupportAudioFormat() const noexcept override
+	{
+		return cmn::AudioSample::Format::None;
+	}
+
+	cmn::VideoPixelFormatId GetSupportVideoFormat() const noexcept override 
+	{
+		return cmn::VideoPixelFormatId::NV12;
 	}
 
 	cmn::BitstreamFormat GetBitstreamFormat() const noexcept override
@@ -32,7 +55,7 @@ public:
 	
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
 
-	void CodecThread() override;
+	bool InitCodec() override;
 
 private:
 	bool SetCodecParams() override;	

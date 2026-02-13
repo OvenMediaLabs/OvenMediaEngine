@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include "../../../../../controller.h"
+#include "../../../../../controller_base.h"
 
 namespace api
 {
@@ -16,7 +16,7 @@ namespace api
 	{
 		namespace stats
 		{
-			class AppsController : public Controller<AppsController>
+			class AppsController : public ControllerBase<AppsController>
 			{
 			public:
 				void PrepareHandlers() override;
@@ -27,5 +27,5 @@ namespace api
 									 const std::shared_ptr<mon::ApplicationMetrics> &app);
 			};
 		}  // namespace stats
-	}	   // namespace v1
+	}  // namespace v1
 }  // namespace api

@@ -31,7 +31,7 @@ bool StunClient::GetMappedAddress(const ov::SocketAddress &stun_server, ov::Sock
 
 	auto send_data = message.Serialize();
 	
-	auto client = ov::SocketPool::GetUdpPool()->AllocSocket();
+	auto client = ov::SocketPool::GetUdpPool()->AllocSocket(stun_server.GetFamily());
 	timeval tv = {1, 0};
 
 	client->MakeBlocking();

@@ -20,7 +20,7 @@ public:
 	bool AppendPacket(const uint8_t *data, size_t data_length);
 
 	bool IsAvailableMessage();
-	bool IsAvaliableData();
+	bool IsAvailableData();
 
 	std::shared_ptr<RtspMessage> PopMessage();
 	std::shared_ptr<RtspData> PopData();

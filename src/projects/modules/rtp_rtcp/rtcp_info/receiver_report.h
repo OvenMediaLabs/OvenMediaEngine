@@ -25,6 +25,11 @@ public:
 	{
 		return _report_blocks.size();
 	}
+
+	bool HasPadding() const override
+	{
+		return false;
+	}
 	
 	// Receiver Report
 	uint32_t GetSenderSsrc() const

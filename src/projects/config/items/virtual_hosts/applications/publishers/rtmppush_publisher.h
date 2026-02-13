@@ -19,7 +19,7 @@ namespace cfg
 		{
 			namespace pub
 			{
-				struct RtmpPushPublisher : public Publisher, public cmn::CrossDomainSupport
+				struct RtmpPushPublisher : public Publisher
 				{
 				public:
 					PublisherType GetType() const override
@@ -31,11 +31,9 @@ namespace cfg
 					void MakeList() override
 					{
 						Publisher::MakeList();
-
-						Register<Optional>("CrossDomains", &_cross_domains);
 					}
 				};
 			}  // namespace pub
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

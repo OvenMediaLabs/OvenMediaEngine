@@ -9,6 +9,9 @@
 #pragma once
 
 #include "fmp4_structure.h"
+#include <base/common_types.h>
+#include <base/modules/container/segment_storage.h>
+#include <base/modules/marker/marker_box.h>
 
 namespace bmff
 {
@@ -16,12 +19,12 @@ namespace bmff
 	{
 	public:
 		virtual void OnFMp4StorageInitialized(const int32_t &track_id) = 0;
-		virtual void OnMediaSegmentUpdated(const int32_t &track_id, const uint32_t &segment_number) = 0;
-		virtual void OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number) = 0;
+		virtual void OnMediaSegmentCreated(const int32_t &track_id, const uint32_t &segment_number) = 0;
+		virtual void OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk) = 0;
 		virtual void OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t &segment_number) = 0;
 	};
 
-	class FMP4Storage
+	class FMP4Storage : public base::modules::SegmentStorage
 	{
 	public:
 		struct Config
@@ -31,29 +34,35 @@ namespace bmff
 			bool dvr_enabled = false;
 			ov::String dvr_storage_path;
 			uint64_t dvr_duration_sec = 0;
+			bool server_time_based_segment_numbering = false;
 		};
 
 		FMP4Storage(const std::shared_ptr<FMp4StorageObserver> &observer, const std::shared_ptr<const MediaTrack> &track, const Config &config, const ov::String &stream_tag);
 
-		~FMP4Storage();
+		virtual ~FMP4Storage();
 
-		std::shared_ptr<ov::Data> GetInitializationSection() const;
-		std::shared_ptr<FMP4Segment> GetMediaSegment(uint32_t segment_number) const;
-		std::shared_ptr<FMP4Segment> GetLastSegment() const;
-		std::shared_ptr<FMP4Chunk> GetMediaChunk(uint32_t segment_number, uint32_t chunk_number) const;
-
-		std::tuple<int64_t, int64_t> GetLastChunkNumber() const;
-		int64_t GetLastSegmentNumber() const;
-
+		std::shared_ptr<ov::Data> GetInitializationSection() const override;
+		std::shared_ptr<base::modules::Segment> GetSegment(int64_t segment_number) const override;
+		std::shared_ptr<base::modules::Segment> GetLastSegment() const override;
+		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_number) const override;
+		uint64_t GetSegmentCount() const override;
+		int64_t GetLastSegmentNumber() const override;
+		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override;
+		
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &section);
-		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk);
+		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
 
-		uint64_t GetMaxChunkDurationMs() const;
-		uint64_t GetMinChunkDurationMs() const;
+		uint64_t GetMaxPartialDurationMs() const override;
+		uint64_t GetMinPartialDurationMs() const override;
 
-		int64_t GetTargetSegmentDuration() const;
+		ov::String GetContainerExtension() const override { return "m4s"; }
+
+		double GetTargetSegmentDuration() const;
 
 	private:
+		std::shared_ptr<FMP4Segment> GetSegmentInternal(int64_t segment_number) const;
+		std::shared_ptr<FMP4Segment> GetLastSegmentInternal() const;
+		
 
 		// For DVR
 		class DvrInfo
@@ -80,6 +89,7 @@ namespace bmff
 			// Get total number of segments
 			uint32_t GetTotalSegmentCount() const
 			{
+				std::shared_lock<std::shared_mutex> lock(_segments_lock);
 				return _segments.size();
 			}
 
@@ -142,7 +152,13 @@ namespace bmff
 					return {0, 0, 0};
 				}
 
-				return _segments[segment_number - _first_segment_number];
+				auto index = segment_number - _first_segment_number;
+				if (index >= _segments.size())
+				{
+					return {0, 0, 0};
+				}
+
+				return _segments[index];
 			}
 
 		private:
@@ -160,28 +176,36 @@ namespace bmff
 		bool SaveMediaSegmentToFile(const std::shared_ptr<FMP4Segment> &segment);
 		std::shared_ptr<FMP4Segment> LoadMediaSegmentFromFile(uint32_t segment_number) const;
 
+		std::shared_ptr<FMP4Segment> CreateNextSegment();
+
 		Config	_config;
 
 		std::shared_ptr<const MediaTrack> _track;
 
 		std::shared_ptr<ov::Data> _initialization_section = nullptr;
-		// 0 -> 1 -> 2 -> push_back(new segemnt)
-		std::deque<std::shared_ptr<FMP4Segment>> _segments;
+		
+		// segment number : segment
+		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;
 		mutable std::shared_mutex _segments_lock;
 
-		size_t _number_of_deleted_segments = 0; // For indexing of _segments
-
-		int64_t _last_segment_number = -1;
-
+		int64_t _initial_segment_number = 0;
 		int64_t _start_timestamp_delta = -1;
 
 		double _max_chunk_duration_ms = 0;
-		double _min_chunk_duration_ms = std::numeric_limits<uint64_t>::max();
+		double _min_chunk_duration_ms = static_cast<double>(std::numeric_limits<uint64_t>::max());
 
-		int64_t _target_segment_duration_ms = 0;
+		double _target_segment_duration_ms = 0;
+
+		double _total_segment_duration_ms = 0;
+		double _total_expected_duration_ms = 0;
 
 		std::shared_ptr<FMp4StorageObserver> _observer;
 
 		ov::String _stream_tag;
+
+		// for making CUE-OUT-CONT
+		bool _is_cue_out_on = false;
+		uint32_t _cue_out_duration_msec = 0;
+		uint32_t _cue_out_elapsed_msec = 0;
 	};
 }

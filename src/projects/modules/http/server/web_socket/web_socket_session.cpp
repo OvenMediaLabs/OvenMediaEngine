@@ -113,24 +113,24 @@ namespace http
 				{
 					case FrameOpcode::ConnectionClose:
 						// The client requested close the connection
-						logtd("Client requested close connection: reason:\n%s", payload->Dump("Reason").CStr());
+						logtt("Client requested close connection: reason:\n%s", payload->Dump("Reason").CStr());
 						interceptor->OnRequestCompleted(GetSharedPtr());
 						SetStatus(HttpExchange::Status::Completed);
 						return true;
 
 					case FrameOpcode::Ping:
-						logtd("A ping frame is received:\n%s", payload->Dump().CStr());
+						logtt("A ping frame is received:\n%s", payload->Dump().CStr());
 						// Send a pong frame to the client
 						_ws_response->Send(payload, FrameOpcode::Pong);
 						break;
 
 					case FrameOpcode::Pong:
 						// Ignore pong frame
-						logtd("A pong frame is received:\n%s", payload->Dump().CStr());
+						logtt("A pong frame is received:\n%s", payload->Dump().CStr());
 						break;
 
 					default:
-						logtd("%s:\n%s", frame->ToString().CStr(), payload->Dump("Frame", 0L, 1024L, nullptr).CStr());
+						logtt("%s:\n%s", frame->ToString().CStr(), payload->Dump("Frame", 0L, 1024L, nullptr).CStr());
 						if (interceptor->OnDataReceived(GetSharedPtr(), payload) == false)
 						{
 							SetStatus(Status::Error);

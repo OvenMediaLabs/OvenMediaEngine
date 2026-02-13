@@ -16,6 +16,7 @@
 #include <base/provider/pull_provider/stream.h>
 
 #define OVT_TIMEOUT_MSEC		3000
+
 namespace pvd
 {
 	class OvtProvider;
@@ -45,7 +46,7 @@ namespace pvd
 		enum class ReceivePacketResult : uint8_t
 		{
 			COMPLETE,
-			IMCOMPLETE,
+			INCOMPLETE,
 			DISCONNECTED,
 			ERROR, 
 			TIMEOUT,
@@ -83,7 +84,5 @@ namespace pvd
 		std::shared_ptr<OvtPacketizer>	_packetizer;
 		OvtDepacketizer _depacketizer;
 		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
-
-		 std::map<int32_t,uint32_t> _last_msid_map;
 	};
 }

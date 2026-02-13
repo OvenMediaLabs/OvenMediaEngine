@@ -20,10 +20,10 @@ namespace cfg
 				{
 				protected:
 					std::vector<ov::String> _playlists;
-					
+
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPlaylists, _playlists);
-					
+
 				protected:
 					void MakeList() override
 					{
@@ -31,6 +31,6 @@ namespace cfg
 					}
 				};
 			}  // namespace pub
-		} // namespace app
-	} // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

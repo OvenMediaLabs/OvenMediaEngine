@@ -6,7 +6,7 @@
 
 #include "ovt_stream.h"
 
-class OvtApplication : public pub::Application
+class OvtApplication final : public pub::Application
 {
 public:
 	static std::shared_ptr<OvtApplication> Create(const std::shared_ptr<pub::Publisher> &publisher, const info::Application &application_info);

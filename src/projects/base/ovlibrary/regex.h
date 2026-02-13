@@ -168,7 +168,7 @@ namespace ov
 		static Regex CompiledRegex(const char *pattern, Option options);
 		static Regex CompiledRegex(const char *pattern);
 
-		// Transform the wildcard-type string to be used in regx
+		// Transform the wildcard-type string to be used in regex
 		//
 		// 1) Escape special characters: '[', '\', '.', '/', '+', '{', '}', '$', '^', '|' to \<char>
 		// 2) Replace '*', '?' to '.*', '.?'

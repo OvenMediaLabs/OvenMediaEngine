@@ -8,11 +8,11 @@
 //==============================================================================
 
 #include "mpegts_application.h"
-#include "mpegts_stream.h"
-#include "mpegts_provider_private.h"
 
-#include "base/provider/push_provider/application.h"
 #include "base/info/stream.h"
+#include "base/provider/push_provider/application.h"
+#include "mpegts_provider_private.h"
+#include "mpegts_stream.h"
 
 namespace pvd
 {
@@ -27,4 +27,4 @@ namespace pvd
 		: PushApplication(provider, application_info)
 	{
 	}
-}
+}  // namespace pvd

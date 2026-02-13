@@ -46,6 +46,11 @@ namespace ov
 		static ov::String ToString(const std::chrono::system_clock::time_point &tp);
 
 		static ov::String ToISO8601String(const std::chrono::system_clock::time_point &tp);
+		// From ISO8601 string to time_point
+		static std::chrono::system_clock::time_point FromISO8601(const ov::String &iso8601_string);
+
+		// HTTP Date format
+		static String ToRFC7231String(const std::chrono::system_clock::time_point &tp);
 
 		static ov::String ToSiString(int64_t number, int precision);
 
@@ -80,5 +85,8 @@ namespace ov
 		static double NtpTsToSeconds(uint32_t msw, uint32_t lsw);
 
 		static uint32_t ToSynchSafe(uint32_t value);
+
+		// Rescale timestamp value from one timescale to another
+		static int64_t Rescale(int64_t value, int64_t to_timescale, int64_t from_timescale);
 	};
 }  // namespace ov

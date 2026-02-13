@@ -9,7 +9,7 @@
 #pragma once
 
 #include <openssl/pem.h>
-#include <cstdint>
+#include <stdint.h>
 
 #include "../ovlibrary/ovlibrary.h"
 

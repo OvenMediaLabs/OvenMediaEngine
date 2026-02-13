@@ -45,6 +45,11 @@ public:
 		return static_cast<uint8_t>(PSFBFMT::PLI);
 	}
 
+	bool HasPadding() const override
+	{
+		return false;
+	}
+
 	// FEEDBACK
 	uint32_t GetSrcSsrc() const {return _src_ssrc;}
 	void SetSrcSsrc(uint32_t ssrc){_src_ssrc = ssrc;}

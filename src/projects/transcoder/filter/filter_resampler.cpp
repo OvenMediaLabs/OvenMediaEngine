@@ -17,15 +17,28 @@ FilterResampler::FilterResampler()
 {
 	_frame = ::av_frame_alloc();
 
-	_outputs = ::avfilter_inout_alloc();
 	_inputs = ::avfilter_inout_alloc();
+	_outputs = ::avfilter_inout_alloc();
 
-	_input_buffer.SetAlias("Input queue of media resampler filter");
-	_input_buffer.SetThreshold(100);
+	_buffersrc = ::avfilter_get_by_name("abuffer");
+	_buffersink = ::avfilter_get_by_name("abuffersink");
+
+	_filter_graph = ::avfilter_graph_alloc();
+
+	_buffersrc_ctx	= nullptr;
+	_buffersink_ctx = nullptr;
 
 	OV_ASSERT2(_frame != nullptr);
 	OV_ASSERT2(_inputs != nullptr);
 	OV_ASSERT2(_outputs != nullptr);
+	OV_ASSERT2(_buffersrc != nullptr);
+	OV_ASSERT2(_buffersink != nullptr);
+	OV_ASSERT2(_filter_graph != nullptr);
+	OV_ASSERT2(_buffersrc_ctx == nullptr);
+	OV_ASSERT2(_buffersink_ctx == nullptr);
+
+	// Limit the number of filter threads to 1. I think 1 thread is usually enough for audio filtering processing.
+	_filter_graph->nb_threads = 1;
 }
 
 FilterResampler::~FilterResampler()
@@ -33,84 +46,31 @@ FilterResampler::~FilterResampler()
 	Stop();
 
 	OV_SAFE_FUNC(_frame, nullptr, ::av_frame_free, &);
-
 	OV_SAFE_FUNC(_inputs, nullptr, ::avfilter_inout_free, &);
 	OV_SAFE_FUNC(_outputs, nullptr, ::avfilter_inout_free, &);
-
 	OV_SAFE_FUNC(_filter_graph, nullptr, ::avfilter_graph_free, &);
+
+	_buffersrc= nullptr;
+	_buffersink = nullptr;
 
 	_input_buffer.Clear();
 }
 
-bool FilterResampler::Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+bool FilterResampler::InitializeSourceFilter()
 {
-	_input_track = input_track;
-	_output_track = output_track;
-
-	const AVFilter *abuffersrc = ::avfilter_get_by_name("abuffer");
-	const AVFilter *abuffersink = ::avfilter_get_by_name("abuffersink");
-	int ret;
-
-	_filter_graph = ::avfilter_graph_alloc();
-
-	if ((_filter_graph == nullptr) || (_inputs == nullptr) || (_outputs == nullptr))
-	{
-		logte("Could not allocate variables for filter graph: %p, %p, %p", _filter_graph, _inputs, _outputs);
-		return false;
-	}
-
-	// Limit the number of filter threads to 1. I think 1 thread is usually enough for audio filtering processing.
-	_filter_graph->nb_threads = 1;
-
-	AVRational input_timebase = ffmpeg::Conv::TimebaseToAVRational(input_track->GetTimeBase());
-	AVRational output_timebase = ffmpeg::Conv::TimebaseToAVRational(output_track->GetTimeBase());
-
-	_scale = ::av_q2d(::av_div_q(input_timebase, output_timebase));
-
-	if (::isnan(_scale))
-	{
-		logte("Invalid timebase: input: %d/%d, output: %d/%d",
-			  input_timebase.num, input_timebase.den,
-			  output_timebase.num, output_timebase.den);
-
-		return false;
-	}
-
-	// Prepare filters
-	//
-	// Filter graph:
-	//     [abuffer] -> [aresample] -> [asetnsamples] -> [aformat] -> [asettb] -> [abuffersink]
-
-	// Prepare the input parameter
 	std::vector<ov::String> src_params = {
-		ov::String::FormatString("time_base=%s", input_track->GetTimeBase().GetStringExpr().CStr()),
-		ov::String::FormatString("sample_rate=%d", input_track->GetSampleRate()),
-		ov::String::FormatString("sample_fmt=%s", input_track->GetSample().GetName()),
-		ov::String::FormatString("channel_layout=%s", input_track->GetChannel().GetName())};
+		ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()),
+		ov::String::FormatString("sample_rate=%d", _input_track->GetSampleRate()),
+		ov::String::FormatString("sample_fmt=%s", _input_track->GetSample().GetName()),
+		ov::String::FormatString("channel_layout=%s", _input_track->GetChannel().GetName())};
 
-	ov::String src_args = ov::String::Join(src_params, ":");
+	_src_args = ov::String::Join(src_params, ":");
 
-	ret = ::avfilter_graph_create_filter(&_buffersrc_ctx, abuffersrc, "in", src_args, nullptr, _filter_graph);
+	int ret = ::avfilter_graph_create_filter(&_buffersrc_ctx, _buffersrc, "in", _src_args, nullptr, _filter_graph);
 	if (ret < 0)
 	{
 		logte("Could not create audio buffer source filter for resampling: %d", ret);
-		return false;
-	}
 
-	// Prepare output filters
-	std::vector<ov::String> filters = {
-		ov::String::FormatString("asettb=%s", output_track->GetTimeBase().GetStringExpr().CStr()),
-		ov::String::FormatString("aresample=async=1000"),
-		ov::String::FormatString("aresample=%d", output_track->GetSampleRate()),
-		ov::String::FormatString("aformat=sample_fmts=%s:channel_layouts=%s", output_track->GetSample().GetName(), output_track->GetChannel().GetName()),
-		ov::String::FormatString("asetnsamples=n=%d", output_track->GetAudioSamplesPerFrame())};
-
-	ov::String output_filters = ov::String::Join(filters, ",");
-
-	ret = ::avfilter_graph_create_filter(&_buffersink_ctx, abuffersink, "out", nullptr, nullptr, _filter_graph);
-	if (ret < 0)
-	{
-		logte("Could not create audio buffer sink filter for resampling: %d", ret);
 		return false;
 	}
 
@@ -119,53 +79,138 @@ bool FilterResampler::Configure(const std::shared_ptr<MediaTrack> &input_track, 
 	_outputs->pad_idx = 0;
 	_outputs->next = nullptr;
 
+	return true;
+}
+
+bool FilterResampler::InitializeSinkFilter()
+{
+	int ret = ::avfilter_graph_create_filter(&_buffersink_ctx, _buffersink, "out", nullptr, nullptr, _filter_graph);
+	if (ret < 0)
+	{
+		logte("Coud not create audio buffer sink filter for resampling: %d", ret);
+
+		return false;
+	}
+
 	_inputs->name = ::av_strdup("out");
 	_inputs->filter_ctx = _buffersink_ctx;
 	_inputs->pad_idx = 0;
 	_inputs->next = nullptr;
 
+	return true;
+}
+
+bool FilterResampler::InitializeFilterDescription()
+{
+	std::vector<ov::String> filters;
+
+	if(IsSingleTrack())
+	{
+		filters.push_back(ov::String::FormatString("aresample=async=1"));
+		filters.push_back(ov::String::FormatString("asetnsamples=n=%d", _output_track->GetAudioSamplesPerFrame()));
+	}
+	else
+	{
+		filters.push_back(ov::String::FormatString("asettb=%s", _output_track->GetTimeBase().GetStringExpr().CStr()));
+		filters.push_back(ov::String::FormatString("aresample=%d", _output_track->GetSampleRate()));
+		filters.push_back(ov::String::FormatString("aformat=sample_fmts=%s:channel_layouts=%s", _output_track->GetSample().GetName(), _output_track->GetChannel().GetName()));
+	}
+
+	if (filters.size() == 0)
+	{
+		filters.push_back("null");
+	}
+
+	_filter_desc = ov::String::Join(filters, ",");
+
+	return true;
+}
+
+bool FilterResampler::Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+{
+	int ret;
+
+	SetState(State::CREATED);
+
+	_input_track = input_track;
+	_output_track = output_track;
+
+	if (InitializeSourceFilter() == false)
+	{
+		SetState(State::ERROR);
+
+		return false;
+	}
+
+	if (InitializeSinkFilter() == false)
+	{
+		SetState(State::ERROR);
+
+		return false;
+	}
+
+	if (InitializeFilterDescription() == false)
+	{
+		SetState(State::ERROR);
+
+		return false;
+	}
+
 	if ((_outputs->name == nullptr) || (_inputs->name == nullptr))
 	{
+		SetState(State::ERROR);
+
 		return false;
 	}
 
-	// logte("%s", input_args.CStr());
-	// logte("%s", output_filters.CStr());
+	SetDescription(ov::String::FormatString("track(#%u -> #%u), params(src: %s -> output: %s)",
+				   _input_track->GetId(),
+				   _output_track->GetId(),
+				   _src_args.CStr(),
+				   _filter_desc.CStr()));
 
-	ret = ::avfilter_graph_parse_ptr(_filter_graph, output_filters, &_inputs, &_outputs, nullptr);
-	if (ret < 0)
+	if (::avfilter_graph_parse_ptr(_filter_graph, _filter_desc, &_inputs, &_outputs, nullptr) < 0)
 	{
-		logte("Could not parse filter string for resampling: %d (%s)", ret, output_filters.CStr());
+		logte("Could not parse filter string for resampling: %s", _filter_desc.CStr());
+		SetState(State::ERROR);
 		return false;
 	}
 
-	ret = ::avfilter_graph_config(_filter_graph, nullptr);
-	if (ret < 0)
+	if ((ret = ::avfilter_graph_config(_filter_graph, nullptr)) < 0)
 	{
 		logte("Could not validate filter graph for resampling: %d", ret);
+		SetState(State::ERROR);
+
 		return false;
 	}
-
-	logti("Resampler is enabled for track #%u using parameters. input: %s / outputs: %s", input_track->GetId(), src_args.CStr(), output_filters.CStr());
 
 	return true;
 }
 
 bool FilterResampler::Start()
 {
-	// Generates a thread that reads and encodes frames in the input_buffer queue and places them in the output queue.
+	_source_id = ov::Random::GenerateInt32();
+
 	try
 	{
 		_kill_flag = false;
 
-		_thread_work = std::thread(&FilterResampler::FilterThread, this);
-		pthread_setname_np(_thread_work.native_handle(), "Resampler");
+		_thread_work = std::thread(&FilterResampler::WorkerThread, this);
+		pthread_setname_np(_thread_work.native_handle(), ov::String::FormatString("FLT-rsmp-t%u", _output_track->GetId()).CStr());
+		if (_codec_init_event.Get() == false)
+		{
+			_kill_flag = false;
+
+			return false;
+		}		
 	}
 	catch (const std::system_error &e)
 	{
 		_kill_flag = true;
 
-		logte("Failed to start transcode resample filter thread.");
+		SetState(State::ERROR);
+
+		logte("Failed to start resample filter thread.");
 
 		return false;
 	}
@@ -177,44 +222,66 @@ void FilterResampler::Stop()
 {
 	_kill_flag = true;
 
-	// _queue_event.Notify();
-
 	_input_buffer.Stop();
 
 	if (_thread_work.joinable())
 	{
 		_thread_work.join();
-		logtd("resampler filter thread has ended");
+
+		logtt("filter resampler thread has ended");
 	}
+
+	SetState(State::STOPPED);
 }
 
-void FilterResampler::FilterThread()
+void FilterResampler::WorkerThread()
 {
-	logtd("Start transcode resampler filter thread.");
+	ov::logger::ThreadHelper thread_helper;
+
+	auto result = Configure(_input_track, _output_track);
+	if (_codec_init_event.Submit(result) == false)
+	{
+		return;
+	}
+
+	int ret;
+
+	SetState(State::STARTED);
 
 	while (!_kill_flag)
 	{
 		auto obj = _input_buffer.Dequeue();
 		if (obj.has_value() == false)
+		{
 			continue;
+		}
 
 		auto media_frame = std::move(obj.value());
 
-		auto av_frame = ffmpeg::Conv::ToAVFrame(cmn::MediaType::Video, media_frame);
+		auto av_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
 		if (!av_frame)
 		{
 			logte("Could not allocate the frame data");
+
+			SetState(State::ERROR);
+
 			break;
 		}
 
-		int ret = ::av_buffersrc_add_frame_flags(_buffersrc_ctx, av_frame, AV_BUFFERSRC_FLAG_KEEP_REF);
+		// logtw("Resampled in frame. pts: %lld, linesize: %d, samples: %d", av_frame->pts, av_frame->linesize[0], av_frame->nb_samples);
+
+		ret = ::av_buffersrc_write_frame(_buffersrc_ctx, av_frame);
 		if (ret < 0)
 		{
-			logte("An error occurred while feeding the audio filtergraph: pts: %lld, linesize: %d, srate: %d, layout: %d, channels: %d, format: %d, rq: %d", _frame->pts, _frame->linesize[0], _frame->sample_rate, _frame->channel_layout, _frame->channels, _frame->format, _input_buffer.Size());
+			logte("An error occurred while feeding the audio filtergraph: pts: %lld, linesize: %d, srate: %d, channels: %d, format: %d",
+				  av_frame->pts, av_frame->linesize[0], av_frame->sample_rate, av_frame->ch_layout.nb_channels, av_frame->format);
+
+			Complete(TranscodeResult::DataError, nullptr);
+			
 			continue;
 		}
 
-		while (true)
+		while (!_kill_flag)
 		{
 			int ret = ::av_buffersink_get_frame(_buffersink_ctx, _frame);
 
@@ -224,36 +291,38 @@ void FilterResampler::FilterThread()
 			}
 			else if (ret == AVERROR_EOF)
 			{
-				logte("Error receiving a packet for decoding : AVERROR_EOF");
+				logte("Error receiving filtered frame. error(EOF)");
+
+				SetState(State::ERROR);
+
 				break;
 			}
 			else if (ret < 0)
 			{
-				logte("Error receiving a packet for decoding : %d", ret);
+				logte("Error receiving filtered frame. error(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+
+				SetState(State::ERROR);
+
+				Complete(TranscodeResult::DataError, nullptr);
+
 				break;
 			}
 			else
 			{
-				auto output_frame = ffmpeg::Conv::ToMediaFrame(cmn::MediaType::Audio, _frame);
+				// logti("Resampled out frame. pts: %lld, linesize: %d, samples : %d", _frame->pts, _frame->linesize[0], _frame->nb_samples);
+				auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Audio, _frame);
 				::av_frame_unref(_frame);
 				if (output_frame == nullptr)
 				{
 					logte("Could not allocate the frame data");
+
 					continue;
 				}
 
-				if (_on_complete_handler)
-				{
-					_on_complete_handler(std::move(output_frame));
-				}
+				output_frame->SetSourceId(_source_id);
+
+				Complete(TranscodeResult::DataReady, std::move(output_frame));
 			}
 		}
 	}
-}
-
-int32_t FilterResampler::SendBuffer(std::shared_ptr<MediaFrame> buffer)
-{
-	_input_buffer.Enqueue(std::move(buffer));
-
-	return 0;
 }

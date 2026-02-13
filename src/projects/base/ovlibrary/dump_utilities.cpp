@@ -82,6 +82,33 @@ namespace ov
 		return dump;
 	}
 
+	String ToUUIDString(const void *data, size_t length)
+	{
+		if (length != 16)
+		{
+			// Invalid UUID
+			return "";
+		}
+
+		String dump;
+
+		const auto *buffer = static_cast<const uint8_t *>(data);
+
+		for (size_t index = 0; index < length; index++)
+		{
+			dump.AppendFormat("%02X", *buffer);
+
+			if (index == 3 || index == 5 || index == 7 || index == 9)
+			{
+				dump.Append("-");
+			}
+
+			buffer++;
+		}
+
+		return dump;
+	}
+
 	String Dump(const void *data, size_t length, const char *title, off_t offset, size_t max_bytes, const char *line_prefix) noexcept
 	{
 		if (offset > static_cast<off_t>(length))
@@ -109,12 +136,12 @@ namespace ov
 		if (offset > 0)
 		{
 			// ========== xxxxx 0x12345678 + 0xABCDEF01 (102400 / 1024000) ==========
-			dump.AppendFormat("%s========== %s 0x%08X + 0x%08X (%d/%" PRIi64 " bytes) ==========", line_prefix, title, data, offset, dump_bytes, length);
+			dump.AppendFormat("%s========== %s 0x%08" PRIXPTR " + 0x%08" PRIXMAX " (%d/%zu bytes) ==========", line_prefix, title, data, static_cast<uintmax_t>(offset), dump_bytes, length);
 		}
 		else
 		{
 			// ========== xxxxx 0x12345678 (102400 / 1024000) ==========
-			dump.AppendFormat("%s========== %s 0x%08X (%d/%" PRIi64 " bytes) ==========", line_prefix, title, data, dump_bytes, length);
+			dump.AppendFormat("%s========== %s 0x%08" PRIXPTR " (%d/%zu bytes) ==========", line_prefix, title, data, dump_bytes, length);
 		}
 
 		if (dump_bytes == 0L)
@@ -219,15 +246,29 @@ namespace ov
 	std::shared_ptr<Data> LoadFromFile(const char *file_name) noexcept
 	{
 		FILE *file = ::fopen(file_name, "rb");
-
 		if (file == nullptr)
 		{
 			return nullptr;
 		}
 
-		::fseek(file, 0L, SEEK_END);
-		auto length = ::ftell(file);
-		::fseek(file, 0L, SEEK_SET);
+		if (::fseeko(file, 0L, SEEK_END) != 0)
+		{
+			::fclose(file);
+			return nullptr;
+		}
+
+		auto length = ::ftello(file);
+		if (length <= 0L)
+		{
+			::fclose(file);
+			return nullptr;
+		}
+		
+		if (::fseeko(file, 0L, SEEK_SET) != 0)
+		{
+			::fclose(file);
+			return nullptr;
+		}
 
 		auto data = std::make_shared<Data>(length);
 		data->SetLength(length);

@@ -50,5 +50,5 @@ namespace cfg
 				};
 			};
 		}  // namespace pub
-	}	   // namespace bind
+	}  // namespace bind
 }  // namespace cfg

@@ -2,7 +2,7 @@
 
 #include <utility>
 #include <vector>
-#include <cstdint>
+#include <stdint.h>
 
 class SdpFormatParameters
 {

@@ -10,7 +10,7 @@
 
 #include <base/common_types.h>
 #include <base/mediarouter/mediarouter_interface.h>
-#include <orchestrator/data_structures/data_structure.h>
+#include <orchestrator/interfaces.h>
 
 #include <modules/access_control/access_controller.h>
 
@@ -36,13 +36,19 @@ namespace pvd
 		std::shared_ptr<Application> GetApplicationById(info::application_id_t app_id);
 		std::shared_ptr<Stream> GetStreamById(info::application_id_t app_id, uint32_t stream_id);
 
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
+		// Get all applications
+		std::map<info::application_id_t, std::shared_ptr<Application>> GetApplications();
 
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
-		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> VerifyBySignedPolicy(const std::shared_ptr<const ac::RequestInfo> &request_info);
+
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> SendCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
+		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
 
 	protected:
-		Provider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		Provider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		virtual ~Provider();
 
 		const cfg::Server &GetServerConfig() const;
@@ -62,7 +68,7 @@ namespace pvd
 		
 		std::map<info::application_id_t, std::shared_ptr<Application>> _applications;
 		std::shared_mutex  _application_map_mutex;
-		std::shared_ptr<MediaRouteInterface> _router;
+		std::shared_ptr<MediaRouterInterface> _router;
 		std::shared_ptr<AccessController> _access_controller = nullptr;
 	};
 

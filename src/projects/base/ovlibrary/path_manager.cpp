@@ -26,6 +26,8 @@ typedef mode_t __mode_t;
 #include <unistd.h>
 #include <wordexp.h>
 
+#include <filesystem>
+
 namespace ov
 {
 	String PathManager::GetAppPath(String sub_path)
@@ -113,6 +115,46 @@ namespace ov
 		return (mkdir(path, static_cast<mode_t>(mask)) == 0) || (errno == EEXIST);
 	}
 
+	bool PathManager::MakeDirectoryRecursive(const String path)
+	{
+		off_t pos = 0;
+		ov::String s = path;
+		ov::String dir;
+
+		// Check if the directory already exists
+		if (access(path.CStr(), R_OK | W_OK) == 0)
+		{
+			return true;
+		}
+
+		// Append '/' to the end of the path
+		if (s.Get(s.GetLength() - 1) != '/')
+		{
+			s.Append('/');
+		}
+
+		// Create directories recursively
+		while ((pos = s.IndexOf('/', pos)) != -1)
+		{
+			dir = s.Substring(0, pos++);
+			if (dir.GetLength() == 0)
+				continue;
+
+			if (ov::PathManager::MakeDirectory(dir.CStr()) == false)
+			{
+				return false;
+			}
+		}
+
+		// Confirm the directory is created
+		if (access(path.CStr(), R_OK | W_OK) != 0)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
 	String PathManager::Combine(String path1, String path2)
 	{
 		if ((path1.HasSuffix("/") == false) && (path2.HasPrefix("/") == false))
@@ -156,21 +198,27 @@ namespace ov
 
 	String PathManager::GetCanonicalPath(const char *path)
 	{
-		char buffer[PATH_MAX];
-
-		auto result = realpath(path, buffer);
-
-		if (result == nullptr)
+		try
 		{
-			return "";
+			auto canonical_path = std::filesystem::canonical(path);
+			return canonical_path.c_str();
 		}
-
-		return String(buffer);
+		catch (std::exception &e)
+		{
+			return path;
+		}
 	}
 
-	ov::String PathManager::ExtractExtension(ov::String path)
+	String PathManager::GetNormalizedPath(const char *path)
 	{
-		ov::String extension = "";
+		std::filesystem::path target = path;
+
+		return target.lexically_normal().c_str();
+	}
+
+	String PathManager::ExtractExtension(String path)
+	{
+		String extension = "";
 
 		off_t idx = path.IndexOfRev('.', path.GetLength() - 1);
 		if (idx != -1L)
@@ -182,10 +230,10 @@ namespace ov
 		return extension;
 	}
 
-	std::shared_ptr<ov::Error> PathManager::GetFileList(const ov::String &base_file_name, const ov::String &pattern, std::vector<ov::String> *file_list, bool exclude_base_path)
+	std::shared_ptr<ov::Error> PathManager::GetFileList(const String &base_file_name, const String &pattern, std::vector<String> *file_list, bool exclude_base_path)
 	{
 		auto base_path = ov::PathManager::ExtractPath(base_file_name);
-		ov::String path_pattern;
+		String path_pattern;
 		bool is_absolute = ov::PathManager::IsAbsolute(pattern);
 
 		path_pattern = (is_absolute) ? pattern : ov::PathManager::Combine(base_path, pattern);
@@ -194,7 +242,7 @@ namespace ov
 		auto path = ov::PathManager::ExtractPath(path_pattern);
 		// Escape special characters: '[', '\', '.', '/', '+', '{', '}', '$', '^', '|' to \<char>
 		auto special_characters = std::regex(R"([[\\.\/+{}$^|])");
-		ov::String escaped = std::regex_replace(path_pattern.CStr(), special_characters, R"(\$&)").c_str();
+		String escaped = std::regex_replace(path_pattern.CStr(), special_characters, R"(\$&)").c_str();
 		// Change '*'/'?' to .<char>
 		escaped = escaped.Replace(R"(*)", R"(.*)");
 		escaped = escaped.Replace(R"(?)", R"(.?)");
@@ -295,7 +343,7 @@ namespace ov
 		return nullptr;
 	}
 
-	std::shared_ptr<ov::Error> PathManager::Rename(const ov::String &file_name, const ov::String &to_file_name)
+	std::shared_ptr<ov::Error> PathManager::Rename(const String &file_name, const String &to_file_name)
 	{
 		if (::rename(file_name.CStr(), to_file_name.CStr()) == 0)
 		{
@@ -305,7 +353,7 @@ namespace ov
 		return ov::Error::CreateErrorFromErrno();
 	}
 
-	std::shared_ptr<ov::Error> PathManager::DeleteFile(const ov::String &file_name)
+	std::shared_ptr<ov::Error> PathManager::DeleteFile(const String &file_name)
 	{
 		if (::unlink(file_name.CStr()) == 0)
 		{

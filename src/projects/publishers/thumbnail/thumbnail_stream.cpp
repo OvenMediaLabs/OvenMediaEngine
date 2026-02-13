@@ -21,23 +21,26 @@ ThumbnailStream::ThumbnailStream(const std::shared_ptr<pub::Application> applica
 
 ThumbnailStream::~ThumbnailStream()
 {
-	logtd("ThumbnailStream(%s/%s) has been terminated finally",
+	logtt("ThumbnailStream(%s/%s) has been terminated finally",
 		  GetApplicationName(), GetName().CStr());
 }
 
 bool ThumbnailStream::Start()
 {
-	logtd("ThumbnailStream(%ld) has been started", GetId());
+	logtt("ThumbnailStream(%u) has been started", GetId());
 
 	if (GetState() != Stream::State::CREATED)
 	{
 		return false;
 	}
 
+	// Check if there is a supported codec
 	bool found = false;
 	for (const auto &[id, track] : _tracks)
 	{
-		if ((track->GetCodecId() == cmn::MediaCodecId::Png || track->GetCodecId() == cmn::MediaCodecId::Jpeg))
+		if ((track->GetCodecId() == cmn::MediaCodecId::Png ||
+			 track->GetCodecId() == cmn::MediaCodecId::Jpeg ||
+			 track->GetCodecId() == cmn::MediaCodecId::Webp))
 		{
 			found = true;
 			break;
@@ -46,7 +49,7 @@ bool ThumbnailStream::Start()
 
 	if (found == false)
 	{
-		logtw("Stream [%s/%s] was not created because there were no supported codecs by the Thumbnail Publisher.", GetApplication()->GetName().CStr(), GetName().CStr());
+		logtw("Stream [%s/%s] was not created because there were no supported codecs by the Thumbnail Publisher.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
 		return false;
 	}
 
@@ -55,7 +58,7 @@ bool ThumbnailStream::Start()
 
 bool ThumbnailStream::Stop()
 {
-	logtd("ThumbnailStream(%u) has been stopped", GetId());
+	logtt("ThumbnailStream(%u) has been stopped", GetId());
 
 	return Stream::Stop();
 }
@@ -75,15 +78,19 @@ void ThumbnailStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_p
 		return;
 	}
 
-	if (!(track->GetCodecId() == cmn::MediaCodecId::Png || track->GetCodecId() == cmn::MediaCodecId::Jpeg))
+	if (!(track->GetCodecId() == cmn::MediaCodecId::Png ||
+		  track->GetCodecId() == cmn::MediaCodecId::Jpeg ||
+		  track->GetCodecId() == cmn::MediaCodecId::Webp))
 	{
 		// Could not support codec for image
 		return;
 	}
 
 	std::lock_guard<std::shared_mutex> lock(_encoded_frame_mutex);
-
-	_encoded_frames[track->GetCodecId()] = std::move(media_packet->GetData()->Clone());
+	if (media_packet->GetData() != nullptr)
+	{
+		_encoded_frames[track->GetCodecId()] = std::move(media_packet->GetData()->Clone());
+	}
 }
 
 void ThumbnailStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
@@ -91,15 +98,34 @@ void ThumbnailStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_p
 	// Nothing..
 }
 
-std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCodecId codec_id)
+std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCodecId codec_id, int64_t timeout_ms)
 {
-	std::shared_lock<std::shared_mutex> lock(_encoded_frame_mutex);
+	ov::StopWatch	watch;
+	
+	watch.Start();
 
-	auto it = _encoded_frames.find(codec_id);
-	if (it == _encoded_frames.end())
+	do
 	{
-		return nullptr;
-	}
+		if (true)
+		{
+			std::shared_lock<std::shared_mutex> lock(_encoded_frame_mutex);
+			auto it = _encoded_frames.find(codec_id);
+			if (it != _encoded_frames.end())
+			{
+				return it->second;
+			}
+		}
 
-	return it->second;
+		if( (timeout_ms > 0) && (watch.Elapsed() < timeout_ms))
+		{
+			usleep(100 * 1000);	 // 100ms
+		}
+		else
+		{
+			break;
+		}
+
+	} while (true);
+
+	return nullptr;
 }

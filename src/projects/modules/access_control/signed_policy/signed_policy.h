@@ -3,6 +3,8 @@
 #include <base/ovsocket/socket_address.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovlibrary/cidr.h>
+
+#include "../request_info.h"
 class SignedPolicy
 {
 public:
@@ -11,18 +13,19 @@ public:
 		INIT = 0,
 		PASSED = 1,
 		NO_POLICY_KEY_IN_URL,
+		NO_POLICY_VALUE_IN_URL,
 		NO_SIGNATURE_KEY_IN_URL,
 		NO_SIGNATURE_VALUE_IN_URL,
 		INVALID_SIGNATURE,
 		INVALID_POLICY,
-		BEFORE_URL_ACTIATION,
+		BEFORE_URL_ACTIVATION,
 		URL_EXPIRED,
 		STREAM_EXPIRED,
 		UNAUTHORIZED_CLIENT
 	};
 
 	// requested_url ==> scheme://domain:port/app/stream[/file]?[query1=value&query2=value&]policy=value&signature=value
-	static std::shared_ptr<const SignedPolicy> Load(const ov::String &client_address, const ov::String &requested_url, const ov::String &policy_query_key, const ov::String &signature_query_key, const ov::String &secret_key);
+	static std::shared_ptr<const SignedPolicy> Load(const std::shared_ptr<const ac::RequestInfo> &request_info, const ov::String &policy_query_key, const ov::String &signature_query_key, const ov::String &secret_key);
 
 	ErrCode GetErrCode() const
 	{
@@ -46,8 +49,6 @@ public:
 	uint64_t GetPolicyActivateEpochMSec() const;
 	uint64_t GetStreamExpireEpochMSec() const;
 	const ov::String& GetAllowIpCidr() const;
-	bool IsAllowedIP(const ov::String &ip_addr) const;
-	bool GetCIDRRange(ov::String &begin, ov::String &end) const;
 
 private:
 	void SetError(ErrCode state, ov::String message)
@@ -56,7 +57,7 @@ private:
 		_error_message = message;
 	}
 
-    bool Process(const ov::String &client_address, const ov::String &requested_url, const ov::String &policy_query_key, const ov::String &signature_query_key, const ov::String &secret_key);
+    bool Process(const std::shared_ptr<const ac::RequestInfo> &request_info, const ov::String &policy_query_key, const ov::String &signature_query_key, const ov::String &secret_key);
 	bool ProcessPolicyJson(const ov::String &policy_json);
 	bool MakeSignature(const ov::String &base_url, const ov::String &secret_key, ov::String &signature_base64);
 
@@ -79,6 +80,10 @@ private:
 
 	uint64_t	_stream_expire_epoch_msec = 0;
 
-	ov::String	_allow_ip_cidr;
-	std::shared_ptr<ov::CIDR>	_cidr = nullptr;
+	ov::String	_allow_ip_str;
+	std::shared_ptr<ov::CIDR>	_allow_ip_cidr = nullptr;
+
+	// real ip
+	ov::String	_real_ip_str;
+	std::shared_ptr<ov::CIDR>	_real_ip_cidr = nullptr;
 };

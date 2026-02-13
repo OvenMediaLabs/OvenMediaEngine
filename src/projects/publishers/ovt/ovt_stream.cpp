@@ -6,6 +6,9 @@
 #include "base/publisher/application.h"
 #include "base/publisher/stream.h"
 
+#include <modules/ovt_packetizer/ovt_signaling.h>
+#include <orchestrator/orchestrator.h>
+
 std::shared_ptr<OvtStream> OvtStream::Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,
 											 uint32_t worker_count)
@@ -20,12 +23,12 @@ OvtStream::OvtStream(const std::shared_ptr<pub::Application> application,
 		: Stream(application, info),
 		_worker_count(worker_count)
 {
-	logtd("OvtStream(%s/%s) has been started", GetApplicationName() , GetName().CStr());
+	logtt("OvtStream(%s/%s) has been started", GetApplicationName() , GetName().CStr());
 }
 
 OvtStream::~OvtStream()
 {
-	logtd("OvtStream(%s/%s) has been terminated finally", GetApplicationName() , GetName().CStr());
+	logtt("OvtStream(%s/%s) has been terminated finally", GetApplicationName() , GetName().CStr());
 }
 
 bool OvtStream::Start()
@@ -35,12 +38,22 @@ bool OvtStream::Start()
 		return false;
 	}
 
+	// If this stream is from OriginMapStore, don't register it to OriginMapStore again.
+	if (IsFromOriginMapStore() == false)
+	{
+		auto result = ocst::Orchestrator::GetInstance()->RegisterStreamToOriginMapStore(GetApplicationInfo().GetVHostAppName(), GetName());
+		if (result == CommonErrorCode::ERROR)
+		{
+			logtw("Failed to register stream to origin map store : %s/%s", GetApplicationName(), GetName().CStr());
+		}
+	}
+
 	if(!CreateStreamWorker(_worker_count))
 	{
 		return false;
 	}
 
-	logtd("OvtStream(%d) has been started", GetId());
+	logtt("OvtStream(%d) has been started", GetId());
 	_packetizer = std::make_shared<OvtPacketizer>(OvtPacketizerInterface::GetSharedPtr());
 
 	return Stream::Start();
@@ -53,7 +66,18 @@ bool OvtStream::Stop()
 		return false;
 	}
 
-	logtd("OvtStream(%u) has been stopped", GetId());
+	logtt("OvtStream(%u) has been stopped", GetId());
+
+	if (GetLinkedInputStream() != nullptr && GetLinkedInputStream()->IsFromOriginMapStore() == false)
+	{
+		// Unegister stream if OriginMapStore is enabled
+		auto result = ocst::Orchestrator::GetInstance()->UnregisterStreamFromOriginMapStore(GetApplicationInfo().GetVHostAppName(), GetName());
+		if (result == CommonErrorCode::ERROR)
+		{
+			logtw("Failed to unregister stream from origin map store : %s/%s", GetApplicationName(), GetName().CStr());
+			return false;
+		}
+	}
 
 	std::unique_lock<std::shared_mutex> mlock(_packetizer_lock);
 	if(_packetizer != nullptr)
@@ -66,78 +90,15 @@ bool OvtStream::Stop()
 	return Stream::Stop();
 }
 
-bool OvtStream::GenerateDecription()
+bool OvtStream::GenerateDescription()
 {
-/*
-	"stream" :
-	{
-		"appName" : "app",
-		"streamName" : "stream_720p",
-		"streamUUID" : "OvenMediaEngine_90b8b53e-3140-4e59-813d-9ace51c0e186/default/#default#app/stream",
-		"playlists":
-		[
-			{
-				"name" : "for llhls",
-				"fileName" : "llhls_abr.oven",
-				"options" :	// Optional
-				{
-					"webrtcAutoAbr" : true // default true
-				},
-				"renditions":
-				[
-					{
-						"name" : "1080p",
-						"videoTrackName" : "1080p",
-						"audioTrackName" : "default",
-					},
-					{
-						"name" : "720",
-						"videoTrackName" : "720p",
-						"audioTrackName" : "default",
-					}
-				],
-				[
-					...
-				]
-			},
-			{
-				...
-			}
-		],
-		"tracks":
-		[
-			{
-				"id" : 3291291,
-				"name" : "1080p",
-				"codecId" : 32198392,
-				"mediaType" : 0 | 1 | 2, # video | audio | data
-				"timebase_num" : 90000,
-				"timebase_den" : 90000,
-				"bitrate" : 5000000,
-				"startFrameTime" : 1293219321,
-				"lastFrameTime" : 1932193921,
-				"videoTrack" :
-				{
-					"framerate" : 29.97,
-					"width" : 1280,
-					"height" : 720
-				},
-				"audioTrack" :
-				{
-					"samplerate" : 44100,
-					"sampleFormat" : "s16",
-					"layout" : "stereo"
-				}
-			}
-		]
-	}
-*/
-
 	Json::Value 	json_root;
 	Json::Value		json_stream;
 	Json::Value		json_tracks;
 	Json::Value		json_playlists;
 
+	json_root["version"] = OVT_SIGNALING_VERSION;
+	
 	json_stream["appName"] = GetApplicationName();
 	json_stream["streamName"] = GetName().CStr();
 
@@ -161,6 +122,7 @@ bool OvtStream::GenerateDecription()
 		Json::Value json_options;
 		json_options["webrtcAutoAbr"] = playlist->IsWebRtcAutoAbr();
 		json_options["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
+		json_options["enableTsPackaging"] = playlist->IsTsPackagingEnabled();
 
 		json_playlist["options"] = json_options;
 
@@ -169,8 +131,10 @@ bool OvtStream::GenerateDecription()
 			Json::Value json_rendition;
 
 			json_rendition["name"] = rendition->GetName().CStr();
-			json_rendition["videoTrackName"] = rendition->GetVideoTrackName().CStr();
-			json_rendition["audioTrackName"] = rendition->GetAudioTrackName().CStr();
+			json_rendition["videoTrackName"] = rendition->GetVideoVariantName().CStr();
+			json_rendition["videoIndexHint"] = rendition->GetVideoIndexHint();
+			json_rendition["audioTrackName"] = rendition->GetAudioVariantName().CStr();
+			json_rendition["audioIndexHint"] = rendition->GetAudioIndexHint();
 
 			json_playlist["renditions"].append(json_rendition);
 		}
@@ -187,11 +151,14 @@ bool OvtStream::GenerateDecription()
 		Json::Value json_audio_track;
 
 		json_track["id"] = track->GetId();
-		json_track["name"] = track->GetName().CStr();
+		json_track["name"] = track->GetVariantName().CStr();
+		json_track["publicName"] = track->GetPublicName().CStr();
+		json_track["language"] = track->GetLanguage().CStr();
+		json_track["characteristics"] = track->GetCharacteristics().CStr();
 		json_track["codecId"] = static_cast<int8_t>(track->GetCodecId());
 		json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
-		json_track["timebase_num"] = track->GetTimeBase().GetNum();
-		json_track["timebase_den"] = track->GetTimeBase().GetDen();
+		json_track["timebaseNum"] = track->GetTimeBase().GetNum();
+		json_track["timebaseDen"] = track->GetTimeBase().GetDen();
 		json_track["bitrate"] = track->GetBitrate();
 		json_track["startFrameTime"] = track->GetStartFrameTime();
 		json_track["lastFrameTime"] = track->GetLastFrameTime();
@@ -199,6 +166,8 @@ bool OvtStream::GenerateDecription()
 		json_video_track["framerate"] = track->GetFrameRate();
 		json_video_track["width"] = track->GetWidth();
 		json_video_track["height"] = track->GetHeight();
+		json_video_track["maxWidth"] = track->GetMaxWidth();
+		json_video_track["maxHeight"] = track->GetMaxHeight();
 
 		json_audio_track["samplerate"] = track->GetSampleRate();
 		json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());
@@ -207,11 +176,10 @@ bool OvtStream::GenerateDecription()
 		json_track["videoTrack"] = json_video_track;
 		json_track["audioTrack"] = json_audio_track;
 
-		auto &extra_data = track->GetCodecExtradata();
-		if(extra_data != nullptr)
+		auto decoder_config = track->GetDecoderConfigurationRecord();
+		if (decoder_config != nullptr)
 		{
-			auto extra_data_base64 = ov::Base64::Encode(extra_data);
-			json_track["extra_data"] = extra_data_base64.CStr();
+			json_track["decoderConfig"] = ov::Base64::Encode(decoder_config->GetData()).CStr();
 		}
 		
 		json_tracks.append(json_track);
@@ -265,7 +233,7 @@ bool OvtStream::OnOvtPacketized(std::shared_ptr<OvtPacket> &packet)
 	BroadcastPacket(stream_packet);
 	
 	
-	MonitorInstance->IncreaseBytesOut(*pub::Stream::GetSharedPtrAs<info::Stream>(), PublisherType::Ovt, packet->GetData()->GetLength() * GetSessionCount());
+	MonitorInstance->IncreaseBytesOut(*pub::Stream::GetSharedPtrAs<info::Stream>(), PublisherType::Ovt, packet->GetDataLength() * GetSessionCount());
 
 	return true;
 }
@@ -277,7 +245,7 @@ bool OvtStream::GetDescription(Json::Value &description)
 		return false;
 	}
 	
-	GenerateDecription();
+	GenerateDescription();
 	description = _description;
 
 	return true;
@@ -287,12 +255,12 @@ bool OvtStream::RemoveSessionByConnectorId(int connector_id)
 {
 	auto sessions = GetAllSessions();
 
-	logtd("RemoveSessionByConnectorId : all(%d) connector(%d)", sessions.size(), connector_id);
+	logtt("RemoveSessionByConnectorId : all(%zu) connector(%d)", sessions.size(), connector_id);
 
 	for(const auto &item : sessions)
 	{
 		auto session = std::static_pointer_cast<OvtSession>(item.second);
-		logtd("session : %d %d", session->GetId(), session->GetConnector()->GetNativeHandle());
+		logtt("session : %d %d", session->GetId(), session->GetConnector()->GetNativeHandle());
 
 		if(session->GetConnector()->GetNativeHandle() == connector_id)
 		{

@@ -1,0 +1,189 @@
+name: Multi-Arch Dev Build
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      commit_hash:
+        description: 'Commit hash to build (optional)'
+        required: false
+        type: string
+
+concurrency:
+  group: dev-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: airensoft/ovenmediaengine
+  SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
+
+jobs:
+  set-vars:
+    runs-on: ubuntu-22.04
+    outputs:
+      ref: ${{ steps.vars.outputs.ref }}
+      tag: ${{ steps.vars.outputs.tag }}
+      branch: ${{ steps.vars.outputs.branch }}
+    steps:
+      - id: vars
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ -n "${{ github.event.inputs.commit_hash }}" ]]; then
+              short_tag=$(echo "${{ github.event.inputs.commit_hash }}" | cut -c1-7)
+              echo "ref=${{ github.event.inputs.commit_hash }}" >> $GITHUB_OUTPUT
+              echo "tag=${short_tag}" >> $GITHUB_OUTPUT
+              echo "branch=manual" >> $GITHUB_OUTPUT
+            else
+              short_tag=$(echo "${{ github.sha }}" | cut -c1-7)
+              echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+              echo "tag=${short_tag}" >> $GITHUB_OUTPUT
+              echo "branch=manual-latest" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "tag=dev" >> $GITHUB_OUTPUT
+            echo "branch=dev" >> $GITHUB_OUTPUT
+          fi
+  build_amd64:
+    name: Build amd64 Image
+    runs-on: ubuntu-22.04
+    needs: set-vars
+    steps:
+      - name: Notify Start (amd64)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (amd64 by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.set-vars.outputs.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --output=type=image,push=true \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
+            .
+
+      - name: Notify Done (amd64)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (amd64 by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+  build_arm64:
+    name: Build arm64 Image
+    runs-on: ubuntu-22.04-arm
+    needs: set-vars
+    steps:
+      - name: Notify Start (arm64)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (arm64 by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.set-vars.outputs.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push arm64 image
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            --output=type=image,push=true \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64 \
+            .
+
+      - name: Notify Done (arm64)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (arm64 by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+  merge:
+    name: Merge and Push Manifest
+    runs-on: ubuntu-22.04
+    needs: [build_amd64, build_arm64, set-vars]
+    steps:
+      - name: Notify Start (Merge)
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (merge by ${{ github.actor }})",
+              "state": "Started"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }} \
+            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64
+
+      - name: Notify Done (manifest)
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          payload: |
+            {
+              "branch": "${{ needs.set-vars.outputs.branch }}",
+              "tag": "${{ needs.set-vars.outputs.tag }} (merge by ${{ github.actor }})",
+              "state": "${{ job.status }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}

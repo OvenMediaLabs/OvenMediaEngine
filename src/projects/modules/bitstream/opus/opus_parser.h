@@ -2,7 +2,7 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
-#include <cstdint>
+#include <stdint.h>
 
 class OPUSParser
 {

@@ -11,10 +11,6 @@
 #include "common_attr.h"
 #include "media_description.h"
 
-// OvenMediaEngine 스펙만 SDP로 나타낸다. 모든 SDP를 지원하지 않아도 문제 되지 않는 이유는
-// OvenMediaEngine이 무조건 OFFER를 보내는 Peer이기 때문에 Remote Peer가 OME의 SDP에 따라 동작하게
-// 되기 때문이다.
-
 /*
  [Minimal SDP]
 
@@ -49,8 +45,20 @@ class SessionDescription : public SdpBase,
                            public ov::EnableSharedFromThis<SessionDescription>
 {
 public:
-	SessionDescription();
+	enum class SdpType
+	{
+		Offer,
+		Answer,
+		Pranswer,
+		Update,
+		Rollback,
+		Invalid
+	};
+
+	SessionDescription(const SdpType &type);
 	~SessionDescription();
+
+	SdpType GetType() const;
 
 	void Release();
 
@@ -112,6 +120,9 @@ public:
 private:
 	bool UpdateData(ov::String &sdp) override;
 	bool ParsingSessionLine(char type, std::string content);
+
+	// SdpType
+	SdpType _type = SdpType::Invalid;
 
 	// version
 	uint8_t _version = 0;

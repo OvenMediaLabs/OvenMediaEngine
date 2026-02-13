@@ -41,7 +41,7 @@ bool OvtDepacketizer::ParsePacket()
 		{
 			if(packet_mold->IsHeaderAvailable())
 			{
-				logtd("Buffer is not enough : Buffer size : %u Required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());	
+				logtt("Buffer is not enough : Buffer size : %u Required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());	
 				// Not enough data to parse yet
 				return true;
 			}
@@ -86,7 +86,7 @@ bool OvtDepacketizer::IsAvailableMessage()
 	return !_messages.empty();
 }
 
-bool OvtDepacketizer::IsAvaliableMediaPacket()
+bool OvtDepacketizer::IsAvailableMediaPacket()
 {
 	return !_media_packets.empty();
 }
@@ -149,11 +149,15 @@ bool OvtDepacketizer::AppendMediaPacket(const std::shared_ptr<OvtPacket> &packet
 		}
 
 		auto media_packet = std::make_shared<MediaPacket>(
-														0,
-														media_type, track_id,
-														_media_packet_buffer.Subdata(MEDIA_PACKET_HEADER_SIZE),
-														pts, dts, bitstream_format, packet_type);
-		
+			0,
+			media_type, track_id,
+			_media_packet_buffer.Subdata(MEDIA_PACKET_HEADER_SIZE),
+			pts, dts,
+			-1LL,
+			MediaPacketFlag::Unknown,
+			bitstream_format,
+			packet_type);
+
 		media_packet->SetFlag(media_flag);
 		media_packet->SetDuration(duration);
 
@@ -180,7 +184,7 @@ const std::shared_ptr<ov::Data> OvtDepacketizer::PopMessage()
 
 const std::shared_ptr<MediaPacket> OvtDepacketizer::PopMediaPacket()
 {
-	if(!IsAvaliableMediaPacket())
+	if(!IsAvailableMediaPacket())
 	{
 		return nullptr;
 	}

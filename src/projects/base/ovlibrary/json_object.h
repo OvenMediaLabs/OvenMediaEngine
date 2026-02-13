@@ -102,10 +102,10 @@ namespace ov
 
 			if (value.isString())
 			{
-				return ov::String( value.asString().c_str() );
+				return ov::String(value.asString().c_str());
 			}
 
-			return nullptr;			
+			return nullptr;
 		}
 
 		bool GetBoolValue(const ov::String &key) const

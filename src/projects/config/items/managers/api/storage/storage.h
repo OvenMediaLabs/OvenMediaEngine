@@ -17,7 +17,7 @@ namespace cfg
 			struct Storage : public Item
 			{
 			protected:
-				bool _enabled = true;
+				bool _enabled	 = true;
 				ov::String _path = "conf/api_data";
 
 			public:
@@ -32,5 +32,5 @@ namespace cfg
 				}
 			};
 		}  // namespace api
-	}	   // namespace mgr
+	}  // namespace mgr
 }  // namespace cfg

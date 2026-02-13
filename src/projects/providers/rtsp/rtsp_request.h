@@ -4,7 +4,7 @@
 
 #include <string_view>
 #include <unordered_map>
-#include <cstdint>
+#include <stdint.h>
 #include <vector>
 #include <memory>
 

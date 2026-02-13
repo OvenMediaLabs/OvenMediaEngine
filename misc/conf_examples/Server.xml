@@ -4,7 +4,9 @@
 	<Name>OvenMediaEngine</Name>
 	<!-- Host type (origin/edge) -->
 	<Type>origin</Type>
-	<!-- Specify IP address to bind (* means all IPs) -->
+	<!-- Specify IP address to bind ("*" means all IPv4 IPs, "::" means all IPv6 IPs) -->
+	<!-- Uncomment the line below to enable IPv6 -->
+	<!-- <IP>::</IP> -->
 	<IP>*</IP>
 	<PrivacyProtection>false</PrivacyProtection>
 
@@ -67,8 +69,10 @@
 			</SRT>
 			<MPEGTS>
 				<!--
-					Listen on port 4000~4005 (<Port>4000-4004,4005/udp</Port>)
+					Below is an example of listening on port 4000-4005 (<Port>4000-4004,4005/udp</Port>)
 					This is just a demonstration to show that you can configure the port in several ways
+				
+					<Port>4000-4004,4005/udp</Port>
 				-->
 				<Port>4000/udp</Port>
 			</MPEGTS>
@@ -80,11 +84,16 @@
 				</Signalling>
 
 				<IceCandidates>
-					<IceCandidate>*:10000-10005/udp</IceCandidate>
+					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
+					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
+					<IceCandidate>*:10000-10004/udp</IceCandidate>
+
+					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
+
 					<!-- 
 						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
 						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-						For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
 					-->
 					<TcpRelay>*:3478</TcpRelay>
 					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -117,11 +126,16 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>*:10000-10005/udp</IceCandidate>
+					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
+					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
+					<IceCandidate>*:10000-10004/udp</IceCandidate>
+					
+					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
+
 					<!-- 
 						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
 						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-						For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
 					-->
 					<TcpRelay>*:3478</TcpRelay>
 					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -129,6 +143,10 @@
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
+			<SRT>
+				<Port>9998</Port>
+				<WorkerCount>1</WorkerCount>
+			</SRT>
 		</Publishers>
 	</Bind>
 
@@ -161,6 +179,38 @@
 		</API>
 	</Managers>
 	-->
+
+	<!--
+		Refer https://airensoft.gitbook.io/ovenmediaengine/alert
+	<Alert>
+		<Url></Url>
+		<SecretKey></SecretKey>
+		<Timeout>3000</Timeout>
+		<Rules>
+			<Ingress>
+				<MinBitrate></MinBitrate>
+				<MaxBitrate></MaxBitrate>
+				<MinFramerate></MinFramerate>
+				<MaxFramerate></MaxFramerate>
+				<MinWidth></MinWidth>
+				<MinHeight></MinHeight>
+				<MaxWidth></MaxWidth>
+				<MaxHeight></MaxHeight>
+				<MinSamplerate></MinSamplerate>
+				<MaxSamplerate></MaxSamplerate>
+				<LongKeyFrameInterval />
+				<HasBFrames />
+			</Ingress>
+		</Rules>
+	</Alert>
+	-->
+
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
 
 	<VirtualHosts>
 		<!-- You can use wildcard like this to include multiple XMLs -->
@@ -199,7 +249,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -211,7 +261,7 @@
 				<Timeout>3000</Timeout>
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</AdmissionWebhooks>
 			-->
@@ -244,7 +294,7 @@
 					</Pass>
 				</Origin>
 			</Origins> -->
-			
+
 			<!--
 			<OriginMapStore>
 				In order to use OriginMap, you must enable OVT Publisher in Origin and OVT Provider in Edge.
@@ -257,7 +307,7 @@
 				<OriginHostName>ome-dev.airensoft.com</OriginHostName>
 			</OriginMapStore>
 			-->
-			
+
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
@@ -265,104 +315,184 @@
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
+						<!-- Common setting for decoders. Decodes is optional. -->
+						<Decodes>
+							<!-- Number of threads for the decoder. -->
+							<ThreadCount>2</ThreadCount>
+							<!-- 
+							By default, OME decodes all video frames. 
+							With OnlyKeyframes, only keyframes are decoded, massively improving performance.
+							Thumbnails are generated only on keyframes, they may not generate at your requested fps!
+							-->
+							<OnlyKeyframes>false</OnlyKeyframes>
+						</Decodes>
+
 						<!-- Enable this configuration if you want to hardware acceleration using GPU -->
-						<HardwareAcceleration>false</HardwareAcceleration>
+						<HWAccels>
+							<Decoder>
+									<Enable>false</Enable>
+									<!-- 
+										Setting for Hardware Modules.
+										 - xma :Xilinx Media Accelerator
+										 - qsv :Intel Quick Sync Video
+										 - nv : Nvidia Video Codec SDK
+										 - nilogan: Netint VPU
+
+										You can use multiple modules by separating them with commas.
+										For example, if you want to use xma and nv, you can set it as follows.
+
+										<Modules>[ModuleName]:[DeviceId],[ModuleName]:[DeviceId],...</Modules>
+										<Modules>xma:0,nv:0</Modules>
+									-->
+									<!-- <Modules>nv</Modules> -->
+							</Decoder>
+							<Encoder>
+									<Enable>false</Enable>
+									<!-- <Modules>nv</Modules> -->
+							</Encoder>
+						</HWAccels>
+
 						<OutputProfile>
 							<Name>bypass_stream</Name>
 							<OutputStreamName>${OriginStreamName}</OutputStreamName>
 
-							<!-- 
-							You can provide ABR with Playlist. Currently, ABR is only supported in LLHLS.
-							
 							<Playlist>
-								<Name>Paid</Name>
-								You can play this playlist with 
-								LLHLS : http[s]://<domain>[:port]/<app>/<stream>/<FileName>.m3u8 
-								WebRTC : ws[s]://<domain>[:port]/<app>/<stream>/<FileName>
-								Note that the keywords "playlist" and "chunklist" MUST NOT be included in FileName.
-								<FileName>premium</FileName>
-
-								Options is optional. 
+								<Name>default</Name>
+								<FileName>master</FileName>
 								<Options>
-									WebRtcAutoAbr : Default value is true
-									<WebRtcAutoAbr>true</WebRtcAutoAbr> 
+									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
-								
-								<Rendition>
-									<Name>bypass</Name>
-									<Video>bypass_video</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>480p</Name>
-									<Video>480p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
+								<RenditionTemplate>
+									<Name>${Height}p</Name>
+									<VideoTemplate> <!-- Filter by video properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>bypass_video</VariantName>
+										<VideoIndexHint>0</VideoIndexHint>
+										<MaxWidth>1080</MaxWidth>
+										<MinWidth>240</MinWidth>
+										<MaxHeight>720</MaxHeight>
+										<MinHeight>240</MinHeight>
+										<MaxFPS>30</MaxFPS>
+										<MinFPS>30</MinFPS>
+										<MaxBitrate>2000000</MaxBitrate>
+										<MinBitrate>500000</MinBitrate> -->
+									</VideoTemplate>
+									<AudioTemplate> <!-- Filter by audio properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>aac_audio</VariantName>
+										<MaxBitrate>128000</MaxBitrate>
+										<MinBitrate>128000</MinBitrate>
+										<MaxSamplerate>48000</MaxSamplerate>
+										<MinSamplerate>48000</MinSamplerate>
+										<MaxChannel>2</MaxChannel>
+										<MinChannel>2</MinChannel>
+										<AudioIndexHint>0</AudioIndexHint> -->
+									</AudioTemplate>
+								</RenditionTemplate>
 							</Playlist>
-							<Playlist>
-								<Name>free</Name>
-								<FileName>free</FileName>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-							</Playlist>
-							-->
 
 							<Encodes>
-								<Audio>
-									<Name>bypass_audio</Name>
-									<Bypass>true</Bypass>
-								</Audio>
 								<Video>
 									<Name>bypass_video</Name>
 									<Bypass>true</Bypass>
 								</Video>
 								<Audio>
+									<Name>aac_audio</Name>
+									<Codec>aac</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>
+								</Audio>
+								<Audio>
+									<Name>opus_audio</Name>
 									<Codec>opus</Codec>
 									<Bitrate>128000</Bitrate>
 									<Samplerate>48000</Samplerate>
 									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>
 								</Audio>
-								<!-- 							
+								<!--
 								<Video>
 									<Name>video_1280</Name>
 									<Codec>h264</Codec>
 									<Bitrate>5024000</Bitrate>
-									<Framerate>30</Framerate>
 									<Width>1920</Width>
-									<Height>1280</Height>
+									<Height>1080</Height>
+									<Framerate>30</Framerate>
+									<KeyFrameInterval>30</KeyFrameInterval>
+									<BFrames>0</BFrames>
 									<Preset>faster</Preset>
 								</Video>
 								<Video>
 									<Name>video_720</Name>
 									<Codec>h264</Codec>
 									<Bitrate>2024000</Bitrate>
-									<Framerate>30</Framerate>
 									<Width>1280</Width>
 									<Height>720</Height>
+									<Framerate>30</Framerate>
+									<KeyFrameInterval>30</KeyFrameInterval>
+									<BFrames>0</BFrames>									
 									<Preset>faster</Preset>
+								</Video>	
+								<Audio>
+									<Name>bypass_audio</Name>
+									<Bypass>true</Bypass>
+								</Audio>																
+								-->
+								<!-- 
+									 If all conditions of BypassIfMatch are matched, bypass is used without encoding.
+									 [Options] 
+									   eq: euqal to
+									   lte: less than or equal to
+									   gte: greater than or equal to
+
+								<Video>
+									<Name>conditional_video_encoding</Name>
+									<Codec>h264</Codec>
+									<Bitrate>2024000</Bitrate>
+									<Width>1280</Width>
+									<Height>720</Height>
+									<Framerate>30</Framerate>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+										<Framerate>lte</Framerate>
+										<Width>lte</Width>
+										<Height>lte</Height>
+										<SAR>eq</SAR>
+									</BypassIfMatch>									
 								</Video>
+								<Audio>
+									<Name>conditional_audio_encoding</Name>
+									<Codec>aac</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+										<Samplerate>lte</Samplerate>
+										<Channel>eq</Channel>
+									</BypassIfMatch>
+								</Audio>																			
 								-->
 							</Encodes>
 						</OutputProfile>
 					</OutputProfiles>
 					<Providers>
 						<OVT />
-						<WebRTC />
 						<RTMP />
 						<SRT />
 						<MPEGTS>
 							<StreamMap>
 								<!--
 									Set the stream name of the client connected to the port to "stream_${Port}"
-									For example, if a client connets to port 4000, OME creates a "stream_4000" stream
+									For example, if a client connects to port 4000, OME creates a "stream_4000" stream
 									<Stream>
 										<Name>stream_${Port}</Name>
 										<Port>4000,4001-4004</Port>
@@ -381,7 +511,15 @@
 						<RTSPPull />
 						<WebRTC>
 							<Timeout>30000</Timeout>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
 						</WebRTC>
+
+						<Schedule>
+							<MediaRootDir>/opt/ovenmediaengine/media</MediaRootDir>
+							<ScheduleFilesDir>/opt/ovenmediaengine/media</ScheduleFilesDir>
+						</Schedule>
 					</Providers>
 					<Publishers>
 						<AppWorkerCount>1</AppWorkerCount>
@@ -392,6 +530,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<ChunkDuration>0.5</ChunkDuration>
@@ -404,10 +543,50 @@
 								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
 								<MaxDuration>3600</MaxDuration>
 							</DVR>
+							<DRM>
+								<Enable>false</Enable>
+								<InfoFile>path/to/file.xml</InfoFile>
+							</DRM>
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<!-- <DVR>
+								<Enable>true</Enable>
+								<EventPlaylistType>false</EventPlaylistType>
+								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
+								<MaxDuration>600</MaxDuration>
+							</DVR> -->
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
+
+						<!--
+						<Push>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</Push>
+						<FILE>
+							<RootPath>/prefix/path/to</RootPath>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</FILE>
+						<Thumbnail>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+						</Thumbnail>						
+						-->
 					</Publishers>
 				</Application>
 			</Applications>

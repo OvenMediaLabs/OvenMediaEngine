@@ -22,7 +22,7 @@ std::shared_ptr<ov::Data> SdesChunk::GetData()
 
 	ov::ByteStream write_stream(data);
 
-	write_stream.WriteBE32(_src);
+	write_stream.WriteBE32(_ssrc);
 	write_stream.WriteBE(static_cast<uint8_t>(_type));
 	write_stream.WriteBE(static_cast<uint8_t>(_text.GetLength()));
 	write_stream.Write(_text.ToData(false));
@@ -32,5 +32,5 @@ std::shared_ptr<ov::Data> SdesChunk::GetData()
 
 void SdesChunk::Print()
 {
-	logti("SDES Chunk >> ssrc/csrc(%u) type(%d) data(%s)", _src, static_cast<uint8_t>(_type), _text.CStr());
+	logti("SDES Chunk >> ssrc/csrc(%u) type(%d) data(%s)", _ssrc, static_cast<uint8_t>(_type), _text.CStr());
 }

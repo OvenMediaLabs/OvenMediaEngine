@@ -21,7 +21,7 @@ using namespace cmn;
 
 namespace pvd
 {
-	std::shared_ptr<FileProvider> FileProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	std::shared_ptr<FileProvider> FileProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	{
 		auto provider = std::make_shared<FileProvider>(server_config, router);
 		if (!provider->Start())
@@ -32,17 +32,17 @@ namespace pvd
 		return provider;
 	}
 
-	FileProvider::FileProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	FileProvider::FileProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PullProvider(server_config, router)
 	{
-		logtd("Created File Provider module.");
+		logtt("Created File Provider module.");
 	}
 
 	FileProvider::~FileProvider()
 	{
 		Stop();
 
-		logtd("Terminated File Provider module.");
+		logtt("Terminated File Provider module.");
 	}
 
 	bool FileProvider::OnCreateHost(const info::Host &host_info)
@@ -70,6 +70,8 @@ namespace pvd
 		}
 
 		std::thread t([&](const info::Application &info) {
+			ov::logger::ThreadHelper thread_helper;
+
 			CreateStreamFromStreamMap(info);
 		}, app_info);
 		t.detach();
@@ -96,9 +98,9 @@ namespace pvd
 			// Failback = false
 			// Relay = true
 			auto stream_props = std::make_shared<pvd::PullStreamProperties>();
-			stream_props->SetPersistent(true);
-			stream_props->SetFailback(false);
-			stream_props->SetRelay(true);
+			stream_props->EnablePersistent(true);
+			stream_props->EnableFailback(false);
+			stream_props->EnableRelay(true);
 
 			PullStream(std::make_shared<ov::Url>(), app_info, stream.GetName(), url_list, 0, stream_props);
 		}

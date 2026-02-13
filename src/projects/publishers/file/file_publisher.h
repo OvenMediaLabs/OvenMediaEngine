@@ -15,9 +15,9 @@ namespace pub
 	class FilePublisher : public pub::Publisher
 	{
 	public:
-		static std::shared_ptr<FilePublisher> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<FilePublisher> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		FilePublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		FilePublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~FilePublisher() override;
 		bool Stop() override;
 
@@ -46,7 +46,7 @@ namespace pub
 		{
 			Success,
 			FailureInvalidParameter,
-			FailureDupulicateKey,
+			FailureDuplicateKey,
 			FailureNotExist,
 			FailureUnknown
 		};

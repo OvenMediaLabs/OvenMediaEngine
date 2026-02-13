@@ -108,6 +108,7 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		Variant GetValueFromJson(ValueType value_type, const ov::String &name, bool is_child, bool resolve_path, bool omit_json, Json::Value *original_value) const;
 
+	protected:
 		DataType _type;
 
 		cfg::CheckUnknownItems _check_unknown_items = CheckUnknownItems::Check;

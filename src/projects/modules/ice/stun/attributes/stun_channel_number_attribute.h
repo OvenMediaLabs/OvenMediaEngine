@@ -17,7 +17,7 @@ public:
 	StunChannelNumberAttribute():StunChannelNumberAttribute(0){}
 	StunChannelNumberAttribute(int length):StunAttribute(StunAttributeType::ChannelNumber, length){}
 
-	bool Parse(ov::ByteStream &stream) override
+	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override
 	{
 		if(stream.IsRemained(sizeof(uint32_t)) == false)
 		{
@@ -46,9 +46,9 @@ public:
 		return true;
 	}
 
-	bool Serialize(ov::ByteStream &stream) const noexcept override
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override
 	{
-		return StunAttribute::Serialize(stream) && stream.WriteBE16(_channel_number) && stream.WriteBE16(0);
+		return StunAttribute::Serialize(stun_message, stream) && stream.WriteBE16(_channel_number) && stream.WriteBE16(0);
 	}
 
 	ov::String ToString() const override

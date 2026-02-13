@@ -1,25 +1,23 @@
-# REST API (Beta)
+# REST API
 
 ## Overview
 
-The REST APIs provided by OME allow you to query or change settings such as VirtualHost and Application/Stream.
+The REST APIs provided by OME allow you to query or change settings such as `VirtualHost` and `Application/Stream`.
 
 {% hint style="warning" %}
-The APIs are currently beta version, so there are some limitations/considerations.
+There are some limitations/considerations.
 
-* Settings of VirtualHost can only be viewed and cannot be changed or deleted.
-* If you add/change/delete the settings of the App/Output Profile by invoking the API, the app will be restarted. This means that all sessions associated with the app will be disconnected.
-* The API version is fixed with v1 until the experimental stage is complete, and the detailed specification can be changed at any time.
+* If you add/change/delete the settings of the App/Output Profile by invoking the API, the app will be restarted. This means that all sessions connected to the app will be disconnected.
+* VirtualHost settings in Server.xml cannot be modified through API. This rule also applies to Application/OutputStream, etc. within that VirtualHost. So, if you call a POST/PUT/DELETE API for VirtualHost/Application/OutputProfile declared in Server.xml, it will not work with a 403 Forbidden error.
 {% endhint %}
 
-By default, OvenMediaEngine's APIs are disabled, so the following settings are required to use the API:
+By default, OvenMediaEngine's API Server is disabled, so the following settings are required to use the API.
 
-Setting up for using the APIs
+## Setup API Server
 
+### Port Binding
 
-### Port
-
-Set the `<Port>` to use by the API server. If you omit `<Port>`, you will use the API server's default port, port `8081`.
+The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./#managers).
 
 ```markup
 <Server version="8">
@@ -28,9 +26,7 @@ Set the `<Port>` to use by the API server. If you omit `<Port>`, you will use th
 		<Managers>
 			<API>
 				<Port>8081</Port>
-				<!-- If you need TLS support, please uncomment below:
 				<TLSPort>8082</TLSPort>
-				-->
 			</API>
 		</Managers>
 		...
@@ -39,253 +35,150 @@ Set the `<Port>` to use by the API server. If you omit `<Port>`, you will use th
 </Server>
 ```
 
-### Host and Permissions
+### Managers
 
-`<Host>` sets the Host name and TLS certificate information to be used by the API server, and `<AccessToken>` sets the token to be used for authentication when calling the APIs. You must use this token to invoke the API of OvenMediaEngine.
+In order to use the API server, you must configure `<Managers>` as well as port binding.
 
-```markup
+```xml
 <Server version="8">
-	...
+	<Bind>
+		...
+	</Bind>
+
 	<Managers>
 		<Host>
 			<Names>
 				<Name>*</Name>
 			</Names>
-			<!--
-				If you want to set up TLS, set it up by referring to the following:
 			<TLS>
 				<CertPath>airensoft_com.crt</CertPath>
 				<KeyPath>airensoft_com.key</KeyPath>
 				<ChainCertPath>airensoft_com_chain.crt</ChainCertPath>
 			</TLS>
-			-->
 		</Host>
 		<API>
 			<AccessToken>your_access_token</AccessToken>
-		</API>
-	</Managers>
-</Server>
-```
-
-### CrossDomains
-
-If you face a CORS problem by calling the OME API on your browser, you can set `<CrossDomains>` as follows:
-
-```markup
-<Server version="10">
-	...
-	<Managers>
-		<Host>
-			<Names>
-				<Name>*</Name>
-			</Names>
-
-		</Host>
-		<API>
-		...
 			<CrossDomains>
 				<Url>*.airensoft.com</Url>
-				<Url>sub-domain.airensoft.com</Url>
-				<Url>http://http-only.airensoft.com</Url>
+				<Url>http://*.sub-domain.airensoft.com</Url>
+				<Url>http?://airensoft.*</Url>
 			</CrossDomains>
 		</API>
 	</Managers>
+
+	<VirtualHosts>
+		...
+	</VirtualHosts>
 </Server>
 ```
 
-If protocol is omitted like `*.airensoft.com`, both HTTP and HTTPS are supported.
+#### Host
 
-## API Request/Response Specification
+In `<Names>`, set the domain or IP that can access the API server. If `*` is set, any address is used. In order to access using the TLS Port, a certificate must be set in `<TLS>`.
 
-In this manual, the following format is used when describing the API.
+#### AccessToken
 
-{% swagger baseUrl="http://<OME_HOST>:<API_PORT>" path="/<VERSION>/<API_PATH>[/...]" method="get" summary="<VERSION>/<API_PATH>" %}
-{% swagger-description %}
-Here is the description of the API
+API Server uses Basic HTTP Authentication Scheme to authenticate clients. An `AccessToken` is a plaintext credential string before base64 encoding. Setting the `AccessToken` to the form `user-id:password` per RFC7617 allows standard browsers to pass authentication, but it is not required.
 
-\
+For more information about HTTP Basic authentication, refer to the URL below.&#x20;
 
+[https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication)
 
+#### CrossDomains
 
-
-\
-
-
-Request Example:
-
-\
-
-
-
-
-`- Method: GET`
-
-\
-
-
-`- URL: http://1.2.3.4:8081/v1/vhost`
-
-\
-
-
-`- Header:`
-
-\
-
-
-  
-
-`authorization: Basic b21ldGVzdA==`
-{% endswagger-description %}
-
-{% swagger-parameter in="path" name="" type="string" %}
-
-{% endswagger-parameter %}
-
-{% swagger-parameter in="header" name="authorization" type="string" %}
-`Basic base64encode(AccessToken)`
-
-\
-
-
-
-
-\
-
-
-if you set 
-
-`<AccessToken>`
-
- to "ome-access-token" in 
-
-`Server.xml`
-
-, you must set 
-
-`Basic b21lLWFjY2Vzcy10b2tlbg==`
-
- in the 
-
-`Authorization`
-
- header.
-{% endswagger-parameter %}
-
-{% swagger-response status="200" description="" %}
-```
-```
-{% endswagger-response %}
-{% endswagger %}
+To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.airensoft.com, all schemes can be accepted.
 
 
 
-#### \<OME\_HOST>
+## API Request
 
-This means the IP or domain of the server on which your OME is running.
+API endpoints are provided in the following format.
 
-#### \<API\_PORT>
+> <mark style="color:blue;">Method</mark> http://API.Server.Address\[:Port]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>&#x20;
+>
+> <mark style="color:blue;">Method</mark> https://API.Server.Address\[:TLSPort]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>
 
-This means the port number of the API you set up in `Server.xml`. The default value is 8081.
+OvenMediaEngine supports <mark style="color:blue;">GET</mark>, <mark style="color:blue;">POST</mark>, and <mark style="color:blue;">DELETE</mark> methods, and sometimes supports <mark style="color:blue;">PATCH</mark> depending on the type of resource. For detailed API specifications, please check the subdirectory of this chapter.
 
-#### \<VERSION>
+### Action
 
-Indicates the version of the API. Currently, all APIs are v1.
+In OvenMediaEngine's REST API, action is provided in the following format.
 
-#### \<API\_PATH>&#xD;
+> <mark style="color:blue;">POST</mark> http://host/v1/resource<mark style="color:green;">:{action name}</mark>
 
-Indicates the API path to be called. The API path is usually in the following form:
+For example, an action to send an ID3 Timedmeta event to an LLHLS stream is provided by the endpoint below.
 
-```markup
-/resource-group[/resource[/resource-group[/resource/...]]][:action]
+> <mark style="color:blue;">POST</mark> http://-/v1/vhosts/{vhost}/apps/{app}/streams/{stream}:<mark style="color:green;">sendEvent</mark>
+
+### Document format
+
+In this API reference document, the API endpoint is described as follows. Note that scheme://Host\[:Port] is omitted for all endpoints.
+
+<details>
+
+<summary><mark style="color:blue;">METHOD</mark> /v1/&#x3C;API_PATH></summary>
+
+#### Header
+
+Describe the required header values.
+
+```http
+Header-Key: Value
+
+# Header-Key
+    Description
 ```
 
-`resource` means an item, such as `VirtualHost` or `Application`, and `action` is used to command an action to a specific resource, such as `push` or `record`.
+#### Body
 
-### Response
+Describe the request body content. The body of all APIs consists of Json content. Therefore, the `Content-Type` header value is always `application/json`, which can be omitted in the document.
 
-All response results are provided in the HTTP status code and response body, and if there are multiple response results in the response, the HTTP status code will be `207 MultiStatus`. The API response data is in the form of an array of [`Response`](v1/data-types/classes.md#responsetype) or [`Response`](v1/data-types/classes.md#responsetype) as follows:
+{% code overflow="wrap" %}
+```json
+{
+    "requestId": "value"
+}
+    
+# key (required)
+    The description of the key/value of the body content is provided like this.
+```
+{% endcode %}
 
+</details>
 
+Responses from API endpoints are provided in the following format.
 
-```javascript
-// Single data request example
+<details>
 
-// << Request >>
-// Request URI: GET /v1/vhosts/default
-// Header:
-//   authorization: Basic b21lLWFjY2Vzcy10b2tlbg==
+<summary><mark style="color:blue;">HTTP_Status_Code</mark> Code_Description</summary>
 
-// << Response >>
-// HTTP Status code: 200 OK
-// Response Body:
+#### **Header**
+
+Description of response headers
+
+```http
+Header-Key: Value
+```
+
+#### **Body**
+
+Description the response body content. The body of all response consists of Json content. Therefore, the `Content-Type` header value is always `application/json`, which can be omitted in the document.
+
+```json
 {
 	"statusCode": 200,
 	"message": "OK",
-	"response": ... // Requested data
+	"response": {
+	}
 }
+
+# statusCode
+	Same as HTTP Status Code
+# message
+	A human-readable description of the response code
+# response
+	Response Contents
 ```
 
-```javascript
-// Multiple data request (Status codes are the same)
-
-// << Request >>
-// Request URI: POST /v1/vhost/default/apps
-// Header:
-//   authorization: Basic b21lLWFjY2Vzcy10b2tlbg==
-// Request Body:
-[
-	{ ... }, // App information to create
-	{ ... }, // App information to create
-]
-
-// << Response >>
-// HTTP Status code: 200 OK
-// Response Body:
-[
-	{
-		"statusCode": 200,
-		"message": "OK",
-		"response": ... // App1
-	},
-	{
-		"statusCode": 200,
-		"message": "OK",
-		"response": ... // App2
-	}
-]
-```
-
-```javascript
-// Multiple data request (Different status codes)
-
-// << Request >>
-// Request URI: POST /v1/vhost/default/apps
-// Header:
-//   authorization: Basic b21lLWFjY2Vzcy10b2tlbg==
-// Request Body:
-[
-	{ ... }, // App information to create
-	{ ... }, // App information to create
-]
-
-// << Response >>
-// HTTP Status code: 207 MultiStatus
-// Response Body:
-[
-	{
-		"statusCode": 200,
-		"message": "OK",
-		"response": ... // App1
-	},
-	{
-		"statusCode": 404,
-		"message": "Not found"
-	}
-]
-```
-
-## API Limitations
-
-&#x20;`VirtualHost` settings created by `Server.xml` cannot be modified through API. This rule also applies to `Application`/`OutputStream`, etc. within that VirtualHost. So, if you call a POST/PUT/DELETE API for `VirtualHost`/`Application`/`OutputProfile` declared in `Server.xml`, it will not work with a `403 Forbidden`  error.
+</details>
 

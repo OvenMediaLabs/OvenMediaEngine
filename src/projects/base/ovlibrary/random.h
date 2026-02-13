@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <random>
 
 #include "./string.h"
@@ -54,5 +54,8 @@ namespace ov
 		}
 
 		static ov::String GenerateString(uint32_t length);
+		static ov::String GenerateNumberString(uint32_t length);
+
+		static void Fill(void *buffer, size_t length);
 	};
 }

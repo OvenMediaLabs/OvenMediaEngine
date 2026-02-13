@@ -37,17 +37,20 @@ void LoggerTagInfo::SetLevel(OVLogLevel level)
 }
 
 /*
-		OVLogLevelDebug,
-		OVLogLevelInformation,
-		OVLogLevelWarning,
-		OVLogLevelError,
-		OVLogLevelCritical
+	OVLogLevelTrace,
+	OVLogLevelDebug,
+	OVLogLevelInformation,
+	OVLogLevelWarning,
+	OVLogLevelError,
+	OVLogLevelCritical
  */
 
 const char *LoggerTagInfo::StringFromOVLogLevel(OVLogLevel log_level) noexcept
 {
-	switch(log_level)
+	switch (log_level)
 	{
+		case OVLogLevelTrace:
+			return "trace";
 		case OVLogLevelDebug:
 			return "debug";
 		case OVLogLevelInformation:
@@ -63,40 +66,37 @@ const char *LoggerTagInfo::StringFromOVLogLevel(OVLogLevel log_level) noexcept
 	}
 }
 
-OVLogLevel LoggerTagInfo::OVLogLevelFromString(ov::String level_string) noexcept
+std::optional<OVLogLevel> LoggerTagInfo::OVLogLevelFromString(ov::String level_string) noexcept
 {
-	if(level_string == "debug")
+	if (level_string == "trace")
+	{
+		return OVLogLevelTrace;
+	}
+	else if (level_string == "debug")
 	{
 		return OVLogLevelDebug;
 	}
-	else if(level_string == "info")
+	else if (level_string == "info")
 	{
 		return OVLogLevelInformation;
 	}
-	else if(level_string == "warn")
+	else if (level_string == "warn")
 	{
 		return OVLogLevelWarning;
 	}
-	else if(level_string == "error")
+	else if (level_string == "error")
 	{
 		return OVLogLevelError;
 	}
-	else if(level_string == "critical")
+	else if (level_string == "critical")
 	{
 		return OVLogLevelCritical;
 	}
-	else
-	{
-		return OVLogLevelInformation;
-	}
+
+	return std::nullopt;
 }
 
 const bool LoggerTagInfo::ValidateLogLevel(ov::String level_string)
 {
-	if((level_string != "debug") && (level_string != "info") && (level_string != "warn") && (level_string != "error") && (level_string != "critical"))
-	{
-		return false;
-	}
-
-	return true;
+	return OVLogLevelFromString(level_string).has_value();
 }

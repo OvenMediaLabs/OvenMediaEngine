@@ -32,7 +32,7 @@ namespace cfg
 						Register<Optional>("Event", &_events);
 					}
 				};
-			} // namespace pvd
-		} // namespace app
-	} // namespace vhost
+			}  // namespace pvd
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

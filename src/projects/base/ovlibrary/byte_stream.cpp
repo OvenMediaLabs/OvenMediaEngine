@@ -54,6 +54,51 @@ namespace ov
 	{
 	}
 
+	std::shared_ptr<Data> ByteStream::ReadData(size_t length)
+	{
+		if (length <= 0)
+		{
+			return nullptr;
+		}
+
+		if (Remained() < length)
+		{
+			OV_ASSERT(false, "Not enough data to read: %zu bytes requested, but only %zu bytes remained", length, Remained());
+			return nullptr;
+		}
+
+		const uint8_t *data = CurrentBuffer<uint8_t>();
+		if (data == nullptr)
+		{
+			OV_ASSERT(false, "Current buffer is null");
+			return nullptr;
+		}
+		
+		auto read_data = std::make_shared<Data>(data, length, true); // Read-only data
+		if (read_data == nullptr)
+		{
+			OV_ASSERT(false, "Failed to create read-only data");
+			return nullptr;
+		}
+
+		// Move the offset forward by the length of data read
+		_offset += length;
+
+		return read_data;
+	}
+
+	ov::String ByteStream::ReadString(size_t length)
+	{
+		auto data = ReadData(length);
+		if (data == nullptr)
+		{
+			OV_ASSERT(false, "Failed to read string data");
+			return ov::String();
+		}
+
+		return data->ToString();
+	}
+
 	bool ByteStream::Write(const void *data, size_t bytes) noexcept
 	{
 		if (_data == nullptr)

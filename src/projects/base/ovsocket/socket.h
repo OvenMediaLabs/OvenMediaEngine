@@ -12,6 +12,7 @@
 #include <netinet/tcp.h>
 
 #include "socket_address.h"
+#include "socket_address_pair.h"
 #include "socket_wrapper.h"
 
 #if !IS_MACOS
@@ -52,6 +53,10 @@ namespace ov
 
 	class Socket : public EnableSharedFromThis<Socket>, public SocketPoolEventInterface
 	{
+	public:
+		// Called when the server socket is created
+		using SetAdditionalOptionsCallback = std::function<std::shared_ptr<ov::Error>(const std::shared_ptr<ov::Socket> &socket)>;
+
 	protected:
 		friend class SocketPoolWorker;
 
@@ -177,6 +182,9 @@ namespace ov
 		bool SendTo(const SocketAddress &address, const std::shared_ptr<const Data> &data);
 		bool SendTo(const SocketAddress &address, const void *data, size_t length);
 
+		bool SendFromTo(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data);
+		bool SendFromTo(const SocketAddressPair &address_pair, const void *data, size_t length);
+
 		// When Recv is called in non-blocking mode,
 		//
 		// 1. return != nullptr: An error occurred (Include disconnecting the client)
@@ -186,11 +194,11 @@ namespace ov
 		//                          (If not, epoll event will not occur later)
 		//
 		// If MakeNonBlocking() is called, non_block is ignored
-		std::shared_ptr<const SocketError> Recv(std::shared_ptr<Data> &data, bool non_block = false);
-		std::shared_ptr<const SocketError> Recv(void *data, size_t length, size_t *received_length, bool non_block = false);
+		std::shared_ptr<const SocketError> Recv(std::shared_ptr<Data> &data, const bool non_block = false);
+		std::shared_ptr<const SocketError> Recv(void *data, size_t length, size_t *received_length, const bool non_block = false);
 
 		// If MakeNonBlocking() is called, non_block is ignored
-		std::shared_ptr<const SocketError> RecvFrom(std::shared_ptr<Data> &data, SocketAddress *address, bool non_block = false);
+		std::shared_ptr<const SocketError> RecvFrom(std::shared_ptr<Data> &data, SocketAddressPair *address_pair, const bool non_block = false);
 
 		std::chrono::system_clock::time_point GetLastRecvTime() const;
 		std::chrono::system_clock::time_point GetLastSentTime() const;
@@ -256,6 +264,8 @@ namespace ov
 				Send = 0x01,
 				// Need to send data using sendto()
 				SendTo = 0x02,
+				// Need to send data using sendmsg()
+				SendFromTo = 0x03,
 
 				// Need to call shutdown(SHUT_WR) (TCP only)
 				HalfClose = CLOSE_TYPE_MASK | 0x01,
@@ -277,6 +287,9 @@ namespace ov
 
 					case Type::SendTo:
 						return "SendTo";
+
+					case Type::SendFromTo:
+						return "SendFromTo";
 
 					case Type::HalfClose:
 						return "HalfClose";
@@ -306,6 +319,14 @@ namespace ov
 			{
 			}
 
+			DispatchCommand(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data)
+				: type(Type::SendFromTo),
+				  address_pair(address_pair),
+				  data(data),
+				  enqueued_time(std::chrono::system_clock::now())
+			{
+			}
+
 			DispatchCommand(Type type)
 				: type(type),
 				  enqueued_time(std::chrono::system_clock::now())
@@ -324,6 +345,7 @@ namespace ov
 				: type(another_command.type),
 				  new_state(another_command.new_state),
 				  address(another_command.address),
+				  address_pair(another_command.address_pair),
 				  data(another_command.data),
 				  enqueued_time(another_command.enqueued_time)
 			{
@@ -335,6 +357,7 @@ namespace ov
 				std::swap(type, another_command.type);
 				std::swap(new_state, another_command.new_state);
 				std::swap(address, another_command.address);
+				std::swap(address_pair, another_command.address_pair);
 				std::swap(data, another_command.data);
 				std::swap(enqueued_time, another_command.enqueued_time);
 			}
@@ -369,6 +392,11 @@ namespace ov
 					description.AppendFormat(", address: %s", address.ToString(false).CStr());
 				}
 
+				if (type == DispatchCommand::Type::SendFromTo)
+				{
+					description.AppendFormat(", address_pair: %s", address_pair.ToString().CStr());
+				}
+
 				if (data != nullptr)
 				{
 					description.AppendFormat(", data: %zu bytes", data->GetLength());
@@ -382,19 +410,20 @@ namespace ov
 			Type type = Type::Close;
 			SocketState new_state = SocketState::Closed;
 			SocketAddress address;
+			SocketAddressPair address_pair;
 			std::shared_ptr<const Data> data;
 			std::chrono::time_point<std::chrono::system_clock> enqueued_time;
 		};
 
 	protected:
-		virtual bool Create(SocketType type);
+		virtual bool Create(const SocketType type, const SocketFamily family);
 
 		// Internal version of MakeNonBlocking() - It doesn't check state
 		bool MakeNonBlockingInternal(std::shared_ptr<SocketAsyncInterface> callback, bool need_to_wait_first_epoll_event);
 
 		bool SetBlockingInternal(BlockingMode mode);
 
-		bool AppendCommand(DispatchCommand command);
+		bool AppendCommand(DispatchCommand command, bool dispatch_immediately);
 
 		//--------------------------------------------------------------------
 		// Implementation of SocketPoolEventInterface
@@ -402,11 +431,21 @@ namespace ov
 		bool OnConnectedEvent(const std::shared_ptr<const SocketError> &error) override;
 		PostProcessMethod OnDataWritableEvent() override;
 		void OnDataAvailableEvent() override;
+		//--------------------------------------------------------------------
 
 		DispatchResult DispatchEventInternal(DispatchCommand &command);
 
+		bool IsSendable() const;
+		ssize_t HandleSendError(const ssize_t result, const size_t total_sent);
+
+		bool DispatchEventsAfterAppendCommand();
+
+		ssize_t SendData(const std::shared_ptr<const Data> &data);
+		ssize_t SendSrtData(const std::shared_ptr<const Data> &data);
+
 		ssize_t SendInternal(const std::shared_ptr<const Data> &data);
 		ssize_t SendToInternal(const SocketAddress &address, const std::shared_ptr<const Data> &data);
+		ssize_t SendFromToInternal(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data);
 
 		std::shared_ptr<SocketError> RecvInternal(void *data, size_t length, size_t *received_length);
 
@@ -472,10 +511,15 @@ namespace ov
 		std::shared_ptr<SocketPoolWorker> _worker;
 
 		SocketWrapper _socket;
+		SocketFamily _family;
 
+		mutable std::mutex _state_mutex;
 		SocketState _state = SocketState::Closed;
 
 		BlockingMode _blocking_mode = BlockingMode::Blocking;
+
+		std::mutex _worker_mutex;
+		bool _added_to_worker = false;
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
@@ -504,7 +548,7 @@ namespace ov
 		void UpdateLastRecvTime();
 		void UpdateLastSentTime();
 
-		std::chrono::system_clock::time_point	_last_recv_time = std::chrono::system_clock::now();
-		std::chrono::system_clock::time_point	_last_sent_time = std::chrono::system_clock::now();
+		std::chrono::system_clock::time_point _last_recv_time = std::chrono::system_clock::now();
+		std::chrono::system_clock::time_point _last_sent_time = std::chrono::system_clock::now();
 	};
 }  // namespace ov

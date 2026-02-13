@@ -8,13 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "../../../../controller.h"
+#include "../../../../controller_base.h"
 
 namespace api
 {
 	namespace v1
 	{
-		class OutputProfilesController : public Controller<OutputProfilesController>
+		class OutputProfilesController : public ControllerBase<OutputProfilesController>
 		{
 		public:
 			void PrepareHandlers() override;

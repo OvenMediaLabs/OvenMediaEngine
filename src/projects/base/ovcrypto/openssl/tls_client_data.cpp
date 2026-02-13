@@ -43,6 +43,11 @@ namespace ov
 		_io_callback = callback;
 	}
 
+	void TlsClientData::SetTlsHostName(const ov::String &host_name)
+	{
+		_tls.SetTlsHostName(host_name);
+	}
+
 	std::shared_ptr<const OpensslError> TlsClientData::Connect()
 	{
 		_state = State::Connecting;
@@ -51,7 +56,7 @@ namespace ov
 
 		if (error == nullptr)
 		{
-			logtd("Subject: %s, Issuer: %s", _tls.GetSubjectName().CStr(), _tls.GetIssuerName().CStr());
+			logtt("Subject: %s, Issuer: %s", _tls.GetSubjectName().CStr(), _tls.GetIssuerName().CStr());
 			_state = State::Connected;
 		}
 
@@ -62,7 +67,7 @@ namespace ov
 	{
 		if (_state == State::Invalid)
 		{
-			logtd("Invalid state");
+			logtt("Invalid state");
 			return false;
 		}
 
@@ -73,7 +78,7 @@ namespace ov
 			*plain_data = data;
 		}
 
-		return true;
+		return (data != nullptr);
 	}
 
 	bool TlsClientData::Encrypt(const std::shared_ptr<const Data> &plain_data)
@@ -81,7 +86,7 @@ namespace ov
 		if (_state != State::Connected)
 		{
 			// Before encrypting data, key exchange must be done first
-			logtd("Invalid state: %d", _state);
+			logtt("Invalid state: %d", ToUnderlyingType(_state));
 			return false;
 		}
 

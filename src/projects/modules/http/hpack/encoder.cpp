@@ -16,6 +16,7 @@ namespace http
 	{
 		bool Encoder::UpdateDynamicTableSize(size_t size)
 		{
+			std::lock_guard<std::mutex> lock(_encoder_lock);
 			if (_table_connector.UpdateDynamicTableSize(size) == false)
 			{
 				return false;
@@ -27,6 +28,8 @@ namespace http
 
 		std::shared_ptr<ov::Data> Encoder::Encode(const HeaderField &header_fields, EncodingType type)
 		{
+			std::lock_guard<std::mutex> lock(_encoder_lock);
+
 			std::shared_ptr<ov::Data> encoded_data = std::make_shared<ov::Data>(header_fields.GetSize());
 			ov::ByteStream stream(encoded_data.get());
 

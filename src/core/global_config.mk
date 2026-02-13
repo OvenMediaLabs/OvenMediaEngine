@@ -27,26 +27,26 @@ endif
 
 __COMMA := ,
 ifneq ($(CONFIG_LIBRARY_PATHS),)
-__RPATH := -Wl,-rpath,$(subst :,$(__COMMA)-rpath$(__COMMA),$(CONFIG_LIBRARY_PATHS))
+__RPATH := -Wl,-rpath,$(subst :,$(__COMMA)-rpath$(__COMMA),$(CONFIG_LIBRARY_PATHS)) -Wl,--disable-new-dtags
 endif
 
 ifneq ($(CONFIG_PKG_PATHS),)
 __PKG_CONFIG_PATH := PKG_CONFIG_PATH="$(CONFIG_PKG_PATHS)"
 endif
 
-__EXTRA_CFLAGS :=
+__EXTRA_CPPFLAGS :=
 __EXTRA_LDFLAGS :=
 # Increase stack size if the OS is Alpine Linux)
 ifneq ($(shell cat /etc/*release 2>/dev/null | grep "^ID=" | grep "alpine"),)
     # 1048576 = 1MB
-    __EXTRA_CFLAGS := -Wl,-z,stack-size=1048576
-    __EXTRA_LDFLAGS := -Wl,-z,stack-size=1048576
+    __EXTRA_CPPFLAGS := $(__EXTRA_CPPFLAGS) -Wl,-z,stack-size=1048576
+    __EXTRA_LDFLAGS := $(__EXTRA_LDFLAGS) -Wl,-z,stack-size=1048576
 endif
 
 # Suppress "warning: attribute ignored" for SRT
-GLOBAL_CFLAGS_COMMON := $(GCC_COLOR_OPTION) -Wall -Wno-attributes $(__EXTRA_CFLAGS)
-GLOBAL_CXXFLAGS_COMMON := $(GCC_COLOR_OPTION) -Wall -Wno-attributes $(__EXTRA_CFLAGS)
-GLOBAL_LDFLAGS_COMMON := $(GCC_COLOR_OPTION) $(__EXTRA_LDFLAGS)
+GLOBAL_CFLAGS_COMMON := $(GCC_COLOR_OPTION) -Wall -Wformat-security -Wno-attributes $(__EXTRA_CPPFLAGS) $(CPPFLAGS) $(CFLAGS)
+GLOBAL_CXXFLAGS_COMMON := $(GCC_COLOR_OPTION) -Wall -Wformat-security -Wno-attributes $(__EXTRA_CPPFLAGS) $(CPPFLAGS) $(CXXFLAGS)
+GLOBAL_LDFLAGS_COMMON := $(GCC_COLOR_OPTION) $(__EXTRA_LDFLAGS) $(LDFLAGS)
 
 GLOBAL_CFLAGS_DEBUG := -g -DDEBUG -D_DEBUG $(GLOBAL_CFLAGS_COMMON)
 GLOBAL_CXXFLAGS_DEBUG := -g -DDEBUG -D_DEBUG $(GLOBAL_CXXFLAGS_COMMON)
@@ -61,3 +61,7 @@ ifneq ($(OS_VERSION), darwin)
     # -Wl,--export-dynamic: backtrace 출력가능
     GLOBAL_LDFLAGS_DEBUG := $(GLOBAL_LDFLAGS_DEBUG) -Wl,--export-dynamic
 endif
+
+__GLOBAL_CONFIG_PATH := $(lastword $(MAKEFILE_LIST))
+__GLOBAL_CONFIG_PATH := $(dir $(__GLOBAL_CONFIG_PATH))
+-include $(__GLOBAL_CONFIG_PATH)local_config.mk

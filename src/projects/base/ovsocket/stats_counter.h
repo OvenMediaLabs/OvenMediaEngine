@@ -55,45 +55,47 @@ namespace ov
 
 		void StartTracking()
 		{
-			_stop = false;
+			_stop			 = false;
 
 			_tracking_thread = std::thread(
 				[this]() {
-					int64_t min = INT64_MAX;
-					int64_t max = INT64_MIN;
+					logger::ThreadHelper thread_helper;
 
-					int64_t retry_min = INT64_MAX;
-					int64_t retry_max = INT64_MIN;
+					int64_t min		   = INT64_MAX;
+					int64_t max		   = INT64_MIN;
 
-					int64_t error_min = INT64_MAX;
-					int64_t error_max = INT64_MIN;
+					int64_t retry_min  = INT64_MAX;
+					int64_t retry_max  = INT64_MIN;
+
+					int64_t error_min  = INT64_MAX;
+					int64_t error_max  = INT64_MIN;
 
 					int64_t loop_count = 0;
 					while (_stop == false)
 					{
-						int64_t count = _count;
-						_count = 0;
+						int64_t count		= _count;
+						_count				= 0;
 
 						int64_t retry_count = _retry_count;
-						_retry_count = 0;
+						_retry_count		= 0;
 
 						int64_t error_count = _error_count;
-						_error_count = 0;
+						_error_count		= 0;
 
 						if ((count > 0) || (retry_count > 0) || (error_count > 0))
 						{
 							loop_count++;
 
-							min = std::min(min, count);
-							max = std::max(max, count);
+							min					  = std::min(min, count);
+							max					  = std::max(max, count);
 
-							retry_min = std::min(retry_min, retry_count);
-							retry_max = std::max(retry_max, retry_count);
+							retry_min			  = std::min(retry_min, retry_count);
+							retry_max			  = std::max(retry_max, retry_count);
 
-							error_min = std::min(error_min, error_count);
-							error_max = std::max(error_max, error_count);
+							error_min			  = std::min(error_min, error_count);
+							error_max			  = std::max(error_max, error_count);
 
-							int64_t average = _total_count / ((loop_count == 0) ? 1 : loop_count);
+							int64_t average		  = _total_count / ((loop_count == 0) ? 1 : loop_count);
 							int64_t retry_average = _total_retry_count / ((loop_count == 0) ? 1 : loop_count);
 							int64_t error_average = _total_error_count / ((loop_count == 0) ? 1 : loop_count);
 

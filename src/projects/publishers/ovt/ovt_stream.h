@@ -6,7 +6,7 @@
 
 #include "monitoring/monitoring.h"
 
-class OvtStream : public pub::Stream, public OvtPacketizerInterface
+class OvtStream final : public pub::Stream, public OvtPacketizerInterface
 {
 public:
 	static std::shared_ptr<OvtStream> Create(const std::shared_ptr<pub::Application> application,
@@ -32,7 +32,7 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
-	bool GenerateDecription();
+	bool GenerateDescription();
 
 	uint32_t							_worker_count = 0;
 

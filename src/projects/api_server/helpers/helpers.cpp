@@ -45,7 +45,7 @@ namespace api
 			auto app_list = GetApplicationList(vhost);
 			for (auto &item : app_list)
 			{
-				if (app_name == item.second->GetName().GetAppName().CStr())
+				if (app_name == item.second->GetVHostAppName().GetAppName().CStr())
 				{
 					return item.second;
 				}
@@ -204,7 +204,7 @@ namespace api
 		}
 
 		auto vhost_name = vhost_metrics->GetName();
-		auto app_name = app_metrics->GetName();
+		auto app_name = app_metrics->GetVHostAppName();
 		auto stream_name = stream_name_group.GetValue();
 		auto stream = GetStream(app_metrics, stream_name, output_streams);
 
@@ -228,40 +228,54 @@ namespace api
 		{
 			auto &providers = app_config["providers"];
 
+			providers["ovt"] = Json::objectValue;
+			providers["rtspPull"] = Json::objectValue;
+
+			providers["webrtc"] = Json::objectValue;
+			providers["srt"] = Json::objectValue;
 			providers["rtmp"] = Json::objectValue;
-			providers["mpegts"] = Json::objectValue;
 		}
 
 		if (app_config.isMember("publishers") == false)
 		{
 			auto &publishers = app_config["publishers"];
 
-			publishers["hls"] = Json::objectValue;
-			publishers["dash"] = Json::objectValue;
-			publishers["llDash"] = Json::objectValue;
+			publishers["llhls"] = Json::objectValue;
 			publishers["webrtc"] = Json::objectValue;
+			publishers["ovt"] = Json::objectValue;
 		}
 
 		if (app_config.isMember("outputProfiles") == false)
 		{
 			Json::Value output_profile(Json::objectValue);
 
-			output_profile["name"] = "bypass";
+			output_profile["name"] = "default";
 			output_profile["outputStreamName"] = "${OriginStreamName}";
 
-			Json::Value codec;
+			auto &encodes = output_profile["encodes"];
 
+			Json::Value codec;
+			codec["name"] = "bypass_video";
 			codec["bypass"] = true;
 
-			auto &encodes = output_profile["encodes"];
 			encodes["videos"].append(codec);
-			encodes["audios"].append(codec);
 
 			codec = Json::objectValue;
+			codec["name"] = "opus";
 			codec["codec"] = "opus";
 			codec["bitrate"] = 128000;
 			codec["samplerate"] = 48000;
 			codec["channel"] = 2;
+			codec["bypassIfMatch"]["codec"] = "eq";
+			encodes["audios"].append(codec);
+
+			codec = Json::objectValue;
+			codec["name"] = "aac";
+			codec["codec"] = "aac";
+			codec["bitrate"] = 128000;
+			codec["samplerate"] = 48000;
+			codec["channel"] = 2;
+			codec["bypassIfMatch"]["codec"] = "eq";
 			encodes["audios"].append(codec);
 
 			app_config["outputProfiles"]["outputProfile"].append(output_profile);
@@ -312,7 +326,7 @@ namespace api
 		switch (result)
 		{
 			case ocst::Result::Failed:
-				throw http::HttpError(http::StatusCode::BadRequest,
+				throw http::HttpError(http::StatusCode::InternalServerError,
 									  "Failed to %s the %s: [%s]", action, resource_name, resource_path);
 
 			case ocst::Result::Succeeded:
@@ -355,13 +369,13 @@ namespace api
 			ocst::Orchestrator::GetInstance()->DeleteApplication(*app),
 			"delete",
 			"application",
-			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetName().GetAppName().CStr()));
+			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr()));
 
 		ThrowIfOrchestratorNotSucceeded(
 			ocst::Orchestrator::GetInstance()->CreateApplication(*vhost, app_config),
 			"create",
 			"application",
-			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetName().GetAppName().CStr()));
+			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr()));
 	}
 
 	ov::String GetOutputProfileName(const std::shared_ptr<http::svr::HttpExchange> &client)

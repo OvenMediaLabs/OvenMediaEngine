@@ -18,7 +18,7 @@ public:
 	// Length will be set when SetError or Parse function called
 	StunErrorCodeAttribute();
 
-	virtual bool Parse(ov::ByteStream &stream) override;
+	virtual bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override;
 	
 	// If extra reason is empty, the default error message is used.
 	bool SetError(StunErrorCode error_code, ov::String extra_reason = "");
@@ -28,7 +28,7 @@ public:
 	StunErrorCode GetErrorCode() const;
 	const ov::String& GetErrorReason() const;
 
-	bool Serialize(ov::ByteStream &stream) const noexcept override;
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override;
 	virtual ov::String ToString() const override;
 
 private:

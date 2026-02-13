@@ -49,5 +49,5 @@ namespace cfg
 				}
 			};
 		}  // namespace cmm
-	}	   // namespace bind
+	}  // namespace bind
 }  // namespace cfg

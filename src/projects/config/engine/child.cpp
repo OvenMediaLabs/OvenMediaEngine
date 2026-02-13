@@ -17,8 +17,8 @@ namespace cfg
 {
 	void Child::SetValue(const Variant &value, bool is_parent_optional)
 	{
-		auto &item_name = GetItemName();
-		auto name = item_name.GetName(DataType::Json);
+		auto &item_name		  = GetItemName();
+		auto name			  = item_name.GetName(DataType::Json);
 
 		ov::String child_path = name;
 
@@ -50,7 +50,7 @@ namespace cfg
 			return;
 		}
 
-		logad("Trying to cast %s for [%s] (value type: %s)",
+		logat("Trying to cast %s for [%s] (value type: %s)",
 			  ov::Demangle(value.GetTypeName()).CStr(),
 			  item_name.ToString().CStr(),
 			  StringFromValueType(GetType()));
@@ -101,7 +101,7 @@ namespace cfg
 		}
 
 		_original_value = std::move(original_value);
-		_is_parsed = true;
+		_is_parsed		= true;
 	}
 
 	void Child::SetValue(const ov::String &item_path, const DataSource &data_source, bool is_parent_optional)
@@ -109,8 +109,8 @@ namespace cfg
 		auto &item_name = GetItemName();
 
 		Json::Value original_value;
-		auto value = data_source.GetValue(GetType(), item_name, ResolvePath(), OmitJsonName(), &original_value);
-		auto name = item_name.GetName(DataType::Json);
+		auto value			  = data_source.GetValue(GetType(), item_name, ResolvePath(), OmitJsonName(), &original_value);
+		auto name			  = item_name.GetName(DataType::Json);
 
 		ov::String child_path = ov::String::FormatString(
 			"%s%s%s",
@@ -146,7 +146,7 @@ namespace cfg
 			return;
 		}
 
-		logad("[%s] Trying to cast %s for [%s] (value type: %s)",
+		logat("[%s] Trying to cast %s for [%s] (value type: %s)",
 			  item_path.CStr(),
 			  ov::Demangle(value.GetTypeName()).CStr(),
 			  item_name.ToString().CStr(),
@@ -197,7 +197,7 @@ namespace cfg
 		}
 
 		_original_value = std::move(original_value);
-		_is_parsed = true;
+		_is_parsed		= true;
 	}
 
 }  // namespace cfg

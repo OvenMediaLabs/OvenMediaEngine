@@ -30,8 +30,14 @@ namespace pvd
 
 		// In case of Pull Stream created by Origins, Properties information is included.
 		_properties = properties;
+		if (_properties == nullptr)
+		{
+			_properties = std::make_shared<pvd::PullStreamProperties>();
+		}
 		
 		SetRepresentationType((_properties->IsRelay()==true)?StreamRepresentationType::Relay:StreamRepresentationType::Source);
+
+		_from_origin_map_store = _properties->IsFromOriginMapStore();
 	}
 
 	bool PullStream::Start()
@@ -43,7 +49,7 @@ namespace pvd
 			if (StartStream(GetNextURL()) == false)
 			{
 				_restart_count++;
-				if (_restart_count > (_url_list.size() * _properties->GetRetryConnectCount()))
+				if (_restart_count > (_url_list.size() * _properties->GetRetryCount()))
 				{
 					SetState(Stream::State::TERMINATED);
 					return false;
@@ -69,17 +75,26 @@ namespace pvd
 
 	bool PullStream::Resume()
 	{
+		if (_properties->GetRetryCount() <= 0)
+		{
+			SetState(Stream::State::TERMINATED);
+			return false;
+		}
+		
 		if (RestartStream(GetNextURL()) == false)
 		{
 			Stop();
 			_restart_count++;
-			if (_restart_count > _url_list.size() * _properties->GetRetryConnectCount())
+			if (_restart_count > _url_list.size() * _properties->GetRetryCount())
 			{
+				// If the stream state is TERMINATED, it will be deleted by the StreamMotor
 				SetState(Stream::State::TERMINATED);
 			}
 
 			return false;
 		}
+
+		UpdateStream();
 
 		_restart_count = 0;
 		return Stream::Start();

@@ -20,7 +20,7 @@ StunErrorCodeAttribute::StunErrorCodeAttribute(int length)
 
 }
 
-bool StunErrorCodeAttribute::Parse(ov::ByteStream &stream)
+bool StunErrorCodeAttribute::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	/*
 	https://tools.ietf.org/html/rfc8489#section-14.8
@@ -84,9 +84,9 @@ const ov::String& StunErrorCodeAttribute::GetErrorReason() const
 	return _reason;
 }
 
-bool StunErrorCodeAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunErrorCodeAttribute::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
-	return StunAttribute::Serialize(stream) &&
+	return StunAttribute::Serialize(stun_message, stream) &&
 	       stream.Write16(0x00) &&
 	       stream.Write8((uint8_t)GetErrorCodeClass()) &&
 	       stream.Write8((uint8_t)GetErrorCodeNumber()) &&

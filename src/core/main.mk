@@ -112,27 +112,43 @@ clean_release: clean_internal
 .PHONY: install
 install:
 	@if test ! -f bin/$(BUILD_METHOD)/$(OME); then \
-	    echo $(CONFIG_CLEAN_COLOR)Create a release version using the \'make release\' command.$(ANSI_RESET); \
-	    exit 1; \
+		echo $(CONFIG_CLEAN_COLOR)Create a release version using the \'make release\' command.$(ANSI_RESET); \
+		exit 1; \
 	fi
 
 	@echo "$(ANSI_GREEN)Installing directory$(ANSI_RESET) $(INSTALL_DIRECTORY)"
 	@mkdir -p $(INSTALL_CONF_DIRECTORY)
 	@install -m 755 -s bin/$(BUILD_METHOD)/$(OME) $(INSTALL_DIRECTORY)
+	@install -m 755 ../misc/ome_launcher.sh $(INSTALL_DIRECTORY)
 
 	@if test ! -f $(INSTALL_CONF_DIRECTORY)/Server.xml; then \
-	    install -m 644 ../misc/conf_examples/Server.xml $(INSTALL_CONF_DIRECTORY); \
+		echo "$(ANSI_GREEN)Installing example Server config$(ANSI_RESET) $(INSTALL_CONF_DIRECTORY)/Server.xml"; \
+		install -m 644 ../misc/conf_examples/Server.xml $(INSTALL_CONF_DIRECTORY); \
+	else \
+		echo "$(ANSI_YELLOW)Skipping overwriting existing Server config$(ANSI_RESET) \
+	$(INSTALL_CONF_DIRECTORY)/Server.xml"; \
 	fi
 
 	@if test ! -f $(INSTALL_CONF_DIRECTORY)/Logger.xml; then \
-	    install -m 644 ../misc/conf_examples/Logger.xml $(INSTALL_CONF_DIRECTORY); \
+		echo "$(ANSI_GREEN)Installing example Logger config$(ANSI_RESET) $(INSTALL_CONF_DIRECTORY)/Logger.xml"; \
+		install -m 644 ../misc/conf_examples/Logger.xml $(INSTALL_CONF_DIRECTORY); \
+	else \
+		echo "$(ANSI_YELLOW)Skipping overwriting existing Logger config$(ANSI_RESET) \
+	$(INSTALL_CONF_DIRECTORY)/Logger.xml"; \
 	fi
 
 	@echo "$(ANSI_GREEN)Creating link file$(ANSI_RESET) $(LINK_BIN_DIRECTORY)/$(OME) => \
 	$(ANSI_BLUE)$(INSTALL_DIRECTORY)/$(OME)$(ANSI_RESET)"
 	@ln -sf $(INSTALL_DIRECTORY)/$(OME) $(LINK_BIN_DIRECTORY)/$(OME)
-	@echo "$(ANSI_GREEN)Installing service$(ANSI_RESET) $(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE)"
-	@install -m 644 ../misc/$(OME_SERVICE) $(INSTALL_SERVICE_DIRECTORY)
+
+	@if test ! -f $(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE); then \
+		echo "$(ANSI_GREEN)Installing service$(ANSI_RESET) $(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE)"; \
+		install -m 644 ../misc/$(OME_SERVICE) $(INSTALL_SERVICE_DIRECTORY); \
+	else \
+		echo "$(ANSI_YELLOW)Skipping overwriting existing service$(ANSI_RESET) \
+	$(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE)"; \
+	fi
+
 	@echo "$(ANSI_GREEN)Creating link file$(ANSI_RESET) $(LINK_SERVICE_DIRECTORY)/$(OME_SERVICE) => \
 	$(ANSI_BLUE)$(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE)$(ANSI_RESET)"
 	@ln -sf $(INSTALL_SERVICE_DIRECTORY)/$(OME_SERVICE) $(LINK_SERVICE_DIRECTORY)/$(OME_SERVICE)

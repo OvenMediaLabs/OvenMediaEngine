@@ -40,24 +40,21 @@ public:
 	virtual ~PhysicalPortObserver() = default;
 
 	// Called when the client is connected
-	virtual void OnConnected(const std::shared_ptr<ov::Socket> &remote)
-	{
-		// dummy function
-	}
+	virtual void OnConnected(const std::shared_ptr<ov::Socket> &remote) {}
 
-	// Called when the packet is received
-	virtual void OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data) = 0;
+	// Called when the packet is received (Only used when TCP/SRT)
+	virtual void OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data) {}
+
+	// Called when the packet is received (Only used when UDP)
+	virtual void OnDatagramReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, const std::shared_ptr<const ov::Data> &data) {}
 
 	// Called when the client is disconnected
-	virtual void OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error)
-	{
-		// dummy function
-	}
+	virtual void OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error) {}
 
 	// When data is received, the PhysicalPort asks if it is your data
 	virtual PhysicalPortProbeResult ProbePacket(const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<const ov::Data> &data)
 	{
-		// dummy function
+		// stub code
 		return PhysicalPortProbeResult::Failed;
 	}
 };

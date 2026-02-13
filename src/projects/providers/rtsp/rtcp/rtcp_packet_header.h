@@ -4,7 +4,7 @@
 
 #include <sys/time.h>
 
-#include <cstdint>
+#include <stdint.h>
 #include <utility>
 
 /*

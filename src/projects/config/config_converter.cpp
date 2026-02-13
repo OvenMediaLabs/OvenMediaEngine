@@ -22,8 +22,8 @@ namespace cfg
 			auto &mpeg_ts_provider = providers["mpegts"];
 
 			// Reset stream list (Currently, streams contains the settings that were loaded at the beginning of the OME run)
-			auto &streams = mpeg_ts_provider["streams"];
-			streams = Json::arrayValue;
+			auto &streams		   = mpeg_ts_provider["streams"];
+			streams				   = Json::arrayValue;
 
 			if (reserved_stream_list.size() == 0)
 			{
@@ -36,13 +36,13 @@ namespace cfg
 				Json::Value stream;
 
 				auto &reserved_stream = key.second;
-				auto &uri = reserved_stream->GetStreamUri();
+				auto &uri			  = reserved_stream->GetStreamUri();
 
-				auto name = reserved_stream->GetReservedStreamName();
-				stream["name"] = name.CStr();
+				auto name			  = reserved_stream->GetReservedStreamName();
+				stream["name"]		  = name.CStr();
 
-				auto port = ov::String::FormatString("%d/%s", uri.Port(), uri.Scheme().LowerCaseString().CStr());
-				stream["port"] = port.CStr();
+				auto port			  = ov::String::FormatString("%d/%s", uri.Port(), uri.Scheme().LowerCaseString().CStr());
+				stream["port"]		  = port.CStr();
 
 				streams.append(stream);
 			}
@@ -52,7 +52,7 @@ namespace cfg
 
 		Json::Value GetApplicationFromMetrics(const std::shared_ptr<const mon::ApplicationMetrics> &app_metrics)
 		{
-			auto app = app_metrics->GetConfig().ToJson();
+			auto app				  = app_metrics->GetConfig().ToJson();
 
 			auto reserved_stream_list = app_metrics->GetReservedStreamMetricsMap();
 
@@ -86,7 +86,7 @@ namespace cfg
 
 		Json::Value GetVirtualHostFromMetrics(const std::shared_ptr<mon::HostMetrics> &vhost_metrics, bool include_dynamic_app)
 		{
-			Json::Value vhost = std::static_pointer_cast<cfg::vhost::VirtualHost>(vhost_metrics)->ToJson();
+			Json::Value vhost	  = std::static_pointer_cast<cfg::vhost::VirtualHost>(vhost_metrics)->ToJson();
 
 			// Overwrite application list (Currently, vhost contains the settings that were loaded at the beginning of the OME run)
 			vhost["applications"] = GetApplicationListFromMetrics(vhost_metrics->GetApplicationMetricsList(), include_dynamic_app);
@@ -102,7 +102,7 @@ namespace cfg
 
 				// Reset virtual host list (Currently, server_config contains the settings that were loaded at the beginning of the OME run)
 				Json::Value &vhosts = server_config["virtualHosts"];
-				vhosts = Json::arrayValue;
+				vhosts				= Json::arrayValue;
 
 				for (auto vhost_metrics_pair : vhost_metrics_list)
 				{
@@ -151,11 +151,11 @@ namespace cfg
 			for (auto &key : reserved_stream_list)
 			{
 				auto &reserved_stream = key.second;
-				auto &uri = reserved_stream->GetStreamUri();
+				auto &uri			  = reserved_stream->GetStreamUri();
 
-				auto stream_node = streamMapNode.append_child("Stream");
+				auto stream_node	  = streamMapNode.append_child("Stream");
 
-				auto port = ov::String::FormatString("%d/%s", uri.Port(), uri.Scheme().LowerCaseString().CStr());
+				auto port			  = ov::String::FormatString("%d/%s", uri.Port(), uri.Scheme().LowerCaseString().CStr());
 
 				stream_node.append_child("Name").text().set(reserved_stream->GetReservedStreamName());
 				stream_node.append_child("Port").text().set(port);
@@ -242,7 +242,7 @@ namespace cfg
 		pugi::xml_document GetServerXmlFromConfig(const std::shared_ptr<const Server> &server_config, bool include_dynamic_app)
 		{
 			// Convert server config to XML to obtain <Bind> and etc
-			auto doc = server_config->ToXml();
+			auto doc		 = server_config->ToXml();
 
 			auto server_node = doc.child("Server");
 

@@ -20,4 +20,7 @@ namespace serdes
 
 	MAY_THROWS(cfg::ConfigError)
 	void ApplicationFromJson(const Json::Value &json_value, cfg::vhost::app::Application *app_config);
+
+	MAY_THROWS(cfg::ConfigError)
+	void OutputProfilesFromJson(const Json::Value &json_value, cfg::vhost::app::oprf::OutputProfiles *output_profile_config);
 }  // namespace serdes

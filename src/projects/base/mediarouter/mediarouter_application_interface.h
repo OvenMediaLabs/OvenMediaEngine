@@ -7,8 +7,8 @@
 
 #include "base/ovlibrary/ovlibrary.h"
 
-class MediaRouteApplicationObserver;
-class MediaRouteApplicationConnector;
+class MediaRouterApplicationObserver;
+class MediaRouterApplicationConnector;
 namespace info{class Stream;}
 class MediaPacket;
 class MediaRouteStream;
@@ -19,9 +19,9 @@ class MediaRouteApplicationInterface : public ov::EnableSharedFromThis<MediaRout
 {
 public:
 	virtual bool IsExistingInboundStream(ov::String stream_name) = 0;
-	virtual bool OnStreamCreated(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnStreamDeleted(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnStreamUpdated(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnPacketReceived(const std::shared_ptr<MediaRouteApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) = 0;
+	virtual bool OnStreamCreated(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnStreamDeleted(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnStreamUpdated(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnPacketReceived(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) = 0;
 };
 

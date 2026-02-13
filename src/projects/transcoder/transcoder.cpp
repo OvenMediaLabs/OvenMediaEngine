@@ -15,9 +15,10 @@
 
 #include "config/config_manager.h"
 #include "transcoder.h"
+#include "transcoder_gpu.h"
 #include "transcoder_private.h"
 
-std::shared_ptr<Transcoder> Transcoder::Create(std::shared_ptr<MediaRouteInterface> router)
+std::shared_ptr<Transcoder> Transcoder::Create(std::shared_ptr<MediaRouterInterface> router)
 {
 	auto transcoder = std::make_shared<Transcoder>(router);
 	if (!transcoder->Start())
@@ -28,23 +29,28 @@ std::shared_ptr<Transcoder> Transcoder::Create(std::shared_ptr<MediaRouteInterfa
 	return transcoder;
 }
 
-Transcoder::Transcoder(std::shared_ptr<MediaRouteInterface> router)
+Transcoder::Transcoder(std::shared_ptr<MediaRouterInterface> router)
 {
 	_router = std::move(router);
 }
 
 bool Transcoder::Start()
 {
-	logtd("Transcoder has been started");
+	logtt("Transcoder has been started");
 
 	SetModuleAvailable(true);
+
+	TranscodeGPU::GetInstance()->Initialize();
 
 	return true;
 }
 
 bool Transcoder::Stop()
 {
-	logtd("Transcoder has been stopped");
+	logtt("Transcoder has been stopped");
+
+	TranscodeGPU::GetInstance()->Uninitialize();
+
 	return true;
 }
 
@@ -64,13 +70,18 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 	auto application_id = app_info.GetId();
 
 	auto application = TranscodeApplication::Create(app_info);
+	if(application == nullptr)
+	{
+		logte("Could not create the transcoder application. [%s]", app_info.GetVHostAppName().CStr());
+		return false;
+	}
 
-	_tracode_apps[application_id] = application;
+	_transcode_apps[application_id] = application;
 
 	// Register to MediaRouter
 	if (_router->RegisterObserverApp(app_info, application) == false)
 	{
-		logte("Could not register the application: %p", application.get());
+		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
 		return false;
 	}
@@ -78,12 +89,12 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 	// Register to MediaRouter
 	if (_router->RegisterConnectorApp(app_info, application) == false)
 	{
-		logte("Could not register the application: %p", application.get());
+		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
 		return false;
 	}
 
-	logti("Transcoder has created [%s][%s] application", app_info.IsDynamicApp() ? "dynamic" : "config", app_info.GetName().CStr());
+	logti("Transcoder has created [%s][%s] application", app_info.IsDynamicApp() ? "dynamic" : "config", app_info.GetVHostAppName().CStr());
 
 	return true;
 }
@@ -92,14 +103,18 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 {
 	auto application_id = app_info.GetId();
-	auto it = _tracode_apps.find(application_id);
-	if (it == _tracode_apps.end())
+	auto it = _transcode_apps.find(application_id);
+	if (it == _transcode_apps.end())
 	{
 		return false;
 	}
 
 	auto application = it->second;
-	application->Stop();
+	if(application == nullptr)
+	{
+		_transcode_apps.erase(it);
+		return true;
+	}
 
 	// Unregister to MediaRouter
 	if (_router->UnregisterObserverApp(app_info, application) == false)
@@ -113,9 +128,9 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 		logte("Could not unregister the application: %p", application.get());
 	}
 
-	_tracode_apps.erase(it);
+	_transcode_apps.erase(it);
 
-	logti("Transcoder has deleted [%s][%s] application", app_info.IsDynamicApp() ? "dynamic" : "config", app_info.GetName().CStr());
+	logti("Transcoder has deleted [%s][%s] application", app_info.IsDynamicApp() ? "dynamic" : "config", app_info.GetVHostAppName().CStr());
 
 	return true;
 }
@@ -123,9 +138,8 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 //  Application Name으로 TranscodeApplication 찾음
 std::shared_ptr<TranscodeApplication> Transcoder::GetApplicationById(info::application_id_t application_id)
 {
-	auto obj = _tracode_apps.find(application_id);
-
-	if (obj == _tracode_apps.end())
+	auto obj = _transcode_apps.find(application_id);
+	if (obj == _transcode_apps.end())
 	{
 		return nullptr;
 	}

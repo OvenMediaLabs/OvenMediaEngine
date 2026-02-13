@@ -33,9 +33,9 @@ public:
 	// Implementation of Node
 	//--------------------------------------------------------------------
 	// Receive data from upper node, and send data to lower node.
-	bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data);
+	bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override;
 	// Receive data from lower node, and send data to upper node.
-	bool OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
+	bool OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data) override;
 
 	// IcePort -> Publisher ->[queue] Application {thread}-> Session -> DtlsTransport -> SRTP -> RTP/RTCP
 	// ICE에서는 STUN을 제외한 모든 패킷을 위로 올린다.
@@ -74,13 +74,13 @@ private:
 	};
 
 	SSLState _state;
-	bool _peer_cerificate_verified;
+	bool _peer_certificate_verified;
 	std::shared_ptr<info::Session> _session_info;
 	std::shared_ptr<IcePort> _ice_port;
 	std::shared_ptr<SrtpTransport> _srtp_transport;
-	std::shared_ptr<CertificatePair> _local_certificate_pair;
+	std::shared_ptr<::Certificate> _local_certificate;
 	std::shared_ptr<ov::TlsContext> _tls_context;
-	std::shared_ptr<Certificate> _peer_certificate;
+	std::shared_ptr<::Certificate> _peer_certificate;
 	ov::String _peer_fingerprint_algorithm;
 	ov::String _peer_fingerprint_value;
 

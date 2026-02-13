@@ -160,11 +160,18 @@ namespace ov
 
 		bool Insert(const void *data, off_t offset, size_t length);
 		bool Insert(const Data *data, off_t offset);
+		bool Insert(const std::shared_ptr<const Data> &data, off_t offset);
 
 		bool Append(const void *data, size_t length);
 		bool Append(const Data *data);
 		bool Append(const std::shared_ptr<Data> &data);
 		bool Append(const std::shared_ptr<const Data> &data);
+
+		template<typename T, typename = std::enable_if_t<std::is_fundamental_v<T>>>
+		bool Append(const T &data)
+		{
+			return Append(&data, sizeof(T));
+		}
 
 		bool Erase(off_t offset, size_t length);
 
@@ -193,10 +200,8 @@ namespace ov
 		bool IsEqual(const void *data, size_t length) const;
 		bool IsEqual(const Data &data) const;
 		bool IsEqual(const Data *data) const;
-		bool IsEqual(const std::shared_ptr<Data> &data) const
-		{
-			return IsEqual(data->GetData(), data->GetLength());
-		}
+		bool IsEqual(const std::shared_ptr<const Data> &data) const;
+		bool IsEqual(const std::shared_ptr<Data> &data) const;
 
 		bool IsEmpty() const;
 
@@ -204,6 +209,7 @@ namespace ov
 		String Dump(const char *title, const char *line_prefix) const noexcept;
 		String Dump(const char *title, off_t offset = 0, size_t max_bytes = 1024, const char *line_prefix = nullptr) const noexcept;
 		String ToString() const;
+		String ToHexString(size_t length) const;
 		String ToHexString() const;
 
 	protected:

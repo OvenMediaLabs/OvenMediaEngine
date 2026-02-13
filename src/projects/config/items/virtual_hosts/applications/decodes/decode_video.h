@@ -30,6 +30,6 @@ namespace cfg
 					bool _hw_acceleration = false;
 				};
 			}  // namespace dec
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

@@ -16,5 +16,17 @@ $(info $()   - $(ANSI_YELLOW)Paths for pkg-config$(ANSI_RESET)    : $(CONFIG_PKG
 ifneq ($(MAKECMDGOALS),clean)
 $(info $()   - $(ANSI_YELLOW)Total Projects count$(ANSI_RESET)    : $(words $(BUILD_TARGET_LIST)))
 endif
+ifeq ($(HWACCELS_NVIDIA_ENABLED),true)
+$(info $()   - $(ANSI_BLUE)NVIDIA GPU HWAccels$(ANSI_RESET)     : Support)
+endif
+ifeq ($(HWACCELS_XMA_ENABLED),true)
+$(info $()   - $(ANSI_BLUE)Xilinx Alveo HWAccels$(ANSI_RESET)   : Support)
+endif
+ifeq ($(HWACCELS_NILOGAN_ENABLED),true)
+$(info $()   - $(ANSI_BLUE)Netint Logan HWAccels$(ANSI_RESET)   : Support)
+endif
+ifeq ($(THIRDP_LIBX264_ENABLED),true)
+$(info $()   - $(ANSI_BLUE)Libx264 Software Codec$(ANSI_RESET)  : Support)
+endif
 $(info $())
 endif

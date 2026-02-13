@@ -16,20 +16,20 @@ namespace pub
 		_sets.clear();
 	}
 
-	bool FileUserdataSets::Set(ov::String userdata_id, std::shared_ptr<info::Record> userdata)
+	bool FileUserdataSets::Set(ov::String record_id, std::shared_ptr<info::Record> record_info)
 	{
 		std::lock_guard<std::shared_mutex> lock(_mutex);
 
-		_sets[userdata_id] = userdata;
+		_sets[record_id] = record_info;
 
 		return true;
 	}
 
-	std::shared_ptr<info::Record> FileUserdataSets::GetByKey(ov::String key)
+	std::shared_ptr<info::Record> FileUserdataSets::GetByKey(ov::String record_id)
 	{
 		std::lock_guard<std::shared_mutex> lock(_mutex);
 
-		auto iter = _sets.find(key);
+		auto iter = _sets.find(record_id);
 		if (iter == _sets.end())
 		{
 			return nullptr;
@@ -38,16 +38,33 @@ namespace pub
 		return iter->second;
 	}
 
+	std::vector<std::shared_ptr<info::Record>> FileUserdataSets::GetByStreamName(ov::String stream_name)
+	{
+		std::vector<std::shared_ptr<info::Record>> results;
+
+		std::lock_guard<std::shared_mutex> lock(_mutex);
+
+		for (auto& [record_id, record_info] : _sets)
+		{
+			if (record_info->GetStreamName() == stream_name)
+			{
+				results.push_back(record_info);
+			}
+		}
+
+		return results;
+	}
+
 	std::shared_ptr<info::Record> FileUserdataSets::GetBySessionId(session_id_t session_id)
 	{
 		std::lock_guard<std::shared_mutex> lock(_mutex);
 
 		for (auto& item : _sets)
 		{
-			auto userdata = item.second;
+			auto record_info = item.second;
 
-			if (userdata->GetSessionId() == session_id)
-				return userdata;
+			if (record_info->GetSessionId() == session_id)
+				return record_info;
 		}
 
 		return nullptr;
@@ -67,11 +84,11 @@ namespace pub
 		return iter->second;
 	}
 
-	void FileUserdataSets::DeleteByKey(ov::String key)
+	void FileUserdataSets::DeleteByKey(ov::String record_id)
 	{
 		std::lock_guard<std::shared_mutex> lock(_mutex);
 
-		_sets.erase(key);
+		_sets.erase(record_id);
 	}
 
 	uint32_t FileUserdataSets::GetCount()

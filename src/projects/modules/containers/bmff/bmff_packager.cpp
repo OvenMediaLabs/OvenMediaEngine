@@ -9,14 +9,20 @@
 
 #include "bmff_packager.h"
 #include "bmff_private.h"
-#include <modules/id3v2/id3v2.h>
-#include <modules/id3v2/frames/id3v2_frames.h>
+#include <base/modules/data_format/id3v2/id3v2.h>
+#include <base/modules/data_format/id3v2/frames/id3v2_frames.h>
 namespace bmff
 {
-	Packager::Packager(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track)
+	Packager::Packager(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const CencProperty &cenc_property)
+		: _sample_buffer(media_track, cenc_property),
+		_media_track(media_track), _data_track(data_track), 
+		_cenc_property(cenc_property)
 	{
-		_media_track = media_track;
-		_data_track = data_track;
+		if (_media_track->GetMediaType() == cmn::MediaType::Audio)
+		{
+			_cenc_property.crypt_bytes_block = 0;
+			_cenc_property.skip_bytes_block = 0;
+		}
 	}
 
 	// Get track 
@@ -42,9 +48,9 @@ namespace bmff
 
 		ov::ByteStream stream(128);
 
-		stream.WriteText("iso6"); // major brand
+		stream.WriteText("iso8"); // major brand
 		stream.WriteBE32(0); // minor version
-		stream.WriteText("iso6mp42avc1dashhlsf"); // compatible brands
+		stream.WriteText("iso8isommp42avc1dashhlsf"); // compatible brands
 		
 		return WriteBox(container_stream, "ftyp", *stream.GetData());
 	}
@@ -74,6 +80,15 @@ namespace bmff
 		{
 			logte("Packager::WriteMoovBox() - Failed to write mvex box");
 			return false;
+		}
+
+		// PSSH box
+		if (_cenc_property.pssh_box_list.empty() == false)
+		{
+			for (const auto &pssh_box : _cenc_property.pssh_box_list)
+			{
+				stream.Write(pssh_box.pssh_box_data);
+			}
 		}
 
 		return WriteBox(container_stream, "moov", *stream.GetData());
@@ -110,7 +125,7 @@ namespace bmff
 		// }
 
 		ov::ByteStream stream(128);
-		uint32_t matix[9] = { 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000 };
+		uint32_t matrix[9] = { 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000 };
 
 		stream.WriteBE32(0); // creation_time
 		stream.WriteBE32(0); // modification_time
@@ -124,7 +139,7 @@ namespace bmff
 		// Matrix
 		for (int i=0; i<9; i++)
 		{
-			stream.WriteBE32(matix[i]);
+			stream.WriteBE32(matrix[i]);
 		}
 		// Pre-defined
 		for (int i=0; i<6; i++)
@@ -196,14 +211,14 @@ namespace bmff
 		// }
 
 		ov::ByteStream stream(128);
-		uint32_t matix[9] = { 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000 };
+		uint32_t matrix[9] = { 0x00010000, 0, 0, 0, 0x00010000, 0, 0, 0, 0x40000000 };
 
 		stream.WriteBE32(0); // creation_time
 		stream.WriteBE32(0); // modification_time
 
 		// track_ID is an integer that uniquely identifies this track over the entire life‐time of this presentation. Track IDs are never re-used and cannot be zero.
 		// track_ID + 1 because zero track ID is valid for OME
-		stream.WriteBE32(GetMediaTrack()->GetId()+1); // track_ID
+		stream.WriteBE32(1); // track_ID
 		stream.WriteBE32(0); // reserved
 		stream.WriteBE32(0); // duration
 		stream.WriteBE32(0); // reserved
@@ -224,7 +239,7 @@ namespace bmff
 		// Matrix
 		for (int i=0; i<9; i++)
 		{
-			stream.WriteBE32(matix[i]);
+			stream.WriteBE32(matrix[i]);
 		}
 
 		// Width and height
@@ -355,7 +370,7 @@ namespace bmff
 		// [ISO/IEC 14496-12 8.9.3] 
 		// name is a null-terminated string in UTF-8 characters which gives a human-readable name for the track
 		// type (for debugging and inspection purposes). 		
-		stream.WriteText(StringFromMediaType(GetMediaTrack()->GetMediaType()), true);
+		stream.WriteText(ov::String(cmn::GetMediaTypeString(GetMediaTrack()->GetMediaType())), true);
 
 		return WriteFullBox(container_stream, "hdlr", *stream.GetData(), 0, 0);
 	}
@@ -611,6 +626,14 @@ namespace bmff
 				return false;
 			}
 		}
+		else if (GetMediaTrack()->GetCodecId() == cmn::MediaCodecId::H265)
+		{
+			if (WriteHvc1Box(stream) == false)
+			{
+				logte("Packager::WriteStsdBox() - Failed to write hvc1 box");
+				return false;
+			}
+		}
 		else if (GetMediaTrack()->GetCodecId() == cmn::MediaCodecId::Aac)
 		{
 			if (WriteMp4aBox(stream) == false)
@@ -629,7 +652,7 @@ namespace bmff
 		return WriteFullBox(container_stream, "stsd", *stream.GetData(), 0, 0);
 	}
 
-	bool Packager::WriteAvc1Box(ov::ByteStream &container_stream)
+	bool Packager::WriteSampleEntry(ov::ByteStream &container_stream)
 	{
 		// ISO/IEC 14496-12 8.5.2.2
 		// aligned(8) abstract class SampleEntry(unsigned int(32) format) extends Box(format)
@@ -638,6 +661,19 @@ namespace bmff
 		// 	unsigned int(16) data_reference_index;
 		// }
 
+		// Reserved int(8)[6]
+		for (int i=0; i<6; i++)
+		{
+			container_stream.Write8(0);
+		}
+		// Data reference index
+		container_stream.WriteBE16(1);
+
+		return true;
+	}
+	
+	bool Packager::WriteVisualSampleEntry(ov::ByteStream &container_stream)
+	{
 		// ISO/IEC 14496-12 12.1.3
 		// class VisualSampleEntry(codingname) extends SampleEntry(codingname)
 		// {
@@ -655,6 +691,64 @@ namespace bmff
 		// 	int(16) pre_defined = -1;
 		// }
 
+		if (WriteSampleEntry(container_stream) == false)
+		{
+			return false;
+		}
+
+		// pre_defined int(16)
+		container_stream.WriteBE16(0);
+		// reserved int(16)
+		container_stream.WriteBE16(0);
+		// pre_defined int(32)[3]
+		for (int i=0; i<3; i++)
+		{
+			container_stream.WriteBE32(0);
+		}
+
+		// Width int(16)
+		container_stream.WriteBE16(GetMediaTrack()->GetWidth());
+		// Height int(16)
+		container_stream.WriteBE16(GetMediaTrack()->GetHeight());
+		// Horizontal resolution int(32)
+		container_stream.WriteBE32(0x00480000);
+		// Vertical resolution int(32)
+		container_stream.WriteBE32(0x00480000);
+
+		// Reserved int(32)
+		container_stream.WriteBE32(0);
+
+		// Frame count int(16)
+		// frame_count indicates how many frames of compressed video are stored in each sample. The default is
+		// 1, for one frame per sample; it may be more than 1 for multiple frames per sample 
+		container_stream.WriteBE16(1);
+
+		// Compressorname string[32]
+		// Compressorname is a name, for informative purposes. It is formatted in a fixed 32-byte field, with the
+		// first byte set to the number of bytes to be displayed, followed by that number of bytes of displayable
+		// data, and then padding to complete 32 bytes total (including the size byte). The field may be set to 0.
+		ov::String compressorname = "OvenMediaEngine";
+		container_stream.Write8(compressorname.GetLength()); // Size
+		container_stream.WriteText(compressorname); // Data (max : 31 bytes)
+		for (size_t i=0; i<(31 - compressorname.GetLength()); i++) // Padding
+		{
+			container_stream.Write8(0);
+		}
+
+		// Depth int(16)
+		// depth indicates the number of bits per pixel. The default value is 0x0018, indicating 24 bits per pixel.
+		// 0x0018 – images are in colour with no alpha
+		container_stream.WriteBE16(0x0018);
+
+		// Pre-defined int(16)
+		// pre_defined is a 16-bit integer that must be set to -1.
+		container_stream.WriteBE16(-1);
+
+		return true;
+	}
+
+	bool Packager::WriteAvc1Box(ov::ByteStream &container_stream)
+	{
 		// ISO/IEC 14496-15 5.3.4.1
 		// class AVCSampleEntry() extends VisualSampleEntry(‘avc1’)
 		// {
@@ -671,66 +765,28 @@ namespace bmff
 
 		ov::ByteStream stream(4096);
 
-		// Reserved int(8)[6]
-		for (int i=0; i<6; i++)
+		if (WriteVisualSampleEntry(stream) == false)
 		{
-			stream.Write8(0);
+			logte("Packager::WriteAvc1Box() - Failed to write visual sample entry");
+			return false;
 		}
-
-		// Data reference index
-		stream.WriteBE16(1);
-		// pre_defined int(16)
-		stream.WriteBE16(0);
-		// reserved int(16)
-		stream.WriteBE16(0);
-		// pre_defined int(32)[3]
-		for (int i=0; i<3; i++)
-		{
-			stream.WriteBE32(0);
-		}
-
-		// Width int(16)
-		stream.WriteBE16(GetMediaTrack()->GetWidth());
-		// Height int(16)
-		stream.WriteBE16(GetMediaTrack()->GetHeight());
-		// Horizontal resolution int(32)
-		stream.WriteBE32(0x00480000);
-		// Vertical resolution int(32)
-		stream.WriteBE32(0x00480000);
-
-		// Reserved int(32)
-		stream.WriteBE32(0);
-
-		// Frame count int(16)
-		// frame_count indicates how many frames of compressed video are stored in each sample. The default is
-		// 1, for one frame per sample; it may be more than 1 for multiple frames per sample 
-		stream.WriteBE16(1);
-
-		// Compressorname string[32]
-		// Compressorname is a name, for informative purposes. It is formatted in a fixed 32-byte field, with the
-		// first byte set to the number of bytes to be displayed, followed by that number of bytes of displayable
-		// data, and then padding to complete 32 bytes total (including the size byte). The field may be set to 0.
-		ov::String compressorname = "OvenMediaEngine";
-		stream.Write8(compressorname.GetLength()); // Size
-		stream.WriteText(compressorname); // Data (max : 31 bytes)
-		for (size_t i=0; i<(31 - compressorname.GetLength()); i++) // Padding
-		{
-			stream.Write8(0);
-		}
-
-		// Depth int(16)
-		// depth indicates the number of bits per pixel. The default value is 0x0018, indicating 24 bits per pixel.
-		// 0x0018 – images are in colour with no alpha
-		stream.WriteBE16(0x0018);
-
-		// Pre-defined int(16)
-		// pre_defined is a 16-bit integer that must be set to -1.
-		stream.WriteBE16(-1);
-
+		
 		if (WriteAvccBox(stream) == false)
 		{
 			logte("Packager::WriteAvc1Box() - Failed to write avcc box");
 			return false;
+		}
+
+		// CENC
+		if (_cenc_property.scheme != CencProtectScheme::None)
+		{
+			if (WriteSinfBox(stream, "avc1") == false)
+			{
+				logte("Packager::WriteAvc1Box() - Failed to write sinf box");
+				return false;
+			}
+
+			return WriteBox(container_stream, "encv", *stream.GetData());
 		}
 
 		return WriteBox(container_stream, "avc1", *stream.GetData());
@@ -784,63 +840,96 @@ namespace bmff
 		// 	}
 		// }
 
+		auto avc_config = GetMediaTrack()->GetDecoderConfigurationRecord();
+		if (avc_config == nullptr)
+		{
+			logte("Packager::WriteAvccBox() - Failed to get avc decoder config");
+			return false;
+		}
+
+		return WriteBox(container_stream, "avcC", *avc_config->GetData());
+	}
+
+	bool Packager::WriteHvc1Box(ov::ByteStream &container_stream)
+	{
+		// ISO/IEC 14496-15 8.4.1.1
+		// class HEVCConfigurationBox extends Box(‘hvcC’) {
+		// 	HEVCDecoderConfigurationRecord() HEVCConfig;
+		// }
+		// class HEVCSampleEntry() extends VisualSampleEntry (‘hvc1’ or 'hev1'){
+		// 	HEVCConfigurationBox	config;
+		// 	MPEG4BitRateBox (); 					// optional
+		// 	MPEG4ExtensionDescriptorsBox ();	// optional
+		// 	extra_boxes				boxes;				// optional
+		// }
+
 		ov::ByteStream stream(4096);
-
-		// configurationVersion int(8)
-		stream.Write8(1);
-
-		auto sps_data = GetMediaTrack()->GetH264SpsData();
-		auto pps_data = GetMediaTrack()->GetH264PpsData();
-
-		if (sps_data == nullptr || pps_data == nullptr)
+			
+		if (WriteVisualSampleEntry(stream) == false)
 		{
-			logte("Packager::WriteAvccBox() - Failed to get sps/pps data");
 			return false;
 		}
 
-		// Parse SPS
-		H264SPS sps;
-		if (H264Parser::ParseSPS(sps_data->GetDataAs<uint8_t>(), sps_data->GetLength(), sps) == false)
+		if (WriteHvccBox(stream) == false)
 		{
-			logte("Could not parse H264 SPS unit");
+			logte("Packager::WriteHvccBox() - Failed to write hvcC box");
 			return false;
 		}
 
-		// AVCProfileIndication int(8)
-		stream.Write8(sps.GetProfileIdc());
+		return WriteBox(container_stream, "hev1", *stream.GetData());
+	}
+	
+	bool Packager::WriteHvccBox(ov::ByteStream &container_stream)
+	{
+		// ISO/IEC 14496-15 8.4.1.1
+		// class HEVCConfigurationBox extends Box(‘hvcC’) {
+		// 	HEVCDecoderConfigurationRecord() HEVCConfig;
+		// }
 
-		// profile_compatibility int(8)
-		stream.Write8(sps.GetConstraintFlag());
+		// ISO/IEC 14496-15 8.3.3.1
+		// aligned(8) class HEVCDecoderConfigurationRecord {
+		// 	unsigned int(8) configurationVersion = 1;
+		// 	unsigned int(2) general_profile_space;
+		// 	unsigned int(1) general_tier_flag;
+		// 	unsigned int(5) general_profile_idc;
+		// 	unsigned int(32) general_profile_compatibility_flags;
+		// 	unsigned int(48) general_constraint_indicator_flags;
+		// 	unsigned int(8) general_level_idc;
+		// 	bit(4) reserved = ‘1111’b;
+		// 	unsigned int(12) min_spatial_segmentation_idc;
+		// 	bit(6) reserved = ‘111111’b;
+		// 	unsigned int(2) parallelismType;
+		// 	bit(6) reserved = ‘111111’b;
+		// 	unsigned int(2) chromaFormat;
+		// 	bit(5) reserved = ‘11111’b;
+		// 	unsigned int(3) bitDepthLumaMinus8;
+		// 	bit(5) reserved = ‘11111’b;
+		// 	unsigned int(3) bitDepthChromaMinus8;
+		// 	bit(16) avgFrameRate;
+		// 	bit(2) constantFrameRate;
+		// 	bit(3) numTemporalLayers;
+		// 	bit(1) temporalIdNested;
+		// 	unsigned int(2) lengthSizeMinusOne; 
+		// 	unsigned int(8) numOfArrays;
+		// 	for (j=0; j < numOfArrays; j++) {
+		// 		bit(1) array_completeness;
+		// 		unsigned int(1) reserved = 0;
+		// 		unsigned int(6) NAL_unit_type;
+		// 		unsigned int(16) numNalus;
+		// 		for (i=0; i< numNalus; i++) {
+		// 			unsigned int(16) nalUnitLength;
+		// 			bit(8*nalUnitLength) nalUnit;
+		// 		}
+		// 	}
+		// }
+		auto hevc_config = GetMediaTrack()->GetDecoderConfigurationRecord();
+		if (hevc_config == nullptr)
+		{
+			logte("Packager::WriteHvccBox() - Failed to get hevc decoder config");
+			return false;
+		}
 
-		// AVCLevelIndication int(8)
-		stream.Write8(sps.GetCodecLevelIdc());
-
-		// lengthSizeMinusOne int(2)
-		// lengthSizeMinusOne indicates the length in bytes of the NALUnitLength field in an AVC video
-		// sample or AVC parameter set sample of the associated stream minus one
-		
-		// reserved bit(6) '111111' | lengthSizeMinusOne bit(2) '11'
-		stream.Write8(0xFC | 3);
-
-		// reserved bit(3) '111' | numOfSequenceParameterSets int(5)
-		stream.Write8(0xE0 | 1);
-
-		// sequenceParameterSetLength
-		stream.WriteBE16(sps_data->GetLength());
-
-		// sequenceParameterSetNALUnit
-		stream.Write(sps_data);
-
-		// numOfPictureParameterSets int(8)
-		stream.Write8(1);
-
-		// pictureParameterSetLength
-		stream.WriteBE16(pps_data->GetLength());
-
-		// pictureParameterSetNALUnit
-		stream.Write(pps_data);
-		
-		return WriteBox(container_stream, "avcC", *stream.GetData());
+		return WriteBox(container_stream, "hvcC", *hevc_config->GetData());
 	}
 
 	bool Packager::WriteMp4aBox(ov::ByteStream &container_stream)
@@ -911,6 +1000,17 @@ namespace bmff
 		{
 			return false;
 		}
+
+		if (_cenc_property.scheme != CencProtectScheme::None)
+		{
+			if (WriteSinfBox(stream, "mp4a") == false)
+			{
+				logte("Packager::WriteMp4aBox() - Failed to write sinf box");
+				return false;
+			}
+
+			return WriteBox(container_stream, "enca", *stream.GetData());
+		}
 		
 		return WriteBox(container_stream, "mp4a", *stream.GetData());
 	}
@@ -925,7 +1025,7 @@ namespace bmff
 
 		ov::ByteStream stream(4096);
 
-		if (WriteESDesciptor(stream) == false) //nl
+		if (WriteESDescriptor(stream) == false) //nl
 		{
 			return false;
 		}
@@ -933,7 +1033,7 @@ namespace bmff
 		return WriteFullBox(container_stream, "esds", *stream.GetData(), 0, 0);
 	}
 
-	bool Packager::WriteESDesciptor(ov::ByteStream &container_stream)
+	bool Packager::WriteESDescriptor(ov::ByteStream &container_stream)
 	{
 		// ISO/IEC 14496-1 7.2.2.2.1
 		// abstract aligned(8) expandable(2^28 - 1) class BaseDescriptor : bit(8) tag = 0
@@ -1001,7 +1101,7 @@ namespace bmff
 		ov::ByteStream stream(4096);
 
 		// uint(16) ES_ID;
-		stream.WriteBE16(GetMediaTrack()->GetId()+1);
+		stream.WriteBE16(1);
 		// bit(1) streamDependenceFlag; disabled
 		// bit(1) URL_Flag; disabled
 		// bit(1) OCRstreamFlag; disabled
@@ -1114,18 +1214,14 @@ namespace bmff
 		// uint(4) samplingFrequencyIndex; [0] 96000 [1] 88200 [2] 64000 [3] 48000 [4] 44100 [5] 32000 [6] 24000 [7] 22050 [8] 16000 [9] 12000 [10] 11025 [11] 8000 [12] 7350 
 		// uint(4) channelConfiguration; 
 
-		auto aac_config = GetMediaTrack()->GetAacConfig();
+		auto aac_config = GetMediaTrack()->GetDecoderConfigurationRecord();
 		if (aac_config == nullptr)
 		{
+			logte("Packager::WriteAudioSpecificInfo() - AudioSpecificConfig is not found.");
 			return false;
 		}
-		
-		ov::BitWriter bit_writer(2);
-		bit_writer.Write(5, static_cast<uint8_t>(aac_config->ObjectType()));
-		bit_writer.Write(4, static_cast<uint8_t>(aac_config->SamplingFrequency()));
-		bit_writer.Write(4, static_cast<uint8_t>(aac_config->Channel()));
 
-		return WriteBaseDescriptor(container_stream, 0x05, ov::Data(bit_writer.GetData(), bit_writer.GetDataSize()));
+		return WriteBaseDescriptor(container_stream, 0x05, *aac_config->GetData());
 	}
 
 	bool Packager::WriteSLConfigDescriptor(ov::ByteStream &container_stream)
@@ -1309,7 +1405,7 @@ namespace bmff
 		ov::ByteStream stream(24);
 
 		// unsigned int(32) track_ID;
-		stream.WriteBE32(GetMediaTrack()->GetId()+1);
+		stream.WriteBE32(1);
 
 		// unsigned int(32) default_sample_description_index;
 		stream.WriteBE32(1);
@@ -1318,7 +1414,7 @@ namespace bmff
 		stream.WriteBE32(0);
 
 		// unsigned int(32) default_sample_size;
-		stream.WriteBE32(1);
+		stream.WriteBE32(0);
 
 		// unsigned int(32) default_sample_flags;
 		// bit(4) reserved = 0;
@@ -1392,7 +1488,7 @@ namespace bmff
 			stream.WriteBE32(GetDataTrack()->GetTimeBase().GetTimescale());
 
 			// presentation_time
-			stream.WriteBE64(sample->GetPts());
+			stream.WriteBE64(sample._media_packet->GetPts());
 
 			// event_duration
 			stream.WriteBE32(0xFFFFFFFF);
@@ -1408,7 +1504,7 @@ namespace bmff
 			stream.WriteText("OvenMediaEngine", true);
 
 			// message_data
-			stream.Write(sample->GetData());
+			stream.Write(sample._media_packet->GetData());
 
 			// One or more Event Message boxes (‘emsg’) [CMAF] can be included per segment. Version 1 of the Event Message box [DASH] must be used.
 			if (WriteFullBox(container_stream, "emsg", *stream.GetData(), 1, 0) == false)
@@ -1428,7 +1524,7 @@ namespace bmff
 		// {
 		// }
 
-		auto start_offset = container_stream.GetLength();
+		auto moof_start_offset = container_stream.GetLength();
 
 		if (samples->IsEmpty() == true)
 		{
@@ -1444,6 +1540,7 @@ namespace bmff
 			return false;
 		}
 
+		_traf_box_offset_in_moof = stream.GetLength() + BMFF_BOX_HEADER_SIZE/*MOOF BOX Header*/;
 		if (WriteTrafBox(stream, samples) == false)
 		{
 			logtw("Failed to write traf box");
@@ -1456,18 +1553,27 @@ namespace bmff
 			return false;
 		}
 
+
+		// Update offsets
+		auto p = container_stream.GetDataPointer()->GetWritableDataAs<uint8_t>();
+
 		// Update the data_offset field of the Trun box
-		// off_t offset = (-1 * (off_t)_last_trun_box_size) + (off_t)BMFF_FULL_BOX_HEADER_SIZE + (off_t)4/*[sample_count] field size*/;
-		// container_stream.MoveOffset(offset);
-		// container_stream.WriteBE32(container_stream.GetLength() + BMFF_BOX_HEADER_SIZE /* mdat header size */);
-		// // Restore
-		// container_stream.SetOffset(container_stream.GetLength());
+		// Offset of how many bytes the sample starts from the moof box.
+		auto pos = moof_start_offset + _traf_box_offset_in_moof + _trun_box_offset_in_traf + _offset_field_offset_in_trun;
+		// mdat starts immediately after the moof box.
+		auto trun_data_offset = BMFF_BOX_HEADER_SIZE/* moof header size */ + stream.GetLength() + BMFF_BOX_HEADER_SIZE /* mdat header size */;
 
-		auto container = container_stream.GetDataPointer();
-		auto p = container->GetWritableDataAs<uint8_t>();
-		auto pos = container_stream.GetLength() - _last_trun_box_size + BMFF_FULL_BOX_HEADER_SIZE + 4;
+		ByteWriter<uint32_t>::WriteBigEndian(p + pos, trun_data_offset);
 
-		ByteWriter<uint32_t>::WriteBigEndian(p + pos, container_stream.GetLength() - start_offset + BMFF_BOX_HEADER_SIZE /* mdat header size */);
+		if (_saio_box_offset_in_traf != 0)
+		{
+			// Update the offset field of the Saio box
+			// Offset of how many bytes the SAI starts from the moof box.
+			auto pos = moof_start_offset + _traf_box_offset_in_moof + _saio_box_offset_in_traf + _offset_field_offset_in_saio;
+			auto saio_data_offset = _traf_box_offset_in_moof + _senc_box_offset_in_traf + _senc_data_offset_in_senc;
+
+			ByteWriter<uint32_t>::WriteBigEndian(p + pos, saio_data_offset);
+		}
 
 		return true;
 	}
@@ -1509,10 +1615,34 @@ namespace bmff
 			return false;
 		}
 
+		_trun_box_offset_in_traf = stream.GetLength() + BMFF_BOX_HEADER_SIZE/*TRAF BOX Header*/; 
 		if (WriteTrunBox(stream, samples) == false)
 		{
 			logtw("Failed to write trun box");
 			return false;
+		}
+
+		if (_cenc_property.scheme != CencProtectScheme::None)
+		{
+			if (WriteSaizBox(stream, samples) == false)
+			{
+				logtw("Failed to write saiz box");
+				return false;
+			}
+
+			_saio_box_offset_in_traf = stream.GetLength() + BMFF_BOX_HEADER_SIZE/*TRAF BOX Header*/;
+			if (WriteSaioBox(stream, samples) == false)
+			{
+				logtw("Failed to write saio box");
+				return false;
+			}
+			
+			_senc_box_offset_in_traf = stream.GetLength() + BMFF_BOX_HEADER_SIZE/*TRAF BOX Header*/;
+			if (WriteSencBox(stream, samples) == false)
+			{
+				logtw("Failed to write senc box");
+				return false;
+			}
 		}
 
 		return WriteBox(container_stream, "traf", *stream.GetData());
@@ -1535,7 +1665,7 @@ namespace bmff
 		ov::ByteStream stream(64);
 
 		// unsigned int(32) track_ID;
-		stream.WriteBE32(GetMediaTrack()->GetId()+1);
+		stream.WriteBE32(1);
 
 		// unsigned int(64) base_data_offset;
 
@@ -1588,7 +1718,7 @@ namespace bmff
 			return false;
 		}
 
-		auto base_media_decode_time = samples->GetAt(0)->GetDts();
+		auto base_media_decode_time = samples->GetAt(0)._media_packet->GetDts();
 		stream.WriteBE64(base_media_decode_time);
 
 		return WriteFullBox(container_stream, "tfdt", *stream.GetData(), 1, 0);
@@ -1655,35 +1785,32 @@ namespace bmff
 
 		// sizeof(Moof box) + Mdat box header(8)
 		// It will be updated after writing the whole Moof box.
+		_offset_field_offset_in_trun = stream.GetLength() + BMFF_FULL_BOX_HEADER_SIZE;
 		stream.WriteBE32(0); 
 		
 		for (const auto &sample : samples->GetList())
 		{
 			// unsigned int(32) sample_duration;
-			stream.WriteBE32(sample->GetDuration());
+			stream.WriteBE32(sample._media_packet->GetDuration());
 
 			if (GetMediaTrack()->GetMediaType() == cmn::MediaType::Video)
 			{
 				// unsigned int(32) sample_size;
-				stream.WriteBE32(sample->GetData()->GetLength());
+				stream.WriteBE32(sample._media_packet->GetDataLength());
 
 				// unsigned int(32) sample_flags;
 				uint32_t sample_flags = 0;
-				GetSampleFlags(sample, sample_flags);
+				GetSampleFlags(sample._media_packet, sample_flags);
 				stream.WriteBE32(sample_flags);
 
 				// unsigned int(32) sample_composition_time_offset;
-				stream.WriteBE32(int32_t(sample->GetPts() - sample->GetDts()));
+				stream.WriteBE32(int32_t(sample._media_packet->GetPts() - sample._media_packet->GetDts()));
 			}
 			else
 			{
-				stream.WriteBE32(sample->GetData()->GetLength());
+				stream.WriteBE32(sample._media_packet->GetDataLength());
 			}
 		}
-
-		// Store the size of the last trun box in _last_trun_box_size below. Since the trun box is positioned at the end of the moof, 
-		// it is used to find the position of the data_offset of the trun box in reverse.
-		_last_trun_box_size = BMFF_FULL_BOX_HEADER_SIZE + stream.GetOffset();
 
 		uint8_t version = GetMediaTrack()->GetMediaType() == cmn::MediaType::Video ? 1 : 0;
 
@@ -1749,6 +1876,345 @@ namespace bmff
 		return true;
 	}
 
+	bool Packager::WriteSinfBox(ov::ByteStream &container_stream, const ov::String &oroginal_format)
+	{
+		// ISO/IEC 14496-12 8.12.1 
+		// aligned(8) class ProtectionSchemeInfoBox(fmt) extends Box('sinf') {
+		// 	OriginalFormatBox(fmt) original_format;
+		// 	SchemeTypeBox scheme_type_box; // optional
+		// 	SchemeInformationBox info; // optional
+		// }
+
+		ov::ByteStream stream(4096);
+
+		if (WriteFrmaBox(stream, oroginal_format) == false)
+		{
+			logtw("Failed to write frma box");
+			return false;
+		}
+
+		if (WriteSchmBox(stream) == false)
+		{
+			logtw("Failed to write schm box");
+			return false;
+		}
+
+		if (WriteSchiBox(stream) == false)
+		{
+			logtw("Failed to write schi box");
+			return false;
+		}
+
+		return WriteBox(container_stream, "sinf", *stream.GetData());
+	}
+
+	bool Packager::WriteFrmaBox(ov::ByteStream &container_stream, const ov::String &oroginal_format)
+	{
+		// ISO/IEC 14496-12 8.12.2
+		// aligned(8) class OriginalFormatBox(codingname) extends Box ('frma') {
+		// 	unsigned int(32) data_format = codingname;
+		// 	// format of decrypted, encoded data (in case of protection)
+		// 	// or un-transformed sample entry (in case of restriction
+		// 	// and complete track information)
+		// }
+
+		ov::ByteStream stream(16);
+
+		stream.WriteText(oroginal_format);
+
+		return WriteBox(container_stream, "frma", *stream.GetData());
+	}
+
+	bool Packager::WriteSchmBox(ov::ByteStream &container_stream)
+	{
+		// ISO/IEC 14496-12 8.12.5
+		// aligned(8) class SchemeTypeBox extends FullBox('schm', 0, flags) {
+		// 	unsigned int(32) scheme_type; // 4CC identifying the scheme
+		// 	unsigned int(32) scheme_version; // scheme version
+		// 	if (flags & 0x000001) {
+		// 	unsigned int(8) scheme_uri[]; // browser uri
+		// 	}
+		// }
+
+		ov::ByteStream stream(16);
+
+		// ISO/IEC 23001-7 4.1
+		// The scheme_type field shall be set to a value equal to a four-character code defined in Clause 10.
+		stream.WriteText(bmff::CencProtectSchemeToString(_cenc_property.scheme));
+
+		// The scheme_version field shall be set to 0x00010000 (Major version 1, Minor version 0).
+		stream.WriteBE32(0x00010000);
+
+		return WriteFullBox(container_stream, "schm", *stream.GetData(), 0, 0);
+	}
+
+	bool Packager::WriteSchiBox(ov::ByteStream &container_stream)
+	{
+		// ISO/IEC 14496-12 8.12.6
+		// aligned(8) class SchemeInformationBox extends Box('schi') {
+		// 	Box scheme_specific_data[];
+		// }
+
+		ov::ByteStream stream(4096);
+
+		if (WriteTencBox(stream) == false)
+		{
+			logtw("Failed to write tenc box");
+			return false;
+		}
+
+		return WriteBox(container_stream, "schi", *stream.GetData());
+	}
+
+	bool Packager::WriteTencBox(ov::ByteStream &container_stream)
+	{
+		// ISO/IEC 23001-7 8.2
+		// aligned(8) class TrackEncryptionBox extends FullBox('tenc', version, flags=0)
+		// {
+		// 	unsigned int(8) reserved = 0;
+		// 	if (version==0) {
+		// 		unsigned int(8) reserved = 0;
+		// 	}
+		// 	else { // version is 1 or greater
+		// 		unsigned int(4) default_crypt_byte_block;
+		// 		unsigned int(4) default_skip_byte_block;
+		// 	}
+
+		// 	unsigned int(8) default_isProtected;
+		// 	unsigned int(8) default_Per_Sample_IV_Size;
+		// 	unsigned int(8)[16] default_KID;
+
+		// 	if (default_isProtected ==1 && default_Per_Sample_IV_Size == 0) {
+		// 		unsigned int(8) default_constant_IV_size;
+		// 		unsigned int(8)[default_constant_IV_size] default_constant_IV;
+		// 	}
+		// }
+
+		ov::ByteStream stream(2048);
+		uint8_t version = 0;
+
+		// version should be zero unless pattern-based encryption is in use, whereupon it shall be 1.
+		if (_cenc_property.scheme == CencProtectScheme::Cbcs)
+		{
+			version = 1;
+		}
+		else if (_cenc_property.scheme == CencProtectScheme::Cenc)
+		{
+			version = 0;
+		}
+		else
+		{
+			// Assert
+			OV_ASSERT2(false);
+			return false;
+		}
+
+		stream.Write8(0); // reserved
+		if (version == 0)
+		{
+			stream.Write8(0); // reserved
+		}
+		else
+		{
+			// 4bits + 4bits
+			stream.Write8((uint8_t)(_cenc_property.crypt_bytes_block << 4 | _cenc_property.skip_bytes_block));
+		}
+
+		// unsigned int(8) default_isProtected;
+		stream.Write8(1);
+
+		// unsigned int(8) default_Per_Sample_IV_Size;
+		stream.Write8(_cenc_property.per_sample_iv_size);
+
+		// unsigned int(8)[16] default_KID;
+		if (_cenc_property.key_id->GetLength() != 16)
+		{
+			// Assert
+			OV_ASSERT2(false);
+			return false;
+		}
+		stream.Write(_cenc_property.key_id->GetData(), _cenc_property.key_id->GetLength());
+
+		if (_cenc_property.per_sample_iv_size == 0)
+		{
+			// unsigned int(8) default_constant_IV_size;
+			stream.Write8(16);
+			if (_cenc_property.iv->GetLength() != 16)
+			{
+				// Assert
+				OV_ASSERT2(false);
+				return false;
+			}
+
+			// unsigned int(8)[default_constant_IV_size] default_constant_IV;
+			stream.Write(_cenc_property.iv->GetData(), _cenc_property.iv->GetLength());
+		}
+
+		return WriteFullBox(container_stream, "tenc", *stream.GetData(), version, 0);
+	}
+
+	bool Packager::WriteSaizBox(ov::ByteStream &container_stream, const std::shared_ptr<const Samples> &samples)
+	{
+		// ISO/IEC 14496-12 8.7.8
+		// aligned(8) class SampleAuxiliaryInformationSizesBox
+		// extends FullBox(‘saiz’, version = 0, flags)
+		// {
+		// 	if (flags & 1) {
+		// 		unsigned int(32) aux_info_type;
+		// 		unsigned int(32) aux_info_type_parameter;
+		// 	}
+		// 	unsigned int(8) default_sample_info_size;
+		// 	unsigned int(32) sample_count;
+		// 	if (default_sample_info_size == 0) {
+		// 		unsigned int(8) sample_info_size[ sample_count ];
+		// 	}
+		// }
+
+		ov::ByteStream stream(512);
+
+		// unsigned int(8) default_sample_info_size;
+		stream.Write8(0);
+
+		// unsigned int(32) sample_count;
+		stream.WriteBE32(samples->GetTotalCount());
+
+		// unsigned int(8) sample_info_size[ sample_count ];
+		for (const auto &sample : samples->GetList())
+		{
+			stream.Write8(sample._sai.GetSencAuxInfoSize());
+		}
+
+		return WriteFullBox(container_stream, "saiz", *stream.GetData(), 0, 0);
+	}
+
+	bool Packager::WriteSaioBox(ov::ByteStream &container_stream, const std::shared_ptr<const Samples> &samples)
+	{
+		// ISO/IEC 14496-12 8.7.9
+		// aligned(8) class SampleAuxiliaryInformationOffsetsBox extends FullBox(‘saio’, version, flags)
+		// {
+		// 	if (flags & 1) {
+		// 		unsigned int(32) aux_info_type;
+		// 		unsigned int(32) aux_info_type_parameter;
+		// 	}
+		// 	unsigned int(32) entry_count;
+		// 	if ( version == 0 ) {
+		// 		unsigned int(32) offset[ entry_count ];
+		// 	}
+		// 	else {
+		// 		unsigned int(64) offset[ entry_count ];
+		// 	}
+		// }
+
+		ov::ByteStream stream(16);
+
+		// unsigned int(32) entry_count;
+		stream.WriteBE32(1);
+
+		// unsigned int(32) offset[ entry_count ];
+
+		// It will be updated after writing the whole Moof box.
+		_offset_field_offset_in_saio = stream.GetLength() + BMFF_FULL_BOX_HEADER_SIZE;
+		stream.WriteBE32(0);
+
+		return WriteFullBox(container_stream, "saio", *stream.GetData(), 0, 0);
+	}
+
+	bool Packager::WriteSencBox(ov::ByteStream &container_stream, const std::shared_ptr<const Samples> &samples)
+	{
+		// ISO/IEC 23001-7 7.2
+		// aligned(8) class SampleEncryptionBox extends FullBox('senc', version, flags)
+		// {
+		// 	unsigned int(32) sample_count;
+		// 	{
+		// 		if (version == 0)
+		// 		{
+		// 			unsigned int(Per_Sample_IV_Size * 8) InitializationVector;
+		// 			if (UseSubSampleEncryption)
+		// 			{
+		// 				unsigned int(16) subsample_count;
+		// 				{
+		// 					unsigned int(16) BytesOfClearData;
+		// 					unsigned int(32) BytesOfProtectedData;
+		// 				}
+		// 				[subsample_count]
+		// 			}
+		// 		}
+		// 		else if ((version == 1) && isProtected)
+		// 		{
+		// 			unsigned int(16) multi_IV_count;
+		// 			for (i = 1; i <= multi _IV_count; i++)
+		// 			{
+		// 				unsigned int(16) multi_subindex_IV;
+		// 				unsigned int(Per_Sample_IV_Size * 8) IV;
+		// 			}
+		// 			unsigned int(32) subsample_count;
+		// 			{
+		// 				unsigned int(16) multi_subindex;
+		// 				unsigned int(16) BytesOfClearData;
+		// 				unsigned int(32) BytesOfProtectedData;
+		// 			}
+		// 			[subsample_count]
+		// 		}
+		// 		else if ((version == 2) && isProtected)
+		// 		{
+		// 			unsigned int(Per_Sample_IV_Size * 8) InitializationVector;
+		// 			if (UseSubSampleEncryption)
+		// 			{
+		// 				unsigned int(16) subsample_count;
+		// 				{
+		// 					unsigned int(16) BytesOfClearData;
+		// 					unsigned int(32) BytesOfProtectedData;
+		// 				}
+		// 				[subsample_count]
+		// 			}
+		// 		}
+		// 	}
+		// 	[sample_count]
+		// }
+
+		ov::ByteStream stream(4096);
+
+		// unsigned int(32) sample_count;
+		stream.WriteBE32(samples->GetTotalCount());
+
+		_senc_data_offset_in_senc = stream.GetLength() + BMFF_FULL_BOX_HEADER_SIZE;
+
+		uint32_t flag = 0x000000;
+
+		if (samples->GetList().size() > 0 &&  samples->GetList().front()._sai._sub_samples.size() > 0)
+		{
+			flag = 0x000002;
+		}
+
+		for (const auto &sample : samples->GetList())
+		{
+			// InitializationVector
+			if (sample._sai.per_sample_iv != nullptr)
+			{
+				stream.Write(sample._sai.per_sample_iv->GetData(), sample._sai.per_sample_iv->GetLength());
+			}
+
+			if (sample._sai._sub_samples.size() == 0)
+			{
+				continue;
+			}
+
+			// unsigned int(16) subsample_count;
+			stream.WriteBE16(sample._sai._sub_samples.size());
+
+			for (const auto &sub_sample : sample._sai._sub_samples)
+			{
+				// unsigned int(16) BytesOfClearData;
+				stream.WriteBE16(sub_sample.clear_bytes);
+
+				// unsigned int(32) BytesOfProtectedData;
+				stream.WriteBE32(sub_sample.cipher_bytes);
+			}
+		}
+
+		return WriteFullBox(container_stream, "senc", *stream.GetData(), 0, flag);
+	}
+
 	bool Packager::WriteMdatBox(ov::ByteStream &container_stream, const std::shared_ptr<const Samples> &samples)
 	{
 		// ISO/IEC 14496-12 8.1.1
@@ -1759,7 +2225,7 @@ namespace bmff
 		auto data = std::make_shared<ov::Data>(samples->GetTotalSize());
 		for (const auto &sample : samples->GetList())
 		{
-			data->Append(sample->GetData());
+			data->Append(sample._media_packet->GetData());
 		}
 
 		return WriteBox(container_stream, "mdat", *data);

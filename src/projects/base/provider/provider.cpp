@@ -18,7 +18,7 @@
 
 namespace pvd
 {
-	Provider::Provider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	Provider::Provider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: _server_config(server_config), _router(router)
 	{
 	}
@@ -76,37 +76,30 @@ namespace pvd
 		}
 
 		// Check configuration
-		if(app_info.IsDynamicApp() == false)
+		auto cfg_provider_list = app_info.GetConfig().GetProviders().GetProviderList();
+		for(const auto &cfg_provider : cfg_provider_list)
 		{
-			auto cfg_provider_list = app_info.GetConfig().GetProviders().GetProviderList();
-			for(const auto &cfg_provider : cfg_provider_list)
+			if(cfg_provider->GetType() == GetProviderType())
 			{
-				if(cfg_provider->GetType() == GetProviderType())
+				if(cfg_provider->IsParsed())
 				{
-					if(cfg_provider->IsParsed())
-					{
-						break;
-					}
-					else
-					{
-						// This provider is diabled
-						logtw("%s provider is disabled in %s application, so it was not created", 
-								::StringFromProviderType(GetProviderType()).CStr(), app_info.GetName().CStr());
-						return true;
-					}
+					break;
+				}
+				else
+				{
+					// This provider is diabled
+					logtw("%s provider is disabled in %s application, so it was not created", 
+							::StringFromProviderType(GetProviderType()).CStr(), app_info.GetVHostAppName().CStr());
+					return true;
 				}
 			}
-		}
-		else
-		{
-			// The dynamically created app activates all providers
 		}
 
 		// Let child create application
 		auto application = OnCreateProviderApplication(app_info);
 		if(application == nullptr)
 		{
-			logtd("Could not create application for [%s]", app_info.GetName().CStr());
+			logtt("Could not create application for [%s]", app_info.GetVHostAppName().CStr());
 			// It may not be a error that the Application failed due to disabling that Publisher.
 			// Failure to create a single application should not affect the whole.
 			// TODO(Getroot): The reason for the error must be defined and handled in detail.
@@ -133,7 +126,7 @@ namespace pvd
 		std::unique_lock<std::shared_mutex> lock(_application_map_mutex);
 		auto item = _applications.find(app_info.GetId());
 
-		logtd("Delete the application: [%s]", app_info.GetName().CStr());
+		logtt("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
 		if(item == _applications.end())
 		{
 			// Check the reason the app is not created is because it is disabled in the configuration
@@ -154,7 +147,7 @@ namespace pvd
 			}
 
 			// It is not an error because it might not be created 
-			logtd("%s provider hasn't the %s application.", ::StringFromProviderType(GetProviderType()).CStr(), app_info.GetName().CStr());
+			logtt("%s provider hasn't the %s application.", ::StringFromProviderType(GetProviderType()).CStr(), app_info.GetVHostAppName().CStr());
 			return true;
 		}
 
@@ -174,7 +167,7 @@ namespace pvd
 		bool result = OnDeleteProviderApplication(application);
 		if(result == false)
 		{
-			logte("Could not delete [%s] the application of the %s provider", app_info.GetName().CStr(), ::StringFromProviderType(GetProviderType()).CStr());
+			logte("Could not delete [%s] the application of the %s provider", app_info.GetVHostAppName().CStr(), ::StringFromProviderType(GetProviderType()).CStr());
 			return false;
 		}
 
@@ -190,7 +183,7 @@ namespace pvd
 		for(auto const &x : _applications)
 		{
 			auto application = x.second;
-			if(application->GetName() == vhost_app_name)
+			if(application->GetVHostAppName() == vhost_app_name)
 			{
 				return application;
 			}
@@ -234,33 +227,69 @@ namespace pvd
 		return nullptr;
 	}
 
-	std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> Provider::VerifyBySignedPolicy(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address)
+	std::map<info::application_id_t, std::shared_ptr<Application>> Provider::GetApplications()
 	{
-		if(_access_controller == nullptr)
-		{
-			return {AccessController::VerificationResult::Error, nullptr};
-		}
-
-		return _access_controller->VerifyBySignedPolicy(request_url, client_address);
+		std::shared_lock<std::shared_mutex> lock(_application_map_mutex);
+		return _applications;
 	}
 
-	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::SendCloseAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address)
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> Provider::VerifyBySignedPolicy(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
 		if(_access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->SendCloseWebhooks(request_url, client_address);
+		return _access_controller->VerifyBySignedPolicy(host_info, request_info);
 	}
 
-	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::VerifyByAdmissionWebhooks(const std::shared_ptr<const ov::Url> &request_url, const std::shared_ptr<ov::SocketAddress> &client_address)
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> Provider::VerifyBySignedPolicy(const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
 		if(_access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->VerifyByWebhooks(request_url, client_address);
+		return _access_controller->VerifyBySignedPolicy(request_info);
+	}
+
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::SendCloseAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
+	{
+		if(_access_controller == nullptr)
+		{
+			return {AccessController::VerificationResult::Error, nullptr};
+		}
+
+		return _access_controller->SendCloseWebhooks(host_info, request_info);
+	}
+
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::SendCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info)
+	{
+		if(_access_controller == nullptr)
+		{
+			return {AccessController::VerificationResult::Error, nullptr};
+		}
+
+		return _access_controller->SendCloseWebhooks(request_info);
+	}
+
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::VerifyByAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
+	{
+		if(_access_controller == nullptr)
+		{
+			return {AccessController::VerificationResult::Error, nullptr};
+		}
+
+		return _access_controller->VerifyByWebhooks(host_info, request_info);
+	}
+
+	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::VerifyByAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info)
+	{
+		if(_access_controller == nullptr)
+		{
+			return {AccessController::VerificationResult::Error, nullptr};
+		}
+
+		return _access_controller->VerifyByWebhooks(request_info);
 	}
 }

@@ -18,12 +18,27 @@ public:
 	{
 	}
 
-	AVCodecID GetCodecID() const noexcept override
+	cmn::MediaCodecId GetCodecID() const noexcept override
 	{
-		return AV_CODEC_ID_H265;
+		return cmn::MediaCodecId::H265;
 	}
 
-	bool Configure(std::shared_ptr<MediaTrack> context) override;
+	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	{
+		return cmn::MediaCodecModuleId::QSV;
+	}
 
+	cmn::MediaType GetMediaType() const noexcept
+	{
+		return cmn::MediaType::Video;
+	}
+
+	bool IsHWAccel() const noexcept
+	{
+		return true;
+	}	
+	
+	bool InitCodec();
+	
 	void CodecThread() override;
 };

@@ -22,8 +22,8 @@ namespace pvd
 
 	protected:
 		PushApplication(const std::shared_ptr<PushProvider> &provider, const info::Application &application_info);
-
 		virtual bool DeleteAllStreams() override;		
+
 	private:
 
 	};

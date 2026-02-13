@@ -37,6 +37,7 @@ namespace http
 			bool ReadString(const std::shared_ptr<BitReader> &reader, ov::String &value);
 
 			TableConnector	_table_connector;
+			std::mutex _decoder_lock;
 		};
 	} // namespace hpack
 } // namespace http

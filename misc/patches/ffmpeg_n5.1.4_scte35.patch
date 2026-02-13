@@ -1,0 +1,63 @@
+diff --git a/libavformat/mpegtsenc.c b/libavformat/mpegtsenc.c
+index c964d58..b5b45bd 100644
+--- a/libavformat/mpegtsenc.c
++++ b/libavformat/mpegtsenc.c
+@@ -42,6 +42,11 @@
+ 
+ #define DVB_PRIVATE_NETWORK_START 0xff01
+ 
++/* Customized for SCTE-35 */
++
++#define SCTE35_PID                  0x1FFA
++#define STREAM_TYPE_SCTE35          0x86
++
+ /*********************************************/
+ /* mpegts section writer */
+ 
+@@ -78,6 +83,7 @@ typedef struct MpegTSWrite {
+     MpegTSSection pat; /* MPEG-2 PAT table */
+     MpegTSSection sdt; /* MPEG-2 SDT table context */
+     MpegTSSection nit; /* MPEG-2 NIT table context */
++    MpegTSSection scte35; /* Customized for SCTE-35 */
+     MpegTSService **services;
+     AVPacket *pkt;
+     int64_t sdt_period; /* SDT period in PCR time base */
+@@ -430,6 +436,9 @@ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
+             stream_type = STREAM_TYPE_PRIVATE_DATA;
+         }
+         break;
++    case AV_CODEC_ID_SCTE_35:
++	    stream_type = STREAM_TYPE_SCTE35;
++	    break;
+     default:
+         av_log_once(s, AV_LOG_WARNING, AV_LOG_DEBUG, &ts_st->data_st_warning,
+                     "Stream %d, codec %s, is muxed as a private data stream "
+@@ -1143,6 +1152,13 @@ static int mpegts_init(AVFormatContext *s)
+     ts->nit.write_packet = section_write_packet;
+     ts->nit.opaque       = s;
+ 
++    // Customized for SCTE-35
++    ts->scte35.pid          = SCTE35_PID;
++    ts->scte35.cc           = 15;
++    ts->scte35.discontinuity= 0;
++    ts->scte35.write_packet = section_write_packet;
++    ts->scte35.opaque       = s;
++
+     ts->pkt = ffformatcontext(s)->pkt;
+ 
+     /* assign pids to each stream */
+@@ -2105,6 +2121,14 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
+                          pkt->flags & AV_PKT_FLAG_KEY, stream_id);
+         return 0;
+     }
++    // Customized for SCTE-35
++    else if (st->codecpar->codec_id == AV_CODEC_ID_SCTE_35) {
++        char section[1024];
++        ts->scte35.pid = st->id;
++        memcpy(section, buf, FFMIN(size, sizeof(section)));
++        mpegts_write_section(&ts->scte35, section, size);
++        return 0;
++    }
+ 
+     if (ts_st->payload_size && (ts_st->payload_size + size > ts->pes_payload_size ||
+         (dts != AV_NOPTS_VALUE && ts_st->payload_dts != AV_NOPTS_VALUE &&

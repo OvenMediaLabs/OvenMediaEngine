@@ -109,7 +109,7 @@ private:
     std::unordered_map<std::string, uint32_t> stream_ids_;
     // Holds the context for each stream (routes, RTSP session id, ...)
     std::unordered_map<uint32_t, RtspStreamContext> stream_contexts_;
-    // Hodls the tracks of a given session via an RtpTrack abstraction
+    // Holds the tracks of a given session via an RtpTrack abstraction
     std::unordered_map<uint32_t, std::vector<std::unique_ptr<RtpTrack>>> session_tracks_;
     // Maps track paths to stream id (e.g /app/live/audio_track -> 1),
     // this is needed since for UDP the control uri will be used to setup the track

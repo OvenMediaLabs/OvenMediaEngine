@@ -172,6 +172,39 @@ void PayloadAttr::SetFmtp(const ov::String &fmtp)
 			}
 		}
 	}
+	else if(_codec == SupportCodec::H265)
+	{
+		// a=fmtp:96 packetization-mode=0;profile-space=0;profile-id=1;tier-flag=0;level-id=123;interop-constraints=000000000000;sprop-vps=QAEMAf//AWAAAAMAAAMAAAMAAAMAe6wJ;sprop-sps=QgEBAWAAAAMAAAMAAAMAAAMAe6ADwIAQ5Y2uSTBrlnAIAAAfSAAHVOBA;sprop-pps=RAHgdrAmQA==;config=0000...6b02640
+		auto components = fmtp.Split(";");
+		for(const auto &component : components)
+		{
+			auto index = component.IndexOf('=');
+			if(index == -1)
+			{
+				continue;
+			}
+
+			auto name = component.Substring(0, index).Trim();
+			auto value = component.Substring(index+1).Trim();
+
+			if(name.LowerCaseString() == "sprop-vps")
+			{
+				_h265_vps_bytes = ov::Base64::Decode(value);
+			}
+			else if(name.LowerCaseString() == "sprop-sps")
+			{
+				_h265_sps_bytes = ov::Base64::Decode(value);
+			}
+			else if(name.LowerCaseString() == "sprop-pps")
+			{
+				_h265_pps_bytes = ov::Base64::Decode(value);
+			}
+			else if(name.LowerCaseString() == "sprop-max-don-diff")
+			{
+				_h265_max_don_diff = ov::Converter::ToInt32(value.CStr());
+			}
+		}
+	}
 	else if(_codec == SupportCodec::MPEG4_GENERIC)
 	{
 		// https://tools.ietf.org/html/rfc3640#section-3.3
@@ -185,7 +218,7 @@ void PayloadAttr::SetFmtp(const ov::String &fmtp)
 			if(key_value.size() != 2)
 			{
 				// fmtp parsing error
-				logd("SDP", "fmtp parsing error : %s", fmtp.CStr());
+				logt("SDP", "fmtp parsing error : %s", fmtp.CStr());
 				continue;
 			}
 

@@ -14,7 +14,7 @@ using namespace cmn;
 namespace pvd
 {
 	std::shared_ptr<OvtProvider> OvtProvider::Create(const cfg::Server &server_config,
-													 const std::shared_ptr<MediaRouteInterface> &router)
+													 const std::shared_ptr<MediaRouterInterface> &router)
 	{
 		auto provider = std::make_shared<OvtProvider>(server_config, router);
 		if (!provider->Start())
@@ -26,7 +26,7 @@ namespace pvd
 		return provider;
 	}
 
-	OvtProvider::OvtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	OvtProvider::OvtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 			: PullProvider(server_config, router)
 	{
 		auto &ovt_provider_config = server_config.GetBind().GetProviders().GetOvt();
@@ -45,14 +45,14 @@ namespace pvd
 			_client_socket_pool->Uninitialize();
 		}
 
-		logtd("Terminated OvtProvider modules.");
+		logtt("Terminated OvtProvider modules.");
 	}
 
 	std::shared_ptr<ov::SocketPool> OvtProvider::GetClientSocketPool()
 	{
 		if(_client_socket_pool == nullptr)
 		{
-			_client_socket_pool = ov::SocketPool::Create("OvtProvider", ov::SocketType::Tcp);
+			_client_socket_pool = ov::SocketPool::Create("OvtProvider", ov::SocketType::Tcp, false);
 			_client_socket_pool->Initialize(_worker_count);
 		}
 

@@ -13,6 +13,10 @@ using namespace cmn;
 AudioTrack::AudioTrack()
 {
 	_channel_layout.SetLayout(AudioChannel::Layout::LayoutUnknown);
+
+	// The default frame size of the audio frame is fixed to 1024. 
+	// If the frame size is different, settings must be made in an audio encoder or provider.
+	_audio_samples_per_frame = 1024;
 }
 
 void AudioTrack::SetSampleRate(int32_t sample_rate)
@@ -23,16 +27,6 @@ void AudioTrack::SetSampleRate(int32_t sample_rate)
 int32_t AudioTrack::GetSampleRate() const
 {
 	return (int32_t)_sample.GetRate();
-}
-
-void AudioTrack::SetAudioTimestampScale(double scale)
-{
-	_audio_timescale = scale;
-}
-
-double AudioTrack::GetAudioTimestampScale() const
-{
-	return _audio_timescale;
 }
 
 AudioSample &AudioTrack::GetSample()
@@ -58,16 +52,6 @@ const AudioChannel &AudioTrack::GetChannel() const
 void AudioTrack::SetChannel(AudioChannel channel)
 {
 	_channel_layout = channel;
-}
-
-std::shared_ptr<AACSpecificConfig> AudioTrack::GetAacConfig() const
-{
-	return _aac_config;
-}
-
-void AudioTrack::SetAacConfig(const std::shared_ptr<AACSpecificConfig> &config)
-{
-	_aac_config = config;
 }
 
 void AudioTrack::SetAudioSamplesPerFrame(int nbsamples)

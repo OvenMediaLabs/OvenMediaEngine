@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include "../../../../controller.h"
+#include "../../../../controller_base.h"
 
 namespace api
 {
@@ -16,7 +16,7 @@ namespace api
 	{
 		namespace stats
 		{
-			class VHostsController : public Controller<VHostsController>
+			class VHostsController : public ControllerBase<VHostsController>
 			{
 			public:
 				void PrepareHandlers() override;
@@ -26,5 +26,5 @@ namespace api
 									   const std::shared_ptr<mon::HostMetrics> &vhost);
 			};
 		}  // namespace stats
-	}	   // namespace v1
+	}  // namespace v1
 }  // namespace api

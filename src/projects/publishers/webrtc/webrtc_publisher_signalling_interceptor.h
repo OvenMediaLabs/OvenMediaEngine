@@ -13,20 +13,20 @@
 class WebRtcPublisherSignallingInterceptor : public http::svr::ws::Interceptor
 {
 public:
-    //--------------------------------------------------------------------
+	//--------------------------------------------------------------------
 	// Implementation of HttpRequestInterceptorInterface
 	//--------------------------------------------------------------------
 	bool IsInterceptorForRequest(const std::shared_ptr<const http::svr::HttpExchange> &exchange) override
 	{
-		if(http::svr::ws::Interceptor::IsInterceptorForRequest(exchange) == false)
+		if (http::svr::ws::Interceptor::IsInterceptorForRequest(exchange) == false)
 		{
 			return false;
 		}
 
-		auto request = exchange->GetRequest();
-		auto uri = request->GetUri();
+		auto request	= exchange->GetRequest();
+		auto uri		= request->GetUri();
 		auto parsed_url = ov::Url::Parse(uri);
-		if(parsed_url == nullptr)
+		if (parsed_url == nullptr)
 		{
 			return false;
 		}
@@ -36,11 +36,16 @@ public:
 		// ws://host:port/app/stream?direction=recv
 		// ws://host:port/app/stream?direction=1je921
 		auto direction = parsed_url->GetQueryValue("direction");
-		if(direction.IsEmpty() || direction != "send")
+		if (direction.IsEmpty() || direction != "send")
 		{
 			return true;
 		}
 
 		return false;
+	}
+
+	bool IsCacheable() const override
+	{
+		return true;
 	}
 };

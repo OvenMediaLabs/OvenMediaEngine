@@ -16,6 +16,7 @@ namespace ov
 	class Semaphore
 	{
 	public:
+		void Stop();
 		void Notify();
 		void Wait();
 
@@ -27,5 +28,6 @@ namespace ov
 		std::mutex _mutex;
 		std::condition_variable _condition;
 		unsigned long _count = 0;
+		bool _stop_flag = false;
 	};
 }

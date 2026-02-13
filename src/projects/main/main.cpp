@@ -12,6 +12,7 @@
 #include <base/info/ome_version.h>
 #include <base/ovlibrary/daemon.h>
 #include <base/ovlibrary/log_write.h>
+#include <base/ovsocket/ovsocket.h>
 #include <config/config_manager.h>
 #include <mediarouter/mediarouter.h>
 #include <modules/address/address_utilities.h>
@@ -67,7 +68,7 @@ int main(int argc, char *argv[])
 	CheckKernelVersion();
 
 	auto server_config = cfg::ConfigManager::GetInstance()->GetServer();
-	auto orchestrator = ocst::Orchestrator::GetInstance();
+	auto orchestrator  = ocst::Orchestrator::GetInstance();
 
 	logti("Server ID : %s", server_config->GetID().CStr());
 
@@ -76,9 +77,21 @@ int main(int argc, char *argv[])
 	auto stun_server_address = server_config->GetStunServer(&stun_server_parsed);
 	if (stun_server_parsed)
 	{
-		if (ov::AddressUtilities::GetInstance()->ResolveMappedAddress(stun_server_address) == true)
+		auto address_utilities = ov::AddressUtilities::GetInstance();
+
+		if (address_utilities->ResolveMappedAddress(stun_server_address))
 		{
-			logti("Resolved public IP address (%s) from stun server (%s)", ov::AddressUtilities::GetInstance()->GetMappedAddress()->GetIpAddress().CStr(), stun_server_address.CStr());
+			std::vector<ov::String> address_list;
+
+			for (auto &address : address_utilities->GetMappedAddressList())
+			{
+				address_list.push_back(address.GetIpAddress());
+			}
+
+			logti("Resolved public IP address%s (%s) from stun server (%s)",
+				  (address_list.size() > 1) ? "es" : "",
+				  ov::String::Join(address_list, ", ").CStr(),
+				  stun_server_address.CStr());
 		}
 		else
 		{
@@ -86,12 +99,17 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	// Set Default CORS for HTTP Server
+	http::svr::HttpServerManager::GetInstance()->SetDefaultCrosssDomains(server_config->GetDefaults().GetCrossDomains());
+
 	// Precompile SDP patterns for better performance.
 	if (SDPRegexPattern::GetInstance()->Compile() == false)
 	{
 		OV_ASSERT(false, "SDPRegexPattern compile failed");
-		return false;
+		return -1;
 	}
+
+	logti("This host supports %s", ov::ipv6::Checker::GetInstance()->ToString().CStr());
 
 	bool succeeded = true;
 
@@ -99,6 +117,8 @@ int main(int argc, char *argv[])
 	INIT_EXTERNAL_MODULE("SRT", InitializeSrt);
 	INIT_EXTERNAL_MODULE("OpenSSL", InitializeOpenSsl);
 	INIT_EXTERNAL_MODULE("SRTP", InitializeSrtp);
+	INIT_EXTERNAL_MODULE("Jemalloc", InitializeJemalloc);
+	INIT_EXTERNAL_MODULE("Whisper.cpp", InitializeWhisper);
 
 	//--------------------------------------------------------------------
 	// Create the modules
@@ -113,14 +133,12 @@ int main(int argc, char *argv[])
 	// Initialize Publishers
 	INIT_MODULE(webrtc_publisher, "WebRTC Publisher", WebRtcPublisher::Create(*server_config, media_router));
 	INIT_MODULE(llhls_publisher, "LLHLS Publisher", LLHlsPublisher::Create(*server_config, media_router));
-	INIT_MODULE(hls_publisher, "HLS Publisher", HlsPublisher::Create(*server_config, media_router));
-	INIT_MODULE(dash_publisher, "MPEG-DASH Publisher", DashPublisher::Create(*server_config, media_router));
-	INIT_MODULE(lldash_publisher, "Low-Latency MPEG-DASH Publisher", CmafPublisher::Create(*server_config, media_router));
 	INIT_MODULE(ovt_publisher, "OVT Publisher", OvtPublisher::Create(*server_config, media_router));
 	INIT_MODULE(file_publisher, "File Publisher", pub::FilePublisher::Create(*server_config, media_router));
-	INIT_MODULE(mpegtspush_publisher, "MpegtsPush Publisher", MpegtsPushPublisher::Create(*server_config, media_router));
-	INIT_MODULE(rtmppush_publisher, "RtmpPush Publisher", RtmpPushPublisher::Create(*server_config, media_router));
+	INIT_MODULE(push_publisher, "Push Publisher", pub::PushPublisher::Create(*server_config, media_router));
 	INIT_MODULE(thumbnail_publisher, "Thumbnail Publisher", ThumbnailPublisher::Create(*server_config, media_router));
+	INIT_MODULE(hls_publisher, "HLS Publisher", HlsPublisher::Create(*server_config, media_router));
+	INIT_MODULE(srt_publisher, "SRT Publisher", pub::SrtPublisher::Create(*server_config, media_router));
 
 	// Initialize Transcoder
 	INIT_MODULE(transcoder, "Transcoder", Transcoder::Create(media_router));
@@ -133,6 +151,8 @@ int main(int argc, char *argv[])
 	INIT_MODULE(ovt_provider, "OVT Provider", pvd::OvtProvider::Create(*server_config, media_router));
 	INIT_MODULE(rtspc_provider, "RTSPC Provider", pvd::RtspcProvider::Create(*server_config, media_router));
 	INIT_MODULE(file_provider, "File Provider", pvd::FileProvider::Create(*server_config, media_router));
+	INIT_MODULE(scheduled_provider, "Scheduled Provider", pvd::ScheduledProvider::Create(*server_config, media_router));
+	INIT_MODULE(multiplex_provider, "Multiplex Provider", pvd::MultiplexProvider::Create(*server_config, media_router));
 	// PENDING : INIT_MODULE(rtsp_provider, "RTSP Provider", pvd::RtspProvider::Create(*server_config, media_router));
 
 	auto api_server = std::make_shared<api::Server>();
@@ -168,24 +188,25 @@ int main(int argc, char *argv[])
 	RELEASE_MODULE(ovt_provider, "OVT Provider");
 	RELEASE_MODULE(rtspc_provider, "RTSPC Provider");
 	RELEASE_MODULE(file_provider, "File Provider");
-	
+	RELEASE_MODULE(scheduled_provider, "Scheduled Provider");
+	RELEASE_MODULE(multiplex_provider, "Multiplex Provider");
+
 	// PENDING : RELEASE_MODULE(rtsp_provider, "RTSP Provider");
 
 	RELEASE_MODULE(transcoder, "Transcoder");
 
 	RELEASE_MODULE(webrtc_publisher, "WebRTC Publisher");
 	RELEASE_MODULE(llhls_publisher, "LLHLS Publisher");
-	RELEASE_MODULE(hls_publisher, "HLS Publisher");
-	RELEASE_MODULE(dash_publisher, "MPEG-DASH Publisher");
-	RELEASE_MODULE(lldash_publisher, "Low-Latency MPEG-DASH Publisher");
 	RELEASE_MODULE(ovt_publisher, "OVT Publisher");
 	RELEASE_MODULE(file_publisher, "File Publisher");
-	RELEASE_MODULE(mpegtspush_publisher, "MpegtsPush Publisher");
-	RELEASE_MODULE(rtmppush_publisher, "RtmpPush Publisher");
+	RELEASE_MODULE(push_publisher, "Push Publisher");
 	RELEASE_MODULE(thumbnail_publisher, "Thumbnail Publisher");
+	RELEASE_MODULE(hls_publisher, "HLS Publisher");
+	RELEASE_MODULE(srt_publisher, "SRT Publisher");
 
 	RELEASE_MODULE(media_router, "MediaRouter");
 
+	TERMINATE_EXTERNAL_MODULE("Jemalloc", TerminateJemalloc);
 	TERMINATE_EXTERNAL_MODULE("SRTP", TerminateSrtp);
 	TERMINATE_EXTERNAL_MODULE("OpenSSL", TerminateOpenSsl);
 	TERMINATE_EXTERNAL_MODULE("SRT", TerminateSrt);
@@ -212,6 +233,35 @@ static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_o
 		::printf("    -i          Ignores and executes the settings of %s\n", CFG_LAST_CONFIG_FILE_NAME);
 		::printf("                (The JSON file is automatically generated when RESTful API is called)\n");
 		return ov::Daemon::State::PARENT_FAIL;
+	}
+
+	// Set the environment variables
+	auto env_path = parse_option->env_path;
+	if (env_path.IsEmpty() == false)
+	{
+		env_path = ov::PathManager::IsAbsolute(env_path)
+					   ? env_path
+					   : ov::PathManager::Combine(ov::PathManager::GetCurrentPath(), env_path);
+
+		try
+		{
+			auto env = ParseEnvFile(env_path);
+
+			for (const auto &pair : env)
+			{
+				if (::setenv(pair.first.CStr(), pair.second.CStr(), 1) != 0)
+				{
+					auto error = ov::Error::CreateErrorFromErrno();
+					logte("Could not set environment variable \"%s\"=\"%s\" (%s)", pair.first.CStr(), pair.second.CStr(), error->What());
+					return ov::Daemon::State::PARENT_FAIL;
+				}
+			}
+		}
+		catch (const std::shared_ptr<ov::Error> &error)
+		{
+			logte("Could not load environment variables from file: %s (%s)", env_path.CStr(), error->What());
+			return ov::Daemon::State::PARENT_FAIL;
+		}
 	}
 
 	{
@@ -253,7 +303,7 @@ static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_o
 		}
 	}
 
-	if (InitializeSignals() == false)
+	if (::InitializeSignals() == false)
 	{
 		logte("Could not initialize signals");
 		return ov::Daemon::State::CHILD_FAIL;
@@ -266,6 +316,8 @@ static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_o
 	try
 	{
 		config_manager->LoadConfigs(parse_option->config_path);
+
+		::SetDumpFallbackPath(::ov_log_get_path());
 
 		return ov::Daemon::State::CHILD_SUCCESS;
 	}
@@ -288,7 +340,7 @@ static void CheckKernelVersion()
 	}
 
 	ov::String release = name.release;
-	auto tokens = release.Split(".");
+	auto tokens		   = release.Split(".");
 
 	if (tokens.size() > 1)
 	{

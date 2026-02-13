@@ -20,7 +20,7 @@
 #include "../hpack/decoder.h"
 
 //TODO(Getroot) : Move to Server.xml
-#define HTTP_CONNECTION_TIMEOUT_MS		10 * 1000
+#define HTTP_CONNECTION_TIMEOUT_MS		60 * 1000
 #define WEBSOCKET_CONNECTION_TIMEOUT_MS	WEBSOCKET_PING_INTERVAL_MS * 3
 
 namespace http
@@ -72,9 +72,9 @@ namespace http
 			std::any GetUserData() const;
 
 			void AddUserData(const ov::String &key, std::any user_data);
-			std::any GetUserData(const ov::String &key) const;
+			const std::any *GetUserData(const ov::String &key) const;
 			// Get user datas
-			std::map<ov::String, std::any> GetUserDataMap() const;
+			const std::map<ov::String, std::any>& GetUserDataMap() const;
 
 		private:
 			// For HTTP 1.0 and HTTP 1.1
@@ -131,6 +131,7 @@ namespace http
 			std::shared_ptr<prot::ws::Frame> _websocket_frame = nullptr;
 
 			std::shared_ptr<RequestInterceptor> _interceptor = nullptr;
+			std::vector<std::shared_ptr<RequestInterceptor>> _need_to_close_interceptors;
 
 			std::recursive_mutex _close_mutex;
 			bool _closed = false;

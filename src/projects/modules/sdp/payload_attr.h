@@ -105,6 +105,41 @@ public:
 	uint32_t GetMpeg4GenericIndexDeltaLength() const {return _mpeg4_generic_index_delta_length;}
 	std::shared_ptr<ov::Data> GetMpeg4GenericConfig() const {return _mpeg4_generic_config;}
 
+	// H265 Specific
+	std::shared_ptr<ov::Data> GetH265ExtraDataAsAnnexB() const
+	{
+		if(GetH265VPS() == nullptr || GetH265SPS() == nullptr || GetH265PPS() == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto data = std::make_shared<ov::Data>();
+		ov::ByteStream stream(data);
+
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)1);
+		stream.Write(GetH265VPS());
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)1);
+		stream.Write(GetH265SPS());
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)0);
+		stream.WriteBE((uint8_t)1);
+		stream.Write(GetH265PPS());
+
+		return data;
+	}
+
+	std::shared_ptr<ov::Data> GetH265VPS() const {return _h265_vps_bytes;}
+	std::shared_ptr<ov::Data> GetH265SPS() const {return _h265_sps_bytes;}
+	std::shared_ptr<ov::Data> GetH265PPS() const {return _h265_pps_bytes;}
+	uint32_t GetH265MaxDONDiff() const {return _h265_max_don_diff;}
+
 private:
 	uint8_t _id = 0;
 	SupportCodec _codec = SupportCodec::Unknown;
@@ -112,6 +147,7 @@ private:
 	uint32_t _rate = 0;
 	ov::String _codec_param = "";
 
+	// MPEG4-GENERIC AUDIO Specific
 	Mpeg4GenericMode _mpeg4_generic_mode = Mpeg4GenericMode::Generic;
 	uint32_t _mpeg4_generic_size_length = 0;
 	uint32_t _mpeg4_generic_index_length = 0;
@@ -122,6 +158,13 @@ private:
 
 	ov::String _fmtp = "";
 
+	// H264 Specific
 	std::shared_ptr<ov::Data>	_h264_sps_bytes = nullptr;
 	std::shared_ptr<ov::Data>	_h264_pps_bytes = nullptr;
+
+	// H265 Specific
+	std::shared_ptr<ov::Data>	_h265_vps_bytes = nullptr;
+	std::shared_ptr<ov::Data>	_h265_sps_bytes = nullptr;
+	std::shared_ptr<ov::Data>	_h265_pps_bytes = nullptr;
+	uint32_t _h265_max_don_diff = 0;
 };

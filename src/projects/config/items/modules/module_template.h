@@ -15,9 +15,14 @@ namespace cfg
 		struct ModuleTemplate : public Item
 		{
 		protected:
-			bool	_enable = true;
+			bool _enable;
 
 		public:
+			ModuleTemplate(bool enable)
+				: _enable(enable)
+			{
+			}
+
 			CFG_DECLARE_CONST_REF_GETTER_OF(IsEnabled, _enable)
 
 			void SetEnable(bool enable)
@@ -31,5 +36,5 @@ namespace cfg
 				Register<Optional>({"Enable"}, &_enable);
 			}
 		};
-	} // namespace modules
-} // namespace cfg
+	}  // namespace modules
+}  // namespace cfg

@@ -6,33 +6,34 @@
 //  Copyright (c) 2018 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include "base/info/stream.h"
-#include "rtc_private.h"
 #include "rtc_session.h"
-#include "webrtc_publisher.h"
-#include "rtc_application.h"
-#include "rtc_stream.h"
-#include "rtc_common_types.h"
-
-#include "modules/rtp_rtcp/rtcp_info/nack.h"
-#include "modules/rtp_rtcp/rtcp_info/transport_cc.h"
-#include "modules/rtp_rtcp/rtcp_info/remb.h"
 
 #include <utility>
 
+#include "base/info/stream.h"
+#include "modules/rtp_rtcp/rtcp_info/nack.h"
+#include "modules/rtp_rtcp/rtcp_info/remb.h"
+#include "modules/rtp_rtcp/rtcp_info/transport_cc.h"
+#include "rtc_application.h"
+#include "rtc_common_types.h"
+#include "rtc_private.h"
+#include "rtc_stream.h"
+#include "webrtc_publisher.h"
+
 std::shared_ptr<RtcSession> RtcSession::Create(const std::shared_ptr<WebRtcPublisher> &publisher,
 											   const std::shared_ptr<pub::Application> &application,
-                                               const std::shared_ptr<pub::Stream> &stream,
+											   const std::shared_ptr<pub::Stream> &stream,
 											   const ov::String &file_name,
-                                               const std::shared_ptr<const SessionDescription> &offer_sdp,
-                                               const std::shared_ptr<const SessionDescription> &peer_sdp,
-                                               const std::shared_ptr<IcePort> &ice_port,
+											   const std::shared_ptr<const SessionDescription> &offer_sdp,
+											   const std::shared_ptr<const SessionDescription> &peer_sdp,
+											   const std::shared_ptr<IcePort> &ice_port,
+											   session_id_t ice_session_id,
 											   const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session)
 {
 	// Session Id of the offer sdp is unique value
 	auto session_info = info::Session(*std::static_pointer_cast<info::Stream>(stream), offer_sdp->GetSessionId());
-	auto session = std::make_shared<RtcSession>(session_info, publisher, application, stream, file_name, offer_sdp, peer_sdp, ice_port, ws_session);
-	if(!session->Start())
+	auto session	  = std::make_shared<RtcSession>(session_info, publisher, application, stream, file_name, offer_sdp, peer_sdp, ice_port, ice_session_id, ws_session);
+	if (!session->Start())
 	{
 		return nullptr;
 	}
@@ -47,21 +48,23 @@ RtcSession::RtcSession(const info::Session &session_info,
 					   const std::shared_ptr<const SessionDescription> &offer_sdp,
 					   const std::shared_ptr<const SessionDescription> &peer_sdp,
 					   const std::shared_ptr<IcePort> &ice_port,
+					   session_id_t ice_session_id,
 					   const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session)
 	: Session(session_info, application, stream), Node(NodeType::Edge)
 {
-	_publisher = publisher;
-	_offer_sdp = offer_sdp;
-	_peer_sdp = peer_sdp;
-	_ice_port = ice_port;
-	_ws_session = ws_session;
-	_file_name = file_name;
+	_publisher		= publisher;
+	_offer_sdp		= offer_sdp;
+	_peer_sdp		= peer_sdp;
+	_ice_port		= ice_port;
+	_ice_session_id = ice_session_id;
+	_ws_session		= ws_session;
+	_file_name		= file_name;
 }
 
 RtcSession::~RtcSession()
 {
 	Stop();
-	logtd("RtcSession(%d) has been terminated finally", GetId());
+	logtt("RtcSession(%d) has been terminated finally", GetId());
 }
 
 bool RtcSession::Start()
@@ -69,20 +72,20 @@ bool RtcSession::Start()
 	// start and stop must be called independently.
 	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
 
-	if(pub::Session::GetState() != SessionState::Ready)
+	if (pub::Session::GetState() != SessionState::Ready)
 	{
 		return false;
 	}
 
-	logtd("[WebRTC Publisher] OfferSDP");
-	logtd("%s\n", _offer_sdp->ToString().CStr());
-	logtd("[WebRTC Publisher] AnswerSDP");
-	logtd("%s", _peer_sdp->ToString().CStr());
+	logtt("[WebRTC Publisher] OfferSDP");
+	logtt("%s\n", _offer_sdp->ToString().CStr());
+	logtt("[WebRTC Publisher] AnswerSDP");
+	logtt("%s", _peer_sdp->ToString().CStr());
 
 	auto offer_media_desc_list = _offer_sdp->GetMediaList();
-	auto peer_media_desc_list = _peer_sdp->GetMediaList();
+	auto peer_media_desc_list  = _peer_sdp->GetMediaList();
 
-	if(offer_media_desc_list.size() != peer_media_desc_list.size())
+	if (offer_media_desc_list.size() != peer_media_desc_list.size())
 	{
 		logte("m= line of answer does not correspond with offer");
 		return false;
@@ -90,55 +93,55 @@ bool RtcSession::Start()
 
 	// Create nodes
 
-	_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
-	_srtp_transport = std::make_shared<SrtpTransport>();
+	_rtp_rtcp									= std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
+	_srtp_transport								= std::make_shared<SrtpTransport>();
 
-	_dtls_transport = std::make_shared<DtlsTransport>();
+	_dtls_transport								= std::make_shared<DtlsTransport>();
 	std::shared_ptr<RtcApplication> application = std::static_pointer_cast<RtcApplication>(GetApplication());
 	_dtls_transport->SetLocalCertificate(application->GetCertificate());
 	_dtls_transport->StartDTLS();
 
 	// RFC3264
 	// For each "m=" line in the offer, there MUST be a corresponding "m=" line in the answer.
-	for(size_t i = 0; i < peer_media_desc_list.size(); i++)
+	for (size_t i = 0; i < peer_media_desc_list.size(); i++)
 	{
-		auto peer_media_desc = peer_media_desc_list[i];
+		auto peer_media_desc  = peer_media_desc_list[i];
 		auto offer_media_desc = offer_media_desc_list[i];
 
 		// The first payload has the highest priority.
-		auto first_payload = peer_media_desc->GetFirstPayload();
-		if(first_payload == nullptr)
+		auto first_payload	  = peer_media_desc->GetFirstPayload();
+		if (first_payload == nullptr)
 		{
 			logte("Failed to get the first Payload type of peer sdp");
 			return false;
 		}
 
-		if(peer_media_desc->GetMediaType() == MediaDescription::MediaType::Audio)
+		if (peer_media_desc->GetMediaType() == MediaDescription::MediaType::Audio)
 		{
 			_audio_payload_type = first_payload->GetId();
-			_audio_ssrc = offer_media_desc->GetSsrc();
-			_rtp_rtcp->AddRtpSender(_audio_payload_type, _audio_ssrc, first_payload->GetCodecRate(), offer_media_desc->GetCname());
+			_audio_ssrc			= offer_media_desc->GetSsrc().value_or(0);
+			_rtp_rtcp->AddRtpSender(_audio_payload_type, _audio_ssrc, first_payload->GetCodecRate(), offer_media_desc->GetCname().value_or(""));
 		}
 		else
 		{
 			_video_payload_type = first_payload->GetId();
-			_video_ssrc = offer_media_desc->GetSsrc();
-			_rtp_rtcp->AddRtpSender(_video_payload_type, _video_ssrc, first_payload->GetCodecRate(), offer_media_desc->GetCname());
+			_video_ssrc			= offer_media_desc->GetSsrc().value_or(0);
+			_rtp_rtcp->AddRtpSender(_video_payload_type, _video_ssrc, first_payload->GetCodecRate(), offer_media_desc->GetCname().value_or(""));
 
 			auto payload = peer_media_desc->GetPayload(static_cast<uint8_t>(FixedRtcPayloadType::RED_PAYLOAD_TYPE));
-			if(payload != nullptr)
+			if (payload != nullptr)
 			{
-				if(payload->GetCodec() == PayloadAttr::SupportCodec::RED)
-				{	
+				if (payload->GetCodec() == PayloadAttr::SupportCodec::RED)
+				{
 					_red_enabled = true;
 				}
 			}
 
 			// Retransmission, We always define the RTX payload as payload + 1
-			payload = peer_media_desc->GetPayload(_video_payload_type+1);
-			if(payload != nullptr)
+			payload = peer_media_desc->GetPayload(_video_payload_type + 1);
+			if (payload != nullptr)
 			{
-				if(payload->GetCodec() == PayloadAttr::SupportCodec::RTX)
+				if (payload->GetCodec() == PayloadAttr::SupportCodec::RTX)
 				{
 					_rtx_enabled = true;
 				}
@@ -147,16 +150,14 @@ bool RtcSession::Start()
 	}
 
 	// Get Playlist
-	_playlist = std::static_pointer_cast<RtcStream>(GetStream())->GetRtcPlaylist(_file_name, 
-																				CodecIdFromPayloadTypeNumber(_video_payload_type), 
-																				CodecIdFromPayloadTypeNumber(_audio_payload_type));
+	_playlist = std::static_pointer_cast<RtcStream>(GetStream())->GetRtcPlaylist(_file_name, CodecIdFromPayloadTypeNumber(_video_payload_type), CodecIdFromPayloadTypeNumber(_audio_payload_type));
 	if (_playlist == nullptr)
 	{
-		logte("Failed to get the playlist (%s/%s/%s) because there is no available rendition", GetApplication()->GetName().CStr(), GetStream()->GetName().CStr(), _file_name.CStr());
+		logte("Failed to get the playlist (%s/%s/%s) because there is no available rendition", GetApplication()->GetVHostAppName().CStr(), GetStream()->GetName().CStr(), _file_name.CStr());
 		return false;
 	}
 
-	_auto_abr = _playlist->IsWebRtcAutoAbr();
+	_auto_abr		   = _playlist->IsWebRtcAutoAbr();
 
 	_current_rendition = _playlist->GetFirstRendition();
 	RecordAutoSelectedRendition(_current_rendition, true);
@@ -167,9 +168,9 @@ bool RtcSession::Start()
 	SendPlaylistInfo(_playlist);
 	SendRenditionChanged(_current_rendition);
 
-	logtd("Video PT(%d) Audio PT(%d) Video TrackID(%u) Audio TrackID(%u)", _video_payload_type, _audio_payload_type, 
-														current_video_track ? current_video_track->GetId() : -1,
-														current_audio_track ? current_audio_track->GetId() : -1);
+	logtt("Video PT(%d) Audio PT(%d) Video TrackID(%u) Audio TrackID(%u)", _video_payload_type, _audio_payload_type,
+		  current_video_track ? current_video_track->GetId() : -1,
+		  current_audio_track ? current_audio_track->GetId() : -1);
 
 	// Connect nodes
 
@@ -200,24 +201,24 @@ bool RtcSession::Stop()
 	// start and stop must be called independently.
 	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
 
-	logtd("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
+	logtt("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
 
-	if(pub::Session::GetState() != SessionState::Started && pub::Session::GetState() != SessionState::Stopping)
+	if (pub::Session::GetState() != SessionState::Started && pub::Session::GetState() != SessionState::Stopping)
 	{
 		return true;
 	}
 
-	if(_rtp_rtcp != nullptr)
+	if (_rtp_rtcp != nullptr)
 	{
 		_rtp_rtcp->Stop();
 	}
 
-	if(_dtls_transport != nullptr)
+	if (_dtls_transport != nullptr)
 	{
 		_dtls_transport->Stop();
 	}
 
-	if(_srtp_transport != nullptr)
+	if (_srtp_transport != nullptr)
 	{
 		_srtp_transport->Stop();
 	}
@@ -235,17 +236,17 @@ void RtcSession::SetSessionExpiredTime(uint64_t expired_time)
 	_session_expired_time = expired_time;
 }
 
-const std::shared_ptr<const SessionDescription>& RtcSession::GetOfferSDP() const
+const std::shared_ptr<const SessionDescription> &RtcSession::GetOfferSDP() const
 {
 	return _offer_sdp;
 }
 
-const std::shared_ptr<const SessionDescription>& RtcSession::GetPeerSDP() const
+const std::shared_ptr<const SessionDescription> &RtcSession::GetPeerSDP() const
 {
 	return _peer_sdp;
 }
 
-const std::shared_ptr<http::svr::ws::WebSocketSession>& RtcSession::GetWSClient()
+const std::shared_ptr<http::svr::ws::WebSocketSession> &RtcSession::GetWSClient()
 {
 	return _ws_session;
 }
@@ -253,7 +254,7 @@ const std::shared_ptr<http::svr::ws::WebSocketSession>& RtcSession::GetWSClient(
 bool RtcSession::RequestChangeRendition(const ov::String &rendition_name)
 {
 	auto rendition = _playlist->GetRendition(rendition_name);
-	if(rendition == nullptr)
+	if (rendition == nullptr)
 	{
 		logte("Failed to get the rendition (%s) because there is no available rendition", rendition_name.CStr());
 		return false;
@@ -263,7 +264,7 @@ bool RtcSession::RequestChangeRendition(const ov::String &rendition_name)
 
 	if (rendition == _current_rendition)
 	{
-		logtd("The rendition (%s) is already selected", rendition_name.CStr());
+		logtt("The rendition (%s) is already selected", rendition_name.CStr());
 		return true;
 	}
 
@@ -288,15 +289,15 @@ bool RtcSession::RequestChangeRendition(SwitchOver switch_over)
 	{
 		next_rendition = _playlist->GetNextHigherBitrateRendition(_current_rendition);
 	}
-	else 
+	else
 	{
 		next_rendition = _playlist->GetNextLowerBitrateRendition(_current_rendition);
 	}
 
 	if (next_rendition != nullptr)
 	{
-		logtd("Change rendition - EstimatedBandwidth(%f) CurrentRendition(%s - %lld) NextRendition(%s - %lld)", 
-		_estimated_bitrates, _current_rendition->GetName().CStr(), _current_rendition->GetBitrates(), next_rendition->GetName().CStr(), next_rendition->GetBitrates());
+		logtt("Change rendition - EstimatedBandwidth(%f) CurrentRendition(%s - %" PRIu64 ") NextRendition(%s - %" PRIu64 ")",
+			  _estimated_bitrates, _current_rendition->GetName().CStr(), _current_rendition->GetBitrates(), next_rendition->GetName().CStr(), next_rendition->GetBitrates());
 
 		_next_rendition = next_rendition;
 	}
@@ -314,7 +315,7 @@ bool RtcSession::SetAutoAbr(bool auto_abr)
 bool RtcSession::SendPlaylistInfo(const std::shared_ptr<const RtcPlaylist> &playlist) const
 {
 	auto ws_response = std::static_pointer_cast<http::svr::ws::WebSocketResponse>(_ws_session->GetResponse());
-	if(ws_response == nullptr)
+	if (ws_response == nullptr)
 	{
 		logte("Failed to get the websocket response");
 		return false;
@@ -323,8 +324,8 @@ bool RtcSession::SendPlaylistInfo(const std::shared_ptr<const RtcPlaylist> &play
 	Json::Value json_response;
 
 	json_response["command"] = "notification";
-	json_response["type"] = "playlist";
-	
+	json_response["type"]	 = "playlist";
+
 	// Message
 	json_response["message"] = playlist->ToJson(_auto_abr);
 
@@ -334,7 +335,7 @@ bool RtcSession::SendPlaylistInfo(const std::shared_ptr<const RtcPlaylist> &play
 bool RtcSession::SendRenditionChanged(const std::shared_ptr<const RtcRendition> &rendition) const
 {
 	auto ws_response = std::static_pointer_cast<http::svr::ws::WebSocketResponse>(_ws_session->GetResponse());
-	if(ws_response == nullptr)
+	if (ws_response == nullptr)
 	{
 		logte("Failed to get the websocket response");
 		return false;
@@ -343,15 +344,15 @@ bool RtcSession::SendRenditionChanged(const std::shared_ptr<const RtcRendition> 
 	Json::Value json_response;
 
 	json_response["command"] = "notification";
-	json_response["type"] = "rendition_changed";
-	
+	json_response["type"]	 = "rendition_changed";
+
 	// Message
 	Json::Value json_message;
-	
-	json_message["rendition_name"] = rendition->GetName().CStr();
-	json_message["auto"] = _auto_abr;
 
-	json_response["message"] = json_message;
+	json_message["rendition_name"] = rendition->GetName().CStr();
+	json_message["auto"]		   = _auto_abr;
+
+	json_response["message"]	   = json_message;
 
 	return ws_response->Send(json_response) > 0;
 }
@@ -362,23 +363,23 @@ void RtcSession::OnMessageReceived(const std::any &message)
 	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
 
 	std::shared_ptr<const ov::Data> data = nullptr;
-	try 
+	try
 	{
-        data = std::any_cast<std::shared_ptr<const ov::Data>>(message);
-		if(data == nullptr)
+		data = std::any_cast<std::shared_ptr<const ov::Data>>(message);
+		if (data == nullptr)
 		{
 			return;
 		}
-    }
-    catch(const std::bad_any_cast& e) 
+	}
+	catch (const std::bad_any_cast &e)
 	{
-        logtd("An incorrect type of packet was input from the stream.");
+		logtt("An incorrect type of packet was input from the stream.");
 		return;
-    }
+	}
 
 	_received_bytes += data->GetLength();
 
-	logtd("Received %u bytes", _received_bytes);
+	logtt("Received %" PRIu64 " bytes", _received_bytes);
 
 	// RTP_RTCP -> SRTP -> DTLS -> Edge Node(RtcSession)
 	SendDataToPrevNode(data);
@@ -395,12 +396,12 @@ void RtcSession::ChangeRendition()
 
 	if (_next_rendition == _current_rendition)
 	{
-		logtd("The rendition is already selected");
+		logtt("The rendition is already selected");
 		return;
 	}
 
 	_current_rendition = _next_rendition;
-	_next_rendition = nullptr;
+	_next_rendition	   = nullptr;
 
 	lock.unlock();
 
@@ -412,7 +413,7 @@ uint8_t RtcSession::GetOriginPayloadTypeFromRedRtpPacket(const std::shared_ptr<c
 	uint8_t rtp_payload_type = 0;
 
 	// RED includes FEC packet or Media packet.
-	if(red_rtp_packet->IsUlpfec())
+	if (red_rtp_packet->IsUlpfec())
 	{
 		rtp_payload_type = red_rtp_packet->OriginPayloadType();
 	}
@@ -457,11 +458,11 @@ bool RtcSession::IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_pa
 		return false;
 	}
 
-	uint32_t rtp_payload_type = rtp_packet->PayloadType(); 
+	uint32_t rtp_payload_type = rtp_packet->PayloadType();
 
-	if(rtp_payload_type == _audio_payload_type || 
+	if (rtp_payload_type == _audio_payload_type ||
 		// if RED is disabled, origin RTP packet is selected
-		(_red_enabled == false && rtp_payload_type == _video_payload_type) || 
+		(_red_enabled == false && rtp_payload_type == _video_payload_type) ||
 		// if RED is enabled, RED packet is selected
 		(_red_enabled == true && rtp_payload_type == static_cast<uint8_t>(FixedRtcPayloadType::RED_PAYLOAD_TYPE)))
 	{
@@ -488,34 +489,34 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 	//It must not be called during start and stop.
 	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
 
-	if(pub::Session::GetState() != SessionState::Started)
+	if (pub::Session::GetState() != SessionState::Started)
 	{
 		return;
 	}
 
 	// Check expired time
-	if(_session_expired_time != 0 && _session_expired_time < ov::Clock::NowMSec())
+	if (_session_expired_time != 0 && _session_expired_time < ov::Clock::NowMSec())
 	{
-		_publisher->DisconnectSession(pub::Session::GetSharedPtrAs<RtcSession>());
+		_ice_port->DisconnectSession(_ice_session_id);
 		SetState(SessionState::Stopping);
 		return;
 	}
 
 	std::shared_ptr<RtpPacket> session_packet;
 
-	try 
+	try
 	{
-        session_packet = std::any_cast<std::shared_ptr<RtpPacket>>(packet);
-		if(session_packet == nullptr)
+		session_packet = std::any_cast<std::shared_ptr<RtpPacket>>(packet);
+		if (session_packet == nullptr)
 		{
 			return;
 		}
-    }
-    catch(const std::bad_any_cast& e) 
+	}
+	catch (const std::bad_any_cast &e)
 	{
-        logtd("An incorrect type of packet was input from the stream.");
+		logtt("An incorrect type of packet was input from the stream.");
 		return;
-    }
+	}
 
 	// Check the packet is selected.
 	if (IsSelectedPacket(session_packet) == false)
@@ -549,9 +550,9 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 
 	RecordRtpSent(copy_packet, session_packet->SequenceNumber(), _wide_sequence_number);
 
-	_wide_sequence_number ++;
+	_wide_sequence_number++;
 
-	MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Webrtc, copy_packet->GetData()->GetLength());
+	MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Webrtc, copy_packet->GetDataLength());
 }
 
 bool RtcSession::SetTransportWideSequenceNumber(const std::shared_ptr<RtpPacket> &rtp_packet, uint16_t wide_sequence_number)
@@ -563,7 +564,7 @@ bool RtcSession::SetTransportWideSequenceNumber(const std::shared_ptr<RtpPacket>
 	}
 
 	auto payload_offset = rtp_packet->GetExtensionType() == RtpHeaderExtension::HeaderType::ONE_BYTE_HEADER ? 1 : 2;
-	
+
 	ByteWriter<uint16_t>::WriteBigEndian(extension_buffer + payload_offset, wide_sequence_number);
 
 	return true;
@@ -579,7 +580,7 @@ bool RtcSession::SetAbsSendTime(const std::shared_ptr<RtpPacket> &rtp_packet, ui
 
 	auto payload_offset = rtp_packet->GetExtensionType() == RtpHeaderExtension::HeaderType::ONE_BYTE_HEADER ? 1 : 2;
 
-	auto abs_send_time = RtpHeaderExtensionAbsSendTime::MsToAbsSendTime(time_ms);
+	auto abs_send_time	= RtpHeaderExtensionAbsSendTime::MsToAbsSendTime(time_ms);
 	ByteWriter<uint24_t>::WriteBigEndian(extension_buffer + payload_offset, abs_send_time);
 
 	return true;
@@ -592,18 +593,21 @@ bool RtcSession::RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packe
 		return false;
 	}
 
-	auto sent_log = std::make_shared<RtpSentLog>();
-	sent_log->_sequence_number = rtp_packet->SequenceNumber();
-	sent_log->_wide_sequence_number = wide_sequence_number;
-	sent_log->_track_id = rtp_packet->GetTrackId();
-	sent_log->_payload_type = rtp_packet->PayloadType();
+	auto sent_log					  = std::make_shared<RtpSentLog>();
+	sent_log->_sequence_number		  = rtp_packet->SequenceNumber();
+	sent_log->_wide_sequence_number	  = wide_sequence_number;
+	sent_log->_track_id				  = rtp_packet->GetTrackId();
+	sent_log->_payload_type			  = rtp_packet->PayloadType();
 	sent_log->_origin_sequence_number = origin_sequence_number;
+	sent_log->_timestamp			  = rtp_packet->Timestamp();
+	sent_log->_marker				  = rtp_packet->Marker();
+	sent_log->_ssrc					  = rtp_packet->Ssrc();
 
-	sent_log->_sent_bytes = rtp_packet->GetData()->GetLength();
-	sent_log->_sent_time = std::chrono::system_clock::now();
+	sent_log->_sent_bytes			  = rtp_packet->GetDataLength();
+	sent_log->_sent_time			  = std::chrono::system_clock::now();
 
-	auto video_rtp_key = sent_log->_sequence_number % MAX_RTP_RECORDS;
-	auto wide_rtp_key = sent_log->_wide_sequence_number % MAX_RTP_RECORDS;
+	auto video_rtp_key				  = sent_log->_sequence_number % MAX_RTP_RECORDS;
+	auto wide_rtp_key				  = sent_log->_wide_sequence_number % MAX_RTP_RECORDS;
 
 	std::lock_guard<std::shared_mutex> lock(_rtp_record_map_lock);
 
@@ -621,7 +625,7 @@ std::shared_ptr<RtcSession::RtpSentLog> RtcSession::TraceRtpSentByVideoSeqNo(uin
 	std::shared_lock<std::shared_mutex> lock(_rtp_record_map_lock);
 
 	auto key = sequence_number % MAX_RTP_RECORDS;
-	auto it = _video_rtp_sent_record_map.find(key);
+	auto it	 = _video_rtp_sent_record_map.find(key);
 	if (it == _video_rtp_sent_record_map.end())
 	{
 		return nullptr;
@@ -636,7 +640,7 @@ std::shared_ptr<RtcSession::RtpSentLog> RtcSession::TraceRtpSentByWideSeqNo(uint
 	std::shared_lock<std::shared_mutex> lock(_rtp_record_map_lock);
 
 	auto key = wide_sequence_number % MAX_RTP_RECORDS;
-	auto it = _wide_rtp_sent_record_map.find(key);
+	auto it	 = _wide_rtp_sent_record_map.find(key);
 	if (it == _wide_rtp_sent_record_map.end())
 	{
 		return nullptr;
@@ -657,9 +661,10 @@ void RtcSession::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		return;
 	}
 
-	if(rtcp_info->GetPacketType() == RtcpPacketType::RR)
+	if (rtcp_info->GetPacketType() == RtcpPacketType::RR)
 	{
 		// Process
+		ProcessReceiverReport(rtcp_info);
 	}
 	else if (rtcp_info->GetPacketType() == RtcpPacketType::RTPFB)
 	{
@@ -676,7 +681,7 @@ void RtcSession::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
 	}
 	else if (rtcp_info->GetPacketType() == RtcpPacketType::PSFB)
 	{
-		if (rtcp_info->GetCountOrFmt() == static_cast<uint8_t>(PSFBFMT::AFB)) // REMB
+		if (rtcp_info->GetCountOrFmt() == static_cast<uint8_t>(PSFBFMT::AFB))  // REMB
 		{
 			// Process
 			ProcessRemb(rtcp_info);
@@ -686,40 +691,53 @@ void RtcSession::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
 	//rtcp_info->DebugPrint();
 }
 
+bool RtcSession::ProcessReceiverReport(const std::shared_ptr<RtcpInfo> &rtcp_info)
+{
+	auto rr = std::static_pointer_cast<ReceiverReport>(rtcp_info);
+	if (rr == nullptr)
+	{
+		logte("Could not parse ReceiverReport");
+		return false;
+	}
+
+	//rr->DebugPrint();
+
+	return true;
+}
 
 bool RtcSession::ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info)
 {
-	if(_rtx_enabled == false)
+	if (_rtx_enabled == false)
 	{
 		return true;
 	}
 
 	auto stream = std::static_pointer_cast<RtcStream>(GetStream());
-	if(stream == nullptr)
+	if (stream == nullptr)
 	{
 		return false;
 	}
-	
+
 	auto nack = std::static_pointer_cast<NACK>(rtcp_info);
-	if(nack->GetMediaSsrc() != _video_ssrc)
+	if (nack->GetMediaSsrc() != _video_ssrc)
 	{
 		return false;
 	}
 
 	// Retransmission
-	for(size_t i=0; i<nack->GetLostIdCount(); i++)
+	for (size_t i = 0; i < nack->GetLostIdCount(); i++)
 	{
-		auto seq_no = nack->GetLostId(i);
+		auto seq_no	  = nack->GetLostId(i);
 		auto sent_log = TraceRtpSentByVideoSeqNo(seq_no);
 		if (sent_log == nullptr)
 		{
 			continue;
 		}
 
-		logtd("RTX requested(%d) - TrackID(%u) PayloadType(%d) OriginSeqNo(%u)", seq_no, sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
+		logtt("RTX requested(%d) - TrackID(%u) PayloadType(%d) OriginSeqNo(%u)", seq_no, sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
 
 		auto rtx_packet = stream->GetRtxRtpPacket(sent_log->_track_id, sent_log->_payload_type, sent_log->_origin_sequence_number);
-		if(rtx_packet != nullptr)
+		if (rtx_packet != nullptr)
 		{
 			auto copy_rtx_packet = std::make_shared<RtxRtpPacket>(*rtx_packet);
 			copy_rtx_packet->SetSequenceNumber(_rtx_sequence_number++);
@@ -741,13 +759,31 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		return false;
 	}
 
-	uint64_t sent_bytes = 0;
+	uint64_t sent_bytes	  = 0;
 	int64_t sent_duration = 0;
+
+	// For debug
+	// logtt("TransportCC - SenderSsrc(%u) MediaSsrc(%u) PacketStatusCount(%u)", transport_cc->GetSenderSsrc(), transport_cc->GetMediaSsrc(), transport_cc->GetPacketStatusCount());
+
+	// for (size_t i = 0; i < transport_cc->GetPacketStatusCount(); i++)
+	// {
+	// 	auto packet_status = transport_cc->GetPacketFeedbackInfo(i);
+	// 	auto sent_log = TraceRtpSentByWideSeqNo(packet_status->_wide_sequence_number);
+	// 	if (sent_log == nullptr)
+	// 	{
+	// 		logte("TransportCC - No sent log found for seqno(%u)", packet_status->_wide_sequence_number);
+	// 		continue;
+	// 	}
+
+	// 	logtt("%s", sent_log->ToString().CStr());
+	// }
+
+	// return true;
 
 	for (size_t i = 1; i < transport_cc->GetPacketStatusCount(); i++)
 	{
 		auto packet_status = transport_cc->GetPacketFeedbackInfo(i);
-		auto sent_log = TraceRtpSentByWideSeqNo(packet_status->_wide_sequence_number);
+		auto sent_log	   = TraceRtpSentByWideSeqNo(packet_status->_wide_sequence_number);
 		if (sent_log == nullptr)
 		{
 			logte("TransportCC - No sent log found for seqno(%u)", packet_status->_wide_sequence_number);
@@ -756,14 +792,14 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		auto prev_sent_log = TraceRtpSentByWideSeqNo(packet_status->_wide_sequence_number - 1);
 		if (prev_sent_log == nullptr)
 		{
-			logtd("TransportCC - No prev sent log found for seqno(%u)", packet_status->_wide_sequence_number - 1);
+			logtt("TransportCC - No prev sent log found for seqno(%u)", packet_status->_wide_sequence_number - 1);
 			continue;
 		}
 
 		// Calc delta of sent_log and prev_sent_log
-		int32_t sent_delta_time = (std::chrono::duration_cast<std::chrono::microseconds>(sent_log->_sent_time - prev_sent_log->_sent_time).count()) / 250; 
+		int32_t sent_delta_time = (std::chrono::duration_cast<std::chrono::microseconds>(sent_log->_sent_time - prev_sent_log->_sent_time).count()) / 250;
 
-		auto duration = packet_status->_received_delta - sent_delta_time;
+		auto duration			= packet_status->_received_delta - sent_delta_time;
 		if (duration <= 0)
 		{
 			//duration = 1;
@@ -772,7 +808,7 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		sent_bytes += sent_log->_sent_bytes;
 		sent_duration += duration;
 
-		logtd("WideSeqNo(%u) Refer(%u) RecvDelta(%u) SentDelta(%u) SentBytes(%u) Duration(%d)", packet_status->_wide_sequence_number, transport_cc->GetReferenceTime(), packet_status->_received_delta, sent_delta_time, sent_log->_sent_bytes, duration);
+		logtt("WideSeqNo(%u) Refer(%u) RecvDelta(%u) SentDelta(%u) SentBytes(%u) Duration(%d)", packet_status->_wide_sequence_number, transport_cc->GetReferenceTime(), packet_status->_received_delta, sent_delta_time, sent_log->_sent_bytes, duration);
 	}
 
 	if (sent_bytes > 0)
@@ -783,15 +819,15 @@ bool RtcSession::ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info)
 		_total_sent_bytes += sent_bytes;
 		_estimated_bitrates = static_cast<double>((_total_sent_bytes * 8)) / _total_sent_seconds;
 
-		if (_bitrate_estimate_watch.IsElapsed(3000) == true)
+		if (_bitrate_estimate_watch.IsElapsed(1000) == true)
 		{
 			_bitrate_estimate_watch.Update();
 			ChangeRenditionIfNeeded();
 
-			logtd("Estimated Bandwidth(%f) TotalSentBytes(%u) TotalSentSeconds(%f)", static_cast<double>(_total_sent_bytes * 8) / _total_sent_seconds, _total_sent_bytes, _total_sent_seconds);
+			logtt("Estimated Bandwidth(%f) TotalSentBytes(%" PRIu64 ") TotalSentSeconds(%f)", static_cast<double>(_total_sent_bytes * 8) / _total_sent_seconds, _total_sent_bytes, _total_sent_seconds);
 
 			_total_sent_seconds = 0;
-			_total_sent_bytes = 0;
+			_total_sent_bytes	= 0;
 		}
 	}
 
@@ -802,10 +838,10 @@ bool RtcSession::ProcessRemb(const std::shared_ptr<RtcpInfo> &rtcp_info)
 {
 	auto remb = std::static_pointer_cast<REMB>(rtcp_info);
 
-	logtd("REMB Estimated Bandwidth(%lld)", remb->GetBitrateBps());
+	logtt("REMB Estimated Bandwidth(%" PRId64 ")", remb->GetBitrateBps());
 
 	_previous_estimated_bitrate = _estimated_bitrates;
-	_estimated_bitrates = remb->GetBitrateBps();
+	_estimated_bitrates			= remb->GetBitrateBps();
 
 	if (_bitrate_estimate_watch.IsElapsed(1000) == true)
 	{
@@ -831,7 +867,7 @@ void RtcSession::ChangeRenditionIfNeeded()
 		auto lower = _playlist->GetNextLowerBitrateRendition(_current_rendition);
 		if (lower != nullptr && IsNextRenditionGoodChoice(lower) == true)
 		{
-			logtd("ChangeRenditionIfNeeded - Change to low bitrate");
+			logtt("ChangeRenditionIfNeeded - Change to low bitrate");
 			if (RequestChangeRendition(SwitchOver::LOWER) == true)
 			{
 				RecordAutoSelectedRendition(lower, false);
@@ -844,7 +880,7 @@ void RtcSession::ChangeRenditionIfNeeded()
 		auto upper = _playlist->GetNextHigherBitrateRendition(_current_rendition);
 		if (upper != nullptr && IsNextRenditionGoodChoice(upper) == true)
 		{
-			logtd("ChangeRenditionIfNeeded - Change to high bitrate");
+			logtt("ChangeRenditionIfNeeded - Change to high bitrate");
 			if (RequestChangeRendition(SwitchOver::HIGHER) == true)
 			{
 				RecordAutoSelectedRendition(upper, true);
@@ -864,8 +900,8 @@ bool RtcSession::RecordAutoSelectedRendition(const std::shared_ptr<const RtcRend
 	auto it = _auto_rendition_selected_records.find(rendition->GetName());
 	if (it == _auto_rendition_selected_records.end())
 	{
-		record = std::make_shared<SelectedRecord>();
-		record->_rendition_name = rendition->GetName();
+		record												   = std::make_shared<SelectedRecord>();
+		record->_rendition_name								   = rendition->GetName();
 		_auto_rendition_selected_records[rendition->GetName()] = record;
 	}
 	else
@@ -873,12 +909,12 @@ bool RtcSession::RecordAutoSelectedRendition(const std::shared_ptr<const RtcRend
 		record = it->second;
 	}
 
-	record->_selected_count ++;
+	record->_selected_count++;
 	record->_last_selected_time = std::chrono::system_clock::now();
 
 	if (higher_quality == true)
 	{
-		_switched_rendition_to_higher = true;
+		_switched_rendition_to_higher	   = true;
 		_switched_rendition_to_higher_time = std::chrono::system_clock::now();
 	}
 	else
@@ -892,7 +928,7 @@ bool RtcSession::RecordAutoSelectedRendition(const std::shared_ptr<const RtcRend
 bool RtcSession::IsNextRenditionGoodChoice(const std::shared_ptr<const RtcRendition> &rendition)
 {
 	auto current_bitrates = _current_rendition->GetBitrates();
-	auto next_bitrates = rendition->GetBitrates();
+	auto next_bitrates	  = rendition->GetBitrates();
 
 	// Go lower
 	if (current_bitrates > next_bitrates)
@@ -906,7 +942,7 @@ bool RtcSession::IsNextRenditionGoodChoice(const std::shared_ptr<const RtcRendit
 		if (_switched_rendition_to_higher == true)
 		{
 			auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - _switched_rendition_to_higher_time).count();
-			
+
 			// We have switched to a higher rendition recently, so let's wait
 			if (elapsed_time < 10)
 			{
@@ -918,7 +954,7 @@ bool RtcSession::IsNextRenditionGoodChoice(const std::shared_ptr<const RtcRendit
 		return true;
 	}
 	// Go higher
-	else 
+	else
 	{
 		auto it = _auto_rendition_selected_records.find(rendition->GetName());
 		if (it == _auto_rendition_selected_records.end())
@@ -927,12 +963,12 @@ bool RtcSession::IsNextRenditionGoodChoice(const std::shared_ptr<const RtcRendit
 			return true;
 		}
 
-		auto record = it->second;
+		auto record		  = it->second;
 
 		// get elapsed time from now
 		auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - record->_last_selected_time).count();
 
-		if (elapsed_time > 10 * ( /*1 <<*/ record->_selected_count))
+		if (elapsed_time > 10 * (/*1 <<*/ record->_selected_count))
 		{
 			// 10 -> 20 -> 30 -> 40 seconds after it can be selected again
 			// It has been long enough since the last time we selected this rendition.
@@ -947,13 +983,13 @@ bool RtcSession::IsNextRenditionGoodChoice(const std::shared_ptr<const RtcRendit
 // RtpRtcp -> SRTP -> DTLS -> Edge(this)
 bool RtcSession::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data)
 {
-	if(ov::Node::GetNodeState() != ov::Node::NodeState::Started)
+	if (ov::Node::GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
-	return _ice_port->Send(GetId(), data);
+	return _ice_port->Send(_ice_session_id, data);
 }
 
 // RtcSession Node has not a lower node so it will not be called

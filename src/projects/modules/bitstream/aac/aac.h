@@ -4,4 +4,4 @@
 
 #include "aac_adts.h"
 #include "aac_converter.h"
-#include "aac_specific_config.h"
+#include "audio_specific_config.h"

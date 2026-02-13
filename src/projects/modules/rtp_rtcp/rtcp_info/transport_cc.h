@@ -39,6 +39,16 @@ class TransportCc : public RtcpInfo
 public:
 	struct PacketFeedbackInfo
 	{
+		// constructor
+		PacketFeedbackInfo() = default;
+		PacketFeedbackInfo(uint16_t sequence_number, bool received, uint8_t delta_size = 0, int32_t received_delta = 0)
+			: _wide_sequence_number(sequence_number),
+			_received(received),
+			_delta_size(delta_size),
+			_received_delta(received_delta)
+		{
+		}
+
 		uint16_t _wide_sequence_number = 0;
 		bool _received = false;
 		uint8_t _delta_size = 0; // 0, 1, 2, 3
@@ -64,17 +74,38 @@ public:
 	{
 		return static_cast<uint8_t>(RTPFBFMT::TRANSPORT_CC);
 	}
+
+	bool HasPadding() const override
+	{
+		return false;
+	}
 	
 	// Common Feedback
-	uint32_t GetSrcSsrc(){return _src_ssrc;}
-	void SetSrcSsrc(uint32_t ssrc){_src_ssrc = ssrc;}
+	uint32_t GetSenderSsrc(){return _sender_ssrc;}
+	void SetSenderSsrc(uint32_t ssrc){_sender_ssrc = ssrc;}
 	uint32_t GetMediaSsrc(){return _media_ssrc;}
 	void SetMediaSsrc(uint32_t ssrc){_media_ssrc = ssrc;}
 
 	// Transport Feedback
 	uint16_t GetBaseSequenceNumber(){return _base_sequence_number;}
-	uint32_t GetReferenceTime(){return _reference_time;}
+	int32_t GetReferenceTime(){return _reference_time;}
 	uint16_t GetPacketStatusCount(){return _packet_status_count;}
+
+	// Setter
+	void SetBaseSequenceNumber(uint16_t base_sequence_number)
+	{
+		_base_sequence_number = base_sequence_number;
+		_next_sequence_number = base_sequence_number;	
+	}
+	void SetReferenceTime(int32_t reference_time){_reference_time = reference_time;}
+
+	void SetFeedbackPacketCount(uint8_t sequence_number)
+	{
+		_fb_packet_count = sequence_number;
+	}
+
+	// Add PacketFeedbackInfo
+	bool AddPacketFeedbackInfo(const std::shared_ptr<PacketFeedbackInfo> &packet_feedback_info);
 
 	// 0 ~ StatusCount - 1
 	std::shared_ptr<const PacketFeedbackInfo> GetPacketFeedbackInfo(uint32_t index)
@@ -107,13 +138,18 @@ private:
 		return 0;
 	}
 
-	uint32_t _src_ssrc = 0;
+	bool CountSymbolContinuity(uint32_t feedbacks_index, uint16_t &run_length, uint16_t &one_bit_symbol_length) const;
+
+	uint32_t _sender_ssrc = 0;
 	uint32_t _media_ssrc = 0;
 
 	uint16_t _base_sequence_number = 0;
+	uint16_t _next_sequence_number = 0;
 	uint16_t _packet_status_count = 0;
-	uint32_t _reference_time = 0;
-	uint8_t _fb_sequence_number = 0;
+	int32_t _reference_time = 0; // 24bit signed integer (64/1000 scale, multiples of 64ms)
+	uint8_t _fb_packet_count = 0;
+
+	mutable bool _has_padding = false;
 
 	std::vector<std::shared_ptr<PacketFeedbackInfo>> _packet_feedbacks;
 };

@@ -22,7 +22,7 @@ namespace cfg
 		{
 		protected:
 			ov::String _port;
-			
+
 			Tport _port_value{};
 			ov::SocketType _socket_type = ov::SocketType::Unknown;
 

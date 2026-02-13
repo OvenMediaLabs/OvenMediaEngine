@@ -11,7 +11,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
 #include <utility>
-// ICE candidate 구조:
+// ICE candidate structure:
 // [{"candidate":"candidate:0 1 UDP 50 192.168.0.183 10000 typ host generation 0","sdpMLineIndex":0,"sdpMid":"video"}]
 
 class IceCandidate
@@ -54,9 +54,11 @@ public:
 	//   candidate-types ----------------------------------------------->~~~~      v     |
 	//   extension-att-name -------------------------------------------------->~~~~~~~~~ v
 	//   extension-att-value ----------------------------------------------------------->~
+	IceCandidate();
 	IceCandidate(const ov::String &foundation, const ov::String &component_id, const ov::String &transport, uint32_t priority, const ov::String &cand_type, const ov::String &candidate_types, const ov::String &rel_addr, const ov::String &rel_port, const std::map<ov::String, ov::String> &extension_att) = delete;
 	IceCandidate(const IceCandidate &candidate) = default;
-	IceCandidate(ov::String transport, ov::String ip_address, int port);
+	IceCandidate(const ov::String &transport, const ov::SocketAddress &address);
+	IceCandidate(const ov::String &transport, const ov::String &address, int port);
 	IceCandidate(IceCandidate &&candidate) noexcept;
 
 	virtual ~IceCandidate();
@@ -64,6 +66,7 @@ public:
 	bool ParseFromString(const ov::String &candidate_string);
 
 	IceCandidate &operator =(IceCandidate candidate) noexcept;
+	bool operator <(const IceCandidate &candidate) const noexcept;
 
 	const ov::String &GetFoundation() const noexcept;
 	void SetFoundation(ov::String foundation);
@@ -78,10 +81,8 @@ public:
 	void SetPriority(uint32_t priority);
 
 	ov::SocketAddress GetAddress() const;
-	ov::String GetIpAddress() const;
-	void SetIpAddress(const ov::String &ip_address);
+	ov::String GetConnectionAddress() const;
 	int GetPort() const;
-	void SetPort(int port);
 
 	const ov::String &GetCandidateTypes() const;
 	void SetCandidateTypes(const ov::String &candidate_types);
@@ -102,7 +103,6 @@ public:
 	virtual ov::String ToString() const noexcept;
 
 protected:
-	IceCandidate();
 
 	void Swap(IceCandidate &from) noexcept;
 
@@ -117,8 +117,9 @@ protected:
 	// 1*10DIGIT
 	uint32_t _priority;
 	// <connection-address> <port> (RFC4566)
-	ov::String _ip_address;
+	ov::String _address_str;
 	int _port;
+	ov::SocketAddress _address;
 	// "typ" ["host" | "srflx" | "prflx" | "relay" | token]
 	ov::String _candidate_types;
 	// "raddr" <connection-address>

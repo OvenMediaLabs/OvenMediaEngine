@@ -89,8 +89,8 @@ namespace http
 			void SetStatus(Status status);
 			void SetKeepAlive(bool keep_alive);
 
-			bool OnRequestPrepared();
-			bool OnDataReceived(const std::shared_ptr<const ov::Data> &data);
+			void OnRequestPrepared();
+			void OnDataReceived(const std::shared_ptr<const ov::Data> &data);
 			InterceptorResult OnRequestCompleted();
 
 		private:
@@ -98,6 +98,7 @@ namespace http
 			Status _status = Status::None;
 			bool _keep_alive = true; // HTTP/1.1 default
 			std::any _extra;
+			std::shared_ptr<RequestInterceptor> _interceptor = nullptr; // Cached interceptor
 		};
 	}  // namespace svr
 }  // namespace http

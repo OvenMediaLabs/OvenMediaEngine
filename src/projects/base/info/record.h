@@ -25,16 +25,12 @@ namespace info
 		void SetId(ov::String id);
 		ov::String GetId() const;
 
+		void SetByConfig(bool is_config);
+		bool IsByConfig();
+
 		// set by user
 		void SetMetadata(ov::String metadata);
 		ov::String GetMetadata() const;
-
-		// set by user
-		void SetStream(const info::Stream &stream);
-		const info::Stream &GetStream() const
-		{
-			return *_stream;
-		}
 
 		// set by user
 		void SetEnable(bool eanble);
@@ -48,10 +44,22 @@ namespace info
 		void SetApplication(ov::String app_name);
 		ov::String GetApplication();
 
+		// set by user
+		void SetStreamName(ov::String stream_name);
+		ov::String GetStreamName();
+
+		// set by user
+		void AddTrackId(uint32_t selected_id);
+		void AddVariantName(ov::String selected_name);
+
+		void SetTrackIds(const std::vector<uint32_t>& ids);
+		void SetVariantNames(const std::vector<ov::String>& names);
+
+		const std::vector<uint32_t>& GetTrackIds();
+		const std::vector<ov::String>& GetVariantNames();
+
 		void SetRemove(bool value);
 		bool GetRemove();
-
-		ov::String GetStreamName();
 
 		void SetSessionId(session_id_t id);
 		session_id_t GetSessionId();
@@ -115,7 +123,7 @@ namespace info
 		void UpdateRecordStopTime();
 
 		uint64_t GetSequence();
-		void SetSqeuence(uint64_t sequence);
+		void SetSequence(uint64_t sequence);
 
 		const std::chrono::system_clock::time_point &GetCreatedTime() const;
 		const std::chrono::system_clock::time_point GetRecordStartTime() const;
@@ -147,6 +155,11 @@ namespace info
 		// User custom id
 		ov::String _id;
 
+		// by config
+		// False - This is a recording task requested via the REST API, and it will remain active until a STOP command is issued through the REST API.
+		// True - This is a recording task requested via the configuration file, and it will remain active until the configuration is changed.
+		bool _is_config;
+		
 		// It is used as additional information for recording session. It's not essential information.
 		ov::String _metadata;
 
@@ -160,10 +173,14 @@ namespace info
 		ov::String _vhost_name;
 
 		// Application
-		ov::String _aplication_name;
+		ov::String _application_name;
+
+		// Stream
+		ov::String _stream_name;
 
 		// The stream target for the Outbound that you want to record
-		std::shared_ptr<info::Stream> _stream;
+		std::vector<uint32_t> _selected_track_ids;
+		std::vector<ov::String> _selected_variant_names;
 
 		// Path
 		ov::String _file_path;
@@ -230,5 +247,7 @@ namespace info
 
 		// File Session Id
 		session_id_t _session_id;
+
+
 	};
 }  // namespace info

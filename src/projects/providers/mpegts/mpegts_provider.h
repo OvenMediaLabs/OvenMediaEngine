@@ -27,10 +27,10 @@ namespace pvd
 	{
 	public:
 		// State : Init | Bound, Attached | Detached, Connected | Disconnected
-		MpegTsStreamPortItem(ov::SocketType scheme, uint16_t port, const std::shared_ptr<PhysicalPort> &physical_port)
+		MpegTsStreamPortItem(ov::SocketType scheme, uint16_t port, const std::vector<std::shared_ptr<PhysicalPort>> &physical_port_list)
 			: _scheme(scheme),
 			  _port(port),
-			  _physical_port(physical_port)
+			  _physical_port_list(physical_port_list)
 		{
 		}
 
@@ -54,9 +54,9 @@ namespace pvd
 			return _stream_name;
 		}
 
-		const std::shared_ptr<PhysicalPort> &GetPhysicalPort()
+		const std::vector<std::shared_ptr<PhysicalPort>> &GetPhysicalPortList()
 		{
-			return _physical_port;
+			return _physical_port_list;
 		}
 
 		void AttachToApplication(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
@@ -103,19 +103,19 @@ namespace pvd
 		uint16_t _port = 0;
 		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		ov::String _stream_name;
-		std::shared_ptr<PhysicalPort> _physical_port;
+		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
 
 		std::atomic<bool> _attached = false;
 		std::atomic<bool> _client_connected = false;
 		std::atomic<uint32_t> _client_id = 0;
 	};
 
-	class MpegTsProvider : public pvd::PushProvider, protected PhysicalPortObserver
+	class MpegTsProvider : public PushProvider, protected PhysicalPortObserver
 	{
 	public:
-		static std::shared_ptr<MpegTsProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<MpegTsProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit MpegTsProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit MpegTsProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~MpegTsProvider() override;
 
 		bool Start() override;
@@ -147,7 +147,7 @@ namespace pvd
 				  stream_name(std::move(stream_name))
 			{
 			}
-			
+
 			info::VHostAppName vhost_app_name;
 			ov::String stream_name;
 		};
@@ -159,13 +159,13 @@ namespace pvd
 		//--------------------------------------------------------------------
 		bool OnCreateHost(const info::Host &host_info) override;
 		bool OnDeleteHost(const info::Host &host_info) override;
-		std::shared_ptr<pvd::Application> OnCreateProviderApplication(const info::Application &application_info) override;
-		bool OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application) override;
+		std::shared_ptr<Application> OnCreateProviderApplication(const info::Application &application_info) override;
+		bool OnDeleteProviderApplication(const std::shared_ptr<Application> &application) override;
 
 		//--------------------------------------------------------------------
 		// Implementation of PushProvider's virtual functions
 		//--------------------------------------------------------------------
-		void OnTimer(const std::shared_ptr<PushStream> &channel) override;
+		void OnTimedOut(const std::shared_ptr<PushStream> &channel) override;
 
 		//--------------------------------------------------------------------
 		// Implementation of PhysicalPortObserver
@@ -173,9 +173,9 @@ namespace pvd
 		void OnConnected(const std::shared_ptr<ov::Socket> &remote) override;
 		bool OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address);
 
-		void OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
-							const ov::SocketAddress &address,
-							const std::shared_ptr<const ov::Data> &data) override;
+		void OnDatagramReceived(const std::shared_ptr<ov::Socket> &remote,
+								const ov::SocketAddressPair &address_pair,
+								const std::shared_ptr<const ov::Data> &data) override;
 
 		void OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
 							PhysicalPortDisconnectReason reason,

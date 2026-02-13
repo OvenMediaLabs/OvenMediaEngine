@@ -8,11 +8,11 @@
 //==============================================================================
 #pragma once
 
-#include "controller.h"
+#include "controller_base.h"
 
 namespace api
 {
-	class RootController : public Controller<RootController>
+	class RootController : public ControllerBase<RootController>
 	{
 	public:
 		RootController(const ov::String &access_token);

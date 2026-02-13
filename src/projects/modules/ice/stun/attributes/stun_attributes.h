@@ -26,3 +26,7 @@
 #include "stun_channel_number_attribute.h"
 #include "stun_data_attribute.h"
 #include "stun_unknown_attribute.h"
+#include "stun_use_candidate_attribute.h"
+#include "stun_ice_controlled_attribute.h"
+#include "stun_ice_controlling_attribute.h"
+#include "stun_priority_attribute.h"

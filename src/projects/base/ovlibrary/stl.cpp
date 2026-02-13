@@ -41,7 +41,7 @@ std::string_view Trim(const std::string_view &value)
     return std::string_view(front, length);
 }
 
-std::string_view operator "" _str_v(const char *str, size_t length)
+std::string_view operator""_str_v(const char *str, size_t length)
 {
     return std::string_view(str, length);
 }

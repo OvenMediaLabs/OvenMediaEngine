@@ -17,7 +17,7 @@ StunUnknownAttribute::~StunUnknownAttribute()
 {
 }
 
-bool StunUnknownAttribute::Parse(ov::ByteStream &stream)
+bool StunUnknownAttribute::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	// unknown attribute는 그냥 skip
 	return stream.Skip<uint8_t>(_length) == _length;
@@ -31,10 +31,9 @@ bool StunUnknownAttribute::SetData(const void *data, int length)
 	return true;
 }
 
-bool StunUnknownAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunUnknownAttribute::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
-	return StunAttribute::Serialize(stream) &&
-	       ((_data != nullptr) ? stream.Write(_data) : true);
+	return StunAttribute::Serialize(stun_message, stream) && ((_data != nullptr) ? stream.Write(_data) : true);
 }
 
 ov::String StunUnknownAttribute::ToString() const

@@ -4,6 +4,23 @@
 #include "../rtcp_packet.h"
 #include "report_block.h"
 
+//         0                   1                   2                   3
+//         0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+//        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// header |V=2|P|    RC   |   PT=SR=200   |             length            |
+//        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//        |                         SSRC of sender                        |
+//        +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+// sender |              NTP timestamp, most significant word             |
+// info   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//        |             NTP timestamp, least significant word             |
+//        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//        |                         RTP timestamp                         |
+//        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//        |                     sender's packet count                     |
+//        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//        |                      sender's octet count                     |
+//        +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
 class SenderReport : public RtcpInfo
 {
 public:
@@ -16,7 +33,7 @@ public:
 	
 	bool Parse(const RtcpPacket &packet) override;
 	std::shared_ptr<ov::Data> GetData() const override;
-	void DebugPrint();
+	void DebugPrint() override;
 
 	RtcpPacketType GetPacketType() const override
 	{
@@ -26,6 +43,11 @@ public:
 	uint8_t GetCountOrFmt() const override
 	{
 		return _report_block_list.size();
+	}
+
+	bool HasPadding() const override
+	{
+		return false;
 	}
 
 	uint32_t	GetSenderSsrc(){return _sender_ssrc;}

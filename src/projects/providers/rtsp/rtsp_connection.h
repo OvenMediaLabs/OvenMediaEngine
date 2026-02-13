@@ -25,7 +25,7 @@ public:
     void OnRtspRequest(const RtspRequest &rtsp_request) override;
 
 private:
-    void SendResponse(const RtspRequest &rtsp_request, uint16_t statu_code = 200);
+    void SendResponse(const RtspRequest &rtsp_request, uint16_t status_code = 200);
 
 private:
     RtspMethod last_rtsp_method_ = RtspMethod::Unknown;

@@ -62,14 +62,14 @@
 				<Port>${env:OME_SRT_PROV_PORT:9999}</Port>
 				<WorkerCount>1</WorkerCount>
 			</SRT>
+			<!--
 			<MPEGTS>
-				<!--
-					Listen on port 4000
-					This is just a demonstration to show that you can configure the port in several ways
+					<- Listen on port 4000
+					This is just a demonstration to show that you can configure the port in several ways ->
 					<Port>${env:OME_MPEGTS_PROV_PORT:4000-4001,4004,4005/udp}</Port>
-				-->
-				<Port>${env:OME_MPEGTS_PROV_PORT:4000/udp}</Port>
+				<Port>${env:OME_MPEGTS_PROV_PORT:4000-4005/udp}</Port>
 			</MPEGTS>
+			-->
 			<WebRTC>
 				<Signalling>
 					<Port>${env:OME_WEBRTC_SIGNALLING_PORT:3333}</Port>
@@ -77,10 +77,10 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<TcpRelay>${env:OME_WEBRTC_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
 					<TcpForce>true</TcpForce>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
-					<IceCandidate>*:10006/udp</IceCandidate>
 				</IceCandidates>
 			</WebRTC>
 		</Providers>
@@ -108,14 +108,21 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>*:10000-10005/udp</IceCandidate>
-					<TcpRelay>${env:OME_WEBRTC_TCP_RELAY_ADDRESS:*:3478}</TcpRelay>
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
 					<TcpForce>true</TcpForce>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
 		</Publishers>
 	</Bind>
+
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
 
 	<VirtualHosts>
 		<!--
@@ -139,13 +146,11 @@
 					-->
 					<Name>*</Name>
 				</Names>
-				<!--
 				<TLS>
-					<CertPath>path/to/file.crt</CertPath>
-					<KeyPath>path/to/file.key</KeyPath>
-					<ChainCertPath>path/to/file.crt</ChainCertPath>
+					<CertPath>./cert.crt</CertPath>
+					<KeyPath>./cert.key</KeyPath>
+					<ChainCertPath>./cert.ca-bundle</ChainCertPath>
 				</TLS>
-				-->
 			</Host>
 
 			<!-- Refer https://airensoft.gitbook.io/ovenmediaengine/signedpolicy
@@ -156,7 +161,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -170,9 +175,14 @@
 				</RedisServer>
 				
 				This is only needed for the origin server and used to register the ovt address of the stream. 
-				<OriginHostName>ome-dev.airensoft.com</OriginHostName>
+				<OriginHostName>${env:OME_HOST_IP:192.168.0.160}</OriginHostName>
 			</OriginMapStore>
 			-->
+
+			<!-- Default CORS Settings -->
+			<CrossDomains>
+				<Url>*</Url>
+			</CrossDomains>
 
 			<!-- Settings for applications -->
 			<Applications>
@@ -181,68 +191,101 @@
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
+						<!--  This option is deprecated. Please use the 'HWAccels' option. -->
+						<!-- 
+							<HardwareAcceleration>false</HardwareAcceleration>
+						-->
+
+						<!-- Enable this configuration if you want to hardware acceleration using GPU -->
+						<HWAccels>
+							<Decoder>
+									<Enable>false</Enable>
+									<!-- 
+										Setting for Hardware Modules.
+										 - xma :Xilinx Media Accelerator
+										 - qsv :Intel Quick Sync Video
+										 - nv : Nvidia Video Codec SDK
+										 - nilogan: Netint VPU
+
+										You can use multiple modules by separating them with commas.
+										For example, if you want to use xma and nv, you can set it as follows.
+
+										<Modules>[ModuleName]:[DeviceId],[ModuleName]:[DeviceId],...</Modules>
+										<Modules>xma:0,nv:0</Modules>
+									-->
+									<!-- <Modules>nv</Modules> -->
+							</Decoder>
+							<Encoder>
+									<Enable>false</Enable>
+									<!-- <Modules>nv:0</Modules> -->
+							</Encoder>
+						</HWAccels>
+
 						<OutputProfile>
 							<Name>bypass_stream</Name>
 							<OutputStreamName>${OriginStreamName}</OutputStreamName>
 
-							<!-- 
-							You can provide ABR with Playlist. Currently, ABR is only supported in LLHLS.
-							
 							<Playlist>
-								<Name>Paid</Name>
-								You can play this playlist with 
-								LLHLS : http[s]://<domain>[:port]/<app>/<stream>/<FileName>.m3u8 
-								WebRTC : ws[s]://<domain>[:port]/<app>/<stream>/<FileName>
-								Note that the keywords "playlist" and "chunklist" MUST NOT be included in FileName.
-								<FileName>premium</FileName>
-
-								Options is optional. 
+								<Name>default</Name>
+								<FileName>master</FileName>
 								<Options>
-									WebRtcAutoAbr : Default value is true
-									<WebRtcAutoAbr>true</WebRtcAutoAbr> 
+									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
-
-								<Rendition>
-									<Name>bypass</Name>
-									<Video>bypass_video</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>480p</Name>
-									<Video>480p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
+								<RenditionTemplate>
+									<Name>${Height}p</Name>
+									<VideoTemplate> <!-- Filter by video properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>bypass_video</VariantName>
+										<VideoIndexHint>0</VideoIndexHint>
+										<MaxWidth>1080</MaxWidth>
+										<MinWidth>240</MinWidth>
+										<MaxHeight>720</MaxHeight>
+										<MinHeight>240</MinHeight>
+										<MaxFPS>30</MaxFPS>
+										<MinFPS>30</MinFPS>
+										<MaxBitrate>2000000</MaxBitrate>
+										<MinBitrate>500000</MinBitrate> -->
+									</VideoTemplate>
+									<AudioTemplate> <!-- Filter by audio properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>aac_audio</VariantName>
+										<MaxBitrate>128000</MaxBitrate>
+										<MinBitrate>128000</MinBitrate>
+										<MaxSamplerate>48000</MaxSamplerate>
+										<MinSamplerate>48000</MinSamplerate>
+										<MaxChannel>2</MaxChannel>
+										<MinChannel>2</MinChannel>
+										<AudioIndexHint>0</AudioIndexHint> -->
+									</AudioTemplate>
+								</RenditionTemplate>
 							</Playlist>
-							<Playlist>
-								<Name>free</Name>
-								<FileName>free</FileName>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-							</Playlist>
-							-->
 
 							<Encodes>
-								<Audio>
-									<Name>bypass_audio</Name>
-									<Bypass>true</Bypass>
-								</Audio>
 								<Video>
 									<Name>bypass_video</Name>
 									<Bypass>true</Bypass>
 								</Video>
 								<Audio>
+									<Name>aac_audio</Name>
+									<Codec>aac</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>
+								</Audio>								
+								<Audio>
+									<Name>opus_audio</Name>
 									<Codec>opus</Codec>
 									<Bitrate>128000</Bitrate>
 									<Samplerate>48000</Samplerate>
 									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>									
 								</Audio>
 								<!-- 							
 								<Video>
@@ -269,15 +312,23 @@
 					</OutputProfiles>
 					<Providers>
 						<OVT />
-						<WebRTC />
+						<WebRTC>
+							<Timeout>30000</Timeout>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+						</WebRTC>
 						<RTMP />
 						<SRT />
 						<RTSPPull />
-						<MPEGTS>
+						<Schedule>
+							<MediaRootDir>/opt/ovenmediaengine/media</MediaRootDir>
+							<ScheduleFilesDir>/opt/ovenmediaengine/media</ScheduleFilesDir>
+						</Schedule>
+						<!-- <MPEGTS>
 							<StreamMap>
-								<!--
-									Set the stream name of the client connected to the port to "stream_${Port}"
-									For example, if a client connets to port 4000, OME creates a "stream_4000" stream
+									<- Set the stream name of the client connected to the port to "stream_${Port}"
+									For example, if a client connets to port 4000, OME creates a "stream_4000" stream ->
 									<Stream>
 										<Name>stream_${Port}</Name>
 										<Port>4000,4001-4004</Port>
@@ -286,13 +337,12 @@
 										<Name>stream_4005</Name>
 										<Port>4005</Port>
 									</Stream>
-								-->
 								<Stream>
 									<Name>stream_${Port}</Name>
-									<Port>4000</Port>
+									<Port>${env:OME_MPEGTS_PROV_PORT:4000-4005/udp}</Port>
 								</Stream>
 							</StreamMap>
-						</MPEGTS>
+						</MPEGTS> -->
 					</Providers>
 					<Publishers>
 						<AppWorkerCount>1</AppWorkerCount>
@@ -303,6 +353,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<OriginMode>true</OriginMode>
@@ -323,7 +374,22 @@
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<!-- <DVR>
+								<Enable>true</Enable>
+								<EventPlaylistType>false</EventPlaylistType>
+								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
+								<MaxDuration>600</MaxDuration>
+							</DVR> -->
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
 					</Publishers>
 				</Application>
 			</Applications>

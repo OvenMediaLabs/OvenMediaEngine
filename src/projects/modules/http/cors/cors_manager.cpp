@@ -10,17 +10,21 @@
 
 #include "../http_private.h"
 
-static constexpr char CORS_HTTP_PREFIX[] = "http://";
-static constexpr auto CORS_HTTP_PREFIX_LENGTH = OV_COUNTOF(CORS_HTTP_PREFIX) - 1;
-static constexpr char CORS_HTTPS_PREFIX[] = "https://";
-static constexpr auto CORS_HTTPS_PREFIX_LENGTH = OV_COUNTOF(CORS_HTTPS_PREFIX) - 1;
+#define OV_LOG_TAG OV_LOG_TAG_PREFIX ".CORS"
 
 namespace http
 {
-	void CorsManager::SetCrossDomains(const info::VHostAppName &vhost_app_name, const std::vector<ov::String> &url_list)
+	void CorsManager::SetDefaultCrossDomains(const cfg::cmn::CrossDomains &cross_domain_cfg)
+	{
+		SetCrossDomains(info::VHostAppName::InvalidVHostAppName(), cross_domain_cfg);
+	}
+
+	void CorsManager::SetCrossDomains(const info::VHostAppName &vhost_app_name, const cfg::cmn::CrossDomains &cross_domain_cfg)
 	{
 		std::lock_guard lock_guard(_cors_mutex);
 
+		auto url_list = cross_domain_cfg.GetUrls();
+		_cors_cfg_map[vhost_app_name] = cross_domain_cfg;
 		auto &cors_policy = _cors_policy_map[vhost_app_name];
 		auto &cors_regex_list = _cors_item_list_map[vhost_app_name];
 		ov::String cors_rtmp;
@@ -43,13 +47,16 @@ namespace http
 			if (url == "*")
 			{
 				cors_regex_list.clear();
-				cors_regex_list.emplace_back(false, ov::Regex::CompiledRegex(ov::Regex::WildCardRegex("*")));
+
+				const auto regex = ov::Regex::CompiledRegex(ov::Regex::WildCardRegex("*"));
+				cors_regex_list.emplace_back(url, regex);
+
 				cors_policy = CorsPolicy::All;
 
 				if (url_list.size() > 1)
 				{
 					// Ignore other items if "*" is specified
-					logtw("Invalid CORS settings found for %s: '*' cannot be used like other items. Other items are ignored.", vhost_app_name.CStr());
+					logtw("Invalid CORS settings found for %s: '*' cannot be used with other CORS patterns. Other CORS patterns are ignored.", vhost_app_name.CStr());
 				}
 
 				break;
@@ -58,7 +65,7 @@ namespace http
 			{
 				if (url_list.size() > 1)
 				{
-					logtw("Invalid CORS settings found for %s: '*' cannot be used like other items. 'null' item is ignored.", vhost_app_name.CStr());
+					logtw("Invalid CORS settings found for %s: 'null' cannot be used with other CORS patterns. 'null' is ignored.", vhost_app_name.CStr());
 				}
 				else
 				{
@@ -68,10 +75,18 @@ namespace http
 				continue;
 			}
 
-			bool has_protocol = url.HasPrefix(CORS_HTTP_PREFIX) || url.HasPrefix(CORS_HTTPS_PREFIX);
+			auto regex = ov::Regex::WildCardRegex(url, false);
 
-			cors_regex_list.emplace_back(has_protocol, ov::Regex::CompiledRegex(ov::Regex::WildCardRegex(url)));
+			if (url.IndexOf("://") < 0)
+			{
+				// Scheme doesn't exists in the URL - allow http:// and https:// for a request URL
+				regex.Prepend(R"((http.?:\/\/)?)");
+			}
 
+			regex.Prepend("^");
+			regex.Append("$");
+
+			cors_regex_list.emplace_back(url, ov::Regex::CompiledRegex(regex));
 			cors_domains_for_rtmp.push_back(url);
 		}
 
@@ -131,20 +146,46 @@ namespace http
 		return true;
 	}
 
-	bool CorsManager::SetupHttpCorsHeader(const info::VHostAppName &vhost_app_name, const std::shared_ptr<const http::svr::HttpRequest> &request, const std::shared_ptr<http::svr::HttpResponse> &response) const
+	bool CorsManager::SetupDefaultHttpCorsHeader(
+		const std::shared_ptr<const http::svr::HttpRequest> &request, const std::shared_ptr<http::svr::HttpResponse> &response,
+		const std::vector<http::Method> &allowed_methods) const
 	{
+		return SetupHttpCorsHeader(info::VHostAppName::InvalidVHostAppName(), request, response, allowed_methods);
+	}
+
+	bool CorsManager::SetupHttpCorsHeader(
+		const info::VHostAppName &vhost_app_name,
+		const std::shared_ptr<const http::svr::HttpRequest> &request, const std::shared_ptr<http::svr::HttpResponse> &response,
+		const std::vector<http::Method> &allowed_methods) const
+	{
+		// Set Access-Control-Allow-Methods even if vhost_app_name doesn't exist
+		std::vector<ov::String> method_list;
+		for (const auto &method : allowed_methods)
+		{
+			method_list.push_back(http::StringFromMethod(method));
+		}
+
+		if (method_list.empty() == false)
+		{
+			response->SetHeader("Access-Control-Allow-Methods", ov::String::Join(method_list, ", "));
+		}
+
 		ov::String origin_header = request->GetHeader("ORIGIN");
 		ov::String cors_header = "";
+		bool found_origin = false;
+		std::unordered_map<info::VHostAppName, cfg::cmn::CrossDomains>::const_iterator cors_cfg_iterator;
 
 		{
 			std::lock_guard lock_guard(_cors_mutex);
 
 			auto cors_policy_iterator = _cors_policy_map.find(vhost_app_name);
 			auto cors_regex_list_iterator = _cors_item_list_map.find(vhost_app_name);
-
+			cors_cfg_iterator = _cors_cfg_map.find(vhost_app_name);
+			
 			if (
 				(cors_policy_iterator == _cors_policy_map.end()) ||
-				(cors_regex_list_iterator == _cors_item_list_map.end()))
+				(cors_regex_list_iterator == _cors_item_list_map.end()) ||
+				(cors_cfg_iterator == _cors_cfg_map.end()))
 			{
 				// This happens in the following situations:
 				//
@@ -154,57 +195,113 @@ namespace http
 			}
 
 			const auto &cors_policy = cors_policy_iterator->second;
-
 			switch (cors_policy)
 			{
 				case CorsPolicy::Empty:
 					// Nothing to do
-					return true;
+					break;
 
 				case CorsPolicy::All:
 					cors_header = "*";
+					found_origin = true;
 					break;
 
 				case CorsPolicy::Null:
 					cors_header = "null";
+					found_origin = true;
 					break;
 
 				case CorsPolicy::Origin: {
 					const auto &cors_item_list = cors_regex_list_iterator->second;
-					auto origin_header_without_protocol = origin_header;
 
-					if (origin_header.HasPrefix(CORS_HTTP_PREFIX))
-					{
-						origin_header_without_protocol = origin_header.Substring(CORS_HTTP_PREFIX_LENGTH);
-					}
-					else if (origin_header.HasPrefix(CORS_HTTPS_PREFIX))
-					{
-						origin_header_without_protocol = origin_header.Substring(CORS_HTTPS_PREFIX_LENGTH);
-					}
+					std::find_if(
+						cors_item_list.cbegin(), cors_item_list.cend(),
+						[&origin_header, &found_origin](const auto &cors_item) -> bool {
+							const auto result = cors_item.IsMatches(origin_header);
 
-					auto item = std::find_if(
-						cors_item_list.begin(), cors_item_list.end(),
-						[&origin_header, &origin_header_without_protocol](auto &cors_item) -> bool {
-							return cors_item.regex.Matches(cors_item.has_protocol ? origin_header : origin_header_without_protocol).IsMatched();
+							logtt("Checking CORS for origin header [%s] with config [%s] (%s): %s",
+								  origin_header.CStr(),
+								  cors_item.regex.GetPattern().CStr(), cors_item.url.CStr(),
+								  result ? "MATCHED" : "not matched");
+							
+							if (result == true)
+							{
+								found_origin = true;
+							}
+							return result;
 						});
-
-					if (item == cors_item_list.end())
-					{
-						// Could not find the domain
-						return false;
-					}
 
 					cors_header = origin_header;
 				}
 			}
 		}
 
-		response->SetHeader("Access-Control-Allow-Origin", cors_header);
-		response->SetHeader("Vary", "Origin");
+		const auto &cors_cfg = cors_cfg_iterator->second;
+		if (found_origin == false)
+		{
+			response->UnsetHeader("Access-Control-Allow-Origin");
+			response->UnsetHeader("Access-Control-Allow-Credentials");
+			response->UnsetHeader("Access-Control-Allow-Methods");
+			response->UnsetHeader("Access-Control-Allow-Headers");
+		}
+		else
+		{
+			response->SetHeader("Access-Control-Allow-Origin", cors_header);
 
-		response->SetHeader("Access-Control-Allow-Credentials", "true");
-		response->SetHeader("Access-Control-Allow-Methods", "GET");
-		response->SetHeader("Access-Control-Allow-Headers", "*");
+			// Access-Control-Allow-Credentials
+			auto custom_header_opt = cors_cfg.GetCustomHeader("Access-Control-Allow-Credentials");
+			if (custom_header_opt.has_value())
+			{
+				response->SetHeader(std::get<0>(custom_header_opt.value()), std::get<1>(custom_header_opt.value()));
+			}
+			else
+			{
+				response->SetHeader("Access-Control-Allow-Credentials", "true");
+			}
+
+			// Access-Control-Allow-Methods
+			custom_header_opt = cors_cfg.GetCustomHeader("Access-Control-Allow-Methods");
+			if (custom_header_opt.has_value())
+			{
+				response->SetHeader(std::get<0>(custom_header_opt.value()), std::get<1>(custom_header_opt.value()));
+			}
+			else 
+			{
+				// Already set above
+				// response->SetHeader("Access-Control-Allow-Methods", ov::String::Join(method_list, ", "));
+			}
+
+			// Access-Control-Allow-Headers
+			custom_header_opt = cors_cfg.GetCustomHeader("Access-Control-Allow-Headers");
+			if (custom_header_opt.has_value())
+			{
+				response->SetHeader(std::get<0>(custom_header_opt.value()), std::get<1>(custom_header_opt.value()));
+			}
+			else
+			{
+				auto request_allow_headers = request->GetHeader("Access-Control-Request-Headers");
+				if (request_allow_headers.IsEmpty() == false)
+				{
+					response->SetHeader("Access-Control-Allow-Headers", request_allow_headers);
+				}
+			}
+		}
+
+		// Remaining custom headers
+		auto custom_headers = cors_cfg.GetCustomHeaders();
+		for (const auto &item : custom_headers)
+		{
+			auto key = item.GetKey();
+			if (key.LowerCaseString() == "access-control-allow-origin" ||
+				key.LowerCaseString() == "access-control-allow-credentials" ||
+				key.LowerCaseString() == "access-control-allow-methods" ||
+				key.LowerCaseString() == "access-control-allow-headers")
+			{
+				continue;
+			}
+
+			response->SetHeader(key, item.GetValue());
+		}
 
 		return true;
 	}

@@ -44,11 +44,11 @@ namespace ov
 	{
 		if (_state == State::Invalid)
 		{
-			logtd("Invalid state");
+			logtt("Invalid state");
 			return false;
 		}
 
-		logtd("Trying to decrypt the data for TLS\n%s", cipher_data->Dump(32).CStr());
+		logtt("Trying to decrypt the data for TLS\n%s", cipher_data->Dump(32).CStr());
 
 		{
 			std::lock_guard lock_guard(_cipher_data_mutex);
@@ -61,7 +61,7 @@ namespace ov
 				// Append the data
 				if (_cipher_data->Append(cipher_data) == false)
 				{
-					logtd("Could not append data");
+					logtt("Could not append data");
 					return false;
 				}
 			}
@@ -79,25 +79,25 @@ namespace ov
 					return false;
 
 				case State::WaitingForAccept: {
-					logtd("Trying to accept TLS...");
+					logtt("Trying to accept TLS...");
 
 					int result = _tls.Accept();
 
 					switch (result)
 					{
 						case SSL_ERROR_NONE: {
-							logtd("Accepted");
+							logtt("Accepted");
 							_state = State::Accepted;
 							break;
 						}
 
 						case SSL_ERROR_WANT_READ:
-							logtd("Need more data to accept the request");
+							logtt("Need more data to accept the request");
 							stop = true;
 							break;
 
 						default:
-							logtd("An error occurred while accept TLS connection: error code: %d", result);
+							logtt("An error occurred while accept TLS connection: error code: %d", result);
 							return false;
 					}
 
@@ -105,13 +105,13 @@ namespace ov
 				}
 
 				case State::Accepted: {
-					logtd("Trying to read data from TLS module...");
+					logtt("Trying to read data from TLS module...");
 
 					auto read_data = _tls.Read();
 
 					if (read_data == nullptr)
 					{
-						logtd("An error occurred while read TLS data");
+						logtt("An error occurred while read TLS data");
 						return false;
 					}
 
@@ -121,7 +121,7 @@ namespace ov
 					}
 					else
 					{
-						logtd("Decrypted data\n%s", read_data->Dump().CStr());
+						logtt("Decrypted data\n%s", read_data->Dump().CStr());
 
 						if (decrypted != nullptr)
 						{
@@ -151,11 +151,11 @@ namespace ov
 		if (_state != State::Accepted)
 		{
 			// Before encrypting data, key exchange must be done first
-			logtd("Invalid state: %d", _state);
+			logtt("Invalid state: %d", ov::ToUnderlyingType(_state));
 			return false;
 		}
 
-		logtd("Trying to encrypt the data for TLS\n%s", plain_data->Dump(32).CStr());
+		logtt("Trying to encrypt the data for TLS\n%s", plain_data->Dump(32).CStr());
 
 		size_t written_bytes = 0;
 		auto result = _tls.Write(plain_data, &written_bytes);
@@ -167,7 +167,7 @@ namespace ov
 		}
 		else
 		{
-			logtd("An error occurred while encrypting data: data_len(%u), error code: %d", plain_data->GetLength(), result);
+			logtt("An error occurred while encrypting data: data_len(%zu), error code: %d", plain_data->GetLength(), result);
 		}
 
 		return false;
@@ -217,12 +217,12 @@ namespace ov
 
 		auto bytes_to_copy = std::min(length, _cipher_data->GetLength());
 
-		logtd("Trying to read %zu bytes from TLS data buffer (length: %zu, data: %zu)...", bytes_to_copy, length, _cipher_data->GetLength());
+		logtt("Trying to read %zu bytes from TLS data buffer (length: %zu, data: %zu)...", bytes_to_copy, length, _cipher_data->GetLength());
 
 		::memcpy(buffer, _cipher_data->GetData(), bytes_to_copy);
 		_cipher_data = (_cipher_data->GetLength() == bytes_to_copy) ? nullptr : _cipher_data->Subdata(bytes_to_copy);
 
-		logtd("%zu bytes is remained in TLS data buffer", (_cipher_data != nullptr) ? _cipher_data->GetLength() : 0);
+		logtt("%zu bytes is remained in TLS data buffer", (_cipher_data != nullptr) ? _cipher_data->GetLength() : 0);
 
 		return bytes_to_copy;
 	}
@@ -257,7 +257,7 @@ namespace ov
 
 	long TlsServerData::OnTlsCtrl(Tls *tls, int cmd, long num, void *arg)
 	{
-		logtd("[TLS] Ctrl: %d, %ld, %p", cmd, num, arg);
+		logtt("[TLS] Ctrl: %d, %ld, %p", cmd, num, arg);
 
 		switch (cmd)
 		{

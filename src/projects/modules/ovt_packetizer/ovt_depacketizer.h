@@ -20,7 +20,7 @@ public:
 	bool AppendPacket(const std::shared_ptr<const ov::Data> &packet);
 
 	bool IsAvailableMessage();
-	bool IsAvaliableMediaPacket();
+	bool IsAvailableMediaPacket();
 	const std::shared_ptr<ov::Data> PopMessage();
 	const std::shared_ptr<MediaPacket> PopMediaPacket();
 

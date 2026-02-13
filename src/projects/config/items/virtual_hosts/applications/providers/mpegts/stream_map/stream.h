@@ -36,7 +36,7 @@ namespace cfg
 						}
 					};
 				}  // namespace mpegts
-			}	   // namespace pvd
-		}		   // namespace app
-	}			   // namespace vhost
+			}  // namespace pvd
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

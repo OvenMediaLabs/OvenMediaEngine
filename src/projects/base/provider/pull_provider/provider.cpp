@@ -16,7 +16,7 @@
 
 namespace pvd
 {
-	PullProvider::PullProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	PullProvider::PullProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Provider(server_config, router)
 	{
 
@@ -41,7 +41,7 @@ namespace pvd
 
 		// Table lock
 		std::unique_lock<std::mutex> table_lock(_pulling_table_mutex, std::defer_lock);
-		auto pulling_key = GeneratePullingKey(app_info.GetName(), stream_name);
+		auto pulling_key = GeneratePullingKey(app_info.GetVHostAppName(), stream_name);
 
 		while(true)
 		{
@@ -56,7 +56,7 @@ namespace pvd
 			else
 			{
 				// First item
-				auto item = std::make_shared<PullingItem>(app_info.GetName(), stream_name, url_list, offset);
+				auto item = std::make_shared<PullingItem>(app_info.GetVHostAppName(), stream_name, url_list, offset);
 				item->SetState(PullingItem::PullingItemState::PULLING);
 				item->Lock();
 
@@ -70,7 +70,7 @@ namespace pvd
 			if(item != nullptr)
 			{
 				// it will wait until the previous request is completed
-				logti("Wait for the same stream that was previously requested to be created.: %s/%s", app_info.GetName().CStr(), stream_name.CStr());
+				logti("Wait for the same stream that was previously requested to be created.: %s/%s", app_info.GetVHostAppName().CStr(), stream_name.CStr());
 				item->Wait();
 
 				if(item->State() == PullingItem::PullingItemState::PULLING) 
@@ -96,7 +96,7 @@ namespace pvd
 	bool PullProvider::UnlockPullStreamIfNeeded(const info::Application &app_info, const ov::String &stream_name, PullingItem::PullingItemState state)
 	{
 		std::unique_lock<std::mutex> table_lock(_pulling_table_mutex);
-		auto pulling_key = GeneratePullingKey(app_info.GetName(), stream_name);
+		auto pulling_key = GeneratePullingKey(app_info.GetVHostAppName(), stream_name);
 
 		auto it = _pulling_table.find(pulling_key);
 		if(it == _pulling_table.end())
@@ -125,7 +125,7 @@ namespace pvd
 		if (app == nullptr)
 		{
 			UnlockPullStreamIfNeeded(app_info, stream_name, PullingItem::PullingItemState::PULLED);
-			logte("There is no such app (%s) in %s", app_info.GetName().CStr(), GetProviderName());
+			logte("There is no such app (%s) in %s", app_info.GetVHostAppName().CStr(), GetProviderName());
 			return nullptr;
 		}
 
@@ -141,6 +141,7 @@ namespace pvd
 			}
 			else
 			{
+				logti("The inbound stream already exists: %s/%s", app_info.GetVHostAppName().CStr(), stream_name.CStr());
 				UnlockPullStreamIfNeeded(app_info, stream_name, PullingItem::PullingItemState::PULLED);
 				return stream;
 			}
@@ -165,7 +166,7 @@ namespace pvd
 		auto app = stream->GetApplication();
 		if (app == nullptr)
 		{
-			logte("There is no such app (%s)", app_info.GetName().CStr());
+			logte("There is no such app (%s)", app_info.GetVHostAppName().CStr());
 			return false;
 		}
 

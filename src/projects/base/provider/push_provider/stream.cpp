@@ -24,9 +24,36 @@ namespace pvd
 	PushStream::PushStream(StreamSourceType source_type, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider)
 		: Stream(source_type)
 	{
-		SetId(channel_id);
+		SetId(pvd::Application::IssueUniqueStreamId());
 		_channel_id = channel_id;
 		_provider = provider;
+	}
+
+	PushStream::PushStream(StreamSourceType source_type, ov::String channel_name, const std::shared_ptr<PushProvider> &provider)
+		: PushStream(source_type, provider)
+	{
+		SetName(channel_name);
+	}
+
+	PushStream::PushStream(StreamSourceType source_type, const std::shared_ptr<PushProvider> &provider)
+		: Stream(source_type)
+	{
+		auto id = pvd::Application::IssueUniqueStreamId();
+		SetId(id);
+		// If the channel id is not given, use the stream id as the channel id
+		_channel_id = id;
+		_provider = provider;
+	}
+
+	bool PushStream::Terminate()
+	{
+		// To PushStream, Terminate has the same meaning as Stop.
+		if (Stop() == false)
+		{
+			return false;
+		}
+
+		return Stream::Terminate();
 	}
 
 	uint32_t PushStream::GetChannelId()
@@ -46,28 +73,22 @@ namespace pvd
 
 	void PushStream::UpdateLastReceivedTime()
 	{
-		_stop_watch.Update();
+		_packet_silence_timer.Update();
 	}
 
-	void PushStream::SetTimeoutSec(time_t seconds)
+	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
 	{
-		_stop_watch.Start();
-		_timeout_sec = seconds;
+		_packet_silence_timeout_ms = timeout_ms;
 	}
 	
-	bool PushStream::IsTimedOut()
+	time_t PushStream::GetPacketSilenceTimeoutMs()
 	{
-		if(_timeout_sec == 0)
-		{
-			return false;
-		}
-
-		return _stop_watch.IsElapsed(_timeout_sec * 1000);
+		return _packet_silence_timeout_ms;
 	}
 
-	time_t PushStream::GetElapsedSecSinceLastReceived()
+	time_t PushStream::GetElapsedMsSinceLastReceived()
 	{
-		return _stop_watch.Elapsed() / 1000;
+		return _packet_silence_timer.Elapsed();
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
@@ -80,6 +101,8 @@ namespace pvd
 		_attemps_publish_count++;
 		
 		_is_published = GetProvider()->PublishChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
+
+		_packet_silence_timer.Start();
 
 		return _is_published;
 	}

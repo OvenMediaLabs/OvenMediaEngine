@@ -13,6 +13,7 @@
 #include <thread>
 
 #include "./log.h"
+#include "./logger/thread_helper.h"
 #include "./ovlibrary_private.h"
 
 namespace ov
@@ -38,11 +39,11 @@ namespace ov
 		int64_t index = _index;
 		_index++;
 
-		logtd("Pushing new item: %p (after %d ms)", parameter, after_msec);
+		logtt("Pushing new item: %p (after %d ms)", parameter, after_msec);
 
 		_queue.emplace(index, func, parameter, after_msec);
 
-		logtd("Notifying...");
+		logtt("Notifying...");
 		_event.SetEvent();
 	}
 
@@ -114,27 +115,33 @@ namespace ov
 
 	void DelayQueue::DispatchThreadProc()
 	{
+		logger::ThreadHelper thread_helper;
+
+		std::unique_lock<std::mutex> lock(_mutex, std::defer_lock);
 		while (_stop == false)
 		{
+			lock.lock();
 			if (_queue.empty())
 			{
-				logtd("Queue is empty. Waiting for new item...");
+				logtt("Queue is empty. Waiting for new item...");
+				lock.unlock();
 
 				_event.Wait();
 
-				logtd("An item is pushed. Processing...");
+				logtt("An item is pushed. Processing...");
 			}
 			else
 			{
 				// Handle the first enqueued item
 				auto first_item = _queue.top();
+				lock.unlock();
 
 				if (_event.Wait(first_item.time_point) == false)
 				{
 					// No other items pushed until waiting for first_item.time_point
 					DelayQueueAction action = first_item.function(first_item.parameter);
 
-					std::lock_guard<std::mutex> lock(_mutex);
+					lock.lock();
 					// If we enter this step immediately after Clear(), there will be a problem
 					if (_queue.empty() == false)
 					{
@@ -146,6 +153,7 @@ namespace ov
 							_queue.push(first_item);
 						}
 					}
+					lock.unlock();
 				}
 				else
 				{
@@ -153,7 +161,7 @@ namespace ov
 
 					// Newly pushed items may be pointing to a time_point smaller than first_item.time_point,
 					// which needs to be recalculated
-					logtd("Another item is pushed while waiting the condition");
+					logtt("Another item is pushed while waiting the condition");
 				}
 			}
 		}

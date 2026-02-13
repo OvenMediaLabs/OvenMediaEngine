@@ -36,6 +36,6 @@ namespace cfg
 					}
 				};
 			}  // namespace pub
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

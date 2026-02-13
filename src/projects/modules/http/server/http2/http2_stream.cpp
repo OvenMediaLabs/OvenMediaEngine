@@ -9,7 +9,7 @@
 #include "http2_stream.h"
 
 #include "../http_connection.h"
-#include "../../http_private.h"
+#include "../http_server_private.h"
 
 namespace http
 {
@@ -76,10 +76,7 @@ namespace http
 				SetKeepAlive(true);
 
 				// Notify to interceptor
-				if (OnRequestPrepared() == false)
-				{
-					return -1;
-				}
+				OnRequestPrepared();
 
 				if (_headers_frame->IS_HTTP2_FRAME_FLAG_ON(Http2HeadersFrame::Flags::EndStream))
 				{
@@ -106,6 +103,9 @@ namespace http
 					case InterceptorResult::Moved:
 						SetStatus(Status::Moved);
 						break;
+					case InterceptorResult::NotFound:
+						SetStatus(Status::Completed);
+						break;
 					case InterceptorResult::Error:
 					default:
 						SetStatus(Status::Error);
@@ -117,7 +117,7 @@ namespace http
 
 			bool HttpStream::SendInitialControlMessage()
 			{
-				logtd("Send Initial Control Message");
+				logtt("Send Initial Control Message");
 
 				// Settings Frame
 				auto settings_frame = std::make_shared<Http2SettingsFrame>();
@@ -217,7 +217,7 @@ namespace http
 						return false;
 				}
 
-				logtd("Frame Processing %s : %s", result?"Completed":"Error", parsed_frame->ToString().CStr());
+				logtt("Frame Processing %s : %s", result?"Completed":"Error", parsed_frame->ToString().CStr());
 
 				return true;
 			}
@@ -243,11 +243,7 @@ namespace http
 			// Data frame received
 			bool HttpStream::OnDataFrameReceived(const std::shared_ptr<const Http2DataFrame> &frame)
 			{
-				if (OnDataReceived(frame->GetData()) == false)
-				{
-					return false;
-				}
-
+				OnDataReceived(frame->GetData());
 				if (frame->IS_HTTP2_FRAME_FLAG_ON(Http2DataFrame::Flags::EndStream))
 				{
 					return OnEndStream();
@@ -264,7 +260,7 @@ namespace http
 
 			bool HttpStream::OnRstStreamFrameReceived(const std::shared_ptr<const Http2RstStreamFrame> &frame)
 			{
-				logtd("%s", frame->ToString().CStr());
+				logtt("%s", frame->ToString().CStr());
 				SetStatus(HttpExchange::Status::Error);
 				return true;
 			}
@@ -318,7 +314,7 @@ namespace http
 
 			bool HttpStream::OnGoAwayFrameReceived(const std::shared_ptr<const Http2GoAwayFrame> &frame)
 			{
-				logtd("%s", frame->ToString().CStr());
+				logtt("%s", frame->ToString().CStr());
 				SetStatus(HttpExchange::Status::Error);
 				return true;
 			}

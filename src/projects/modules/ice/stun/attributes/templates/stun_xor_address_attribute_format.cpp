@@ -7,44 +7,98 @@
 //
 //==============================================================================
 #include "stun_xor_address_attribute_format.h"
+
+#include "../../stun_message.h"
 #include "../../stun_private.h"
 
 StunXorAddressAttributeFormat::StunXorAddressAttributeFormat(StunAttributeType type, int length)
 	: StunAddressAttributeFormat(type, length)
 {
-
 }
 
-bool StunXorAddressAttributeFormat::Parse(ov::ByteStream &stream)
+// In-place XORing
+bool DoXOROnAddress(const size_t length, const uint8_t transaction_id[OV_STUN_TRANSACTION_ID_LENGTH], uint8_t *address)
 {
-	//  0                   1                   2                   3
-	//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	// |x x x x x x x x|    Family     |         X-Port                |
-	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	// |                X-Address (Variable)
-	// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+	// XOR the IP address with OV_STUN_MAGIC_COOKIE and transaction id
 	//
-	//         Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
-	if(StunAddressAttributeFormat::Parse(stream))
+	// Example:
+	//   - IP address: 1234:5678:90ab:cdef:1234:5678:90ab:cdef
+	//             ==> 1234:5678:90ab:cdef:1234:5678:90ab:cdef
+	//               0x1234 5678 90ab cdef 1234 5678 90ab cdef
+	//   - Magic cookie: 0x2112A442
+	//   - Transaction ID: "0123456789AB"
+	//                   => 0 1 2 3 4 5 6 7 8 9 A B
+	//                    0x303132333435363738394142
+	//
+	//  => M/C + TX-ID = 0x2112A442303132333435363738394142
+	//                     ~~~~~~~~........................
+	//      ~: Magic cookie
+	//      .: Transaction ID
+	//
+	// Operation:
+	//   IP Address:  1234567890abcdef1234567890abcdef
+	//   MC + TX-ID : 2112a442303132333435363738394142
+	//                ================================
+	//                3326f23aa09affdc2601604fa8928cad
+	//
+	if (length != (sizeof(OV_STUN_MAGIC_COOKIE) + OV_STUN_TRANSACTION_ID_LENGTH))
 	{
-		// X-Port is computed by taking the mapped port in host byte order, XOR'ing it with the most significant 16 bits of the magic cookie, and then the converting the result to network byte order.
-		int port = _address.Port();
-		port = port ^ (OV_STUN_MAGIC_COOKIE >> 16);
-		_address.SetPort(static_cast<uint16_t>(port));
+		logtc("Could not XOR - length is mismatched: length: %zu != cookie + TX ID: %zu",
+			  length, (sizeof(OV_STUN_MAGIC_COOKIE) + OV_STUN_TRANSACTION_ID_LENGTH));
+		OV_ASSERT2(false);
 
-		switch(_address.GetFamily())
+		return false;
+	}
+
+	uint8_t second_operand[length];
+	const auto cookie = ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
+	::memcpy(&second_operand[0], &cookie, sizeof(cookie));
+	::memcpy(&second_operand[static_cast<off_t>(sizeof(cookie))], transaction_id, OV_STUN_TRANSACTION_ID_LENGTH);
+
+	for (off_t index = 0; index < static_cast<off_t>(length); index++)
+	{
+		address[index] ^= second_operand[index];
+	}
+
+	return true;
+}
+
+bool StunXorAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
+{
+	if (StunAddressAttributeFormat::Parse(stun_message, stream))
+	{
+		//  0                   1                   2                   3
+		//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+		// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		// |x x x x x x x x|    Family     |         X-Port                |
+		// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		// |                X-Address (Variable)
+		// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		//
+		//         Figure 6: Format of XOR-MAPPED-ADDRESS Attribute
+
+		// X-Port is computed by taking the mapped port in host byte order,
+		// XOR'ing it with the most significant 16 bits of the magic cookie, and then the converting the result to network byte order.
+		_address.SetPort(static_cast<uint16_t>(_address.Port() ^ (OV_STUN_MAGIC_COOKIE >> 16)));
+
+		switch (_address.GetFamily())
 		{
 			case ov::SocketFamily::Inet:
-				(static_cast<in_addr *>(_address))->s_addr ^= ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
-				_address.UpdateIPAddress();
+				_address.ToIn4Addr()->s_addr ^= ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
 				break;
 
-			case ov::SocketFamily::Inet6:
-				OV_ASSERT(false, "IPV6 IS NOT IMPLEMENTED");
-				logte("IPv6 is not implemented");
-				_length = 0;
+			case ov::SocketFamily::Inet6: {
+				// If the IP address family is IPv6,
+				// X-Address is computed by taking the mapped IP address in host byte order,
+				// XOR'ing it with the concatenation of the magic cookie and the 96-bit transaction ID,
+				// and converting the result to network byte order
+				if (DoXOROnAddress(_address.GetInAddrLength(), stun_message->GetTransactionId(), _address.ToIn6Addr()->s6_addr))
+				{
+					break;
+				}
+
 				return false;
+			}
 
 			default:
 				logtw("Unknown family: %d", _address.GetFamily());
@@ -52,29 +106,57 @@ bool StunXorAddressAttributeFormat::Parse(ov::ByteStream &stream)
 				return false;
 		}
 
+		_address.UpdateFromStorage();
+		_address.SetHostname(_address.GetIpAddress());
 	}
-
-	// Since the length is obtained in StunAddressAttribute::Parse(), 
-	// there is no need to calculate _length
 
 	return true;
 }
 
-bool StunXorAddressAttributeFormat::Serialize(ov::ByteStream &stream) const noexcept
+bool StunXorAddressAttributeFormat::SerializeXoredAddress(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
-	OV_ASSERT(_address.GetFamily() == ov::SocketFamily::Inet, "Only IPv4 is supprted");
+	switch (_address.GetFamily())
+	{
+		case ov::SocketFamily::Inet: {
+			auto addr = (_address.ToIn4Addr())->s_addr ^ ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
+			return stream.Write(static_cast<void *>(&addr), _address.GetInAddrLength());
+		}
 
-	ov::SocketAddress address1 = _address;
+		case ov::SocketFamily::Inet6: {
+			const auto length = _address.GetInAddrLength();
+			uint8_t addr[length];
+			::memcpy(addr, (_address.ToIn6Addr())->s6_addr, length);
 
-	// xoring
-	(static_cast<in_addr *>(address1))->s_addr ^= ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
-	address1.SetPort(static_cast<uint16_t>(address1.Port() ^ (OV_STUN_MAGIC_COOKIE >> 16)));
+			if (DoXOROnAddress(length, stun_message->GetTransactionId(), addr))
+			{
+				return stream.Write(addr, length);
+			}
 
-	return StunAttribute::Serialize(stream) &&
-	       stream.Write8(0x00) &&
-	       stream.Write8((uint8_t)GetFamily()) &&
-	       stream.WriteBE16((uint16_t)address1.Port()) &&	
-	       stream.Write(address1.ToAddrIn(), GetAddressLength());
+			break;
+		}
+
+		default:
+			break;
+	}
+
+	return false;
+}
+
+bool StunXorAddressAttributeFormat::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
+{
+	if (_address.IsValid() == false)
+	{
+		logte("Could not serialize XOR-MAPPED-ADDRESS: Invalid address: %s", _address.ToString().CStr());
+		return false;
+	}
+
+	// Serialize common STUN attributes
+	// (DO NOT call StunAddressAttributeFormat::Serialize() - To prevent serialize the address without XORing)
+	return StunAttribute::Serialize(stun_message, stream) &&
+		   stream.Write8(0x00) &&
+		   stream.Write8(static_cast<uint8_t>(GetFamily())) &&
+		   stream.WriteBE16(static_cast<uint16_t>(_address.Port() ^ (OV_STUN_MAGIC_COOKIE >> 16))) &&
+		   SerializeXoredAddress(stun_message, stream);
 }
 
 ov::String StunXorAddressAttributeFormat::ToString() const

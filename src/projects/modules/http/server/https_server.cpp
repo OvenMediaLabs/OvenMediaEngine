@@ -8,7 +8,7 @@
 //==============================================================================
 #include "https_server.h"
 
-#include "../http_private.h"
+#include "./http_server_private.h"
 
 // Reference: https://wiki.mozilla.org/Security/Server_Side_TLS
 
@@ -25,7 +25,7 @@ namespace http
 {
 	namespace svr
 	{
-		std::shared_ptr<const ov::Error> HttpsServer::AppendCertificate(const std::shared_ptr<const info::Certificate> &certificate)
+		std::shared_ptr<const ov::Error> HttpsServer::InsertCertificate(const std::shared_ptr<const info::Certificate> &certificate)
 		{
 			if (certificate == nullptr)
 			{
@@ -39,8 +39,11 @@ namespace http
 
 			std::shared_ptr<const ov::Error> error;
 			auto tls_context = ov::TlsContext::CreateServerContext(
-				ov::TlsMethod::Tls, certificate->GetCertificatePair(),
-				HTTP_FAST_NOT_VERY_SECURE, IsHttp2Enabled(), &tls_context_callback,
+				ov::TlsMethod::Tls, certificate->GetCertificate(),
+				HTTP_FAST_NOT_VERY_SECURE,
+				IsHttp2Enabled(),
+				true,
+				&tls_context_callback,
 				&error);
 
 			if (tls_context == nullptr)
@@ -50,8 +53,10 @@ namespace http
 
 			std::lock_guard lock_guard(_https_certificate_map_mutex);
 
-			logtd("Append the certificate for host: %s", certificate->ToString().CStr());
+			logtt("Append the certificate for host: %s", certificate->ToString().CStr());
 
+			// remove the certificate if it already exists
+			_https_certificate_map.erase(certificate->GetName());
 			_https_certificate_map.emplace(certificate->GetName(), std::make_shared<HttpsCertificate>(certificate, tls_context));
 
 			return nullptr;
@@ -61,7 +66,7 @@ namespace http
 		{
 			std::lock_guard lock_guard(_https_certificate_map_mutex);
 
-			logtd("Remove the certificate for host: %s", certificate->ToString().CStr());
+			logtt("Remove the certificate for host: %s", certificate->ToString().CStr());
 
 			_https_certificate_map.erase(certificate->GetName());
 
@@ -139,7 +144,7 @@ namespace http
 
 				if (tls_data->Decrypt(data, &plain_data))
 				{
-					if (prev_tls_state == ov::TlsServerData::State::WaitingForAccept && 
+					if (prev_tls_state == ov::TlsServerData::State::WaitingForAccept &&
 						tls_data->GetState() == ov::TlsServerData::State::Accepted)
 					{
 						// The client has accepted the connection
@@ -161,7 +166,8 @@ namespace http
 				}
 
 				// Error
-				logtd("Could not decrypt data");
+				logtt("Could not decrypt data");
+				remote->Close();
 			}
 			else
 			{
@@ -195,7 +201,7 @@ namespace http
 
 			if (https_certificate->tls_context->UseSslContext(ssl))
 			{
-				logtd("Certification found for server_name: %s, certificate: %s", server_name.CStr(), certificate->ToString().CStr());
+				logtt("Certification found for server_name: %s, certificate: %s", server_name.CStr(), certificate->ToString().CStr());
 				return true;
 			}
 

@@ -46,7 +46,7 @@ class ServerBase : protected PhysicalPortObserver
 public:
     bool Start(const ov::SocketAddress &address)
     {
-        logd(T::ClassName, "%s Start", T::ClassName);
+        logt(T::ClassName, "%s Start", T::ClassName);
 
         if(_physical_port != nullptr)
         {

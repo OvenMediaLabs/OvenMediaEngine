@@ -335,7 +335,7 @@ namespace http
 						}
 					}
 
-					logtd("The frame is finished: %s", ToString().CStr());
+					logtt("The frame is finished: %s", ToString().CStr());
 
 					_last_status = FrameParseStatus::Completed;
 				}

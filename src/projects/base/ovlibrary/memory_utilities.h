@@ -1,4 +1,15 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//
+//==============================================================================
 #pragma once
+
+#include <stddef.h>
+#include <stdint.h>
 
 #define OV_COUNTOF(arr) (sizeof(arr) / sizeof((arr)[0]))
 #define OV_PTR_FORMAT "0x%016" PRIxPTR
@@ -34,6 +45,55 @@
 #define OV_SAFE_DELETE(x) OV_SAFE_FUNC(x, nullptr, delete, )
 #define OV_SAFE_FREE(x) OV_SAFE_FUNC(x, nullptr, OV_GLOBAL_NAMESPACE_PREFIX free, )	 // NOLINT
 #define OV_CHECK_FLAG(x, flag) (((x) & (flag)) == (flag))
+
+#if __cplusplus
+#	include <type_traits>
+
+namespace ov
+{
+	template <typename T, typename = std::enable_if_t<std::is_enum_v<T>>, typename U = typename std::underlying_type_t<T>>
+	inline bool CheckFlag(const T &lhs, const T &rhs)
+	{
+		return OV_CHECK_FLAG(static_cast<const U>(lhs), static_cast<const U>(rhs));
+	}
+
+	template <typename T, typename = std::enable_if_t<std::is_enum_v<T>>, typename U = typename std::underlying_type_t<T>>
+	inline bool CheckFlag(const T &lhs, const U &rhs)
+	{
+		return OV_CHECK_FLAG(static_cast<const U>(lhs), static_cast<const U>(rhs));
+	}
+
+	template <typename T, typename = std::enable_if_t<std::is_enum_v<T>>, typename U = typename std::underlying_type_t<T>>
+	inline bool CheckFlag(const U &lhs, const T &rhs)
+	{
+		return OV_CHECK_FLAG(static_cast<const U>(lhs), static_cast<const U>(rhs));
+	}
+
+	template <typename T>
+	inline bool InRange(const T &value, const T &min, const T &max)
+	{
+		return ((value >= min) && (value <= max));
+	}
+
+	/// Copy bits from <src_data> to <dst_data> in bit unit
+	///
+	/// @param src_data source data
+	/// @param src_bits_length length of source data in bits
+	/// @param src_bit_offset offset of source data in bits (0-7, 0=MSB, 7=LSB)
+	/// @param dst_data destination data
+	/// @param dst_bits_length length of destination data in bits
+	/// @param dst_bit_offset offset of destination data in bits (0-7, 0=MSB, 7=LSB)
+	/// @param bits_to_copy number of bits to copy
+	/// @return number of bits copied
+	///
+	/// @remarks
+	/// - src_bit_offset & dst_bit_offset must be less than 8
+	size_t BitMemcpy(
+		const void *src_data, const size_t src_bits_length, uint8_t src_bit_offset,
+		void *dst_data, const size_t dst_bits_length, uint8_t dst_bit_offset,
+		size_t bits_to_copy);
+}  // namespace ov
+#endif	// __cplusplus
 
 // Gets the <index>th bit from the value (0-based)
 // You can use (((value) & (1 << index)) >> index) instead of the expression below

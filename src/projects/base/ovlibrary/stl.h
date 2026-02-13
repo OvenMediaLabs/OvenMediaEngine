@@ -64,6 +64,6 @@ bool HasSubstring(const std::string_view &value, size_t offset, const T (&substr
     return value.substr(offset, substring_length) == std::string_view(substring, substring_length);
 }
 
-std::string_view operator "" _str_v(const char *str, size_t length);
+std::string_view operator""_str_v(const char *str, size_t length);
 
 bool CaseInsensitiveEqual(const std::string_view &first, const std::string_view  &second);

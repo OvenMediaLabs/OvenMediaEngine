@@ -12,8 +12,14 @@ namespace info
 	{
 		_created_time = std::chrono::system_clock::now();
 		_id = "";
-		_stream = nullptr;
 
+		_vhost_name = "";
+		_application_name = "";
+		_stream_name = "";
+		_selected_track_ids.clear();
+		_selected_variant_names.clear();
+		_timestamp_mode = TimestampMode::ZeroBased;
+		
 		_protocol = "";
 		_url = "";
 		_stream_key = "";
@@ -24,6 +30,13 @@ namespace info
 		_Push_total_bytes = 0;
 		_Push_total_time = 0;
 		_sequence = 0;
+		
+		_session_id = 0;
+
+		_is_config = false;
+
+		_connection_timeout_ms = 5000; // 5 seconds
+		_send_timeout_ms = 2000; // 2 seconds
 
 		_state = PushState::Ready;
 	}
@@ -38,9 +51,9 @@ namespace info
 		return _id;
 	}
 
-	void Push::SetEnable(bool eanble)
+	void Push::SetEnable(bool enable)
 	{
-		_enable = eanble;
+		_enable = enable;
 	}
 	bool Push::GetEnable()
 	{
@@ -58,12 +71,53 @@ namespace info
 
 	void Push::SetApplication(ov::String value)
 	{
-		_aplication_name = value;
+		_application_name = value;
 	}
 
 	ov::String Push::GetApplication()
 	{
-		return _aplication_name;
+		return _application_name;
+	}
+
+	void Push::SetStreamName(ov::String stream_name) {
+		_stream_name = stream_name;
+	}
+
+	ov::String Push::GetStreamName()
+	{
+		return _stream_name;
+	}
+
+	void Push::AddTrackId(uint32_t selected_id) 
+	{
+		_selected_track_ids.push_back(selected_id);
+	}
+
+	void Push::AddVariantName(ov::String selected_name)
+	{
+		_selected_variant_names.push_back(selected_name);
+	}
+
+	void Push::SetTrackIds(const std::vector<uint32_t>& ids)
+	{
+		_selected_track_ids.clear();
+		_selected_track_ids.assign( ids.begin(), ids.end() ); 
+	}
+
+	void Push::SetVariantNames(const std::vector<ov::String>& names)
+	{
+		_selected_variant_names.clear();
+		_selected_variant_names.assign( names.begin(), names.end() ); 
+	}
+
+	const std::vector<uint32_t>& Push::GetTrackIds() 
+	{
+		return _selected_track_ids;
+	}
+
+	const std::vector<ov::String>& Push::GetVariantNames()
+	{
+		return _selected_variant_names;
 	}
 
 	void Push::SetRemove(bool value)
@@ -76,14 +130,14 @@ namespace info
 		return _remove;
 	}
 
-	ov::String Push::GetStreamName()
+	void Push::SetTimestampMode(TimestampMode mode)
 	{
-		if (_stream == nullptr)
-		{
-			return "";
-		}
+		_timestamp_mode = mode;
+	}
 
-		return _stream->GetName();
+	TimestampMode Push::GetTimestampMode()
+	{
+		return _timestamp_mode;
 	}
 
 	void Push::SetSessionId(session_id_t id)
@@ -94,11 +148,6 @@ namespace info
 	session_id_t Push::GetSessionId()
 	{
 		return _session_id;
-	}
-
-	void Push::SetStream(const info::Stream &stream)
-	{
-		_stream = std::make_shared<info::Stream>(stream);
 	}
 
 	const std::chrono::system_clock::time_point &Push::GetCreatedTime() const
@@ -115,6 +164,25 @@ namespace info
 	{
 		return _protocol;
 	}
+
+	Push::ProtocolType Push::GetProtocolType()
+	{
+		if (GetProtocol().LowerCaseString() == "rtmp")
+		{
+			return ProtocolType::RTMP;
+		}
+		else if (GetProtocol().LowerCaseString() == "srt")
+		{
+			return ProtocolType::SRT;
+		}
+		else if (GetProtocol().LowerCaseString() == "mpegts")
+		{
+			return ProtocolType::MPEGTS;
+		}
+
+		return ProtocolType::UNKNOWN;
+	}
+
 
 	void Push::SetUrl(ov::String url)
 	{
@@ -195,14 +263,47 @@ namespace info
 	{
 		_state = state;
 	}
+
+	void Push::SetByConfig(bool is_config)
+	{
+		_is_config = is_config;
+	}
+
+	bool Push::IsByConfig()
+	{
+		return _is_config;
+	}
+
+	void Push::SetConnectionTimeout(int32_t timeout_ms)
+	{
+		_connection_timeout_ms = timeout_ms;
+	}
+
+	int32_t Push::GetConnectionTimeout()
+	{
+		return _connection_timeout_ms;
+	}
+
+	void Push::SetSendTimeout(int32_t timeout_ms)
+	{
+		_send_timeout_ms = timeout_ms;
+	}
+	
+	int32_t Push::GetSendTimeout()
+	{
+		return _send_timeout_ms;
+	}
+
 	ov::String Push::GetStateString()
 	{
 		switch (GetState())
 		{
 			case PushState::Ready:
 				return "ready";
+			case PushState::Connecting:
+				return "connecting";				
 			case PushState::Pushing:
-				return "Pushing";
+				return "pushing";
 			case PushState::Stopping:
 				return "stopping";
 			case PushState::Stopped:
@@ -216,21 +317,11 @@ namespace info
 
 	const ov::String Push::GetInfoString()
 	{
-		ov::String info = "\n";
+		ov::String info = "";
 
-		info.AppendFormat(" id=%s\n", _id.CStr());
-		info.AppendFormat(" stream=%s\n", (_stream != nullptr) ? _stream->GetName().CStr() : "");
-		info.AppendFormat(" protocol=%s\n", _protocol.CStr());
-		info.AppendFormat(" url=%s\n", _url.CStr());
-		info.AppendFormat(" stream_key=%s\n", _stream_key.CStr());
-		info.AppendFormat(" push_bytes=%lld\n", _Push_bytes);
-		info.AppendFormat(" push_bytes=%lld\n", _Push_bytes);
-		info.AppendFormat(" push_total_bytes=%lld\n", _Push_total_bytes);
-		info.AppendFormat(" push_total_time=%lld\n", _Push_total_time);
-		info.AppendFormat(" sequence=%d\n", _sequence);
-		info.AppendFormat(" created_time=%s\n", ov::Converter::ToString(_created_time).CStr());
-		info.AppendFormat(" Push_start_time=%s\n", ov::Converter::ToString(_Push_start_time).CStr());
-		info.AppendFormat(" Push_stop_time=%s", ov::Converter::ToString(_Push_stop_time).CStr());
+		info.AppendFormat("uid(%s), vhost(%s) app(%s) stream(%s) -> protocol(%s) url(%s) streamKey(%s) variantNames(%s)",
+						  _id.CStr(), GetVhost().CStr(), GetApplication().CStr(), GetStreamName().CStr(), GetProtocol().CStr(), GetUrl().CStr(), GetStreamKey().CStr(),
+						  GetVariantNames().empty() ? "all" : ov::String::Join(GetVariantNames(), ",").CStr());
 
 		return info;
 	}

@@ -12,7 +12,6 @@ src/projects/third_party/pugixml-1.9/scripts/gmake
 # For CLion
 .idea
 cmake-build-debug
-CMakeLists.txt
 
 # For Visual Studio Code
 *.code-workspace
@@ -29,10 +28,19 @@ src/projects/main/git_info.h
 *.cxxflags
 *.files
 *.includes
+.qtc_clangd
 
+# For intermediates files
 *.o
+*.a
 *.d
 *.pc
 *.texi
 *.dump
+
+# For third-party libraries
 misc/oven_rtc_tester/OvenRtcTester
+misc/FFmpeg*
+
+# AMS
+src/core/local_config.mk

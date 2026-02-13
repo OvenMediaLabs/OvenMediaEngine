@@ -34,10 +34,10 @@ public:
 		return sizeof(uint16_t) + sizeof(uint16_t);
 	}
 
-	static std::shared_ptr<StunAttribute> CreateAttribute(ov::ByteStream &stream);
-	static std::shared_ptr<StunAttribute> CreateAttribute(StunAttributeType type, int length);
+	static std::shared_ptr<StunAttribute> CreateAttribute(const StunMessage *stun_message, ov::ByteStream &stream);
+	static std::shared_ptr<StunAttribute> CreateAttribute(const StunMessage *stun_message, StunAttributeType type, int length);
 
-	virtual bool Parse(ov::ByteStream &stream) = 0;
+	virtual bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) = 0;
 
 	// 알려지지 않은 타입일 경우, StunAttributeType::Unknown로 반환되며, 구체적인 타입 번호는 GetTypeNumber()로 알 수 있음
 	StunAttributeType GetType() const noexcept;
@@ -45,7 +45,7 @@ public:
 
 	size_t GetLength(bool include_header = false, bool padding = true) const noexcept;
 
-	virtual bool Serialize(ov::ByteStream &stream) const noexcept;
+	virtual bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept;
 
 	static const char *StringFromType(StunAttributeType type) noexcept;
 	const char *StringFromType() const noexcept;

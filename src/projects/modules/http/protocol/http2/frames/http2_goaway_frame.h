@@ -129,7 +129,7 @@ namespace http
 						return false;
 					}
 
-					auto _last_stream_id = ByteReader<uint32_t>::ReadBigEndian(payload_data + payload_offset);
+					[[maybe_unused]] auto _last_stream_id = ByteReader<uint32_t>::ReadBigEndian(payload_data + payload_offset);
 					payload_offset += sizeof(uint32_t);
 
 					// unset first bit (reserved)

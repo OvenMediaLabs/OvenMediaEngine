@@ -8,8 +8,9 @@
 //==============================================================================
 #include "http_exchange.h"
 
-#include "../http_private.h"
+#include "./http_server_private.h"
 #include "http_connection.h"
+#include "http_server_manager.h"
 
 namespace http
 {
@@ -19,7 +20,6 @@ namespace http
 		HttpExchange::HttpExchange(const std::shared_ptr<HttpConnection> &connection)
 			: _connection(connection)
 		{
-			
 		}
 
 		HttpExchange::HttpExchange(const std::shared_ptr<HttpExchange> &exchange)
@@ -38,13 +38,15 @@ namespace http
 		void HttpExchange::Release()
 		{
 			// print debug info
-			if (GetResponse()->GetStatusCode() != http::StatusCode::OK)
+			// 200 / 300 are not error
+			if ((static_cast<int>(GetResponse()->GetStatusCode()) / 100) != 2 &&
+				(static_cast<int>(GetResponse()->GetStatusCode()) / 100) != 3)
 			{
-				logte("%s", GetDebugInfo().CStr());
+				logte("\n%s", GetDebugInfo().CStr());
 			}
 			else
 			{
-				logtd("%s", GetDebugInfo().CStr());
+				logtt("\n%s", GetDebugInfo().CStr());
 			}
 
 			_status = Status::Completed;
@@ -64,13 +66,17 @@ namespace http
 			// Get duration with reqeust->GetCreateTime and response->GetResponseTime
 			auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(response->GetResponseTime() - request->GetCreateTime()).count();
 
-			return ov::String::FormatString("\n[Client] %s [Duration] %llu \n"
-				"[Request] URL(%s) Method(%s) Version(%s) Request Time(%s)\n"
-				"[Response] Status(%d) Sent Size(%d) Response Time(%s)\n",
+			return ov::String::FormatString(
+				"[Client] %s (Elapsed: %" PRId64 ") \n"
+				"[Request] %s %s (HTTP/%s, Request Time: %s)\n"
+				"[Response] %d %s (%d bytes sent, Response Time: %s)",
 
 				ToString().CStr(), duration,
-				request->GetUri().CStr(), http::StringFromMethod(request->GetMethod()).CStr(), request->GetHttpVersion().CStr(), ov::Converter::ToISO8601String(request->GetCreateTime()).CStr(),
-				response->GetStatusCode(), response->GetSentSize(), ov::Converter::ToISO8601String(response->GetResponseTime()).CStr());
+
+				http::StringFromMethod(request->GetMethod()).CStr(), request->GetUri().CStr(), request->GetHttpVersion().CStr(), ov::Converter::ToISO8601String(request->GetCreateTime()).CStr(),
+
+				ov::ToUnderlyingType(response->GetStatusCode()), http::StringFromStatusCode(response->GetStatusCode()),
+				response->GetSentSize(), ov::Converter::ToISO8601String(response->GetResponseTime()).CStr());
 		}
 
 		void HttpExchange::SetKeepAlive(bool keep_alive)
@@ -151,7 +157,7 @@ namespace http
 					//      cookies or request authentication to a server.  Unknown header
 					//      fields are ignored, as per [RFC2616].
 
-					logtd("%s is websocket request", GetRequest()->ToString().CStr());
+					logtt("%s is websocket request", GetRequest()->ToString().CStr());
 
 					return true;
 				}
@@ -221,54 +227,52 @@ namespace http
 			}
 		}
 
-		bool HttpExchange::OnRequestPrepared()
+		void HttpExchange::OnRequestPrepared()
 		{
 			// Find interceptor using received header
-			auto interceptor = GetConnection()->FindInterceptor(GetSharedPtr());
-			if (interceptor == nullptr)
+			_interceptor = GetConnection()->FindInterceptor(GetSharedPtr());
+			if (_interceptor != nullptr)
 			{
-				logtd("Interceptor is nullptr");
-				SetStatus(Status::Error);
-				GetResponse()->SetStatusCode(StatusCode::NotFound);
-				GetResponse()->Response();
-				Release();
-				return false;
+				_interceptor->OnRequestPrepared(GetSharedPtr());
 			}
-
-			// Call interceptor
-			return interceptor->OnRequestPrepared(GetSharedPtr());
 		}
 
-		bool HttpExchange::OnDataReceived(const std::shared_ptr<const ov::Data> &data)
+		void HttpExchange::OnDataReceived(const std::shared_ptr<const ov::Data> &data)
 		{
-			auto interceptor = GetConnection()->FindInterceptor(GetSharedPtr());
-			if (interceptor == nullptr)
+			if (_interceptor != nullptr)
 			{
-				logtd("Interceptor is nullptr");
-				SetStatus(Status::Error);
-				GetResponse()->SetStatusCode(StatusCode::NotFound);
-				GetResponse()->Response();
-				Release();
-				return false;
+				_interceptor->OnDataReceived(GetSharedPtr(), data);
 			}
-
-			return interceptor->OnDataReceived(GetSharedPtr(), data);
 		}
 
 		InterceptorResult HttpExchange::OnRequestCompleted()
 		{
-			auto interceptor = GetConnection()->FindInterceptor(GetSharedPtr());
-			if (interceptor == nullptr)
+			if (_interceptor == nullptr)
 			{
-				logtd("Interceptor is nullptr");
-				SetStatus(Status::Error);
+				logte("Cannot find interceptor for %s", GetRequest()->ToString().CStr());
 				GetResponse()->SetStatusCode(StatusCode::NotFound);
 				GetResponse()->Response();
 				Release();
-				return InterceptorResult::Error;
+				return InterceptorResult::NotFound;
 			}
 
-			return interceptor->OnRequestCompleted(GetSharedPtr());
+			auto request = GetRequest();
+			auto response = GetResponse();
+
+			response->SetMethod(request->GetMethod());
+
+			auto if_none_match = request->GetHeader("If-None-Match");
+			if (if_none_match.IsEmpty() == false)
+			{
+				response->SetIfNoneMatch(if_none_match);
+			}
+
+			// Setup Default Cors Header, application specific CORS header can be overridden
+			http::svr::HttpServerManager::GetInstance()->GetDefaultCorsManager().SetupDefaultHttpCorsHeader(request, response, {http::Method::Options, http::Method::Head, http::Method::Get, http::Method::Post, http::Method::Put, http::Method::Patch, http::Method::Delete});
+
+			response->SetHeader("Vary", "Origin");
+
+			return _interceptor->OnRequestCompleted(GetSharedPtr());
 		}
 
 	}  // namespace svr

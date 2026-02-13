@@ -8,8 +8,22 @@
 //==============================================================================
 #pragma once
 
-#include "provider.h"
 #include "./file/stream_map.h"
+#include "provider.h"
+
+/*
+	Server Configuration Example
+
+	<FILE>  
+			<PassthroughOutputProfile>true</PassthroughOutputProfile>
+			<StreamMap>
+					<Stream>
+							<Name>{STREAM_NAME}</Name>
+							<Path>{FILE_PATH}/{FILE_NAME}.{EXT}</Path>
+					</Stream>                               
+			</StreamMap>
+	</FILE>
+*/
 
 namespace cfg
 {
@@ -45,6 +59,6 @@ namespace cfg
 					bool _is_passthrough_output_profile = false;
 				};
 			}  // namespace pvd
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

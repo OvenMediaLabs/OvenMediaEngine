@@ -48,7 +48,7 @@ namespace cfg
 	{
 		// LastConfig was used <= 0.12.10, but later version changed to <API><Storage>.
 		// Inform the user that LastConfig is no longer used and throws an exception so that OME can be terminated.
-		bool is_last_config_found = ov::PathManager::IsFile(ov::PathManager::Combine(config_path, CFG_LAST_CONFIG_FILE_NAME));
+		bool is_last_config_found		 = ov::PathManager::IsFile(ov::PathManager::Combine(config_path, CFG_LAST_CONFIG_FILE_NAME));
 		bool is_legacy_last_config_found = ov::PathManager::IsFile(ov::PathManager::Combine(config_path, CFG_LAST_CONFIG_FILE_NAME_LEGACY));
 
 		if (is_last_config_found || is_legacy_last_config_found)
@@ -71,12 +71,6 @@ namespace cfg
 		LoadServerConfig(config_path);
 
 		_config_path = config_path;
-
-		LoadServerID(config_path);
-		_server->SetID(_server_id);
-
-		LoadLicenseKey(config_path);
-		_server->SetLicenseKey(_license_key);
 	}
 
 	void ConfigManager::ReloadConfigs()
@@ -108,7 +102,7 @@ namespace cfg
 			fs.close();
 
 			line.erase(std::remove(line.begin(), line.end(), '\n'), line.end());
-			
+
 			_license_key = line.c_str();
 		}
 
@@ -175,12 +169,12 @@ namespace cfg
 
 	std::tuple<bool, ov::String> ConfigManager::GenerateServerID() const
 	{
-		return {true, ov::UUID::Generate()};
+		return {true, ov::UUID().ToString()};
 	}
 
 	void ConfigManager::LoadLoggerConfig(const ov::String &config_path)
 	{
-		struct stat value = {0};
+		struct stat value			  = {0};
 
 		ov::String logger_config_path = ov::PathManager::Combine(config_path, CFG_LOG_FILE_NAME);
 
@@ -255,19 +249,28 @@ namespace cfg
 
 	void ConfigManager::LoadServerConfig(const ov::String &config_path)
 	{
-		const char *XML_ROOT_NAME = "Server";
+		const char *XML_ROOT_NAME	  = "Server";
 		ov::String server_config_path = ov::PathManager::Combine(config_path, CFG_MAIN_FILE_NAME);
 
 		logti("Trying to load configurations... (%s)", server_config_path.CStr());
 		DataSource data_source(DataType::Xml, config_path, CFG_MAIN_FILE_NAME, XML_ROOT_NAME);
+
+		std::unique_lock lock(_server_mutex);
+
 		_server = std::make_shared<Server>();
 		_server->SetItemName(XML_ROOT_NAME);
 		_server->FromDataSource(data_source);
 
 		CheckValidVersion(XML_ROOT_NAME, ov::Converter::ToInt32(_server->GetVersion()));
 
-		logtd("Validating omit rules...");
+		logtt("Validating omit rules...");
 		_server->ValidateOmitJsonNameRules();
+
+		LoadServerID(config_path);
+		_server->SetID(_server_id);
+
+		LoadLicenseKey(config_path);
+		_server->SetLicenseKey(_license_key);
 	}
 
 	void ConfigManager::CheckValidVersion(const ov::String &name, int version)

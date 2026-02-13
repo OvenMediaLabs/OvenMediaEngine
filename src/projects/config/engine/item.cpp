@@ -48,19 +48,23 @@ namespace cfg
 		ov::String extra;
 
 		ov::String child_name = child->GetItemName().ToString();
-		auto value_type = child->GetType();
+		auto value_type		  = child->GetType();
 
-		ov::String comma = (index < (child_count - 1)) ? "," : "";
+		ov::String comma	  = (index < (child_count - 1)) ? "," : "";
 
 #if CFG_VERBOSE_STRING
 		extra.Format(
 			CFG_EXTRA_PREFIX
+#	if CFG_PRINT_MEMORY_ADDRESS
 			"%p (%p): "
+#	endif	// CFG_PRINT_MEMORY_ADDRESS
 			"%s%s%s (%s), "
 			"%s"
 			"%s"
 			"%s",
+#	if CFG_PRINT_MEMORY_ADDRESS
 			child->GetMemberPointer(), child.get(),
+#	endif	// CFG_PRINT_MEMORY_ADDRESS
 			(value_type == ValueType::List) ? "std::vector<" : "", child->GetTypeName().CStr(), (value_type == ValueType::List) ? ">" : "", StringFromValueType(child->GetType()),
 			child->IsOptional() ? "Optional, " : "",
 			child->ResolvePath() ? "Path, " : "",
@@ -140,21 +144,21 @@ namespace cfg
 
 	Item::Item(const Item &item)
 	{
-		_last_target = nullptr;
+		_last_target	   = nullptr;
 
-		_is_parsed = item._is_parsed;
-		_is_read_only = item._is_read_only;
+		_is_parsed		   = item._is_parsed;
+		_is_read_only	   = item._is_read_only;
 
-		_item_name = item._item_name;
+		_item_name		   = item._item_name;
 
-		_children = item._children;
-		_children_for_xml = item._children_for_xml;
+		_children		   = item._children;
+		_children_for_xml  = item._children_for_xml;
 		_children_for_json = item._children_for_json;
 	}
 
 	Item::Item(Item &&item)
 	{
-		_last_target = nullptr;
+		_last_target	  = nullptr;
 		item._last_target = nullptr;
 
 		std::swap(_is_parsed, item._is_parsed);
@@ -169,15 +173,15 @@ namespace cfg
 
 	Item &Item::operator=(const Item &item)
 	{
-		_last_target = nullptr;
+		_last_target	   = nullptr;
 
-		_is_parsed = item._is_parsed;
-		_is_read_only = item._is_read_only;
+		_is_parsed		   = item._is_parsed;
+		_is_read_only	   = item._is_read_only;
 
-		_item_name = item._item_name;
+		_item_name		   = item._item_name;
 
-		_children = item._children;
-		_children_for_xml = item._children_for_xml;
+		_children		   = item._children;
+		_children_for_xml  = item._children_for_xml;
 		_children_for_json = item._children_for_json;
 
 		RebuildListIfNeeded();
@@ -195,7 +199,7 @@ namespace cfg
 	{
 		if (_last_target != this)
 		{
-			logad("[%s] Rebuilding a list of children (last: %p, current: %p)", _item_name.ToString().CStr(), _last_target, this);
+			logat("[%s] Rebuilding a list of children (last: %p, current: %p)", _item_name.ToString().CStr(), _last_target, this);
 
 			_last_target = this;
 
@@ -360,7 +364,7 @@ namespace cfg
 		// Check omit rule for children
 		for (const auto &child : _children)
 		{
-			auto omit_json = child->OmitJsonName();
+			auto omit_json	= child->OmitJsonName();
 			auto child_type = child->GetType();
 
 			if (omit_json)
@@ -424,9 +428,9 @@ namespace cfg
 	{
 		RebuildListIfNeeded();
 
-		ov::String indent = MakeIndentString(indent_count);
+		ov::String indent  = MakeIndentString(indent_count);
 
-		auto item_name = _item_name.ToString();
+		auto item_name	   = _item_name.ToString();
 		size_t child_count = _children.size();
 
 		ov::String description;
@@ -435,11 +439,17 @@ namespace cfg
 #if CFG_VERBOSE_STRING
 		extra.Format(
 			CFG_EXTRA_PREFIX
-			"%p: %s, "
+#	if CFG_PRINT_MEMORY_ADDRESS
+			"%p: "
+#	endif	// CFG_PRINT_MEMORY_ADDRESS
+			"%s, "
 			"children = %zu, "
 			"%s, "
 			"%s",
-			this, ov::Demangle(typeid(*this).name()).CStr(),
+#	if CFG_PRINT_MEMORY_ADDRESS
+			this,
+#	endif	// CFG_PRINT_MEMORY_ADDRESS
+			ov::Demangle(typeid(*this).name()).CStr(),
 			child_count,
 			_is_parsed ? "Parsed" : "NotParsed",
 			_is_read_only ? "ReadOnly" : "Writable");
@@ -471,31 +481,66 @@ namespace cfg
 		return description;
 	}
 
-	void Item::SetJsonChildValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Json::Value &original_value)
+	void Item::SetOriginalJsonValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Json::Value &original_value)
 	{
-		Json::Value value;
-		Json::Value &target_object = (value_type == ValueType::Attribute) ? GetJsonObject(object, "$") : object;
+		OV_ASSERT2(
+			(value_type == ValueType::Unknown) ||
+			(value_type == ValueType::String) ||
+			(value_type == ValueType::Integer) ||
+			(value_type == ValueType::Long) ||
+			(value_type == ValueType::Boolean) ||
+			(value_type == ValueType::Double) ||
+			(value_type == ValueType::Attribute) ||
+			(value_type == ValueType::Text));
+
+		if (object.isNull())
+		{
+			// Convert `object` to an object
+			object = Json::objectValue;
+		}
+
+		const auto &value = (value_type != ValueType::Unknown) ? original_value : Json::nullValue;
+
+		if (object.isArray())
+		{
+			if (value_type != ValueType::Attribute)
+			{
+				object.append(value);
+			}
+			else
+			{
+				Json::Value attribute_object = Json::objectValue;
+				attribute_object["$"]		 = value;
+				object.append(attribute_object);
+			}
+		}
+		else if (object.isObject())
+		{
+			auto &target_object = (value_type != ValueType::Attribute) ? object : GetJsonObject(object, "$");
+
+			if ((target_object.isNull() == false) && (target_object.isObject() == false))
+			{
+				OV_ASSERT(false, "Expected JSON object for attribute, but got: %s", ov::StringFromJsonValueType(target_object));
+				target_object = Json::objectValue;
+			}
+
+			target_object[child_name] = value;
+		}
+		else
+		{
+			throw CreateConfigError("Invalid JSON object type: %s", child_name.CStr());
+		}
+	}
+
+	void Item::SetCurrentJsonValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Variant &member)
+	{
+		Json::Value member_value;
 
 		switch (value_type)
 		{
 			case ValueType::Unknown:
-				OV_ASSERT2(false);
-				return;
-
-			case ValueType::String:
-				[[fallthrough]];
-			case ValueType::Integer:
-				[[fallthrough]];
-			case ValueType::Long:
-				[[fallthrough]];
-			case ValueType::Boolean:
-				[[fallthrough]];
-			case ValueType::Double:
-				[[fallthrough]];
-			case ValueType::Attribute:
-				[[fallthrough]];
-			case ValueType::Text:
-				value = original_value;
+				// Unknown type is considered as null.
+				member_value = Json::nullValue;
 				break;
 
 			case ValueType::Item:
@@ -505,20 +550,67 @@ namespace cfg
 			case ValueType::List:
 				OV_ASSERT2(false);
 				return;
+
+			case ValueType::String:
+				member_value = member.TryCast<ov::String *>()->CStr();
+				break;
+
+			case ValueType::Integer:
+				member_value = *(member.TryCast<int *>());
+				break;
+
+			case ValueType::Long:
+				member_value = *(member.TryCast<long *>());
+				break;
+
+			case ValueType::Boolean:
+				member_value = *(member.TryCast<bool *>());
+				break;
+
+			case ValueType::Double:
+				member_value = *(member.TryCast<double *>());
+				break;
+
+			case ValueType::Attribute:
+				member_value = member.TryCast<Attribute *>()->GetValue().CStr();
+				break;
+
+			case ValueType::Text:
+				member_value = member.TryCast<Text *>()->ToString().CStr();
+				break;
 		}
 
-		if (target_object.isNull())
+		if (object.isNull())
 		{
-			target_object = Json::objectValue;
+			// Convert `object` to an object
+			object = Json::objectValue;
 		}
 
-		if (target_object.isArray())
+		if (object.isArray())
 		{
-			target_object.append(value);
+			if (value_type != ValueType::Attribute)
+			{
+				// If the value type is not an attribute, we can append the value to the array.
+				object.append(member_value);
+			}
+			else
+			{
+				Json::Value attribute_object = Json::objectValue;
+				attribute_object["$"]		 = member_value;
+				object.append(attribute_object);
+			}
 		}
-		else if (target_object.isObject())
+		else if (object.isObject())
 		{
-			target_object[child_name] = value;
+			auto &target_object = (value_type != ValueType::Attribute) ? object : GetJsonObject(object, "$");
+
+			if ((target_object.isNull() == false) && (target_object.isObject() == false))
+			{
+				OV_ASSERT(false, "Expected JSON object for attribute, but got: %s", ov::StringFromJsonValueType(target_object));
+				target_object = Json::objectValue;
+			}
+
+			target_object[child_name] = member_value;
 		}
 		else
 		{
@@ -526,7 +618,7 @@ namespace cfg
 		}
 	}
 
-	void Item::ToJson(Json::Value &value, bool include_default_values) const
+	void Item::ToJson(Json::Value &value, bool original_value, bool include_default_values) const
 	{
 		RebuildListIfNeeded();
 
@@ -534,10 +626,9 @@ namespace cfg
 		{
 			if (include_default_values || child->IsParsed())
 			{
-				auto value_type = child->GetType();
+				auto value_type	 = child->GetType();
 
 				auto &child_name = child->GetItemName().GetName(DataType::Json);
-				auto &original_value = child->GetOriginalValue();
 
 				switch (value_type)
 				{
@@ -556,7 +647,14 @@ namespace cfg
 					case ValueType::Attribute:
 						[[fallthrough]];
 					case ValueType::Text:
-						SetJsonChildValue(value_type, value, child_name, original_value);
+						if (original_value)
+						{
+							SetOriginalJsonValue(value_type, value, child_name, child->GetOriginalValue());
+						}
+						else
+						{
+							SetCurrentJsonValue(value_type, value, child_name, child->GetMemberPointer());
+						}
 						break;
 
 					case ValueType::Item: {
@@ -578,7 +676,7 @@ namespace cfg
 							target_value = Json::objectValue;
 						}
 
-						child_item->ToJson(target_value, include_default_values);
+						child_item->ToJson(target_value, original_value, include_default_values);
 
 						break;
 					}
@@ -602,46 +700,13 @@ namespace cfg
 							target_value = Json::arrayValue;
 						}
 
-						list_item->CopyToJsonValue(target_value, include_default_values);
+						list_item->CopyToJsonValue(target_value, original_value, include_default_values);
 
 						break;
 					}
 				}
 			}
 		}
-	}
-
-	Json::Value Item::ToJson(bool include_default_values) const
-	{
-		Json::Value value;
-
-		ToJson(value, include_default_values);
-
-		return value;
-	}
-
-	Json::Value Item::ToJson() const
-	{
-		return ToJson(false);
-	}
-
-	void Item::ToJsonWithName(Json::Value &value, bool include_default_values) const
-	{
-		ToJson(GetJsonObject(value, _item_name.GetName(DataType::Json)), include_default_values);
-	}
-
-	Json::Value Item::ToJsonWithName(bool include_default_values) const
-	{
-		Json::Value value;
-
-		ToJsonWithName(value, include_default_values);
-
-		return value;
-	}
-
-	Json::Value Item::ToJsonWithName() const
-	{
-		return Item::ToJsonWithName(false);
 	}
 
 	void SetChildValueToXmlNode(pugi::xml_node &node, const ov::String &child_name, const char *value)
@@ -668,9 +733,9 @@ namespace cfg
 		{
 			if (include_default_values || child->IsParsed())
 			{
-				auto value_type = child->GetType();
+				auto value_type		 = child->GetType();
 
-				auto &child_name = child->GetItemName().GetName(DataType::Xml);
+				auto &child_name	 = child->GetItemName().GetName(DataType::Xml);
 				auto &original_value = child->GetOriginalValue();
 
 				switch (value_type)
@@ -736,17 +801,6 @@ namespace cfg
 		}
 	}
 
-	pugi::xml_document Item::ToXml(bool include_default_values) const
-	{
-		pugi::xml_document doc;
-
-		auto root_node = doc.append_child();
-
-		ToXml(root_node, include_default_values);
-
-		return doc;
-	}
-
 	void Item::FromDataSourceInternal(ov::String item_path, const DataSource &data_source, bool allow_optional)
 	{
 		if (_last_target != this)
@@ -780,7 +834,7 @@ namespace cfg
 						current_path.CStr(), pattern.CStr(), include_files.size());
 				}
 
-				auto &include_file = include_files[0];
+				auto &include_file	 = include_files[0];
 				auto new_data_source = data_source.NewDataSource(include_file, _item_name);
 				FromDataSourceInternal(item_path, new_data_source, allow_optional);
 			}

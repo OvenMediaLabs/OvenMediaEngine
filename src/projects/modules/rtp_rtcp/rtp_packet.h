@@ -58,6 +58,26 @@ public:
 	std::vector<uint32_t> Csrcs() const;
 	std::map<uint8_t, ov::Data> Extensions() const;
 	std::optional<ov::Data>	GetExtension(uint8_t id) const;
+
+	// GetExtension as template
+	template <typename T>
+	std::optional<T> GetExtension(uint8_t id) const
+	{
+		auto extension = GetExtension(id);
+		if (extension.has_value() == false)
+		{
+			return std::nullopt;
+		}
+
+		auto data = extension.value();
+		if (data.GetLength() < sizeof(T))
+		{
+			return std::nullopt;
+		}
+
+		return ByteReader<T>::ReadBigEndian(data.GetDataAs<uint8_t>());
+	}
+
 	uint8_t*	Buffer() const;
 
 	// Setter
@@ -88,6 +108,7 @@ public:
 
 	// Data
 	std::shared_ptr<ov::Data> GetData() const;
+	size_t GetDataLength() const;
 
 	// Created time
 	std::chrono::system_clock::time_point GetCreatedTime();

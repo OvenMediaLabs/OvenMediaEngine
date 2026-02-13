@@ -37,7 +37,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 {
 	BitReader parser(payload->GetDataAs<uint8_t>(), payload->GetLength());
 
-	if(parser.BytesReamined() < 1)
+	if(parser.BytesRemained() < 1)
 	{
 		return nullptr;
 	}
@@ -53,7 +53,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 	// extension
 	if(xbit == true)
 	{
-		if(parser.BytesReamined() < 1)
+		if(parser.BytesRemained() < 1)
 		{
 			return nullptr;
 		}
@@ -66,7 +66,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 
 		if(ibit == true)
 		{
-			if(parser.BytesReamined() < 1)
+			if(parser.BytesRemained() < 1)
 			{
 				return nullptr;
 			}
@@ -74,7 +74,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 			[[maybe_unused]]auto mbit = parser.ReadBoolBit();
 			if(mbit == true)
 			{
-				if(parser.BytesReamined() < 1)
+				if(parser.BytesRemained() < 1)
 				{
 					return nullptr;
 				}
@@ -89,7 +89,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 
 		if(lbit == true)
 		{
-			if(parser.BytesReamined() < 1)
+			if(parser.BytesRemained() < 1)
 			{
 				return nullptr;
 			}
@@ -118,19 +118,19 @@ std::shared_ptr<ov::Data> RtpDepacketizerVP8::ParsePayloadDescriptor(const std::
 		}
 	}
 
-	if(parser.BytesReamined() < 1)
+	if(parser.BytesRemained() < 1)
 	{
 		return nullptr;
 	}
 
-	auto bitstream = std::make_shared<ov::Data>(parser.CurrentPosition(), parser.BytesReamined());
+	auto bitstream = std::make_shared<ov::Data>(parser.CurrentPosition(), parser.BytesRemained());
 
 	auto current = parser.CurrentPosition();
 
 	// Check keyframe
 	if(first_packet == true && (*current & 0x01) == 0)
 	{
-		logd("DEBUG", "VP8 Keyframe!");
+		logt("DEBUG", "VP8 Keyframe!");
 	}
 
 	return bitstream;

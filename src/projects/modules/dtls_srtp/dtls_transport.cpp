@@ -9,7 +9,7 @@ DtlsTransport::DtlsTransport()
 	: ov::Node(NodeType::Dtls)
 {
 	_state = SSL_NONE;
-	_peer_cerificate_verified = false;
+	_peer_certificate_verified = false;
 }
 
 DtlsTransport::~DtlsTransport()
@@ -26,9 +26,9 @@ bool DtlsTransport::Stop()
 }
 
 // Set Local Certificate
-void DtlsTransport::SetLocalCertificate(const std::shared_ptr<Certificate> &certificate)
+void DtlsTransport::SetLocalCertificate(const std::shared_ptr<::Certificate> &certificate)
 {
-	_local_certificate_pair = CertificatePair::CreateCertificatePair(certificate);
+	_local_certificate = certificate;
 
 	ov::TlsContextCallback tls_context_callback = {
 		.create_callback = [](ov::TlsContext *tls_context, SSL_CTX *context) -> bool {
@@ -51,8 +51,9 @@ void DtlsTransport::SetLocalCertificate(const std::shared_ptr<Certificate> &cert
 	std::shared_ptr<const ov::Error> error;
 	_tls_context = ov::TlsContext::CreateServerContext(
 		ov::TlsMethod::DTls,
-		_local_certificate_pair,
+		_local_certificate,
 		"DEFAULT:!NULL:!aNULL:!SHA256:!SHA384:!aECDH:!AESGCM+AES256:!aPSK",
+		false,
 		false,
 		&tls_context_callback,
 		&error);
@@ -119,7 +120,7 @@ bool DtlsTransport::StartDTLS()
 
 bool DtlsTransport::ContinueSSL()
 {
-	logtd("Continue DTLS...");
+	logtt("Continue DTLS...");
 	int error = _tls.Accept();
 
 	if (error == SSL_ERROR_NONE)
@@ -149,7 +150,7 @@ bool DtlsTransport::ContinueSSL()
 
 bool DtlsTransport::MakeSrtpKey()
 {
-	if (_peer_cerificate_verified == false)
+	if (_peer_certificate_verified == false)
 	{
 		return false;
 	}
@@ -168,7 +169,7 @@ bool DtlsTransport::MakeSrtpKey()
 	if (node->GetNodeType() == NodeType::Srtp)
 	{
 		auto srtp_transport = std::static_pointer_cast<SrtpTransport>(node);
-		srtp_transport->SetKeyMeterial(crypto_suite, server_key, client_key);
+		srtp_transport->SetKeyMaterial(crypto_suite, server_key, client_key);
 	}
 
 	return true;
@@ -177,8 +178,8 @@ bool DtlsTransport::MakeSrtpKey()
 bool DtlsTransport::VerifyPeerCertificate()
 {
 	// TODO(Getroot): Compare and verify the digest received from the PEER CERTIFICATE and SDP.
-	logtd("Accepted peer certificate");
-	_peer_cerificate_verified = true;
+	logtt("Accepted peer certificate");
+	_peer_certificate_verified = true;
 	return true;
 }
 
@@ -186,7 +187,7 @@ bool DtlsTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 {
 	if (GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
@@ -215,7 +216,7 @@ bool DtlsTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 					return true;
 				}
 
-				logte("SSL_wirte error : error(%d)", ssl_error);
+				logte("SSL_write error : error(%d)", ssl_error);
 			}
 			break;
 		case SSL_ERROR:
@@ -233,11 +234,11 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 {
 	if (GetNodeState() != ov::Node::NodeState::Started)
 	{
-		logtd("Node has not started, so the received data has been canceled.");
+		logtt("Node has not started, so the received data has been canceled.");
 		return false;
 	}
 
-	logtd("OnDataReceived (%d) bytes", data->GetLength());
+	logtt("OnDataReceived (%d) bytes", data->GetLength());
 
 	switch (_state)
 	{
@@ -249,7 +250,7 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 			if (IsDtlsPacket(data))
 			{
 				std::lock_guard<std::mutex> lock(_tls_lock);
-				logtd("Receive DTLS packet");
+				logtt("Receive DTLS packet");
 				// Packet을 Queue에 쌓는다.
 				SaveDtlsPacket(data);
 
@@ -267,13 +268,13 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 					int pending = _tls.Pending();
 					if (pending >= 0)
 					{
-						logtd("Short DTLS read. Flushing %d bytes", pending);
+						logtt("Short DTLS read. Flushing %d bytes", pending);
 						_tls.FlushInput();
 					}
 
 					// TODO: Currently, SCTP is not supported, so there is no need to encrypt,
 					// and it will be developed if it supports data channels in the future.
-					logtd("Unknown dtls packet received (%d)", ssl_error);
+					logtt("Unknown dtls packet received (%d)", ssl_error);
 				}
 
 				return true;
@@ -302,13 +303,13 @@ ssize_t DtlsTransport::Read(ov::Tls *tls, void *buffer, size_t length)
 
 	if (data == nullptr)
 	{
-		logtd("SSL read packet block");
+		logtt("SSL read packet block");
 		return 0;
 	}
 
 	size_t read_len = std::min<size_t>(length, static_cast<size_t>(data->GetLength()));
 
-	logtd("SSL read packet : %zu", read_len);
+	logtt("SSL read packet : %zu", read_len);
 
 	::memcpy(buffer, data->GetData(), read_len);
 
@@ -319,7 +320,7 @@ ssize_t DtlsTransport::Write(ov::Tls *tls, const void *data, size_t length)
 {
 	auto packet = std::make_shared<ov::Data>(data, length);
 
-	logtd("SSL write packet : %zu", packet->GetLength());
+	logtt("SSL write packet : %zu", packet->GetLength());
 
 	if (SendDataToNextNode(packet))
 	{
@@ -362,7 +363,7 @@ std::shared_ptr<const ov::Data> DtlsTransport::TakeDtlsPacket()
 {
 	if (_packet_buffer.size() <= 0)
 	{
-		logtd("Ssl buffer is empty");
+		logtt("Ssl buffer is empty");
 		return nullptr;
 	}
 

@@ -8,13 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "../../../../controller.h"
+#include "../../../../controller_base.h"
 
 namespace api
 {
 	namespace v1
 	{
-		class StreamsController : public Controller<StreamsController>
+		class StreamsController : public ControllerBase<StreamsController>
 		{
 		public:
 			void PrepareHandlers() override;

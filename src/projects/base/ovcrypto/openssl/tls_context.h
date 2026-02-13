@@ -8,7 +8,8 @@
 //==============================================================================
 #pragma once
 
-#include "../certificate_pair.h"
+#include "../certificate.h"
+#include "./ocsp_handler.h"
 #include "./openssl_error.h"
 #include "./tls_context_callback.h"
 
@@ -30,9 +31,10 @@ namespace ov
 
 		static std::shared_ptr<TlsContext> CreateServerContext(
 			TlsMethod method,
-			const std::shared_ptr<const CertificatePair> &certificate_pair,
+			const std::shared_ptr<const ::Certificate> &certificate,
 			const ov::String &cipher_list,
-			bool enable_h2_alpn, 
+			bool enable_h2_alpn,
+			bool enable_ocsp_staping,
 			const ov::TlsContextCallback *callback,
 			// output param
 			std::shared_ptr<const ov::Error> *error);
@@ -59,9 +61,10 @@ namespace ov
 		MAY_THROWS(ov::OpensslError)
 		void Prepare(
 			const SSL_METHOD *method,
-			const std::shared_ptr<const CertificatePair> &certificate_pair,
+			const std::shared_ptr<const Certificate> &certificate,
 			const ov::String &cipher_list,
-			bool enable_h2_alpn, 
+			bool enable_h2_alpn,
+			bool enable_ocsp_staping,
 			const TlsContextCallback *callback);
 
 		MAY_THROWS(ov::OpensslError)
@@ -96,7 +99,7 @@ namespace ov
 		static bool SelectALPNProtocol(ov::String key, const unsigned char **out, unsigned char *outlen, const unsigned char *in, unsigned int inlen);
 
 		MAY_THROWS(ov::OpensslError)
-		void SetCertificate(const std::shared_ptr<const CertificatePair> &certificate_pair);
+		void SetCertificate(const std::shared_ptr<const ::Certificate> &certificate);
 
 		static int TlsVerify(X509_STORE_CTX *store, void *arg);
 
@@ -104,5 +107,7 @@ namespace ov
 		SSL_CTX *_ssl_ctx = nullptr;
 		bool _h2_alpn_enabled = true;
 		TlsContextCallback _callback;
+
+		OcspHandler _ocsp_handler;
 	};
 }  // namespace ov

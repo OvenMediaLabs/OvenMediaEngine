@@ -13,9 +13,6 @@
 
 // a=extmap:12 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay
 
-#define RTP_HEADER_EXTENSION_PLAYOUT_DELAY_ID	2
-#define RTP_HEADER_EXTENSION_PLAYOUT_DELAY_ATTRIBUTE "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay"
-
 class RtpHeaderExtensionPlayoutDelay : public RtpHeaderExtension
 {
 public:
@@ -29,11 +26,6 @@ public:
 	{
 		_data = std::make_shared<ov::Data>(_buffer, sizeof(_buffer), true);
 		memset(_buffer, 0, sizeof(_buffer));
-	}
-
-	RtpHeaderExtensionPlayoutDelay(uint8_t id, std::shared_ptr<ov::Data> data)
-		: RtpHeaderExtension(id, data)
-	{
 	}
 
 	void SetDelayMilliseconds(uint32_t min_delay_ms, uint32_t max_delay_ms)
@@ -52,18 +44,18 @@ public:
 		SetDelay(min_delay_ms / 10, max_delay_ms / 10);
 	}
 
-protected:
-	std::shared_ptr<ov::Data> GetData(HeaderType type) override
-	{
-		return _data;
-	}
-
 	bool SetData(const std::shared_ptr<ov::Data> &data) override
 	{
 		//TODO(Getroot): Parsing
 		_data = data;
 
 		return true;
+	}
+
+protected:
+	std::shared_ptr<ov::Data> GetData(HeaderType type) override
+	{
+		return _data;
 	}
 
 private:

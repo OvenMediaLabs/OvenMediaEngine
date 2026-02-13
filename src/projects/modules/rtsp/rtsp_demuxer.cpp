@@ -71,7 +71,7 @@ bool RtspDemuxer::IsAvailableMessage()
 	return _messages.size() > 0;
 }
 
-bool RtspDemuxer::IsAvaliableData()
+bool RtspDemuxer::IsAvailableData()
 {
 
 	return _datas.size() > 0;
@@ -92,7 +92,7 @@ std::shared_ptr<RtspMessage> RtspDemuxer::PopMessage()
 
 std::shared_ptr<RtspData> RtspDemuxer::PopData()
 {
-	if(IsAvaliableData() == false)
+	if(IsAvailableData() == false)
 	{
 		return nullptr;
 	}

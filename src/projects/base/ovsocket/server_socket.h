@@ -12,13 +12,14 @@
 
 #include "socket.h"
 #include "socket_address.h"
+#include "socket_address_pair.h"
 #include "socket_datastructure.h"
 
 namespace ov
 {
 	class SocketPool;
 
-	// TCP 서버 (UDP는 DatagramSocket 사용)
+	// TCP/SRT Server (UDP is not supported, use DatagramSocket instead)
 	class ServerSocket : public Socket, public SocketAsyncInterface
 	{
 	protected:
@@ -31,19 +32,19 @@ namespace ov
 		// Bind to a specific port
 		// When specifying a backlog, specify the size of the backlog
 		bool Prepare(uint16_t port,
+					 SetAdditionalOptionsCallback callback,
 					 ClientConnectionCallback connection_callback,
 					 ClientDataCallback data_callback,
-					 int send_buffer_size,
-					 int recv_buffer_size,
+					 int send_buffer_size, int recv_buffer_size,
 					 int backlog = SOMAXCONN);
 
 		// Bind to the IP and port that the address points to
 		// When specifying a backlog, specify the size of the backlog
 		bool Prepare(const SocketAddress &address,
+					 SetAdditionalOptionsCallback callback,
 					 ClientConnectionCallback connection_callback,
 					 ClientDataCallback data_callback,
-					 int send_buffer_size,
-					 int recv_buffer_size,
+					 int send_buffer_size, int recv_buffer_size,
 					 int backlog = SOMAXCONN);
 
 		std::shared_ptr<ClientSocket> Accept();
@@ -51,7 +52,7 @@ namespace ov
 		String ToString() const override;
 
 	protected:
-		bool SetSocketOptions(int send_buffer_size, int recv_buffer_size);
+		bool SetSocketOptions(int send_buffer_size, int recv_buffer_size, SetAdditionalOptionsCallback callback = nullptr);
 
 		ClientConnectionCallback &GetConnectionCallback()
 		{

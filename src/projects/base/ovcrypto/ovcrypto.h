@@ -10,7 +10,6 @@
 
 #include "./base_64.h"
 #include "./certificate.h"
-#include "./certificate_pair.h"
 #include "./crc_32.h"
 #include "./message_digest.h"
 

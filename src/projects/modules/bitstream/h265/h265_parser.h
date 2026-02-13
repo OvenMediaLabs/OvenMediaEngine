@@ -6,16 +6,26 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 #include <modules/bitstream/nalu/nal_unit_bitstream_parser.h>
-#include <cstdint>
+#include <stdint.h>
 
 #include "h265_types.h"
 
 
-#define H265_NAL_UNIT_HEADER_SIZE    2
+constexpr size_t H265_NAL_UNIT_HEADER_SIZE = 2;
 struct ProfileTierLevel
 {
-    uint8_t _profile_idc;
-    uint8_t _level_idc;
+	uint8_t _general_profile_space = 0;
+	uint8_t _general_tier_flag = 0;
+    uint8_t _general_profile_idc = 0;
+	uint32_t _general_profile_compatibility_flags = 0;
+	uint64_t _general_constraint_indicator_flags = 0;
+    uint8_t _general_level_idc = 0;
+
+	ov::String ToString() const
+	{
+		return ov::String::FormatString("profile_space: %u, tier_flag: %u, profile_idc: %u, profile_compatibility_flags: %u, constraint_indicator_flags: %" PRIu64 ", level_idc: %u",
+			_general_profile_space, _general_tier_flag, _general_profile_idc, _general_profile_compatibility_flags, _general_constraint_indicator_flags, _general_level_idc);
+	}
 };
 
 struct HrdParameters
@@ -41,6 +51,7 @@ public:
     uint8_t _aspect_ratio_idc = 0;
     uint32_t _num_units_in_tick = 0;
     uint32_t _time_scale = 0;
+	uint32_t _min_spatial_segmentation_idc = 0;
 };
 
 struct ShortTermRefPicSet
@@ -85,6 +96,16 @@ private:
     friend class H265Parser;
 };
 
+struct H265VPS
+{
+	uint8_t GetId() const
+	{
+		return vps_video_parameter_set_id;
+	}
+
+	uint8_t vps_video_parameter_set_id;
+};
+
 class H265SPS
 {
 public:
@@ -92,33 +113,64 @@ public:
     {
         return _width;
     }
+
     uint32_t GetHeight() const
     {
         return _height;
     }
-    uint8_t GetProfile() const
+
+    const ProfileTierLevel& GetProfileTierLevel() const
     {
-        return _profile_tier_level._profile_idc;
+        return _profile_tier_level;
     }
-    uint8_t GetCodecLevel() const
-    {
-        return _profile_tier_level._level_idc;
-    }
+
+	const VuiParameters& GetVuiParameters() const
+	{
+		return _vui_parameters;
+	}
+
     float GetFps() const
     {
         return _vui_parameters._time_scale / _vui_parameters._num_units_in_tick;
     }
+
     uint32_t GetId() const
     {
         return _id;
     }
 
+	uint32_t GetChromaFormatIdc() const
+	{
+		return _chroma_format_idc;
+	}
+
+	uint32_t GetBitDepthLumaMinus8() const
+	{
+		return _bit_depth_luma_minus8;
+	}
+
+	uint32_t GetBitDepthChromaMinus8() const
+	{
+		return _bit_depth_chroma_minus8;
+	}
+
+	uint8_t GetMaxSubLayersMinus1() const
+	{
+		return _max_sub_layers_minus1;
+	}
+
+	bool GetTemporalIdNestingFlag() const
+	{
+		return _temporal_id_nesting_flag;
+	}
+
     ov::String GetInfoString()
     {
         ov::String out_str = ov::String::FormatString("\n[H265Sps]\n");
 
-        out_str.AppendFormat("\tProfile(%d)\n", GetProfile());
-        out_str.AppendFormat("\tCodecLevel(%d)\n", GetCodecLevel());
+        out_str.AppendFormat("\tProfileTierLevel\n");
+		out_str.AppendFormat("\t%s\n", _profile_tier_level.ToString().CStr());
+
         out_str.AppendFormat("\tWidth(%d)\n", GetWidth());
         out_str.AppendFormat("\tHeight(%d)\n", GetHeight());
         out_str.AppendFormat("\tFps(%.2f)\n", GetFps());
@@ -129,8 +181,6 @@ public:
     }
 
 private:
-    uint8_t _profile = 0;
-    uint8_t _codec_level = 0;
     unsigned int _width = 0;
     unsigned int _height = 0;
     unsigned int _fps = 0;
@@ -139,7 +189,31 @@ private:
     ProfileTierLevel _profile_tier_level;
     VuiParameters   _vui_parameters;
 
+	uint8_t _max_sub_layers_minus1 = 0;
+	bool _temporal_id_nesting_flag = false;
+
+	uint32_t _chroma_format_idc = 0;
+	uint32_t _bit_depth_luma_minus8 = 0;
+	uint32_t _bit_depth_chroma_minus8 = 0;
+
     friend class H265Parser;
+};
+
+struct H265PPS
+{
+public:
+	uint32_t GetId() const
+	{
+		return pps_pic_parameter_set_id;
+	}
+
+	uint32_t GetSpsId() const
+	{
+		return pps_seq_parameter_set_id;
+	}
+
+	uint32_t pps_pic_parameter_set_id;
+	uint32_t pps_seq_parameter_set_id;
 };
 
 class H265Parser
@@ -150,7 +224,10 @@ public:
 	static int FindAnnexBStartCode(const uint8_t *bitstream, size_t length, size_t &start_code_size);
     static bool CheckKeyframe(const uint8_t *bitstream, size_t length);
     static bool ParseNalUnitHeader(const uint8_t *nalu, size_t length, H265NalUnitHeader &header);
+	static bool ParseNalUnitHeader(const std::shared_ptr<const ov::Data> &nalu, H265NalUnitHeader &header);
+	static bool ParseVPS(const uint8_t *nalu, size_t length, H265VPS &vps);
     static bool ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps);
+	static bool ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps);
 
 private:
     static bool ParseNalUnitHeader(NalUnitBitstreamParser &parser, H265NalUnitHeader &header);

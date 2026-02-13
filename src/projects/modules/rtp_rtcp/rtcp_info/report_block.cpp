@@ -74,6 +74,6 @@ double RtcpPacket::DelayCalculation(uint32_t lsr, uint32_t dlsr)
 
 void ReportBlock::Print()
 {
-	logtd("Receiver Report >> source ssrc(%u) fraction lost(%u) cumulative lost(%u) highest sequence(%u) jitter(%u) last sr(%u) delay(%.2f)",
+	logti("Receiver Report >> source ssrc(%u) fraction lost(%u) cumulative lost(%u) highest sequence(%u) jitter(%u) last sr(%u) delay(%.2f)",
 			GetSrcSsrc(), GetFractionLost(), GetCumulativeLost(), GetExtendedHighestSequenceNum(), GetJitter(), GetLastSr(), (double)GetDelaySinceLastSr()/65536.0);
 }

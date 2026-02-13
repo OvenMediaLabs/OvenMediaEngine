@@ -4,27 +4,28 @@
 
 #pragma once
 
-#include "base/ovlibrary/delay_queue.h"
+#include "./alert/alert.h"
 #include "base/info/info.h"
-#include "server_metrics.h"
-#include "event_logger.h"
+#include "base/ovlibrary/delay_queue.h"
 #include "event_forwarder.h"
+#include "event_logger.h"
+#include "server_metrics.h"
 
-#define MonitorInstance				mon::Monitoring::GetInstance()
-#define HostMetrics(info)			mon::Monitoring::GetInstance()->GetHostMetrics(info);
-#define ApplicationMetrics(info)	mon::Monitoring::GetInstance()->GetApplicationMetrics(info);
-#define StreamMetrics(info)			mon::Monitoring::GetInstance()->GetStreamMetrics(info);
+#define MonitorInstance mon::Monitoring::GetInstance()
+#define HostMetrics(info) mon::Monitoring::GetInstance()->GetHostMetrics(info);
+#define ApplicationMetrics(info) mon::Monitoring::GetInstance()->GetApplicationMetrics(info);
+#define StreamMetrics(info) mon::Monitoring::GetInstance()->GetStreamMetrics(info);
 
 namespace mon
 {
 	class Monitoring
 	{
 	public:
-        static Monitoring *GetInstance()
-	    {
-            static Monitoring monitor;
-            return &monitor;
-	    }
+		static Monitoring *GetInstance()
+		{
+			static Monitoring monitor;
+			return &monitor;
+		}
 
 		void Release();
 
@@ -38,8 +39,8 @@ namespace mon
 		std::shared_ptr<ServerMetrics> GetServerMetrics();
 		std::map<uint32_t, std::shared_ptr<HostMetrics>> GetHostMetricsList();
 		std::shared_ptr<HostMetrics> GetHostMetrics(const info::Host &host_info);
-        std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(const info::Application &app_info);
-        std::shared_ptr<StreamMetrics>  GetStreamMetrics(const info::Stream &stream_info);
+		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(const info::Application &app_info);
+		std::shared_ptr<StreamMetrics> GetStreamMetrics(const info::Stream &stream_info);
 
 		// Events
 		void OnServerStarted(const std::shared_ptr<const cfg::Server> &server_config);
@@ -48,6 +49,8 @@ namespace mon
 		bool OnApplicationCreated(const info::Application &app_info);
 		bool OnApplicationDeleted(const info::Application &app_info);
 		bool OnStreamCreated(const info::Stream &stream_info);
+		bool OnStreamCreationFailed(const info::Stream &stream_info);
+		bool OnStreamPrepared(const info::Stream &stream_info);
 		bool OnStreamDeleted(const info::Stream &stream_info);
 		bool OnStreamUpdated(const info::Stream &stream_info);
 
@@ -57,12 +60,14 @@ namespace mon
 		void OnSessionDisconnected(const info::Stream &stream_info, PublisherType type);
 		void OnSessionsDisconnected(const info::Stream &stream_info, PublisherType type, uint64_t number_of_sessions);
 
+		std::shared_ptr<alrt::Alert> GetAlert();
+
 	private:
 		ov::DelayQueue _timer{"MonLogTimer"};
 		std::shared_ptr<ServerMetrics> _server_metric = nullptr;
-		EventLogger	_logger;
+		EventLogger _logger;
 		EventForwarder _forwarder;
-		bool _is_analytics_on = false;
-
+		std::shared_ptr<alrt::Alert> _alert = nullptr;
+		bool _is_analytics_on				= false;
 	};
 }  // namespace mon

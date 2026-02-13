@@ -31,6 +31,7 @@ namespace ov
 
 		// Creates a directory with the mask (Default mask is 755 (rwxr-xr-x))
 		static bool MakeDirectory(const char *path, int mask = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
+		static bool MakeDirectoryRecursive(const String path);
 
 		// Creates a directory named "<path1>/<path2."
 		static String Combine(String path1, String path2);
@@ -40,12 +41,13 @@ namespace ov
 
 		static bool IsAbsolute(const char *path);
 		static String GetCanonicalPath(const char *path);
+		static String GetNormalizedPath(const char *path);
 
 		static String ExtractExtension(String path);
 
-		static std::shared_ptr<ov::Error> GetFileList(const ov::String &base_file_name, const ov::String &pattern, std::vector<ov::String> *file_list, bool exclude_base_path = true);
+		static std::shared_ptr<Error> GetFileList(const String &base_file_name, const String &pattern, std::vector<String> *file_list, bool exclude_base_path = true);
 
-		static std::shared_ptr<ov::Error> Rename(const ov::String &file_name, const ov::String &to_file_name);
-		static std::shared_ptr<ov::Error> DeleteFile(const ov::String &file_name);
+		static std::shared_ptr<Error> Rename(const String &file_name, const String &to_file_name);
+		static std::shared_ptr<Error> DeleteFile(const String &file_name);
 	};
 }  // namespace ov

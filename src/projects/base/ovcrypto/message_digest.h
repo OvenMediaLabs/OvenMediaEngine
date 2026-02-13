@@ -22,7 +22,27 @@ namespace ov
 		Sha256,
 		Sha384,
 		Sha512,
+		Sha512_224,
+		Sha512_256,
 	};
+
+	constexpr const char *ToString(CryptoAlgorithm algorithm)
+	{
+		switch (algorithm)
+		{
+			OV_CASE_RETURN(CryptoAlgorithm::Unknown, "Unknown");
+			OV_CASE_RETURN(CryptoAlgorithm::Md5, "MD5");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha1, "SHA-1");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha224, "SHA-224");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha256, "SHA-256");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha384, "SHA-384");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha512, "SHA-512");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha512_224, "SHA-512/224");
+			OV_CASE_RETURN(CryptoAlgorithm::Sha512_256, "SHA-512/256");
+		}
+
+		return "Unknown";
+	}
 
 	class MessageDigest
 	{

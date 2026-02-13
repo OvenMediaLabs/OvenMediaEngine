@@ -46,7 +46,7 @@ StunAttribute::~StunAttribute()
 {
 }
 
-std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(ov::ByteStream &stream)
+std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	if(stream.Remained() % 4 != 0)
 	{
@@ -65,9 +65,9 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(ov::ByteStream &st
 	}
 
 #if STUN_LOG_DATA
-	logtd("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
 #else // STUN_LOG_DATA
-	logtd("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", type, length, padded_length);
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", type, length, padded_length);
 #endif // STUN_LOG_DATA
 
 #if DEBUG
@@ -86,23 +86,23 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(ov::ByteStream &st
 		}
 	}
 
-	std::shared_ptr<StunAttribute> attribute = CreateAttribute(type, length);
+	std::shared_ptr<StunAttribute> attribute = CreateAttribute(stun_message, type, length);
 
 	if(attribute == nullptr)
 	{
 		// Unimplemented attributes
-		logtd("Skipping attribute (not implemented): 0x%04X (%d bytes)...", type, length);
+		logtt("Skipping attribute (not implemented): 0x%04X (%d bytes)...", type, length);
 		stream.Skip<uint8_t>(length);
 	}
 	else
 	{
-		if(attribute->Parse(stream) == false)
+		if(attribute->Parse(stun_message, stream) == false)
 		{
 			logtw("Could not parse attribute: type: 0x%04X, length: %d", type, length);
 			return nullptr;
 		}
 
-		logtd("Parsed: %s", attribute->ToString().CStr());
+		logtt("Parsed: %s", attribute->ToString().CStr());
 
 		stream.Skip<uint8_t>(padded_length - length);
 	}
@@ -110,7 +110,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(ov::ByteStream &st
 	return attribute;
 }
 
-std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(StunAttributeType type, int length)
+std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage *stun_message, StunAttributeType type, int length)
 {
 	std::shared_ptr<StunAttribute> attribute = nullptr;
 
@@ -161,25 +161,29 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(StunAttributeType 
 		case StunAttributeType::Data:
 			attribute = std::make_shared<StunDataAttribute>(length);
 			break;
+		case StunAttributeType::UseCandidate:
+			attribute = std::make_shared<StunUseCandidateAttribute>();
+			break;
+		case StunAttributeType::Priority:
+			attribute = std::make_shared<StunPriorityAttribute>();
+			break;
+		case StunAttributeType::IceControlled:
+			attribute = std::make_shared<StunIceControlledAttribute>();
+			break;
+		case StunAttributeType::IceControlling:
+			attribute = std::make_shared<StunIceControllingAttribute>();
+			break;
 		case StunAttributeType::AlternateServer:
 		case StunAttributeType::UnknownAttributes:
 		default:
 			switch(static_cast<int>(type))
 			{
-				case 0x8029:
-					// 0x8029 ICE-CONTROLLED
-				case 0x802A:
-					// 0x802A ICE-CONTROLLING
 				case 0xC057:
 					// 0xC057 NETWORK COST
-				case 0x0025:
-					// 0x0025 USE-CANDIDATE
-				case 0x0024:
-					// 0x0024 PRIORITY
 					break;
 
 				default:
-					logtd("Unknown attributes: %d (%x, length: %d)", type, type, length);
+					logtt("Unknown attributes: %d (%x, length: %d)", type, type, length);
 					break;
 			}
 
@@ -215,7 +219,7 @@ size_t StunAttribute::GetLength(bool include_header, bool padding) const noexcep
 	return length;
 }
 
-bool StunAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunAttribute::Serialize(const StunMessage *message, ov::ByteStream &stream) const noexcept
 {
 	// Attribute header: Type + Length + (variable)
 	// 여기서는 Type + Length만 기록하고, variable는 하위 클래스들에서 기록함
@@ -274,6 +278,14 @@ const char *StunAttribute::StringFromType(StunAttributeType type) noexcept
 			return "ADDRESS-ERROR-CODE";
 		case StunAttributeType::ICMP:
 			return "ICMP";
+		case StunAttributeType::UseCandidate:
+			return "USE-CANDIDATE";
+		case StunAttributeType::Priority:
+			return "PRIORITY";
+		case StunAttributeType::IceControlled:
+			return "ICE-CONTROLLED";
+		case StunAttributeType::IceControlling:
+			return "ICE-CONTROLLING";
 	}
 
 	return "<UNKNOWN>";
@@ -311,6 +323,8 @@ const char *StunAttribute::StringFromErrorCode(StunErrorCode code) noexcept
 			return "Server Error";
 		case StunErrorCode::InsufficientCapacity:
 			return "Insufficient Capacity";
+		case StunErrorCode::RoleConflict:
+			return "Role Conflict";
 	}
 
 	return "<UNKNOWN>";

@@ -29,7 +29,7 @@
 #include "mediarouter_application.h"
 #include "mediarouter_stream.h"
 
-class MediaRouter : public MediaRouteInterface, public ocst::MediaRouterModuleInterface
+class MediaRouter final : public MediaRouterInterface, public ocst::MediaRouterModuleInterface
 {
 public:
 	static std::shared_ptr<MediaRouter> Create();
@@ -52,6 +52,7 @@ public:
 	// For Applications
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	std::shared_ptr<MediaRouteApplication> GetRouteApplicationById(info::application_id_t application_id);
+	std::shared_ptr<MediaRouteApplication> GetRouteApplicationByName(const info::VHostAppName &vhost_app_name);
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	// For Providers
@@ -59,22 +60,29 @@ public:
 
 	bool RegisterConnectorApp(
 		const info::Application &application_info,
-		const std::shared_ptr<MediaRouteApplicationConnector> &application_connector) override;
+		const std::shared_ptr<MediaRouterApplicationConnector> &application_connector) override;
 
 	bool UnregisterConnectorApp(
 		const info::Application &application_info,
-		const std::shared_ptr<MediaRouteApplicationConnector> &application_connector) override;
+		const std::shared_ptr<MediaRouterApplicationConnector> &application_connector) override;
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	// For Publishers
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	bool RegisterObserverApp(
 		const info::Application &application_info,
-		const std::shared_ptr<MediaRouteApplicationObserver> &application_observer) override;
+		const std::shared_ptr<MediaRouterApplicationObserver> &application_observer) override;
 
 	bool UnregisterObserverApp(
 		const info::Application &application_info,
-		const std::shared_ptr<MediaRouteApplicationObserver> &application_observer) override;
+		const std::shared_ptr<MediaRouterApplicationObserver> &application_observer) override;
+
+	////////////////////////////////////////////////////////////////////////////////////////////////
+	// For Stream Mirroring
+	////////////////////////////////////////////////////////////////////////////////////////////////
+	CommonErrorCode MirrorStream(std::shared_ptr<MediaRouterStreamTap> &stream_tap, const info::VHostAppName &vhost_app_name, const ov::String &stream_name, MirrorPosition posision) override;
+
+	CommonErrorCode UnmirrorStream(const std::shared_ptr<MediaRouterStreamTap> &stream_tap) override;
 
 private:
 	std::map<info::application_id_t, std::shared_ptr<MediaRouteApplication>> _route_apps;

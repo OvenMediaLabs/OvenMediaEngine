@@ -32,7 +32,13 @@ namespace http
 
 			StatusCode GetStatusCode() const;
 			// Get Reason
-			ov::String GetReason();
+			ov::String GetReason() const;
+
+			void SetMethod(Method method);
+			Method GetMethod() const;
+
+			void SetIfNoneMatch(const ov::String &etag);
+			const ov::String &GetIfNoneMatch() const;
 
 			// reason = default
 			void SetStatusCode(StatusCode status_code);
@@ -43,6 +49,7 @@ namespace http
 			bool AddHeader(const ov::String &key, const ov::String &value);
 			// Overwrites the existing value to <value>
 			bool SetHeader(const ov::String &key, const ov::String &value);
+			bool UnsetHeader(const ov::String &key);
 			const std::vector<ov::String> &GetHeader(const ov::String &key) const;
 			bool RemoveHeader(const ov::String &key);
 
@@ -52,7 +59,7 @@ namespace http
 			bool AppendString(const ov::String &string);
 			bool AppendFile(const ov::String &filename);
 
-			uint32_t Response();
+			int32_t Response();
 
 			// Get Created Time
 			std::chrono::system_clock::time_point GetCreatedTime() const;
@@ -62,6 +69,8 @@ namespace http
 			// Get Response Data Size
 			size_t GetResponseDataSize() const;
 			uint32_t GetSentSize() const;
+
+			virtual ov::String ToString() const;
 
 			bool Close();
 
@@ -84,8 +93,10 @@ namespace http
 			virtual bool Send(const std::shared_ptr<const ov::Data> &data);
 			
 		private:
-			virtual uint32_t SendHeader();
-			virtual uint32_t SendPayload();
+			virtual int32_t SendHeader();
+			virtual int32_t SendPayload();
+
+			ov::String GetEtag();
 
 			std::shared_ptr<ov::ClientSocket> _client_socket;
 			std::shared_ptr<ov::TlsServerData> _tls_data;
@@ -121,6 +132,12 @@ namespace http
 			// Responsed time
 			std::chrono::system_clock::time_point _response_time;
 			uint32_t _sent_size = 0;
+
+			Method _method = Method::Unknown;
+
+			bool _etag_enabled_by_config = false;
+			ov::String _if_none_match = "";
+			std::shared_ptr<ov::Data> _response_hash = nullptr;
 		};
 	}  // namespace svr
 }  // namespace http

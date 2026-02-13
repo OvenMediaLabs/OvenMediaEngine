@@ -20,18 +20,19 @@ namespace cfg
 			int _max_client_peers_per_host_peer = 2;
 
 		public:
+			P2P(bool enable) : ModuleTemplate(enable)
+			{
+			}
+
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetMaxClientPeersPerHostPeer, _max_client_peers_per_host_peer)
 
 		protected:
 			void MakeList() override
 			{
-				// Experimental feature is disabled by default
-				SetEnable(false);
-
 				ModuleTemplate::MakeList();
-				
+
 				Register<Optional>("MaxClientPeersPerHostPeer", &_max_client_peers_per_host_peer);
 			}
 		};
-	}  // namespace p2p
+	}  // namespace modules
 }  // namespace cfg

@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include <modules/bitstream/aac/aac_specific_config.h>
+#include <modules/bitstream/aac/audio_specific_config.h>
 
 #include "base/common_types.h"
 
@@ -20,19 +20,12 @@ public:
 	void SetSampleRate(int32_t samplerate);
 	int32_t GetSampleRate() const;
 
-	void SetAudioTimestampScale(double scale);
-	double GetAudioTimestampScale() const;
-
 	cmn::AudioSample &GetSample();
 	const cmn::AudioSample &GetSample() const;
 
 	void SetChannel(cmn::AudioChannel channel);
 	cmn::AudioChannel &GetChannel();
 	const cmn::AudioChannel &GetChannel() const;
-
-	// Codec-specific data prepared in advance for performance
-	std::shared_ptr<AACSpecificConfig> GetAacConfig() const;
-	void SetAacConfig(const std::shared_ptr<AACSpecificConfig> &config);
 
 	void SetAudioSamplesPerFrame(int nbsamples);
 	int GetAudioSamplesPerFrame() const;
@@ -46,8 +39,6 @@ protected:
 
 	// time_scale
 	double _audio_timescale;
-
-	std::shared_ptr<AACSpecificConfig> _aac_config = nullptr;
 
 	// Sample Count per frame
 	int _audio_samples_per_frame;

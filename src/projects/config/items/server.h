@@ -10,12 +10,14 @@
 
 #include <fstream>
 
+#include "alert/alert.h"
 #include "analytics/analytics.h"
 #include "base/ovlibrary/uuid.h"
 #include "bind/bind.h"
-#include "modules/modules.h"
 #include "managers/managers.h"
+#include "modules/modules.h"
 #include "virtual_hosts/virtual_hosts.h"
+#include "default/default.h"
 
 namespace cfg
 {
@@ -40,16 +42,20 @@ namespace cfg
 		ov::String _typeName;
 		ServerType _type;
 
-		ov::String _ip;
+		std::vector<ov::String> _ip_list;
 		ov::String _stun_server;
 		bind::Bind _bind;
 		modules::modules _modules;
 
 		mgr::Managers _managers;
 
+		alrt::Alert _alert;
+
 		an::Analytics _analytics;
 
 		vhost::VirtualHosts _virtual_hosts;
+
+		dft::Defaults _defaults;
 
 	public:
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetVersion, _version)
@@ -59,10 +65,10 @@ namespace cfg
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetTypeName, _typeName)
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetType, _type)
 
-		CFG_DECLARE_CONST_REF_GETTER_OF(GetIp, _ip)
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetIPList, _ip_list)
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetStunServer, _stun_server)
 
-		CFG_DECLARE_CONST_REF_GETTER_OF(IsPrivaryProtectionOn, _privacy_protection_on)
+		CFG_DECLARE_CONST_REF_GETTER_OF(IsPrivacyProtectionOn, _privacy_protection_on)
 
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetBind, _bind)
 
@@ -70,7 +76,11 @@ namespace cfg
 
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetManagers, _managers)
 
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetAlert, _alert)
+
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetAnalytics, _analytics)
+
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetDefaults, _defaults)
 
 		CFG_DECLARE_CONST_REF_GETTER_OF(GetVirtualHostList, _virtual_hosts.GetVirtualHostList())
 
@@ -134,15 +144,17 @@ namespace cfg
 				return CreateConfigErrorPtr("Unknown type: %s", _typeName.CStr());
 			});
 
-			Register({"IP", "ip"}, &_ip);
+			Register({"IP", "ip"}, &_ip_list);
 			Register<Optional>("StunServer", &_stun_server);
 			Register<Optional>("PrivacyProtection", &_privacy_protection_on);
 			Register("Bind", &_bind);
 			Register<Optional>("Modules", &_modules);
 
 			Register<Optional>("Managers", &_managers);
+			Register<Optional>("Alert", &_alert);
 			Register<Optional>("Analytics", &_analytics);
 
+			Register<Optional>("Defaults", &_defaults);
 			Register<Optional>("VirtualHosts", &_virtual_hosts);
 		}
 	};

@@ -22,7 +22,7 @@ namespace mon
 
 namespace cfg
 {
-	class Server;
+	struct Server;
 
 	namespace serdes
 	{

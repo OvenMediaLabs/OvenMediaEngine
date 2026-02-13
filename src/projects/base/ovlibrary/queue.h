@@ -39,13 +39,13 @@ namespace ov
 			_last_log_time.Start();
 
 			auto shared_lock = std::shared_lock(_name_mutex);
-			logd("ov.Queue", "[%p] %s is created with threshold: %zu, interval: %d", this, _queue_name.CStr(), threshold, log_interval_in_msec);
+			logt("ov.Queue", "[%p] %s is created with threshold: %zu, interval: %d", this, _queue_name.CStr(), threshold, log_interval_in_msec);
 		}
 
 		~Queue()
 		{
 			auto shared_lock = std::shared_lock(_name_mutex);
-			logd("ov.Queue", "[%p] %s is destroyed", this, _queue_name.CStr());
+			logt("ov.Queue", "[%p] %s is destroyed", this, _queue_name.CStr());
 		}
 
 		String GetAlias() const
@@ -67,7 +67,7 @@ namespace ov
 				_queue_name.Format("Queue<%s>", Demangle(typeid(T).name()).CStr());
 			}
 
-			logd("ov.Queue", "[%p] The alias is changed to %s", this, _queue_name.CStr());
+			logt("ov.Queue", "[%p] The alias is changed to %s", this, _queue_name.CStr());
 		}
 
 		void SetThreshold(size_t threshold)
@@ -75,7 +75,7 @@ namespace ov
 			auto lock_guard = std::lock_guard(_name_mutex);
 
 			_threshold = threshold;
-			logd("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
+			logt("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
 		}
 
 		void Enqueue(const T &item)
@@ -107,13 +107,17 @@ namespace ov
 
 			if (_stop == false)
 			{
-				std::chrono::system_clock::time_point expire =
-					(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				// If there is data in the queue, return immediately without condition wait
+				auto result = (_queue.empty() == false) ? true : false;
+				if (!result)
+				{
+					std::chrono::system_clock::time_point expire =
+						(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
 
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return ((_queue.empty() == false) || _stop);
-				});
-
+					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+						return ((_queue.empty() == false) || _stop);
+					});
+				}
 				if (result)
 				{
 					if (_stop == false)
@@ -145,12 +149,18 @@ namespace ov
 
 			if (_stop == false)
 			{
-				std::chrono::system_clock::time_point expire =
-					(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				// If there is data in the queue, return immediately without condition wait
+				auto result = (_queue.empty() == false) ? true : false;
 
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return ((_queue.empty() == false) || _stop);
-				});
+				if (result == false)
+				{
+					std::chrono::system_clock::time_point expire =
+						(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+
+					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+						return ((_queue.empty() == false) || _stop);
+					});
+				}
 
 				if (result)
 				{
@@ -183,12 +193,25 @@ namespace ov
 
 			if (_stop == false)
 			{
-				std::chrono::system_clock::time_point expire =
-					(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				// If there is data in the queue, return immediately without condition wait
+				auto result = (_queue.empty() == false) ? true : false;
 
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return ((_queue.empty() == false) || _stop);
-				});
+				if (result == false)
+				{
+					if (timeout > 0)
+					{
+						std::chrono::system_clock::time_point expire =
+							(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+
+						result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+							return ((_queue.empty() == false) || _stop);
+						});
+					}
+					else
+					{
+						// Do not wait if timeout is 0 or negative
+					}
+				}
 
 				if (result)
 				{
@@ -214,7 +237,7 @@ namespace ov
 				// Stop is requested
 			}
 
-			return {};
+			return std::nullopt;
 		}
 
 		bool IsEmpty() const
@@ -242,6 +265,13 @@ namespace ov
 		bool IsStopped() const
 		{
 			return _stop;
+		}
+
+		void Start()
+		{
+			auto lock_guard = std::lock_guard(_mutex);
+
+			_stop = false;
 		}
 
 		void Stop()

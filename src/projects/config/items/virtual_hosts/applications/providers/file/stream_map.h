@@ -35,7 +35,7 @@ namespace cfg
 						}
 					};
 				}  // namespace file
-			}	   // namespace pvd
-		}		   // namespace app
-	}			   // namespace vhost
+			}  // namespace pvd
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

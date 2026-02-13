@@ -10,7 +10,7 @@
 
 #include <base/ovcrypto/ovcrypto.h>
 
-#include "v1/v1_controller.h"
+#include "./v1/controller.h"
 
 namespace api
 {
@@ -35,11 +35,11 @@ namespace api
 		PrepareAccessTokenHandler();
 
 		// Currently only v1 is supported
-		CreateSubController<v1::V1Controller>(R"(\/v1)");
+		CreateSubController<v1::Controller>(R"(\/v1)");
 
 		// This handler is called if it does not match all other registered handlers
 		Register(http::Method::All, R"(.+)", &RootController::OnNotFound);
-	};
+	}
 
 	void RootController::PrepareAccessTokenHandler()
 	{
@@ -52,13 +52,15 @@ namespace api
 			}
 #endif	// DEBUG
 
+			const auto &response = client->GetResponse();
+
 			try
 			{
 				auto authorization = client->GetRequest()->GetHeader("Authorization");
 
 				if (authorization.IsEmpty())
 				{
-					throw http::HttpError(http::StatusCode::Forbidden, "Authorization header is required to call API");
+					throw http::HttpError(http::StatusCode::Unauthorized, "Authorization header is required to call API");
 				}
 
 				auto tokens = authorization.Split(" ");
@@ -66,26 +68,26 @@ namespace api
 				if (tokens.size() != 2)
 				{
 					// Invalid tokens
-					throw http::HttpError(http::StatusCode::Forbidden, "Invalid authorization header");
+					throw http::HttpError(http::StatusCode::Unauthorized, "Invalid authorization header");
 				}
 
 				if (tokens[0].UpperCaseString() != "BASIC")
 				{
-					throw http::HttpError(http::StatusCode::Forbidden, "Not supported credential type: %s", tokens[0].CStr());
+					throw http::HttpError(http::StatusCode::Unauthorized, "Not supported credential type: %s", tokens[0].CStr());
 				}
 
 				auto data = ov::Base64::Decode(tokens[1]);
 
 				if (data == nullptr)
 				{
-					throw http::HttpError(http::StatusCode::Forbidden, "Invalid credential format");
+					throw http::HttpError(http::StatusCode::Unauthorized, "Invalid credential format");
 				}
 
 				ov::String str = data->ToString();
 
 				if (str != _access_token)
 				{
-					throw http::HttpError(http::StatusCode::Forbidden, "Invalid credential");
+					throw http::HttpError(http::StatusCode::Unauthorized, "Invalid credential");
 				}
 
 				return http::svr::NextHandler::Call;
@@ -93,16 +95,19 @@ namespace api
 			catch (const http::HttpError &error)
 			{
 				logw("APIController", "HTTP error occurred: %s", error.What());
+				response->SetHeader("WWW-Authenticate", "Basic realm=\"OvenMediaEngine\"");
 				ApiResponse(&error).SendToClient(client);
 			}
 			catch (const cfg::ConfigError &error)
 			{
 				logw("APIController", "Config error occurred: %s", error.GetDetailedMessage().CStr());
+				response->SetHeader("WWW-Authenticate", "Basic realm=\"OvenMediaEngine\"");
 				ApiResponse(&error).SendToClient(client);
 			}
 			catch (const std::exception &error)
 			{
 				logw("APIController", "Unknown error occurred: %s", error.what());
+				response->SetHeader("WWW-Authenticate", "Basic realm=\"OvenMediaEngine\"");
 				ApiResponse(&error).SendToClient(client);
 			}
 

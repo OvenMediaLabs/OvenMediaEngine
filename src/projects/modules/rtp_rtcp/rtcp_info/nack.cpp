@@ -9,7 +9,7 @@ bool NACK::Parse(const RtcpPacket &packet)
 
 	if(payload_size < static_cast<size_t>(8/*SSRC * 2*/ + 4/*FCI*/))
 	{
-		logtd("Payload is too small to parse NACK");
+		logtt("Payload is too small to parse NACK");
 		return false;
 	}
 
@@ -57,5 +57,5 @@ void NACK::DebugPrint()
 		ids.AppendFormat("%u/", id);
 	}
 
-	logtd("NACK >> %s", ids.CStr());
+	logtt("NACK >> %s", ids.CStr());
 }

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <base/ovlibrary/bit_reader.h>
-#include <cstdint>
+#include <stdint.h>
 #include <vector>
 
 // Parses the payload of the NAL unit without the starting byte
@@ -18,5 +18,5 @@ public:
 	bool Skip(uint32_t count);
 
 private:
-	std::vector<uint8_t> _bitstream;
+	void NextPosition() override;
 };

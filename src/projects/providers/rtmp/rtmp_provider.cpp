@@ -6,17 +6,19 @@
 //  Copyright (c) 2018 AirenSoft. All rights reserved.
 //
 //==============================================================================
+#include "rtmp_provider.h"
+
+#include <base/info/media_extradata.h>
 #include <config/config.h>
+#include <modules/physical_port/physical_port_manager.h>
 #include <unistd.h>
+
 #include <iostream>
 
-#include "rtmp_provider.h"
 #include "rtmp_application.h"
-#include "rtmp_stream.h"
 #include "rtmp_provider_private.h"
-
-#include <modules/physical_port/physical_port_manager.h>
-#include <base/info/media_extradata.h>
+#include "rtmp_stream.h"
+#include "rtmp_stream_v2.h"
 
 namespace pvd
 {
@@ -40,10 +42,15 @@ namespace pvd
 	}
 #endif	// DEBUG
 
-	std::shared_ptr<RtmpProvider> RtmpProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	std::shared_ptr<RtmpProvider> RtmpProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	{
 #if DEBUG
 		dump_packet = ov::Converter::ToBool(std::getenv("OME_DUMP_RTMP"));
+
+		if (dump_packet)
+		{
+			logtw("RTMP packet dump is enabled. Dump files are saved in %s", ov::PathManager::GetAppPath("dump/rtmp").CStr());
+		}
 #endif	// DEBUG
 
 		auto provider = std::make_shared<RtmpProvider>(server_config, router);
@@ -54,10 +61,10 @@ namespace pvd
 		return provider;
 	}
 
-	RtmpProvider::RtmpProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	RtmpProvider::RtmpProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PushProvider(server_config, router)
 	{
-		logtd("Created Rtmp Provider module.");
+		logtt("Created Rtmp Provider module.");
 	}
 
 	RtmpProvider::~RtmpProvider()
@@ -67,7 +74,7 @@ namespace pvd
 
 	bool RtmpProvider::Start()
 	{
-		if (_physical_port != nullptr)
+		if (_physical_port_list.empty() == false)
 		{
 			logtw("RTMP server is already running");
 			return false;
@@ -76,62 +83,106 @@ namespace pvd
 		auto server = GetServerConfig();
 		const auto &rtmp_config = server.GetBind().GetProviders().GetRtmp();
 
-		if(rtmp_config.IsParsed() == false)
+		if (rtmp_config.IsParsed() == false)
 		{
 			logtw("%s is disabled by configuration", GetProviderName());
 			return true;
 		}
 
-		auto rtmp_address = ov::SocketAddress(server.GetIp(), static_cast<uint16_t>(rtmp_config.GetPort().GetPort()));
-		auto socket_type = ov::SocketType::Tcp;
+		bool is_configured;
+		auto worker_count = rtmp_config.GetWorkerCount(&is_configured);
+		worker_count = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+		auto thread_per_socket = rtmp_config.IsThreadPerSocket();
 
-		bool is_parsed;
+		std::vector<ov::SocketAddress> rtmp_address_list;
 
-		auto worker_count = rtmp_config.GetWorkerCount(&is_parsed);
-		worker_count = is_parsed ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
-
-		_physical_port = PhysicalPortManager::GetInstance()->CreatePort("RTMP", socket_type, rtmp_address, worker_count);
-		if (_physical_port == nullptr)
+		try
 		{
-			logte("Could not initialize phyiscal port for RTMP server: %s", rtmp_address.ToString().CStr());
+			rtmp_address_list = ov::SocketAddress::Create(server.GetIPList(), static_cast<uint16_t>(rtmp_config.GetPort().GetPort()));
+		}
+		catch (const ov::Error &e)
+		{
+			logte("Could not listen for RTMP: %s", e.What());
 			return false;
 		}
-		else
+
+		if (rtmp_address_list.empty())
 		{
-			logti("%s is listening on %s/%s", GetProviderName(), rtmp_address.ToString().CStr(), ov::StringFromSocketType(socket_type));
+			logte("Could not obtain IP list from IP(s): %s, port: %d",
+				  ov::String::Join(server.GetIPList(), ", ").CStr(),
+				  static_cast<uint16_t>(rtmp_config.GetPort().GetPort()));
+
+			return false;
 		}
 
-		_physical_port->AddObserver(this);
+		auto port_manager = PhysicalPortManager::GetInstance();
+		std::vector<ov::String> rtmp_address_string_list;
 
-		return Provider::Start();
+		for (const auto &rtmp_address : rtmp_address_list)
+		{
+			auto physical_port = port_manager->CreatePort("RTMP", ov::SocketType::Tcp, rtmp_address, worker_count, thread_per_socket);
+
+			if (physical_port == nullptr)
+			{
+				logte("Could not initialize physical port for RTMP server: %s", rtmp_address.ToString().CStr());
+
+				for (auto &physical_port : _physical_port_list)
+				{
+					physical_port->RemoveObserver(this);
+					port_manager->DeletePort(physical_port);
+				}
+				_physical_port_list.clear();
+
+				return false;
+			}
+
+			rtmp_address_string_list.emplace_back(rtmp_address.ToString());
+
+			physical_port->AddObserver(this);
+			_physical_port_list.push_back(physical_port);
+		}
+
+		_is_ertmp_enabled = server.GetModules().GetERTMP().IsEnabled();
+
+		if (_is_ertmp_enabled)
+		{
+			logtw("E-RTMP is enabled, and this is an experimental feature");
+		}
+
+		logti("%s is listening on %s",
+			  GetProviderName(),
+			  ov::String::Join(rtmp_address_string_list, ", ").CStr());
+
+		return PushProvider::Start();
 	}
 
 	bool RtmpProvider::Stop()
 	{
-		if(_physical_port != nullptr)
-		{
-			_physical_port->RemoveObserver(this);
-			PhysicalPortManager::GetInstance()->DeletePort(_physical_port);
-			_physical_port = nullptr;
-		}
+		auto port_manager = PhysicalPortManager::GetInstance();
 
-		return Provider::Stop();
+		for (auto &physical_port : _physical_port_list)
+		{
+			physical_port->RemoveObserver(this);
+			port_manager->DeletePort(physical_port);
+		}
+		_physical_port_list.clear();
+
+		return PushProvider::Stop();
 	}
 
 	bool RtmpProvider::OnCreateHost(const info::Host &host_info)
 	{
 		return true;
 	}
-	
+
 	bool RtmpProvider::OnDeleteHost(const info::Host &host_info)
 	{
 		return true;
 	}
 
-
 	std::shared_ptr<pvd::Application> RtmpProvider::OnCreateProviderApplication(const info::Application &application_info)
 	{
-		if(IsModuleAvailable() == false)
+		if (IsModuleAvailable() == false)
 		{
 			return nullptr;
 		}
@@ -144,19 +195,28 @@ namespace pvd
 		return PushProvider::OnDeleteProviderApplication(application);
 	}
 
+	template <typename T>
+	std::shared_ptr<pvd::PushStream> CreateStream(int channel_id, const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<pvd::PushProvider> &provider)
+	{
+		return T::Create(StreamSourceType::Rtmp, channel_id, remote, provider);
+	}
+
 	void RtmpProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 	{
 		auto channel_id = remote->GetNativeHandle();
-		auto stream = RtmpStream::Create(StreamSourceType::Rtmp, channel_id, remote, GetSharedPtrAs<pvd::PushProvider>());
+		auto stream = _is_ertmp_enabled
+						  ? CreateStream<rtmp::RtmpStreamV2>(channel_id, remote, GetSharedPtrAs<pvd::PushProvider>())
+						  : CreateStream<RtmpStream>(channel_id, remote, GetSharedPtrAs<pvd::PushProvider>());
 
-		logti("A RTMP client has connected from %s", remote->ToString().CStr());
+		logti("A RTMP client has connected from %s%s", remote->ToString().CStr(),
+			  _is_ertmp_enabled ? " (E-RTMP)" : "");
 
-		PushProvider::OnChannelCreated(remote->GetNativeHandle(), stream);
+		PushProvider::OnChannelCreated(channel_id, stream);
 	}
 
 	void RtmpProvider::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
-						const ov::SocketAddress &address,
-						const std::shared_ptr<const ov::Data> &data)
+									  const ov::SocketAddress &address,
+									  const std::shared_ptr<const ov::Data> &data)
 	{
 #if DEBUG
 		DumpDataToFile(remote, address, data);
@@ -166,20 +226,20 @@ namespace pvd
 	}
 
 	void RtmpProvider::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
-						PhysicalPortDisconnectReason reason,
-						const std::shared_ptr<const ov::Error> &error)
+									  PhysicalPortDisconnectReason reason,
+									  const std::shared_ptr<const ov::Error> &error)
 	{
 		auto channel = GetChannel(remote->GetNativeHandle());
-		if(channel == nullptr)
+		if (channel == nullptr)
 		{
 			logte("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
 			return;
 		}
 
-		logti("The RTMP client has disconnected: [%s/%s], remote: %s",
-					channel->GetApplicationName(), channel->GetName().CStr(),
-					remote->ToString().CStr());
+		logti("The RTMP client has disconnected: [%s], remote: %s",
+			  channel->GetNamePath().CStr(),
+			  remote->ToString().CStr());
 
 		PushProvider::OnChannelDeleted(remote->GetNativeHandle());
 	}
-}
+}  // namespace pvd

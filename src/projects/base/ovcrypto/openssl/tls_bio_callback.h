@@ -17,7 +17,7 @@
 #include <openssl/tls1.h>
 #include <openssl/x509v3.h>
 
-#include <cstdint>
+#include <stdint.h>
 #include <functional>
 
 #include "tls_context.h"

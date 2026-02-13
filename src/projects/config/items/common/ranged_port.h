@@ -22,6 +22,7 @@ namespace cfg
 			explicit RangedPort(const char *port)
 				: Port(port)
 			{
+				SetPort(port);
 			}
 
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetPortList, _port_value);
@@ -53,7 +54,7 @@ namespace cfg
 					case 2: {
 						// Port range
 						int start_port = ov::Converter::ToInt32(range[0]);
-						int end_port = ov::Converter::ToInt32(range[1]);
+						int end_port   = ov::Converter::ToInt32(range[1]);
 
 						if (((IsValidPort(start_port) == false) || (IsValidPort(end_port) == false)) ||
 							(start_port > end_port))
@@ -77,24 +78,30 @@ namespace cfg
 			}
 
 			MAY_THROWS(cfg::ConfigError)
-			void FromString(const ov::String &str) override
+			void SetPort(const ov::String &str)
 			{
-				_port = str;
+				_port		 = str;
 				_socket_type = ov::SocketType::Unknown;
 				_port_value.clear();
 
-				auto tokens = str.Trim().Split("/");
+				auto tokens	 = str.Trim().Split("/");
 
 				// Default: UDP
 				_socket_type = (tokens.size() != 2) ? ov::SocketType::Udp : GetSocketType(tokens[1]);
 
 				// Parse port list
-				auto ports = tokens[0].Trim().Split(",");
+				auto ports	 = tokens[0].Trim().Split(",");
 
 				for (auto &port_item : ports)
 				{
 					AddPorts(port_item.Trim());
 				}
+			}
+
+			MAY_THROWS(cfg::ConfigError)
+			void FromString(const ov::String &str) override
+			{
+				SetPort(str);
 			}
 		};
 	}  // namespace cmn

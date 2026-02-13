@@ -32,5 +32,5 @@ namespace cfg
 				EnabledModules _publishers;
 			};
 		}  // namespace sig
-	}	   // namespace vhost
+	}  // namespace vhost
 }  // namespace cfg

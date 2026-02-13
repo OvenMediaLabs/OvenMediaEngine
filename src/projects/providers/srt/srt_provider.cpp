@@ -10,15 +10,16 @@
 #include "srt_provider.h"
 
 #include <modules/physical_port/physical_port_manager.h>
+#include <modules/srt/srt.h>
 #include <orchestrator/orchestrator.h>
 
-#include "srt_provider_private.h"
 #include "providers/mpegts/mpegts_application.h"
 #include "providers/mpegts/mpegts_stream.h"
+#include "srt_provider_private.h"
 
 namespace pvd
 {
-	std::shared_ptr<SrtProvider> SrtProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	std::shared_ptr<SrtProvider> SrtProvider::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 	{
 		auto provider = std::make_shared<SrtProvider>(server_config, router);
 		if (!provider->Start())
@@ -28,10 +29,10 @@ namespace pvd
 		return provider;
 	}
 
-	SrtProvider::SrtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router)
+	SrtProvider::SrtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: PushProvider(server_config, router)
 	{
-		logtd("Created SRT Provider module.");
+		logtt("Created SRT Provider module.");
 	}
 
 	SrtProvider::~SrtProvider()
@@ -42,52 +43,115 @@ namespace pvd
 	bool SrtProvider::Start()
 	{
 		auto &server_config = GetServerConfig();
-		auto &srt_config = server_config.GetBind().GetProviders().GetSrt();
+		auto &srt_bind_config = server_config.GetBind().GetProviders().GetSrt();
 
-		if(srt_config.IsParsed() == false)
+		if (srt_bind_config.IsParsed() == false)
 		{
 			logtw("%s is disabled by configuration", GetProviderName());
 			return true;
 		}
 
-		auto srt_address = ov::SocketAddress(server_config.GetIp(), static_cast<uint16_t>(srt_config.GetPort().GetPort()));
-		bool is_parsed;
-		auto worker_count = srt_config.GetWorkerCount(&is_parsed);
-		worker_count = is_parsed ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+		// Init StreamMap if exist
+		_stream_url_resolver.Initialize(srt_bind_config.GetStreamMap().GetStreamList());
 
-		_physical_port = PhysicalPortManager::GetInstance()->CreatePort("SRT", ov::SocketType::Srt, srt_address, worker_count);
-		if (_physical_port == nullptr)
+		bool is_configured;
+		bool is_port_configured;
+		auto &port_config = srt_bind_config.GetPort(&is_port_configured);
+
+		if (is_port_configured == false)
 		{
-			logte("Could not initialize phyiscal port for SRT server: %s", srt_address.ToString().CStr());
+			logtw("%s is disabled - No port is configured", GetProviderName());
+			return true;
+		}
+
+		std::vector<ov::SocketAddress> address_list;
+		try
+		{
+			address_list = ov::SocketAddress::Create(server_config.GetIPList(), port_config.GetPortList());
+		}
+		catch (const ov::Error &e)
+		{
+			logte("Could not listen for %s Server: %s", GetProviderName(), e.What());
 			return false;
 		}
-		else
+
+		bool result = true;
+		std::vector<ov::String> address_string_list;
+		std::vector<std::shared_ptr<PhysicalPort>> physical_port_list;
+
+		auto physical_port_manager = PhysicalPortManager::GetInstance();
+
+		auto worker_count = srt_bind_config.GetWorkerCount(&is_configured);
+		worker_count = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+		auto thread_per_socket = srt_bind_config.IsThreadPerSocket();
+
+		for (const auto &address : address_list)
 		{
-			logti("%s is listening on %s/%s", GetProviderName(), srt_address.ToString().CStr(), ov::StringFromSocketType(ov::SocketType::Srt));
+			auto physical_port = physical_port_manager->CreatePort(
+				"SRT", ov::SocketType::Srt, address, worker_count, thread_per_socket, 0, 0,
+				[=](const std::shared_ptr<ov::Socket> &socket) -> std::shared_ptr<ov::Error> {
+					return SrtOptionProcessor::SetOptions(socket, srt_bind_config.GetOptions());
+				});
+
+			if (physical_port == nullptr)
+			{
+				logte("Could not initialize phyiscal port for %s on %s", GetProviderName(), address.ToString().CStr());
+				result = false;
+				break;
+			}
+
+			address_string_list.emplace_back(address.ToString());
+
+			physical_port->AddObserver(this);
+			physical_port_list.push_back(physical_port);
 		}
 
-		_physical_port->AddObserver(this);
+		if (result)
+		{
+			logti("%s is listening on %s/%s",
+				  GetProviderName(),
+				  ov::String::Join(address_string_list, ", ").CStr(),
+				  ov::StringFromSocketType(ov::SocketType::Srt));
 
-		return Provider::Start();
+			{
+				std::lock_guard lock_guard{_physical_port_list_mutex};
+				_physical_port_list = std::move(physical_port_list);
+			}
+
+			return PushProvider::Start();
+		}
+
+		for (auto &physical_port : physical_port_list)
+		{
+			physical_port->RemoveObserver(this);
+			physical_port_manager->DeletePort(physical_port);
+		}
+
+		return false;
 	}
 
 	bool SrtProvider::Stop()
 	{
-		if(_physical_port != nullptr)
+		_physical_port_list_mutex.lock();
+		auto physical_port_list = std::move(_physical_port_list);
+		_physical_port_list_mutex.unlock();
+
+		auto physical_port_manager = PhysicalPortManager::GetInstance();
+
+		for (auto &physical_port : physical_port_list)
 		{
-			_physical_port->RemoveObserver(this);
-			PhysicalPortManager::GetInstance()->DeletePort(_physical_port);
-			_physical_port = nullptr;
+			physical_port->RemoveObserver(this);
+			physical_port_manager->DeletePort(physical_port);
 		}
 
-		return Provider::Stop();
+		return PushProvider::Stop();
 	}
 
 	bool SrtProvider::OnCreateHost(const info::Host &host_info)
 	{
 		return true;
 	}
-	
+
 	bool SrtProvider::OnDeleteHost(const info::Host &host_info)
 	{
 		return true;
@@ -95,12 +159,21 @@ namespace pvd
 
 	std::shared_ptr<pvd::Application> SrtProvider::OnCreateProviderApplication(const info::Application &application_info)
 	{
-		if(IsModuleAvailable() == false)
+		if (IsModuleAvailable() == false)
 		{
 			return nullptr;
 		}
 
-		return MpegTsApplication::Create(GetSharedPtrAs<pvd::PushProvider>(), application_info);
+		auto application = MpegTsApplication::Create(GetSharedPtrAs<pvd::PushProvider>(), application_info);
+		if (application == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto audio_map = application_info.GetConfig().GetProviders().GetSrtProvider().GetAudioMap();
+		application->AddAudioMapItems(audio_map);
+
+		return application;
 	}
 
 	bool SrtProvider::OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application)
@@ -110,122 +183,131 @@ namespace pvd
 
 	void SrtProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 	{
-		logti("The SRT client has connected : %s [%s]", remote->ToString().CStr(), remote->GetStreamId().CStr());
+		auto orchestrator = ocst::Orchestrator::GetInstance();
 		
-		// Get app/stream name from streamid
-		auto streamid = remote->GetStreamId();
+		logti("The SRT client has connected : %s [%d] [%s]", remote->ToString().CStr(), remote->GetNativeHandle(), remote->GetStreamId().CStr());
 
-		// streamid format is below
-		// urlencode(srt://host[:port]/app/stream?query=value)
-		auto decoded_url = ov::Url::Decode(streamid);
-		auto parsed_url = ov::Url::Parse(decoded_url);
-		if(parsed_url == nullptr)
+		auto [final_url, host_info_item] = _stream_url_resolver.Resolve(remote);
+
+		if ((final_url == nullptr) || (host_info_item.has_value() == false))
 		{
-			logte("SRT's streamid streamid must be in the following format, percent encoded. srt://{host}[:port]/{app}/{stream}?{query}={value} : %s", streamid.CStr());
 			remote->Close();
 			return;
 		}
+
+		const auto &host_info = host_info_item.value();
+
+		auto requested_url = final_url;
 
 		auto channel_id = remote->GetNativeHandle();
-		auto vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(parsed_url->Host(), parsed_url->App());
-		auto stream_name = parsed_url->Stream();
 
-		// Check if application is exist
-		if(GetApplicationByName(vhost_app_name) == nullptr)
-		{
-			logte("Could not find %s application : %s", vhost_app_name.CStr());
-			remote->Close();
-			return;
-		}
-
-		//TODO(Getroot): For security enhancement, 
+		//TODO(Getroot): For security enhancement,
 		// it should be checked whether the actual ip:port is the same as the ip:port of streamid (after dns resolve if it is domain).
 
-		// SingedPolicy
-		uint64_t life_time = 0;
 		auto remote_address = remote->GetRemoteAddress();
-		auto [signed_policy_result, signed_policy] = VerifyBySignedPolicy(parsed_url, remote_address);
-		if(signed_policy_result == AccessController::VerificationResult::Off)
+		auto request_info = std::make_shared<ac::RequestInfo>(final_url, nullptr, remote, nullptr);
+
+		// SignedPolicy
+		uint64_t life_time = 0;
+		
+		auto [signed_policy_result, signed_policy] = VerifyBySignedPolicy(host_info, request_info);
+
+		switch (signed_policy_result)
 		{
-			// Success
-		}
-		else if(signed_policy_result == AccessController::VerificationResult::Pass)
-		{
-			life_time = signed_policy->GetStreamExpireEpochMSec();
-		}
-		else if(signed_policy_result == AccessController::VerificationResult::Error)
-		{
-			// will not reach here
-			remote->Close();
-			return;
-		}
-		else if(signed_policy_result == AccessController::VerificationResult::Fail)
-		{
-			logtw("%s", signed_policy->GetErrMessage().CStr());
-			remote->Close();
-			return;
+			case AccessController::VerificationResult::Error:
+				// will not reach here
+				remote->Close();
+				return;
+
+			case AccessController::VerificationResult::Fail:
+				logtw("%s", signed_policy->GetErrMessage().CStr());
+				remote->Close();
+				return;
+
+			case AccessController::VerificationResult::Off:
+				// Success
+				break;
+
+			case AccessController::VerificationResult::Pass:
+				life_time = signed_policy->GetStreamExpireEpochMSec();
+				break;
 		}
 
-		auto [webhooks_result, admission_webhooks] = VerifyByAdmissionWebhooks(parsed_url, remote_address);
-		if(webhooks_result == AccessController::VerificationResult::Off)
+		// Admission Webhooks
+		auto [webhooks_result, admission_webhooks] = VerifyByAdmissionWebhooks(host_info, request_info);
+
+		auto vhost_app_name						   = orchestrator->ResolveApplicationName(host_info.GetName(), final_url->App());
+		auto stream_name						   = final_url->Stream();
+
+		switch (webhooks_result)
 		{
-			// Success
-		}
-		else if(webhooks_result == AccessController::VerificationResult::Pass)
-		{
-			// Lifetime
-			if(admission_webhooks->GetLifetime() != 0)
-			{
-				// Choice smaller value
-				auto stream_expired_msec_from_webhooks = ov::Clock::NowMSec() + admission_webhooks->GetLifetime();
-				if(life_time == 0 || stream_expired_msec_from_webhooks < life_time)
+			case AccessController::VerificationResult::Error:
+				logtw("AdmissionWebhooks error : %s", final_url->ToUrlString().CStr());
+				remote->Close();
+				return;
+
+			case AccessController::VerificationResult::Fail:
+				logtw("AdmissionWebhooks error : %s", admission_webhooks->GetErrReason().CStr());
+				remote->Close();
+				return;
+
+			case AccessController::VerificationResult::Off:
+				// Success
+				break;
+
+			case AccessController::VerificationResult::Pass:
+				// Lifetime
+				if (admission_webhooks->GetLifetime() != 0)
 				{
-					life_time = stream_expired_msec_from_webhooks;
+					// Choice smaller value
+					auto stream_expired_msec_from_webhooks = ov::Clock::NowMSec() + admission_webhooks->GetLifetime();
+					if (life_time == 0 || stream_expired_msec_from_webhooks < life_time)
+					{
+						life_time = stream_expired_msec_from_webhooks;
+					}
 				}
-			}
 
-			// Redirect URL
-			if(admission_webhooks->GetNewURL() != nullptr)
-			{
-				auto new_url = admission_webhooks->GetNewURL();
-				vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(new_url->Host(), new_url->App());
-				stream_name = new_url->Stream();
-			}
+				// Redirect URL
+				if (admission_webhooks->GetNewURL() != nullptr)
+				{
+					final_url	   = admission_webhooks->GetNewURL();
+					vhost_app_name = orchestrator->ResolveApplicationNameFromDomain(final_url->Host(), final_url->App());
+					stream_name	   = final_url->Stream();
+				}
+				break;
 		}
-		else if(webhooks_result == AccessController::VerificationResult::Error)
+
+		// Check if application is exist
+		if (GetApplicationByName(vhost_app_name) == nullptr)
 		{
-			logtw("AdmissionWebhooks error : %s", parsed_url->ToUrlString().CStr());
-			remote->Close();
-			return;
-		}
-		else if(webhooks_result == AccessController::VerificationResult::Fail)
-		{
-			logtw("AdmissionWebhooks error : %s", admission_webhooks->GetErrReason().CStr());
+			logte("Could not find vhost/app: %s", vhost_app_name.CStr());
 			remote->Close();
 			return;
 		}
 
 		auto stream = MpegTsStream::Create(StreamSourceType::Srt, channel_id, vhost_app_name, stream_name, remote, *remote->GetRemoteAddress(), life_time, GetSharedPtrAs<pvd::PushProvider>());
+		stream->SetRequestedUrl(requested_url);
+		stream->SetFinalUrl(final_url);
 
 		PushProvider::OnChannelCreated(remote->GetNativeHandle(), stream);
 	}
 
 	void SrtProvider::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
-										const ov::SocketAddress &address,
-										const std::shared_ptr<const ov::Data> &data)
+									 const ov::SocketAddress &address,
+									 const std::shared_ptr<const ov::Data> &data)
 	{
 		auto channel_id = remote->GetNativeHandle();
 		PushProvider::OnDataReceived(channel_id, data);
 	}
 
-	void SrtProvider::OnTimer(const std::shared_ptr<PushStream> &channel)
+	void SrtProvider::OnTimedOut(const std::shared_ptr<PushStream> &channel)
 	{
-		PushProvider::OnChannelDeleted(channel);
+		
 	}
 
 	void SrtProvider::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
-										PhysicalPortDisconnectReason reason,
-										const std::shared_ptr<const ov::Error> &error)
+									 PhysicalPortDisconnectReason reason,
+									 const std::shared_ptr<const ov::Error> &error)
 	{
 		logti("SrtProvider::OnDisonnected : %s [%s]", remote->ToString().CStr(), remote->GetStreamId().CStr());
 
@@ -233,18 +315,27 @@ namespace pvd
 		if (channel == nullptr)
 		{
 			// It probably rejected on OnConnected
-			logtd("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
+			logtt("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
 			return;
 		}
 
 		// Send Close to Admission Webhooks
-		if (remote)
+		auto requested_url = channel->GetRequestedUrl();
+		auto final_url = channel->GetFinalUrl();
+		if (remote && requested_url && final_url)
 		{
-			auto parsed_url = ov::Url::Parse(ov::Url::Decode(remote->GetStreamId()));
-			auto remote_address = remote->GetRemoteAddress();
-			if (parsed_url && remote_address)
+			auto [new_final_url, host_info_item] = _stream_url_resolver.Resolve(remote);
+
+			if ((new_final_url == nullptr) || (host_info_item.has_value() == false))
 			{
-				SendCloseAdmissionWebhooks(parsed_url, remote_address);
+				OV_ASSERT2(false);
+				logte("Failed to resolve final URL for SRT disconnection: %s", remote->ToString().CStr());
+			}
+			else
+			{
+				auto request_info = std::make_shared<ac::RequestInfo>(requested_url, final_url, remote, nullptr);
+
+				SendCloseAdmissionWebhooks(host_info_item.value(), request_info);
 			}
 		}
 		// the return check is not necessary

@@ -22,9 +22,9 @@ namespace cfg
 		value->ToXml(node, include_default_values);
 	}
 
-	void CopyValueToJson(Json::Value &json, const Item *value, bool include_default_values)
+	void CopyValueToJson(Json::Value &json, const Item *value, bool original_value, bool include_default_values)
 	{
-		value->ToJson(json, include_default_values);
+		value->ToJson(json, original_value, include_default_values);
 	}
 
 	void SetItemDataFromDataSource(Item *item, const ItemName &item_name, const DataSource &data_source)

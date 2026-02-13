@@ -8,6 +8,4 @@
 //==============================================================================
 #pragma once
 
-#define OV_LOG_TAG                          "HttpServer"
-
-#define HTTP_CHECK_METHOD(method, flag)     OV_CHECK_FLAG((uint16_t)method, (uint16_t)flag)
+#define OV_LOG_TAG_PREFIX                          "HTTP"

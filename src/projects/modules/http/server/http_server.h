@@ -26,7 +26,7 @@
 
 namespace ocst
 {
-	struct VirtualHost;
+	class VirtualHost;
 }
 
 namespace http
@@ -42,7 +42,7 @@ namespace http
 			using ClientList = std::unordered_map<ov::Socket *, std::shared_ptr<HttpConnection>>;
 			using ClientIterator = std::function<bool(const std::shared_ptr<HttpConnection> &stream)>;
 
-			HttpServer(const char *server_name);
+			HttpServer(const char *server_name, const char *server_short_name);
 			~HttpServer() override;
 
 			virtual bool Start(const ov::SocketAddress &address, int worker_count, bool enable_http2);
@@ -59,7 +59,8 @@ namespace http
 			ov::Socket *FindClient(ClientIterator iterator);
 
 			// If the iterator returns true, the client will be disconnected
-			bool DisconnectIf(ClientIterator iterator);
+			// And returns the number of disconnected clients
+			size_t DisconnectIf(ClientIterator iterator);
 
 		protected:
 			std::shared_ptr<HttpConnection> FindClient(const std::shared_ptr<ov::Socket> &remote);
@@ -78,6 +79,7 @@ namespace http
 			}
 
 			ov::String _server_name;
+			ov::String _server_short_name;
 			mutable std::mutex _physical_port_mutex;
 			std::shared_ptr<PhysicalPort> _physical_port = nullptr;
 
@@ -90,8 +92,11 @@ namespace http
 
 		private:
 			ov::DelayQueueAction Repeater(void *parameter);
-			ov::DelayQueue _repeater{"HTTPTimer"};
+
+			static ov::DelayQueue _repeater;
+
 			bool _http2_enabled = true;
 		};
+
 	}  // namespace svr
 }  // namespace http

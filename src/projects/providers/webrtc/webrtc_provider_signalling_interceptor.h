@@ -39,4 +39,9 @@ public:
 
 		return false;
 	}
+
+	bool IsCacheable() const override
+	{
+		return true;
+	}
 };

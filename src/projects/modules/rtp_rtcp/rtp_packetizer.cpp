@@ -310,7 +310,7 @@ bool RtpPacketizer::PacketizeAudio(FrameType frame_type,
 		return false;
 	}
 
-	// logd("RtpSender.Packet", "Trying to send packet:\n%s", packet->GetData()->Dump().CStr());
+	// logt("RtpSender.Packet", "Trying to send packet:\n%s", packet->GetData()->Dump().CStr());
 
 	_stream->OnRtpPacketized(packet);
 

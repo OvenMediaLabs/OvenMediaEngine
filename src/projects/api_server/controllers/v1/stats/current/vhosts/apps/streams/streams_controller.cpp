@@ -28,5 +28,5 @@ namespace api
 				return ::serdes::JsonFromMetrics(stream);
 			}
 		}  // namespace stats
-	}	   // namespace v1
+	}  // namespace v1
 }  // namespace api

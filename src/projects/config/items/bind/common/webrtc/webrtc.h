@@ -51,6 +51,6 @@ namespace cfg
 					Register<Optional>("IceServers", &_ice_servers);
 				};
 			};
-		}  // namespace pub
-	} // namespace bind
+		}  // namespace cmm
+	}  // namespace bind
 }  // namespace cfg

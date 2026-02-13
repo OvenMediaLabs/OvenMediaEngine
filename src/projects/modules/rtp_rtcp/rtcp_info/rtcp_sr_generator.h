@@ -9,9 +9,9 @@ class RtcpSRGenerator
 public:
     RtcpSRGenerator(uint32_t ssrc, uint32_t codec_rate);
 
-	void AddRTPPacketAndGenerateRtcpSR(const RtpPacket &rtp_packet);
+	void AddRTPPacketInfo(const std::shared_ptr<RtpPacket> &rtp_packet);
 	bool IsAvailableRtcpSRPacket() const;
-	std::shared_ptr<RtcpPacket>   PopRtcpSRPacket();
+	std::shared_ptr<RtcpPacket> PopRtcpSRPacket();
 	
 private:
 	uint32_t GetElapsedTimeMSFromCreated();

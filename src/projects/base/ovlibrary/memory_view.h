@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <cstddef>
 #include <vector>
 #include <type_traits>

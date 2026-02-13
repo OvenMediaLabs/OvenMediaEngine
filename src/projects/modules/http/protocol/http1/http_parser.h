@@ -40,7 +40,12 @@ namespace http
 					return _parse_status;
 				}
 
-				const std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> &GetHeaders() const noexcept
+				bool IsParsing() const
+				{
+					return (_parse_status == StatusCode::PartialContent);
+				}
+
+				const HttpHeaderMap &GetHeaders() const noexcept
 				{
 					return _headers;
 				}
@@ -57,7 +62,7 @@ namespace http
 					{
 						return "1.1";
 					}
-					
+
 					return tokens[1];
 				}
 
@@ -73,21 +78,21 @@ namespace http
 					return ov::Converter::ToDouble(tokens[1]);
 				}
 
-				ov::String GetHeader(const ov::String &key) const noexcept
+				std::optional<ov::String> GetHeader(const ov::String &key) const noexcept
 				{
-					return GetHeader(key, "");
+					auto item = _headers.find(key);
+
+					if (item == _headers.cend())
+					{
+						return std::nullopt;
+					}
+
+					return item->second;
 				}
 
 				ov::String GetHeader(const ov::String &key, ov::String default_value) const noexcept
 				{
-					auto item = _headers.find(key.LowerCaseString());
-
-					if (item == _headers.cend())
-					{
-						return default_value;
-					}
-
-					return item->second;
+					return GetHeader(key).value_or(default_value);
 				}
 
 				const bool IsHeaderExists(const ov::String &key) const noexcept
@@ -112,18 +117,18 @@ namespace http
 
 				StatusCode _parse_status = StatusCode::PartialContent;
 
-				Method _method = Method::Unknown;
+				Method _method			 = Method::Unknown;
 				ov::String _http_version;
 
 				bool _is_header_found = false;
 				// A temporary buffer to extract HTTP header
 				ov::String _header_string;
-				std::unordered_map<ov::String, ov::String, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _headers;
+				HttpHeaderMap _headers;
 
 				// Frequently used headers
-				size_t _content_length = 0L;
+				size_t _content_length	 = 0L;
 				bool _has_content_length = false;
 			};
 		}  // namespace h1
-	} // namespace prot
+	}  // namespace prot
 }  // namespace http

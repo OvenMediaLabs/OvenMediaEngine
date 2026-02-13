@@ -8,9 +8,10 @@
 //==============================================================================
 #pragma once
 
+#include <stdint.h>
+
 #include <any>
 #include <condition_variable>
-#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -20,17 +21,26 @@
 #include <tuple>
 #include <vector>
 
-#include "base/ovlibrary/string.h"
 #include "base/mediarouter/media_type.h"
+#include "base/ovlibrary/string.h"
 
 #define MAX_FRAG_COUNT 20
 
+constexpr const char *kSubtitleTrackVariantName = "subtitle";
+
 enum class CommonErrorCode : int16_t
 {
-	NOT_FOUND = -2,
-	ERROR = -1,
 	DISABLED = 0,
-	SUCCESS = 1
+	SUCCESS = 1,
+	CREATED = 2,
+
+	ERROR = -1,
+	NOT_FOUND = -2,
+	ALREADY_EXISTS = -3,
+	INVALID_REQUEST = -4,
+	UNAUTHORIZED = -5,
+	INVALID_PARAMETER = -6,
+	INVALID_STATE = -7
 };
 
 enum class StreamSourceType : int8_t
@@ -45,9 +55,11 @@ enum class StreamSourceType : int8_t
 	Srt,
 	Transcoder,
 	File,
+	Scheduled,
+	Multiplex
 };
 
-enum class StreamRepresentationType : int8_t 
+enum class StreamRepresentationType : int8_t
 {
 	Source,
 	Relay
@@ -58,7 +70,6 @@ enum class ProviderStreamDirection : int8_t
 	Pull,
 	Push
 };
-
 
 // Note : If you update ProviderType, you have to update /base/ovlibrary/converter.h:ToString(ProviderType type)
 enum class ProviderType : int8_t
@@ -72,6 +83,16 @@ enum class ProviderType : int8_t
 	WebRTC,
 	Srt,
 	File,
+	Scheduled,
+	Multiplex
+};
+
+enum class TimestampMode : int8_t
+{
+	Auto = 0, // Default mode
+	ZeroBased,
+	Original,
+	SystemClock
 };
 
 // Note : If you update PublisherType, you have to update /base/ovlibrary/converter.h:ToString(PublisherType type)
@@ -79,15 +100,18 @@ enum class PublisherType : int8_t
 {
 	Unknown = 0,
 	Webrtc,
-	MpegtsPush,
-	RtmpPush,
-	Hls,
-	Dash,
-	LLDash,
+	MpegtsPush, // Deprecated
+	RtmpPush,	// Deprecated
+	SrtPush,	// Deprecated
+	Push,
 	LLHls,
 	Ovt,
 	File,
 	Thumbnail,
+	Hls, // HLSv3
+	Srt,
+
+	// End Marker
 	NumberOfPublishers,
 };
 
@@ -97,7 +121,6 @@ enum class WebRtcBandwidthEstimationType : uint8_t
 	TransportCc,
 	None,
 };
-
 
 enum class FrameType : int8_t
 {
@@ -140,6 +163,114 @@ public:
 
 	// Currently only used for RTSP Provider only
 	bool last_fragment_complete = false;
+
+	void AdjustOffset(size_t offset)
+	{
+		for (auto &offset : fragmentation_offset)
+		{
+			offset += offset;
+		}
+	}
+
+	size_t CalculateNextOffset() const
+	{
+		if (fragmentation_offset.empty())
+		{
+			return 0;
+		}
+
+		return fragmentation_offset.back() + fragmentation_length.back();
+	}
+
+	void InsertFragment(size_t offset, size_t length)
+	{
+		fragmentation_offset.insert(fragmentation_offset.begin(), offset);
+		fragmentation_length.insert(fragmentation_length.begin(), length);
+
+		AdjustOffset(length);
+	}
+
+	bool InsertFragments(const FragmentationHeader *other)
+	{
+		if (other == nullptr)
+		{
+			return false;
+		}
+
+		// Calculate the next offset based on the `other`'s items
+		auto next_offset = other->CalculateNextOffset();
+
+		// Adjust the offsets of the current header
+		AdjustOffset(next_offset);
+
+		// Insert the `other`'s offsets and lengths at the beginning
+		fragmentation_offset.insert(fragmentation_offset.begin(), other->fragmentation_offset.begin(), other->fragmentation_offset.end());
+		fragmentation_length.insert(fragmentation_length.begin(), other->fragmentation_length.begin(), other->fragmentation_length.end());
+
+		return true;
+	}
+
+	void AddFragment(size_t offset, size_t length)
+	{
+		fragmentation_offset.push_back(offset);
+		fragmentation_length.push_back(length);
+	}
+
+	void AddFragment(size_t length)
+	{
+		return AddFragment(CalculateNextOffset(), length);
+	}
+
+	bool AddFragments(const std::vector<size_t> &offset_list, const std::vector<size_t> &length_list)
+	{
+		const auto fragmentation_count = offset_list.size();
+
+		if (fragmentation_count != length_list.size())
+		{
+			// The fragmentation offset and length must always be managed as pairs, so their counts must always match
+			OV_ASSERT2(fragmentation_count == length_list.size());
+			return false;
+		}
+
+		if (fragmentation_count == 0)
+		{
+			// If the current header is empty, we can simply copy the other header's data
+			fragmentation_offset = offset_list;
+			fragmentation_length = length_list;
+			return true;
+		}
+
+		// If the current header is not empty, we need to accumulate the offsets
+		const auto next_offset = CalculateNextOffset();
+
+		for (size_t i = 0; i < fragmentation_count; ++i)
+		{
+			AddFragment(next_offset + offset_list[i], length_list[i]);
+		}
+
+		return true;
+	}
+
+	// Append another `FragmentationHeader`'s offset and length to this `FragmentationHeader`
+	bool AddFragments(const FragmentationHeader *other)
+	{
+		if (other == nullptr)
+		{
+			return false;
+		}
+
+		return AddFragments(other->fragmentation_offset, other->fragmentation_length);
+	}
+
+	std::optional<std::tuple<size_t, size_t>> GetFragment(size_t index) const
+	{
+		if (index < fragmentation_offset.size())
+		{
+			return std::make_tuple(fragmentation_offset[index], fragmentation_length[index]);
+		}
+
+		return std::nullopt;
+	}
 
 	size_t GetCount() const
 	{
@@ -270,7 +401,7 @@ struct CodecSpecificInfo
 {
 	cmn::MediaCodecId codec_type = cmn::MediaCodecId::None;
 	const char *codec_name = nullptr;
-	CodecSpecificInfoUnion codec_specific = {0};
+	CodecSpecificInfoUnion codec_specific = {};
 };
 
 static ov::String StringFromStreamSourceType(const StreamSourceType &type)
@@ -284,7 +415,7 @@ static ov::String StringFromStreamSourceType(const StreamSourceType &type)
 		case StreamSourceType::Rtmp:
 			return "Rtmp";
 		case StreamSourceType::RtmpPull:
-			return "RtmpPull";			
+			return "RtmpPull";
 		case StreamSourceType::Rtsp:
 			return "Rtsp";
 		case StreamSourceType::RtspPull:
@@ -296,7 +427,11 @@ static ov::String StringFromStreamSourceType(const StreamSourceType &type)
 		case StreamSourceType::Mpegts:
 			return "MPEGTS";
 		case StreamSourceType::File:
-			return "File";			
+			return "File";
+		case StreamSourceType::Scheduled:
+			return "Scheduled";
+		case StreamSourceType::Multiplex:
+			return "Multiplex";
 	}
 
 	return "Unknown";
@@ -309,7 +444,7 @@ static ov::String StringFromStreamRepresentationType(const StreamRepresentationT
 		case StreamRepresentationType::Relay:
 			return "Relay";
 		case StreamRepresentationType::Source:
-			return "Source";			
+			return "Source";
 	}
 
 	return "Unknown";
@@ -326,17 +461,21 @@ static ov::String StringFromProviderType(const ProviderType &type)
 		case ProviderType::Rtsp:
 			return "RTSP";
 		case ProviderType::RtspPull:
-			return "RTSP Pull";
+			return "RTSPPull";
 		case ProviderType::Ovt:
 			return "OVT";
 		case ProviderType::Mpegts:
-			return "MPEG-TS";
+			return "MPEGTS";
 		case ProviderType::WebRTC:
 			return "WebRTC";
 		case ProviderType::Srt:
 			return "SRT";
 		case ProviderType::File:
-			return "File";			
+			return "File";
+		case ProviderType::Scheduled:
+			return "Scheduled";
+		case ProviderType::Multiplex:
+			return "Multiplex";
 	}
 
 	return "Unknown";
@@ -355,12 +494,10 @@ static ov::String StringFromPublisherType(const PublisherType &type)
 			return "MPEGTSPush";
 		case PublisherType::RtmpPush:
 			return "RTMPPush";
-		case PublisherType::Hls:
-			return "HLS";
-		case PublisherType::Dash:
-			return "DASH";
-		case PublisherType::LLDash:
-			return "LLDASH";
+		case PublisherType::SrtPush:
+			return "SRTPush";
+		case PublisherType::Push:
+			return "Push";			
 		case PublisherType::LLHls:
 			return "LLHLS";
 		case PublisherType::Ovt:
@@ -368,59 +505,56 @@ static ov::String StringFromPublisherType(const PublisherType &type)
 		case PublisherType::File:
 			return "File";
 		case PublisherType::Thumbnail:
-			return "Thumbnail";			
+			return "Thumbnail";
+		case PublisherType::Hls:
+			return "HLSv3";
+		case PublisherType::Srt:
+			return "SRT";
 	}
 
 	return "Unknown";
 }
 
-static ov::String StringFromMediaCodecId(const cmn::MediaCodecId &type)
+static ProviderType ProviderTypeFromSourceType(const StreamSourceType &type)
 {
+	ProviderType provider_type = ProviderType::Unknown;
 	switch (type)
 	{
-		case cmn::MediaCodecId::H264:
-			return "H264";
-		case cmn::MediaCodecId::H265:
-			return "H265";
-		case cmn::MediaCodecId::Vp8:
-			return "VP8";
-		case cmn::MediaCodecId::Vp9:
-			return "VP9";
-		case cmn::MediaCodecId::Flv:
-			return "FLV";
-		case cmn::MediaCodecId::Aac:
-			return "AAC";
-		case cmn::MediaCodecId::Mp3:
-			return "MP3";
-		case cmn::MediaCodecId::Opus:
-			return "OPUS";
-		case cmn::MediaCodecId::Jpeg:
-			return "JPEG";
-		case cmn::MediaCodecId::Png:
-			return "PNG";
-		case cmn::MediaCodecId::None:
+		case StreamSourceType::WebRTC:
+			provider_type = ProviderType::WebRTC;
+			break;
+		case StreamSourceType::Ovt:
+			provider_type = ProviderType::Ovt;
+			break;
+		case StreamSourceType::Rtmp:
+			provider_type = ProviderType::Rtmp;
+			break;
+		case StreamSourceType::Rtsp:
+			provider_type = ProviderType::Rtsp;
+			break;
+		case StreamSourceType::RtspPull:
+			provider_type = ProviderType::RtspPull;
+			break;
+		case StreamSourceType::Mpegts:
+			provider_type = ProviderType::Mpegts;
+			break;
+		case StreamSourceType::Srt:
+			provider_type = ProviderType::Srt;
+			break;
+		case StreamSourceType::Scheduled:
+			provider_type = ProviderType::Scheduled;
+			break;
+		case StreamSourceType::Multiplex:
+			provider_type = ProviderType::Multiplex;
+			break;
+		case StreamSourceType::File:
+			provider_type = ProviderType::File;
+			break;
+		case StreamSourceType::RtmpPull:
+		case StreamSourceType::Transcoder:
 		default:
-			return "Unknown";
+			break;
 	}
-}
 
-static ov::String StringFromMediaType(const cmn::MediaType &type)
-{
-	switch (type)
-	{
-		case cmn::MediaType::Video:
-			return "Video";
-		case cmn::MediaType::Audio:
-			return "Audio";
-		case cmn::MediaType::Data:
-			return "Data";
-		case cmn::MediaType::Subtitle:
-			return "Subtitle";
-		case cmn::MediaType::Attachment:
-			return "Attachment";
-		case cmn::MediaType::Unknown:
-		default:
-			return "Unknown";
-	}
+	return provider_type;
 }
-

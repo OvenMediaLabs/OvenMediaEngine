@@ -7,7 +7,7 @@ PROJECT_C_INCLUDES := \
 PROJECT_CXX_INCLUDES := \
 	$(PROJECT_C_INCLUDES)
 
-# -Wfatal-errors: build 중 첫 번째 오류를 만나면 멈춤
+# -Wfatal-errors: Stop at the first error encountered during build
 PROJECT_CFLAGS := \
 	-D__STDC_CONSTANT_MACROS \
 	-Wfatal-errors \
@@ -15,11 +15,13 @@ PROJECT_CFLAGS := \
 
 PROJECT_CXXFLAGS := \
 	$(PROJECT_CFLAGS) \
+	-DSPDLOG_COMPILED_LIB \
 	-Wliteral-suffix \
 	-std=c++17
 
 PROJECT_LDFLAGS := \
-	-ldl -lz
+	-ldl -lz \
+	-lstdc++fs				# Compatibility with C++17 and later versions
 
 include $(CLEAR_VARIABLES)
 include $(BUILD_SUB_AMS)

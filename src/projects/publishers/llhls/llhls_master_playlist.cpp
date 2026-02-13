@@ -7,354 +7,499 @@
 //
 //==============================================================================
 #include "llhls_master_playlist.h"
+
+#include <base/ovcrypto/base_64.h>
+#include <base/ovlibrary/zip.h>
+
 #include "llhls_private.h"
 
-#include <base/ovlibrary/zip.h>
-#include <modules/bitstream/codec_media_type.h>
+void LLHlsMasterPlaylist::SetDefaultOptions(bool legacy, bool rewind)
+{
+	_default_legacy = legacy;
+	_default_rewind = rewind;
+}
 
 void LLHlsMasterPlaylist::SetChunkPath(const ov::String &chunk_path)
 {
 	_chunk_path = chunk_path;
 }
 
-// Add X-MEDIA to the master playlist
-void LLHlsMasterPlaylist::AddMediaCandidateToMasterPlaylist(const ov::String &group_id, const std::shared_ptr<const MediaTrack> &track, const ov::String &chunk_uri)
+void LLHlsMasterPlaylist::SetCencProperty(const bmff::CencProperty &cenc_property)
 {
-	LLHlsMasterPlaylist::MediaInfo media_info;
-
-	media_info._type = track->GetMediaType()==cmn::MediaType::Video ? LLHlsMasterPlaylist::MediaInfo::Type::Video : LLHlsMasterPlaylist::MediaInfo::Type::Audio;
-	media_info._group_id = group_id; // Currently there is only one element per group.
-	media_info._name = "none";
-	media_info._default = true; // Currently there is no group media so all track is default
-	media_info._uri = chunk_uri;
-	media_info._track = track;
-
-	//TODO(Getroot) : If a group such as multilingual audio is supported in the future, the language value of the track must be supported.
-
-	AddGroupMedia(media_info);
+	_cenc_property = cenc_property;
 }
 
-// Add X-STREAM-INF to the master playlist
-void LLHlsMasterPlaylist::AddStreamInfToMasterPlaylist(const std::shared_ptr<const MediaTrack> &video_track, const ov::String &video_chunk_uri, 
-														const std::shared_ptr<const MediaTrack> &audio_track, const ov::String &audio_chunk_uri)
+bool LLHlsMasterPlaylist::AddMediaCandidateGroup(const std::shared_ptr<const MediaTrackGroup> &track_group, std::function<ov::String(const std::shared_ptr<const MediaTrack> &track)> chunk_uri_generator)
 {
-	LLHlsMasterPlaylist::StreamInfo stream_info;
-	if (video_track != nullptr)
-	{
-		stream_info._track = video_track;
-		stream_info._uri = video_chunk_uri;
-		
-		if (audio_track != nullptr)
-		{
-			stream_info._audio_group_id = ov::Converter::ToString(audio_track->GetId());
-		}
-	}
-	else if (audio_track != nullptr)
-	{
-		stream_info._track = audio_track;
-		stream_info._uri = audio_chunk_uri;
-	}
+	auto first_track = track_group->GetFirstTrack();
 
-	AddStreamInfo(stream_info);
-}
+	auto new_group = std::make_shared<MediaGroup>();
+	new_group->_group_id = track_group->GetName();
 
-
-bool LLHlsMasterPlaylist::AddGroupMedia(const MediaInfo &media_info)
-{
-	if (media_info._group_id.IsEmpty())
+	// Add media info
+	// bool first = true;
+	for (auto &track : track_group->GetTracks())
 	{
-		return false;
-	}
+		auto new_media_info = std::make_shared<MediaInfo>();
+		new_media_info->_group_id = track_group->GetName();
+		new_media_info->_type = track->GetMediaType();
+		new_media_info->_name = track->GetPublicName();
+		new_media_info->_language = track->GetLanguage();
+		new_media_info->_characteristics = track->GetCharacteristics();
+		new_media_info->_default = track->IsDefault();;
+		new_media_info->_auto_select = track->IsAutoSelect();
+		new_media_info->_forced = track->IsForced();
+		new_media_info->_instream_id = "";
+		new_media_info->_assoc_language = "";
+		new_media_info->_uri = chunk_uri_generator(track);
+		new_media_info->_track = track;
 
-	// Validate media info
-	// TODO(Getroot) : It it better to validate media info in the Config Module
-	auto it = _media_infos.find(media_info._group_id);
-	if (it != _media_infos.end())
-	{
-		auto first = it->second.front();
-		if (first._type != media_info._type || 
-			first._track->GetCodecId() != media_info._track->GetCodecId())
-		{
-			return false;
-		}
+		new_group->_media_infos.push_back(new_media_info);
+		// first = false;
 	}
 
-	// lock
-	std::lock_guard<std::shared_mutex> lock(_media_infos_guard);
-	_media_infos[media_info._group_id].push_back(media_info);
+	std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+	_media_groups.emplace(new_group->_group_id, new_group);
 
 	return true;
 }
 
-// Video + Audio + Subtitle + ClosedCaptions
-// But now OME support only Video + Audio
-bool LLHlsMasterPlaylist::AddStreamInfo(const StreamInfo &stream_info)
+bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo &media_info)
 {
-	if (stream_info._uri.IsEmpty())
+	auto media_group = GetMediaGroup(media_info._group_id);
+	if (media_group == nullptr)
 	{
-		return false;
-	}
+		media_group = std::make_shared<MediaGroup>();
+		media_group->_group_id = media_info._group_id;
 
-	// Video group
-	if (!stream_info._video_group_id.IsEmpty())
-	{
-		SetActiveMediaGroup(stream_info._video_group_id);
-	}
-
-	// Audio group
-	if (!stream_info._audio_group_id.IsEmpty())
-	{
-		SetActiveMediaGroup(stream_info._audio_group_id);
-	}
-
-	// Subtitle group
-	if (!stream_info._subtitle_group_id.IsEmpty())
-	{
-		SetActiveMediaGroup(stream_info._subtitle_group_id);
-	}
-
-	// Closed captions group
-	if (!stream_info._closed_captions_group_id.IsEmpty())
-	{
-		SetActiveMediaGroup(stream_info._closed_captions_group_id);
+		std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+		_media_groups.emplace(media_group->_group_id, media_group);
 	}
 	
-	// lock
-	std::lock_guard<std::shared_mutex> lock(_stream_infos_guard);
-	_stream_infos.push_back(stream_info);
+	auto new_media_info = std::make_shared<MediaInfo>();
+	new_media_info->_group_id = media_info._group_id;
+	new_media_info->_type = media_info._type;
+	new_media_info->_name = media_info._name;
+	new_media_info->_language = media_info._language;
+	new_media_info->_characteristics = media_info._characteristics;
+	new_media_info->_auto_select = media_info._auto_select;
+	new_media_info->_default = media_info._default;
+	new_media_info->_forced = media_info._forced;
+	new_media_info->_instream_id = media_info._instream_id;
+	new_media_info->_assoc_language = media_info._assoc_language;
+	new_media_info->_uri = media_info._uri;
+	new_media_info->_track = media_info._track;
+
+	std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+	media_group->_media_infos.push_back(new_media_info);
 
 	return true;
 }
 
-bool LLHlsMasterPlaylist::SetActiveMediaGroup(const ov::String &group_id)
+bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int video_index_hint, const ov::String &audio_group_id, const ov::String &subtitle_group_id)
 {
-	if (group_id.IsEmpty() == false)
+	auto new_stream_info = std::make_shared<StreamInfo>();
+
+	// Video/Audio or Video Only
+	if (video_group_id.IsEmpty() == false)
 	{
-		std::shared_lock<std::shared_mutex> media_infos_lock(_media_infos_guard);
-		auto it = _media_infos.find(group_id);
-		if (it == _media_infos.end())
+		auto video_group = GetMediaGroup(video_group_id);
+		if (video_group == nullptr || video_group->_media_infos.size() <= static_cast<std::size_t>(video_index_hint))
 		{
+			logte("Could not find valid video group: %s", video_group_id.CStr());
 			return false;
 		}
 
-		auto &media_infos = it->second;
-		for (auto &media_info : media_infos)
+		// first media info is used for stream info
+		new_stream_info->_media_info = video_group->_media_infos[video_index_hint];
+		auto video_track = new_stream_info->_media_info->_track;
+		if (video_track == nullptr)
 		{
-			media_info._used = true;
+			logte("Video track is not valid in first media info of video group: %s", video_group_id.CStr());
+			return false;
+		}
+
+		new_stream_info->_bandwidth += video_track->GetBitrate();
+		new_stream_info->_width = video_track->GetWidth();
+		new_stream_info->_height = video_track->GetHeight();
+		new_stream_info->_framerate = video_track->GetFrameRate();
+		new_stream_info->_codecs = video_track->GetCodecsParameter();
+
+		// 25-01-27 : Video group is not used now
+		// Active media group if video group has more than 1 media info
+		// if (video_group->_media_infos.size() > 1)
+		// {
+		// 	video_group->_used = true;
+		// 	new_stream_info->_video_group_id = video_group_id;
+		// }
+
+		if (audio_group_id.IsEmpty() == false)
+		{
+			auto audio_group = GetMediaGroup(audio_group_id);
+			if (audio_group == nullptr || audio_group->_media_infos.size() < 1)
+			{
+				logte("Could not find valid audio group: %s", audio_group_id.CStr());
+				return false;
+			}
+
+			audio_group->_used = true;
+			new_stream_info->_audio_group_id = audio_group_id;
+
+			auto audio_track = audio_group->_media_infos[0]->_track;
+			if (audio_track == nullptr)
+			{
+				logte("Audio track is not valid in first media info of audio group: %s", audio_group_id.CStr());
+				return false;
+			}
+
+			new_stream_info->_bandwidth += audio_track->GetBitrate();
+			new_stream_info->_codecs += ov::String::FormatString(",%s", audio_track->GetCodecsParameter().CStr());
+		}
+
+		if (subtitle_group_id.IsEmpty() == false)
+		{
+			auto subtitle_group = GetMediaGroup(subtitle_group_id);
+			if (subtitle_group == nullptr || subtitle_group->_media_infos.size() < 1)
+			{
+				logte("Could not find valid subtitle group: %s", subtitle_group_id.CStr());
+				return false;
+			}
+
+			subtitle_group->_used = true;
+			new_stream_info->_subtitle_group_id = subtitle_group_id;
 		}
 	}
+	// Audio Only
+	else if (audio_group_id.IsEmpty() == false)
+	{
+		auto audio_group = GetMediaGroup(audio_group_id);
+		if (audio_group == nullptr || audio_group->_media_infos.size() < 1)
+		{
+			logte("Could not find valid audio group: %s", audio_group_id.CStr());
+			return false;
+		}
+
+		// first media info is used for stream info
+		new_stream_info->_media_info = audio_group->_media_infos[0];
+		auto audio_track = new_stream_info->_media_info->_track;
+		if (audio_track == nullptr)
+		{
+			logte("Audio track is not valid in first media info of audio group: %s", audio_group_id.CStr());
+			return false;
+		}
+
+		new_stream_info->_bandwidth += audio_track->GetBitrate();
+		new_stream_info->_codecs = audio_track->GetCodecsParameter();
+
+		if (audio_group->_media_infos.size() > 1)
+		{
+			audio_group->_used = true;
+			new_stream_info->_audio_group_id = audio_group_id;
+		}
+
+		if (subtitle_group_id.IsEmpty() == false)
+		{
+			auto subtitle_group = GetMediaGroup(subtitle_group_id);
+			if (subtitle_group == nullptr || subtitle_group->_media_infos.size() < 1)
+			{
+				logte("Could not find valid subtitle group: %s", subtitle_group_id.CStr());
+				return false;
+			}
+
+			subtitle_group->_used = true;
+			new_stream_info->_subtitle_group_id = subtitle_group_id;
+		}
+	}
+	else
+	{
+		logte("video group id and audio group id are empty");
+		return false;
+	}
+
+	std::lock_guard<std::shared_mutex> lock(_stream_infos_guard);
+	_stream_infos.emplace_back(new_stream_info);
 
 	return true;
 }
 
-const LLHlsMasterPlaylist::MediaInfo &LLHlsMasterPlaylist::GetDefaultMediaInfo(const ov::String &group_id) const
+std::shared_ptr<LLHlsMasterPlaylist::MediaGroup> LLHlsMasterPlaylist::GetMediaGroup(const ov::String &group_id) const
 {
-	std::shared_lock<std::shared_mutex> media_infos_lock(_media_infos_guard);
+	std::shared_lock<std::shared_mutex> lock(_media_groups_guard);
 
-	auto it = _media_infos.find(group_id);
-	if (it == _media_infos.end())
+	auto it = _media_groups.find(group_id);
+	if (it == _media_groups.end())
 	{
-		return MediaInfo::InvalidMediaInfo();
+		return nullptr;
 	}
 
-	auto &media_infos = it->second;
-	for (auto &media_info : media_infos)
-	{
-		if (media_info._default == true)
-		{
-			return media_info;
-		}
-	}
-
-	return MediaInfo::InvalidMediaInfo();
+	return it->second;
 }
 
 void LLHlsMasterPlaylist::UpdateCacheForDefaultPlaylist()
 {
-	ov::String playlist = MakePlaylist("", false);
+	// Make default playlist
+	// query string is empty
+	// legacy is false
+	// rewind is true (include all segments)
+	// include_path is true
+	ov::String playlist = MakePlaylist("", _default_legacy, _default_rewind, true);
 	{
-		// lock 
+		// lock
 		std::lock_guard<std::shared_mutex> lock(_cached_default_playlist_guard);
 		_cached_default_playlist = playlist;
 	}
 
 	{
-		// lock 
+		// lock
 		std::lock_guard<std::shared_mutex> lock(_cached_default_playlist_gzip_guard);
 		_cached_default_playlist_gzip = ov::Zip::CompressGzip(playlist.ToData(false));
 	}
 }
 
-ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_string, bool legacy, bool include_path) const
+ov::String LLHlsMasterPlaylist::MakeSessionKey() const
+{
+	ov::String xkey;
+
+	for (const auto &pssh : _cenc_property.pssh_box_list)
+	{
+		if (pssh.drm_system == bmff::DRMSystem::Widevine)
+		{
+			xkey.AppendFormat("#EXT-X-SESSION-KEY:");
+
+			if (_cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
+			{
+				xkey.AppendFormat("METHOD=SAMPLE-AES");
+			}
+			else if (_cenc_property.scheme == bmff::CencProtectScheme::Cenc)
+			{
+				xkey.AppendFormat("METHOD=SAMPLE-AES-CTR");
+			}
+
+			xkey.AppendFormat(",URI=\"data:text/plain;base64,%s\"", ov::Base64::Encode(pssh.pssh_box_data, false).CStr());
+
+			xkey.AppendFormat(",KEYID=0x%s", _cenc_property.key_id->ToHexString().CStr());
+			xkey.AppendFormat(",KEYFORMAT=\"urn:uuid:%s\"", ov::ToUUIDString(pssh.system_id->GetData(), pssh.system_id->GetLength()).LowerCaseString().CStr());
+			xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
+		}
+		else if (pssh.drm_system == bmff::DRMSystem::FairPlay)
+		{
+			if (_cenc_property.keyformat.LowerCaseString() == "identity")
+			{
+				xkey.AppendFormat("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES");
+				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
+				xkey.AppendFormat(",KEYFORMAT=\"identity\"");
+				xkey.AppendFormat(",IV=0x%s", _cenc_property.iv->ToHexString().CStr());
+			}
+			else
+			{
+				xkey.AppendFormat("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES");
+				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
+				xkey.AppendFormat(",KEYFORMAT=\"com.apple.streamingkeydelivery\"");
+				xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
+			}
+		}
+
+		xkey.Append("\n");
+	}
+
+	return xkey;
+}
+
+ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_string, bool legacy, bool rewind, bool include_path) const
 {
 	ov::String playlist(10240);
 
+	uint8_t version = 6;
+	if (legacy == true)
+	{
+		version = 6;
+	}
+
 	playlist.AppendFormat("#EXTM3U\n");
-	playlist.AppendFormat("#EXT-X-VERSION:7\n");
+
+	// debug info
+	// playlist.AppendFormat("#// query_string(%s) legacy(%s) rewind(%s) include_path(%s)\n", chunk_query_string.CStr(), legacy ? "YES" : "NO", rewind ? "YES" : "NO", include_path ? "YES" : "NO");
+	playlist.AppendFormat("#EXT-X-VERSION:%d\n", version);
 	playlist.AppendFormat("#EXT-X-INDEPENDENT-SEGMENTS\n");
 
 	// Write EXT-X-MEDIA from _media_infos
 	// shared lock
-	std::shared_lock<std::shared_mutex> media_infos_lock(_media_infos_guard);
-	for (const auto &[group_id, media_infos] : _media_infos)
+	std::shared_lock<std::shared_mutex> media_infos_lock(_media_groups_guard);
+	for (const auto &[group_id, media_group] : _media_groups)
 	{
-		for (const auto &media_info : media_infos)
+		if (media_group->_used == false)
 		{
-			if (media_info._used)
+			continue;
+		}
+
+		for (const auto &media_info : media_group->_media_infos)
+		{
+			playlist.AppendFormat("#EXT-X-MEDIA:TYPE=%s", media_info->GetTypeStr().CStr());
+			playlist.AppendFormat(",GROUP-ID=\"%s\"", media_info->_group_id.CStr());
+			playlist.AppendFormat(",NAME=\"%s\"", media_info->_name.CStr());
+			playlist.AppendFormat(",DEFAULT=%s", media_info->_default ? "YES" : "NO");
+			playlist.AppendFormat(",AUTOSELECT=%s", media_info->_auto_select ? "YES" : "NO");
+			playlist.AppendFormat(",FORCED=%s", media_info->_forced ? "YES" : "NO");
+
+			if (media_info->_type == cmn::MediaType::Audio)
 			{
-				playlist.AppendFormat("#EXT-X-MEDIA:TYPE=%s", media_info.TypeString().CStr());
-				playlist.AppendFormat(",GROUP-ID=\"%s\"", media_info._group_id.CStr());
-				playlist.AppendFormat(",NAME=\"%s\"", media_info._name.CStr());
-				playlist.AppendFormat(",AUTOSELECT=%s", media_info._auto_select ? "YES" : "NO");
-				playlist.AppendFormat(",DEFAULT=%s", media_info._default ? "YES" : "NO");
-
-				if (media_info._type == MediaInfo::Type::Audio)
-				{
-					playlist.AppendFormat(",CHANNELS=\"%d\"", media_info._track->GetChannel().GetCounts() == 0 ? 2 : media_info._track->GetChannel().GetCounts());
-				}
-
-				if (!media_info._language.IsEmpty())
-				{
-					playlist.AppendFormat(",LANGUAGE=\"%s\"", media_info._language.CStr());
-				}
-
-				if (!media_info._instream_id.IsEmpty())
-				{
-					playlist.AppendFormat(",INSTREAM-ID=\"%s\"", media_info._instream_id.CStr());
-				}
-
-				// _assoc_language
-				if (!media_info._assoc_language.IsEmpty())
-				{
-					playlist.AppendFormat(",ASSOCIATED-LANGUAGE=\"%s\"", media_info._assoc_language.CStr());
-				}
-
-				if (!media_info._uri.IsEmpty())
-				{
-					playlist.AppendFormat(",URI=\"%s%s", include_path?_chunk_path.CStr():"", media_info._uri.CStr());
-
-					if (chunk_query_string.IsEmpty() == false)
-					{
-						playlist.AppendFormat("?%s", chunk_query_string.CStr());
-					}
-
-					if (legacy)
-					{
-						if (chunk_query_string.IsEmpty() == false)
-						{
-							playlist.AppendFormat("&_HLS_legacy=YES");
-						}
-						else
-						{
-							playlist.AppendFormat("?_HLS_legacy=YES");
-						}
-					}
-				}
-
-				playlist.AppendFormat("\"\n");
+				playlist.AppendFormat(",CHANNELS=\"%d\"", media_info->_track->GetChannel().GetCounts() == 0 ? 2 : media_info->_track->GetChannel().GetCounts());
 			}
+
+			if (!media_info->_language.IsEmpty())
+			{
+				playlist.AppendFormat(",LANGUAGE=\"%s\"", media_info->_language.CStr());
+			}
+
+			if (!media_info->_characteristics.IsEmpty())
+			{
+				playlist.AppendFormat(",CHARACTERISTICS=\"%s\"", media_info->_characteristics.CStr());
+			}
+
+			if (!media_info->_instream_id.IsEmpty())
+			{
+				playlist.AppendFormat(",INSTREAM-ID=\"%s\"", media_info->_instream_id.CStr());
+			}
+
+			// _assoc_language
+			if (!media_info->_assoc_language.IsEmpty())
+			{
+				playlist.AppendFormat(",ASSOCIATED-LANGUAGE=\"%s\"", media_info->_assoc_language.CStr());
+			}
+
+			if (!media_info->_uri.IsEmpty())
+			{
+				playlist.AppendFormat(",URI=\"%s%s", include_path ? _chunk_path.CStr() : "", media_info->_uri.CStr());
+
+				ov::String final_query_string;
+				if (chunk_query_string.IsEmpty() == false)
+				{
+					final_query_string.AppendFormat("?%s", chunk_query_string.CStr());
+				}
+
+				if (legacy != _default_legacy)
+				{
+					if (final_query_string.IsEmpty() == false)
+					{
+						final_query_string.AppendFormat("&_HLS_legacy=%s", legacy ? "YES" : "NO");
+					}
+					else
+					{
+						final_query_string.AppendFormat("?_HLS_legacy=%s", legacy ? "YES" : "NO");
+					}
+				}
+
+				if (rewind != _default_rewind)
+				{
+					if (final_query_string.IsEmpty() == false)
+					{
+						final_query_string.AppendFormat("&_HLS_rewind=%s", rewind ? "YES" : "NO");
+					}
+					else
+					{
+						final_query_string.AppendFormat("?_HLS_rewind=%s", rewind ? "YES" : "NO");
+					}
+				}
+
+				if (final_query_string.IsEmpty() == false)
+				{
+					playlist.AppendFormat("%s", final_query_string.CStr());
+				}
+			}
+
+			playlist.AppendFormat("\"\n");
 		}
 	}
 	media_infos_lock.unlock();
 
 	playlist.AppendFormat("\n");
 
+	// Write EXT-X-SESSION-KEY
+	if (legacy == false)
+	{
+		playlist.Append(MakeSessionKey());
+	}
+
+	playlist.AppendFormat("\n");
+
 	// Write EXT-X-STREAM-INF from _stream_infos
 	// shared lock
 	std::shared_lock<std::shared_mutex> stream_infos_lock(_stream_infos_guard);
-	for (const auto &variant_info : _stream_infos)
+	for (const auto &stream_info : _stream_infos)
 	{
 		playlist.AppendFormat("#EXT-X-STREAM-INF:");
 
-		std::shared_ptr<const MediaTrack> video_track = nullptr, audio_track = nullptr;
-
-		if (variant_info._track->GetMediaType() == cmn::MediaType::Video)
-		{
-			video_track = variant_info._track;
-			if (variant_info._audio_group_id.IsEmpty() == false)
-			{
-				auto &audio_media_info = GetDefaultMediaInfo(variant_info._audio_group_id);
-				audio_track = audio_media_info._track;
-			}
-		}
-		else if (variant_info._track->GetMediaType() == cmn::MediaType::Audio)
-		{
-			audio_track = variant_info._track;
-			if (variant_info._video_group_id.IsEmpty() == false)
-			{
-				auto &video_media_info = GetDefaultMediaInfo(variant_info._video_group_id);
-				video_track = video_media_info._track;
-			}
-		}
-
-		// BANDWIDTH
-		uint32_t bandwidth = 0;
-
-		if (video_track != nullptr)
-		{
-			bandwidth += video_track->GetBitrate();
-		}
-		
-		if (audio_track != nullptr)
-		{
-			bandwidth += audio_track->GetBitrate();
-		}
-
 		// Output Bandwidth
-		playlist.AppendFormat("BANDWIDTH=%d", bandwidth == 0 ? 2000000 : bandwidth);
+		playlist.AppendFormat("BANDWIDTH=%u", stream_info->_bandwidth == 0 ? 1000000 : stream_info->_bandwidth);
 
 		// If variant_info is video, output RESOLUTION, FRAME-RATE
-		if (variant_info._track->GetMediaType() == cmn::MediaType::Video)
+		if (stream_info->_media_info->_type == cmn::MediaType::Video)
 		{
-			playlist.AppendFormat(",RESOLUTION=%dx%d", variant_info._track->GetWidth(), variant_info._track->GetHeight());
-			playlist.AppendFormat(",FRAME-RATE=%.1f", variant_info._track->GetFrameRate() == 0 ? 30.0 : variant_info._track->GetFrameRate());
+			playlist.AppendFormat(",RESOLUTION=%dx%d", stream_info->_width, stream_info->_height);
+			// https://datatracker.ietf.org/doc/html/draft-pantos-hls-rfc8216bis#section-4.4.6.2
+			// The value is a decimal-floating-point describing the maximum frame
+			// rate for all the video in the Variant Stream, rounded to three
+			// decimal places.
+			playlist.AppendFormat(",FRAME-RATE=%.3f", stream_info->_framerate == 0 ? 30.0 : stream_info->_framerate);
 		}
 
 		// CODECS
-		playlist.AppendFormat(",CODECS=\"");
+		playlist.AppendFormat(",CODECS=\"%s\"", stream_info->_codecs.CStr());
 
-		if (video_track != nullptr)
+		if (stream_info->_video_group_id.IsEmpty() == false)
 		{
-			playlist.AppendFormat("%s", CodecMediaType::GetCodecsParameter(video_track).CStr());
-		}
-		if (audio_track != nullptr)
-		{
-			if (video_track != nullptr)
-			{
-				playlist.AppendFormat(",");
-			}
-			playlist.AppendFormat("%s", CodecMediaType::GetCodecsParameter(audio_track).CStr());
-		}
-		playlist.AppendFormat("\"");
-
-		if (variant_info._video_group_id.IsEmpty() == false)
-		{
-			playlist.AppendFormat(",VIDEO=\"%s\"", variant_info._video_group_id.CStr());
+			playlist.AppendFormat(",VIDEO=\"%s\"", stream_info->_video_group_id.CStr());
 		}
 
-		if (variant_info._audio_group_id.IsEmpty() == false)
+		if (stream_info->_audio_group_id.IsEmpty() == false)
 		{
-			playlist.AppendFormat(",AUDIO=\"%s\"", variant_info._audio_group_id.CStr());
+			playlist.AppendFormat(",AUDIO=\"%s\"", stream_info->_audio_group_id.CStr());
+		}
+
+		if (stream_info->_subtitle_group_id.IsEmpty() == false)
+		{
+			playlist.AppendFormat(",SUBTITLES=\"%s\"", stream_info->_subtitle_group_id.CStr());
 		}
 
 		// URI
 		playlist.AppendFormat("\n");
-		playlist.AppendFormat("%s%s", include_path?_chunk_path.CStr():"", variant_info._uri.CStr());
+		playlist.AppendFormat("%s%s", include_path ? _chunk_path.CStr() : "", stream_info->_media_info->_uri.CStr());
+
+		ov::String final_query_string;
 		if (chunk_query_string.IsEmpty() == false)
 		{
-			playlist.AppendFormat("?%s", chunk_query_string.CStr());
+			final_query_string.AppendFormat("?%s", chunk_query_string.CStr());
 		}
-		if (legacy)
+
+		if (legacy != _default_legacy)
 		{
-			if (chunk_query_string.IsEmpty() == false)
+			if (final_query_string.IsEmpty() == false)
 			{
-				playlist.AppendFormat("&_HLS_legacy=YES");
+				final_query_string.AppendFormat("&_HLS_legacy=%s", legacy ? "YES" : "NO");
 			}
 			else
 			{
-				playlist.AppendFormat("?_HLS_legacy=YES");
+				final_query_string.AppendFormat("?_HLS_legacy=%s", legacy ? "YES" : "NO");
 			}
 		}
+
+		if (rewind != _default_rewind)
+		{
+			if (final_query_string.IsEmpty() == false)
+			{
+				final_query_string.AppendFormat("&_HLS_rewind=%s", rewind ? "YES" : "NO");
+			}
+			else
+			{
+				final_query_string.AppendFormat("?_HLS_rewind=%s", rewind ? "YES" : "NO");
+			}
+		}
+
+		if (final_query_string.IsEmpty() == false)
+		{
+			playlist.AppendFormat("%s", final_query_string.CStr());
+		}
+
 		playlist.AppendFormat("\n");
 	}
 	stream_infos_lock.unlock();
@@ -362,24 +507,24 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 	return playlist;
 }
 
-ov::String LLHlsMasterPlaylist::ToString(const ov::String &chunk_query_string, bool legacy, bool include_path) const
+ov::String LLHlsMasterPlaylist::ToString(const ov::String &chunk_query_string, bool legacy, bool rewind, bool include_path) const
 {
-	if (chunk_query_string.IsEmpty() && legacy == false && include_path == true && !_cached_default_playlist.IsEmpty())
+	if (chunk_query_string.IsEmpty() && legacy == _default_legacy && rewind == _default_rewind && include_path == true && !_cached_default_playlist.IsEmpty())
 	{
 		std::shared_lock<std::shared_mutex> lock(_cached_default_playlist_guard);
 		return _cached_default_playlist;
 	}
 
-	return MakePlaylist(chunk_query_string, legacy, include_path);
+	return MakePlaylist(chunk_query_string, legacy, rewind, include_path);
 }
 
-std::shared_ptr<const ov::Data> LLHlsMasterPlaylist::ToGzipData(const ov::String &chunk_query_string, bool legacy) const
+std::shared_ptr<const ov::Data> LLHlsMasterPlaylist::ToGzipData(const ov::String &chunk_query_string, bool legacy, bool rewind) const
 {
-	if (chunk_query_string.IsEmpty() && legacy == false && _cached_default_playlist_gzip != nullptr)
+	if (chunk_query_string.IsEmpty() && legacy == _default_legacy && rewind == _default_rewind && _cached_default_playlist_gzip != nullptr)
 	{
 		std::shared_lock<std::shared_mutex> lock(_cached_default_playlist_gzip_guard);
 		return _cached_default_playlist_gzip;
 	}
 
-	return  ov::Zip::CompressGzip(ToString(chunk_query_string, legacy).ToData(false));
+	return ov::Zip::CompressGzip(ToString(chunk_query_string, legacy, rewind).ToData(false));
 }

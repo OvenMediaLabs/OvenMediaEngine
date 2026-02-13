@@ -8,19 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "../../controller.h"
+#include "../../controller_base.h"
 
-namespace api
+namespace api::v1::stats
 {
-	namespace v1
+	class StatsController : public ControllerBase<StatsController>
 	{
-		namespace stats
-		{
-			class StatsController : public Controller<StatsController>
-			{
-			public:
-				void PrepareHandlers() override;
-			};
-		}  // namespace stats
-	}	   // namespace v1
-}  // namespace api
+	public:
+		void PrepareHandlers() override;
+	};
+}  // namespace api::v1::stats

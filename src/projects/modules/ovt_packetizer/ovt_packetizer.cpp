@@ -102,7 +102,7 @@ bool OvtPacketizer::PacketizeMediaPacket(uint64_t timestamp, const std::shared_p
 	ov::Data payload;
 
 	// Header + Data
-	payload.SetLength(MEDIA_PACKET_HEADER_SIZE + media_packet->GetData()->GetLength());
+	payload.SetLength(MEDIA_PACKET_HEADER_SIZE + media_packet->GetDataLength());
 
 	auto buffer = payload.GetWritableDataAs<uint8_t>();
 
@@ -114,9 +114,12 @@ bool OvtPacketizer::PacketizeMediaPacket(uint64_t timestamp, const std::shared_p
 	ByteWriter<uint8_t>::WriteBigEndian(&buffer[29], static_cast<int8_t>(media_packet->GetFlag()));
 	ByteWriter<uint8_t>::WriteBigEndian(&buffer[30], static_cast<int8_t>(media_packet->GetBitstreamFormat()));
 	ByteWriter<uint8_t>::WriteBigEndian(&buffer[31], static_cast<int8_t>(media_packet->GetPacketType()));
-	ByteWriter<uint32_t>::WriteBigEndian(&buffer[32], media_packet->GetData()->GetLength());
+	ByteWriter<uint32_t>::WriteBigEndian(&buffer[32], media_packet->GetDataLength());
 
-	memcpy(&buffer[36], media_packet->GetData()->GetData(), media_packet->GetData()->GetLength());
+	if (media_packet->GetData() != nullptr)
+	{
+		memcpy(&buffer[36], media_packet->GetData()->GetData(), media_packet->GetDataLength());
+	}
 
 	size_t max_payload_size = OVT_DEFAULT_MAX_PACKET_SIZE - OVT_FIXED_HEADER_SIZE;
 	size_t remain_payload_len = payload.GetLength();

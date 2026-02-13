@@ -18,19 +18,13 @@ extern "C"
 }
 
 #include <modules/bitstream/aac/aac_converter.h>
-#include <modules/bitstream/h264/h264_converter.h>
-#include <modules/bitstream/h265/h265_converter.h>
+#include <modules/bitstream/nalu/nal_stream_converter.h>
+#include <modules/ffmpeg/compat.h>
 
 #define OV_LOG_TAG "Writer"
 
-#define logap(format, ...) logtp("[%p] " format, this, ##__VA_ARGS__)
-#define logad(format, ...) logtd("[%p] " format, this, ##__VA_ARGS__)
-#define logas(format, ...) logts("[%p] " format, this, ##__VA_ARGS__)
-
-#define logai(format, ...) logti("[%p] " format, this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%p] " format, this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[%p] " format, this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%p] " format, this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%p] "
+#define OV_LOG_PREFIX_VALUE this
 
 static AVRational RationalFromTimebase(const cmn::Timebase &timebase)
 {
@@ -146,12 +140,16 @@ static AVCodecID AvCodecIdFromMediaCodecId(cmn::MediaCodecId codec_id)
 		WRITER_CASE(cmn::MediaCodecId::H265, AV_CODEC_ID_H265)
 		WRITER_CASE(cmn::MediaCodecId::Vp8, AV_CODEC_ID_VP8)
 		WRITER_CASE(cmn::MediaCodecId::Vp9, AV_CODEC_ID_VP9)
+		WRITER_CASE(cmn::MediaCodecId::Av1, AV_CODEC_ID_AV1)
 		WRITER_CASE(cmn::MediaCodecId::Flv, AV_CODEC_ID_FLV1)
 		WRITER_CASE(cmn::MediaCodecId::Aac, AV_CODEC_ID_AAC)
 		WRITER_CASE(cmn::MediaCodecId::Mp3, AV_CODEC_ID_MP3)
 		WRITER_CASE(cmn::MediaCodecId::Opus, AV_CODEC_ID_OPUS)
 		WRITER_CASE(cmn::MediaCodecId::Jpeg, AV_CODEC_ID_JPEG2000)
 		WRITER_CASE(cmn::MediaCodecId::Png, AV_CODEC_ID_PNG)
+		WRITER_CASE(cmn::MediaCodecId::Webp, AV_CODEC_ID_WEBP)
+		WRITER_CASE(cmn::MediaCodecId::Whisper, AV_CODEC_ID_NONE)
+		WRITER_CASE(cmn::MediaCodecId::WebVTT, AV_CODEC_ID_NONE)
 	}
 
 	return AV_CODEC_ID_NONE;
@@ -164,6 +162,30 @@ static int AvChannelLayoutFromAudioChannelLayout(const cmn::AudioChannel::Layout
 		WRITER_CASE(cmn::AudioChannel::Layout::LayoutUnknown, 0)
 		WRITER_CASE(cmn::AudioChannel::Layout::LayoutMono, AV_CH_LAYOUT_MONO)
 		WRITER_CASE(cmn::AudioChannel::Layout::LayoutStereo, AV_CH_LAYOUT_STEREO)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout2Point1, AV_CH_LAYOUT_2POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout21, AV_CH_LAYOUT_2_1)
+		WRITER_CASE(cmn::AudioChannel::Layout::LayoutSurround, AV_CH_LAYOUT_SURROUND)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout22, AV_CH_LAYOUT_2_2)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout3Point1, AV_CH_LAYOUT_3POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout4Point0, AV_CH_LAYOUT_4POINT0)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout4Point1, AV_CH_LAYOUT_4POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::LayoutQuad, AV_CH_LAYOUT_QUAD)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout5Point0, AV_CH_LAYOUT_5POINT0)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout5Point1, AV_CH_LAYOUT_5POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout5Point0Back, AV_CH_LAYOUT_5POINT0_BACK)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout5Point1Back, AV_CH_LAYOUT_5POINT1_BACK)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout6Point0, AV_CH_LAYOUT_6POINT0)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout6Point0Front, AV_CH_LAYOUT_6POINT0_FRONT)
+		WRITER_CASE(cmn::AudioChannel::Layout::LayoutHexagonal, AV_CH_LAYOUT_HEXAGONAL)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout6Point1, AV_CH_LAYOUT_6POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout6Point1Back, AV_CH_LAYOUT_6POINT1_BACK)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout6Point1Front, AV_CH_LAYOUT_6POINT1_FRONT)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout7Point0, AV_CH_LAYOUT_7POINT0)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout7Point0Front, AV_CH_LAYOUT_7POINT0_FRONT)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout7Point1, AV_CH_LAYOUT_7POINT1)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout7Point1Wide, AV_CH_LAYOUT_7POINT1_WIDE)
+		WRITER_CASE(cmn::AudioChannel::Layout::Layout7Point1WideBack, AV_CH_LAYOUT_7POINT1_WIDE_BACK)
+		WRITER_CASE(cmn::AudioChannel::Layout::LayoutOctagonal, AV_CH_LAYOUT_OCTAGONAL)
 	}
 
 	return 0;
@@ -198,17 +220,24 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 			codec_parameters->bit_rate = media_track->GetBitrate();
 			codec_parameters->width = media_track->GetWidth();
 			codec_parameters->height = media_track->GetHeight();
-			codec_parameters->format = media_track->GetColorspace();
+			codec_parameters->format = (int)ffmpeg::compat::ToAVPixelFormat(media_track->GetColorspace());
+
+			std::shared_ptr<const ov::Data> extra_data = nullptr;
 			if (media_track->GetCodecId() == cmn::MediaCodecId::H265)
 			{
 				codec_parameters->codec_tag = MKTAG('h', 'v', 'c', '1');
+				extra_data = media_track->GetDecoderConfigurationRecord() != nullptr ? media_track->GetDecoderConfigurationRecord()->GetData() : nullptr;
+			}
+			else if (media_track->GetCodecId() == cmn::MediaCodecId::H264)
+			{
+				codec_parameters->codec_tag = MKTAG('a', 'v', 'c', '1');
+				extra_data = media_track->GetDecoderConfigurationRecord() != nullptr ? media_track->GetDecoderConfigurationRecord()->GetData() : nullptr;
 			}
 			else
 			{
 				codec_parameters->codec_tag = 0;
 			}
 
-			auto &extra_data = media_track->GetCodecExtradata();
 			if (extra_data != nullptr)
 			{
 				codec_parameters->extradata_size = extra_data->GetLength();
@@ -226,14 +255,19 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 			codec_parameters->codec_type = AVMEDIA_TYPE_AUDIO;
 			codec_parameters->codec_id = AvCodecIdFromMediaCodecId(media_track->GetCodecId());
 			codec_parameters->bit_rate = media_track->GetBitrate();
-			codec_parameters->channels = static_cast<int>(media_track->GetChannel().GetCounts());
-			codec_parameters->channel_layout = AvChannelLayoutFromAudioChannelLayout(media_track->GetChannel().GetLayout());
+			::av_channel_layout_default(&codec_parameters->ch_layout, media_track->GetChannel().GetCounts());
 			codec_parameters->sample_rate = media_track->GetSample().GetRateNum();
 			codec_parameters->frame_size = 1024;
 			codec_parameters->format = static_cast<int>(media_track->GetSample().GetFormat());
 			codec_parameters->codec_tag = 0;
 
-			auto &extra_data = media_track->GetCodecExtradata();
+			std::shared_ptr<const ov::Data> extra_data = nullptr;
+			if (media_track->GetCodecId() == cmn::MediaCodecId::Aac)
+			{
+				codec_parameters->codec_tag = MKTAG('a', 'a', 'c', 'p');
+				extra_data = media_track->GetDecoderConfigurationRecord() != nullptr ? media_track->GetDecoderConfigurationRecord()->GetData() : nullptr;
+			}
+
 			if (extra_data != nullptr)
 			{
 				codec_parameters->extradata_size = extra_data->GetLength();
@@ -276,7 +310,7 @@ int Writer::OnWrite(const uint8_t *buf, int buf_size)
 #if DEBUG
 			int current_buffer_size = _buffer_size;
 
-			logad("Increasing buffer size by %d (before: %d, after: %d), data size: %zu (remained: %zu), requested: %d",
+			logat("Increasing buffer size by %d (before: %d, after: %d), data size: %zu (remained: %zu), requested: %d",
 				  increase_amount, current_buffer_size, current_buffer_size + increase_amount,
 				  data->GetLength(), remained, buf_size);
 #endif	// DEBUG
@@ -341,7 +375,7 @@ bool Writer::AddTrack(const std::shared_ptr<const MediaTrack> &media_track)
 	_track_list.emplace_back(track);
 	_track_map[media_track->GetId()] = track;
 
-	logad("Track %s is added", ::StringFromMediaType(media_track->GetMediaType()).CStr());
+	logat("Track %s is added", cmn::GetMediaTypeString(media_track->GetMediaType()));
 
 	return true;
 }
@@ -502,14 +536,14 @@ int Writer::DecideBufferSize() const
 	{
 		int buffer_size = static_cast<int>(estimated_buffer_size * WRITER_BUFFER_ROOM_MULTIPLIER);
 		// Since the bitrate can vary little by little, a certain amount of room should be given
-		logad("Calculated buffer size from track list: %d, this buffer size will be used: %d",
+		logat("Calculated buffer size from track list: %d, this buffer size will be used: %d",
 			  estimated_buffer_size, buffer_size);
 
 		return buffer_size;
 	}
 
 	// Since the buffer size cannot be inferred from the track list, the default size is used
-	logad("Default buffer size is used: %d", WRITER_DEFAULT_BUFFER_SIZE);
+	logat("Default buffer size is used: %d", WRITER_DEFAULT_BUFFER_SIZE);
 	return WRITER_DEFAULT_BUFFER_SIZE;
 }
 
@@ -747,18 +781,37 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 	switch (packet->GetBitstreamFormat())
 	{
 		case cmn::BitstreamFormat::H264_AVCC:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::HVCC:
 			data = packet->GetData();
 			length_list.push_back(data->GetLength());
 			break;
 
 		case cmn::BitstreamFormat::H264_ANNEXB:
 			data = packet->GetData();
-			data = H264Converter::ConvertAnnexbToAvcc(data);
+			data = NalStreamConverter::ConvertAnnexbToXvcc(data, packet->GetFragHeader());
+			if (data == nullptr)
+			{
+				logte("Could not convert packet: %d (writer type: %d)",
+					  static_cast<int>(packet->GetBitstreamFormat()),
+					  static_cast<int>(_type));
+
+				return false;
+			}
 			length_list.push_back(data->GetLength());
 			break;
 
 		case cmn::BitstreamFormat::H265_ANNEXB:
 			data = packet->GetData();
+			data = NalStreamConverter::ConvertAnnexbToXvcc(data, packet->GetFragHeader());
+			if (data == nullptr)
+			{
+				logte("Could not convert packet: %d (writer type: %d)",
+					  static_cast<int>(packet->GetBitstreamFormat()),
+					  static_cast<int>(_type));
+
+				return false;
+			}
 			length_list.push_back(data->GetLength());
 			break;
 
@@ -776,29 +829,56 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 			else
 			{
 				data = AacConverter::ConvertAdtsToRaw(packet->GetData(), &length_list);
+				if (data == nullptr)
+				{
+					logte("Could not convert packet: %d (writer type: %d)",
+						  static_cast<int>(packet->GetBitstreamFormat()),
+						  static_cast<int>(_type));
+
+					return false;
+				}
 			}
 			break;
-		case cmn::BitstreamFormat::AAC_LATM:
-			[[fallthrough]];
+
 		case cmn::BitstreamFormat::Unknown:
 			[[fallthrough]];
-		case cmn::BitstreamFormat::VP8:
-			[[fallthrough]];
-		case cmn::BitstreamFormat::OPUS:
-			[[fallthrough]];
-		case cmn::BitstreamFormat::JPEG:
-			[[fallthrough]];
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::VP8:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			[[fallthrough]];
+		case cmn::BitstreamFormat::AAC_LATM:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::OPUS:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::OPUS_RTP_RFC_7587:
 			[[fallthrough]];
-		case cmn::BitstreamFormat::ID3v2:
+		case cmn::BitstreamFormat::JPEG:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::PNG:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::WEBP:
+			[[fallthrough]];			
+		case cmn::BitstreamFormat::ID3v2:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::MP3:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::OVEN_EVENT:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::CUE:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::AMF:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::SEI:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::SCTE35:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::WebVTT:	
 			break;
 	}
 

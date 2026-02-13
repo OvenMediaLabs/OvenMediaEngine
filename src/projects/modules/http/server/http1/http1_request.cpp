@@ -7,7 +7,7 @@
 //
 //==============================================================================
 #include "http1_request.h"
-#include "../../http_private.h"
+#include "../http_server_private.h"
 
 namespace http
 {
@@ -80,12 +80,26 @@ namespace http
 
 			ov::String Http1Request::GetHeader(const ov::String &key) const noexcept
 			{
-				return _http_header_parser.GetHeader(key);
+				return _http_header_parser.GetHeader(key).value_or("");
 			}
 
 			bool Http1Request::IsHeaderExists(const ov::String &key) const noexcept
 			{
 				return _http_header_parser.IsHeaderExists(key);
+			}
+
+			ov::String Http1Request::ToString() const
+			{
+				auto result = HttpRequest::ToString();
+
+				auto headers = _http_header_parser.GetHeaders();
+				result.AppendFormat("\n[Headers] (%zu):\n", headers.size());
+				for (auto &header : headers)
+				{
+					result.AppendFormat("%s: %s\n", header.first.CStr(), header.second.CStr());
+				}
+
+				return result;
 			}
 		} // namespace h1
 	} // namespace svr

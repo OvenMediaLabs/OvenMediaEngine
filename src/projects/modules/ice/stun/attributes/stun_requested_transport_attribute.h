@@ -19,12 +19,12 @@ public:
 	StunRequestedTransportAttribute(int length);
 	virtual ~StunRequestedTransportAttribute();
 
-	bool Parse(ov::ByteStream &stream) override;
+	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override;
 
 	uint8_t GetProtocolNumber() const;
 	bool SetProtocolNumber(const uint8_t number);
 
-	bool Serialize(ov::ByteStream &stream) const noexcept override;
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override;
 
 	ov::String ToString() const override;
 

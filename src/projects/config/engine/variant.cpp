@@ -31,35 +31,35 @@ namespace cfg
 				throw CreateConfigError("%s is not supported ", StringFromValueType(value_type));
 
 			case ValueType::String: {
-				auto converted = value.TryCast<ov::String, ov::String, const char *>();
+				auto converted			   = value.TryCast<ov::String, ov::String, const char *>();
 				*(TryCast<ov::String *>()) = converted;
 				SET_IF_NOT_NULL(original_value, converted.CStr());
 				break;
 			}
 
 			case ValueType::Integer: {
-				auto converted = value.TryCast<int, int, long, int64_t>();
+				auto converted		= value.TryCast<int, int, long, int64_t>();
 				*(TryCast<int *>()) = converted;
 				SET_IF_NOT_NULL(original_value, converted);
 				break;
 			}
 
 			case ValueType::Long: {
-				auto converted = value.TryCast<int, int64_t, long, int>();
+				auto converted			= value.TryCast<int, int64_t, long, int>();
 				*(TryCast<int64_t *>()) = converted;
 				SET_IF_NOT_NULL(original_value, converted);
 				break;
 			}
 
 			case ValueType::Boolean: {
-				auto converted = value.TryCast<bool, bool, int>();
+				auto converted		 = value.TryCast<bool, bool, int>();
 				*(TryCast<bool *>()) = converted;
 				SET_IF_NOT_NULL(original_value, converted);
 				break;
 			}
 
 			case ValueType::Double: {
-				auto converted = value.TryCast<double, double, float>();
+				auto converted		   = value.TryCast<double, double, float>();
 				*(TryCast<double *>()) = converted;
 				SET_IF_NOT_NULL(original_value, converted);
 				break;

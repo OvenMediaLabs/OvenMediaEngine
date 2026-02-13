@@ -23,6 +23,12 @@ namespace serdes
 		SetTimestamp(value, "lastUpdatedTime", metrics->GetLastUpdatedTime());
 		SetInt64(value, "totalBytesIn", metrics->GetTotalBytesIn());
 		SetInt64(value, "totalBytesOut", metrics->GetTotalBytesOut());
+		SetInt64(value, "avgThroughputIn", metrics->GetAvgThroughputIn());
+		SetInt64(value, "avgThroughputOut", metrics->GetAvgThroughputOut());		
+		SetInt64(value, "maxThroughputIn", metrics->GetMaxThroughputIn());
+		SetInt64(value, "maxThroughputOut", metrics->GetMaxThroughputOut());
+		SetInt64(value, "lastThroughputIn", metrics->GetLastThroughputIn());
+		SetInt64(value, "lastThroughputOut", metrics->GetLastThroughputOut());
 		SetTimestamp(value, "lastRecvTime", metrics->GetLastRecvTime());
 		SetTimestamp(value, "lastSentTime", metrics->GetLastSentTime());
 		SetInt(value, "totalConnections", metrics->GetTotalConnections());
@@ -30,12 +36,24 @@ namespace serdes
 		SetTimestamp(value, "maxTotalConnectionTime", metrics->GetMaxTotalConnectionsTime());
 
 		Json::Value &connections = value["connections"];
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::Webrtc).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::Webrtc));
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::LLDash).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::LLDash));
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::Hls).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::Hls));
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::LLHls).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::LLHls));
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::Dash).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::Dash));
-		SetInt(connections, ov::String::FormatString("%s", StringFromPublisherType(PublisherType::Ovt).LowerCaseString().CStr()).CStr(), metrics->GetConnections(PublisherType::Ovt));
+
+		auto target_publishers = {
+			PublisherType::Webrtc,
+			PublisherType::LLHls,
+			PublisherType::Ovt,
+			PublisherType::File,
+			PublisherType::Push,
+			PublisherType::Thumbnail,
+			PublisherType::Hls,
+			PublisherType::Srt,
+		};
+
+		for (auto publisher : target_publishers)
+		{
+			auto name = StringFromPublisherType(publisher).LowerCaseString();
+
+			SetInt(connections, name, metrics->GetConnections(publisher));
+		}
 
 		return value;
 	}
@@ -51,6 +69,29 @@ namespace serdes
 
 		SetTimeInterval(value, "requestTimeToOrigin", metrics->GetOriginConnectionTimeMSec());
 		SetTimeInterval(value, "responseTimeFromOrigin", metrics->GetOriginSubscribeTimeMSec());
+
+		return value;
+	}
+
+	Json::Value JsonFromQueueMetrics(const std::shared_ptr<const mon::QueueMetrics> &metrics)
+	{
+		if (metrics == nullptr)
+		{
+			return Json::nullValue;
+		}
+
+		Json::Value value;
+
+		SetInt64(value, "id", metrics->GetId());
+		SetString(value, "urn", metrics->GetUrn()->ToString(), Optional::False);
+		SetString(value, "type", metrics->GetTypeName(), Optional::False);
+		SetInt(value, "size", metrics->GetSize());
+		SetInt(value, "peak", metrics->GetPeak());
+		SetInt(value, "threshold", metrics->GetThreshold());
+		SetInt(value, "avgWaitingTime", metrics->GetWaitingTime());
+		SetInt(value, "inputPerSecond", metrics->GetInputMessagePerSecond());
+		SetInt(value, "outputPerSecond", metrics->GetOutputMessagePerSecond());
+		SetInt(value, "drop", metrics->GetDropCount());
 
 		return value;
 	}

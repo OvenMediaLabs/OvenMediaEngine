@@ -10,19 +10,15 @@
 
 #include "../socket_private.h"
 
-#define logad(format, ...) logtd("[%p] " format, this, ##__VA_ARGS__)
-#define logas(format, ...) logts("[%p] " format, this, ##__VA_ARGS__)
-
-#define logai(format, ...) logti("[%p] " format, this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%p] " format, this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[%p] " format, this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%p] " format, this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%p] "
+#define OV_LOG_PREFIX_VALUE this
 
 namespace ov
 {
-	SocketPool::SocketPool(PrivateToken token, const char *name, SocketType type)
+	SocketPool::SocketPool(PrivateToken token, const char *name, SocketType type, bool thread_per_socket)
 		: _name(name),
-		  _type(type)
+		  _type(type),
+		  _thread_per_socket(thread_per_socket)
 	{
 	}
 
@@ -52,6 +48,48 @@ namespace ov
 			return false;
 		}
 
+		if (_thread_per_socket)
+		{
+			_initialized  = true;
+			logai("Socket pool (%s) is initialized with thread per socket mode", ToString().CStr());
+
+			_timer.Push(
+				[this](void *parameter) -> ov::DelayQueueAction {
+					decltype(_worker_list) release_worker_list;
+
+					{
+						std::lock_guard lock_guard(_worker_list_mutex);
+
+						for (auto iterator = _worker_list.begin(); iterator != _worker_list.end();)
+						{
+							auto worker = *iterator;
+
+							if (worker->_socket_count == 0)
+							{
+								release_worker_list.push_back(worker);
+								iterator = _worker_list.erase(iterator);
+							}
+							else
+							{
+								++iterator;
+							}
+						}
+					}
+
+					for (auto worker : release_worker_list)
+					{
+						logat("Releasing idle worker: %s", worker->ToString().CStr());
+						worker->Uninitialize();
+					}
+
+					return ov::DelayQueueAction::Repeat;
+				},
+				1000);
+			_timer.Start();
+
+			return true;
+		}
+
 		if (worker_count < 0)
 		{
 			logae("Invalid worker count: %d", worker_count);
@@ -65,29 +103,36 @@ namespace ov
 		}
 
 		{
-			std::lock_guard lock_guard(_worker_list_mutex);
+			std::vector<std::shared_ptr<SocketPoolWorker>> worker_list;
 
-			auto pool = GetSharedPtr();
+			auto pool	   = GetSharedPtr();
 			bool succeeded = true;
 
-			logad("Trying to initialize socket pool with %d workers...", worker_count);
+			logat("Trying to initialize socket pool with %d workers...", worker_count);
 
 			for (int index = 0; index < worker_count; index++)
 			{
-				auto instance = std::make_shared<SocketPoolWorker>(SocketPoolWorker::PrivateToken{nullptr}, pool);
-
-				if (instance->Initialize() == false)
+				auto instance = CreateWorker(pool);
+				if (instance == nullptr)
 				{
 					succeeded = false;
 					break;
 				}
 
-				_worker_list.emplace_back(instance);
+				worker_list.emplace_back(instance);
 			}
 
 			if (succeeded)
 			{
-				logad("%d workers were created successfully", worker_count);
+				{
+					std::lock_guard lock_guard(_worker_list_mutex);
+					_worker_list.insert(
+						_worker_list.end(),
+						std::make_move_iterator(worker_list.begin()),
+						std::make_move_iterator(worker_list.end()));
+				}
+
+				logat("%d workers were created successfully", worker_count);
 				_initialized = true;
 			}
 			else
@@ -95,32 +140,35 @@ namespace ov
 				logae("An error occurred while creating workers. Rollbacking...", worker_count);
 
 				// Rollback
-				UninitializeInternal();
+				UninitializeWorkers(worker_list);
 			}
 		}
 
 		return _initialized;
 	}
 
-	bool SocketPool::UninitializeInternal()
+	bool SocketPool::UninitializeWorkers(const std::vector<std::shared_ptr<SocketPoolWorker>> &worker_list)
 	{
-		for (auto worker : _worker_list)
+		for (auto worker : worker_list)
 		{
 			worker->Uninitialize();
 		}
-
-		_worker_list.clear();
 
 		return true;
 	}
 
 	bool SocketPool::Uninitialize()
 	{
-		logad("Trying to uninitialize socket pool...");
+		logat("Trying to uninitialize socket pool...");
 
-		std::lock_guard lock_guard(_worker_list_mutex);
+		std::vector<std::shared_ptr<SocketPoolWorker>> worker_list;
 
-		return UninitializeInternal();
+		{
+			std::lock_guard lock_guard(_worker_list_mutex);
+			worker_list = std::move(_worker_list);
+		}
+
+		return UninitializeWorkers(worker_list);
 	}
 
 	String SocketPool::ToString() const

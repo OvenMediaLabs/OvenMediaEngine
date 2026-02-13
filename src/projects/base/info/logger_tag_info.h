@@ -24,7 +24,7 @@ public:
 
 	// Utilities
 	static const char *StringFromOVLogLevel(OVLogLevel log_level) noexcept;
-	static OVLogLevel OVLogLevelFromString(ov::String level_string) noexcept;
+	static std::optional<OVLogLevel> OVLogLevelFromString(ov::String level_string) noexcept;
 	static const bool ValidateLogLevel(ov::String level_string);
 
 private:

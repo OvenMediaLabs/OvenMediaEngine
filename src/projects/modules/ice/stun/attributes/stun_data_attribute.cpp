@@ -23,7 +23,7 @@ StunDataAttribute::~StunDataAttribute()
 {
 }
 
-bool StunDataAttribute::Parse(ov::ByteStream &stream)
+bool StunDataAttribute::Parse(const StunMessage *stun_message, ov::ByteStream &stream)
 {
 	_data = stream.GetRemainData()->Subdata(0, _length);
 	stream.Skip(_length);
@@ -42,14 +42,14 @@ bool StunDataAttribute::SetData(const std::shared_ptr<const ov::Data> &data)
 	return true;
 }
 
-bool StunDataAttribute::Serialize(ov::ByteStream &stream) const noexcept
+bool StunDataAttribute::Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept
 {
 	if(_data == nullptr)
 	{
 		return false;
 	}
 
-	return StunAttribute::Serialize(stream) &&
+	return StunAttribute::Serialize(stun_message, stream) &&
 	       stream.Write<uint8_t>(_data->GetDataAs<uint8_t>(), _data->GetLength());
 }
 

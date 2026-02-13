@@ -23,9 +23,22 @@ namespace pvd
 	{
 		if(stream->IsReadyToReceiveStreamData() == false)
 		{
-			logte("The stream(%s/%s) is not yet ready to be published.", GetName().CStr(), stream->GetName().CStr());
+			logte("The stream(%s/%s) is not yet ready to be published.", GetVHostAppName().CStr(), stream->GetName().CStr());
 			return false;
 		}
+
+		int packet_silence_timeout_ms = 0;
+		auto cfg_provider_list = GetConfig().GetProviders().GetProviderList();
+		for (const auto &cfg_provider : cfg_provider_list)
+		{
+			if (cfg_provider->GetType() == GetParentProvider()->GetProviderType())
+			{
+				packet_silence_timeout_ms = cfg_provider->GetPacketSilenceTimeoutMs();
+				break;
+			}
+		}
+		
+		stream->SetPacketSilenceTimeoutMs(packet_silence_timeout_ms);
 
 		return AddStream(stream);
 	}

@@ -11,6 +11,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
 #include <orchestrator/orchestrator.h>
+#include <modules/srt/srt.h>
 #include <stdint.h>
 #include <unistd.h>
 
@@ -26,9 +27,9 @@ namespace pvd
 	class SrtProvider : public pvd::PushProvider, protected PhysicalPortObserver
 	{
 	public:
-		static std::shared_ptr<SrtProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<SrtProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit SrtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit SrtProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~SrtProvider() override;
 
 		bool Start() override;
@@ -64,7 +65,7 @@ namespace pvd
 		//--------------------------------------------------------------------
 		// Implementation of PushProvider's virtual functions
 		//--------------------------------------------------------------------
-		void OnTimer(const std::shared_ptr<PushStream> &channel) override;
+		void OnTimedOut(const std::shared_ptr<PushStream> &channel) override;
 
 		//--------------------------------------------------------------------
 		// Implementation of PhysicalPortObserver
@@ -80,6 +81,9 @@ namespace pvd
 							const std::shared_ptr<const ov::Error> &error) override;
 
 	private:
-		std::shared_ptr<PhysicalPort> _physical_port;
+		std::mutex _physical_port_list_mutex;
+		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
+
+		modules::srt::StreamUrlResolver _stream_url_resolver;
 	};
 }  // namespace pvd

@@ -1,4 +1,4 @@
-# AdmissionWebhooks (beta)
+# AdmissionWebhooks
 
 ## Overview
 
@@ -20,18 +20,33 @@ AdmissionWebhooks can be set up on VirtualHost, as shown below.
 		<Timeout>3000</Timeout>
 		<Enables>
 			<Providers>rtmp,webrtc,srt</Providers>
-			<Publishers>webrtc,llhls</Publishers>
+			<Publishers>webrtc,llhls,thumbnail,srt</Publishers>
 		</Enables>
 	</AdmissionWebhooks>
 </VirtualHost>
 ```
 
-| Key              | Description                                                                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ControlServerUrl | The HTTP Server to receive the query. HTTP and HTTPS are available.                                                                              |
-| SecretKey        | <p>The secret key used when encrypting with HMAC-SHA1</p><p>For more information, see <a href="admission-webhooks.md#security">Security</a>.</p> |
-| Timeout          | Time to wait for a response after request (in milliseconds)                                                                                      |
-| Enables          | Enable Providers and Publishers to use AdmissionWebhooks                                                                                         |
+<table><thead><tr><th width="290">Key</th><th>Description</th></tr></thead><tbody><tr><td>ControlServerUrl</td><td>The HTTP Server to receive the query. HTTP and HTTPS are available.</td></tr><tr><td>SecretKey</td><td><p>The secret key used when encrypting with HMAC-SHA1</p><p>For more information, see <a href="admission-webhooks.md#security">Security</a>.</p></td></tr><tr><td>Timeout</td><td>Time to wait for a response after request (in milliseconds).</td></tr><tr><td>Enables</td><td>Enable Providers and Publishers to use AdmissionWebhooks.</td></tr></tbody></table>
+
+{% hint style="warning" %}
+If the Control Server does not respond quickly enough, AdmissionWebhooks may occupy a socket thread.\
+In this situation, increasing `WorkerCount` can distribute the load across multiple threads, but other sessions sharing the same thread may still be blocked until the Control Server responds.
+
+To avoid this issue, use the `ThreadPerSocket` option as shown in the example below.\
+This option creates and assigns a dedicated thread for each socket connection, so one session will not block others.
+
+Note that creating too many threads can increase context switching overhead. Therefore, this option is recommended only when the expected number of concurrent sessions is relatively small (typically fewer than 100 concurrent sessions, depending on the number of CPU cores)
+
+```xml
+<Bind>
+    <Providers>
+      <RTMP>
+        <Port>${env:OME_RTMP_PROV_PORT:11935}</Port>
+				<!-- <WorkerCount>8</WorkerCount> -->
+		    <ThreadPerSocket>true</ThreadPerSocket>
+      </RTMP>
+```
+{% endhint %}
 
 ## Request
 
@@ -40,7 +55,7 @@ AdmissionWebhooks can be set up on VirtualHost, as shown below.
 AdmissionWebhooks send HTTP/1.1 request message to the configured user's control server when an encoder requests publishing or a player requests playback. The request message format is as follows.
 
 ```http
-POST /configured/tartget/url/ HTTP/1.1
+POST /configured/target/url/ HTTP/1.1
 Content-Length: 325
 Content-Type: application/json
 Accept: application/json
@@ -49,34 +64,35 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
   "client": 
   {
     "address": "211.233.58.86",
-    "port": 29291
+    "port": 29291,
+    "real_ip": "192.0.2.43",
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
   },
   "request":
   {
     "direction": "incoming | outgoing",
-    "protocol": "webrtc | rtmp | srt | llhls",
+    "protocol": "webrtc | rtmp | srt | llhls | thumbnail",
     "status": "opening | closing",
     "url": "scheme://host[:port]/app/stream/file?query=value&query2=value2",
-    "time": ""2021-05-12T13:45:00.000Z"
+    "new_url": "scheme://host[:port]/app/new_stream/file?query=value&query2=value2",
+    "time": "2021-05-12T13:45:00.000Z"
   }
 }
 ```
 
-The message is sent in POST method and the payload is in application/json format. X-OME-Signature is a base64 url safe encoded value obtained by encrypting the payload with HMAC-SHA1 so that the ControlServer can validate this message. See the [Security ](admission-webhooks.md#security)section for more information on X-OME-Signature.
+The message is sent in POST method and the payload is in application/json format. `X-OME-Signature` is a base64 url safe encoded value obtained by encrypting the payload with HMAC-SHA1 so that the `ControlServer` can validate this message. See the [Security ](admission-webhooks.md#security)section for more information on `X-OME-Signature`.
 
 Here is a detailed explanation of each element of Json payload:
 
-| Element | Sub-Element | Description                                                                                                 |
-| ------- | ----------- | ----------------------------------------------------------------------------------------------------------- |
-| client  |             | Information of the client who requested the connection.                                                     |
-|         | address     | Client's IP address                                                                                         |
-|         | port        | Client's Port number                                                                                        |
-| request |             | Information about the client's request                                                                      |
-|         | direction   | <p>incoming : A client requests to publish a stream</p><p>outgoing : A client requests to play a stream</p> |
-|         | protocol    | webrtc, srt, rtmp, hls, dash, lldash                                                                        |
-|         | status      | <p>opening : A client requests to open a stream</p><p>outgoing : A client closed the stream</p>             |
-|         | url         | url requested by the client                                                                                 |
-|         | time        | time requested by the client (ISO8601 format)                                                               |
+<table><thead><tr><th width="138">Element</th><th width="162">Sub-Element</th><th>Description</th></tr></thead><tbody><tr><td>client</td><td></td><td>Information of the client who requested the connection.</td></tr><tr><td></td><td>address</td><td>IP address of the client connected to the server.</td></tr><tr><td></td><td>port</td><td>Port number of the client connected to the server.</td></tr><tr><td></td><td>real_ip</td><td>IP address of the client forwarded by the proxy server.</td></tr><tr><td></td><td>user_agent<br>(optional)</td><td>Client's User_Agent.</td></tr><tr><td>request</td><td></td><td>Information about the client's request.</td></tr><tr><td></td><td>direction</td><td><p>incoming : A client requests to publish a stream.</p><p>outgoing : A client requests to play a stream.</p></td></tr><tr><td></td><td>protocol</td><td>webrtc, srt, rtmp, llhls, thumbnail</td></tr><tr><td></td><td>status</td><td><p>opening : A client requests to open a stream.</p><p>closing : A client closed the stream.</p></td></tr><tr><td></td><td>url</td><td>url requested by the client.</td></tr><tr><td></td><td>new_url<br>(optional)</td><td>url redirected from user's control server (status "closing" only).</td></tr><tr><td></td><td>time</td><td>time requested by the client (ISO8601 format).</td></tr></tbody></table>
+
+{% hint style="info" %}
+OME searches for and sets the values ​​in real\_ip in the following order:
+
+1. The value of the X-REAL-IP header&#x20;
+2. The value of the first item of X-FORWARDED-FOR&#x20;
+3. The IP of the client that is actually connected
+{% endhint %}
 
 ### Security
 
@@ -125,12 +141,12 @@ Connection: Closed
 }
 ```
 
-| Element                | Description                                                                                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| allowed **(required)** | <p>true or false</p><p>Allows or rejects the client's request.</p>                                                                                                                                                                                      |
-| new\_url (optional)    | Redirects the client to a new url. However, the `scheme`, `port`, and `file` cannot be different from the request. The host can only be changed to another virtual host on the same server.                                                             |
-| lifetime (optional)    | <p>The amount of time (in milliseconds) that a client can maintain a connection (Publishing or Playback)</p><ul><li>0 means infinity</li></ul><p>HTTP based streaming (HLS, DASH, LLDASH) does not keep a connection, so this value does not apply.</p> |
-| reason (optional)      | If allowed is false, it will be output to the log.                                                                                                                                                                                                      |
+| Element                | Description                                                                                                                                                                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| allowed **(required)** | <p>true or false</p><p>Allows or rejects the client's request.</p>                                                                                                                                                                        |
+| new\_url (optional)    | Redirects the client to a new url. However, the `scheme`, `port`, and `file` cannot be different from the request. Only host, app, and stream can be changed. The host can only be changed to another virtual host on the same server.    |
+| lifetime (optional)    | <p>The amount of time (in milliseconds) that a client can maintain a connection (Publishing or Playback)</p><ul><li>0 means infinity</li></ul><p>HTTP based streaming (HLS) does not keep a connection, so this value does not apply.</p> |
+| reason (optional)      | If allowed is false, it will be output to the log.                                                                                                                                                                                        |
 
 ### User authentication and control
 

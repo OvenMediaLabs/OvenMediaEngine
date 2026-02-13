@@ -30,16 +30,31 @@ namespace api
 		MAY_THROWS(http::HttpError)
 		void DeleteVHost(const info::Host &host_info);
 
-	protected:
-		bool PrepareHttpServers(const ov::String &server_ip, const cfg::mgr::Managers &managers, const cfg::bind::mgr::API &api_bind_config);
+		std::shared_ptr<const http::HttpError> ReloadCertificate();
 
-		void SetupCors(const cfg::mgr::api::API &api_config);
+	protected:
+		std::shared_ptr<info::Certificate> CreateCertificate();
+
+		bool PrepareHttpServers(
+			const std::vector<ov::String> &server_ip_list,
+			const bool is_port_configured, const uint16_t port,
+			const bool is_tls_port_configured, const uint16_t tls_port,
+			const int worker_count);
+
+		bool SetupCORS(const cfg::mgr::api::API &api_config);
 		bool SetupAccessToken(const cfg::mgr::api::API &api_config);
 
 		std::shared_ptr<http::svr::RequestInterceptor> CreateInterceptor();
 
-		std::shared_ptr<http::svr::HttpServer> _http_server;
-		std::shared_ptr<http::svr::HttpsServer> _https_server;
+	protected:
+		std::shared_ptr<const cfg::Server> _server_config;
+
+		// For HTTPS certificate reloading
+		std::optional<cfg::cmn::Host> _host_config;
+
+		std::mutex _http_server_list_mutex;
+		std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
+		std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 
 		std::shared_ptr<RootController> _root_controller;
 

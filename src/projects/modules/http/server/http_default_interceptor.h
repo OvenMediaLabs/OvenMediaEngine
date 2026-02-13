@@ -84,7 +84,8 @@ namespace http
 			virtual bool OnDataReceived(const std::shared_ptr<HttpExchange> &exchange, const std::shared_ptr<const ov::Data> &data) override;
 			virtual InterceptorResult OnRequestCompleted(const std::shared_ptr<HttpExchange> &exchange) override;
 			virtual void OnClosed(const std::shared_ptr<HttpConnection> &stream, PhysicalPortDisconnectReason reason) override;
-
+			virtual bool IsCacheable() const override;
+			
 		protected:
 			struct RequestInfo
 			{

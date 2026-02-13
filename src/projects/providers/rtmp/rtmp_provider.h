@@ -25,9 +25,9 @@ namespace pvd
 	class RtmpProvider : public pvd::PushProvider, protected PhysicalPortObserver
 	{
 	public:
-		static std::shared_ptr<RtmpProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<RtmpProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit RtmpProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit RtmpProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~RtmpProvider() override;
 
 		bool Start() override;
@@ -74,6 +74,8 @@ namespace pvd
 							const std::shared_ptr<const ov::Error> &error) override;
 
 	private:
-		std::shared_ptr<PhysicalPort> _physical_port;
+		bool _is_ertmp_enabled = false;
+
+		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
 	};
 }

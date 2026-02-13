@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-#include "../http_private.h"
+#include "./http_server_private.h"
 
 namespace http
 {
@@ -85,7 +85,7 @@ namespace http
 
 		ov::String HttpRequest::ToString() const
 		{
-			return ov::String::FormatString("<HttpRequest: %p, Method: %d, uri: %s>", this, static_cast<int>(GetMethod()), GetUri().CStr());
+			return ov::String::FormatString("<HttpRequest: %p> Method: %s Verion: %s Uri: %s", this, StringFromMethod(GetMethod()).CStr(), GetHttpVersion().CStr(), GetUri().CStr());
 		}
 	}  // namespace svr
 }  // namespace http

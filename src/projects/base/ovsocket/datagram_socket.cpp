@@ -15,29 +15,54 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Datagram"
 
-#define logad(format, ...) logtd("[%p] " format, this, ##__VA_ARGS__)
-#define logas(format, ...) logts("[%p] " format, this, ##__VA_ARGS__)
-
-#define logai(format, ...) logti("[%p] " format, this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[%p] " format, this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[%p] " format, this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[%p] " format, this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[%p] "
+#define OV_LOG_PREFIX_VALUE this
 
 namespace ov
 {
-	bool DatagramSocket::Prepare(int port, DatagramCallback datagram_callback)
+	bool DatagramSocket::SetSocketOptions(SetAdditionalOptionsCallback callback)
 	{
-		return Prepare(SocketAddress(port), std::move(datagram_callback));
+		switch (GetType())
+		{
+			case SocketType::Tcp:
+				[[fallthrough]];
+			case SocketType::Srt:
+				[[fallthrough]];
+			default:
+				// DatagramSocket should not be created with TCP or SRT
+				OV_ASSERT2(false);
+				return false;
+
+			case SocketType::Udp:
+				break;
+		}
+
+		auto result = SetSockOpt<int>(SO_REUSEADDR, 1);
+
+		return result &&
+			   // Call the callback function if it is set
+			   ((callback == nullptr) || (callback(GetSharedPtrAs<Socket>()) == nullptr));
 	}
 
-	bool DatagramSocket::Prepare(const SocketAddress &address, DatagramCallback datagram_callback)
+	bool DatagramSocket::Prepare(
+		int port,
+		SetAdditionalOptionsCallback callback,
+		DatagramCallback datagram_callback)
+	{
+		return Prepare(SocketAddress::CreateAndGetFirst(nullptr, port), callback, std::move(datagram_callback));
+	}
+
+	bool DatagramSocket::Prepare(
+		const SocketAddress &address,
+		SetAdditionalOptionsCallback callback,
+		DatagramCallback datagram_callback)
 	{
 		CHECK_STATE(== SocketState::Created, false);
 
 		if (
 			(
 				MakeNonBlocking(GetSharedPtrAs<ov::SocketAsyncInterface>()) &&
-				SetSockOpt<int>(SO_REUSEADDR, 1) &&
+				SetSocketOptions(callback) &&
 				Bind(address)))
 		{
 			_datagram_callback = std::move(datagram_callback);
@@ -69,10 +94,11 @@ namespace ov
 
 		auto data = std::make_shared<ov::Data>(UdpBufferSize);
 
+		SocketAddressPair address_pair;
+
 		while (true)
 		{
-			SocketAddress remote;
-			auto error = RecvFrom(data, &remote);
+			auto error = RecvFrom(data, &address_pair);
 
 			if (error == nullptr)
 			{
@@ -85,7 +111,7 @@ namespace ov
 				{
 					if (_datagram_callback != nullptr)
 					{
-						_datagram_callback(GetSharedPtrAs<DatagramSocket>(), remote, data->Clone());
+						_datagram_callback(GetSharedPtrAs<DatagramSocket>(), address_pair, data->Clone());
 					}
 				}
 			}

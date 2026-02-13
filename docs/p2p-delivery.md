@@ -41,7 +41,7 @@ When OvenMediaEngine receives a WebRTC connection request from a new player, it 
 | <ul><li>The device isn't Mobile</li><li>OS isn't Linux</li><li>Browser isn't MS Edge Browser</li><li>Browser isn't Unknown Browser</li></ul> | <ul><li>One of the Host Peers uses the same kind of browser</li><li>Host Peer is vacant</li></ul> |
 
 {% hint style="info" %}
-When any Host Peer is disconnected, OvenMediaEngine detects this situation and immediately reconnects the Client Peer connected to that Host Peer to the Edge to ensure stability.&#x20;
+When any Host Peer is disconnected, OvenMediaEngine detects this situation and immediately reconnects the Client Peer connected to that Host Peer to the Edge to ensure stability.
 
 Also, we are preparing a smarter algorithm based on user location, platform performance, and network statistical information for classifying Host Peers or Client Peers.
 {% endhint %}
@@ -49,4 +49,3 @@ Also, we are preparing a smarter algorithm based on user location, platform perf
 If you have a better idea, we hope that you improve our code and contribute to our project. Please visit [OvenMediaEngine GitHub](https://github.com/AirenSoft/OvenMediaEngine).
 
 {% embed url="https://github.com/AirenSoft/OvenMediaEngine/blob/master/src/projects/modules/rtc_signalling/p2p" %}
-

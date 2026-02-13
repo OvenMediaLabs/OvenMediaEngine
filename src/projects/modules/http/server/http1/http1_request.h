@@ -39,6 +39,8 @@ namespace http
 				ov::String GetHeader(const ov::String &key) const noexcept override;
 				bool IsHeaderExists(const ov::String &key) const noexcept override;
 
+				ov::String ToString() const override;
+
 			private:
 				prot::h1::HttpRequestHeaderParser _http_header_parser;
 			};

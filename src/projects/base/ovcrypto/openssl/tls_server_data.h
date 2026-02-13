@@ -76,6 +76,11 @@ namespace ov
 		size_t GetDataLength() const;
 		std::shared_ptr<const Data> GetData() const;
 
+		std::mutex& GetSequentialSendMutex()
+		{
+			return _tls_sequential_send_mutex;
+		}
+
 	protected:
 		//--------------------------------------------------------------------
 		// Called by TLS module
@@ -102,5 +107,8 @@ namespace ov
 		std::shared_ptr<Data> _plain_data;
 
 		AlpnProtocol _selected_alpn_protocol = AlpnProtocol::Http11;
+
+	private:
+		std::mutex _tls_sequential_send_mutex;	// for atomic send
 	};
 }  // namespace ov

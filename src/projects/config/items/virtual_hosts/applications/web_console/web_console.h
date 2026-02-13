@@ -32,12 +32,12 @@ namespace cfg
 						Register("DocumentPath", &_document_path);
 					}
 
-					int _listen_port = 8888;
+					int _listen_port	 = 8888;
 					ov::String _login_id = "admin";
 					ov::String _login_pw;
 					ov::String _document_path;
 				};
 			}  // namespace wc
-		}	   // namespace app
-	}		   // namespace vhost
+		}  // namespace app
+	}  // namespace vhost
 }  // namespace cfg

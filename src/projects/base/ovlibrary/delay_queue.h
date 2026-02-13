@@ -15,6 +15,7 @@
 #include <queue>
 #include <thread>
 #include <utility>
+#include <atomic>
 
 #include "./event.h"
 #include "./string.h"
@@ -89,7 +90,7 @@ namespace ov
 		int64_t _index;
 
 		std::thread _thread;
-		volatile bool _stop;
+		std::atomic<bool> _stop;
 
 		// A queue where the items to be executed are stored
 		mutable std::mutex _mutex;

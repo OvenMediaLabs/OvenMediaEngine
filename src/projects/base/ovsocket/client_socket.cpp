@@ -14,14 +14,8 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Client"
 
-#define logap(format, ...) logtp("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logad(format, ...) logtd("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logas(format, ...) logts("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-
-#define logai(format, ...) logti("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logaw(format, ...) logtw("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logae(format, ...) logte("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
-#define logac(format, ...) logtc("[#%d] [%p] " format, (GetNativeHandle() == -1) ? 0 : GetNativeHandle(), this, ##__VA_ARGS__)
+#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
+#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
 
 // If no packet is sent during this time, the connection is disconnected
 #define CLIENT_SOCKET_SEND_TIMEOUT (60 * 1000)
@@ -44,14 +38,14 @@ namespace ov
 	{
 		OV_ASSERT2(server_socket != nullptr);
 
-		_local_address = (server_socket != nullptr) ? server_socket->GetLocalAddress() : nullptr;
+		RetrieveLocalAddress();
 	}
 
 	ClientSocket::~ClientSocket()
 	{
 	}
 
-	bool ClientSocket::Create(SocketType type)
+	bool ClientSocket::Create(const SocketType type, const SocketFamily family)
 	{
 		auto server_socket = _server_socket.lock();
 
@@ -66,22 +60,51 @@ namespace ov
 		return false;
 	}
 
-	bool ClientSocket::GetSrtStreamId()
+	bool ClientSocket::StoreSrtStreamId()
 	{
+		if (GetType() != ov::SocketType::Srt)
+		{
+			return true;
+		}
+
+		char stream_id_buff[512];
+		int stream_id_len = sizeof(stream_id_buff);
+
+		if (::srt_getsockflag(GetNativeHandle(), SRT_SOCKOPT::SRTO_STREAMID, &stream_id_buff[0], &stream_id_len) != SRT_ERROR)
+		{
+			_stream_id = ov::String(stream_id_buff, stream_id_len);
+			return true;
+		}
+
+		return false;
+	}
+
+	bool ClientSocket::RetrieveLocalAddress()
+	{
+		// get local address
+		sockaddr_storage local_addr{};
+
 		if (GetType() == ov::SocketType::Srt)
 		{
-			char stream_id_buff[512];
-			int stream_id_len = sizeof(stream_id_buff);
-			if (srt_getsockflag(GetNativeHandle(), SRT_SOCKOPT::SRTO_STREAMID, &stream_id_buff[0], &stream_id_len) != SRT_ERROR)
+			int local_length = sizeof(local_addr);
+			auto result = ::srt_getsockname(GetNativeHandle(), reinterpret_cast<sockaddr *>(&local_addr), &local_length);
+
+			if (result == SRT_ERROR)
 			{
-				_stream_id = ov::String(stream_id_buff, stream_id_len);
-				return true;
-			}
-			else
-			{
+				auto error = ov::SrtError::CreateErrorFromSrt();
+				// Sometimes SRT returns an error 'Operation not supported: Invalid socket ID (0x138c) (5004)',
+				// which seems to occur when the connection is disconnected right after accept().
+				logte("Failed to get local address: %s", error->What());
 				return false;
 			}
 		}
+		else
+		{
+			socklen_t local_length = sizeof(local_addr);
+			::getsockname(GetNativeHandle(), reinterpret_cast<sockaddr *>(&local_addr), &local_length);
+		}
+
+		_local_address = std::make_shared<SocketAddress>("", local_addr);
 
 		return true;
 	}
@@ -128,12 +151,12 @@ namespace ov
 	{
 		// In the case of SRT, app/stream is classified by streamid.
 		// Since the streamid is processed by the application, error is not checked here.
-		GetSrtStreamId();
+		StoreSrtStreamId();
 
 		return
 			// Set socket options
 			SetSocketOptions() &&
-			AppendCommand({DispatchCommand::Type::Connected}) &&
+			AppendCommand(DispatchCommand(DispatchCommand::Type::Connected), false) &&
 			SetFirstEpollEventReceived() &&
 			MakeNonBlockingInternal(GetSharedPtrAs<SocketAsyncInterface>(), false);
 	}

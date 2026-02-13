@@ -2,99 +2,100 @@
 // Created by getroot on 20. 1. 16.
 //
 
-#include "monitoring_private.h"
-#include "monitoring.h"
 #include "application_metrics.h"
+
 #include "host_metrics.h"
+#include "monitoring.h"
+#include "monitoring_private.h"
 
 namespace mon
 {
-    ov::String ApplicationMetrics::GetInfoString(bool show_children)
-    {
-        ov::String out_str = ov::String::FormatString("\n[Application Info]\nid(%u), name(%s)\nCreated Time (%s)\n",
-														GetId(), GetName().CStr(),
-														ov::Converter::ToString(_created_time).CStr());
-        
+	ov::String ApplicationMetrics::GetInfoString(bool show_children)
+	{
+		ov::String out_str = ov::String::FormatString("\n[Application Info]\nid(%u), name(%s)\nCreated Time (%s)\n",
+													  GetId(), GetVHostAppName().CStr(),
+													  ov::Converter::ToString(_created_time).CStr());
 
-        out_str.Append(CommonMetrics::GetInfoString());
+		out_str.Append(CommonMetrics::GetInfoString());
 
-        if(show_children)
-        {
-            for(auto &t : _streams)
-            {
-                auto stream = t.second;
-                out_str.Append(stream->GetInfoString());
-            }
-        }
+		if (show_children)
+		{
+			std::shared_lock<std::shared_mutex> lock(_streams_guard);
+			for (auto &t : _streams)
+			{
+				auto stream = t.second;
+				out_str.Append(stream->GetInfoString());
+			}
+		}
 
-        return out_str;
-    }
+		return out_str;
+	}
 
-    void ApplicationMetrics::ShowInfo(bool show_children)
-    {
-        logti("%s", GetInfoString(show_children).CStr());
-    }
+	void ApplicationMetrics::ShowInfo(bool show_children)
+	{
+		logti("%s", GetInfoString(show_children).CStr());
+	}
 
-    bool ApplicationMetrics::OnStreamCreated(const info::Stream &stream)
-    {
-        std::unique_lock<std::shared_mutex> lock(_streams_guard);
-        
-        // If already stream metrics is exist,
-        if(_streams.find(stream.GetId()) != _streams.end())
-        {
-            return true;
-        }
+	bool ApplicationMetrics::OnStreamCreated(const info::Stream &stream)
+	{
+		std::unique_lock<std::shared_mutex> lock(_streams_guard);
 
-        auto stream_metrics = std::make_shared<StreamMetrics>(GetSharedPtr(), stream);
-        if(stream_metrics == nullptr)
-        {
-            logte("Cannot create StreamMetrics (%s/%s - %s)", GetName().CStr(), stream.GetName().CStr(), stream.GetUUID().CStr());
-            return false;
-        }
+		// If already stream metrics is exist,
+		if (_streams.find(stream.GetId()) != _streams.end())
+		{
+			return true;
+		}
 
-        _streams[stream.GetId()] = stream_metrics;
+		auto stream_metrics = std::make_shared<StreamMetrics>(GetSharedPtr(), stream);
+		if (stream_metrics == nullptr)
+		{
+			logte("Cannot create StreamMetrics (%s/%s - %s)", GetVHostAppName().CStr(), stream.GetName().CStr(), stream.GetUUID().CStr());
+			return false;
+		}
 
-        logti("Create StreamMetrics(%s/%s) for monitoring", stream.GetName().CStr(), stream.GetUUID().CStr());
-        return true;
-    }
+		_streams[stream.GetId()] = stream_metrics;
 
-    bool ApplicationMetrics::OnStreamDeleted(const info::Stream &stream)
-    {
-        auto stream_metric = GetStreamMetrics(stream); 
-        if(stream_metric == nullptr)
-        {
-            return false;
-        }
+		logti("Create StreamMetrics(%s/%s) for monitoring", stream.GetName().CStr(), stream.GetUUID().CStr());
+		return true;
+	}
 
-        logti("Delete StreamMetrics(%s/%s) for monitoring", stream.GetName().CStr(), stream.GetUUID().CStr());
+	bool ApplicationMetrics::OnStreamDeleted(const info::Stream &stream)
+	{
+		auto stream_metric = GetStreamMetrics(stream);
+		if (stream_metric == nullptr)
+		{
+			return false;
+		}
 
-        // logging StreamMetric
-        stream_metric->ShowInfo();
+		logti("Delete StreamMetrics(%s/%s) for monitoring", stream.GetName().CStr(), stream.GetUUID().CStr());
 
-        std::unique_lock<std::shared_mutex> lock(_streams_guard);
-        {
-            _streams.erase(stream.GetId());
-        }
+		// logging StreamMetric
+		stream_metric->ShowInfo();
 
-        return true;
-    }
+		std::unique_lock<std::shared_mutex> lock(_streams_guard);
+		{
+			_streams.erase(stream.GetId());
+		}
 
-    std::map<uint32_t, std::shared_ptr<StreamMetrics>> ApplicationMetrics::GetStreamMetricsMap()
-    {
-        std::shared_lock<std::shared_mutex> lock(_streams_guard);
-        return _streams;
-    }
+		return true;
+	}
 
-    std::shared_ptr<StreamMetrics> ApplicationMetrics::GetStreamMetrics(const info::Stream &stream)
-    {
-        std::shared_lock<std::shared_mutex> lock(_streams_guard);
-        if(_streams.find(stream.GetId()) == _streams.end())
-        {
-            return nullptr;
-        }
-        
-        return _streams[stream.GetId()];
-    }
+	std::map<uint32_t, std::shared_ptr<StreamMetrics>> ApplicationMetrics::GetStreamMetricsMap()
+	{
+		std::shared_lock<std::shared_mutex> lock(_streams_guard);
+		return _streams;
+	}
+
+	std::shared_ptr<StreamMetrics> ApplicationMetrics::GetStreamMetrics(info::stream_id_t stream_id)
+	{
+		std::shared_lock<std::shared_mutex> lock(_streams_guard);
+		if (_streams.find(stream_id) == _streams.end())
+		{
+			return nullptr;
+		}
+
+		return _streams[stream_id];
+	}
 
 	bool ApplicationMetrics::OnStreamReserved(ProviderType who, const ov::Url &stream_uri, const ov::String &stream_name)
 	{
@@ -114,9 +115,9 @@ namespace mon
 		return _reserved_streams;
 	}
 
-    std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> ApplicationMetrics::GetReservedStreamMetricsMap() const
+	std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> ApplicationMetrics::GetReservedStreamMetricsMap() const
 	{
 		std::shared_lock<std::shared_mutex> lock(_reserved_streams_guard);
 		return _reserved_streams;
 	}
-}
+}  // namespace mon

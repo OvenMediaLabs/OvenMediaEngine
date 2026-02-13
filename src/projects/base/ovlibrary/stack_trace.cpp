@@ -23,9 +23,108 @@ namespace ov
 {
 	String instance_version;
 
-	String StackTrace::GetStackTrace(int line_count)
+	String StackTrace::GetStackTrace(int offset, int line_count)
 	{
-		return GetStackTraceInternal(2, line_count);
+		return GetStackTraceInternal(2 + offset, line_count);
+	}
+
+	String StackTrace::GetRegisters(const ucontext_t *ucontext)
+	{
+		ov::String registers;
+
+#if !IS_ARM
+#	if IS_64BITS
+#		define APPEND_X86_64_REGISTER(name) registers.AppendFormat("%-6s: 0x%-20llx %lld\n", #name, ucontext->uc_mcontext.gregs[REG_##name], ucontext->uc_mcontext.gregs[REG_##name])
+#		define APPEND_X86_64_EFLAGS(condition, name) \
+			if (condition)                            \
+			{                                         \
+				registers.AppendFormat("%s ", name);  \
+			}
+
+		{
+			APPEND_X86_64_REGISTER(RAX);
+			APPEND_X86_64_REGISTER(RBX);
+			APPEND_X86_64_REGISTER(RCX);
+			APPEND_X86_64_REGISTER(RDX);
+			APPEND_X86_64_REGISTER(RSI);
+			APPEND_X86_64_REGISTER(RDI);
+			APPEND_X86_64_REGISTER(RBP);
+			APPEND_X86_64_REGISTER(RSP);
+			APPEND_X86_64_REGISTER(R8);
+			APPEND_X86_64_REGISTER(R9);
+			APPEND_X86_64_REGISTER(R10);
+			APPEND_X86_64_REGISTER(R11);
+			APPEND_X86_64_REGISTER(R12);
+			APPEND_X86_64_REGISTER(R13);
+			APPEND_X86_64_REGISTER(R14);
+			APPEND_X86_64_REGISTER(R15);
+			APPEND_X86_64_REGISTER(RIP);
+
+			auto efl = ucontext->uc_mcontext.gregs[REG_EFL];
+			registers.AppendFormat("EFLAGS: 0x%-20llx [ ", efl, efl);
+			APPEND_X86_64_EFLAGS(efl & (1 << 0), "CF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 2), "PF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 4), "AF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 6), "ZF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 7), "SF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 8), "TF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 9), "IF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 10), "DF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 11), "OF");
+			APPEND_X86_64_EFLAGS((efl >> 12) & 0x3, "IOPL");
+			APPEND_X86_64_EFLAGS(efl & (1 << 14), "NT");
+			APPEND_X86_64_EFLAGS(efl & (1 << 16), "RF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 17), "VM");
+			APPEND_X86_64_EFLAGS(efl & (1 << 18), "AC");
+			APPEND_X86_64_EFLAGS(efl & (1 << 19), "VIF");
+			APPEND_X86_64_EFLAGS(efl & (1 << 20), "VIP");
+			APPEND_X86_64_EFLAGS(efl & (1 << 21), "ID");
+			registers.Append(']');
+		}
+#	else  // IS_64BITS
+#		define APPEND_X86_REGISTER(name) registers.AppendFormat("%-6s: 0x%-20x (%d)\n", #name, ucontext->uc_mcontext.gregs[REG_##name], ucontext->uc_mcontext.gregs[REG_##name])
+#		define APPEND_X86_EFLAGS(condition, name)   \
+			if (condition)                           \
+			{                                        \
+				registers.AppendFormat("%s ", name); \
+			}
+
+		{
+			APPEND_X86_REGISTER(EAX);
+			APPEND_X86_REGISTER(EBX);
+			APPEND_X86_REGISTER(ECX);
+			APPEND_X86_REGISTER(EDX);
+			APPEND_X86_REGISTER(ESI);
+			APPEND_X86_REGISTER(EDI);
+			APPEND_X86_REGISTER(EBP);
+			APPEND_X86_REGISTER(ESP);
+
+			auto efl = ucontext->uc_mcontext.gregs[REG_EFL];
+			registers.AppendFormat("EFLAGS : 0x%-20x [ ", efl, efl);
+			APPEND_X86_EFLAGS(efl & (1 << 0), "CF");
+			APPEND_X86_EFLAGS(efl & (1 << 2), "PF");
+			APPEND_X86_EFLAGS(efl & (1 << 4), "AF");
+			APPEND_X86_EFLAGS(efl & (1 << 6), "ZF");
+			APPEND_X86_EFLAGS(efl & (1 << 7), "SF");
+			APPEND_X86_EFLAGS(efl & (1 << 8), "TF");
+			APPEND_X86_EFLAGS(efl & (1 << 9), "IF");
+			APPEND_X86_EFLAGS(efl & (1 << 10), "DF");
+			APPEND_X86_EFLAGS(efl & (1 << 11), "OF");
+			APPEND_X86_EFLAGS((efl >> 12) & 0x3, "IOPL");
+			APPEND_X86_EFLAGS(efl & (1 << 14), "NT");
+			APPEND_X86_EFLAGS(efl & (1 << 16), "RF");
+			APPEND_X86_EFLAGS(efl & (1 << 17), "VM");
+			APPEND_X86_EFLAGS(efl & (1 << 18), "AC");
+			APPEND_X86_EFLAGS(efl & (1 << 19), "VIF");
+			APPEND_X86_EFLAGS(efl & (1 << 20), "VIP");
+			APPEND_X86_EFLAGS(efl & (1 << 21), "ID");
+			registers.Append(']');
+		}
+#	endif	// IS_64BITS
+#else		// !IS_ARM
+		registers = "(Dumping registers is not supported on ARM)";
+#endif		// !IS_ARM
+		return registers;
 	}
 
 	bool StackTrace::ParseLinuxStyleLine(char *line, ParseResult *parse_result)
@@ -287,9 +386,9 @@ namespace ov
 		char **symbol_list = ::backtrace_symbols(addr_list, buffer_size);
 		int count = (line_count >= 0) ? std::min(line_count + offset, buffer_size) : buffer_size;
 
-		// Called by signal handler (AbortHandler -> WriteStackTrace -> GetStackTraceInternal):
+		// Called by signal handler (AbortHandler -> GetStackTrace -> GetStackTraceInternal):
 		// #0: GetStackTraceInternal()
-		// #1: WriteStackTrace()
+		// #1: GetStackTrace()
 		// #2: AbortHandler()
 
 		// Called by GetStackTrace (GetStackTrace -> GetStackTraceInternal);
@@ -311,6 +410,11 @@ namespace ov
 			result = result || ParseLinuxStyleLine(line, &parse_result);
 			result = result || ParseMacOsStyleLine(line, &parse_result);
 
+			if (log.IsEmpty() == false)
+			{
+				log.Append('\n');
+			}
+
 			if (result)
 			{
 				const char *module_name = ((parse_result.module_name == nullptr) || (parse_result.module_name[0] == '\0')) ? "?" : parse_result.module_name;
@@ -321,7 +425,7 @@ namespace ov
 					name = "?";
 				}
 
-				log.AppendFormat("#%-3d %-35s %s %s + %s\n",
+				log.AppendFormat("#%-3d %-35s %s %s + %s",
 								 (i - offset),
 								 module_name,
 								 (parse_result.address == nullptr) ? "?" : parse_result.address,
@@ -330,7 +434,7 @@ namespace ov
 			}
 			else
 			{
-				log.AppendFormat("#%-3d || %s\n", (i - offset), line);
+				log.AppendFormat("#%-3d || %s", (i - offset), line);
 			}
 
 			if (parse_result.demangled_function_name != nullptr)
@@ -342,10 +446,5 @@ namespace ov
 		::free(symbol_list);
 
 		return log;
-	}
-
-	void StackTrace::WriteStackTrace(std::ofstream &stream)
-	{
-		stream << GetStackTraceInternal(3);
 	}
 }  // namespace ov

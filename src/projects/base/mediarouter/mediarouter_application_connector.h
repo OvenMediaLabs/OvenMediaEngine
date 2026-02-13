@@ -13,7 +13,7 @@
 #include "mediarouter_application_interface.h"
 #include "mediarouter_interface.h"
 
-class MediaRouteApplicationConnector : public ov::EnableSharedFromThis<MediaRouteApplicationConnector>
+class MediaRouterApplicationConnector : public ov::EnableSharedFromThis<MediaRouterApplicationConnector>
 {
 public:
 	enum class ConnectorType : int8_t
@@ -69,8 +69,13 @@ public:
 	{
 		if (GetMediaRouteApplication() == nullptr)
 		{
-			OV_ASSERT(false, "MediaRouteAppplication MUST NOT BE NULL");
+			OV_ASSERT(false, "MediaRouteApplication MUST NOT BE NULL");
 			return false;
+		}
+
+		if (stream->IsOnAir() == false)
+		{
+			stream->SetOnAir(true);
 		}
 
 		return GetMediaRouteApplication()->OnPacketReceived(this->GetSharedPtr(), stream, packet);

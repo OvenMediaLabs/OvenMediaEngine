@@ -14,9 +14,9 @@
 // Major changes
 #define OME_VERSION_MAJOR               0
 // Minor changes
-#define OME_VERSION_MINOR               14
+#define OME_VERSION_MINOR               20
 // Micro changes
-#define OME_VERSION_MICRO               18
+#define OME_VERSION_MICRO               0
 
 #define OME_STR_INTERNAL(x)             # x
 #define OME_STR(x)                      OME_STR_INTERNAL(x)

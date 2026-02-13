@@ -25,15 +25,20 @@ sudo yum install -y gcc-c++ make nasm autoconf libtool zlib-devel tcl cmake
 ```
 {% endtab %}
 
-{% tab title="CentOS 7" %}
+{% tab title="Rocky Linux/AlmaLinux 8" %}
 ```bash
-# for downloading latest version of nasm (x264 needs nasm 2.13+ but centos provides 2.10 )
-sudo curl -so /etc/yum.repos.d/nasm.repo https://www.nasm.us/nasm.repo
-sudo yum install centos-release-scl
-sudo yum install -y bc gcc-c++ cmake nasm autoconf libtool glibc-static tcl bzip2 zlib-devel devtoolset-7
-source scl_source enable devtoolset-7
+sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel
+sudo dnf install -y perl-IPC-Cmd
 ```
 {% endtab %}
+
+{% tab title="Rocky Linux/AlmaLinux 9" %}
+```bash
+sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel
+sudo dnf install -y perl-IPC-Cmd perl-FindBin
+```
+{% endtab %}
+
 {% endtabs %}
 
 ### Common Installation
@@ -254,7 +259,7 @@ $ sudo setenforce 0
 
 WebRTC does not support b-frame of H.264. But if your encoder sends b-frames the video will be stuttered in the player. In this case, you can solve the problem by disabling the b-frame function in your encoder. For OBS, you can set bframes=0 option as below.
 
-![](<.gitbook/assets/image (39) (1).png>)
+![](<.gitbook/assets/image (40) (1).png>)
 
 Or by **activating the encoding options** in OvenMediaEngine.
 
@@ -310,7 +315,7 @@ net.ipv4.tcp_max_tw_buckets = 1440000
 net.ipv4.ip_local_port_range = 1024 65000
 net.ipv4.tcp_fin_timeout = 15
 net.ipv4.tcp_window_scaling = 1
-net.ipv4.tcp_max_syn_backlog = 3240000
+net.ipv4.tcp_max_syn_backlog = 324000
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
 net.core.rmem_default = 16777216
@@ -319,7 +324,6 @@ net.core.optmem_max = 40960
 net.ipv4.tcp_rmem = 4096 87380 16777216
 net.ipv4.tcp_wmem = 4096 65536 16777216
 net.core.netdev_max_backlog = 50000
-net.ipv4.tcp_max_syn_backlog = 30000
 net.ipv4.tcp_max_tw_buckets = 2000000
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 10
@@ -374,7 +378,7 @@ If you use Transcoding as Bypass in OvenMediaEngine and set a **long keyframe in
 
 In this case, you can solve this by setting the keyframe interval in the encoder to **1-2 seconds**,
 
-![How to set the keyframe intverval in OBS, which is the most used encoder](.gitbook/assets/keyframe\_obs.png)
+<figure><img src=".gitbook/assets/keyframe_obs.png" alt=""><figcaption><p>How to set the keyframe intverval in OBS, which is the most used encoder</p></figcaption></figure>
 
 Or by **enabling the encoding options** in OvenMediaEngine.
 

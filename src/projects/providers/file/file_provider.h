@@ -22,9 +22,9 @@ namespace pvd
 	{
 
 	public:
-		static std::shared_ptr<FileProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		static std::shared_ptr<FileProvider> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
-		explicit FileProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		explicit FileProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
 		~FileProvider() override;
 

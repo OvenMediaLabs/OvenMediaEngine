@@ -21,6 +21,7 @@
 #include "./list.h"
 
 #define CFG_VERBOSE_STRING 1
+#define CFG_PRINT_MEMORY_ADDRESS 0
 
 #if CFG_VERBOSE_STRING
 #	define CFG_EXTRA_PREFIX "                // <"
@@ -137,34 +138,40 @@ namespace cfg
 
 		virtual ov::String ToString(int indent_count) const;
 
-		static void SetJsonChildValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Json::Value &original_value);
+		// Add `original_value` to `object[child_name]` based on `value_type`.
+		static void SetOriginalJsonValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Json::Value &original_value);
+		// Add a value retrieved from `member` according to the `value_type` to `object[child_name]`.
+		static void SetCurrentJsonValue(ValueType value_type, Json::Value &object, const ov::String &child_name, const Variant &member);
 
-		// Serialize Item to Json::Value
-		// (ResolvePath and ${env} are NOT processed - created from original data)
+		/// Get the configurations in `Json::Value` format.
+		///
+		/// @param value The `Json::Value` object to store the configuration.
+		/// @param original_value If `true`, it returns the raw, unprocessed value from the settings.
+		///                       If `false`, it returns the value with `ResolvePath`, `${env}`, and similar elements processed.
+		/// @param include_default_values If `true`, it includes the default values in the output.
 		MAY_THROWS(cfg::ConfigError)
-		void ToJson(Json::Value &value, bool include_default_values) const;
+		void ToJson(Json::Value &value, bool original_value, bool include_default_values) const;
 		MAY_THROWS(cfg::ConfigError)
-		Json::Value ToJson(bool include_default_values) const;
-		MAY_THROWS(cfg::ConfigError)
-		Json::Value ToJson() const;
+		Json::Value ToJson(bool original_value = true, bool include_default_values = false) const
+		{
+			Json::Value value;
+			ToJson(value, original_value, include_default_values);
+			return value;
+		}
 
-		MAY_THROWS(cfg::ConfigError)
-		void ToJsonWithName(Json::Value &value, bool include_default_values) const;
-		MAY_THROWS(cfg::ConfigError)
-		Json::Value ToJsonWithName(bool include_default_values) const;
-		MAY_THROWS(cfg::ConfigError)
-		Json::Value ToJsonWithName() const;
-
-		// Serialize Item to pugi::xml_node/pugi::xml_document
-		// (ResolvePath and ${env} are NOT processed - created from original data)
+		/// Get the configurations in `pugi::xml_node`/`pugi::xml_document` format.
+		///
+		/// @param value The `Json::Value` object to store the raw configuration.
+		/// @param include_default_values If `true`, it includes the default values in the output.
 		MAY_THROWS(cfg::ConfigError)
 		void ToXml(pugi::xml_node &node, bool include_default_values) const;
 		MAY_THROWS(cfg::ConfigError)
-		pugi::xml_document ToXml(bool include_default_values) const;
-		MAY_THROWS(cfg::ConfigError)
-		pugi::xml_document ToXml() const
+		pugi::xml_document ToXml(bool include_default_values = false) const
 		{
-			return ToXml(false);
+			pugi::xml_document doc;
+			auto root_node = doc.append_child();
+			ToXml(root_node, include_default_values);
+			return doc;
 		}
 
 	protected:
@@ -283,8 +290,8 @@ namespace cfg
 		// _last_target != this: The list is refreshed
 		const void *_last_target = nullptr;
 
-		bool _is_parsed = false;
-		bool _is_read_only = true;
+		bool _is_parsed			 = false;
+		bool _is_read_only		 = true;
 
 		ItemName _item_name;
 

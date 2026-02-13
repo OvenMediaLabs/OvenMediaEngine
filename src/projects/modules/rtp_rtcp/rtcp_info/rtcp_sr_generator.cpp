@@ -9,12 +9,12 @@ RtcpSRGenerator::RtcpSRGenerator(uint32_t ssrc, uint32_t codec_rate)
     _last_generated_time = std::chrono::system_clock::now();
 }
 
-void RtcpSRGenerator::AddRTPPacketAndGenerateRtcpSR(const RtpPacket &rtp_packet)
+void RtcpSRGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket> &rtp_packet)
 {
     _packet_count ++;
-    _octec_count += rtp_packet.PayloadSize();
-	_last_timestamp = rtp_packet.Timestamp();
-	_last_ntptime = rtp_packet.NTPTimestamp();
+    _octec_count += rtp_packet->PayloadSize();
+	_last_timestamp = rtp_packet->Timestamp();
+	_last_ntptime = rtp_packet->NTPTimestamp();
 }
 
 bool RtcpSRGenerator::IsAvailableRtcpSRPacket() const

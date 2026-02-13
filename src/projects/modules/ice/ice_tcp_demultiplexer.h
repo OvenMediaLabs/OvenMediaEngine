@@ -44,7 +44,7 @@ public:
 
 	private:
 		IcePacketIdentifier::PacketType _type = IcePacketIdentifier::PacketType::UNKNOWN;
-		uint16_t _channel_number = 0;	// Only use if packet is from channel data message
+		[[maybe_unused]] uint16_t _channel_number = 0;	// Only use if packet is from channel data message
 		std::shared_ptr<ov::Data>	_data = nullptr;
 	};
 

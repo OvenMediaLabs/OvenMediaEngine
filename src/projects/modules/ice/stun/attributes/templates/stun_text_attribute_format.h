@@ -13,7 +13,7 @@
 class StunTextAttributeFormat : public StunAttribute
 {
 public:
-	bool Parse(ov::ByteStream &stream) override
+	bool Parse(const StunMessage *stun_message, ov::ByteStream &stream) override
 	{
 		_text.SetLength(_length);
 		return stream.Read<uint8_t>((uint8_t *)(_text.GetBuffer()), _length) == _length;
@@ -31,9 +31,9 @@ public:
 		return true;
 	}
 
-	bool Serialize(ov::ByteStream &stream) const noexcept override
+	bool Serialize(const StunMessage *stun_message, ov::ByteStream &stream) const noexcept override
 	{
-		return StunAttribute::Serialize(stream) && stream.Write<uint8_t>((uint8_t *)(_text.CStr()), _text.GetLength());
+		return StunAttribute::Serialize(stun_message, stream) && stream.Write<uint8_t>((uint8_t *)(_text.CStr()), _text.GetLength());
 	}
 
 	ov::String ToString() const override

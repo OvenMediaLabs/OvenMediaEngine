@@ -11,6 +11,6 @@
 class ConfigMacroConverter
 {
 public:
-    ConfigMacroConverter();
-    virtual ~ConfigMacroConverter();
+	ConfigMacroConverter();
+	virtual ~ConfigMacroConverter();
 };

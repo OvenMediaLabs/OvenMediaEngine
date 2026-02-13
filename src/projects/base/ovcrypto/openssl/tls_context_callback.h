@@ -18,7 +18,7 @@ namespace ov
 		// Setting up TLS extensions, etc
 		std::function<bool(TlsContext *tls, SSL_CTX *context)> create_callback = nullptr;
 
-		// Return value: verfied: true, not verified: false
+		// Return value: verified: true, not verified: false
 		std::function<bool(TlsContext *tls, X509_STORE_CTX *store_context)> verify_callback = nullptr;
 
 		// for SNI

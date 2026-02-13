@@ -44,7 +44,7 @@ namespace ov
 		bool Stop()
 		{
 			_run_thread = false;
-			_event.Notify();
+			_event.Stop();
 			if(_thread.joinable())
 			{
 				_thread.join();
@@ -71,6 +71,8 @@ namespace ov
 	private:
 		void Postman()
 		{
+			logger::ThreadHelper thread_helper;
+
 			while(_run_thread)
 			{
 				_event.Wait();	

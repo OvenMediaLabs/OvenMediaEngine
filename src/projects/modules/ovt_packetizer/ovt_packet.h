@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <memory>
 #include <base/common_types.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -188,6 +188,7 @@ public:
 
 	const uint8_t* GetBuffer() const;
 	const std::shared_ptr<ov::Data>& GetData() const;
+	size_t GetDataLength() const;
 
 private:
 	void 		SetPayloadLength(size_t payload_length);

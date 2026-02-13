@@ -13,6 +13,25 @@ namespace info
 
 	class Push : public ov::EnableSharedFromThis<info::Push>
 	{
+	public:		
+		enum class PushState : int8_t
+		{
+			Ready,
+			Connecting,
+			Pushing,
+			Stopping,
+			Stopped,
+			Error
+		};
+
+		enum class ProtocolType : int8_t
+		{
+			UNKNOWN = 0,
+			RTMP,
+			SRT,
+			MPEGTS
+		};		
+
 	public:
 		Push();
 		~Push() override = default;
@@ -20,13 +39,7 @@ namespace info
 		void SetId(ov::String id);
 		ov::String GetId() const;
 
-		void SetStream(const info::Stream &stream);
-		const info::Stream &GetStream() const
-		{
-			return *_stream;
-		}
-		
-		void SetEnable(bool eanble) ;
+		void SetEnable(bool enable);
 		bool GetEnable();
 
 		void SetVhost(ov::String value);
@@ -35,16 +48,33 @@ namespace info
 		void SetApplication(ov::String value);
 		ov::String GetApplication();
 
+		// set by user
+		void SetStreamName(ov::String stream_name);
+		ov::String GetStreamName();
+
+		// set by user
+		void AddTrackId(uint32_t selected_id);
+		void AddVariantName(ov::String selected_name);
+
+		void SetTrackIds(const std::vector<uint32_t>& ids);
+		void SetVariantNames(const std::vector<ov::String>& names);
+
+		const std::vector<uint32_t>& GetTrackIds();
+		const std::vector<ov::String>& GetVariantNames();
+
+		void SetTimestampMode(TimestampMode mode);
+		TimestampMode GetTimestampMode();
+
 		void SetRemove(bool value);
 		bool GetRemove();
-
-		ov::String GetStreamName();
 
 		void SetSessionId(session_id_t id);
 		session_id_t GetSessionId();
 		
 		void SetProtocol(ov::String protocol);
 		ov::String GetProtocol();
+		Push::ProtocolType GetProtocolType();
+
 
 		void SetUrl(ov::String url);
 		ov::String GetUrl();
@@ -71,18 +101,18 @@ namespace info
 		const std::chrono::system_clock::time_point GetPushStartTime() const;
 		const std::chrono::system_clock::time_point GetPushStopTime() const;
 
-		enum class PushState : int8_t
-		{
-			Ready,
-			Pushing,
-			Stopping,
-			Stopped,
-			Error
-		};
-
 		PushState GetState();
 		void SetState(PushState state);
 		ov::String GetStateString();
+
+		void SetByConfig(bool is_config);
+		bool IsByConfig();
+
+		void SetConnectionTimeout(int32_t timeout_ms);
+		int32_t GetConnectionTimeout();
+		
+		void SetSendTimeout(int32_t timeout_ms);
+		int32_t GetSendTimeout();
 
 		const ov::String GetInfoString();
 
@@ -95,13 +125,25 @@ namespace info
 		// Remove Flag
 		bool _remove;
 
+		bool _is_config;
+
 		// Virtual Host
 		ov::String _vhost_name;
 
 		// Application
-		ov::String _aplication_name;
+		ov::String _application_name;
 
-		std::shared_ptr<info::Stream> _stream;
+		// Stream
+		ov::String _stream_name;
+
+		// The stream target for the Outbound that you want to record
+		std::vector<uint32_t> _selected_track_ids;
+		std::vector<ov::String> _selected_variant_names;
+
+		// Timestamp Rules for Push Stream
+		//  zerobased - The start of the pushed stream PTS begins with zero.
+		//  original - The pushed stream uses the same PTS as the original source stream.
+		TimestampMode _timestamp_mode;
 
 		ov::String _protocol;
 		ov::String _url;
@@ -123,6 +165,10 @@ namespace info
 		PushState _state;
 
 		// File Session Id
-		session_id_t _session_id;		
+		session_id_t _session_id;
+
+		// Timeout
+		int32_t _connection_timeout_ms;
+		int32_t _send_timeout_ms;
 	};
 }  // namespace info

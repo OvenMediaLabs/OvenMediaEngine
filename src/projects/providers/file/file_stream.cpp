@@ -11,7 +11,7 @@
 
 #include <base/info/application.h>
 #include <base/ovlibrary/byte_io.h>
-#include <modules/ffmpeg/conv.h>
+#include <modules/ffmpeg/compat.h>
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
 
 #include "file_private.h"
@@ -55,7 +55,7 @@ namespace pvd
 
 	std::shared_ptr<pvd::FileProvider> FileStream::GetFileProvider()
 	{
-		return std::static_pointer_cast<FileProvider>(_application->GetParentProvider());
+		return std::static_pointer_cast<FileProvider>(GetApplication()->GetParentProvider());
 	}
 
 	void FileStream::Release()
@@ -103,7 +103,7 @@ namespace pvd
 
 		_origin_response_time_msec = stop_watch.Elapsed();
 
-		// Stream was created completly
+		// Stream was created completely
 		_stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(PullStream::GetSharedPtr()));
 		if (_stream_metrics != nullptr)
 		{
@@ -150,7 +150,7 @@ namespace pvd
 		auto url = ov::String::FormatString("%s%s", GetApplicationInfo().GetConfig().GetProviders().GetFileProvider().GetRootPath().CStr(), _url->Path().CStr());
 
 		_format_context = nullptr;
-		logtd("%s/%s(%u) Trying to open file. path(%s)", GetApplicationInfo().GetName().CStr(), GetName().CStr(), GetId(), url.CStr());
+		logtt("%s/%s(%u) Trying to open file. path(%s)", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), url.CStr());
 		if ((err = ::avformat_open_input(&_format_context, url.CStr(), nullptr, nullptr)) < 0)
 		{
 			SetState(State::ERROR);
@@ -158,7 +158,7 @@ namespace pvd
 			char errbuf[256];
 			av_strerror(err, errbuf, sizeof(errbuf));
 
-			logte("%s/%s(%u) Failed to open file : %s (%s)", GetApplicationInfo().GetName().CStr(), GetName().CStr(), GetId(), errbuf, url.CStr());
+			logte("%s/%s(%u) Failed to open file : %s (%s)", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), errbuf, url.CStr());
 
 			return false;
 		}
@@ -191,23 +191,44 @@ namespace pvd
 				continue;
 			}
 
-			auto track = std::make_shared<MediaTrack>();
-			if (!track)
+			auto media_track = std::make_shared<MediaTrack>();
+			if (!media_track)
 			{
 				continue;
 			}
 
-			if (ffmpeg::Conv::ToMediaTrack(stream, track) == false)
+			if (ffmpeg::compat::ToMediaTrack(stream, media_track) == false)
 			{
 				continue;
 			}
 
-			logtd("track_id:%d,  media_type: %d,  codec_id:%d, extradata_size: %d,  tb: %d/%d,  start_time: %lld", track_id, stream->codecpar->codec_type, stream->codecpar->codec_id, stream->codecpar->extradata_size, stream->time_base.num, stream->time_base.den, stream->start_time);
-
-			AddTrack(track);
+#if FILE_FIXED_TRACK_ID 
+			if(GetFirstTrackByType(media_track->GetMediaType()) == nullptr)
+			{
+				media_track->SetId(GetFixedTrackIdOfMediaType(media_track->GetMediaType()));
+				AddTrack(media_track);
+			}
+			else{
+				logtt("Duplicate media types are not used and ignored. %s", media_track->GetInfoString().CStr());
+			}
+#else
+			AddTrack(media_track);
+#endif
 		}
 
-		InitPrivBaseTimestamp();
+		// If there is no data track, add a dummy data track
+		if(GetFirstTrackByType(cmn::MediaType::Data) == nullptr)
+		{
+			auto data_track = std::make_shared<MediaTrack>();
+			data_track->SetId(FILE_DATA_TRACK_ID);
+			data_track->SetMediaType(cmn::MediaType::Data);
+			data_track->SetTimeBase(1, 1000);
+			data_track->SetOriginBitstream(cmn::BitstreamFormat::Unknown);
+			
+			AddTrack(data_track);
+		}
+
+		InitBaseTimestamp();
 
 		SetState(State::DESCRIBED);
 
@@ -237,7 +258,12 @@ namespace pvd
 		{
 			AVStream *stream = _format_context->streams[track_id];
 
-			auto track = GetTrack(stream->index);
+#if FILE_FIXED_TRACK_ID
+			auto fix_track_id = GetFixedTrackIdOfMediaType(ffmpeg::compat::ToMediaType(stream->codecpar->codec_type));
+			auto track = GetTrack(fix_track_id);
+#else
+			auto track = GetTrack(track_id);
+#endif
 			if (track == nullptr)
 			{
 				continue;
@@ -248,7 +274,7 @@ namespace pvd
 
 			if (codec_id == cmn::MediaCodecId::H264)
 			{
-				// @extratata == AVCDecoderConfigurationRecord
+				// @extradata == AVCDecoderConfigurationRecord
 				auto media_packet = std::make_shared<MediaPacket>(
 					GetMsid(),
 					media_type,
@@ -256,6 +282,8 @@ namespace pvd
 					std::make_shared<ov::Data>(stream->codecpar->extradata, stream->codecpar->extradata_size),
 					0,
 					0,
+					-1LL,
+					MediaPacketFlag::Unknown,
 					cmn::BitstreamFormat::H264_AVCC,
 					cmn::PacketType::SEQUENCE_HEADER);
 
@@ -263,7 +291,7 @@ namespace pvd
 			}
 			else if (codec_id == cmn::MediaCodecId::Aac)
 			{
-				// @extratata == AACSpecificConfig
+				// @extradata == AudioSpecificConfig
 				auto media_packet = std::make_shared<MediaPacket>(
 					GetMsid(),
 					media_type,
@@ -271,6 +299,8 @@ namespace pvd
 					std::make_shared<ov::Data>(stream->codecpar->extradata, stream->codecpar->extradata_size),
 					0,
 					0,
+					-1LL,
+					MediaPacketFlag::Unknown,
 					cmn::BitstreamFormat::AAC_RAW,
 					cmn::PacketType::SEQUENCE_HEADER);
 
@@ -335,24 +365,25 @@ namespace pvd
 				{
 					RequestRewind();
 
-					UpdatePrivBaseTimestamp();
-					logtd("%s/%s(%u) Reached the end of the file. rewind to the first frame.", GetApplicationInfo().GetName().CStr(), GetName().CStr(), GetId());
+					UpdateBaseTimestamp();
+					logtt("%s/%s(%u) Reached the end of the file. rewind to the first frame.", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
 					continue;
-
-					// logtd("%s/%s(%u) Reached the end of the file. go to the next file.", GetApplicationInfo().GetName().CStr(), GetName().CStr(), GetId());
-					// UpdatePrivBaseTimestamp();
-					// SetState(State::STOPPED);
-					// return ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 				}
 
 				// If the I/O is broken, terminate the thread.
-				logte("%s/%s(%u) FileStream's I/O has broken.", GetApplicationInfo().GetName().CStr(), GetName().CStr(), GetId());
+				logte("%s/%s(%u) FileStream's I/O has broken.", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+
 				SetState(State::ERROR);
+				
 				return ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 			}
 
-			// Get Track
+#if FILE_FIXED_TRACK_ID
+			auto fix_track_id = GetFixedTrackIdOfMediaType(ffmpeg::compat::ToMediaType(_format_context->streams[packet.stream_index]->codecpar->codec_type));
+			auto track = GetTrack(fix_track_id);
+#else			
 			auto track = GetTrack(packet.stream_index);
+#endif			
 			if (track == nullptr)
 			{
 				::av_packet_unref(&packet);
@@ -381,41 +412,33 @@ namespace pvd
 					continue;
 			}
 
-			auto media_packet = ffmpeg::Conv::ToMediaPacket(GetMsid(), track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
+			auto media_packet = ffmpeg::compat::ToMediaPacket(GetMsid(), track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
 			::av_packet_unref(&packet);
 
 			// Calculate PTS/DTS + Base Timestamp
 			UpdateTimestamp(media_packet);
 
-			// The purpose of updating the global Timestamp value when the URL is changed due to PullStream's failover.
-			AdjustTimestampByBase(media_packet->GetTrackId(), media_packet->GetPts(), media_packet->GetDts(), std::numeric_limits<int64_t>::max());
-
-			// logtd("%s/%s / msid(%d), id(%d) type(%s) flag(%6s), pts_ms(%10lld) pts%10lld) dts(%10lld) dur(%5lld) tb(%d/%d)",
-			// 		GetApplicationName(),
-			// 		GetName().CStr(),
-			// 		media_packet->GetMsid(),
-			// 		media_packet->GetTrackId(),
-			// 		StringFromMediaType(media_packet->GetMediaType()).CStr(),
-			// 		StringFromMediaPacketFlag(media_packet->GetFlag()).CStr(),
-			// 		(int64_t)(media_packet->GetPts() * GetTrack(media_packet->GetTrackId())->GetTimeBase().GetExpr() * 1000),
-			// 		media_packet->GetPts(),
-			// 		media_packet->GetDts(),
-			// 		media_packet->GetDuration(),
-			// 		GetTrack(media_packet->GetTrackId())->GetTimeBase().GetNum(),
-			// 		GetTrack(media_packet->GetTrackId())->GetTimeBase().GetDen()
-			// 	);
+			UpdateNextTimestamp(media_packet);
 
 			// Send to MediaRouter
 			SendFrame(std::move(media_packet));
 
 			// Real-time processing - It treats the packet the same as the real time.
-			if (_play_request_time.Elapsed() < (static_cast<int64_t>(static_cast<double>(media_packet->GetPts()) * track->GetTimeBase().GetExpr() * 1000)))
+			if (_play_request_time.Elapsed() < (static_cast<int64_t>(static_cast<double>(media_packet->GetDts()) * track->GetTimeBase().GetExpr() * 1000)))
 			{
 				break;
 			}
 		}
 
 		return ProcessMediaResult::PROCESS_MEDIA_SUCCESS;
+	}
+	
+	void FileStream::InitBaseTimestamp()
+	{
+		for (const auto &[track_id, track] : GetTracks())
+		{
+			_base_timestamp[track_id] = GetBaseTimestamp(track_id);
+		}
 	}
 
 	void FileStream::UpdateTimestamp(std::shared_ptr<MediaPacket> &packet)
@@ -428,43 +451,34 @@ namespace pvd
 
 		packet->SetPts(base_timestamp + packet->GetPts());
 		packet->SetDts(base_timestamp + packet->GetDts());
-
-		_last_timestamp[packet->GetTrackId()] = packet->GetPts() + packet->GetDuration();
 	}
 
-	void FileStream::InitPrivBaseTimestamp()
+	void FileStream::UpdateNextTimestamp(std::shared_ptr<MediaPacket> &packet)
 	{
-		for (const auto it : GetTracks())
-		{
-			auto track_id = it.first;
-
-			_base_timestamp[track_id] = GetBaseTimestamp(track_id);
-		}
+		_next_timestamp[packet->GetTrackId()] = packet->GetPts() + packet->GetDuration();
 	}
 
-	void FileStream::UpdatePrivBaseTimestamp()
+	void FileStream::UpdateBaseTimestamp()
 	{
 		// Select the track with the highest timestamp value.
-		int64_t highest_ts_ms = 0;
-		for (const auto &it : _last_timestamp)
+		int64_t highest_timestamp_ms = 0;
+		
+		for (const auto &[track_id, timestamp] : _next_timestamp)
 		{
-			auto track_id = it.first;
-			auto timestamp = it.second;
 			auto track = GetTrack(track_id);
 			if (track == nullptr)
 			{
 				continue;
 			}
 
-			auto cur_ts_ms = (timestamp * 1000) / track->GetTimeBase().GetTimescale();
+			auto timestamp_ms = (timestamp * 1000) / track->GetTimeBase().GetTimescale();
 
-			highest_ts_ms = std::max<int64_t>(cur_ts_ms, highest_ts_ms);
+			highest_timestamp_ms = std::max<int64_t>(timestamp_ms, highest_timestamp_ms);
 		}
 
 		// Change the Base Timestamp of all tracks to the highest timestamp
-		for (const auto &it : _last_timestamp)
+		for (const auto &[track_id, timestamp] : _next_timestamp)
 		{
-			auto track_id = it.first;
 			auto track = GetTrack(track_id);
 			if (track == nullptr)
 			{
@@ -472,10 +486,25 @@ namespace pvd
 			}
 
 			// avoid to non monotonically increasing dts problem
-			auto rescale_ts = highest_ts_ms * track->GetTimeBase().GetTimescale() / 1000;  
+			auto timestamp_tb = highest_timestamp_ms * track->GetTimeBase().GetTimescale() / 1000;  
 
-			_base_timestamp[track_id] = rescale_ts;
-			_last_timestamp[track_id] = rescale_ts;
+			_base_timestamp[track_id] = timestamp_tb;
+			_next_timestamp[track_id] = timestamp_tb;
 		}
 	}
+
+	uint8_t FileStream::GetFixedTrackIdOfMediaType(cmn::MediaType media_type)
+	{
+		switch (media_type)
+		{
+			case cmn::MediaType::Video:
+				return FILE_VIDEO_TRACK_ID;
+			case cmn::MediaType::Audio:
+				return FILE_AUDIO_TRACK_ID;
+			case cmn::MediaType::Data:
+			default:
+				return FILE_DATA_TRACK_ID;
+		}
+	}
+
 }  // namespace pvd

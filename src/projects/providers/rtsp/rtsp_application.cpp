@@ -20,7 +20,7 @@ RtspApplication::RtspApplication(const info::Application &application_info)
 
 std::shared_ptr<pvd::Stream> RtspApplication::CreateStream()
 {
-	logtd("OnStreamCreated");
+	logtt("OnStreamCreated");
 
 	auto stream = RtspStream::Create(GetSharedPtrAs<pvd::Application>());
 

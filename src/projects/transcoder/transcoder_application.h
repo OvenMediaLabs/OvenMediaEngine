@@ -9,10 +9,9 @@
 
 #pragma once
 
-#include <base/ovlibrary/ovlibrary.h>
+#include <stdint.h>
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -21,9 +20,10 @@
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/mediarouter_application_connector.h"
 #include "base/mediarouter/mediarouter_application_observer.h"
+#include "base/ovlibrary/ovlibrary.h"
 #include "transcoder_stream.h"
 
-class TranscodeApplication : public MediaRouteApplicationConnector, public MediaRouteApplicationObserver
+class TranscodeApplication : public MediaRouterApplicationConnector, public MediaRouterApplicationObserver
 {
 public:
 	static std::shared_ptr<TranscodeApplication> Create(const info::Application &application_info);
@@ -34,18 +34,18 @@ public:
 	bool Start();
 	bool Stop();
 
-	MediaRouteApplicationObserver::ObserverType GetObserverType() override
+	MediaRouterApplicationObserver::ObserverType GetObserverType() override
 	{
-		return MediaRouteApplicationObserver::ObserverType::Transcoder;
+		return MediaRouterApplicationObserver::ObserverType::Transcoder;
 	}
 
-	MediaRouteApplicationConnector::ConnectorType GetConnectorType() override
+	MediaRouterApplicationConnector::ConnectorType GetConnectorType() override
 	{
-		return MediaRouteApplicationConnector::ConnectorType::Transcoder;
+		return MediaRouterApplicationConnector::ConnectorType::Transcoder;
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////
-	// MediaRouteApplicationObserver Implementation
+	// MediaRouterApplicationObserver Implementation
 	////////////////////////////////////////////////////////////////////////////////////////////////
 	bool OnStreamCreated(const std::shared_ptr<info::Stream> &stream) override;
 	bool OnStreamDeleted(const std::shared_ptr<info::Stream> &stream) override;
@@ -55,9 +55,10 @@ public:
 	bool OnSendFrame(const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) override;
 
 private:
-	const info::Application _application_info;
+	bool ValidateAppConfiguration();
 
 private:
+	const info::Application _application_info;
 	std::map<int32_t, std::shared_ptr<TranscoderStream>> _streams;
 	std::mutex _mutex;
 };

@@ -3,7 +3,7 @@
 #include "http_server.h"
 #include "http_connection.h"
 
-#include "../http_private.h"
+#include "./http_server_private.h"
 
 namespace http
 {
@@ -34,23 +34,23 @@ namespace http
 
 		void HttpConnection::AddUserData(const ov::String &key, std::any user_data)
 		{
-			_user_data_map[key] = user_data;
+			_user_data_map[key] = std::move(user_data);
 		}
 
-		std::any HttpConnection::GetUserData(const ov::String &key) const
+		const std::any *HttpConnection::GetUserData(const ov::String &key) const
 		{
 			auto item = _user_data_map.find(key);
 
 			if (item == _user_data_map.end())
 			{
-				return std::any();
+				return nullptr;
 			}
 
-			return item->second;
+			return &item->second;
 		}
 
 		// Get user datas
-		std::map<ov::String, std::any> HttpConnection::GetUserDataMap() const
+		const std::map<ov::String, std::any>& HttpConnection::GetUserDataMap() const
 		{
 			return _user_data_map;
 		}
@@ -202,18 +202,34 @@ namespace http
 		// Find Interceptor
 		std::shared_ptr<RequestInterceptor> HttpConnection::FindInterceptor(const std::shared_ptr<HttpExchange> &exchange)
 		{
-			if (_interceptor != nullptr)
+			std::shared_ptr<RequestInterceptor> interceptor = _interceptor;
+
+			if (interceptor != nullptr)
 			{
-				return _interceptor;
+				return interceptor;
 			}
 			else 
 			{
 				// Cache interceptor
-				_interceptor = _server->FindInterceptor(exchange);
+				interceptor = _server->FindInterceptor(exchange);
+				if (interceptor != nullptr && interceptor->IsCacheable())
+				{
+					_interceptor = interceptor;
+				}
+
+				// If there is no interceptor in _need_to_close_interceptors, add it
+				if (interceptor != nullptr)
+				{
+					auto found = std::find(_need_to_close_interceptors.begin(), _need_to_close_interceptors.end(), interceptor);
+					if (found == _need_to_close_interceptors.end())
+					{
+						_need_to_close_interceptors.push_back(interceptor);
+					}
+				}
 			}
 
 			// Find interceptor from server
-			return _interceptor;
+			return interceptor;
 		}
 
 		bool HttpConnection::UpgradeToWebSocket(const std::shared_ptr<HttpExchange> &exchange)
@@ -235,9 +251,9 @@ namespace http
 				return;
 			}
 
-			if (_interceptor != nullptr)
+			for (auto &interceptor : _need_to_close_interceptors)
 			{
-				_interceptor->OnClosed(GetSharedPtr(), reason);
+				interceptor->OnClosed(GetSharedPtr(), reason);
 			}
 
 			if (_http_transaction != nullptr)
@@ -420,14 +436,14 @@ namespace http
 
 		ssize_t HttpConnection::OnHttp2RequestReceived(const std::shared_ptr<const ov::Data> &data)
 		{
-			logtd("Http2RequestReceived : %u", data->GetLength());
+			logtt("Http2RequestReceived : %u", data->GetLength());
 
-			ssize_t comsumed_bytes = 0;
+			ssize_t consumed_bytes = 0;
 
 			if (_http2_preface.IsConfirmed() == false)
 			{
-				comsumed_bytes = _http2_preface.AppendData(data);
-				if (comsumed_bytes == -1)
+				consumed_bytes = _http2_preface.AppendData(data);
+				if (consumed_bytes == -1)
 				{
 					logte("HTTP/2 preface is not confirmed from %s", _client_socket->ToString().CStr());
 					return -1;
@@ -438,17 +454,17 @@ namespace http
 					InitializeHttp2Connection();
 				}
 
-				return comsumed_bytes;
+				return consumed_bytes;
 			}
 
 			if (_http2_frame == nullptr)
 			{
-				logtd("Create HTTP/2 frame");
+				logtt("Create HTTP/2 frame");
 				_http2_frame = std::make_shared<Http2Frame>();
 			}
 
-			comsumed_bytes = _http2_frame->AppendData(data);
-			if (comsumed_bytes < 0)
+			consumed_bytes = _http2_frame->AppendData(data);
+			if (consumed_bytes < 0)
 			{
 				Close(PhysicalPortDisconnectReason::Error);
 				return -1;
@@ -456,7 +472,7 @@ namespace http
 
 			if (_http2_frame->GetParsingState() == Http2Frame::ParsingState::Completed)
 			{
-				logtd("HTTP/2 Frame Received : %s", _http2_frame->ToString().CStr());
+				logtt("HTTP/2 Frame Received : %s", _http2_frame->ToString().CStr());
 				
 				// lock
 				std::unique_lock<std::mutex> lock(_http_stream_map_guard);
@@ -470,7 +486,7 @@ namespace http
 				{
 					stream = std::make_shared<h2::HttpStream>(GetSharedPtr(), _http2_frame->GetStreamId());
 					_http_stream_map.emplace(_http2_frame->GetStreamId(), stream);
-					logtd("%s : Streams [%u]", ToString().CStr(), _http_stream_map.size());
+					logtt("%s : Streams [%u]", ToString().CStr(), _http_stream_map.size());
 				}
 				lock.unlock();
 
@@ -479,12 +495,12 @@ namespace http
 				_http2_frame.reset();
 			}
 
-			return comsumed_bytes;
+			return consumed_bytes;
 		}
 
 		void HttpConnection::InitializeHttp2Connection()
 		{
-			logtd("Initialize HTTP/2 connection");
+			logtt("Initialize HTTP/2 connection");
 
 			_hpack_encoder = std::make_shared<hpack::Encoder>();
 			_hpack_decoder = std::make_shared<hpack::Decoder>();

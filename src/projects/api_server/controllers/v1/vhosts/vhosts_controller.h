@@ -8,13 +8,13 @@
 //==============================================================================
 #pragma once
 
-#include "../../controller.h"
+#include "../../controller_base.h"
 
 namespace api
 {
 	namespace v1
 	{
-		class VHostsController : public Controller<VHostsController>
+		class VHostsController : public ControllerBase<VHostsController>
 		{
 		public:
 			void PrepareHandlers() override;

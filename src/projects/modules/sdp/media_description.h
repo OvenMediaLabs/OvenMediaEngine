@@ -13,6 +13,7 @@
 #include "sdp_base.h"
 #include "common_attr.h"
 #include "payload_attr.h"
+#include "simulcast_attr.h"
 
 class SessionDescription;
 
@@ -37,14 +38,6 @@ public:
 		Inactive
 	};
 
-	enum class SetupType
-	{
-		Unknown,
-		Active,
-		Passive,
-		ActPass
-	};
-
 	explicit MediaDescription();
 	virtual ~MediaDescription();
 
@@ -64,10 +57,36 @@ public:
 	std::shared_ptr<const PayloadAttr> GetPayload(uint8_t id) const;
 	std::shared_ptr<PayloadAttr> GetPayload(uint8_t id);
 	std::shared_ptr<const PayloadAttr> GetFirstPayload() const;
+	// payload list
+	const std::vector<std::shared_ptr<PayloadAttr>> &GetPayloadList() const;
+
+	// Add rid, whether to be used in simulcast
+	// alternative_to_base_rid : This is set as an alternative to a specific rid in simulcast. If it is empty, it is to be used for new base rid.
+	// That is, it is set as a replacement for the base rid of the existing stream.
+	// For example, when there is a=simulcast:send 1;2 and AddRid(3, true, 2) is called, it is configured as follows.
+	// a=simulcast:send 1;2,3
+	bool AddRid(const std::shared_ptr<RidAttr> &rid, bool simulcast = true, const ov::String &alternative_to_base_rid = "");
+	// From SDP line
+	// rid_id : rid id
+	// direction : send, recv
+	// restrictions : pt=97,98;max-width=1280;max-height=720 ...
+	bool AddRid(const ov::String &rid_id, const ov::String &direction, const ov::String &restrictions);
+	// From SDP line
+	bool SetSimulcast(const ov::String &send_rids, const ov::String &recv_rids);
+	bool AddSendLayerToSimulcast(const std::shared_ptr<SimulcastLayer> &layer);
+	bool AddRecvLayerToSimulcast(const std::shared_ptr<SimulcastLayer> &layer);
+
+	std::shared_ptr<RidAttr> GetRid(const ov::String &id);
+	// rid list
+	std::vector<std::shared_ptr<RidAttr>> GetRidList() const;
+	// simulcast list
+	std::shared_ptr<SimulcastLayer> GetSimulcastLayer(const ov::String &base_rid);
+	std::vector<std::shared_ptr<SimulcastLayer>> GetSendLayerList() const;
+	std::vector<std::shared_ptr<SimulcastLayer>> GetRecvLayerList() const;
 
 	// a=rtcp-mux
 	void UseRtcpMux(bool flag = true);
-	bool IsUseRtcpMux() const;
+	bool IsRtcpMux() const;
 
 	// a=rtcp-rsize
 	void UseRtcpRsize(bool flag = true);
@@ -80,16 +99,12 @@ public:
 
 	// a=mid:video
 	void SetMid(const ov::String &mid);
-	const ov::String &GetMid() const;
+	std::optional<ov::String> GetMid() const;
 
 	// a=msid:msid appdata
 	void SetMsid(const ov::String &msid, const ov::String &msid_appdata);
-	const ov::String &GetMsid();
-	const ov::String &GetMsidAppdata();
-
-	// a=setup:actpass
-	void SetSetup(SetupType type);
-	bool SetSetup(const ov::String &type);
+	std::optional<ov::String> GetMsid();
+	std::optional<ov::String> GetMsidAppdata();
 
 	// c=IN IP4 0.0.0.0
 	void SetConnection(uint8_t version, const ov::String &ip);
@@ -115,14 +130,15 @@ public:
 	void SetSsrc(uint32_t ssrc);
 	void SetRtxSsrc(uint32_t rtx_ssrc);
 
-	uint32_t GetSsrc() const;
-	uint32_t GetRtxSsrc() const;
-	ov::String GetCname() const;
+	std::optional<uint32_t> GetSsrc() const;
+	std::optional<uint32_t> GetRtxSsrc() const;
+	std::optional<ov::String> GetCname() const;
 
 	// a=extmap:1 urn:ietf:params:rtp-hdrext:framemarking
 	void AddExtmap(uint8_t id, ov::String attribute);
 	std::map<uint8_t, ov::String> GetExtmap() const;
 	ov::String GetExtmapItem(uint8_t id) const;
+	bool FindExtmapItem(const ov::String &keyword, uint8_t &id, ov::String &uri) const;
 
 private:
 	bool UpdateData(ov::String &sdp) override;
@@ -141,24 +157,25 @@ private:
 	Direction _direction = Direction::Unknown;
 	ov::String _direction_str = "UNKNOWN";
 
-	ov::String _mid;
-
-	ov::String _msid;
-	ov::String _msid_appdata;
-	
-	SetupType _setup = SetupType::Unknown;
-	ov::String _setup_str = "UNKNOWN";
+	std::optional<ov::String> _msid;
+	std::optional<ov::String> _msid_appdata;
 
 	uint8_t _connection_ip_version = 4;
 	ov::String _connection_ip = "0.0.0.0";
 
 	float _framerate = 0.0f;
 
-	uint32_t _ssrc = 0;
-	uint32_t _rtx_ssrc = 0;
-	ov::String _cname;
-
+	std::optional<ov::String> _mid;
+	std::optional<ov::String> _cname;
+	std::optional<uint32_t> _ssrc;
+	std::optional<uint32_t> _rtx_ssrc;
+	
 	std::map<uint8_t, ov::String> _extmap;
 
 	std::vector<std::shared_ptr<PayloadAttr>> _payload_list;
+	std::vector<std::shared_ptr<RidAttr>> _rid_list;
+	std::vector<std::shared_ptr<SimulcastLayer>> _send_layers;
+	std::vector<std::shared_ptr<SimulcastLayer>> _recv_layers;
+
+	std::queue<std::function<void()>> _post_parsing_tasks;
 };

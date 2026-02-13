@@ -39,17 +39,17 @@ bool ParseSdp(const std::vector<uint8_t> &sdp, RtspMediaInfo &rtsp_media_info)
                     }
                     else if (HasSubstring(line, 2, rtmpmap))
                     {
-                        auto codec_paramerters = Split(line.substr(2 + sizeof(rtmpmap)), ' ');
+                        auto codec_parameters = Split(line.substr(2 + sizeof(rtmpmap)), ' ');
                         // https://tools.ietf.org/html/rfc4566#section-6
                         // a=rtpmap:<payload type> <encoding name>/<clock rate> [/<encoding parameters>]
-                        if (codec_paramerters.size() >= 2)
+                        if (codec_parameters.size() >= 2)
                         {
                             uint8_t payload_type = 0;
-                            if (Stoi(std::string(codec_paramerters[0].data(), codec_paramerters[0].size()), payload_type) == false)
+                            if (Stoi(std::string(codec_parameters[0].data(), codec_parameters[0].size()), payload_type) == false)
                             {
                                 continue;
                             }
-                            auto codec = Split(codec_paramerters[1], '/');
+                            auto codec = Split(codec_parameters[1], '/');
                             if (codec.empty() == false)
                             {
                                 auto &payload = rtsp_media_info.payloads_[payload_type];
@@ -181,9 +181,9 @@ bool ParseSdp(const std::vector<uint8_t> &sdp, RtspMediaInfo &rtsp_media_info)
                                                     H264Extradata h264_extradata;
                                                     h264_extradata.AddSps(sps);
                                                     h264_extradata.AddPps(pps);
-                                                    payload.SetCodecExtradata(h264_extradata.Serialize());
+                                                    payload.SetCodecComponentData(h264_extradata.Serialize());
                                                 }
-                                                // Attempt to parse SPS to propely set width/height/frame rate
+                                                // Attempt to parse SPS to properly set width/height/frame rate
                                                 H264SPS sps;
                                                 if (H264Parser::ParseSPS(sps_bytes->GetDataAs<uint8_t>(), sps_bytes->GetLength(), sps))
                                                 {

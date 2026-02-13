@@ -11,7 +11,7 @@
 #include <base/common_types.h>
 #include <base/provider/provider.h>
 #include <base/mediarouter/mediarouter_interface.h>
-#include <orchestrator/data_structures/data_structure.h>
+#include <orchestrator/interfaces.h>
 #include <shared_mutex>
 
 namespace pvd
@@ -81,7 +81,7 @@ namespace pvd
 		}
 
 	protected:
-		PullProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouteInterface> &router);
+		PullProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		virtual ~PullProvider() override;
 
 		bool LockPullStreamIfNeeded(const info::Application &app_info, const ov::String &stream_name, const std::vector<ov::String> &url_list, off_t offset);

@@ -7,7 +7,7 @@
 
 #include "thumbnail_stream.h"
 
-class ThumbnailApplication : public pub::Application
+class ThumbnailApplication final : public pub::Application
 {
 public:
 	static std::shared_ptr<ThumbnailApplication> Create(const std::shared_ptr<pub::Publisher> &publisher, const info::Application &application_info);

@@ -2,7 +2,7 @@
 
 ## Performance Test
 
-OvenMediaEngine provides a tester for measuring WebRTC performance called OvenRtcTester. It is developed in Go language and uses the pion/webrtc/v3 and gorilla/websocket modules. Many thanks to the [pion/webrtc](https://github.com/pion/webrtc/) and [gorilla/websocket](https://github.com/gorilla/websocket) teams for contributing this wonderful project.
+OvenMediaEngine provides a tester for measuring WebRTC performance called OvenRtcTester. It is developed in Go language and uses the `pion/webrtc/v3` and `gorilla/websocket` modules. Many thanks to the [pion/webrtc](https://github.com/pion/webrtc/) and [gorilla/websocket](https://github.com/gorilla/websocket) teams for contributing this wonderful project.
 
 ### Getting Started OvenRtcTester
 
@@ -14,7 +14,7 @@ OvenRtcTester was tested with the latest version of go 1.17.
 
 #### Run&#x20;
 
-You can simply run it like this: -url is required. If the -life option is not used, it will run indefinitely until the user presses `ctrl+c`.
+You can simply run it like this: `-url` is required. If the `-life` option is not used, it will run indefinitely until the user presses `ctrl+c`.
 
 ```bash
 $ cd OvenMediaEngine/misc/oven_rtc_tester
@@ -160,13 +160,11 @@ client_3 connection state has changed closed
 client_4 has stopped
 ```
 
-###
-
 ## Performance Tuning
 
 ### Monitoring the usage of threads
 
-Linux has various tools to monitor CPU usage per thread. We will check the simplest with the top command. If you issue the top -H -p \[pid] command, you will see the following screen.
+Linux has various tools to monitor CPU usage per thread. We will check the simplest with the top command. If you issue the `top -H -p` \[pid] command, you will see the following screen.
 
 ![](<.gitbook/assets/image (34).png>)
 
@@ -223,63 +221,54 @@ If the OvenMediaEngine's capacity is exceeded, you will notice it in OvenRtcTest
 
 ![](<.gitbook/assets/image (36).png>)
 
-On the right side of the above capture screen, we simulate 400 players with OvenRtcTester.  \<Summary> of OvenRtcTester shows that `Avg Video Delay` and `Avg Audio Delay` are very high, and` Avg FPS` is low.
+On the right side of the above capture screen, we simulate 400 players with OvenRtcTester.  `<Summary>` of OvenRtcTester shows that `Avg Video Delay` and `Avg Audio Delay` are very high, and `Avg FPS` is low.
 
-And on the left, you can check the CPU usage by thread with the `top -H -p` command. This confirms that the StreamWorker threads are being used at 100%, and now you can scale the server by increasing the number of StreamWorker threads. If OvenMediaEngine is not using 100% of all cores of the server, you can improve performance by [tuning the number of threads](performance-tuning.md#tuning-the-number-of-threads).
+And on the left, you can check the CPU usage by thread with the `top -H -p` command. This confirms that the `StreamWorker` threads are being used at 100%, and now you can scale the server by increasing the number of `StreamWorker` threads. If OvenMediaEngine is not using 100% of all cores of the server, you can improve performance by [tuning the number of threads](performance-tuning.md#tuning-the-number-of-threads).
 
 ![](<.gitbook/assets/image (37).png>)
 
-This is the result of tuning the number of StreamWorkerCount to 8 in config. This time, we simulated 1000 players with OvenRtcTester, and you can see that it works stably.
+This is the result of tuning the number of `StreamWorkerCount` to 8 in config. This time, we simulated 1000 players with OvenRtcTester, and you can see that it works stably.
 
 ### Tuning the number of threads
 
-The WorkerCount in `<Bind>` can set the thread responsible for sending and receiving over the socket. Publisher's AppWorkerCount allows you to set the number of threads used for per-stream processing such as RTP packaging, and StreamWorkerCount allows you to set the number of threads for per-session processing such as SRTP encryption.
+The `WorkerCount` in `<Bind>` can set the thread responsible for sending and receiving over the socket. Publisher's `AppWorkerCount` allows you to set the number of threads used for per-stream processing such as RTP packaging, and `StreamWorkerCount` allows you to set the number of threads for per-session processing such as SRTP encryption.
 
-```
+```xml
+
 <Bind>
-		<Providers>
-			<RTMP>
-				<Port>1935</Port>
-				<WorkerCount>1</WorkerCount>
-			</RTMP>
-			...
-		</Providers>
-		...
-		<Publishers>
-			<WebRTC>
-				<Signalling>
-					<Port>3333</Port>
-					<WorkerCount>1</WorkerCount>
-				</Signalling>
-				<IceCandidates>
-					<TcpRelay>*:3478</TcpRelay>
-					<IceCandidate>*:10000/udp</IceCandidate>
-					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
-				</IceCandidates>
-		...
+    <Providers>
+        <RTMP>
+            <Port>1935</Port>
+            <WorkerCount>1</WorkerCount>
+        </RTMP>
+        ...
+    </Providers>
+    ...
+    <Publishers>
+        <WebRTC>
+            <Signalling>
+                <Port>3333</Port>
+                <WorkerCount>1</WorkerCount>
+            </Signalling>
+            <IceCandidates>
+                <TcpRelay>*:3478</TcpRelay>
+                <IceCandidate>*:10000/udp</IceCandidate>
+                <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+            </IceCandidates>
+    ...
 </Bind>
-			
+        
 <Application>
 <Publishers>
-  <AppWorkerCount>1</AppWorkerCount>
-  <StreamWorkerCount>8</StreamWorkerCount>
+<AppWorkerCount>1</AppWorkerCount>
+<StreamWorkerCount>8</StreamWorkerCount>
 </Publishers>
 </Application>
 ```
 
 #### Scalable Threads and Configuration
 
-| Thread name     | Element in the configuration                                                                                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AW-XXX          | \<Application>\<Publishers>\<AppWorkerCount>                                                                                                                                              |
-| StreamWorker    | \<Application>\<Publishers>\<StreamWorkerCount>                                                                                                                                           |
-| SPICE-XXX       | <p>&#x3C;Bind>&#x3C;Provider>&#x3C;WebRTC>&#x3C;IceCandidates>&#x3C;TcpRelayWorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;WebRTC>&#x3C;IceCandidates>&#x3C;TcpRelayWorkerCount></p> |
-| SPRtcSignalling | <p>&#x3C;Bind>&#x3C;Provider>&#x3C;WebRTC>&#x3C;Signalling>&#x3C;WorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;WebRTC>&#x3C;Signalling>&#x3C;WorkerCount></p>                       |
-| SPSegPub        | <p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;HLS>&#x3C;WorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;DASH>&#x3C;WorkerCount></p>                                                             |
-| SPRTMP-XXX      | \<Bind>\<Providers>\<RTMP>\<WorkerCount>                                                                                                                                                  |
-| SPMPEGTS        | \<Bind>\<Providers>\<MPEGTS>\<WorkerCount>                                                                                                                                                |
-| SPOvtPub        | \<Bind>\<Pubishers>\<OVT>\<WorkerCount>                                                                                                                                                   |
-| SPSRT           | \<Bind>\<Providers>\<SRT>\<WorkerCount>                                                                                                                                                   |
+<table data-header-hidden><thead><tr><th width="289">Thread name</th><th>Element in the configuration</th></tr></thead><tbody><tr><td>Thread name</td><td>Element in the configuration</td></tr><tr><td>AW-XXX</td><td>&#x3C;Application>&#x3C;Publishers>&#x3C;AppWorkerCount></td></tr><tr><td>StreamWorker</td><td>&#x3C;Application>&#x3C;Publishers>&#x3C;StreamWorkerCount></td></tr><tr><td>SPICE-XXX</td><td><p>&#x3C;Bind>&#x3C;Provider>&#x3C;WebRTC>&#x3C;IceCandidates>&#x3C;TcpRelayWorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;WebRTC>&#x3C;IceCandidates>&#x3C;TcpRelayWorkerCount></p></td></tr><tr><td>SPRtcSignalling</td><td><p>&#x3C;Bind>&#x3C;Provider>&#x3C;WebRTC>&#x3C;Signalling>&#x3C;WorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;WebRTC>&#x3C;Signalling>&#x3C;WorkerCount></p></td></tr><tr><td>SPSegPub</td><td><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;HLS>&#x3C;WorkerCount></p><p>&#x3C;Bind>&#x3C;Pubishers>&#x3C;DASH>&#x3C;WorkerCount></p></td></tr><tr><td>SPRTMP-XXX</td><td>&#x3C;Bind>&#x3C;Providers>&#x3C;RTMP>&#x3C;WorkerCount></td></tr><tr><td>SPMPEGTS</td><td>&#x3C;Bind>&#x3C;Providers>&#x3C;MPEGTS>&#x3C;WorkerCount></td></tr><tr><td>SPOvtPub</td><td>&#x3C;Bind>&#x3C;Pubishers>&#x3C;OVT>&#x3C;WorkerCount></td></tr><tr><td>SPSRT</td><td>&#x3C;Bind>&#x3C;Providers>&#x3C;SRT>&#x3C;WorkerCount></td></tr></tbody></table>
 
 #### AppWorkerCount
 
@@ -289,7 +278,7 @@ The WorkerCount in `<Bind>` can set the thread responsible for sending and recei
 | Minimum | 1     |
 | Maximum | 72    |
 
-With `AppWorkerCount`, you can set the number of threads for distributed processing of streams when hundreds of streams are created in one application. When an application is requested to create a stream, the stream is evenly attached to one of created threads. The main role of Stream is to packetize raw media packets into the media format of the protocol to be transmitted. When there are thousands of streams, it is difficult to process them in one thread. Also, if StreamWorkerCount is set to 0, AppWorkerCount is responsible for sending media packets to the session.
+With `AppWorkerCount`, you can set the number of threads for distributed processing of streams when hundreds of streams are created in one application. When an application is requested to create a stream, the stream is evenly attached to one of created threads. The main role of Stream is to packetize raw media packets into the media format of the protocol to be transmitted. When there are thousands of streams, it is difficult to process them in one thread. Also, if `StreamWorkerCount` is set to 0, `AppWorkerCount` is responsible for sending media packets to the session.
 
 It is recommended that this value does not exceed the number of CPU cores.
 
@@ -301,11 +290,11 @@ It is recommended that this value does not exceed the number of CPU cores.
 | Minimum | 0     |
 | Maximum | 72    |
 
-It may be impossible to send data to thousands of viewers in one thread. StreamWorkerCount allows sessions to be distributed across multiple threads and transmitted simultaneously. This means that resources required for SRTP encryption of WebRTC or TLS encryption of HLS/DASH can be distributed and processed by multiple threads. It is recommended that this value not exceed the number of CPU cores.
+It may be impossible to send data to thousands of viewers in one thread. `StreamWorkerCount` allows sessions to be distributed across multiple threads and transmitted simultaneously. This means that resources required for SRTP encryption of WebRTC or TLS encryption of HLS/DASH can be distributed and processed by multiple threads. It is recommended that this value not exceed the number of CPU cores.
 
 ### Use-Case
 
-If a large number of streams are created and very few viewers connect to each stream, increase AppWorkerCount and lower StreamWorkerCount as follows.
+If a large number of streams are created and very few viewers connect to each stream, increase `AppWorkerCount` and lower `StreamWorkerCount` as follows.
 
 ```
 <Publishers>
@@ -314,7 +303,7 @@ If a large number of streams are created and very few viewers connect to each st
 </Publishers>
 ```
 
-If a small number of streams are created and a very large number of viewers are connected to each stream, lower AppWorkerCount and increase StreamWorkerCount as follows.
+If a small number of streams are created and a very large number of viewers are connected to each stream, lower `AppWorkerCount` and increase `StreamWorkerCount` as follows.
 
 ```
 <Publishers>

@@ -11,7 +11,7 @@
 #include "./openssl_private.h"
 #include "./tls.h"
 
-#define DO_CALLBACK_IF_AVAILBLE(return_type, default_value, tls_context, callback_name, ...) \
+#define DO_CALLBACK_IF_AVAILABLE(return_type, default_value, tls_context, callback_name, ...) \
 	DoCallback<return_type, default_value, decltype(&TlsContextCallback::callback_name), &TlsContextCallback::callback_name>(tls_context, ##__VA_ARGS__)
 
 namespace ov
@@ -25,9 +25,10 @@ namespace ov
 
 	std::shared_ptr<TlsContext> TlsContext::CreateServerContext(
 		TlsMethod method,
-		const std::shared_ptr<const CertificatePair> &certificate_pair,
+		const std::shared_ptr<const ::Certificate> &certificate,
 		const ov::String &cipher_list,
-		bool enable_h2_alpn, 
+		bool enable_h2_alpn,
+		bool enable_ocsp_staping,
 		const ov::TlsContextCallback *callback,
 		std::shared_ptr<const ov::Error> *error)
 	{
@@ -39,9 +40,10 @@ namespace ov
 		{
 			context->Prepare(
 				ssl_method,
-				certificate_pair,
+				certificate,
 				cipher_list,
 				enable_h2_alpn,
+				enable_ocsp_staping,
 				callback);
 		}
 		catch (const OpensslError &e)
@@ -81,9 +83,10 @@ namespace ov
 
 	void TlsContext::Prepare(
 		const SSL_METHOD *method,
-		const std::shared_ptr<const CertificatePair> &certificate_pair,
+		const std::shared_ptr<const Certificate> &certificate,
 		const ov::String &cipher_list,
-		bool enable_h2_alpn, 
+		bool enable_h2_alpn,
+		bool enable_ocsp_staping,
 		const TlsContextCallback *callback)
 	{
 		_h2_alpn_enabled = enable_h2_alpn;
@@ -92,17 +95,17 @@ namespace ov
 		{
 			OV_ASSERT2(_ssl_ctx == nullptr);
 
-			if (certificate_pair == nullptr)
+			if (certificate == nullptr)
 			{
-				OV_ASSERT2(certificate_pair != nullptr);
+				OV_ASSERT2(certificate != nullptr);
 
 				throw OpensslError("Invalid TLS certificate");
 			}
 
 			// Create a new SSL session
-			decltype(_ssl_ctx) ctx(::SSL_CTX_new(method));
+			decltype(_ssl_ctx) ssl_ctx(::SSL_CTX_new(method));
 
-			if (ctx == nullptr)
+			if (ssl_ctx == nullptr)
 			{
 				throw OpensslError("Cannot create SSL context");
 			}
@@ -115,7 +118,7 @@ namespace ov
 			// Register peer certificate verification callback
 			if (_callback.verify_callback != nullptr)
 			{
-				::SSL_CTX_set_cert_verify_callback(ctx, TlsVerify, this);
+				::SSL_CTX_set_cert_verify_callback(ssl_ctx, TlsVerify, this);
 			}
 			else
 			{
@@ -124,25 +127,25 @@ namespace ov
 
 			// https://curl.haxx.se/docs/ssl-ciphers.html
 			// https://wiki.mozilla.org/Security/Server_Side_TLS
-			::SSL_CTX_set_cipher_list(ctx, cipher_list.CStr());
+			::SSL_CTX_set_cipher_list(ssl_ctx, cipher_list.CStr());
 
 			if (enable_h2_alpn == true)
 			{
-				// Now, only enable TLS 1.3 for HTTP/2 
-				::SSL_CTX_set_max_proto_version(ctx, TLS1_3_VERSION);
+				// Now, only enable TLS 1.3 for HTTP/2
+				::SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_3_VERSION);
 			}
 			else
 			{
 				// Disable TLS1.3 because it is not yet supported properly by the HTTP server implementation (HTTP2 support, Session tickets, ...)
 				// This also allows for using less secure cipher suites for lower CPU requirements when using HLS/DASH/LL-DASH streaming
-				::SSL_CTX_set_max_proto_version(ctx, TLS1_2_VERSION);
+				::SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_2_VERSION);
 			}
 			// Disable old TLS versions which are neither secure nor needed any more
-			::SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
+			::SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_2_VERSION);
 
-			_ssl_ctx = std::move(ctx);
+			_ssl_ctx = std::move(ssl_ctx);
 
-			bool result = DO_CALLBACK_IF_AVAILBLE(bool, true, this, create_callback, static_cast<SSL_CTX *>(ctx));
+			bool result = DO_CALLBACK_IF_AVAILABLE(bool, true, this, create_callback, static_cast<SSL_CTX *>(ssl_ctx));
 
 			if (result == false)
 			{
@@ -152,11 +155,17 @@ namespace ov
 				throw OpensslError("An error occurred inside create callback");
 			}
 
-			if (certificate_pair != nullptr)
+			if (certificate != nullptr)
 			{
 				try
 				{
-					SetCertificate(certificate_pair);
+					SetCertificate(certificate);
+
+					if (enable_ocsp_staping)
+					{
+						// Use OCSP stapling
+						_ocsp_handler.Setup(ssl_ctx);
+					}
 				}
 				catch (const OpensslError &error)
 				{
@@ -175,7 +184,7 @@ namespace ov
 			}
 
 			// Use ALPN
-			SSL_CTX_set_alpn_select_cb(_ssl_ctx, OnALPNSelectCallback, this);
+			::SSL_CTX_set_alpn_select_cb(_ssl_ctx, OnALPNSelectCallback, this);
 
 		} while (false);
 	}
@@ -214,7 +223,7 @@ namespace ov
 
 			_ssl_ctx = std::move(ctx);
 
-			bool result = DO_CALLBACK_IF_AVAILBLE(bool, true, this, create_callback, static_cast<SSL_CTX *>(ctx));
+			bool result = DO_CALLBACK_IF_AVAILABLE(bool, true, this, create_callback, static_cast<SSL_CTX *>(ctx));
 
 			if (result == false)
 			{
@@ -231,7 +240,7 @@ namespace ov
 		// arg to TlsContext instance
 		auto parent = static_cast<TlsContext *>(arg);
 
-		// h2 first, 
+		// h2 first,
 		if (parent->_h2_alpn_enabled)
 		{
 			if (SelectALPNProtocol("h2", out, outlen, in, inlen) == true)
@@ -250,16 +259,16 @@ namespace ov
 
 	bool TlsContext::SelectALPNProtocol(ov::String key, const unsigned char **out, unsigned char *outlen, const unsigned char *in, unsigned int inlen)
 	{
-		unsigned int i=0;
+		unsigned int i = 0;
 		while (i < inlen)
 		{
 			auto length = in[i];
-			ov::String protocol(reinterpret_cast<const char *>(&in[i+1]), length);
+			ov::String protocol(reinterpret_cast<const char *>(&in[i + 1]), length);
 
 			if (protocol == key)
 			{
-				logtd("Selected ALPN protocol: %s", protocol.CStr());
-				*out = &in[i+1];
+				logtt("Selected ALPN protocol: %s", protocol.CStr());
+				*out = &in[i + 1];
 				*outlen = length;
 				return true;
 			}
@@ -283,7 +292,7 @@ namespace ov
 		if (server_name.IsEmpty() == false)
 		{
 			// Client set a server name
-			bool result = DO_CALLBACK_IF_AVAILBLE(bool, false, this, sni_callback, ssl, server_name);
+			bool result = DO_CALLBACK_IF_AVAILABLE(bool, false, this, sni_callback, ssl, server_name);
 
 			if (result == false)
 			{
@@ -292,40 +301,34 @@ namespace ov
 		}
 		else
 		{
-			logtd("Server name is not specified");
+			logtt("Server name is not specified");
 		}
 
 		return SSL_TLSEXT_ERR_OK;
 	}
 
-	void TlsContext::SetCertificate(const std::shared_ptr<const CertificatePair> &certificate_pair)
+	void TlsContext::SetCertificate(const std::shared_ptr<const ::Certificate> &certificate)
 	{
-		OV_ASSERT2(certificate_pair != nullptr);
-
-		if (certificate_pair == nullptr)
-		{
-			throw OpensslError("certificate_pair is nullptr");
-		}
-
-		auto certificate = certificate_pair->GetCertificate();
-		auto chain_certificate = certificate_pair->GetChainCertificate();
+		OV_ASSERT2(certificate != nullptr);
 
 		if (certificate == nullptr)
 		{
 			throw OpensslError("certificate is nullptr");
 		}
 
-		if (::SSL_CTX_use_certificate(_ssl_ctx, certificate->GetX509()) != 1)
+		if (::SSL_CTX_use_certificate(_ssl_ctx, certificate->GetCertification()) != 1)
 		{
-			throw OpensslError("Cannot use certficate: %s", OpensslError().What());
+			throw OpensslError("Cannot use certificate: %s", OpensslError().What());
 		}
 
-		if ((chain_certificate != nullptr) && (::SSL_CTX_add1_chain_cert(_ssl_ctx, chain_certificate->GetX509()) != 1))
+		auto chain_cert_path = certificate->GetChainCertificationPath();
+
+		if (chain_cert_path != nullptr)
 		{
-			throw OpensslError("Cannot use chain certificate: %s", OpensslError().What());
+			::SSL_CTX_load_verify_file(_ssl_ctx, chain_cert_path);
 		}
 
-		if (::SSL_CTX_use_PrivateKey(_ssl_ctx, certificate->GetPkey()) != 1)
+		if (::SSL_CTX_use_PrivateKey(_ssl_ctx, certificate->GetPrivateKey()) != 1)
 		{
 			throw OpensslError("Cannot use private key: %s", OpensslError().What());
 		}
@@ -343,7 +346,7 @@ namespace ov
 
 	int TlsContext::TlsVerify(X509_STORE_CTX *store, void *arg)
 	{
-		bool result = DO_CALLBACK_IF_AVAILBLE(bool, false, arg, verify_callback, store);
+		bool result = DO_CALLBACK_IF_AVAILABLE(bool, false, arg, verify_callback, store);
 
 		return result ? 1 : 0;
 	}

@@ -20,7 +20,7 @@ namespace pvd
     class RtspProvider : public pvd::Provider, public RtspObserver
     {
     public:
-        explicit RtspProvider(const cfg::Server &server_config, std::shared_ptr<MediaRouteInterface> router);
+        explicit RtspProvider(const cfg::Server &server_config, std::shared_ptr<MediaRouterInterface> router);
         ~RtspProvider() override;
 
         ProviderStreamDirection GetProviderStreamDirection() const override
@@ -40,7 +40,7 @@ namespace pvd
 
         bool Start() override;
 
-        static std::shared_ptr<RtspProvider> Create(const cfg::Server &server_config, std::shared_ptr<MediaRouteInterface> router);
+        static std::shared_ptr<RtspProvider> Create(const cfg::Server &server_config, std::shared_ptr<MediaRouterInterface> router);
 
         // RtspObserver
         bool OnStreamAnnounced(const ov::String &app_name, 
