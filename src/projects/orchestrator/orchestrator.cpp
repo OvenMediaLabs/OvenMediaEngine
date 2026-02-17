@@ -90,7 +90,7 @@ namespace ocst
 			{
 				auto &app_info = app->GetAppInfo();
 
-				auto result = DeleteApplication(app_info);
+				auto result	   = DeleteApplication(app_info);
 				if (result != Result::Succeeded)
 				{
 					logte("Could not delete application: %s", app_info.GetVHostAppName().CStr());
@@ -291,7 +291,7 @@ namespace ocst
 				if (module_interface->OnDeleteApplication(app_info) == false)
 				{
 					logte("The module %p (%s) returns error while deleting the application [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+						  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
 
 					// Ignore this error - some providers may not have generated the app
 				}
@@ -438,7 +438,7 @@ namespace ocst
 			return false;
 		}
 
-		auto url = url_list[0];
+		auto url		= url_list[0];
 		auto parsed_url = ov::Url::Parse(url);
 
 		if (parsed_url == nullptr)
@@ -447,10 +447,10 @@ namespace ocst
 			logte("Pull stream is requested for invalid URL: %s", url.CStr());
 			return false;
 		}
-		
+
 		auto app_info = info::Application::GetInvalidApplication();
 		// Check if the application does exists
-		app_info = GetApplicationInfo(vhost_app_name);
+		app_info	  = GetApplicationInfo(vhost_app_name);
 		if (app_info.IsValid() == false)
 		{
 			// Create a new application using application template if exists
@@ -496,23 +496,23 @@ namespace ocst
 			logte("Could not find provider for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
 			return false;
 		}
-		
+
 		logti("Trying to pull stream [%s/%s] from provider using URL: %s",
-				vhost_app_name.CStr(), stream_name.CStr(),
-				GetModuleTypeName(provider_module->GetModuleType()).CStr());
+			  vhost_app_name.CStr(), stream_name.CStr(),
+			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
 		auto stream = provider_module->PullStream(request_from, app_info, stream_name, url_list, offset, properties);
 		if (stream != nullptr)
 		{
 			logti("The stream was pulled successfully: [%s/%s] (%u)",
-					vhost_app_name.CStr(), stream_name.CStr(), stream->GetId());
+				  vhost_app_name.CStr(), stream_name.CStr(), stream->GetId());
 
 			return true;
 		}
 
 		logte("Could not pull stream [%s/%s] from provider: %s",
-				vhost_app_name.CStr(), stream_name.CStr(),
-				GetModuleTypeName(provider_module->GetModuleType()).CStr());
+			  vhost_app_name.CStr(), stream_name.CStr(),
+			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
 		return true;
 	}
@@ -528,7 +528,7 @@ namespace ocst
 		std::vector<ov::String> url_list;
 		Origin matched_origin;
 		auto &host_name = request_from->Host();
-		
+
 		std::vector<ov::String> url_list_in_map;
 		if (GetUrlListForLocation(vhost_app_name, host_name, stream_name, matched_origin, url_list_in_map) == false)
 		{
@@ -558,7 +558,7 @@ namespace ocst
 			// Create a new application using application template if exists
 
 			// Get vhost info
-			auto vhost = GetVirtualHost(vhost_app_name.GetVHostName());
+			auto vhost	 = GetVirtualHost(vhost_app_name.GetVHostName());
 
 			// Copy application template configuration
 			auto app_cfg = vhost->GetDynamicApplicationConfigTemplate();
@@ -752,7 +752,7 @@ namespace ocst
 		{
 			return nullptr;
 		}
-		
+
 		return prov_stream;
 	}
 
@@ -840,7 +840,7 @@ namespace ocst
 		}
 
 		auto app_stream_name = ov::String::FormatString("%s/%s", vhost_app_name.GetAppName().CStr(), stream_name.CStr());
-		auto ovt_url = ov::String::FormatString("%s/%s", vhost->GetOriginBaseUrl().CStr(), app_stream_name.CStr());
+		auto ovt_url		 = ov::String::FormatString("%s/%s", vhost->GetOriginBaseUrl().CStr(), app_stream_name.CStr());
 		if (client->RequestRegister(app_stream_name, ovt_url) == true)
 		{
 			return CommonErrorCode::SUCCESS;
@@ -914,7 +914,6 @@ namespace ocst
 		return _media_router->UnmirrorStream(stream_tap);
 	}
 
-
 	////////////////////////////////////////////////////
 	// Internal Functions
 	////////////////////////////////////////////////////
@@ -941,6 +940,10 @@ namespace ocst
 			type = ProviderType::RtspPull;
 		}
 		else if (lower_scheme == "rtspc")
+		{
+			type = ProviderType::RtspPull;
+		}
+		else if (lower_scheme == "rtsps")
 		{
 			type = ProviderType::RtspPull;
 		}
@@ -986,7 +989,7 @@ namespace ocst
 
 	std::shared_ptr<PullProviderModuleInterface> Orchestrator::GetProviderModuleForScheme(const ov::String &scheme)
 	{
-		auto provider = GetProviderForScheme(scheme);
+		auto provider		 = GetProviderForScheme(scheme);
 		auto provider_module = std::dynamic_pointer_cast<PullProviderModuleInterface>(provider);
 
 		OV_ASSERT((provider == nullptr) || (provider_module != nullptr),
@@ -1020,7 +1023,7 @@ namespace ocst
 
 	Result Orchestrator::CreateVirtualHost(const info::Host &vhost_info)
 	{
-		if(GetVirtualHost(vhost_info.GetName()) != nullptr)
+		if (GetVirtualHost(vhost_info.GetName()) != nullptr)
 		{
 			// Duplicated VirtualHostName
 			return Result::Exists;
@@ -1034,7 +1037,7 @@ namespace ocst
 			_virtual_host_list.push_back(vhost);
 		}
 
-		// Notification 
+		// Notification
 		{
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
@@ -1050,7 +1053,7 @@ namespace ocst
 				else
 				{
 					logte("The module %p (%s) returns error while creating the vhost [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+						  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 				}
 			}
 		}
@@ -1066,10 +1069,10 @@ namespace ocst
 		{
 			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
 			auto it = _virtual_host_list.begin();
-			while(it != _virtual_host_list.end())
+			while (it != _virtual_host_list.end())
 			{
 				auto vhost_item = *it;
-				if(vhost_item->GetName() == vhost_info.GetName())
+				if (vhost_item->GetName() == vhost_info.GetName())
 				{
 					_virtual_host_list.erase(it);
 					_virtual_host_map.erase(vhost_item->GetName());
@@ -1099,11 +1102,11 @@ namespace ocst
 					else
 					{
 						logte("The module %p (%s) returns error while deleting the vhost [%s]",
-							module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+							  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 					}
 				}
 			}
-			
+
 			mon::Monitoring::GetInstance()->OnHostDeleted(vhost_info);
 			return Result::Succeeded;
 		}
@@ -1115,7 +1118,7 @@ namespace ocst
 	{
 		Result total_result = Result::Succeeded;
 
-		auto vhost_list = GetVirtualHostList();
+		auto vhost_list		= GetVirtualHostList();
 		for (auto &vhost : vhost_list)
 		{
 			auto result = ReloadCertificate(vhost);
@@ -1138,7 +1141,6 @@ namespace ocst
 		return CommonErrorCode::ERROR;
 	}
 
-	
 	CommonErrorCode Orchestrator::ReloadCertificate(const ov::String &vhost_name)
 	{
 		auto vhost = GetVirtualHost(vhost_name);
@@ -1197,7 +1199,7 @@ namespace ocst
 				else
 				{
 					logte("The module %p (%s) returns error while updating certificate of the vhost [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+						  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 				}
 			}
 		}
@@ -1345,7 +1347,7 @@ namespace ocst
 				else
 				{
 					logte("The module %p (%s) returns error while creating the application [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+						  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
 					succeeded = false;
 					break;
 				}
@@ -1354,10 +1356,10 @@ namespace ocst
 
 		// TODO: Need to be refactored
 		// Since Orchestrator registers itself as MediaRouter observer last, OnStreamCreated and OnStreamDeleted events are received last.
-		// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the 
+		// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the
 		// very end, so if stream deletion is still in progress in another module, this may cause a conflict.
-		// Therefore, we need a guaranteed way Orchestrator to receive the event last, 
-		// not the way the orchestrator registers itself with the MediaRouter last and receives the event last. 
+		// Therefore, we need a guaranteed way Orchestrator to receive the event last,
+		// not the way the orchestrator registers itself with the MediaRouter last and receives the event last.
 		// (Now, it's working because MediaRouter registers an observer using push_back to the vector.)
 		if (_media_router != nullptr)
 		{
@@ -1387,7 +1389,7 @@ namespace ocst
 		if (vhost_app_name.IsValid())
 		{
 			auto &vhost_name = vhost_app_name.GetVHostName();
-			auto vhost = GetVirtualHost(vhost_name);
+			auto vhost		 = GetVirtualHost(vhost_name);
 			if (vhost != nullptr)
 			{
 				return vhost->GetApplication(vhost_app_name);
