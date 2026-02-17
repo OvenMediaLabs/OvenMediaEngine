@@ -977,7 +977,7 @@ namespace pvd
 		}
 
 		// Send without encryption
-		return nullptr;
+		return _signalling_socket->Send(message->GetMessage());
 	}
 
 	// When the stream is playing, another thread receives a message and notifies it.
