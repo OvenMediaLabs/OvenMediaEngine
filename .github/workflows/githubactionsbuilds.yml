@@ -57,9 +57,7 @@ jobs:
           type=raw,value=beta_${{ github.ref_name }},enable=${{ github.ref != 'refs/heads/master' }}
         labels: |
           maintainer=${{ github.actor }}
-          org.opencontainers.image.description=OvenMediaEngine - Multi-architecture Docker image
-      env:
-        DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+          org.opencontainers.image.description=OvenMediaEngine - Single-platform Docker image
     - name: Build and push Docker image
       uses: docker/build-push-action@v6
       with:
@@ -68,7 +66,6 @@ jobs:
         platforms: linux/amd64
         push: ${{ github.event_name != 'pull_request' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
         tags: ${{ steps.meta.outputs.tags }}
-        annotations: ${{ steps.meta.outputs.annotations }}
         build-args: |
           BUILD_VERSION=1.0.${{needs.generate_version_number.outputs.build_number}}
         # cache-from: ${{ (github.event_name != 'workflow_dispatch' || inputs.use_cache) && 'type=gha' || '' }}
