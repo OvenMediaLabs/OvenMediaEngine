@@ -252,7 +252,7 @@ namespace pvd
 					return false;
 				}
 
-				_tls_data->SetIoCallback(std::static_pointer_cast<ov::TlsClientDataIoCallback>(ov::Node::GetSharedPtr()));
+				_tls_data->SetIoCallback(GetSharedPtrAs<ov::TlsClientDataIoCallback>());
 				_tls_data->SetTlsHostName(_curr_url->Host());
 
 				// Perform TLS handshake
