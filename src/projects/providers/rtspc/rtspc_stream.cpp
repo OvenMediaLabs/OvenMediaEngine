@@ -1274,7 +1274,13 @@ namespace pvd
 		int64_t adjusted_timestamp;
 		if (AdjustRtpTimestamp(channel, first_rtp_packet->Timestamp(), std::numeric_limits<uint32_t>::max(), adjusted_timestamp) == false)
 		{
-			logtt("not yet received sr packet : %u", first_rtp_packet->Ssrc());
+			static std::map<uint32_t, int> _adjust_fail_count;
+			_adjust_fail_count[channel]++;
+			if (_adjust_fail_count[channel] <= 5 || _adjust_fail_count[channel] % 100 == 0)
+			{
+				logti("AdjustRtpTimestamp failed for track_id(%u) ssrc(%u) count(%d) - SR not yet received for this track", 
+					  channel, first_rtp_packet->Ssrc(), _adjust_fail_count[channel]);
+			}
 			// Prevents the stream from being deleted because there is no input data
 			MonitorInstance->IncreaseBytesIn(*Stream::GetSharedPtr(), bitstream->GetLength());
 			return;
@@ -1330,6 +1336,8 @@ namespace pvd
 		}
 
 		SendFrame(frame);
+		logti("SendFrame succeeded: track_id(%u) codec(%d) pts(%lld) data_len(%zu)", 
+			  track->GetId(), static_cast<int>(track->GetCodecId()), adjusted_timestamp, bitstream->GetLength());
 	}
 
 	// From RtpRtcp node
@@ -1337,10 +1345,13 @@ namespace pvd
 	{
 		// RTCP Channel is RTP Channel + 1
 		auto channel = rtcp_info->GetRtspChannel() - 1;
+		logti("RTCP received: type(%u) rtsp_channel(%u) computed_track_id(%u)", 
+			  static_cast<uint8_t>(rtcp_info->GetPacketType()), rtcp_info->GetRtspChannel(), channel);
 		// Receive Sender Report
 		if (rtcp_info->GetPacketType() == RtcpPacketType::SR)
 		{
 			auto sr = std::dynamic_pointer_cast<SenderReport>(rtcp_info);
+			logti("RTCP SR received for track_id(%u) sender_ssrc(%u)", channel, sr->GetSenderSsrc());
 			UpdateSenderReportTimestamp(channel, sr->GetMsw(), sr->GetLsw(), sr->GetTimestamp());
 		}
 	}
