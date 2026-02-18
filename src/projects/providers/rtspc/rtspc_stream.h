@@ -164,6 +164,13 @@ namespace pvd
 		std::shared_ptr<RtpRtcp>            _rtp_rtcp;
 		std::shared_ptr<SrtpTransport>      _srtp_transport;
 		bool                                _use_srtp = false;
+		// Per-channel SRTP crypto info collected during SETUP, keyed by interleaved channel ID
+		struct ChannelCryptoInfo
+		{
+			uint8_t channel_id;
+			MediaDescription::CryptoAttr crypto_attr;
+		};
+		std::vector<ChannelCryptoInfo>       _channel_crypto_list;
 
 		// TLS/SSL for RTSPS
 		bool                                _use_tls = false;

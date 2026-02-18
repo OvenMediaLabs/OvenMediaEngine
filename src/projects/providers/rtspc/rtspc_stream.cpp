@@ -682,80 +682,79 @@ namespace pvd
 			_rtp_rtcp->AddRtpReceiver(track, rtp_track_id);
 			RegisterRtpClock(track->GetId(), track->GetTimeBase().GetExpr());
 
+			// Collect per-track crypto info for SRTP setup (channel assignment must happen before increment)
+			if (_use_srtp)
+			{
+				auto crypto_attr = media_desc->GetFirstCrypto();
+				if (crypto_attr.has_value())
+				{
+					_channel_crypto_list.push_back({static_cast<uint8_t>(interleaved_channel), crypto_attr.value()});
+				}
+				else
+				{
+					logtw("SRTP is enabled but media track at channel %d has no crypto attribute", interleaved_channel);
+				}
+			}
+
 			interleaved_channel += 2;
 		}
 
-		// Configure SRTP if needed
+		// Configure SRTP if needed - set up per-channel keys
 		if (_use_srtp && _srtp_transport != nullptr)
 		{
-			// Validate we have media descriptions
-			if (media_desc_list.empty())
+			if (_channel_crypto_list.empty())
 			{
 				SetState(State::ERROR);
-				logte("SRTP is enabled but no media descriptions found in SDP");
+				logte("SRTP is enabled but no crypto attributes found in any media description");
 				return false;
 			}
 
-			// Get crypto attribute from the first media description
-			auto first_media_desc = media_desc_list[0];
-			auto crypto_attr	  = first_media_desc->GetFirstCrypto();
+			constexpr size_t SRTP_KEY_MATERIAL_LENGTH = 30;  // master key (16) + master salt (14)
 
-			if (!crypto_attr.has_value())
+			for (const auto &[channel_id, crypto_attr] : _channel_crypto_list)
 			{
-				SetState(State::ERROR);
-				logte("SRTP is enabled but no crypto attribute found in SDP");
-				return false;
-			}
+				// Parse crypto suite
+				std::optional<uint64_t> crypto_suite = std::nullopt;
+				if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_80")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_80;
+				}
+				else if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_32")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_32;
+				}
+				else if (crypto_attr.crypto_suite == "AEAD_AES_128_GCM")
+				{
+					crypto_suite = SRTP_AEAD_AES_128_GCM;
+				}
 
-			// Parse crypto suite
-			std::optional<uint64_t> crypto_suite = std::nullopt;
-			if (crypto_attr->crypto_suite == "AES_CM_128_HMAC_SHA1_80")
-			{
-				crypto_suite = SRTP_AES128_CM_SHA1_80;
-			}
-			else if (crypto_attr->crypto_suite == "AES_CM_128_HMAC_SHA1_32")
-			{
-				crypto_suite = SRTP_AES128_CM_SHA1_32;
-			}
-			else if (crypto_attr->crypto_suite == "AEAD_AES_128_GCM")
-			{
-				crypto_suite = SRTP_AEAD_AES_128_GCM;
-			}
+				if (!crypto_suite.has_value())
+				{
+					SetState(State::ERROR);
+					logte("Unsupported SRTP crypto suite for channel %u: %s", channel_id, crypto_attr.crypto_suite.CStr());
+					return false;
+				}
 
-			// Validate that a supported crypto suite was found
-			if (!crypto_suite.has_value())
-			{
-				SetState(State::ERROR);
-				logte("Unsupported SRTP crypto suite: %s", crypto_attr->crypto_suite.CStr());
-				return false;
-			}
+				// Decode base64 key
+				auto key_data = ov::Base64::Decode(crypto_attr.key_params);
+				if (key_data == nullptr || key_data->GetLength() != SRTP_KEY_MATERIAL_LENGTH)
+				{
+					SetState(State::ERROR);
+					logte("Failed to decode SRTP key for channel %u (expected %zu bytes, got %zu)",
+						  channel_id, SRTP_KEY_MATERIAL_LENGTH,
+						  key_data ? key_data->GetLength() : 0);
+					return false;
+				}
 
-			// Decode base64 key
-			// SRTP key material: master key (16 bytes) + master salt (14 bytes) = 30 bytes
-			constexpr size_t SRTP_KEY_MATERIAL_LENGTH = 30;
-			auto key_data							  = ov::Base64::Decode(crypto_attr->key_params);
-			if (key_data == nullptr || key_data->GetLength() != SRTP_KEY_MATERIAL_LENGTH)
-			{
-				SetState(State::ERROR);
-				logte("Failed to decode SRTP key or invalid key length (expected exactly %zu bytes, got %zu)",
-					  SRTP_KEY_MATERIAL_LENGTH,
-					  key_data ? key_data->GetLength() : 0);
-				return false;
-			}
+				if (!_srtp_transport->AddChannelKeyMaterial(channel_id, crypto_suite.value(), key_data))
+				{
+					SetState(State::ERROR);
+					logte("Failed to set SRTP key material for channel %u", channel_id);
+					return false;
+				}
 
-			// For RTSP SRTP (RFC 4568), the same key material is used for both sending and receiving.
-			// This is different from WebRTC which uses DTLS-SRTP key exchange with separate keys.
-			// In RTSP pull scenarios, we only receive (decrypt) RTP packets, but we pass the same
-			// key for both directions to SetKeyMaterial for API consistency with the SRTP library.
-			// Both parameters receive key_data intentionally.
-			if (!_srtp_transport->SetKeyMaterial(crypto_suite.value(), key_data, key_data))
-			{
-				SetState(State::ERROR);
-				logte("Failed to set SRTP key material");
-				return false;
+				logti("SRTP configured for channel %u with crypto suite: %s", channel_id, crypto_attr.crypto_suite.CStr());
 			}
-
-			logti("SRTP transport configured with crypto suite: %s", crypto_attr->crypto_suite.CStr());
 		}
 
 		_rtp_rtcp->RegisterPrevNode(nullptr);
