@@ -609,17 +609,26 @@ bool MediaDescription::ParsingMediaLine(char type, std::string content)
 			}
 			else if (content.compare(0, 7, "crypto:") == 0)
 			{
-				// a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:base64key
-				// Regex returns 4 capture groups + 1 full match = 5 total
-				constexpr size_t CRYPTO_REGEX_GROUP_COUNT = 5;
+				// a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:base64key [session-params]
+				// Regex: ^crypto:(\d+) ([\w_]+) inline:([\w\+/=]+)(?:\|.*)?(?:\s+(.*))?$
+				// Groups: 0=full match, 1=tag, 2=crypto_suite, 3=key_params, 4=session_params (optional)
+				// PCRE2 does not count trailing optional groups that didn't match,
+				// so group count is 4 (without session params) or 5 (with session params).
+				constexpr size_t CRYPTO_MIN_GROUP_COUNT = 4;  // groups 0-3 required
 				auto match = SDPRegexPattern::GetInstance()->MatchCrypto(content.c_str());
-				if (match.GetGroupCount() == CRYPTO_REGEX_GROUP_COUNT)
+				if (match.GetGroupCount() >= CRYPTO_MIN_GROUP_COUNT)
 				{
+					ov::String session_params;
+					if (match.GetGroupCount() >= 5)
+					{
+						session_params = match.GetGroupAt(4).GetValue();
+					}
+
 					AddCrypto(
 						ov::Converter::ToUInt32(match.GetGroupAt(1).GetValue().CStr()),
 						match.GetGroupAt(2).GetValue(),
 						match.GetGroupAt(3).GetValue(),
-						match.GetGroupAt(4).GetValue());
+						session_params);
 				}
 			}
 			else if (ParsingCommonAttrLine(type, content))
