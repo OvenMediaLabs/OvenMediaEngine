@@ -125,12 +125,6 @@ namespace pvd
 
 		stop_watch.Update();
 
-		if (RequestDescribe() == false)
-		{
-			Release();
-			return false;
-		}
-
 		if (RequestSetup() == false)
 		{
 			Release();
