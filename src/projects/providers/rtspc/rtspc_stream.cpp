@@ -205,67 +205,69 @@ namespace pvd
 		if (_use_tls)
 		{
 			logti("RTSPS (TLS) mode detected for URL: %s", _curr_url->Source().CStr());
+		}
 
-			auto signalling_socket_pool = GetRtspcProvider()->GetSignallingSocketPool();
-			if (signalling_socket_pool == nullptr)
-			{
-				// Provider is not initialized
-				logte("Could not get socket from socket pool");
-				return false;
-			}
+		auto signalling_socket_pool = GetRtspcProvider()->GetSignallingSocketPool();
+		if (signalling_socket_pool == nullptr)
+		{
+			// Provider is not initialized
+			logte("Could not get socket from socket pool");
+			return false;
+		}
 
-			// 554 is default port of RTSP, 322 is default port of RTSPS
-			int default_port	= _use_tls ? 322 : 554;
-			auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? default_port : _curr_url->Port());
+		// 554 is default port of RTSP, 322 is default port of RTSPS
+		int default_port	= _use_tls ? 322 : 554;
+		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? default_port : _curr_url->Port());
 
-			// Connect
-			_signalling_socket	= signalling_socket_pool->AllocSocket(socket_address.GetFamily());
-			if (_signalling_socket == nullptr)
+		// Connect
+		_signalling_socket	= signalling_socket_pool->AllocSocket(socket_address.GetFamily());
+		if (_signalling_socket == nullptr)
+		{
+			SetState(State::ERROR);
+			logte("To create client socket is failed.");
+
+			_signalling_socket = nullptr;
+			return false;
+		}
+
+		_signalling_socket->MakeBlocking();
+
+		auto error = _signalling_socket->Connect(socket_address, 3000);
+		if (error != nullptr)
+		{
+			SetState(State::ERROR);
+			logte("Cannot connect to server (%s) : %s:%d", error->GetMessage().CStr(), _curr_url->Host().CStr(), _curr_url->Port());
+			return false;
+		}
+
+		SetState(State::CONNECTED);
+
+		// Setup TLS if using RTSPS
+		if (_use_tls)
+		{
+			std::shared_ptr<const ov::Error> tls_error;
+			_tls_data = std::make_shared<ov::TlsClientData>(ov::TlsContext::CreateClientContext(&tls_error), true);
+
+			if (_tls_data == nullptr)
 			{
 				SetState(State::ERROR);
-				logte("To create client socket is failed.");
-
-				_signalling_socket = nullptr;
+				logte("Failed to create TLS context: %s", tls_error ? tls_error->GetMessage().CStr() : "Unknown error");
 				return false;
 			}
 
-			_signalling_socket->MakeBlocking();
+			_tls_data->SetIoCallback(ov::Node::GetSharedPtrAs<ov::TlsClientDataIoCallback>());
+			_tls_data->SetTlsHostName(_curr_url->Host());
 
-			auto error = _signalling_socket->Connect(socket_address, 3000);
-			if (error != nullptr)
+			// Perform TLS handshake
+			auto tls_connect_error = _tls_data->Connect();
+			if (tls_connect_error != nullptr)
 			{
 				SetState(State::ERROR);
-				logte("Cannot connect to server (%s) : %s:%d", error->GetMessage().CStr(), _curr_url->Host().CStr(), _curr_url->Port());
+				logte("TLS handshake failed: %s", tls_connect_error->GetMessage().CStr());
 				return false;
 			}
 
-			// Setup TLS if using RTSPS
-			if (_use_tls)
-			{
-				std::shared_ptr<const ov::Error> tls_error;
-				_tls_data = std::make_shared<ov::TlsClientData>(ov::TlsContext::CreateClientContext(&tls_error), true);
-
-				if (_tls_data == nullptr)
-				{
-					SetState(State::ERROR);
-					logte("Failed to create TLS context: %s", tls_error ? tls_error->GetMessage().CStr() : "Unknown error");
-					return false;
-				}
-
-				_tls_data->SetIoCallback(ov::Node::GetSharedPtrAs<ov::TlsClientDataIoCallback>());
-				_tls_data->SetTlsHostName(_curr_url->Host());
-
-				// Perform TLS handshake
-				auto tls_connect_error = _tls_data->Connect();
-				if (tls_connect_error != nullptr)
-				{
-					SetState(State::ERROR);
-					logte("TLS handshake failed: %s", tls_connect_error->GetMessage().CStr());
-					return false;
-				}
-
-				logti("TLS connection established successfully");
-			}
+			logti("TLS connection established successfully");
 		}
 
 		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true));
