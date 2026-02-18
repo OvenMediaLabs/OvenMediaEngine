@@ -243,7 +243,7 @@ bool SrtpTransport::AddChannelKeyMaterial(uint8_t rtp_channel_id, uint64_t crypt
 
 	_channel_recv_sessions[rtp_channel_id] = recv_session;
 
-	logti("Added per-channel SRTP session for interleaved channel %u", rtp_channel_id);
+	logtd("Added per-channel SRTP session for interleaved channel %u", rtp_channel_id);
 
 	return true;
 }
