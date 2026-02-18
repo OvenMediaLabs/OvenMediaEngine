@@ -166,6 +166,15 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 		node_type = NodeType::Srtp;
 	}
 
+	// If the original data was RtspData, preserve the channel ID through SRTP decryption
+	// so that RtpRtcp can use channel-based track lookup
+	auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+	if (rtsp_data != nullptr)
+	{
+		auto rtsp_decode_data = std::make_shared<RtspData>(rtsp_data->GetChannelId(), decode_data);
+		return SendDataToPrevNode(node_type, rtsp_decode_data);
+	}
+
 	// To RTP_RTCP
 	return SendDataToPrevNode(node_type, decode_data);
 }
