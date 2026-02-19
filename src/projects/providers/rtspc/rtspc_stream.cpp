@@ -11,7 +11,9 @@
 
 #include <base/info/application.h>
 #include <base/ovlibrary/byte_io.h>
+#include <base/ovcrypto/base_64.h>
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
+#include <openssl/srtp.h>
 
 #include "rtspc_provider.h"
 
@@ -85,6 +87,11 @@ namespace pvd
 
 	void RtspcStream::Release()
 	{
+		if (_srtp_transport != nullptr)
+		{
+			_srtp_transport->Stop();
+		}
+
 		if (_rtp_rtcp != nullptr)
 		{
 			_rtp_rtcp->Stop();
@@ -104,7 +111,7 @@ namespace pvd
 			return true;
 		}
 
-		_curr_url = url;
+		_curr_url			  = url;
 		_sent_sequence_header = false;
 
 		ov::StopWatch stop_watch;
@@ -117,12 +124,6 @@ namespace pvd
 		_origin_request_time_msec = stop_watch.Elapsed();
 
 		stop_watch.Update();
-
-		if (RequestDescribe() == false)
-		{
-			Release();
-			return false;
-		}
 
 		if (RequestSetup() == false)
 		{
@@ -139,7 +140,7 @@ namespace pvd
 		_origin_response_time_msec = stop_watch.Elapsed();
 
 		// Stream was created completly
-		_stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(PullStream::GetSharedPtr()));
+		_stream_metrics			   = StreamMetrics(*std::static_pointer_cast<info::Stream>(PullStream::GetSharedPtr()));
 		if (_stream_metrics != nullptr)
 		{
 			_stream_metrics->SetOriginConnectionTimeMSec(_origin_request_time_msec);
@@ -185,11 +186,19 @@ namespace pvd
 		logtt("Requested url[%d] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
-		if (scheme.UpperCaseString() != "RTSP")
+		auto upper_scheme = scheme.UpperCaseString();
+		if (upper_scheme != "RTSP" && upper_scheme != "RTSPS")
 		{
 			SetState(State::ERROR);
-			logte("The scheme is not rtsp : %s", scheme.CStr());
+			logte("The scheme is not rtsp or rtsps : %s", scheme.CStr());
 			return false;
+		}
+
+		// Check if TLS/SSL should be used
+		_use_tls = (upper_scheme == "RTSPS");
+		if (_use_tls)
+		{
+			logti("RTSPS (TLS) mode detected for URL: %s", _curr_url->Source().CStr());
 		}
 
 		auto signalling_socket_pool = GetRtspcProvider()->GetSignallingSocketPool();
@@ -200,11 +209,12 @@ namespace pvd
 			return false;
 		}
 
-		// 554 is default port of RTSP
-		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? 554 : _curr_url->Port());
+		// 554 is default port of RTSP, 322 is default port of RTSPS
+		int default_port	= _use_tls ? 322 : 554;
+		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? default_port : _curr_url->Port());
 
 		// Connect
-		_signalling_socket = signalling_socket_pool->AllocSocket(socket_address.GetFamily());
+		_signalling_socket	= signalling_socket_pool->AllocSocket(socket_address.GetFamily());
 		if (_signalling_socket == nullptr)
 		{
 			SetState(State::ERROR);
@@ -226,14 +236,32 @@ namespace pvd
 
 		SetState(State::CONNECTED);
 
-		return true;
-	}
-
-	bool RtspcStream::RequestDescribe()
-	{
-		if (GetState() != State::CONNECTED)
+		// Setup TLS if using RTSPS
+		if (_use_tls)
 		{
-			return false;
+			std::shared_ptr<const ov::Error> tls_error;
+			_tls_data = std::make_shared<ov::TlsClientData>(ov::TlsContext::CreateClientContext(&tls_error), true);
+
+			if (_tls_data == nullptr)
+			{
+				SetState(State::ERROR);
+				logte("Failed to create TLS context: %s", tls_error ? tls_error->GetMessage().CStr() : "Unknown error");
+				return false;
+			}
+
+			_tls_data->SetIoCallback(ov::Node::GetSharedPtrAs<ov::TlsClientDataIoCallback>());
+			_tls_data->SetTlsHostName(_curr_url->Host());
+
+			// Perform TLS handshake
+			auto tls_connect_error = _tls_data->Connect();
+			if (tls_connect_error != nullptr)
+			{
+				SetState(State::ERROR);
+				logte("TLS handshake failed: %s", tls_connect_error->GetMessage().CStr());
+				return false;
+			}
+
+			logti("TLS connection established successfully");
 		}
 
 		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true));
@@ -341,7 +369,7 @@ namespace pvd
 		else
 		{
 			// Session  = "Session" ":" session-id [ ";" "timeout" "=" delta-seconds ]
-			_rtsp_session_id = session_field->GetSessionId();
+			_rtsp_session_id							= session_field->GetSessionId();
 			// timeout
 			[[maybe_unused]] auto timeout_delta_seconds = session_field->GetTimeoutDeltaSeconds();
 		}
@@ -379,9 +407,34 @@ namespace pvd
 
 		int interleaved_channel = 0;
 
-		_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
+		_rtp_rtcp				= std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
 
-		auto media_desc_list = _sdp.GetMediaList();
+		// Check if SRTP is used by examining the SDP
+		auto media_desc_list	= _sdp.GetMediaList();
+		for (const auto &media_desc : media_desc_list)
+		{
+			// Check for crypto attribute in SDP
+			auto crypto_attr = media_desc->GetFirstCrypto();
+			if (crypto_attr.has_value())
+			{
+				_use_srtp = true;
+				logti("SRTP detected in SDP with crypto suite: %s", crypto_attr->crypto_suite.CStr());
+				break;
+			}
+		}
+
+		// If SRTP is used, create and configure SRTP transport
+		if (_use_srtp)
+		{
+			_srtp_transport = std::make_shared<SrtpTransport>();
+			if (_srtp_transport == nullptr)
+			{
+				SetState(State::ERROR);
+				logte("Could not create SRTP transport for RTSP stream");
+				return false;
+			}
+		}
+
 		for (const auto &media_desc : media_desc_list)
 		{
 			if (media_desc->GetMediaType() == MediaDescription::MediaType::Application || media_desc->GetMediaType() == MediaDescription::MediaType::Unknown)
@@ -487,7 +540,7 @@ namespace pvd
 			else
 			{
 				// Session  = "Session" ":" session-id [ ";" "timeout" "=" delta-seconds ]
-				_rtsp_session_id = session_field->GetSessionId();
+				_rtsp_session_id		  = session_field->GetSessionId();
 				// timeout
 				_rtsp_session_timeout_sec = session_field->GetTimeoutDeltaSeconds();
 				if (_rtsp_session_timeout_sec == 0)
@@ -536,7 +589,7 @@ namespace pvd
 					track->SetCodecId(cmn::MediaCodecId::H264);
 					track->SetOriginBitstream(cmn::BitstreamFormat::H264_RTP_RFC_6184);
 					_h264_extradata_nalu = first_payload->GetH264ExtraDataAsAnnexB();
-					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::H264;
+					depacketizer_type	 = RtpDepacketizingManager::SupportedDepacketizerType::H264;
 					break;
 
 				case PayloadAttr::SupportCodec::H265:
@@ -545,10 +598,10 @@ namespace pvd
 					track->SetOriginBitstream(cmn::BitstreamFormat::H265_RTP_RFC_7798);
 					// Get Extradata from the first payload(out of band)
 					_h265_extradata_nalu = first_payload->GetH265ExtraDataAsAnnexB();
-					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::H265;
+					depacketizer_type	 = RtpDepacketizingManager::SupportedDepacketizerType::H265;
 					break;
 
-					case PayloadAttr::SupportCodec::VP8:
+				case PayloadAttr::SupportCodec::VP8:
 					track->SetMediaType(cmn::MediaType::Video);
 					track->SetCodecId(cmn::MediaCodecId::Vp8);
 					track->SetOriginBitstream(cmn::BitstreamFormat::VP8_RTP_RFC_7741);
@@ -601,10 +654,10 @@ namespace pvd
 					return false;
 				}
 
-				auto mpeg4_size_length = first_payload->GetMpeg4GenericSizeLength();
-				auto mpeg4_index_length = first_payload->GetMpeg4GenericIndexLength();
+				auto mpeg4_size_length		  = first_payload->GetMpeg4GenericSizeLength();
+				auto mpeg4_index_length		  = first_payload->GetMpeg4GenericIndexLength();
 				auto mpeg4_index_delta_length = first_payload->GetMpeg4GenericIndexDeltaLength();
-				auto mpeg4_config = first_payload->GetMpeg4GenericConfig();
+				auto mpeg4_config			  = first_payload->GetMpeg4GenericConfig();
 
 				if (mpeg4_config == nullptr)
 				{
@@ -629,14 +682,101 @@ namespace pvd
 			_rtp_rtcp->AddRtpReceiver(track, rtp_track_id);
 			RegisterRtpClock(track->GetId(), track->GetTimeBase().GetExpr());
 
+			// Collect per-track crypto info for SRTP setup (channel assignment must happen before increment)
+			if (_use_srtp)
+			{
+				auto crypto_attr = media_desc->GetFirstCrypto();
+				if (crypto_attr.has_value())
+				{
+					_channel_crypto_list.push_back({static_cast<uint8_t>(interleaved_channel), crypto_attr.value()});
+				}
+				else
+				{
+					logtw("SRTP is enabled but media track at channel %d has no crypto attribute", interleaved_channel);
+				}
+			}
+
 			interleaved_channel += 2;
 		}
 
+		// Configure SRTP if needed - set up per-channel keys
+		if (_use_srtp && _srtp_transport != nullptr)
+		{
+			if (_channel_crypto_list.empty())
+			{
+				SetState(State::ERROR);
+				logte("SRTP is enabled but no crypto attributes found in any media description");
+				return false;
+			}
+
+			constexpr size_t SRTP_KEY_MATERIAL_LENGTH = 30;  // master key (16) + master salt (14)
+
+			for (const auto &[channel_id, crypto_attr] : _channel_crypto_list)
+			{
+				// Parse crypto suite
+				std::optional<uint64_t> crypto_suite = std::nullopt;
+				if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_80")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_80;
+				}
+				else if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_32")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_32;
+				}
+				else if (crypto_attr.crypto_suite == "AEAD_AES_128_GCM")
+				{
+					crypto_suite = SRTP_AEAD_AES_128_GCM;
+				}
+
+				if (!crypto_suite.has_value())
+				{
+					SetState(State::ERROR);
+					logte("Unsupported SRTP crypto suite for channel %u: %s", channel_id, crypto_attr.crypto_suite.CStr());
+					return false;
+				}
+
+				// Decode base64 key
+				auto key_data = ov::Base64::Decode(crypto_attr.key_params);
+				if (key_data == nullptr || key_data->GetLength() != SRTP_KEY_MATERIAL_LENGTH)
+				{
+					SetState(State::ERROR);
+					logte("Failed to decode SRTP key for channel %u (expected %zu bytes, got %zu)",
+						  channel_id, SRTP_KEY_MATERIAL_LENGTH,
+						  key_data ? key_data->GetLength() : 0);
+					return false;
+				}
+
+				if (!_srtp_transport->AddChannelKeyMaterial(channel_id, crypto_suite.value(), key_data))
+				{
+					SetState(State::ERROR);
+					logte("Failed to set SRTP key material for channel %u", channel_id);
+					return false;
+				}
+
+				logti("SRTP configured for channel %u with crypto suite: %s", channel_id, crypto_attr.crypto_suite.CStr());
+			}
+		}
+
 		_rtp_rtcp->RegisterPrevNode(nullptr);
-		_rtp_rtcp->RegisterNextNode(ov::Node::GetSharedPtr());
+
+		if (_use_srtp && _srtp_transport != nullptr)
+		{
+			// Chain: RtpRtcp -> SrtpTransport -> RtspcStream
+			_rtp_rtcp->RegisterNextNode(_srtp_transport);
+			_srtp_transport->RegisterPrevNode(_rtp_rtcp);
+			_srtp_transport->RegisterNextNode(ov::Node::GetSharedPtr());
+			_srtp_transport->Start();
+			RegisterPrevNode(_srtp_transport);
+		}
+		else
+		{
+			// Chain: RtpRtcp -> RtspcStream
+			_rtp_rtcp->RegisterNextNode(ov::Node::GetSharedPtr());
+			RegisterPrevNode(_rtp_rtcp);
+		}
+
 		_rtp_rtcp->Start();
 
-		RegisterPrevNode(_rtp_rtcp);
 		RegisterNextNode(nullptr);
 
 		return true;
@@ -819,7 +959,19 @@ namespace pvd
 			SubscribeResponse(message);
 		}
 
-		// Send
+		// Send with TLS encryption if enabled
+		if (_use_tls && _tls_data != nullptr)
+		{
+			auto data = message->GetMessage();
+			if (_tls_data->Encrypt(data) == false)
+			{
+				logte("Failed to encrypt RTSP message");
+				return false;
+			}
+			return true;
+		}
+
+		// Send without encryption
 		return _signalling_socket->Send(message->GetMessage());
 	}
 
@@ -895,16 +1047,23 @@ namespace pvd
 			_signalling_socket->SetRecvTimeout(tv);
 		}
 
-		auto error = _signalling_socket->Recv(buffer, 65535, &read_bytes, non_block);
-		if (read_bytes == 0)
+		// Receive with TLS decryption if enabled
+		if (_use_tls && _tls_data != nullptr)
 		{
-			if (error != nullptr)
+			std::shared_ptr<const ov::Data> plain_data;
+			if (_tls_data->Decrypt(&plain_data) == false)
 			{
-				logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), error->What());
+				if (non_block)
+				{
+					// Retry later for non-blocking mode
+					return true;
+				}
+				logte("Failed to decrypt RTSP message");
 				SetState(State::ERROR);
 				return false;
 			}
-			else
+
+			if (plain_data == nullptr || plain_data->GetLength() == 0)
 			{
 				if (non_block == true)
 				{
@@ -915,6 +1074,41 @@ namespace pvd
 				{
 					// timeout
 					return false;
+				}
+			}
+
+			read_bytes = plain_data->GetLength();
+			if (read_bytes > sizeof(buffer))
+			{
+				logte("Decrypted data too large: %zu bytes", read_bytes);
+				return false;
+			}
+			::memcpy(buffer, plain_data->GetData(), read_bytes);
+		}
+		else
+		{
+			// Receive without decryption
+			auto error = _signalling_socket->Recv(buffer, 65535, &read_bytes, non_block);
+			if (read_bytes == 0)
+			{
+				if (error != nullptr)
+				{
+					logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), error->What());
+					SetState(State::ERROR);
+					return false;
+				}
+				else
+				{
+					if (non_block == true)
+					{
+						// retry later
+						return true;
+					}
+					else
+					{
+						// timeout
+						return false;
+					}
 				}
 			}
 		}
@@ -1009,7 +1203,7 @@ namespace pvd
 	void RtspcStream::OnRtpFrameReceived(const std::vector<std::shared_ptr<RtpPacket>> &rtp_packets)
 	{
 		auto first_rtp_packet = rtp_packets.front();
-		auto channel = first_rtp_packet->GetRtspChannel();
+		auto channel		  = first_rtp_packet->GetRtspChannel();
 		logtt("%s", first_rtp_packet->Dump().CStr());
 
 		auto track = GetTrack(channel);
@@ -1048,28 +1242,28 @@ namespace pvd
 			case cmn::MediaCodecId::H265:
 				// Our H265 depacketizer always converts packet to H265
 				bitstream_format = cmn::BitstreamFormat::H265_ANNEXB;
-				packet_type = cmn::PacketType::NALU;
+				packet_type		 = cmn::PacketType::NALU;
 				break;
 			case cmn::MediaCodecId::H264:
 				// Our H264 depacketizer always converts packet to AnnexB
 				bitstream_format = cmn::BitstreamFormat::H264_ANNEXB;
-				packet_type = cmn::PacketType::NALU;
+				packet_type		 = cmn::PacketType::NALU;
 				break;
 
 			case cmn::MediaCodecId::Opus:
 				bitstream_format = cmn::BitstreamFormat::OPUS;
-				packet_type = cmn::PacketType::RAW;
+				packet_type		 = cmn::PacketType::RAW;
 				break;
 
 			// Our AAC depacketizer always converts packet to ADTS
 			case cmn::MediaCodecId::Aac:
 				bitstream_format = cmn::BitstreamFormat::AAC_ADTS;
-				packet_type = cmn::PacketType::RAW;
+				packet_type		 = cmn::PacketType::RAW;
 				break;
 
 			case cmn::MediaCodecId::Vp8:
 				bitstream_format = cmn::BitstreamFormat::VP8;
-				packet_type = cmn::PacketType::RAW;
+				packet_type		 = cmn::PacketType::RAW;
 				break;
 
 			// It can't be reached here because it has already failed in GetDepacketizer.
@@ -1080,12 +1274,17 @@ namespace pvd
 		int64_t adjusted_timestamp;
 		if (AdjustRtpTimestamp(channel, first_rtp_packet->Timestamp(), std::numeric_limits<uint32_t>::max(), adjusted_timestamp) == false)
 		{
-			logtt("not yet received sr packet : %u", first_rtp_packet->Ssrc());
+			static std::map<uint32_t, int> _adjust_fail_count;
+			_adjust_fail_count[channel]++;
+			if (_adjust_fail_count[channel] <= 5 || _adjust_fail_count[channel] % 100 == 0)
+			{
+				logtd("AdjustRtpTimestamp failed for track_id(%u) ssrc(%u) count(%d) - SR not yet received for this track", 
+					  channel, first_rtp_packet->Ssrc(), _adjust_fail_count[channel]);
+			}
 			// Prevents the stream from being deleted because there is no input data
 			MonitorInstance->IncreaseBytesIn(*Stream::GetSharedPtr(), bitstream->GetLength());
 			return;
 		}
-		
 
 		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%lld) Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
@@ -1144,10 +1343,13 @@ namespace pvd
 	{
 		// RTCP Channel is RTP Channel + 1
 		auto channel = rtcp_info->GetRtspChannel() - 1;
+		logtt("RTCP received: type(%u) rtsp_channel(%u) computed_track_id(%u)", 
+			  static_cast<uint8_t>(rtcp_info->GetPacketType()), rtcp_info->GetRtspChannel(), channel);
 		// Receive Sender Report
 		if (rtcp_info->GetPacketType() == RtcpPacketType::SR)
 		{
 			auto sr = std::dynamic_pointer_cast<SenderReport>(rtcp_info);
+			logtd("RTCP SR received for track_id(%u) sender_ssrc(%u)", channel, sr->GetSenderSsrc());
 			UpdateSenderReportTimestamp(channel, sr->GetMsw(), sr->GetLsw(), sr->GetTimestamp());
 		}
 	}
@@ -1178,6 +1380,47 @@ namespace pvd
 		return control_url;
 	}
 
+	// ov::TlsClientDataIoCallback Interface
+	ssize_t RtspcStream::OnTlsReadData(void *data, int64_t length)
+	{
+		if (_signalling_socket == nullptr)
+		{
+			return -1;
+		}
+
+		size_t received_length = 0;
+		auto error = _signalling_socket->Recv(data, length, &received_length);
+		if (error != nullptr)
+		{
+			if (error->GetCode() == EAGAIN || error->GetCode() == EWOULDBLOCK)
+			{
+				// Non-blocking socket would block
+				errno = EAGAIN;
+				return -1;
+			}
+			logte("Failed to read from socket: %s", error->GetMessage().CStr());
+			return -1;
+		}
+
+		return static_cast<ssize_t>(received_length);
+	}
+
+	ssize_t RtspcStream::OnTlsWriteData(const void *data, int64_t length)
+	{
+		if (_signalling_socket == nullptr)
+		{
+			return -1;
+		}
+
+		if (_signalling_socket->Send(data, length) == false)
+		{
+			logte("Failed to write to socket");
+			return -1;
+		}
+
+		return static_cast<ssize_t>(length);
+	}
+
 	// ov::Node Interface
 	// RtpRtcp <-> Edge(this)
 	bool RtspcStream::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data)
@@ -1193,22 +1436,28 @@ namespace pvd
 		{
 			uint8_t channel_id = 0;
 
-			auto rtcp_packet = _rtp_rtcp->GetLastSentRtcpPacket();
-			auto rtcp_info = rtcp_packet->GetRtcpInfo();
+			auto rtcp_packet   = _rtp_rtcp->GetLastSentRtcpPacket();
+			auto rtcp_info	   = rtcp_packet->GetRtcpInfo();
 
-			auto rtp_ssrc = rtcp_info->GetRtpSsrc();
-			channel_id = _ssrc_channel_id_map[rtp_ssrc] + 1;  // RTCP Channel ID is rtp channel id + 1
+			auto rtp_ssrc	   = rtcp_info->GetRtpSsrc();
+			channel_id		   = _ssrc_channel_id_map[rtp_ssrc] + 1;  // RTCP Channel ID is rtp channel id + 1
 
-			auto channel_data = std::make_shared<ov::Data>();
+			auto channel_data  = std::make_shared<ov::Data>();
 			// $ + 1 bytes channel id + length + payload
 			// 4 + payload length
 			channel_data->SetLength(4);
 			auto ptr = channel_data->GetWritableDataAs<uint8_t>();
 
-			ptr[0] = '$';
-			ptr[1] = channel_id;
+			ptr[0]	 = '$';
+			ptr[1]	 = channel_id;
 			ByteWriter<uint16_t>::WriteBigEndian(&ptr[2], data->GetLength());
 			channel_data->Append(data);
+
+			// Send with TLS encryption if enabled
+			if (_use_tls && _tls_data != nullptr)
+			{
+				return _tls_data->Encrypt(channel_data);
+			}
 
 			return _signalling_socket->Send(channel_data);
 		}
