@@ -2,7 +2,7 @@
 
 RTMP is one of the most widely used protocols in live streaming.
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>FLV</td></tr><tr><td>Transport</td><td>TCP</td></tr><tr><td>Codec</td><td>H.264, AAC / H.265 (E-RTMP only)</td></tr><tr><td>Additional Features (E-RTMP only)</td><td>Simulcast, Multitrack</td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>FLV</td></tr><tr><td>Transport</td><td>TCP</td></tr><tr><td>Codec</td><td>H.264, AAC / H.265 (E-RTMP only)</td></tr></tbody></table>
 
 ## Configuration
 

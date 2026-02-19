@@ -56,6 +56,11 @@ Base64URL.Encode(
 The URL entered into HMAC to generate the Signature must include :port.
 
 When creating a signature, you cannot omit the default port such as http port 80, https port 443, or rtmp port 1935. This is because when OvenMediaEngine creates a signature for checking the signature, it is created by putting the port value.
+
+This also applies when using a domain name instead of an IP address. For example:
+
+* `wss://stream.example.com:3334/app/stream` (correct)
+* `wss://stream.example.com/app/stream` (incorrect — signature will not match)
 {% endhint %}
 
 {% hint style="danger" %}
@@ -174,7 +179,7 @@ If you include it as a signature query string (query string key is set in Server
 
 {% code title="URL with signature" overflow="wrap" %}
 ```
-ws://192.168.0.100/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&signature=dvVdBpoxAeCPl94Kt5RoiqLI0YE
+ws://192.168.0.100:3333/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&signature=dvVdBpoxAeCPl94Kt5RoiqLI0YE
 ```
 {% endcode %}
 

@@ -31,7 +31,7 @@ OvenMediaEngine supports self-defined signaling protocol and [WHIP ](https://dat
 </Providers>
 ```
 
-You can set the port to use for signaling in `/<Server>/<Bind>/<Provider>/<WebRTC>/<Signalling>/``<Port>` is for setting an unsecured HTTP port, and `<TLSPort>` is for setting a secured HTTP port that is encrypted with TLS.&#x20;
+You can set the port to use for signaling in `/<Server>/<Bind>/<Provider>/<WebRTC>/<Signalling>/<Port>` is for setting an unsecured HTTP port, and `<TLSPort>` is for setting a secured HTTP port that is encrypted with TLS.&#x20;
 
 For WebRTC ingest, you must set the ICE candidates of the OvenMediaEnigne server to `<IceCandidates>`. The candidates set in `<IceCandidate>` are delivered to the WebRTC peer, and the peer requests communication with this candidate. Therefore, you must set the IP that the peer can access. If the IP is specified as `*`, OvenMediaEngine gathers all IPs of the server and delivers them to the peer.
 

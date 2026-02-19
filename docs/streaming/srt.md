@@ -2,7 +2,7 @@
 
 OvenMediaEngine supports playback of streams delivered via RTMP, WebRTC, SRT, MPEG-2 TS, and RTSP using SRT-compatible players or integration with other SRT-enabled systems.
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>MPEG-2 TS</td></tr><tr><td>Transport</td><td>SRT</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Additional Features</td><td>Simulcast</td></tr><tr><td>Default URL Pattern</td><td><code>srt://{OvenMediaEngine Host}:{SRT Port}?streamid={Virtual Host Name}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>MPEG-2 TS</td></tr><tr><td>Transport</td><td>SRT</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td><code>srt://{OvenMediaEngine Host}:{SRT Port}?streamid={Virtual Host Name}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
 
 Currently, OvenMediaEngine supports H.264, H.265, AAC codecs for SRT playback, ensuring the same compatibility as its [SRT provider functionality](../live-source/srt.md).
 

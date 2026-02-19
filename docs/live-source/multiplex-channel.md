@@ -102,7 +102,7 @@ mux files can be created or deleted while the system is running. This works dyna
 This is information about the stream to be newly created. It must be the same as the file name. `{Stream Name}.mux`
 
 **SourceStreams**\
-Specifies the internal stream to be muxed. You can also load streams from other VHosts or applications in the format `stream://{VHost Name}/{App Name}/{Stream Name}`. Because multiple streams are muxed into one stream, track names may be duplicated. Therefore, it is necessary to change the Track name for each `<SourceStream>` through `<TrackMap``>/<SourceTrackName>` is either `<OutputProfile>/<Encodes>/<Video>/<Name>` or `<OutputProfile>/<Encodes>/<Audio>/<Name>`.
+Specifies the internal stream to be muxed. You can also load streams from other VHosts or applications in the format `stream://{VHost Name}/{App Name}/{Stream Name}`. Because multiple streams are muxed into one stream, track names may be duplicated. Therefore, it is necessary to change the Track name for each `<SourceStream>` through `<TrackMap>/<SourceTrackName>` is either `<OutputProfile>/<Encodes>/<Video>/<Name>` or `<OutputProfile>/<Encodes>/<Audio>/<Name>`.
 
 **Playlist**\
 The same format as `<OutputProfile>` must be used, and the Playlist must be constructed using the newly mapped Track name in `<TrackMap>`  of `<SourceStreams>`. The Playlist configured here exists only in this stream. The `<Playlist>` 's `<FileName>` must be unique throughout the application.
