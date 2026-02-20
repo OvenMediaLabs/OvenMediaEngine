@@ -376,8 +376,8 @@ namespace http
 
 				// Convert milliseconds to timeval
 				_socket->SetRecvTimeout(
-					{.tv_sec = _recv_timeout_msec / 1000,
-					 .tv_usec = _recv_timeout_msec % 1000});
+					{.tv_sec  = _recv_timeout_msec / 1000,
+					 .tv_usec = (_recv_timeout_msec % 1000) * 1000});
 
 				error = _socket->Connect(address, _connection_timeout_msec);
 
