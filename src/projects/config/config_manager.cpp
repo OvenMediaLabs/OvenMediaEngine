@@ -148,6 +148,11 @@ namespace cfg
 
 		line.erase(std::remove(line.begin(), line.end(), '\n'), line.end());
 
+		if (line.empty())
+		{
+			return {false, ""};
+		}
+
 		return {true, line.c_str()};
 	}
 
