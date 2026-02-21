@@ -8,6 +8,7 @@
 //==============================================================================
 #include "srtp_transport.h"
 #include "dtls_transport.h"
+#include <modules/rtsp/rtsp_data.h>
 
 #define OV_LOG_TAG "SRTP"
 
@@ -32,6 +33,15 @@ bool SrtpTransport::Stop()
 	{
 		_recv_session->Release();
 	}
+
+	for (auto &[channel_id, session] : _channel_recv_sessions)
+	{
+		if (session != nullptr)
+		{
+			session->Release();
+		}
+	}
+	_channel_recv_sessions.clear();
 
 	return Node::Stop();
 }
@@ -80,14 +90,49 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 		return false;
 	}
 
-	if(_recv_session == nullptr)
-	{
-		return false;
-	}
-
 	if(data->GetLength() < 4)
 	{
 		// Invalid RTP or RTCP packet
+		return false;
+	}
+
+	// Determine which recv session to use.
+	// If per-channel sessions exist (RTSP SDES-SRTP), look up by channel ID.
+	// Otherwise fall back to the single _recv_session (WebRTC DTLS-SRTP).
+	SrtpAdapter *recv_adapter = nullptr;
+
+	if (!_channel_recv_sessions.empty())
+	{
+		// Try to extract the interleaved channel ID from RtspData
+		auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+		if (rtsp_data != nullptr)
+		{
+			// Map both RTP (even) and RTCP (odd) channels to the same session
+			// The session is keyed by the RTP channel (even)
+			uint8_t rtp_channel = rtsp_data->GetChannelId() & ~1;
+			auto it = _channel_recv_sessions.find(rtp_channel);
+			if (it != _channel_recv_sessions.end())
+			{
+				recv_adapter = it->second.get();
+			}
+			else
+			{
+				logte("No SRTP session found for interleaved channel %u", rtsp_data->GetChannelId());
+				return false;
+			}
+		}
+		else
+		{
+			logte("Per-channel SRTP is configured but received non-RtspData");
+			return false;
+		}
+	}
+	else if (_recv_session != nullptr)
+	{
+		recv_adapter = _recv_session.get();
+	}
+	else
+	{
 		return false;
 	}
 
@@ -101,7 +146,7 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 	// RTCP
 	if(payload_type >= 192 && payload_type <= 223)
 	{
-		if(!_recv_session->UnprotectRtcp(decode_data))
+		if(!recv_adapter->UnprotectRtcp(decode_data))
 		{
 			logtt("RTCP unprotected fail");
 			return false;
@@ -112,13 +157,22 @@ bool SrtpTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 	// RTP
 	else
 	{
-		if(!_recv_session->UnprotectRtp(decode_data))
+		if(!recv_adapter->UnprotectRtp(decode_data))
 		{
 			logtt("RTP unprotected fail");
 			return false;
 		}
 
 		node_type = NodeType::Srtp;
+	}
+
+	// If the original data was RtspData, preserve the channel ID through SRTP decryption
+	// so that RtpRtcp can use channel-based track lookup
+	auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+	if (rtsp_data != nullptr)
+	{
+		auto rtsp_decode_data = std::make_shared<RtspData>(rtsp_data->GetChannelId(), decode_data);
+		return SendDataToPrevNode(node_type, rtsp_decode_data);
 	}
 
 	// To RTP_RTCP
@@ -159,6 +213,37 @@ bool SrtpTransport::SetKeyMaterial(uint64_t crypto_suite, std::shared_ptr<ov::Da
 	{
 		return false;
 	}
+
+	return true;
+}
+
+bool SrtpTransport::AddChannelKeyMaterial(uint8_t rtp_channel_id, uint64_t crypto_suite, std::shared_ptr<ov::Data> key)
+{
+	// Ensure the channel ID is even (RTP channel)
+	rtp_channel_id = rtp_channel_id & ~1;
+
+	if (_channel_recv_sessions.find(rtp_channel_id) != _channel_recv_sessions.end())
+	{
+		logte("SRTP session already exists for channel %u", rtp_channel_id);
+		return false;
+	}
+
+	auto recv_session = std::make_shared<SrtpAdapter>();
+	if (recv_session == nullptr)
+	{
+		logte("Failed to create SRTP adapter for channel %u", rtp_channel_id);
+		return false;
+	}
+
+	if (!recv_session->SetKey(ssrc_any_inbound, crypto_suite, key))
+	{
+		logte("Failed to set SRTP key for channel %u", rtp_channel_id);
+		return false;
+	}
+
+	_channel_recv_sessions[rtp_channel_id] = recv_session;
+
+	logtd("Added per-channel SRTP session for interleaved channel %u", rtp_channel_id);
 
 	return true;
 }

@@ -607,6 +607,30 @@ bool MediaDescription::ParsingMediaLine(char type, std::string content)
 					id,
 					match.GetGroupAt(2).GetValue());
 			}
+			else if (content.compare(0, 7, "crypto:") == 0)
+			{
+				// a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:base64key [session-params]
+				// Regex: ^crypto:(\d+) ([\w_]+) inline:([\w\+/=]+)(?:\|.*)?(?:\s+(.*))?$
+				// Groups: 0=full match, 1=tag, 2=crypto_suite, 3=key_params, 4=session_params (optional)
+				// PCRE2 does not count trailing optional groups that didn't match,
+				// so group count is 4 (without session params) or 5 (with session params).
+				constexpr size_t CRYPTO_MIN_GROUP_COUNT = 4;  // groups 0-3 required
+				auto match = SDPRegexPattern::GetInstance()->MatchCrypto(content.c_str());
+				if (match.GetGroupCount() >= CRYPTO_MIN_GROUP_COUNT)
+				{
+					ov::String session_params;
+					if (match.GetGroupCount() >= 5)
+					{
+						session_params = match.GetGroupAt(4).GetValue();
+					}
+
+					AddCrypto(
+						ov::Converter::ToUInt32(match.GetGroupAt(1).GetValue().CStr()),
+						match.GetGroupAt(2).GetValue(),
+						match.GetGroupAt(3).GetValue(),
+						session_params);
+				}
+			}
 			else if (ParsingCommonAttrLine(type, content))
 			{
 			}
@@ -1116,6 +1140,42 @@ bool MediaDescription::FindExtmapItem(const ov::String &keyword, uint8_t &id, ov
 	}
 
 	return false;
+}
+
+void MediaDescription::AddCrypto(uint32_t tag, const ov::String &crypto_suite, const ov::String &key_params, const ov::String &session_params)
+{
+	CryptoAttr crypto;
+	crypto.tag = tag;
+	crypto.crypto_suite = crypto_suite;
+	crypto.key_params = key_params;
+	crypto.session_params = session_params;
+	_crypto_list.push_back(crypto);
+}
+
+const std::vector<MediaDescription::CryptoAttr>& MediaDescription::GetCryptoList() const
+{
+	return _crypto_list;
+}
+
+std::optional<MediaDescription::CryptoAttr> MediaDescription::GetCrypto(uint32_t tag) const
+{
+	for (const auto &crypto : _crypto_list)
+	{
+		if (crypto.tag == tag)
+		{
+			return crypto;
+		}
+	}
+	return std::nullopt;
+}
+
+std::optional<MediaDescription::CryptoAttr> MediaDescription::GetFirstCrypto() const
+{
+	if (!_crypto_list.empty())
+	{
+		return _crypto_list.front();
+	}
+	return std::nullopt;
 }
 
 // a=rtpmap:96 VP8/50000

@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <set>
 #include <base/common_types.h>
 #include <base/info/stream.h>
 #include <base/ovlibrary/lip_sync_clock.h>
@@ -159,6 +160,10 @@ namespace pvd
 
 		LipSyncClock 						_rtp_lip_sync_clock;
 		ov::StopWatch						_first_rtp_received_time;
+
+		// Per-track fallback to SINGLE_DELTA when SR is never received for a specific track
+		std::set<uint32_t>					_sr_fallback_tracks;
+		std::map<uint32_t, ov::StopWatch>	_per_track_sr_wait;
 
 		int64_t _last_media_timestamp_ms = -1LL;
 		ov::StopWatch _elapsed_from_last_media_timestamp;

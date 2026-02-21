@@ -2,7 +2,7 @@ FROM    ubuntu:22.04 AS base
 
 ## Install libraries by package
 ENV     DEBIAN_FRONTEND=noninteractive
-RUN     apt-get update && apt-get install -y tzdata sudo curl git
+RUN     apt-get update && apt-get install -y tzdata sudo curl git libgomp1
 
 FROM    base AS build
 

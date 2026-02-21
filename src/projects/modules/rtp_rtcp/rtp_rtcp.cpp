@@ -444,21 +444,34 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	std::optional<uint32_t> track_id_opt = GetTrackId(packet->Ssrc());
 	if (track_id_opt.has_value() == false)
 	{
-		if(from_node == NodeType::Rtsp)
+		// For RTSP sources (direct or via SRTP), use channel ID for track lookup
+		if(from_node == NodeType::Rtsp || from_node == NodeType::Srtp)
 		{
-			auto rtsp_data = std::static_pointer_cast<const RtspData>(data);
-			if(rtsp_data == nullptr)
+			auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+			if(rtsp_data != nullptr)
+			{
+				// RTSP Node uses channelID as trackID
+				track_id_opt = FindTrackId(rtsp_data->GetChannelId());
+				if (track_id_opt.has_value() == false)
+				{
+					logte("Could not find track ID for RTSP channel ID %u", rtsp_data->GetChannelId());
+					return false;
+				}
+			}
+			else if(from_node == NodeType::Rtsp)
 			{
 				logte("Could not convert to RtspData");
 				return false;
 			}
-
-			// RTSP Node uses channelID as trackID
-			track_id_opt = FindTrackId(rtsp_data->GetChannelId());
-			if (track_id_opt.has_value() == false)
+			else
 			{
-				logte("Could not find track ID for RTSP channel ID %u", rtsp_data->GetChannelId());
-				return false;
+				// SRTP without RtspData (e.g. WebRTC) - fall through to generic lookup
+				track_id_opt = FindTrackId(packet);
+				if (track_id_opt.has_value() == false)
+				{
+					logte("Could not find track ID for SSRC %u", packet->Ssrc());
+					return false;
+				}
 			}
 		}
 		else
@@ -474,10 +487,14 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		ConnectSsrcToTrack(packet->Ssrc(), track_id_opt.value());
 	}
 
-	if (from_node == NodeType::Rtsp)
+	if (from_node == NodeType::Rtsp || from_node == NodeType::Srtp)
 	{
-		// RTSP Node uses channelID as trackID
-		packet->SetRtspChannel(track_id_opt.value());
+		auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+		if (rtsp_data != nullptr)
+		{
+			// RTSP Node uses channelID as trackID
+			packet->SetRtspChannel(track_id_opt.value());
+		}
 	}
 
 	auto track_id = track_id_opt.value();
@@ -651,17 +668,19 @@ bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov:
 	}
 
 	uint32_t rtsp_channel = 0;
-	if(from_node == NodeType::Rtsp)
+	if(from_node == NodeType::Rtsp || from_node == NodeType::Srtcp)
 	{
-		auto rtsp_data = std::static_pointer_cast<const RtspData>(data);
-		if(rtsp_data == nullptr)
+		auto rtsp_data = std::dynamic_pointer_cast<const RtspData>(data);
+		if(rtsp_data != nullptr)
+		{
+			// RTSP Node uses channelID as trackID
+			rtsp_channel = rtsp_data->GetChannelId();
+		}
+		else if(from_node == NodeType::Rtsp)
 		{
 			logte("Could not convert to RtspData");
 			return false;
 		}
-
-		// RTSP Node uses channelID as trackID
-		rtsp_channel = rtsp_data->GetChannelId();
 	}
 
 	while(receiver.HasAvailableRtcpInfo())
