@@ -73,7 +73,7 @@ void MediaRouterStats::Update(
 
 			auto timebase = ov::String::FormatString("%d/%d", track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
 
-			stat_track_str.AppendFormat("\n - track:%11u, type: %5s, codec: %14s, pts: %10lldms, dur: %10lld(%5lld)ms, tb: %7s, pkt_cnt: %6lld, pkt_siz: %7sB, bps: %8s/%8s",
+			stat_track_str.AppendFormat("\n - track:%11u, type: %5s, codec: %14s, pts: %10" PRId64 "ms, dur: %10" PRId64 "(%5" PRId64 ")ms, tb: %7s, pkt_cnt: %6" PRId64 ", pkt_siz: %7sB, bps: %8s/%8s",
 										track_id,
 										GetMediaTypeString(track->GetMediaType()),
 										codec_name.CStr(),
@@ -119,7 +119,7 @@ void MediaRouterStats::Update(
 
 		ov::String stat_stream_str = "";
 
-		stat_stream_str.AppendFormat("Stream. id: %10u, type: %s, name: %s/%s, status: %s, uptime: %lldms, queue: %d, msid: %u, sync: %lldms",
+		stat_stream_str.AppendFormat("Stream. id: %10u, type: %s, name: %s/%s, status: %s, uptime: %" PRId64 "ms, queue: %zu, msid: %u, sync: %" PRId64 "ms",
 									 stream_info->GetId(),
 									 (type == 0) ? "Inbound" : "Outbound",
 									 stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
@@ -132,6 +132,6 @@ void MediaRouterStats::Update(
 
 		stat_track_str = stat_stream_str + stat_track_str;
 
-		logtt("%s", stat_track_str.CStr());
+		logtd("%s", stat_track_str.CStr());
 	}
 }

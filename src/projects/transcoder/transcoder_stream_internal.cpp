@@ -866,7 +866,7 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 		{
 			int32_t new_width = (output_track->GetWidth() / 4 + 1) * 4;
 
-			logtt("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_track->GetWidth(), new_width);
+			logtd("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_track->GetWidth(), new_width);
 
 			output_track->SetWidth(new_width);
 		}
@@ -875,7 +875,7 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 		{
 			int32_t new_height = (output_track->GetHeight() / 4 + 1) * 4;
 
-			logtt("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_track->GetHeight(), new_height);
+			logtd("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_track->GetHeight(), new_height);
 
 			output_track->SetHeight(new_height);
 		}

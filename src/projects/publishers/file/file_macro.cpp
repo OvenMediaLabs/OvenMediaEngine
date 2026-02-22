@@ -74,7 +74,7 @@ namespace pub
 			}
 			if (group.IndexOf("Sequence") != -1L)
 			{
-				ov::String buff = ov::String::FormatString("%d", record->GetSequence());
+				ov::String buff = ov::String::FormatString("%" PRId64 "", record->GetSequence());
 
 				replaced_string = replaced_string.Replace(full_match, buff);
 			}
