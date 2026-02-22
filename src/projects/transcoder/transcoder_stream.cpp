@@ -226,7 +226,7 @@ const cfg::vhost::app::oprf::OutputProfiles *TranscoderStream::RequestWebhook()
 		builder["indentation"] = "";
 		builder["emitUTF8"]	   = true;
 
-		logti("%s Using external output profiles by webhook. Response time: %lld ms", _log_prefix.CStr(), response_time.Elapsed());
+		logti("%s Using external output profiles by webhook. Response time: %" PRId64 " ms", _log_prefix.CStr(), response_time.Elapsed());
 		logti("%s OutputProfile: %s", _log_prefix.CStr(), Json::writeString(builder, _remote_output_profiles.ToJson()).c_str());
 		return &_remote_output_profiles;
 	}
@@ -236,7 +236,7 @@ const cfg::vhost::app::oprf::OutputProfiles *TranscoderStream::RequestWebhook()
 		builder["indentation"] = "";
 		builder["emitUTF8"]	   = true;
 
-		logti("%s Using local output profiles by webhook. Response time: %lld ms", _log_prefix.CStr(), response_time.Elapsed());
+		logti("%s Using local output profiles by webhook. Response time: %" PRId64 " ms", _log_prefix.CStr(), response_time.Elapsed());
 		logtt("%s OutputProfile: %s", _log_prefix.CStr(), Json::writeString(builder, _application_info.GetConfig().GetOutputProfiles().ToJson()).c_str());
 		return &(_application_info.GetConfig().GetOutputProfiles());
 	}
@@ -552,7 +552,8 @@ void TranscoderStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<M
 
 bool TranscoderStream::SendBufferedPackets()
 {
-	logtt("SendBufferedPackets - BufferSize (%u)", _initial_media_packet_buffer.Size());
+	logtt("SendBufferedPackets - BufferSize (%lu)", _initial_media_packet_buffer.Size());
+
 	while (_initial_media_packet_buffer.IsEmpty() == false)
 	{
 		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
@@ -854,7 +855,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 			}
 			break;
 			default: {
-				logte("[%s] Unsupported media type of input track. type(%d)", _log_prefix.CStr(), input_track->GetMediaType());
+				logte("[%s] Unsupported media type of input track. type(%s)", _log_prefix.CStr(), cmn::GetMediaTypeString(input_track->GetMediaType()));
 				continue;
 			}
 		}
@@ -985,7 +986,8 @@ ov::String TranscoderStream::MakeRenditionName(const ov::String &name_template, 
 		rendition_name = rendition_name.Replace("${Width}", ov::String::FormatString("%d", video_track->GetWidth()).CStr());
 		rendition_name = rendition_name.Replace("${Height}", ov::String::FormatString("%d", video_track->GetHeight()).CStr());
 		rendition_name = rendition_name.Replace("${Bitrate}", ov::String::FormatString("%d", video_track->GetBitrate()).CStr());
-		rendition_name = rendition_name.Replace("${Framerate}", ov::String::FormatString("%d", video_track->GetFrameRate()).CStr());
+		// TODO: Check if there are cases where the rendition name includes decimal points. (e.g., 29.97fps)
+		rendition_name = rendition_name.Replace("${Framerate}", ov::String::FormatString("%.0f", video_track->GetFrameRate()).CStr());
 	}
 
 	if (audio_track != nullptr)
@@ -1303,9 +1305,6 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 #endif
 				return false;
 			}
-
-			logti("%s Encoder has been created. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d)", _log_prefix.CStr(),
-				  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId());
 		}
 	}
 
@@ -1330,16 +1329,29 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 
 bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track)
 {
+	bool is_recreated = false;
+
 	// Check if an identical encoder already exists.
 	if (auto encoder = GetEncoder(encoder_id); encoder != nullptr)
 	{
-		logtt("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
+		if (encoder->GetModuleID() == cmn::MediaCodecModuleId::NVENC)
+		{
+			logtd("%s Identical encoder already exists. but, it will be recreated because the encoder is %s. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), cmn::GetCodecModuleIdString(encoder->GetModuleID()), encoder_id, output_track->GetId());
+			encoder->Stop();
+			encoder.reset();
 
-		// This track reuses an identical encoder that was previously created.
-		// No new encoder is created; only encoder-related information is updated on the track
-		UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
+			is_recreated = true;
+		}
+		else
+		{
+			logtd("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
 
-		return true;
+			// This track reuses an identical encoder that was previously created.
+			// No new encoder is created; only encoder-related information is updated on the track
+			UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
+
+			return true;
+		}
 	}
 
 	// Get a list of available encoder candidates(modules)
@@ -1386,6 +1398,17 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 	}
 
 	SetEncoderWithFilter(encoder_id, post_filter, encoder);
+
+	if (is_recreated)
+	{
+		logtd("%s Encoder has been recreated. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%dx%d), Fps(%.2f)", _log_prefix.CStr(),
+			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetWidth(), output_track->GetHeight(), output_track->GetFrameRate());
+	}
+	else
+	{
+		logti("%s Encoder has been created. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%dx%d), Fps(%.2f)", _log_prefix.CStr(),
+			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetWidth(), output_track->GetHeight(), output_track->GetFrameRate());
+	}
 
 	return true;
 }
@@ -1497,7 +1520,7 @@ bool TranscoderStream::CreateFilters(std::shared_ptr<MediaFrame> buffer)
 			return false;
 		}
 
-		logti("%s Filter has been created. Id(%d), %s", _log_prefix.CStr(), filter_id, GetFilter(filter_id)->GetDescription().CStr());
+		
 	}
 
 	return true;
@@ -1532,6 +1555,8 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<Medi
 	}
 
 	SetFilter(filter_id, filter);
+
+	logti("%s Filter has been created. Id(%d), %s", _log_prefix.CStr(), filter_id, filter->GetDescription().CStr());
 
 	return true;
 }
@@ -1896,7 +1921,7 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 					int32_t needed_frames = hole_time_tb / duration_per_frame;
 					int32_t created_filler = 0;
 
-					logtt("%s Generate filler frame because time diffrence from last frame. Type(%s), needed(%d), last_pts(%lld), curr_pts(%lld), hole_time(%lld), hole_time_tb(%lld), frame_duration(%lld), start_pts(%lld), end_pts(%lld)",
+					logtt("%s Generate filler frame because time diffrence from last frame. Type(%s), needed(%d), last_pts(%" PRId64 "), curr_pts(%" PRId64 "), hole_time(%" PRId64 "), hole_time_tb(%" PRId64 "), frame_duration(%" PRId64 "), start_pts(%" PRId64 "), end_pts(%" PRId64 ")",
 						  _log_prefix.CStr(), cmn::GetMediaTypeString(input_track->GetMediaType()), needed_frames, last_decoded_frame_time_us, curr_decoded_frame_time_us, hole_time_us, hole_time_tb, duration_per_frame, start_pts, end_pts);
 
 					for (int64_t filler_pts = start_pts; filler_pts < end_pts; filler_pts += duration_per_frame)
@@ -2270,7 +2295,6 @@ void TranscoderStream::SendFrame(std::shared_ptr<info::Stream> &stream, std::sha
 {
 	packet->SetMsid(stream->GetMsid());
 
-	// Send the packet to MediaRouter
 	bool ret = _parent->SendFrame(stream, std::move(packet));
 	if (ret == false)
 	{

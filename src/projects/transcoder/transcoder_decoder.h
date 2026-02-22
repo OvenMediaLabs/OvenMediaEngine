@@ -28,7 +28,8 @@ public:
 
 	std::shared_ptr<MediaTrack> &GetRefTrack();
 	cmn::Timebase GetTimebase();
-
+	AVCodecParserContext *GetParser() const;
+	
 public:
 	void SendBuffer(std::shared_ptr<const MediaPacket> packet) override;
 	void SetCompleteHandler(CompleteHandler complete_handler);

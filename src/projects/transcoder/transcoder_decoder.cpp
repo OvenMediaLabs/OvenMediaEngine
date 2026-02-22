@@ -320,19 +320,36 @@ void TranscodeDecoder::SetDecoderId(int32_t decoder_id)
 	_decoder_id = decoder_id;
 }
 
+AVCodecParserContext *TranscodeDecoder::GetParser() const
+{
+	return _parser;
+}
+
 bool TranscodeDecoder::Configure(std::shared_ptr<MediaTrack> track)
 {
+	// Set track information
 	if (track == nullptr)
 	{
 		return false;
 	}
 	_track = track;
 
+	// Set the input buffer information 
 	auto name = ov::String::FormatString("dec_%s_t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId());
 	auto urn = std::make_shared<info::ManagedQueue::URN>(_stream_info.GetApplicationInfo().GetVHostAppName(), _stream_info.GetName(), "trs", name);
 	_input_buffer.SetUrn(urn);
 	_input_buffer.SetThreshold(MAX_QUEUE_SIZE);
 
+	// Set bitstream parser
+	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
+	if (_parser == nullptr)
+	{
+		logte("Bitstream parser not found");
+		return false;
+	}
+	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+
+	// Start decoding thread
 	try
 	{
 		_kill_flag = false;

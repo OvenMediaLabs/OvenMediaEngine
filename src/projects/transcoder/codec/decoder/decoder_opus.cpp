@@ -35,15 +35,6 @@ bool DecoderOPUS::InitCodec()
 		return false;
 	}
 
-	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
-	if (_parser == nullptr)
-	{
-		logte("Parser not found");
-		return false;
-	}
-	
-	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
-
 	_change_format = false;
 	
 	return true;
@@ -136,7 +127,7 @@ void DecoderOPUS::CodecThread()
 					}
 					else if (ret == AVERROR_INVALIDDATA)
 					{
-						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 							  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
 					}
 					else if (ret < 0)
