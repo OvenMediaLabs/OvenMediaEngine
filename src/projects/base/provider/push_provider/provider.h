@@ -58,7 +58,7 @@ namespace pvd
     private:
 		void ChannelTaskRunner();
 
-		bool _run_task_runner;
+		std::atomic<bool> _run_task_runner{false};
 		std::thread _task_runner_thread;
 
 		// All streams (signalling streams + data streams)

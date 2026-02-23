@@ -16,7 +16,7 @@ namespace pvd
 
     bool PushProvider::Start()
     {
-		_run_task_runner = true;
+		_run_task_runner.store(true);
 		_task_runner_thread = std::thread(&PushProvider::ChannelTaskRunner, this);
 
 		ov::String thread_name = ov::String::FormatString("PTimer-%s", StringFromProviderType(GetProviderType()).CStr());
@@ -27,7 +27,7 @@ namespace pvd
 
 	bool PushProvider::Stop()
     {
-		_run_task_runner = false;
+		_run_task_runner.store(false);
 		if(_task_runner_thread.joinable())
 		{
 			_task_runner_thread.join();
@@ -172,7 +172,7 @@ namespace pvd
 
 		std::shared_lock<std::shared_mutex> lock(_channels_lock, std::defer_lock);
 
-		while(_run_task_runner == true)
+		while (_run_task_runner.load() == true)
 		{
 			lock.lock();
 			auto channels = _channels;
