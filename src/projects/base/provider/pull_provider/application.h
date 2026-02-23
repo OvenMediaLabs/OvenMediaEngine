@@ -50,7 +50,7 @@ namespace pvd
 		// Try restarting the stream for failover
 		bool ResumeStream(const std::shared_ptr<Stream> &stream);
 		
-		bool _stop_collector_thread_flag;
+		std::atomic<bool> _stop_collector_thread_flag{false};
 		std::thread _collector_thread;
 
 		std::shared_mutex _stream_motors_guard;

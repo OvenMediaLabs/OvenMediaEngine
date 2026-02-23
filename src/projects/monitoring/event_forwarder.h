@@ -66,7 +66,7 @@ namespace mon
 		std::shared_ptr<const cfg::Server> _server_config = nullptr;
 
 		std::thread _shipper_thread;
-		bool _run_thread = false;
+		std::atomic<bool> _run_thread{false};
 
 		std::shared_ptr<ov::Socket> _socket;
 	};

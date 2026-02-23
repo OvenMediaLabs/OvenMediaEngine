@@ -60,7 +60,7 @@ namespace pvd
         std::map<uint64_t, uint32_t> _source_track_id_to_new_id_map;
 
         std::thread _worker_thread;
-        bool _worker_thread_running = false;
+        std::atomic<bool> _worker_thread_running{false};
 
         MuxState _mux_state = MuxState::None;
         ov::String _pulling_state_msg;

@@ -34,7 +34,7 @@ namespace ov
 		bool Start(const std::shared_ptr<MessageThreadObserver<T>> &observer)
 		{
 			_observer = observer;
-			_run_thread = true;
+			_run_thread.store(true);
 			_thread = std::thread(&MessageThread::Postman, this);
 			pthread_setname_np(_thread.native_handle(), "MessageThread");
 
@@ -43,7 +43,7 @@ namespace ov
 
 		bool Stop()
 		{
-			_run_thread = false;
+			_run_thread.store(false);
 			_event.Stop();
 			if(_thread.joinable())
 			{
@@ -73,7 +73,7 @@ namespace ov
 		{
 			logger::ThreadHelper thread_helper;
 
-			while(_run_thread)
+			while(_run_thread.load())
 			{
 				_event.Wait();	
 				auto item = _message_queue.Dequeue(0);
@@ -87,7 +87,7 @@ namespace ov
 		}
 
 		Semaphore		_event;
-		bool			_run_thread = false;
+		std::atomic<bool> _run_thread{false};
 		std::thread 	_thread;
 		Queue<T>		_message_queue;
 		std::shared_ptr<MessageThreadObserver<T>>	_observer;

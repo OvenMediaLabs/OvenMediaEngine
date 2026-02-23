@@ -34,7 +34,7 @@ namespace pvd
     bool ScheduledStream::Start()
     {
         // Create Worker
-        _worker_thread_running = true;
+        _worker_thread_running.store(true);
         _worker_thread = std::thread(&ScheduledStream::WorkerThread, this);
         pthread_setname_np(_worker_thread.native_handle(), "Scheduled");
 
@@ -43,12 +43,12 @@ namespace pvd
 
     bool ScheduledStream::Stop()
     {
-        if (_worker_thread_running == false)
+        if (_worker_thread_running.load() == false)
         {
             return true;
         }
 
-        _worker_thread_running = false;
+        _worker_thread_running.store(false);
         _schedule_updated.SetEvent();
 
         if (_worker_thread.joinable())
@@ -246,7 +246,7 @@ namespace pvd
     {
 		ov::logger::ThreadHelper thread_helper;
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             // Schedule
             std::unique_lock<std::shared_mutex> guard(_current_mutex);
@@ -283,7 +283,7 @@ namespace pvd
 
             // Items
 			bool first_item = true;
-            while (_worker_thread_running)
+            while (_worker_thread_running.load())
             {
                 guard.lock();
                 _current_item = nullptr;
@@ -314,7 +314,7 @@ namespace pvd
 
 				first_item = false;
 				bool exit_loop = false;
-                while (_worker_thread_running)
+                while (_worker_thread_running.load())
                 {
                     auto result = PlayItem(_current_item);
                     if (result == PlaybackResult::ERROR)
@@ -353,7 +353,7 @@ namespace pvd
 
         // Fallback
 		bool fisrt = true;
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {
@@ -481,7 +481,7 @@ namespace pvd
 
         bool is_mpegts { std::strncmp(context->iformat->name, "mpegts", 6) == 0 };
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {
@@ -945,7 +945,7 @@ namespace pvd
 		// bool sent_keyframe = false;
 
         // Play
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {

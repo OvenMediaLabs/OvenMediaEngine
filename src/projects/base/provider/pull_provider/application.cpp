@@ -28,7 +28,7 @@ namespace pvd
 
 	bool PullApplication::Start()
 	{
-		_stop_collector_thread_flag = false;
+		_stop_collector_thread_flag.store(false);
 		_collector_thread = std::thread(&PullApplication::WhiteElephantStreamCollector, this);
 		pthread_setname_np(_collector_thread.native_handle(), "StreamCollector");
 		return Application::Start();
@@ -41,7 +41,7 @@ namespace pvd
 			return true;
 		}
 
-		_stop_collector_thread_flag = true;
+		_stop_collector_thread_flag.store(true);
 		if(_collector_thread.joinable())
 		{
 			_collector_thread.join();
@@ -60,7 +60,7 @@ namespace pvd
 		auto global_failback_timeout_ms = GetHostInfo().GetOrigins().GetProperties().GetStreamFailbackTimeout();	
 		
 		constexpr int64_t idle_wait_time_ms = 100; 
-		while (!_stop_collector_thread_flag)
+		while (!_stop_collector_thread_flag.load())
 		{
 			auto streams = GetStreams();
 			for (auto const &x : streams)
