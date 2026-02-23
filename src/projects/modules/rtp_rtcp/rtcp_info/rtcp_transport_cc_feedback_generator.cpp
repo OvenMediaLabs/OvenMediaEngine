@@ -10,7 +10,6 @@
 #include "rtcp_transport_cc_feedback_generator.h"
 
 #include "../rtp_header_extension/rtp_header_extension_transport_cc.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG "transport-cc"
 

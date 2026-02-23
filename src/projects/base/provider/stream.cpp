@@ -15,7 +15,6 @@
 #include "base/provider/pull_provider/stream_props.h"
 #include "base/provider/pull_provider/stream.h"
 #include <base/event/command/commands.h>
-#include <cinttypes>
 
 namespace pvd
 {

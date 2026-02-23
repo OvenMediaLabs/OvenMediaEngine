@@ -11,7 +11,6 @@
 #include "schedule_private.h"
 
 #include <base/provider/application.h>
-#include <cinttypes>
 
 namespace pvd
 {

@@ -13,7 +13,6 @@
 
 #include "mpegts_section.h"
 #include "mpegts_pes.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG	"MPEGTS_PACKET"
 

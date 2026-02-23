@@ -4,7 +4,6 @@
 #include <orchestrator/orchestrator.h>
 
 #include "monitoring_private.h"
-#include <cinttypes>
 
 namespace mon
 {

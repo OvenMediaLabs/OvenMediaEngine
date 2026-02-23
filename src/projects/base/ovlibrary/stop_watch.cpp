@@ -1,9 +1,9 @@
 #include "stop_watch.h"
 
 #include <utility>
+#include <cinttypes>
 
 #include "./log.h"
-#include <cinttypes>
 
 namespace ov
 {

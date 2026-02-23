@@ -1,6 +1,5 @@
 #include "lip_sync_clock.h"
 #include "base/ovlibrary/clock.h"
-#include <cinttypes>
 #define OV_LOG_TAG "LipSyncClock"
 
 bool LipSyncClock::RegisterRtpClock(uint32_t id, double timebase)

@@ -16,9 +16,9 @@
 
 #include <fstream>
 #include <iostream>
+#include <cinttypes>
 
 #include "platform.h"
-#include <cinttypes>
 
 namespace ov
 {

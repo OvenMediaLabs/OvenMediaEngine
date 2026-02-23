@@ -1,5 +1,4 @@
 #include "rtp_frame_jitter_buffer.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG "RtpVideoJitterBuffer"
 

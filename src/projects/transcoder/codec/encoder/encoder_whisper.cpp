@@ -12,7 +12,6 @@
 
 #include "encoder_whisper.h"
 #include "../../transcoder_private.h"
-#include <cinttypes>
 
 EncoderWhisper::EncoderWhisper(const info::Stream &stream_info)
 	: TranscodeEncoder(stream_info)

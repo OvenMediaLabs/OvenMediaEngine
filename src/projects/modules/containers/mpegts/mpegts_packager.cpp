@@ -10,7 +10,6 @@
 #include "mpegts_private.h"
 
 #include <base/modules/data_format/cue_event/cue_event.h>
-#include <cinttypes>
 
 namespace mpegts
 {

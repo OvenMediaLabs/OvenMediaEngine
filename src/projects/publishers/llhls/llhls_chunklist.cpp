@@ -11,7 +11,6 @@
 #include "llhls_private.h"
 #include <base/ovcrypto/base_64.h>
 #include <base/ovlibrary/zip.h>
-#include <cinttypes>
 
 LLHlsChunklist::LLHlsChunklist(const ov::String &url, const std::shared_ptr<const MediaTrack> &track, 
 							uint32_t segment_count, uint32_t target_duration, double part_target_duration, 

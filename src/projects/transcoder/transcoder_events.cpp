@@ -13,7 +13,6 @@
 #include <modules/bitstream/nalu/nal_unit_insertor.h>
 #include <modules/bitstream/h264/h264_sei.h>
 #include "transcoder_private.h"
-#include <cinttypes>
 
 
 

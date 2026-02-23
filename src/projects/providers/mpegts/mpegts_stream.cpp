@@ -22,7 +22,6 @@
 #include "modules/containers/mpegts/mpegts_packet.h"
 #include "mpegts_provider_private.h"
 #include "base/modules/data_format/scte35_event/scte35_event.h"
-#include <cinttypes>
 
 namespace pvd
 {

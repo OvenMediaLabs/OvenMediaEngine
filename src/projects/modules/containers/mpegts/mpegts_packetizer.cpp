@@ -11,7 +11,6 @@
 
 #include "descriptors/metadata_pointer.h"
 #include "descriptors/metadata.h"
-#include <cinttypes>
 
 namespace mpegts
 {

@@ -21,7 +21,6 @@
 #include "base/provider/push_provider/application.h"
 #include "base/provider/push_provider/provider.h"
 #include "rtmp_provider_private.h"
-#include <cinttypes>
 
 /*
 Process of publishing 

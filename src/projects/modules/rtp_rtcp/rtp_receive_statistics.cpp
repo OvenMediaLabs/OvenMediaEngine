@@ -1,5 +1,4 @@
 #include "rtp_receive_statistics.h"
-#include <cinttypes>
 
 RtpReceiveStatistics::RtpReceiveStatistics(uint32_t media_ssrc, uint32_t clock_rate, uint32_t receiver_ssrc)
 {

@@ -14,7 +14,6 @@
 #include "../../transcoder_gpu.h"
 #include "../../transcoder_private.h"
 #include "base/info/application.h"
-#include <cinttypes>
 
 
 // The Xilinx Video SDK decoder uses a 32-bit PTS. At some point, it wrap around and becomes negative. 

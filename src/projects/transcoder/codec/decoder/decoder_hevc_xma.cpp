@@ -15,7 +15,6 @@
 // #include <modules/bitstream/h264/h264_converter.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/bitstream/nalu/nal_stream_converter.h>
-#include <cinttypes>
 
 // The Xilinx Video SDK decoder uses a 32-bit PTS. At some point, it wrap around and becomes negative. 
 // To fix this, we changed it to calculate the PTS outside the codec.

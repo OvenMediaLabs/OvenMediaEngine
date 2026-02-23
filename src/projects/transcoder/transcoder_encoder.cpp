@@ -32,7 +32,6 @@
 #include "transcoder_gpu.h"
 #include "transcoder_modules.h"
 #include "transcoder_private.h"
-#include <cinttypes>
 
 #define USE_LEGACY_LIBOPUS false
 #define MAX_QUEUE_SIZE 2

@@ -12,7 +12,6 @@
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "../transcoder_private.h"
-#include <cinttypes>
 
 FilterResampler::FilterResampler()
 {

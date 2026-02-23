@@ -13,7 +13,6 @@
 #include <base/ovlibrary/bit_writer.h>
 #include <base/ovlibrary/hex.h>
 #include <base/ovlibrary/ovlibrary.h>
-#include <cinttypes>
 
 #define OV_LOG_TAG "H264SEI"
 

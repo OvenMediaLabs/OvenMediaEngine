@@ -12,7 +12,6 @@
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "mediarouter_private.h"
-#include <cinttypes>
 
 using namespace cmn;
 

@@ -14,7 +14,6 @@
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
 
 #include "rtspc_provider.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG "RtspcStream"
 

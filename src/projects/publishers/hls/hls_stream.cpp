@@ -20,7 +20,6 @@
 #include "hls_application.h"
 #include "hls_session.h"
 #include "hls_private.h"
-#include <cinttypes>
 
 /*
 

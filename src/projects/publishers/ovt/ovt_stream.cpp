@@ -8,7 +8,6 @@
 
 #include <modules/ovt_packetizer/ovt_signaling.h>
 #include <orchestrator/orchestrator.h>
-#include <cinttypes>
 
 std::shared_ptr<OvtStream> OvtStream::Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,

@@ -9,7 +9,6 @@
 
 #include "webvtt_packager.h"
 #include "webvtt_private.h"
-#include <cinttypes>
 
 namespace webvtt
 {

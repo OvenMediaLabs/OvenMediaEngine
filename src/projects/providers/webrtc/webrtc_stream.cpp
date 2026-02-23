@@ -13,7 +13,6 @@
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
-#include <cinttypes>
 
 namespace pvd
 {

@@ -5,7 +5,6 @@
 #include "h265_parser.h"
 
 #include "h265_types.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG "H265Parser"
 

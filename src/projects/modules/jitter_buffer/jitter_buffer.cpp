@@ -1,5 +1,4 @@
 #include "jitter_buffer.h"
-#include <cinttypes>
 
 JitterBuffer::JitterBuffer(uint32_t track_id, uint64_t timebase)
 	: _media_packet_queue("WebRTCJitterBuffer", 1000)

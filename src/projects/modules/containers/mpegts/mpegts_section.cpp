@@ -3,7 +3,6 @@
 #include "base/ovlibrary/crc.h"
 #include "mpegts_packet.h"
 #include "mpegts_private.h"
-#include <cinttypes>
 
 namespace mpegts
 {

@@ -1,7 +1,6 @@
 #include "h264_parser.h"
 
 #include "h264_decoder_configuration_record.h"
-#include <cinttypes>
 
 #define OV_LOG_TAG "H264Parser"
 

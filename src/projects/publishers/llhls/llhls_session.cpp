@@ -11,7 +11,6 @@
 #include "llhls_application.h"
 #include "llhls_stream.h"
 #include "llhls_private.h"
-#include <cinttypes>
 
 std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id, 
 												const bool &origin_mode,

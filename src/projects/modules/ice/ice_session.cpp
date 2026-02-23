@@ -8,7 +8,6 @@
 //==============================================================================
 #include "ice_session.h"
 #include "ice_private.h"
-#include <cinttypes>
 
 IceSession::IceSession(session_id_t session_id, IceSession::Role role, 
 				const std::shared_ptr<const SessionDescription> &local_sdp, const std::shared_ptr<const SessionDescription> &peer_sdp,

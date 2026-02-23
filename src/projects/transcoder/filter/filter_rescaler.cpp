@@ -14,7 +14,6 @@
 #include "../transcoder_gpu.h"
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
-#include <cinttypes>
 
 #define MAX_QUEUE_SIZE 2
 #define FILTER_FLAG_HWFRAME_AWARE (1 << 0)
