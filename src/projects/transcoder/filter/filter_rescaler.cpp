@@ -14,6 +14,7 @@
 #include "../transcoder_gpu.h"
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
+#include <cinttypes>
 
 #define MAX_QUEUE_SIZE 2
 #define FILTER_FLAG_HWFRAME_AWARE (1 << 0)
@@ -561,7 +562,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	}
 	else if (ret < 0)
 	{
-		logte("An error occurred while feeding to filtergraph: format: %d, pts: %lld, queue.size: %d", src_frame->format, src_frame->pts, _input_buffer.Size());
+		logte("An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %d", src_frame->format, src_frame->pts, _input_buffer.Size());
 
 		SetState(State::ERROR);
 

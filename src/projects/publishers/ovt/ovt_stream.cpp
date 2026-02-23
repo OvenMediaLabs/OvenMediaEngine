@@ -8,6 +8,7 @@
 
 #include <modules/ovt_packetizer/ovt_signaling.h>
 #include <orchestrator/orchestrator.h>
+#include <cinttypes>
 
 std::shared_ptr<OvtStream> OvtStream::Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,
@@ -201,7 +202,7 @@ void OvtStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		return;
 	}
 
-	//logti("Recv Video Frame : pts(%lld) data_len(%lld)", media_packet->GetPts(), media_packet->GetDataLength());
+	//logti("Recv Video Frame : pts(%" PRId64 ") data_len(%" PRId64 ")", media_packet->GetPts(), media_packet->GetDataLength());
 
 	// Callback OnOvtPacketized()
 	std::shared_lock<std::shared_mutex> mlock(_packetizer_lock);

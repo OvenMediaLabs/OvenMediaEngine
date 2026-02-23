@@ -1,4 +1,5 @@
 #include "jitter_buffer.h"
+#include <cinttypes>
 
 JitterBuffer::JitterBuffer(uint32_t track_id, uint64_t timebase)
 	: _media_packet_queue("WebRTCJitterBuffer", 1000)
@@ -122,7 +123,7 @@ std::shared_ptr<MediaPacket> JitterBufferDelay::PopNextMediaPacket()
 	{
 		auto buffer = item.second;
 
-		logt("DEBUG", "Buffer(%lld) - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
+		logt("DEBUG", "Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
 
 		// If there is no input for a certain period of time, it is considered as an inactive buffer.
 		if(buffer->IsActive() == false)
@@ -158,7 +159,7 @@ bool JitterBufferDelay::DoesEveryActiveBufferHavePackets()
 		auto buffer = item.second;
 		if(buffer->IsActive() == true && buffer->IsEmpty())
 		{
-			logt("DEBUG", "Empty Buffer(%lld) - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
+			logt("DEBUG", "Empty Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
 
 			return false;
 		}

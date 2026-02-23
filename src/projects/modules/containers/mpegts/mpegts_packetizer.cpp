@@ -11,6 +11,7 @@
 
 #include "descriptors/metadata_pointer.h"
 #include "descriptors/metadata.h"
+#include <cinttypes>
 
 namespace mpegts
 {
@@ -149,7 +150,7 @@ namespace mpegts
             _first_video_frame_received = true;
         }
 
-        // logtt("AppendFrame track_id %u, media_type %s, pts %lld, dts %lld", media_packet->GetTrackId(), cmn::GetMediaTypeString(media_packet->GetMediaType()), media_packet->GetPts(), media_packet->GetDts());
+        // logtt("AppendFrame track_id %u, media_type %s, pts %" PRId64 ", dts %" PRId64 "", media_packet->GetTrackId(), cmn::GetMediaTypeString(media_packet->GetMediaType()), media_packet->GetPts(), media_packet->GetDts());
 
         auto track = GetMediaTrack(media_packet->GetTrackId());
         if (track == nullptr)

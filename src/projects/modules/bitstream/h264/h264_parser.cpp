@@ -1,6 +1,7 @@
 #include "h264_parser.h"
 
 #include "h264_decoder_configuration_record.h"
+#include <cinttypes>
 
 #define OV_LOG_TAG "H264Parser"
 
@@ -453,7 +454,7 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 			return false;
 		}
 
-		logtt("Parsed SPS resolution: coded(%lld x %lld), crop(%lld x %lld), display(%lld x %lld)",
+		logtt("Parsed SPS resolution: coded(%" PRId64 " x %" PRId64 "), crop(%" PRId64 " x %" PRId64 "), display(%" PRId64 " x %" PRId64 ")",
 			  coded_width, coded_height,
 			  crop_x, crop_y,
 			  display_width, display_height);

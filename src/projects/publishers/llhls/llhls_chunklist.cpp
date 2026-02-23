@@ -11,6 +11,7 @@
 #include "llhls_private.h"
 #include <base/ovcrypto/base_64.h>
 #include <base/ovlibrary/zip.h>
+#include <cinttypes>
 
 LLHlsChunklist::LLHlsChunklist(const ov::String &url, const std::shared_ptr<const MediaTrack> &track, 
 							uint32_t segment_count, uint32_t target_duration, double part_target_duration, 
@@ -394,7 +395,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		auto it = _segments.find(_last_completed_segment_sequence - shift_count);
 		if (it == _segments.end())
 		{
-			logte("Could not find segment info. last_completed_segment_sequence(%lld) segment_count(%d)", _last_completed_segment_sequence.load(), _max_segment_count);
+			logte("Could not find segment info. last_completed_segment_sequence(%" PRId64 ") segment_count(%d)", _last_completed_segment_sequence.load(), _max_segment_count);
 			return "";
 		}
 
@@ -464,7 +465,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
 		playlist.AppendFormat("#EXT-X-PROGRAM-DATE-TIME:%s\n", ov::Converter::ToISO8601String(tp).CStr());
 
-		logtt("MakeChunklist[Track : %s/%s]: segment(%d) duration(%.2f) url(%s) start_time(%lld) date_time(%s)",
+		logtt("MakeChunklist[Track : %s/%s]: segment(%d) duration(%.2f) url(%s) start_time(%" PRId64 ") date_time(%s)",
 			_track->GetPublicName().CStr(), _track->GetVariantName().CStr(),
 			segment->GetSequence(), segment->GetDuration(), segment->GetUrl().CStr(), segment->GetStartTime(), 
 			ov::Converter::ToISO8601String(tp).CStr());
@@ -564,11 +565,11 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 				last_msn -= 1;
 			}
 
-			playlist.AppendFormat(",LAST-MSN=%llu", last_msn);
+			playlist.AppendFormat(",LAST-MSN=%" PRIu64 "", last_msn);
 
 			if (legacy == false)
 			{
-				playlist.AppendFormat(",LAST-PART=%llu", last_part);
+				playlist.AppendFormat(",LAST-PART=%" PRIu64 "", last_part);
 			}
 			
 			playlist.AppendFormat("\n");

@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "./log.h"
+#include <cinttypes>
 
 namespace ov
 {
@@ -136,6 +137,6 @@ namespace ov
 
 	void StopWatch::Print()
 	{
-		logt("StopWatch", "[%s] Elapsed: %lld (Total elapsed: %lld)", _tag.CStr(), Elapsed(), TotalElapsed());
+		logt("StopWatch", "[%s] Elapsed: %" PRId64 " (Total elapsed: %" PRId64 ")", _tag.CStr(), Elapsed(), TotalElapsed());
 	}
 }  // namespace ov

@@ -4,6 +4,7 @@
 #include <orchestrator/orchestrator.h>
 
 #include "monitoring_private.h"
+#include <cinttypes>
 
 namespace mon
 {
@@ -177,7 +178,7 @@ namespace mon
 				auto vhost_app	 = queue_info.GetUrn()->GetVHostAppName();
 				auto stream_name = queue_info.GetUrn()->GetStreamName();
 
-				logtc("The %s queue has been exceeded for %lld ms. stream will be forcibly deleted. VhostApp(%s), Stream(%s)",
+				logtc("The %s queue has been exceeded for %" PRId64 " ms. stream will be forcibly deleted. VhostApp(%s), Stream(%s)",
 					  queue_info.GetUrn()->ToString().CStr(), queue_info.GetThresholdExceededTimeInUs(), vhost_app.CStr(), stream_name.CStr());
 
 				if (vhost_app.IsValid())

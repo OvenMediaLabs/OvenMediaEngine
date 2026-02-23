@@ -8,6 +8,7 @@
 //==============================================================================
 #include "ice_session.h"
 #include "ice_private.h"
+#include <cinttypes>
 
 IceSession::IceSession(session_id_t session_id, IceSession::Role role, 
 				const std::shared_ptr<const SessionDescription> &local_sdp, const std::shared_ptr<const SessionDescription> &peer_sdp,
@@ -23,7 +24,7 @@ IceSession::IceSession(session_id_t session_id, IceSession::Role role,
 
 ov::String IceSession::ToString() const
 {
-	return ov::String::FormatString("IceSession: session_id=%u, role=%s, state=%s, local_ufrag=%s, expire_after_ms=%d, lifetime_epoch_ms=%llu, ConnectedCandidatePair=%s",
+	return ov::String::FormatString("IceSession: session_id=%u, role=%s, state=%s, local_ufrag=%s, expire_after_ms=%d, lifetime_epoch_ms=%" PRIu64 ", ConnectedCandidatePair=%s",
 		_session_id, 
 		_role == Role::CONTROLLED ? "CONTROLLED" : "CONTROLLING",
 		IceConnectionStateToString(_state),

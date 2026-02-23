@@ -13,6 +13,7 @@
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
+#include <cinttypes>
 
 namespace pvd
 {
@@ -603,7 +604,7 @@ namespace pvd
 			{
 				int32_t cts = cts_extension_opt.value();
 				dts = adjusted_timestamp - (cts * 90);
-				logtt("PTS(%lld) CTS(%d) DTS(%lld)", adjusted_timestamp, cts, dts);
+				logtt("PTS(%" PRId64 ") CTS(%d) DTS(%" PRId64 ")", adjusted_timestamp, cts, dts);
 			}
 			else
 			{
@@ -640,7 +641,7 @@ namespace pvd
 					{
 						auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
 
-						logtt("PTS(%lld) DTS(%lld) Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
+						logtt("PTS(%" PRId64 ") DTS(%" PRId64 ") Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
 
 						if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
 						{

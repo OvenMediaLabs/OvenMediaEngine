@@ -14,6 +14,7 @@
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
 
 #include "rtspc_provider.h"
+#include <cinttypes>
 
 #define OV_LOG_TAG "RtspcStream"
 
@@ -1087,7 +1088,7 @@ namespace pvd
 		}
 		
 
-		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%lld) Time scale(%f) Adjust Timestamp(%f)",
+		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),

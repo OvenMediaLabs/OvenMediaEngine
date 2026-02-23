@@ -12,6 +12,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "../transcoder_private.h"
+#include <cinttypes>
 
 FilterResampler::FilterResampler()
 {
@@ -268,12 +269,12 @@ void FilterResampler::WorkerThread()
 			break;
 		}
 
-		// logtw("Resampled in frame. pts: %lld, linesize: %d, samples: %d", av_frame->pts, av_frame->linesize[0], av_frame->nb_samples);
+		// logtw("Resampled in frame. pts: %" PRId64 ", linesize: %d, samples: %d", av_frame->pts, av_frame->linesize[0], av_frame->nb_samples);
 
 		ret = ::av_buffersrc_write_frame(_buffersrc_ctx, av_frame);
 		if (ret < 0)
 		{
-			logte("An error occurred while feeding the audio filtergraph: pts: %lld, linesize: %d, srate: %d, channels: %d, format: %d",
+			logte("An error occurred while feeding the audio filtergraph: pts: %" PRId64 ", linesize: %d, srate: %d, channels: %d, format: %d",
 				  av_frame->pts, av_frame->linesize[0], av_frame->sample_rate, av_frame->ch_layout.nb_channels, av_frame->format);
 
 			Complete(TranscodeResult::DataError, nullptr);
@@ -309,7 +310,7 @@ void FilterResampler::WorkerThread()
 			}
 			else
 			{
-				// logti("Resampled out frame. pts: %lld, linesize: %d, samples : %d", _frame->pts, _frame->linesize[0], _frame->nb_samples);
+				// logti("Resampled out frame. pts: %" PRId64 ", linesize: %d, samples : %d", _frame->pts, _frame->linesize[0], _frame->nb_samples);
 				auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Audio, _frame);
 				::av_frame_unref(_frame);
 				if (output_frame == nullptr)

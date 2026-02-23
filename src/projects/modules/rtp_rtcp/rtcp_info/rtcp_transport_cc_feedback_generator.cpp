@@ -10,6 +10,7 @@
 #include "rtcp_transport_cc_feedback_generator.h"
 
 #include "../rtp_header_extension/rtp_header_extension_transport_cc.h"
+#include <cinttypes>
 
 #define OV_LOG_TAG "transport-cc"
 
@@ -94,7 +95,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 		_last_rtp_received_time = _last_reference_time;
 
-		logtt("last rtp received time : %lld", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count());
+		logtt("last rtp received time : %" PRId64 "", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count());
 	}
 	else
 	{
@@ -110,7 +111,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 		_last_rtp_received_time = now;
 
-		logtt("last rtp received time : %lld, diff(%lld), delta(%d)", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
+		logtt("last rtp received time : %" PRId64 ", diff(%" PRId64 "), delta(%d)", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
 	}
 
 	// delta size

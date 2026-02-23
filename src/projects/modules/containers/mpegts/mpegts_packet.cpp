@@ -13,6 +13,7 @@
 
 #include "mpegts_section.h"
 #include "mpegts_pes.h"
+#include <cinttypes>
 
 #define OV_LOG_TAG	"MPEGTS_PACKET"
 
@@ -535,7 +536,7 @@ namespace mpegts
 
 			if(_adaptation_field._pcr_flag)
 			{
-				str.AppendFormat("\n\t\tPCR: Base(%lld), Reserved(%d), Extension(%d)", _adaptation_field._pcr._base, _adaptation_field._pcr._reserved, _adaptation_field._pcr._extension);
+				str.AppendFormat("\n\t\tPCR: Base(%" PRId64 "), Reserved(%d), Extension(%d)", _adaptation_field._pcr._base, _adaptation_field._pcr._reserved, _adaptation_field._pcr._extension);
 			}
 		}
 

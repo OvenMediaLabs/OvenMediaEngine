@@ -10,6 +10,7 @@
 #include "mpegts_private.h"
 
 #include <base/modules/data_format/cue_event/cue_event.h>
+#include <cinttypes>
 
 namespace mpegts
 {
@@ -226,7 +227,7 @@ namespace mpegts
 			// sample._dts is "the last dts + sample duration" of the sample_buffer
 			if (_force_make_boundary == false && HasMarker(sample._dts) == true)
 			{
-				logti("Stream(%s) Track(%u) has a marker at %lld, force to create a new boundary", _config.stream_id_meta.CStr(), track_id, sample._dts);
+				logti("Stream(%s) Track(%u) has a marker at %" PRId64 ", force to create a new boundary", _config.stream_id_meta.CStr(), track_id, sample._dts);
 
 				_force_make_boundary = true;
 			}
@@ -291,7 +292,7 @@ namespace mpegts
 		std::vector<std::shared_ptr<Marker>> markers;
 		if (HasMarker(main_segment_end_timestamp) == true)
 		{
-			logtt("Stream(%s) Main Track(%u) main_segment_base_timestamp(%lld) main_segment_duration(%lld) main_segment_duration_ms(%f) main_segment_end_timestamp(%lld)", _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
+			logtt("Stream(%s) Main Track(%u) main_segment_base_timestamp(%" PRId64 ") main_segment_duration(%" PRId64 ") main_segment_duration_ms(%f) main_segment_end_timestamp(%" PRId64 ")", _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
 
 			markers = PopMarkers(main_segment_end_timestamp);
 			force_create = true;
@@ -342,7 +343,7 @@ namespace mpegts
 					// For example, there may be cases where audio stops coming in at all at some point.
 					if (total_sample_segment_duration * 2.0 < total_main_segment_duration)
 					{
-						logtw("Stream(%s) Track(%u) sample duration (%lld) is less than half of the main (%lld), forcing segment generation.", _config.stream_id_meta.CStr(), track_id, total_sample_segment_duration, total_main_segment_duration);
+						logtw("Stream(%s) Track(%u) sample duration (%" PRId64 ") is less than half of the main (%" PRId64 "), forcing segment generation.", _config.stream_id_meta.CStr(), track_id, total_sample_segment_duration, total_main_segment_duration);
 					}
 					else
 					{

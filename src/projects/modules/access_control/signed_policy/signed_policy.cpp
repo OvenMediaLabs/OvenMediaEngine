@@ -4,6 +4,7 @@
 #include <base/ovcrypto/message_digest.h>
 #include <base/ovlibrary/converter.h>
 #include <openssl/evp.h>
+#include <cinttypes>
 
 // requested_url ==> scheme://domain:port/app/stream[/file]?[query1=value&query2=value&]policy=value&signature=value
 std::shared_ptr<const SignedPolicy> SignedPolicy::Load(const std::shared_ptr<const ac::RequestInfo> &request_info, const ov::String &policy_query_key, const ov::String &signature_query_key, const ov::String &secret_key)
@@ -157,7 +158,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 		// Policy expired
 		if (_url_expire_epoch_msec < ov::Clock::NowMSec())
 		{
-			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("URL has expired.(now:%llu policy_expire:%llu) ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("URL has expired.(now:%" PRIu64 " policy_expire:%" PRIu64 ") ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
 			return false;
 		}
 	}
@@ -169,7 +170,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 		// Policy is not activated yet
 		if (_url_activate_epoch_msec > ov::Clock::NowMSec())
 		{
-			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The URL has not yet been activated.(now:%llu policy_activate:%llu) ", ov::Clock::NowMSec(), _url_activate_epoch_msec));
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The URL has not yet been activated.(now:%" PRIu64 " policy_activate:%" PRIu64 ") ", ov::Clock::NowMSec(), _url_activate_epoch_msec));
 			return false;
 		}
 	}
@@ -179,7 +180,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 		_stream_expire_epoch_msec = jv_stream_expire.asUInt64();
 		if (_stream_expire_epoch_msec < ov::Clock::NowMSec())
 		{
-			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("Stream has expired.(now:%llu policy_expire:%llu) ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
+			SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("Stream has expired.(now:%" PRIu64 " policy_expire:%" PRIu64 ") ", ov::Clock::NowMSec(), _url_expire_epoch_msec));
 			return false;
 		}
 	}

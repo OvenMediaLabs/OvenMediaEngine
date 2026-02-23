@@ -21,6 +21,7 @@
 #include "base/provider/push_provider/application.h"
 #include "base/provider/push_provider/provider.h"
 #include "rtmp_provider_private.h"
+#include <cinttypes>
 
 /*
 Process of publishing 
@@ -1700,7 +1701,7 @@ namespace pvd
 
 			SendFrame(video_frame);
 
-			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%lld) dts(%lld)",
+			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%" PRId64 ") dts(%" PRId64 ")",
 			// 	  _vhost_app_name.CStr(),
 			// 	  _stream_name.CStr(),
 			// 	  flv_video.PacketType(),

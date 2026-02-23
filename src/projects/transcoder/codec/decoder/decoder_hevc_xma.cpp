@@ -15,6 +15,7 @@
 // #include <modules/bitstream/h264/h264_converter.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/bitstream/nalu/nal_stream_converter.h>
+#include <cinttypes>
 
 // The Xilinx Video SDK decoder uses a 32-bit PTS. At some point, it wrap around and becomes negative. 
 // To fix this, we changed it to calculate the PTS outside the codec.
@@ -282,7 +283,7 @@ void DecoderHEVCxXMA::CodecThread()
 #if USE_EXTERNAL_TIMESTAMP
 				_pts_reorder_list.sort();
 				auto ordered_pts = _pts_reorder_list.front();
-				// logtt("in: %lld, out: %lld (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
+				// logtt("in: %" PRId64 ", out: %" PRId64 " (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
 				_frame->pts = ordered_pts;
 				_pts_reorder_list.pop_front();
 #endif

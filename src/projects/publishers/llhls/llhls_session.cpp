@@ -11,6 +11,7 @@
 #include "llhls_application.h"
 #include "llhls_stream.h"
 #include "llhls_private.h"
+#include <cinttypes>
 
 std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id, 
 												const bool &origin_mode,
@@ -811,7 +812,7 @@ void LLHlsSession::ResponseData(const std::shared_ptr<http::svr::HttpExchange> &
 
 void LLHlsSession::OnPlaylistUpdated(const int32_t &track_id, const int64_t &msn, const int64_t &part)
 {
-	logtt("LLHlsSession::OnPlaylistUpdated track_id: %d, msn: %lld, part: %lld", track_id, msn, part);
+	logtt("LLHlsSession::OnPlaylistUpdated track_id: %d, msn: %" PRId64 ", part: %" PRId64 "", track_id, msn, part);
 	// Find the pending request
 
 	auto it = _pending_requests.begin();

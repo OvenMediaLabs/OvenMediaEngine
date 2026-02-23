@@ -31,6 +31,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "mediarouter_private.h"
+#include <cinttypes>
 
 
 using namespace cmn;
@@ -145,7 +146,7 @@ void MediaRouteStream::DropNonDecodingPackets()
 			if (base_pts < media_packet->GetPts())
 			{
 				base_pts = media_packet->GetPts();
-				logtw("Discovered base PTS value track_id:%d, flags:%d, size:%d,  pts:%lld", (int32_t)media_packet->GetTrackId(), media_packet->GetFlag(), media_packet->GetDataLength(), base_pts);
+				logtw("Discovered base PTS value track_id:%d, flags:%d, size:%d,  pts:%" PRId64 "", (int32_t)media_packet->GetTrackId(), media_packet->GetFlag(), media_packet->GetDataLength(), base_pts);
 			}
 		}
 
@@ -269,7 +270,7 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		// So, the code below is a temporary measure to avoid this problem. A more fundamental solution should be considered.
 		if (pop_media_packet->GetDts() >= media_packet->GetDts())
 		{
-			logtw("[%s/%s] Detected out of order DTS of packet. track_id:%d dts:%lld->%lld",
+			logtw("[%s/%s] Detected out of order DTS of packet. track_id:%d dts:%" PRId64 "->%" PRId64 "",
 				  _stream->GetApplicationName(), _stream->GetName().CStr(), pop_media_packet->GetTrackId(), pop_media_packet->GetDts(), media_packet->GetDts());
 
 			// If a packet has entered this function, it's a really weird stream.

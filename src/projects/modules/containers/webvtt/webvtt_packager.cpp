@@ -9,6 +9,7 @@
 
 #include "webvtt_packager.h"
 #include "webvtt_private.h"
+#include <cinttypes>
 
 namespace webvtt
 {
@@ -69,7 +70,7 @@ namespace webvtt
 		vtt_text = MakeVTTHeader(start_time_ms);
 		vtt_text += MakeCueText(start_time_ms, duration_ms, false);
 
-		// logti("WebVTT Packager: Making partial segment: SegmentNumber=%u, PartialSegmentNumber=%u, StartTimeMs=%lld, DurationMs=%lld, VTTTextLength=%zu\n\n%s", 
+		// logti("WebVTT Packager: Making partial segment: SegmentNumber=%u, PartialSegmentNumber=%u, StartTimeMs=%" PRId64 ", DurationMs=%" PRId64 ", VTTTextLength=%zu\n\n%s", 
 		// 	segment_number, partial_segment_number, start_time_ms, duration_ms, vtt_text.GetLength(), vtt_text.CStr());
 		
 		auto partial_segment = std::make_shared<PartialSegment>(segment_number, partial_segment_number, start_time_ms, duration_ms, vtt_text);

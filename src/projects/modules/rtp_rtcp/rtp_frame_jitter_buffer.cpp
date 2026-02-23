@@ -1,4 +1,5 @@
 #include "rtp_frame_jitter_buffer.h"
+#include <cinttypes>
 
 #define OV_LOG_TAG "RtpVideoJitterBuffer"
 
@@ -206,7 +207,7 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 
 	if (it == _rtp_frames.end())
 	{
-		logtt("Create frame buffer for timestamp %llu", timestamp);
+		logtt("Create frame buffer for timestamp %" PRIu64 "", timestamp);
 		// First packet of frame
 		frame = std::make_shared<RtpFrame>(packet->Timestamp());
 		_rtp_frames[timestamp] = frame;
@@ -277,7 +278,7 @@ std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 	auto it = _rtp_frames.begin();
 	auto frame = it->second;
 
-	logtt("Pop frame - extended(%llu) timestamp(%u) packets(%d) frames(%u)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+	logtt("Pop frame - extended(%" PRIu64 ") timestamp(%u) packets(%d) frames(%u)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
 
 	// remove front frame
 	_rtp_frames.erase(it);
