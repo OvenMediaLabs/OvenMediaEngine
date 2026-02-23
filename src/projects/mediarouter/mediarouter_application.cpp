@@ -452,12 +452,14 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Stream> &stream_info, MediaRouterApplicationConnector::ConnectorType connector_type)
 {
 	std::shared_lock<std::shared_mutex> lock(_observers_lock);
+	auto observers = _observers; // Avoid deadlock
+	lock.unlock();
 
 	logti("[%s/%s(%u)] Stream has been created", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId());
 
 	auto representation_type = stream_info->GetRepresentationType();
 
-	for (auto observer : _observers)
+	for (auto observer : observers)
 	{
 		auto observer_type = observer->GetObserverType();
 
