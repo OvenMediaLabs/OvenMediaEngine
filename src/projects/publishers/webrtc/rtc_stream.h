@@ -21,6 +21,9 @@
 #include "rtc_playlist.h"
 #include "rtc_session.h"
 
+// max initial media packet buffer size, for OOM protection
+#define MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE 10000
+
 class RtcStream final : public pub::Stream, public RtpPacketizerInterface
 {
 public:
@@ -75,6 +78,8 @@ private:
 	bool StorePacketForRTX(std::shared_ptr<RtpPacket> &packet);
 
 	void PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_packet);
+	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
+	bool SendBufferedPackets();
 	void PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_packet);
 	void PacketizeAudioFrame(const std::shared_ptr<MediaPacket> &media_packet);
 
@@ -120,6 +125,7 @@ private:
 	uint32_t _worker_count		= 0;
 
 	JitterBufferDelay _jitter_buffer_delay;
+	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
 
 	ov::String _default_playlist_name;
 

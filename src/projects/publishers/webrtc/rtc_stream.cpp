@@ -688,6 +688,17 @@ bool RtcStream::OnRtpPacketized(std::shared_ptr<RtpPacket> packet)
 
 void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	if (GetState() == State::CREATED)
+	{
+		BufferMediaPacketUntilReadyToPlay(media_packet);
+		return;
+	}
+
+	if (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		SendBufferedPackets();
+	}
+
 	if (_jitter_buffer_enabled)
 	{
 		PushToJitterBuffer(media_packet);
@@ -700,6 +711,17 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 
 void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	if (GetState() == State::CREATED)
+	{
+		BufferMediaPacketUntilReadyToPlay(media_packet);
+		return;
+	}
+
+	if (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		SendBufferedPackets();
+	}
+
 	if (_jitter_buffer_enabled)
 	{
 		PushToJitterBuffer(media_packet);
@@ -708,6 +730,55 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	{
 		PacketizeAudioFrame(media_packet);
 	}
+}
+
+void RtcStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	if (_initial_media_packet_buffer.Size() >= MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE)
+	{
+		// Drop the oldest packet, for OOM protection
+		_initial_media_packet_buffer.Dequeue(0);
+	}
+
+	_initial_media_packet_buffer.Enqueue(media_packet);
+}
+
+bool RtcStream::SendBufferedPackets()
+{
+	while (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
+		if (buffered_media_packet.has_value() == false)
+		{
+			continue;
+		}
+
+		auto media_packet = buffered_media_packet.value();
+		if (media_packet->GetMediaType() == cmn::MediaType::Video)
+		{
+			if (_jitter_buffer_enabled)
+			{
+				PushToJitterBuffer(media_packet);
+			}
+			else
+			{
+				PacketizeVideoFrame(media_packet);
+			}
+		}
+		else if (media_packet->GetMediaType() == cmn::MediaType::Audio)
+		{
+			if (_jitter_buffer_enabled)
+			{
+				PushToJitterBuffer(media_packet);
+			}
+			else
+			{
+				PacketizeAudioFrame(media_packet);
+			}
+		}
+	}
+
+	return true;
 }
 
 void RtcStream::PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_packet)
