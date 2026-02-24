@@ -173,7 +173,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			size_t nal_length = read_stream.ReadBE32();
 			if (read_stream.IsRemained(nal_length) == false)
 			{
-				logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 				return false;
 			}
 
@@ -821,7 +821,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			size_t nal_length = read_stream.ReadBE32();
 			if (read_stream.IsRemained(nal_length) == false)
 			{
-				logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 				return false;
 			}
 

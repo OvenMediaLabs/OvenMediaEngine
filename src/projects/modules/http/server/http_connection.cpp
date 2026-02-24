@@ -436,7 +436,7 @@ namespace http
 
 		ssize_t HttpConnection::OnHttp2RequestReceived(const std::shared_ptr<const ov::Data> &data)
 		{
-			logtt("Http2RequestReceived : %u", data->GetLength());
+			logtt("Http2RequestReceived : %zu", data->GetLength());
 
 			ssize_t consumed_bytes = 0;
 
@@ -486,7 +486,7 @@ namespace http
 				{
 					stream = std::make_shared<h2::HttpStream>(GetSharedPtr(), _http2_frame->GetStreamId());
 					_http_stream_map.emplace(_http2_frame->GetStreamId(), stream);
-					logtt("%s : Streams [%u]", ToString().CStr(), _http_stream_map.size());
+					logtt("%s : Streams [%zu]", ToString().CStr(), _http_stream_map.size());
 				}
 				lock.unlock();
 

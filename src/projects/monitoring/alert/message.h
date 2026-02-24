@@ -159,16 +159,16 @@ namespace mon::alrt
 				RETURN_DESCRIPTION(Code::INGRESS_STREAM_DELETED, "A ingress stream has been deleted");
 				RETURN_DESCRIPTION(Code::INGRESS_STREAM_CREATION_FAILED_DUPLICATE_NAME, "Failed to create stream because the specified stream name is already in use");
 
-				RETURN_DESCRIPTION(Code::INGRESS_BITRATE_LOW, "The ingress stream's current bitrate (%d bps) is lower than the configured bitrate (%d bps)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_BITRATE_HIGH, "The ingress stream's current bitrate (%d bps) is higher than the configured bitrate (%d bps)", measured, config);
+				RETURN_DESCRIPTION(Code::INGRESS_BITRATE_LOW, "The ingress stream's current bitrate (%.0f bps) is lower than the configured bitrate (%.0f bps)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_BITRATE_HIGH, "The ingress stream's current bitrate (%.0f bps) is higher than the configured bitrate (%.0f bps)", static_cast<double>(measured), static_cast<double>(config));
 				RETURN_DESCRIPTION(Code::INGRESS_FRAMERATE_LOW, "The ingress stream's current framerate (%.2f fps) is lower than the configured framerate (%.2f fps)", static_cast<double>(measured), static_cast<double>(config));
 				RETURN_DESCRIPTION(Code::INGRESS_FRAMERATE_HIGH, "The ingress stream's current framerate (%f fps) is higher than the configured framerate (%f fps)", static_cast<double>(measured), static_cast<double>(config));
-				RETURN_DESCRIPTION(Code::INGRESS_WIDTH_SMALL, "The ingress stream's width (%d) is smaller than the configured width (%d)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_WIDTH_LARGE, "The ingress stream's width (%d) is larger than the configured width (%d)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_HEIGHT_SMALL, "The ingress stream's height (%d) is smaller than the configured height (%d)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_HEIGHT_LARGE, "The ingress stream's height (%d) is larger than the configured height (%d)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_SAMPLERATE_LOW, "The ingress stream's current samplerate (%d) is lower than the configured samplerate (%d)", measured, config);
-				RETURN_DESCRIPTION(Code::INGRESS_SAMPLERATE_HIGH, "The ingress stream's current samplerate (%d) is higher than the configured samplerate (%d)", measured, config);
+				RETURN_DESCRIPTION(Code::INGRESS_WIDTH_SMALL, "The ingress stream's width (%.0f) is smaller than the configured width (%.0f)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_WIDTH_LARGE, "The ingress stream's width (%.0f) is larger than the configured width (%.0f)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_HEIGHT_SMALL, "The ingress stream's height (%.0f) is smaller than the configured height (%.0f)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_HEIGHT_LARGE, "The ingress stream's height (%.0f) is larger than the configured height (%.0f)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_SAMPLERATE_LOW, "The ingress stream's current samplerate (%.0f) is lower than the configured samplerate (%.0f)", static_cast<double>(measured), static_cast<double>(config));
+				RETURN_DESCRIPTION(Code::INGRESS_SAMPLERATE_HIGH, "The ingress stream's current samplerate (%.0f) is higher than the configured samplerate (%.0f)", static_cast<double>(measured), static_cast<double>(config));
 				RETURN_DESCRIPTION(Code::INGRESS_LONG_KEY_FRAME_INTERVAL, "The ingress stream's current keyframe interval (%.1f seconds) is too long. Please use a keyframe interval of %.1f seconds or less", static_cast<double>(measured), static_cast<double>(config));
 				RETURN_DESCRIPTION(Code::INGRESS_HAS_BFRAME, "There are B-Frames in the ingress stream");
 

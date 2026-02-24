@@ -123,7 +123,7 @@ ov::String RtcPeerInfo::ToString() const
 	if(IsHost())
 	{
 		return ov::String::FormatString(
-			"<PeerInfo: %p, Host peer, id: %d, can accept: %s, client count: %d, browser: %s>",
+			"<PeerInfo: %p, Host peer, id: %d, can accept: %s, client count: %zu, browser: %s>",
 			this,
 			_id,
 			_can_accept ? "true" : "false",

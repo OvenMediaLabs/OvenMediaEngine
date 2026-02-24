@@ -76,7 +76,7 @@ void REMB::DebugPrint()
 	logti("[REMB]");
 	logti("SrcSsrc: %u", GetSrcSsrc());
 	logti("MediaSsrc: %u", GetMediaSsrc());
-	logti("Bitrate BPS: %u", GetBitrateBps());
+	logti("Bitrate BPS: %" PRId64, GetBitrateBps());
 
 	for (const auto &ssrc : _ssrcs)
 	{

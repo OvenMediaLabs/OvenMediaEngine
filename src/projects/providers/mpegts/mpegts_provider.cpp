@@ -344,7 +344,7 @@ namespace pvd
 	{
 		auto mpegts_stream = std::dynamic_pointer_cast<MpegTsStream>(channel);
 
-		logti("The client has not sent data for %d seconds. Stream has been deleted: [%s/%s], remote: ",  //%s",
+		logti("The client has not sent data for %ld seconds. Stream has been deleted: [%s/%s], remote: ",  //%s",
 			  mpegts_stream->GetElapsedMsSinceLastReceived(),
 			  mpegts_stream->GetApplicationName(), mpegts_stream->GetName().CStr());
 		//mpegts_stream->GetClientSock()->ToString().CStr());

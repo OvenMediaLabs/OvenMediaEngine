@@ -175,7 +175,7 @@ namespace ov
 			}
 			else
 			{
-				OV_ASSERT(false, "Invalid JSON value type: %d", value.index());
+				OV_ASSERT(false, "Invalid JSON value type: %zu", value.index());
 			}
 		}
 
@@ -214,7 +214,7 @@ namespace ov
 			}
 			else
 			{
-				OV_ASSERT(false, "Invalid JSON value type: %d", value.index());
+				OV_ASSERT(false, "Invalid JSON value type: %zu", value.index());
 			}
 		}
 
@@ -246,7 +246,7 @@ namespace ov
 					}
 					else
 					{
-						OV_ASSERT(false, "Invalid JSON value type: %d", value.index());
+						OV_ASSERT(false, "Invalid JSON value type: %zu", value.index());
 					}
 				}
 
@@ -269,7 +269,7 @@ namespace ov
 					}
 					else
 					{
-						OV_ASSERT(false, "Invalid JSON value type: %d", value.index());
+						OV_ASSERT(false, "Invalid JSON value type: %zu", value.index());
 					}
 				}
 

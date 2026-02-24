@@ -55,7 +55,7 @@ bool SrtpAdapter::SetKey(srtp_ssrc_type_t type, uint64_t crypto_suite, std::shar
 			srtp_crypto_policy_set_aes_gcm_128_16_auth(&policy.rtcp);
 			break;
 		default:
-			logte("Failed to create srtp adapter. Unsupported crypto suite %d", crypto_suite);
+			logte("Failed to create srtp adapter. Unsupported crypto suite %llu", static_cast<unsigned long long>(crypto_suite));
 			return false;
 	}
 
@@ -96,7 +96,7 @@ bool SrtpAdapter::ProtectRtp(std::shared_ptr<ov::Data> data)
 
 	if(need_len > data->GetCapacity())
 	{
-		logte("Buffer capacity(%d) less than the needed(%d)", data->GetCapacity(), need_len);
+		logte("Buffer capacity(%zu) less than the needed(%u)", data->GetCapacity(), need_len);
 		return false;
 	}
 
@@ -133,7 +133,7 @@ bool SrtpAdapter::ProtectRtcp(std::shared_ptr<ov::Data> data)
 
     if(need_len > data->GetCapacity())
     {
-        logte("Buffer capacity(%d) less than the needed(%d)", data->GetCapacity(), need_len);
+		logte("Buffer capacity(%zu) less than the needed(%u)", data->GetCapacity(), need_len);
         return false;
     }
 

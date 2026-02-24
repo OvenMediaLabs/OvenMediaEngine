@@ -73,7 +73,7 @@ bool IsKnownH264NalUnitType(H264NalUnitType nal_unit_type)
 			return true;
 	}
 
-	logtw("Unsupported NAL unit type %u", nal_unit_type);
+	logtw("Unsupported NAL unit type %u", static_cast<unsigned int>(nal_unit_type));
 	return false;
 }
 

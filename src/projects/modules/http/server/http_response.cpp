@@ -196,7 +196,7 @@ namespace http
 				return "";
 			}
 
-			return ov::String::FormatString("%s-%d", _response_hash->ToHexString().CStr(), _response_data_size);
+			return ov::String::FormatString("%s-%zu", _response_hash->ToHexString().CStr(), _response_data_size);
 		}
 
 		bool HttpResponse::AppendData(const std::shared_ptr<const ov::Data> &data)
@@ -441,7 +441,7 @@ namespace http
 			ov::String output;
 
 			output.AppendFormat("<HttpResponse> Status(%d) Reason(%s) Header(%zu) Data(%zu)\n",
-								GetStatusCode(),
+								static_cast<int>(GetStatusCode()),
 								GetReason().CStr(),
 								_response_header.size(),
 								_response_data_size);

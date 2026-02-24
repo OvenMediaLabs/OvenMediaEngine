@@ -42,7 +42,7 @@ TranscodeWebhook::Policy TranscodeWebhook::RequestOutputProfiles(const info::Str
 	if(md_sha1 == nullptr)
 	{
 		// Error
-		logte("Internal Error: Signature creation failed.(Method : HMAC(SHA1), Key : %s, Body length : %d", secret_key.CStr(), body.GetLength());
+        logte("Internal Error: Signature creation failed.(Method : HMAC(SHA1), Key : %s, Body length : %zu", secret_key.CStr(), body.GetLength());
 		return Policy::DeleteStream;
 	}
 

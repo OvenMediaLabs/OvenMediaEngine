@@ -238,7 +238,7 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 		return false;
 	}
 
-	logtt("OnDataReceived (%d) bytes", data->GetLength());
+	logtt("OnDataReceived (%zu) bytes", data->GetLength());
 
 	switch (_state)
 	{

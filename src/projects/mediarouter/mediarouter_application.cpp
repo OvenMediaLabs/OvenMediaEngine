@@ -179,7 +179,7 @@ bool MediaRouteApplication::RegisterConnectorApp(std::shared_ptr<MediaRouterAppl
 
 	_connectors.push_back(connector);
 
-	logtt("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
+	logtt("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(connector->GetConnectorType()));
 
 	return true;
 }
@@ -202,7 +202,7 @@ bool MediaRouteApplication::UnregisterConnectorApp(std::shared_ptr<MediaRouterAp
 
 	_connectors.erase(position);
 
-	logti("Unregistered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
+	logti("Unregistered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(connector->GetConnectorType()));
 
 	return true;
 }
@@ -218,7 +218,7 @@ bool MediaRouteApplication::RegisterObserverApp(std::shared_ptr<MediaRouterAppli
 
 	_observers.push_back(observer);
 
-	logtt("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
+	logtt("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(observer->GetObserverType()));
 
 	return true;
 }
@@ -240,7 +240,7 @@ bool MediaRouteApplication::UnregisterObserverApp(std::shared_ptr<MediaRouterApp
 
 	_observers.erase(position);
 
-	logti("Unregistered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
+	logti("Unregistered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(observer->GetObserverType()));
 
 	return true;
 }

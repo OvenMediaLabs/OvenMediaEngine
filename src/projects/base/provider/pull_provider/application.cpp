@@ -156,14 +156,14 @@ namespace pvd
 
 						if((elapsed_time_from_last_sent > unused_stream_timeout_ms) && (!is_persistent))
 						{
-							logtw("%s/%s(%u) stream will be deleted because it hasn't been used for %u milliseconds", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_sent);
+							logtw("%s/%s(%u) stream will be deleted because it hasn't been used for %lld milliseconds", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), static_cast<long long>(elapsed_time_from_last_sent));
 							DeleteStream(stream);
 						}
 						// The stream type is pull stream, if packets do NOT arrive for more than 3 seconds, it is a seriously warning situation
 						else if(elapsed_time_from_last_recv > no_input_timeout_ms && (!is_persistent))
 						{
-							logtw("Stop stream %s/%s(%u) : there are no incoming packets. %d milliseconds have elapsed since the last packet was received.",
-								  stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_recv);
+							logtw("Stop stream %s/%s(%u) : there are no incoming packets. %lld milliseconds have elapsed since the last packet was received.",
+								  stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), static_cast<long long>(elapsed_time_from_last_recv));
 
 							// When the stream is stopped, it tries to reconnect using the next url.
 							stream->Stop();

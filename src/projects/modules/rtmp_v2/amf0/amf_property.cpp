@@ -347,7 +347,7 @@ namespace modules::rtmp
 				break;
 
 			default:
-				logtw("Unknown AMF type: %d", _amf_data_type);
+				logtw("Unknown AMF type: %d", static_cast<int>(_amf_data_type));
 				_amf_data_type = AmfTypeMarker::Null;
 				break;
 		}
@@ -443,7 +443,7 @@ namespace modules::rtmp
 				[[fallthrough]];
 			case AmfTypeMarker::TypedObject:
 				logte("Not supported AMF property type: %s", EnumToString(GetType()));
-				OV_ASSERT(false, "Not supported type: ", GetType());
+				OV_ASSERT(false, "Not supported type: %d", static_cast<int>(GetType()));
 				break;
 		}
 

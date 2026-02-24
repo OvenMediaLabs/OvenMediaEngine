@@ -182,7 +182,7 @@ namespace pvd
 			return false;
 		}
 
-		logtt("Requested url[%d] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
+		logtt("Requested url[%zu] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
 		if (scheme.UpperCaseString() != "RTSP")
@@ -1101,7 +1101,7 @@ namespace pvd
 												   bitstream_format,
 												   packet_type);
 
-		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), bitstream_format, packet_type, bitstream->GetLength(), first_rtp_packet->Timestamp());
+		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%zu) pts(%u)", track->GetId(), static_cast<int>(track->GetCodecId()), static_cast<int>(bitstream_format), static_cast<int>(packet_type), bitstream->GetLength(), first_rtp_packet->Timestamp());
 
 		// Send SPS/PPS if stream is H264
 		if (_sent_sequence_header == false && track->GetCodecId() == cmn::MediaCodecId::H264 && _h264_extradata_nalu != nullptr)

@@ -277,7 +277,7 @@ void AdmissionWebhooks::Run()
 	if (md_sha1 == nullptr)
 	{
 		// Error
-		SetError(ErrCode::INTERNAL_ERROR, ov::String::FormatString("Signature creation failed.(Method : HMAC(SHA1), Key : %s, Body length : %d", _secret_key.CStr(), body.GetLength()));
+		SetError(ErrCode::INTERNAL_ERROR, ov::String::FormatString("Signature creation failed.(Method : HMAC(SHA1), Key : %s, Body length : %zu", _secret_key.CStr(), body.GetLength()));
 		return;
 	}
 

@@ -249,7 +249,7 @@ std::shared_ptr<TranscodeDecoder> TranscodeDecoder::Create(
 		}
 		else
 		{
-			OV_ASSERT(false, "Not supported codec: %d", track->GetCodecId());
+			OV_ASSERT(false, "Not supported codec: %d", static_cast<int>(track->GetCodecId()));
 		}
 
 		// If the decoder is not created, try the next candidate.
@@ -384,7 +384,7 @@ void TranscodeDecoder::Stop()
 	{
 		_codec_thread.join();
 
-		logtt(ov::String::FormatString("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
+		logtt("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID()));
 	}
 
 	tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());	

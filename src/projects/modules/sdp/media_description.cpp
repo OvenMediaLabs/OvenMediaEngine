@@ -201,25 +201,25 @@ bool MediaDescription::UpdateData(ov::String &sdp)
 	{
 		if (_rtx_ssrc.has_value())
 		{
-			sdp.AppendFormat("a=ssrc-group:FID %u %u\r\n", _ssrc, _rtx_ssrc);
+			sdp.AppendFormat("a=ssrc-group:FID %u %u\r\n", _ssrc.value_or(0), _rtx_ssrc.value_or(0));
 		}
-		sdp.AppendFormat("a=ssrc:%u cname:%s\r\n", _ssrc, _cname.value_or("").CStr());
+		sdp.AppendFormat("a=ssrc:%u cname:%s\r\n", _ssrc.value_or(0), _cname.value_or("").CStr());
 
 		if (_msid_appdata.has_value())
 		{
-			sdp.AppendFormat("a=ssrc:%u msid:%s %s\r\n", _ssrc, _msid.value_or("").CStr(), _msid_appdata.value_or("").CStr());
-			sdp.AppendFormat("a=ssrc:%u mslabel:%s\r\n", _ssrc, _msid.value_or("").CStr());
-			sdp.AppendFormat("a=ssrc:%u label:%s\r\n", _ssrc, _msid_appdata.value_or("").CStr());
+			sdp.AppendFormat("a=ssrc:%u msid:%s %s\r\n", _ssrc.value_or(0), _msid.value_or("").CStr(), _msid_appdata.value_or("").CStr());
+			sdp.AppendFormat("a=ssrc:%u mslabel:%s\r\n", _ssrc.value_or(0), _msid.value_or("").CStr());
+			sdp.AppendFormat("a=ssrc:%u label:%s\r\n", _ssrc.value_or(0), _msid_appdata.value_or("").CStr());
 		}
 
 		if (_rtx_ssrc.has_value())
 		{
-			sdp.AppendFormat("a=ssrc:%u cname:%s\r\n", _rtx_ssrc, _cname.value_or("").CStr());
+			sdp.AppendFormat("a=ssrc:%u cname:%s\r\n", _rtx_ssrc.value_or(0), _cname.value_or("").CStr());
 			if (_msid_appdata.has_value())
 			{
-				sdp.AppendFormat("a=ssrc:%u msid:%s %s\r\n", _rtx_ssrc, _msid.value_or("").CStr(), _msid_appdata.value_or("").CStr());
-				sdp.AppendFormat("a=ssrc:%u mslabel:%s\r\n", _rtx_ssrc, _msid.value_or("").CStr());
-				sdp.AppendFormat("a=ssrc:%u label:%s\r\n", _rtx_ssrc, _msid_appdata.value_or("").CStr());
+				sdp.AppendFormat("a=ssrc:%u msid:%s %s\r\n", _rtx_ssrc.value_or(0), _msid.value_or("").CStr(), _msid_appdata.value_or("").CStr());
+				sdp.AppendFormat("a=ssrc:%u mslabel:%s\r\n", _rtx_ssrc.value_or(0), _msid.value_or("").CStr());
+				sdp.AppendFormat("a=ssrc:%u label:%s\r\n", _rtx_ssrc.value_or(0), _msid_appdata.value_or("").CStr());
 			}
 		}
 	}

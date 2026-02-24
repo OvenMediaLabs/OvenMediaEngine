@@ -81,7 +81,7 @@ bool RtcpPacket::Parse(const uint8_t* buffer, const size_t buffer_size, size_t &
 	block_size = (ByteReader<uint16_t>::ReadBigEndian(&buffer[2]) + 1) * 4;
 	if(buffer_size < block_size)
 	{
-		logtt("The rtcp block size is too small : block size(%d) must be bigger than (headers size + payload size : %d)", 
+		logtt("The rtcp block size is too small : block size(%zu) must be bigger than (headers size + payload size : %zu)", 
 				buffer_size, RTCP_HEADER_SIZE + _payload_size);
 		return false;
 	}
@@ -104,7 +104,7 @@ bool RtcpPacket::Parse(const uint8_t* buffer, const size_t buffer_size, size_t &
 
 		if(_padding_size > _payload_size)
 		{
-			logtt("Invalid RTCP header : too many padding bytes(%d), it must be less than payload size (%d)", 
+			logtt("Invalid RTCP header : too many padding bytes(%zu), it must be less than payload size (%zu)", 
 				_padding_size, _payload_size);
 			return false;
 		}

@@ -960,7 +960,7 @@ void RtcStream::AddPacketizer(const std::shared_ptr<const MediaTrack> &track)
 		return;
 	}
 
-	logtt("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", track->GetCodecId(), track->GetId(), payload_type, ssrc);
+	logtt("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", static_cast<uint32_t>(track->GetCodecId()), track->GetId(), payload_type, ssrc);
 
 	auto packetizer = std::make_shared<RtpPacketizer>(RtpPacketizerInterface::GetSharedPtr());
 	packetizer->SetCodec(track->GetCodecId());

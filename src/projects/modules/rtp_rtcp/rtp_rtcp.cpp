@@ -152,7 +152,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 		}
 		else
 		{
-			logt("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%d)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
+			logt("RTCP", "Send RTCP succeed : pt(%d) ssrc(%u) length(%zu)", rtp_packet->PayloadType(), rtp_packet->Ssrc(), compound_rtcp_data->GetLength());
 		}
 	}
 
@@ -365,7 +365,7 @@ bool RtpRtcp::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_p
 
 	if(SendDataToNextNode(from_node, data) == false)
 	{
-		loge("RtpRtcp","Send data failed from(%d) data_len(%d)", static_cast<uint16_t>(from_node), data->GetLength());
+		loge("RtpRtcp","Send data failed from(%d) data_len(%zu)", static_cast<uint16_t>(from_node), data->GetLength());
 		return false;
 	}
 

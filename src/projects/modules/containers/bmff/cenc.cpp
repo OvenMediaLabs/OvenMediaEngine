@@ -224,11 +224,11 @@ namespace bmff
 
         if (total_bytes != media_packet->GetDataLength())
         {
-            logte("Total subsample bytes (%u) is not equal to sample data length (%u)", total_bytes, media_packet->GetDataLength());
+            logte("Total subsample bytes (%u) is not equal to sample data length (%zu)", total_bytes, media_packet->GetDataLength());
             return false;
         }
 
-		logtt("Subsample count : %d Total subsamples : %u / %u", sub_samples.size(), total_bytes, media_packet->GetDataLength());
+        logtt("Subsample count : %zu Total subsamples : %u / %zu", sub_samples.size(), total_bytes, media_packet->GetDataLength());
 
 		return true;
 	}
@@ -281,7 +281,7 @@ namespace bmff
     // source is a sub-sample data
     bool Encryptor::EncryptPattern(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block, std::function<bool(const uint8_t*, size_t, uint8_t*, bool)>(encrypt_func))
     {
-        logtt("EncryptPattern - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptPattern - Source Size : %zu, Last Block : %s", source_size, last_block ? "true" : "false");
 
         // Crypt Bytes Block - Skip Bytes Block
         while (source_size > 0)
@@ -335,7 +335,7 @@ namespace bmff
 
     bool Encryptor::EncryptCbc(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block)
     {
-        logtt("EncryptCbc - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptCbc - Source Size : %zu, Last Block : %s", source_size, last_block ? "true" : "false");
 
         if (_aes.IsInitialized() == false)
         {
@@ -374,7 +374,7 @@ namespace bmff
 
     bool Encryptor::EncryptCtr(const uint8_t *source, size_t source_size, uint8_t *dest, bool last_block)
     {
-        logtt("EncryptCtr - Source Size : %u, Last Block : %s", source_size, last_block ? "true" : "false");
+        logtt("EncryptCtr - Source Size : %zu, Last Block : %s", source_size, last_block ? "true" : "false");
 
         for (size_t i=0; i<source_size; i++)
         {
@@ -414,7 +414,7 @@ namespace bmff
 
         if (iv_len != AES_BLOCK_SIZE)
         {
-            logte("Invalid IV length : %d", iv_len);
+            logte("Invalid IV length : %zu", iv_len);
             return false;
         }
 

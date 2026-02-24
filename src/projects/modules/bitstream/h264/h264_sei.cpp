@@ -157,7 +157,7 @@ ov::String H264SEI::GetInfoString()
 	info.AppendFormat("Payload Data (Timecode): %" PRIu64 ", ", _payload_time_code);
 	if (_payload_data != nullptr)
 	{
-		info.AppendFormat("Payload Data (Data): %d bytes\n%s", _payload_data->GetLength(), _payload_data->Dump(nullptr, nullptr).CStr());
+		info.AppendFormat("Payload Data (Data): %zu bytes\n%s", _payload_data->GetLength(), _payload_data->Dump(nullptr, nullptr).CStr());
 	}
 
 	return info;

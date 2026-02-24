@@ -102,7 +102,7 @@ void DecoderAAC::CodecThread()
 				}
 				else
 				{
-					OV_ASSERT(_cur_data->GetLength() >= (size_t)parsed_size, "Current data size MUST greater than parsed_size, but data size: %ld, parsed_size: %ld", _cur_data->GetLength(), parsed_size);
+					OV_ASSERT(_cur_data->GetLength() >= static_cast<size_t>(parsed_size), "Current data size MUST greater than parsed_size, but data size: %zu, parsed_size: %d", _cur_data->GetLength(), parsed_size);
 					_pkt_offset += parsed_size;
 				}
 

@@ -188,13 +188,13 @@ namespace pvd
 					continue;
 				}
 
-				logtt("Checking channel %d, elapsed %d ms, timeout %d ms", channel->GetChannelId(), 
+				logtt("Checking channel %d, elapsed %ld ms, timeout %ld ms", channel->GetChannelId(), 
 																			channel->GetElapsedMsSinceLastReceived(),
 																			channel->GetPacketSilenceTimeoutMs());
 
 				if (channel->GetElapsedMsSinceLastReceived() > channel->GetPacketSilenceTimeoutMs())
 				{
-					logtw("Channel %d is timed out, %d ms elapsed since last received, deleting it", channel->GetChannelId(), channel->GetElapsedMsSinceLastReceived());
+					logtw("Channel %d is timed out, %ld ms elapsed since last received, deleting it", channel->GetChannelId(), channel->GetElapsedMsSinceLastReceived());
 
 					// Notify the channel timed out
 					OnTimedOut(channel);

@@ -142,8 +142,8 @@ ov::String AACAdts::GetInfoString()
 	out_str.AppendFormat("\tId(%d)\n", Id());
 	out_str.AppendFormat("\tLayer(%d)\n", Layer());
 	out_str.AppendFormat("\tProtectionAbsent(%s)\n", ProtectionAbsent() ? "true" : "false");
-	out_str.AppendFormat("\tObjectType(%d/%s)\n", ObjectType(), StringFromAudioObjectType(ObjectType()));
-	out_str.AppendFormat("\tSamplerate(%d/%d)\n", SamplingFrequencyIndex(), Samplerate());
+	out_str.AppendFormat("\tObjectType(%d/%s)\n", static_cast<int>(ObjectType()), StringFromAudioObjectType(ObjectType()));
+	out_str.AppendFormat("\tSamplerate(%d/%d)\n", static_cast<int>(SamplingFrequencyIndex()), Samplerate());
 	out_str.AppendFormat("\tChannelConfiguration(%d)\n", ChannelConfiguration());
 	out_str.AppendFormat("\tHome(%s)\n", Home() ? "true" : "false");
 	out_str.AppendFormat("\tAacFrameLength(%d)\n", AacFrameLength());

@@ -322,7 +322,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 	}
 
 	// write delta
-	logtt("Feedback packet status count (%u) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
+	logtt("Feedback packet status count (%zu) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
 	for (const auto &info : _packet_feedbacks)
 	{
 		logtt("Feedback - seq(%u) delta_size(%u) received_delta (%d ms)", info->_wide_sequence_number, info->_delta_size, (info->_received_delta * 250) / 1000);
@@ -346,7 +346,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 		_has_padding = true;
 	}
 
-	logtt("Feedback - packet_status_count(%u/%u) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
+	logtt("Feedback - packet_status_count(%zu/%zu) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
 
 	return write_stream.GetDataPointer();
 }
