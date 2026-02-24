@@ -35,7 +35,7 @@ namespace ov
 
 #if !IS_ARM
 #	if IS_64BITS
-#		define APPEND_X86_64_REGISTER(name) registers.AppendFormat("%-6s: 0x%-20" PRIx64 " %" PRId64 "\n", #name, static_cast<uint64_t>(ucontext->uc_mcontext.gregs[REG_##name]), static_cast<int64_t>(ucontext->uc_mcontext.gregs[REG_##name]))
+#		define APPEND_X86_64_REGISTER(name) registers.AppendFormat("%-6s: 0x%-20llx %lld\n", #name, static_cast<unsigned long long>(ucontext->uc_mcontext.gregs[REG_##name]), ucontext->uc_mcontext.gregs[REG_##name])
 #		define APPEND_X86_64_EFLAGS(condition, name) \
 			if (condition)                            \
 			{                                         \
@@ -61,8 +61,8 @@ namespace ov
 			APPEND_X86_64_REGISTER(R15);
 			APPEND_X86_64_REGISTER(RIP);
 
-			auto efl = static_cast<uint64_t>(ucontext->uc_mcontext.gregs[REG_EFL]);
-			registers.AppendFormat("EFLAGS: 0x%-20" PRIx64 " [ ", efl);
+			auto efl = ucontext->uc_mcontext.gregs[REG_EFL];
+			registers.AppendFormat("EFLAGS: 0x%-20llx [ ", static_cast<unsigned long long>(efl));
 			APPEND_X86_64_EFLAGS(efl & (1 << 0), "CF");
 			APPEND_X86_64_EFLAGS(efl & (1 << 2), "PF");
 			APPEND_X86_64_EFLAGS(efl & (1 << 4), "AF");
