@@ -2,6 +2,8 @@
 #include "provider.h"
 #include "provider_private.h"
 
+#include <cinttypes>
+
 namespace pvd
 {
 	PushProvider::PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
@@ -188,13 +190,16 @@ namespace pvd
 					continue;
 				}
 
-				logtt("Checking channel %d, elapsed %ld ms, timeout %ld ms", channel->GetChannelId(), 
-																			channel->GetElapsedMsSinceLastReceived(),
-																			channel->GetPacketSilenceTimeoutMs());
+				const intmax_t elapsed_ms = static_cast<intmax_t>(channel->GetElapsedMsSinceLastReceived());
+				const intmax_t timeout_ms = static_cast<intmax_t>(channel->GetPacketSilenceTimeoutMs());
 
-				if (channel->GetElapsedMsSinceLastReceived() > channel->GetPacketSilenceTimeoutMs())
+				logtt("Checking channel %u, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId(),
+					  elapsed_ms,
+					  timeout_ms);
+
+				if (elapsed_ms > timeout_ms)
 				{
-					logtw("Channel %d is timed out, %ld ms elapsed since last received, deleting it", channel->GetChannelId(), channel->GetElapsedMsSinceLastReceived());
+					logtw("Channel %u is timed out, %" PRIdMAX " ms elapsed since last received, deleting it", channel->GetChannelId(), elapsed_ms);
 
 					// Notify the channel timed out
 					OnTimedOut(channel);
