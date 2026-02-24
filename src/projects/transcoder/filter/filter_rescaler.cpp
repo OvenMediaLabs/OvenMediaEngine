@@ -782,10 +782,12 @@ void FilterRescaler::WorkerThread()
 		}
 
 		// If the queue exceeds the threshold, drop the frame.
-		if (_input_buffer.IsThresholdExceeded())
-		{
-			media_frame = nullptr;;
-		}
+		// Since the threshold of the input queue has been reduced to 2, this code is no longer necessary. 
+		// There is a concern that it may degrade quality, so it will be removed.
+		// if (_input_buffer.IsThresholdExceeded())
+		// {
+		// 	media_frame = nullptr;;
+		// }
 
 		if(media_frame != nullptr)
 		{
