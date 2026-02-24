@@ -440,10 +440,10 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		return false;
 	}
 
-	logtt("Parsed SPS resolution: coded(%" PRId64 " x %" PRId64 "), crop(%" PRId64 " x %" PRId64 "), display(%" PRId64 " x %" PRId64 ")",
-		  static_cast<int64_t>(coded_width), static_cast<int64_t>(coded_height),
-		  static_cast<int64_t>(crop_x), static_cast<int64_t>(crop_y),
-		  static_cast<int64_t>(display_width), static_cast<int64_t>(display_height));
+	logtt("Parsed SPS resolution: coded(%" PRId64 " x %" PRId64 "), crop(%u x %u), display(%" PRId64 " x %" PRId64 ")",
+		  coded_width, coded_height,
+		  crop_x, crop_y,
+		  display_width, display_height);
 
 	sps._width	= static_cast<uint32_t>(display_width);
 	sps._height = static_cast<uint32_t>(display_height);
