@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <cinttypes>
 #include <stdint.h>
 
 #include <any>
