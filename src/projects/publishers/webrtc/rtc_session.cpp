@@ -77,10 +77,10 @@ bool RtcSession::Start()
 		return false;
 	}
 
-	logtt("[WebRTC Publisher] OfferSDP");
-	logtt("%s\n", _offer_sdp->ToString().CStr());
-	logtt("[WebRTC Publisher] AnswerSDP");
-	logtt("%s", _peer_sdp->ToString().CStr());
+	logti("[WebRTC Publisher] OfferSDP");
+	logti("%s\n", _offer_sdp->ToString().CStr());
+	logti("[WebRTC Publisher] AnswerSDP");
+	logti("%s", _peer_sdp->ToString().CStr());
 
 	auto offer_media_desc_list = _offer_sdp->GetMediaList();
 	auto peer_media_desc_list  = _peer_sdp->GetMediaList();
@@ -109,6 +109,8 @@ bool RtcSession::Start()
 	{
 		auto peer_media_desc  = peer_media_desc_list[i];
 		auto offer_media_desc = offer_media_desc_list[i];
+		bool media_transport_cc_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_TRANSPORT_CC_ID).IsEmpty() == false;
+		bool media_remb_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_ABS_SEND_TIME_ID).IsEmpty() == false;
 
 		// The first payload has the highest priority.
 		auto first_payload	  = peer_media_desc->GetFirstPayload();
@@ -123,6 +125,7 @@ bool RtcSession::Start()
 			_audio_payload_type = first_payload->GetId();
 			_audio_ssrc			= offer_media_desc->GetSsrc().value_or(0);
 			_rtp_rtcp->AddRtpSender(_audio_payload_type, _audio_ssrc, first_payload->GetCodecRate(), offer_media_desc->GetCname().value_or(""));
+			_audio_transport_cc_enabled = media_transport_cc_enabled;
 		}
 		else
 		{
@@ -149,9 +152,11 @@ bool RtcSession::Start()
 				}
 			}
 
-			transport_cc_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_TRANSPORT_CC_ID).IsEmpty() == false;
-			remb_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_ABS_SEND_TIME_ID).IsEmpty() == false;
+			_video_transport_cc_enabled = media_transport_cc_enabled;
 		}
+
+		transport_cc_enabled = transport_cc_enabled || media_transport_cc_enabled;
+		remb_enabled = remb_enabled || media_remb_enabled;
 	}
 
 	// Init bandwidth estimator
@@ -603,17 +608,17 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 	// RTP Session must be copied and sent because data is altered due to SRTP.
 	auto copy_packet = std::make_shared<RtpPacket>(*session_packet);
 
-	if (copy_packet->IsVideoPacket())
-	{
-		copy_packet->SetSequenceNumber(_video_rtp_sequence_number++);
-	}
-	else
-	{
-		copy_packet->SetSequenceNumber(_audio_rtp_sequence_number++);
-	}
+	auto &media_rtp_sequence_number = copy_packet->IsVideoPacket() ? _video_rtp_sequence_number : _audio_rtp_sequence_number;
+	copy_packet->SetSequenceNumber(media_rtp_sequence_number++);
 
 	// Set transport-wide sequence number
-	SetTransportWideSequenceNumber(copy_packet, _wide_sequence_number);
+	bool media_transport_cc_enabled = copy_packet->IsVideoPacket() ? _video_transport_cc_enabled : _audio_transport_cc_enabled;
+	
+	if (media_transport_cc_enabled)
+	{
+		 SetTransportWideSequenceNumber(copy_packet, _wide_sequence_number);
+	}
+
 	SetAbsSendTime(copy_packet, ov::Clock::NowMSec());
 
 	// rtp_rtcp -> srtp -> dtls -> Edge Node(RtcSession)
@@ -623,14 +628,17 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 		_rtp_rtcp->SendRtpPacket(copy_packet);
 	}
 
-	RecordRtpSent(copy_packet, session_packet->SequenceNumber(), _wide_sequence_number);
+	RecordRtpSent(copy_packet, session_packet->SequenceNumber(), media_transport_cc_enabled ? _wide_sequence_number : 0);
 
-	if (_bandwidth_estimator != nullptr)
+	if (media_transport_cc_enabled)
 	{
-		_bandwidth_estimator->OnRtpSent(_wide_sequence_number, copy_packet);
-	}
+		if (_bandwidth_estimator != nullptr)
+		{
+			_bandwidth_estimator->OnRtpSent(_wide_sequence_number, copy_packet);
+		}
 
-	_wide_sequence_number++;
+		_wide_sequence_number++;
+	}
 
 	MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Webrtc, copy_packet->GetDataLength());
 }

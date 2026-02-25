@@ -134,6 +134,8 @@ private:
 
 	bool _red_enabled = false;
 	bool _rtx_enabled = false;
+	bool _video_transport_cc_enabled = false;
+	bool _audio_transport_cc_enabled = false;
 
 	uint16_t _rtx_sequence_number = 1;
 	uint64_t _session_expired_time = 0;
