@@ -2103,7 +2103,7 @@ namespace ov
 	{
 		CHECK_STATE(!= SocketState::Closed, false);
 
-		auto _post_callback = std::atomic_exchange(&_callback, {});
+		_post_callback = std::atomic_exchange(&_callback, {});
 		_close_reason		= close_reason;
 
 		if (_socket.IsValid())
