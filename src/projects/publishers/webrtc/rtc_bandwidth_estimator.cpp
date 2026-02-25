@@ -295,7 +295,7 @@ double RtcBandwidthEstimator::UpdateTrendLine(const FrameStats &current_frame_st
 
 	_trendline_slope = CalculateTrendlineSlope();
 	
-	logtd("Trendline curr_delay: %lld ms, acc_delay: %lld ms, slope: %.6f", static_cast<long long>(delay_ms), static_cast<long long>(acc_delay_ms), _trendline_slope);
+	logtd("Trendline curr_delay: %" PRId64 " ms, acc_delay: %" PRId64 " ms, slope: %.6f", delay_ms, acc_delay_ms, _trendline_slope);
 
 	return _trendline_slope;
 }
@@ -425,7 +425,7 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 		else
 		{
 			// Stay in Cooldown
-			logtd("Network State: In Cooldown. Elapsed=%lld ms", static_cast<long long>(time_in_cooldown));
+			logtd("Network State: In Cooldown. Elapsed=%" PRId64 " ms", time_in_cooldown);
 			return;
 		}
 	}
@@ -462,7 +462,7 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 		{
 			_active_probing_interval_ms = std::min(_active_probing_interval_ms * 2, kMaxActiveProbingIntervalMs);
 			_last_active_probing_failure_time = now;
-			logtd("Network State: OverUse detected during Probing. Backoff to Neutral. New ActiveProbingInterval=%lld ms", static_cast<long long>(_active_probing_interval_ms));
+			logtd("Network State: OverUse detected during Probing. Backoff to Neutral. New ActiveProbingInterval=%" PRId64 " ms", _active_probing_interval_ms);
 		}
 
 		SetState(InternalState::Cooldown);
@@ -483,7 +483,7 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 			_active_probing_interval_ms = kInitialActiveProbingIntervalMs;
 			SetState(InternalState::Neutral);
 
-			logtd("Network State: Upgrade successful after probing. TimeInProbing=%lld ms", static_cast<long long>(time_in_probing_ms));
+			logtd("Network State: Upgrade successful after probing. TimeInProbing=%" PRId64 " ms", time_in_probing_ms);
 
 			Signal(RtcBandwidthEstimatorSignal::State::Stable);
 			return;
@@ -491,7 +491,7 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 		else
 		{
 			// Still in probing
-			logtd("Network State: In Probing. TimeInProbing=%lld ms", static_cast<long long>(time_in_probing_ms));
+			logtd("Network State: In Probing. TimeInProbing=%" PRId64 " ms", time_in_probing_ms);
 			return;
 		}
 	}
@@ -542,14 +542,14 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 		SetState(InternalState::Probing);
 		Signal(RtcBandwidthEstimatorSignal::State::UnderUse);
 
-		logtd("Network State: Active Probing for upgrade. TimeInOptimal=%lld ms, SinceLastFailure=%lld ms, emaSlope=%.6f, Loss=%.2f%%, Bitrate=%.2f Mbps", 
-			static_cast<long long>(time_in_optimal_ms), static_cast<long long>(time_since_failure_ms), _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
+		logtd("Network State: Active Probing for upgrade. TimeInOptimal=%" PRId64 " ms, SinceLastFailure=%" PRId64 " ms, emaSlope=%.6f, Loss=%.2f%%, Bitrate=%.2f Mbps", 
+			time_in_optimal_ms, time_since_failure_ms, _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
 
 		return;
 	}
 
 	Signal(RtcBandwidthEstimatorSignal::State::Stable);
-	logtd("Network State: Optimal but waiting to upgrade. TimeInOptimal=%lld ms, emaSlope=%.6f, Loss=%.2f%%, Bitrate=%.2f Mbps", static_cast<long long>(time_in_optimal_ms), _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
+	logtd("Network State: Optimal but waiting to upgrade. TimeInOptimal=%" PRId64 " ms, emaSlope=%.6f, Loss=%.2f%%, Bitrate=%.2f Mbps", time_in_optimal_ms, _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
 }
 
 RtcBandwidthEstimator::InternalState RtcBandwidthEstimator::GetState() const
