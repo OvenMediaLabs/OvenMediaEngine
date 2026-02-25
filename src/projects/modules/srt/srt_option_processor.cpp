@@ -67,7 +67,7 @@ std::shared_ptr<ov::Error> SrtOptionProcessor::SetOption(
 	lin.l_linger = ov::Converter::ToInt32(value);
 	lin.l_onoff = (lin.l_linger > 0) ? 1 : 0;
 
-	logtt("Set an option for %s: %s = { .l_linger = %d, .l_onoff = %d } (linger)", sock->ToString().CStr(), name.CStr(), lin.l_linger, lin.l_onoff);
+	logtt("Set an option for %s : %s : %s = { .l_linger = %d, .l_onoff = %d } (linger)", sock->ToString().CStr(), name.CStr(), value.CStr(), lin.l_linger, lin.l_onoff);
 
 	return ov::Error::CreateError(OV_LOG_TAG, "Could not set an option: %s = { .l_linger = %d, .l_onoff = %d } (linger)", name.CStr(), lin.l_linger, lin.l_onoff);
 
