@@ -498,7 +498,7 @@ install_base_fedora()
 
 install_base_rhel()
 {
-    sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel
+    sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel which diffutils
     sudo dnf install -y perl-IPC-Cmd
 	sudo dnf install -y git
 	sudo dnf install -y libgomp
