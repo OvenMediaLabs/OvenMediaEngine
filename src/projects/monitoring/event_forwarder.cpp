@@ -535,7 +535,7 @@ namespace mon
 			return false;
 		}
 
-		auto row = ov::String::FormatString("%ld,%" PRIu64, static_cast<long>(file_time), file_offset);
+		auto row = ov::String::FormatString("%" PRIdMAX ",%" PRIu64, static_cast<intmax_t>(file_time), file_offset);
 
 		fs.write(row.CStr(), row.GetLength());
 		fs.close();
