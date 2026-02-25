@@ -32,12 +32,12 @@ bool DecoderAVC::InitCodec()
 	_codec_context->thread_count = GetRefTrack()->GetThreadCount();
 	_codec_context->thread_type = FF_THREAD_FRAME;
 
-	// Set the number of b frames for compatibility with specific encoders.
-	auto bframes = GetRefTrack()->HasBframes()?1:0;
-	if (bframes > 0)
-	{
-		_codec_context->has_b_frames = bframes;
-	}
+	// Deprecated - has_b_frames value is no longer set by the user. 
+	// auto bframes = GetRefTrack()->HasBframes()?1:0;
+	// if (bframes > 0)
+	// {
+	// 	_codec_context->has_b_frames = bframes;
+	// }
 
 	if (::avcodec_open2(_codec_context, nullptr, nullptr) < 0)
 	{
