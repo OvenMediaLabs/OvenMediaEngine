@@ -35,7 +35,7 @@ namespace info
 	{
 		_app_info = std::make_shared<info::Application>(app_info);
 
-		SetId(_id);
+		SetId(stream_id);
 
 		_created_time = std::chrono::system_clock::now();
 		_source_type = source;
