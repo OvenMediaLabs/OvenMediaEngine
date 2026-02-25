@@ -637,7 +637,7 @@ namespace pvd
 		}
 		
 		logtt("Payload Type(%d) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
-			  first_rtp_packet->PayloadType(), first_rtp_packet->Timestamp(), static_cast<int64_t>(adjusted_timestamp), track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
+			  first_rtp_packet->PayloadType(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
 												   track->GetMediaType(),
