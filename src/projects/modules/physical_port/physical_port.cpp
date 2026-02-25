@@ -272,7 +272,7 @@ void PhysicalPort::OnClientData(const std::shared_ptr<ov::ClientSocket> &client,
 	}
 	else
 	{
-		logtw("Received data %d bytes from disconnected client");
+		logtw("Received data %zu bytes from disconnected client", data->GetLength());
 	}
 }
 
@@ -376,7 +376,7 @@ ov::String PhysicalPort::ToString() const
 	ov::String description;
 
 	description.Format("<PhysicalPort: %p, type: %d, address: %s, ref_count: %d",
-					   this, _type, _address.ToString().CStr(), static_cast<int>(_ref_count));
+					   this, static_cast<int>(_type), _address.ToString().CStr(), static_cast<int>(_ref_count));
 
 	if (_server_socket != nullptr)
 	{

@@ -344,7 +344,7 @@ namespace pub
 		if (stream->EnterStart() == false)
 		{
 			stream->SetState(Stream::State::ERROR);
-			logtw("%s could not start [%s] stream.", GetApplicationTypeName(), info->GetName().CStr(), info->GetId());
+			logtw("%s could not start [%s] stream.", GetApplicationTypeName(), info->GetName().CStr());
 			return false;
 		}
 

@@ -105,12 +105,12 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 		if (delta < 0)
 		{
-			logtw("delta is negative : %d", delta);
+			logtw("delta is negative : %" PRId64, delta);
 		}
 
 		_last_rtp_received_time = now;
 
-		logtt("last rtp received time : %" PRId64 ", diff(%" PRId64 "), delta(%d)", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
+		logtt("last rtp received time : %" PRId64 ", diff(%" PRId64 "), delta(%" PRId64 ")", std::chrono::duration_cast<std::chrono::milliseconds>(_last_rtp_received_time.time_since_epoch()).count(), diff, delta);
 	}
 
 	// delta size

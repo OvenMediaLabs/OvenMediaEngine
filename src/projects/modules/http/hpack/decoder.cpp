@@ -190,7 +190,7 @@ namespace http
 
 			_table_connector.UpdateDynamicTableSize(size);
 
-			logtt("DecodeDynamicTableSizeUpdate: %d", size);
+			logtt("DecodeDynamicTableSizeUpdate: %" PRIu64, size);
 
 			return true;
 		}

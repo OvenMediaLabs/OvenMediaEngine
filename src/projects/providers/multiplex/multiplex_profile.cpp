@@ -839,7 +839,7 @@ namespace pvd
 		ov::String info_str;
 
 		info_str += ov::String::FormatString("OutputStreamName : %s\n", _output_stream_name.CStr());
-		info_str += ov::String::FormatString("SourceStreams : %d\n", _source_streams.size());
+		info_str += ov::String::FormatString("SourceStreams : %zu\n", _source_streams.size());
 
 		for (const auto &source : GetSourceStreams())
 		{

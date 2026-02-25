@@ -65,7 +65,7 @@ namespace http
 					}
 				}
 
-				logtt("[Http2Response] Send header block : size(%u)", header_block->GetLength());
+				logtt("[Http2Response] Send header block : size(%zu)", header_block->GetLength());
 
 				std::shared_ptr<ov::Data> head_block_fragment;
 				bool fragmented = false;

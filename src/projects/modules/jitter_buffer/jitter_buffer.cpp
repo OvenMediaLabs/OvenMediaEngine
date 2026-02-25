@@ -111,7 +111,7 @@ std::shared_ptr<MediaPacket> JitterBufferDelay::PopNextMediaPacket()
 			return nullptr;
 		}
 
-		logt("DEBUG", "Full buffer (%d)", buffer->GetBufferingSizeCount());
+		logt("DEBUG", "Full buffer (%zu)", buffer->GetBufferingSizeCount());
 
 		return buffer->PopNextMediaPacket();
 	}
@@ -122,7 +122,7 @@ std::shared_ptr<MediaPacket> JitterBufferDelay::PopNextMediaPacket()
 	{
 		auto buffer = item.second;
 
-		logt("DEBUG", "Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
+		logt("DEBUG", "Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%" PRId64 " us) Count(%zu)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
 
 		// If there is no input for a certain period of time, it is considered as an inactive buffer.
 		if(buffer->IsActive() == false)
@@ -158,7 +158,7 @@ bool JitterBufferDelay::DoesEveryActiveBufferHavePackets()
 		auto buffer = item.second;
 		if(buffer->IsActive() == true && buffer->IsEmpty())
 		{
-			logt("DEBUG", "Empty Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%d us) Count(%d)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
+			logt("DEBUG", "Empty Buffer(%" PRId64 ") - Active(%d) Full(%d) Empty(%d) Jitter(%" PRId64 " us) Count(%zu)", buffer->GetTimebase(), buffer->IsActive(), buffer->IsFull(), buffer->IsEmpty(), buffer->GetBufferingSizeUsec(), buffer->GetBufferingSizeCount());
 
 			return false;
 		}

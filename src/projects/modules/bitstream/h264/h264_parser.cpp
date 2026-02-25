@@ -121,7 +121,7 @@ bool H264Parser::ParseNalUnitHeader(const uint8_t *nalu, size_t length, H264NalU
 {
 	if (length < H264_NAL_UNIT_HEADER_SIZE)
 	{
-		logte("Invalid NALU header (length: %d)", length);
+		logte("Invalid NALU header (length: %zu)", length);
 		return false;
 	}
 

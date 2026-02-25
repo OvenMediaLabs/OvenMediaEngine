@@ -91,7 +91,7 @@ bool LLHlsSession::Start()
 
 bool LLHlsSession::Stop()
 {
-	logtt("LLHlsSession(%u) : Pending request size(%d)", GetId(), _pending_requests.size());
+	logtt("LLHlsSession(%u) : Pending request size(%zu)", GetId(), _pending_requests.size());
 
 	return Session::Stop();
 }
@@ -111,7 +111,7 @@ void LLHlsSession::UpdateLastRequest(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time[connection_id] = ov::Clock::NowMSec();
 
-	logtt("LLHlsSession(%u) : Request updated from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("LLHlsSession(%u) : Request updated from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
 }
 
 uint64_t LLHlsSession::GetLastRequestTime(uint32_t connection_id) const
@@ -132,7 +132,7 @@ void LLHlsSession::OnConnectionDisconnected(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time.erase(connection_id);
 
-	logtt("LLHlsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("LLHlsSession(%u) : Disconnected from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
 }
 
 bool LLHlsSession::IsNoConnection() const
@@ -880,7 +880,7 @@ bool LLHlsSession::AddPendingRequest(const std::shared_ptr<http::svr::HttpExchan
 
 	if (_pending_requests.size() > MAX_PENDING_REQUESTS)
 	{
-		logtt("[%s/%s/%u] Too many pending requests (%u)", 
+		logtt("[%s/%s/%u] Too many pending requests (%zu)", 
 				GetApplication()->GetVHostAppName().CStr(),
 				GetStream()->GetName().CStr(),
 				GetId(),

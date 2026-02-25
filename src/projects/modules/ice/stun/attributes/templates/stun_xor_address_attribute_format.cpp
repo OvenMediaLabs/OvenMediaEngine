@@ -101,7 +101,7 @@ bool StunXorAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::B
 			}
 
 			default:
-				logtw("Unknown family: %d", _address.GetFamily());
+				logtw("Unknown family: %d", static_cast<int>(_address.GetFamily()));
 				_length = 0;
 				return false;
 		}

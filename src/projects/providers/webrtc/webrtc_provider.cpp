@@ -566,7 +566,7 @@ namespace pvd
 
 	void WebRTCProvider::OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data)
 	{
-		logtt("WebRTCProvider::OnStateChanged : %d", state);
+		logtt("WebRTCProvider::OnStateChanged : %d", static_cast<int>(state));
 
 		std::shared_ptr<Application> application;
 		std::shared_ptr<WebRTCStream> stream;

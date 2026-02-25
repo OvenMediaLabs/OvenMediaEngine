@@ -66,12 +66,12 @@ bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<base::modules::Seg
 {
 	std::lock_guard<std::shared_mutex> lock(_segments_mutex);
 
-	logtt("HlsMediaPlaylist::OnSegmentDeleted - number(%d) url(%s) duration_ms(%.3fu)\n", segment->GetNumber(), segment->GetUrl().CStr(), segment->GetDurationMs());
+	logtt("HlsMediaPlaylist::OnSegmentDeleted - number(%" PRId64 ") url(%s) duration_ms(%.3f)\n", segment->GetNumber(), segment->GetUrl().CStr(), segment->GetDurationMs());
 
 	auto it = _segments.find(segment->GetNumber());
 	if (it == _segments.end())
 	{
-		logte("HlsMediaPlaylist::OnSegmentDeleted - Failed to find the segment number %d\n", segment->GetNumber());
+		logte("HlsMediaPlaylist::OnSegmentDeleted - Failed to find the segment number %" PRId64 "\n", segment->GetNumber());
 		return false;
 	}
 
@@ -91,7 +91,7 @@ ov::String HlsMediaPlaylist::ToString(bool rewind) const
 	{
 		result += ov::String::FormatString("#EXT-X-PLAYLIST-TYPE:EVENT\n");
 	}
-	result += ov::String::FormatString("#EXT-X-TARGETDURATION:%d\n", _config.target_duration);
+	result += ov::String::FormatString("#EXT-X-TARGETDURATION:%zu\n", _config.target_duration);
 
 	if (_segments.empty() == true)
 	{
@@ -108,14 +108,14 @@ ov::String HlsMediaPlaylist::ToString(bool rewind) const
 		auto it = _segments.find(last_segment_number - shift_count);
 		if (it == _segments.end())
 		{
-			logte("Failed to find the first segment number %d\n", last_segment_number - shift_count);
+			logte("Failed to find the first segment number %" PRIu64 "\n", last_segment_number - shift_count);
 			return result;
 		}
 
 		first_segment = it->second;
 	}
 
-	result += ov::String::FormatString("#EXT-X-MEDIA-SEQUENCE:%d\n", first_segment->GetNumber());
+	result += ov::String::FormatString("#EXT-X-MEDIA-SEQUENCE:%" PRIu64 "\n", first_segment->GetNumber());
 
 	for (auto it = _segments.find(first_segment->GetNumber()); it != _segments.end(); it++)
 	{

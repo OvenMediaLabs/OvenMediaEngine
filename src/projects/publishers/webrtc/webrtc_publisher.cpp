@@ -627,7 +627,7 @@ void WebRtcPublisher::OnStateChanged(IcePort &port, uint32_t session_id, IceConn
 		case IceConnectionState::Failed:
 		case IceConnectionState::Disconnected:
 		case IceConnectionState::Closed: {
-			logti("IcePort is disconnected. : (%s/%s/%u) reason(%d)", stream->GetApplicationName(), stream->GetName().CStr(), session->GetId(), state);
+			logti("IcePort is disconnected. : (%s/%s/%u) reason(%d)", stream->GetApplicationName(), stream->GetName().CStr(), session->GetId(), static_cast<int>(state));
 
 			_signalling_server->Disconnect(session->GetApplication()->GetVHostAppName(), session->GetStream()->GetName(), session->GetPeerSDP());
 

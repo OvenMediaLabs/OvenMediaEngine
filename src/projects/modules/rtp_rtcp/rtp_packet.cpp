@@ -75,7 +75,7 @@ ov::String RtpPacket::Dump()
 		return ov::String::FormatString("Invalid packet");
 	}
 
-	return ov::String::FormatString("RTP Packet - size(%u) p(%d) x(%d) cc(%d) m(%d) pt(%d) seq_no(%d) timestamp(%u) ssrc(%u) extension_size(%d) payload_offset(%d), payload_size(%u) padding_size(%u)", _data->GetLength(), _has_padding, _has_extension, _cc, _marker, _payload_type, _sequence_number, _timestamp, _ssrc, _extension_size, _payload_offset, _payload_size, _padding_size);
+	return ov::String::FormatString("RTP Packet - size(%zu) p(%d) x(%d) cc(%d) m(%d) pt(%d) seq_no(%d) timestamp(%u) ssrc(%u) extension_size(%zu) payload_offset(%zu), payload_size(%zu) padding_size(%d)", _data->GetLength(), _has_padding, _has_extension, _cc, _marker, _payload_type, _sequence_number, _timestamp, _ssrc, _extension_size, _payload_offset, _payload_size, _padding_size);
 }
 
 bool RtpPacket::Parse(const std::shared_ptr<const ov::Data> &data)

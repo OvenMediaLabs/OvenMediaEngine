@@ -899,7 +899,7 @@ namespace pvd
             int seek_ret = ::avformat_seek_file(item->LoadContext().get(), -1, seek_min, seek_target, seek_max, 0);
             if (seek_ret < 0)
             {
-                logte("%s/%s: Failed to seek to start position %d, err:%d", GetApplicationName(), GetName().CStr(), item->_start_time_ms, seek_ret);
+				logte("%s/%s: Failed to seek to start position %" PRId64 ", err:%d", GetApplicationName(), GetName().CStr(), item->_start_time_ms, seek_ret);
             }
         }
 
@@ -972,10 +972,10 @@ namespace pvd
                 }
                 else
                 {
-					if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
-					{
-                    	logtw("Scheduled Channel : %s/%s: Failed to pop packet until %d ms. Try to play next item", GetApplicationName(), GetName().CStr(), _channel_info._error_tolerance_duration_ms);
-					}
+                    if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
+                    {
+                    	logtw("Scheduled Channel : %s/%s: Failed to pop packet until %" PRId64 " ms. Try to play next item", GetApplicationName(), GetName().CStr(), _channel_info._error_tolerance_duration_ms);
+                    }
 					else
 					{
 						logtw("Scheduled Channel : %s/%s: Stream tap state is %d. Try to play next item", GetApplicationName(), GetName().CStr(), static_cast<int>(stream_tap->GetState()));

@@ -145,7 +145,7 @@ void MediaRouteStream::DropNonDecodingPackets()
 			if (base_pts < media_packet->GetPts())
 			{
 				base_pts = media_packet->GetPts();
-				logtw("Discovered base PTS value track_id:%d, flags:%d, size:%d,  pts:%" PRId64 "", (int32_t)media_packet->GetTrackId(), media_packet->GetFlag(), media_packet->GetDataLength(), base_pts);
+				logtw("Discovered base PTS value track_id:%u, flags:%d, size:%zu,  pts:%" PRId64 "", media_packet->GetTrackId(), static_cast<int>(media_packet->GetFlag()), media_packet->GetDataLength(), base_pts);
 			}
 		}
 

@@ -196,7 +196,7 @@ bool LLHlsChunklist::SaveOldSegmentInfo(std::shared_ptr<SegmentInfo> &segment_in
 	// no longer need partial segment info - for memory saving
 	segment_info->ClearPartialSegments();
 
-	logtt("Save old segment info: %d / %s", segment_info->GetSequence(), segment_info->GetUrl().CStr());
+	logtt("Save old segment info: %" PRId64 " / %s", segment_info->GetSequence(), segment_info->GetUrl().CStr());
 
 	_old_segments.emplace(segment_info->GetSequence(), segment_info);
 
@@ -401,7 +401,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		first_segment = it->second;
 	}
 
-	playlist.AppendFormat("#EXT-X-MEDIA-SEQUENCE:%u\n", vod == false ? first_segment->GetSequence() : 0);
+	playlist.AppendFormat("#EXT-X-MEDIA-SEQUENCE:%" PRId64 "\n", vod == false ? first_segment->GetSequence() : static_cast<int64_t>(0));
 
 	if (_map_uri.IsEmpty() == false)
 	{
@@ -464,7 +464,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
 		playlist.AppendFormat("#EXT-X-PROGRAM-DATE-TIME:%s\n", ov::Converter::ToISO8601String(tp).CStr());
 
-		logtt("MakeChunklist[Track : %s/%s]: segment(%d) duration(%.2f) url(%s) start_time(%" PRId64 ") date_time(%s)",
+		logtt("MakeChunklist[Track : %s/%s]: segment(%" PRId64 ") duration(%.2f) url(%s) start_time(%" PRId64 ") date_time(%s)",
 			_track->GetPublicName().CStr(), _track->GetVariantName().CStr(),
 			segment->GetSequence(), segment->GetDuration(), segment->GetUrl().CStr(), segment->GetStartTime(), 
 			ov::Converter::ToISO8601String(tp).CStr());

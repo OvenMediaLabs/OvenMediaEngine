@@ -146,7 +146,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					_use_hwframe_transfer = true;
 
-					desc = ov::String::FormatString("");
+					desc.Clear();
 				}
 				break;
 				case cmn::MediaCodecModuleId::XMA: {
@@ -161,7 +161,7 @@ bool FilterRescaler::InitializeFilterDescription()
 				case cmn::MediaCodecModuleId::NILOGAN:	// CPU memory using 'out=sw'
 				case cmn::MediaCodecModuleId::DEFAULT:	// CPU memory
 				{
-					desc = ov::String::FormatString("");
+					desc.Clear();
 				}
 			}
 			// Scaler description of default module
@@ -193,7 +193,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					else
 					{
-						desc = ov::String::FormatString("");
+						desc.Clear();
 					}
 				}
 				break;
@@ -242,7 +242,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					else
 					{
-						desc = ov::String::FormatString("");
+						desc.Clear();
 						if (need_crop_for_multiple_of_4)
 						{
 							desc += ov::String::FormatString("xvbm_convert,crop=%d:%d:0:0,", desire_width, desire_height);
@@ -260,7 +260,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					_use_hwframe_transfer = true;
 
-					desc = ov::String::FormatString("");
+					desc.Clear();
 					if (need_crop_for_multiple_of_4)
 					{
 						desc += ov::String::FormatString("crop=%d:%d:0:0,", desire_width, desire_height);
@@ -276,7 +276,7 @@ bool FilterRescaler::InitializeFilterDescription()
 				{
 					// xvbm_convert is xvbm frame to av frame converter filter
 					// desc = ov::String::FormatString("xvbm_convert,");
-					desc = ov::String::FormatString("");
+					desc.Clear();
 					if (need_crop_for_multiple_of_4)
 					{
 						desc += ov::String::FormatString("crop=%d:%d:0:0,", desire_width, desire_height);
@@ -293,7 +293,7 @@ bool FilterRescaler::InitializeFilterDescription()
 		 */		
 		else
 		{
-			logtw("Unsupported output module id: %d", output_module_id);
+			logtw("Unsupported output module id: %d", static_cast<int>(output_module_id));
 			return false;
 		}
 
@@ -560,7 +560,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	}
 	else if (ret < 0)
 	{
-		logte("An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %d", src_frame->format, src_frame->pts, _input_buffer.Size());
+		logte("An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %zu", src_frame->format, src_frame->pts, _input_buffer.Size());
 
 		SetState(State::ERROR);
 
@@ -710,7 +710,7 @@ void FilterRescaler::WorkerThread()
 			{
 				skip_frames_last_check_time = curr_time;
 
-				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%d/%d)",
+				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%zu/%zu)",
 					  skip_frames,
 					  _fps_filter.GetOutputFramesPerSecond(),
 					  _fps_filter.GetExpectedOutputFramesPerSecond(),

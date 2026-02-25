@@ -13,6 +13,8 @@
 #include "stream_props.h"
 #include "provider_private.h"
 
+#include <cinttypes>
+
 namespace pvd
 {
 	PullApplication::PullApplication(const std::shared_ptr<PullProvider> &provider, const info::Application &application_info)
@@ -151,18 +153,18 @@ namespace pvd
 					auto stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(stream));
 					if(stream_metrics != nullptr)
 					{
-						auto elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastSentTime()).count();
-						auto elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastRecvTime()).count();
+						int64_t elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastSentTime()).count();
+						int64_t elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastRecvTime()).count();
 
 						if((elapsed_time_from_last_sent > unused_stream_timeout_ms) && (!is_persistent))
 						{
-							logtw("%s/%s(%u) stream will be deleted because it hasn't been used for %u milliseconds", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_sent);
+							logtw("%s/%s(%u) stream will be deleted because it hasn't been used for %" PRId64 " milliseconds", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_sent);
 							DeleteStream(stream);
 						}
 						// The stream type is pull stream, if packets do NOT arrive for more than 3 seconds, it is a seriously warning situation
 						else if(elapsed_time_from_last_recv > no_input_timeout_ms && (!is_persistent))
 						{
-							logtw("Stop stream %s/%s(%u) : there are no incoming packets. %d milliseconds have elapsed since the last packet was received.",
+							logtw("Stop stream %s/%s(%u) : there are no incoming packets. %" PRId64 " milliseconds have elapsed since the last packet was received.",
 								  stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_recv);
 
 							// When the stream is stopped, it tries to reconnect using the next url.

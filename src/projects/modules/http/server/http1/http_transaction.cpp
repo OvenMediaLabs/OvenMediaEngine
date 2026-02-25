@@ -162,7 +162,7 @@ namespace http
 				}
 
 				// Error
-				logte("Invalid parse status: %d", _request->GetHeaderParingStatus());
+				logte("Invalid parse status: %d", static_cast<int>(_request->GetHeaderParingStatus()));
 				return -1;
 			}
 		}  // namespace h1

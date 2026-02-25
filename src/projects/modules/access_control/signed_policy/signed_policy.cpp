@@ -135,7 +135,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 	ov::JsonObject object = ov::Json::Parse(policy_json);
 	if (object.IsNull())
 	{
-		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The policy is in wrong format.", policy_json.CStr()));
+		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("The policy is in wrong format."));
 		return false;
 	}
 
@@ -147,7 +147,7 @@ bool SignedPolicy::ProcessPolicyJson(const ov::String &policy_json)
 
 	if (jv_url_expire.isNull() || !jv_url_expire.isUInt64())
 	{
-		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("url_expire must be epoch milliseconds as uint64_t and is a required value.", policy_json.CStr()));
+		SetError(ErrCode::INVALID_POLICY, ov::String::FormatString("url_expire must be epoch milliseconds as uint64_t and is a required value."));
 		return false;
 	}
 	else

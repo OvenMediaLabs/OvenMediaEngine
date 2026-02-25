@@ -41,13 +41,13 @@ bool OvtDepacketizer::ParsePacket()
 		{
 			if(packet_mold->IsHeaderAvailable())
 			{
-				logtt("Buffer is not enough : Buffer size : %u Required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());	
+				logtt("Buffer is not enough : Buffer size : %zu Required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());	
 				// Not enough data to parse yet
 				return true;
 			}
 			else
 			{
-				logte("Packet is invalid : buffer size (%u) required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());
+				logte("Packet is invalid : buffer size (%zu) required size : %u", _packet_buffer->GetLength(), packet_mold->PacketLength());
 				return false;
 			}
 		}

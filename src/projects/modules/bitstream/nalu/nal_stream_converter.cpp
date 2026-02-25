@@ -22,7 +22,7 @@ std::shared_ptr<ov::Data> NalStreamConverter::ConvertXvccToAnnexb(const std::sha
 
 		if (read_stream.IsRemained(nal_length) == false)
 		{
-			logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+			logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 			return nullptr;
 		}
 

@@ -82,8 +82,8 @@ namespace mon::alrt
 
 		if (last_modified != modified)
 		{
-			logtt("The alert rules file has been changed (prev: %zu => new: %zu): %s, updating...",
-				  last_modified, modified, _rules_file.CStr());
+			logtt("The alert rules file has been changed (prev: %llu => new: %llu): %s, updating...",
+				  static_cast<unsigned long long>(last_modified), static_cast<unsigned long long>(modified), _rules_file.CStr());
 
 			_last_modified = modified;
 			return Update();

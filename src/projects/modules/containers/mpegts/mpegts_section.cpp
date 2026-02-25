@@ -364,7 +364,7 @@ namespace mpegts
 
 		if (parser->BytesRemained() < 4)
 		{
-			logtw("Could not parse CRC because of not enough data size (current: %d, required: 4)", parser->BytesRemained());
+			logtw("Could not parse CRC because of not enough data size (current: %zu, required: 4)", parser->BytesRemained());
 			return false;
 		}
 		_crc = parser->ReadBytes<uint32_t>();
@@ -388,7 +388,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse PAT because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse PAT because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 
@@ -424,7 +424,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse PMT because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse PMT because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 
@@ -509,7 +509,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse Splice Info because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse Splice Info because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 

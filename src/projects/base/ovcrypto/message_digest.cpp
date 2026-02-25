@@ -149,7 +149,7 @@ namespace ov
 				return SHA256_DIGEST_LENGTH;
 		}
 
-		OV_ASSERT(false, "Invalid algorithm: %d", algorithm);
+		OV_ASSERT(false, "Invalid algorithm: %d", ov::ToUnderlyingType(algorithm));
 		return 0;
 	}
 

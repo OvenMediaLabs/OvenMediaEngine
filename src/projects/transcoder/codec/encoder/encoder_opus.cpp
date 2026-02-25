@@ -231,7 +231,7 @@ void EncoderOPUS::CodecThread()
 						break;
 
 					default:
-						logte("Not supported format: %d", _format);
+						logte("Not supported format: %d", ov::ToUnderlyingType(_format));
 						break;
 				}
 			}

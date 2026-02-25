@@ -61,7 +61,7 @@ const std::shared_ptr<pvd::Stream> MediaRouterEventGenerator::GetSourceStream(co
 	auto provider = std::dynamic_pointer_cast<pvd::Provider>(ocst::Orchestrator::GetInstance()->GetProviderFromType(stream_info->GetProviderType()));
 	if (provider == nullptr)
 	{
-		logte("%s | Could not find a provider for scheme [%s]", stream_info->GetUri().CStr(), stream_info->GetProviderType());
+		logte("%s | Could not find a provider for scheme [%s]", stream_info->GetUri().CStr(), StringFromProviderType(stream_info->GetProviderType()).CStr());
 		return nullptr;
 	}
 

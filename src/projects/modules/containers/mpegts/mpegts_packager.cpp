@@ -91,7 +91,7 @@ namespace mpegts
 
     void Packager::OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets)
     {
-        logtt("OnPsi %u tracks", tracks.size());
+		logtt("OnPsi %zu tracks", tracks.size());
 
         for (const auto &track : tracks)
         {   
@@ -634,7 +634,7 @@ namespace mpegts
 			std::lock_guard<std::shared_mutex> lock(_retained_segments_guard);
 			_retained_segments.emplace(segment->GetId(), segment);
 
-			logtt("Saved segment to retention buffer: %u", segment->GetId());
+			logtt("Saved segment to retention buffer: %" PRId64, segment->GetId());
 
 			// When a segment queues the retention buffer, it is notified that the segment has been deleted. 
 			// And the retention buffer stores this as much as count. 
