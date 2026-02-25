@@ -182,7 +182,7 @@ namespace pvd
 			return false;
 		}
 
-		logtt("Requested url[%zu] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
+		logtt("Requested url[%zu] : %s", _curr_url->Source().GetLength(), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
 		if (scheme.UpperCaseString() != "RTSP")
