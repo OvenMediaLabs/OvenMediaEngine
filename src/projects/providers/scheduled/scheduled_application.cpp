@@ -142,7 +142,7 @@ namespace pvd
                 continue;
             }
 
-            logtt("Found schedule file : %s, mtime : %ld, hash : %zu", schedule_file_info._file_path.CStr(), static_cast<long>(schedule_file_info._file_stat.st_mtime), static_cast<size_t>(schedule_file_info._file_path.Hash()));
+            logtt("Found schedule file : %s, mtime : %" PRIdMAX ", hash : %zu", schedule_file_info._file_path.CStr(), static_cast<intmax_t>(schedule_file_info._file_stat.st_mtime), schedule_file_info._file_path.Hash());
 
             schedule_files.push_back(schedule_file_info);
         }
