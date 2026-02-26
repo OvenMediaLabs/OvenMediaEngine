@@ -79,12 +79,7 @@ bool TranscodeApplication::OnStreamCreated(const std::shared_ptr<info::Stream> &
 		_streams.insert(std::make_pair(stream_info->GetId(), stream));
 	}
 
-	if (stream->Start() == false)
-	{
-		return false;
-	}
-
-	return true;
+	return stream->Start();
 }
 
 bool TranscodeApplication::OnStreamDeleted(const std::shared_ptr<info::Stream> &stream_info)
@@ -94,101 +89,78 @@ bool TranscodeApplication::OnStreamDeleted(const std::shared_ptr<info::Stream> &
 	{
 		std::unique_lock<std::shared_mutex> write_lock(_mutex);
 
-		auto stream_bucket = _streams.find(stream_info->GetId());
-		if (stream_bucket == _streams.end())
+		auto bucket = _streams.find(stream_info->GetId());
+		if (bucket == _streams.end())
 		{
 			return false;
 		}
+		stream = bucket->second;
 
-		stream = stream_bucket->second;
-		_streams.erase(stream_bucket);
+		_streams.erase(bucket);
+
+		if (!stream)
+		{
+			return false;
+		}
 	}
 
-	if (stream)
-	{
-		stream->Stop();
-	}
-
-	return true;
+	return stream->Stop();
 }
 
 bool TranscodeApplication::OnStreamPrepared(const std::shared_ptr<info::Stream> &stream_info)
 {
-	std::shared_ptr<TranscoderStream> stream = nullptr;
-
-	{
-		std::shared_lock<std::shared_mutex> read_lock(_mutex);
-
-		auto stream_bucket = _streams.find(stream_info->GetId());
-		if (stream_bucket == _streams.end())
-		{
-			return false;
-		}
-
-		stream = stream_bucket->second;
-		if (!stream)
-		{
-			return false;
-		}
-	}
-
-	if (stream->Prepare(stream_info) == false)
+	std::shared_ptr<TranscoderStream> stream = GetStream(stream_info);
+	if (!stream)
 	{
 		return false;
 	}
 
-	return true;
+	return stream->Prepare(stream_info);
 }
 
 bool TranscodeApplication::OnStreamUpdated(const std::shared_ptr<info::Stream> &stream_info)
 {
-	std::shared_ptr<TranscoderStream> stream = nullptr;
-
-	{
-		std::shared_lock<std::shared_mutex> read_lock(_mutex);
-
-		auto stream_bucket = _streams.find(stream_info->GetId());
-		if (stream_bucket == _streams.end())
-		{
-			return false;
-		}
-
-		stream = stream_bucket->second;
-		if (!stream)
-		{
-			return false;
-		}
-	}
-
-	if (stream->Update(stream_info) == false)
+	std::shared_ptr<TranscoderStream> stream = GetStream(stream_info);
+	if (!stream)
 	{
 		return false;
 	}
 
-	return true;
+	return stream->Update(stream_info);
 }
 
 bool TranscodeApplication::OnSendFrame(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaPacket> &packet)
+{
+	std::shared_ptr<TranscoderStream> stream = GetStream(stream_info);
+	if (!stream)
+	{
+		return false;
+	}
+
+	return stream->Push(packet);
+}
+
+std::shared_ptr<TranscoderStream> TranscodeApplication::GetStream(const std::shared_ptr<info::Stream> &stream_info)
 {
 	std::shared_ptr<TranscoderStream> stream = nullptr;
 
 	{
 		std::shared_lock<std::shared_mutex> read_lock(_mutex);
 
-		auto stream_bucket = _streams.find(stream_info->GetId());
-		if (stream_bucket == _streams.end())
+		auto bucket = _streams.find(stream_info->GetId());
+		if (bucket == _streams.end())
 		{
-			return false;
+			return nullptr;
 		}
 
-		stream = stream_bucket->second;
+		stream = bucket->second;
 		if (!stream)
 		{
-			return false;
+			return nullptr;
 		}
 	}
 
-	return stream->Push(packet);
+	return stream;
 }
 
 bool TranscodeApplication::ValidateAppConfiguration()
