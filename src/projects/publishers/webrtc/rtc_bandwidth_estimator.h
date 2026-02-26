@@ -137,7 +137,7 @@ private:
 	double UpdateEstimatedBitrateBps(const FrameStats& stat);
 
 	// Make decision
-	static constexpr int64_t kUpgradeProbationPeriodMs = 3000;
+	static constexpr int64_t kUpgradeProbationPeriodMs = 10000;
 	static constexpr int64_t kInitialActiveProbingIntervalMs = 10000;
 	static constexpr int64_t kMaxActiveProbingIntervalMs = 120000;
 	int64_t _active_probing_interval_ms = kInitialActiveProbingIntervalMs;

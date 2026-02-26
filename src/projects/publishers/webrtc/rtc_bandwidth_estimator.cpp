@@ -24,6 +24,7 @@ void RtcBandwidthEstimator::Release()
 RtcBandwidthEstimator::RtcBandwidthEstimator(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer)
 {
 	_observer  = observer;
+	_last_active_probing_failure_time = std::chrono::steady_clock::now();
 
 	_rtp_history.resize(kMaxRtpPacketHistory);
 }
@@ -133,7 +134,7 @@ void RtcBandwidthEstimator::OnRemb(const std::shared_ptr<const REMB> &remb)
 
     double current_loss_ratio = 0.0;
 
-	logti("REMB received: Estimated Bandwidth=%.2f Mbps, CurrentBitrate=%.2f Mbps, NextHigherBitrate=%.2f Mbps, SimulatedSlope=%.6f", remb_bitrate_bps / 1e6, current_bitrate_bps / 1e6, next_higher_bitrate_bps / 1e6, simulated_slope);
+	logtt("REMB received: Estimated Bandwidth=%.2f Mbps, CurrentBitrate=%.2f Mbps, NextHigherBitrate=%.2f Mbps, SimulatedSlope=%.6f", remb_bitrate_bps / 1e6, current_bitrate_bps / 1e6, next_higher_bitrate_bps / 1e6, simulated_slope);
 
     DetermineNetworkState(simulated_slope, current_loss_ratio, remb_bitrate_bps);
 }
@@ -228,7 +229,7 @@ bool RtcBandwidthEstimator::ProcessTransportCc()
 			auto current_loss_ratio = UpdatePacketLoss(it->second);
 			auto current_bitrate = UpdateEstimatedBitrateBps(it->second);
 			
-			logti("Frame timestamp: %u, TotalBytes: %zu, PacketCount: %d, LostPacketCount: %d, FirstSend: %" PRId64 " ms, FirstRecv: %" PRId64 " ms, LastRecv: %" PRId64 " ms, TrendSlope: %.6f, LossRatio: %.2f%%, EstimatedBitrate: %.2f Mbps", 
+			logtt("Frame timestamp: %u, TotalBytes: %zu, PacketCount: %d, LostPacketCount: %d, FirstSend: %" PRId64 " ms, FirstRecv: %" PRId64 " ms, LastRecv: %" PRId64 " ms, TrendSlope: %.6f, LossRatio: %.2f%%, EstimatedBitrate: %.2f Mbps", 
 				it->first, it->second.total_bytes, it->second.packet_total_count, it->second.packet_lost_count,
 				it->second.first_send_ms, it->second.first_recv_ms, it->second.last_recv_ms,
 				current_slope, current_loss_ratio * 100.0, current_bitrate / 1e6);
@@ -299,7 +300,7 @@ double RtcBandwidthEstimator::UpdateTrendLine(const FrameStats &current_frame_st
 
 	_trendline_slope = CalculateTrendlineSlope();
 	
-	logtd("Trendline curr_delay: %" PRId64 " ms, acc_delay: %" PRId64 " ms, slope: %.6f", delay_ms, acc_delay_ms, _trendline_slope);
+	logtt("Trendline curr_delay: %" PRId64 " ms, acc_delay: %" PRId64 " ms, slope: %.6f", delay_ms, acc_delay_ms, _trendline_slope);
 
 	return _trendline_slope;
 }
@@ -361,7 +362,7 @@ double RtcBandwidthEstimator::UpdatePacketLoss(const FrameStats& stat)
 		_ema_packet_loss_ratio = (kAlpha * _ema_packet_loss_ratio) + ((1.0 - kAlpha) * current_loss);
 	}
 
-	logtd("Packet Loss: current=%.2f%%, ema=%.2f%%", current_loss * 100.0, _ema_packet_loss_ratio * 100.0);
+	logtt("Packet Loss: current=%.2f%%, ema=%.2f%%", current_loss * 100.0, _ema_packet_loss_ratio * 100.0);
 
 	return _ema_packet_loss_ratio;
 }
@@ -395,7 +396,7 @@ double RtcBandwidthEstimator::UpdateEstimatedBitrateBps(const FrameStats& stat)
 		_ema_bitrate_bps = (kAlpha * _ema_bitrate_bps) + ((1.0 - kAlpha) * bitrate_bps);
 	}
 
-	logtd("Estimated Bitrate: current=%.2f Mbps, ema=%.2f Mbps", bitrate_bps / 1e6, _ema_bitrate_bps / 1e6);
+	logtt("Estimated Bitrate: current=%.2f Mbps, ema=%.2f Mbps", bitrate_bps / 1e6, _ema_bitrate_bps / 1e6);
 
 	return _ema_bitrate_bps;
 }
@@ -414,7 +415,7 @@ void RtcBandwidthEstimator::DetermineNetworkState(double trend_slope, double los
 		_ema_trendline_slope = (kAlpha * _ema_trendline_slope) + ((1.0 - kAlpha) * trend_slope);
 	}
 
-	logtd("DetermineNetworkState: slope=%.6f, emaSlope=%.6f, loss=%.2f%%, estimatedBandwidth=%.2f Mbps", trend_slope, _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
+	logtt("DetermineNetworkState: slope=%.6f, emaSlope=%.6f, loss=%.2f%%, estimatedBandwidth=%.2f Mbps", trend_slope, _ema_trendline_slope, loss_ratio * 100.0, estimated_bandwidth_bps / 1e6);
 	
 	auto now = std::chrono::steady_clock::now();
 	bool is_congested = false; 
