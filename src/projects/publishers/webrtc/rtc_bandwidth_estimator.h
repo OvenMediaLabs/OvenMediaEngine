@@ -40,13 +40,13 @@ private:
 class RtcBandwidthEstimatorObserver : public ov::EnableSharedFromThis<RtcBandwidthEstimatorObserver>
 {
 public:
-	virtual void OnSignal(std::shared_ptr<RtcBandwidthEstimatorSignal> &signal) = 0;
+	virtual void OnSignal(const std::shared_ptr<RtcBandwidthEstimatorSignal> &signal) = 0;
 
 	virtual uint64_t GetCurrentBitrateBps() const								= 0;
 	virtual uint64_t GetNextHigherBitrateBps() const							= 0;  // For UnderUse state
 };
 
-static constexpr uint32_t kMaxRtpPacketHistory = 65535;
+static constexpr uint32_t kMaxRtpPacketHistory = 8192;
 class RtcBandwidthEstimator
 {
 public:
@@ -56,10 +56,10 @@ public:
 		Remb
 	};
 
-	static std::shared_ptr<RtcBandwidthEstimator> Create(Mechanism mechanism, const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer);
+	static std::shared_ptr<RtcBandwidthEstimator> Create(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer);
 	void Release();
 
-	explicit RtcBandwidthEstimator(Mechanism mechanism, const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer);
+	explicit RtcBandwidthEstimator(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer);
 	virtual ~RtcBandwidthEstimator();
 
 	void OnRtpSent(uint16_t wide_seq_no, const std::shared_ptr<const RtpPacket> &rtp_packet);
@@ -71,7 +71,6 @@ public:
 	bool ProcessTransportCc();
 
 private:
-	Mechanism _mechanism = Mechanism::Remb;
 	std::shared_ptr<RtcBandwidthEstimatorObserver> _observer;
 	std::shared_ptr<RtcBandwidthEstimatorSignal> _last_signal;
 
@@ -161,7 +160,7 @@ private:
 		Probing // Trying to upgrade
     };
     InternalState _state = InternalState::Neutral;
-	std::chrono::steady_clock::time_point _state_entry_time;
+	std::chrono::steady_clock::time_point _state_entry_time = std::chrono::steady_clock::now();
 
 	InternalState GetState() const;
 	std::chrono::steady_clock::time_point GetStateEntryTime() const;

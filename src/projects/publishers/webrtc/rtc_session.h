@@ -94,7 +94,7 @@ public:
 	bool SetAutoAbr(bool auto_abr);
 
 	// RtcBandwidthEstimatorObserver Interface
-	void OnSignal(std::shared_ptr<RtcBandwidthEstimatorSignal> &signal) override;
+	void OnSignal(const std::shared_ptr<RtcBandwidthEstimatorSignal> &signal) override;
 	uint64_t GetCurrentBitrateBps() const override;
 	uint64_t GetNextHigherBitrateBps() const override;
 

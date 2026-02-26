@@ -10,9 +10,9 @@
 #include "rtc_bandwidth_estimator.h"
 #include "rtc_private.h"
 
-std::shared_ptr<RtcBandwidthEstimator> RtcBandwidthEstimator::Create(Mechanism mechanism, const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer)
+std::shared_ptr<RtcBandwidthEstimator> RtcBandwidthEstimator::Create(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer)
 {
-	return std::make_shared<RtcBandwidthEstimator>(mechanism, observer);
+	return std::make_shared<RtcBandwidthEstimator>(observer);
 }
 
 void RtcBandwidthEstimator::Release()
@@ -21,9 +21,8 @@ void RtcBandwidthEstimator::Release()
 	_last_signal.reset();
 }
 
-RtcBandwidthEstimator::RtcBandwidthEstimator(Mechanism mechanism, const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer)
+RtcBandwidthEstimator::RtcBandwidthEstimator(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer)
 {
-	_mechanism = mechanism;
 	_observer  = observer;
 
 	_rtp_history.resize(kMaxRtpPacketHistory);
@@ -134,7 +133,7 @@ void RtcBandwidthEstimator::OnRemb(const std::shared_ptr<const REMB> &remb)
 
     double current_loss_ratio = 0.0;
 
-	logtd("REMB received: Estimated Bandwidth=%.2f Mbps, CurrentBitrate=%.2f Mbps, NextHigherBitrate=%.2f Mbps, SimulatedSlope=%.6f", remb_bitrate_bps / 1e6, current_bitrate_bps / 1e6, next_higher_bitrate_bps / 1e6, simulated_slope);
+	logti("REMB received: Estimated Bandwidth=%.2f Mbps, CurrentBitrate=%.2f Mbps, NextHigherBitrate=%.2f Mbps, SimulatedSlope=%.6f", remb_bitrate_bps / 1e6, current_bitrate_bps / 1e6, next_higher_bitrate_bps / 1e6, simulated_slope);
 
     DetermineNetworkState(simulated_slope, current_loss_ratio, remb_bitrate_bps);
 }
@@ -229,6 +228,11 @@ bool RtcBandwidthEstimator::ProcessTransportCc()
 			auto current_loss_ratio = UpdatePacketLoss(it->second);
 			auto current_bitrate = UpdateEstimatedBitrateBps(it->second);
 			
+			logti("Frame timestamp: %u, TotalBytes: %zu, PacketCount: %d, LostPacketCount: %d, FirstSend: %" PRId64 " ms, FirstRecv: %" PRId64 " ms, LastRecv: %" PRId64 " ms, TrendSlope: %.6f, LossRatio: %.2f%%, EstimatedBitrate: %.2f Mbps", 
+				it->first, it->second.total_bytes, it->second.packet_total_count, it->second.packet_lost_count,
+				it->second.first_send_ms, it->second.first_recv_ms, it->second.last_recv_ms,
+				current_slope, current_loss_ratio * 100.0, current_bitrate / 1e6);
+
 			DetermineNetworkState(current_slope, current_loss_ratio, current_bitrate);
 
 			it =  _frame_stats.erase(it);

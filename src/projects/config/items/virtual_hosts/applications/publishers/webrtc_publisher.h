@@ -65,11 +65,15 @@ namespace cfg
 						Register<Optional>("BandwidthEstimation", &_bwe, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
 								if (_bwe.UpperCaseString() == "REMB")
 								{
-									_bandwidth_estimation_type = WebRtcBandwidthEstimationType::REMB;
+									_bandwidth_estimation_type = RtcBWEType::REMB;
 								}
 								else if (_bwe.UpperCaseString() == "TRANSPORTCC")
 								{
-									_bandwidth_estimation_type = WebRtcBandwidthEstimationType::TransportCc;
+									_bandwidth_estimation_type = RtcBWEType::TransportCc;
+								}
+								else if (_bwe.UpperCaseString() == "ALL" || _bwe.IsEmpty())
+								{
+									_bandwidth_estimation_type = RtcBWEType::All;
 								}
 								else
 								{
@@ -85,7 +89,7 @@ namespace cfg
 					bool _jitter_buffer = false;
 					ov::String _bwe;
 
-					WebRtcBandwidthEstimationType _bandwidth_estimation_type = WebRtcBandwidthEstimationType::TransportCc;
+					RtcBWEType _bandwidth_estimation_type = RtcBWEType::All;
 					PlayoutDelay _playout_delay;
 					bool _create_default_playlist = true;
 				};

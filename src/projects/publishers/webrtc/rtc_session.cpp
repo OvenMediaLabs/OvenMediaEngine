@@ -77,10 +77,10 @@ bool RtcSession::Start()
 		return false;
 	}
 
-	logti("[WebRTC Publisher] OfferSDP");
-	logti("%s\n", _offer_sdp->ToString().CStr());
-	logti("[WebRTC Publisher] AnswerSDP");
-	logti("%s", _peer_sdp->ToString().CStr());
+	logtd("[WebRTC Publisher] OfferSDP");
+	logtd("%s\n", _offer_sdp->ToString().CStr());
+	logtd("[WebRTC Publisher] AnswerSDP");
+	logtd("%s", _peer_sdp->ToString().CStr());
 
 	auto offer_media_desc_list = _offer_sdp->GetMediaList();
 	auto peer_media_desc_list  = _peer_sdp->GetMediaList();
@@ -109,8 +109,6 @@ bool RtcSession::Start()
 	{
 		auto peer_media_desc  = peer_media_desc_list[i];
 		auto offer_media_desc = offer_media_desc_list[i];
-		bool media_transport_cc_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_TRANSPORT_CC_ID).IsEmpty() == false;
-		bool media_remb_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_ABS_SEND_TIME_ID).IsEmpty() == false;
 
 		// The first payload has the highest priority.
 		auto first_payload	  = peer_media_desc->GetFirstPayload();
@@ -119,6 +117,11 @@ bool RtcSession::Start()
 			logte("Failed to get the first Payload type of peer sdp");
 			return false;
 		}
+
+		bool media_transport_cc_enabled = peer_media_desc->GetExtmapItem(RTP_HEADER_EXTENSION_TRANSPORT_CC_ID).IsEmpty() == false;
+		media_transport_cc_enabled = media_transport_cc_enabled || first_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::TransportCc);
+
+		bool media_remb_enabled = first_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::GoogRemb);
 
 		if (peer_media_desc->GetMediaType() == MediaDescription::MediaType::Audio)
 		{
@@ -160,13 +163,9 @@ bool RtcSession::Start()
 	}
 
 	// Init bandwidth estimator
-	if (transport_cc_enabled)
+	if (transport_cc_enabled || remb_enabled)
 	{
-		_bandwidth_estimator = RtcBandwidthEstimator::Create(RtcBandwidthEstimator::Mechanism::TransportCc, RtcBandwidthEstimatorObserver::GetSharedPtr());
-	}
-	else if (remb_enabled)
-	{
-		_bandwidth_estimator = RtcBandwidthEstimator::Create(RtcBandwidthEstimator::Mechanism::Remb, RtcBandwidthEstimatorObserver::GetSharedPtr());
+		_bandwidth_estimator = RtcBandwidthEstimator::Create(RtcBandwidthEstimatorObserver::GetSharedPtr());
 	}
 	
 	// Get Playlist
@@ -331,7 +330,7 @@ bool RtcSession::SetAutoAbr(bool auto_abr)
 	return true;
 }
 
-void RtcSession::OnSignal(std::shared_ptr<RtcBandwidthEstimatorSignal> &signal)
+void RtcSession::OnSignal(const std::shared_ptr<RtcBandwidthEstimatorSignal> &signal)
 {
 	if (_auto_abr == false)
 	{
@@ -342,11 +341,11 @@ void RtcSession::OnSignal(std::shared_ptr<RtcBandwidthEstimatorSignal> &signal)
 	{
 		if (RequestChangeRendition(SwitchOver::LOWER) == true)
 		{
-			logti("Bandwidth OverUse detected. Requested to lower the rendition.");
+			logtd("Bandwidth OverUse detected. Requested to lower the rendition.");
 		}
 		else
 		{
-			logti("Bandwidth OverUse detected. But there is no lower rendition or changing state.");
+			logtd("Bandwidth OverUse detected. But there is no lower rendition or changing state.");
 			return;
 		}
 	}
@@ -357,11 +356,11 @@ void RtcSession::OnSignal(std::shared_ptr<RtcBandwidthEstimatorSignal> &signal)
 	{
 		if (RequestChangeRendition(SwitchOver::HIGHER) == true)
 		{
-			logti("Bandwidth UnderUse detected. Requested to higher the rendition.");
+			logtd("Bandwidth UnderUse detected. Requested to higher the rendition.");
 		}
 		else
 		{
-			logti("Bandwidth UnderUse detected. But there is no higher rendition or changing state.");
+			logtd("Bandwidth UnderUse detected. But there is no higher rendition or changing state.");
 			return;
 		}
 	}
