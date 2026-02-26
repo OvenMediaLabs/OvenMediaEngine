@@ -16,11 +16,13 @@
 #define CHECK_STATE(condition, return_value)                                 \
 	do                                                                       \
 	{                                                                        \
-		if (!(_state condition))                                             \
+		auto __state = _state.load();                                        \
+                                                                             \
+		if (!(__state condition))                                            \
 		{                                                                    \
 			logaw("%s(): Invalid state: %s (expected: " #condition ") - %s", \
 				  __FUNCTION__,                                              \
-				  StringFromSocketState(_state),                             \
+				  StringFromSocketState(__state),                            \
 				  ToString().CStr());                                        \
 			return return_value;                                             \
 		}                                                                    \
@@ -29,12 +31,7 @@
 #define CHECK_STATE2(condition1, condition2, return_value)                                                     \
 	do                                                                                                         \
 	{                                                                                                          \
-		SocketState __state;                                                                                   \
-                                                                                                               \
-		{                                                                                                      \
-			std::lock_guard lock_guard(_state_mutex);                                                          \
-			__state = _state;                                                                                  \
-		}                                                                                                      \
+		auto __state = _state.load();                                                                          \
                                                                                                                \
 		if ((!(__state condition1)) && (!(__state condition2)))                                                \
 		{                                                                                                      \

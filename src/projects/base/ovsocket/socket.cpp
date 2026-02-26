@@ -130,12 +130,12 @@ namespace ov
 				  StringFromSocketFamily(family),
 				  StringFromSocketType(type));
 
-			_has_close_command = false;
-			_end_of_stream = false;
+			_has_close_command		= false;
+			_end_of_stream			= false;
 
 			_connection_event_fired = false;
 
-			_family = family;
+			_family					= family;
 
 			SetState(SocketState::Created);
 
@@ -170,11 +170,7 @@ namespace ov
 
 		// An error occurred - reset all variables
 		{
-			SocketState state;
-			{
-				std::lock_guard lock_guard(_state_mutex);
-				state = _state;
-			}
+			auto state = _state.load();
 
 			std::lock_guard lock_guard(_dispatch_queue_lock);
 			if (CloseInternal(state))
@@ -210,7 +206,7 @@ namespace ov
 
 				int flags = (mode == BlockingMode::Blocking) ? (result & ~O_NONBLOCK) : (result | O_NONBLOCK);
 
-				result = ::fcntl(GetNativeHandle(), F_SETFL, flags);
+				result	  = ::fcntl(GetNativeHandle(), F_SETFL, flags);
 
 				if (result == -1)
 				{
@@ -386,7 +382,7 @@ namespace ov
 
 		auto old_callback = std::atomic_exchange(&_callback, callback);
 
-		_blocking_mode = BlockingMode::NonBlocking;
+		_blocking_mode	  = BlockingMode::NonBlocking;
 
 		if (
 			SetBlockingInternal(BlockingMode::NonBlocking) &&
@@ -517,7 +513,7 @@ namespace ov
 				sockaddr_storage client_addr{};
 				socklen_t client_length = sizeof(client_addr);
 
-				socket_t client_socket = ::accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
+				socket_t client_socket	= ::accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
 
 				if (client_socket != InvalidSocket)
 				{
@@ -529,7 +525,7 @@ namespace ov
 
 			case SocketType::Srt: {
 				sockaddr_storage client_addr{};
-				int client_length = sizeof(client_addr);
+				int client_length		= sizeof(client_addr);
 
 				SRTSOCKET client_socket = ::srt_accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
 
@@ -574,7 +570,7 @@ namespace ov
 	{
 		OV_ASSERT2(_socket.IsValid());
 
-		CHECK_STATE(== SocketState::Created, DoConnectionCallback(SocketError::CreateError(EINVAL, "Invalid state: %d", static_cast<int>(_state))));
+		CHECK_STATE(== SocketState::Created, DoConnectionCallback(SocketError::CreateError(EINVAL, "Invalid state: %d", ToUnderlyingType(_state.load()))));
 
 		if (endpoint.IsValid() == false)
 		{
@@ -792,19 +788,17 @@ namespace ov
 
 	SocketState Socket::GetState() const
 	{
-		std::lock_guard lock_guard(_state_mutex);
-		return _state;
+		return _state.load();
 	}
 
 	void Socket::SetState(SocketState state)
 	{
-		std::lock_guard lock_guard(_state_mutex);
+		auto old_state = _state.load();
+		_state = state;
 
 		logat("Socket state is changed: %s => %s",
-			  StringFromSocketState(_state),
+			  StringFromSocketState(old_state),
 			  StringFromSocketState(state));
-
-		_state = state;
 	}
 
 	SocketType Socket::GetType() const
@@ -859,7 +853,7 @@ namespace ov
 		});
 
 		ssize_t sent_bytes = 0;
-		auto &data = command.data;
+		auto &data		   = command.data;
 
 		logap("Dispatching event: %s", command.ToString().CStr());
 
@@ -1119,8 +1113,8 @@ namespace ov
 
 	ssize_t Socket::SendData(const std::shared_ptr<const Data> &data)
 	{
-		auto data_to_send = data->GetDataAs<uint8_t>();
-		size_t remaining_bytes = data->GetLength();
+		auto data_to_send		= data->GetDataAs<uint8_t>();
+		size_t remaining_bytes	= data->GetLength();
 		size_t total_sent_bytes = 0L;
 
 		logap("Trying to send data %zu bytes...", remaining_bytes);
@@ -1152,8 +1146,8 @@ namespace ov
 	ssize_t Socket::SendSrtData(
 		const std::shared_ptr<const Data> &data)
 	{
-		auto data_to_send = data->GetDataAs<char>();
-		size_t remaining_bytes = data->GetLength();
+		auto data_to_send		= data->GetDataAs<char>();
+		size_t remaining_bytes	= data->GetLength();
 		size_t total_sent_bytes = 0L;
 
 		logap("Trying to send data %zu bytes...", remaining_bytes);
@@ -1163,7 +1157,7 @@ namespace ov
 			// SRT limits packet size up to 1316
 			const auto bytes_to_send = std::min(1316UL, remaining_bytes);
 
-			const auto sent = ::srt_sendmsg(GetNativeHandle(), data_to_send, bytes_to_send, -1, 1);
+			const auto sent			 = ::srt_sendmsg(GetNativeHandle(), data_to_send, bytes_to_send, -1, 1);
 
 			if (sent == SRT_ERROR)
 			{
@@ -1255,8 +1249,8 @@ namespace ov
 			return -1L;
 		}
 
-		auto data_to_send = data->GetDataAs<uint8_t>();
-		size_t remaining_bytes = data->GetLength();
+		auto data_to_send		= data->GetDataAs<uint8_t>();
+		size_t remaining_bytes	= data->GetLength();
 		size_t total_sent_bytes = 0L;
 
 		logap("Trying to send data %zu bytes to %s...", remaining_bytes, address.ToString(false).CStr());
@@ -1335,12 +1329,12 @@ namespace ov
 		const SocketAddress &local_address, const SocketAddress &remote_address,
 		const void *data, const size_t length,
 		size_t *total_sent_bytes,
-		volatile const bool &force_stop)
+		const std::atomic<bool> &force_stop)
 	{
 		OV_ASSERT2(total_sent_bytes != nullptr);
-		*total_sent_bytes = 0L;
+		*total_sent_bytes	   = 0L;
 
-		auto data_to_send = static_cast<const uint8_t *>(data);
+		auto data_to_send	   = static_cast<const uint8_t *>(data);
 		size_t remaining_bytes = length;
 
 		char control[CMSG_SPACE(sizeof(Tpktinfo))]{};
@@ -1348,24 +1342,24 @@ namespace ov
 		iovec iov{};
 		// This is intentional conversion
 		iov.iov_base = const_cast<uint8_t *>(data_to_send);
-		iov.iov_len = remaining_bytes;
+		iov.iov_len	 = remaining_bytes;
 
 		Tpktinfo pktinfo{};
 		SetAddr(&pktinfo, local_address);
 
-		auto cmsg = reinterpret_cast<cmsghdr *>(control);
+		auto cmsg		 = reinterpret_cast<cmsghdr *>(control);
 		cmsg->cmsg_level = msg_level;
-		cmsg->cmsg_type = msg_type;
-		cmsg->cmsg_len = CMSG_LEN(sizeof(pktinfo));
+		cmsg->cmsg_type	 = msg_type;
+		cmsg->cmsg_len	 = CMSG_LEN(sizeof(pktinfo));
 		::memcpy(CMSG_DATA(cmsg), &pktinfo, sizeof(pktinfo));
 
 		msghdr msg{};
 		// This is intentional conversion
-		msg.msg_name = const_cast<sockaddr *>(remote_address.ToSockAddr());
-		msg.msg_namelen = remote_address.GetSockAddrInLength();
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		msg.msg_control = control;
+		msg.msg_name	   = const_cast<sockaddr *>(remote_address.ToSockAddr());
+		msg.msg_namelen	   = remote_address.GetSockAddrInLength();
+		msg.msg_iov		   = &iov;
+		msg.msg_iovlen	   = 1;
+		msg.msg_control	   = control;
 		msg.msg_controllen = sizeof(control);
 
 		while ((remaining_bytes > 0L) && (force_stop == false))
@@ -1401,17 +1395,17 @@ namespace ov
 			return -1L;
 		}
 
-		const auto local_address = address_pair.GetLocalAddress();
+		const auto local_address  = address_pair.GetLocalAddress();
 		const auto remote_address = address_pair.GetRemoteAddress();
 
-		const auto data_length = data->GetLength();
+		const auto data_length	  = data->GetLength();
 
 		logap("Trying to send data %zu bytes to %s from %s...",
 			  data_length,
 			  remote_address.ToString().CStr(), local_address.ToString().CStr());
 
 		size_t total_sent_bytes = 0;
-		bool sent = false;
+		bool sent				= false;
 
 		switch (_family)
 		{
@@ -1544,7 +1538,7 @@ namespace ov
 							if (IsEndOfStream() == false)
 							{
 								// Timed out
-								read_bytes = 0L;
+								read_bytes	 = 0L;
 								// Actually, it is not an error
 								socket_error = nullptr;
 							}
@@ -1578,7 +1572,7 @@ namespace ov
 					if (error->GetCode() == SRT_EASYNCRCV)
 					{
 						// Timed out
-						read_bytes = 0L;
+						read_bytes	 = 0L;
 						// Actually, it is not an error
 						socket_error = nullptr;
 					}
@@ -1603,7 +1597,7 @@ namespace ov
 			{
 				logtt("Remote is disconnected with error: %s", socket_error->What());
 
-				socket_error = SocketError::CreateError("Remote is disconnected");
+				socket_error	 = SocketError::CreateError("Remote is disconnected");
 				*received_length = 0UL;
 
 				CloseWithState(SocketState::Disconnected);
@@ -1631,7 +1625,7 @@ namespace ov
 						case ENOTCONN:
 							// Transport endpoint is not connected
 							break;
-						
+
 						case ETIMEDOUT:
 							// Even though the socket is non-blocking and MSG_DONTWAIT is used,
 							// the kernel may still return ETIMEDOUT if the connection is deemed broken.
@@ -1713,10 +1707,10 @@ namespace ov
 
 				local.ss_family = remote.ss_family;
 
-				auto sock = ToSockAddrIn4(&local);
+				auto sock		= ToSockAddrIn4(&local);
 
-				sock->sin_port = HostToNetwork16(local_port);
-				sock->sin_addr = pktinfo->ipi_addr;
+				sock->sin_port	= HostToNetwork16(local_port);
+				sock->sin_addr	= pktinfo->ipi_addr;
 
 				return SocketAddress("", local);
 			}
@@ -1729,14 +1723,14 @@ namespace ov
 			{
 				sockaddr_storage local{};
 
-				local.ss_family = remote.ss_family;
+				local.ss_family	   = remote.ss_family;
 
 				const auto pktinfo = reinterpret_cast<in6_pktinfo *>(CMSG_DATA(cmsg));
 
-				auto sock = ToSockAddrIn6(&local);
+				auto sock		   = ToSockAddrIn6(&local);
 
-				sock->sin6_port = local_port;
-				sock->sin6_addr = pktinfo->ipi6_addr;
+				sock->sin6_port	   = local_port;
+				sock->sin6_addr	   = pktinfo->ipi6_addr;
 
 				return SocketAddress("", local);
 			}
@@ -1766,20 +1760,20 @@ namespace ov
 				data->SetLength(data->GetCapacity());
 
 				iovec iov{};
-				iov.iov_base = data->GetWritableData();
-				iov.iov_len = data->GetLength();
+				iov.iov_base			   = data->GetWritableData();
+				iov.iov_len				   = data->GetLength();
 
 				const int control_buf_size = CMSG_SPACE((_family == SocketFamily::Inet) ? sizeof(in_pktinfo) : sizeof(in6_pktinfo));
 				char control_buf[control_buf_size];
 				::memset(control_buf, 0, sizeof(control_buf));
 
 				msghdr msg{};
-				msg.msg_name = &remote;
-				msg.msg_namelen = remote_length;
-				msg.msg_control = control_buf;
-				msg.msg_controllen = sizeof(control_buf);
-				msg.msg_iov = &iov;
-				msg.msg_iovlen = 1;
+				msg.msg_name			 = &remote;
+				msg.msg_namelen			 = remote_length;
+				msg.msg_control			 = control_buf;
+				msg.msg_controllen		 = sizeof(control_buf);
+				msg.msg_iov				 = &iov;
+				msg.msg_iovlen			 = 1;
 
 				const ssize_t read_bytes = ::recvmsg(
 					GetNativeHandle(),
@@ -2104,12 +2098,12 @@ namespace ov
 		CHECK_STATE(!= SocketState::Closed, false);
 
 		_post_callback = std::atomic_exchange(&_callback, {});
-		_close_reason		= close_reason;
+		_close_reason  = close_reason;
 
 		if (_socket.IsValid())
 		{
 			DeleteFromWorker();
-			
+
 			switch (GetType())
 			{
 				case SocketType::Tcp:

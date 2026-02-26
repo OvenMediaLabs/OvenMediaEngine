@@ -513,8 +513,7 @@ namespace ov
 		SocketWrapper _socket;
 		SocketFamily _family;
 
-		mutable std::mutex _state_mutex;
-		SocketState _state = SocketState::Closed;
+		std::atomic<SocketState> _state = SocketState::Closed;
 
 		BlockingMode _blocking_mode = BlockingMode::Blocking;
 
@@ -524,14 +523,14 @@ namespace ov
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
 
-		bool _end_of_stream = false;
+		std::atomic<bool> _end_of_stream = false;
 
 		std::shared_ptr<SocketAddress> _local_address = nullptr;
 		std::shared_ptr<SocketAddress> _remote_address = nullptr;
 
 		mutable std::recursive_mutex _dispatch_queue_lock;
 		std::deque<DispatchCommand> _dispatch_queue;
-		bool _has_close_command = false;
+		std::atomic<bool> _has_close_command = false;
 
 		std::atomic<bool> _connection_event_fired{false};
 		std::shared_ptr<SocketAsyncInterface> _callback;
@@ -540,7 +539,7 @@ namespace ov
 		std::shared_ptr<SocketAsyncInterface> _post_callback;
 		SocketState _close_reason = SocketState::Closed;
 
-		volatile bool _force_stop = false;
+		std::atomic<bool> _force_stop = false;
 
 		String _stream_id;	// only available for SRT socket
 
