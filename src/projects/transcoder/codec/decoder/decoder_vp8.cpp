@@ -44,13 +44,12 @@ bool DecoderVP8::InitCodec()
 
 void DecoderVP8::UninitCodec()
 {
-	if (_codec_context != nullptr)
+	if (_codec_context)
 	{
-		if (_codec_context->codec != nullptr && _codec_context->codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
+		if (_codec_context->codec)
 		{
 			::avcodec_flush_buffers(_codec_context);
 		}
-
 		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
 }

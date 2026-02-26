@@ -52,13 +52,12 @@ bool DecoderAVC::InitCodec()
 
 void DecoderAVC::UninitCodec()
 {
-	if (_codec_context != nullptr)
+	if (_codec_context)
 	{
-		if (_codec_context->codec != nullptr && _codec_context->codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
+		if (_codec_context->codec)
 		{
 			::avcodec_flush_buffers(_codec_context);
 		}
-
 		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
 }
@@ -69,11 +68,7 @@ bool DecoderAVC::ReinitCodecIfNeed()
 	{
 		logti("[%s(%u)] Input frame resolution of the %u track has been changed. Size:%dx%d -> %dx%d", _stream_info.GetUri().CStr(), _stream_info.GetId(), GetRefTrack()->GetId(), _codec_context->width, _codec_context->height, _parser->width, _parser->height);
 
-		if (_codec_context != nullptr)
-		{
-			::avcodec_free_context(&_codec_context);
-		}
-		_codec_context = nullptr;
+		UninitCodec();
 
 		if (InitCodec() == false)
 		{

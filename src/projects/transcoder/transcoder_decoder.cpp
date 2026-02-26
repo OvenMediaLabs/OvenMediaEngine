@@ -288,13 +288,14 @@ TranscodeDecoder::TranscodeDecoder(info::Stream stream_info)
 
 TranscodeDecoder::~TranscodeDecoder()
 {
-	if (_codec_context != nullptr)
+	Stop();
+
+	if (_codec_context)
 	{
-		if (_codec_context->codec != nullptr && _codec_context->codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
+		if (_codec_context->codec)
 		{
 			::avcodec_flush_buffers(_codec_context);
 		}
-
 		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
 
@@ -376,18 +377,16 @@ bool TranscodeDecoder::Configure(std::shared_ptr<MediaTrack> track)
 
 void TranscodeDecoder::Stop()
 {
-	_kill_flag = true;
-
-	_input_buffer.Stop();
-
 	if (_codec_thread.joinable())
 	{
+		_kill_flag = true;
+		_input_buffer.Stop();
 		_codec_thread.join();
+
+		tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());
 
 		logtt("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID()));
 	}
-
-	tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());	
 }
 
 void TranscodeDecoder::SendBuffer(std::shared_ptr<const MediaPacket> packet)
