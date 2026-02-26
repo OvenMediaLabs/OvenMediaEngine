@@ -116,11 +116,11 @@ enum class PublisherType : int8_t
 	NumberOfPublishers,
 };
 
-enum class WebRtcBandwidthEstimationType : uint8_t
+enum class RtcBWEType : uint8_t
 {
 	REMB,
 	TransportCc,
-	None,
+	All,
 };
 
 enum class FrameType : int8_t

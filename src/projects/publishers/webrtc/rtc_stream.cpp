@@ -137,12 +137,18 @@ bool RtcStream::Start()
 	_playout_delay_min	   = playoutDelay.GetMin();
 	_playout_delay_max	   = playoutDelay.GetMax();
 
-	if (webrtc_config.GetBandwidthEstimationType() == WebRtcBandwidthEstimationType::TransportCc)
+	if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::TransportCc)
 	{
 		_transport_cc_enabled = true;
 	}
-	else if (webrtc_config.GetBandwidthEstimationType() == WebRtcBandwidthEstimationType::REMB)
+	else if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::REMB)
 	{
+		_remb_enabled = true;
+	}
+	else if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::All)
+	{
+		// Auto means to enable both and use TransportCC if the remote supports it, otherwise use REMB.
+		_transport_cc_enabled = true;
 		_remb_enabled = true;
 	}
 

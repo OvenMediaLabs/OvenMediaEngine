@@ -1097,6 +1097,10 @@ std::map<uint8_t, ov::String> MediaDescription::GetExtmap() const
 
 ov::String MediaDescription::GetExtmapItem(uint8_t id) const
 {
+	if (_extmap.find(id) == _extmap.end())
+	{
+		return "";
+	}
 	return _extmap.at(id);
 }
 
