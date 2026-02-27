@@ -338,14 +338,7 @@ namespace pvd
 		{	
 			// channel
 			auto channels = std::atoi(payload_attr->GetCodecParams());
-			if (channels == 1)
-			{
-				track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutMono);
-			}
-			else
-			{
-				track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutStereo);
-			}
+			track->SetChannelLayout((channels == 1) ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
 		}
 
 		return track;
@@ -697,30 +690,38 @@ namespace pvd
 	{
 		logtp("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
 
-		// This may not work since almost WebRTC browser sends SPS/PPS/VPS in-band
-		if ((track->GetCodecId() == cmn::MediaCodecId::H264 || track->GetCodecId() == cmn::MediaCodecId::H265) &&
-			_sent_sequence_header.find(track->GetId()) == _sent_sequence_header.end())
+		auto track_id = track->GetId();
+		auto codec_id = track->GetCodecId();
+		bool is_h26x = (codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265);
+		bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
+
+		auto packet_to_send = media_packet;
+
+		// If SPS/PPS/VPS are received out-of-band, replace them with the in-band format
+		// If the codec is H264 or H265 and the sequence header (SPS/PPS/VPS) has not been sent yet, prepend the sequence header to the current packet.
+		// TODO: If the current packet contains SPS/PPS/VPS, there is no need to prepend.
+		if (is_h26x && !is_sent_sequence_header)
 		{
-			if (_h26x_extradata_nalu.find(track->GetId()) != _h26x_extradata_nalu.end() && _h26x_extradata_nalu[track->GetId()] != nullptr)
+			auto new_packet = media_packet->ClonePacket();
+
+			auto it = _h26x_extradata_nalu.find(track_id);
+			if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
 			{
-				auto bitstream_format = (track->GetCodecId() == cmn::MediaCodecId::H264) ? cmn::BitstreamFormat::H264_ANNEXB : cmn::BitstreamFormat::H265_ANNEXB;
-				auto sps_pps_packet = std::make_shared<MediaPacket>(GetMsid(),
-																	track->GetMediaType(),
-																	track->GetId(),
-																	_h26x_extradata_nalu[track->GetId()],
-																	media_packet->GetPts(),
-																	media_packet->GetDts(),
-																	-1LL,
-																	MediaPacketFlag::Unknown,
-																	bitstream_format,
-																	cmn::PacketType::NALU);
-				SendFrame(sps_pps_packet);
+				// Since it is a NALU type, the data can simply be concatenated
+				auto prepend = std::make_shared<ov::Data>();
+				prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
+				prepend->Append(media_packet->GetData());  // Current frame data
+
+				new_packet->SetData(prepend);
+
+				logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
 			}
-			
-			_sent_sequence_header[track->GetId()] = true;
+
+			packet_to_send = new_packet;
+			_sent_sequence_header[track_id] = true;
 		}
 
-		SendFrame(media_packet);
+		SendFrame(packet_to_send);
 
 		// Send FIR to reduce keyframe interval
 		// _fir_interval can be 0 to disable FIR sending. The default value is 3000 ms.
