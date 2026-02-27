@@ -72,8 +72,8 @@ private:
 	std::shared_ptr<PayloadAttr> MakePayloadAttr(const std::shared_ptr<const MediaTrack> &track) const;
 	std::shared_ptr<PayloadAttr> MakeRtxPayloadAttr(const std::shared_ptr<const MediaTrack> &track) const;
 
-	void MakeRtpVideoHeader(const CodecSpecificInfo *info, RTPVideoHeader *rtp_video_header);
-	uint16_t AllocateVP8PictureID();
+	void MakeRtpVideoHeader(uint32_t track_id, const CodecSpecificInfo *info, RTPVideoHeader *rtp_video_header);
+	uint16_t AllocateVP8PictureID(uint32_t track_id);
 
 	bool StorePacketForRTX(std::shared_ptr<RtpPacket> &packet);
 
@@ -96,8 +96,8 @@ private:
 	ov::String _msid;
 	ov::String _cname;
 
-	// VP8 Picture ID
-	uint16_t _vp8_picture_id;
+	// VP8 Picture ID (per track)
+	std::map<uint32_t, uint16_t> _vp8_picture_id_map;
 
 	std::shared_ptr<Certificate> _certificate;
 

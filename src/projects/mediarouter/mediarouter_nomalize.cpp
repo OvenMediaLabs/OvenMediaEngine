@@ -994,7 +994,16 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
-	// One time : parse width, height
+	bool is_key_frame = false;
+	if (VP8Parser::ParseKeyFrame(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), is_key_frame) == false)
+	{
+		logte("Could not parse VP8 frame tag");
+		return false;
+	}
+
+	media_packet->SetFlag(is_key_frame ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
+
+	// One time: parse width, height
 	if (media_track->IsValid() == true)
 	{
 		return true;
@@ -1009,13 +1018,6 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 
 	media_track->SetWidth(parser.GetWidth());
 	media_track->SetHeight(parser.GetHeight());
-
-	// TODO(Getroot) : In VP8, there is no need to know whether it is the current keyframe. So it doesn't parse every time.
-	// However, if this is needed in the future, VP8Parser writes and applies a low-cost code that only determines whether or not it is a keyframe.
-	if (parser.IsKeyFrame())
-	{
-		media_packet->SetFlag(MediaPacketFlag::Key);
-	}
 
 	return true;
 }
