@@ -77,6 +77,7 @@ public:
 
 		RegisterPattern(_rid_pattern, R"(^rid:([a-zA-Z0-9\-_]+)\s+(send|recv)(?:\s+(.*))?)");
 		RegisterPattern(_simulcast_pattern, R"(^simulcast:\s*(send|recv)\s+([a-zA-Z0-9\-_\,;]+)(?:\s*(send|recv)\s+([a-zA-Z0-9\-_\,;]+))?)");
+		RegisterPattern(_crypto_pattern, R"(^crypto:(\d+) ([\w_]+) inline:([\w\+/=]+)(?:\|.*)?(?:\s+(.*))?$)");
 		_built = true;
 
 		return true;
@@ -119,6 +120,7 @@ public:
 
 	RegisterMatchFunction(_rid_pattern, MatchRid)
 	RegisterMatchFunction(_simulcast_pattern, MatchSimulcast)
+	RegisterMatchFunction(_crypto_pattern, MatchCrypto)
 
 private:
 	bool _built = false;
@@ -160,4 +162,5 @@ private:
 
 	ov::Regex _rid_pattern; // a=rid:1 send pt=97,98;max-width=1280;max-height=720
 	ov::Regex _simulcast_pattern; // a=simulcast:send 1;2,3
+	ov::Regex _crypto_pattern; // a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:base64key
 };
