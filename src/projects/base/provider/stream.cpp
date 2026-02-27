@@ -393,6 +393,8 @@ namespace pvd
 		_start_timestamp_us = -1LL;
 
 		_source_timestamp_map.clear();
+		_sr_fallback_tracks.clear();
+		_per_track_sr_wait.clear();
 	}
 
 	void Stream::RegisterRtpClock(uint32_t track_id, double clock_rate)
@@ -460,14 +462,41 @@ namespace pvd
 
 		if (_rtp_timestamp_method == RtpTimestampCalculationMethod::WITH_RTCP_SR)
 		{
-			auto pts_base = _rtp_lip_sync_clock.CalcPTS(track_id, timestamp);
-			if (pts_base.has_value() == false)
+			// Check if this track has already fallen back to delta-based calculation
+			if (_sr_fallback_tracks.find(track_id) != _sr_fallback_tracks.end())
 			{
-				return false;
+				adjusted_timestamp = AdjustTimestampByDelta(track_id, timestamp, max_timestamp);
 			}
+			else
+			{
+				auto pts_base = _rtp_lip_sync_clock.CalcPTS(track_id, timestamp);
+				if (pts_base.has_value() == false)
+				{
+					// Start a per-track timer the first time CalcPTS fails
+					if (_per_track_sr_wait.find(track_id) == _per_track_sr_wait.end())
+					{
+						_per_track_sr_wait[track_id].Start();
+					}
 
-			int64_t pts = pts_base.value();
-			adjusted_timestamp = AdjustTimestampByBase(track_id, pts, pts, max_timestamp);
+					// If this track hasn't received an SR within 5 seconds while other tracks have, fall back
+					if (_per_track_sr_wait[track_id].Elapsed() > 5000)
+					{
+						logtw("Track %u has not received RTCP SR within 5 seconds while other tracks have. "
+							   "Falling back to delta-based PTS calculation for this track. (Lip-Sync may be out of sync)", track_id);
+						_sr_fallback_tracks.insert(track_id);
+						adjusted_timestamp = AdjustTimestampByDelta(track_id, timestamp, max_timestamp);
+					}
+					else
+					{
+						return false;
+					}
+				}
+				else
+				{
+					int64_t pts = pts_base.value();
+					adjusted_timestamp = AdjustTimestampByBase(track_id, pts, pts, max_timestamp);
+				}
+			}
 		}
 		else if (_rtp_timestamp_method == RtpTimestampCalculationMethod::SINGLE_DELTA)
 		{
