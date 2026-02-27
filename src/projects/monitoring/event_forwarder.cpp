@@ -300,7 +300,7 @@ namespace mon
 			}
 		}
 
-		_run_thread		= true;
+		_run_thread.store(true);
 		_shipper_thread = std::thread(&EventForwarder::ForwarderThread, this);
 		pthread_setname_np(_shipper_thread.native_handle(), "ForwarderThread");
 
@@ -309,7 +309,7 @@ namespace mon
 
 	bool EventForwarder::Stop()
 	{
-		_run_thread = false;
+		_run_thread.store(false);
 
 		if (_shipper_thread.joinable())
 		{
@@ -370,7 +370,7 @@ namespace mon
 
 		std::ifstream ifs;
 		std::streampos pos = 0;
-		while (_run_thread)
+		while (_run_thread.load())
 		{
 			if (ifs.is_open() == false || (event_stream.IsNextAvailable() && ifs.eof()))
 			{
@@ -410,7 +410,7 @@ namespace mon
 			}
 
 			std::string line;
-			while (std::getline(ifs, line) && _run_thread)
+			while (std::getline(ifs, line) && _run_thread.load())
 			{
 				// Collector will use '\n' for delimiter
 				line.append("\n");
@@ -426,7 +426,7 @@ namespace mon
 				}
 
 				// Ship the line
-				while (_run_thread)
+				while (_run_thread.load())
 				{
 					if (Forwarding(line.c_str()))
 					{
@@ -535,7 +535,7 @@ namespace mon
 			return false;
 		}
 
-		auto row = ov::String::FormatString("%u,%" PRIu64, file_time, file_offset);
+		auto row = ov::String::FormatString("%" PRIdMAX ",%" PRIu64, static_cast<intmax_t>(file_time), file_offset);
 
 		fs.write(row.CStr(), row.GetLength());
 		fs.close();

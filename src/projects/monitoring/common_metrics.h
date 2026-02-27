@@ -82,7 +82,7 @@ namespace mon
 		std::atomic<uint64_t> _last_throughtput_out;
 		std::atomic<uint64_t> _last_total_bytes_out;
 
-		std::chrono::system_clock::time_point _last_throughput_measure_time;
+		std::atomic<int64_t> _last_throughput_measure_time;
 
 		// From Publishers
 		class PublisherMetrics

@@ -18,12 +18,10 @@ AmfProperty::AmfProperty()
 	: AmfProperty(AmfTypeMarker::Null)
 {
 }
-
 AmfProperty::AmfProperty(AmfTypeMarker type)
 	: AmfPropertyBase(type)
 {
 }
-
 AmfProperty::AmfProperty(double number)
 	: AmfPropertyBase(AmfTypeMarker::Number),
 	  _number(number)
@@ -340,7 +338,7 @@ bool AmfProperty::Decode(ov::ByteStream &byte_stream, bool decode_marker)
 			break;
 
 		default:
-			logtw("Unknown AMF type: %d", _amf_data_type);
+			logtw("Unknown AMF type: %d", static_cast<int>(_amf_data_type));
 			_amf_data_type = AmfTypeMarker::Null;
 			break;
 	}
@@ -430,7 +428,7 @@ void AmfProperty::ToString(ov::String &description, size_t indent) const
 		case AmfTypeMarker::Xml:
 			[[fallthrough]];
 		case AmfTypeMarker::TypedObject:
-			OV_ASSERT(false, "Not supported type: ", GetType());
+			OV_ASSERT(false, "Not supported type: %d", static_cast<int>(GetType()));
 			break;
 	}
 }

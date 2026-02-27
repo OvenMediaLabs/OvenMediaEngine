@@ -146,9 +146,9 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 		
 		logtt("Candidate module: %s(%d), %s(%d):%d",
 			  cmn::GetCodecIdString(candidate->GetCodecId()),
-			  candidate->GetCodecId(),
+			  static_cast<int>(candidate->GetCodecId()),
 			  cmn::GetCodecModuleIdString(candidate->GetModuleId()),
-			  candidate->GetModuleId(),
+			  static_cast<int>(candidate->GetModuleId()),
 			  candidate->GetDeviceId());
 	}
 
@@ -310,7 +310,7 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Create(
 		}
 		else
 		{
-			OV_ASSERT(false, "Not supported codec: %d", track->GetCodecId());
+			OV_ASSERT(false, "Not supported codec: %d", static_cast<int>(track->GetCodecId()));
 		}
 
 		// If the decoder is not created, try the next candidate.
@@ -403,7 +403,7 @@ std::shared_ptr<MediaTrack> &TranscodeEncoder::GetRefTrack()
 
 void TranscodeEncoder::SendBuffer(std::shared_ptr<const MediaFrame> frame)
 {
-	// logte("%lld, msid:%u", frame->GetPts(), frame->GetMsid());
+	// logte("%" PRId64 ", msid:%u", frame->GetPts(), frame->GetMsid());
 		
 	if (_input_buffer.IsExceedWaitEnable() == true)
 	{
@@ -462,7 +462,7 @@ void TranscodeEncoder::Stop()
 	if (_codec_thread.joinable())
 	{
 		_codec_thread.join();
-		logtt(ov::String::FormatString("encoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
+		logtt("encoder %s thread has ended", cmn::GetCodecIdString(GetCodecID()));
 	}
 
 	tc::TranscodeModules::GetInstance()->OnDeleted(true, GetCodecID(), GetModuleID(), GetDeviceID());

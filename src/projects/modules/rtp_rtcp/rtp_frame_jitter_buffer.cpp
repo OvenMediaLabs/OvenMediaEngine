@@ -165,11 +165,11 @@ bool RtpFrame::CheckCompleted()
 	if (need_number_of_packets == _packets.size())
 	{
 		_completed = true;
-		logtt("Frame completed: timestamp(%u) packets(%u) need packets(%u)", _timestamp, _packets.size(), need_number_of_packets);
+		logtt("Frame completed: timestamp(%u) packets(%zu) need packets(%u)", _timestamp, _packets.size(), need_number_of_packets);
 	}
 	else
 	{
-		logte("Invalid frame: timestamp(%u) %u/%u", _timestamp, _packets.size(), need_number_of_packets);
+		logte("Invalid frame: timestamp(%u) %zu/%u", _timestamp, _packets.size(), need_number_of_packets);
 	}
 
 	return _completed;
@@ -206,7 +206,7 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 
 	if (it == _rtp_frames.end())
 	{
-		logtt("Create frame buffer for timestamp %llu", timestamp);
+		logtt("Create frame buffer for timestamp %" PRIu64 "", timestamp);
 		// First packet of frame
 		frame = std::make_shared<RtpFrame>(packet->Timestamp());
 		_rtp_frames[timestamp] = frame;
@@ -248,7 +248,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 	while (it != completed_frame_it)
 	{
 		auto frame = it->second;
-		logtt("Frame discarded (It may be PADDING frame for BWE) - timestamp(%u) packets(%d) marked(%s)", frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
+		logtt("Frame discarded (It may be PADDING frame for BWE) - timestamp(%u) packets(%zu) marked(%s)", frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
 		it = _rtp_frames.erase(it);
 	}
 }
@@ -277,7 +277,7 @@ std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 	auto it = _rtp_frames.begin();
 	auto frame = it->second;
 
-	logtt("Pop frame - extended(%llu) timestamp(%u) packets(%d) frames(%u)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+	logtt("Pop frame - extended(%" PRIu64 ") timestamp(%u) packets(%zu) frames(%zu)", it->first, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
 
 	// remove front frame
 	_rtp_frames.erase(it);

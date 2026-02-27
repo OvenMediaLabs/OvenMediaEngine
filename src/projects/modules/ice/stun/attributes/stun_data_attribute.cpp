@@ -55,5 +55,5 @@ bool StunDataAttribute::Serialize(const StunMessage *stun_message, ov::ByteStrea
 
 ov::String StunDataAttribute::ToString() const
 {
-	return StunAttribute::ToString("StunDataAttribute", ov::String::FormatString(", Data length: %d", _data->GetLength()));
+	return StunAttribute::ToString("StunDataAttribute", ov::String::FormatString(", Data length: %zu", _data->GetLength()));
 }

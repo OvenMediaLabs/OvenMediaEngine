@@ -45,7 +45,7 @@ bool StunAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::Byte
 
 	if ((family != StunAddressFamily::IPv4) && (family != StunAddressFamily::IPv6))
 	{
-		logtw("Invalid family: %d", family);
+		logtw("Invalid family: %d", static_cast<int>(family));
 		return false;
 	}
 
@@ -57,7 +57,7 @@ bool StunAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::Byte
 
 	if (stream.IsRemained(address_length) == false)
 	{
-		logtw("Could not read address. (Family: %d, Data is not enough: %d)", family, stream.Remained());
+		logtw("Could not read address. (Family: %d, Data is not enough: %zu)", static_cast<int>(family), stream.Remained());
 		return false;
 	}
 
@@ -87,7 +87,7 @@ bool StunAddressAttributeFormat::Parse(const StunMessage *stun_message, ov::Byte
 		default:
 			// This code never be executed, because it is checked above
 			OV_ASSERT2(false);
-			logtw("Invalid family: %d", family);
+			logtw("Invalid family: %d", static_cast<int>(family));
 			return false;
 	}
 

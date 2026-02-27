@@ -48,11 +48,11 @@ namespace pvd
 	bool StreamMotor::Stop()
 	{
 		_stop_thread_flag = true;
-		close(_epoll_fd);
 		if(_thread.joinable())
 		{
 			_thread.join();
 		}
+		close(_epoll_fd);
 
 		//STOP AND REMOVE ALL STREAM (NEXT)
 		for(const auto &x : _streams)

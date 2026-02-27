@@ -39,7 +39,7 @@ public:
 	FilterBase() = default;
 	virtual ~FilterBase() = default;
 
-	virtual bool Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track) = 0;
+	virtual bool Configure() = 0;
 	virtual bool Start() = 0;
 	virtual void Stop() = 0;
 	

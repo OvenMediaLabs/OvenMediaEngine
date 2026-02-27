@@ -173,7 +173,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			size_t nal_length = read_stream.ReadBE32();
 			if (read_stream.IsRemained(nal_length) == false)
 			{
-				logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 				return false;
 			}
 
@@ -548,8 +548,7 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 			}
 
 			media_track->SetSampleRate(audio_config->Samplerate());
-			media_track->GetChannel().SetLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
-
+			media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 			media_track->SetDecoderConfigurationRecord(audio_config);
 		}
 
@@ -613,7 +612,7 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 	audio_config->SetChannel(adts.ChannelConfiguration());
 
 	media_track->SetSampleRate(audio_config->Samplerate());
-	media_track->GetChannel().SetLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+	media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
 	media_track->SetDecoderConfigurationRecord(audio_config);
 
@@ -821,7 +820,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			size_t nal_length = read_stream.ReadBE32();
 			if (read_stream.IsRemained(nal_length) == false)
 			{
-				logte("NAL length (%d) is greater than buffer length (%d)", nal_length, read_stream.Remained());
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
 				return false;
 			}
 
@@ -1038,7 +1037,7 @@ bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream>
 
 	// The opus has a fixed samplerate of 48000
 	media_track->SetSampleRate(48000);
-	media_track->GetChannel().SetLayout((parser.GetStereoFlag() == 0) ? (AudioChannel::Layout::LayoutMono) : (AudioChannel::Layout::LayoutStereo));
+	media_track->SetChannelLayout(parser.GetStereoFlag() == 0 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
 	return true;
 }
@@ -1062,7 +1061,7 @@ bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> 
 
 	media_track->SetSampleRate(parser.GetSampleRate());
 	media_track->SetBitrateByMeasured(parser.GetBitrate());
-	media_track->GetChannel().SetLayout((parser.GetChannelCount() == 1) ? (AudioChannel::Layout::LayoutMono) : (AudioChannel::Layout::LayoutStereo));
+	media_track->SetChannelLayout(parser.GetChannelCount() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
 	return true;
 }

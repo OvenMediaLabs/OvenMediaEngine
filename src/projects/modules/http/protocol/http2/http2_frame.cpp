@@ -128,7 +128,7 @@ namespace http
 
 				_state = Http2Frame::ParsingState::HeaderParsed;
 
-				logtt("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, _type, _flags, _stream_id);
+				logt("Debug", "[HTTP/2] Frame Header Parsed. Length: %d, Type: %d, Flags: %d, Stream ID: %d", _length, static_cast<int>(_type), _flags, _stream_id);
 
 				return true;
 			}
@@ -136,8 +136,8 @@ namespace http
 			ov::String Http2Frame::ToString() const
 			{
 				return ov::String::FormatString(
-					"<Http2Frame: %p, Type: %d, Flags: %d, Stream ID: %d, Payload Length: %ld>",
-					this, GetType(), GetFlags(), GetStreamId(), GetLength());
+					"<Http2Frame: %p, Type: %d, Flags: %d, Stream ID: %d, Payload Length: %u>",
+					this, static_cast<int>(GetType()), GetFlags(), GetStreamId(), GetLength());
 			}
 
 			std::shared_ptr<ov::Data> Http2Frame::ToData() const

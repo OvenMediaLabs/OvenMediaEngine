@@ -34,7 +34,7 @@ namespace pvd
     bool MultiplexStream::Start()
     {
         // Create Worker
-        _worker_thread_running = true;
+        _worker_thread_running.store(true);
         _worker_thread = std::thread(&MultiplexStream::WorkerThread, this);
         pthread_setname_np(_worker_thread.native_handle(), "Multiplex");
 
@@ -45,12 +45,12 @@ namespace pvd
     {
         ReleaseSourceStreams();
 
-        if (_worker_thread_running == false)
+        if (_worker_thread_running.load() == false)
         {
             return true;
         }
 
-        _worker_thread_running = false;
+        _worker_thread_running.store(false);
 
         if (_worker_thread.joinable())
         {
@@ -104,7 +104,7 @@ namespace pvd
     {
 		ov::logger::ThreadHelper thread_helper;
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             _mux_state = MuxState::Pulling;
             if (PullSourceStreams() == false)
@@ -117,7 +117,7 @@ namespace pvd
             break;
         }
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             _mux_state = MuxState::Playing;
             bool break_loop = false;

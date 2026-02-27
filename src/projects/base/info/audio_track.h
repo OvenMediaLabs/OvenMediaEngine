@@ -9,6 +9,7 @@
 #pragma once
 
 #include <modules/bitstream/aac/audio_specific_config.h>
+#include <shared_mutex>
 
 #include "base/common_types.h"
 
@@ -18,23 +19,26 @@ public:
 	AudioTrack();
 
 	void SetSampleRate(int32_t samplerate);
+	void SetSampleFormat(cmn::AudioSample::Format format);
 	int32_t GetSampleRate() const;
-
-	cmn::AudioSample &GetSample();
 	const cmn::AudioSample &GetSample() const;
 
 	void SetChannel(cmn::AudioChannel channel);
-	cmn::AudioChannel &GetChannel();
+	void SetChannelLayout(cmn::AudioChannel::Layout channel_layout);
+	void SetChannelCount(uint32_t channel_count);
 	const cmn::AudioChannel &GetChannel() const;
+	bool IsValidChannel() const;
+
 
 	void SetAudioSamplesPerFrame(int nbsamples);
 	int GetAudioSamplesPerFrame() const;
 
 protected:
+	mutable std::shared_mutex _amutex;	
+
 	// sample format, sample rate
 	cmn::AudioSample _sample;
 
-	// channel layout
 	cmn::AudioChannel _channel_layout;
 
 	// time_scale

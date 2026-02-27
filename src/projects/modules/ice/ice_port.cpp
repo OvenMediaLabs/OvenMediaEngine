@@ -295,7 +295,7 @@ bool IcePort::AddIceSession(const ov::SocketAddressPair &address_pair, const std
 
 std::shared_ptr<IceSession> IcePort::FindIceSession(session_id_t session_id)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_address_pair_lock);
+	std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
 	auto item = _ice_seesions_with_id.find(session_id);
 	if (item != _ice_seesions_with_id.end())
 	{

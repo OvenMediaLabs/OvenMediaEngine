@@ -48,8 +48,10 @@ public:
 	
 	cmn::Timebase GetInputTimebase() const;
 	cmn::Timebase GetOutputTimebase() const;
-	std::shared_ptr<MediaTrack> &GetInputTrack();
-	std::shared_ptr<MediaTrack> &GetOutputTrack(); 
+	std::shared_ptr<info::Stream> GetInputStreamInfo() const;
+	std::shared_ptr<info::Stream> GetOutputStreamInfo() const;
+	std::shared_ptr<MediaTrack> GetInputTrack() const;
+	std::shared_ptr<MediaTrack> GetOutputTrack() const;
 
 	void SetCompleteHandler(CompleteHandler complete_handler);
 	void OnComplete(TranscodeResult result, std::shared_ptr<MediaFrame> frame);

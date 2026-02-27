@@ -173,7 +173,7 @@ void EncoderWhisper::CodecThread()
 
 			if (format != cmn::AudioSample::Format::Flt || channel_count != 1)
 			{
-				logtw("Unsupported audio format for Whisper encoder. Only mono Flt is supported. pts=%lld, format=%s, channels=%d, sample_rate=%d, nb_samples=%d",
+				logtw("Unsupported audio format for Whisper encoder. Only mono Flt is supported. pts=%" PRId64 ", format=%s, channels=%d, sample_rate=%d, nb_samples=%d",
 					media_frame->GetPts(),
 					format == cmn::AudioSample::Format::None ? "none" : format == cmn::AudioSample::Format::S16 ? "s16" : "other",
 					channel_count,
@@ -205,7 +205,7 @@ void EncoderWhisper::CodecThread()
 			// If we have enough samples, break the loop.
 			if (pcmf32_buffer_new.size() >= static_cast<size_t>(_n_samples_step))
 			{
-				logtt("Collected %zu samples for Whisper processing. pts=%lld", pcmf32_buffer_new.size(), media_frame->GetPts());
+				logtt("Collected %zu samples for Whisper processing. pts=%" PRId64 "", pcmf32_buffer_new.size(), media_frame->GetPts());
 				break;
 			}
 		}
@@ -288,7 +288,7 @@ void EncoderWhisper::CodecThread()
 		wparams.max_len			 = 0;
 
 		logtt("Starting Whisper processing with %d samples", static_cast<int>(pcmf32_buffer.size()));
-		logtt("Audio buffer time range for Whisper: %lld ~ %lld (last_commit_end_cs=%lld)",
+		logtt("Audio buffer time range for Whisper: %" PRId64 " ~ %" PRId64 " (last_commit_end_cs=%" PRId64 ")",
 			buffer_start_cs, buffer_end_cs, last_commit_end_cs);
 		if (whisper_full(_whisper_ctx, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
 		{
@@ -317,12 +317,12 @@ void EncoderWhisper::CodecThread()
 			// 	t1 = buffer_end_cs;
 			// }
 
-			// logti("[%d] t0 : %lld, t1 : %lld, last_commit_end_cs : %lld, text : %s", i, t0, t1, last_commit_end_cs, text);
+			// logti("[%d] t0 : %" PRId64 ", t1 : %" PRId64 ", last_commit_end_cs : %" PRId64 ", text : %s", i, t0, t1, last_commit_end_cs, text);
 
 			// if (t1 <= last_commit_end_cs)
 			// {
 			// 	// This segment has already been committed.
-			// 	logtw("Ignoring Segment: t0=%lld, t1=%lld, last_commit_end_cs=%lld", t0, t1, last_commit_end_cs);
+			// 	logtw("Ignoring Segment: t0=%" PRId64 ", t1=%" PRId64 ", last_commit_end_cs=%" PRId64 "", t0, t1, last_commit_end_cs);
 			// 	continue;
 			// }
 			// else if (t0 < last_commit_end_cs)
@@ -342,7 +342,7 @@ void EncoderWhisper::CodecThread()
 			// 		if (tt1 <= last_commit_end_cs)
 			// 		{
 			// 			// This token has already been committed.
-			// 			//logtw("Ignoring Token: t0=%lld, t1=%lld, last_commit_end_cs=%lld", tt0, tt1, last_commit_end_cs);
+			// 			//logtw("Ignoring Token: t0=%" PRId64 ", t1=%" PRId64 ", last_commit_end_cs=%" PRId64 "", tt0, tt1, last_commit_end_cs);
 			// 			continue;
 			// 		}
 			// 		else 
@@ -350,7 +350,7 @@ void EncoderWhisper::CodecThread()
 			// 			auto token_text = whisper_token_to_str(_whisper_ctx, td.id);
 			// 			if (token_text && *token_text)
 			// 			{
-			// 				logti("\t\tToken Added: t0=%lld, t1=%lld, last_commit_end_cs=%lld, text=%s", tt0, tt1, last_commit_end_cs, token_text);
+			// 				logti("\t\tToken Added: t0=%" PRId64 ", t1=%" PRId64 ", last_commit_end_cs=%" PRId64 ", text=%s", tt0, tt1, last_commit_end_cs, token_text);
 			// 				result_text.Append(token_text);
 			// 			}
 			// 		}
@@ -367,7 +367,7 @@ void EncoderWhisper::CodecThread()
 			last_commit_end_cs = buffer_end_cs;
 		}
 
-		logtt("[%lld] : %s", last_commit_end_cs, result_text.CStr());
+		logtt("[%" PRId64 "] : %s", last_commit_end_cs, result_text.CStr());
 
 		SendVttToProvider(result_text);
 
@@ -464,6 +464,6 @@ ov::String EncoderWhisper::ToTimeString(int64_t ten_ms)
 	int64_t seconds = total_seconds % 60;
 	int64_t milliseconds = (ten_ms % 100) * 10;
 
-	return ov::String::FormatString("%02lld:%02lld:%02lld.%03lld", hours, minutes, seconds, milliseconds);
+	return ov::String::FormatString("%02" PRId64 ":%02" PRId64 ":%02" PRId64 ".%03" PRId64 "", hours, minutes, seconds, milliseconds);
 }
 

@@ -90,11 +90,11 @@ bool TranscodeFilter::CreateInternal()
 	}
 
 	auto name = ov::String::FormatString("filter_%s", cmn::GetMediaTypeString(GetInputTrack()->GetMediaType()));
-	auto urn = std::make_shared<info::ManagedQueue::URN>(
-		_input_stream_info->GetApplicationName(),
-		_input_stream_info->GetName(),
-		"trs",
-		name.LowerCaseString());
+	auto urn  = std::make_shared<info::ManagedQueue::URN>(
+		 GetInputStreamInfo()->GetApplicationName(),
+		 GetInputStreamInfo()->GetName(),
+		 "trs",
+		 name.LowerCaseString());
 	_internal->SetQueueUrn(urn);
 	_internal->SetQueuePolicy(ENABLE_QUEUE_EXCEED_WAIT, MAX_QUEUE_SIZE);
 	_internal->SetCompleteHandler(bind(&TranscodeFilter::OnComplete, this, std::placeholders::_1, std::placeholders::_2));
@@ -102,7 +102,7 @@ bool TranscodeFilter::CreateInternal()
 	_internal->SetOutputTrack(GetOutputTrack());
 
 	// Fault Injection for testing
-	if (TranscodeFaultInjector::GetInstance()->IsEnabled() && (_input_stream_info != _output_stream_info))
+	if (TranscodeFaultInjector::GetInstance()->IsEnabled() && (GetInputStreamInfo() != GetOutputStreamInfo()))
 	{
 		if (TranscodeFaultInjector::GetInstance()->IsTriggered(
 				TranscodeFaultInjector::ComponentType::FilterComponent,
@@ -142,6 +142,8 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 {
 	if (IsNeedUpdate(buffer) == true)
 	{
+		logtd("[%s(%u)] Filter needs to be updated. reinitialize the filter. track:%u, pts:%" PRId64, _input_stream_info->GetUri().CStr(), _input_stream_info->GetId(), GetInputTrack()->GetId(), buffer->GetPts());
+
 		if (CreateInternal() == false)
 		{
 			logte("Failed to regenerate filter");
@@ -179,14 +181,19 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 	bool is_abnormal	   = (last_timestamp != -1LL && diff_timestamp > _timestamp_jump_threshold) ? true : false;
 	if (is_abnormal)
 	{
-		logtw("[%s(%u)] Timestamp changed unexpectedly for track %u. last:%lld, curr:%lld, diff:%lld, threshold:%lld",
-			  _input_stream_info->GetUri().CStr(), _input_stream_info->GetId(),
-			  GetInputTrack()->GetId(), last_timestamp, curr_timestamp, diff_timestamp, _timestamp_jump_threshold);
+		logtw("[%s(%u)] Input timestamp has been changed unexpectedly. track:%u last:%" PRId64 ", curr:%" PRId64 ", diff:%" PRId64 ", threshold:%" PRId64,
+			  _input_stream_info->GetUri().CStr(),
+			  _input_stream_info->GetId(),
+			  GetInputTrack()->GetId(),
+			  last_timestamp,
+			  curr_timestamp,
+			  diff_timestamp,
+			  _timestamp_jump_threshold);
 
 		return true;
 	}
 
-	// Check #2 - Resolution change
+	// Check #2 - Resolution changed. but, this is not warned because it can be a normal case.
 	std::shared_lock<std::shared_mutex> lock(_mutex);
 
 	if (GetInputTrack()->GetMediaType() == MediaType::Video)
@@ -194,9 +201,14 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		if (buffer->GetWidth() != (int32_t)_internal->GetInputWidth() ||
 			buffer->GetHeight() != (int32_t)_internal->GetInputHeight())
 		{
-			logtw("[%s(%u)] Resolution changed for track %u. (%dx%d -> %dx%d)",
-				  _input_stream_info->GetUri().CStr(), _input_stream_info->GetId(),
-				  GetInputTrack()->GetId(), _internal->GetInputWidth(), _internal->GetInputHeight(), buffer->GetWidth(), buffer->GetHeight());
+			logtd("[%s(%u)] input video frame resolution has been changed. track:%u. Size:%dx%d -> %dx%d",
+				  _input_stream_info->GetUri().CStr(),
+				  _input_stream_info->GetId(),
+				  GetInputTrack()->GetId(),
+				  _internal->GetInputWidth(),
+				  _internal->GetInputHeight(),
+				  buffer->GetWidth(),
+				  buffer->GetHeight());
 
 			GetInputTrack()->SetWidth(buffer->GetWidth());
 			GetInputTrack()->SetHeight(buffer->GetHeight());
@@ -278,12 +290,22 @@ cmn::Timebase TranscodeFilter::GetOutputTimebase() const
 	return _internal->GetOutputTimebase();
 }
 
-std::shared_ptr<MediaTrack>& TranscodeFilter::GetInputTrack()
+std::shared_ptr<info::Stream> TranscodeFilter::GetInputStreamInfo() const
+{
+	return _input_stream_info;
+}
+
+std::shared_ptr<info::Stream> TranscodeFilter::GetOutputStreamInfo() const
+{
+	return _output_stream_info;
+}
+
+std::shared_ptr<MediaTrack> TranscodeFilter::GetInputTrack() const
 {
 	return _input_track;
 }
 
-std::shared_ptr<MediaTrack>& TranscodeFilter::GetOutputTrack()
+std::shared_ptr<MediaTrack> TranscodeFilter::GetOutputTrack() const
 {
 	return _output_track;
 }

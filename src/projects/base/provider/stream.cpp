@@ -145,7 +145,7 @@ namespace pvd
 				return false;
 			}
 
-			logtt("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %lld, elapsed_from_last_media_timestamp: %lld, timestamp: %lld ms",
+			logtt("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %" PRId64 ", elapsed_from_last_media_timestamp: %" PRId64 ", timestamp: %" PRId64 " ms",
 				  GetApplicationName(), GetName().CStr(), GetId(),
 				  _last_media_timestamp_ms, _elapsed_from_last_media_timestamp.Elapsed(), timestamp_in_ms);
 		}
@@ -164,7 +164,7 @@ namespace pvd
 				double keyframe_interval_duration = keyframe_interval_duration_ms / 1000.0 * data_track->GetTimeBase().GetTimescale();
 				timestamp_in_tb += std::ceil(keyframe_interval_duration);
 
-				logti("SendDataFrame - %s/%s(%u) - timestamp: %lld tb, keyframe_interval_duration_ms: %f ms, keyframe_interval_duration: %f tb, keyframe_interval: %f, framerate: %f",
+				logti("SendDataFrame - %s/%s(%u) - timestamp: %" PRId64 " tb, keyframe_interval_duration_ms: %f ms, keyframe_interval_duration: %f tb, keyframe_interval: %f, framerate: %f",
 				GetApplicationName(), GetName().CStr(), GetId(), timestamp_in_tb, keyframe_interval_duration_ms, std::ceil(keyframe_interval_duration), first_video_track->GetKeyFrameInterval(), first_video_track->GetFrameRate());
 			}
 		}
@@ -628,7 +628,7 @@ namespace pvd
 		// for debugging
 		int64_t pts_s = rescale(final_pts_tb, 1 * tb_num, tb_den);
 		int64_t dts_s = rescale(final_dts_tb, 1 * tb_num, tb_den);
-		logti("[%s/%s(%d)] track:%3d, pts (in : %8lld -> out : %8lld (%8llds)), dts (in : %8lld -> out : %8lld (%8llds)), tb:%d/%d / starttime:%lld (%lld us), basetime:%lld (%lld us)",
+		logti("[%s/%s(%d)] track:%3d, pts (in : %8lld -> out : %8lld (%8llds)), dts (in : %8lld -> out : %8lld (%8llds)), tb:%d/%d / starttime:%" PRId64 " (%" PRId64 " us), basetime:%" PRId64 " (%" PRId64 " us)",
 				_application->GetVHostAppName().CStr(), GetName().CStr(), GetId(), track_id,
 				pts, final_pts_tb, pts_s,
 				dts, final_dts_tb, dts_s,
@@ -697,7 +697,7 @@ namespace pvd
 		// First timestamp
 		if (_source_timestamp_map.find(track_id) == _source_timestamp_map.end())
 		{
-			logtt("New track timestamp(%u) : curr(%lld)", track_id, timestamp);
+			logtt("New track timestamp(%u) : curr(%" PRId64 ")", track_id, timestamp);
 			_source_timestamp_map[track_id] = timestamp;
 
 			// Start with zero
@@ -712,13 +712,13 @@ namespace pvd
 			// If the last timestamp exceeds 99.99%, it is judged to be wrapped around.
 			if (_source_timestamp_map[track_id] > ((double)max_timestamp * 99.99) / 100)
 			{
-				logtt("Wrapped around(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
+				logtt("Wrapped around(%u) : last(%" PRId64 ") curr(%" PRId64 ")", track_id, _source_timestamp_map[track_id], timestamp);
 				delta = (max_timestamp - _source_timestamp_map[track_id]) + timestamp;
 			}
 			// Otherwise, the source might be changed. (restarted)
 			else
 			{
-				logtt("Source changed(%u) : last(%lld) curr(%lld)", track_id, _source_timestamp_map[track_id], timestamp);
+				logtt("Source changed(%u) : last(%" PRId64 ") curr(%" PRId64 ")", track_id, _source_timestamp_map[track_id], timestamp);
 				delta = 0;
 			}
 		}

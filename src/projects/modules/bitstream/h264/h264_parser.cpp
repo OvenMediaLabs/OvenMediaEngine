@@ -121,7 +121,7 @@ bool H264Parser::ParseNalUnitHeader(const uint8_t *nalu, size_t length, H264NalU
 {
 	if (length < H264_NAL_UNIT_HEADER_SIZE)
 	{
-		logte("Invalid NALU header (length: %d)", length);
+		logte("Invalid NALU header (length: %zu)", length);
 		return false;
 	}
 
@@ -453,7 +453,7 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 			return false;
 		}
 
-		logtt("Parsed SPS resolution: coded(%lld x %lld), crop(%lld x %lld), display(%lld x %lld)",
+		logtt("Parsed SPS resolution: coded(%" PRId64 " x %" PRId64 "), crop(%" PRId64 " x %" PRId64 "), display(%" PRId64 " x %" PRId64 ")",
 			  coded_width, coded_height,
 			  crop_x, crop_y,
 			  display_width, display_height);

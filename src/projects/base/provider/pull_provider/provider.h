@@ -26,11 +26,8 @@ namespace pvd
 			ERROR
 		};
 
-		PullingItem(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, const std::vector<ov::String> &url_list, off_t offset)
-			: _vhost_app_name(vhost_app_name),
-			_stream_name(stream_name),
-			_url_list(url_list),
-			_offset(offset)
+		PullingItem(const ov::String &key)
+			: _key(key)
 		{
 		}
 
@@ -60,12 +57,9 @@ namespace pvd
 		}
 
 	private:
-		info::VHostAppName		_vhost_app_name;
-		ov::String				_stream_name;
-		std::vector<ov::String> _url_list;
-		off_t 					_offset;
-		PullingItemState		_state = PullingItemState::PULLING;
-		std::shared_mutex 		_mutex;
+		ov::String _key;
+		std::atomic<PullingItemState> _state = PullingItemState::PULLING;
+		std::shared_mutex _mutex;
 	};
 
 	class PullApplication;
@@ -84,8 +78,8 @@ namespace pvd
 		PullProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		virtual ~PullProvider() override;
 
-		bool LockPullStreamIfNeeded(const info::Application &app_info, const ov::String &stream_name, const std::vector<ov::String> &url_list, off_t offset);
-		bool UnlockPullStreamIfNeeded(const info::Application &app_info, const ov::String &stream_name, PullingItem::PullingItemState state);
+		std::shared_ptr<PullingItem> LockPullStreamIfNeeded(const ov::String &key);
+		bool UnlockPullStreamIfNeeded(const ov::String &key, const std::shared_ptr<PullingItem> &item, PullingItem::PullingItemState state);
 
 		//--------------------------------------------------------------------
 		// Implementation of PullProviderModuleInterface

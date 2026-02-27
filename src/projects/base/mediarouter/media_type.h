@@ -674,6 +674,11 @@ namespace cmn
 			return (double)_den / (double)_num;
 		}
 
+		bool IsValid() const
+		{
+			return (_num > 0) && (_den > 0);
+		}
+
 		bool operator==(const Timebase &timebase) const
 		{
 			return (timebase._num == _num) && (timebase._den == _den);
@@ -953,6 +958,11 @@ namespace cmn
 
 	public:
 		AudioChannel()	= default;
+		AudioChannel(AudioChannel::Layout layout)
+		{
+			SetLayout(layout);
+		}
+		
 		~AudioChannel() = default;
 
 		AudioChannel &operator=(const AudioChannel &audio_channel) noexcept
@@ -1042,6 +1052,11 @@ namespace cmn
 		const char *GetName() const
 		{
 			return _name.c_str();
+		}
+
+		bool IsValid() const
+		{
+			return _layout != Layout::LayoutUnknown && _count > 0;
 		}
 
 	private:

@@ -249,7 +249,7 @@ std::shared_ptr<TranscodeDecoder> TranscodeDecoder::Create(
 		}
 		else
 		{
-			OV_ASSERT(false, "Not supported codec: %d", track->GetCodecId());
+			OV_ASSERT(false, "Not supported codec: %d", static_cast<int>(track->GetCodecId()));
 		}
 
 		// If the decoder is not created, try the next candidate.
@@ -288,13 +288,14 @@ TranscodeDecoder::TranscodeDecoder(info::Stream stream_info)
 
 TranscodeDecoder::~TranscodeDecoder()
 {
-	if (_codec_context != nullptr)
+	Stop();
+
+	if (_codec_context)
 	{
-		if (_codec_context->codec != nullptr && _codec_context->codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
+		if (_codec_context->codec)
 		{
 			::avcodec_flush_buffers(_codec_context);
 		}
-
 		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
 
@@ -320,19 +321,36 @@ void TranscodeDecoder::SetDecoderId(int32_t decoder_id)
 	_decoder_id = decoder_id;
 }
 
+AVCodecParserContext *TranscodeDecoder::GetParser() const
+{
+	return _parser;
+}
+
 bool TranscodeDecoder::Configure(std::shared_ptr<MediaTrack> track)
 {
+	// Set track information
 	if (track == nullptr)
 	{
 		return false;
 	}
 	_track = track;
 
+	// Set the input buffer information 
 	auto name = ov::String::FormatString("dec_%s_t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId());
 	auto urn = std::make_shared<info::ManagedQueue::URN>(_stream_info.GetApplicationInfo().GetVHostAppName(), _stream_info.GetName(), "trs", name);
 	_input_buffer.SetUrn(urn);
 	_input_buffer.SetThreshold(MAX_QUEUE_SIZE);
 
+	// Set bitstream parser
+	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
+	if (_parser == nullptr)
+	{
+		logte("Bitstream parser not found");
+		return false;
+	}
+	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
+
+	// Start decoding thread
 	try
 	{
 		_kill_flag = false;
@@ -359,18 +377,16 @@ bool TranscodeDecoder::Configure(std::shared_ptr<MediaTrack> track)
 
 void TranscodeDecoder::Stop()
 {
-	_kill_flag = true;
-
-	_input_buffer.Stop();
-
 	if (_codec_thread.joinable())
 	{
+		_kill_flag = true;
+		_input_buffer.Stop();
 		_codec_thread.join();
 
-		logtt(ov::String::FormatString("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID())).CStr());
-	}
+		tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());
 
-	tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());	
+		logtt("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID()));
+	}
 }
 
 void TranscodeDecoder::SendBuffer(std::shared_ptr<const MediaPacket> packet)

@@ -7,7 +7,7 @@
 
 namespace mon
 {
-#define THROUGHPUT_MEASURE_INTERVAL 1
+#define THROUGHPUT_MEASURE_INTERVAL_MS 1000 // 1s
 
 	CommonMetrics::CommonMetrics()
 	{
@@ -26,8 +26,7 @@ namespace mon
 		_last_throughtput_out		  = 0;
 		_last_total_bytes_out		  = 0;
 
-		_last_throughput_measure_time = std::chrono::system_clock::now();
-
+		_last_throughput_measure_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 		_max_total_connection_time	  = std::chrono::system_clock::now();
 		_last_recv_time				  = std::chrono::system_clock::now();
 		_last_sent_time				  = std::chrono::system_clock::now();
@@ -250,16 +249,18 @@ namespace mon
 
 	void CommonMetrics::UpdateThroughput()
 	{
-		auto throughput_measure_time = std::chrono::system_clock::now();
-		if ((throughput_measure_time - _last_throughput_measure_time) > std::chrono::seconds(THROUGHPUT_MEASURE_INTERVAL))
+		auto now_ms	 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		auto last_ms = _last_throughput_measure_time.load();
+		// Bug fix: use compare_exchange_strong to prevent multiple threads from updating simultaneously
+		if ((now_ms - last_ms) > THROUGHPUT_MEASURE_INTERVAL_MS && _last_throughput_measure_time.compare_exchange_strong(last_ms, now_ms))
 		{
-			_last_throughput_measure_time = throughput_measure_time;
+			int32_t interval_sec = THROUGHPUT_MEASURE_INTERVAL_MS / 1000;
 
 			// Calculate last second throughput of provider
 			_last_throughtput_in		  = (_total_bytes_in.load() - _last_total_bytes_in.load());
 
 			// Calculate average throughput of provider
-			_avg_throughtput_in			  = (_total_bytes_in.load() - _last_total_bytes_in.load()) * 8 / THROUGHPUT_MEASURE_INTERVAL;
+			_avg_throughtput_in			  = (_total_bytes_in.load() - _last_total_bytes_in.load()) * 8 / interval_sec;
 			if (_avg_throughtput_in.load() > _max_throughtput_in.load())
 			{
 				_max_throughtput_in.store(_avg_throughtput_in);
@@ -270,12 +271,16 @@ namespace mon
 			_last_throughtput_out = (_total_bytes_out.load() - _last_total_bytes_out.load());
 
 			// Calculate average throughput of publisher
-			_avg_throughtput_out  = (_total_bytes_out.load() - _last_total_bytes_out.load()) * 8 / THROUGHPUT_MEASURE_INTERVAL;
+			_avg_throughtput_out  = (_total_bytes_out.load() - _last_total_bytes_out.load()) * 8 / interval_sec;
 			if (_avg_throughtput_out.load() > _max_throughtput_out.load())
 			{
 				_max_throughtput_out.store(_avg_throughtput_out);
 			}
 			_last_total_bytes_out.store(_total_bytes_out);
+
+			logt("CommonMetrics", "Throughput updated. In: %s/s In(Avg): %s/s, Out: %s/s Out(Avg): %s/s",
+				 ov::Converter::BitToString(_last_throughtput_in.load()).CStr(), ov::Converter::BitToString(_avg_throughtput_in.load()).CStr(),
+				 ov::Converter::BitToString(_last_throughtput_out.load()).CStr(), ov::Converter::BitToString(_avg_throughtput_out.load()).CStr());
 		}
 	}
 }  // namespace mon

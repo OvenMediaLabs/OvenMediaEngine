@@ -24,7 +24,7 @@ void H264BitstreamAnalyzer::ValidateNalUnit(const uint8_t *nal_unit_payload, siz
 	{
 		if (GET_NAL_REF_IDC(nal_unit_header) != kH264SpsPpsNalRefIdc)
 		{
-			logte("Invalid nal_ref_idc value for unit type %u", nal_unit_type);
+			logte("Invalid nal_ref_idc value for unit type %u", static_cast<unsigned int>(nal_unit_type));
 			return;
 		}
 		NalUnitBitstreamParser parser(nal_unit_payload, length);
@@ -81,17 +81,17 @@ void H264BitstreamAnalyzer::ValidateNalUnit(const uint8_t *nal_unit_payload, siz
 			int16_t expected_nal_ref_idc = GetSliceTypeNalRefIdc(static_cast<uint8_t>(slice_type));
 			if (expected_nal_ref_idc != -1 && nal_ref_idc != expected_nal_ref_idc)
 			{
-				logte("Invalid nal_ref_idc value %u for NAL unit type %u/slice type %u, expected value is %u", nal_ref_idc, nal_unit_type, slice_type, expected_nal_ref_idc);
+				logte("Invalid nal_ref_idc value %u for NAL unit type %u/slice type %u, expected value is %u", nal_ref_idc, static_cast<unsigned int>(nal_unit_type), slice_type, expected_nal_ref_idc);
 				return;
 			}
 			if (known_pps_ids_.find(pps_id) == known_pps_ids_.end())
 			{
-				logte("Slice with type %u references a PPS with unknown id %u", nal_unit_type, pps_id);
+				logte("Slice with type %u references a PPS with unknown id %u", static_cast<unsigned int>(nal_unit_type), pps_id);
 			}
 		}
 		else
 		{
-			logte("Failed to parse slice with type %u", nal_unit_type);
+			logte("Failed to parse slice with type %u", static_cast<unsigned int>(nal_unit_type));
 		}
 	}
 }

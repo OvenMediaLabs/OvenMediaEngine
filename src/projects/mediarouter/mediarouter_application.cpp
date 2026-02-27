@@ -179,7 +179,7 @@ bool MediaRouteApplication::RegisterConnectorApp(std::shared_ptr<MediaRouterAppl
 
 	_connectors.push_back(connector);
 
-	logtt("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
+	logtt("Registered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(connector->GetConnectorType()));
 
 	return true;
 }
@@ -202,7 +202,7 @@ bool MediaRouteApplication::UnregisterConnectorApp(std::shared_ptr<MediaRouterAp
 
 	_connectors.erase(position);
 
-	logti("Unregistered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), connector->GetConnectorType());
+	logti("Unregistered connector. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(connector->GetConnectorType()));
 
 	return true;
 }
@@ -218,7 +218,7 @@ bool MediaRouteApplication::RegisterObserverApp(std::shared_ptr<MediaRouterAppli
 
 	_observers.push_back(observer);
 
-	logtt("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
+	logtt("Registered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(observer->GetObserverType()));
 
 	return true;
 }
@@ -240,7 +240,7 @@ bool MediaRouteApplication::UnregisterObserverApp(std::shared_ptr<MediaRouterApp
 
 	_observers.erase(position);
 
-	logti("Unregistered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), observer->GetObserverType());
+	logti("Unregistered observer. app(%s) type(%d)", _application_info.GetVHostAppName().CStr(), static_cast<int>(observer->GetObserverType()));
 
 	return true;
 }
@@ -452,12 +452,14 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Stream> &stream_info, MediaRouterApplicationConnector::ConnectorType connector_type)
 {
 	std::shared_lock<std::shared_mutex> lock(_observers_lock);
+	auto observers = _observers; // Avoid deadlock
+	lock.unlock();
 
 	logti("[%s/%s(%u)] Stream has been created", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId());
 
 	auto representation_type = stream_info->GetRepresentationType();
 
-	for (auto observer : _observers)
+	for (auto observer : observers)
 	{
 		auto observer_type = observer->GetObserverType();
 

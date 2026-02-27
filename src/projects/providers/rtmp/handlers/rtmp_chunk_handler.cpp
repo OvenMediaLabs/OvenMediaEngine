@@ -1895,7 +1895,7 @@ namespace pvd::rtmp
 	{
 		SetIf(_meta_data_context.audio.samplerate, [&](auto samplerate) { media_track->SetSampleRate(samplerate); });
 		SetIf(_meta_data_context.audio.bitrate, [&](auto bitrate) { media_track->SetBitrateByConfig(bitrate * 1000); });
-		SetIf(_meta_data_context.audio.channel_layout, [&](auto channel_layout) { media_track->GetChannel().SetLayout(channel_layout); });
+		SetIf(_meta_data_context.audio.channel_layout, [&](auto channel_layout) { media_track->SetChannelLayout(channel_layout); });
 	}
 
 	void RtmpChunkHandler::FillVideoMetadata(const std::shared_ptr<MediaTrack> &media_track)

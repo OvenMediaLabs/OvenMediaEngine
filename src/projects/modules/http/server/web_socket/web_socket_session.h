@@ -48,6 +48,17 @@ namespace http
 				// For User Data
 				void AddUserData(ov::String key, std::variant<bool, uint64_t, ov::String> value);
 				std::tuple<bool, std::variant<bool, uint64_t, ov::String>> GetUserData(ov::String key);
+				template <typename T>
+				std::optional<T> GetUserDataAs(ov::String key)
+				{
+					auto [exist, value] = GetUserData(key);
+					if ((exist == false) || (std::holds_alternative<T>(value) == false))
+					{
+						return std::nullopt;
+					}
+
+					return std::get<T>(value);
+				}
 
 			private:
 				// key : data<int or string>

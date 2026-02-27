@@ -237,7 +237,7 @@ std::tuple<AccessController::VerificationResult, std::shared_ptr<const Admission
 	return InvokeAdmissionWebhook(
 		host_info,
 		request_info,
-		500,
+		std::nullopt,
 		AdmissionWebhooks::Status::Code::CLOSING,
 		[&request_info](const ov::String &control_server_url_address,
 						const std::shared_ptr<const ov::SocketAddress> &client_address,

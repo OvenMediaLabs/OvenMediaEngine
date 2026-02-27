@@ -102,7 +102,7 @@ private:
 	Role _role = Role::UNDEFINED;
 
 	// Global state among all candidate pairs
-    IceConnectionState _state = IceConnectionState::New;
+    std::atomic<IceConnectionState> _state{IceConnectionState::New};
 
     // Candidate pairs
 	mutable std::shared_mutex _connected_candidate_pair_mutex;

@@ -73,7 +73,7 @@ void FilterFps::SetOutputFrameRate(double framerate)
 												   av_inv_q(av_d2q(framerate, INT_MAX)),
 												   (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
 
-		// logtt("Change NextPTS : %lld -> %lld", _next_pts, scaled_next_pts);
+		// logtt("Change NextPTS : %" PRId64 " -> %" PRId64 "", _next_pts, scaled_next_pts);
 
 		_next_pts = scaled_next_pts;
 	}
@@ -117,7 +117,7 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 
 	if ((scaled_pts - _last_input_scaled_pts) != 1 && _last_input_scaled_pts != AV_NOPTS_VALUE)
 	{
-		// logtt("PTS is not continuous. lastPts(%lld/%lld) -> currPts(%lld/%lld)", _last_input_scaled_pts, _last_input_pts, scaled_pts, media_frame->GetPts());
+		// logtt("PTS is not continuous. lastPts(%" PRId64 "/%" PRId64 ") -> currPts(%" PRId64 "/%" PRId64 ")", _last_input_scaled_pts, _last_input_pts, scaled_pts, media_frame->GetPts());
 	}
 
 	_last_input_pts = media_frame->GetPts();
@@ -133,7 +133,7 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 	_frames.push_back(media_frame);
 
 #if 0
-	logtt("Push Frame. PTS(%lld) -> PTS(%lld) (%d/%d) -> (%d/%d)",
+	logtt("Push Frame. PTS(%" PRId64 ") -> PTS(%" PRId64 ") (%d/%d) -> (%d/%d)",
 		_last_input_pts, _last_input_scaled_pts,
 		_input_timebase.GetNum(),  _input_timebase.GetDen(),
 		av_inv_q(av_d2q(_output_framerate, INT_MAX)).num, av_inv_q(av_d2q(_output_framerate, INT_MAX)).den);
@@ -201,7 +201,7 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 			// Calculate actual output frames per second
 			_stat_output_frame_per_second = (double)(_stat_actual_output_frame_count - _last_stat_output_frame_count) * (1000.0 / (double)elapsed_time);
 			
-			// logtt("stat: skip_frames:%d, ideal_output_frames:%lld, actual_output_frames:%lld, curr_fps:%.2f, average_fps:%.2f", 
+			// logtt("stat: skip_frames:%d, ideal_output_frames:%" PRId64 ", actual_output_frames:%" PRId64 ", curr_fps:%.2f, average_fps:%.2f", 
 			// 	_skip_frames, _stat_ideal_output_frame_count, _stat_actual_output_frame_count, _stat_output_frame_per_second, 
 			// 	_stat_ideal_output_frame_count / (_timer.TotalElapsed() / 1000));
 
@@ -232,11 +232,11 @@ double FilterFps::GetExpectedOutputFramesPerSecond() const
 ov::String FilterFps::GetStatsString()
 {
 	ov::String stat;
-	stat.Format("InputFrameCount: %lld\n", _stat_input_frame_count);
-	stat.Append("OutputFrameCount: %lld\n", _stat_ideal_output_frame_count);
-	stat.Append("SkipFrameCount: %lld\n", _stat_skip_frame_count);
-	stat.Append("DuplicateFrameCount : %lld\n", _stat_duplicate_frame_count);
-	stat.Append("DiscardFrameCount : %lld\n", _stat_discard_frame_count);
+	stat.Format("InputFrameCount: %" PRId64 "\n", _stat_input_frame_count);
+	stat.Append("OutputFrameCount: %" PRId64 "\n", _stat_ideal_output_frame_count);
+	stat.Append("SkipFrameCount: %" PRId64 "\n", _stat_skip_frame_count);
+	stat.Append("DuplicateFrameCount : %" PRId64 "\n", _stat_duplicate_frame_count);
+	stat.Append("DiscardFrameCount : %" PRId64 "\n", _stat_discard_frame_count);
 
 	return stat;
 }

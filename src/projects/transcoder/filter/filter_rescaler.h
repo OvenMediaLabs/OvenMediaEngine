@@ -21,7 +21,7 @@ public:
 	FilterRescaler();
 	~FilterRescaler();
 
-	bool Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track) override;
+	bool Configure() override;
 	bool Start() override;
 	void Stop() override;
 

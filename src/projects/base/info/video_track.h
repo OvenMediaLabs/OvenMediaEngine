@@ -46,7 +46,8 @@ public:
 	void SetMaxHeight(int32_t max_height);
 	int32_t GetHeight() const;
 	int32_t GetMaxHeight() const;
-
+	bool IsValidResolution() const;
+	
 	void SetHeightByConfig(int32_t height);
 	int32_t GetHeightByConfig() const;
 
@@ -112,6 +113,7 @@ public:
 	ov::String GetExtraEncoderOptionsByConfig() const;
 
 protected:
+	mutable std::shared_mutex _vmutex;
 
 	// framerate (measurement)
 	double _framerate = 0;

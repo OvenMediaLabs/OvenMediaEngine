@@ -123,7 +123,7 @@ namespace http
 					case FrameParseStatus::Completed:
 						[[fallthrough]];
 					case FrameParseStatus::Error:
-						OV_ASSERT(false, "Invalid last status: %d, %p", _last_status, this);
+						OV_ASSERT(false, "Invalid last status: %d, %p", static_cast<int>(_last_status), this);
 						// If parsing has already been completed or an error has occurred, if data comes in again, it is considered an error
 						_last_status = FrameParseStatus::Error;
 						*read_bytes = -1;

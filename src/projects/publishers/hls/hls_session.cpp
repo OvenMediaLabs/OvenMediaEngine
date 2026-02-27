@@ -118,7 +118,7 @@ void HlsSession::OnConnectionDisconnected(uint32_t connection_id)
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
 	_last_request_time.erase(connection_id);
 
-	logtt("TsSession(%u) : Disconnected from %u : size(%d)", GetId(), connection_id, _last_request_time.size());
+	logtt("TsSession(%u) : Disconnected from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
 }
 
 bool HlsSession::IsNoConnection() const

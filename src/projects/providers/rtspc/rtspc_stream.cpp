@@ -183,7 +183,7 @@ namespace pvd
 			return false;
 		}
 
-		logtt("Requested url[%d] : %s", strlen(_curr_url->Source().CStr()), _curr_url->Source().CStr());
+		logtt("Requested url[%zu] : %s", _curr_url->Source().GetLength(), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
 		auto upper_scheme = scheme.UpperCaseString();
@@ -612,7 +612,7 @@ namespace pvd
 					track->SetMediaType(cmn::MediaType::Audio);
 					track->SetCodecId(cmn::MediaCodecId::Aac);
 					track->SetOriginBitstream(cmn::BitstreamFormat::AAC_MPEG4_GENERIC);
-					track->GetChannel().SetCount(std::atoi(first_payload->GetCodecParams()));
+					track->SetChannelCount(std::atoi(first_payload->GetCodecParams()));
 					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::MPEG4_GENERIC_AUDIO;
 					break;
 
@@ -620,7 +620,7 @@ namespace pvd
 					track->SetMediaType(cmn::MediaType::Audio);
 					track->SetCodecId(cmn::MediaCodecId::Opus);
 					track->SetOriginBitstream(cmn::BitstreamFormat::OPUS_RTP_RFC_7587);
-					track->GetChannel().SetCount(std::atoi(first_payload->GetCodecParams()));
+					track->SetChannelCount(std::atoi(first_payload->GetCodecParams()));
 					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::OPUS;
 					break;
 
@@ -1286,7 +1286,7 @@ namespace pvd
 			return;
 		}
 
-		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%lld) Time scale(%f) Adjust Timestamp(%f)",
+		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
@@ -1300,7 +1300,7 @@ namespace pvd
 												   bitstream_format,
 												   packet_type);
 
-		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), bitstream_format, packet_type, bitstream->GetLength(), first_rtp_packet->Timestamp());
+		logtt("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%zu) pts(%u)", track->GetId(), static_cast<int>(track->GetCodecId()), static_cast<int>(bitstream_format), static_cast<int>(packet_type), bitstream->GetLength(), first_rtp_packet->Timestamp());
 
 		// Send SPS/PPS if stream is H264
 		if (_sent_sequence_header == false && track->GetCodecId() == cmn::MediaCodecId::H264 && _h264_extradata_nalu != nullptr)

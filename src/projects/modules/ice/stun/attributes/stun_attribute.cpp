@@ -50,7 +50,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 {
 	if(stream.Remained() % 4 != 0)
 	{
-		logtw("Invalid padding: %d bytes", stream.Remained());
+		logtw("Invalid padding: %zu bytes", stream.Remained());
 		return nullptr;
 	}
 
@@ -60,14 +60,14 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 
 	if(stream.Remained() < padded_length)
 	{
-		logtw("Data is too short: type: 0x%04X, data length: %d (expected: %d)", type, stream.Remained(), padded_length);
+		logtw("Data is too short: type: 0x%04X, data length: %zu (expected: %d)", static_cast<uint16_t>(type), stream.Remained(), padded_length);
 		return nullptr;
 	}
 
 #if STUN_LOG_DATA
 	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...\n%s", type, length, padded_length, stream.Dump(padded_length).CStr());
 #else // STUN_LOG_DATA
-	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", type, length, padded_length);
+	logtt("Parsing attribute: type: 0x%04X, length: %d (padded: %d)...", static_cast<uint16_t>(type), length, padded_length);
 #endif // STUN_LOG_DATA
 
 #if DEBUG
@@ -91,14 +91,14 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 	if(attribute == nullptr)
 	{
 		// Unimplemented attributes
-		logtt("Skipping attribute (not implemented): 0x%04X (%d bytes)...", type, length);
+		logtt("Skipping attribute (not implemented): 0x%04X (%d bytes)...", static_cast<uint16_t>(type), length);
 		stream.Skip<uint8_t>(length);
 	}
 	else
 	{
 		if(attribute->Parse(stun_message, stream) == false)
 		{
-			logtw("Could not parse attribute: type: 0x%04X, length: %d", type, length);
+			logtw("Could not parse attribute: type: 0x%04X, length: %d", static_cast<uint16_t>(type), length);
 			return nullptr;
 		}
 
@@ -183,7 +183,7 @@ std::shared_ptr<StunAttribute> StunAttribute::CreateAttribute(const StunMessage 
 					break;
 
 				default:
-					logtt("Unknown attributes: %d (%x, length: %d)", type, type, length);
+					logtt("Unknown attributes: %d (%x, length: %d)", static_cast<int>(type), static_cast<uint16_t>(type), length);
 					break;
 			}
 
@@ -353,5 +353,5 @@ ov::String StunAttribute::ToString(const char *class_name, const char *suffix) c
 		type.Format("%s", StringFromType());
 	}
 
-	return ov::String::FormatString("<%s: %s, length: %d%s>", class_name, type.CStr(), _length, suffix);
+	return ov::String::FormatString("<%s: %s, length: %zu%s>", class_name, type.CStr(), _length, suffix);
 }

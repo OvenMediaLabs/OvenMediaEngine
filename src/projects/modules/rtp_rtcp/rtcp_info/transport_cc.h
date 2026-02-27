@@ -53,6 +53,8 @@ public:
 		bool _received = false;
 		uint8_t _delta_size = 0; // 0, 1, 2, 3
 		int32_t _received_delta = 0;	// 1/4000 scale
+
+		int64_t _arrival_time_ms = 0;
 	};
 
 	///////////////////////////////////////////
@@ -81,15 +83,15 @@ public:
 	}
 	
 	// Common Feedback
-	uint32_t GetSenderSsrc(){return _sender_ssrc;}
+	uint32_t GetSenderSsrc() const {return _sender_ssrc;}
 	void SetSenderSsrc(uint32_t ssrc){_sender_ssrc = ssrc;}
-	uint32_t GetMediaSsrc(){return _media_ssrc;}
+	uint32_t GetMediaSsrc() const {return _media_ssrc;}
 	void SetMediaSsrc(uint32_t ssrc){_media_ssrc = ssrc;}
 
 	// Transport Feedback
-	uint16_t GetBaseSequenceNumber(){return _base_sequence_number;}
-	int32_t GetReferenceTime(){return _reference_time;}
-	uint16_t GetPacketStatusCount(){return _packet_status_count;}
+	uint16_t GetBaseSequenceNumber() const {return _base_sequence_number;}
+	int32_t GetReferenceTime() const {return _reference_time;}
+	uint16_t GetPacketStatusCount() const {return _packet_status_count;}
 
 	// Setter
 	void SetBaseSequenceNumber(uint16_t base_sequence_number)
@@ -108,7 +110,7 @@ public:
 	bool AddPacketFeedbackInfo(const std::shared_ptr<PacketFeedbackInfo> &packet_feedback_info);
 
 	// 0 ~ StatusCount - 1
-	std::shared_ptr<const PacketFeedbackInfo> GetPacketFeedbackInfo(uint32_t index)
+	std::shared_ptr<const PacketFeedbackInfo> GetPacketFeedbackInfo(uint32_t index) const
 	{
 		if (index >= _packet_status_count)
 		{
@@ -118,13 +120,13 @@ public:
 	}
 
 	// Get _packet_feedbacks
-	const std::vector<std::shared_ptr<PacketFeedbackInfo>> &GetPacketFeedbacks()
+	const std::vector<std::shared_ptr<PacketFeedbackInfo>> &GetPacketFeedbacks() const
 	{
 		return _packet_feedbacks;
 	}
 
 private:
-	uint8_t GetDeltaSize(uint8_t symbol)
+	uint8_t GetDeltaSize(uint8_t symbol) const
 	{
 		if (symbol == 1)
 		{

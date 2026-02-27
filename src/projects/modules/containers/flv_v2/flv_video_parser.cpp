@@ -411,7 +411,7 @@ namespace modules
 						{
 							logaw("Not supported video_fourcc: %s (%08X)",
 								  FourCcToString(video_data->video_fourcc.value()),
-								  video_data->video_fourcc.value());
+								  static_cast<unsigned int>(video_data->video_fourcc.value()));
 						}
 						else
 						{
@@ -621,7 +621,7 @@ namespace modules
 					if (video_codec_id != VideoCodecId::Avc)
 					{
 						logae("Unsupported video codec id: %s (%d, 0x%02X)",
-							  EnumToString(video_codec_id), video_codec_id, video_codec_id);
+							  EnumToString(video_codec_id), static_cast<int>(video_codec_id), static_cast<unsigned int>(video_codec_id));
 						return false;
 					}
 

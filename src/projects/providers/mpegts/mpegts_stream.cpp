@@ -176,7 +176,7 @@ namespace pvd
 					SendFrame(media_packet);
 				}
 
-				logtt("Frame - PID(%d) AdjustPTS(%lld) AdjustDTS(%lld) PTS(%lld) DTS(%lld) Size(%d)", es->PID(), pts, dts, origin_pts, origin_dts, es->PayloadLength());
+				logtt("Frame - PID(%d) AdjustPTS(%" PRId64 ") AdjustDTS(%" PRId64 ") PTS(%" PRId64 ") DTS(%" PRId64 ") Size(%d)", es->PID(), pts, dts, origin_pts, origin_dts, es->PayloadLength());
 			}
 		}
 

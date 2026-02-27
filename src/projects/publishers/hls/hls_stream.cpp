@@ -437,7 +437,7 @@ void HlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		auto webvtt_frame = WebVTTFrame::Parse(media_packet->GetData());
 		if (webvtt_frame == nullptr)
 		{
-			logte("Failed to parse WebVTT frame from data packet (track_id: %d, dts: %lld)", media_packet->GetTrackId(), media_packet->GetDts());
+			logte("Failed to parse WebVTT frame from data packet (track_id: %d, dts: %" PRId64 ")", media_packet->GetTrackId(), media_packet->GetDts());
 			return;
 		}
 

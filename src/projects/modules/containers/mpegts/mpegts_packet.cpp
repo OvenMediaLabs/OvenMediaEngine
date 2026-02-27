@@ -121,10 +121,10 @@ namespace mpegts
 
 			size_t payload_size = std::min(payload_buffer_size, remaining_pes_bytes);
 
-			logtt("remaining (%d) payload_size(%d) payload_buffer_size(%d) has_adaptation_field(%d)", remaining_pes_bytes, payload_size, payload_buffer_size, has_adaptation_field);
+			logtt("remaining (%zu) payload_size(%zu) payload_buffer_size(%zu) has_adaptation_field(%d)", remaining_pes_bytes, payload_size, payload_buffer_size, has_adaptation_field);
 
 			total_payload_size += payload_size;
-			logtt("Payload Size: %d / %d", payload_size, total_payload_size);
+			logtt("Payload Size: %zu / %zu", payload_size, total_payload_size);
 
 			auto packet = std::make_shared<Packet>();
 
@@ -183,7 +183,7 @@ namespace mpegts
 			}
 
 			auto total_packet_size = MPEGTS_HEADER_SIZE + packet->_adaptation_field_size + payload_size;
-			logtt("Packet: PID(%d) ContinuityCounter(%d) AdaptationFieldControl(%d) AdaptationFieldSize(%d) PayloadSize(%d) Total(%d)", packet->_packet_identifier, packet->_continuity_counter, packet->_adaptation_field_control, packet->_adaptation_field_size, payload_size, total_packet_size);
+			logtt("Packet: PID(%d) ContinuityCounter(%d) AdaptationFieldControl(%d) AdaptationFieldSize(%zu) PayloadSize(%zu) Total(%zu)", packet->_packet_identifier, packet->_continuity_counter, packet->_adaptation_field_control, packet->_adaptation_field_size, payload_size, total_packet_size);
 
 			// Payload
 			if (payload_size > 0)
@@ -192,7 +192,7 @@ namespace mpegts
 			}
 			else
 			{
-				logtc("Unexpected payload size: %d", payload_size);
+				logtc("Unexpected payload size: %zu", payload_size);
 			}
 
 			offset += packet->_payload_data->GetLength();
@@ -267,14 +267,14 @@ namespace mpegts
 		{
 			if (_packet_identifier != 0 && _packet_identifier != 256)
 			{
-				logtc("mpegts:Packet - PES size is not 188 bytes: %d, pid(%d)", ts_writer->GetDataSize(), _packet_identifier);
+				logtc("mpegts:Packet - PES size is not 188 bytes: %zu, pid(%d)", ts_writer->GetDataSize(), _packet_identifier);
 			}
 		}
 
 		_data = ts_writer->GetDataObject();
 		if (_data->GetLength() != MPEGTS_MIN_PACKET_SIZE)
 		{
-			logti("mpegts:Packet - Packet size is not 188 bytes: %d, pid(%d)", ts_writer->GetDataSize(), _packet_identifier);
+			logti("mpegts:Packet - Packet size is not 188 bytes: %zu, pid(%d)", ts_writer->GetDataSize(), _packet_identifier);
 		}
 
 		_buffer = _data->GetWritableDataAs<uint8_t>();
@@ -428,7 +428,7 @@ namespace mpegts
 		// Now, it must be 188 bytes
 		if (_ts_parser->BytesConsumed() != MPEGTS_MIN_PACKET_SIZE)
 		{
-			logte("Invalid mpegts packet size: %d, consumed: %d", _data->GetLength(), _ts_parser->BytesConsumed());
+			logte("Invalid mpegts packet size: %zu, consumed: %zu", _data->GetLength(), _ts_parser->BytesConsumed());
 			return 0;
 		}
 
@@ -491,7 +491,7 @@ namespace mpegts
 		
 		if (_ts_parser->BytesSetionConsumed() > _adaptation_field._length)
 		{
-			logte("Invalid adaptation field length: %d, consumed: %d", _adaptation_field._length, _ts_parser->BytesSetionConsumed());
+			logte("Invalid adaptation field length: %d, consumed: %zu", _adaptation_field._length, _ts_parser->BytesSetionConsumed());
 			return false;
 		}
 
@@ -505,7 +505,7 @@ namespace mpegts
 	{
 		if (_packet_size < _ts_parser->BytesConsumed())
 		{
-			logte("Invalid packet size: %d, consumed: %d", _packet_size, _ts_parser->BytesConsumed());
+			logte("Invalid packet size: %u, consumed: %zu", _packet_size, _ts_parser->BytesConsumed());
 			return false;
 		}
 
@@ -521,7 +521,7 @@ namespace mpegts
 	{
 		ov::String str;
 		
-		str.Format("Packet: TEI(%d) PUSI(%d) Priority(%d) PID(%d) TSC(%d) AdaptationFieldControl(%d) ContinuityCounter(%d) AdaptationFieldSize(%d), Payload Size(%d)", 
+		str.Format("Packet: TEI(%d) PUSI(%d) Priority(%d) PID(%d) TSC(%d) AdaptationFieldControl(%d) ContinuityCounter(%d) AdaptationFieldSize(%zu), Payload Size(%zu)", 
 						_transport_error_indicator, _payload_unit_start_indicator, _transport_priority, 
 						_packet_identifier, _transport_scrambling_control, _adaptation_field_control, _continuity_counter, 
 						_adaptation_field_size, _payload_length);
@@ -535,7 +535,7 @@ namespace mpegts
 
 			if(_adaptation_field._pcr_flag)
 			{
-				str.AppendFormat("\n\t\tPCR: Base(%lld), Reserved(%d), Extension(%d)", _adaptation_field._pcr._base, _adaptation_field._pcr._reserved, _adaptation_field._pcr._extension);
+				str.AppendFormat("\n\t\tPCR: Base(%" PRId64 "), Reserved(%d), Extension(%d)", _adaptation_field._pcr._base, _adaptation_field._pcr._reserved, _adaptation_field._pcr._extension);
 			}
 		}
 

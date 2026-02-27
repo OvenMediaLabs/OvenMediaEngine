@@ -56,9 +56,10 @@ public:
 
 private:
 	bool ValidateAppConfiguration();
+	std::shared_ptr<TranscoderStream> GetStream(const std::shared_ptr<info::Stream> &stream_info);
 
 private:
 	const info::Application _application_info;
 	std::map<int32_t, std::shared_ptr<TranscoderStream>> _streams;
-	std::mutex _mutex;
+	mutable std::shared_mutex _mutex;
 };

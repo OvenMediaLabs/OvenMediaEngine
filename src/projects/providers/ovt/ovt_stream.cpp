@@ -460,8 +460,8 @@ namespace pvd
 				}
 
 				new_track->SetSampleRate(json_audio_track["samplerate"].asUInt());
-				new_track->GetSample().SetFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
-				new_track->GetChannel().SetLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
+				new_track->SetSampleFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
+				new_track->SetChannelLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
 			}
 
 			auto decoder_config = json_track["decoderConfig"];

@@ -144,7 +144,7 @@ bool StunMessage::ParseHeader(ov::ByteStream &stream)
 
 	if (stream.Remained() < _message_length)
 	{
-		logtt("Message is too short: %d (expected: %d)", stream.Remained(), _message_length);
+		logtt("Message is too short: %zu (expected: %d)", stream.Remained(), _message_length);
 		_last_error_code = LastErrorCode::NOT_ENOUGH_DATA;
 		return false;
 	}
@@ -199,7 +199,7 @@ std::shared_ptr<StunAttribute> StunMessage::ParseFingerprintAttribute(ov::ByteSt
 
 	if ((attribute != nullptr) && (attribute->GetType() != StunAttributeType::Fingerprint))
 	{
-		logtw("Last attribute IS NOT FINGER-PRINT attribute(type: %d)", attribute->GetType());
+		logtw("Last attribute IS NOT FINGER-PRINT attribute(type: %d)", static_cast<int>(attribute->GetType()));
 		return nullptr;
 	}
 
@@ -505,12 +505,12 @@ ov::String StunMessage::ToString() const
 
 	dump.AppendFormat("Parsing status: %s\n", _parsed ? "Parsed" : "Not parsed");
 	dump.AppendFormat("Message Type: 0x%04X\n", _type);
-	dump.AppendFormat("    Class: %s (0x%02X)\n", GetClassString(), GetClass());
-	dump.AppendFormat("    Method: %s (0x%04X)\n", GetMethodString(), GetMethod());
+	dump.AppendFormat("    Class: %s (0x%02X)\n", GetClassString(), static_cast<uint8_t>(GetClass()));
+	dump.AppendFormat("    Method: %s (0x%04X)\n", GetMethodString(), static_cast<uint16_t>(GetMethod()));
 	dump.AppendFormat("Message Length: %d (0x%04X)\n", _message_length, _message_length);
 	dump.AppendFormat("Magic Cookie: 0x%08X\n", _magic_cookie);
 	dump.AppendFormat("Transaction ID: %s\n", ov::ToHexString(&(_transaction_id[0]), OV_COUNTOF(_transaction_id)).CStr());
-	dump.AppendFormat("Attributes: %d items", _attributes.size());
+	dump.AppendFormat("Attributes: %zu items", _attributes.size());
 
 	for (const auto &attribute : _attributes)
 	{

@@ -13,6 +13,7 @@
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
+#include "webrtc_provider.h"
 
 namespace pvd
 {
@@ -22,9 +23,11 @@ namespace pvd
 													   const std::shared_ptr<const SessionDescription> &remote_sdp,
 													   const std::shared_ptr<Certificate> &certificate,
 													   const std::shared_ptr<IcePort> &ice_port,
-													   session_id_t ice_session_id)
+													   session_id_t ice_session_id, 
+													   const std::shared_ptr<const ac::RequestInfo> &request_info,
+													   const cfg::vhost::app::pvd::WebrtcProvider &config)
 	{
-		auto stream = std::make_shared<WebRTCStream>(source_type, stream_name, provider, local_sdp, remote_sdp, certificate, ice_port, ice_session_id);
+		auto stream = std::make_shared<WebRTCStream>(source_type, stream_name, provider, local_sdp, remote_sdp, certificate, ice_port, ice_session_id, request_info, config);
 		if (stream != nullptr)
 		{
 			if (stream->Start() == false)
@@ -41,7 +44,9 @@ namespace pvd
 							   const std::shared_ptr<const SessionDescription> &remote_sdp,
 							   const std::shared_ptr<Certificate> &certificate,
 							   const std::shared_ptr<IcePort> &ice_port,
-							   session_id_t ice_session_id)
+							   session_id_t ice_session_id, 
+							   const std::shared_ptr<const ac::RequestInfo> &request_info,
+							   const cfg::vhost::app::pvd::WebrtcProvider &config)
 		: PushStream(source_type, stream_name, provider), Node(NodeType::Edge)
 	{
 		_local_sdp = local_sdp;
@@ -64,6 +69,10 @@ namespace pvd
 		_ice_session_id = ice_session_id;
 
 		_h264_bitstream_parser.SetConfig(H264BitstreamParser::Config{._parse_slice_type = true});
+
+		_fir_interval = config.GetFIRInterval();
+
+		_request_info = request_info;
 	}
 
 	WebRTCStream::~WebRTCStream()
@@ -94,8 +103,6 @@ namespace pvd
 		_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
 		_srtp_transport = std::make_shared<SrtpTransport>();
 		_dtls_transport = std::make_shared<DtlsTransport>();
-
-		auto application = std::static_pointer_cast<WebRTCApplication>(GetApplication());
 		_dtls_transport->SetLocalCertificate(_certificate);
 		_dtls_transport->StartDTLS();
 
@@ -331,14 +338,7 @@ namespace pvd
 		{	
 			// channel
 			auto channels = std::atoi(payload_attr->GetCodecParams());
-			if (channels == 1)
-			{
-				track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutMono);
-			}
-			else
-			{
-				track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutStereo);
-			}
+			track->SetChannelLayout((channels == 1) ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
 		}
 
 		return track;
@@ -448,33 +448,53 @@ namespace pvd
 
 	bool WebRTCStream::Stop()
 	{
-		std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+		bool result;
 
-		if (GetState() == Stream::State::STOPPED || GetState() == Stream::State::TERMINATED)
 		{
-			return true;
+			std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+
+			if (GetState() == Stream::State::STOPPED || GetState() == Stream::State::TERMINATED)
+			{
+				return true;
+			}
+
+			if (_rtp_rtcp != nullptr)
+			{
+				_rtp_rtcp->Stop();
+			}
+
+			if (_dtls_transport != nullptr)
+			{
+				_dtls_transport->Stop();
+			}
+
+			if (_srtp_transport != nullptr)
+			{
+				_srtp_transport->Stop();
+			}
+
+			_ice_port->DisconnectSession(_ice_session_id);
+
+			ov::Node::Stop();
+
+			result = pvd::Stream::Stop();
 		}
 
-		if (_rtp_rtcp != nullptr)
+		if (_request_info != nullptr)
 		{
-			_rtp_rtcp->Stop();
+			auto provider = GetProviderAs<WebRTCProvider>();
+
+			if (provider != nullptr)
+			{
+				provider->SendCloseAdmissionWebhooks(_request_info);
+			}
+			else
+			{
+				OV_ASSERT2(false);
+			}
 		}
 
-		if (_dtls_transport != nullptr)
-		{
-			_dtls_transport->Stop();
-		}
-
-		if (_srtp_transport != nullptr)
-		{
-			_srtp_transport->Stop();
-		}
-
-		_ice_port->DisconnectSession(_ice_session_id);
-
-		ov::Node::Stop();
-
-		return pvd::Stream::Stop();
+		return result;
 	}
 
 	std::shared_ptr<const SessionDescription> WebRTCStream::GetLocalSDP()
@@ -601,7 +621,7 @@ namespace pvd
 			{
 				int32_t cts = cts_extension_opt.value();
 				dts = adjusted_timestamp - (cts * 90);
-				logtt("PTS(%lld) CTS(%d) DTS(%lld)", adjusted_timestamp, cts, dts);
+				logtt("PTS(%" PRId64 ") CTS(%d) DTS(%" PRId64 ")", adjusted_timestamp, cts, dts);
 			}
 			else
 			{
@@ -609,7 +629,7 @@ namespace pvd
 			}
 		}
 		
-		logtt("Payload Type(%d) Timestamp(%u) PTS(%u) Time scale(%f) Adjust Timestamp(%f)",
+		logtt("Payload Type(%d) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
 			  first_rtp_packet->PayloadType(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
@@ -638,7 +658,7 @@ namespace pvd
 					{
 						auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
 
-						logtt("PTS(%lld) DTS(%lld) Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
+						logtt("PTS(%" PRId64 ") DTS(%" PRId64 ") Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
 
 						if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
 						{
@@ -670,33 +690,42 @@ namespace pvd
 	{
 		logtp("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
 
-		// This may not work since almost WebRTC browser sends SPS/PPS/VPS in-band
-		if ((track->GetCodecId() == cmn::MediaCodecId::H264 || track->GetCodecId() == cmn::MediaCodecId::H265) &&
-			_sent_sequence_header.find(track->GetId()) == _sent_sequence_header.end())
+		auto track_id = track->GetId();
+		auto codec_id = track->GetCodecId();
+		bool is_h26x = (codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265);
+		bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
+
+		auto packet_to_send = media_packet;
+
+		// If SPS/PPS/VPS are received out-of-band, replace them with the in-band format
+		// If the codec is H264 or H265 and the sequence header (SPS/PPS/VPS) has not been sent yet, prepend the sequence header to the current packet.
+		// TODO: If the current packet contains SPS/PPS/VPS, there is no need to prepend.
+		if (is_h26x && !is_sent_sequence_header)
 		{
-			if (_h26x_extradata_nalu.find(track->GetId()) != _h26x_extradata_nalu.end() && _h26x_extradata_nalu[track->GetId()] != nullptr)
+			auto new_packet = media_packet->ClonePacket();
+
+			auto it = _h26x_extradata_nalu.find(track_id);
+			if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
 			{
-				auto bitstream_format = (track->GetCodecId() == cmn::MediaCodecId::H264) ? cmn::BitstreamFormat::H264_ANNEXB : cmn::BitstreamFormat::H265_ANNEXB;
-				auto sps_pps_packet = std::make_shared<MediaPacket>(GetMsid(),
-																	track->GetMediaType(),
-																	track->GetId(),
-																	_h26x_extradata_nalu[track->GetId()],
-																	media_packet->GetPts(),
-																	media_packet->GetDts(),
-																	-1LL,
-																	MediaPacketFlag::Unknown,
-																	bitstream_format,
-																	cmn::PacketType::NALU);
-				SendFrame(sps_pps_packet);
+				// Since it is a NALU type, the data can simply be concatenated
+				auto prepend = std::make_shared<ov::Data>();
+				prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
+				prepend->Append(media_packet->GetData());  // Current frame data
+
+				new_packet->SetData(prepend);
+
+				logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
 			}
-			
-			_sent_sequence_header[track->GetId()] = true;
+
+			packet_to_send = new_packet;
+			_sent_sequence_header[track_id] = true;
 		}
 
-		SendFrame(media_packet);
+		SendFrame(packet_to_send);
 
 		// Send FIR to reduce keyframe interval
-		if (_fir_timer.IsElapsed(3000) && track->GetMediaType() == cmn::MediaType::Video)
+		// _fir_interval can be 0 to disable FIR sending. The default value is 3000 ms.
+		if (_fir_interval != 0 && _fir_timer.IsElapsed(_fir_interval) && track->GetMediaType() == cmn::MediaType::Video)
 		{
 			_fir_timer.Update();
 			//_rtp_rtcp->SendPLI(first_rtp_packet->Ssrc());

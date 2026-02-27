@@ -212,7 +212,7 @@ bool AudioSpecificConfig::Parse(const std::shared_ptr<const ov::Data> &data)
 {
 	if (data->GetLength() < MIN_AAC_SPECIFIC_CONFIG_SIZE)
 	{
-		logte("The data inputted is too small for parsing (%d must be bigger than %d)", data->GetLength(), MIN_AAC_SPECIFIC_CONFIG_SIZE);
+		logte("The data inputted is too small for parsing (%zu must be bigger than %d)", data->GetLength(), MIN_AAC_SPECIFIC_CONFIG_SIZE);
 		return false;
 	}
 
@@ -507,8 +507,8 @@ ov::String AudioSpecificConfig::GetInfoString() const
 {
 	ov::String out_str = ov::String::FormatString("\n[AudioSpecificConfig]\n");
 
-	out_str.AppendFormat("\tObjectType(%d, %s)\n", ObjectType(), StringFromAudioObjectType(ObjectType()));
-	out_str.AppendFormat("\tSamplingFrequency(%d)\n", SamplingFrequencyIndex());
+	out_str.AppendFormat("\tObjectType(%d, %s)\n", static_cast<int>(ObjectType()), StringFromAudioObjectType(ObjectType()));
+	out_str.AppendFormat("\tSamplingFrequency(%d)\n", static_cast<int>(SamplingFrequencyIndex()));
 	out_str.AppendFormat("\tChannel(%d)\n", Channel());
 
 	return out_str;

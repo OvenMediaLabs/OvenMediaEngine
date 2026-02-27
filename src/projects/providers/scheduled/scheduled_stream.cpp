@@ -34,7 +34,7 @@ namespace pvd
     bool ScheduledStream::Start()
     {
         // Create Worker
-        _worker_thread_running = true;
+        _worker_thread_running.store(true);
         _worker_thread = std::thread(&ScheduledStream::WorkerThread, this);
         pthread_setname_np(_worker_thread.native_handle(), "Scheduled");
 
@@ -43,12 +43,12 @@ namespace pvd
 
     bool ScheduledStream::Stop()
     {
-        if (_worker_thread_running == false)
+        if (_worker_thread_running.load() == false)
         {
             return true;
         }
 
-        _worker_thread_running = false;
+        _worker_thread_running.store(false);
         _schedule_updated.SetEvent();
 
         if (_worker_thread.joinable())
@@ -214,7 +214,7 @@ namespace pvd
 
 			if (item->_duration_ms > 0)
 			{
-				// logti("Scheduled Channel %s/%s: Item %s duration is already set to %lld ms", GetApplicationName(), GetName().CStr(), item->url.CStr(), item->duration_ms);
+				// logti("Scheduled Channel %s/%s: Item %s duration is already set to %" PRId64 " ms", GetApplicationName(), GetName().CStr(), item->url.CStr(), item->duration_ms);
 				// already set
 				total_duration_ms += item->_duration_ms;
 				continue;
@@ -232,12 +232,12 @@ namespace pvd
 				program->_unlimited_duration = true;
 			}
 
-			logti("Scheduled Channel %s/%s: Item %s duration set to %lld ms", GetApplicationName(), GetName().CStr(), item->_url.CStr(), item->_duration_ms);
+			logti("Scheduled Channel %s/%s: Item %s duration set to %" PRId64 " ms", GetApplicationName(), GetName().CStr(), item->_url.CStr(), item->_duration_ms);
 		}
 
 		program->_total_item_duration_ms = total_duration_ms;
 
-		logti("Total item duration ms : %lld ms", program->_total_item_duration_ms);
+		logti("Total item duration ms : %" PRId64 " ms", program->_total_item_duration_ms);
 
 		return true;
 	}
@@ -246,7 +246,7 @@ namespace pvd
     {
 		ov::logger::ThreadHelper thread_helper;
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             // Schedule
             std::unique_lock<std::shared_mutex> guard(_current_mutex);
@@ -283,7 +283,7 @@ namespace pvd
 
             // Items
 			bool first_item = true;
-            while (_worker_thread_running)
+            while (_worker_thread_running.load())
             {
                 guard.lock();
                 _current_item = nullptr;
@@ -314,7 +314,7 @@ namespace pvd
 
 				first_item = false;
 				bool exit_loop = false;
-                while (_worker_thread_running)
+                while (_worker_thread_running.load())
                 {
                     auto result = PlayItem(_current_item);
                     if (result == PlaybackResult::ERROR)
@@ -353,7 +353,7 @@ namespace pvd
 
         // Fallback
 		bool fisrt = true;
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {
@@ -481,7 +481,7 @@ namespace pvd
 
         bool is_mpegts { std::strncmp(context->iformat->name, "mpegts", 6) == 0 };
 
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {
@@ -611,7 +611,7 @@ namespace pvd
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
            
             AdjustTimestampByBase(track_id, pts, dts, std::numeric_limits<int64_t>::max(), duration);
-			logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
+			logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
@@ -634,7 +634,7 @@ namespace pvd
                 dts_gap = media_packet->GetDts() - last_packet->GetDts();
             }
 
-            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f, dts_ms %f, dts_gap %lld", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
+            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f, dts_ms %f, dts_gap %" PRId64 "", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
 
             SendFrame(media_packet);
 
@@ -670,7 +670,7 @@ namespace pvd
                 if (all_tracks_ended == true)
                 {
                     // End of item
-                    logti("Scheduled Channel : %s/%s: End of item (Current Pos : %.0f ms Duration : %lld ms). Try to play next item", GetApplicationName(), GetName().CStr(), single_file_duration_ms, item->_duration_ms);
+                    logti("Scheduled Channel : %s/%s: End of item (Current Pos : %.0f ms Duration : %" PRId64 " ms). Try to play next item", GetApplicationName(), GetName().CStr(), single_file_duration_ms, item->_duration_ms);
                     result = PlaybackResult::PLAY_NEXT_ITEM;
                     break;
                 }
@@ -680,7 +680,7 @@ namespace pvd
             if (elapsed < global_zero_based_dts)
             {
                 int64_t wait_time = global_zero_based_dts - elapsed;
-                // logti("Scheduled Channel : %s/%s: Track(%d) Current(%lld) DTS(%lld) Wait(%lld)", GetApplicationName(), GetName().CStr(), track_id, elapsed, global_zero_based_dts, wait_time);
+                // logti("Scheduled Channel : %s/%s: Track(%d) Current(%" PRId64 ") DTS(%" PRId64 ") Wait(%" PRId64 ")", GetApplicationName(), GetName().CStr(), track_id, elapsed, global_zero_based_dts, wait_time);
                 std::this_thread::sleep_for(std::chrono::microseconds(wait_time));
             }
         }
@@ -899,11 +899,11 @@ namespace pvd
             int seek_ret = ::avformat_seek_file(item->LoadContext().get(), -1, seek_min, seek_target, seek_max, 0);
             if (seek_ret < 0)
             {
-                logte("%s/%s: Failed to seek to start position %d, err:%d", GetApplicationName(), GetName().CStr(), item->_start_time_ms, seek_ret);
+				logte("%s/%s: Failed to seek to start position %" PRId64 ", err:%d", GetApplicationName(), GetName().CStr(), item->_start_time_ms, seek_ret);
             }
         }
 
-		logti("Scheduled Channel : %s/%s: File %s prepared. Start time %lld ms, Duration %lld ms",
+		logti("Scheduled Channel : %s/%s: File %s prepared. Start time %" PRId64 " ms, Duration %" PRId64 " ms",
 			GetApplicationName(), GetName().CStr(), item->_file_path.CStr(), item->_start_time_ms, item->_duration_ms);
 
         if (UpdateStream() == false)
@@ -945,7 +945,7 @@ namespace pvd
 		// bool sent_keyframe = false;
 
         // Play
-        while (_worker_thread_running)
+        while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
             {
@@ -972,10 +972,10 @@ namespace pvd
                 }
                 else
                 {
-					if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
-					{
-                    	logtw("Scheduled Channel : %s/%s: Failed to pop packet until %d ms. Try to play next item", GetApplicationName(), GetName().CStr(), _channel_info._error_tolerance_duration_ms);
-					}
+                    if (stream_tap->GetState() == MediaRouterStreamTap::State::Tapped)
+                    {
+                    	logtw("Scheduled Channel : %s/%s: Failed to pop packet until %" PRId64 " ms. Try to play next item", GetApplicationName(), GetName().CStr(), _channel_info._error_tolerance_duration_ms);
+                    }
 					else
 					{
 						logtw("Scheduled Channel : %s/%s: Stream tap state is %d. Try to play next item", GetApplicationName(), GetName().CStr(), static_cast<int>(stream_tap->GetState()));
@@ -1051,7 +1051,7 @@ namespace pvd
 			dts = Rescale(dts, track->GetTimeBase().GetDen() * origin_tb.GetNum(), origin_tb.GetDen() * track->GetTimeBase().GetNum());
 			duration = Rescale(duration, track->GetTimeBase().GetDen() * origin_tb.GetNum(), origin_tb.GetDen() * track->GetTimeBase().GetNum());
 
-			logtt("Scheduled Channel : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, duration %lld, tb %f", GetApplicationName(), GetName().CStr(), track_id, dts, pts, dts, duration, track->GetTimeBase().GetExpr());
+			logtt("Scheduled Channel : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f", GetApplicationName(), GetName().CStr(), track_id, dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
             if (track_first_packet_map.find(track_id) == track_first_packet_map.end())
             {
@@ -1075,7 +1075,7 @@ namespace pvd
 
 			double time_ms = (double)(dts * 1000.0 * track->GetTimeBase().GetExpr());
 
-            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %lld, pts %lld, dts %lld, tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
+            logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
 
             SendFrame(media_packet);
 
@@ -1108,7 +1108,7 @@ namespace pvd
                 if (all_tracks_ended == true)
                 {
                     // End of item
-                    logti("Scheduled Channel : %s/%s: End of item (Current Pos : %.0f ms Duration : %lld ms). Try to play next item", GetApplicationName(), GetName().CStr(), single_file_dts_ms, item->_duration_ms);
+                    logti("Scheduled Channel : %s/%s: End of item (Current Pos : %.0f ms Duration : %" PRId64 " ms). Try to play next item", GetApplicationName(), GetName().CStr(), single_file_dts_ms, item->_duration_ms);
                     result = PlaybackResult::PLAY_NEXT_ITEM;
                     break;
                 }

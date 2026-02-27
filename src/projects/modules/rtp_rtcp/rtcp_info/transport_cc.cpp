@@ -33,7 +33,8 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 
 	logtt("Transport-cc: base_sequence_number(%d), packet_status_count(%d), reference_time(%d), fb_sequence_number(%d)", _base_sequence_number, _packet_status_count, _reference_time, _fb_packet_count);
 
-	for (uint16_t i=0; i<_packet_status_count; i++)
+	uint16_t i = 0;
+	while (i < _packet_status_count)
 	{
 		if (offset + PACKET_CHUNK_BYTES > payload_size)
 		{
@@ -58,10 +59,11 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 			uint8_t symbol = (packet_chunk >> 13) & 0x03;
 			// Get Run Length (last 13 bits)
 			uint16_t run_length = packet_chunk & 0x1FFF;
+			uint16_t symbols_to_read = std::min<uint16_t>(run_length, _packet_status_count - i);
 
 			uint8_t delta_size = GetDeltaSize(symbol);
 
-			for (uint16_t j=0; j<run_length; j++)
+			for (uint16_t j=0; j<symbols_to_read; j++)
 			{
 				auto info = std::make_shared<PacketFeedbackInfo>();
 				info->_wide_sequence_number = _base_sequence_number + i + j;
@@ -71,7 +73,7 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 				_packet_feedbacks.push_back(info); 
 			}
 
-			i += run_length - 1;
+			i += symbols_to_read;
 		}
 		//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
 		// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -171,11 +173,16 @@ bool TransportCc::Parse(const RtcpPacket &packet)
 		}
 
 		info->_received_delta = received_delta;
+
+		// Calc arrival time in ms
+		int64_t base_time_ms = _reference_time * 64; // reference time is multiples of 64ms
+		int64_t delta_time_ms = received_delta / 4; // received delta is in 1/4000 seconds scale
+		info->_arrival_time_ms = base_time_ms + delta_time_ms;
 	}
 
 	if (offset != payload_size)
 	{
-		logte("Even though parsing transport-cc was completed, the payload is not fully parsed");
+		logte("Even though parsing transport-cc was completed, the payload is not fully parsed. (offset %zu, payload_size %zu)", offset, payload_size);
 		return false;
 	}
 
@@ -322,7 +329,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 	}
 
 	// write delta
-	logtt("Feedback packet status count (%u) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
+	logtt("Feedback packet status count (%zu) reference_time(%u ms)", _packet_feedbacks.size(), _reference_time * 64);
 	for (const auto &info : _packet_feedbacks)
 	{
 		logtt("Feedback - seq(%u) delta_size(%u) received_delta (%d ms)", info->_wide_sequence_number, info->_delta_size, (info->_received_delta * 250) / 1000);
@@ -346,7 +353,7 @@ std::shared_ptr<ov::Data> TransportCc::GetData() const
 		_has_padding = true;
 	}
 
-	logtt("Feedback - packet_status_count(%u/%u) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
+	logtt("Feedback - packet_status_count(%zu/%zu) reference_time(%u)", _packet_feedbacks.size(), _packet_feedbacks.size(), _reference_time);
 
 	return write_stream.GetDataPointer();
 }

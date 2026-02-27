@@ -76,7 +76,7 @@ namespace mon::alrt
 		if (md_sha1 == nullptr)
 		{
 			// Error
-			SetStatus(StatusCode::INTERNAL_ERROR, ov::String::FormatString("Signature creation failed.(Method : HMAC(SHA1), Body length : %d", _message_body.GetLength()));
+			SetStatus(StatusCode::INTERNAL_ERROR, ov::String::FormatString("Signature creation failed.(Method : HMAC(SHA1), Body length : %zu", _message_body.GetLength()));
 			return;
 		}
 

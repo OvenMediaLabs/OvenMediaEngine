@@ -35,7 +35,7 @@ bool AVCDecoderConfigurationRecord::Parse(const std::shared_ptr<const ov::Data> 
 
 	if (data_length < MIN_AVCDECODERCONFIGURATIONRECORD_SIZE)
 	{
-		logte("The data inputted is too small for parsing (%d must be bigger than %d)", data_length, MIN_AVCDECODERCONFIGURATIONRECORD_SIZE);
+		logte("The data inputted is too small for parsing (%zu must be bigger than %d)", data_length, MIN_AVCDECODERCONFIGURATIONRECORD_SIZE);
 		return false;
 	}
 
@@ -135,7 +135,7 @@ bool AVCDecoderConfigurationRecord::ParseV2Internal(ov::BitReader &reader)
 
 	if (reader.GetRemainingBytes() < MIN_AVCDECODERCONFIGURATIONRECORD_SIZE)
 	{
-		logte("The data inputted is too small for parsing (%d must be bigger than %d)", reader.GetRemainingBytes(), MIN_AVCDECODERCONFIGURATIONRECORD_SIZE);
+		logte("The data inputted is too small for parsing (%zu must be bigger than %d)", reader.GetRemainingBytes(), MIN_AVCDECODERCONFIGURATIONRECORD_SIZE);
 		return false;
 	}
 

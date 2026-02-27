@@ -71,7 +71,7 @@ bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::S
 {
 	if (media_packet->GetDuration() < 0)
 	{
-		logte("[%s/%s(%u)] Detected abnormal packet duration. track:%u, duration: %lld",
+		logte("[%s/%s(%u)] Detected abnormal packet duration. track:%u, duration: %" PRId64 "",
 			  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
 			  stream_info->GetName().CStr(),
 			  stream_info->GetId(),
@@ -134,7 +134,7 @@ bool MediaRouterAlert::DetectPTSDiscontinuity(const std::shared_ptr<info::Stream
 		{
 			if (IsVideoCodec(media_track->GetCodecId()) || IsAudioCodec(media_track->GetCodecId()))
 			{
-				logtw("[%s/%s(%u)] Detected discontinuity track. track:%u last.pts: %lld, cur.pts: %lld, diff: %lldms",
+				logtw("[%s/%s(%u)] Detected discontinuity track. track:%u last.pts: %" PRId64 ", cur.pts: %" PRId64 ", diff: %" PRId64 "ms",
 					  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
 					  stream_info->GetName().CStr(),
 					  stream_info->GetId(),

@@ -1700,7 +1700,7 @@ namespace pvd
 
 			SendFrame(video_frame);
 
-			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%lld) dts(%lld)",
+			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%" PRId64 ") dts(%" PRId64 ")",
 			// 	  _vhost_app_name.CStr(),
 			// 	  _stream_name.CStr(),
 			// 	  flv_video.PacketType(),
@@ -2022,18 +2022,19 @@ namespace pvd
 			// Below items are not mandatory, it will be parsed again from ADTS parser
 			//////////////////
 			new_track->SetSampleRate(media_info->audio_samplerate);
-			new_track->GetSample().SetFormat(cmn::AudioSample::Format::S16);
+			new_track->SetSampleFormat(cmn::AudioSample::Format::S16);
+
 			// Kbps -> bps
 			new_track->SetBitrateByConfig(media_info->audio_bitrate * 1000);
 			// new_track->SetSampleSize(conn->_audio_samplesize);
 
 			if (media_info->audio_channels == 1)
 			{
-				new_track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutMono);
+				new_track->SetChannelLayout(cmn::AudioChannel::Layout::LayoutMono);
 			}
 			else if (media_info->audio_channels == 2)
 			{
-				new_track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutStereo);
+				new_track->SetChannelLayout(cmn::AudioChannel::Layout::LayoutStereo);
 			}
 
 			AddTrack(new_track);

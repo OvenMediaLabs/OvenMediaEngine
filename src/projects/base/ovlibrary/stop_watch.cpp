@@ -1,6 +1,7 @@
 #include "stop_watch.h"
 
 #include <utility>
+#include <cinttypes>
 
 #include "./log.h"
 
@@ -136,6 +137,6 @@ namespace ov
 
 	void StopWatch::Print()
 	{
-		logt("StopWatch", "[%s] Elapsed: %lld (Total elapsed: %lld)", _tag.CStr(), Elapsed(), TotalElapsed());
+		logt("StopWatch", "[%s] Elapsed: %" PRId64 " (Total elapsed: %" PRId64 ")", _tag.CStr(), Elapsed(), TotalElapsed());
 	}
 }  // namespace ov

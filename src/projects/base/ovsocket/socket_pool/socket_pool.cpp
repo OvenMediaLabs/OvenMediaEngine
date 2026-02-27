@@ -137,7 +137,7 @@ namespace ov
 			}
 			else
 			{
-				logae("An error occurred while creating workers. Rollbacking...", worker_count);
+				logae("An error occurred while creating workers. Rollbacking...");
 
 				// Rollback
 				UninitializeWorkers(worker_list);
@@ -178,7 +178,7 @@ namespace ov
 		std::lock_guard lock_guard(_worker_list_mutex);
 
 		description.AppendFormat(
-			"<SocketPool: %p, workers: %d",
+			"<SocketPool: %p, workers: %zu",
 			this, _worker_list.size());
 
 		for (auto &worker : _worker_list)

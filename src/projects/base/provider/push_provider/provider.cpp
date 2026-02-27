@@ -2,6 +2,8 @@
 #include "provider.h"
 #include "provider_private.h"
 
+#include <cinttypes>
+
 namespace pvd
 {
 	PushProvider::PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
@@ -16,7 +18,7 @@ namespace pvd
 
     bool PushProvider::Start()
     {
-		_run_task_runner = true;
+		_run_task_runner.store(true);
 		_task_runner_thread = std::thread(&PushProvider::ChannelTaskRunner, this);
 
 		ov::String thread_name = ov::String::FormatString("PTimer-%s", StringFromProviderType(GetProviderType()).CStr());
@@ -27,7 +29,7 @@ namespace pvd
 
 	bool PushProvider::Stop()
     {
-		_run_task_runner = false;
+		_run_task_runner.store(false);
 		if(_task_runner_thread.joinable())
 		{
 			_task_runner_thread.join();
@@ -172,7 +174,7 @@ namespace pvd
 
 		std::shared_lock<std::shared_mutex> lock(_channels_lock, std::defer_lock);
 
-		while(_run_task_runner == true)
+		while (_run_task_runner.load() == true)
 		{
 			lock.lock();
 			auto channels = _channels;
@@ -188,13 +190,16 @@ namespace pvd
 					continue;
 				}
 
-				logtt("Checking channel %d, elapsed %d ms, timeout %d ms", channel->GetChannelId(), 
-																			channel->GetElapsedMsSinceLastReceived(),
-																			channel->GetPacketSilenceTimeoutMs());
+				const intmax_t elapsed_ms = static_cast<intmax_t>(channel->GetElapsedMsSinceLastReceived());
+				const intmax_t timeout_ms = static_cast<intmax_t>(channel->GetPacketSilenceTimeoutMs());
 
-				if (channel->GetElapsedMsSinceLastReceived() > channel->GetPacketSilenceTimeoutMs())
+				logtt("Checking channel %u, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId(),
+					  elapsed_ms,
+					  timeout_ms);
+
+				if (elapsed_ms > timeout_ms)
 				{
-					logtw("Channel %d is timed out, %d ms elapsed since last received, deleting it", channel->GetChannelId(), channel->GetElapsedMsSinceLastReceived());
+					logtw("Channel %u is timed out, %" PRIdMAX " ms elapsed since last received, deleting it", channel->GetChannelId(), elapsed_ms);
 
 					// Notify the channel timed out
 					OnTimedOut(channel);

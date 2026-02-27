@@ -69,14 +69,6 @@ bool DecoderHEVCxXMA::InitCodec()
 		return false;
 	}
 
-	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
-	if (_parser == nullptr)
-	{
-		logte("Parser not found");
-		return false;
-	}
-	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
-
 	_change_format = false;
 
 	return true;
@@ -84,17 +76,14 @@ bool DecoderHEVCxXMA::InitCodec()
 
 void DecoderHEVCxXMA::UninitCodec()
 {
-	if (_codec_context != nullptr)
+	if (_codec_context)
 	{
-		::avcodec_free_context(&_codec_context);
+		if (_codec_context->codec)
+		{
+			::avcodec_flush_buffers(_codec_context);
+		}
+		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
-	_codec_context = nullptr;
-
-	if (_parser != nullptr)
-	{
-		::av_parser_close(_parser);
-	}
-	_parser = nullptr;
 
 #if USE_EXTERNAL_TIMESTAMP
 	_pts_reorder_list.clear();
@@ -108,7 +97,7 @@ bool DecoderHEVCxXMA::ReinitCodecIfNeed()
 	// So, when a resolution change is detected, the codec is reset and recreated.
 	if (_codec_context->width != 0 && _codec_context->height != 0 && (_parser->width != _codec_context->width || _parser->height != _codec_context->height))
 	{
-		logti("Changed input resolution of %u track. (%dx%d -> %dx%d)", GetRefTrack()->GetId(), _codec_context->width, _codec_context->height, _parser->width, _parser->height);
+		logti("Input frame resolution of the %u track has been changed. Size:%dx%d -> %dx%d", GetRefTrack()->GetId(), _codec_context->width, _codec_context->height, _parser->width, _parser->height);
 
 		UninitCodec();
 
@@ -173,8 +162,22 @@ void DecoderHEVCxXMA::CodecThread()
 				logte("An error occurred while parsing: %d", parsed_size);
 				break;
 			}
+			else if (parsed_size > 0)
+			{
+				buffer.Advance(parsed_size);
 
-			buffer.Advance(parsed_size);
+				_pkt->pts	   = GetParser()->pts;
+				_pkt->dts	   = GetParser()->dts;
+				_pkt->flags	   = (GetParser()->key_frame == 1) ? AV_PKT_FLAG_KEY : 0;
+				_pkt->duration = _pkt->dts - GetParser()->last_dts;
+
+				if (_pkt->duration <= 0LL)
+				{
+					// It may not be the exact packet duration.
+					// However, in general, this method is applied under the assumption that the duration of all packets is similar.
+					_pkt->duration = buffer.GetDuration();
+				}
+			}
 
 			// If parsed frame is not same as the previous frame, update the codec context.
 			if (ReinitCodecIfNeed() == false)
@@ -184,18 +187,6 @@ void DecoderHEVCxXMA::CodecThread()
 
 			if (_pkt->size > 0)
 			{
-				_pkt->pts	   = _parser->pts;
-				_pkt->dts	   = _parser->dts;
-				_pkt->flags	   = (_parser->key_frame == 1) ? AV_PKT_FLAG_KEY : 0;
-				_pkt->duration = _pkt->dts - _parser->last_dts;
-
-				if (_pkt->duration <= 0LL)
-				{
-					// It may not be the exact packet duration.
-					// However, in general, this method is applied under the assumption that the duration of all packets is similar.
-					_pkt->duration = buffer.GetDuration();
-				}
-
 				// Keyframe Decode Only
 				// If set to decode only key frames, non-keyframe packets are dropped.
 				if (GetRefTrack()->IsKeyframeDecodeOnly() == true)
@@ -214,7 +205,7 @@ void DecoderHEVCxXMA::CodecThread()
 				}
 				else if (ret == AVERROR_INVALIDDATA)
 				{
-					logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+					logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 						  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
 
 					// If a failure occurs due to the absence of a decoder configuration, 
@@ -290,7 +281,7 @@ void DecoderHEVCxXMA::CodecThread()
 #if USE_EXTERNAL_TIMESTAMP
 				_pts_reorder_list.sort();
 				auto ordered_pts = _pts_reorder_list.front();
-				// logtt("in: %lld, out: %lld (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
+				// logtt("in: %" PRId64 ", out: %" PRId64 " (%s), list: %d", ordered_pts, _frame->pts, (ordered_pts == _frame->pts) ? "match" : "No match", _pts_reorder_list.size());
 				_frame->pts = ordered_pts;
 				_pts_reorder_list.pop_front();
 #endif

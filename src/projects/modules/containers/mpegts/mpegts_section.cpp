@@ -364,7 +364,7 @@ namespace mpegts
 
 		if (parser->BytesRemained() < 4)
 		{
-			logtw("Could not parse CRC because of not enough data size (current: %d, required: 4)", parser->BytesRemained());
+			logtw("Could not parse CRC because of not enough data size (current: %zu, required: 4)", parser->BytesRemained());
 			return false;
 		}
 		_crc = parser->ReadBytes<uint32_t>();
@@ -388,7 +388,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse PAT because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse PAT because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 
@@ -424,7 +424,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse PMT because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse PMT because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 
@@ -509,7 +509,7 @@ namespace mpegts
 		// not enough data size to parse
 		if (parser->BytesRemained() < MPEGTS_MIN_TABLE_DATA_SIZE)
 		{
-			logtw("Could not parse Splice Info because of not enough data size (current: %d, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
+			logtw("Could not parse Splice Info because of not enough data size (current: %zu, required: %d)", parser->BytesRemained(), MPEGTS_MIN_TABLE_DATA_SIZE);
 			return false;
 		}
 
@@ -548,7 +548,7 @@ namespace mpegts
 		// Descriptor Loop Length : 16 bits
 		uint16_t descriptor_loop_length = parser->ReadBytes<uint16_t>();
 
-		logtt("Splice Info: Protocol Version: %d, Encrypted Packet: %d, Encryption Algorithm: %d, PTS Adjustment: %llu, CW Index: %d, Tier: %d, Splice Command Length: %d, Splice Command Type: %d, Descriptor Loop Length: %d",
+		logtt("Splice Info: Protocol Version: %d, Encrypted Packet: %d, Encryption Algorithm: %d, PTS Adjustment: %" PRIu64 ", CW Index: %d, Tier: %d, Splice Command Length: %d, Splice Command Type: %d, Descriptor Loop Length: %d",
 			  protocol_version, encrypted_packet, encryption_algorithm, pts_adjustment, cw_index, tier, splice_command_length, splice_command_type, descriptor_loop_length);
 
 		if (!splice_command || splice_command->GetLength() == 0)

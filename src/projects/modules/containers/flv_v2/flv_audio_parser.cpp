@@ -473,7 +473,7 @@ namespace modules
 
 					if (audio_data->sound_format != SoundFormat::Aac)
 					{
-						logtw("Sound format %d (%s) is not supported", audio_data->sound_format, EnumToString(audio_data->sound_format));
+						logtw("Sound format %d (%s) is not supported", static_cast<int>(audio_data->sound_format), EnumToString(audio_data->sound_format));
 						return false;
 					}
 

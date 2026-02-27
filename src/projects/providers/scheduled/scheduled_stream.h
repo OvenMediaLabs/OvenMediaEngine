@@ -94,7 +94,7 @@ namespace pvd
         mutable std::shared_mutex _schedule_mutex;
 
         std::thread _worker_thread;
-        bool _worker_thread_running = false;
+        std::atomic<bool> _worker_thread_running{false};
 
         mutable ov::Event _schedule_updated;
 

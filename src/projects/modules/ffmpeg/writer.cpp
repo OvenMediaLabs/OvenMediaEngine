@@ -1,5 +1,7 @@
 #include "writer.h"
 
+#include <cinttypes>
+
 #include <base/modules/data_format/scte35_event/scte35_event.h>
 #include <modules/bitstream/aac/aac_converter.h>
 #include <modules/bitstream/nalu/nal_stream_converter.h>
@@ -68,7 +70,7 @@ namespace ffmpeg
 			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
 			if(ellapse_ms > writer->GetConnectionTimeout())
 			{
-				logte("connection timeout occurred. stop the writer. %d milliseconds. ", ellapse_ms);
+				logte("connection timeout occurred. stop the writer. %" PRId64 " milliseconds. ", ellapse_ms);
 				return 1;
 			}
 		}
@@ -77,7 +79,7 @@ namespace ffmpeg
 			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
 			if(ellapse_ms > writer->GetSendTimeout())
 			{
-				logte("Send timeout occurred. stop the writer. %d milliseconds. ", ellapse_ms);
+				logte("Send timeout occurred. stop the writer. %" PRId64 " milliseconds. ", ellapse_ms);
 				return 1;
 			}
 		}
@@ -436,7 +438,7 @@ namespace ffmpeg
 		// But this is not treated as an error.
 		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
 		{
-			logtt("To avoid negative timestamps, the packet is dropped. track:%d, pts:%lld, dts:%lld", media_track->GetId(), av_packet.pts, av_packet.dts);
+			logtd("To avoid negative timestamps, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 "", media_track->GetId(), av_packet.pts, av_packet.dts);
 			av_packet_unref(&av_packet);
 			return true;
 		}
@@ -486,7 +488,7 @@ namespace ffmpeg
 						return true;
 					}
 
-					logi(OV_LOG_TAG".Events","Inserted AMF Event. PTS: %lld, %s", packet->GetPts(), document.ToString().Replace("\n", " ").CStr());
+					logi(OV_LOG_TAG".Events","Inserted AMF Event. PTS: %" PRId64 ", %s", packet->GetPts(), document.ToString().Replace("\n", " ").CStr());
 				}
 				break;
 				default:
@@ -584,7 +586,7 @@ namespace ffmpeg
 		{
 			if (av_packet.dts < it->second)
 			{
-				logtw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%lld, dts:%lld, last_dts:%lld",
+				logtw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", last_dts:%" PRId64,
 					  media_track->GetId(),
 					  av_packet.pts,
 					  av_packet.dts,

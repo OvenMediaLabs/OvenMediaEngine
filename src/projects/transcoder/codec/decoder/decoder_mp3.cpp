@@ -35,15 +35,6 @@ bool DecoderMP3::InitCodec()
 		return false;
 	}
 
-	_parser = ::av_parser_init(ffmpeg::compat::ToAVCodecId(GetCodecID()));
-	if (_parser == nullptr)
-	{
-		logte("Parser not found");
-		return false;
-	}
-	
-	_parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
-
 	_change_format = false;
 	
 	return true;
@@ -110,7 +101,7 @@ void DecoderMP3::CodecThread()
 				}
 				else
 				{
-					OV_ASSERT(_cur_data->GetLength() >= (size_t)parsed_size, "Current data size MUST greater than parsed_size, but data size: %ld, parsed_size: %ld", _cur_data->GetLength(), parsed_size);
+					OV_ASSERT(_cur_data->GetLength() >= static_cast<size_t>(parsed_size), "Current data size MUST greater than parsed_size, but data size: %zu, parsed_size: %d", _cur_data->GetLength(), parsed_size);
 					_pkt_offset += parsed_size;
 				}
 
@@ -135,7 +126,7 @@ void DecoderMP3::CodecThread()
 					}
 					else if (ret == AVERROR_INVALIDDATA)
 					{
-						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%lld)",
+						logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 							  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), _pkt->pts);
 					}
 					else if (ret < 0)

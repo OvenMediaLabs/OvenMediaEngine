@@ -126,14 +126,11 @@ bool FilterResampler::InitializeFilterDescription()
 	return true;
 }
 
-bool FilterResampler::Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+bool FilterResampler::Configure()
 {
 	int ret;
 
 	SetState(State::CREATED);
-
-	_input_track = input_track;
-	_output_track = output_track;
 
 	if (InitializeSourceFilter() == false)
 	{
@@ -195,8 +192,9 @@ bool FilterResampler::Start()
 	{
 		_kill_flag = false;
 
+		auto thread_name = ov::String::FormatString("FLT-rsmp-t%u", _output_track->GetId());
 		_thread_work = std::thread(&FilterResampler::WorkerThread, this);
-		pthread_setname_np(_thread_work.native_handle(), ov::String::FormatString("FLT-rsmp-t%u", _output_track->GetId()).CStr());
+		pthread_setname_np(_thread_work.native_handle(), thread_name.CStr());
 		if (_codec_init_event.Get() == false)
 		{
 			_kill_flag = false;
@@ -238,7 +236,7 @@ void FilterResampler::WorkerThread()
 {
 	ov::logger::ThreadHelper thread_helper;
 
-	auto result = Configure(_input_track, _output_track);
+	auto result = Configure();
 	if (_codec_init_event.Submit(result) == false)
 	{
 		return;
@@ -268,12 +266,12 @@ void FilterResampler::WorkerThread()
 			break;
 		}
 
-		// logtw("Resampled in frame. pts: %lld, linesize: %d, samples: %d", av_frame->pts, av_frame->linesize[0], av_frame->nb_samples);
+		// logtw("Resampled in frame. pts: %" PRId64 ", linesize: %d, samples: %d", av_frame->pts, av_frame->linesize[0], av_frame->nb_samples);
 
 		ret = ::av_buffersrc_write_frame(_buffersrc_ctx, av_frame);
 		if (ret < 0)
 		{
-			logte("An error occurred while feeding the audio filtergraph: pts: %lld, linesize: %d, srate: %d, channels: %d, format: %d",
+			logte("An error occurred while feeding the audio filtergraph: pts: %" PRId64 ", linesize: %d, srate: %d, channels: %d, format: %d",
 				  av_frame->pts, av_frame->linesize[0], av_frame->sample_rate, av_frame->ch_layout.nb_channels, av_frame->format);
 
 			Complete(TranscodeResult::DataError, nullptr);
@@ -309,7 +307,7 @@ void FilterResampler::WorkerThread()
 			}
 			else
 			{
-				// logti("Resampled out frame. pts: %lld, linesize: %d, samples : %d", _frame->pts, _frame->linesize[0], _frame->nb_samples);
+				// logti("Resampled out frame. pts: %" PRId64 ", linesize: %d, samples : %d", _frame->pts, _frame->linesize[0], _frame->nb_samples);
 				auto output_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Audio, _frame);
 				::av_frame_unref(_frame);
 				if (output_frame == nullptr)

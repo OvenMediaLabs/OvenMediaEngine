@@ -129,7 +129,7 @@ void TranscoderEvents::RunEvent(std::shared_ptr<info::Stream> &stream, std::shar
 				packet->SetFragHeader(std::get<1>(new_data.value()).get());
 				is_inserted = true;
 
-				logtt("Inserted NALU. stream(%s), track(%u), cur.ts(%lldms), req.ts(%lldms), key(%s)",
+				logtt("Inserted NALU. stream(%s), track(%u), cur.ts(%" PRId64 "ms), req.ts(%" PRId64 "ms), key(%s)",
 					  stream->GetName().CStr(), packet->GetTrackId(), packet_time, event_time, packet->IsKeyFrame() ? "key" : "non-key");
 			}
 			else
@@ -163,7 +163,7 @@ bool TranscoderEvents::UpdateEventPacket(std::shared_ptr<MediaPacket> &event_pac
 		if (sei->GetPayloadData() != nullptr && sei->GetPayloadData()->GetLength() > 0)
 		{
 			ov::String payload_data(sei->GetPayloadData()->GetDataAs<char>(), sei->GetPayloadData()->GetLength());
-			payload_data = payload_data.Replace("${EpochTime}", ov::String::FormatString("%lld", current_time));
+			payload_data = payload_data.Replace("${EpochTime}", ov::String::FormatString("%" PRId64 "", current_time));
 			sei->SetPayloadData(payload_data.ToData());
 		}
 

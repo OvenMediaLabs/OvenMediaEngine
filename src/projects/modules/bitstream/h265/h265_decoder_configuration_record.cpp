@@ -351,7 +351,7 @@ bool HEVCDecoderConfigurationRecord::ParseV2Internal(ov::BitReader &reader)
 
 			// add nalUnit to _nal_units
 			logtt("NALU found: nal_unit_type: %s(%d), length: %d",
-				  EnumToString(nalu_type), nalu_type,
+				  EnumToString(nalu_type), static_cast<int>(nalu_type),
 				  nal_unit_length);
 
 			AddNalUnit(nalu_type, nalu_data->Clone());

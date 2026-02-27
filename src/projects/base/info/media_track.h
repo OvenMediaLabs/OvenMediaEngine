@@ -14,6 +14,8 @@
 
 #include "decoder_configuration_record.h"
 
+#include <shared_mutex>
+
 #define VALID_BITRATE_CALCULATION_THRESHOLD_MSEC (1000)
 
 typedef uint32_t MediaTrackId;
@@ -76,7 +78,7 @@ public:
 	void SetMediaType(cmn::MediaType type);
 	cmn::MediaType GetMediaType() const;
 
-	// Origin bitstream foramt
+	// Origin bitstream format
 	void SetOriginBitstream(cmn::BitstreamFormat format);
 	cmn::BitstreamFormat GetOriginBitstream() const;
 
@@ -89,9 +91,10 @@ public:
 	bool IsBypassByConf() const;
 
 	// Timebase 
-	const cmn::Timebase &GetTimeBase() const;
+	cmn::Timebase GetTimeBase() const;
 	void SetTimeBase(int32_t num, int32_t den);
 	void SetTimeBase(const cmn::Timebase &time_base);
+	bool IsValidTimeBase() const;
 
 	// Bitrate 
 	// Return the proper bitrate for this track. 
@@ -140,6 +143,8 @@ public:
 	ov::String GetInfoString();
 
 protected: 
+
+	mutable std::shared_mutex _mutex;
 
 	// Track ID
 	uint32_t _id;

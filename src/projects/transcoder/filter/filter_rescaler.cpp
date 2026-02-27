@@ -146,7 +146,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					_use_hwframe_transfer = true;
 
-					desc = ov::String::FormatString("");
+					desc.Clear();
 				}
 				break;
 				case cmn::MediaCodecModuleId::XMA: {
@@ -161,7 +161,7 @@ bool FilterRescaler::InitializeFilterDescription()
 				case cmn::MediaCodecModuleId::NILOGAN:	// CPU memory using 'out=sw'
 				case cmn::MediaCodecModuleId::DEFAULT:	// CPU memory
 				{
-					desc = ov::String::FormatString("");
+					desc.Clear();
 				}
 			}
 			// Scaler description of default module
@@ -193,7 +193,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					else
 					{
-						desc = ov::String::FormatString("");
+						desc.Clear();
 					}
 				}
 				break;
@@ -242,7 +242,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					else
 					{
-						desc = ov::String::FormatString("");
+						desc.Clear();
 						if (need_crop_for_multiple_of_4)
 						{
 							desc += ov::String::FormatString("xvbm_convert,crop=%d:%d:0:0,", desire_width, desire_height);
@@ -260,7 +260,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					}
 					_use_hwframe_transfer = true;
 
-					desc = ov::String::FormatString("");
+					desc.Clear();
 					if (need_crop_for_multiple_of_4)
 					{
 						desc += ov::String::FormatString("crop=%d:%d:0:0,", desire_width, desire_height);
@@ -276,7 +276,7 @@ bool FilterRescaler::InitializeFilterDescription()
 				{
 					// xvbm_convert is xvbm frame to av frame converter filter
 					// desc = ov::String::FormatString("xvbm_convert,");
-					desc = ov::String::FormatString("");
+					desc.Clear();
 					if (need_crop_for_multiple_of_4)
 					{
 						desc += ov::String::FormatString("crop=%d:%d:0:0,", desire_width, desire_height);
@@ -293,7 +293,7 @@ bool FilterRescaler::InitializeFilterDescription()
 		 */		
 		else
 		{
-			logtw("Unsupported output module id: %d", output_module_id);
+			logtw("Unsupported output module id: %d", static_cast<int>(output_module_id));
 			return false;
 		}
 
@@ -346,12 +346,10 @@ bool FilterRescaler::InitializeFpsFilter()
 	return true;
 }
 
-bool FilterRescaler::Configure(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+bool FilterRescaler::Configure()
 {
 	SetState(State::CREATED);
 
-	_input_track = input_track;
-	_output_track = output_track;
 
 	// Initialize source parameters
 	_src_width	  = _input_track->GetWidth();
@@ -439,8 +437,9 @@ bool FilterRescaler::Start()
 	{
 		_kill_flag = false;
 
+		auto thread_name = ov::String::FormatString("FLT-rscl-t%u", _output_track->GetId());
 		_thread_work = std::thread(&FilterRescaler::WorkerThread, this);
-		pthread_setname_np(_thread_work.native_handle(), ov::String::FormatString("FLT-rscl-t%u", _output_track->GetId()).CStr());
+		pthread_setname_np(_thread_work.native_handle(), thread_name.CStr());
 		
 		if (_codec_init_event.Get() == false)
 		{
@@ -506,10 +505,18 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
+	if (media_frame->GetWidth() != _src_width || media_frame->GetHeight() != _src_height)
+	{
+		logtw("Input frame parameters do not match the expected source parameters. %dx%d (expected: %dx%d)",
+			  media_frame->GetWidth(), media_frame->GetHeight(), _src_width, _src_height);
+
+		return false;
+	}
+
 	auto src_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
 	if (!src_frame)
 	{
-		logte("Could not allocate the video frame data");
+		logte("Could not get the video frame data");
 
 		SetState(State::ERROR);
 
@@ -521,6 +528,15 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	if (_use_hwframe_transfer == true && src_frame->hw_frames_ctx != nullptr)
 	{
 		transfer_frame = ::av_frame_alloc();
+		if(transfer_frame == nullptr)
+		{
+			logte("Could not allocate the video frame for hwframe transfer");
+
+			SetState(State::ERROR);
+
+			return false;
+		}
+		
 		if (::av_hwframe_transfer_data(transfer_frame, src_frame, 0) < 0)
 		{
 			logte("Error transferring the data to system memory\n");
@@ -561,7 +577,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	}
 	else if (ret < 0)
 	{
-		logte("An error occurred while feeding to filtergraph: format: %d, pts: %lld, queue.size: %d", src_frame->format, src_frame->pts, _input_buffer.Size());
+		logte("An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %zu", src_frame->format, src_frame->pts, _input_buffer.Size());
 
 		SetState(State::ERROR);
 
@@ -663,7 +679,7 @@ void FilterRescaler::WorkerThread()
 {
 	ov::logger::ThreadHelper thread_helper;
 
-	if(_codec_init_event.Submit(Configure(_input_track, _output_track)) == false)
+	if(_codec_init_event.Submit(Configure()) == false)
 	{
 		return;
 	}
@@ -711,7 +727,7 @@ void FilterRescaler::WorkerThread()
 			{
 				skip_frames_last_check_time = curr_time;
 
-				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%d/%d)",
+				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%zu/%zu)",
 					  skip_frames,
 					  _fps_filter.GetOutputFramesPerSecond(),
 					  _fps_filter.GetExpectedOutputFramesPerSecond(),
@@ -783,10 +799,12 @@ void FilterRescaler::WorkerThread()
 		}
 
 		// If the queue exceeds the threshold, drop the frame.
-		if (_input_buffer.IsThresholdExceeded())
-		{
-			media_frame = nullptr;;
-		}
+		// Since the threshold of the input queue has been reduced to 2, this code is no longer necessary. 
+		// There is a concern that it may degrade quality, so it will be removed.
+		// if (_input_buffer.IsThresholdExceeded())
+		// {
+		// 	media_frame = nullptr;;
+		// }
 
 		if(media_frame != nullptr)
 		{

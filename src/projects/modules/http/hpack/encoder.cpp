@@ -39,7 +39,7 @@ namespace http
 			{
 				if (EncodeDynamicTableSizeUpdate(stream, _table_connector.GetDynamicTableSize()) == false)
 				{
-					logte("Failed to encode DynamicTableSizeUpdate (%u) field", _table_connector.GetDynamicTableSize());
+					logte("Failed to encode DynamicTableSizeUpdate (%zu) field", _table_connector.GetDynamicTableSize());
 					return nullptr;
 				}
 

@@ -38,7 +38,7 @@ namespace pvd
 
 		SetModuleAvailable(true);
 
-		_access_controller = std::make_shared<AccessController>(GetProviderType(), GetServerConfig());
+		std::atomic_store(&_access_controller, std::make_shared<AccessController>(GetProviderType(), GetServerConfig()));
 
 		return true;
 	}
@@ -235,61 +235,67 @@ namespace pvd
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> Provider::VerifyBySignedPolicy(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->VerifyBySignedPolicy(host_info, request_info);
+		return access_controller->VerifyBySignedPolicy(host_info, request_info);
 	}
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const SignedPolicy>> Provider::VerifyBySignedPolicy(const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->VerifyBySignedPolicy(request_info);
+		return access_controller->VerifyBySignedPolicy(request_info);
 	}
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::SendCloseAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->SendCloseWebhooks(host_info, request_info);
+		return access_controller->SendCloseWebhooks(host_info, request_info);
 	}
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::SendCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->SendCloseWebhooks(request_info);
+		return access_controller->SendCloseWebhooks(request_info);
 	}
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::VerifyByAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->VerifyByWebhooks(host_info, request_info);
+		return access_controller->VerifyByWebhooks(host_info, request_info);
 	}
 
 	std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> Provider::VerifyByAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info)
 	{
-		if(_access_controller == nullptr)
+		auto access_controller = std::atomic_load(&_access_controller);
+		if(access_controller == nullptr)
 		{
 			return {AccessController::VerificationResult::Error, nullptr};
 		}
 
-		return _access_controller->VerifyByWebhooks(request_info);
+		return access_controller->VerifyByWebhooks(request_info);
 	}
 }

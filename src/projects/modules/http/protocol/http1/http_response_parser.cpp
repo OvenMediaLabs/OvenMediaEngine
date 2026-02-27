@@ -27,7 +27,7 @@ namespace http
 
 				if ((first_space_index < 0) || (second_space_index < 0) || (first_space_index == second_space_index))
 				{
-					logtw("Invalid space index: first: %d, last: %d, line: %s", first_space_index, second_space_index, line.CStr());
+					logtw("Invalid space index: first: %zd, last: %zd, line: %s", first_space_index, second_space_index, line.CStr());
 					return StatusCode::BadRequest;
 				}
 
@@ -52,14 +52,14 @@ namespace http
 
 				if (IsValidStatusCode(_status_code) == false)
 				{
-					logtw("Unknown status code: %d", _status_code);
+					logtw("Unknown status code: %d", static_cast<int>(_status_code));
 				}
 
 				// RFC7230 - 3.1.2. Status Line
 				// reason-phrase  = *( HTAB / SP / VCHAR / obs-text )
 				_reason_phrase = line.Substring(second_space_index + 1);
 
-				logtt("Version: [%s], status code: [\"%s\" (%d)], reason: [%s]", _http_version.CStr(), status_code.CStr(), _status_code, _reason_phrase.CStr());
+				logtt("Version: [%s], status code: [\"%s\" (%d)], reason: [%s]", _http_version.CStr(), status_code.CStr(), static_cast<int>(_status_code), _reason_phrase.CStr());
 
 				return StatusCode::OK;
 			}

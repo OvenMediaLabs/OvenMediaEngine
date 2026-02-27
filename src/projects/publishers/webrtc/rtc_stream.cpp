@@ -137,12 +137,18 @@ bool RtcStream::Start()
 	_playout_delay_min	   = playoutDelay.GetMin();
 	_playout_delay_max	   = playoutDelay.GetMax();
 
-	if (webrtc_config.GetBandwidthEstimationType() == WebRtcBandwidthEstimationType::TransportCc)
+	if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::TransportCc)
 	{
 		_transport_cc_enabled = true;
 	}
-	else if (webrtc_config.GetBandwidthEstimationType() == WebRtcBandwidthEstimationType::REMB)
+	else if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::REMB)
 	{
+		_remb_enabled = true;
+	}
+	else if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::All)
+	{
+		// Auto means to enable both and use TransportCC if the remote supports it, otherwise use REMB.
+		_transport_cc_enabled = true;
 		_remb_enabled = true;
 	}
 
@@ -688,6 +694,17 @@ bool RtcStream::OnRtpPacketized(std::shared_ptr<RtpPacket> packet)
 
 void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	if (GetState() == State::CREATED)
+	{
+		BufferMediaPacketUntilReadyToPlay(media_packet);
+		return;
+	}
+
+	if (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		SendBufferedPackets();
+	}
+
 	if (_jitter_buffer_enabled)
 	{
 		PushToJitterBuffer(media_packet);
@@ -700,6 +717,17 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 
 void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	if (GetState() == State::CREATED)
+	{
+		BufferMediaPacketUntilReadyToPlay(media_packet);
+		return;
+	}
+
+	if (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		SendBufferedPackets();
+	}
+
 	if (_jitter_buffer_enabled)
 	{
 		PushToJitterBuffer(media_packet);
@@ -708,6 +736,55 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	{
 		PacketizeAudioFrame(media_packet);
 	}
+}
+
+void RtcStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	if (_initial_media_packet_buffer.Size() >= MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE)
+	{
+		// Drop the oldest packet, for OOM protection
+		_initial_media_packet_buffer.Dequeue(0);
+	}
+
+	_initial_media_packet_buffer.Enqueue(media_packet);
+}
+
+bool RtcStream::SendBufferedPackets()
+{
+	while (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
+		if (buffered_media_packet.has_value() == false)
+		{
+			continue;
+		}
+
+		auto media_packet = buffered_media_packet.value();
+		if (media_packet->GetMediaType() == cmn::MediaType::Video)
+		{
+			if (_jitter_buffer_enabled)
+			{
+				PushToJitterBuffer(media_packet);
+			}
+			else
+			{
+				PacketizeVideoFrame(media_packet);
+			}
+		}
+		else if (media_packet->GetMediaType() == cmn::MediaType::Audio)
+		{
+			if (_jitter_buffer_enabled)
+			{
+				PushToJitterBuffer(media_packet);
+			}
+			else
+			{
+				PacketizeAudioFrame(media_packet);
+			}
+		}
+	}
+
+	return true;
 }
 
 void RtcStream::PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_packet)
@@ -889,7 +966,7 @@ void RtcStream::AddPacketizer(const std::shared_ptr<const MediaTrack> &track)
 		return;
 	}
 
-	logtt("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", track->GetCodecId(), track->GetId(), payload_type, ssrc);
+	logtt("Add Packetizer : codec(%u) id(%u) pt(%d) ssrc(%u)", static_cast<uint32_t>(track->GetCodecId()), track->GetId(), payload_type, ssrc);
 
 	auto packetizer = std::make_shared<RtpPacketizer>(RtpPacketizerInterface::GetSharedPtr());
 	packetizer->SetCodec(track->GetCodecId());

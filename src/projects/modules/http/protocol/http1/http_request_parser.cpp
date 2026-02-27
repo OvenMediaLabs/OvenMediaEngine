@@ -25,7 +25,7 @@ namespace http
 
 				if ((first_space_index < 0) || (last_space_index < 0) || (first_space_index == last_space_index))
 				{
-					logtw("Invalid space index: first: %d, last: %d, line: %s", first_space_index, last_space_index, line.CStr());
+					logtw("Invalid space index: first: %zd, last: %zd, line: %s", first_space_index, last_space_index, line.CStr());
 					return StatusCode::BadRequest;
 				}
 
