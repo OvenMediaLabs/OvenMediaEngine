@@ -1323,7 +1323,7 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 		}                                                                   \
 		else if (track->GetMediaType() == cmn::MediaType::Audio)            \
 		{                                                                   \
-			track->GetSample().SetFormat(encoder->GetSupportAudioFormat()); \
+			track->SetSampleFormat(encoder->GetSupportAudioFormat()); \
 		}                                                                   \
 	} while (0)
 
@@ -1642,7 +1642,7 @@ void TranscoderStream::UpdateInputTrack(std::shared_ptr<MediaFrame> buffer)
 		{
 			input_track->SetSampleRate(buffer->GetSampleRate());
 			input_track->SetChannel(buffer->GetChannels());
-			input_track->GetSample().SetFormat(buffer->GetFormat<cmn::AudioSample::Format>());
+			input_track->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
 		}
 		break;
 		default: 

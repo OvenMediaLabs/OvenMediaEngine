@@ -37,6 +37,8 @@ VideoTrack::VideoTrack()
 
 void VideoTrack::SetWidth(int32_t width)
 {
+	std::unique_lock<std::shared_mutex> lock(_vmutex);
+
 	_width = width;
 
 	if (width > _max_width)
@@ -47,21 +49,26 @@ void VideoTrack::SetWidth(int32_t width)
 
 void VideoTrack::SetMaxWidth(int32_t max_width)
 {
+	std::unique_lock<std::shared_mutex> lock(_vmutex);
+
 	_max_width = max_width;
 }
 
 int32_t VideoTrack::GetWidth() const
 {
+	std::shared_lock<std::shared_mutex> lock(_vmutex);
 	return _width;
 }
 
 int32_t VideoTrack::GetMaxWidth() const
 {
+	std::shared_lock<std::shared_mutex> lock(_vmutex);
 	return _max_width;
 }
 
 void VideoTrack::SetHeight(int32_t height)
 {
+	std::unique_lock<std::shared_mutex> lock(_vmutex);
 	_height = height;
 
 	if (height > _max_height)
@@ -72,17 +79,26 @@ void VideoTrack::SetHeight(int32_t height)
 
 void VideoTrack::SetMaxHeight(int32_t max_height)
 {
+	std::unique_lock<std::shared_mutex> lock(_vmutex);
 	_max_height = max_height;
 }
 
 int32_t VideoTrack::GetHeight() const
 {
+	std::shared_lock<std::shared_mutex> lock(_vmutex);
 	return _height;
 }
 
 int32_t VideoTrack::GetMaxHeight() const
 {
+	std::shared_lock<std::shared_mutex> lock(_vmutex);
 	return _max_height;
+}
+
+bool VideoTrack::IsValidResolution() const
+{
+	std::shared_lock<std::shared_mutex> lock(_vmutex);
+	return _width > 0 && _height > 0;
 }
 
 void VideoTrack::SetVideoTimestampScale(double scale)

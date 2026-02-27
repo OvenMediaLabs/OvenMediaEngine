@@ -103,7 +103,7 @@ bool EncoderOPUS::InitCodec()
 	const int estimated_frame_size = std::max(sizeof(opus_int16), sizeof(float));
 
 	GetRefTrack()->SetAudioSamplesPerFrame(_frame_size);
-	GetRefTrack()->GetSample().SetFormat(cmn::AudioSample::Format::FltP);
+	GetRefTrack()->SetSampleFormat(cmn::AudioSample::Format::FltP);
 
 	// Setting the maximum size of PCM data to be encoded
 	_buffer = std::make_shared<ov::Data>(max_opus_frame_count * estimated_channel_count * estimated_frame_size);

@@ -559,7 +559,7 @@ namespace pvd
 					track->SetMediaType(cmn::MediaType::Audio);
 					track->SetCodecId(cmn::MediaCodecId::Aac);
 					track->SetOriginBitstream(cmn::BitstreamFormat::AAC_MPEG4_GENERIC);
-					track->GetChannel().SetCount(std::atoi(first_payload->GetCodecParams()));
+					track->SetChannelCount(std::atoi(first_payload->GetCodecParams()));
 					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::MPEG4_GENERIC_AUDIO;
 					break;
 
@@ -567,7 +567,7 @@ namespace pvd
 					track->SetMediaType(cmn::MediaType::Audio);
 					track->SetCodecId(cmn::MediaCodecId::Opus);
 					track->SetOriginBitstream(cmn::BitstreamFormat::OPUS_RTP_RFC_7587);
-					track->GetChannel().SetCount(std::atoi(first_payload->GetCodecParams()));
+					track->SetChannelCount(std::atoi(first_payload->GetCodecParams()));
 					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::OPUS;
 					break;
 

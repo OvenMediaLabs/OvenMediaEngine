@@ -117,6 +117,6 @@ namespace pvd::rtmp
 			}
 		}
 
-		media_track->GetSample().SetFormat(sample_format);
+		media_track->SetSampleFormat(sample_format);
 	}
 }  // namespace pvd::rtmp

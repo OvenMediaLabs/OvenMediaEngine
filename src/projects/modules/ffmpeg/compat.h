@@ -93,8 +93,8 @@ namespace ffmpeg
 					break;
 				case cmn::MediaType::Audio:
 					media_track->SetSampleRate(stream->codecpar->sample_rate);
-					media_track->GetSample().SetFormat(ffmpeg::compat::ToAudioSampleFormat(stream->codecpar->format));
-					media_track->GetChannel().SetLayout(ffmpeg::compat::ToAudioChannelLayout(stream->codecpar->ch_layout.u.mask));
+					media_track->SetSampleFormat(ffmpeg::compat::ToAudioSampleFormat(stream->codecpar->format));
+					media_track->SetChannelLayout(ffmpeg::compat::ToAudioChannelLayout(stream->codecpar->ch_layout.u.mask));
 					break;
 				default:
 					break;

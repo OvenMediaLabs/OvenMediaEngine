@@ -49,6 +49,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 		return false;
 	}
 
+	std::unique_lock<std::shared_mutex> write_lock(_mutex);
+
 	// common
 	_media_type = media_track._media_type;
 
@@ -178,6 +180,7 @@ void MediaTrack::SetMediaType(MediaType type)
 
 MediaType MediaTrack::GetMediaType() const
 {
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
 	return _media_type;
 }
 
@@ -231,19 +234,28 @@ cmn::BitstreamFormat MediaTrack::GetOriginBitstream() const
 	return _origin_bitstream_format;
 }
 
-const cmn::Timebase &MediaTrack::GetTimeBase() const
+cmn::Timebase MediaTrack::GetTimeBase() const
 {
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
 	return _time_base;
 }
 
 void MediaTrack::SetTimeBase(int32_t num, int32_t den)
 {
+	std::unique_lock<std::shared_mutex> write_lock(_mutex);
 	_time_base.Set(num, den);
 }
 
 void MediaTrack::SetTimeBase(const cmn::Timebase &time_base)
 {
+	std::unique_lock<std::shared_mutex> write_lock(_mutex);
 	_time_base = time_base;
+}
+
+bool MediaTrack::IsValidTimeBase() const
+{
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	return _time_base.IsValid();
 }
 
 void MediaTrack::SetStartFrameTime(int64_t time)
@@ -429,11 +441,7 @@ bool MediaTrack::IsValid()
 	switch (GetCodecId())
 	{
 		case MediaCodecId::H264: {
-			if (_width > 0 &&
-				_height > 0 &&
-				_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0 && 
-				GetDecoderConfigurationRecord() != nullptr)
+			if (IsValidResolution() && IsValidTimeBase() && GetDecoderConfigurationRecord() != nullptr)
 
 			{
 				_is_valid = true;
@@ -442,11 +450,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::H265: {
-			if (_width > 0 &&
-				_height > 0 &&
-				_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0 &&
-				GetDecoderConfigurationRecord() != nullptr)
+			if (IsValidResolution() && IsValidTimeBase() && GetDecoderConfigurationRecord() != nullptr)
 			{
 				_is_valid = true;
 				return true;
@@ -454,10 +458,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Vp8: {
-			if (_width > 0 &&
-				_height > 0 &&
-				_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0)
+			if (IsValidResolution() && IsValidTimeBase())
 			{
 				_is_valid = true;
 				return true;
@@ -466,10 +467,7 @@ bool MediaTrack::IsValid()
 		break;
 		case MediaCodecId::Vp9:
 		case MediaCodecId::Flv: {
-			if (_width > 0 &&
-				_height > 0 &&
-				_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0)
+			if (IsValidResolution() && IsValidTimeBase())
 			{
 				_is_valid = true;
 				return true;
@@ -479,10 +477,7 @@ bool MediaTrack::IsValid()
 		case MediaCodecId::Jpeg:
 		case MediaCodecId::Png:
 		case MediaCodecId::Webp: {
-			if (_width > 0 &&
-				_height > 0 &&
-				_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0)
+			if (IsValidResolution() && IsValidTimeBase())
 			{
 				_is_valid = true;
 				return true;
@@ -490,11 +485,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Aac: {
-			if (_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0 &&
-				_channel_layout.GetCounts() > 0 &&
-				_channel_layout.GetLayout() > cmn::AudioChannel::Layout::LayoutUnknown && 
-				GetDecoderConfigurationRecord() != nullptr)
+			if (IsValidTimeBase() && IsValidChannel() && GetDecoderConfigurationRecord() != nullptr)
 			{
 				_is_valid = true;
 				return true;
@@ -502,11 +493,8 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Opus: {
-			if (_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0 &&
-				_channel_layout.GetCounts() > 0 &&
-				_channel_layout.GetLayout() > cmn::AudioChannel::Layout::LayoutUnknown &&
-				_sample.GetRate() == cmn::AudioSample::Rate::R48000)
+			auto audio_sample = GetSample();
+			if (IsValidTimeBase() && IsValidChannel() && audio_sample.GetRate() == cmn::AudioSample::Rate::R48000)
 			{
 				_is_valid = true;
 				return true;
@@ -514,10 +502,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Mp3: {
-			if (_time_base.GetNum() > 0 &&
-				_time_base.GetDen() > 0 &&
-				_channel_layout.GetCounts() > 0 &&
-				_channel_layout.GetLayout() > cmn::AudioChannel::Layout::LayoutUnknown)
+			if (IsValidTimeBase() && IsValidChannel())
 			{
 				_is_valid = true;
 				return true;

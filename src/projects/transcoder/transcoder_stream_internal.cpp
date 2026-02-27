@@ -368,7 +368,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetCodecModules(input_track->GetCodecModules());
 		output_track->SetCodecModuleId(input_track->GetCodecModuleId());
 		output_track->SetChannel(input_track->GetChannel());
-		output_track->GetSample().SetFormat(input_track->GetSample().GetFormat());
+		output_track->SetSampleFormat(input_track->GetSample().GetFormat());
 		output_track->SetTimeBase(input_track->GetTimeBase());
 		output_track->SetSampleRate(input_track->GetSampleRate());
 		output_track->SetDecoderConfigurationRecord(input_track->GetDecoderConfigurationRecord());
@@ -378,8 +378,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetBypass(false);
 		output_track->SetCodecId(cmn::GetCodecIdByName(profile.GetCodec()));
 		output_track->SetCodecModules(profile.GetModules());
-		output_track->GetChannel().SetLayout(profile.GetChannel() == 1 ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
-		output_track->GetSample().SetFormat(input_track->GetSample().GetFormat());	// The sample format will change by the decoder event.
+		output_track->SetChannelLayout(profile.GetChannel() == 1 ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
+		output_track->SetSampleFormat(input_track->GetSample().GetFormat());	// The sample format will change by the decoder event.
 		output_track->SetSampleRate(profile.GetSamplerate());
 
 		// Samplerate
@@ -595,8 +595,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		// Whisper only supports 16kHz mono audio input and float sample format.
 		output_track->SetSampleRate(16000);
 		output_track->SetTimeBase(1, 16000);
-		output_track->GetChannel().SetLayout(cmn::AudioChannel::Layout::LayoutMono);
-		output_track->GetSample().SetFormat(cmn::AudioSample::Format::Flt);
+		output_track->SetChannelLayout(cmn::AudioChannel::Layout::LayoutMono);
+		output_track->SetSampleFormat(cmn::AudioSample::Format::Flt);
 	}
 	else
 	{
@@ -822,7 +822,7 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
 	{
 		output_track->SetSampleRate(buffer->GetSampleRate());
-		output_track->GetSample().SetFormat(buffer->GetFormat<cmn::AudioSample::Format>());
+		output_track->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
 		output_track->SetChannel(buffer->GetChannels());
 	}
 }
