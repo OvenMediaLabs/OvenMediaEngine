@@ -97,7 +97,9 @@ public:
 	size_t		PayloadSize() const;
 	size_t		PaddingSize() const;
 	size_t 		ExtensionSize() const;
-
+	bool 		HasExtension() const;
+	bool 		HasPadding() const;
+	
 	// Payload
 	bool 		SetPayload(const uint8_t *payload, size_t payload_size);
 	uint8_t*	SetPayloadSize(size_t size_bytes);
