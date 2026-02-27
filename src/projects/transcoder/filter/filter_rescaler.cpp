@@ -505,10 +505,18 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
+	if (media_frame->GetWidth() != _src_width || media_frame->GetHeight() != _src_height)
+	{
+		logtw("Input frame parameters do not match the expected source parameters. %dx%d (expected: %dx%d)",
+			  media_frame->GetWidth(), media_frame->GetHeight(), _src_width, _src_height);
+
+		return false;
+	}
+
 	auto src_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
 	if (!src_frame)
 	{
-		logte("Could not allocate the video frame data");
+		logte("Could not get the video frame data");
 
 		SetState(State::ERROR);
 
@@ -520,6 +528,15 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	if (_use_hwframe_transfer == true && src_frame->hw_frames_ctx != nullptr)
 	{
 		transfer_frame = ::av_frame_alloc();
+		if(transfer_frame == nullptr)
+		{
+			logte("Could not allocate the video frame for hwframe transfer");
+
+			SetState(State::ERROR);
+
+			return false;
+		}
+		
 		if (::av_hwframe_transfer_data(transfer_frame, src_frame, 0) < 0)
 		{
 			logte("Error transferring the data to system memory\n");
