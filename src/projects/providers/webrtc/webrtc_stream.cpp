@@ -550,22 +550,9 @@ namespace pvd
 		std::vector<std::shared_ptr<ov::Data>> payload_list;
 		for (const auto &packet : rtp_packets)
 		{
-			// Drop Padding-only RTP packet
-			if (packet->HasPadding() == true && packet->PayloadSize() == 0)
-			{
-				logtp("Drop padding-only RTP packet - track(%u) | %s", track_id, packet->Dump().CStr());
-				continue;
-			}
-
 			logtp("%s", packet->Dump().CStr());
 			auto payload = std::make_shared<ov::Data>(packet->Payload(), packet->PayloadSize());
 			payload_list.push_back(payload);
-		}
-
-		if(payload_list.size() == 0)
-		{
-			logtp("No payload to depacketize - track(%u)", track_id);
-			return;
 		}
 
 		auto bitstream = depacketizer->ParseAndAssembleFrame(payload_list);

@@ -568,6 +568,23 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			break;
 	}
 
+	// Lambda : Push RTP packet to the list if it is not a padding-only packet.
+	auto PushPacketIfNeed = [&](std::vector<std::shared_ptr<RtpPacket>> &rtp_packets, const std::shared_ptr<RtpPacket> &rtp_packet) {
+		if (rtp_packet == nullptr)
+		{
+			return;
+		}
+
+		// Drop Padding-only RTP packet
+		if (rtp_packet->HasPadding() && rtp_packet->PayloadSize() == 0)
+		{
+			logtp("Drop padding-only RTP packet - track(%u) | %s", track_id, rtp_packet->Dump().CStr());
+			return;
+		}
+
+		rtp_packets.push_back(rtp_packet);
+	};
+
 	if(jitter_buffer_type == 1)
 	{
 		auto buffer_it = _rtp_frame_jitter_buffers.find(track_id);
@@ -583,38 +600,43 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		jitter_buffer->InsertPacket(packet);
 
 		auto frame = jitter_buffer->PopAvailableFrame();
-		if(frame != nullptr && _observer != nullptr)
+		if (frame != nullptr && _observer != nullptr)
 		{
 			std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
 
-			auto packet = frame->GetFirstRtpPacket();
-			if(packet == nullptr)
+			auto first_packet = frame->GetFirstRtpPacket();
+			if (first_packet == nullptr)
 			{
 				// can not happen
 				logtw("Could not get first rtp packet from jitter buffer - track(%u)", track_id);
 				return false;
 			}
 
-			rtp_packets.push_back(packet);
+			PushPacketIfNeed(rtp_packets, first_packet);
 
-			while(true)
+			while (true)
 			{
-				packet = frame->GetNextRtpPacket();
-				if(packet == nullptr)
+				auto next_packet = frame->GetNextRtpPacket();
+				if (next_packet == nullptr)
 				{
 					break;
 				}
 
-				rtp_packets.push_back(packet);
+				PushPacketIfNeed(rtp_packets, next_packet);
+			}
+
+			if (rtp_packets.empty())
+			{
+				return true;
 			}
 
 			_observer->OnRtpFrameReceived(rtp_packets);
 		}
 	}
-	else if(jitter_buffer_type == 2)
+	else if (jitter_buffer_type == 2)
 	{
 		auto buffer_it = _rtp_minimal_jitter_buffers.find(track_id);
-		if(buffer_it == _rtp_minimal_jitter_buffers.end())
+		if (buffer_it == _rtp_minimal_jitter_buffers.end())
 		{
 			// can not happen
 			logte("Could not find jitter buffer for ssrc %u", packet->Ssrc());
@@ -626,10 +648,17 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		jitter_buffer->InsertPacket(packet);
 
 		auto pop_packet = jitter_buffer->PopAvailablePacket();
-		if(pop_packet != nullptr)
+		if (pop_packet != nullptr)
 		{
 			std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
-			rtp_packets.push_back(pop_packet);
+
+			PushPacketIfNeed(rtp_packets, pop_packet);
+
+			if (rtp_packets.empty())
+			{
+				return true;
+			}
+
 			_observer->OnRtpFrameReceived(rtp_packets);
 		}
 	}
