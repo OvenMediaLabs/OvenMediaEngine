@@ -20,8 +20,9 @@ bool EncoderAVCxOpenH264::SetCodecParams()
 	_codec_context->ticks_per_frame = 2;
 	_codec_context->time_base = ffmpeg::compat::TimebaseToAVRational(GetRefTrack()->GetTimeBase());
 	_codec_context->pix_fmt = ffmpeg::compat::ToAVPixelFormat(GetSupportVideoFormat());
-	_codec_context->width = GetRefTrack()->GetWidth();
-	_codec_context->height = GetRefTrack()->GetHeight();
+	auto resolution = GetRefTrack()->GetResolution();
+	_codec_context->width = resolution.width;
+	_codec_context->height = resolution.height;
 
 	// Keyframe Interval
 	// @see transcoder_encoder.cpp / force_keyframe_by_time_interval

@@ -99,7 +99,7 @@ void MediaRouterStats::Update(
 				stat_track_str.AppendFormat(", kint: %.2f/%.2f/%s",
 											track->GetKeyFrameIntervalByMeasured(),
 											track->GetKeyFrameIntervalByConfig(),
-											cmn::GetKeyFrameIntervalTypeToString(track->GetKeyFrameIntervalTypeByConfig()).CStr());
+											cmn::GetKeyFrameIntervalTypeToString(track->GetKeyFrameIntervalTypeByConfig()));
 			}
 
 			// calc min/max pts

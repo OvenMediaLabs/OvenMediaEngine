@@ -44,6 +44,10 @@ MediaTrack::~MediaTrack()
 // Same ID required
 bool MediaTrack::Update(const MediaTrack &media_track)
 {
+	std::scoped_lock(
+		_video_mutex, media_track._video_mutex
+	);
+
 	if (_id != media_track.GetId())
 	{
 		return false;
@@ -78,16 +82,10 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_origin_bitstream_format = media_track._origin_bitstream_format;
 
 	// Video
-	_framerate = media_track._framerate;
-	_framerate_conf = media_track._framerate_conf;
-
-	_width = media_track._width;
-	_width_conf  = media_track._width_conf;
-	_max_width = media_track._max_width;
-	
-	_height = media_track._height;
-	_height_conf = media_track._height_conf;
-	_max_height = media_track._max_height;
+	_frame_snapshot = media_track._frame_snapshot;
+	_resolution = media_track._resolution;
+	_max_resolution = media_track._max_resolution;
+	_resolution_conf = media_track._resolution_conf;
 
 	// Audio
 	_sample = media_track._sample;
@@ -353,8 +351,8 @@ ov::String MediaTrack::GetInfoString()
 				"Bitrate(%s) "
 				"Codec(%s,%s:%d) "
 				"BSF(%s) "
-				"Resolution(%dx%d) "
-				"MaxResolution(%dx%d) "
+				"Resolution(%s) "
+				"MaxResolution(%s) "
 				"Framerate(%.2f) "
 				"KeyInterval(%.2f/%s) "
 				"SkipFrames(%d) "
@@ -363,11 +361,11 @@ ov::String MediaTrack::GetInfoString()
 				ov::Converter::BitToString(GetBitrate()).CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
 				GetBitstreamFormatString(GetOriginBitstream()),
-				GetWidth(), GetHeight(),
-				GetMaxWidth(), GetMaxHeight(),
+				GetResolution().ToString().CStr(),
+				GetMaxResolution().ToString().CStr(),
 				GetFrameRate(),
 				GetKeyFrameInterval(),
-				cmn::GetKeyFrameIntervalTypeToString(GetKeyFrameIntervalTypeByConfig()).LowerCaseString().CStr(),
+				cmn::GetKeyFrameIntervalTypeToString(GetKeyFrameIntervalTypeByConfig()),
 				GetSkipFramesByConfig(),
 				GetBFrames());
 			break;
@@ -529,7 +527,7 @@ bool MediaTrack::HasQualityMeasured()
 		case MediaType::Video:
 		{
 			// It can be used when the value is set in the provider or settings, or when it is measured.
-			if ((_bitrate > 0 || _bitrate_conf > 0) && (_framerate > 0.0 || _framerate_conf > 0.0))
+			if ((_bitrate > 0 || _bitrate_conf > 0) && (GetFrameRate() > 0.0))
 			{
 				_has_quality_measured = true;
 			}

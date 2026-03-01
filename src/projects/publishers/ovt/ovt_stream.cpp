@@ -164,10 +164,12 @@ bool OvtStream::GenerateDescription()
 		json_track["lastFrameTime"] = track->GetLastFrameTime();
 
 		json_video_track["framerate"] = track->GetFrameRate();
-		json_video_track["width"] = track->GetWidth();
-		json_video_track["height"] = track->GetHeight();
-		json_video_track["maxWidth"] = track->GetMaxWidth();
-		json_video_track["maxHeight"] = track->GetMaxHeight();
+		auto resolution = track->GetResolution();
+		json_video_track["width"] = resolution.width;
+		json_video_track["height"] = resolution.height;
+		auto max_resolution = track->GetMaxResolution();
+		json_video_track["maxWidth"] = max_resolution.width;
+		json_video_track["maxHeight"] = max_resolution.height;
 
 		json_audio_track["samplerate"] = track->GetSampleRate();
 		json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());

@@ -218,8 +218,9 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 			codec_parameters->codec_type = AVMEDIA_TYPE_VIDEO;
 			codec_parameters->codec_id = AvCodecIdFromMediaCodecId(media_track->GetCodecId());
 			codec_parameters->bit_rate = media_track->GetBitrate();
-			codec_parameters->width = media_track->GetWidth();
-			codec_parameters->height = media_track->GetHeight();
+			auto resolution = media_track->GetResolution();
+			codec_parameters->width = resolution.width;
+			codec_parameters->height = resolution.height;
 			codec_parameters->format = (int)ffmpeg::compat::ToAVPixelFormat(media_track->GetColorspace());
 
 			std::shared_ptr<const ov::Data> extra_data = nullptr;

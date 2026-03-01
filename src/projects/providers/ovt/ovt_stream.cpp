@@ -445,10 +445,8 @@ namespace pvd
 				}
 
 				new_track->SetFrameRateByConfig(json_video_track["framerate"].asDouble());
-				new_track->SetWidth(json_video_track["width"].asUInt());
-				new_track->SetHeight(json_video_track["height"].asUInt());
-				new_track->SetMaxWidth(json_video_track["maxWidth"].asUInt());
-				new_track->SetMaxHeight(json_video_track["maxHeight"].asUInt());
+				new_track->SetResolution(json_video_track["width"].asUInt(), json_video_track["height"].asUInt());
+				new_track->SetMaxResolution(json_video_track["maxWidth"].asUInt(), json_video_track["maxHeight"].asUInt());
 			}
 			else if (new_track->GetMediaType() == cmn::MediaType::Audio)
 			{

@@ -983,8 +983,9 @@ ov::String TranscoderStream::MakeRenditionName(const ov::String &name_template, 
 
 	if (video_track != nullptr)
 	{
-		rendition_name = rendition_name.Replace("${Width}", ov::String::FormatString("%d", video_track->GetWidth()).CStr());
-		rendition_name = rendition_name.Replace("${Height}", ov::String::FormatString("%d", video_track->GetHeight()).CStr());
+		auto resolution = video_track->GetResolution();
+		rendition_name = rendition_name.Replace("${Width}", ov::String::FormatString("%d", resolution.width).CStr());
+		rendition_name = rendition_name.Replace("${Height}", ov::String::FormatString("%d", resolution.height).CStr());
 		rendition_name = rendition_name.Replace("${Bitrate}", ov::String::FormatString("%d", video_track->GetBitrate()).CStr());
 		// TODO: Check if there are cases where the rendition name includes decimal points. (e.g., 29.97fps)
 		rendition_name = rendition_name.Replace("${Framerate}", ov::String::FormatString("%.0f", video_track->GetFrameRate()).CStr());
@@ -1401,13 +1402,13 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 
 	if (is_recreated)
 	{
-		logtd("%s Encoder has been recreated. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%dx%d), Fps(%.2f)", _log_prefix.CStr(),
-			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetWidth(), output_track->GetHeight(), output_track->GetFrameRate());
+		logtd("%s Encoder has been recreated. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%s), Fps(%.2f)", _log_prefix.CStr(),
+			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetResolution().ToString().CStr(), output_track->GetFrameRate());
 	}
 	else
 	{
-		logti("%s Encoder has been created. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%dx%d), Fps(%.2f)", _log_prefix.CStr(),
-			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetWidth(), output_track->GetHeight(), output_track->GetFrameRate());
+		logti("%s Encoder has been created. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d), Size(%s), Fps(%.2f)", _log_prefix.CStr(),
+			  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId(), output_track->GetResolution().ToString().CStr(), output_track->GetFrameRate());
 	}
 
 	return true;
@@ -1633,8 +1634,7 @@ void TranscoderStream::UpdateInputTrack(std::shared_ptr<MediaFrame> buffer)
 	{
 		case cmn::MediaType::Video: 
 		{
-			input_track->SetWidth(buffer->GetWidth());
-			input_track->SetHeight(buffer->GetHeight());
+			input_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
 			input_track->SetColorspace(buffer->GetFormat<cmn::VideoPixelFormatId>());
 		}
 		break;

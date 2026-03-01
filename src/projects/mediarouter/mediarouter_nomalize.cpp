@@ -137,8 +137,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		media_track->SetWidth(avc_config->GetWidth());
-		media_track->SetHeight(avc_config->GetHeight());
+		media_track->SetResolution(avc_config->GetWidth(), avc_config->GetHeight());
 
 		media_track->SetDecoderConfigurationRecord(avc_config);
 
@@ -264,8 +263,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 
 				if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 				{
-					media_track->SetWidth(new_avc_config->GetWidth());
-					media_track->SetHeight(new_avc_config->GetHeight());
+					media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
 					media_track->SetDecoderConfigurationRecord(new_avc_config);
 				}
 			}
@@ -405,8 +403,7 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 
 			if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 			{
-				media_track->SetWidth(new_avc_config->GetWidth());
-				media_track->SetHeight(new_avc_config->GetHeight());
+				media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
 				media_track->SetDecoderConfigurationRecord(new_avc_config);
 			}
 		}
@@ -724,8 +721,7 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 
 		if (old_hevc_config == nullptr || old_hevc_config->Equals(hevc_config) == false)
 		{
-			media_track->SetWidth(hevc_config->GetWidth());
-			media_track->SetHeight(hevc_config->GetHeight());
+			media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
 			media_track->SetDecoderConfigurationRecord(hevc_config);
 		}
 	}
@@ -780,8 +776,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		media_track->SetWidth(hevc_config->GetWidth());
-		media_track->SetHeight(hevc_config->GetHeight());
+		media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
 
 		media_track->SetDecoderConfigurationRecord(hevc_config);
 
@@ -899,8 +894,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 				if ((media_track->IsValid() == false) || (new_hevc_config->Equals(old_hevc_config) == false))
 				{
-					media_track->SetWidth(new_hevc_config->GetWidth());
-					media_track->SetHeight(new_hevc_config->GetHeight());
+					media_track->SetResolution(new_hevc_config->GetWidth(), new_hevc_config->GetHeight());
 					media_track->SetDecoderConfigurationRecord(new_hevc_config);
 				}
 			}
@@ -1007,8 +1001,7 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 		return false;
 	}
 
-	media_track->SetWidth(parser.GetWidth());
-	media_track->SetHeight(parser.GetHeight());
+	media_track->SetResolution(parser.GetWidth(), parser.GetHeight());
 
 	// TODO(Getroot) : In VP8, there is no need to know whether it is the current keyframe. So it doesn't parse every time.
 	// However, if this is needed in the future, VP8Parser writes and applies a low-cost code that only determines whether or not it is a keyframe.

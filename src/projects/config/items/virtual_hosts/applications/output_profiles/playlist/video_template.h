@@ -93,22 +93,24 @@ namespace cfg
 							return false;
 						}
 
-						if (_max_width > 0 && track->GetWidth() > _max_width)
+						auto resolution = track->GetResolution();
+
+						if (_max_width > 0 && resolution.width > _max_width)
 						{
 							return false;
 						}
 
-						if (_min_width > 0 && track->GetWidth() < _min_width)
+						if (_min_width > 0 && resolution.width < _min_width)
 						{
 							return false;
 						}
 
-						if (_max_height > 0 && track->GetHeight() > _max_height)
+						if (_max_height > 0 && resolution.height > _max_height)
 						{
 							return false;
 						}
 
-						if (_min_height > 0 && track->GetHeight() < _min_height)
+						if (_min_height > 0 && resolution.height < _min_height)
 						{
 							return false;
 						}

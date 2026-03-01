@@ -481,44 +481,45 @@ namespace mon::alrt
 			}
 		}
 
-		if (video_track->GetWidth() > 0)
+		auto video_resolution = video_track->GetResolution();
+		if (video_resolution.width > 0)
 		{
 			// Verify MinWidth
 			if (ingress.GetMinWidth() > 0)
 			{
-				if (video_track->GetWidth() < ingress.GetMinWidth())
+				if (video_resolution.width < ingress.GetMinWidth())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_SMALL, ingress.GetMinWidth(), video_track->GetWidth());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_SMALL, ingress.GetMinWidth(), video_resolution.width);
 				}
 			}
 
 			// Verify MaxWidth
 			if (ingress.GetMaxWidth() > 0)
 			{
-				if (video_track->GetWidth() > ingress.GetMaxWidth())
+				if (video_resolution.width > ingress.GetMaxWidth())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_LARGE, ingress.GetMaxWidth(), video_track->GetWidth());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_LARGE, ingress.GetMaxWidth(), video_resolution.width);
 				}
 			}
 		}
 
-		if (video_track->GetHeight() > 0)
+		if (video_resolution.height > 0)
 		{
 			// Verify MinHeight
 			if (ingress.GetMinHeight() > 0)
 			{
-				if (video_track->GetHeight() < ingress.GetMinHeight())
+				if (video_resolution.height < ingress.GetMinHeight())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_SMALL, ingress.GetMinHeight(), video_track->GetHeight());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_SMALL, ingress.GetMinHeight(), video_resolution.height);
 				}
 			}
 
 			// Verify MaxHeight
 			if (ingress.GetMaxHeight() > 0)
 			{
-				if (video_track->GetHeight() > ingress.GetMaxHeight())
+				if (video_resolution.height > ingress.GetMaxHeight())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_LARGE, ingress.GetMaxHeight(), video_track->GetHeight());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_LARGE, ingress.GetMaxHeight(), video_resolution.height);
 				}
 			}
 		}

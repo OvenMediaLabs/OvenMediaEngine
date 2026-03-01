@@ -120,8 +120,9 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 		}
 
 		new_stream_info->_bandwidth += video_track->GetBitrate();
-		new_stream_info->_width = video_track->GetWidth();
-		new_stream_info->_height = video_track->GetHeight();
+		auto resolution = video_track->GetResolution();
+		new_stream_info->_width = resolution.width;
+		new_stream_info->_height = resolution.height;
 		new_stream_info->_framerate = video_track->GetFrameRate();
 		new_stream_info->_codecs = video_track->GetCodecsParameter();
 

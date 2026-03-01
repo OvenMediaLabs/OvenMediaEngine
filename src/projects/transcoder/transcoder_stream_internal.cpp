@@ -159,16 +159,34 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetBitrateByConfig(profile.GetBitrate());
 	}
 
+	std::optional<int> width;
+	std::optional<int> height;
+
 	profile.GetWidth(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetWidthByConfig(profile.GetWidth());
+		width = profile.GetWidth();
 	}
 
 	profile.GetHeight(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetHeightByConfig(profile.GetHeight());
+		height = profile.GetHeight();
+	}
+
+	if (width.has_value() && height.has_value())
+	{
+		output_track->SetResolutionByConfig(width.value(), height.value());
+	}
+	else if (width.has_value())
+	{
+		auto resolution = output_track->GetResolutionByConfig();
+		output_track->SetResolutionByConfig(width.value(), resolution.height);
+	}
+	else if (height.has_value())
+	{
+		auto resolution = output_track->GetResolutionByConfig();
+		output_track->SetResolutionByConfig(resolution.width, height.value());
 	}
 
 	profile.GetFramerate(&is_parsed);
@@ -262,10 +280,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetCodecId(input_track->GetCodecId());
 		output_track->SetCodecModules(input_track->GetCodecModules());
 		output_track->SetCodecModuleId(input_track->GetCodecModuleId());
-		output_track->SetMaxWidth(input_track->GetMaxWidth());
-		output_track->SetMaxHeight(input_track->GetMaxHeight());
-		output_track->SetWidth(input_track->GetWidth());
-		output_track->SetHeight(input_track->GetHeight());
+		output_track->SetMaxResolution(input_track->GetMaxResolution());
+		output_track->SetResolution(input_track->GetResolution());
 		output_track->SetTimeBase(input_track->GetTimeBase());
 	}
 	else
@@ -276,8 +292,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 
 		output_track->SetCodecId(codec_id);
 		output_track->SetCodecModules(profile.GetModules());
-		output_track->SetWidth(profile.GetWidth());
-		output_track->SetHeight(profile.GetHeight());
+		output_track->SetResolution(profile.GetWidth(), profile.GetHeight());
 		output_track->SetTimeBase(GetDefaultTimebaseByCodecId(codec_id));
 		output_track->SetPreset(profile.GetPreset());
 		output_track->SetThreadCount(profile.GetThreadCount());
@@ -428,16 +443,35 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	}
 
 	bool is_parsed;
+
+	std::optional<int> width;
+	std::optional<int> height;
+
 	profile.GetWidth(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetWidthByConfig(profile.GetWidth());
+		width = profile.GetWidth();
 	}
 
 	profile.GetHeight(&is_parsed);
 	if (is_parsed == true)
 	{
-		output_track->SetHeightByConfig(profile.GetHeight());
+		height = profile.GetHeight();
+	}
+
+	if (width.has_value() && height.has_value())
+	{
+		output_track->SetResolutionByConfig(width.value(), height.value());
+	}
+	else if (width.has_value())
+	{
+		auto resolution = output_track->GetResolutionByConfig();
+		output_track->SetResolutionByConfig(width.value(), resolution.height);
+	}
+	else if (height.has_value())
+	{
+		auto resolution = output_track->GetResolutionByConfig();
+		output_track->SetResolutionByConfig(resolution.width, height.value());
 	}
 
 	profile.GetFramerate(&is_parsed);
@@ -501,8 +535,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetBypass(false);
 	output_track->SetCodecId(cmn::GetCodecIdByName(profile.GetCodec()));
 	output_track->SetCodecModules(profile.GetModules());
-	output_track->SetWidth(profile.GetWidth());
-	output_track->SetHeight(profile.GetHeight());
+	output_track->SetResolution(profile.GetWidth(), profile.GetHeight());
 	output_track->SetTimeBase(GetDefaultTimebaseByCodecId(output_track->GetCodecId()));
 
 	// Github Issue : #1417
@@ -554,10 +587,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(
 	output_track->SetCodecModules("");
 	output_track->SetCodecModuleId(input_track->GetCodecModuleId());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
-	output_track->SetMaxWidth(input_track->GetMaxWidth());
-	output_track->SetMaxHeight(input_track->GetMaxHeight());
-	output_track->SetWidth(input_track->GetWidth());
-	output_track->SetHeight(input_track->GetHeight());
+	output_track->SetMaxResolution(input_track->GetMaxResolution());
+	output_track->SetResolution(input_track->GetResolution());
 	output_track->SetFrameRateByMeasured(input_track->GetFrameRate());
 	output_track->SetTimeBase(input_track->GetTimeBase());
 
@@ -637,17 +668,18 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	}
 
 	condition = if_match.GetWidth(&is_parsed).UpperCaseString();
+	auto input_resolution = input_track->GetResolution();
 	if (is_parsed == true)
 	{
-		if ((condition == "EQ") && (input_track->GetWidth() != profile.GetWidth()))
+		if ((condition == "EQ") && (input_resolution.width != profile.GetWidth()))
 		{
 			return false;
 		}
-		else if ((condition == "LTE") && input_track->GetWidth() > profile.GetWidth())
+		else if ((condition == "LTE") && input_resolution.width > profile.GetWidth())
 		{
 			return false;
 		}
-		else if (condition == "GTE" && (input_track->GetWidth() < profile.GetWidth()))
+		else if (condition == "GTE" && (input_resolution.width < profile.GetWidth()))
 		{
 			return false;
 		}
@@ -658,15 +690,15 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	condition = if_match.GetHeight(&is_parsed).UpperCaseString();
 	if (is_parsed == true)
 	{
-		if ((condition == "EQ") && (input_track->GetHeight() != profile.GetHeight()))
+		if ((condition == "EQ") && (input_resolution.height != profile.GetHeight()))
 		{
 			return false;
 		}
-		else if ((condition == "LTE") && input_track->GetHeight() > profile.GetHeight())
+		else if ((condition == "LTE") && input_resolution.height > profile.GetHeight())
 		{
 			return false;
 		}
-		else if (condition == "GTE" && (input_track->GetHeight() < profile.GetHeight()))
+		else if (condition == "GTE" && (input_resolution.height < profile.GetHeight()))
 		{
 			return false;
 		}
@@ -698,7 +730,7 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	{
 		if (condition == "EQ") 
 		{
-			float track_sar = (float)input_track->GetWidth() / (float)input_track->GetHeight();
+			float track_sar = (float)input_resolution.width / (float)input_resolution.height;
 			float profile_sar = (float)profile.GetWidth() / (float)profile.GetHeight();
 
 			if (track_sar != profile_sar)
@@ -815,8 +847,7 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
-		output_track->SetWidth(buffer->GetWidth());
-		output_track->SetHeight(buffer->GetHeight());
+		output_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
 		output_track->SetColorspace(buffer->GetFormat<cmn::VideoPixelFormatId>());
 	}
 	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
@@ -834,24 +865,30 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 		float aspect_ratio = (float)buffer->GetWidth() / (float)buffer->GetHeight();
 
 		// Keep the original video resolution
-		if (output_track->GetWidth() == 0 && output_track->GetHeight() == 0)
+		auto output_resolution = output_track->GetResolution();
+		if (output_resolution.width == 0 && output_resolution.height == 0)
 		{
-			output_track->SetWidth(buffer->GetWidth());
-			output_track->SetHeight(buffer->GetHeight());
+			output_resolution.width = buffer->GetWidth();
+			output_resolution.height = buffer->GetHeight();
+			output_track->SetResolution(output_resolution);
 		}
 		// Width is automatically calculated as the original video ratio
-		else if (output_track->GetWidth() == 0 && output_track->GetHeight() != 0)
+		else if (output_resolution.width == 0 && output_resolution.height != 0)
 		{
-			int32_t width = (int32_t)((float)output_track->GetHeight() * aspect_ratio);
+			int32_t width = (int32_t)((float)output_resolution.height * aspect_ratio);
 			width = (width % 2 == 0) ? width : width + 1;
-			output_track->SetWidth(width);
+
+			output_resolution.width = width;
+			output_track->SetResolution(output_resolution);
 		}
 		// Heigh is automatically calculated as the original video ratio
-		else if (output_track->GetWidth() != 0 && output_track->GetHeight() == 0)
+		else if (output_resolution.width != 0 && output_resolution.height == 0)
 		{
-			int32_t height = (int32_t)((float)output_track->GetWidth() / aspect_ratio);
+			int32_t height = (int32_t)((float)output_resolution.width / aspect_ratio);
 			height = (height % 2 == 0) ? height : height + 1;
-			output_track->SetHeight(height);
+
+			output_resolution.height = height;
+			output_track->SetResolution(output_resolution);
 		}
 
 		// Set framerate of the output track
@@ -862,22 +899,24 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 
 		// To be compatible with all hardware. The encoding resolution must be a multiple of 4
 		// In particular, Xilinx Media Accelerator must have a resolution specified in multiples of 4.
-		if (output_track->GetWidth() % 4 != 0)
+		if (output_resolution.width % 4 != 0)
 		{
-			int32_t new_width = (output_track->GetWidth() / 4 + 1) * 4;
+			int32_t new_width = (output_resolution.width / 4 + 1) * 4;
 
-			logtd("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_track->GetWidth(), new_width);
+			logtd("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_resolution.width, new_width);
 
-			output_track->SetWidth(new_width);
+			output_resolution.width = new_width;
+			output_track->SetResolution(output_resolution);
 		}
 
-		if (output_track->GetHeight() % 4 != 0)
+		if (output_resolution.height % 4 != 0)
 		{
-			int32_t new_height = (output_track->GetHeight() / 4 + 1) * 4;
+			int32_t new_height = (output_resolution.height / 4 + 1) * 4;
 
-			logtd("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_track->GetHeight(), new_height);
+			logtd("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_resolution.height, new_height);
 
-			output_track->SetHeight(new_height);
+			output_resolution.height = new_height;
+			output_track->SetResolution(output_resolution);
 		}
 	}
 	else if (output_track->GetMediaType() == cmn::MediaType::Audio)

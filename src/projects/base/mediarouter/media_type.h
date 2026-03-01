@@ -574,7 +574,7 @@ namespace cmn
 		return cmn::MediaCodecId::None;
 	}
 
-	static ov::String GetKeyFrameIntervalTypeToString(cmn::KeyFrameIntervalType type)
+	static constexpr const char *GetKeyFrameIntervalTypeToString(cmn::KeyFrameIntervalType type)
 	{
 		switch (type)
 		{
@@ -1065,4 +1065,19 @@ namespace cmn
 		std::string _name = "stereo";
 	};
 
+	struct Resolution
+	{
+		int32_t width;
+		int32_t height;
+
+		bool operator==(const Resolution& other) const
+		{
+			return width == other.width && height == other.height;
+		}
+
+		ov::String ToString()
+		{
+			return ov::String::FormatString("%dx%d", width, height);
+		}
+	};
 }  // namespace cmn
