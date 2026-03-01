@@ -15,6 +15,32 @@
 
 class VideoTrack
 {
+protected:
+	struct FrameSnapshot
+	{
+		// framerate (set by user)
+		std::optional<double> framerate_conf;
+
+		// framerate (measurement)
+		double framerate					 = 0;
+
+		// Key Frame Interval (set by user)
+		std::optional<double> key_frame_interval_conf;
+
+		// Key Frame Interval Avg (measurement)
+		double key_frame_interval = 0;
+
+		double GetFrameRate() const
+		{
+			return framerate_conf.value_or(framerate);
+		}
+
+		double GetKeyFrameInterval() const
+		{
+			return key_frame_interval_conf.value_or(key_frame_interval);
+		}
+	};
+
 public:
 	VideoTrack();
 
@@ -34,23 +60,20 @@ public:
 	void SetFrameRateByConfig(double framerate);
 	double GetFrameRateByConfig() const;
 
-	void SetWidth(int32_t width);
-	void SetMaxWidth(int32_t max_width); // for ovt sync
-	int32_t GetWidth() const;
-	int32_t GetMaxWidth() const;
+	void SetResolution(int32_t width, int32_t height);
+	void SetResolution(const cmn::Resolution &resolution);
+	cmn::Resolution GetResolution() const;
 
-	void SetWidthByConfig(int32_t width);
-	int32_t GetWidthByConfig() const;
+	void SetMaxResolution(int32_t max_width, int32_t max_height); // for ovt sync
+	void SetMaxResolution(const cmn::Resolution &max_resolution);
+	cmn::Resolution GetMaxResolution() const;
 
-	void SetHeight(int32_t height);
-	void SetMaxHeight(int32_t max_height);
-	int32_t GetHeight() const;
-	int32_t GetMaxHeight() const;
+	void SetResolutionByConfig(int32_t width, int32_t height);
+	void SetResolutionByConfig(const cmn::Resolution &resolution);
+	cmn::Resolution GetResolutionByConfig() const;
+
 	bool IsValidResolution() const;
 	
-	void SetHeightByConfig(int32_t height);
-	int32_t GetHeightByConfig() const;
-
 	void SetVideoTimestampScale(double scale);
 	double GetVideoTimestampScale() const;
 
@@ -113,51 +136,46 @@ public:
 	ov::String GetExtraEncoderOptionsByConfig() const;
 
 protected:
-	mutable std::shared_mutex _vmutex;
+	FrameSnapshot GetFrameSnapshot() const;
 
-	// framerate (measurement)
-	double _framerate = 0;
-	// framerate (set by user)
-	double _framerate_conf = 0;
+protected:
+	mutable std::shared_mutex _video_mutex;
+
+	FrameSnapshot _frame_snapshot;
+
 	// framerate last one second (measurement)
-	double _framerate_last_second = 0;
+	std::atomic<double> _framerate_last_second = 0;
 
-	double _video_timescale;
+	std::atomic<double> _video_timescale;
 	
 	// Resolution
-	int32_t _width = 0;
-	int32_t _height = 0;
-	int32_t _max_width = 0;
-	int32_t _max_height = 0;
+	cmn::Resolution _resolution{0, 0};
+	cmn::Resolution _max_resolution{0, 0};
+	cmn::Resolution _resolution_conf{0, 0};
 
 	// Resolution (set by user)
-	int32_t _width_conf = 0;
-	int32_t _height_conf = 0;
+	// NOTE: kept as cmn::Resolution in _resolution_conf
 
-	// Key Frame Interval Avg (measurement)
-	double _key_frame_interval = 0;
 	// Key Frame Interval Latest (measurement)
-	double _key_frame_interval_latest = 0;
-	// Key Frame Interval (set by user)
-	double _key_frame_interval_conf = 0;
+	std::atomic<double> _key_frame_interval_latest = 0;
 	// Delta Frame Count since last key frame
-	int32_t _delta_frame_count_since_last_key_frame = 0;
+	std::atomic<int32_t> _delta_frame_count_since_last_key_frame = 0;
 
 	// Detect long key frame interval (set by mediarouter)
-	bool _detect_long_key_frame_interval = false;
+	std::atomic<bool> _detect_long_key_frame_interval = false;
 
 	// Key Frame Interval Type (set by user)
-	cmn::KeyFrameIntervalType _key_frame_interval_type_conf = cmn::KeyFrameIntervalType::FRAME;
+	std::atomic<cmn::KeyFrameIntervalType> _key_frame_interval_type_conf = cmn::KeyFrameIntervalType::FRAME;
 
 	// Number of B-frame (set by user)
-	int32_t _b_frames = 0;
+	std::atomic<int32_t> _b_frames = 0;
 	
 	// B-frame (set by mediarouter)
-	bool _has_bframe = false;
+	std::atomic<bool> _has_bframe = false;
 
 	// Colorspace of video
 	// This variable is temporarily used in the Pixel Format defined by FFMPEG.
-	cmn::VideoPixelFormatId _colorspace = cmn::VideoPixelFormatId::None;	
+	std::atomic<cmn::VideoPixelFormatId> _colorspace = cmn::VideoPixelFormatId::None;	
 
 	// Preset for encoder (set by user)
 	ov::String _preset;
@@ -166,26 +184,26 @@ protected:
 	ov::String _profile;
 	
 	// Thread count of codec (set by user)
-	int _thread_count = 0;	
+	std::atomic<int> _thread_count = 0;	
 
 	// Skip frames (set by user)
 	// If the set value is greater than or equal to 0, the skip frame is automatically calculated. 
 	// The skip frame is not less than the value set by the user.
 	// -1 : No SkipFrame
 	// 0 ~ 120 : minimum value of SkipFrames. it is automatically calculated and the SkipFrames value is changed.
-	int32_t _skip_frames_conf = -1;
+	std::atomic<int32_t> _skip_frames_conf = -1;
 
 	// @decoder
 	// Keyframe Decode Only (set by user)
-	bool _keyframe_decode_only = false;
+	std::atomic<bool> _keyframe_decode_only = false;
 
 	// @encoder
 	// Lookahead (set by user)
-	int32_t _lookahead_conf = -1;
+	std::atomic<int32_t> _lookahead_conf = -1;
 
 	// Abnormal key frame interval detection
-	bool _detect_abnormal_framerate = false;
-	std::deque<double>  _measured_framerate_window;
+	std::atomic<bool> _detect_abnormal_framerate = false;
+	std::deque<double> _measured_framerate_window;
 
 	ov::String _extra_encoder_options;
 public:

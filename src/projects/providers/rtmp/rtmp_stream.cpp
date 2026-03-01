@@ -1998,8 +1998,7 @@ namespace pvd
 			new_track->SetVideoTimestampScale(1.0);
 
 			// Below items are not mandatory, it will be parsed again from SPS parser
-			new_track->SetWidth((uint32_t)media_info->video_width);
-			new_track->SetHeight((uint32_t)media_info->video_height);
+			new_track->SetResolution(media_info->video_width, media_info->video_height);
 			new_track->SetFrameRateByConfig(media_info->video_framerate);
 
 			// Kbps -> bps, it is just metadata

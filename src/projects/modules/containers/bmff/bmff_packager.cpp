@@ -244,8 +244,9 @@ namespace bmff
 
 		// Width and height
 		// [ISO/IEC 14496-12 8.5.3] specify the track's visual presentation size as fixed-point 16.16 values. 
-		stream.WriteBE32(_media_track->GetWidth() << 16);
-		stream.WriteBE32(_media_track->GetHeight() << 16);
+		auto resolution = GetMediaTrack()->GetResolution();
+		stream.WriteBE32(resolution.width << 16);
+		stream.WriteBE32(resolution.height << 16);
 
 		//[ISO/IEC 14496-12 8.5.1] The default value of the track header flags for media tracks is 7 (track_enabled, track_in_movie, track_in_preview). 
 		return WriteFullBox(container_stream, "tkhd", *stream.GetData(), 0, 7);
@@ -706,10 +707,11 @@ namespace bmff
 			container_stream.WriteBE32(0);
 		}
 
+		auto resolution = GetMediaTrack()->GetResolution();
 		// Width int(16)
-		container_stream.WriteBE16(GetMediaTrack()->GetWidth());
+		container_stream.WriteBE16(resolution.width);
 		// Height int(16)
-		container_stream.WriteBE16(GetMediaTrack()->GetHeight());
+		container_stream.WriteBE16(resolution.height);
 		// Horizontal resolution int(32)
 		container_stream.WriteBE32(0x00480000);
 		// Vertical resolution int(32)

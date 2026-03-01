@@ -77,6 +77,15 @@ namespace pvd::rtmp
 		}
 	}
 
+	template <typename Tvalue1, typename Tvalue2, typename Tsetter = std::function<void(Tvalue1, Tvalue2)>>
+	void SetIf(const std::optional<Tvalue1> &value1, const std::optional<Tvalue2> &value2, Tsetter setter)
+	{
+		if (value1.has_value() && value2.has_value())
+		{
+			setter(value1.value(), value2.value());
+		}
+	}
+
 	// Check if the codec is supported when using E-RTMP
 	bool IsSupportedCodecForERTMP(cmn::MediaCodecId codec_id)
 	{
@@ -1902,8 +1911,7 @@ namespace pvd::rtmp
 	{
 		media_track->SetVideoTimestampScale(1.0);
 
-		SetIf(_meta_data_context.video.width, [&](auto width) { media_track->SetWidth(width); });
-		SetIf(_meta_data_context.video.height, [&](auto height) { media_track->SetHeight(height); });
+		SetIf(_meta_data_context.video.width, _meta_data_context.video.height, [&](auto width, auto height) { media_track->SetResolution(width, height); });
 		SetIf(_meta_data_context.video.framerate, [&](auto framerate) { media_track->SetFrameRateByConfig(framerate); });
 		SetIf(_meta_data_context.video.bitrate, [&](auto bitrate) { media_track->SetBitrateByConfig(bitrate * 1000); });
 	}

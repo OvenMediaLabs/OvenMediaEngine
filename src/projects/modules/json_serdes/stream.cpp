@@ -30,10 +30,12 @@ namespace serdes
 		SetBool(object, "bypass", track->IsBypass());
 
 		SetString(object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
-		SetInt(object, "width", track->GetWidth());
-		SetInt(object, "maxWidth", track->GetMaxWidth());
-		SetInt(object, "height", track->GetHeight());
-		SetInt(object, "maxHeight", track->GetMaxHeight());
+		auto resolution = track->GetResolution();
+		auto max_resolution = track->GetMaxResolution();
+		SetInt(object, "width", resolution.width);
+		SetInt(object, "maxWidth", max_resolution.width);
+		SetInt(object, "height", resolution.height);
+		SetInt(object, "maxHeight", max_resolution.height);
 		SetInt(object, "bitrate", track->GetBitrate());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
 		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());

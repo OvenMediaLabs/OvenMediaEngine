@@ -210,8 +210,7 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 				  buffer->GetWidth(),
 				  buffer->GetHeight());
 
-			GetInputTrack()->SetWidth(buffer->GetWidth());
-			GetInputTrack()->SetHeight(buffer->GetHeight());
+			GetInputTrack()->SetResolution(buffer->GetWidth(), buffer->GetHeight());
 
 			return true;
 		}

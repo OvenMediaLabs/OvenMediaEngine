@@ -59,7 +59,8 @@ bool FilterRescaler::InitializeSourceFilter()
 {
 	std::vector<ov::String> src_params;
 
-	src_params.push_back(ov::String::FormatString("video_size=%dx%d", _input_track->GetWidth(), _input_track->GetHeight()));
+	auto resolution = _input_track->GetResolution();
+	src_params.push_back(ov::String::FormatString("video_size=%dx%d", resolution.width, resolution.height));
 	src_params.push_back(ov::String::FormatString("pix_fmt=%s", ::av_get_pix_fmt_name((AVPixelFormat)_src_pixfmt)));
 	src_params.push_back(ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()));
 	src_params.push_back(ov::String::FormatString("pixel_aspect=%d/%d", 1, 1));
@@ -165,7 +166,8 @@ bool FilterRescaler::InitializeFilterDescription()
 				}
 			}
 			// Scaler description of default module
-			desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", _output_track->GetWidth(), _output_track->GetHeight());
+			auto resolution = _output_track->GetResolution();
+			desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -211,7 +213,8 @@ bool FilterRescaler::InitializeFilterDescription()
 					desc = ov::String::FormatString("hwupload_cuda=device=%d,", cuda_id);
 				}
 			}
-			desc += ov::String::FormatString("scale_cuda=%d:%d:format=nv12", _output_track->GetWidth(), _output_track->GetHeight());
+			auto resolution = _output_track->GetResolution();
+			desc += ov::String::FormatString("scale_cuda=%d:%d:format=nv12", resolution.width, resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -220,14 +223,15 @@ bool FilterRescaler::InitializeFilterDescription()
 		else if (output_module_id == cmn::MediaCodecModuleId::XMA)
 		{
 			// multiscale_xma only supports resolutions multiple of 4.
-			bool need_crop_for_multiple_of_4 = (_input_track->GetHeight() % 4 != 0 || _input_track->GetHeight() % 4 != 0);
+			auto input_resolution = _input_track->GetResolution();
+			bool need_crop_for_multiple_of_4 = (input_resolution.width % 4 != 0 || input_resolution.height % 4 != 0);
 			if (need_crop_for_multiple_of_4)
 			{
 				logtw("multiscale_xma only supports resolutions multiple of 4. The resolution will be cropped to a multiple of 4.");
 			}
 
-			int32_t desire_width = _input_track->GetWidth() - _input_track->GetWidth() % 4;
-			int32_t desire_height = _input_track->GetHeight() - _input_track->GetHeight() % 4;
+			int32_t desire_width = input_resolution.width - input_resolution.width % 4;
+			int32_t desire_height = input_resolution.height - input_resolution.height % 4;
 
 			switch (input_module_id)
 			{
@@ -284,8 +288,9 @@ bool FilterRescaler::InitializeFilterDescription()
 				}
 			}
 
+			auto output_resolution = _output_track->GetResolution();
 			desc += ov::String::FormatString("multiscale_xma=lxlnx_hwdev=%d:outputs=1:out_1_width=%d:out_1_height=%d:out_1_rate=full",
-											 _output_track->GetCodecDeviceId(), _output_track->GetWidth(), _output_track->GetHeight());
+											 _output_track->GetCodecDeviceId(), output_resolution.width, output_resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -336,9 +341,8 @@ bool FilterRescaler::InitializeFpsFilter()
 
 	// Set frame copy mode based on resolution
 	// Use deep copy when resolutions match to prevent in-place modifications by FFmpeg filter graph
-	bool same_resolution = (_input_track->GetWidth() == _output_track->GetWidth() &&
-							_input_track->GetHeight() == _output_track->GetHeight());
-	
+	bool same_resolution = (_input_track->GetResolution() == _output_track->GetResolution());
+
 	auto copy_mode = same_resolution ? FilterFps::OutputFrameCopyMode::DeepCopy 
 									 : FilterFps::OutputFrameCopyMode::ShallowCopy;
 	_fps_filter.SetOutputFrameCopyMode(copy_mode);
@@ -352,8 +356,9 @@ bool FilterRescaler::Configure()
 
 
 	// Initialize source parameters
-	_src_width	  = _input_track->GetWidth();
-	_src_height	  = _input_track->GetHeight();
+	auto resolution = _input_track->GetResolution();
+	_src_width	  = resolution.width;
+	_src_height	  = resolution.height;
 	_src_pixfmt	  = ffmpeg::compat::ToAVPixelFormat(_input_track->GetColorspace());
 
 	// Initialize input buffer queue
@@ -919,7 +924,8 @@ bool FilterRescaler::SetHWContextToFilterIfNeed()
 						continue;
 					}
 
-					if (ffmpeg::compat::SetHWFramesCtxOfAVFilterLink(input, hw_device_ctx, _output_track->GetWidth(), _output_track->GetHeight()) == false)
+					auto resolution = _output_track->GetResolution();
+					if (ffmpeg::compat::SetHWFramesCtxOfAVFilterLink(input, hw_device_ctx, resolution.width, resolution.height) == false)
 					{
 						logte("Could not set hw frames context for %s", filter->name);
 						return false;
