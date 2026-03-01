@@ -548,7 +548,7 @@ namespace pvd
 					depacketizer_type = RtpDepacketizingManager::SupportedDepacketizerType::H265;
 					break;
 
-					case PayloadAttr::SupportCodec::VP8:
+				case PayloadAttr::SupportCodec::VP8:
 					track->SetMediaType(cmn::MediaType::Video);
 					track->SetCodecId(cmn::MediaCodecId::Vp8);
 					track->SetOriginBitstream(cmn::BitstreamFormat::VP8_RTP_RFC_7741);
