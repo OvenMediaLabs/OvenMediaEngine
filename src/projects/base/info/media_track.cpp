@@ -46,7 +46,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 {
 	std::scoped_lock(
 		_media_mutex, media_track._media_mutex,
-		_video_mutex, media_track._video_mutex
+		_video_mutex, media_track._video_mutex,
+		_audio_mutex, media_track._audio_mutex
 	);
 	
 	if (_id != media_track.GetId())
@@ -89,8 +90,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	// Audio
 	_sample = media_track._sample;
 	_channel_layout = media_track._channel_layout;
-	_audio_timescale = media_track._audio_timescale;
-	_audio_samples_per_frame = media_track._audio_samples_per_frame;
+	_audio_timescale = media_track._audio_timescale.load();
+	_audio_samples_per_frame = media_track._audio_samples_per_frame.load();
 
 	// Subtitle
 	_auto_select = media_track._auto_select;
