@@ -47,7 +47,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	std::scoped_lock(
 		_media_mutex, media_track._media_mutex,
 		_video_mutex, media_track._video_mutex,
-		_audio_mutex, media_track._audio_mutex
+		_audio_mutex, media_track._audio_mutex,
+		_subtitle_mutex, media_track._subtitle_mutex
 	);
 	
 	if (_id != media_track.GetId())
@@ -94,13 +95,13 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_audio_samples_per_frame = media_track._audio_samples_per_frame.load();
 
 	// Subtitle
-	_auto_select = media_track._auto_select;
-	_default = media_track._default;
-	_forced = media_track._forced;
+	_auto_select = media_track._auto_select.load();
+	_default = media_track._default.load();
+	_forced = media_track._forced.load();
 	_engine = media_track._engine;
 	_model = media_track._model;
 	_source_language = media_track._source_language;
-	_translation = media_track._translation;
+	_translation = media_track._translation.load();
 
 	return true;
 }
