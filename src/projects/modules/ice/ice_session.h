@@ -111,6 +111,7 @@ private:
 	mutable std::shared_mutex _candidate_pairs_mutex;
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs;
 
+	mutable std::shared_mutex _expire_time_mutex;
 	std::chrono::time_point<std::chrono::system_clock> _expire_time;
 	const int _expire_after_ms;
 	const uint64_t _lifetime_epoch_ms;
@@ -120,8 +121,9 @@ private:
     std::shared_ptr<IcePortObserver> _observer;
 
 	// Connection information with TURN server
-	bool _is_turn_client = false;
-	bool _is_data_channel_enabled = false;
+	std::atomic<bool> _is_turn_client = false;
+	std::atomic<bool> _is_data_channel_enabled = false;
+	mutable std::shared_mutex _turn_peer_address_mutex;
 	ov::SocketAddress _turn_peer_address;
-	uint16_t _data_channle_number = 0;
+	std::atomic<uint16_t> _data_channel_number = 0;
 };
