@@ -126,7 +126,7 @@ public:
 	template <typename T, typename = typename std::enable_if<std::is_base_of<DecoderConfigurationRecord, T>::value>::type>
 	std::shared_ptr<T> GetDecoderConfigurationRecordAs() const
 	{
-		return std::dynamic_pointer_cast<T>(_decoder_configuration_record);
+		return std::dynamic_pointer_cast<T>(GetDecoderConfigurationRecord());
 	}
 	void SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConfigurationRecord> &dcr);
 	
@@ -142,26 +142,25 @@ public:
 
 	ov::String GetInfoString();
 
-protected: 
-
-	mutable std::shared_mutex _mutex;
+protected:
+	mutable std::shared_mutex _media_mutex;
 
 	// Track ID
-	uint32_t _id;
+	std::atomic<uint32_t> _id;
 
 	// Media Type
-	cmn::MediaType _media_type;
+	std::atomic<cmn::MediaType> _media_type;
 
 	// Codec
-	cmn::MediaCodecId _codec_id;
-	cmn::MediaCodecModuleId _codec_module_id;
-	cmn::DeviceId _codec_device_id;
+	std::atomic<cmn::MediaCodecId> _codec_id;
+	std::atomic<cmn::MediaCodecModuleId> _codec_module_id;
+	std::atomic<cmn::DeviceId> _codec_device_id;
 	ov::String _codec_modules;
 
 	// Variant Name : Original encoder profile that made this track 
 	// from <OutputProfile><Encodes>(<Video> || <Audio> || <Image>)<Name>
 	ov::String _variant_name;
-	int _group_index = -1;
+	std::atomic<int> _group_index = -1;
 
 	// Set by AudioMap or VideoMap or SubtitleMap
 	ov::String _public_name;
@@ -169,53 +168,53 @@ protected:
 	ov::String _characteristics;
 
 	// Bitstream format 
-	cmn::BitstreamFormat _origin_bitstream_format = cmn::BitstreamFormat::Unknown;
+	std::atomic<cmn::BitstreamFormat> _origin_bitstream_format = cmn::BitstreamFormat::Unknown;
 
 	// Timebase
 	cmn::Timebase _time_base;
 
 	// Bitrate
-	int32_t _bitrate;
+	std::atomic<int32_t> _bitrate;
 	// Bitrate (Set by user)
-	int32_t _bitrate_conf;
+	std::atomic<int32_t> _bitrate_conf;
 	// Bitrate last one second
-	int32_t _bitrate_last_second;
+	std::atomic<int32_t> _bitrate_last_second;
 	
 	// Bypass
-	bool _byass;
+	std::atomic<bool> _byass;
 	// Bypass (Set by user)
-	bool _bypass_conf;
+	std::atomic<bool> _bypass_conf;
 
 
 	// Time of start frame(packet)
-	int64_t _start_frame_time;
+	std::atomic<int64_t> _start_frame_time;
 
 	// Time of last frame(packet)
-	int64_t _last_frame_time;
+	std::atomic<int64_t> _last_frame_time;
 
 	// First frame received time
 	ov::StopWatch _clock_from_first_frame_received;
 	ov::StopWatch _timer_one_second;
 
 	// Statistics
-	uint64_t _total_frame_count = 0;
-	uint64_t _total_frame_bytes = 0;
-	uint64_t _total_key_frame_count = 0;
-	int32_t _key_frame_interval_count = 0;
-	int32_t _delta_frame_count_since_last_key_frame = 0;
+	std::atomic<uint64_t> _total_frame_count = 0;
+	std::atomic<uint64_t> _total_frame_bytes = 0;
+	std::atomic<uint64_t> _total_key_frame_count = 0;
+	std::atomic<int32_t> _key_frame_interval_count = 0;
+	std::atomic<int32_t> _delta_frame_count_since_last_key_frame = 0;
 
-	uint64_t _last_seconds_frame_count = 0;
-	uint64_t _last_seconds_frame_bytes = 0;
+	std::atomic<uint64_t> _last_seconds_frame_count = 0;
+	std::atomic<uint64_t> _last_seconds_frame_bytes = 0;
 
-	uint64_t _last_frame_count = 0;
-	uint64_t _last_frame_bytes = 0;
+	std::atomic<uint64_t> _last_frame_count = 0;
+	std::atomic<uint64_t> _last_frame_bytes = 0;
 	
-	int64_t _last_received_timestamp = 0;
+	std::atomic<int64_t> _last_received_timestamp = 0;
 
 	// Validity
-	bool _is_valid = false;
+	std::atomic<bool> _is_valid = false;
 
-	bool _has_quality_measured = false;
+	std::atomic<bool> _has_quality_measured = false;
 
 	// Codec specific object
 	// AVCDecoderConfigurationRecord, HEVCDecoderConfigurationRecord, AudioSpecificConfig 

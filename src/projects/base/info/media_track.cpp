@@ -33,7 +33,7 @@ MediaTrack::MediaTrack()
 
 MediaTrack::MediaTrack(const MediaTrack &media_track)
 {
-	_id = media_track._id;
+	_id = media_track._id.load();
 	Update(media_track);	
 }
 
@@ -45,21 +45,20 @@ MediaTrack::~MediaTrack()
 bool MediaTrack::Update(const MediaTrack &media_track)
 {
 	std::scoped_lock(
+		_media_mutex, media_track._media_mutex,
 		_video_mutex, media_track._video_mutex
 	);
-
+	
 	if (_id != media_track.GetId())
 	{
 		return false;
 	}
 
-	std::unique_lock<std::shared_mutex> write_lock(_mutex);
-
 	// common
-	_media_type = media_track._media_type;
+	_media_type = media_track._media_type.load();
 
-	_codec_id = media_track._codec_id;
-	_codec_module_id = media_track._codec_module_id;
+	_codec_id = media_track._codec_id.load();
+	_codec_module_id = media_track._codec_module_id.load();
 
 	_public_name = media_track._public_name;
 	_variant_name = media_track._variant_name;
@@ -68,18 +67,18 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 
 	_time_base = media_track._time_base;
 
-	_bitrate = media_track._bitrate;
-	_bitrate_conf = media_track._bitrate_conf;
+	_bitrate = media_track._bitrate.load();
+	_bitrate_conf = media_track._bitrate_conf.load();
 
-	_byass = media_track._byass;
-	_bypass_conf = media_track._bypass_conf;
+	_byass = media_track._byass.load();
+	_bypass_conf = media_track._bypass_conf.load();
 
 	_start_frame_time = 0;
 	_last_frame_time = 0;
 
-	_decoder_configuration_record = media_track._decoder_configuration_record;
+	std::atomic_store(&_decoder_configuration_record, std::atomic_load(&media_track._decoder_configuration_record));
 
-	_origin_bitstream_format = media_track._origin_bitstream_format;
+	_origin_bitstream_format = media_track._origin_bitstream_format.load();
 
 	// Video
 	_frame_snapshot = media_track._frame_snapshot;
@@ -90,6 +89,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	// Audio
 	_sample = media_track._sample;
 	_channel_layout = media_track._channel_layout;
+	_audio_timescale = media_track._audio_timescale;
+	_audio_samples_per_frame = media_track._audio_samples_per_frame;
 
 	// Subtitle
 	_auto_select = media_track._auto_select;
@@ -116,11 +117,13 @@ uint32_t MediaTrack::GetId() const
 // Track Name (used for Renditions)
 void MediaTrack::SetVariantName(const ov::String &name)
 {
+	std::scoped_lock lock(_media_mutex);
 	_variant_name = name;
 }
 
 ov::String MediaTrack::GetVariantName() const
 {
+	std::shared_lock lock(_media_mutex);
 	if (_variant_name.IsEmpty())
 	{
 		// If variant name is not set, return media type string
@@ -143,31 +146,37 @@ int MediaTrack::GetGroupIndex() const
 // Public Name (used for multiple audio/video tracks. e.g. multilingual audio)
 void MediaTrack::SetPublicName(const ov::String &name)
 {
+	std::scoped_lock lock(_media_mutex);
 	_public_name = name;
 }
 ov::String MediaTrack::GetPublicName() const
 {
+	std::shared_lock lock(_media_mutex);
 	return _public_name;
 }
 
 // Language (rfc5646)
 void MediaTrack::SetLanguage(const ov::String &language)
 {
+	std::scoped_lock lock(_media_mutex);
 	_language = language;
 }
 ov::String MediaTrack::GetLanguage() const
 {
+	std::shared_lock lock(_media_mutex);
 	return _language;
 }
 
 // Characteristics (e.g. "main", "sign", "visually-impaired")
 void MediaTrack::SetCharacteristics(const ov::String &characteristics)
 {
+	std::scoped_lock lock(_media_mutex);
 	_characteristics = characteristics;
 }
 
 ov::String MediaTrack::GetCharacteristics() const
 {
+	std::shared_lock lock(_media_mutex);
 	return _characteristics;
 }
 
@@ -178,7 +187,6 @@ void MediaTrack::SetMediaType(MediaType type)
 
 MediaType MediaTrack::GetMediaType() const
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
 	return _media_type;
 }
 
@@ -214,11 +222,13 @@ cmn::DeviceId MediaTrack::GetCodecDeviceId() const
 
 void MediaTrack::SetCodecModules(ov::String modules)
 {
+	std::scoped_lock lock(_media_mutex);
 	_codec_modules = modules;
 }
 
 ov::String MediaTrack::GetCodecModules() const
 {
+	std::shared_lock lock(_media_mutex);
 	return _codec_modules;
 }
 
@@ -234,25 +244,25 @@ cmn::BitstreamFormat MediaTrack::GetOriginBitstream() const
 
 cmn::Timebase MediaTrack::GetTimeBase() const
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	std::shared_lock lock(_media_mutex);
 	return _time_base;
 }
 
 void MediaTrack::SetTimeBase(int32_t num, int32_t den)
 {
-	std::unique_lock<std::shared_mutex> write_lock(_mutex);
+	std::scoped_lock lock(_media_mutex);
 	_time_base.Set(num, den);
 }
 
 void MediaTrack::SetTimeBase(const cmn::Timebase &time_base)
 {
-	std::unique_lock<std::shared_mutex> write_lock(_mutex);
+	std::scoped_lock lock(_media_mutex);
 	_time_base = time_base;
 }
 
 bool MediaTrack::IsValidTimeBase() const
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	std::shared_lock lock(_media_mutex);
 	return _time_base.IsValid();
 }
 
@@ -288,12 +298,12 @@ bool MediaTrack::IsBypass() const
 
 std::shared_ptr<DecoderConfigurationRecord> MediaTrack::GetDecoderConfigurationRecord() const
 {
-	return _decoder_configuration_record;
+	return std::atomic_load(&_decoder_configuration_record);
 }
 
 void MediaTrack::SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConfigurationRecord> &dcr)
 {
-	_decoder_configuration_record = dcr;
+	std::atomic_store(&_decoder_configuration_record, dcr);
 }
 
 ov::String MediaTrack::GetCodecsParameter() const
@@ -517,6 +527,8 @@ bool MediaTrack::IsValid()
 
 bool MediaTrack::HasQualityMeasured()
 {
+	std::scoped_lock lock(_media_mutex, _video_mutex);
+	
 	if (_has_quality_measured == true)
 	{
 		return true;
@@ -527,7 +539,7 @@ bool MediaTrack::HasQualityMeasured()
 		case MediaType::Video:
 		{
 			// It can be used when the value is set in the provider or settings, or when it is measured.
-			if ((_bitrate > 0 || _bitrate_conf > 0) && (GetFrameRate() > 0.0))
+			if ((_bitrate > 0 || _bitrate_conf > 0) && (_frame_snapshot.GetFrameRate() > 0.0))
 			{
 				_has_quality_measured = true;
 			}
