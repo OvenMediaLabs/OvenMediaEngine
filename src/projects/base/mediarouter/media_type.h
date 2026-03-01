@@ -1067,10 +1067,10 @@ namespace cmn
 
 	struct Resolution
 	{
-		int32_t width;
-		int32_t height;
+		int32_t width  = 0;
+		int32_t height = 0;
 
-		bool operator==(const Resolution& other) const
+		bool operator==(const Resolution &other) const
 		{
 			return width == other.width && height == other.height;
 		}
