@@ -247,4 +247,8 @@ void DecoderAVC::CodecThread()
 			}
 		}
 	}
+
+	// Must be called here to ensure FF_THREAD_FRAME workers are joined
+	// before this thread exits, avoiding a race with the destructor.
+	UninitCodec();
 }
