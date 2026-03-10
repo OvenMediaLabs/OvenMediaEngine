@@ -123,9 +123,9 @@ namespace pub
 
 	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets)
 	{
-#if DEBUG && defined(ENABLE_VERBOSE_LOG)
+#if DEBUG
 		// Since adding up the total packet size is costly, it is calculated only in debug mode
-		size_t total_packet_size = 0;
+		[[maybe_unused]] size_t total_packet_size = 0;
 
 		for (const auto &packet : pes_packets)
 		{
@@ -133,7 +133,7 @@ namespace pub
 		}
 
 		logap("OnFrame - %zu packets (total %zu bytes)", pes_packets.size(), total_packet_size);
-	#endif	// DEBUG && ENABLE_VERBOSE_LOG
+#endif	// DEBUG
 
 		SendData(pes_packets);
 	}
