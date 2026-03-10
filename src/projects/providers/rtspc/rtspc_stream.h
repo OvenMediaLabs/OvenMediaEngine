@@ -31,7 +31,7 @@ namespace pvd
 {
 	class RtspcProvider;
 
-	class RtspcStream : public pvd::PullStream, public RtpRtcpInterface, public ov::Node
+	class RtspcStream final : public pvd::PullStream, public RtpRtcpInterface, public ov::Node
 	{
 	public:
 		static std::shared_ptr<RtspcStream> Create(const std::shared_ptr<pvd::PullApplication> &application, const uint32_t stream_id, const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties);

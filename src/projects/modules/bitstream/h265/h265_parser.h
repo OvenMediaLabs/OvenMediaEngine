@@ -183,7 +183,7 @@ public:
 private:
     unsigned int _width = 0;
     unsigned int _height = 0;
-    unsigned int _fps = 0;
+    [[maybe_unused]] unsigned int _fps = 0;
     unsigned int _id = 0;
 
     ProfileTierLevel _profile_tier_level;

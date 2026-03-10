@@ -40,6 +40,7 @@ namespace ov
 	class SocketAsyncInterface
 	{
 	public:
+		virtual ~SocketAsyncInterface() = default;
 		// Called when
 		//   1) A new client connected to ServerSocket
 		//   2) Socket is connected to a server

@@ -111,7 +111,7 @@ namespace ffmpeg
 			return false;
 		}
 
-		AVFrame frame	= {0};
+		AVFrame frame	= {{}};
 		AVPacket packet = {0};
 
 		while (av_read_frame(_format_context, &packet) >= 0)

@@ -23,17 +23,17 @@ public:
 		return cmn::MediaCodecId::Whisper;
 	}
 
-	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::NVENC;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Audio;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return true;
 	}

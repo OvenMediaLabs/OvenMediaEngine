@@ -502,7 +502,7 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 			}
 
 			// It will be used in CloseHandler
-			connection->AddUserData(stream->GetStreamId(), std::move(session->GetSessionPath()));
+			connection->AddUserData(stream->GetStreamId(), session->GetSessionPath());
 			session->UpdateLastRequest(connection->GetId());
 		}
 

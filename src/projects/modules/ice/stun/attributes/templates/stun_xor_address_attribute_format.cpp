@@ -50,7 +50,8 @@ bool DoXOROnAddress(const size_t length, const uint8_t transaction_id[OV_STUN_TR
 		return false;
 	}
 
-	uint8_t second_operand[length];
+	constexpr size_t xor_key_size = sizeof(OV_STUN_MAGIC_COOKIE) + OV_STUN_TRANSACTION_ID_LENGTH;
+	uint8_t second_operand[xor_key_size];
 	const auto cookie = ov::HostToNetwork32(OV_STUN_MAGIC_COOKIE);
 	::memcpy(&second_operand[0], &cookie, sizeof(cookie));
 	::memcpy(&second_operand[static_cast<off_t>(sizeof(cookie))], transaction_id, OV_STUN_TRANSACTION_ID_LENGTH);
@@ -124,7 +125,8 @@ bool StunXorAddressAttributeFormat::SerializeXoredAddress(const StunMessage *stu
 
 		case ov::SocketFamily::Inet6: {
 			const auto length = _address.GetInAddrLength();
-			uint8_t addr[length];
+			constexpr size_t max_addr_length = 16;  // max(sizeof(in_addr), sizeof(in6_addr))
+			uint8_t addr[max_addr_length];
 			::memcpy(addr, (_address.ToIn6Addr())->s6_addr, length);
 
 			if (DoXOROnAddress(length, stun_message->GetTransactionId(), addr))

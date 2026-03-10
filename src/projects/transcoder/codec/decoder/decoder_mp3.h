@@ -23,17 +23,17 @@ public:
 		return cmn::MediaCodecId::Mp3;
 	}
 
-	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::DEFAULT;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Audio;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return false;
 	}

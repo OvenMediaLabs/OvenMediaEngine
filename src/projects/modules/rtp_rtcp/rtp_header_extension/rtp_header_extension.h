@@ -26,6 +26,7 @@
 class RtpHeaderExtension
 {
 public:
+	virtual ~RtpHeaderExtension() = default;
 
 	enum class HeaderType : uint8_t
 	{

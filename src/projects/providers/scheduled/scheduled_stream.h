@@ -113,7 +113,7 @@ namespace pvd
         std::map<int, int> _origin_id_track_id_map;
 
 		std::map<uint32_t, int64_t> _last_timestamp_map;
-		int64_t _biggest_timestamp = -1LL;
+		[[maybe_unused]] int64_t _biggest_timestamp = -1LL;
 
         ov::StopWatch _realtime_clock;
 		std::map<uint32_t, int64_t> _global_track_offset_us_map;

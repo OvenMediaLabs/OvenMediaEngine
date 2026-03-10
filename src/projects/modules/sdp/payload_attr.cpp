@@ -8,6 +8,7 @@
 //==============================================================================
 
 #include <base/ovcrypto/base_64.h>
+#include <vector>
 #include "payload_attr.h"
 
 PayloadAttr::PayloadAttr()
@@ -248,7 +249,7 @@ void PayloadAttr::SetFmtp(const ov::String &fmtp)
 				// configuration data.
 			
 				size_t config_len = (value.GetLength()+1)/2;
-				uint8_t config[config_len];
+				std::vector<uint8_t> config(config_len);
 
 				for(size_t i=0; i<config_len; i++)
 				{
@@ -285,7 +286,7 @@ void PayloadAttr::SetFmtp(const ov::String &fmtp)
 					}
 				}
 			
-				_mpeg4_generic_config = std::make_shared<ov::Data>(&config[0], config_len);
+				_mpeg4_generic_config = std::make_shared<ov::Data>(config.data(), config_len);
 			}
 			else if(key.UpperCaseString() == "MODE")
 			{

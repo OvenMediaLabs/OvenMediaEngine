@@ -98,7 +98,7 @@ namespace bmff
 			_is_completed = true;
 		}
 
-		bool IsCompleted() const
+		bool IsCompleted() const override
 		{
 			return _is_completed;
 		}

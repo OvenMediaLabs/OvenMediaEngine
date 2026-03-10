@@ -18,6 +18,7 @@ namespace base
 		class PartialSegment
 		{
 		public:
+			virtual ~PartialSegment() = default;
 			virtual int64_t GetNumber() const = 0;
 			virtual int64_t GetStartTimestamp() const = 0;
 			virtual double GetDurationMs() const = 0;

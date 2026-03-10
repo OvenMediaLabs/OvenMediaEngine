@@ -14,7 +14,7 @@
 
 namespace pvd
 {
-	class MpegTsStream : public PushStream
+	class MpegTsStream final : public PushStream
 	{
 	public:
 		static std::shared_ptr<MpegTsStream> Create(StreamSourceType source_type, uint32_t channel_id, const info::VHostAppName &vhost_app_name, const ov::String &stream_name, const std::shared_ptr<ov::Socket> &client_socket, const ov::SocketAddress &remote_address, uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider);
@@ -49,9 +49,9 @@ namespace pvd
 
 		uint64_t _lifetime_epoch_msec;
 
-		bool _first_frame = true;
-		int64_t _dts_offset = 0;
-		int64_t _prev_dts = -1;
-		uint32_t _wrap_count = 0;
+		[[maybe_unused]] bool _first_frame = true;
+		[[maybe_unused]] int64_t _dts_offset = 0;
+		[[maybe_unused]] int64_t _prev_dts = -1;
+		[[maybe_unused]] int64_t _wrap_count = 0;
 	};
 }

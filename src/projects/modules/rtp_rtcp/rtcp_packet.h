@@ -8,6 +8,7 @@ class RtcpPacket;
 class RtcpInfo
 {
 public:
+	virtual ~RtcpInfo() = default;
 	virtual bool Parse(const RtcpPacket &packet) = 0;
 
 	// RtcpInfo must provide packet type

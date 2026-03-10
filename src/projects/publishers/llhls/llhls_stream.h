@@ -196,10 +196,10 @@ private:
 	std::shared_mutex _dumps_lock;
 
 	// DRM
-	bool _indentity_enabled = false; // for custom license server and player purposes
-	bool _widevine_enabled = false;
-	bool _playready_enabled = false;
-	bool _fairplay_enabled = false;
+	[[maybe_unused]] bool _indentity_enabled = false; // for custom license server and player purposes
+	[[maybe_unused]] bool _widevine_enabled = false;
+	[[maybe_unused]] bool _playready_enabled = false;
+	[[maybe_unused]] bool _fairplay_enabled = false;
 
 	bmff::CencProperty _cenc_property;
 	ov::String _key_uri; // string, only for FairPlay

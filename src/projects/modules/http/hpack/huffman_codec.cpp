@@ -278,7 +278,8 @@ namespace http
 
 		std::shared_ptr<ov::Data> HuffmanCodec::Encode(const ov::String &str)
 		{
-			uint8_t out_data[str.GetLength() * 2];
+			std::vector<uint8_t> out_data_buf(str.GetLength() * 2);
+			uint8_t *out_data = out_data_buf.data();
 			size_t out_data_size = 0;
 
 			uint64_t bit_buffer = 0;

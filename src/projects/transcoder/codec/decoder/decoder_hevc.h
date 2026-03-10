@@ -24,17 +24,17 @@ public:
         return cmn::MediaCodecId::H265;
     }
 
-    cmn::MediaCodecModuleId GetModuleID() const noexcept
+    cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::DEFAULT;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Video;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return false;
 	}

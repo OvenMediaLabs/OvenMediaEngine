@@ -23,6 +23,7 @@ namespace bmff
 	class Packager
 	{
 	public:
+		virtual ~Packager() = default;
 		Packager(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const CencProperty &cenc_property);
 
 	protected:

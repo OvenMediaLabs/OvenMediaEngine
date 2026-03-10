@@ -24,8 +24,8 @@ public:
 
 private:
     std::vector<std::shared_ptr<ov::Data>>   _nal_list;
-    uint8_t _bitstream;
-    size_t _bitstream_length;
+    [[maybe_unused]] uint8_t _bitstream;
+    [[maybe_unused]] size_t _bitstream_length;
 
     friend class NalUnitSplitter;
 };

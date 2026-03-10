@@ -244,10 +244,12 @@ bool H265Parser::ParseVPS(const uint8_t *nalu, size_t length, H265VPS &vps)
 		uint32_t H265_READ_UEV(vps_num_hrd_parameters);
 		for (size_t i = 0; i < vps_num_hrd_parameters; i++)
 		{
-			uint32_t H265_READ_UEV(hrd_layer_set_idx[i]);
+			uint32_t H265_READ_UEV(hrd_layer_set_idx_val);
+			(void)hrd_layer_set_idx_val;
 			if (i > 0)
 			{
-				uint8_t H265_READ_BITS(cprms_present_flag[i], 1);
+				uint8_t H265_READ_BITS(cprms_present_flag_val, 1);
+				(void)cprms_present_flag_val;
 			}
 
 			// hrd_parameters(cprms_present_flag[i], vps_max_sub_layers_minus1)
@@ -1036,7 +1038,8 @@ bool ParsePps3dExtension(NalUnitBitstreamParser &parser, H265PPS &pps)
 					uint32_t depth_max_value = (1 << (pps_bit_depth_for_depth_layers_minus8 + 8)) - 1;
 					for (uint32_t j = 0; j <= depth_max_value; j++)
 					{
-						uint8_t H265_READ_BITS(dlt_value_flag[i][j], 1);
+						uint8_t H265_READ_BITS(dlt_value_flag_val, 1);
+						(void)dlt_value_flag_val;
 					}
 				}
 				else
@@ -1182,11 +1185,13 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 		{
 			for (uint32_t i = 0; i < num_tile_columns_minus1; i++)
 			{
-				uint32_t H265_READ_UEV(column_width_minus1[i]);
+				uint32_t H265_READ_UEV(column_width_minus1_val);
+				(void)column_width_minus1_val;
 			}
 			for (uint32_t i = 0; i < num_tile_rows_minus1; i++)
 			{
-				uint32_t H265_READ_UEV(row_height_minus1[i]);
+				uint32_t H265_READ_UEV(row_height_minus1_val);
+				(void)row_height_minus1_val;
 			}
 		}
 		uint8_t H265_READ_BITS(loop_filter_across_tiles_enabled_flag, 1);

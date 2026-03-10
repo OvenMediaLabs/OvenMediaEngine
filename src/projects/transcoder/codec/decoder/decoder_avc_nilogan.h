@@ -23,17 +23,17 @@ public:
 		return cmn::MediaCodecId::H264;
 	}
 
-	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::NILOGAN;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Video;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return true;
 	}

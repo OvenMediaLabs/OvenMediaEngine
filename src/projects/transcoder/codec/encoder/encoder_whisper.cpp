@@ -120,6 +120,7 @@ bool EncoderWhisper::InitCodec()
 		// must fit in available CUDA free memory.
 		bool use_gpu = false;
 		{
+#ifdef HWACCELS_NVIDIA_ENABLED
 			struct stat model_stat{};
 			size_t model_file_bytes = 0;
 			if (::stat(_track->GetModel().CStr(), &model_stat) == 0)
@@ -131,8 +132,6 @@ bool EncoderWhisper::InitCodec()
 			// Observed ratio for ggml-small: ~729 MB from a 466 MB file (1.57×).
 			// 2× the file size is a safe upper bound across all whisper model sizes.
 			size_t required_bytes = model_file_bytes * 2;
-
-#ifdef HWACCELS_NVIDIA_ENABLED
 			size_t free_mem = 0, total_mem = 0;
 			if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess)
 			{

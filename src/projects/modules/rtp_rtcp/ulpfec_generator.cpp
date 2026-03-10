@@ -8,8 +8,7 @@ constexpr size_t 	kMaskSizeLbitClear				= 2;
 constexpr size_t	kMaskSizeLbitSet				= 6;
 constexpr size_t 	kFecLevelHeaderSizeLbitClear 	= 2 + kMaskSizeLbitClear;
 constexpr size_t	kFecLevelHeaderSizeLbitSet		= 2 + kMaskSizeLbitSet;
-constexpr size_t 	kUlpfecMaxMediaPacketsLbitClear	= 16;
-constexpr size_t 	kUlpfecMaxMediaPacketsLbitSet	= 48;
+constexpr size_t	kUlpfecMaxMediaPacketsLbitClear	= 16;
 
 constexpr size_t    kMediaPacketNumMakeFec          = 7; 
 

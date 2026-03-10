@@ -355,7 +355,7 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 
 		response->SetHeader("Content-Type", MimeTypeFromMediaCodecId(media_codec_id));
 		response->SetStatusCode(http::StatusCode::OK);
-		response->AppendData(std::move(endcoded_video_frame->Clone()));
+		response->AppendData(endcoded_video_frame->Clone());
 		auto sent_size = response->Response();
 		exchange->Release();
 

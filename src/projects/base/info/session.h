@@ -21,7 +21,6 @@ namespace info
 		Session(const info::Stream &stream);
 		explicit Session(const info::Stream &stream, session_id_t session_id);
 		Session(const info::Stream &stream, const Session &T);
-		Session(Session &&T) = default;
 		~Session() override	 = default;
 
 		session_id_t GetId() const;

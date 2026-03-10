@@ -1763,8 +1763,7 @@ namespace ov
 				iov.iov_base			   = data->GetWritableData();
 				iov.iov_len				   = data->GetLength();
 
-				const int control_buf_size = CMSG_SPACE((_family == SocketFamily::Inet) ? sizeof(in_pktinfo) : sizeof(in6_pktinfo));
-				char control_buf[control_buf_size];
+				char control_buf[CMSG_SPACE(sizeof(in6_pktinfo))];
 				::memset(control_buf, 0, sizeof(control_buf));
 
 				msghdr msg{};
