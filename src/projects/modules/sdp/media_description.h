@@ -134,6 +134,20 @@ public:
 	std::optional<uint32_t> GetRtxSsrc() const;
 	std::optional<ov::String> GetCname() const;
 
+	// a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:base64key
+	struct CryptoAttr
+	{
+		uint32_t tag;
+		ov::String crypto_suite;
+		ov::String key_params;
+		ov::String session_params;
+	};
+
+	void AddCrypto(uint32_t tag, const ov::String &crypto_suite, const ov::String &key_params, const ov::String &session_params = "");
+	const std::vector<CryptoAttr>& GetCryptoList() const;
+	std::optional<CryptoAttr> GetCrypto(uint32_t tag) const;
+	std::optional<CryptoAttr> GetFirstCrypto() const;
+
 	// a=extmap:1 urn:ietf:params:rtp-hdrext:framemarking
 	void AddExtmap(uint8_t id, ov::String attribute);
 	std::map<uint8_t, ov::String> GetExtmap() const;
@@ -171,6 +185,8 @@ private:
 	std::optional<uint32_t> _rtx_ssrc;
 	
 	std::map<uint8_t, ov::String> _extmap;
+
+	std::vector<CryptoAttr> _crypto_list;
 
 	std::vector<std::shared_ptr<PayloadAttr>> _payload_list;
 	std::vector<std::shared_ptr<RidAttr>> _rid_list;

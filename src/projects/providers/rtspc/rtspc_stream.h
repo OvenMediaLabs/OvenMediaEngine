@@ -24,6 +24,8 @@
 #include <modules/sdp/session_description.h>
 
 #include <modules/rtsp/header_fields/rtsp_header_fields.h>
+#include <modules/dtls_srtp/srtp_transport.h>
+#include <base/ovcrypto/openssl/tls_client_data.h>
 
 #define RTSP_USER_AGENT_NAME				"OvenMediaEngine"
 #define DEFAULT_RTSP_SESSION_TIMEOUT_SEC	30
@@ -31,7 +33,7 @@ namespace pvd
 {
 	class RtspcProvider;
 
-	class RtspcStream : public pvd::PullStream, public RtpRtcpInterface, public ov::Node
+	class RtspcStream : public pvd::PullStream, public RtpRtcpInterface, public ov::Node, public ov::TlsClientDataIoCallback
 	{
 	public:
 		static std::shared_ptr<RtspcStream> Create(const std::shared_ptr<pvd::PullApplication> &application, const uint32_t stream_id, const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties);
@@ -56,6 +58,10 @@ namespace pvd
 		// ov::Node Interface
 		bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override;
 		bool OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data) override;
+
+		// ov::TlsClientDataIoCallback Interface
+		ssize_t OnTlsReadData(void *data, int64_t length) override;
+		ssize_t OnTlsWriteData(const void *data, int64_t length) override;
 
 	private:
 		std::shared_ptr<pvd::RtspcProvider> GetRtspcProvider();
@@ -104,7 +110,6 @@ namespace pvd
 		bool StopStream() override; // Stop
 
 		bool ConnectTo();
-		bool RequestDescribe();
 		bool RequestSetup();
 		bool RequestPlay();
 		bool RequestStop();
@@ -157,6 +162,19 @@ namespace pvd
 
 		// Rtp
 		std::shared_ptr<RtpRtcp>            _rtp_rtcp;
+		std::shared_ptr<SrtpTransport>      _srtp_transport;
+		bool                                _use_srtp = false;
+		// Per-channel SRTP crypto info collected during SETUP, keyed by interleaved channel ID
+		struct ChannelCryptoInfo
+		{
+			uint8_t channel_id;
+			MediaDescription::CryptoAttr crypto_attr;
+		};
+		std::vector<ChannelCryptoInfo>       _channel_crypto_list;
+
+		// TLS/SSL for RTSPS
+		bool                                _use_tls = false;
+		std::shared_ptr<ov::TlsClientData>  _tls_data;
 		// Payload type, Depacketizer
 		std::map<uint8_t, std::shared_ptr<RtpDepacketizingManager>> _depacketizers;
 		// Payload type : Timestamp

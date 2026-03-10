@@ -11,7 +11,9 @@
 
 #include <base/info/application.h>
 #include <base/ovlibrary/byte_io.h>
+#include <base/ovcrypto/base_64.h>
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
+#include <openssl/srtp.h>
 
 #include "rtspc_provider.h"
 
@@ -85,6 +87,11 @@ namespace pvd
 
 	void RtspcStream::Release()
 	{
+		if (_srtp_transport != nullptr)
+		{
+			_srtp_transport->Stop();
+		}
+
 		if (_rtp_rtcp != nullptr)
 		{
 			_rtp_rtcp->Stop();
@@ -117,12 +124,6 @@ namespace pvd
 		_origin_request_time_msec = stop_watch.Elapsed();
 
 		stop_watch.Update();
-
-		if (RequestDescribe() == false)
-		{
-			Release();
-			return false;
-		}
 
 		if (RequestSetup() == false)
 		{
@@ -185,11 +186,19 @@ namespace pvd
 		logtt("Requested url[%zu] : %s", _curr_url->Source().GetLength(), _curr_url->Source().CStr());
 
 		auto scheme = _curr_url->Scheme();
-		if (scheme.UpperCaseString() != "RTSP")
+		auto upper_scheme = scheme.UpperCaseString();
+		if (upper_scheme != "RTSP" && upper_scheme != "RTSPS")
 		{
 			SetState(State::ERROR);
-			logte("The scheme is not rtsp : %s", scheme.CStr());
+			logte("The scheme is not rtsp or rtsps : %s", scheme.CStr());
 			return false;
+		}
+
+		// Check if TLS/SSL should be used
+		_use_tls = (upper_scheme == "RTSPS");
+		if (_use_tls)
+		{
+			logti("RTSPS (TLS) mode detected for URL: %s", _curr_url->Source().CStr());
 		}
 
 		auto signalling_socket_pool = GetRtspcProvider()->GetSignallingSocketPool();
@@ -200,8 +209,9 @@ namespace pvd
 			return false;
 		}
 
-		// 554 is default port of RTSP
-		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? 554 : _curr_url->Port());
+		// 554 is default port of RTSP, 322 is default port of RTSPS
+		int default_port = _use_tls ? 322 : 554;
+		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? default_port : _curr_url->Port());
 
 		// Connect
 		_signalling_socket = signalling_socket_pool->AllocSocket(socket_address.GetFamily());
@@ -226,14 +236,32 @@ namespace pvd
 
 		SetState(State::CONNECTED);
 
-		return true;
-	}
-
-	bool RtspcStream::RequestDescribe()
-	{
-		if (GetState() != State::CONNECTED)
+		// Setup TLS if using RTSPS
+		if (_use_tls)
 		{
-			return false;
+			std::shared_ptr<const ov::Error> tls_error;
+			_tls_data = std::make_shared<ov::TlsClientData>(ov::TlsContext::CreateClientContext(&tls_error), true);
+
+			if (_tls_data == nullptr)
+			{
+				SetState(State::ERROR);
+				logte("Failed to create TLS context: %s", tls_error ? tls_error->GetMessage().CStr() : "Unknown error");
+				return false;
+			}
+
+			_tls_data->SetIoCallback(ov::Node::GetSharedPtrAs<ov::TlsClientDataIoCallback>());
+			_tls_data->SetTlsHostName(_curr_url->Host());
+
+			// Perform TLS handshake
+			auto tls_connect_error = _tls_data->Connect();
+			if (tls_connect_error != nullptr)
+			{
+				SetState(State::ERROR);
+				logte("TLS handshake failed: %s", tls_connect_error->GetMessage().CStr());
+				return false;
+			}
+
+			logti("TLS connection established successfully");
 		}
 
 		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true));
@@ -381,7 +409,32 @@ namespace pvd
 
 		_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
 
+		// Check if SRTP is used by examining the SDP
 		auto media_desc_list = _sdp.GetMediaList();
+		for (const auto &media_desc : media_desc_list)
+		{
+			// Check for crypto attribute in SDP
+			auto crypto_attr = media_desc->GetFirstCrypto();
+			if (crypto_attr.has_value())
+			{
+				_use_srtp = true;
+				logti("SRTP detected in SDP with crypto suite: %s", crypto_attr->crypto_suite.CStr());
+				break;
+			}
+		}
+
+		// If SRTP is used, create and configure SRTP transport
+		if (_use_srtp)
+		{
+			_srtp_transport = std::make_shared<SrtpTransport>();
+			if (_srtp_transport == nullptr)
+			{
+				SetState(State::ERROR);
+				logte("Could not create SRTP transport for RTSP stream");
+				return false;
+			}
+		}
+
 		for (const auto &media_desc : media_desc_list)
 		{
 			if (media_desc->GetMediaType() == MediaDescription::MediaType::Application || media_desc->GetMediaType() == MediaDescription::MediaType::Unknown)
@@ -629,14 +682,101 @@ namespace pvd
 			_rtp_rtcp->AddRtpReceiver(track, rtp_track_id);
 			RegisterRtpClock(track->GetId(), track->GetTimeBase().GetExpr());
 
+			// Collect per-track crypto info for SRTP setup (channel assignment must happen before increment)
+			if (_use_srtp)
+			{
+				auto crypto_attr = media_desc->GetFirstCrypto();
+				if (crypto_attr.has_value())
+				{
+					_channel_crypto_list.push_back({static_cast<uint8_t>(interleaved_channel), crypto_attr.value()});
+				}
+				else
+				{
+					logtw("SRTP is enabled but media track at channel %d has no crypto attribute", interleaved_channel);
+				}
+			}
+
 			interleaved_channel += 2;
 		}
 
+		// Configure SRTP if needed - set up per-channel keys
+		if (_use_srtp && _srtp_transport != nullptr)
+		{
+			if (_channel_crypto_list.empty())
+			{
+				SetState(State::ERROR);
+				logte("SRTP is enabled but no crypto attributes found in any media description");
+				return false;
+			}
+
+			constexpr size_t SRTP_KEY_MATERIAL_LENGTH = 30;  // master key (16) + master salt (14)
+
+			for (const auto &[channel_id, crypto_attr] : _channel_crypto_list)
+			{
+				// Parse crypto suite
+				std::optional<uint64_t> crypto_suite = std::nullopt;
+				if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_80")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_80;
+				}
+				else if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_32")
+				{
+					crypto_suite = SRTP_AES128_CM_SHA1_32;
+				}
+				else if (crypto_attr.crypto_suite == "AEAD_AES_128_GCM")
+				{
+					crypto_suite = SRTP_AEAD_AES_128_GCM;
+				}
+
+				if (!crypto_suite.has_value())
+				{
+					SetState(State::ERROR);
+					logte("Unsupported SRTP crypto suite for channel %u: %s", channel_id, crypto_attr.crypto_suite.CStr());
+					return false;
+				}
+
+				// Decode base64 key
+				auto key_data = ov::Base64::Decode(crypto_attr.key_params);
+				if (key_data == nullptr || key_data->GetLength() != SRTP_KEY_MATERIAL_LENGTH)
+				{
+					SetState(State::ERROR);
+					logte("Failed to decode SRTP key for channel %u (expected %zu bytes, got %zu)",
+						  channel_id, SRTP_KEY_MATERIAL_LENGTH,
+						  key_data ? key_data->GetLength() : 0);
+					return false;
+				}
+
+				if (!_srtp_transport->AddChannelKeyMaterial(channel_id, crypto_suite.value(), key_data))
+				{
+					SetState(State::ERROR);
+					logte("Failed to set SRTP key material for channel %u", channel_id);
+					return false;
+				}
+
+				logti("SRTP configured for channel %u with crypto suite: %s", channel_id, crypto_attr.crypto_suite.CStr());
+			}
+		}
+
 		_rtp_rtcp->RegisterPrevNode(nullptr);
-		_rtp_rtcp->RegisterNextNode(ov::Node::GetSharedPtr());
+
+		if (_use_srtp && _srtp_transport != nullptr)
+		{
+			// Chain: RtpRtcp -> SrtpTransport -> RtspcStream
+			_rtp_rtcp->RegisterNextNode(_srtp_transport);
+			_srtp_transport->RegisterPrevNode(_rtp_rtcp);
+			_srtp_transport->RegisterNextNode(ov::Node::GetSharedPtr());
+			_srtp_transport->Start();
+			RegisterPrevNode(_srtp_transport);
+		}
+		else
+		{
+			// Chain: RtpRtcp -> RtspcStream
+			_rtp_rtcp->RegisterNextNode(ov::Node::GetSharedPtr());
+			RegisterPrevNode(_rtp_rtcp);
+		}
+
 		_rtp_rtcp->Start();
 
-		RegisterPrevNode(_rtp_rtcp);
 		RegisterNextNode(nullptr);
 
 		return true;
@@ -819,7 +959,19 @@ namespace pvd
 			SubscribeResponse(message);
 		}
 
-		// Send
+		// Send with TLS encryption if enabled
+		if (_use_tls && _tls_data != nullptr)
+		{
+			auto data = message->GetMessage();
+			if (_tls_data->Encrypt(data) == false)
+			{
+				logte("Failed to encrypt RTSP message");
+				return false;
+			}
+			return true;
+		}
+
+		// Send without encryption
 		return _signalling_socket->Send(message->GetMessage());
 	}
 
@@ -895,16 +1047,23 @@ namespace pvd
 			_signalling_socket->SetRecvTimeout(tv);
 		}
 
-		auto error = _signalling_socket->Recv(buffer, 65535, &read_bytes, non_block);
-		if (read_bytes == 0)
+		// Receive with TLS decryption if enabled
+		if (_use_tls && _tls_data != nullptr)
 		{
-			if (error != nullptr)
+			std::shared_ptr<const ov::Data> plain_data;
+			if (_tls_data->Decrypt(&plain_data) == false)
 			{
-				logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), error->What());
+				if (non_block)
+				{
+					// Retry later for non-blocking mode
+					return true;
+				}
+				logte("Failed to decrypt RTSP message");
 				SetState(State::ERROR);
 				return false;
 			}
-			else
+
+			if (plain_data == nullptr || plain_data->GetLength() == 0)
 			{
 				if (non_block == true)
 				{
@@ -915,6 +1074,41 @@ namespace pvd
 				{
 					// timeout
 					return false;
+				}
+			}
+
+			read_bytes = plain_data->GetLength();
+			if (read_bytes > sizeof(buffer))
+			{
+				logte("Decrypted data too large: %zu bytes", read_bytes);
+				return false;
+			}
+			::memcpy(buffer, plain_data->GetData(), read_bytes);
+		}
+		else
+		{
+			// Receive without decryption
+			auto error = _signalling_socket->Recv(buffer, 65535, &read_bytes, non_block);
+			if (read_bytes == 0)
+			{
+				if (error != nullptr)
+				{
+					logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), error->What());
+					SetState(State::ERROR);
+					return false;
+				}
+				else
+				{
+					if (non_block == true)
+					{
+						// retry later
+						return true;
+					}
+					else
+					{
+						// timeout
+						return false;
+					}
 				}
 			}
 		}
@@ -1178,6 +1372,47 @@ namespace pvd
 		return control_url;
 	}
 
+	// ov::TlsClientDataIoCallback Interface
+	ssize_t RtspcStream::OnTlsReadData(void *data, int64_t length)
+	{
+		if (_signalling_socket == nullptr)
+		{
+			return -1;
+		}
+
+		size_t received_length = 0;
+		auto error = _signalling_socket->Recv(data, length, &received_length);
+		if (error != nullptr)
+		{
+			if (error->GetCode() == EAGAIN || error->GetCode() == EWOULDBLOCK)
+			{
+				// Non-blocking socket would block
+				errno = EAGAIN;
+				return -1;
+			}
+			logte("Failed to read from socket: %s", error->GetMessage().CStr());
+			return -1;
+		}
+
+		return static_cast<ssize_t>(received_length);
+	}
+
+	ssize_t RtspcStream::OnTlsWriteData(const void *data, int64_t length)
+	{
+		if (_signalling_socket == nullptr)
+		{
+			return -1;
+		}
+
+		if (_signalling_socket->Send(data, length) == false)
+		{
+			logte("Failed to write to socket");
+			return -1;
+		}
+
+		return static_cast<ssize_t>(length);
+	}
+
 	// ov::Node Interface
 	// RtpRtcp <-> Edge(this)
 	bool RtspcStream::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data)
@@ -1209,6 +1444,12 @@ namespace pvd
 			ptr[1] = channel_id;
 			ByteWriter<uint16_t>::WriteBigEndian(&ptr[2], data->GetLength());
 			channel_data->Append(data);
+
+			// Send with TLS encryption if enabled
+			if (_use_tls && _tls_data != nullptr)
+			{
+				return _tls_data->Encrypt(channel_data);
+			}
 
 			return _signalling_socket->Send(channel_data);
 		}
