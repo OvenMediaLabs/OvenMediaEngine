@@ -4,6 +4,8 @@
 #include <base/info/session.h>
 #include <base/publisher/application.h>
 
+#include <mutex>
+
 #include "file_stream.h"
 #include "file_userdata.h"
 
@@ -40,6 +42,12 @@ namespace pub
 		std::shared_ptr<ov::Error> GetRecords(const std::shared_ptr<info::Record> record_query, std::vector<std::shared_ptr<info::Record>> &results);
 
 	private:
+		// Protects all operations on _record_info_list to prevent concurrent access
+		// from multiple API server threads (e.g. concurrent startRecord/stopRecord requests).
+		// Must be recursive because RecordStart/RecordStop call SessionUpdateByUser,
+		// and DeleteStream calls RecordStop.
+		std::recursive_mutex _record_mutex;
+
 		FileUserdataSets _record_info_list;
 	};
 }  // namespace pub

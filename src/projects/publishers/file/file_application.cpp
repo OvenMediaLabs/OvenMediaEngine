@@ -68,6 +68,8 @@ namespace pub
 			return false;
 		}
 
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		// Removes only automatically recorded information with the same stream name.
 		auto record_info_list = _record_info_list.GetByStreamName(info->GetName());
 		for (auto record_info : record_info_list)
@@ -179,6 +181,8 @@ namespace pub
 			return;
 		}
 
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
 		{
 			auto userdata = _record_info_list.GetAt(i);
@@ -201,6 +205,8 @@ namespace pub
 
 	void FileApplication::SessionUpdateByUser()
 	{
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
 		{
 			auto userdata = _record_info_list.GetAt(i);
@@ -232,6 +238,8 @@ namespace pub
 
 	std::shared_ptr<ov::Error> FileApplication::RecordStart(const std::shared_ptr<info::Record> record)
 	{
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		// Checking for the required parameters
 		if (record->GetId().IsEmpty() == true || record->GetStreamName().IsEmpty() == true)
 		{
@@ -308,6 +316,8 @@ namespace pub
 
 	std::shared_ptr<ov::Error> FileApplication::RecordStop(const std::shared_ptr<info::Record> record)
 	{
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		if (record->GetId().IsEmpty() == true)
 		{
 			ov::String error_message = "There is no required parameter [";
@@ -363,6 +373,8 @@ namespace pub
 
 	std::shared_ptr<ov::Error> FileApplication::GetRecords(const std::shared_ptr<info::Record> record_query, std::vector<std::shared_ptr<info::Record>> &results)
 	{
+		std::lock_guard<std::recursive_mutex> lock(_record_mutex);
+
 		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
 		{
 			auto record_info = _record_info_list.GetAt(i);
