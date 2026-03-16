@@ -444,7 +444,7 @@ namespace pub
 		_record = record;
 	}
 
-	std::shared_ptr<info::Record> &FileSession::GetRecord()
+	std::shared_ptr<info::Record> FileSession::GetRecord()
 	{
 		std::shared_lock<std::shared_mutex> mlock(_record_mutex);
 		return _record;

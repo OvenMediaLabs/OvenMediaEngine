@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared_mutex>
 #include <string>
 
 #include "base/common_types.h"
@@ -52,11 +53,11 @@ namespace info
 		void AddTrackId(uint32_t selected_id);
 		void AddVariantName(ov::String selected_name);
 
-		void SetTrackIds(const std::vector<uint32_t>& ids);
-		void SetVariantNames(const std::vector<ov::String>& names);
+		void SetTrackIds(const std::vector<uint32_t> &ids);
+		void SetVariantNames(const std::vector<ov::String> &names);
 
-		const std::vector<uint32_t>& GetTrackIds();
-		const std::vector<ov::String>& GetVariantNames();
+		std::vector<uint32_t> GetTrackIds();
+		std::vector<ov::String> GetVariantNames();
 
 		void SetRemove(bool value);
 		bool GetRemove();
@@ -71,8 +72,8 @@ namespace info
 		// set by user
 		void SetSchedule(ov::String schedule);
 		ov::String GetSchedule();
-		const std::chrono::system_clock::time_point &GetNextScheduleTime() const;
-		void SetNextScheduleTime(std::chrono::system_clock::time_point &next);
+		std::chrono::system_clock::time_point GetNextScheduleTime() const;
+		void SetNextScheduleTime(const std::chrono::system_clock::time_point &next);
 		bool IsNextScheduleTimeEmpty();
 		bool UpdateNextScheduleTime();
 
@@ -82,12 +83,10 @@ namespace info
 
 		// set by user
 		void SetFilePath(ov::String file_path);
-		void SetFilePathTemplate(ov::String file_path);
 		ov::String GetFilePath();
 
 		// set by user
 		void SetInfoPath(ov::String info_path);
-		void SetInfoPathTemplate(ov::String file_path);
 		ov::String GetInfoPath();
 
 		void SetFilePathSetByUser(bool by_user);
@@ -125,9 +124,9 @@ namespace info
 		uint64_t GetSequence();
 		void SetSequence(uint64_t sequence);
 
-		const std::chrono::system_clock::time_point &GetCreatedTime() const;
-		const std::chrono::system_clock::time_point GetRecordStartTime() const;
-		const std::chrono::system_clock::time_point GetRecordStopTime() const;
+		std::chrono::system_clock::time_point GetCreatedTime() const;
+		std::chrono::system_clock::time_point GetRecordStartTime() const;
+		std::chrono::system_clock::time_point GetRecordStopTime() const;
 		void SetCreatedTime(std::chrono::system_clock::time_point tp);
 		void SetRecordStartTime(std::chrono::system_clock::time_point tp);
 		void SetRecordStopTime(std::chrono::system_clock::time_point tp);
@@ -145,11 +144,12 @@ namespace info
 		void SetState(RecordState state);
 		ov::String GetStateString();
 
-		void Clone(std::shared_ptr<info::Record> &record);
+		void CloneTo(const std::shared_ptr<info::Record> &record);
 
 		const ov::String GetInfoString();
 
 	private:
+		mutable std::shared_mutex _mutex;
 		ov::String _transaction_id;
 
 		// User custom id

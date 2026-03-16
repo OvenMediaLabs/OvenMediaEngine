@@ -16,18 +16,32 @@ namespace pub
 		_sets.clear();
 	}
 
-	bool FileUserdataSets::Set(ov::String record_id, std::shared_ptr<info::Record> record_info)
+	bool FileUserdataSets::Set(ov::String record_id, const std::shared_ptr<info::Record> &record_info)
 	{
 		std::lock_guard<std::shared_mutex> lock(_mutex);
 
-		_sets[record_id] = record_info;
+		auto [it, inserted] = _sets.emplace(record_id, record_info);
+		return inserted;
+	}
 
-		return true;
+	
+	std::vector<std::shared_ptr<info::Record>> FileUserdataSets::GetAll()
+	{
+		std::vector<std::shared_ptr<info::Record>> results;
+
+		std::shared_lock<std::shared_mutex> lock(_mutex);
+
+		for (auto &item : _sets)
+		{
+			results.push_back(item.second);
+		}
+
+		return results;
 	}
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetByKey(ov::String record_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 
 		auto iter = _sets.find(record_id);
 		if (iter == _sets.end())
@@ -42,7 +56,7 @@ namespace pub
 	{
 		std::vector<std::shared_ptr<info::Record>> results;
 
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 
 		for (auto& [record_id, record_info] : _sets)
 		{
@@ -57,7 +71,7 @@ namespace pub
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetBySessionId(session_id_t session_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 
 		for (auto& item : _sets)
 		{
@@ -72,14 +86,16 @@ namespace pub
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetAt(uint32_t index)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 
 		auto iter = _sets.begin();
 
 		std::advance(iter, index);
 
 		if (iter == _sets.end())
+		{
 			return nullptr;
+		}
 
 		return iter->second;
 	}
@@ -93,7 +109,7 @@ namespace pub
 
 	uint32_t FileUserdataSets::GetCount()
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 
 		return _sets.size();
 	}

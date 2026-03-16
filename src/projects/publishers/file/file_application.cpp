@@ -68,16 +68,20 @@ namespace pub
 			return false;
 		}
 
+		std::lock_guard<std::shared_mutex> lock(_mutex);
+		
 		// Removes only automatically recorded information with the same stream name.
 		auto record_info_list = _record_info_list.GetByStreamName(info->GetName());
 		for (auto record_info : record_info_list)
 		{
+			// If the record is requested by the user. it is not deleted even if the stream is deleted.
+			//  It will be maintained until the user requests Record Stop API.
 			if (record_info->IsByConfig() == false)
 			{
 				continue;
 			}
 
-			auto result = RecordStop(record_info);
+			auto result = RecordStopLocked(record_info);
 			if (result->GetCode() != FilePublisher::FilePublisherStatusCode::Success)
 			{
 				logtw("FileStream(%s/%s) - Failed to stop record. id(%s) status(%d) description(%s)", GetVHostAppName().CStr(), info->GetName().CStr(), record_info->GetId().CStr(), result->GetCode(), result->GetMessage().CStr());
@@ -145,7 +149,7 @@ namespace pub
 		}
 	}
 
-	void FileApplication::SessionUpdate(std::shared_ptr<FileStream> stream, std::shared_ptr<info::Record> userdata)
+	void FileApplication::SessionUpdateLocked(std::shared_ptr<FileStream> stream, std::shared_ptr<info::Record> userdata)
 	{
 		// If there is no session, create a new file(record) session.
 		auto session = std::static_pointer_cast<FileSession>(stream->GetSession(userdata->GetSessionId()));
@@ -174,36 +178,36 @@ namespace pub
 
 	void FileApplication::SessionUpdateByStream(std::shared_ptr<FileStream> stream, bool stopped)
 	{
+		std::lock_guard<std::shared_mutex> lock(_mutex);
+		SessionUpdateByStreamLocked(std::move(stream), stopped);
+	}
+
+	void FileApplication::SessionUpdateByStreamLocked(std::shared_ptr<FileStream> stream, bool stopped)
+	{
 		if (stream == nullptr)
 		{
 			return;
 		}
 
-		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
+		auto record_info_list = _record_info_list.GetByStreamName(stream->GetName());
+		for (auto &userdata : record_info_list)
 		{
-			auto userdata = _record_info_list.GetAt(i);
-			if (userdata == nullptr)
-				continue;
-
-			if (userdata->GetStreamName() != stream->GetName())
-				continue;
-
 			if (stopped == true)
 			{
 				userdata->SetState(info::Record::RecordState::Ready);
 			}
 			else
 			{
-				SessionUpdate(stream, userdata);
+				SessionUpdateLocked(stream, userdata);
 			}
 		}
 	}
 
-	void FileApplication::SessionUpdateByUser()
+	void FileApplication::SessionUpdateByUserLocked()
 	{
-		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
+		auto record_info_list = _record_info_list.GetAll();
+		for (auto &userdata : record_info_list)
 		{
-			auto userdata = _record_info_list.GetAt(i);
 			if (userdata == nullptr)
 				continue;
 
@@ -211,7 +215,7 @@ namespace pub
 			auto stream = std::static_pointer_cast<FileStream>(GetStream(userdata->GetStreamName()));
 			if (stream != nullptr && stream->GetState() == pub::Stream::State::STARTED)
 			{
-				SessionUpdate(stream, userdata);
+				SessionUpdateLocked(stream, userdata);
 			}
 			else
 			{
@@ -231,6 +235,12 @@ namespace pub
 	}
 
 	std::shared_ptr<ov::Error> FileApplication::RecordStart(const std::shared_ptr<info::Record> record)
+	{
+		std::lock_guard<std::shared_mutex> lock(_mutex);
+		return RecordStartLocked(record);
+	}
+
+	std::shared_ptr<ov::Error> FileApplication::RecordStartLocked(const std::shared_ptr<info::Record> &record)
 	{
 		// Checking for the required parameters
 		if (record->GetId().IsEmpty() == true || record->GetStreamName().IsEmpty() == true)
@@ -282,14 +292,6 @@ namespace pub
 			}
 		}
 
-		// Checking for the duplicate id
-		if (_record_info_list.GetByKey(record->GetId()) != nullptr)
-		{
-			ov::String error_message = "Duplicate ID already exists";
-
-			return ov::Error::CreateError(FILE_PUBLISHER_ERROR_DOMAIN, FilePublisher::FilePublisherStatusCode::FailureDuplicateKey, error_message);
-		}
-
 		record->SetTransactionId(ov::Random::GenerateString(16));
 		record->SetEnable(true);
 		record->SetRemove(false);
@@ -299,14 +301,25 @@ namespace pub
 		record->SetFilePathSetByUser((record->GetFilePath().IsEmpty() != true) ? true : false);
 		record->SetInfoPathSetByUser((record->GetInfoPath().IsEmpty() != true) ? true : false);
 
-		_record_info_list.Set(record->GetId(), record);
+		if (_record_info_list.Set(record->GetId(), record) == false)
+		{
+			ov::String error_message = "Duplicate ID already exists";
 
-		SessionUpdateByUser();
+			return ov::Error::CreateError(FILE_PUBLISHER_ERROR_DOMAIN, FilePublisher::FilePublisherStatusCode::FailureDuplicateKey, error_message);
+		}
+
+		SessionUpdateByUserLocked();
 
 		return ov::Error::CreateError(FILE_PUBLISHER_ERROR_DOMAIN, FilePublisher::FilePublisherStatusCode::Success, "Success");
 	}
 
 	std::shared_ptr<ov::Error> FileApplication::RecordStop(const std::shared_ptr<info::Record> record)
+	{
+		std::lock_guard<std::shared_mutex> lock(_mutex);
+		return RecordStopLocked(record);
+	}
+
+	std::shared_ptr<ov::Error> FileApplication::RecordStopLocked(const std::shared_ptr<info::Record> &record)
 	{
 		if (record->GetId().IsEmpty() == true)
 		{
@@ -333,39 +346,21 @@ namespace pub
 		record_info->SetEnable(false);
 		record_info->SetRemove(true);
 
-		// Copy current recording information to the requested parameters.
-		//
+		record_info->CloneTo(record);
 		record->SetState(info::Record::RecordState::Stopping);
-		record->SetMetadata(record_info->GetMetadata());
-		record->SetStreamName(record_info->GetStreamName());
-		record->SetTrackIds(record_info->GetTrackIds());
-		record->SetVariantNames(record_info->GetVariantNames());
-		record->SetSessionId(record_info->GetSessionId());
-		record->SetInterval(record_info->GetInterval());
-		record->SetSchedule(record_info->GetSchedule());
-		record->SetSegmentationRule(record_info->GetSegmentationRule());
-		record->SetFilePath(record_info->GetFilePath());
-		record->SetInfoPath(record_info->GetInfoPath());
-		record->SetTmpPath(record_info->GetTmpPath());
-		record->SetRecordBytes(record_info->GetRecordBytes());
-		record->SetRecordTotalBytes(record_info->GetRecordTotalBytes());
-		record->SetRecordTime(record_info->GetRecordTime());
-		record->SetRecordTotalTime(record_info->GetRecordTotalTime());
-		record->SetSequence(record_info->GetSequence());
-		record->SetCreatedTime(record_info->GetCreatedTime());
-		record->SetRecordStartTime(record_info->GetRecordStartTime());
-		record->SetRecordStopTime(record_info->GetRecordStopTime());
 
-		SessionUpdateByUser();
+		SessionUpdateByUserLocked();
+
 
 		return ov::Error::CreateError(FILE_PUBLISHER_ERROR_DOMAIN, FilePublisher::FilePublisherStatusCode::Success, "Success");
 	}
 
 	std::shared_ptr<ov::Error> FileApplication::GetRecords(const std::shared_ptr<info::Record> record_query, std::vector<std::shared_ptr<info::Record>> &results)
 	{
-		for (uint32_t i = 0; i < _record_info_list.GetCount(); i++)
+		std::shared_lock<std::shared_mutex> lock(_mutex);
+		auto record_info_list = _record_info_list.GetAll();
+		for (auto &record_info : record_info_list)
 		{
-			auto record_info = _record_info_list.GetAt(i);
 			if (record_info == nullptr)
 				continue;
 
