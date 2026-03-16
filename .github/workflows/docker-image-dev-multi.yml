@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'src/**'
+      - 'misc/**'
   workflow_dispatch:
     inputs:
       commit_hash:
