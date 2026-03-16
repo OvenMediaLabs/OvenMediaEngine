@@ -127,9 +127,6 @@ namespace info
 		std::chrono::system_clock::time_point GetCreatedTime() const;
 		std::chrono::system_clock::time_point GetRecordStartTime() const;
 		std::chrono::system_clock::time_point GetRecordStopTime() const;
-		void SetCreatedTime(std::chrono::system_clock::time_point tp);
-		void SetRecordStartTime(std::chrono::system_clock::time_point tp);
-		void SetRecordStopTime(std::chrono::system_clock::time_point tp);
 
 		enum class RecordState : int8_t
 		{
@@ -164,10 +161,10 @@ namespace info
 		ov::String _metadata;
 
 		// Enabled/Disabled Flag
-		bool _enable;
+		std::atomic<bool> _enable;
 
 		// Remove Flag
-		bool _remove;
+		std::atomic<bool> _remove;
 
 		// Virtual Host
 		ov::String _vhost_name;
@@ -223,12 +220,12 @@ namespace info
 		std::chrono::system_clock::time_point _schedule_next;
 
 		// Recorded (Accumulated) file size
-		uint64_t _record_bytes;
-		uint64_t _record_total_bytes;
+		std::atomic<uint64_t> _record_bytes;
+		std::atomic<uint64_t> _record_total_bytes;
 
 		// Recorded (Accumulated) Time
-		uint64_t _record_time;
-		uint64_t _record_total_time;
+		std::atomic<uint64_t> _record_time;
+		std::atomic<uint64_t> _record_total_time;
 
 		// Timestamp Rules for Split Recording
 		//  continuity - The start of the split-recorded file PTS leads to the last PTS of the previously recorded file.
@@ -236,17 +233,17 @@ namespace info
 		ov::String _segmentation_rule;
 
 		// Sequence number of the recorded file
-		uint32_t _sequence;
+		std::atomic<uint32_t> _sequence;
 
 		// Event Occurrence Time
 		std::chrono::system_clock::time_point _created_time;
 		std::chrono::system_clock::time_point _record_start_time;
 		std::chrono::system_clock::time_point _record_stop_time;
 
-		RecordState _state;
+		std::atomic<RecordState> _state;
 
 		// File Session Id
-		session_id_t _session_id;
+		std::atomic<session_id_t> _session_id;
 
 
 	};

@@ -3,7 +3,6 @@
 #include <base/ovlibrary/cron.h>
 #include <base/ovlibrary/ovlibrary.h>
 
-#include <mutex>
 #include <random>
 
 #include "stream.h"
@@ -53,181 +52,151 @@ namespace info
 
 	void Record::SetTransactionId(ov::String transaction_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_transaction_id = transaction_id;
 	}
 
 	ov::String Record::GetTransactionId()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _transaction_id;
 	}
 
 	void Record::SetId(ov::String record_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_id = record_id;
 	}
 
 	ov::String Record::GetId() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _id;
 	}
 
 	void Record::SetByConfig(bool is_config)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_is_config = is_config;
 	}
 
 	bool Record::IsByConfig()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _is_config;
 	}
 
 	void Record::SetMetadata(ov::String metadata)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_metadata = metadata;
 	}
 
 	ov::String Record::GetMetadata() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _metadata;
 	}
 
 	void Record::SetEnable(bool eanble)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_enable = eanble;
+		_enable.store(eanble);
 	}
 
 	bool Record::GetEnable()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		return _enable;
+		return _enable.load();;
 	}
 
 	void Record::SetVhost(ov::String value)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_vhost_name = value;
 	}
 
 	ov::String Record::GetVhost()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _vhost_name;
 	}
 
 	void Record::SetApplication(ov::String value)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_application_name = value;
 	}
 
 	ov::String Record::GetApplication()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _application_name;
 	}
 
 	void Record::SetStreamName(ov::String stream_name)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_stream_name = stream_name;
 	}
 
 	ov::String Record::GetStreamName()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _stream_name;
 	}
 
 	void Record::AddTrackId(uint32_t selected_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_selected_track_ids.push_back(selected_id);
 	}
 
 	void Record::AddVariantName(ov::String selected_name)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_selected_variant_names.push_back(selected_name);
 	}
 
 	void Record::SetTrackIds(const std::vector<uint32_t> &ids)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_selected_track_ids = ids;
 	}
 
 	void Record::SetVariantNames(const std::vector<ov::String> &names)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_selected_variant_names = names;
 	}
 
 	std::vector<uint32_t> Record::GetTrackIds()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _selected_track_ids;
 	}
 
 	std::vector<ov::String> Record::GetVariantNames()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _selected_variant_names;
 	}
 
 	void Record::SetRemove(bool value)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_remove = value;
+		_remove.store(value);
 	}
 
 	bool Record::GetRemove()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		return _remove;
+		return _remove.load();
 	}
 
 	void Record::SetSessionId(session_id_t id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_session_id = id;
+		_session_id.store(id);
 	}
 
 	session_id_t Record::GetSessionId()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		return _session_id;
+		return _session_id.load();
 	}
 
 	void Record::SetInterval(int32_t interval)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_interval = interval;
 	}
 
 	int32_t Record::GetInterval()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _interval;
 	}
 
 	void Record::SetSchedule(ov::String schedule)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_schedule = schedule;
 	}
 
 	ov::String Record::GetSchedule()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _schedule;
 	}
 
@@ -272,61 +241,51 @@ namespace info
 
 	void Record::SetSegmentationRule(ov::String rule)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_segmentation_rule = rule;
 	}
 
 	ov::String Record::GetSegmentationRule()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _segmentation_rule;
 	}
 
 	void Record::SetFilePath(ov::String file_path)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_file_path = file_path;
 	}
 
 	ov::String Record::GetFilePath()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _file_path;
 	}
 
 	void Record::SetInfoPath(ov::String info_path)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_info_path = info_path;
 	}
 
 	ov::String Record::GetInfoPath()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _info_path;
 	}
 
 	void Record::SetFilePathSetByUser(bool by_user)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_file_path_by_user = by_user;
 	}
 
 	bool Record::IsFilePathSetByUser()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _file_path_by_user;
 	}
 
 	void Record::SetInfoPathSetByUser(bool by_user)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_info_path_by_user = by_user;
 	}
 
 	bool Record::IsInfoPathSetByUser()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _info_path_by_user;
 	}
 
@@ -350,85 +309,71 @@ namespace info
 
 	ov::String Record::GetOutputFilePath()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _output_file_path;
 	}
 
 	void Record::SetOutputInfoPath(ov::String output_info_path)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_output_info_path = output_info_path;
 	}
 
 	ov::String Record::GetOutputInfoPath()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _output_info_path;
 	}
 
 	void Record::IncreaseRecordBytes(uint64_t bytes)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_bytes += bytes;
 	}
 
 	uint64_t Record::GetRecordBytes()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _record_bytes;
 	}
 
 	uint64_t Record::GetRecordTotalBytes()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _record_total_bytes + _record_bytes;
 	}
 
 	void Record::SetRecordBytes(uint64_t bytes)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_bytes = bytes;
 	}
 
 	void Record::SetRecordTotalBytes(uint64_t bytes)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_total_bytes = bytes;
 	}
 
 	void Record::UpdateRecordTime()
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _record_start_time).count();
 	}
 
 	uint64_t Record::GetRecordTime()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _record_time;
 	}
 
 	uint64_t Record::GetRecordTotalTime()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		return _record_total_time + _record_time;
 	}
 
 	void Record::SetRecordTime(uint64_t time)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_time = time;
 	}
 
 	void Record::SetRecordTotalTime(uint64_t time)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_record_total_time = time;
 	}
 
 	void Record::IncreaseSequence()
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
 		_sequence++;
 		_record_total_bytes += _record_bytes;
 		_record_bytes = 0;
@@ -450,14 +395,12 @@ namespace info
 
 	uint64_t Record::GetSequence()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		return _sequence;
+		return _sequence.load();
 	}
 
 	void Record::SetSequence(uint64_t sequence)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_sequence = sequence;
+		_sequence.store(sequence);
 	}
 
 	std::chrono::system_clock::time_point Record::GetCreatedTime() const
@@ -478,40 +421,19 @@ namespace info
 		return _record_stop_time;
 	}
 
-	void Record::SetCreatedTime(std::chrono::system_clock::time_point tp)
-	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_created_time = tp;
-	}
-
-	void Record::SetRecordStartTime(std::chrono::system_clock::time_point tp)
-	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_record_start_time = tp;
-	}
-
-	void Record::SetRecordStopTime(std::chrono::system_clock::time_point tp)
-	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_record_stop_time = tp;
-	}
-
 	Record::RecordState Record::GetState()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		return _state;
+		return _state.load();
 	}
 
 	void Record::SetState(Record::RecordState state)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
-		_state = state;
+		_state.store(state);
 	}
 
 	ov::String Record::GetStateString()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
-		switch (_state)
+		switch (GetState())
 		{
 			case RecordState::Ready:
 				return "ready";
@@ -535,13 +457,13 @@ namespace info
 			return;
 		}
 
-		std::scoped_lock lock(_mutex, record->_mutex);
+		std::shared_lock<std::shared_mutex> lock(_mutex);
 		record->_transaction_id			= _transaction_id;
 		record->_id						= _id;
 		record->_is_config				= _is_config;
 		record->_metadata				= _metadata;
-		record->_enable					= _enable;
-		record->_remove					= _remove;
+		record->_enable.exchange(_enable);
+		record->_remove.exchange(_remove);
 		record->_vhost_name				= _vhost_name;
 		record->_application_name		= _application_name;
 		record->_stream_name			= _stream_name;
@@ -557,32 +479,31 @@ namespace info
 		record->_interval				= _interval;
 		record->_schedule				= _schedule;
 		record->_schedule_next			= _schedule_next;
-		record->_record_bytes			= _record_bytes;
-		record->_record_total_bytes		= _record_total_bytes;
-		record->_record_time			= _record_time;
-		record->_record_total_time		= _record_total_time;
+		record->_record_bytes.exchange(_record_bytes);
+		record->_record_total_bytes.exchange(_record_total_bytes);
+		record->_record_time.exchange(_record_time);
+		record->_record_total_time.exchange(_record_total_time);
 		record->_segmentation_rule		= _segmentation_rule;
-		record->_sequence				= _sequence;
+		record->_sequence.exchange(_sequence);
 		record->_created_time			= _created_time;
 		record->_record_start_time		= _record_start_time;
 		record->_record_stop_time		= _record_stop_time;
-		record->_state					= _state;
-		record->_session_id				= _session_id;
+		record->_state.exchange(_state);
+		record->_session_id.exchange(_session_id);
 	}
 
 	const ov::String Record::GetInfoString()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
 		ov::String info = "";
 
 		info.AppendFormat(" id(%s)", _id.CStr());
 		info.AppendFormat(" stream(%s)", _stream_name.CStr());
-		info.AppendFormat(" sequence(%d)", _sequence);
+		info.AppendFormat(" sequence(%d)", _sequence.load());
 		info.AppendFormat(" tmp_path(%s)", _tmp_path.CStr());
 		info.AppendFormat(" file_path(%s)", _output_file_path.CStr());
 		info.AppendFormat(" info_path(%s)", _output_info_path.CStr());
-		info.AppendFormat(" total_bytes(%" PRIu64 ")", _record_total_bytes);
-		info.AppendFormat(" total_time(%" PRIu64 ")", _record_total_time);
+		info.AppendFormat(" total_bytes(%" PRIu64 ")", _record_total_bytes.load());
+		info.AppendFormat(" total_time(%" PRIu64 ")", _record_total_time.load());
 		info.AppendFormat(" created_time(%s)", ov::Converter::ToString(_created_time).CStr());
 		info.AppendFormat(" start_time(%s)", ov::Converter::ToString(_record_start_time).CStr());
 		info.AppendFormat(" stop_time(%s)", ov::Converter::ToString(_record_stop_time).CStr());
