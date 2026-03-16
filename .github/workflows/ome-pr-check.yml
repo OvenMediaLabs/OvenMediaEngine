@@ -1,0 +1,46 @@
+name: "OME PR Title Checker"
+
+on:
+  pull_request:
+    # Trigger on PR creation, title edits, or new commits
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Semantic PR Title Check
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Approved prefixes for OvenMediaEngine
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            test
+            build
+            chore
+          
+          # Allow "feat!: ..." or "build(deps)!: ..." for breaking changes
+          # This is useful for XML config renames or major dependency updates
+          allowBreakingChanges: true
+
+          # Enforce lowercase for prefixes to keep the history clean
+          # Example: "feat: ..." (O), "Feat: ..." (X)
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternErrorMode: true
+
+          # Scope is optional but highly recommended for OME modules
+          # Example: feat(webrtc): ..., fix(hls): ..., build(deps): ...
+          requireScope: false
+
+          # Validation error message to guide team members
+          headerPattern: '^(\w+)(\(([\w\$\.\-\/ ]+)\))?(!?): .+$'
