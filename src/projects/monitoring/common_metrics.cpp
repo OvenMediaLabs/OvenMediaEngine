@@ -249,29 +249,25 @@ namespace mon
 
 	void CommonMetrics::UpdateThroughput()
 	{
-		auto now_ms	 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-		auto last_ms = _last_throughput_measure_time.load();
-		// Bug fix: use compare_exchange_strong to prevent multiple threads from updating simultaneously
-		if ((now_ms - last_ms) > THROUGHPUT_MEASURE_INTERVAL_MS && _last_throughput_measure_time.compare_exchange_strong(last_ms, now_ms))
+		auto now_ms	    = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		auto last_ms    = _last_throughput_measure_time.load();
+		auto elapsed_ms = now_ms - last_ms;
+
+		// Use compare_exchange_strong to prevent multiple threads from updating simultaneously
+		if (elapsed_ms >= THROUGHPUT_MEASURE_INTERVAL_MS && _last_throughput_measure_time.compare_exchange_strong(last_ms, now_ms))
 		{
-			int32_t interval_sec = THROUGHPUT_MEASURE_INTERVAL_MS / 1000;
-
-			// Calculate last second throughput of provider
-			_last_throughtput_in		  = (_total_bytes_in.load() - _last_total_bytes_in.load());
-
-			// Calculate average throughput of provider
-			_avg_throughtput_in			  = (_total_bytes_in.load() - _last_total_bytes_in.load()) * 8 / interval_sec;
+			// Calculate throughput of provider (bps, using actual elapsed time)
+			_last_throughtput_in  = (_total_bytes_in.load() - _last_total_bytes_in.load());
+			_avg_throughtput_in   = _last_throughtput_in.load() * 8 * 1000 / elapsed_ms;
 			if (_avg_throughtput_in.load() > _max_throughtput_in.load())
 			{
 				_max_throughtput_in.store(_avg_throughtput_in);
 			}
 			_last_total_bytes_in.store(_total_bytes_in);
 
-			// Calculate last second throughput of publisher
+			// Calculate throughput of publisher (bps, using actual elapsed time)
 			_last_throughtput_out = (_total_bytes_out.load() - _last_total_bytes_out.load());
-
-			// Calculate average throughput of publisher
-			_avg_throughtput_out  = (_total_bytes_out.load() - _last_total_bytes_out.load()) * 8 / interval_sec;
+			_avg_throughtput_out  = _last_throughtput_out.load() * 8 * 1000 / elapsed_ms;
 			if (_avg_throughtput_out.load() > _max_throughtput_out.load())
 			{
 				_max_throughtput_out.store(_avg_throughtput_out);
