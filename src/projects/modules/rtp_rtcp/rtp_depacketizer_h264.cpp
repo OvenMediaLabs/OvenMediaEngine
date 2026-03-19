@@ -15,8 +15,10 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseAndAssembleFrame(std::vector
 		reserve_size += 16; // spare
 	}
 
+	// Reset FU-A DPS reassembly buffer at frame boundary
+	_fua_dps_buffer = nullptr;
+
 	auto bitstream = std::make_shared<ov::Data>(reserve_size);
-	bool start_payload = true;
 	for(const auto &payload : payload_list)
 	{
 		if (payload->GetLength() < NAL_HEADER_SIZE)
@@ -30,7 +32,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseAndAssembleFrame(std::vector
 		// Fragmented NAL units
 		if(nal_type == NaluType::kFuA)
 		{
-			result = ParseFuaAndConvertAnnexB(payload, start_payload);
+			result = ParseFuaAndConvertAnnexB(payload);
 			if(result == nullptr)
 			{
 				return nullptr;
@@ -58,18 +60,16 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseAndAssembleFrame(std::vector
 
 			bitstream->Append(result);
 		}
-
-		start_payload = false;
 	}
 
 	return bitstream;
 }
 
-std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseFuaAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload, bool start)
+std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseFuaAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload)
 {
 	auto bitstream = std::make_shared<ov::Data>(payload->GetLength() + 16);
 
-	if(payload->GetLength() < FUA_HEADER_SIZE)
+	if (payload->GetLength() < FUA_HEADER_SIZE)
 	{
 		// Invalid Data
 		return nullptr;
@@ -77,13 +77,44 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseFuaAndConvertAnnexB(const st
 
 	auto buffer = payload->GetDataAs<uint8_t>();
 	auto fnri = buffer[0] & (NAL_FBIT | NAL_NRI_MASK);
-	auto original_nal_type = buffer[1] & NAL_TYPE_MASK;
+	uint8_t original_nal_type = buffer[1] & NAL_TYPE_MASK;
 	bool first_fragment = (buffer[1] & FUA_SBIT) > 0;
+	bool last_fragment  = (buffer[1] & FUA_EBIT) > 0;
+	uint8_t original_nal_header = fnri | original_nal_type;
 
-	if(first_fragment == true || start == true)
+	// Cache SPS/PPS carried over FU-A (non-standard but possible encoders)
+	if(first_fragment)
+	{
+		_fua_dps_buffer = nullptr;
+
+		if (IsDecodingParmeterSets(original_nal_type))
+		{
+			_fua_dps_nal_type = original_nal_type;
+			_fua_dps_buffer = std::make_shared<ov::Data>();
+			_fua_dps_buffer->Append(&original_nal_header, NAL_HEADER_SIZE);
+			_fua_dps_buffer->Append(payload->Subdata(FUA_HEADER_SIZE));
+
+			// Single-fragment FU-A (S+E both set): flush immediately
+			if(last_fragment)
+			{
+				AddDecodingParameterSet(_fua_dps_nal_type, _fua_dps_buffer);
+				_fua_dps_buffer = nullptr;
+			}
+		}
+	}
+	else if (_fua_dps_buffer != nullptr)
+	{
+		_fua_dps_buffer->Append(payload->Subdata(FUA_HEADER_SIZE));
+		if (last_fragment)
+		{
+			AddDecodingParameterSet(_fua_dps_nal_type, _fua_dps_buffer);
+			_fua_dps_buffer = nullptr;
+		}
+	}
+
+	if (first_fragment == true)
 	{
 		uint8_t	start_prefix_and_nal_header[ANNEXB_START_PREFIX_LENGTH + NAL_HEADER_SIZE];
-		uint8_t original_nal_header = fnri | original_nal_type;
 
 		start_prefix_and_nal_header[0] = 0;
 		start_prefix_and_nal_header[1] = 0;
@@ -93,7 +124,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerH264::ParseFuaAndConvertAnnexB(const st
 
 		bitstream->Append(start_prefix_and_nal_header, ANNEXB_START_PREFIX_LENGTH + NAL_HEADER_SIZE);
 	}
-	
+
 	bitstream->Append(payload->Subdata(FUA_HEADER_SIZE));
 
 	return bitstream;

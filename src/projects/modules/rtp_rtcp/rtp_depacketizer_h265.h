@@ -44,4 +44,8 @@ private:
 	void AppendBitstream(std::shared_ptr<ov::Data>&bitstream, uint8_t nal_type, uint8_t nal_header[2], const void *payload, size_t payload_length);
 	bool IsDecodingParmeterSets(uint8_t nal_unit_type);
 
+	// For FU DPS reassembly (VPS/SPS/PPS carried over FU units)
+	std::shared_ptr<ov::Data> _fu_dps_buffer;
+	uint8_t _fu_dps_nal_type = 0;
+
 };
