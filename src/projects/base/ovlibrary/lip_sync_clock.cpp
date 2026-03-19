@@ -11,6 +11,11 @@ bool LipSyncClock::RegisterRtpClock(uint32_t id, double timebase)
 	return true;
 }
 
+bool LipSyncClock::IsEnabled()
+{
+	return _clock_enabled_map.size() == _clock_map.size();
+}
+
 std::shared_ptr<LipSyncClock::Clock> LipSyncClock::GetClock(uint32_t id)
 {
 	if(_clock_map.find(id) == _clock_map.end())
@@ -108,7 +113,10 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 		return false;
 	}
 
-	_enabled = true;
+	if (_clock_enabled_map.find(id) == _clock_enabled_map.end())
+	{
+		_clock_enabled_map[id] = true;
+	}
 
 	std::lock_guard<std::shared_mutex> lock(clock->_clock_lock);
 	clock->_updated = true;

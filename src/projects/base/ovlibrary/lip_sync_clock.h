@@ -12,7 +12,7 @@ public:
 	std::optional<uint64_t> CalcPTS(uint32_t id, uint32_t rtp_timestamp);
 	bool UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_t ntp_lsw, uint32_t rtcp_timestamp);
 
-	bool IsEnabled() {return _enabled;}
+	bool IsEnabled();
 
 private:
 	struct Clock
@@ -29,8 +29,7 @@ private:
 
 	// Id, Clock
 	std::map<uint32_t, std::shared_ptr<Clock>> _clock_map;
-
-	bool _enabled = false;
+	std::map<uint32_t, bool> _clock_enabled_map;
 
 	std::shared_ptr<Clock> GetClock(uint32_t id);
 
