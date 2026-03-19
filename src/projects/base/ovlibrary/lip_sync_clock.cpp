@@ -37,6 +37,8 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 		return {};
 	}
 
+	std::lock_guard<std::mutex> lock(clock->_lock);
+
 	if(clock->_updated == false)
 	{
 		return {};
@@ -75,7 +77,7 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 			{
 				// reordering or duplicate or error
 				delta = 0;
-				logtw("RTP timestamp is not monotonic: %u -> %u", clock->_last_rtp_timestamp.load(), rtp_timestamp);
+				logtw("RTP timestamp is not monotonic: %u -> %u", clock->_last_rtp_timestamp, rtp_timestamp);
 			}
 		}
 
@@ -87,19 +89,9 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 	// The timestamp difference can be negative.
 	auto pts = clock->_pts + ((int64_t)clock->_extended_rtp_timestamp - (int64_t)clock->_extended_rtcp_timestamp);
 
-	// This is to make pts start at zero.
-	if (_first_pts == true)
-	{
-		// pts in 100/10000000
-		_adjust_pts_us = (double)pts * clock->_timebase * 100000.0;
-		_first_pts = false;
-	}
+	logtt("Calc PTS : id(%u) pts(%" PRId64 ") last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%" PRIu64 ")", id, pts, clock->_last_rtp_timestamp, rtp_timestamp, delta, clock->_extended_rtp_timestamp);
 
-	int64_t final_pts = pts - (int64_t)(_adjust_pts_us / clock->_timebase / 100000.0);
-
-	logtt("Calc PTS : id(%u) pts(%" PRId64 ") final_pts(%" PRId64 ") last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%" PRIu64 ")", id, pts, final_pts, clock->_last_rtp_timestamp.load(), rtp_timestamp, delta, clock->_extended_rtp_timestamp.load());
-
-	return final_pts; 
+	return pts; 
 }
 
 bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_t ntp_lsw, uint32_t rtcp_timestamp)
@@ -121,12 +113,12 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 		_clock_enabled_map[id] = true;
 	}
 
-	clock->_updated = true;
+	std::lock_guard<std::mutex> lock(clock->_lock);
 
-	if (_first_sr == true)
+	if (clock->_first_sr == true)
 	{
 		clock->_extended_rtcp_timestamp = rtcp_timestamp;
-		_first_sr = false;
+		clock->_first_sr = false;
 	}
 	else
 	{
@@ -148,7 +140,7 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 			{
 				// reordering or duplicate or error
 				delta = 0;
-				logtw("RTCP timestamp is not monotonic: %u -> %u", clock->_last_rtcp_timestamp.load(), rtcp_timestamp);
+				logtw("RTCP timestamp is not monotonic: %u -> %u", clock->_last_rtcp_timestamp, rtcp_timestamp);
 			}
 		}
 
@@ -157,9 +149,10 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 
 	clock->_last_rtcp_timestamp = rtcp_timestamp;
 	clock->_pts = ov::Converter::NtpTsToSeconds(ntp_msw, ntp_lsw) / clock->_timebase;
+	clock->_updated = true;
 
 	logtt("Update SR : id(%u) NTP(%u/%u) pts(%" PRId64 ") rtp timestamp(%u) extended timestamp (%" PRIu64 ")", 
-			id, ntp_msw, ntp_lsw, clock->_pts.load(), clock->_last_rtcp_timestamp.load(), clock->_extended_rtcp_timestamp.load());
+			id, ntp_msw, ntp_lsw, (int64_t)clock->_pts, rtcp_timestamp, clock->_extended_rtcp_timestamp);
 
 	return true;
 }

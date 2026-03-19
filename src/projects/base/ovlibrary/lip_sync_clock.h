@@ -17,13 +17,15 @@ public:
 private:
 	struct Clock
 	{
-		std::atomic<bool>     _updated{false};
-		double                _timebase = 0;  // written once before sharing
-		std::atomic<uint32_t> _last_rtcp_timestamp{0};
-		std::atomic<uint64_t> _extended_rtcp_timestamp{0};
-		std::atomic<uint32_t> _last_rtp_timestamp{0};
-		std::atomic<uint64_t> _extended_rtp_timestamp{0};
-		std::atomic<uint64_t> _pts{0};	// converted NTP timestamp to timebase timestamp
+		std::mutex   _lock;
+		bool         _updated = false;
+		bool         _first_sr = true;
+		double       _timebase = 0;
+		uint32_t     _last_rtcp_timestamp = 0;
+		uint64_t     _extended_rtcp_timestamp = 0;
+		uint64_t     _pts = 0;				// converted NTP timestamp to timebase timestamp
+		uint32_t     _last_rtp_timestamp = 0;
+		uint64_t     _extended_rtp_timestamp = 0;
 	};
 
 	std::shared_mutex _map_lock;
@@ -32,8 +34,4 @@ private:
 	std::map<uint32_t, bool> _clock_enabled_map;
 
 	std::shared_ptr<Clock> GetClock(uint32_t id);
-
-	bool _first_pts = true;
-	bool _first_sr = true;
-	uint64_t _adjust_pts_us = 0;
 };
