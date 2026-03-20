@@ -37,17 +37,31 @@ bool LLHlsMasterPlaylist::AddMediaCandidateGroup(const std::shared_ptr<const Med
 	new_group->_group_id = track_group->GetName();
 
 	// Add media info
-	// bool first = true;
+	bool first = true;
 	for (auto &track : track_group->GetTracks())
 	{
+		bool auto_select = false;
+		bool set_default = false;
+
+		if (track->GetMediaType() == cmn::MediaType::Subtitle)
+		{
+			auto_select = track->IsAutoSelect();
+			set_default = track->IsDefault();
+		}
+		else
+		{
+			auto_select = true; // All media types except subtitle are auto selected by default
+			set_default = first;
+		}
+		
 		auto new_media_info = std::make_shared<MediaInfo>();
 		new_media_info->_group_id = track_group->GetName();
 		new_media_info->_type = track->GetMediaType();
 		new_media_info->_name = track->GetPublicName();
 		new_media_info->_language = track->GetLanguage();
 		new_media_info->_characteristics = track->GetCharacteristics();
-		new_media_info->_default = track->IsDefault();;
-		new_media_info->_auto_select = track->IsAutoSelect();
+		new_media_info->_default = set_default;
+		new_media_info->_auto_select = auto_select;
 		new_media_info->_forced = track->IsForced();
 		new_media_info->_instream_id = "";
 		new_media_info->_assoc_language = "";
@@ -55,7 +69,7 @@ bool LLHlsMasterPlaylist::AddMediaCandidateGroup(const std::shared_ptr<const Med
 		new_media_info->_track = track;
 
 		new_group->_media_infos.push_back(new_media_info);
-		// first = false;
+		first = false;
 	}
 
 	std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
@@ -66,14 +80,30 @@ bool LLHlsMasterPlaylist::AddMediaCandidateGroup(const std::shared_ptr<const Med
 
 bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo &media_info)
 {
+	bool first = false;
 	auto media_group = GetMediaGroup(media_info._group_id);
 	if (media_group == nullptr)
 	{
 		media_group = std::make_shared<MediaGroup>();
 		media_group->_group_id = media_info._group_id;
+		first = true;
 
 		std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
 		_media_groups.emplace(media_group->_group_id, media_group);
+	}
+
+	bool auto_select = false;
+	bool set_default = false;
+
+	if (media_info._type == cmn::MediaType::Subtitle)
+	{
+		auto_select = media_info._auto_select;
+		set_default = media_info._default;
+	}
+	else
+	{
+		auto_select = true; // All media types except subtitle are auto selected by default
+		set_default = first;	
 	}
 	
 	auto new_media_info = std::make_shared<MediaInfo>();
@@ -82,8 +112,8 @@ bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo
 	new_media_info->_name = media_info._name;
 	new_media_info->_language = media_info._language;
 	new_media_info->_characteristics = media_info._characteristics;
-	new_media_info->_auto_select = media_info._auto_select;
-	new_media_info->_default = media_info._default;
+	new_media_info->_auto_select = auto_select;
+	new_media_info->_default = set_default;
 	new_media_info->_forced = media_info._forced;
 	new_media_info->_instream_id = media_info._instream_id;
 	new_media_info->_assoc_language = media_info._assoc_language;
@@ -340,7 +370,12 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 			playlist.AppendFormat(",NAME=\"%s\"", media_info->_name.CStr());
 			playlist.AppendFormat(",DEFAULT=%s", media_info->_default ? "YES" : "NO");
 			playlist.AppendFormat(",AUTOSELECT=%s", media_info->_auto_select ? "YES" : "NO");
-			playlist.AppendFormat(",FORCED=%s", media_info->_forced ? "YES" : "NO");
+
+			// subtitle only
+			if (media_info->_type == cmn::MediaType::Subtitle)
+			{
+				playlist.AppendFormat(",FORCED=%s", media_info->_forced ? "YES" : "NO");
+			}
 
 			if (media_info->_type == cmn::MediaType::Audio)
 			{
