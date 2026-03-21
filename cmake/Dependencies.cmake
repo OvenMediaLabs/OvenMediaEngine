@@ -108,6 +108,18 @@ macro(ome_find_pkg var pkg version_var)
     unset(${var}_LIBRARY_DIRS CACHE)
     unset(${var}_LIBRARIES CACHE)
     unset(${var}_VERSION CACHE)
+    # Also clear the pkgcfg_lib_* variables set by find_library() inside
+    # pkg_check_modules(IMPORTED_TARGET). If OME_DEP_PREFIX changes between
+    # runs, these stale CACHE entries cause the wrong library (and its wrong
+    # .pc-derived include paths) to be used for the imported target.
+    get_cmake_property(_all_cache_vars CACHE_VARIABLES)
+    foreach(_cv IN LISTS _all_cache_vars)
+        if(_cv MATCHES "^pkgcfg_lib_${var}_")
+            unset(${_cv} CACHE)
+        endif()
+    endforeach()
+    unset(_all_cache_vars)
+    unset(_cv)
 
     if(_FP_PROBE_LIBRARY)
         unset(_FP_PROBE_LIB CACHE)
@@ -119,6 +131,18 @@ macro(ome_find_pkg var pkg version_var)
 
     if(_FP_PROBE_FOUND)
         pkg_check_modules(${var} QUIET IMPORTED_TARGET ${_FP_PKG_STRING})
+        # Validate that all reported include directories actually exist.
+        # A stale or mispackaged .pc file (e.g. wrong prefix=) can report
+        # non-existent paths, which causes a CMake generate-time error.
+        if(${var}_FOUND)
+            foreach(_fp_inc IN LISTS ${var}_INCLUDE_DIRS)
+                if(NOT EXISTS "${_fp_inc}")
+                    message(STATUS "[OME] '${_FP_PKG_NAME}' found but include dir missing: ${_fp_inc} - treating as not found")
+                    set(${var}_FOUND FALSE)
+                    break()
+                endif()
+            endforeach()
+        endif()
     endif()
 
     if((NOT _FP_PROBE_FOUND) OR (NOT ${var}_FOUND))
@@ -198,6 +222,15 @@ macro(ome_find_pkg var pkg version_var)
 
             if(_FP_PROBE_FOUND)
                 pkg_check_modules(${var} QUIET IMPORTED_TARGET ${_FP_PKG_STRING})
+                if(${var}_FOUND)
+                    foreach(_fp_inc IN LISTS ${var}_INCLUDE_DIRS)
+                        if(NOT EXISTS "${_fp_inc}")
+                            message(STATUS "[OME] '${_FP_PKG_NAME}' found but include dir missing: ${_fp_inc} - treating as not found")
+                            set(${var}_FOUND FALSE)
+                            break()
+                        endif()
+                    endforeach()
+                endif()
             endif()
 
             if(_FP_PROBE_FOUND AND ${var}_FOUND)
@@ -290,7 +323,7 @@ ome_find_pkg(PKG_LIBAVUTIL      libavutil       OME_VER_LIBAVUTIL       REINSTAL
 
 # NVIDIA NVENC/NVDEC
 if(OME_HWACCEL_NVIDIA)
-    ome_find_pkg(PKG_FFNVCODEC ffnvcodec OPTIONAL)
+    pkg_check_modules(PKG_FFNVCODEC QUIET IMPORTED_TARGET ffnvcodec)
     if(NOT PKG_FFNVCODEC_FOUND)
         # Auto-install nv-codec-headers with NVIDIA flag forwarded
         message(STATUS "[OME] ffnvcodec not found - installing nv-codec-headers ...")

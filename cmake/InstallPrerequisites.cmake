@@ -381,6 +381,7 @@ if(ENABLE_X264)
 endif()
 
 if(ENABLE_NVIDIA)
+    string(REPLACE "PATH=${PREFIX}/bin:" "PATH=/usr/local/cuda/bin:${PREFIX}/bin:" _COMMON_ENV "${_COMMON_ENV}")
     string(APPEND _FFMPEG_ADDI_LIBS    " --enable-cuda-nvcc --enable-cuda-llvm --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-cuvid")
     string(APPEND _FFMPEG_ADDI_ENCODER ",h264_nvenc,hevc_nvenc")
     string(APPEND _FFMPEG_ADDI_DECODER ",h264_cuvid,hevc_cuvid")
