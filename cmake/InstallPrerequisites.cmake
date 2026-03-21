@@ -536,7 +536,12 @@ set(_WHISPER_CMAKE_ARGS
 )
 if(OME_HWACCEL_NVIDIA)
     list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=75\;80\;86\;89\"")
-    list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc")
+    find_program(_OME_NVCC nvcc HINTS /usr/local/cuda/bin /usr/cuda/bin)
+    if(_OME_NVCC)
+        list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")
+    else()
+        message(WARNING "[OME] nvcc not found - whisper CUDA build may fail. Install CUDA toolkit or add nvcc to PATH.")
+    endif()
 endif()
 list(JOIN _WHISPER_CMAKE_ARGS " " _WHISPER_CMAKE_LINE)
 set(_install_whisper "
