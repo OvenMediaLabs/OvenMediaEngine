@@ -456,7 +456,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			continue;
 		}
 
-		if (legacy == true && segment->IsCompleted() == false)
+		if (legacy == true && (segment->IsCompleted() == false))
 		{
 			continue;
 		}
@@ -491,27 +491,12 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 					}
 
 					playlist.Append("\n");
-
-					//If it is the last one, output PRELOAD-HINT
-					if (_preload_hint_enabled == true &&
-						segment->GetSequence() == last_segment->GetSequence() &&
-						partial_segment == segment->GetPartialSegments().back())
-					{
-						playlist.AppendFormat("#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"%s", partial_segment->GetNextUrl().CStr());
-						if (query_string.IsEmpty() == false)
-						{
-							playlist.AppendFormat("?%s", query_string.CStr());
-						}
-						playlist.AppendFormat("\"\n");
-					}
 				}
 			}
 		}
 
-		// Don't print Completed segment info if it is the last segment
-		// It will be printed when the next segment is created.
-		if ((legacy == true && segment->IsCompleted()) || 
-			(legacy == false && segment->IsCompleted() && segment->GetSequence() != last_segment->GetSequence()))
+		// Print completed segment info (EXTINF + segment URI)
+		if (segment->IsCompleted())
 		{
 			playlist.AppendFormat("#EXTINF:%lf,\n", segment->GetDuration());
 			playlist.AppendFormat("%s", segment->GetUrl().CStr());
@@ -520,6 +505,20 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 				playlist.AppendFormat("?%s", query_string.CStr());
 			}
 			playlist.Append("\n");
+		}
+
+		// Output PRELOAD-HINT after the last segment (including after EXTINF if completed)
+		if (legacy == false && _preload_hint_enabled == true &&
+			segment->GetSequence() == last_segment->GetSequence() &&
+			segment->GetPartialSegmentsCount() > 0)
+		{
+			auto &last_partial = segment->GetPartialSegments().back();
+			playlist.AppendFormat("#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"%s", last_partial->GetNextUrl().CStr());
+			if (query_string.IsEmpty() == false)
+			{
+				playlist.AppendFormat("?%s", query_string.CStr());
+			}
+			playlist.AppendFormat("\"\n");
 		}
 	}
 	segment_lock.unlock();
