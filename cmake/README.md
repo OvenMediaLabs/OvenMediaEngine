@@ -42,6 +42,7 @@ cmake --build build/Release
 | `OME_HWACCEL_NILOGAN` | OFF | Enable Netint NiLogan acceleration. Requires `OME_NILOGAN_PATCH_PATH` |
 | `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file. Required when `OME_HWACCEL_NILOGAN=ON` |
 | `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
+| `OME_ENABLE_X264` | ON | Enable libx264 encoder support |
 | `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
 | `OME_USE_JEMALLOC_PROFILE` | OFF | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON` |
 | `OME_BUILD_STUBS` | OFF/AUTO | Build GPU stub `.so` libraries. Auto-enabled when NVIDIA or XMA is ON |
@@ -95,15 +96,15 @@ Available `-D` options:
 
 | Option | Default | Description |
 |---|---|---|
-| `PREFIX` | `/opt/ovenmediaengine` | Installation prefix |
+| `OME_DEP_PREFIX` | `/opt/ovenmediaengine` | Installation prefix |
 | `TARGET` | *(all)* | Install a single target only (e.g. `ffmpeg`, `openssl`) |
-| `ENABLE_X264` | `ON` | Include libx264 |
-| `ENABLE_NVIDIA` | `OFF` | Include NVIDIA codec headers, build FFmpeg with CUDA/NVENC/NVDEC |
-| `ENABLE_QSV` | `OFF` | Build FFmpeg with Intel QSV support (`libmfx` must be pre-installed) |
-| `ENABLE_XMA` | `OFF` | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed) |
-| `ENABLE_NILOGAN` | `OFF` | Build FFmpeg with Netint NiLogan support. Requires `NILOGAN_PATCH_PATH` |
-| `NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file |
-| `NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
+| `OME_ENABLE_X264` | `ON` | Include libx264 |
+| `OME_HWACCEL_NVIDIA` | `OFF` | Include NVIDIA codec headers, build FFmpeg/Whisper with CUDA/NVENC/NVDEC |
+| `OME_HWACCEL_QSV` | `OFF` | Build FFmpeg with Intel QSV support (`libmfx` must be pre-installed) |
+| `OME_HWACCEL_XMA` | `OFF` | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed) |
+| `OME_HWACCEL_NILOGAN` | `OFF` | Build FFmpeg with Netint NiLogan support. Requires `OME_NILOGAN_PATCH_PATH` |
+| `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file |
+| `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
 | `OME_USE_CLANG` | `ON` | Install `clang`/`lld` OS packages and use Clang as the compiler. Set `OFF` to skip and keep GCC |
 
 ---

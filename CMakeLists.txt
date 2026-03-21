@@ -43,7 +43,7 @@ option(OME_HWACCEL_XMA              "Enable Xilinx XMA hardware acceleration"   
 option(OME_HWACCEL_NILOGAN          "Enable Netint NiLogan acceleration"                 OFF)
 set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmpeg patch file (required when OME_HWACCEL_NILOGAN=ON)")
 set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
-option(ENABLE_X264                  "Enable libx264 encoder support"                     ON)
+option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
 option(OME_ENABLE_JEMALLOC          "Enable jemalloc memory allocator"                  OFF)
 option(OME_BUILD_STUBS              "Build GPU stub libraries"                           OFF)
 option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version packages" OFF)

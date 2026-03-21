@@ -159,27 +159,27 @@ macro(ome_find_pkg var pkg version_var)
         # Build hwaccel forwarding args for InstallPrerequisites.cmake
         set(_FP_HWACCEL_ARGS)
         if(OME_HWACCEL_NVIDIA)
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_NVIDIA=ON)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_NVIDIA=ON)
         endif()
         if(OME_HWACCEL_QSV)
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_QSV=ON)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_QSV=ON)
         endif()
         if(OME_HWACCEL_XMA)
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_XMA=ON)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_XMA=ON)
         endif()
         if(OME_HWACCEL_NILOGAN)
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_NILOGAN=ON)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_NILOGAN=ON)
             if(OME_NILOGAN_PATCH_PATH AND NOT OME_NILOGAN_PATCH_PATH STREQUAL "")
-                list(APPEND _FP_HWACCEL_ARGS "-DNILOGAN_PATCH_PATH=${OME_NILOGAN_PATCH_PATH}")
+                list(APPEND _FP_HWACCEL_ARGS "-DOME_NILOGAN_PATCH_PATH=${OME_NILOGAN_PATCH_PATH}")
             endif()
             if(OME_NILOGAN_XCODER_COMPILE_PATH AND NOT OME_NILOGAN_XCODER_COMPILE_PATH STREQUAL "")
-                list(APPEND _FP_HWACCEL_ARGS "-DNILOGAN_XCODER_COMPILE_PATH=${OME_NILOGAN_XCODER_COMPILE_PATH}")
+                list(APPEND _FP_HWACCEL_ARGS "-DOME_NILOGAN_XCODER_COMPILE_PATH=${OME_NILOGAN_XCODER_COMPILE_PATH}")
             endif()
         endif()
-        if(ENABLE_X264)
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_X264=ON)
+        if(OME_ENABLE_X264)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_ENABLE_X264=ON)
         else()
-            list(APPEND _FP_HWACCEL_ARGS -DENABLE_X264=OFF)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_ENABLE_X264=OFF)
         endif()
         if(OME_SKIP_DEPENDENCY_CHECK)
             # Auto-install suppressed - report only
@@ -187,7 +187,7 @@ macro(ome_find_pkg var pkg version_var)
             message(STATUS "[OME] '${_FP_PKG_STRING}' not found or wrong version - reinstalling '${_FP_REINSTALL_TARGET}' ...")
             execute_process(
                 COMMAND ${CMAKE_COMMAND}
-                    -DPREFIX=${OME_DEP_PREFIX}
+                    -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
                     -DTARGET=${_FP_REINSTALL_TARGET}
                     ${_FP_HWACCEL_ARGS}
                     ${_FP_EXTRA_ARGS}
@@ -198,7 +198,7 @@ macro(ome_find_pkg var pkg version_var)
             message(STATUS "[OME] '${_FP_PKG_STRING}' not found - running InstallPrerequisites.cmake ...")
             execute_process(
                 COMMAND ${CMAKE_COMMAND}
-                    -DPREFIX=${OME_DEP_PREFIX}
+                    -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
                     ${_FP_HWACCEL_ARGS}
                     ${_FP_EXTRA_ARGS}
                     -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
@@ -309,7 +309,14 @@ ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTAL
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
 ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)
 ome_find_pkg(PKG_SPDLOG         spdlog          OME_VER_SPDLOG          REINSTALL_TARGET spdlog)
-ome_find_pkg(PKG_WHISPER        whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper)
+# When OME_HWACCEL_NVIDIA is ON, whisper must be built with GGML_CUDA=ON.
+# CUDA builds of whisper.cpp produce libggml-cuda.so in addition to libggml.so.
+# Use that as a probe: if it is absent while NVIDIA is requested, reinstall.
+if(OME_HWACCEL_NVIDIA)
+    ome_find_pkg(PKG_WHISPER    whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper PROBE_LIBRARY ggml-cuda)
+else()
+    ome_find_pkg(PKG_WHISPER    whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper)
+endif()
 ome_find_pkg(PKG_LIBAVFORMAT    libavformat     OME_VER_LIBAVFORMAT     REINSTALL_TARGET ffmpeg)
 ome_find_pkg(PKG_LIBAVFILTER    libavfilter     OME_VER_LIBAVFILTER     REINSTALL_TARGET ffmpeg)
 ome_find_pkg(PKG_LIBAVCODEC     libavcodec      OME_VER_LIBAVCODEC      REINSTALL_TARGET ffmpeg)
@@ -329,8 +336,8 @@ if(OME_HWACCEL_NVIDIA)
         message(STATUS "[OME] ffnvcodec not found - installing nv-codec-headers ...")
         execute_process(
             COMMAND ${CMAKE_COMMAND}
-                -DPREFIX=${OME_DEP_PREFIX}
-                -DENABLE_NVIDIA=ON
+                -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
+                -DOME_HWACCEL_NVIDIA=ON
                 -DTARGET=nvcc_hdr
                 -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
             RESULT_VARIABLE _ret
@@ -420,7 +427,7 @@ endif()
 #   2. If not visible yet, try installing it.
 #   3. If still not visible, leave x264 encoder support disabled.
 #   4. If visible, require the expected pkg-config version exactly.
-if(ENABLE_X264)
+if(OME_ENABLE_X264)
     ome_find_pkg(PKG_X264 x264 OME_VER_X264
         REINSTALL_TARGET libx264
         PROBE_LIBRARY x264
@@ -434,7 +441,7 @@ if(ENABLE_X264)
         message(STATUS "[OME] libx264: not found - x264 encoder disabled")
     endif()
 else()
-    message(STATUS "[OME] libx264: disabled by ENABLE_X264=OFF")
+    message(STATUS "[OME] libx264: disabled by OME_ENABLE_X264=OFF")
 endif()
 
 # uuid (system library, not pkg-config)
