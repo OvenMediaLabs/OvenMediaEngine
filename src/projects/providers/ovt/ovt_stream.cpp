@@ -459,6 +459,10 @@ namespace pvd
 				}
 
 				new_track->SetSampleRate(json_audio_track["samplerate"].asUInt());
+				if (new_track->GetSampleRate() == 0)
+				{
+					logte("Audio track(%u) received from origin has samplerate=0. The origin may have sent an invalid AudioSpecificConfig.", new_track->GetId());
+				}
 				new_track->SetSampleFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
 				new_track->SetChannelLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
 			}

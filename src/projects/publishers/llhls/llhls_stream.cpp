@@ -1381,6 +1381,12 @@ double LLHlsStream::ComputeOptimalPartDuration(const std::shared_ptr<const Media
 	if (track->GetMediaType() == cmn::MediaType::Audio)
 	{
 		// Duration of a frame is 1024 samples / sample rate
+		if (track->GetSampleRate() == 0)
+		{
+			logte("LLHlsStream::ComputeOptimalPartDuration() - Audio track(%d) has invalid samplerate(0). Using default part duration.", track->GetId());
+			return part_target;
+		}
+
 		auto frame_duration = static_cast<double>(track->GetAudioSamplesPerFrame()) / static_cast<double>(track->GetSampleRate());
 		auto frame_duration_ms = frame_duration * 1000.0;
 

@@ -497,7 +497,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Aac: {
-			if (IsValidTimeBase() && IsValidChannel() && GetDecoderConfigurationRecord() != nullptr)
+			if (IsValidTimeBase() && IsValidChannel() && GetSampleRate() > 0 && GetDecoderConfigurationRecord() != nullptr)
 			{
 				_is_valid = true;
 				return true;

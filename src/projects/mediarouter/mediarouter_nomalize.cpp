@@ -544,6 +544,12 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 				return false;
 			}
 
+			if (audio_config->Samplerate() == 0)
+			{
+				logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+				return false;
+			}
+
 			media_track->SetSampleRate(audio_config->Samplerate());
 			media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 			media_track->SetDecoderConfigurationRecord(audio_config);
@@ -607,6 +613,12 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 	audio_config->SetObjectType(adts.ObjectType());
 	audio_config->SetSamplingFrequencyIndex(adts.SamplingFrequencyIndex());
 	audio_config->SetChannel(adts.ChannelConfiguration());
+
+	if (audio_config->Samplerate() == 0)
+	{
+		logte("AAC ADTS header parsed but samplerate is 0. The ADTS may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+		return false;
+	}
 
 	media_track->SetSampleRate(audio_config->Samplerate());
 	media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
