@@ -168,6 +168,6 @@ private:
 	uint32_t _max_worker_thread_count;
 
 private:
-	std::vector<std::shared_ptr<ov::ManagedQueue<std::shared_ptr<MediaRouteStream>>>> _inbound_stream_indicator;
-	std::vector<std::shared_ptr<ov::ManagedQueue<std::shared_ptr<MediaRouteStream>>>> _outbound_stream_indicator;
+	std::vector<std::shared_ptr<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>> _inbound_stream_indicator;
+	std::vector<std::shared_ptr<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>> _outbound_stream_indicator;
 };

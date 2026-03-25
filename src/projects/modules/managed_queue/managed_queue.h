@@ -189,41 +189,67 @@ namespace ov
 				return {};	// Stop is requested
 			}
 
-			if ((_buffering_delay == 0 &&_size == 0) || 
-				(_buffering_delay != 0 && GetBufferedTimeMsInternal() < _buffering_delay))
+			// Compute the hard deadline from the caller-supplied timeout.
+			auto deadline = (timeout != Infinite)
+				? std::chrono::system_clock::now() + std::chrono::milliseconds(timeout)
+				: std::chrono::system_clock::time_point::max();
+
+			// Wait loop: expire is recalculated on every wakeup so that the
+			// buffering_delay timer fires correctly even when no new packets
+			// arrive after the stream ends (which would otherwise leave the
+			// queue stuck with expire == time_point::max()).
+			while (!_stop)
 			{
-				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
-
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					if (_stop)
-					{
-						return true;
-					}
-					
-					if (_buffering_delay == 0)
-					{
-						return (_size != 0);
-					}
-					else
-					{
-						if (_front_node != nullptr && _front_node->_urgent == true)
-						{
-							return true;
-						}
-
-						if (GetBufferedTimeMsInternal() >= _buffering_delay)
-						{
-							return true;
-						}
-					}
-
-					return false;
-				});
-
-				if (!result || _stop)
+				// Check whether an item is ready to be dequeued.
+				if (_buffering_delay == 0)
 				{
-					return {};	// timed out / Stop is requested
+					if (_size != 0) 
+					{
+						break;
+					}
 				}
+				else
+				{
+					if (_front_node != nullptr && _front_node->_urgent == true) 
+					{
+						break;
+					}
+					if (GetBufferedTimeMsInternal() >= _buffering_delay) 
+					{
+						break;
+					}
+				}
+
+				// Compute the next wakeup time: whichever comes first between
+				// the caller deadline and the buffering-ready time.
+				auto expire = deadline;
+				if (_buffering_delay != 0 && _front_node != nullptr)
+				{
+					int remaining_ms = _buffering_delay - GetBufferedTimeMsInternal();
+					if (remaining_ms <= 0)
+					{
+						// Time elapsed between the check above and here — ready now.
+						continue;
+					}
+					auto buffering_expire = std::chrono::system_clock::now() + std::chrono::milliseconds(remaining_ms);
+					if (buffering_expire < expire)
+					{
+						expire = buffering_expire;
+					}
+				}
+
+				_condition.wait_until(unique_lock, expire);
+
+				// Check the hard deadline after waking.
+				if (timeout != Infinite && std::chrono::system_clock::now() >= deadline)
+				{
+					return {};	// timed out
+				}
+			}
+
+			if (_stop)
+			{
+				return {};	// Stop is requested
 			}
 
 			ManagedQueueNode* node = _front_node;
@@ -491,18 +517,10 @@ namespace ov
 
 			UpdateMetrics();
 
-			if (_buffering_delay == 0)
-			{
-				_condition.notify_all();
-			}
-			else
-			{
-				// If the buffering delay is set, notify the waiting thread when the buffering time is exceeded.
-				if (GetBufferedTimeMsInternal() >= _buffering_delay)
-				{
-					_condition.notify_all();
-				}
-			}
+			// Always notify: when buffering_delay == 0 this is the normal signal;
+			// when buffering_delay != 0 this lets the Dequeue thread recalculate
+			// its timed wait based on the (possibly new) front node.
+			_condition.notify_all();
 		}
 
 		void PushBack(ManagedQueueNode* node)
