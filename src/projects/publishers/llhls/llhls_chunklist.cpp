@@ -537,11 +537,6 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			{
 				continue;
 			}
-			// Skip another media type
-			if (rendition->GetTrack()->GetMediaType() != _track->GetMediaType())
-			{
-				continue;
-			}
 
 			playlist.AppendFormat("#EXT-X-RENDITION-REPORT:URI=\"%s", rendition->GetUrl().CStr());
 			if (query_string.IsEmpty() == false)
