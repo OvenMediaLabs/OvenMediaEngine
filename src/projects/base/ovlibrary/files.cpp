@@ -189,15 +189,13 @@ namespace ov
 			return "";
 		}
 
-		// split by '.'
-		auto items = file_name.Split(".");
-		if (items.empty())
+		auto index_of_dot = file_name.IndexOfRev('.');
+		if (index_of_dot == -1)
 		{
-			return "";
+			return file_name;
 		}
 
-		// get first item
-		return items.front();
+		return file_name.Substring(0, index_of_dot);
 	}
 
 	bool DeleteFile(const ov::String &path)
