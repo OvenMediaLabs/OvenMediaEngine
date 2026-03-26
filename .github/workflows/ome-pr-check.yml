@@ -31,8 +31,7 @@ jobs:
             test
             build
             chore
-          subjectPattern: ^(?![A-Z]).+$
-          subjectPatternError: "PR title subject must start with a lowercase letter."
+
 
       - name: Comment on validation failure
         if: steps.validate.outcome == 'failure'
@@ -57,7 +56,7 @@ jobs:
 
             **Required format:** \`type(scope): description\`
             - \`scope\` is optional
-            - \`description\` must start with a lowercase letter
+
 
             **Allowed types:**
             | Type | Description |
