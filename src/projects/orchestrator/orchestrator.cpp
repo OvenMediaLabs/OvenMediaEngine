@@ -969,6 +969,10 @@ namespace ocst
 		{
 			type = ProviderType::RtspPull;
 		}
+		else if (lower_scheme == "rtsps")
+		{
+			type = ProviderType::RtspPull;
+		}
 		else if (lower_scheme == "ovt")
 		{
 			type = ProviderType::Ovt;
