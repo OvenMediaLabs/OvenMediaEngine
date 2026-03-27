@@ -22,3 +22,8 @@ CUresult CUDAAPI cuDeviceGetAttribute(int *pi, CUdevice_attribute attrib, CUdevi
 {
 	return 0;
 }
+
+CUresult CUDAAPI cuDeviceGetCount(int *count)
+{
+	return 0;
+}

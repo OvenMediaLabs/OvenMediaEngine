@@ -441,6 +441,16 @@ size_t RtpPacket::ExtensionSize() const
 	return _extension_size;
 }
 
+bool RtpPacket::HasExtension() const
+{
+	return _has_extension;
+}
+
+bool RtpPacket::HasPadding() const
+{
+	return _has_padding;
+}
+
 bool RtpPacket::SetPayload(const uint8_t *payload, size_t payload_size)
 {
 	auto payload_buffer = SetPayloadSize(payload_size);

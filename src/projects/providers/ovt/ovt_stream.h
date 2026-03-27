@@ -21,7 +21,7 @@ namespace pvd
 {
 	class OvtProvider;
 
-	class OvtStream : public pvd::PullStream, public OvtPacketizerInterface
+	class OvtStream final : public pvd::PullStream, public OvtPacketizerInterface
 	{
 	public:
 		static std::shared_ptr<OvtStream> Create(const std::shared_ptr<pvd::PullApplication> &application, const uint32_t stream_id, const ov::String &stream_name,	const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties);

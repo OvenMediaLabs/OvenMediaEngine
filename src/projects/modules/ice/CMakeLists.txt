@@ -1,0 +1,10 @@
+ome_add_static_library(ice
+    SOURCES_DIRS
+        stun
+        stun/attributes
+        stun/attributes/templates
+    DEPS
+        http
+        sdp
+        ovlibrary
+)

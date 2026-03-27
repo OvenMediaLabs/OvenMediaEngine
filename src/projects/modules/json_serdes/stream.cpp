@@ -30,10 +30,12 @@ namespace serdes
 		SetBool(object, "bypass", track->IsBypass());
 
 		SetString(object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
-		SetInt(object, "width", track->GetWidth());
-		SetInt(object, "maxWidth", track->GetMaxWidth());
-		SetInt(object, "height", track->GetHeight());
-		SetInt(object, "maxHeight", track->GetMaxHeight());
+		auto resolution = track->GetResolution();
+		auto max_resolution = track->GetMaxResolution();
+		SetInt(object, "width", resolution.width);
+		SetInt(object, "maxWidth", max_resolution.width);
+		SetInt(object, "height", resolution.height);
+		SetInt(object, "maxHeight", max_resolution.height);
 		SetInt(object, "bitrate", track->GetBitrate());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
 		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());
@@ -42,6 +44,7 @@ namespace serdes
 		SetFloat(object, "framerateConf", track->GetFrameRateByConfig());
 		SetFloat(object, "framerateAvg", track->GetFrameRateByMeasured());
 		SetFloat(object, "framerateLatest", track->GetFrameRateLastSecond());
+		SetFloat(object, "maxFramerate", track->GetMaxFrameRate());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
 		SetBool(object, "hasBframes", track->HasBframes());
 		SetFloat(object, "keyFrameInterval", track->GetKeyFrameInterval());
@@ -180,7 +183,8 @@ namespace serdes
 		SetTimestamp(object, "createdTime", common_metrics->GetCreatedTime());
 	}
 
-	static void SetOutputStreams(Json::Value &parent_object, const char *key, const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams, Optional optional)
+	template <typename T>
+	static void SetOutputStreams(Json::Value &parent_object, const char *key, const std::vector<std::shared_ptr<T>> &output_streams, Optional optional)
 	{
 		CONVERTER_RETURN_IF(false, Json::arrayValue);
 
@@ -224,7 +228,18 @@ namespace serdes
 
 		SetString(response, "name", stream->GetName(), Optional::False);
 		SetInputStream(response, "input", stream, Optional::False);
-		SetOutputStreams(response, "outputs", output_streams, Optional::False);
+
+		// Relay stream type : made by OriginMap or OriginMapStore
+		if (stream->GetRepresentationType() == StreamRepresentationType::Relay && output_streams.size() == 0)
+		{
+			// Set stream as output_streams
+			SetOutputStreams(response, "outputs", std::vector<std::shared_ptr<const mon::StreamMetrics>>{stream}, Optional::False);
+			return response;
+		}
+		else
+		{
+			SetOutputStreams(response, "outputs", output_streams, Optional::False);
+		}
 		
 		return response;
 	}

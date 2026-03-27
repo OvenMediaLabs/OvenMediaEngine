@@ -515,7 +515,7 @@ std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t start_timesta
 	std::vector<std::shared_ptr<Marker>> markers;
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
 	{
-		auto &marker = it->second;
+		auto marker = it->second;  // copy shared_ptr to prevent use-after-free after erase
 		if (marker->GetTimestamp() >= start_timestamp && marker->GetTimestamp() < end_timestamp)
 		{
 			markers.push_back(marker);
@@ -538,7 +538,7 @@ std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t end_timestamp
 	std::vector<std::shared_ptr<Marker>> markers;
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
 	{
-		auto &marker = it->second;
+		auto marker = it->second;  // copy shared_ptr to prevent use-after-free after erase
 		if (marker->GetTimestamp() < end_timestamp)
 		{
 			markers.push_back(marker);
@@ -570,8 +570,9 @@ bool MarkerBox::RemoveMarker(int64_t timestamp)
 		return false;
 	}
 
+	auto seq_num = it->second->GetDesiredSequenceNumber();  // save before erase invalidates iterator
 	_markers_by_timestamp.erase(it);
-	_markers_by_sequence_number.erase(it->second->GetDesiredSequenceNumber());
+	_markers_by_sequence_number.erase(seq_num);
 
 	return true;
 }
@@ -582,7 +583,7 @@ void MarkerBox::RemoveExpiredMarkers(int64_t current_timestamp)
 
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
 	{
-		auto &marker = it->second;
+		auto marker = it->second;  // copy shared_ptr to prevent use-after-free after erase
 		if (marker->GetTimestamp() < current_timestamp)
 		{
 			logtc("Remove expired marker:(%" PRId64 ") %" PRId64 " - %s", current_timestamp, marker->GetTimestamp(), marker->GetTag().CStr());

@@ -60,11 +60,11 @@ private:
 
     std::shared_ptr<info::Stream> _tapped_stream_info;
     ov::Queue<std::shared_ptr<MediaPacket>> _buffer;
-    State _state = State::Idle;
+    std::atomic<State> _state = State::Idle;
 
-    bool _is_destroy_requested = false;
+    std::atomic<bool> _is_destroy_requested = false;
 
-    bool _is_started = false;
+    std::atomic<bool> _is_started = false;
 
 	bool _need_past_data = false;
 

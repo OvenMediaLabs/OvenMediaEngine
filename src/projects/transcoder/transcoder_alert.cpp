@@ -42,7 +42,7 @@ void TranscoderAlerts::UpdateErrorWithoutCount(
 
 			auto parent_stream_metric = StreamMetrics(*input_stream);
 
-			MonitorInstance->GetAlert()->SendStreamMessage(
+			MonitorInstance->SendStreamAlertMessage(
 				mon::alrt::Message::Code::EGRESS_STREAM_CREATION_FAILED_OUTPUT_PROFILE,
 				nullptr,
 				parent_stream_metric,
@@ -63,7 +63,7 @@ void TranscoderAlerts::UpdateErrorWithoutCount(
 								  .ParentSourceTrackId(input_track->GetId())
 								  .Build();
 
-			MonitorInstance->GetAlert()->SendStreamMessage(
+			MonitorInstance->SendStreamAlertMessage(
 				mon::alrt::Message::Code::EGRESS_STREAM_CREATION_FAILED_DECODER,
 				nullptr,
 				parent_stream_metric,
@@ -87,7 +87,7 @@ void TranscoderAlerts::UpdateErrorWithoutCount(
 								  .SourceTrackId(output_track->GetId())
 								  .Build();
 
-			MonitorInstance->GetAlert()->SendStreamMessage(
+			MonitorInstance->SendStreamAlertMessage(
 				mon::alrt::Message::Code::EGRESS_STREAM_CREATION_FAILED_FILTER,
 				stream_metric,
 				parent_stream_metric,
@@ -111,7 +111,7 @@ void TranscoderAlerts::UpdateErrorWithoutCount(
 								  .SourceTrackId(output_track->GetId())
 								  .Build();
 
-			MonitorInstance->GetAlert()->SendStreamMessage(
+			MonitorInstance->SendStreamAlertMessage(
 				mon::alrt::Message::Code::EGRESS_STREAM_CREATION_FAILED_ENCODER,
 				stream_metric,
 				parent_stream_metric,
@@ -211,7 +211,7 @@ void TranscoderAlerts::UpdateErrorCountIfNeeded(
 									  .ErrorEvaluationInterval(record->GetElapsedMs())
 									  .Build();
 
-				MonitorInstance->GetAlert()->SendStreamMessage(
+				MonitorInstance->SendStreamAlertMessage(
 					mon::alrt::Message::Code::EGRESS_TRANSCODE_FAILED_DECODING,
 					nullptr,
 					parent_stream_metric,
@@ -236,7 +236,7 @@ void TranscoderAlerts::UpdateErrorCountIfNeeded(
 									  .ErrorEvaluationInterval(record->GetElapsedMs())
 									  .Build();
 
-				MonitorInstance->GetAlert()->SendStreamMessage(
+				MonitorInstance->SendStreamAlertMessage(
 					mon::alrt::Message::Code::EGRESS_TRANSCODE_FAILED_ENCODING,
 					stream_metric,
 					parent_stream_metric,
@@ -261,7 +261,7 @@ void TranscoderAlerts::UpdateErrorCountIfNeeded(
 									  .ErrorEvaluationInterval(record->GetElapsedMs())
 									  .Build();
 
-				MonitorInstance->GetAlert()->SendStreamMessage(
+				MonitorInstance->SendStreamAlertMessage(
 					mon::alrt::Message::Code::EGRESS_TRANSCODE_FAILED_FILTERING,
 					stream_metric,
 					parent_stream_metric,

@@ -32,7 +32,11 @@ namespace mon::alrt
 		{
 			_is_dynamic_update = false;
 
-			_rules			   = std::make_shared<cfg::alrt::rule::Rules>(alert_config.GetRules());
+			auto rules		   = std::make_shared<cfg::alrt::rule::Rules>(alert_config.GetRules());
+
+			rules->EnsureBuilt();
+
+			_rules = rules;
 		}
 	}
 

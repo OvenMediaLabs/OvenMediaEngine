@@ -124,7 +124,6 @@ std::shared_ptr<ov::Data> AacConverter::ConvertAdtsToRaw(const std::shared_ptr<c
 {
 	auto raw_data = std::make_shared<ov::Data>(data->GetLength());
 	size_t remained = data->GetLength();
-	off_t offset = 0L;
 	auto buffer = data->GetDataAs<uint8_t>();
 
 	while (remained > 0)
@@ -206,7 +205,6 @@ std::shared_ptr<ov::Data> AacConverter::ConvertAdtsToRaw(const std::shared_ptr<c
 		buffer += payload_length;
 
 		remained -= frame_length;
-		offset += frame_length;
 	}
 
 	return raw_data;

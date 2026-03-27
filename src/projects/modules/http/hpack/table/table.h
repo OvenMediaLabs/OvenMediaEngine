@@ -18,6 +18,7 @@ namespace http
 		class Table
 		{
 		public:
+			virtual ~Table() = default;
 			bool GetHeaderField(size_t index, HeaderField &header_field)
 			{
 				// Get header_field from _header_fields_table

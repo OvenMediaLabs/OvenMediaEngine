@@ -155,7 +155,7 @@ namespace mr
 			case cmn::BitstreamFormat::SEI: {
 				if (SEIEvent::IsValid(values_node))
 				{
-					if (_sei_event = SEIEvent::Parse(values_node))
+					if ((_sei_event = SEIEvent::Parse(values_node)) != nullptr)
 					{
 						SetKeyframeOnly(_sei_event->IsKeyframeOnly());
 						return true;
@@ -166,14 +166,14 @@ namespace mr
 			case cmn::BitstreamFormat::AMF: {
 				if (AmfTextDataEvent::IsValid(values_node))
 				{
-					if (_amf_textdata_event = AmfTextDataEvent::Parse(values_node))
+					if ((_amf_textdata_event = AmfTextDataEvent::Parse(values_node)) != nullptr)
 					{
 						return true;
 					}
 				}
 				else if (AmfUserDataEvent::IsValid(values_node))
 				{
-					if (_amf_userdata_event = AmfUserDataEvent::Parse(values_node))
+					if ((_amf_userdata_event = AmfUserDataEvent::Parse(values_node)) != nullptr)
 					{
 						return true;
 					}

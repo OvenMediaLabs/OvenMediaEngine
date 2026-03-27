@@ -34,6 +34,10 @@ namespace api
 				Json::Value response(Json::ValueType::arrayValue);
 
 				auto serverMetric = MonitorInstance->GetServerMetrics();
+				if (serverMetric == nullptr)
+				{
+					return Json::Value(Json::ValueType::nullValue);
+				}
 
 				for (auto &[queue_id, metrics] : serverMetric->GetQueueMetricsList())
 				{

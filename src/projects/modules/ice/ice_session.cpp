@@ -23,6 +23,8 @@ IceSession::IceSession(session_id_t session_id, IceSession::Role role,
 
 ov::String IceSession::ToString() const
 {
+	auto connected_candidate_pair = GetConnectedCandidatePair();
+
 	return ov::String::FormatString("IceSession: session_id=%u, role=%s, state=%s, local_ufrag=%s, expire_after_ms=%d, lifetime_epoch_ms=%" PRIu64 ", ConnectedCandidatePair=%s",
 		_session_id, 
 		_role == Role::CONTROLLED ? "CONTROLLED" : "CONTROLLING",
@@ -30,11 +32,12 @@ ov::String IceSession::ToString() const
 		GetLocalUfrag().CStr(),
 		_expire_after_ms,
 		_lifetime_epoch_ms, 
-		_connected_candidate_pair ? _connected_candidate_pair->ToString().CStr() : "None");
+		(connected_candidate_pair != nullptr) ? connected_candidate_pair->ToString().CStr() : "None");
 }
 
 void IceSession::Refresh()
 {
+	std::scoped_lock lock(_expire_time_mutex);
 	_expire_time = std::chrono::system_clock::now() + std::chrono::milliseconds(_expire_after_ms);
 }
 
@@ -45,6 +48,7 @@ bool IceSession::IsExpired() const
 		return true;
 	}
 
+	std::shared_lock lock(_expire_time_mutex);
 	return (std::chrono::system_clock::now() > _expire_time);
 }
 
@@ -117,28 +121,30 @@ bool IceSession::IsDataChannelEnabled() const
 // Data channel number
 void IceSession::SetDataChannelNumber(uint16_t data_channel_number)
 {
-	_data_channle_number = data_channel_number;
+	_data_channel_number = data_channel_number;
 }
 
 uint16_t IceSession::GetDataChannelNumber() const
 {
-	return _data_channle_number;
+	return _data_channel_number;
 }
 
 // TURN peer address
 void IceSession::SetTurnPeerAddress(const ov::SocketAddress& peer_address)
 {
+	std::scoped_lock lock(_turn_peer_address_mutex);
 	_turn_peer_address = peer_address;
 }
 
 ov::SocketAddress IceSession::GetTurnPeerAddress() const
 {
+	std::shared_lock lock(_turn_peer_address_mutex);
 	return _turn_peer_address;
 }
 
 std::shared_ptr<IceCandidatePair> IceSession::GetConnectedCandidatePair() const
 {
-	std::shared_lock<std::shared_mutex> lock(_connected_candidate_pair_mutex);
+	std::shared_lock lock(_connected_candidate_pair_mutex);
 	return _connected_candidate_pair;
 }
 
@@ -155,7 +161,7 @@ std::shared_ptr<ov::Socket> IceSession::GetConnectedSocket() const
 
 std::shared_ptr<IceCandidatePair> IceSession::FindCandidatePair(const ov::SocketAddressPair& address_pair) const
 {
-	std::shared_lock<std::shared_mutex> lock(_candidate_pairs_mutex);
+	std::shared_lock lock(_candidate_pairs_mutex);
 
 	auto it = _candidate_pairs.find(address_pair);
 	if (it != _candidate_pairs.end())
@@ -168,7 +174,15 @@ std::shared_ptr<IceCandidatePair> IceSession::FindCandidatePair(const ov::Socket
 
 std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
 {
-	std::lock_guard<std::shared_mutex> lock(_candidate_pairs_mutex);
+	std::scoped_lock lock(_candidate_pairs_mutex);
+
+	// Avoid TOCTOU: another thread may have inserted the same address_pair
+	// after FindCandidatePair() and before this function acquires the lock.
+	auto it = _candidate_pairs.find(address_pair);
+	if (it != _candidate_pairs.end())
+	{
+		return it->second;
+	}
 
 	auto candidate_pair = std::make_shared<IceCandidatePair>(address_pair, socket);
 	_candidate_pairs.insert(std::make_pair(address_pair, candidate_pair));
@@ -178,7 +192,7 @@ std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov
 
 void IceSession::RemoveCandidatePair(const ov::SocketAddressPair& address_pair)
 {
-	std::lock_guard<std::shared_mutex> lock(_candidate_pairs_mutex);
+	std::scoped_lock lock(_candidate_pairs_mutex);
 
 	_candidate_pairs.erase(address_pair);
 }
@@ -269,7 +283,7 @@ bool IceSession::IsConnected(const ov::SocketAddressPair& address_pair)
 // USE-CANDIDATE, used for controlling role
 bool IceSession::UseCandidate(const ov::SocketAddressPair& address_pair)
 {
-	std::lock_guard<std::shared_mutex> lock(_connected_candidate_pair_mutex);
+	std::scoped_lock lock(_connected_candidate_pair_mutex);
 
 	// TODO(Getroot) : Consider the case where the ICE restart occurs
 	if (GetState() != IceConnectionState::Checking)

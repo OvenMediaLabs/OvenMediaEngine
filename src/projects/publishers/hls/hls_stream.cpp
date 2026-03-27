@@ -542,10 +542,8 @@ bool HlsStream::CheckIfAllPlaylistReady()
 
 	logti("HLS Stream(%s/%s) - All playlists are ready to play", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
 
-	auto alert = MonitorInstance->GetAlert();
 	auto stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(pub::Stream::GetSharedPtr()));
-
-	alert->SendStreamMessage(mon::alrt::Message::Code::EGRESS_HLS_READY, stream_metrics);
+	MonitorInstance->SendStreamAlertMessage(mon::alrt::Message::Code::EGRESS_HLS_READY, stream_metrics);
 
 	DumpMasterPlaylistOfAllItems();
 
@@ -982,7 +980,7 @@ ov::String HlsStream::MakeVttVariantName(const int32_t &track_id) const
 		return "";
 	}
 
-	return GetVariantName(track->GetPublicName(), track->GetId(), track->GetLanguage(), -1);
+	return GetVariantName(track->GetPublicName(), track->GetId(), "subtitle", -1);
 }
 
 std::shared_ptr<HlsMasterPlaylist> HlsStream::GetMasterPlaylist(const ov::String &playlist_name)

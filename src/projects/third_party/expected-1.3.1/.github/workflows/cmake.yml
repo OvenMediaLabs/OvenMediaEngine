@@ -1,0 +1,146 @@
+name: CMake
+
+on:
+  push:
+    branches: [ "master", "actions", "fix-ci" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: 
+      image: ubuntu:20.04
+    
+    strategy:
+      matrix:
+        std: [11, 14]
+        cxx: [g++-4.8, g++-4.9, g++-5, g++-6, g++-7, g++-8, g++-9, g++-10, clang++-3.5, clang++-3.6, clang++-3.7, clang++-3.8, clang++-3.9, clang++-4.0, clang++-5.0, clang++-6.0, clang++-7, clang++-8, clang++-9, clang++-10, clang++-11]
+        
+        exclude:
+          - cxx: g++-4.8
+            std: 14
+          - cxx: g++4.9
+            std: 14
+            
+        include:
+          - cxx: g++-4.8
+            install: apt install -y g++-4.8
+          - cxx: g++-4.9
+            install: apt install -y g++-4.9
+          - cxx: g++-5
+            install: apt install -y g++-5
+          - cxx: g++-6
+            install: apt install -y g++-6
+          - cxx: g++-7
+            install: apt install -y g++-7
+          - cxx: g++-8
+            std: 11
+            install: apt install -y g++-8
+          - cxx: g++-8
+            std: 14
+            install: apt install -y g++-8
+          - cxx: g++-8
+            std: 17
+            install: apt install -y g++-8
+          - cxx: g++-9
+            std: 14
+            install: apt install -y g++-9
+          - cxx: g++-9
+            std: 17
+            install: apt install -y g++-9
+          - cxx: g++-10
+            std: 11
+            install: apt install -y g++-10
+          - cxx: g++-10
+            std: 14
+            install: apt install -y g++-10
+          - cxx: g++-10
+            std: 17
+            install: apt install -y g++-10
+          - cxx: g++-11
+            std: 14
+            install: apt install -y g++-11
+          - cxx: g++-11
+            std: 17
+            install: apt install -y g++-11
+          - cxx: g++-11
+            std: 20
+            install: apt install -y g++-11
+            
+            
+          - cxx: clang++-3.5
+            install: apt install -y clang-3.5
+          - cxx: clang++-3.6
+            install: apt install -y clang-3.6
+          - cxx: clang++-3.7
+            install: apt install -y clang-3.7
+          - cxx: clang++-3.8
+            install: apt install -y clang-3.8
+          - cxx: clang++-3.9
+            install: apt install -y clang-3.9
+          - cxx: clang++-4.0
+            install: apt install -y clang-4.0
+          - cxx: clang++-5.0
+            install: apt install -y clang-5.0
+          - cxx: clang++-6.0
+            install: apt install -y clang-6.0
+          - cxx: clang++-7
+            install: apt install -y clang-7
+          - cxx: clang++-8
+            install: apt install -y clang-8
+          - cxx: clang++-9
+            install: apt install -y clang-9
+          - cxx: clang++-10
+            install: apt install -y clang-10
+          - cxx: clang++-11
+            install: apt install -y clang-11
+
+          - cxx: clang++-6.0
+            std: 17
+            install: apt install -y clang-6.0
+          - cxx: clang++-7
+            std: 17
+            install: apt install -y clang-7
+          - cxx: clang++-8
+            std: 17
+            install: apt install -y clang-8
+          - cxx: clang++-9
+            std: 17
+            install: apt install -y clang-9
+          - cxx: clang++-10
+            std: 17
+            install: apt install -y clang-10
+          - cxx: clang++-11
+            std: 17
+            install: apt install -y clang-11
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Toolchain
+      run: |
+        apt update
+        apt install -y software-properties-common
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ focal main'
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ focal universe'  
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ xenial main'
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ xenial universe'  
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ bionic main'
+        apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ bionic universe'
+        add-apt-repository -y ppa:ubuntu-toolchain-r/test
+        apt update
+        apt install -y build-essential cmake
+        ${{matrix.install}}
+
+    - name: Configure CMake
+      env:
+        CXX: ${{matrix.cxx}}
+      run:
+        cmake -B ${{github.workspace}}/build -DCMAKE_CXX_STANDARD=${{matrix.std}}
+
+    - name: Build
+      run: cmake --build ${{github.workspace}}/build 
+
+    - name: Test
+      run: cmake --build ${{github.workspace}}/build --target test

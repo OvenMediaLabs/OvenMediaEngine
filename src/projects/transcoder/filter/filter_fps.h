@@ -37,6 +37,7 @@ public:
 
 	double GetOutputFramesPerSecond() const;
 	double GetExpectedOutputFramesPerSecond() const;
+	double GetInputFramesPerSecond() const;
 
 	ov::String GetStatsString();
 	ov::String GetInfoString();
@@ -86,8 +87,14 @@ private:
 	int64_t _stat_skip_frame_count			= 0;
 	int64_t _stat_duplicate_frame_count		= 0;
 	int64_t _stat_discard_frame_count		= 0;
+
+	// Wall-clock based actual output frame rate (frames popped per second, skipped frames excluded)
 	int64_t _last_stat_output_frame_count	= 0;
 	double _stat_output_frame_per_second	= 0.0f;
+
+	// Wall-clock based actual input frame rate (frames pushed per second)
+	int64_t _stat_last_input_frame_count	= 0;
+	double  _stat_input_frame_per_second	= 0.0;
 
 	ov::StopWatch _timer;
 

@@ -1,0 +1,16 @@
+ome_add_static_library(base_provider
+    SOURCES_DIRS
+        pull_provider
+        push_provider
+    PUBLIC_DEPS
+        base_info
+    DEPS
+        access_controller
+        ovsocket
+        monitoring
+        config
+        mediarouter
+        orchestrator
+        ovlibrary
+        ovcrypto
+)

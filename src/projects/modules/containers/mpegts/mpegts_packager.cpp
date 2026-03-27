@@ -97,7 +97,7 @@ namespace mpegts
         {   
             if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio && track->GetMediaType() != cmn::MediaType::Data)
             {
-                logte("Unsupported media type (%s) in Mpeg-2 TS Packager", cmn::GetMediaTypeString(track->GetMediaType()));
+                logte("[%s] Unsupported media type (%s) in Mpeg-2 TS Packager", _packager_id.CStr(), cmn::GetMediaTypeString(track->GetMediaType()));
                 continue;
             }
 
@@ -215,7 +215,7 @@ namespace mpegts
         auto sample_buffer = GetSampleBuffer(track_id);
         if (track == nullptr || sample_buffer == nullptr)
         {
-            logte("SampleBuffer is not found for track_id %u", track_id);
+            logte("[%s] SampleBuffer is not found for track_id %u", _packager_id.CStr(), track_id);
             return;
         }
 
@@ -226,7 +226,7 @@ namespace mpegts
 			// sample._dts is "the last dts + sample duration" of the sample_buffer
 			if (_force_make_boundary == false && HasMarker(sample._dts) == true)
 			{
-				logti("Stream(%s) Track(%u) has a marker at %" PRId64 ", force to create a new boundary", _config.stream_id_meta.CStr(), track_id, sample._dts);
+				logti("[%s] Stream(%s) Track(%u) has a marker at %" PRId64 ", force to create a new boundary", _packager_id.CStr(), _config.stream_id_meta.CStr(), track_id, sample._dts);
 
 				_force_make_boundary = true;
 			}
@@ -257,14 +257,14 @@ namespace mpegts
         auto main_sample_buffer = GetSampleBuffer(_main_track_id);
         if (main_sample_buffer == nullptr)
         {
-            logtc("Stream(%s) SampleBuffer is not found for main track_id %u", _config.stream_id_meta.CStr(), _main_track_id);
+            logtc("[%s] Stream(%s) SampleBuffer is not found for main track_id %u", _packager_id.CStr(), _config.stream_id_meta.CStr(), _main_track_id);
             return;
         }
 
 		// If the segment duration is too long (twice the target duration), a new segment is forcibly created.
 		if (force_create == false && main_sample_buffer->GetTotalAvailableDurationMs() >= _config.target_duration_ms * 3)
 		{
-			logtw("Stream(%s) Main Track(%u) has too long duration (%.3f ms, twice the target duration %u ms), force to create a new segment", _config.stream_id_meta.CStr(), _main_track_id, main_sample_buffer->GetTotalAvailableDurationMs(), _config.target_duration_ms);
+			logtw("[%s] Stream(%s) Main Track(%u) has too long duration (%.3f ms, twice the target duration %u ms), force to create a new segment", _packager_id.CStr(), _config.stream_id_meta.CStr(), _main_track_id, main_sample_buffer->GetTotalAvailableDurationMs(), _config.target_duration_ms);
 			
 			if (main_sample_buffer->HasSegmentBoundary() == false)
 			{
@@ -291,7 +291,7 @@ namespace mpegts
 		std::vector<std::shared_ptr<Marker>> markers;
 		if (HasMarker(main_segment_end_timestamp) == true)
 		{
-			logtt("Stream(%s) Main Track(%u) main_segment_base_timestamp(%" PRId64 ") main_segment_duration(%" PRId64 ") main_segment_duration_ms(%f) main_segment_end_timestamp(%" PRId64 ")", _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
+			logtt("[%s] Stream(%s) Main Track(%u) main_segment_base_timestamp(%" PRId64 ") main_segment_duration(%" PRId64 ") main_segment_duration_ms(%f) main_segment_end_timestamp(%" PRId64 ")", _packager_id.CStr(), _config.stream_id_meta.CStr(), _main_track_id, main_segment_base_timestamp, main_segment_duration, main_segment_duration_ms, main_segment_end_timestamp);
 
 			markers = PopMarkers(main_segment_end_timestamp);
 			force_create = true;
@@ -342,7 +342,7 @@ namespace mpegts
 					// For example, there may be cases where audio stops coming in at all at some point.
 					if (total_sample_segment_duration * 2.0 < total_main_segment_duration)
 					{
-						logtw("Stream(%s) Track(%u) sample duration (%" PRId64 ") is less than half of the main (%" PRId64 "), forcing segment generation.", _config.stream_id_meta.CStr(), track_id, total_sample_segment_duration, total_main_segment_duration);
+						logtw("[%s] Stream(%s) Track(%u) sample duration (%" PRId64 ") is less than half of the main (%" PRId64 "), forcing segment generation.", _packager_id.CStr(), _config.stream_id_meta.CStr(), track_id, total_sample_segment_duration, total_main_segment_duration);
 					}
 					else
 					{
@@ -356,7 +356,7 @@ namespace mpegts
         auto first_sample = main_sample_buffer->GetSample();
         if (first_sample.media_packet == nullptr)
         {
-            logte("First sample is not found for main track_id %u", _main_track_id);
+            logte("[%s] First sample is not found for main track_id %u", _packager_id.CStr(), _main_track_id);
             return;
         }
 

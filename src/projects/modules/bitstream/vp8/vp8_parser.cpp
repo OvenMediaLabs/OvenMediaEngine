@@ -18,6 +18,22 @@ bool VP8Parser::IsValid(const uint8_t *data, size_t data_length)
 	return true;
 }
 
+bool VP8Parser::ParseKeyFrame(const uint8_t *data, size_t data_length, bool &is_key_frame)
+{
+	if (data == nullptr || data_length < 3)
+	{
+		logtw("Invalid VP8 bitstream");
+		return false;
+	}
+
+	const uint32_t frame_tag = static_cast<uint32_t>(data[0]) |
+							   (static_cast<uint32_t>(data[1]) << 8) |
+							   (static_cast<uint32_t>(data[2]) << 16);
+
+	is_key_frame = ((frame_tag & 0x1) == 0);
+	return true;
+}
+
 /*
 Reference : https://datatracker.ietf.org/doc/rfc6386/?include_text=1
 
@@ -84,7 +100,13 @@ Reference : https://datatracker.ietf.org/doc/rfc6386/?include_text=1
 */
 bool VP8Parser::Parse(const uint8_t *data, size_t data_length, VP8Parser &parser)
 {
-	if (data == nullptr || data_length < 10)
+	bool is_key_frame = false;
+	if (ParseKeyFrame(data, data_length, is_key_frame) == false)
+	{
+		return false;
+	}
+
+	if (data_length < 10)
 	{
 		logtw("Invalid VP8 bitstream");
 		return false;
@@ -94,7 +116,7 @@ bool VP8Parser::Parse(const uint8_t *data, size_t data_length, VP8Parser &parser
 
 	uint32_t frame_tag = reader.ReadBits<uint8_t>(8) | (reader.ReadBits<uint8_t>(8) << 8) | (reader.ReadBits<uint8_t>(8) << 16);
 
-	parser._key_frame = (frame_tag & 0x1) == 0 ? true : false;
+	parser._key_frame = is_key_frame;
 	parser._version = (frame_tag >> 1) & 0x7;
 	parser._show_frame = (frame_tag >> 4) & 0x1;
 	parser._first_part_size = (frame_tag >> 5) & 0x7FFFF;

@@ -137,8 +137,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		media_track->SetWidth(avc_config->GetWidth());
-		media_track->SetHeight(avc_config->GetHeight());
+		media_track->SetResolution(avc_config->GetWidth(), avc_config->GetHeight());
 
 		media_track->SetDecoderConfigurationRecord(avc_config);
 
@@ -264,8 +263,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 
 				if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 				{
-					media_track->SetWidth(new_avc_config->GetWidth());
-					media_track->SetHeight(new_avc_config->GetHeight());
+					media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
 					media_track->SetDecoderConfigurationRecord(new_avc_config);
 				}
 			}
@@ -405,8 +403,7 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 
 			if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 			{
-				media_track->SetWidth(new_avc_config->GetWidth());
-				media_track->SetHeight(new_avc_config->GetHeight());
+				media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
 				media_track->SetDecoderConfigurationRecord(new_avc_config);
 			}
 		}
@@ -547,6 +544,12 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 				return false;
 			}
 
+			if (audio_config->Samplerate() == 0)
+			{
+				logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+				return false;
+			}
+
 			media_track->SetSampleRate(audio_config->Samplerate());
 			media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 			media_track->SetDecoderConfigurationRecord(audio_config);
@@ -610,6 +613,12 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 	audio_config->SetObjectType(adts.ObjectType());
 	audio_config->SetSamplingFrequencyIndex(adts.SamplingFrequencyIndex());
 	audio_config->SetChannel(adts.ChannelConfiguration());
+
+	if (audio_config->Samplerate() == 0)
+	{
+		logte("AAC ADTS header parsed but samplerate is 0. The ADTS may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+		return false;
+	}
 
 	media_track->SetSampleRate(audio_config->Samplerate());
 	media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
@@ -724,8 +733,7 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 
 		if (old_hevc_config == nullptr || old_hevc_config->Equals(hevc_config) == false)
 		{
-			media_track->SetWidth(hevc_config->GetWidth());
-			media_track->SetHeight(hevc_config->GetHeight());
+			media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
 			media_track->SetDecoderConfigurationRecord(hevc_config);
 		}
 	}
@@ -780,8 +788,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		media_track->SetWidth(hevc_config->GetWidth());
-		media_track->SetHeight(hevc_config->GetHeight());
+		media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
 
 		media_track->SetDecoderConfigurationRecord(hevc_config);
 
@@ -899,8 +906,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 				if ((media_track->IsValid() == false) || (new_hevc_config->Equals(old_hevc_config) == false))
 				{
-					media_track->SetWidth(new_hevc_config->GetWidth());
-					media_track->SetHeight(new_hevc_config->GetHeight());
+					media_track->SetResolution(new_hevc_config->GetWidth(), new_hevc_config->GetHeight());
 					media_track->SetDecoderConfigurationRecord(new_hevc_config);
 				}
 			}
@@ -994,7 +1000,16 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
-	// One time : parse width, height
+	bool is_key_frame = false;
+	if (VP8Parser::ParseKeyFrame(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), is_key_frame) == false)
+	{
+		logte("Could not parse VP8 frame tag");
+		return false;
+	}
+
+	media_packet->SetFlag(is_key_frame ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
+
+	// One time: parse width, height
 	if (media_track->IsValid() == true)
 	{
 		return true;
@@ -1007,15 +1022,7 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 		return false;
 	}
 
-	media_track->SetWidth(parser.GetWidth());
-	media_track->SetHeight(parser.GetHeight());
-
-	// TODO(Getroot) : In VP8, there is no need to know whether it is the current keyframe. So it doesn't parse every time.
-	// However, if this is needed in the future, VP8Parser writes and applies a low-cost code that only determines whether or not it is a keyframe.
-	if (parser.IsKeyFrame())
-	{
-		media_packet->SetFlag(MediaPacketFlag::Key);
-	}
+	media_track->SetResolution(parser.GetWidth(), parser.GetHeight());
 
 	return true;
 }

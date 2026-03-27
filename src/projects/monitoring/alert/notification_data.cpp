@@ -20,9 +20,10 @@ namespace mon::alrt
 	{
 	}
 
-	NotificationData::NotificationData(const Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list)
+	NotificationData::NotificationData(const Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list)
 		: _type(type),
 		  _message_list(message_list),
+		  _source_uri(source_uri),
 		  _queue_metric_list(queue_metric_list)
 	{
 	}

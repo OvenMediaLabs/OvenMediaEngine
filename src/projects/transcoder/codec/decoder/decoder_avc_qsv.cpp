@@ -217,4 +217,6 @@ void DecoderAVCxQSV::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();	
 }

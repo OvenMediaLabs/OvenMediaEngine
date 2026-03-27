@@ -186,6 +186,8 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 		int64_t duration = next_timebase_pts - curr_timebase_pts;
 		pop_frame->SetDuration(duration);
 
+		_stat_actual_output_frame_count = _stat_ideal_output_frame_count - _stat_skip_frame_count;
+
 		// Update FPS statistics every second
 		if (_timer.IsStart() == false)
 		{
@@ -196,16 +198,13 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 			int elapsed_time = _timer.Elapsed();
 			_timer.Update();
 
-			_stat_actual_output_frame_count = _stat_ideal_output_frame_count - _stat_skip_frame_count;
-
-			// Calculate actual output frames per second
+			// Calculate actual output frames per second (wall-clock based, skipped frames excluded)
 			_stat_output_frame_per_second = (double)(_stat_actual_output_frame_count - _last_stat_output_frame_count) * (1000.0 / (double)elapsed_time);
-			
-			// logtt("stat: skip_frames:%d, ideal_output_frames:%" PRId64 ", actual_output_frames:%" PRId64 ", curr_fps:%.2f, average_fps:%.2f", 
-			// 	_skip_frames, _stat_ideal_output_frame_count, _stat_actual_output_frame_count, _stat_output_frame_per_second, 
-			// 	_stat_ideal_output_frame_count / (_timer.TotalElapsed() / 1000));
-
 			_last_stat_output_frame_count = _stat_actual_output_frame_count;
+
+			// Calculate actual input frames per second (wall-clock based)
+			_stat_input_frame_per_second = (double)(_stat_input_frame_count - _stat_last_input_frame_count) * (1000.0 / (double)elapsed_time);
+			_stat_last_input_frame_count = _stat_input_frame_count;
 		}
 
 		return pop_frame;
@@ -217,6 +216,11 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 double FilterFps::GetOutputFramesPerSecond() const
 {
 	return _stat_output_frame_per_second;
+}
+
+double FilterFps::GetInputFramesPerSecond() const
+{
+	return _stat_input_frame_per_second;
 }
 
 double FilterFps::GetExpectedOutputFramesPerSecond() const

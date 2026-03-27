@@ -532,6 +532,7 @@ namespace pvd
 			int64_t start_time_ms_conf = 0;
 			int64_t duration_ms_conf = -1;
 			bool fallback_on_err = true;
+			bool forward_data = false;
 
 			auto item_object = items_object[i];
 
@@ -566,7 +567,14 @@ namespace pvd
 				fallback_on_err = fallback_on_err_object.asBool();
 			}
 
-			auto item = MakeItem(url, start_time_ms_conf, duration_ms_conf, fallback_on_err);
+			// forwardData
+			auto forward_data_object = item_object["forwardData"];
+			if (forward_data_object.isBool() == true)
+			{
+				forward_data = forward_data_object.asBool();
+			}
+
+			auto item = MakeItem(url, start_time_ms_conf, duration_ms_conf, fallback_on_err, forward_data);
 			if (item == nullptr)
 			{
 				return false;
@@ -818,6 +826,7 @@ namespace pvd
 			int64_t start_time_ms_conf = 0;
 			int64_t duration_ms_conf = -1;
 			bool fallback_on_err = true;
+			bool forward_data = false;
 
 			auto url_attribute = item_node.attribute("url");
 			if (!url_attribute)
@@ -846,7 +855,13 @@ namespace pvd
 				fallback_on_err = fallback_on_err_attribute.as_bool();
 			}
 
-			auto item = MakeItem(url, start_time_ms_conf, duration_ms_conf, fallback_on_err);
+			auto forward_data_attribute = item_node.attribute("forwardData");
+			if (forward_data_attribute)
+			{
+				forward_data = forward_data_attribute.as_bool();
+			}
+
+			auto item = MakeItem(url, start_time_ms_conf, duration_ms_conf, fallback_on_err, forward_data);
 			if (item == nullptr)
 			{
 				return false;
@@ -924,7 +939,7 @@ namespace pvd
 		return program;
 	}
 
-	std::shared_ptr<Schedule::Item> Schedule::MakeItem(const ov::String &url, int64_t start_time_ms_conf, int64_t duration_ms_conf, bool fallback_on_err) const
+	std::shared_ptr<Schedule::Item> Schedule::MakeItem(const ov::String &url, int64_t start_time_ms_conf, int64_t duration_ms_conf, bool fallback_on_err, bool forward_data) const
 	{
 		auto item = std::make_shared<Schedule::Item>();
 
@@ -934,6 +949,7 @@ namespace pvd
 		item->_duration_ms_conf = duration_ms_conf;
 		item->_duration_ms = duration_ms_conf; // duration_ms can be changed later
 		item->_fallback_on_err = fallback_on_err;
+		item->_forward_data = forward_data;
 
 		// file_path
 		if (url.LowerCaseString().HasPrefix("file://"))
@@ -1112,6 +1128,7 @@ namespace pvd
 			item_node.append_attribute("url").set_value(item->_url.CStr());
 			item_node.append_attribute("start").set_value(item->_start_time_ms_conf);
 			item_node.append_attribute("duration").set_value(item->_duration_ms_conf);
+			item_node.append_attribute("forwardData").set_value(item->_forward_data);
 		}
 
 		return true;
@@ -1190,6 +1207,7 @@ namespace pvd
 			item_object["url"] = item->_url.CStr();
 			item_object["start"] = item->_start_time_ms_conf;
 			item_object["duration"] = item->_duration_ms_conf;
+			item_object["forwardData"] = item->_forward_data;
 
 			item_parent_object.append(item_object);
 		}

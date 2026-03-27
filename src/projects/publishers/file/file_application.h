@@ -28,9 +28,7 @@ namespace pub
 		std::vector<std::shared_ptr<info::Record>> GetRecordInfoFromFile(const ov::String &file_path, const std::shared_ptr<info::Stream> &info);
 
 	public:
-		void SessionUpdateByUser();
 		void SessionUpdateByStream(std::shared_ptr<FileStream> stream, bool stopped);
-		void SessionUpdate(std::shared_ptr<FileStream> stream, std::shared_ptr<info::Record> userdata);
 		void SessionStart(std::shared_ptr<FileSession> session);
 		void SessionStop(std::shared_ptr<FileSession> session);
 
@@ -38,6 +36,12 @@ namespace pub
 		std::shared_ptr<ov::Error> RecordStart(const std::shared_ptr<info::Record> record);
 		std::shared_ptr<ov::Error> RecordStop(const std::shared_ptr<info::Record> record);
 		std::shared_ptr<ov::Error> GetRecords(const std::shared_ptr<info::Record> record_query, std::vector<std::shared_ptr<info::Record>> &results);
+
+	private:
+		void SessionUpdateInternal();	
+		void SessionControllInternal(std::shared_ptr<FileStream> stream, std::shared_ptr<info::Record> userdata);		
+		std::shared_ptr<ov::Error> RecordStartInternal(const std::shared_ptr<info::Record> &record);
+		std::shared_ptr<ov::Error> RecordStopInternal(const std::shared_ptr<info::Record> &record);
 
 	private:
 		FileUserdataSets _record_info_list;

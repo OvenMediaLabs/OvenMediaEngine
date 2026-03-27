@@ -181,8 +181,6 @@ namespace pvd::rtmp
 		Stats _stats;
 
 		std::vector<std::shared_ptr<const modules::rtmp::Message>> _message_buffer;
-		size_t _audio_buffer_count = 0;
-		size_t _video_buffer_count = 0;
 
 		cfg::vhost::app::pvd::EventGenerator _event_generator_config;
 	};

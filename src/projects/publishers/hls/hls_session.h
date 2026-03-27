@@ -90,11 +90,11 @@ private:
 
 	ov::String _session_key;
 
-	int _master_playlist_max_age = 0;
-	int _chunklist_max_age = 0;
-	int _chunklist_with_directives_max_age = 60;
-	int _segment_max_age = -1;
-	int _partial_segment_max_age = -1;
+	[[maybe_unused]] int _master_playlist_max_age = 0;
+	[[maybe_unused]] int _chunklist_max_age = 0;
+	[[maybe_unused]] int _chunklist_with_directives_max_age = 60;
+	[[maybe_unused]] int _segment_max_age = -1;
+	[[maybe_unused]] int _partial_segment_max_age = -1;
 
 	bool _origin_mode = false;
 

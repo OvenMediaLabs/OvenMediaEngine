@@ -334,7 +334,15 @@ namespace api
 				auto url		 = ov::Url::Parse(client->GetRequest()->GetUri());
 				auto app_name	 = app->GetVHostAppName();
 				auto stream_name = push->GetStreamName();
-				ocst::Orchestrator::GetInstance()->RequestPullStreamWithOriginMap(url, app_name, stream_name);
+				auto error		 = ocst::Orchestrator::GetInstance()->RequestPullStreamWithOriginMap(url, app_name, stream_name);
+
+				if (error != nullptr)
+				{
+					logte("Could not pull stream from origin map [%s/%s]: %s",
+						  app_name.CStr(),
+						  stream_name.CStr(),
+						  error->What());
+				}
 			}
 
 			response = ::serdes::JsonFromPush(push);

@@ -12,6 +12,7 @@
 class BitReader
 {
 public:
+	virtual ~BitReader() = default;
 	BitReader(const uint8_t *buffer, size_t capacity);
 	BitReader(const std::shared_ptr<const ov::Data> &data);
 

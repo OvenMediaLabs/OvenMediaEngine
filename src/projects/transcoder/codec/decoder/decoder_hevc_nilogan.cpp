@@ -238,4 +238,6 @@ void DecoderHEVCxNILOGAN::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();
 }

@@ -11,10 +11,11 @@ namespace pub
 		FileUserdataSets();
 		~FileUserdataSets();
 
-		bool Set(ov::String record_id, std::shared_ptr<info::Record> record_info);
+		bool Set(ov::String record_id, const std::shared_ptr<info::Record> &record_info);
 
 		uint32_t GetCount();
 
+		std::vector<std::shared_ptr<info::Record>> GetAll();
 		std::shared_ptr<info::Record> GetAt(uint32_t index);
 		std::shared_ptr<info::Record> GetByKey(ov::String record_id);
 		std::vector<std::shared_ptr<info::Record>> GetByStreamName(ov::String stream_name);

@@ -1,0 +1,12 @@
+\#*
+.\#*
+/build/
+
+# CMake
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+tl-expected-config-version.cmake
+tl-expected-config.cmake
+
+Makefile

@@ -18,10 +18,6 @@
 #define MAX_QUEUE_SIZE 2
 #define FILTER_FLAG_HWFRAME_AWARE (1 << 0)
 
-#define _SKIP_FRAMES_ENABLED 1
-#define _SKIP_FRAMES_CHECK_INTERVAL 2000				 // 2s
-#define _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL 10000	 // 10s
-
 FilterRescaler::FilterRescaler()
 {
 	_frame = ::av_frame_alloc();
@@ -59,7 +55,8 @@ bool FilterRescaler::InitializeSourceFilter()
 {
 	std::vector<ov::String> src_params;
 
-	src_params.push_back(ov::String::FormatString("video_size=%dx%d", _input_track->GetWidth(), _input_track->GetHeight()));
+	auto resolution = _input_track->GetResolution();
+	src_params.push_back(ov::String::FormatString("video_size=%dx%d", resolution.width, resolution.height));
 	src_params.push_back(ov::String::FormatString("pix_fmt=%s", ::av_get_pix_fmt_name((AVPixelFormat)_src_pixfmt)));
 	src_params.push_back(ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()));
 	src_params.push_back(ov::String::FormatString("pixel_aspect=%d/%d", 1, 1));
@@ -70,7 +67,7 @@ bool FilterRescaler::InitializeSourceFilter()
 	int ret = ::avfilter_graph_create_filter(&_buffersrc_ctx, _buffersrc, "in", _src_args, nullptr, _filter_graph);
 	if (ret < 0)
 	{
-		logte("Could not create video buffer source filter for rescaling: %d", ret);
+		logte("[%s] Could not create video buffer source filter for rescaling: %s", GetLogPrefix().CStr(), ffmpeg::compat::AVErrorToString(ret).CStr());
 		return false;
 	}
 
@@ -87,7 +84,7 @@ bool FilterRescaler::InitializeSinkFilter()
 	int ret = ::avfilter_graph_create_filter(&_buffersink_ctx, _buffersink, "out", nullptr, nullptr, _filter_graph);
 	if (ret < 0)
 	{
-		logte("Could not create video buffer sink filter for rescaling: %d", ret);
+		logte("[%s] Could not create video buffer sink filter for rescaling: %s", GetLogPrefix().CStr(), ffmpeg::compat::AVErrorToString(ret).CStr());
 		return false;
 	}
 
@@ -141,7 +138,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					_src_pixfmt = ffmpeg::compat::GetAVPixelFormatOfHWDevice(input_module_id, input_device_id, true);
 					if (_src_pixfmt == AV_PIX_FMT_NONE)
 					{
-						logte("Failed to get pixel format for %s(%d)", cmn::GetCodecModuleIdString(input_module_id), input_device_id);
+						logte("[%s] Failed to get pixel format for %s(%d)", GetLogPrefix().CStr(), cmn::GetCodecModuleIdString(input_module_id), input_device_id);
 						return false;
 					}
 					_use_hwframe_transfer = true;
@@ -165,7 +162,8 @@ bool FilterRescaler::InitializeFilterDescription()
 				}
 			}
 			// Scaler description of default module
-			desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", _output_track->GetWidth(), _output_track->GetHeight());
+			auto resolution = _output_track->GetResolution();
+			desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -184,7 +182,7 @@ bool FilterRescaler::InitializeFilterDescription()
 						_src_pixfmt = ffmpeg::compat::GetAVPixelFormatOfHWDevice(input_module_id, input_device_id, true);
 						if (_src_pixfmt == AV_PIX_FMT_NONE)
 						{
-							logte("Failed to get pixel format for %s(%d)", cmn::GetCodecModuleIdString(input_module_id), input_device_id);
+							logte("[%s] Failed to get pixel format for %s(%d)", GetLogPrefix().CStr(), cmn::GetCodecModuleIdString(input_module_id), input_device_id);
 							return false;
 						}
 						_use_hwframe_transfer = true;
@@ -211,7 +209,8 @@ bool FilterRescaler::InitializeFilterDescription()
 					desc = ov::String::FormatString("hwupload_cuda=device=%d,", cuda_id);
 				}
 			}
-			desc += ov::String::FormatString("scale_cuda=%d:%d:format=nv12", _output_track->GetWidth(), _output_track->GetHeight());
+			auto resolution = _output_track->GetResolution();
+			desc += ov::String::FormatString("scale_cuda=%d:%d:format=nv12", resolution.width, resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -220,14 +219,15 @@ bool FilterRescaler::InitializeFilterDescription()
 		else if (output_module_id == cmn::MediaCodecModuleId::XMA)
 		{
 			// multiscale_xma only supports resolutions multiple of 4.
-			bool need_crop_for_multiple_of_4 = (_input_track->GetHeight() % 4 != 0 || _input_track->GetHeight() % 4 != 0);
+			auto input_resolution = _input_track->GetResolution();
+			bool need_crop_for_multiple_of_4 = (input_resolution.width % 4 != 0 || input_resolution.height % 4 != 0);
 			if (need_crop_for_multiple_of_4)
 			{
-				logtw("multiscale_xma only supports resolutions multiple of 4. The resolution will be cropped to a multiple of 4.");
+				logtw("[%s] multiscale_xma only supports resolutions multiple of 4. The resolution will be cropped to a multiple of 4.", GetLogPrefix().CStr());
 			}
 
-			int32_t desire_width = _input_track->GetWidth() - _input_track->GetWidth() % 4;
-			int32_t desire_height = _input_track->GetHeight() - _input_track->GetHeight() % 4;
+			int32_t desire_width = input_resolution.width - input_resolution.width % 4;
+			int32_t desire_height = input_resolution.height - input_resolution.height % 4;
 
 			switch (input_module_id)
 			{
@@ -255,7 +255,7 @@ bool FilterRescaler::InitializeFilterDescription()
 					_src_pixfmt = ffmpeg::compat::GetAVPixelFormatOfHWDevice(input_module_id, input_device_id, true);
 					if (_src_pixfmt == AV_PIX_FMT_NONE)
 					{
-						logte("Failed to get pixel format for %s(%d)", cmn::GetCodecModuleIdString(input_module_id), input_device_id);
+						logte("[%s] Failed to get pixel format for %s(%d)", GetLogPrefix().CStr(), cmn::GetCodecModuleIdString(input_module_id), input_device_id);
 						return false;
 					}
 					_use_hwframe_transfer = true;
@@ -268,7 +268,7 @@ bool FilterRescaler::InitializeFilterDescription()
 				}
 				break;
 				default:
-					logtw("Unsupported input module: %s", cmn::GetCodecModuleIdString(input_module_id));
+					logtw("[%s] Unsupported input module: %s", GetLogPrefix().CStr(), cmn::GetCodecModuleIdString(input_module_id));
 				case cmn::MediaCodecModuleId::X264:		// CPU memory
 				case cmn::MediaCodecModuleId::QSV:		// CPU memory using 'gpu_copy=on'
 				case cmn::MediaCodecModuleId::NILOGAN:	// CPU memory using 'out=sw'
@@ -284,8 +284,9 @@ bool FilterRescaler::InitializeFilterDescription()
 				}
 			}
 
+			auto output_resolution = _output_track->GetResolution();
 			desc += ov::String::FormatString("multiscale_xma=lxlnx_hwdev=%d:outputs=1:out_1_width=%d:out_1_height=%d:out_1_rate=full",
-											 _output_track->GetCodecDeviceId(), _output_track->GetWidth(), _output_track->GetHeight());
+											 _output_track->GetCodecDeviceId(), output_resolution.width, output_resolution.height);
 		}
 		/**
 		 * Output Module Cases
@@ -293,7 +294,7 @@ bool FilterRescaler::InitializeFilterDescription()
 		 */		
 		else
 		{
-			logtw("Unsupported output module id: %d", static_cast<int>(output_module_id));
+			logtw("[%s] Unsupported output module id: %d", GetLogPrefix().CStr(), static_cast<int>(output_module_id));
 			return false;
 		}
 
@@ -336,9 +337,8 @@ bool FilterRescaler::InitializeFpsFilter()
 
 	// Set frame copy mode based on resolution
 	// Use deep copy when resolutions match to prevent in-place modifications by FFmpeg filter graph
-	bool same_resolution = (_input_track->GetWidth() == _output_track->GetWidth() &&
-							_input_track->GetHeight() == _output_track->GetHeight());
-	
+	bool same_resolution = (_input_track->GetResolution() == _output_track->GetResolution());
+
 	auto copy_mode = same_resolution ? FilterFps::OutputFrameCopyMode::DeepCopy 
 									 : FilterFps::OutputFrameCopyMode::ShallowCopy;
 	_fps_filter.SetOutputFrameCopyMode(copy_mode);
@@ -352,8 +352,9 @@ bool FilterRescaler::Configure()
 
 
 	// Initialize source parameters
-	_src_width	  = _input_track->GetWidth();
-	_src_height	  = _input_track->GetHeight();
+	auto resolution = _input_track->GetResolution();
+	_src_width	  = resolution.width;
+	_src_height	  = resolution.height;
 	_src_pixfmt	  = ffmpeg::compat::ToAVPixelFormat(_input_track->GetColorspace());
 
 	// Initialize input buffer queue
@@ -404,7 +405,7 @@ bool FilterRescaler::Configure()
 
 	if ((::avfilter_graph_parse_ptr(_filter_graph, _filter_desc, &_inputs, &_outputs, nullptr)) < 0)
 	{
-		logte("Could not parse filter string for rescaling: %s", _filter_desc.CStr());
+		logte("[%s] Could not parse filter string for rescaling: %s", GetLogPrefix().CStr(), _filter_desc.CStr());
 		SetState(State::ERROR);
 		
 		return false;
@@ -412,7 +413,7 @@ bool FilterRescaler::Configure()
 
 	if (SetHWContextToFilterIfNeed() == false)
 	{
-		logte("Could not set hw context to filters");
+		logte("[%s] Could not set hw context to filters", GetLogPrefix().CStr());
 		SetState(State::ERROR);
 
 		return false;
@@ -420,7 +421,7 @@ bool FilterRescaler::Configure()
 
 	if (::avfilter_graph_config(_filter_graph, nullptr) < 0)
 	{
-		logte("Could not validate filter graph for rescaling");
+		logte("[%s] Could not validate filter graph for rescaling", GetLogPrefix().CStr());
 		SetState(State::ERROR);
 
 		return false;
@@ -453,7 +454,7 @@ bool FilterRescaler::Start()
 		_kill_flag = true;
 		SetState(State::ERROR);
 
-		logte("Failed to start rescaling filter thread");
+		logte("[%s] Failed to start rescaling filter thread", GetLogPrefix().CStr());
 
 		return false;
 	}
@@ -516,7 +517,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	auto src_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Video, media_frame);
 	if (!src_frame)
 	{
-		logte("Could not get the video frame data");
+		logte("[%s] Could not allocate the video frame data", GetLogPrefix().CStr());
 
 		SetState(State::ERROR);
 
@@ -539,7 +540,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 		
 		if (::av_hwframe_transfer_data(transfer_frame, src_frame, 0) < 0)
 		{
-			logte("Error transferring the data to system memory\n");
+			logte("[%s] Error transferring the data to system memory", GetLogPrefix().CStr());
 
 			SetState(State::ERROR);
 
@@ -555,19 +556,19 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	int ret = ::av_buffersrc_write_frame(_buffersrc_ctx, feed_frame);
 	if (ret == AVERROR_EOF)
 	{
-		logtw("filter graph has been flushed and will not accept any more frames.");
+		logtw("[%s] filter graph has been flushed and will not accept any more frames.", GetLogPrefix().CStr());
 	}
 	else if (ret == AVERROR(EAGAIN))
 	{
-		logtw("filter graph is not able to accept the frame at this time.");
+		logtw("[%s] filter graph is not able to accept the frame at this time.", GetLogPrefix().CStr());
 	}
 	else if (ret == AVERROR_INVALIDDATA)
 	{
-		logtw("Invalid data while sending to filtergraph");
+		logtw("[%s] Invalid data while sending to filtergraph", GetLogPrefix().CStr());
 	}
 	else if (ret == AVERROR(ENOMEM))
 	{
-		logte("Could not allocate memory while sending to filtergraph");
+		logte("[%s] Could not allocate memory while sending to filtergraph", GetLogPrefix().CStr());
 		
 		SetState(State::ERROR);
 
@@ -577,7 +578,7 @@ bool FilterRescaler::PushProcess(std::shared_ptr<MediaFrame> media_frame)
 	}
 	else if (ret < 0)
 	{
-		logte("An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %zu", src_frame->format, src_frame->pts, _input_buffer.Size());
+		logte("[%s] An error occurred while feeding to filtergraph: format: %d, pts: %" PRId64 ", queue.size: %zu", GetLogPrefix().CStr(), src_frame->format, src_frame->pts, _input_buffer.Size());
 
 		SetState(State::ERROR);
 
@@ -612,7 +613,7 @@ bool FilterRescaler::PopProcess(bool is_flush)
 		}
 		else if (ret == AVERROR_INVALIDDATA)
 		{
-			logtw("Invalid data while receiving from filtergraph");
+			logtw("[%s] Invalid data while receiving from filtergraph", GetLogPrefix().CStr());
 			break;
 		}
 		else if (ret == AVERROR_EOF)
@@ -620,7 +621,7 @@ bool FilterRescaler::PopProcess(bool is_flush)
 			if (is_flush)
 				break;
 
-			logte("Error receiving filtered frame. error(EOF)");
+			logte("[%s] Error receiving filtered frame. error(EOF)", GetLogPrefix().CStr());
 
 			SetState(State::ERROR);
 
@@ -628,7 +629,7 @@ bool FilterRescaler::PopProcess(bool is_flush)
 		}
 		else if (ret == AVERROR(ENOMEM))
 		{
-			logte("Could not allocate memory while receiving from filtergraph");
+			logte("[%s] Could not allocate memory while receiving from filtergraph", GetLogPrefix().CStr());
 
 			SetState(State::ERROR);
 
@@ -641,7 +642,7 @@ bool FilterRescaler::PopProcess(bool is_flush)
 			if (is_flush)
 				break;
 
-			logte("Error receiving frame from filtergraph. error(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
+			logte("[%s] Error receiving frame from filtergraph. error(%s)", GetLogPrefix().CStr(), ffmpeg::compat::AVErrorToString(ret).CStr());
 			
 			SetState(State::ERROR);
 
@@ -661,6 +662,19 @@ bool FilterRescaler::PopProcess(bool is_flush)
 		// Convert duration to output track timebase
 		output_frame->SetDuration((int64_t)((double)output_frame->GetDuration() * _input_track->GetTimeBase().GetExpr() / _output_track->GetTimeBase().GetExpr()));
 		output_frame->SetSourceId(_source_id);
+
+#if _SIMULATE_PROCESSING_DELAY_ENABLED	
+		if ((rand() % 100) == 0)
+		{
+			_simulate_overload = rand() % 200;
+			if(_simulate_overload < 100)
+				_simulate_overload = 0;
+
+			logti("[%s] Simulating overload of %d ms for testing", GetLogPrefix().CStr(), _simulate_overload);
+			
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(_simulate_overload)); 
+#endif
 
 		Complete(TranscodeResult::DataReady, std::move(output_frame));
 	}
@@ -687,14 +701,9 @@ void FilterRescaler::WorkerThread()
 	SetState(State::STARTED);
 
 #if _SKIP_FRAMES_ENABLED
-	auto skip_frames_last_check_time = ov::Time::GetTimestampInMs();
-	auto skip_frames_last_changed_time = ov::Time::GetTimestampInMs();
-	
-
 	// Set initial Skip Frames
-	int32_t skip_frames_conf = _output_track->GetSkipFramesByConfig();
-	int32_t skip_frames = skip_frames_conf;
-	
+	_skip_frames_conf			   = _output_track->GetSkipFramesByConfig();
+	_skip_frames				   = _skip_frames_conf;
 #endif
 
 	// XMA devices expand the memory pool when processing the first frame filtering. 
@@ -712,79 +721,6 @@ void FilterRescaler::WorkerThread()
 
 		auto media_frame = std::move(obj.value());
 
-#if _SKIP_FRAMES_ENABLED 
-		// Dynamic skip frames adjustment
-		if (skip_frames_conf == 0)
-		{
-			auto curr_time			 = ov::Time::GetTimestampInMs();
-
-			// Periodically check the status of the queue
-			auto elapsed_check_time	 = curr_time - skip_frames_last_check_time;
-			auto elapsed_stable_time = curr_time - skip_frames_last_changed_time;
-
-			auto threshold_rate		 = 0.75f;
-			if (elapsed_check_time > _SKIP_FRAMES_CHECK_INTERVAL)
-			{
-				skip_frames_last_check_time = curr_time;
-
-				logtt("SkipFrames(%d), Current FPS(%.2f), Expected FPS(%.2f), Threshold FPS(%.2f), Queue(%zu/%zu)",
-					  skip_frames,
-					  _fps_filter.GetOutputFramesPerSecond(),
-					  _fps_filter.GetExpectedOutputFramesPerSecond(),
-					  _fps_filter.GetExpectedOutputFramesPerSecond() * threshold_rate,
-					  _input_buffer.GetSize(),
-					  _input_buffer.GetThreshold());
-
-				// If the queue is unstable, quickly increase the number of skip frames.
-				// Actual output fps is less than 75% of expected fps
-				if (_fps_filter.GetOutputFramesPerSecond() < (_fps_filter.GetExpectedOutputFramesPerSecond() * threshold_rate))
-				{
-					skip_frames_last_changed_time = curr_time;
-
-					// The frame skip should not be more than 1 second.
-					int32_t max_skip_frames		  = (int32_t)(_fps_filter.GetExpectedOutputFramesPerSecond() - 1);
-					if (++skip_frames > max_skip_frames)
-					{
-						skip_frames = max_skip_frames;
-					}
-
-					logtw("Scaler is unstable. changing skip frames %d to %d", skip_frames - 1, skip_frames);
-				}
-				// If the queue is stable, slowly decrease the number of skip frames.
-				else if ((skip_frames > 0) && (elapsed_stable_time > _SKIP_FRAMES_STABLE_FOR_RETRIEVE_INTERVAL))
-				{
-					// Queue is stable when there is only 1 or no frame in the queue
-					if (_input_buffer.GetSize() <= 1)
-					{
-						skip_frames_last_changed_time = curr_time;
-
-						if (--skip_frames < 0)
-						{
-							skip_frames = 0;
-						}
-
-						logti("Scaler is stable. changing skip frames %d to %d", skip_frames + 1, skip_frames);
-					}
-				}
-
-				_fps_filter.SetSkipFrames(skip_frames);
-			}
-		}
-		// Static skip frames set by the user
-		else if (skip_frames_conf > 0)
-		{
-			if (_fps_filter.GetSkipFrames() != skip_frames_conf)
-			{
-				_fps_filter.SetSkipFrames(skip_frames_conf);
-
-				logti("Changed skip frames to user config value: %d", _fps_filter.GetSkipFrames());
-			}
-		}
-		else  // if (skip_frames_conf < 0)
-		{
-			// Disable skip frames
-		}
-
 		// If the user does not set the output Framerate, use the recommend framerate
 		// Cases where the framerate changes dynamically, such as when using WebRTC, WHIP, or SRTP protocols, were considered.
 		// It is similar to maintaining the original frame rate.
@@ -793,7 +729,7 @@ void FilterRescaler::WorkerThread()
 			auto recommended_output_framerate = TranscoderStreamInternal::MeasurementToRecommendFramerate(_input_track->GetFrameRate());
 			if (_fps_filter.GetOutputFrameRate() != recommended_output_framerate)
 			{
-				logtt("Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", _input_track->GetFrameRate(), _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
+				logtd("[%s] Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", GetLogPrefix().CStr(), _input_track->GetFrameRate(), _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
 				_fps_filter.SetOutputFrameRate(recommended_output_framerate);
 			}
 		}
@@ -823,24 +759,20 @@ void FilterRescaler::WorkerThread()
 			}
 			else
 			{
+				auto start_time = std::chrono::high_resolution_clock::now();
 				DO_FILTER_ONCE(frame);
+				auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+
+				// Update the weighted average frame processing time
+				// It includes the time taken for filtering + overlay + delivery to the encoder (including waiting time if there is a load on the encoder).
+				_weighted_avg_frame_processing_time_us = (_weighted_avg_frame_processing_time_us * 0.9) + (elapsed_time_us * 0.1); 
 			}
 		}
-#else
-		if (start_frame_syncronization)
-		{
-			std::lock_guard<std::mutex> lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
 
-			DO_FILTER_ONCE(media_frame);
 
-			start_frame_syncronization = false;
-		}
-		else
-		{
-			DO_FILTER_ONCE(media_frame);
-		}
+#if _SKIP_FRAMES_ENABLED 
+		UpdateSkipFrames();
 #endif
-
 	}
 
 	// Flush the filter
@@ -904,7 +836,7 @@ bool FilterRescaler::SetHWContextToFilterIfNeed()
 			{
 				if (ffmpeg::compat::SetHwDeviceCtxOfAVFilterContext(filter, hw_device_ctx) == false)
 				{
-					logte("Could not set hw device context for %s", filter->name);
+					logte("[%s] Could not set hw device context for %s", GetLogPrefix().CStr(), filter->name);
 					return false;
 				}
 			}
@@ -919,9 +851,10 @@ bool FilterRescaler::SetHWContextToFilterIfNeed()
 						continue;
 					}
 
-					if (ffmpeg::compat::SetHWFramesCtxOfAVFilterLink(input, hw_device_ctx, _output_track->GetWidth(), _output_track->GetHeight()) == false)
+					auto resolution = _output_track->GetResolution();
+					if (ffmpeg::compat::SetHWFramesCtxOfAVFilterLink(input, hw_device_ctx, resolution.width, resolution.height) == false)
 					{
-						logte("Could not set hw frames context for %s", filter->name);
+						logte("[%s] Could not set hw frames context for %s", GetLogPrefix().CStr(), filter->name);
 						return false;
 					}
 				}
@@ -931,3 +864,135 @@ bool FilterRescaler::SetHWContextToFilterIfNeed()
 
 	return true;
 }
+
+#if _SKIP_FRAMES_ENABLED 
+#define _SKIP_FRAMES_EVALUATION_INTERVAL_MS 	1000	// 1s
+#define _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS 	5000	// 5s
+#define _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO 	0.9f	// 90%
+
+void FilterRescaler::UpdateSkipFrames()
+{
+	// Skip frame is disabled.
+	if (_skip_frames_conf < 0)
+	{
+		return;
+	}
+
+	// Static skip frames set by the user.
+	if (_skip_frames_conf > 0)
+	{
+		if (_fps_filter.GetSkipFrames() != _skip_frames_conf)
+		{
+			_fps_filter.SetSkipFrames(_skip_frames_conf);
+			logti("[%s] Changed skip frames to user config value: %d", GetLogPrefix().CStr(), _fps_filter.GetSkipFrames());
+		}
+		return;
+	}
+
+	auto curr_time = ov::Time::GetTimestampInMs();
+
+	if (_skip_frames_last_check_time == 0 || _skip_frames_last_changed_time == 0)
+	{
+		_skip_frames_last_check_time   = curr_time;
+		_skip_frames_last_changed_time = curr_time;
+	}
+
+	auto elapsed_check_time = curr_time - _skip_frames_last_check_time;
+	auto elapsed_stable_time = curr_time - _skip_frames_last_changed_time;
+
+	// Checking every 1 second is sufficient for skip frame adjustment
+	if (elapsed_check_time <= _SKIP_FRAMES_EVALUATION_INTERVAL_MS)
+	{
+		return;
+	}
+	_skip_frames_last_check_time = curr_time;
+
+	// Remain for debugging and future improvement for queue-based skip frame adjustment
+	// -----------------------------------------------------------------------------
+	// double actual_input_fps			   = _fps_filter.GetInputFramesPerSecond();
+	// double expected_input_fps		   = _fps_filter.GetInputFrameRate();
+
+	// double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
+
+	// int64_t queue_waiting_deviation_us = _input_buffer.GetWaitingTimeInUs();
+	// double expected_frame_interval_us  = (expected_input_fps > 0.0) ? (1000000.0 / expected_input_fps) : 0.0;
+	// bool is_queue_overload			   = (expected_frame_interval_us > 0.0) &&
+	// 						 (queue_waiting_deviation_us > expected_frame_interval_us * _SKIP_FRAMES_QUEUE_BACKLOG_RATIO);
+	// bool is_queue_stable = (expected_frame_interval_us > 0.0) &&
+	// 					   (queue_waiting_deviation_us < expected_frame_interval_us * _SKIP_FRAMES_QUEUE_RECOVERY_RATIO);
+
+	double fixed_output_fps			   = _fps_filter.GetOutputFrameRate();
+	double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
+	double actual_output_fps		   = _fps_filter.GetOutputFramesPerSecond();
+
+	if (_weighted_avg_frame_processing_time_us <= 0.0 || fixed_output_fps <= 0.0)
+	{
+		return;
+	}
+
+	// Calculate the maximum possible frames per second.
+	double max_frames_per_second = (1000000.0 / _weighted_avg_frame_processing_time_us);
+	// To ensure stability, set a margin and use OO% of the calculated maximum FPS.
+	double ideal_frames_per_second = max_frames_per_second * _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO;
+
+	if (ideal_frames_per_second <= 0.0)
+	{
+		// If the ideal FPS is not a positive value, skip frame cannot be performed.
+		return;
+	}
+
+	// Calculate number of skip frames value to match the ideal FPS.
+	auto next_skip_frames = static_cast<int32_t>(std::ceil(fixed_output_fps / ideal_frames_per_second - 1.0));
+	if (next_skip_frames > fixed_output_fps - 1)
+	{
+		next_skip_frames = static_cast<int32_t>(std::floor(fixed_output_fps - 1));
+	}
+	else if (next_skip_frames < 0)
+	{
+		next_skip_frames = 0;
+	}
+
+	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f", max_frames_per_second, ideal_frames_per_second, fixed_output_fps, expected_output_fps, actual_output_fps);
+
+	// Increase skip frames immediately when bottleneck occurs.
+	if (_skip_frames < next_skip_frames)
+	{
+		logtw("[%s] Changed SkipFrames %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
+
+		_skip_frames = next_skip_frames;
+		_fps_filter.SetSkipFrames(_skip_frames);
+
+		_skip_frames_last_changed_time = curr_time;
+	}
+	// Decrease skip frames slowly when the system is recovering.
+	else if ((_skip_frames > next_skip_frames))
+	{
+		if (elapsed_stable_time > _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS)
+		{
+			// Decay 20% per step (rate-limited)
+			int32_t rate_limited_next = _skip_frames - std::max(1, _skip_frames / 5); 
+			next_skip_frames = std::max(rate_limited_next, next_skip_frames);
+			if (next_skip_frames < 0)
+			{
+				next_skip_frames = 0;
+			}
+
+			logti("[%s] Changed SkipFrames %d -> %d (Recovery). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
+
+			_skip_frames = next_skip_frames;
+			_fps_filter.SetSkipFrames(_skip_frames);
+
+			_skip_frames_last_changed_time = curr_time;
+		}
+		else
+		{
+			logtt("[%s] Hold SkipFrames %d (Waiting for recovery). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
+		}
+	}
+	// Keep skip frames unchanged when the system is stable.
+	else
+	{
+		logtt("[%s] Unchanged SkipFrames %d (Stable). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
+	}
+}
+#endif // _SKIP_FRAMES_ENABLED

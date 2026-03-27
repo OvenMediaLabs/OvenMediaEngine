@@ -174,6 +174,8 @@ namespace modules::srt
 		{
 			auto extra_log = streamid.IsEmpty() ? "" : ov::String::FormatString(" (streamid: [%s])", streamid.CStr());
 			logte("The streamid for SRT must be in one of the following formats: srt://{host}[:{port}]/{app}/{stream}[/{playlist}][?{query}={value}] or {host}/{app}/{stream}[/{playlist}], but [%s]%s", stream_path.CStr(), extra_log.CStr());
+
+			return {nullptr, std::nullopt};
 		}
 
 		return {final_url, GetHostInfo(final_url->Host())};

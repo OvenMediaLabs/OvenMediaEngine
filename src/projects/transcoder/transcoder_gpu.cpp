@@ -266,6 +266,9 @@ int32_t TranscodeGPU::GetDeviceCountXMA()
 bool TranscodeGPU::CheckSupportedNV()
 {
 #ifdef HWACCELS_NVIDIA_ENABLED
+	
+	_device_count_nv = 0;
+
 	// Initialize NVML library
 	nvmlReturn_t result = nvmlInit();
 	if (result != NVML_SUCCESS)
@@ -282,74 +285,108 @@ bool TranscodeGPU::CheckSupportedNV()
 	}
 
 	// Get GPU device count
-	unsigned int device_count;
-	result = nvmlDeviceGetCount(&device_count);
+	unsigned int nvml_device_count;
+	result = nvmlDeviceGetCount(&nvml_device_count);
 	if (result != NVML_SUCCESS)
 	{
 		logte("Failed to get device count: %s", nvmlErrorString(result));
 		return false;
 	}
 
-	_device_count_nv = 0;
-
-	// Get GPU device handle
-	for (unsigned int gpu_id = 0; gpu_id < device_count; gpu_id++)
+	// Get CUDA device count
+	int cuda_count = 0;
+	if (cuDeviceGetCount(&cuda_count) != CUDA_SUCCESS)
 	{
+		logte("Failed to get CUDA device count");
+		return false;
+	}
+	logtd("NVML:Found %d GPU(s), CUDA: Found %d GPU(s)", nvml_device_count, cuda_count);
+
+	// Match NVML devices with CUDA devices using PCI attributes and create HW device contexts
+	for (unsigned int device_id = 0; device_id < nvml_device_count; device_id++)
+	{
+		// Get nvml device handle
 		nvmlDevice_t device;
-		result = nvmlDeviceGetHandleByIndex(gpu_id, &device);
+		result = nvmlDeviceGetHandleByIndex(device_id, &device);
 		if (result != NVML_SUCCESS)
 		{
 			logte("Failed to get device handle: %s", nvmlErrorString(result));
 			continue;
 		}
 
-		// Get GPU name
+		// Get nvml device name
 		char device_name[NVML_DEVICE_NAME_BUFFER_SIZE];
 		nvmlDeviceGetName(device, device_name, sizeof(device_name));
 
-		// Get GPU PCI Bus ID
+		// Get nvml device PCI attributes (domain, bus, device)
 		nvmlPciInfo_t pci_info;
 		nvmlDeviceGetPciInfo(device, &pci_info);
+		logtd("NVML Device %d: Name(%s), DomainId(%d), BusId(%d), DeviceId(%d)", device_id, device_name, pci_info.domain, pci_info.bus, pci_info.device);
 
-		// Get CUDA device index
-		unsigned int cuda_index = -1;
-		for (unsigned int j = 0; j < device_count; j++)
+		// Matching CUDA device based on nvml device PCI attributes
+		int32_t matched_cu_index = -1;
+		for (int32_t cu_index = 0; cu_index < cuda_count; cu_index++)
 		{
+			// Get CUDA device handle
 			CUdevice cu_device;
-			cuDeviceGet(&cu_device, j);
-
-			int32_t cu_pci_bus_id;
-			cuDeviceGetAttribute(&cu_pci_bus_id, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, cu_device);
-
-			if (cu_pci_bus_id == (int32_t)pci_info.bus)
+			if (cuDeviceGet(&cu_device, cu_index) != CUDA_SUCCESS)
 			{
-				cuda_index = j;
+				continue;
+			}
+
+			// Get CUDA device PCI attributes
+			int32_t cu_pci_domain_id = -1;
+			int32_t cu_pci_bus_id	 = -1;
+			int32_t cu_pci_device_id = -1;
+
+			if (cuDeviceGetAttribute(&cu_pci_domain_id, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID, cu_device) != CUDA_SUCCESS ||
+				cuDeviceGetAttribute(&cu_pci_bus_id, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, cu_device) != CUDA_SUCCESS ||
+				cuDeviceGetAttribute(&cu_pci_device_id, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, cu_device) != CUDA_SUCCESS)
+			{
+				logtw("Failed to get PCI attributes for CUDA device %d", cu_index);
+				continue;
+			}
+			
+			logtd("CUDA Device %d: DomainId(%d), BusId(%d), DeviceId(%d)", cu_index, cu_pci_domain_id, cu_pci_bus_id, cu_pci_device_id);
+
+			// Compare PCI attributes to find matching CUDA device for NVML device
+			if (cu_pci_domain_id == (int32_t)pci_info.domain &&
+				cu_pci_bus_id == (int32_t)pci_info.bus &&
+				cu_pci_device_id == (int32_t)pci_info.device)
+			{
+				matched_cu_index = cu_index;
 				break;
 			}
 		}
 
-		// Get HW device context
-		char device_id[10];
-		sprintf(device_id, "%d", cuda_index);
-		int ret = ::av_hwdevice_ctx_create(&_device_context_nv[gpu_id], AV_HWDEVICE_TYPE_CUDA, device_id, nullptr, 1);
+		// If no matching CUDA device found, skip this NVML device
+		if (matched_cu_index < 0)
+		{
+			logtw("Failed to map NVML device to CUDA device. Name(%s), DomainId(%d), BusId(%d), DeviceId(%d)",
+				  device_name, pci_info.domain, pci_info.bus, pci_info.device);
+			continue;
+		}
+
+		// Create CUDA device context
+		int ret = ::av_hwdevice_ctx_create(&_device_context_nv[device_id], AV_HWDEVICE_TYPE_CUDA, ov::String::FormatString("%d", matched_cu_index).CStr(), nullptr, 1);
 		if (ret < 0)
 		{
-			av_buffer_unref(&_device_context_nv[gpu_id]);
-			_device_context_nv[gpu_id] = nullptr;
+			av_buffer_unref(&_device_context_nv[device_id]);
+			_device_context_nv[device_id] = nullptr;
 
-			logtw("No supported CUDA computing unit. [%s]", device_name);
+			logtw("Failed to create CUDA device context for device %d (CUDA index %d)", device_id, matched_cu_index);
+			continue;
 		}
-		else
-		{
-			_device_cuda_id_nv[gpu_id] = cuda_index;
-			_device_display_name_nv[gpu_id] = device_name;
-			_device_bus_id_nv[gpu_id] = pci_info.busId;
-			_device_count_nv++;
 
-			_supported_devices.push_back(std::make_pair(cmn::MediaCodecModuleId::NVENC, gpu_id));
+		_device_cuda_id_nv[device_id]	   = matched_cu_index;
+		_device_display_name_nv[device_id] = device_name;
+		_device_bus_id_nv[device_id]	   = pci_info.busId;  // 00000000:00:04.0 (domain:bus:device.function)
 
-			logti("NVIDIA. DeviceId(%d), Name(%s), BusId(%s), CudaId(%d)", gpu_id, device_name, pci_info.busId, cuda_index);
-		}
+		_device_count_nv++;
+
+		_supported_devices.push_back(std::make_pair(cmn::MediaCodecModuleId::NVENC, device_id));
+
+		logti("NVIDIA. DeviceId(%d), Name(%s), BusId(%s), CudaId(%d)", device_id, device_name, pci_info.busId, matched_cu_index);
 	}
 
 	if (_device_count_nv == 0)

@@ -98,7 +98,7 @@ namespace bmff
 			_is_completed = true;
 		}
 
-		bool IsCompleted() const
+		bool IsCompleted() const override
 		{
 			return _is_completed;
 		}
@@ -173,6 +173,7 @@ namespace bmff
 
 		int64_t GetLastPartialNumber() const
 		{
+			std::shared_lock<std::shared_mutex> lock(_partials_lock);
 			return _last_partial_number;
 		}
 

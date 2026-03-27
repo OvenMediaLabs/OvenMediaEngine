@@ -29,7 +29,7 @@ services:
     #- ./origin_conf:/opt/ovenmediaengine/bin/origin_conf
     # uncomment if using SSL certification
     #- ./sslcerts:/opt/ovenmediaengine/bin/certs
-    command: /opt/ovenmediaengine/bin/OvenMediaEngine -c origin_conf
+    command: /opt/ovenmediaengine/bin/ome_launcher.sh -c origin_conf
 
   edge:
     build:
@@ -53,4 +53,4 @@ services:
     #volumes:
     #- ./edge_conf:/opt/ovenmediaengine/bin/edge_conf
     #- ./sslcerts:/opt/ovenmediaengine/bin/certs
-    command: /opt/ovenmediaengine/bin/OvenMediaEngine -c edge_conf
+    command: /opt/ovenmediaengine/bin/ome_launcher.sh -c edge_conf

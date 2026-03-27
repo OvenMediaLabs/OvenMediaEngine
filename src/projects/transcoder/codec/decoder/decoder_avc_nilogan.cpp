@@ -74,15 +74,6 @@ bool DecoderAVCxNILOGAN::InitCodec()
 }
 
 /*
-it seems that dynamic resolution is supported
-void DecoderAVCxNILOGAN::UninitCodec()
-{
-	::avcodec_close(_codec_context);
-	::avcodec_free_context(&_codec_context);
-
-	_codec_context = nullptr;
-}
-
 bool DecoderAVCxNILOGAN::ReinitCodecIfNeed()
 {
 	// Netint H.264 decoder does not support dynamic resolution streams. 
@@ -271,4 +262,6 @@ void DecoderAVCxNILOGAN::CodecThread()
 			}
 		}
 	}
+	
+	UninitCodec();
 }

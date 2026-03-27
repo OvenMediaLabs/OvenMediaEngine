@@ -37,28 +37,34 @@ bool SubtitleTrack::IsForced() const
 
 ov::String SubtitleTrack::GetEngine() const
 {
+	std::shared_lock lock(_subtitle_mutex);
 	return _engine;
 }
 void SubtitleTrack::SetEngine(const ov::String &engine)
 {
+	std::scoped_lock lock(_subtitle_mutex);
 	_engine = engine;
 }
 
 void SubtitleTrack::SetModel(const ov::String &model)
 {
+	std::scoped_lock lock(_subtitle_mutex);
 	_model = model;
 }
 ov::String SubtitleTrack::GetModel() const
 {
+	std::shared_lock lock(_subtitle_mutex);
 	return _model;
 }
 
 void SubtitleTrack::SetSourceLanguage(const ov::String &language)
 {
+	std::scoped_lock lock(_subtitle_mutex);
 	_source_language = language;
 }
 ov::String SubtitleTrack::GetSourceLanguage() const
 {
+	std::shared_lock lock(_subtitle_mutex);
 	return _source_language;
 }
 
@@ -73,9 +79,11 @@ bool SubtitleTrack::ShouldTranslate() const
 
 void SubtitleTrack::SetOutputLabel(const ov::String &label)
 {
+	std::scoped_lock lock(_subtitle_mutex);
 	_output_track_label = label;
 }
 ov::String SubtitleTrack::GetOutputTrackLabel() const
 {
+	std::shared_lock lock(_subtitle_mutex);
 	return _output_track_label;
 }

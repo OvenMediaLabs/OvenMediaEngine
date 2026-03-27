@@ -141,7 +141,14 @@ namespace pvd
 		}
 
 		// Add subtitle track
-		auto subtitle_config = GetConfig().GetOutputProfiles().GetMediaOptions().GetSubtitle();
+		auto subtitle_config = GetConfig().GetSubtitle();
+		
+		if (subtitle_config.IsEnabled() == false)
+		{
+			// Subtitle option is moved to Application level, and OutputProfiles/MediaOptions/Subtitle will be deprecated. 
+			subtitle_config = GetConfig().GetOutputProfiles().GetMediaOptions().GetSubtitle();
+		}
+		
 		if (subtitle_config.IsEnabled())
 		{
 			for (const auto &rendition : subtitle_config.GetRenditions())

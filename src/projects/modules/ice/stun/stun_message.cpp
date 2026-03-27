@@ -15,12 +15,6 @@
 #include "modules/ice/stun/attributes/stun_fingerprint_attribute.h"
 #include "stun_private.h"
 
-static const uint32_t StunTypeMask = 0x0110;
-static const size_t StunAttributeHeaderSize = 4;
-
-// STUN Message Integrity HMAC length.
-static const size_t StunMessageIntegritySize = 20;
-
 StunMessage::StunMessage()
 	: _parsed(false),
 

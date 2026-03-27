@@ -166,6 +166,12 @@ namespace ffmpeg
 
 	bool Writer::AddMediaTrack(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream)
 	{
+		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
+		{
+			SetErrorMessage("Could not add track. MediaTrack or AVStream is null");
+			return false;
+		}
+
 		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
 		_av_track_map[media_track->GetId()] = std::make_pair(av_stream, media_track);
 
@@ -180,6 +186,12 @@ namespace ffmpeg
 
 	bool Writer::AddEventTrack(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream, cmn::BitstreamFormat format)
 	{
+		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
+		{
+			SetErrorMessage("Could not add event track. MediaTrack or AVStream is null");
+			return false;
+		}
+
 		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
 		_event_track_map[std::make_pair(media_track->GetId(), format)] = std::make_pair(av_stream, media_track);
 
@@ -215,6 +227,7 @@ namespace ffmpeg
 
 			if (!AddMediaTrack(media_track, av_stream))
 			{
+				// TODO(Keukhan): AVStream has been added to the AVFormat, a logic to remove the AVStream is needed in case of failure.
 				return false;
 			}
 		}

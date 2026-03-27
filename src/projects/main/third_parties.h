@@ -55,7 +55,8 @@ const char *GetJsonCppVersion();
 // Related to jemalloc
 //--------------------------------------------------------------------
 const char *GetJemallocVersion();
-// NOTE: These APIs are not thread-safe and are assumed to be called from the main thread.
+// NOTE: These APIs are expected to be called from a safe synchronous context
+// such as the dedicated signal monitor thread in `signals.cpp`.
 std::shared_ptr<ov::Error> InitializeJemalloc();
 std::shared_ptr<ov::Error> TerminateJemalloc();
 

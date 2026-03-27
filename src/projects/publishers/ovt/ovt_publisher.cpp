@@ -295,8 +295,14 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	if (stream == nullptr)
 	{
 		// If the stream does not exists, request to the provider
-		if (orchestrator->RequestPullStreamWithOriginMap(url, vhost_app_name, stream_name) == false)
+		auto error = orchestrator->RequestPullStreamWithOriginMap(url, vhost_app_name, stream_name);
+		if (error != nullptr)
 		{
+			logte("Could not pull stream from origin map [%s/%s]: %s",
+				  vhost_app_name.CStr(),
+				  stream_name.CStr(),
+				  error->What());
+
 			msg.Format("There is no such stream (%s/%s)", vhost_app_name.CStr(), url->Stream().CStr());
 			ResponseResult(remote, 0, "describe", request_id, 404, msg);
 			return;

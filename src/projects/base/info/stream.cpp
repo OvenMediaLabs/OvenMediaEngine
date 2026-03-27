@@ -69,7 +69,7 @@ namespace info
 		_representation_type = stream._representation_type;
 
 		_origin_stream_uuid = stream._origin_stream_uuid;
-		_on_air = stream._on_air;
+		_on_air.store(stream._on_air);
 
 		_timestamp_mode = stream._timestamp_mode;
 	}

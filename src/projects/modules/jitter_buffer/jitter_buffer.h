@@ -45,7 +45,7 @@ public:
 private:
 	uint32_t _track_id = 0;
 	int64_t _timebase = 0;
-	int64_t _next_pts = 0;
+	[[maybe_unused]] int64_t _next_pts = 0;
 	ov::StopWatch _input_stop_watch;
 	ov::Queue<std::shared_ptr<MediaPacket>>	_media_packet_queue;
 };

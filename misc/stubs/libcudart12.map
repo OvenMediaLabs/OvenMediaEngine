@@ -1,0 +1,4 @@
+libcudart.so.12 {
+  global: cuda*; __cuda*;
+  local: *;
+};

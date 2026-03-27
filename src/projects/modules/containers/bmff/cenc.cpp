@@ -256,7 +256,6 @@ namespace bmff
         else
         {
             // Sample encryption 
-            int sub_sample_index = 0;
             for (const auto &sub_sample : sub_samples)
             {
                 if (sub_sample.clear_bytes > 0)
@@ -270,8 +269,6 @@ namespace bmff
                     _encrypt_func(clear_data_ptr + offset, sub_sample.cipher_bytes, encrypted_data_ptr + offset, true);
                     offset += sub_sample.cipher_bytes;
                 }
-
-                sub_sample_index ++;
             }
         }
 

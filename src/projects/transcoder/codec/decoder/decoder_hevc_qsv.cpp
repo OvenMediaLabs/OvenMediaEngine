@@ -208,4 +208,6 @@ void DecoderHEVCxQSV::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();
 }

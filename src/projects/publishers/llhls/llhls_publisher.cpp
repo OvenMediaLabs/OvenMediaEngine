@@ -495,7 +495,7 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			}
 
 			// It will be used in CloseHandler
-			connection->AddUserData(stream->GetStreamId(), std::move(session->GetSessionPath()));
+			connection->AddUserData(stream->GetStreamId(), session->GetSessionPath());
 			session->UpdateLastRequest(connection->GetId());
 		}
 

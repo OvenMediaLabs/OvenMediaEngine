@@ -1,0 +1,4 @@
+LIBXMA2API_2 {
+  global: xrm*; xma*; xcl*;
+  local: *;
+};

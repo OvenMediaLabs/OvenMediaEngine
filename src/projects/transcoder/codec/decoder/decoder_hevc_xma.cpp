@@ -74,23 +74,6 @@ bool DecoderHEVCxXMA::InitCodec()
 	return true;
 }
 
-void DecoderHEVCxXMA::UninitCodec()
-{
-	if (_codec_context)
-	{
-		if (_codec_context->codec)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
-
-#if USE_EXTERNAL_TIMESTAMP
-	_pts_reorder_list.clear();
-#endif
-
-}
-
 bool DecoderHEVCxXMA::ReinitCodecIfNeed()
 {
 	// Xilinx H.265 decoder does not support dynamic resolution streams. (e.g. WebRTC)
@@ -100,6 +83,10 @@ bool DecoderHEVCxXMA::ReinitCodecIfNeed()
 		logti("Input frame resolution of the %u track has been changed. Size:%dx%d -> %dx%d", GetRefTrack()->GetId(), _codec_context->width, _codec_context->height, _parser->width, _parser->height);
 
 		UninitCodec();
+
+#if USE_EXTERNAL_TIMESTAMP
+		_pts_reorder_list.clear();
+#endif
 
 		if (InitCodec() == false)
 		{
@@ -298,4 +285,6 @@ void DecoderHEVCxXMA::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();	
 }

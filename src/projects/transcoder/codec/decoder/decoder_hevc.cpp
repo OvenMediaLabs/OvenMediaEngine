@@ -42,18 +42,6 @@ bool DecoderHEVC::InitCodec()
 	return true;
 }
 
-void DecoderHEVC::UninitCodec()
-{
-	if (_codec_context)
-	{
-		if (_codec_context->codec)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
-}
-
 bool DecoderHEVC::ReinitCodecIfNeed()
 {
 	// NVIDIA H.264 decoder does not support dynamic resolution streams. (e.g. WebRTC)
@@ -241,4 +229,6 @@ void DecoderHEVC::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();	
 }

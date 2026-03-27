@@ -207,7 +207,7 @@ namespace info
 		// If the source if this stream is a remote stream of the origin server, store the uuid of origin stream
 		ov::String _origin_stream_uuid;
 
-		bool _on_air = false;
+		std::atomic<bool> _on_air = false;
 
 		TimestampMode _timestamp_mode = TimestampMode::Auto;
 	};

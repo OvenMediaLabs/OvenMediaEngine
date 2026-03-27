@@ -125,7 +125,7 @@ namespace pub
 	{
 #if DEBUG
 		// Since adding up the total packet size is costly, it is calculated only in debug mode
-		size_t total_packet_size = 0;
+		[[maybe_unused]] size_t total_packet_size = 0;
 
 		for (const auto &packet : pes_packets)
 		{

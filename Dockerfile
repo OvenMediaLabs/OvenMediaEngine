@@ -1,38 +1,99 @@
+###########################################################################################################
+#
+# Dockerfile for OvenMediaEngine 
+#
+###########################################################################################################
+#
+# Default Arguments:
+# 1. USE_LOCAL=false
+# 2. USE_GPU=false
+#
+# Build the Docker image:
+#
+# 1. To build with the [latest source from GitHub]
+#    $ docker build -t ovenmediaengine:dev -f Dockerfile .
+#
+# 2. To build using the [local source code]
+#    $ docker build -t ovenmediaengine:dev -f Dockerfile --build-arg USE_LOCAL=true .
+#
+# 3. To build with NVIDIA/CUDA support
+#    $ docker build -t ovenmediaengine:dev -f Dockerfile --build-arg USE_GPU=true .
+#
+# Run the Docker container:
+#
+# 1. Run container 
+#    $ docker run -it ovenmediaengine:dev 
+#    $ docker run -it -v $PWD/conf:/opt/ovenmediaengine/bin/origin_conf ovenmediaengine:dev 
+#
+# 2. Run container with NVIDIA/GPU support
+#    $ docker run -it --gpus all ovenmediaengine:dev
+#    $ docker run -it --gpus all -v $PWD/conf:/opt/ovenmediaengine/bin/origin_conf ovenmediaengine:dev 
+#
+
+
+###########################################################################################################
+# Build Stage
+###########################################################################################################
+# Base Image Selection
+ARG     USE_GPU
 FROM    ubuntu:22.04 AS base
+FROM    nvidia/cuda:12.0.1-devel-ubuntu22.04 AS base_gpu
+FROM    base${USE_GPU:+_gpu} AS base_build
 
-## Install libraries by package
+## Install Libraries 
 ENV     DEBIAN_FRONTEND=noninteractive
-RUN     apt-get update && apt-get install -y tzdata sudo curl git libgomp1
+RUN     apt-get update && apt-get install -y tzdata sudo curl git
 
-FROM    base AS build
+FROM    base_build AS build
 
 WORKDIR /tmp
 
+ARG     USE_GPU
 ARG     OME_VERSION=master
-ARG 	STRIP=TRUE
+ARG     USE_LOCAL=false
+ARG     STRIP=true
 
 ENV     PREFIX=/opt/ovenmediaengine
 ENV     TEMP_DIR=/tmp/ome
+ENV     TEMP_LOCAL_DIR=/tmp/ome_local
 
-## Download OvenMediaEngine
+# Prepare Source Code
+# - Copy local source to image (used only when USE_LOCAL=true)
+COPY    . ${TEMP_LOCAL_DIR}
 RUN \
-        mkdir -p ${TEMP_DIR} && \
-        cd ${TEMP_DIR} && \
-        git clone --branch ${OME_VERSION} --single-branch --depth 1 https://github.com/AirenSoft/OvenMediaEngine .
+        if [ "${USE_LOCAL}" = "true" ] || [ "${USE_LOCAL}" = "1" ] || [ "${USE_LOCAL}" = "yes" ]; then \
+                rm -rf ${TEMP_DIR} && \
+                mkdir -p ${TEMP_DIR} && \
+                cp -a ${TEMP_LOCAL_DIR}/. ${TEMP_DIR}/; \
+        else \
+                rm -rf ${TEMP_DIR} && \
+                git clone --branch ${OME_VERSION} --single-branch --depth 1 https://github.com/OvenMediaLabs/OvenMediaEngine ${TEMP_DIR}; \
+        fi && \
+        rm -rf ${TEMP_LOCAL_DIR}
 
-## Install dependencies
+# Install Prerequisites
 RUN \
-        ${TEMP_DIR}/misc/prerequisites.sh 
+        extra_args=""; \
+        if [ "${USE_GPU}" = "true" ] || [ "${USE_GPU}" = "1" ] || [ "${USE_GPU}" = "yes" ]; then \
+                extra_args="--enable-nv"; \
+        fi; \
+        ${TEMP_DIR}/misc/prerequisites.sh ${extra_args}
 
-## Build OvenMediaEngine
+
+# Build OvenMediaEngine
+#  - Configure ldconfig to find the cuda and nvml libraries 
 RUN \
-        cd ${TEMP_DIR}/src && \
-        make release -j$(nproc)
+        if [ "${USE_GPU}" = "true" ] || [ "${USE_GPU}" = "1" ] || [ "${USE_GPU}" = "yes" ]; then \
+                echo -e "/usr/local/cuda/compat\n/usr/local/cuda/lib64/stubs" | tee /etc/ld.so.conf.d/cuda.conf > /dev/null && ldconfig ; \
+        fi && \
+        make -C ${TEMP_DIR}/src release -j$(nproc)
 
 RUN \
-        if [ "$STRIP" = "TRUE" ] ; then strip ${TEMP_DIR}/src/bin/RELEASE/OvenMediaEngine ; fi
+        if [ "${STRIP}" = "true" ] || [ "${STRIP}" = "1" ] || [ "${STRIP}" = "yes" ]; then \
+                strip ${TEMP_DIR}/src/bin/RELEASE/OvenMediaEngine ; \
+        fi
 
-## Make running environment
+## Copy Running Environment
 RUN \
         cd ${TEMP_DIR}/src && \
         mkdir -p ${PREFIX}/bin/origin_conf && \
@@ -42,14 +103,32 @@ RUN \
         cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/origin_conf/Logger.xml && \
         cp ../misc/conf_examples/Edge.xml ${PREFIX}/bin/edge_conf/Server.xml && \
         cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/edge_conf/Logger.xml && \
-        cp ../misc/install_nvidia_driver.sh ${PREFIX}/bin/install_nvidia_driver.sh && \
-        rm -rf ${TEMP_DIR}
+        cp ../misc/ome_launcher.sh ${PREFIX}/bin/ome_launcher.sh
 
-FROM	base AS release
+ENTRYPOINT ["tail", "-f", "/dev/null"]
+
+
+###########################################################################################################
+# Release Stage
+###########################################################################################################
+ARG     USE_GPU
+FROM    ubuntu:22.04 AS release_base
+FROM    nvidia/cuda:12.0.1-runtime-ubuntu22.04 AS release_base_gpu
+FROM    release_base${USE_GPU:+_gpu} AS release
+
+## Install libraries by package
+ENV     DEBIAN_FRONTEND=noninteractive
+RUN     apt-get update && apt-get install -y tzdata sudo libgomp1
 
 WORKDIR         /opt/ovenmediaengine/bin
 EXPOSE          80/tcp 8080/tcp 8090/tcp 1935/tcp 3333/tcp 3334/tcp 4000-4005/udp 10000-10010/udp 9000/tcp
 COPY            --from=build /opt/ovenmediaengine /opt/ovenmediaengine
 
+ENV     NVIDIA_VISIBLE_DEVICES=all
+ENV     NVIDIA_DRIVER_CAPABILITIES=all
+ENV     NVIDIA_REQUIRE_CUDA=cuda>=12.0
+
 # Default run as Origin mode
-CMD             ["/opt/ovenmediaengine/bin/OvenMediaEngine", "-c", "origin_conf"]
+CMD             ["/opt/ovenmediaengine/bin/ome_launcher.sh", "-c", "origin_conf"]
+# ENTRYPOINT ["tail", "-f", "/dev/null"]
+

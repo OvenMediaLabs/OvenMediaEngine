@@ -22,7 +22,7 @@ bool H264SpsPpsTracker::AddSps(const uint8_t *sps, size_t length)
             {
                 if (sps_.find(sps_id) == sps_.end())
                 {
-                    sps_.emplace(sps_id, std::move(std::vector<uint8_t>(sps, sps + length)));
+                    sps_.emplace(sps_id, std::vector<uint8_t>(sps, sps + length));
                 }
                 return true;
             }
@@ -63,7 +63,7 @@ bool H264SpsPpsTracker::AddPps(const uint8_t *pps, size_t length)
                         return false;
                     }
 
-                    pps_sps_.emplace(pps_id, std::make_pair(std::move(std::vector<uint8_t>(pps, pps + length)), sps_iterator->second));
+                    pps_sps_.emplace(pps_id, std::make_pair(std::vector<uint8_t>(pps, pps + length), sps_iterator->second));
                     pps_.emplace(pps_id);
                     return true;
                 }

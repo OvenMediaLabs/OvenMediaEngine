@@ -6,18 +6,27 @@ bool LipSyncClock::RegisterRtpClock(uint32_t id, double timebase)
 {
 	auto clock = std::make_shared<Clock>();
 	clock->_timebase = timebase;
+	std::lock_guard<std::shared_mutex> lock(_map_lock);
 	_clock_map.emplace(id, clock);
 
 	return true;
 }
 
+bool LipSyncClock::IsEnabled()
+{
+	std::shared_lock<std::shared_mutex> lock(_map_lock);
+	return !_clock_map.empty() && _clock_enabled_map.size() == _clock_map.size();
+}
+
 std::shared_ptr<LipSyncClock::Clock> LipSyncClock::GetClock(uint32_t id)
 {
-	if(_clock_map.find(id) == _clock_map.end())
+	std::shared_lock<std::shared_mutex> lock(_map_lock);
+	auto it = _clock_map.find(id);
+	if (it == _clock_map.end())
 	{
 		return nullptr;
 	}
-	return _clock_map[id];
+	return it->second;
 }
 
 std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestamp)
@@ -27,6 +36,8 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 	{
 		return {};
 	}
+
+	std::lock_guard<std::mutex> lock(clock->_lock);
 
 	if(clock->_updated == false)
 	{
@@ -75,23 +86,12 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 
 	clock->_last_rtp_timestamp = rtp_timestamp;
 
-	std::shared_lock<std::shared_mutex> lock(clock->_clock_lock);
 	// The timestamp difference can be negative.
 	auto pts = clock->_pts + ((int64_t)clock->_extended_rtp_timestamp - (int64_t)clock->_extended_rtcp_timestamp);
 
-	// This is to make pts start at zero.
-	if (_first_pts == true)
-	{
-		// pts in 100/10000000
-		_adjust_pts_us = (double)pts * clock->_timebase * 100000.0;
-		_first_pts = false;
-	}
+	logtt("Calc PTS : id(%u) pts(%" PRId64 ") last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%" PRIu64 ")", id, pts, clock->_last_rtp_timestamp, rtp_timestamp, delta, clock->_extended_rtp_timestamp);
 
-	int64_t final_pts = pts - (int64_t)(_adjust_pts_us / clock->_timebase / 100000.0);
-
-	logtt("Calc PTS : id(%u) pts(%" PRId64 ") final_pts(%" PRId64 ") last_rtp_timestamp(%u) rtp_timestamp(%u) delta(%u) extended_rtp_timestamp(%" PRIu64 ")", id, pts, final_pts, clock->_last_rtp_timestamp, rtp_timestamp, delta, clock->_extended_rtp_timestamp);
-
-	return final_pts; 
+	return pts; 
 }
 
 bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_t ntp_lsw, uint32_t rtcp_timestamp)
@@ -108,15 +108,17 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 		return false;
 	}
 
-	_enabled = true;
+	{
+		std::lock_guard<std::shared_mutex> lock(_map_lock);
+		_clock_enabled_map[id] = true;
+	}
 
-	std::lock_guard<std::shared_mutex> lock(clock->_clock_lock);
-	clock->_updated = true;
+	std::lock_guard<std::mutex> lock(clock->_lock);
 
-	if (_first_sr == true)
+	if (clock->_first_sr == true)
 	{
 		clock->_extended_rtcp_timestamp = rtcp_timestamp;
-		_first_sr = false;
+		clock->_first_sr = false;
 	}
 	else
 	{
@@ -147,9 +149,10 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 
 	clock->_last_rtcp_timestamp = rtcp_timestamp;
 	clock->_pts = ov::Converter::NtpTsToSeconds(ntp_msw, ntp_lsw) / clock->_timebase;
+	clock->_updated = true;
 
 	logtt("Update SR : id(%u) NTP(%u/%u) pts(%" PRId64 ") rtp timestamp(%u) extended timestamp (%" PRIu64 ")", 
-			id, ntp_msw, ntp_lsw, clock->_pts, clock->_last_rtcp_timestamp, clock->_extended_rtcp_timestamp);
+			id, ntp_msw, ntp_lsw, (int64_t)clock->_pts, rtcp_timestamp, clock->_extended_rtcp_timestamp);
 
 	return true;
 }

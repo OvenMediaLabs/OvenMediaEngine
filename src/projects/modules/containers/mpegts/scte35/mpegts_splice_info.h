@@ -91,7 +91,7 @@ namespace mpegts
 
 	protected:
 		SpliceInfo(SpliceCommandType splice_command_type);
-		~SpliceInfo() = default;
+		virtual ~SpliceInfo() = default;
 
 		virtual std::shared_ptr<ov::Data> BuildSpliceCommand() = 0;
 

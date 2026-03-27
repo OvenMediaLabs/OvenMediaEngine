@@ -47,8 +47,6 @@ namespace ov
 					 int send_buffer_size, int recv_buffer_size,
 					 int backlog = SOMAXCONN);
 
-		std::shared_ptr<ClientSocket> Accept();
-
 		String ToString() const override;
 
 	protected:

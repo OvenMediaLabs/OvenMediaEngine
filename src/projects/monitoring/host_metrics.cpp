@@ -80,11 +80,13 @@ namespace mon
 	std::shared_ptr<ApplicationMetrics> HostMetrics::GetApplicationMetrics(info::application_id_t application_id)
 	{
 		std::shared_lock<std::shared_mutex> lock(_map_guard);
-		if (_applications.find(application_id) == _applications.end())
+
+		auto application = _applications.find(application_id);
+		if (application == _applications.end())
 		{
 			return nullptr;
 		}
 
-		return _applications[application_id];
+		return application->second;
 	}
 }  // namespace mon

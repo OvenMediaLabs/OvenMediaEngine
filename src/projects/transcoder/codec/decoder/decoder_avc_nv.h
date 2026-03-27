@@ -23,23 +23,22 @@ public:
 		return cmn::MediaCodecId::H264;
 	}
 
-	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::NVENC;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Video;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return true;
 	}
 
-	bool InitCodec();
-	void UninitCodec();
+	bool InitCodec() override;
 	bool ReinitCodecIfNeed();
 
 	void CodecThread() override;

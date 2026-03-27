@@ -445,10 +445,9 @@ namespace pvd
 				}
 
 				new_track->SetFrameRateByConfig(json_video_track["framerate"].asDouble());
-				new_track->SetWidth(json_video_track["width"].asUInt());
-				new_track->SetHeight(json_video_track["height"].asUInt());
-				new_track->SetMaxWidth(json_video_track["maxWidth"].asUInt());
-				new_track->SetMaxHeight(json_video_track["maxHeight"].asUInt());
+				new_track->SetMaxFrameRate(json_video_track["maxFramerate"].asDouble());
+				new_track->SetResolution(json_video_track["width"].asUInt(), json_video_track["height"].asUInt());
+				new_track->SetMaxResolution(json_video_track["maxWidth"].asUInt(), json_video_track["maxHeight"].asUInt());
 			}
 			else if (new_track->GetMediaType() == cmn::MediaType::Audio)
 			{
@@ -460,6 +459,10 @@ namespace pvd
 				}
 
 				new_track->SetSampleRate(json_audio_track["samplerate"].asUInt());
+				if (new_track->GetSampleRate() == 0)
+				{
+					logte("Audio track(%u) received from origin has samplerate=0. The origin may have sent an invalid AudioSpecificConfig.", new_track->GetId());
+				}
 				new_track->SetSampleFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
 				new_track->SetChannelLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
 			}

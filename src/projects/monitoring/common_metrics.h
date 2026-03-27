@@ -47,7 +47,7 @@ namespace mon
 
 	protected:
 		CommonMetrics();
-		~CommonMetrics() = default;
+		virtual ~CommonMetrics() = default;
 
 		// Renew last updated time
 		void UpdateDate();

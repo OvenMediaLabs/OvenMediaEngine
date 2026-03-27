@@ -290,14 +290,9 @@ TranscodeDecoder::~TranscodeDecoder()
 {
 	Stop();
 
-	if (_codec_context)
-	{
-		if (_codec_context->codec)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
+	// Although the decoder thread already calls this, 
+	// it is prepared for situations where codec is not released, such as thread creation failure.
+	UninitCodec();
 
 	OV_SAFE_FUNC(_frame, nullptr, ::av_frame_free, &);
 	OV_SAFE_FUNC(_pkt, nullptr, ::av_packet_free, &);
@@ -386,6 +381,18 @@ void TranscodeDecoder::Stop()
 		tc::TranscodeModules::GetInstance()->OnDeleted(false, GetCodecID(), GetModuleID(), GetDeviceID());
 
 		logtt("decoder %s thread has ended", cmn::GetCodecIdString(GetCodecID()));
+	}
+}
+
+void TranscodeDecoder::UninitCodec()
+{
+	if (_codec_context)
+	{
+		if (_codec_context->codec)
+		{
+			::avcodec_flush_buffers(_codec_context);
+		}
+		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
 	}
 }
 

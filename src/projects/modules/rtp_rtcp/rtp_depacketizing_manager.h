@@ -6,6 +6,7 @@
 class RtpDepacketizingManager
 {
 public:
+	virtual ~RtpDepacketizingManager() = default;
 	enum class SupportedDepacketizerType
 	{
 		H264,

@@ -71,6 +71,11 @@ namespace pvd
 		_h264_bitstream_parser.SetConfig(H264BitstreamParser::Config{._parse_slice_type = true});
 
 		_fir_interval = config.GetFIRInterval();
+		if (config.GetRtcpBasedTimestamp() == false)
+		{
+			SetRtpTimestampMethod(RtpTimestampCalculationMethod::SINGLE_DELTA);
+		}
+		// else: leave as UNDER_DECISION so RTCP SR wait / auto-fallback logic runs
 
 		_request_info = request_info;
 	}
@@ -354,12 +359,17 @@ namespace pvd
 		_oven_capabilities = capabilities;
 
 		// 26.01.08
-		// Oven-Capabilities: max_width=1920, max_height=1080
+		// Oven-Capabilities: max_width=1920, max_height=1080, max_fps=30
 
 		// Parse and apply capabilities
 		logtt("%s - Set Oven-Capabilities: %s", GetName().CStr(), capabilities.CStr());
 
 		auto params = ov::String::Split(capabilities.CStr(), ",");
+
+		std::optional<int> max_width;
+		std::optional<int> max_height;
+		std::optional<double> max_fps;
+
 		for (const auto &param : params)
 		{
 			auto key_value = ov::String::Split(param.CStr(), "=");
@@ -372,21 +382,38 @@ namespace pvd
 			auto value = key_value[1].Trim();
 			if (key == "max_width")
 			{
-				auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-				if (first_video_track != nullptr)
-				{
-					first_video_track->SetWidth(static_cast<uint32_t>(std::atoi(value.CStr())));
-					logtt("%s - Set max width: %u", GetName().CStr(), first_video_track->GetMaxWidth());
-				}
+				max_width = std::atoi(value.CStr());
 			}
 			else if (key == "max_height")
 			{
-				auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-				if (first_video_track != nullptr)
-				{
-					first_video_track->SetHeight(static_cast<uint32_t>(std::atoi(value.CStr())));
-					logtt("%s - Set max height: %u", GetName().CStr(), first_video_track->GetMaxHeight());
-				}
+				max_height = std::atoi(value.CStr());
+			}
+			else if (key == "max_fps")
+			{
+				max_fps = std::atof(value.CStr());
+			}
+		}
+
+		if (max_width.has_value() && max_height.has_value())
+		{
+			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track != nullptr)
+			{
+				first_video_track->SetResolution(max_width.value(), max_height.value());
+
+				auto max_resolution = first_video_track->GetMaxResolution();
+				logtt("%s - Set max resolution: %s", GetName().CStr(), max_resolution.ToString().CStr());
+			}
+		}
+
+		if (max_fps.has_value())
+		{
+			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track != nullptr)
+			{
+				first_video_track->SetMaxFrameRate(max_fps.value());
+
+				logtt("%s - Set max fps: %.2f", GetName().CStr(), first_video_track->GetMaxFrameRate());
 			}
 		}
 	}

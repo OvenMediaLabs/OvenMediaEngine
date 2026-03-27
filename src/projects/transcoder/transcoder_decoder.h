@@ -35,6 +35,8 @@ public:
 	void SetCompleteHandler(CompleteHandler complete_handler);
 	void Complete(TranscodeResult result, std::shared_ptr<MediaFrame> frame);
 
+	virtual bool InitCodec() = 0;
+	virtual void UninitCodec();
 	virtual void CodecThread() = 0;
 	virtual void Stop();
 

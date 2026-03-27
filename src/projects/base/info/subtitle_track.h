@@ -38,16 +38,18 @@ public:
 	ov::String GetOutputTrackLabel() const;
 
 protected:
+	mutable std::shared_mutex _subtitle_mutex;
+
 	// For subtitle 
-	bool _auto_select = false;
-	bool _default = false;
-	bool _forced = false;
+	std::atomic<bool> _auto_select = false;
+	std::atomic<bool> _default = false;
+	std::atomic<bool> _forced = false;
 
 	// AI Modules
 	// e.g. Speech to Text
 	ov::String _engine = "whisper"; // Whisper
 	ov::String _model = "small"; // tiny, base, small, medium, large
 	ov::String _source_language = "auto"; // input language
-	bool _translation = false; // whisper only supports english translation
+	std::atomic<bool> _translation = false; // whisper only supports english translation
 	ov::String _output_track_label = ""; // input audio track label for speech to text
 };

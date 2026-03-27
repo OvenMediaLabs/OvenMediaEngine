@@ -68,6 +68,7 @@ namespace mon
 		std::atomic<int64_t> _subscribe_time_from_origin_msec = 0;
 
 		// If this stream is from Provider(input stream) it has multiple output streams
+		mutable std::shared_mutex _output_stream_metrics_mutex;
 		std::vector<std::shared_ptr<StreamMetrics>> _output_stream_metrics;
 
 		std::shared_ptr<ApplicationMetrics> _app_metrics;

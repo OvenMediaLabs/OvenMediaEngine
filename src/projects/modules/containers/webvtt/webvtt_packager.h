@@ -40,7 +40,7 @@ namespace webvtt
 		ov::String GetUrl() const override { return _url; }
 
 	private:
-		int64_t _segment_number;
+			[[maybe_unused]] int64_t _segment_number;
 		int64_t _partial_segment_number;
 		int64_t _start_time;
 		double _duration_ms;

@@ -25,8 +25,9 @@ bool EncoderAVCxQSV::SetCodecParams()
 	_codec_context->framerate = ::av_d2q((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured(), AV_TIME_BASE);
 	_codec_context->time_base = ffmpeg::compat::TimebaseToAVRational(GetRefTrack()->GetTimeBase());
 	_codec_context->pix_fmt = ffmpeg::compat::ToAVPixelFormat(GetSupportVideoFormat());
-	_codec_context->width = GetRefTrack()->GetWidth();
-	_codec_context->height = GetRefTrack()->GetHeight();
+	auto resolution = GetRefTrack()->GetResolution();
+	_codec_context->width = resolution.width;
+	_codec_context->height = resolution.height;
 	
 	// Keyframe Interval
 	// @see transcoder_encoder.cpp / force_keyframe_by_time_interval

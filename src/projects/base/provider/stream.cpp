@@ -101,6 +101,8 @@ namespace pvd
 
 	int64_t Stream::GetCurrentTimestampMs()
 	{
+		std::lock_guard<std::mutex> lock(_timestamp_mutex);
+
 		// Not yet started
 		if (_last_media_timestamp_ms == -1)
 		{
@@ -347,6 +349,7 @@ namespace pvd
 
 		if (master_clock_track != nullptr && packet->GetTrackId() == master_clock_track->GetId())
 		{
+			std::lock_guard<std::mutex> lock(_timestamp_mutex);
 			_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
 			_elapsed_from_last_media_timestamp.Restart();
 		}
@@ -440,17 +443,17 @@ namespace pvd
 					_rtp_timestamp_method = RtpTimestampCalculationMethod::WITH_RTCP_SR;
 				}
 				// If it exceeds 5 seconds, it is calculated independently without RTCP SR.
-				else if (_rtp_lip_sync_clock.IsEnabled() == false && _first_rtp_received_time.Elapsed() > 5000)
+				else if (_rtp_lip_sync_clock.IsEnabled() == false && _first_rtp_received_time.Elapsed() > 3000)
 				{
-					logtw("Since the RTCP SR was not received within 5 seconds, the PTS is calculated for each track without RTCP SR. (Lip-Sync may be out of sync)");
+					logtw("Since the RTCP SR was not received within 3 seconds, the PTS is calculated for each track without RTCP SR. (Lip-Sync may be out of sync)");
 					_rtp_timestamp_method = RtpTimestampCalculationMethod::SINGLE_DELTA;
 				}
-				else if (_rtp_lip_sync_clock.IsEnabled() == false && _first_rtp_received_time.Elapsed() <= 5000)
+				else if (_rtp_lip_sync_clock.IsEnabled() == false && _first_rtp_received_time.Elapsed() <= 3000)
 				{
-					// Wait for RTCP SR for 5 seconds
+					// Wait for RTCP SR for 3 seconds
 					if (_first_rtp_received_time.IsStart() == false)
 					{
-						logtw("Wait for RTCP SR for 5 seconds before starting the stream.");
+						logtw("Wait for RTCP SR for 3 seconds before starting the stream.");
 						_first_rtp_received_time.Start();
 					}
 					return false; 

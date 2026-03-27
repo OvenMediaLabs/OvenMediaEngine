@@ -179,8 +179,9 @@ bool HlsMediaPlaylist::GetResolution(uint32_t &width, uint32_t &height) const
 		return false;
 	}
 
-	width = _first_video_track->GetWidth();
-	height = _first_video_track->GetHeight();
+	auto resolution = _first_video_track->GetResolution();
+	width			= resolution.width;
+	height			= resolution.height;
 
 	return true;
 }

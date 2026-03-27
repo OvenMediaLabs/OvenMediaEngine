@@ -35,7 +35,7 @@ namespace ocst
 
 	private:
 		bool _is_valid = false;
-		info::application_id_t _app_id = 0U;
+		[[maybe_unused]] info::application_id_t _app_id = 0U;
 
 		ov::String _scheme;
 

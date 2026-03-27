@@ -187,7 +187,7 @@ namespace pub
 
 		std::chrono::system_clock::time_point _started_time;
 
-		State _state = State::CREATED;
+		std::atomic<State> _state = State::CREATED;
 
 		bool LockIfIdle()
 		{

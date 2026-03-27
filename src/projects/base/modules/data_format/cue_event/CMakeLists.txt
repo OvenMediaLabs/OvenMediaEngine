@@ -1,0 +1,1 @@
+ome_add_static_library(base_cue_event)

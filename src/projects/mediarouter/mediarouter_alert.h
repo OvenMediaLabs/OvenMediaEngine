@@ -37,7 +37,7 @@ public:
 		const std::shared_ptr<MediaPacket> &media_packet);
 
 	bool DetectInvalidPacketDuration(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
-	bool DetectBBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+	bool DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
 	bool DetectPTSDiscontinuity(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
 
 	// <TrackId, Values>

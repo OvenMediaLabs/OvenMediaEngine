@@ -88,8 +88,7 @@ namespace ffmpeg
 			{
 				case cmn::MediaType::Video:
 					media_track->SetFrameRateByConfig(av_q2d(stream->r_frame_rate));
-					media_track->SetWidth(stream->codecpar->width);
-					media_track->SetHeight(stream->codecpar->height);
+					media_track->SetResolution(stream->codecpar->width, stream->codecpar->height);
 					break;
 				case cmn::MediaType::Audio:
 					media_track->SetSampleRate(stream->codecpar->sample_rate);
@@ -518,8 +517,9 @@ namespace ffmpeg
 					av_stream->r_frame_rate		   = AVRational{(int)round(media_track->GetFrameRate() * 1000), 1000};
 					av_stream->avg_frame_rate	   = AVRational{(int)round(media_track->GetFrameRate() * 1000), 1000};
 					av_stream->sample_aspect_ratio = AVRational{1, 1};
-					codecpar->width				   = media_track->GetWidth();
-					codecpar->height			   = media_track->GetHeight();
+					auto resolution				   = media_track->GetResolution();
+					codecpar->width				   = resolution.width;
+					codecpar->height			   = resolution.height;
 					codecpar->sample_aspect_ratio  = AVRational{1, 1};
 
 					// Compatible with macOS

@@ -79,6 +79,11 @@ namespace cfg
 			_is_parsed = is_parsed;
 		}
 
+		void EnsureBuilt() const
+		{
+			RebuildListIfNeeded();
+		}
+
 		bool IsReadOnly() const
 		{
 			return _is_read_only;

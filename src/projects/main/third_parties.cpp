@@ -341,157 +341,57 @@ const char *GetJemallocVersion()
 #endif	// OME_USE_JEMALLOC
 }
 
-namespace third_party::internal
-{
-	static constexpr const char *JEMALLOC_LOG_TAG = "Jemalloc";
-
-#ifdef OME_USE_JEMALLOC
-	class JemallocHelper
-	{
-	public:
-		void Initialize()
-		{
-#	ifdef OME_USE_JEMALLOC_PROFILE
-			logw(JEMALLOC_LOG_TAG, "Jemalloc profiling is enabled - this may slow down the performance.");
-
-			_is_running = true;
-
-			_thread		= std::thread([this]() {
-				while (_is_running.load())
-				{
-					if (_trigger_event.Wait())
-					{
-						_trigger_event.Reset();
-
-						if (_is_running.load())
-						{
-							int result = ::mallctl("prof.dump", nullptr, nullptr, nullptr, 0);
-
-							if (result == 0)
-							{
-								logi(JEMALLOC_LOG_TAG, "Jemalloc profile dumped successfully.");
-							}
-							else
-							{
-								loge(JEMALLOC_LOG_TAG, "Could not dump jemalloc profile (err: %d)", result);
-							}
-						}
-					}
-				}
-			});
-#	endif	// OME_USE_JEMALLOC_PROFILE
-		}
-
-		void Terminate()
-		{
-#	ifdef OME_USE_JEMALLOC_PROFILE
-			_is_running.store(false);
-			_trigger_event.SetEvent();
-			if (_thread.joinable())
-			{
-				_thread.join();
-			}
-#	endif	// OME_USE_JEMALLOC_PROFILE
-		}
-
-		void ShowStats()
-		{
-			::malloc_stats_print(WriteCallback, nullptr, nullptr);
-		}
-
-		void Dump()
-		{
-#	ifdef OME_USE_JEMALLOC_PROFILE
-			_trigger_event.SetEvent();
-#	endif	// OME_USE_JEMALLOC_PROFILE
-		}
-
-	private:
-		static void WriteCallback(void *paque, const char *buf)
-		{
-			logi(JEMALLOC_LOG_TAG, "%s", buf);
-		}
-
-	private:
-		std::atomic<bool> _is_running{true};
-		ov::Event _trigger_event{true};
-		std::thread _thread;
-	};
-
-	static std::shared_ptr<JemallocHelper> g_jemalloc_helper;
-#else  // OME_USE_JEMALLOC
-#	ifdef OME_USE_JEMALLOC_PROFILE
-#		error "`OME_USE_JEMALLOC_PROFILE` requires `OME_USE_JEMALLOC`"
-#	endif	// OME_USE_JEMALLOC_PROFILE
-#endif		// OME_USE_JEMALLOC
-}  // namespace third_party::internal
+static constexpr const char *JEMALLOC_LOG_TAG = "Jemalloc";
 
 std::shared_ptr<ov::Error> InitializeJemalloc()
 {
 #ifdef OME_USE_JEMALLOC
-	if (third_party::internal::g_jemalloc_helper == nullptr)
-	{
-		auto helper = std::make_shared<third_party::internal::JemallocHelper>();
-		helper->Initialize();
-
-		third_party::internal::g_jemalloc_helper = helper;
-	}
-	else
-	{
-		OV_ASSERT2(false);
-	}
-#endif	// OME_USE_JEMALLOC
+#	ifdef OME_USE_JEMALLOC_PROFILE
+	logw(JEMALLOC_LOG_TAG, "Jemalloc profiling is enabled - this may slow down the performance.");
+#	endif	// OME_USE_JEMALLOC_PROFILE
+#endif		// OME_USE_JEMALLOC
 
 	return nullptr;
 }
 
 std::shared_ptr<ov::Error> TerminateJemalloc()
 {
-#ifdef OME_USE_JEMALLOC
-	auto helper = std::move(third_party::internal::g_jemalloc_helper);
-
-	if (helper != nullptr)
-	{
-		helper->Terminate();
-	}
-	else
-	{
-		OV_ASSERT2(false);
-	}
-#endif	// OME_USE_JEMALLOC
-
 	return nullptr;
 }
 
 bool JemallocShowStats()
 {
 #ifdef OME_USE_JEMALLOC
-	if (third_party::internal::g_jemalloc_helper == nullptr)
-	{
-		OV_ASSERT2(false);
-		return false;
-	}
-
-	third_party::internal::g_jemalloc_helper->ShowStats();
+	::malloc_stats_print(
+		+[]([[maybe_unused]] void *opaque, const char *buf) {
+			logi(JEMALLOC_LOG_TAG, "%s", buf);
+		},
+		nullptr, nullptr);
 	return true;
-#else	// OME_USE_JEMALLOC
+#else  // OME_USE_JEMALLOC
+#	ifdef OME_USE_JEMALLOC_PROFILE
+#		error "`OME_USE_JEMALLOC_PROFILE` requires `OME_USE_JEMALLOC`"
+#	endif	// OME_USE_JEMALLOC_PROFILE
+
 	return false;
-#endif	// OME_USE_JEMALLOC
+#endif		// OME_USE_JEMALLOC
 }
 
 bool JemallocTriggerDump()
 {
 #ifdef OME_USE_JEMALLOC_PROFILE
-	if (third_party::internal::g_jemalloc_helper == nullptr)
+	const int result = ::mallctl("prof.dump", nullptr, nullptr, nullptr, 0);
+
+	if (result == 0)
 	{
-		OV_ASSERT2(false);
-		return false;
+		logi(JEMALLOC_LOG_TAG, "Jemalloc profile dumped successfully.");
+		return true;
 	}
 
-	third_party::internal::g_jemalloc_helper->Dump();
-	return true;
+	loge(JEMALLOC_LOG_TAG, "Could not dump jemalloc profile (err: %d)", result);
+	return false;
 #else	// OME_USE_JEMALLOC_PROFILE
-	logw(third_party::internal::JEMALLOC_LOG_TAG, "Dumping jemalloc profile is not enabled. To enable it, define `OME_USE_JEMALLOC_PROFILE` in `global_config.mk`.");
+	logw(JEMALLOC_LOG_TAG, "Dumping jemalloc profile is not enabled. To enable it, define `OME_USE_JEMALLOC_PROFILE` in `global_config.mk`.");
 	return false;
 #endif	// OME_USE_JEMALLOC_PROFILE
 }

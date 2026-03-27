@@ -30,7 +30,7 @@ namespace pub
 		void SendOutgoingData(const std::any &packet) override;
 
 		void SetRecord(std::shared_ptr<info::Record> &record);
-		std::shared_ptr<info::Record> &GetRecord();
+		std::shared_ptr<info::Record> GetRecord();
 		
 		bool AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track);
 		

@@ -96,7 +96,6 @@ RtcStream::RtcStream(const std::shared_ptr<pub::Application> application,
 	  _worker_count(worker_count)
 {
 	_certificate	= application->GetSharedPtrAs<RtcApplication>()->GetCertificate();
-	_vp8_picture_id = 0x8000;  // 1 {000 0000 0000 0000} 1 is marker for 15 bit length
 }
 
 RtcStream::~RtcStream()
@@ -838,7 +837,7 @@ void RtcStream::PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_pa
 
 	memset(&rtp_video_header, 0, sizeof(RTPVideoHeader));
 
-	MakeRtpVideoHeader(&codec_info, &rtp_video_header);
+	MakeRtpVideoHeader(media_track->GetId(), &codec_info, &rtp_video_header);
 
 	// RTP Packetizing
 	auto packetizer = GetPacketizer(media_track->GetId());
@@ -855,7 +854,7 @@ void RtcStream::PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_pa
 	auto fragmentation = media_packet->GetFragHeader();
 
 	packetizer->Packetize(frame_type,
-						  timestamp,
+						  static_cast<uint32_t>(timestamp),
 						  ntp_timestamp,
 						  data->GetDataAs<uint8_t>(),
 						  data->GetLength(),
@@ -894,21 +893,22 @@ void RtcStream::PacketizeAudioFrame(const std::shared_ptr<MediaPacket> &media_pa
 						  nullptr);
 }
 
-uint16_t RtcStream::AllocateVP8PictureID()
+uint16_t RtcStream::AllocateVP8PictureID(uint32_t track_id)
 {
-	_vp8_picture_id++;
+	auto &vp8_picture_id = _vp8_picture_id_map[track_id];
 
 	// PictureID is 7 bit or 15 bit. We use only 15 bit.
-	if (_vp8_picture_id == 0)
+	if (vp8_picture_id == 0)
 	{
 		// 1{000 0000 0000 0000} is initial number. (first bit means to use 15 bit size)
-		_vp8_picture_id = 0x8000;
+		vp8_picture_id = 0x8000;
 	}
 
-	return _vp8_picture_id;
+	vp8_picture_id++;
+	return vp8_picture_id;
 }
 
-void RtcStream::MakeRtpVideoHeader(const CodecSpecificInfo *info, RTPVideoHeader *rtp_video_header)
+void RtcStream::MakeRtpVideoHeader(uint32_t track_id, const CodecSpecificInfo *info, RTPVideoHeader *rtp_video_header)
 {
 	switch (info->codec_type)
 	{
@@ -916,7 +916,7 @@ void RtcStream::MakeRtpVideoHeader(const CodecSpecificInfo *info, RTPVideoHeader
 			rtp_video_header->codec = cmn::MediaCodecId::Vp8;
 			rtp_video_header->codec_header.vp8.InitRTPVideoHeaderVP8();
 			// With Ulpfec, picture id is needed.
-			rtp_video_header->codec_header.vp8.picture_id	 = AllocateVP8PictureID();
+			rtp_video_header->codec_header.vp8.picture_id	 = AllocateVP8PictureID(track_id);
 			rtp_video_header->codec_header.vp8.non_reference = info->codec_specific.vp8.non_reference;
 			rtp_video_header->codec_header.vp8.temporal_idx	 = info->codec_specific.vp8.temporal_idx;
 			rtp_video_header->codec_header.vp8.layer_sync	 = info->codec_specific.vp8.layer_sync;

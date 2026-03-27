@@ -20,6 +20,49 @@
 
 namespace ocst
 {
+	namespace
+	{
+		std::shared_ptr<Error> ValidatePullStreamUrlList(const std::vector<ov::String> &url_list, ov::String *scheme)
+		{
+			if (url_list.empty())
+			{
+				return Error::CreateError(CommonErrorCode::INVALID_REQUEST, "RequestPullStream must have at least one URL");
+			}
+
+			ov::String validated_scheme;
+			for (const auto &url : url_list)
+			{
+				auto parsed_url = ov::Url::Parse(url);
+				if (parsed_url == nullptr)
+				{
+					return Error::CreateError(CommonErrorCode::INVALID_REQUEST, "Invalid URL: %s", url.CStr());
+				}
+
+				auto current_scheme = parsed_url->Scheme().LowerCaseString();
+				if (validated_scheme.IsEmpty())
+				{
+					validated_scheme = current_scheme;
+				}
+				else if (validated_scheme != current_scheme)
+				{
+					return Error::CreateError(CommonErrorCode::INVALID_REQUEST, "Only urls with the same scheme can be sent as a group.");
+				}
+			}
+
+			// A single pull request is still dispatched to one provider module. Before this
+			// refactoring we implicitly used the first URL's scheme (`url_list[0]`) for that
+			// dispatch, so mixed-scheme URL lists were never handled correctly. Keep that
+			// behavior explicit by validating that all URLs share the same scheme and then
+			// returning the validated scheme to the caller.
+			if (scheme != nullptr)
+			{
+				*scheme = validated_scheme;
+			}
+
+			return nullptr;
+		}
+	}  // namespace
+
 	bool Orchestrator::StartServer(const std::shared_ptr<const cfg::Server> &server_config)
 	{
 		_server_config = server_config;
@@ -427,30 +470,22 @@ namespace ocst
 		return resolved;
 	}
 
-	bool Orchestrator::RequestPullStreamWithUrls(
+	std::shared_ptr<Error> Orchestrator::RequestPullStreamWithUrls(
 		const std::shared_ptr<const ov::Url> &request_from,
 		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 		const std::vector<ov::String> &url_list, off_t offset, const std::shared_ptr<pvd::PullStreamProperties> &properties)
 	{
-		if (url_list.empty() == true)
+		ov::String scheme;
+
+		auto validation_error = ValidatePullStreamUrlList(url_list, &scheme);
+		if (validation_error != nullptr)
 		{
-			logtw("RequestPullStream must have at least one URL");
-			return false;
+			return validation_error;
 		}
 
-		auto url = url_list[0];
-		auto parsed_url = ov::Url::Parse(url);
-
-		if (parsed_url == nullptr)
-		{
-			// Invalid URL
-			logte("Pull stream is requested for invalid URL: %s", url.CStr());
-			return false;
-		}
-		
 		auto app_info = info::Application::GetInvalidApplication();
 		// Check if the application does exists
-		app_info = GetApplicationInfo(vhost_app_name);
+		app_info	  = GetApplicationInfo(vhost_app_name);
 		if (app_info.IsValid() == false)
 		{
 			// Create a new application using application template if exists
@@ -459,16 +494,14 @@ namespace ocst
 			auto vhost = GetVirtualHost(vhost_app_name.GetVHostName());
 			if (vhost == nullptr)
 			{
-				logte("Could not find VirtualHost for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find virtual host");
 			}
 
 			// Copy application template configuration
 			auto app_cfg = vhost->GetDynamicApplicationConfigTemplate();
 			if (app_cfg.IsParsed() == false)
 			{
-				logte("Could not find application template for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find application template");
 			}
 
 			// Set the application name
@@ -477,48 +510,43 @@ namespace ocst
 			logti("Trying to create dynamic application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
 			if (CreateApplication(vhost->GetHostInfo(), app_cfg, true) != Result::Succeeded)
 			{
-				logte("Could not create application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::ERROR, "Could not create application");
 			}
 
 			app_info = GetApplicationInfo(vhost_app_name);
 			if (app_info.IsValid() == false)
 			{
 				// MUST NOT HAPPEN
-				logte("Could not find created application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::ERROR, "Could not find created application");
 			}
 		}
 
-		auto provider_module = GetProviderModuleForScheme(parsed_url->Scheme());
+		auto provider_module = GetProviderModuleForScheme(scheme);
 		if (provider_module == nullptr)
 		{
-			logte("Could not find provider for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-			return false;
+			return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find provider for scheme: %s", scheme.CStr());
 		}
-		
+
 		logti("Trying to pull stream [%s/%s] from provider using URL: %s",
-				vhost_app_name.CStr(), stream_name.CStr(),
-				GetModuleTypeName(provider_module->GetModuleType()).CStr());
+			  vhost_app_name.CStr(), stream_name.CStr(),
+			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
 		auto stream = provider_module->PullStream(request_from, app_info, stream_name, url_list, offset, properties);
 		if (stream != nullptr)
 		{
 			logti("The stream was pulled successfully: [%s/%s] (%u)",
-					vhost_app_name.CStr(), stream_name.CStr(), stream->GetId());
+				  vhost_app_name.CStr(), stream_name.CStr(), stream->GetId());
 
-			return true;
+			return nullptr;
 		}
 
-		logte("Could not pull stream [%s/%s] from provider: %s",
-				vhost_app_name.CStr(), stream_name.CStr(),
-				GetModuleTypeName(provider_module->GetModuleType()).CStr());
-
-		return true;
+		return Error::CreateError(CommonErrorCode::ERROR,
+								  "Could not pull stream from provider: %s",
+								  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 	}
 
 	// Pull a stream using Origin map
-	bool Orchestrator::RequestPullStreamWithOriginMap(
+	std::shared_ptr<Error> Orchestrator::RequestPullStreamWithOriginMap(
 		const std::shared_ptr<const ov::Url> &request_from,
 		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 		off_t offset)
@@ -528,27 +556,24 @@ namespace ocst
 		std::vector<ov::String> url_list;
 		Origin matched_origin;
 		auto &host_name = request_from->Host();
-		
+
 		std::vector<ov::String> url_list_in_map;
 		if (GetUrlListForLocation(vhost_app_name, host_name, stream_name, matched_origin, url_list_in_map) == false)
 		{
-			logte("Could not find Origin for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-			return false;
+			return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find origin");
 		}
 
 		if (matched_origin.IsValid() == false)
 		{
 			// Origin/Domain can never be nullptr if origin is found
 			OV_ASSERT2(matched_origin.IsValid() == true);
-			logte("Could not find URL list for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-			return false;
+			return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find URL list");
 		}
 
 		provider_module = GetProviderModuleForScheme(matched_origin.GetScheme());
 		if (provider_module == nullptr)
 		{
-			logte("Could not find provider for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-			return false;
+			return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find provider for scheme: %s", matched_origin.GetScheme().CStr());
 		}
 
 		// Check if the application does exists
@@ -558,14 +583,18 @@ namespace ocst
 			// Create a new application using application template if exists
 
 			// Get vhost info
-			auto vhost = GetVirtualHost(vhost_app_name.GetVHostName());
+			auto vhost	 = GetVirtualHost(vhost_app_name.GetVHostName());
+
+			if (vhost == nullptr)
+			{
+				return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find virtual host");
+			}
 
 			// Copy application template configuration
 			auto app_cfg = vhost->GetDynamicApplicationConfigTemplate();
 			if (app_cfg.IsParsed() == false)
 			{
-				logte("Could not find application template for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::NOT_FOUND, "Could not find application template");
 			}
 
 			app_cfg.SetName(vhost_app_name.GetAppName());
@@ -573,16 +602,14 @@ namespace ocst
 			logti("Trying to create dynamic application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
 			if (CreateApplication(vhost->GetHostInfo(), app_cfg, true) != Result::Succeeded)
 			{
-				logte("Could not create application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::ERROR, "Could not create application");
 			}
 
 			app_info = GetApplicationInfo(vhost_app_name);
 			if (app_info.IsValid() == false)
 			{
 				// MUST NOT HAPPEN
-				logte("Could not find created application for the stream: [%s/%s]", vhost_app_name.CStr(), stream_name.CStr());
-				return false;
+				return Error::CreateError(CommonErrorCode::ERROR, "Could not find created application");
 			}
 		}
 
@@ -624,14 +651,12 @@ namespace ocst
 		auto stream = provider_module->PullStream(request_from, app_info, stream_name, url_list, offset, properties);
 		if (stream != nullptr)
 		{
-			return true;
+			return nullptr;
 		}
 
-		logte("Could not pull stream [%s/%s] from provider: %s",
-			  vhost_app_name.CStr(), stream_name.CStr(),
-			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
-
-		return false;
+		return Error::CreateError(CommonErrorCode::ERROR,
+								  "Could not pull stream from provider: %s",
+								  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 	}
 
 	/// Delete PullStream

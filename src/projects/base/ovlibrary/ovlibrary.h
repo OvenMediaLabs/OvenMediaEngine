@@ -51,5 +51,6 @@
 #include "./precise_timer.h"
 #include "./files.h"
 #include "./sequencial_map.h"
+#include "./thread_checker.h"
 
 #include "./logger/logger.h"

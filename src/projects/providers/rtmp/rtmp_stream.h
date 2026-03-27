@@ -173,11 +173,6 @@ namespace pvd
 		// Singed Policy
 		uint64_t _stream_expired_msec = 0;
 
-		// Make first PTS 0
-		bool _first_frame = true;
-		int64_t _first_pts_offset = 0;
-		int64_t _first_dts_offset = 0;
-
 		// Data frame
 		int64_t _last_video_pts_in_ms = 0;
 		ov::StopWatch _last_video_pts_clock;

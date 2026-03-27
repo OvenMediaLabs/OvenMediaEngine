@@ -267,12 +267,7 @@ namespace ov
 		}
 
 		// padding 데이터 및 입력 데이터를 hash
-#if defined(__clang__)
-		uint8_t inner[digest_size];
-		memset(&inner, 0, digest_size);
-#else
-		uint8_t inner[digest_size] = { 0 };
-#endif
+		uint8_t inner[block_length] = { 0 };
 		bool result = true;
 
 		// inner hash

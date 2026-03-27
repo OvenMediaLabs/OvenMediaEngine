@@ -427,16 +427,16 @@ namespace ov
 								{
 									if (socket->GetSockOpt(SO_ERROR, &socket_error))
 									{
-										logat("EPOLLERR detected: %s\n", ::strerror(socket_error));
+										logat("EPOLLERR detected: %s", ::strerror(socket_error));
 									}
 									else
 									{
-										logat("EPOLLERR detected, errno: %s\n", Error::CreateErrorFromErrno()->What());
+										logat("EPOLLERR detected, errno: %s", Error::CreateErrorFromErrno()->What());
 									}
 								}
 								else
 								{
-									logat("EPOLLERR detected, errno: %s\n", SrtError::CreateErrorFromSrt()->What());
+									logat("EPOLLERR detected, errno: %s", SrtError::CreateErrorFromSrt()->What());
 								}
 							}
 #endif	// DEBUG
@@ -796,6 +796,11 @@ namespace ov
 		for (auto socket_item : socket_list)
 		{
 			auto socket = socket_item.second;
+
+			if (socket->HasPendingEvents() && socket->IsClosable())
+			{
+				socket->OnDataAvailableEvent();
+			}
 
 			switch (socket->DispatchEvents())
 			{

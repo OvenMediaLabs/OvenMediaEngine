@@ -67,7 +67,7 @@ namespace mon::alrt
 
 		bool IsAlertNeeded(const ov::String &messages_key, const std::vector<std::shared_ptr<Message>> &message_list);
 		void SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::shared_ptr<StreamMetrics> &stream_metric);
-		void SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list);
+		void SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list);
 
 		void CleanupReleasedMessages(const std::vector<ov::String> &new_messages_keys);
 		bool PutVerifiedMessages(const ov::String &messages_key, std::vector<std::shared_ptr<Message>> &message_list);

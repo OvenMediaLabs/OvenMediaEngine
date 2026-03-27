@@ -55,13 +55,13 @@ MediaRouteApplication::MediaRouteApplication(const info::Application &applicatio
 	{
 		{
 			auto urn = std::make_shared<info::ManagedQueue::URN>(_application_info.GetVHostAppName(), nullptr, "imr", ov::String::FormatString("aw_%d", worker_id));
-			auto stream_data = std::make_shared<ov::ManagedQueue<std::shared_ptr<MediaRouteStream>>>(urn, 1000);
+			auto stream_data = std::make_shared<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>(urn, 1000);
 			_inbound_stream_indicator.push_back(stream_data);
 		}
 
 		{
 			auto urn = std::make_shared<info::ManagedQueue::URN>(_application_info.GetVHostAppName(), nullptr, "omr", ov::String::FormatString("aw_%d", worker_id));
-			auto stream_data = std::make_shared<ov::ManagedQueue<std::shared_ptr<MediaRouteStream>>>(urn, 1000);
+			auto stream_data = std::make_shared<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>(urn, 1000);
 			stream_data->SetBufferingDelay(delay_buffer_time_ms);
 			_outbound_stream_indicator.push_back(stream_data);
 		}
@@ -770,7 +770,7 @@ bool MediaRouteApplication::OnPacketReceived(const std::shared_ptr<MediaRouterAp
 
 		stream->Push(packet);
 
-		_inbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(stream, packet->IsHighPriority());
+		_inbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
 	}
 	// Provider(relay), Transcoder => Outbound Stream
 	else if ((IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_RELAY(representation_type)) ||
@@ -784,7 +784,7 @@ bool MediaRouteApplication::OnPacketReceived(const std::shared_ptr<MediaRouterAp
 
 		stream->Push(packet);
 
-		_outbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(stream, packet->IsHighPriority());
+		_outbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
 	}
 	else
 	{
@@ -889,10 +889,10 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 			continue;
 		}
 
-		auto stream = msg.value();
+		auto stream = msg.value().lock();
 		if (stream == nullptr)
 		{
-			logtw("Not found stream info");
+			// Stream was already destroyed.
 			continue;
 		}
 
@@ -975,10 +975,10 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 			// It may be called due to a normal stop signal.
 			continue;
 		}
-		auto stream = msg.value();
+		auto stream = msg.value().lock();
 		if (stream == nullptr)
 		{
-			logtw("Not found stream info");
+			// Stream was already destroyed (e.g. deleted while packets were buffered in delay queue).
 			continue;
 		}
 

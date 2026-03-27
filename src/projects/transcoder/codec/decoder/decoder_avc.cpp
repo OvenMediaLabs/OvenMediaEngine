@@ -50,18 +50,6 @@ bool DecoderAVC::InitCodec()
 	return true;
 }
 
-void DecoderAVC::UninitCodec()
-{
-	if (_codec_context)
-	{
-		if (_codec_context->codec)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
-}
-
 bool DecoderAVC::ReinitCodecIfNeed()
 {
 	if (_codec_context->width != 0 && _codec_context->height != 0 && (_parser->width != _codec_context->width || _parser->height != _codec_context->height))
@@ -247,4 +235,6 @@ void DecoderAVC::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();
 }

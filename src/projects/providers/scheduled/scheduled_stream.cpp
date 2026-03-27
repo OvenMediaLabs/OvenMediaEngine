@@ -1198,7 +1198,7 @@ namespace pvd
     std::shared_ptr<MediaRouterStreamTap> ScheduledStream::PrepareStreamPlayback(const std::shared_ptr<Schedule::Item> &item)
     {
         auto stream_tap = MediaRouterStreamTap::Create();
-		// 첫번째 재생인 경우에만 keyframe부터 나가야되니까 그때 적용할까?
+		// This is commented out because it is likely to cause problems every time a live item is switched. It seems that various tests will be needed.
 		// stream_tap->SetNeedPastData(true);
 
         auto stream_url = ov::Url::Parse(item->_url);
@@ -1227,10 +1227,11 @@ namespace pvd
         _origin_id_track_id_map.clear();
         bool video_track_needed = _channel_info._video_track;
         bool audio_track_needed = _channel_info._audio_track;
+        bool forward_data_needed = item->_forward_data;
 		uint32_t audio_index = 0;
         for (const auto &[track_id, track] : stream_tap->GetStreamInfo()->GetTracks())
         {
-            if (video_track_needed == false && audio_track_needed == false)
+            if (video_track_needed == false && audio_track_needed == false && forward_data_needed == false)
             {
                 break;
             }
@@ -1280,6 +1281,29 @@ namespace pvd
                 	audio_track_needed = false;
 				}
             }
+            else if (track->GetMediaType() == cmn::MediaType::Data &&
+                forward_data_needed == true)
+            {
+                auto new_track = std::make_shared<MediaTrack>(*track);
+                if (new_track == nullptr)
+                {
+                    continue;
+                }
+
+				auto old_track = GetTrack(kScheduledDataTrackId);
+				if (old_track == nullptr)
+				{
+					continue;
+				}
+
+                new_track->SetId(kScheduledDataTrackId);
+                new_track->SetTimeBase(1, 1000);
+				new_track->SetPublicName(old_track->GetPublicName());
+                _origin_id_track_id_map.emplace(track_id, kScheduledDataTrackId);
+                UpdateTrack(new_track);
+
+                forward_data_needed = false;
+            }
             else
             {
                 continue;
@@ -1293,6 +1317,11 @@ namespace pvd
                 video_track_needed == true ? "video" : "audio", item->_url.CStr());
             ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
             return nullptr;
+        }
+
+        if (forward_data_needed == true)
+        {
+            logtw("%s/%s: Failed to find data track from stream %s. Data forwarding will be skipped.", GetApplicationName(), GetName().CStr(), item->_url.CStr());
         }
 
         if (UpdateStream() == false)

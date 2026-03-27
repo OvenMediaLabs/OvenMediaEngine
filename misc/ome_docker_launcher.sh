@@ -138,7 +138,7 @@ banner()
 
 # Configurations
 IMAGE_NAME=airensoft/ovenmediaengine:latest
-CONTAINER_NAME=${CONTAINER_NAME:-ovenemediaengine}
+CONTAINER_NAME=${CONTAINER_NAME:-ovenmediaengine}
 PREFIX=${PREFIX:-/usr/share/ovenmediaengine/}
 
 if command -v realpath > /dev/null 2>&1

@@ -62,7 +62,8 @@ namespace pvd
 			{
 				if (_url != rhs._url ||
 					_start_time_ms_conf != rhs._start_time_ms_conf ||
-					_duration_ms_conf != rhs._duration_ms_conf)
+					_duration_ms_conf != rhs._duration_ms_conf ||
+				_forward_data != rhs._forward_data)
 				{
 					return false;
 				}
@@ -81,6 +82,7 @@ namespace pvd
 			bool _fallback_on_err = true;  // default true
 			bool _file			 = true;
 			bool _fallback		 = false;
+			bool _forward_data	 = false;  // forward data from live input (stream:// only)
 
 			// setting values
 			int64_t _start_time_ms_conf;
@@ -108,7 +110,7 @@ namespace pvd
 				if (_name != rhs._name ||
 					_bypass_transcoder != rhs._bypass_transcoder ||
 					_video_track != rhs._video_track ||
-					_audio_track != rhs._audio_track)
+				_audio_track != rhs._audio_track)
 				{
 					return false;
 				}
@@ -225,10 +227,10 @@ namespace pvd
 		bool ReadProgramObjects(const Json::Value &root_object);
 		bool ReadItemObjects(const Json::Value &item_parent_object, std::vector<std::shared_ptr<Item>> &items);
 
-		Stream MakeStream(const ov::String &name, bool bypass_transcoder, bool video_track, bool audio_track) const;
+			Stream MakeStream(const ov::String &name, bool bypass_transcoder, bool video_track, bool audio_track) const;
 		std::shared_ptr<Program> MakeFallbackProgram() const;
 		std::shared_ptr<Program> MakeProgram(const ov::String &name, const ov::String &scheduled_time, const ov::String &next_scheduled_time, bool repeat, bool last) const;
-		std::shared_ptr<Item> MakeItem(const ov::String &url, int64_t start_time_ms_conf, int64_t duration_ms_conf, bool fallback_on_err) const;
+std::shared_ptr<Item> MakeItem(const ov::String &url, int64_t start_time_ms_conf, int64_t duration_ms_conf, bool fallback_on_err, bool forward_data) const;
 
 		Stream _stream;
 		std::shared_ptr<Program> _fallback_program;

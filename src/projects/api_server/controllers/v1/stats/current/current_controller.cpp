@@ -28,6 +28,10 @@ namespace api
 			ApiResponse CurrentController::OnGetServerMetrics(const std::shared_ptr<http::svr::HttpExchange> &client)
 			{
 				auto serverMetric = MonitorInstance->GetServerMetrics();
+				if (serverMetric == nullptr)
+				{
+					return Json::Value(Json::ValueType::nullValue);
+				}
 				return ::serdes::JsonFromMetrics(serverMetric);
 			}
 		}  // namespace stats

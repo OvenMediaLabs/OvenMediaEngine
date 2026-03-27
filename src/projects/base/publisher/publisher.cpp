@@ -177,8 +177,14 @@ namespace pub
 
 		// Pull stream with the local origin map
 		logti("Try to pull stream from local origin map: [%s/%s]", vapp_name.CStr(), stream_name.CStr());
-		if (orchestrator->RequestPullStreamWithOriginMap(request_from, vhost_app_name, stream_name) == false)
+		auto origin_map_error = orchestrator->RequestPullStreamWithOriginMap(request_from, vhost_app_name, stream_name);
+		if (origin_map_error != nullptr)
 		{
+			logtw("Could not pull stream from local origin map [%s/%s]: %s",
+				  vapp_name.CStr(),
+				  stream_name.CStr(),
+				  origin_map_error->What());
+
 			// Pull stream with the origin map store
 			logti("Try to pull stream from origin map store: [%s/%s]", vapp_name.CStr(), stream_name.CStr());
 			auto origin_url = orchestrator->GetOriginUrlFromOriginMapStore(vhost_app_name, stream_name);
@@ -194,8 +200,14 @@ namespace pub
 				properties->EnableRelay(true);
 			}
 
-			if (orchestrator->RequestPullStreamWithUrls(request_from, vhost_app_name, stream_name, {origin_url->ToUrlString()}, 0, properties) == false)
+			auto origin_store_error = orchestrator->RequestPullStreamWithUrls(request_from, vhost_app_name, stream_name, {origin_url->ToUrlString()}, 0, properties);
+			if (origin_store_error != nullptr)
 			{
+				logte("Could not pull stream from origin map store [%s/%s]: %s",
+					  vapp_name.CStr(),
+					  stream_name.CStr(),
+					  origin_store_error->What());
+
 				return nullptr;
 			}
 		}

@@ -58,7 +58,7 @@ bool MediaRouterAlert::Update(
 
 	if (type == cmn::MediaRouterStreamType::INBOUND || type == cmn::MediaRouterStreamType::OUTBOUND)
 	{
-		if (DetectBBframes(stream_info, media_track, media_packet) == false)
+		if (DetectBframes(stream_info, media_track, media_packet) == false)
 		{
 			return false;
 		}
@@ -84,7 +84,7 @@ bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::S
 	return true;
 }
 
-bool MediaRouterAlert::DetectBBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	switch (media_packet->GetBitstreamFormat())
 	{

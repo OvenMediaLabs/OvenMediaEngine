@@ -25,6 +25,9 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseAndAssembleFrame(std::vector
 		reserve_size += 16;	 // spare
 	}
 
+	// Reset FU DPS reassembly buffer at frame boundary
+	_fu_dps_buffer = nullptr;
+
 	auto bitstream = std::make_shared<ov::Data>(reserve_size);
 	for (const auto &payload : payload_list)
 	{
@@ -149,7 +152,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const st
 	// FU header
 	uint8_t fu_hdr = buffer[offset];
 	uint8_t fu_s = FUH_SBIT(fu_hdr);
-	[[maybe_unused]] uint8_t fu_e = FUH_EBIT(fu_hdr);
+	uint8_t fu_e = FUH_EBIT(fu_hdr);
 	uint8_t fu_type = FUH_TYPE(fu_hdr);
 	offset += FU_HEADER_SIZE;
 
@@ -160,12 +163,10 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const st
 		return nullptr;
 	}
 
-	// If the S field is 1, the FU header must include the DONL(Conditional) field.
-	if (fu_s == 1 && payload->GetLength() < PAYLOAD_HEADER_SIZE + FU_HEADER_SIZE + DONL_FIELD_SIZE)
-	{
-		// Invalid Data
-		return nullptr;
-	}
+	// DONL is conditionally present only when S=1 and sprop-max-don-diff > 0 (SDP negotiated).
+	// sprop-max-don-diff > 0 is not used in WebRTC (browsers do not support it) and is
+	// virtually never seen in real RTSP sources either. OvenMediaEngine assumes
+	// sprop-max-don-diff=0 (the default), so DONL is treated as absent.
 
 	// If the S field is 1, the NAL header must be attached.
 	if (fu_s == 1)
@@ -179,8 +180,35 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const st
 		bitstream->Append(nal_header, PAYLOAD_HEADER_SIZE);
 	}
 
+	// Cache VPS/SPS/PPS carried over FU (non-standard but possible encoders)
+	const size_t fu_payload_length = payload->GetLength() - PAYLOAD_HEADER_SIZE - FU_HEADER_SIZE;
+	if (fu_s == 1)
+	{
+		_fu_dps_buffer = nullptr;
+
+		if (IsDecodingParmeterSets(fu_type))
+		{
+			_fu_dps_nal_type = fu_type;
+			_fu_dps_buffer = std::make_shared<ov::Data>();
+
+			uint8_t nal_header[2];
+			ByteWriter<uint16_t>::WriteBigEndian((uint8_t *)&nal_header[0], NUH_HEADER(fu_type, nuh_layer_id, nuh_temporal_id));
+			_fu_dps_buffer->Append(nal_header, PAYLOAD_HEADER_SIZE);
+			_fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
+		}
+	}
+	else if (_fu_dps_buffer != nullptr)
+	{
+		_fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
+		if (fu_e == 1)
+		{
+			AddDecodingParameterSet(_fu_dps_nal_type, _fu_dps_buffer);
+			_fu_dps_buffer = nullptr;
+		}
+	}
+
 	// Set FU Payload
-	bitstream->Append(&buffer[offset], payload->GetLength() - PAYLOAD_HEADER_SIZE - FU_HEADER_SIZE);
+	bitstream->Append(&buffer[offset], fu_payload_length);
 
 	return bitstream;
 }

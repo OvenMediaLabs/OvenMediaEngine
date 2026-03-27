@@ -1,6 +1,6 @@
 # Subtitles
 
-From OvenMediaEngine 0.19.1 and later, you can insert subtitles into live streams in real time using the API.&#x20;
+From OvenMediaEngine 0.19.1 and later, you can insert subtitles into live streams in real time using the API.
 
 <figure><img src="../.gitbook/assets/image (1).png" alt=""><figcaption></figcaption></figure>
 
@@ -10,36 +10,33 @@ From OvenMediaEngine 0.19.1 and later, you can insert subtitles into live stream
 Currently, the LL-HLS and HLS publishers are supported. WebRTC will be supported in future releases.
 {% endhint %}
 
-To enable subtitles, add a `subtitles` section under  `<Application><OutputProfiles><MediaOptions>` as follows:
+To enable subtitles, add a `Subtitles` section under `<Application>` as follows:
+
+{% hint style="warning" %}
+The `<Subtitles>` configuration has been moved from `<Application><OutputProfiles><MediaOptions><Subtitles>` to `<Application><Subtitles>`. Please update your existing configuration accordingly.
+{% endhint %}
 
 ```xml
 <Application>
     <Name>app</Name>
     <Type>live</Type>
 
+    <Subtitles>
+        <Enable>true</Enable>
+        <DefaultLabel>Korean</DefaultLabel>
+        <Rendition>
+            <Language>ko</Language>
+            <Label>Korean</Label>
+            <AutoSelect>true</AutoSelect>
+            <Forced>false</Forced>
+        </Rendition>
+        <Rendition>
+            <Language>en</Language>
+            <Label>English</Label>
+        </Rendition>
+    </Subtitles>
     <OutputProfiles>
-        <MediaOptions>
-            <Subtitles>
-                <Enable>true</Enable>
-                <DefaultLabel>Korean</DefaultLabel>
-                <Rendition>
-                    <Language>ko</Language>
-                    <Label>Korean</Label>
-                    <AutoSelect>true</AutoSelect>
-                    <Forced>false</Forced>
-                </Rendition>
-                <Rendition>
-                    <Language>en</Language>
-                    <Label>English</Label>
-                </Rendition>
-            </Subtitles>
-        </MediaOptions>
-
-        <OutputProfile>
-            <Name>stream</Name>
-            <OutputStreamName>${OriginStreamName}</OutputStreamName>
-            ... omitted ...
-        </OutputProfile>
+        ...
     </OutputProfiles>
 </Application>
 ```
@@ -72,8 +69,3 @@ To disable subtitles for a specific playlist, set `<Playlist><Options><EnableSub
 		...
 	</Options>
 ```
-
-
-
-
-

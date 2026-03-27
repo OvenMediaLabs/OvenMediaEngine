@@ -36,11 +36,15 @@ namespace mon
 
 	void StreamMetrics::LinkOutputStreamMetrics(const std::shared_ptr<StreamMetrics> &stream)
 	{
+		std::scoped_lock lock(_output_stream_metrics_mutex);
+
 		_output_stream_metrics.push_back(stream);
 	}
 
 	std::vector<std::shared_ptr<StreamMetrics>> StreamMetrics::GetLinkedOutputStreamMetrics() const
 	{
+		std::shared_lock lock(_output_stream_metrics_mutex);
+
 		return _output_stream_metrics;
 	}
 

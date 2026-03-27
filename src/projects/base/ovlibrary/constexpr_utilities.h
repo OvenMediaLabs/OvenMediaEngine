@@ -72,31 +72,26 @@ namespace ov
 			}
 
 			const char *p1 = haystack;
-			const char *p2 = needle;
 
 			while (*p1 != '\0')
 			{
-				if (*p1 == *p2)
+				const char *start = p1;
+				const char *p2 = needle;
+
+				while (*p2 != '\0' && *p1 == *p2)
 				{
-					const char *start = p1;
-
-					while (*p2 != '\0' && *p1 == *p2)
-					{
-						++p1;
-						++p2;
-					}
-
-					if (*p2 == '\0')
-					{
-						// Found the needle
-						return start;
-					}
-
-					// Reset p2 to the start of needle
-					p2 = needle;
+					++p1;
+					++p2;
 				}
 
-				++p1;
+				if (*p2 == '\0')
+				{
+					// Found the needle
+					return start;
+				}
+
+				// Partial match failed: resume from start + 1
+				p1 = start + 1;
 			}
 
 			return nullptr;
@@ -105,10 +100,11 @@ namespace ov
 		constexpr char *StrStr(char *haystack, const char *needle)
 		{
 			// This cast is valid because haystack is a non-const pointer
-			return const_cast<char *>(StrStr(haystack, needle));
+			return const_cast<char *>(StrStr(static_cast<const char *>(haystack), needle));
 		}
 		static_assert(StrCmp(StrStr("Sample", "le"), "le") == 0, "StrStr() doesn't work properly");
 		static_assert(StrCmp(StrStr("Sample", "Sa"), "Sample") == 0, "StrStr() doesn't work properly");
+		static_assert(StrCmp(StrStr("ababac", "abac"), "abac") == 0, "StrStr() doesn't work properly");
 		static_assert(StrStr("Sample", "LE") == nullptr, "StrStr() doesn't work properly");
 
 		constexpr off_t IndexOf(const char *str, const char *sub_str, off_t start_position = 0)

@@ -117,22 +117,32 @@ namespace api
 						logti(" - %s", url.CStr());
 					}
 
-					auto result = orchestrator->RequestPullStreamWithUrls(source_url, app->GetVHostAppName(), stream_name, request_urls, 0, properties);
+					auto error = orchestrator->RequestPullStreamWithUrls(source_url, app->GetVHostAppName(), stream_name, request_urls, 0, properties);
 
-					if (result)
+					if (error == nullptr)
 					{
 						std::vector<std::shared_ptr<mon::StreamMetrics>> output_streams;
 						stream = GetStream(app, stream_name, &output_streams);
 						if (stream == nullptr)
 						{
-							throw http::HttpError(http::StatusCode::BadGateway, ov::String::FormatString("Could not pull the stream : %s", source_url->ToUrlString(true).CStr()));
+							throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", source_url->ToUrlString(true).CStr());
 						}
 
 						return {http::StatusCode::Created};
 					}
 					else
 					{
-						throw http::HttpError(http::StatusCode::BadGateway, ov::String::FormatString("Could not pull the stream : %s", source_url->ToUrlString(true).CStr()));
+						logte("Could not pull stream [%s/%s]: %s",
+							  app->GetVHostAppName().CStr(),
+							  stream_name.CStr(),
+							  error->What());
+
+						if (error->GetCommonErrorCode() == CommonErrorCode::INVALID_REQUEST)
+						{
+							throw http::HttpError(http::StatusCode::BadRequest, error->GetMessage().CStr());
+						}
+
+						throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", source_url->ToUrlString(true).CStr());
 					}
 				}
 				else
@@ -188,24 +198,46 @@ namespace api
 
 				if (publisher != nullptr)
 				{
-					for (auto &output_stream : output_streams)
+					// Relay stream type : made by OriginMap or OriginMapStore, it's output_stream is stream itself
+					if (stream->GetRepresentationType() == StreamRepresentationType::Relay && output_streams.size() == 0)
 					{
-						auto stream = publisher->GetStream(app->GetId(), output_stream->GetId());
-
-						if (stream != nullptr)
+						auto actual_stream = publisher->GetStream(app->GetId(), stream->GetId());
+						if (actual_stream == nullptr)
 						{
-							auto playlist = stream->GetDefaultPlaylist();
+							continue;
+						}
 
-							if (playlist != nullptr)
+						auto playlist = actual_stream->GetDefaultPlaylist();
+						if (playlist == nullptr)
+						{
+							continue;
+						}
+
+						stream->AddPlaylist(std::make_shared<info::Playlist>(*playlist));
+					}
+					else
+					{
+						for (auto &output_stream : output_streams)
+						{
+							auto actual_stream = publisher->GetStream(app->GetId(), output_stream->GetId());
+							if (actual_stream == nullptr)
 							{
-								output_stream->AddPlaylist(std::make_shared<info::Playlist>(*playlist));
+								continue;
 							}
+							
+							auto playlist = actual_stream->GetDefaultPlaylist();
+							if (playlist == nullptr)
+							{
+								continue;
+							}
+								
+							output_stream->AddPlaylist(std::make_shared<info::Playlist>(*playlist));
 						}
 					}
 				}
 			}
 
-			return ::serdes::JsonFromStream(stream, std::move(output_streams));
+			return ::serdes::JsonFromStream(stream, output_streams);
 		}
 
 		ApiResponse StreamsController::OnDeleteStream(const std::shared_ptr<http::svr::HttpExchange> &client,

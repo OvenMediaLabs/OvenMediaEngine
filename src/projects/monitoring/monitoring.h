@@ -7,8 +7,6 @@
 #include "./alert/alert.h"
 #include "base/info/info.h"
 #include "base/ovlibrary/delay_queue.h"
-#include "event_forwarder.h"
-#include "event_logger.h"
 #include "server_metrics.h"
 
 #define MonitorInstance mon::Monitoring::GetInstance()
@@ -29,15 +27,9 @@ namespace mon
 
 		void Release();
 
-		void SetLogPath(const ov::String &log_path);
-
-		bool IsAnalyticsOn()
-		{
-			return _is_analytics_on;
-		}
-
 		std::shared_ptr<ServerMetrics> GetServerMetrics();
 		std::map<uint32_t, std::shared_ptr<HostMetrics>> GetHostMetricsList();
+		std::map<uint32_t, std::shared_ptr<QueueMetrics>> GetQueueMetricsList();
 		std::shared_ptr<HostMetrics> GetHostMetrics(const info::Host &host_info);
 		std::shared_ptr<ApplicationMetrics> GetApplicationMetrics(const info::Application &app_info);
 		std::shared_ptr<StreamMetrics> GetStreamMetrics(const info::Stream &stream_info);
@@ -60,14 +52,23 @@ namespace mon
 		void OnSessionDisconnected(const info::Stream &stream_info, PublisherType type);
 		void OnSessionsDisconnected(const info::Stream &stream_info, PublisherType type, uint64_t number_of_sessions);
 
+		// Queue events (proxy for ServerMetrics)
+		bool OnQueueCreated(const info::ManagedQueue &queue_info);
+		void OnQueueDeleted(const info::ManagedQueue &queue_info);
+		void OnQueueUpdated(const info::ManagedQueue &queue_info, bool with_metadata = false);
+
 		std::shared_ptr<alrt::Alert> GetAlert();
+		// Alert proxy methods (thread-safe)
+		void SendStreamAlertMessage(alrt::Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric, const std::shared_ptr<StreamMetrics> &parent_stream_metric, const std::shared_ptr<alrt::ExtraData> &extra);
+		void SendStreamAlertMessage(alrt::Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric);
+
+		
 
 	private:
 		ov::DelayQueue _timer{"MonLogTimer"};
+		mutable std::shared_mutex _server_metric_guard;
 		std::shared_ptr<ServerMetrics> _server_metric = nullptr;
-		EventLogger _logger;
-		EventForwarder _forwarder;
+		mutable std::shared_mutex _alert_guard;
 		std::shared_ptr<alrt::Alert> _alert = nullptr;
-		bool _is_analytics_on				= false;
 	};
 }  // namespace mon

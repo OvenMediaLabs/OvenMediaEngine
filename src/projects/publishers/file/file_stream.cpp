@@ -42,9 +42,14 @@ namespace pub
 			return false;
 		}
 
-		std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), false);
+		auto result = Stream::Start();
+		if (result == true)
+		{
+			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), false);
+			_stop_watch.Start();
+		}
 
-		return Stream::Start();
+		return result;
 	}
 
 	bool FileStream::Stop()
@@ -54,11 +59,14 @@ namespace pub
 			return false;
 		}
 
-		logtt("FileStream(%u) has been stopped", GetId());
+		auto result = Stream::Stop();
+		if (result == true)
+		{
+			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), true);
+			_stop_watch.Stop();
+		}
 
-		std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), true);
-
-		return Stream::Stop();
+		return result;
 	}
 
 	void FileStream::SendFrame(const std::shared_ptr<MediaPacket> &media_packet)
@@ -71,6 +79,7 @@ namespace pub
 		// Periodically check the session. Retry the session in which the error occurred.
 		if (_stop_watch.IsElapsed(5000) && _stop_watch.Update())
 		{
+			// If the recording is failed, it is for retrying.
 			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), false);
 		}
 

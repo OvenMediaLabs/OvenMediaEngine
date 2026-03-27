@@ -179,7 +179,7 @@ namespace ov
 		while (true)
 		{
 			SocketAddress remote_address;
-			SocketWrapper client_socket = Socket::Accept(&remote_address);
+			auto client_socket = Accept(&remote_address);
 
 			if (client_socket.IsValid() == false)
 			{

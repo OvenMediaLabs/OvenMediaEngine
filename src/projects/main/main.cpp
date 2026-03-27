@@ -32,8 +32,6 @@
 #include "third_parties.h"
 #include "utilities.h"
 
-extern bool g_is_terminated;
-
 static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_option);
 static void CheckKernelVersion();
 static bool Uninitialize();
@@ -63,6 +61,8 @@ int main(int argc, char *argv[])
 				return 1;
 		}
 	}
+
+	ov::ThreadChecker::InitMainThread();
 
 	PrintBanner();
 	CheckKernelVersion();
@@ -170,9 +170,8 @@ int main(int argc, char *argv[])
 					ov::Daemon::SetEvent();
 				}
 
-				while (g_is_terminated == false)
+				while (ov::sig::WaitAndStop(1000) == false)
 				{
-					sleep(1);
 				}
 			}
 		}
@@ -303,7 +302,7 @@ static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_o
 		}
 	}
 
-	if (::InitializeSignals() == false)
+	if (ov::sig::Initialize() == false)
 	{
 		logte("Could not initialize signals");
 		return ov::Daemon::State::CHILD_FAIL;
@@ -316,9 +315,6 @@ static ov::Daemon::State Initialize(int argc, char *argv[], ParseOption *parse_o
 	try
 	{
 		config_manager->LoadConfigs(parse_option->config_path);
-
-		::SetDumpFallbackPath(::ov_log_get_path());
-
 		return ov::Daemon::State::CHILD_SUCCESS;
 	}
 	catch (const cfg::ConfigError &error)

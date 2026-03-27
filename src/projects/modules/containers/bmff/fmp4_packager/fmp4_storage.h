@@ -189,7 +189,7 @@ namespace bmff
 		mutable std::shared_mutex _segments_lock;
 
 		int64_t _initial_segment_number = 0;
-		int64_t _start_timestamp_delta = -1;
+		[[maybe_unused]] int64_t _start_timestamp_delta = -1;
 
 		double _max_chunk_duration_ms = 0;
 		double _min_chunk_duration_ms = static_cast<double>(std::numeric_limits<uint64_t>::max());
@@ -204,8 +204,8 @@ namespace bmff
 		ov::String _stream_tag;
 
 		// for making CUE-OUT-CONT
-		bool _is_cue_out_on = false;
-		uint32_t _cue_out_duration_msec = 0;
-		uint32_t _cue_out_elapsed_msec = 0;
+		[[maybe_unused]] bool _is_cue_out_on = false;
+		[[maybe_unused]] uint32_t _cue_out_duration_msec = 0;
+		[[maybe_unused]] uint32_t _cue_out_elapsed_msec = 0;
 	};
 }

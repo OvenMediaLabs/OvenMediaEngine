@@ -215,4 +215,6 @@ void DecoderAAC::CodecThread()
 			_change_format = true;
 		}
 	}
+	
+	UninitCodec();	
 }

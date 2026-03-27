@@ -11,12 +11,51 @@
 #include <base/mediarouter/mediarouter_interface.h>
 #include <base/provider/provider.h>
 #include <base/publisher/publisher.h>
+#include <modules/http/http_error.h>
 
 #include "virtual_host.h"
 #include "module.h"
 
 namespace ocst
 {
+	class Error : public ov::Error
+	{
+	public:
+		Error(CommonErrorCode code, const char *message)
+			: ov::Error("Orchestrator", ov::ToUnderlyingType(code), message)
+		{
+		}
+
+		template <typename... Targs>
+		Error(CommonErrorCode code, const char *format, Targs... args)
+			: ov::Error("Orchestrator", ov::ToUnderlyingType(code), ov::String::FormatString(format, args...))
+		{
+		}
+
+		static std::shared_ptr<Error> CreateError(CommonErrorCode code, const char *message)
+		{
+			return std::make_shared<Error>(code, message);
+		}
+
+		template <typename... Targs>
+		static std::shared_ptr<Error> CreateError(CommonErrorCode code, const char *format, Targs... args)
+		{
+			return std::make_shared<Error>(code, format, args...);
+		}
+
+		CommonErrorCode GetCommonErrorCode() const
+		{
+			return static_cast<CommonErrorCode>(GetCode());
+		}
+
+		std::shared_ptr<http::HttpError> ToHttpError() const
+		{
+			return http::HttpError::CreateError(
+				http::StatusCodeFromCommonError(GetCommonErrorCode()),
+				GetMessage().CStr());
+		}
+	};
+
 	class Orchestrator : public ov::Singleton<Orchestrator>, 
 							public Application::CallbackInterface
 	{
@@ -94,7 +133,18 @@ namespace ocst
 		const info::Application &GetApplicationInfo(const ov::String &vhost_name, const ov::String &app_name) const;
 		const info::Application &GetApplicationInfo(const info::VHostAppName &vhost_app_name) const;
 
-		bool RequestPullStreamWithUrls(
+		/// Pull a stream using specified URLs with offset
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		/// @param url_list URLs to pull. All URLs in the list must use the same scheme,
+		/// because one pull request is dispatched to a single provider module
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		/// @param properties Additional pull stream properties
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrls(
 			const std::shared_ptr<const ov::Url> &request_from,
 			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 			const std::vector<ov::String> &url_list, off_t offset,
@@ -102,12 +152,14 @@ namespace ocst
 
 		/// Pull a stream using specified URL with offset
 		///
-		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
-		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
-		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
 		/// @param url URL to pull
 		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
-		bool RequestPullStreamWithUrl(
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrl(
 			const std::shared_ptr<const ov::Url> &request_from,
 			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 			const ov::String &url, off_t offset)
@@ -117,11 +169,13 @@ namespace ocst
 
 		/// Pull a stream using specified URL
 		///
-		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
-		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
-		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
 		/// @param url URL to pull
-		bool RequestPullStreamWithUrl(
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrl(
 			const std::shared_ptr<const ov::Url> &request_from,
 			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 			const ov::String &url)
@@ -131,21 +185,25 @@ namespace ocst
 
 		/// Pull a stream using Origin map with offset
 		///
-		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
-		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
-		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
 		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
-		bool RequestPullStreamWithOriginMap(
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithOriginMap(
 			const std::shared_ptr<const ov::Url> &request_from,
 			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 			off_t offset);
 
 		/// Pull a stream using Origin map with offset
 		///
-		/// @param request_from Source from which RequestPullStream() invoked (Mainly provided when requested by Publisher)
-		/// @param vhost_app_name When the URL is pulled, its stream is created in this vhost_name and app_name
-		/// @param stream_name When the URL is pulled, its stream is created in this stream_name
-		bool RequestPullStreamWithOriginMap(
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithOriginMap(
 			const std::shared_ptr<const ov::Url> &request_from,
 			const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
 		{

@@ -332,11 +332,12 @@ namespace mon
 
 		json_stream["tracks"] = serdes::JsonFromTracks(stream_metric->GetTracks());
 
-		if (stream_metric->GetLinkedOutputStreamMetrics().empty() == false)
+		auto stream_metrics = stream_metric->GetLinkedOutputStreamMetrics();
+		if (stream_metrics.empty() == false)
 		{
 			Json::Value &json_outputs = json_stream["outputs"];
 
-			for (const auto &output_stream_metric : stream_metric->GetLinkedOutputStreamMetrics())
+			for (const auto &output_stream_metric : stream_metrics)
 			{
 				Json::Value json_output_stream;
 

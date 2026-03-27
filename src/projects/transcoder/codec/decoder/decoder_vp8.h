@@ -23,23 +23,22 @@ public:
 		return cmn::MediaCodecId::Vp8;
 	}
 
-	cmn::MediaCodecModuleId GetModuleID() const noexcept
+	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
 		return cmn::MediaCodecModuleId::DEFAULT;
 	}
 
-	cmn::MediaType GetMediaType() const noexcept
+	cmn::MediaType GetMediaType() const noexcept override
 	{
 		return cmn::MediaType::Audio;
 	}
 
-	bool IsHWAccel() const noexcept
+	bool IsHWAccel() const noexcept override
 	{
 		return false;
 	}
 
-	bool InitCodec();
-	void UninitCodec();
+	bool InitCodec() override;
 	bool ReinitCodecIfNeed();
 
 	void CodecThread() override;

@@ -50,7 +50,13 @@ namespace pub
 		if (StartRecord() == false)
 		{
 			logte("Failed to start recording. id(%d)", GetId());
+			SetState(SessionState::Error);
 
+			auto record = GetRecord();
+			if(record != nullptr)
+			{
+				record->SetState(info::Record::RecordState::Error);
+			}
 			return false;
 		}
 
@@ -64,7 +70,12 @@ namespace pub
 		if (StopRecord() == false)
 		{
 			logte("Failed to stop recording. id(%d)", GetId());
-
+			SetState(SessionState::Error);
+			auto record = GetRecord();
+			if(record != nullptr)
+			{
+				record->SetState(info::Record::RecordState::Error);
+			}
 			return false;
 		}
 
@@ -78,12 +89,24 @@ namespace pub
 		if (StopRecord() == false)
 		{
 			logte("Failed to stop recording. id(%d)", GetId());
+			SetState(SessionState::Error);
+			auto record = GetRecord();
+			if(record != nullptr)
+			{
+				record->SetState(info::Record::RecordState::Error);
+			}
 			return false;
 		}
 
 		if (StartRecord() == false)
 		{
 			logte("Failed to start recording. id(%d)", GetId());
+			SetState(SessionState::Error);
+			auto record = GetRecord();
+			if(record != nullptr)
+			{
+				record->SetState(info::Record::RecordState::Error);
+			}
 			return false;
 		}
 
@@ -444,7 +467,7 @@ namespace pub
 		_record = record;
 	}
 
-	std::shared_ptr<info::Record> &FileSession::GetRecord()
+	std::shared_ptr<info::Record> FileSession::GetRecord()
 	{
 		std::shared_lock<std::shared_mutex> mlock(_record_mutex);
 		return _record;
@@ -636,7 +659,7 @@ namespace pub
 		{
 			logtw("Could not supported codec. trackId: %u, container: %s codec: %s, variantName: %s",
 				  track->GetId(), output_format.CStr(), GetCodecIdString(track->GetCodecId()), track->GetVariantName().CStr());
-			return false;
+			return true;
 		}
 
 		logtd("Adding track to writer. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());

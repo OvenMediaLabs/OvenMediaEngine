@@ -111,6 +111,16 @@ namespace pvd
 		int64_t GetBaseTimestamp(uint32_t track_id);
 		
 	protected:
+		// Special timestamp calculation for RTP
+		enum class RtpTimestampCalculationMethod : uint8_t
+		{
+			UNDER_DECISION,
+			SINGLE_DELTA,
+			WITH_RTCP_SR
+		};
+
+		void SetRtpTimestampMethod(RtpTimestampCalculationMethod method) { _rtp_timestamp_method = method; }
+
 		inline int64_t Rescale(int64_t value, int64_t to_timescale, int64_t from_timescale) 
 		{
 			return ((value / from_timescale) * to_timescale) + (((value % from_timescale) * to_timescale + (from_timescale / 2)) / from_timescale);
@@ -147,19 +157,12 @@ namespace pvd
 		std::shared_ptr<ov::Url> _requested_url = nullptr;
 		std::shared_ptr<ov::Url> _final_url = nullptr;
 
-		// Special timestamp calculation for RTP
-		enum class RtpTimestampCalculationMethod : uint8_t
-		{
-			UNDER_DECISION,
-			SINGLE_DELTA,
-			WITH_RTCP_SR
-		};
-
 		RtpTimestampCalculationMethod _rtp_timestamp_method = RtpTimestampCalculationMethod::UNDER_DECISION;
 
 		LipSyncClock 						_rtp_lip_sync_clock;
 		ov::StopWatch						_first_rtp_received_time;
 
+		mutable std::mutex _timestamp_mutex;
 		int64_t _last_media_timestamp_ms = -1LL;
 		ov::StopWatch _elapsed_from_last_media_timestamp;
 		int64_t _max_generated_timestamp_ms = -1LL;

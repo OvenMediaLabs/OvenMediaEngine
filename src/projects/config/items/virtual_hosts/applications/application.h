@@ -17,6 +17,7 @@
 #include "publishers/publishers.h"
 #include "transcode_webhook/transcode_webhook.h"
 #include "web_console/web_console.h"
+#include "subtitle/subtitle.h"
 
 namespace cfg
 {
@@ -45,6 +46,7 @@ namespace cfg
 				prst::PersistentStreams _persistent_streams;
 				trwh::TranscodeWebhook _transcode_webhook;
 				eg::EventGenerator _event_generator;
+				subt::Subtitle _subtitle; 
 
 			public:
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetName, _name)
@@ -61,6 +63,7 @@ namespace cfg
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetPersistentStreams, _persistent_streams)
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetTranscodeWebhook, _transcode_webhook)
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetEventGenerator, _event_generator)
+				CFG_DECLARE_CONST_REF_GETTER_OF(GetSubtitle, _subtitle)
 
 				// Set Name, it is for dynamic application
 				void SetName(const ov::String &name)
@@ -96,6 +99,42 @@ namespace cfg
 					Register<Optional>("PersistentStreams", &_persistent_streams);
 					Register<Optional>("TranscodeWebhook", &_transcode_webhook);
 					Register<Optional>("EventGenerator", &_event_generator);
+
+					Register<Optional>("Subtitles", &_subtitle, nullptr,
+							[=]() -> std::shared_ptr<ConfigError> {
+								if (_subtitle.IsEnabled() && _subtitle.GetRenditions().empty())
+								{
+									return CreateConfigErrorPtr("Subtitle is enabled but no renditions are defined");
+								}
+								
+								// Check default label
+								auto default_label = _subtitle.GetDefaultLabel();
+								if (default_label.IsEmpty() == false)
+								{
+									bool found = false;
+									for (auto &rendition : _subtitle.GetRenditions())
+									{
+										if (rendition.GetLabel() == default_label)
+										{
+											rendition.SetDefault(true);
+											if (rendition.IsAutoSelect() == false)
+											{
+												logw("Config", "Default subtitle rendition '%s' must have AutoSelect enabled. Enabling it automatically.", default_label.CStr());
+												rendition.SetAutoSelect(true);
+											}
+											found = true;
+										}
+									}
+
+									if (found == false)
+									{
+										return CreateConfigErrorPtr("Default label '%s' not found in subtitle renditions", default_label.CStr());
+									}
+								}
+
+								return nullptr;
+							}
+						);
 				}
 			};
 		}  // namespace app

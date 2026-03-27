@@ -116,7 +116,7 @@ namespace pvd
 		std::shared_ptr<SrtpTransport>      _srtp_transport;
 		std::shared_ptr<DtlsTransport>      _dtls_transport;
 
-		bool								_rtx_enabled = false;
+		[[maybe_unused]] bool						_rtx_enabled = false;
 		std::shared_mutex					_start_stop_lock;
 
 		// CompositionTime extmap

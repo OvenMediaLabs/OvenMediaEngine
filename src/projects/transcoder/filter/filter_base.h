@@ -115,9 +115,19 @@ public:
 		}
 	}
 
+	void SetInputStreamInfo(std::shared_ptr<info::Stream> input_stream_info)
+	{
+		_input_stream_info = input_stream_info;
+	}
+
 	void SetInputTrack(std::shared_ptr<MediaTrack> input_track)
 	{
 		_input_track = input_track;
+	}
+
+	void SetOutputStreamInfo(std::shared_ptr<info::Stream> output_stream_info)
+	{
+		_output_stream_info = output_stream_info;
 	}
 
 	void SetOutputTrack(std::shared_ptr<MediaTrack> output_track)
@@ -138,6 +148,42 @@ public:
 	ov::String GetDescription() const
 	{
 		return _description;
+	}
+
+	std::shared_ptr<info::Stream> GetInputStreamInfo() const
+	{
+		return _input_stream_info;
+	}
+
+	std::shared_ptr<info::Stream> GetOutputStreamInfo() const
+	{
+		return _output_stream_info;
+	}
+
+	std::shared_ptr<MediaTrack> GetInputTrack() const
+	{
+		return _input_track;
+	}	
+
+	std::shared_ptr<MediaTrack> GetOutputTrack() const
+	{
+		return _output_track;
+	}
+
+	ov::String GetLogPrefix() const
+	{
+		if (_output_stream_info)
+		{
+			auto prefix = ov::String::FormatString("%s", _output_stream_info->GetUri().CStr());
+
+			if (_output_track)
+			{
+				prefix += ov::String::FormatString("|T=%d,M=%s:%d", _output_track->GetId(), cmn::GetCodecModuleIdString(_output_track->GetCodecModuleId()), _output_track->GetCodecDeviceId());
+			}
+			return prefix;
+		}
+
+		return "";
 	}
 
 protected:
@@ -167,8 +213,10 @@ protected:
 
 	ov::Future _codec_init_event;
 
-	// resolution of the input video frame
+	std::shared_ptr<info::Stream> _input_stream_info;
 	std::shared_ptr<MediaTrack> _input_track;
+
+	std::shared_ptr<info::Stream> _output_stream_info;
 	std::shared_ptr<MediaTrack> _output_track;
 
 	std::atomic<bool> _kill_flag{false};

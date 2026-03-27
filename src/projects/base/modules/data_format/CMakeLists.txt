@@ -1,0 +1,5 @@
+add_subdirectory(webvtt)
+add_subdirectory(amf_event)
+add_subdirectory(id3v2)
+add_subdirectory(scte35_event)
+add_subdirectory(cue_event)

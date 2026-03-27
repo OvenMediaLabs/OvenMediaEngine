@@ -11,8 +11,6 @@ namespace info
 {
 	Record::Record()
 	{
-		// _stream = nullptr;
-
 		_created_time = std::chrono::system_clock::now();
 		_id = "";
 		_is_config = false;
@@ -30,6 +28,8 @@ namespace info
 		_file_path_by_user = false;
 		_info_path = "";
 		_info_path_by_user = false;
+		_output_file_path = "";
+		_output_info_path = "";
 
 		_record_bytes = 0;
 		_record_time = 0;
@@ -40,9 +40,13 @@ namespace info
 		_interval = 0;
 		_schedule = "";
 		_segmentation_rule = "";
+		_schedule_next = std::chrono::system_clock::time_point{};
+		_record_start_time = std::chrono::system_clock::time_point{};
+		_record_stop_time = std::chrono::system_clock::time_point{};
 
 		_session_id = 0;
-
+		_enable = false;
+		_remove = false;
 		_state = RecordState::Ready;
 	}
 
@@ -86,11 +90,11 @@ namespace info
 
 	void Record::SetEnable(bool eanble)
 	{
-		_enable = eanble;
+		_enable.store(eanble);
 	}
 	bool Record::GetEnable()
 	{
-		return _enable;
+		return _enable.load();
 	}
 
 	void Record::SetVhost(ov::String value)
@@ -133,34 +137,32 @@ namespace info
 
 	void Record::SetTrackIds(const std::vector<uint32_t>& ids)
 	{
-		_selected_track_ids.clear();
-		_selected_track_ids.assign( ids.begin(), ids.end() ); 
+		_selected_track_ids = ids;
 	}
 
 	void Record::SetVariantNames(const std::vector<ov::String>& names)
 	{
-		_selected_variant_names.clear();
-		_selected_variant_names.assign( names.begin(), names.end() ); 
+		_selected_variant_names = names;
 	}
 
-	const std::vector<uint32_t>& Record::GetTrackIds() 
+	std::vector<uint32_t> Record::GetTrackIds()
 	{
 		return _selected_track_ids;
 	}
 
-	const std::vector<ov::String>& Record::GetVariantNames()
+	std::vector<ov::String> Record::GetVariantNames()
 	{
 		return _selected_variant_names;
 	}
 
 	void Record::SetRemove(bool value)
 	{
-		_remove = value;
+		_remove.store(value);
 	}
 
 	bool Record::GetRemove()
 	{
-		return _remove;
+		return _remove.load();
 	}
 
 	void Record::SetSessionId(session_id_t id)
@@ -173,7 +175,7 @@ namespace info
 		return _session_id;
 	}
 
-	const std::chrono::system_clock::time_point &Record::GetCreatedTime() const
+	std::chrono::system_clock::time_point Record::GetCreatedTime() const
 	{
 		return _created_time;
 	}
@@ -206,7 +208,7 @@ namespace info
 		return _segmentation_rule;
 	}
 
-	const std::chrono::system_clock::time_point &Record::GetNextScheduleTime() const
+	std::chrono::system_clock::time_point Record::GetNextScheduleTime() const
 	{
 		return _schedule_next;
 	}
@@ -216,7 +218,7 @@ namespace info
 		return (_schedule_next.time_since_epoch().count() == 0) ? true : false;
 	}
 
-	void Record::SetNextScheduleTime(std::chrono::system_clock::time_point &next)
+	void Record::SetNextScheduleTime(const std::chrono::system_clock::time_point &next)
 	{
 		_schedule_next = next;
 	}
@@ -303,23 +305,11 @@ namespace info
 	}
 	void Record::SetRecordTotalTime(uint64_t time)
 	{
-		_record_total_bytes = time;
+		_record_total_time = time;
 	}
 	void Record::SetSequence(uint64_t sequence)
 	{
 		_sequence = sequence;
-	}
-	void Record::SetCreatedTime(std::chrono::system_clock::time_point tp)
-	{
-		_created_time = tp;
-	}
-	void Record::SetRecordStartTime(std::chrono::system_clock::time_point tp)
-	{
-		_record_start_time = tp;
-	}
-	void Record::SetRecordStopTime(std::chrono::system_clock::time_point tp)
-	{
-		_record_stop_time = tp;
 	}
 	bool Record::IsInfoPathSetByUser()
 	{
@@ -383,11 +373,11 @@ namespace info
 	{
 		return _sequence;
 	}
-	const std::chrono::system_clock::time_point Record::GetRecordStartTime() const
+	std::chrono::system_clock::time_point Record::GetRecordStartTime() const
 	{
 		return _record_start_time;
 	}
-	const std::chrono::system_clock::time_point Record::GetRecordStopTime() const
+	std::chrono::system_clock::time_point Record::GetRecordStopTime() const
 	{
 		return _record_stop_time;
 	}
@@ -418,8 +408,45 @@ namespace info
 		return "Unknown";
 	}
 
-	void Record::Clone(std::shared_ptr<info::Record> &record)
+	void Record::CloneTo(const std::shared_ptr<info::Record> &record)
 	{
+		if (record == nullptr || record.get() == this)
+		{
+			return;
+		}
+
+		record->_transaction_id			= _transaction_id;
+		record->_id						= _id;
+		record->_is_config				= _is_config;
+		record->_metadata				= _metadata;
+		record->_enable.store(_enable.load());
+		record->_remove.store(_remove.load());
+		record->_vhost_name				= _vhost_name;
+		record->_application_name		= _application_name;
+		record->_stream_name			= _stream_name;
+		record->_selected_track_ids		= _selected_track_ids;
+		record->_selected_variant_names = _selected_variant_names;
+		record->_file_path				= _file_path;
+		record->_file_path_by_user		= _file_path_by_user;
+		record->_info_path				= _info_path;
+		record->_info_path_by_user		= _info_path_by_user;
+		record->_output_file_path		= _output_file_path;
+		record->_output_info_path		= _output_info_path;
+		record->_tmp_path				= _tmp_path;
+		record->_interval				= _interval;
+		record->_schedule				= _schedule;
+		record->_schedule_next			= _schedule_next;
+		record->_record_bytes			= _record_bytes;
+		record->_record_total_bytes		= _record_total_bytes;
+		record->_record_time			= _record_time;
+		record->_record_total_time		= _record_total_time;
+		record->_segmentation_rule		= _segmentation_rule;
+		record->_sequence				= _sequence;
+		record->_created_time			= _created_time;
+		record->_record_start_time		= _record_start_time;
+		record->_record_stop_time		= _record_stop_time;
+		record->_state					= _state;
+		record->_session_id				= _session_id;
 	}
 
 	const ov::String Record::GetInfoString()

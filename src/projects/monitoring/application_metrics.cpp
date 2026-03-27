@@ -89,12 +89,14 @@ namespace mon
 	std::shared_ptr<StreamMetrics> ApplicationMetrics::GetStreamMetrics(info::stream_id_t stream_id)
 	{
 		std::shared_lock<std::shared_mutex> lock(_streams_guard);
-		if (_streams.find(stream_id) == _streams.end())
+
+		auto stream = _streams.find(stream_id);
+		if (stream == _streams.end())
 		{
 			return nullptr;
 		}
 
-		return _streams[stream_id];
+		return stream->second;
 	}
 
 	bool ApplicationMetrics::OnStreamReserved(ProviderType who, const ov::Url &stream_uri, const ov::String &stream_name)

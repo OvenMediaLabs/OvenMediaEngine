@@ -1,0 +1,85 @@
+name: "OME PR Title Checker"
+
+on:
+  pull_request:
+    # Trigger on PR creation, title edits, or new commits
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  validate-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Semantic PR Title Check
+        id: validate
+        continue-on-error: true
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Approved prefixes for OvenMediaEngine
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            revert
+            docs
+            test
+            build
+            chore
+
+
+      - name: Comment on validation failure
+        if: steps.validate.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const botComment = comments.find(c => c.user.type === 'Bot' && c.body.includes('PR Title Validation Failed'));
+            if (botComment) return; // Already commented, skip
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ❌ PR Title Validation Failed
+
+            Your PR title does not follow the [Conventional Commits](https://www.conventionalcommits.org/) format required by this project.
+
+            **Required format:** \`type(scope): description\`
+            - \`scope\` is optional
+
+
+            **Allowed types:**
+            | Type | Description |
+            |------|-------------|
+            | \`feat\` | New feature (e.g., new protocol, config parameter) |
+            | \`fix\` | Bug fix (e.g., memory leak, deadlock) |
+            | \`perf\` | Performance improvement |
+            | \`refactor\` | Code restructuring without logic changes |
+            | \`revert\` | Reverting a previous change |
+            | \`docs\` | Documentation update |
+            | \`test\` | Unit or integration tests |
+            | \`build\` | Build system or dependency changes |
+            | \`chore\` | General maintenance |
+
+            **Examples:**
+            - \`feat(webrtc): add new streaming protocol\`
+            - \`fix(hls): resolve memory leak in segment writer\`
+            - \`build(deps): update libsrtp to 2.5.0\`
+            - \`feat!: drop support for legacy RTMP push\` _(breaking change)_
+
+            Please update your PR title and this check will re-run automatically.`
+            });
+
+      - name: Fail if validation failed
+        if: steps.validate.outcome == 'failure'
+        run: exit 1

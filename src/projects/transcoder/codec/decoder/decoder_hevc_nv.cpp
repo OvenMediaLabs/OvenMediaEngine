@@ -65,18 +65,6 @@ bool DecoderHEVCxNV::InitCodec()
 	return true;
 }
 
-void DecoderHEVCxNV::UninitCodec()
-{
-	if (_codec_context)
-	{
-		if (_codec_context->codec)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
-}
-
 bool DecoderHEVCxNV::ReinitCodecIfNeed()
 {
 	// NVIDIA H.265 decoder does not support dynamic resolution streams.
@@ -264,4 +252,6 @@ void DecoderHEVCxNV::CodecThread()
 			}
 		}
 	}
+
+	UninitCodec();		
 }

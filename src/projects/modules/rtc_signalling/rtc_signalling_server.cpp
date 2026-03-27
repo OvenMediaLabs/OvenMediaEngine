@@ -426,7 +426,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 		});
 
 	interceptor->SetErrorHandler(
-		[this](const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const ov::Error> &error) -> void {
+		[](const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const ov::Error> &error) -> void {
 			logtw("An error occurred: %s", error->What());
 		});
 

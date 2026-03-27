@@ -166,12 +166,31 @@ bool LLHlsStream::Start()
 	// Find data track
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
+	// Find the first video track and audio track with supported codec, and set the reference track id for VTT track.
 	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
-	first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-    first_audio_track = GetFirstTrackByType(cmn::MediaType::Audio);
+	for (const auto &[id, track] : GetTracks())
+	{
+		if (IsSupportedMediaCodec(track->GetCodecId()) == true)
+		{
+			if (track->GetMediaType() == cmn::MediaType::Video && first_video_track == nullptr)
+			{
+				first_video_track = track;
+			}
+			else if (track->GetMediaType() == cmn::MediaType::Audio && first_audio_track == nullptr)
+			{
+				first_audio_track = track;
+			}
+		}
 
+		if (first_video_track != nullptr && first_audio_track != nullptr)
+		{
+			break;
+		}
+	}
 	_vtt_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
-	for (const auto &[id, track] : _tracks)
+
+	// Add packager for each track
+	for (const auto &[id, track] : GetTracks())
 	{
 		if (IsSupportedMediaCodec(track->GetCodecId()) == true)
 		{
@@ -1362,6 +1381,12 @@ double LLHlsStream::ComputeOptimalPartDuration(const std::shared_ptr<const Media
 	if (track->GetMediaType() == cmn::MediaType::Audio)
 	{
 		// Duration of a frame is 1024 samples / sample rate
+		if (track->GetSampleRate() == 0)
+		{
+			logte("LLHlsStream::ComputeOptimalPartDuration() - Audio track(%d) has invalid samplerate(0). Using default part duration.", track->GetId());
+			return part_target;
+		}
+
 		auto frame_duration = static_cast<double>(track->GetAudioSamplesPerFrame()) / static_cast<double>(track->GetSampleRate());
 		auto frame_duration_ms = frame_duration * 1000.0;
 
@@ -1744,10 +1769,8 @@ bool LLHlsStream::CheckPlaylistReady()
 
 	_playlist_ready = true;
 
-	auto alert = MonitorInstance->GetAlert();
 	auto stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(pub::Stream::GetSharedPtr()));
-
-	alert->SendStreamMessage(mon::alrt::Message::Code::EGRESS_LLHLS_READY, stream_metrics);
+	MonitorInstance->SendStreamAlertMessage(mon::alrt::Message::Code::EGRESS_LLHLS_READY, stream_metrics);
 
 	// Dump master playlist if configured
 	DumpMasterPlaylistsOfAllItems();

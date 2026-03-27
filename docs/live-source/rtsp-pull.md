@@ -4,6 +4,25 @@ OvenMediaEngine can pull RTSP Stream in two ways. The first way is to use the St
 
 <table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP</td></tr><tr><td>Transport</td><td>UDP / TCP</td></tr><tr><td>Codec</td><td>H.264, H.265, Opus, AAC</td></tr></tbody></table>
 
+## Configuration
+
+### Bind
+
+RTSP Pull operates as a client, so a bind setting is not required.
+
+### Application
+
+RTSP Pull can be enabled or disabled for each Application. You can enable RTSP Pull by configuring it as shown below. If you try to use RTSP Pull in an Application where RTSP Pull is not enabled, an error log will appear saying that the application cannot be found.
+
+```
+<!-- /Server/VirtualHosts/VirtualHost/Applications/Application -->
+<Providers>
+    ...
+    <RTSPPull />
+    ...
+</Providers>
+```
+
 ## Pulling streams using the Stream Creation API
 
 You can create a stream by pulling an RTSP stream using the [Stream Creation API](../rest-api/v1/virtualhost/application/stream/#create-stream-pull). For more information on using the [REST API](../rest-api/), check out that chapter.

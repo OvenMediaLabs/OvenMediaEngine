@@ -45,7 +45,7 @@ private:
 	uint8_t _version_major = 4;
 	uint8_t _version_minor = 0;
 	uint8_t _flags = 0;
-	uint32_t _size = 0;
+	[[maybe_unused]] uint32_t _size = 0;
 
 	std::vector<std::shared_ptr<ID3v2Frame>> _frames;
 	std::shared_ptr<ov::Data> _frame_data;

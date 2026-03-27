@@ -8,5 +8,11 @@
 //==============================================================================
 #pragma once
 
-bool InitializeSignals();
-void SetDumpFallbackPath(const char *path);
+namespace ov::sig
+{
+	bool Initialize();
+	void SetDumpFallbackPath(const char *path);
+
+	// Returns `true` if a termination request was triggered by a signal.
+	bool WaitAndStop(int milliseconds);
+}  // namespace ov::sig

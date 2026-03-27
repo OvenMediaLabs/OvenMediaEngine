@@ -103,28 +103,78 @@ namespace mon::alrt
 
 		{
 			// Check Internal queues
+			// Queues are grouped per source URI derived from ManagedQueue::URN:
+			//   #VhostName#AppName[/StreamName]
+			// so that alerts are sent per source, just like stream-metric alerts.
 
-			type		 = NotificationData::Type::INTERNAL_QUEUE;
+			type = NotificationData::Type::INTERNAL_QUEUE;
 
-			messages_key = NotificationData::StringFromType(type);
-			new_messages_keys.push_back(messages_key);
+			// source_uri -> { messages, queue_metrics }
+			// Every source URI is registered upfront with an empty message list so that
+			// when all queues under a source recover, an OK notification (empty messages)
+			// is sent correctly.
+			std::map<ov::String, std::vector<std::shared_ptr<Message>>> per_source_messages;
+			std::map<ov::String, std::map<uint32_t, std::shared_ptr<QueueMetrics>>> per_source_queues;
 
-			std::map<uint32_t, std::shared_ptr<QueueMetrics>> congest_queue_metric_list;
-			const auto queue_metric_list = MonitorInstance->GetServerMetrics()->GetQueueMetricsList();
+			const auto queue_metric_list = MonitorInstance->GetQueueMetricsList();
+
 			for (const auto &[queue_key, queue_metric] : queue_metric_list)
 			{
-				if (!VerifyQueueCongestionRules(*rules, queue_metric, message_list))
+				// Build source URI from URN: #VhostName#AppName[/StreamName]
+				ov::String source_uri;
+				auto urn = queue_metric->GetUrn();
+				if (urn != nullptr)
 				{
-					congest_queue_metric_list[queue_key] = queue_metric;
+					source_uri = urn->GetVHostAppName().ToString();  // "#VhostName#AppName"
+
+					if (!urn->GetStreamName().IsEmpty())
+					{
+						source_uri.Append("/");
+						source_uri.Append(urn->GetStreamName());
+					}
+				}
+
+				if (source_uri.IsEmpty())
+				{
+					// Fallback key when URN is not available
+					source_uri = NotificationData::StringFromType(type);
+				}
+
+				// Register the source URI upfront with an empty message list.
+				// This ensures a recovery (OK) alert is sent when no queues are congested.
+				auto &msgs = per_source_messages[source_uri];
+
+				std::vector<std::shared_ptr<Message>> queue_messages;
+				if (!VerifyQueueCongestionRules(*rules, queue_metric, queue_messages))
+				{
+					// Congested: accumulate one message per congested queue so that
+					// IsAlertNeeded can detect changes by comparing message counts.
+					msgs.insert(msgs.end(), queue_messages.begin(), queue_messages.end());
+
+					per_source_queues[source_uri].emplace(queue_key, queue_metric);
 				}
 			}
 
-			if (IsAlertNeeded(messages_key, message_list))
+			// Fire an alert per source URI (same pattern as stream-metric alerts)
+			for (auto &[source_uri, msgs] : per_source_messages)
 			{
-				SendNotification(type, message_list, congest_queue_metric_list);
-			}
+				new_messages_keys.push_back(source_uri);
 
-			PutVerifiedMessages(messages_key, message_list);
+				if (IsAlertNeeded(source_uri, msgs))
+				{
+					// Reduce to a single message before sending: the queue list in
+					// internalQueues already carries the per-queue detail.
+					std::vector<std::shared_ptr<Message>> send_msgs;
+					if (!msgs.empty())
+					{
+						send_msgs.push_back(msgs.front());
+					}
+
+					SendNotification(type, send_msgs, source_uri, per_source_queues[source_uri]);
+				}
+
+				PutVerifiedMessages(source_uri, msgs);
+			}
 		}
 
 		{
@@ -481,44 +531,45 @@ namespace mon::alrt
 			}
 		}
 
-		if (video_track->GetWidth() > 0)
+		auto video_resolution = video_track->GetResolution();
+		if (video_resolution.width > 0)
 		{
 			// Verify MinWidth
 			if (ingress.GetMinWidth() > 0)
 			{
-				if (video_track->GetWidth() < ingress.GetMinWidth())
+				if (video_resolution.width < ingress.GetMinWidth())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_SMALL, ingress.GetMinWidth(), video_track->GetWidth());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_SMALL, ingress.GetMinWidth(), video_resolution.width);
 				}
 			}
 
 			// Verify MaxWidth
 			if (ingress.GetMaxWidth() > 0)
 			{
-				if (video_track->GetWidth() > ingress.GetMaxWidth())
+				if (video_resolution.width > ingress.GetMaxWidth())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_LARGE, ingress.GetMaxWidth(), video_track->GetWidth());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_WIDTH_LARGE, ingress.GetMaxWidth(), video_resolution.width);
 				}
 			}
 		}
 
-		if (video_track->GetHeight() > 0)
+		if (video_resolution.height > 0)
 		{
 			// Verify MinHeight
 			if (ingress.GetMinHeight() > 0)
 			{
-				if (video_track->GetHeight() < ingress.GetMinHeight())
+				if (video_resolution.height < ingress.GetMinHeight())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_SMALL, ingress.GetMinHeight(), video_track->GetHeight());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_SMALL, ingress.GetMinHeight(), video_resolution.height);
 				}
 			}
 
 			// Verify MaxHeight
 			if (ingress.GetMaxHeight() > 0)
 			{
-				if (video_track->GetHeight() > ingress.GetMaxHeight())
+				if (video_resolution.height > ingress.GetMaxHeight())
 				{
-					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_LARGE, ingress.GetMaxHeight(), video_track->GetHeight());
+					AddNonOkMessage<int32_t>(message_list, Message::Code::INGRESS_HEIGHT_LARGE, ingress.GetMaxHeight(), video_resolution.height);
 				}
 			}
 		}
@@ -594,9 +645,9 @@ namespace mon::alrt
 		_queue_notification.Notify();
 	}
 
-	void Alert::SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list)
+	void Alert::SendNotification(const NotificationData::Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list)
 	{
-		_notification_queue.Enqueue(std::make_shared<NotificationData>(type, message_list, queue_metric_list));
+		_notification_queue.Enqueue(std::make_shared<NotificationData>(type, message_list, source_uri, queue_metric_list));
 		_queue_notification.Notify();
 	}
 

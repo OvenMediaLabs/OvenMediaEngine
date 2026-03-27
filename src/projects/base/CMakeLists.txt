@@ -1,0 +1,8 @@
+add_subdirectory(ovlibrary)
+add_subdirectory(ovcrypto)
+add_subdirectory(info)
+add_subdirectory(ovsocket)
+add_subdirectory(publisher)
+add_subdirectory(provider)
+add_subdirectory(event)
+add_subdirectory(modules)

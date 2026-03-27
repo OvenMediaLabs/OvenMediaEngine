@@ -34,9 +34,9 @@ public:
 		const std::shared_ptr<MediaPacket> &media_packet);
 
 private:
-	bool _cfg_enabled;
+	[[maybe_unused]] bool _cfg_enabled;
 	ov::String _cfg_path;
-	time_t _last_modified_time;
+	[[maybe_unused]] time_t _last_modified_time;
 
 	static const std::shared_ptr<pvd::Stream> GetSourceStream(const std::shared_ptr<info::Stream> &stream_info);
 

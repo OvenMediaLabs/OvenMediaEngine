@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include "subtitle.h"
+#include "../../subtitle/subtitle.h"
 #include "./overlays/overlays.h"
 
 namespace cfg
@@ -22,7 +22,7 @@ namespace cfg
 				struct MediaOptions : public Item
 				{
 				protected:
-					Subtitle _subtitle; 
+					subt::Subtitle _subtitle; 
 					Overlays _overlays;
 
 				public:
@@ -63,6 +63,9 @@ namespace cfg
 										return CreateConfigErrorPtr("Default label '%s' not found in subtitle renditions", default_label.CStr());
 									}
 								}
+
+								// moved to <Application><Subtitle>, this Subtitles will be deprecated soon
+								logw("Config", "<Subtitles> configuration is moved to <Application><Subtitle>. Please update your configuration accordingly. This may be deprecated in future versions.");
 
 								return nullptr;
 							}

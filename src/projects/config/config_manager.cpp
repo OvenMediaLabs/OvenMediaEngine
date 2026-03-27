@@ -223,9 +223,6 @@ namespace cfg
 		auto log_path = logger_loader->GetLogPath();
 		::ov_log_set_path(log_path.CStr());
 
-		// For event logger
-		MonitorInstance->SetLogPath(log_path.CStr());
-
 		// Init stat log
 		//TODO(Getroot): This is temporary code for testing. This will change to more elegant code in the future.
 		::ov_stat_log_set_path(STAT_LOG_WEBRTC_EDGE_SESSION, log_path.CStr());

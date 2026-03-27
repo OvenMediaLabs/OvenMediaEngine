@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <Type Name="tl::expected&lt;*,*&gt;">
+      <DisplayString Condition="!m_has_val">Unexpected {m_unexpect.m_val}</DisplayString>
+      <DisplayString Condition="strcmp(&quot;$T1&quot;,&quot;void&quot;)==0">Expected</DisplayString>
+      <DisplayString Condition="strcmp(&quot;$T1&quot;,&quot;void&quot;)!=0">Expected {m_val}</DisplayString>
+
+      <Expand>
+        <Item Name="Unexpected value" Condition="!m_has_val">m_unexpect.m_val</Item>
+        <Item Name="Expected value" Condition="strcmp(&quot;$T1&quot;,&quot;void&quot;)!=0">m_val</Item>
+      </Expand>
+  </Type>
+</AutoVisualizer>

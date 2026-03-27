@@ -288,12 +288,12 @@ namespace cmn
 		{
 			OV_CASE_RETURN(cmn::MediaCodecId::None, false);
 
-			OV_CASE_RETURN(cmn::MediaCodecId::H264, true);
-			OV_CASE_RETURN(cmn::MediaCodecId::H265, true);
-			OV_CASE_RETURN(cmn::MediaCodecId::Vp8, true);
-			OV_CASE_RETURN(cmn::MediaCodecId::Vp9, true);
-			OV_CASE_RETURN(cmn::MediaCodecId::Av1, true);
-			OV_CASE_RETURN(cmn::MediaCodecId::Flv, true);
+			OV_CASE_RETURN(cmn::MediaCodecId::H264, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::H265, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Vp8, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Vp9, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Av1, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Flv, false);
 
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, false);
@@ -574,7 +574,7 @@ namespace cmn
 		return cmn::MediaCodecId::None;
 	}
 
-	static ov::String GetKeyFrameIntervalTypeToString(cmn::KeyFrameIntervalType type)
+	static constexpr const char *GetKeyFrameIntervalTypeToString(cmn::KeyFrameIntervalType type)
 	{
 		switch (type)
 		{
@@ -1065,4 +1065,19 @@ namespace cmn
 		std::string _name = "stereo";
 	};
 
+	struct Resolution
+	{
+		int32_t width  = 0;
+		int32_t height = 0;
+
+		bool operator==(const Resolution &other) const
+		{
+			return width == other.width && height == other.height;
+		}
+
+		ov::String ToString()
+		{
+			return ov::String::FormatString("%dx%d", width, height);
+		}
+	};
 }  // namespace cmn

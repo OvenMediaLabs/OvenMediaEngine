@@ -46,59 +46,61 @@ namespace pub
 
 	bool PushSession::Start()
 	{
-		if (GetPush() == nullptr)
+		auto push = GetPush();
+		if (push == nullptr)
 		{
 			logte("Push object is null");
 			SetState(SessionState::Error);
 			return false;
 		}
 
-		GetPush()->UpdatePushStartTime();
-		GetPush()->SetState(info::Push::PushState::Connecting);
+		push->UpdatePushStartTime();
+		push->SetState(info::Push::PushState::Connecting);
 
 		ov::String dest_url;
-		if (GetPush()->GetStreamKey().IsEmpty())
+		if (push->GetStreamKey().IsEmpty())
 		{
-			dest_url = GetPush()->GetUrl();
+			dest_url = push->GetUrl();
 		}
 		else
 		{
-			dest_url = ov::String::FormatString("%s/%s", GetPush()->GetUrl().CStr(), GetPush()->GetStreamKey().CStr());
+			dest_url = ov::String::FormatString("%s/%s", push->GetUrl().CStr(), push->GetStreamKey().CStr());
 		}
 
-		if (CreateWriter() == nullptr)
+		auto writer = CreateWriter();
+		if (writer == nullptr)
 		{
 			SetState(SessionState::Error);
-			GetPush()->SetState(info::Push::PushState::Error);
-			logte("Failed to create session. %s", _push->GetInfoString().CStr());
+			push->SetState(info::Push::PushState::Error);
+			logte("Failed to create session. %s", push->GetInfoString().CStr());
 			return false;
 		}
 
-		if (GetWriter()->SetUrl(dest_url, ffmpeg::compat::GetFormatByProtocolType(GetPush()->GetProtocolType())) == false)
+		if (writer->SetUrl(dest_url, ffmpeg::compat::GetFormatByProtocolType(push->GetProtocolType())) == false)
 		{
 			SetState(SessionState::Error);
-			GetPush()->SetState(info::Push::PushState::Error);
-			logte("Failed to set URL. Reason(%s), %s", GetWriter()->GetErrorMessage().CStr(), _push->GetInfoString().CStr());
+			push->SetState(info::Push::PushState::Error);
+			logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
 
 		// RTMP, SRT, MPEG-TS Pushing uses different timestamp modes. default is zerobased.
-		if (GetPush()->GetTimestampMode() == TimestampMode::Original)
+		if (push->GetTimestampMode() == TimestampMode::Original)
 		{
-			GetWriter()->SetTimestampMode(ffmpeg::Writer::TIMESTAMP_PASSTHROUGH_MODE);
+			writer->SetTimestampMode(ffmpeg::Writer::TIMESTAMP_PASSTHROUGH_MODE);
 		}
 		else
 		{
 			// Default TimestampMode is ZeroBased
-			GetWriter()->SetTimestampMode(ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE);
+			writer->SetTimestampMode(ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE);
 		}
 
 		// Set timeouts
-		GetWriter()->SetConnectionTimeout(GetPush()->GetConnectionTimeout());
-		GetWriter()->SetSendTimeout(GetPush()->GetSendTimeout());
+		writer->SetConnectionTimeout(push->GetConnectionTimeout());
+		writer->SetSendTimeout(push->GetSendTimeout());
 
 		// Add Tracks
-		if (GetPush()->GetTrackIds().empty() && GetPush()->GetVariantNames().empty())
+		if (push->GetTrackIds().empty() && push->GetVariantNames().empty())
 		{
 			// If there is no specified track, add all tracks.
 			for (auto &[track_id, media_track] : GetStream()->GetTracks())
@@ -112,7 +114,7 @@ namespace pub
 		else
 		{
 			// Select tracks by VariantNames
-			for (const auto &variant_name : GetPush()->GetVariantNames())
+			for (const auto &variant_name : push->GetVariantNames())
 			{
 				// VariantName format: "variantName:index", "variantName" (index is optional). if index is not specified, 0 is used.
 				auto vars			  = variant_name.Split(":", 2);
@@ -134,7 +136,7 @@ namespace pub
 			}
 
 			// Select tracks by TrackIds
-			for (const auto &track_id : GetPush()->GetTrackIds())
+			for (const auto &track_id : push->GetTrackIds())
 			{
 				auto media_track = GetStream()->GetTrack(track_id);
 				if (media_track == nullptr)
@@ -162,15 +164,15 @@ namespace pub
 
 
 		// Notice: If there are more than one video track, RTMP Push is not created and returns an error. You must use 1 video track.
-		if (GetWriter()->Start() == false)
+		if (writer->Start() == false)
 		{
 			SetState(SessionState::Error);
-			GetPush()->SetState(info::Push::PushState::Error);
-			logte("Failed to start session. Reason(%s), %s", GetWriter()->GetErrorMessage().CStr(), GetPush()->GetInfoString().CStr());
+			push->SetState(info::Push::PushState::Error);
+			logte("Failed to start session. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
 
-		GetPush()->SetState(info::Push::PushState::Pushing);
+		push->SetState(info::Push::PushState::Pushing);
 
 		logtt("PushSession(%d) has started.", GetId());
 
@@ -193,8 +195,8 @@ namespace pub
 
 			if (push != nullptr)
 			{
-				GetPush()->SetState(info::Push::PushState::Stopped);
-				GetPush()->IncreaseSequence();
+				push->SetState(info::Push::PushState::Stopped);
+				push->IncreaseSequence();
 			}
 
 			DestoryWriter();
@@ -235,23 +237,29 @@ namespace pub
 			return;
 		}
 
+		auto push = GetPush();
+		if (push == nullptr)
+		{
+			return;
+		}
+
 		uint64_t sent_bytes = 0;
 
 		bool ret = writer->SendPacket(session_packet, &sent_bytes);
 		if (ret == false)
 		{
-			logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), _push->GetInfoString().CStr());
+			logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 
 			writer->Stop();
 
 			SetState(SessionState::Error);
-			GetPush()->SetState(info::Push::PushState::Error);
+			push->SetState(info::Push::PushState::Error);
 
 			return;
 		}
 
-		GetPush()->UpdatePushTime();
-		GetPush()->IncreasePushBytes(sent_bytes);
+		push->UpdatePushTime();
+		push->IncreasePushBytes(sent_bytes);
 
 		MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Push, sent_bytes);
 	}
@@ -358,6 +366,12 @@ namespace pub
 			return false;
 		}
 
+		auto push = GetPush();
+		if (push == nullptr)
+		{
+			return false;
+		}
+
 		// Check already added
 		if (writer->GetTrackByTrackId(track->GetId()) != nullptr)
 		{
@@ -365,22 +379,22 @@ namespace pub
 			return false;
 		}
 
-		if (IsSupportTrack(GetPush()->GetProtocolType(), track) == false)
+		if (IsSupportTrack(push->GetProtocolType(), track) == false)
 		{
 			logtw("Could not supported track. trackId:%u, codecId: %d", track->GetId(), ov::ToUnderlyingType(track->GetCodecId()));
 			return false;
 		}
 
-		if (IsSupportCodec(GetPush()->GetProtocolType(), track->GetCodecId()) == false)
+		if (IsSupportCodec(push->GetProtocolType(), track->GetCodecId()) == false)
 		{
 			logtw("Could not supported codec. trackId:%u, codecId: %d", track->GetId(), ov::ToUnderlyingType(track->GetCodecId()));
 			return false;
 		}
 
 		// RTMP protocol only supports one track per media type.
-		if (GetPush()->GetProtocolType() == info::Push::ProtocolType::RTMP)
+		if (push->GetProtocolType() == info::Push::ProtocolType::RTMP)
 		{
-			if (GetWriter()->GetTrackCountByType(track->GetMediaType()) >= 1)
+			if (writer->GetTrackCountByType(track->GetMediaType()) >= 1)
 			{
 				logtw("Could not add more than one video track for RTMP. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 				return false;

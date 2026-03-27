@@ -510,26 +510,94 @@ namespace ov
 		switch (GetType())
 		{
 			case SocketType::Tcp: {
-				sockaddr_storage client_addr{};
-				socklen_t client_length = sizeof(client_addr);
-
-				socket_t client_socket	= ::accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
-
-				if (client_socket != InvalidSocket)
+				while (true)
 				{
-					*client = SocketAddress("", client_addr);
-				}
+					sockaddr_storage client_addr{};
+					socklen_t client_length = sizeof(client_addr);
+					auto client_socket		= ::accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
 
-				return SocketWrapper(GetType(), client_socket);
+					if (client_socket == InvalidSocket)
+					{
+						auto error = ov::Error::CreateErrorFromErrno();
+						auto code  = error->GetCode();
+						code	   = (code == EWOULDBLOCK) ? EAGAIN : code;
+
+						switch (code)
+						{
+							case EINTR:
+								logaw("Accept was interrupted by a signal, continue to accept other clients");
+								continue;
+
+							case EAGAIN:
+								logad("No more clients to accept");
+								break;
+
+							case ENFILE:
+								[[fallthrough]];
+							case EMFILE:
+								logac("The process or the system has reached the limit of open file descriptors, cannot accept new clients until some sockets are closed");
+								_has_pending_events = true;
+								_worker->EnqueueToDispatchLater(GetSharedPtr());
+								break;
+
+							case ENOMEM:
+								[[fallthrough]];
+							case ENOBUFS:
+								logac("Not enough memory to accept new clients, cannot accept new clients until some sockets are closed and memory is freed");
+								_has_pending_events = true;
+								_worker->EnqueueToDispatchLater(GetSharedPtr());
+								break;
+
+							case ECONNABORTED:
+								logaw("A connection has been aborted while waiting to be accepted");
+								continue;
+
+							default:
+								logae("Failed to accept a client socket: %s", error->What());
+								break;
+						}
+					}
+					else
+					{
+						*client = SocketAddress("", client_addr);
+					}
+
+					return SocketWrapper(GetType(), client_socket);
+				}
 			}
 
 			case SocketType::Srt: {
 				sockaddr_storage client_addr{};
-				int client_length		= sizeof(client_addr);
+				int client_length  = sizeof(client_addr);
+				auto client_socket = ::srt_accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
 
-				SRTSOCKET client_socket = ::srt_accept(GetNativeHandle(), reinterpret_cast<sockaddr *>(&client_addr), &client_length);
+				if (client_socket == SRT_INVALID_SOCK)
+				{
+					auto srt_error = ov::SrtError::CreateErrorFromSrt();
 
-				if (client_socket != SRT_INVALID_SOCK)
+					switch (srt_error->GetCode())
+					{
+						case SRT_ESCLOSED:
+							// This can happen when the client socket is closed while accepting,
+							// so we can just ignore this error and continue to accept other clients.
+							logad("Client socket is closed while accepting");
+							_has_pending_events = true;
+							_worker->EnqueueToDispatchLater(GetSharedPtr());
+							break;
+
+						case SRT_EASYNCRCV:
+							logad("No more clients to accept");
+							break;
+
+						default:
+							// Unknown error occurred while accepting
+							logae("Failed to accept a client socket: %s", srt_error->GetMessage().CStr());
+							_has_pending_events = true;
+							_worker->EnqueueToDispatchLater(GetSharedPtr());
+							break;
+					}
+				}
+				else
 				{
 					*client = SocketAddress("", client_addr);
 				}
@@ -1052,6 +1120,8 @@ namespace ov
 	{
 		logat("Socket is ready to read");
 
+		_has_pending_events = false;
+
 		auto callback = std::atomic_load(&_callback);
 		if (callback != nullptr)
 		{
@@ -1490,10 +1560,12 @@ namespace ov
 		OV_ASSERT(data->GetCapacity() > 0, "Must specify a data size in advance using Reserve().");
 
 		size_t read_bytes;
+		size_t capacity = data->GetCapacity();
 
-		data->SetLength(data->GetCapacity());
+		// Set the length of the data to the capacity to avoid memory reallocation
+		data->SetLength(capacity);
 
-		auto error = Recv(data->GetWritableData(), data->GetCapacity(), &read_bytes, non_block);
+		auto error = Recv(data->GetWritableData(), capacity, &read_bytes, non_block);
 
 		if (error != nullptr)
 		{
@@ -1763,8 +1835,7 @@ namespace ov
 				iov.iov_base			   = data->GetWritableData();
 				iov.iov_len				   = data->GetLength();
 
-				const int control_buf_size = CMSG_SPACE((_family == SocketFamily::Inet) ? sizeof(in_pktinfo) : sizeof(in6_pktinfo));
-				char control_buf[control_buf_size];
+				char control_buf[CMSG_SPACE(sizeof(in6_pktinfo))];
 				::memset(control_buf, 0, sizeof(control_buf));
 
 				msghdr msg{};

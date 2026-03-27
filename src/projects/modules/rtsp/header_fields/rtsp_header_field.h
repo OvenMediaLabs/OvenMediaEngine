@@ -36,6 +36,7 @@ enum class RtspHeaderFieldType : uint16_t
 class RtspHeaderField
 {
 public:
+	virtual ~RtspHeaderField() = default;
 	RtspHeaderField();
 	RtspHeaderField(RtspHeaderFieldType type);
 	RtspHeaderField(RtspHeaderFieldType type, ov::String value);

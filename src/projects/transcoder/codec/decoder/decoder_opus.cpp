@@ -218,4 +218,6 @@ void DecoderOPUS::CodecThread()
 			_change_format = true;
 		}
 	}
+
+	UninitCodec();	
 }

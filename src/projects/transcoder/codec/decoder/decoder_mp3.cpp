@@ -213,4 +213,6 @@ void DecoderMP3::CodecThread()
 
 		}
 	}
+
+	UninitCodec();	
 }

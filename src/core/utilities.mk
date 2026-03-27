@@ -33,8 +33,10 @@ endef
 # Usage: $(call get_local_source_list)
 define get_local_source_list
 $(strip \
-	$(call get_local_file_list,*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
-	$(call get_local_file_list,*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	$(filter-out %_test.c %_test.cpp, \
+		$(call get_local_file_list,*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
+		$(call get_local_file_list,*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	) \
 )
 endef
 
@@ -80,8 +82,10 @@ endef
 # Ex.:   $(call get_sub_source_list,sub_dir)
 define get_sub_source_list
 $(strip \
-	$(call get_sub_file_list,$(1),*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
-	$(call get_sub_file_list,$(1),*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	$(filter-out %_test.c %_test.cpp, \
+		$(call get_sub_file_list,$(1),*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
+		$(call get_sub_file_list,$(1),*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	) \
 )
 endef
 
@@ -144,8 +148,10 @@ endef
 # Ex.:   $(call get_sub_source_list_r,sub_dir)
 define get_sub_source_list_r
 $(strip \
-	$(call get_sub_file_list_r,$(1),*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
-	$(call get_sub_file_list_r,$(1),*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	$(filter-out %_test.c %_test.cpp, \
+		$(call get_sub_file_list_r,$(1),*.$(patsubst .%,%,$(CONFIG_C_EXTENSION))) \
+		$(call get_sub_file_list_r,$(1),*.$(patsubst .%,%,$(CONFIG_CXX_EXTENSION))) \
+	) \
 )
 endef
 
