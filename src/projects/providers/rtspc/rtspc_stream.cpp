@@ -725,23 +725,25 @@ namespace pvd
 				return false;
 			}
 
-			constexpr size_t SRTP_KEY_MATERIAL_LENGTH = 30;  // master key (16) + master salt (14)
-
 			for (const auto &[channel_id, crypto_attr] : _channel_crypto_list)
 			{
-				// Parse crypto suite
+				// Parse crypto suite and determine expected key material length
 				std::optional<uint64_t> crypto_suite = std::nullopt;
+				size_t expected_key_length = 0;
 				if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_80")
 				{
 					crypto_suite = SRTP_AES128_CM_SHA1_80;
+					expected_key_length = 30;  // master key (16) + master salt (14)
 				}
 				else if (crypto_attr.crypto_suite == "AES_CM_128_HMAC_SHA1_32")
 				{
 					crypto_suite = SRTP_AES128_CM_SHA1_32;
+					expected_key_length = 30;  // master key (16) + master salt (14)
 				}
 				else if (crypto_attr.crypto_suite == "AEAD_AES_128_GCM")
 				{
 					crypto_suite = SRTP_AEAD_AES_128_GCM;
+					expected_key_length = 28;  // master key (16) + master salt (12)
 				}
 
 				if (!crypto_suite.has_value())
@@ -753,11 +755,11 @@ namespace pvd
 
 				// Decode base64 key
 				auto key_data = ov::Base64::Decode(crypto_attr.key_params);
-				if (key_data == nullptr || key_data->GetLength() != SRTP_KEY_MATERIAL_LENGTH)
+				if (key_data == nullptr || key_data->GetLength() != expected_key_length)
 				{
 					SetState(State::ERROR);
 					logte("Failed to decode SRTP key for channel %u (expected %zu bytes, got %zu)",
-						  channel_id, SRTP_KEY_MATERIAL_LENGTH,
+						  channel_id, expected_key_length,
 						  key_data ? key_data->GetLength() : 0);
 					return false;
 				}
