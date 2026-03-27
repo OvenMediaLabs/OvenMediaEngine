@@ -38,7 +38,11 @@ private:
 	std::shared_ptr<SrtpAdapter>		_recv_session = nullptr;
 
 	// Per-channel mode (RTSP SDES-SRTP)
-	// Maps RTP interleaved channel ID -> recv SrtpAdapter
+	// Maps RTP interleaved channel ID -> SrtpAdapter
 	// Odd channel IDs (RTCP) are resolved to even channel ID (RTP) via (channel_id & ~1)
 	std::map<uint8_t, std::shared_ptr<SrtpAdapter>>	_channel_recv_sessions;
+	std::map<uint8_t, std::shared_ptr<SrtpAdapter>>	_channel_send_sessions;
+
+	// SSRC -> RTP channel ID mapping (learned from incoming RTP for outgoing RTCP routing)
+	std::map<uint32_t, uint8_t>	_ssrc_to_channel;
 };

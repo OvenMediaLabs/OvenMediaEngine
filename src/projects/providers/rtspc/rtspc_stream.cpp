@@ -1442,7 +1442,7 @@ namespace pvd
 		}
 
 		// Make RTSP interleaved data
-		if (from_node == NodeType::Rtcp)
+		if (from_node == NodeType::Rtcp || from_node == NodeType::Srtcp)
 		{
 			uint8_t channel_id = 0;
 
