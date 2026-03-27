@@ -125,6 +125,12 @@ namespace pvd
 
 		stop_watch.Update();
 
+		if (RequestDescribe() == false)
+		{
+			Release();
+			return false;
+		}
+
 		if (RequestSetup() == false)
 		{
 			Release();
@@ -262,6 +268,16 @@ namespace pvd
 			}
 
 			logti("TLS connection established successfully");
+		}
+
+		return true;
+	}
+
+	bool RtspcStream::RequestDescribe()
+	{
+		if (GetState() != State::CONNECTED)
+		{
+			return false;
 		}
 
 		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true));

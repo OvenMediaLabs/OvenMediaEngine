@@ -110,6 +110,7 @@ namespace pvd
 		bool StopStream() override; // Stop
 
 		bool ConnectTo();
+		bool RequestDescribe();
 		bool RequestSetup();
 		bool RequestPlay();
 		bool RequestStop();
