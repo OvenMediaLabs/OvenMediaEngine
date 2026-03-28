@@ -95,6 +95,16 @@ namespace pvd
 		int stream_fd = stream->GetFileDescriptorForDetectingEvent();
 		if(stream_fd == -1)
 		{
+			auto state = stream->GetState();
+			// Some pull streams tear down their runtime socket before the motor reaches
+			// the final epoll-unregister step. If the stream is already STOPPED or
+			// TERMINATED, treat the missing fd as a normal cleanup case instead of
+			// logging a misleading delete error.
+			if ((state == Stream::State::STOPPED) || (state == Stream::State::TERMINATED))
+			{
+				return true;
+			}
+
 			logte("Failed to delete stream : %s/%s(%u) Stream failed to provide the file description for event detection", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
 			return false;
 		}
