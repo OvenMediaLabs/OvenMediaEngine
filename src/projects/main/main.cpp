@@ -150,7 +150,6 @@ int main(int argc, char *argv[])
 	INIT_MODULE(rtmp_provider, "RTMP Provider", pvd::RtmpProvider::Create(*server_config, media_router));
 	INIT_MODULE(ovt_provider, "OVT Provider", pvd::OvtProvider::Create(*server_config, media_router));
 	INIT_MODULE(rtspc_provider, "RTSPC Provider", pvd::RtspcProvider::Create(*server_config, media_router));
-	INIT_MODULE(file_provider, "File Provider", pvd::FileProvider::Create(*server_config, media_router));
 	INIT_MODULE(scheduled_provider, "Scheduled Provider", pvd::ScheduledProvider::Create(*server_config, media_router));
 	INIT_MODULE(multiplex_provider, "Multiplex Provider", pvd::MultiplexProvider::Create(*server_config, media_router));
 	// PENDING : INIT_MODULE(rtsp_provider, "RTSP Provider", pvd::RtspProvider::Create(*server_config, media_router));
@@ -186,7 +185,6 @@ int main(int argc, char *argv[])
 	RELEASE_MODULE(rtmp_provider, "RTMP Provider");
 	RELEASE_MODULE(ovt_provider, "OVT Provider");
 	RELEASE_MODULE(rtspc_provider, "RTSPC Provider");
-	RELEASE_MODULE(file_provider, "File Provider");
 	RELEASE_MODULE(scheduled_provider, "Scheduled Provider");
 	RELEASE_MODULE(multiplex_provider, "Multiplex Provider");
 

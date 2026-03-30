@@ -56,7 +56,6 @@ LOCAL_STATIC_LIBRARIES := \
 	jsoncpp \
 	dump \
 	srt \
-	file_provider \
 	managed_queue \
 	ffmpeg_wrapper \
 	event \

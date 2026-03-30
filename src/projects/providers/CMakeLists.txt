@@ -1,6 +1,5 @@
 add_subdirectory(rtmp)
 add_subdirectory(scheduled)
-add_subdirectory(file)
 add_subdirectory(ovt)
 add_subdirectory(webrtc)
 add_subdirectory(rtspc)

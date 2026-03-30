@@ -973,10 +973,6 @@ namespace ocst
 		{
 			type = ProviderType::Ovt;
 		}
-		else if (lower_scheme == "file")
-		{
-			type = ProviderType::File;
-		}
 		else
 		{
 			logte("Could not find a provider for scheme [%s]", scheme.CStr());
