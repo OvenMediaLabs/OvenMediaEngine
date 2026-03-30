@@ -721,6 +721,7 @@ size_t TranscoderStream::CreateOutputStreams()
                         }
                         else
                         {
+                                output_stream->SetInternal(true);
                                 {
                                         std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
                                         _output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
