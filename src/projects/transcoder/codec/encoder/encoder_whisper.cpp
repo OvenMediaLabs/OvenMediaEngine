@@ -1,22 +1,18 @@
 //==============================================================================
 //
-//  Transcode
+//  Whisper encoder for speech recognition and subtitle generation.
 //
-//  Created by Kwon Keuk Han
-//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//  Created by Getroot
+//  Copyright (c) 2025 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include <sys/stat.h>
-
-#ifdef HWACCELS_NVIDIA_ENABLED
-#include <cuda_runtime.h>
-#endif
 #include <orchestrator/orchestrator.h>
 #include <base/modules/data_format/webvtt/webvtt_frame.h>
 #include <base/event/command/commands.h>
 
 #include "encoder_whisper.h"
 #include "../../transcoder_private.h"
+#include "../../transcoder_whisper_model_registry.h"
 
 EncoderWhisper::EncoderWhisper(const info::Stream &stream_info)
 	: TranscodeEncoder(stream_info)
@@ -100,85 +96,27 @@ bool EncoderWhisper::InitCodec()
 		return false;
 	}
 
-	struct whisper_context_params cparams = whisper_context_default_params();
-	cparams.flash_attn = true;
-
-	// libcublas lazy-initializes its global state (heap buffers, pthread_rwlock_t)
-	// in two phases without thread safety.  Serialise both phases under a static
-	// mutex so concurrent EncoderWhisper instances never race inside libcublas.
-	// Phase 1: whisper_init_from_file_with_params() → cublasCreate().
-	// Phase 2: first GEMM call → pthread_rwlock_init. whisper_pcm_to_mel() does
-	//          NOT reach the GEMM path, so a full whisper_full() warmup is needed.
-	{
-		static std::mutex _cublas_init_mutex;
-		std::lock_guard<std::mutex> lock(_cublas_init_mutex);
-
-		// Determine whether there is enough free GPU memory BEFORE calling
-		// whisper_init_from_file_with_params().  If CUDA OOM is hit inside that
-		// function, ggml may crash (SIGSEGV) instead of returning an error code, so we must avoid it entirely.
-		// Pre-flight check: model file size * 1.25 (weights + compute graph overhead)
-		// must fit in available CUDA free memory.
-		bool use_gpu = false;
-		{
-#ifdef HWACCELS_NVIDIA_ENABLED
-			struct stat model_stat{};
-			size_t model_file_bytes = 0;
-			if (::stat(_track->GetModel().CStr(), &model_stat) == 0)
-			{
-				model_file_bytes = static_cast<size_t>(model_stat.st_size);
-			}
-
-			// ggml allocates weights + kv cache + compute buffers.
-			// Observed ratio for ggml-small: ~729 MB from a 466 MB file (1.57×).
-			// 2× the file size is a safe upper bound across all whisper model sizes.
-			size_t required_bytes = model_file_bytes * 2;
-			size_t free_mem = 0, total_mem = 0;
-			if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess)
-			{
-				if (free_mem >= required_bytes)
-				{
-					use_gpu = true;
-					logti("GPU init: free=%.1f MiB, required=%.1f MiB → using GPU",
-						static_cast<double>(free_mem) / (1024.0 * 1024.0),
-						static_cast<double>(required_bytes) / (1024.0 * 1024.0));
-				}
-				else
-				{
-					logtw("Not enough GPU memory for Whisper (free=%.1f MiB, required≈%.1f MiB). Falling back to CPU.",
-						static_cast<double>(free_mem) / (1024.0 * 1024.0),
-						static_cast<double>(required_bytes) / (1024.0 * 1024.0));
-				}
-			}
-			else
-			{
-				logtw("cudaMemGetInfo failed. Falling back to CPU for Whisper.");
-			}
-#endif
-		}
-
-		cparams.use_gpu = use_gpu;
-		_whisper_ctx = whisper_init_from_file_with_params(_track->GetModel().CStr(), cparams);
-
-		if (_whisper_ctx != nullptr)
-		{
-			std::vector<float> warmup(WHISPER_SAMPLE_RATE, 0.0f);  // 1 s of silence
-			whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-			wparams.print_progress   = false;
-			wparams.print_special    = false;
-			wparams.print_realtime   = false;
-			wparams.print_timestamps = false;
-			wparams.n_threads        = 1;
-			wparams.language         = "en";
-			wparams.no_context       = true;
-			whisper_full(_whisper_ctx, wparams, warmup.data(), static_cast<int>(warmup.size()));
-		}
-	}
-
+	// Acquire the shared model context from the registry.
+	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel());
 	if (_whisper_ctx == nullptr)
 	{
-		logte("Whisper model could not be loaded. model=%s", _track->GetModel().CStr());
+		// Error already logged by the registry.
 		return false;
 	}
+
+	// Create a per-instance inference state via the registry.
+	// The registry serializes allocation and pre-checks GPU memory to prevent ggml crash.
+	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel());
+	if (_whisper_state == nullptr)
+	{
+		logte("Failed to create whisper state. stream=%s, track_id=%d, label=%s, model=%s",
+			  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr());
+		_whisper_ctx.reset();
+		return false;
+	}
+
+	logti("Whisper state created. stream=%s, track_id=%d, label=%s, model=%s",
+		  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr());
 
 	return true;
 }
@@ -308,14 +246,14 @@ void EncoderWhisper::CodecThread()
 		// Auto detect language if needed.
 		if (_source_language == "auto" && _translate == false)
 		{
-			if (whisper_pcm_to_mel(_whisper_ctx, pcmf32_buffer.data(), pcmf32_buffer.size(), 4) != 0)
+			if (whisper_pcm_to_mel_with_state(_whisper_ctx.get(), _whisper_state, pcmf32_buffer.data(), pcmf32_buffer.size(), 4) != 0)
 			{
 				logte("Failed to process audio samples for language detection with Whisper");
 				continue;
 			}
 
 			std::vector<float> probs(whisper_lang_max_id() + 1, 0.0f);
-			const auto lang_id = whisper_lang_auto_detect(_whisper_ctx, 0, 4, probs.data());
+			const auto lang_id = whisper_lang_auto_detect_with_state(_whisper_ctx.get(), _whisper_state, 0, 4, probs.data());
 			if (lang_id < 0)
 			{
 				logte("Failed to detect language with Whisper");
@@ -369,7 +307,7 @@ void EncoderWhisper::CodecThread()
 		logtt("Starting Whisper processing with %d samples", static_cast<int>(pcmf32_buffer.size()));
 		logtt("Audio buffer time range for Whisper: %" PRId64 " ~ %" PRId64 " (last_commit_end_cs=%" PRId64 ")",
 			buffer_start_cs, buffer_end_cs, last_commit_end_cs);
-		if (whisper_full(_whisper_ctx, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
+		if (whisper_full_with_state(_whisper_ctx.get(), _whisper_state, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
 		{
 			logte("Failed to process audio samples with Whisper");
 			continue;
@@ -378,10 +316,10 @@ void EncoderWhisper::CodecThread()
 
 		ov::String result_text;
 		
-		const int n_segments = whisper_full_n_segments(_whisper_ctx);
+		const int n_segments = whisper_full_n_segments_from_state(_whisper_state);
 		for (int i = 0; i < n_segments; ++i) 
 		{
-			const char *text = whisper_full_get_segment_text(_whisper_ctx, i);
+			const char *text = whisper_full_get_segment_text_from_state(_whisper_state, i);
 
 			// How to output subtitles without overlapping : but the quality is low - commented out for now.
 			// int64_t t0 = whisper_full_get_segment_t0(_whisper_ctx, i);
@@ -458,23 +396,24 @@ void EncoderWhisper::CodecThread()
 			pcmf32_buffer_old = std::vector<float>(pcmf32_buffer.end() - _n_samples_keep, pcmf32_buffer.end());
 			prompt_tokens.clear();
 
-			const int n_segments = whisper_full_n_segments(_whisper_ctx);
+			const int n_segments = whisper_full_n_segments_from_state(_whisper_state);
 			for (int i = 0; i < n_segments; ++i)
 			{
-				const int nt = whisper_full_n_tokens(_whisper_ctx, i);
+				const int nt = whisper_full_n_tokens_from_state(_whisper_state, i);
 				for (int it = 0; it < nt; ++it)
 				{
-					prompt_tokens.push_back(whisper_full_get_token_id(_whisper_ctx, i, it));
+					prompt_tokens.push_back(whisper_full_get_token_id_from_state(_whisper_state, i, it));
 				}
 			}
 		}
 	}
 
-	if (_whisper_ctx)
+	if (_whisper_state != nullptr)
 	{
-		whisper_free(_whisper_ctx);
-		_whisper_ctx = nullptr;
+		WhisperModelRegistry::GetInstance()->DeleteState(_whisper_state);
+		_whisper_state = nullptr;
 	}
+	_whisper_ctx.reset();
 }
 
 bool EncoderWhisper::SendVttToProvider(const ov::String &text)

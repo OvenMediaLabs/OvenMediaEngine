@@ -10,6 +10,7 @@
 
 #include "p2p.h"
 #include "recovery.h"
+#include "whisper.h"
 
 namespace cfg
 {
@@ -29,6 +30,7 @@ namespace cfg
 			ModuleTemplate _etag{false};
 			// Experimental feature is disabled by default
 			ModuleTemplate _ertmp{false};
+			Whisper _whisper;
 
 		public:
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetHttp2, _http2)
@@ -38,6 +40,7 @@ namespace cfg
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetDynamicAppRemoval, _dynamic_app_removal)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetETag, _etag)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetERTMP, _ertmp)
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetWhisper, _whisper)
 
 		protected:
 			void MakeList() override
@@ -49,6 +52,7 @@ namespace cfg
 				Register<Optional>("DynamicAppRemoval", &_dynamic_app_removal);
 				Register<Optional>("ETag", &_etag);
 				Register<Optional>("ERTMP", &_ertmp);
+				Register<Optional>("Whisper", &_whisper);
 			}
 		};
 	}  // namespace modules

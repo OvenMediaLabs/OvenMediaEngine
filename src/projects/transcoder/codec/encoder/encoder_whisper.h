@@ -1,14 +1,17 @@
 //==============================================================================
 //
-//  Machine 
+//  Whisper encoder for speech recognition and subtitle generation.
 //
-//  Created by Kwon Keuk Han
-//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//  Created by Getroot
+//  Copyright (c) 2025 AirenSoft. All rights reserved.
 //
 //==============================================================================
 #pragma once
 
 #include <whisper.h>
+
+#include <memory>
+
 #include <base/provider/stream.h>
 #include "../../transcoder_encoder.h"
 
@@ -66,11 +69,14 @@ private:
 	int32_t _step_ms = 2000;
 	int32_t _length_ms = 8000;
 	int32_t _keep_ms = 100;
-	struct whisper_context * _whisper_ctx = nullptr;
+        // Shared model weights: owned by WhisperModelRegistry, reference-counted here.
+        std::shared_ptr<whisper_context> _whisper_ctx;
+        // Per-instance inference state: isolates all mutable buffers from other instances.
+        struct whisper_state * _whisper_state = nullptr;
 
-	int32_t _n_samples_step = 0;
-	int32_t _n_samples_length = 0;
-	int32_t _n_samples_keep = 0;
+        int32_t _n_samples_step = 0;
+        int32_t _n_samples_length = 0;
+        int32_t _n_samples_keep = 0;
 
 	ov::String _source_language = "auto";
 	bool _translate = false;

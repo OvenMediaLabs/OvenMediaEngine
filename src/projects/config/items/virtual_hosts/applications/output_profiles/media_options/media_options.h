@@ -10,6 +10,7 @@
 
 #include "../../subtitle/subtitle.h"
 #include "./overlays/overlays.h"
+#include "stt.h"
 
 namespace cfg
 {
@@ -24,57 +25,59 @@ namespace cfg
 				protected:
 					subt::Subtitle _subtitle; 
 					Overlays _overlays;
+					Stt _stt;
 
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetSubtitle, _subtitle)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetOverlays, _overlays);
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetStt, _stt)
 
 				protected:
 					void MakeList() override
 					{
 						Register<Optional>("Subtitles", &_subtitle, nullptr,
 							[=]() -> std::shared_ptr<ConfigError> {
-								if (_subtitle.IsEnabled() && _subtitle.GetRenditions().empty())
-								{
-									return CreateConfigErrorPtr("Subtitle is enabled but no renditions are defined");
-								}
-								
-								// Check default label
-								auto default_label = _subtitle.GetDefaultLabel();
-								if (default_label.IsEmpty() == false)
-								{
-									bool found = false;
-									for (auto &rendition : _subtitle.GetRenditions())
+									if (_subtitle.IsEnabled() && _subtitle.GetRenditions().empty())
 									{
-										if (rendition.GetLabel() == default_label)
+										return CreateConfigErrorPtr("Subtitle is enabled but no renditions are defined");
+									}
+
+									// Check default label
+									auto default_label = _subtitle.GetDefaultLabel();
+									if (default_label.IsEmpty() == false)
+									{
+										bool found = false;
+										for (auto &rendition : _subtitle.GetRenditions())
 										{
-											rendition.SetDefault(true);
-											if (rendition.IsAutoSelect() == false)
-											{
-												logw("Config", "Default subtitle rendition '%s' must have AutoSelect enabled. Enabling it automatically.", default_label.CStr());
-												rendition.SetAutoSelect(true);
-											}
-											found = true;
+												   if (rendition.GetLabel() == default_label)
+												   {
+												   rendition.SetDefault(true);
+												   if (rendition.IsAutoSelect() == false)
+												   {
+												   logw("Config", "Default subtitle rendition '%s' must have AutoSelect enabled. Enabling it automatically.", default_label.CStr());
+												   rendition.SetAutoSelect(true);
+												   }
+												   found = true;
+												   }
+										}
+
+										if (found == false)
+										{
+											   return CreateConfigErrorPtr("Default label '%s' not found in subtitle renditions", default_label.CStr());
 										}
 									}
 
-									if (found == false)
-									{
-										return CreateConfigErrorPtr("Default label '%s' not found in subtitle renditions", default_label.CStr());
-									}
+									// moved to <Application><Subtitle>, this Subtitles will be deprecated soon
+									logw("Config", "<Subtitles> configuration is moved to <Application><Subtitle>. Please update your configuration accordingly. This may be deprecated in future versions.");
+
+									return nullptr;
 								}
-
-								// moved to <Application><Subtitle>, this Subtitles will be deprecated soon
-								logw("Config", "<Subtitles> configuration is moved to <Application><Subtitle>. Please update your configuration accordingly. This may be deprecated in future versions.");
-
-								return nullptr;
-							}
 						);
 						Register<Optional>({"Overlays", "overlays"}, &_overlays);
-
+						Register<Optional>("STT", &_stt);
 					}
 				};
 			}  // namespace oprf
-		} // namespace app
-	} // namespace vhost
+			} // namespace app
+		} // namespace vhost
 }  // namespace cfg

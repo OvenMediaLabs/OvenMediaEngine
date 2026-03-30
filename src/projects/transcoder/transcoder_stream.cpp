@@ -653,92 +653,80 @@ size_t TranscoderStream::CreateOutputStreams()
 		logti("%s Output stream has been created. [%s(%u)]", _log_prefix.CStr(), output_stream->GetUri().CStr(), output_stream->GetId());
 	}
 
-	auto cfg_media_option_subtitles = _application_info.GetConfig().GetSubtitle();
-	if (cfg_media_option_subtitles.IsEnabled() == false)
-	{
-		// Subtitle option is moved to Application level, and OutputProfiles/MediaOptions/Subtitle will be deprecated. 
-		cfg_media_option_subtitles = GetOutputProfilesCfg()->GetMediaOptions().GetSubtitle();
-	}
-	
-	cfg::vhost::app::oprf::OutputProfile cfg_new_output_profile;
-	if (cfg_media_option_subtitles.IsEnabled())
-	{
-		auto new_output_profile_name = ov::String::FormatString("TranscriptionProcess_%s", _input_stream->GetName().CStr());
-		cfg_new_output_profile.SetInternal(true);
-		cfg_new_output_profile.SetName(new_output_profile_name);
-		cfg_new_output_profile.SetOutputStreamName(new_output_profile_name);
+// STT (Speech-to-Text) output streams.
+        // New config: <OutputProfiles><MediaOptions><STT><Rendition> (preferred)
+        // Legacy config: <Application><Subtitle><Rendition><Transcription> (deprecated, backward compat)
+        // Both may be present (e.g. static legacy config + webhook-injected new config).
+        // New config takes priority per subtitle label; legacy is used as fallback.
+        {
+                auto new_output_profile_name = ov::String::FormatString("TranscriptionProcess_%s", _input_stream->GetName().CStr());
 
-		cfg::vhost::app::oprf::Encodes encodes;
-		int i = 0;
-		for (const auto &subtitle_rendition : cfg_media_option_subtitles.GetRenditions())
-		{
-			bool enabled = false;
-			auto cfg_transcription = subtitle_rendition.GetTranscription(&enabled);
-			if (enabled)
-			{
-				// Make SpeechToTextProfile
-				auto name = ov::String::FormatString("SpeechToText_%d", i);
-				auto engine = cfg_transcription.GetEngine();
-				auto model = cfg_transcription.GetModel();
-				auto model_path = ov::GetFilePath(model, cfg::ConfigManager::GetInstance()->GetConfigPath());
-				// check if the model file exists
-				if (access(model_path.CStr(), F_OK) != 0)
-				{
-					logte("The transcription model file does not exist. model(%s)", model_path.CStr());
-					continue;
-				}
+                cfg::vhost::app::oprf::OutputProfile cfg_new_output_profile;
+                cfg_new_output_profile.SetInternal(true);
+                cfg_new_output_profile.SetName(new_output_profile_name);
+                cfg_new_output_profile.SetOutputStreamName(new_output_profile_name);
 
-				auto input_audio_track = _input_stream->GetMediaTrackByOrder(cmn::MediaType::Audio, cfg_transcription.GetAudioIndexHint());
-				auto output_subtitle_track = _input_stream->GetTrackByLabel(subtitle_rendition.GetLabel());
+                cfg::vhost::app::oprf::Encodes encodes;
+                int i = 0;
 
-				if (input_audio_track == nullptr || output_subtitle_track == nullptr)
-				{
-					logte("Could not find input audio track or output subtitle track for transcription. AudioIndexHint(%d), SubtitleLabel(%s)", cfg_transcription.GetAudioIndexHint(), subtitle_rendition.GetLabel().CStr());
-					continue;
-				}
+                // 1. New config: <MediaOptions><STT>
+                const auto &cfg_stt = GetOutputProfilesCfg()->GetMediaOptions().GetStt();
+                for (const auto &stt_rendition : cfg_stt.GetRenditions())
+                {
+                        auto name = ov::String::FormatString("SpeechToText_%d", i);
+                        auto model_path = ov::GetFilePath(stt_rendition.GetModel(), cfg::ConfigManager::GetInstance()->GetConfigPath());
 
-				cfg::vhost::app::oprf::SpeechToTextProfile speech_to_text_profile(name,
-																				engine,
-																				model_path,
-																				input_audio_track->GetId(),
-																				output_subtitle_track->GetId());
-				speech_to_text_profile.SetSourceLanguage(cfg_transcription.GetSourceLanguage());
-				speech_to_text_profile.SetTranslation(cfg_transcription.GetTranslation());
-				speech_to_text_profile.SetOutputTrackLabel(subtitle_rendition.GetLabel());
+                        auto input_audio_track = _input_stream->GetMediaTrackByOrder(cmn::MediaType::Audio, stt_rendition.GetInputAudioIndex());
+                        auto output_subtitle_track = _input_stream->GetTrackByLabel(stt_rendition.GetOutputSubtitleLabel());
 
-				encodes.AddSpeechToTextProfiles(speech_to_text_profile);
-			}
+                        if (input_audio_track == nullptr || output_subtitle_track == nullptr)
+                        {
+                                logte("Could not find input audio track or output subtitle track for STT. InputAudioIndex(%d), OutputSubtitleLabel(%s)",
+                                        stt_rendition.GetInputAudioIndex(), stt_rendition.GetOutputSubtitleLabel().CStr());
+                                i++;
+                                continue;
+                        }
 
-			cfg_new_output_profile.SetEncodes(encodes);
+                        cfg::vhost::app::oprf::SpeechToTextProfile speech_to_text_profile(name,
+                                                                       stt_rendition.GetEngine(),
+                                                                       model_path,
+                                                                       input_audio_track->GetId(),
+                                                                       output_subtitle_track->GetId());
+                        speech_to_text_profile.SetSourceLanguage(stt_rendition.GetSourceLanguage());
+                        speech_to_text_profile.SetTranslation(stt_rendition.GetTranslation());
+                        speech_to_text_profile.SetOutputTrackLabel(stt_rendition.GetOutputSubtitleLabel());
 
-			i++;
-		}
+                        encodes.AddSpeechToTextProfiles(speech_to_text_profile);
+                        i++;
+                }
 
-		if (cfg_new_output_profile.GetEncodes().GetSpeechToTextProfileList().size() > 0)
-		{
-			auto output_stream = CreateOutputStream(cfg_new_output_profile);
-			if (output_stream == nullptr)
-			{
-				logte("%s Could not create output stream for transcription. name:%s", _log_prefix.CStr(), cfg_new_output_profile.GetName().CStr());
+                cfg_new_output_profile.SetEncodes(encodes);
+
+                if (cfg_new_output_profile.GetEncodes().GetSpeechToTextProfileList().size() > 0)
+                {
+                        auto output_stream = CreateOutputStream(cfg_new_output_profile);
+                        if (output_stream == nullptr)
+                        {
+                                logte("%s Could not create output stream for STT. name:%s", _log_prefix.CStr(), cfg_new_output_profile.GetName().CStr());
 
 #if NOTIFICATION_ENABLED
-				TranscoderAlerts::UpdateErrorWithoutCount(
-					TranscoderAlerts::ErrorType::CREATION_ERROR_PROFILE,
-					std::make_shared<cfg::vhost::app::oprf::OutputProfile>(cfg_new_output_profile),
-					_input_stream,
-					nullptr,
-					nullptr,
-					nullptr);
+                                TranscoderAlerts::UpdateErrorWithoutCount(
+                                        TranscoderAlerts::ErrorType::CREATION_ERROR_PROFILE,
+                                        std::make_shared<cfg::vhost::app::oprf::OutputProfile>(cfg_new_output_profile),
+                                        _input_stream,
+                                        nullptr,
+                                        nullptr,
+                                        nullptr);
 #endif
-			}
-			else
-			{
-				{
-					std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
-					_output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
-				}
+                        }
+                        else
+                        {
+                                {
+                                        std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
+                                        _output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
+                                }
 
-				logti("%s Output stream(transcription) has been created. [%s(%u)]", _log_prefix.CStr(), output_stream->GetUri().CStr(), output_stream->GetId());
+                                logti("%s Output stream(STT) has been created. [%s(%u)]", _log_prefix.CStr(), output_stream->GetUri().CStr(), output_stream->GetId());
 			}
 		}
 	}
@@ -1154,6 +1142,15 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 		// Create Encoder
 		if (CreateEncoder(encoder_id, output_stream, output_track) == false)
 		{
+			// Whisper (STT) encoder failure is non-fatal: GPU OOM or resource exhaustion
+			// should not bring down the whole stream. Log a warning and skip.
+			if (output_track->GetCodecId() == cmn::MediaCodecId::Whisper)
+			{
+				logtw("%s Could not create Whisper encoder — STT disabled for this stream. Id(%d), OutputTrack(%d)", _log_prefix.CStr(),
+					  encoder_id, output_track->GetId());
+				continue;
+			}
+
 			logte("%s Could not create encoder. Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d)", _log_prefix.CStr(),
 				  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), output_track->GetId());	
 

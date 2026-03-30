@@ -16,6 +16,7 @@
 #include "config/config_manager.h"
 #include "transcoder.h"
 #include "transcoder_gpu.h"
+#include "transcoder_whisper_model_registry.h"
 #include "transcoder_private.h"
 
 std::shared_ptr<Transcoder> Transcoder::Create(std::shared_ptr<MediaRouterInterface> router)
@@ -42,6 +43,17 @@ bool Transcoder::Start()
 
 	TranscodeGPU::GetInstance()->Initialize();
 
+	{
+		auto &whisper_cfg = cfg::ConfigManager::GetInstance()->GetServer()->GetModules().GetWhisper();
+		const auto &config_path = cfg::ConfigManager::GetInstance()->GetConfigPath();
+		std::vector<ov::String> resolved_paths;
+		for (const auto &p : whisper_cfg.GetPreloadModels())
+		{
+			resolved_paths.push_back(ov::GetFilePath(p, config_path));
+		}
+		WhisperModelRegistry::GetInstance()->Preload(resolved_paths);
+	}
+
 	return true;
 }
 
@@ -49,6 +61,7 @@ bool Transcoder::Stop()
 {
 	logtt("Transcoder has been stopped");
 
+	WhisperModelRegistry::GetInstance()->Uninitialize();
 	TranscodeGPU::GetInstance()->Uninitialize();
 
 	return true;
