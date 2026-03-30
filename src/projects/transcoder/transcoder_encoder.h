@@ -72,7 +72,9 @@ protected:
 	// 0: no force keyframe,  > 0: force keyframe by sum of duration
 	int64_t _force_keyframe_by_time_interval;
 	// -1: force keyframe
-	int64_t _accumulate_frame_duration;
+	int64_t _accumulate_frame_duration;	
+	// Time interval from the last inserted keyframe
+	int64_t _last_keyframe_delta_time;
 
 	AVCodecContext *_codec_context = nullptr;
 	AVPacket *_packet = nullptr;

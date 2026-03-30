@@ -65,8 +65,8 @@ private:
 	int32_t _max_dupulicate_frames = 5;
 
 	// The number of frames to skip based on the output framerate
-	// If 0, do not skip
-	int32_t _skip_frames = 0;
+	// -1:  disabled
+	int32_t _skip_frames = -1;
 	
 	// Buffer for storing frames
 	std::vector<std::shared_ptr<MediaFrame>> _frames;

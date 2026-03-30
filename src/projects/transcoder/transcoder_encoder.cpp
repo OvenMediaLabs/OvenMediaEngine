@@ -534,6 +534,7 @@ bool TranscodeEncoder::PushProcess(std::shared_ptr<const MediaFrame> media_frame
 			if (_accumulate_frame_duration >= _force_keyframe_by_time_interval ||  // Accumulated duration exceeds keyframe interval
 				_accumulate_frame_duration == -1)								   // Force keyframe the first frame
 			{
+				_last_keyframe_delta_time = _accumulate_frame_duration;
 				av_frame->pict_type		   = AV_PICTURE_TYPE_I;
 				_accumulate_frame_duration = 0;
 			}
@@ -622,6 +623,14 @@ bool TranscodeEncoder::PopProcess()
 		{
 			return true;
 		}
+	}
+
+	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame() == true)
+	{
+		logtt("keyframe is encoded. pts:%" PRId64 "ms, dts:%" PRId64 "ms, delta:%" PRId64 "ms",
+			  static_cast<int64_t>(media_packet->GetPts() * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()),
+			  static_cast<int64_t>(media_packet->GetDts() * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()),
+			  static_cast<int64_t>(_last_keyframe_delta_time * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()));
 	}
 	
 	// Call the complete handler.

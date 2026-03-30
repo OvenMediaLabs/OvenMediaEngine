@@ -17,7 +17,7 @@ FilterFps::FilterFps()
 {
 	_input_framerate = 0;
 	_output_framerate = 0;
-	_skip_frames = 0;
+	_skip_frames = -1; 
 
 	_curr_pts = AV_NOPTS_VALUE;
 	_next_pts = AV_NOPTS_VALUE;
@@ -89,6 +89,10 @@ double FilterFps::GetOutputFrameRate() const
 void FilterFps::SetSkipFrames(int32_t skip_frames)
 {
 	_skip_frames = skip_frames;
+	if(_skip_frames < 0)
+	{
+		_skip_frames = -1;
+	}
 }
 
 int32_t FilterFps::GetSkipFrames() const
@@ -173,9 +177,10 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 													 (AVRational){_input_timebase.GetNum(), _input_timebase.GetDen()},
 													 (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
 
-		// Calculate the PTS of the next frame considering the Skip Frame.
-		// Purpose of calculating the Duration of the current frame
-		int64_t next_timebase_pts = av_rescale_q_rnd(_next_pts + _skip_frames,
+		// Calculate the next frame's PTS based on _skip_frames (disabled: -1).
+		// If _skip_frames < 0, no frames are skipped and delta is 0.
+		int64_t delta = (_skip_frames <= 0) ? 0 : _skip_frames;
+		int64_t next_timebase_pts = av_rescale_q_rnd(_next_pts + delta,
 													 av_inv_q(av_d2q(_output_framerate, INT_MAX)),
 													 (AVRational){_input_timebase.GetNum(), _input_timebase.GetDen()},
 													 (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
@@ -225,7 +230,7 @@ double FilterFps::GetInputFramesPerSecond() const
 
 double FilterFps::GetExpectedOutputFramesPerSecond() const
 {
-	if (_skip_frames < 0)
+	if (_skip_frames <= 0)
 	{
 		return _output_framerate;
 	}
