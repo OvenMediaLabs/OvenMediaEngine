@@ -17,6 +17,9 @@ class TranscodeEncoder : public TranscodeBase<MediaFrame, MediaPacket>
 public:
 	typedef std::function<void(TranscodeResult, int32_t, std::shared_ptr<MediaPacket>)> CompleteHandler;
 	static std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> GetCandidates(bool hwaccels_enable, ov::String hwaccles_modules, std::shared_ptr<MediaTrack> track);
+	// Instantiate creates the encoder object for the given codec/module without calling Configure.
+	// Use this to inspect encoder properties (e.g. IsInputOnly()) before committing to full creation.
+	static std::shared_ptr<TranscodeEncoder> Instantiate(cmn::MediaCodecId codec_id, cmn::MediaCodecModuleId module_id, const info::Stream &stream_info);
 	static std::shared_ptr<TranscodeEncoder> Create(int32_t encoder_id, std::shared_ptr<info::Stream> info, std::shared_ptr<MediaTrack> output_track, std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> candidates, CompleteHandler complete_handler);
 
 public:
@@ -32,6 +35,10 @@ public:
 	virtual cmn::AudioSample::Format GetSupportAudioFormat() const noexcept = 0;
 	virtual cmn::VideoPixelFormatId GetSupportVideoFormat() const noexcept = 0;
 	virtual cmn::BitstreamFormat GetBitstreamFormat() const noexcept = 0;
+
+	// Returns true if this encoder consumes input but does not produce output packets
+	// back into the transcoding pipeline (e.g. STT encoders that push data forward directly).
+	virtual bool IsInputOnly() const noexcept { return false; }
 
 	bool InitCodecInteral();
 	virtual bool InitCodec() = 0;
