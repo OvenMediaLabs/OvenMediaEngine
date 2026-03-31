@@ -491,6 +491,23 @@ namespace cmn
 		return false;
 	}
 
+	enum class CodecStatus : uint8_t
+	{
+		Unknown,
+		Ready,
+		Failed,
+	};
+
+	constexpr const char *GetCodecStatusString(CodecStatus status)
+	{
+		switch (status)
+		{
+			case CodecStatus::Ready:  return "Ready";
+			case CodecStatus::Failed: return "Failed";
+			default:                  return nullptr;  // Unknown: don't print
+		}
+	}
+
 	constexpr const char *GetCodecIdString(cmn::MediaCodecId id)
 	{
 		switch (id)

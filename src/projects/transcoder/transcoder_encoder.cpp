@@ -207,7 +207,6 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 	return nullptr;
 }
 
-
 std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Create(
 	int32_t encoder_id,
 	std::shared_ptr<info::Stream> info,
@@ -411,7 +410,7 @@ bool TranscodeEncoder::InitCodecInteral()
 	auto result = InitCodec();
 	if (_track != nullptr)
 	{
-		_track->SetCodecStatus(result ? MediaTrack::CodecStatus::Ready : MediaTrack::CodecStatus::Failed);
+		_track->SetCodecStatus(result ? cmn::CodecStatus::Ready : cmn::CodecStatus::Failed);
 	}
 	return result;
 }

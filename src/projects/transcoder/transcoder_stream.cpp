@@ -1140,7 +1140,11 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 
 	for (auto &[output_stream, output_track, encoder_id] : _composite.GetEncoderListByDecoderId(track_id))
 	{
-		// Create Encoder
+		// Probe encoder properties before full creation so we can act on them even if Configure fails.
+		auto probe = TranscodeEncoder::Instantiate(
+			output_track->GetCodecId(), cmn::MediaCodecModuleId::DEFAULT, *output_stream);
+		const bool is_input_only = probe && probe->IsInputOnly();
+
 		if (CreateEncoder(encoder_id, output_stream, output_track) == false)
 		{
 			// Non-essential track: encoder failure is not fatal, stream continues without it.
@@ -1148,6 +1152,12 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 			{
 				logtw("%s Could not create encoder for non-essential track — disabled for this stream. Id(%d), OutputTrack(%d)", _log_prefix.CStr(),
 					  encoder_id, output_track->GetId());
+				// CodecStatus=Failed is already set. For input-only encoders, notify MediaRouter
+				// to re-check stream readiness (they never push packets into the pipeline).
+				if (is_input_only)
+				{
+					_parent->UpdateStream(output_stream);
+				}
 				continue;
 			}
 
@@ -1168,6 +1178,13 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 #endif
 
 			return false;
+		}
+
+		// Input-only encoders never push packets into the pipeline, so OutboundWorkerThread
+		// will never trigger IsStreamReady. Notify MediaRouter explicitly after init.
+		if (is_input_only)
+		{
+			_parent->UpdateStream(output_stream);
 		}
 	}
 

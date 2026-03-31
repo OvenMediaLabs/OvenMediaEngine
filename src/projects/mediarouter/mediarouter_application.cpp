@@ -576,6 +576,10 @@ bool MediaRouteApplication::OnStreamUpdated(const std::shared_ptr<MediaRouterApp
 		if (stream)
 		{
 			//stream->Flush();
+			if (stream->IsStreamPrepared() == false && stream->IsStreamReady() == true)
+			{
+				NotifyStreamPrepared(stream);
+			}
 		}
 	}
 	else

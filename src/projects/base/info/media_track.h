@@ -143,14 +143,9 @@ public:
 	ov::String GetInfoString();
 
 	// Codec status: set by encoder/decoder after initialization
-	enum class CodecStatus : uint8_t
-	{
-		Unknown,
-		Ready,
-		Failed,
-	};
-	void SetCodecStatus(CodecStatus status);
-	CodecStatus GetCodecStatus() const;
+	using CodecStatus = cmn::CodecStatus;
+	void SetCodecStatus(cmn::CodecStatus status);
+	cmn::CodecStatus GetCodecStatus() const;
 
 	// Extra info: codec-specific human-readable metadata (e.g. Engine/Model/Source for Whisper)
 	void SetExtraInfo(const ov::String &info);
@@ -239,7 +234,7 @@ protected:
 	std::shared_ptr<DecoderConfigurationRecord> _decoder_configuration_record = nullptr;
 
 	// Codec status and extra info
-	std::atomic<CodecStatus> _codec_status = CodecStatus::Unknown;
+	std::atomic<cmn::CodecStatus> _codec_status = cmn::CodecStatus::Unknown;
 	ov::String _extra_info;
 
 	// If false, encoder failure for this track is non-fatal and the stream continues without it.

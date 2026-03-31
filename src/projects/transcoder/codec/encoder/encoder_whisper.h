@@ -55,6 +55,11 @@ public:
 	{
 		return cmn::BitstreamFormat::WebVTT;
 	}
+
+	bool IsInputOnly() const noexcept override
+	{
+		return true;
+	}
 	
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
 	bool InitCodec() override;
