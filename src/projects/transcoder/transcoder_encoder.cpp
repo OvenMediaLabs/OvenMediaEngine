@@ -408,7 +408,12 @@ bool TranscodeEncoder::InitCodecInteral()
 	_frame = ::av_frame_alloc();
 
 	// Called the codec specific initialization function.
-	return InitCodec();
+	auto result = InitCodec();
+	if (_track != nullptr)
+	{
+		_track->SetCodecStatus(result ? MediaTrack::CodecStatus::Ready : MediaTrack::CodecStatus::Failed);
+	}
+	return result;
 }
 
 void TranscodeEncoder::DeinitCodec()

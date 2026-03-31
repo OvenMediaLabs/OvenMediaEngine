@@ -659,7 +659,7 @@ size_t TranscoderStream::CreateOutputStreams()
         // Both may be present (e.g. static legacy config + webhook-injected new config).
         // New config takes priority per subtitle label; legacy is used as fallback.
         {
-                auto new_output_profile_name = ov::String::FormatString("TranscriptionProcess_%s", _input_stream->GetName().CStr());
+                auto new_output_profile_name = ov::String::FormatString("%s#stt", _input_stream->GetName().CStr());
 
                 cfg::vhost::app::oprf::OutputProfile cfg_new_output_profile;
                 cfg_new_output_profile.SetInternal(true);
@@ -1143,11 +1143,10 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 		// Create Encoder
 		if (CreateEncoder(encoder_id, output_stream, output_track) == false)
 		{
-			// Whisper (STT) encoder failure is non-fatal: GPU OOM or resource exhaustion
-			// should not bring down the whole stream. Log a warning and skip.
-			if (output_track->GetCodecId() == cmn::MediaCodecId::Whisper)
+			// Non-essential track: encoder failure is not fatal, stream continues without it.
+			if (output_track->IsEssentialTrack() == false)
 			{
-				logtw("%s Could not create Whisper encoder — STT disabled for this stream. Id(%d), OutputTrack(%d)", _log_prefix.CStr(),
+				logtw("%s Could not create encoder for non-essential track — disabled for this stream. Id(%d), OutputTrack(%d)", _log_prefix.CStr(),
 					  encoder_id, output_track->GetId());
 				continue;
 			}

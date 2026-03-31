@@ -103,6 +103,10 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_source_language = media_track._source_language;
 	_translation = media_track._translation.load();
 
+	_codec_status = media_track._codec_status.load();
+	_extra_info = media_track._extra_info;
+	_essential_track = media_track._essential_track.load();
+
 	return true;
 }
 
@@ -308,6 +312,38 @@ void MediaTrack::SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConf
 	std::atomic_store(&_decoder_configuration_record, dcr);
 }
 
+void MediaTrack::SetCodecStatus(CodecStatus status)
+{
+	_codec_status = status;
+}
+
+MediaTrack::CodecStatus MediaTrack::GetCodecStatus() const
+{
+	return _codec_status;
+}
+
+void MediaTrack::SetExtraInfo(const ov::String &info)
+{
+	std::scoped_lock lock(_media_mutex);
+	_extra_info = info;
+}
+
+ov::String MediaTrack::GetExtraInfo() const
+{
+	std::shared_lock lock(_media_mutex);
+	return _extra_info;
+}
+
+void MediaTrack::SetEssentialTrack(bool essential)
+{
+	_essential_track = essential;
+}
+
+bool MediaTrack::IsEssentialTrack() const
+{
+	return _essential_track;
+}
+
 ov::String MediaTrack::GetCodecsParameter() const
 {
 	switch (GetCodecId())
@@ -414,22 +450,41 @@ ov::String MediaTrack::GetInfoString()
 				GetBitstreamFormatString(GetOriginBitstream()));
 			break;
 		case MediaType::Subtitle:
+		{
+			const char *codec_status_str = "Unknown";
+			switch (GetCodecStatus())
+			{
+				case CodecStatus::Ready:  codec_status_str = "Ready";  break;
+				case CodecStatus::Failed: codec_status_str = "Failed"; break;
+				default: break;
+			}
+			auto extra_info = GetExtraInfo();
 			out_str.AppendFormat(
 				"Subtitle Track #%d: "
 				"Public Name(%s) "
 				"Variant Name(%s) "
-				"Codec(%s,%s:%d) "
-				"BSF(%s) ",
+				"Codec(%s) "
+				"CodecStatus(%s) "
+				"timebase(%s)",
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
-				GetBitstreamFormatString(GetOriginBitstream()));
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str,
+				GetTimeBase().ToString().CStr());
+			if (extra_info.IsEmpty() == false)
+			{
+				out_str.AppendFormat(" %s", extra_info.CStr());
+			}
 			break;
+		}
 
 		default:
 			break;
 	}
 
-	out_str.AppendFormat("timebase(%s)", GetTimeBase().ToString().CStr());
+	if (GetMediaType() != MediaType::Subtitle)
+	{
+		out_str.AppendFormat("timebase(%s)", GetTimeBase().ToString().CStr());
+	}
 
 	return out_str;
 }
@@ -442,8 +497,7 @@ bool MediaTrack::IsValid()
 	}
 
 	// data type is always valid
-	if(GetMediaType() == MediaType::Data || 
-		GetMediaType() == MediaType::Subtitle)
+	if (GetMediaType() == MediaType::Data)
 	{
 		_is_valid = true;
 		return true;
@@ -520,6 +574,18 @@ bool MediaTrack::IsValid()
 			}
 		}
 		break;
+		case MediaCodecId::Whisper: {
+			if (_codec_status != CodecStatus::Unknown)
+			{
+				_is_valid = true;
+				return true;
+			}
+		}
+		break;
+		case MediaCodecId::WebVTT: {
+			_is_valid = true;
+			return true;
+		}
 
 		default:
 			break;
