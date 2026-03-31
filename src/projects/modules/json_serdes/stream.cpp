@@ -23,6 +23,15 @@ namespace serdes
 		SetInt(object, "den", timebase.GetDen());
 	}
 
+	static void SetCodecStatus(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	{
+		auto status_str = cmn::GetCodecStatusString(track->GetCodecStatus());
+		if (status_str != nullptr)
+		{
+			SetString(parent_object, key, status_str, optional);
+		}
+	}
+
 	static void SetVideoTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(track == nullptr, Json::objectValue);
@@ -30,6 +39,13 @@ namespace serdes
 		SetBool(object, "bypass", track->IsBypass());
 
 		SetString(object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
+		if (!track->IsBypass())
+		{
+			SetString(object, "codecModule", cmn::GetCodecModuleIdString(track->GetCodecModuleId()), Optional::True);
+		}
+		SetCodecStatus(object, "codecStatus", track, Optional::True);
+		SetString(object, "language", track->GetLanguage(), Optional::True);
+		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
 		auto resolution = track->GetResolution();
 		auto max_resolution = track->GetMaxResolution();
 		SetInt(object, "width", resolution.width);
@@ -69,6 +85,13 @@ namespace serdes
 		SetBool(object, "bypass", track->IsBypass());
 
 		SetString(object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
+		if (!track->IsBypass())
+		{
+			SetString(object, "codecModule", cmn::GetCodecModuleIdString(track->GetCodecModuleId()), Optional::True);
+		}
+		SetCodecStatus(object, "codecStatus", track, Optional::True);
+		SetString(object, "language", track->GetLanguage(), Optional::True);
+		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
 		SetInt(object, "samplerate", track->GetSampleRate());
 		// SetAudioChannel(object, "channel", track->GetChannel(), Optional::False);
 		SetInt(object, "channel", track->GetChannel().GetCounts());
@@ -96,11 +119,40 @@ namespace serdes
 				SetAudioTrack(object, "audio", track, Optional::False);
 				break;
 
-			case cmn::MediaType::Unknown:
-				[[fallthrough]];
 			case cmn::MediaType::Data:
-				[[fallthrough]];
+			{
+				Json::Value data_object(Json::objectValue);
+				SetString(data_object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
+				object["data"] = data_object;
+				break;
+			}
 			case cmn::MediaType::Subtitle:
+			{
+				Json::Value subtitle_object(Json::objectValue);
+				// Common subtitle metadata
+				SetString(subtitle_object, "codec", cmn::GetCodecIdString(track->GetCodecId()), Optional::False);
+				SetCodecStatus(subtitle_object, "codecStatus", track, Optional::True);
+				SetString(subtitle_object, "language", track->GetLanguage(), Optional::True);
+				SetString(subtitle_object, "characteristics", track->GetCharacteristics(), Optional::True);
+				SetBool(subtitle_object, "autoSelect", track->IsAutoSelect());
+				SetBool(subtitle_object, "default", track->IsDefault());
+				SetBool(subtitle_object, "forced", track->IsForced());
+				SetTimebase(subtitle_object, "timebase", track->GetTimeBase(), Optional::True);
+				// STT-specific metadata (Whisper)
+				if (track->GetCodecId() == cmn::MediaCodecId::Whisper)
+				{
+					Json::Value stt_object(Json::objectValue);
+					SetString(stt_object, "engine", track->GetEngine(), Optional::True);
+					SetString(stt_object, "model", track->GetModel(), Optional::True);
+					SetString(stt_object, "sourceLanguage", track->GetSourceLanguage(), Optional::True);
+					SetBool(stt_object, "translation", track->ShouldTranslate());
+					SetString(stt_object, "outputLabel", track->GetOutputTrackLabel(), Optional::True);
+					subtitle_object["stt"] = stt_object;
+				}
+				object["subtitle"] = subtitle_object;
+				break;
+			}
+			case cmn::MediaType::Unknown:
 				[[fallthrough]];
 			case cmn::MediaType::Attachment:
 				[[fallthrough]];
