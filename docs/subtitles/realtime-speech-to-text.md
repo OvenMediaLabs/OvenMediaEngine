@@ -74,6 +74,10 @@ STT configuration is split across two sections:
 * **`<Application><Subtitles>`** — defines subtitle renditions (label, language, etc.) that STT output will be written to.
 * **`<Application><OutputProfiles><MediaOptions><STT>`** — connects an input audio track to a subtitle rendition via an STT engine.
 
+{% hint style="warning" %}
+**Breaking change:** The `<Transcription>` element inside `<Subtitles><Rendition>` has been removed. If your existing configuration uses `<Subtitles><Rendition><Transcription>`, it will no longer work. Please migrate to `<OutputProfiles><MediaOptions><STT><Rendition>` as described below.
+{% endhint %}
+
 ### Step 1: Preload Models (Server.xml)
 
 Declare the Whisper model files to load at server startup inside `<Modules><Whisper>`. Multiple `<PreloadModel>` entries are allowed. Models are loaded in descending file-size order to maximize GPU utilization.
