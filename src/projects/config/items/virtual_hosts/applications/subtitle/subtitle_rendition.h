@@ -57,10 +57,10 @@ namespace cfg
 							[=]() -> std::shared_ptr<ConfigError> {
 								if (_transcription.IsParsed())
 								{
-									return CreateConfigErrorPtr(
-										"<Subtitle><Rendition><Transcription> is no longer supported. "
-										"Please use <OutputProfiles><MediaOptions><STT><Rendition> instead. "
-										"Refer to the OvenMediaEngine manual for details.");
+								logtw("<Subtitle><Rendition><Transcription> is no longer supported. "
+									"Please use <OutputProfiles><MediaOptions><STT><Rendition> instead. "
+									"Refer to the OvenMediaEngine manual for details. "
+									"STT will be disabled for this rendition.");
 								}
 								return nullptr;
 							});
