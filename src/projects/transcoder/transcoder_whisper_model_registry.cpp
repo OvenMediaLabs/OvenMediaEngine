@@ -20,6 +20,18 @@ bool WhisperModelRegistry::Preload(const std::vector<ov::String> &model_paths)
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 
+#ifdef HWACCELS_NVIDIA_ENABLED
+	int device_count = 0;
+	if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0)
+	{
+		logtw("Whisper STT requires an NVIDIA GPU, but no NVIDIA device is available. Whisper models will not be loaded.");
+		return false;
+	}
+#else // HWACCELS_NVIDIA_ENABLED
+	logtw("Whisper requires NVIDIA GPU support (rebuild with OME_HWACCEL_NVIDIA=ON). Whisper models will not be loaded.");
+	return false;
+#endif // HWACCELS_NVIDIA_ENABLED
+
 	// Sort by file size descending so larger models are loaded first.
 	// This maximizes GPU utilization: the biggest model claims GPU memory first,
 	// and smaller models fill whatever remains (or fall back to CPU).
@@ -74,9 +86,10 @@ void WhisperModelRegistry::LoadModel(const ov::String &path)
 
 		size_t required_bytes = model_file_bytes * 2;
 		size_t free_mem = 0, total_mem = 0;
-		if (cudaMemGetInfo(&free_mem, &total_mem) != cudaSuccess)
+		cudaError_t cuda_err = cudaMemGetInfo(&free_mem, &total_mem);
+		if (cuda_err != cudaSuccess)
 		{
-			logte("cudaMemGetInfo failed — cannot load Whisper model. path=%s", path.CStr());
+			logte("Failed to query GPU memory for Whisper model (CUDA: %s). path=%s", cudaGetErrorString(cuda_err), path.CStr());
 			return;
 		}
 

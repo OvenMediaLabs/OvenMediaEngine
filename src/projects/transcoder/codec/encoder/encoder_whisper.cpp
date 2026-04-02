@@ -13,6 +13,7 @@
 #include "encoder_whisper.h"
 #include "../../transcoder_private.h"
 #include "../../transcoder_whisper_model_registry.h"
+#include "../../transcoder_gpu.h"
 
 EncoderWhisper::EncoderWhisper(const info::Stream &stream_info)
 	: TranscodeEncoder(stream_info)
@@ -30,6 +31,17 @@ bool EncoderWhisper::SetCodecParams()
 
 bool EncoderWhisper::Configure(std::shared_ptr<MediaTrack> context)
 {
+#ifdef HWACCELS_NVIDIA_ENABLED
+	if (TranscodeGPU::GetInstance()->GetDeviceCount(cmn::MediaCodecModuleId::NVENC) == 0)
+	{
+		logtw("Whisper STT requires an NVIDIA GPU, but no NVIDIA device is available. STT track will be disabled.");
+		return false;
+	}
+#else
+	logtw("Whisper STT requires an NVIDIA GPU, but this build does not include NVIDIA support. STT track will be disabled.");
+	return false;
+#endif
+
 	auto parent_stream_info = _stream_info.GetLinkedInputStream();
 	if (parent_stream_info == nullptr)
 	{
