@@ -57,7 +57,7 @@ namespace cfg
 							[=]() -> std::shared_ptr<ConfigError> {
 								if (_transcription.IsParsed())
 								{
-								logtw("<Subtitle><Rendition><Transcription> is no longer supported. "
+								logw("Config", "<Subtitle><Rendition><Transcription> is no longer supported. "
 									"Please use <OutputProfiles><MediaOptions><STT><Rendition> instead. "
 									"Refer to the OvenMediaEngine manual for details. "
 									"STT will be disabled for this rendition.");
