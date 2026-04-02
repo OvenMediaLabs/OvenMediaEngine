@@ -1392,6 +1392,16 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 		return true;
 	}
 
+	// If the encoder paired with this filter failed to initialize (e.g. non-essential Whisper encoder),
+	// skip filter creation to avoid wasting CPU/memory on resampling that will never be consumed.
+	auto encoder_id = _composite.GetEncoderIdByFilterId(filter_id);
+	if (encoder_id.has_value() && GetEncoder(encoder_id.value()) == nullptr)
+	{
+		logtd("%s Skip filter creation because paired encoder(%d) does not exist. Filter(%d)",
+			  _log_prefix.CStr(), encoder_id.value(), filter_id);
+		return true;
+	}
+
 	auto filter = TranscodeFilter::Create(filter_id, input_stream, input_track, output_stream, output_track, bind(&TranscoderStream::OnFilteredFrame, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	if (filter == nullptr)
 	{
@@ -2061,6 +2071,12 @@ void TranscoderStream::SpreadToFilters(MediaTrackId decoder_id, std::shared_ptr<
 {
 	for (auto &filter_id : _composite.GetFilterIdsByDecoderId(decoder_id))
 	{
+		// Skip clone entirely if the filter does not exist (e.g. paired encoder failed to init).
+		if (GetFilter(filter_id) == nullptr)
+		{
+			continue;
+		}
+
 		auto frame_clone = frame->CloneFrame(); 
 		if (!frame_clone)
 		{
