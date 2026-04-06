@@ -56,6 +56,10 @@ bool EncoderWhisper::Configure(std::shared_ptr<MediaTrack> context)
 		return false;
 	}
 
+	_step_ms = context->GetStepMs();
+	_length_ms = context->GetLengthMs();
+	_keep_ms = context->GetKeepMs();
+
 	_n_samples_step = (static_cast<double>(_step_ms) / 1000.0) * WHISPER_SAMPLE_RATE;
 	_n_samples_length = (static_cast<double>(_length_ms) / 1000.0) * WHISPER_SAMPLE_RATE;
 	_n_samples_keep = (static_cast<double>(_keep_ms) / 1000.0) * WHISPER_SAMPLE_RATE;

@@ -695,6 +695,9 @@ size_t TranscoderStream::CreateOutputStreams()
                         speech_to_text_profile.SetSourceLanguage(stt_rendition.GetSourceLanguage());
                         speech_to_text_profile.SetTranslation(stt_rendition.GetTranslation());
                         speech_to_text_profile.SetOutputTrackLabel(stt_rendition.GetOutputSubtitleLabel());
+                        speech_to_text_profile.SetStepMs(stt_rendition.GetStepMs());
+                        speech_to_text_profile.SetLengthMs(stt_rendition.GetLengthMs());
+                        speech_to_text_profile.SetKeepMs(stt_rendition.GetKeepMs());
 
                         encodes.AddSpeechToTextProfiles(speech_to_text_profile);
                         i++;

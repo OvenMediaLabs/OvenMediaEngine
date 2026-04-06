@@ -72,8 +72,8 @@ private:
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
 
 	int32_t _step_ms = 2000;
-	int32_t _length_ms = 8000;
-	int32_t _keep_ms = 100;
+	int32_t _length_ms = 10000;
+	int32_t _keep_ms = 1500;
         // Shared model weights: owned by WhisperModelRegistry, reference-counted here.
         std::shared_ptr<whisper_context> _whisper_ctx;
         // Per-instance inference state: isolates all mutable buffers from other instances.

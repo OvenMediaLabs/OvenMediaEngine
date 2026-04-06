@@ -31,6 +31,10 @@ namespace cfg
 					uint32_t _output_track_id; // subtitle track id
 					ov::String _output_track_label; // subtitle track label
 
+					int32_t _step_ms = 2000;
+					int32_t _length_ms = 10000;
+					int32_t _keep_ms = 1500;
+
 				public:
 					SpeechToTextProfile(const ov::String &name, const ov::String &engine, const ov::String &model, uint32_t input_track_id, uint32_t output_track_id)
 						: _name(name), _engine(engine), _model(model), _input_track_id(input_track_id), _output_track_id(output_track_id)
@@ -90,6 +94,15 @@ namespace cfg
 					{
 						return _output_track_label;
 					}
+
+					void SetStepMs(int32_t step_ms) { _step_ms = step_ms; }
+					int32_t GetStepMs() const { return _step_ms; }
+
+					void SetLengthMs(int32_t length_ms) { _length_ms = length_ms; }
+					int32_t GetLengthMs() const { return _length_ms; }
+
+					void SetKeepMs(int32_t keep_ms) { _keep_ms = keep_ms; }
+					int32_t GetKeepMs() const { return _keep_ms; }
 				};
 			}  // namespace oprf
 		}  // namespace app
