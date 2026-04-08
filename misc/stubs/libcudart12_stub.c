@@ -55,11 +55,18 @@ cudaError_t cudaDeviceDisablePeerAccess(int p)
 }
 
 typedef struct { int dummy; } cudaDeviceProp;
-cudaError_t cudaGetDeviceProperties(cudaDeviceProp *p, int d)
+
+/* CUDA 12 renamed the exported symbol to cudaGetDeviceProperties_v2;
+ * the old name is kept as an alias for compatibility. */
+cudaError_t cudaGetDeviceProperties_v2(cudaDeviceProp *p, int d)
 {
 	(void)d;
 	if (p) p->dummy = 0;
 	return cudaErrorNotSupported;
+}
+cudaError_t cudaGetDeviceProperties(cudaDeviceProp *p, int d)
+{
+	return cudaGetDeviceProperties_v2(p, d);
 }
 
 /* ------------------------------------------------------------------ */
