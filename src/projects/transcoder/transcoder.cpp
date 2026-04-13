@@ -76,13 +76,18 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 		return false;
 	}
 
-	_transcode_apps[application_id] = application;
+	{
+		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		_transcode_apps[application_id] = application;
+	}
 
 	// Register to MediaRouter
 	if (_router->RegisterObserverApp(app_info, application) == false)
 	{
 		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
+		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		_transcode_apps.erase(application_id);
 		return false;
 	}
 
@@ -91,6 +96,9 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 	{
 		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
+		_router->UnregisterObserverApp(app_info, application);
+		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		_transcode_apps.erase(application_id);
 		return false;
 	}
 
@@ -103,16 +111,21 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 {
 	auto application_id = app_info.GetId();
-	auto it = _transcode_apps.find(application_id);
-	if (it == _transcode_apps.end())
+
+	std::shared_ptr<TranscodeApplication> application;
 	{
-		return false;
+		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		auto it = _transcode_apps.find(application_id);
+		if (it == _transcode_apps.end())
+		{
+			return false;
+		}
+		application = it->second;
+		_transcode_apps.erase(it);
 	}
 
-	auto application = it->second;
-	if(application == nullptr)
+	if (application == nullptr)
 	{
-		_transcode_apps.erase(it);
 		return true;
 	}
 
@@ -128,8 +141,6 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 		logte("Could not unregister the application: %p", application.get());
 	}
 
-	_transcode_apps.erase(it);
-
 	logti("Transcoder has deleted [%s][%s] application", app_info.IsDynamicApp() ? "dynamic" : "config", app_info.GetVHostAppName().CStr());
 
 	return true;
@@ -138,6 +149,7 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 //  Application Name으로 TranscodeApplication 찾음
 std::shared_ptr<TranscodeApplication> Transcoder::GetApplicationById(info::application_id_t application_id)
 {
+	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
 	auto obj = _transcode_apps.find(application_id);
 	if (obj == _transcode_apps.end())
 	{
