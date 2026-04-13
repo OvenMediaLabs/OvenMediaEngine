@@ -68,6 +68,9 @@ bool EncoderWhisper::Configure(std::shared_ptr<MediaTrack> context)
 	_translate = context->ShouldTranslate();
 	_output_track_label = context->GetOutputTrackLabel();
 
+	// Initialize muted state from config (can be changed at runtime via API).
+	_audio_muted.store(!context->IsSttEnabled(), std::memory_order_relaxed);
+
 	if (TranscodeEncoder::Configure(context, _n_samples_step) == false)
 	{
 		return false;
@@ -176,6 +179,12 @@ void EncoderWhisper::CodecThread()
 		{
 			auto obj = _input_buffer.Dequeue();
 			if (obj.has_value() == false)
+			{
+				continue;
+			}
+
+			// When muted, drop the frame without inference to save GPU resources.
+			if (_audio_muted.load(std::memory_order_relaxed))
 			{
 				continue;
 			}

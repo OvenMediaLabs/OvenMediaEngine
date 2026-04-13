@@ -615,6 +615,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetStepMs(profile.GetStepMs());
 	output_track->SetLengthMs(profile.GetLengthMs());
 	output_track->SetKeepMs(profile.GetKeepMs());
+	output_track->SetSttEnabled(profile.IsSttEnabled());
 
 	output_track->SetExtraInfo(ov::String::FormatString(
 		"Engine(%s) Model(%s) AudioInput(%d) Language(%s)",

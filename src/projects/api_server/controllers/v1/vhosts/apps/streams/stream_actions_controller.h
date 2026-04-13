@@ -67,6 +67,30 @@ namespace api
 										   const std::shared_ptr<mon::StreamMetrics> &stream,
 										   const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams);
 
+			// POST /v1/vhosts/<vhost_name>/apps/<app_name>/streams/<stream_name>:enableStt
+			ApiResponse OnPostEnableStt(const std::shared_ptr<http::svr::HttpExchange> &client,
+									const Json::Value &request_body,
+									const std::shared_ptr<mon::HostMetrics> &vhost,
+									const std::shared_ptr<mon::ApplicationMetrics> &app,
+									const std::shared_ptr<mon::StreamMetrics> &stream,
+									const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams);
+
+			// POST /v1/vhosts/<vhost_name>/apps/<app_name>/streams/<stream_name>:disableStt
+			ApiResponse OnPostDisableStt(const std::shared_ptr<http::svr::HttpExchange> &client,
+									 const Json::Value &request_body,
+									 const std::shared_ptr<mon::HostMetrics> &vhost,
+									 const std::shared_ptr<mon::ApplicationMetrics> &app,
+									 const std::shared_ptr<mon::StreamMetrics> &stream,
+									 const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams);
+
+			// POST /v1/vhosts/<vhost_name>/apps/<app_name>/streams/<stream_name>:sttStatus
+			ApiResponse OnPostSttStatus(const std::shared_ptr<http::svr::HttpExchange> &client,
+										const Json::Value &request_body,
+										const std::shared_ptr<mon::HostMetrics> &vhost,
+										const std::shared_ptr<mon::ApplicationMetrics> &app,
+										const std::shared_ptr<mon::StreamMetrics> &stream,
+										const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams);
+
 		private:
 			// TODO(Getroot): Move to mon::StreamMetrics
 			std::shared_ptr<pvd::Stream> GetSourceStream(const std::shared_ptr<mon::StreamMetrics> &stream);

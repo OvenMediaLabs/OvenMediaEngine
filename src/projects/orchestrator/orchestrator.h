@@ -217,6 +217,8 @@ namespace ocst
 		std::shared_ptr<pvd::Provider> GetProviderFromType(const ProviderType type);
 		/// Find Publisher from PublisherType
 		std::shared_ptr<pub::Publisher> GetPublisherFromType(const PublisherType type);
+		/// Get the Transcoder module
+		std::shared_ptr<TranscoderModuleInterface> GetTranscoderModule();
 
 		/// Find Provider Stream from StreamInfo
 		std::shared_ptr<pvd::Stream> GetProviderStream(const std::shared_ptr<const info::Stream> &stream_info);

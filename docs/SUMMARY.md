@@ -50,6 +50,7 @@
           * [Send Subtitles](rest-api/v1/virtualhost/application/stream/send-event-1.md)
           * [HLS Dump](rest-api/v1/virtualhost/application/stream/hls-dump.md)
           * [Conclude HLS Live](rest-api/v1/virtualhost/application/stream/conclude-hls-live.md)
+          * [STT Control](rest-api/v1/virtualhost/application/stream/stt-control.md)
         * [ScheduledChannel](rest-api/v1/virtualhost/application/scheduledchannel-api.md)
         * [MultiplexChannel](rest-api/v1/virtualhost/application/scheduledchannel-api-1.md)
     * [Statistics](rest-api/v1/statistics/README.md)

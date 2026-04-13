@@ -65,11 +65,27 @@ public:
 	bool InitCodec() override;
 	void CodecThread() override;
 
+	void Pause()  override { _audio_muted.store(true,  std::memory_order_relaxed); }
+	void Resume() override { _audio_muted.store(false, std::memory_order_relaxed); }
+	bool IsPaused() const override { return _audio_muted.load(std::memory_order_relaxed); }
+
+	EncoderInfo GetInfo() const override
+	{
+		EncoderInfo info = TranscodeEncoder::GetInfo();
+		info.properties["label"]       = _output_track_label;
+		info.properties["model"]       = _track ? _track->GetModel() : "";
+		info.properties["language"]    = _source_language;
+		info.properties["translation"] = _translate ? "true" : "false";
+		return info;
+	}
+
 private:
 	bool SetCodecParams() override;	
 	ov::String ToTimeString(int64_t ten_ms);
 	bool SendVttToProvider(const ov::String &text);
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
+
+	std::atomic<bool> _audio_muted{false};
 
 	int32_t _step_ms = 2000;
 	int32_t _length_ms = 10000;

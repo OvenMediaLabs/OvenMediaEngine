@@ -45,6 +45,10 @@ public:
 
         void SetKeepMs(int32_t keep_ms);
         int32_t GetKeepMs() const;
+
+	void SetSttEnabled(bool enabled);
+	bool IsSttEnabled() const;
+
 	mutable std::shared_mutex _subtitle_mutex;
 
 	// For subtitle 
@@ -62,4 +66,5 @@ public:
 	std::atomic<int32_t> _step_ms = 2000;
 	std::atomic<int32_t> _length_ms = 10000;
 	std::atomic<int32_t> _keep_ms = 1500;
+	std::atomic<bool> _stt_enabled = true;
 };

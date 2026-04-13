@@ -136,6 +136,10 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
                     <OutputSubtitleLabel>Korean</OutputSubtitleLabel>
                     <SourceLanguage>auto</SourceLanguage>
                     <Translation>false</Translation>
+                    <!-- Optional: sliding-window tuning -->
+                    <StepMs>2000</StepMs>
+                    <LengthMs>10000</LengthMs>
+                    <KeepMs>1500</KeepMs>
                 </Rendition>
                 <Rendition>
                     <Engine>whisper</Engine>
@@ -153,7 +157,7 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
 
 The `<STT><Rendition>` configuration includes the following options:
 
-<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only <code>whisper</code> is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is <code>0</code> (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in <code>&lt;Subtitles&gt;</code>) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., <code>ko</code>, <code>en</code>, <code>ja</code>). Set to <code>auto</code> to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to <code>true</code>, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr></tbody></table>
+<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only <code>whisper</code> is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is <code>0</code> (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in <code>&lt;Subtitles&gt;</code>) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., <code>ko</code>, <code>en</code>, <code>ja</code>). Set to <code>auto</code> to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to <code>true</code>, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is <code>2000</code>. Lower values reduce subtitle latency but increase GPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is <code>10000</code>. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is <code>1500</code>. Helps avoid cut-off words at window boundaries.</td></tr></tbody></table>
 
 ### Model
 
@@ -168,3 +172,29 @@ $ wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2.b
 ```
 
 Smaller models such as `ggml-small.bin` provide faster inference with lower accuracy. Larger models like `ggml-medium.bin` or `ggml-large.bin` offer higher accuracy at the cost of increased GPU memory and computation time.
+
+## Runtime Control via REST API
+
+STT can be paused and resumed at runtime without restarting the server or recreating the stream. This is useful for temporarily disabling transcription for a specific stream (e.g., during ad breaks or when the stream is not speech-heavy) to save GPU resources.
+
+For full API reference including request/response details and error codes, see [STT Control](../rest-api/v1/virtualhost/application/stream/stt-control.md).
+
+| Endpoint | Description |
+|---|---|
+| `POST :enableStt` | Resume STT inference for the stream |
+| `POST :disableStt` | Pause STT inference, dropping audio frames without GPU processing |
+| `POST :sttStatus` | Get current enabled state and per-rendition configuration |
+
+### Disabling STT at Startup
+
+STT can be started in the disabled (paused) state by setting `<Enable>false</Enable>` inside the `<STT>` block. In this case, no GPU inference runs until the stream receives an `:enableStt` call.
+
+```xml
+<STT>
+    <Enable>false</Enable>
+    <Rendition>
+        ...
+    </Rendition>
+</STT>
+```
+

@@ -751,6 +751,19 @@ namespace ocst
 		return nullptr;
 	}
 
+	std::shared_ptr<TranscoderModuleInterface> Orchestrator::GetTranscoderModule()
+	{
+		auto module_list = GetModuleList();
+		for (auto &module : module_list)
+		{
+			if (module.GetType() == ModuleType::Transcoder)
+			{
+				return module.GetModuleAs<TranscoderModuleInterface>();
+			}
+		}
+		return nullptr;
+	}
+
 	std::shared_ptr<pvd::Stream> Orchestrator::GetProviderStream(const std::shared_ptr<const info::Stream> &stream_info)
 	{
 		// Get ProviderType from SourceType

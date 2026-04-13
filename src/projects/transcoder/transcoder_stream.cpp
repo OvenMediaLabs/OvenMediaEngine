@@ -202,6 +202,72 @@ bool TranscoderStream::Stop()
 	return true;
 }
 
+bool TranscoderStream::PauseEncoders(cmn::MediaCodecId codec_id)
+{
+	bool found = false;
+	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
+	{
+		auto &encoder = filter_encoder_pair.second;
+		if (encoder && encoder->GetCodecID() == codec_id)
+		{
+			encoder->Pause();
+			found = true;
+		}
+	}
+	return found;
+}
+
+bool TranscoderStream::ResumeEncoders(cmn::MediaCodecId codec_id)
+{
+	bool found = false;
+	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
+	{
+		auto &encoder = filter_encoder_pair.second;
+		if (encoder && encoder->GetCodecID() == codec_id)
+		{
+			encoder->Resume();
+			found = true;
+		}
+	}
+	return found;
+}
+
+bool TranscoderStream::IsEncoderPaused(cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
+	{
+		auto &encoder = filter_encoder_pair.second;
+		if (encoder && encoder->GetCodecID() == codec_id)
+		{
+			return encoder->IsPaused();
+		}
+	}
+	return false;
+}
+
+ov::String TranscoderStream::GetInputStreamName() const
+{
+	return _input_stream ? _input_stream->GetName() : "";
+}
+
+std::vector<TranscodeEncoder::EncoderInfo> TranscoderStream::GetEncoderInfoList(cmn::MediaCodecId codec_id)
+{
+	std::vector<TranscodeEncoder::EncoderInfo> result;
+	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
+	{
+		auto &encoder = filter_encoder_pair.second;
+		if (encoder && encoder->GetCodecID() == codec_id)
+		{
+			result.push_back(encoder->GetInfo());
+		}
+	}
+	return result;
+}
+
 const cfg::vhost::app::oprf::OutputProfiles *TranscoderStream::RequestWebhook()
 {
 	// Measure response time of transcode webhook
@@ -698,6 +764,7 @@ size_t TranscoderStream::CreateOutputStreams()
                         speech_to_text_profile.SetStepMs(stt_rendition.GetStepMs());
                         speech_to_text_profile.SetLengthMs(stt_rendition.GetLengthMs());
                         speech_to_text_profile.SetKeepMs(stt_rendition.GetKeepMs());
+                        speech_to_text_profile.SetSttEnabled(cfg_stt.IsEnabled());
 
                         encodes.AddSpeechToTextProfiles(speech_to_text_profile);
                         i++;

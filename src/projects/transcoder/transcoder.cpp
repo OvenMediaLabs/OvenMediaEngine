@@ -171,3 +171,55 @@ std::shared_ptr<TranscodeApplication> Transcoder::GetApplicationById(info::appli
 
 	return obj->second;
 }
+
+bool Transcoder::PauseEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	for (auto &[id, app] : _transcode_apps)
+	{
+		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
+		{
+			return app->PauseEncoders(stream_name, codec_id);
+		}
+	}
+	return false;
+}
+
+bool Transcoder::ResumeEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	for (auto &[id, app] : _transcode_apps)
+	{
+		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
+		{
+			return app->ResumeEncoders(stream_name, codec_id);
+		}
+	}
+	return false;
+}
+
+bool Transcoder::IsEncoderPaused(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	for (auto &[id, app] : _transcode_apps)
+	{
+		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
+		{
+			return app->IsEncoderPaused(stream_name, codec_id);
+		}
+	}
+	return false;
+}
+
+std::vector<TranscodeEncoder::EncoderInfo> Transcoder::GetEncoderInfoList(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	for (auto &[id, app] : _transcode_apps)
+	{
+		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
+		{
+			return app->GetEncoderInfoList(stream_name, codec_id);
+		}
+	}
+	return {};
+}

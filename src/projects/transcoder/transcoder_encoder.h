@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <map>
+
 #include "base/info/stream.h"
 #include "base/info/codec.h"
 #include "codec/codec_base.h"
@@ -39,6 +41,31 @@ public:
 	// Returns true if this encoder consumes input but does not produce output packets
 	// back into the transcoding pipeline (e.g. STT encoders that push data forward directly).
 	virtual bool IsInputOnly() const noexcept { return false; }
+
+	struct EncoderInfo
+	{
+		cmn::MediaCodecId       codec_id  = cmn::MediaCodecId::None;
+		cmn::MediaCodecModuleId module_id = cmn::MediaCodecModuleId::None;
+		bool                    hw_accel  = false;
+		// Codec-specific extended fields (key/value pairs).
+		// e.g. Whisper: {"model":"small", "language":"ko", "translation":"false"}
+		std::map<ov::String, ov::String> properties;
+	};
+
+	virtual EncoderInfo GetInfo() const
+	{
+		EncoderInfo info;
+		info.codec_id  = GetCodecID();
+		info.module_id = GetModuleID();
+		info.hw_accel  = IsHWAccel();
+		return info;
+	}
+
+	// Pause/resume output of this encoder.
+	// Default is no-op; override in encoders that support pausing (e.g. EncoderWhisper).
+	virtual void Pause()          {}
+	virtual void Resume()         {}
+	virtual bool IsPaused() const { return false; }
 
 	bool InitCodecInteral();
 	virtual bool InitCodec() = 0;

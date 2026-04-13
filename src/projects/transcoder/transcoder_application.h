@@ -34,6 +34,8 @@ public:
 	bool Start();
 	bool Stop();
 
+	const info::Application &GetApplicationInfo() const { return _application_info; }
+
 	MediaRouterApplicationObserver::ObserverType GetObserverType() override
 	{
 		return MediaRouterApplicationObserver::ObserverType::Transcoder;
@@ -53,6 +55,11 @@ public:
 	bool OnStreamUpdated(const std::shared_ptr<info::Stream> &stream) override;
 
 	bool OnSendFrame(const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) override;
+
+	bool PauseEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	bool ResumeEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	bool IsEncoderPaused(const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	std::vector<TranscodeEncoder::EncoderInfo> GetEncoderInfoList(const ov::String &stream_name, cmn::MediaCodecId codec_id);
 
 private:
 	bool ValidateAppConfiguration();
