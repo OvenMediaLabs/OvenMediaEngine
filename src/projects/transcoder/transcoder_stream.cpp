@@ -720,10 +720,8 @@ size_t TranscoderStream::CreateOutputStreams()
 	}
 
 // STT (Speech-to-Text) output streams.
-        // New config: <OutputProfiles><MediaOptions><STT><Rendition> (preferred)
-        // Legacy config: <Application><Subtitle><Rendition><Transcription> (deprecated, backward compat)
-        // Both may be present (e.g. static legacy config + webhook-injected new config).
-        // New config takes priority per subtitle label; legacy is used as fallback.
+        // Config: <OutputProfiles><MediaOptions><STT><Rendition>
+        // Legacy <Application><Subtitle><Rendition><Transcription> is deprecated and logs a warning; it is not used for STT stream creation.
         {
                 auto new_output_profile_name = ov::String::FormatString("%s#stt", _input_stream->GetName().CStr());
 

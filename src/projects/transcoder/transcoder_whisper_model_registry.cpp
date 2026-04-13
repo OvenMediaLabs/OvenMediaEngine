@@ -34,7 +34,7 @@ bool WhisperModelRegistry::Preload(const std::vector<ov::String> &model_paths)
 
 	// Sort by file size descending so larger models are loaded first.
 	// This maximizes GPU utilization: the biggest model claims GPU memory first,
-	// and smaller models fill whatever remains (or fall back to CPU).
+	// and smaller models fill whatever remains.
 	auto sorted_paths = model_paths;
 	std::sort(sorted_paths.begin(), sorted_paths.end(), [](const ov::String &a, const ov::String &b) {
 		struct stat sa{}, sb{};
