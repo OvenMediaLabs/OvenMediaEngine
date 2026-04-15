@@ -36,6 +36,7 @@ namespace cfg
 					int32_t _keep_ms = 1500;
 
 					bool _stt_enabled = true;
+				ov::String _modules;
 
 				public:
 					SpeechToTextProfile(const ov::String &name, const ov::String &engine, const ov::String &model, uint32_t input_track_id, uint32_t output_track_id)
@@ -108,6 +109,9 @@ namespace cfg
 
 					void SetSttEnabled(bool enabled) { _stt_enabled = enabled; }
 					bool IsSttEnabled() const { return _stt_enabled; }
+
+					void SetModules(const ov::String &modules) { _modules = modules; }
+					ov::String GetModules() const { return _modules; }
 				};
 			}  // namespace oprf
 		}  // namespace app

@@ -762,6 +762,7 @@ size_t TranscoderStream::CreateOutputStreams()
                         speech_to_text_profile.SetStepMs(stt_rendition.GetStepMs());
                         speech_to_text_profile.SetLengthMs(stt_rendition.GetLengthMs());
                         speech_to_text_profile.SetKeepMs(stt_rendition.GetKeepMs());
+                        speech_to_text_profile.SetModules(stt_rendition.GetModules());
                         speech_to_text_profile.SetSttEnabled(cfg_stt.IsEnabled());
 
                         encodes.AddSpeechToTextProfiles(speech_to_text_profile);

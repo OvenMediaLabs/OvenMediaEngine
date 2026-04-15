@@ -46,12 +46,31 @@ bool Transcoder::Start()
 	{
 		auto &whisper_cfg = cfg::ConfigManager::GetInstance()->GetServer()->GetModules().GetWhisper();
 		const auto &config_path = cfg::ConfigManager::GetInstance()->GetConfigPath();
-		std::vector<ov::String> resolved_paths;
-		for (const auto &p : whisper_cfg.GetPreloadModels())
+
+		std::vector<std::pair<ov::String, std::vector<int32_t>>> preload_models;
+		for (const auto &entry : whisper_cfg.GetPreloadModels())
 		{
-			resolved_paths.push_back(ov::GetFilePath(p, config_path));
+			ov::String resolved = ov::GetFilePath(entry.GetPath(), config_path);
+
+			// Parse <Devices>: "" or "all" → empty list (= all GPUs).
+			// Otherwise comma-separated integers, e.g. "0,1" or "2".
+			std::vector<int32_t> device_ids;
+			const ov::String &devices_str = entry.GetDevices();
+			if (!devices_str.IsEmpty() && devices_str.LowerCaseString() != "all")
+			{
+				for (const auto &token : devices_str.Split(","))
+				{
+					ov::String trimmed = token.Trim();
+					if (!trimmed.IsEmpty())
+					{
+						device_ids.push_back(ov::Converter::ToInt32(trimmed));
+					}
+				}
+			}
+
+			preload_models.emplace_back(std::move(resolved), std::move(device_ids));
 		}
-		WhisperModelRegistry::GetInstance()->Preload(resolved_paths);
+		WhisperModelRegistry::GetInstance()->Preload(preload_models);
 	}
 
 	return true;

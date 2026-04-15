@@ -16,7 +16,7 @@
 #include "transcoder_whisper_model_registry.h"
 #include "transcoder_private.h"
 
-bool WhisperModelRegistry::Preload(const std::vector<ov::String> &model_paths)
+bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models)
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 
@@ -32,36 +32,55 @@ bool WhisperModelRegistry::Preload(const std::vector<ov::String> &model_paths)
 	return false;
 #endif // HWACCELS_NVIDIA_ENABLED
 
-	// Sort by file size descending so larger models are loaded first.
-	// This maximizes GPU utilization: the biggest model claims GPU memory first,
-	// and smaller models fill whatever remains.
-	auto sorted_paths = model_paths;
-	std::sort(sorted_paths.begin(), sorted_paths.end(), [](const ov::String &a, const ov::String &b) {
+	// Sort models by file size descending within each device so the largest model
+	// claims GPU memory first, leaving smaller models to fill whatever remains.
+	auto sorted_models = models;
+	std::sort(sorted_models.begin(), sorted_models.end(), [](const auto &a, const auto &b) {
 		struct stat sa{}, sb{};
-		off_t size_a = (::stat(a.CStr(), &sa) == 0) ? sa.st_size : 0;
-		off_t size_b = (::stat(b.CStr(), &sb) == 0) ? sb.st_size : 0;
+		off_t size_a = (::stat(a.first.CStr(), &sa) == 0) ? sa.st_size : 0;
+		off_t size_b = (::stat(b.first.CStr(), &sb) == 0) ? sb.st_size : 0;
 		return size_a > size_b;  // descending
 	});
 
-	for (const auto &path : sorted_paths)
+	for (const auto &[path, device_ids] : sorted_models)
 	{
-		LoadModel(path);
+#ifdef HWACCELS_NVIDIA_ENABLED
+		if (device_ids.empty())
+		{
+			// Empty list = "all" — load on every available CUDA device.
+			for (int32_t dev = 0; dev < device_count; ++dev)
+			{
+				LoadModel(path, dev);
+			}
+		}
+		else
+		{
+			for (int32_t dev : device_ids)
+			{
+				if (dev < 0 || dev >= device_count)
+				{
+					logtw("Whisper preload: CUDA device %d does not exist (device_count=%d), skipping. path=%s", dev, device_count, path.CStr());
+					continue;
+				}
+				LoadModel(path, dev);
+			}
+		}
+#endif
 	}
 
 	return true;
 }
 
 // Caller must hold _mutex.
-void WhisperModelRegistry::LoadModel(const ov::String &path)
+void WhisperModelRegistry::LoadModel(const ov::String &path, int32_t cuda_device_id)
 {
-	const std::string key = path.CStr();
+	const std::string key = ov::String::FormatString("%s@%d", path.CStr(), cuda_device_id).CStr();
 
 	if (_models.count(key) > 0)
 	{
-		logtw("Whisper model already loaded, skipping duplicate. path=%s", path.CStr());
+		logtw("Whisper model already loaded on device %d, skipping duplicate. path=%s", cuda_device_id, path.CStr());
 		return;
 	}
-
 	// Whisper requires a GPU for real-time live transcription.
 	// CPU inference is too slow (several times slower than real-time) and is not supported.
 #ifndef HWACCELS_NVIDIA_ENABLED
@@ -77,6 +96,8 @@ void WhisperModelRegistry::LoadModel(const ov::String &path)
 	// pre-flight check. Required: model file size * 2 (weights + kv cache + compute buffers).
 #ifdef HWACCELS_NVIDIA_ENABLED
 	{
+		cudaSetDevice(cuda_device_id);
+
 		struct stat model_stat{};
 		size_t model_file_bytes = 0;
 		if (::stat(path.CStr(), &model_stat) == 0)
@@ -89,20 +110,22 @@ void WhisperModelRegistry::LoadModel(const ov::String &path)
 		cudaError_t cuda_err = cudaMemGetInfo(&free_mem, &total_mem);
 		if (cuda_err != cudaSuccess)
 		{
-			logte("Failed to query GPU memory for Whisper model (CUDA: %s). path=%s", cudaGetErrorString(cuda_err), path.CStr());
+			logte("Failed to query GPU memory for Whisper model on device %d (CUDA: %s). path=%s", cuda_device_id, cudaGetErrorString(cuda_err), path.CStr());
 			return;
 		}
 
 		if (free_mem < required_bytes)
 		{
-			logte("Not enough GPU memory for Whisper model (free=%.1f MiB, required≈%.1f MiB). path=%s",
+			logte("Not enough GPU memory for Whisper model on device %d (free=%.1f MiB, required≈%.1f MiB). path=%s",
+				cuda_device_id,
 				static_cast<double>(free_mem) / (1024.0 * 1024.0),
 				static_cast<double>(required_bytes) / (1024.0 * 1024.0),
 				path.CStr());
 			return;
 		}
 
-		logti("Whisper GPU init: free=%.1f MiB, required≈%.1f MiB. path=%s",
+		logti("Whisper GPU init on device %d: free=%.1f MiB, required≈%.1f MiB. path=%s",
+			cuda_device_id,
 			static_cast<double>(free_mem) / (1024.0 * 1024.0),
 			static_cast<double>(required_bytes) / (1024.0 * 1024.0),
 			path.CStr());
@@ -110,6 +133,7 @@ void WhisperModelRegistry::LoadModel(const ov::String &path)
 #endif
 
 	cparams.use_gpu = true;
+	cparams.gpu_device = cuda_device_id;
 
 	// libcublas lazy-initializes its global state in two phases without thread safety.
 	// Phase 1: whisper_init_from_file_with_params() → cublasCreate().
@@ -162,7 +186,7 @@ void WhisperModelRegistry::LoadModel(const ov::String &path)
 #endif
 
 	_models[key] = std::move(ctx);
-	logti("Whisper model loaded successfully. path=%s", path.CStr());
+	logti("Whisper model loaded successfully on device %d. path=%s", cuda_device_id, path.CStr());
 }
 
 void WhisperModelRegistry::Uninitialize()
@@ -173,11 +197,11 @@ void WhisperModelRegistry::Uninitialize()
 	logti("Whisper model registry cleared.");
 }
 
-std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path)
+std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path, int32_t cuda_device_id)
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 
-	const std::string key = model_path.CStr();
+	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
 
 	auto it = _models.find(key);
 	if (it != _models.end())
@@ -186,35 +210,36 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov:
 	}
 
 	// Model not preloaded — load on-demand and cache it for future callers.
-	logti("Whisper model not preloaded, loading on-demand. path=%s", model_path.CStr());
-	LoadModel(model_path);
+	logti("Whisper model not preloaded on device %d, loading on-demand. path=%s", cuda_device_id, model_path.CStr());
+	LoadModel(model_path, cuda_device_id);
 
 	it = _models.find(key);
 	if (it == _models.end())
 	{
-		// Loading failed (error already logged inside _LoadModel).
+		// Loading failed (error already logged inside LoadModel).
 		return nullptr;
 	}
 
 	return it->second;
 }
 
-whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path)
+whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int32_t cuda_device_id)
 {
 	std::lock_guard<std::mutex> lock(_mutex);
 
-	const std::string key = model_path.CStr();
+	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
 
 	auto model_it = _models.find(key);
 	if (model_it == _models.end())
 	{
-		logte("Cannot allocate whisper state: model not loaded. path=%s", model_path.CStr());
+		logte("Cannot allocate whisper state: model not loaded on device %d. path=%s", cuda_device_id, model_path.CStr());
 		return nullptr;
 	}
 
 #ifdef HWACCELS_NVIDIA_ENABLED
 	// Check GPU memory before calling whisper_init_state to prevent ggml crash.
 	// The mutex ensures serialize check+alloc across all encoder threads.
+	cudaSetDevice(cuda_device_id);
 	auto mem_it = _state_memory_bytes.find(key);
 	if (mem_it != _state_memory_bytes.end() && mem_it->second > 0)
 	{
@@ -222,7 +247,8 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path)
 		size_t free_mem = 0, total_mem = 0;
 		if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess && free_mem < required)
 		{
-			logte("Not enough GPU memory to create Whisper state (required=%.1f MiB, free=%.1f MiB). path=%s",
+			logte("Not enough GPU memory on device %d to create Whisper state (required=%.1f MiB, free=%.1f MiB). path=%s",
+				  cuda_device_id,
 				  static_cast<double>(required) / (1024.0 * 1024.0),
 				  static_cast<double>(free_mem) / (1024.0 * 1024.0),
 				  model_path.CStr());

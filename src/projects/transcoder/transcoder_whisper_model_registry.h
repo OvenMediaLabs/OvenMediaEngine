@@ -21,28 +21,29 @@
 class WhisperModelRegistry : public ov::Singleton<WhisperModelRegistry>
 {
 public:
-	// Eagerly load the given model paths. Optional — call at server start to preload.
-	// model_paths may be absolute or already-resolved paths.
-	bool Preload(const std::vector<ov::String> &model_paths);
+// Eagerly load the given models. Optional — call at server start to preload.
+        // Each entry is a (resolved_path, cuda_device_ids) pair.
+        // An empty device_ids list means "load on all available CUDA devices".
+        bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
 
 	// Release all loaded models. Called at server stop.
 	void Uninitialize();
 
-	// Return a shared_ptr to the whisper_context for the given model path.
-	// If the model is not yet loaded it will be loaded on-demand and cached.
-	std::shared_ptr<whisper_context> GetModelContext(const ov::String &model_path);
+// Return a shared_ptr to the whisper_context for the given model path and CUDA device.
+        // If the model is not yet loaded on that device it will be loaded on-demand and cached.
+        std::shared_ptr<whisper_context> GetModelContext(const ov::String &model_path, int32_t cuda_device_id = 0);
 
-	// Allocate a per-encoder whisper_state for the given model.
-	// Checks GPU memory availability before allocation to prevent ggml crash.
-	// Returns nullptr if the model is not loaded or GPU memory is insufficient.
-	whisper_state *NewState(const ov::String &model_path);
+        // Allocate a per-encoder whisper_state for the given model and CUDA device.
+        // Checks GPU memory availability before allocation to prevent ggml crash.
+        // Returns nullptr if the model is not loaded or GPU memory is insufficient.
+        whisper_state *NewState(const ov::String &model_path, int32_t cuda_device_id = 0);
 
-	// Free a whisper_state previously returned by NewState.
-	void DeleteState(whisper_state *state);
+        // Free a whisper_state previously returned by NewState.
+        void DeleteState(whisper_state *state);
 
 private:
-	// Load a single model and insert it into _models. Caller must hold _mutex.
-	void LoadModel(const ov::String &model_path);
+        // Load a single model on the specified CUDA device and cache it. Caller must hold _mutex.
+        void LoadModel(const ov::String &model_path, int32_t cuda_device_id = 0);
 
 	std::mutex _mutex;
 	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models;

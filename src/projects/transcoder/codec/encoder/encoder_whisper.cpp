@@ -115,8 +115,17 @@ bool EncoderWhisper::InitCodec()
 		return false;
 	}
 
+	// Resolve the CUDA device index for this encoder instance.
+	// _track->GetCodecDeviceId() returns the OME device index (from <Modules>nv:N</Modules>).
+	// TranscodeGPU maps it to the actual CUDA device index.
+	int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, _track->GetCodecDeviceId());
+	if (cuda_id < 0)
+	{
+		cuda_id = 0;
+	}
+
 	// Acquire the shared model context from the registry.
-	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel());
+	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel(), cuda_id);
 	if (_whisper_ctx == nullptr)
 	{
 		// Error already logged by the registry.
@@ -125,7 +134,7 @@ bool EncoderWhisper::InitCodec()
 
 	// Create a per-instance inference state via the registry.
 	// The registry serializes allocation and pre-checks GPU memory to prevent ggml crash.
-	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel());
+	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel(), cuda_id);
 	if (_whisper_state == nullptr)
 	{
 		logte("Failed to create whisper state. stream=%s, track_id=%d, label=%s, model=%s",

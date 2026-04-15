@@ -82,12 +82,34 @@ STT configuration is split across two sections:
 
 Declare the Whisper model files to load at server startup inside `<Modules><Whisper>`. Multiple `<PreloadModel>` entries are allowed. Models are loaded in descending file-size order to maximize GPU utilization.
 
+Each `<PreloadModel>` entry has the following fields:
+
+| Key | Description |
+|---|---|
+| Path | Path to the model file. Can be absolute or relative to the config directory. |
+| Devices | Comma-separated list of CUDA device indices to load the model onto (e.g. `0`, `0,1`, `2`). Omit or set to `all` to load on every available GPU. |
+
 ```xml
 <Server>
     <Modules>
         <Whisper>
-            <PreloadModel>whisper_model/ggml-small.bin</PreloadModel>
-            <PreloadModel>whisper_model/ggml-medium.bin</PreloadModel>
+            <!-- Load on all available GPUs (Devices omitted = all) -->
+            <PreloadModel>
+                <Path>whisper_model/ggml-small.bin</Path>
+                <Devices>all</Devices>
+            </PreloadModel>
+
+            <!-- Load on GPU 0 and GPU 1 only -->
+            <PreloadModel>
+                <Path>whisper_model/ggml-medium.bin</Path>
+                <Devices>0,1</Devices>
+            </PreloadModel>
+
+            <!-- Load on GPU 0 only -->
+            <PreloadModel>
+                <Path>whisper_model/ggml-large.bin</Path>
+                <Devices>0</Devices>
+            </PreloadModel>
         </Whisper>
     </Modules>
 </Server>
@@ -129,9 +151,11 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
     <OutputProfiles>
         <MediaOptions>
             <STT>
+                <!-- Korean STT on GPU 0 -->
                 <Rendition>
                     <Engine>whisper</Engine>
                     <Model>whisper_model/ggml-small.bin</Model>
+                    <Modules>nv:0</Modules>
                     <InputAudioIndex>0</InputAudioIndex>
                     <OutputSubtitleLabel>Korean</OutputSubtitleLabel>
                     <SourceLanguage>auto</SourceLanguage>
@@ -141,9 +165,11 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
                     <LengthMs>10000</LengthMs>
                     <KeepMs>1500</KeepMs>
                 </Rendition>
+                <!-- English STT on GPU 1 -->
                 <Rendition>
                     <Engine>whisper</Engine>
                     <Model>whisper_model/ggml-small.bin</Model>
+                    <Modules>nv:1</Modules>
                     <InputAudioIndex>0</InputAudioIndex>
                     <OutputSubtitleLabel>English</OutputSubtitleLabel>
                     <SourceLanguage>auto</SourceLanguage>
@@ -157,7 +183,7 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
 
 The `<STT><Rendition>` configuration includes the following options:
 
-<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only <code>whisper</code> is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is <code>0</code> (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in <code>&lt;Subtitles&gt;</code>) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., <code>ko</code>, <code>en</code>, <code>ja</code>). Set to <code>auto</code> to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to <code>true</code>, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is <code>2000</code>. Lower values reduce subtitle latency but increase GPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is <code>10000</code>. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is <code>1500</code>. Helps avoid cut-off words at window boundaries.</td></tr></tbody></table>
+<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only <code>whisper</code> is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is <code>0</code> (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in <code>&lt;Subtitles&gt;</code>) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., <code>ko</code>, <code>en</code>, <code>ja</code>). Set to <code>auto</code> to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to <code>true</code>, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is <code>2000</code>. Lower values reduce subtitle latency but increase GPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is <code>10000</code>. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is <code>1500</code>. Helps avoid cut-off words at window boundaries.</td></tr><tr><td>Modules</td><td>Selects the GPU to run this STT rendition on, using the same format as video encoder modules (e.g. <code>nv:0</code>, <code>nv:1</code>). If omitted, GPU 0 is used. Use this to distribute multiple renditions across different GPUs.</td></tr></tbody></table>
 
 ### Model
 

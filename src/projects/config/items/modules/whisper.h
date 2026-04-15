@@ -12,12 +12,32 @@ namespace cfg
 {
 	namespace modules
 	{
+		// Represents a single <PreloadModel> entry.
+		// <Path> is the model file path (absolute or relative to config dir).
+		// <Devices> is a comma-separated list of CUDA device indices to preload onto,
+		// or "all" (or omitted) to load on every available GPU.
+		struct WhisperPreloadModel : public Item
+		{
+		protected:
+			ov::String _path;
+			ov::String _devices;  // "", "all", "0", "0,1", "2", etc.
+
+		public:
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetPath, _path)
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetDevices, _devices)
+
+		protected:
+			void MakeList() override
+			{
+				Register("Path", &_path);
+				Register<Optional>("Devices", &_devices);
+			}
+		};
+
 		struct Whisper : public Item
 		{
 		protected:
-			// List of model file paths to preload at server start.
-			// Each path may be absolute or relative to the config file directory.
-			std::vector<ov::String> _preload_model_list;
+			std::vector<WhisperPreloadModel> _preload_model_list;
 
 		public:
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetPreloadModels, _preload_model_list)

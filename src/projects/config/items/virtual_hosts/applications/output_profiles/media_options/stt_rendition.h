@@ -38,6 +38,8 @@ namespace cfg
 					int32_t _step_ms = 2000;
 					int32_t _length_ms = 10000;
 					int32_t _keep_ms = 1500;
+					// Hardware module selection, e.g. "nv:0", "nv:1" (same format as <Video><Modules>)
+					ov::String _modules;
 
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetEngine, _engine)
@@ -49,6 +51,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetStepMs, _step_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetLengthMs, _length_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetKeepMs, _keep_ms)
+						CFG_DECLARE_CONST_REF_GETTER_OF(GetModules, _modules)
 
 				protected:
 					void MakeList() override
@@ -62,6 +65,7 @@ namespace cfg
 						Register<Optional>("StepMs", &_step_ms);
 						Register<Optional>("LengthMs", &_length_ms);
 						Register<Optional>("KeepMs", &_keep_ms);
+						Register<Optional>("Modules", &_modules);
 					}
 				};
 			}  // namespace oprf

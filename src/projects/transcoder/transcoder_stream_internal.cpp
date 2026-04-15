@@ -602,6 +602,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetLanguage(profile.GetSourceLanguage());
 	
 	output_track->SetCodecId(cmn::MediaCodecId::Whisper);
+	output_track->SetCodecModules(profile.GetModules());
 	
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 	output_track->SetTimeBase(input_track->GetTimeBase());
