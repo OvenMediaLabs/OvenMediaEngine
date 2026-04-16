@@ -42,7 +42,7 @@ namespace pvd
 			PUSH
 		};
 
-		State GetState() const {return _state;};
+		State GetState() const {return _state;}
 
 		void SetApplication(const std::shared_ptr<pvd::Application> &application)
 		{
@@ -152,7 +152,7 @@ namespace pvd
 
 		std::chrono::time_point<std::chrono::system_clock>	_last_pkt_received_time = std::chrono::time_point<std::chrono::system_clock>::min();
 
-		State 	_state = State::IDLE;
+		std::atomic<State> _state{State::IDLE};
 
 		std::shared_ptr<ov::Url> _requested_url = nullptr;
 		std::shared_ptr<ov::Url> _final_url = nullptr;
