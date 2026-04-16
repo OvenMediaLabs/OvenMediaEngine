@@ -166,7 +166,13 @@ namespace mpegts
 		uint32_t Parse();
 
 		static std::shared_ptr<Packet> Build(const std::shared_ptr<Section> &section, uint8_t continuity_counter);
-		static std::vector<std::shared_ptr<Packet>> Build(const std::shared_ptr<Pes> &pes, bool has_pcr, uint8_t continuity_counter);
+		static std::vector<std::shared_ptr<Packet>> Build(const std::shared_ptr<Pes> &pes, bool has_pcr, bool is_keyframe, uint8_t continuity_counter);
+
+		// Zero-copy optimized path: builds all TS packets for one PES directly into a
+		// caller-allocated flat buffer (pre-sized to GetPacketCount() * 188 bytes).
+		// Returns the number of packets written.
+		static size_t GetPacketCount(size_t pes_data_length, bool has_pcr);
+		static size_t BuildAllInto(const std::shared_ptr<Pes> &pes, bool has_pcr, bool is_keyframe, uint8_t continuity_counter, uint8_t *output);
 
 		// Getter
 		uint8_t SyncByte();

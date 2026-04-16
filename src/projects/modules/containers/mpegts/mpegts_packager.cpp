@@ -205,7 +205,7 @@ namespace mpegts
 		return segment->GetData();
 	}
 
-    void Packager::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets)
+    void Packager::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data)
     {
        //logtt("OnFrame track_id %u", media_packet->GetTrackId());
 
@@ -219,7 +219,7 @@ namespace mpegts
             return;
         }
 
-		auto sample = mpegts::Sample(media_packet, MergeTsPacketData(pes_packets), track->GetTimeBase().GetTimescale());
+		auto sample = mpegts::Sample(media_packet, ts_data, track->GetTimeBase().GetTimescale());
 
 		if (track_id == _main_track_id)
 		{

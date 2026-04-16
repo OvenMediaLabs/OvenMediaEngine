@@ -171,25 +171,32 @@ namespace mpegts
 
         auto continuity_counter = GetNextContinuityCounter(pid);
         bool has_pcr = (pid == _pmt._pcr_pid);
-        auto packets = Packet::Build(pes, has_pcr, continuity_counter);
-        if (packets.empty())
+
+        // Allocate a single flat buffer for all TS packets of this frame, avoiding
+        // per-packet heap allocation and multiple memcpy rounds.
+        const auto pes_raw = pes->GetData();
+        if (pes_raw == nullptr)
+        {
+            return false;
+        }
+        const size_t n_packets = Packet::GetPacketCount(pes_raw->GetLength(), has_pcr);
+        if (n_packets == 0)
         {
             return false;
         }
 
-#if 0
-        // debug print
-        logtt("------------------------------------------------------------------------");
-        logtt("Track(%u) / MediaPacket(%u)", media_packet->GetTrackId(), media_packet->GetDataLength());
-        for (const auto &packet : packets)
+        auto ts_data = std::make_shared<ov::Data>(n_packets * MPEGTS_MIN_PACKET_SIZE);
+        ts_data->SetLength(n_packets * MPEGTS_MIN_PACKET_SIZE);
+        const size_t written = Packet::BuildAllInto(pes, has_pcr, media_packet->IsKeyFrame(), continuity_counter, ts_data->GetWritableDataAs<uint8_t>());
+        if (written == 0)
         {
-            logtt("%s", packet->ToDebugString().CStr());
+            return false;
         }
-#endif
 
-        IncreaseContinuityCounter(pid, static_cast<uint8_t>(packets.size() - 1));
+        // GetNextContinuityCounter already stepped CC by 1; advance by remaining packets
+        IncreaseContinuityCounter(pid, static_cast<uint8_t>(written - 1));
 
-        BroadcastFrame(media_packet, packets);
+        BroadcastFrame(media_packet, ts_data);
 
         return true;
     }
@@ -424,11 +431,11 @@ namespace mpegts
         }
     }
 
-    void Packetizer::BroadcastFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets)
+    void Packetizer::BroadcastFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data)
     {
         for (const auto &sink : _sinks)
         {
-            sink->OnFrame(media_packet, pes_packets);
+            sink->OnFrame(media_packet, ts_data);
         }
     }
 }
