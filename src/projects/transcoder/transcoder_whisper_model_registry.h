@@ -23,7 +23,8 @@ class WhisperModelRegistry : public ov::Singleton<WhisperModelRegistry>
 public:
 // Eagerly load the given models. Optional — call at server start to preload.
         // Each entry is a (resolved_path, cuda_device_ids) pair.
-        // An empty device_ids list means "load on all available CUDA devices".
+        // An empty device_ids list means "all available CUDA devices" (from <Devices>all</Devices>).
+        // A single-element list {0} means the default (omitted <Devices>).
         bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
 
 	// Release all loaded models. Called at server stop.

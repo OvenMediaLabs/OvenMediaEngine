@@ -14,8 +14,8 @@ namespace cfg
 	{
 		// Represents a single <PreloadModel> entry.
 		// <Path> is the model file path (absolute or relative to config dir).
-		// <Devices> is a comma-separated list of CUDA device indices to preload onto,
-		// or "all" (or omitted) to load on every available GPU.
+		// <Devices> is a comma-separated list of CUDA device indices to preload onto.
+		// Use "all" to load on every available GPU. If omitted, defaults to device 0.
 		struct WhisperPreloadModel : public Item
 		{
 		protected:

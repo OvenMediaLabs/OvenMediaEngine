@@ -47,7 +47,7 @@ bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::
 #ifdef HWACCELS_NVIDIA_ENABLED
 		if (device_ids.empty())
 		{
-			// Empty list = "all" — load on every available CUDA device.
+			// "all" — load on every available CUDA device.
 			for (int32_t dev = 0; dev < device_count; ++dev)
 			{
 				LoadModel(path, dev);

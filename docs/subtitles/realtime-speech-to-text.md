@@ -87,28 +87,27 @@ Each `<PreloadModel>` entry has the following fields:
 | Key | Description |
 |---|---|
 | Path | Path to the model file. Can be absolute or relative to the config directory. |
-| Devices | Comma-separated list of CUDA device indices to load the model onto (e.g. `0`, `0,1`, `2`). Omit or set to `all` to load on every available GPU. |
+| Devices | Comma-separated list of CUDA device indices to load the model onto (e.g. `0`, `0,1`, `2`). Set to `all` to load on every available GPU. If omitted, defaults to device 0. |
 
 ```xml
 <Server>
     <Modules>
         <Whisper>
-            <!-- Load on all available GPUs (Devices omitted = all) -->
+            <!-- Load on GPU 0 (default when Devices is omitted) -->
             <PreloadModel>
                 <Path>whisper_model/ggml-small.bin</Path>
+            </PreloadModel>
+
+            <!-- Load on all available GPUs -->
+            <PreloadModel>
+                <Path>whisper_model/ggml-medium.bin</Path>
                 <Devices>all</Devices>
             </PreloadModel>
 
-            <!-- Load on GPU 0 and GPU 1 only -->
-            <PreloadModel>
-                <Path>whisper_model/ggml-medium.bin</Path>
-                <Devices>0,1</Devices>
-            </PreloadModel>
-
-            <!-- Load on GPU 0 only -->
+            <!-- Load on GPU 0 and GPU 1 -->
             <PreloadModel>
                 <Path>whisper_model/ggml-large.bin</Path>
-                <Devices>0</Devices>
+                <Devices>0,1</Devices>
             </PreloadModel>
         </Whisper>
     </Modules>

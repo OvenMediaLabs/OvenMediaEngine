@@ -52,11 +52,17 @@ bool Transcoder::Start()
 		{
 			ov::String resolved = ov::GetFilePath(entry.GetPath(), config_path);
 
-			// Parse <Devices>: "" or "all" → empty list (= all GPUs).
-			// Otherwise comma-separated integers, e.g. "0,1" or "2".
+			// Parse <Devices>:
+			// - Omitted/empty → device 0 (default)
+			// - "all" → empty list passed to Preload (= load on every available GPU)
+			// - "0,1" etc → specific device indices
 			std::vector<int32_t> device_ids;
 			const ov::String &devices_str = entry.GetDevices();
-			if (!devices_str.IsEmpty() && devices_str.LowerCaseString() != "all")
+			if (devices_str.IsEmpty())
+			{
+				device_ids.push_back(0);
+			}
+			else if (devices_str.LowerCaseString() != "all")
 			{
 				for (const auto &token : devices_str.Split(","))
 				{
@@ -67,6 +73,7 @@ bool Transcoder::Start()
 					}
 				}
 			}
+			// "all" → device_ids remains empty → Preload loads on all available GPUs
 
 			preload_models.emplace_back(std::move(resolved), std::move(device_ids));
 		}
