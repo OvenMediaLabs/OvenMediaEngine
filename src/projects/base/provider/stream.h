@@ -150,7 +150,8 @@ namespace pvd
 
 		int64_t								_start_timestamp_us = -1LL; // Make first timestamp to zero
 
-		std::chrono::time_point<std::chrono::system_clock>	_last_pkt_received_time = std::chrono::time_point<std::chrono::system_clock>::min();
+		// `-1` means no media packet has been received yet.
+		std::atomic<int64_t> _last_pkt_received_time_us{-1};
 
 		std::atomic<State> _state{State::IDLE};
 

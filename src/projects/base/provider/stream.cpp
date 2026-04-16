@@ -79,9 +79,12 @@ namespace pvd
 	// Consider the reconnection time and add it to the base timestamp
 	void Stream::UpdateReconnectTimeToBasetime()
 	{
-		if (_last_pkt_received_time != std::chrono::time_point<std::chrono::system_clock>::min())
+		auto last_pkt_received_time_us = _last_pkt_received_time_us.load();
+		if (last_pkt_received_time_us >= 0)
 		{
-			auto reconnection_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - _last_pkt_received_time).count();
+			auto current_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch()).count();
+			auto reconnection_time_us = current_time_us - last_pkt_received_time_us;
 
 			logti("Time taken to reconnect is %" PRId64 " milliseconds. add to the basetime", reconnection_time_us/1000);
 
@@ -339,7 +342,8 @@ namespace pvd
 		// Statistics
 		MonitorInstance->IncreaseBytesIn(*GetSharedPtrAs<info::Stream>(), packet->GetDataLength());
 
-		_last_pkt_received_time = std::chrono::system_clock::now();
+		_last_pkt_received_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::system_clock::now().time_since_epoch()).count();
 
 		auto master_clock_track = GetMediaTrackByOrder(cmn::MediaType::Video, 0);
 		if (master_clock_track == nullptr)
