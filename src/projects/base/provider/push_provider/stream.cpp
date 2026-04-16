@@ -73,7 +73,7 @@ namespace pvd
 
 	void PushStream::UpdateLastReceivedTime()
 	{
-		_packet_silence_timer.Update();
+		_last_received_time_ms = ov::Time::GetTimestampInMs();
 	}
 
 	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
@@ -88,7 +88,13 @@ namespace pvd
 
 	time_t PushStream::GetElapsedMsSinceLastReceived()
 	{
-		return _packet_silence_timer.Elapsed();
+		auto last_received_time_ms = _last_received_time_ms.load();
+		if (last_received_time_ms < 0)
+		{
+			return -1;
+		}
+
+		return static_cast<time_t>(ov::Time::GetTimestampInMs() - last_received_time_ms);
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
@@ -102,7 +108,7 @@ namespace pvd
 		
 		_is_published = GetProvider()->PublishChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
 
-		_packet_silence_timer.Start();
+		_last_received_time_ms = ov::Time::GetTimestampInMs();
 
 		return _is_published;
 	}
