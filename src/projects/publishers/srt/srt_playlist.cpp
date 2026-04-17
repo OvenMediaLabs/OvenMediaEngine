@@ -77,7 +77,7 @@ namespace pub
 		}
 	}
 
-	void SrtPlaylist::SendData(const std::shared_ptr<ov::Data> &ts_data)
+	void SrtPlaylist::SendData(const std::shared_ptr<const ov::Data> &ts_data)
 	{
 		if (_sink == nullptr)
 		{
@@ -130,7 +130,7 @@ namespace pub
 		SendData(psi_data);
 	}
 
-	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data)
+	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data)
 	{
 #if DEBUG
 		logap("OnFrame - %zu bytes", ts_data->GetLength());

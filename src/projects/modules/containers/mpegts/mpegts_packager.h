@@ -426,7 +426,7 @@ namespace mpegts
         // PAT, PMT, ...
         void OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets) override;
         // TS packet data for a frame
-        void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data) override;
+        void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data) override;
 
 		void Flush();
         ////////////////////////////////

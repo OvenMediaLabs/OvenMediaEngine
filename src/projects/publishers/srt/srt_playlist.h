@@ -70,7 +70,7 @@ namespace pub
 		void OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets) override;
 		// Do not need to lock _packetizer_mutex inside OnFrame() because it's called after acquiring the lock in EnqueuePacket()
 		// (It's called in the thread that calls EnqueuePacket())
-		void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data) override;
+		void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data) override;
 		//--------------------------------------------------------------------
 
 		const std::shared_ptr<const ov::Data> &GetPsiData() const
@@ -92,7 +92,7 @@ namespace pub
 		};
 
 	private:
-		void SendData(const std::shared_ptr<ov::Data> &ts_data);
+		void SendData(const std::shared_ptr<const ov::Data> &ts_data);
 
 	private:
 		std::shared_ptr<const info::Stream> _stream_info;
