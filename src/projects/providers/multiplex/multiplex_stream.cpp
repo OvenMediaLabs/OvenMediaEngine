@@ -243,11 +243,10 @@ namespace pvd
             }
 
             auto tracks = stream_info->GetTracks();
-            std::map<ov::String, int> variant_occurrence;
             for (auto &[source_track_id, source_track] : tracks)
             {
                 auto source_track_name = source_track->GetVariantName();
-                int occurrence = variant_occurrence[source_track_name]++;
+                int occurrence = source_track->GetGroupIndex();
                 MultiplexProfile::NewTrackInfo new_track_info;
 
                 if (source_stream->GetNewTrackInfo(source_track_name, occurrence, new_track_info) == false)
