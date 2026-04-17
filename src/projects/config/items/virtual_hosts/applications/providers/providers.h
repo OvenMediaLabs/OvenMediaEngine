@@ -90,7 +90,7 @@ namespace cfg
 					MpegtsProvider _mpegts_provider;
 					WebrtcProvider _webrtc_provider;
 					// Deprecated.
-					bool _file_provider; 
+					bool _file_provider = false;
 					ScheduledProvider _scheduled_provider;
 					MultiplexProvider _multiplex_provider;
 
