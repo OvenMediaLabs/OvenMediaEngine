@@ -52,7 +52,7 @@ mux files can be created or deleted while the system is running. This works dyna
                 <Track>
                     <SourceTrackName>opus</SourceTrackName>
                     <NewTrackName>tv1_opus</NewTrackName>
-                </Track>              
+                </Track>
             </TrackMap>
         </SourceStream>
         <SourceStream>
