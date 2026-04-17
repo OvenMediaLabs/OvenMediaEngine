@@ -64,7 +64,7 @@ namespace cfg
 						// Deprecated.
 						Register<Optional>({"FILE", "file"}, &_file_provider, nullptr,
 										   [=]() -> std::shared_ptr<ConfigError> {
-											   logw("Config", "FILE provider is deprecated. Please use scheduled provider instead.");
+											   logw("Config", "FILE provider is deprecated. Please use Providers.Schedule instead.");
 											   return nullptr;
 										   });
 						Register<Optional>({"Schedule", "schedule"}, &_scheduled_provider);
