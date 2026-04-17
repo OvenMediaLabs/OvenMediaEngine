@@ -170,7 +170,7 @@ bool RtcBandwidthEstimator::ProcessTransportCc()
 			if (item.wide_sequence_number != feedback.wide_seq_no ||
 				item.sent_time.time_since_epoch().count() == 0)
 			{
-				logtw("Cannot find RTP history for wide_seq_no(%u)", feedback.wide_seq_no);
+				logtd("Cannot find RTP history for wide_seq_no(%u)", feedback.wide_seq_no);
 				continue;
 			}
 
