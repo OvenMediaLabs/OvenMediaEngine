@@ -193,8 +193,9 @@ namespace mpegts
             return false;
         }
 
-        // GetNextContinuityCounter already stepped CC by 1; advance by remaining packets
-        IncreaseContinuityCounter(pid, static_cast<uint8_t>(written - 1));
+        // `continuity_counter` is the starting CC used to build the TS packets;
+        // advance the stored CC by the remaining packets written.
+        IncreaseContinuityCounter(pid, written - 1);
 
         BroadcastFrame(media_packet, ts_data);
 
