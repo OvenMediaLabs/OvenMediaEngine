@@ -55,6 +55,7 @@ enum class StreamSourceType : int8_t
 	Mpegts,
 	Srt,
 	Transcoder,
+	File,
 	Scheduled,
 	Multiplex
 };
@@ -429,6 +430,8 @@ static ov::String StringFromStreamSourceType(const StreamSourceType &type)
 			return "Scheduled";
 		case StreamSourceType::Multiplex:
 			return "Multiplex";
+		case StreamSourceType::File:
+			return "File";
 	}
 
 	return "Unknown";
@@ -544,6 +547,7 @@ static ProviderType ProviderTypeFromSourceType(const StreamSourceType &type)
 			break;
 		case StreamSourceType::RtmpPull:
 		case StreamSourceType::Transcoder:
+		case StreamSourceType::File:
 		default:
 			break;
 	}
