@@ -95,7 +95,7 @@ namespace pub
 			const size_t current  = _data_to_send->GetLength();
 			const size_t avail    = total - offset;
 
-			if (current + avail > SRT_LIVE_DEF_PLSIZE)
+			if (current + avail >= SRT_LIVE_DEF_PLSIZE)
 			{
 				// Fill the current buffer to exactly SRT_LIVE_DEF_PLSIZE and send it
 				const size_t to_fill = SRT_LIVE_DEF_PLSIZE - current;
