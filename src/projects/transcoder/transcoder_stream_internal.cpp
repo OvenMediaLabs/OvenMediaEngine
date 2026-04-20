@@ -686,7 +686,7 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 	}
 	else
 	{
-		// Not need to update for other media types.
+		// No update is needed for other media types.
 	}
 }
 
@@ -846,11 +846,17 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 
 void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
-	if (buffer->GetSampleRate() <= 0 || buffer->GetChannels().GetLayout() == cmn::AudioChannel::Layout::LayoutUnknown)
-	{
-		logte("Invalid decoded frame sample rate: %d", buffer->GetSampleRate());
-		return;
-	}
+ 	if (buffer->GetSampleRate() <= 0)
+ 	{
+ 		logte("Invalid decoded frame sample rate: %d", buffer->GetSampleRate());
+ 		return;
+ 	}
+	
+ 	if (buffer->GetChannels().GetLayout() == cmn::AudioChannel::Layout::LayoutUnknown)
+ 	{
+ 		logte("Invalid decoded frame channel layout: %d", static_cast<int>(buffer->GetChannels().GetLayout()));
+ 		return;
+ 	}
 
 	// Update sample rate of the output track
 	logtt("Input SampleRate: %d, Output SampleRate: %d",
@@ -923,7 +929,7 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 	else
 	{
-		// If the bitrate is not set, it is set based on the input video bitrate.
+		// If the bitrate is not set, it is set based on the input audio bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
 		if(new_output_bitrate <= 0)
 		{
