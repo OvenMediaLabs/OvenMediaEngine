@@ -200,8 +200,8 @@ set(WHISPER_SOURCE_URL "https://github.com/ggml-org/whisper.cpp/archive/${WHISPE
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
     if(EXISTS /etc/os-release)
         file(READ /etc/os-release _os_release)
-        string(REGEX MATCH "^NAME=\"?([^\"\n]+)\"?" _m "${_os_release}")
-        set(OSNAME "${CMAKE_MATCH_1}")
+        string(REGEX MATCH "(^|\n)NAME=\"?([^\"\n]+)\"?" _m "${_os_release}")
+        set(OSNAME "${CMAKE_MATCH_2}")
         string(REGEX MATCH "VERSION=\"?([0-9]+)" _m "${_os_release}")
         set(OSVERSION "${CMAKE_MATCH_1}")
     endif()
@@ -235,7 +235,7 @@ endmacro()
 # Install base packages
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
-    ome_run("sudo apt-get install -y build-essential autoconf libtool zlib1g-dev \
+    ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
         tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
@@ -310,8 +310,9 @@ make ${_J} shared_library && sudo make install && rm -rf ${TEMP_PATH}/srtp
 set(_install_libsrt "
 mkdir -p ${TEMP_PATH}/srt && cd ${TEMP_PATH}/srt &&
 curl -sSLf ${SRT_SOURCE_URL} | tar -xz --strip-components=1 &&
-./configure --prefix=${PREFIX} --enable-shared --disable-static &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/srt
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DENABLE_SHARED=1 -DENABLE_STATIC=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+cmake --build build ${_J} &&
+sudo cmake --install build && rm -rf ${TEMP_PATH}/srt
 ")
 
 # ---- Opus ----
@@ -476,7 +477,7 @@ make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_
 # Built via CMake (misc/stubs/CMakeLists.txt) instead of the legacy Makefile.
 set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
 set(_install_stubs "
-cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build/stubs -DOME_BUILD_STUBS=ON -DCMAKE_INSTALL_PREFIX=${PREFIX} &&
+cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build/stubs -DOME_BUILD_STUBS=ON -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build ${_STUB_DIR}/build/stubs --target stubs -j$(nproc) &&
 sudo cmake --install ${_STUB_DIR}/build/stubs --component stubs
 ")
@@ -514,7 +515,7 @@ set(_install_spdlog "
 mkdir -p ${TEMP_PATH}/spdlog && cd ${TEMP_PATH}/spdlog &&
 curl -sSLf ${SPDLOG_SOURCE_URL} | tar -xz --strip-components=1 &&
 mkdir -p build && cd build &&
-cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib &&
+cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
 ")
 
@@ -533,6 +534,7 @@ set(_WHISPER_CMAKE_ARGS
     "-DWHISPER_BUILD_TESTS=OFF"
     "-DWHISPER_BUILD_SERVER=OFF"
     "-DGGML_CUDA=${_WHISPER_CUDA}"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 )
 if(OME_HWACCEL_NVIDIA)
     list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61\;75\;80\;86\;89\"")
@@ -593,6 +595,12 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps nvcc_hdr)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
+    elseif("${TARGET}" STREQUAL "libvpx")
+        # libvpx requires nasm as assembler
+        set(_targets nasm libvpx)
+    elseif("${TARGET}" STREQUAL "fdk_aac" OR "${TARGET}" STREQUAL "libx264")
+        # these also require nasm
+        set(_targets nasm ${TARGET})
     else()
         set(_targets ${TARGET})
     endif()
