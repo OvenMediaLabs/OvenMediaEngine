@@ -202,7 +202,17 @@ install_fdk_aac()
 
 install_nasm()
 {
-    # NASM is binary, so don't install it in the prefix. If this conflicts with the NASM installed on your system, you must install it yourself to avoid crashing.
+    # Skip source build if nasm is already installed with the required version.
+    # Ubuntu 22.04 ships nasm 2.15.05 via apt, so building from source is not
+    # needed in that common case.
+    # `nasm --version` output: "NASM version 2.15.05 compiled on ..."
+    if command -v nasm >/dev/null 2>&1; then
+        if nasm --version 2>/dev/null | grep -qF "version ${NASM_VERSION}"; then
+            echo "[OME] nasm ${NASM_VERSION} already installed at $(which nasm), skipping source build"
+            return 0
+        fi
+    fi
+
     (DIR=${TEMP_PATH}/nasm && \
     mkdir -p ${DIR} && \
     cd ${DIR} && \
@@ -486,7 +496,7 @@ install_whisper()
 
 install_base_ubuntu()
 {
-    sudo apt-get install -y build-essential autoconf libtool zlib1g-dev tclsh cmake curl pkg-config bc uuid-dev
+    sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev tclsh cmake curl pkg-config bc uuid-dev
 	sudo apt-get install -y git
 	sudo apt-get install -y libgomp1
 }

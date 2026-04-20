@@ -235,7 +235,7 @@ endmacro()
 # Install base packages
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
-    ome_run("sudo apt-get install -y build-essential autoconf libtool zlib1g-dev \
+    ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
         tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
@@ -283,7 +283,18 @@ set(_COMMON_ENV "PATH=${PREFIX}/bin:$PATH PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfi
 set(_J "-j$(nproc)")
 
 # ---- NASM ----
+# Skip source build if nasm is already installed with the required version.
+# Ubuntu 22.04 ships nasm 2.15.05 via apt, so building from source is not
+# needed in that common case. The source-build path still requires automake
+# (for ./autogen.sh against the GitHub git archive which has no pre-generated
+# configure), which is why automake is now included in the apt base packages.
+# `nasm --version` output format: "NASM version 2.15.05 compiled on ..."
 set(_install_nasm "
+if command -v nasm >/dev/null 2>&1; then
+    nasm --version 2>/dev/null | grep -qF 'version ${NASM_VERSION}' && \\
+        echo '[OME] nasm ${NASM_VERSION} already installed, skipping source build' && \\
+        exit 0
+fi
 mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
 curl -sSLf ${NASM_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./autogen.sh && ./configure --prefix=${PREFIX} &&
