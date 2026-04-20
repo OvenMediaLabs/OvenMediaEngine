@@ -131,6 +131,9 @@ namespace pvd
 		std::map<uint32_t, std::shared_ptr<ov::Data>> _h26x_extradata_nalu;
 		std::map<uint32_t, bool> _sent_sequence_header;
 
+		// RID to track ID mapping
+		std::map<ov::String, uint32_t> _rid_to_track_id;
+
 		ov::String _oven_capabilities;
 
 		session_id_t _ice_session_id = 0;
