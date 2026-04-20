@@ -83,6 +83,7 @@ enum class ProviderType : int8_t
 	Mpegts,
 	WebRTC,
 	Srt,
+	File,
 	Scheduled,
 	Multiplex
 };
@@ -470,6 +471,8 @@ static ov::String StringFromProviderType(const ProviderType &type)
 			return "WebRTC";
 		case ProviderType::Srt:
 			return "SRT";
+		case ProviderType::File:
+			return "File";			
 		case ProviderType::Scheduled:
 			return "Scheduled";
 		case ProviderType::Multiplex:
@@ -545,9 +548,11 @@ static ProviderType ProviderTypeFromSourceType(const StreamSourceType &type)
 		case StreamSourceType::Multiplex:
 			provider_type = ProviderType::Multiplex;
 			break;
+		case StreamSourceType::File:
+			provider_type = ProviderType::File;
+			break;
 		case StreamSourceType::RtmpPull:
 		case StreamSourceType::Transcoder:
-		case StreamSourceType::File:
 		default:
 			break;
 	}
