@@ -57,7 +57,7 @@ ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id,
 
 	if(profile.GetExtraOptions().IsEmpty() == false)
 	{
-		unique_profile_name += ov::String::FormatString(":%lu", profile.GetExtraOptions().Hash());
+		unique_profile_name += ov::String::FormatString(":%zu", profile.GetExtraOptions().Hash());
 	}
 
 	return unique_profile_name;
@@ -282,6 +282,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetBitrateByConfig(profile.GetBitrate());
 		output_track->SetCodecModules(profile.GetModules());
 		output_track->SetChannelLayout(profile.GetChannel() == 1 ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
+		// Sample Format will be decided by the encoder
 		output_track->SetSampleFormat(cmn::AudioSample::Format::None);
 		output_track->SetSampleRate(profile.GetSamplerate());
 		if (output_track->GetCodecId() == cmn::MediaCodecId::Opus)
@@ -297,9 +298,6 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		{
 			output_track->SetTimeBase(1, output_track->GetSampleRate());
 		}
-
-		// Sample Format will be decided by the encoder
-		output_track->SetSampleFormat(cmn::AudioSample::Format::None);
 	}
 
 	return output_track;
@@ -834,6 +832,11 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	{
 		// If the bitrate is not set, it is set based on the input video bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
+		if(new_output_bitrate <= 0)
+		{
+			// If the input bitrate is not set, it is set based on the measured bitrate.
+			new_output_bitrate = input_track->GetBitrateByMeasured();
+		}
 
 		output_track->SetBitrateByConfig(new_output_bitrate);
 
@@ -922,6 +925,11 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	{
 		// If the bitrate is not set, it is set based on the input video bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
+		if(new_output_bitrate <= 0)
+		{
+			// If the input bitrate is not set, it is set based on the measured bitrate.
+			new_output_bitrate = input_track->GetBitrateByMeasured();
+		}
 
 		output_track->SetBitrateByConfig(new_output_bitrate);
 
