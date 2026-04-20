@@ -55,6 +55,11 @@ ov::String TranscoderStreamInternal::ProfileToSerialize(const uint32_t track_id,
 		unique_profile_name += ov::String::FormatString(":%s", profile.GetModules().CStr());
 	}
 
+	if(profile.GetExtraOptions().IsEmpty() == false)
+	{
+		unique_profile_name += ov::String::FormatString(":%lu", profile.GetExtraOptions().Hash());
+	}
+
 	return unique_profile_name;
 }
 
@@ -146,165 +151,69 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		return nullptr;
 	}
 
-	bool is_parsed;
-	profile.IsBypass(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetBypassByConfig(profile.IsBypass());
-	}
-
-	profile.GetBitrateString(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetBitrateByConfig(profile.GetBitrate());
-	}
-
-	std::optional<int> width;
-	std::optional<int> height;
-
-	profile.GetWidth(&is_parsed);
-	if (is_parsed == true)
-	{
-		width = profile.GetWidth();
-	}
-
-	profile.GetHeight(&is_parsed);
-	if (is_parsed == true)
-	{
-		height = profile.GetHeight();
-	}
-
-	if (width.has_value() && height.has_value())
-	{
-		output_track->SetResolutionByConfig(width.value(), height.value());
-	}
-	else if (width.has_value())
-	{
-		auto resolution = output_track->GetResolutionByConfig();
-		output_track->SetResolutionByConfig(width.value(), resolution.height);
-	}
-	else if (height.has_value())
-	{
-		auto resolution = output_track->GetResolutionByConfig();
-		output_track->SetResolutionByConfig(resolution.width, height.value());
-	}
-
-	profile.GetFramerate(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetFrameRateByConfig(profile.GetFramerate());
-	}
-
-	profile.GetKeyFrameInterval(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetKeyFrameIntervalByConfig(profile.GetKeyFrameInterval());
-	}
-
-	profile.GetKeyFrameIntervalType(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetKeyFrameIntervalTypeByConfig(cmn::GetKeyFrameIntervalTypeByName(profile.GetKeyFrameIntervalType()));
-	}
-
-	// If SkipFrames is enabled, it affects the output track's framerate and keyframe interval.
-	profile.GetSkipFrames(&is_parsed);
-	if (is_parsed == true)
-	{
-		auto skip_frames = profile.GetSkipFrames();
-
-		// Set ouput framerate according to the skip frames.
-		if (skip_frames >= 0)
-		{
-			output_track->SetSkipFramesByConfig(skip_frames);
-
-			// Adjust the framerate according to the skip frames. 
-			// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
-			// Round adjusted_frame_rate to 2 decimal places
-			auto adjusted_frame_rate = ::round(input_track->GetFrameRate() / (skip_frames + 1) * 100.0) / 100.0;
-
-			logtt("Adjust the output framerate %.02f -> %.02f according to the skip frames %d",
-				  input_track->GetFrameRate(),
-				  adjusted_frame_rate,
-				  skip_frames);
-			output_track->SetFrameRateByConfig(adjusted_frame_rate);
-
-#if 0 // This feature needs more consideration. It may confuse to users.
-			// Set keyframe interval according to the skip frames.
-			//  If the keyframe interval is not set, it will be automatically adjusted by the encoder.
-			if (output_track->GetKeyFrameIntervalByConfig() > 0)
-			{
-				auto adjusted_key_frame_interval = ::round(output_track->GetKeyFrameIntervalByConfig() / (skip_frames + 1));
-				logtt("Adjust the output key_frame_interval %.02f -> %.02f according to the skip frames %d",
-					  output_track->GetKeyFrameIntervalByConfig(),
-					  adjusted_key_frame_interval,
-					  skip_frames);
-
-				output_track->SetKeyFrameIntervalByConfig(adjusted_key_frame_interval);
-			}
-#endif
-		}
-	}
-
-	profile.GetLookahead(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetLookaheadByConfig(profile.GetLookahead());
-	}
-
-	profile.GetExtraOptions(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetExtraEncoderOptionsByConfig(profile.GetExtraOptions());
-	}
-
-
-
-
+	output_track->SetBypassByConfig(profile.IsBypass());
 	output_track->SetMediaType(cmn::MediaType::Video);
 	output_track->SetId(NewTrackId());
 	output_track->SetPublicName(input_track->GetPublicName());
-	// If the user does not specify, the default value generated in config/items/virtual_hosts/applications/output_profiles/encodes/encodes.h will be used.
-	output_track->SetVariantName(profile.GetName());	
+	output_track->SetVariantName(profile.GetName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 
-	bool need_bypass = IsMatchesBypassCondition(input_track, profile);
-	if (need_bypass == true)
+	bool is_bypass = IsMatchesBypassCondition(input_track, profile);
+	if (is_bypass == true)
 	{
 		output_track->SetBypass(true);
 
 		output_track->SetCodecId(input_track->GetCodecId());
 		output_track->SetCodecModules(input_track->GetCodecModules());
 		output_track->SetCodecModuleId(input_track->GetCodecModuleId());
+		output_track->SetResolution(input_track->GetResolution());
 		output_track->SetMaxResolution(input_track->GetMaxResolution());
 		output_track->SetMaxFrameRate(input_track->GetMaxFrameRate());
-		output_track->SetResolution(input_track->GetResolution());
 		output_track->SetTimeBase(input_track->GetTimeBase());
+		output_track->SetDecoderConfigurationRecord(input_track->GetDecoderConfigurationRecord());
 	}
 	else
 	{
 		output_track->SetBypass(false);
 
 		auto codec_id = cmn::GetCodecIdByName(profile.GetCodec());
+		if (cmn::IsVideoCodec(codec_id) == false)
+		{
+			logtw("%s codec is not supported video codec", profile.GetCodec().CStr());
+			return nullptr;
+		}
 
 		output_track->SetCodecId(codec_id);
-		output_track->SetCodecModules(profile.GetModules());
-		output_track->SetResolution(profile.GetWidth(), profile.GetHeight());
 		output_track->SetTimeBase(GetDefaultTimebaseByCodecId(codec_id));
+
+		cmn::Resolution resolution;
+		resolution.width  = profile.GetWidth();
+		resolution.height = profile.GetHeight();
+		output_track->SetResolutionByConfig(resolution);
+		output_track->SetResolution(resolution);
+
 		output_track->SetPreset(profile.GetPreset());
 		output_track->SetThreadCount(profile.GetThreadCount());
 		output_track->SetBFrames(profile.GetBFrames());
 		output_track->SetProfile(profile.GetProfile());
+		output_track->SetBitrateByConfig(profile.GetBitrate());
+		output_track->SetFrameRateByConfig(profile.GetFramerate());
+		output_track->SetKeyFrameIntervalByConfig(profile.GetKeyFrameInterval());
+		output_track->SetKeyFrameIntervalTypeByConfig(cmn::GetKeyFrameIntervalTypeByName(profile.GetKeyFrameIntervalType()));
+		ApplySkipFrames(profile.GetSkipFrames(), input_track, output_track);
+		output_track->SetLookaheadByConfig(profile.GetLookahead());
+		output_track->SetExtraEncoderOptionsByConfig(profile.GetExtraOptions());
+		output_track->SetCodecModules(profile.GetModules());
 
-		// Used when the encoding profile codec name includes the module name.
+		// Used when the encoding profile codec name includes the module name. This specification will soon be deprecated.
 		// ex) <Codec>h264_nvenc</Codec>
 		// ex) <Codec>h264_openh264</Codec>
 		auto module_id = cmn::GetCodecModuleIdByName(profile.GetCodec());
-		if(module_id != cmn::MediaCodecModuleId::None)
+		if (module_id != cmn::MediaCodecModuleId::None)
 		{
-			if(output_track->GetCodecModules().IsEmpty() == false)
+			if (output_track->GetCodecModules().IsEmpty() == false)
 			{
 				output_track->SetCodecModules(ov::String::FormatString("%s,%s", cmn::GetCodecModuleIdString(module_id), output_track->GetCodecModules().CStr()));
 			}
@@ -313,26 +222,6 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 				output_track->SetCodecModules(cmn::GetCodecModuleIdString(module_id));
 			}
 		}
-	}
-
-	//  If the framerate is not set, it is set to the same value as the input.
-	if(output_track->GetFrameRateByConfig() == 0)
-	{
-		output_track->SetFrameRateByConfig(input_track->GetFrameRateByConfig());
-		output_track->SetFrameRateByMeasured(input_track->GetFrameRateByMeasured());
-	}
-
-	//  If the bitrate is not set, it is set to the same value as the input.
-	if(output_track->GetBitrateByConfig() == 0)
-	{
-		output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
-		output_track->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
-	}
-
-	if (cmn::IsVideoCodec(output_track->GetCodecId()) == false)
-	{
-		logtw("%s codec is not supported video codec", profile.GetCodec().CStr());
-		return nullptr;
 	}
 
 	return output_track;
@@ -353,28 +242,23 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		output_track->SetBypassByConfig(profile.IsBypass());
 	}
 
-	profile.GetBitrateString(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetBitrateByConfig(profile.GetBitrate());
-	}
-
 	output_track->SetMediaType(cmn::MediaType::Audio);
 	output_track->SetId(NewTrackId());
-	
+
 	ov::String public_name = ov::String::FormatString("%s_%d", input_track->GetPublicName().CStr(), output_track->GetId());
 	output_track->SetPublicName(public_name);
-	// If the user does not specify, the default value generated in config/items/virtual_hosts/applications/output_profiles/encodes/encodes.h will be used.
-	output_track->SetVariantName(profile.GetName());	
+	output_track->SetVariantName(profile.GetName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 
-	bool need_bypass = IsMatchesBypassCondition(input_track, profile);
-	if (need_bypass == true)
+	bool is_bypass = IsMatchesBypassCondition(input_track, profile);
+	if (is_bypass == true)
 	{
 		output_track->SetBypass(true);
+
 		output_track->SetCodecId(input_track->GetCodecId());
+		output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
 		output_track->SetCodecModules(input_track->GetCodecModules());
 		output_track->SetCodecModuleId(input_track->GetCodecModuleId());
 		output_track->SetChannel(input_track->GetChannel());
@@ -386,13 +270,20 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	else
 	{
 		output_track->SetBypass(false);
-		output_track->SetCodecId(cmn::GetCodecIdByName(profile.GetCodec()));
+
+		auto codec_id = cmn::GetCodecIdByName(profile.GetCodec());
+		if (cmn::IsAudioCodec(codec_id) == false)
+		{
+			logtw("%s codec is not supported audio codec", profile.GetCodec().CStr());
+			return nullptr;
+		}
+
+		output_track->SetCodecId(codec_id);
+		output_track->SetBitrateByConfig(profile.GetBitrate());
 		output_track->SetCodecModules(profile.GetModules());
 		output_track->SetChannelLayout(profile.GetChannel() == 1 ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
-		output_track->SetSampleFormat(input_track->GetSample().GetFormat());	// The sample format will change by the decoder event.
+		output_track->SetSampleFormat(cmn::AudioSample::Format::None);
 		output_track->SetSampleRate(profile.GetSamplerate());
-
-		// Samplerate
 		if (output_track->GetCodecId() == cmn::MediaCodecId::Opus)
 		{
 			if (output_track->GetSampleRate() != 48000)
@@ -402,28 +293,13 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 			}
 		}
 
-		// Timebase
-		if (output_track->GetSampleRate() == 0)
-		{
-			output_track->SetTimeBase(GetDefaultTimebaseByCodecId(output_track->GetCodecId()));
-		}
-		else
+		if (output_track->GetSampleRate() > 0)
 		{
 			output_track->SetTimeBase(1, output_track->GetSampleRate());
 		}
-	}
 
-	//  If the bitrate is not set, it is set to the same value as the input.
-	if(output_track->GetBitrateByConfig() == 0)
-	{
-		output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
-		output_track->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
-	}
-
-	if (cmn::IsAudioCodec(output_track->GetCodecId()) == false)
-	{
-		logtw("%s codec is not supported audio codec", profile.GetCodec().CStr());
-		return nullptr;
+		// Sample Format will be decided by the encoder
+		output_track->SetSampleFormat(cmn::AudioSample::Format::None);
 	}
 
 	return output_track;
@@ -437,86 +313,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 		return nullptr;
 	}
 
-	bool is_parsed;
-
-	std::optional<int> width;
-	std::optional<int> height;
-
-	profile.GetWidth(&is_parsed);
-	if (is_parsed == true)
-	{
-		width = profile.GetWidth();
-	}
-
-	profile.GetHeight(&is_parsed);
-	if (is_parsed == true)
-	{
-		height = profile.GetHeight();
-	}
-
-	if (width.has_value() && height.has_value())
-	{
-		output_track->SetResolutionByConfig(width.value(), height.value());
-	}
-	else if (width.has_value())
-	{
-		auto resolution = output_track->GetResolutionByConfig();
-		output_track->SetResolutionByConfig(width.value(), resolution.height);
-	}
-	else if (height.has_value())
-	{
-		auto resolution = output_track->GetResolutionByConfig();
-		output_track->SetResolutionByConfig(resolution.width, height.value());
-	}
-
-	profile.GetFramerate(&is_parsed);
-	if (is_parsed == true)
-	{
-		output_track->SetFrameRateByConfig(profile.GetFramerate());
-	}
-
-	// If SkipFrames is enabled, it affects the output track's framerate and keyframe interval.
-	profile.GetSkipFrames(&is_parsed);
-	if (is_parsed == true)
-	{
-		auto skip_frames = profile.GetSkipFrames();
-
-		// Set ouput framerate according to the skip frames.
-		if (skip_frames >= 0)
-		{
-			output_track->SetSkipFramesByConfig(skip_frames);
-
-			// Adjust the framerate according to the skip frames. 
-			// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
-			// Round adjusted_frame_rate to 2 decimal places
-			auto adjusted_frame_rate = ::round(input_track->GetFrameRate() / (skip_frames + 1) * 100.0) / 100.0;
-
-			logtt("Adjust the output framerate %.02f -> %.02f according to the skip frames %d",
-				  input_track->GetFrameRate(),
-				  adjusted_frame_rate,
-				  skip_frames);
-			output_track->SetFrameRateByConfig(adjusted_frame_rate);
-
-#if 0 // This feature needs more consideration. It may confuse to users.
-			// Set keyframe interval according to the skip frames.
-			//  If the keyframe interval is not set, it will be automatically adjusted by the encoder.
-			if (output_track->GetKeyFrameIntervalByConfig() > 0)
-			{
-				auto adjusted_key_frame_interval = ::round(output_track->GetKeyFrameIntervalByConfig() / (skip_frames + 1));
-				logtt("Adjust the output key_frame_interval %.02f -> %.02f according to the skip frames %d",
-					  output_track->GetKeyFrameIntervalByConfig(),
-					  adjusted_key_frame_interval,
-					  skip_frames);
-
-				output_track->SetKeyFrameIntervalByConfig(adjusted_key_frame_interval);
-			}
-#endif
-		}
-	}
-
 	output_track->SetPublicName(input_track->GetPublicName());
-	// If the user does not specify, the default value generated in config/items/virtual_hosts/applications/output_profiles/encodes/encodes.h will be used.
-	output_track->SetVariantName(profile.GetName());	
+	output_track->SetVariantName(profile.GetName());
 	output_track->SetLanguage(input_track->GetLanguage());
 	output_track->SetCharacteristics(input_track->GetCharacteristics());
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
@@ -524,34 +322,32 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetMediaType(cmn::MediaType::Video);
 	output_track->SetId(NewTrackId());
 	output_track->SetBypass(false);
-	output_track->SetCodecId(cmn::GetCodecIdByName(profile.GetCodec()));
-	output_track->SetCodecModules(profile.GetModules());
-	output_track->SetResolution(profile.GetWidth(), profile.GetHeight());
-	output_track->SetTimeBase(GetDefaultTimebaseByCodecId(output_track->GetCodecId()));
 
-	// Github Issue : #1417
-	// Set any value for quick validation of the output track. 
-	// If the validation of OutputTrack is delayed, the Stream Prepare event occurs late in Publisher.
-	// The bitrate of an image doesn’t mean much anyway.
-	output_track->SetBitrateByConfig(0);
-	output_track->SetBitrateByMeasured(1000000);
-	
-	//  If the framerate is not set, it is set to the same value as the input.
-	if(output_track->GetFrameRateByConfig() == 0)
-	{
-		output_track->SetFrameRateByMeasured(input_track->GetFrameRate());
-	}
-	else
-	{
-		output_track->SetFrameRateByMeasured(output_track->GetFrameRateByConfig());
-	}
-	
-
-	if (cmn::IsImageCodec(output_track->GetCodecId()) == false)
+	auto codec_id = cmn::GetCodecIdByName(profile.GetCodec());
+	if (cmn::IsImageCodec(codec_id) == false)
 	{
 		logtw("%s codec is not supported image codec", profile.GetCodec().CStr());
 		return nullptr;
 	}
+	output_track->SetCodecId(codec_id);
+	output_track->SetTimeBase(GetDefaultTimebaseByCodecId(codec_id));
+	output_track->SetCodecModules(profile.GetModules());
+
+	cmn::Resolution resolution;
+	resolution.width  = profile.GetWidth();
+	resolution.height = profile.GetHeight();
+	output_track->SetResolutionByConfig(resolution);
+	output_track->SetResolution(resolution);
+	output_track->SetFrameRateByConfig(profile.GetFramerate());
+
+	ApplySkipFrames(profile.GetSkipFrames(), input_track, output_track);
+
+	// Github Issue : #1417
+	// Set any value for quick validation of the output track.
+	// If the validation of OutputTrack is delayed, the Stream Prepare event occurs late in Publisher.
+	// The bitrate of an image doesn’t mean much anyway.
+	output_track->SetBitrateByConfig(0);
+	output_track->SetBitrateByMeasured(1000000);
 
 	return output_track;
 }
@@ -850,8 +646,20 @@ double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerat
 	return ::floor(recommend_framerate);
 }
 
-void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, std::shared_ptr<MediaFrame> buffer)
+// Update the output track information based on the input track and the decoded frame from the decoded frame (bypass)
+void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
+	output_track->SetCodecId(input_track->GetCodecId());
+	output_track->SetCodecModules(input_track->GetCodecModules());
+	output_track->SetCodecModuleId(input_track->GetCodecModuleId());
+
+	output_track->SetFrameRateByConfig(input_track->GetFrameRateByConfig());
+	output_track->SetFrameRateByMeasured(input_track->GetFrameRateByMeasured());
+	output_track->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
+	output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
+	output_track->SetTimeBase(input_track->GetTimeBase());
+	output_track->SetDecoderConfigurationRecord(input_track->GetDecoderConfigurationRecord());
+
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
 		output_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
@@ -865,79 +673,260 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 	}
 }
 
+// Update the output track information based on the decoded frame from the decoder before creating the encoder. (encoding)
+// If the user has not specified it, the output specification is automatically determined.
+// Once determined for the first time, the specification is maintained until the stream ends.
 void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
-		float aspect_ratio = (float)buffer->GetWidth() / (float)buffer->GetHeight();
-
-		// Keep the original video resolution
-		auto output_resolution = output_track->GetResolution();
-		if (output_resolution.width == 0 && output_resolution.height == 0)
-		{
-			output_resolution.width = buffer->GetWidth();
-			output_resolution.height = buffer->GetHeight();
-			output_track->SetResolution(output_resolution);
-		}
-		// Width is automatically calculated as the original video ratio
-		else if (output_resolution.width == 0 && output_resolution.height != 0)
-		{
-			int32_t width = (int32_t)((float)output_resolution.height * aspect_ratio);
-			width = (width % 2 == 0) ? width : width + 1;
-
-			output_resolution.width = width;
-			output_track->SetResolution(output_resolution);
-		}
-		// Heigh is automatically calculated as the original video ratio
-		else if (output_resolution.width != 0 && output_resolution.height == 0)
-		{
-			int32_t height = (int32_t)((float)output_resolution.width / aspect_ratio);
-			height = (height % 2 == 0) ? height : height + 1;
-
-			output_resolution.height = height;
-			output_track->SetResolution(output_resolution);
-		}
-
-		// Set framerate of the output track
-		if (output_track->GetFrameRateByConfig() == 0.0f)
-		{
-			output_track->SetFrameRateByMeasured(input_track->GetFrameRateByMeasured());
-		}
-
-		// To be compatible with all hardware. The encoding resolution must be a multiple of 4
-		// In particular, Xilinx Media Accelerator must have a resolution specified in multiples of 4.
-		if (output_resolution.width % 4 != 0)
-		{
-			int32_t new_width = (output_resolution.width / 4 + 1) * 4;
-
-			logtd("The width of the output track is not a multiple of 4. change the width to %d -> %d", output_resolution.width, new_width);
-
-			output_resolution.width = new_width;
-			output_track->SetResolution(output_resolution);
-		}
-
-		if (output_resolution.height % 4 != 0)
-		{
-			int32_t new_height = (output_resolution.height / 4 + 1) * 4;
-
-			logtd("The height of the output track is not a multiple of 4. change the height to %d -> %d", output_resolution.height, new_height);
-
-			output_resolution.height = new_height;
-			output_track->SetResolution(output_resolution);
-		}
+		UpdateOutputVideoTrackByDecodedFrame(output_track, input_track, buffer);
 	}
 	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
 	{
-		if (output_track->GetSampleRate() == 0)
+		UpdateOutputAudioTrackByDecodedFrame(output_track, input_track, buffer);
+	}
+	else
+	{
+		// Not need to update for other media types.
+	}
+}
+
+void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+{
+	const int32_t src_width	 = buffer->GetWidth();
+	const int32_t src_height = buffer->GetHeight();
+
+	if (src_width <= 0 || src_height <= 0)
+	{
+		logte("Invalid decoded frame size: %dx%d", src_width, src_height);
+		return;
+	}
+
+	logtt("Input Resolution: %dx%d(conf) %dx%d(max), Output Resolution: %dx%d(conf) %dx%d(max)",
+		  input_track->GetResolution().width, input_track->GetResolution().height,
+		  input_track->GetMaxResolution().width, input_track->GetMaxResolution().height,
+		  output_track->GetResolution().width, output_track->GetResolution().height,
+		  output_track->GetMaxResolution().width, output_track->GetMaxResolution().height);
+
+	// Update Output resolution
+	auto output_resolution = output_track->GetResolution();
+	if (output_resolution.width > 0 && output_resolution.height > 0 &&
+		output_resolution.width % 4 == 0 && output_resolution.height % 4 == 0)
+	{
+		// The output resolution is already set. It should be maintained until the stream end.
+		logtt("Resolution is not changed. %dx%d", output_resolution.width, output_resolution.height);
+	}
+	else
+	{
+		// If the output resolution is not set, it is set based on the original video resolution.
+		auto new_output_resolution = output_resolution;
+
+		if (output_resolution.width == 0 && output_resolution.height == 0)
 		{
-			output_track->SetSampleRate(buffer->GetSampleRate());
-			output_track->SetTimeBase(1, buffer->GetSampleRate());
+			// Used the original video resolution
+			new_output_resolution.width	 = buffer->GetWidth();
+			new_output_resolution.height = buffer->GetHeight();
+		}
+		else if (output_resolution.width == 0 && output_resolution.height != 0)
+		{
+			// Width is automatically calculated as the original video ratio
+			const float aspect_ratio	= static_cast<float>(src_width) / static_cast<float>(src_height);
+			const double scaled_width	= static_cast<double>(output_resolution.height) * static_cast<double>(aspect_ratio);
+			int32_t width				= static_cast<int32_t>(std::lround(scaled_width));
+
+			width						= (width % 2 == 0) ? width : width + 1;
+
+			new_output_resolution.width = width;
+		}
+		else if (output_resolution.width != 0 && output_resolution.height == 0)
+		{
+			// Height is automatically calculated as the original video ratio
+			const float aspect_ratio	 = static_cast<float>(src_width) / static_cast<float>(src_height);
+			const double scaled_height	 = static_cast<double>(output_resolution.width) / static_cast<double>(aspect_ratio);
+			int32_t height				 = static_cast<int32_t>(std::lround(scaled_height));
+			height						 = (height % 2 == 0) ? height : height + 1;
+
+			new_output_resolution.height = height;
 		}
 
-		if (output_track->GetChannel().GetLayout() == cmn::AudioChannel::Layout::LayoutUnknown)
+		new_output_resolution = ApplyResolutionAlignment(new_output_resolution);
+
+		output_track->SetResolution(new_output_resolution);
+
+		logtd("Id(%d), Resolution is changed %dx%d -> %dx%d",
+			  output_track->GetId(), output_resolution.width, output_resolution.height,
+			  new_output_resolution.width, new_output_resolution.height);
+	}
+
+	logtt("Input Timebase: %d/%d, Output Timebase: %d/%d",
+		  input_track->GetTimeBase().GetNum(), input_track->GetTimeBase().GetDen(),
+		  output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
+
+	// Update timebase of the output track
+	auto output_timebase = output_track->GetTimeBase();
+	if (output_timebase.GetNum() != 0 && output_timebase.GetDen() != 0)
+	{
+		// The timebase is already set. It should be maintained until the stream end.
+		logtt("Timebase is not changed. %d/%d", output_timebase.GetNum(), output_timebase.GetDen());
+	}
+	else
+	{
+		// If the timebase is not set, it is set default timebase based on the codec.
+		auto new_output_timebase = GetDefaultTimebaseByCodecId(output_track->GetCodecId());
+
+		output_track->SetTimeBase(new_output_timebase);
+
+		logtd("Id(%d), Timebase is changed. %d/%d -> %d/%d",
+			  output_track->GetId(), output_timebase.GetNum(), output_timebase.GetDen(),
+			  new_output_timebase.GetNum(), new_output_timebase.GetDen());
+	}
+
+	// Update framerate of the output track
+	logtt("Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Output Framerate: %.02f(conf) %.02f(measure) %.02f(max)",
+		  input_track->GetFrameRateByConfig(), input_track->GetFrameRateByMeasured(), input_track->GetMaxFrameRate(),
+		  output_track->GetFrameRateByConfig(), output_track->GetFrameRateByMeasured(), output_track->GetMaxFrameRate());
+
+	auto output_framerate = output_track->GetFrameRateByConfig();
+	if (output_framerate > 0.0f)
+	{
+		// The framerate is already set. It should be maintained until the stream end.
+		logtt("Framerate is not changed.  %.2f", output_framerate);
+	}
+	else
+	{
+		// If the framerate is not set, it is set based on the input video framerate.
+		double new_output_framerate;
+		if (input_track->GetFrameRateByConfig() > 0.0f)
 		{
-			output_track->SetChannel(buffer->GetChannels());
+			new_output_framerate = input_track->GetFrameRateByConfig();
 		}
+		else if (buffer->GetDuration() > 0)
+		{
+			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
+		}
+		else if (input_track->GetFrameRateByMeasured() > 0.0f)
+		{
+			new_output_framerate = input_track->GetFrameRateByMeasured();
+		}
+		else
+		{
+			new_output_framerate = 1.0f;
+		}
+
+		output_track->SetFrameRateByConfig(new_output_framerate);
+
+		logtd("Id(%d), Framerate is changed. %.2f -> %.2f",
+			  output_track->GetId(), output_framerate, new_output_framerate);
+	}
+
+	// Update Output bitrate
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf) %d(measure)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig(), output_track->GetBitrateByMeasured());
+
+	auto output_bitrate = output_track->GetBitrateByConfig();
+	if (output_bitrate > 0)
+	{
+		// The bitrate is already set. It should be maintained until the stream end.
+		logtt("Bitrate is not changed. %d", output_bitrate);
+	}
+	else
+	{
+		// If the bitrate is not set, it is set based on the input video bitrate.
+		auto new_output_bitrate = input_track->GetBitrateByConfig();
+
+		output_track->SetBitrateByConfig(new_output_bitrate);
+
+		logtd("Id(%d), Bitrate is changed. %d -> %d", output_track->GetId(), output_bitrate, new_output_bitrate);
+	}
+}
+
+void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+{
+	if (buffer->GetSampleRate() <= 0 || buffer->GetChannels().GetLayout() == cmn::AudioChannel::Layout::LayoutUnknown)
+	{
+		logte("Invalid decoded frame sample rate: %d", buffer->GetSampleRate());
+		return;
+	}
+
+	// Update sample rate of the output track
+	logtt("Input SampleRate: %d, Output SampleRate: %d",
+		  input_track->GetSampleRate(), output_track->GetSampleRate());
+
+	auto output_samplerate = output_track->GetSampleRate();
+	if (output_samplerate > 0)
+	{
+		logtt("SampleRate is not changed. %d", output_samplerate);
+	}
+	else
+	{
+		auto new_output_samplerate = buffer->GetSampleRate();
+
+		logtd("Id(%d), SampleRate is changed. %d -> %d",
+			  output_track->GetId(), output_samplerate, new_output_samplerate);
+
+		output_track->SetSampleRate(new_output_samplerate);
+	}
+
+	// Update timebase of the output track
+	logtt("Input Timebase: %d/%d, Output Timebase: %d/%d",
+		  input_track->GetTimeBase().GetNum(), input_track->GetTimeBase().GetDen(), output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
+
+	auto output_timebase = output_track->GetTimeBase();
+	if (output_timebase.GetNum() != 0 && output_timebase.GetDen() != 0)
+	{
+		logtt("Timebase is not changed. %d/%d", output_timebase.GetNum(), output_timebase.GetDen());
+	}
+	else
+	{
+		cmn::Timebase new_output_timebase;
+
+		new_output_timebase.Set(1, buffer->GetSampleRate());
+
+		output_track->SetTimeBase(new_output_timebase);
+
+		logtd("Id(%d), Timebase is changed. %d/%d -> %d/%d",
+			  output_track->GetId(), output_timebase.GetNum(), output_timebase.GetDen(), new_output_timebase.GetNum(), new_output_timebase.GetDen());
+	}
+
+	// Update channel layout of the output track
+	logtt("Input Channel Layout: %s, Output Channel Layout: %s",
+		  cmn::AudioChannel::GetLayoutName(input_track->GetChannel().GetLayout()), cmn::AudioChannel::GetLayoutName(output_track->GetChannel().GetLayout()));
+
+	if (output_track->GetChannel().GetLayout() != cmn::AudioChannel::Layout::LayoutUnknown)
+	{
+		logtt("Id(%d), Channel layout is not changed. %s",
+			  output_track->GetId(), cmn::AudioChannel::GetLayoutName(output_track->GetChannel().GetLayout()));
+	}
+	else
+	{
+		logtd("Id(%d), Channel layout is changed. %s -> %s",
+			  output_track->GetId(),
+			  cmn::AudioChannel::GetLayoutName(output_track->GetChannel().GetLayout()),
+			  cmn::AudioChannel::GetLayoutName(buffer->GetChannels().GetLayout()));
+
+		output_track->SetChannel(buffer->GetChannels());
+	}
+
+	// Update Output bitrate
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf) %d(measure)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig(), output_track->GetBitrateByMeasured());
+
+	auto output_bitrate = output_track->GetBitrateByConfig();
+	if (output_bitrate > 0)
+	{
+		// The bitrate is already set. It should be maintained until the stream end.
+		logtt("Bitrate is not changed. %d", output_bitrate);
+	}
+	else
+	{
+		// If the bitrate is not set, it is set based on the input video bitrate.
+		auto new_output_bitrate = input_track->GetBitrateByConfig();
+
+		output_track->SetBitrateByConfig(new_output_bitrate);
+
+		logtd("Id(%d), Bitrate is changed. %d -> %d",
+			  output_track->GetId(), output_bitrate, new_output_bitrate);
 	}
 }
 
@@ -1053,4 +1042,51 @@ void TranscoderStreamInternal::GetCountByEncodingType(
 			}
 		}
 	}
+}
+
+// To be compatible with all hardware. The encoding resolution must be a multiple
+// In particular, Xilinx Media Accelerator must have a resolution specified in multiples of 4.
+cmn::Resolution TranscoderStreamInternal::ApplyResolutionAlignment(const cmn::Resolution &resolution)
+{
+	auto aligned = resolution;
+
+	if (aligned.width % 4 != 0)
+	{
+		int32_t new_width = (aligned.width / 4 + 1) * 4;
+
+		logtw("The width of the output track is not a multiple of 4. change the width to %d -> %d",
+			  aligned.width, new_width);
+
+		aligned.width = new_width;
+	}
+
+	if (aligned.height % 4 != 0)
+	{
+		int32_t new_height = (aligned.height / 4 + 1) * 4;
+
+		logtw("The height of the output track is not a multiple of 4. change the height to %d -> %d",
+			  aligned.height, new_height);
+
+		aligned.height = new_height;
+	}
+
+	return aligned;
+}
+
+void TranscoderStreamInternal::ApplySkipFrames(int32_t skip_frames, const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+{
+	if (skip_frames < 0)
+	{
+		return;
+	}
+
+	output_track->SetSkipFramesByConfig(skip_frames);
+
+	// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
+	constexpr double precision	   = 100.0;
+	auto adjusted_output_framerate = std::round(input_track->GetFrameRate() / (skip_frames + 1.0) * precision) / precision;
+
+	output_track->SetFrameRateByConfig(adjusted_output_framerate);
+
+	logtd("Adjust the output framerate %.02f -> %.02f according to the skip frames %d", input_track->GetFrameRate(), adjusted_output_framerate, skip_frames);
 }

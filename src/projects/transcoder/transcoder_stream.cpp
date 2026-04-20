@@ -1583,7 +1583,7 @@ void TranscoderStream::UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer)
 
 		if (output_track->IsBypass())
 		{
-			UpdateOutputTrackPassthrough(output_track, buffer);
+			UpdateOutputTrackPassthrough(output_track, input_track, buffer);
 		}
 		else
 		{
