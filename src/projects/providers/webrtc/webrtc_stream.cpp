@@ -365,98 +365,50 @@ namespace pvd
 	{
 		_oven_capabilities = capabilities;
 
-		// Oven-Capabilities format:
-		// - For Unicast (no RID extension): max_width=1920, max_height=1080, max_fps=30
-		// - For Simulcast (with RID extension): rid:0:max_width=1280, rid:0:max_height=720, rid:0:max_fps=30, rid:1:max_width=640, rid:1:max_height=360, rid:1:max_fps=30
+		// Oven-Capabilities header format:
+		//
+		// 1. Plain format (applied to the first video track only):
+		//    max_width=1920, max_height=1080, max_fps=30
+		//
+		// 2. RID format (applied per RID to the corresponding simulcast track):
+		//    rid:0:max_width=1280, rid:0:max_height=720, rid:0:max_fps=30, rid:1:max_width=640, rid:1:max_height=360, rid:1:max_fps=30
+		//
+		// If plain format params are present in a simulcast stream, they are applied to the first video track (backward compatibility).
 
 		logtt("%s - Set Oven-Capabilities: %s", GetName().CStr(), capabilities.CStr());
 
 		auto params = ov::String::Split(capabilities.CStr(), ",");
 
-		// If _rid_to_track_id is not empty, it means the stream has simulcast layers 
-		// and Oven-Capabilities should be parsed per RID. Otherwise, parse as unicast stream level parameters.
-		if (_rid_to_track_id.empty())
+		std::optional<int> plain_max_width;
+		std::optional<int> plain_max_height;
+		std::optional<double> plain_max_fps;
+
+		std::map<ov::String, int> rid_max_width;
+		std::map<ov::String, int> rid_max_height;
+		std::map<ov::String, double> rid_max_fps;
+
+		for (const auto &param : params)
 		{
-			// Unicast: parse max_width, max_height, max_fps only
-			std::optional<int> max_width;
-			std::optional<int> max_height;
-			std::optional<double> max_fps;
-
-			for (const auto &param : params)
+			auto key_value = ov::String::Split(param.CStr(), "=");
+			if (key_value.size() != 2)
 			{
-				auto key_value = ov::String::Split(param.CStr(), "=");
-				if (key_value.size() != 2)
-				{
-					continue;
-				}
-
-				auto key   = key_value[0].Trim().LowerCaseString();
-				auto value = key_value[1].Trim();
-
-				if (key == "max_width")
-				{
-					max_width = std::atoi(value.CStr());
-				}
-				else if (key == "max_height")
-				{
-					max_height = std::atoi(value.CStr());
-				}
-				else if (key == "max_fps")
-				{
-					max_fps = std::atof(value.CStr());
-				}
+				continue;
 			}
 
-			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-			if (first_video_track != nullptr)
+			auto key   = key_value[0].Trim();
+			auto value = key_value[1].Trim();
+
+			auto key_lower = key.LowerCaseString();
+			if (key_lower.HasPrefix("rid:"))
 			{
-				if (max_width.has_value() && max_height.has_value())
-				{
-					first_video_track->SetResolution(max_width.value(), max_height.value());
-
-					auto max_resolution = first_video_track->GetMaxResolution();
-					logtt("%s - Set max resolution: %s", GetName().CStr(), max_resolution.ToString().CStr());
-				}
-
-				if (max_fps.has_value())
-				{
-					first_video_track->SetMaxFrameRate(max_fps.value());
-
-					logtt("%s - Set max fps: %.2f", GetName().CStr(), first_video_track->GetMaxFrameRate());
-				}
-			}
-		}
-		else
-		{
-			// Simulcast: parse rid:<rid_id>:<field> only
-			std::map<ov::String, int> rid_max_width;
-			std::map<ov::String, int> rid_max_height;
-			std::map<ov::String, double> rid_max_fps;
-
-			for (const auto &param : params)
-			{
-				auto key_value = ov::String::Split(param.CStr(), "=");
-				if (key_value.size() != 2)
-				{
-					continue;
-				}
-
-				auto key = key_value[0].Trim();
-				auto value = key_value[1].Trim();
-
-				auto key_lower = key.LowerCaseString();
-				if (key_lower.HasPrefix("rid:") == false)
-				{
-					continue;
-				}
-
+				// RID format: rid:<rid_id>:<field>
+				// rid_id preserves original case to match _rid_to_track_id keys from SDP
 				auto parts = ov::String::Split(key.CStr(), ":");
 				if (parts.size() != 3)
 				{
 					continue;
 				}
 
-				// rid_id preserves original case to match _rid_to_track_id keys from SDP
 				const auto &rid_id = parts[1];
 				auto field = parts[2].LowerCaseString();
 
@@ -473,31 +425,73 @@ namespace pvd
 					rid_max_fps[rid_id] = std::atof(value.CStr());
 				}
 			}
+			else
+			{
+				// Plain format: applied to the first video track
+				if (key_lower == "max_width")
+				{
+					plain_max_width = std::atoi(value.CStr());
+				}
+				else if (key_lower == "max_height")
+				{
+					plain_max_height = std::atoi(value.CStr());
+				}
+				else if (key_lower == "max_fps")
+				{
+					plain_max_fps = std::atof(value.CStr());
+				}
+			}
+		}
 
-			for (const auto &[rid_id, track_id] : _rid_to_track_id)
+		// Apply plain params to the first video track
+		if (plain_max_width.has_value() && plain_max_height.has_value())
+		{
+			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track != nullptr)
+			{
+				first_video_track->SetResolution(plain_max_width.value(), plain_max_height.value());
+
+				auto max_resolution = first_video_track->GetMaxResolution();
+				logtt("%s - Set max resolution: %s", GetName().CStr(), max_resolution.ToString().CStr());
+			}
+		}
+
+		if (plain_max_fps.has_value())
+		{
+			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track != nullptr)
+			{
+				first_video_track->SetMaxFrameRate(plain_max_fps.value());
+
+				logtt("%s - Set max fps: %.2f", GetName().CStr(), first_video_track->GetMaxFrameRate());
+			}
+		}
+
+		// Apply RID params to the corresponding simulcast track (_rid_to_track_id is empty for unicast, so this loop is a no-op)
+		for (const auto &[rid_id, track_id] : _rid_to_track_id)
+		{
+			auto it_width  = rid_max_width.find(rid_id);
+			auto it_height = rid_max_height.find(rid_id);
+			auto it_fps    = rid_max_fps.find(rid_id);
+
+			if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
 			{
 				auto track = GetTrack(track_id);
-				if (track == nullptr)
-				{
-					continue;
-				}
-
-				auto it_width  = rid_max_width.find(rid_id);
-				auto it_height = rid_max_height.find(rid_id);
-				auto it_fps    = rid_max_fps.find(rid_id);
-
-				if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
+				if (track != nullptr)
 				{
 					track->SetResolution(it_width->second, it_height->second);
 
 					auto max_resolution = track->GetMaxResolution();
 					logtt("%s - Set max resolution for rid(%s): %s", GetName().CStr(), rid_id.CStr(), max_resolution.ToString().CStr());
 				}
+			}
 
-				if (it_fps != rid_max_fps.end())
+			if (it_fps != rid_max_fps.end())
+			{
+				auto track = GetTrack(track_id);
+				if (track != nullptr)
 				{
 					track->SetMaxFrameRate(it_fps->second);
-
 					logtt("%s - Set max fps for rid(%s): %.2f", GetName().CStr(), rid_id.CStr(), track->GetMaxFrameRate());
 				}
 			}
