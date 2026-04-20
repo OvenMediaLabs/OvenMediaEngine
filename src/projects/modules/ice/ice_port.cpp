@@ -566,7 +566,7 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 
 	auto socket_state = remote->GetState();
 	// Do not use != Connected: UDP uses a shared Listening socket, which is never Connected.
-	if (socket_state == ov::SocketState::Disconnected || socket_state == ov::SocketState::Closed)
+	if (socket_state == ov::SocketState::Disconnected || socket_state == ov::SocketState::Closed || socket_state == ov::SocketState::Error)
 	{
 		return false;
 	}
