@@ -51,16 +51,17 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 	ov::String configuration = ""; 
 	std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> candidate_modules = std::make_shared<std::vector<std::shared_ptr<info::CodecCandidate>>>();
 
-	// If the track is not video, the default module is the only candidate.
-	if (cmn::IsVideoCodec(track->GetCodecId()) == false)
+	// Non-video codecs with no explicit module config always use DEFAULT.
+	// If a non-video codec (e.g. Whisper) sets <Modules>, it falls through to the normal hardware selection path.
+	if (cmn::IsVideoCodec(track->GetCodecId()) == false && track->GetCodecModules().Trim().IsEmpty() == true)
 	{
 		candidate_modules->push_back(std::make_shared<info::CodecCandidate>(track->GetCodecId(), cmn::MediaCodecModuleId::DEFAULT, 0));
 		return candidate_modules;
 	}
 
-	if(hwaccels_enable == true)
+	if (hwaccels_enable == true)
 	{
-		if(track->GetCodecModules().Trim().IsEmpty() == false)
+		if (track->GetCodecModules().Trim().IsEmpty() == false)
 		{
 			configuration = track->GetCodecModules().Trim();
 		}
@@ -93,7 +94,7 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 		desire_modules.push_back(ov::String::FormatString("%s:%d", DEFAULT_MODULE_NAME, ALL_GPU_ID));
 	}
 
-	for(auto &desire_module : desire_modules)
+	for (auto &desire_module : desire_modules)
 	{
 		// Pattern : <module_name>:<gpu_id> or <module_name>
 		ov::Regex pattern_regex = ov::Regex::CompiledRegex( "(?<module_name>[^,:\\s]+[\\w]+):?(?<gpu_id>[^,]*)");
@@ -118,12 +119,12 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 			continue;
 		}
 
-		if(cmn::IsSupportHWAccels(module_id) == true && hwaccels_enable == false)
+		if (cmn::IsSupportHWAccels(module_id) == true && hwaccels_enable == false)
 		{
 			logtw("HWAccels is not enabled. Ignore this codec. module(%s)", module_name.CStr());
 			continue;
 		}
-		else  if(cmn::IsSupportHWAccels(module_id) == true && hwaccels_enable == true)
+		else  if (cmn::IsSupportHWAccels(module_id) == true && hwaccels_enable == true)
 		{
 			for (int device_id = 0; device_id < TranscodeGPU::GetInstance()->GetDeviceCount(module_id); device_id++)
 			{
@@ -206,7 +207,6 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 
 	return nullptr;
 }
-
 
 std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Create(
 	int32_t encoder_id,
@@ -408,7 +408,12 @@ bool TranscodeEncoder::InitCodecInteral()
 	_frame = ::av_frame_alloc();
 
 	// Called the codec specific initialization function.
-	return InitCodec();
+	auto result = InitCodec();
+	if (_track != nullptr)
+	{
+		_track->SetCodecStatus(result ? cmn::CodecStatus::Ready : cmn::CodecStatus::Failed);
+	}
+	return result;
 }
 
 void TranscodeEncoder::DeinitCodec()

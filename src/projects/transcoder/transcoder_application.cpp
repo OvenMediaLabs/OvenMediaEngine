@@ -163,6 +163,58 @@ std::shared_ptr<TranscoderStream> TranscodeApplication::GetStream(const std::sha
 	return stream;
 }
 
+bool TranscodeApplication::PauseEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	for (auto &[id, stream] : _streams)
+	{
+		if (stream && stream->GetInputStreamName() == stream_name)
+		{
+			return stream->PauseEncoders(codec_id);
+		}
+	}
+	return false;
+}
+
+bool TranscodeApplication::ResumeEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	for (auto &[id, stream] : _streams)
+	{
+		if (stream && stream->GetInputStreamName() == stream_name)
+		{
+			return stream->ResumeEncoders(codec_id);
+		}
+	}
+	return false;
+}
+
+bool TranscodeApplication::IsEncoderPaused(const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	for (auto &[id, stream] : _streams)
+	{
+		if (stream && stream->GetInputStreamName() == stream_name)
+		{
+			return stream->IsEncoderPaused(codec_id);
+		}
+	}
+	return false;
+}
+
+std::vector<TranscodeEncoder::EncoderInfo> TranscodeApplication::GetEncoderInfoList(const ov::String &stream_name, cmn::MediaCodecId codec_id)
+{
+	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	for (auto &[id, stream] : _streams)
+	{
+		if (stream && stream->GetInputStreamName() == stream_name)
+		{
+			return stream->GetEncoderInfoList(codec_id);
+		}
+	}
+	return {};
+}
+
 bool TranscodeApplication::ValidateAppConfiguration()
 {
 	auto &cfg_output_profile_list = _application_info.GetConfig().GetOutputProfileList();

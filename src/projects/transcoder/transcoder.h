@@ -45,6 +45,12 @@ public:
 	bool OnCreateApplication(const info::Application &app_info) override;
 	bool OnDeleteApplication(const info::Application &app_info) override;
 
+	// Encoder pause/resume by codec
+	bool PauseEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	bool ResumeEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	bool IsEncoderPaused(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id);
+	std::vector<TranscodeEncoder::EncoderInfo> GetEncoderInfoList(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id);
+
 private:
 	// Application Name으로 RouteApplication을 찾음
 	std::shared_ptr<TranscodeApplication> GetApplicationById(info::application_id_t application_id);

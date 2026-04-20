@@ -597,11 +597,12 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 
 	output_track->SetMediaType(cmn::MediaType::Subtitle);
 	output_track->SetId(NewTrackId());
-	output_track->SetVariantName(ov::String::FormatString("SpeechToText_%d", output_track->GetId()));
-	output_track->SetPublicName(ov::String::FormatString("SpeechToText_%d", output_track->GetId()));
+	output_track->SetVariantName(profile.GetOutputTrackLabel());
+	output_track->SetPublicName(profile.GetOutputTrackLabel());
 	output_track->SetLanguage(profile.GetSourceLanguage());
 	
 	output_track->SetCodecId(cmn::MediaCodecId::Whisper);
+	output_track->SetCodecModules(profile.GetModules());
 	
 	output_track->SetOriginBitstream(input_track->GetOriginBitstream());
 	output_track->SetTimeBase(input_track->GetTimeBase());
@@ -612,6 +613,20 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetSourceLanguage(profile.GetSourceLanguage());
 	output_track->SetTranslation(profile.ShouldTranslate());
 	output_track->SetOutputLabel(profile.GetOutputTrackLabel());
+	output_track->SetStepMs(profile.GetStepMs());
+	output_track->SetLengthMs(profile.GetLengthMs());
+	output_track->SetKeepMs(profile.GetKeepMs());
+	output_track->SetSttEnabled(profile.IsSttEnabled());
+
+	output_track->SetExtraInfo(ov::String::FormatString(
+		"Engine(%s) Model(%s) AudioInput(%d) Language(%s)",
+		profile.GetEngine().CStr(),
+		profile.GetModel().CStr(),
+		input_track->GetId(),
+		profile.GetSourceLanguage().CStr()));
+
+	// STT track is non-essential: encoder failure is not fatal and the stream continues without it.
+	output_track->SetEssentialTrack(false);
 
 	if (profile.GetEngine().LowerCaseString() == "whisper")
 	{

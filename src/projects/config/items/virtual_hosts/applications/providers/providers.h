@@ -8,7 +8,6 @@
 //==============================================================================
 #pragma once
 
-#include "file_provider.h"
 #include "mpegts_provider.h"
 #include "multiplex_provider.h"
 #include "ovt_provider.h"
@@ -50,7 +49,6 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetSrtProvider, _srt_provider)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMpegtsProvider, _mpegts_provider)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetWebrtcProvider, _webrtc_provider)
-					CFG_DECLARE_CONST_REF_GETTER_OF(GetFileProvider, _file_provider)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetScheduledProvider, _scheduled_provider)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMultiplexProvider, _multiplex_provider)
 
@@ -63,7 +61,12 @@ namespace cfg
 						Register<Optional>({"OVT", "ovt"}, &_ovt_provider);
 						Register<Optional>({"SRT", "srt"}, &_srt_provider);
 						Register<Optional>({"WebRTC", "webrtc"}, &_webrtc_provider);
-						Register<Optional>({"FILE", "file"}, &_file_provider);
+						// Deprecated.
+						Register<Optional>({"FILE", "file"}, &_file_provider, nullptr,
+										   [=]() -> std::shared_ptr<ConfigError> {
+											   logw("Config", "FILE provider is deprecated. Please use Providers.Schedule instead.");
+											   return nullptr;
+										   });
 						Register<Optional>({"Schedule", "schedule"}, &_scheduled_provider);
 						Register<Optional>({"Multiplex", "multiplex"}, &_multiplex_provider);
 						Register<Optional>({"MPEGTS", "mpegts"}, &_mpegts_provider, nullptr,
@@ -86,9 +89,12 @@ namespace cfg
 					SrtProvider _srt_provider;
 					MpegtsProvider _mpegts_provider;
 					WebrtcProvider _webrtc_provider;
-					FileProvider _file_provider;
+					// Deprecated.
+					bool _file_provider = false;
 					ScheduledProvider _scheduled_provider;
 					MultiplexProvider _multiplex_provider;
+
+
 				};
 			}  // namespace pvd
 		}  // namespace app

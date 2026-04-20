@@ -103,6 +103,10 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_source_language = media_track._source_language;
 	_translation = media_track._translation.load();
 
+	_codec_status = media_track._codec_status.load();
+	_extra_info = media_track._extra_info;
+	_essential_track = media_track._essential_track.load();
+
 	return true;
 }
 
@@ -308,6 +312,43 @@ void MediaTrack::SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConf
 	std::atomic_store(&_decoder_configuration_record, dcr);
 }
 
+void MediaTrack::SetCodecStatus(cmn::CodecStatus status)
+{
+	_codec_status = status;
+}
+
+cmn::CodecStatus MediaTrack::GetCodecStatus() const
+{
+	// Bypass tracks have no encoder init; they are always ready.
+	if (IsBypass())
+	{
+		return cmn::CodecStatus::Ready;
+	}
+	return _codec_status;
+}
+
+void MediaTrack::SetExtraInfo(const ov::String &info)
+{
+	std::scoped_lock lock(_media_mutex);
+	_extra_info = info;
+}
+
+ov::String MediaTrack::GetExtraInfo() const
+{
+	std::shared_lock lock(_media_mutex);
+	return _extra_info;
+}
+
+void MediaTrack::SetEssentialTrack(bool essential)
+{
+	_essential_track = essential;
+}
+
+bool MediaTrack::IsEssentialTrack() const
+{
+	return _essential_track;
+}
+
 ov::String MediaTrack::GetCodecsParameter() const
 {
 	switch (GetCodecId())
@@ -353,6 +394,8 @@ ov::String MediaTrack::GetInfoString()
 {
 	ov::String out_str = "";
 
+	const char *codec_status_str = cmn::GetCodecStatusString(GetCodecStatus());
+
 	switch (GetMediaType())
 	{
 		case MediaType::Video:
@@ -361,7 +404,7 @@ ov::String MediaTrack::GetInfoString()
 				"Public Name(%s) "
 				"Variant Name(%s) "
 				"Bitrate(%s) "
-				"Codec(%s,%s:%d) "
+				"Codec(%s,%s:%d%s%s) "
 				"BSF(%s) "
 				"Resolution(%s) "
 				"MaxResolution(%s) "
@@ -373,6 +416,7 @@ ov::String MediaTrack::GetInfoString()
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
 				ov::Converter::BitToString(GetBitrate()).CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
 				GetBitstreamFormatString(GetOriginBitstream()),
 				GetResolution().ToString().CStr(),
 				GetMaxResolution().ToString().CStr(),
@@ -389,7 +433,7 @@ ov::String MediaTrack::GetInfoString()
 				"Public Name(%s) "
 				"Variant Name(%s) "
 				"Bitrate(%s) "
-				"Codec(%s,%s:%d) "
+				"Codec(%s,%s:%d%s%s) "
 				"BSF(%s) "
 				"Samplerate(%s) "
 				"Format(%s) "
@@ -397,39 +441,54 @@ ov::String MediaTrack::GetInfoString()
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
 				ov::Converter::BitToString(GetBitrate()).CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
 				GetBitstreamFormatString(GetOriginBitstream()),
 				ov::Converter::ToSiString(GetSampleRate(), 1).CStr(),
 				GetSample().GetName(),
 				GetChannel().GetName());
 			break;
+
 		case MediaType::Data:
 			out_str.AppendFormat(
 				"Data  Track #%d: "
 				"Public Name(%s) "
 				"Variant Name(%s) "
-				"Codec(%s,%s) "
+				"Codec(%s,%s%s%s) "
 				"BSF(%s) ",
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
 				GetBitstreamFormatString(GetOriginBitstream()));
 			break;
+
 		case MediaType::Subtitle:
+		{
+			auto extra_info = GetExtraInfo();
 			out_str.AppendFormat(
 				"Subtitle Track #%d: "
 				"Public Name(%s) "
 				"Variant Name(%s) "
-				"Codec(%s,%s:%d) "
-				"BSF(%s) ",
+				"Codec(%s%s%s) "
+				"timebase(%s)",
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
-				GetBitstreamFormatString(GetOriginBitstream()));
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetTimeBase().ToString().CStr());
+			if (extra_info.IsEmpty() == false)
+			{
+				out_str.AppendFormat(" %s", extra_info.CStr());
+			}
 			break;
+		}
 
 		default:
 			break;
 	}
 
-	out_str.AppendFormat("timebase(%s)", GetTimeBase().ToString().CStr());
+	if (GetMediaType() != MediaType::Subtitle)
+	{
+		out_str.AppendFormat("timebase(%s)", GetTimeBase().ToString().CStr());
+	}
 
 	return out_str;
 }
@@ -442,8 +501,7 @@ bool MediaTrack::IsValid()
 	}
 
 	// data type is always valid
-	if(GetMediaType() == MediaType::Data || 
-		GetMediaType() == MediaType::Subtitle)
+	if (GetMediaType() == MediaType::Data)
 	{
 		_is_valid = true;
 		return true;
@@ -520,6 +578,18 @@ bool MediaTrack::IsValid()
 			}
 		}
 		break;
+		case MediaCodecId::Whisper: {
+			if (_codec_status != cmn::CodecStatus::Unknown)
+			{
+				_is_valid = true;
+				return true;
+			}
+		}
+		break;
+		case MediaCodecId::WebVTT: {
+			_is_valid = true;
+			return true;
+		}
 
 		default:
 			break;

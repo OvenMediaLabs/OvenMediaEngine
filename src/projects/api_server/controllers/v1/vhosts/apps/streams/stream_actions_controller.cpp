@@ -19,6 +19,8 @@
 
 #include <base/event/command/commands.h>
 
+#include <transcoder/transcoder.h>
+
 #include "../../../../../api_private.h"
 
 namespace api
@@ -36,6 +38,11 @@ namespace api
 			RegisterPost(R"((concludeHlsLive))", &StreamActionsController::OnPostConcludeHlsLive);
 
 			RegisterPost(R"((sendSubtitles))", &StreamActionsController::OnPostSendSubtitles);
+
+			// STT control
+			RegisterPost(R"((enableStt))", &StreamActionsController::OnPostEnableStt);
+			RegisterPost(R"((disableStt))", &StreamActionsController::OnPostDisableStt);
+			RegisterPost(R"((sttStatus))", &StreamActionsController::OnPostSttStatus);
 		}
 
 		// POST /v1/vhosts/<vhost_name>/apps/<app_name>/streams/<stream_name>:hlsDumps
@@ -577,6 +584,104 @@ namespace api
 			}
 
 			return {http::StatusCode::OK};
+		}
+
+		static std::shared_ptr<Transcoder> GetTranscoder()
+		{
+			auto module = ocst::Orchestrator::GetInstance()->GetTranscoderModule();
+			return std::dynamic_pointer_cast<Transcoder>(module);
+		}
+
+		// POST :enableStt
+		ApiResponse StreamActionsController::OnPostEnableStt(const std::shared_ptr<http::svr::HttpExchange> &client,
+															 const Json::Value &request_body,
+															 const std::shared_ptr<mon::HostMetrics> &vhost,
+															 const std::shared_ptr<mon::ApplicationMetrics> &app,
+															 const std::shared_ptr<mon::StreamMetrics> &stream,
+															 const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams)
+		{
+			auto transcoder = GetTranscoder();
+			if (transcoder == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::ServiceUnavailable,
+									  "Transcoder module is not available");
+			}
+
+			if (transcoder->ResumeEncoders(app->GetVHostAppName(), stream->GetName(), cmn::MediaCodecId::Whisper) == false)
+			{
+				throw http::HttpError(http::StatusCode::NotFound,
+									  "Could not find STT encoder for stream: [%s/%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
+			}
+
+			Json::Value response;
+			response["enabled"] = true;
+			return {http::StatusCode::OK, response};
+		}
+
+		// POST :disableStt
+		ApiResponse StreamActionsController::OnPostDisableStt(const std::shared_ptr<http::svr::HttpExchange> &client,
+															  const Json::Value &request_body,
+															  const std::shared_ptr<mon::HostMetrics> &vhost,
+															  const std::shared_ptr<mon::ApplicationMetrics> &app,
+															  const std::shared_ptr<mon::StreamMetrics> &stream,
+															  const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams)
+		{
+			auto transcoder = GetTranscoder();
+			if (transcoder == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::ServiceUnavailable,
+									  "Transcoder module is not available");
+			}
+
+			if (transcoder->PauseEncoders(app->GetVHostAppName(), stream->GetName(), cmn::MediaCodecId::Whisper) == false)
+			{
+				throw http::HttpError(http::StatusCode::NotFound,
+									  "Could not find STT encoder for stream: [%s/%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
+			}
+
+			Json::Value response;
+			response["enabled"] = false;
+			return {http::StatusCode::OK, response};
+		}
+
+		// POST :sttStatus
+		ApiResponse StreamActionsController::OnPostSttStatus(const std::shared_ptr<http::svr::HttpExchange> &client,
+															 const Json::Value &request_body,
+															 const std::shared_ptr<mon::HostMetrics> &vhost,
+															 const std::shared_ptr<mon::ApplicationMetrics> &app,
+															 const std::shared_ptr<mon::StreamMetrics> &stream,
+															 const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams)
+		{
+			auto transcoder = GetTranscoder();
+			if (transcoder == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::ServiceUnavailable,
+									  "Transcoder module is not available");
+			}
+
+			auto info_list = transcoder->GetEncoderInfoList(app->GetVHostAppName(), stream->GetName(), cmn::MediaCodecId::Whisper);
+
+			Json::Value renditions(Json::arrayValue);
+			for (const auto &info : info_list)
+			{
+				Json::Value rendition;
+				rendition["codec"] = cmn::GetCodecIdString(info.codec_id);
+				for (const auto &[key, value] : info.properties)
+				{
+					rendition[key.CStr()] = value.CStr();
+				}
+				renditions.append(rendition);
+			}
+
+			// Reflect actual paused state
+			bool enabled = !info_list.empty() && !transcoder->IsEncoderPaused(app->GetVHostAppName(), stream->GetName(), cmn::MediaCodecId::Whisper);
+
+			Json::Value response;
+			response["enabled"]    = enabled;
+			response["renditions"] = renditions;
+			return {http::StatusCode::OK, response};
 		}
 
 		std::shared_ptr<pvd::Stream> StreamActionsController::GetSourceStream(const std::shared_ptr<mon::StreamMetrics> &stream)

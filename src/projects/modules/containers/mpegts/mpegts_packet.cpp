@@ -68,7 +68,7 @@ namespace mpegts
 		return packet;
 	}
 
-	std::vector<std::shared_ptr<Packet>> Packet::Build(const std::shared_ptr<Pes> &pes, bool has_pcr, uint8_t continuity_counter)
+	std::vector<std::shared_ptr<Packet>> Packet::Build(const std::shared_ptr<Pes> &pes, bool has_pcr, bool is_keyframe, uint8_t continuity_counter)
 	{
 		std::vector<std::shared_ptr<Packet>> packets;
 
@@ -162,7 +162,7 @@ namespace mpegts
 				size_t stuffing_bytes = payload_buffer_size - payload_size;
 				packet->_adaptation_field._length = 1 + (has_pcr ? 6 : 0) + stuffing_bytes; // flags(8bits) + PCR(6) + stuffing_bytes
 				packet->_adaptation_field._pcr_flag = has_pcr;
-				packet->_adaptation_field._random_access_indicator = true;
+				packet->_adaptation_field._random_access_indicator = first_packet && is_keyframe;
 
 				packet->_adaptation_field_size = 1 + packet->_adaptation_field._length; // length(8bits) + flags(8bits) + PCR(6) + stuffing_bytes
 
@@ -178,7 +178,6 @@ namespace mpegts
 					packet->_adaptation_field._pcr._reserved = 0x3F; // 6 bits
 					packet->_adaptation_field._pcr._extension = pcr_ext & 0x1FF; // 9 bits
 				}
-
 				packet->_adaptation_field._stuffing_bytes = stuffing_bytes;
 			}
 
@@ -297,6 +296,145 @@ namespace mpegts
 	size_t Packet::GetDataLength()
 	{
 		return GetData() == nullptr ? 0 : GetData()->GetLength();
+	}
+
+	// Returns the number of 188-byte TS packets needed to carry a PES of the given length.
+	// first-packet capacity: 176 bytes (has_pcr) or 182 bytes (no pcr)
+	// subsequent-packet capacity: 184 bytes each (no AF needed), EXCEPT the last packet
+	// which needs AF stuffing and can hold at most 182 bytes.
+	// Edge case: when remaining % 184 == 183, the last "slot" can only fit 182 bytes
+	// (requires AF for stuffing, reducing payload from 184 to 182), leaving 1 byte that
+	// spills into an extra packet.
+	size_t Packet::GetPacketCount(size_t pes_data_length, bool has_pcr)
+	{
+		const size_t first_payload = has_pcr ? 176 : 182;
+		if (pes_data_length <= first_payload)
+		{
+			return 1;
+		}
+		const size_t remaining = pes_data_length - first_payload;
+		const size_t n = (remaining + 183) / 184;
+		// If the last chunk is exactly 183 bytes, BuildAllInto packs only 182 (needs AF
+		// for stuffing), leaving 1 byte that requires one additional packet.
+		return 1 + n + (remaining % 184 == 183 ? 1 : 0);
+	}
+
+	// Serialises all TS packets for one PES frame directly into a pre-allocated flat
+	// buffer that must be at least GetPacketCount() * 188 bytes.
+	// Returns the number of packets written (same value as GetPacketCount()).
+	size_t Packet::BuildAllInto(const std::shared_ptr<Pes> &pes, bool has_pcr, bool is_keyframe, uint8_t continuity_counter, uint8_t *output)
+	{
+		const auto pes_raw = pes->GetData();
+		if (pes_raw == nullptr)
+		{
+			return 0;
+		}
+
+		const uint8_t *pes_data  = pes_raw->GetDataAs<uint8_t>();
+		const size_t   pes_len   = pes_raw->GetLength();
+		const uint16_t pid       = pes->PID();
+
+		// Pre-compute PCR fields once (only used for first packet when has_pcr)
+		uint64_t pcr_base = 0;
+		uint32_t pcr_ext  = 0;
+		if (has_pcr)
+		{
+			pcr_base = (pes->Pcr() / 300) & 0x1FFFFFFFF;
+			pcr_ext  = (pes->Pcr() % 300) & 0x1FF;
+		}
+
+		size_t pes_offset  = 0;
+		size_t pkt_idx     = 0;
+		bool   first_pkt   = true;
+		bool   cur_has_pcr = has_pcr;
+
+		while (pes_offset < pes_len)
+		{
+			uint8_t *pkt = output + pkt_idx * MPEGTS_MIN_PACKET_SIZE;
+
+			// Fill entire packet with 0xFF so stuffing bytes and padding are correct
+			memset(pkt, 0xFF, MPEGTS_MIN_PACKET_SIZE);
+
+			const size_t remaining = pes_len - pes_offset;
+
+			// ---- determine AF presence and payload capacity ----
+			bool   has_af         = false;
+			size_t payload_cap    = 184; // 188 - 4-byte header
+
+			if (cur_has_pcr)
+			{
+				has_af      = true;
+				payload_cap = 176; // 184 - 8(AF: 1 len + 1 flags + 6 PCR)
+			}
+			else if (first_pkt)
+			{
+				has_af      = true;
+				payload_cap = 182; // 184 - 2(AF: 1 len + 1 flags)
+			}
+
+			// Last packet always needs AF to carry stuffing bytes
+			if (remaining < payload_cap && !has_af)
+			{
+				has_af      = true;
+				payload_cap = 182;
+			}
+
+			const size_t payload_size  = std::min(payload_cap, remaining);
+			const size_t stuffing_size = payload_cap - payload_size;
+
+			// ---- 4-byte TS header ----
+			// Byte 0: sync
+			pkt[0] = 0x47;
+			// Byte 1: TEI=0, PUSI, TP=0, PID[12:8]
+			pkt[1] = (static_cast<uint8_t>(first_pkt) << 6) | static_cast<uint8_t>((pid >> 8) & 0x1F);
+			// Byte 2: PID[7:0]
+			pkt[2] = static_cast<uint8_t>(pid & 0xFF);
+			// Byte 3: TSC=0, AFC, CC
+			const uint8_t afc = has_af ? (payload_size > 0 ? 0b11 : 0b10) : 0b01;
+			pkt[3] = static_cast<uint8_t>((afc << 4) | (continuity_counter & 0x0F));
+			continuity_counter = (continuity_counter + 1) % 16;
+
+			size_t pos = 4;
+
+			// ---- adaptation field ----
+			if (has_af)
+			{
+				// AF length = flags(1) + PCR(6 if present) + stuffing
+				const uint8_t af_len = static_cast<uint8_t>(1 + (cur_has_pcr ? 6 : 0) + stuffing_size);
+				pkt[pos++] = af_len;
+
+				// AF flags byte: RAI=keyframe only, PCR_flag conditional, rest 0
+				pkt[pos++] = static_cast<uint8_t>((first_pkt && is_keyframe ? 0x40 : 0x00) | (cur_has_pcr ? 0x10 : 0x00));
+
+				if (cur_has_pcr)
+				{
+					// PCR: 33-bit base | 6-bit reserved(0x3F) | 9-bit ext  = 48 bits = 6 bytes
+					pkt[pos + 0] = static_cast<uint8_t>(pcr_base >> 25);
+					pkt[pos + 1] = static_cast<uint8_t>(pcr_base >> 17);
+					pkt[pos + 2] = static_cast<uint8_t>(pcr_base >> 9);
+					pkt[pos + 3] = static_cast<uint8_t>(pcr_base >> 1);
+					pkt[pos + 4] = static_cast<uint8_t>(((pcr_base & 1) << 7) | 0x7E | ((pcr_ext >> 8) & 0x01));
+					pkt[pos + 5] = static_cast<uint8_t>(pcr_ext & 0xFF);
+					pos += 6;
+				}
+
+				// stuffing bytes are already 0xFF from memset
+				pos += stuffing_size;
+			}
+
+			// ---- payload ----
+			if (payload_size > 0)
+			{
+				memcpy(pkt + pos, pes_data + pes_offset, payload_size);
+				pes_offset += payload_size;
+			}
+
+			pkt_idx++;
+			first_pkt   = false;
+			cur_has_pcr = false;
+		}
+
+		return pkt_idx;
 	}
 
 	// Getter

@@ -455,11 +455,14 @@ install_whisper()
 			## NOTE: Legacy. Dropped in CUDA 12.0 and later. Requires CUDA 11.x or older to build.
 	# 70: Volta - Titan V, Tesla V100
 			## NOTE: Legacy. Dropped in CUDA 12.0 and later. Requires CUDA 11.x or older to build.
-	# 75: Turing - GeForce RTX 20 series & GTX 16 series, Tesla T4
-	# 80: Ampere - A100 (Datacenter GPU), A30
-	# 86: Ampere - GeForce RTX 30 series (Desktop/Laptop), Tesla A10
+	# 61: Pascal      - GeForce GTX 10 series (1050/1060/1070/1080)
+	# 70: Volta       - Tesla V100
+	# 75: Turing      - GeForce RTX 20 series & GTX 16 series, Tesla T4
+	# 80: Ampere      - A100 (Datacenter GPU), A30
+	# 86: Ampere      - GeForce RTX 30 series (Desktop/Laptop), Tesla A10
 	# 89: Ada Lovelace - GeForce RTX 40 series, Tesla L4
-	WHISPER_CUDA_ARCH="75;80;86;89"
+	# 90: Hopper      - H100
+	WHISPER_CUDA_ARCH="61;70;75;80;86;89;90"
 
 	(DIR=${TEMP_PATH}/whisper && \
 	mkdir -p ${DIR} && \

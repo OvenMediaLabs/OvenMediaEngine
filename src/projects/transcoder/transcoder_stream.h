@@ -50,6 +50,12 @@ public:
 	bool Update(const std::shared_ptr<info::Stream> &stream);
 	bool Push(std::shared_ptr<MediaPacket> packet);
 
+	bool PauseEncoders(cmn::MediaCodecId codec_id);
+	bool ResumeEncoders(cmn::MediaCodecId codec_id);
+	bool IsEncoderPaused(cmn::MediaCodecId codec_id);
+	ov::String GetInputStreamName() const;
+	std::vector<TranscodeEncoder::EncoderInfo> GetEncoderInfoList(cmn::MediaCodecId codec_id);
+
 	// Notify event to mediarouter
 	void NotifyCreateStreams();
 	void NotifyDeleteStreams();

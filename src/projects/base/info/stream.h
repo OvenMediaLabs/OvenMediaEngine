@@ -73,6 +73,11 @@ namespace info
 		StreamRepresentationType GetRepresentationType() const;
 		void SetRepresentationType(const StreamRepresentationType &type);
 
+		// Internal streams are used for internal processing (e.g. STT) and must not
+		// be exposed to Publishers.
+		bool IsInternal() const { return _internal; }
+		void SetInternal(bool internal) { _internal = internal; }
+
 		uint32_t IssueUniqueTrackId();
 		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
 		bool UpdateTrack(const std::shared_ptr<MediaTrack> &track);
@@ -197,6 +202,7 @@ namespace info
 		// Relay Type : [Provider -> Publisher]
 		// 		- It is sent directly to the Publisher without affecting the Output Profile.
 		StreamRepresentationType _representation_type = StreamRepresentationType::Source;
+		bool _internal = false;
 
 		std::shared_ptr<Application> _app_info = nullptr;
 

@@ -158,7 +158,11 @@ namespace pvd
 
 	bool MpegTsProvider::Stop()
 	{
-		auto stream_port_map = std::move(_stream_port_map);
+		decltype(_stream_port_map) stream_port_map;
+		{
+			std::scoped_lock lock(_stream_port_map_lock);
+			stream_port_map = std::move(_stream_port_map);
+		}
 
 		for (const auto &x : stream_port_map)
 		{

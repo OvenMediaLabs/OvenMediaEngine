@@ -24,8 +24,8 @@ namespace mpegts
         virtual ~PacketizerSink() = default;
         // PAT, PMT, ...
         virtual void OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets) = 0;
-        // PES packets for a frame
-        virtual void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets) = 0;
+        // All TS packets for one frame, pre-serialised into a single flat buffer
+        virtual void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data) = 0;
     };
 
     // PAT, PMT, PES, PES, PES, ...
@@ -73,7 +73,7 @@ namespace mpegts
         std::shared_ptr<const MediaTrack> GetMediaTrack(uint32_t track_id) const;
 
         void BroadcastPsi();
-        void BroadcastFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets);
+        void BroadcastFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<ov::Data> &ts_data);
 
         Config _config;
         bool _started = false;

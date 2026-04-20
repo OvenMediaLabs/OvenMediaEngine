@@ -1,14 +1,17 @@
 //==============================================================================
 //
-//  Machine 
+//  Whisper encoder for speech recognition and subtitle generation.
 //
-//  Created by Kwon Keuk Han
-//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//  Created by Getroot
+//  Copyright (c) 2025 AirenSoft. All rights reserved.
 //
 //==============================================================================
 #pragma once
 
 #include <whisper.h>
+
+#include <memory>
+
 #include <base/provider/stream.h>
 #include "../../transcoder_encoder.h"
 
@@ -52,10 +55,29 @@ public:
 	{
 		return cmn::BitstreamFormat::WebVTT;
 	}
+
+	bool IsInputOnly() const noexcept override
+	{
+		return true;
+	}
 	
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
 	bool InitCodec() override;
 	void CodecThread() override;
+
+	void Pause()  override { _audio_muted.store(true,  std::memory_order_relaxed); }
+	void Resume() override { _audio_muted.store(false, std::memory_order_relaxed); }
+	bool IsPaused() const override { return _audio_muted.load(std::memory_order_relaxed); }
+
+	EncoderInfo GetInfo() const override
+	{
+		EncoderInfo info = TranscodeEncoder::GetInfo();
+		info.properties["label"]       = _output_track_label;
+		info.properties["model"]       = _track ? _track->GetModel() : "";
+		info.properties["language"]    = _source_language;
+		info.properties["translation"] = _translate ? "true" : "false";
+		return info;
+	}
 
 private:
 	bool SetCodecParams() override;	
@@ -63,14 +85,19 @@ private:
 	bool SendVttToProvider(const ov::String &text);
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
 
-	int32_t _step_ms = 2000;
-	int32_t _length_ms = 8000;
-	int32_t _keep_ms = 100;
-	struct whisper_context * _whisper_ctx = nullptr;
+	std::atomic<bool> _audio_muted{false};
 
-	int32_t _n_samples_step = 0;
-	int32_t _n_samples_length = 0;
-	int32_t _n_samples_keep = 0;
+	int32_t _step_ms = 2000;
+	int32_t _length_ms = 10000;
+	int32_t _keep_ms = 1500;
+        // Shared model weights: owned by WhisperModelRegistry, reference-counted here.
+        std::shared_ptr<whisper_context> _whisper_ctx;
+        // Per-instance inference state: isolates all mutable buffers from other instances.
+        struct whisper_state * _whisper_state = nullptr;
+
+        int32_t _n_samples_step = 0;
+        int32_t _n_samples_length = 0;
+        int32_t _n_samples_keep = 0;
 
 	ov::String _source_language = "auto";
 	bool _translate = false;

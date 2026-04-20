@@ -551,7 +551,23 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 	std::shared_ptr<IceSession> ice_session = FindIceSession(session_id);
 	if (ice_session == nullptr || ice_session->GetState() != IceConnectionState::Connected)
 	{
-		logtt("IcePort::Send - Could not find session: %d", session_id);
+		logtt("IcePort::Send - Could not find session: %u", session_id);
+		return false;
+	}
+
+	// The underlying socket may already be closed (e.g. by GC) before OnDisconnected callback arrives.
+	// Check socket state to avoid sending data to a closed socket.
+	auto remote = ice_session->GetConnectedSocket();
+	if (remote == nullptr)
+	{
+		logte("IcePort::Send - Could not find connected remote socket: %u", session_id);
+		return false;
+	}
+
+	auto socket_state = remote->GetState();
+	// Do not use != Connected: UDP uses a shared Listening socket, which is never Connected.
+	if (socket_state == ov::SocketState::Disconnected || socket_state == ov::SocketState::Closed || socket_state == ov::SocketState::Error)
+	{
 		return false;
 	}
 
@@ -575,13 +591,6 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 
 	if (send_data == nullptr)
 	{
-		return false;
-	}
-
-	auto remote = ice_session->GetConnectedSocket();
-	if (remote == nullptr)
-	{
-		logte("IcePort::Send - Could not find connected remote socket: %d", session_id);
 		return false;
 	}
 
@@ -609,15 +618,39 @@ void IcePort::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error)
 {
 	// called when TURN client disconnected from the turn server with TCP
-	std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
-
-	auto it = _demultiplexers.find(remote->GetNativeHandle());
-	if (it != _demultiplexers.end())
 	{
-		_demultiplexers.erase(remote->GetNativeHandle());
+		std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
+
+		auto it = _demultiplexers.find(remote->GetNativeHandle());
+		if (it != _demultiplexers.end())
+		{
+			_demultiplexers.erase(remote->GetNativeHandle());
+		}
 	}
 
 	logti("Turn client has disconnected : %s", remote->ToString().CStr());
+
+	// Find all IceSessions whose connected socket matches the disconnected socket,
+	// and mark them as Disconnecting so that IcePort::Send() stops immediately.
+	// DisconnectSession() must be called outside the lock to avoid deadlock.
+	std::vector<session_id_t> sessions_to_disconnect;
+	{
+		std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+		for (const auto &[session_id, ice_session] : _ice_seesions_with_id)
+		{
+			auto connected_socket = ice_session->GetConnectedSocket();
+			if (connected_socket != nullptr && connected_socket->GetNativeHandle() == remote->GetNativeHandle())
+			{
+				sessions_to_disconnect.push_back(session_id);
+			}
+		}
+	}
+
+	for (const auto session_id : sessions_to_disconnect)
+	{
+		logti("Disconnecting IceSession(%u) due to TCP socket disconnect", session_id);
+		DisconnectSession(session_id);
+	}
 }
 
 void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data)

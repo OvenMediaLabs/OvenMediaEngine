@@ -53,7 +53,17 @@ namespace cfg
 						Register("Language", &_language);
 						Register<Optional>("AutoSelect", &_auto_select);
 						Register<Optional>("Forced", &_forced);
-						Register<Optional>("Transcription", &_transcription);
+						Register<Optional>("Transcription", &_transcription, nullptr,
+							[=]() -> std::shared_ptr<ConfigError> {
+								if (_transcription.IsParsed())
+								{
+								logw("Config", "<Subtitle><Rendition><Transcription> is no longer supported. "
+									"Please use <OutputProfiles><MediaOptions><STT><Rendition> instead. "
+									"Refer to the OvenMediaEngine manual for details. "
+									"STT will be disabled for this rendition.");
+								}
+								return nullptr;
+							});
 					}
 				};
 			}  // namespace oprf

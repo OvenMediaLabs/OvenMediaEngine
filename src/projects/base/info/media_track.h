@@ -142,6 +142,19 @@ public:
 
 	ov::String GetInfoString();
 
+	// Codec status: set by encoder/decoder after initialization
+	using CodecStatus = cmn::CodecStatus;
+	void SetCodecStatus(cmn::CodecStatus status);
+	cmn::CodecStatus GetCodecStatus() const;
+
+	// Extra info: codec-specific human-readable metadata (e.g. Engine/Model/Source for Whisper)
+	void SetExtraInfo(const ov::String &info);
+	ov::String GetExtraInfo() const;
+
+	// If false, encoder failure for this track is non-fatal and the stream continues without it.
+	void SetEssentialTrack(bool essential);
+	bool IsEssentialTrack() const;
+
 protected:
 	mutable std::shared_mutex _media_mutex;
 
@@ -219,4 +232,11 @@ protected:
 	// Codec specific object
 	// AVCDecoderConfigurationRecord, HEVCDecoderConfigurationRecord, AudioSpecificConfig 
 	std::shared_ptr<DecoderConfigurationRecord> _decoder_configuration_record = nullptr;
+
+	// Codec status and extra info
+	std::atomic<cmn::CodecStatus> _codec_status = cmn::CodecStatus::Unknown;
+	ov::String _extra_info;
+
+	// If false, encoder failure for this track is non-fatal and the stream continues without it.
+	std::atomic<bool> _essential_track = true;
 };

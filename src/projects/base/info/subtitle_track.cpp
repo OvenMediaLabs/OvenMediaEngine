@@ -87,3 +87,15 @@ ov::String SubtitleTrack::GetOutputTrackLabel() const
 	std::shared_lock lock(_subtitle_mutex);
 	return _output_track_label;
 }
+
+void SubtitleTrack::SetStepMs(int32_t step_ms) { _step_ms = step_ms; }
+int32_t SubtitleTrack::GetStepMs() const { return _step_ms; }
+
+void SubtitleTrack::SetLengthMs(int32_t length_ms) { _length_ms = length_ms; }
+int32_t SubtitleTrack::GetLengthMs() const { return _length_ms; }
+
+void SubtitleTrack::SetKeepMs(int32_t keep_ms) { _keep_ms = keep_ms; }
+int32_t SubtitleTrack::GetKeepMs() const { return _keep_ms; }
+
+void SubtitleTrack::SetSttEnabled(bool enabled) { _stt_enabled = enabled; }
+bool SubtitleTrack::IsSttEnabled() const { return _stt_enabled; }

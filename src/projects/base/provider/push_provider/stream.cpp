@@ -15,6 +15,16 @@
 
 namespace pvd
 {
+	namespace
+	{
+		int64_t SteadyNowMs()
+		{
+			return std::chrono::duration_cast<std::chrono::milliseconds>(
+					   std::chrono::steady_clock::now().time_since_epoch())
+				.count();
+		}
+	}  // namespace
+
 	PushStream::PushStream(StreamSourceType source_type, ov::String channel_name, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider)
 		: PushStream(source_type, channel_id, provider)
 	{
@@ -73,7 +83,7 @@ namespace pvd
 
 	void PushStream::UpdateLastReceivedTime()
 	{
-		_packet_silence_timer.Update();
+		_last_received_time_ms = SteadyNowMs();
 	}
 
 	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
@@ -88,7 +98,13 @@ namespace pvd
 
 	time_t PushStream::GetElapsedMsSinceLastReceived()
 	{
-		return _packet_silence_timer.Elapsed();
+		auto last_received_time_ms = _last_received_time_ms.load();
+		if (last_received_time_ms < 0)
+		{
+			return -1;
+		}
+
+		return static_cast<time_t>(SteadyNowMs() - last_received_time_ms);
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
@@ -102,7 +118,7 @@ namespace pvd
 		
 		_is_published = GetProvider()->PublishChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
 
-		_packet_silence_timer.Start();
+		_last_received_time_ms = SteadyNowMs();
 
 		return _is_published;
 	}
@@ -139,4 +155,4 @@ namespace pvd
 
 		return true;
 	}
-}
+}  // namespace pvd

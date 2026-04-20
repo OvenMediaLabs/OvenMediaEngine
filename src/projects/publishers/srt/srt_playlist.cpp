@@ -77,7 +77,7 @@ namespace pub
 		}
 	}
 
-	void SrtPlaylist::SendData(const std::vector<std::shared_ptr<mpegts::Packet>> &packets)
+	void SrtPlaylist::SendData(const std::shared_ptr<const ov::Data> &ts_data)
 	{
 		if (_sink == nullptr)
 		{
@@ -86,20 +86,29 @@ namespace pub
 
 		auto self = GetSharedPtrAs<SrtPlaylist>();
 
-		for (auto &packet : packets)
-		{
-			auto size		 = _data_to_send->GetLength();
-			const auto &data = packet->GetData();
+		const uint8_t *src   = ts_data->GetDataAs<uint8_t>();
+		size_t         total = ts_data->GetLength();
+		size_t         offset = 0;
 
-			// Broadcast if the data size exceeds the SRT's payload length
-			if ((size + data->GetLength()) > SRT_LIVE_DEF_PLSIZE)
+		while (offset < total)
+		{
+			const size_t current  = _data_to_send->GetLength();
+			const size_t avail    = total - offset;
+
+			if (current + avail >= SRT_LIVE_DEF_PLSIZE)
 			{
+				// Fill the current buffer to exactly SRT_LIVE_DEF_PLSIZE and send it
+				const size_t to_fill = SRT_LIVE_DEF_PLSIZE - current;
+				_data_to_send->Append(src + offset, to_fill);
 				_sink->OnSrtPlaylistData(self, _data_to_send);
-				_data_to_send = data->Clone();
+				// Reuse a pre-reserved buffer for the next chunk
+				_data_to_send = std::make_shared<ov::Data>(SRT_LIVE_DEF_PLSIZE);
+				offset += to_fill;
 			}
 			else
 			{
-				_data_to_send->Append(packet->GetData());
+				_data_to_send->Append(src + offset, avail);
+				offset += avail;
 			}
 		}
 	}
@@ -116,25 +125,17 @@ namespace pub
 
 		logap("OnPsi - %zu packets (total %zu bytes)", psi_packets.size(), psi_data->GetLength());
 
-		_psi_data = std::move(psi_data);
+		_psi_data = psi_data;
 
-		SendData(psi_packets);
+		SendData(psi_data);
 	}
 
-	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::vector<std::shared_ptr<mpegts::Packet>> &pes_packets)
+	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data)
 	{
 #if DEBUG
-		// Since adding up the total packet size is costly, it is calculated only in debug mode
-		[[maybe_unused]] size_t total_packet_size = 0;
-
-		for (const auto &packet : pes_packets)
-		{
-			total_packet_size += packet->GetDataLength();
-		}
-
-		logap("OnFrame - %zu packets (total %zu bytes)", pes_packets.size(), total_packet_size);
+		logap("OnFrame - %zu bytes", ts_data->GetLength());
 #endif	// DEBUG
 
-		SendData(pes_packets);
+		SendData(ts_data);
 	}
 }  // namespace pub
