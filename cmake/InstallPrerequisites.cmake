@@ -235,7 +235,7 @@ endmacro()
 # Install base packages
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
-    ome_run("sudo apt-get install -y build-essential autoconf libtool zlib1g-dev \
+    ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
         tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
@@ -283,11 +283,20 @@ set(_COMMON_ENV "PATH=${PREFIX}/bin:$PATH PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfi
 set(_J "-j$(nproc)")
 
 # ---- NASM ----
+# nasm is a build-time assembler tool, not a library — it has no pkg-config file.
+# If nasm is already present in PATH (e.g. installed via the system package manager),
+# skip the source build; the system-installed binary is perfectly usable.
+# PATH already includes ${PREFIX}/bin (set by _COMMON_ENV), so a previously
+# source-built nasm is also detected here.
 set(_install_nasm "
-mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
-curl -sSLf ${NASM_SOURCE_URL} | tar -xz --strip-components=1 &&
-./autogen.sh && ./configure --prefix=${PREFIX} &&
-make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}/nasm
+if command -v nasm >/dev/null 2>&1; then
+    echo \"[OME] nasm already found at '$(command -v nasm)', skipping source build\"
+else
+    mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
+    curl -sSLf ${NASM_SOURCE_URL} | tar -xz --strip-components=1 &&
+    ./autogen.sh && ./configure --prefix=${PREFIX} &&
+    make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}/nasm
+fi
 ")
 
 # ---- OpenSSL ----

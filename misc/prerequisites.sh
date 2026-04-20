@@ -202,7 +202,12 @@ install_fdk_aac()
 
 install_nasm()
 {
-    # NASM is binary, so don't install it in the prefix. If this conflicts with the NASM installed on your system, you must install it yourself to avoid crashing.
+    # If nasm is already available in PATH, skip the source build.
+    # The system package manager version (e.g. apt install nasm) is sufficient.
+    if command -v nasm >/dev/null 2>&1; then
+        echo "[OME] nasm already found at '$(command -v nasm)', skipping source build"
+        return 0
+    fi
     (DIR=${TEMP_PATH}/nasm && \
     mkdir -p ${DIR} && \
     cd ${DIR} && \
@@ -486,7 +491,7 @@ install_whisper()
 
 install_base_ubuntu()
 {
-    sudo apt-get install -y build-essential autoconf libtool zlib1g-dev tclsh cmake curl pkg-config bc uuid-dev
+    sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev tclsh cmake curl pkg-config bc uuid-dev
 	sudo apt-get install -y git
 	sudo apt-get install -y libgomp1
 }
