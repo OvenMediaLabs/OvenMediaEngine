@@ -440,15 +440,18 @@ namespace pvd
 
 				if (field == "max_width")
 				{
-					rid_max_width[rid_id] = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_width[rid_id] = v;
 				}
 				else if (field == "max_height")
 				{
-					rid_max_height[rid_id] = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_height[rid_id] = v;
 				}
 				else if (field == "max_fps")
 				{
-					rid_max_fps[rid_id] = std::atof(value.CStr());
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) rid_max_fps[rid_id] = v;
 				}
 			}
 			else if (key_lower.HasPrefix("mid:"))
@@ -467,15 +470,18 @@ namespace pvd
 
 				if (field == "max_width")
 				{
-					rid_max_width[mid_rid_key] = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_width[mid_rid_key] = v;
 				}
 				else if (field == "max_height")
 				{
-					rid_max_height[mid_rid_key] = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_height[mid_rid_key] = v;
 				}
 				else if (field == "max_fps")
 				{
-					rid_max_fps[mid_rid_key] = std::atof(value.CStr());
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) rid_max_fps[mid_rid_key] = v;
 				}
 			}
 			else
@@ -483,15 +489,18 @@ namespace pvd
 				// Plain format: applied to the first video track
 				if (key_lower == "max_width")
 				{
-					plain_max_width = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) plain_max_width = v;
 				}
 				else if (key_lower == "max_height")
 				{
-					plain_max_height = std::atoi(value.CStr());
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) plain_max_height = v;
 				}
 				else if (key_lower == "max_fps")
 				{
-					plain_max_fps = std::atof(value.CStr());
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) plain_max_fps = v;
 				}
 			}
 		}
