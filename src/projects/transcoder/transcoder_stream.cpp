@@ -362,22 +362,27 @@ bool TranscoderStream::PrepareInternal()
 bool TranscoderStream::UpdateInternal(const std::shared_ptr<info::Stream> &stream)
 {
 	logtd("%s Trying to update a stream", _log_prefix.CStr());
+
 	if (CanSeamlessTransition(stream) == true)
 	{
 		logtt("%s This stream support seamless transitions", _log_prefix.CStr());
+
 		FlushBuffers();
 
-		// Restrict transcoding while all decoders/filters/encoders are being generated
-		std::unique_lock<std::shared_mutex> pipeline_lock(_pipeline_mutex);
+		{
+			// Restrict transcoding while all decoders/filters/encoders are being generated
+			std::unique_lock<std::shared_mutex> pipeline_lock(_pipeline_mutex);
 
-		UpdatePassthroughOutputTracks(stream);
+			// For tracks created as bypass, update the track data to match the input track.
+			UpdatePassthroughOutputTracks(stream);
 
-		RemoveDecoders();
-		RemoveFilters();
-		RemoveSpecificEncoders();
+			RemoveDecoders();
+			RemoveFilters();
+			RemoveSpecificEncoders();
 
-		CreateDecoders();
-		pipeline_lock.unlock();
+			CreateDecoders();
+		}
+
 		logti("%s stream has been updated", _log_prefix.CStr());
 	}
 	else
@@ -385,21 +390,25 @@ bool TranscoderStream::UpdateInternal(const std::shared_ptr<info::Stream> &strea
 		logtw("%s This stream does not support seamless transitions. Renewing all", _log_prefix.CStr());
 
 		FlushBuffers();
+	
+		{
+			// Restrict transcoding while all decoders/filters/encoders are being generated			
+			std::unique_lock<std::shared_mutex> pipeline_lock(_pipeline_mutex);
 
-		// Restrict transcoding while all decoders/filters/encoders are being generated
-		std::unique_lock<std::shared_mutex> pipeline_lock(_pipeline_mutex);
-		
-		UpdatePassthroughOutputTracks(stream);
+			// When the entire stream is changed, update the MSID.
+			UpdateMsidOfOutputStreams(stream->GetMsid());
+			// For tracks created as bypass, update the track data to match the input track.
+			UpdatePassthroughOutputTracks(stream);
 
-		RemoveDecoders();
-		RemoveFilters();
-		RemoveEncoders();
+			RemoveDecoders();
+			RemoveFilters();
+			RemoveEncoders();
 
-		CreateDecoders();
-		pipeline_lock.unlock();
+			CreateDecoders();
+		}
+
 		logti("%s stream has been updated", _log_prefix.CStr());
 
-		UpdateMsidOfOutputStreams(stream->GetMsid());
 		NotifyUpdateStreams();
 
 		StoreTracks(stream);
