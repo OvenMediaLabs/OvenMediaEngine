@@ -280,7 +280,7 @@ namespace pvd
 				//   MID="video0", RID="low"  → key = "video0:low"
 				//   no MID,       RID="high" → key = "high"
 				auto mid = answer_media_desc->GetMid();
-				auto key = mid.has_value()
+				auto key = (mid.has_value() && !mid->IsEmpty())
 							? (mid.value() + ":" + rid_attr->GetId())
 							: rid_attr->GetId();
 				_simulcast_track_map[key] = track->GetId();
