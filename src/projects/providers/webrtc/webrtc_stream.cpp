@@ -284,8 +284,9 @@ namespace pvd
 							? (mid.value() + ":" + rid_attr->GetId())
 							: rid_attr->GetId();
 				_simulcast_track_map[key] = track->GetId();
-				logti("%s - RID mapped: key=\"%s\" → track_id(%u) [mid_ext=%s, rid=\"%s\"]",
-					GetName().CStr(), key.CStr(), track->GetId(),
+
+				logti("[%s(%u)] Simulcast track mapped - key(%s), track_id(%u), mid_ext(%s), rid(%s)",
+					GetName().CStr(), GetId(), key.CStr(), track->GetId(),
 					has_mid_extension ? "yes" : "no", rid_attr->GetId().CStr());
 			}
 		}
@@ -545,22 +546,18 @@ namespace pvd
 			auto it_fps    = rid_max_fps.find(key);
 			if (it_fps    == rid_max_fps.end())    it_fps    = rid_max_fps.find(rid_suffix);
 
-			if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
+			auto track = GetTrack(track_id);
+			if (track != nullptr)
 			{
-				auto track = GetTrack(track_id);
-				if (track != nullptr)
+				if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
 				{
 					track->SetResolution(it_width->second, it_height->second);
 
 					auto max_resolution = track->GetMaxResolution();
 					logtt("%s - Set max resolution for key(%s): %s", GetName().CStr(), key.CStr(), max_resolution.ToString().CStr());
 				}
-			}
 
-			if (it_fps != rid_max_fps.end())
-			{
-				auto track = GetTrack(track_id);
-				if (track != nullptr)
+				if (it_fps != rid_max_fps.end())
 				{
 					track->SetMaxFrameRate(it_fps->second);
 					logtt("%s - Set max fps for key(%s): %.2f", GetName().CStr(), key.CStr(), track->GetMaxFrameRate());
