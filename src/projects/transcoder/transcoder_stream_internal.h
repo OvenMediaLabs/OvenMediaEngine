@@ -48,7 +48,7 @@ public:
 
 	static double MeasurementToRecommendFramerate(double framerate);
 
-	void UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
+	void UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track);
 	void UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
 
 private:
@@ -56,10 +56,10 @@ private:
 	void UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
 
 	// Optimized resolution for a specific encoder.
-	static cmn::Resolution ApplyResolutionAlignment(const cmn::Resolution &resolution);
+	static cmn::Resolution GetAlignmentResolution(const cmn::Resolution &resolution);
 
 	// If SkipFrames is enabled, adjust the output framerate.
-	static void ApplySkipFrames(int32_t skip_frames, const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track);	
+	static void ApplySkipFrames(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track);	
 
 public:
 	// This is used to check if only keyframes can be decoded.

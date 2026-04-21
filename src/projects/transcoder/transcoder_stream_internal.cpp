@@ -202,7 +202,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 		output_track->SetFrameRateByConfig(profile.GetFramerate());
 		output_track->SetKeyFrameIntervalByConfig(profile.GetKeyFrameInterval());
 		output_track->SetKeyFrameIntervalTypeByConfig(cmn::GetKeyFrameIntervalTypeByName(profile.GetKeyFrameIntervalType()));
-		ApplySkipFrames(profile.GetSkipFrames(), input_track, output_track);
+		output_track->SetSkipFramesByConfig(profile.GetSkipFrames());
 		output_track->SetLookaheadByConfig(profile.GetLookahead());
 		output_track->SetExtraEncoderOptionsByConfig(profile.GetExtraOptions());
 		output_track->SetCodecModules(profile.GetModules());
@@ -222,6 +222,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 				output_track->SetCodecModules(cmn::GetCodecModuleIdString(module_id));
 			}
 		}
+
+		ApplySkipFrames(input_track, output_track);
 	}
 
 	return output_track;
@@ -337,8 +339,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetResolutionByConfig(resolution);
 	output_track->SetResolution(resolution);
 	output_track->SetFrameRateByConfig(profile.GetFramerate());
-
-	ApplySkipFrames(profile.GetSkipFrames(), input_track, output_track);
+	output_track->SetSkipFramesByConfig(profile.GetSkipFrames());
 
 	// Github Issue : #1417
 	// Set any value for quick validation of the output track.
@@ -346,6 +347,8 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	// The bitrate of an image doesn’t mean much anyway.
 	output_track->SetBitrateByConfig(0);
 	output_track->SetBitrateByMeasured(1000000);
+
+	ApplySkipFrames(input_track, output_track);
 
 	return output_track;
 }
@@ -645,7 +648,7 @@ double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerat
 }
 
 // Update the output track information based on the input track and the decoded frame from the decoded frame (bypass)
-void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
 {
 	output_track->SetCodecId(input_track->GetCodecId());
 	output_track->SetCodecModules(input_track->GetCodecModules());
@@ -660,14 +663,14 @@ void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_pt
 
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
-		output_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
-		output_track->SetColorspace(buffer->GetFormat<cmn::VideoPixelFormatId>());
+		output_track->SetResolution(input_track->GetResolution());
+		output_track->SetColorspace(input_track->GetColorspace());
 	}
 	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
 	{
-		output_track->SetSampleRate(buffer->GetSampleRate());
-		output_track->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
-		output_track->SetChannel(buffer->GetChannels());
+		output_track->SetSampleRate(input_track->GetSampleRate());
+		output_track->SetSampleFormat(input_track->GetSample().GetFormat());
+		output_track->SetChannel(input_track->GetChannel());
 	}
 }
 
@@ -748,7 +751,7 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 			new_output_resolution.height = height;
 		}
 
-		new_output_resolution = ApplyResolutionAlignment(new_output_resolution);
+		new_output_resolution = GetAlignmentResolution(new_output_resolution);
 
 		output_track->SetResolution(new_output_resolution);
 
@@ -1060,7 +1063,7 @@ void TranscoderStreamInternal::GetCountByEncodingType(
 
 // To be compatible with all hardware. The encoding resolution must be a multiple
 // In particular, Xilinx Media Accelerator must have a resolution specified in multiples of 4.
-cmn::Resolution TranscoderStreamInternal::ApplyResolutionAlignment(const cmn::Resolution &resolution)
+cmn::Resolution TranscoderStreamInternal::GetAlignmentResolution(const cmn::Resolution &resolution)
 {
 	auto aligned = resolution;
 
@@ -1087,14 +1090,13 @@ cmn::Resolution TranscoderStreamInternal::ApplyResolutionAlignment(const cmn::Re
 	return aligned;
 }
 
-void TranscoderStreamInternal::ApplySkipFrames(int32_t skip_frames, const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
 {
+	int32_t skip_frames = output_track->GetSkipFramesByConfig();
 	if (skip_frames < 0)
 	{
 		return;
 	}
-
-	output_track->SetSkipFramesByConfig(skip_frames);
 
 	// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
 	constexpr double precision	   = 100.0;

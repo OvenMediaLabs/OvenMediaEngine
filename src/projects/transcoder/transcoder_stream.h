@@ -226,6 +226,7 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
+	void UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream);
 	void UpdateMsidOfOutputStreams(uint32_t msid);
 	bool CanSeamlessTransition(const std::shared_ptr<info::Stream> &stream);
 	void FlushBuffers();
