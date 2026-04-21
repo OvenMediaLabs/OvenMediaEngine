@@ -59,7 +59,7 @@ private:
 	static cmn::Resolution GetAlignmentResolution(const cmn::Resolution &resolution);
 
 	// If SkipFrames is enabled, adjust the output framerate.
-	static void ApplySkipFrames(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track);	
+	static void ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track);	
 
 public:
 	// This is used to check if only keyframes can be decoded.

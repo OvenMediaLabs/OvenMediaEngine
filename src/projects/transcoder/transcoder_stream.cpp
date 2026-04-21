@@ -1590,7 +1590,6 @@ void TranscoderStream::UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer)
 		if (output_track->IsBypass())
 		{
 			logtw("%s Invalid output track. Bypass track cannot be connected to decoder. OutputTrack(%d)", _log_prefix.CStr(), output_track->GetId());
-\
 			continue;
 		}
 
@@ -1611,6 +1610,7 @@ void TranscoderStream::UpdatePassthroughOutputTracks(const std::shared_ptr<info:
 			if (output_track->IsBypass() == false)
 			{
 				logtw("%s Invalid output track. Only bypass track can be updated. OutputTrack(%d)", _log_prefix.CStr(), output_track->GetId());
+				continue;
 			}
 
 			UpdateOutputTrackPassthrough(output_track, input_track);

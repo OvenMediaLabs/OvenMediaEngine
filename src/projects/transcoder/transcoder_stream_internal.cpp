@@ -223,7 +223,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 			}
 		}
 
-		ApplySkipFrames(input_track, output_track);
+		ApplySkipFrames(output_track, input_track);
 	}
 
 	return output_track;
@@ -348,7 +348,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetBitrateByConfig(0);
 	output_track->SetBitrateByMeasured(1000000);
 
-	ApplySkipFrames(input_track, output_track);
+	ApplySkipFrames(output_track, input_track);
 
 	return output_track;
 }
@@ -1090,7 +1090,7 @@ cmn::Resolution TranscoderStreamInternal::GetAlignmentResolution(const cmn::Reso
 	return aligned;
 }
 
-void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &input_track, const std::shared_ptr<MediaTrack> &output_track)
+void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
 {
 	int32_t skip_frames = output_track->GetSkipFramesByConfig();
 	if (skip_frames < 0)
