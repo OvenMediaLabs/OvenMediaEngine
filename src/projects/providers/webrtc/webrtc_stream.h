@@ -132,8 +132,8 @@ namespace pvd
 		std::map<uint32_t, bool> _sent_sequence_header;
 
 		// RID to track ID mapping
-		// Key: "mid:rid" when MID extension is present (disambiguates across m= sections with reused RIDs),
-		// or just "rid" when MID is unavailable. Each key is unique, so a single track ID per entry suffices.
+		// Key: "mid:rid" when the SDP a=mid identifier is available (disambiguates across m= sections with reused RIDs),
+		// or just "rid" when no SDP MID is available. Each key is unique, so a single track ID per entry suffices.
 		std::map<ov::String, uint32_t> _simulcast_track_map;
 
 		ov::String _oven_capabilities;

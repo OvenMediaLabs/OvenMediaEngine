@@ -271,7 +271,7 @@ namespace pvd
 			
 			if (has_rid_extension)
 			{
-				// Key: "mid:rid" when MID extension is present to disambiguate across m= sections
+				// Key: "mid:rid" when the SDP a=mid identifier is available to disambiguate across m= sections
 				// that reuse the same RID values; otherwise just "rid".
 				// RID values are [a-zA-Z0-9\-_]+ and MID tokens contain no ':', so ':' is a safe separator.
 				//
@@ -280,7 +280,7 @@ namespace pvd
 				//   MID="video0", RID="low"  → key = "video0:low"
 				//   no MID,       RID="high" → key = "high"
 				auto mid = answer_media_desc->GetMid();
-				auto key = (has_mid_extension && mid.has_value())
+				auto key = mid.has_value()
 							? (mid.value() + ":" + rid_attr->GetId())
 							: rid_attr->GetId();
 				_simulcast_track_map[key] = track->GetId();
