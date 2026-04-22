@@ -507,7 +507,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
 set(_install_hiredis "
 mkdir -p ${TEMP_PATH}/hiredis && cd ${TEMP_PATH}/hiredis &&
 curl -sSLf ${HIREDIS_SOURCE_URL} | tar -xz --strip-components=1 &&
-make ${_J} PREFIX=${PREFIX} && sudo make install PREFIX=${PREFIX} && rm -rf ${TEMP_PATH}/hiredis
+make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && sudo make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
 ")
 
 # ---- spdlog ----
