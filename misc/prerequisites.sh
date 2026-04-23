@@ -222,8 +222,7 @@ install_nvcc_hdr() {
         mkdir -p ${DIR} && \
         cd ${DIR} && \
         curl -sSLf https://github.com/FFmpeg/nv-codec-headers/releases/download/n${NVCC_HDR_VERSION}/nv-codec-headers-${NVCC_HDR_VERSION}.tar.gz | tar -xz --strip-components=1 && \
-        sed -i 's|PREFIX.*=\(.*\)|PREFIX = '${PREFIX}'|g' Makefile && \
-        sudo make install ) || fail_exit "nvcc_headers"
+        sudo make PREFIX="${PREFIX}" LIBDIR=lib install ) || fail_exit "nvcc_headers"
     fi
 }
 
@@ -423,8 +422,8 @@ install_hiredis()
     mkdir -p ${DIR} && \
     cd ${DIR} && \
     curl -sSLf https://github.com/redis/hiredis/archive/refs/tags/v${HIREDIS_VERSION}.tar.gz | tar -xz --strip-components=1 && \
-    make -j$(nproc) && \
-    sudo make install PREFIX="${PREFIX}" && \
+    make -j$(nproc) PREFIX=${PREFIX} LIBRARY_PATH=lib && \
+    sudo make install PREFIX="${PREFIX}" LIBRARY_PATH=lib && \
     rm -rf ${DIR} ) || fail_exit "hiredis"
 }
 
