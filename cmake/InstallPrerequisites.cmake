@@ -367,7 +367,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
 set(_install_nvcc_hdr "
 mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
 curl -sSLf ${NVCC_HDR_SOURCE_URL} | tar -xz --strip-components=1 &&
-make PREFIX="${PREFIX}" LIBDIR=lib install
+sudo make PREFIX="${PREFIX}" LIBDIR=lib install
 ")
 
 # ---- FFmpeg ----
