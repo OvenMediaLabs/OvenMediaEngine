@@ -21,10 +21,20 @@ If you want to use the WebRTC feature, you need to add `<WebRTC>` element to the
             <WorkerCount>1</WorkerCount>
         </Signalling>
         <IceCandidates>
-            <IceCandidate>*:10000-10005/udp</IceCandidate>
-            <TcpRelay>*:3478</TcpRelay>
-            <TcpForce>true</TcpForce>
-            <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+            <!-- Use a specific IP or ${PublicIP}, NOT *.                              -->
+            <!-- * advertises every network interface (docker, VPN, etc.) as a         -->
+            <!-- candidate, which slows down ICE negotiation on the browser side.      -->
+            <!-- ${PublicIP} is auto-resolved via <StunServer> at startup.             -->
+            <!-- Use a single port and raise IceWorkerCount for throughput scaling     -->
+            <!-- instead of adding more ports.                                         -->
+            <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+            <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>   <!-- Direct TCP ICE (RFC 6544) -->
+            <TcpRelay>${PublicIP}:3478</TcpRelay>               <!-- TURN relay (WebRTC/TCP via TURN) -->
+            <TcpRelayForce>false</TcpRelayForce>
+            <IceWorkerCount>4</IceWorkerCount>           <!-- Increase for high viewer count -->
+            <TcpIceWorkerCount>1</TcpIceWorkerCount>     <!-- Worker threads for Direct TCP ICE -->
+            <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+            <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
         </IceCandidates>
     </WebRTC>
     ...
@@ -33,9 +43,44 @@ If you want to use the WebRTC feature, you need to add `<WebRTC>` element to the
 
 ### ICE
 
-WebRTC uses ICE for connections and specifically NAT traversal. The web browser or player exchanges the Ice Candidate with each other in the Signalling phase. Therefore, OvenMediaEngine provides an ICE for WebRTC connectivity.
+WebRTC uses ICE for connections and specifically NAT traversal. The web browser or player exchanges the ICE candidates with each other in the signalling phase.
 
-If you set `<IceCandidate>` to `*:10000-10005/udp`, as in the example above, OvenMediaEngine automatically gets IP from the server and generates `<IceCandidate>` using UDP ports from `10000` to `10005`. If you want to use a specific IP as IceCandidate, specify a specific IP. You can also use only one `10000` UDP Port, not a range, by setting it to `*: 10000`.
+OvenMediaEngine supports two types of ICE candidates:
+
+| Type | Configuration | Description |
+|---|---|---|
+| UDP host | `<IceCandidate>IP:port/udp</IceCandidate>` | Standard UDP, lowest latency, preferred by browsers |
+| Direct TCP ICE | `<IceCandidate>IP:port/tcp</IceCandidate>` | TCP connection direct to OME (RFC 6544, passive mode), no TURN relay needed |
+| TURN relay | `<TcpRelay>IP:port</TcpRelay>` | Browser connects to embedded TURN server over TCP, works through strict firewalls |
+
+The IP address in `<IceCandidate>` determines which addresses are advertised to browsers as ICE candidates. You can use:
+
+- A specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
+- `${PublicIP}` to auto-detect the public IP via the configured `<StunServer>`: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>`
+
+{% hint style="danger" %}
+**Do not use `*` for ICE candidate IP in production.**
+
+When `*` is specified, OvenMediaEngine collects the IP address of every network interface on the host (including Docker bridge interfaces (`172.17.x.x`), VPN adapters, and other internal-only NICs) and advertises all of them as ICE candidates to the browser. The browser will attempt connectivity checks against every single candidate. This significantly increases ICE negotiation time and can cause connection delays or failures when the browser cannot reach those internal addresses.
+{% endhint %}
+
+When no `?transport` query parameter is specified, OvenMediaEngine sends **all configured candidates** (UDP, TCP, and TURN relay info if set) to the player. The browser then tries them in priority order: UDP first, then direct TCP, then TURN relay.
+
+Each transport type has a dedicated worker-thread pool. You can tune the thread count independently:
+
+| Configuration | Default | Applies to |
+|---|---|---|
+| `<IceWorkerCount>` | 1 | UDP ICE socket threads |
+| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE socket threads (RFC 6544) |
+| `<TcpRelayWorkerCount>` | 1 | TURN relay socket threads |
+
+For most deployments the default of `1` is fine. Increase `<IceWorkerCount>` / `<TcpIceWorkerCount>` when serving many simultaneous viewers on a multi-core server.
+
+> **Note:** `<IceWorkerCount>` and `<TcpIceWorkerCount>` are independent. Each defaults to `1` when not set. Setting `<IceWorkerCount>` does **not** affect Direct TCP ICE sockets; set `<TcpIceWorkerCount>` separately to tune the Direct TCP ICE thread count.
+>
+> The worker count applies **per port**. For example, `IceWorkerCount=4` with a single UDP port creates **4** UDP ICE threads.
+>
+> **Prefer a single port with a higher `<IceWorkerCount>` over multiple ports.** Adding more ports multiplies the thread count (`N ports x IceWorkerCount`) and, more importantly, multiplies the number of ICE candidates advertised to clients, which slows down ICE negotiation. For throughput scaling, increase `<IceWorkerCount>` on a single port instead.
 
 ### Signalling
 
@@ -309,17 +354,24 @@ In the example below, it consists of renditions with H.264 and Opus codecs set a
 
 ## WebRTC over TCP
 
-There are environments where the network speed is fast but UDP packet loss is abnormally high. In such an environment, WebRTC may not play normally. WebRTC does not support streaming using TCP, but connections to the TURN ([https://tools.ietf.org/html/rfc8656](https://tools.ietf.org/html/rfc8656)) server support TCP. Based on these characteristics of WebRTC, OvenMediaEngine supports TCP connections from the player to OvenMediaEngine by embedding a TURN server.
+There are environments where the network speed is fast but UDP packet loss is abnormally high. In such an environment, WebRTC may not play normally. OvenMediaEngine supports two independent mechanisms for WebRTC over TCP:
 
-### Turn on TURN server
+| Mode | How it works | Configuration |
+|---|---|---|
+| **Direct TCP ICE** (RFC 6544) | Browser connects directly to OME over TCP, no relay, lower overhead | `<IceCandidate>IP:port/tcp</IceCandidate>` |
+| **TURN relay** (RFC 8656) | Browser connects to OME's embedded TURN server over TCP. Useful for browsers or players that do not support Direct TCP ICE (RFC 6544) | `<TcpRelay>IP:port</TcpRelay>` |
 
-You can turn on the TURN server by setting `<TcpRelay>` in the WebRTC Bind.
+Both modes can be enabled simultaneously. When the `?transport` query parameter is omitted, all configured candidates are sent to the player and the browser picks the best one automatically (UDP → Direct TCP → TURN relay, in priority order).
+
+### Turn on TURN relay server
+
+You can enable the embedded TURN server by setting `<TcpRelay>` in the WebRTC Bind.
 
 > Example : `<TcpRelay>*:3478</TcpRelay>`
 
-OME may sometimes not be able to get the server's public IP to its local interface. (Environment like Docker or AWS) So, specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [\<StunServer>](../configuration/#stunserver) and all IPs obtained from the local interface are used. `<Port>` is the tcp port on which the TURN server is listening.
+OME may sometimes not be able to get the server's public IP on its local interface (e.g. Docker or AWS). Specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [<StunServer>](../configuration/#stunserver) and all IPs from local interfaces are used. `<Port>` is the TCP port on which the TURN server listens.
 
-```markup
+```xml
 <Server version="8">
     ...
     <StunServer>stun.l.google.com:19302</StunServer>
@@ -327,44 +379,113 @@ OME may sometimes not be able to get the server's public IP to its local interfa
         <Publishers>
             <WebRTC>
                 ...
-                <IceCandidates>
-                    <!-- <TcpRelay>*:3478</TcpRelay> -->
-                    <TcpRelay>Relay IP:Port</TcpRelay>
-                    <TcpForce>false</TcpForce>
-                    <IceCandidate>*:10000-10005/udp</IceCandidate>
-                </IceCandidates>
+            <IceCandidates>
+                <IceCandidate>*:10000-10005/udp</IceCandidate>
+                <IceCandidate>*:3479/tcp</IceCandidate>  <!-- Direct TCP ICE (RFC 6544) -->
+                <TcpRelay>Relay IP:3478</TcpRelay>       <!-- TURN relay -->
+                <TcpRelayForce>false</TcpRelayForce>
+                <IceWorkerCount>1</IceWorkerCount>         <!-- Worker threads for UDP ICE -->
+                <TcpIceWorkerCount>1</TcpIceWorkerCount>   <!-- Worker threads for Direct TCP ICE -->
+                <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+            </IceCandidates>
             </WebRTC>
         </Publishers>
     </Bind>
     ...
-</Server>        
+</Server>
 ```
 
 {% hint style="info" %}
 If `*` is used as the IP of `<TcpRelay>` and `<IceCandidate>`, all available candidates are generated and sent to the player, so the player tries to connect to all candidates until a connection is established. This can cause delay in initial playback. Therefore, specifying the `${PublicIP}` macro or IP directly may be more beneficial to quality.
 {% endhint %}
 
+{% hint style="info" %}
+`<TcpForce>` has been renamed to `<TcpRelayForce>`. The old name is still accepted for backward compatibility. When set to `true`, TURN relay info is always sent to the player even without `?transport=relay`.
+{% endhint %}
+
+### `?transport` query parameter
+
+The `?transport` query parameter controls which ICE candidates and TURN relay info (`iceServers`) are sent to the player. The browser/player uses `iceServers` to set up TURN relay; if `iceServers` is not sent, the browser cannot use TURN relay.
+
+| Value | Direct ICE candidates sent | TURN relay info (`iceServers`) sent | Player behavior |
+|---|---|---|---|
+| (none) / `udptcp` | All configured (UDP + TCP) | No | UDP → Direct TCP (no relay) |
+| `udp` | UDP only | No | UDP only |
+| `tcp` | Direct TCP ICE only (RFC 6544) | No | Direct TCP only |
+| `relay` | None | Yes | TURN relay only |
+| `all` | All configured (UDP + TCP) | Yes | UDP → Direct TCP → TURN relay fallback |
+
+When `?transport` is omitted, the behavior follows `<DefaultTransport>` (default: `udptcp`).
+
+{% hint style="warning" %}
+**Behavior change from previous versions**
+
+In previous versions, `?transport=tcp` sent TURN relay info (`iceServers`) to the player and routed WebRTC/TCP traffic through the embedded TURN server. This behavior has changed:
+
+- `?transport=tcp` now means **Direct TCP ICE** (RFC 6544) — a direct TCP connection to OvenMediaEngine, no relay.
+- To use TURN relay over TCP (the previous `tcp` behavior), use **`?transport=relay`** instead.
+{% endhint %}
+
+{% hint style="info" %}
+**Why is `iceServers` not sent by default?**
+
+When the browser receives `iceServers` (TURN server information), it is configured as `iceTransportPolicy: "relay"` internally if no direct candidates are provided, or it will try relay alongside direct candidates if direct candidates are also present. However, some players or environments may have `iceTransportPolicy` pre-set to `"relay"`, which means the browser will **only** use TURN relay even if direct UDP/TCP candidates were provided. To enable the full fallback chain (UDP → Direct TCP → TURN relay), use `?transport=all`, which sends both direct candidates and `iceServers`.
+{% endhint %}
+
+{% hint style="info" %}
+**Direct TCP ICE vs. TURN relay**
+
+`?transport=tcp` now sends **Direct TCP ICE candidates only** (RFC 6544), not TURN relay. Direct TCP ICE connects the browser directly to OvenMediaEngine over TCP without any relay server. Most modern browsers support RFC 6544 Direct TCP ICE. To force TURN relay over TCP, use `?transport=relay`.
+{% endhint %}
+
+### `<DefaultTransport>` configuration
+
+The `<DefaultTransport>` element sets the transport policy applied when no `?transport` query parameter is present in the URL. Valid values are `udptcp` (default), `udp`, `tcp`, `relay`, and `all`.
+
+```xml
+<IceCandidates>
+    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+    <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>
+    <TcpRelay>${PublicIP}:3478</TcpRelay>
+    <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
+</IceCandidates>
+```
+
+| Value | Equivalent to |
+|---|---|
+| `udptcp` (default) | No `?transport` with `udptcp` — UDP + TCP direct, no relay info |
+| `udp` | `?transport=udp` |
+| `tcp` | `?transport=tcp` |
+| `relay` | `?transport=relay` — relay only |
+| `all` | `?transport=all` — UDP + TCP + relay fallback |
+
 ### WebRTC over TCP with OvenPlayer
 
-WebRTC players can configure the TURN server through the [iceServers ](https://developer.mozilla.org/en-US/docs/Web/API/RTCIceServer/urls#a_single_ice_server_with_authentication)setting.
+You can restrict playback to Direct TCP ICE by attaching `?transport=tcp` to the play URL:
 
-You can play the WebRTC stream over TCP by attaching the query `transport=tcp` to the existing WebRTC play URL as follows.
-
-```markup
+```
 ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=tcp
 ```
 
-OvenPlayer automatically sets `iceServers` by obtaining TURN server information set in `<TcpRelay>` through signaling with OvenMediaEngine.
+To use TURN relay (useful for environments where direct connections are blocked):
 
-{% hint style="info" %}
-If `<TcpForce>` is set to true, it will force a TCP connection even if `?transport=tcp` is not present. To use this, `<TcpRelay>` must be set.
-{% endhint %}
+```
+ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=relay
+```
+
+To enable full fallback (UDP → Direct TCP → TURN relay):
+
+```
+ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=all
+```
+
+OvenPlayer automatically sets `iceServers` using the TURN server information received via signaling.
 
 ### Custom player
 
-If you are using custom player, set `iceServers` like this:
+If you are using a custom player, set `iceServers` like this:
 
-```markup
+```javascript
 myPeerConnection = new RTCPeerConnection({
   iceServers: [
     {
@@ -376,14 +497,20 @@ myPeerConnection = new RTCPeerConnection({
 });
 ```
 
-When sending `Request Offer` in the [signaling ](webrtc-publishing.md#signalling-protocol)phase with OvenMediaEngine, if you send the `transport=tcp` query string, `ice_servers` information is delivered as follows. You can use this information to set iceServers.
+When sending `Request Offer` in the [signaling](webrtc-publishing.md#signalling-protocol) phase, if `<TcpRelay>` is configured, OvenMediaEngine includes `ice_servers` in the offer response by default. You can use this information to set `iceServers` in your `RTCPeerConnection`.
 
-```markup
-candidates: [{candidate: "candidate:0 1 UDP 50 192.168.0.200 10006 typ host", sdpMLineIndex: 0}]
-code: 200
-command: "offer"
-ice_servers: [{credential: "airen", urls: ["turn:192.168.0.200:3478?transport=tcp"], user_name: "ome"}]
-id: 506764844
-peer_id: 0
-sdp: {,…}
+```json
+{
+  "command": "offer",
+  "id": 506764844,
+  "peer_id": 0,
+  "sdp": { "..." },
+  "candidates": [
+    {"candidate": "candidate:0 1 UDP 2130706431 192.168.0.200 10000 typ host", "sdpMLineIndex": 0},
+    {"candidate": "candidate:1 1 TCP 2124414975 192.168.0.200 3479 typ host tcptype passive", "sdpMLineIndex": 0}
+  ],
+  "ice_servers": [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "user_name": "ome"}],
+  "iceServers":  [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "username": "ome"}],
+  "code": 200
+}
 ```

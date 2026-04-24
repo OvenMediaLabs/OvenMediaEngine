@@ -81,6 +81,7 @@ private:
 
 	std::set<ov::String> _link_headers;
 	bool _tcp_force = false;
+	ov::String _default_transport{"UDPTCP"};
 
 	http::CorsManager _cors_manager;
 

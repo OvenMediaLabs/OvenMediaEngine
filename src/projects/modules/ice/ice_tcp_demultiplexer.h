@@ -16,10 +16,22 @@
 class IceTcpDemultiplexer
 {
 public:
+	enum class Mode
+	{
+		// TURN/TCP relay mode (non-standard, no RFC 4571 framing)
+		TURN,
+		// TCP ICE candidate mode (RFC 6544 / RFC 4571: 2-byte length prefix)
+		RFC4571,
+	};
 
 	IceTcpDemultiplexer()
 	{
 		_buffer = std::make_shared<ov::Data>(65535);
+	}
+
+	void SetMode(Mode mode)
+	{
+		_mode = mode;
 	}
 
 	// In the case of a turn channel data message, it parses the header and stores the application data.
@@ -68,7 +80,9 @@ private:
 	// -1 : error
 	ExtractResult ExtractStunMessage();
 	ExtractResult ExtractChannelMessage();
+	ExtractResult ExtractRfc4571Message();
 
+	Mode _mode = Mode::TURN;
 	std::shared_ptr<ov::Data> _buffer;
 	std::queue<std::shared_ptr<IceTcpDemultiplexer::Packet>> _packets;
 };

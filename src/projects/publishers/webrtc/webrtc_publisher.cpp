@@ -106,6 +106,8 @@ bool WebRtcPublisher::Start()
 		return true;
 	}
 
+	_default_transport = webrtc_bind_config.GetIceCandidates().GetDefaultTransport().UpperCaseString();
+
 	if (StartSignallingServer(server_config, webrtc_bind_config) &&
 		StartICEPorts(server_config, webrtc_bind_config))
 	{
@@ -331,18 +333,75 @@ std::shared_ptr<const SessionDescription> WebRtcPublisher::OnRequestOffer(const 
 		return nullptr;
 	}
 
-	auto transport = final_url->GetQueryValue("transport");
-	if (transport.UpperCaseString() == "TCP")
+	auto transport = final_url->GetQueryValue("transport").UpperCaseString();
+	// ?transport policy (falls back to <DefaultTransport> config when not specified):
+	//   udp      → UDP candidates only
+	//   tcp      → TCP direct-ICE candidates only (RFC 6544)
+	//   relay    → no direct candidates, tcp_relay=true (TURN only)
+	//   udptcp   → all direct candidates (UDP + TCP)
+	//   all      → all direct candidates (UDP + TCP) + tcp_relay=true (relay fallback)
+	// <DefaultTransport> default: udptcp
+	if (transport.IsEmpty())
 	{
-		tcp_relay = true;
+		transport = _default_transport;
 	}
 
-	if (_ice_candidate_list.empty() == false)
+	if (transport == "UDP")
 	{
-		auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-		const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
-
-		ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
+		// UDP candidates only
+		if (_ice_candidate_list.empty() == false)
+		{
+			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
+			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
+			for (const auto &c : candidates)
+			{
+				if (c.GetTransport().UpperCaseString() != "TCP")
+				{
+					ice_candidates->push_back(c);
+				}
+			}
+		}
+	}
+	else if (transport == "TCP")
+	{
+		// Direct TCP ICE candidates only — strip UDP
+		for (const auto &candidates : _ice_candidate_list)
+		{
+			for (const auto &c : candidates)
+			{
+				if (c.GetTransport().UpperCaseString() == "TCP")
+				{
+					ice_candidates->push_back(c);
+				}
+			}
+		}
+	}
+	else if (transport == "RELAY")
+	{
+		// TURN relay only — advertise no direct candidates
+		tcp_relay = true;
+	}
+	else if (transport == "ALL")
+	{
+		// All direct candidates (UDP + TCP) + relay fallback
+		tcp_relay = true;
+		if (_ice_candidate_list.empty() == false)
+		{
+			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
+			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
+			ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
+		}
+	}
+	else
+	{
+		// "UDPTCP" or unknown: all configured direct candidates (UDP + TCP)
+		// tcp_relay is controlled by the caller (_tcp_force); do not force it here.
+		if (_ice_candidate_list.empty() == false)
+		{
+			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
+			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
+			ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
+		}
 	}
 
 	// Copy SDP
