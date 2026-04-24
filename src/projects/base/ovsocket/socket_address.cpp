@@ -463,6 +463,7 @@ namespace ov
 		_ip_address = address._ip_address;
 		_port_set = address._port_set;
 		_port = address._port;
+		_transport = address._transport;
 	}
 
 	SocketAddress::SocketAddress(SocketAddress &&address) noexcept
@@ -475,6 +476,7 @@ namespace ov
 		std::swap(_ip_address, address._ip_address);
 		std::swap(_port_set, address._port_set);
 		std::swap(_port, address._port);
+		std::swap(_transport, address._transport);
 	}
 
 	SocketAddress::~SocketAddress()
@@ -495,6 +497,7 @@ namespace ov
 		_ip_address = address._ip_address;
 		_port_set = address._port_set;
 		_port = address._port;
+		_transport = address._transport;
 
 		return *this;
 	}
@@ -768,6 +771,12 @@ namespace ov
 			if ((_is_wildcard_host == false) && ((hostname.IsEmpty() == false) && (hostname != ip)))
 			{
 				description.AppendFormat(" (host: '%s')", hostname.CStr());
+			}
+
+			auto transport_str = StringFromTransport(_transport);
+			if (transport_str != nullptr)
+			{
+				description.AppendFormat("/%s", transport_str);
 			}
 		}
 		else
