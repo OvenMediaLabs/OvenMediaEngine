@@ -21,6 +21,36 @@ namespace ov
 	class SocketAddress
 	{
 	public:
+		enum class Transport : uint8_t
+		{
+			Unknown,
+			Udp,
+			Tcp,
+			Srt,
+		};
+
+		static const char *StringFromTransport(Transport t)
+		{
+			switch (t)
+			{
+				case Transport::Udp: return "udp";
+				case Transport::Tcp: return "tcp";
+				case Transport::Srt: return "srt";
+				default:             return nullptr;  // Unknown: no suffix
+			}
+		}
+
+		Transport GetTransport() const
+		{
+			return _transport;
+		}
+
+		void SetTransport(Transport transport)
+		{
+			_transport = transport;
+		}
+
+	public:
 		struct PortRange
 		{
 			uint16_t start_port{0};
@@ -347,6 +377,7 @@ namespace ov
 		ov::String _ip_address;
 		bool _port_set = false;
 		uint16_t _port = 0;
+		Transport _transport = Transport::Unknown;
 	};
 }  // namespace ov
 
