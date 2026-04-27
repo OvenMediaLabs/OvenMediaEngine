@@ -564,7 +564,7 @@ namespace pvd
 	// IcePort
 	//------------------------
 
-	void WebRTCProvider::OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data)
+	void WebRTCProvider::OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, [[maybe_unused]] bool is_expired, std::any user_data)
 	{
 		logtt("WebRTCProvider::OnStateChanged : %d", static_cast<int>(state));
 

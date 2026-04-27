@@ -1357,7 +1357,7 @@ void IcePort::NotifyIceSessionStateChanged(std::shared_ptr<IceSession> &session)
 {
 	if (session->GetObserver() != nullptr)
 	{
-		session->GetObserver()->OnStateChanged(*this, session->GetSessionID(), session->GetState(), session->GetUserData());
+		session->GetObserver()->OnStateChanged(*this, session->GetSessionID(), session->GetState(), session->IsExpired(), session->GetUserData());
 	}
 }
 
