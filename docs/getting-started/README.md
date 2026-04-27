@@ -6,18 +6,18 @@ OvenMediaEngine provides Docker images from AirenSoft's Docker Hub (airensoft/ov
 
 ## Getting Started with Source Code
 
-### Installing dependencies
+### Installing CMake
 
-OvenMediaEngine can work with a variety of open-sources and libraries. First, install them on your clean Linux machine as described below. We think that OME can support most Linux packages, but the tested platforms we use are Ubuntu 18+, Fedora 28+, Rocky Linux 8+, and AlmaLinux 8+.
+OvenMediaEngine supports most Linux distributions. The tested platforms are **Ubuntu 18+**, **Fedora 28+**, **Rocky Linux 8+**, and **AlmaLinux 8+**.
+
+OvenMediaEngine requires **CMake 3.24 or later**. Check your installed version with:
 
 ```bash
-curl -LOJ https://github.com/AirenSoft/OvenMediaEngine/archive/master.tar.gz && \
-tar xvfz OvenMediaEngine-master.tar.gz && \
-OvenMediaEngine-master/misc/prerequisites.sh
+cmake --version
 ```
 
-{% hint style="info" %}
-If the prerequisites.sh script fails, try to run `sudo apt-get update` and rerun it. If it's not enough proceed with the [manual installation](../troubleshooting.md#prerequisites-sh-script-failed).
+{% hint style="warning" %}
+The CMake version provided by some system package managers (e.g., `apt-get` on Ubuntu 22) may be older than 3.24. If your version does not meet the requirement, install a recent version from the [official CMake website](https://cmake.org/download/).
 {% endhint %}
 
 ### **Building & Running**
@@ -28,9 +28,11 @@ You can build the OvenMediaEngine source using the following command:
 {% tab title="Ubuntu 18" %}
 ```bash
 sudo apt-get update
-cd OvenMediaEngine-master/src
-make release
-sudo make install
+sudo apt-get install -y ninja-build pkg-config
+cd OvenMediaEngine-master
+cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+sudo cmake --install build/Release
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service 
@@ -40,9 +42,11 @@ systemctl enable ovenmediaengine.service
 {% tab title="Fedora 28" %}
 ```bash
 sudo dnf update
-cd OvenMediaEngine-master/src
-make release
-sudo make install
+sudo dnf install -y ninja-build pkg-config
+cd OvenMediaEngine-master
+cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+sudo cmake --install build/Release
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
@@ -52,9 +56,12 @@ systemctl enable ovenmediaengine.service
 {% tab title="Rocky Linux 8" %}
 ```bash
 sudo dnf update
-cd OvenMediaEngine-master/src
-make release
-sudo make install
+sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
+sudo dnf install -y ninja-build
+cd OvenMediaEngine-master
+cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+sudo cmake --install build/Release
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
@@ -65,9 +72,12 @@ systemctl enable ovenmediaengine.service
 {% tab title="AlmaLinux 8" %}
 ```bash
 sudo dnf update
-cd OvenMediaEngine-master/src
-make release
-sudo make install
+sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
+sudo dnf install -y ninja-build
+cd OvenMediaEngine-master
+cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+sudo cmake --install build/Release
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
