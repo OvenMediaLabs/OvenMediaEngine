@@ -30,7 +30,7 @@ public:
 	bool Stop() override;
 
 	// IcePortObserver Implementation
-	void OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data) override;
+	void OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, bool is_expired, std::any user_data) override;
 	void OnDataReceived(IcePort &port, uint32_t session_id, std::shared_ptr<const ov::Data> data, std::any user_data) override;
 
 	// SignallingObserver Implementation

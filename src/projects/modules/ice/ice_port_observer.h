@@ -41,7 +41,11 @@ public:
 		_turn_server_port = port;
 	}
 
-	virtual void OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, std::any user_data)
+	// Notifies the observer that the ICE session changed state.
+	// `is_expired` is reported separately because lifetime-expired sessions may be
+	// delivered as the same transport state as ordinary disconnects, but Enterprise
+	// ingress alerts must classify them as PolicyExpired instead of NetworkError.
+	virtual void OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, bool is_expired, std::any user_data)
 	{
 		// dummy function
 	}
