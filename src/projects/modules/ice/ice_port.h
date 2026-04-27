@@ -33,6 +33,14 @@
 #define FAKE_RELAY_IP6 "1::1"
 #define FAKE_RELAY_PORT 14090
 
+// Dummy candidate used in relay-only (?transport=relay) mode.
+// Must be unreachable so direct ICE pairs fail, forcing the client to use its TURN relay candidate.
+// A private IP that is unlikely to exist on any real interface, plus an obscure port,
+// so Chrome accepts the candidate but direct connectivity checks time out.
+#define RELAY_MODE_DUMMY_IP4_CANDIDATE  "192.168.0.254"
+#define RELAY_MODE_DUMMY_IP6_CANDIDATE  "fd00::ffff"
+#define RELAY_MODE_DUMMY_PORT 1518
+
 #define OV_ICE_PORT_PUBLIC_IP "${PublicIP}"
 
 class RtcIceCandidate;

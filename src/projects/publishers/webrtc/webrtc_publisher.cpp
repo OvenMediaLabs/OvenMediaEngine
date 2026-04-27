@@ -337,7 +337,7 @@ std::shared_ptr<const SessionDescription> WebRtcPublisher::OnRequestOffer(const 
 	// ?transport policy (falls back to <DefaultTransport> config when not specified):
 	//   udp      → UDP candidates only
 	//   tcp      → TCP direct-ICE candidates only (RFC 6544)
-	//   relay    → no direct candidates, tcp_relay=true (TURN only)
+	//   relay    → unreachable dummy candidate + tcp_relay=true; direct pairs fail, player must use TURN relay
 	//   udptcp   → all direct candidates (UDP + TCP)
 	//   all      → all direct candidates (UDP + TCP) + tcp_relay=true (relay fallback)
 	// <DefaultTransport> default: udptcp
@@ -346,62 +346,37 @@ std::shared_ptr<const SessionDescription> WebRtcPublisher::OnRequestOffer(const 
 		transport = _default_transport;
 	}
 
+	const auto &udp_groups = _udp_candidate_groups;
+	const auto &tcp_groups = _tcp_candidate_groups;
+	auto index = _current_ice_candidate_index++;
+
 	if (transport == "UDP")
 	{
-		// UDP candidates only
-		if (_ice_candidate_list.empty() == false)
-		{
-			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
-			for (const auto &c : candidates)
-			{
-				if (c.GetTransport().UpperCaseString() != "TCP")
-				{
-					ice_candidates->push_back(c);
-				}
-			}
-		}
+		if (!udp_groups.empty())
+			for (const auto &c : udp_groups[index % udp_groups.size()])
+				ice_candidates->push_back(c);
 	}
 	else if (transport == "TCP")
 	{
-		// Direct TCP ICE candidates only — strip UDP
-		for (const auto &candidates : _ice_candidate_list)
-		{
-			for (const auto &c : candidates)
-			{
-				if (c.GetTransport().UpperCaseString() == "TCP")
-				{
-					ice_candidates->push_back(c);
-				}
-			}
-		}
+		if (!tcp_groups.empty())
+			for (const auto &c : tcp_groups[index % tcp_groups.size()])
+				ice_candidates->push_back(c);
 	}
 	else if (transport == "RELAY")
 	{
-		// TURN relay only — advertise no direct candidates
 		tcp_relay = true;
-	}
-	else if (transport == "ALL")
-	{
-		// All direct candidates (UDP + TCP) + relay fallback
-		tcp_relay = true;
-		if (_ice_candidate_list.empty() == false)
-		{
-			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
-			ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
-		}
+		ice_candidates->push_back(RtcIceCandidate("UDP", RELAY_MODE_DUMMY_IP4_CANDIDATE, RELAY_MODE_DUMMY_PORT, 0, ""));
 	}
 	else
 	{
-		// "UDPTCP" or unknown: all configured direct candidates (UDP + TCP)
-		// tcp_relay is controlled by the caller (_tcp_force); do not force it here.
-		if (_ice_candidate_list.empty() == false)
-		{
-			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
-			ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
-		}
+		// ALL: UDP + TCP + relay fallback; UDPTCP or unknown: UDP + TCP, no relay
+		if (transport == "ALL") tcp_relay = true;
+		if (!udp_groups.empty())
+			for (const auto &c : udp_groups[index % udp_groups.size()])
+				ice_candidates->push_back(c);
+		if (!tcp_groups.empty())
+			for (const auto &c : tcp_groups[index % tcp_groups.size()])
+				ice_candidates->push_back(c);
 	}
 
 	// Copy SDP
