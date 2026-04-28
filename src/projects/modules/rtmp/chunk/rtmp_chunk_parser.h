@@ -78,7 +78,7 @@ private:
 
 private:
 #if DEBUG
-	uint64_t _chunk_index = 0ULL;
+	uint64_t _chunk_index	   = 0ULL;
 	uint64_t _total_read_bytes = 0ULL;
 #endif	// DEBUG
 
