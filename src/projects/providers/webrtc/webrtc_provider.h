@@ -121,6 +121,7 @@ namespace pvd
 		// WebRTC Provider calculates the actual index by doing a modular operation, so it doesn't matter if overflow occurs
 		std::atomic<uint32_t> _current_ice_candidate_index{0};
 		ov::String _default_transport{"UDPTCP"};
+		bool _tcp_relay_force{false};
 
 		std::shared_ptr<IcePort> _ice_port = nullptr;
 		std::shared_ptr<RtcSignallingServer> _signalling_server = nullptr;

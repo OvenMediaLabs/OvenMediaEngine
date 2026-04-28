@@ -107,6 +107,7 @@ bool WebRtcPublisher::Start()
 	}
 
 	_default_transport = webrtc_bind_config.GetIceCandidates().GetDefaultTransport().UpperCaseString();
+	_tcp_relay_force = webrtc_bind_config.GetIceCandidates().IsTcpRelayForce();
 
 	if (StartSignallingServer(server_config, webrtc_bind_config) &&
 		StartICEPorts(server_config, webrtc_bind_config))
@@ -344,6 +345,12 @@ std::shared_ptr<const SessionDescription> WebRtcPublisher::OnRequestOffer(const 
 	if (transport.IsEmpty())
 	{
 		transport = _default_transport;
+	}
+
+	// TcpRelayForce=true globally forces relay-only behavior (same as ?transport=relay)
+	if (_tcp_relay_force)
+	{
+		transport = "RELAY";
 	}
 
 	const auto &udp_groups = _udp_candidate_groups;

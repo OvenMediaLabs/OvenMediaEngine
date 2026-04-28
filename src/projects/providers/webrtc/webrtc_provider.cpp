@@ -149,6 +149,7 @@ namespace pvd
 		}
 
 		_default_transport = webrtc_bind_config.GetIceCandidates().GetDefaultTransport().UpperCaseString();
+		_tcp_relay_force = webrtc_bind_config.GetIceCandidates().IsTcpRelayForce();
 
 		if (StartSignallingServers(server_config, webrtc_bind_config) &&
 			StartICEPorts(server_config, webrtc_bind_config))
@@ -401,6 +402,12 @@ namespace pvd
 		if (transport.IsEmpty())
 		{
 			transport = _default_transport;
+		}
+
+		// TcpRelayForce=true globally forces relay-only behavior (same as ?transport=relay)
+		if (_tcp_relay_force)
+		{
+			transport = "RELAY";
 		}
 
 		const auto &udp_groups = _udp_candidate_groups;
@@ -757,6 +764,12 @@ namespace pvd
 		if (transport.IsEmpty())
 		{
 			transport = _default_transport;
+		}
+
+		// TcpRelayForce=true globally forces relay-only behavior (same as ?transport=relay)
+		if (_tcp_relay_force)
+		{
+			transport = "RELAY";
 		}
 
 		std::set<IceCandidate> ice_candidates;
