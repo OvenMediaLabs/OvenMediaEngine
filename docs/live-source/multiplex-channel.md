@@ -73,7 +73,37 @@ mux files can be created or deleted while the system is running. This works dyna
                     <NewTrackName>tv2_opus</NewTrackName>
                 </Track>
             </TrackMap>
-
+        </SourceStream>
+        <!-- This source stream carries multiple audio tracks (e.g. sent via SRT with embedded multi-language audio) -->
+        <SourceStream>
+            <Name>live</Name>
+            <Url>stream://default/app/live</Url>
+            <TrackMap>
+                <Track>
+                    <SourceTrackName>bypass_video</SourceTrackName>
+                    <NewTrackName>video_1080p</NewTrackName>
+                </Track>
+                <Track>
+                    <SourceTrackName>video_720</SourceTrackName>
+                    <NewTrackName>video_720p</NewTrackName>
+                </Track>
+                <!-- Both audio tracks share the same SourceTrackName but are distinguished by AudioIndex (0-based). -->
+                <!-- AudioIndex refers to the order in which the tracks appear in the source stream.              -->
+                <Track>
+                    <SourceTrackName>aac_audio</SourceTrackName>
+                    <NewTrackName>audio</NewTrackName>
+                    <AudioIndex>0</AudioIndex>
+                    <PublicName>English</PublicName>
+                    <Language>eng</Language>
+                </Track>
+                <Track>
+                    <SourceTrackName>aac_audio</SourceTrackName>
+                    <NewTrackName>audio</NewTrackName>
+                    <AudioIndex>1</AudioIndex>
+                    <PublicName>Korean</PublicName>
+                    <Language>kor</Language>
+                </Track>
+            </TrackMap>
         </SourceStream>
     </SourceStreams>
     
@@ -86,6 +116,8 @@ mux files can be created or deleted while the system is running. This works dyna
                 <Name>1080p</Name>
                 <Video>tv1_video</Video>
                 <Audio>tv1_audio</Audio>
+                <!-- When the audio group contains multiple tracks, AudioIndexHint selects which one -->
+                <!-- <AudioIndexHint>0</AudioIndexHint> -->
             </Rendition>
             <Rendition>
                 <Name>720p</Name>
@@ -93,6 +125,25 @@ mux files can be created or deleted while the system is running. This works dyna
                 <Audio>tv2_audio</Audio>
             </Rendition>
         </Playlist>
+        <Playlist>
+              <Name>ABR Multi-Audio</Name>
+              <FileName>index</FileName>
+              <Options>				
+					<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+					<EnableTsPackaging>true</EnableTsPackaging>
+				</Options>              
+              <!-- Both renditions reference the same audio group, exposing all audio tracks to the player -->
+              <Rendition>
+                  <Name>1080p</Name>
+                  <Video>video_1080p</Video>
+                  <Audio>audio</Audio>
+              </Rendition>
+              <Rendition>
+                  <Name>720p</Name>
+                  <Video>video_720p</Video>
+                  <Audio>audio</Audio>
+              </Rendition>
+          </Playlist>
     </Playlists>
     
 </Multiplex>
