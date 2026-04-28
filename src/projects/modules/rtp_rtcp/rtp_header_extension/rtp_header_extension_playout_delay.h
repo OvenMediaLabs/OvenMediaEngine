@@ -82,7 +82,7 @@ private:
 		// _buffer[2] = 0b11111010;
 
 		_buffer[0] = (min_delay >> 4) & 0b11111111;
-		_buffer[1] = (min_delay & 0b00001111) | ((max_delay >> 8) & 0b00001111);
+		_buffer[1] = ((min_delay & 0b00001111) << 4) | ((max_delay >> 8) & 0b00001111);
 		_buffer[2] = (max_delay & 0b11111111);
 	}
 
