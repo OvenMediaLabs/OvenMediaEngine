@@ -37,24 +37,33 @@ bool IceTcpDemultiplexer::ParseData()
 {
 	while(_buffer->GetLength() > MINIMUM_PACKET_HEADER_SIZE)
 	{
-		// Only STUN and TURN Channel should be input packet types to IceTcpDemultiplexer. 
-		// If another packet is input, it means a problem has occurred.
-
-		auto type = IcePacketIdentifier::FindPacketType(_buffer);
 		IceTcpDemultiplexer::ExtractResult result;
 
-		if(type == IcePacketIdentifier::PacketType::STUN)
+		if (_mode == Mode::RFC4571)
 		{
-			result = ExtractStunMessage();
-		}
-		else if(type == IcePacketIdentifier::PacketType::TURN_CHANNEL_DATA)
-		{
-			result = ExtractChannelMessage();
+			// RFC 6544 / RFC 4571: all packets are length-prefixed (2-byte big-endian)
+			result = ExtractRfc4571Message();
 		}
 		else
 		{
-			// Critical error
-			return false;
+			// Only STUN and TURN Channel should be input packet types to IceTcpDemultiplexer. 
+			// If another packet is input, it means a problem has occurred.
+
+			auto type = IcePacketIdentifier::FindPacketType(_buffer);
+
+			if(type == IcePacketIdentifier::PacketType::STUN)
+			{
+				result = ExtractStunMessage();
+			}
+			else if(type == IcePacketIdentifier::PacketType::TURN_CHANNEL_DATA)
+			{
+				result = ExtractChannelMessage();
+			}
+			else
+			{
+				// Critical error
+				return false;
+			}
 		}
 
 		// success
@@ -129,6 +138,45 @@ IceTcpDemultiplexer::ExtractResult IceTcpDemultiplexer::ExtractChannelMessage()
 
 	_packets.push(packet);
 	_buffer = _buffer->Subdata(packet_size);
+
+	return ExtractResult::SUCCESS;
+}
+
+// RFC 4571: 2-byte big-endian length prefix followed by the payload.
+// Supports STUN, DTLS, RTP/RTCP (any packet type the ICE/DTLS stack may send).
+IceTcpDemultiplexer::ExtractResult IceTcpDemultiplexer::ExtractRfc4571Message()
+{
+	constexpr size_t RFC4571_HEADER_SIZE = 2;
+
+	if (_buffer->GetLength() < RFC4571_HEADER_SIZE)
+	{
+		return ExtractResult::NOT_ENOUGH_BUFFER;
+	}
+
+	const uint8_t *buf = static_cast<const uint8_t *>(_buffer->GetData());
+	uint16_t payload_length = (static_cast<uint16_t>(buf[0]) << 8) | buf[1];
+
+	// Guard against absurdly large (corrupt) frames
+	if (payload_length > 65000)
+	{
+		return ExtractResult::FAILED;
+	}
+
+	const size_t total_length = RFC4571_HEADER_SIZE + payload_length;
+	if (_buffer->GetLength() < total_length)
+	{
+		return ExtractResult::NOT_ENOUGH_BUFFER;
+	}
+
+	// The payload starts after the 2-byte length field.
+	auto payload = _buffer->Subdata(RFC4571_HEADER_SIZE, payload_length);
+
+	// Identify the inner packet type so the ICE engine can route it correctly.
+	auto type = IcePacketIdentifier::FindPacketType(payload);
+	auto packet = std::make_shared<IceTcpDemultiplexer::Packet>(type, payload);
+
+	_packets.push(packet);
+	_buffer = _buffer->Subdata(total_length);
 
 	return ExtractResult::SUCCESS;
 }

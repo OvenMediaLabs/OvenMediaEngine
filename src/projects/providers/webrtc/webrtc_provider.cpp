@@ -148,6 +148,9 @@ namespace pvd
 			return true;
 		}
 
+		_default_transport = webrtc_bind_config.GetIceCandidates().GetDefaultTransport().UpperCaseString();
+		_tcp_relay_force = webrtc_bind_config.GetIceCandidates().IsTcpRelayForce();
+
 		if (StartSignallingServers(server_config, webrtc_bind_config) &&
 			StartICEPorts(server_config, webrtc_bind_config))
 		{
@@ -388,18 +391,56 @@ namespace pvd
 			return nullptr;
 		}
 
-		auto transport = final_url->GetQueryValue("transport");
-		if (transport.UpperCaseString() == "TCP")
+		auto transport = final_url->GetQueryValue("transport").UpperCaseString();
+		// ?transport policy (falls back to <DefaultTransport> config when not specified):
+		//   udp      → UDP candidates only
+		//   tcp      → TCP direct-ICE candidates only (RFC 6544)
+		//   relay    → unreachable dummy candidate + tcp_relay=true; direct pairs fail, client must use TURN relay
+		//   udptcp   → all direct candidates (UDP + TCP)
+		//   all      → all direct candidates (UDP + TCP) + tcp_relay=true (relay fallback)
+		// <DefaultTransport> default: udptcp
+		if (transport.IsEmpty())
 		{
-			tcp_relay = true;
+			transport = _default_transport;
 		}
 
-		if (_ice_candidate_list.empty() == false)
+		// TcpRelayForce=true globally forces relay-only behavior (same as ?transport=relay)
+		if (_tcp_relay_force)
 		{
-			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
+			transport = "RELAY";
+		}
 
-			ice_candidates->insert(ice_candidates->end(), candidates.cbegin(), candidates.cend());
+		const auto &udp_groups = _udp_candidate_groups;
+		const auto &tcp_groups = _tcp_candidate_groups;
+		auto index = _current_ice_candidate_index++;
+
+		if (transport == "UDP")
+		{
+			if (!udp_groups.empty())
+				for (const auto &c : udp_groups[index % udp_groups.size()])
+					ice_candidates->push_back(c);
+		}
+		else if (transport == "TCP")
+		{
+			if (!tcp_groups.empty())
+				for (const auto &c : tcp_groups[index % tcp_groups.size()])
+					ice_candidates->push_back(c);
+		}
+		else if (transport == "RELAY")
+		{
+			tcp_relay = true;
+			ice_candidates->push_back(RtcIceCandidate("UDP", RELAY_MODE_DUMMY_IP4_CANDIDATE, RELAY_MODE_DUMMY_PORT, 0, ""));
+		}
+		else
+		{
+			// ALL: UDP + TCP + relay fallback; UDPTCP or unknown: UDP + TCP, no relay
+			if (transport == "ALL") tcp_relay = true;
+			if (!udp_groups.empty())
+				for (const auto &c : udp_groups[index % udp_groups.size()])
+					ice_candidates->push_back(c);
+			if (!tcp_groups.empty())
+				for (const auto &c : tcp_groups[index % tcp_groups.size()])
+					ice_candidates->push_back(c);
 		}
 
 		auto session_description = std::make_shared<SessionDescription>(*application->GetOfferSDP());
@@ -712,16 +753,55 @@ namespace pvd
 			return {http::StatusCode::Conflict, "Stream is already exist"};
 		}
 
-		std::set<IceCandidate> ice_candidates;
-		if (_ice_candidate_list.empty() == false)
+		auto transport = final_url->GetQueryValue("transport").UpperCaseString();
+		// ?transport policy (falls back to <DefaultTransport> config when not specified):
+		//   udp     → UDP candidates only
+		//   tcp     → TCP direct-ICE candidates only (RFC 6544)
+		//   relay   → unreachable dummy candidate + TURN Link headers; direct pairs fail, client must use TURN relay
+		//   udptcp  → all direct candidates (UDP + TCP)
+		//   all     → all direct candidates (UDP + TCP) + Link headers (relay fallback)
+		// <DefaultTransport> default: udptcp
+		if (transport.IsEmpty())
 		{
-			auto candidate_index_to_send = _current_ice_candidate_index++ % _ice_candidate_list.size();
-			const auto &candidates		 = _ice_candidate_list[candidate_index_to_send];
+			transport = _default_transport;
+		}
 
-			for (const auto &candidate : candidates)
-			{
-				ice_candidates.emplace(candidate);
-			}
+		// TcpRelayForce=true globally forces relay-only behavior (same as ?transport=relay)
+		if (_tcp_relay_force)
+		{
+			transport = "RELAY";
+		}
+
+		std::set<IceCandidate> ice_candidates;
+		const auto &udp_groups = _udp_candidate_groups;
+		const auto &tcp_groups = _tcp_candidate_groups;
+		auto index = _current_ice_candidate_index++;
+
+		if (transport == "RELAY")
+		{
+			ice_candidates.emplace(IceCandidate("UDP", ov::SocketAddress::CreateAndGetFirst(RELAY_MODE_DUMMY_IP4_CANDIDATE, RELAY_MODE_DUMMY_PORT)));
+		}
+		else if (transport == "UDP")
+		{
+			if (!udp_groups.empty())
+				for (const auto &c : udp_groups[index % udp_groups.size()])
+					ice_candidates.emplace(c);
+		}
+		else if (transport == "TCP")
+		{
+			if (!tcp_groups.empty())
+				for (const auto &c : tcp_groups[index % tcp_groups.size()])
+					ice_candidates.emplace(c);
+		}
+		else
+		{
+			// ALL: UDP + TCP + relay fallback; UDPTCP or unknown: UDP + TCP, no relay
+			if (!udp_groups.empty())
+				for (const auto &c : udp_groups[index % udp_groups.size()])
+					ice_candidates.emplace(c);
+			if (!tcp_groups.empty())
+				for (const auto &c : tcp_groups[index % tcp_groups.size()])
+					ice_candidates.emplace(c);
 		}
 
 		auto answer_sdp = application->CreateAnswerSDP(offer_sdp, _ice_port->GenerateUfrag(), ice_candidates);

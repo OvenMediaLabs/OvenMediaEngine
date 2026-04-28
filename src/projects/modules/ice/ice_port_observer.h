@@ -58,14 +58,29 @@ public:
 
 	void AppendIceCandidates(const RtcIceCandidateList &ice_candidate_list)
 	{
+		for (const auto &group : ice_candidate_list)
+		{
+			bool has_udp = false, has_tcp = false;
+			for (const auto &c : group)
+				(c.GetTransport().UpperCaseString() == "TCP" ? has_tcp : has_udp) = true;
+			if (has_udp) _udp_candidate_groups.push_back(group);
+			if (has_tcp) _tcp_candidate_groups.push_back(group);
+		}
 		_ice_candidate_list.insert(_ice_candidate_list.end(), ice_candidate_list.begin(), ice_candidate_list.end());
 	}
 
+	// Pre-split by transport type for efficient round-robin selection.
+	// Populated at AppendIceCandidates time so callers need not re-classify per request.
+	const RtcIceCandidateList &GetUdpCandidateGroups() const { return _udp_candidate_groups; }
+	const RtcIceCandidateList &GetTcpCandidateGroups() const { return _tcp_candidate_groups; }
+
 protected:
 	uint32_t _id = 0;
-	// To use ICE Candidate in rotation, keep the grouped list by port
-	// Initially grouped by port, then ICE Candidates generated from that port are stored in the vector
+	// Full grouped list (grouped by port, each group may contain UDP and/or TCP candidates)
 	RtcIceCandidateList _ice_candidate_list;
+	// Subsets pre-split by transport for fast round-robin access
+	RtcIceCandidateList _udp_candidate_groups;
+	RtcIceCandidateList _tcp_candidate_groups;
 	ov::SocketType _turn_server_socket_type = ov::SocketType::Unknown;
 	uint16_t _turn_server_port = 0;
 };

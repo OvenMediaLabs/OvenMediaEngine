@@ -1,14 +1,20 @@
 # WebRTC Streaming
 
-OvenMediaEngine uses WebRTC to provide sub-second latency streaming. WebRTC uses RTP for media transmission and provides various extensions.
+OvenMediaEngine supports WebRTC streaming with sub-second latency.
 
-OvenMediaEngine provides the following features:
-
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>RTP / RTCP</td></tr><tr><td>Security</td><td>DTLS, SRTP</td></tr><tr><td>Transport</td><td>ICE</td></tr><tr><td>Error Correction</td><td>ULPFEC (VP8, H.264), In-band FEC (Opus)</td></tr><tr><td>Codec</td><td>VP8, H.264, H.265, Opus</td></tr><tr><td>Signaling</td><td>Self-Defined Signaling Protocol, Embedded WebSocket-based Server</td></tr><tr><td>Default URL Pattern</td><td><code>ws[s]://{OvenMediaEngine Host}[:{Signaling Port}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
+| | |
+|---|---|
+| **Container** | RTP / RTCP |
+| **Security** | DTLS, SRTP |
+| **Transport** | ICE |
+| **Error Correction** | ULPFEC (VP8, H.264), In-band FEC (Opus) |
+| **Codec** | VP8, H.264, H.265, Opus |
+| **Signaling** | Self-Defined Signaling Protocol, Embedded WebSocket-based Server |
+| **Default URL Pattern** | `ws[s]://{Host}[:{Port}]/{App}/{Stream}` |
 
 ## Configuration
 
-If you want to use the WebRTC feature, you need to add `<WebRTC>` element to the `<Publishers>` and `<Ports>` in the `Server.xml` configuration file, as shown in the example below.
+Add `<WebRTC>` under `<Bind><Publishers>` in `Server.xml`:
 
 ```xml
 <!-- /Server/Bind -->
@@ -21,10 +27,20 @@ If you want to use the WebRTC feature, you need to add `<WebRTC>` element to the
             <WorkerCount>1</WorkerCount>
         </Signalling>
         <IceCandidates>
-            <IceCandidate>*:10000-10005/udp</IceCandidate>
-            <TcpRelay>*:3478</TcpRelay>
-            <TcpForce>true</TcpForce>
-            <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+            <!-- Use a specific IP or ${PublicIP}, NOT *.                              -->
+            <!-- * advertises every network interface (docker, VPN, etc.) as a         -->
+            <!-- candidate, which slows down ICE negotiation on the browser side.      -->
+            <!-- ${PublicIP} is auto-resolved via <StunServer> at startup.             -->
+            <!-- Use a single port and raise IceWorkerCount for throughput scaling     -->
+            <!-- instead of adding more ports.                                         -->
+            <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+            <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>   <!-- Direct TCP ICE (RFC 6544) -->
+            <TcpRelay>${PublicIP}:3478</TcpRelay>               <!-- TURN relay (WebRTC/TCP via TURN) -->
+            <TcpRelayForce>false</TcpRelayForce>
+            <IceWorkerCount>4</IceWorkerCount>           <!-- Increase for high viewer count -->
+            <TcpIceWorkerCount>1</TcpIceWorkerCount>     <!-- Worker threads for Direct TCP ICE -->
+            <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+            <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
         </IceCandidates>
     </WebRTC>
     ...
@@ -33,15 +49,54 @@ If you want to use the WebRTC feature, you need to add `<WebRTC>` element to the
 
 ### ICE
 
-WebRTC uses ICE for connections and specifically NAT traversal. The web browser or player exchanges the Ice Candidate with each other in the Signalling phase. Therefore, OvenMediaEngine provides an ICE for WebRTC connectivity.
+WebRTC uses ICE for connections and specifically NAT traversal. The web browser or player exchanges the ICE candidates with each other in the signalling phase.
 
-If you set `<IceCandidate>` to `*:10000-10005/udp`, as in the example above, OvenMediaEngine automatically gets IP from the server and generates `<IceCandidate>` using UDP ports from `10000` to `10005`. If you want to use a specific IP as IceCandidate, specify a specific IP. You can also use only one `10000` UDP Port, not a range, by setting it to `*: 10000`.
+OvenMediaEngine supports three transport types for ICE candidates:
+
+| Type | Configuration | Description |
+|---|---|---|
+| UDP host | `<IceCandidate>IP:port/udp</IceCandidate>` | Standard UDP, lowest latency, preferred by browsers |
+| Direct TCP ICE | `<IceCandidate>IP:port/tcp</IceCandidate>` | TCP connection direct to OME (RFC 6544, passive mode), no TURN relay needed |
+| TURN relay | `<TcpRelay>IP:port</TcpRelay>` | Browser connects to embedded TURN server over TCP, works through strict firewalls |
+
+The IP address in `<IceCandidate>` determines which addresses are advertised to browsers as ICE candidates. You can use:
+
+- A specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
+- `${PublicIP}` to auto-detect the public IP via the configured `<StunServer>`: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>`
+
+{% hint style="danger" %}
+**Do not use `*` for ICE candidate IP in production.**
+
+When `*` is specified, OvenMediaEngine collects the IP address of every network interface on the host (including Docker bridge interfaces (`172.17.x.x`), VPN adapters, and other internal-only NICs) and advertises all of them as ICE candidates to the browser. The browser will attempt connectivity checks against every single candidate. This significantly increases ICE negotiation time and can cause connection delays or failures when the browser cannot reach those internal addresses.
+{% endhint %}
+
+When no `?transport` query parameter is specified, the behavior follows `<DefaultTransport>` (default: `udptcp`). By default, OME sends UDP and Direct TCP candidates. TURN relay info (`iceServers`) is only included when `?transport=relay` or `?transport=all` is used, or when `<TcpRelayForce>` is `true`.
+
+Each transport type has a dedicated worker-thread pool. You can tune the thread count independently:
+
+| Configuration | Default | Applies to |
+|---|---|---|
+| `<IceWorkerCount>` | 1 | UDP ICE socket threads |
+| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE socket threads (RFC 6544) |
+| `<TcpRelayWorkerCount>` | 1 | TURN relay socket threads |
+
+For most deployments the default of `1` is fine. Increase `<IceWorkerCount>` / `<TcpIceWorkerCount>` when serving many simultaneous viewers on a multi-core server.
+
+> **Note:** `<IceWorkerCount>` and `<TcpIceWorkerCount>` are independent. Each defaults to `1` when not set. Setting `<IceWorkerCount>` does **not** affect Direct TCP ICE sockets; set `<TcpIceWorkerCount>` separately to tune the Direct TCP ICE thread count.
+>
+> The worker count applies **per port**. For example, `IceWorkerCount=4` with a single UDP port creates **4** UDP ICE threads.
+>
+> **Prefer a single port with a higher `<IceWorkerCount>` over multiple ports.** Adding more ports multiplies the thread count (`N ports x IceWorkerCount`) and, more importantly, multiplies the number of ICE candidates advertised to clients, which slows down ICE negotiation. For throughput scaling, increase `<IceWorkerCount>` on a single port instead.
+
+#### Default Transport
+
+`<DefaultTransport>` controls which candidate types are included in the signaling response when the player does not specify a `?transport` query parameter. Valid values: `udp`, `tcp`, `relay`, `udptcp` (default), `all`. See [?transport query parameter](webrtc-publishing.md#transport-query-parameter) for the full mapping.
 
 ### Signalling
 
-OvenMediaEngine has embedded a WebSocket-based signalling server and provides our defined signalling protocol. Also, OvenPlayer supports our signalling protocol. WebRTC requires signalling to exchange Offer SDP and Answer SDP, but this part isn't standardized. If you want to use SDP, you need to create your exchange protocol yourself.
+OvenMediaEngine includes an embedded WebSocket-based signaling server. OvenPlayer supports this signaling protocol out of the box. To use a custom player, implement the signaling protocol described below.
 
-If you want to change the signaling port, change the value of `<Ports><WebRTC><Signalling>`.
+To change the signaling port, update `<Bind><Publishers><WebRTC><Signalling><Port>` in `Server.xml`.
 
 #### Signalling Protocol
 
@@ -49,13 +104,13 @@ The Signalling protocol is defined in a simple way:
 
 ![](<../.gitbook/assets/image (3) (1) (1) (1) (1).png>)
 
-If you want to use a player other than OvenPlayer, you need to develop the signalling protocol as shown above and can integrate OvenMediaEngine.
+To use a player other than OvenPlayer, implement the signaling protocol shown above.
 
 ## Streaming
 
 ### Publisher
 
-Add `<WebRTC>`  to `<Publisher>` to provide streaming through WebRTC.
+Configure `<WebRTC>` under `<Publishers>` in the Application settings:
 
 ```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application -->
@@ -72,42 +127,31 @@ Add `<WebRTC>`  to `<Publisher>` to provide streaming through WebRTC.
 </Publishers>
 ```
 
-<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Timeout</code></td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td><code>30000</code></td></tr><tr><td><code>Rtx</code></td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Ulpfec</code></td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>JitterBuffer</code></td><td>Audio and video are interleaved and output evenly, see below for details</td><td><code>false</code></td></tr><tr><td><code>BanswidthEstimation</code></td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td><code>All</code></td></tr></tbody></table>
+<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Timeout</code></td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td><code>30000</code></td></tr><tr><td><code>Rtx</code></td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Ulpfec</code></td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>JitterBuffer</code></td><td>Audio and video are interleaved and output evenly, see below for details</td><td><code>false</code></td></tr><tr><td><code>BandwidthEstimation</code></td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td><code>All</code></td></tr></tbody></table>
 
 {% hint style="info" %}
-WebRTC Publisher's `<JitterBuffer>` is a function that evenly outputs A/V (interleave) and is useful when A/V synchronization is no longer possible in the browser (player) as follows.
+`<JitterBuffer>` interleaves audio and video frames evenly. It is useful when A/V sync cannot be maintained in the browser:
 
-* If the A/V sync is excessively out of sync, some browsers may not be able to handle this or it may take several seconds to synchronize.
-* Players that do not support RTCP also cannot A/V sync.
+* If A/V sync is excessively off, some browsers may not be able to recover, or it may take several seconds to resynchronize.
+* Players that do not support RTCP cannot perform A/V sync.
 {% endhint %}
 
 ### Encoding
 
-WebRTC Streaming starts when a live source is inputted and a stream is created. Viewers can stream using OvenPlayer or players that have developed or applied the OvenMediaEngine Signalling protocol.
+A WebRTC stream starts when a live source is received and a stream is created. Viewers can play using OvenPlayer or any player that implements the OvenMediaEngine signaling protocol.
 
-Also, the codecs supported by each browser are different, so you need to set the Transcoding profile according to the browser you want to support. For example, Safari for iOS supports H.264 but not VP8. If you want to support all browsers, please set up VP8, H.264, and Opus codecs in all transcoders.
+WebRTC does not support AAC. When ingesting RTMP with AAC audio, the audio track must be transcoded to Opus.
 
-WebRTC doesn't support AAC, so when trying to bypass transcoding RTMP input, audio must be encoded as opus. See the settings below.
+**H.264 + Opus is the recommended codec combination.** It works across all major browsers including Safari on iOS, which does not support VP8. If you also want to serve VP8 (for example, to reduce CPU usage on devices with hardware H.264 decoding issues), add a VP8 encode track in addition to H.264.
 
-```markup
+```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
 <OutputProfile>
     <Name>bypass_stream</Name>
     <OutputStreamName>${OriginStreamName}</OutputStreamName>
     <Encodes>
-        <Audio>
-            <Bypass>true</Bypass>
-        </Audio>
         <Video>
             <Bypass>true</Bypass>
-        </Video>
-        <Video>
-            <!-- vp8, h264 -->
-            <Codec>vp8</Codec>
-            <Width>1280</Width>
-            <Height>720</Height>
-            <Bitrate>2000000</Bitrate>
-            <Framerate>30.0</Framerate>
         </Video>
         <Audio>
             <Codec>opus</Codec>
@@ -119,15 +163,9 @@ WebRTC doesn't support AAC, so when trying to bypass transcoding RTMP input, aud
 </OutputProfile>
 ```
 
-{% hint style="info" %}
-Some browsers support both H.264 and VP8 to send Answer SDP to OvenMediaEngine, but sometimes H.264 can't be played. In this situation, if you write the VP8 above the H.264 code line in the Transcoding profile setting, you can increase the priority of the VP8.
-
-Using this manner so that some browsers, support H.264 but can't be played, can stream smoothly using VP8. This means that you can solve most problems with this method.
-{% endhint %}
-
 ### Playback
 
-If you created a stream as shown in the table above, you can play WebRTC on OvenPlayer via the following URL:
+Once a stream is active, play it via OvenPlayer using the following URLs:
 
 | Protocol                 | URL format                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------- |
@@ -143,7 +181,7 @@ We have prepared a test player to make it easy to check if OvenMediaEngine is wo
 
 ## Adaptive Bitrates Streaming (ABR)
 
-OvenMediaEnigne provides adaptive bitrates streaming over WebRTC. OvenPlayer can also play and display OvenMediaEngine's WebRTC ABR URL.
+OvenMediaEngine provides adaptive bitrate streaming over WebRTC. OvenPlayer can also play and display OvenMediaEngine's WebRTC ABR URL.
 
 ![](<../.gitbook/assets/image (39).png>)
 
@@ -151,7 +189,7 @@ OvenMediaEnigne provides adaptive bitrates streaming over WebRTC. OvenPlayer can
 
 You can provide ABR by creating a `playlist` in `<OutputProfile>` as shown below. The URL to play the playlist is `ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}/master`.
 
-`<Playlist>/<Rendition>/<Video>` and `<Playlist>/<Rendition>/<Audio>` can connected using `<Encodes>/<Video>/<Name>` or `<Encodes>/<Audio>/<Name>`.
+`<Playlist>/<Rendition>/<Video>` and `<Playlist>/<Rendition>/<Audio>` are linked to encode tracks by `<Encodes>/<Video>/<Name>` or `<Encodes>/<Audio>/<Name>`.
 
 {% hint style="warning" %}
 It is not recommended to use a \<Bypass>true\</Bypass> encode item if you want a seamless transition between renditions because there is a time difference between the transcoded track and bypassed track.
@@ -309,17 +347,24 @@ In the example below, it consists of renditions with H.264 and Opus codecs set a
 
 ## WebRTC over TCP
 
-There are environments where the network speed is fast but UDP packet loss is abnormally high. In such an environment, WebRTC may not play normally. WebRTC does not support streaming using TCP, but connections to the TURN ([https://tools.ietf.org/html/rfc8656](https://tools.ietf.org/html/rfc8656)) server support TCP. Based on these characteristics of WebRTC, OvenMediaEngine supports TCP connections from the player to OvenMediaEngine by embedding a TURN server.
+There are environments where the network speed is fast but UDP packet loss is abnormally high. In such an environment, WebRTC may not play normally. OvenMediaEngine supports two independent mechanisms for WebRTC over TCP:
 
-### Turn on TURN server
+| Mode | How it works | Configuration |
+|---|---|---|
+| **Direct TCP ICE** (RFC 6544) | Browser connects directly to OME over TCP, no relay, lower overhead | `<IceCandidate>IP:port/tcp</IceCandidate>` |
+| **TURN relay** (RFC 8656) | Browser connects to OME's embedded TURN server over TCP. Useful for browsers or players that do not support Direct TCP ICE (RFC 6544) | `<TcpRelay>IP:port</TcpRelay>` |
 
-You can turn on the TURN server by setting `<TcpRelay>` in the WebRTC Bind.
+Both modes can be enabled simultaneously. When `?transport` is omitted, the behavior follows `<DefaultTransport>` (default: `udptcp`). By default, OME sends UDP and Direct TCP candidates only. TURN relay info (`iceServers`) is not included unless `?transport=relay` or `?transport=all` is used, or `<TcpRelayForce>` is set to `true`.
+
+### Turn on TURN relay server
+
+You can enable the embedded TURN server by setting `<TcpRelay>` in the WebRTC Bind.
 
 > Example : `<TcpRelay>*:3478</TcpRelay>`
 
-OME may sometimes not be able to get the server's public IP to its local interface. (Environment like Docker or AWS) So, specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [\<StunServer>](../configuration/#stunserver) and all IPs obtained from the local interface are used. `<Port>` is the tcp port on which the TURN server is listening.
+OME may sometimes not be able to get the server's public IP on its local interface (e.g. Docker or AWS). Specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [<StunServer>](../configuration/#stunserver) and all IPs from local interfaces are used. `<Port>` is the TCP port on which the TURN server listens.
 
-```markup
+```xml
 <Server version="8">
     ...
     <StunServer>stun.l.google.com:19302</StunServer>
@@ -327,44 +372,114 @@ OME may sometimes not be able to get the server's public IP to its local interfa
         <Publishers>
             <WebRTC>
                 ...
-                <IceCandidates>
-                    <!-- <TcpRelay>*:3478</TcpRelay> -->
-                    <TcpRelay>Relay IP:Port</TcpRelay>
-                    <TcpForce>false</TcpForce>
-                    <IceCandidate>*:10000-10005/udp</IceCandidate>
-                </IceCandidates>
+            <IceCandidates>
+                <IceCandidate>*:10000-10005/udp</IceCandidate>
+                <IceCandidate>*:3479/tcp</IceCandidate>  <!-- Direct TCP ICE (RFC 6544) -->
+                <TcpRelay>Relay IP:3478</TcpRelay>       <!-- TURN relay -->
+                <TcpRelayForce>false</TcpRelayForce>
+                <IceWorkerCount>1</IceWorkerCount>         <!-- Worker threads for UDP ICE -->
+                <TcpIceWorkerCount>1</TcpIceWorkerCount>   <!-- Worker threads for Direct TCP ICE -->
+                <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+            </IceCandidates>
             </WebRTC>
         </Publishers>
     </Bind>
     ...
-</Server>        
+</Server>
 ```
 
 {% hint style="info" %}
 If `*` is used as the IP of `<TcpRelay>` and `<IceCandidate>`, all available candidates are generated and sent to the player, so the player tries to connect to all candidates until a connection is established. This can cause delay in initial playback. Therefore, specifying the `${PublicIP}` macro or IP directly may be more beneficial to quality.
 {% endhint %}
 
+{% hint style="info" %}
+`<TcpForce>` has been renamed to `<TcpRelayForce>`. The old name is still accepted for backward compatibility. When set to `true`, TURN relay info is always sent to the player even without `?transport=relay`.
+{% endhint %}
+
+### `?transport` query parameter
+
+The `?transport` query parameter controls which ICE candidates and TURN relay info (`iceServers`) are sent to the player. The browser/player uses `iceServers` to set up TURN relay; if `iceServers` is not sent, the browser cannot use TURN relay.
+
+| Value | Direct ICE candidates sent | TURN relay info (`iceServers`) sent | Player behavior |
+|---|---|---|---|
+| (none) / `udptcp` | All configured (UDP + TCP) | No | UDP → Direct TCP (no relay) |
+| `udp` | UDP only | No | UDP only |
+| `tcp` | Direct TCP ICE only (RFC 6544) | No | Direct TCP only |
+| `relay` | None | Yes | TURN relay only |
+| `all` | All configured (UDP + TCP) | Yes | UDP → Direct TCP → TURN relay fallback |
+
+When `?transport` is omitted, the behavior follows `<DefaultTransport>` (default: `udptcp`).
+
+{% hint style="warning" %}
+**Behavior change from previous versions**
+
+In previous versions, `?transport=tcp` sent TURN relay info (`iceServers`) to the player and routed WebRTC/TCP traffic through the embedded TURN server. This behavior has changed:
+
+- `?transport=tcp` now means **Direct TCP ICE** (RFC 6544), a direct TCP connection to OvenMediaEngine without any relay.
+- To use TURN relay over TCP (the previous `tcp` behavior), use **`?transport=relay`** instead.
+{% endhint %}
+
+{% hint style="info" %}
+**Why is `iceServers` not sent by default?**
+
+When the browser receives `iceServers` (TURN server information), it is configured as `iceTransportPolicy: "relay"` internally if no direct candidates are provided, or it will try relay alongside direct candidates if direct candidates are also present. However, some players or environments may have `iceTransportPolicy` pre-set to `"relay"`, which means the browser will **only** use TURN relay even if direct UDP/TCP candidates were provided. To enable the full fallback chain (UDP → Direct TCP → TURN relay), use `?transport=all`, which sends both direct candidates and `iceServers`.
+{% endhint %}
+
+{% hint style="info" %}
+**Direct TCP ICE vs. TURN relay**
+
+`?transport=tcp` now sends **Direct TCP ICE candidates only** (RFC 6544), not TURN relay. Direct TCP ICE connects the browser directly to OvenMediaEngine over TCP without any relay server. Most modern browsers support RFC 6544 Direct TCP ICE. To force TURN relay over TCP, use `?transport=relay`.
+{% endhint %}
+
+### `<DefaultTransport>` configuration
+
+The `<DefaultTransport>` element sets the transport policy applied when no `?transport` query parameter is present in the URL. Valid values are `udptcp` (default), `udp`, `tcp`, `relay`, and `all`.
+
+```xml
+<IceCandidates>
+    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+    <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>
+    <TcpRelay>${PublicIP}:3478</TcpRelay>
+    <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
+</IceCandidates>
+```
+
+| Value | Equivalent to |
+|---|---|
+| `udptcp` (default) | No `?transport` with `udptcp`: UDP + TCP direct, no relay info |
+| `udp` | `?transport=udp` |
+| `tcp` | `?transport=tcp` |
+| `relay` | `?transport=relay`: relay only |
+| `all` | `?transport=all`: UDP + TCP + relay fallback |
+
 ### WebRTC over TCP with OvenPlayer
 
-WebRTC players can configure the TURN server through the [iceServers ](https://developer.mozilla.org/en-US/docs/Web/API/RTCIceServer/urls#a_single_ice_server_with_authentication)setting.
+You can restrict playback to Direct TCP ICE by attaching `?transport=tcp` to the play URL:
 
-You can play the WebRTC stream over TCP by attaching the query `transport=tcp` to the existing WebRTC play URL as follows.
-
-```markup
+```
 ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=tcp
 ```
 
-OvenPlayer automatically sets `iceServers` by obtaining TURN server information set in `<TcpRelay>` through signaling with OvenMediaEngine.
+To use TURN relay (useful for environments where direct connections are blocked):
 
-{% hint style="info" %}
-If `<TcpForce>` is set to true, it will force a TCP connection even if `?transport=tcp` is not present. To use this, `<TcpRelay>` must be set.
-{% endhint %}
+```
+ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=relay
+```
+
+To enable full fallback (UDP → Direct TCP → TURN relay):
+
+```
+ws[s]://{OvenMediaEngine Host}[:{Signaling Port}]/{App Name}/{Stream Name}?transport=all
+```
+
+OvenPlayer automatically sets `iceServers` using the TURN server information received via signaling.
 
 ### Custom player
 
-If you are using custom player, set `iceServers` like this:
+If you are using a custom player, set `iceServers` from the signaling response in `RTCPeerConnection`. When using TURN relay (`?transport=relay`), also set `iceTransportPolicy` to `"relay"` to force all traffic through the TURN server. When using `?transport=all` (UDP/TCP direct + TURN relay fallback), omit `iceTransportPolicy` or set it to `"all"` so the browser can use direct candidates first:
 
-```markup
+```javascript
+// ?transport=relay — TURN relay only
 myPeerConnection = new RTCPeerConnection({
   iceServers: [
     {
@@ -372,18 +487,37 @@ myPeerConnection = new RTCPeerConnection({
       username: "ome",
       credential: "airen"
     }
-  ]
+  ],
+  iceTransportPolicy: "relay"
+});
+
+// ?transport=all — UDP/TCP direct first, TURN relay fallback
+myPeerConnection = new RTCPeerConnection({
+  iceServers: [
+    {
+      urls: "turn:Relay IP:Port?transport=tcp",
+      username: "ome",
+      credential: "airen"
+    }
+  ],
+  iceTransportPolicy: "all"  // default, can be omitted
 });
 ```
 
-When sending `Request Offer` in the [signaling ](webrtc-publishing.md#signalling-protocol)phase with OvenMediaEngine, if you send the `transport=tcp` query string, `ice_servers` information is delivered as follows. You can use this information to set iceServers.
+When sending `Request Offer` in the [signaling](webrtc-publishing.md#signalling-protocol) phase, if `<TcpRelay>` is configured, OvenMediaEngine includes `ice_servers` in the offer response by default. You can use this information to set `iceServers` in your `RTCPeerConnection`.
 
-```markup
-candidates: [{candidate: "candidate:0 1 UDP 50 192.168.0.200 10006 typ host", sdpMLineIndex: 0}]
-code: 200
-command: "offer"
-ice_servers: [{credential: "airen", urls: ["turn:192.168.0.200:3478?transport=tcp"], user_name: "ome"}]
-id: 506764844
-peer_id: 0
-sdp: {,…}
+```json
+{
+  "command": "offer",
+  "id": 506764844,
+  "peer_id": 0,
+  "sdp": { "..." },
+  "candidates": [
+    {"candidate": "candidate:0 1 UDP 2130706431 192.168.0.200 10000 typ host", "sdpMLineIndex": 0},
+    {"candidate": "candidate:1 1 TCP 2124414975 192.168.0.200 3479 typ host tcptype passive", "sdpMLineIndex": 0}
+  ],
+  "ice_servers": [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "user_name": "ome"}],
+  "iceServers":  [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "username": "ome"}],
+  "code": 200
+}
 ```

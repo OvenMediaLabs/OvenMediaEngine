@@ -65,7 +65,11 @@ bool IcePortManager::CreateIceCandidates(
 	auto ice_worker_count = ice_candidates_config.GetIceWorkerCount(&is_parsed);
 	ice_worker_count	  = is_parsed ? ice_worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
 
-	if (_ice_port->CreateIceCandidates(server_name, server_config, ice_candidate_list, ice_worker_count) == false)
+	bool is_tcp_parsed;
+	auto tcp_ice_worker_count = ice_candidates_config.GetTcpIceWorkerCount(&is_tcp_parsed);
+	tcp_ice_worker_count	  = is_tcp_parsed ? tcp_ice_worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+
+	if (_ice_port->CreateIceCandidates(server_name, server_config, ice_candidate_list, ice_worker_count, tcp_ice_worker_count) == false)
 	{
 		Release(observer);
 
@@ -333,7 +337,13 @@ bool IcePortManager::GenerateIceCandidates(const cfg::bind::cmm::IceCandidates &
 
 			for (auto &address_map_item : address_map)
 			{
-				ice_candidates.emplace_back(protocol, address_map_item.first, 0, "");
+				RtcIceCandidate candidate(protocol, address_map_item.first, 0, "");
+				if (socket_type == ov::SocketType::Tcp)
+				{
+					// RFC 6544: advertise this port as a passive TCP ICE candidate.
+					candidate.AddExtensionAttributes("tcptype", "passive");
+				}
+				ice_candidates.emplace_back(std::move(candidate));
 			}
 		}
 
@@ -452,7 +462,9 @@ bool IcePortManager::ParseIceCandidate(const ov::String &ice_candidate, std::vec
 		}
 		else
 		{
-			logtw(OV_ICE_PORT_PUBLIC_IP " is specified on ICE candidate, but failed to obtain public IP: %s", ice_candidate.CStr());
+			logtw(OV_ICE_PORT_PUBLIC_IP " is specified on ICE candidate, but failed to obtain public IP. Falling back to all local IPv4 addresses: %s", ice_candidate.CStr());
+			auto local_ip_list = address_utilities->GetIPv4List();
+			ip_list->insert(ip_list->end(), local_ip_list.cbegin(), local_ip_list.cend());
 		}
 	}
 	else
