@@ -89,8 +89,9 @@ namespace pvd::rtmp
 
 		int32_t HandleData(const std::shared_ptr<const ov::Data> &data);
 
-		void UpdateQueueAlias();
 		info::NamePath GetNamePath() const;
+		void UpdateNamePath(const info::NamePath &stream_name_path);
+		void UpdateQueueAlias();
 
 		int GetWaitingTrackCount() const;
 
@@ -183,5 +184,8 @@ namespace pvd::rtmp
 		std::vector<std::shared_ptr<const modules::rtmp::Message>> _message_buffer;
 
 		cfg::vhost::app::pvd::EventGenerator _event_generator_config;
+
+		mutable std::mutex _name_path_mutex;
+		info::NamePath _name_path;
 	};
 }  // namespace pvd::rtmp

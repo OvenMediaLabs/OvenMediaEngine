@@ -607,7 +607,14 @@ namespace pvd::rtmp
 
 	info::NamePath RtmpChunkHandler::GetNamePath() const
 	{
-		return _stream->GetNamePath();
+		std::lock_guard lock_guard(_name_path_mutex);
+		return _name_path;
+	}
+
+	void RtmpChunkHandler::UpdateNamePath(const info::NamePath &stream_name_path)
+	{
+		std::lock_guard lock_guard(_name_path_mutex);
+		_name_path = stream_name_path;
 	}
 
 	void RtmpChunkHandler::UpdateQueueAlias()
@@ -647,7 +654,7 @@ namespace pvd::rtmp
 	{
 		double object_encoding = 0.0;
 
-		logtt("Received RTMP document\n%s", document.ToString().CStr());
+		logat("Received RTMP document\n%s", document.ToString().CStr());
 
 		auto meta_property = document.GetObject(2);
 		if (meta_property == nullptr)
@@ -689,7 +696,7 @@ namespace pvd::rtmp
 
 		if (SendSetChunkSize(DEFAULT_CHUNK_SIZE) == false)
 		{
-			logte("Failed to send SetChunkSize(%zu)", DEFAULT_CHUNK_SIZE);
+			logae("Failed to send SetChunkSize(%zu)", DEFAULT_CHUNK_SIZE);
 			return false;
 		}
 
@@ -831,7 +838,7 @@ namespace pvd::rtmp
 				return false;
 			}
 		}
-		
+
 		return _stream->PostPublish(document);
 	}
 
@@ -977,7 +984,7 @@ namespace pvd::rtmp
 			_meta_data_context.waiting_video_track_count = 1;
 		}
 
-		logti("RTMP onMetadata:\n%s", _meta_data_context.ToString().CStr());
+		logai("RTMP onMetadata:\n%s", _meta_data_context.ToString().CStr());
 
 		return true;
 	}
@@ -1561,7 +1568,7 @@ namespace pvd::rtmp
 			{
 				if (rtmp_track->GetMediaPacketList().size() > MAX_PACKET_COUNT_BEFORE_SEQ_HEADER)
 				{
-					logtw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
+					logaw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
 
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
@@ -1634,7 +1641,7 @@ namespace pvd::rtmp
 #if DEBUG
 			if (parsed_data->video_metadata.has_value())
 			{
-				logtt("Metadata: \n%s", parsed_data->video_metadata.value().ToString().CStr());
+				logat("Metadata: \n%s", parsed_data->video_metadata.value().ToString().CStr());
 			}
 #endif	// DEBUG
 
@@ -1646,7 +1653,7 @@ namespace pvd::rtmp
 				{
 					auto name = metadata->GetString(0).value_or("");
 
-					logtw("Video metadata [%s] has been received, but not handled", name.CStr());
+					logaw("Video metadata [%s] has been received, but not handled", name.CStr());
 				}
 				else
 				{
@@ -1713,7 +1720,7 @@ namespace pvd::rtmp
 			{
 				if (rtmp_track->GetMediaPacketList().size() > MAX_PACKET_COUNT_BEFORE_SEQ_HEADER)
 				{
-					logtw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
+					logaw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
 
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
