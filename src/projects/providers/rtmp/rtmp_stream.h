@@ -156,7 +156,6 @@ namespace pvd
 		ov::String _app_name;
 		ov::String _domain_name;
 		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
-		ov::String _stream_name;
 		ov::String _device_string;
 
 		std::shared_ptr<ov::Url> _publish_url = nullptr;  // AccessControl can redirect url set in RTMP to another url.

@@ -11,10 +11,10 @@
 
 #include <base/info/media_extradata.h>
 #include <base/mediarouter/media_type.h>
-#include <modules/bitstream/h264/h264_decoder_configuration_record.h>
-#include <modules/containers/flv/flv_parser.h>
 #include <base/modules/data_format/id3v2/frames/id3v2_frames.h>
 #include <base/modules/data_format/id3v2/id3v2.h>
+#include <modules/bitstream/h264/h264_decoder_configuration_record.h>
+#include <modules/containers/flv/flv_parser.h>
 #include <orchestrator/orchestrator.h>
 
 #include "base/info/application.h"
@@ -98,9 +98,9 @@ namespace pvd
 		_remote = client_socket;
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
 
-		_import_chunk = std::make_shared<RtmpChunkParser>(RTMP_DEFAULT_CHUNK_SIZE);
-		_export_chunk = std::make_shared<RtmpExportChunk>(false, RTMP_DEFAULT_CHUNK_SIZE);
-		_media_info = std::make_shared<RtmpMediaInfo>();
+		_import_chunk	   = std::make_shared<RtmpChunkParser>(RTMP_DEFAULT_CHUNK_SIZE);
+		_export_chunk	   = std::make_shared<RtmpExportChunk>(false, RTMP_DEFAULT_CHUNK_SIZE);
+		_media_info		   = std::make_shared<RtmpMediaInfo>();
 
 		// For debug statistics
 		_stream_check_time = time(nullptr);
@@ -128,7 +128,7 @@ namespace pvd
 
 		// Send Close to Admission Webhooks
 		auto requested_url = GetRequestedUrl();
-		auto final_url = GetFinalUrl();
+		auto final_url	   = GetFinalUrl();
 		if (_remote && requested_url && final_url)
 		{
 			auto request_info = std::make_shared<ac::RequestInfo>(requested_url, final_url, _remote, nullptr);
@@ -254,7 +254,7 @@ namespace pvd
 			return false;
 		}
 
-		auto stream_name = document.GetProperty(3)->GetString();
+		auto stream_name	= document.GetProperty(3)->GetString();
 		auto query_position = stream_name.IndexOf('?');
 		if (query_position >= 0)
 		{
@@ -273,9 +273,9 @@ namespace pvd
 			url->SetPort(_remote->GetLocalAddress()->Port());
 		}
 
-		_url = url;
+		_url		 = url;
 		_publish_url = _url;
-		_stream_name = _url->Stream();
+		SetName(_url->Stream());
 		_import_chunk->UpdateNamePath(GetNamePath());
 
 		SetRequestedUrl(_url);
@@ -288,13 +288,13 @@ namespace pvd
 	{
 		double object_encoding = 0.0;
 
-		auto meta_property = document.GetProperty(2, AmfTypeMarker::Object);
+		auto meta_property	   = document.GetProperty(2, AmfTypeMarker::Object);
 		if (meta_property != nullptr)
 		{
 			auto object = meta_property->GetObject();
 
 			// object encoding
-			auto pair = object->GetPair("objectEncoding", AmfTypeMarker::Number);
+			auto pair	= object->GetPair("objectEncoding", AmfTypeMarker::Number);
 			if (pair != nullptr)
 			{
 				object_encoding = pair->property.GetNumber();
@@ -401,9 +401,9 @@ namespace pvd
 	bool RtmpStream::CheckAccessControl()
 	{
 		// Check SignedPolicy
-		auto provider = GetProvider();
+		auto provider								= GetProvider();
 
-		auto request_info = std::make_shared<ac::RequestInfo>(_url, nullptr, _remote, nullptr);
+		auto request_info							= std::make_shared<ac::RequestInfo>(_url, nullptr, _remote, nullptr);
 
 		auto [signed_policy_result, _signed_policy] = provider->VerifyBySignedPolicy(request_info);
 		switch (signed_policy_result)
@@ -485,10 +485,10 @@ namespace pvd
 			return false;
 		}
 
-		auto orchestrator = ocst::Orchestrator::GetInstance();
+		auto orchestrator	= ocst::Orchestrator::GetInstance();
 		auto vhost_app_name = orchestrator->ResolveApplicationNameFromDomain(_publish_url->Host(), _publish_url->App());
 
-		auto app_info = orchestrator->GetApplicationInfo(vhost_app_name);
+		auto app_info		= orchestrator->GetApplicationInfo(vhost_app_name);
 
 		if (app_info.IsValid())
 		{
@@ -502,7 +502,7 @@ namespace pvd
 
 	bool RtmpStream::OnAmfFCPublish(const std::shared_ptr<const RtmpChunkHeader> &header, AmfDocument &document, double transaction_id)
 	{
-		if (_stream_name.IsEmpty())
+		if (GetName().IsEmpty())
 		{
 			auto property = document.GetProperty(3, AmfTypeMarker::String);
 
@@ -527,7 +527,7 @@ namespace pvd
 
 	bool RtmpStream::OnAmfPublish(const std::shared_ptr<const RtmpChunkHeader> &header, AmfDocument &document, double transaction_id)
 	{
-		if (_stream_name.IsEmpty())
+		if (GetName().IsEmpty())
 		{
 			auto property = document.GetProperty(3, AmfTypeMarker::String);
 			if (property != nullptr)
@@ -626,14 +626,14 @@ namespace pvd
 		}
 
 		// Video Codec
-		bool video_available = false;
+		bool video_available		   = false;
 		RtmpCodecType video_codec_type = RtmpCodecType::Unknown;
 		{
 			auto property_pair = object->GetPair("videocodecid");
 
 			if (property_pair != nullptr)
 			{
-				auto &property = property_pair->property;
+				auto &property	= property_pair->property;
 				video_available = true;
 
 				switch (property.GetType())
@@ -666,17 +666,17 @@ namespace pvd
 		double frame_rate;
 		{
 			auto value = object->GetDoubleValue("framerate");
-			value = value.has_value() ? value : object->GetDoubleValue("videoframerate");
+			value	   = value.has_value() ? value : object->GetDoubleValue("videoframerate");
 			frame_rate = value.value_or(30.0);
 		}
 
-		double video_width = object->GetDoubleValue("width").value_or(0.0);
+		double video_width	= object->GetDoubleValue("width").value_or(0.0);
 		double video_height = object->GetDoubleValue("height").value_or(0.0);
 
 		double video_bitrate;
 		{
 			auto value = object->GetDoubleValue("videodatarate");
-			value = value.has_value() ? value : object->GetDoubleValue("bitrate");
+			value	   = value.has_value() ? value : object->GetDoubleValue("bitrate");
 		}
 
 		{
@@ -704,15 +704,15 @@ namespace pvd
 			}
 		}
 
-		_media_info->video_codec_type = video_codec_type;
-		_media_info->video_width = static_cast<int32_t>(video_width);
-		_media_info->video_height = static_cast<int32_t>(video_height);
-		_media_info->video_framerate = static_cast<float>(frame_rate);
-		_media_info->video_bitrate = static_cast<int32_t>(video_bitrate);
+		_media_info->video_codec_type  = video_codec_type;
+		_media_info->video_width	   = static_cast<int32_t>(video_width);
+		_media_info->video_height	   = static_cast<int32_t>(video_height);
+		_media_info->video_framerate   = static_cast<float>(frame_rate);
+		_media_info->video_bitrate	   = static_cast<int32_t>(video_bitrate);
 
 		// Audio Codec
 		RtmpCodecType audio_codec_type = RtmpCodecType::Unknown;
-		bool audio_available = false;
+		bool audio_available		   = false;
 		{
 			auto property_pair = object->GetPair("audiocodecid");
 
@@ -720,8 +720,8 @@ namespace pvd
 			{
 				audio_available = true;
 
-				auto &property = property_pair->property;
-				auto type = property.GetType();
+				auto &property	= property_pair->property;
+				auto type		= property.GetType();
 
 				switch (type)
 				{
@@ -839,11 +839,11 @@ namespace pvd
 		}
 
 		_media_info->audio_codec_type = audio_codec_type;
-		_media_info->audio_bitrate = static_cast<int32_t>(audio_bitrate);
-		_media_info->audio_channels = static_cast<int32_t>(audio_channels);
-		_media_info->audio_bits = static_cast<int32_t>(audio_samplesize);
+		_media_info->audio_bitrate	  = static_cast<int32_t>(audio_bitrate);
+		_media_info->audio_channels	  = static_cast<int32_t>(audio_channels);
+		_media_info->audio_bits		  = static_cast<int32_t>(audio_samplesize);
 		_media_info->audio_samplerate = static_cast<int32_t>(audio_samplerate);
-		_media_info->encoder_type = encoder_type;
+		_media_info->encoder_type	  = encoder_type;
 
 		if ((video_available && (video_codec_type != RtmpCodecType::H264)) ||
 			(audio_available && (audio_codec_type != RtmpCodecType::AAC)))
@@ -992,8 +992,8 @@ namespace pvd
 
 	int32_t RtmpStream::ReceiveChunkPacket(const std::shared_ptr<const ov::Data> &data)
 	{
-		int32_t process_size = 0;
-		size_t import_size = 0;
+		int32_t process_size						 = 0;
+		size_t import_size							 = 0;
 		std::shared_ptr<const ov::Data> current_data = data;
 
 		while (current_data->IsEmpty() == false)
@@ -1105,7 +1105,7 @@ namespace pvd
 
 	bool RtmpStream::ReceiveUserControlMessage(const std::shared_ptr<const RtmpMessage> &message)
 	{
-		auto data = message->payload;
+		auto data			   = message->payload;
 
 		// RTMP Spec. v1.0 - 6.2. User Control Messages
 		//
@@ -1113,7 +1113,7 @@ namespace pvd
 		// control stream) and, when sent over RTMP Chunk Stream, be sent on
 		// chunk stream ID 2.
 		auto message_stream_id = message->header->completed.stream_id;
-		auto chunk_stream_id = message->header->basic_header.chunk_stream_id;
+		auto chunk_stream_id   = message->header->basic_header.chunk_stream_id;
 		if (
 			(message_stream_id != 0) ||
 			(chunk_stream_id != 2))
@@ -1148,9 +1148,9 @@ namespace pvd
 				// |               | PingRequest request.                             |
 				// +---------------+--------------------------------------------------+
 				// ping response == event type (16 bits) + timestamp (32 bits)
-				auto body = std::make_shared<std::vector<uint8_t>>(2 + 4);
-				auto write_buffer = body->data();
-				auto message_header = RtmpMuxMessageHeader::Create(chunk_stream_id, RtmpMessageTypeID::UserControl, message_stream_id, 6);
+				auto body									  = std::make_shared<std::vector<uint8_t>>(2 + 4);
+				auto write_buffer							  = body->data();
+				auto message_header							  = RtmpMuxMessageHeader::Create(chunk_stream_id, RtmpMessageTypeID::UserControl, message_stream_id, 6);
 
 				*(reinterpret_cast<uint16_t *>(write_buffer)) = ov::HostToBE16(ov::ToUnderlyingType(UserControlMessageId::PingResponse));
 				write_buffer += sizeof(uint16_t);
@@ -1294,7 +1294,7 @@ namespace pvd
 		// Obtain the message name
 		ov::String message_name;
 		auto message_name_property = document.GetProperty(0);
-		auto message_name_type = (message_name_property != nullptr) ? message_name_property->GetType() : AmfTypeMarker::Undefined;
+		auto message_name_type	   = (message_name_property != nullptr) ? message_name_property->GetType() : AmfTypeMarker::Undefined;
 		if (message_name_type == AmfTypeMarker::String)
 		{
 			message_name = message_name_property->GetString();
@@ -1303,14 +1303,14 @@ namespace pvd
 		// Obtain the data name
 		ov::String data_name;
 		auto data_name_property = document.GetProperty(1);
-		auto data_name_type = (data_name_property != nullptr) ? data_name_property->GetType() : AmfTypeMarker::Undefined;
+		auto data_name_type		= (data_name_property != nullptr) ? data_name_property->GetType() : AmfTypeMarker::Undefined;
 		if (data_name_type == AmfTypeMarker::String)
 		{
 			data_name = data_name_property->GetString();
 		}
 
 		auto third_property = document.GetProperty(2);
-		auto third_type = (third_property != nullptr) ? third_property->GetType() : AmfTypeMarker::Undefined;
+		auto third_type		= (third_property != nullptr) ? third_property->GetType() : AmfTypeMarker::Undefined;
 
 		switch (RtmpCommandFromString(message_name))
 		{
@@ -1358,7 +1358,7 @@ namespace pvd
 
 		for (const auto &event : _event_generator.GetEvents())
 		{
-			auto trigger = event.GetTrigger();
+			auto trigger	  = event.GetTrigger();
 			auto trigger_list = trigger.Split(".");
 
 			// Trigger length must be 3 or more
@@ -1407,7 +1407,7 @@ namespace pvd
 
 								if (property_pair != nullptr)
 								{
-									found = true;
+									found	   = true;
 									auto value = property_pair->property.GetString();
 									GenerateEvent(event, value);
 								}
@@ -1415,7 +1415,7 @@ namespace pvd
 						}
 						else if (property->GetType() == AmfTypeMarker::String)
 						{
-							found = true;
+							found	   = true;
 							auto value = property->GetString();
 							GenerateEvent(event, value);
 						}
@@ -1484,7 +1484,7 @@ namespace pvd
 			else if (id3v2_event.GetFrameType() == "PRIV")
 			{
 				auto owner = id3v2_event.GetInfo();
-				auto data = id3v2_event.GetData();
+				auto data  = id3v2_event.GetData();
 
 				if (owner == "${TriggerValue}")
 				{
@@ -1698,15 +1698,12 @@ namespace pvd
 															 cmn::BitstreamFormat::H264_AVCC,  // RTMP's packet type is AVCC
 															 packet_type);
 
-			SendFrame(video_frame);
+			logat("Sending Video packet: type: %d, pts: %10" PRId64 ", dts: %10" PRId64 ", size: %zu",
+				  ov::ToUnderlyingType(flv_video.PacketType()),
+				  pts, dts,
+				  flv_video.PayloadLength());
 
-			// logac("Video packet sent - stream(%s/%s) type(%d) size(%d) pts(%" PRId64 ") dts(%" PRId64 ")",
-			// 	  _vhost_app_name.CStr(),
-			// 	  _stream_name.CStr(),
-			// 	  flv_video.PacketType(),
-			// 	  flv_video.PayloadLength(),
-			// 	  pts,
-			// 	  dts);
+			SendFrame(video_frame);
 
 			_last_video_pts_in_ms = dts;
 
@@ -1722,7 +1719,7 @@ namespace pvd
 			// Statistics for debugging
 			if (flv_video.FrameType() == flv::VideoFrameType::Key)
 			{
-				_key_frame_interval = message->header->completed.timestamp - _previous_key_frame_timestamp;
+				_key_frame_interval			  = message->header->completed.timestamp - _previous_key_frame_timestamp;
 				_previous_key_frame_timestamp = message->header->completed.timestamp;
 				video_frame->SetFlag(MediaPacketFlag::Key);
 			}
@@ -1735,13 +1732,13 @@ namespace pvd
 			_video_frame_count++;
 
 			time_t current_time = time(nullptr);
-			uint32_t check_gap = current_time - _stream_check_time;
+			uint32_t check_gap	= current_time - _stream_check_time;
 
 			if (check_gap >= 10)
 			{
 				logi("RTMPProvider.Stat", "Rtmp Provider Info - stream(%s/%s) key(%ums) timestamp(v:%ums/a:%ums/g:%dms) fps(v:%u/a:%u) gap(v:%ums/a:%ums)",
 					 _vhost_app_name.CStr(),
-					 _stream_name.CStr(),
+					 GetName().CStr(),
 					 _key_frame_interval,
 					 _last_video_timestamp,
 					 _last_audio_timestamp,
@@ -1751,9 +1748,9 @@ namespace pvd
 					 _last_video_timestamp - _previous_last_video_timestamp,
 					 _last_audio_timestamp - _previous_last_audio_timestamp);
 
-				_stream_check_time = time(nullptr);
-				_video_frame_count = 0;
-				_audio_frame_count = 0;
+				_stream_check_time			   = time(nullptr);
+				_video_frame_count			   = 0;
+				_audio_frame_count			   = 0;
 				_previous_last_video_timestamp = _last_video_timestamp;
 				_previous_last_audio_timestamp = _last_audio_timestamp;
 			}
@@ -1842,7 +1839,7 @@ namespace pvd
 				return false;
 			}
 
-			auto data = std::make_shared<ov::Data>(flv_audio.Payload(), flv_audio.PayloadLength());
+			auto data	= std::make_shared<ov::Data>(flv_audio.Payload(), flv_audio.PayloadLength());
 
 			int64_t dts = message->header->completed.timestamp;
 			int64_t pts = dts;
@@ -1877,6 +1874,11 @@ namespace pvd
 													   MediaPacketFlag::Unknown,
 													   cmn::BitstreamFormat::AAC_RAW,
 													   packet_type);
+
+			logat("Sending Audio packet: type: %d, pts: %10" PRId64 ", dts: %10" PRId64 ", size: %zu",
+				  ov::ToUnderlyingType(flv_audio.PacketType()),
+				  pts, dts,
+				  flv_audio.PayloadLength());
 
 			SendFrame(frame);
 
@@ -1913,9 +1915,10 @@ namespace pvd
 		}
 
 		_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(_publish_url->Host(), _publish_url->App());
-		_stream_name = _publish_url->Stream();
+		SetName(_publish_url->Stream());
 
 		UpdateNamePath(_vhost_app_name);
+		_import_chunk->UpdateNamePath(GetNamePath());
 
 		// Get application config
 		if (GetProvider() == nullptr)
@@ -1934,7 +1937,7 @@ namespace pvd
 
 		const auto &rtmp_provider = application->GetConfig().GetProviders().GetRtmpProvider();
 
-		_event_generator = rtmp_provider.GetEventGenerator();
+		_event_generator		  = rtmp_provider.GetEventGenerator();
 
 		SetName(_publish_url->Stream());
 
@@ -2139,7 +2142,7 @@ namespace pvd
 
 	bool RtmpStream::SendWindowAcknowledgementSize(uint32_t size)
 	{
-		auto body = std::make_shared<std::vector<uint8_t>>(sizeof(int));
+		auto body			= std::make_shared<std::vector<uint8_t>>(sizeof(int));
 		auto message_header = RtmpMuxMessageHeader::Create(
 			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::WindowAcknowledgementSize, 0, body->size());
 
@@ -2150,7 +2153,7 @@ namespace pvd
 
 	bool RtmpStream::SendAcknowledgementSize(uint32_t acknowledgement_traffic)
 	{
-		auto body = std::make_shared<std::vector<uint8_t>>(sizeof(int));
+		auto body			= std::make_shared<std::vector<uint8_t>>(sizeof(int));
 		auto message_header = RtmpMuxMessageHeader::Create(
 			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::Acknowledgement, 0, body->size());
 
@@ -2161,7 +2164,7 @@ namespace pvd
 
 	bool RtmpStream::SendSetPeerBandwidth(uint32_t bandwidth)
 	{
-		auto body = std::make_shared<std::vector<uint8_t>>(5);
+		auto body			= std::make_shared<std::vector<uint8_t>>(5);
 		auto message_header = RtmpMuxMessageHeader::Create(
 			RtmpChunkStreamId::Urgent, RtmpMessageTypeID::SetPeerBandwidth, 0, body->size());
 
@@ -2188,7 +2191,7 @@ namespace pvd
 
 		return SendUserControlMessage(UserControlMessageId::StreamEof, body);
 	}
-	
+
 	bool RtmpStream::SendSetChunkSize(uint32_t chunk_size)
 	{
 		auto body			= std::make_shared<std::vector<uint8_t>>(sizeof(int));
@@ -2213,7 +2216,7 @@ namespace pvd
 			return false;
 		}
 
-		auto data = stream.GetData();
+		auto data				  = stream.GetData();
 		message_header->body_size = data->GetLength();
 
 		return SendMessagePacket(message_header, data);

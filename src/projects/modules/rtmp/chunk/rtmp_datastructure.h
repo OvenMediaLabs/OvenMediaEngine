@@ -23,8 +23,6 @@ enum class RtmpMessageHeaderType : uint8_t
 #pragma pack(push, 1)
 struct RtmpChunkHeader
 {
-	static constexpr const size_t EXTENDED_TIMESTAMP_SIZE = 4;
-
 	RtmpChunkHeader()
 	{
 		::memset(&message_header, 0, sizeof(message_header));
@@ -75,7 +73,7 @@ struct RtmpChunkHeader
 
 	// Extended Timestamp/Timestamp delta
 	uint32_t extended_timestamp = 0U;
-	static_assert(sizeof(RtmpChunkHeader::extended_timestamp) == EXTENDED_TIMESTAMP_SIZE, "Extended timestamp size must be 4 bytes");
+	static_assert(sizeof(RtmpChunkHeader::extended_timestamp) == RTMP_EXTEND_TIMESTAMP_SIZE, "Extended timestamp size must be 4 bytes");
 
 	struct CompletedHeader
 	{
