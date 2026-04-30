@@ -64,8 +64,22 @@ void MediaRouteStream::SetType(cmn::MediaRouterStreamType type)
 		_stream->GetApplicationInfo().GetVHostAppName(),
 		_stream->GetName(),
 		(_type == cmn::MediaRouterStreamType::INBOUND) ? "imr" : "omr",
-		"streamworker");
+		"stream");
 	_packets_queue.SetUrn(urn);
+}
+
+void MediaRouteStream::SetBufferRetentionDuration(int delay_ms)
+{
+	if (delay_ms <= 0)
+	{
+		logtw("%s Invalid buffer retention duration value: %d ms", _stream->GetUri().CStr(), delay_ms);
+		return;
+	}
+
+	// If buffer retention duration is set, the control is performed in the queue of MediaRouterApplication,
+	// so only the threshold is set to prevent warnings in this queue.
+	// Add a buffer of 1 second to prevent spikes.
+	_packets_queue.SetThresholdByTime(delay_ms + 1000); 
 }
 
 void MediaRouteStream::OnStreamPrepared(bool completed)
