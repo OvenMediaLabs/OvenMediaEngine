@@ -182,7 +182,7 @@ namespace pvd
 		time_t _stream_check_time = 0;
 
 		uint32_t _key_frame_interval = 0;
-		uint32_t _previous_key_frame_timestamp = 0;
+		int64_t _previous_key_frame_timestamp = 0;
 		int64_t _last_video_timestamp = 0;
 		int64_t _last_audio_timestamp = 0;
 		int64_t _previous_last_video_timestamp = 0;
