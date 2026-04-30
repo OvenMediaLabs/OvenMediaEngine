@@ -1736,9 +1736,8 @@ namespace pvd
 
 			if (check_gap >= 10)
 			{
-				logi("RTMPProvider.Stat", "Rtmp Provider Info - stream(%s/%s) key(%ums) timestamp(v:%ums/a:%ums/g:%dms) fps(v:%u/a:%u) gap(v:%ums/a:%ums)",
-					 _vhost_app_name.CStr(),
-					 GetName().CStr(),
+				logi("RTMPProvider.Stat", "[%s] RTMP info: key(%ums) timestamp(v:%" PRId64 "ms/a:%" PRId64 "ms/g:%" PRId64 "ms) fps(v:%u/a:%u) gap(v:%" PRId64 "ms/a:%" PRId64 "ms)",
+					 GetNamePath().CStr(),
 					 _key_frame_interval,
 					 _last_video_timestamp,
 					 _last_audio_timestamp,
