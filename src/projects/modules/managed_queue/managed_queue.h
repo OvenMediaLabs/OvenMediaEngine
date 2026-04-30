@@ -98,9 +98,10 @@ namespace ov
 
 		// Set threshold in time-base mode.
 		// The effective item count is estimated as: input_message_per_second * time_ms / 1000.
-		void SetThresholdByTime(int time_ms)
+		void SetThresholdByTime(size_t time_ms)
 		{
-			info::ManagedQueue::SetThresholdByTime(time_ms);
+			const size_t validated_time_ms = (time_ms < 0) ? 0U : time_ms;
+			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
 
 			MonitorInstance->OnQueueUpdated(*this);
 		}				
@@ -359,12 +360,14 @@ namespace ov
 		{
 			auto shared_lock = std::shared_lock(_name_mutex);
 
+			const char* urn_string = (_urn != nullptr) ? _urn->ToString().CStr() : "NoUrn";
+
 			return ov::String::FormatString(
-				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %ld%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
+				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %zu%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
 				GetId(), _size, _threshold,
 				GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? " ms" : "", _buffering_delay,
 				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
-				_urn->ToString().CStr());
+				urn_string);
 		}
 
 	private:
@@ -519,8 +522,9 @@ namespace ov
 				else
 				{
 					_threshold_exceeded_time_in_us = 0;
-
+#if DEBUG
 					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
+#endif					
 				}
 
 				MonitorInstance->OnQueueUpdated(*this);
@@ -552,7 +556,7 @@ namespace ov
 		// Compute the threshold
 		void UpdateThreshold()
 		{
-			// Compute the delay buffer count 
+			// Compute the delay buffer count
 			size_t delay_buffer_count = 0;
 			if (_buffering_delay > 0 && _input_message_per_second > 0)
 			{
@@ -560,15 +564,24 @@ namespace ov
 			}
 
 			// For time-based threshold, compute the effective count from the input message rate + delay buffer
-			if (_threshold_mode == ThresholdMode::TimeBased && _input_message_per_second > 0)
+			if (_threshold_mode == ThresholdMode::TimeBased)
 			{
-				size_t base_count = std::max(static_cast<size_t>(1), static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_threshold_value) / 1000.0)));
+				size_t base_count = 0;
+				if (_threshold_value > 0 && _input_message_per_second > 0)
+				{
+					base_count = std::max(static_cast<size_t>(1), static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_threshold_value) / 1000.0)));
+				}
 				_threshold = base_count + delay_buffer_count;
 			}
 			// For count-based threshold + delay buffer
-			else if (_threshold_mode == ThresholdMode::CountBased && _threshold_value > 0)
+			else if (_threshold_mode == ThresholdMode::CountBased)
 			{
-				_threshold = static_cast<size_t>(_threshold_value) + delay_buffer_count;
+				size_t base_count = 0;
+				if (_threshold_value > 0)
+				{
+					base_count = _threshold_value;
+				}
+				_threshold = base_count + delay_buffer_count;
 			}
 		}
 
