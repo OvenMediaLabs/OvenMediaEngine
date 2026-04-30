@@ -13,7 +13,8 @@
 #include <base/ovcrypto/certificate.h>
 #include <base/publisher/stream.h>
 #include <modules/ice/ice_port.h>
-#include <modules/jitter_buffer/jitter_buffer.h>
+#include <modules/pacer/adaptive_delay_controller.h>
+#include <modules/pacer/frame_pacer.h>
 #include <modules/rtp_rtcp/rtp_history.h>
 #include <modules/rtp_rtcp/rtp_rtcp_defines.h>
 #include <modules/sdp/session_description.h>
@@ -77,7 +78,7 @@ private:
 
 	bool StorePacketForRTX(std::shared_ptr<RtpPacket> &packet);
 
-	void PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_packet);
+	bool PushToPacer(const std::shared_ptr<MediaPacket> &media_packet);
 	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
 	bool SendBufferedPackets();
 	void PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_packet);
@@ -114,17 +115,26 @@ private:
 
 	bool _rtx_enabled			= true;
 	bool _ulpfec_enabled		= true;
-	bool _jitter_buffer_enabled = false;
 	bool _playout_delay_enabled = false;
 	int _playout_delay_min		= 0;
 	int _playout_delay_max		= 0;
 
-	bool _transport_cc_enabled	= false;
-	bool _remb_enabled			= false;
+	bool _pacer_enabled = false;
+	int _pacer_min_ms	= 0;
+	int _pacer_max_ms	= 0;
 
-	uint32_t _worker_count		= 0;
+	bool _transport_cc_enabled = false;
+	bool _remb_enabled		   = false;
 
-	JitterBufferDelay _jitter_buffer_delay;
+	uint32_t _worker_count = 0;
+
+	// Per-stream scheduler shared by all FramePacers (one worker thread).
+	std::shared_ptr<ov::DelayQueue> _pacer_scheduler;
+	std::map<uint32_t, std::shared_ptr<FramePacer>> _pacers;
+	std::shared_mutex _pacers_lock;
+
+	// Stream-shared adaptive delay controller used by the frame pacers.
+	std::shared_ptr<AdaptiveDelayController> _adaptive_delay_controller;
 	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
 
 	ov::String _default_playlist_name;
