@@ -22,11 +22,6 @@
 #define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 1000
 #define MANAGED_QUEUE_LOG_INTERVAL_IN_MSEC 5000
 
-// Deactivated as it is no longer used
-#define SKIP_MESSAGE_ENABLED false
-#define SKIP_MESSAGE_CHECK_INTERVAL 500					 // 0.5 sec
-#define SKIP_MESSAGE_STABLE_FOR_RETRIEVE_INTERVAL 10000	 // 10 sec
-#define SKIP_MESSAGE_LOG_INTERVAL 5000					 // 1 sec
 
 namespace ov
 {
@@ -62,8 +57,7 @@ namespace ov
 			  _log_interval(log_interval_in_msec),
 			  _front_node(nullptr),
 			  _rear_node(nullptr),
-			  _stop(false),
-			  _skip_message_enabled(false)
+			  _stop(false)
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
@@ -345,14 +339,6 @@ namespace ov
 			return _stop;
 		}
 
-		// Skip message for performance failure recovery
-		// If the queue size increases due to insufficient performance, the problem is avoided by dropping the message.
-		// * Warning: This should only be used where dropping a message will not affect the operation. example) video encoder, video scaler
-		void SetSkipMessageEnable(bool enable)
-		{
-			_skip_message_enabled = enable;
-		}
-
 		void SetExceedWaitEnable(bool enable)
 		{
 			_exceed_threshold_and_wait_enabled = enable;
@@ -421,96 +407,6 @@ namespace ov
 
 			// Update statistics of input message count
 			_input_message_count++;
-
-#if SKIP_MESSAGE_ENABLED
-			if (_skip_message_enabled == true)
-			{
-				auto curr_time = ov::Time::GetTimestampInMs();
-				auto elapsed_check_time = curr_time - _skip_messages_last_check_time;
-				auto elapsed_stable_time = curr_time - _skip_messages_last_changed_time;
-
-				if (elapsed_check_time > SKIP_MESSAGE_CHECK_INTERVAL)
-				{
-					_skip_messages_last_check_time = curr_time;
-
-					if ((_size > _threshold / 10) &&				   // It exceeded 10% of the threshold
-						(_size >= _skip_message_previous_queue_size))  // The queue size has increased compared to before
-					{
-						if (_skip_message_count < 10)  // Maximum skip count is 10
-						{
-							_skip_message_count++;
-						}
-
-						_skip_message_previous_queue_size = _size;
-						_skip_messages_last_changed_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Managed queue is unstable. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-					// If the queue is stable, slowly decrease the number of skip frames.
-					else if ((_skip_message_count > 0) &&										   // Skip Message is operating
-							 (elapsed_stable_time > SKIP_MESSAGE_STABLE_FOR_RETRIEVE_INTERVAL) &&  // It appears to be in a stable state.
-							 (_size <= 1))														   // The queue size is 1 or less.
-					{
-						if (--_skip_message_count < 0)
-						{
-							_skip_message_count = 0;
-						}
-
-						_skip_message_previous_queue_size = _size;
-						_skip_messages_last_changed_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logi(LOG_TAG, "[%s] Managed queue is stable. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-				}
-
-				if ((_skip_message_count > 0) && (_input_message_count % (_skip_message_count + 1) != 0))
-				{
-					if (curr_time - _skip_messages_last_log_time > SKIP_MESSAGE_LOG_INTERVAL)
-					{
-						_skip_messages_last_log_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Drop a message by message skip. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-
-					_drop_message_count++;
-
-					delete node;
-
-					_condition.notify_all();
-
-					return;
-				}
-
-				// If the queue exceeds the threshold, drop the frame.
-				if (IsThresholdExceeded() == true)
-				{
-					if (curr_time - _skip_messages_last_log_time > SKIP_MESSAGE_LOG_INTERVAL)
-					{
-						_skip_messages_last_log_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Managed queue is exceed. drop message. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-
-					_drop_message_count++;
-					
-					delete node;
-
-					_condition.notify_all();
-
-					return;
-				}
-
-				// logi(LOG_TAG, "q.size(%d), q.imps(%d), q.omps(%d), skip(%d), stable(%d)", _size,  _skip_message_count, elapsed_stable_time);
-			}
-#endif
 
 			// Wait until the queue size is less than threshold
 			if(_exceed_threshold_and_wait_enabled == true)
@@ -696,14 +592,6 @@ namespace ov
 
 		// Use to print logs when the peak value of the queue is increased.
 		size_t _last_logged_peak = 0;
-
-		// Message Skip for lack of performance
-		bool _skip_message_enabled = false;
-		int64_t _skip_messages_last_check_time = ov::Time::GetTimestampInMs();
-		int64_t _skip_messages_last_changed_time = ov::Time::GetTimestampInMs();
-		int64_t _skip_messages_last_log_time = 0;
-		int32_t _skip_message_count = 0;
-		size_t _skip_message_previous_queue_size = 0;
 
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold
