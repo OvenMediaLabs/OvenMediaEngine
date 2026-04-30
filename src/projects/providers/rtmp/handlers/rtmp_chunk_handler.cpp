@@ -334,7 +334,7 @@ namespace pvd::rtmp
 		previous_last_audio_timestamp = last_audio_timestamp;
 	}
 
-	int32_t RtmpChunkHandler::Stats::GetVADelta() const
+	int64_t RtmpChunkHandler::Stats::GetVADelta() const
 	{
 		return last_video_timestamp - last_audio_timestamp;
 	}
@@ -342,7 +342,7 @@ namespace pvd::rtmp
 	ov::String RtmpChunkHandler::Stats::GetStatsString(int64_t elapsed_ms) const
 	{
 		return ov::String::FormatString(
-			"keyint_ms(%u) ts_ms(v:%u/a:%u/v-a:%d) fps(v:%.2f/a:%.2f) gap_ms(v:%u/a:%u)",
+			"keyint_ms(%u) ts_ms(v:%" PRId64 "/a:%" PRId64 "/v-a:%" PRId64 ") fps(v:%.2f/a:%.2f) gap_ms(v:%" PRId64 "/a:%" PRId64 ")",
 			key_frame_interval,
 			last_video_timestamp, last_audio_timestamp, GetVADelta(),
 			((video_frame_count * 1000) / static_cast<double>(elapsed_ms)),

@@ -28,18 +28,18 @@ namespace pvd::rtmp
 			int64_t last_stream_check_time		   = 0;
 
 			uint32_t key_frame_interval			   = 0;
-			uint32_t previous_key_frame_timestamp  = 0;
-			uint32_t last_audio_timestamp		   = 0;
-			uint32_t last_video_timestamp		   = 0;
-			uint32_t previous_last_audio_timestamp = 0;
-			uint32_t previous_last_video_timestamp = 0;
+			int64_t previous_key_frame_timestamp  = 0;
+			int64_t last_audio_timestamp		   = 0;
+			int64_t last_video_timestamp		   = 0;
+			int64_t previous_last_audio_timestamp = 0;
+			int64_t previous_last_video_timestamp = 0;
 			uint32_t audio_frame_count			   = 0;
 			uint32_t video_frame_count			   = 0;
 
 			Stats();
 			int64_t GetElapsedInMs() const;
 			void ResetCheckTime();
-			int32_t GetVADelta() const;
+			int64_t GetVADelta() const;
 			ov::String GetStatsString(int64_t elapsed_ms) const;
 		};
 
