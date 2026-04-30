@@ -85,7 +85,7 @@ namespace http
 		void HttpConnection::CheckTimeout()
 		{
 			// Check timeout 
-			auto current = std::chrono::high_resolution_clock::now();
+			auto current = std::chrono::system_clock::now();
 			auto elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - _client_socket->GetLastSentTime()).count();
 			auto elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - _client_socket->GetLastRecvTime()).count();
 

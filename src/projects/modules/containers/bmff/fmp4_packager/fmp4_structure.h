@@ -136,7 +136,7 @@ namespace bmff
 			return _data;
 		}
 
-		size_t GetDataLength() const override
+		uint64_t GetDataLength() const override
 		{
 			return _data == nullptr ? 0 : _data->GetLength();
 		}

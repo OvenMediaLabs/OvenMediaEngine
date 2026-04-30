@@ -42,11 +42,13 @@ namespace ov
 					stat.Append("Unread: -, ", unread_size);
 				}
 
+#ifdef SIOCOUTQ
 				if (::ioctl(native_handle, SIOCOUTQ, &unread_size) != -1)
 				{
 					stat.AppendFormat("Unsent: %lu, ", unread_size);
 				}
 				else
+#endif
 				{
 					stat.Append("Unsent: -, ", unread_size);
 				}
@@ -75,20 +77,24 @@ namespace ov
 
 			case SocketType::Tcp:
 
-				if (::ioctl(native_handle, SIOCINQ, &unread_size) != -1)
-				{
-					stat.AppendFormat("Unread: %lu, ", unread_size);
-				}
-				else
-				{
-					stat.Append("Unread: -, ", unread_size);
-				}
+	#ifdef SIOCINQ
+			if (::ioctl(native_handle, SIOCINQ, &unread_size) != -1)
+			{
+				stat.AppendFormat("Unread: %lu, ", unread_size);
+			}
+			else
+#endif
+			{
+				stat.Append("Unread: -, ", unread_size);
+			}
 
+#ifdef SIOCOUTQ
 				if (::ioctl(native_handle, SIOCOUTQ, &unsent_size) != -1)
 				{
 					stat.AppendFormat("Unsent: %lu, ", unsent_size);
 				}
 				else
+#endif
 				{
 					stat.Append("Unsent: -, ", unsent_size);
 				}

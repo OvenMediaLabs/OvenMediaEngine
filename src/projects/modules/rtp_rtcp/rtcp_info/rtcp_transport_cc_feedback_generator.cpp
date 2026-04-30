@@ -18,7 +18,7 @@ RtcpTransportCcFeedbackGenerator::RtcpTransportCcFeedbackGenerator(uint8_t exten
 	_extension_id = extension_id;
 	_sender_ssrc = sender_ssrc;
 
-	_created_time = std::chrono::system_clock::now();
+	_created_time = std::chrono::high_resolution_clock::now();
 	_last_report_time = _created_time;
 }
 
@@ -58,7 +58,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 		_transport_cc->SetBaseSequenceNumber(wide_sequence_number);
 
 		// Reference time
-		_last_reference_time = std::chrono::system_clock::now();
+		_last_reference_time = std::chrono::high_resolution_clock::now();
 
 		// multiples of 64ms
 		uint32_t reference_time = std::chrono::duration_cast<std::chrono::milliseconds>(_last_reference_time - _created_time).count() / 64;
@@ -99,7 +99,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	else
 	{
 		// delta : multiple of 250us from the last rtp received time
-		auto now = std::chrono::system_clock::now();
+		auto now = std::chrono::high_resolution_clock::now();
 		int64_t diff = std::chrono::duration_cast<std::chrono::microseconds>(now - _last_rtp_received_time).count();
 		delta = diff / 250;
 
@@ -156,7 +156,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 bool RtcpTransportCcFeedbackGenerator::HasElapsedSinceLastTransportCc(uint32_t milliseconds)
 {
-	auto now = std::chrono::system_clock::now();
+	auto now = std::chrono::high_resolution_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_report_time).count();
 
 	if (elapsed >= milliseconds)
@@ -182,7 +182,7 @@ std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportC
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(_transport_cc);
 
-	_last_report_time = std::chrono::system_clock::now();
+	_last_report_time = std::chrono::high_resolution_clock::now();
 
 	_transport_cc.reset();
 

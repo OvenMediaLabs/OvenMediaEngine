@@ -204,9 +204,9 @@ namespace ov
 					  "\tActual   thread: %s (%lu)\n"
 					  "\tStack trace:\n%s",
 					  loc.file, loc.line, loc.func,
-					  expected_thread_name.CStr(), static_cast<unsigned long>(expected),
+					  expected_thread_name.CStr(), static_cast<unsigned long>(reinterpret_cast<uintptr_t>(expected)),
 					  bind_location_str.CStr(),
-					  thread_name.CStr(), static_cast<unsigned long>(self),
+					  thread_name.CStr(), static_cast<unsigned long>(reinterpret_cast<uintptr_t>(self)),
 					  ov::StackTrace::GetStackTrace().CStr());
 		}
 

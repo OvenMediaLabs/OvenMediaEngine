@@ -12,17 +12,23 @@
 #include <config/config_manager.h>
 #include <dirent.h>
 #include <errno.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <orchestrator/orchestrator.h>
+#ifndef __APPLE__
 #include <semaphore.h>
+#endif
 #include <signal.h>
 #include <sys/ucontext.h>
 #include <sys/utsname.h>
 #include <time.h>
 #include <unistd.h>
 
+#include <condition_variable>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -44,7 +50,12 @@ namespace ov::sig
 	namespace
 	{
 		std::atomic<bool> g_need_to_stop = false;
+#ifdef __APPLE__
+		std::mutex g_stop_mutex;
+		std::condition_variable g_stop_cv;
+#else
 		sem_t g_semaphore;
+#endif
 
 		std::thread g_signal_thread;
 
@@ -140,8 +151,13 @@ namespace ov::sig
 
 			if (action != nullptr)
 			{
+	#if defined(__APPLE__)
+				const bool mask_added = (sigaddset(&sa.sa_mask, sig) == 0) &&
+										((sigaddset(&sa.sa_mask, sigs) == 0) && ...);
+#else
 				const bool mask_added = (::sigaddset(&sa.sa_mask, sig) == 0) &&
 										((::sigaddset(&sa.sa_mask, sigs) == 0) && ...);
+#endif
 
 				if (mask_added == false)
 				{
@@ -200,8 +216,11 @@ namespace ov::sig
 		void RequestStop(int signum)
 		{
 			g_need_to_stop = true;
-
+#ifdef __APPLE__
+			g_stop_cv.notify_all();
+#else
 			::sem_post(&g_semaphore);
+#endif
 		}
 
 		namespace handlers
@@ -380,7 +399,9 @@ namespace ov::sig
 						return;
 
 					case SIGUSR1:
-						logtc("Trim result: %d", ::malloc_trim(0));
+	#ifndef __APPLE__
+					logtc("Trim result: %d", ::malloc_trim(0));
+#endif
 						return;
 				}
 
@@ -428,11 +449,19 @@ namespace ov::sig
 
 			bool success = true;
 
+#if defined(__APPLE__)
+			success		 = success && (sigaddset(&sig_set, SIGINT) == 0);
+			success		 = success && (sigaddset(&sig_set, SIGTERM) == 0);
+			success		 = success && (sigaddset(&sig_set, SIGHUP) == 0);
+			success		 = success && (sigaddset(&sig_set, SIGQUIT) == 0);
+			success		 = success && (sigaddset(&sig_set, SIGUSR1) == 0);
+#else
 			success		 = success && (::sigaddset(&sig_set, SIGINT) == 0);
 			success		 = success && (::sigaddset(&sig_set, SIGTERM) == 0);
 			success		 = success && (::sigaddset(&sig_set, SIGHUP) == 0);
 			success		 = success && (::sigaddset(&sig_set, SIGQUIT) == 0);
 			success		 = success && (::sigaddset(&sig_set, SIGUSR1) == 0);
+#endif
 
 #ifdef OME_USE_JEMALLOC
 			if (g_use_jemalloc_signal)
@@ -518,13 +547,15 @@ namespace ov::sig
 			}
 #endif	// DEBUG
 
+#ifndef __APPLE__
 			if (::sem_init(&g_semaphore, 0, 0) != 0)
 			{
 				logtc("Failed to initialize the signal semaphore (errno: %d)", errno);
 				return false;
 			}
+#endif
 
-			::memset(g_ome_version, 0, sizeof(g_ome_version));
+::memset(g_ome_version, 0, sizeof(g_ome_version));
 			::strncpy(g_ome_version, info::OmeVersion::GetInstance()->ToString().CStr(), OV_COUNTOF(g_ome_version) - 1);
 
 			SetDumpFallbackPath(::ov_log_get_path());
@@ -540,9 +571,9 @@ namespace ov::sig
 					   SIGFPE,	 // divide by zero
 					   SIGSYS,	 // bad system call
 					   SIGXCPU,	 // cpu time limit exceeded
-					   SIGXFSZ,	 // file size limit exceeded
+					   SIGXFSZ	 // file size limit exceeded
 #if IS_LINUX
-					   SIGPOLL	// pollable event
+					   , SIGPOLL	// pollable event
 #endif							// IS_LINUX
 					   ) &&
 
@@ -590,27 +621,27 @@ namespace ov::sig
 			return true;
 		}
 
+#ifdef __APPLE__
+		{
+			auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(milliseconds);
+			std::unique_lock<std::mutex> lock(g_stop_mutex);
+			g_stop_cv.wait_until(lock, deadline, [] { return g_need_to_stop.load(); });
+		}
+#else
 		struct timespec ts;
-
 		if (::clock_gettime(CLOCK_REALTIME, &ts) != 0)
 		{
 			OV_ASSERT2(false);
-
-			// Prevent busy-loop
 			::usleep(500 * 1000);
-
 			return g_need_to_stop.load();
 		}
-
 		ts.tv_sec += milliseconds / 1000;
 		ts.tv_nsec += (milliseconds % 1000) * 1000000;
-
 		if (ts.tv_nsec >= 1000000000)
 		{
 			ts.tv_sec++;
 			ts.tv_nsec -= 1000000000;
 		}
-
 		while (::sem_timedwait(&g_semaphore, &ts) == -1)
 		{
 			const auto error_number = errno;
@@ -639,6 +670,7 @@ namespace ov::sig
 			// Fall through and return the current stop state.
 			break;
 		}
+#endif
 
 		return g_need_to_stop.load();
 	}

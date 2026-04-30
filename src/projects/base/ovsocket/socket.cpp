@@ -149,9 +149,18 @@ namespace ov
 					break;
 
 				case SocketType::Udp:
-					(family == SocketFamily::Inet)
-						? SetSockOpt(IPPROTO_IP, IP_PKTINFO, 1)
-						: SetSockOpt(IPPROTO_IPV6, IPV6_RECVPKTINFO, 1);
+					if (family == SocketFamily::Inet)
+					{
+						SetSockOpt(IPPROTO_IP, IP_PKTINFO, 1);
+					}
+					else
+					{
+#ifdef IPV6_RECVPKTINFO
+						SetSockOpt(IPPROTO_IPV6, IPV6_RECVPKTINFO, 1);
+#elif defined(IPV6_PKTINFO)
+						SetSockOpt(IPPROTO_IPV6, IPV6_PKTINFO, 1);
+#endif
+					}
 
 					[[fallthrough]];
 
@@ -1922,12 +1931,12 @@ namespace ov
 
 	void Socket::UpdateLastRecvTime()
 	{
-		_last_recv_time = std::chrono::high_resolution_clock::now();
+		_last_recv_time = std::chrono::system_clock::now();
 	}
 
 	void Socket::UpdateLastSentTime()
 	{
-		_last_sent_time = std::chrono::high_resolution_clock::now();
+		_last_sent_time = std::chrono::system_clock::now();
 	}
 
 	bool Socket::Flush()

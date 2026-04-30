@@ -81,7 +81,7 @@ namespace mon
 
 	uint32_t CommonMetrics::GetUnusedTimeSec() const
 	{
-		auto current = std::chrono::high_resolution_clock::now();
+		auto current = std::chrono::system_clock::now();
 		return std::chrono::duration_cast<std::chrono::seconds>(current - GetLastUpdatedTime()).count();
 	}
 

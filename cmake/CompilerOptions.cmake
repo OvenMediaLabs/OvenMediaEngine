@@ -69,16 +69,33 @@ set(OME_GLOBAL_CXXFLAGS
 )
 
 # ------------------------------------------------------------------------------
+# macOS compatibility: force-include compat header for all source files
+# ------------------------------------------------------------------------------
+if(APPLE)
+    add_compile_options(
+        -include "${CMAKE_SOURCE_DIR}/src/projects/base/ovlibrary/compat/macos.h"
+        -D__APPLE_USE_RFC_3542
+    )
+endif()
+
+# ------------------------------------------------------------------------------
 # Per-build-type flags
 # ------------------------------------------------------------------------------
+# -Wl,--export-dynamic is a GNU ld flag (not supported on macOS ld64)
+if(APPLE)
+    set(_OME_EXPORT_DYNAMIC "")
+else()
+    set(_OME_EXPORT_DYNAMIC "-Wl,--export-dynamic")
+endif()
+
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(${OME_GLOBAL_CXXFLAGS} -g -O3)
-    add_link_options(-Wl,--export-dynamic -O3)
+    add_link_options(${_OME_EXPORT_DYNAMIC} -O3)
     message(STATUS "[OME] Release build: -O3 optimizations enabled")
 else()
     # Debug (default)
     add_compile_options(${OME_GLOBAL_CXXFLAGS} -g -DDEBUG -D_DEBUG)
-    add_link_options(-Wl,--export-dynamic)
+    add_link_options(${_OME_EXPORT_DYNAMIC})
     message(STATUS "[OME] Debug build")
     if(OME_SANITIZE_THREAD)
         add_compile_options(-fsanitize=thread)

@@ -81,7 +81,7 @@ namespace pvd
 				}
 				else
 				{
-					auto current = std::chrono::high_resolution_clock::now();
+					auto current = std::chrono::system_clock::now();
 
 					// Default Properties of PullStream
 					auto is_persistent = false;

@@ -891,7 +891,9 @@ namespace pvd
 
 		if (non_block == false && timeout_msec != 0)
 		{
-			struct timeval tv = {timeout_msec / 1000, (timeout_msec % 1000) * 1000};
+			struct timeval tv;
+			tv.tv_sec = static_cast<decltype(tv.tv_sec)>(timeout_msec / 1000);
+			tv.tv_usec = static_cast<decltype(tv.tv_usec)>((timeout_msec % 1000) * 1000);
 			_signalling_socket->SetRecvTimeout(tv);
 		}
 

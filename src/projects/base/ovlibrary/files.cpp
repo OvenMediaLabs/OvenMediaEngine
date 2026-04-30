@@ -14,7 +14,11 @@
 #include <dirent.h>
 #include <libgen.h>
 #include <unistd.h>
+#ifdef __linux__
 #include <linux/limits.h>
+#else
+#include <sys/syslimits.h>
+#endif
 
 namespace ov
 {

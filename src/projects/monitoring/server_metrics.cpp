@@ -1,6 +1,8 @@
 #include "server_metrics.h"
 
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <orchestrator/orchestrator.h>
 
 #include "monitoring_private.h"
@@ -188,7 +190,9 @@ namespace mon
 				}
 
 				// Clear memory fragmentation
+#ifndef __APPLE__
 				malloc_trim(0);
+#endif
 			}
 		}
 

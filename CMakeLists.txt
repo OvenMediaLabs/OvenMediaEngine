@@ -35,7 +35,11 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # ==============================================================================
 # Options
 # ==============================================================================
-set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for external dependencies")
+if(APPLE)
+    set(OME_DEP_PREFIX "$ENV{HOME}/opt/ovenmediaengine" CACHE PATH "Installation prefix for external dependencies")
+else()
+    set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for external dependencies")
+endif()
 
 option(OME_HWACCEL_NVIDIA           "Enable NVIDIA GPU hardware acceleration"            OFF)
 option(OME_HWACCEL_QSV              "Enable Intel QSV hardware acceleration"             OFF)

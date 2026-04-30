@@ -11,7 +11,9 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <srt/srt.h>
+#if !IS_MACOS
 #include <sys/epoll.h>
+#endif
 
 #include <functional>
 

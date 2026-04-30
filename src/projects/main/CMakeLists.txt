@@ -34,14 +34,22 @@ target_compile_definitions(OvenMediaEngine PRIVATE
 # Link all static libraries
 # All OME static targets are auto-registered in the OME_STATIC_LIBS global
 # property by ome_add_static_library() (see cmake/OMEHelpers.cmake).
-# LINK_GROUP:RESCAN wraps the whole list in --start-group/--end-group so
-# circular / forward references between static archives resolve correctly.
-# No manual maintenance needed when new modules are added.
+# On Linux: LINK_GROUP:RESCAN maps to --start-group/--end-group, resolving
+# circular/forward references between static archives.
+# On macOS: ld64 does not support --start-group. Use -all_load instead, which
+# forces all symbols from static archives to be included.
 # ==============================================================================
 get_property(_ome_all_libs GLOBAL PROPERTY OME_STATIC_LIBS)
-target_link_libraries(OvenMediaEngine PRIVATE
-    "$<LINK_GROUP:RESCAN,${_ome_all_libs}>"
-)
+if(APPLE)
+    target_link_libraries(OvenMediaEngine PRIVATE
+        -Wl,-all_load
+        ${_ome_all_libs}
+    )
+else()
+    target_link_libraries(OvenMediaEngine PRIVATE
+        "$<LINK_GROUP:RESCAN,${_ome_all_libs}>"
+    )
+endif()
 
 # ==============================================================================
 # System / pkg-config libraries  (mirrors add_pkg_config and LOCAL_LDFLAGS)
@@ -64,9 +72,9 @@ target_link_libraries(OvenMediaEngine PRIVATE
     PkgConfig::PKG_WHISPER
     ${UUID_LIB}
     pthread
-    dl
     z
-    stdc++fs
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:dl>
+    $<$<NOT:$<PLATFORM_ID:Darwin>>:stdc++fs>
 )
 
 # ==============================================================================

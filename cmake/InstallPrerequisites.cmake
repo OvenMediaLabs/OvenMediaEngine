@@ -31,7 +31,11 @@ cmake_minimum_required(VERSION 3.16)
 # Defaults
 # ==============================================================================
 if(NOT DEFINED OME_DEP_PREFIX)
-    set(OME_DEP_PREFIX /opt/ovenmediaengine)
+    if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+        set(OME_DEP_PREFIX "$ENV{HOME}/opt/ovenmediaengine")
+    else()
+        set(OME_DEP_PREFIX /opt/ovenmediaengine)
+    endif()
 endif()
 # Internal alias used throughout this file
 set(PREFIX ${OME_DEP_PREFIX})
@@ -235,16 +239,16 @@ endmacro()
 # Install base packages
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
-    ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
+    ome_run("${_SUDO}apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
         tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
-    ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
+    ome_run("${_SUDO}dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
         cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build" "dnf base packages")
 elseif(OSNAME MATCHES "Amazon Linux")
-    ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
+    ome_run("${_SUDO}yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
         cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages")
 elseif(OSNAME MATCHES "Fedora")
-    ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
+    ome_run("${_SUDO}yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
         bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages (fedora)")
 elseif(OSNAME MATCHES "Mac OS X")
     ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja" "brew base packages")
@@ -258,13 +262,13 @@ endif()
 if(OME_USE_CLANG)
     message(STATUS "[OME Prerequisites] Installing clang/lld (OME_USE_CLANG=ON)")
     if(OSNAME MATCHES "Ubuntu")
-        ome_run("sudo apt-get install -y clang lld" "apt clang")
+        ome_run("${_SUDO}apt-get install -y clang lld" "apt clang")
     elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
-        ome_run("sudo dnf install -y clang lld" "dnf clang")
+        ome_run("${_SUDO}dnf install -y clang lld" "dnf clang")
     elseif(OSNAME MATCHES "Amazon Linux")
-        ome_run("sudo yum install -y clang" "yum clang")
+        ome_run("${_SUDO}yum install -y clang" "yum clang")
     elseif(OSNAME MATCHES "Fedora")
-        ome_run("sudo yum install -y clang lld" "yum clang (fedora)")
+        ome_run("${_SUDO}yum install -y clang lld" "yum clang (fedora)")
     elseif(OSNAME MATCHES "Mac OS X")
         # Xcode CLT ships clang; nothing extra needed
         message(STATUS "[OME Prerequisites] macOS: Xcode CLT already provides clang. Skipping.")
@@ -280,14 +284,20 @@ endif()
 # ==============================================================================
 
 set(_COMMON_ENV "PATH=${PREFIX}/bin:$PATH PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:$PKG_CONFIG_PATH")
-set(_J "-j$(nproc)")
+set(_J "-j$(nproc 2>/dev/null || sysctl -n hw.ncpu)")
+# On macOS we install to a user-writable prefix — no ${_SUDO}needed
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_SUDO "")
+else()
+    set(_SUDO "sudo")
+endif()
 
 # ---- NASM ----
 set(_install_nasm "
 mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
 curl -sSLf ${NASM_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./autogen.sh && ./configure --prefix=${PREFIX} &&
-make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}/nasm
+make ${_J} && touch nasm.1 ndisasm.1 && ${_SUDO}make install && rm -rf ${TEMP_PATH}/nasm
 ")
 
 # ---- OpenSSL ----
@@ -295,7 +305,7 @@ set(_install_openssl "
 mkdir -p ${TEMP_PATH}/openssl && cd ${TEMP_PATH}/openssl &&
 curl -sSLf ${OPENSSL_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./config --prefix=${PREFIX} --openssldir=${PREFIX} --libdir=lib -Wl,-rpath,${PREFIX}/lib shared no-idea no-mdc2 no-rc5 no-ec2m no-ecdh no-ecdsa no-async &&
-make ${_J} && sudo make install_sw && rm -rf ${TEMP_PATH}/openssl
+make ${_J} && ${_SUDO}make install_sw && rm -rf ${TEMP_PATH}/openssl
 ")
 
 # ---- libsrtp ----
@@ -303,7 +313,7 @@ set(_install_libsrtp "
 mkdir -p ${TEMP_PATH}/srtp && cd ${TEMP_PATH}/srtp &&
 curl -sSLf ${SRTP_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./configure --prefix=${PREFIX} --enable-openssl --with-openssl-dir=${PREFIX} &&
-make ${_J} shared_library && sudo make install && rm -rf ${TEMP_PATH}/srtp
+make ${_J} shared_library && ${_SUDO}make install && rm -rf ${TEMP_PATH}/srtp
 ")
 
 # ---- SRT ----
@@ -312,7 +322,7 @@ mkdir -p ${TEMP_PATH}/srt && cd ${TEMP_PATH}/srt &&
 curl -sSLf ${SRT_SOURCE_URL} | tar -xz --strip-components=1 &&
 cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DENABLE_SHARED=1 -DENABLE_STATIC=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build build ${_J} &&
-sudo cmake --install build && rm -rf ${TEMP_PATH}/srt
+${_SUDO}cmake --install build && rm -rf ${TEMP_PATH}/srt
 ")
 
 # ---- Opus ----
@@ -320,15 +330,23 @@ set(_install_libopus "
 mkdir -p ${TEMP_PATH}/opus && cd ${TEMP_PATH}/opus &&
 curl -sSLf ${OPUS_SOURCE_URL} | tar -xz --strip-components=1 &&
 autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
-make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/opus
+make ${_J} && ${_SUDO}make install && ${_SUDO}rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/opus
 ")
 
 # ---- libvpx ----
+# On macOS, libvpx's shared library build system uses Linux GNU linker flags
+# (--no-undefined, -soname, --version-script) which macOS ld does not support.
+# Build as static instead; FFmpeg and OME can link against libvpx.a.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_VPX_SHARED "--disable-shared --enable-static")
+else()
+    set(_VPX_SHARED "--enable-shared --disable-static")
+endif()
 set(_install_libvpx "
 mkdir -p ${TEMP_PATH}/vpx && cd ${TEMP_PATH}/vpx &&
 curl -sSLf ${VPX_SOURCE_URL} | tar -xz --strip-components=1 &&
-./configure --prefix=${PREFIX} --enable-vp8 --enable-pic --enable-shared --disable-static --disable-vp9 --disable-debug --disable-examples --disable-docs --disable-install-bins &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
+./configure --prefix=${PREFIX} --enable-vp8 --enable-pic ${_VPX_SHARED} --disable-vp9 --disable-debug --disable-examples --disable-docs --disable-install-bins &&
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/vpx
 ")
 
 # ---- libwebp ----
@@ -336,7 +354,7 @@ set(_install_libwebp "
 mkdir -p ${TEMP_PATH}/webp && cd ${TEMP_PATH}/webp &&
 curl -sSLf ${WEBP_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/webp
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/webp
 ")
 
 # ---- fdk-aac ----
@@ -344,15 +362,20 @@ set(_install_fdk_aac "
 mkdir -p ${TEMP_PATH}/aac && cd ${TEMP_PATH}/aac &&
 curl -sSLf ${FDKAAC_SOURCE_URL} | tar -xz --strip-components=1 &&
 autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static --datadir=/tmp/aac &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/aac
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/aac
 ")
 
 # ---- openh264 ----
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_OPENH264_OS "OS=darwin")
+else()
+    set(_OPENH264_OS "OS=linux")
+endif()
 set(_install_libopenh264 "
 mkdir -p ${TEMP_PATH}/openh264 && cd ${TEMP_PATH}/openh264 &&
 curl -sSLf ${OPENH264_SOURCE_URL} | tar -xz --strip-components=1 &&
 sed -i -e 's|PREFIX=/usr/local|PREFIX=${PREFIX}|' Makefile &&
-make OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
+make ${_OPENH264_OS} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/openh264
 ")
 
 # ---- x264 (optional) ----
@@ -360,19 +383,25 @@ set(_install_libx264 "
 mkdir -p ${TEMP_PATH}/x264 && cd ${TEMP_PATH}/x264 &&
 curl -sLf ${X264_SOURCE_URL} | tar -jx --strip-components=1 &&
 ./configure --prefix=${PREFIX} --enable-shared --enable-pic --disable-cli &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/x264
 ")
 
 # ---- nv-codec-headers (optional) ----
 set(_install_nvcc_hdr "
 mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
 curl -sSLf ${NVCC_HDR_SOURCE_URL} | tar -xz --strip-components=1 &&
-sudo make PREFIX=${PREFIX} LIBDIR=lib install
+${_SUDO}make PREFIX=${PREFIX} LIBDIR=lib install
 ")
 
 # ---- FFmpeg ----
 set(_FFMPEG_ADDI_LICENSE      "")
 set(_FFMPEG_ADDI_LIBS         "--disable-nvdec --disable-vaapi --disable-vdpau --disable-cuda-llvm --disable-cuvid --disable-ffnvcodec")
+# --disable-new-dtags is a Linux GNU ld flag; not supported on macOS
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(_FFMPEG_DTAGS_FLAG "")
+else()
+    set(_FFMPEG_DTAGS_FLAG " -Wl,--disable-new-dtags")
+endif()
 set(_FFMPEG_ADDI_ENCODER      "")
 set(_FFMPEG_ADDI_DECODER      "")
 set(_FFMPEG_ADDI_FILTERS      "")
@@ -451,7 +480,7 @@ set(_FFMPEG_CONFIGURE_CMD
     "--enable-zlib --enable-libopus --enable-libvpx --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
     "--enable-network --enable-libsrt --enable-dct --enable-rdft --enable-libwebp"
     "--extra-cflags=\"-I${PREFIX}/include${_FFMPEG_ADDI_CFLAGS}\""
-    "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -Wl,--disable-new-dtags${_FFMPEG_ADDI_LDFLAGS}\""
+    "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib${_FFMPEG_DTAGS_FLAG}${_FFMPEG_ADDI_LDFLAGS}\""
     "--extra-libs=-ldl"
     "${_FFMPEG_ADDI_EXTRA_LIBS}"
     "${_FFMPEG_ADDI_LICENSE}"
@@ -470,7 +499,7 @@ set(_install_ffmpeg "
 mkdir -p ${TEMP_PATH}/ffmpeg && cd ${TEMP_PATH}/ffmpeg &&
 curl -sSLf ${FFMPEG_SOURCE_URL} | tar -xz --strip-components=1 &&
 ${_FFMPEG_PATCH_CMDS}${_FFMPEG_CONFIGURE_LINE} &&
-make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
+make ${_J} && ${_SUDO}make install && ${_SUDO}rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
 ")
 
 # ---- stubs ----
@@ -479,7 +508,7 @@ set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
 set(_install_stubs "
 cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build/stubs -DOME_BUILD_STUBS=ON -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build ${_STUB_DIR}/build/stubs --target stubs -j$(nproc) &&
-sudo cmake --install ${_STUB_DIR}/build/stubs --component stubs
+${_SUDO}cmake --install ${_STUB_DIR}/build/stubs --component stubs
 ")
 
 # ---- jemalloc ----
@@ -492,7 +521,7 @@ set(_install_jemalloc "
 mkdir -p ${TEMP_PATH}/jemalloc && cd ${TEMP_PATH}/jemalloc &&
 curl -sSLf ${JEMALLOC_SOURCE_URL} | tar -jx --strip-components=1 &&
 ./configure --prefix=${PREFIX} --enable-shared ${_JEMALLOC_PROF_FLAG} &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/jemalloc
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/jemalloc
 ")
 
 # ---- PCRE2 ----
@@ -500,14 +529,14 @@ set(_install_libpcre2 "
 mkdir -p ${TEMP_PATH}/pcre2 && cd ${TEMP_PATH}/pcre2 &&
 curl -sSLf ${PCRE2_SOURCE_URL} | tar -xz --strip-components=1 &&
 ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/pcre2
 ")
 
 # ---- hiredis ----
 set(_install_hiredis "
 mkdir -p ${TEMP_PATH}/hiredis && cd ${TEMP_PATH}/hiredis &&
 curl -sSLf ${HIREDIS_SOURCE_URL} | tar -xz --strip-components=1 &&
-make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && sudo make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
+make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && ${_SUDO}make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
 ")
 
 # ---- spdlog ----
@@ -516,7 +545,7 @@ mkdir -p ${TEMP_PATH}/spdlog && cd ${TEMP_PATH}/spdlog &&
 curl -sSLf ${SPDLOG_SOURCE_URL} | tar -xz --strip-components=1 &&
 mkdir -p build && cd build &&
 cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
+make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/spdlog
 ")
 
 # ---- whisper.cpp ----
@@ -550,7 +579,7 @@ set(_install_whisper "
 mkdir -p ${TEMP_PATH}/whisper && cd ${TEMP_PATH}/whisper &&
 curl -sSLf ${WHISPER_SOURCE_URL} | tar -xz --strip-components=1 &&
 ${_WHISPER_CMAKE_LINE} &&
-cd build && make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/whisper
+cd build && make ${_J} && ${_SUDO}make install && rm -rf ${TEMP_PATH}/whisper
 ")
 
 # ==============================================================================
@@ -567,11 +596,16 @@ set(_targets
     libwebp
     fdk_aac
     ffmpeg
-    stubs
     jemalloc
     libpcre2
     hiredis
     spdlog
+)
+# stubs are GPU acceleration shims — not needed on macOS
+if(NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _targets stubs)
+endif()
+set(_targets ${_targets}
     whisper
 )
 

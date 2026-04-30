@@ -267,7 +267,7 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			if (node->_start != std::chrono::system_clock::time_point::max())
+			if (node->_start != std::chrono::high_resolution_clock::time_point::max())
 			{
 				auto current = std::chrono::high_resolution_clock::now();
 				_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(current - node->_start).count() * 0.1;

@@ -58,7 +58,8 @@ then
 
 	[ $? -ne 0 ] && echo "Could not create ${GIT_INFO_FILE}" && exit 1
 
-	sed -i "s/__SCRIPT_NAME__/${SCRIPT_NAME}/" "${GIT_INFO_FILE}"
-	sed -i "s/__GIT_VERSION__/\"${GIT_VERSION}\"/" "${GIT_INFO_FILE}"
-	sed -i "s/__GIT_VERSION_EXTRA__/\"${GIT_VERSION_EXTRA}\"/" "${GIT_INFO_FILE}"
+	# BSD sed (macOS) requires an explicit backup extension with -i; use .bak and remove it
+	sed -i.bak "s/__SCRIPT_NAME__/${SCRIPT_NAME}/" "${GIT_INFO_FILE}" && rm -f "${GIT_INFO_FILE}.bak"
+	sed -i.bak "s/__GIT_VERSION__/\"${GIT_VERSION}\"/" "${GIT_INFO_FILE}" && rm -f "${GIT_INFO_FILE}.bak"
+	sed -i.bak "s/__GIT_VERSION_EXTRA__/\"${GIT_VERSION_EXTRA}\"/" "${GIT_INFO_FILE}" && rm -f "${GIT_INFO_FILE}.bak"
 fi

@@ -118,16 +118,22 @@ namespace ov
 			case SocketType::Tcp:
 				// Disable Nagle's algorithm
 				result &= SetSockOpt<int>(IPPROTO_TCP, TCP_NODELAY, 1);
-				// Quick ACK
+#ifdef TCP_QUICKACK
+				// Quick ACK (Linux only; macOS uses SO_NOSIGPIPE instead)
 				result &= SetSockOpt<int>(IPPROTO_TCP, TCP_QUICKACK, 1);
+#endif
 				// Enable TCP keep-alive
 				result &= SetSockOpt<int>(SOL_SOCKET, SO_KEEPALIVE, 1);
-				// Wait XX seconds before starting to determine that the connection is alive
+#ifdef SOL_TCP
 				result &= SetSockOpt<int>(SOL_TCP, TCP_KEEPIDLE, 30);
-				// Period of sending probe packet to determine keep alive
 				result &= SetSockOpt<int>(SOL_TCP, TCP_KEEPINTVL, 10);
-				// Number of times to probe
 				result &= SetSockOpt<int>(SOL_TCP, TCP_KEEPCNT, 3);
+#elif defined(TCP_KEEPALIVE)
+				// macOS uses TCP_KEEPALIVE for the idle timeout
+				result &= SetSockOpt<int>(IPPROTO_TCP, TCP_KEEPALIVE, 30);
+				result &= SetSockOpt<int>(IPPROTO_TCP, TCP_KEEPINTVL, 10);
+				result &= SetSockOpt<int>(IPPROTO_TCP, TCP_KEEPCNT, 3);
+#endif
 				break;
 
 			case SocketType::Udp:

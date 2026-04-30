@@ -445,4 +445,9 @@ else()
 endif()
 
 # uuid (system library, not pkg-config)
-find_library(UUID_LIB uuid REQUIRED)
+# macOS: uuid functions are built into the system library; no separate link needed
+if(APPLE)
+    set(UUID_LIB "")
+else()
+    find_library(UUID_LIB uuid REQUIRED)
+endif()

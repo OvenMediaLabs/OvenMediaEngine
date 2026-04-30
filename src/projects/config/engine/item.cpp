@@ -560,7 +560,7 @@ namespace cfg
 				break;
 
 			case ValueType::Long:
-				member_value = *(member.TryCast<long *>());
+				member_value = static_cast<Json::Int64>(*(member.TryCast<long *>()));
 				break;
 
 			case ValueType::Boolean:

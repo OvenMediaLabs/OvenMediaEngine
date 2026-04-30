@@ -95,7 +95,7 @@ namespace ov::logger
 
 		if (::pthread_equal(pthread_id, _pthread_id) == 0)
 		{
-			OV_ASSERT(false, "pthread_id mismatch in destructor. Expected: %lu, Actual: %lu", static_cast<unsigned long>(_pthread_id), static_cast<unsigned long>(pthread_id));
+			OV_ASSERT(false, "pthread_id mismatch in destructor. Expected: %lu, Actual: %lu", static_cast<unsigned long>(reinterpret_cast<uintptr_t>(_pthread_id)), static_cast<unsigned long>(reinterpret_cast<uintptr_t>(pthread_id)));
 		}
 #endif	// DEBUG
 
