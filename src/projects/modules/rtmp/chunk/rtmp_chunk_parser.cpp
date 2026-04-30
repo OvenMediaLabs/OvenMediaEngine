@@ -673,16 +673,29 @@ RtmpChunkParser::ParseResult RtmpChunkParser::ParseHeader(ov::ByteStream &stream
 
 int64_t RtmpChunkParser::CalculateRolledTimestamp(const uint32_t stream_id, const int64_t last_timestamp, int64_t parsed_timestamp)
 {
-	constexpr int64_t SERIAL_BITS		 = 32;
-	constexpr int64_t SERIAL_MODULO		 = (1LL << SERIAL_BITS);
-	constexpr int64_t SERIAL_HALF_RANGE	 = (1LL << (SERIAL_BITS - 1));
-	constexpr uint64_t SERIAL_VALUE_MASK = 0xFFFFFFFFULL;
+	// RTMP timestamps are carried as 32-bit serial numbers on the wire.
+	// Keep the serial width, its modulo, and the RFC1982 half-range explicit so
+	// the rollover math below reads directly in terms of the specification.
+	constexpr int64_t SERIAL_BITS					  = 32;
+	constexpr int64_t SERIAL_MODULO					  = (1LL << SERIAL_BITS);
+	constexpr int64_t SERIAL_HALF_RANGE				  = (1LL << (SERIAL_BITS - 1));
+	// Some senders behave as if the timestamp space were signed int32_t and
+	// restart near INT32_MAX -> 0. Keep that compatibility boundary separate
+	// from the real RTMP modulo so the fallback path stays clearly scoped.
+	constexpr int64_t SIGNED_SERIAL_MODULO			  = (1LL << (SERIAL_BITS - 1));
+	// Only the low 32 bits participate in RFC1982 ordering; higher bits belong
+	// to older unfolded epochs reconstructed locally by the receiver.
+	constexpr uint64_t SERIAL_VALUE_MASK			  = 0xFFFFFFFFULL;
+	// Some senders appear to reset absolute timestamps at the signed 31-bit
+	// boundary instead of RTMP's unsigned 32-bit boundary. Treat that as a
+	// compatibility path only when the implied forward delta is very small.
+	constexpr int64_t MAX_SIGNED_WRAP_COMPAT_DELTA_MS = 10 * 1000;
 
 	// RFC1982 comparison works on the 32-bit serial value only, not on the full
 	// accumulated absolute timestamp. Masking with an unsigned 32-bit pattern
 	// intentionally strips any older epoch bits before converting to uint32_t.
-	const auto last_serial				 = static_cast<uint32_t>(last_timestamp & SERIAL_VALUE_MASK);
-	const auto parsed_serial			 = static_cast<uint32_t>(parsed_timestamp);
+	const auto last_serial							  = static_cast<uint32_t>(last_timestamp & SERIAL_VALUE_MASK);
+	const auto parsed_serial						  = static_cast<uint32_t>(parsed_timestamp);
 
 	if (last_serial == parsed_serial)
 	{
@@ -730,16 +743,40 @@ int64_t RtmpChunkParser::CalculateRolledTimestamp(const uint32_t stream_id, cons
 		((serial_diff > 0) && (serial_diff < SERIAL_HALF_RANGE)) ||
 		((serial_diff < 0) && ((-serial_diff) > SERIAL_HALF_RANGE));
 
+	// Compatibility path for senders that appear to restart absolute
+	// timestamps at INT32_MAX -> 0 instead of UINT32_MAX -> 0. This is not
+	// standard RTMP rollover, so only accept it when the implied forward delta
+	// is very small.
+	const int64_t signed_wrap_forward_delta = SIGNED_SERIAL_MODULO - static_cast<int64_t>(last_serial) + parsed_serial;
+	const bool signed_wrap_compat_candidate =
+		(parsed_serial_is_after_previous == false) &&
+		(last_serial < SIGNED_SERIAL_MODULO) &&
+		(parsed_serial < SIGNED_SERIAL_MODULO) &&
+		(parsed_serial < last_serial) &&
+		(signed_wrap_forward_delta > 0) &&
+		(signed_wrap_forward_delta <= MAX_SIGNED_WRAP_COMPAT_DELTA_MS);
+
 	if (parsed_serial_is_after_previous)
 	{
 		if (resolved_timestamp <= last_timestamp)
 		{
 			resolved_timestamp += SERIAL_MODULO;
-			logai("Timestamp is rolled forward: last TS: %" PRId64 ", parsed: %" PRId64 ", resolved: %" PRId64,
+			logad("Timestamp is rolled forward: last TS: %" PRId64 ", parsed: %" PRId64 ", resolved: %" PRId64,
 				  last_timestamp,
 				  parsed_timestamp,
 				  resolved_timestamp);
 		}
+	}
+	// Only reach this branch when the normal RFC1982 32-bit comparison says the
+	// parsed serial is not after the previous one.
+	else if (signed_wrap_compat_candidate)
+	{
+		resolved_timestamp = last_timestamp + signed_wrap_forward_delta;
+		logad("Timestamp is rolled forward with signed-31bit compatibility: last TS: %" PRId64 ", parsed: %" PRId64 ", delta: %" PRId64 ", resolved: %" PRId64,
+			  last_timestamp,
+			  parsed_timestamp,
+			  signed_wrap_forward_delta,
+			  resolved_timestamp);
 	}
 	else if (resolved_timestamp > last_timestamp)
 	{

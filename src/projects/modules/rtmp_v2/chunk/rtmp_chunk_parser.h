@@ -51,6 +51,8 @@ namespace modules::rtmp
 
 		std::shared_ptr<const Message> GetMessage();
 		size_t GetMessageCount() const;
+		info::NamePath GetNamePath() const;
+		void UpdateNamePath(const info::NamePath &stream_name_path);
 
 		void SetChunkSize(size_t chunk_size)
 		{
@@ -162,6 +164,8 @@ namespace modules::rtmp
 		std::map<uint32_t, std::shared_ptr<const ChunkHeader>> _preceding_chunk_header_map;
 
 		ov::Queue<std::shared_ptr<const Message>> _message_queue{nullptr, 500};
+		mutable std::mutex _name_path_mutex;
+		info::NamePath _name_path;
 		size_t _chunk_size;
 	};
 }  // namespace modules::rtmp
