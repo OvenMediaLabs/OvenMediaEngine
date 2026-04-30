@@ -99,7 +99,16 @@ namespace ov
 		{
 			info::ManagedQueue::SetThreshold(threshold);
 
-			MonitorInstance->OnQueueUpdated(*this, true);
+			MonitorInstance->OnQueueUpdated(*this);
+		}
+
+		// Set threshold in time-base mode.
+		// The effective item count is estimated as: input_message_per_second * time_ms / 1000.
+		void SetThresholdByTime(int time_ms)
+		{
+			info::ManagedQueue::SetThresholdByTime(time_ms);
+
+			MonitorInstance->OnQueueUpdated(*this);
 		}				
 
 		// Urgent item will be inserted at the front of the queue
@@ -360,6 +369,18 @@ namespace ov
 			_buffering_delay = delay_ms;
 		}
 
+		ov::String GetInfoString()
+		{
+			auto shared_lock = std::shared_lock(_name_mutex);
+
+			return ov::String::FormatString(
+				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %ld%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
+				GetId(), _size, _threshold,
+				GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? " ms" : "", _buffering_delay,
+				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
+				_urn->ToString().CStr());
+		}
+
 	private:
 
 		int32_t GetBufferedTimeMsInternal()
@@ -496,7 +517,7 @@ namespace ov
 			{
 				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return (_size  < _threshold);
+					return (!IsThresholdExceeded());
 				});
 				if (!result || _stop)
 				{
@@ -581,23 +602,9 @@ namespace ov
 				_last_input_message_count = _input_message_count;
 				_last_output_message_count = _output_message_count;
 	
-				int adjusted_size = _size;
+				UpdateThreshold();
 
-				if (_buffering_delay > 0)
-				{
-					// excluding the estimated intended buffer size
-					int intended_buffer_size = (double)_input_message_per_second * ((double)_buffering_delay / 1000.0);
-					adjusted_size -= intended_buffer_size;
-
-					// logi("DEBUG", "intended buffer size: %d, input_message_count: %d, input_message_per_second: %d, buffering_delay: %d, size: %d, adjusted_size: %d", intended_buffer_size, _input_message_count, _input_message_per_second, _buffering_delay, _size, adjusted_size);
-					
-					if (adjusted_size < 0)
-					{
-						adjusted_size = 0;
-					}
-				}
-
-				if ((_threshold > 0) && ((size_t)adjusted_size >= _threshold))
+				if (IsThresholdExceeded())
 				{
 					_threshold_exceeded_time_in_us += _stats_metric_interval;
 
@@ -608,7 +615,7 @@ namespace ov
 						_last_logging_time = 0;
 
 						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%u] %s has exceeded the threshold and increased peak. size: %zu, threshold: %zu, peak: %zu, imps: %zu, omps: %zu", GetId(), _urn->ToString().CStr(), _size, _threshold, _peak, _input_message_per_second, _output_message_per_second);
+						logw(LOG_TAG, "Exceeded. %s", GetInfoString().CStr());
 
 						_last_logged_peak = _peak;
 					}
@@ -616,6 +623,8 @@ namespace ov
 				else
 				{
 					_threshold_exceeded_time_in_us = 0;
+
+					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
 				}
 
 				MonitorInstance->OnQueueUpdated(*this);
@@ -635,6 +644,38 @@ namespace ov
 		}
 
 	private:
+
+		// Check if the queue has exceeded the threshold.
+		// _threshold == 0 means no threshold.
+		bool IsThresholdExceeded() const
+		{
+			if (_threshold == 0) return false;
+			return _size >= _threshold;
+		}
+
+		// Compute the threshold
+		void UpdateThreshold()
+		{
+			// Compute the delay buffer count 
+			size_t delay_buffer_count = 0;
+			if (_buffering_delay > 0 && _input_message_per_second > 0)
+			{
+				delay_buffer_count = static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_buffering_delay) / 1000.0));
+			}
+
+			// For time-based threshold, compute the effective count from the input message rate + delay buffer
+			if (_threshold_mode == ThresholdMode::TimeBased && _input_message_per_second > 0)
+			{
+				size_t base_count = std::max(static_cast<size_t>(1), static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_threshold_value) / 1000.0)));
+				_threshold = base_count + delay_buffer_count;
+			}
+			// For count-based threshold + delay buffer
+			else if (_threshold_mode == ThresholdMode::CountBased && _threshold_value > 0)
+			{
+				_threshold = static_cast<size_t>(_threshold_value) + delay_buffer_count;
+			}
+		}
+
 		StopWatch _timer;
 
 		int _stats_metric_interval = 0;
@@ -667,9 +708,6 @@ namespace ov
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold
 		bool _exceed_threshold_and_wait_enabled = false;
-
-		// Delay
-		int _buffering_delay = 0;
 	};
 
 }  // namespace ov
