@@ -1568,7 +1568,7 @@ namespace pvd::rtmp
 			{
 				if (rtmp_track->GetMediaPacketList().size() > MAX_PACKET_COUNT_BEFORE_SEQ_HEADER)
 				{
-					logaw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
+					logaw("Track %u has too many media packets without sequence header, ignoring the track", track_id);
 
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
@@ -1720,7 +1720,7 @@ namespace pvd::rtmp
 			{
 				if (rtmp_track->GetMediaPacketList().size() > MAX_PACKET_COUNT_BEFORE_SEQ_HEADER)
 				{
-					logaw("Track %u has too many media packets without sequence header, ignoreing the track", track_id);
+					logaw("Track %u has too many media packets without sequence header, ignoring the track", track_id);
 
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
