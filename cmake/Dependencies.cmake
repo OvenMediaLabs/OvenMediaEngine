@@ -328,37 +328,33 @@ ome_find_pkg(PKG_LIBAVUTIL      libavutil       OME_VER_LIBAVUTIL       REINSTAL
 # Optional / hardware-accelerated dependencies
 # ==============================================================================
 
-# NVIDIA NVENC/NVDEC
+# NVIDIA CUDA/NVML 
 if(OME_HWACCEL_NVIDIA)
-    pkg_check_modules(PKG_FFNVCODEC QUIET IMPORTED_TARGET ffnvcodec)
-    if(NOT PKG_FFNVCODEC_FOUND)
-        # Auto-install nv-codec-headers with NVIDIA flag forwarded
-        message(STATUS "[OME] ffnvcodec not found - installing nv-codec-headers ...")
-        execute_process(
-            COMMAND ${CMAKE_COMMAND}
-                -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
-                -DOME_HWACCEL_NVIDIA=ON
-                -DTARGET=nvcc_hdr
-                -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
-            RESULT_VARIABLE _ret
-        )
-        if(_ret EQUAL 0)
-            pkg_check_modules(PKG_FFNVCODEC IMPORTED_TARGET ffnvcodec)
-        endif()
-    endif()
-    if(PKG_FFNVCODEC_FOUND)
+    set(_CUDA_ROOT "/usr/local/cuda")
+    find_library(_NV_CUDA_LIB   cuda       HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_NV_CUDART_LIB cudart     HINTS ${_CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
+    find_library(_NV_ML_LIB     nvidia-ml  HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_program(_NV_NVCC       nvcc       HINTS ${_CUDA_ROOT}/bin)
+
+    if(_NV_CUDA_LIB AND _NV_CUDART_LIB AND _NV_ML_LIB AND _NV_NVCC)
         message(STATUS "[OME] NVIDIA hardware acceleration: ENABLED")
         add_compile_definitions(HWACCELS_NVIDIA_ENABLED)
-        include_directories(/usr/local/cuda/include)
-        link_directories(/usr/local/cuda/lib64 /usr/local/cuda/lib64/stubs)
+        include_directories(${_CUDA_ROOT}/include)
+        link_directories(${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs)
         set(OME_NVIDIA_LIBS cuda cudart nvidia-ml)
     else()
-        message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but ffnvcodec still not found - disabling")
+        message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but required NVIDIA libraries/tools not found - disabling")
         set(OME_HWACCEL_NVIDIA OFF)
     endif()
+
+    unset(_NV_CUDA_LIB CACHE)
+    unset(_NV_CUDART_LIB CACHE)
+    unset(_NV_ML_LIB CACHE)
+    unset(_NV_NVCC CACHE)
+    unset(_CUDA_ROOT)
 endif()
 
-# Intel QSV
+# Intel QSV (Deprecated)
 if(OME_HWACCEL_QSV)
     pkg_check_modules(PKG_LIBMFX IMPORTED_TARGET libmfx)
     if(PKG_LIBMFX_FOUND)
@@ -375,7 +371,7 @@ if(OME_HWACCEL_XMA)
     ome_find_pkg(PKG_LIBXMA2API libxma2api OPTIONAL)
     ome_find_pkg(PKG_XVBM       xvbm       OPTIONAL)
     ome_find_pkg(PKG_LIBXRM     libxrm     OPTIONAL)
-    if(PKG_LIBXMA2API_FOUND AND PKG_LIBXRM_FOUND)
+    if(PKG_LIBXMA2API_FOUND AND PKG_LIBXRM_FOUND AND PKG_XVBM_FOUND)
         message(STATUS "[OME] Xilinx XMA hardware acceleration: ENABLED")
         add_compile_definitions(HWACCELS_XMA_ENABLED)
     else()
@@ -443,6 +439,25 @@ if(OME_ENABLE_X264)
 else()
     message(STATUS "[OME] libx264: disabled by OME_ENABLE_X264=OFF")
 endif()
+
+# ==============================================================================
+# Stubs (GPU stub .so files) are installed unconditionally, regardless of hardware support.
+# ==============================================================================
+if(NOT IS_DIRECTORY "${OME_DEP_PREFIX}/lib/stubs")
+    message(STATUS "[OME] ${OME_DEP_PREFIX}/lib/stubs not found - installing stubs libraries ...")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND}
+            -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
+            -DTARGET=stubs
+            -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
+        RESULT_VARIABLE _stubs_ret
+    )
+    if(NOT _stubs_ret EQUAL 0)
+        message(FATAL_ERROR "[OME] Failed to install stubs.")
+    endif()
+    unset(_stubs_ret)
+endif()
+
 
 # uuid (system library, not pkg-config)
 find_library(UUID_LIB uuid REQUIRED)

@@ -474,12 +474,12 @@ make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_
 ")
 
 # ---- stubs ----
-# Built via CMake (misc/stubs/CMakeLists.txt) instead of the legacy Makefile.
-set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/../misc/stubs")
 set(_install_stubs "
-cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build/stubs -DOME_BUILD_STUBS=ON -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
-cmake --build ${_STUB_DIR}/build/stubs --target stubs -j$(nproc) &&
-sudo cmake --install ${_STUB_DIR}/build/stubs --component stubs
+cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build -DCMAKE_INSTALL_PREFIX=${PREFIX} &&
+cmake --build ${_STUB_DIR}/build --target stubs -j$(nproc) &&
+sudo cmake --install ${_STUB_DIR}/build --component stubs && 
+rm -rf ${_STUB_DIR}/build
 ")
 
 # ---- jemalloc ----

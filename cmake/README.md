@@ -36,16 +36,15 @@ cmake --build build/Release
 | `OME_DEP_PREFIX` | `/opt/ovenmediaengine` | Installation prefix for external dependencies |
 | `OME_SANITIZE_THREAD` | OFF | Enable ThreadSanitizer (TSan). Debug builds only |
 | `OME_SKIP_DEPENDENCY_CHECK` | OFF | Skip auto-install of missing/wrong-version packages. Useful for CI or offline builds |
-| `OME_HWACCEL_NVIDIA` | OFF | Enable NVIDIA GPU acceleration. Enables `OME_BUILD_STUBS` automatically |
+| `OME_HWACCEL_NVIDIA` | OFF | Enable NVIDIA GPU acceleration. |
 | `OME_HWACCEL_QSV` | OFF | Enable Intel QSV acceleration. Requires Intel driver (`libmfx`) installed separately |
-| `OME_HWACCEL_XMA` | OFF | Enable Xilinx XMA acceleration. Enables `OME_BUILD_STUBS` automatically |
+| `OME_HWACCEL_XMA` | OFF | Enable Xilinx XMA acceleration. |
 | `OME_HWACCEL_NILOGAN` | OFF | Enable Netint NiLogan acceleration. Requires `OME_NILOGAN_PATCH_PATH` |
 | `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file. Required when `OME_HWACCEL_NILOGAN=ON` |
 | `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
 | `OME_ENABLE_X264` | ON | Enable libx264 encoder support |
 | `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
 | `OME_USE_JEMALLOC_PROFILE` | OFF | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON` |
-| `OME_BUILD_STUBS` | OFF/AUTO | Build GPU stub `.so` libraries. Auto-enabled when NVIDIA or XMA is ON |
 | `OME_BUILD_TESTS` | OFF | Build unit tests (requires internet access to fetch GTest v1.14.0) |
 
 ---
