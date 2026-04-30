@@ -211,7 +211,7 @@ find_nearest_higher_nvidia_driver_rocky() {
     require_cmd dnf
 
     dnf module list nvidia-driver --all 2>/dev/null \
-        | awk '$1 == "nvidia-driver" && $2 ~ /^[0-9]+$/ {print $2}' \
+        | awk '$1 == "nvidia-driver" && $2 ~ /^[0-9]+-dkms$/ {print $2}' \
         | sort -Vu \
         | select_equal_or_nearest_higher_version "${current_version}"
 }
