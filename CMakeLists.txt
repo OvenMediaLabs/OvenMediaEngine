@@ -124,7 +124,9 @@ if(OME_BUILD_TESTS)
         PkgConfig::PKG_SPDLOG
         PkgConfig::PKG_WHISPER
         ${UUID_LIB}
-        pthread dl z stdc++fs
+        pthread z
+        $<$<NOT:$<PLATFORM_ID:Darwin>>:dl>
+        $<$<NOT:$<PLATFORM_ID:Darwin>>:stdc++fs>
     )
 endif()
 

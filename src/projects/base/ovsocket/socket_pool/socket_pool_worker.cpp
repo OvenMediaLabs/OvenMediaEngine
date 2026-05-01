@@ -557,6 +557,18 @@ namespace ov
 		{
 			std::lock_guard lock_guard(_socket_map_mutex);
 			_sockets_to_insert.push(socket);
+
+#if defined(__APPLE__)
+			// On macOS, kqueue with EVFILT_WRITE|EV_CLEAR does not fire an immediate
+			// write event when a socket is added (unlike Linux epoll which fires EPOLLOUT
+			// immediately for writable sockets). Signal the first-event sentinel here,
+			// right after the successful kevent ADD, so the caller does not hang in
+			// WaitForFirstEpollEvent().
+			if (socket->NeedToWaitFirstEpollEvent())
+			{
+				socket->SetFirstEpollEventReceived();
+			}
+#endif
 		}
 		else
 		{

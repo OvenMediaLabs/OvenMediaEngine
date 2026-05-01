@@ -263,9 +263,16 @@ function(_ome_materialize_test target)
     endforeach()
 
     if(_real_libs)
-        target_link_libraries(${target} PRIVATE
-            "$<LINK_GROUP:RESCAN,${_real_libs}>"
-        )
+        if(APPLE)
+            target_link_libraries(${target} PRIVATE
+                -Wl,-all_load
+                ${_real_libs}
+            )
+        else()
+            target_link_libraries(${target} PRIVATE
+                "$<LINK_GROUP:RESCAN,${_real_libs}>"
+            )
+        endif()
     endif()
 
     target_link_libraries(${target} PRIVATE
@@ -274,8 +281,16 @@ function(_ome_materialize_test target)
         ${_extlibs}
     )
 
+    # macOS Gatekeeper scans newly built binaries on first run, which can exceed
+    # the default 5-second discovery timeout. Use 30s on macOS only.
+    if(APPLE)
+        set(_discovery_timeout 30)
+    else()
+        set(_discovery_timeout 5)
+    endif()
     gtest_discover_tests(${target}
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
         PROPERTIES TIMEOUT 60 LABELS "${_label}"
+        DISCOVERY_TIMEOUT ${_discovery_timeout}
     )
 endfunction()
