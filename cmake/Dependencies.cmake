@@ -330,6 +330,8 @@ ome_find_pkg(PKG_LIBAVUTIL      libavutil       OME_VER_LIBAVUTIL       REINSTAL
 
 # NVIDIA CUDA/NVML 
 if(OME_HWACCEL_NVIDIA)
+    ome_find_pkg(PKG_FFNVCODEC  ffnvcodec       OME_VER_NVCC_HDR        REINSTALL_TARGET ffnvcodec)
+
     set(_CUDA_ROOT "/usr/local/cuda")
     find_library(_NV_CUDA_LIB   cuda       HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
     find_library(_NV_CUDART_LIB cudart     HINTS ${_CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
@@ -392,6 +394,26 @@ if(OME_HWACCEL_NILOGAN)
     endif()
 endif()
 
+# Stubs 
+# - Stubs lack pkg-config entries, so check for the stubs directory and install if missing.
+if(OME_HWACCEL_NVIDIA OR OME_HWACCEL_XMA OR OME_HWACCEL_NILOGAN)
+    if(NOT IS_DIRECTORY "${OME_DEP_PREFIX}/lib/stubs")
+        message(STATUS "[OME] ${OME_DEP_PREFIX}/lib/stubs not found - installing stubs libraries ...")
+        execute_process(
+            COMMAND ${CMAKE_COMMAND}
+                -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
+                -DTARGET=stubs
+                -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
+            RESULT_VARIABLE _stubs_ret
+        )
+        if(NOT _stubs_ret EQUAL 0)
+            message(FATAL_ERROR "[OME] Failed to install stubs.")
+        endif()
+        unset(_stubs_ret)
+    endif()
+endif()
+
+
 # jemalloc - required for Release builds, optional for Debug (can be forced with OME_ENABLE_JEMALLOC=ON)
 # Note: when built with --enable-prof, jemalloc reports its pkg-config version as "<ver>_0"
 # (e.g. "5.3.0_0"), so we use >= instead of = to avoid a false version mismatch.
@@ -438,24 +460,6 @@ if(OME_ENABLE_X264)
     endif()
 else()
     message(STATUS "[OME] libx264: disabled by OME_ENABLE_X264=OFF")
-endif()
-
-# ==============================================================================
-# Stubs (GPU stub .so files) are installed unconditionally, regardless of hardware support.
-# ==============================================================================
-if(NOT IS_DIRECTORY "${OME_DEP_PREFIX}/lib/stubs")
-    message(STATUS "[OME] ${OME_DEP_PREFIX}/lib/stubs not found - installing stubs libraries ...")
-    execute_process(
-        COMMAND ${CMAKE_COMMAND}
-            -DOME_DEP_PREFIX=${OME_DEP_PREFIX}
-            -DTARGET=stubs
-            -P "${CMAKE_SOURCE_DIR}/cmake/InstallPrerequisites.cmake"
-        RESULT_VARIABLE _stubs_ret
-    )
-    if(NOT _stubs_ret EQUAL 0)
-        message(FATAL_ERROR "[OME] Failed to install stubs.")
-    endif()
-    unset(_stubs_ret)
 endif()
 
 
