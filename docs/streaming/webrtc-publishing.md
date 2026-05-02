@@ -514,7 +514,7 @@ When sending `Request Offer` in the [signaling](webrtc-publishing.md#signalling-
   "sdp": { "..." },
   "candidates": [
     {"candidate": "candidate:0 1 UDP 2130706431 192.168.0.200 10000 typ host", "sdpMLineIndex": 0},
-    {"candidate": "candidate:1 1 TCP 2124414975 192.168.0.200 3479 typ host tcptype passive", "sdpMLineIndex": 0}
+    {"candidate": "candidate:1 1 TCP 1275068415 192.168.0.200 3479 typ host tcptype passive", "sdpMLineIndex": 0}
   ],
   "ice_servers": [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "user_name": "ome"}],
   "iceServers":  [{"credential": "airen", "urls": ["turn:192.168.0.200:3478?transport=tcp"], "username": "ome"}],
