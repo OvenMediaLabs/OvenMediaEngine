@@ -3,6 +3,16 @@
 #include "stun/stun_message.h"
 #include "stun/channel_data_message.h"
 
+namespace
+{
+	// Smallest header among packet types accepted in TURN mode (TURN ChannelData = 4 bytes;
+	// STUN is larger at 20 bytes, but FindPacketType only needs the first few bytes to classify).
+	constexpr size_t TURN_MODE_MIN_HEADER_SIZE = 4;
+
+	// RFC 4571: 2-byte big-endian length prefix preceding the payload.
+	constexpr size_t RFC4571_HEADER_SIZE = 2;
+}
+
 bool IceTcpDemultiplexer::AppendData(const void *data, size_t length)
 {	
 	_buffer->Append(data, length);
@@ -35,7 +45,12 @@ std::shared_ptr<IceTcpDemultiplexer::Packet> IceTcpDemultiplexer::PopPacket()
 
 bool IceTcpDemultiplexer::ParseData()
 {
-	while(_buffer->GetLength() > MINIMUM_PACKET_HEADER_SIZE)
+	// Minimum bytes required before attempting to parse a packet header.
+	// A mode-agnostic threshold would stall small RFC 4571 frames
+	// (total length <= TURN_MODE_MIN_HEADER_SIZE bytes) until more data arrives.
+	const size_t min_header_size = (_mode == Mode::RFC4571) ? RFC4571_HEADER_SIZE : TURN_MODE_MIN_HEADER_SIZE;
+
+	while (_buffer->GetLength() >= min_header_size)
 	{
 		IceTcpDemultiplexer::ExtractResult result;
 
@@ -46,9 +61,6 @@ bool IceTcpDemultiplexer::ParseData()
 		}
 		else
 		{
-			// Only STUN and TURN Channel should be input packet types to IceTcpDemultiplexer. 
-			// If another packet is input, it means a problem has occurred.
-
 			auto type = IcePacketIdentifier::FindPacketType(_buffer);
 
 			if(type == IcePacketIdentifier::PacketType::STUN)
@@ -146,8 +158,6 @@ IceTcpDemultiplexer::ExtractResult IceTcpDemultiplexer::ExtractChannelMessage()
 // Supports STUN, DTLS, RTP/RTCP (any packet type the ICE/DTLS stack may send).
 IceTcpDemultiplexer::ExtractResult IceTcpDemultiplexer::ExtractRfc4571Message()
 {
-	constexpr size_t RFC4571_HEADER_SIZE = 2;
-
 	if (_buffer->GetLength() < RFC4571_HEADER_SIZE)
 	{
 		return ExtractResult::NOT_ENOUGH_BUFFER;

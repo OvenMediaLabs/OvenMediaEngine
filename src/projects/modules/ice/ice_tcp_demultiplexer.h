@@ -6,11 +6,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include "ice_packet_identifier.h"
 
-//#define FIXED_STUN_HEADER_SIZE	20
-//#define FIXED_TURN_CHANNEL_HEADER_SIZE	4
-#define MINIMUM_PACKET_HEADER_SIZE	4
-
-// It only demultiplexes the stream input to ICE/TCP. 
+// It only demultiplexes the stream input to ICE/TCP.
 // Use identifier for packets that are input to UDP.
 
 class IceTcpDemultiplexer
