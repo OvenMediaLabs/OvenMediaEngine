@@ -16,6 +16,7 @@
 #include <vector>
 #include <memory>
 #include <unordered_set>
+#include <limits>
 
 #include <base/ovsocket/ovsocket.h>
 #include <config/config.h>
@@ -253,11 +254,19 @@ private:
 	}
 
 	// Wrap |data| in a 2-byte big-endian RFC 4571 length frame.
+	// Returns nullptr if |data| is null or larger than what the 2-byte length
+	// prefix can represent; callers must drop the packet in that case to avoid
+	// truncating the length and desynchronizing the TCP framing.
 	static std::shared_ptr<ov::Data> CreateRfc4571Frame(const std::shared_ptr<const ov::Data> &data)
 	{
-		auto length = static_cast<uint16_t>(data->GetLength());
+		if (data == nullptr || data->GetLength() > std::numeric_limits<uint16_t>::max())
+		{
+			return nullptr;
+		}
+
+		const uint16_t length = static_cast<uint16_t>(data->GetLength());
 		auto framed = std::make_shared<ov::Data>(2 + length);
-		uint8_t header[2] = {static_cast<uint8_t>(length >> 8), static_cast<uint8_t>(length & 0xFF)};
+		const uint8_t header[2] = {static_cast<uint8_t>(length >> 8), static_cast<uint8_t>(length & 0xFF)};
 		framed->Append(header, 2);
 		framed->Append(data);
 		return framed;
