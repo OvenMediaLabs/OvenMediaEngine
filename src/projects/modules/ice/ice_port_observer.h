@@ -58,13 +58,23 @@ public:
 
 	void AppendIceCandidates(const RtcIceCandidateList &ice_candidate_list)
 	{
+		// IcePortManager::GenerateIceCandidates() emits transport-homogeneous groups
+		// (one group per (port, socket_type)), so classifying by the first candidate is sufficient.
 		for (const auto &group : ice_candidate_list)
 		{
-			bool has_udp = false, has_tcp = false;
-			for (const auto &c : group)
-				(c.GetTransport().UpperCaseString() == "TCP" ? has_tcp : has_udp) = true;
-			if (has_udp) _udp_candidate_groups.push_back(group);
-			if (has_tcp) _tcp_candidate_groups.push_back(group);
+			if (group.empty())
+			{
+				continue;
+			}
+
+			if (group.front().GetTransport().UpperCaseString() == "TCP")
+			{
+				_tcp_candidate_groups.push_back(group);
+			}
+			else
+			{
+				_udp_candidate_groups.push_back(group);
+			}
 		}
 		_ice_candidate_list.insert(_ice_candidate_list.end(), ice_candidate_list.begin(), ice_candidate_list.end());
 	}
@@ -76,7 +86,7 @@ public:
 
 protected:
 	uint32_t _id = 0;
-	// Full grouped list (grouped by port, each group may contain UDP and/or TCP candidates)
+	// Full grouped list. Each group is transport-homogeneous (one (port, socket_type) per group).
 	RtcIceCandidateList _ice_candidate_list;
 	// Subsets pre-split by transport for fast round-robin access
 	RtcIceCandidateList _udp_candidate_groups;

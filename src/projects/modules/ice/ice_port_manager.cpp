@@ -323,11 +323,11 @@ bool IcePortManager::GenerateIceCandidates(const cfg::bind::cmm::IceCandidates &
 		});
 	}
 
-	// Create an ICE candidate using port_map (group by port number)
+	// Create an ICE candidate using port_map.
+	// Each emitted group contains candidates for a single (port, socket_type) pair,
+	// so consumers can rely on every group being transport-homogeneous (UDP-only or TCP-only).
 	for (auto &port_item : port_map)
 	{
-		std::vector<RtcIceCandidate> ice_candidates;
-
 		for (auto &socket_type_item : port_item.second)
 		{
 			const auto socket_type	  = socket_type_item.first;
@@ -335,6 +335,7 @@ bool IcePortManager::GenerateIceCandidates(const cfg::bind::cmm::IceCandidates &
 
 			const ov::String protocol = StringFromSocketType(socket_type);
 
+			std::vector<RtcIceCandidate> ice_candidates;
 			for (auto &address_map_item : address_map)
 			{
 				RtcIceCandidate candidate(protocol, address_map_item.first, 0, "");
@@ -345,9 +346,9 @@ bool IcePortManager::GenerateIceCandidates(const cfg::bind::cmm::IceCandidates &
 				}
 				ice_candidates.emplace_back(std::move(candidate));
 			}
-		}
 
-		ice_candidate_list->push_back(std::move(ice_candidates));
+			ice_candidate_list->push_back(std::move(ice_candidates));
+		}
 	}
 
 	return true;
