@@ -35,9 +35,12 @@
 
 // Dummy candidate used in relay-only (?transport=relay) mode.
 // Must be unreachable so direct ICE pairs fail, forcing the client to use its TURN relay candidate.
-// A private IP that is unlikely to exist on any real interface, plus an obscure port,
-// so Chrome accepts the candidate but direct connectivity checks time out.
-#define RELAY_MODE_DUMMY_IP4_CANDIDATE  "192.168.0.254"
+// IPv4 uses the CGN range (RFC 6598, 100.64.0.0/10) which is reserved for ISP-internal NAT and
+// virtually never appears on end-user LANs or containers, while still being a syntactically
+// valid address browsers accept. The RFC 5737 documentation ranges (192.0.2.0/24 etc.) are
+// avoided because some browsers drop those during candidate gathering.
+// IPv6 uses a high ULA address; ULA is rarely deployed in practice, so collision risk is low.
+#define RELAY_MODE_DUMMY_IP4_CANDIDATE  "100.127.255.254"
 #define RELAY_MODE_DUMMY_IP6_CANDIDATE  "fd00::ffff"
 #define RELAY_MODE_DUMMY_PORT 1518
 
