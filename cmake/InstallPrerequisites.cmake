@@ -364,7 +364,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
 ")
 
 # ---- nv-codec-headers (optional) ----
-set(_install_nvcc_hdr "
+set(_install_ffnvcodec "
 mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
 curl -sSLf ${NVCC_HDR_SOURCE_URL} | tar -xz --strip-components=1 &&
 sudo make PREFIX=${PREFIX} LIBDIR=lib install
@@ -580,7 +580,7 @@ if(ENABLE_X264)
 endif()
 
 if(ENABLE_NVIDIA)
-    list(APPEND _targets nvcc_hdr)
+    list(APPEND _targets ffnvcodec)
 endif()
 
 # Override with single target if requested
@@ -592,7 +592,7 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps libx264)
         endif()
         if(ENABLE_NVIDIA)
-            list(APPEND _ffmpeg_deps nvcc_hdr)
+            list(APPEND _ffmpeg_deps ffnvcodec)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
     elseif("${TARGET}" STREQUAL "libvpx")
