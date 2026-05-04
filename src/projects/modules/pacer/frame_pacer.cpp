@@ -16,6 +16,9 @@ static constexpr auto kAnchorIdleResetThreshold = std::chrono::seconds(2);
 // packets, or PTS clock running faster than wall clock). Reset.
 static constexpr int kAnchorDriftMultiplier = 3;
 
+// Per-track warning rate limit.
+static constexpr auto kWarnThrottle = std::chrono::seconds(1);
+
 FramePacer::FramePacer(int64_t timebase_num, int64_t timebase_den, uint32_t fallback_delay_ms)
 	: _timebase_num(timebase_num),
 	  _timebase_den(timebase_den),
@@ -42,6 +45,13 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
 	}
 
 	int after_ms = 0;
+
+	bool warn_drift				= false;
+	int64_t warn_drift_lateness = 0;
+	int64_t warn_drift_delta	= 0;
+	uint32_t warn_drift_delay	= 0;
+	uint32_t warn_drift_track	= 0;
+
 	{
 		std::lock_guard<std::mutex> lock(_mu);
 
@@ -86,6 +96,16 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
 		if (effective_delay_ms > 0 &&
 			delta_ms > static_cast<int64_t>(effective_delay_ms) * kAnchorDriftMultiplier)
 		{
+			if ((now - _last_drift_warn) >= kWarnThrottle)
+			{
+				_last_drift_warn	 = now;
+				warn_drift			 = true;
+				warn_drift_lateness	 = lateness_ms;
+				warn_drift_delta	 = delta_ms;
+				warn_drift_delay	 = effective_delay_ms;
+				warn_drift_track	 = packet->GetTrackId();
+			}
+
 			_anchor_pts_us	= pts_us;
 			_anchor_arrival = now;
 			delta_ms		= effective_delay_ms;
@@ -99,6 +119,15 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
 		}
 
 		after_ms = (delta_ms < 0) ? 0 : static_cast<int>(delta_ms);
+	}
+
+	if (warn_drift)
+	{
+		logtw("Anchor drift reset on track %u (lateness=%lldms, computed delta=%lldms, current delay=%ums) — PTS clock may be running faster than wall clock or catch-up burst pushed",
+			  warn_drift_track,
+			  static_cast<long long>(warn_drift_lateness),
+			  static_cast<long long>(warn_drift_delta),
+			  warn_drift_delay);
 	}
 
 	// Capture by value so the lambda is independent of FramePacer lifetime.

@@ -46,4 +46,10 @@ private:
 	std::deque<Sample> _samples;
 	int _current_delay_ms;
 	std::chrono::steady_clock::time_point _last_recompute;
+
+	// Warning state (rate-limited).
+	std::chrono::steady_clock::time_point _last_lateness_warn;
+	std::chrono::steady_clock::time_point _last_fastup_warn;
+	std::chrono::steady_clock::time_point _last_max_warn;
+	bool _at_max = false;
 };
