@@ -330,7 +330,7 @@ ome_find_pkg(PKG_LIBAVUTIL      libavutil       OME_VER_LIBAVUTIL       REINSTAL
 
 # NVIDIA CUDA/NVML 
 if(OME_HWACCEL_NVIDIA)
-    ome_find_pkg(PKG_FFNVCODEC  ffnvcodec       OME_VER_NVCC_HDR        REINSTALL_TARGET ffnvcodec)
+    ome_find_pkg(PKG_FFNVCODEC  ffnvcodec       OME_VER_NVCC_HDR        REINSTALL_TARGET ffmpeg)
 
     set(_CUDA_ROOT "/usr/local/cuda")
     find_library(_NV_CUDA_LIB   cuda       HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
