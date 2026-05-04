@@ -157,11 +157,16 @@ namespace pvd
                 }
 
                 std::shared_ptr<info::Stream> deleted_stream_info;
-                RemoveMultiplex(multiplex_file_info, &deleted_stream_info);
+				if (RemoveMultiplex(multiplex_file_info, &deleted_stream_info))
+				{
+					logti("Removed multiplex channel : %s/%s (%s)", GetVHostAppName().CStr(), multiplex_file_info._multiplex_profile->GetOutputStreamName().CStr(), multiplex_file_info._file_path.CStr());
 
-                logti("Removed multiplex channel : %s/%s (%s)", GetVHostAppName().CStr(), multiplex_file_info._multiplex_profile->GetOutputStreamName().CStr(), multiplex_file_info._file_path.CStr());
-
-                it = _multiplex_file_info_db.erase(it);
+					it = _multiplex_file_info_db.erase(it);
+				}
+				else
+				{
+					++it;
+				}
             }
             else
             {

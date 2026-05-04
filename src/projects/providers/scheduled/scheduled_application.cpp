@@ -101,10 +101,16 @@ namespace pvd
                 }
 
                 std::shared_ptr<info::Stream> deleted_stream_info;
-                RemoveSchedule(schedule_file_info, &deleted_stream_info);
-                logti("Removed schedule channel : %s/%s (%s)", GetVHostAppName().CStr(), schedule_file_info._schedule->GetStream()._name.CStr(), schedule_file_info._file_path.CStr());
+				if (RemoveSchedule(schedule_file_info, &deleted_stream_info) == true)
+				{
+					logti("Removed schedule channel : %s/%s (%s)", GetVHostAppName().CStr(), schedule_file_info._schedule->GetStream()._name.CStr(), schedule_file_info._file_path.CStr());
 
-                it = _schedule_file_info_db.erase(it);
+					it = _schedule_file_info_db.erase(it);
+				}
+				else
+				{
+					++it;
+				}
             }
             else
             {
