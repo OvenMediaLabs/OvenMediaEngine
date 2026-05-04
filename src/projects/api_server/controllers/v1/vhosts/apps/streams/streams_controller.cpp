@@ -250,7 +250,7 @@ namespace api
 			auto app_name	  = app->GetVHostAppName();
 			auto stream_name  = stream->GetName();
 
-			auto code		  = orchestrator->TerminateStream(app_name, stream_name);
+			auto code		  = orchestrator->TerminateStream(app_name, stream_name, true);
 			auto http_code	  = http::StatusCodeFromCommonError(code);
 			if (http_code != http::StatusCode::OK)
 			{

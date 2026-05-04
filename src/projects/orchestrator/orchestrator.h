@@ -211,7 +211,7 @@ namespace ocst
 		}
 		
 		/// Release Pulled Stream
-		CommonErrorCode TerminateStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+		CommonErrorCode TerminateStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, bool api_requested = false);
 
 		/// Find Provider from ProviderType
 		std::shared_ptr<pvd::Provider> GetProviderFromType(const ProviderType type);
