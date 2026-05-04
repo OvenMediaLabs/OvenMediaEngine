@@ -43,7 +43,7 @@ namespace tc
 		// Audio Codecs
 		// --------------------------------------------------------------------------
 		Register(info::CodecModule("FFmpeg Audio Codecs", cmn::MediaType::Audio, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
-						   {cmn::MediaCodecId::Aac, cmn::MediaCodecId::Opus},
+						   {cmn::MediaCodecId::Aac, cmn::MediaCodecId::Mp2, cmn::MediaCodecId::Opus},
 						   true, true, false, false));
 
 		Register(info::CodecModule("Fraunhofer FDK AAC", cmn::MediaType::Audio, cmn::MediaCodecModuleId::FDKAAC, 0, "-",

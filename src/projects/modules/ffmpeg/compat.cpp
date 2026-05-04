@@ -51,6 +51,7 @@ namespace ffmpeg
 			OV_CASE_RETURN(AV_CODEC_ID_VP9, cmn::MediaCodecId::Vp9);
 			OV_CASE_RETURN(AV_CODEC_ID_FLV1, cmn::MediaCodecId::Flv);
 			OV_CASE_RETURN(AV_CODEC_ID_AAC, cmn::MediaCodecId::Aac);
+			OV_CASE_RETURN(AV_CODEC_ID_MP2, cmn::MediaCodecId::Mp2);
 			OV_CASE_RETURN(AV_CODEC_ID_MP3, cmn::MediaCodecId::Mp3);
 			OV_CASE_RETURN(AV_CODEC_ID_OPUS, cmn::MediaCodecId::Opus);
 			OV_CASE_RETURN(AV_CODEC_ID_MJPEG, cmn::MediaCodecId::Jpeg);
@@ -75,6 +76,7 @@ namespace ffmpeg
 			OV_CASE_RETURN(cmn::MediaCodecId::Av1, AV_CODEC_ID_AV1);
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, AV_CODEC_ID_FLV1);
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, AV_CODEC_ID_AAC);
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, AV_CODEC_ID_MP2);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, AV_CODEC_ID_MP3);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, AV_CODEC_ID_OPUS);
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, AV_CODEC_ID_MJPEG);

@@ -144,6 +144,7 @@ static AVCodecID AvCodecIdFromMediaCodecId(cmn::MediaCodecId codec_id)
 		WRITER_CASE(cmn::MediaCodecId::Flv, AV_CODEC_ID_FLV1)
 		WRITER_CASE(cmn::MediaCodecId::Aac, AV_CODEC_ID_AAC)
 		WRITER_CASE(cmn::MediaCodecId::Mp3, AV_CODEC_ID_MP3)
+		WRITER_CASE(cmn::MediaCodecId::Mp2, AV_CODEC_ID_MP2)
 		WRITER_CASE(cmn::MediaCodecId::Opus, AV_CODEC_ID_OPUS)
 		WRITER_CASE(cmn::MediaCodecId::Jpeg, AV_CODEC_ID_JPEG2000)
 		WRITER_CASE(cmn::MediaCodecId::Png, AV_CODEC_ID_PNG)
@@ -868,6 +869,8 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 		case cmn::BitstreamFormat::ID3v2:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::MP3:
+			[[fallthrough]];
+		case cmn::BitstreamFormat::MP2:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::OVEN_EVENT:
 			[[fallthrough]];

@@ -77,6 +77,8 @@ namespace mpegts
 	enum class WellKnownStreamTypes : uint8_t
 	{
 		None = 0x00,
+		MPEG1_AUDIO = 0x03,
+		MPEG2_AUDIO = 0x04,
 		H264 = 0x1B, // 27
 		H265 = 0x24, // 36
 		AAC = 0x0F, // 15 AAC ADTS

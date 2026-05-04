@@ -28,6 +28,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::Av1, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, std::make_shared<RtmpAacTrack>(stream, track_id, from_ex_header));
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, nullptr);
