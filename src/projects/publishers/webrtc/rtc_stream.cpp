@@ -22,6 +22,12 @@
 
 using namespace cmn;
 
+// Internal jitter-buffer bounds. The user-facing config is just
+// <JitterBuffer>true</JitterBuffer>; the operating point inside these bounds
+// is derived from observed jitter (see AdaptiveDelayController).
+static constexpr int kPacerMinMs = 20;
+static constexpr int kPacerMaxMs = 500;
+
 /***************************
  SDP Sample
 ****************************
@@ -128,13 +134,23 @@ bool RtcStream::Start()
 
 	auto webrtc_config	   = GetApplicationInfo().GetConfig().GetPublishers().GetWebrtcPublisher();
 
-	_rtx_enabled		   = webrtc_config.IsRtxEnabled();
-	_ulpfec_enabled		   = webrtc_config.IsUlpfecEnalbed();
-	_jitter_buffer_enabled = webrtc_config.IsJitterBufferEnabled();
+	_rtx_enabled	= webrtc_config.IsRtxEnabled();
+	_ulpfec_enabled = webrtc_config.IsUlpfecEnalbed();
 
-	auto playoutDelay	   = webrtc_config.GetPlayoutDelay(&_playout_delay_enabled);
-	_playout_delay_min	   = playoutDelay.GetMin();
-	_playout_delay_max	   = playoutDelay.GetMax();
+	auto playoutDelay  = webrtc_config.GetPlayoutDelay(&_playout_delay_enabled);
+	_playout_delay_min = playoutDelay.GetMin();
+	_playout_delay_max = playoutDelay.GetMax();
+
+	_pacer_enabled = webrtc_config.IsJitterBufferEnabled();
+
+	if (_pacer_enabled)
+	{
+		_pacer_scheduler = std::make_shared<ov::DelayQueue>("FramePacer");
+		_pacer_scheduler->Start();
+
+		_adaptive_delay_controller = std::make_shared<AdaptiveDelayController>(
+			kPacerMinMs, kPacerMaxMs);
+	}
 
 	if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::TransportCc)
 	{
@@ -194,9 +210,37 @@ bool RtcStream::Start()
 			AddRtpHistory(track);
 		}
 
-		if (_jitter_buffer_enabled == true)
+		if (_pacer_enabled && _pacer_scheduler)
 		{
-			_jitter_buffer_delay.CreateJitterBuffer(track->GetId(), track->GetTimeBase().GetDen());
+			auto pacer = std::make_shared<FramePacer>(
+				track->GetTimeBase().GetNum(),
+				track->GetTimeBase().GetDen(),
+				kPacerMinMs);
+
+			std::weak_ptr<pub::Stream> stream_weak = pub::Stream::GetSharedPtrAs<pub::Stream>();
+			bool is_video						   = (track->GetMediaType() == cmn::MediaType::Video);
+
+			pacer->Init(_pacer_scheduler,
+						[stream_weak, is_video](const std::shared_ptr<MediaPacket> &pkt) {
+							auto stream = stream_weak.lock();
+							if (!stream)
+								return;
+							auto rtc_stream = std::dynamic_pointer_cast<RtcStream>(stream);
+							if (!rtc_stream)
+								return;
+							if (is_video)
+								rtc_stream->PacketizeVideoFrame(pkt);
+							else
+								rtc_stream->PacketizeAudioFrame(pkt);
+						});
+
+			if (_adaptive_delay_controller)
+			{
+				pacer->SetAdaptiveController(_adaptive_delay_controller);
+			}
+
+			std::lock_guard<std::shared_mutex> lock(_pacers_lock);
+			_pacers[track->GetId()] = pacer;
 		}
 	}
 
@@ -237,13 +281,13 @@ bool RtcStream::Start()
 		}
 	}
 
-	logti("WebRTC Stream has been created : %s/%u\nRtx(%s) Ulpfec(%s) JitterBuffer(%s) PlayoutDelay(%s min:%d max: %d)",
+	logti("WebRTC Stream has been created : %s/%u\nRtx(%s) Ulpfec(%s) PlayoutDelay(%s min:%d max:%d) JitterBuffer(%s)",
 		  GetName().CStr(), GetId(),
 		  ov::Converter::ToString(_rtx_enabled).CStr(),
 		  ov::Converter::ToString(_ulpfec_enabled).CStr(),
-		  ov::Converter::ToString(_jitter_buffer_enabled).CStr(),
 		  ov::Converter::ToString(_playout_delay_enabled).CStr(),
-		  _playout_delay_min, _playout_delay_max);
+		  _playout_delay_min, _playout_delay_max,
+		  ov::Converter::ToString(_pacer_enabled).CStr());
 
 	return Stream::Start();
 }
@@ -254,6 +298,16 @@ bool RtcStream::Stop()
 	{
 		return false;
 	}
+
+	if (_pacer_scheduler)
+	{
+		_pacer_scheduler->Stop();
+	}
+	{
+		std::lock_guard<std::shared_mutex> lock(_pacers_lock);
+		_pacers.clear();
+	}
+	_pacer_scheduler.reset();
 
 	std::lock_guard<std::shared_mutex> lock(_packetizers_lock);
 	_packetizers.clear();
@@ -693,6 +747,11 @@ bool RtcStream::OnRtpPacketized(std::shared_ptr<RtpPacket> packet)
 
 void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	// Capture arrival time at the very top so that any subsequent processing
+	// delay (notably SendBufferedPackets() at the Started→Prepared transition)
+	// does not leak into the Pacer's anchor.
+	auto arrival_time = std::chrono::steady_clock::now();
+
 	if (GetState() == State::CREATED)
 	{
 		BufferMediaPacketUntilReadyToPlay(media_packet);
@@ -704,9 +763,9 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		SendBufferedPackets();
 	}
 
-	if (_jitter_buffer_enabled)
+	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
 	{
-		PushToJitterBuffer(media_packet);
+		// scheduled
 	}
 	else
 	{
@@ -716,6 +775,8 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 
 void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	auto arrival_time = std::chrono::steady_clock::now();
+
 	if (GetState() == State::CREATED)
 	{
 		BufferMediaPacketUntilReadyToPlay(media_packet);
@@ -727,14 +788,27 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		SendBufferedPackets();
 	}
 
-	if (_jitter_buffer_enabled)
+	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
 	{
-		PushToJitterBuffer(media_packet);
+		// scheduled
 	}
 	else
 	{
 		PacketizeAudioFrame(media_packet);
 	}
+}
+
+bool RtcStream::PushToPacer(const std::shared_ptr<MediaPacket> &media_packet,
+							std::chrono::steady_clock::time_point arrival_time)
+{
+	std::shared_lock<std::shared_mutex> lock(_pacers_lock);
+	auto it = _pacers.find(media_packet->GetTrackId());
+	if (it == _pacers.end())
+	{
+		return false;
+	}
+	it->second->Push(media_packet, arrival_time);
+	return true;
 }
 
 void RtcStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet)
@@ -759,44 +833,11 @@ bool RtcStream::SendBufferedPackets()
 		}
 
 		auto media_packet = buffered_media_packet.value();
-		if (media_packet->GetMediaType() == cmn::MediaType::Video)
-		{
-			if (_jitter_buffer_enabled)
-			{
-				PushToJitterBuffer(media_packet);
-			}
-			else
-			{
-				PacketizeVideoFrame(media_packet);
-			}
-		}
-		else if (media_packet->GetMediaType() == cmn::MediaType::Audio)
-		{
-			if (_jitter_buffer_enabled)
-			{
-				PushToJitterBuffer(media_packet);
-			}
-			else
-			{
-				PacketizeAudioFrame(media_packet);
-			}
-		}
-	}
-
-	return true;
-}
-
-void RtcStream::PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_packet)
-{
-	if (GetState() != State::STARTED)
-	{
-		return;
-	}
-
-	_jitter_buffer_delay.PushMediaPacket(media_packet);
-
-	while (auto media_packet = _jitter_buffer_delay.PopNextMediaPacket())
-	{
+		// Bypass the Pacer for buffered packets. The buffer accumulates
+		// frames during the Started→Prepared window so the first frame can be
+		// delivered properly once playback begins; routing them through the
+		// Pacer would let the scheduler dispatch them on its own PTS-based
+		// timeline, decoupled from the Prepared transition.
 		if (media_packet->GetMediaType() == cmn::MediaType::Video)
 		{
 			PacketizeVideoFrame(media_packet);
@@ -806,6 +847,8 @@ void RtcStream::PushToJitterBuffer(const std::shared_ptr<MediaPacket> &media_pac
 			PacketizeAudioFrame(media_packet);
 		}
 	}
+
+	return true;
 }
 
 void RtcStream::PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
