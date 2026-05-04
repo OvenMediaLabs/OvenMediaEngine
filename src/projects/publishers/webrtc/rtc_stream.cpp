@@ -22,6 +22,12 @@
 
 using namespace cmn;
 
+// Internal jitter-buffer bounds. The user-facing config is just
+// <JitterBuffer>true</JitterBuffer>; the operating point inside these bounds
+// is derived from observed jitter (see AdaptiveDelayController).
+static constexpr int kPacerMinMs = 20;
+static constexpr int kPacerMaxMs = 500;
+
 /***************************
  SDP Sample
 ****************************
@@ -135,20 +141,15 @@ bool RtcStream::Start()
 	_playout_delay_min = playoutDelay.GetMin();
 	_playout_delay_max = playoutDelay.GetMax();
 
-	auto pacer_config  = webrtc_config.GetPacer();
-	_pacer_enabled	   = pacer_config.IsEnabled();
-	_pacer_min_ms	   = pacer_config.GetMinMs();
-	_pacer_max_ms	   = pacer_config.GetMaxMs();
+	_pacer_enabled = webrtc_config.IsJitterBufferEnabled();
 
 	if (_pacer_enabled)
 	{
 		_pacer_scheduler = std::make_shared<ov::DelayQueue>("FramePacer");
 		_pacer_scheduler->Start();
 
-		// Adaptive controller is always created. Setting Min == Max pins the
-		// delay to a fixed value (the controller will clamp to that single value).
 		_adaptive_delay_controller = std::make_shared<AdaptiveDelayController>(
-			_pacer_min_ms, _pacer_max_ms);
+			kPacerMinMs, kPacerMaxMs);
 	}
 
 	if (webrtc_config.GetBandwidthEstimationType() == RtcBWEType::TransportCc)
@@ -214,7 +215,7 @@ bool RtcStream::Start()
 			auto pacer = std::make_shared<FramePacer>(
 				track->GetTimeBase().GetNum(),
 				track->GetTimeBase().GetDen(),
-				_pacer_min_ms);
+				kPacerMinMs);
 
 			std::weak_ptr<pub::Stream> stream_weak = pub::Stream::GetSharedPtrAs<pub::Stream>();
 			bool is_video						   = (track->GetMediaType() == cmn::MediaType::Video);
@@ -280,14 +281,13 @@ bool RtcStream::Start()
 		}
 	}
 
-	logti("WebRTC Stream has been created : %s/%u\nRtx(%s) Ulpfec(%s) PlayoutDelay(%s min:%d max:%d) Pacer(%s min:%dms max:%dms)",
+	logti("WebRTC Stream has been created : %s/%u\nRtx(%s) Ulpfec(%s) PlayoutDelay(%s min:%d max:%d) JitterBuffer(%s)",
 		  GetName().CStr(), GetId(),
 		  ov::Converter::ToString(_rtx_enabled).CStr(),
 		  ov::Converter::ToString(_ulpfec_enabled).CStr(),
 		  ov::Converter::ToString(_playout_delay_enabled).CStr(),
 		  _playout_delay_min, _playout_delay_max,
-		  ov::Converter::ToString(_pacer_enabled).CStr(),
-		  _pacer_min_ms, _pacer_max_ms);
+		  ov::Converter::ToString(_pacer_enabled).CStr());
 
 	return Stream::Start();
 }

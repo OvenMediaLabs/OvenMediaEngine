@@ -121,8 +121,6 @@ private:
 	int _playout_delay_max		= 0;
 
 	bool _pacer_enabled = false;
-	int _pacer_min_ms	= 0;
-	int _pacer_max_ms	= 0;
 
 	bool _transport_cc_enabled = false;
 	bool _remb_enabled		   = false;

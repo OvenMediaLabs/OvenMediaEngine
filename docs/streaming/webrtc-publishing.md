@@ -66,31 +66,21 @@ Add `<WebRTC>`  to `<Publisher>` to provide streaming through WebRTC.
         <BandwidthEstimation>TransportCC</BandwidthEstimation> <!-- REMB | ALL -->
         <Rtx>false</Rtx>
         <Ulpfec>false</Ulpfec>
-        <Pacer>
-            <Enable>true</Enable>
-            <Min>20</Min>
-            <Max>500</Max>
-        </Pacer>
+        <JitterBuffer>true</JitterBuffer>
     </WebRTC>
     ...
 </Publishers>
 ```
 
-<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Timeout</code></td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td><code>30000</code></td></tr><tr><td><code>Rtx</code></td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Ulpfec</code></td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Pacer</code></td><td>Smooths bursty frame delivery by spacing media frames according to their PTS. See below for details.</td><td>disabled</td></tr><tr><td><code>BandwidthEstimation</code></td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td><code>All</code></td></tr></tbody></table>
+<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Timeout</code></td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td><code>30000</code></td></tr><tr><td><code>Rtx</code></td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Ulpfec</code></td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>JitterBuffer</code></td><td>Smooths bursty frame delivery by spacing media frames according to their PTS. See below for details.</td><td><code>false</code></td></tr><tr><td><code>BandwidthEstimation</code></td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td><code>All</code></td></tr></tbody></table>
 
-{% hint style="info" %}
-The previous `<JitterBuffer>` element is deprecated. If present and set to `true`, it is automatically migrated to `<Pacer><Enable>true</Enable></Pacer>` with default Min/Max values, and a deprecation warning is logged. Please use `<Pacer>` going forward.
-{% endhint %}
+#### JitterBuffer
 
-#### Pacer
+Without the jitter buffer, frames are forwarded to the player as soon as they arrive from the Provider. This means any timing jitter introduced upstream (network jitter, encoder bursts, ingest pacing, and so on) is passed straight through to the player. When the player's playback buffer is small (which is typical for ultra low latency configurations), this can result in uneven playback and degraded playback quality.
 
-Without the pacer, frames are forwarded to the player as soon as they arrive from the Provider. This means any timing jitter introduced upstream (network jitter, encoder bursts, ingest pacing, and so on) is passed straight through to the player. When the player's playback buffer is small (which is typical for ultra low latency configurations), this can result in uneven playback and degraded playback quality.
+When the jitter buffer is enabled, OvenMediaEngine instead schedules each frame for dispatch based on its PTS, so frames are sent out evenly in time. The player receives a steady stream and playback runs at a consistent speed.
 
-When the pacer is enabled, OvenMediaEngine instead schedules each frame for dispatch based on its PTS, so frames are sent out evenly in time. The player receives a steady stream and playback runs at a consistent speed.
-
-Because the pacer holds frames briefly to re-space them, it adds a small amount of latency. In a healthy environment where upstream jitter is already low, this added latency is negligible. The `Min` and `Max` values control the lower and upper bounds of the smoothing delay.
-
-<table><thead><tr><th width="189">Sub-option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Enable</code></td><td>Enables the pacer.</td><td><code>false</code></td></tr><tr><td><code>Min</code></td><td>Minimum smoothing delay in milliseconds.</td><td><code>20</code></td></tr><tr><td><code>Max</code></td><td>Maximum smoothing delay in milliseconds.</td><td><code>500</code></td></tr></tbody></table>
+The smoothing delay is sized automatically from observed jitter (95th percentile of recent lateness plus a small margin). In a healthy environment where upstream jitter is already low, the added latency is negligible. Outliers above the 95th percentile pass through to the player, which absorbs them in its own jitter buffer.
 
 ### Encoding
 
