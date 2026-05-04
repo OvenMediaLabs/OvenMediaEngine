@@ -76,11 +76,9 @@ Add `<WebRTC>`  to `<Publisher>` to provide streaming through WebRTC.
 
 #### JitterBuffer
 
-Without the jitter buffer, frames are forwarded to the player as soon as they arrive from the Provider. This means any timing jitter introduced upstream (network jitter, encoder bursts, ingest pacing, and so on) is passed straight through to the player. When the player's playback buffer is small (which is typical for ultra low latency configurations), this can result in uneven playback and degraded playback quality.
+Without the jitter buffer, frames are forwarded to the player as soon as they arrive from the Provider. Any timing jitter introduced upstream (network jitter, encoder bursts, ingest pacing, and so on) is passed straight through to the player, which can result in uneven playback.
 
-When the jitter buffer is enabled, OvenMediaEngine instead schedules each frame for dispatch based on its PTS, so frames are sent out evenly in time. The player receives a steady stream and playback runs at a consistent speed.
-
-The smoothing delay is sized automatically from observed jitter (95th percentile of recent lateness plus a small margin). In a healthy environment where upstream jitter is already low, the added latency is negligible. Outliers above the 95th percentile pass through to the player, which absorbs them in its own jitter buffer.
+When the jitter buffer is enabled, OvenMediaEngine evens out the spacing between frames before sending. The player receives a steady stream and playback runs at a consistent speed. In a healthy environment where upstream jitter is already low, the added latency is negligible.
 
 ### Encoding
 
