@@ -747,6 +747,11 @@ bool RtcStream::OnRtpPacketized(std::shared_ptr<RtpPacket> packet)
 
 void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	// Capture arrival time at the very top so that any subsequent processing
+	// delay (notably SendBufferedPackets() at the Started→Prepared transition)
+	// does not leak into the Pacer's anchor.
+	auto arrival_time = std::chrono::steady_clock::now();
+
 	if (GetState() == State::CREATED)
 	{
 		BufferMediaPacketUntilReadyToPlay(media_packet);
@@ -758,7 +763,7 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		SendBufferedPackets();
 	}
 
-	if (_pacer_enabled && PushToPacer(media_packet))
+	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
 	{
 		// scheduled
 	}
@@ -770,6 +775,8 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 
 void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	auto arrival_time = std::chrono::steady_clock::now();
+
 	if (GetState() == State::CREATED)
 	{
 		BufferMediaPacketUntilReadyToPlay(media_packet);
@@ -781,7 +788,7 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		SendBufferedPackets();
 	}
 
-	if (_pacer_enabled && PushToPacer(media_packet))
+	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
 	{
 		// scheduled
 	}
@@ -791,7 +798,8 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	}
 }
 
-bool RtcStream::PushToPacer(const std::shared_ptr<MediaPacket> &media_packet)
+bool RtcStream::PushToPacer(const std::shared_ptr<MediaPacket> &media_packet,
+							std::chrono::steady_clock::time_point arrival_time)
 {
 	std::shared_lock<std::shared_mutex> lock(_pacers_lock);
 	auto it = _pacers.find(media_packet->GetTrackId());
@@ -799,7 +807,7 @@ bool RtcStream::PushToPacer(const std::shared_ptr<MediaPacket> &media_packet)
 	{
 		return false;
 	}
-	it->second->Push(media_packet);
+	it->second->Push(media_packet, arrival_time);
 	return true;
 }
 

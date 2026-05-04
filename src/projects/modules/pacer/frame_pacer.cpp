@@ -37,7 +37,8 @@ void FramePacer::SetAdaptiveController(std::shared_ptr<AdaptiveDelayController> 
 	_adaptive_controller = std::move(controller);
 }
 
-void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
+void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet,
+					  std::chrono::steady_clock::time_point arrival_time)
 {
 	if (_scheduler == nullptr || _dispatcher == nullptr || packet == nullptr)
 	{
@@ -55,7 +56,7 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
 	{
 		std::lock_guard<std::mutex> lock(_mu);
 
-		auto now = std::chrono::steady_clock::now();
+		auto now = arrival_time;
 
 		// Anchor reset on first push or after long idle
 		if (!_anchor_set || (now - _last_push) > kAnchorIdleResetThreshold)
@@ -112,10 +113,9 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet)
 			lateness_ms		= 0;
 		}
 
-		// Report lateness for adaptive feedback
 		if (_adaptive_controller)
 		{
-			_adaptive_controller->RecordSample(lateness_ms);
+			_adaptive_controller->RecordSample(packet->GetTrackId(), lateness_ms);
 		}
 
 		after_ms = (delta_ms < 0) ? 0 : static_cast<int>(delta_ms);

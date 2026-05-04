@@ -78,7 +78,8 @@ private:
 
 	bool StorePacketForRTX(std::shared_ptr<RtpPacket> &packet);
 
-	bool PushToPacer(const std::shared_ptr<MediaPacket> &media_packet);
+	bool PushToPacer(const std::shared_ptr<MediaPacket> &media_packet,
+					 std::chrono::steady_clock::time_point arrival_time);
 	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
 	bool SendBufferedPackets();
 	void PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_packet);

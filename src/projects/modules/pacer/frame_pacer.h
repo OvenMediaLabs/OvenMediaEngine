@@ -47,7 +47,14 @@ public:
 	void SetAdaptiveController(std::shared_ptr<AdaptiveDelayController> controller);
 
 	// Schedule the frame for delayed dispatch.
-	void Push(const std::shared_ptr<MediaPacket> &packet);
+	//
+	// arrival_time is the wall-clock moment the frame entered the publisher
+	// pipeline (captured at the top of RtcStream::SendVideoFrame / SendAudioFrame).
+	// It must be passed in rather than read inside Push() so that any variable
+	// processing delay between entry and Push (e.g. the initial buffer flush
+	// during the Started→Prepared transition) does not leak into the anchor.
+	void Push(const std::shared_ptr<MediaPacket> &packet,
+			  std::chrono::steady_clock::time_point arrival_time);
 
 private:
 	int64_t _timebase_num;
