@@ -368,8 +368,8 @@ install_ffmpeg()
     --enable-shared --enable-zlib --enable-libopus --enable-libvpx --enable-libfdk_aac --enable-libopenh264 --enable-openssl --enable-network --enable-libsrt --enable-dct --enable-rdft --enable-libwebp ${ADDI_LIBS} \
     ${ADDI_HWACCEL} \
     --enable-encoder=libvpx_vp8,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${ADDI_ENCODER} \
-    --enable-decoder=aac,aac_latm,aac_fixed,mp3float,mp3,h264,hevc,opus,vp8,mjpeg,png${ADDI_DECODER} \
-    --enable-parser=aac,aac_latm,aac_fixed,h264,hevc,opus,vp8,png,jpg \
+    --enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,opus,vp8,mjpeg,png${ADDI_DECODER} \
+    --enable-parser=aac,aac_latm,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg \
     --enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt \
     --enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2 \
     --enable-muxer=mp4,webm,mpegts,flv,mpjpeg \

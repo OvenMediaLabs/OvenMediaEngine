@@ -88,6 +88,7 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 		case cmn::BitstreamFormat::OPUS:
 			result = media_packet->GetData() != nullptr && ProcessOPUSStream(stream_info, media_track, media_packet);
 			break;
+		case cmn::BitstreamFormat::MP2:
 		case cmn::BitstreamFormat::MP3:
 			result = media_packet->GetData() != nullptr && ProcessMP3Stream(stream_info, media_track, media_packet);
 			break;

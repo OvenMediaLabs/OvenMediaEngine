@@ -583,6 +583,15 @@ namespace mpegts
 					track->SetTimeBase(1, TIMEBASE);
 					break;
 
+				case static_cast<uint8_t>(WellKnownStreamTypes::MPEG1_AUDIO):
+				case static_cast<uint8_t>(WellKnownStreamTypes::MPEG2_AUDIO):
+					track->SetId(pid);
+					track->SetMediaType(cmn::MediaType::Audio);
+					track->SetCodecId(cmn::MediaCodecId::Mp2);
+					track->SetOriginBitstream(cmn::BitstreamFormat::MP2);
+					track->SetTimeBase(1, TIMEBASE);
+					break;
+
 				case static_cast<uint8_t>(WellKnownStreamTypes::SCTE35):
 					// SCTE-35 StreamType is used to Data Track in OvenMediaEngine.  Data track is created elsewhere for common use, so track is not created here.
 					continue;

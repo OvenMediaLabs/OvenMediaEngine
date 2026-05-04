@@ -123,6 +123,7 @@ cmn::Timebase TranscoderStreamInternal::GetDefaultTimebaseByCodecId(cmn::MediaCo
 			timebase.SetDen(90000);
 			break;
 		case cmn::MediaCodecId::Aac:
+		case cmn::MediaCodecId::Mp2:
 		case cmn::MediaCodecId::Mp3:
 		case cmn::MediaCodecId::Opus:
 			timebase.SetNum(1);

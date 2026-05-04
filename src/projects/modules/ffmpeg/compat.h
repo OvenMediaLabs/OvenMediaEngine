@@ -172,6 +172,7 @@ namespace ffmpeg
 				case cmn::MediaCodecId::Vp8:
 				case cmn::MediaCodecId::Vp9:
 				case cmn::MediaCodecId::Flv:
+				case cmn::MediaCodecId::Mp2:
 				case cmn::MediaCodecId::Mp3:
 				case cmn::MediaCodecId::Jpeg:
 				case cmn::MediaCodecId::Png:
@@ -611,6 +612,7 @@ namespace ffmpeg
 					codec_id == cmn::MediaCodecId::Vp8 ||
 					codec_id == cmn::MediaCodecId::Vp9 ||
 					codec_id == cmn::MediaCodecId::Aac ||
+					codec_id == cmn::MediaCodecId::Mp2 ||
 					codec_id == cmn::MediaCodecId::Mp3 ||
 					codec_id == cmn::MediaCodecId::Opus)
 				{

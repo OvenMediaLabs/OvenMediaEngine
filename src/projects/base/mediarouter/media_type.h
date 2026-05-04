@@ -59,7 +59,8 @@ namespace cmn
 		AMF,	 // AMF0
 		SEI,	 // H.264/H.265 SEI
 		SCTE35,	 // SCTE35
-		WebVTT	 // WebVTT (Web Video Text Tracks)
+		WebVTT,	 // WebVTT (Web Video Text Tracks)
+		MP2
 	};
 
 	enum class PacketType : int8_t
@@ -108,7 +109,8 @@ namespace cmn
 		Png,
 		Webp,
 		WebVTT,
-		Whisper
+		Whisper,
+		Mp2
 	};
 
 	// DeviceId is used to identify a hwardware accelerator device.
@@ -269,6 +271,7 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, true);
 
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, false);
 
@@ -296,6 +299,7 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, false);
 
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, false);
 
@@ -323,6 +327,7 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, false);
 
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, true);
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, true);
 
@@ -390,6 +395,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_MPEG4_GENERIC);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_ADTS);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_LATM);
+			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, MP2);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, MP3);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, OPUS);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, OPUS_RTP_RFC_7587);
@@ -526,6 +532,7 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecId::Webp, "WEBP");
 			// Audio codecs
 			OV_CASE_RETURN(MediaCodecId::Aac, "AAC");
+			OV_CASE_RETURN(MediaCodecId::Mp2, "MP2");
 			OV_CASE_RETURN(MediaCodecId::Mp3, "MP3");
 			OV_CASE_RETURN(MediaCodecId::Opus, "OPUS");
 			// Subtitle codecs
@@ -578,6 +585,10 @@ namespace cmn
 		else if (name.HasPrefix("AAC"))
 		{
 			return cmn::MediaCodecId::Aac;
+		}
+		else if (name.HasPrefix("MP2"))
+		{
+			return cmn::MediaCodecId::Mp2;
 		}
 		else if (name.HasPrefix("MP3"))
 		{
