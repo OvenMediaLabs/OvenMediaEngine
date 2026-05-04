@@ -360,14 +360,13 @@ namespace ov
 		{
 			auto shared_lock = std::shared_lock(_name_mutex);
 
-			const char* urn_string = (_urn != nullptr) ? _urn->ToString().CStr() : "NoUrn";
-
+			ov::String urn_str = (_urn != nullptr) ? _urn->ToString() : ov::String("NoUrn");
 			return ov::String::FormatString(
 				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %zu%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
 				GetId(), _size, _threshold,
 				GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? " ms" : "", _buffering_delay,
 				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
-				urn_string);
+				urn_str.CStr());
 		}
 
 	private:
