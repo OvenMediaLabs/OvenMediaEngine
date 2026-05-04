@@ -312,14 +312,19 @@ namespace pvd
 
 	bool Application::DeleteAllStreams()
 	{
-		std::unique_lock<std::shared_mutex> lock(_streams_guard);
-
-		for(auto it = _streams.cbegin(); it != _streams.cend(); )
+		std::vector<std::shared_ptr<Stream>> streams_to_delete;
 		{
-			auto stream = it->second;
-			it = _streams.erase(it);
-			stream->Stop();
+			std::unique_lock<std::shared_mutex> lock(_streams_guard);
+			for (auto it = _streams.cbegin(); it != _streams.cend();)
+			{
+				streams_to_delete.push_back(it->second);
+				it = _streams.erase(it);
+			}
+		}
 
+		for (auto &stream : streams_to_delete)
+		{
+			stream->Stop();
 			NotifyStreamDeleted(stream);
 		}
 
