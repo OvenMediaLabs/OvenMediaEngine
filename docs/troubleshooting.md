@@ -6,9 +6,9 @@ description: >-
 
 # Troubleshooting
 
-## `prerequisites.sh` Script Failed
+## `InstallPrerequisites.cmake` Script Failed
 
-If you have problems with the `prerequisites.sh` the script we have provided, please install it manually as follows.
+If you have problems with the `InstallPrerequisites.cmake` the script we have provided, please install it manually as follows.
 
 ### Platform Specific Installation
 
