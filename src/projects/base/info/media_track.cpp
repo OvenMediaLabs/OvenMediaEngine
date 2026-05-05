@@ -570,6 +570,7 @@ bool MediaTrack::IsValid()
 			}
 		}
 		break;
+		case MediaCodecId::Mp2:
 		case MediaCodecId::Mp3: {
 			if (IsValidTimeBase() && IsValidChannel())
 			{

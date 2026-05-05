@@ -102,6 +102,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::Vp9, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Av1, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Opus, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, false);
