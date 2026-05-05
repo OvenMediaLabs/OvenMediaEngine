@@ -41,12 +41,12 @@ IcePort::~IcePort()
 	Close();
 }
 
-bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count)
+bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count)
 {
 	std::lock_guard<std::recursive_mutex> lock_guard(_physical_port_list_mutex);
 
 	bool result = true;
-	std::map<ov::SocketAddress, bool> bounded;
+	std::map<std::pair<ov::SocketType, ov::SocketAddress>, bool> bounded;
 
 	auto &ip_list = server_config.GetIPList();
 	std::vector<ov::String> ice_address_string_list;
@@ -76,24 +76,34 @@ bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &se
 			for (auto &ice_address : ice_address_list)
 			{
 				{
-					auto item = bounded.find(ice_address);
-					if (item != bounded.end())
+					auto key = std::make_pair(socket_type, ice_address);
+					if (bounded.find(key) != bounded.end())
 					{
 						// Already opened
 						logtt("ICE port is already bound to %s/%s", ice_address.ToString().CStr(), transport.CStr());
 						continue;
 					}
 
-					bounded[ice_address] = true;
+					bounded[key] = true;
 				}
 
-				// Create an ICE port using candidate information
-				auto physical_port = CreatePhysicalPort(ice_address, socket_type, ice_worker_count);
+				// Use ice_worker_count for UDP and tcp_ice_worker_count for direct TCP ICE (RFC 6544).
+				// Each defaults to PHYSICAL_PORT_USE_DEFAULT_COUNT (→ 1) when not configured.
+				int worker_count = (socket_type == ov::SocketType::Tcp)
+								   ? tcp_ice_worker_count
+								   : ice_worker_count;
+				auto physical_port = CreatePhysicalPort(ice_address, socket_type, worker_count);
 				if (physical_port == nullptr)
 				{
 					logte("Could not create physical port for %s/%s", ice_address.ToString().CStr(), transport.CStr());
 					result = false;
 					break;
+				}
+
+				// Track TCP ports so OnConnected can select RFC 4571 framing.
+				if (socket_type == ov::SocketType::Tcp)
+				{
+					_ice_tcp_candidate_ports.insert(ice_address.Port());
 				}
 
 				ice_address_string_list.push_back(
@@ -586,7 +596,15 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 	// Send direct
 	else
 	{
-		send_data = data;
+		// For direct TCP ICE candidate connections (RFC 6544), wrap in RFC 4571 framing.
+		if (remote->GetType() == ov::SocketType::Tcp && IsIceTcpCandidatePort(remote->GetLocalAddress()->Port()))
+		{
+			send_data = CreateRfc4571Frame(data);
+		}
+		else
+		{
+			send_data = data;
+		}
 	}
 
 	if (send_data == nullptr)
@@ -606,18 +624,30 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 
 void IcePort::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 {
-	// called when TURN client connected to the turn server with TCP
 	auto demultiplexer = std::make_shared<IceTcpDemultiplexer>();
+
+	// If this connection arrived on a direct TCP ICE candidate port, use RFC 4571
+	// framing instead of TURN framing.
+	auto local_port = remote->GetLocalAddress()->Port();
+	if (IsIceTcpCandidatePort(local_port))
+	{
+		demultiplexer->SetMode(IceTcpDemultiplexer::Mode::RFC4571);
+		logti("Direct TCP ICE client connected (RFC 4571): %s", remote->ToString().CStr());
+	}
+	else
+	{
+		// TURN/TCP relay client
+		logti("Turn client has connected : %s", remote->ToString().CStr());
+	}
 
 	std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
 	_demultiplexers[remote->GetNativeHandle()] = demultiplexer;
-
-	logti("Turn client has connected : %s", remote->ToString().CStr());
 }
 
 void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error)
 {
-	// called when TURN client disconnected from the turn server with TCP
+	bool is_ice_tcp_candidate = IsIceTcpCandidatePort(remote->GetLocalAddress()->Port());
+
 	{
 		std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
 
@@ -628,7 +658,14 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 		}
 	}
 
-	logti("Turn client has disconnected : %s", remote->ToString().CStr());
+	if (is_ice_tcp_candidate)
+	{
+		logti("Direct TCP ICE client disconnected (RFC 4571): %s", remote->ToString().CStr());
+	}
+	else
+	{
+		logti("Turn client has disconnected : %s", remote->ToString().CStr());
+	}
 
 	// Find all IceSessions whose connected socket matches the disconnected socket,
 	// and mark them as Disconnecting so that IcePort::Send() stops immediately.
@@ -655,9 +692,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 
 void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data)
 {
-	// The only packet input to IcePort/TCP is STUN and TURN DATA CHANNEL.
 	std::shared_lock<std::shared_mutex> lock(_demultiplexers_lock);
-	// If remote protocol is tcp, it must be TURN
 	if (_demultiplexers.find(remote->GetNativeHandle()) == _demultiplexers.end())
 	{
 		// If the client disconnects at this time, it cannot be found.
@@ -873,7 +908,14 @@ bool IcePort::UseCandidate(const std::shared_ptr<IceSession> &ice_session, const
 		return false;
 	}
 
-	logti("Session %u uses candidate: %s", ice_session->GetSessionID(), address_pair.ToString().CStr());
+	if (ice_session->IsTurnClient())
+	{
+		logti("Session %u uses candidate: %s [TURN]", ice_session->GetSessionID(), address_pair.ToString().CStr());
+	}
+	else
+	{
+		logti("Session %u uses candidate: %s", ice_session->GetSessionID(), address_pair.ToString().CStr());
+	}
 	AddIceSession(address_pair, ice_session);
 
 	return true;
@@ -1137,7 +1179,15 @@ bool IcePort::SendStunMessage(const std::shared_ptr<ov::Socket> &remote, const o
 
 	if (gate_info.input_method == IcePort::GateInfo::GateType::DIRECT)
 	{
-		send_data = source_data;
+		// For direct TCP ICE candidate connections (RFC 6544), wrap in RFC 4571 framing.
+		if (remote->GetType() == ov::SocketType::Tcp && IsIceTcpCandidatePort(remote->GetLocalAddress()->Port()))
+		{
+			send_data = CreateRfc4571Frame(source_data);
+		}
+		else
+		{
+			send_data = source_data;
+		}
 	}
 	else if (gate_info.input_method == IcePort::GateInfo::GateType::SEND_INDICATION)
 	{

@@ -15,6 +15,8 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_set>
+#include <limits>
 
 #include <base/ovsocket/ovsocket.h>
 #include <config/config.h>
@@ -32,6 +34,17 @@
 #define FAKE_RELAY_IP6 "1::1"
 #define FAKE_RELAY_PORT 14090
 
+// Dummy candidate used in relay-only (?transport=relay) mode.
+// Must be unreachable so direct ICE pairs fail, forcing the client to use its TURN relay candidate.
+// IPv4 uses the CGN range (RFC 6598, 100.64.0.0/10) which is reserved for ISP-internal NAT and
+// virtually never appears on end-user LANs or containers, while still being a syntactically
+// valid address browsers accept. The RFC 5737 documentation ranges (192.0.2.0/24 etc.) are
+// avoided because some browsers drop those during candidate gathering.
+// IPv6 uses a high ULA address; ULA is rarely deployed in practice, so collision risk is low.
+#define RELAY_MODE_DUMMY_IP4_CANDIDATE  "100.127.255.254"
+#define RELAY_MODE_DUMMY_IP6_CANDIDATE  "fd00::ffff"
+#define RELAY_MODE_DUMMY_PORT 1518
+
 #define OV_ICE_PORT_PUBLIC_IP "${PublicIP}"
 
 class RtcIceCandidate;
@@ -43,7 +56,7 @@ public:
 	~IcePort() override;
 
 	bool CreateTurnServer(const ov::SocketAddress &address, ov::SocketType socket_type, int tcp_relay_worker_count);
-	bool CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count);
+	bool CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count = 0);
 	bool Close();
 
 	ov::String GenerateUfrag();
@@ -230,6 +243,34 @@ private:
 	// remote's ID : Demultiplexer
 	std::shared_mutex _demultiplexers_lock;
 	std::map<int, std::shared_ptr<IceTcpDemultiplexer>> _demultiplexers;
+
+	// TCP ports that serve as direct ICE candidates (RFC 6544).
+	// Connections arriving on these ports use RFC 4571 framing instead of TURN framing.
+	std::unordered_set<uint16_t> _ice_tcp_candidate_ports;
+
+	bool IsIceTcpCandidatePort(uint16_t port) const
+	{
+		return _ice_tcp_candidate_ports.count(port) > 0;
+	}
+
+	// Wrap |data| in a 2-byte big-endian RFC 4571 length frame.
+	// Returns nullptr if |data| is null or larger than what the 2-byte length
+	// prefix can represent; callers must drop the packet in that case to avoid
+	// truncating the length and desynchronizing the TCP framing.
+	static std::shared_ptr<ov::Data> CreateRfc4571Frame(const std::shared_ptr<const ov::Data> &data)
+	{
+		if (data == nullptr || data->GetLength() > std::numeric_limits<uint16_t>::max())
+		{
+			return nullptr;
+		}
+
+		const uint16_t length = static_cast<uint16_t>(data->GetLength());
+		auto framed = std::make_shared<ov::Data>(2 + length);
+		const uint8_t header[2] = {static_cast<uint8_t>(length >> 8), static_cast<uint8_t>(length & 0xFF)};
+		framed->Append(header, 2);
+		framed->Append(data);
+		return framed;
+	}
 
 	ov::DelayQueue _timer{"ICETmout"};
 };

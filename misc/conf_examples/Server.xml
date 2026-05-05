@@ -84,20 +84,17 @@
 				</Signalling>
 
 				<IceCandidates>
-					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
-					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
-					<IceCandidate>*:10000-10004/udp</IceCandidate>
-
-					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
-					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
-
-					<!-- 
-						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-					-->
-					<TcpRelay>*:3478</TcpRelay>
-					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-					<TcpForce>true</TcpForce>
+					<!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+					<!-- <IceCandidate>[::]:10000/udp</IceCandidate> -->
+					<IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> --> <!-- Include IPv6 link-local (fe80::) addresses when using [::] wildcard -->
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
+					<TcpRelay>${PublicIP}:3478</TcpRelay>
+					<TcpRelayForce>false</TcpRelayForce>
+					<IceWorkerCount>1</IceWorkerCount>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -126,20 +123,17 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
-					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
-					<IceCandidate>*:10000-10004/udp</IceCandidate>
-					
-					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
-					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
-
-					<!-- 
-						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-					-->
-					<TcpRelay>*:3478</TcpRelay>
-					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-					<TcpForce>true</TcpForce>
+					<!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+					<!-- <IceCandidate>[::]:10000/udp</IceCandidate> -->
+					<IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> --> <!-- Include IPv6 link-local (fe80::) addresses when using [::] wildcard -->
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
+					<TcpRelay>${PublicIP}:3478</TcpRelay>
+					<TcpRelayForce>false</TcpRelayForce>
+					<IceWorkerCount>1</IceWorkerCount>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>

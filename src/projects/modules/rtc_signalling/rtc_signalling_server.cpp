@@ -34,7 +34,7 @@ bool RtcSignallingServer::PrepareForTCPRelay()
 
 	// For internal TURN/TCP relay configuration
 	const auto &ice_candidates_config = _webrtc_bind_cfg.GetIceCandidates();
-	_tcp_force = ice_candidates_config.IsTcpForce();
+	_tcp_force = ice_candidates_config.IsTcpRelayForce();
 
 	bool is_tcp_relay_configured = false;
 	const auto &tcp_relay_list = ice_candidates_config.GetTcpRelayList(&is_tcp_relay_configured);
@@ -88,8 +88,9 @@ bool RtcSignallingServer::PrepareForTCPRelay()
 				}
 				else
 				{
-					// Case 4 - Could not obtain an IP from the STUN server
-					logtw(OV_ICE_PORT_PUBLIC_IP " is specified on TCP relay, but failed to obtain public IP: %s", tcp_relay.CStr());
+					// Case 4 - Could not obtain an IP from the STUN server, fall back to all local IPv4 addresses
+					logtw(OV_ICE_PORT_PUBLIC_IP " is specified on TCP relay, but failed to obtain public IP. Falling back to all local IPv4 addresses: %s", tcp_relay.CStr());
+					ip_list = TurnIP::FromIPList(ov::SocketFamily::Inet, address_utilities->GetIPv4List());
 				}
 			}
 			else
@@ -778,13 +779,13 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 				if (tcp_relay == true)
 				{
-					if (_ice_servers.isNull() == false)
+					if (_ice_servers.isNull() == false && _ice_servers.size() > 0)
 					{
 						// "ice_servers" is out of specification. This is a bug and "iceServers" is correct. "ice_servers" will be deprecated in the future.
 						value["ice_servers"] = _ice_servers;
 					}
 
-					if (_new_ice_servers.isNull() == false)
+					if (_new_ice_servers.isNull() == false && _new_ice_servers.size() > 0)
 					{
 						value["iceServers"] = _new_ice_servers;
 					}
