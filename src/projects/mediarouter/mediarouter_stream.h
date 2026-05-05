@@ -33,6 +33,7 @@ public:
 
 	// Inout Stream Type
 	void SetType(cmn::MediaRouterStreamType type);
+	void SetBufferRetentionDuration(int delay_ms);
 	bool IsInbound() { return _type == cmn::MediaRouterStreamType::INBOUND; }
 	bool IsOutbound() { return _type == cmn::MediaRouterStreamType::OUTBOUND; }
 

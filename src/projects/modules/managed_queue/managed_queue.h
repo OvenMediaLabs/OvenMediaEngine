@@ -22,11 +22,6 @@
 #define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 1000
 #define MANAGED_QUEUE_LOG_INTERVAL_IN_MSEC 5000
 
-// Deactivated as it is no longer used
-#define SKIP_MESSAGE_ENABLED false
-#define SKIP_MESSAGE_CHECK_INTERVAL 500					 // 0.5 sec
-#define SKIP_MESSAGE_STABLE_FOR_RETRIEVE_INTERVAL 10000	 // 10 sec
-#define SKIP_MESSAGE_LOG_INTERVAL 5000					 // 1 sec
 
 namespace ov
 {
@@ -62,8 +57,7 @@ namespace ov
 			  _log_interval(log_interval_in_msec),
 			  _front_node(nullptr),
 			  _rear_node(nullptr),
-			  _stop(false),
-			  _skip_message_enabled(false)
+			  _stop(false)
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
@@ -99,7 +93,17 @@ namespace ov
 		{
 			info::ManagedQueue::SetThreshold(threshold);
 
-			MonitorInstance->OnQueueUpdated(*this, true);
+			MonitorInstance->OnQueueUpdated(*this);
+		}
+
+		// Set threshold in time-base mode.
+		// The effective item count is estimated as: input_message_per_second * time_ms / 1000.
+		void SetThresholdByTime(size_t time_ms)
+		{
+			const size_t validated_time_ms = (time_ms < 0) ? 0U : time_ms;
+			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
+
+			MonitorInstance->OnQueueUpdated(*this);
 		}				
 
 		// Urgent item will be inserted at the front of the queue
@@ -336,14 +340,6 @@ namespace ov
 			return _stop;
 		}
 
-		// Skip message for performance failure recovery
-		// If the queue size increases due to insufficient performance, the problem is avoided by dropping the message.
-		// * Warning: This should only be used where dropping a message will not affect the operation. example) video encoder, video scaler
-		void SetSkipMessageEnable(bool enable)
-		{
-			_skip_message_enabled = enable;
-		}
-
 		void SetExceedWaitEnable(bool enable)
 		{
 			_exceed_threshold_and_wait_enabled = enable;
@@ -358,6 +354,19 @@ namespace ov
 		void SetBufferingDelay(int delay_ms)
 		{
 			_buffering_delay = delay_ms;
+		}
+
+		ov::String GetInfoString()
+		{
+			auto shared_lock = std::shared_lock(_name_mutex);
+
+			ov::String urn_str = (_urn != nullptr) ? _urn->ToString() : ov::String("NoUrn");
+			return ov::String::FormatString(
+				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %zu%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
+				GetId(), _size, _threshold,
+				GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? " ms" : "", _buffering_delay,
+				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
+				urn_str.CStr());
 		}
 
 	private:
@@ -401,102 +410,12 @@ namespace ov
 			// Update statistics of input message count
 			_input_message_count++;
 
-#if SKIP_MESSAGE_ENABLED
-			if (_skip_message_enabled == true)
-			{
-				auto curr_time = ov::Time::GetTimestampInMs();
-				auto elapsed_check_time = curr_time - _skip_messages_last_check_time;
-				auto elapsed_stable_time = curr_time - _skip_messages_last_changed_time;
-
-				if (elapsed_check_time > SKIP_MESSAGE_CHECK_INTERVAL)
-				{
-					_skip_messages_last_check_time = curr_time;
-
-					if ((_size > _threshold / 10) &&				   // It exceeded 10% of the threshold
-						(_size >= _skip_message_previous_queue_size))  // The queue size has increased compared to before
-					{
-						if (_skip_message_count < 10)  // Maximum skip count is 10
-						{
-							_skip_message_count++;
-						}
-
-						_skip_message_previous_queue_size = _size;
-						_skip_messages_last_changed_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Managed queue is unstable. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-					// If the queue is stable, slowly decrease the number of skip frames.
-					else if ((_skip_message_count > 0) &&										   // Skip Message is operating
-							 (elapsed_stable_time > SKIP_MESSAGE_STABLE_FOR_RETRIEVE_INTERVAL) &&  // It appears to be in a stable state.
-							 (_size <= 1))														   // The queue size is 1 or less.
-					{
-						if (--_skip_message_count < 0)
-						{
-							_skip_message_count = 0;
-						}
-
-						_skip_message_previous_queue_size = _size;
-						_skip_messages_last_changed_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logi(LOG_TAG, "[%s] Managed queue is stable. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-				}
-
-				if ((_skip_message_count > 0) && (_input_message_count % (_skip_message_count + 1) != 0))
-				{
-					if (curr_time - _skip_messages_last_log_time > SKIP_MESSAGE_LOG_INTERVAL)
-					{
-						_skip_messages_last_log_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Drop a message by message skip. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-
-					_drop_message_count++;
-
-					delete node;
-
-					_condition.notify_all();
-
-					return;
-				}
-
-				// If the queue exceeds the threshold, drop the frame.
-				if (IsThresholdExceeded() == true)
-				{
-					if (curr_time - _skip_messages_last_log_time > SKIP_MESSAGE_LOG_INTERVAL)
-					{
-						_skip_messages_last_log_time = curr_time;
-
-						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Managed queue is exceed. drop message. q.size(%d), q.threshold(%d) q.imps(%d), q.omps(%d), skip(%d)", _urn->ToString().CStr(),
-							 GetSize(), GetThreshold(), _input_message_per_second, _output_message_per_second, _skip_message_count);
-					}
-
-					_drop_message_count++;
-					
-					delete node;
-
-					_condition.notify_all();
-
-					return;
-				}
-
-				// logi(LOG_TAG, "q.size(%d), q.imps(%d), q.omps(%d), skip(%d), stable(%d)", _size,  _skip_message_count, elapsed_stable_time);
-			}
-#endif
-
 			// Wait until the queue size is less than threshold
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
 				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return (_size  < _threshold);
+					return (!IsThresholdExceeded());
 				});
 				if (!result || _stop)
 				{
@@ -581,23 +500,9 @@ namespace ov
 				_last_input_message_count = _input_message_count;
 				_last_output_message_count = _output_message_count;
 	
-				int adjusted_size = _size;
+				UpdateThreshold();
 
-				if (_buffering_delay > 0)
-				{
-					// excluding the estimated intended buffer size
-					int intended_buffer_size = (double)_input_message_per_second * ((double)_buffering_delay / 1000.0);
-					adjusted_size -= intended_buffer_size;
-
-					// logi("DEBUG", "intended buffer size: %d, input_message_count: %d, input_message_per_second: %d, buffering_delay: %d, size: %d, adjusted_size: %d", intended_buffer_size, _input_message_count, _input_message_per_second, _buffering_delay, _size, adjusted_size);
-					
-					if (adjusted_size < 0)
-					{
-						adjusted_size = 0;
-					}
-				}
-
-				if ((_threshold > 0) && ((size_t)adjusted_size >= _threshold))
+				if (IsThresholdExceeded())
 				{
 					_threshold_exceeded_time_in_us += _stats_metric_interval;
 
@@ -608,7 +513,7 @@ namespace ov
 						_last_logging_time = 0;
 
 						auto shared_lock = std::shared_lock(_name_mutex);
-						logw(LOG_TAG, "[%u] %s has exceeded the threshold and increased peak. size: %zu, threshold: %zu, peak: %zu, imps: %zu, omps: %zu", GetId(), _urn->ToString().CStr(), _size, _threshold, _peak, _input_message_per_second, _output_message_per_second);
+						logw(LOG_TAG, "Exceeded. %s", GetInfoString().CStr());
 
 						_last_logged_peak = _peak;
 					}
@@ -616,6 +521,9 @@ namespace ov
 				else
 				{
 					_threshold_exceeded_time_in_us = 0;
+#if DEBUG
+					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
+#endif					
 				}
 
 				MonitorInstance->OnQueueUpdated(*this);
@@ -635,6 +543,47 @@ namespace ov
 		}
 
 	private:
+
+		// Check if the queue has exceeded the threshold.
+		// _threshold == 0 means no threshold.
+		bool IsThresholdExceeded() const
+		{
+			if (_threshold == 0) return false;
+			return _size >= _threshold;
+		}
+
+		// Compute the threshold
+		void UpdateThreshold()
+		{
+			// Compute the delay buffer count
+			size_t delay_buffer_count = 0;
+			if (_buffering_delay > 0 && _input_message_per_second > 0)
+			{
+				delay_buffer_count = static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_buffering_delay) / 1000.0));
+			}
+
+			// For time-based threshold, compute the effective count from the input message rate + delay buffer
+			if (_threshold_mode == ThresholdMode::TimeBased)
+			{
+				size_t base_count = 0;
+				if (_threshold_value > 0 && _input_message_per_second > 0)
+				{
+					base_count = std::max(static_cast<size_t>(1), static_cast<size_t>(static_cast<double>(_input_message_per_second) * (static_cast<double>(_threshold_value) / 1000.0)));
+				}
+				_threshold = base_count + delay_buffer_count;
+			}
+			// For count-based threshold + delay buffer
+			else if (_threshold_mode == ThresholdMode::CountBased)
+			{
+				size_t base_count = 0;
+				if (_threshold_value > 0)
+				{
+					base_count = _threshold_value;
+				}
+				_threshold = base_count + delay_buffer_count;
+			}
+		}
+
 		StopWatch _timer;
 
 		int _stats_metric_interval = 0;
@@ -656,20 +605,9 @@ namespace ov
 		// Use to print logs when the peak value of the queue is increased.
 		size_t _last_logged_peak = 0;
 
-		// Message Skip for lack of performance
-		bool _skip_message_enabled = false;
-		int64_t _skip_messages_last_check_time = ov::Time::GetTimestampInMs();
-		int64_t _skip_messages_last_changed_time = ov::Time::GetTimestampInMs();
-		int64_t _skip_messages_last_log_time = 0;
-		int32_t _skip_message_count = 0;
-		size_t _skip_message_previous_queue_size = 0;
-
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold
 		bool _exceed_threshold_and_wait_enabled = false;
-
-		// Delay
-		int _buffering_delay = 0;
 	};
 
 }  // namespace ov
