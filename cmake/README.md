@@ -88,7 +88,7 @@ Available targets:
 ```
 nasm        openssl     libsrtp     libsrt      libopus     libopenh264
 libvpx      libwebp     fdk_aac     libx264     ffmpeg      stubs
-jemalloc    libpcre2    hiredis     spdlog      whisper     nvcc_hdr
+jemalloc    libpcre2    hiredis     spdlog      whisper     ffnvcodec
 ```
 
 Available `-D` options:
