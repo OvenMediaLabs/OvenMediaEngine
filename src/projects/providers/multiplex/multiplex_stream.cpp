@@ -246,9 +246,10 @@ namespace pvd
             for (auto &[source_track_id, source_track] : tracks)
             {
                 auto source_track_name = source_track->GetVariantName();
+                int occurrence = source_track->GetGroupIndex();
                 MultiplexProfile::NewTrackInfo new_track_info;
 
-                if (source_stream->GetNewTrackInfo(source_track_name, new_track_info) == false)
+                if (source_stream->GetNewTrackInfo(source_track_name, occurrence, new_track_info) == false)
                 {
                     continue;
                 }
@@ -264,11 +265,30 @@ namespace pvd
                 {
                     new_track->SetFrameRateByConfig(new_track_info.framerate_conf);
                 }
+                if (new_track_info.public_name.IsEmpty() == false)
+                {
+                    new_track->SetPublicName(new_track_info.public_name);
+                }
+                if (new_track_info.language.IsEmpty() == false)
+                {
+                    new_track->SetLanguage(new_track_info.language);
+                }
+                if (new_track_info.characteristics.IsEmpty() == false)
+                {
+                    new_track->SetCharacteristics(new_track_info.characteristics);
+                }
 
                 AddTrack(new_track);
                 _source_track_id_to_new_id_map.emplace(MakeSourceTrackIdUnique(stream_tap->GetId(), source_track_id), new_track->GetId());
 
-                logti("Multiplex Stream : %s/%s: Added track %s from %s/%s (%d)", GetApplicationName(), GetName().CStr(), new_track->GetVariantName().CStr(), source_stream->GetUrlStr().CStr(), source_track_name.CStr(), source_track_id);
+                logti("Multiplex Stream : %s/%s: Added track [id=%d variant=%s public_name='%s' lang='%s' characteristics='%s'] from src[%s occ=%d src_id=%d]",
+                    GetApplicationName(), GetName().CStr(),
+                    new_track->GetId(),
+                    new_track->GetVariantName().CStr(),
+                    new_track->GetPublicName().CStr(),
+                    new_track->GetLanguage().CStr(),
+                    new_track->GetCharacteristics().CStr(),
+                    source_track_name.CStr(), occurrence, source_track_id);
             }
         }
 		
