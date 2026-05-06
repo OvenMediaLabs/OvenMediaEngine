@@ -544,7 +544,7 @@ install_ovenmediaengine()
     (DIR=${TEMP_PATH}/ome && \
     mkdir -p ${DIR} && \
     cd ${DIR} && \
-    curl -sSLf https://github.com/AirenSoft/OvenMediaEngine/archive/${OME_VERSION}.tar.gz | tar -xz --strip-components=1 && \
+    curl -sSLf https://github.com/OvenMediaLabs/OvenMediaEngine/archive/${OME_VERSION}.tar.gz | tar -xz --strip-components=1 && \
     cd src && \
     make release && \
     sudo make install && \

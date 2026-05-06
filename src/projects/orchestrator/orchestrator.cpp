@@ -660,7 +660,7 @@ namespace ocst
 	}
 
 	/// Delete PullStream
-	CommonErrorCode Orchestrator::TerminateStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
+	CommonErrorCode Orchestrator::TerminateStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, [[maybe_unused]] bool api_requested)
 	{
 		auto stream = GetProviderStream(vhost_app_name, stream_name);
 		if (stream == nullptr)

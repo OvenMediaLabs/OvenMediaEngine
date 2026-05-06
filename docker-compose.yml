@@ -4,7 +4,7 @@ services:
   origin:
     build:
       context: .
-    image: airensoft/ovenmediaengine:latest
+    image: ovenmedialabs/ovenmediaengine:latest
     ports:
     - "9000:9000/tcp" # OVT(Origin)
     - "1935:1935/tcp" # RTMP Provider
@@ -34,7 +34,7 @@ services:
   edge:
     build:
       context: .
-    image: airensoft/ovenmediaengine:latest
+    image: ovenmedialabs/ovenmediaengine:latest
     ports:
     - "4333:3333/tcp" # WebRTC Signaling / LLHLS
     - "3479:3479/tcp" # WebRTC TURN

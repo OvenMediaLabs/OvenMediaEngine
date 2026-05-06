@@ -121,7 +121,7 @@ Please refer to the link for how to build and run.
 
 you must include the **--gpus all** option when running Docker
 
-<pre data-overflow="wrap"><code><strong>docker run -d ... --gpus all airensoft/ovenmediaengine:dev
+<pre data-overflow="wrap"><code><strong>docker run -d ... --gpus all ovenmedialabs/ovenmediaengine:dev
 </strong></code></pre>
 {% endhint %}
 

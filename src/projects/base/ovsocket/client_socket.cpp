@@ -105,6 +105,16 @@ namespace ov
 		}
 
 		_local_address = std::make_shared<SocketAddress>("", local_addr);
+		_local_address->SetTransport(GetType() == SocketType::Srt
+			? SocketAddress::Transport::Srt
+			: (GetType() == SocketType::Tcp
+				? SocketAddress::Transport::Tcp
+				: SocketAddress::Transport::Udp));
+
+		if (_remote_address != nullptr)
+		{
+			_remote_address->SetTransport(_local_address->GetTransport());
+		}
 
 		return true;
 	}

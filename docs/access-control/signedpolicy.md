@@ -132,7 +132,7 @@ For example, you can use it like this:
 ## Make SignedPolicy URL manually
 
 {% hint style="success" %}
-We hope to provide SignedPolicy URL Generator Library in various languages. If you have created the SignedPolicy URL Generator Library in another language, please send a Pull Request to our [GITHUB](https://github.com/AirenSoft/OvenMediaEngine/pulls). Thank you for your open source contributions.
+We hope to provide SignedPolicy URL Generator Library in various languages. If you have created the SignedPolicy URL Generator Library in another language, please send a Pull Request to our [GITHUB](https://github.com/OvenMediaLabs/OvenMediaEngine/pulls). Thank you for your open source contributions.
 {% endhint %}
 
 ### Encoding policy

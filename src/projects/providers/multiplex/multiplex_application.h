@@ -49,7 +49,7 @@ namespace pvd
         bool GetMultiplexFileInfoFromDB(const size_t &hash, MultiplexFileInfo &multiplex_file_info);
         bool AddMultiplex(MultiplexFileInfo &multiplex_file_info);
         bool UpdateMultiplex(MultiplexFileInfo &multiplex_file_info, MultiplexFileInfo &new_multiplex_file_info);
-        bool RemoveMultiplex(MultiplexFileInfo &multiplex_file_info);
+        bool RemoveMultiplex(MultiplexFileInfo &multiplex_file_info, std::shared_ptr<info::Stream> *deleted_stream_info = nullptr);
 
         ov::String _multiplex_files_path;
         ov::Regex _multiplex_file_name_regex;

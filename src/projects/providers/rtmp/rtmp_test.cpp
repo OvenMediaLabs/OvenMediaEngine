@@ -5,11 +5,16 @@
 #include "../../modules/rtmp_v2/chunk/rtmp_chunk_parser.h"
 #undef private
 
+#include "../../modules/rtmp/rtmp_private.h"
+#include "../../modules/rtmp/rtmp_chunk_parser_helper.h"
+
 #include <vector>
 
 namespace
 {
 	constexpr const char *TEST_APP_STREAM_NAME = "dummy/stream";
+	constexpr uint32_t SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT = 0x80000000U;
+	constexpr int64_t MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS = 10 * 1000;
 
 	std::shared_ptr<const ov::Data> ToData(const std::vector<uint8_t> &bytes)
 	{
@@ -24,6 +29,29 @@ namespace
 	modules::rtmp::ChunkParser::ParseResult ParseChunkV2(modules::rtmp::ChunkParser &parser, const std::vector<uint8_t> &bytes, size_t &bytes_used)
 	{
 		return parser.Parse(ToData(bytes), &bytes_used);
+	}
+
+	std::optional<int64_t> ResolveTimestampDeltaForTest(
+		const uint32_t stream_id,
+		const int64_t preceding_timestamp,
+		const uint32_t timestamp_delta,
+		const bool is_extended_timestamp)
+	{
+		return ResolveTimestampDelta(
+			stream_id,
+			preceding_timestamp,
+			timestamp_delta,
+			is_extended_timestamp,
+			SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT,
+			MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS);
+	}
+
+	int64_t CalculateRolledTimestampForTest(
+		const uint32_t stream_id,
+		const int64_t last_timestamp,
+		const int64_t parsed_timestamp)
+	{
+		return CalculateRolledTimestamp(stream_id, last_timestamp, parsed_timestamp);
 	}
 
 	std::vector<uint8_t> MakeType0ExtendedChunk(uint32_t extended_timestamp, uint32_t stream_id = 1U, uint8_t chunk_stream_id = 3U)
@@ -93,11 +121,7 @@ namespace
 
 	TEST(RtmpChunkParser, ResolveExtendedPositiveDeltaAsUnsigned)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0x00010000U,
@@ -109,11 +133,7 @@ namespace
 
 	TEST(RtmpChunkParser, ResolveSmallNegativeExtendedDeltaAsSignedCompatibilityPath)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0xFFFFFFF3U,
@@ -125,11 +145,7 @@ namespace
 
 	TEST(RtmpChunkParser, RejectNegativeResolvedTimestampFromSignedCompatibilityPath)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0xFFFFEC78U,
@@ -140,11 +156,7 @@ namespace
 
 	TEST(RtmpChunkParser, ResolveWrappedType0TimestampForward)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			4294967000LL,
 			1000);
@@ -154,11 +166,7 @@ namespace
 
 	TEST(RtmpChunkParser, KeepBackwardType0TimestampBackward)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			3000,
 			2000);
@@ -168,11 +176,7 @@ namespace
 
 	TEST(RtmpChunkParser, ResolveType0TimestampAsBackwardAtHalfRangeBoundary)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			0,
 			0x80000000ULL);
@@ -182,11 +186,7 @@ namespace
 
 	TEST(RtmpChunkParser, KeepType0TimestampForwardWithinHalfRangeInCurrentEpoch)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			1000,
 			0x800003E6ULL);
@@ -196,11 +196,7 @@ namespace
 
 	TEST(RtmpChunkParser, RollWrappedType0TimestampForwardWhenBackwardDistanceExceedsHalfRange)
 	{
-		RtmpChunkParser parser(128);
-
-		parser.UpdateNamePath(info::NamePath(TEST_APP_STREAM_NAME));
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			0x80000001LL,
 			0);
@@ -466,11 +462,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, ResolveExtendedPositiveDeltaAsUnsigned)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0x00010000U,
@@ -482,11 +474,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, ResolveSmallNegativeExtendedDeltaAsSignedCompatibilityPath)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0xFFFFFFF3U,
@@ -498,11 +486,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, RejectNegativeResolvedTimestampFromSignedCompatibilityPath)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.ResolveTimestampDelta(
+		const auto resolved_timestamp = ResolveTimestampDeltaForTest(
 			1U,
 			3000,
 			0xFFFFEC78U,
@@ -513,11 +497,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, ResolveWrappedType0TimestampForward)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			4294967000LL,
 			1000);
@@ -527,11 +507,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, KeepBackwardType0TimestampBackward)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			3000,
 			2000);
@@ -541,11 +517,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, ResolveType0TimestampAsBackwardAtHalfRangeBoundary)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			0,
 			0x80000000ULL);
@@ -555,11 +527,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, KeepType0TimestampForwardWithinHalfRangeInCurrentEpoch)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			1000,
 			0x800003E6ULL);
@@ -569,11 +537,7 @@ namespace
 
 	TEST(RtmpChunkParserV2, RollWrappedType0TimestampForwardWhenBackwardDistanceExceedsHalfRange)
 	{
-		modules::rtmp::ChunkParser parser(128);
-
-		parser.SetMessageQueueAlias(TEST_APP_STREAM_NAME);
-
-		const auto resolved_timestamp = parser.CalculateRolledTimestamp(
+		const auto resolved_timestamp = CalculateRolledTimestampForTest(
 			1U,
 			0x80000001LL,
 			0);

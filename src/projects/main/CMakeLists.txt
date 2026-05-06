@@ -72,11 +72,9 @@ target_link_libraries(OvenMediaEngine PRIVATE
 # ==============================================================================
 # Optional hardware acceleration libs
 # ==============================================================================
-if(OME_HWACCEL_NVIDIA AND PKG_FFNVCODEC_FOUND)
-    target_link_libraries(OvenMediaEngine PRIVATE
-        PkgConfig::PKG_FFNVCODEC
-        ${OME_NVIDIA_LIBS}
-    )
+if(OME_HWACCEL_NVIDIA)
+    target_link_libraries(OvenMediaEngine PRIVATE ${OME_NVIDIA_LIBS})
+    target_link_libraries(OvenMediaEngine PRIVATE PkgConfig::PKG_FFNVCODEC)
 endif()
 
 if(OME_HWACCEL_XMA AND PKG_LIBXMA2API_FOUND)

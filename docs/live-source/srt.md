@@ -78,7 +78,7 @@ Server: srt://{OvenMediaEngine Host}:{SRT Port}
 Key: {streamid}
 ```
 
-The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](https://airensoft.gitbook.io/ovenmediaengine/v/0.16.4/live-source/srt-beta#blackmagic-web-presenter)
+The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](https://docs.ovenmediaengine.com/v/0.16.4/live-source/srt-beta#blackmagic-web-presenter)
 
 ## Multiple Audio Track
 

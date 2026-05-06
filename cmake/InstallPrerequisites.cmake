@@ -364,7 +364,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
 ")
 
 # ---- nv-codec-headers (optional) ----
-set(_install_nvcc_hdr "
+set(_install_ffnvcodec "
 mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
 curl -sSLf ${NVCC_HDR_SOURCE_URL} | tar -xz --strip-components=1 &&
 sudo make PREFIX=${PREFIX} LIBDIR=lib install
@@ -474,12 +474,12 @@ make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_
 ")
 
 # ---- stubs ----
-# Built via CMake (misc/stubs/CMakeLists.txt) instead of the legacy Makefile.
-set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/../misc/stubs")
 set(_install_stubs "
-cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build/stubs -DOME_BUILD_STUBS=ON -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
-cmake --build ${_STUB_DIR}/build/stubs --target stubs -j$(nproc) &&
-sudo cmake --install ${_STUB_DIR}/build/stubs --component stubs
+cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build -DCMAKE_INSTALL_PREFIX=${PREFIX} &&
+cmake --build ${_STUB_DIR}/build --target stubs -j$(nproc) &&
+sudo cmake --install ${_STUB_DIR}/build --component stubs && 
+rm -rf ${_STUB_DIR}/build
 ")
 
 # ---- jemalloc ----
@@ -580,7 +580,7 @@ if(ENABLE_X264)
 endif()
 
 if(ENABLE_NVIDIA)
-    list(APPEND _targets nvcc_hdr)
+    list(APPEND _targets ffnvcodec)
 endif()
 
 # Override with single target if requested
@@ -592,7 +592,7 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps libx264)
         endif()
         if(ENABLE_NVIDIA)
-            list(APPEND _ffmpeg_deps nvcc_hdr)
+            list(APPEND _ffmpeg_deps ffnvcodec)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
     elseif("${TARGET}" STREQUAL "libvpx")

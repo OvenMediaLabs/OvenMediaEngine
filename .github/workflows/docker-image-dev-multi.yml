@@ -19,7 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: airensoft/ovenmediaengine
+  IMAGE_NAME: ovenmedialabs/ovenmediaengine
+  MIRROR_IMAGE_NAME: airensoft/ovenmediaengine
   SLACK_WEBHOOK_URL: ${{ secrets.ACTION_STATE_NOTIFICATION_SLACK_WEBHOOK_URL }}
 
 jobs:
@@ -85,6 +86,12 @@ jobs:
             --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
             .
 
+      - name: Copy amd64 image to airensoft
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
+            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64
+
       - name: Notify Done (amd64)
         if: always()
         uses: slackapi/slack-github-action@v1.26.0
@@ -134,6 +141,12 @@ jobs:
             --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64 \
             .
 
+      - name: Copy arm64 image to airensoft
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64 \
+            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64
+
       - name: Notify Done (arm64)
         if: always()
         uses: slackapi/slack-github-action@v1.26.0
@@ -177,6 +190,13 @@ jobs:
             --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }} \
             ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
             ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64
+
+      - name: Create and push manifest for airensoft
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }} \
+            ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-amd64 \
+            ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64
 
       - name: Notify Done (manifest)
         if: always()

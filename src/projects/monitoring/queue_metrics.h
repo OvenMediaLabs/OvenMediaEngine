@@ -48,13 +48,13 @@ namespace mon
 		{
 			_urn	   = info.GetUrn();
 			_type_name = info.GetTypeName();
-			_threshold = info.GetThreshold();
 		}
 
 		void UpdateMetrics(const info::ManagedQueue &info)
 		{
 			_peak					   = info.GetPeak();
 			_size					   = info.GetSize();
+			_threshold				   = info.GetThreshold();
 			_input_message_per_second  = info.GetInputMessagePerSecond();
 			_output_message_per_second = info.GetOutputMessagePerSecond();
 			_drop_count				   = info.GetDropCount();

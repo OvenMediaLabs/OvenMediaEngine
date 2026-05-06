@@ -12,7 +12,7 @@ With OvenMediaEngine, you can build your powerful and sub-second latency media s
 ## Demo https://space.ovenplayer.com/
 <img src="dist/05_OvenSpace_230214.png" style="max-width: 100%; height: auto;">
 
-OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine](https://github.com/AirenSoft/OvenMediaEngine), [OvenPlayer](https://github.com/AirenSoft/OvenPlayer) and [OvenLiveKit](https://github.com/AirenSoft/OvenLiveKit-Web). You can experience OvenMediaEngine in the **[OvenSpace Demo](https://space.ovenplayer.com/)** and see examples of applying in [OvenSpace Repository](https://github.com/AirenSoft/OvenSpace).
+OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine](https://github.com/OvenMediaLabs/OvenMediaEngine), [OvenPlayer](https://github.com/OvenMediaLabs/OvenPlayer) and [OvenLiveKit](https://github.com/OvenMediaLabs/OvenLiveKit-Web). You can experience OvenMediaEngine in the **[OvenSpace Demo](https://space.ovenplayer.com/)** and see examples of applying in [OvenSpace Repository](https://github.com/OvenMediaLabs/OvenSpace).
 
 ## Features
 * Ingest
@@ -61,7 +61,7 @@ OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine]
 We have tested OvenMediaEngine on the platforms listed below.
 Although we have tested OvenMediaEngine on the platforms listed below, it may work with other Linux packages as well:
 
-* [Docker](https://hub.docker.com/r/airensoft/ovenmediaengine)
+* [Docker](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine)
 * Ubuntu 18+
 * Rocky Linux 8+
 * AlmaLinux 8+
@@ -69,14 +69,14 @@ Although we have tested OvenMediaEngine on the platforms listed below, it may wo
 
 ## Quick Start
 
-* [Quick Start Guide](https://airensoft.gitbook.io/ovenmediaengine/quick-start)
-* [Manual](https://airensoft.gitbook.io/ovenmediaengine/)
+* [Quick Start Guide](https://docs.ovenmediaengine.com/quick-start)
+* [Manual](https://docs.ovenmediaengine.com/)
 
 ### Docker
 ```bash
 docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+ovenmedialabs/ovenmediaengine:latest
 ```
 
 You can also store the configuration files on your host:
@@ -86,7 +86,7 @@ docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
 -v ome-origin-conf:/opt/ovenmediaengine/bin/origin_conf \
 -v ome-edge-conf:/opt/ovenmediaengine/bin/edge_conf \
-airensoft/ovenmediaengine:latest
+ovenmedialabs/ovenmediaengine:latest
 ```
 
 The configuration files are now accessible under `/var/lib/docker/volumes/<volume_name>/_data`.
@@ -99,7 +99,7 @@ ln -s /var/lib/docker/volumes/ome-origin-conf/_data/ /my/new/path/to/ome-origin-
 && ln -s /var/lib/docker/volumes/ome-edge-conf/_data/ /my/new/path/to/ome-edge-conf
 ```
 
-Please read the [Getting Started](https://airensoft.gitbook.io/ovenmediaengine/getting-started) for more information.
+Please read the [Getting Started](https://docs.ovenmediaengine.com/getting-started) for more information.
 
 ### WebRTC Live Encoder for Testing
 * https://demo.ovenplayer.com/demo_input.html
@@ -114,41 +114,41 @@ Thank you so much for being so interested in OvenMediaEngine.
 We need your help to keep and develop our open-source project, and we want to tell you that you can contribute in many ways.
 For more information on how to contribute, please see our [Guidelines](CONTRIBUTING.md), [Rules](CODE_OF_CONDUCT.md), and [Contribute](https://www.ovenmediaengine.com/contribute).
 
-- [Finding Bugs](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#finding-bugs)
-- [Reviewing Code](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#reviewing-code)
-- [Sharing Ideas](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#sharing-ideas)
-- [Testing](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#testing)
-- [Improving Documentation](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#improving-documentation)
-- [Spreading & Use Cases](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#spreading--use-cases)
-- [Recurring Donations](https://github.com/AirenSoft/OvenMediaEngine/blob/master/CONTRIBUTING.md#recurring-donations)
+- [Finding Bugs](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#finding-bugs)
+- [Reviewing Code](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#reviewing-code)
+- [Sharing Ideas](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#sharing-ideas)
+- [Testing](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#testing)
+- [Improving Documentation](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#improving-documentation)
+- [Spreading & Use Cases](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#spreading--use-cases)
+- [Recurring Donations](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#recurring-donations)
 
 We always hope that OvenMediaEngine will give you good inspiration.
 
 ## For more information
-* [AirenSoft Website](https://airensoft.com) 
+* [OvenMedia Labs Website](https://ovenmedialabs.com) 
   * About OvenMediaEngine, OvenMediaEngine Enterprise, OvenVideo, AirenBlog and more
-* [OvenMediaEngine Getting Started](https://airensoft.gitbook.io/ovenmediaengine/)
+* [OvenMediaEngine Getting Started](https://docs.ovenmediaengine.com/)
   * User guide for OvenMediaEngine Configuration, ABR, Clustering, and more
-* [OvenMediaEngine Docker Hub](https://hub.docker.com/r/airensoft/ovenmediaengine)
+* [OvenMediaEngine Docker Hub](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine)
   * Install and use OvenMeidaEngine easily using Docker
-* [OvenPlayer GitHub](https://github.com/AirenSoft/OvenPlayer)
+* [OvenPlayer GitHub](https://github.com/OvenMediaLabs/OvenPlayer)
   * JavaScript-based Player with LLHLS and WebRTC
-* [OvenPlayer Getting Started](https://airensoft.gitbook.io/ovenplayer)
+* [OvenPlayer Getting Started](https://docs.ovenplayer.com)
   * User guide for OvenPlayer UI Customize, API Reference, Examples, and more
-* [OvenLiveKit](https://github.com/AirenSoft/OvenLiveKit-Web)
+* [OvenLiveKit](https://github.com/OvenMediaLabs/OvenLiveKit-Web)
   * JavaScript-based Live Streaming Encoder for OvenMediaEngine
 * [OvenSpace Demo](https://space.ovenplayer.com/)
   * Sub-Second Latency Streaming Demo Service
 
 ## License
 OvenMediaEngine is licensed under the [AGPL-3.0-only](LICENSE).
-However, if you need another license, please feel free to email us at [contact@airensoft.com](mailto:contact@airensoft.com).
+However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).
 
-## About AirenSoft
-AirenSoft aims to make it easier for you to build a stable broadcasting/streaming service with Sub-Second Latency.
+## About OvenMedia Labs
+OvenMedia Labs aims to make it easier for you to build a stable broadcasting/streaming service with Sub-Second Latency.
 Therefore, we will continue developing and providing the most optimized tools for smooth Sub-Second Latency Streaming.
 
 Would you please click on each link below for details:
-* ["JavaScript-based Live Streaming Encoder" **OvenLiveKit**](https://github.com/AirenSoft/OvenLiveKit-Web)
-* ["Sub-Second Latency Streaming Server with LLHLS and WebRTC" **OvenMediaEngine**](https://github.com/AirenSoft/OvenMediaEngine)
-* ["JavaScript-based Player with LLHLS and WebRTC" **OvenPlayer**](https://github.com/AirenSoft/OvenPlayer)
+* ["JavaScript-based Live Streaming Encoder" **OvenLiveKit**](https://github.com/OvenMediaLabs/OvenLiveKit-Web)
+* ["Sub-Second Latency Streaming Server with LLHLS and WebRTC" **OvenMediaEngine**](https://github.com/OvenMediaLabs/OvenMediaEngine)
+* ["JavaScript-based Player with LLHLS and WebRTC" **OvenPlayer**](https://github.com/OvenMediaLabs/OvenPlayer)
