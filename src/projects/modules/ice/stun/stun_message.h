@@ -105,7 +105,7 @@ public:
 
 protected:
 	
-	bool ParseAttributes(ov::ByteStream &stream);
+	bool ParseAttributes(ov::ByteStream &stream, off_t message_start_offset = 0);
 	std::shared_ptr<StunAttribute> ParseFingerprintAttribute(ov::ByteStream &stream);
 
 	bool WriteHeader(ov::ByteStream &stream);
@@ -129,6 +129,11 @@ protected:
 
 	std::shared_ptr<StunAttribute> _integrity_attribute;
 	std::shared_ptr<StunAttribute> _fingerprint_attribute;
+
+	// Raw STUN message bytes captured during Parse() for MESSAGE-INTEGRITY verification.
+	std::shared_ptr<ov::Data> _raw_message;
+	// Offset of MESSAGE-INTEGRITY attribute (from the beginning of the STUN header) within _raw_message; -1 if not present.
+	off_t _integrity_attribute_offset = -1;
 
 	// Last error codes
 	LastErrorCode	_last_error_code = NOT_USED;

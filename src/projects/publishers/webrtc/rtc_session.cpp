@@ -99,6 +99,18 @@ bool RtcSession::Start()
 	_dtls_transport = std::make_shared<DtlsTransport>();
 	std::shared_ptr<RtcApplication> application = std::static_pointer_cast<RtcApplication>(GetApplication());
 	_dtls_transport->SetLocalCertificate(application->GetCertificate());
+
+	// Bind the peer fingerprint advertised in the remote (player) SDP so the
+	// DTLS handshake refuses any peer whose certificate digest does not match.
+	ov::String peer_fingerprint_algorithm = _peer_sdp->GetFingerprintAlgorithm();
+	ov::String peer_fingerprint_value = _peer_sdp->GetFingerprintValue();
+	if (peer_fingerprint_algorithm.IsEmpty() || peer_fingerprint_value.IsEmpty())
+	{
+		logte("Peer SDP does not include a DTLS fingerprint; refusing to start DTLS");
+		return false;
+	}
+	_dtls_transport->SetPeerFingerprint(peer_fingerprint_algorithm, peer_fingerprint_value);
+
 	_dtls_transport->StartDTLS();
 
 	bool transport_cc_enabled = false;

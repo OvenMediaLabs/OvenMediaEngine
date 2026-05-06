@@ -56,6 +56,9 @@ protected:
 
 private:
 	bool ContinueSSL();
+	// Initializes the underlying TLS session and BIO and transitions to
+	// SSL_CONNECTING. Caller MUST hold _tls_lock.
+	bool InitializeTlsLocked();
 	bool IsDtlsPacket(const std::shared_ptr<const ov::Data> data);
 	bool IsRtpPacket(const std::shared_ptr<const ov::Data> data);
 	bool SaveDtlsPacket(const std::shared_ptr<const ov::Data> data);
