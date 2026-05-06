@@ -91,6 +91,9 @@ void RtpPacketizerH265::PacketizeFuA(size_t fragment_index)
 	size_t num_packets = (payload_left + extra_len + (per_packet_capacity - 1)) / per_packet_capacity;
 	size_t payload_per_packet = (payload_left + extra_len) / num_packets;
 	size_t num_larger_packets = (payload_left + extra_len) % num_packets;
+#if DEBUG	
+	size_t fragmented_packets = 0;
+#endif
 
 	_num_packets_left += num_packets;
 	while (payload_left > 0) 
@@ -118,16 +121,19 @@ void RtpPacketizerH265::PacketizeFuA(size_t fragment_index)
 		offset += packet_length;
 		payload_left -= packet_length;
 		--num_packets;
+#if DEBUG
+		++fragmented_packets;
+#endif
 	}
 
 #if DEBUG
-	logt("RtpPacketizerH265", "Packetized one fragment into %zu FU-A packets, total size: %zu", _num_packets_left, fragment.length);
+	logt("RtpPacketizerH265", "Packetized one fragment into %zu FU-A packets, total size: %zu", fragmented_packets, fragment.length);
 #endif
 }
 
 size_t RtpPacketizerH265::PacketizeStapA(size_t fragment_index) 
 {
-	// Aggregate fragments into one packet (STAP-A).
+	// Aggregate fragments into one packet (AP).
 	size_t payload_size_left = _max_payload_len;
 	int aggregated_fragments = 0;
 	size_t fragment_headers_length = 0;
@@ -181,7 +187,8 @@ bool RtpPacketizerH265::PacketizeSingleNalu(size_t fragment_index)
 		return false;
 	}
 	
-	_packets.push(PacketUnit(*fragment, true /* first */, true /* last */, false /* aggregated */, fragment->buffer[0]));
+	uint16_t header = (fragment->buffer[0] << 8) | fragment->buffer[1];
+	_packets.push(PacketUnit(*fragment, true /* first */, true /* last */, false /* aggregated */, header));
 	++_num_packets_left;
 
 #if DEBUG

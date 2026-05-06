@@ -127,7 +127,9 @@ void RtpPacketizerH264::PacketizeFuA(size_t fragment_index)
 	size_t num_packets = (payload_left + extra_len + (per_packet_capacity - 1)) / per_packet_capacity;
 	size_t payload_per_packet = (payload_left + extra_len) / num_packets;
 	size_t num_larger_packets = (payload_left + extra_len) % num_packets;
-
+#if DEBUG
+	size_t fragmented_packets = 0;
+#endif	
 	_num_packets_left += num_packets;
 	while (payload_left > 0) 
 	{
@@ -151,10 +153,14 @@ void RtpPacketizerH264::PacketizeFuA(size_t fragment_index)
 		offset += packet_length;
 		payload_left -= packet_length;
 		--num_packets;
+
+#if DEBUG		
+		++fragmented_packets;
+#endif		
 	}
 
 #if DEBUG
-	logt("RtpPacketizerH264", "Packetized one fragment into %zu FU-A packets, total size: %zu", _num_packets_left, fragment.length);
+	logt("RtpPacketizerH264", "Packetized one fragment into %zu FU-A packets, total size: %zu", fragmented_packets, fragment.length);
 #endif
 }
 
