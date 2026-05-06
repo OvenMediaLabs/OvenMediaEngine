@@ -100,10 +100,17 @@ namespace pvd
                     continue;
                 }
 
-                RemoveSchedule(schedule_file_info);
-                logti("Removed schedule channel : %s/%s (%s)", GetVHostAppName().CStr(), schedule_file_info._schedule->GetStream()._name.CStr(), schedule_file_info._file_path.CStr());
+                std::shared_ptr<info::Stream> deleted_stream_info;
+				if (RemoveSchedule(schedule_file_info, &deleted_stream_info) == true)
+				{
+					logti("Removed schedule channel : %s/%s (%s)", GetVHostAppName().CStr(), schedule_file_info._schedule->GetStream()._name.CStr(), schedule_file_info._file_path.CStr());
 
-                it = _schedule_file_info_db.erase(it);
+					it = _schedule_file_info_db.erase(it);
+				}
+				else
+				{
+					++it;
+				}
             }
             else
             {
@@ -303,7 +310,7 @@ namespace pvd
         return true;
     }
 
-    bool ScheduledApplication::RemoveSchedule(ScheduleFileInfo &schedule_file_info)
+    bool ScheduledApplication::RemoveSchedule(ScheduleFileInfo &schedule_file_info, std::shared_ptr<info::Stream> *deleted_stream_info)
     {
         auto stream_name = schedule_file_info._schedule->GetStream()._name;
 

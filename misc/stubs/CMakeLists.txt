@@ -1,11 +1,8 @@
+cmake_minimum_required(VERSION 3.24)
+project(OMEStubs DESCRIPTION "Stub Libraries for OvenMediaEngine" LANGUAGES C)
+
 # ==============================================================================
 # GPU / Accelerator Stub Shared Libraries
-#
-# These are thin stub .so files that provide the required symbols for NVIDIA
-# (CUDA/cuBLAS/nvidia-ml) and Xilinx (XMA/XRM/XRT) drivers so that
-# OvenMediaEngine can be run on machines that do not have the vendor drivers
-# installed at build time — the real driver .so is loaded at runtime via
-# LD_LIBRARY_PATH / ldconfig.
 #
 # Each stub is built with:
 #   gcc -shared -fPIC -Wl,-soname,<soname> -Wl,--version-script=<map> -o <out> <src.c>

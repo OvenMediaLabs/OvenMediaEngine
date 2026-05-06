@@ -2,12 +2,12 @@
 
 ## Getting Started with default settings
 
-OvenMediaEngine provides the Docker image from [AirenSoft's Docker Hub](https://hub.docker.com/r/airensoft/ovenmediaengine) (**airensoft/ovenmediaengine)** repository. After installing [Docker](https://www.docker.com), you can simply run the following command:
+OvenMediaEngine provides the Docker image from [OvenMedia Labs Docker Hub](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine) (**ovenmedialabs/ovenmediaengine)** repository. After installing [Docker](https://www.docker.com), you can simply run the following command:
 
 ```sh
 docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+ovenmedialabs/ovenmediaengine:latest
 ```
 
 {% hint style="warning" %}
@@ -70,7 +70,7 @@ echo "export OME_DOCKER_HOME=/opt/ovenmediaengine" >> ~/.profile
 #### Copy the default configurations from Docker container
 
 ```sh
-docker run -d --name tmp-ome airensoft/ovenmediaengine:latest
+docker run -d --name tmp-ome ovenmedialabs/ovenmediaengine:latest
 docker cp tmp-ome:/opt/ovenmediaengine/bin/origin_conf/Server.xml $OME_DOCKER_HOME/conf
 docker cp tmp-ome:/opt/ovenmediaengine/bin/origin_conf/Logger.xml $OME_DOCKER_HOME/conf
 docker rm -f tmp-ome
@@ -105,7 +105,7 @@ docker run -d -it --name ome -e OME_HOST_IP=Your.HOST.IP.Address \
 -v $OME_DOCKER_HOME/logs:/var/log/ovenmediaengine \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 \
 -p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+ovenmedialabs/ovenmediaengine:latest
 ```
 {% endcode %}
 

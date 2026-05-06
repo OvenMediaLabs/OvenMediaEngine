@@ -156,7 +156,6 @@ namespace pvd
 		ov::String _app_name;
 		ov::String _domain_name;
 		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
-		ov::String _stream_name;
 		ov::String _device_string;
 
 		std::shared_ptr<ov::Url> _publish_url = nullptr;  // AccessControl can redirect url set in RTMP to another url.
@@ -183,11 +182,11 @@ namespace pvd
 		time_t _stream_check_time = 0;
 
 		uint32_t _key_frame_interval = 0;
-		uint32_t _previous_key_frame_timestamp = 0;
-		uint32_t _last_video_timestamp = 0;
-		uint32_t _last_audio_timestamp = 0;
-		uint32_t _previous_last_video_timestamp = 0;
-		uint32_t _previous_last_audio_timestamp = 0;
+		int64_t _previous_key_frame_timestamp = 0;
+		int64_t _last_video_timestamp = 0;
+		int64_t _last_audio_timestamp = 0;
+		int64_t _previous_last_video_timestamp = 0;
+		int64_t _previous_last_audio_timestamp = 0;
 		uint32_t _video_frame_count = 0;
 		uint32_t _audio_frame_count = 0;
 

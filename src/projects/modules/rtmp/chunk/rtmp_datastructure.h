@@ -23,8 +23,6 @@ enum class RtmpMessageHeaderType : uint8_t
 #pragma pack(push, 1)
 struct RtmpChunkHeader
 {
-	static constexpr const size_t EXTENDED_TIMESTAMP_SIZE = 4;
-
 	RtmpChunkHeader()
 	{
 		::memset(&message_header, 0, sizeof(message_header));
@@ -39,7 +37,7 @@ struct RtmpChunkHeader
 
 	// Indicates whether the timestamp is extended
 	bool is_extended_timestamp = false;
-	bool is_timestamp_delta = false;
+	bool is_timestamp_delta	   = false;
 
 	// Total chunk header size (basic header + message header + extended timestamp)
 	uint32_t GetTotalHeaderLength() const
@@ -48,16 +46,16 @@ struct RtmpChunkHeader
 	}
 
 #if DEBUG
-	uint64_t chunk_index = 0ULL;
+	uint64_t chunk_index				 = 0ULL;
 
-	uint64_t from_byte_offset = 0ULL;
+	uint64_t from_byte_offset			 = 0ULL;
 	mutable uint64_t message_total_bytes = 0ULL;
 #endif	// DEBUG
 
 	// 1 or 2 or 3
-	uint8_t basic_header_length = 0U;
+	uint8_t basic_header_length	   = 0U;
 	uint32_t message_header_length = 0U;
-	uint32_t message_length = 0U;
+	uint32_t message_length		   = 0U;
 
 	// uint32_t expected_type_3_header{};
 	// The payload size that including type 3 messages
@@ -75,16 +73,16 @@ struct RtmpChunkHeader
 
 	// Extended Timestamp/Timestamp delta
 	uint32_t extended_timestamp = 0U;
-	static_assert(sizeof(RtmpChunkHeader::extended_timestamp) == EXTENDED_TIMESTAMP_SIZE, "Extended timestamp size must be 4 bytes");
+	static_assert(sizeof(RtmpChunkHeader::extended_timestamp) == RTMP_EXTEND_TIMESTAMP_SIZE, "Extended timestamp size must be 4 bytes");
 
 	struct CompletedHeader
 	{
 		// Accumulated timestamp
-		int64_t timestamp = 0LL;
-		uint32_t timestamp_delta = 0U;
+		int64_t timestamp		  = 0LL;
+		uint32_t timestamp_delta  = 0U;
 
 		RtmpMessageTypeID type_id = RtmpMessageTypeID::Unknown;
-		uint32_t stream_id = 0U;
+		uint32_t stream_id		  = 0U;
 	} completed;
 
 	// Message Header

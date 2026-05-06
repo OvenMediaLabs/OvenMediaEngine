@@ -169,7 +169,9 @@ namespace pvd::rtmp
 			return false;
 		}
 
-		_name			= url->Stream();
+		// Keep the provisional stream name in sync with the parsed tcUrl so
+		// pre-publish logs and duplicate-name checks see the same source value.
+		SetName(url->Stream());
 		_tc_url			= tc_url;
 
 		_vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(url->Host(), url->App());
@@ -177,6 +179,7 @@ namespace pvd::rtmp
 		if (_vhost_app_name.IsValid())
 		{
 			UpdateNamePath(_vhost_app_name);
+			_chunk_handler.UpdateNamePath(GetNamePath());
 		}
 		else
 		{
@@ -261,6 +264,12 @@ namespace pvd::rtmp
 
 			SetRequestedUrlWithPort(url);
 			SetFinalUrl(url);
+
+			// Reflect the publish command's stream name immediately. Admission
+			// Webhooks may still redirect it later, but the pre-publish phase
+			// should already expose the same provisional name through GetName().
+			SetName(url->Stream());
+			_chunk_handler.UpdateNamePath(GetNamePath());
 		}
 
 		_is_post_published = CheckAccessControl() && ValidatePublishUrl();
@@ -375,7 +384,13 @@ namespace pvd::rtmp
 
 		_vhost_app_name = app_info.GetVHostAppName();
 		UpdateNamePath(_vhost_app_name);
+		_chunk_handler.UpdateNamePath(GetNamePath());
+
+		// This is the first point where the final URL is guaranteed to be
+		// validated, so update the public stream name to the post-redirect value.
 		SetName(final_url->Stream());
+		_chunk_handler.UpdateNamePath(GetNamePath());
+		_chunk_handler.UpdateQueueAlias();
 
 		return true;
 	}
@@ -468,6 +483,19 @@ namespace pvd::rtmp
 
 	bool RtmpStreamV2::PublishStream()
 	{
+		const auto final_url = GetFinalUrl();
+		if (final_url == nullptr)
+		{
+			logae("Could not find final URL");
+			OV_ASSERT2(false);
+			return false;
+		}
+
+		// Publish must use the final validated URL, not the earlier provisional
+		// name from tcUrl or the publish command.
+		SetName(final_url->Stream());
+		_chunk_handler.UpdateNamePath(GetNamePath());
+
 		// Get application config
 		auto provider = GetProvider();
 		if (provider == nullptr)

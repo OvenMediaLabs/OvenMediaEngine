@@ -49,7 +49,7 @@ namespace pvd
         bool GetScheduleFileInfoFromDB(const size_t &hash, ScheduleFileInfo &schedule_file_info);
         bool AddSchedule(ScheduleFileInfo &schedule_file_info);
         bool UpdateSchedule(ScheduleFileInfo &schedule_file_info, ScheduleFileInfo &new_schedule_file_info);
-        bool RemoveSchedule(ScheduleFileInfo &schedule_file_info);
+        bool RemoveSchedule(ScheduleFileInfo &schedule_file_info, std::shared_ptr<info::Stream> *deleted_stream_info = nullptr);
 
         ov::String _media_root_dir;
         ov::String _schedule_files_path;

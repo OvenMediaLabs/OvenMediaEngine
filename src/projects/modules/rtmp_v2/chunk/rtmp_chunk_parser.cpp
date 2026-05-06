@@ -8,11 +8,20 @@
 //==============================================================================
 #include "rtmp_chunk_parser.h"
 
+// `rtmp_private.h` should be included before `rtmp_chunk_parser_helper.h` because it contains `OV_LOG_TAG`.
 #include "../rtmp_private.h"
+// ====
+#include "../../rtmp/rtmp_chunk_parser_helper.h"
 #include "./rtmp_utilities.h"
 
 namespace modules::rtmp
 {
+	namespace
+	{
+		constexpr uint32_t SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT = 0x80000000U;
+		constexpr int64_t MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS	= 10 * 1000;
+	}  // namespace
+
 	ChunkParser::ChunkParser(int chunk_size)
 	{
 		_chunk_size = chunk_size;
@@ -35,7 +44,7 @@ namespace modules::rtmp
 		{
 			// Need to parse new header when parsing for the first time or when reaching the chunk size
 			auto parsed_chunk_header = std::make_shared<ChunkHeader>();
-			auto status = ParseHeader(stream, parsed_chunk_header.get());
+			auto status				 = ParseHeader(stream, parsed_chunk_header.get());
 			if (status != ParseResult::Parsed)
 			{
 				// If the header parsing fails, the bytes_used value is not updated to try parsing again from the beginning next time.
@@ -45,7 +54,7 @@ namespace modules::rtmp
 			_need_to_parse_new_header = false;
 
 #if DEBUG
-			parsed_chunk_header->chunk_index = _chunk_index;
+			parsed_chunk_header->chunk_index	  = _chunk_index;
 			parsed_chunk_header->from_byte_offset = _total_read_bytes;
 #endif	// DEBUG
 
@@ -53,9 +62,9 @@ namespace modules::rtmp
 
 			if (_current_message != nullptr)
 			{
-				auto &current_chunk_header = _current_message->header;
+				auto &current_chunk_header		   = _current_message->header;
 				const auto current_chunk_stream_id = current_chunk_header->basic_header.chunk_stream_id;
-				const auto new_chunk_stream_id = parsed_chunk_header->basic_header.chunk_stream_id;
+				const auto new_chunk_stream_id	   = parsed_chunk_header->basic_header.chunk_stream_id;
 
 				if (current_chunk_stream_id != new_chunk_stream_id)
 				{
@@ -138,7 +147,7 @@ namespace modules::rtmp
 
 		if (_current_message->ReadFromStream(stream, _chunk_size))
 		{
-			auto &current_message_header = _current_message->header;
+			auto &current_message_header													  = _current_message->header;
 			_preceding_chunk_header_map[current_message_header->basic_header.chunk_stream_id] = current_message_header;
 
 			if (_current_message->GetRemainedPayloadSize() == 0UL)
@@ -160,7 +169,7 @@ namespace modules::rtmp
 				logtp("Need to parse next chunk (%zu bytes remained to completed current messasge)", _current_message->GetRemainedPayloadSize());
 			}
 
-			status = ParseResult::Parsed;
+			status					  = ParseResult::Parsed;
 
 			// A new message is completed or the chunk size is reached, so a new header parsing is required.
 			_need_to_parse_new_header = true;
@@ -188,13 +197,13 @@ namespace modules::rtmp
 			return ParseResult::NeedMoreData;
 		}
 
-		const auto first_byte = stream.Read8();
+		const auto first_byte			  = stream.Read8();
 
-		auto &basic_header = chunk_header->basic_header;
+		auto &basic_header				  = chunk_header->basic_header;
 
 		// Parse basic header
-		basic_header.format_type = static_cast<MessageHeaderType>((first_byte & 0b11000000) >> 6);
-		basic_header.chunk_stream_id = (first_byte & 0b00111111);
+		basic_header.format_type		  = static_cast<MessageHeaderType>((first_byte & 0b11000000) >> 6);
+		basic_header.chunk_stream_id	  = (first_byte & 0b00111111);
 
 		chunk_header->basic_header_length = GetBasicHeaderLength(basic_header.chunk_stream_id);
 
@@ -230,86 +239,29 @@ namespace modules::rtmp
 		return header->second;
 	}
 
-	ChunkParser::ParseResultForExtendedTimestamp ChunkParser::ParseExtendedTimestamp(
-		const uint32_t stream_id,
-		ov::ByteStream &stream,
-		ChunkHeader *chunk_header,
-		const int64_t timestamp,
-		ChunkHeader::CompletedHeader *completed_header)
+	bool ChunkParser::IsContinuationChunk(const uint32_t chunk_stream_id) const
 	{
-		if (timestamp != EXTENDED_TIMESTAMP_VALUE)
+		if ((_current_message != nullptr) &&
+			(_current_message->header->basic_header.chunk_stream_id == chunk_stream_id) &&
+			(_current_message->GetRemainedPayloadSize() > 0))
 		{
-			chunk_header->is_extended_timestamp = false;
-
-			completed_header->timestamp = timestamp;
-			completed_header->timestamp_delta = 0U;
-
-			return ParseResultForExtendedTimestamp::NotExtended;
+			return true;
 		}
 
-		if (stream.IsRemained(EXTENDED_TIMESTAMP_SIZE) == false)
+		const auto pending_message = _pending_message_map.find(chunk_stream_id);
+		if (pending_message == _pending_message_map.end())
 		{
-			logtp("Need more data to parse extended timestamp: %d bytes (current: %zu)", EXTENDED_TIMESTAMP_SIZE, stream.Remained());
-			return ParseResultForExtendedTimestamp::NeedMoreData;
+			return false;
 		}
 
-		logtt("Extended timestamp is present for stream id: %u", stream_id);
-
-		int64_t extended_timestamp = stream.ReadBE32();
-
-		chunk_header->is_extended_timestamp = true;
-		chunk_header->message_header_length += EXTENDED_TIMESTAMP_SIZE;
-
-		completed_header->timestamp = extended_timestamp;
-		completed_header->timestamp_delta = 0U;
-
-		return ParseResultForExtendedTimestamp::Extended;
-	}
-
-	ChunkParser::ParseResultForExtendedTimestamp ChunkParser::ParseExtendedTimestampDelta(
-		const uint32_t stream_id,
-		ov::ByteStream &stream,
-		ChunkHeader *chunk_header,
-		const int64_t preceding_timestamp,
-		const int64_t timestamp_delta,
-		ChunkHeader::CompletedHeader *completed_header)
-	{
-		if (timestamp_delta != EXTENDED_TIMESTAMP_VALUE)
-		{
-			chunk_header->is_extended_timestamp = false;
-
-			completed_header->timestamp = preceding_timestamp + timestamp_delta;
-			completed_header->timestamp_delta = timestamp_delta;
-
-			return ParseResultForExtendedTimestamp::NotExtended;
-		}
-
-		if (stream.IsRemained(EXTENDED_TIMESTAMP_SIZE) == false)
-		{
-			logtp("Need more data to parse extended timestamp delta: %d bytes (current: %zu)", EXTENDED_TIMESTAMP_SIZE, stream.Remained());
-			return ParseResultForExtendedTimestamp::NeedMoreData;
-		}
-
-		logtt("Extended timestamp delta is present for stream id: %u", stream_id);
-
-		OV_ASSERT(EXTENDED_TIMESTAMP_SIZE == 4, "Extended timestamp delta size must be 4 bytes");
-
-		int64_t extended_timestamp_delta = stream.ReadBE32();
-
-		chunk_header->is_extended_timestamp = true;
-		chunk_header->message_header_length += EXTENDED_TIMESTAMP_SIZE;
-
-		completed_header->timestamp = preceding_timestamp + extended_timestamp_delta;
-		completed_header->timestamp_delta = extended_timestamp_delta;
-
-		return ParseResultForExtendedTimestamp::Extended;
+		return (pending_message->second != nullptr) && (pending_message->second->GetRemainedPayloadSize() > 0);
 	}
 
 	ChunkParser::ParseResult ChunkParser::ParseMessageHeader(ov::ByteStream &stream, ChunkHeader *chunk_header)
 	{
-		auto &basic_header = chunk_header->basic_header;
-		auto &message_header = chunk_header->message_header;
-		auto &completed = chunk_header->completed;
+		auto &basic_header					= chunk_header->basic_header;
+		auto &message_header				= chunk_header->message_header;
+		auto &completed						= chunk_header->completed;
 
 		// Obtains minimum message header size to parse
 		chunk_header->message_header_length = GetMessageHeaderLength(basic_header.format_type, false);
@@ -321,7 +273,7 @@ namespace modules::rtmp
 		}
 
 		// Parse message header
-		chunk_header->is_extended_timestamp = false;
+		chunk_header->is_extended_timestamp						  = false;
 
 		std::shared_ptr<const ChunkHeader> preceding_chunk_header = GetPrecedingChunkHeader(basic_header.chunk_stream_id);
 
@@ -345,132 +297,276 @@ namespace modules::rtmp
 		switch (basic_header.format_type)
 		{
 			case MessageHeaderType::T0: {
-				auto &header = message_header.type_0;
-				header.timestamp = stream.ReadBE24();
-				header.length = stream.ReadBE24();
-				header.type_id = static_cast<MessageTypeID>(stream.Read8());
-				header.stream_id = stream.ReadLE32();
+				auto &header					 = message_header.type_0;
+				header.timestamp				 = stream.ReadBE24();
+				header.length					 = stream.ReadBE24();
+				header.type_id					 = static_cast<MessageTypeID>(stream.Read8());
+				header.stream_id				 = stream.ReadLE32();
 
 				chunk_header->is_timestamp_delta = false;
-				chunk_header->message_length = header.length;
+				chunk_header->message_length	 = header.length;
 
-				auto result = ParseExtendedTimestamp(
+				const auto parsed_timestamp		 = ParseTimestampField(
 					header.stream_id,
-					stream, chunk_header,
-					header.timestamp, &completed);
+					stream,
+					chunk_header->is_extended_timestamp,
+					chunk_header->extended_timestamp,
+					chunk_header->message_header_length,
+					header.timestamp,
+					EXTENDED_TIMESTAMP_VALUE,
+					EXTENDED_TIMESTAMP_SIZE);
 
-				if (result == ParseResultForExtendedTimestamp::NeedMoreData)
+				if (parsed_timestamp.has_value() == false)
 				{
 					return ParseResult::NeedMoreData;
 				}
+
+				// Type 0 carries an absolute timestamp. If there is a preceding
+				// absolute timestamp on the same chunk stream, unfold the 32-bit
+				// serial value into the current absolute epoch with RFC1982 logic.
+				completed.timestamp		  = parsed_timestamp.value();
+				completed.timestamp_delta = 0U;
 
 				if (preceding_completed_header != nullptr)
 				{
 					completed.timestamp = CalculateRolledTimestamp(header.stream_id, preceding_completed_header->timestamp, completed.timestamp);
 				}
 
-				completed.type_id = header.type_id;
+				completed.type_id	= header.type_id;
 				completed.stream_id = header.stream_id;
 				break;
 			}
 
 			case MessageHeaderType::T1: {
-				auto &header = message_header.type_1;
-				header.timestamp_delta = stream.ReadBE24();
-				header.length = stream.ReadBE24();
-				header.type_id = static_cast<MessageTypeID>(stream.Read8());
+				auto &header					  = message_header.type_1;
+				header.timestamp_delta			  = stream.ReadBE24();
+				header.length					  = stream.ReadBE24();
+				header.type_id					  = static_cast<MessageTypeID>(stream.Read8());
 
-				chunk_header->is_timestamp_delta = true;
-				chunk_header->message_length = header.length;
+				chunk_header->is_timestamp_delta  = true;
+				chunk_header->message_length	  = header.length;
 
-				auto result = ParseExtendedTimestampDelta(
+				const auto parsed_timestamp_delta = ParseTimestampField(
 					preceding_completed_header->stream_id,
-					stream, chunk_header,
-					preceding_completed_header->timestamp,
+					stream,
+					chunk_header->is_extended_timestamp,
+					chunk_header->extended_timestamp,
+					chunk_header->message_header_length,
 					header.timestamp_delta,
-					&completed);
+					EXTENDED_TIMESTAMP_VALUE,
+					EXTENDED_TIMESTAMP_SIZE);
 
-				if (result == ParseResultForExtendedTimestamp::NeedMoreData)
+				if (parsed_timestamp_delta.has_value() == false)
 				{
 					return ParseResult::NeedMoreData;
 				}
 
-				completed.type_id = header.type_id;
-				completed.stream_id = preceding_completed_header->stream_id;
+				const auto resolved_timestamp = ResolveTimestampDelta(
+					preceding_completed_header->stream_id,
+					preceding_completed_header->timestamp,
+					parsed_timestamp_delta.value(),
+					chunk_header->is_extended_timestamp,
+					SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT,
+					MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS);
+
+				if (resolved_timestamp.has_value() == false)
+				{
+					return ParseResult::Error;
+				}
+
+				// Type 1 carries a timestamp delta, not a wrapped absolute timestamp.
+				// Once the preceding timestamp has already been unfolded into the
+				// current absolute epoch, simple addition is the correct RTMP behavior.
+				completed.timestamp		  = resolved_timestamp.value();
+				completed.timestamp_delta = parsed_timestamp_delta.value();
+				completed.type_id		  = header.type_id;
+				completed.stream_id		  = preceding_completed_header->stream_id;
 
 				break;
 			}
 
 			case MessageHeaderType::T2: {
-				auto &header = message_header.type_2;
-				header.timestamp_delta = stream.ReadBE24();
+				auto &header					  = message_header.type_2;
+				header.timestamp_delta			  = stream.ReadBE24();
 
-				chunk_header->is_timestamp_delta = true;
-				chunk_header->message_length = preceding_chunk_header->message_length;
+				chunk_header->is_timestamp_delta  = true;
+				chunk_header->message_length	  = preceding_chunk_header->message_length;
 
-				auto result = ParseExtendedTimestampDelta(
+				const auto parsed_timestamp_delta = ParseTimestampField(
 					preceding_completed_header->stream_id,
-					stream, chunk_header,
-					preceding_completed_header->timestamp,
+					stream,
+					chunk_header->is_extended_timestamp,
+					chunk_header->extended_timestamp,
+					chunk_header->message_header_length,
 					header.timestamp_delta,
-					&completed);
+					EXTENDED_TIMESTAMP_VALUE,
+					EXTENDED_TIMESTAMP_SIZE);
 
-				if (result == ParseResultForExtendedTimestamp::NeedMoreData)
+				if (parsed_timestamp_delta.has_value() == false)
 				{
 					return ParseResult::NeedMoreData;
 				}
 
-				completed.type_id = preceding_completed_header->type_id;
-				completed.stream_id = preceding_completed_header->stream_id;
+				const auto resolved_timestamp = ResolveTimestampDelta(
+					preceding_completed_header->stream_id,
+					preceding_completed_header->timestamp,
+					parsed_timestamp_delta.value(),
+					chunk_header->is_extended_timestamp,
+					SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT,
+					MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS);
+
+				if (resolved_timestamp.has_value() == false)
+				{
+					return ParseResult::Error;
+				}
+
+				// Type 2 is the same timestamp-delta model as Type 1, just with fewer
+				// header fields. Do not run RFC1982 rollover logic here.
+				completed.timestamp		  = resolved_timestamp.value();
+				completed.timestamp_delta = parsed_timestamp_delta.value();
+				completed.type_id		  = preceding_completed_header->type_id;
+				completed.stream_id		  = preceding_completed_header->stream_id;
 
 				break;
 			}
 
 			case MessageHeaderType::T3: {
 				chunk_header->is_extended_timestamp = preceding_chunk_header->is_extended_timestamp;
-				chunk_header->is_timestamp_delta = preceding_chunk_header->is_timestamp_delta;
-				chunk_header->message_length = preceding_chunk_header->message_length;
+				chunk_header->is_timestamp_delta	= preceding_chunk_header->is_timestamp_delta;
+				chunk_header->message_length		= preceding_chunk_header->message_length;
 
-				completed.timestamp = preceding_completed_header->timestamp;
-				completed.timestamp_delta = preceding_completed_header->timestamp_delta;
+				completed.timestamp					= preceding_completed_header->timestamp;
+				completed.timestamp_delta			= preceding_completed_header->timestamp_delta;
 
-				completed.type_id = preceding_completed_header->type_id;
-				completed.stream_id = preceding_completed_header->stream_id;
+				completed.type_id					= preceding_completed_header->type_id;
+				completed.stream_id					= preceding_completed_header->stream_id;
 
-				ParseResultForExtendedTimestamp result;
-
-				if (chunk_header->is_timestamp_delta == false)
+				if (IsContinuationChunk(basic_header.chunk_stream_id))
 				{
-					// The origin message header is T0
-					result = ParseExtendedTimestamp(
-						completed.stream_id,
-						stream, chunk_header,
-						chunk_header->is_extended_timestamp ? EXTENDED_TIMESTAMP_VALUE : completed.timestamp, &completed);
-
-					if (result != ParseResultForExtendedTimestamp::NeedMoreData)
+					// Type 3 is also used for continuation chunks of the same message.
+					// In that case the message timestamp was already fixed by the first
+					// chunk, so do not re-apply either the absolute timestamp or delta.
+					// If the preceding chunk used extended timestamp encoding, this
+					// continuation chunk still carries the 4-byte field on the wire and
+					// it must be consumed even though its semantic value is unchanged.
+					//
+					// If the preceding chunk was not extended, there is no reliable way
+					// to distinguish a malformed extra 4-byte field from normal payload
+					// bytes here. Rejecting based on heuristics would risk corrupting
+					// valid payload, so the parser only validates the repeated extended
+					// field when the message actually uses extended timestamp encoding.
+					if (chunk_header->is_extended_timestamp)
 					{
-						completed.timestamp = CalculateRolledTimestamp(completed.stream_id, preceding_completed_header->timestamp, completed.timestamp);
+						const auto parsed_timestamp_field = ParseTimestampField(
+							completed.stream_id,
+							stream,
+							chunk_header->is_extended_timestamp,
+							chunk_header->extended_timestamp,
+							chunk_header->message_header_length,
+							EXTENDED_TIMESTAMP_VALUE,
+							EXTENDED_TIMESTAMP_VALUE,
+							EXTENDED_TIMESTAMP_SIZE);
+
+						if (parsed_timestamp_field.has_value() == false)
+						{
+							return ParseResult::NeedMoreData;
+						}
+
+						// A Type 3 continuation chunk should repeat the same extended
+						// timestamp field as the first chunk of the message. If it does
+						// not, keep the pre-existing compatibility behavior and continue
+						// parsing with the already fixed message timestamp instead of
+						// failing the whole session.
+						//
+						// The log below keeps just enough context to explain whether the
+						// stored semantic meaning came from an absolute timestamp path or
+						// a timestamp-delta path.
+						if (parsed_timestamp_field.value() != preceding_chunk_header->extended_timestamp)
+						{
+							logtw("Type3 ext mismatch: sid=%u csid=%u origin=%d semantic=%s expected=0x%08x parsed=0x%08x",
+								  completed.stream_id,
+								  basic_header.chunk_stream_id,
+								  ov::ToUnderlyingType(preceding_chunk_header->basic_header.format_type),
+								  preceding_chunk_header->is_timestamp_delta ? "delta" : "absolute",
+								  preceding_chunk_header->extended_timestamp,
+								  parsed_timestamp_field.value());
+						}
 					}
+				}
+				else if (chunk_header->is_timestamp_delta == false)
+				{
+					// The origin message header is T0.
+					const auto parsed_timestamp = ParseTimestampField(
+						completed.stream_id,
+						stream,
+						chunk_header->is_extended_timestamp,
+						chunk_header->extended_timestamp,
+						chunk_header->message_header_length,
+						chunk_header->is_extended_timestamp ? EXTENDED_TIMESTAMP_VALUE : static_cast<uint32_t>(completed.timestamp),
+						EXTENDED_TIMESTAMP_VALUE,
+						EXTENDED_TIMESTAMP_SIZE);
+
+					if (parsed_timestamp.has_value() == false)
+					{
+						return ParseResult::NeedMoreData;
+					}
+
+					// Type 3 inherited from Type 0, so this path still resolves a
+					// wrapped absolute timestamp rather than a delta.
+					completed.timestamp		  = CalculateRolledTimestamp(completed.stream_id, preceding_completed_header->timestamp, parsed_timestamp.value());
+					completed.timestamp_delta = 0U;
 				}
 				else
 				{
-					// The origin message header is T1 or T2
-					result = ParseExtendedTimestampDelta(
+					// The origin message header is T1 or T2.
+					const auto parsed_timestamp_delta = ParseTimestampField(
 						completed.stream_id,
-						stream, chunk_header,
-						completed.timestamp, chunk_header->is_extended_timestamp ? EXTENDED_TIMESTAMP_VALUE : completed.timestamp_delta, &completed);
-				}
+						stream,
+						chunk_header->is_extended_timestamp,
+						chunk_header->extended_timestamp,
+						chunk_header->message_header_length,
+						chunk_header->is_extended_timestamp ? EXTENDED_TIMESTAMP_VALUE : completed.timestamp_delta,
+						EXTENDED_TIMESTAMP_VALUE,
+						EXTENDED_TIMESTAMP_SIZE);
 
-				if (result == ParseResultForExtendedTimestamp::NeedMoreData)
-				{
-					return ParseResult::NeedMoreData;
-				}
+					if (parsed_timestamp_delta.has_value() == false)
+					{
+						return ParseResult::NeedMoreData;
+					}
 
+					const auto resolved_timestamp = ResolveTimestampDelta(
+						completed.stream_id,
+						completed.timestamp,
+						parsed_timestamp_delta.value(),
+						chunk_header->is_extended_timestamp,
+						SIGNED_EXTENDED_TIMESTAMP_DELTA_SIGN_BIT,
+						MAX_NEGATIVE_EXTENDED_TIMESTAMP_DELTA_MS);
+
+					if (resolved_timestamp.has_value() == false)
+					{
+						return ParseResult::Error;
+					}
+
+					completed.timestamp		  = resolved_timestamp.value();
+					completed.timestamp_delta = parsed_timestamp_delta.value();
+				}
 				break;
 			}
 
 			default:
 				break;
+		}
+
+		if (completed.timestamp < 0)
+		{
+			// Keep the parser invariant explicit: downstream code assumes RTMP
+			// timestamps are non-negative once a chunk header has been accepted.
+			logte("Rejecting RTMP chunk because it produces a negative absolute timestamp: stream_id: %u, chunk_stream_id: %u, type: %d, timestamp: %" PRId64,
+				  completed.stream_id,
+				  basic_header.chunk_stream_id,
+				  ov::ToUnderlyingType(basic_header.format_type),
+				  completed.timestamp);
+			return ParseResult::Error;
 		}
 
 		return ParseResult::Parsed;
@@ -488,56 +584,6 @@ namespace modules::rtmp
 		}
 
 		return ParseMessageHeader(stream, chunk_header);
-	}
-
-	int64_t ChunkParser::CalculateRolledTimestamp(const uint32_t stream_id, const int64_t last_timestamp, int64_t parsed_timestamp)
-	{
-		const static int64_t SERIAL_BITS = 31;
-		int64_t new_timestamp = parsed_timestamp;
-		int64_t delta = ::llabs(last_timestamp - parsed_timestamp);
-
-		// RTMP specification
-		//
-		// Because timestamps are 32 bits long, they roll over every 49 days, 17
-		// hours, 2 minutes and 47.296 seconds. Because streams are allowed to
-		// run continuously, potentially for years on end, an RTMP application
-		// SHOULD use serial number arithmetic [RFC1982] when processing
-		// timestamps, and SHOULD be capable of handling wraparound. For
-		// example, an application assumes that all adjacent timestamps are
-		// within 2^31 - 1 milliseconds of each other, so 10000 comes after
-		// 4000000000, and 3000000000 comes before 4000000000.
-
-		// completed.timestamp calculated from this formula (https://tools.ietf.org/html/rfc1982#section-3.1):
-		//
-		// Serial numbers may be incremented by the addition of a positive
-		// integer n, where n is taken from the range of integers
-		// [0 .. (2^(SERIAL_BITS - 1) - 1)].  For a sequence number s, the
-		// result of such an addition, s', is defined as
-		//
-		//                 s' = (s + n) modulo (2 ^ SERIAL_BITS)
-		//
-		// where the addition and modulus operations here act upon values that
-		// are non-negative values of unbounded size in the usual ways of
-		// integer arithmetic.
-
-		// Check if the timestamp is an adjacent timestamp
-		if (delta <= ((1LL << (SERIAL_BITS - 1)) - 1))
-		{
-			// Adjacent timestamp - No need to roll timestamp
-		}
-		else
-		{
-			// Non-adjacent timestamp - Need to roll timestamp
-			new_timestamp = last_timestamp + (1LL << SERIAL_BITS) - (last_timestamp % (1LL << SERIAL_BITS)) + parsed_timestamp;
-
-			logti("Timestamp is rolled for stream id: %u: last TS: %" PRId64 ", parsed: %" PRId64 ", new: %" PRId64,
-				  stream_id,
-				  last_timestamp,
-				  parsed_timestamp,
-				  new_timestamp);
-		}
-
-		return new_timestamp;
 	}
 
 	std::shared_ptr<const Message> ChunkParser::GetMessage()

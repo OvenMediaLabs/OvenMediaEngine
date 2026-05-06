@@ -421,6 +421,9 @@ namespace ov
 				{
 					// Succeeded
 					_local_address = std::make_shared<SocketAddress>(address);
+					_local_address->SetTransport(GetType() == SocketType::Tcp
+						? SocketAddress::Transport::Tcp
+						: SocketAddress::Transport::Udp);
 				}
 				else
 				{
@@ -442,6 +445,7 @@ namespace ov
 				{
 					// Succeeded
 					_local_address = std::make_shared<SocketAddress>(address);
+					_local_address->SetTransport(SocketAddress::Transport::Srt);
 				}
 				else
 				{
@@ -1877,8 +1881,15 @@ namespace ov
 					{
 						const auto port = GetLocalAddress()->Port();
 
-						address_pair->SetLocalAddress(QueryLocalAddress(_family, port, remote, &msg));
-						address_pair->SetRemoteAddress(SocketAddress("", remote));
+						const auto transport = _local_address->GetTransport();
+
+						auto local = QueryLocalAddress(_family, port, remote, &msg);
+						local.SetTransport(transport);
+						address_pair->SetLocalAddress(local);
+
+						SocketAddress remote_addr("", remote);
+						remote_addr.SetTransport(transport);
+						address_pair->SetRemoteAddress(remote_addr);
 					}
 
 					UpdateLastRecvTime();

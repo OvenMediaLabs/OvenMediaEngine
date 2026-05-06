@@ -45,7 +45,6 @@ set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmp
 set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
 option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
 option(OME_ENABLE_JEMALLOC          "Enable jemalloc memory allocator"                  OFF)
-option(OME_BUILD_STUBS              "Build GPU stub libraries"                           OFF)
 option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version packages" OFF)
 option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
 option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
@@ -126,14 +125,6 @@ endif()
 
 add_subdirectory(src)
 
-# Auto-enable stubs when GPU acceleration is active
-if(OME_HWACCEL_NVIDIA OR OME_HWACCEL_XMA)
-    set(OME_BUILD_STUBS ON)
-endif()
-
-if(OME_BUILD_STUBS)
-    add_subdirectory(misc/stubs)
-endif()
 
 # ==============================================================================
 # Install rules

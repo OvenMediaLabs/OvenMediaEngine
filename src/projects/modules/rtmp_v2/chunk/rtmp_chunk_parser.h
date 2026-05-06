@@ -8,38 +8,33 @@
 //==============================================================================
 #pragma once
 
-#include <base/info/info.h>
-
-#include <deque>
-#include <map>
-#include <memory>
-
+#include "../../rtmp/rtmp_chunk_parser_common.h"
 #include "rtmp_datastructure.h"
 #include "rtmp_define.h"
 
 namespace modules::rtmp
 {
-	class ChunkParser
+	class ChunkParser : public ::RtmpChunkParserCommon<ChunkHeader, Message>
 	{
 	public:
-		enum class ParseResult
-		{
-			Error,
-			NeedMoreData,
-			Parsed,
-		};
+		using ParseResult = typename ::RtmpChunkParserCommon<ChunkHeader, Message>::ParseResult;
 
-		enum class ParseResultForExtendedTimestamp
-		{
-			NeedMoreData,
-			Extended,
-			NotExtended,
-		};
-
-	public:
 		ChunkParser(int chunk_size);
 		virtual ~ChunkParser();
 
+		/// Parses as much of a single RTMP chunk as possible from the supplied data.
+		///
+		/// @param data Input bytes beginning at the next unread RTMP chunk boundary.
+		/// @param bytes_used Receives the number of bytes consumed from @p data.
+		///
+		/// @return `Parsed` when a chunk payload step completed, `NeedMoreData` when
+		///         more bytes are required, or `Error` when the chunk stream is
+		///         malformed.
+		///
+		/// @note When this returns `NeedMoreData`, @p bytes_used is set to `0` and
+		///       the caller must replay the same unconsumed prefix again with more
+		///       bytes appended. Header parsing is not resumable from the middle of
+		///       a partially received header.
 		ParseResult Parse(const std::shared_ptr<const ov::Data> &data, size_t *bytes_used);
 
 		std::shared_ptr<const Message> GetMessage();
@@ -59,41 +54,44 @@ namespace modules::rtmp
 		void Destroy();
 
 	private:
+		/// Returns the most recent completed header for a chunk stream.
+		///
+		/// @param chunk_stream_id RTMP chunk stream identifier.
+		///
+		/// @return The preceding parsed header for @p chunk_stream_id, or `nullptr`
+		///         if no header has been completed on that chunk stream yet.
 		std::shared_ptr<const ChunkHeader> GetPrecedingChunkHeader(const uint32_t chunk_stream_id);
 
+		/// Checks whether the next header belongs to an unfinished message.
+		///
+		/// @param chunk_stream_id RTMP chunk stream identifier for the incoming chunk.
+		///
+		/// @return `true` when the parser is expecting a continuation chunk for the
+		///         same chunk stream, including interleaved pending-message cases.
+		bool IsContinuationChunk(const uint32_t chunk_stream_id) const;
+
+		/// Parses the RTMP basic header.
+		///
+		/// @param stream Input byte stream positioned at the RTMP basic header.
+		/// @param chunk_header Destination header object to populate.
+		///
+		/// @return `Parsed`, `NeedMoreData`, or `Error`.
 		ParseResult ParseBasicHeader(ov::ByteStream &stream, ChunkHeader *chunk_header);
-		ParseResultForExtendedTimestamp ParseExtendedTimestamp(
-			const uint32_t stream_id,
-			ov::ByteStream &stream,
-			ChunkHeader *chunk_header,
-			const int64_t timestamp,
-			ChunkHeader::CompletedHeader *completed_header);
-		ParseResultForExtendedTimestamp ParseExtendedTimestampDelta(
-			const uint32_t stream_id,
-			ov::ByteStream &stream,
-			ChunkHeader *chunk_header,
-			const int64_t preceding_timestamp,
-			const int64_t timestamp_delta,
-			ChunkHeader::CompletedHeader *completed_header);
+
+		/// Parses the RTMP message header for an already-parsed basic header.
+		///
+		/// @param stream Input byte stream positioned at the RTMP message header.
+		/// @param chunk_header Destination header object to populate.
+		///
+		/// @return `Parsed`, `NeedMoreData`, or `Error`.
 		ParseResult ParseMessageHeader(ov::ByteStream &stream, ChunkHeader *chunk_header);
+
+		/// Parses both the RTMP basic header and message header.
+		///
+		/// @param stream Input byte stream positioned at the start of an RTMP header.
+		/// @param chunk_header Destination header object to populate.
+		///
+		/// @return `Parsed`, `NeedMoreData`, or `Error`.
 		ParseResult ParseHeader(ov::ByteStream &stream, ChunkHeader *chunk_header);
-
-		int64_t CalculateRolledTimestamp(const uint32_t stream_id, const int64_t last_timestamp, int64_t parsed_timestamp);
-
-		void UpdateAppStreamName();
-
-	private:
-#if DEBUG
-		uint64_t _chunk_index = 0ULL;
-		uint64_t _total_read_bytes = 0ULL;
-#endif	// DEBUG
-
-		bool _need_to_parse_new_header = true;
-		std::shared_ptr<Message> _current_message;
-		std::map<uint32_t, std::shared_ptr<Message>> _pending_message_map;
-		std::map<uint32_t, std::shared_ptr<const ChunkHeader>> _preceding_chunk_header_map;
-
-		ov::Queue<std::shared_ptr<const Message>> _message_queue{nullptr, 500};
-		size_t _chunk_size;
 	};
 }  // namespace modules::rtmp

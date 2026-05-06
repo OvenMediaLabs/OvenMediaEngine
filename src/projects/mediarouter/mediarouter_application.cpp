@@ -62,7 +62,7 @@ MediaRouteApplication::MediaRouteApplication(const info::Application &applicatio
 		{
 			auto urn = std::make_shared<info::ManagedQueue::URN>(_application_info.GetVHostAppName(), nullptr, "omr", ov::String::FormatString("aw_%d", worker_id));
 			auto stream_data = std::make_shared<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>(urn, 1000);
-			stream_data->SetBufferingDelay(delay_buffer_time_ms);
+			stream_data->SetBufferingDelay(delay_buffer_time_ms);	
 			_outbound_stream_indicator.push_back(stream_data);
 		}
 	}
@@ -443,7 +443,14 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 	{
 		return nullptr;
 	}
-	
+
+	// Set buffer retention duration for outbound stream
+	int delay_buffer_time_ms = _application_info.GetConfig().GetPublishers().GetDelayBufferTimeMs();
+	if (delay_buffer_time_ms > 0)
+	{
+		new_stream->SetBufferRetentionDuration(delay_buffer_time_ms);
+	}
+
 	_outbound_streams.insert(std::make_pair(out_stream_info->GetId(), new_stream));
 
 	return new_stream;

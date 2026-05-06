@@ -76,9 +76,9 @@ Add your certificate files to as follows:
                 <Name>*</Name>
             </Names>
             <TLS>
-                <CertPath>/etc/pki/airensoft.com/_airensoft_com.crt</CertPath>
-                <KeyPath>/etc/pki/airensoft.com/_airensoft_com.key</KeyPath>
-                <ChainCertPath>/etc/pki/airensoft.com/_airensoft_com.ca-bundle</ChainCertPath>
+                <CertPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.crt</CertPath>
+                <KeyPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.key</KeyPath>
+                <ChainCertPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.ca-bundle</ChainCertPath>
             </TLS>
         </Host>
         ...

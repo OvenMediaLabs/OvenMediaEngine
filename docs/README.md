@@ -2,11 +2,11 @@
 
 ## What is OvenMediaEngine?
 
-[**OvenMediaEngine**](https://github.com/AirenSoft/OvenMediaEngine) (OME) is a **Sub**-**Second Latency Live Streaming Server** with **Large**-**Scale** and **High**-**Definition**. With OME, you can create platforms/services/systems that transmit high-definition video to hundreds-thousand viewers with sub-second latency and be scalable, depending on the number of concurrent viewers.
+[**OvenMediaEngine**](https://github.com/OvenMediaLabs/OvenMediaEngine) (OME) is a **Sub**-**Second Latency Live Streaming Server** with **Large**-**Scale** and **High**-**Definition**. With OME, you can create platforms/services/systems that transmit high-definition video to hundreds-thousand viewers with sub-second latency and be scalable, depending on the number of concurrent viewers.
 
 <figure><img src=".gitbook/assets/OME_LLHLS_220610.png" alt=""><figcaption></figcaption></figure>
 
-OvenMediaEngine can receive a video/audio, video, or audio source from encoders and cameras such as [OvenLiveKit](https://www.ovenmediaengine.com/olk), OBS, XSplit, and more, to WebRTC, SRT, RTMP, MPEG-2 TS, and RTSP as Input. Then, OME transmits this source using **LLHLS** (Low Latency HLS) and **WebRTC** as output. Also, we provide [OvenPlayer](https://github.com/AirenSoft/OvenPlayer), an Open-Source and JavaScript-based WebRTC/LLHLS Player for OvenMediaEngine.
+OvenMediaEngine can receive a video/audio, video, or audio source from encoders and cameras such as [OvenLiveKit](https://www.ovenmediaengine.com/olk), OBS, XSplit, and more, to WebRTC, SRT, RTMP, MPEG-2 TS, and RTSP as Input. Then, OME transmits this source using **LLHLS** (Low Latency HLS) and **WebRTC** as output. Also, we provide [OvenPlayer](https://github.com/OvenMediaLabs/OvenPlayer), an Open-Source and JavaScript-based WebRTC/LLHLS Player for OvenMediaEngine.
 
 Our goal is to make it easier for you to build a stable broadcasting/streaming service with sub-second latency.
 
@@ -59,7 +59,7 @@ Our goal is to make it easier for you to build a stable broadcasting/streaming s
 
 We have tested OvenMediaEngine on platforms, listed below. However, we think it can work with other Linux packages as well:
 
-* Docker ([https://hub.docker.com/r/airensoft/ovenmediaengine](https://hub.docker.com/r/airensoft/ovenmediaengine))
+* Docker ([https://hub.docker.com/r/ovenmedialabs/ovenmediaengine](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine))
 * Ubuntu 18+
 * Rocky Linux 8+
 * AlmaLinux 8+
@@ -87,15 +87,15 @@ We always hope that OvenMediaEngine will give you good inspiration.
 
 ## For more information
 
-* [OvenMediaEngine GitHub](https://github.com/AirenSoft/OvenMediaEngine)
+* [OvenMediaEngine GitHub](https://github.com/OvenMediaLabs/OvenMediaEngine)
 * [OvenMediaEngine Website](https://ovenmediaengine.com)
-* [OvenMediaEngine Tutorial Source](https://github.com/AirenSoft/OvenMediaEngineDocs)
+* [OvenMediaEngine Tutorial Source](https://github.com/OvenMediaLabs/OvenMediaEngineDocs)
 * Test Player
   * _Without TLS:_ [_http://demo.ovenplayer.com_](http://demo.ovenplayer.com)
   * _With TLS:_ [_https://demo.ovenplayer.com_](https://demo.ovenplayer.com)
-* [OvenPlayer Github](https://github.com/AirenSoft/OvenPlayer)
-* [AirenSoft Website](https://www.airensoft.com)
+* [OvenPlayer Github](https://github.com/OvenMediaLabs/OvenPlayer)
+* [OvenMedia Labs Website](https://www.ovenmedialabs.com)
 
 ## License
 
-OvenMediaEngine is licensed under the [AGPL-3.0-only](../LICENSE/). However, if you need another license, please feel free to email us at [contact@airensoft.com](mailto:contact@airensoft.com).
+OvenMediaEngine is licensed under the [AGPL-3.0-only](../LICENSE/). However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).
