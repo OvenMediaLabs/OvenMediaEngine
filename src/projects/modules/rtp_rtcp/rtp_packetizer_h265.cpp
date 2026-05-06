@@ -62,7 +62,7 @@ bool RtpPacketizerH265::GeneratePackets()
 					PacketizeFuA(i);
 					++i;
 				} 
-				else if (fragment_len + H265_NAL_HEADER_SIZE + H265_LENGTH_FIELD_SIZE <= _max_payload_len)
+				else if (IsAggregationPossible(i))
 				{
 					i = PacketizeStapA(i);
 				}
@@ -77,6 +77,36 @@ bool RtpPacketizerH265::GeneratePackets()
 	return true;
 }
 
+bool RtpPacketizerH265::IsAggregationPossible(size_t fragment_index) const
+{
+	if (fragment_index + 1 >= _input_fragments.size())
+	{
+		return false;
+	}
+
+	size_t space_left = _max_payload_len;
+	
+	// First fragment: NAL header (2) + length field (2) + data.
+	const size_t first_needed = H265_NAL_HEADER_SIZE + H265_LENGTH_FIELD_SIZE + _input_fragments[fragment_index].length;
+
+	if (first_needed > space_left)
+	{
+		return false;
+	}
+	space_left -= first_needed;
+
+	// Second fragment: length field (2) + data.
+	const size_t next_fragment_index = fragment_index + 1;
+	size_t next_needed = H265_LENGTH_FIELD_SIZE + _input_fragments[next_fragment_index].length;
+
+	// If Last fragment, also calculate for _last_packet_reduction_len.
+	if ((next_fragment_index + 1) == _input_fragments.size())
+	{
+		next_needed += _last_packet_reduction_len;
+	}
+
+	return space_left >= next_needed;
+}
 
 void RtpPacketizerH265::PacketizeFuA(size_t fragment_index) 
 {
