@@ -62,7 +62,11 @@ bool RtpPacketizerH265::GeneratePackets()
 					PacketizeFuA(i);
 					++i;
 				} 
-				else 
+				else if (fragment_len + H265_NAL_HEADER_SIZE + H265_LENGTH_FIELD_SIZE <= _max_payload_len)
+				{
+					i = PacketizeStapA(i);
+				}
+				else
 				{
 					PacketizeSingleNalu(i);
 					++i;
@@ -108,13 +112,17 @@ void RtpPacketizerH265::PacketizeFuA(size_t fragment_index)
 		// NAL Header
 		uint16_t header = (fragment.buffer[0] << 8) | fragment.buffer[1];
 		_packets.push(PacketUnit(Fragment(fragment.buffer + offset, packet_length),
-		                         offset - H265_NAL_HEADER_SIZE == 0,
-		                         payload_left == packet_length, 
-								 false, header));
+		                         offset - H265_NAL_HEADER_SIZE == 0 /* first */,
+		                         payload_left == packet_length /* last */, 
+								 false /* aggregated */, header));
 		offset += packet_length;
 		payload_left -= packet_length;
 		--num_packets;
 	}
+
+#if DEBUG
+	logt("RtpPacketizerH265", "Packetized one fragment into %zu FU-A packets, total size: %zu", _num_packets_left, fragment.length);
+#endif
 }
 
 size_t RtpPacketizerH265::PacketizeStapA(size_t fragment_index) 
@@ -126,20 +134,18 @@ size_t RtpPacketizerH265::PacketizeStapA(size_t fragment_index)
 	const Fragment* fragment = &_input_fragments[fragment_index];
 	++_num_packets_left;
 
+	// The header size for the first fragment is  (NAL header size +  length field size),
+	// and for subsequent fragments, only the (length field size) is added.
+	fragment_headers_length = H265_NAL_HEADER_SIZE + H265_LENGTH_FIELD_SIZE;
+
 	while (payload_size_left >= fragment->length + fragment_headers_length &&
 	       (fragment_index + 1 < _input_fragments.size() ||
 	        payload_size_left >= fragment->length + fragment_headers_length + _last_packet_reduction_len)) 
 	{
-		_packets.push(PacketUnit(*fragment, aggregated_fragments == 0, false, true, fragment->buffer[0]));
+		uint16_t header = (fragment->buffer[0] << 8) | fragment->buffer[1];
+		_packets.push(PacketUnit(*fragment, aggregated_fragments == 0 /* first */, false /* last */, true /* aggregated */, header));
 		payload_size_left -= fragment->length;
 		payload_size_left -= fragment_headers_length;
-
-		fragment_headers_length = H265_LENGTH_FIELD_SIZE;
-
-		if (aggregated_fragments == 0)
-		{	
-			fragment_headers_length += H265_NAL_HEADER_SIZE + H265_LENGTH_FIELD_SIZE;
-		}
 		++aggregated_fragments;
 
 		// Next fragment.
@@ -149,8 +155,14 @@ size_t RtpPacketizerH265::PacketizeStapA(size_t fragment_index)
 			break;
 		}
 		fragment = &_input_fragments[fragment_index];
+		fragment_headers_length = H265_LENGTH_FIELD_SIZE;
 	}
 	_packets.back().last_fragment = true;
+
+#if DEBUG
+	logt("RtpPacketizerH265", "Packetized %d fragments into AP packet, total size: %zu", aggregated_fragments, _max_payload_len - payload_size_left);
+#endif
+
 	return fragment_index;
 }
 
@@ -171,6 +183,11 @@ bool RtpPacketizerH265::PacketizeSingleNalu(size_t fragment_index)
 	
 	_packets.push(PacketUnit(*fragment, true /* first */, true /* last */, false /* aggregated */, fragment->buffer[0]));
 	++_num_packets_left;
+
+#if DEBUG
+	logt("RtpPacketizerH265", "Packetized one fragment into one single NALU packet, total size: %zu", fragment->length);
+#endif
+
 	return true;
 }
 
@@ -185,12 +202,7 @@ bool RtpPacketizerH265::NextPacket(RtpPacket* rtp_packet)
 	
 	if (packet.first_fragment && packet.last_fragment) 
 	{
-		// Single NAL unit packet.
-		size_t bytes_to_send = packet.source_fragment.length;
-		uint8_t* buffer = rtp_packet->AllocatePayload(bytes_to_send);
-		memcpy(buffer, packet.source_fragment.buffer, bytes_to_send);
-		_packets.pop();
-		_input_fragments.pop_front();
+		NextSingleUnitPacket(rtp_packet);
 	} 
 	else if (packet.aggregated) 
 	{
@@ -208,6 +220,33 @@ bool RtpPacketizerH265::NextPacket(RtpPacket* rtp_packet)
 	return true;
 }
 
+void RtpPacketizerH265::NextSingleUnitPacket(RtpPacket* rtp_packet)
+{
+	PacketUnit& packet = _packets.front();
+	size_t bytes_to_send = packet.source_fragment.length;
+	uint8_t* buffer = rtp_packet->AllocatePayload(bytes_to_send);
+	memcpy(buffer, packet.source_fragment.buffer, bytes_to_send);
+	_packets.pop();
+	_input_fragments.pop_front();
+}
+
+// H.265 AP (Aggregation Packet) structure [RFC 7798]
+//
+//  0                   1                   2                   3
+//  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |      PayloadHdr (Type=48)     |      NALU 1 Size (16bit)      |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |           NALU 1 Data (NAL header + RBSP) ...                 |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+// |      NALU 2 Size (16bit)      |  NALU 2 Data ...              |
+// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+//
+// PayloadHdr (2 bytes):
+//  +---------------+-----------------------+
+//  |F| Type(6bit)  |LayerID(6bit)|TID(3bit)|
+//  +---------------+-----------------------+
+//    Type = 48 (kHevcAp)
 void RtpPacketizerH265::NextAggregatePacket(RtpPacket* rtp_packet, bool last) 
 {
 	uint8_t* buffer = rtp_packet->AllocatePayload(last ? _max_payload_len - _last_packet_reduction_len : _max_payload_len);
