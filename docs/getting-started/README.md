@@ -22,7 +22,14 @@ The CMake version provided by some system package managers (e.g., `apt-get` on U
 
 ### **Building & Running**
 
-You can build the OvenMediaEngine source using the following command:
+First, download and extract the source code:
+
+```bash
+curl -LOJ https://github.com/AirenSoft/OvenMediaEngine/archive/master.tar.gz && \
+tar xvfz OvenMediaEngine-master.tar.gz
+```
+
+Then build and install using the commands for your platform:
 
 {% tabs %}
 {% tab title="Ubuntu 18" %}
@@ -33,6 +40,7 @@ cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
+sudo systemctl daemon-reload
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service 
@@ -47,6 +55,7 @@ cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
+sudo systemctl daemon-reload
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
@@ -62,6 +71,7 @@ cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
+sudo systemctl daemon-reload
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
@@ -78,6 +88,7 @@ cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
+sudo systemctl daemon-reload
 systemctl start ovenmediaengine
 # If you want automatically start on boot
 systemctl enable ovenmediaengine.service
