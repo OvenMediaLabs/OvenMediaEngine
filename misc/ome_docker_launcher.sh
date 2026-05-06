@@ -137,7 +137,7 @@ banner()
 }
 
 # Configurations
-IMAGE_NAME=airensoft/ovenmediaengine:latest
+IMAGE_NAME=ovenmedialabs/ovenmediaengine:latest
 CONTAINER_NAME=${CONTAINER_NAME:-ovenmediaengine}
 PREFIX=${PREFIX:-/usr/share/ovenmediaengine/}
 
