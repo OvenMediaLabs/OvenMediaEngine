@@ -25,7 +25,7 @@ The CMake version provided by some system package managers (e.g., `apt-get` on U
 First, download and extract the source code:
 
 ```bash
-curl -LOJ https://github.com/AirenSoft/OvenMediaEngine/archive/master.tar.gz && \
+curl -LOJ https://github.com/OvenMediaLabs/OvenMediaEngine/archive/master.tar.gz && \
 tar xvfz OvenMediaEngine-master.tar.gz
 ```
 
