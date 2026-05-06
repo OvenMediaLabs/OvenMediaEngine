@@ -119,7 +119,7 @@ need_to_report()
 	local ARGS=("$@")
 	loge "• ERROR: ${ARGS[@]}"
 	loge "• This may be a bug of this launcher, and should not be occurred."
-	loge "• Please report this issue to https://github.com/AirenSoft/OvenMediaEngine/issues"
+	loge "• Please report this issue to https://github.com/OvenMediaLabs/OvenMediaEngine/issues"
 	exit 1
 }
 
@@ -131,7 +131,7 @@ banner()
 	logi "${COLOR_YELLOW} ▄██████▀███▄ "
 	logi "${COLOR_YELLOW}█████▀ ▄██████${COLOR_RESET}  ${COLOR_YELLOW}OvenMediaEngine${COLOR_RESET} Launcher ${VERSION}"
 	logi "${COLOR_YELLOW}███▄▄▄▄▀▀▀▀███"
-	logi "${COLOR_YELLOW}██████▀ ▄█████${COLOR_RESET}  ${COLOR_BLUE}https://github.com/AirenSoft/OvenMediaEngine"
+	logi "${COLOR_YELLOW}██████▀ ▄█████${COLOR_RESET}  ${COLOR_BLUE}https://github.com/OvenMediaLabs/OvenMediaEngine"
 	logi "${COLOR_YELLOW} ▀███▄██████▀ "
 	logi
 }

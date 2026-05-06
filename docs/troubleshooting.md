@@ -264,7 +264,7 @@ WebRTC does not support b-frame of H.264. But if your encoder sends b-frames the
 Or by **activating the encoding options** in OvenMediaEngine.
 
 {% hint style="info" %}
-Setting up Transcoding options in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/transcoding#encodes](https://airensoft.gitbook.io/ovenmediaengine/transcoding#encodes)
+Setting up Transcoding options in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#encodes](https://docs.ovenmediaengine.com/transcoding#encodes)
 {% endhint %}
 
 ### **2.** When streaming does not work in some players
@@ -274,7 +274,7 @@ In this case, you are probably trying to stream with UDP in an environment where
 If you want to monitor packet loss in your Chrome browser, you can access it by typing '**chrome://webrtc-internals**' in the address bar.
 
 {% hint style="info" %}
-Setting up WebRTC over TCP in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp](https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp)
+Setting up WebRTC over TCP in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp)
 {% endhint %}
 
 Also, if the device's network speed, which is running the player, isn't fast enough to accommodate the stream's BPS, the stuttering during streaming won't resolve and will eventually drop the connection. In this case, there is no other way than to speed up your network.
@@ -286,7 +286,7 @@ If the Origin server uses excessive CPU/Memory/Network, all players may experien
 When you see Origin is CPU intensive on your Origin-Edge structure, the transcoding options in the OvenMediaEngine may be the primary cause. That is, you may have set the quality of the input stream too high, or the output stream to exceed the capabilities of your hardware significantly. In this case, it can be solved by **enabling the hardware encoder** in OvenMediaEngine.
 
 {% hint style="info" %}
-Setting up GPU Acceleration in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/transcoding/gpu-usage](https://airensoft.gitbook.io/ovenmediaengine/transcoding/gpu-usage)
+Setting up GPU Acceleration in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding/gpu-usage](https://docs.ovenmediaengine.com/transcoding/gpu-usage)
 {% endhint %}
 
 ### **4.** When streaming fails due to excessive CPU/Memory/Network usage of Edge in OvenMediaEngine
@@ -300,7 +300,7 @@ If the edge server excessively uses CPU/Memory/Network, the player connected to 
 When you see a specific thread overuses the CPU, the video may not stream smoothly. Please refer to the manual below for more information on this.
 
 {% hint style="info" %}
-Tuning OvenMediaEngine Performance: [https://airensoft.gitbook.io/ovenmediaengine/performance-tuning#performance-tuning](https://airensoft.gitbook.io/ovenmediaengine/performance-tuning#performance-tuning)
+Tuning OvenMediaEngine Performance: [https://docs.ovenmediaengine.com/performance-tuning#performance-tuning](https://docs.ovenmediaengine.com/performance-tuning#performance-tuning)
 {% endhint %}
 
 #### 5-2. Tuning your Linux kernel
@@ -353,7 +353,7 @@ If you try to access OvenMediaEngine's WebRTC URL starting with **ws://** _(Non-
 In this case, you can solve this by installing a certificate in OvenMediaEngine and trying to connect with the **wss://** _(WebSocket/TLS)_ URL.
 
 {% hint style="info" %}
-Setting up TLS Encryption in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/streaming/tls-encryption](https://airensoft.gitbook.io/ovenmediaengine/streaming/tls-encryption)
+Setting up TLS Encryption in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/tls-encryption](https://docs.ovenmediaengine.com/streaming/tls-encryption)
 {% endhint %}
 
 ### **2.** Due to a Cross-Origin Resource Sharing (CORS) Error
@@ -383,7 +383,7 @@ In this case, you can solve this by setting the keyframe interval in the encoder
 Or by **enabling the encoding options** in OvenMediaEngine.
 
 {% hint style="info" %}
-Setting up Transcoding options in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/transcoding#encodes](https://airensoft.gitbook.io/ovenmediaengine/transcoding#encodes)
+Setting up Transcoding options in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#encodes](https://docs.ovenmediaengine.com/transcoding#encodes)
 {% endhint %}
 
 ## A/V is out of sync
@@ -399,7 +399,7 @@ However, this can be resolved naturally as the player will sync A/V while stream
 Also, suppose you are using a transcoder in OvenMediaEngine and trying to input with b-frames of H264. Audio is encoded fast, but a video is buffered at the decoder because of b-frames. Therefore, there is a time difference at the start of each encoding, which may cause the A/V to be out of sync. Even in this case, **enabling JitterBuffer** will solve this problem.
 
 {% hint style="info" %}
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#publisher](https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#publisher)
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher)
 {% endhint %}
 
 ### 2. Time has passed, but A/V is out of sync
@@ -407,12 +407,12 @@ Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://airensoft.gitbook.io
 There may be cases where the A/V sync is not corrected even after a certain amount of time has elapsed after playback. This problem is caused by **small internal buffers** in some browsers such as Firefox, which causes the player to give up calibration if the A/V sync differs too much. But this can also be solved by **enabling JitterBuffer**.
 
 {% hint style="info" %}
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#publisher](https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#publisher)
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher)
 {% endhint %}
 
 Nevertheless, if the A/V sync is not corrected, you should suspect an error in the original video file, which can be checked by playing as HLS.
 
-However, if A/V sync is well during streaming with HLS, this is OvenMediaEnigne's bug. If you find any bugs, please feel free to report them to [**OvenMediaEngine GitHub Issues**](https://github.com/AirenSoft/OvenMediaEngine/issues).
+However, if A/V sync is well during streaming with HLS, this is OvenMediaEnigne's bug. If you find any bugs, please feel free to report them to [**OvenMediaEngine GitHub Issues**](https://github.com/OvenMediaLabs/OvenMediaEngine/issues).
 
 ## No audio is output
 
@@ -421,7 +421,7 @@ However, if A/V sync is well during streaming with HLS, this is OvenMediaEnigne'
 WebRTC supports Opus, not AAC, as an audio codec. Because RTMP and other protocols mainly use and transmit AAC as the audio codec, you may not have set up Opus, but WebRTC cannot output audio without Opus. This can be solved by **setting Opus** in OvenMediaEnigne.
 
 {% hint style="info" %}
-Setting up Opus Codec in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/transcoding#audio](https://airensoft.gitbook.io/ovenmediaengine/transcoding#audio)
+Setting up Opus Codec in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#audio](https://docs.ovenmediaengine.com/transcoding#audio)
 {% endhint %}
 
 ## Not the video quality you want
@@ -433,7 +433,7 @@ If you are using video encoding in OME, the video bitrate may be set low. In thi
 However, since OvenMediaEngine has the default to the fastest encoding option for sub-second latency streaming, the video quality may not be as good as the set video bitrate. In this case, OvenMediaEngine provides an **output profile preset** that can control the quality, so you can choose to solve it.
 
 {% hint style="info" %}
-Choosing an Encoding Preset in OvenMediaEngine: [https://airensoft.gitbook.io/ovenmediaengine/transcoding#video](https://airensoft.gitbook.io/ovenmediaengine/transcoding#video)
+Choosing an Encoding Preset in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#video](https://docs.ovenmediaengine.com/transcoding#video)
 {% endhint %}
 
 ### 2. If you are using Transcoding as Bypass in OvenMediaEngine

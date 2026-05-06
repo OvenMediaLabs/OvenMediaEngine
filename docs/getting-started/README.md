@@ -2,7 +2,7 @@
 
 ## Getting Started with Docker Image
 
-OvenMediaEngine provides Docker images from AirenSoft's Docker Hub (airensoft/ovenmediaengine) repository. You can easily use OvenMediaEngine server by using Docker image. See [Getting Started with Docker](getting-started-with-docker.md) for details.
+OvenMediaEngine provides Docker images from OvenMedia Labs Docker Hub (ovenmedialabs/ovenmediaengine) repository. You can easily use OvenMediaEngine server by using Docker image. See [Getting Started with Docker](getting-started-with-docker.md) for details.
 
 ## Getting Started with Source Code
 
@@ -11,7 +11,7 @@ OvenMediaEngine provides Docker images from AirenSoft's Docker Hub (airensoft/ov
 OvenMediaEngine can work with a variety of open-sources and libraries. First, install them on your clean Linux machine as described below. We think that OME can support most Linux packages, but the tested platforms we use are Ubuntu 18+, Fedora 28+, Rocky Linux 8+, and AlmaLinux 8+.
 
 ```bash
-curl -LOJ https://github.com/AirenSoft/OvenMediaEngine/archive/master.tar.gz && \
+curl -LOJ https://github.com/OvenMediaLabs/OvenMediaEngine/archive/master.tar.gz && \
 tar xvfz OvenMediaEngine-master.tar.gz && \
 OvenMediaEngine-master/misc/prerequisites.sh
 ```

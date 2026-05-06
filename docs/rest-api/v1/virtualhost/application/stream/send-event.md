@@ -26,7 +26,7 @@ Authorization: Basic {credentials}
   "events":[
       {
         "frameType": "TXXX",
-        "info": "AirenSoft",
+        "info": "OvenMediaLabs",
         "data": "OvenMediaEngine"
       },
       {

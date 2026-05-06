@@ -106,7 +106,7 @@ As shown below, the trigger condition of request is different for each protocol.
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | WebRTC   | When a client requests Offer SDP                                                                                         |
 | RTMP     | When a client sends a publish message                                                                                    |
-| SRT      | When a client send a [streamid](https://airensoft.gitbook.io/ovenmediaengine/live-source/srt-beta#encoders-and-streamid) |
+| SRT      | When a client send a [streamid](https://docs.ovenmediaengine.com/live-source/srt-beta#encoders-and-streamid) |
 | LLHLS    | When a client requests a playlist (llhls.m3u8)                                                                           |
 
 ## Response for closing status

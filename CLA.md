@@ -8,7 +8,7 @@ By submitting a Contribution, You accept and agree to the following terms and co
 
 * **"You"** (or **"Your"**): The copyright owner or legal entity authorized by the copyright owner that is making this Agreement.
 * **"Contribution"**: Any original work of authorship, including any modifications or additions to an existing work, that is intentionally submitted by You to the Project for inclusion in the software or documentation.
-* **"Project"**: The OvenMediaEngine project managed by AirenSoft Inc.
+* **"Project"**: The OvenMediaEngine project managed by OvenMedia Labs Inc.
 
 **2. Grant of Copyright License**
 

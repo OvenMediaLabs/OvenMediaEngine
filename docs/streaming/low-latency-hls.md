@@ -146,7 +146,7 @@ You can dump the LLHLS stream for VoD. You can enable it by setting the followin
                 <Playlist>abr.m3u8</Playlist>
             </Playlists>
     
-            <OutputPath>/service/www/ome-dev.airensoft.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
+            <OutputPath>/service/www/ome-dev.ovenmedialabs.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
         </Dump>
     </Dumps>
     ...
@@ -330,7 +330,7 @@ OvenPlayer now includes DRM-related options. Enable DRM and input the License UR
 ### Pallycon DRM
 
 {% hint style="danger" %}
-Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmediaengine-enterprise.gitbook.io/docs/getting-started/getting-started-with-ubuntu) version. For more information, see this [article](https://github.com/AirenSoft/OvenMediaEngine/discussions/1634).
+Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmediaengine-enterprise.gitbook.io/docs/getting-started/getting-started-with-ubuntu) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
 {% endhint %}
 
 OvenMediaEngine integrates with [Pallycon](https://pallycon.com/), allowing you to more easily apply DRM to LLHLS streams.

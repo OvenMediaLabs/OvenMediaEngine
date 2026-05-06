@@ -9,7 +9,7 @@ The OME Docker Launcher is a tool that simplifies the process of deploying and m
 The OME Docker Launcher provides a set of commands that allow users to easily manage the OME Docker container. These commands include:
 
 * [`setup`](getting-started-with-ome-docker-launcher.md#setup)
-  * This command pulls the OME Docker image(`airensoft/ovenmediaengine:latest`) from the Docker registry and copies the necessary configuration files to a specified location. This command needs to be run before starting the OME Docker container.
+  * This command pulls the OME Docker image(`ovenmedialabs/ovenmediaengine:latest`) from the Docker registry and copies the necessary configuration files to a specified location. This command needs to be run before starting the OME Docker container.
 * [`start`](getting-started-with-ome-docker-launcher.md#start)
   * This command creates and starts the Docker container. Once the container is started, the OME application can be accessed through a web browser using the container's IP address.
 * [`sh`](getting-started-with-ome-docker-launcher.md#sh)
@@ -32,19 +32,19 @@ OME Docker Launcher has not been tested in various environments yet. Therefore, 
 Run the following command in your Linux shell.
 
 ```
-curl -OL 'https://raw.githubusercontent.com/AirenSoft/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
+curl -OL 'https://raw.githubusercontent.com/OvenMediaLabs/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
 ```
 
 Below is an example of execution:
 
 ```bash
-$ curl -OL 'https://raw.githubusercontent.com/AirenSoft/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
+$ curl -OL 'https://raw.githubusercontent.com/OvenMediaLabs/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
 $ ./ome_docker_launcher.sh -h
 
  ▄██████▀███▄
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀
 
 • Usage: ./ome_docker_launcher.sh [OPTIONS] COMMAND ...
@@ -109,7 +109,7 @@ $ ./ome_docker_launcher.sh setup
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Creating configuration directory /usr/share/ovenmediaengine/conf
@@ -142,7 +142,7 @@ $ ./ome_docker_launcher.sh start
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Starting OvenMediaEngine...
@@ -210,7 +210,7 @@ $ ./ome_docker_launcher.sh sh
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Run a shell in the running container: ID: 7235ff9f8076
@@ -243,7 +243,7 @@ $ ./ome_docker_launcher.sh status
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Container is running: ID: 7235ff9f8076, name: ovenemediaengine
@@ -261,7 +261,7 @@ $ ./ome_docker_launcher.sh stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Stopping a container: ovenemediaengine
@@ -281,7 +281,7 @@ $ ./ome_docker_launcher.sh stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Restarting a container: ovenemediaengine
@@ -300,7 +300,7 @@ $ ./ome_docker_launcher.sh -d stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Stopping a container: ovenemediaengine

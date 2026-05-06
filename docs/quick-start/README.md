@@ -9,7 +9,7 @@ Run docker with the command below. `OME_HOST_IP` must be an IP address accessibl
 ```sh
 $ docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+ovenmedialabs/ovenmediaengine:latest
 ```
 
 <details>
@@ -21,7 +21,7 @@ You can check the docker container status with the following command:
 ```bash
 $ docker ps -f name=ome
 CONTAINER ID   IMAGE                              COMMAND                  CREATED              STATUS              PORTS                                                                                                                                                                                                                                                                                                           NAMES
-c9dd9e56d7a0   airensoft/ovenmediaengine:latest   "/opt/ovenmediaengin…"   About a minute ago   Up About a minute   0.0.0.0:1935->1935/tcp, :::1935->1935/tcp, 80/tcp, 0.0.0.0:3333->3333/tcp, :::3333->3333/tcp, 3334/tcp, 8080/tcp, 0.0.0.0:3478->3478/tcp, :::3478->3478/tcp, 4000-4005/udp, 8090/tcp, 0.0.0.0:9000->9000/tcp, :::9000->9000/tcp, 10010/udp, 0.0.0.0:9999-10009->9999-10009/udp, :::9999-10009->9999-10009/udp   ome
+c9dd9e56d7a0   ovenmedialabs/ovenmediaengine:latest   "/opt/ovenmediaengin…"   About a minute ago   Up About a minute   0.0.0.0:1935->1935/tcp, :::1935->1935/tcp, 80/tcp, 0.0.0.0:3333->3333/tcp, :::3333->3333/tcp, 3334/tcp, 8080/tcp, 0.0.0.0:3478->3478/tcp, :::3478->3478/tcp, 4000-4005/udp, 8090/tcp, 0.0.0.0:9000->9000/tcp, :::9000->9000/tcp, 10010/udp, 0.0.0.0:9999-10009->9999-10009/udp, :::9999-10009->9999-10009/udp   ome
 ```
 
 You can view the log with the command below. This is important because you can check the version of OvenMediaEngine that is running.
