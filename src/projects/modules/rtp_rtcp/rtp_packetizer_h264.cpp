@@ -97,7 +97,6 @@ bool RtpPacketizerH264::GeneratePackets()
 					PacketizeFuA(i);
 					++i;
 				} 
-				// Try to aggregate into STAP-A if possible
 				else if (fragment_len + kNalHeaderSize + kLengthFieldSize <= _max_payload_len) 
 				{
 					i = PacketizeStapA(i); 
