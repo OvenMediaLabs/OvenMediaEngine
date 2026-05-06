@@ -41,9 +41,9 @@ cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
 sudo systemctl daemon-reload
-systemctl start ovenmediaengine
+sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
-systemctl enable ovenmediaengine.service 
+sudo systemctl enable ovenmediaengine.service
 ```
 {% endtab %}
 
@@ -56,25 +56,26 @@ cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
 sudo systemctl daemon-reload
-systemctl start ovenmediaengine
+sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
-systemctl enable ovenmediaengine.service
+sudo systemctl enable ovenmediaengine.service
 ```
 {% endtab %}
 
 {% tab title="Rocky Linux 8" %}
 ```bash
 sudo dnf update
-sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
-sudo dnf install -y ninja-build
+sudo dnf install -y 'dnf-command(config-manager)'
+sudo dnf config-manager --set-enabled crb || sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
+sudo dnf install -y ninja-build pkgconf-pkg-config
 cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
 sudo systemctl daemon-reload
-systemctl start ovenmediaengine
+sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
-systemctl enable ovenmediaengine.service
+sudo systemctl enable ovenmediaengine.service
 ```
 
 {% endtab %}
@@ -82,16 +83,17 @@ systemctl enable ovenmediaengine.service
 {% tab title="AlmaLinux 8" %}
 ```bash
 sudo dnf update
-sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
-sudo dnf install -y ninja-build
+sudo dnf install -y 'dnf-command(config-manager)'
+sudo dnf config-manager --set-enabled crb || sudo dnf config-manager --set-enabled codeready-builder-for-rhel-8-x86_64-rpms || sudo dnf config-manager --set-enabled powertools || true
+sudo dnf install -y ninja-build pkgconf-pkg-config
 cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 sudo cmake --install build/Release
 sudo systemctl daemon-reload
-systemctl start ovenmediaengine
+sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
-systemctl enable ovenmediaengine.service
+sudo systemctl enable ovenmediaengine.service
 ```
 
 {% endtab %}

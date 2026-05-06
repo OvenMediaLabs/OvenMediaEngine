@@ -8,7 +8,7 @@ description: >-
 
 ## `InstallPrerequisites.cmake` Script Failed
 
-If you have problems with the `InstallPrerequisites.cmake` the script we have provided, please install it manually as follows.
+If `InstallPrerequisites.cmake` fails, install the required dependencies manually as follows.
 
 ### Platform Specific Installation
 
