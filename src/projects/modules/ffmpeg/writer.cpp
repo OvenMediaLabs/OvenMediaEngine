@@ -59,7 +59,7 @@ namespace ffmpeg
 			return 1;
 		}
 
-		auto ellapse = std::chrono::steady_clock::now() - writer->GetLastPacketSentTime();
+		auto elapsed = std::chrono::steady_clock::now() - writer->GetLastPacketSentTime();
 		if(writer->GetState() == WriterStateClosed)
 		{
 			logte("Writer is closed. stop the writer.");
@@ -67,19 +67,19 @@ namespace ffmpeg
 		}
 		else if(writer->GetState() == WriterStateConnecting)
 		{
-			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
-			if(ellapse_ms > writer->GetConnectionTimeout())
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if(elapsed_ms > writer->GetConnectionTimeout())
 			{
-				logte("connection timeout occurred. stop the writer. %" PRId64 " milliseconds. ", ellapse_ms);
+				logte("connection timeout occurred. stop the writer. %" PRId64 " milliseconds. ", elapsed_ms);
 				return 1;
 			}
 		}
 		else if(writer->GetState() == WriterStateConnected)
 		{
-			auto ellapse_ms = std::chrono::duration_cast<std::chrono::milliseconds>(ellapse).count();
-			if(ellapse_ms > writer->GetSendTimeout())
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if(elapsed_ms > writer->GetSendTimeout())
 			{
-				logte("Send timeout occurred. stop the writer. %" PRId64 " milliseconds. ", ellapse_ms);
+				logte("Send timeout occurred. stop the writer. %" PRId64 " milliseconds. ", elapsed_ms);
 				return 1;
 			}
 		}

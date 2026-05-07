@@ -84,11 +84,11 @@ namespace pvd
 		auto last_pkt_received_time_us = _last_pkt_received_time_us.load();
 		if (last_pkt_received_time_us >= 0)
 		{
-			auto current_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
+			int64_t current_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
 				std::chrono::steady_clock::now().time_since_epoch()).count();
-			auto reconnection_time_us = current_time_us - last_pkt_received_time_us;
+			int64_t reconnection_time_us = current_time_us - last_pkt_received_time_us;
 
-			logti("Time taken to reconnect is %" PRId64 " milliseconds. add to the basetime", reconnection_time_us/1000);
+			logti("Time taken to reconnect is %" PRId64 " milliseconds. add to the basetime", reconnection_time_us / 1000);
 
 			_base_timestamp_us += reconnection_time_us;
 		}

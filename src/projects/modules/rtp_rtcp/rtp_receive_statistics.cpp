@@ -98,7 +98,7 @@ bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)
 		auto now = std::chrono::steady_clock::now();
 		int64_t rtp_received_time_diff = std::chrono::duration_cast<std::chrono::microseconds>(now - _last_rtp_received_time).count();
 
-		// Calculate wall clock diff in RTP timestamp units
+		// Convert the elapsed (monotonic) time diff to RTP timestamp units
 		rtp_received_time_diff = (uint32_t)((double)rtp_received_time_diff / 1000000.0 * (double)_clock_rate);
 
 		// J(i) = J(i-1) + (|D(i-1,i)| - J(i-1))/16

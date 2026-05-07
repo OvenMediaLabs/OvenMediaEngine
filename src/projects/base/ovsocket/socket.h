@@ -386,7 +386,7 @@ namespace ov
 
 			String ToString() const
 			{
-				auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - enqueued_time).count();
+				int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - enqueued_time).count();
 				auto description = String::FormatString(
 					"<DispatchCommand: %p, elapsed: %" PRId64 "ms, type: %s",
 					this,

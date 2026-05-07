@@ -26,7 +26,7 @@ void RtcpReportBlockGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket>
 		// Calculate interarrival jitter
 		uint32_t rtp_timestamp_diff = rtp_packet->Timestamp() - _last_rtp_timestamp;
 
-		// Get wall clock time in milliseconds
+		// Elapsed milliseconds since the last RTP packet was received (monotonic)
 		auto clock_timestamp_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_rtp_received_time).count();
 
 		// Calculate clock_timestamp_diff in RTP timestamp units
@@ -106,7 +106,7 @@ std::shared_ptr<RtcpPacket> RtcpReportBlockGenerator::PopRtcpRRPacket()
 	uint32_t delay_since_last_sender_report = 0;
 	if (last_sender_report_timestamp != 0)
 	{
-		// Get wall clock time in milliseconds
+		// Elapsed milliseconds since the last SR was received (monotonic)
 		auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_sender_report_received_time).count();
 
 		// Convert to delay since last SR in 65536 units
