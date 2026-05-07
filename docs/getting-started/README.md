@@ -35,7 +35,7 @@ Then build and install using the commands for your platform:
 {% tab title="Ubuntu 18" %}
 ```bash
 sudo apt-get update
-sudo apt-get install -y ninja-build pkg-config
+sudo apt-get install -y build-essential ninja-build pkg-config
 cd OvenMediaEngine-master
 cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
