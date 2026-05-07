@@ -80,7 +80,7 @@ namespace cfg
 						Register<Optional>({"SRT", "srt"}, &_srt_publisher);
 
 						// Deprecated
-						Register<Optional>("MPEGTSPush", &_mpegtspush_publisher, nullptr,
+						Register<Optional>({"MPEGTSPush", "mpegtsPush"}, &_mpegtspush_publisher, nullptr,
 										   [=]() -> std::shared_ptr<ConfigError> {
 											   _push_publisher.SetParsed(true);
 											   logw("Config", "MPEGTSPush will be deprecated. Please use Push instead");

@@ -35,11 +35,11 @@ namespace cfg
 						_stream_status = true;
 						return nullptr;
 					});
-					Register<Optional>("LLHLSReady", &_llhls_ready, nullptr, [=]() -> std::shared_ptr<ConfigError> {
+					Register<Optional>({"LLHLSReady", "llhlsReady"}, &_llhls_ready, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 						_llhls_ready = true;
 						return nullptr;
 					});
-					Register<Optional>("HLSReady", &_hls_ready, nullptr, [=]() -> std::shared_ptr<ConfigError> {
+					Register<Optional>({"HLSReady", "hlsReady"}, &_hls_ready, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 						_hls_ready = true;
 						return nullptr;
 					});

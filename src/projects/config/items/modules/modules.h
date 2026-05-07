@@ -45,13 +45,13 @@ namespace cfg
 		protected:
 			void MakeList() override
 			{
-				Register<Optional>("HTTP2", &_http2);
-				Register<Optional>("LLHLS", &_ll_hls);
+				Register<Optional>({"HTTP2", "http2"}, &_http2);
+				Register<Optional>({"LLHLS", "llhls"}, &_ll_hls);
 				Register<Optional>({"P2P", "p2p"}, &_p2p);
 				Register<Optional>("Recovery", &_recovery);
 				Register<Optional>("DynamicAppRemoval", &_dynamic_app_removal);
 				Register<Optional>("ETag", &_etag);
-				Register<Optional>("ERTMP", &_ertmp);
+				Register<Optional>({"ERTMP", "ertmp"}, &_ertmp);
 				Register<Optional>("Whisper", &_whisper);
 			}
 		};

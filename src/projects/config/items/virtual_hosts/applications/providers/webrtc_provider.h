@@ -37,7 +37,7 @@ namespace cfg
 
 						Register<Optional>("Timeout", &_timeout);
 						Register<Optional>("CrossDomains", &_cross_domains);
-						Register<Optional>("FIRInterval", &_fir_interval);
+						Register<Optional>({"FIRInterval", "firInterval"}, &_fir_interval);
 						Register<Optional>("RtcpBasedTimestamp", &_rtcp_based_timestamp);
 					}
 

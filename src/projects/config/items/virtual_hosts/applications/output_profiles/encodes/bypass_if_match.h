@@ -64,7 +64,7 @@ namespace cfg
 							auto val = _height.UpperCaseString();
 							return (val == "EQ" || val == "GTE" || val == "LTE") ? nullptr : CreateConfigErrorPtr("BypassIfMatch.Height must specified only one of eq, lte, gte");
 						});
-						Register<Optional>("SAR", &_sar, nullptr, [=]() -> std::shared_ptr<ConfigError> {
+						Register<Optional>({"SAR", "sar"}, &_sar, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 							auto val = _sar.UpperCaseString();
 							return (val == "EQ") ? nullptr : CreateConfigErrorPtr("BypassIfMatch.SAR must specified only one of eq");
 						});

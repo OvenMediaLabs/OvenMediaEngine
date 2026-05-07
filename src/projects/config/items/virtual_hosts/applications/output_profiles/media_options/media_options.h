@@ -73,8 +73,8 @@ namespace cfg
 									return nullptr;
 								}
 						);
-						Register<Optional>({"Overlays", "overlays"}, &_overlays);
-						Register<Optional>("STT", &_stt);
+						Register<Optional>("Overlays", &_overlays);
+						Register<Optional>({"STT", "stt"}, &_stt);
 					}
 				};
 			}  // namespace oprf

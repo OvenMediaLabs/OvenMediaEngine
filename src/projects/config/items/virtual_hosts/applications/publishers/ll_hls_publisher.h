@@ -46,7 +46,7 @@ namespace cfg
 						Register<Optional>("ChunkDuration", &_chunk_duration);
 						Register<Optional>("PartHoldBack", &_part_hold_back);
 						Register<Optional>("EnablePreloadHint", &_enable_preload_hint);
-						Register<Optional>("DRM", &_drm);
+						Register<Optional>({"DRM", "drm"}, &_drm);
 					}
 				};
 			}  // namespace pub

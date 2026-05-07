@@ -32,7 +32,7 @@ namespace cfg
 					void MakeList() override
 					{
 						Register("Trigger", &_trigger);
-						Register<Optional>("HLSID3v2", &_hls_id3v2);
+						Register<Optional>({"HLSID3v2", "hlsId3v2"}, &_hls_id3v2);
 					}
 				};
 			}  // namespace pvd

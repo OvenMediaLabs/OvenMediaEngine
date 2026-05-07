@@ -65,7 +65,7 @@ namespace cfg
 						Register<Optional>("SegmentCount", &_segment_count);
 						Register<Optional>("SegmentDuration", &_segment_duration);
 						Register<Optional>("CrossDomains", &_cross_domains);
-						Register<Optional>("DVR", &_dvr);
+						Register<Optional>({"DVR", "dvr"}, &_dvr);
 						Register<Optional>("Dumps", &_dumps);
 						Register<Optional>("CacheControl", &_cache_control);
 						Register<Optional>("DefaultQueryString", &_default_query_string);

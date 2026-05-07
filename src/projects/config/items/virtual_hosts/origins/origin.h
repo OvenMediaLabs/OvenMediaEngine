@@ -35,7 +35,7 @@ namespace cfg
 					Register<Optional>("Failback", &_failback);
 					Register<Optional>("StrictLocation", &_strict_location);
 					Register<Optional>("Relay", &_relay);
-					Register<Optional>("IgnoreRtcpSRTimestamp", &_ignore_rtcp_sr_timestamp);
+					Register<Optional>({"IgnoreRtcpSRTimestamp", "ignoreRtcpSrTimestamp"}, &_ignore_rtcp_sr_timestamp);
 				}
 				ov::String _location;
 				Pass _pass;

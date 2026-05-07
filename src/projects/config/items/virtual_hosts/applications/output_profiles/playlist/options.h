@@ -41,7 +41,7 @@ namespace cfg
 					void MakeList() override
 					{
 						Register<Optional>("WebRtcAutoAbr", &_webrtc_auto_abr);
-						Register<Optional>("HLSChunklistPathDepth", &_hls_chunklist_path_depth);
+						Register<Optional>({"HLSChunklistPathDepth", "hlsChunklistPathDepth"}, &_hls_chunklist_path_depth);
 						Register<Optional>("EnableTsPackaging", &_enable_ts_packaging);
 						Register<Optional>("EnableSubtitles", &_enable_subtitles);
 					}

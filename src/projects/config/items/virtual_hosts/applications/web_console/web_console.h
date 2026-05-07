@@ -27,8 +27,8 @@ namespace cfg
 					void MakeList() override
 					{
 						Register<Optional>("ListenPort", &_listen_port);
-						Register<Optional>("LoginID", &_login_id);
-						Register("LoginPW", &_login_pw);
+						Register<Optional>({"LoginID", "loginId"}, &_login_id);
+						Register({"LoginPW", "loginPw"}, &_login_pw);
 						Register("DocumentPath", &_document_path);
 					}
 
