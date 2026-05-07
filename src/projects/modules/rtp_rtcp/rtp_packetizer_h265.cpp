@@ -47,8 +47,15 @@ bool RtpPacketizerH265::GeneratePackets()
 	{
 		switch (_packetization_mode) 
 		{
-			// For HEVC, doesn't support signle nal unit mode at present.
+			// TODO: Need to check if SingleNALUnit mode is used in H.265
+			// for now, only use PacketizeSingleNalu for H.265, similar to H.264
 			case H26XPacketizationMode::SingleNalUnit:
+				if(!PacketizeSingleNalu(i))
+				{
+					return false;
+				}
+				++i;
+				break;
 			case H26XPacketizationMode::NonInterleaved:
 				size_t fragment_len = _input_fragments[i].length;
 
