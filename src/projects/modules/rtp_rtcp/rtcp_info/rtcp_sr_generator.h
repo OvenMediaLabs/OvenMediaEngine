@@ -24,8 +24,8 @@ private:
     uint32_t    _packet_count = 0;
     uint32_t    _octec_count = 0;
 
-	std::chrono::system_clock::time_point _created_time;
-    std::chrono::system_clock::time_point _last_generated_time;
+	std::chrono::steady_clock::time_point _created_time;
+    std::chrono::steady_clock::time_point _last_generated_time;
 	uint32_t	_codec_rate = 1;
 
 	std::shared_ptr<RtcpPacket>	_rtcp_packet = nullptr;

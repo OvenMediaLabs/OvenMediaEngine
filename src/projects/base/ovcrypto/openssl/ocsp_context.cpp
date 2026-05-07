@@ -272,7 +272,7 @@ namespace ov
 		}
 
 		_response_code = SSL_TLSEXT_ERR_OK;
-		_received_time = std::chrono::system_clock::now();
+		_received_time = std::chrono::steady_clock::now();
 		return true;
 	}
 

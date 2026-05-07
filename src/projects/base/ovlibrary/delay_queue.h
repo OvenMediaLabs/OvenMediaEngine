@@ -57,7 +57,7 @@ namespace ov
 
 			int after_msec;
 
-			std::chrono::time_point<std::chrono::system_clock> time_point;
+			std::chrono::time_point<std::chrono::steady_clock> time_point;
 
 			DelayQueueItem(int64_t index, DelayQueueFunction function, void *parameter, int after_msec)
 				: index(index),
@@ -72,7 +72,7 @@ namespace ov
 
 			void RecalculateTimePoint()
 			{
-				time_point = std::chrono::system_clock::now() + std::chrono::milliseconds(after_msec);
+				time_point = std::chrono::steady_clock::now() + std::chrono::milliseconds(after_msec);
 			}
 
 			bool operator<(const DelayQueueItem &item) const

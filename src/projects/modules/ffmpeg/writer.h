@@ -74,7 +74,7 @@ namespace ffmpeg
 		int32_t GetTrackCountByType(cmn::MediaType media_type);
 		std::shared_ptr<MediaTrack> GetTrackByTrackId(int32_t track_id) const;
 				
-		std::chrono::high_resolution_clock::time_point GetLastPacketSentTime();
+		std::chrono::steady_clock::time_point GetLastPacketSentTime();
 
 		void SetTimestampMode(TimestampMode mode);
 		TimestampMode GetTimestampMode();
@@ -116,7 +116,7 @@ namespace ffmpeg
 
 		ov::String _output_format_name;
 		AVIOInterruptCB _interrupt_cb;
-		std::chrono::high_resolution_clock::time_point _last_packet_sent_time;
+		std::chrono::steady_clock::time_point _last_packet_sent_time;
 		int32_t _connection_timeout = 5000;	// Default 5s
 		int32_t _send_timeout 		= 2000;	// Default 2s
 

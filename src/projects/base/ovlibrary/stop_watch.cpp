@@ -30,7 +30,7 @@ namespace ov
 		}
 
 		_is_valid = true;
-		_start = std::chrono::high_resolution_clock::now();
+		_start = std::chrono::steady_clock::now();
 		_last = _start;
 	}
 
@@ -57,7 +57,7 @@ namespace ov
 			return;
 		}
 
-		_pause_time = std::chrono::high_resolution_clock::now();
+		_pause_time = std::chrono::steady_clock::now();
 		_is_paused = true;
 	}
 
@@ -68,13 +68,13 @@ namespace ov
 			return;
 		}
 
-		_paused_duration += std::chrono::high_resolution_clock::now() - _pause_time;
+		_paused_duration += std::chrono::steady_clock::now() - _pause_time;
 		_is_paused = false;
 	}
 
 	bool StopWatch::Update()
 	{
-		_last = std::chrono::high_resolution_clock::now();
+		_last = std::chrono::steady_clock::now();
 		return _is_valid;
 	}
 
@@ -89,7 +89,7 @@ namespace ov
 	{
 		if (_is_valid)
 		{
-			auto current = std::chrono::high_resolution_clock::now();
+			auto current = std::chrono::steady_clock::now();
 			auto elapsed = current - _last - _paused_duration;
 
 			if(nano == false)
@@ -109,7 +109,7 @@ namespace ov
 	{
 		if (_is_valid)
 		{
-			auto current = std::chrono::high_resolution_clock::now();
+			auto current = std::chrono::steady_clock::now();
 			auto elapsed = current - _last - _paused_duration;
 
 			return std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count();
@@ -127,7 +127,7 @@ namespace ov
 	{
 		if (_is_valid)
 		{
-			auto current = std::chrono::high_resolution_clock::now();
+			auto current = std::chrono::steady_clock::now();
 
 			return std::chrono::duration_cast<std::chrono::milliseconds>(current - _start).count();
 		}

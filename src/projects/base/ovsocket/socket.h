@@ -205,8 +205,8 @@ namespace ov
 		// If MakeNonBlocking() is called, non_block is ignored
 		std::shared_ptr<const SocketError> RecvFrom(std::shared_ptr<Data> &data, SocketAddressPair *address_pair, const bool non_block = false);
 
-		std::chrono::system_clock::time_point GetLastRecvTime() const;
-		std::chrono::system_clock::time_point GetLastSentTime() const;
+		std::chrono::steady_clock::time_point GetLastRecvTime() const;
+		std::chrono::steady_clock::time_point GetLastSentTime() const;
 
 		// Dispatches as many command as possible
 		DispatchResult DispatchEvents();
@@ -312,7 +312,7 @@ namespace ov
 			DispatchCommand(const std::shared_ptr<const Data> &data)
 				: type(Type::Send),
 				  data(data),
-				  enqueued_time(std::chrono::system_clock::now())
+				  enqueued_time(std::chrono::steady_clock::now())
 			{
 			}
 
@@ -320,7 +320,7 @@ namespace ov
 				: type(Type::SendTo),
 				  address(address),
 				  data(data),
-				  enqueued_time(std::chrono::system_clock::now())
+				  enqueued_time(std::chrono::steady_clock::now())
 			{
 			}
 
@@ -328,20 +328,20 @@ namespace ov
 				: type(Type::SendFromTo),
 				  address_pair(address_pair),
 				  data(data),
-				  enqueued_time(std::chrono::system_clock::now())
+				  enqueued_time(std::chrono::steady_clock::now())
 			{
 			}
 
 			DispatchCommand(Type type)
 				: type(type),
-				  enqueued_time(std::chrono::system_clock::now())
+				  enqueued_time(std::chrono::steady_clock::now())
 			{
 			}
 
 			DispatchCommand(Type type, SocketState new_state)
 				: type(type),
 				  new_state(new_state),
-				  enqueued_time(std::chrono::system_clock::now())
+				  enqueued_time(std::chrono::steady_clock::now())
 			{
 			}
 
@@ -374,22 +374,23 @@ namespace ov
 
 			void UpdateTime()
 			{
-				enqueued_time = std::chrono::system_clock::now();
+				enqueued_time = std::chrono::steady_clock::now();
 			}
 
 			bool IsExpired(int millisecond_time) const
 			{
-				auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - enqueued_time);
+				auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - enqueued_time);
 
 				return (delta.count() >= millisecond_time);
 			}
 
 			String ToString() const
 			{
+				auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - enqueued_time).count();
 				auto description = String::FormatString(
-					"<DispatchCommand: %p, %s, type: %s",
+					"<DispatchCommand: %p, elapsed: %" PRId64 "ms, type: %s",
 					this,
-					Converter::ToISO8601String(enqueued_time).CStr(),
+					elapsed_ms,
 					StringFromType(type));
 
 				if (type == DispatchCommand::Type::SendTo)
@@ -417,7 +418,7 @@ namespace ov
 			SocketAddress address;
 			SocketAddressPair address_pair;
 			std::shared_ptr<const Data> data;
-			std::chrono::time_point<std::chrono::system_clock> enqueued_time;
+			std::chrono::time_point<std::chrono::steady_clock> enqueued_time;
 		};
 
 	protected:
@@ -556,7 +557,7 @@ namespace ov
 		void UpdateLastRecvTime();
 		void UpdateLastSentTime();
 
-		std::chrono::system_clock::time_point _last_recv_time = std::chrono::system_clock::now();
-		std::chrono::system_clock::time_point _last_sent_time = std::chrono::system_clock::now();
+		std::chrono::steady_clock::time_point _last_recv_time = std::chrono::steady_clock::now();
+		std::chrono::steady_clock::time_point _last_sent_time = std::chrono::steady_clock::now();
 	};
 }  // namespace ov

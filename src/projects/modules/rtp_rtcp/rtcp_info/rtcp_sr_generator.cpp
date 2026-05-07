@@ -5,8 +5,8 @@ RtcpSRGenerator::RtcpSRGenerator(uint32_t ssrc, uint32_t codec_rate)
 {
     _ssrc = ssrc;
 	_codec_rate = codec_rate;
-    _created_time = std::chrono::system_clock::now();
-    _last_generated_time = std::chrono::system_clock::now();
+    _created_time = std::chrono::steady_clock::now();
+    _last_generated_time = std::chrono::steady_clock::now();
 }
 
 void RtcpSRGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket> &rtp_packet)
@@ -53,7 +53,7 @@ std::shared_ptr<RtcpPacket> RtcpSRGenerator::PopRtcpSRPacket()
 	// Reset RTCP information
 	_packet_count = 0;
 	_octec_count = 0;
-	_last_generated_time = std::chrono::system_clock::now();
+	_last_generated_time = std::chrono::steady_clock::now();
 	_rtcp_generated_count++;
 
     return rtcp_packet;
@@ -61,10 +61,10 @@ std::shared_ptr<RtcpPacket> RtcpSRGenerator::PopRtcpSRPacket()
 
 uint32_t RtcpSRGenerator::GetElapsedTimeMSFromCreated()
 {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _created_time).count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _created_time).count();
 }
 
 uint32_t RtcpSRGenerator::GetElapsedTimeMSFromRtcpSRGenerated()
 {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _last_generated_time).count();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_generated_time).count();
 }

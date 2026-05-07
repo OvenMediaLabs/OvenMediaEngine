@@ -81,7 +81,7 @@ namespace pvd
 				}
 				else
 				{
-					auto current = std::chrono::high_resolution_clock::now();
+					auto current = std::chrono::steady_clock::now();
 
 					// Default Properties of PullStream
 					auto is_persistent = false;
@@ -153,8 +153,8 @@ namespace pvd
 					auto stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(stream));
 					if(stream_metrics != nullptr)
 					{
-						int64_t elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastSentTime()).count();
-						int64_t elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastRecvTime()).count();
+						int64_t elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastSentTimeSteady()).count();
+						int64_t elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastRecvTimeSteady()).count();
 
 						if((elapsed_time_from_last_sent > unused_stream_timeout_ms) && (!is_persistent))
 						{

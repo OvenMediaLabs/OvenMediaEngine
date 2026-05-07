@@ -251,12 +251,6 @@ namespace info
 		return GetPublishedTime();
 	}
 
-	uint32_t Stream::GetUptimeSec()
-	{
-		auto current = std::chrono::high_resolution_clock::now();
-		return std::chrono::duration_cast<std::chrono::seconds>(current - GetCreatedTime()).count();
-	}
-
 	StreamSourceType Stream::GetSourceType() const
 	{
 		return _source_type;

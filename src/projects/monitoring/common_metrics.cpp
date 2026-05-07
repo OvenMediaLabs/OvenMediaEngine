@@ -26,10 +26,12 @@ namespace mon
 		_last_throughtput_out		  = 0;
 		_last_total_bytes_out		  = 0;
 
-		_last_throughput_measure_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		_last_throughput_measure_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 		_max_total_connection_time	  = std::chrono::system_clock::now();
 		_last_recv_time				  = std::chrono::system_clock::now();
 		_last_sent_time				  = std::chrono::system_clock::now();
+		_last_recv_time_steady		  = std::chrono::steady_clock::now();
+		_last_sent_time_steady		  = std::chrono::steady_clock::now();
 
 		for (int i = 0; i < static_cast<int8_t>(PublisherType::NumberOfPublishers); i++)
 		{
@@ -77,12 +79,6 @@ namespace mon
 	void CommonMetrics::ShowInfo([[maybe_unused]] bool show_children)
 	{
 		logti("%s", GetInfoString().CStr());
-	}
-
-	uint32_t CommonMetrics::GetUnusedTimeSec() const
-	{
-		auto current = std::chrono::high_resolution_clock::now();
-		return std::chrono::duration_cast<std::chrono::seconds>(current - GetLastUpdatedTime()).count();
 	}
 
 	const std::chrono::system_clock::time_point &CommonMetrics::GetCreatedTime() const
@@ -158,6 +154,16 @@ namespace mon
 		return _last_sent_time;
 	}
 
+	std::chrono::steady_clock::time_point CommonMetrics::GetLastRecvTimeSteady() const
+	{
+		return _last_recv_time_steady;
+	}
+
+	std::chrono::steady_clock::time_point CommonMetrics::GetLastSentTimeSteady() const
+	{
+		return _last_sent_time_steady;
+	}
+
 	uint64_t CommonMetrics::GetBytesOut(PublisherType type) const
 	{
 		return _publisher_metrics[static_cast<int8_t>(type)]._bytes_out;
@@ -180,6 +186,7 @@ namespace mon
 	{
 		_total_bytes_in += value;
 		_last_recv_time = std::chrono::system_clock::now();
+		_last_recv_time_steady = std::chrono::steady_clock::now();
 
 		// If there are no clients of the publisher, output throughput is not calculated.
 		// So, In/Oout throughput calculations are handled here.
@@ -198,6 +205,7 @@ namespace mon
 		_publisher_metrics[static_cast<int8_t>(type)]._bytes_out += value;
 		_total_bytes_out += value;
 		_last_sent_time = std::chrono::system_clock::now();
+		_last_sent_time_steady = std::chrono::steady_clock::now();
 
 		UpdateDate();
 	}
@@ -249,7 +257,7 @@ namespace mon
 
 	void CommonMetrics::UpdateThroughput()
 	{
-		auto now_ms	    = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		auto now_ms	    = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 		auto last_ms    = _last_throughput_measure_time.load();
 		auto elapsed_ms = now_ms - last_ms;
 

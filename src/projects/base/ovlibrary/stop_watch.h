@@ -37,11 +37,11 @@ namespace ov
 		String _tag;
 
 		bool _is_valid { false };
-		std::chrono::high_resolution_clock::time_point _start;
-		std::chrono::high_resolution_clock::time_point _last;
+		std::chrono::steady_clock::time_point _start;
+		std::chrono::steady_clock::time_point _last;
 
 		bool _is_paused { false };
-		std::chrono::high_resolution_clock::time_point _pause_time;
-		std::chrono::high_resolution_clock::duration _paused_duration = std::chrono::high_resolution_clock::duration::zero();
+		std::chrono::steady_clock::time_point _pause_time;
+		std::chrono::steady_clock::duration _paused_duration = std::chrono::steady_clock::duration::zero();
 	};
 }

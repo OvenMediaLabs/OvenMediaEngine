@@ -112,7 +112,7 @@ private:
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs;
 
 	mutable std::shared_mutex _expire_time_mutex;
-	std::chrono::time_point<std::chrono::system_clock> _expire_time;
+	std::chrono::time_point<std::chrono::steady_clock> _expire_time;
 	const int _expire_after_ms;
 	const uint64_t _lifetime_epoch_ms;
 

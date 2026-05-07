@@ -43,6 +43,7 @@ namespace info
 		_schedule_next = std::chrono::system_clock::time_point{};
 		_record_start_time = std::chrono::system_clock::time_point{};
 		_record_stop_time = std::chrono::system_clock::time_point{};
+		_record_start_time_steady = std::chrono::steady_clock::time_point{};
 
 		_session_id = 0;
 		_enable = false;
@@ -321,7 +322,7 @@ namespace info
 	}
 	void Record::UpdateRecordTime()
 	{
-		_record_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _record_start_time).count();
+		_record_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _record_start_time_steady).count();
 	}
 	void Record::IncreaseSequence()
 	{
@@ -334,6 +335,7 @@ namespace info
 	void Record::UpdateRecordStartTime()
 	{
 		_record_start_time = std::chrono::system_clock::now();
+		_record_start_time_steady = std::chrono::steady_clock::now();
 	}
 	void Record::UpdateRecordStopTime()
 	{
@@ -445,6 +447,7 @@ namespace info
 		record->_created_time			= _created_time;
 		record->_record_start_time		= _record_start_time;
 		record->_record_stop_time		= _record_stop_time;
+		record->_record_start_time_steady = _record_start_time_steady;
 		record->_state					= _state;
 		record->_session_id				= _session_id;
 	}

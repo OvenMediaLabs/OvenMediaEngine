@@ -50,7 +50,7 @@ namespace ov
 				return false;
 			}
 
-			auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _received_time);
+			auto delta = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _received_time);
 
 			return (delta.count() >= millisecond_time);
 		}
@@ -90,7 +90,7 @@ namespace ov
 		// Used to request to OCSP responder if the responder URL is HTTPS
 		ov::RaiiPtr<SSL_CTX> _ssl_request_ctx = {nullptr, ::SSL_CTX_free};
 
-		std::chrono::time_point<std::chrono::system_clock> _received_time;
+		std::chrono::time_point<std::chrono::steady_clock> _received_time;
 
 		ov::RaiiPtr<OCSP_RESPONSE> _response = {nullptr, ::OCSP_RESPONSE_free};
 		// Last error code generated when querying OCSP responder

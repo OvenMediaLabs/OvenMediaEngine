@@ -38,7 +38,7 @@ ov::String IceSession::ToString() const
 void IceSession::Refresh()
 {
 	std::scoped_lock lock(_expire_time_mutex);
-	_expire_time = std::chrono::system_clock::now() + std::chrono::milliseconds(_expire_after_ms);
+	_expire_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(_expire_after_ms);
 }
 
 bool IceSession::IsExpired() const
@@ -49,7 +49,7 @@ bool IceSession::IsExpired() const
 	}
 
 	std::shared_lock lock(_expire_time_mutex);
-	return (std::chrono::system_clock::now() > _expire_time);
+	return (std::chrono::steady_clock::now() > _expire_time);
 }
 
 void IceSession::SetState(IceConnectionState state)

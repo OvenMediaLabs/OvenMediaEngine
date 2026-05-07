@@ -208,7 +208,7 @@ namespace info
 	}
 	void Push::UpdatePushTime()
 	{
-		_Push_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _Push_start_time).count();
+		_Push_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _Push_start_time_steady).count();
 	}
 	void Push::IncreaseSequence()
 	{
@@ -221,6 +221,7 @@ namespace info
 	void Push::UpdatePushStartTime()
 	{
 		_Push_start_time = std::chrono::system_clock::now();
+		_Push_start_time_steady = std::chrono::steady_clock::now();
 	}
 	void Push::UpdatePushStopTime()
 	{

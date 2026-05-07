@@ -111,8 +111,8 @@ namespace ov
 				auto result = (_queue.empty() == false) ? true : false;
 				if (!result)
 				{
-					std::chrono::system_clock::time_point expire =
-						(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+					std::chrono::steady_clock::time_point expire =
+						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 						return ((_queue.empty() == false) || _stop);
@@ -154,8 +154,8 @@ namespace ov
 
 				if (result == false)
 				{
-					std::chrono::system_clock::time_point expire =
-						(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+					std::chrono::steady_clock::time_point expire =
+						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 						return ((_queue.empty() == false) || _stop);
@@ -200,8 +200,8 @@ namespace ov
 				{
 					if (timeout > 0)
 					{
-						std::chrono::system_clock::time_point expire =
-							(timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+						std::chrono::steady_clock::time_point expire =
+							(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 						result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 							return ((_queue.empty() == false) || _stop);

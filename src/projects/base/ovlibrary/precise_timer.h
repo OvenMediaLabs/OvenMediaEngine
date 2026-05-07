@@ -29,6 +29,6 @@ namespace ov
 
 		bool _is_valid { false };
 
-		std::chrono::high_resolution_clock::time_point _start;
+		std::chrono::steady_clock::time_point _start;
 	};
 }

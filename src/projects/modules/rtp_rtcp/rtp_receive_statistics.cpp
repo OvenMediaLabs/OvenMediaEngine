@@ -33,7 +33,7 @@ bool RtpReceiveStatistics::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket>
 
 bool RtpReceiveStatistics::AddReceivedRtcpSenderReport(const std::shared_ptr<SenderReport> &report)
 {
-	_last_sr_received_time = std::chrono::system_clock::now();
+	_last_sr_received_time = std::chrono::steady_clock::now();
 
 	// the middle 32 bits out of 64 in the NTP timestamp
 	uint64_t ntp_timestamp = (uint64_t)report->GetMsw() << 32 | (uint64_t)report->GetLsw();
@@ -95,7 +95,7 @@ bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)
 	{
 		int64_t rtp_timestamp_diff = packet->Timestamp() - _last_rtp_timestamp;
 
-		auto now = std::chrono::system_clock::now();
+		auto now = std::chrono::steady_clock::now();
 		int64_t rtp_received_time_diff = std::chrono::duration_cast<std::chrono::microseconds>(now - _last_rtp_received_time).count();
 
 		// Calculate wall clock diff in RTP timestamp units
@@ -114,7 +114,7 @@ bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)
 	}
 	else if (_received_packets == 0)
 	{
-		_last_rtp_received_time = std::chrono::system_clock::now();
+		_last_rtp_received_time = std::chrono::steady_clock::now();
 		_last_rtp_timestamp = packet->Timestamp();
 	}
 
@@ -166,7 +166,7 @@ std::shared_ptr<ReportBlock> RtpReceiveStatistics::GenerateReportBlock()
 	if (_last_sr_timestamp != 0)
 	{
 		// get delay since _last_sr_received_time in us
-		auto delay_in_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now() - _last_sr_received_time).count();
+		auto delay_in_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - _last_sr_received_time).count();
 		
 		// convert to 1/65536 second
 		dlsr = (uint32_t)((double)delay_in_us / 1000000.0 * 65536.0);

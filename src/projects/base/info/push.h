@@ -159,8 +159,10 @@ namespace info
 
 		std::chrono::system_clock::time_point _created_time;
 
-		std::chrono::system_clock::time_point _Push_start_time;		
-		std::chrono::system_clock::time_point _Push_stop_time;	
+		std::chrono::system_clock::time_point _Push_start_time;
+		std::chrono::system_clock::time_point _Push_stop_time;
+		// Steady-clock baseline for duration measurement (immune to wall-clock jumps)
+		std::chrono::steady_clock::time_point _Push_start_time_steady;
 
 		PushState _state;
 

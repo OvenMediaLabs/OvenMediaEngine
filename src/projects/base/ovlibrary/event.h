@@ -27,7 +27,7 @@ namespace ov
 
 		// timeout in milliseconds
 		bool Wait(int timeout = Infinite);
-		bool Wait(std::chrono::time_point<std::chrono::system_clock> time_point);
+		bool Wait(std::chrono::time_point<std::chrono::steady_clock> time_point);
 
 	protected:
 		bool _manual_reset;

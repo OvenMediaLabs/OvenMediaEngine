@@ -37,13 +37,13 @@ namespace ov
 
 			ManagedQueueNode* next;
 
-			std::chrono::high_resolution_clock::time_point _start;
+			std::chrono::steady_clock::time_point _start;
 			bool _urgent = false;
 
 			ManagedQueueNode(const T& value, bool urgent, ManagedQueueNode* next_node = nullptr)
-				: data(value), next(next_node), _start(std::chrono::high_resolution_clock::time_point::min()), _urgent(urgent)
+				: data(value), next(next_node), _start(std::chrono::steady_clock::time_point::min()), _urgent(urgent)
 			{
-				_start = std::chrono::high_resolution_clock::now();
+				_start = std::chrono::steady_clock::now();
 			}
 		};
 
@@ -135,7 +135,7 @@ namespace ov
 
 			if (_size == 0)
 			{
-				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 					return (((_size == 0) == false) || _stop);
@@ -169,7 +169,7 @@ namespace ov
 
 			if (_size == 0)
 			{
-				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 					return (((_size == 0) == false) || _stop);
@@ -195,8 +195,8 @@ namespace ov
 
 			// Compute the hard deadline from the caller-supplied timeout.
 			auto deadline = (timeout != Infinite)
-				? std::chrono::system_clock::now() + std::chrono::milliseconds(timeout)
-				: std::chrono::system_clock::time_point::max();
+				? std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout)
+				: std::chrono::steady_clock::time_point::max();
 
 			// Wait loop: expire is recalculated on every wakeup so that the
 			// buffering_delay timer fires correctly even when no new packets
@@ -235,7 +235,7 @@ namespace ov
 						// Time elapsed between the check above and here — ready now.
 						continue;
 					}
-					auto buffering_expire = std::chrono::system_clock::now() + std::chrono::milliseconds(remaining_ms);
+					auto buffering_expire = std::chrono::steady_clock::now() + std::chrono::milliseconds(remaining_ms);
 					if (buffering_expire < expire)
 					{
 						expire = buffering_expire;
@@ -245,7 +245,7 @@ namespace ov
 				_condition.wait_until(unique_lock, expire);
 
 				// Check the hard deadline after waking.
-				if (timeout != Infinite && std::chrono::system_clock::now() >= deadline)
+				if (timeout != Infinite && std::chrono::steady_clock::now() >= deadline)
 				{
 					return {};	// timed out
 				}
@@ -271,9 +271,9 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			if (node->_start != std::chrono::system_clock::time_point::max())
+			if (node->_start != std::chrono::steady_clock::time_point::max())
 			{
-				auto current = std::chrono::high_resolution_clock::now();
+				auto current = std::chrono::steady_clock::now();
 				_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(current - node->_start).count() * 0.1;
 			}
 
@@ -383,7 +383,7 @@ namespace ov
 				return ov::Infinite;
 			}
 
-			auto current = std::chrono::high_resolution_clock::now();
+			auto current = std::chrono::steady_clock::now();
 			return std::chrono::duration_cast<std::chrono::milliseconds>(current - _front_node->_start).count();
 		}
 
@@ -413,7 +413,7 @@ namespace ov
 			// Wait until the queue size is less than threshold
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
-				std::chrono::system_clock::time_point expire = (timeout == Infinite) ? std::chrono::system_clock::time_point::max() : std::chrono::system_clock::now() + std::chrono::milliseconds(timeout);
+				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
 					return (!IsThresholdExceeded());
 				});

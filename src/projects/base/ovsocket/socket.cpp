@@ -1921,24 +1921,24 @@ namespace ov
 		return socket_error;
 	}
 
-	std::chrono::system_clock::time_point Socket::GetLastRecvTime() const
+	std::chrono::steady_clock::time_point Socket::GetLastRecvTime() const
 	{
 		return _last_recv_time;
 	}
 
-	std::chrono::system_clock::time_point Socket::GetLastSentTime() const
+	std::chrono::steady_clock::time_point Socket::GetLastSentTime() const
 	{
 		return _last_sent_time;
 	}
 
 	void Socket::UpdateLastRecvTime()
 	{
-		_last_recv_time = std::chrono::high_resolution_clock::now();
+		_last_recv_time = std::chrono::steady_clock::now();
 	}
 
 	void Socket::UpdateLastSentTime()
 	{
-		_last_sent_time = std::chrono::high_resolution_clock::now();
+		_last_sent_time = std::chrono::steady_clock::now();
 	}
 
 	bool Socket::Flush()

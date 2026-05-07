@@ -17,7 +17,7 @@ using namespace cmn;
 
 MediaRouterStats::MediaRouterStats()
 {
-	_stat_start_time = std::chrono::system_clock::now();
+	_stat_start_time = std::chrono::steady_clock::now();
 	_stop_watch.Start();
 }
 
@@ -55,7 +55,7 @@ void MediaRouterStats::Update(
 	if (_stop_watch.IsElapsed(5000) && _stop_watch.Update())
 	{
 		// Uptime
-		int64_t uptime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _stat_start_time).count();
+		int64_t uptime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _stat_start_time).count();
 
 		int64_t min_pts = -1LL;
 		int64_t max_pts = -1LL;

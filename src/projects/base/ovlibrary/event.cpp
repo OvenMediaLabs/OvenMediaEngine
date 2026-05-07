@@ -40,13 +40,13 @@ namespace ov
 	{
 		if(timeout != Infinite)
 		{
-			return Wait(std::chrono::system_clock::now() + std::chrono::milliseconds(timeout));
+			return Wait(std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout));
 		}
 
-		return Wait(std::chrono::time_point<std::chrono::system_clock>::max());
+		return Wait(std::chrono::time_point<std::chrono::steady_clock>::max());
 	}
 
-	bool Event::Wait(std::chrono::time_point<std::chrono::system_clock> time_point)
+	bool Event::Wait(std::chrono::time_point<std::chrono::steady_clock> time_point)
 	{
 		std::unique_lock<std::mutex> lock(_mutex);
 

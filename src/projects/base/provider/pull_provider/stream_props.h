@@ -140,16 +140,16 @@ namespace pvd
 		// TODO: However, it doesn't seem suitable for use in this class. This should be moved to another class.
 		void UpdateFailbackCheckTime()
 		{
-			_last_failback_check_time = std::chrono::system_clock::now();
+			_last_failback_check_time = std::chrono::steady_clock::now();
 		}
 
-		std::chrono::system_clock::time_point GetLastFailbackCheckTime()
+		std::chrono::steady_clock::time_point GetLastFailbackCheckTime()
 		{
 			return _last_failback_check_time;
 		}
 
 	private:
-		std::chrono::system_clock::time_point _last_failback_check_time;
+		std::chrono::steady_clock::time_point _last_failback_check_time;
 	};
 
 }  // namespace pvd

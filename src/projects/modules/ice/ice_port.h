@@ -136,7 +136,7 @@ private:
 		{
 			_transaction_id = transaction_id;
 			_ice_session = ice_session;
-			_requested_time = std::chrono::system_clock::now();
+			_requested_time = std::chrono::steady_clock::now();
 		}
 
 		bool IsExpired() const
@@ -151,7 +151,7 @@ private:
 
 		ov::String _transaction_id;
 		std::shared_ptr<IceSession> _ice_session;
-		std::chrono::time_point<std::chrono::system_clock>	_requested_time;
+		std::chrono::time_point<std::chrono::steady_clock>	_requested_time;
 	};
 
 	std::atomic<session_id_t> _session_id_counter;

@@ -27,7 +27,7 @@ void RtcpReportBlockGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket>
 		uint32_t rtp_timestamp_diff = rtp_packet->Timestamp() - _last_rtp_timestamp;
 
 		// Get wall clock time in milliseconds
-		auto clock_timestamp_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _last_rtp_received_time).count();
+		auto clock_timestamp_diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_rtp_received_time).count();
 
 		// Calculate clock_timestamp_diff in RTP timestamp units
 		clock_timestamp_diff = (clock_timestamp_diff * _codec_rate) / 1000;
@@ -44,7 +44,7 @@ void RtcpReportBlockGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket>
 
 	_last_sequence_number = rtp_packet->SequenceNumber();
 	_last_rtp_timestamp = rtp_packet->Timestamp();
-	_last_rtp_received_time = std::chrono::system_clock::now();
+	_last_rtp_received_time = std::chrono::steady_clock::now();
 
 	_packet_count += 1;
 	_session_packet_count += 1;
@@ -60,7 +60,7 @@ void RtcpReportBlockGenerator::AddSenderReportInfo(const std::shared_ptr<SenderR
 	
 	_last_sender_report_timestamp = lsr;
 
-	_last_sender_report_received_time = std::chrono::system_clock::now();
+	_last_sender_report_received_time = std::chrono::steady_clock::now();
 }
 
 bool RtcpReportBlockGenerator::IsAvailableRtcpRRPacket() const
@@ -107,7 +107,7 @@ std::shared_ptr<RtcpPacket> RtcpReportBlockGenerator::PopRtcpRRPacket()
 	if (last_sender_report_timestamp != 0)
 	{
 		// Get wall clock time in milliseconds
-		auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - _last_sender_report_received_time).count();
+		auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_sender_report_received_time).count();
 
 		// Convert to delay since last SR in 65536 units
 		delay_since_last_sender_report = (delay * 65536) / 1000;

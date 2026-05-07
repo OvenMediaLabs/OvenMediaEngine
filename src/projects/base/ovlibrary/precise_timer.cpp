@@ -20,7 +20,7 @@ namespace ov
 
 		_is_valid = true;
 		_interval = interval;
-		_start = std::chrono::high_resolution_clock::now();
+		_start = std::chrono::steady_clock::now();
 	}
 
 	void PreciseTimer::Stop()
@@ -30,7 +30,7 @@ namespace ov
 
 	bool PreciseTimer::Update()
 	{
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - _start).count();
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start).count();
 
 		while (_end_time <= elapsed)
 		{
@@ -42,7 +42,7 @@ namespace ov
 
 	bool PreciseTimer::IsTimeout() const
 	{
-		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - _start).count();
+		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _start).count();
 
 		if (_end_time <= elapsed)
 		{
@@ -54,7 +54,7 @@ namespace ov
 
 	int64_t PreciseTimer::GetElapsed() const
 	{
-		auto current = std::chrono::high_resolution_clock::now();
+		auto current = std::chrono::steady_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(current - _start).count();
 
 		return elapsed;

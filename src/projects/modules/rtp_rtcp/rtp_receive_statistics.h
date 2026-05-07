@@ -39,7 +39,7 @@ private:
 	uint32_t	_clock_rate = 0;
 
 	// From SR
-	std::chrono::system_clock::time_point _last_sr_received_time;
+	std::chrono::steady_clock::time_point _last_sr_received_time;
 	uint32_t	_last_sr_timestamp = 0;
 
 	// For Receiver Report
@@ -55,7 +55,7 @@ private:
 	uint32_t	_interarrival_jitter = 0;
 
 	uint32_t 	_last_rtp_timestamp = 0;
-	std::chrono::system_clock::time_point _last_rtp_received_time;
+	std::chrono::steady_clock::time_point _last_rtp_received_time;
 
 	uint32_t	_received_bytes = 0;
 

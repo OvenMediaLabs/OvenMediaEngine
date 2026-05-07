@@ -16,7 +16,6 @@ namespace mon
 		virtual ov::String GetInfoString(bool show_children = true);
 		virtual void ShowInfo(bool show_children = true);
 
-		uint32_t GetUnusedTimeSec() const;
 		const std::chrono::system_clock::time_point &GetCreatedTime() const;
 		const std::chrono::system_clock::time_point &GetLastUpdatedTime() const;
 
@@ -33,6 +32,9 @@ namespace mon
 		virtual std::chrono::system_clock::time_point GetMaxTotalConnectionsTime() const;
 		virtual std::chrono::system_clock::time_point GetLastRecvTime() const;
 		virtual std::chrono::system_clock::time_point GetLastSentTime() const;
+		// Steady-clock baseline for elapsed-time checks (not affected by wall-clock jumps)
+		virtual std::chrono::steady_clock::time_point GetLastRecvTimeSteady() const;
+		virtual std::chrono::steady_clock::time_point GetLastSentTimeSteady() const;
 		virtual uint64_t GetBytesOut(PublisherType type) const;
 		virtual uint64_t GetConnections(PublisherType type) const;
 		uint32_t GetModuleUsageCount(cmn::MediaCodecModuleId module_id) const;
@@ -69,6 +71,8 @@ namespace mon
 		std::chrono::system_clock::time_point _max_total_connection_time;
 		std::chrono::system_clock::time_point _last_recv_time;
 		std::chrono::system_clock::time_point _last_sent_time;
+		std::chrono::steady_clock::time_point _last_recv_time_steady;
+		std::chrono::steady_clock::time_point _last_sent_time_steady;
 
 		// Throughput from Provider
 		std::atomic<uint64_t> _avg_throughtput_in;

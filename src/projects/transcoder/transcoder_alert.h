@@ -61,20 +61,20 @@ private:
 			auto record				 = std::make_shared<ErrorRecord>();
 			record->error_type		 = type;
 			record->track_id		 = track_id;
-			record->first_error_time = std::chrono::system_clock::now();
+			record->first_error_time = std::chrono::steady_clock::now();
 			record->error_count		 = 1;
 			return record;
 		}
 
 		uint32_t GetElapsedMs()
 		{
-			auto now = std::chrono::system_clock::now();
+			auto now = std::chrono::steady_clock::now();
 			return std::chrono::duration_cast<std::chrono::milliseconds>(now - first_error_time).count();
 		}
 
 		void Reset()
 		{
-			first_error_time = std::chrono::system_clock::now();
+			first_error_time = std::chrono::steady_clock::now();
 			error_count	  = 0;
 		}
 
@@ -89,7 +89,7 @@ private:
 		}
 		
 	public:
-		std::chrono::system_clock::time_point first_error_time;
+		std::chrono::steady_clock::time_point first_error_time;
 		int32_t error_count = 0;
 		ErrorType error_type;
 		uint32_t track_id;

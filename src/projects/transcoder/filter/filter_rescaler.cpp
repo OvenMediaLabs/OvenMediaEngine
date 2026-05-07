@@ -759,9 +759,9 @@ void FilterRescaler::WorkerThread()
 			}
 			else
 			{
-				auto start_time = std::chrono::high_resolution_clock::now();
+				auto start_time = std::chrono::steady_clock::now();
 				DO_FILTER_ONCE(frame);
-				auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_time).count();
+				auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
 
 				// Update the weighted average frame processing time
 				// It includes the time taken for filtering + overlay + delivery to the encoder (including waiting time if there is a load on the encoder).

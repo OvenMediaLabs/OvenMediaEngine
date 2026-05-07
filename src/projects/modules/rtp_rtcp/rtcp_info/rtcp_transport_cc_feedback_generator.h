@@ -70,7 +70,7 @@ public:
 	}
 
 private:
-	std::chrono::high_resolution_clock::time_point _created_time;
+	std::chrono::steady_clock::time_point _created_time;
 	uint8_t _extension_id = 0;
 	uint32_t _sender_ssrc = 0;
 	uint32_t _last_media_ssrc = 0;
@@ -80,9 +80,9 @@ private:
 
 	uint8_t _fb_pkt_count = 0;
 
-	std::chrono::high_resolution_clock::time_point _last_reference_time; // multiples of 64ms, now() - created_time base
-	std::chrono::high_resolution_clock::time_point _last_rtp_received_time;
+	std::chrono::steady_clock::time_point _last_reference_time; // multiples of 64ms, now() - created_time base
+	std::chrono::steady_clock::time_point _last_rtp_received_time;
 	std::shared_ptr<TransportCc> _transport_cc = nullptr;
 
-	std::chrono::high_resolution_clock::time_point _last_report_time;
+	std::chrono::steady_clock::time_point _last_report_time;
 };
