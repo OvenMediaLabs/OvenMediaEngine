@@ -122,7 +122,7 @@ bool RtpPacketizerH264::IsAggregationPossible(size_t fragment_index) const
 
 	// First fragment: NAL header (1) + length field (2) + data.
 	const size_t first_needed = kNalHeaderSize + kLengthFieldSize + _input_fragments[fragment_index].length;
-	if (first_needed >= space_left)
+	if (first_needed > space_left)
 	{
 		return false;
 	}
@@ -313,21 +313,27 @@ void RtpPacketizerH264::NextSingleUnitPacket(RtpPacket* rtp_packet)
 //  +---------------+
 //  |F|NRI| Type(24)|
 //  +---------------+
-//    F   = forbidden_zero_bit (from highest priority NALU)
-//    NRI = max nal_ref_idc among aggregated NALUs
+//    F   = forbidden_zero_bit 
+//    NRI = max of all NRI values in the aggregated NAL units
 //    Type = 24 (kStapA)
 void RtpPacketizerH264::NextAggregatePacket(RtpPacket* rtp_packet, bool last) 
 {
 	uint8_t* buffer = rtp_packet->AllocatePayload(last ? _max_payload_len - _last_packet_reduction_len : _max_payload_len);
 	PacketUnit* packet = &_packets.front();
 
-	// STAP-A NALU header.
-	buffer[0] = (packet->header & (kFBit | kNriMask)) | NaluType::kStapA;
+	uint8_t stap_f   = 0;
+	uint8_t stap_nri = 0;
 	size_t index = kNalHeaderSize;
 	bool is_last_fragment = packet->last_fragment;
 	
 	while (packet->aggregated) 
 	{
+		// F = OR of all aggregated F bits; 
+		// NRI = max of all aggregated NRI values.
+		stap_f   |= (packet->header & kFBit);
+		uint8_t cur_nri = packet->header & kNriMask;
+		if (cur_nri > stap_nri) stap_nri = cur_nri;
+
 		const Fragment& fragment = packet->source_fragment;
 		// Add NAL unit length field.
 		ByteWriter<uint16_t>::WriteBigEndian(&buffer[index], fragment.length);
@@ -337,7 +343,6 @@ void RtpPacketizerH264::NextAggregatePacket(RtpPacket* rtp_packet, bool last)
 		index += fragment.length;
 
 		_packets.pop();
-
 		_input_fragments.pop_front();
 
 		if (is_last_fragment)
@@ -347,6 +352,10 @@ void RtpPacketizerH264::NextAggregatePacket(RtpPacket* rtp_packet, bool last)
 		packet = &_packets.front();
 		is_last_fragment = packet->last_fragment;
 	}
+
+	// Write STAP-A NAL header with aggregated F and NRI.
+	buffer[0] = stap_f | stap_nri | NaluType::kStapA;
+
 	rtp_packet->SetPayloadSize(index);
 }
 

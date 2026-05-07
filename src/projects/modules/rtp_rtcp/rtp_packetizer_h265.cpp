@@ -284,25 +284,32 @@ void RtpPacketizerH265::NextSingleUnitPacket(RtpPacket* rtp_packet)
 //  |F| Type(6bit)  |LayerID(6bit)|TID(3bit)|
 //  +---------------+-----------------------+
 //    Type = 48 (kHevcAp)
+//    F = OR of all F bits in the aggregated NAL units
+//    LayerID = min of all LayerID values in the aggregated NAL units
+//    TID = min of all TID values in the aggregated NAL units
 void RtpPacketizerH265::NextAggregatePacket(RtpPacket* rtp_packet, bool last) 
 {
 	uint8_t* buffer = rtp_packet->AllocatePayload(last ? _max_payload_len - _last_packet_reduction_len : _max_payload_len);
 	PacketUnit* packet = &_packets.front();
 
-	uint8_t payload_hdr_h = packet->header >> 8;
-	uint8_t payload_hdr_l = packet->header & 0xFF;
-	uint8_t layer_id_h = payload_hdr_h & kHevcLayerIDHMask;
-
-	payload_hdr_h = (payload_hdr_h & kHevcTypeMaskN) | (kHevcAp << 1) | layer_id_h;
-
-	buffer[0] = payload_hdr_h;
-	buffer[1] = payload_hdr_l;
+	uint8_t ap_f        = 0;
+	uint8_t ap_layer_id = 0x3F;  // 6-bit max, replaced by min
+	uint8_t ap_tid      = 0x07;  // 3-bit max, replaced by min
 
 	size_t index = H265_NAL_HEADER_SIZE;
 	bool is_last_fragment = packet->last_fragment;
 	
 	while (packet->aggregated) 
 	{
+		// Accumulate F (OR), LayerID (min), TID (min).
+		uint8_t hdr_h = packet->header >> 8;
+		uint8_t hdr_l = packet->header & 0xFF;
+		ap_f |= (hdr_h & 0x80);
+		uint8_t cur_layer_id = ((hdr_h & kHevcLayerIDHMask) << 5) | (hdr_l >> 3);
+		uint8_t cur_tid      = hdr_l & 0x07;
+		if (cur_layer_id < ap_layer_id) ap_layer_id = cur_layer_id;
+		if (cur_tid      < ap_tid)      ap_tid      = cur_tid;
+
 		const Fragment& fragment = packet->source_fragment;
 		// Add NAL unit length field.
 		ByteWriter<uint16_t>::WriteBigEndian(&buffer[index], fragment.length);
@@ -312,7 +319,6 @@ void RtpPacketizerH265::NextAggregatePacket(RtpPacket* rtp_packet, bool last)
 		index += fragment.length;
 
 		_packets.pop();
-
 		_input_fragments.pop_front();
 
 		if (is_last_fragment)
@@ -322,6 +328,12 @@ void RtpPacketizerH265::NextAggregatePacket(RtpPacket* rtp_packet, bool last)
 		packet = &_packets.front();
 		is_last_fragment = packet->last_fragment;
 	}
+
+	// Write AP PayloadHdr with aggregated F, LayerID, TID.
+	// byte0: F(1) | Type=kHevcAp(6) | LayerID_high(1)
+	// byte1: LayerID_low(5) | TID(3)
+	buffer[0] = ap_f | (kHevcAp << 1) | (ap_layer_id >> 5);
+	buffer[1] = ((ap_layer_id & 0x1F) << 3) | ap_tid;
 	rtp_packet->SetPayloadSize(index);
 }
 
