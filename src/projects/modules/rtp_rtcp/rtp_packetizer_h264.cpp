@@ -120,7 +120,7 @@ bool RtpPacketizerH264::IsAggregationPossible(size_t fragment_index) const
 	}
 	size_t space_left = _max_payload_len;
 
-	// First fragment: NAL header (1) + length field (2) + data.
+	// First fragment: Payload Header(1) + Length Field(2) + Data
 	const size_t first_needed = kNalHeaderSize + kLengthFieldSize + _input_fragments[fragment_index].length;
 	if (first_needed > space_left)
 	{
@@ -128,7 +128,7 @@ bool RtpPacketizerH264::IsAggregationPossible(size_t fragment_index) const
 	}
 	space_left -= first_needed;
 
-	// Second fragment: length field (2) + data.
+	// Second fragment: Length Field(2) + Data
 	const size_t next_fragment_index = fragment_index + 1;
 	size_t next_needed = kLengthFieldSize + _input_fragments[next_fragment_index].length;
 	
