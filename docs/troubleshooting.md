@@ -8,7 +8,7 @@ description: >-
 
 ## `InstallPrerequisites.cmake` Script Failed
 
-If `InstallPrerequisites.cmake` fails, install the required dependencies manually as follows.
+If `InstallPrerequisites.cmake` fails, first try running `cmake -P cmake/InstallPrerequisites.cmake` and consult `cmake/Versions.cmake` for the current required dependency versions. If you need to install prerequisites manually, use the platform-specific steps below and ensure the dependency versions match `cmake/Versions.cmake`.
 
 ### Platform Specific Installation
 
@@ -46,7 +46,7 @@ sudo dnf install -y perl-IPC-Cmd perl-FindBin
 {% code title="Install OpenSSL" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-OPENSSL_VERSION=1.1.0g && \
+OPENSSL_VERSION=3.0.7 && \
 DIR=/tmp/openssl && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -62,7 +62,7 @@ sudo rm -rf ${PREFIX}/bin
 {% code title="Install SRTP" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-SRTP_VERSION=2.2.0 && \
+SRTP_VERSION=2.4.2 && \
 DIR=/tmp/srtp && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -77,7 +77,7 @@ rm -rf ${DIR}
 {% code title="Install SRT" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-SRT_VERSION=1.3.3 && \
+SRT_VERSION=1.5.2 && \
 DIR=/tmp/srt && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -93,7 +93,7 @@ sudo rm -rf ${PREFIX}/bin
 {% code title="Install Opus" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-OPUS_VERSION=1.1.3 && \
+OPUS_VERSION=1.3.1 && \
 DIR=/tmp/opus && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -110,11 +110,11 @@ rm -rf ${DIR}
 {% code title="Install x264" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-X264_VERSION=20190513-2245-stable && \
+X264_VERSION=0.164.x@31e19f92 && \
 DIR=/tmp/x264 && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
-curl -sLf https://download.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2 | tar -jx --strip-components=1 && \
+curl -sLf https://code.videolan.org/videolan/x264/-/archive/master/x264-0.164.x@31e19f92.tar.bz2 | tar -jx --strip-components=1 && \
 ./configure --prefix="${PREFIX}" --enable-shared --enable-pic --disable-cli && \
 make -j 4&& \
 sudo make install && \
@@ -125,7 +125,7 @@ rm -rf ${DIR}
 {% code title="Install VPX" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-VPX_VERSION=1.7.0 && \
+VPX_VERSION=1.11.0 && \
 DIR=/tmp/vpx && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -140,7 +140,7 @@ rm -rf ${DIR}
 {% code title="Install FDK-AAC" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-FDKAAC_VERSION=0.1.5 && \
+FDKAAC_VERSION=2.0.2 && \
 DIR=/tmp/aac && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
@@ -156,11 +156,11 @@ rm -rf ${DIR}
 {% code title="Install FFMPEG" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-FFMPEG_VERSION=3.4 && \
+FFMPEG_VERSION=5.1.4 && \
 DIR=/tmp/ffmpeg && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
-curl -sLf https://github.com/AirenSoft/FFmpeg/archive/ome/${FFMPEG_VERSION}.tar.gz | tar -xz --strip-components=1 && \
+curl -sLf https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz | tar -xz --strip-components=1 && \
 PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH} ./configure \
 --prefix="${PREFIX}" \
 --enable-gpl \
@@ -191,14 +191,14 @@ rm -rf ${DIR}
 {% code title="Install JEMALLOC" %}
 ```bash
 PREFIX=/opt/ovenmediaengine && \
-JEMALLOC_VERSION=5.2.1 && \
+JEMALLOC_VERSION=5.3.0 && \
 DIR=${TEMP_PATH}/jemalloc && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \
 curl -sLf https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_VERSION}/jemalloc-${JEMALLOC_VERSION}.tar.bz2 | tar -jx --strip-components=1 && \
-./configure --prefix="${PREFIX}" && \
+./configure --prefix="${PREFIX}" --enable-shared && \
 make && \
-sudo make install_include install_lib && \
+sudo make install && \
 rm -rf ${DIR}
 ```
 {% endcode %}
