@@ -210,7 +210,7 @@ bool RtcStream::Start()
 			AddRtpHistory(track);
 		}
 
-		if (_pacer_enabled && _pacer_scheduler)
+		if (_pacer_enabled && _pacer_scheduler && _adaptive_delay_controller)
 		{
 			auto pacer = std::make_shared<FramePacer>(
 				track->GetTimeBase().GetNum(),
@@ -234,10 +234,7 @@ bool RtcStream::Start()
 								rtc_stream->PacketizeAudioFrame(pkt);
 						});
 
-			if (_adaptive_delay_controller)
-			{
-				pacer->SetAdaptiveController(_adaptive_delay_controller);
-			}
+			pacer->SetAdaptiveController(_adaptive_delay_controller);
 
 			std::lock_guard<std::shared_mutex> lock(_pacers_lock);
 			_pacers[track->GetId()] = pacer;
