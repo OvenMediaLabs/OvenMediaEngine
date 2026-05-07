@@ -36,8 +36,6 @@ bool StunMessage::Parse(ov::ByteStream &stream)
 {
 	_parsed = true;
 
-	ov::ByteStream copied_stream(stream);
-
 	// Capture the start of the STUN message (works for both writable and
 	// read-only byte streams) so we can replay the raw bytes later when
 	// verifying MESSAGE-INTEGRITY.
@@ -57,6 +55,8 @@ bool StunMessage::Parse(ov::ByteStream &stream)
 		}
 	}
 
+	// FINGERPRINT pre-check is intentionally disabled — magic cookie already
+	// distinguishes STUN from non-STUN traffic.
 	// _parsed = _parsed && ValidateFingerprint(copied_stream);
 
 	_parsed = _parsed && ParseAttributes(stream, message_start_offset);
@@ -185,12 +185,10 @@ bool StunMessage::ParseAttributes(ov::ByteStream &stream, off_t message_start_of
 			return false;
 		}
 
-		// Track the position of MESSAGE-INTEGRITY so it can be re-verified later.
-		// MESSAGE-INTEGRITY may appear only once per RFC 5389/8489.
+		// Record first MESSAGE-INTEGRITY position for HMAC verification.
 		if (attribute->GetType() == StunAttributeType::MessageIntegrity && _integrity_attribute_offset < 0)
 		{
 			_integrity_attribute_offset = attribute_start - message_start_offset;
-			_integrity_attribute = attribute;
 		}
 
 		_attributes.push_back(std::move(attribute));
@@ -479,18 +477,18 @@ bool StunMessage::IsValid() const
 
 bool StunMessage::CheckIntegrity(const ov::String &password) const
 {
-	// RFC 5389/8489, Section 15.4 (MESSAGE-INTEGRITY)
-	// HMAC-SHA-1 covers the STUN message starting from the header (with the
-	// Message Length field adjusted to indicate the length up to and including
-	// MESSAGE-INTEGRITY) up to but not including the MESSAGE-INTEGRITY attribute itself.
-
-	// Detailed reasons are logged at trace level only — the caller already logs
-	// the rejected packet with full context (peer address, ufrag) at warn level,
-	// so emitting another warn here would just duplicate noise on every attack
-	// packet without adding identifying information.
-	if (_integrity_attribute == nullptr || _integrity_attribute_offset < 0)
+	// RFC 5389 §15.4: MESSAGE-INTEGRITY HMAC-SHA1 verification.
+	// Logs trace-only; the caller logs with full context.
+	if (_integrity_attribute_offset < 0)
 	{
 		logtt("STUN message has no MESSAGE-INTEGRITY attribute");
+		return false;
+	}
+
+	const auto *mi_attribute = GetAttribute<StunMessageIntegrityAttribute>(StunAttributeType::MessageIntegrity);
+	if (mi_attribute == nullptr)
+	{
+		logtt("MESSAGE-INTEGRITY attribute lookup failed");
 		return false;
 	}
 
@@ -506,7 +504,6 @@ bool StunMessage::CheckIntegrity(const ov::String &password) const
 		return false;
 	}
 
-	const auto *mi_attribute = static_cast<const StunMessageIntegrityAttribute *>(_integrity_attribute.get());
 	const size_t header_length = static_cast<size_t>(DefaultHeaderLength());
 	const size_t hmac_input_length = static_cast<size_t>(_integrity_attribute_offset);
 
@@ -520,9 +517,7 @@ bool StunMessage::CheckIntegrity(const ov::String &password) const
 	// Make a mutable copy of the bytes that need to be HMAC'd.
 	auto hmac_input = std::make_shared<ov::Data>(_raw_message->GetData(), hmac_input_length);
 
-	// Patch the Message Length field so it reflects the byte count up to and
-	// including the MESSAGE-INTEGRITY attribute (header + hash). This matches
-	// what the sender used when computing the HMAC.
+	// Patch the Message Length to include MI (matches sender's HMAC input).
 	const size_t mi_length_with_header = static_cast<size_t>(mi_attribute->GetLength(true, true));
 	const size_t adjusted_length = (hmac_input_length - header_length) + mi_length_with_header;
 	if (adjusted_length > 0xFFFF)
