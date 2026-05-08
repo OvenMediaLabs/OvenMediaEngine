@@ -43,6 +43,5 @@ public:
 
 	// Time for statistics
 	ov::StopWatch _stop_watch;
-	std::chrono::time_point<std::chrono::steady_clock> _last_recv_time;
 	std::chrono::time_point<std::chrono::steady_clock> _stat_start_time;
 };
