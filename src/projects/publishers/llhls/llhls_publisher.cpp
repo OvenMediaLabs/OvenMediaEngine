@@ -373,15 +373,18 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			}
 		}
 
+		// Apply CORS once the application is known so error responses still carry the headers
+		if (application != nullptr)
+		{
+			application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response, {http::Method::Options, http::Method::Get, http::Method::Head});
+		}
+
 		if (application == nullptr || stream == nullptr)
 		{
 			logte("Cannot find stream (%s/%s)", vhost_app_name.CStr(), stream_name.CStr());
 			response->SetStatusCode(http::StatusCode::NotFound);
 			return http::svr::NextHandler::DoNotCall;
 		}
-
-		// Cors Setting
-		application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response, {http::Method::Options, http::Method::Get, http::Method::Head});
 
 		// TODO(Getroot): Improve this so that the player's first request is played immediately. This policy was temporarily changed due to a performance issue at the edge.
 		if (stream->WaitUntilStart(0) == false)

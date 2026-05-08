@@ -288,6 +288,14 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			}
 		}
 
+		if (vhost_app_name.IsValid() == false)
+		{
+			logte("Could not resolve application name from domain: %s", request_url->Host().CStr());
+			response->AppendString("Could not resolve application name from domain");
+			response->SetStatusCode(http::StatusCode::NotFound);
+			return http::svr::NextHandler::DoNotCall;
+		}
+
 		// PullStream may create the app from the wildcard template
 		auto application = std::static_pointer_cast<ThumbnailApplication>(GetApplicationByName(vhost_app_name));
 		auto stream = GetStream(vhost_app_name, request_url->Stream());
@@ -300,6 +308,12 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			}
 		}
 
+		// Apply CORS once the application is known so error responses still carry the headers
+		if (application != nullptr)
+		{
+			application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response);
+		}
+
 		if (application == nullptr || stream == nullptr)
 		{
 			logte("There is no stream or cannot pull a stream. stream(%s)", request_url->Stream().CStr());
@@ -307,9 +321,6 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			response->SetStatusCode(http::StatusCode::NotFound);
 			return http::svr::NextHandler::DoNotCall;
 		}
-
-		// CORS
-		application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response);
 
 		if(stream->GetState() != pub::Stream::State::STARTED)
 		{
