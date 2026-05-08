@@ -358,30 +358,30 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		}
 
 		auto application = std::static_pointer_cast<LLHlsApplication>(GetApplicationByName(vhost_app_name));
-		if (application == nullptr)
-		{
-			logte("Cannot find application (%s)", vhost_app_name.CStr());
-			response->SetStatusCode(http::StatusCode::NotFound);
-			return http::svr::NextHandler::DoNotCall;
-		}
-		// Cors Setting
-		application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response, {http::Method::Options, http::Method::Get, http::Method::Head});
-		
 		auto stream = std::static_pointer_cast<LLHlsStream>(GetStream(vhost_app_name, stream_name));
 		if (stream == nullptr)
 		{
+			// PullStream may create the app from the wildcard template
 			stream = std::dynamic_pointer_cast<LLHlsStream>(PullStream(final_url, vhost_app_name, host_name, stream_name));
 			if (stream != nullptr)
 			{
+				if (application == nullptr)
+				{
+					application = std::static_pointer_cast<LLHlsApplication>(GetApplicationByName(vhost_app_name));
+				}
 				logti("URL %s is requested", stream->GetMediaSource().CStr());
 			}
-			else
-			{
-				logte("Cannot find stream (%s/%s)", vhost_app_name.CStr(), stream_name.CStr());
-				response->SetStatusCode(http::StatusCode::NotFound);
-				return http::svr::NextHandler::DoNotCall;
-			}
 		}
+
+		if (application == nullptr || stream == nullptr)
+		{
+			logte("Cannot find stream (%s/%s)", vhost_app_name.CStr(), stream_name.CStr());
+			response->SetStatusCode(http::StatusCode::NotFound);
+			return http::svr::NextHandler::DoNotCall;
+		}
+
+		// Cors Setting
+		application->GetCorsManager().SetupHttpCorsHeader(vhost_app_name, request, response, {http::Method::Options, http::Method::Get, http::Method::Head});
 
 		// TODO(Getroot): Improve this so that the player's first request is played immediately. This policy was temporarily changed due to a performance issue at the edge.
 		if (stream->WaitUntilStart(0) == false)
