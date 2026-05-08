@@ -227,11 +227,11 @@ You can create as long a playlist as you want by setting `<DVR>` to the HLS publ
 
 ## Dump
 
-You can dump the HLS stream for VoD. You can enable it by setting the following in `<Application><Publishers><LLHLS>`. Unlike LLHLS, dump function cannot be controlled by REST API at this time.
+You can dump the HLS stream for VoD. You can enable it by setting the following in `<Application><Publishers><HLS>`. Unlike LLHLS, dump function cannot be controlled by REST API at this time.
 
 {% code overflow="wrap" %}
 ```xml
-<LLHLS>
+<HLS>
     <Dumps>
         <Dump>
             <Enable>true</Enable>
@@ -245,7 +245,7 @@ You can dump the HLS stream for VoD. You can enable it by setting the following 
         </Dump>
     </Dumps>
     ...
-</LLHLS>
+</HLS>
 ```
 {% endcode %}
 
