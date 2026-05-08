@@ -5,12 +5,13 @@ on:
     types: [review_requested]
 
 permissions:
-  pull-requests: write
   issues: write
 
 jobs:
   assign:
-    if: github.event.requested_reviewer.type == 'User'
+    if: |
+      github.event.requested_reviewer != null &&
+      github.event.requested_reviewer.type == 'User'
     runs-on: ubuntu-latest
     steps:
       - name: Add requested reviewer as assignee
