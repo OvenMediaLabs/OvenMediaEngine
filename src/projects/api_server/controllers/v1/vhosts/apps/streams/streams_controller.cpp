@@ -15,6 +15,7 @@
 
 #include "../../../../../api_private.h"
 #include "stream_actions_controller.h"
+#include "streams_controller_internal.h"
 
 namespace api
 {
@@ -37,7 +38,6 @@ namespace api
 			std::vector<std::shared_ptr<mon::StreamMetrics>> output_streams;
 
 			auto orchestrator = ocst::Orchestrator::GetInstance();
-			auto source_url	  = client->GetRequest()->GetParsedUri();
 
 			if (request_body.isObject() == false)
 			{
@@ -72,52 +72,88 @@ namespace api
 				request_urls.push_back(jv_url.asCString());
 			}
 
+			auto request_scope_url = internal::ResolveManagementApiRequestScopeUrl(request_urls);
+			auto request_from		 = request_scope_url;
+			auto request_display_url = (request_scope_url != nullptr) ? request_scope_url->ToUrlString(true) : request_urls.front();
+
+			// Reject request bodies that would be silently overwritten or
+			// order-collapsed by `AppendPlaylistScopeToOvtUrls`. Must run before
+			// Append so the diagnostic can name URLs in their original form.
+			// (See `ValidateManagementApiOvtRequestScopesConsistent` for the rules.)
+			{
+				ov::String scope_mismatch_message;
+				if (internal::ValidateManagementApiOvtRequestScopesConsistent(request_urls, request_from, scope_mismatch_message) == false)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, scope_mismatch_message.CStr());
+				}
+			}
+
+			// Normalize OVT URLs here so the *same* resolved list goes to both the
+			// pull (RequestPullStreamWithUrls) and the demand registration
+			// (RegisterManagementApiRequestScope). Otherwise a body mixing a scoped
+			// HTTP URL with a bare OVT URL would pull playlist-scoped upstream while
+			// registering full-stream demand. Append is idempotent, so the call
+			// inside RequestPullStreamWithUrls below is a safe no-op.
+			info::AppendPlaylistScopeToOvtUrls(request_from, request_urls);
+
 			auto stream = GetStream(app, stream_name, nullptr);
+			auto existing_provider_stream =
+				(stream != nullptr)
+					? orchestrator->GetProviderStream(std::static_pointer_cast<const info::Stream>(stream))
+					: nullptr;
+			auto can_reuse_existing_stream =
+				(stream != nullptr) && internal::CanReuseManagementApiExistingStream(existing_provider_stream, request_urls);
+
+			auto properties = std::make_shared<pvd::PullStreamProperties>();
+			if ((jv_properties.isNull() == false) && jv_properties.isObject())
+			{
+				if ((jv_properties["persistent"].isNull() == false) && jv_properties["persistent"].isBool())
+				{
+					properties->EnablePersistent(jv_properties["persistent"].asBool());
+				}
+
+				if ((jv_properties["noInputFailoverTimeoutMs"].isNull() == false) && jv_properties["noInputFailoverTimeoutMs"].isInt())
+				{
+					properties->SetNoInputFailoverTimeout(jv_properties["noInputFailoverTimeoutMs"].asInt());
+				}
+
+				if ((jv_properties["unusedStreamDeletionTimeoutMs"].isNull() == false) && jv_properties["unusedStreamDeletionTimeoutMs"].isInt())
+				{
+					properties->SetUnusedStreamDeletionTimeout(jv_properties["unusedStreamDeletionTimeoutMs"].asInt());
+				}
+
+				if ((jv_properties["ignoreRtcpSRTimestamp"].isNull() == false) && jv_properties["ignoreRtcpSRTimestamp"].isBool())
+				{
+					properties->EnableIgnoreRtcpSRTimestamp(jv_properties["ignoreRtcpSRTimestamp"].asBool());
+				}
+
+				if ((jv_properties["retryCount"].isNull() == false) && jv_properties["retryCount"].isInt())
+				{
+					properties->SetRetryCount(jv_properties["retryCount"].asInt());
+				}
+				else
+				{
+					properties->SetRetryCount(0);
+				}
+			}
 			try
 			{
-				if (stream == nullptr)
+				if ((stream == nullptr) || can_reuse_existing_stream)
 				{
-					auto properties = std::make_shared<pvd::PullStreamProperties>();
-
-					if (jv_properties.isNull() == false && jv_properties.isObject())
-					{
-						if (jv_properties["persistent"].isNull() == false && jv_properties["persistent"].isBool())
-						{
-							properties->EnablePersistent(jv_properties["persistent"].asBool());
-						}
-
-						if (jv_properties["noInputFailoverTimeoutMs"].isNull() == false && jv_properties["noInputFailoverTimeoutMs"].isInt())
-						{
-							properties->SetNoInputFailoverTimeout(jv_properties["noInputFailoverTimeoutMs"].asInt());
-						}
-
-						if (jv_properties["unusedStreamDeletionTimeoutMs"].isNull() == false && jv_properties["unusedStreamDeletionTimeoutMs"].isInt())
-						{
-							properties->SetUnusedStreamDeletionTimeout(jv_properties["unusedStreamDeletionTimeoutMs"].asInt());
-						}
-
-						if (jv_properties["ignoreRtcpSRTimestamp"].isNull() == false && jv_properties["ignoreRtcpSRTimestamp"].isBool())
-						{
-							properties->EnableIgnoreRtcpSRTimestamp(jv_properties["ignoreRtcpSRTimestamp"].asBool());
-						}
-
-						if (jv_properties["retryCount"].isNull() == false && jv_properties["retryCount"].isInt())
-						{
-							properties->SetRetryCount(jv_properties["retryCount"].asInt());
-						}
-						else
-						{
-							properties->SetRetryCount(0); 
-						}
-					}
-
-					logti("Request to pull stream: %s/%s - persistent(%s) noInputFailoverTimeoutMs(%d) unusedStreamDeletionTimeoutMs(%d) ignoreRtcpSRTimestamp(%s)", app->GetVHostAppName().CStr(), stream_name.CStr(), properties->IsPersistent() ? "true" : "false", properties->GetNoInputFailoverTimeout(), properties->GetUnusedStreamDeletionTimeout(), properties->IsRtcpSRTimestampIgnored() ? "true" : "false");
+					logti("Request to %s stream: %s/%s - persistent(%s) noInputFailoverTimeoutMs(%d) unusedStreamDeletionTimeoutMs(%d) ignoreRtcpSRTimestamp(%s)",
+						  can_reuse_existing_stream ? "reuse" : "pull",
+						  app->GetVHostAppName().CStr(),
+						  stream_name.CStr(),
+						  properties->IsPersistent() ? "true" : "false",
+						  properties->GetNoInputFailoverTimeout(),
+						  properties->GetUnusedStreamDeletionTimeout(),
+						  properties->IsRtcpSRTimestampIgnored() ? "true" : "false");
 					for (auto &url : request_urls)
 					{
 						logti(" - %s", url.CStr());
 					}
 
-					auto error = orchestrator->RequestPullStreamWithUrls(source_url, app->GetVHostAppName(), stream_name, request_urls, 0, properties);
+					auto error = orchestrator->RequestPullStreamWithUrls(request_from, app->GetVHostAppName(), stream_name, request_urls, 0, properties);
 
 					if (error == nullptr)
 					{
@@ -125,10 +161,16 @@ namespace api
 						stream = GetStream(app, stream_name, &output_streams);
 						if (stream == nullptr)
 						{
-							throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", source_url->ToUrlString(true).CStr());
+							throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", request_display_url.CStr());
 						}
 
-						return {http::StatusCode::Created};
+						internal::RegisterManagementApiRequestScope(
+							orchestrator->GetProviderStream(std::static_pointer_cast<const info::Stream>(stream)),
+							app->GetVHostAppName(),
+							stream_name,
+							request_urls);
+
+						return {can_reuse_existing_stream ? http::StatusCode::OK : http::StatusCode::Created};
 					}
 					else
 					{
@@ -142,7 +184,7 @@ namespace api
 							throw http::HttpError(http::StatusCode::BadRequest, error->GetMessage().CStr());
 						}
 
-						throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", source_url->ToUrlString(true).CStr());
+						throw http::HttpError(http::StatusCode::BadGateway, "Could not pull the stream : %s", request_display_url.CStr());
 					}
 				}
 				else
@@ -245,17 +287,20 @@ namespace api
 													  const std::shared_ptr<mon::ApplicationMetrics> &app,
 													  const std::shared_ptr<mon::StreamMetrics> &stream, const std::vector<std::shared_ptr<mon::StreamMetrics>> &output_streams)
 		{
-			auto orchestrator = ocst::Orchestrator::GetInstance();
+			auto orchestrator	 = ocst::Orchestrator::GetInstance();
 
-			auto app_name	  = app->GetVHostAppName();
-			auto stream_name  = stream->GetName();
+			auto app_name		 = app->GetVHostAppName();
+			auto stream_name	 = stream->GetName();
+			auto provider_stream = orchestrator->GetProviderStream(std::static_pointer_cast<const info::Stream>(stream));
 
-			auto code		  = orchestrator->TerminateStream(app_name, stream_name, true);
-			auto http_code	  = http::StatusCodeFromCommonError(code);
+			auto code			 = orchestrator->TerminateStream(app_name, stream_name, true);
+			auto http_code		 = http::StatusCodeFromCommonError(code);
 			if (http_code != http::StatusCode::OK)
 			{
 				throw http::HttpError(http_code, "Could not terminate the stream");
 			}
+
+			internal::UnregisterManagementApiRequestScope(provider_stream, app_name, stream_name);
 
 			return {http_code};
 		}
