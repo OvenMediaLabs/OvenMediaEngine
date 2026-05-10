@@ -120,6 +120,29 @@ namespace pub
 		std::shared_ptr<Session> GetSession(session_id_t id);
 		const std::map<session_id_t, std::shared_ptr<Session>> GetAllSessions();
 		uint32_t GetSessionCount();
+		/// Re-syncs a session's scope onto the linked input provider stream.
+		/// No-op if the session is no longer in the publisher's session map
+		/// (e.g. removed concurrently).
+		///
+		/// @param session Session whose scope to refresh.
+		void RefreshSessionScope(const std::shared_ptr<Session> &session);
+
+		/// Registers a non-session request scope (e.g. a management API pull
+		/// demand or a thumbnail HTTP request) on the linked input provider
+		/// stream. Each `request_key` maps to one demand entry.
+		///
+		/// @param request_key Caller-defined unique key for the request.
+		/// @param requested_url URL the request was originally made with.
+		/// @param final_url URL the request resolved to.
+		void RegisterRequestScope(const ov::String &request_key,
+								  const std::shared_ptr<const ov::Url> &requested_url,
+								  const std::shared_ptr<const ov::Url> &final_url);
+
+		/// Unregisters a request scope previously registered with
+		/// `RegisterRequestScope`.
+		///
+		/// @param request_key Key of the scope to remove.
+		void UnregisterRequestScope(const ov::String &request_key);
 
 		// This function is only called by Push Publisher
 		virtual	std::shared_ptr<pub::Session> CreatePushSession(std::shared_ptr<info::Push> &push);

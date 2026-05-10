@@ -74,6 +74,82 @@ namespace pvd
 		// Provider can override this function to handle the event if needed.
 		virtual bool SendEvent(const std::shared_ptr<MediaEvent> &event);
 
+		/// Registers a downstream session as an active demand on this provider stream.
+		///
+		/// No default argument is given on the virtual (default arguments bind
+		/// statically and can disagree with overrides); the convenient default
+		/// lives on the non-virtual wrapper below.
+		///
+		/// @param session_id Identifier of the downstream session.
+		/// @param requested_url URL the session was originally requested with.
+		/// @param final_url URL the session ended up using (e.g. after redirects).
+		/// @param authoritative_resolved_track_ids Optional explicit track set
+		///        granted by the upstream protocol (for OVT, the publisher
+		///        session's `_allowed_track_ids` after describe/play/subscribe).
+		///        When present, this is the source of truth for the session's
+		///        demand; the URL is used only for reconnect / reprobe URL
+		///        choice. Required to represent a multi-playlist union, since
+		///        a URL only encodes "full" or "single playlist" and would
+		///        otherwise misclassify a union as full.
+		virtual void RegisterDownstreamSession(uint32_t session_id,
+											   const std::shared_ptr<const ov::Url> &requested_url,
+											   const std::shared_ptr<const ov::Url> &final_url,
+											   const std::optional<std::set<int32_t>> &authoritative_resolved_track_ids)
+		{
+		}
+
+		/// Convenience overload that forwards to the 4-arg virtual with
+		/// `authoritative_resolved_track_ids = std::nullopt`. Use from callers
+		/// that have no track-set hint.
+		///
+		/// @param session_id Identifier of the downstream session.
+		/// @param requested_url URL the session was originally requested with.
+		/// @param final_url URL the session ended up using.
+		void RegisterDownstreamSession(uint32_t session_id,
+									   const std::shared_ptr<const ov::Url> &requested_url,
+									   const std::shared_ptr<const ov::Url> &final_url)
+		{
+			RegisterDownstreamSession(session_id, requested_url, final_url, std::nullopt);
+		}
+
+		/// Unregisters a previously registered downstream session.
+		///
+		/// @param session_id Identifier of the session to remove.
+		virtual void UnregisterDownstreamSession(uint32_t session_id)
+		{
+		}
+
+		/// Registers a downstream request (e.g. a management API pull demand)
+		/// keyed by an arbitrary string.
+		///
+		/// @param request_key Caller-defined key uniquely identifying the request.
+		/// @param requested_url URL the request was originally made with.
+		/// @param final_url URL the request resolved to.
+		virtual void RegisterDownstreamRequest(const ov::String &request_key,
+											   const std::shared_ptr<const ov::Url> &requested_url,
+											   const std::shared_ptr<const ov::Url> &final_url)
+		{
+		}
+
+		/// Unregisters a downstream request previously registered with
+		/// `RegisterDownstreamRequest`.
+		///
+		/// @param request_key Key of the request to remove.
+		virtual void UnregisterDownstreamRequest(const ov::String &request_key)
+		{
+		}
+
+		/// Removes every active downstream request whose key starts with
+		/// `request_key_prefix`. Used to wipe all scope-keyed entries for a
+		/// stream that is being terminated (e.g. by the management API DELETE
+		/// handler). Default implementation is a no-op for providers that do
+		/// not track request scopes.
+		///
+		/// @param request_key_prefix Common prefix of keys to remove.
+		virtual void UnregisterDownstreamRequestsByKeyPrefix(const ov::String &request_key_prefix)
+		{
+		}
+
 		std::shared_ptr<const ov::Url> GetRequestedUrl() const;
 		void SetRequestedUrl(const std::shared_ptr<ov::Url> &requested_url);
 

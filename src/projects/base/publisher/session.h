@@ -32,6 +32,22 @@ namespace pub
 		std::shared_ptr<ov::Url> GetFinalUrl() const;
 		void SetFinalUrl(const std::shared_ptr<ov::Url> &final_url);
 
+		/// Optional hook overridden by publishers whose protocol can express a
+		/// more authoritative track-level scope than what the session URL
+		/// encodes (OVT, after a runtime `subscribe` covering a union of
+		/// playlists). When this returns a value, the linked input provider
+		/// stream uses it as the authoritative input for shared-request-state
+		/// accumulation instead of inferring demand from `_requested_url` /
+		/// `_final_url` alone (which can only express full-stream or a single
+		/// playlist file).
+		///
+		/// @return Set of track ids the session has been granted by the upstream
+		///         protocol, or `std::nullopt` to fall back to URL inference.
+		virtual std::optional<std::set<int32_t>> GetAuthoritativeAllowedTrackIds() const
+		{
+			return std::nullopt;
+		}
+
 		virtual bool Start();
 		virtual bool Stop();
 

@@ -1,7 +1,93 @@
 #include "stream.h"
 #include "application.h"
 #include "publisher_private.h"
+
+#include <base/provider/stream.h>
+#include "session.h"
+
 #include <base/event/command/commands.h>
+
+namespace
+{
+	void RegisterSessionScopeOnLinkedInputStream(const std::shared_ptr<pub::Stream> &stream, const std::shared_ptr<pub::Session> &session)
+	{
+		if ((stream == nullptr) || (session == nullptr))
+		{
+			return;
+		}
+
+		auto linked_input_stream = stream->GetLinkedInputStream();
+		auto provider_stream	 = std::dynamic_pointer_cast<pvd::Stream>(linked_input_stream);
+		if (provider_stream == nullptr)
+		{
+			return;
+		}
+
+		// Forward the session's authoritative track set (if the publisher exposes one)
+		// alongside the URL. Without this hint the provider can only infer demand from
+		// the URL's file segment, which silently misclassifies a multi-playlist union
+		// session as a full-stream demand (issues.md B1 follow-up regression).
+		provider_stream->RegisterDownstreamSession(
+			session->GetId(),
+			session->GetRequestedUrl(),
+			session->GetFinalUrl(),
+			session->GetAuthoritativeAllowedTrackIds());
+	}
+
+	void UnregisterSessionScopeFromLinkedInputStream(const std::shared_ptr<pub::Stream> &stream, session_id_t session_id)
+	{
+		if (stream == nullptr)
+		{
+			return;
+		}
+
+		auto linked_input_stream = stream->GetLinkedInputStream();
+		auto provider_stream	 = std::dynamic_pointer_cast<pvd::Stream>(linked_input_stream);
+		if (provider_stream == nullptr)
+		{
+			return;
+		}
+
+		provider_stream->UnregisterDownstreamSession(session_id);
+	}
+
+	void RegisterRequestScopeOnLinkedInputStream(const std::shared_ptr<pub::Stream> &stream,
+												 const ov::String &request_key,
+												 const std::shared_ptr<const ov::Url> &requested_url,
+												 const std::shared_ptr<const ov::Url> &final_url)
+	{
+		if ((stream == nullptr) || request_key.IsEmpty())
+		{
+			return;
+		}
+
+		auto linked_input_stream = stream->GetLinkedInputStream();
+		auto provider_stream	 = std::dynamic_pointer_cast<pvd::Stream>(linked_input_stream);
+		if (provider_stream == nullptr)
+		{
+			return;
+		}
+
+		provider_stream->RegisterDownstreamRequest(request_key, requested_url, final_url);
+	}
+
+	void UnregisterRequestScopeFromLinkedInputStream(const std::shared_ptr<pub::Stream> &stream, const ov::String &request_key)
+	{
+		if ((stream == nullptr) || request_key.IsEmpty())
+		{
+			return;
+		}
+
+		auto linked_input_stream = stream->GetLinkedInputStream();
+		auto provider_stream	 = std::dynamic_pointer_cast<pvd::Stream>(linked_input_stream);
+		if (provider_stream == nullptr)
+		{
+			return;
+		}
+
+		provider_stream->UnregisterDownstreamRequest(request_key);
+	}
+}  // namespace
 
 namespace pub
 {
@@ -276,6 +362,8 @@ namespace pub
 		logti("Try to stop %s stream [%s(%u)]", GetApplicationTypeName(), GetName().CStr(), GetId());
 
 		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+		std::vector<session_id_t> session_ids_to_unregister;
+		std::vector<std::shared_ptr<Session>> sessions_to_stop;
 
 		if (_state != State::STARTED)
 		{
@@ -295,16 +383,34 @@ namespace pub
 
 		worker_lock.unlock();
 
-		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
-
-		logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
-
-		for(const auto &x : _sessions)
 		{
-			auto session = x.second;
-			session->Stop();
+			std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
+			logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
+
+			session_ids_to_unregister.reserve(_sessions.size());
+			sessions_to_stop.reserve(_sessions.size());
+			for (const auto &x : _sessions)
+			{
+				session_ids_to_unregister.emplace_back(x.first);
+				sessions_to_stop.emplace_back(x.second);
+			}
+
+			_sessions.clear();
 		}
-		_sessions.clear();
+
+		for (auto session_id : session_ids_to_unregister)
+		{
+			UnregisterSessionScopeFromLinkedInputStream(GetSharedPtr(), session_id);
+		}
+
+		for (const auto &session : sessions_to_stop)
+		{
+			if (session != nullptr)
+			{
+				session->Stop();
+			}
+		}
 
 		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
 
@@ -410,6 +516,16 @@ namespace pub
 
 	bool Stream::AddSession(std::shared_ptr<Session> session)
 	{
+		// Lock order: publisher's `_session_map_mutex` -> linked provider's locks.
+		// Provider `RegisterDownstreamSession` impls MUST NOT acquire any
+		// publisher lock while holding their own state lock.
+		//
+		// Held across the cross-module call (not snapshot-then-call like Stop())
+		// to close an Add<->Remove race: if Add released the lock after the
+		// `_sessions` insert, a concurrent RemoveSession could erase + Unregister
+		// (no-op since the provider entry didn't exist yet); the later Register
+		// from Add would leave a zombie entry. Stop()'s snapshot pattern is
+		// needed only because `session->Stop()` does I/O.
 		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
 
 		if (_sessions.count(session->GetId()) > 0)
@@ -420,33 +536,45 @@ namespace pub
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
-		if(_worker_count > 0)
+		if (_worker_count > 0)
 		{
 			auto worker = GetWorkerBySessionID(session->GetId());
-			if(worker == nullptr)
+			if (worker == nullptr)
 			{
+				// Roll back the map insertion so that a subsequent RemoveSession() does
+				// not fire UnregisterSessionScopeFromLinkedInputStream() for an entry that
+				// was never registered upstream.
 				logte("Cannot find worker for session : %u", session->GetId());
+				_sessions.erase(session->GetId());
 				return false;
 			}
 
-			return worker->AddSession(session);
+			if (worker->AddSession(session) == false)
+			{
+				_sessions.erase(session->GetId());
+				return false;
+			}
 		}
 
+		RegisterSessionScopeOnLinkedInputStream(GetSharedPtr(), session);
 		return true;
 	}
 
 	bool Stream::RemoveSession(session_id_t id)
 	{
+		// Same lock-order contract as AddSession (see comment there). Hold the map
+		// mutex across the Unregister call so Add/Remove cannot interleave such that
+		// the provider keeps a zombie entry.
+		std::lock_guard session_lock(_session_map_mutex);
+		auto session_iterator = _sessions.find(id);
+		if (session_iterator == _sessions.end())
 		{
-			std::lock_guard session_lock(_session_map_mutex);
-			auto session_iterator = _sessions.find(id);
-			if (session_iterator == _sessions.end())
-			{
-				logtt("Cannot find session : %u", id);
-				return false;
-			}
-			_sessions.erase(session_iterator);
+			logtt("Cannot find session : %u", id);
+			return false;
 		}
+		_sessions.erase(session_iterator);
+
+		UnregisterSessionScopeFromLinkedInputStream(GetSharedPtr(), id);
 
 		if(_worker_count > 0)
 		{
@@ -484,6 +612,43 @@ namespace pub
 	{
 		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
 		return _sessions.size();
+	}
+
+	void Stream::RefreshSessionScope(const std::shared_ptr<Session> &session)
+	{
+		if (session == nullptr)
+		{
+			return;
+		}
+
+		// Same lock order as AddSession/RemoveSession. Holding the map lock here
+		// serializes against concurrent RemoveSession so an already-removed
+		// session can't be silently re-registered as a zombie demand entry.
+		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
+
+		auto it = _sessions.find(session->GetId());
+		if ((it == _sessions.end()) || (it->second.get() != session.get()))
+		{
+			// Session was removed (or replaced by a different session sharing the same
+			// id) between the caller's last interaction with it and this refresh.
+			// Skip the cross-module Register so we don't resurrect demand for a
+			// session no longer tracked by the publisher.
+			return;
+		}
+
+		RegisterSessionScopeOnLinkedInputStream(GetSharedPtr(), session);
+	}
+
+	void Stream::RegisterRequestScope(const ov::String &request_key,
+									  const std::shared_ptr<const ov::Url> &requested_url,
+									  const std::shared_ptr<const ov::Url> &final_url)
+	{
+		RegisterRequestScopeOnLinkedInputStream(GetSharedPtr(), request_key, requested_url, final_url);
+	}
+
+	void Stream::UnregisterRequestScope(const ov::String &request_key)
+	{
+		UnregisterRequestScopeFromLinkedInputStream(GetSharedPtr(), request_key);
 	}
 
 	bool Stream::BroadcastPacket(const std::any &packet)
