@@ -26,17 +26,17 @@ public:
 
 	bool RemoveSessionByConnectorId(int connector_id);
 
-	bool GetDescription(Json::Value &description);
+	bool GetDescription(Json::Value &description, const ov::String &playlist_file_name = "");
+	bool ResolveTrackIdsForPlaylist(const ov::String &playlist_file_name, std::set<int32_t> &track_ids) const;
 
 private:
 	bool Start() override;
 	bool Stop() override;
 
-	bool GenerateDescription();
+	bool GenerateDescription(Json::Value &description, const ov::String &playlist_file_name);
 
 	uint32_t							_worker_count = 0;
 
-	Json::Value							_description;
 	std::shared_mutex					_packetizer_lock;
 	std::shared_ptr<OvtPacketizer>		_packetizer;
 };

@@ -1,9 +1,207 @@
 #include "ovt_publisher.h"
 
+#include <base/info/playlist_file.h>
 #include <base/ovlibrary/url.h>
 
 #include "ovt_private.h"
+#include "ovt_publisher_internal.h"
 #include "ovt_session.h"
+
+namespace ovt_pub::internal
+{
+	std::shared_ptr<ov::Url> BuildFullScopeUrl(const std::shared_ptr<const ov::Url> &base_url, const std::shared_ptr<OvtStream> &stream)
+	{
+		if ((base_url == nullptr) || (stream == nullptr))
+		{
+			return nullptr;
+		}
+
+		auto scoped_url = base_url->Clone();
+		if (scoped_url == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto app_name = stream->GetApplicationInfo().GetVHostAppName().GetAppName();
+		auto path	  = ov::String::FormatString("/%s/%s", app_name.CStr(), stream->GetName().CStr());
+		if (scoped_url->SetPath(path) == false)
+		{
+			return nullptr;
+		}
+
+		return scoped_url;
+	}
+
+	std::shared_ptr<ov::Url> BuildPlaylistScopeUrl(const std::shared_ptr<const ov::Url> &base_url,
+												   const std::shared_ptr<OvtStream> &stream,
+												   const ov::String &playlist_file_name)
+	{
+		auto scoped_url = BuildFullScopeUrl(base_url, stream);
+		if (scoped_url == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto app_name = stream->GetApplicationInfo().GetVHostAppName().GetAppName();
+		auto path	  = ov::String::FormatString("/%s/%s/%s", app_name.CStr(), stream->GetName().CStr(), playlist_file_name.CStr());
+		if (scoped_url->SetPath(path) == false)
+		{
+			return nullptr;
+		}
+
+		return scoped_url;
+	}
+
+	bool ParseSubscribeSelection(const Json::Value &contents, bool &full_stream, std::optional<std::set<int32_t>> &track_ids)
+	{
+		full_stream = false;
+		track_ids.reset();
+
+		if (contents.isNull())
+		{
+			full_stream = true;
+			return true;
+		}
+
+		if (contents.isObject() == false)
+		{
+			return false;
+		}
+
+		auto json_full_stream = contents["fullStream"];
+		if (json_full_stream.isBool())
+		{
+			full_stream = json_full_stream.asBool();
+		}
+
+		auto json_track_ids = contents["trackIds"];
+		if (json_track_ids.isNull())
+		{
+			return full_stream;
+		}
+
+		if (json_track_ids.isArray() == false)
+		{
+			return false;
+		}
+
+		std::set<int32_t> parsed_track_ids;
+		for (Json::ArrayIndex i = 0; i < json_track_ids.size(); ++i)
+		{
+			if ((json_track_ids[i].isInt() == false) && (json_track_ids[i].isUInt() == false))
+			{
+				return false;
+			}
+
+			parsed_track_ids.emplace(json_track_ids[i].asInt());
+		}
+
+		if (parsed_track_ids.empty())
+		{
+			return full_stream;
+		}
+
+		track_ids = std::move(parsed_track_ids);
+		return true;
+	}
+
+	std::shared_ptr<ov::Url> ResolveCanonicalSubscribeScopeUrl(const std::shared_ptr<const ov::Url> &base_url,
+															   const std::shared_ptr<OvtStream> &stream,
+															   const std::optional<std::set<int32_t>> &track_ids,
+															   bool full_stream)
+	{
+		if (full_stream || (track_ids.has_value() == false))
+		{
+			return BuildFullScopeUrl(base_url, stream);
+		}
+
+		std::set<int32_t> full_track_ids;
+		for (const auto &[track_id, track] : stream->GetTracks())
+		{
+			(void)track;
+			full_track_ids.emplace(track_id);
+		}
+
+		if (*track_ids == full_track_ids)
+		{
+			return BuildFullScopeUrl(base_url, stream);
+		}
+
+		// First, try an exact single-playlist match. This is the canonical case and gives
+		// the cleanest URL representation (a real playlist file name on the wire).
+		for (const auto &[file_name, playlist] : stream->GetPlaylists())
+		{
+			(void)playlist;
+
+			std::set<int32_t> playlist_track_ids;
+			if (stream->ResolveTrackIdsForPlaylist(file_name, playlist_track_ids) == false)
+			{
+				continue;
+			}
+
+			if (playlist_track_ids == *track_ids)
+			{
+				return BuildPlaylistScopeUrl(base_url, stream, file_name);
+			}
+		}
+
+		// No single-playlist match. Try to express the request as a union of
+		// playlists - covers edges that span multiple playlists with disjoint
+		// tracks (e.g. video-only + audio-only, or different audio languages).
+		//
+		// Algorithm: take every playlist whose track set is contained in the
+		// request, union them, and accept iff the union equals the request.
+		// Guarantees we never widen beyond what was asked, and never accept an
+		// arbitrary subset that doesn't correspond to any playlist combination.
+		std::set<int32_t> covered_track_ids;
+		bool any_playlist_contributed = false;
+		for (const auto &[file_name, playlist] : stream->GetPlaylists())
+		{
+			(void)playlist;
+
+			std::set<int32_t> playlist_track_ids;
+			if (stream->ResolveTrackIdsForPlaylist(file_name, playlist_track_ids) == false)
+			{
+				continue;
+			}
+
+			if (playlist_track_ids.empty())
+			{
+				continue;
+			}
+
+			if (std::includes(track_ids->begin(), track_ids->end(),
+							  playlist_track_ids.begin(), playlist_track_ids.end()))
+			{
+				covered_track_ids.insert(playlist_track_ids.begin(), playlist_track_ids.end());
+				any_playlist_contributed = true;
+			}
+		}
+
+		if (any_playlist_contributed && (covered_track_ids == *track_ids))
+		{
+			// The requested set is exactly the union of some subset of registered playlists.
+			// No single-playlist URL fits this scope, so fall back to the stream-level
+			// (full) URL for the canonical scope identifier. The actual track filter is
+			// conveyed via OvtSession::_allowed_track_ids set up by the caller, so this
+			// URL choice is purely decorative for monitoring/logging.
+			return BuildFullScopeUrl(base_url, stream);
+		}
+
+		return nullptr;
+	}
+
+	void StoreRequestScopeOnSession(const std::shared_ptr<pub::Session> &session, const std::shared_ptr<const ov::Url> &url)
+	{
+		if ((session == nullptr) || (url == nullptr))
+		{
+			return;
+		}
+
+		session->SetRequestedUrl(url->Clone());
+		session->SetFinalUrl(url->Clone());
+	}
+}  // namespace ovt_pub::internal
 
 std::shared_ptr<OvtPublisher> OvtPublisher::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 {
@@ -217,6 +415,7 @@ void OvtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 		Json::Value &json_request_id = object.GetJsonValue()["id"];
 		Json::Value &json_request_app = object.GetJsonValue()["application"];
 		Json::Value &json_request_target = object.GetJsonValue()["target"];
+		Json::Value &json_request_contents = object.GetJsonValue()["contents"];
 
 		if (json_request_id.isNull() || !json_request_id.isUInt() ||
 			json_request_app.isNull() || !json_request_app.isString() ||
@@ -242,6 +441,10 @@ void OvtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 		else if (app.UpperCaseString() == "PLAY")
 		{
 			HandlePlayRequest(remote, request_id, url);
+		}
+		else if (app.UpperCaseString() == "SUBSCRIBE")
+		{
+			HandleSubscribeRequest(remote, request_id, url, json_request_contents);
 		}
 		else if (app.UpperCaseString() == "STOP")
 		{
@@ -290,7 +493,7 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	auto vhost_app_name = orchestrator->ResolveApplicationNameFromDomain(host_name, app_name);
 	auto stream_name = url->Stream();
 	ov::String msg;
-
+	auto playlist_file_name = (url != nullptr) ? info::StripPlaylistFileExtension(url->File()) : ov::String("");
 	auto stream = std::static_pointer_cast<OvtStream>(GetStream(vhost_app_name, stream_name));
 	if (stream == nullptr)
 	{
@@ -327,9 +530,16 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	}
 
 	Json::Value description;
-	if (stream->GetDescription(description) == false)
+	if (stream->GetDescription(description, playlist_file_name) == false)
 	{
-		msg.Format("(%s/%s) stream doesn't have description.", vhost_app_name.CStr(), url->Stream().CStr());
+		if (playlist_file_name.IsEmpty() == false)
+		{
+			msg.Format("(%s/%s) stream doesn't have playlist: %s", vhost_app_name.CStr(), url->Stream().CStr(), playlist_file_name.CStr());
+		}
+		else
+		{
+			msg.Format("(%s/%s) stream doesn't have description.", vhost_app_name.CStr(), url->Stream().CStr());
+		}
 		ResponseResult(remote, 0, "describe", request_id, 404, msg);
 		return;
 	}
@@ -359,8 +569,24 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 		return;
 	}
 
+	std::optional<std::set<int32_t>> allowed_track_ids;
+	auto playlist_file_name = info::StripPlaylistFileExtension(url->File());
+	if (playlist_file_name.IsEmpty() == false)
+	{
+		std::set<int32_t> resolved_track_ids;
+		if (stream->ResolveTrackIdsForPlaylist(playlist_file_name, resolved_track_ids) == false)
+		{
+			ov::String msg;
+			msg.Format("(%s/%s) stream doesn't have playlist: %s", vhost_app_name.CStr(), url->Stream().CStr(), playlist_file_name.CStr());
+			ResponseResult(remote, 0, "play", request_id, 404, msg);
+			return;
+		}
+
+		allowed_track_ids = std::move(resolved_track_ids);
+	}
+
 	// Session ID is remote socket's ID
-	auto session = OvtSession::Create(app, stream, remote->GetNativeHandle(), remote);
+	auto session = OvtSession::Create(app, stream, remote->GetNativeHandle(), remote, allowed_track_ids);
 	if (session == nullptr)
 	{
 		ov::String msg;
@@ -369,11 +595,99 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 		return;
 	}
 
+	ovt_pub::internal::StoreRequestScopeOnSession(session, url);
+
 	LinkRemoteWithStream(remote->GetNativeHandle(), stream);
 
-	ResponseResult(remote, session->GetId(), "play", request_id, 200, "ok");
+	// Register the session BEFORE the play 200 - otherwise a subscribe arriving
+	// immediately on the same TCP connection can race past AddSession and get
+	// "no active play session" 404.
+	if (stream->AddSession(session) == false)
+	{
+		// AddSession may have inserted into `_sessions` before failing (e.g. on
+		// worker registration). Roll back the map entry, the remote link, and
+		// the session itself - Start() already ran in OvtSession::Create, so
+		// just dropping the shared_ptr would leak socket / monitoring state.
+		// Send the 500 BEFORE Stop(): Stop() closes the connector socket and
+		// any later write is silently dropped (client only sees TCP RST).
+		stream->RemoveSession(session->GetId());
+		UnlinkRemoteFromStream(remote->GetNativeHandle());
+		ov::String msg;
+		msg.Format("Internal Error : Cannot register session");
+		ResponseResult(remote, 0, "play", request_id, 500, msg);
+		session->Stop();
+		return;
+	}
 
-	stream->AddSession(session);
+	ResponseResult(remote, session->GetId(), "play", request_id, 200, "ok");
+}
+
+void OvtPublisher::HandleSubscribeRequest(const std::shared_ptr<ov::Socket> &remote,
+										  uint32_t request_id,
+										  const std::shared_ptr<const ov::Url> &url,
+										  const Json::Value &contents)
+{
+	auto vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(url->Host(), url->App());
+
+	auto app			= std::static_pointer_cast<OvtApplication>(GetApplicationByName(vhost_app_name));
+	if (app == nullptr)
+	{
+		ov::String msg;
+		msg.Format("There is no such app (%s)", vhost_app_name.CStr());
+		ResponseResult(remote, 0, "subscribe", request_id, 404, msg);
+		return;
+	}
+
+	auto stream = std::static_pointer_cast<OvtStream>(app->GetStream(url->Stream()));
+	if (stream == nullptr)
+	{
+		ov::String msg;
+		msg.Format("There is no such stream (%s/%s)", vhost_app_name.CStr(), url->Stream().CStr());
+		ResponseResult(remote, 0, "subscribe", request_id, 404, msg);
+		return;
+	}
+
+	auto session = std::dynamic_pointer_cast<OvtSession>(stream->GetSession(remote->GetNativeHandle()));
+	if (session == nullptr)
+	{
+		ResponseResult(remote, 0, "subscribe", request_id, 404, "There is no active play session for subscribe");
+		return;
+	}
+
+	bool full_stream = false;
+	std::optional<std::set<int32_t>> allowed_track_ids;
+	if (ovt_pub::internal::ParseSubscribeSelection(contents, full_stream, allowed_track_ids) == false)
+	{
+		ResponseResult(remote, session->GetId(), "subscribe", request_id, 400, "Invalid subscribe contents");
+		return;
+	}
+
+	if (allowed_track_ids.has_value())
+	{
+		for (auto track_id : *allowed_track_ids)
+		{
+			if (stream->GetTrack(track_id) == nullptr)
+			{
+				ov::String msg;
+				msg.Format("Track id is not valid: %d", track_id);
+				ResponseResult(remote, session->GetId(), "subscribe", request_id, 404, msg);
+				return;
+			}
+		}
+	}
+
+	auto session_scope_url = ovt_pub::internal::ResolveCanonicalSubscribeScopeUrl(url, stream, allowed_track_ids, full_stream);
+	if (session_scope_url == nullptr)
+	{
+		ResponseResult(remote, session->GetId(), "subscribe", request_id, 400, "Subscribe track selection must match full stream or a union of known playlists");
+		return;
+	}
+
+	session->UpdateAllowedTrackIds(full_stream ? std::nullopt : allowed_track_ids);
+	ovt_pub::internal::StoreRequestScopeOnSession(session, session_scope_url);
+	stream->RefreshSessionScope(session);
+
+	ResponseResult(remote, session->GetId(), "subscribe", request_id, 200, "ok");
 }
 
 void OvtPublisher::HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id, const std::shared_ptr<const ov::Url> &url)

@@ -9,6 +9,117 @@
 #include <modules/ovt_packetizer/ovt_signaling.h>
 #include <orchestrator/orchestrator.h>
 
+namespace
+{
+	void AppendPlaylistDescription(const std::shared_ptr<const info::Playlist> &playlist, Json::Value &json_playlists)
+	{
+		Json::Value json_playlist;
+
+		json_playlist["name"]	  = playlist->GetName().CStr();
+		json_playlist["fileName"] = playlist->GetFileName().CStr();
+
+		Json::Value json_options;
+		json_options["webrtcAutoAbr"]		  = playlist->IsWebRtcAutoAbr();
+		json_options["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
+		json_options["enableTsPackaging"]	  = playlist->IsTsPackagingEnabled();
+
+		json_playlist["options"]			  = json_options;
+
+		for (const auto &rendition : playlist->GetRenditionList())
+		{
+			Json::Value json_rendition;
+
+			json_rendition["name"]			 = rendition->GetName().CStr();
+			json_rendition["videoTrackName"] = rendition->GetVideoVariantName().CStr();
+			json_rendition["videoIndexHint"] = rendition->GetVideoIndexHint();
+			json_rendition["audioTrackName"] = rendition->GetAudioVariantName().CStr();
+			json_rendition["audioIndexHint"] = rendition->GetAudioIndexHint();
+
+			json_playlist["renditions"].append(json_rendition);
+		}
+
+		json_playlists.append(json_playlist);
+	}
+
+	void AppendTrackDescription(const std::shared_ptr<MediaTrack> &track, Json::Value &json_tracks)
+	{
+		Json::Value json_track;
+		Json::Value json_video_track;
+		Json::Value json_audio_track;
+
+		json_track["id"]				 = track->GetId();
+		json_track["name"]				 = track->GetVariantName().CStr();
+		json_track["publicName"]		 = track->GetPublicName().CStr();
+		json_track["language"]			 = track->GetLanguage().CStr();
+		json_track["characteristics"]	 = track->GetCharacteristics().CStr();
+		json_track["codecId"]			 = static_cast<int8_t>(track->GetCodecId());
+		json_track["mediaType"]			 = static_cast<int8_t>(track->GetMediaType());
+		json_track["timebaseNum"]		 = track->GetTimeBase().GetNum();
+		json_track["timebaseDen"]		 = track->GetTimeBase().GetDen();
+		json_track["bitrate"]			 = track->GetBitrate();
+		json_track["startFrameTime"]	 = track->GetStartFrameTime();
+		json_track["lastFrameTime"]		 = track->GetLastFrameTime();
+
+		json_video_track["framerate"]	 = track->GetFrameRate();
+		json_video_track["maxFramerate"] = track->GetMaxFrameRate();
+		auto resolution					 = track->GetResolution();
+		json_video_track["width"]		 = resolution.width;
+		json_video_track["height"]		 = resolution.height;
+		auto max_resolution				 = track->GetMaxResolution();
+		json_video_track["maxWidth"]	 = max_resolution.width;
+		json_video_track["maxHeight"]	 = max_resolution.height;
+
+		json_audio_track["samplerate"]	 = track->GetSampleRate();
+		json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());
+		json_audio_track["layout"]		 = static_cast<uint32_t>(track->GetChannel().GetLayout());
+
+		json_track["videoTrack"]		 = json_video_track;
+		json_track["audioTrack"]		 = json_audio_track;
+
+		auto decoder_config				 = track->GetDecoderConfigurationRecord();
+		if (decoder_config != nullptr)
+		{
+			json_track["decoderConfig"] = ov::Base64::Encode(decoder_config->GetData()).CStr();
+		}
+
+		json_tracks.append(json_track);
+	}
+
+	std::set<int32_t> ResolvePlaylistTrackIds(const OvtStream &stream, const std::shared_ptr<const info::Playlist> &playlist)
+	{
+		std::set<int32_t> track_ids;
+
+		for (const auto &rendition : playlist->GetRenditionList())
+		{
+			auto video_index_hint = rendition->GetVideoIndexHint();
+			if (video_index_hint < 0)
+			{
+				video_index_hint = 0;
+			}
+
+			auto audio_index_hint = rendition->GetAudioIndexHint();
+			if (audio_index_hint < 0)
+			{
+				audio_index_hint = 0;
+			}
+
+			auto video_track = stream.GetTrackByVariant(rendition->GetVideoVariantName(), static_cast<uint32_t>(video_index_hint));
+			if (video_track != nullptr)
+			{
+				track_ids.emplace(video_track->GetId());
+			}
+
+			auto audio_track = stream.GetTrackByVariant(rendition->GetAudioVariantName(), static_cast<uint32_t>(audio_index_hint));
+			if (audio_track != nullptr)
+			{
+				track_ids.emplace(audio_track->GetId());
+			}
+		}
+
+		return track_ids;
+	}
+}  // namespace
+
 std::shared_ptr<OvtStream> OvtStream::Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,
 											 uint32_t worker_count)
@@ -93,14 +204,15 @@ bool OvtStream::Stop()
 	return Stream::Stop();
 }
 
-bool OvtStream::GenerateDescription()
+bool OvtStream::GenerateDescription(Json::Value &description, const ov::String &playlist_file_name)
 {
 	Json::Value 	json_root;
 	Json::Value		json_stream;
-	Json::Value		json_tracks;
-	Json::Value		json_playlists;
+	Json::Value		json_tracks(Json::arrayValue);
+	Json::Value		json_playlists(Json::arrayValue);
 
 	json_root["version"] = OVT_SIGNALING_VERSION;
+	json_root["capabilities"]["runtimeWidening"] = true;
 	
 	json_stream["appName"] = GetApplicationName();
 	json_stream["streamName"] = GetName().CStr();
@@ -115,87 +227,42 @@ bool OvtStream::GenerateDescription()
 		json_stream["originStreamUUID"] = GetUUID().CStr();
 	}
 
-	for(const auto &[file_name, playlist] : GetPlaylists())
+	if (playlist_file_name.IsEmpty() == false)
 	{
-		Json::Value json_playlist;
-		
-		json_playlist["name"] = playlist->GetName().CStr();
-		json_playlist["fileName"] = playlist->GetFileName().CStr();
-
-		Json::Value json_options;
-		json_options["webrtcAutoAbr"] = playlist->IsWebRtcAutoAbr();
-		json_options["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
-		json_options["enableTsPackaging"] = playlist->IsTsPackagingEnabled();
-
-		json_playlist["options"] = json_options;
-
-		for (const auto &rendition : playlist->GetRenditionList())
+		auto playlist = GetPlaylist(playlist_file_name);
+		if (playlist == nullptr)
 		{
-			Json::Value json_rendition;
-
-			json_rendition["name"] = rendition->GetName().CStr();
-			json_rendition["videoTrackName"] = rendition->GetVideoVariantName().CStr();
-			json_rendition["videoIndexHint"] = rendition->GetVideoIndexHint();
-			json_rendition["audioTrackName"] = rendition->GetAudioVariantName().CStr();
-			json_rendition["audioIndexHint"] = rendition->GetAudioIndexHint();
-
-			json_playlist["renditions"].append(json_rendition);
+			return false;
 		}
 
-		json_playlists.append(json_playlist);
+		AppendPlaylistDescription(playlist, json_playlists);
+
+		for (auto track_id : ResolvePlaylistTrackIds(*this, playlist))
+		{
+			auto track = GetTrack(track_id);
+			if (track != nullptr)
+			{
+				AppendTrackDescription(track, json_tracks);
+			}
+		}
 	}
-
-	for(auto &track_item : _tracks)
+	else
 	{
-		auto &track = track_item.second;
-
-		Json::Value json_track;
-		Json::Value json_video_track;
-		Json::Value json_audio_track;
-
-		json_track["id"] = track->GetId();
-		json_track["name"] = track->GetVariantName().CStr();
-		json_track["publicName"] = track->GetPublicName().CStr();
-		json_track["language"] = track->GetLanguage().CStr();
-		json_track["characteristics"] = track->GetCharacteristics().CStr();
-		json_track["codecId"] = static_cast<int8_t>(track->GetCodecId());
-		json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
-		json_track["timebaseNum"] = track->GetTimeBase().GetNum();
-		json_track["timebaseDen"] = track->GetTimeBase().GetDen();
-		json_track["bitrate"] = track->GetBitrate();
-		json_track["startFrameTime"] = track->GetStartFrameTime();
-		json_track["lastFrameTime"] = track->GetLastFrameTime();
-
-		json_video_track["framerate"] = track->GetFrameRate();
-		json_video_track["maxFramerate"] = track->GetMaxFrameRate();
-		auto resolution = track->GetResolution();
-		json_video_track["width"] = resolution.width;
-		json_video_track["height"] = resolution.height;
-		auto max_resolution = track->GetMaxResolution();
-		json_video_track["maxWidth"] = max_resolution.width;
-		json_video_track["maxHeight"] = max_resolution.height;
-
-		json_audio_track["samplerate"] = track->GetSampleRate();
-		json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());
-		json_audio_track["layout"] = static_cast<uint32_t>(track->GetChannel().GetLayout());
-
-		json_track["videoTrack"] = json_video_track;
-		json_track["audioTrack"] = json_audio_track;
-
-		auto decoder_config = track->GetDecoderConfigurationRecord();
-		if (decoder_config != nullptr)
+		for (const auto &[file_name, playlist] : GetPlaylists())
 		{
-			json_track["decoderConfig"] = ov::Base64::Encode(decoder_config->GetData()).CStr();
+			AppendPlaylistDescription(playlist, json_playlists);
 		}
-		
-		json_tracks.append(json_track);
+
+		for (const auto &[track_id, track] : GetTracks())
+		{
+			AppendTrackDescription(track, json_tracks);
+		}
 	}
 
 	json_stream["playlists"] = json_playlists;
 	json_stream["tracks"] = json_tracks;
 	json_root["stream"] = json_stream;
-	
-	_description = json_root;
+	description = json_root;
 
 	return true;
 }
@@ -244,16 +311,32 @@ bool OvtStream::OnOvtPacketized(std::shared_ptr<OvtPacket> &packet)
 	return true;
 }
 
-bool OvtStream::GetDescription(Json::Value &description)
+bool OvtStream::GetDescription(Json::Value &description, const ov::String &playlist_file_name)
 {
 	if(GetState() != Stream::State::STARTED)
 	{
 		return false;
 	}
-	
-	GenerateDescription();
-	description = _description;
 
+	return GenerateDescription(description, playlist_file_name);
+}
+
+bool OvtStream::ResolveTrackIdsForPlaylist(const ov::String &playlist_file_name, std::set<int32_t> &track_ids) const
+{
+	track_ids.clear();
+
+	if (playlist_file_name.IsEmpty())
+	{
+		return true;
+	}
+
+	auto playlist = GetPlaylist(playlist_file_name);
+	if (playlist == nullptr)
+	{
+		return false;
+	}
+
+	track_ids = ResolvePlaylistTrackIds(*this, playlist);
 	return true;
 }
 
