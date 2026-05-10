@@ -8,6 +8,7 @@
 //==============================================================================
 #include "orchestrator.h"
 
+#include <base/info/playlist_file.h>
 #include <base/mediarouter/mediarouter_interface.h>
 #include <base/provider/pull_provider/stream_props.h>
 #include <base/provider/stream.h>
@@ -49,11 +50,9 @@ namespace ocst
 				}
 			}
 
-			// A single pull request is still dispatched to one provider module. Before this
-			// refactoring we implicitly used the first URL's scheme (`url_list[0]`) for that
-			// dispatch, so mixed-scheme URL lists were never handled correctly. Keep that
-			// behavior explicit by validating that all URLs share the same scheme and then
-			// returning the validated scheme to the caller.
+			// One pull request dispatches to one provider module, so a mixed-scheme
+			// list was never handled correctly (the first URL's scheme was picked
+			// implicitly). Make that constraint explicit by returning the shared scheme.
 			if (scheme != nullptr)
 			{
 				*scheme = validated_scheme;
@@ -475,9 +474,12 @@ namespace ocst
 		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 		const std::vector<ov::String> &url_list, off_t offset, const std::shared_ptr<pvd::PullStreamProperties> &properties)
 	{
+		auto resolved_url_list = url_list;
+		info::AppendPlaylistScopeToOvtUrls(request_from, resolved_url_list);
+
 		ov::String scheme;
 
-		auto validation_error = ValidatePullStreamUrlList(url_list, &scheme);
+		auto validation_error = ValidatePullStreamUrlList(resolved_url_list, &scheme);
 		if (validation_error != nullptr)
 		{
 			return validation_error;
@@ -531,7 +533,7 @@ namespace ocst
 			  vhost_app_name.CStr(), stream_name.CStr(),
 			  GetModuleTypeName(provider_module->GetModuleType()).CStr());
 
-		auto stream = provider_module->PullStream(request_from, app_info, stream_name, url_list, offset, properties);
+		auto stream = provider_module->PullStream(request_from, app_info, stream_name, resolved_url_list, offset, properties);
 		if (stream != nullptr)
 		{
 			logti("The stream was pulled successfully: [%s/%s] (%u)",
@@ -635,6 +637,8 @@ namespace ocst
 		{
 			url_list = std::move(url_list_in_map);
 		}
+
+		info::AppendPlaylistScopeToOvtUrls(request_from, url_list);
 
 		logti("Trying to pull stream [%s/%s] from provider using origin map: %s",
 			  vhost_app_name.CStr(), stream_name.CStr(),
