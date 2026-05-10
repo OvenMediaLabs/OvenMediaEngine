@@ -2,8 +2,48 @@
 
 #define OVT_SIGNALING_VERSION 0x12
 
+namespace ovt
+{
+	/// Tri-state for runtime-negotiated OVT capabilities (e.g. runtime widening).
+	///
+	/// Edges start at `UNKNOWN` and transition based on what the origin advertises
+	/// in its `describe` response or how it answers a runtime command.
+	enum class CapabilitySupport : uint8_t
+	{
+		/// No negotiation has happened yet, or the origin is silent on this
+		/// capability. Treated optimistically: edges may try the capability
+		/// and downgrade on rejection.
+		UNKNOWN = 0,
+
+		/// The origin advertised the capability or accepted a request that
+		/// exercises it. Edges may use it freely.
+		SUPPORTED,
+
+		/// The origin explicitly disclaimed the capability or rejected a
+		/// request that needed it. Edges must avoid it (e.g. fall back to
+		/// compatibility paths).
+		UNSUPPORTED,
+	};
+}  // namespace ovt
+
 /*
+	request:
+	{
+		"id": 1,
+		"application": "subscribe",
+		"target": "ovt://host:9000/app/stream",
+		"contents":
+		{
+			"fullStream": true,
+			"trackIds": [1001, 1002] // Optional, exact union track set when fullStream=false
+		}
+	}
+
 	"version": 0x12,
+	"capabilities":
+	{
+		"runtimeWidening": true // Optional
+	},
 	"stream" :
 	{
 		"appName" : "app",
