@@ -42,7 +42,7 @@ FROM    base${USE_GPU:+_gpu} AS base_build
 
 ## Install Libraries 
 ENV     DEBIAN_FRONTEND=noninteractive
-RUN     apt-get update && apt-get install -y tzdata sudo curl git
+RUN     apt-get update && apt-get install -y tzdata sudo curl git apt-transport-https ca-certificates gnupg software-properties-common wget build-essential ninja-build pkg-config
 
 FROM    base_build AS build
 
@@ -71,39 +71,41 @@ RUN \
         fi && \
         rm -rf ${TEMP_LOCAL_DIR}
 
-# Install Prerequisites
+## Install CMake
 RUN \
-        extra_args=""; \
-        if [ "${USE_GPU}" = "true" ] || [ "${USE_GPU}" = "1" ] || [ "${USE_GPU}" = "yes" ]; then \
-                extra_args="--enable-nv"; \
-        fi; \
-        ${TEMP_DIR}/misc/prerequisites.sh ${extra_args}
+        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null && \
+        apt-add-repository -y "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" && \
+        apt update && \
+        apt install -y cmake
 
-
-# Build OvenMediaEngine
+## Build OvenMediaEngine
 #  - Configure ldconfig to find the cuda and nvml libraries 
 RUN \
+        build_options=""; \
         if [ "${USE_GPU}" = "true" ] || [ "${USE_GPU}" = "1" ] || [ "${USE_GPU}" = "yes" ]; then \
-                echo -e "/usr/local/cuda/compat\n/usr/local/cuda/lib64/stubs" | tee /etc/ld.so.conf.d/cuda.conf > /dev/null && ldconfig ; \
-        fi && \
-        make -C ${TEMP_DIR}/src release -j$(nproc)
+            build_options="-DOME_HWACCEL_NVIDIA=ON"; \
+            echo -e "/usr/local/cuda/compat\n/usr/local/cuda/lib64/stubs" | tee /etc/ld.so.conf.d/cuda.conf > /dev/null && ldconfig; \
+        fi; \
+        cd ${TEMP_DIR} && \
+        cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release ${build_options} && \
+        cmake --build build/Release
 
 RUN \
         if [ "${STRIP}" = "true" ] || [ "${STRIP}" = "1" ] || [ "${STRIP}" = "yes" ]; then \
-                strip ${TEMP_DIR}/src/bin/RELEASE/OvenMediaEngine ; \
+                strip ${TEMP_DIR}/build/Release/bin/OvenMediaEngine ; \
         fi
 
 ## Copy Running Environment
 RUN \
-        cd ${TEMP_DIR}/src && \
+        cd ${TEMP_DIR} && \
         mkdir -p ${PREFIX}/bin/origin_conf && \
         mkdir -p ${PREFIX}/bin/edge_conf && \
-        cp ./bin/RELEASE/OvenMediaEngine ${PREFIX}/bin/ && \
-        cp ../misc/conf_examples/Origin.xml ${PREFIX}/bin/origin_conf/Server.xml && \
-        cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/origin_conf/Logger.xml && \
-        cp ../misc/conf_examples/Edge.xml ${PREFIX}/bin/edge_conf/Server.xml && \
-        cp ../misc/conf_examples/Logger.xml ${PREFIX}/bin/edge_conf/Logger.xml && \
-        cp ../misc/ome_launcher.sh ${PREFIX}/bin/ome_launcher.sh
+        cp ./build/Release/bin/OvenMediaEngine ${PREFIX}/bin/ && \
+        cp ./misc/conf_examples/Origin.xml ${PREFIX}/bin/origin_conf/Server.xml && \
+        cp ./misc/conf_examples/Logger.xml ${PREFIX}/bin/origin_conf/Logger.xml && \
+        cp ./misc/conf_examples/Edge.xml ${PREFIX}/bin/edge_conf/Server.xml && \
+        cp ./misc/conf_examples/Logger.xml ${PREFIX}/bin/edge_conf/Logger.xml && \
+        cp ./misc/ome_launcher.sh ${PREFIX}/bin/ome_launcher.sh
 
 ENTRYPOINT ["tail", "-f", "/dev/null"]
 

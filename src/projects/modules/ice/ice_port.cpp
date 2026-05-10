@@ -947,17 +947,19 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 
 	if (ice_session->GetPeerSdp()->GetIceUfrag() != peer_ufrag)
 	{
-		logtw("Mismatched ufrag: %s (ufrag in peer SDP: %s)", peer_ufrag.CStr(), ice_session->GetPeerSdp()->GetIceUfrag().CStr());
+		logtw("Rejecting STUN binding request from %s: peer ufrag mismatch (received: %s, expected: %s)",
+			  address_pair.ToString().CStr(), peer_ufrag.CStr(), ice_session->GetPeerSdp()->GetIceUfrag().CStr());
+		return false;
 	}
 
 	if (message.CheckIntegrity(ice_session->GetLocalSdp()->GetIcePwd()) == false)
 	{
-		logtw("Failed to check integrity");
-
-		ice_session->SetState(IceConnectionState::Failed);
-		NotifyIceSessionStateChanged(ice_session);
-		RemoveSession(ice_session->GetSessionID());
-
+		// RFC 8445 §7.3 / RFC 5389 §10.1.2: a request that fails integrity
+		// verification MUST be silently discarded. Tearing down the legitimate
+		// session here would let an off-path attacker who only knows the public
+		// ufrag (e.g. via STUN sniffing) DoS the victim by sending a forged
+		// request with a bad MESSAGE-INTEGRITY.
+		logtw("Failed to check integrity for STUN binding request from %s (silently dropped)", address_pair.ToString().CStr());
 		return false;
 	}
 
@@ -1135,9 +1137,13 @@ bool IcePort::OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &r
 
 	logtt("Receive stun binding response from %s, table size(%zu)", address_pair.ToString().CStr(), _binding_requests_with_transaction_id.size());
 
-	if (message.CheckIntegrity(ice_session->GetLocalSdp()->GetIcePwd()) == false)
+	// The binding response is signed by the peer with the same password the
+	// request was signed with (RFC 5389 §10.1.2). OME signs outgoing binding
+	// requests with the peer's ICE password (see SendStunBindingRequest), so
+	// verify the response with the peer's password.
+	if (message.CheckIntegrity(ice_session->GetPeerSdp()->GetIcePwd()) == false)
 	{
-		logtw("Failed to check integrity");
+		logtw("Failed to check integrity for STUN binding response from %s", address_pair.ToString().CStr());
 		return false;
 	}
 

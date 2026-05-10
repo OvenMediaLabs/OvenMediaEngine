@@ -1,1 +1,0 @@
-ome_add_static_library(jitter_buffer)

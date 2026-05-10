@@ -101,7 +101,9 @@ private:
 	bool GeneratePackets();
 	void PacketizeFuA(size_t fragment_index);
 	size_t PacketizeStapA(size_t fragment_index);
+	bool IsAggregationPossible(size_t fragment_index) const;
 	bool PacketizeSingleNalu(size_t fragment_index);
+	void NextSingleUnitPacket(RtpPacket* rtp_packet);
 	void NextAggregatePacket(RtpPacket* rtp_packet, bool last);
 	void NextFragmentPacket(RtpPacket* rtp_packet);
 

@@ -8,11 +8,14 @@
 //==============================================================================
 #include "stun_message.h"
 
+#include <openssl/crypto.h>
+
 #include <base/ovcrypto/ovcrypto.h>
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "modules/ice/ice.h"
 #include "modules/ice/stun/attributes/stun_fingerprint_attribute.h"
+#include "modules/ice/stun/attributes/stun_message_integrity_attribute.h"
 #include "stun_private.h"
 
 StunMessage::StunMessage()
@@ -33,17 +36,30 @@ bool StunMessage::Parse(ov::ByteStream &stream)
 {
 	_parsed = true;
 
-	// Fingerprint를 처리하는 과정에서 stream의 offset이 변경되므로, 별도의 stream 생성
-	ov::ByteStream copied_stream(stream);
+	// Capture the start of the STUN message (works for both writable and
+	// read-only byte streams) so we can replay the raw bytes later when
+	// verifying MESSAGE-INTEGRITY.
+	off_t message_start_offset = stream.GetOffset();
+	const uint8_t *raw_message_ptr = stream.CurrentBuffer<uint8_t>();
+	size_t available_bytes = stream.Remained();
 
-	// 헤더 길이 정보 분석 및 헤더를 먼저 읽음
 	_parsed = _parsed && ParseHeader(stream);
 
-	// STUN 패킷인지를 빠르게 판단하기 위해, finger print를 먼저 계산해봄 (CRC는 stream의 뒷 부분을 탐색하여 계산하기 때문에, 복사해놓음 stream을 사용함)
-	//_parsed = _parsed && ValidateFingerprint(copied_stream);
+	if (_parsed)
+	{
+		// Snapshot the raw STUN message (header + attributes) for MESSAGE-INTEGRITY verification.
+		size_t total_size = static_cast<size_t>(DefaultHeaderLength()) + _message_length;
+		if (raw_message_ptr != nullptr && total_size <= available_bytes)
+		{
+			_raw_message = std::make_shared<ov::Data>(raw_message_ptr, total_size);
+		}
+	}
 
-	// 나머지 attribute들 파싱
-	_parsed = _parsed && ParseAttributes(stream);
+	// FINGERPRINT pre-check is intentionally disabled — magic cookie already
+	// distinguishes STUN from non-STUN traffic.
+	// _parsed = _parsed && ValidateFingerprint(copied_stream);
+
+	_parsed = _parsed && ParseAttributes(stream, message_start_offset);
 
 	return _parsed;
 }
@@ -147,7 +163,7 @@ bool StunMessage::ParseHeader(ov::ByteStream &stream)
 	return true;
 }
 
-bool StunMessage::ParseAttributes(ov::ByteStream &stream)
+bool StunMessage::ParseAttributes(ov::ByteStream &stream, off_t message_start_offset)
 {
 	// Under normal circumstances, fingerprint attribute must be parsed.
 	// OV_ASSERT2(_fingerprint_attribute != nullptr);
@@ -159,12 +175,20 @@ bool StunMessage::ParseAttributes(ov::ByteStream &stream)
 	// Parsing starts when the minimum data is found
 	while (stream.Remained() >= minimum_length)
 	{
+		off_t attribute_start = stream.GetOffset();
+
 		std::shared_ptr<StunAttribute> attribute = StunAttribute::CreateAttribute(this, stream);
 
 		if (attribute == nullptr)
 		{
 			logtw("Could not parse attribute");
 			return false;
+		}
+
+		// Record first MESSAGE-INTEGRITY position for HMAC verification.
+		if (attribute->GetType() == StunAttributeType::MessageIntegrity && _integrity_attribute_offset < 0)
+		{
+			_integrity_attribute_offset = attribute_start - message_start_offset;
 		}
 
 		_attributes.push_back(std::move(attribute));
@@ -453,7 +477,81 @@ bool StunMessage::IsValid() const
 
 bool StunMessage::CheckIntegrity(const ov::String &password) const
 {
-	// RFC 5389, section 15.4 참고
+	// RFC 5389 §15.4: MESSAGE-INTEGRITY HMAC-SHA1 verification.
+	// Logs trace-only; the caller logs with full context.
+	if (_integrity_attribute_offset < 0)
+	{
+		logtt("STUN message has no MESSAGE-INTEGRITY attribute");
+		return false;
+	}
+
+	const auto *mi_attribute = GetAttribute<StunMessageIntegrityAttribute>(StunAttributeType::MessageIntegrity);
+	if (mi_attribute == nullptr)
+	{
+		logtt("MESSAGE-INTEGRITY attribute lookup failed");
+		return false;
+	}
+
+	if (_raw_message == nullptr)
+	{
+		logtt("Raw STUN message is not available for MESSAGE-INTEGRITY verification");
+		return false;
+	}
+
+	if (password.IsEmpty())
+	{
+		logtt("Empty password provided for STUN MESSAGE-INTEGRITY verification");
+		return false;
+	}
+
+	const size_t header_length = static_cast<size_t>(DefaultHeaderLength());
+	const size_t hmac_input_length = static_cast<size_t>(_integrity_attribute_offset);
+
+	if (hmac_input_length < header_length || hmac_input_length > _raw_message->GetLength())
+	{
+		logtt("Invalid MESSAGE-INTEGRITY position in STUN message: offset=%jd, raw_size=%zu",
+			  static_cast<intmax_t>(_integrity_attribute_offset), _raw_message->GetLength());
+		return false;
+	}
+
+	// Make a mutable copy of the bytes that need to be HMAC'd.
+	auto hmac_input = std::make_shared<ov::Data>(_raw_message->GetData(), hmac_input_length);
+
+	// Patch the Message Length to include MI (matches sender's HMAC input).
+	const size_t mi_length_with_header = static_cast<size_t>(mi_attribute->GetLength(true, true));
+	const size_t adjusted_length = (hmac_input_length - header_length) + mi_length_with_header;
+	if (adjusted_length > 0xFFFF)
+	{
+		logtt("Adjusted STUN message length is too large: %zu", adjusted_length);
+		return false;
+	}
+
+	auto *buffer = hmac_input->GetWritableDataAs<uint8_t>();
+	auto *length_field = reinterpret_cast<uint16_t *>(buffer + sizeof(uint16_t));
+	*length_field = ov::HostToNetwork16(static_cast<uint16_t>(adjusted_length));
+
+	auto integrity_key = password.ToData(false);
+	if (integrity_key == nullptr)
+	{
+		return false;
+	}
+
+	uint8_t computed_hash[OV_STUN_HASH_LENGTH];
+	if (ov::MessageDigest::ComputeHmac(ov::CryptoAlgorithm::Sha1,
+									   integrity_key->GetData(), integrity_key->GetLength(),
+									   hmac_input->GetData(), hmac_input->GetLength(),
+									   computed_hash, OV_STUN_HASH_LENGTH) == false)
+	{
+		logtt("Failed to compute HMAC-SHA1 for STUN MESSAGE-INTEGRITY verification");
+		return false;
+	}
+
+	if (::CRYPTO_memcmp(computed_hash, mi_attribute->GetHash(), OV_STUN_HASH_LENGTH) != 0)
+	{
+		logtt("STUN MESSAGE-INTEGRITY mismatch");
+		return false;
+	}
+
 	return true;
 }
 

@@ -120,7 +120,7 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                     <!-- 
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -157,7 +157,7 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                     <!-- 
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -226,9 +226,9 @@ The Domain has `<Names>` and `<TLS>`. `<Names>` can be either a domain or an IP 
             <!--
                 You can specify domain names/IP addresses
 
-                <Name>stream1.airensoft.com</Name>
-                <Name>stream2.airensoft.com</Name>
-                <Name>*.sub.airensoft.com</Name>
+                <Name>stream1.ovenmedialabs.com</Name>
+                <Name>stream2.ovenmedialabs.com</Name>
+                <Name>*.sub.ovenmedialabs.com</Name>
                 <Name>192.168.0.160</Name>
             -->
             <Name>*</Name>
@@ -503,7 +503,7 @@ Finally, `Server.xml` is configured as follows:
                     <!--
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!--
@@ -543,7 +543,7 @@ Finally, `Server.xml` is configured as follows:
                     <!--
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer https://airensoft.gitbook.io/ovenmediaengine/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!--
@@ -579,9 +579,9 @@ Finally, `Server.xml` is configured as follows:
             <AccessToken>ome-access-token</AccessToken>
 
             <CrossDomains>
-                <Url>*.airensoft.com</Url>
-                <Url>http://*.sub-domain.airensoft.com</Url>
-                <Url>http?://airensoft.*</Url>
+                <Url>*.ovenmedialabs.com</Url>
+                <Url>http://*.sub-domain.ovenmedialabs.com</Url>
+                <Url>http?://ovenmedialabs.*</Url>
             </CrossDomains>
         </API>
     </Managers>
@@ -602,9 +602,9 @@ Finally, `Server.xml` is configured as follows:
             <Host>
                 <Names>
                     <!-- Host names
-                        <Name>stream1.airensoft.com</Name>
-                        <Name>stream2.airensoft.com</Name>
-                        <Name>*.sub.airensoft.com</Name>
+                        <Name>stream1.ovenmedialabs.com</Name>
+                        <Name>stream2.ovenmedialabs.com</Name>
+                        <Name>*.sub.ovenmedialabs.com</Name>
                         <Name>192.168.0.1</Name>
                     -->
                     <Name>*</Name>
@@ -619,7 +619,7 @@ Finally, `Server.xml` is configured as follows:
             </Host>
 
             <!--
-                Refer to https://airensoft.gitbook.io/ovenmediaengine/signedpolicy
+                Refer to https://docs.ovenmediaengine.com/signedpolicy
             -->
             <!--
             <SignedPolicy>

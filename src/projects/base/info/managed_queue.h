@@ -51,6 +51,25 @@ namespace info
 				- mngq:v=#default#app:p=pub:n=appworker
 		*/
 	public:
+		enum class ThresholdMode : uint8_t
+		{
+			CountBased = 0,
+			TimeBased  = 1
+		};
+
+		const char *GetThresholdModeString() const
+		{
+			switch (_threshold_mode)
+			{
+			case ThresholdMode::CountBased:
+				return "CountBased";
+			case ThresholdMode::TimeBased:
+				return "TimeBased";
+			default:
+				return "Unknown";
+			}
+		}
+
 		class URN
 		{
 		public:
@@ -133,7 +152,10 @@ namespace info
 			: _peak(0),
 			  _size(0),
 			  _threshold(threshold),
+			  _threshold_mode(ThresholdMode::CountBased),
+			  _threshold_value(threshold),
 			  _threshold_exceeded_time_in_us(0),
+			  _buffering_delay(0),
 			  _input_message_count(0),
 			  _output_message_count(0),
 			  _input_message_per_second(0),
@@ -156,21 +178,45 @@ namespace info
 			return _type_name;
 		}
 
+		// Set threshold in count-based mode.
 		void SetThreshold(size_t threshold)
 		{
 			auto lock_guard = std::lock_guard(_name_mutex);
 
+			_threshold_mode = ThresholdMode::CountBased;
+			_threshold_value = threshold;
+
 			_threshold = threshold;
+		}
+
+		// Set threshold in time-base mode. (millisecond)
+		// Effective count is estimated from input_message_per_second * time_ms 
+		void SetThresholdByTime(size_t time_ms)
+		{
+			auto lock_guard = std::lock_guard(_name_mutex);
+
+			_threshold_mode = ThresholdMode::TimeBased;
+			_threshold_value = time_ms;
+
+			_threshold = 0;
+		}
+
+		ThresholdMode GetThresholdMode() const
+		{
+			return _threshold_mode;
+		}
+
+		// Get user-configured threshold value. The unit depends on the threshold mode.
+		//   CountBased mode → count
+		//   TimeBased  mode → milliseconds
+		size_t GetThresholdValue() const
+		{
+			return _threshold_value;
 		}
 
 		size_t GetThreshold() const
 		{
 			return _threshold;
-		}
-
-		bool IsThresholdExceeded() const
-		{
-			return _size > _threshold;
 		}
 
 		size_t GetPeak() const
@@ -255,11 +301,21 @@ namespace info
 		// Current size of the queue
 		size_t _size = 0;
 
-		// Threshold of the queue
+		// Threshold value computed according to the Threshold Mode.
+		// 0 : No threshold
 		size_t _threshold = 0;
 
+		// Threshold mode
+		ThresholdMode _threshold_mode = ThresholdMode::CountBased;
+
+		// Threshold value: count (CountBased) or milliseconds (TimeBased)
+		size_t _threshold_value = 0;
+
 		// threshold_exceeded_time increases from the point the queue is exceeded
-		int64_t _threshold_exceeded_time_in_us;
+		int64_t _threshold_exceeded_time_in_us = 0;
+
+		// Buffering delay (milliseconds).
+		int _buffering_delay = 0;
 
 		// Input Message Count
 		int64_t _input_message_count = 0;

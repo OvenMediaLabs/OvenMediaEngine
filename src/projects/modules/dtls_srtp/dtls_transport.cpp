@@ -72,18 +72,8 @@ void DtlsTransport::SetPeerFingerprint(ov::String algorithm, ov::String fingerpr
 }
 
 // Start DTLS
-bool DtlsTransport::StartDTLS()
+bool DtlsTransport::InitializeTlsLocked()
 {
-	std::lock_guard<std::mutex> lock(_tls_lock);
-
-	/*
-	if(_ice_port->GetState() != IcePortConnectionState::Completed)
-	{
-		_state = SSL_WAIT;
-		return false;
-	}
-	*/
-
 	ov::TlsBioCallback tls_bio_callback =
 		{
 			.read_callback = std::bind(&DtlsTransport::Read, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3),
@@ -112,6 +102,25 @@ bool DtlsTransport::StartDTLS()
 	}
 
 	_state = SSL_CONNECTING;
+	return true;
+}
+
+bool DtlsTransport::StartDTLS()
+{
+	std::lock_guard<std::mutex> lock(_tls_lock);
+
+	/*
+	if(_ice_port->GetState() != IcePortConnectionState::Completed)
+	{
+		_state = SSL_WAIT;
+		return false;
+	}
+	*/
+
+	if (InitializeTlsLocked() == false)
+	{
+		return false;
+	}
 
 	ContinueSSL();
 
@@ -125,21 +134,27 @@ bool DtlsTransport::ContinueSSL()
 
 	if (error == SSL_ERROR_NONE)
 	{
-		_state = SSL_CONNECTED;
-
 		_peer_certificate = _tls.GetPeerCertificate();
 
 		if (_peer_certificate == nullptr)
 		{
+			_state = SSL_ERROR;
 			return false;
 		}
 
+		// A peer-certificate verification failure means either the legitimate
+		// client is misconfigured (its SDP fingerprint disagrees with its cert)
+		// or an attacker who knows the SDP is racing the ICE bind. Either way,
+		// retrying with the same DTLS context cannot succeed, so terminate the
+		// session and let the client re-negotiate via signaling.
 		if (VerifyPeerCertificate() == false)
 		{
 			logte("Session could not verify peer certificate");
+			_state = SSL_ERROR;
 			return false;
 		}
 
+		_state = SSL_CONNECTED;
 		_peer_certificate->Print();
 
 		return MakeSrtpKey();
@@ -177,8 +192,39 @@ bool DtlsTransport::MakeSrtpKey()
 
 bool DtlsTransport::VerifyPeerCertificate()
 {
-	// TODO(Getroot): Compare and verify the digest received from the PEER CERTIFICATE and SDP.
-	logtt("Accepted peer certificate");
+	// RFC 8122: The DTLS peer certificate fingerprint must match the
+	// fingerprint conveyed via SDP (a=fingerprint).
+	if (_peer_fingerprint_algorithm.IsEmpty() || _peer_fingerprint_value.IsEmpty())
+	{
+		logte("Peer fingerprint is not set; cannot verify DTLS peer certificate");
+		return false;
+	}
+
+	if (_peer_certificate == nullptr)
+	{
+		logte("Peer certificate is missing; cannot verify DTLS peer fingerprint");
+		return false;
+	}
+
+	ov::String computed = _peer_certificate->GetFingerprint(_peer_fingerprint_algorithm);
+	if (computed.IsEmpty())
+	{
+		logte("Failed to compute peer certificate fingerprint with algorithm: %s", _peer_fingerprint_algorithm.CStr());
+		return false;
+	}
+
+	ov::String expected = _peer_fingerprint_value;
+	expected.MakeUpper();
+	computed.MakeUpper();
+
+	if (expected != computed)
+	{
+		logte("DTLS peer certificate fingerprint mismatch (algorithm: %s, expected: %s, actual: %s)",
+			  _peer_fingerprint_algorithm.CStr(), expected.CStr(), computed.CStr());
+		return false;
+	}
+
+	logti("DTLS peer certificate verified (%s)", _peer_fingerprint_algorithm.CStr());
 	_peer_certificate_verified = true;
 	return true;
 }

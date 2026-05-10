@@ -241,7 +241,7 @@ You can dump the HLS stream for VoD. You can enable it by setting the following 
                 <Playlist>playlist.m3u8</Playlist>
             </Playlists>
     
-            <OutputPath>/service/www/ome-dev.airensoft.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
+            <OutputPath>/service/www/ome-dev.ovenmedialabs.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
         </Dump>
     </Dumps>
     ...

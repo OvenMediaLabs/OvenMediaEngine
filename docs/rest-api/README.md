@@ -51,17 +51,17 @@ In order to use the API server, you must configure `<Managers>` as well as port 
 				<Name>*</Name>
 			</Names>
 			<TLS>
-				<CertPath>airensoft_com.crt</CertPath>
-				<KeyPath>airensoft_com.key</KeyPath>
-				<ChainCertPath>airensoft_com_chain.crt</ChainCertPath>
+				<CertPath>ovenmedialabs_com.crt</CertPath>
+				<KeyPath>ovenmedialabs_com.key</KeyPath>
+				<ChainCertPath>ovenmedialabs_com_chain.crt</ChainCertPath>
 			</TLS>
 		</Host>
 		<API>
 			<AccessToken>your_access_token</AccessToken>
 			<CrossDomains>
-				<Url>*.airensoft.com</Url>
-				<Url>http://*.sub-domain.airensoft.com</Url>
-				<Url>http?://airensoft.*</Url>
+				<Url>*.ovenmedialabs.com</Url>
+				<Url>http://*.sub-domain.ovenmedialabs.com</Url>
+				<Url>http?://ovenmedialabs.*</Url>
 			</CrossDomains>
 		</API>
 	</Managers>
@@ -86,9 +86,10 @@ For more information about HTTP Basic authentication, refer to the URL below.&#x
 
 #### CrossDomains
 
-To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.airensoft.com, all schemes can be accepted.
+To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.ovenmedialabs.com, all schemes can be accepted.
 
-
+
+
 
 ## API Request
 

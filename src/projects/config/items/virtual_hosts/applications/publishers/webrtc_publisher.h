@@ -57,10 +57,10 @@ namespace cfg
 						Publisher::MakeList();
 
 						Register<Optional>("Timeout", &_timeout);
-						Register<Optional>("JitterBuffer", &_jitter_buffer);
 						Register<Optional>("Rtx", &_rtx);
 						Register<Optional>("Ulpfec", &_ulpfec);
 						Register<Optional>("PlayoutDelay", &_playout_delay);
+						Register<Optional>("JitterBuffer", &_jitter_buffer);
 						Register<Optional>("CreateDefaultPlaylist", &_create_default_playlist);
 						Register<Optional>("BandwidthEstimation", &_bwe, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
 								if (_bwe.UpperCaseString() == "REMB")
@@ -83,14 +83,14 @@ namespace cfg
 								return nullptr; });
 					}
 
-					int _timeout		= 30000;
-					bool _rtx			= false;
-					bool _ulpfec		= false;
-					bool _jitter_buffer = false;
+					int _timeout = 30000;
+					bool _rtx	 = false;
+					bool _ulpfec = false;
 					ov::String _bwe;
 
 					RtcBWEType _bandwidth_estimation_type = RtcBWEType::All;
 					PlayoutDelay _playout_delay;
+					bool _jitter_buffer			  = false;
 					bool _create_default_playlist = true;
 				};
 			}  // namespace pub

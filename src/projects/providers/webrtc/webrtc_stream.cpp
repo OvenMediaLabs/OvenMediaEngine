@@ -110,6 +110,18 @@ namespace pvd
 		_srtp_transport = std::make_shared<SrtpTransport>();
 		_dtls_transport = std::make_shared<DtlsTransport>();
 		_dtls_transport->SetLocalCertificate(_certificate);
+
+		// Bind the peer fingerprint advertised in the remote SDP so that the
+		// DTLS handshake refuses any peer whose certificate digest does not match.
+		ov::String peer_fingerprint_algorithm = _remote_sdp->GetFingerprintAlgorithm();
+		ov::String peer_fingerprint_value = _remote_sdp->GetFingerprintValue();
+		if (peer_fingerprint_algorithm.IsEmpty() || peer_fingerprint_value.IsEmpty())
+		{
+			logte("Remote SDP does not include a DTLS fingerprint; refusing to start DTLS");
+			return false;
+		}
+		_dtls_transport->SetPeerFingerprint(peer_fingerprint_algorithm, peer_fingerprint_value);
+
 		_dtls_transport->StartDTLS();
 
 		// RFC3264

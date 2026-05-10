@@ -39,7 +39,7 @@ LOCAL_STATIC_LIBRARIES := \
 	web_console \
 	mediarouter \
 	rtsp_module \
-	jitter_buffer \
+	pacer \
 	ovt_packetizer \
 	orchestrator \
 	origin_map_client \

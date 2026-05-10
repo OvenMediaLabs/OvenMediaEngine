@@ -1,0 +1,25 @@
+name: Auto-assign reviewer
+
+on:
+  pull_request_target:
+    types: [review_requested]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    if: |
+      github.event.requested_reviewer != null &&
+      github.event.requested_reviewer.type == 'User'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add requested reviewer as assignee
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEWER: ${{ github.event.requested_reviewer.login }}
+        run: |
+          gh api -X POST \
+            "repos/${{ github.repository }}/issues/${PR_NUMBER}/assignees" \
+            -f "assignees[]=${REVIEWER}"
