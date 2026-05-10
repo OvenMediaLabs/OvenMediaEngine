@@ -312,9 +312,14 @@ namespace pvd
 
 	bool Application::DeleteAllStreams()
 	{
+		// Snapshot under lock, then drop the lock before invoking Stop()/NotifyStreamDeleted().
+		// Both can re-enter the application (callbacks into MediaRouter / observers / publishers
+		// that read `_streams` under shared lock); holding the unique writer lock across those
+		// callbacks deadlocks against any reader -- including from the same thread.
 		std::vector<std::shared_ptr<Stream>> streams_to_delete;
 		{
 			std::unique_lock<std::shared_mutex> lock(_streams_guard);
+			streams_to_delete.reserve(_streams.size());
 			for (auto it = _streams.cbegin(); it != _streams.cend();)
 			{
 				streams_to_delete.push_back(it->second);

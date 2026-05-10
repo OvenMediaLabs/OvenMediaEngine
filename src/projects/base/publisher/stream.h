@@ -177,7 +177,7 @@ namespace pub
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
 		std::shared_mutex _session_map_mutex;
 
-		uint32_t _worker_count;
+		uint32_t _worker_count = 0;
 		
 		std::shared_mutex _stream_worker_lock;
 		std::vector<std::shared_ptr<StreamWorker>>	_stream_workers;
