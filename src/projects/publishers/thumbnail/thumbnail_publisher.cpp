@@ -1,8 +1,71 @@
 #include "thumbnail_publisher.h"
 
 #include <base/ovlibrary/url.h>
+#include <base/provider/stream.h>
+#include <orchestrator/orchestrator.h>
 
 #include "thumbnail_private.h"
+
+namespace
+{
+	// Per-process atomic counter that uniquifies the demand key of every concurrent
+	// thumbnail HTTP request. A single map slot per stream (as used previously by the
+	// management API path before B4 fix) would let two concurrent thumbnail requests
+	// collide and silently drop one of the demand entries.
+	std::atomic<uint64_t> g_thumbnail_request_seq{0};
+
+	ov::String MakeThumbnailRequestScopeKey(const info::VHostAppName &vhost_app_name,
+											const ov::String &stream_name,
+											uint64_t request_seq)
+	{
+		return ov::String::FormatString(
+			"thumbnail:%s/%s:%" PRIu64,
+			vhost_app_name.CStr(),
+			stream_name.CStr(),
+			request_seq);
+	}
+
+	// RAII handle that registers a thumbnail downstream-request demand on the linked OVT
+	// provider stream for the lifetime of an HTTP request handler. Existence of this entry
+	// in the provider's active request set is what satisfies requirements.md section 4.2
+	// (trigger path invariance) - the thumbnail trigger participates in the same
+	// source-of-truth model as every other entry path. Non-OVT provider streams (file,
+	// RTMP, etc.) are no-ops because they don't track downstream demand.
+	class ScopedThumbnailDemand
+	{
+	public:
+		ScopedThumbnailDemand(const std::shared_ptr<pvd::Stream> &provider_stream,
+							  ov::String request_key,
+							  const std::shared_ptr<const ov::Url> &request_url)
+			: _provider_stream(provider_stream),
+			  _request_key(std::move(request_key))
+		{
+			if ((_provider_stream != nullptr) &&
+				(_provider_stream->GetSourceType() == StreamSourceType::Ovt) &&
+				(request_url != nullptr))
+			{
+				_provider_stream->RegisterDownstreamRequest(_request_key, request_url, request_url);
+				_registered = true;
+			}
+		}
+
+		~ScopedThumbnailDemand()
+		{
+			if (_registered && (_provider_stream != nullptr))
+			{
+				_provider_stream->UnregisterDownstreamRequest(_request_key);
+			}
+		}
+
+		ScopedThumbnailDemand(const ScopedThumbnailDemand &)			= delete;
+		ScopedThumbnailDemand &operator=(const ScopedThumbnailDemand &) = delete;
+
+	private:
+		std::shared_ptr<pvd::Stream> _provider_stream;
+		ov::String _request_key;
+		bool _registered = false;
+	};
+}  // namespace
 
 #define UNUSED(expr)  \
 	do                \
@@ -343,6 +406,18 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			response->SetStatusCode(http::StatusCode::NotFound);
 			return http::svr::NextHandler::DoNotCall;	
 		}
+
+		// Register the thumbnail request as a downstream demand on the linked OVT
+		// provider stream for the lifetime of this handler, like every other
+		// trigger path. The thumbnail URL (`thumb.jpg` etc.) is not a master
+		// playlist, so it resolves to full-stream demand. On a playlist-scoped
+		// upstream this triggers runtime widening to full-stream while the
+		// handler runs; the unregister allows narrowing back on next reconnect.
+		auto thumbnail_request_seq = g_thumbnail_request_seq.fetch_add(1, std::memory_order_relaxed);
+		auto thumbnail_request_key = MakeThumbnailRequestScopeKey(vhost_app_name, stream_name, thumbnail_request_seq);
+		auto provider_stream	   = ocst::Orchestrator::GetInstance()->GetProviderStream(
+			std::static_pointer_cast<const info::Stream>(stream));
+		ScopedThumbnailDemand thumbnail_demand(provider_stream, std::move(thumbnail_request_key), request_url);
 
 		// Wait O seconds for thumbnail image to be received
 		auto endcoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 5000);
