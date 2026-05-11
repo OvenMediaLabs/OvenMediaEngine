@@ -1080,6 +1080,62 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 		}
 	}
 
+	// TrackSet
+	for (const auto &cfg_track_set : cfg_output_profile.GetTrackSetList())
+	{
+		auto track_set_info = cfg_track_set.GetTrackSetInfo();
+		if (track_set_info == nullptr)
+		{
+			continue;
+		}
+
+		// Sanity check: detect referenced variant_name that is missing in the output stream.
+		// In strict mode, treat the missing reference as a fatal config error.
+		auto has_missing   = false;
+
+		auto check_missing = [&](const std::vector<std::shared_ptr<info::TrackSetEntry>> &entries, const char *kind) {
+			for (const auto &entry : entries)
+			{
+				if (output_stream->GetMediaTrackGroup(entry->GetVariantName()) == nullptr)
+				{
+					if (track_set_info->IsStrict())
+					{
+						logte("[%s] TrackSet(%s) references missing %s variant [%s] (Strict)",
+							  _log_prefix.CStr(),
+							  track_set_info->GetName().CStr(),
+							  kind,
+							  entry->GetVariantName().CStr());
+					}
+					else
+					{
+						logtw("[%s] TrackSet(%s) references missing %s variant [%s]",
+							  _log_prefix.CStr(),
+							  track_set_info->GetName().CStr(),
+							  kind,
+							  entry->GetVariantName().CStr());
+					}
+					has_missing = true;
+				}
+			}
+		};
+
+		check_missing(track_set_info->GetVideoEntries(), "video");
+		check_missing(track_set_info->GetAudioEntries(), "audio");
+
+		if (has_missing && track_set_info->IsStrict())
+		{
+			return nullptr;
+		}
+
+		if (output_stream->AddTrackSet(track_set_info) == false)
+		{
+			logtw("[%s] Duplicate TrackSet name [%s] ignored", _log_prefix.CStr(), track_set_info->GetName().CStr());
+			continue;
+		}
+
+		logti("[%s] %s", _log_prefix.CStr(), track_set_info->ToString().CStr());
+	}
+
 	return output_stream;
 }
 

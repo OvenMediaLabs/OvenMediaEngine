@@ -175,6 +175,9 @@ namespace ocst
 	{
 		std::shared_lock<std::shared_mutex> lock(_origin_list_mutex);
 
+		const Origin *best = nullptr;
+		size_t best_len	   = 0;
+
 		for (const auto &item : _origin_list)
 		{
 			if (item.IsStrictLocation() == true)
@@ -184,15 +187,24 @@ namespace ocst
 					origin = item;
 					return true;
 				}
+				continue;
 			}
-			else 
+
+			if (requested_location.HasPrefix(item.GetLocation()))
 			{
-				if (requested_location.HasPrefix(item.GetLocation()))
+				const auto len = item.GetLocation().GetLength();
+				if ((best == nullptr) || (len > best_len))
 				{
-					origin = item;
-					return true;
+					best	 = &item;
+					best_len = len;
 				}
 			}
+		}
+
+		if (best != nullptr)
+		{
+			origin = *best;
+			return true;
 		}
 
 		return false;

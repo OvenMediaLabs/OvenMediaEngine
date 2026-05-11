@@ -289,6 +289,9 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	auto app_name = url->App();
 	auto vhost_app_name = orchestrator->ResolveApplicationNameFromDomain(host_name, app_name);
 	auto stream_name = url->Stream();
+	// The optional 3rd path segment selects a TrackSet on the stream:
+	//   ovt://host/app/stream/<trackset>
+	auto track_set_name = url->File();
 	ov::String msg;
 
 	auto stream = std::static_pointer_cast<OvtStream>(GetStream(vhost_app_name, stream_name));
@@ -327,9 +330,20 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	}
 
 	Json::Value description;
-	if (stream->GetDescription(description) == false)
+	auto result = track_set_name.IsEmpty()
+				  ? stream->GetDescription(description)
+				  : stream->GetDescription(track_set_name, description);
+	if (result == false)
 	{
-		msg.Format("(%s/%s) stream doesn't have description.", vhost_app_name.CStr(), url->Stream().CStr());
+		if (track_set_name.IsEmpty() == false)
+		{
+			msg.Format("(%s/%s) stream has no TrackSet named [%s].",
+					   vhost_app_name.CStr(), url->Stream().CStr(), track_set_name.CStr());
+		}
+		else
+		{
+			msg.Format("(%s/%s) stream doesn't have description.", vhost_app_name.CStr(), url->Stream().CStr());
+		}
 		ResponseResult(remote, 0, "describe", request_id, 404, msg);
 		return;
 	}
@@ -359,6 +373,23 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 		return;
 	}
 
+	// Optional TrackSet selector (3rd path segment).
+	auto track_set_name = url->File();
+	std::set<uint32_t> allowed_track_ids;
+	size_t video_count = 0;
+	size_t audio_count = 0;
+	if (track_set_name.IsEmpty() == false)
+	{
+		if (stream->ResolveTrackSetTrackIds(track_set_name, allowed_track_ids, video_count, audio_count) == false)
+		{
+			ov::String msg;
+			msg.Format("(%s/%s) stream has no TrackSet named [%s].",
+					   vhost_app_name.CStr(), url->Stream().CStr(), track_set_name.CStr());
+			ResponseResult(remote, 0, "play", request_id, 404, msg);
+			return;
+		}
+	}
+
 	// Session ID is remote socket's ID
 	auto session = OvtSession::Create(app, stream, remote->GetNativeHandle(), remote);
 	if (session == nullptr)
@@ -367,6 +398,18 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 		msg.Format("Internal Error : Cannot create session");
 		ResponseResult(remote, 0, "play", request_id, 404, msg);
 		return;
+	}
+
+	if (track_set_name.IsEmpty() == false)
+	{
+		// Enable the TrackSet filter even if the resolved id set is empty so
+		// that PLAY behavior matches DESCRIBE (which returns an empty tracks
+		// payload in that case); otherwise an empty set would be treated as
+		// "no filter" and the full stream would be broadcast.
+		session->SetAllowedTrackIds(allowed_track_ids);
+		logti("OVT session connected with TrackSet [%s], %zu video + %zu audio tracks (stream %s/%s)",
+			  track_set_name.CStr(), video_count, audio_count,
+			  vhost_app_name.CStr(), url->Stream().CStr());
 	}
 
 	LinkRemoteWithStream(remote->GetNativeHandle(), stream);

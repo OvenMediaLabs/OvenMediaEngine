@@ -10,6 +10,7 @@
 
 #include "encodes/encodes.h"
 #include "playlist/playlist.h"
+#include "track_set/track_set.h"
 
 namespace cfg
 {
@@ -26,6 +27,7 @@ namespace cfg
 					ov::String _output_stream_name;
 					Encodes _encodes;
 					std::vector<Playlist> _playlists;
+					std::vector<TrackSet> _track_sets;
 					bool _internal = false;
 
 				public:
@@ -33,6 +35,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetOutputStreamName, _output_stream_name)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetEncodes, _encodes)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPlaylists, _playlists)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetTrackSetList, _track_sets)
 
 					// Setters
 					void SetName(const ov::String &name)
@@ -90,6 +93,27 @@ namespace cfg
 												   if (playlist.SetEncodes(_encodes) == false)
 												   {
 													   return CreateConfigErrorPtr("Playlist Error");
+												   }
+											   }
+											   return nullptr;
+										   });
+
+						Register<Optional>({"TrackSet", "tracksets"}, &_track_sets, nullptr,
+										   [=]() -> std::shared_ptr<ConfigError> {
+											   std::map<ov::String, bool> track_set_names;
+
+											   for (auto &track_set : _track_sets)
+											   {
+												   auto name = track_set.GetName();
+												   if (track_set_names.find(name) != track_set_names.end())
+												   {
+													   return CreateConfigErrorPtr("Duplicate TrackSet name: %s", name.CStr());
+												   }
+												   track_set_names[name] = true;
+
+												   if (track_set.GetVideoTrackList().empty() && track_set.GetAudioTrackList().empty())
+												   {
+													   return CreateConfigErrorPtr("TrackSet '%s' must contain at least one Video or Audio entry", name.CStr());
 												   }
 											   }
 											   return nullptr;

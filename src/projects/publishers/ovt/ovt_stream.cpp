@@ -3,6 +3,8 @@
 #include "ovt_private.h"
 #include "ovt_stream.h"
 #include "ovt_session.h"
+#include "base/info/media_track_group.h"
+#include "base/info/track_set.h"
 #include "base/publisher/application.h"
 #include "base/publisher/stream.h"
 
@@ -250,11 +252,129 @@ bool OvtStream::GetDescription(Json::Value &description)
 	{
 		return false;
 	}
-	
+
 	GenerateDescription();
 	description = _description;
 
 	return true;
+}
+
+bool OvtStream::GetDescription(const ov::String &track_set_name, Json::Value &description)
+{
+	if (GetState() != Stream::State::STARTED)
+	{
+		return false;
+	}
+
+	std::set<uint32_t> allowed_track_ids;
+	size_t video_count = 0;
+	size_t audio_count = 0;
+	if (ResolveTrackSetTrackIds(track_set_name, allowed_track_ids, video_count, audio_count) == false)
+	{
+		return false;
+	}
+
+	GenerateDescription();
+	description = _description;
+
+	FilterDescriptionByTrackIds(description, allowed_track_ids);
+
+	return true;
+}
+
+bool OvtStream::ResolveTrackSetTrackIds(const ov::String &track_set_name, std::set<uint32_t> &out_track_ids,
+										size_t &out_video_count, size_t &out_audio_count)
+{
+	out_track_ids.clear();
+	out_video_count = 0;
+	out_audio_count = 0;
+
+	auto track_set	= GetTrackSet(track_set_name);
+	if (track_set == nullptr)
+	{
+		return false;
+	}
+
+	auto collect = [&](const std::vector<std::shared_ptr<info::TrackSetEntry>> &entries, size_t &counter) {
+		for (const auto &entry : entries)
+		{
+			auto group = GetMediaTrackGroup(entry->GetVariantName());
+			if (group == nullptr)
+			{
+				logtw("TrackSet [%s] references missing variant [%s] on stream %s/%s",
+					  track_set_name.CStr(), entry->GetVariantName().CStr(),
+					  GetApplicationName(), GetName().CStr());
+				continue;
+			}
+
+			int index_hint = entry->GetIndexHint();
+			if (index_hint >= 0)
+			{
+				auto track = group->GetTrack(static_cast<uint32_t>(index_hint));
+				if (track == nullptr)
+				{
+					logtw("TrackSet [%s] references variant [%s] index %d but group has %zu tracks",
+						  track_set_name.CStr(), entry->GetVariantName().CStr(),
+						  index_hint, group->GetTrackCount());
+					continue;
+				}
+				if (out_track_ids.insert(track->GetId()).second)
+				{
+					counter++;
+				}
+			}
+			else
+			{
+				for (const auto &track : group->GetTracks())
+				{
+					if (track == nullptr)
+					{
+						continue;
+					}
+					if (out_track_ids.insert(track->GetId()).second)
+					{
+						counter++;
+					}
+				}
+			}
+		}
+	};
+
+	collect(track_set->GetVideoEntries(), out_video_count);
+	collect(track_set->GetAudioEntries(), out_audio_count);
+
+	return true;
+}
+
+void OvtStream::FilterDescriptionByTrackIds(Json::Value &description, const std::set<uint32_t> &allowed_track_ids)
+{
+	Json::Value &stream = description["stream"];
+	if (stream.isNull())
+	{
+		return;
+	}
+
+	Json::Value filtered_tracks(Json::arrayValue);
+	const Json::Value &tracks = stream["tracks"];
+	if (tracks.isArray())
+	{
+		for (const auto &track : tracks)
+		{
+			if (track["id"].isUInt() == false)
+			{
+				continue;
+			}
+			if (allowed_track_ids.find(track["id"].asUInt()) != allowed_track_ids.end())
+			{
+				filtered_tracks.append(track);
+			}
+		}
+	}
+	stream["tracks"]	= filtered_tracks;
+
+	// Playlists reference full-stream variants; their renditions are not meaningful
+	// for a TrackSet-filtered view, so drop them.
+	stream["playlists"] = Json::Value(Json::arrayValue);
 }
 
 bool OvtStream::RemoveSessionByConnectorId(int connector_id)

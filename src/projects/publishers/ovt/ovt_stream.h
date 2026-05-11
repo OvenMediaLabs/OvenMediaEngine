@@ -27,12 +27,21 @@ public:
 	bool RemoveSessionByConnectorId(int connector_id);
 
 	bool GetDescription(Json::Value &description);
+	// Builds a DESCRIBE payload that only includes tracks selected by the named TrackSet.
+	// Returns false if the TrackSet does not exist on this stream.
+	bool GetDescription(const ov::String &track_set_name, Json::Value &description);
+
+	// Resolves the set of allowed track ids for the named TrackSet.
+	// Returns false if the TrackSet does not exist on this stream.
+	bool ResolveTrackSetTrackIds(const ov::String &track_set_name, std::set<uint32_t> &out_track_ids,
+								 size_t &out_video_count, size_t &out_audio_count);
 
 private:
 	bool Start() override;
 	bool Stop() override;
 
 	bool GenerateDescription();
+	void FilterDescriptionByTrackIds(Json::Value &description, const std::set<uint32_t> &allowed_track_ids);
 
 	uint32_t							_worker_count = 0;
 
