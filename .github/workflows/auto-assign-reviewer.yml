@@ -5,7 +5,7 @@ on:
     types: [review_requested]
 
 permissions:
-  issues: write
+  pull-requests: write
 
 jobs:
   assign:
