@@ -255,7 +255,7 @@ Origins (also we called `OriginMap`) are a feature to pull streams from external
 
 The Origin has `<Location>` and `<Pass>` elements. Location is a URI pattern for incoming requests. If the incoming URL request matches Location, OvenMediaEngine pulls the stream according to a Pass element. In the Pass element, you can set the origin stream's protocol and URLs.
 
-To run the Edge server, Origin creates application and stream if there isn't those when user request. For more learn about Origin-Edge, see the [Live Source](../live-source/) chapter.
+To run the Edge server, Origin creates application and stream if there isn't those when user request. For more learn about Origin-Edge, see the [Live Source](/docs/ome/live-source) chapter.
 
 ```xml
 <!-- /Server/VirtualHosts -->
@@ -390,7 +390,7 @@ For more information about the `<OutputProfiles>`, please see the [Transcoding](
 </Application>
 ```
 
-If you want to get more information about the `<Providers>`, please refer to the [Live Source](../live-source/) chapter.
+If you want to get more information about the `<Providers>`, please refer to the [Live Source](/docs/ome/live-source) chapter.
 
 #### Publishers
 

@@ -730,7 +730,7 @@ Delete Stream. This terminates the ingress connection.
 
 :::warning
 
-The sender can reconnect after the connection is terminated. To prevent reconnection, you must use [AccessControl](../../../../../access-control/).
+The sender can reconnect after the connection is terminated. To prevent reconnection, you must use [AccessControl](/docs/ome/access-control).
 
 :::
 
