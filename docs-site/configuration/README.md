@@ -366,7 +366,7 @@ When an Edge server receives a request for an application or stream that does no
 </Application>
 ```
 
-For more information about the `<OutputProfiles>`, please see the [Transcoding](../transcoding/) chapter.
+For more information about the `<OutputProfiles>`, please see the [Transcoding](../transcoding/README.md) chapter.
 
 #### Providers
 

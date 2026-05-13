@@ -77,15 +77,15 @@ Please read [Getting Started](getting-started/README.md) chapter in the tutorial
 
 Thank you so much for being so interested in OvenMediaEngine.
 
-We need your help to keep and develop our open-source project, and we want to tell you that you can contribute in many ways. Please see our [Guidelines](../CONTRIBUTING.md), [Rules](../CODE_OF_CONDUCT.md), and [Contribute](https://www.ovenmediaengine.com/contribute).
+We need your help to keep and develop our open-source project, and we want to tell you that you can contribute in many ways. Please see our [Guidelines](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md), [Rules](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CODE_OF_CONDUCT.md), and [Contribute](https://www.ovenmediaengine.com/contribute).
 
-* [Finding Bugs](../CONTRIBUTING.md#finding-bugs)
-* [Reviewing Code](../CONTRIBUTING.md#reviewing-code)
-* [Sharing Ideas](../CONTRIBUTING.md#sharing-ideas)
-* [Testing](../CONTRIBUTING.md#testing)
-* [Improving Documentation](../CONTRIBUTING.md#improving-documentation)
-* [Spreading & Use Cases](../CONTRIBUTING.md#spreading--use-cases)
-* [Recurring Donations](../CONTRIBUTING.md#recurring-donations)
+* [Finding Bugs](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#finding-bugs)
+* [Reviewing Code](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#reviewing-code)
+* [Sharing Ideas](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#sharing-ideas)
+* [Testing](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#testing)
+* [Improving Documentation](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#improving-documentation)
+* [Spreading & Use Cases](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#spreading--use-cases)
+* [Recurring Donations](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#recurring-donations)
 
 We always hope that OvenMediaEngine will give you good inspiration.
 
