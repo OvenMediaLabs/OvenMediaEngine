@@ -123,7 +123,7 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                     <!-- 
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer /docs/ome/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -160,7 +160,7 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                     <!-- 
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer /docs/ome/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
@@ -510,7 +510,7 @@ Finally, `Server.xml` is configured as follows:
                     <!--
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer /docs/ome/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!--
@@ -550,7 +550,7 @@ Finally, `Server.xml` is configured as follows:
                     <!--
                         If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
                         This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp
+                        For detailed information, refer /docs/ome/streaming/webrtc-publishing#webrtc-over-tcp
                     -->
                     <TcpRelay>*:3478</TcpRelay>
                     <!--
@@ -626,7 +626,7 @@ Finally, `Server.xml` is configured as follows:
             </Host>
 
             <!--
-                Refer to https://docs.ovenmediaengine.com/signedpolicy
+                Refer to /docs/ome/access-control/signedpolicy
             -->
             <!--
             <SignedPolicy>

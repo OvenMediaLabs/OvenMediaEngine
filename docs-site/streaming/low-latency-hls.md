@@ -343,7 +343,7 @@ OvenPlayer now includes DRM-related options. Enable DRM and input the License UR
 
 :::danger
 
-Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmediaengine-enterprise.gitbook.io/docs/getting-started/getting-started-with-ubuntu) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
+Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](/docs/ome-enterprise/pre-built-package-installation/getting-started/getting-started-with-linux) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
 
 :::
 
