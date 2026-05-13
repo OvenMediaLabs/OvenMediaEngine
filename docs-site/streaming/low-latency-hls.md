@@ -75,7 +75,7 @@ HTTP/2 outperforms HTTP/1.1, especially with LLHLS. Since all current browsers o
 
 LLHLS can deliver adaptive bitrate streaming. OME encodes the same source with multiple renditions and delivers it to the players. And LLHLS Player, including OvenPlayer, selects the best quality rendition according to its network environment. Of course, these players also provide option for users to manually select rendition.
 
-See the [Adaptive Bitrates Streaming](../transcoding/README.md#adaptive-bitrates-streaming-abr) section for how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for how to configure renditions.
 
 ## CrossDomain
 

@@ -316,7 +316,7 @@ Streaming starts from the top rendition of Playlist, and when Auto ABR is true, 
 </OutputProfiles>
 ```
 
-See the [Adaptive Bitrates Streaming](../transcoding/README.md#adaptive-bitrates-streaming-abr) section for more details on how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for more details on how to configure renditions.
 
 ### Multiple codec support in Playlist
 
