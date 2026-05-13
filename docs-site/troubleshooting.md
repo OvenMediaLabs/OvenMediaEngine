@@ -254,7 +254,7 @@ Or by **activating the encoding options** in OvenMediaEngine.
 
 :::info
 
-Setting up Transcoding options in OvenMediaEngine: [/docs/ome/transcoding#encodes](/docs/ome/transcoding#encodes)
+Setting up Transcoding options in OvenMediaEngine: [transcoding/README.md#encodes](transcoding/README.md#encodes)
 
 :::
 
@@ -268,7 +268,7 @@ If you want to monitor packet loss in your Chrome browser, you can access it by 
 
 :::info
 
-Setting up WebRTC over TCP in OvenMediaEngine: [/docs/ome/streaming/webrtc-publishing#webrtc-over-tcp](/docs/ome/streaming/webrtc-publishing#webrtc-over-tcp)
+Setting up WebRTC over TCP in OvenMediaEngine: [streaming/webrtc-publishing.md#webrtc-over-tcp](streaming/webrtc-publishing.md#webrtc-over-tcp)
 
 :::
 
@@ -284,7 +284,7 @@ When you see Origin is CPU intensive on your Origin-Edge structure, the transcod
 
 :::info
 
-Setting up GPU Acceleration in OvenMediaEngine: [/docs/ome/transcoding/gpu-usage](/docs/ome/transcoding/gpu-usage)
+Setting up GPU Acceleration in OvenMediaEngine: [transcoding/gpu-usage.md](transcoding/gpu-usage.md)
 
 :::
 
@@ -302,7 +302,7 @@ When you see a specific thread overuses the CPU, the video may not stream smooth
 
 :::info
 
-Tuning OvenMediaEngine Performance: [/docs/ome/performance-tuning#performance-tuning](/docs/ome/performance-tuning#performance-tuning)
+Tuning OvenMediaEngine Performance: [performance-tuning.md#performance-tuning](performance-tuning.md#performance-tuning)
 
 :::
 
@@ -359,7 +359,7 @@ In this case, you can solve this by installing a certificate in OvenMediaEngine 
 
 :::info
 
-Setting up TLS Encryption in OvenMediaEngine: [/docs/ome/configuration/tls-encryption](/docs/ome/configuration/tls-encryption)
+Setting up TLS Encryption in OvenMediaEngine: [configuration/tls-encryption.md](configuration/tls-encryption.md)
 
 :::
 
@@ -393,7 +393,7 @@ Or by **enabling the encoding options** in OvenMediaEngine.
 
 :::info
 
-Setting up Transcoding options in OvenMediaEngine: [/docs/ome/transcoding#encodes](/docs/ome/transcoding#encodes)
+Setting up Transcoding options in OvenMediaEngine: [transcoding/README.md#encodes](transcoding/README.md#encodes)
 
 :::
 
@@ -413,7 +413,7 @@ Also, suppose you are using a transcoder in OvenMediaEngine and trying to input 
 
 :::info
 
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [/docs/ome/streaming/webrtc-publishing#publisher](/docs/ome/streaming/webrtc-publishing#publisher)
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [streaming/webrtc-publishing.md#publisher](streaming/webrtc-publishing.md#publisher)
 
 :::
 
@@ -425,7 +425,7 @@ There may be cases where the A/V sync is not corrected even after a certain amou
 
 :::info
 
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [/docs/ome/streaming/webrtc-publishing#publisher](/docs/ome/streaming/webrtc-publishing#publisher)
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [streaming/webrtc-publishing.md#publisher](streaming/webrtc-publishing.md#publisher)
 
 :::
 
@@ -443,7 +443,7 @@ WebRTC supports Opus, not AAC, as an audio codec. Because RTMP and other protoco
 
 :::info
 
-Setting up Opus Codec in OvenMediaEngine: [/docs/ome/transcoding#audio](/docs/ome/transcoding#audio)
+Setting up Opus Codec in OvenMediaEngine: [transcoding/README.md#audio](transcoding/README.md#audio)
 
 :::
 
@@ -459,7 +459,7 @@ However, since OvenMediaEngine has the default to the fastest encoding option fo
 
 :::info
 
-Choosing an Encoding Preset in OvenMediaEngine: [/docs/ome/transcoding#video](/docs/ome/transcoding#video)
+Choosing an Encoding Preset in OvenMediaEngine: [transcoding/README.md#video](transcoding/README.md#video)
 
 :::
 

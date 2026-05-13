@@ -85,7 +85,7 @@ Server: srt://{OvenMediaEngine Host}:{SRT Port}
 Key: {streamid}
 ```
 
-The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](/docs/ome/live-source/srt#blackmagic-web-presenter)
+The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](srt.md#blackmagic-web-presenter)
 
 ## Multiple Audio Track
 
