@@ -217,9 +217,67 @@ namespace pvd
 					framerate_conf = framerate_conf_object.asInt();
 				}
 
+				ov::String public_name;
+				auto public_name_object = track_object["publicName"];
+				if (!public_name_object.isNull())
+				{
+					public_name = public_name_object.asString().c_str();
+				}
+
+				ov::String language;
+				auto language_object = track_object["language"];
+				if (!language_object.isNull())
+				{
+					language = language_object.asString().c_str();
+				}
+
+				ov::String characteristics;
+				auto characteristics_object = track_object["characteristics"];
+				if (!characteristics_object.isNull())
+				{
+					characteristics = characteristics_object.asString().c_str();
+				}
+
+				int32_t audio_index = -1;
+				auto audio_index_object = track_object["audioIndex"];
+				if (!audio_index_object.isNull())
+				{
+					if (!audio_index_object.isInt())
+					{
+						_last_error = "Invalid sourceStreams/trackMap/audioIndex: must be an integer";
+						return false;
+					}
+
+					audio_index = audio_index_object.asInt();
+					if (audio_index < -1)
+					{
+						_last_error = "Invalid sourceStreams/trackMap/audioIndex: must be -1 or greater";
+						return false;
+					}
+				}
+
 				ov::String source_track_name = source_track_name_object.asString().c_str();
 				ov::String new_track_name = new_track_name_object.asString().c_str();
-				source_stream->AddTrackMap(source_track_name, NewTrackInfo(source_track_name, new_track_name, bitrate_conf, framerate_conf));
+
+				// Warn if adding a second catch-all for the same source track name
+				if (audio_index == -1)
+				{
+					const auto &existing = source_stream->GetTrackMap();
+					auto eit = existing.find(source_track_name);
+					if (eit != existing.end())
+					{
+						for (const auto &e : eit->second)
+						{
+							if (e.audio_index == -1)
+							{
+								logtw("Multiplex: duplicate catch-all <Track> for sourceTrackName '%s' (no audioIndex). Use audioIndex to distinguish occurrences.", source_track_name.CStr());
+								break;
+							}
+						}
+					}
+				}
+
+				source_stream->AddTrackMap(source_track_name, NewTrackInfo(source_track_name, new_track_name, bitrate_conf, framerate_conf, public_name, language, characteristics, audio_index));
 				_new_track_names.emplace(new_track_name, true);
 			}
 
@@ -600,9 +658,61 @@ namespace pvd
 					framerate_conf = framerate_conf_node.text().as_int();
 				}
 
+				ov::String public_name;
+				auto public_name_node = track_node.child("PublicName");
+				if (public_name_node)
+				{
+					public_name = public_name_node.text().as_string();
+				}
+
+				ov::String language;
+				auto language_node = track_node.child("Language");
+				if (language_node)
+				{
+					language = language_node.text().as_string();
+				}
+
+				ov::String characteristics;
+				auto characteristics_node = track_node.child("Characteristics");
+				if (characteristics_node)
+				{
+					characteristics = characteristics_node.text().as_string();
+				}
+
+				int32_t audio_index = -1;
+				auto audio_index_node = track_node.child("AudioIndex");
+				if (audio_index_node)
+				{
+					audio_index = audio_index_node.text().as_int();
+					if (audio_index < -1)
+					{
+						_last_error = "Invalid sourceStreams/trackMap/AudioIndex: must be -1 or greater";
+						return false;
+					}
+				}
+
 				ov::String source_track_name = source_track_name_node.text().as_string();
 				ov::String new_track_name = new_track_name_node.text().as_string();
-				source_stream->AddTrackMap(source_track_name, NewTrackInfo(source_track_name, new_track_name, bitrate_conf, framerate_conf));
+
+				// Warn if adding a second catch-all for the same source track name
+				if (audio_index == -1)
+				{
+					const auto &existing = source_stream->GetTrackMap();
+					auto eit = existing.find(source_track_name);
+					if (eit != existing.end())
+					{
+						for (const auto &e : eit->second)
+						{
+							if (e.audio_index == -1)
+							{
+								logtw("Multiplex: duplicate catch-all <Track> for SourceTrackName '%s' (no <AudioIndex>). Use <AudioIndex> to distinguish occurrences.", source_track_name.CStr());
+								break;
+							}
+						}
+					}
+				}
+
+				source_stream->AddTrackMap(source_track_name, NewTrackInfo(source_track_name, new_track_name, bitrate_conf, framerate_conf, public_name, language, characteristics, audio_index));
 				_new_track_names.emplace(new_track_name, true);
 			}
 
@@ -636,20 +746,43 @@ namespace pvd
 			source_stream_node.append_child("Url").text().set(source_stream->GetUrlStr().CStr());
 
 			auto track_map_node = source_stream_node.append_child("TrackMap");
-			for (const auto &[source_track_name, new_track_info] : source_stream->GetTrackMap())
+			for (const auto &[source_track_name, infos] : source_stream->GetTrackMap())
 			{
-				auto track_node = track_map_node.append_child("Track");
-				track_node.append_child("SourceTrackName").text().set(source_track_name.CStr());
-				track_node.append_child("NewTrackName").text().set(new_track_info.new_track_name.CStr());
-
-				if (new_track_info.bitrate_conf != 0)
+				for (const auto &new_track_info : infos)
 				{
-					track_node.append_child("BitrateConf").text().set(new_track_info.bitrate_conf);
-				}
+					auto track_node = track_map_node.append_child("Track");
+					track_node.append_child("SourceTrackName").text().set(source_track_name.CStr());
+					track_node.append_child("NewTrackName").text().set(new_track_info.new_track_name.CStr());
 
-				if (new_track_info.framerate_conf != 0)
-				{
-					track_node.append_child("FramerateConf").text().set(new_track_info.framerate_conf);
+					if (new_track_info.bitrate_conf != 0)
+					{
+						track_node.append_child("BitrateConf").text().set(new_track_info.bitrate_conf);
+					}
+
+					if (new_track_info.framerate_conf != 0)
+					{
+						track_node.append_child("FramerateConf").text().set(new_track_info.framerate_conf);
+					}
+
+					if (new_track_info.public_name.IsEmpty() == false)
+					{
+						track_node.append_child("PublicName").text().set(new_track_info.public_name.CStr());
+					}
+
+					if (new_track_info.language.IsEmpty() == false)
+					{
+						track_node.append_child("Language").text().set(new_track_info.language.CStr());
+					}
+
+					if (new_track_info.characteristics.IsEmpty() == false)
+					{
+						track_node.append_child("Characteristics").text().set(new_track_info.characteristics.CStr());
+					}
+
+					if (new_track_info.audio_index >= 0)
+					{
+						track_node.append_child("AudioIndex").text().set(new_track_info.audio_index);
+					}
 				}
 			}
 		}
@@ -725,23 +858,46 @@ namespace pvd
 			source_stream_object["url"] = source_stream->GetUrlStr().CStr();
 
 			Json::Value track_map_object;
-			for (const auto &[source_track_name, new_track_info] : source_stream->GetTrackMap())
+			for (const auto &[source_track_name, infos] : source_stream->GetTrackMap())
 			{
-				Json::Value track_object;
-				track_object["sourceTrackName"] = source_track_name.CStr();
-				track_object["newTrackName"] = new_track_info.new_track_name.CStr();
-
-				if (new_track_info.bitrate_conf != 0)
+				for (const auto &new_track_info : infos)
 				{
-					track_object["bitrateConf"] = new_track_info.bitrate_conf;
-				}
+					Json::Value track_object;
+					track_object["sourceTrackName"] = source_track_name.CStr();
+					track_object["newTrackName"] = new_track_info.new_track_name.CStr();
 
-				if (new_track_info.framerate_conf != 0)
-				{
-					track_object["framerateConf"] = new_track_info.framerate_conf;
-				}
+					if (new_track_info.bitrate_conf != 0)
+					{
+						track_object["bitrateConf"] = new_track_info.bitrate_conf;
+					}
 
-				track_map_object.append(track_object);
+					if (new_track_info.framerate_conf != 0)
+					{
+						track_object["framerateConf"] = new_track_info.framerate_conf;
+					}
+
+					if (new_track_info.public_name.IsEmpty() == false)
+					{
+						track_object["publicName"] = new_track_info.public_name.CStr();
+					}
+
+					if (new_track_info.language.IsEmpty() == false)
+					{
+						track_object["language"] = new_track_info.language.CStr();
+					}
+
+					if (new_track_info.characteristics.IsEmpty() == false)
+					{
+						track_object["characteristics"] = new_track_info.characteristics.CStr();
+					}
+
+					if (new_track_info.audio_index >= 0)
+					{
+						track_object["audioIndex"] = new_track_info.audio_index;
+					}
+
+					track_map_object.append(track_object);
+				}
 			}
 
 			source_stream_object["trackMap"] = track_map_object;
@@ -846,9 +1002,19 @@ namespace pvd
 			info_str += ov::String::FormatString("\tSourceStream : %s\n", source->GetName().CStr());
 			info_str += ov::String::FormatString("\tUrl : %s\n", source->GetUrlStr().CStr());
 
-			for (const auto &[source_track_name, new_track_info] : source->GetTrackMap())
+			for (const auto &[source_track_name, infos] : source->GetTrackMap())
 			{
-				info_str += ov::String::FormatString("\t\tTrackMap : %s -> %s\n", source_track_name.CStr(), new_track_info.new_track_name.CStr());
+				for (const auto &new_track_info : infos)
+				{
+					if (new_track_info.audio_index >= 0)
+					{
+						info_str += ov::String::FormatString("\t\tTrackMap : %s[%d] -> %s\n", source_track_name.CStr(), new_track_info.audio_index, new_track_info.new_track_name.CStr());
+					}
+					else
+					{
+						info_str += ov::String::FormatString("\t\tTrackMap : %s -> %s\n", source_track_name.CStr(), new_track_info.new_track_name.CStr());
+					}
+				}
 			}
 		}
 
