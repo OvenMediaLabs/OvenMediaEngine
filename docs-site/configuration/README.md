@@ -417,7 +417,7 @@ You need many threads to transmit streams to a large number of users at the same
 
 ​OvenMediaEngine currently supports WebRTC, Low-Latency DASH, MEPG-DASH, and HLS. If you don't want to use any protocol then you can delete that protocol setting, the component for that protocol isn't initialized. As a result, you can save system resources by deleting the settings of unused protocol components.
 
-If you want to learn more about WebRTC, visit the [WebRTC Streaming](../streaming/webrtc-publishing.md) chapter. And if you want to get more information on Low-Latency DASH, MPEG-DASH, and HLS, refer to the chapter on [HLS & MPEG-DASH Streaming](../streaming/README.md).
+If you want to learn more about WebRTC, visit the [WebRTC Streaming](../streaming/webrtc-publishing.md) chapter. And if you want to get more information on Low-Latency DASH, MPEG-DASH, and HLS, refer to the chapter on [HLS & MPEG-DASH Streaming](../streaming/low-latency-hls.md).
 
 ## Configuration Example
 
