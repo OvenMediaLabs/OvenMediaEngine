@@ -254,7 +254,7 @@ Or by **activating the encoding options** in OvenMediaEngine.
 
 :::info
 
-Setting up Transcoding options in OvenMediaEngine: [transcoding/README.md#encodes](transcoding/README.md#encodes)
+Setting up Transcoding options in OvenMediaEngine: [transcoding/transcoding.md#encodes](transcoding/transcoding.md#encodes)
 
 :::
 
@@ -393,7 +393,7 @@ Or by **enabling the encoding options** in OvenMediaEngine.
 
 :::info
 
-Setting up Transcoding options in OvenMediaEngine: [transcoding/README.md#encodes](transcoding/README.md#encodes)
+Setting up Transcoding options in OvenMediaEngine: [transcoding/transcoding.md#encodes](transcoding/transcoding.md#encodes)
 
 :::
 
@@ -443,7 +443,7 @@ WebRTC supports Opus, not AAC, as an audio codec. Because RTMP and other protoco
 
 :::info
 
-Setting up Opus Codec in OvenMediaEngine: [transcoding/README.md#audio](transcoding/README.md#audio)
+Setting up Opus Codec in OvenMediaEngine: [transcoding/transcoding.md#audio](transcoding/transcoding.md#audio)
 
 :::
 
@@ -459,7 +459,7 @@ However, since OvenMediaEngine has the default to the fastest encoding option fo
 
 :::info
 
-Choosing an Encoding Preset in OvenMediaEngine: [transcoding/README.md#video](transcoding/README.md#video)
+Choosing an Encoding Preset in OvenMediaEngine: [transcoding/transcoding.md#video](transcoding/transcoding.md#video)
 
 :::
 
