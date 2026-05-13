@@ -71,7 +71,7 @@ If the app name set in Location isn't created, OvenMediaEngine creates the app w
 
 ### Event to trigger pulling
 
-Pulling type providers are activated by streaming requests from publishers. And by default, the provider is automatically disabled after 30 seconds of no client playback. If you want to change this setting, check out the [Clustering ](../origin-edge-clustering.md#less-than-properties-greater-than)chapter.
+Pulling type providers are activated by streaming requests from publishers. And by default, the provider is automatically disabled after 30 seconds of no client playback. If you want to change this setting, check out the [Clustering ](../origin-edge-clustering.md#properties)chapter.
 
 When a playback request comes in from the following URL, RTSP pull starts working according to Origins settings.
 

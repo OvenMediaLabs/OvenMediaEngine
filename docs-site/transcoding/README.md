@@ -19,7 +19,7 @@ This document explains how to configure encoding settings, set up playlists.
 This section explains how to define output streams, change the codec, bitrate, resolution, frame rate, sample rate, and channels for video/audio, as well as how to use the bypass method.
 
 
-[transcoding.md](transcoding.md)
+[OutputProfile](output-profile.md)
 
 
 ### Adaptive Bitrate (ABR) Stream
