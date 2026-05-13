@@ -24,7 +24,7 @@ By default, OvenMediaEngine's API Server is disabled, so the following settings 
 
 ### Port Binding
 
-The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./#managers).
+The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./README.md#managers).
 
 ```markup
 <Server version="8">

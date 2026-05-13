@@ -135,7 +135,7 @@ Each `<PreloadModel>` entry has the following fields:
 
 ### Step 2: Define Subtitle Renditions
 
-Define the subtitle tracks that will receive STT output. For more details on `<Subtitles>`, refer to the [Subtitles](./) section.
+Define the subtitle tracks that will receive STT output. For more details on `<Subtitles>`, refer to the [Subtitles](./README.md) section.
 
 ```xml
 <Application>

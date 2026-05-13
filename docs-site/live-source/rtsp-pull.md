@@ -28,7 +28,7 @@ RTSP Pull can be enabled or disabled for each Application. You can enable RTSP P
 
 ## Pulling streams using the Stream Creation API
 
-You can create a stream by pulling an RTSP stream using the [Stream Creation API](../rest-api/v1/virtualhost/application/stream/#create-stream-pull). For more information on using the [REST API](../rest-api/), check out that chapter.
+You can create a stream by pulling an RTSP stream using the [Stream Creation API](../rest-api/v1/virtualhost/application/stream/README.md#create-stream-pull). For more information on using the [REST API](../rest-api/README.md), check out that chapter.
 
 ## Pulling streams using the OriginMapStore
 

@@ -102,4 +102,4 @@ We always hope that OvenMediaEngine will give you good inspiration.
 
 ## License
 
-OvenMediaEngine is licensed under the [AGPL-3.0-only](../LICENSE/). However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).
+OvenMediaEngine is licensed under the [AGPL-3.0-only](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/LICENSE). However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).

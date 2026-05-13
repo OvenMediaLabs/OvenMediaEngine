@@ -75,7 +75,7 @@ HTTP/2 outperforms HTTP/1.1, especially with LLHLS. Since all current browsers o
 
 LLHLS can deliver adaptive bitrate streaming. OME encodes the same source with multiple renditions and delivers it to the players. And LLHLS Player, including OvenPlayer, selects the best quality rendition according to its network environment. Of course, these players also provide option for users to manually select rendition.
 
-See the [Adaptive Bitrates Streaming](../transcoding/#adaptive-bitrates-streaming-abr) section for how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/README.md#adaptive-bitrates-streaming-abr) section for how to configure renditions.
 
 ## CrossDomain
 
@@ -85,7 +85,7 @@ For information on CrossDomains, see [CrossDomains ](../crossdomains.md)chapter.
 
 LLHLS is ready when a live source is inputted and a stream is created. Viewers can stream using OvenPlayer or other players.
 
-If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/).
+If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/README.md).
 
 ```markup
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
@@ -343,7 +343,7 @@ OvenPlayer now includes DRM-related options. Enable DRM and input the License UR
 
 :::danger
 
-Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](/docs/ome-enterprise/pre-built-package-installation/getting-started/getting-started-with-linux) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
+Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmedialabs.com/docs/ome-enterprise/pre-built-package-installation/getting-started/getting-started-with-linux) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
 
 :::
 

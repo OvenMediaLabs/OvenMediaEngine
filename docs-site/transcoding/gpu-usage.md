@@ -125,7 +125,7 @@ If you have finished installing the driver to use the VPU, you need to reinstall
 Please refer to the link for how to build and run.
 
 
-[getting-started](../getting-started/)
+[getting-started](../getting-started/README.md)
 
 
 
@@ -181,7 +181,7 @@ To use hardware acceleration, set the **HardwareAcceleration** option to **true*
 ```
 
 
-[configuration](../configuration/)
+[configuration](../configuration/README.md)
 
 
 ## Appendix. Support Format
