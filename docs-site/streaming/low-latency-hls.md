@@ -59,7 +59,7 @@ To use LLHLS, you need to add the `<LLHLS>` elements to the `<Publishers>` in th
 | `ChunkDuration`   | Set the partial segment length to fractional seconds. This value affects low-latency HLS player. We recommend **`0.2`** seconds for this value.                                                                                                |
 | `SegmentDuration` | Set the length of the segment in seconds. Therefore, a shorter value allows the stream to start faster. However, a value that is too short will make legacy HLS players unstable. Apple recommends **`6`** seconds for this value.             |
 | `SegmentCount`    | The number of segments listed in the playlist. This value has little effect on LLHLS players, so use **`10`** as recommended by Apple. 5 is recommended for legacy HLS players. Do not set below `3`. It can only be used for experimentation. |
-| `CrossDomains`    | Control the domain in which the player works through `<CrossDomain>`. For more information, please refer to the [CrossDomain](../crossdomains.md) section.                                                         |
+| `CrossDomains`    | Control the domain in which the player works through `<CrossDomains>`. For more information, please refer to the [CrossDomains](../crossdomains.md) section.                                                         |
 
 
 
