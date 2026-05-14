@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OvenMediaLabs/airensoft.com
-          ref: feat/docusaurus-migration
+          ref: main
           path: site
 
       - name: Stage this PR's docs-site/ into the site
