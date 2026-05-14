@@ -31,9 +31,13 @@ jobs:
           path: site
 
       - name: Stage this PR's docs-site/ into the site
+        # `cp -r`, not a symlink: Docusaurus's content-docs plugin
+        # mis-reads the doc registry when its `path:` points through
+        # a symlink, and SSG fails with `Cannot read properties of
+        # undefined (reading 'id')` on every doc in that source.
         run: |
           rm -rf site/docs/ome
-          ln -s "$PWD/upstream/docs-site" site/docs/ome
+          cp -R upstream/docs-site site/docs/ome
 
       - uses: actions/setup-node@v4
         with:
