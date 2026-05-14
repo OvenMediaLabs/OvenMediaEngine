@@ -2,7 +2,7 @@ name: Notify ovenmedialabs.com of docs-site change
 
 # When master receives a push that touches docs-site/, fire a
 # `docs-changed` repository_dispatch at the consuming site
-# (OvenMediaLabs/airensoft.com) so it can re-sync our docs and ship.
+# (OvenMediaLabs/ovenmedialabs.com) so it can re-sync our docs and ship.
 
 on:
   push:
@@ -17,6 +17,6 @@ jobs:
       - uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.OML_DOCS_SYNC_PAT }}
-          repository: OvenMediaLabs/airensoft.com
+          repository: OvenMediaLabs/ovenmedialabs.com
           event-type: docs-changed
           client-payload: '{"source": "ome", "sha": "${{ github.sha }}"}'

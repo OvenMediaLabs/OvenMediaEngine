@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 #
-# Start a local preview of the ovenmedialabs.com site (whose source
-# lives in the OvenMediaLabs/airensoft.com repo — the repo keeps its
-# legacy name) and surface ONLY the docs for the upstream product
+# Start a local preview of the ovenmedialabs.com site and surface ONLY the docs for the upstream product
 # you're working in. Designed to be copied into each upstream
 # `docs-site/preview.sh` so that editors can run
 # `./docs-site/preview.sh` after changing markdown and see the result
@@ -13,7 +11,7 @@
 #      ovenplayer) by inspecting `git remote get-url origin`.
 #   2. Bootstraps a per-product cache under
 #         ~/.cache/ovenmedialabs-preview/<source>/site/
-#      with a clone of OvenMediaLabs/airensoft.com so different
+#      with a clone of OvenMediaLabs/ovenmedialabs.com so different
 #      products keep separate working copies.
 #   3. Refreshes the cache (fetch + reset --hard) on each run.
 #   4. Installs npm deps if the lockfile changed.
@@ -24,13 +22,13 @@
 #      `/docs/<source>/`.
 #
 # Default port is 3000; override with OML_PREVIEW_PORT (or pick a
-# different branch of the airensoft.com repo via OML_PREVIEW_BRANCH).
+# different branch of the ovenmedialabs.com repo via OML_PREVIEW_BRANCH).
 #
 # Requires: bash, git, Node 20+, npm. macOS / Linux.
 
 set -euo pipefail
 
-SITE_REPO="https://github.com/OvenMediaLabs/airensoft.com.git"
+SITE_REPO="https://github.com/OvenMediaLabs/ovenmedialabs.com.git"
 SITE_BRANCH="${OML_PREVIEW_BRANCH:-feat/docusaurus-migration}"
 CACHE_ROOT="${OML_PREVIEW_CACHE:-$HOME/.cache/ovenmedialabs-preview}"
 
@@ -72,7 +70,7 @@ fi
 
 site_dir="$CACHE_ROOT/$SOURCE/site"
 
-# Clone airensoft.com into the cache on first run, then keep it
+# Clone ovenmedialabs.com into the cache on first run, then keep it
 # fresh on every subsequent run.
 if [ ! -d "$site_dir/.git" ]; then
     echo "▶ first run: cloning $SITE_REPO into $site_dir"

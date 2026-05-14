@@ -14,9 +14,8 @@ conventions, and image rules.
 
 Run `./docs-site/preview.sh` from the repo root.
 
-The script clones the [airensoft.com](https://github.com/OvenMediaLabs/airensoft.com)
-repo (the source for ovenmedialabs.com — the repo keeps its legacy
-name) into a per-product cache, symlinks your `docs-site/` into it,
+The script clones the [ovenmedialabs.com](https://github.com/OvenMediaLabs/ovenmedialabs.com)
+repo into a per-product cache, symlinks your `docs-site/` into it,
 and starts a dev server. When it's ready you'll see:
 
     [SUCCESS] Docusaurus website is running at: http://localhost:3000/
@@ -39,5 +38,5 @@ minutes (clone + npm install); subsequent runs ~10 seconds.
 Env var overrides:
 
 - `OML_PREVIEW_PORT` (default `3000`)
-- `OML_PREVIEW_BRANCH` (which branch of the airensoft.com repo to clone)
+- `OML_PREVIEW_BRANCH` (which branch of the ovenmedialabs.com repo to clone)
 - `OML_PREVIEW_CACHE` (cache root path)

@@ -2,7 +2,7 @@ name: Check docs build
 
 # Builds the consuming ovenmedialabs.com site against this PR's
 # docs-site/ to catch broken markdown links, missing anchors, and MDX
-# errors before merge. The downstream `airensoft.com` repo is built
+# errors before merge. The downstream `ovenmedialabs.com` repo is built
 # in throw mode (`onBrokenLinks: 'throw'`, etc.), so any regression
 # fails this check.
 
@@ -26,7 +26,7 @@ jobs:
       - name: Check out the consuming site
         uses: actions/checkout@v4
         with:
-          repository: OvenMediaLabs/airensoft.com
+          repository: OvenMediaLabs/ovenmedialabs.com
           ref: main
           path: site
 
