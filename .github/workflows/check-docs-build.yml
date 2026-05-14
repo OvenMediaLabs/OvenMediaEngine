@@ -1,0 +1,50 @@
+name: Check docs build
+
+# Builds the consuming ovenmedialabs.com site against this PR's
+# docs-site/ to catch broken markdown links, missing anchors, and MDX
+# errors before merge. The downstream `airensoft.com` repo is built
+# in throw mode (`onBrokenLinks: 'throw'`, etc.), so any regression
+# fails this check.
+
+on:
+  pull_request:
+    paths:
+      - 'docs-site/**'
+
+jobs:
+  build-docs:
+    # Don't run if this workflow ever ends up in another repo via a
+    # merge — only the OvenMediaEngine repo should kick it off.
+    if: github.repository == 'OvenMediaLabs/OvenMediaEngine'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+        with:
+          path: upstream
+
+      - name: Check out the consuming site
+        uses: actions/checkout@v4
+        with:
+          repository: OvenMediaLabs/airensoft.com
+          ref: feat/docusaurus-migration
+          path: site
+
+      - name: Stage this PR's docs-site/ into the site
+        run: |
+          rm -rf site/docs/ome
+          cp -R upstream/docs-site site/docs/ome
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build
+        working-directory: site
+        run: npm run build
