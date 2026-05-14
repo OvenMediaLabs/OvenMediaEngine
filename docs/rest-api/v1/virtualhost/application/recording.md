@@ -1,4 +1,7 @@
-# Record
+---
+title: Record
+sidebar_position: 44
+---
 
 ## Start Recording
 
@@ -8,7 +11,7 @@ Start recording the stream. If the requested stream does not exist on the server
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:startRecord</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:startRecord</summary>
 
 #### **Header**
 
@@ -21,9 +24,9 @@ Authorization: Basic {credentials}
 
 #### Body :  Single file recording&#x20;
 
-#### &#x20;    {
+#### &#x20;    &#x7B;
 
-{% code overflow="wrap" %}
+
 ```json
     "id": "{unique_record_id}",
     "stream": {
@@ -44,7 +47,7 @@ Authorization: Basic {credentials}
         recorded. This value is Encodes.[Video|Audio|Data].Name in the
         OutputProfile setting.
 ```
-{% endcode %}
+
 
 #### Body : Interval based split recording
 
@@ -114,7 +117,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -160,7 +163,7 @@ Please note that `responses` are incorrectly returned in Json array format for v
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -168,7 +171,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -191,7 +194,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
@@ -208,7 +211,7 @@ The given vhost or application name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 duplicate ID
 
@@ -220,7 +223,7 @@ duplicate ID
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:stopRecord</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:stopRecord</summary>
 
 #### **Header**
 
@@ -233,7 +236,7 @@ Authorization: Basic {credentials}
 
 #### Body&#x20;
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_record_id}"
@@ -242,7 +245,7 @@ Authorization: Basic {credentials}
 # id (required)
     unique ID to identify the recording task
 ```
-{% endcode %}
+
 
 </details>
 
@@ -250,7 +253,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -278,7 +281,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -286,7 +289,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -309,7 +312,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost/application name or id of recording task could not be found.
 
@@ -330,7 +333,7 @@ The given vhost/application name or id of recording task could not be found.
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:records</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:records</summary>
 
 #### **Header**
 
@@ -343,7 +346,7 @@ Authorization: Basic {credentials}
 
 #### Body&#x20;
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_record_id}"
@@ -352,7 +355,7 @@ Authorization: Basic {credentials}
 # id (optional)
     unique ID to identify the recording task. If no id is given in the request, the full list is returned.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -360,7 +363,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -372,7 +375,7 @@ Content-Type: application/json
 
 #### **Body**
 
-The `response` is <mark style="color:green;">Json array</mark> format.
+The `response` is Json array format.
 
 ```json
 {
@@ -413,7 +416,7 @@ The `response` is <mark style="color:green;">Json array</mark> format.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -436,7 +439,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
@@ -455,4 +458,4 @@ The given vhost or application name could not be found.
 
 The Recording task has the state shown in the table below. You can get the `state` in the Start Recording and Get Recording State API response.
 
-<table data-header-hidden><thead><tr><th width="157"></th><th></th></tr></thead><tbody><tr><td>Ready</td><td>Preparing to start or waiting for the stream to be created.</td></tr><tr><td>Started</td><td>In Progress</td></tr><tr><td>Stopping</td><td>Is stopping</td></tr><tr><td>Stopped</td><td>Stopped</td></tr><tr><td>Error</td><td>Error</td></tr></tbody></table>
+<table data-header-hidden=""><thead><tr><th width="157"></th><th></th></tr></thead><tbody><tr><td>Ready</td><td>Preparing to start or waiting for the stream to be created.</td></tr><tr><td>Started</td><td>In Progress</td></tr><tr><td>Stopping</td><td>Is stopping</td></tr><tr><td>Stopped</td><td>Stopped</td></tr><tr><td>Error</td><td>Error</td></tr></tbody></table>

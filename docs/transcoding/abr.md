@@ -1,4 +1,7 @@
-# ABR
+---
+title: ABR
+sidebar_position: 20
+---
 
 ## Adaptive Bitrate Streaming (ABR)
 
@@ -24,9 +27,13 @@ To set up `<Rendition>`, you need to add `<Name>` to the elements of `<Encodes>`
 
 In the example below, three quality renditions are provided and the URL to play the `abr` playlist as LLHLS is `https://domain:port/app/stream/abr.m3u8` and The WebRTC playback URL is `wss://domain:port/app/stream/abr`
 
-{% hint style="info" %}
+
+:::info
+
 TS files used in HLS must have A/V pre-muxed, so the `EnableTsPackaging` option must be set in the Playlist.
-{% endhint %}
+
+:::
+
 
 ```xml
 <OutputProfile>

@@ -2,8 +2,8 @@
 #
 # Start a local preview of the ovenmedialabs.com site and surface ONLY the docs for the upstream product
 # you're working in. Designed to be copied into each upstream
-# `docs-site/preview.sh` so that editors can run
-# `./docs-site/preview.sh` after changing markdown and see the result
+# `docs/preview.sh` so that editors can run
+# `./docs/preview.sh` after changing markdown and see the result
 # rendered with the same theme/layout as production.
 #
 # Behaviour:
@@ -15,7 +15,7 @@
 #      products keep separate working copies.
 #   3. Refreshes the cache (fetch + reset --hard) on each run.
 #   4. Installs npm deps if the lockfile changed.
-#   5. Symlinks the current repo's `docs-site/` into the cache's
+#   5. Symlinks the current repo's `docs/` into the cache's
 #      `docs/<source>/` so docs changes are picked up live by HMR.
 #   6. Starts `npm start` with OML_PREVIEW_SOURCE set — the consuming
 #      site hides marketing nav/footer and redirects `/` to
@@ -46,9 +46,9 @@ case "$origin_url" in
 esac
 PORT="${OML_PREVIEW_PORT:-3000}"
 
-# Locate the docs-site directory we're previewing.
+# Locate the docs directory we're previewing.
 repo_root="$(git rev-parse --show-toplevel)"
-docs_site="$repo_root/docs-site"
+docs_site="$repo_root/docs"
 if [ ! -d "$docs_site" ]; then
     echo "error: $docs_site not found — are you in the right repo?" >&2
     exit 1
@@ -90,7 +90,7 @@ if [ ! -d "$site_dir/node_modules" ] \
     (cd "$site_dir" && npm install --no-audit --no-fund)
 fi
 
-# Replace the cached docs/<source>/ with a symlink to our docs-site/
+# Replace the cached docs/<source>/ with a symlink to our docs/
 # so the editor sees their edits live via HMR. If the cache already
 # has a non-symlink directory there (from a fresh clone), drop it
 # first.

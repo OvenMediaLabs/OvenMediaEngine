@@ -1,10 +1,13 @@
-# Multiplex Channel
+---
+title: Multiplex Channel
+sidebar_position: 17
+---
 
 Now with Multiplex Channel, you can configure ABR by combining multiple input streams into one, or duplicate external streams and send them to other applications.
 
 Multiplex Channel takes tracks from other local streams and organizes them into its own tracks. This will pull in tracks that have already been encoded, which can be useful if you want to change codecs or adjust the quality once again. And the Multiplex Channel is sent to the publisher, unconditionally bypassing the encoder.
 
-<figure><img src="../.gitbook/assets/image (32).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-32.png)
 
 ## Configuration
 
@@ -111,6 +114,6 @@ The same format as `<OutputProfile>` must be used, and the Playlist must be cons
 
 MultiplexChannel can also be controlled via API. Please refer to the page below.&#x20;
 
-{% content-ref url="../rest-api/v1/virtualhost/application/scheduledchannel-api-1.md" %}
+
 [scheduledchannel-api-1.md](../rest-api/v1/virtualhost/application/scheduledchannel-api-1.md)
-{% endcontent-ref %}
+

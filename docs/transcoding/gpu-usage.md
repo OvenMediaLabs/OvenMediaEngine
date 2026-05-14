@@ -1,23 +1,31 @@
-# GPU Acceleration
+---
+title: GPU Acceleration
+sidebar_position: 22
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 OvenMediaEngine supports GPU-based hardware decoding and encoding. Currently supported GPU acceleration devices are Intel's QuickSync and NVIDIA. This article explains how to install the drivers for OvenMediaEngine and set up the configuration to use your GPU.
 
 ## 1. Install Drivers
 
-{% tabs %}
-{% tab title="NVIDIA" %}
+
+<Tabs>
+<TabItem value="nvidia" label="NVIDIA">
+
 #### 1. Install NVIDIA GPU Driver
 
 If you are using an NVIDIA graphics card, please refer to the following guide to install the driver. The OS that supports installation with the provided script are **CentOS 7/8** and **Ubuntu 18/20** versions. If you want to install the driver in another OS, please refer to the manual installation guide document.
 
 CentOS environment requires the process of uninstalling the nouveau driver. After uninstalling the driver, the first reboot is required, and a new NVIDIA driver must be installed and rebooted. Therefore, two install scripts must be executed.
 
-{% code overflow="wrap" lineNumbers="true" %}
+
 ```bash
 (curl -LOJ https://github.com/OvenMediaLabs/OvenMediaEngine/archive/master.tar.gz && tar xvfz OvenMediaEngine-master.tar.gz)
 OvenMediaEngine-master/misc/install_nvidia_driver.sh
 ```
-{% endcode %}
+
 
 **How to check driver installation**
 
@@ -58,9 +66,10 @@ If you have finished installing the driver to use the GPU, you need to reinstall
 ```bash
 OvenMediaEngine-master/misc/prerequisites.sh --enable-nv
 ```
-{% endtab %}
 
-{% tab title="NVIDIA with Docker" %}
+</TabItem>
+<TabItem value="nvidia-with-docker" label="NVIDIA with Docker">
+
 #### 1. Install NVIDIA GPU Driver
 
 Please refer to the NVIDIA Driver installation guide written previously.
@@ -81,9 +90,10 @@ A Docker Image build script that supports NVIDIA GPU is provided separately. Ple
 OvenMediaEngine-master/Dockerfile.cuda
 OvenMediaEngine-master/Dockerfile.cuda.local
 ```
-{% endtab %}
 
-{% tab title="Netint VPU Ni Logan " %}
+</TabItem>
+<TabItem value="netint-vpu-ni-logan" label="Netint VPU Ni Logan ">
+
 #### 1. Install XCODER
 
 Please refer to the Netint documentation to install XCODER.
@@ -105,25 +115,35 @@ If you have finished installing the driver to use the VPU, you need to reinstall
 ```bash
 ./prerequisites.sh --enable-nilogan --nilogan-path=/root/T4xx/release/FFmpeg-n5.0_t4xx_patch
 ```
-{% endtab %}
-{% endtabs %}
+
+</TabItem>
+</Tabs>
+
 
 ## 2. Build & Run
 
 Please refer to the link for how to build and run.
 
-{% content-ref url="../getting-started/" %}
-[getting-started](../getting-started/)
-{% endcontent-ref %}
 
-{% hint style="info" %}
+[getting-started](../getting-started/README.md)
+
+
+
+:::info
+
 **Intructions on running Docker**
 
 you must include the **--gpus all** option when running Docker
 
-<pre data-overflow="wrap"><code><strong>docker run -d ... --gpus all ovenmedialabs/ovenmediaengine:dev
-</strong></code></pre>
-{% endhint %}
+
+```
+<strong>docker run -d ... --gpus all ovenmedialabs/ovenmediaengine:dev
+</strong>
+```
+
+
+:::
+
 
 ## 3. Configuration
 
@@ -160,9 +180,9 @@ To use hardware acceleration, set the **HardwareAcceleration** option to **true*
 </OutputProfiles>
 ```
 
-{% content-ref url="../configuration/" %}
-[configuration](../configuration/)
-{% endcontent-ref %}
+
+[configuration](../configuration/README.md)
+
 
 ## Appendix. Support Format
 

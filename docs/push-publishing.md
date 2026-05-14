@@ -1,4 +1,7 @@
-# Push Publishing
+---
+title: Push Publishing
+sidebar_position: 37
+---
 
 OvenMediaEngine supports Push Publishing function that can restreaming live streams to other systems. The protocol supports widely used protocols such as [SRT](live-source/srt.md), [RTMP](live-source/rtmp.md), and MPEG-2 TS.
 
@@ -29,9 +32,13 @@ To use Push Publishing, you need to declare the **`<Push>`** publisher in the co
 </Applications>
 ```
 
-{% hint style="info" %}
+
+:::info
+
 The RTMP protocol only supports H264 and AAC codecs.
-{% endhint %}
+
+:::
+
 
 ### StreamMap
 
@@ -44,79 +51,82 @@ If multiple tracks with the same `VariantName` exist in the output stream, a spe
 
 `<Protocol>` supports `rtmp`, `mpegts`, and `srt`. The destination address is specified in the `<Url>` and `<StreamKey>` fields, and macros can be used.
 
-<pre class="language-xml"><code class="lang-xml">&#x3C;?xml version="1.0" encoding="UTF-8"?>
-&#x3C;PushInfo>
-  &#x3C;!-- RTMP -->
-  &#x3C;Push>
-    &#x3C;!-- [Must] -->
-    &#x3C;Enable>true&#x3C;/Enable>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;StreamName>stream_a_*&#x3C;/StreamName>
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<PushInfo>
+  <!-- RTMP -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>true</Enable>
+
+    <!-- [Must] -->
+    <StreamName>stream_a_*</StreamName>
     
-    &#x3C;!-- [Optional] -->
-    &#x3C;VariantNames>video_h264,audio_aac&#x3C;/VariantNames>
-    &#x3C;!-- Select a specific track among tracks with the same VariantName -->
-    &#x3C;!-- &#x3C;VariantNames>video_h264:0,audio_aac:1&#x3C;/VariantNames> -->
+    <!-- [Optional] -->
+    <VariantNames>video_h264,audio_aac</VariantNames>
+    <!-- Select a specific track among tracks with the same VariantName -->
+    <!-- <VariantNames>video_h264:0,audio_aac:1</VariantNames> -->
     
-    &#x3C;!-- [Must] -->
-    &#x3C;Protocol>rtmp&#x3C;/Protocol>
+    <!-- [Must] -->
+    <Protocol>rtmp</Protocol>
     
-    &#x3C;!-- [Must] -->
-    &#x3C;Url>rtmp://1.2.3.4:1935/app/${SourceStream}&#x3C;/Url>
-    &#x3C;!-- &#x3C;Url>rtmp://1.2.3.4:1935/app/${<a data-footnote-ref href="#user-content-fn-1">Stream</a>}&#x3C;/Url> --> 
+    <!-- [Must] -->
+    <Url>rtmp://1.2.3.4:1935/app/${SourceStream}</Url>
+    <!-- <Url>rtmp://1.2.3.4:1935/app/${<a data-footnote-ref="" href="#user-content-fn-1">Stream</a>}</Url> --> 
     
-    &#x3C;!-- [Optional] -->
-    &#x3C;!-- &#x3C;StreamKey>some-stream-key&#x3C;/StreamKey> -->
-<strong>  &#x3C;/Push>  
+    <!-- [Optional] -->
+    <!-- <StreamKey>some-stream-key</StreamKey> -->
+<strong>  </Push>  
 </strong>
-  &#x3C;!-- SRT -->
-  &#x3C;Push>
-    &#x3C;!-- [Must] -->
-    &#x3C;Enable>true&#x3C;/Enable>
+  <!-- SRT -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>true</Enable>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;StreamName>stream_b_*&#x3C;/StreamName>
+    <!-- [Must] -->
+    <StreamName>stream_b_*</StreamName>
 
-    &#x3C;!-- [Optional] -->
-    &#x3C;VariantNames>&#x3C;/VariantNames>
+    <!-- [Optional] -->
+    <VariantNames></VariantNames>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;Protocol>srt&#x3C;/Protocol>
+    <!-- [Must] -->
+    <Protocol>srt</Protocol>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;Url>srt://1.2.3.4:9999?streamid=srt%3A%2F%2F1.2.3.4%3A9999%2Fapp%2Fstream&#x3C;/Url>
-  &#x3C;/Push>
+    <!-- [Must] -->
+    <Url>srt://1.2.3.4:9999?streamid=srt%3A%2F%2F1.2.3.4%3A9999%2Fapp%2Fstream</Url>
+  </Push>
 
-  &#x3C;!-- MPEG-TS -->
-  &#x3C;Push>
-    &#x3C;!-- [Must] -->
-    &#x3C;Enable>false&#x3C;/Enable>
+  <!-- MPEG-TS -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>false</Enable>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;StreamName>stream_c_*&#x3C;/StreamName>
+    <!-- [Must] -->
+    <StreamName>stream_c_*</StreamName>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;Protocol>mpegts&#x3C;/Protocol>
+    <!-- [Must] -->
+    <Protocol>mpegts</Protocol>
 
-    &#x3C;!-- [Must] -->
-    &#x3C;Url>udp://1.2.3.4:2400&#x3C;/Url>
-  &#x3C;/Push>    
-&#x3C;/PushInfo>
-</code></pre>
+    <!-- [Must] -->
+    <Url>udp://1.2.3.4:2400</Url>
+  </Push>    
+</PushInfo>
+```
+
 
 | Macro           | Description        |
 | --------------- | ------------------ |
-| ${Application}  | Application name   |
-| ${SourceStream} | Source stream name |
-| ${Stream}       | Output stream name |
+| $&#x7B;Application&#x7D;  | Application name   |
+| $&#x7B;SourceStream&#x7D; | Source stream name |
+| $&#x7B;Stream&#x7D;       | Output stream name |
 
 ## REST API
 
 Push can be controlled using the REST API. Please refer to the documentation below for more details.
 
-{% content-ref url="rest-api/v1/virtualhost/application/push.md" %}
+
 [push.md](rest-api/v1/virtualhost/application/push.md)
-{% endcontent-ref %}
+
 
 [^1]: 

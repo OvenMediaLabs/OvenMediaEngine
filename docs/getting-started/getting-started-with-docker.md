@@ -1,4 +1,7 @@
-# Getting Started with Docker
+---
+title: Getting Started with Docker
+sidebar_position: 5
+---
 
 ## Getting Started with default settings
 
@@ -10,9 +13,13 @@ docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
 ovenmedialabs/ovenmediaengine:latest
 ```
 
-{% hint style="warning" %}
+
+:::warning
+
 If a certificate is not installed in OvenMediaEngine, some functions (WebRTC Ingest, LLHLS playback) may not work due to the browser's security policy. Please refer to [Complex Configuration](getting-started-with-docker.md#getting-started-with-complex-configuration) section to install the certificate.
-{% endhint %}
+
+:::
+
 
 You can set the following environment variables.
 
@@ -42,9 +49,9 @@ OvenMediaEngine docker container loads configuration files from the following pa
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Server.xml`       | `/opt/ovenmediaengine/bin/origin_conf/Server.xml`                                                                                                                  |
 | `Logger.xml`       | `/opt/ovenmediaengine/bin/origin_conf/Logger.xml`                                                                                                                  |
-| Server Certificate | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.crt</code><br><br>Server certificate file in PEM format. The intermediate certificate must not be included.</p> |
-| Private Key        | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.key</code><br><br>This is the private key file of the certificate.</p>                                          |
-| CA Bundle          | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.ca-bundle</code><br><br>A file containing root and intermediate certificates.</p>                               |
+| Server Certificate | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.crt`<br /><br />Server certificate file in PEM format. The intermediate certificate must not be included.</p> |
+| Private Key        | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.key`<br /><br />This is the private key file of the certificate.</p>                                          |
+| CA Bundle          | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.ca-bundle`<br /><br />A file containing root and intermediate certificates.</p>                               |
 
 There are many ways to change files inside a Docker container, but this document describes how to change them using Docker's bind mounts.
 
@@ -52,7 +59,7 @@ There are many ways to change files inside a Docker container, but this document
 
 #### Create the directories
 
-{% code overflow="wrap" %}
+
 ```sh
 export OME_DOCKER_HOME=/opt/ovenmediaengine
 sudo mkdir -p $OME_DOCKER_HOME/conf
@@ -65,7 +72,7 @@ sudo chmod -R 775 $OME_DOCKER_HOME
 # If you want to use OME_HOME permanently, add the following line to the ~/.profile file for bash, for other shells, you can do it accordingly.
 echo "export OME_DOCKER_HOME=/opt/ovenmediaengine" >> ~/.profile
 ```
-{% endcode %}
+
 
 #### Copy the default configurations from Docker container
 
@@ -98,7 +105,7 @@ vi $OME_DOCKER_HOME/conf/Server.xml
 
 The command below will make your OvenMediaEngine docker container run with $OME\_DOCKER\_HOME/conf/Server.xml and $OME\_DOCKER\_HOME/conf/Logger.xml files on your host. It will also create $OME\_DOCKER\_HOME/logs/ovenmediaengine.log file.
 
-{% code overflow="wrap" %}
+
 ```sh
 docker run -d -it --name ome -e OME_HOST_IP=Your.HOST.IP.Address \
 -v $OME_DOCKER_HOME/conf:/opt/ovenmediaengine/bin/origin_conf \
@@ -107,7 +114,7 @@ docker run -d -it --name ome -e OME_HOST_IP=Your.HOST.IP.Address \
 -p 10000-10009:10000-10009/udp \
 ovenmedialabs/ovenmediaengine:latest
 ```
-{% endcode %}
+
 
 #### Check the log file
 

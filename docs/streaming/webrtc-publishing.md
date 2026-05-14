@@ -1,4 +1,7 @@
-# WebRTC Streaming
+---
+title: WebRTC Streaming
+sidebar_position: 24
+---
 
 OvenMediaEngine supports WebRTC streaming with sub-second latency.
 
@@ -64,11 +67,15 @@ The IP address in `<IceCandidate>` determines which addresses are advertised to 
 - A specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
 - `${PublicIP}` to auto-detect the public IP via the configured `<StunServer>`: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>`
 
-{% hint style="danger" %}
+
+:::danger
+
 **Do not use `*` for ICE candidate IP in production.**
 
 When `*` is specified, OvenMediaEngine collects the IP address of every network interface on the host (including Docker bridge interfaces (`172.17.x.x`), VPN adapters, and other internal-only NICs) and advertises all of them as ICE candidates to the browser. The browser will attempt connectivity checks against every single candidate. This significantly increases ICE negotiation time and can cause connection delays or failures when the browser cannot reach those internal addresses.
-{% endhint %}
+
+:::
+
 
 When no `?transport` query parameter is specified, the behavior follows `<DefaultTransport>` (default: `udptcp`). By default, OME sends UDP and Direct TCP candidates. TURN relay info (`iceServers`) is only included when `?transport=relay` or `?transport=all` is used, or when `<TcpRelayForce>` is `true`.
 
@@ -102,7 +109,7 @@ To change the signaling port, update `<Bind><Publishers><WebRTC><Signalling><Por
 
 The Signalling protocol is defined in a simple way:
 
-![](<../.gitbook/assets/image (3) (1) (1) (1) (1).png>)
+![](../images/image-3-1-1-1-1.png)
 
 To use a player other than OvenPlayer, implement the signaling protocol shown above.
 
@@ -131,7 +138,7 @@ Configure `<WebRTC>` under `<Publishers>` in the Application settings:
 </Publishers>
 ```
 
-<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td><code>Timeout</code></td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td><code>30000</code></td></tr><tr><td><code>Rtx</code></td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>Ulpfec</code></td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td><code>false</code></td></tr><tr><td><code>JitterBuffer</code></td><td>Smooths bursty frame delivery by spacing media frames according to their PTS. See below for details.</td><td><code>false</code></td></tr><tr><td><code>PlayoutDelay</code></td><td>Hints the minimum and maximum playout delay (in milliseconds, from 0 to 40950) to the player so it keeps a deeper jitter buffer for video. Useful when the network introduces bursty latency and the default low-latency buffer causes hitches. See below for details.</td><td><code>Disabled</code></td></tr><tr><td><code>BandwidthEstimation</code></td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td><code>All</code></td></tr></tbody></table>
+<table><thead><tr><th width="189">Option</th><th width="433.33333333333326">Description</th><th>Default</th></tr></thead><tbody><tr><td>`Timeout`</td><td>ICE (STUN request/response) timeout as milliseconds, if there is no request or response during this time, the session is terminated.</td><td>`30000`</td></tr><tr><td>`Rtx`</td><td>WebRTC retransmission, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td>`false`</td></tr><tr><td>`Ulpfec`</td><td>WebRTC forward error correction, a useful option in WebRTC/udp, but ineffective in WebRTC/tcp.</td><td>`false`</td></tr><tr><td>`JitterBuffer`</td><td>Smooths bursty frame delivery by spacing media frames according to their PTS. See below for details.</td><td>`false`</td></tr><tr><td>`PlayoutDelay`</td><td>Hints the minimum and maximum playout delay (in milliseconds, from 0 to 40950) to the player so it keeps a deeper jitter buffer for video. Useful when the network introduces bursty latency and the default low-latency buffer causes hitches. See below for details.</td><td>`Disabled`</td></tr><tr><td>`BandwidthEstimation`</td><td><p>Determines which method OvenMediaEngine uses to estimate the bandwidth of the connected player. This bandwidth estimation is required for WebRTC ABR when OME selects and sends an appropriate rendition to the player.</p><p>If <strong>TransportCC</strong> or <strong>REMB</strong> is set, only one method is used. If the default value <strong>All</strong> is set, both methods are included in the SDP offer, and the player operates according to its preference. Most modern browsers use Transport-cc by default in this case. Transport-cc provides more accurate bandwidth estimation.</p></td><td>`All`</td></tr></tbody></table>
 
 #### JitterBuffer
 
@@ -192,7 +199,7 @@ We have prepared a test player to make it easy to check if OvenMediaEngine is wo
 
 OvenMediaEngine provides adaptive bitrate streaming over WebRTC. OvenPlayer can also play and display OvenMediaEngine's WebRTC ABR URL.
 
-![](<../.gitbook/assets/image (39).png>)
+![](../images/image-39.png)
 
 ### Create Playlist for WebRTC ABR
 
@@ -200,17 +207,25 @@ You can provide ABR by creating a `playlist` in `<OutputProfile>` as shown below
 
 `<Playlist>/<Rendition>/<Video>` and `<Playlist>/<Rendition>/<Audio>` are linked to encode tracks by `<Encodes>/<Video>/<Name>` or `<Encodes>/<Audio>/<Name>`.
 
-{% hint style="warning" %}
+
+:::warning
+
 It is not recommended to use a \<Bypass>true\</Bypass> encode item if you want a seamless transition between renditions because there is a time difference between the transcoded track and bypassed track.
-{% endhint %}
+
+:::
+
 
 If `<Options>/<WebRtcAutoAbr>` is set to true, OvenMediaEngine will measure the bandwidth of the player session and automatically switch to the appropriate rendition.
 
 Here is an example play URL for ABR in the playlist settings below. `wss://domain:13334/app/stream/master`
 
-{% hint style="info" %}
+
+:::info
+
 Streaming starts from the top rendition of Playlist, and when Auto ABR is true, the server finds the best rendition and switches to it. Alternatively, the user can switch manually by selecting a rendition in the player.
-{% endhint %}
+
+:::
+
 
 ```xml
 <OutputProfiles>
@@ -301,15 +316,19 @@ Streaming starts from the top rendition of Playlist, and when Auto ABR is true, 
 </OutputProfiles>
 ```
 
-See the [Adaptive Bitrates Streaming](../transcoding/#adaptive-bitrates-streaming-abr) section for more details on how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for more details on how to configure renditions.
 
 ### Multiple codec support in Playlist
 
 WebRTC can negotiate codecs with SDP to support more devices. Playlist can set rendition with different kinds of codec. And OvenMediaEngine includes only renditions corresponding to the negotiated codec in the playlist and provides it to the player.
 
-{% hint style="warning" %}
+
+:::warning
+
 If an unsupported codec is included in the Rendition, the Rendition is not used. For example, if the Rendition's Audio contains aac, WebRTC ignores the Rendition.
-{% endhint %}
+
+:::
+
 
 In the example below, it consists of renditions with H.264 and Opus codecs set and renditions with VP8 and Opus codecs set. If the player selects VP8 in the answer SDP, OvenMediaEngine creates a playlist with only renditions containing VP8 and Opus and passes it to the player.
 
@@ -371,7 +390,7 @@ You can enable the embedded TURN server by setting `<TcpRelay>` in the WebRTC Bi
 
 > Example : `<TcpRelay>*:3478</TcpRelay>`
 
-OME may sometimes not be able to get the server's public IP on its local interface (e.g. Docker or AWS). Specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [<StunServer>](../configuration/#stunserver) and all IPs from local interfaces are used. `<Port>` is the TCP port on which the TURN server listens.
+OME may sometimes not be able to get the server's public IP on its local interface (e.g. Docker or AWS). Specify the public IP for `Relay IP`. If `*` is used, the public IP obtained from [`<StunServer>`](../configuration/README.md#stunserver) and all IPs from local interfaces are used. `<Port>` is the TCP port on which the TURN server listens.
 
 ```xml
 <Server version="8">
@@ -397,13 +416,21 @@ OME may sometimes not be able to get the server's public IP on its local interfa
 </Server>
 ```
 
-{% hint style="info" %}
-If `*` is used as the IP of `<TcpRelay>` and `<IceCandidate>`, all available candidates are generated and sent to the player, so the player tries to connect to all candidates until a connection is established. This can cause delay in initial playback. Therefore, specifying the `${PublicIP}` macro or IP directly may be more beneficial to quality.
-{% endhint %}
 
-{% hint style="info" %}
+:::info
+
+If `*` is used as the IP of `<TcpRelay>` and `<IceCandidate>`, all available candidates are generated and sent to the player, so the player tries to connect to all candidates until a connection is established. This can cause delay in initial playback. Therefore, specifying the `${PublicIP}` macro or IP directly may be more beneficial to quality.
+
+:::
+
+
+
+:::info
+
 `<TcpForce>` has been renamed to `<TcpRelayForce>`. The old name is still accepted for backward compatibility. When set to `true`, TURN relay info is always sent to the player even without `?transport=relay`.
-{% endhint %}
+
+:::
+
 
 ### `?transport` query parameter
 
@@ -419,26 +446,38 @@ The `?transport` query parameter controls which ICE candidates and TURN relay in
 
 When `?transport` is omitted, the behavior follows `<DefaultTransport>` (default: `udptcp`).
 
-{% hint style="warning" %}
+
+:::warning
+
 **Behavior change from previous versions**
 
 In previous versions, `?transport=tcp` sent TURN relay info (`iceServers`) to the player and routed WebRTC/TCP traffic through the embedded TURN server. This behavior has changed:
 
 - `?transport=tcp` now means **Direct TCP ICE** (RFC 6544), a direct TCP connection to OvenMediaEngine without any relay.
 - To use TURN relay over TCP (the previous `tcp` behavior), use **`?transport=relay`** instead.
-{% endhint %}
 
-{% hint style="info" %}
+:::
+
+
+
+:::info
+
 **Why is `iceServers` not sent by default?**
 
 When the browser receives `iceServers` (TURN server information), it is configured as `iceTransportPolicy: "relay"` internally if no direct candidates are provided, or it will try relay alongside direct candidates if direct candidates are also present. However, some players or environments may have `iceTransportPolicy` pre-set to `"relay"`, which means the browser will **only** use TURN relay even if direct UDP/TCP candidates were provided. To enable the full fallback chain (UDP → Direct TCP → TURN relay), use `?transport=all`, which sends both direct candidates and `iceServers`.
-{% endhint %}
 
-{% hint style="info" %}
+:::
+
+
+
+:::info
+
 **Direct TCP ICE vs. TURN relay**
 
 `?transport=tcp` now sends **Direct TCP ICE candidates only** (RFC 6544), not TURN relay. Direct TCP ICE connects the browser directly to OvenMediaEngine over TCP without any relay server. Most modern browsers support RFC 6544 Direct TCP ICE. To force TURN relay over TCP, use `?transport=relay`.
-{% endhint %}
+
+:::
+
 
 ### `<DefaultTransport>` configuration
 

@@ -1,4 +1,7 @@
-# Push
+---
+title: Push
+sidebar_position: 45
+---
 
 ## Start Push Publishing
 
@@ -8,7 +11,7 @@ Start push publishing the stream with SRT, RTMP or MPEG2-TS. If the requested st
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:startPush</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:startPush</summary>
 
 **Header**
 
@@ -62,7 +65,7 @@ In SRT Push Publisher, only the `caller` connection mode is supported.
 
 **Body : RTMP**
 
-{% code overflow="wrap" %}
+
 ```json
 {
   "id": "{unique_push_id}",
@@ -99,7 +102,7 @@ In SRT Push Publisher, only the `caller` connection mode is supported.
 # streamKey (required)
     RTMP stream key
 ```
-{% endcode %}
+
 
 **Body : MPEG2-TS**
 
@@ -145,7 +148,7 @@ In SRT Push Publisher, only the `caller` connection mode is supported.
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -203,7 +206,7 @@ Please note that `responses` are incorrectly returned in Json array format for v
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -211,7 +214,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -234,7 +237,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
@@ -251,7 +254,7 @@ The given vhost or application name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 duplicate ID
 
@@ -263,7 +266,7 @@ duplicate ID
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:stopPush</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:stopPush</summary>
 
 **Header**
 
@@ -276,7 +279,7 @@ Authorization: Basic {credentials}
 
 **Body**
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_push_id}"
@@ -285,7 +288,7 @@ Authorization: Basic {credentials}
 # id (required)
     unique ID to identify the push publishing task
 ```
-{% endcode %}
+
 
 </details>
 
@@ -293,7 +296,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -321,7 +324,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -329,7 +332,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -352,7 +355,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost/application name or id of recording task could not be found.
 
@@ -373,7 +376,7 @@ The given vhost/application name or id of recording task could not be found.
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:pushes</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:pushes</summary>
 
 **Header**
 
@@ -386,7 +389,7 @@ Authorization: Basic {credentials}
 
 **Body**
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_push_id}"
@@ -395,7 +398,7 @@ Authorization: Basic {credentials}
 # id (optional)
     unique ID to identify the push publishing task. If no id is given in the request, the full list is returned.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -403,7 +406,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -415,7 +418,7 @@ Content-Type: application/json
 
 **Body**
 
-The `response` is <mark style="color:green;">Json array</mark> format.
+The `response` is Json array format.
 
 ```json
 {
@@ -468,7 +471,7 @@ The `response` is <mark style="color:green;">Json array</mark> format.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -491,7 +494,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 

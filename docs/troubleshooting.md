@@ -1,10 +1,10 @@
 ---
-description: >-
-  We will update this document as we gather troubleshooting examples. (Written
-  in Nov 04, 2021)
+title: Troubleshooting
+sidebar_position: 62
 ---
 
-# Troubleshooting
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 ## `InstallPrerequisites.cmake` Script Failed
 
@@ -12,39 +12,44 @@ If `InstallPrerequisites.cmake` fails, first try running `cmake -P cmake/Install
 
 ### Platform Specific Installation
 
-{% tabs %}
-{% tab title="Ubuntu 18" %}
+
+<Tabs>
+<TabItem value="ubuntu-18" label="Ubuntu 18">
+
 ```bash
 sudo apt install -y build-essential nasm autoconf libtool zlib1g-dev tclsh cmake curl
 ```
-{% endtab %}
 
-{% tab title="Fedora 28" %}
+</TabItem>
+<TabItem value="fedora-28" label="Fedora 28">
+
 ```bash
 sudo yum install -y gcc-c++ make nasm autoconf libtool zlib-devel tcl cmake
 ```
-{% endtab %}
 
-{% tab title="Rocky Linux/AlmaLinux 8" %}
+</TabItem>
+<TabItem value="rocky-linux-almalinux-8" label="Rocky Linux/AlmaLinux 8">
+
 ```bash
 sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel
 sudo dnf install -y perl-IPC-Cmd
 ```
-{% endtab %}
 
-{% tab title="Rocky Linux/AlmaLinux 9" %}
+</TabItem>
+<TabItem value="rocky-linux-almalinux-9" label="Rocky Linux/AlmaLinux 9">
+
 ```bash
 sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel cmake libuuid-devel
 sudo dnf install -y perl-IPC-Cmd perl-FindBin
 ```
-{% endtab %}
 
-{% endtabs %}
+</TabItem>
+</Tabs>
+
 
 ### Common Installation
 
-{% code title="Install OpenSSL" %}
-```bash
+```bash title="Install OpenSSL"
 PREFIX=/opt/ovenmediaengine && \
 OPENSSL_VERSION=3.0.7 && \
 DIR=/tmp/openssl && \
@@ -57,10 +62,8 @@ sudo make install_sw && \
 rm -rf ${DIR} && \
 sudo rm -rf ${PREFIX}/bin
 ```
-{% endcode %}
 
-{% code title="Install SRTP" %}
-```bash
+```bash title="Install SRTP"
 PREFIX=/opt/ovenmediaengine && \
 SRTP_VERSION=2.4.2 && \
 DIR=/tmp/srtp && \
@@ -72,10 +75,8 @@ make shared_library -j 4 && \
 sudo make install && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install SRT" %}
-```bash
+```bash title="Install SRT"
 PREFIX=/opt/ovenmediaengine && \
 SRT_VERSION=1.5.2 && \
 DIR=/tmp/srt && \
@@ -88,10 +89,8 @@ sudo make install && \
 rm -rf ${DIR} && \
 sudo rm -rf ${PREFIX}/bin
 ```
-{% endcode %}
 
-{% code title="Install Opus" %}
-```bash
+```bash title="Install Opus"
 PREFIX=/opt/ovenmediaengine && \
 OPUS_VERSION=1.3.1 && \
 DIR=/tmp/opus && \
@@ -105,10 +104,8 @@ sudo make install && \
 sudo rm -rf ${PREFIX}/share && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install x264" %}
-```bash
+```bash title="Install x264"
 PREFIX=/opt/ovenmediaengine && \
 X264_VERSION=0.164.x@31e19f92 && \
 DIR=/tmp/x264 && \
@@ -120,10 +117,8 @@ make -j 4&& \
 sudo make install && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install VPX" %}
-```bash
+```bash title="Install VPX"
 PREFIX=/opt/ovenmediaengine && \
 VPX_VERSION=1.11.0 && \
 DIR=/tmp/vpx && \
@@ -135,10 +130,8 @@ make -j 4 && \
 sudo make install && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install FDK-AAC" %}
-```bash
+```bash title="Install FDK-AAC"
 PREFIX=/opt/ovenmediaengine && \
 FDKAAC_VERSION=2.0.2 && \
 DIR=/tmp/aac && \
@@ -151,10 +144,8 @@ make -j 4&& \
 sudo make install && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install FFMPEG" %}
-```bash
+```bash title="Install FFMPEG"
 PREFIX=/opt/ovenmediaengine && \
 FFMPEG_VERSION=5.1.4 && \
 DIR=/tmp/ffmpeg && \
@@ -186,10 +177,8 @@ sudo make install && \
 sudo rm -rf ${PREFIX}/share && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
-{% code title="Install JEMALLOC" %}
-```bash
+```bash title="Install JEMALLOC"
 PREFIX=/opt/ovenmediaengine && \
 JEMALLOC_VERSION=5.3.0 && \
 DIR=${TEMP_PATH}/jemalloc && \
@@ -201,7 +190,6 @@ make && \
 sudo make install && \
 rm -rf ${DIR}
 ```
-{% endcode %}
 
 ## **`systemctl start ovenmediaengine` failed**
 
@@ -259,13 +247,17 @@ $ sudo setenforce 0
 
 WebRTC does not support b-frame of H.264. But if your encoder sends b-frames the video will be stuttered in the player. In this case, you can solve the problem by disabling the b-frame function in your encoder. For OBS, you can set bframes=0 option as below.
 
-![](<.gitbook/assets/image (40) (1).png>)
+![](./images/image-40-1.png)
 
 Or by **activating the encoding options** in OvenMediaEngine.
 
-{% hint style="info" %}
-Setting up Transcoding options in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#encodes](https://docs.ovenmediaengine.com/transcoding#encodes)
-{% endhint %}
+
+:::info
+
+Setting up Transcoding options in OvenMediaEngine: [transcoding/output-profile.md#encodes](transcoding/output-profile.md#encodes)
+
+:::
+
 
 ### **2.** When streaming does not work in some players
 
@@ -273,9 +265,13 @@ In this case, you are probably trying to stream with UDP in an environment where
 
 If you want to monitor packet loss in your Chrome browser, you can access it by typing '**chrome://webrtc-internals**' in the address bar.
 
-{% hint style="info" %}
-Setting up WebRTC over TCP in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#webrtc-over-tcp)
-{% endhint %}
+
+:::info
+
+Setting up WebRTC over TCP in OvenMediaEngine: [streaming/webrtc-publishing.md#webrtc-over-tcp](streaming/webrtc-publishing.md#webrtc-over-tcp)
+
+:::
+
 
 Also, if the device's network speed, which is running the player, isn't fast enough to accommodate the stream's BPS, the stuttering during streaming won't resolve and will eventually drop the connection. In this case, there is no other way than to speed up your network.
 
@@ -285,9 +281,13 @@ If the Origin server uses excessive CPU/Memory/Network, all players may experien
 
 When you see Origin is CPU intensive on your Origin-Edge structure, the transcoding options in the OvenMediaEngine may be the primary cause. That is, you may have set the quality of the input stream too high, or the output stream to exceed the capabilities of your hardware significantly. In this case, it can be solved by **enabling the hardware encoder** in OvenMediaEngine.
 
-{% hint style="info" %}
-Setting up GPU Acceleration in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding/gpu-usage](https://docs.ovenmediaengine.com/transcoding/gpu-usage)
-{% endhint %}
+
+:::info
+
+Setting up GPU Acceleration in OvenMediaEngine: [transcoding/gpu-usage.md](transcoding/gpu-usage.md)
+
+:::
+
 
 ### **4.** When streaming fails due to excessive CPU/Memory/Network usage of Edge in OvenMediaEngine
 
@@ -299,9 +299,13 @@ If the edge server excessively uses CPU/Memory/Network, the player connected to 
 
 When you see a specific thread overuses the CPU, the video may not stream smoothly. Please refer to the manual below for more information on this.
 
-{% hint style="info" %}
-Tuning OvenMediaEngine Performance: [https://docs.ovenmediaengine.com/performance-tuning#performance-tuning](https://docs.ovenmediaengine.com/performance-tuning#performance-tuning)
-{% endhint %}
+
+:::info
+
+Tuning OvenMediaEngine Performance: [performance-tuning.md#performance-tuning](performance-tuning.md#performance-tuning)
+
+:::
+
 
 #### 5-2. Tuning your Linux kernel
 
@@ -340,7 +344,7 @@ The mobile environment used by many people uses a **wireless network**. It has a
 
 Look, **CUBIC**, the Congestion Control set by default in your Linux, adjusts the TCP Window by packet loss, so it is not suitable to provide stable streaming in such an environment.
 
-![Source: iccrg-bbr-congestion-control-02.pdf (Page 18)](.gitbook/assets/BBR\_CUBIC.png)
+![Source: iccrg-bbr-congestion-control-02.pdf (Page 18)](./images/BBR_CUBIC.png)
 
 So our suggestion is to use Google's **BBR**. This setting is even more important if you mainly provide WebRTC services to mobile users who use a wireless network. Change the Congestion Control from CUBIC to BBR on your Linux.
 
@@ -352,9 +356,13 @@ If you try to access OvenMediaEngine's WebRTC URL starting with **ws://** _(Non-
 
 In this case, you can solve this by installing a certificate in OvenMediaEngine and trying to connect with the **wss://** _(WebSocket/TLS)_ URL.
 
-{% hint style="info" %}
-Setting up TLS Encryption in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/tls-encryption](https://docs.ovenmediaengine.com/streaming/tls-encryption)
-{% endhint %}
+
+:::info
+
+Setting up TLS Encryption in OvenMediaEngine: [configuration/tls-encryption.md](configuration/tls-encryption.md)
+
+:::
+
 
 ### **2.** Due to a Cross-Origin Resource Sharing (CORS) Error
 
@@ -378,13 +386,17 @@ If you use Transcoding as Bypass in OvenMediaEngine and set a **long keyframe in
 
 In this case, you can solve this by setting the keyframe interval in the encoder to **1-2 seconds**,
 
-<figure><img src=".gitbook/assets/keyframe_obs.png" alt=""><figcaption><p>How to set the keyframe intverval in OBS, which is the most used encoder</p></figcaption></figure>
+![](./images/keyframe_obs.png)
 
 Or by **enabling the encoding options** in OvenMediaEngine.
 
-{% hint style="info" %}
-Setting up Transcoding options in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#encodes](https://docs.ovenmediaengine.com/transcoding#encodes)
-{% endhint %}
+
+:::info
+
+Setting up Transcoding options in OvenMediaEngine: [transcoding/output-profile.md#encodes](transcoding/output-profile.md#encodes)
+
+:::
+
 
 ## A/V is out of sync
 
@@ -398,17 +410,25 @@ However, this can be resolved naturally as the player will sync A/V while stream
 
 Also, suppose you are using a transcoder in OvenMediaEngine and trying to input with b-frames of H264. Audio is encoded fast, but a video is buffered at the decoder because of b-frames. Therefore, there is a time difference at the start of each encoding, which may cause the A/V to be out of sync. Even in this case, **enabling JitterBuffer** will solve this problem.
 
-{% hint style="info" %}
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher)
-{% endhint %}
+
+:::info
+
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [streaming/webrtc-publishing.md#publisher](streaming/webrtc-publishing.md#publisher)
+
+:::
+
 
 ### 2. Time has passed, but A/V is out of sync
 
 There may be cases where the A/V sync is not corrected even after a certain amount of time has elapsed after playback. This problem is caused by **small internal buffers** in some browsers such as Firefox, which causes the player to give up calibration if the A/V sync differs too much. But this can also be solved by **enabling JitterBuffer**.
 
-{% hint style="info" %}
-Setting up WebRTC JitterBuffer in OvenMediaEngine: [https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher](https://docs.ovenmediaengine.com/streaming/webrtc-publishing#publisher)
-{% endhint %}
+
+:::info
+
+Setting up WebRTC JitterBuffer in OvenMediaEngine: [streaming/webrtc-publishing.md#publisher](streaming/webrtc-publishing.md#publisher)
+
+:::
+
 
 Nevertheless, if the A/V sync is not corrected, you should suspect an error in the original video file, which can be checked by playing as HLS.
 
@@ -420,9 +440,13 @@ However, if A/V sync is well during streaming with HLS, this is OvenMediaEnigne'
 
 WebRTC supports Opus, not AAC, as an audio codec. Because RTMP and other protocols mainly use and transmit AAC as the audio codec, you may not have set up Opus, but WebRTC cannot output audio without Opus. This can be solved by **setting Opus** in OvenMediaEnigne.
 
-{% hint style="info" %}
-Setting up Opus Codec in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#audio](https://docs.ovenmediaengine.com/transcoding#audio)
-{% endhint %}
+
+:::info
+
+Setting up Opus Codec in OvenMediaEngine: [transcoding/output-profile.md#audio](transcoding/output-profile.md#audio)
+
+:::
+
 
 ## Not the video quality you want
 
@@ -432,9 +456,13 @@ If you are using video encoding in OME, the video bitrate may be set low. In thi
 
 However, since OvenMediaEngine has the default to the fastest encoding option for sub-second latency streaming, the video quality may not be as good as the set video bitrate. In this case, OvenMediaEngine provides an **output profile preset** that can control the quality, so you can choose to solve it.
 
-{% hint style="info" %}
-Choosing an Encoding Preset in OvenMediaEngine: [https://docs.ovenmediaengine.com/transcoding#video](https://docs.ovenmediaengine.com/transcoding#video)
-{% endhint %}
+
+:::info
+
+Choosing an Encoding Preset in OvenMediaEngine: [transcoding/output-profile.md#video](transcoding/output-profile.md#video)
+
+:::
+
 
 ### 2. If you are using Transcoding as Bypass in OvenMediaEngine
 

@@ -1,10 +1,13 @@
-# Clustering
+---
+title: Clustering
+sidebar_position: 32
+---
 
 OvenMediaEngine supports clustering and ensures High Availability (HA) and scalability. For this we provide the `OriginMap` and `OriginMapStore` features. [OriginMap ](origin-edge-clustering.md#originmap)is a method of configuring Origin server information in each Edge server, and [OriginMapStore ](origin-edge-clustering.md#originmapstore)is a method for Origin servers and Edge servers to dynamically share information through Redis Server.
 
 ## OriginMap
 
-![](<.gitbook/assets/image (7) (1) (1).png>)
+![](./images/image-7-1-1.png)
 
 The OvenMediaEngine running as edge pulls a stream from an external server when a user requests it. The external server could be another OvenMediaEngine with OVT enabled or another stream server that supports RTSP.&#x20;
 
@@ -87,11 +90,11 @@ The `<Origin>`has the ability to automatically create an application with that n
 
 #### \<Properties>
 
-<mark style="color:purple;">**NoInputFailoverTimeout**</mark>**&#x20;(default 3000)**
+**NoInputFailoverTimeout****&#x20;(default 3000)**
 
 NoInputFailoverTimeout is the time (in milliseconds) to switch to the next URL if there is no input for the set time.
 
-<mark style="color:blue;">**UnusedStreamDeletionTimeout**</mark>**&#x20;(default 60000)**
+**UnusedStreamDeletionTimeout****&#x20;(default 60000)**
 
 UnusedStreamDeletionTimeout is a function that deletes a stream created with OriginMap if there is no viewer for a set amount of time (milliseconds). This helps to save network traffic and system resources for Origin and Edge.
 
@@ -99,11 +102,11 @@ UnusedStreamDeletionTimeout is a function that deletes a stream created with Ori
 
 For a detailed description of Origin's elements, see:
 
-<mark style="color:blue;">**Location**</mark>
+**Location**
 
 Origin is already filtered by domain because it belongs to VirtualHost. Therefore, in Location, set App, Stream, and File to match except domain area. If a request matches multiple Origins, the top of them runs.
 
-<mark style="color:blue;">**Pass**</mark>
+**Pass**
 
 Pass consists of Scheme and Url.&#x20;
 
@@ -133,7 +136,7 @@ If a user requests `http://edge.com/edge_app/stream`, OvenMediaEngine makes an a
 
 ## OriginMapStore
 
-<figure><img src=".gitbook/assets/image (2) (1) (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](./images/image-2-1-1-1-1-1.png)
 
 `OriginMapStore` is designed to make it easier to support autoscaling within a cluster. All Origin Servers and Edge Servers in the cluster share stream information and origin OVT URLs through Redis. That is, when a stream is created on the Origin server, the Origin server sets the app/stream name and OVT url to access the stream to the Redis server. Edge gets the OVT url corresponding to the `app/stream` from the Redis server when the user's playback request comes in.
 
@@ -141,7 +144,7 @@ This means that existing settings do not need to be updated when extending Origi
 
 `OriginMapStore` functionality has been tested with Redis Server 5.0.7. You can enable this feature by adding the following settings to Server.xml of Origin and Edge. Note that must be set in Server.xml of the Origin server. This is used when Origin registers its own OVT url, so you just need to set a domain name or IP address that can be accessed as an OVT publisher.
 
-{% code overflow="wrap" %}
+
 ```xml
 <VirtualHost>
     ...
@@ -158,7 +161,7 @@ This means that existing settings do not need to be updated when extending Origi
     ...
 </VirtualHost>
 ```
-{% endcode %}
+
 
 ## Dynamic Application
 

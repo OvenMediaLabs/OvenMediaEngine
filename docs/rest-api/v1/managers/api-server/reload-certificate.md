@@ -1,4 +1,7 @@
-# Reload Certificate
+---
+title: Reload Certificate
+sidebar_position: 58
+---
 
 ## Reload Certificate
 
@@ -8,7 +11,7 @@ Reload the certificate of the API Server. In case of failure, the existing certi
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/managers/api:reloadCertificate</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/managers/api:reloadCertificate</summary>
 
 #### Header
 
@@ -25,7 +28,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> OK</summary>
+<summary><span class="http-method http-method-200">200</span> OK</summary>
 
 The request has succeeded
 
@@ -37,7 +40,9 @@ Content-Type: application/json
 
 **Body**
 
-<pre class="language-json"><code class="lang-json">{
+
+```json
+{
 <strong>    "message": "OK",
 </strong>    "statusCode": 200
 }
@@ -46,13 +51,14 @@ Content-Type: application/json
     Same as HTTP Status Code
 # message
     A human-readable description of the response code
-</code></pre>
+```
+
 
 </details>
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 TLS is not enabled for the API Server
 
@@ -75,7 +81,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Failed to reload the certificate, so the existing one will be kept. The reason for the failure can be found in the server logs.
 

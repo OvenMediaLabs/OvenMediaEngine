@@ -1,4 +1,7 @@
-# SRT
+---
+title: SRT
+sidebar_position: 13
+---
 
 Secure Reliable Transport (or SRT in short) is an open source video transport protocol and technology stack that optimizes streaming performance across unpredictable networks with secure streams and easy firewall traversal, bringing the best quality live video over the worst networks. We consider SRT to be one of the great alternatives to RTMP, and OvenMediaEngine can receive video streaming over SRT. For more information on SRT, please visit the [SRT Alliance website](https://www.srtalliance.org).
 
@@ -32,11 +35,15 @@ Set the SRT listen port as follows:
 </Providers>
 ```
 
-<table><thead><tr><th width="212">Property</th><th>Description</th></tr></thead><tbody><tr><td>Port</td><td>Specifies the listening ports for SRT connections. Multiple ports can be bound by separating them with commas.</td></tr><tr><td>WorkerCount (default : 1)</td><td>Defines the number of worker threads for handling SRT sockets. Increasing this value helps distribute traffic when there are many incoming sessions.</td></tr><tr><td>ThreadPerSocket (default : false)</td><td>Determines whether each socket is assigned a dedicated thread. If set to <strong>true</strong>, a new thread is created for every session when it connects and terminated when the session ends, while <code>WorkerCount</code> is ignored.</td></tr><tr><td>StreamMap</td><td>Provides a mapping function for encoders that do not support <code>streamid</code>. When a connection comes in without a <code>streamid</code> on a specific port, <code>StreamMap</code> maps that port directly to the specified <code>StreamPath</code>.</td></tr></tbody></table>
+<table><thead><tr><th width="212">Property</th><th>Description</th></tr></thead><tbody><tr><td>Port</td><td>Specifies the listening ports for SRT connections. Multiple ports can be bound by separating them with commas.</td></tr><tr><td>WorkerCount (default : 1)</td><td>Defines the number of worker threads for handling SRT sockets. Increasing this value helps distribute traffic when there are many incoming sessions.</td></tr><tr><td>ThreadPerSocket (default : false)</td><td>Determines whether each socket is assigned a dedicated thread. If set to <strong>true</strong>, a new thread is created for every session when it connects and terminated when the session ends, while `WorkerCount` is ignored.</td></tr><tr><td>StreamMap</td><td>Provides a mapping function for encoders that do not support `streamid`. When a connection comes in without a `streamid` on a specific port, `StreamMap` maps that port directly to the specified `StreamPath`.</td></tr></tbody></table>
 
-{% hint style="warning" %}
+
+:::warning
+
 Using `ThreadPerSocket` can prevent a session thread from blocking while waiting for the Control Server to respond during AdmissionWebhooks, which would otherwise stop other sessions from proceeding. However, if too many sessions are connected, the overhead from thread context switching can become very high. On a 16-core system, practical cases have shown that around 100 sessions can run without issues.
-{% endhint %}
+
+:::
+
 
 ### Application
 
@@ -67,7 +74,7 @@ OBS Studio 25.0 or later supports SRT. Please refer to the [OBS official documen
 
 `srt://{OvenMediaEngine Host}:{SRT Port}?streamid={streamid}`
 
-<figure><img src="../.gitbook/assets/image (6).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-6.png)
 
 ### Blackmagic Web Presenter
 
@@ -78,7 +85,7 @@ Server: srt://{OvenMediaEngine Host}:{SRT Port}
 Key: {streamid}
 ```
 
-The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](https://docs.ovenmediaengine.com/v/0.16.4/live-source/srt-beta#blackmagic-web-presenter)
+The default streaming profiles work well, and there are more advanced configuration options available if you [edit the streaming.xml settings file](srt.md#blackmagic-web-presenter)
 
 ## Multiple Audio Track
 

@@ -1,12 +1,15 @@
-# ScheduledChannel
+---
+title: ScheduledChannel
+sidebar_position: 52
+---
 
 ScheduledChannel allows you to create a live channel by scheduling pre-recorded files has been added to OvenMediaEngine. Other services or software call this Pre-recorded Live or File Live, but OvenMediaEngine plans to expand the function to organize live channels as a source, so we named it Scheduled Channel.
 
 ScheduledChannel can be controlled by API or file. For more information about ScheduledChannel, see below.
 
-{% content-ref url="../../../../live-source/scheduled-channel.md" %}
+
 [scheduled-channel.md](../../../../live-source/scheduled-channel.md)
-{% endcontent-ref %}
+
 
 
 
@@ -14,13 +17,13 @@ The body of the API all has the same structure as the ScheduledChannel schedule 
 
 ## Get Channel List
 
-Get all scheduled channels in the {vhost name}/{app name} application.
+Get all scheduled channels in the &#x7B;vhost name&#x7D;/&#x7B;app name&#x7D; application.
 
 > **Request**
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps/{app}/<strong>scheduledChannels</strong></summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/<strong>scheduledChannels</strong></summary>
 
 **Header**
 
@@ -37,7 +40,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -70,7 +73,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -93,7 +96,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -122,7 +125,7 @@ Create a Scheduled channel.
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}/<strong>scheduledChannels</strong></summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/<strong>scheduledChannels</strong></summary>
 
 **Header**
 
@@ -215,7 +218,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:blue;">201</mark> Created</summary>
+<summary><span class="http-method http-method-201">201</span> Created</summary>
 
 A stream has been created.
 
@@ -243,7 +246,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json Object or does not have a required value
 
@@ -251,7 +254,7 @@ Invalid request. Body is not a Json Object or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -274,7 +277,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -291,7 +294,7 @@ The given vhost name or app name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 A stream with the same name already exists
 
@@ -299,7 +302,7 @@ A stream with the same name already exists
 
 <details>
 
-<summary><mark style="color:red;">502</mark> Bad Gateway</summary>
+<summary><span class="http-method http-method-502">502</span> Bad Gateway</summary>
 
 Failed to pull provided URL
 
@@ -307,7 +310,7 @@ Failed to pull provided URL
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Unknown error
 
@@ -321,7 +324,7 @@ Update the schedule. `<Stream>` cannot be PATCHed.
 
 <details>
 
-<summary><mark style="color:blue;">PATCH</mark> /v1/vhosts/{vhost}/apps/{app}/<strong>scheduledChannels/{channel name}</strong></summary>
+<summary><span class="http-method http-method-patch">PATCH</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/<strong>scheduledChannels/&#x7B;channel name&#x7D;</strong></summary>
 
 #### **Header**
 
@@ -387,7 +390,7 @@ Write the value you want to modify. However, name and outputProfiles cannot be m
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -410,7 +413,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.&#x20;
 
@@ -425,7 +428,7 @@ Invalid request.&#x20;
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -448,7 +451,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or application name could not be found.
 
@@ -471,7 +474,7 @@ Get detailed information of scheduled channel. It also provides information abou
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps/{app}/<strong>scheduledChannels</strong>/{channel name}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/<strong>scheduledChannels</strong>/&#x7B;channel name&#x7D;</summary>
 
 **Header**
 
@@ -488,7 +491,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -557,7 +560,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -580,7 +583,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -609,7 +612,7 @@ Delete Scheduled Channel
 
 <details>
 
-<summary><mark style="color:blue;">DELETE</mark> /v1/vhosts/{vhost}/apps/{app}/<strong>scheduledChannels/{channel name}</strong></summary>
+<summary><span class="http-method http-method-delete">DELETE</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/<strong>scheduledChannels/&#x7B;channel name&#x7D;</strong></summary>
 
 **Header**
 
@@ -626,7 +629,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -655,7 +658,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -678,7 +681,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 

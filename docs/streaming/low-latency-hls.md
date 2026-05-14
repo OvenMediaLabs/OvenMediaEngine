@@ -1,10 +1,13 @@
-# Low-Latency HLS
+---
+title: Low-Latency HLS
+sidebar_position: 25
+---
 
 Apple supports Low-Latency HLS (LLHLS), which enables low-latency video streaming while maintaining scalability. LLHLS enables broadcasting with an end-to-end latency of about 2 to 5 seconds. OvenMediaEngine officially supports LLHLS as of v0.14.0.
 
 LLHLS is an extension of HLS, so legacy HLS players can play LLHLS streams. However, the legacy HLS player plays the stream without using the low-latency function.
 
-<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td><code>http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8</code></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td>`http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8`</td></tr></tbody></table>
 
 ## Configuration
 
@@ -56,19 +59,23 @@ To use LLHLS, you need to add the `<LLHLS>` elements to the `<Publishers>` in th
 | `ChunkDuration`   | Set the partial segment length to fractional seconds. This value affects low-latency HLS player. We recommend **`0.2`** seconds for this value.                                                                                                |
 | `SegmentDuration` | Set the length of the segment in seconds. Therefore, a shorter value allows the stream to start faster. However, a value that is too short will make legacy HLS players unstable. Apple recommends **`6`** seconds for this value.             |
 | `SegmentCount`    | The number of segments listed in the playlist. This value has little effect on LLHLS players, so use **`10`** as recommended by Apple. 5 is recommended for legacy HLS players. Do not set below `3`. It can only be used for experimentation. |
-| `CrossDomains`    | Control the domain in which the player works through `<CrossDomain>`. For more information, please refer to the [CrossDomain](/broken/pages/-LceAWo6lMtkZlNTfsM4#crossdomain) section.                                                         |
+| `CrossDomains`    | Control the domain in which the player works through `<CrossDomains>`. For more information, please refer to the [CrossDomains](../crossdomains.md) section.                                                         |
 
 
 
-{% hint style="info" %}
+
+:::info
+
 HTTP/2 outperforms HTTP/1.1, especially with LLHLS. Since all current browsers only support h2, HTTP/2 is supported only on TLS port. Therefore, it is highly recommended to use LLHLS on the TLS port.
-{% endhint %}
+
+:::
+
 
 ## Adaptive Bitrates Streaming (ABR)
 
 LLHLS can deliver adaptive bitrate streaming. OME encodes the same source with multiple renditions and delivers it to the players. And LLHLS Player, including OvenPlayer, selects the best quality rendition according to its network environment. Of course, these players also provide option for users to manually select rendition.
 
-See the [Adaptive Bitrates Streaming](../transcoding/#adaptive-bitrates-streaming-abr) section for how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for how to configure renditions.
 
 ## CrossDomain
 
@@ -78,7 +85,7 @@ For information on CrossDomains, see [CrossDomains ](../crossdomains.md)chapter.
 
 LLHLS is ready when a live source is inputted and a stream is created. Viewers can stream using OvenPlayer or other players.
 
-If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/).
+If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/README.md).
 
 ```markup
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
@@ -131,7 +138,7 @@ ID3 Timed metadata can be sent to the LLHLS stream through the [Send Event API](
 
 You can dump the LLHLS stream for VoD. You can enable it by setting the following in `<Application>/<Publishers>/<LLHLS>`. Dump function can also be controlled by [Dump API](../rest-api/v1/virtualhost/application/stream/hls-dump.md).
 
-{% code overflow="wrap" %}
+
 ```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/Publishers -->
 <LLHLS>
@@ -152,7 +159,7 @@ You can dump the LLHLS stream for VoD. You can enable it by setting the followin
     ...
 </LLHLS>
 ```
-{% endcode %}
+
 
 `<TargetStreamName>`
 
@@ -185,13 +192,13 @@ The folder to output to. In the `<OutputPath>` you can use the macros shown in t
 
 OvenMediaEngine supports Multiple Audio Tracks in LLHLS. When multiple audio signals are input through a Provider, the LLHLS Publisher can utilize them to provide multiple audio tracks.
 
-<figure><img src="../.gitbook/assets/image (1) (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-1-1-1-1-1.png)
 
 By simply sending multiple audio signals through SRT or Scheduled Channel, the LLHLS Publisher can provide multiple audio tracks. For example, to send multiple audio signals via SRT from OBS, you need to select multiple Audio Tracks and configure the Advanced Audio Properties to assign the appropriate audio to each track.
 
-<figure><img src="../.gitbook/assets/image (2) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-2-1-1-1.png)
 
-<figure><img src="../.gitbook/assets/image (3) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-3-1-1.png)
 
 Since the incoming audio signals do not have labels, you can enhance usability by assigning labels to each audio signal as follows.
 
@@ -262,9 +269,13 @@ To assign labels to audio signals in the SRT Provider, configure the `<AudioMap>
 
 OvenMediaEngine supports Widevine and Fairplay in LLHLS with simple setup since version 0.16.0.
 
-{% hint style="warning" %}
+
+:::warning
+
 Currently, DRM is only supported for H.264 and AAC codecs. Support for H.265 will be added soon.
-{% endhint %}
+
+:::
+
 
 To include DRM information in your LLHLS Publisher configuration, follow these steps. You can set the `<InfoFile>` path as either a relative path, starting from the directory where `Server.xml` is located, or as an absolute path.
 
@@ -325,13 +336,17 @@ Currently, `<CencProtectScheme>` only supports `cbcs` since FairPlay also suppor
 
 OvenPlayer now includes DRM-related options. Enable DRM and input the License URL. Your content is now securely protected.
 
-<figure><img src="../.gitbook/assets/image (30).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-30.png)
 
 ### Pallycon DRM
 
-{% hint style="danger" %}
-Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmediaengine-enterprise.gitbook.io/docs/getting-started/getting-started-with-ubuntu) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
-{% endhint %}
+
+:::danger
+
+Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmedialabs.com/docs/ome-enterprise/pre-built-package-installation/getting-started/getting-started-with-linux) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
+
+:::
+
 
 OvenMediaEngine integrates with [Pallycon](https://pallycon.com/), allowing you to more easily apply DRM to LLHLS streams.
 

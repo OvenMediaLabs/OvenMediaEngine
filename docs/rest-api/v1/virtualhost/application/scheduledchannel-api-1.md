@@ -1,12 +1,15 @@
-# MultiplexChannel
+---
+title: MultiplexChannel
+sidebar_position: 53
+---
 
 Using MultiplexChannel, you can combine multiple internal streams into one ABR stream, or duplicate the stream and send it to another application.
 
 MultiplexChannel can be controlled by API or file. See below for more information about MultiplexChannel.
 
-{% content-ref url="../../../../live-source/multiplex-channel.md" %}
+
 [multiplex-channel.md](../../../../live-source/multiplex-channel.md)
-{% endcontent-ref %}
+
 
 
 
@@ -14,13 +17,13 @@ The body of the API all has the same structure as the mux file.
 
 ## Get Channel List
 
-Get all multiplex channels in the {vhost name}/{app name} application.
+Get all multiplex channels in the &#x7B;vhost name&#x7D;/&#x7B;app name&#x7D; application.
 
 > **Request**
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps/{app}/multiplex<strong>Channels</strong></summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/multiplex<strong>Channels</strong></summary>
 
 **Header**
 
@@ -37,7 +40,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -70,7 +73,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -93,7 +96,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -122,7 +125,7 @@ Create a multiplex channel.
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}/multiplex<strong>Channels</strong></summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/multiplex<strong>Channels</strong></summary>
 
 **Header**
 
@@ -208,7 +211,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:blue;">201</mark> Created</summary>
+<summary><span class="http-method http-method-201">201</span> Created</summary>
 
 A stream has been created.
 
@@ -236,7 +239,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json Object or does not have a required value
 
@@ -244,7 +247,7 @@ Invalid request. Body is not a Json Object or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -267,7 +270,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -284,7 +287,7 @@ The given vhost name or app name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 A stream with the same name already exists
 
@@ -292,7 +295,7 @@ A stream with the same name already exists
 
 <details>
 
-<summary><mark style="color:red;">502</mark> Bad Gateway</summary>
+<summary><span class="http-method http-method-502">502</span> Bad Gateway</summary>
 
 Failed to pull provided URL
 
@@ -300,7 +303,7 @@ Failed to pull provided URL
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Unknown error
 
@@ -314,7 +317,7 @@ Get detailed information of multiplex channel. It also provides information abou
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps/{app}/multiplex<strong>Channels</strong>/{channel name}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/multiplex<strong>Channels</strong>/&#x7B;channel name&#x7D;</summary>
 
 **Header**
 
@@ -331,7 +334,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -419,7 +422,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -442,7 +445,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 
@@ -471,7 +474,7 @@ Delete Multiplex Channel
 
 <details>
 
-<summary><mark style="color:blue;">DELETE</mark> /v1/vhosts/{vhost}/apps/{app}/multiplex<strong>Channels/{channel name}</strong></summary>
+<summary><span class="http-method http-method-delete">DELETE</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/multiplex<strong>Channels/&#x7B;channel name&#x7D;</strong></summary>
 
 **Header**
 
@@ -488,7 +491,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -517,7 +520,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -540,7 +543,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 

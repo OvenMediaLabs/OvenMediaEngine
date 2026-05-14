@@ -1,28 +1,34 @@
 ---
-description: Beta
+title: HLS
+sidebar_position: 26
 ---
 
-# HLS
+:::warning
 
-{% hint style="warning" %}
 `MaxDuration`HLS is still in development and some features such as SignedPolicy and AdmissionWebhooks are not supported.
-{% endhint %}
+
+:::
+
 
 HLS based on MPEG-2 TS containers is still useful because it provides high compatibility, including support for older devices. Therefore, OvenMediaEngine decided to officially support HLS version 7+ based on fragmented MP4 containers, called LL-HLS, as well as HLS version 3+ based on MPEG-2 TS containers.
 
-<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td><p>MPEG-2 TS</p><p>(Only supports Audio/Video muxed)</p></td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td><p>H.264, H.265, AAC</p><ul><li>Apple Safari does not support H.265 (HEVC) in MPEG-TS format.</li></ul></td></tr><tr><td>Default URL Pattern</td><td><p><code>http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:master.m3u8</code></p><p><code>http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/master.m3u8?format=ts</code></p></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td><p>MPEG-2 TS</p><p>(Only supports Audio/Video muxed)</p></td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td><p>H.264, H.265, AAC</p><ul><li>Apple Safari does not support H.265 (HEVC) in MPEG-TS format.</li></ul></td></tr><tr><td>Default URL Pattern</td><td><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:master.m3u8`</p><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/master.m3u8?format=ts`</p></td></tr></tbody></table>
 
 
 
-{% hint style="info" %}
+
+:::info
+
 To differentiate between LLHLS and HLS playback addresses, we created the following rule for HLS playback addresses:
 
 `http[s]://domain[:port]/<app name>/<stream name>/ts:<playlist file name>.m3u8`
 
 or
 
-`http[s]://domain[:port]/<app name>/<stream name>/<playlist file name>.m3u8`<mark style="color:blue;">**`?format=ts`**</mark>
-{% endhint %}
+`http[s]://domain[:port]/<app name>/<stream name>/<playlist file name>.m3u8`**`?format=ts`**
+
+:::
+
 
 ## Configuration
 
@@ -66,19 +72,23 @@ To use HLS, you need to add the `<HLS>` elements to the `<Publishers>` in the co
 </Server>
 ```
 
-<table><thead><tr><th width="241">Element</th><th>Decscription</th></tr></thead><tbody><tr><td><code>Bind</code></td><td>Set the HTTP ports to provide HLS.</td></tr><tr><td><code>SegmentDuration</code></td><td>Set the length of the segment in seconds. Therefore, a shorter value allows the stream to start faster. However, a value that is too short will make legacy HLS players unstable. Apple recommends <strong><code>6</code></strong> seconds for this value.</td></tr><tr><td><code>SegmentCount</code></td><td>The number of segments listed in the playlist. <strong><code>5</code></strong> is recommended for HLS players. Do not set below <code>3</code>. It can only be used for experimentation.</td></tr><tr><td><code>CrossDomains</code></td><td>Control the domain in which the player works through <code>&#x3C;CrossDomain></code>. For more information, please refer to the <a href="../crossdomains.md">CrossDomains</a> section.</td></tr><tr><td><code>DVR</code></td><td><p><strong>Enable</strong> <br>You can turn DVR on or off.</p><p><strong>EventPlaylistType</strong> <br>Inserts <code>#EXT-X-PLAYLIST-TYPE: EVENT</code> into the m3u8 file.</p><p><strong>TempStoragePath</strong> <br>Specifies a temporary folder to store old segments.</p><p><strong>MaxDuration</strong> <br>Sets the maximum duration of recorded files in milliseconds.</p></td></tr></tbody></table>
+<table><thead><tr><th width="241">Element</th><th>Decscription</th></tr></thead><tbody><tr><td>`Bind`</td><td>Set the HTTP ports to provide HLS.</td></tr><tr><td>`SegmentDuration`</td><td>Set the length of the segment in seconds. Therefore, a shorter value allows the stream to start faster. However, a value that is too short will make legacy HLS players unstable. Apple recommends <strong>`6`</strong> seconds for this value.</td></tr><tr><td>`SegmentCount`</td><td>The number of segments listed in the playlist. <strong>`5`</strong> is recommended for HLS players. Do not set below `3`. It can only be used for experimentation.</td></tr><tr><td>`CrossDomains`</td><td>Control the domain in which the player works through <code>&#x3C;CrossDomain></code>. For more information, please refer to the <a href="../crossdomains.md">CrossDomains</a> section.</td></tr><tr><td>`DVR`</td><td><p><strong>Enable</strong> <br />You can turn DVR on or off.</p><p><strong>EventPlaylistType</strong> <br />Inserts `#EXT-X-PLAYLIST-TYPE: EVENT` into the m3u8 file.</p><p><strong>TempStoragePath</strong> <br />Specifies a temporary folder to store old segments.</p><p><strong>MaxDuration</strong> <br />Sets the maximum duration of recorded files in milliseconds.</p></td></tr></tbody></table>
 
 
 
-{% hint style="warning" %}
+
+:::warning
+
 Safari Native Player only provides the Seek UI if `#EXT-X-PLAYLIST-TYPE: EVENT` is present. Since it is specified that nothing can be removed from the playlist when it is of type EVENT, you must call the [concludeHlsLive API](../rest-api/v1/virtualhost/application/stream/conclude-hls-live.md) to switch to VoD or terminate the stream before `<MaxDuration>` is exceeded if you use this option. Otherwise, unexpected behavior may occur in the Safari Player.
-{% endhint %}
+
+:::
+
 
 ## Playback
 
 HLS is ready when a live source is inputted and a stream is created. Viewers can stream using OvenPlayer or other players.
 
-If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/).
+If your input stream is already h.264/aac, you can use the input stream as is like below. If not, or if you want to change the encoding quality, you can do [Transcoding](../transcoding/README.md).
 
 ```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
@@ -115,13 +125,17 @@ We have prepared a test player that you can quickly see if OvenMediaEngine is wo
 
 HLS can deliver adaptive bitrate streaming. OME encodes the same source with multiple renditions and delivers it to the players. And HLS Player, including OvenPlayer, selects the best quality rendition according to its network environment. Of course, these players also provide option for users to manually select rendition.
 
-See the [Adaptive Bitrates Streaming](../transcoding/#adaptive-bitrates-streaming-abr) section for how to configure renditions.
+See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for how to configure renditions.
 
 HLS Publisher basically creates the `master.m3u8` Playlist using the first video track and the first audio track. If you want to create a new playlist for ABR, you can add it to Server.xml as follows:
 
-{% hint style="info" %}
-Since TS files used in HLS must have A/V pre-muxed, the Playlist must have the <mark style="color:orange;">`EnableTsPackaging`</mark> option set.
-{% endhint %}
+
+:::info
+
+Since TS files used in HLS must have A/V pre-muxed, the Playlist must have the `EnableTsPackaging` option set.
+
+:::
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -229,7 +243,7 @@ You can create as long a playlist as you want by setting `<DVR>` to the HLS publ
 
 You can dump the HLS stream for VoD. You can enable it by setting the following in `<Application><Publishers><HLS>`. Unlike LLHLS, dump function cannot be controlled by REST API at this time.
 
-{% code overflow="wrap" %}
+
 ```xml
 <HLS>
     <Dumps>
@@ -247,7 +261,7 @@ You can dump the HLS stream for VoD. You can enable it by setting the following 
     ...
 </HLS>
 ```
-{% endcode %}
+
 
 **TargetStreamName**
 
@@ -263,15 +277,15 @@ The folder to output to. In the OutputPath you can use the macros shown in the t
 
 | Macro         | Description                    |
 | ------------- | ------------------------------ |
-| ${VHostName}  | Virtual Host Name              |
-| ${AppName}    | Application Name               |
-| ${StreamName} | Stream Name                    |
-| ${YYYY}       | Year                           |
-| ${MM}         | Month                          |
-| ${DD}         | Day                            |
-| ${hh}         | Hour                           |
-| ${mm}         | Minute                         |
-| ${ss}         | Second                         |
-| ${S}          | Timezone                       |
-| ${z}          | UTC offset (ex: +0900)         |
-| ${ISO8601}    | Current time in ISO8601 format |
+| $&#x7B;VHostName&#x7D;  | Virtual Host Name              |
+| $&#x7B;AppName&#x7D;    | Application Name               |
+| $&#x7B;StreamName&#x7D; | Stream Name                    |
+| $&#x7B;YYYY&#x7D;       | Year                           |
+| $&#x7B;MM&#x7D;         | Month                          |
+| $&#x7B;DD&#x7D;         | Day                            |
+| $&#x7B;hh&#x7D;         | Hour                           |
+| $&#x7B;mm&#x7D;         | Minute                         |
+| $&#x7B;ss&#x7D;         | Second                         |
+| $&#x7B;S&#x7D;          | Timezone                       |
+| $&#x7B;z&#x7D;          | UTC offset (ex: +0900)         |
+| $&#x7B;ISO8601&#x7D;    | Current time in ISO8601 format |

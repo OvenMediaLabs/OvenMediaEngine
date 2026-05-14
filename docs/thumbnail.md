@@ -1,4 +1,7 @@
-# Thumbnail
+---
+title: Thumbnail
+sidebar_position: 35
+---
 
 OvenMediaEngine can generate thumbnails from live streams. This allows you to organize a broadcast list on your website or monitor multiple streams at the same time.
 
@@ -61,9 +64,13 @@ To publish thumbnails, you need to set up an encoding profile. You can choose **
 
 <table><thead><tr><th width="149">Encode Type</th><th width="177.33333333333331">Codec</th><th>Codec of Configuration</th></tr></thead><tbody><tr><td>Image</td><td>JPEG</td><td>jpeg</td></tr><tr><td></td><td>PNG</td><td>png</td></tr><tr><td></td><td>WEBP</td><td>webp</td></tr></tbody></table>
 
-{% hint style="warning" %}
+
+:::warning
+
 The image encoding profile is only used by thumbnail publishers. and, bypass option is not supported.
-{% endhint %}
+
+:::
+
 
 ### Publisher
 
@@ -94,9 +101,13 @@ When the setting is made for the thumbnail and the stream is input, you can view
 
 For use cases without video (re)encoding, OME can be set to only decode the keyframes of incoming streams. This is a massive performance increase when all you are using the encoder for is generating thumbnails.
 
-{% hint style="info" %}
+
+:::info
+
 _Supported since OvenmediaEngine version 0.17.2_
-{% endhint %}
+
+:::
+
 
 ```xml
 <OutputProfiles>

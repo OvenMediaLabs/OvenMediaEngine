@@ -1,10 +1,13 @@
-# AdmissionWebhooks
+---
+title: AdmissionWebhooks
+sidebar_position: 31
+---
 
 ## Overview
 
 AdmissionWebhooks are HTTP callbacks that query the control server to control publishing and playback admission requests.
 
-![](<../.gitbook/assets/image (33).png>)
+![](../images/image-33.png)
 
 Users can use the AdmissionWebhook for a variety of purposes, including customer authentication, tracking published streams, hide app/stream names, logging and more.
 
@@ -28,7 +31,9 @@ AdmissionWebhooks can be set up on VirtualHost, as shown below.
 
 <table><thead><tr><th width="290">Key</th><th>Description</th></tr></thead><tbody><tr><td>ControlServerUrl</td><td>The HTTP Server to receive the query. HTTP and HTTPS are available.</td></tr><tr><td>SecretKey</td><td><p>The secret key used when encrypting with HMAC-SHA1</p><p>For more information, see <a href="admission-webhooks.md#security">Security</a>.</p></td></tr><tr><td>Timeout</td><td>Time to wait for a response after request (in milliseconds).</td></tr><tr><td>Enables</td><td>Enable Providers and Publishers to use AdmissionWebhooks.</td></tr></tbody></table>
 
-{% hint style="warning" %}
+
+:::warning
+
 If the Control Server does not respond quickly enough, AdmissionWebhooks may occupy a socket thread.\
 In this situation, increasing `WorkerCount` can distribute the load across multiple threads, but other sessions sharing the same thread may still be blocked until the Control Server responds.
 
@@ -46,7 +51,9 @@ Note that creating too many threads can increase context switching overhead. The
 		    <ThreadPerSocket>true</ThreadPerSocket>
       </RTMP>
 ```
-{% endhint %}
+
+:::
+
 
 ## Request
 
@@ -84,15 +91,19 @@ The message is sent in POST method and the payload is in application/json format
 
 Here is a detailed explanation of each element of Json payload:
 
-<table><thead><tr><th width="138">Element</th><th width="162">Sub-Element</th><th>Description</th></tr></thead><tbody><tr><td>client</td><td></td><td>Information of the client who requested the connection.</td></tr><tr><td></td><td>address</td><td>IP address of the client connected to the server.</td></tr><tr><td></td><td>port</td><td>Port number of the client connected to the server.</td></tr><tr><td></td><td>real_ip</td><td>IP address of the client forwarded by the proxy server.</td></tr><tr><td></td><td>user_agent<br>(optional)</td><td>Client's User_Agent.</td></tr><tr><td>request</td><td></td><td>Information about the client's request.</td></tr><tr><td></td><td>direction</td><td><p>incoming : A client requests to publish a stream.</p><p>outgoing : A client requests to play a stream.</p></td></tr><tr><td></td><td>protocol</td><td>webrtc, srt, rtmp, llhls, thumbnail</td></tr><tr><td></td><td>status</td><td><p>opening : A client requests to open a stream.</p><p>closing : A client closed the stream.</p></td></tr><tr><td></td><td>url</td><td>url requested by the client.</td></tr><tr><td></td><td>new_url<br>(optional)</td><td>url redirected from user's control server (status "closing" only).</td></tr><tr><td></td><td>time</td><td>time requested by the client (ISO8601 format).</td></tr></tbody></table>
+<table><thead><tr><th width="138">Element</th><th width="162">Sub-Element</th><th>Description</th></tr></thead><tbody><tr><td>client</td><td></td><td>Information of the client who requested the connection.</td></tr><tr><td></td><td>address</td><td>IP address of the client connected to the server.</td></tr><tr><td></td><td>port</td><td>Port number of the client connected to the server.</td></tr><tr><td></td><td>real_ip</td><td>IP address of the client forwarded by the proxy server.</td></tr><tr><td></td><td>user_agent<br />(optional)</td><td>Client's User_Agent.</td></tr><tr><td>request</td><td></td><td>Information about the client's request.</td></tr><tr><td></td><td>direction</td><td><p>incoming : A client requests to publish a stream.</p><p>outgoing : A client requests to play a stream.</p></td></tr><tr><td></td><td>protocol</td><td>webrtc, srt, rtmp, llhls, thumbnail</td></tr><tr><td></td><td>status</td><td><p>opening : A client requests to open a stream.</p><p>closing : A client closed the stream.</p></td></tr><tr><td></td><td>url</td><td>url requested by the client.</td></tr><tr><td></td><td>new_url<br />(optional)</td><td>url redirected from user's control server (status "closing" only).</td></tr><tr><td></td><td>time</td><td>time requested by the client (ISO8601 format).</td></tr></tbody></table>
 
-{% hint style="info" %}
+
+:::info
+
 OME searches for and sets the values ​​in real\_ip in the following order:
 
 1. The value of the X-REAL-IP header&#x20;
 2. The value of the first item of X-FORWARDED-FOR&#x20;
 3. The IP of the client that is actually connected
-{% endhint %}
+
+:::
+
 
 ### Security
 
@@ -106,7 +117,7 @@ As shown below, the trigger condition of request is different for each protocol.
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | WebRTC   | When a client requests Offer SDP                                                                                         |
 | RTMP     | When a client sends a publish message                                                                                    |
-| SRT      | When a client send a [streamid](https://docs.ovenmediaengine.com/live-source/srt-beta#encoders-and-streamid) |
+| SRT      | When a client send a [streamid](../live-source/srt.md#encoders-and-streamid) |
 | LLHLS    | When a client requests a playlist (llhls.m3u8)                                                                           |
 
 ## Response for closing status

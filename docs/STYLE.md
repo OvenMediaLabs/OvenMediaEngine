@@ -1,4 +1,4 @@
-# Authoring Guide — `docs-site/`
+# Authoring Guide — `docs/`
 
 This folder contains the **MDX source** for the ovenmedialabs.com manual.
 Edits land on the live site after a `git subtree pull` from this repo.
@@ -108,7 +108,7 @@ sudo make install
 
 ## Images
 
-Put images in `docs-site/images/` and reference them with a relative
+Put images in `docs/images/` and reference them with a relative
 path:
 
 ```mdx
@@ -163,4 +163,4 @@ labels and order, drop a `_category_.json`:
 ## Questions?
 
 Ping `#docs` on Slack, or file an issue on this repo with the
-`docs-site` label.
+`docs` label.

@@ -1,4 +1,7 @@
-# MPEG-2 TS
+---
+title: MPEG-2 TS
+sidebar_position: 14
+---
 
 From version 0.10.4, MPEG-2 TS input is supported. The supported codecs are H.264, AAC (ADTS). Supported codecs will continue to be added. And the current version only supports basic MPEG-2 TS with 188 bytes packet size. Since the information about the input stream is obtained using `PAT` and `PMT`, the client must send this table information as required.
 
@@ -16,7 +19,7 @@ To use multiple streams, it is necessary to bind multiple ports, so we provide a
 
 First, name the stream and map the port bound above. The macro `${Port}`is provided to map multiple streams at once. Check out the example below.
 
-{% code overflow="wrap" %}
+
 ```xml
 <!-- /Server/Bind -->
 <Providers>
@@ -56,13 +59,13 @@ First, name the stream and map the port bound above. The macro `${Port}`is provi
     </MPEGTS>
 </Providers>
 ```
-{% endcode %}
+
 
 ## Publish
 
 This is an example of publishing using FFMPEG.
 
-{% code overflow="wrap" %}
+
 ```markup
 # Video / Audio
 ffmpeg.exe -re -stream_loop -1 -i <file.ext> -c:v libx264 -bf 0 -x264-params keyint=30:scenecut=0  -acodec aac -pes_payload_size 0 -f mpegts udp://<IP>:4000?pkt_size=1316
@@ -73,8 +76,12 @@ ffmpeg.exe -re -stream_loop -1 -i <file.ext> -c:v libx264 -bf 0 -x264-params key
 # Audio only
 ffmpeg.exe -re -stream_loop -1 -i <file.ext> -vn  -acodec aac -pes_payload_size 0 -f mpegts udp://<IP>:4000?pkt_size=1316
 ```
-{% endcode %}
 
-{% hint style="info" %}
+
+
+:::info
+
 Giving the -pes\_payload\_size 0 option to the AAC codec is very important for AV synchronization and low latency. If this option is not given, FFMPEG bundles several ADTSs and is transmitted at once, which may cause high latency and AV synchronization errors.
-{% endhint %}
+
+:::
+

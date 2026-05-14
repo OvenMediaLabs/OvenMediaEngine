@@ -1,4 +1,10 @@
-# Getting Started
+---
+title: Getting Started
+sidebar_position: 4
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 ## Getting Started with Docker Image
 
@@ -16,9 +22,13 @@ OvenMediaEngine requires **CMake 3.24 or later**. Check your installed version w
 cmake --version
 ```
 
-{% hint style="warning" %}
+
+:::warning
+
 The CMake version provided by some system package managers (e.g., `apt-get` on Ubuntu 22) may be older than 3.24. If your version does not meet the requirement, install a recent version from the [official CMake website](https://cmake.org/download/).
-{% endhint %}
+
+:::
+
 
 ### **Building & Running**
 
@@ -31,8 +41,10 @@ tar xvfz OvenMediaEngine-master.tar.gz
 
 Then build and install using the commands for your platform:
 
-{% tabs %}
-{% tab title="Ubuntu 18" %}
+
+<Tabs>
+<TabItem value="ubuntu-18" label="Ubuntu 18">
+
 ```bash
 sudo apt-get update
 sudo apt-get install -y build-essential ninja-build pkg-config
@@ -45,9 +57,10 @@ sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
 sudo systemctl enable ovenmediaengine.service
 ```
-{% endtab %}
 
-{% tab title="Fedora 28" %}
+</TabItem>
+<TabItem value="fedora-28" label="Fedora 28">
+
 ```bash
 sudo dnf update
 sudo dnf install -y ninja-build pkg-config
@@ -60,9 +73,10 @@ sudo systemctl start ovenmediaengine
 # If you want automatically start on boot
 sudo systemctl enable ovenmediaengine.service
 ```
-{% endtab %}
 
-{% tab title="Rocky Linux 8" %}
+</TabItem>
+<TabItem value="rocky-linux-8" label="Rocky Linux 8">
+
 ```bash
 sudo dnf update
 sudo dnf install -y 'dnf-command(config-manager)'
@@ -78,9 +92,9 @@ sudo systemctl start ovenmediaengine
 sudo systemctl enable ovenmediaengine.service
 ```
 
-{% endtab %}
+</TabItem>
+<TabItem value="almalinux-8" label="AlmaLinux 8">
 
-{% tab title="AlmaLinux 8" %}
 ```bash
 sudo dnf update
 sudo dnf install -y 'dnf-command(config-manager)'
@@ -96,12 +110,17 @@ sudo systemctl start ovenmediaengine
 sudo systemctl enable ovenmediaengine.service
 ```
 
-{% endtab %}
-{% endtabs %}
+</TabItem>
+</Tabs>
 
-{% hint style="info" %}
+
+
+:::info
+
 if `systemctl start ovenmediaengine` fails in Fedora, SELinux may be the cause. See [Check SELinux section of Troubleshooting](../troubleshooting.md#check-selinux).
-{% endhint %}
+
+:::
+
 
 ## Ports used by default
 
@@ -113,14 +132,18 @@ The default configuration uses the following ports, so you need to open it in yo
 | 9999/UDP                    | SRT Input                                                                                                                                |
 | 4000/UDP                    | MPEG-2 TS Input                                                                                                                          |
 | 9000/TCP                    | Origin Server (OVT)                                                                                                                      |
-| <p>3333/TCP<br>3334/TLS</p> | <p>LLHLS Streaming<br><mark style="color:red;"><strong>* Streaming over Non-TLS is not allowed with modern browsers.</strong></mark></p> |
-| <p>3333/TCP<br>3334/TLS</p> | WebRTC Signaling (both ingest and streaming)                                                                                             |
+| <p>3333/TCP<br />3334/TLS</p> | <p>LLHLS Streaming<br /><strong>* Streaming over Non-TLS is not allowed with modern browsers.</strong></p> |
+| <p>3333/TCP<br />3334/TLS</p> | WebRTC Signaling (both ingest and streaming)                                                                                             |
 | 3478/TCP                    | WebRTC TCP relay (TURN Server, both ingest and streaming)                                                                                |
 | 10000 - 10009/UDP           | WebRTC Ice candidate (both ingest and streaming)                                                                                         |
 
-{% hint style="warning" %}
+
+:::warning
+
 To use TLS, you must set up a certificate. See [TLS Encryption](../configuration/tls-encryption.md) for more information.
-{% endhint %}
+
+:::
+
 
 You can open firewall ports as in the following example:
 

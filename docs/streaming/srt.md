@@ -1,8 +1,11 @@
-# SRT
+---
+title: SRT
+sidebar_position: 27
+---
 
 OvenMediaEngine supports playback of streams delivered via RTMP, WebRTC, SRT, MPEG-2 TS, and RTSP using SRT-compatible players or integration with other SRT-enabled systems.
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>MPEG-2 TS</td></tr><tr><td>Transport</td><td>SRT</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td><code>srt://{OvenMediaEngine Host}:{SRT Port}?streamid={Virtual Host Name}/{App Name}/{Stream Name}/master</code></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>MPEG-2 TS</td></tr><tr><td>Transport</td><td>SRT</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td>`srt://{OvenMediaEngine Host}:{SRT Port}?streamid={Virtual Host Name}/{App Name}/{Stream Name}/master`</td></tr></tbody></table>
 
 Currently, OvenMediaEngine supports H.264, H.265, AAC codecs for SRT playback, ensuring the same compatibility as its [SRT provider functionality](../live-source/srt.md).
 
@@ -33,9 +36,13 @@ To configure the port for SRT to listen on, use the following settings:
 </Server>
 ```
 
-{% hint style="warning" %}
+
+:::warning
+
 The SRT Publisher must be configured to use a different port than the one used by the SRT Provider.
-{% endhint %}
+
+:::
+
 
 ### Application
 
@@ -92,31 +99,35 @@ If you have multiple audio tracks, you can choose one with `-ast` parameter
 $ ffplay "srt://192.168.0.160:9998?streamid=default/app/stream/master" -ast 1
 ```
 
-<figure><img src="../.gitbook/assets/image (2) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-2-1.png)
 
 ### OBS Studio
 
 OBS Studio offers the ability to add an SRT stream as an input source. To use this feature, follow the steps below to add a Media Source:
 
-<figure><img src="../.gitbook/assets/image (2).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-2.png)
 
 Once added, you will see the SRT stream as a source, as shown below. This added source can be used just like any other media source.
 
-<figure><img src="../.gitbook/assets/image (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-1-1-1-1.png)
 
 ### VLC
 
 You can also playback the SRT stream in VLC. Simply select `Media` > `Open Network Stream` from the menu and enter the SRT URL:
 
-<figure><img src="../.gitbook/assets/image (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-1-1-1.png)
 
-<figure><img src="../.gitbook/assets/image (3) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-3-1.png)
 
 ## Using Playlist
 
-{% hint style="info" %}
+
+:::info
+
 OvenMediaEngine automatically generates a default playlist regardless of whether a playlist is specified, so this step is optional.
-{% endhint %}
+
+:::
+
 
 When playing back stream via SRT, you can use a playlist configured for [Adaptive Bitrate Streaming (ABR)](../transcoding/abr.md#adaptive-bitrate-streaming-abr) to ensure that only specific audio/video renditions are delivered.
 
@@ -124,13 +135,21 @@ By utilizing this feature, you can provide services with different codecs, profi
 
 ### **Configuration for playlists**
 
-{% hint style="warning" %}
-Since SRT does not support ABR, it uses only the first rendition when there are multiple renditions.
-{% endhint %}
 
-{% hint style="info" %}
+:::warning
+
+Since SRT does not support ABR, it uses only the first rendition when there are multiple renditions.
+
+:::
+
+
+
+:::info
+
 Since SRT is packaged in the MPEG-TS, the `EnableTsPackaging` option must be set to `true` to use the playlist.
-{% endhint %}
+
+:::
+
 
 ```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
@@ -222,8 +241,12 @@ srt://192.168.0.160:9998?streamid=host/app/stream/360p
 
 **SRT playback URL using `1080p` playlist**
 
-<pre><code><strong>srt://192.168.0.160:9998?streamid=host/app/stream/1080p
-</strong></code></pre>
+
+```
+<strong>srt://192.168.0.160:9998?streamid=host/app/stream/1080p
+</strong>
+```
+
 
 ## SRT Socket Options
 

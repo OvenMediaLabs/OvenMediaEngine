@@ -1,4 +1,7 @@
-# RTMP
+---
+title: RTMP
+sidebar_position: 11
+---
 
 RTMP is one of the most widely used protocols in live streaming.
 
@@ -23,11 +26,15 @@ RTMP is one of the most widely used protocols in live streaming.
 </Providers>
 ```
 
-<table><thead><tr><th width="212">Property</th><th>Description</th></tr></thead><tbody><tr><td>Port</td><td>Specifies the TCP port number that listens for incoming RTMP connections.</td></tr><tr><td>WorkerCount (default : 1)</td><td>Defines the number of worker threads for handling RTMP sockets. If the number of incoming RTMP sessions increases, you can raise this value to distribute traffic more efficiently.</td></tr><tr><td>ThreadPerSocket (default : false)</td><td>Determines whether each socket gets its own dedicated thread. If it is set to <strong>true</strong>, <code>WorkerCount</code> is ignored, and a new thread is created for every session when it connects, then terminated when the session ends. </td></tr></tbody></table>
+<table><thead><tr><th width="212">Property</th><th>Description</th></tr></thead><tbody><tr><td>Port</td><td>Specifies the TCP port number that listens for incoming RTMP connections.</td></tr><tr><td>WorkerCount (default : 1)</td><td>Defines the number of worker threads for handling RTMP sockets. If the number of incoming RTMP sessions increases, you can raise this value to distribute traffic more efficiently.</td></tr><tr><td>ThreadPerSocket (default : false)</td><td>Determines whether each socket gets its own dedicated thread. If it is set to <strong>true</strong>, `WorkerCount` is ignored, and a new thread is created for every session when it connects, then terminated when the session ends. </td></tr></tbody></table>
 
-{% hint style="warning" %}
+
+:::warning
+
 Using `ThreadPerSocket` can prevent a session thread from blocking while waiting for the Control Server to respond during AdmissionWebhooks, which would otherwise stop other sessions from proceeding. However, if too many sessions are connected, the overhead from thread context switching can become very high. On a 16-core system, practical cases have shown that around 100 sessions can run without issues.
-{% endhint %}
+
+:::
+
 
 ### Application
 
@@ -65,9 +72,13 @@ If you set up a live stream using an RTMP-based encoder, you need to set the fol
 | `true`  | `Default` Rejects the new stream inputted as overlap and maintains the existing stream. |
 | `false` | Accepts a new stream inputted as overlap and disconnects the existing stream.           |
 
-{% hint style="info" %}
+
+:::info
+
 To allow the duplicated stream name feature can cause several problems. When a new stream is an input the player may be disconnected. Most encoders have the ability to automatically reconnect when it is disconnected from the server. As a result, two encoders compete and disconnect each other, which can cause serious problems in playback.
-{% endhint %}
+
+:::
+
 
 ## Publish
 
@@ -86,7 +97,7 @@ Moreover, some encoders can include a stream key in the URL, and if you use thes
 
 If you are using the default configuration, press the URL button in the top right corner of OvenStreamEnoder, and enter the URL as shown below:
 
-![](../.gitbook/assets/03.png)
+![](../images/03.png)
 
 Also, `{App Name}` and `{Stream Name}` can be changed and used as desired in the configuration.
 
@@ -94,7 +105,7 @@ Also, `{App Name}` and `{Stream Name}` can be changed and used as desired in the
 
 If you use the default configuration, set the OBS as follows:
 
-<figure><img src="../.gitbook/assets/image (63).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-63.png)
 
 You can set the Stream Key to any name you like at any time.
 
@@ -133,5 +144,5 @@ To enable E-RTMP, you need to update the `Server.xml` configuration file. Add th
 
 To stream with E-RTMP using OBS, select an encoder that supports HEVC in the `Video Encoder` section of the `Output` settings as shown below:
 
-<figure><img src="../.gitbook/assets/image (64).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-64.png)
 

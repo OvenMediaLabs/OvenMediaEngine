@@ -1,10 +1,13 @@
-# Getting Started with OME Docker Launcher
+---
+title: Getting Started with OME Docker Launcher
+sidebar_position: 6
+---
 
 ## Overview and Features
 
 The OME Docker Launcher is a tool that simplifies the process of deploying and managing the OvenMediaEngine (OME) application using Docker containers. This tool can be used by developers and system administrators who want to quickly deploy and test the OME application in a Docker environment.
 
-<figure><img src="../.gitbook/assets/image (1) (1) (1) (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-1-1-1-1-1-1-1.png)
 
 The OME Docker Launcher provides a set of commands that allow users to easily manage the OME Docker container. These commands include:
 
@@ -23,9 +26,13 @@ The OME Docker Launcher provides a set of commands that allow users to easily ma
 
 Using the OME Docker Launcher, you can easily set up and manage an OME Docker container, without having to manually configure and manage the Docker container. This can save time and effort, especially for users who are not familiar with Docker or who do not want to spend time manually setting up and configuring the OME application.
 
-{% hint style="info" %}
+
+:::info
+
 OME Docker Launcher has not been tested in various environments yet. Therefore, sharing any issues that occur while using it is always welcome.
-{% endhint %}
+
+:::
+
 
 ## Installation
 
@@ -165,7 +172,9 @@ $ ./ome_docker_launcher.sh start
 • OvenMediaEngine is started successfully!
 ```
 
-{% hint style="info" %}
+
+:::info
+
 When running the OME Docker Launcher, you can specify the IP to be used as an ICE Candidate by using the `OME_HOST_IP` environment variable. For instance, specifying the `OME_HOST_IP` as shown below will propagate the ICE Candidate to that particular address.
 
 
@@ -180,13 +189,21 @@ $ tail -f /usr/share/ovenmediaengine/logs/ovenmediaengine.log
 [2023-11-01 00:00:00.000] I [OvenMediaEngine:1] ICE | ice_port_manager.cpp:305  | ICE candidate found: 1.2.3.4:40000
 ...
 ```
-{% endhint %}
 
-{% hint style="info" %}
+:::
+
+
+
+:::info
+
 The OME Docker Launcher automatically detects a list of port numbers specified in the `Server.xml` file and passes them to the Docker `-p` option. However, if you use the `include` attribute inside the `<Providers>` or `<Publishers>` element, the launcher may not detect them correctly.
-{% endhint %}
 
-{% hint style="info" %}
+:::
+
+
+
+:::info
+
 If you have declared the following environment variable in the shell where you run the OME Docker Launcher, this value will be used to bind the port and passed into the Docker container. This enables you to dynamically set configuration values using environment variables.
 
 ```
@@ -198,7 +215,9 @@ OME_WEBRTC_SIGNALLING_PORT
 OME_WEBRTC_SIGNALLING_TLS_PORT
 OME_WEBRTC_TCP_RELAY_PORT
 ```
-{% endhint %}
+
+:::
+
 
 ### `sh`
 

@@ -1,4 +1,7 @@
-# TLS Encryption
+---
+title: TLS Encryption
+sidebar_position: 8
+---
 
 Most browsers can't load resources via HTTP and WS (WebSocket) from HTTPS web pages secured with TLS. Therefore, if the player is on an HTTPS page, the player must request streaming through `https` and `wss` URLs secured with TLS. In this case, you must apply the TLS certificate to the OvenMediaEngine.
 

@@ -1,4 +1,7 @@
-# Logs and Statistics
+---
+title: Logs and Statistics
+sidebar_position: 61
+---
 
 ## Logs
 
@@ -161,6 +164,10 @@ OvenMediaEngine collects the following metrics for each host, application, and s
 
 You can get the current statistics using the REST API. See [Stat API ](rest-api/v1/statistics/current.md)for the statistics REST API.
 
-{% hint style="warning" %}
+
+:::warning
+
 Files such as webrtc\_stat.log and hls\_rtsp\_xxxx.log that were previously output are deprecated in the current version. We are developing a formal stats file, which will be open in the future.
-{% endhint %}
+
+:::
+

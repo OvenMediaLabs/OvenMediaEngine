@@ -1,4 +1,7 @@
-# Reload Certificate
+---
+title: Reload Certificate
+sidebar_position: 41
+---
 
 ## Reload All Certificates
 
@@ -8,7 +11,7 @@ Batch reload certificates of all Virtual Hosts. In case of failure, the existing
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts:reloadAllCertificates</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts:reloadAllCertificates</summary>
 
 #### Header
 
@@ -25,7 +28,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -53,7 +56,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Failed to reload certificate. Keep the existing certificate. The reason for the failure can be found in the server logs.
 
@@ -67,7 +70,7 @@ Reload the certificate of the specified Virtual Hosts. In case of failure, the e
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}:reloadCertificate</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;:reloadCertificate</summary>
 
 #### Header
 
@@ -84,7 +87,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -96,7 +99,9 @@ Content-Type: application/json
 
 **Body**
 
-<pre class="language-json"><code class="lang-json">{
+
+```json
+{
 <strong>    "message": "OK",
 </strong>    "statusCode": 200
 }
@@ -105,13 +110,14 @@ Content-Type: application/json
     Same as HTTP Status Code
 # message
     A human-readable description of the response code
-</code></pre>
+```
+
 
 </details>
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Failed to reload certificate. Keep the existing certificate. The reason for the failure can be found in the server logs.
 

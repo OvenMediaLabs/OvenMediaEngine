@@ -1,15 +1,22 @@
-# REST API
+---
+title: REST API
+sidebar_position: 38
+---
 
 ## Overview
 
 The REST APIs provided by OME allow you to query or change settings such as `VirtualHost` and `Application/Stream`.
 
-{% hint style="warning" %}
+
+:::warning
+
 There are some limitations/considerations.
 
 * If you add/change/delete the settings of the App/Output Profile by invoking the API, the app will be restarted. This means that all sessions connected to the app will be disconnected.
 * VirtualHost settings in Server.xml cannot be modified through API. This rule also applies to Application/OutputStream, etc. within that VirtualHost. So, if you call a POST/PUT/DELETE API for VirtualHost/Application/OutputProfile declared in Server.xml, it will not work with a 403 Forbidden error.
-{% endhint %}
+
+:::
+
 
 By default, OvenMediaEngine's API Server is disabled, so the following settings are required to use the API.
 
@@ -17,7 +24,7 @@ By default, OvenMediaEngine's API Server is disabled, so the following settings 
 
 ### Port Binding
 
-The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./#managers).
+The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./README.md#managers).
 
 ```markup
 <Server version="8">
@@ -95,21 +102,21 @@ To enable CORS on your API Server, you can add a setting. You can add `*` to all
 
 API endpoints are provided in the following format.
 
-> <mark style="color:blue;">Method</mark> http://API.Server.Address\[:Port]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>&#x20;
+> Method http://API.Server.Address\[:Port]/v1/Resource&#x20;
 >
-> <mark style="color:blue;">Method</mark> https://API.Server.Address\[:TLSPort]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>
+> Method https://API.Server.Address\[:TLSPort]/v1/Resource
 
-OvenMediaEngine supports <mark style="color:blue;">GET</mark>, <mark style="color:blue;">POST</mark>, and <mark style="color:blue;">DELETE</mark> methods, and sometimes supports <mark style="color:blue;">PATCH</mark> depending on the type of resource. For detailed API specifications, please check the subdirectory of this chapter.
+OvenMediaEngine supports GET, POST, and DELETE methods, and sometimes supports PATCH depending on the type of resource. For detailed API specifications, please check the subdirectory of this chapter.
 
 ### Action
 
 In OvenMediaEngine's REST API, action is provided in the following format.
 
-> <mark style="color:blue;">POST</mark> http://host/v1/resource<mark style="color:green;">:{action name}</mark>
+> POST http://host/v1/resource:&#x7B;action name&#x7D;
 
 For example, an action to send an ID3 Timedmeta event to an LLHLS stream is provided by the endpoint below.
 
-> <mark style="color:blue;">POST</mark> http://-/v1/vhosts/{vhost}/apps/{app}/streams/{stream}:<mark style="color:green;">sendEvent</mark>
+> POST http://-/v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;:sendEvent
 
 ### Document format
 
@@ -117,7 +124,7 @@ In this API reference document, the API endpoint is described as follows. Note t
 
 <details>
 
-<summary><mark style="color:blue;">METHOD</mark> /v1/&#x3C;API_PATH></summary>
+<summary>METHOD /v1/&#x3C;API_PATH></summary>
 
 #### Header
 
@@ -134,7 +141,7 @@ Header-Key: Value
 
 Describe the request body content. The body of all APIs consists of Json content. Therefore, the `Content-Type` header value is always `application/json`, which can be omitted in the document.
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "requestId": "value"
@@ -143,7 +150,7 @@ Describe the request body content. The body of all APIs consists of Json content
 # key (required)
     The description of the key/value of the body content is provided like this.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -151,7 +158,7 @@ Responses from API endpoints are provided in the following format.
 
 <details>
 
-<summary><mark style="color:blue;">HTTP_Status_Code</mark> Code_Description</summary>
+<summary>HTTP_Status_Code Code_Description</summary>
 
 #### **Header**
 

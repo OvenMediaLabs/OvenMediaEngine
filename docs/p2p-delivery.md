@@ -1,4 +1,7 @@
-# P2P Delivery (Experiment)
+---
+title: P2P Delivery (Experiment)
+sidebar_position: 63
+---
 
 OvenMediaEngine provides P2P Delivery to be able to distribute Edge Traffic to Player. This feature is currently the Preview version, and if you want to use it, you need only to use OvenPlayer. Moreover, we plan to perform more experiments in various real-world and then upgrade it to the full version in OvenMediaEngine.
 
@@ -10,14 +13,13 @@ According to our experiments so far, P2P Delivery provides the best performance 
 
 In other words, P2P Delivery has distributed two-thirds of existing Traffic. So, this means that it can expand the Capacity of the Edge Network by three times and reduce Traffic costs by two-thirds.
 
-![](<.gitbook/assets/image (9).png>)
+![](./images/image-9.png)
 
 ## How does it work?
 
 You can use the P2P function of OvenMediaEngine by adding the `<P2P>` element as the following settings:
 
-{% code title="Server.xml" %}
-```markup
+```markup title="Server.xml"
 <Server version="...">
 	...
 	<P2P>
@@ -26,7 +28,6 @@ You can use the P2P function of OvenMediaEngine by adding the `<P2P>` element as
 	...
 </Server>
 ```
-{% endcode %}
 
 Also, If you want to use P2P Delivery when your OvenMediaEngine is running in Origin-Edge Cluster-Mode, you need to apply this setting to all the Edges. You can instantly test P2P Delivery with OvenPlayer.
 
@@ -40,12 +41,16 @@ When OvenMediaEngine receives a WebRTC connection request from a new player, it 
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | <ul><li>The device isn't Mobile</li><li>OS isn't Linux</li><li>Browser isn't MS Edge Browser</li><li>Browser isn't Unknown Browser</li></ul> | <ul><li>One of the Host Peers uses the same kind of browser</li><li>Host Peer is vacant</li></ul> |
 
-{% hint style="info" %}
+
+:::info
+
 When any Host Peer is disconnected, OvenMediaEngine detects this situation and immediately reconnects the Client Peer connected to that Host Peer to the Edge to ensure stability.
 
 Also, we are preparing a smarter algorithm based on user location, platform performance, and network statistical information for classifying Host Peers or Client Peers.
-{% endhint %}
+
+:::
+
 
 If you have a better idea, we hope that you improve our code and contribute to our project. Please visit [OvenMediaEngine GitHub](https://github.com/OvenMediaLabs/OvenMediaEngine).
 
-{% embed url="https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/projects/modules/rtc_signalling/p2p" %}
+[https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/projects/modules/rtc_signalling/p2p](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/projects/modules/rtc_signalling/p2p)

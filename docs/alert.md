@@ -1,4 +1,7 @@
-# Alert
+---
+title: Alert
+sidebar_position: 59
+---
 
 ## Overview
 

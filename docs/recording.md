@@ -1,4 +1,7 @@
-# Recording
+---
+title: Recording
+sidebar_position: 36
+---
 
 OvenMediaEngine supports live stream recording, which can be started and stopped via the REST API. Upon completion, it generates both the recorded media file and a corresponding metadata file, enabling seamless integration with post-processing workflows.
 
@@ -37,7 +40,7 @@ Server.xml
 </Publishers>
 ```
 
-#### <mark style="color:blue;">\* Supported format and codecs</mark>
+#### \* Supported format and codecs
 
 <table><thead><tr><th width="290">Format</th><th>Codec</th></tr></thead><tbody><tr><td>TS</td><td>H.264, H.265, AAC</td></tr><tr><td>MP4</td><td>H.264, H.265, AAC</td></tr></tbody></table>
 
@@ -47,18 +50,22 @@ For control of recording, use the REST API. Recording can be requested based on 
 
 For how to use the API, please refer to the link below.
 
-{% content-ref url="rest-api/v1/virtualhost/application/recording.md" %}
+
 [recording.md](rest-api/v1/virtualhost/application/recording.md)
-{% endcontent-ref %}
+
 
 ## Split Recording
 
 Split recording methods provide `SegmentInterval` and `SegmentSchedule`. The interval method splits files based on the accumulated recording time. The Schedule method then splits files according to scheduling options based on system time. The scheduling option is the same as the pattern used in crontab. However, only three options are used: seconds/minutes/hour.\
 You can set the `SegmentRule` parameter to determine whether the start timestamp of the separated recording files will start anew from 0 (**discontinuity**)  or continue from where the previous file left off (**continuity**).
 
-{% hint style="info" %}
+
+:::info
+
 **SegmentInterval**  and **SegmentSchedule** methods cannot be used simultaneously.
-{% endhint %}
+
+:::
+
 
 ## Automated Recording
 
@@ -81,7 +88,7 @@ Server.xml
 </Publishers>
 ```
 
-{% code fullWidth="false" %}
+
 ```xml
 record_map.xml
 
@@ -129,7 +136,7 @@ record_map.xml
   </Record>
 </RecordInfo>
 ```
-{% endcode %}
+
 
 ***
 
@@ -137,13 +144,13 @@ record_map.xml
 
 Various macro values are supported for file paths and names as shown below.
 
-<table><thead><tr><th width="290">Macro</th><th>Description</th></tr></thead><tbody><tr><td>${TransactionId}</td><td>Unique ID for the recording transaction. It is automatically created when recording starts. and is released when recording is stopped. In case of split recording, it is distinguished that it is the same transaction.</td></tr><tr><td>${Id}</td><td>User-defined identification ID</td></tr><tr><td>${StartTime:YYYYMMDDhhmmss}</td><td><p>Recording start time</p><p>YYYY - Year</p><p>MM - Month</p><p>DD - Days</p><p>hh : Hours (00~23)</p><p>mm : Minutes (00~59)</p><p>ss : Seconds (00~59)</p></td></tr><tr><td>${EndTime:YYYYMMDDhhmmss}</td><td><p>Recording end time</p><p>YYYY - Year</p><p>MM - Month</p><p>DD - Days</p><p>hh : Hours (00~23)</p><p>mm : Minutes (00~59)</p><p>ss : Seconds (00~59)</p></td></tr><tr><td>${VirtualHost}</td><td>Virtual host name</td></tr><tr><td>${Application}</td><td>Application name</td></tr><tr><td>${SourceStream}</td><td>Source stream name</td></tr><tr><td>${Stream}</td><td>Output stream name</td></tr><tr><td>${Sequence}</td><td>Sequence value that increases when splitting a file in a single transaction</td></tr></tbody></table>
+<table><thead><tr><th width="290">Macro</th><th>Description</th></tr></thead><tbody><tr><td>$&#x7B;TransactionId&#x7D;</td><td>Unique ID for the recording transaction. It is automatically created when recording starts. and is released when recording is stopped. In case of split recording, it is distinguished that it is the same transaction.</td></tr><tr><td>$&#x7B;Id&#x7D;</td><td>User-defined identification ID</td></tr><tr><td>$&#x7B;StartTime:YYYYMMDDhhmmss&#x7D;</td><td><p>Recording start time</p><p>YYYY - Year</p><p>MM - Month</p><p>DD - Days</p><p>hh : Hours (00&#126;23)</p><p>mm : Minutes (00&#126;59)</p><p>ss : Seconds (00&#126;59)</p></td></tr><tr><td>$&#x7B;EndTime:YYYYMMDDhhmmss&#x7D;</td><td><p>Recording end time</p><p>YYYY - Year</p><p>MM - Month</p><p>DD - Days</p><p>hh : Hours (00&#126;23)</p><p>mm : Minutes (00&#126;59)</p><p>ss : Seconds (00&#126;59)</p></td></tr><tr><td>$&#x7B;VirtualHost&#x7D;</td><td>Virtual host name</td></tr><tr><td>$&#x7B;Application&#x7D;</td><td>Application name</td></tr><tr><td>$&#x7B;SourceStream&#x7D;</td><td>Source stream name</td></tr><tr><td>$&#x7B;Stream&#x7D;</td><td>Output stream name</td></tr><tr><td>$&#x7B;Sequence&#x7D;</td><td>Sequence value that increases when splitting a file in a single transaction</td></tr></tbody></table>
 
 ## Appendix B. Recorded File Information Specification
 
 The following is a sample of an XML file that expresses information on a recorded file.
 
-{% code overflow="wrap" %}
+
 ```markup
 <?xml version="1.0" encoding="utf-8"?>
 <files>
@@ -197,4 +204,4 @@ The following is a sample of an XML file that expresses information on a recorde
   </file>
 </files>
 ```
-{% endcode %}
+

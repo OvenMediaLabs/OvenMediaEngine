@@ -1,10 +1,13 @@
-# Realtime Speech-to-Text
+---
+title: Realtime Speech-to-Text
+sidebar_position: 34
+---
 
 OvenMediaEngine (OME) version 0.20.0 and later supports real-time automatic subtitles through integration with whisper.cpp. This feature converts live audio streams to text in real time and can optionally translate the recognized speech into English.
 
 An NVIDIA GPU is required. CPU inference is not supported because it is too slow for real-time live transcription.
 
-<figure><img src="../.gitbook/assets/image.png" alt=""><figcaption></figcaption></figure>
+![](../images/image.png)
 
 ## Prerequisites
 
@@ -46,9 +49,13 @@ Official driver: [https://www.nvidia.com/en-us/drivers/](https://www.nvidia.com/
 
 OME install script: [https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/misc/install\_nvidia\_driver.sh](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/misc/install_nvidia_driver.sh)
 
-{% hint style="warning" %}
+
+:::warning
+
 This script installs the versions recommended by OME. If you want to install the latest version, change the parameters.
-{% endhint %}
+
+:::
+
 
 ### CUDA Toolkit
 
@@ -56,7 +63,7 @@ CUDA Toolkit is required to build whisper.cpp with GPU acceleration.
 
 * Download from: [https://developer.nvidia.com/cuda-downloads](https://developer.nvidia.com/cuda-downloads)
 * Use a version that matches your GPU generation.
-  * Recommended CUDA Toolkit : v12.0 \~ v12.8
+  * Recommended CUDA Toolkit : v12.0 \&#126; v12.8
 
 ### Build and Install whisper.cpp
 
@@ -74,9 +81,13 @@ STT configuration is split across two sections:
 * **`<Application><Subtitles>`** — defines subtitle renditions (label, language, etc.) that STT output will be written to.
 * **`<Application><OutputProfiles><MediaOptions><STT>`** — connects an input audio track to a subtitle rendition via an STT engine.
 
-{% hint style="warning" %}
+
+:::warning
+
 **Breaking change:** The `<Transcription>` element inside `<Subtitles><Rendition>` has been removed. If your existing configuration uses `<Subtitles><Rendition><Transcription>`, it will no longer work. Please migrate to `<OutputProfiles><MediaOptions><STT><Rendition>` as described below.
-{% endhint %}
+
+:::
+
 
 ### Step 1: Preload Models (Server.xml)
 
@@ -114,13 +125,17 @@ Each `<PreloadModel>` entry has the following fields:
 </Server>
 ```
 
-{% hint style="info" %}
+
+:::info
+
 `<PreloadModel>` is optional. If omitted, models are loaded on demand when the first stream that uses them is published. Preloading is recommended for production to avoid a delay on the first stream.
-{% endhint %}
+
+:::
+
 
 ### Step 2: Define Subtitle Renditions
 
-Define the subtitle tracks that will receive STT output. For more details on `<Subtitles>`, refer to the [Subtitles](./) section.
+Define the subtitle tracks that will receive STT output. For more details on `<Subtitles>`, refer to the [Subtitles](./README.md) section.
 
 ```xml
 <Application>
@@ -182,7 +197,7 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
 
 The `<STT><Rendition>` configuration includes the following options:
 
-<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only <code>whisper</code> is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is <code>0</code> (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in <code>&lt;Subtitles&gt;</code>) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., <code>ko</code>, <code>en</code>, <code>ja</code>). Set to <code>auto</code> to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to <code>true</code>, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is <code>2000</code>. Lower values reduce subtitle latency but increase GPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is <code>10000</code>. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is <code>1500</code>. Helps avoid cut-off words at window boundaries.</td></tr><tr><td>Modules</td><td>Selects the GPU to run this STT rendition on, using the same format as video encoder modules (e.g. <code>nv:0</code>, <code>nv:1</code>). If omitted, GPU 0 is used. Use this to distribute multiple renditions across different GPUs.</td></tr></tbody></table>
+<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only `whisper` is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is `0` (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in `&lt;Subtitles&gt;`) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., `ko`, `en`, `ja`). Set to `auto` to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to `true`, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is `2000`. Lower values reduce subtitle latency but increase GPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is `10000`. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is `1500`. Helps avoid cut-off words at window boundaries.</td></tr><tr><td>Modules</td><td>Selects the GPU to run this STT rendition on, using the same format as video encoder modules (e.g. `nv:0`, `nv:1`). If omitted, GPU 0 is used. Use this to distribute multiple renditions across different GPUs.</td></tr></tbody></table>
 
 ### Model
 

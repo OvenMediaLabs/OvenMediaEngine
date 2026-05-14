@@ -1,4 +1,7 @@
-# WebRTC / WHIP
+---
+title: WebRTC / WHIP
+sidebar_position: 12
+---
 
 OvenMediaEngine supports WebRTC ingest from web browsers and any encoder that implements WebRTC. Both the self-defined signaling protocol and [WHIP](https://datatracker.ietf.org/doc/draft-ietf-wish-whip/) are supported.
 
@@ -50,7 +53,9 @@ OvenMediaEngine supports three transport types for WebRTC ingest:
 
 Use `${PublicIP}` to have OME auto-resolve the public IP via `<StunServer>` at startup. For more information on `<TcpRelay>` URL format, see [WebRTC over TCP](webrtc.md#webrtc-over-tcp).
 
-{% hint style="danger" %}
+
+:::danger
+
 **Do not use `*` for ICE candidate IP in production.**
 
 `*` causes OME to advertise every network interface (including Docker bridge interfaces `172.17.x.x`, VPN adapters, and internal NICs) as ICE candidates. Encoders will attempt connectivity checks against all of them, which significantly increases ICE negotiation time and can cause connection delays or failures.
@@ -58,7 +63,9 @@ Use `${PublicIP}` to have OME auto-resolve the public IP via `<StunServer>` at s
 Always specify the exact IP the encoder can reach:
 - Specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
 - Auto-detected via STUN: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>` (requires `<StunServer>` in `Server.xml`)
-{% endhint %}
+
+:::
+
 
 #### Worker Threads
 
@@ -143,7 +150,9 @@ Both modes can be active simultaneously. Use the `?transport` parameter to contr
 >
 > `http[s]://<Host>[:<Port>]/<App>/<Stream>?direction=whip&transport=all`
 
-{% hint style="warning" %}
+
+:::warning
+
 **Behavior change from previous versions**
 
 `?transport=tcp` previously routed traffic through the embedded TURN server. It now means **Direct TCP ICE** (RFC 6544), a direct TCP connection to OME without any relay.
@@ -151,7 +160,9 @@ Both modes can be active simultaneously. Use the `?transport` parameter to contr
 - Previous `tcp` behavior → use `?transport=relay` instead
 - `<TcpRelay>` must be configured in `<Bind>` for `relay` to work
 - `<TcpForce>` has been renamed to `<TcpRelayForce>`. The old name is still accepted. When `true`, TURN relay info is always included in the response regardless of `?transport`.
-{% endhint %}
+
+:::
+
 
 ## Simulcast
 
@@ -159,11 +170,11 @@ Simulcast allows encoders to send multiple quality layers simultaneously without
 
 Simulcast is supported via **WHIP signaling only**. Test using OvenLiveKit or OBS.
 
-<figure><img src="../.gitbook/assets/image (45).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-45.png)
 
-<figure><img src="../.gitbook/assets/image (46).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-46.png)
 
-<figure><img src="../.gitbook/assets/image (47).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-47.png)
 
 ### Playlist Template for Simulcast
 
@@ -187,34 +198,37 @@ When a simulcast encoder sends N video tracks, OME creates N tracks sharing the 
 
 Reference each layer by index using `<VideoIndexHint>` / `<AudioIndexHint>`:
 
-<pre class="language-xml"><code class="lang-xml">&#x3C;!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
-<strong>&#x3C;OutputProfile>
+
+```xml
+<!-- /Server/VirtualHosts/VirtualHost/Applications/Application/OutputProfiles -->
+<strong><OutputProfile>
 </strong><strong>    ...
-</strong>    &#x3C;Playlist>
-        &#x3C;Name>simulcast&#x3C;/Name>
-        &#x3C;FileName>template&#x3C;/FileName>
-        &#x3C;Options>
-            &#x3C;WebRtcAutoAbr>true&#x3C;/WebRtcAutoAbr>
-            &#x3C;HLSChunklistPathDepth>0&#x3C;/HLSChunklistPathDepth>
-            &#x3C;EnableTsPackaging>true&#x3C;/EnableTsPackaging>
-        &#x3C;/Options>
-        &#x3C;Rendition>
-            &#x3C;Name>first&#x3C;/Name>
-            &#x3C;Video>video_bypass&#x3C;/Video>
-            &#x3C;VideoIndexHint>0&#x3C;/VideoIndexHint> &#x3C;!-- Optional, default : 0 -->
-            &#x3C;Audio>aac_audio&#x3C;/Audio>
-        &#x3C;/Rendition>
-        &#x3C;Rendition>
-            &#x3C;Name>second&#x3C;/Name>
-            &#x3C;Video>video_bypass&#x3C;/Video>
-            &#x3C;VideoIndexHint>1&#x3C;/VideoIndexHint> &#x3C;!-- Optional, default : 0 -->
-            &#x3C;Audio>aac_audio&#x3C;/Audio>
-            &#x3C;AudioIndexHint>0&#x3C;/AudioIndexHint> &#x3C;!-- Optional, default : 0 -->
-        &#x3C;/Rendition>
-    &#x3C;/Playlist>
+</strong>    <Playlist>
+        <Name>simulcast</Name>
+        <FileName>template</FileName>
+        <Options>
+            <WebRtcAutoAbr>true</WebRtcAutoAbr>
+            <HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+            <EnableTsPackaging>true</EnableTsPackaging>
+        </Options>
+        <Rendition>
+            <Name>first</Name>
+            <Video>video_bypass</Video>
+            <VideoIndexHint>0</VideoIndexHint> <!-- Optional, default : 0 -->
+            <Audio>aac_audio</Audio>
+        </Rendition>
+        <Rendition>
+            <Name>second</Name>
+            <Video>video_bypass</Video>
+            <VideoIndexHint>1</VideoIndexHint> <!-- Optional, default : 0 -->
+            <Audio>aac_audio</Audio>
+            <AudioIndexHint>0</AudioIndexHint> <!-- Optional, default : 0 -->
+        </Rendition>
+    </Playlist>
     ...
-&#x3C;/OutputProfile>
-</code></pre>
+</OutputProfile>
+```
+
 
 ### RenditionTemplate
 
@@ -285,18 +299,22 @@ Add conditions to filter which tracks are included:
 
 A demo page is available for testing WebRTC ingest:
 
-{% embed url="https://demo.ovenplayer.com/demo_input.html" %}
+[https://demo.ovenplayer.com/demo_input.html](https://demo.ovenplayer.com/demo_input.html)
 
-![](<../.gitbook/assets/ovenlivekit_demo.png>)
+![](../images/ovenlivekit_demo.png)
 
-{% hint style="warning" %}
+
+:::warning
+
 `getUserMedia` only works in a [secure context](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#privacy_and_security). The demo at [https://demo.ovenplayer.com/demo_input.html](https://demo.ovenplayer.com/demo_input.html) requires OME to serve signaling over `wss`. If you cannot install a TLS certificate, temporarily allow insecure content for `demo.ovenplayer.com` in your browser settings.
-{% endhint %}
+
+:::
+
 
 ### Self-defined Signaling Protocol
 
 To build a custom WebRTC producer, implement OvenMediaEngine's Self-defined Signaling Protocol or WHIP. The self-defined protocol uses the [same format as WebRTC Streaming](../streaming/webrtc-publishing.md#signalling-protocol).
 
-![](<../.gitbook/assets/image (10).png>)
+![](../images/image-10.png)
 
 Connect to `ws[s]://host:port/app/stream?direction=send` via WebSocket and send a request-offer command. OME responds with an offer SDP containing all configured ICE candidates (UDP, Direct TCP if configured) and, if `<TcpRelay>` is set, an `iceServers` field with TURN server information. Pass `iceServers` to `RTCPeerConnection`, then call `setRemoteDescription`, `addIceCandidate` with the offer SDP, generate an answer SDP, and send it back to OME.

@@ -1,4 +1,7 @@
-# VirtualHost
+---
+title: VirtualHost
+sidebar_position: 40
+---
 
 ## Get Virtual Host List
 
@@ -6,7 +9,7 @@
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts</summary>
 
 #### **Header**
 
@@ -23,7 +26,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -58,7 +61,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -85,7 +88,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts</summary>
 
 #### **Header**
 
@@ -98,7 +101,7 @@ Authorization: Basic {credentials}
 
 #### Body
 
-Configure virtual hosts to be created in <mark style="color:green;">Json array</mark> format.&#x20;
+Configure virtual hosts to be created in Json array format.&#x20;
 
 ```json
 [
@@ -203,7 +206,7 @@ Configure virtual hosts to be created in <mark style="color:green;">Json array</
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -215,7 +218,7 @@ Content-Type: application/json
 
 #### **Body**
 
-It responds with <mark style="color:green;">**Json array**</mark> for each request.
+It responds with **Json array** for each request.
 
 ```json
 [
@@ -309,7 +312,7 @@ It responds with <mark style="color:green;">**Json array**</mark> for each reque
 
 <details>
 
-<summary><mark style="color:blue;">207</mark> Multi-Status</summary>
+<summary><span class="http-method http-method-207">207</span> Multi-Status</summary>
 
 There might be a mixture of responses.
 
@@ -321,7 +324,7 @@ Content-Type: application/json
 
 #### **Body**
 
-It responds with <mark style="color:green;">**Json array**</mark> for each request.
+It responds with **Json array** for each request.
 
 ```json
 [
@@ -355,7 +358,7 @@ It responds with <mark style="color:green;">**Json array**</mark> for each reque
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json array or does not have a required value
 
@@ -363,7 +366,7 @@ Invalid request. Body is not a Json array or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -386,7 +389,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 A virtual host with that name already exists
 
@@ -398,7 +401,7 @@ A virtual host with that name already exists
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;</summary>
 
 #### Header
 
@@ -415,7 +418,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -508,7 +511,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -531,7 +534,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name could not be found.
 
@@ -552,7 +555,7 @@ The given vhost name could not be found.
 
 <details>
 
-<summary><mark style="color:blue;">DELETE</mark> /v1/vhosts/{vhost}</summary>
+<summary><span class="http-method http-method-delete">DELETE</span> /v1/vhosts/&#x7B;vhost&#x7D;</summary>
 
 #### Header
 
@@ -569,7 +572,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -597,7 +600,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -620,7 +623,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name could not be found.
 
@@ -637,7 +640,7 @@ The given vhost name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 The request failed due to an error on the server. Check the server log for the reason of the error.
 

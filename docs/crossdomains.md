@@ -1,4 +1,7 @@
-# CrossDomains
+---
+title: CrossDomains
+sidebar_position: 28
+---
 
 Most browsers and players prohibit accessing other domain resources in the currently running domain. You can control this situation through Cross-Origin Resource Sharing (CORS) or Cross-Domain (CrossDomain). You can set CORS and Cross-Domain as `<CrossDomains>` element.
 
@@ -23,7 +26,7 @@ CrossDomain settings are available for HTTP-based APIs, HLS, LLHLS and Thumbnail
 
 You can set it using the `<Url>` element as shown above, and you can use the following values:
 
-<table><thead><tr><th width="290">Url Value</th><th>Description</th></tr></thead><tbody><tr><td><code>*</code></td><td>Allows requests from all Domains.</td></tr><tr><td>domain</td><td>Allows both HTTP and HTTPS requests from the specified Domain.</td></tr><tr><td>http://domain</td><td>Allows HTTP requests from the specified Domain.</td></tr><tr><td>https://domain</td><td>Allows HTTPS requests from the specified Domain.</td></tr></tbody></table>
+<table><thead><tr><th width="290">Url Value</th><th>Description</th></tr></thead><tbody><tr><td>`*`</td><td>Allows requests from all Domains.</td></tr><tr><td>domain</td><td>Allows both HTTP and HTTPS requests from the specified Domain.</td></tr><tr><td>http://domain</td><td>Allows HTTP requests from the specified Domain.</td></tr><tr><td>https://domain</td><td>Allows HTTPS requests from the specified Domain.</td></tr></tbody></table>
 
 You can respond with custom HTTP headers via `<CrossDomains>`. You can use them by adding multiple `<Header>/<Key>` and `<Header>/<Value>` as in the example above.
 
@@ -50,9 +53,13 @@ If all Applications share the same CORS policy, you can configure CORS under `<S
     ... omitted ...
 ```
 
-{% hint style="warning" %}
+
+:::warning
+
 Up to version 0.19.0, the default CORS setting was supported per VirtualHost and had to be configured at `<Server><VirtualHosts><VirtualHost><CrossDomain>`. However, this method is now deprecated and no longer applied. The configuration has been consolidated under `<Server><Defaults><CrossDomain>`.
-{% endhint %}
+
+:::
+
 
 ## Application-Specific CORS Settings
 

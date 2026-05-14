@@ -1,7 +1,7 @@
 name: Check docs build
 
 # Builds the consuming ovenmedialabs.com site against this PR's
-# docs-site/ to catch broken markdown links, missing anchors, and MDX
+# docs/ to catch broken markdown links, missing anchors, and MDX
 # errors before merge. The downstream `ovenmedialabs.com` repo is built
 # in throw mode (`onBrokenLinks: 'throw'`, etc.), so any regression
 # fails this check.
@@ -9,7 +9,7 @@ name: Check docs build
 on:
   pull_request:
     paths:
-      - 'docs-site/**'
+      - 'docs/**'
 
 jobs:
   build-docs:
@@ -30,14 +30,14 @@ jobs:
           ref: main
           path: site
 
-      - name: Stage this PR's docs-site/ into the site
+      - name: Stage this PR's docs/ into the site
         # `cp -r`, not a symlink: Docusaurus's content-docs plugin
         # mis-reads the doc registry when its `path:` points through
         # a symlink, and SSG fails with `Cannot read properties of
         # undefined (reading 'id')` on every doc in that source.
         run: |
           rm -rf site/docs/ome
-          cp -R upstream/docs-site site/docs/ome
+          cp -R upstream/docs site/docs/ome
 
       - uses: actions/setup-node@v4
         with:

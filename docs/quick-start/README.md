@@ -1,4 +1,7 @@
-# Quick Start
+---
+title: Quick Start
+sidebar_position: 2
+---
 
 This page provides the fastest way to check playback of WebRTC and LLHLS using OvenMediaEngine. For installation and detailed settings, please refer to other pages.
 
@@ -50,7 +53,7 @@ You can access the OvenPlayerDemo docker container with a browser as shown below
 
 http://Your.Docker.Host.IP:8090/
 
-<img src="../.gitbook/assets/image (2) (2) (1).png" alt="" data-size="original">
+<img src="../images/image-2-2-1.png" alt="" data-size="original" />
 
 </details>
 
@@ -76,18 +79,18 @@ The RTMP publishing address is :&#x20;
 
 **Stream Key** `stream`
 
-<figure><img src="../.gitbook/assets/image (22).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-22.png)
 
 The settings below are recommended for ultra-low latency.&#x20;
 
 | Setting           | Value                                                                                                                                                       |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Keyframe Interval | 1s <mark style="color:red;">(DO NOT set it to</mark> <mark style="color:red;"></mark><mark style="color:red;">**0**</mark><mark style="color:red;">)</mark> |
+| Keyframe Interval | 1s (DO NOT set it to **0**) |
 | CPU Usage Preset  | ultrafast                                                                                                                                                   |
 | Profile           | baseline                                                                                                                                                    |
 | Tune              | zerolatency                                                                                                                                                 |
 
-<figure><img src="../.gitbook/assets/image (4) (2) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-4-2-1.png)
 
 ## Playback
 
@@ -95,17 +98,17 @@ Open the installed OvenPlayer Demo page in your browser.&#x20;
 
 `http://{Your Docker Host}:8090/`
 
-<figure><img src="../.gitbook/assets/image (2) (2) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-2-2-1.png)
 
 #### WebRTC Playback
 
 Add `ws://{Your Docker Host}:3333/app/stream` to the Playback URL and click the ADD SOURCE and LOAD PLAYER button to play the live stream with WebRTC.
 
-<figure><img src="../.gitbook/assets/image (8).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-8.png)
 
 #### LLHLS Playback
 
 Add `http://{Your Docker Host}:3333/app/stream/llhls.m3u8` to the Playback URL and click the ADD SOURCE and LOAD PLAYER button to play the live stream with LLHLS.
 
-<figure><img src="../.gitbook/assets/image (1) (1) (1) (1) (1) (1) (1) (1) (1).png" alt=""><figcaption></figcaption></figure>
+![](../images/image-1-1-1-1-1-1-1-1-1.png)
 

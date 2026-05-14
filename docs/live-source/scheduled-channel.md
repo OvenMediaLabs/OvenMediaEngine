@@ -1,4 +1,7 @@
-# Scheduled Channel
+---
+title: Scheduled Channel
+sidebar_position: 16
+---
 
 Scheduled Channel that allows you to create a live channel by scheduling pre-recorded files has been added to OvenMediaEngine. Other services or software call this Pre-recorded Live or File Live, but OvenMediaEngine plans to expand the function to organize live channels as a source, so we named it Scheduled Channel.
 
@@ -137,9 +140,13 @@ The Scheduled Channel supports multiple audio tracks. This is automatically appl
 </Schedule>
 ```
 
-{% hint style="warning" %}
+
+:::warning
+
 A Scheduled Channel creates streams in advance and copies tracks from files or other streams. Therefore, all source content used in a Scheduled Channel with multiple audio tracks must provide at least the same number of audio tracks. Otherwise, the content will not be scheduled.
-{% endhint %}
+
+:::
+
 
 ## Application : Persistent Live Channel
 
@@ -167,14 +174,18 @@ This function is a scheduling channel, but it can be used for applications such 
 
 This channel normally plays `default/app/input`, but when live input is stopped, it plays the file in `<FallbackProgram>`. This will last forever until the .sch file is deleted. One trick was to set the origin program's schedule time to year 2000 so that this stream would play unconditionally.
 
-{% hint style="warning" %}
+
+:::warning
+
 You may experience some buffering when going from file to live. This is unavoidable due to the nature of the function and low latency. If this is inconvenient, buffering issues can disappear if you add a little delay in advance by setting PartHoldBack in LLHLS to 5 or more. It is a choice between delay and buffering.
-{% endhint %}
+
+:::
+
 
 ## REST API
 
 ScheduledChannel can also be controlled via API. Please refer to the page below.
 
-{% content-ref url="../rest-api/v1/virtualhost/application/scheduledchannel-api.md" %}
+
 [scheduledchannel-api.md](../rest-api/v1/virtualhost/application/scheduledchannel-api.md)
-{% endcontent-ref %}
+

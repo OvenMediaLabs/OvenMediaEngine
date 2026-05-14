@@ -1,6 +1,6 @@
-name: Notify ovenmedialabs.com of docs-site change
+name: Notify ovenmedialabs.com of docs change
 
-# When master receives a push that touches docs-site/, fire a
+# When master receives a push that touches docs/, fire a
 # `docs-changed` repository_dispatch at the consuming site
 # (OvenMediaLabs/ovenmedialabs.com) so it can re-sync our docs and ship.
 
@@ -8,7 +8,7 @@ on:
   push:
     branches: [master]
     paths:
-      - 'docs-site/**'
+      - 'docs/**'
 
 jobs:
   dispatch:
