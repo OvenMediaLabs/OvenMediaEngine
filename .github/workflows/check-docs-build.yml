@@ -33,7 +33,7 @@ jobs:
       - name: Stage this PR's docs-site/ into the site
         run: |
           rm -rf site/docs/ome
-          cp -R upstream/docs-site site/docs/ome
+          ln -s "$PWD/upstream/docs-site" site/docs/ome
 
       - uses: actions/setup-node@v4
         with:
