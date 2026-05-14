@@ -1,10 +1,10 @@
 # Authoring Guide — `docs-site/`
 
-This folder contains the **MDX source** for the airensoft.com manual.
+This folder contains the **MDX source** for the ovenmedialabs.com manual.
 Edits land on the live site after a `git subtree pull` from this repo.
 
 > Note: the legacy `docs/` (or `docs-enterprise/`) folder is still
-> served by GitBook at the old domain. Once airensoft.com fully
+> served by GitBook at the old domain. Once ovenmedialabs.com fully
 > replaces it, the legacy folder will be retired. Until then, write
 > new content **here**.
 
@@ -137,14 +137,14 @@ nothing — those are raw.
 If you want to see your changes before pushing:
 
 ```bash
-# In a fresh clone of airensoft.com:
+# In a fresh clone of ovenmedialabs.com:
 git subtree pull --prefix=docs/<source> git@github.com:OvenMediaLabs/<repo>.git <branch> --squash
 npm install
 npm start
 # Visit http://localhost:3000/docs/<source>/...
 ```
 
-(Or coordinate with whoever maintains airensoft.com to run a preview
+(Or coordinate with whoever maintains ovenmedialabs.com to run a preview
 deploy from your branch.)
 
 ## Sidebar order
