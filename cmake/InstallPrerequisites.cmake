@@ -457,8 +457,8 @@ set(_FFMPEG_CONFIGURE_CMD
     "${_FFMPEG_ADDI_LICENSE}"
     "${_FFMPEG_ADDI_LIBS}"
     "--enable-encoder=libvpx_vp8,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${_FFMPEG_ADDI_ENCODER}"
-    "--enable-decoder=aac,aac_latm,aac_fixed,mp3float,mp3,h264,hevc,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
-    "--enable-parser=aac,aac_latm,aac_fixed,h264,hevc,opus,vp8,png,jpg"
+    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
+    "--enable-parser=aac,aac_latm,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg"
     "--enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt"
     "--enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2"
     "--enable-muxer=mp4,webm,mpegts,flv,mpjpeg"
@@ -587,7 +587,7 @@ endif()
 if(DEFINED TARGET)
     if("${TARGET}" STREQUAL "ffmpeg")
         # ffmpeg depends on codec libs; install them first in case they are missing
-        set(_ffmpeg_deps nasm libopus libvpx libwebp libopenh264 fdk_aac)
+        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac)
         if(ENABLE_X264)
             list(APPEND _ffmpeg_deps libx264)
         endif()

@@ -171,7 +171,7 @@ namespace pvd
 																	  dts,
 																	  -1LL,
 																	  MediaPacketFlag::Unknown,
-																	  cmn::BitstreamFormat::AAC_ADTS,
+																	  track->GetOriginBitstream(),
 																	  cmn::PacketType::RAW);
 					SendFrame(media_packet);
 				}

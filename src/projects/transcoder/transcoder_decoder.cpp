@@ -19,6 +19,7 @@
 #include "codec/decoder/decoder_hevc_nv.h"
 #include "codec/decoder/decoder_hevc_qsv.h"
 #include "codec/decoder/decoder_hevc_xma.h"
+#include "codec/decoder/decoder_mp2.h"
 #include "codec/decoder/decoder_mp3.h"
 #include "codec/decoder/decoder_opus.h"
 #include "codec/decoder/decoder_vp8.h"
@@ -235,6 +236,15 @@ std::shared_ptr<TranscodeDecoder> TranscodeDecoder::Create(
 			{
 				default:
 					CASE_CREATE_CODEC_IFNEED(DEFAULT, DecoderOPUS)
+					break;
+			}
+		}
+		else if (candidate->GetCodecId() == cmn::MediaCodecId::Mp2)
+		{
+			switch (candidate->GetModuleId())
+			{
+				default:
+					CASE_CREATE_CODEC_IFNEED(DEFAULT, DecoderMP2)
 					break;
 			}
 		}

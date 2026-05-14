@@ -30,6 +30,7 @@ jobs:
             docs
             test
             build
+            ci
             chore
 
 
@@ -69,6 +70,7 @@ jobs:
             | \`docs\` | Documentation update |
             | \`test\` | Unit or integration tests |
             | \`build\` | Build system or dependency changes |
+            | \`ci\` | CI configuration changes (workflows, actions) |
             | \`chore\` | General maintenance |
 
             **Examples:**
