@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
-# Start a local preview of ovenmedialabs.com that surfaces ONLY the
-# docs for the upstream repo you're working in. Designed to be copied
-# into each upstream `docs-site/preview.sh` so that editors can run
+# Start a local preview of the ovenmedialabs.com site (whose source
+# lives in the OvenMediaLabs/airensoft.com repo — the repo keeps its
+# legacy name) and surface ONLY the docs for the upstream product
+# you're working in. Designed to be copied into each upstream
+# `docs-site/preview.sh` so that editors can run
 # `./docs-site/preview.sh` after changing markdown and see the result
 # rendered with the same theme/layout as production.
 #
@@ -11,8 +13,8 @@
 #      ovenplayer) by inspecting `git remote get-url origin`.
 #   2. Bootstraps a per-product cache under
 #         ~/.cache/ovenmedialabs-preview/<source>/site/
-#      with a clone of OvenMediaLabs/airensoft.com so a single editor
-#      can preview multiple products in parallel without collisions.
+#      with a clone of OvenMediaLabs/airensoft.com so different
+#      products keep separate working copies.
 #   3. Refreshes the cache (fetch + reset --hard) on each run.
 #   4. Installs npm deps if the lockfile changed.
 #   5. Symlinks the current repo's `docs-site/` into the cache's
@@ -21,11 +23,8 @@
 #      site hides marketing nav/footer and redirects `/` to
 #      `/docs/<source>/`.
 #
-# Per-product defaults (override with OML_PREVIEW_PORT or
-# OML_PREVIEW_BRANCH if needed):
-#       ome              port 3000
-#       ome-enterprise   port 3001
-#       ovenplayer       port 3002
+# Default port is 3000; override with OML_PREVIEW_PORT (or pick a
+# different branch of the airensoft.com repo via OML_PREVIEW_BRANCH).
 #
 # Requires: bash, git, Node 20+, npm. macOS / Linux.
 
