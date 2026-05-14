@@ -38,16 +38,16 @@ CACHE_ROOT="${OML_PREVIEW_CACHE:-$HOME/.cache/ovenmedialabs-preview}"
 # Detect which product we're in.
 origin_url="$(git remote get-url origin 2>/dev/null || true)"
 case "$origin_url" in
-    *OvenMediaEngineEnterprise*) SOURCE="ome-enterprise"; DEFAULT_PORT=3001 ;;
-    *OvenMediaEngine*)           SOURCE="ome";            DEFAULT_PORT=3000 ;;
-    *OvenPlayer*)                SOURCE="ovenplayer";     DEFAULT_PORT=3002 ;;
+    *OvenMediaEngineEnterprise*) SOURCE="ome-enterprise" ;;
+    *OvenMediaEngine*)           SOURCE="ome" ;;
+    *OvenPlayer*)                SOURCE="ovenplayer" ;;
     *)
         echo "error: can't detect product from origin URL '$origin_url'" >&2
         echo "       run this from inside an OvenMediaLabs upstream repo." >&2
         exit 1
         ;;
 esac
-PORT="${OML_PREVIEW_PORT:-$DEFAULT_PORT}"
+PORT="${OML_PREVIEW_PORT:-3000}"
 
 # Locate the docs-site directory we're previewing.
 repo_root="$(git rev-parse --show-toplevel)"
