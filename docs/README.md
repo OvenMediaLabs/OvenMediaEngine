@@ -6,9 +6,132 @@ guide published at <https://ovenmedialabs.com/docs/ome/>.
 ## Editing
 
 Each page is a markdown / MDX file under this directory; the folder
-tree maps to the URL structure of the published docs. See
-[STYLE.md](./STYLE.md) for frontmatter, admonition syntax, link
-conventions, and image rules.
+tree maps to the URL structure of the published docs.
+
+### Frontmatter
+
+Every page should have YAML frontmatter at the top:
+
+```yaml
+---
+title: Stream Recording
+sidebar_position: 4
+description: Configure on-the-fly recording of WebRTC streams.
+---
+```
+
+- `title` — page title shown in browser tab and as H1
+- `sidebar_position` — order within the section (smaller = higher)
+- `description` — SEO meta description; appears in search snippets
+- `slug` (optional) — override URL path; useful for `intro.md` (`slug: /`)
+
+### Admonitions
+
+```mdx
+:::note
+General note.
+:::
+
+:::tip
+Helpful tip.
+:::
+
+:::info
+Neutral info.
+:::
+
+:::warning
+Warning.
+:::
+
+:::danger
+Critical warning.
+:::
+```
+
+Optionally with a title: `:::info[Custom title]`
+
+### Tabs
+
+```mdx
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ubuntu" label="Ubuntu 22" default>
+
+  Ubuntu-specific instructions here.
+
+  </TabItem>
+  <TabItem value="fedora" label="Fedora 38">
+
+  Fedora-specific instructions here.
+
+  </TabItem>
+</Tabs>
+```
+
+The two `import` lines are required once per file that uses tabs.
+
+### Code blocks
+
+Standard fenced code with optional language, title, and highlights:
+
+````mdx
+```bash title="Build OME"
+./configure
+make -j$(nproc)
+sudo make install
+```
+````
+
+````mdx
+```xml title="Server.xml" {3,7-9}
+<Server>
+  <Name>OME</Name>
+  <IP>*</IP>           {/* highlighted */}
+  <Bind>...</Bind>
+</Server>
+```
+````
+
+### Images
+
+Put images in `docs/images/` and reference them with a relative path:
+
+```mdx
+![Architecture diagram](./images/architecture.png)
+```
+
+Subfolders work too: from `features/security/auth.md`, use
+`../../images/auth.png`.
+
+**Filename rule**: no spaces, no parens. Use `kebab-case` or
+`snake_case`. (Spaces and `()` need URL-encoding, which is a footgun.)
+
+### Characters that need escaping
+
+MDX parses `<`, `{`, `}` as JSX. In plain text:
+
+- `<` → `&lt;` (or wrap in backticks: `` `<992` ``)
+- `{` → `&#123;`
+- `}` → `&#125;`
+
+Inside fenced code blocks (` ``` `) or inline code (`` ` ``), escape
+nothing — those are raw.
+
+### Sidebar order
+
+Page order within a section follows `sidebar_position:` in frontmatter.
+For directory labels and order, add a `_category_.json` to the folder:
+
+```json
+{
+  "label": "Security",
+  "position": 5,
+  "link": { "type": "doc", "id": "README" }
+}
+```
 
 ## Local preview
 
@@ -40,3 +163,7 @@ Env var overrides:
 - `OML_PREVIEW_PORT` (default `3000`)
 - `OML_PREVIEW_BRANCH` (which branch of the ovenmedialabs.com repo to clone)
 - `OML_PREVIEW_CACHE` (cache root path)
+
+## Questions?
+
+Ping `#docs` on Slack, or file an issue on this repo with the `docs` label.
