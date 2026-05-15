@@ -53,9 +53,15 @@ private:
 	std::shared_ptr<ov::Socket>		_connector;
 	bool 							_sent_ready;
 
-	// When false, no filtering is performed (full stream is forwarded). When true,
-	// only media packets whose track id is in _allowed_track_ids are forwarded;
-	// an empty _allowed_track_ids in this state drops every media packet.
+	// `_track_set_filter_enabled` and `_allowed_track_ids` are written by
+	// the OVT publisher request thread (via `SetAllowedTrackIds()` during `HandlePlayRequest()`)
+	// and read by the stream worker thread (via `SendOutgoingData()`).
+	// Both sides acquire `_track_set_filter_mutex` to establish the synchronizes-with edge.
+	//
+	// When `_track_set_filter_enabled` is `false`, no filtering is performed (full stream is forwarded).
+	// When `true`, only media packets whose track id is in `_allowed_track_ids` are forwarded;
+	// an empty `_allowed_track_ids` in this state drops every media packet.
+	mutable std::mutex _track_set_filter_mutex;
 	bool _track_set_filter_enabled = false;
 	std::set<uint32_t> _allowed_track_ids;
 	// Per fragment-group filter state. A "group" is the run of OvtPackets that

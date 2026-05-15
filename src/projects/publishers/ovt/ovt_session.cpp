@@ -85,51 +85,55 @@ void OvtSession::SendOutgoingData(const std::any &packet)
 
 	// TrackSet filter (applied only to media packets; signaling packets are payload type
 	// MESSAGE_RESPONSE and are sent via OvtPublisher::SendResponse, not this path).
-	if (_track_set_filter_enabled &&
-		session_packet->PayloadType() == OVT_PAYLOAD_TYPE_MEDIA_PACKET)
 	{
-		if (_current_group_decision == GroupDecision::Pending)
+		std::scoped_lock lock(_track_set_filter_mutex);
+
+		if (_track_set_filter_enabled &&
+			session_packet->PayloadType() == OVT_PAYLOAD_TYPE_MEDIA_PACKET)
 		{
-			if (session_packet->PayloadLength() >= 4 && session_packet->Payload() != nullptr)
+			if (_current_group_decision == GroupDecision::Pending)
 			{
-				uint32_t track_id = ByteReader<uint32_t>::ReadBigEndian(session_packet->Payload());
-				if (_allowed_track_ids.find(track_id) != _allowed_track_ids.end())
+				if (session_packet->PayloadLength() >= 4 && session_packet->Payload() != nullptr)
 				{
-					_current_group_decision = GroupDecision::Accept;
+					uint32_t track_id = ByteReader<uint32_t>::ReadBigEndian(session_packet->Payload());
+					if (_allowed_track_ids.find(track_id) != _allowed_track_ids.end())
+					{
+						_current_group_decision = GroupDecision::Accept;
+					}
+					else
+					{
+						_current_group_decision = GroupDecision::Drop;
+					}
 				}
 				else
 				{
+					// Malformed first fragment; drop conservatively.
+					if (_warned_malformed_first_fragment == false)
+					{
+						_warned_malformed_first_fragment = true;
+						logtw(
+							"OvtSession(%u) received a malformed first fragment from %s "
+							"(payload_length=%u, payload=%s); dropping. Further occurrences will be suppressed.",
+							GetId(),
+							_connector != nullptr ? _connector->ToString().CStr() : "<unknown>",
+							session_packet->PayloadLength(),
+							session_packet->Payload() != nullptr ? "non-null" : "null");
+					}
 					_current_group_decision = GroupDecision::Drop;
 				}
 			}
-			else
+
+			bool drop = (_current_group_decision == GroupDecision::Drop);
+
+			if (session_packet->Marker() == true)
 			{
-				// Malformed first fragment; drop conservatively.
-				if (_warned_malformed_first_fragment == false)
-				{
-					_warned_malformed_first_fragment = true;
-					logtw(
-						"OvtSession(%u) received a malformed first fragment from %s "
-						"(payload_length=%u, payload=%s); dropping. Further occurrences will be suppressed.",
-						GetId(),
-						_connector != nullptr ? _connector->ToString().CStr() : "<unknown>",
-						session_packet->PayloadLength(),
-						session_packet->Payload() != nullptr ? "non-null" : "null");
-				}
-				_current_group_decision = GroupDecision::Drop;
+				_current_group_decision = GroupDecision::Pending;
 			}
-		}
 
-		bool drop = (_current_group_decision == GroupDecision::Drop);
-
-		if (session_packet->Marker() == true)
-		{
-			_current_group_decision = GroupDecision::Pending;
-		}
-
-		if (drop)
-		{
-			return;
+			if (drop)
+			{
+				return;
+			}
 		}
 	}
 
@@ -142,6 +146,8 @@ void OvtSession::SendOutgoingData(const std::any &packet)
 
 void OvtSession::SetAllowedTrackIds(const std::set<uint32_t> &allowed_track_ids)
 {
+	std::scoped_lock lock(_track_set_filter_mutex);
+
 	_allowed_track_ids		  = allowed_track_ids;
 	_track_set_filter_enabled = true;
 	_current_group_decision	  = GroupDecision::Pending;
