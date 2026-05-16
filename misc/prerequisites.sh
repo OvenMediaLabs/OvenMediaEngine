@@ -445,15 +445,11 @@ install_spdlog()
 
 install_whisper()
 {
-	WHISPER_CUDA=0
+	WHISPER_CUDA="OFF"
 	if [ "$NVIDIA_NV_HWACCELS" = true ] ; then
-			WHISPER_CUDA=1
+			WHISPER_CUDA="ON"
 	fi
 
-	# 61: Pascal - GeForce GTX 10 series (e.g., GTX 1060, 1080)
-			## NOTE: Legacy. Dropped in CUDA 12.0 and later. Requires CUDA 11.x or older to build.
-	# 70: Volta - Titan V, Tesla V100
-			## NOTE: Legacy. Dropped in CUDA 12.0 and later. Requires CUDA 11.x or older to build.
 	# 61: Pascal      - GeForce GTX 10 series (1050/1060/1070/1080)
 	# 70: Volta       - Tesla V100
 	# 75: Turing      - GeForce RTX 20 series & GTX 16 series, Tesla T4
@@ -461,7 +457,7 @@ install_whisper()
 	# 86: Ampere      - GeForce RTX 30 series (Desktop/Laptop), Tesla A10
 	# 89: Ada Lovelace - GeForce RTX 40 series, Tesla L4
 	# 90: Hopper      - H100
-	WHISPER_CUDA_ARCH="61;70;75;80;86;89;90"
+	WHISPER_CUDA_ARCH="61-real;70-real;75-real;80-real;86-real;89-real;90"
 
 	(DIR=${TEMP_PATH}/whisper && \
 	mkdir -p ${DIR} && \
@@ -471,11 +467,15 @@ install_whisper()
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX} \
 		-DCMAKE_INSTALL_RPATH=${PREFIX}/lib \
-		-DBUILD_SHARED_LIBS=ON \
+		-DBUILD_SHARED_LIBS=OFF \
 		-DWHISPER_BUILD_EXAMPLES=OFF \
 		-DWHISPER_BUILD_TESTS=OFF \
 		-DWHISPER_BUILD_SERVER=OFF \
+		-DGGML_NATIVE=OFF \
 		-DGGML_CUDA=${WHISPER_CUDA} \
+		-DGGML_STATIC=ON \
+		-DGGML_CUDA_FA_ALL_QUANTS=OFF \
+		-DGGML_CUDA_GRAPHS=OFF \
 		-DCMAKE_CUDA_ARCHITECTURES=${WHISPER_CUDA_ARCH} && \
 	cd build && \
 	make -j$(nproc) && \

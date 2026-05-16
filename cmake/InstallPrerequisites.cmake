@@ -520,24 +520,27 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
 ")
 
 # ---- whisper.cpp ----
-set(_WHISPER_CUDA 0)
+set(_WHISPER_CUDA "OFF")
 if(ENABLE_NVIDIA)
-    set(_WHISPER_CUDA 1)
+    set(_WHISPER_CUDA "ON")
 endif()
 set(_WHISPER_CMAKE_ARGS
     "cmake -B build -S ."
     "-DCMAKE_BUILD_TYPE=Release"
     "-DCMAKE_INSTALL_PREFIX=${PREFIX}"
     "-DCMAKE_INSTALL_RPATH=${PREFIX}/lib"
-    "-DBUILD_SHARED_LIBS=ON"
+    "-DBUILD_SHARED_LIBS=OFF"
     "-DWHISPER_BUILD_EXAMPLES=OFF"
     "-DWHISPER_BUILD_TESTS=OFF"
     "-DWHISPER_BUILD_SERVER=OFF"
     "-DGGML_CUDA=${_WHISPER_CUDA}"
+    "-DGGML_STATIC=ON"
+    "-DGGML_CUDA_FA_ALL_QUANTS=OFF"
+    "-DGGML_CUDA_GRAPHS=OFF"
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 )
 if(OME_HWACCEL_NVIDIA)
-    list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61\;75\;80\;86\;89\"")
+    list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61-real\;70-real\;75-real\;80-real\;86-real\;89-real\;90\"")
     find_program(_OME_NVCC nvcc HINTS /usr/local/cuda/bin /usr/cuda/bin)
     if(_OME_NVCC)
         list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")

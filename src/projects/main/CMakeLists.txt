@@ -63,6 +63,7 @@ target_link_libraries(OvenMediaEngine PRIVATE
     PkgConfig::PKG_SPDLOG
     PkgConfig::PKG_WHISPER
     ${UUID_LIB}
+    gomp
     pthread
     dl
     z

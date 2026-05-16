@@ -266,57 +266,18 @@ preload_xilinx_driver() {
 }
 
 preload_nvidia_driver() {
-    logd "Checking for NVIDIA/CUDA drivers to preload..."
-
-    # Deprecated
-    # CUDA 10.x libraries. 
-    local lib_files_10=(
-        "libnvidia-ml.so.1"
-        "libcuda.so.1"
-        "libnppicc.so.10" 
-        "libnppig.so.10" 
-        "libcudart.so.10.0" 
-        "libcublas.so.10"
-        "libcublasLt.so.10"
-    )
+    logd "Checking for NVIDIA/CUDA drivers..."
 
     # CUDA 11.x libraries. It will be deprecated soon.
-    local lib_files_11=(
+    local lib_files=(
         "libnvidia-ml.so.1"
         "libcuda.so.1"
-        "libnppicc.so.11" 
-        "libnppig.so.11" 
-        "libcudart.so.11.0" 
-        "libcublas.so.11"
-        "libcublasLt.so.11"
     )
 
-    # CUDA 12.x libraries
-    local lib_files_12=(
-        "libnvidia-ml.so.1"
-        "libcuda.so.1"
-        "libnppicc.so.12" 
-        "libnppig.so.12" 
-        "libcudart.so.12"
-        "libcublas.so.12"
-        "libcublasLt.so.12"
-    )
-
-    if load_library_set_if_complete "NVIDIA/CUDA 12.x" "${lib_files_12[@]}"; then
-        logi "NVIDIA/CUDA 12.x drivers are installed. hardware acceleration is supported"
+    if load_library_set_if_complete "NVIDIA/CUDA" "${lib_files[@]}"; then
+        logi "NVIDIA/CUDA drivers are installed. hardware acceleration is supported"
         return
     fi
-
-    if load_library_set_if_complete "NVIDIA/CUDA 11.x" "${lib_files_11[@]}"; then
-        logw "NVIDIA/CUDA 11.x drivers are installed. hardware acceleration is supported. However, Some features may not be supported. it is recommended to update to CUDA 12.x for better performance and compatibility.."
-        return
-    fi
-
-    # Deprecated
-    #if load_library_set_if_complete "NVIDIA/CUDA 10.x" "${lib_files_10[@]}"; then
-    #	logw "NVIDIA/CUDA 10.x drivers are installed. hardware acceleration is supported. However, Some features may not be supported. it is strongly recommended to update to CUDA 12.x for better performance and compatibility. "
-    #   return
-    #fi
 
     logi "NVIDIA/CUDA driver not found. hardware acceleration is not supported"
 }
