@@ -312,7 +312,7 @@ mkdir -p ${TEMP_PATH}/srt && cd ${TEMP_PATH}/srt &&
 curl -sSLf ${SRT_SOURCE_URL} | tar -xz --strip-components=1 &&
 cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DENABLE_SHARED=1 -DENABLE_STATIC=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build build ${_J} &&
-sudo cmake --install build && rm -rf ${TEMP_PATH}/srt
+sudo cmake --install build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/srt
 ")
 
 # ---- Opus ----
