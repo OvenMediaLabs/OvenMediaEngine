@@ -20,9 +20,9 @@ The `ovenmedialabs/ovenmediaengine` repository provides the following tags:
 
 | Tag | Description |
 | --- | --- |
-| `latest` | The most recent stable release (recommended for production). |
+| `latest` | The most recent stable release. Convenient, but the version it points to changes as new releases ship. |
 | `dev` | The latest development build from the `master` branch. |
-| `v0.20.5` | A specific stable release. Browse the [available tags](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine/tags) or the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and pin the version you want. |
+| `v0.20.5` | A specific stable release — recommended for production, so deployments stay on a fixed version. Browse the [available tags](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine/tags) or the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and pin the version you want. |
 
 For example, to run a specific release:
 
