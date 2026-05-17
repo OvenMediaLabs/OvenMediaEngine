@@ -53,7 +53,7 @@ You can access the OvenPlayerDemo docker container with a browser as shown below
 
 http://Your.Docker.Host.IP:8090/
 
-<img src="../images/quick-start-playback-1.png" alt="" data-size="original" />
+![](../images/quick-start-playback-1.png)
 
 </details>
 
