@@ -97,7 +97,7 @@ Moreover, some encoders can include a stream key in the URL, and if you use thes
 
 If you are using the default configuration, press the URL button in the top right corner of OvenStreamEnoder, and enter the URL as shown below:
 
-![](../images/03.png)
+![](../images/rtmp-ovenlivekit.png)
 
 Also, `{App Name}` and `{Stream Name}` can be changed and used as desired in the configuration.
 
@@ -105,7 +105,7 @@ Also, `{App Name}` and `{Stream Name}` can be changed and used as desired in the
 
 If you use the default configuration, set the OBS as follows:
 
-![](../images/image-63.png)
+![](../images/rtmp-obs.png)
 
 You can set the Stream Key to any name you like at any time.
 
@@ -144,5 +144,5 @@ To enable E-RTMP, you need to update the `Server.xml` configuration file. Add th
 
 To stream with E-RTMP using OBS, select an encoder that supports HEVC in the `Video Encoder` section of the `Output` settings as shown below:
 
-![](../images/image-64.png)
+![](../images/rtmp-ertmp-obs.png)
 

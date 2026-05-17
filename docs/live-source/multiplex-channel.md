@@ -7,7 +7,7 @@ Now with Multiplex Channel, you can configure ABR by combining multiple input st
 
 Multiplex Channel takes tracks from other local streams and organizes them into its own tracks. This will pull in tracks that have already been encoded, which can be useful if you want to change codecs or adjust the quality once again. And the Multiplex Channel is sent to the publisher, unconditionally bypassing the encoder.
 
-![](../images/image-32.png)
+![](../images/multiplex-channel.png)
 
 ## Configuration
 

@@ -173,7 +173,7 @@ client_4 has stopped
 
 Linux has various tools to monitor CPU usage per thread. We will check the simplest with the top command. If you issue the `top -H -p` \[pid] command, you will see the following screen.
 
-![](./images/image-34.png)
+![](./images/performance-tuning-threads-1.png)
 
 You can use OvenRtcTester to test the capacity of the server as shown below. When testing the maximum performance, OvenRtcTester also uses a lot of system resources, so test it separately from the system where OvenMediaEngine is running. Also, it is recommended to test OvenRtcTester with multiple servers. For example, simulate 500 players with -n 500 on one OvenRtcTester, and simulate 2000 players with four servers.
 
@@ -230,13 +230,13 @@ Total Packet Losses(306) Avg Packet Losses(3)
 
 If the OvenMediaEngine's capacity is exceeded, you will notice it in OvenRtcTester's Summary report with `Avg Video Delay` and `Avg Audio Delay` or `Packet loss`.&#x20;
 
-![](./images/image-36.png)
+![](./images/performance-tuning-threads-2.png)
 
 On the right side of the above capture screen, we simulate 400 players with OvenRtcTester.  `<Summary>` of OvenRtcTester shows that `Avg Video Delay` and `Avg Audio Delay` are very high, and `Avg FPS` is low.
 
 And on the left, you can check the CPU usage by thread with the `top -H -p` command. This confirms that the `StreamWorker` threads are being used at 100%, and now you can scale the server by increasing the number of `StreamWorker` threads. If OvenMediaEngine is not using 100% of all cores of the server, you can improve performance by [tuning the number of threads](performance-tuning.md#tuning-the-number-of-threads).
 
-![](./images/image-37.png)
+![](./images/performance-tuning-threads-3.png)
 
 This is the result of tuning the number of `StreamWorkerCount` to 8 in config. This time, we simulated 1000 players with OvenRtcTester, and you can see that it works stably.
 

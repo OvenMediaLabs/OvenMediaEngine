@@ -27,7 +27,7 @@ OvenSpace is available online, so you can try it out for yourself at [https://sp
 
 OvenSpace is also available on [Github](https://github.com/OvenMediaLabs/OvenSpace) as open source. It will be a good reference when developing media services using OvenMediaEngine, OvenPlayer and OvenLiveKit.
 
-![](../images/image-6-1.png)
+![](../images/test-player-ovenspace.png)
 
 
 

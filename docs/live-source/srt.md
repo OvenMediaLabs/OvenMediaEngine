@@ -74,7 +74,7 @@ OBS Studio 25.0 or later supports SRT. Please refer to the [OBS official documen
 
 `srt://{OvenMediaEngine Host}:{SRT Port}?streamid={streamid}`
 
-![](../images/image-6.png)
+![](../images/srt-source-obs.png)
 
 ### Blackmagic Web Presenter
 

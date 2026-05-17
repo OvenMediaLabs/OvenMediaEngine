@@ -150,7 +150,7 @@ Here's how to use this script:
 
 For example, you can use it like this:
 
-![](../images/image-17.png)
+![](../images/signedpolicy-signature.png)
 
 ## Make SignedPolicy URL manually
 
@@ -208,8 +208,8 @@ ws://192.168.0.100:3333/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&sig
 
 Generate SignedPolicy URL with the script.
 
-![](../images/image-23.png)
+![](../images/signedpolicy-obs-1.png)
 
 Separate the URL based on "app" as shown in the example below and enter all the parts under the stream in the Stream Key.
 
-![](../images/image-25.png)
+![](../images/signedpolicy-obs-2.png)

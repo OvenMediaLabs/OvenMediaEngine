@@ -7,7 +7,7 @@ sidebar_position: 6
 
 The OME Docker Launcher is a tool that simplifies the process of deploying and managing the OvenMediaEngine (OME) application using Docker containers. This tool can be used by developers and system administrators who want to quickly deploy and test the OME application in a Docker environment.
 
-![](../images/image-1-1-1-1-1-1-1.png)
+![](../images/ome-docker-launcher-overview.png)
 
 The OME Docker Launcher provides a set of commands that allow users to easily manage the OME Docker container. These commands include:
 

@@ -192,13 +192,13 @@ The folder to output to. In the `<OutputPath>` you can use the macros shown in t
 
 OvenMediaEngine supports Multiple Audio Tracks in LLHLS. When multiple audio signals are input through a Provider, the LLHLS Publisher can utilize them to provide multiple audio tracks.
 
-![](../images/image-1-1-1-1-1.png)
+![](../images/llhls-multi-audio-1.png)
 
 By simply sending multiple audio signals through SRT or Scheduled Channel, the LLHLS Publisher can provide multiple audio tracks. For example, to send multiple audio signals via SRT from OBS, you need to select multiple Audio Tracks and configure the Advanced Audio Properties to assign the appropriate audio to each track.
 
-![](../images/image-2-1-1-1.png)
+![](../images/llhls-multi-audio-2.png)
 
-![](../images/image-3-1-1.png)
+![](../images/llhls-multi-audio-3.png)
 
 Since the incoming audio signals do not have labels, you can enhance usability by assigning labels to each audio signal as follows.
 
@@ -336,7 +336,7 @@ Currently, `<CencProtectScheme>` only supports `cbcs` since FairPlay also suppor
 
 OvenPlayer now includes DRM-related options. Enable DRM and input the License URL. Your content is now securely protected.
 
-![](../images/image-30.png)
+![](../images/llhls-drm-scheduled-channel.png)
 
 ### Pallycon DRM
 

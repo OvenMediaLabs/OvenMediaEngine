@@ -109,7 +109,7 @@ To change the signaling port, update `<Bind><Publishers><WebRTC><Signalling><Por
 
 The Signalling protocol is defined in a simple way:
 
-![](../images/image-3-1-1-1-1.png)
+![](../images/webrtc-publishing-signalling.png)
 
 To use a player other than OvenPlayer, implement the signaling protocol shown above.
 
@@ -199,7 +199,7 @@ We have prepared a test player to make it easy to check if OvenMediaEngine is wo
 
 OvenMediaEngine provides adaptive bitrate streaming over WebRTC. OvenPlayer can also play and display OvenMediaEngine's WebRTC ABR URL.
 
-![](../images/image-39.png)
+![](../images/webrtc-publishing-abr-playback.png)
 
 ### Create Playlist for WebRTC ABR
 

@@ -7,7 +7,7 @@ OvenMediaEngine (OME) version 0.20.0 and later supports real-time automatic subt
 
 An NVIDIA GPU is required. CPU inference is not supported because it is too slow for real-time live transcription.
 
-![](../images/image.png)
+![](../images/realtime-speech-to-text.png)
 
 ## Prerequisites
 

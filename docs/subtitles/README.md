@@ -5,9 +5,9 @@ sidebar_position: 33
 
 From OvenMediaEngine 0.19.1 and later, you can insert subtitles into live streams in real time using the API.
 
-![](../images/image-1.png)
+![](../images/subtitles-1.png)
 
-![](../images/image-1-1.png)
+![](../images/subtitles-2.png)
 
 
 :::info

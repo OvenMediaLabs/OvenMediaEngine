@@ -247,7 +247,7 @@ $ sudo setenforce 0
 
 WebRTC does not support b-frame of H.264. But if your encoder sends b-frames the video will be stuttered in the player. In this case, you can solve the problem by disabling the b-frame function in your encoder. For OBS, you can set bframes=0 option as below.
 
-![](./images/image-40-1.png)
+![](./images/troubleshooting-bypass-streaming.png)
 
 Or by **activating the encoding options** in OvenMediaEngine.
 
@@ -344,7 +344,7 @@ The mobile environment used by many people uses a **wireless network**. It has a
 
 Look, **CUBIC**, the Congestion Control set by default in your Linux, adjusts the TCP Window by packet loss, so it is not suitable to provide stable streaming in such an environment.
 
-![Source: iccrg-bbr-congestion-control-02.pdf (Page 18)](./images/BBR_CUBIC.png)
+![Source: iccrg-bbr-congestion-control-02.pdf (Page 18)](./images/troubleshooting-bbr-vs-cubic.png)
 
 So our suggestion is to use Google's **BBR**. This setting is even more important if you mainly provide WebRTC services to mobile users who use a wireless network. Change the Congestion Control from CUBIC to BBR on your Linux.
 
@@ -386,7 +386,7 @@ If you use Transcoding as Bypass in OvenMediaEngine and set a **long keyframe in
 
 In this case, you can solve this by setting the keyframe interval in the encoder to **1-2 seconds**,
 
-![](./images/keyframe_obs.png)
+![](./images/troubleshooting-keyframe-obs.png)
 
 Or by **enabling the encoding options** in OvenMediaEngine.
 

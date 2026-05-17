@@ -170,11 +170,11 @@ Simulcast allows encoders to send multiple quality layers simultaneously without
 
 Simulcast is supported via **WHIP signaling only**. Test using OvenLiveKit or OBS.
 
-![](../images/image-45.png)
+![](../images/whip-simulcast-1.png)
 
-![](../images/image-46.png)
+![](../images/whip-simulcast-2.png)
 
-![](../images/image-47.png)
+![](../images/whip-simulcast-3.png)
 
 ### Playlist Template for Simulcast
 
@@ -301,7 +301,7 @@ A demo page is available for testing WebRTC ingest:
 
 [https://demo.ovenplayer.com/demo_input.html](https://demo.ovenplayer.com/demo_input.html)
 
-![](../images/ovenlivekit_demo.png)
+![](../images/whip-ovenlivekit-demo.png)
 
 
 :::warning
@@ -315,6 +315,6 @@ A demo page is available for testing WebRTC ingest:
 
 To build a custom WebRTC producer, implement OvenMediaEngine's Self-defined Signaling Protocol or WHIP. The self-defined protocol uses the [same format as WebRTC Streaming](../streaming/webrtc-publishing.md#signalling-protocol).
 
-![](../images/image-10.png)
+![](../images/whip-signaling-protocol.png)
 
 Connect to `ws[s]://host:port/app/stream?direction=send` via WebSocket and send a request-offer command. OME responds with an offer SDP containing all configured ICE candidates (UDP, Direct TCP if configured) and, if `<TcpRelay>` is set, an `iceServers` field with TURN server information. Pass `iceServers` to `RTCPeerConnection`, then call `setRemoteDescription`, `addIceCandidate` with the offer SDP, generate an answer SDP, and send it back to OME.

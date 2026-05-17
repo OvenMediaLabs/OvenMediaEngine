@@ -99,25 +99,25 @@ If you have multiple audio tracks, you can choose one with `-ast` parameter
 $ ffplay "srt://192.168.0.160:9998?streamid=default/app/stream/master" -ast 1
 ```
 
-![](../images/image-2-1.png)
+![](../images/srt-playback-ffplay.png)
 
 ### OBS Studio
 
 OBS Studio offers the ability to add an SRT stream as an input source. To use this feature, follow the steps below to add a Media Source:
 
-![](../images/image-2.png)
+![](../images/srt-playback-obs-1.png)
 
 Once added, you will see the SRT stream as a source, as shown below. This added source can be used just like any other media source.
 
-![](../images/image-1-1-1-1.png)
+![](../images/srt-playback-obs-2.png)
 
 ### VLC
 
 You can also playback the SRT stream in VLC. Simply select `Media` > `Open Network Stream` from the menu and enter the SRT URL:
 
-![](../images/image-1-1-1.png)
+![](../images/srt-playback-vlc-1.png)
 
-![](../images/image-3-1.png)
+![](../images/srt-playback-vlc-2.png)
 
 ## Using Playlist
 

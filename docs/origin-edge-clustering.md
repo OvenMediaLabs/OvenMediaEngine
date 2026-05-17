@@ -7,7 +7,7 @@ OvenMediaEngine supports clustering and ensures High Availability (HA) and scala
 
 ## OriginMap
 
-![](./images/image-7-1-1.png)
+![](./images/clustering-originmap.png)
 
 The OvenMediaEngine running as edge pulls a stream from an external server when a user requests it. The external server could be another OvenMediaEngine with OVT enabled or another stream server that supports RTSP.&#x20;
 
@@ -234,7 +234,7 @@ A TrackSet can also be requested through the standard `<Origin>` mapping. For ex
 
 ## OriginMapStore
 
-![](./images/image-2-1-1-1-1-1.png)
+![](./images/clustering-trackset.png)
 
 `OriginMapStore` is designed to make it easier to support autoscaling within a cluster. All Origin Servers and Edge Servers in the cluster share stream information and origin OVT URLs through Redis. That is, when a stream is created on the Origin server, the Origin server sets the app/stream name and OVT url to access the stream to the Redis server. Edge gets the OVT url corresponding to the `app/stream` from the Redis server when the user's playback request comes in.
 
