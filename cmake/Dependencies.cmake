@@ -367,7 +367,7 @@ if(PKG_WHISPER_FOUND)
 
         find_library(NV_CUBLAS_LIB     cublas_static   HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
         find_library(NV_CUBLASLT_LIB   cublasLt_static HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
-        find_library(NV_CULIBOS_LIB    culibos_static  HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
+        find_library(NV_CULIBOS_LIB    culibos         HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
         find_library(NV_GGML_CUDA_LIB  ggml-cuda       HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)        
 
         if(NV_GGML_CUDA_LIB AND NV_CUBLAS_LIB AND NV_CUBLASLT_LIB)
