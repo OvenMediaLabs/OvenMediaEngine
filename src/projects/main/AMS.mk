@@ -119,7 +119,7 @@ LOCAL_LDFLAGS += -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib64/stubs -Wl,-Bsta
 
 # Whisper GGML(CUDA)
 #  pkgconfig(whisper.pc) not contains -lggml-cuda, so we need to add it manually.
-LOCAL_LDFLAGS +=  -Wl,-Bstatic -lggml-cuda -lcublas_static -lcublasLt_static -Wl,-Bdynamic  
+LOCAL_LDFLAGS +=  -Wl,-Bstatic -lggml-cuda -lcublas_static -lcublasLt_static -lculibos -Wl,-Bdynamic  
 endif
 
 
