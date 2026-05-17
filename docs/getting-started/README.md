@@ -39,6 +39,22 @@ curl -LOJ https://github.com/OvenMediaLabs/OvenMediaEngine/archive/master.tar.gz
 tar xvfz OvenMediaEngine-master.tar.gz
 ```
 
+
+:::tip Building a specific release
+
+The command above builds the latest development code from the `master` branch. To build a **specific stable release** instead (recommended for production), choose a version from the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and download its source archive:
+
+```bash
+# Replace 0.20.5 with the release you want
+curl -LOJ https://github.com/OvenMediaLabs/OvenMediaEngine/archive/v0.20.5.tar.gz && \
+tar xvfz OvenMediaEngine-0.20.5.tar.gz
+```
+
+The build steps below are identical — just use the extracted `OvenMediaEngine-0.20.5` directory instead of `OvenMediaEngine-master`.
+
+:::
+
+
 Then build and install using the commands for your platform:
 
 

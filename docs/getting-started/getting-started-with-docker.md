@@ -14,6 +14,27 @@ ovenmedialabs/ovenmediaengine:latest
 ```
 
 
+:::tip Choosing an image tag
+
+The `ovenmedialabs/ovenmediaengine` repository provides the following tags:
+
+| Tag | Description |
+| --- | --- |
+| `latest` | The most recent stable release (recommended for production). |
+| `dev` | The latest development build from the `master` branch. |
+| `v0.20.5` | A specific stable release. Browse the [available tags](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine/tags) or the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and pin the version you want. |
+
+For example, to run a specific release:
+
+```sh
+docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
+ovenmedialabs/ovenmediaengine:v0.20.5
+```
+
+:::
+
+
 :::warning
 
 If a certificate is not installed in OvenMediaEngine, some functions (WebRTC Ingest, LLHLS playback) may not work due to the browser's security policy. Please refer to [Complex Configuration](getting-started-with-docker.md#getting-started-with-complex-configuration) section to install the certificate.
