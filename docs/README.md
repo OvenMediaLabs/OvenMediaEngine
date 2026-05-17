@@ -138,8 +138,9 @@ For directory labels and order, add a `_category_.json` to the folder:
 Run `./docs/preview.sh` from the repo root.
 
 The script clones the [ovenmedialabs.com](https://github.com/OvenMediaLabs/ovenmedialabs.com)
-repo into a per-product cache, symlinks your `docs/` into it,
-and starts a dev server. When it's ready you'll see:
+repo into a per-product cache, copies your `docs/` into it (and
+watches it so your edits hot-reload), and starts a dev server. When
+it's ready you'll see:
 
     [SUCCESS] Docusaurus website is running at: http://localhost:3000/
 
@@ -161,9 +162,6 @@ minutes (clone + npm install); subsequent runs ~10 seconds.
 Env var overrides:
 
 - `OML_PREVIEW_PORT` (default `3000`)
-- `OML_PREVIEW_BRANCH` (which branch of the ovenmedialabs.com repo to clone)
+- `OML_PREVIEW_HOST` (default `localhost`; set `0.0.0.0` for direct, non-VSCode remote access)
+- `OML_PREVIEW_BRANCH` (which branch of the ovenmedialabs.com repo to clone; default `main`)
 - `OML_PREVIEW_CACHE` (cache root path)
-
-## Questions?
-
-Ping `#docs` on Slack, or file an issue on this repo with the `docs` label.
