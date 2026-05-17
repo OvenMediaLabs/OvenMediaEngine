@@ -162,6 +162,5 @@ minutes (clone + npm install); subsequent runs ~10 seconds.
 Env var overrides:
 
 - `OML_PREVIEW_PORT` (default `3000`)
-- `OML_PREVIEW_HOST` (default `localhost`; set `0.0.0.0` for direct, non-VSCode remote access)
-- `OML_PREVIEW_BRANCH` (which branch of the ovenmedialabs.com repo to clone; default `main`)
+- `OML_PREVIEW_HOST` (default `localhost`; set `0.0.0.0` to open the preview from another machine)
 - `OML_PREVIEW_CACHE` (cache root path)
