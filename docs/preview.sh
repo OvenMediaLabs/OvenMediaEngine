@@ -2,8 +2,8 @@
 #
 # Start a local preview of the ovenmedialabs.com site and surface ONLY the docs for the upstream product
 # you're working in. Designed to be copied into each upstream
-# `docs/preview.sh` so that editors can run
-# `./docs/preview.sh` after changing markdown and see the result
+# `docs/preview.sh` (Enterprise: `docs-enterprise/preview.sh`) so that
+# editors can run it after changing markdown and see the result
 # rendered with the same theme/layout as production.
 #
 # Behaviour:
@@ -15,21 +15,30 @@
 #      products keep separate working copies.
 #   3. Refreshes the cache (fetch + reset --hard) on each run.
 #   4. Installs npm deps if the lockfile changed.
-#   5. Symlinks the current repo's `docs/` into the cache's
-#      `docs/<source>/` so docs changes are picked up live by HMR.
+#   5. COPIES this repo's docs into the cache's docs/<source>/, then
+#      runs a file watcher that mirrors each of your subsequent edits
+#      into the cache so Docusaurus HMR still fires. (A symlink is NOT
+#      usable: Docusaurus content-docs mis-reads its registry when its
+#      `path:` points through a symlink and the build fails with
+#      "Cannot read properties of undefined (reading 'id')".)
 #   6. Starts `npm start` with OML_PREVIEW_SOURCE set — the consuming
 #      site hides marketing nav/footer and redirects `/` to
 #      `/docs/<source>/`.
 #
-# Default port is 3000; override with OML_PREVIEW_PORT (or pick a
-# different branch of the ovenmedialabs.com repo via OML_PREVIEW_BRANCH).
+# Note: shared (`dup:`) pages are filled from the open-source manual by
+# the site's generator at startup. Don't edit a `dup:` stub locally —
+# edit the OSS source. Enterprise-only pages hot-reload as you save.
+#
+# Defaults: port 3000, bind host localhost. Override via OML_PREVIEW_PORT
+# / OML_PREVIEW_HOST (set 0.0.0.0 for direct, non-VSCode remote access),
+# or pick a different ovenmedialabs.com branch via OML_PREVIEW_BRANCH.
 #
 # Requires: bash, git, Node 20+, npm. macOS / Linux.
 
 set -euo pipefail
 
 SITE_REPO="https://github.com/OvenMediaLabs/ovenmedialabs.com.git"
-SITE_BRANCH="${OML_PREVIEW_BRANCH:-feat/docusaurus-migration}"
+SITE_BRANCH="${OML_PREVIEW_BRANCH:-main}"
 CACHE_ROOT="${OML_PREVIEW_CACHE:-$HOME/.cache/ovenmedialabs-preview}"
 
 # Detect which product we're in.
@@ -45,10 +54,17 @@ case "$origin_url" in
         ;;
 esac
 PORT="${OML_PREVIEW_PORT:-3000}"
+HOST="${OML_PREVIEW_HOST:-localhost}"
 
-# Locate the docs directory we're previewing.
+# Locate the docs directory we're previewing. Enterprise keeps its docs
+# under docs-enterprise/ (so the OvenMediaEngine merge into Enterprise
+# doesn't overwrite them); every other product uses docs/.
 repo_root="$(git rev-parse --show-toplevel)"
-docs_site="$repo_root/docs"
+case "$SOURCE" in
+    ome-enterprise) docs_subdir="docs-enterprise" ;;
+    *)              docs_subdir="docs" ;;
+esac
+docs_site="$repo_root/$docs_subdir"
 if [ ! -d "$docs_site" ]; then
     echo "error: $docs_site not found — are you in the right repo?" >&2
     exit 1
@@ -90,24 +106,61 @@ if [ ! -d "$site_dir/node_modules" ] \
     (cd "$site_dir" && npm install --no-audit --no-fund)
 fi
 
-# Replace the cached docs/<source>/ with a symlink to our docs/
-# so the editor sees their edits live via HMR. If the cache already
-# has a non-symlink directory there (from a fresh clone), drop it
-# first.
+# Copy our docs into the cache's docs/<source>/. A symlink can't be
+# used (Docusaurus content-docs breaks when its path: is a symlink), so
+# we copy and then mirror edits with a watcher (below) to keep HMR.
 target="$site_dir/docs/$SOURCE"
-if [ -L "$target" ]; then
-    rm "$target"
-elif [ -e "$target" ]; then
-    rm -rf "$target"
-fi
-ln -s "$docs_site" "$target"
+rm -rf "$target"
+mkdir -p "$target"
+cp -R "$docs_site/." "$target/"
+
+# Watch our docs and mirror each changed file into the cache copy so
+# Docusaurus HMR fires on save. Per-file (not a bulk re-sync): a bulk
+# rsync would clobber the shared pages the site's generator expands at
+# startup. chokidar ships with Docusaurus (already in the cache's
+# node_modules); ignoreInitial keeps the startup-expanded pages intact.
+watch_js="$(mktemp "${TMPDIR:-/tmp}/oml-preview-watch.XXXXXX")"
+cat > "$watch_js" <<'NODE'
+const chokidar = require(process.env.OML_CHOKIDAR);
+const fs = require('fs');
+const path = require('path');
+const src = process.env.OML_SRC;
+const dst = process.env.OML_DST;
+chokidar.watch(src, { ignoreInitial: true }).on('all', (ev, p) => {
+  const out = path.join(dst, path.relative(src, p));
+  try {
+    if (ev === 'unlink' || ev === 'unlinkDir') {
+      fs.rmSync(out, { recursive: true, force: true });
+    } else if (ev === 'addDir') {
+      fs.mkdirSync(out, { recursive: true });
+    } else {
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.copyFileSync(p, out);
+    }
+  } catch (e) {
+    console.error('[preview-watch]', e.message);
+  }
+});
+console.log('[preview-watch] mirroring edits:', src, '->', dst);
+NODE
+
+OML_CHOKIDAR="$site_dir/node_modules/chokidar" \
+OML_SRC="$docs_site" OML_DST="$target" \
+    node "$watch_js" &
+watch_pid=$!
+trap 'kill "$watch_pid" 2>/dev/null || true; rm -f "$watch_js"' EXIT INT TERM
 
 echo
-echo "▶ starting Docusaurus on http://localhost:$PORT  (Ctrl-C to stop)"
+echo "▶ Docusaurus preview starting — open http://localhost:$PORT  (Ctrl-C to stop)"
 echo "  source:     $SOURCE  ←  $docs_site"
 echo "  cache:      $site_dir"
+echo "  bind host:  $HOST  (override: OML_PREVIEW_HOST)"
+echo "  remote dev: VSCode Remote-SSH auto-forwards the port — just open"
+echo "              http://localhost:$PORT on your local machine. For direct"
+echo "              (non-VSCode) remote access, re-run with"
+echo "              OML_PREVIEW_HOST=0.0.0.0 and browse http://<remote-host>:$PORT."
 echo "  preview UI: marketing pages and other products' docs are hidden"
 echo
 
 cd "$site_dir"
-OML_PREVIEW_SOURCE="$SOURCE" npm start -- --port "$PORT"
+OML_PREVIEW_SOURCE="$SOURCE" npm start -- --port "$PORT" --host "$HOST" --no-open
