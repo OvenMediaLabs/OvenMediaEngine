@@ -163,4 +163,4 @@ echo "  preview UI: marketing pages and other products' docs are hidden"
 echo
 
 cd "$site_dir"
-OML_PREVIEW_SOURCE="$SOURCE" npm start -- --port "$PORT" --host "$HOST" --no-open
+OML_PREVIEW_SOURCE="$SOURCE" npm start -- --port "$PORT" --host "$HOST"
