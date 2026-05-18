@@ -46,7 +46,7 @@ cmake --build build/Release
 | `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
 | `OME_USE_JEMALLOC_PROFILE` | OFF | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON` |
 | `OME_BUILD_TESTS` | OFF | Build unit tests (requires internet access to fetch GTest v1.14.0) |
-| `OME_WHISPER_STATIIC` | OFF | Build Whisper/ggml as a static library. |
+| `OME_WHISPER_STATIC` | OFF | Build Whisper/ggml as a static library. |
 ---
 
 ## Install
