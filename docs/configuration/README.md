@@ -119,15 +119,15 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                 </Signalling>
 
                 <IceCandidates>
-                    <IceCandidate>*:10000/udp</IceCandidate>
-                    <!-- 
-                        If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-                        This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer ../streaming/webrtc-publishing.md#webrtc-over-tcp
-                    -->
-                    <TcpRelay>*:3478</TcpRelay>
-                    <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-                    <TcpForce>true</TcpForce>
+                    <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+                    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                    <!-- Direct TCP ICE (RFC 6544) -->
+                    <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+                    <!-- TURN relay for clients that do not support Direct TCP ICE -->
+                    <TcpRelay>${PublicIP}:3478</TcpRelay>
+                    <TcpRelayForce>false</TcpRelayForce>
+                    <IceWorkerCount>1</IceWorkerCount>
+                    <TcpIceWorkerCount>1</TcpIceWorkerCount>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
@@ -156,15 +156,15 @@ The `<Bind>` is the configuration for the server port that will be used. Bind co
                     <WorkerCount>1</WorkerCount>
                 </Signalling>
                 <IceCandidates>
-                    <IceCandidate>*:10000-10005/udp</IceCandidate>
-                    <!-- 
-                        If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-                        This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-                        For detailed information, refer ../streaming/webrtc-publishing.md#webrtc-over-tcp
-                    -->
-                    <TcpRelay>*:3478</TcpRelay>
-                    <!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-                    <TcpForce>true</TcpForce>
+                    <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+                    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                    <!-- Direct TCP ICE (RFC 6544) -->
+                    <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+                    <!-- TURN relay for clients that do not support Direct TCP ICE -->
+                    <TcpRelay>${PublicIP}:3478</TcpRelay>
+                    <TcpRelayForce>false</TcpRelayForce>
+                    <IceWorkerCount>1</IceWorkerCount>
+                    <TcpIceWorkerCount>1</TcpIceWorkerCount>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
@@ -506,18 +506,15 @@ Finally, `Server.xml` is configured as follows:
                 </Signalling>
 
                 <IceCandidates>
-                    <IceCandidate>*:10000/udp</IceCandidate>
-                    <!--
-                        If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-                        This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer ../streaming/webrtc-publishing.md#webrtc-over-tcp
-                    -->
-                    <TcpRelay>*:3478</TcpRelay>
-                    <!--
-                        TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming.
-                        (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail.
-                    -->
-                    <TcpForce>true</TcpForce>
+                    <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+                    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                    <!-- Direct TCP ICE (RFC 6544) -->
+                    <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+                    <!-- TURN relay for clients that do not support Direct TCP ICE -->
+                    <TcpRelay>${PublicIP}:3478</TcpRelay>
+                    <TcpRelayForce>false</TcpRelayForce>
+                    <IceWorkerCount>1</IceWorkerCount>
+                    <TcpIceWorkerCount>1</TcpIceWorkerCount>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>
@@ -546,18 +543,15 @@ Finally, `Server.xml` is configured as follows:
                     <WorkerCount>1</WorkerCount>
                 </Signalling>
                 <IceCandidates>
-                    <IceCandidate>*:10000-10005/udp</IceCandidate>
-                    <!--
-                        If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-                        This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP.
-                        For detailed information, refer ../streaming/webrtc-publishing.md#webrtc-over-tcp
-                    -->
-                    <TcpRelay>*:3478</TcpRelay>
-                    <!--
-                        TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming.
-                        (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail.
-                    -->
-                    <TcpForce>true</TcpForce>
+                    <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+                    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                    <!-- Direct TCP ICE (RFC 6544) -->
+                    <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+                    <!-- TURN relay for clients that do not support Direct TCP ICE -->
+                    <TcpRelay>${PublicIP}:3478</TcpRelay>
+                    <TcpRelayForce>false</TcpRelayForce>
+                    <IceWorkerCount>1</IceWorkerCount>
+                    <TcpIceWorkerCount>1</TcpIceWorkerCount>
                     <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
                 </IceCandidates>
             </WebRTC>

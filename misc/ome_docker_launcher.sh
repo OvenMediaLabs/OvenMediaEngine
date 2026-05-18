@@ -774,6 +774,7 @@ _start()
 		-e OME_WEBRTC_SIGNALLING_TLS_PORT \
 		-e OME_WEBRTC_TCP_RELAY_PORT \
 		-e OME_WEBRTC_CANDIDATE_PORT \
+		-e OME_WEBRTC_TCP_ICE_PORT \
 		--restart=unless-stopped \
 		--mount=type=bind,source="${CONF_PATH}",target=/opt/ovenmediaengine/bin/origin_conf \
 		--mount=type=bind,source="${LOGS_PATH}",target=/var/log/ovenmediaengine \

@@ -158,14 +158,14 @@ $ ./ome_docker_launcher.sh start
   - SRT Provider is configured to use 9999 (Port)
   - WebRTC Provider is configured to use 3333 (Port)
   - WebRTC Provider is configured to use 3334 (TLSPort)
-  - WebRTC Provider is configured to use 10000-10004/UDP (IceCandidate)
+  - WebRTC Provider is configured to use 10000/UDP, 10000/TCP (IceCandidate)
   - WebRTC Provider is configured to use 3478 (TcpRelay)
   - OVT Publisher is configured to use 9000 (Port)
   - LLHLS Publisher is configured to use 3333 (Port)
   - LLHLS Publisher is configured to use 3334 (TLSPort)
   - WebRTC Publisher is configured to use 3333 (Port)
   - WebRTC Publisher is configured to use 3334 (TLSPort)
-  - WebRTC Publisher is configured to use 10000-10004/UDP (IceCandidate)
+  - WebRTC Publisher is configured to use 10000/UDP, 10000/TCP (IceCandidate)
   - WebRTC Publisher is configured to use 3478 (TcpRelay)
 • Starting a container: ovenemediaengine
   docker> 7235ff9f80762b6e7b27ba3a9773f5584033d55c113340dabf0779e8f5cf53bb
@@ -211,6 +211,7 @@ OME_HOST_IP
 OME_RTMP_PROV_PORT
 OME_WEBRTC_CANDIDATE_IP
 OME_WEBRTC_CANDIDATE_PORT
+OME_WEBRTC_TCP_ICE_PORT
 OME_WEBRTC_SIGNALLING_PORT
 OME_WEBRTC_SIGNALLING_TLS_PORT
 OME_WEBRTC_TCP_RELAY_PORT

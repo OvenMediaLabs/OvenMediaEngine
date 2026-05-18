@@ -401,13 +401,16 @@ OME may sometimes not be able to get the server's public IP on its local interfa
             <WebRTC>
                 ...
             <IceCandidates>
-                <IceCandidate>*:10000-10005/udp</IceCandidate>
-                <IceCandidate>*:3479/tcp</IceCandidate>  <!-- Direct TCP ICE (RFC 6544) -->
-                <TcpRelay>Relay IP:3478</TcpRelay>       <!-- TURN relay -->
+                <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+                <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                <!-- Direct TCP ICE (RFC 6544) -->
+                <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+                <!-- TURN relay for clients that do not support Direct TCP ICE -->
+                <TcpRelay>${PublicIP}:3478</TcpRelay>
                 <TcpRelayForce>false</TcpRelayForce>
-                <IceWorkerCount>1</IceWorkerCount>         <!-- Worker threads for UDP ICE -->
-                <TcpIceWorkerCount>1</TcpIceWorkerCount>   <!-- Worker threads for Direct TCP ICE -->
-                <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+                <IceWorkerCount>1</IceWorkerCount>
+                <TcpIceWorkerCount>1</TcpIceWorkerCount>
+                <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
             </IceCandidates>
             </WebRTC>
         </Publishers>

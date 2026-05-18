@@ -152,7 +152,7 @@ The default configuration uses the following ports, so you need to open it in yo
 | <p>3333/TCP<br />3334/TLS</p> | <p>LLHLS Streaming<br /><strong>* Streaming over Non-TLS is not allowed with modern browsers.</strong></p> |
 | <p>3333/TCP<br />3334/TLS</p> | WebRTC Signaling (both ingest and streaming)                                                                                             |
 | 3478/TCP                    | WebRTC TCP relay (TURN Server, both ingest and streaming)                                                                                |
-| 10000 - 10009/UDP           | WebRTC Ice candidate (both ingest and streaming)                                                                                         |
+| 10000/UDP, 10000/TCP        | WebRTC Ice candidate (both ingest and streaming)                                                                                         |
 
 
 :::warning
@@ -172,5 +172,6 @@ $ sudo firewall-cmd --add-port=9999/udp
 $ sudo firewall-cmd --add-port=4000/udp
 $ sudo firewall-cmd --add-port=3478/tcp
 $ sudo firewall-cmd --add-port=9000/tcp
-$ sudo firewall-cmd --add-port=10000-10009/udp
+$ sudo firewall-cmd --add-port=10000/udp
+$ sudo firewall-cmd --add-port=10000/tcp
 ```
