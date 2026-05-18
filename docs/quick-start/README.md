@@ -23,8 +23,8 @@ You can check the docker container status with the following command:
 
 ```bash
 $ docker ps -f name=ome
-CONTAINER ID   IMAGE                              COMMAND                  CREATED              STATUS              PORTS                                                                                                                                                                                                                                                                                               NAMES
-c9dd9e56d7a0   ovenmedialabs/ovenmediaengine:latest   "/opt/ovenmediaengin…"   About a minute ago   Up About a minute   0.0.0.0:1935->1935/tcp, :::1935->1935/tcp, 0.0.0.0:3333->3333/tcp, :::3333->3333/tcp, 0.0.0.0:3478->3478/tcp, :::3478->3478/tcp, 0.0.0.0:9000->9000/tcp, :::9000->9000/tcp, 0.0.0.0:9999-10000->9999-10000/udp, :::9999-10000->9999-10000/udp, 0.0.0.0:10000->10000/tcp, :::10000->10000/tcp    ome
+ CONTAINER ID   IMAGE                                 COMMAND                  CREATED              STATUS              PORTS                                                                                                                                                                                                                                                                                                                         NAMES
+ c9dd9e56d7a0   ovenmedialabs/ovenmediaengine:latest  "/opt/ovenmediaengin…"   About a minute ago   Up About a minute   80/tcp, 3334/tcp, 4000-4005/udp, 10001-10010/udp, 0.0.0.0:1935->1935/tcp, :::1935->1935/tcp, 0.0.0.0:3333->3333/tcp, :::3333->3333/tcp, 0.0.0.0:3478->3478/tcp, :::3478->3478/tcp, 0.0.0.0:9000->9000/tcp, :::9000->9000/tcp, 0.0.0.0:9999->9999/udp, :::9999->9999/udp, 0.0.0.0:10000->10000/udp, :::10000->10000/udp, 0.0.0.0:10000->10000/tcp, :::10000->10000/tcp   ome
 ```
 
 You can view the log with the command below. This is important because you can check the version of OvenMediaEngine that is running.
