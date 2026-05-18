@@ -1,6 +1,7 @@
 ---
 slug: /
 title: Introduction
+description: "OvenMediaEngine is an open-source sub-second latency live streaming server for large-scale, high-definition real-time delivery."
 sidebar_position: 1
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: MultiplexChannel
+description: "Create, list, and manage OvenMediaEngine multiplex channels for an application through the v1 REST API."
 sidebar_position: 53
 ---
 

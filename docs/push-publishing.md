@@ -1,5 +1,6 @@
 ---
 title: Push Publishing
+description: "Push OvenMediaEngine streams to external destinations over RTMP, SRT, or MPEG-2 TS with the Push publisher."
 sidebar_position: 37
 ---
 

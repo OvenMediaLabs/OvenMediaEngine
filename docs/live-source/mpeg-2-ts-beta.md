@@ -1,5 +1,6 @@
 ---
 title: MPEG-2 TS
+description: "Ingest live input into OvenMediaEngine over MPEG-2 TS by binding ports and mapping them to streams."
 sidebar_position: 14
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Getting Started with OME Docker Launcher
+description: "Deploy and manage OvenMediaEngine in Docker containers easily with the OME Docker Launcher tool."
 sidebar_position: 6
 ---
 

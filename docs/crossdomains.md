@@ -1,5 +1,6 @@
 ---
 title: CrossDomains
+description: "Configure CORS for OvenMediaEngine — a global default cross-domain policy and per-application overrides."
 sidebar_position: 28
 ---
 

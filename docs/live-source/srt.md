@@ -1,5 +1,6 @@
 ---
 title: SRT
+description: "Ingest low-latency live input into OvenMediaEngine over SRT by configuring the SRT listen port."
 sidebar_position: 13
 ---
 

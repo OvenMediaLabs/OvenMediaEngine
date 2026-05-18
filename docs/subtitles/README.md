@@ -1,5 +1,6 @@
 ---
 title: Subtitles
+description: "Add real-time subtitles to OvenMediaEngine streams by enabling subtitle tracks and inserting cues via the API."
 sidebar_position: 33
 ---
 

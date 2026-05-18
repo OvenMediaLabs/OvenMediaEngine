@@ -1,5 +1,6 @@
 ---
 title: RTMP
+description: "Ingest live streams into OvenMediaEngine over RTMP by configuring the RTMP provider and bind ports."
 sidebar_position: 11
 ---
 

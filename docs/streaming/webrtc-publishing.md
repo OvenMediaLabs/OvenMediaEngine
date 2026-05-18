@@ -1,5 +1,6 @@
 ---
 title: WebRTC Streaming
+description: "Deliver sub-second OvenMediaEngine streams over WebRTC by configuring the WebRTC publisher in Server.xml."
 sidebar_position: 24
 ---
 

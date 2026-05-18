@@ -1,5 +1,6 @@
 ---
 title: Push
+description: "Start and stop OvenMediaEngine push publishing over SRT, RTMP, or MPEG-2 TS through the v1 REST API."
 sidebar_position: 45
 ---
 

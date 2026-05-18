@@ -1,5 +1,6 @@
 ---
 title: ABR
+description: "Encode OvenMediaEngine streams into multiple bitrate renditions and deliver adaptive bitrate streaming to players."
 sidebar_position: 20
 ---
 

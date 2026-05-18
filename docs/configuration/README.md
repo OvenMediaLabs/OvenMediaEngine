@@ -1,5 +1,6 @@
 ---
 title: Configuration
+description: "Configure OvenMediaEngine through Server.xml — origin and edge modes, binds, virtual hosts, and applications."
 sidebar_position: 7
 ---
 

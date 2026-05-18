@@ -1,5 +1,6 @@
 ---
 title: ScheduledChannel
+description: "Create, list, and manage OvenMediaEngine scheduled channels for an application through the v1 REST API."
 sidebar_position: 52
 ---
 

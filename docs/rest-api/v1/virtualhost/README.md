@@ -1,5 +1,6 @@
 ---
 title: VirtualHost
+description: "List and manage OvenMediaEngine virtual hosts through the v1 REST API."
 sidebar_position: 40
 ---
 

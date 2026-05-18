@@ -1,5 +1,6 @@
 ---
 title: Performance Tuning
+description: "Tune OvenMediaEngine for scale and measure WebRTC capacity with the OvenRtcTester load-testing tool."
 sidebar_position: 60
 ---
 

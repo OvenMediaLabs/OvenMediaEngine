@@ -1,5 +1,6 @@
 ---
 title: P2P Delivery (Experiment)
+description: "Reduce OvenMediaEngine delivery bandwidth with experimental P2P Delivery that offloads distribution between players."
 sidebar_position: 63
 ---
 

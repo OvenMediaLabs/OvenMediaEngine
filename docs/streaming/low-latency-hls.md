@@ -1,5 +1,6 @@
 ---
 title: Low-Latency HLS
+description: "Deliver sub-second OvenMediaEngine streams over Low-Latency HLS (LLHLS) by configuring the LLHLS publisher."
 sidebar_position: 25
 ---
 

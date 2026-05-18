@@ -1,5 +1,6 @@
 ---
 title: TranscodeWebhook
+description: "Control OvenMediaEngine transcoding per stream dynamically with the TranscodeWebhook HTTP callback."
 sidebar_position: 21
 ---
 

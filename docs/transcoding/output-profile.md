@@ -1,5 +1,6 @@
 ---
 title: Transcoding
+description: "Define OvenMediaEngine output streams with OutputProfile and Encodes to re-encode codec, bitrate, and resolution."
 sidebar_position: 19
 ---
 

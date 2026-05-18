@@ -1,5 +1,6 @@
 ---
 title: Troubleshooting
+description: "Resolve common OvenMediaEngine build and runtime issues, including InstallPrerequisites.cmake failures."
 sidebar_position: 62
 ---
 

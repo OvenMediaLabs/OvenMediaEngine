@@ -1,5 +1,6 @@
 ---
 title: STT Control
+description: "Control real-time speech-to-text subtitle generation for an OvenMediaEngine stream through the v1 REST API."
 sidebar_position: 51
 ---
 

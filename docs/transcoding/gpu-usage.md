@@ -1,5 +1,6 @@
 ---
 title: GPU Acceleration
+description: "Accelerate OvenMediaEngine transcoding with GPU hardware, including NVIDIA driver installation guidance."
 sidebar_position: 22
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: HLS
+description: "Deliver OvenMediaEngine streams over HLS by adding the HLS publisher to the configuration."
 sidebar_position: 26
 ---
 

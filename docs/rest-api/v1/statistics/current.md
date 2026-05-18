@@ -1,5 +1,6 @@
 ---
 title: Current
+description: "Get current OvenMediaEngine statistics for a virtual host, application, or stream through the v1 REST API."
 sidebar_position: 55
 ---
 

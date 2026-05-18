@@ -1,5 +1,6 @@
 ---
 title: SRT
+description: "Deliver OvenMediaEngine streams over SRT by configuring the SRT listen port."
 sidebar_position: 27
 ---
 

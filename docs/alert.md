@@ -1,5 +1,6 @@
 ---
 title: Alert
+description: "Detect stream and system anomalies in OvenMediaEngine and send notifications with the Alert module."
 sidebar_position: 59
 ---
 

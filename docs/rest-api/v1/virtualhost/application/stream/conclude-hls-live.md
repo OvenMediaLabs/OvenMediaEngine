@@ -1,5 +1,6 @@
 ---
 title: Conclude HLS Live
+description: "Conclude an OvenMediaEngine HLS/LLHLS live stream and finalize its playlist through the v1 REST API."
 sidebar_position: 50
 ---
 

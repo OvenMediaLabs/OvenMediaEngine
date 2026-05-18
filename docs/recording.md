@@ -1,5 +1,6 @@
 ---
 title: Recording
+description: "Record OvenMediaEngine streams to file by adding the FILE publisher to the configuration."
 sidebar_position: 36
 ---
 

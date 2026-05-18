@@ -1,5 +1,6 @@
 ---
 title: Application
+description: "List and manage OvenMediaEngine applications within a virtual host through the v1 REST API."
 sidebar_position: 42
 ---
 

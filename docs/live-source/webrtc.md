@@ -1,5 +1,6 @@
 ---
 title: WebRTC / WHIP
+description: "Ingest sub-second live input into OvenMediaEngine over WebRTC and WHIP by configuring the WebRTC provider."
 sidebar_position: 12
 ---
 

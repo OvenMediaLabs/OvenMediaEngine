@@ -1,5 +1,6 @@
 ---
 title: SignedPolicy
+description: "Limit OvenMediaEngine stream access with SignedPolicy — time-limited, privilege-scoped signed URLs for publishing and playback."
 sidebar_position: 30
 ---
 

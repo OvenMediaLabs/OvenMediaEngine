@@ -1,5 +1,6 @@
 ---
 title: REST API
+description: "Query and change OvenMediaEngine settings — virtual hosts, applications, and streams — through the REST API."
 sidebar_position: 38
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Reload Certificate
+description: "Batch-reload TLS certificates for all OvenMediaEngine virtual hosts via REST; old certs stay on failure."
 sidebar_position: 41
 ---
 

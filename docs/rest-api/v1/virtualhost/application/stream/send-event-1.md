@@ -1,5 +1,6 @@
 ---
 title: Send Subtitles
+description: "Inject subtitle cues into a live OvenMediaEngine stream through the v1 REST API."
 sidebar_position: 48
 ---
 

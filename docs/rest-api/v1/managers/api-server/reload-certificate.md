@@ -1,5 +1,6 @@
 ---
 title: Reload Certificate
+description: "Reload the OvenMediaEngine API server TLS certificate via REST without a restart; the old cert stays on failure."
 sidebar_position: 58
 ---
 

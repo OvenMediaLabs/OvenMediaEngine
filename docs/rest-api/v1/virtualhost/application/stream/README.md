@@ -1,5 +1,6 @@
 ---
 title: Stream
+description: "List and manage OvenMediaEngine streams within an application through the v1 REST API."
 sidebar_position: 46
 ---
 

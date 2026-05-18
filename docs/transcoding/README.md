@@ -1,5 +1,6 @@
 ---
 title: ABR and Transcoding
+description: "Transcode OvenMediaEngine streams — codec, bitrate, resolution, frame rate — and build adaptive bitrate renditions."
 sidebar_position: 18
 ---
 

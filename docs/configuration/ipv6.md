@@ -1,5 +1,6 @@
 ---
 title: IPv6
+description: "Configure OvenMediaEngine to listen on IPv6, including the multiple IP bindings supported from v0.15.1."
 sidebar_position: 9
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Thumbnail
+description: "Publish OvenMediaEngine stream thumbnails over HTTP(S), optionally sharing the HLS/DASH port."
 sidebar_position: 35
 ---
 

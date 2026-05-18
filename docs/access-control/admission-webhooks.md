@@ -1,5 +1,6 @@
 ---
 title: AdmissionWebhooks
+description: "Authorize OvenMediaEngine publishing and playback in real time with AdmissionWebhooks HTTP callbacks to your control server."
 sidebar_position: 31
 ---
 

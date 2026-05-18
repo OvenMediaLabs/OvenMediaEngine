@@ -1,5 +1,6 @@
 ---
 title: HLS Dump
+description: "Start and stop dumping OvenMediaEngine HLS segments to storage through the v1 REST API."
 sidebar_position: 49
 ---
 

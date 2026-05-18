@@ -1,5 +1,6 @@
 ---
 title: Realtime Speech-to-Text
+description: "Generate live subtitles for OvenMediaEngine streams with GPU-accelerated real-time speech-to-text."
 sidebar_position: 34
 ---
 

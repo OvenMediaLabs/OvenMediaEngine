@@ -1,5 +1,6 @@
 ---
 title: Record
+description: "Start and stop OvenMediaEngine stream recording through the v1 REST API, with reservation for not-yet-created streams."
 sidebar_position: 44
 ---
 

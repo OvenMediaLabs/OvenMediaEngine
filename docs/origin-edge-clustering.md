@@ -1,5 +1,6 @@
 ---
 title: Clustering
+description: "Scale OvenMediaEngine with origin-edge clustering — edges pull streams from origins over OVT using OriginMap."
 sidebar_position: 32
 ---
 

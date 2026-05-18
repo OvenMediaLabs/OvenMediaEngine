@@ -1,5 +1,6 @@
 ---
 title: RTSP Pull
+description: "Pull live sources into OvenMediaEngine from an RTSP server — OME acts as the RTSP client, no bind required."
 sidebar_position: 15
 ---
 

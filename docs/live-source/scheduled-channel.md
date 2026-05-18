@@ -1,5 +1,6 @@
 ---
 title: Scheduled Channel
+description: "Build pre-scheduled, playlist-style live channels in OvenMediaEngine with the Schedule Provider."
 sidebar_position: 16
 ---
 

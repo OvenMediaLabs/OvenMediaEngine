@@ -1,5 +1,6 @@
 ---
 title: Live Source
+description: "Ingest live sources into OvenMediaEngine over RTMP, SRT, WebRTC/WHIP, MPEG-2 TS, RTSP, and scheduled or multiplex channels."
 sidebar_position: 10
 ---
 

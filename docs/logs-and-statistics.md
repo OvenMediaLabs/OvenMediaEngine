@@ -1,5 +1,6 @@
 ---
 title: Logs and Statistics
+description: "Monitor OvenMediaEngine in real time through configurable log files and runtime statistics via Logger.xml."
 sidebar_position: 61
 ---
 

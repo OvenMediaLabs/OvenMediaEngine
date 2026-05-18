@@ -1,5 +1,6 @@
 ---
 title: Send Event
+description: "Send timed events and metadata into a live OvenMediaEngine stream through the v1 REST API."
 sidebar_position: 47
 ---
 

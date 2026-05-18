@@ -1,5 +1,6 @@
 ---
 title: Getting Started with Docker
+description: "Run OvenMediaEngine from the official OvenMedia Labs Docker image with default settings in a single command."
 sidebar_position: 5
 ---
 

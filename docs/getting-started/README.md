@@ -1,5 +1,6 @@
 ---
 title: Getting Started
+description: "Get started with OvenMediaEngine using the official Docker image or the OME Docker Launcher."
 sidebar_position: 4
 ---
 

@@ -1,5 +1,6 @@
 ---
 title: Output Profile
+description: "Manage OvenMediaEngine output profiles (transcoding renditions) for an application through the v1 REST API."
 sidebar_position: 43
 ---
 

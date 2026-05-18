@@ -1,5 +1,6 @@
 ---
 title: TLS Encryption
+description: "Enable TLS encryption in OvenMediaEngine by linking certificates, including certificate setup for Docker deployments."
 sidebar_position: 8
 ---
 

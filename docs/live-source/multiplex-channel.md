@@ -1,5 +1,6 @@
 ---
 title: Multiplex Channel
+description: "Create multiplexed channels in OvenMediaEngine by combining existing streams with the Multiplex Provider."
 sidebar_position: 17
 ---
 
