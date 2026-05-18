@@ -222,6 +222,21 @@ $(strip \
 )
 endef
 
+# Check if a file exists in any of the given colon-separated paths
+# $(call chk_file_in_paths,<SEARCH_PATHS>,<FILENAME>)
+define chk_file_exist
+$(strip \
+  $(shell \
+    found=0; \
+    IFS=':'; \
+    for dir in $$(echo $(1)); do \
+      if [ -f "$$dir/$(2)" ]; then found=1; break; fi; \
+    done; \
+    if [ $$found -eq 1 ]; then echo 0; else echo 1; fi \
+  ) \
+)
+endef
+
 # Check if the library is referenced in the shared object
 # $(call chk_dd_exist,<SEARCH_PATHS>,<SO_FILENAME>,<LIBRARY_NAME>)
 define chk_dd_exist

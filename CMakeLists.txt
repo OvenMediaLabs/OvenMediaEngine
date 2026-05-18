@@ -48,6 +48,7 @@ option(OME_ENABLE_JEMALLOC          "Enable jemalloc memory allocator"          
 option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version packages" OFF)
 option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
 option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
+option(OME_WHISPER_STATIC           "Build Whisper/ggml as a static library"             OFF)
 
 # Build type - normalize to canonical case (Debug/Release) so comparisons work
 # regardless of how the user typed it (debug, DEBUG, release, RELEASE, etc.)

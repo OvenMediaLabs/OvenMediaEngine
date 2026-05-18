@@ -101,10 +101,6 @@ PROJECT_CXXFLAGS += -DHWACCELS_XMA_ENABLED
 endif
 
 
-# Whisper GGML(CPU)
-#  pkgconfig(whisper.pc) not contains -lggml-cpu, so we need to add it manually.
-LOCAL_LDFLAGS += -Wl,-Bstatic -lggml-cpu -Wl,-Bdynamic -lgomp 
-
 # Enable Nvidia Accelerator
 ifeq ($(and \
   $(filter 0,$(call chk_lib_exist,libcuda.so)), \
@@ -117,9 +113,16 @@ HWACCELS_NVIDIA_ENABLED := true
 PROJECT_CXXFLAGS += -I/usr/local/cuda/include -DHWACCELS_NVIDIA_ENABLED
 LOCAL_LDFLAGS += -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib64/stubs -Wl,-Bstatic -lcudart_static -Wl,-Bdynamic -lcuda -lnvidia-ml 
 
-# Whisper GGML(CUDA)
-#  pkgconfig(whisper.pc) not contains -lggml-cuda, so we need to add it manually.
-LOCAL_LDFLAGS +=  -Wl,-Bstatic -lggml-cuda -lcublas_static -lcublasLt_static -lculibos -Wl,-Bdynamic  
+endif
+
+# Whisper GGML
+LOCAL_LDFLAGS += -lggml-cpu
+ifeq ($(HWACCELS_NVIDIA_ENABLED), true)
+ifeq ($(call chk_file_exist,$(CONFIG_LIBRARY_PATHS),libwhisper.so), 0)
+LOCAL_LDFLAGS += -lggml-cuda
+else
+LOCAL_LDFLAGS += -Wl,-Bstatic -lggml-cuda -lcublas_static -lcublasLt_static -lculibos -Wl,-Bdynamic  
+endif
 endif
 
 

@@ -31,6 +31,7 @@ NETINT_LOGAN_XCODER_COMPILE_PATH=""
 NVIDIA_NV_HWACCELS=false
 XILINX_XMA_CODEC_HWACCELS=false
 VIDEOLAN_X264_CODEC=true
+OME_WHISPER_STATIC=false
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     NCPU=$(sysctl -n hw.ncpu)
@@ -450,6 +451,13 @@ install_whisper()
 			WHISPER_CUDA="ON"
 	fi
 
+    _BUILD_SHARED_LIBS="ON"
+    _GGML_STATIC="OFF"
+    if [ "$OME_WHISPER_STATIC" = true ] ; then
+        _BUILD_SHARED_LIBS="OFF"
+        _GGML_STATIC="ON"
+    fi
+
 	# 61: Pascal      - GeForce GTX 10 series (1050/1060/1070/1080)
 	# 70: Volta       - Tesla V100
 	# 75: Turing      - GeForce RTX 20 series & GTX 16 series, Tesla T4
@@ -457,7 +465,7 @@ install_whisper()
 	# 86: Ampere      - GeForce RTX 30 series (Desktop/Laptop), Tesla A10
 	# 89: Ada Lovelace - GeForce RTX 40 series, Tesla L4
 	# 90: Hopper      - H100
-	WHISPER_CUDA_ARCH="61-real;70-real;75-real;80-real;86-real;89-real;90"
+	WHISPER_CUDA_ARCH="61-real;70-real;75-real;80-real;86-real;89"
 
 	(DIR=${TEMP_PATH}/whisper && \
 	mkdir -p ${DIR} && \
@@ -467,13 +475,12 @@ install_whisper()
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=${PREFIX} \
 		-DCMAKE_INSTALL_RPATH=${PREFIX}/lib \
-		-DBUILD_SHARED_LIBS=OFF \
+		-DBUILD_SHARED_LIBS=${_BUILD_SHARED_LIBS} \
 		-DWHISPER_BUILD_EXAMPLES=OFF \
 		-DWHISPER_BUILD_TESTS=OFF \
 		-DWHISPER_BUILD_SERVER=OFF \
-		-DGGML_NATIVE=OFF \
 		-DGGML_CUDA=${WHISPER_CUDA} \
-		-DGGML_STATIC=ON \
+		-DGGML_STATIC=${_GGML_STATIC} \
 		-DGGML_CUDA_FA_ALL_QUANTS=OFF \
 		-DGGML_CUDA_GRAPHS=OFF \
 		-DCMAKE_CUDA_ARCHITECTURES=${WHISPER_CUDA_ARCH} && \
@@ -639,6 +646,10 @@ case $i in
     ;;
     --enable-x264)
     VIDEOLAN_X264_CODEC=true
+    shift
+    ;;
+    --whisper-static)
+    OME_WHISPER_STATIC=true
     shift
     ;;
     *)
