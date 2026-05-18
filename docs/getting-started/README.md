@@ -40,7 +40,7 @@ tar xvfz OvenMediaEngine-master.tar.gz
 ```
 
 
-:::tip Building a specific release
+:::tip[Building a specific release]
 
 The command above builds the latest development code from the `master` branch. To build a **specific stable release** instead (recommended for production), choose a version from the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and download its source archive:
 

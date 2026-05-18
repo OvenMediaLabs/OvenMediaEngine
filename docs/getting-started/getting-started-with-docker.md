@@ -14,7 +14,7 @@ ovenmedialabs/ovenmediaengine:latest
 ```
 
 
-:::tip Choosing an image tag
+:::tip[Choosing an image tag]
 
 The `ovenmedialabs/ovenmediaengine` repository provides the following tags:
 
