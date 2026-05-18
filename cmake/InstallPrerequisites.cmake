@@ -526,11 +526,11 @@ if(ENABLE_NVIDIA)
     set(_WHISPER_CUDA "ON")
 endif()
 set(_BUILD_SHARED_LIBS "ON")
-set(_GGML_STATIC="OFF")
+set(_GGML_STATIC "OFF")
 if(OME_WHISPER_STATIC)
     message(STATUS "[OME] Building Whisper/ggml as a static library")
     set(_BUILD_SHARED_LIBS "OFF")
-    set(_GGML_STATIC="ON")
+    set(_GGML_STATIC "ON")
 endif()
 set(_WHISPER_CMAKE_ARGS
     "cmake -B build -S ."
