@@ -40,7 +40,7 @@ ov::String IceCandidatePair::ToString() const
     return ov::String::FormatString("Socket: %s SocketAddressPair: %s State: %s", 
                         _socket->ToString().CStr(),
                         _socket_address_pair.ToString().CStr(),
-                        IceConnectionStateToString(_state));
+                        IceConnectionStateToString(GetState()));
 }
 
 void IceCandidatePair::OnReceivedBindingRequest()

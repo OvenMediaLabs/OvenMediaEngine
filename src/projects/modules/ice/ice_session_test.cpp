@@ -56,6 +56,12 @@ TEST(IceSessionNomination, MarkNominated)
 	// Nomination must not pick the active pair nor flip session state
 	EXPECT_EQ(session->GetActiveCandidatePair(), nullptr);
 	EXPECT_NE(session->GetState(), IceConnectionState::Connected);
+
+	// A pair whose STUN check failed must not be resurrected by nomination
+	auto f = MakePair(10001, 20001);
+	Validate(session, f);
+	session->OnReceivedStunBindingErrorResponse(f, nullptr);
+	EXPECT_FALSE(session->MarkNominated(f));
 }
 
 // SelectActiveCandidatePair accepts any STUN-validated pair (no explicit

@@ -540,12 +540,12 @@ void IcePort::CheckTimedOut()
 		{
 			terminated_session->SetState(IceConnectionState::Disconnected);
 
-			logtw("Agent [%s, %u] has expired", active_candidate_pair != nullptr ? active_candidate_pair->ToString().CStr() : "Unknow", terminated_session->GetSessionID());
+			logtw("Agent [%s, %u] has expired", active_candidate_pair != nullptr ? active_candidate_pair->ToString().CStr() : "Unknown", terminated_session->GetSessionID());
 		}
 		else
 		{
 			terminated_session->SetState(IceConnectionState::Closed);
-			logti("Agent [%s, %u] has closed", active_candidate_pair != nullptr ? active_candidate_pair->ToString().CStr() : "Unknow", terminated_session->GetSessionID());
+			logti("Agent [%s, %u] has closed", active_candidate_pair != nullptr ? active_candidate_pair->ToString().CStr() : "Unknown", terminated_session->GetSessionID());
 		}
 
 		NotifyIceSessionStateChanged(terminated_session);

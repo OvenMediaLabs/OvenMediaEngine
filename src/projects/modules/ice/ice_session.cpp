@@ -295,9 +295,11 @@ bool IceSession::MarkNominated(const ov::SocketAddressPair& address_pair)
 		return false;
 	}
 
-	if (candidate_pair->GetState() == IceConnectionState::Connected)
+	// Only a freshly validated (Checking) pair is newly nominated. Already
+	// Connected is a no-op, Failed must not be resurrected, and an unvalidated
+	// pair must not be nominated. All return false (caller: "nothing changed").
+	if (candidate_pair->GetState() != IceConnectionState::Checking)
 	{
-		// Already nominated
 		return false;
 	}
 
