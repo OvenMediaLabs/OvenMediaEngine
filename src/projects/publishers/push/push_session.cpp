@@ -338,8 +338,8 @@ namespace pub
 			// If the queue stays over the limit for 10 seconds (for example, because of a slow network), the PUSH session is closed.
 			if (IsSenderQueueExceededFor(kThresholdGraceDuration))
 			{
-				logte("Push session queue exceeded %ld sec. Terminating session. %s",
-					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
+				logte("Push session queue exceeded %lld sec. Terminating session. %s",
+					  static_cast<long long>(std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count()), push->GetInfoString().CStr());
 
 				SetErrorState(push, writer);
 				_sender_stop_flag = true;
