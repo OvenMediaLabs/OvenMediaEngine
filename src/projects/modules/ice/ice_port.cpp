@@ -438,9 +438,12 @@ bool IcePort::RemoveSession(session_id_t session_id)
 	}
 
 	{
-		// Close only TCP (TURN)
-		auto remote = ice_session->GetActiveSocket();
-		if (remote != nullptr)
+		// Close every per-connection socket this session owns, not just the
+		// active one. With multi-pair switching the active pair may be UDP
+		// while the session still holds TURN-over-TCP / direct-TCP sockets
+		// from earlier path switches; those would otherwise leak. Only TCP is
+		// closed here: the UDP socket is the process-wide shared listener.
+		for (const auto &remote : ice_session->GetCandidatePairSockets())
 		{
 			if (remote->GetSocket().GetType() == ov::SocketType::Tcp)
 			{

@@ -63,6 +63,11 @@ public:
 
 	std::shared_ptr<IceCandidatePair> FindCandidatePair(const ov::SocketAddressPair& address_pair) const;
 
+	// Distinct non-null sockets across all candidate pairs. Used on teardown:
+	// the active pair may be UDP while the session still owns per-connection
+	// TCP sockets (TURN-over-TCP / direct-TCP) from earlier path switches.
+	std::vector<std::shared_ptr<ov::Socket>> GetCandidatePairSockets() const;
+
 	// Candidate pairs
 	void OnReceivedStunBindingRequest(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 	void OnReceivedStunBindingResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);

@@ -151,6 +151,40 @@ std::shared_ptr<IceCandidatePair> IceSession::FindCandidatePair(const ov::Socket
 	return nullptr;
 }
 
+std::vector<std::shared_ptr<ov::Socket>> IceSession::GetCandidatePairSockets() const
+{
+	std::shared_lock lock(_candidate_pairs_mutex);
+
+	std::vector<std::shared_ptr<ov::Socket>> sockets;
+	for (const auto& [address_pair, candidate_pair] : _candidate_pairs)
+	{
+		auto socket = candidate_pair->GetSocket();
+		if (socket == nullptr)
+		{
+			continue;
+		}
+
+		// Distinct sockets only (the same socket can back multiple pairs,
+		// e.g. the shared UDP listener or one TCP connection).
+		bool already_added = false;
+		for (const auto& s : sockets)
+		{
+			if (s == socket)
+			{
+				already_added = true;
+				break;
+			}
+		}
+
+		if (already_added == false)
+		{
+			sockets.push_back(socket);
+		}
+	}
+
+	return sockets;
+}
+
 std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
 {
 	std::scoped_lock lock(_candidate_pairs_mutex);
