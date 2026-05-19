@@ -61,7 +61,7 @@ namespace cfg
 												   logw("Config", "Use SkipFrames in the settings, the Framerate is ignored.");
 											   }
 
-											   return (_skip_frames >= 0 && _skip_frames <= 120) ? nullptr : CreateConfigErrorPtr("SkipFrames must be between 0 and 120");
+											   return (_skip_frames >= -1 && _skip_frames <= 120) ? nullptr : CreateConfigErrorPtr("SkipFrames must be -1 or between 0 and 120");
 										   });
 						Register<Optional>("BypassIfMatch", &_bypass_if_match);
 					}
