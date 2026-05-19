@@ -19,7 +19,7 @@
 #include "base/info/managed_queue.h"
 #include "base/ovlibrary/ovlibrary.h"
 
-#define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100
+#define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 1000
 #define MANAGED_QUEUE_LOG_INTERVAL_IN_MSEC 5000
 
 

@@ -317,7 +317,7 @@ namespace pub
 
 			if (_sender_packet_queue.IsThresholdExceededFor(kThresholdGraceDuration))
 			{
-				logte("Push session queue exceeded state persisted for more than %lld seconds. Terminating session. %s",
+				logte("Push session queue exceeded state persisted for more than %ld seconds. Terminating session. %s",
 					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
 
 				SetErrorState(push, writer);
