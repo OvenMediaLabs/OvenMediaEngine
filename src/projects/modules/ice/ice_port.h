@@ -51,6 +51,9 @@ class RtcIceCandidate;
 
 class IcePort : protected PhysicalPortObserver
 {
+	// Unit-test access to the private session registry (see ice_port_test.cpp)
+	friend class IcePortTest;
+
 public:
 	IcePort();
 	~IcePort() override;
@@ -203,7 +206,7 @@ private:
 	bool OnReceivedTurnCreatePermissionRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
 	bool OnReceivedTurnChannelBindRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
 
-	bool UseCandidate(const std::shared_ptr<IceSession> &ice_session, const ov::SocketAddressPair &address_pair);
+	bool MarkNominated(const std::shared_ptr<IceSession> &ice_session, const ov::SocketAddressPair &address_pair);
 
 	// Related TURN
 	std::shared_ptr<ov::Data> _hmac_key;

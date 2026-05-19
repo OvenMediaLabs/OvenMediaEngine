@@ -21,12 +21,12 @@ std::shared_ptr<ov::Socket> IceCandidatePair::GetSocket() const
 // State management
 void IceCandidatePair::SetState(IceConnectionState state)
 {
-    _state = state;
+    _state.store(state);
 }
 
 IceConnectionState IceCandidatePair::GetState() const
 {
-    return _state;
+    return _state.load();
 }
 
 // Socket Address Pair

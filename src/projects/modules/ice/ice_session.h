@@ -77,15 +77,19 @@ public:
 	void OnReceivedStunBindingErrorResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 
 	bool IsConnectable(const ov::SocketAddressPair& address_pair);
-	bool IsConnected(const ov::SocketAddressPair& address_pair);
+	bool IsActive(const ov::SocketAddressPair& address_pair);
 
-	// USE-CANDIDATE, used for controlling role
-	bool UseCandidate(const ov::SocketAddressPair& address_pair);
+	// Mark a STUN-validated pair as nominated/eligible (multiple allowed).
+	bool MarkNominated(const ov::SocketAddressPair& address_pair);
 
-	// Connected candidate pairs
-	std::shared_ptr<IceCandidatePair> GetConnectedCandidatePair() const;
+	// Make a STUN-validated pair the active pair (the one we send on).
+	// False if the pair is unknown or has failed its STUN check.
+	bool SelectActiveCandidatePair(const ov::SocketAddressPair& address_pair);
+
+	// Active candidate pair (the single pair we send on)
+	std::shared_ptr<IceCandidatePair> GetActiveCandidatePair() const;
 	// Socket
-	std::shared_ptr<ov::Socket> GetConnectedSocket() const;
+	std::shared_ptr<ov::Socket> GetActiveSocket() const;
 
 	ov::String ToString() const;
 
@@ -105,8 +109,8 @@ private:
     std::atomic<IceConnectionState> _state{IceConnectionState::New};
 
     // Candidate pairs
-	mutable std::shared_mutex _connected_candidate_pair_mutex;
-    std::shared_ptr<IceCandidatePair> _connected_candidate_pair;
+	mutable std::shared_mutex _active_candidate_pair_mutex;
+    std::shared_ptr<IceCandidatePair> _active_candidate_pair;
 
 	mutable std::shared_mutex _candidate_pairs_mutex;
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs;

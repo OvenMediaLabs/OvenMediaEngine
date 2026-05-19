@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
+
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
 #include "ice_types.h"
@@ -36,7 +38,7 @@ public:
 
 private:
 
-	IceConnectionState _state = IceConnectionState::New;
+	std::atomic<IceConnectionState> _state{IceConnectionState::New};
     ov::SocketAddressPair _socket_address_pair;
 	std::shared_ptr<ov::Socket> _socket = nullptr;
 

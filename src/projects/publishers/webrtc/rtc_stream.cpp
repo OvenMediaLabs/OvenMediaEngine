@@ -559,15 +559,8 @@ std::shared_ptr<MediaDescription> RtcStream::MakeVideoDescription() const
 	video_media_desc->SetConnection(4, "0.0.0.0");
 	video_media_desc->SetMid(ov::Random::GenerateString(6));
 	video_media_desc->SetMsid(_msid, ov::Random::GenerateString(36));
-	/*
-	https://tools.ietf.org/html/rfc5763#section-5
-	
-	The endpoint MUST use the setup attribute defined in [RFC4145].
-	The endpoint that is the offerer MUST use the setup attribute
-	value of setup:actpass and be prepared to receive a client_hello
-	before it receives the answer.
-	*/
-	video_media_desc->SetSetup(MediaDescription::SetupType::ActPass);
+	// Offer passive: OME DTLS is server-only
+	video_media_desc->SetSetup(MediaDescription::SetupType::Passive);
 	video_media_desc->UseDtls(true);
 	video_media_desc->UseRtcpMux(true);
 	video_media_desc->UseRtcpRsize(true);
@@ -611,7 +604,8 @@ std::shared_ptr<MediaDescription> RtcStream::MakeAudioDescription() const
 	// TODO(dimiden): Need to prevent duplication
 	audio_media_desc->SetMid(ov::Random::GenerateString(6));
 	audio_media_desc->SetMsid(_msid, ov::Random::GenerateString(36));
-	audio_media_desc->SetSetup(MediaDescription::SetupType::ActPass);
+	// Offer passive: OME DTLS is server-only
+	audio_media_desc->SetSetup(MediaDescription::SetupType::Passive);
 	audio_media_desc->UseDtls(true);
 	audio_media_desc->UseRtcpMux(true);
 	audio_media_desc->UseRtcpRsize(true);
