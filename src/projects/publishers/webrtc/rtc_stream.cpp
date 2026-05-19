@@ -559,8 +559,10 @@ std::shared_ptr<MediaDescription> RtcStream::MakeVideoDescription() const
 	video_media_desc->SetConnection(4, "0.0.0.0");
 	video_media_desc->SetMid(ov::Random::GenerateString(6));
 	video_media_desc->SetMsid(_msid, ov::Random::GenerateString(36));
-	// Offer passive: OME DTLS is server-only
-	video_media_desc->SetSetup(MediaDescription::SetupType::Passive);
+	// RFC 5763 / RFC 8842: the offerer must use actpass. OME's DTLS is
+	// currently server-only, which is safe because browsers answer with
+	// active. DTLS active mode is planned.
+	video_media_desc->SetSetup(MediaDescription::SetupType::ActPass);
 	video_media_desc->UseDtls(true);
 	video_media_desc->UseRtcpMux(true);
 	video_media_desc->UseRtcpRsize(true);
@@ -604,8 +606,8 @@ std::shared_ptr<MediaDescription> RtcStream::MakeAudioDescription() const
 	// TODO(dimiden): Need to prevent duplication
 	audio_media_desc->SetMid(ov::Random::GenerateString(6));
 	audio_media_desc->SetMsid(_msid, ov::Random::GenerateString(36));
-	// Offer passive: OME DTLS is server-only
-	audio_media_desc->SetSetup(MediaDescription::SetupType::Passive);
+	// See MakeVideoDescription(): offerer must use actpass (RFC 5763 / 8842).
+	audio_media_desc->SetSetup(MediaDescription::SetupType::ActPass);
 	audio_media_desc->UseDtls(true);
 	audio_media_desc->UseRtcpMux(true);
 	audio_media_desc->UseRtcpRsize(true);
