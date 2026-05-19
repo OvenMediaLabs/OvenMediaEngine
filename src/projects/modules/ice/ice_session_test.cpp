@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <base/ovsocket/ovsocket.h>
+#include <modules/sdp/session_description.h>
 
 #include "ice_session.h"
 
@@ -23,9 +24,14 @@ namespace
 
 	std::shared_ptr<IceSession> MakeSession()
 	{
+		// A real (minimal) SDP so any code path that touches the SDP
+		// (e.g. GetLocalUfrag()) stays safe, instead of a null that only
+		// works as long as the tested paths never dereference it.
+		auto sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+		sdp->SetIceUfrag("ufragT");
 		return std::make_shared<IceSession>(
 			1, IceSession::Role::CONTROLLED,
-			nullptr, nullptr,
+			sdp, sdp,
 			30000, 0,
 			std::any{}, nullptr);
 	}

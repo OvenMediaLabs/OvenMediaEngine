@@ -29,6 +29,11 @@ IceConnectionState IceCandidatePair::GetState() const
     return _state.load();
 }
 
+bool IceCandidatePair::CompareExchangeState(IceConnectionState expected, IceConnectionState desired)
+{
+    return _state.compare_exchange_strong(expected, desired);
+}
+
 // Socket Address Pair
 ov::SocketAddressPair IceCandidatePair::GetAddressPair() const
 {

@@ -24,6 +24,9 @@ public:
 	// State management
 	void SetState(IceConnectionState state);
 	IceConnectionState GetState() const;
+	// Atomically transition expected -> desired. Returns true only if this call
+	// performed the transition (state was exactly `expected`).
+	bool CompareExchangeState(IceConnectionState expected, IceConnectionState desired);
 
 	// Socket Address Pair
     ov::SocketAddressPair GetAddressPair() const;

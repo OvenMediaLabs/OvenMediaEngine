@@ -45,12 +45,18 @@ protected:
 	std::shared_ptr<IceSession> FindPair(IcePort &p, const ov::SocketAddressPair &ap) { return p.FindIceSession(ap); }
 
 	bool MarkNom(IcePort &p, const std::shared_ptr<IceSession> &s, const ov::SocketAddressPair &ap) { return p.MarkNominated(s, ap); }
+
+	// Stop the background sweeper so these registry tests are deterministic and
+	// free of a data race between CheckTimedOut() and the helpers below. The
+	// idempotent ~IcePort() Stop() afterwards is a harmless no-op.
+	void StopSweeper(IcePort &p) { p._timer.Stop(); }
 };
 
 // Add / Find across the three indices, including idempotent inserts.
 TEST_F(IcePortTest, RegistryAddFind)
 {
 	IcePort port;
+	StopSweeper(port);
 	auto s = MakeSession(1, "ufragA");
 
 	EXPECT_TRUE(AddId(port, 1, s));
@@ -77,6 +83,7 @@ TEST_F(IcePortTest, RegistryAddFind)
 TEST_F(IcePortTest, RemoveSessionErasesAllAddressPairs)
 {
 	IcePort port;
+	StopSweeper(port);
 
 	auto s1 = MakeSession(1, "ufrag1");
 	auto a	= Pair(10000, 20000);  // e.g. direct UDP
@@ -119,6 +126,7 @@ TEST_F(IcePortTest, RemoveSessionErasesAllAddressPairs)
 TEST_F(IcePortTest, DisconnectSessionMarksDisconnecting)
 {
 	IcePort port;
+	StopSweeper(port);
 	auto s = MakeSession(1, "ufragA");
 	ASSERT_TRUE(AddId(port, 1, s));
 	ASSERT_TRUE(AddUfrag(port, "ufragA", s));
@@ -136,6 +144,7 @@ TEST_F(IcePortTest, DisconnectSessionMarksDisconnecting)
 TEST_F(IcePortTest, MarkNominatedRegistersPair)
 {
 	IcePort port;
+	StopSweeper(port);
 	auto s	   = MakeSession(1, "ufragA");
 	auto known = Pair(13478, 20000);  // validated on the session
 	auto other = Pair(13478, 20001);  // never validated on the session

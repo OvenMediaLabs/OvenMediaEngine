@@ -286,8 +286,6 @@ bool IceSession::IsActive(const ov::SocketAddressPair& address_pair)
 // is newly nominated (idempotent: false if it was already nominated).
 bool IceSession::MarkNominated(const ov::SocketAddressPair& address_pair)
 {
-	std::scoped_lock lock(_active_candidate_pair_mutex);
-
 	auto candidate_pair = FindCandidatePair(address_pair);
 	if (candidate_pair == nullptr)
 	{
@@ -295,16 +293,12 @@ bool IceSession::MarkNominated(const ov::SocketAddressPair& address_pair)
 		return false;
 	}
 
-	// Only a freshly validated (Checking) pair is newly nominated. Already
-	// Connected is a no-op, Failed must not be resurrected, and an unvalidated
-	// pair must not be nominated. All return false (caller: "nothing changed").
-	if (candidate_pair->GetState() != IceConnectionState::Checking)
-	{
-		return false;
-	}
-
-	candidate_pair->SetState(IceConnectionState::Connected);
-	return true;
+	// Atomically nominate only a freshly validated (Checking) pair. The CAS
+	// makes this race-free against a concurrent MarkNominated() and against
+	// OnReceivedStunBindingErrorResponse() setting Failed: an already Connected
+	// pair is a no-op and a Failed pair is never resurrected. false means
+	// "nothing changed" (the caller runs the quick-connect burst once per pair).
+	return candidate_pair->CompareExchangeState(IceConnectionState::Checking, IceConnectionState::Connected);
 }
 
 // Make a nominated pair the active pair (the one we send on). Called when the
