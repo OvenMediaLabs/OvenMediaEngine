@@ -101,17 +101,22 @@ namespace api
 							properties->EnableIgnoreRtcpSRTimestamp(jv_properties["ignoreRtcpSRTimestamp"].asBool());
 						}
 
+						if (jv_properties["relay"].isNull() == false && jv_properties["relay"].isBool())
+						{
+							properties->EnableRelay(jv_properties["relay"].asBool());
+						}
+
 						if (jv_properties["retryCount"].isNull() == false && jv_properties["retryCount"].isInt())
 						{
 							properties->SetRetryCount(jv_properties["retryCount"].asInt());
 						}
 						else
 						{
-							properties->SetRetryCount(0); 
+							properties->SetRetryCount(0);
 						}
 					}
 
-					logti("Request to pull stream: %s/%s - persistent(%s) noInputFailoverTimeoutMs(%d) unusedStreamDeletionTimeoutMs(%d) ignoreRtcpSRTimestamp(%s)", app->GetVHostAppName().CStr(), stream_name.CStr(), properties->IsPersistent() ? "true" : "false", properties->GetNoInputFailoverTimeout(), properties->GetUnusedStreamDeletionTimeout(), properties->IsRtcpSRTimestampIgnored() ? "true" : "false");
+					logti("Request to pull stream: %s/%s - persistent(%s) noInputFailoverTimeoutMs(%d) unusedStreamDeletionTimeoutMs(%d) ignoreRtcpSRTimestamp(%s) relay(%s)", app->GetVHostAppName().CStr(), stream_name.CStr(), properties->IsPersistent() ? "true" : "false", properties->GetNoInputFailoverTimeout(), properties->GetUnusedStreamDeletionTimeout(), properties->IsRtcpSRTimestampIgnored() ? "true" : "false", properties->IsRelay() ? "true" : "false");
 					for (auto &url : request_urls)
 					{
 						logti(" - %s", url.CStr());
