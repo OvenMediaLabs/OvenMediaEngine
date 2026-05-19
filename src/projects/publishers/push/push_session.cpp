@@ -70,16 +70,14 @@ namespace pub
 		auto writer = CreateWriter();
 		if (writer == nullptr)
 		{
-			SetState(SessionState::Error);
-			push->SetState(info::Push::PushState::Error);
+			SetErrorState(push);
 			logte("Failed to create session. %s", push->GetInfoString().CStr());
 			return false;
 		}
 
 		if (writer->SetUrl(dest_url, ffmpeg::compat::GetFormatByProtocolType(push->GetProtocolType())) == false)
 		{
-			SetState(SessionState::Error);
-			push->SetState(info::Push::PushState::Error);
+			SetErrorState(push);
 			logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
@@ -166,20 +164,15 @@ namespace pub
 		// Notice: If there are more than one video track, RTMP Push is not created and returns an error. You must use 1 video track.
 		if (writer->Start() == false)
 		{
-			SetState(SessionState::Error);
-			push->SetState(info::Push::PushState::Error);
+			SetErrorState(push);
 			logte("Failed to start session. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
 
 		if (StartSenderThread() == false)
 		{
-			writer->Stop();
-			SetState(SessionState::Error);
-			push->SetState(info::Push::PushState::Error);
-			
+			SetErrorState(push, writer);
 			logte("Failed to start sender thread. %s", push->GetInfoString().CStr());
-			
 			return false;
 		}
 
@@ -348,11 +341,7 @@ namespace pub
 				logte("Push session queue exceeded %ld sec. Terminating session. %s",
 					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
 
-				writer->Stop();
-
-				SetState(SessionState::Error);
-				push->SetState(info::Push::PushState::Error);
-
+				SetErrorState(push, writer);
 				_sender_stop_flag = true;
 
 				continue;
@@ -367,11 +356,7 @@ namespace pub
 			{
 				logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 
-				writer->Stop();
-
-				SetState(SessionState::Error);
-				push->SetState(info::Push::PushState::Error);
-
+				SetErrorState(push, writer);
 				_sender_stop_flag = true;
 
 				continue;
@@ -381,6 +366,19 @@ namespace pub
 			push->IncreasePushBytes(sent_bytes);
 
 			MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Push, sent_bytes);
+		}
+	}
+
+	void PushSession::SetErrorState(const std::shared_ptr<info::Push> &push, const std::shared_ptr<ffmpeg::Writer> &writer)
+	{
+		if (writer != nullptr)
+		{
+			writer->Stop();
+		}
+		SetState(SessionState::Error);
+		if (push != nullptr)
+		{
+			push->SetState(info::Push::PushState::Error);
 		}
 	}
 

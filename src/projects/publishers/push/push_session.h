@@ -49,6 +49,8 @@ namespace pub
 		bool IsSupportTrack(const info::Push::ProtocolType protocol_type, const std::shared_ptr<MediaTrack> &track);
 		bool IsSupportCodec(const info::Push::ProtocolType protocol_type, cmn::MediaCodecId codec_id);
 
+		void SetErrorState(const std::shared_ptr<info::Push> &push, const std::shared_ptr<ffmpeg::Writer> &writer = nullptr);
+
 		bool StartSenderThread();
 		void StopSenderThread();
 		void SenderThread();
