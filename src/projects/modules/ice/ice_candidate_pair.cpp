@@ -42,8 +42,8 @@ ov::SocketAddressPair IceCandidatePair::GetAddressPair() const
 
 ov::String IceCandidatePair::ToString() const
 {
-    return ov::String::FormatString("Socket: %s SocketAddressPair: %s State: %s", 
-                        _socket->ToString().CStr(),
+    return ov::String::FormatString("Socket: %s SocketAddressPair: %s State: %s",
+                        _socket != nullptr ? _socket->ToString().CStr() : "(null)",
                         _socket_address_pair.ToString().CStr(),
                         IceConnectionStateToString(GetState()));
 }
