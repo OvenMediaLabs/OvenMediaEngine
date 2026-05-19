@@ -28,7 +28,7 @@ namespace cfg
 					int _height		  = 0;
 					double _framerate = 0.0;
 					BypassIfMatch _bypass_if_match;
-					int _skip_frames = 0;
+					int _skip_frames = -1;
 
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetName, _name)
