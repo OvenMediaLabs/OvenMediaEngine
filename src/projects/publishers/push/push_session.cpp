@@ -195,9 +195,9 @@ namespace pub
 				push->UpdatePushStartTime();
 			}
 
-			StopSenderThread();
-
 			writer->Stop();
+
+			StopSenderThread();
 
 			if (push != nullptr)
 			{
