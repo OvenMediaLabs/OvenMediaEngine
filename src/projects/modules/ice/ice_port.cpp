@@ -571,9 +571,21 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 		return false;
 	}
 
+	// Resolve the active pair once and frame the packet for THAT pair. The
+	// framing must follow the active pair, not the session: a session may hold
+	// a TURN-relayed pair and a direct pair at the same time and switch between
+	// them, so a session-global TURN flag would keep TURN-wrapping after a
+	// switch to a direct pair (the peer then drops every packet).
+	auto active_candidate_pair = ice_session->GetActiveCandidatePair();
+	if (active_candidate_pair == nullptr)
+	{
+		logte("IcePort::Send - No active candidate pair: %u", session_id);
+		return false;
+	}
+
 	// The underlying socket may already be closed (e.g. by GC) before OnDisconnected callback arrives.
 	// Check socket state to avoid sending data to a closed socket.
-	auto remote = ice_session->GetActiveSocket();
+	auto remote = active_candidate_pair->GetSocket();
 	if (remote == nullptr)
 	{
 		logte("IcePort::Send - Could not find connected remote socket: %u", session_id);
@@ -589,38 +601,34 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 
 	std::shared_ptr<const ov::Data> send_data = nullptr;
 
-	// Send throutgh TURN server Data Channel proxy
-	if (ice_session->IsTurnClient() == true && ice_session->IsDataChannelEnabled() == true)
+	switch (active_candidate_pair->GetTransportType())
 	{
-		send_data = CreateChannelDataMessage(ice_session->GetDataChannelNumber(), data);
-	}
-	// Send thourgh TURN server Data Indication proxy
-	else if (ice_session->IsTurnClient() == true && ice_session->IsDataChannelEnabled() == false)
-	{
-		send_data = CreateDataIndication(ice_session->GetTurnPeerAddress(), data);
-	}
-	// Send direct
-	else
-	{
-		// For direct TCP ICE candidate connections (RFC 6544), wrap in RFC 4571 framing.
-		if (remote->GetType() == ov::SocketType::Tcp && IsIceTcpCandidatePort(remote->GetLocalAddress()->Port()))
-		{
-			send_data = CreateRfc4571Frame(data);
-		}
-		else
-		{
-			send_data = data;
-		}
+		// Send through TURN server Data Channel proxy
+		case IceCandidatePair::TransportType::TurnDataChannel:
+			send_data = CreateChannelDataMessage(active_candidate_pair->GetTurnChannelNumber(), data);
+			break;
+
+		// Send through TURN server Send Indication proxy
+		case IceCandidatePair::TransportType::TurnSendIndication:
+			send_data = CreateDataIndication(active_candidate_pair->GetTurnPeerAddress(), data);
+			break;
+
+		// Send direct
+		case IceCandidatePair::TransportType::Direct:
+		default:
+			// For direct TCP ICE candidate connections (RFC 6544), wrap in RFC 4571 framing.
+			if (remote->GetType() == ov::SocketType::Tcp && IsIceTcpCandidatePort(remote->GetLocalAddress()->Port()))
+			{
+				send_data = CreateRfc4571Frame(data);
+			}
+			else
+			{
+				send_data = data;
+			}
+			break;
 	}
 
 	if (send_data == nullptr)
-	{
-		return false;
-	}
-
-	// TODO(Getroot) : Change to use Local / Remote address of candidate pair
-	auto active_candidate_pair = ice_session->GetActiveCandidatePair();
-	if (active_candidate_pair == nullptr)
 	{
 		return false;
 	}
@@ -807,14 +815,12 @@ void IcePort::OnChannelDataPacketReceived(const std::shared_ptr<ov::Socket> &rem
 	application_gate_info.channel_number = message.GetChannelNumber();
 	application_gate_info.packet_type = IcePacketIdentifier::FindPacketType(message.GetData());
 
-	// Update GateInfo
-	// If a request comes from a send indication or channel, this is through a turn. When transmitting a packet to the player, it must be sent through a data indication or channel, so it stores related information.
+	// Data arrived via a TURN ChannelData message: record on THIS pair that we
+	// must reply through the same TURN data channel.
 	auto ice_session = FindIceSession(address_pair);
 	if (ice_session != nullptr)
 	{
-		ice_session->SetTurnClient(true);
-		ice_session->SetDataChannelEnabled(true);
-		ice_session->SetDataChannelNumber(application_gate_info.channel_number);
+		ice_session->SetCandidatePairTurnDataChannel(address_pair, remote, application_gate_info.channel_number);
 	}
 
 	// Decapsulate and process the packet again.
@@ -922,8 +928,25 @@ bool IcePort::MarkNominated(const std::shared_ptr<IceSession> &ice_session, cons
 	// Ensure application packets on this pair can resolve the session
 	AddIceSession(address_pair, ice_session);
 
+	const char *transport = "";
+	auto candidate_pair = ice_session->FindCandidatePair(address_pair);
+	if (candidate_pair != nullptr)
+	{
+		switch (candidate_pair->GetTransportType())
+		{
+			case IceCandidatePair::TransportType::TurnDataChannel:
+				transport = " [TURN/ChannelData]";
+				break;
+			case IceCandidatePair::TransportType::TurnSendIndication:
+				transport = " [TURN/SendIndication]";
+				break;
+			default:
+				break;
+		}
+	}
+
 	logti("Session %u nominated candidate: %s%s", ice_session->GetSessionID(),
-		  address_pair.ToString().CStr(), ice_session->IsTurnClient() ? " [TURN]" : "");
+		  address_pair.ToString().CStr(), transport);
 
 	return true;
 }
@@ -1330,13 +1353,11 @@ bool IcePort::OnReceivedTurnSendIndication(const std::shared_ptr<ov::Socket> &re
 	gate_info.peer_address = xor_peer_attribute->GetAddress();
 
 	std::shared_ptr<IceSession> ice_session = FindIceSession(address_pair);
-	// Connected Session,
-	// if agent sends data to TURN server (Send Indication) then ome will respond to agent through TURN server (Send Indication)
+	// Data arrived via a TURN Send Indication: record on THIS pair that we must
+	// reply through a TURN Send Indication to the TURN peer address.
 	if (ice_session != nullptr)
 	{
-		ice_session->SetTurnClient(true);
-		ice_session->SetDataChannelEnabled(false);
-		ice_session->SetTurnPeerAddress(gate_info.peer_address);
+		ice_session->SetCandidatePairTurnSendIndication(address_pair, remote, gate_info.peer_address);
 	}
 
 	OnPacketReceived(remote, address_pair, gate_info, data);
@@ -1371,13 +1392,11 @@ bool IcePort::OnReceivedTurnChannelBindRequest(const std::shared_ptr<ov::Socket>
 	SendStunMessage(remote, address_pair, gate_info, response_message, _hmac_key);
 
 	std::shared_ptr<IceSession> ice_session = FindIceSession(address_pair);
-	// Connected Session,
-	// if agent sends data to TURN server (Data Channel) then ome will respond to agent through TURN server (Data Channel)
+	// Channel bound: record on THIS pair that we must reply through this TURN
+	// data channel.
 	if (ice_session != nullptr)
 	{
-		ice_session->SetTurnClient(true);
-		ice_session->SetDataChannelEnabled(true);
-		ice_session->SetDataChannelNumber(channel_number_attribute->GetChannelNumber());
+		ice_session->SetCandidatePairTurnDataChannel(address_pair, remote, channel_number_attribute->GetChannelNumber());
 	}
 
 	return true;

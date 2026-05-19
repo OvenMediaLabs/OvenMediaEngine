@@ -53,21 +53,13 @@ public:
 	// User data
 	std::any GetUserData() const;
 
-	// TURN client
-	void SetTurnClient(bool is_turn_client);
-	bool IsTurnClient() const;
-
-	// Is data channel enabled
-	void SetDataChannelEnabled(bool is_data_channel_enabled);
-	bool IsDataChannelEnabled() const;
-
-	// Data channel number
-	void SetDataChannelNumber(uint16_t data_channel_number);
-	uint16_t GetDataChannelNumber() const;
-
-	// TURN peer address
-	void SetTurnPeerAddress(const ov::SocketAddress& peer_address);
-	ov::SocketAddress GetTurnPeerAddress() const;
+	// TURN framing is per candidate pair, not per session: a session can hold a
+	// TURN-relayed pair and a direct pair simultaneously and switch the active
+	// pair between them. These find-or-create the pair for address_pair and
+	// record how to send on it (the inner packet is later routed by the same
+	// address_pair, so this is the pair that becomes active for that path).
+	void SetCandidatePairTurnDataChannel(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket, uint16_t channel_number);
+	void SetCandidatePairTurnSendIndication(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket, const ov::SocketAddress& turn_peer_address);
 
 	std::shared_ptr<IceCandidatePair> FindCandidatePair(const ov::SocketAddressPair& address_pair) const;
 
@@ -123,11 +115,4 @@ private:
     // interfaces
     std::any _user_data;
     std::shared_ptr<IcePortObserver> _observer;
-
-	// Connection information with TURN server
-	std::atomic<bool> _is_turn_client = false;
-	std::atomic<bool> _is_data_channel_enabled = false;
-	mutable std::shared_mutex _turn_peer_address_mutex;
-	ov::SocketAddress _turn_peer_address;
-	std::atomic<uint16_t> _data_channel_number = 0;
 };

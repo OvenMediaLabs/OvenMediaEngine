@@ -63,3 +63,34 @@ bool IceCandidatePair::IsConnectable() const
 {
     return _received_binding_request && _received_binding_response;
 }
+
+void IceCandidatePair::SetTurnDataChannel(uint16_t channel_number)
+{
+    _turn_channel_number.store(channel_number);
+    _transport_type.store(TransportType::TurnDataChannel);
+}
+
+void IceCandidatePair::SetTurnSendIndication(const ov::SocketAddress &turn_peer_address)
+{
+    {
+        std::lock_guard<std::mutex> lock(_turn_peer_address_mutex);
+        _turn_peer_address = turn_peer_address;
+    }
+    _transport_type.store(TransportType::TurnSendIndication);
+}
+
+IceCandidatePair::TransportType IceCandidatePair::GetTransportType() const
+{
+    return _transport_type.load();
+}
+
+uint16_t IceCandidatePair::GetTurnChannelNumber() const
+{
+    return _turn_channel_number.load();
+}
+
+ov::SocketAddress IceCandidatePair::GetTurnPeerAddress() const
+{
+    std::lock_guard<std::mutex> lock(_turn_peer_address_mutex);
+    return _turn_peer_address;
+}

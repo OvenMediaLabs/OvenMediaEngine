@@ -97,49 +97,28 @@ std::any IceSession::GetUserData() const
 	return _user_data;
 }
 
-void IceSession::SetTurnClient(bool is_turn_client)
+void IceSession::SetCandidatePairTurnDataChannel(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket, uint16_t channel_number)
 {
-	_is_turn_client = is_turn_client;
+	auto candidate_pair = FindCandidatePair(address_pair);
+	if (candidate_pair == nullptr)
+	{
+		// TURN ChannelBind/ChannelData can arrive before the relayed STUN
+		// connectivity check that would otherwise create the pair.
+		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
+	}
+
+	candidate_pair->SetTurnDataChannel(channel_number);
 }
 
-bool IceSession::IsTurnClient() const
+void IceSession::SetCandidatePairTurnSendIndication(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket, const ov::SocketAddress& turn_peer_address)
 {
-	return _is_turn_client;
-}
+	auto candidate_pair = FindCandidatePair(address_pair);
+	if (candidate_pair == nullptr)
+	{
+		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
+	}
 
-// Is data channel enabled
-void IceSession::SetDataChannelEnabled(bool is_data_channel_enabled)
-{
-	_is_data_channel_enabled = is_data_channel_enabled;	
-}
-
-bool IceSession::IsDataChannelEnabled() const
-{
-	return _is_data_channel_enabled;
-}
-
-// Data channel number
-void IceSession::SetDataChannelNumber(uint16_t data_channel_number)
-{
-	_data_channel_number = data_channel_number;
-}
-
-uint16_t IceSession::GetDataChannelNumber() const
-{
-	return _data_channel_number;
-}
-
-// TURN peer address
-void IceSession::SetTurnPeerAddress(const ov::SocketAddress& peer_address)
-{
-	std::scoped_lock lock(_turn_peer_address_mutex);
-	_turn_peer_address = peer_address;
-}
-
-ov::SocketAddress IceSession::GetTurnPeerAddress() const
-{
-	std::shared_lock lock(_turn_peer_address_mutex);
-	return _turn_peer_address;
+	candidate_pair->SetTurnSendIndication(turn_peer_address);
 }
 
 std::shared_ptr<IceCandidatePair> IceSession::GetActiveCandidatePair() const
@@ -327,14 +306,16 @@ bool IceSession::SelectActiveCandidatePair(const ov::SocketAddressPair& address_
 	_active_candidate_pair = candidate_pair;
 	SetState(IceConnectionState::Connected);
 
+	// ToString() includes the socket (TCP/UDP + addresses), useful for tracing
+	// which path the peer moved to.
 	if (previous == nullptr)
 	{
-		logti("ICE session : %u | active pair selected: %s", GetSessionID(), address_pair.ToString().CStr());
+		logti("ICE session %u | active pair selected: %s", GetSessionID(), candidate_pair->ToString().CStr());
 	}
 	else
 	{
-		logti("ICE session : %u | active pair switched: %s -> %s",
-			  GetSessionID(), previous->GetAddressPair().ToString().CStr(), address_pair.ToString().CStr());
+		logti("ICE session %u | active pair switched: %s -> %s",
+			  GetSessionID(), previous->ToString().CStr(), candidate_pair->ToString().CStr());
 	}
 
 	return true;
