@@ -237,11 +237,12 @@ namespace pub
 				logti("Push started. %s connectionTimeout(%d) sendTimeout(%d)", push->GetInfoString().CStr(), push->GetConnectionTimeout(), push->GetSendTimeout());
 				session->Start();			
 				break;
-			// State of stopped
-			case pub::Session::SessionState::Stopped:
-				[[fallthrough]];
 			// State of failed (connection refused, disconnected)
 			case pub::Session::SessionState::Error:
+				session->Stop();
+				[[fallthrough]];
+			// State of stopped
+			case pub::Session::SessionState::Stopped:
 				logti("Push restarted. %s connectionTimeout(%d) sendTimeout(%d)", push->GetInfoString().CStr(), push->GetConnectionTimeout(), push->GetSendTimeout());
 				session->Start();
 				break;

@@ -13,6 +13,7 @@
 #include <base/publisher/session.h>
 #include <modules/ffmpeg/writer.h>
 #include <modules/ffmpeg/compat.h>
+#include <modules/managed_queue/managed_queue.h>
 
 #include "base/info/push.h"
 
@@ -48,10 +49,24 @@ namespace pub
 		bool IsSupportTrack(const info::Push::ProtocolType protocol_type, const std::shared_ptr<MediaTrack> &track);
 		bool IsSupportCodec(const info::Push::ProtocolType protocol_type, cmn::MediaCodecId codec_id);
 
+		bool StartSenderThread();
+		void StopSenderThread();
+		void SenderThread();
+
+		// Returns true if the sender queue has been continuously over its threshold for at least `duration`.
+		bool IsSenderQueueExceededFor(std::chrono::milliseconds duration);
+
 		std::shared_ptr<info::Push> _push = nullptr;
-		std::shared_mutex _push_mutex;		
+		std::shared_mutex _push_mutex;
 
 		std::shared_ptr<ffmpeg::Writer> _writer = nullptr;
 		std::shared_mutex _writer_mutex;
+
+		ov::ManagedQueue<std::shared_ptr<MediaPacket>> _sender_packet_queue;
+		std::thread _sender_thread;
+		std::atomic<bool> _sender_stop_flag{true};
+
+		// Variable used to check if the queue threshold stays exceeded
+		std::chrono::steady_clock::time_point _threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
 	};
 }  // namespace pub

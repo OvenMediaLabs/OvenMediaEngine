@@ -361,10 +361,17 @@ namespace ov
 			auto shared_lock = std::shared_lock(_name_mutex);
 
 			ov::String urn_str = (_urn != nullptr) ? _urn->ToString() : ov::String("NoUrn");
+
+			ov::String threshold_info = ov::String::FormatString("%zu (%s %zu%s", _threshold, GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? "ms" : "");
+			if(_buffering_delay > 0)
+			{
+				threshold_info.AppendFormat(" + delay %dms", _buffering_delay);
+			}
+			threshold_info.Append(")");
+
 			return ov::String::FormatString(
-				"ManagedQueue [Id: %u, Size: %zu, Threshold: %zu (%s %zu%s + delay %dms), Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
-				GetId(), _size, _threshold,
-				GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? " ms" : "", _buffering_delay,
+				"ManagedQueue [Id: %u, Size: %zu, Threshold: %s, Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
+				GetId(), _size, threshold_info.CStr(),
 				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
 				urn_str.CStr());
 		}
@@ -537,13 +544,20 @@ namespace ov
 			_output_message_per_second = 0;
 			_input_message_count = 0;
 			_output_message_count = 0;
+
+			_last_input_message_count = 0;
+			_last_output_message_count = 0;
 			_threshold_exceeded_time_in_us = 0;
+
+			_last_logging_time = 0;
+			_last_logged_peak = 0;
+
+			_timer.Stop();
 
 			MonitorInstance->OnQueueUpdated(*this);
 		}
 
-	private:
-
+	public:
 		// Check if the queue has exceeded the threshold.
 		// _threshold == 0 means no threshold.
 		bool IsThresholdExceeded() const
@@ -551,7 +565,8 @@ namespace ov
 			if (_threshold == 0) return false;
 			return _size >= _threshold;
 		}
-
+		
+	private:
 		// Compute the threshold
 		void UpdateThreshold()
 		{

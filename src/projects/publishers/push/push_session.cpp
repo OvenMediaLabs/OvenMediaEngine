@@ -172,9 +172,20 @@ namespace pub
 			return false;
 		}
 
+		if (StartSenderThread() == false)
+		{
+			writer->Stop();
+			SetState(SessionState::Error);
+			push->SetState(info::Push::PushState::Error);
+			
+			logte("Failed to start sender thread. %s", push->GetInfoString().CStr());
+			
+			return false;
+		}
+
 		push->SetState(info::Push::PushState::Pushing);
 
-		logtt("PushSession(%d) has started.", GetId());
+		logtd("PushSession(%d) has started.", GetId());
 
 		return Session::Start();
 	}
@@ -191,6 +202,8 @@ namespace pub
 				push->UpdatePushStartTime();
 			}
 
+			StopSenderThread();
+
 			writer->Stop();
 
 			if (push != nullptr)
@@ -201,7 +214,7 @@ namespace pub
 
 			DestoryWriter();
 
-			logtt("PushSession(%d) has stopped", GetId());
+			logtd("PushSession(%d) has stopped", GetId());
 		}
 
 		return Session::Stop();
@@ -210,6 +223,11 @@ namespace pub
 	void PushSession::SendOutgoingData(const std::any &packet)
 	{
 		if (GetState() != SessionState::Started)
+		{
+			return;
+		}
+
+		if (_sender_stop_flag.load())
 		{
 			return;
 		}
@@ -231,37 +249,139 @@ namespace pub
 			return;
 		}
 
-		auto writer = GetWriter();
-		if (writer == nullptr)
+		_sender_packet_queue.Enqueue(std::move(session_packet));
+	}
+
+	bool PushSession::StartSenderThread()
+	{
+		StopSenderThread();
+
+		auto stream = GetStream();
+		if (stream != nullptr)
 		{
-			return;
+			auto urn = std::make_shared<info::ManagedQueue::URN>(
+				stream->GetApplicationInfo().GetVHostAppName(),
+				stream->GetName(),
+				"pub",
+				ov::String::FormatString("push_session_%u", GetId()).LowerCaseString());
+			_sender_packet_queue.SetUrn(urn);
 		}
 
-		auto push = GetPush();
-		if (push == nullptr)
+		_sender_packet_queue.SetThresholdByTime(5000);
+		_sender_packet_queue.Clear();
+
+		_threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
+
+		_sender_stop_flag = false;
+		_sender_thread = std::thread(&PushSession::SenderThread, this);
+		pthread_setname_np(_sender_thread.native_handle(), ov::String::FormatString("PushSess-%u", GetId()).CStr());
+
+		return true;
+	}
+
+	void PushSession::StopSenderThread()
+	{
+		_sender_stop_flag = true;
+
+		if (_sender_thread.joinable())
 		{
-			return;
+			_sender_thread.join();
 		}
 
-		uint64_t sent_bytes = 0;
+		_sender_packet_queue.Clear();
+	}
 
-		bool ret = writer->SendPacket(session_packet, &sent_bytes);
-		if (ret == false)
+	bool PushSession::IsSenderQueueExceededFor(std::chrono::milliseconds duration)
+	{
+		if (_sender_packet_queue.IsThresholdExceeded() == false)
 		{
-			logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
-
-			writer->Stop();
-
-			SetState(SessionState::Error);
-			push->SetState(info::Push::PushState::Error);
-
-			return;
+			_threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
+			return false;
 		}
 
-		push->UpdatePushTime();
-		push->IncreasePushBytes(sent_bytes);
+		auto now = std::chrono::steady_clock::now();
+		if (_threshold_exceeded_start == std::chrono::steady_clock::time_point::min())
+		{
+			_threshold_exceeded_start = now;
+			return false;
+		}
 
-		MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Push, sent_bytes);
+		return (now - _threshold_exceeded_start) >= duration;
+	}
+
+	void PushSession::SenderThread()
+	{
+		ov::logger::ThreadHelper thread_helper;
+
+		constexpr auto kThresholdGraceDuration = std::chrono::seconds(10);
+
+		while (_sender_stop_flag.load() == false)
+		{
+			auto item = _sender_packet_queue.Dequeue(100);
+			if (item.has_value() == false)
+			{
+				// Timeout or Stop is called. 
+				continue;
+			}
+
+			auto session_packet = item.value();
+			if (session_packet == nullptr)
+			{
+				continue;
+			}
+
+			auto writer = GetWriter();
+			if (writer == nullptr)
+			{
+				continue;
+			}
+
+			auto push = GetPush();
+			if (push == nullptr)
+			{
+				continue;
+			}
+
+			// If the queue stays over the limit for 10 seconds (for example, because of a slow network), the PUSH session is closed.
+			if (IsSenderQueueExceededFor(kThresholdGraceDuration))
+			{
+				logte("Push session queue exceeded %ld sec. Terminating session. %s",
+					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
+
+				writer->Stop();
+
+				SetState(SessionState::Error);
+				push->SetState(info::Push::PushState::Error);
+
+				_sender_stop_flag = true;
+
+				continue;
+			}
+			
+			// Debug sleep to simulate slow network or processing. Remove this in production.
+			// std::this_thread::sleep_for(std::chrono::milliseconds(ov::Random::GenerateUInt32(2, 15)));
+
+			uint64_t sent_bytes = 0;
+			bool ret = writer->SendPacket(session_packet, &sent_bytes);
+			if (ret == false)
+			{
+				logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
+
+				writer->Stop();
+
+				SetState(SessionState::Error);
+				push->SetState(info::Push::PushState::Error);
+
+				_sender_stop_flag = true;
+
+				continue;
+			}
+
+			push->UpdatePushTime();
+			push->IncreasePushBytes(sent_bytes);
+
+			MonitorInstance->IncreaseBytesOut(*GetStream(), PublisherType::Push, sent_bytes);
+		}
 	}
 
 	std::shared_ptr<ffmpeg::Writer> PushSession::CreateWriter()
@@ -401,7 +521,7 @@ namespace pub
 			}
 		}
 
-		logtd("PushSession(%d) - Adding track. trackId:%d, variantName: %s", GetId(), track->GetId(), track->GetVariantName().CStr());
+		logtd("PushSession(%d) Adding track. trackId:%d, variantName: %s", GetId(), track->GetId(), track->GetVariantName().CStr());
 
 		return writer->AddTrack(track);
 	}
