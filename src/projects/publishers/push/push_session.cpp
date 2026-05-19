@@ -260,10 +260,8 @@ namespace pub
 			_sender_packet_queue.SetUrn(urn);
 		}
 
-		_sender_packet_queue.SetThresholdByTime(5000);
+		_sender_packet_queue.SetThreshold(100);
 		_sender_packet_queue.Clear();
-
-		_threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
 
 		_sender_stop_flag = false;
 		_sender_thread = std::thread(&PushSession::SenderThread, this);
@@ -282,24 +280,6 @@ namespace pub
 		}
 
 		_sender_packet_queue.Clear();
-	}
-
-	bool PushSession::IsSenderQueueExceededFor(std::chrono::milliseconds duration)
-	{
-		if (_sender_packet_queue.IsThresholdExceeded() == false)
-		{
-			_threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
-			return false;
-		}
-
-		auto now = std::chrono::steady_clock::now();
-		if (_threshold_exceeded_start == std::chrono::steady_clock::time_point::min())
-		{
-			_threshold_exceeded_start = now;
-			return false;
-		}
-
-		return (now - _threshold_exceeded_start) >= duration;
 	}
 
 	void PushSession::SenderThread()
@@ -335,10 +315,9 @@ namespace pub
 				continue;
 			}
 
-			// If the queue stays over the limit for 10 seconds (for example, because of a slow network), the PUSH session is closed.
-			if (IsSenderQueueExceededFor(kThresholdGraceDuration))
+			if (_sender_packet_queue.IsThresholdExceededFor(kThresholdGraceDuration))
 			{
-				logte("Push session queue exceeded %ld sec. Terminating session. %s",
+				logte("Push session queue exceeded state persisted for more than %ld seconds. Terminating session. %s",
 					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
 
 				SetErrorState(push, writer);

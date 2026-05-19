@@ -19,7 +19,7 @@
 #include "base/info/managed_queue.h"
 #include "base/ovlibrary/ovlibrary.h"
 
-#define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 1000
+#define MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100
 #define MANAGED_QUEUE_LOG_INTERVAL_IN_MSEC 5000
 
 
@@ -296,6 +296,13 @@ namespace ov
 			return (_size == 0);
 		}
 
+		// Returns true if the queue has been over its threshold for at least `duration`.
+		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100ms)
+		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
+		{
+			return _threshold_exceeded_time_in_us >= static_cast<int64_t>(duration.count());
+		}
+
 		// Cleared all items in the queue
 		void Clear()
 		{
@@ -511,10 +518,10 @@ namespace ov
 
 				if (IsThresholdExceeded())
 				{
-					_threshold_exceeded_time_in_us += _stats_metric_interval;
+					_threshold_exceeded_time_in_us += elapsed_time;
 
 					// Logging
-					_last_logging_time += _stats_metric_interval;
+					_last_logging_time += elapsed_time;
 					if ((_last_logging_time >= _log_interval) && (_last_logged_peak < _peak))
 					{
 						_last_logging_time = 0;
@@ -557,7 +564,7 @@ namespace ov
 			MonitorInstance->OnQueueUpdated(*this);
 		}
 
-	public:
+	private:
 		// Check if the queue has exceeded the threshold.
 		// _threshold == 0 means no threshold.
 		bool IsThresholdExceeded() const
@@ -565,8 +572,7 @@ namespace ov
 			if (_threshold == 0) return false;
 			return _size >= _threshold;
 		}
-		
-	private:
+
 		// Compute the threshold
 		void UpdateThreshold()
 		{

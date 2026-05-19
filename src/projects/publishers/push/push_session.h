@@ -55,9 +55,6 @@ namespace pub
 		void StopSenderThread();
 		void SenderThread();
 
-		// Returns true if the sender queue has been continuously over its threshold for at least `duration`.
-		bool IsSenderQueueExceededFor(std::chrono::milliseconds duration);
-
 		std::shared_ptr<info::Push> _push = nullptr;
 		std::shared_mutex _push_mutex;
 
@@ -67,8 +64,5 @@ namespace pub
 		ov::ManagedQueue<std::shared_ptr<MediaPacket>> _sender_packet_queue;
 		std::thread _sender_thread;
 		std::atomic<bool> _sender_stop_flag{true};
-
-		// Variable used to check if the queue threshold stays exceeded
-		std::chrono::steady_clock::time_point _threshold_exceeded_start = std::chrono::steady_clock::time_point::min();
 	};
 }  // namespace pub
