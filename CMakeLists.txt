@@ -35,21 +35,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # ==============================================================================
 # Options
 # ==============================================================================
-set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for external dependencies")
-
-option(OME_HWACCEL_NVIDIA           "Enable NVIDIA GPU hardware acceleration"            OFF)
-option(OME_HWACCEL_QSV              "Enable Intel QSV hardware acceleration"             OFF)
-option(OME_HWACCEL_XMA              "Enable Xilinx XMA hardware acceleration"            OFF)
-option(OME_HWACCEL_NILOGAN          "Enable Netint NiLogan acceleration"                 OFF)
-set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmpeg patch file (required when OME_HWACCEL_NILOGAN=ON)")
-set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
-option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
-option(OME_ENABLE_JEMALLOC          "Enable jemalloc memory allocator"                  OFF)
-option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version packages" OFF)
-option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
-option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
-option(OME_WHISPER_STATIC           "Build Whisper/ggml as a static library"             OFF)
-
 # Build type - normalize to canonical case (Debug/Release) so comparisons work
 # regardless of how the user typed it (debug, DEBUG, release, RELEASE, etc.)
 if(NOT CMAKE_BUILD_TYPE)
@@ -66,6 +51,41 @@ else()
     unset(_BUILD_TYPE_UPPER)
 endif()
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
+set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for external dependencies")
+
+option(OME_HWACCEL_NVIDIA           "Enable NVIDIA GPU hardware acceleration"            OFF)
+option(OME_HWACCEL_QSV              "Enable Intel QSV hardware acceleration"             OFF)
+option(OME_HWACCEL_XMA              "Enable Xilinx XMA hardware acceleration"            OFF)
+option(OME_HWACCEL_NILOGAN          "Enable Netint NiLogan acceleration"                 OFF)
+set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmpeg patch file (required when OME_HWACCEL_NILOGAN=ON)")
+set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
+option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
+option(OME_ENABLE_JEMALLOC          "Enable jemalloc memory allocator"                  OFF)
+option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version packages" OFF)
+option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
+option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    option(OME_WHISPER_STATIC       "Build Whisper/ggml as a static library"             ON)
+else()
+    option(OME_WHISPER_STATIC       "Build Whisper/ggml as a static library"             OFF)
+endif()
+
+message(STATUS "Options:")
+message(STATUS "  OME_USE_CLANG: ${OME_USE_CLANG}")
+message(STATUS "  OME_DEP_PREFIX: ${OME_DEP_PREFIX}")
+message(STATUS "  OME_HWACCEL_NVIDIA: ${OME_HWACCEL_NVIDIA}")
+message(STATUS "  OME_HWACCEL_QSV: ${OME_HWACCEL_QSV}")
+message(STATUS "  OME_HWACCEL_XMA: ${OME_HWACCEL_XMA}")
+message(STATUS "  OME_HWACCEL_NILOGAN: ${OME_HWACCEL_NILOGAN}")
+message(STATUS "  OME_NILOGAN_PATCH_PATH: ${OME_NILOGAN_PATCH_PATH}")
+message(STATUS "  OME_NILOGAN_XCODER_COMPILE_PATH: ${OME_NILOGAN_XCODER_COMPILE_PATH}")
+message(STATUS "  OME_ENABLE_X264: ${OME_ENABLE_X264}")
+message(STATUS "  OME_ENABLE_JEMALLOC: ${OME_ENABLE_JEMALLOC}")
+message(STATUS "  OME_SKIP_DEPENDENCY_CHECK: ${OME_SKIP_DEPENDENCY_CHECK}")
+message(STATUS "  OME_SANITIZE_THREAD: ${OME_SANITIZE_THREAD}")
+message(STATUS "  OME_BUILD_TESTS: ${OME_BUILD_TESTS}")
+message(STATUS "  OME_WHISPER_STATIC: ${OME_WHISPER_STATIC}")
 
 # ==============================================================================
 # Include cmake modules
