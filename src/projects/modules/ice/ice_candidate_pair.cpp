@@ -61,7 +61,12 @@ void IceCandidatePair::OnReceivedBindingResponse()
 // Valid candidate pair
 bool IceCandidatePair::IsConnectable() const
 {
-    return _received_binding_request && _received_binding_response;
+    // A pair whose STUN check Failed (error response) must not be treated as
+    // connectable: otherwise the CONTROLLING role keeps advertising
+    // USE-CANDIDATE on it and the quick-connect path keeps retrying it, even
+    // though SelectActiveCandidatePair() rejects Failed pairs.
+    return _state.load() != IceConnectionState::Failed
+        && _received_binding_request && _received_binding_response;
 }
 
 void IceCandidatePair::SetTurnDataChannel(uint16_t channel_number)

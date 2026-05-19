@@ -591,7 +591,7 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 	auto remote = active_candidate_pair->GetSocket();
 	if (remote == nullptr)
 	{
-		logte("IcePort::Send - Could not find connected remote socket: %u", session_id);
+		logte("IcePort::Send - Active candidate pair has no socket: %u", session_id);
 		return false;
 	}
 
