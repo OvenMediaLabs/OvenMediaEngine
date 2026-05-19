@@ -44,7 +44,7 @@ namespace pub
 			return false;
 		}
 
-		if (!CreateStreamWorker(2))
+		if (!CreateStreamWorker(1))
 		{
 			return false;
 		}
