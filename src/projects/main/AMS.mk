@@ -111,7 +111,7 @@ ifeq ($(and \
 $(call add_pkg_config,ffnvcodec)
 HWACCELS_NVIDIA_ENABLED := true
 PROJECT_CXXFLAGS += -I/usr/local/cuda/include -DHWACCELS_NVIDIA_ENABLED
-LOCAL_LDFLAGS += -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib64/stubs -Wl,-Bstatic -lcudart_static -Wl,-Bdynamic -lcuda -lnvidia-ml -lrt -ldl 
+LOCAL_LDFLAGS += -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib64/stubs -Wl,-Bstatic -lcudart_static -Wl,-Bdynamic -lcuda -lnvidia-ml -lrt -ldl
 
 endif
 
