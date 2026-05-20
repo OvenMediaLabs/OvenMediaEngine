@@ -347,7 +347,7 @@ if(OME_HWACCEL_NVIDIA)
         include_directories(${CUDA_ROOT}/include)
         link_directories(${CUDA_ROOT}/lib64)
 
-        set(OME_NVIDIA_LIBS cuda nvidia-ml ${NV_CUDART_LIB})
+        set(OME_NVIDIA_LIBS cuda nvidia-ml rt ${NV_CUDART_LIB})
     else()
         message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but required NVIDIA libraries/tools not found - disabled")
         set(OME_HWACCEL_NVIDIA OFF)
@@ -364,7 +364,8 @@ endif()
 if(PKG_WHISPER_FOUND)
     find_library(GGML_CPU_LIB   ggml-cpu        HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
     set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${GGML_CPU_LIB}")
-
+    set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES gomp)
+    
     if(OME_HWACCEL_NVIDIA)  
         set(CUDA_ROOT "/usr/local/cuda")
 
