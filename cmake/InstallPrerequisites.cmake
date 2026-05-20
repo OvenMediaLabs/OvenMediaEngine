@@ -277,6 +277,105 @@ else()
 endif()
 
 # ==============================================================================
+# NVIDIA toolchain validation (fail-fast)
+#
+# Catches missing CUDA Toolkit before any time is spent building dependencies.
+# Mirrors the same check in cmake/Dependencies.cmake so that both entry points
+# (direct `cmake -P InstallPrerequisites.cmake` and the auto-reinstall path
+# triggered from the main configure) fail at the earliest possible moment.
+# ==============================================================================
+if(OME_HWACCEL_NVIDIA)
+    set(_CUDA_ROOT "/usr/local/cuda")
+    find_program(_OME_NVCC nvcc HINTS ${_CUDA_ROOT}/bin /usr/cuda/bin)
+    find_library(_OME_ML_LIB     nvidia-ml     HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDA_LIB   cuda          HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDART_LIB cudart_static HINTS ${_CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
+
+    if(NOT (_OME_NVCC AND _OME_CUDA_LIB AND _OME_CUDART_LIB AND _OME_ML_LIB))
+        message(FATAL_ERROR
+            "[OME Prerequisites] OME_HWACCEL_NVIDIA=ON but CUDA Toolkit is missing or incomplete:\n"
+            "  nvcc:             ${_OME_NVCC}\n"
+            "  libnvidia-ml:     ${_OME_ML_LIB}\n"
+            "  libcuda:          ${_OME_CUDA_LIB}\n"
+            "  libcudart_static: ${_OME_CUDART_LIB}\n"
+            "Install CUDA Toolkit: https://developer.nvidia.com/cuda-downloads\n"
+            "Or disable NVIDIA support: re-run without -DOME_HWACCEL_NVIDIA=ON"
+        )
+    endif()
+    message(STATUS "[OME Prerequisites] CUDA Toolkit found - nvcc: ${_OME_NVCC}")
+
+    # nvcc <-> host compiler compatibility probe with auto-fallback.
+    # nvcc enforces the host compiler version (e.g. CUDA 12.x rejects gcc 15+).
+    # If CMAKE_CUDA_HOST_COMPILER is preset (user-supplied or forwarded from the
+    # parent configure) only that is probed. Otherwise try the system default,
+    # then walk g++-14 / g++-13 / g++-12 / g++-11 and pick the first one nvcc
+    # accepts. The selected compiler is exported via OME_NVCC_HOST_CXX so the
+    # whisper build inherits it as CMAKE_CUDA_HOST_COMPILER.
+    set(_OME_CUDA_TEST_DIR "${TEMP_PATH}/cuda_compat_test")
+    file(REMOVE_RECURSE "${_OME_CUDA_TEST_DIR}")
+    file(MAKE_DIRECTORY "${_OME_CUDA_TEST_DIR}")
+    file(WRITE "${_OME_CUDA_TEST_DIR}/test.cu" "#include <cuda_runtime.h>\nint main(){return 0;}\n")
+
+    if(CMAKE_CUDA_HOST_COMPILER)
+        set(_OME_HOST_CANDIDATES "${CMAKE_CUDA_HOST_COMPILER}")
+    else()
+        # Empty string means "system default" (no -ccbin passed to nvcc).
+        set(_OME_HOST_CANDIDATES "" g++-14 g++-13 g++-12 g++-11)
+    endif()
+
+    set(OME_NVCC_HOST_CXX "")
+    set(_OME_HOST_PICKED "NOTFOUND")
+    set(_OME_CUDA_TEST_ERR "")
+    foreach(_cxx IN LISTS _OME_HOST_CANDIDATES)
+        set(_cxx_args "")
+        if(NOT "${_cxx}" STREQUAL "")
+            unset(_OME_FOUND_CXX CACHE)
+            find_program(_OME_FOUND_CXX NAMES "${_cxx}")
+            if(NOT _OME_FOUND_CXX)
+                continue()
+            endif()
+            set(_cxx_args "-ccbin" "${_OME_FOUND_CXX}")
+        endif()
+        execute_process(
+            COMMAND ${_OME_NVCC} ${_cxx_args} -c "${_OME_CUDA_TEST_DIR}/test.cu" -o "${_OME_CUDA_TEST_DIR}/test.o"
+            RESULT_VARIABLE _OME_CUDA_TEST_RET
+            ERROR_VARIABLE _OME_CUDA_TEST_ERR
+            OUTPUT_QUIET
+        )
+        if(_OME_CUDA_TEST_RET EQUAL 0)
+            if("${_cxx}" STREQUAL "")
+                set(_OME_HOST_PICKED "default")
+            else()
+                set(_OME_HOST_PICKED "${_OME_FOUND_CXX}")
+                set(OME_NVCC_HOST_CXX "${_OME_FOUND_CXX}")
+            endif()
+            break()
+        endif()
+    endforeach()
+    unset(_OME_FOUND_CXX CACHE)
+    file(REMOVE_RECURSE "${_OME_CUDA_TEST_DIR}")
+
+    if(_OME_HOST_PICKED STREQUAL "NOTFOUND")
+        execute_process(COMMAND ${_OME_NVCC} --version
+            OUTPUT_VARIABLE _OME_NVCC_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        execute_process(COMMAND gcc --version
+            OUTPUT_VARIABLE _OME_HOST_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        message(FATAL_ERROR
+            "[OME Prerequisites] nvcc cannot compile with any available host compiler (tried default + g++-14/13/12/11).\n\n"
+            "Last nvcc error:\n${_OME_CUDA_TEST_ERR}\n"
+            "nvcc:\n${_OME_NVCC_VER}\n\n"
+            "host gcc:\n${_OME_HOST_VER}\n\n"
+            "Install a gcc version compatible with your CUDA toolkit, for example:\n"
+            "  sudo apt install -y gcc-14 g++-14"
+        )
+    elseif("${_OME_HOST_PICKED}" STREQUAL "default")
+        message(STATUS "[OME Prerequisites] nvcc host compiler: system default works")
+    else()
+        message(STATUS "[OME Prerequisites] nvcc host compiler: auto-selected ${_OME_HOST_PICKED}")
+    endif()
+endif()
+
+# ==============================================================================
 # Individual install functions (implemented as cmake variables holding shell code)
 # ==============================================================================
 
@@ -549,11 +648,10 @@ set(_WHISPER_CMAKE_ARGS
 )
 if(OME_HWACCEL_NVIDIA)
     list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61-real\;70-real\;75-real\;80-real\;86-real\;89\"")
-    find_program(_OME_NVCC nvcc HINTS /usr/local/cuda/bin /usr/cuda/bin)
-    if(_OME_NVCC)
-        list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")
-    else()
-        message(WARNING "[OME] nvcc not found - whisper CUDA build may fail. Install CUDA toolkit or add nvcc to PATH.")
+    # nvcc and OME_NVCC_HOST_CXX were resolved by the probe above.
+    list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")
+    if(OME_NVCC_HOST_CXX)
+        list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_HOST_COMPILER=${OME_NVCC_HOST_CXX}")
     endif()
 endif()
 list(JOIN _WHISPER_CMAKE_ARGS " " _WHISPER_CMAKE_LINE)
