@@ -314,7 +314,7 @@ endmacro()
 # ==============================================================================
 if(OME_HWACCEL_NVIDIA)
     set(CUDA_ROOT "/usr/local/cuda")
-    find_program(NV_NVCC           nvcc            HINTS ${CUDA_ROOT}/bin)
+    find_program(NV_NVCC           nvcc            HINTS ${CUDA_ROOT}/bin /usr/cuda/bin)
     # libnvidia-ml.so and libcuda.so are not included in Docker images like
     # `nvidia/cuda` base images, so also check the stubs directory.
     find_library(NV_ML_LIB         nvidia-ml       HINTS ${CUDA_ROOT}/lib64 ${CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)

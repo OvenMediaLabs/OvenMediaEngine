@@ -358,14 +358,15 @@ if(OME_HWACCEL_NVIDIA)
     if(_OME_HOST_PICKED STREQUAL "NOTFOUND")
         execute_process(COMMAND ${_OME_NVCC} --version
             OUTPUT_VARIABLE _OME_NVCC_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-        execute_process(COMMAND gcc --version
+        execute_process(COMMAND g++ --version
             OUTPUT_VARIABLE _OME_HOST_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
         message(FATAL_ERROR
-            "[OME Prerequisites] nvcc cannot compile with any available host compiler (tried default + g++-14/13/12/11).\n\n"
+            "[OME Prerequisites] nvcc could not compile a trivial CUDA file with any C++ host compiler tried (default + g++-14/13/12/11).\n\n"
             "Last nvcc error:\n${_OME_CUDA_TEST_ERR}\n"
             "nvcc:\n${_OME_NVCC_VER}\n\n"
-            "host gcc:\n${_OME_HOST_VER}\n\n"
-            "Install a gcc version compatible with your CUDA toolkit, for example:\n"
+            "system g++:\n${_OME_HOST_VER}\n\n"
+            "Most often this is a C++ host compiler incompatibility (each CUDA toolkit only supports up to a specific g++ version). Less commonly the same failure surfaces from a partially installed CUDA Toolkit (missing headers or libraries). Inspect the nvcc error above to tell which case applies.\n\n"
+            "If it is a host compiler issue, install a supported g++, for example:\n"
             "  sudo apt install -y gcc-14 g++-14"
         )
     elseif("${_OME_HOST_PICKED}" STREQUAL "default")
