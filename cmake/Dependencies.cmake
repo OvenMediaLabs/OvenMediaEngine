@@ -347,7 +347,7 @@ if(OME_HWACCEL_NVIDIA)
         include_directories(${CUDA_ROOT}/include)
         link_directories(${CUDA_ROOT}/lib64)
 
-        set(OME_NVIDIA_LIBS cuda nvidia-ml rt ${NV_CUDART_LIB})
+        set(OME_NVIDIA_LIBS cuda nvidia-ml ${NV_CUDART_LIB} rt dl)
     else()
         message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but required NVIDIA libraries/tools not found - disabled")
         set(OME_HWACCEL_NVIDIA OFF)
