@@ -123,7 +123,6 @@ namespace pvd
 
 		return IcePortManager::GetInstance()->BindTurnServers(
 			GetProviderName(),
-			_ice_port,
 			IcePortObserver::GetSharedPtr(),
 			server_config, webrtc_bind_config);
 	}

@@ -110,14 +110,13 @@ bool IcePortManager::CreateTurnServer(std::shared_ptr<IcePortObserver> observer,
 
 bool IcePortManager::BindTurnServers(
 	const char *server_name,
-	const std::shared_ptr<IcePort> &ice_port,
 	const std::shared_ptr<IcePortObserver> &observer,
 	const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
 {
 	auto &ice_candidates_config = webrtc_bind_config.GetIceCandidates();
 
 	return CreateIceCandidates(server_name, observer, server_config, ice_candidates_config) &&
-		   CreateTurnServersInternal(server_name, ice_port, observer, server_config, webrtc_bind_config);
+		   CreateTurnServersInternal(server_name, _ice_port, observer, server_config, webrtc_bind_config);
 }
 
 bool IcePortManager::CreateTurnServersInternal(

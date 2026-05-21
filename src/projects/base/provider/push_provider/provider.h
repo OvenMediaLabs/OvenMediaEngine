@@ -35,8 +35,8 @@ namespace pvd
 		// notified the module of existing vhosts/apps. `main.cpp` calls this explicitly after
 		// `RestorePullStreams()` (Enterprise) or after `StartServer()` (OSS) so push providers'
 		// listeners only accept traffic once their internal state is fully populated.
-		// Default implementation calls `PushProvider::Start()` (task runner thread) for providers
-		// that have no listener of their own; subclasses with sockets override to bind first.
+		// Default implementation is a no-op. Subclasses with sockets must override to bind their
+		// listener and then call `PushProvider::Start()` to spin up the task runner.
 		virtual bool Bind();
 		virtual bool Stop() override;
 
