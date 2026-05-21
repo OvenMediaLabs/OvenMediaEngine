@@ -351,9 +351,15 @@ namespace ov
 			_condition.notify_all();
 		}
 
-		// Wakes threads blocked in Dequeue() so they return std::nullopt and the
-		// caller can re-evaluate its state. Unlike Stop(), the queue stays usable.
-		// notify_all() keeps it reliable when Front()/Back() waiters coexist.
+		// Wakes Dequeue() so the caller can re-evaluate its own state.
+		//
+		// The next Dequeue() returns std::nullopt exactly once, even if the
+		// queue is non-empty and even if no consumer is waiting at the time
+		// (the wakeup is remembered, never lost). Queued items are preserved.
+		// A consumer on a queue that uses Notify() must treat std::nullopt as
+		// a "re-evaluate state" signal, not as "queue empty".
+		//
+		// notify_all() keeps the wakeup reliable when Front()/Back() waiters coexist.
 		void Notify()
 		{
 			auto lock_guard = std::lock_guard(_mutex);
