@@ -289,13 +289,15 @@ namespace ocst
 		// vhosts and apps.
 		std::atomic<bool> _server_started{false};
 
-		// Serializes `RegisterModule()`'s late back-fill against the vhost/app mutation and
-		// module-notification blocks in `CreateVirtualHost()`, `DeleteVirtualHost()`,
-		// `CreateApplication()`, and `DeleteApplication()`.
-		// From the moment a module is registered until either `UnregisterModule()` or process shutdown,
-		// every `OnCreate*()` is paired with the matching `OnDelete*()`.
-		// `UnregisterModule()` removes the module without replaying `OnDelete*()`,
-		// so callers that unregister at runtime are responsible for any cleanup the module needs.
+		// Serializes `RegisterModule()`'s late back-fill against the module-notification blocks in
+		// `Create/DeleteVirtualHost()` and `Create/DeleteApplication()`, so a registered module
+		// observes a consistent view of vhost/app create-delete events going through those
+		// runtime paths. Pairing is best-effort outside those paths:
+		//   - `Release()` (shutdown) calls `DeleteApplication()` per app but does not call
+		//     `DeleteVirtualHost()`, so prior `OnCreateHost()` is not paired with `OnDeleteHost()`.
+		//   - `UnregisterModule()` removes the module without replaying any `OnDelete*()`.
+		// Callers shutting down or unregistering at runtime are responsible for any cleanup the
+		// module needs.
 		mutable std::mutex _late_module_registration_mutex;
 
 		// key: vhost_name
