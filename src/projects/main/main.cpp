@@ -143,34 +143,54 @@ int main(int argc, char *argv[])
 	// Initialize Transcoder
 	INIT_MODULE(transcoder, "Transcoder", Transcoder::Create(media_router));
 
-	// Initialize Providers
-	INIT_MODULE(webrtc_provider, "WebRTC Provider", pvd::WebRTCProvider::Create(*server_config, media_router));
-	INIT_MODULE(mpegts_provider, "MPEG-TS Provider", pvd::MpegTsProvider::Create(*server_config, media_router));
-	INIT_MODULE(srt_provider, "SRT Provider", pvd::SrtProvider::Create(*server_config, media_router));
-	INIT_MODULE(rtmp_provider, "RTMP Provider", pvd::RtmpProvider::Create(*server_config, media_router));
+	// Pull providers must be registered before `StartServer()`
+	// so other modules that resolve URL schemes via `Orchestrator::GetProviderForScheme()`
+	// find them when applications are created.
 	INIT_MODULE(ovt_provider, "OVT Provider", pvd::OvtProvider::Create(*server_config, media_router));
 	INIT_MODULE(rtspc_provider, "RTSPC Provider", pvd::RtspcProvider::Create(*server_config, media_router));
-	INIT_MODULE(scheduled_provider, "Scheduled Provider", pvd::ScheduledProvider::Create(*server_config, media_router));
-	INIT_MODULE(multiplex_provider, "Multiplex Provider", pvd::MultiplexProvider::Create(*server_config, media_router));
-	// PENDING : INIT_MODULE(rtsp_provider, "RTSP Provider", pvd::RtspProvider::Create(*server_config, media_router));
 
 	auto api_server = std::make_shared<api::Server>();
 
+	// Declared here to stay in scope for `RELEASE_MODULE` on shutdown;
+	// created later by `CREATE_MODULE` after `StartServer()`.
+	std::shared_ptr<pvd::Provider> webrtc_provider;
+	std::shared_ptr<pvd::Provider> mpegts_provider;
+	std::shared_ptr<pvd::Provider> srt_provider;
+	std::shared_ptr<pvd::Provider> rtmp_provider;
+	std::shared_ptr<pvd::Provider> scheduled_provider;
+	std::shared_ptr<pvd::Provider> multiplex_provider;
+
 	if (succeeded)
 	{
-		logti("All modules are initialized successfully");
+		logti("All pre-server modules are initialized successfully");
 
 		if (orchestrator->StartServer(server_config))
 		{
-			if (api_server->Start(server_config))
-			{
-				if (parse_option.start_service)
-				{
-					ov::Daemon::SetEvent();
-				}
+			// Push providers, deferred to after `StartServer()`.
+			// `Orchestrator::RegisterModule()` back-fills them with the existing vhosts/apps.
+			// Scheduled/Multiplex have no external listener; they sit in the same group for symmetry.
+			CREATE_MODULE(webrtc_provider, "WebRTC Provider", pvd::WebRTCProvider::Create(*server_config, media_router));
+			CREATE_MODULE(mpegts_provider, "MPEG-TS Provider", pvd::MpegTsProvider::Create(*server_config, media_router));
+			CREATE_MODULE(srt_provider, "SRT Provider", pvd::SrtProvider::Create(*server_config, media_router));
+			CREATE_MODULE(rtmp_provider, "RTMP Provider", pvd::RtmpProvider::Create(*server_config, media_router));
+			CREATE_MODULE(scheduled_provider, "Scheduled Provider", pvd::ScheduledProvider::Create(*server_config, media_router));
+			CREATE_MODULE(multiplex_provider, "Multiplex Provider", pvd::MultiplexProvider::Create(*server_config, media_router));
+			// PENDING : CREATE_MODULE(rtsp_provider, "RTSP Provider", pvd::RtspProvider::Create(*server_config, media_router));
 
-				while (ov::sig::WaitAndStop(1000) == false)
+			if (succeeded)
+			{
+				logti("All modules are initialized successfully");
+
+				if (api_server->Start(server_config))
 				{
+					if (parse_option.start_service)
+					{
+						ov::Daemon::SetEvent();
+					}
+
+					while (ov::sig::WaitAndStop(1000) == false)
+					{
+					}
 				}
 			}
 		}

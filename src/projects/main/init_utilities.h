@@ -6,9 +6,10 @@
 //  Copyright (c) 2020 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#define INIT_MODULE(variable, name, create)                          \
-	decltype(create) variable = nullptr;                             \
-                                                                     \
+// Creates and registers a module.
+// The variable must already be declared - for modules whose creation must be deferred
+// (e.g. ingest providers created after `Orchestrator::StartServer()`).
+#define CREATE_MODULE(variable, name, create)                        \
 	if (succeeded)                                                   \
 	{                                                                \
 		logti("Trying to create " name "...");                       \
@@ -37,6 +38,11 @@
 		}                                                            \
 	}
 
+// Declares the module variable and creates/registers it in one step.
+#define INIT_MODULE(variable, name, create) \
+	decltype(create) variable = nullptr;    \
+	CREATE_MODULE(variable, name, create)
+
 #define RELEASE_MODULE(variable, name)                         \
 	if (variable != nullptr)                                   \
 	{                                                          \
@@ -48,7 +54,7 @@
 		}                                                      \
 		else                                                   \
 		{                                                      \
-			logte("Failed to unregister " name);                \
+			logte("Failed to unregister " name);               \
 		}                                                      \
 	}
 

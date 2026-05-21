@@ -65,7 +65,20 @@ namespace pvd
 		logti("%s/%s(%u) has been stopped playing stream", GetApplicationName(), GetName().CStr(), GetId());
 		ResetSourceStreamTimestamp();
 
-		_state = State::STOPPED;
+		// Preserve `TERMINATED`:
+		// demoting to `STOPPED` would let the reconnect loop revive a stream
+		// that was explicitly terminated (e.g. via API `DELETE`).
+		// Other callers reach here in non-terminal states (`PLAYING`/`ERROR`) and still transition to `STOPPED`.
+		// Compare-exchange loop closes the TOCTOU window where `Terminate()` lands between a plain
+		// load and the assignment: if another thread flips `_state` to `TERMINATED` mid-loop,
+		// `compare_exchange_weak` fails, the loop re-reads, sees `TERMINATED`, and exits without
+		// demoting.
+		auto current = _state.load();
+
+		while ((current != State::TERMINATED) &&
+			   (_state.compare_exchange_weak(current, State::STOPPED) == false))
+		{
+		}
 
 		return true;
 	}

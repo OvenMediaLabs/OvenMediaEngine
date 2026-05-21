@@ -89,6 +89,9 @@ namespace ocst
 			_timer.Start();
 		}
 
+		// From here, any later `RegisterModule()` is back-filled with existing apps.
+		_server_started = true;
+
 		return true;
 	}
 
@@ -310,18 +313,25 @@ namespace ocst
 
 		mon::Monitoring::GetInstance()->OnApplicationDeleted(app_info);
 
-		if (vhost->DeleteApplication(app_id) == false)
 		{
-			logte("Could not delete an application: [%s]", app_info.GetVHostAppName().CStr());
-			return Result::Failed;
-		}
+			// Hold `_late_module_registration_mutex` for vhost removal + module-notification, symmetric
+			// to `CreateApplication()`. Without this, a concurrent late `RegisterModule()` could
+			// back-fill the new module with this application (whose snapshot still includes it) after
+			// the delete-side notification loop has already iterated and skipped the not-yet-registered
+			// module, leaving a stale create-notification with no matching delete-notification.
+			std::scoped_lock reg_lock(_late_module_registration_mutex);
 
-		if (_media_router != nullptr)
-		{
-			_media_router->UnregisterObserverApp(app_info, app->GetSharedPtrAs<MediaRouterApplicationObserver>());
-		}
+			if (vhost->DeleteApplication(app_id) == false)
+			{
+				logte("Could not delete an application: [%s]", app_info.GetVHostAppName().CStr());
+				return Result::Failed;
+			}
 
-		{
+			if (_media_router != nullptr)
+			{
+				_media_router->UnregisterObserverApp(app_info, app->GetSharedPtrAs<MediaRouterApplicationObserver>());
+			}
+
 			logtt("Notifying modules for the delete event...");
 			auto module_list = GetModuleList();
 			// Notify modules of deletion events
@@ -391,23 +401,65 @@ namespace ocst
 			}
 		}
 
+		auto insert_module = [&]() {
+			{
+				std::scoped_lock lock(_module_list_mutex);
+				_module_list.emplace_back(type, module_interface);
+			}
+
+			if (module_interface->GetModuleType() == ModuleType::MediaRouter)
+			{
+				auto media_router = std::dynamic_pointer_cast<MediaRouter>(module_interface);
+
+				OV_ASSERT2(media_router != nullptr);
+
+				_media_router = media_router;
+			}
+
+			logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
+		};
+
+		// Modules registered before `StartServer()` are notified by the normal `CreateApplication()`
+		// path during the upcoming server start, so just insert and return.
+		if (_server_started.load() == false)
 		{
-			std::lock_guard<std::shared_mutex> lock(_module_list_mutex);
-			_module_list.emplace_back(type, module_interface);
+			insert_module();
+			return true;
 		}
 
-		if (module_interface->GetModuleType() == ModuleType::MediaRouter)
+		// Late registration: the module missed `OnCreateApplication()` notifications fired during
+		// application creation, so replay them here.
+		// Serialize against `CreateApplication()`'s vhost mutation + module-notification block via
+		// `_late_module_registration_mutex` so the new module is either inserted before the new
+		// app's notification fires (normal path covers it) or inserted+back-filled before the new
+		// app exists in any vhost (no double/missed delivery).
+		std::scoped_lock reg_lock(_late_module_registration_mutex);
+
+		insert_module();
+
+		// Back-fill: a failure here is a startup-level error, same as the normal `CreateApplication()`
+		// notification path which aborts on the first failing module (see `CreateApplication()`).
+		// Propagate the failure to the caller so `CREATE_MODULE` can flip `succeeded` to false.
+		bool back_fill_ok = true;
+		for (const auto &vhost : GetVirtualHostList())
 		{
-			auto media_router = std::dynamic_pointer_cast<MediaRouter>(module_interface);
+			for (const auto &app : vhost->GetApplicationList())
+			{
+				const auto &app_info = app->GetAppInfo();
 
-			OV_ASSERT2(media_router != nullptr);
+				logtt("Back-filling %s module (%p) with the existing application (%s)",
+					  GetModuleTypeName(type).CStr(), module_interface.get(), app_info.GetVHostAppName().CStr());
 
-			_media_router = media_router;
+				if (module_interface->OnCreateApplication(app_info) == false)
+				{
+					logte("The %s module (%p) returned an error while back-filling the application [%s]",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), app_info.GetVHostAppName().CStr());
+					back_fill_ok = false;
+				}
+			}
 		}
 
-		logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
-
-		return true;
+		return back_fill_ok;
 	}
 
 	bool Orchestrator::UnregisterModule(const std::shared_ptr<ModuleInterface> &module_interface)
@@ -1354,17 +1406,26 @@ namespace ocst
 
 		logti("Trying to create an application: [%s]", app_info.GetVHostAppName().CStr());
 
-		if (vhost->CreateApplication(this, app_info) == false)
-		{
-			logte("Could not create an application: [%s]", app_info.GetVHostAppName().CStr());
-			return Result::Failed;
-		}
-
-		mon::Monitoring::GetInstance()->OnApplicationCreated(app_info);
-
-		// Notify modules of creation events
 		bool succeeded = true;
 		{
+			// Hold `_late_module_registration_mutex` from the moment the application becomes
+			// visible in the vhost until every module has been notified, so a concurrent late
+			// `RegisterModule()` either runs entirely before this block (its back-fill does not
+			// see this app, but its module is already in `_module_list` so the loop below
+			// notifies it), or entirely after this block (its back-fill snapshot includes this
+			// app; the loop below could not have notified the module because it was not yet
+			// in `_module_list`).
+			std::scoped_lock reg_lock(_late_module_registration_mutex);
+
+			if (vhost->CreateApplication(this, app_info) == false)
+			{
+				logte("Could not create an application: [%s]", app_info.GetVHostAppName().CStr());
+				return Result::Failed;
+			}
+
+			mon::Monitoring::GetInstance()->OnApplicationCreated(app_info);
+
+			// Notify modules of creation events
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
 			{

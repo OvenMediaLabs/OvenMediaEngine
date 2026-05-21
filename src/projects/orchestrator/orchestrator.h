@@ -281,6 +281,20 @@ namespace ocst
 		std::vector<Module> _module_list;
 		mutable std::shared_mutex _module_list_mutex;
 
+		// Once `true` (after `StartServer()`), `RegisterModule()` back-fills new modules with existing apps.
+		std::atomic<bool> _server_started{false};
+
+		// Serializes the back-fill in `RegisterModule()`'s late path against the vhost mutation +
+		// module-notification blocks in `CreateApplication()` and `DeleteApplication()`
+		// so that for every (module, application) pair, `OnCreateApplication()` is delivered exactly once
+		// (via back-fill or via the normal create path) and `OnDeleteApplication()` is delivered
+		// exactly when the matching create was delivered - never with a stale create surviving
+		// past a concurrent delete.
+		// `_virtual_host_mutex` does not work for this because `CreateApplication()` only takes it
+		// in shared mode (via `GetVirtualHost()`), so a shared hold from the back-fill would not
+		// exclude it.
+		mutable std::mutex _late_module_registration_mutex;
+
 		// key: vhost_name
 		std::map<ov::String, std::shared_ptr<VirtualHost>> _virtual_host_map;
 		// ordered vhost list
