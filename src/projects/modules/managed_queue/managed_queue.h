@@ -218,10 +218,18 @@ namespace ov
 					{
 						break;
 					}
-					if (GetBufferedTimeMsInternal() >= _buffering_delay) 
+					if (GetBufferedTimeMsInternal() >= _buffering_delay)
 					{
 						break;
 					}
+				}
+
+				// Woken explicitly via Notify(): return nullopt so the caller can
+				// re-evaluate its state. The queue itself stays usable.
+				if (_notified)
+				{
+					_notified = false;
+					return {};
 				}
 
 				// Compute the next wakeup time: whichever comes first between
@@ -338,6 +346,18 @@ namespace ov
 			_stop = true;
 
 			ClearMetrics();
+
+			_condition.notify_all();
+		}
+
+		// Wakes a thread currently blocked in Dequeue(), making it return
+		// std::nullopt so the caller can re-evaluate its own state. Unlike Stop(),
+		// the queue stays fully usable afterwards.
+		void Notify()
+		{
+			auto lock_guard = std::lock_guard(_mutex);
+
+			_notified = true;
 
 			_condition.notify_all();
 		}
@@ -622,6 +642,10 @@ namespace ov
 
 		// Stop flag
 		bool _stop;
+
+		// Notify flag: set by Notify() to wake a blocked Dequeue() so the caller
+		// can re-evaluate its own state. Unlike _stop, the queue stays usable.
+		bool _notified = false;
 
 		// Use to print logs when the peak value of the queue is increased.
 		size_t _last_logged_peak = 0;
