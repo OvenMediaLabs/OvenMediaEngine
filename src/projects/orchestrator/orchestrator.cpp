@@ -412,7 +412,7 @@ namespace ocst
 
 		// Serialize against `CreateApplication()` / `DeleteApplication()`
 		// so the new module sees exactly one create/delete pair per application.
-		std::scoped_lock reg_lock(_late_module_registration_mutex);
+		std::scoped_lock lock(_late_module_registration_mutex);
 
 		// Before `StartServer()`, the normal `CreateApplication()` path will notify this module
 		// during server start, so just insert.
@@ -1163,6 +1163,10 @@ namespace ocst
 
 	Result Orchestrator::CreateVirtualHost(const info::Host &vhost_info)
 	{
+		// Serialize existence check, vhost insertion, and module notifications against late
+		// `RegisterModule()` and `DeleteVirtualHost()`.
+		std::scoped_lock reg_lock(_late_module_registration_mutex);
+
 		if(GetVirtualHost(vhost_info.GetName()) != nullptr)
 		{
 			// Duplicated VirtualHostName
@@ -1177,7 +1181,7 @@ namespace ocst
 			_virtual_host_list.push_back(vhost);
 		}
 
-		// Notification 
+		// Notification
 		{
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
@@ -1205,6 +1209,10 @@ namespace ocst
 
 	Result Orchestrator::DeleteVirtualHost(const info::Host &vhost_info)
 	{
+		// Serialize vhost removal and module notifications against late `RegisterModule()` and
+		// `CreateVirtualHost()`.
+		std::scoped_lock reg_lock(_late_module_registration_mutex);
+
 		bool found = false;
 		{
 			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
@@ -1455,24 +1463,20 @@ namespace ocst
 			return Result::Failed;
 		}
 
-		if (vhost->GetApplication(app_info.GetVHostAppName()) != nullptr)
-		{
-			logtw("Application %s already exists", app_info.GetVHostAppName().CStr());
-			return Result::Exists;
-		}
-
-		logti("Trying to create an application: [%s]", app_info.GetVHostAppName().CStr());
-
 		bool succeeded = true;
 		{
-			// Hold `_late_module_registration_mutex` from the moment the application becomes
-			// visible in the vhost until every module has been notified, so a concurrent late
-			// `RegisterModule()` either runs entirely before this block (its back-fill does not
-			// see this app, but its module is already in `_module_list` so the loop below
-			// notifies it), or entirely after this block (its back-fill snapshot includes this
-			// app; the loop below could not have notified the module because it was not yet
-			// in `_module_list`).
-			std::scoped_lock reg_lock(_late_module_registration_mutex);
+			// Serialize existence check, vhost mutation, and module notifications against
+			// `DeleteApplication()` and late `RegisterModule()`. Scoped so the rollback path at the
+			// bottom can re-enter `DeleteApplication()` without recursive locking.
+			std::scoped_lock lock(_late_module_registration_mutex);
+
+			if (vhost->GetApplication(app_info.GetVHostAppName()) != nullptr)
+			{
+				logtw("Application %s already exists", app_info.GetVHostAppName().CStr());
+				return Result::Exists;
+			}
+
+			logti("Trying to create an application: [%s]", app_info.GetVHostAppName().CStr());
 
 			if (vhost->CreateApplication(this, app_info) == false)
 			{
