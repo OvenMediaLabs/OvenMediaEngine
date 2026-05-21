@@ -50,7 +50,7 @@ namespace pvd
 		std::vector<ov::String> address_string_list;
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
 
-		// Snapshot to bind. Items were populated by `PrepareInfrastructure()` with empty
+		// Snapshot to bind. Items were populated by `Start()` with empty
 		// `_physical_port_list`; here we create the physical ports and attach them via
 		// `SetPhysicalPortList()`.
 		decltype(_stream_port_map) stream_port_map_snapshot;
