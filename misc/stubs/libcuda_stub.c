@@ -44,6 +44,7 @@ CUresult CUDAAPI cuGetErrorString(CUresult error, const char **pStr)
 
 CUresult CUDAAPI cuMemAddressReserve(CUdeviceptr *ptr, size_t size, size_t alignment, CUdeviceptr addr, unsigned long long flags)
 {
+	if (ptr) *ptr = 0;
 	return CUDA_ERROR_STUB_LIBRARY;
 }
 
@@ -54,6 +55,7 @@ CUresult CUDAAPI cuMemAddressFree(CUdeviceptr ptr, size_t size)
 
 CUresult CUDAAPI cuMemCreate(CUmemGenericAllocationHandle *handle, size_t size, const void *prop, unsigned long long flags)
 {
+	if (handle) *handle = 0;
 	return CUDA_ERROR_STUB_LIBRARY;
 }
 
