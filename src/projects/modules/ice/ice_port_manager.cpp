@@ -75,6 +75,7 @@ bool IcePortManager::CreateIceCandidates(
 
 		logte("Could not create ICE candidates for %s. Check your ICE configuration", server_name);
 		OV_ASSERT2(false);
+		return false;
 	}
 	else
 	{

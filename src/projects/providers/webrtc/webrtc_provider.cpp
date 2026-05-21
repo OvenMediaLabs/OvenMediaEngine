@@ -133,7 +133,7 @@ namespace pvd
 		// `main.cpp` calls explicitly after `RestorePullStreams()` (Enterprise) or after
 		// `StartServer()` (OSS). Back-fill notifications fired by the later normal
 		// `CreateVirtualHosts()` / `CreateApplication()` flow find every member non-null.
-		auto server_config		= GetServerConfig();
+		const auto &server_config = GetServerConfig();
 		auto webrtc_bind_config = server_config.GetBind().GetProviders().GetWebrtc();
 
 		if (webrtc_bind_config.IsParsed() == false)
@@ -186,7 +186,7 @@ namespace pvd
 
 	bool WebRTCProvider::Bind()
 	{
-		auto server_config		= GetServerConfig();
+		const auto &server_config = GetServerConfig();
 		auto webrtc_bind_config = server_config.GetBind().GetProviders().GetWebrtc();
 
 		if (webrtc_bind_config.IsParsed() == false)
@@ -204,6 +204,19 @@ namespace pvd
 		logte("An error occurred while binding %s listeners. Stopping RtcSignallingServer...", GetProviderName());
 
 		IcePortManager::GetInstance()->Release(IcePortObserver::GetSharedPtr());
+
+		if (_signalling_server != nullptr)
+		{
+			_signalling_server->RemoveObserver(RtcSignallingObserver::GetSharedPtr());
+			_signalling_server->Stop();
+			_signalling_server.reset();
+		}
+
+		if (_whip_server != nullptr)
+		{
+			_whip_server->Stop();
+			_whip_server.reset();
+		}
 
 		return false;
 	}

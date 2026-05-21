@@ -76,7 +76,7 @@ namespace pvd
 	{
 		// Infrastructure setup only. Listener binding is deferred to `Bind()` which `main.cpp`
 		// calls after `RestorePullStreams()` / `StartServer()`.
-		auto server				= GetServerConfig();
+		const auto &server		= GetServerConfig();
 		const auto &rtmp_config = server.GetBind().GetProviders().GetRtmp();
 
 		if (rtmp_config.IsParsed() == false)
@@ -103,7 +103,7 @@ namespace pvd
 			return false;
 		}
 
-		auto server				= GetServerConfig();
+		const auto &server		= GetServerConfig();
 		const auto &rtmp_config = server.GetBind().GetProviders().GetRtmp();
 
 		if (rtmp_config.IsParsed() == false)

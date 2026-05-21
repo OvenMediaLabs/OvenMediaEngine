@@ -78,6 +78,7 @@ namespace ocst
 
 		if (CreateVirtualHosts(vhost_conf_list) == false)
 		{
+			_server_started = false;
 			return false;
 		}
 
