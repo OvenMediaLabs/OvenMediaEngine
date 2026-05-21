@@ -379,9 +379,12 @@ namespace ocst
 
 		auto type = module_interface->GetModuleType();
 
-		{
-			std::shared_lock<std::shared_mutex> lock(_module_list_mutex);
-			// Check if module exists
+		// Atomic check + insert under exclusive `_module_list_mutex`.
+		// Doing both in one critical section closes the race where two concurrent
+		// `RegisterModule()` calls could both pass a shared-lock duplicate check and both insert.
+		auto try_insert_module = [&]() -> bool {
+			std::scoped_lock lock(_module_list_mutex);
+
 			for (auto &module : _module_list)
 			{
 				if (module.GetModuleInterface() == module_interface)
@@ -399,14 +402,12 @@ namespace ocst
 					return false;
 				}
 			}
-		}
 
-		auto insert_module = [&]() {
-			{
-				std::scoped_lock lock(_module_list_mutex);
-				_module_list.emplace_back(type, module_interface);
-			}
+			_module_list.emplace_back(type, module_interface);
+			return true;
+		};
 
+		auto apply_media_router_side_effect = [&]() {
 			if (module_interface->GetModuleType() == ModuleType::MediaRouter)
 			{
 				auto media_router = std::dynamic_pointer_cast<MediaRouter>(module_interface);
@@ -415,32 +416,45 @@ namespace ocst
 
 				_media_router = media_router;
 			}
-
-			logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
 		};
+
+		// Hold `_late_module_registration_mutex` for the full registration regardless of timing:
+		// - Pre-`StartServer()`: there is no concurrent `CreateApplication()` yet, but acquiring the
+		//   same mutex keeps `RegisterModule()` calls serialized so a stray multi-threaded boot path
+		//   cannot race two concurrent registrations.
+		// - Post-`StartServer()`: serialized against `CreateApplication()` / `DeleteApplication()`
+		//   so the new module gets exactly one `OnCreateApplication()` per existing application
+		//   (either via the back-fill below or via the normal create path after this returns) and
+		//   `OnDeleteApplication()` only for apps it actually saw create for.
+		std::scoped_lock reg_lock(_late_module_registration_mutex);
 
 		// Modules registered before `StartServer()` are notified by the normal `CreateApplication()`
 		// path during the upcoming server start, so just insert and return.
 		if (_server_started.load() == false)
 		{
-			insert_module();
+			if (try_insert_module() == false)
+			{
+				return false;
+			}
+
+			apply_media_router_side_effect();
+
+			logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
+
 			return true;
 		}
 
-		// Late registration: the module missed `OnCreateApplication()` notifications fired during
-		// application creation, so replay them here.
-		// Serialize against `CreateApplication()`'s vhost mutation + module-notification block via
-		// `_late_module_registration_mutex` so the new module is either inserted before the new
-		// app's notification fires (normal path covers it) or inserted+back-filled before the new
-		// app exists in any vhost (no double/missed delivery).
-		std::scoped_lock reg_lock(_late_module_registration_mutex);
-
-		insert_module();
-
-		// Back-fill: a failure here is a startup-level error, same as the normal `CreateApplication()`
-		// notification path which aborts on the first failing module (see `CreateApplication()`).
-		// Propagate the failure to the caller so `CREATE_MODULE` can flip `succeeded` to false.
+		// Late registration: replay `OnCreateApplication()` for existing applications.
+		//
+		// Order is back-fill first, then insert. The module is NOT yet in `_module_list` during
+		// back-fill, so this loop is the ONLY notification path for these applications - no risk of
+		// the normal create path firing for them in parallel (it would have to acquire `reg_lock`,
+		// which we hold). Inserting only after a fully successful back-fill keeps registration
+		// atomic: on failure we roll back `OnCreateApplication()` calls already made and return
+		// without inserting, so the caller sees a clean "not registered" outcome.
+		std::vector<info::Application> notified_apps;
 		bool back_fill_ok = true;
+
 		for (const auto &vhost : GetVirtualHostList())
 		{
 			for (const auto &app : vhost->GetApplicationList())
@@ -455,11 +469,51 @@ namespace ocst
 					logte("The %s module (%p) returned an error while back-filling the application [%s]",
 						  GetModuleTypeName(type).CStr(), module_interface.get(), app_info.GetVHostAppName().CStr());
 					back_fill_ok = false;
+					break;
 				}
+
+				notified_apps.push_back(app_info);
+			}
+
+			if (back_fill_ok == false)
+			{
+				break;
 			}
 		}
 
-		return back_fill_ok;
+		// Best-effort rollback helper. Called on any failure between this point and successful insert
+		// so the module does not retain per-application state for a registration that never landed.
+		auto rollback_notifications = [&]() {
+			for (auto it = notified_apps.rbegin(); it != notified_apps.rend(); ++it)
+			{
+				if (module_interface->OnDeleteApplication(*it) == false)
+				{
+					logte("%s module (%p) returned an error during rollback for application [%s]; continuing best-effort",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), it->GetVHostAppName().CStr());
+				}
+			}
+		};
+
+		if (back_fill_ok == false)
+		{
+			rollback_notifications();
+			return false;
+		}
+
+		// Commit: insert under exclusive `_module_list_mutex`. `reg_lock` serializes against other
+		// `RegisterModule()` calls; a duplicate here would mean the module was registered through
+		// some other path between our checks, which is defensive only and rolls back the back-fill.
+		if (try_insert_module() == false)
+		{
+			rollback_notifications();
+			return false;
+		}
+
+		apply_media_router_side_effect();
+
+		logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
+
+		return true;
 	}
 
 	bool Orchestrator::UnregisterModule(const std::shared_ptr<ModuleInterface> &module_interface)
