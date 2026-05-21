@@ -8,7 +8,7 @@
 //==============================================================================
 // Creates and registers a module.
 // The variable must already be declared - for modules whose creation must be deferred
-// (e.g. ingest providers created after `Orchestrator::StartServer()`).
+// (e.g. push providers created after `Orchestrator::StartServer()`).
 #define CREATE_MODULE(variable, name, create)                        \
 	if (succeeded)                                                   \
 	{                                                                \
@@ -28,6 +28,8 @@
 				if (orchestrator->RegisterModule(variable) == false) \
 				{                                                    \
 					logte("Failed to register " name);               \
+					variable->Stop();                                \
+					variable.reset();                                \
 					succeeded = false;                               \
 				}                                                    \
 			}                                                        \

@@ -62,10 +62,12 @@ namespace ocst
 	public:
 		/// Register the module
 		///
-		/// @param module Module to register
+		/// @param module Module to register. May be called before or after `StartServer()`; in the
+		/// latter case, the module is back-filled with `OnCreateHost()` / `OnCreateApplication()`
+		/// for every existing vhost / application before being inserted.
 		///
-		/// @return If the module is registered or passed a different type from the previously registered type, false is returned.
-		/// Otherwise, true is returned.
+		/// @return `false` if the module is null, already registered (or registered as a different
+		/// type), or a back-fill notification returned false; true otherwise.
 		bool RegisterModule(const std::shared_ptr<ModuleInterface> &module);
 
 		/// Unregister the module
@@ -76,7 +78,8 @@ namespace ocst
 		bool UnregisterModule(const std::shared_ptr<ModuleInterface> &module);
 
 		// Create VirtualHost in the settings and instruct application creation to all registered modules.
-		// So, StartServer should be called after registering all modules with RegisterModule.
+		// Modules registered before this call are notified through the normal create path; modules
+		// registered after this call (`RegisterModule()` post-`StartServer()`) are back-filled.
 		bool StartServer(const std::shared_ptr<const cfg::Server> &server_config);
 		Result Release();
 
@@ -281,18 +284,16 @@ namespace ocst
 		std::vector<Module> _module_list;
 		mutable std::shared_mutex _module_list_mutex;
 
-		// Once `true` (after `StartServer()`), `RegisterModule()` back-fills new modules with existing apps.
+		// Flipped at the start of `StartServer()`, before any vhost/app is created. While `false`,
+		// `RegisterModule()` only inserts; while `true`, it back-fills the new module with existing
+		// vhosts and apps.
 		std::atomic<bool> _server_started{false};
 
-		// Serializes the back-fill in `RegisterModule()`'s late path against the vhost mutation +
-		// module-notification blocks in `CreateApplication()` and `DeleteApplication()`
-		// so that for every (module, application) pair, `OnCreateApplication()` is delivered exactly once
-		// (via back-fill or via the normal create path) and `OnDeleteApplication()` is delivered
-		// exactly when the matching create was delivered - never with a stale create surviving
-		// past a concurrent delete.
-		// `_virtual_host_mutex` does not work for this because `CreateApplication()` only takes it
-		// in shared mode (via `GetVirtualHost()`), so a shared hold from the back-fill would not
-		// exclude it.
+		// Serializes `RegisterModule()`'s late back-fill against the vhost/app mutation and
+		// module-notification blocks in `CreateVirtualHost()`, `DeleteVirtualHost()`,
+		// `CreateApplication()`, and `DeleteApplication()`. Guarantees that for every
+		// (module, vhost) and (module, application) pair, `OnCreate*()` and `OnDelete*()` are
+		// delivered exactly once and only as matched pairs.
 		mutable std::mutex _late_module_registration_mutex;
 
 		// key: vhost_name
