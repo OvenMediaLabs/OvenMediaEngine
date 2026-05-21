@@ -22,6 +22,51 @@ project(OvenMediaEngine
 )
 
 # ==============================================================================
+# Toolchain sanity check
+# ------------------------------------------------------------------------------
+# Older libstdc++ has a wait_until() overflow bug (GCC PR 91906): predicate-based
+# wait_until() on a non-system_clock time_point converts via system_clock and
+# overflows for ::time_point::max(), causing immediate timeout and busy-spin
+# instead of waiting. The fix uses pthread_cond_clockwait(), which is gated by
+# the _GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT macro at libstdc++ build time
+# (requires glibc >= 2.30). Checking that macro directly is more accurate than
+# version-based checks because the fix was backported to GCC 10.4+.
+#
+# This inspects the stdlib actually pulled in by the selected compiler, so it
+# works for both gcc and clang regardless of how the user selected the
+# toolchain.
+# ==============================================================================
+include(CheckCXXSourceCompiles)
+
+check_cxx_source_compiles("
+#include <bits/c++config.h>
+#if defined(__GLIBCXX__) && !defined(_GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT)
+#  error \"libstdc++ without pthread_cond_clockwait support\"
+#endif
+int main() {}
+" OME_HAS_SAFE_CXX_STDLIB)
+
+if(NOT OME_HAS_SAFE_CXX_STDLIB)
+    message(FATAL_ERROR
+        "\n"
+        "Your libstdc++ does not enable pthread_cond_clockwait(), which means\n"
+        "predicate-based wait_until() on steady_clock busy-spins instead of\n"
+        "waiting (GCC PR 91906). This affects libstdc++ < 10.4 and libstdc++\n"
+        "built against glibc < 2.30.\n"
+        "\n"
+        "Supported out of the box:\n"
+        "  - Ubuntu 20.04.4+ / 22.04+\n"
+        "  - Debian 11+ (with up-to-date libstdc++)\n"
+        "  - RHEL / Rocky / AlmaLinux 9+\n"
+        "  - Fedora 35+\n"
+        "  - Amazon Linux 2023\n"
+        "\n"
+        "For other systems, use the official Docker image:\n"
+        "  docker pull airensoft/ovenmediaengine:latest\n"
+    )
+endif()
+
+# ==============================================================================
 # CMake settings
 # ==============================================================================
 if(NOT CMAKE_GENERATOR MATCHES "Ninja")
