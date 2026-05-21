@@ -204,6 +204,15 @@ namespace ov
 			// queue stuck with expire == time_point::max()).
 			while (!_stop)
 			{
+				// Woken explicitly via Notify(): consume the flag and return nullopt
+				// so the caller can re-evaluate its state. Checked before the
+				// readiness checks so a stale flag never leaks into a later call.
+				if (_notified)
+				{
+					_notified = false;
+					return {};
+				}
+
 				// Check whether an item is ready to be dequeued.
 				if (_buffering_delay == 0)
 				{
@@ -222,14 +231,6 @@ namespace ov
 					{
 						break;
 					}
-				}
-
-				// Woken explicitly via Notify(): return nullopt so the caller can
-				// re-evaluate its state. The queue itself stays usable.
-				if (_notified)
-				{
-					_notified = false;
-					return {};
 				}
 
 				// Compute the next wakeup time: whichever comes first between
@@ -350,9 +351,9 @@ namespace ov
 			_condition.notify_all();
 		}
 
-		// Wakes a thread currently blocked in Dequeue(), making it return
-		// std::nullopt so the caller can re-evaluate its own state. Unlike Stop(),
-		// the queue stays fully usable afterwards.
+		// Wakes threads blocked in Dequeue() so they return std::nullopt and the
+		// caller can re-evaluate its state. Unlike Stop(), the queue stays usable.
+		// notify_all() keeps it reliable when Front()/Back() waiters coexist.
 		void Notify()
 		{
 			auto lock_guard = std::lock_guard(_mutex);
