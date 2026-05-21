@@ -291,9 +291,11 @@ namespace ocst
 
 		// Serializes `RegisterModule()`'s late back-fill against the vhost/app mutation and
 		// module-notification blocks in `CreateVirtualHost()`, `DeleteVirtualHost()`,
-		// `CreateApplication()`, and `DeleteApplication()`. Guarantees that for every
-		// (module, vhost) and (module, application) pair, `OnCreate*()` and `OnDelete*()` are
-		// delivered exactly once and only as matched pairs.
+		// `CreateApplication()`, and `DeleteApplication()`.
+		// From the moment a module is registered until either `UnregisterModule()` or process shutdown,
+		// every `OnCreate*()` is paired with the matching `OnDelete*()`.
+		// `UnregisterModule()` removes the module without replaying `OnDelete*()`,
+		// so callers that unregister at runtime are responsible for any cleanup the module needs.
 		mutable std::mutex _late_module_registration_mutex;
 
 		// key: vhost_name
