@@ -1177,26 +1177,27 @@ namespace ocst
 
 	Result Orchestrator::CreateVirtualHost(const info::Host &vhost_info)
 	{
-		// Serialize existence check, vhost insertion, and module notifications against late
-		// `RegisterModule()` and `DeleteVirtualHost()`.
-		std::scoped_lock lock(_late_module_registration_mutex);
-
-		if(GetVirtualHost(vhost_info.GetName()) != nullptr)
 		{
-			// Duplicated VirtualHostName
-			return Result::Exists;
-		}
+			// Serialize existence check, vhost insertion, and module notifications against late
+			// `RegisterModule()` and `DeleteVirtualHost()`. Scoped so monitoring runs outside the
+			// lock - it does not participate in the serialization invariant.
+			std::scoped_lock lock(_late_module_registration_mutex);
 
-		auto vhost = std::make_shared<VirtualHost>(vhost_info);
+			if (GetVirtualHost(vhost_info.GetName()) != nullptr)
+			{
+				// Duplicated VirtualHostName
+				return Result::Exists;
+			}
 
-		{
-			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
-			_virtual_host_map[vhost_info.GetName()] = vhost;
-			_virtual_host_list.push_back(vhost);
-		}
+			auto vhost = std::make_shared<VirtualHost>(vhost_info);
 
-		// Notification
-		{
+			{
+				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				_virtual_host_map[vhost_info.GetName()] = vhost;
+				_virtual_host_list.push_back(vhost);
+			}
+
+			// Notification
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
 			{
@@ -1223,57 +1224,58 @@ namespace ocst
 
 	Result Orchestrator::DeleteVirtualHost(const info::Host &vhost_info)
 	{
-		// Serialize vhost removal and module notifications against late `RegisterModule()` and
-		// `CreateVirtualHost()`.
-		std::scoped_lock lock(_late_module_registration_mutex);
-
 		bool found = false;
 		{
-			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
-			auto it = _virtual_host_list.begin();
-			while(it != _virtual_host_list.end())
+			// Serialize vhost removal and module notifications against late `RegisterModule()` and
+			// `CreateVirtualHost()`. Scoped so monitoring runs outside the lock - it does not
+			// participate in the serialization invariant.
+			std::scoped_lock lock(_late_module_registration_mutex);
+
 			{
-				auto vhost_item = *it;
-				if(vhost_item->GetName() == vhost_info.GetName())
+				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				auto it = _virtual_host_list.begin();
+				while (it != _virtual_host_list.end())
 				{
-					_virtual_host_list.erase(it);
-					_virtual_host_map.erase(vhost_item->GetName());
-					found = true;
-					break;
+					auto vhost_item = *it;
+					if (vhost_item->GetName() == vhost_info.GetName())
+					{
+						_virtual_host_list.erase(it);
+						_virtual_host_map.erase(vhost_item->GetName());
+						found = true;
+						break;
+					}
+
+					it++;
 				}
-
-				it++;
 			}
-		}
 
-		if (found)
-		{
+			if (found == false)
+			{
+				return Result::NotExists;
+			}
+
 			// Notification
+			auto module_list = GetModuleList();
+			for (auto &module : module_list)
 			{
-				auto module_list = GetModuleList();
-				for (auto &module : module_list)
+				auto module_interface = module.GetModuleInterface();
+
+				logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+
+				if (module_interface->OnDeleteHost(vhost_info))
 				{
-					auto module_interface = module.GetModuleInterface();
-
-					logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
-
-					if (module_interface->OnDeleteHost(vhost_info))
-					{
-						logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
-					}
-					else
-					{
-						logte("The module %p (%s) returns error while deleting the vhost [%s]",
-							module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
-					}
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+				}
+				else
+				{
+					logte("The module %p (%s) returns error while deleting the vhost [%s]",
+						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 				}
 			}
-			
-			mon::Monitoring::GetInstance()->OnHostDeleted(vhost_info);
-			return Result::Succeeded;
 		}
 
-		return Result::NotExists;
+		mon::Monitoring::GetInstance()->OnHostDeleted(vhost_info);
+		return Result::Succeeded;
 	}
 
 	CommonErrorCode Orchestrator::ReloadAllCertificates()
