@@ -1471,15 +1471,15 @@ namespace ocst
 	ocst::Result Orchestrator::CreateApplication(const ov::String &vhost_name, const info::Application &app_info)
 	{
 		bool succeeded = true;
-		std::shared_ptr<VirtualHost> vhost;
 		{
-			// Acquire `_late_module_registration_mutex` before the vhost lookup so a concurrent
-			// `DeleteVirtualHost()` cannot remove the vhost between the lookup and the app create +
-			// notifications below. Scoped so the rollback path at the bottom can re-enter
-			// `DeleteApplication()` without recursive locking.
+			// Hold `_late_module_registration_mutex` across the entire create flow - lookup,
+			// existence check, app creation, module notifications, AND MediaRouter observer
+			// registration - so a concurrent `DeleteApplication()` cannot interleave between
+			// app creation and observer registration. Scoped so the rollback path at the
+			// bottom can re-enter `DeleteApplication()` without recursive locking.
 			std::scoped_lock lock(_late_module_registration_mutex);
 
-			vhost = GetVirtualHost(vhost_name);
+			auto vhost = GetVirtualHost(vhost_name);
 			if (vhost == nullptr)
 			{
 				logtw("Host not found for vhost: %s", vhost_name.CStr());
@@ -1522,26 +1522,26 @@ namespace ocst
 					break;
 				}
 			}
-		}
 
-		// TODO: Need to be refactored
-		// Since Orchestrator registers itself as MediaRouter observer last, OnStreamCreated and OnStreamDeleted events are received last.
-		// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the 
-		// very end, so if stream deletion is still in progress in another module, this may cause a conflict.
-		// Therefore, we need a guaranteed way Orchestrator to receive the event last, 
-		// not the way the orchestrator registers itself with the MediaRouter last and receives the event last. 
-		// (Now, it's working because MediaRouter registers an observer using push_back to the vector.)
-		if (_media_router != nullptr)
-		{
-			auto new_app = vhost->GetApplication(app_info.GetId());
-			if (new_app != nullptr)
+			// TODO: Need to be refactored
+			// Since Orchestrator registers itself as MediaRouter observer last, OnStreamCreated and OnStreamDeleted events are received last.
+			// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the
+			// very end, so if stream deletion is still in progress in another module, this may cause a conflict.
+			// Therefore, we need a guaranteed way Orchestrator to receive the event last,
+			// not the way the orchestrator registers itself with the MediaRouter last and receives the event last.
+			// (Now, it's working because MediaRouter registers an observer using push_back to the vector.)
+			if (succeeded && (_media_router != nullptr))
 			{
-				_media_router->RegisterObserverApp(app_info, new_app->GetSharedPtrAs<MediaRouterApplicationObserver>());
-			}
-			else
-			{
-				logte("Could not find the application [%s] after creating it", app_info.GetVHostAppName().CStr());
-				succeeded = false;
+				auto new_app = vhost->GetApplication(app_info.GetId());
+				if (new_app != nullptr)
+				{
+					_media_router->RegisterObserverApp(app_info, new_app->GetSharedPtrAs<MediaRouterApplicationObserver>());
+				}
+				else
+				{
+					logte("Could not find the application [%s] after creating it", app_info.GetVHostAppName().CStr());
+					succeeded = false;
+				}
 			}
 		}
 
