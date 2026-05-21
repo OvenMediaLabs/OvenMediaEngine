@@ -34,6 +34,14 @@ namespace pvd
 
 	bool Provider::Start()
 	{
+		// Push providers call this both from their own `Start()` (infrastructure)
+		// and again from `PushProvider::Start()` invoked inside `Bind()`.
+		// Guard to avoid re-swapping `_access_controller` and logging a duplicate "has been started" line.
+		if (IsModuleAvailable())
+		{
+			return true;
+		}
+
 		logti("%s has been started.", GetProviderName());
 
 		SetModuleAvailable(true);
