@@ -300,6 +300,10 @@ namespace ocst
 			return Result::NotExists;
 		}
 
+		// Serialize existence check, vhost mutation, and module notifications against
+		// `CreateApplication()` and late `RegisterModule()`.
+		std::scoped_lock lock(_late_module_registration_mutex);
+
 		auto app = vhost->GetApplication(app_id);
 		if (app == nullptr)
 		{
@@ -313,45 +317,36 @@ namespace ocst
 
 		mon::Monitoring::GetInstance()->OnApplicationDeleted(app_info);
 
+		if (vhost->DeleteApplication(app_id) == false)
 		{
-			// Hold `_late_module_registration_mutex` for vhost removal + module-notification, symmetric
-			// to `CreateApplication()`. Without this, a concurrent late `RegisterModule()` could
-			// back-fill the new module with this application (whose snapshot still includes it) after
-			// the delete-side notification loop has already iterated and skipped the not-yet-registered
-			// module, leaving a stale create-notification with no matching delete-notification.
-			std::scoped_lock reg_lock(_late_module_registration_mutex);
+			logte("Could not delete an application: [%s]", app_info.GetVHostAppName().CStr());
+			return Result::Failed;
+		}
 
-			if (vhost->DeleteApplication(app_id) == false)
+		if (_media_router != nullptr)
+		{
+			_media_router->UnregisterObserverApp(app_info, app->GetSharedPtrAs<MediaRouterApplicationObserver>());
+		}
+
+		logtt("Notifying modules for the delete event...");
+		auto module_list = GetModuleList();
+		// Notify modules of deletion events
+		for (auto module = module_list.rbegin(); module != module_list.rend(); ++module)
+		{
+			auto module_interface = module->GetModuleInterface();
+
+			logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+
+			if (module_interface->OnDeleteApplication(app_info) == false)
 			{
-				logte("Could not delete an application: [%s]", app_info.GetVHostAppName().CStr());
-				return Result::Failed;
+				logte("The module %p (%s) returns error while deleting the application [%s]",
+					  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+
+				// Ignore this error - some providers may not have generated the app
 			}
-
-			if (_media_router != nullptr)
+			else
 			{
-				_media_router->UnregisterObserverApp(app_info, app->GetSharedPtrAs<MediaRouterApplicationObserver>());
-			}
-
-			logtt("Notifying modules for the delete event...");
-			auto module_list = GetModuleList();
-			// Notify modules of deletion events
-			for (auto module = module_list.rbegin(); module != module_list.rend(); ++module)
-			{
-				auto module_interface = module->GetModuleInterface();
-
-				logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
-
-				if (module_interface->OnDeleteApplication(app_info) == false)
-				{
-					logte("The module %p (%s) returns error while deleting the application [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
-
-					// Ignore this error - some providers may not have generated the app
-				}
-				else
-				{
-					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
-				}
+				logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 			}
 		}
 
@@ -379,9 +374,6 @@ namespace ocst
 
 		auto type = module_interface->GetModuleType();
 
-		// Atomic check + insert under exclusive `_module_list_mutex`.
-		// Doing both in one critical section closes the race where two concurrent
-		// `RegisterModule()` calls could both pass a shared-lock duplicate check and both insert.
 		auto try_insert_module = [&]() -> bool {
 			std::scoped_lock lock(_module_list_mutex);
 
@@ -418,18 +410,12 @@ namespace ocst
 			}
 		};
 
-		// Hold `_late_module_registration_mutex` for the full registration regardless of timing:
-		// - Pre-`StartServer()`: there is no concurrent `CreateApplication()` yet, but acquiring the
-		//   same mutex keeps `RegisterModule()` calls serialized so a stray multi-threaded boot path
-		//   cannot race two concurrent registrations.
-		// - Post-`StartServer()`: serialized against `CreateApplication()` / `DeleteApplication()`
-		//   so the new module gets exactly one `OnCreateApplication()` per existing application
-		//   (either via the back-fill below or via the normal create path after this returns) and
-		//   `OnDeleteApplication()` only for apps it actually saw create for.
+		// Serialize against `CreateApplication()` / `DeleteApplication()`
+		// so the new module sees exactly one create/delete pair per application.
 		std::scoped_lock reg_lock(_late_module_registration_mutex);
 
-		// Modules registered before `StartServer()` are notified by the normal `CreateApplication()`
-		// path during the upcoming server start, so just insert and return.
+		// Before `StartServer()`, the normal `CreateApplication()` path will notify this module
+		// during server start, so just insert.
 		if (_server_started.load() == false)
 		{
 			if (try_insert_module() == false)
@@ -444,19 +430,32 @@ namespace ocst
 			return true;
 		}
 
-		// Late registration: replay `OnCreateApplication()` for existing applications.
-		//
-		// Order is back-fill first, then insert. The module is NOT yet in `_module_list` during
-		// back-fill, so this loop is the ONLY notification path for these applications - no risk of
-		// the normal create path firing for them in parallel (it would have to acquire `reg_lock`,
-		// which we hold). Inserting only after a fully successful back-fill keeps registration
-		// atomic: on failure we roll back `OnCreateApplication()` calls already made and return
-		// without inserting, so the caller sees a clean "not registered" outcome.
+		// Late registration: back-fill before insert so a failed registration leaves no module in the list.
+		// `OnCreateHost()` precedes `OnCreateApplication()` because per-vhost setup
+		// (e.g. certificates) must run before app-level callbacks.
+		std::vector<info::Host> notified_hosts;
 		std::vector<info::Application> notified_apps;
 		bool back_fill_ok = true;
 
 		for (const auto &vhost : GetVirtualHostList())
 		{
+			const auto &host_info = vhost->GetHostInfo();
+
+			logtt("Back-filling %s module (%p) with the existing vhost (%s)",
+				  GetModuleTypeName(type).CStr(), module_interface.get(), host_info.GetName().CStr());
+
+			if (module_interface->OnCreateHost(host_info) == false)
+			{
+				logte("The %s module (%p) returned an error while back-filling the vhost [%s]",
+					  GetModuleTypeName(type).CStr(), module_interface.get(), host_info.GetName().CStr());
+
+				back_fill_ok = false;
+
+				break;
+			}
+
+			notified_hosts.push_back(host_info);
+
 			for (const auto &app : vhost->GetApplicationList())
 			{
 				const auto &app_info = app->GetAppInfo();
@@ -481,8 +480,6 @@ namespace ocst
 			}
 		}
 
-		// Best-effort rollback helper. Called on any failure between this point and successful insert
-		// so the module does not retain per-application state for a registration that never landed.
 		auto rollback_notifications = [&]() {
 			for (auto it = notified_apps.rbegin(); it != notified_apps.rend(); ++it)
 			{
@@ -490,6 +487,15 @@ namespace ocst
 				{
 					logte("%s module (%p) returned an error during rollback for application [%s]; continuing best-effort",
 						  GetModuleTypeName(type).CStr(), module_interface.get(), it->GetVHostAppName().CStr());
+				}
+			}
+
+			for (auto it = notified_hosts.rbegin(); it != notified_hosts.rend(); ++it)
+			{
+				if (module_interface->OnDeleteHost(*it) == false)
+				{
+					logte("%s module (%p) returned an error during rollback for vhost [%s]; continuing best-effort",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), it->GetName().CStr());
 				}
 			}
 		};
@@ -500,9 +506,6 @@ namespace ocst
 			return false;
 		}
 
-		// Commit: insert under exclusive `_module_list_mutex`. `reg_lock` serializes against other
-		// `RegisterModule()` calls; a duplicate here would mean the module was registered through
-		// some other path between our checks, which is defensive only and rolls back the back-fill.
 		if (try_insert_module() == false)
 		{
 			rollback_notifications();
