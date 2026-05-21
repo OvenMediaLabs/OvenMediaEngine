@@ -461,10 +461,10 @@ if(OME_HWACCEL_NVIDIA OR OME_HWACCEL_XMA OR OME_HWACCEL_NILOGAN)
 endif()
 
 
-# jemalloc - required for Release builds, optional for Debug (can be forced with OME_ENABLE_JEMALLOC=ON)
+# jemalloc - default ON in Release / OFF in Debug (see OME_ENABLE_JEMALLOC in CMakeLists.txt).
 # Note: when built with --enable-prof, jemalloc reports its pkg-config version as "<ver>_0"
 # (e.g. "5.3.0_0"), so we use >= instead of = to avoid a false version mismatch.
-if(OME_ENABLE_JEMALLOC OR (CMAKE_BUILD_TYPE STREQUAL "Release" AND NOT DEFINED OME_ENABLE_JEMALLOC))
+if(OME_ENABLE_JEMALLOC)
     ome_find_pkg(PKG_JEMALLOC jemalloc OME_VER_JEMALLOC
         VERSION_OP >=
         REINSTALL_TARGET jemalloc
