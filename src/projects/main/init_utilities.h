@@ -6,10 +6,9 @@
 //  Copyright (c) 2020 AirenSoft. All rights reserved.
 //
 //==============================================================================
-// Creates and registers a module.
-// The variable must already be declared - for modules whose creation must be deferred
-// (e.g. push providers created after `Orchestrator::StartServer()`).
-#define CREATE_MODULE(variable, name, create)                        \
+#define INIT_MODULE(variable, name, create)                          \
+	decltype(create) variable = nullptr;                             \
+                                                                     \
 	if (succeeded)                                                   \
 	{                                                                \
 		logti("Trying to create " name "...");                       \
@@ -28,6 +27,9 @@
 				if (orchestrator->RegisterModule(variable) == false) \
 				{                                                    \
 					logte("Failed to register " name);               \
+					/* `Create()` ran Start(); */                    \
+					/* RELEASE_MODULE skips */                       \
+					/* `Stop()` for unregistered modules. */         \
 					variable->Stop();                                \
 					variable.reset();                                \
 					succeeded = false;                               \
@@ -39,11 +41,6 @@
 			}                                                        \
 		}                                                            \
 	}
-
-// Declares the module variable and creates/registers it in one step.
-#define INIT_MODULE(variable, name, create) \
-	decltype(create) variable = nullptr;    \
-	CREATE_MODULE(variable, name, create)
 
 #define RELEASE_MODULE(variable, name)                         \
 	if (variable != nullptr)                                   \

@@ -22,6 +22,7 @@ public:
 
 	LLHlsPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 	~LLHlsPublisher() override;
+	bool Start() override;
 	bool Stop() override;
 
 protected:
@@ -32,8 +33,6 @@ protected:
 		const int worker_count);
 
 private:
-	bool Start() override;
-
 	//--------------------------------------------------------------------
 	// Implementation of Publisher
 	//--------------------------------------------------------------------

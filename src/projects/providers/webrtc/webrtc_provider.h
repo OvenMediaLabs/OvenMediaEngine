@@ -30,6 +30,7 @@ namespace pvd
 		~WebRTCProvider() override;
 
 		bool Start() override;
+		bool Bind() override;
 		bool Stop() override;
 
 		//--------------------------------------------------------------------

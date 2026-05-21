@@ -33,6 +33,7 @@ namespace pvd
 		~SrtProvider() override;
 
 		bool Start() override;
+		bool Bind() override;
 		bool Stop() override;
 
 		//--------------------------------------------------------------------

@@ -59,6 +59,13 @@ namespace pvd
 			return _physical_port_list;
 		}
 
+		// Used by `MpegTsProvider::BindMpegTSPorts()` to attach `PhysicalPort`s to an item that
+		// was constructed with an empty list during `MpegTsProvider::Start()`.
+		void SetPhysicalPortList(const std::vector<std::shared_ptr<PhysicalPort>> &physical_port_list)
+		{
+			_physical_port_list = physical_port_list;
+		}
+
 		void AttachToApplication(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
 		{
 			_attached = true;
@@ -119,6 +126,7 @@ namespace pvd
 		~MpegTsProvider() override;
 
 		bool Start() override;
+		bool Bind() override;
 		bool Stop() override;
 
 		//--------------------------------------------------------------------
@@ -152,6 +160,8 @@ namespace pvd
 			ov::String stream_name;
 		};
 
+		// Creates physical ports for each item in `_stream_port_map` (populated by `Start()`)
+		// and starts listening. Called from `Bind()`.
 		bool BindMpegTSPorts();
 
 		//--------------------------------------------------------------------

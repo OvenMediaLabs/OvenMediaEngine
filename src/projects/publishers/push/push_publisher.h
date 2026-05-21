@@ -22,11 +22,10 @@ namespace pub
 
 		PushPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~PushPublisher() override;
+		bool Start() override;
 		bool Stop() override;
 
 	private:
-		bool Start() override;
-
 		//--------------------------------------------------------------------
 		// Implementation of Publisher
 		//--------------------------------------------------------------------
