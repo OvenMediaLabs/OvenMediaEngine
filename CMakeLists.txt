@@ -27,19 +27,18 @@ project(OvenMediaEngine
 # Older libstdc++ has a wait_until() overflow bug (GCC PR 91906): predicate-based
 # wait_until() on a non-system_clock time_point converts via system_clock and
 # overflows for ::time_point::max(), causing immediate timeout and busy-spin
-# instead of waiting. The fix uses pthread_cond_clockwait(), which is gated by
-# the _GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT macro at libstdc++ build time
-# (requires glibc >= 2.30). Checking that macro directly is more accurate than
-# version-based checks because the fix was backported to GCC 10.4+.
+# instead of waiting. The fix uses pthread_cond_clockwait() and is gated by the
+# _GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT macro, defined when libstdc++ is built
+# against glibc >= 2.30 (present in libstdc++ 10+).
 #
-# This inspects the stdlib actually pulled in by the selected compiler, so it
-# works for both gcc and clang regardless of how the user selected the
-# toolchain.
+# Include a public standard header so libc++ environments (no <bits/...>) pass
+# through this check naturally: __GLIBCXX__ stays undefined and the guard is a
+# no-op.
 # ==============================================================================
 include(CheckCXXSourceCompiles)
 
 check_cxx_source_compiles("
-#include <bits/c++config.h>
+#include <cstddef>
 #if defined(__GLIBCXX__) && !defined(_GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT)
 #  error \"libstdc++ without pthread_cond_clockwait support\"
 #endif
@@ -51,8 +50,8 @@ if(NOT OME_HAS_SAFE_CXX_STDLIB)
         "\n"
         "Your libstdc++ does not enable pthread_cond_clockwait(), which means\n"
         "predicate-based wait_until() on steady_clock busy-spins instead of\n"
-        "waiting (GCC PR 91906). This affects libstdc++ < 10.4 and libstdc++\n"
-        "built against glibc < 2.30.\n"
+        "waiting (GCC PR 91906). This affects libstdc++ 9 and older, or any\n"
+        "libstdc++ built against glibc < 2.30.\n"
         "\n"
         "Supported out of the box:\n"
         "  - Ubuntu 20.04.4+ / 22.04+\n"
