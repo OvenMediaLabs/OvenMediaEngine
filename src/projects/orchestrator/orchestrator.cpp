@@ -296,15 +296,16 @@ namespace ocst
 
 	ocst::Result Orchestrator::DeleteApplication(const ov::String &vhost_name, info::application_id_t app_id)
 	{
+		// Acquire `_late_module_registration_mutex` before the vhost lookup so a concurrent
+		// `DeleteVirtualHost()` cannot remove the vhost and emit `OnDeleteHost()` between the
+		// lookup and the app-delete notifications below.
+		std::scoped_lock lock(_late_module_registration_mutex);
+
 		auto vhost = GetVirtualHost(vhost_name);
 		if (vhost == nullptr)
 		{
 			return Result::NotExists;
 		}
-
-		// Serialize existence check, vhost mutation, and module notifications against
-		// `CreateApplication()` and late `RegisterModule()`.
-		std::scoped_lock lock(_late_module_registration_mutex);
 
 		auto app = vhost->GetApplication(app_id);
 		if (app == nullptr)
@@ -375,6 +376,17 @@ namespace ocst
 		}
 
 		auto type = module_interface->GetModuleType();
+
+		// `_media_router` is read unsynchronized from many call sites (e.g. `CreateApplication()`,
+		// `MirrorStream()`). MediaRouter must be registered pre-`StartServer()` so the pointer is
+		// effectively immutable by the time any reader runs. Reject late MediaRouter registration
+		// rather than introducing a torn-write race.
+		if ((type == ModuleType::MediaRouter) && _server_started)
+		{
+			logte("MediaRouter cannot be registered after `StartServer()`");
+			OV_ASSERT2(false);
+			return false;
+		}
 
 		auto try_insert_module = [&]() -> bool {
 			std::scoped_lock lock(_module_list_mutex);
@@ -1167,7 +1179,7 @@ namespace ocst
 	{
 		// Serialize existence check, vhost insertion, and module notifications against late
 		// `RegisterModule()` and `DeleteVirtualHost()`.
-		std::scoped_lock reg_lock(_late_module_registration_mutex);
+		std::scoped_lock lock(_late_module_registration_mutex);
 
 		if(GetVirtualHost(vhost_info.GetName()) != nullptr)
 		{
@@ -1213,7 +1225,7 @@ namespace ocst
 	{
 		// Serialize vhost removal and module notifications against late `RegisterModule()` and
 		// `CreateVirtualHost()`.
-		std::scoped_lock reg_lock(_late_module_registration_mutex);
+		std::scoped_lock lock(_late_module_registration_mutex);
 
 		bool found = false;
 		{
@@ -1458,19 +1470,21 @@ namespace ocst
 
 	ocst::Result Orchestrator::CreateApplication(const ov::String &vhost_name, const info::Application &app_info)
 	{
-		auto vhost = GetVirtualHost(vhost_name);
-		if (vhost == nullptr)
-		{
-			logtw("Host not found for vhost: %s", vhost_name.CStr());
-			return Result::Failed;
-		}
-
 		bool succeeded = true;
+		std::shared_ptr<VirtualHost> vhost;
 		{
-			// Serialize existence check, vhost mutation, and module notifications against
-			// `DeleteApplication()` and late `RegisterModule()`. Scoped so the rollback path at the
-			// bottom can re-enter `DeleteApplication()` without recursive locking.
+			// Acquire `_late_module_registration_mutex` before the vhost lookup so a concurrent
+			// `DeleteVirtualHost()` cannot remove the vhost between the lookup and the app create +
+			// notifications below. Scoped so the rollback path at the bottom can re-enter
+			// `DeleteApplication()` without recursive locking.
 			std::scoped_lock lock(_late_module_registration_mutex);
+
+			vhost = GetVirtualHost(vhost_name);
+			if (vhost == nullptr)
+			{
+				logtw("Host not found for vhost: %s", vhost_name.CStr());
+				return Result::Failed;
+			}
 
 			if (vhost->GetApplication(app_info.GetVHostAppName()) != nullptr)
 			{
