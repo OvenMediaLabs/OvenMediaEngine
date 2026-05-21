@@ -69,6 +69,11 @@ namespace ocst
 
 		mon::Monitoring::GetInstance()->OnServerStarted(server_config);
 
+		// Flip before `CreateVirtualHosts()` so a concurrent late `RegisterModule()` takes the
+		// back-fill path instead of insert-only, otherwise it could miss notifications for vhosts
+		// created in this call.
+		_server_started = true;
+
 		auto &vhost_conf_list = _server_config->GetVirtualHostList();
 
 		if (CreateVirtualHosts(vhost_conf_list) == false)
@@ -88,9 +93,6 @@ namespace ocst
 				10000);
 			_timer.Start();
 		}
-
-		// From here, any later `RegisterModule()` is back-filled with existing apps.
-		_server_started = true;
 
 		return true;
 	}
