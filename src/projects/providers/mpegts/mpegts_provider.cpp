@@ -84,7 +84,7 @@ namespace pvd
 
 				if (physical_port == nullptr)
 				{
-					logte("Could not initialize phyiscal port for MPEG-TS server: %s/%s", address.ToString().CStr(), ov::StringFromSocketType(socket_type));
+					logte("Could not initialize physical port for MPEG-TS server: %s/%s", address.ToString().CStr(), ov::StringFromSocketType(socket_type));
 					result = false;
 					break;
 				}
