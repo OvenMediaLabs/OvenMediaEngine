@@ -54,8 +54,9 @@ namespace pvd
 			return _stream_name;
 		}
 
-		const std::vector<std::shared_ptr<PhysicalPort>> &GetPhysicalPortList()
+		std::vector<std::shared_ptr<PhysicalPort>> GetPhysicalPortList()
 		{
+			std::scoped_lock lock(_physical_port_list_mutex);
 			return _physical_port_list;
 		}
 
@@ -63,6 +64,7 @@ namespace pvd
 		// was constructed with an empty list during `MpegTsProvider::Start()`.
 		void SetPhysicalPortList(const std::vector<std::shared_ptr<PhysicalPort>> &physical_port_list)
 		{
+			std::scoped_lock lock(_physical_port_list_mutex);
 			_physical_port_list = physical_port_list;
 		}
 
@@ -110,6 +112,7 @@ namespace pvd
 		uint16_t _port = 0;
 		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		ov::String _stream_name;
+		mutable std::mutex _physical_port_list_mutex;
 		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
 
 		std::atomic<bool> _attached = false;

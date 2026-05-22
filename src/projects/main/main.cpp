@@ -171,12 +171,10 @@ int main(int argc, char *argv[])
 			// has notified every registered module of existing vhosts/apps, so push providers
 			// have populated state before accepting any traffic. Pull providers and the
 			// scheduled/multiplex providers do not have listeners of their own and skip this.
-			bool bind_ok = true;
-
-			bind_ok &= (webrtc_provider == nullptr) || webrtc_provider->Bind();
-			bind_ok &= (mpegts_provider == nullptr) || mpegts_provider->Bind();
-			bind_ok &= (srt_provider == nullptr) || srt_provider->Bind();
-			bind_ok &= (rtmp_provider == nullptr) || rtmp_provider->Bind();
+			bool bind_ok = ((webrtc_provider == nullptr) || webrtc_provider->Bind()) &&
+						   ((mpegts_provider == nullptr) || mpegts_provider->Bind()) &&
+						   ((srt_provider == nullptr) || srt_provider->Bind()) &&
+						   ((rtmp_provider == nullptr) || rtmp_provider->Bind());
 
 			if (bind_ok == false)
 			{

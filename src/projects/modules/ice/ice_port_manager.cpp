@@ -114,6 +114,12 @@ bool IcePortManager::BindTurnServers(
 	const std::shared_ptr<IcePortObserver> &observer,
 	const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
 {
+	if (_ice_port == nullptr)
+	{
+		logte("IcePort should be created before binding TURN servers");
+		return false;
+	}
+
 	auto &ice_candidates_config = webrtc_bind_config.GetIceCandidates();
 
 	return CreateIceCandidates(server_name, observer, server_config, ice_candidates_config) &&

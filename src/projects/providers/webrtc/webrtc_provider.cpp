@@ -160,6 +160,7 @@ namespace pvd
 		{
 			logte("Could not create certificate.");
 			IcePortManager::GetInstance()->Release(IcePortObserver::GetSharedPtr());
+			_ice_port = nullptr;
 			return false;
 		}
 
