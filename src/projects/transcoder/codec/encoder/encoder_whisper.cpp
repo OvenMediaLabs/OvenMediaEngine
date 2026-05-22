@@ -388,6 +388,16 @@ void EncoderWhisper::CodecThread()
 			logti("Translation enabled. Set source language [label : %s] to English for Whisper processing.", _track->GetOutputTrackLabel().CStr());
 		}
 
+		// Size the encoder audio context to the actual window instead of the full
+		// 30 s, so the encoder does not run over the zero-padding. Each context
+		// position spans 320 samples (20 ms); a margin avoids truncating the
+		// window tail. audio_ctx 0 means the full default context.
+		int32_t audio_ctx = static_cast<int32_t>((pcmf32_buffer.size() + 319) / 320) + 64;
+		if (audio_ctx >= 1500)
+		{
+			audio_ctx = 0;
+		}
+
 		whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 		wparams.print_progress   = false;
 		wparams.print_special    = false;
@@ -401,7 +411,7 @@ void EncoderWhisper::CodecThread()
 		wparams.beam_search.beam_size = -1; // disable beam search
 		wparams.greedy.best_of = 1; // disable best_of
 		wparams.temperature_inc = 0.0f;
-		wparams.audio_ctx        = 0;
+		wparams.audio_ctx        = audio_ctx;
 		wparams.tdrz_enable      = false;
 		wparams.prompt_tokens    = prompt_tokens.data();
 		wparams.prompt_n_tokens  = static_cast<int>(prompt_tokens.size());
