@@ -258,6 +258,19 @@ namespace ocst
 		std::shared_ptr<PullProviderModuleInterface> GetProviderModuleForScheme(const ov::String &scheme);
 		std::shared_ptr<pvd::Provider> GetProviderForUrl(const ov::String &url);
 
+		// Deletes the application and notifies the modules, without acquiring `_late_module_registration_mutex` itself.
+		// The caller MUST already hold `_late_module_registration_mutex`.
+		// This lets `DeleteVirtualHost()` delete every child application and remove the vhost
+		// inside a single critical section, so a concurrent `CreateApplication()`
+		// (which holds the same mutex for its whole flow) cannot add an application that the fan-out misses.
+		// `DeleteApplication()` is the locking wrapper for the standalone call path.
+		//
+		// @param vhost_name Name of the virtual host the application belongs to
+		// @param app_id Id of the application to delete
+		//
+		// @return Deletion result
+		Result DeleteApplicationInternal(const ov::String &vhost_name, info::application_id_t app_id);
+
 		std::shared_ptr<VirtualHost> GetVirtualHost(const ov::String &vhost_name);
 		std::shared_ptr<const VirtualHost> GetVirtualHost(const ov::String &vhost_name) const;
 		std::shared_ptr<VirtualHost> GetVirtualHost(const info::VHostAppName &vhost_app_name);
