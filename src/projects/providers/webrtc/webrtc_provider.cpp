@@ -205,6 +205,7 @@ namespace pvd
 		logte("An error occurred while binding %s listeners. Stopping RtcSignallingServer...", GetProviderName());
 
 		IcePortManager::GetInstance()->Release(IcePortObserver::GetSharedPtr());
+		_ice_port = nullptr;
 
 		if (_signalling_server != nullptr)
 		{

@@ -120,6 +120,12 @@ bool IcePortManager::BindTurnServers(
 		return false;
 	}
 
+	if (IsRegisteredObserver(observer) == false)
+	{
+		logte("IcePort observer should be registered before binding TURN servers");
+		return false;
+	}
+
 	auto &ice_candidates_config = webrtc_bind_config.GetIceCandidates();
 
 	return CreateIceCandidates(server_name, observer, server_config, ice_candidates_config) &&
