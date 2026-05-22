@@ -357,8 +357,8 @@ namespace ocst
 		// Acquire `_late_module_registration_mutex` before the vhost lookup so a concurrent
 		// `DeleteVirtualHost()` cannot remove the vhost and emit `OnDeleteHost()` between the
 		// lookup and the app-delete notifications below.
-		// `DeleteVirtualHost()` already holds this mutex and calls `DeleteApplicationInternal()`
-		// directly, so the actual delete logic lives there and this is just the locking wrapper.
+		// The actual application-delete logic lives in `DeleteApplicationInternal()`;
+		// this method is the locking wrapper for that path.
 		std::scoped_lock lock(_late_module_registration_mutex);
 
 		return DeleteApplicationInternal(vhost_name, app_id);
