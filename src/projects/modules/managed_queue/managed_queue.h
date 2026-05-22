@@ -40,11 +40,8 @@ namespace ov
 			std::chrono::steady_clock::time_point _start;
 			bool _urgent = false;
 
-			ManagedQueueNode(const T& value, bool urgent, ManagedQueueNode* next_node = nullptr)
-				: data(value), next(next_node), _start(std::chrono::steady_clock::time_point::min()), _urgent(urgent)
-			{
-				_start = std::chrono::steady_clock::now();
-			}
+			ManagedQueueNode(T value, bool urgent, ManagedQueueNode *next_node = nullptr)
+				: data(std::move(value)), next(next_node), _start(std::chrono::steady_clock::now()), _urgent(urgent) {}
 		};
 
 	public:
@@ -61,16 +58,11 @@ namespace ov
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
-			// Register to the server metrics
-			// If the Unique id is duplicated or memory allocation failed, retry
-			while (true)
-			{
-				SetId(IssueUniqueQueueId());
+			SetId(IssueUniqueQueueId());
 
-				if (MonitorInstance->OnQueueCreated(*this) == true)
-				{
-					break;
-				}
+			if (MonitorInstance->OnQueueCreated(*this) == false)
+			{
+				logw(LOG_TAG, "Failed to register queue to monitor. id:%u", GetId());
 			}
 		}
 
@@ -104,21 +96,17 @@ namespace ov
 			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
 
 			MonitorInstance->OnQueueUpdated(*this);
-		}				
-
-		// Urgent item will be inserted at the front of the queue
-		void Enqueue(const T& item, bool urgent = false, int timeout = Infinite)
-		{
-			auto node = new ManagedQueueNode(item, urgent);
-			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
-
-			EnqueueInternal(node, timeout, pos);
 		}
 
 		// Urgent item will be inserted at the front of the queue
-		void Enqueue(T&& item, bool urgent = false, int timeout = Infinite)
+		void Enqueue(T item, bool urgent = false, int timeout = Infinite)
 		{
-			auto node = new ManagedQueueNode(item, urgent);
+			auto node = new ManagedQueueNode(std::move(item), urgent);
+			if(node == nullptr)
+			{
+				loge(LOG_TAG, "Failed to allocate memory for queue node.");
+				return;
+			}
 			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
 
 			EnqueueInternal(node, timeout, pos);
@@ -280,11 +268,7 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			if (node->_start != std::chrono::steady_clock::time_point::max())
-			{
-				auto current = std::chrono::steady_clock::now();
-				_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(current - node->_start).count() * 0.1;
-			}
+			_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - node->_start).count() * 0.1;
 
 			delete node;
 
@@ -309,7 +293,7 @@ namespace ov
 		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100ms)
 		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
 		{
-			return _threshold_exceeded_time_in_us >= static_cast<int64_t>(duration.count());
+			return _threshold_exceeded_time_ms >= static_cast<int64_t>(duration.count());
 		}
 
 		// Cleared all items in the queue
@@ -456,7 +440,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return (!IsThresholdExceeded());
+					return (!IsThresholdExceeded() || _stop);
 				});
 				if (!result || _stop)
 				{
@@ -545,7 +529,7 @@ namespace ov
 
 				if (IsThresholdExceeded())
 				{
-					_threshold_exceeded_time_in_us += elapsed_time;
+					_threshold_exceeded_time_ms += elapsed_time;
 
 					// Logging
 					_last_logging_time += elapsed_time;
@@ -561,7 +545,7 @@ namespace ov
 				}
 				else
 				{
-					_threshold_exceeded_time_in_us = 0;
+					_threshold_exceeded_time_ms = 0;
 #if DEBUG
 					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
 #endif					
@@ -581,7 +565,7 @@ namespace ov
 
 			_last_input_message_count = 0;
 			_last_output_message_count = 0;
-			_threshold_exceeded_time_in_us = 0;
+			_threshold_exceeded_time_ms = 0;
 
 			_last_logging_time = 0;
 			_last_logged_peak = 0;
