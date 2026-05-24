@@ -190,6 +190,27 @@ if(OME_BUILD_TESTS)
         ${UUID_LIB}
         pthread dl z stdc++fs
     )
+
+    # Mirror the optional hardware-acceleration libs that
+    # src/projects/main/CMakeLists.txt links into the main executable so that
+    # test binaries linking the same static archives (e.g. libtranscoder.a)
+    # can resolve CUDA / XMA / NiLogan symbols.
+    if(OME_HWACCEL_NVIDIA)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
+            ${OME_NVIDIA_LIBS}
+            PkgConfig::PKG_FFNVCODEC
+        )
+    endif()
+    if(OME_HWACCEL_XMA AND PKG_LIBXMA2API_FOUND)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
+            PkgConfig::PKG_LIBXMA2API
+            PkgConfig::PKG_XVBM
+            PkgConfig::PKG_LIBXRM
+        )
+    endif()
+    if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS xcoder_logan)
+    endif()
 endif()
 
 add_subdirectory(src)

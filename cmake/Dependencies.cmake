@@ -349,7 +349,11 @@ if(OME_HWACCEL_NVIDIA)
         include_directories(${CUDA_ROOT}/include)
         link_directories(${CUDA_ROOT}/lib64)
 
-        set(OME_NVIDIA_LIBS cuda nvidia-ml ${NV_CUDART_LIB} rt dl)
+        # Use absolute paths from find_library. Some systems install only the
+        # runtime SONAME (libnvidia-ml.so.1) without the linker symlink
+        # (libnvidia-ml.so), so -lnvidia-ml cannot be resolved through
+        # link_directories. The full path side-steps that.
+        set(OME_NVIDIA_LIBS ${NV_CUDA_LIB} ${NV_ML_LIB} ${NV_CUDART_LIB} rt dl)
     else()
         message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but required NVIDIA libraries/tools not found - disabled")
         set(OME_HWACCEL_NVIDIA OFF)
