@@ -188,7 +188,6 @@ if(OME_BUILD_TESTS)
         PkgConfig::PKG_SPDLOG
         PkgConfig::PKG_WHISPER
         ${UUID_LIB}
-        pthread dl z stdc++fs
     )
 
     # Mirror the optional hardware-acceleration libs that
@@ -211,6 +210,14 @@ if(OME_BUILD_TESTS)
     if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
         set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS xcoder_logan)
     endif()
+
+    # System libraries must come last so that any static archive listed earlier
+    # (e.g. libcudart_static.a from OME_NVIDIA_LIBS) can resolve its references
+    # to pthread / dl / rt against them. Placing them last also keeps
+    # list(REMOVE_DUPLICATES) in ome_add_tests() from dropping a trailing copy.
+    set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
+        pthread dl z stdc++fs
+    )
 endif()
 
 add_subdirectory(src)
