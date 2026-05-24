@@ -737,7 +737,7 @@ namespace ov
 				// AND a graceful peer `srt_close()`
 				// (the `SHUTDOWN` message handler in libsrt sets `m_bBroken = true`).
 				// The two cases are indistinguishable at this level,
-				// so signal a plain disconnect(`EPOLLHUP`) instead of escalating to an error event.
+				// so signal a plain disconnect (`EPOLLHUP`) instead of escalating to an error event.
 				event->events |= EPOLLHUP;
 				break;
 
