@@ -274,6 +274,11 @@ namespace pub
 	{
 		_sender_stop_flag = true;
 
+		// Wake the sender thread now to skip the Dequeue() timeout wait.
+		// Use InjectWakeup() (not Stop()) so the queue stays reusable
+		// across Start/StopSenderThread cycles.
+		_sender_packet_queue.InjectWakeup();
+
 		if (_sender_thread.joinable())
 		{
 			_sender_thread.join();

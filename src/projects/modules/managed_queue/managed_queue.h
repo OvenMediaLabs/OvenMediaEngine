@@ -26,6 +26,10 @@
 
 namespace ov
 {
+	// Shutdown order: Stop() -> join consumer threads -> destroy the queue.
+	// Destroying the queue while a thread is still waiting in Dequeue/Front/
+	// Back is undefined behavior. The destructor calls Stop() defensively,
+	// but does not wait for waiters to exit.
 	template <typename T>
 	class ManagedQueue : public info::ManagedQueue
 	{
@@ -69,6 +73,11 @@ namespace ov
 
 		~ManagedQueue()
 		{
+			// Defensive: wake any remaining waiters so they can exit. The owner
+			// is still responsible for joining consumer threads BEFORE this
+			// runs (see lifecycle contract above) — Stop() only signals; it
+			// does not wait for waiters to leave the wait functions.
+			Stop();
 			Clear();
 
 			// Unregister to the server metrics
