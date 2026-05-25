@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "adaptive_delay_controller.h"
 
@@ -35,7 +36,7 @@ class FramePacer
 public:
 	using DispatchFn = std::function<void(const std::shared_ptr<MediaPacket> &)>;
 
-	FramePacer(int64_t timebase_num, int64_t timebase_den, uint32_t fallback_delay_ms);
+	FramePacer(const ov::String &stream_id, int64_t timebase_num, int64_t timebase_den, uint32_t fallback_delay_ms);
 
 	// Set the scheduler (shared DelayQueue) and the dispatcher callback that
 	// will be invoked by the scheduler thread at the target time.
@@ -57,6 +58,7 @@ public:
 			  std::chrono::steady_clock::time_point arrival_time);
 
 private:
+	ov::String _stream_id;
 	int64_t _timebase_num;
 	int64_t _timebase_den;
 	uint32_t _fallback_delay_ms;
@@ -72,4 +74,14 @@ private:
 	std::chrono::steady_clock::time_point _anchor_arrival;
 	std::chrono::steady_clock::time_point _last_push;
 	std::chrono::steady_clock::time_point _last_drift_warn;
+
+	// Anchor calibration. The provisional anchor (first frame after reset)
+	// may sit at an extreme of the path-delay distribution; calibration
+	// collects N frames and shifts the anchor by their median so baseline
+	// lateness centers on zero.
+	bool _anchor_calibrated = false;
+	std::vector<int64_t> _calibration_samples_ms;
+	// Total frames since last (re)anchor including outliers, used as a
+	// timeout when valid samples don't accumulate.
+	size_t _calibration_attempts = 0;
 };

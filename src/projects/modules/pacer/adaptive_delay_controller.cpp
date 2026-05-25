@@ -17,19 +17,21 @@ static constexpr auto kWindow = std::chrono::seconds(30);
 // Recompute is throttled to this interval (avoids re-sorting per-frame).
 static constexpr auto kRecomputeInterval = std::chrono::milliseconds(500);
 
-// Target percentile of recent lateness. The Pacer absorbs everything up to
-// this percentile; the remaining tail (here ~5%) passes straight through to
-// the receiver, where the player's own jitter buffer covers it. Trading
-// "perfect" pacing for lower sender-side latency.
-static constexpr double kTargetPercentile = 0.95;
+// Target percentile of recent lateness. The Pacer absorbs up to this; the
+// remaining tail passes through to the receiver's jitter buffer.
+static constexpr double kTargetPercentile = 0.99;
 
-// Below this many samples, percentile estimate is unreliable; skip recompute
-// (current_delay stays at Min until enough samples accumulate).
+// Below this many samples, percentile estimate is unreliable; skip recompute.
 static constexpr size_t kMinSamplesForRecompute = 30;
 
-// Small headroom added on top of the percentile so frames that fall in the
-// (p95, p95 + margin] band are still absorbed and aren't pushed to the tail.
-static constexpr int kMarginMs = 10;
+// Headroom added on top of the percentile.
+static constexpr int kMarginMs = 20;
+
+// EMA coefficient applied when the desired delay drops below the current one.
+// Increases are immediate (alpha=1) so a fresh jitter spike isn't lost;
+// decreases are eased so a shrinking buffer doesn't show up to the viewer
+// as variable playback rate.
+static constexpr double kRelaxAlpha = 0.1;
 
 // Warning rate limit (per warning type).
 static constexpr auto kWarnThrottle = std::chrono::seconds(1);
@@ -37,8 +39,9 @@ static constexpr auto kWarnThrottle = std::chrono::seconds(1);
 // Periodic per-track lateness statistics dump (for measurement / tuning).
 static constexpr auto kStatsLogInterval = std::chrono::seconds(5);
 
-AdaptiveDelayController::AdaptiveDelayController(int min_delay_ms, int max_delay_ms)
-	: _min_delay_ms(min_delay_ms),
+AdaptiveDelayController::AdaptiveDelayController(const ov::String &stream_id, int min_delay_ms, int max_delay_ms)
+	: _stream_id(stream_id),
+	  _min_delay_ms(min_delay_ms),
 	  _max_delay_ms(std::max(min_delay_ms, max_delay_ms)),
 	  _current_delay_ms(min_delay_ms)
 {
@@ -114,13 +117,15 @@ void AdaptiveDelayController::RecordSample(uint32_t track_id, int64_t lateness_m
 
 	if (warn_exceed_max)
 	{
-		logtw("Lateness %lldms exceeds configured Pacer Max %dms — Pacer cannot smooth this frame; receiver likely drops it. Consider raising Max or investigating source jitter.",
+		logtw("[%s] Lateness %lldms exceeds configured Pacer Max %dms — Pacer cannot smooth this frame; receiver likely drops it. Consider raising Max or investigating source jitter.",
+			  _stream_id.CStr(),
 			  static_cast<long long>(warn_late_value),
 			  warn_late_max);
 	}
 	if (warn_max_reached)
 	{
-		logtw("Adaptive delay reached configured Max %dms — Max may be too low for current conditions",
+		logtw("[%s] Adaptive delay reached configured Max %dms — Max may be too low for current conditions",
+			  _stream_id.CStr(),
 			  warn_max_value);
 	}
 }
@@ -138,30 +143,61 @@ void AdaptiveDelayController::Recompute()
 		return;
 	}
 
-	std::vector<int64_t> values;
-	values.reserve(_samples.size());
+	// Per-track percentile, take the max. Mixing tracks into one sorted window
+	// biases the percentile toward the higher-rate, lower-lateness track
+	// (typically audio), under-buffering the worse track. Per-track max keeps
+	// A/V sync (one shared delay) while letting any track's tail size it.
+	std::map<uint32_t, std::vector<int64_t>> per_track;
 	for (const auto &s : _samples)
 	{
-		values.push_back(s.lateness_ms);
+		per_track[s.track_id].push_back(s.lateness_ms);
 	}
-	std::sort(values.begin(), values.end());
 
-	size_t idx = static_cast<size_t>(kTargetPercentile * (values.size() - 1));
-	int64_t p_value = values[idx];
+	// Per-track minimum sample count to trust that track's percentile.
+	static constexpr size_t kMinPerTrack = 10;
 
-	// Negative percentile means anchor settled at a path slower than typical;
-	// no buffer needed beyond Min in that case. Floor at 0 so margin is the
-	// effective minimum buffer size when jitter is below the floor.
-	int desired_ms = static_cast<int>(std::max<int64_t>(p_value, 0)) + kMarginMs;
+	int64_t worst_pvalue = 0;
+	bool have_value		 = false;
+	for (auto &[tid, vals] : per_track)
+	{
+		if (vals.size() < kMinPerTrack)
+		{
+			continue;
+		}
+		std::sort(vals.begin(), vals.end());
+		size_t idx		= static_cast<size_t>(kTargetPercentile * (vals.size() - 1));
+		int64_t p_value = vals[idx];
+		if (!have_value || p_value > worst_pvalue)
+		{
+			worst_pvalue = p_value;
+			have_value	 = true;
+		}
+	}
+	if (!have_value)
+	{
+		return;
+	}
+
+	// Floor at 0: negative percentile means jitter is below the floor, in
+	// which case the margin defines the minimum buffer.
+	int desired_ms = static_cast<int>(std::max<int64_t>(worst_pvalue, 0)) + kMarginMs;
 	desired_ms	   = std::clamp(desired_ms, _min_delay_ms, _max_delay_ms);
 
-	_current_delay_ms = desired_ms;
+	if (desired_ms >= _current_delay_ms)
+	{
+		_current_delay_ms = desired_ms;
+	}
+	else
+	{
+		double smoothed	  = kRelaxAlpha * static_cast<double>(desired_ms) +
+							(1.0 - kRelaxAlpha) * static_cast<double>(_current_delay_ms);
+		_current_delay_ms = std::clamp(static_cast<int>(smoothed), _min_delay_ms, _max_delay_ms);
+	}
 }
 
 // Caller holds _mu.
 void AdaptiveDelayController::LogPerTrackStats()
 {
-	// Group samples by track_id.
 	std::map<uint32_t, std::vector<int64_t>> per_track;
 	for (const auto &s : _samples)
 	{
@@ -175,25 +211,20 @@ void AdaptiveDelayController::LogPerTrackStats()
 	};
 
 	ov::String msg;
-	msg.Format("[PacerStats] current_delay=%dms total_samples=%zu min=%dms max=%dms",
-			   _current_delay_ms, _samples.size(), _min_delay_ms, _max_delay_ms);
+	msg.Format("[%s] [PacerStats] current_delay=%dms total_samples=%zu min=%dms max=%dms",
+			   _stream_id.CStr(), _current_delay_ms, _samples.size(), _min_delay_ms, _max_delay_ms);
 
 	for (auto &[tid, vals] : per_track)
 	{
 		std::sort(vals.begin(), vals.end());
-		int64_t p5	= pct(vals, 0.05);
-		int64_t p50 = pct(vals, 0.50);
-		int64_t p95 = pct(vals, 0.95);
-		int64_t mn	= vals.front();
-		int64_t mx	= vals.back();
-
-		msg.AppendFormat("\n  track=%u count=%zu p5=%lldms p50=%lldms p95=%lldms min=%lldms max=%lldms",
+		msg.AppendFormat("\n  track=%u count=%zu p5=%lldms p50=%lldms p95=%lldms p99=%lldms min=%lldms max=%lldms",
 						 tid, vals.size(),
-						 static_cast<long long>(p5),
-						 static_cast<long long>(p50),
-						 static_cast<long long>(p95),
-						 static_cast<long long>(mn),
-						 static_cast<long long>(mx));
+						 static_cast<long long>(pct(vals, 0.05)),
+						 static_cast<long long>(pct(vals, 0.50)),
+						 static_cast<long long>(pct(vals, 0.95)),
+						 static_cast<long long>(pct(vals, 0.99)),
+						 static_cast<long long>(vals.front()),
+						 static_cast<long long>(vals.back()));
 	}
 
 	logtd("%s", msg.CStr());

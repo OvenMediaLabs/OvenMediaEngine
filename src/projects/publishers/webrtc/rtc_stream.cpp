@@ -149,6 +149,7 @@ bool RtcStream::Start()
 		_pacer_scheduler->Start();
 
 		_adaptive_delay_controller = std::make_shared<AdaptiveDelayController>(
+			ov::String::FormatString("%s/%s", GetApplication()->GetVHostAppName().CStr(), GetName().CStr()),
 			kPacerMinMs, kPacerMaxMs);
 	}
 
@@ -213,6 +214,7 @@ bool RtcStream::Start()
 		if (_pacer_enabled && _pacer_scheduler && _adaptive_delay_controller)
 		{
 			auto pacer = std::make_shared<FramePacer>(
+				ov::String::FormatString("%s/%s", GetApplication()->GetVHostAppName().CStr(), GetName().CStr()),
 				track->GetTimeBase().GetNum(),
 				track->GetTimeBase().GetDen(),
 				kPacerMinMs);

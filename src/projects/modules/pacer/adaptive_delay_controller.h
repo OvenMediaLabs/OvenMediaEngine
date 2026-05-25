@@ -28,13 +28,17 @@
 class AdaptiveDelayController
 {
 public:
-	AdaptiveDelayController(int min_delay_ms, int max_delay_ms);
+	AdaptiveDelayController(const ov::String &stream_id, int min_delay_ms, int max_delay_ms);
 
 	// Record a per-frame lateness sample (in ms; can be negative).
 	void RecordSample(uint32_t track_id, int64_t lateness_ms);
 
 	// Current smoothing delay to apply (ms). Cheap to call per-frame.
 	int GetCurrentDelayMs();
+
+	// Configured ceiling. Used by callers to treat frames above this as
+	// outliers (e.g., to exclude them from anchor calibration).
+	int GetMaxDelayMs() const { return _max_delay_ms; }
 
 private:
 	void Recompute();
@@ -46,6 +50,7 @@ private:
 		uint32_t track_id;
 	};
 
+	ov::String _stream_id;
 	int _min_delay_ms;
 	int _max_delay_ms;
 
