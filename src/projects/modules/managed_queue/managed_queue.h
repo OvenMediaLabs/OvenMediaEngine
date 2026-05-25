@@ -204,6 +204,15 @@ namespace ov
 			// queue stuck with expire == time_point::max()).
 			while (!_stop)
 			{
+				// Woken by InjectWakeup(): consume the flag and return nullopt so
+				// the caller can re-evaluate its state. Checked before the
+				// readiness checks so a stale flag never leaks into a later call.
+				if (_pending_wakeup)
+				{
+					_pending_wakeup = false;
+					return {};
+				}
+
 				// Check whether an item is ready to be dequeued.
 				if (_buffering_delay == 0)
 				{
@@ -218,7 +227,7 @@ namespace ov
 					{
 						break;
 					}
-					if (GetBufferedTimeMsInternal() >= _buffering_delay) 
+					if (GetBufferedTimeMsInternal() >= _buffering_delay)
 					{
 						break;
 					}
@@ -338,6 +347,24 @@ namespace ov
 			_stop = true;
 
 			ClearMetrics();
+
+			_condition.notify_all();
+		}
+
+		// Injects a one-shot wakeup so the consumer can re-evaluate its state.
+		// Behaves as if an empty item were injected into the queue: the next
+		// Dequeue() returns std::nullopt exactly once, even if the queue is
+		// non-empty and even if no consumer is waiting (the wakeup is
+		// remembered, never lost). Queued items are preserved. A consumer on a
+		// queue that uses InjectWakeup() must treat std::nullopt as a
+		// "re-evaluate state" signal, not as "queue empty".
+		//
+		// notify_all() keeps the wakeup reliable when Front()/Back() waiters coexist.
+		void InjectWakeup()
+		{
+			auto lock_guard = std::lock_guard(_mutex);
+
+			_pending_wakeup = true;
 
 			_condition.notify_all();
 		}
@@ -622,6 +649,10 @@ namespace ov
 
 		// Stop flag
 		bool _stop;
+
+		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
+		// wakeup. Unlike _stop, the queue stays usable.
+		bool _pending_wakeup = false;
 
 		// Use to print logs when the peak value of the queue is increased.
 		size_t _last_logged_peak = 0;

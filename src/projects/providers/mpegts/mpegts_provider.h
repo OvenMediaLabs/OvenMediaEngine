@@ -54,9 +54,18 @@ namespace pvd
 			return _stream_name;
 		}
 
-		const std::vector<std::shared_ptr<PhysicalPort>> &GetPhysicalPortList()
+		std::vector<std::shared_ptr<PhysicalPort>> GetPhysicalPortList()
 		{
+			std::scoped_lock lock(_physical_port_list_mutex);
 			return _physical_port_list;
+		}
+
+		// Used by `MpegTsProvider::BindMpegTSPorts()` to attach `PhysicalPort`s to an item that
+		// was constructed with an empty list during `MpegTsProvider::Start()`.
+		void SetPhysicalPortList(const std::vector<std::shared_ptr<PhysicalPort>> &physical_port_list)
+		{
+			std::scoped_lock lock(_physical_port_list_mutex);
+			_physical_port_list = physical_port_list;
 		}
 
 		void AttachToApplication(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
@@ -103,6 +112,7 @@ namespace pvd
 		uint16_t _port = 0;
 		info::VHostAppName _vhost_app_name = info::VHostAppName::InvalidVHostAppName();
 		ov::String _stream_name;
+		mutable std::mutex _physical_port_list_mutex;
 		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
 
 		std::atomic<bool> _attached = false;
@@ -119,6 +129,7 @@ namespace pvd
 		~MpegTsProvider() override;
 
 		bool Start() override;
+		bool Bind() override;
 		bool Stop() override;
 
 		//--------------------------------------------------------------------
@@ -152,6 +163,8 @@ namespace pvd
 			ov::String stream_name;
 		};
 
+		// Creates physical ports for each item in `_stream_port_map` (populated by `Start()`)
+		// and starts listening. Called from `Bind()`.
 		bool BindMpegTSPorts();
 
 		//--------------------------------------------------------------------

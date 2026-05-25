@@ -27,6 +27,7 @@ public:
 	WebRtcPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 	~WebRtcPublisher() override;
 
+	bool Start() override;
 	bool Stop() override;
 
 	// IcePortObserver Implementation
@@ -77,7 +78,6 @@ private:
 		transfer_completed,
 	};
 
-	bool Start() override;
 	bool DisconnectSessionInternal(const std::shared_ptr<RtcSession> &session);
 
 	//--------------------------------------------------------------------

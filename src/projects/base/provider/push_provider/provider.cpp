@@ -27,6 +27,13 @@ namespace pvd
         return Provider::Start();
     }
 
+	bool PushProvider::Bind()
+	{
+		// Default no-op for push providers without their own listener split. Concrete providers
+		// that hold sockets (WebRTC, MpegTs, Srt, Rtmp) override this to bind their listeners.
+		return true;
+	}
+
 	bool PushProvider::Stop()
     {
 		_run_task_runner.store(false);

@@ -75,6 +75,7 @@ bool IcePortManager::CreateIceCandidates(
 
 		logte("Could not create ICE candidates for %s. Check your ICE configuration", server_name);
 		OV_ASSERT2(false);
+		return false;
 	}
 	else
 	{
@@ -106,6 +107,29 @@ bool IcePortManager::CreateTurnServer(std::shared_ptr<IcePortObserver> observer,
 	}
 
 	return true;
+}
+
+bool IcePortManager::BindTurnServers(
+	const char *server_name,
+	const std::shared_ptr<IcePortObserver> &observer,
+	const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
+{
+	if (_ice_port == nullptr)
+	{
+		logte("IcePort should be created before binding TURN servers");
+		return false;
+	}
+
+	if (IsRegisteredObserver(observer) == false)
+	{
+		logte("IcePort observer should be registered before binding TURN servers");
+		return false;
+	}
+
+	auto &ice_candidates_config = webrtc_bind_config.GetIceCandidates();
+
+	return CreateIceCandidates(server_name, observer, server_config, ice_candidates_config) &&
+		   CreateTurnServersInternal(server_name, _ice_port, observer, server_config, webrtc_bind_config);
 }
 
 bool IcePortManager::CreateTurnServersInternal(

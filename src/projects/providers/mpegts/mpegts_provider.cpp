@@ -41,21 +41,27 @@ namespace pvd
 
 	bool MpegTsProvider::BindMpegTSPorts()
 	{
-		auto &server_config = GetServerConfig();
-		auto &ip_list = server_config.GetIPList();
+		auto &server_config			 = GetServerConfig();
+		auto &ip_list				 = server_config.GetIPList();
 		auto &mpegts_provider_config = server_config.GetBind().GetProviders().GetMpegts();
-		auto &port_config = mpegts_provider_config.GetPort();
-		auto &port_list_config = port_config.GetPortList();
-		auto socket_type = port_config.GetSocketType();
+		auto &port_config			 = mpegts_provider_config.GetPort();
+		auto socket_type			 = port_config.GetSocketType();
 
-		std::map<uint16_t, std::shared_ptr<MpegTsStreamPortItem>> stream_port_map;
 		std::vector<ov::String> address_string_list;
-
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
+
+		// Snapshot to bind. Items were populated by `Start()` with empty
+		// `_physical_port_list`; here we create the physical ports and attach them via
+		// `SetPhysicalPortList()`.
+		decltype(_stream_port_map) stream_port_map_snapshot;
+		{
+			std::shared_lock lock(_stream_port_map_lock);
+			stream_port_map_snapshot = _stream_port_map;
+		}
 
 		bool result = true;
 
-		for (const auto &port : port_list_config)
+		for (auto &[port, stream_port_item] : stream_port_map_snapshot)
 		{
 			std::vector<ov::SocketAddress> address_list;
 
@@ -66,7 +72,8 @@ namespace pvd
 			catch (const ov::Error &e)
 			{
 				logte("Could not create socket address: %s", e.What());
-				return false;
+				result = false;
+				break;
 			}
 
 			std::vector<std::shared_ptr<PhysicalPort>> physical_port_list;
@@ -77,45 +84,43 @@ namespace pvd
 
 				if (physical_port == nullptr)
 				{
-					logte("Could not initialize phyiscal port for MPEG-TS server: %s/%s", address.ToString().CStr(), ov::StringFromSocketType(socket_type));
+					logte("Could not initialize physical port for MPEG-TS server: %s/%s", address.ToString().CStr(), ov::StringFromSocketType(socket_type));
 					result = false;
 					break;
 				}
-				else
-				{
-					address_string_list.emplace_back(address.ToString());
-				}
 
+				address_string_list.emplace_back(address.ToString());
 				physical_port->AddObserver(this);
-
 				physical_port_list.emplace_back(physical_port);
 			}
 
-			stream_port_map.emplace(port, std::make_shared<MpegTsStreamPortItem>(socket_type, port, physical_port_list));
+			stream_port_item->SetPhysicalPortList(physical_port_list);
+
+			if (result == false)
+			{
+				break;
+			}
 		}
 
 		if (result)
 		{
 			auto socket_type_string = ov::StringFromSocketType(socket_type);
-			ov::String suffix = ov::String::FormatString("/%s, ", socket_type_string);
+			ov::String suffix		= ov::String::FormatString("/%s, ", socket_type_string);
 			logti("%s is listening on %s/%s", GetProviderName(), ov::String::Join(address_string_list, suffix).CStr(), socket_type_string);
-
-			{
-				std::unique_lock lock_guard{_stream_port_map_lock};
-				_stream_port_map = std::move(stream_port_map);
-			}
 			return true;
 		}
 
-		for (const auto &stream_port : stream_port_map)
+		// Rollback: tear down any ports we managed to create.
+		for (const auto &[port, stream_port_item] : stream_port_map_snapshot)
 		{
-			auto physical_port_list = stream_port.second->GetPhysicalPortList();
+			auto physical_port_list = stream_port_item->GetPhysicalPortList();
 
 			for (auto &physical_port : physical_port_list)
 			{
 				physical_port->RemoveObserver(this);
 				physical_port_manager->DeletePort(physical_port);
 			}
+			stream_port_item->SetPhysicalPortList({});
 		}
 
 		return false;
@@ -140,11 +145,44 @@ namespace pvd
 
 	bool MpegTsProvider::Start()
 	{
+		// Infrastructure setup only - populate `_stream_port_map` with metadata-only items
+		// so `OnCreateProviderApplication()` can attach apps to ports during the StartServer
+		// notification pass. Physical port binding is deferred to `Bind()`.
+		auto &server_config			 = GetServerConfig();
+		auto &mpegts_provider_config = server_config.GetBind().GetProviders().GetMpegts();
+
+		if (mpegts_provider_config.IsParsed() == false)
+		{
+			logtw("%s is disabled by configuration", GetProviderName());
+			return true;
+		}
+
+		auto &port_config	   = mpegts_provider_config.GetPort();
+		auto &port_list_config = port_config.GetPortList();
+		auto socket_type	   = port_config.GetSocketType();
+
+		std::map<uint16_t, std::shared_ptr<MpegTsStreamPortItem>> stream_port_map;
+
+		for (const auto &port : port_list_config)
+		{
+			stream_port_map.emplace(port,
+				std::make_shared<MpegTsStreamPortItem>(socket_type, port, std::vector<std::shared_ptr<PhysicalPort>>{}));
+		}
+
+		{
+			std::unique_lock lock_guard{_stream_port_map_lock};
+			_stream_port_map = std::move(stream_port_map);
+		}
+
+		return Provider::Start();
+	}
+
+	bool MpegTsProvider::Bind()
+	{
 		auto &server_config = GetServerConfig();
 
 		if (server_config.GetBind().GetProviders().GetMpegts().IsParsed() == false)
 		{
-			logtw("%s is disabled by configuration", GetProviderName());
 			return true;
 		}
 

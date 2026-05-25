@@ -27,6 +27,11 @@
 				if (orchestrator->RegisterModule(variable) == false) \
 				{                                                    \
 					logte("Failed to register " name);               \
+					/* `Create()` ran Start(); */                    \
+					/* RELEASE_MODULE skips */                       \
+					/* `Stop()` for unregistered modules. */         \
+					variable->Stop();                                \
+					variable.reset();                                \
 					succeeded = false;                               \
 				}                                                    \
 			}                                                        \
@@ -48,7 +53,7 @@
 		}                                                      \
 		else                                                   \
 		{                                                      \
-			logte("Failed to unregister " name);                \
+			logte("Failed to unregister " name);               \
 		}                                                      \
 	}
 

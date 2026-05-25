@@ -42,7 +42,9 @@ namespace pvd
 
 	bool SrtProvider::Start()
 	{
-		auto &server_config = GetServerConfig();
+		// Infrastructure setup only - stream URL resolver. Listener binding is deferred to
+		// `Bind()` which `main.cpp` calls after `RestorePullStreams()` / `StartServer()`.
+		auto &server_config	  = GetServerConfig();
 		auto &srt_bind_config = server_config.GetBind().GetProviders().GetSrt();
 
 		if (srt_bind_config.IsParsed() == false)
@@ -51,8 +53,20 @@ namespace pvd
 			return true;
 		}
 
-		// Init StreamMap if exist
 		_stream_url_resolver.Initialize(srt_bind_config.GetStreamMap().GetStreamList());
+
+		return Provider::Start();
+	}
+
+	bool SrtProvider::Bind()
+	{
+		auto &server_config	  = GetServerConfig();
+		auto &srt_bind_config = server_config.GetBind().GetProviders().GetSrt();
+
+		if (srt_bind_config.IsParsed() == false)
+		{
+			return true;
+		}
 
 		bool is_configured;
 		bool is_port_configured;
@@ -81,9 +95,9 @@ namespace pvd
 
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
 
-		auto worker_count = srt_bind_config.GetWorkerCount(&is_configured);
-		worker_count = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
-		auto thread_per_socket = srt_bind_config.IsThreadPerSocket();
+		auto worker_count		   = srt_bind_config.GetWorkerCount(&is_configured);
+		worker_count			   = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+		auto thread_per_socket	   = srt_bind_config.IsThreadPerSocket();
 
 		for (const auto &address : address_list)
 		{

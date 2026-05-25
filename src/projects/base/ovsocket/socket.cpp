@@ -1676,6 +1676,15 @@ namespace ov
 				socket_error	 = SocketError::CreateError("Remote is disconnected");
 				*received_length = 0UL;
 
+				// NOTE: `SRT_ECONNLOST` is ambiguous - close as plain Disconnected.
+				//
+				// libsrt reports `SRT_ECONNLOST` for BOTH a real network break
+				// AND a graceful peer `srt_close()` - when the peer sends
+				// `UMSG_SHUTDOWN`, libsrt's `processCtrlShutdown()` sets the
+				// broken flag and calls `completeBrokenConnectionDependencies(SRT_ECONNLOST)`,
+				// so the receiver cannot tell the two cases apart at the API level.
+				// Close with `Disconnected` (same posture as TCP RST) instead of `Error`
+				// so downstream does not treat this as an unambiguous transport failure.
 				CloseWithState(SocketState::Disconnected);
 
 				return socket_error;

@@ -69,10 +69,16 @@ namespace ocst
 
 		mon::Monitoring::GetInstance()->OnServerStarted(server_config);
 
+		// Flip before `CreateVirtualHosts()` so a concurrent late `RegisterModule()` takes the
+		// back-fill path instead of insert-only, otherwise it could miss notifications for vhosts
+		// created in this call.
+		_server_started = true;
+
 		auto &vhost_conf_list = _server_config->GetVirtualHostList();
 
 		if (CreateVirtualHosts(vhost_conf_list) == false)
 		{
+			_server_started = false;
 			return false;
 		}
 
@@ -289,7 +295,7 @@ namespace ocst
 		return result;
 	}
 
-	ocst::Result Orchestrator::DeleteApplication(const ov::String &vhost_name, info::application_id_t app_id)
+	ocst::Result Orchestrator::DeleteApplicationInternal(const ov::String &vhost_name, info::application_id_t app_id)
 	{
 		auto vhost = GetVirtualHost(vhost_name);
 		if (vhost == nullptr)
@@ -321,31 +327,41 @@ namespace ocst
 			_media_router->UnregisterObserverApp(app_info, app->GetSharedPtrAs<MediaRouterApplicationObserver>());
 		}
 
+		logtt("Notifying modules for the delete event...");
+		auto module_list = GetModuleList();
+		// Notify modules of deletion events
+		for (auto module = module_list.rbegin(); module != module_list.rend(); ++module)
 		{
-			logtt("Notifying modules for the delete event...");
-			auto module_list = GetModuleList();
-			// Notify modules of deletion events
-			for (auto module = module_list.rbegin(); module != module_list.rend(); ++module)
+			auto module_interface = module->GetModuleInterface();
+
+			logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
+
+			if (module_interface->OnDeleteApplication(app_info) == false)
 			{
-				auto module_interface = module->GetModuleInterface();
+				logte("The module %p (%s) returns error while deleting the application [%s]",
+					  module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
 
-				logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
-
-				if (module_interface->OnDeleteApplication(app_info) == false)
-				{
-					logte("The module %p (%s) returns error while deleting the application [%s]",
-						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), app_info.GetVHostAppName().CStr());
-
-					// Ignore this error - some providers may not have generated the app
-				}
-				else
-				{
-					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
-				}
+				// Ignore this error - some providers may not have generated the app
+			}
+			else
+			{
+				logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
 			}
 		}
 
 		return Result::Succeeded;
+	}
+
+	ocst::Result Orchestrator::DeleteApplication(const ov::String &vhost_name, info::application_id_t app_id)
+	{
+		// Acquire `_late_module_registration_mutex` before the vhost lookup so a concurrent
+		// `DeleteVirtualHost()` cannot remove the vhost and emit `OnDeleteHost()` between the
+		// lookup and the app-delete notifications below.
+		// The actual application-delete logic lives in `DeleteApplicationInternal()`;
+		// this method is the locking wrapper for that path.
+		std::scoped_lock lock(_late_module_registration_mutex);
+
+		return DeleteApplicationInternal(vhost_name, app_id);
 	}
 
 	std::vector<std::shared_ptr<ocst::VirtualHost>> Orchestrator::GetVirtualHostList() const
@@ -369,9 +385,20 @@ namespace ocst
 
 		auto type = module_interface->GetModuleType();
 
+		// `_media_router` is read unsynchronized from many call sites (e.g. `CreateApplication()`,
+		// `MirrorStream()`). MediaRouter must be registered pre-`StartServer()` so the pointer is
+		// effectively immutable by the time any reader runs. Reject late MediaRouter registration
+		// rather than introducing a torn-write race.
+		if ((type == ModuleType::MediaRouter) && _server_started)
 		{
-			std::shared_lock<std::shared_mutex> lock(_module_list_mutex);
-			// Check if module exists
+			logte("MediaRouter cannot be registered after `StartServer()`");
+			OV_ASSERT2(false);
+			return false;
+		}
+
+		auto try_insert_module = [&]() -> bool {
+			std::scoped_lock lock(_module_list_mutex);
+
 			for (auto &module : _module_list)
 			{
 				if (module.GetModuleInterface() == module_interface)
@@ -389,21 +416,125 @@ namespace ocst
 					return false;
 				}
 			}
-		}
 
-		{
-			std::lock_guard<std::shared_mutex> lock(_module_list_mutex);
 			_module_list.emplace_back(type, module_interface);
-		}
+			return true;
+		};
 
-		if (module_interface->GetModuleType() == ModuleType::MediaRouter)
+		auto apply_media_router_side_effect = [&]() {
+			if (module_interface->GetModuleType() == ModuleType::MediaRouter)
+			{
+				auto media_router = std::dynamic_pointer_cast<MediaRouter>(module_interface);
+
+				OV_ASSERT2(media_router != nullptr);
+
+				_media_router = media_router;
+			}
+		};
+
+		// Serialize against `CreateApplication()` / `DeleteApplication()`
+		// so the new module sees exactly one create/delete pair per application.
+		std::scoped_lock lock(_late_module_registration_mutex);
+
+		// Before `StartServer()`, the normal `CreateApplication()` path will notify this module
+		// during server start, so just insert.
+		if (_server_started.load() == false)
 		{
-			auto media_router = std::dynamic_pointer_cast<MediaRouter>(module_interface);
+			if (try_insert_module() == false)
+			{
+				return false;
+			}
 
-			OV_ASSERT2(media_router != nullptr);
+			apply_media_router_side_effect();
 
-			_media_router = media_router;
+			logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
+
+			return true;
 		}
+
+		// Late registration: back-fill before insert so a failed registration leaves no module in the list.
+		// `OnCreateHost()` precedes `OnCreateApplication()` because per-vhost setup
+		// (e.g. certificates) must run before app-level callbacks.
+		std::vector<info::Host> notified_hosts;
+		std::vector<info::Application> notified_apps;
+		bool back_fill_ok = true;
+
+		for (const auto &vhost : GetVirtualHostList())
+		{
+			const auto &host_info = vhost->GetHostInfo();
+
+			logtt("Back-filling %s module (%p) with the existing vhost (%s)",
+				  GetModuleTypeName(type).CStr(), module_interface.get(), host_info.GetName().CStr());
+
+			if (module_interface->OnCreateHost(host_info) == false)
+			{
+				logte("The %s module (%p) returned an error while back-filling the vhost [%s]",
+					  GetModuleTypeName(type).CStr(), module_interface.get(), host_info.GetName().CStr());
+
+				back_fill_ok = false;
+
+				break;
+			}
+
+			notified_hosts.push_back(host_info);
+
+			for (const auto &app : vhost->GetApplicationList())
+			{
+				const auto &app_info = app->GetAppInfo();
+
+				logtt("Back-filling %s module (%p) with the existing application (%s)",
+					  GetModuleTypeName(type).CStr(), module_interface.get(), app_info.GetVHostAppName().CStr());
+
+				if (module_interface->OnCreateApplication(app_info) == false)
+				{
+					logte("The %s module (%p) returned an error while back-filling the application [%s]",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), app_info.GetVHostAppName().CStr());
+					back_fill_ok = false;
+					break;
+				}
+
+				notified_apps.push_back(app_info);
+			}
+
+			if (back_fill_ok == false)
+			{
+				break;
+			}
+		}
+
+		auto rollback_notifications = [&]() {
+			for (auto it = notified_apps.rbegin(); it != notified_apps.rend(); ++it)
+			{
+				if (module_interface->OnDeleteApplication(*it) == false)
+				{
+					logte("%s module (%p) returned an error during rollback for application [%s]; continuing best-effort",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), it->GetVHostAppName().CStr());
+				}
+			}
+
+			for (auto it = notified_hosts.rbegin(); it != notified_hosts.rend(); ++it)
+			{
+				if (module_interface->OnDeleteHost(*it) == false)
+				{
+					logte("%s module (%p) returned an error during rollback for vhost [%s]; continuing best-effort",
+						  GetModuleTypeName(type).CStr(), module_interface.get(), it->GetName().CStr());
+				}
+			}
+		};
+
+		if (back_fill_ok == false)
+		{
+			rollback_notifications();
+			return false;
+		}
+
+		if (try_insert_module() == false)
+		{
+			rollback_notifications();
+			return false;
+		}
+
+		apply_media_router_side_effect();
 
 		logtt("%s module (%p) is registered", GetModuleTypeName(type).CStr(), module_interface.get());
 
@@ -1054,22 +1185,27 @@ namespace ocst
 
 	Result Orchestrator::CreateVirtualHost(const info::Host &vhost_info)
 	{
-		if(GetVirtualHost(vhost_info.GetName()) != nullptr)
 		{
-			// Duplicated VirtualHostName
-			return Result::Exists;
-		}
+			// Serialize existence check, vhost insertion, and module notifications against late
+			// `RegisterModule()` and `DeleteVirtualHost()`. Scoped so monitoring runs outside the
+			// lock - it does not participate in the serialization invariant.
+			std::scoped_lock lock(_late_module_registration_mutex);
 
-		auto vhost = std::make_shared<VirtualHost>(vhost_info);
+			if (GetVirtualHost(vhost_info.GetName()) != nullptr)
+			{
+				// Duplicated VirtualHostName
+				return Result::Exists;
+			}
 
-		{
-			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
-			_virtual_host_map[vhost_info.GetName()] = vhost;
-			_virtual_host_list.push_back(vhost);
-		}
+			auto vhost = std::make_shared<VirtualHost>(vhost_info);
 
-		// Notification 
-		{
+			{
+				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				_virtual_host_map[vhost_info.GetName()] = vhost;
+				_virtual_host_list.push_back(vhost);
+			}
+
+			// Notification
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
 			{
@@ -1098,51 +1234,56 @@ namespace ocst
 	{
 		bool found = false;
 		{
-			std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
-			auto it = _virtual_host_list.begin();
-			while(it != _virtual_host_list.end())
+			// Serialize vhost removal and module notifications against late `RegisterModule()` and
+			// `CreateVirtualHost()`. Scoped so monitoring runs outside the lock - it does not
+			// participate in the serialization invariant.
+			std::scoped_lock lock(_late_module_registration_mutex);
+
 			{
-				auto vhost_item = *it;
-				if(vhost_item->GetName() == vhost_info.GetName())
+				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				auto it = _virtual_host_list.begin();
+				while (it != _virtual_host_list.end())
 				{
-					_virtual_host_list.erase(it);
-					_virtual_host_map.erase(vhost_item->GetName());
-					found = true;
-					break;
+					auto vhost_item = *it;
+					if (vhost_item->GetName() == vhost_info.GetName())
+					{
+						_virtual_host_list.erase(it);
+						_virtual_host_map.erase(vhost_item->GetName());
+						found = true;
+						break;
+					}
+
+					it++;
 				}
-
-				it++;
 			}
-		}
 
-		if (found)
-		{
+			if (found == false)
+			{
+				return Result::NotExists;
+			}
+
 			// Notification
+			auto module_list = GetModuleList();
+			for (auto &module : module_list)
 			{
-				auto module_list = GetModuleList();
-				for (auto &module : module_list)
+				auto module_interface = module.GetModuleInterface();
+
+				logtt("Notifying %p (%s) for the delete event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
+
+				if (module_interface->OnDeleteHost(vhost_info))
 				{
-					auto module_interface = module.GetModuleInterface();
-
-					logtt("Notifying %p (%s) for the create event (%s)", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
-
-					if (module_interface->OnDeleteHost(vhost_info))
-					{
-						logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
-					}
-					else
-					{
-						logte("The module %p (%s) returns error while deleting the vhost [%s]",
-							module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
-					}
+					logtt("The module %p (%s) returns true", module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr());
+				}
+				else
+				{
+					logte("The module %p (%s) returns error while deleting the vhost [%s]",
+						module_interface.get(), GetModuleTypeName(module_interface->GetModuleType()).CStr(), vhost_info.GetName().CStr());
 				}
 			}
-			
-			mon::Monitoring::GetInstance()->OnHostDeleted(vhost_info);
-			return Result::Succeeded;
 		}
 
-		return Result::NotExists;
+		mon::Monitoring::GetInstance()->OnHostDeleted(vhost_info);
+		return Result::Succeeded;
 	}
 
 	CommonErrorCode Orchestrator::ReloadAllCertificates()
@@ -1339,32 +1480,39 @@ namespace ocst
 
 	ocst::Result Orchestrator::CreateApplication(const ov::String &vhost_name, const info::Application &app_info)
 	{
-		auto vhost = GetVirtualHost(vhost_name);
-		if (vhost == nullptr)
-		{
-			logtw("Host not found for vhost: %s", vhost_name.CStr());
-			return Result::Failed;
-		}
-
-		if (vhost->GetApplication(app_info.GetVHostAppName()) != nullptr)
-		{
-			logtw("Application %s already exists", app_info.GetVHostAppName().CStr());
-			return Result::Exists;
-		}
-
-		logti("Trying to create an application: [%s]", app_info.GetVHostAppName().CStr());
-
-		if (vhost->CreateApplication(this, app_info) == false)
-		{
-			logte("Could not create an application: [%s]", app_info.GetVHostAppName().CStr());
-			return Result::Failed;
-		}
-
-		mon::Monitoring::GetInstance()->OnApplicationCreated(app_info);
-
-		// Notify modules of creation events
 		bool succeeded = true;
 		{
+			// Hold `_late_module_registration_mutex` across the entire create flow - lookup,
+			// existence check, app creation, module notifications, AND MediaRouter observer
+			// registration - so a concurrent `DeleteApplication()` cannot interleave between
+			// app creation and observer registration. Scoped so the rollback path at the
+			// bottom can re-enter `DeleteApplication()` without recursive locking.
+			std::scoped_lock lock(_late_module_registration_mutex);
+
+			auto vhost = GetVirtualHost(vhost_name);
+			if (vhost == nullptr)
+			{
+				logtw("Host not found for vhost: %s", vhost_name.CStr());
+				return Result::Failed;
+			}
+
+			if (vhost->GetApplication(app_info.GetVHostAppName()) != nullptr)
+			{
+				logtw("Application %s already exists", app_info.GetVHostAppName().CStr());
+				return Result::Exists;
+			}
+
+			logti("Trying to create an application: [%s]", app_info.GetVHostAppName().CStr());
+
+			if (vhost->CreateApplication(this, app_info) == false)
+			{
+				logte("Could not create an application: [%s]", app_info.GetVHostAppName().CStr());
+				return Result::Failed;
+			}
+
+			mon::Monitoring::GetInstance()->OnApplicationCreated(app_info);
+
+			// Notify modules of creation events
 			auto module_list = GetModuleList();
 			for (auto &module : module_list)
 			{
@@ -1384,26 +1532,26 @@ namespace ocst
 					break;
 				}
 			}
-		}
 
-		// TODO: Need to be refactored
-		// Since Orchestrator registers itself as MediaRouter observer last, OnStreamCreated and OnStreamDeleted events are received last.
-		// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the 
-		// very end, so if stream deletion is still in progress in another module, this may cause a conflict.
-		// Therefore, we need a guaranteed way Orchestrator to receive the event last, 
-		// not the way the orchestrator registers itself with the MediaRouter last and receives the event last. 
-		// (Now, it's working because MediaRouter registers an observer using push_back to the vector.)
-		if (_media_router != nullptr)
-		{
-			auto new_app = vhost->GetApplication(app_info.GetId());
-			if (new_app != nullptr)
+			// TODO: Need to be refactored
+			// Since Orchestrator registers itself as MediaRouter observer last, OnStreamCreated and OnStreamDeleted events are received last.
+			// Orchestrator::OnStreamDeleted and application deletion can proceed simultaneously if the orchestrator does not receive the event at the
+			// very end, so if stream deletion is still in progress in another module, this may cause a conflict.
+			// Therefore, we need a guaranteed way Orchestrator to receive the event last,
+			// not the way the orchestrator registers itself with the MediaRouter last and receives the event last.
+			// (Now, it's working because MediaRouter registers an observer using push_back to the vector.)
+			if (succeeded && (_media_router != nullptr))
 			{
-				_media_router->RegisterObserverApp(app_info, new_app->GetSharedPtrAs<MediaRouterApplicationObserver>());
-			}
-			else
-			{
-				logte("Could not find the application [%s] after creating it", app_info.GetVHostAppName().CStr());
-				succeeded = false;
+				auto new_app = vhost->GetApplication(app_info.GetId());
+				if (new_app != nullptr)
+				{
+					_media_router->RegisterObserverApp(app_info, new_app->GetSharedPtrAs<MediaRouterApplicationObserver>());
+				}
+				else
+				{
+					logte("Could not find the application [%s] after creating it", app_info.GetVHostAppName().CStr());
+					succeeded = false;
+				}
 			}
 		}
 

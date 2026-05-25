@@ -143,13 +143,18 @@ int main(int argc, char *argv[])
 	// Initialize Transcoder
 	INIT_MODULE(transcoder, "Transcoder", Transcoder::Create(media_router));
 
-	// Initialize Providers
+	// Providers are all `INIT_MODULE`d before `StartServer()`. Each provider's `Start()` performs
+	// only infrastructure setup (config parse, internal state, certificates etc.) - listener
+	// binding for push providers is deferred to `Bind()`, which `main.cpp` calls explicitly after
+	// the server has finished its `CreateVirtualHosts()` notification pass. This way, push
+	// listeners only accept traffic once their internal state is fully populated.
+	INIT_MODULE(ovt_provider, "OVT Provider", pvd::OvtProvider::Create(*server_config, media_router));
+	INIT_MODULE(rtspc_provider, "RTSPC Provider", pvd::RtspcProvider::Create(*server_config, media_router));
+
 	INIT_MODULE(webrtc_provider, "WebRTC Provider", pvd::WebRTCProvider::Create(*server_config, media_router));
 	INIT_MODULE(mpegts_provider, "MPEG-TS Provider", pvd::MpegTsProvider::Create(*server_config, media_router));
 	INIT_MODULE(srt_provider, "SRT Provider", pvd::SrtProvider::Create(*server_config, media_router));
 	INIT_MODULE(rtmp_provider, "RTMP Provider", pvd::RtmpProvider::Create(*server_config, media_router));
-	INIT_MODULE(ovt_provider, "OVT Provider", pvd::OvtProvider::Create(*server_config, media_router));
-	INIT_MODULE(rtspc_provider, "RTSPC Provider", pvd::RtspcProvider::Create(*server_config, media_router));
 	INIT_MODULE(scheduled_provider, "Scheduled Provider", pvd::ScheduledProvider::Create(*server_config, media_router));
 	INIT_MODULE(multiplex_provider, "Multiplex Provider", pvd::MultiplexProvider::Create(*server_config, media_router));
 	// PENDING : INIT_MODULE(rtsp_provider, "RTSP Provider", pvd::RtspProvider::Create(*server_config, media_router));
@@ -158,19 +163,39 @@ int main(int argc, char *argv[])
 
 	if (succeeded)
 	{
-		logti("All modules are initialized successfully");
+		logti("All pre-server modules are initialized successfully");
 
 		if (orchestrator->StartServer(server_config))
 		{
-			if (api_server->Start(server_config))
-			{
-				if (parse_option.start_service)
-				{
-					ov::Daemon::SetEvent();
-				}
+			// Open push provider listeners. By this point `StartServer()`'s `CreateVirtualHosts()`
+			// has notified every registered module of existing vhosts/apps, so push providers
+			// have populated state before accepting any traffic. Pull providers and the
+			// scheduled/multiplex providers do not have listeners of their own and skip this.
+			bool bind_ok = ((webrtc_provider == nullptr) || webrtc_provider->Bind()) &&
+						   ((mpegts_provider == nullptr) || mpegts_provider->Bind()) &&
+						   ((srt_provider == nullptr) || srt_provider->Bind()) &&
+						   ((rtmp_provider == nullptr) || rtmp_provider->Bind());
 
-				while (ov::sig::WaitAndStop(1000) == false)
+			if (bind_ok == false)
+			{
+				logte("Failed to bind one or more push provider listeners");
+				succeeded = false;
+			}
+
+			if (succeeded)
+			{
+				logti("All modules are initialized successfully");
+
+				if (api_server->Start(server_config))
 				{
+					if (parse_option.start_service)
+					{
+						ov::Daemon::SetEvent();
+					}
+
+					while (ov::sig::WaitAndStop(1000) == false)
+					{
+					}
 				}
 			}
 		}

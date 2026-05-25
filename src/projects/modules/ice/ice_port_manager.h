@@ -33,6 +33,15 @@ public:
 		std::shared_ptr<IcePortObserver> observer,
 		const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config);
 
+	// Binds TURN listeners for the singleton `_ice_port` that was already created by
+	// `CreatePort()`. Used by callers that need to split ICE port construction from listener
+	// binding (e.g. providers that must hand the `ice_port` to module-create callbacks before
+	// opening sockets).
+	bool BindTurnServers(
+		const char *server_name,
+		const std::shared_ptr<IcePortObserver> &observer,
+		const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config);
+
 	// TODO(Getroot): In the future, each IceCandidate and TurnServer can be released flexibly.
 	// In the future, each IceCandidate and TurnServer can be released flexibly.
 	// Currently, WebRTC publisher and provider use IcePortManager until the server is shut down,

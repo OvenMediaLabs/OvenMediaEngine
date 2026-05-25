@@ -115,31 +115,54 @@ bool EncoderWhisper::InitCodec()
 		return false;
 	}
 
-	// Resolve the CUDA device index for this encoder instance.
+	// Resolve and cache the CUDA device index for this encoder instance.
 	// _track->GetCodecDeviceId() returns the OME device index (from <Modules>nv:N</Modules>).
 	// TranscodeGPU maps it to the actual CUDA device index.
-	int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, _track->GetCodecDeviceId());
-	if (cuda_id < 0)
+	_cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, _track->GetCodecDeviceId());
+	if (_cuda_id < 0)
 	{
-		cuda_id = 0;
+		_cuda_id = 0;
 	}
 
-	// Acquire the shared model context from the registry.
-	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel(), cuda_id);
+	// Acquire the shared model context from the registry. The model stays loaded for
+	// the encoder's lifetime; only the per-instance whisper_state is allocated dynamically.
+	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel(), _cuda_id);
 	if (_whisper_ctx == nullptr)
 	{
 		// Error already logged by the registry.
 		return false;
 	}
 
-	// Create a per-instance inference state via the registry.
-	// The registry serializes allocation and pre-checks GPU memory to prevent ggml crash.
-	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel(), cuda_id);
+	// If STT is enabled in the configuration (<STT><Enable>true</Enable>), allocate the
+	// per-instance whisper_state eagerly so the encoder is ready to transcribe the moment
+	// the stream starts. If it starts disabled, the state is allocated later when enabled
+	// via the API (see CodecThread / AllocWhisperState / FreeWhisperState).
+	if (_audio_muted.load(std::memory_order_relaxed) == false)
+	{
+		if (AllocWhisperState() == false)
+		{
+			_whisper_ctx.reset();
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// Allocates the per-instance whisper_state via the registry.
+// The registry serializes allocation and pre-checks GPU memory to prevent a ggml crash.
+bool EncoderWhisper::AllocWhisperState()
+{
+	if (_whisper_state != nullptr)
+	{
+		return true;
+	}
+
+	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel(), _cuda_id);
 	if (_whisper_state == nullptr)
 	{
 		logte("Failed to create whisper state. stream=%s, track_id=%d, label=%s, model=%s",
 			  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr());
-		_whisper_ctx.reset();
 		return false;
 	}
 
@@ -147,6 +170,19 @@ bool EncoderWhisper::InitCodec()
 		  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr());
 
 	return true;
+}
+
+// Releases the per-instance whisper_state and returns its GPU memory to the device.
+void EncoderWhisper::FreeWhisperState()
+{
+	if (_whisper_state != nullptr)
+	{
+		WhisperModelRegistry::GetInstance()->DeleteState(_whisper_state);
+		_whisper_state = nullptr;
+
+		logti("Whisper state released. stream=%s, track_id=%d, label=%s",
+			  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr());
+	}
 }
 
 void EncoderWhisper::CodecThread()
@@ -186,14 +222,51 @@ void EncoderWhisper::CodecThread()
 		pcmf32_buffer_new.clear();
 		while (!_kill_flag)
 		{
+			// React to STT enable/disable transitions before waiting for audio.
+			// Pause()/Resume() flip _audio_muted and call _input_buffer.InjectWakeup(),
+			// which wakes the Dequeue() below so this runs promptly even when no
+			// audio is flowing.
+			if (_audio_muted.load(std::memory_order_relaxed))
+			{
+				// Disabled: release the per-instance whisper_state to free GPU
+				// memory and discard the rolling-window so a later resume is clean.
+				if (_whisper_state != nullptr)
+				{
+					FreeWhisperState();
+
+					pcmf32_buffer_old.clear();
+					pcmf32_buffer_new.clear();
+					prompt_tokens.clear();
+					new_buffer_start_cs = 0;
+					new_buffer_end_cs = 0;
+					last_commit_end_cs = 0;
+					n_iter = 0;
+				}
+			}
+			else if (_whisper_state == nullptr)
+			{
+				// Enabled but no state yet: lazily (re)allocate it. Allocation can
+				// fail under GPU memory pressure, so retries are throttled.
+				auto now = std::chrono::steady_clock::now();
+				if (now - _last_state_alloc_fail_ts >= std::chrono::seconds(5))
+				{
+					if (AllocWhisperState() == false)
+					{
+						_last_state_alloc_fail_ts = now;
+					}
+				}
+			}
+
 			auto obj = _input_buffer.Dequeue();
 			if (obj.has_value() == false)
 			{
+				// Woken by InjectWakeup() (state transition) or stopped; re-evaluate.
 				continue;
 			}
 
-			// When muted, drop the frame without inference to save GPU resources.
-			if (_audio_muted.load(std::memory_order_relaxed))
+			// Drop the frame without inference while muted, or until the
+			// whisper_state has been (re)allocated after a failed attempt.
+			if (_audio_muted.load(std::memory_order_relaxed) || _whisper_state == nullptr)
 			{
 				continue;
 			}
@@ -315,6 +388,16 @@ void EncoderWhisper::CodecThread()
 			logti("Translation enabled. Set source language [label : %s] to English for Whisper processing.", _track->GetOutputTrackLabel().CStr());
 		}
 
+		// Size the encoder audio context to the actual window instead of the full
+		// 30 s, so the encoder does not run over the zero-padding. Each context
+		// position spans 320 samples (20 ms); a margin avoids truncating the
+		// window tail. audio_ctx 0 means the full default context.
+		int32_t audio_ctx = static_cast<int32_t>((pcmf32_buffer.size() + 319) / 320) + 64;
+		if (audio_ctx >= 1500)
+		{
+			audio_ctx = 0;
+		}
+
 		whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 		wparams.print_progress   = false;
 		wparams.print_special    = false;
@@ -328,7 +411,7 @@ void EncoderWhisper::CodecThread()
 		wparams.beam_search.beam_size = -1; // disable beam search
 		wparams.greedy.best_of = 1; // disable best_of
 		wparams.temperature_inc = 0.0f;
-		wparams.audio_ctx        = 0;
+		wparams.audio_ctx        = audio_ctx;
 		wparams.tdrz_enable      = false;
 		wparams.prompt_tokens    = prompt_tokens.data();
 		wparams.prompt_n_tokens  = static_cast<int>(prompt_tokens.size());
@@ -442,11 +525,7 @@ void EncoderWhisper::CodecThread()
 		}
 	}
 
-	if (_whisper_state != nullptr)
-	{
-		WhisperModelRegistry::GetInstance()->DeleteState(_whisper_state);
-		_whisper_state = nullptr;
-	}
+	FreeWhisperState();
 	_whisper_ctx.reset();
 }
 

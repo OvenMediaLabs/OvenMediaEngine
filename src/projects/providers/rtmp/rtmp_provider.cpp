@@ -74,13 +74,9 @@ namespace pvd
 
 	bool RtmpProvider::Start()
 	{
-		if (_physical_port_list.empty() == false)
-		{
-			logtw("RTMP server is already running");
-			return false;
-		}
-
-		auto server = GetServerConfig();
+		// Infrastructure setup only. Listener binding is deferred to `Bind()` which `main.cpp`
+		// calls after `RestorePullStreams()` / `StartServer()`.
+		const auto &server		= GetServerConfig();
 		const auto &rtmp_config = server.GetBind().GetProviders().GetRtmp();
 
 		if (rtmp_config.IsParsed() == false)
@@ -89,9 +85,35 @@ namespace pvd
 			return true;
 		}
 
+		_is_ertmp_enabled = server.GetModules().GetERTMP().IsEnabled();
+
+		if (_is_ertmp_enabled)
+		{
+			logtw("E-RTMP is enabled, and this is an experimental feature");
+		}
+
+		return Provider::Start();
+	}
+
+	bool RtmpProvider::Bind()
+	{
+		if (_physical_port_list.empty() == false)
+		{
+			logtw("RTMP server is already running");
+			return false;
+		}
+
+		const auto &server		= GetServerConfig();
+		const auto &rtmp_config = server.GetBind().GetProviders().GetRtmp();
+
+		if (rtmp_config.IsParsed() == false)
+		{
+			return true;
+		}
+
 		bool is_configured;
-		auto worker_count = rtmp_config.GetWorkerCount(&is_configured);
-		worker_count = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
+		auto worker_count	   = rtmp_config.GetWorkerCount(&is_configured);
+		worker_count		   = is_configured ? worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
 		auto thread_per_socket = rtmp_config.IsThreadPerSocket();
 
 		std::vector<ov::SocketAddress> rtmp_address_list;
@@ -140,13 +162,6 @@ namespace pvd
 
 			physical_port->AddObserver(this);
 			_physical_port_list.push_back(physical_port);
-		}
-
-		_is_ertmp_enabled = server.GetModules().GetERTMP().IsEnabled();
-
-		if (_is_ertmp_enabled)
-		{
-			logtw("E-RTMP is enabled, and this is an experimental feature");
 		}
 
 		logti("%s is listening on %s",

@@ -45,6 +45,13 @@ namespace pvd
 
 	bool WebRTCProvider::StartSignallingServers(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
 	{
+		if ((_signalling_server == nullptr) || (_whip_server == nullptr))
+		{
+			// `Start()` skipped signalling-server construction because no ports were configured.
+			logtw("%s is disabled - No port is configured", GetProviderName());
+			return true;
+		}
+
 		auto &signalling_config = webrtc_bind_config.GetSignalling();
 
 		bool is_configured;
@@ -56,24 +63,15 @@ namespace pvd
 		bool is_tls_port_configured;
 		auto &tls_port_config = signalling_config.GetTlsPort(&is_tls_port_configured);
 
-		if ((is_port_configured == false) && (is_tls_port_configured == false))
-		{
-			logtw("%s is disabled - No port is configured", GetProviderName());
-			return true;
-		}
-
-		auto rtc_signalling_server	 = std::make_shared<RtcSignallingServer>(server_config, webrtc_bind_config);
 		auto rtc_signalling_observer = RtcSignallingObserver::GetSharedPtr();
-
-		auto whip_server			 = std::make_shared<WhipServer>(webrtc_bind_config);
 
 		do
 		{
 			const auto &ip_list = server_config.GetIPList();
 
 			// Initialize WebSocket Server
-			rtc_signalling_server->AddObserver(rtc_signalling_observer);
-			if (rtc_signalling_server->Start(
+			_signalling_server->AddObserver(rtc_signalling_observer);
+			if (_signalling_server->Start(
 					GetProviderName(), "RtcSig",
 					ip_list,
 					is_port_configured, port_config.GetPort(),
@@ -84,7 +82,7 @@ namespace pvd
 			}
 
 			// Initialize WHIP Server
-			if (whip_server->Start(
+			if (_whip_server->Start(
 					WhipObserver::GetSharedPtr(),
 					GetProviderName(), "WhpSig",
 					ip_list,
@@ -95,51 +93,47 @@ namespace pvd
 				break;
 			}
 
-			_signalling_server = std::move(rtc_signalling_server);
-			_whip_server	   = std::move(whip_server);
-
 			return true;
 		} while (false);
 
-		OV_SAFE_RESET(
-			rtc_signalling_server, nullptr, {
-				rtc_signalling_server->RemoveObserver(rtc_signalling_observer);
-				rtc_signalling_server->Stop();
-			},
-			rtc_signalling_server);
-		OV_SAFE_RESET(whip_server, nullptr, whip_server->Stop(), whip_server);
+		if (_signalling_server != nullptr)
+		{
+			_signalling_server->RemoveObserver(rtc_signalling_observer);
+			_signalling_server->Stop();
+			_signalling_server.reset();
+		}
+		if (_whip_server != nullptr)
+		{
+			_whip_server->Stop();
+			_whip_server.reset();
+		}
 
 		return false;
 	}
 
 	bool WebRTCProvider::StartICEPorts(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config)
 	{
-		auto ice_port = IcePortManager::GetInstance()->CreateTurnServers(
+		// `_ice_port` is created by `Start()` so back-fill callbacks can find it. Here we only
+		// bind the TURN listeners.
+		if (_ice_port == nullptr)
+		{
+			logte("ICE port was not initialized");
+			return false;
+		}
+
+		return IcePortManager::GetInstance()->BindTurnServers(
 			GetProviderName(),
 			IcePortObserver::GetSharedPtr(),
 			server_config, webrtc_bind_config);
-
-		if (ice_port == nullptr)
-		{
-			return false;
-		}
-
-		_ice_port	 = ice_port;
-
-		_certificate = CreateCertificate();
-
-		if (_certificate == nullptr)
-		{
-			logte("Could not create certificate.");
-			return false;
-		}
-
-		return true;
 	}
 
 	bool WebRTCProvider::Start()
 	{
-		auto server_config		= GetServerConfig();
+		// Infrastructure setup only - no listener bind. Listeners are opened by `Bind()` which
+		// `main.cpp` calls explicitly after `RestorePullStreams()` (Enterprise) or after
+		// `StartServer()` (OSS). Back-fill notifications fired by the later normal
+		// `CreateVirtualHosts()` / `CreateApplication()` flow find every member non-null.
+		const auto &server_config = GetServerConfig();
 		auto webrtc_bind_config = server_config.GetBind().GetProviders().GetWebrtc();
 
 		if (webrtc_bind_config.IsParsed() == false)
@@ -149,7 +143,58 @@ namespace pvd
 		}
 
 		_default_transport = webrtc_bind_config.GetIceCandidates().GetDefaultTransport().UpperCaseString();
-		_tcp_relay_force = webrtc_bind_config.GetIceCandidates().IsTcpRelayForce();
+		_tcp_relay_force   = webrtc_bind_config.GetIceCandidates().IsTcpRelayForce();
+
+		// Create ICE port (no TURN bind yet). `OnCreateProviderApplication()` needs `_ice_port`
+		// to be non-null when it constructs a `WebRTCApplication`.
+		_ice_port		   = IcePortManager::GetInstance()->CreatePort(IcePortObserver::GetSharedPtr());
+		if (_ice_port == nullptr)
+		{
+			logte("Could not initialize ICE port. Check your ICE configuration");
+			return false;
+		}
+
+		// Load certificate from disk.
+		_certificate = CreateCertificate();
+		if (_certificate == nullptr)
+		{
+			logte("Could not create certificate.");
+			IcePortManager::GetInstance()->Release(IcePortObserver::GetSharedPtr());
+			_ice_port = nullptr;
+			return false;
+		}
+
+		auto &signalling_config = webrtc_bind_config.GetSignalling();
+		bool is_port_configured;
+		signalling_config.GetPort(&is_port_configured);
+		bool is_tls_port_configured;
+		signalling_config.GetTlsPort(&is_tls_port_configured);
+
+		if (is_port_configured || is_tls_port_configured)
+		{
+			// Construct signalling/WHIP servers (no listener bind yet) so `OnCreateHost()` /
+			// `OnUpdateCertificate()` can insert certificates during the StartServer notification
+			// pass before `Bind()` opens the listeners.
+			_signalling_server = std::make_shared<RtcSignallingServer>(server_config, webrtc_bind_config);
+			_whip_server	   = std::make_shared<WhipServer>(webrtc_bind_config);
+		}
+
+		// Mark module available so the macro registers it. Base `Provider::Start()` does only
+		// `SetModuleAvailable(true)` + log; `PushProvider::Start()` (task runner thread) is
+		// deferred to `Bind()`.
+		return Provider::Start();
+	}
+
+	bool WebRTCProvider::Bind()
+	{
+		const auto &server_config = GetServerConfig();
+		auto webrtc_bind_config = server_config.GetBind().GetProviders().GetWebrtc();
+
+		if (webrtc_bind_config.IsParsed() == false)
+		{
+			// `Start()` already logged the disabled state; nothing to bind.
+			return true;
+		}
 
 		if (StartSignallingServers(server_config, webrtc_bind_config) &&
 			StartICEPorts(server_config, webrtc_bind_config))
@@ -157,9 +202,23 @@ namespace pvd
 			return PushProvider::Start();
 		}
 
-		logte("An error occurred while initialize %s. Stopping RtcSignallingServer...", GetProviderName());
+		logte("An error occurred while binding %s listeners. Stopping RtcSignallingServer...", GetProviderName());
 
 		IcePortManager::GetInstance()->Release(IcePortObserver::GetSharedPtr());
+		_ice_port = nullptr;
+
+		if (_signalling_server != nullptr)
+		{
+			_signalling_server->RemoveObserver(RtcSignallingObserver::GetSharedPtr());
+			_signalling_server->Stop();
+			_signalling_server.reset();
+		}
+
+		if (_whip_server != nullptr)
+		{
+			_whip_server->Stop();
+			_whip_server.reset();
+		}
 
 		return false;
 	}

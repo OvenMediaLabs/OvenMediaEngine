@@ -29,8 +29,15 @@ namespace pvd
 			return ocst::ModuleType::PushProvider;
 		}
 
-		// Call CreateServer and store the server 
+		// Call CreateServer and store the server
 		virtual bool Start() override;
+		// Opens listeners after `Start()` has set up infrastructure and the orchestrator has
+		// notified the module of existing vhosts/apps. `main.cpp` calls this explicitly after
+		// `RestorePullStreams()` (Enterprise) or after `StartServer()` (OSS) so push providers'
+		// listeners only accept traffic once their internal state is fully populated.
+		// Default implementation is a no-op. Subclasses with sockets must override to bind their
+		// listener and then call `PushProvider::Start()` to spin up the task runner.
+		virtual bool Bind();
 		virtual bool Stop() override;
 
 		// Get Application by name

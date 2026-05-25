@@ -28,11 +28,10 @@ namespace pub
 		SrtPublisher(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 		~SrtPublisher() override final;
 
+		bool Start() override;
 		bool Stop() override;
 
 	private:
-		bool Start() override;
-
 		//--------------------------------------------------------------------
 		// Implementation of Publisher
 		//--------------------------------------------------------------------

@@ -62,10 +62,12 @@ namespace ocst
 	public:
 		/// Register the module
 		///
-		/// @param module Module to register
+		/// @param module Module to register. May be called before or after `StartServer()`; in the
+		/// latter case, the module is back-filled with `OnCreateHost()` / `OnCreateApplication()`
+		/// for every existing vhost / application before being inserted.
 		///
-		/// @return If the module is registered or passed a different type from the previously registered type, false is returned.
-		/// Otherwise, true is returned.
+		/// @return `false` if the module is null, already registered (or registered as a different
+		/// type), or a back-fill notification returned false; true otherwise.
 		bool RegisterModule(const std::shared_ptr<ModuleInterface> &module);
 
 		/// Unregister the module
@@ -76,7 +78,8 @@ namespace ocst
 		bool UnregisterModule(const std::shared_ptr<ModuleInterface> &module);
 
 		// Create VirtualHost in the settings and instruct application creation to all registered modules.
-		// So, StartServer should be called after registering all modules with RegisterModule.
+		// Modules registered before this call are notified through the normal create path; modules
+		// registered after this call (`RegisterModule()` post-`StartServer()`) are back-filled.
 		bool StartServer(const std::shared_ptr<const cfg::Server> &server_config);
 		Result Release();
 
@@ -255,6 +258,17 @@ namespace ocst
 		std::shared_ptr<PullProviderModuleInterface> GetProviderModuleForScheme(const ov::String &scheme);
 		std::shared_ptr<pvd::Provider> GetProviderForUrl(const ov::String &url);
 
+		// Deletes the application and notifies the modules, without acquiring `_late_module_registration_mutex` itself.
+		// The caller MUST already hold `_late_module_registration_mutex`.
+		// This helper is intended for call paths that already execute inside that critical section,
+ 		// while `DeleteApplication()` is the locking wrapper for the standalone call path.
+		//
+		// @param vhost_name Name of the virtual host the application belongs to
+		// @param app_id Id of the application to delete
+		//
+		// @return Deletion result
+		Result DeleteApplicationInternal(const ov::String &vhost_name, info::application_id_t app_id);
+
 		std::shared_ptr<VirtualHost> GetVirtualHost(const ov::String &vhost_name);
 		std::shared_ptr<const VirtualHost> GetVirtualHost(const ov::String &vhost_name) const;
 		std::shared_ptr<VirtualHost> GetVirtualHost(const info::VHostAppName &vhost_app_name);
@@ -280,6 +294,22 @@ namespace ocst
 		// Modules
 		std::vector<Module> _module_list;
 		mutable std::shared_mutex _module_list_mutex;
+
+		// Flipped at the start of `StartServer()`, before any vhost/app is created. While `false`,
+		// `RegisterModule()` only inserts; while `true`, it back-fills the new module with existing
+		// vhosts and apps.
+		std::atomic<bool> _server_started{false};
+
+		// Serializes `RegisterModule()`'s late back-fill against the module-notification blocks in
+		// `Create/DeleteVirtualHost()` and `Create/DeleteApplication()`, so a registered module
+		// observes a consistent view of vhost/app create-delete events going through those
+		// runtime paths. Pairing is best-effort outside those paths:
+		//   - `Release()` (shutdown) calls `DeleteApplication()` per app but does not call
+		//     `DeleteVirtualHost()`, so prior `OnCreateHost()` is not paired with `OnDeleteHost()`.
+		//   - `UnregisterModule()` removes the module without replaying any `OnDelete*()`.
+		// Callers shutting down or unregistering at runtime are responsible for any cleanup the
+		// module needs.
+		mutable std::mutex _late_module_registration_mutex;
 
 		// key: vhost_name
 		std::map<ov::String, std::shared_ptr<VirtualHost>> _virtual_host_map;
