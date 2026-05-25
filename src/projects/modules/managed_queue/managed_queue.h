@@ -93,8 +93,7 @@ namespace ov
 		// The effective item count is estimated as: input_message_per_second * time_ms / 1000.
 		void SetThresholdByTime(size_t time_ms)
 		{
-			const size_t validated_time_ms = (time_ms < 0) ? 0U : time_ms;
-			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
+			info::ManagedQueue::SetThresholdByTime(time_ms);
 
 			MonitorInstance->OnQueueUpdated(*this);
 		}
@@ -291,7 +290,7 @@ namespace ov
 		}
 
 		// Returns true if the queue has been over its threshold for at least `duration`.
-		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100ms)
+		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC)
 		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
 		{
 			return _threshold_exceeded_time_ms >= static_cast<int64_t>(duration.count());
