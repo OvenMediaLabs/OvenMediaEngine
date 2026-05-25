@@ -641,8 +641,10 @@ namespace ov
 		mutable std::mutex _mutex;
 		std::condition_variable _condition;
 
-		// Stop flag
-		bool _stop;
+		// Stop flag. Atomic so IsStopped() can read it without holding _mutex.
+		// Writers (Stop()) still take _mutex before set + notify_all to avoid
+		// missed-wakeup races with condition_variable waiters.
+		std::atomic<bool> _stop;
 
 		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
 		// wakeup. Unlike _stop, the queue stays usable.
@@ -652,8 +654,9 @@ namespace ov
 		size_t _last_logged_peak = 0;
 
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
-		// Wait until the queue falls below the threshold
-		bool _exceed_threshold_and_wait_enabled = false;
+		// Wait until the queue falls below the threshold.
+		// Atomic so Set/IsExceedWaitEnable() can be called without holding _mutex.
+		std::atomic<bool> _exceed_threshold_and_wait_enabled{false};
 	};
 
 }  // namespace ov

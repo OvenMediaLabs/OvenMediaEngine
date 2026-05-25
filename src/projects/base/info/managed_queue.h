@@ -311,8 +311,8 @@ namespace info
 		// Threshold value: count (CountBased) or milliseconds (TimeBased)
 		size_t _threshold_value = 0;
 
-		// threshold_exceeded_time increases from the point the queue is exceeded
-		int64_t _threshold_exceeded_time_ms = 0;
+		// threshold_exceeded_time increases from the point the queue is exceeded.
+		std::atomic<int64_t> _threshold_exceeded_time_ms{0};
 
 		// Buffering delay (milliseconds).
 		int _buffering_delay = 0;
