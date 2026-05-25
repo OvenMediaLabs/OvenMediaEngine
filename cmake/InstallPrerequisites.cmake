@@ -287,9 +287,9 @@ endif()
 if(OME_HWACCEL_NVIDIA)
     set(_CUDA_ROOT "/usr/local/cuda")
     find_program(_OME_NVCC nvcc HINTS ${_CUDA_ROOT}/bin /usr/cuda/bin)
-    find_library(_OME_ML_LIB     nvidia-ml     HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
-    find_library(_OME_CUDA_LIB   cuda          HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
-    find_library(_OME_CUDART_LIB cudart_static HINTS ${_CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_ML_LIB     nvidia-ml     HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDA_LIB   cuda          HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDART_LIB cudart_static HINTS ${_CUDA_ROOT}/lib64 /usr/cuda/lib64 /usr/lib/x86_64-linux-gnu)
 
     if(NOT (_OME_NVCC AND _OME_CUDA_LIB AND _OME_CUDART_LIB AND _OME_ML_LIB))
         message(FATAL_ERROR
