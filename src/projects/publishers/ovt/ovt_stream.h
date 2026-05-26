@@ -40,12 +40,11 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
-	bool GenerateDescription();
+	bool GenerateDescription(Json::Value &out_description);
 	void FilterDescriptionByTrackIds(Json::Value &description, const std::set<uint32_t> &allowed_track_ids);
 
 	uint32_t							_worker_count = 0;
 
-	Json::Value							_description;
 	std::shared_mutex					_packetizer_lock;
 	std::shared_ptr<OvtPacketizer>		_packetizer;
 };

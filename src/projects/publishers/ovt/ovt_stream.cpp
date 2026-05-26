@@ -95,7 +95,7 @@ bool OvtStream::Stop()
 	return Stream::Stop();
 }
 
-bool OvtStream::GenerateDescription()
+bool OvtStream::GenerateDescription(Json::Value &out_description)
 {
 	Json::Value 	json_root;
 	Json::Value		json_stream;
@@ -196,8 +196,8 @@ bool OvtStream::GenerateDescription()
 	json_stream["playlists"] = json_playlists;
 	json_stream["tracks"] = json_tracks;
 	json_root["stream"] = json_stream;
-	
-	_description = json_root;
+
+	out_description = std::move(json_root);
 
 	return true;
 }
@@ -253,10 +253,7 @@ bool OvtStream::GetDescription(Json::Value &description)
 		return false;
 	}
 
-	GenerateDescription();
-	description = _description;
-
-	return true;
+	return GenerateDescription(description);
 }
 
 bool OvtStream::GetDescription(const ov::String &track_set_name, Json::Value &description)
@@ -274,8 +271,10 @@ bool OvtStream::GetDescription(const ov::String &track_set_name, Json::Value &de
 		return false;
 	}
 
-	GenerateDescription();
-	description = _description;
+	if (GenerateDescription(description) == false)
+	{
+		return false;
+	}
 
 	FilterDescriptionByTrackIds(description, allowed_track_ids);
 
