@@ -79,6 +79,15 @@ private:
 	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
 	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 
+	// Cached certificates that must be applied to every HTTPS server in `_https_server_list`.
+	// `InsertCertificate()` can be called before `Start()` constructs the HTTPS servers
+	// (e.g., during the `OnCreateHost()` notification pass between `RegisterModule()` and the provider's later `Bind()`);
+	// without this cache those early inserts would be silently dropped against an empty server list.
+	// Protected by `_http_server_list_mutex`.
+	//
+	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
+	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map;
+
 	std::set<ov::String> _link_headers;
 	bool _tcp_force = false;
 	ov::String _default_transport{"UDPTCP"};
