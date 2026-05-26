@@ -33,6 +33,7 @@ private:
 	uint32_t	_marker_sequence_number = 0;
 	bool		_marked = false;
 	bool		_completed = false;
+	bool		_incomplete_logged = false;
 
 	uint16_t 	_first_sequence_number = 0;
 	bool		_first_packet = true;
