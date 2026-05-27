@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
 #include <fstream>
 #include <mutex>
 
@@ -25,6 +26,7 @@ namespace ov
 		void Write(const char *log, std::time_t time = 0);
 		void SetLogPath(const char *log_path);
 		const char *GetLogPath() const;
+		void SetEnabled(bool enabled);
 
 		static void SetAsService(bool start_service);
 
@@ -38,6 +40,7 @@ namespace ov
 		std::string _log_file_name;
 		std::string _log_file;
 		bool _include_date_in_filename = false;
+		std::atomic<bool> _enabled{true};
 		static bool _start_service;
 	};
 }  // namespace ov

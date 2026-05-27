@@ -373,4 +373,14 @@ namespace ov
 
 		return _log_file.GetLogPath();
 	}
+
+	void LogInternal::SetFileEnabled(bool enabled)
+	{
+		if (_released)
+		{
+			return;
+		}
+
+		_log_file.SetEnabled(enabled);
+	}
 }  // namespace ov

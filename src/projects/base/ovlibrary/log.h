@@ -171,6 +171,12 @@ extern "C"
 	void ov_log_set_path(const char *log_path);
 	const char *ov_log_get_path();
 
+	/// Toggle the per-line file sink (the daily-rotated file in the log dir).
+	/// stdout/stderr output is unaffected. Useful when logs are shipped via
+	/// the container runtime's stdout capture and the on-disk file is just
+	/// duplicate state to manage. Default: enabled.
+	void ov_log_set_file_enabled(bool enabled);
+
 	void ov_stat_log_internal(StatLogType type, OVLogLevel level, const char *tag, const char *file, int line, const char *method, const char *format, ...);
 	void ov_stat_log_set_path(StatLogType type, const char *log_path);
 

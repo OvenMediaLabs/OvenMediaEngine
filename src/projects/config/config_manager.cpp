@@ -222,6 +222,7 @@ namespace cfg
 
 		auto log_path = logger_loader->GetLogPath();
 		::ov_log_set_path(log_path.CStr());
+		::ov_log_set_file_enabled(logger_loader->IsFileEnabled());
 
 		// Init stat log
 		//TODO(Getroot): This is temporary code for testing. This will change to more elegant code in the future.

@@ -59,6 +59,10 @@ namespace cfg
 
 		_log_path = logger_node.child_value("Path");
 		_version  = logger_node.attribute("version").value();
+
+		// <File enabled="true|false"/> — toggle the on-disk file sink.
+		// Defaults to true (current behavior) when absent.
+		_file_enabled = logger_node.child("File").attribute("enabled").as_bool(true);
 	}
 
 	void ConfigLoggerLoader::Reset()
@@ -81,6 +85,11 @@ namespace cfg
 	ov::String ConfigLoggerLoader::GetVersion() const noexcept
 	{
 		return _version;
+	}
+
+	bool ConfigLoggerLoader::IsFileEnabled() const noexcept
+	{
+		return _file_enabled;
 	}
 
 	std::shared_ptr<LoggerTagInfo> ParseTag(pugi::xml_node tag_node)

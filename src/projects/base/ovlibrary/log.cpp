@@ -68,6 +68,11 @@ const char *ov_log_get_path()
 	return g_log_internal.GetLogPath();
 }
 
+void ov_log_set_file_enabled(bool enabled)
+{
+	g_log_internal.SetFileEnabled(enabled);
+}
+
 void ov_stat_log_internal(StatLogType type, OVLogLevel level, const char *tag, const char *file, int line, const char *method, const char *format, ...)
 {
 	// Getroot : Now, disable the temporarily created stat_log. (21-07-16)

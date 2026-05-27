@@ -86,8 +86,18 @@ namespace ov
 		_start_service = start_service;
 	}
 
+	void LogWrite::SetEnabled(bool enabled)
+	{
+		_enabled = enabled;
+	}
+
 	void LogWrite::Write(const char *log, std::time_t time)
 	{
+		if (_enabled == false)
+		{
+			return;
+		}
+
 		if (time == 0)
 		{
 			time = std::time(nullptr);

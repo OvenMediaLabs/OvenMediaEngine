@@ -69,6 +69,8 @@ namespace ov
 		void SetLogPath(const char *log_path);
 		const char *GetLogPath() const;
 
+		void SetFileEnabled(bool enabled);
+
 	protected:
 		// This variable is used to avoid the problem of referencing incorrect heap if the log is written after LogInternal instance is released.
 		// This situation occurs when the LogInternal instance declared static is disabled just before the OME is terminated and then logs are written by another module.
