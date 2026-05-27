@@ -42,11 +42,13 @@ namespace ffmpeg
 
 	void Writer::SetErrorMessage(const ov::String &message)
 	{
+		std::lock_guard<std::mutex> lock(_error_message_lock);
 		_error_message = message;
 	}
 
 	ov::String Writer::GetErrorMessage() const
 	{
+		std::lock_guard<std::mutex> lock(_error_message_lock);
 		return _error_message;
 	}
 
@@ -55,14 +57,16 @@ namespace ffmpeg
 		Writer *writer = (Writer *)opaque;
 		if(writer == nullptr)
 		{
-			logte("Writer is null. stop the writer.");
+			logte("Writer is null.");
 			return 1;
 		}
 
 		auto elapsed = std::chrono::steady_clock::now() - writer->GetLastPacketSentTime();
 		if(writer->GetState() == WriterStateClosed)
 		{
-			logte("Writer is closed. stop the writer.");
+			ov::String err_msg = "Writer was closed before I/O operation completed.";
+			logtw("%s", err_msg.CStr());
+			writer->SetErrorMessage(err_msg);
 			return 1;
 		}
 		else if(writer->GetState() == WriterStateConnecting)
@@ -70,7 +74,9 @@ namespace ffmpeg
 			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
 			if(elapsed_ms > writer->GetConnectionTimeout())
 			{
-				logte("connection timeout occurred. stop the writer. %" PRId64 " milliseconds. ", elapsed_ms);
+				auto err_msg = ov::String::FormatString("Connection timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				logtw("%s", err_msg.CStr());
+				writer->SetErrorMessage(err_msg);
 				return 1;
 			}
 		}
@@ -79,7 +85,9 @@ namespace ffmpeg
 			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
 			if(elapsed_ms > writer->GetSendTimeout())
 			{
-				logte("Send timeout occurred. stop the writer. %" PRId64 " milliseconds. ", elapsed_ms);
+				auto err_msg = ov::String::FormatString("Send timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				logtw("%s", err_msg.CStr());
+				writer->SetErrorMessage(err_msg);
 				return 1;
 			}
 		}
@@ -95,7 +103,9 @@ namespace ffmpeg
 	{
 		if (!url || url.IsEmpty() == true)
 		{
-			SetErrorMessage("Destination url is empty");
+			ov::String err_msg = "Destination url is empty";
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -107,7 +117,9 @@ namespace ffmpeg
 		int error = avformat_alloc_output_context2(&av_format, nullptr, (_format != nullptr) ? _format.CStr() : nullptr, _url.CStr());
 		if (error < 0)
 		{
-			SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
+			auto err_msg = ffmpeg::compat::AVErrorToString(error);
+			logte("Failed to allocate output context. %s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -136,28 +148,36 @@ namespace ffmpeg
 		auto av_format = GetAVFormatContext();
 		if (!av_format)
 		{
-			SetErrorMessage("Context is not available");
+			auto err_msg = ov::String("Context is not available");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return nullptr;
 		}
 
 		AVStream *new_stream = avformat_new_stream(av_format.get(), nullptr);
 		if (!new_stream)
 		{
-			SetErrorMessage("Could not allocate stream");
+			auto err_msg = ov::String("Could not allocate stream");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return nullptr;
 		}
 
 		std::shared_ptr<AVStream> av_stream(new_stream, [](AVStream *av_stream) {});
 		if (!av_stream)
 		{
-			SetErrorMessage("Could not create AVStream");
+			auto err_msg = ov::String("Could not create AVStream");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return nullptr;
 		}
 
 		// Convert MediaTrack to AVStream
 		if (ffmpeg::compat::ToAVStream(media_track, av_stream.get()) == false)
 		{
-			SetErrorMessage("Could not convert track info to AVStream");
+			auto err_msg = ov::String("Could not convert track info to AVStream");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return nullptr;
 		}
 
@@ -168,7 +188,9 @@ namespace ffmpeg
 	{
 		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
 		{
-			SetErrorMessage("Could not add track. MediaTrack or AVStream is null");
+			auto err_msg = ov::String("Could not add track. MediaTrack or AVStream is null");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -188,7 +210,9 @@ namespace ffmpeg
 	{
 		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
 		{
-			SetErrorMessage("Could not add event track. MediaTrack or AVStream is null");
+			auto err_msg = ov::String("Could not add event track. MediaTrack or AVStream is null");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -307,7 +331,9 @@ namespace ffmpeg
 		auto av_format = GetAVFormatContext();
 		if (av_format == nullptr)
 		{
-			SetErrorMessage("Context is not available");
+			auto err_msg = ov::String("Context is not available");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -338,7 +364,9 @@ namespace ffmpeg
 			{
 				SetState(WriterStateError);
 
-				SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
+				auto err_msg = ffmpeg::compat::AVErrorToString(error);
+				logte("Failed to open output url. %s", err_msg.CStr());
+				SetErrorMessage(err_msg);
 
 				return false;
 			}
@@ -356,7 +384,9 @@ namespace ffmpeg
 		if (avformat_write_header(av_format.get(), &format_options) < 0)
 		{
 			SetState(WriterStateError);
-			SetErrorMessage("Could not create header");
+			auto err_msg = ov::String("Could not create header");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 
 			return false;
 		}
@@ -405,14 +435,14 @@ namespace ffmpeg
 		// Writer is not connected, but it's not an error. Waiting for initialization.
 		if(GetState() != WriterStateConnected)
 		{
-			logtw("Writer is not initialized. state:%s", WriterStateToString(GetState()));
+			logtd("Writer is not initialized. state:%s", WriterStateToString(GetState()));
 			return true;
 		}
 
 		if (!packet)
 		{
-			SetErrorMessage("Packet is null");
-			return false;
+			logtw("Invalid packet. packet is null. Dropping.");
+			return true;
 		}
 
 		// Drop packets that do not need to be transmitted
@@ -442,7 +472,9 @@ namespace ffmpeg
 		AVPacket av_packet = {0};
 		if (ToAVPacket(av_packet, av_stream, packet, media_track, start_time) == false)
 		{
-			SetErrorMessage("Failed to convert MediaPacket to AVPacket");
+			auto err_msg = ov::String("Failed to convert MediaPacket to AVPacket");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 			return false;
 		}
 
@@ -451,7 +483,7 @@ namespace ffmpeg
 		// But this is not treated as an error.
 		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
 		{
-			logtd("To avoid negative timestamps, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 "", media_track->GetId(), av_packet.pts, av_packet.dts);
+			logtw("Dropping packet with invalid timestamp or size. PTS: %" PRId64 ", DTS: %" PRId64 ", Size: %d", av_packet.pts, av_packet.dts, av_packet.size);
 			av_packet_unref(&av_packet);
 			return true;
 		}
@@ -471,7 +503,13 @@ namespace ffmpeg
 					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
 					if (new_data == nullptr)
 					{
-						logtw("Failed to convert annexb to avcc");
+						auto err_msg = ov::String::FormatString(
+							"Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						logte("%s", err_msg.CStr());
+						SetErrorMessage(err_msg);
 						return false;
 					}
 					av_packet.size = new_data->GetLength();
@@ -484,7 +522,13 @@ namespace ffmpeg
 					new_data = AacConverter::ConvertAdtsToRaw(packet->GetData(), nullptr);
 					if (new_data == nullptr)
 					{
-						logtw("Failed to convert adts to raw");
+						auto err_msg = ov::String::FormatString(
+							"Failed to convert adts to raw. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						logte("%s", err_msg.CStr());
+						SetErrorMessage(err_msg);
 						return false;
 					}
 					av_packet.size = new_data->GetLength();
@@ -497,7 +541,7 @@ namespace ffmpeg
 					AmfDocument document;
 					if (document.Decode(byte_stream) == false)
 					{
-						loge(OV_LOG_TAG".Events","Failed to decode AMF Event");
+						logw(OV_LOG_TAG".Events","Failed to decode AMF Event");
 						return true;
 					}
 
@@ -519,7 +563,13 @@ namespace ffmpeg
 					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
 					if (new_data == nullptr)
 					{
-						logtw("Failed to convert annexb to avcc");
+						auto err_msg = ov::String::FormatString(
+							"Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						logte("%s", err_msg.CStr());
+						SetErrorMessage(err_msg);
 						return false;
 					}
 					av_packet.size = new_data->GetLength();
@@ -532,7 +582,13 @@ namespace ffmpeg
 					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
 					if (new_data == nullptr)
 					{
-						logtw("Failed to convert annexb to avcc");
+						auto err_msg = ov::String::FormatString(
+							"Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						logte("%s", err_msg.CStr());
+						SetErrorMessage(err_msg);
 						return false;
 					}
 					av_packet.size = new_data->GetLength();
@@ -546,7 +602,13 @@ namespace ffmpeg
 					new_data = AacConverter::ConvertAdtsToRaw(packet->GetData(), nullptr);
 					if (new_data == nullptr)
 					{
-						logtw("Failed to convert adts to raw");
+						auto err_msg = ov::String::FormatString(
+							"Failed to convert adts to raw. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						logte("%s", err_msg.CStr());
+						SetErrorMessage(err_msg);
 						return false;
 					}
 					av_packet.size = new_data->GetLength();
@@ -584,7 +646,9 @@ namespace ffmpeg
 		{
 			av_packet_unref(&av_packet);
 			SetState(WriterStateError);
-			SetErrorMessage("Context is not available");
+			auto err_msg = ov::String("Context is not available");
+			logte("%s", err_msg.CStr());
+			SetErrorMessage(err_msg);
 
 			return false;
 		}
@@ -599,11 +663,9 @@ namespace ffmpeg
 		{
 			if (av_packet.dts < it->second)
 			{
-				logtw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", last_dts:%" PRId64,
-					  media_track->GetId(),
-					  av_packet.pts,
-					  av_packet.dts,
-					  it->second);
+				logtw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", last_dts:%" PRId64 ", size:%d",
+					media_track->GetId(), av_packet.pts, av_packet.dts, it->second, av_packet.size);
+
 				av_packet_unref(&av_packet);
 				return true;
 			}
@@ -615,7 +677,15 @@ namespace ffmpeg
 		{
 			av_packet_unref(&av_packet);
 			SetState(WriterStateError);
-			SetErrorMessage(ffmpeg::compat::AVErrorToString(error));
+
+			// On AVERROR_EXIT, the interrupt callback has already set a more specific reason
+			// (timeout / closed). Don't overwrite it.
+			if (error != AVERROR_EXIT)
+			{
+				auto err_msg = ffmpeg::compat::AVErrorToString(error);
+				logte("Failed to write frame. %s", err_msg.CStr());
+				SetErrorMessage(err_msg);
+			}
 
 			return false;
 		}
@@ -635,7 +705,7 @@ namespace ffmpeg
 
 	std::chrono::steady_clock::time_point Writer::GetLastPacketSentTime()
 	{
-		return _last_packet_sent_time;
+		return _last_packet_sent_time.load();
 	}
 
 	std::shared_ptr<AVFormatContext> Writer::GetAVFormatContext() const
