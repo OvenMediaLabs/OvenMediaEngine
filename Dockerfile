@@ -7,6 +7,7 @@
 # Default Arguments:
 # 1. USE_LOCAL=false
 # 2. USE_GPU=false
+# 3. OME_ENABLE_JEMALLOC_LG_PAGE_MAX=false
 #
 # Build the Docker image:
 #
@@ -52,6 +53,7 @@ ARG     USE_GPU
 ARG     OME_VERSION=master
 ARG     USE_LOCAL=false
 ARG     STRIP=true
+ARG     OME_ENABLE_JEMALLOC_LG_PAGE_MAX=false
 
 ENV     PREFIX=/opt/ovenmediaengine
 ENV     TEMP_DIR=/tmp/ome
@@ -85,6 +87,9 @@ RUN \
         if [ "${USE_GPU}" = "true" ] || [ "${USE_GPU}" = "1" ] || [ "${USE_GPU}" = "yes" ]; then \
             build_options="-DOME_HWACCEL_NVIDIA=ON"; \
             echo -e "/usr/local/cuda/compat\n/usr/local/cuda/lib64/stubs" | tee /etc/ld.so.conf.d/cuda.conf > /dev/null && ldconfig; \
+        fi; \
+        if [ "${OME_ENABLE_JEMALLOC_LG_PAGE_MAX}" = "true" ]; then \
+            build_options="${build_options} -DOME_ENABLE_JEMALLOC_LG_PAGE_MAX=ON"; \
         fi; \
         cd ${TEMP_DIR} && \
         cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release ${build_options} && \
@@ -133,4 +138,3 @@ ENV     NVIDIA_REQUIRE_CUDA=cuda>=12.0
 # Default run as Origin mode
 CMD             ["/opt/ovenmediaengine/bin/ome_launcher.sh", "-c", "origin_conf"]
 # ENTRYPOINT ["tail", "-f", "/dev/null"]
-

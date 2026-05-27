@@ -44,6 +44,7 @@ cmake --build build/Release
 | `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
 | `OME_ENABLE_X264` | ON | Enable libx264 encoder support |
 | `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
+| `OME_ENABLE_JEMALLOC_LG_PAGE_MAX` | OFF | Build jemalloc with 16 KiB maximum page size on aarch64/arm64 targets (`--with-lg-page=16`) |
 | `OME_USE_JEMALLOC_PROFILE` | OFF | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON` |
 | `OME_BUILD_TESTS` | OFF | Build unit tests (requires internet access to fetch GTest v1.14.0) |
 | `OME_WHISPER_STATIC` | OFF | Build Whisper/ggml as a static library. |

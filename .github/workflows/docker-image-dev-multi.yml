@@ -7,6 +7,9 @@ on:
     paths:
       - 'src/**'
       - 'misc/**'
+      - 'cmake/**'
+      - 'Dockerfile'
+      - '.github/workflows/docker-image-dev-multi.yml'
   workflow_dispatch:
     inputs:
       commit_hash:
@@ -106,9 +109,19 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ env.SLACK_WEBHOOK_URL }}
 
   build_arm64:
-    name: Build arm64 Image
+    name: Build arm64 Image (${{ matrix.page_variant.name }})
     runs-on: ubuntu-22.04-arm
     needs: set-vars
+    strategy:
+      fail-fast: false
+      matrix:
+        page_variant:
+          - name: 4K pages
+            suffix: arm64
+            jemalloc_lg_page_max: false
+          - name: 16K pages
+            suffix: arm64-16k
+            jemalloc_lg_page_max: true
     steps:
       - name: Notify Start (arm64)
         uses: slackapi/slack-github-action@v1.26.0
@@ -116,7 +129,7 @@ jobs:
           payload: |
             {
               "branch": "${{ needs.set-vars.outputs.branch }}",
-              "tag": "${{ needs.set-vars.outputs.tag }} (arm64 by ${{ github.actor }})",
+              "tag": "${{ needs.set-vars.outputs.tag }}-${{ matrix.page_variant.suffix }} by ${{ github.actor }}",
               "state": "Started"
             }
         env:
@@ -137,15 +150,16 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/arm64 \
+            --build-arg OME_ENABLE_JEMALLOC_LG_PAGE_MAX=${{ matrix.page_variant.jemalloc_lg_page_max }} \
             --output=type=image,push=true \
-            --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64 \
+            --tag ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-${{ matrix.page_variant.suffix }} \
             .
 
       - name: Copy arm64 image to airensoft
         run: |
           docker buildx imagetools create \
-            --tag ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64 \
-            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-arm64
+            --tag ${{ env.MIRROR_IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-${{ matrix.page_variant.suffix }} \
+            ${{ env.IMAGE_NAME }}:${{ needs.set-vars.outputs.tag }}-${{ matrix.page_variant.suffix }}
 
       - name: Notify Done (arm64)
         if: always()
@@ -154,7 +168,7 @@ jobs:
           payload: |
             {
               "branch": "${{ needs.set-vars.outputs.branch }}",
-              "tag": "${{ needs.set-vars.outputs.tag }} (arm64 by ${{ github.actor }})",
+              "tag": "${{ needs.set-vars.outputs.tag }}-${{ matrix.page_variant.suffix }} by ${{ github.actor }}",
               "state": "${{ job.status }}"
             }
         env:

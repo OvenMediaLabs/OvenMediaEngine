@@ -17,6 +17,7 @@
 #   -DOME_NILOGAN_PATCH_PATH=<path>        Path to NiLogan FFmpeg patch file (required with OME_HWACCEL_NILOGAN)
 #   -DOME_NILOGAN_XCODER_COMPILE_PATH=<path>  Path to xcoder_logan source to compile (optional)
 #   -DOME_ENABLE_X264=ON                   Enable libx264 (default ON)
+#   -DOME_ENABLE_JEMALLOC_LG_PAGE_MAX=ON   Build jemalloc with --with-lg-page=16 on aarch64/arm64
 #   -DOME_USE_CLANG=ON                     Install clang/lld and use as compiler (default ON)
 #   -DOME_WHISPER_STATIC=ON                Build Whisper as a static library (default OFF)
 #   -DTARGET=<name>                        Install only this target
@@ -75,6 +76,12 @@ if(NOT DEFINED OME_USE_CLANG)
 endif()
 if(NOT DEFINED ENABLE_JEMALLOC_PROF)
     set(ENABLE_JEMALLOC_PROF OFF)
+endif()
+if(NOT DEFINED OME_ENABLE_JEMALLOC_LG_PAGE_MAX)
+    set(OME_ENABLE_JEMALLOC_LG_PAGE_MAX OFF)
+endif()
+if(NOT DEFINED OME_TARGET_PROCESSOR)
+    set(OME_TARGET_PROCESSOR ${CMAKE_HOST_SYSTEM_PROCESSOR})
 endif()
 
 # Library versions - defined in a shared file so Dependencies.cmake can use the same values.
@@ -489,10 +496,17 @@ if(ENABLE_JEMALLOC_PROF)
 else()
     set(_JEMALLOC_PROF_FLAG "")
 endif()
+string(TOLOWER "${OME_TARGET_PROCESSOR}" _OME_TARGET_PROCESSOR_LOWER)
+if(OME_ENABLE_JEMALLOC_LG_PAGE_MAX AND _OME_TARGET_PROCESSOR_LOWER MATCHES "^(aarch64|arm64)$")
+    set(_JEMALLOC_LG_PAGE_FLAG "--with-lg-page=16")
+else()
+    set(_JEMALLOC_LG_PAGE_FLAG "")
+endif()
+unset(_OME_TARGET_PROCESSOR_LOWER)
 set(_install_jemalloc "
 mkdir -p ${TEMP_PATH}/jemalloc && cd ${TEMP_PATH}/jemalloc &&
 curl -sSLf ${JEMALLOC_SOURCE_URL} | tar -jx --strip-components=1 &&
-./configure --prefix=${PREFIX} --enable-shared ${_JEMALLOC_PROF_FLAG} &&
+./configure --prefix=${PREFIX} --enable-shared ${_JEMALLOC_PROF_FLAG} ${_JEMALLOC_LG_PAGE_FLAG} &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/jemalloc
 ")
 
