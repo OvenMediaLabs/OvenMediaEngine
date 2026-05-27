@@ -483,7 +483,8 @@ namespace ffmpeg
 		// But this is not treated as an error.
 		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
 		{
-			logtw("Dropping packet with invalid timestamp or size. PTS: %" PRId64 ", DTS: %" PRId64 ", Size: %d", av_packet.pts, av_packet.dts, av_packet.size);
+			logtw("Dropping packet with invalid timestamp or size. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", size:%d",
+				  media_track->GetId(), av_packet.pts, av_packet.dts, av_packet.size);
 			av_packet_unref(&av_packet);
 			return true;
 		}
@@ -564,7 +565,7 @@ namespace ffmpeg
 					if (new_data == nullptr)
 					{
 						auto err_msg = ov::String::FormatString(
-							"Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							"Failed to convert annexb to hvcc. track:%d, format:%s, size:%zu",
 							media_track->GetId(),
 							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
 							packet->GetData()->GetLength());
