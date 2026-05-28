@@ -53,7 +53,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Audio**&#x20;
 
-* AAC, Opus, MP3
+* AAC, Opus, MP3, MP2
 
 </TabItem>
 <TabItem value="encoding-codecs" label="Encoding Codecs">
@@ -80,7 +80,7 @@ These are the types of hardware accelerators officially supported.
 
 * NVIDIA GPU
 * Xilinx Alveo U30 MA <sub>enterpise only</sub>
-* NILOGAN <sub>experiment</sub>
+* NETINT VPU <sub>enterpise only (experiment)</sub>
 
 
 
