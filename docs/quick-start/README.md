@@ -43,7 +43,7 @@ $ docker logs ome -f
 ## Run OvenPlayer Demo&#x20;
 
 ```bash
-$ docker run -d -p 8090:80 airensoft/ovenplayerdemo:latest
+$ docker run -d --name ovenplayerdemo -p 8090:80 ovenmedialabs/ovenplayerdemo:latest
 ```
 
 <details>
