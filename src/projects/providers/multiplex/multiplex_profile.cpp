@@ -10,6 +10,7 @@
 #include "multiplex_profile.h"
 #include "multiplex_private.h"
 #include <base/ovlibrary/files.h>
+#include <cstdlib>
 
 namespace pvd
 {
@@ -259,8 +260,7 @@ namespace pvd
 				ov::String source_track_name = source_track_name_object.asString().c_str();
 				ov::String new_track_name = new_track_name_object.asString().c_str();
 
-				// Warn if adding a second catch-all for the same source track name
-				if (audio_index == -1)
+				// Warn on duplicate entries for the same source track name
 				{
 					const auto &existing = source_stream->GetTrackMap();
 					auto eit = existing.find(source_track_name);
@@ -268,9 +268,14 @@ namespace pvd
 					{
 						for (const auto &e : eit->second)
 						{
-							if (e.audio_index == -1)
+							if (audio_index == -1 && e.audio_index == -1)
 							{
 								logtw("Multiplex: duplicate catch-all <Track> for sourceTrackName '%s' (no audioIndex). Use audioIndex to distinguish occurrences.", source_track_name.CStr());
+								break;
+							}
+							else if (audio_index >= 0 && e.audio_index == audio_index)
+							{
+								logtw("Multiplex: duplicate <Track> for sourceTrackName '%s' with audioIndex %d. The later entry will be ignored.", source_track_name.CStr(), audio_index);
 								break;
 							}
 						}
@@ -683,10 +688,18 @@ namespace pvd
 				auto audio_index_node = track_node.child("AudioIndex");
 				if (audio_index_node)
 				{
-					audio_index = audio_index_node.text().as_int();
+					const char *raw_text = audio_index_node.text().as_string();
+					char *end_ptr = nullptr;
+					long parsed = std::strtol(raw_text, &end_ptr, 10);
+					if (raw_text[0] == '\0' || end_ptr == raw_text || *end_ptr != '\0')
+					{
+						_last_error = ov::String::FormatString("Invalid SourceStreams/SourceStream/TrackMap/AudioIndex: '%s' is not a valid integer", raw_text);
+						return false;
+					}
+					audio_index = static_cast<int32_t>(parsed);
 					if (audio_index < -1)
 					{
-						_last_error = "Invalid sourceStreams/trackMap/AudioIndex: must be -1 or greater";
+						_last_error = "Invalid SourceStreams/SourceStream/TrackMap/AudioIndex: must be -1 or greater";
 						return false;
 					}
 				}
@@ -694,8 +707,7 @@ namespace pvd
 				ov::String source_track_name = source_track_name_node.text().as_string();
 				ov::String new_track_name = new_track_name_node.text().as_string();
 
-				// Warn if adding a second catch-all for the same source track name
-				if (audio_index == -1)
+				// Warn on duplicate entries for the same source track name
 				{
 					const auto &existing = source_stream->GetTrackMap();
 					auto eit = existing.find(source_track_name);
@@ -703,9 +715,14 @@ namespace pvd
 					{
 						for (const auto &e : eit->second)
 						{
-							if (e.audio_index == -1)
+							if (audio_index == -1 && e.audio_index == -1)
 							{
 								logtw("Multiplex: duplicate catch-all <Track> for SourceTrackName '%s' (no <AudioIndex>). Use <AudioIndex> to distinguish occurrences.", source_track_name.CStr());
+								break;
+							}
+							else if (audio_index >= 0 && e.audio_index == audio_index)
+							{
+								logtw("Multiplex: duplicate <Track> for SourceTrackName '%s' with <AudioIndex> %d. The later entry will be ignored.", source_track_name.CStr(), audio_index);
 								break;
 							}
 						}
