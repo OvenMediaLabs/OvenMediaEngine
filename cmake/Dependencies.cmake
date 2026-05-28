@@ -160,6 +160,9 @@ macro(ome_find_pkg var pkg version_var)
         set(_FP_HWACCEL_ARGS)
         if(OME_HWACCEL_NVIDIA)
             list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_NVIDIA=ON)
+            if(CMAKE_CUDA_HOST_COMPILER)
+                list(APPEND _FP_HWACCEL_ARGS "-DCMAKE_CUDA_HOST_COMPILER=${CMAKE_CUDA_HOST_COMPILER}")
+            endif()
         endif()
         if(OME_HWACCEL_QSV)
             list(APPEND _FP_HWACCEL_ARGS -DOME_HWACCEL_QSV=ON)
@@ -302,6 +305,37 @@ macro(ome_find_pkg var pkg version_var)
 endmacro()
 
 # ==============================================================================
+# NVIDIA toolchain validation (fail-fast)
+#
+# Must run BEFORE any ome_find_pkg() call below — those calls can trigger an
+# automatic reinstall of CUDA-dependent libraries (notably whisper.cpp), and a
+# missing CUDA Toolkit would then surface as an opaque nvcc error deep inside
+# the whisper build instead of a clear up-front message.
+# ==============================================================================
+if(OME_HWACCEL_NVIDIA)
+    set(CUDA_ROOT "/usr/local/cuda")
+    find_program(NV_NVCC           nvcc            HINTS ${CUDA_ROOT}/bin /usr/cuda/bin)
+    # libnvidia-ml.so and libcuda.so are not included in Docker images like
+    # `nvidia/cuda` base images, so also check the stubs directory.
+    find_library(NV_ML_LIB         nvidia-ml       HINTS ${CUDA_ROOT}/lib64 ${CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(NV_CUDA_LIB       cuda            HINTS ${CUDA_ROOT}/lib64 ${CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(NV_CUDART_LIB     cudart_static   HINTS ${CUDA_ROOT}/lib64 /usr/cuda/lib64 /usr/lib/x86_64-linux-gnu)
+
+    if(NOT (NV_NVCC AND NV_CUDA_LIB AND NV_CUDART_LIB AND NV_ML_LIB))
+        message(FATAL_ERROR
+            "[OME] OME_HWACCEL_NVIDIA=ON but CUDA Toolkit is missing or incomplete:\n"
+            "  nvcc:             ${NV_NVCC}\n"
+            "  libnvidia-ml:     ${NV_ML_LIB}\n"
+            "  libcuda:          ${NV_CUDA_LIB}\n"
+            "  libcudart_static: ${NV_CUDART_LIB}\n"
+            "Install CUDA Toolkit: https://developer.nvidia.com/cuda-downloads\n"
+            "Or disable NVIDIA support: rm -rf build && cmake -B build -DOME_HWACCEL_NVIDIA=OFF ..."
+        )
+    endif()
+
+endif()
+
+# ==============================================================================
 # Required dependencies  (exact version required; wrong/newer version → targeted reinstall)
 # ==============================================================================
 ome_find_pkg(PKG_OPENSSL        openssl         OME_VER_OPENSSL         REINSTALL_TARGET openssl)
@@ -331,29 +365,20 @@ ome_find_pkg(PKG_LIBAVUTIL      libavutil       OME_VER_LIBAVUTIL       REINSTAL
 # Optional / hardware-accelerated dependencies
 # ==============================================================================
 
-# NVIDIA CUDA/NVML 
+# NVIDIA CUDA/NVML — toolchain already validated up top
 if(OME_HWACCEL_NVIDIA)
     ome_find_pkg(PKG_FFNVCODEC  ffnvcodec       OME_VER_NVCC_HDR        REINSTALL_TARGET ffnvcodec)
 
-    set(CUDA_ROOT "/usr/local/cuda")
-    find_program(NV_NVCC           nvcc            HINTS ${CUDA_ROOT}/bin)
-    # libnvidia-ml.so and libcuda.so are not included in Docker images like
-    # `nvidia/cuda` base images, so also check the stubs directory.
-    find_library(NV_ML_LIB         nvidia-ml       HINTS ${CUDA_ROOT}/lib64 ${CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
-    find_library(NV_CUDA_LIB       cuda            HINTS ${CUDA_ROOT}/lib64 ${CUDA_ROOT}/lib64/stubs /usr/lib/x86_64-linux-gnu)
-    find_library(NV_CUDART_LIB     cudart_static   HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
+    message(STATUS "[OME] NVIDIA hardware acceleration: ENABLED")
+    add_compile_definitions(HWACCELS_NVIDIA_ENABLED)
+    include_directories(${CUDA_ROOT}/include)
+    link_directories(${CUDA_ROOT}/lib64)
 
-    if(NV_CUDA_LIB AND NV_CUDART_LIB AND NV_ML_LIB AND NV_NVCC)
-        message(STATUS "[OME] NVIDIA hardware acceleration: ENABLED")
-        add_compile_definitions(HWACCELS_NVIDIA_ENABLED)
-        include_directories(${CUDA_ROOT}/include)
-        link_directories(${CUDA_ROOT}/lib64)
-
-        set(OME_NVIDIA_LIBS cuda nvidia-ml ${NV_CUDART_LIB} rt dl)
-    else()
-        message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but required NVIDIA libraries/tools not found - disabled")
-        set(OME_HWACCEL_NVIDIA OFF)
-    endif()
+    # Use absolute paths from find_library. Some systems install only the
+    # runtime SONAME (libnvidia-ml.so.1) without the linker symlink
+    # (libnvidia-ml.so), so -lnvidia-ml cannot be resolved through
+    # link_directories. The full path side-steps that.
+    set(OME_NVIDIA_LIBS ${NV_CUDA_LIB} ${NV_ML_LIB} ${NV_CUDART_LIB} rt dl)
 
     unset(NV_CUDA_LIB CACHE)
     unset(NV_CUDART_LIB CACHE)

@@ -190,6 +190,34 @@ if(OME_BUILD_TESTS)
         PkgConfig::PKG_SPDLOG
         PkgConfig::PKG_WHISPER
         ${UUID_LIB}
+    )
+
+    # Mirror the optional hardware-acceleration libs that
+    # src/projects/main/CMakeLists.txt links into the main executable so that
+    # test binaries linking the same static archives (e.g. libtranscoder.a)
+    # can resolve CUDA / XMA / NiLogan symbols.
+    if(OME_HWACCEL_NVIDIA)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
+            ${OME_NVIDIA_LIBS}
+            PkgConfig::PKG_FFNVCODEC
+        )
+    endif()
+    if(OME_HWACCEL_XMA AND PKG_LIBXMA2API_FOUND)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
+            PkgConfig::PKG_LIBXMA2API
+            PkgConfig::PKG_XVBM
+            PkgConfig::PKG_LIBXRM
+        )
+    endif()
+    if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
+        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS xcoder_logan)
+    endif()
+
+    # System libraries must come last so that any static archive listed earlier
+    # (e.g. libcudart_static.a from OME_NVIDIA_LIBS) can resolve its references
+    # to pthread / dl / rt against them. Placing them last also keeps
+    # list(REMOVE_DUPLICATES) in ome_add_tests() from dropping a trailing copy.
+    set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
         pthread dl z stdc++fs
     )
 endif()

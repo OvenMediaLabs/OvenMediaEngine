@@ -267,6 +267,10 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int3
 
 void WhisperModelRegistry::DeleteState(whisper_state *state)
 {
+	// Serialized with NewState so whisper_free_state and whisper_init_state
+	// never run concurrently on the shared whisper context.
+	std::lock_guard<std::mutex> lock(_mutex);
+
 	if (state != nullptr)
 	{
 		whisper_free_state(state);

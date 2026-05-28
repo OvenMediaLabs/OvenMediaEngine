@@ -159,6 +159,15 @@ protected:
 	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
 	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 
+	// Cached certificates that must be applied to every HTTPS server in `_https_server_list`.
+	// `InsertCertificate()` can be called before `Start()` constructs the HTTPS servers
+	// (e.g., during the WebRTC provider's `OnCreateHost()` pass that runs between `RegisterModule()` and the later `Bind()`);
+	// without this cache those early inserts would be silently dropped against an empty server list.
+	// Protected by `_http_server_list_mutex`.
+	//
+	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
+	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map;
+
 	std::vector<std::shared_ptr<RtcSignallingObserver>> _observers;
 
 	std::map<peer_id_t, std::shared_ptr<RtcSignallingInfo>> _client_list;

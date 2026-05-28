@@ -167,9 +167,11 @@ bool RtpFrame::CheckCompleted()
 		_completed = true;
 		logtt("Frame completed: timestamp(%u) packets(%zu) need packets(%u)", _timestamp, _packets.size(), need_number_of_packets);
 	}
-	else
+	else if (_incomplete_logged == false)
 	{
-		logte("Invalid frame: timestamp(%u) %zu/%u", _timestamp, _packets.size(), need_number_of_packets);
+		// Marker arrived but packets are still missing. May recover via NACK; log once.
+		_incomplete_logged = true;
+		logtd("Incomplete frame after marker: timestamp(%u) %zu/%u", _timestamp, _packets.size(), need_number_of_packets);
 	}
 
 	return _completed;

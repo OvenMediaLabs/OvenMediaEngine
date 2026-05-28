@@ -10,6 +10,7 @@
 
 #include <whisper.h>
 
+#include <chrono>
 #include <memory>
 
 #include <base/provider/stream.h>
@@ -65,8 +66,10 @@ public:
 	bool InitCodec() override;
 	void CodecThread() override;
 
-	void Pause()  override { _audio_muted.store(true,  std::memory_order_relaxed); }
-	void Resume() override { _audio_muted.store(false, std::memory_order_relaxed); }
+	// Flip the mute flag and wake the codec thread (which may be blocked in
+	// _input_buffer.Dequeue()) so it acts on the transition without waiting for audio.
+	void Pause()  override { _audio_muted.store(true,  std::memory_order_relaxed); _input_buffer.InjectWakeup(); }
+	void Resume() override { _audio_muted.store(false, std::memory_order_relaxed); _input_buffer.InjectWakeup(); }
 	bool IsPaused() const override { return _audio_muted.load(std::memory_order_relaxed); }
 
 	EncoderInfo GetInfo() const override
@@ -85,6 +88,11 @@ private:
 	bool SendVttToProvider(const ov::String &text);
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
 
+	// The per-instance whisper_state is allocated lazily when STT is enabled and
+	// released when disabled, so STT-disabled streams hold no GPU state memory.
+	bool AllocWhisperState();
+	void FreeWhisperState();
+
 	std::atomic<bool> _audio_muted{false};
 
 	int32_t _step_ms = 2000;
@@ -93,7 +101,12 @@ private:
         // Shared model weights: owned by WhisperModelRegistry, reference-counted here.
         std::shared_ptr<whisper_context> _whisper_ctx;
         // Per-instance inference state: isolates all mutable buffers from other instances.
+        // Allocated lazily on enable, released on disable (see CodecThread).
         struct whisper_state * _whisper_state = nullptr;
+        // CUDA device index resolved in InitCodec, reused for lazy state allocation.
+        int32_t _cuda_id = 0;
+        // Throttles whisper_state allocation retries after a failure (e.g. GPU OOM).
+        std::chrono::steady_clock::time_point _last_state_alloc_fail_ts;
 
         int32_t _n_samples_step = 0;
         int32_t _n_samples_length = 0;
