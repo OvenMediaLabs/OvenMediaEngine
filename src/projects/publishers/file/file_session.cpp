@@ -16,6 +16,15 @@
 #include "file_private.h"
 #include "file_macro.h"
 
+#define LOG_PRFX "[%s](Id:%s) - "
+#define LOG_ARGS (GetStream() != nullptr ? GetStream()->GetUri().CStr() : "-"), \
+				 (GetRecord() != nullptr ? GetRecord()->GetId().CStr() : "-")
+#define _logti(fmt, ...) logti(LOG_PRFX fmt, LOG_ARGS, ##__VA_ARGS__)
+#define _logtd(fmt, ...) logtd(LOG_PRFX fmt, LOG_ARGS, ##__VA_ARGS__)
+#define _logtw(fmt, ...) logtw(LOG_PRFX fmt, LOG_ARGS, ##__VA_ARGS__)
+#define _logte(fmt, ...) logte(LOG_PRFX fmt, LOG_ARGS, ##__VA_ARGS__)
+#define _logtt(fmt, ...) logtt(LOG_PRFX fmt, LOG_ARGS, ##__VA_ARGS__)
+
 namespace pub
 {
 	std::shared_ptr<FileSession> FileSession::Create(const std::shared_ptr<pub::Application> &application,
@@ -39,7 +48,7 @@ namespace pub
 
 	FileSession::~FileSession()
 	{
-		logtt("FileSession(%d) has been terminated finally", GetId());
+		_logtt("FileSession(%d) has been terminated finally", GetId());
 		MonitorInstance->OnSessionDisconnected(*GetStream(), PublisherType::File);
 	}
 
@@ -49,7 +58,7 @@ namespace pub
 
 		if (StartRecord() == false)
 		{
-			logte("Failed to start recording. id(%d)", GetId());
+			_logte("Failed to start recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 
 			auto record = GetRecord();
@@ -60,7 +69,7 @@ namespace pub
 			return false;
 		}
 
-		logtt("FileSession(%d) has started.", GetId());
+		_logtt("FileSession(%d) has started.", GetId());
 
 		return Session::Start();
 	}
@@ -69,7 +78,7 @@ namespace pub
 	{
 		if (StopRecord() == false)
 		{
-			logte("Failed to stop recording. id(%d)", GetId());
+			_logte("Failed to stop recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 			auto record = GetRecord();
 			if(record != nullptr)
@@ -79,7 +88,7 @@ namespace pub
 			return false;
 		}
 
-		logtt("FileSession(%d) has stoped", GetId());
+		_logtt("FileSession(%d) has stoped", GetId());
 
 		return Session::Stop();
 	}
@@ -88,7 +97,7 @@ namespace pub
 	{
 		if (StopRecord() == false)
 		{
-			logte("Failed to stop recording. id(%d)", GetId());
+			_logte("Failed to stop recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 			auto record = GetRecord();
 			if(record != nullptr)
@@ -100,7 +109,7 @@ namespace pub
 
 		if (StartRecord() == false)
 		{
-			logte("Failed to start recording. id(%d)", GetId());
+			_logte("Failed to start recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 			auto record = GetRecord();
 			if(record != nullptr)
@@ -118,7 +127,7 @@ namespace pub
 		auto record = GetRecord();
 		if (record == nullptr)
 		{
-			logte("Record information is not set. id(%d)", GetId());
+			_logte("Record information is not set. id(%d)", GetId());
 			return false;
 		}
 
@@ -138,7 +147,7 @@ namespace pub
 
 		if (ov::PathManager::MakeDirectoryRecursive(tmp_real_directory.CStr()) == false)
 		{
-			logte("Could not create directory. path(%s)", tmp_real_directory.CStr());
+			_logte("Could not create directory. path(%s)", tmp_real_directory.CStr());
 
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
@@ -146,18 +155,18 @@ namespace pub
 			return false;
 		}
 
-		logtt("OutputFilePath : %s", record->GetOutputFilePath().CStr());
-		logtt("OutputInfoPath : %s", record->GetOutputInfoPath().CStr());
-		logtt("TmpPath        : %s", record->GetTmpPath().CStr());
-		logtt("TmpDirectory   : %s", tmp_directory.CStr());
-		logtt("TmpRealDirectory   : %s", tmp_real_directory.CStr());
+		_logtt("OutputFilePath : %s", record->GetOutputFilePath().CStr());
+		_logtt("OutputInfoPath : %s", record->GetOutputInfoPath().CStr());
+		_logtt("TmpPath        : %s", record->GetTmpPath().CStr());
+		_logtt("TmpDirectory   : %s", tmp_directory.CStr());
+		_logtt("TmpRealDirectory   : %s", tmp_real_directory.CStr());
 
 		auto writer = CreateWriter();
 		if (writer == nullptr)
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-			logte("Failed to create writer. %s", record->GetInfoString().CStr());
+			_logte("Failed to create writer. %s", record->GetInfoString().CStr());
 			return false;
 		}
 
@@ -165,7 +174,7 @@ namespace pub
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-			logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+			_logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
 			return false;
 		}
 
@@ -206,7 +215,7 @@ namespace pub
 				auto media_track	  = GetStream()->GetTrackByVariant(variant, variant_index);
 				if (media_track == nullptr)
 				{
-					logtw("FileSession(%d) - Could not find track by VariantName: %s : %d", GetId(), variant.CStr(), variant_index);
+					_logtw("Could not find track by VariantName: %s : %d", variant.CStr(), variant_index);
 					continue;
 				}
 
@@ -222,7 +231,7 @@ namespace pub
 				auto media_track = GetStream()->GetTrack(track_id);
 				if (media_track == nullptr)
 				{
-					logtw("FileSession(%d) - Could not find track by TrackId: %d", GetId(), track_id);
+					_logtw("Could not find track by TrackId: %d", track_id);
 					continue;
 				}
 
@@ -233,17 +242,17 @@ namespace pub
 			}
 		}
 
-		logtd("Create temporary file(%s) and default track id(%d)", writer->GetUrl().CStr(), _default_track);
+		_logtd("Create temporary file(%s) and default track id(%d)", writer->GetUrl().CStr(), _default_track);
 
 		if (writer->Start() == false)
 		{
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
-			logte("Failed to start writer. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+			_logte("Failed to start writer. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
 			return false;
 		}
 
-		logtd("Recording Started. %s", record->GetInfoString().CStr());
+		_logtd("Recording Started. %s", record->GetInfoString().CStr());
 
 		return true;
 	}
@@ -294,7 +303,7 @@ namespace pub
 
 				if (ov::PathManager::MakeDirectoryRecursive(output_directory.CStr()) == false)
 				{
-					logte("Could not create directory. path: %s", output_directory.CStr());
+					_logte("Could not create directory. path: %s", output_directory.CStr());
 
 					SetState(SessionState::Error);
 					record->SetState(info::Record::RecordState::Error);
@@ -308,7 +317,7 @@ namespace pub
 
 				if (ov::PathManager::MakeDirectoryRecursive(info_directory.CStr()) == false)
 				{
-					logte("Could not create directory. path: %s", info_directory.CStr());
+					_logte("Could not create directory. path: %s", info_directory.CStr());
 
 					SetState(SessionState::Error);
 					record->SetState(info::Record::RecordState::Error);
@@ -321,7 +330,7 @@ namespace pub
 
 				if (rename(tmp_output_path.CStr(), output_path.CStr()) != 0)
 				{
-					logte("Failed to move file. from: %s to: %s", tmp_output_path.CStr(), output_path.CStr());
+					_logte("Failed to move file. from: %s to: %s", tmp_output_path.CStr(), output_path.CStr());
 
 					SetState(SessionState::Error);
 					record->SetState(info::Record::RecordState::Error);
@@ -329,19 +338,19 @@ namespace pub
 					return false;
 				}
 
-				logtd("Replace the temporary file name with the target file name. from: %s, to: %s", tmp_output_path.CStr(), output_path.CStr());
+				_logtd("Replace the temporary file name with the target file name. from: %s, to: %s", tmp_output_path.CStr(), output_path.CStr());
 
 				// Append recorded information to the information file
 				if (FileExport::GetInstance()->ExportRecordToXml(info_path, record) == false)
 				{
-					logte("Failed to export xml file. path: %s", info_path.CStr());
+					_logte("Failed to export xml file. path: %s", info_path.CStr());
 				}
 
-				logtd("Appends the recording result to the information file. path: %s", info_path.CStr());
+				_logtd("Appends the recording result to the information file. path: %s", info_path.CStr());
 
 				record->SetState(info::Record::RecordState::Stopped);
-				
-				logtd("Recording Completed. %s", record->GetInfoString().CStr());
+
+				_logtd("Recording Completed. %s", record->GetInfoString().CStr());
 								
 				record->IncreaseSequence();
 			}
@@ -371,7 +380,7 @@ namespace pub
 		}
 		catch (const std::bad_any_cast &e)
 		{
-			logtw("An incorrect type of packet was input from the stream. (%s)", e.what());
+			_logtw("An incorrect type of packet was input from the stream. (%s)", e.what());
 
 			return;
 		}
@@ -379,7 +388,7 @@ namespace pub
 		auto record = GetRecord();
 		if (!record)
 		{
-			logte("Record information is not set. id(%d)", GetId());
+			_logte("Record information is not set. id(%d)", GetId());
 			return;
 		}
 
@@ -418,7 +427,7 @@ namespace pub
 			{
 				if (record->UpdateNextScheduleTime() == false)
 				{
-					logte("Failed to update next schedule time. request to stop recording.");
+					_logte("Failed to update next schedule time. request to stop recording.");
 				}
 			}
 			else if (record->GetNextScheduleTime() <= std::chrono::system_clock::now())
@@ -427,7 +436,7 @@ namespace pub
 
 				if (record->UpdateNextScheduleTime() == false)
 				{
-					logte("Failed to update next schedule time. request to stop recording.");
+					_logte("Failed to update next schedule time. request to stop recording.");
 				}
 			}
 		}
@@ -447,7 +456,7 @@ namespace pub
 			{
 				SetState(SessionState::Error);
 				record->SetState(info::Record::RecordState::Error);
-				logte("Failed to write packet. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+				_logte("Failed to write packet. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
 				DestroyWriter();
 
 				return;
@@ -503,7 +512,7 @@ namespace pub
 		auto record = GetRecord();
 		if(!record)
 		{
-			logte("Record information is not set. id(%d)", GetId());
+			_logte("Record information is not set. id(%d)", GetId());
 
 			return "";
 		}
@@ -536,8 +545,8 @@ namespace pub
 		auto record = GetRecord();
 		if(!record)
 		{
-			logte("Record information is not set. id(%d)", GetId());
-			
+			_logte("Record information is not set. id(%d)", GetId());
+
 			return "";
 		}
 
@@ -572,7 +581,7 @@ namespace pub
 			_writer = nullptr;
 		}
 
-		_writer = ffmpeg::Writer::Create();
+		_writer = ffmpeg::Writer::Create(ov::String::FormatString(LOG_PRFX, LOG_ARGS));
 		if (_writer == nullptr)
 		{
 			return nullptr;
@@ -644,25 +653,25 @@ namespace pub
 		auto writer = GetWriter();
 		if (writer == nullptr)
 		{
-			logte("Writer is not created.");
+			_logte("Writer is not created.");
 			return false;
 		}
 
 		// Check already added track
 		if (writer->GetTrackByTrackId(track->GetId()) != nullptr)
 		{
-			logtw("Track already added. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+			_logtw("Track already added. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 			return false;
 		}
 
 		if (IsSupportCodec(output_format, track->GetCodecId()) == false)
 		{
-			logtw("Could not supported codec. trackId: %u, container: %s codec: %s, variantName: %s",
-				  track->GetId(), output_format.CStr(), GetCodecIdString(track->GetCodecId()), track->GetVariantName().CStr());
+			_logtw("Could not supported codec. trackId: %u, container: %s codec: %s, variantName: %s",
+				   track->GetId(), output_format.CStr(), GetCodecIdString(track->GetCodecId()), track->GetVariantName().CStr());
 			return true;
 		}
 
-		logtd("Adding track to writer. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+		_logtd("Adding track to writer. trackId: %d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 
 		SelectDefaultTrack(track);
 
@@ -670,3 +679,6 @@ namespace pub
 	}
 
 }  // namespace pub
+
+#undef LOG_PRFX
+#undef LOG_ARGS
