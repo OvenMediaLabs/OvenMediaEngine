@@ -45,9 +45,9 @@ namespace ffmpeg
 		}
 		
 	public:
-		static std::shared_ptr<Writer> Create();
+		static std::shared_ptr<Writer> Create(const ov::String &log_prefix = "");
 
-		Writer();
+		Writer(const ov::String &log_prefix = "");
 		~Writer();
 
 		static int InterruptCallback(void *opaque);
@@ -125,5 +125,7 @@ namespace ffmpeg
 
 		ov::String _error_message;
 		mutable std::mutex _error_message_lock;
+
+		ov::String _log_prefix;
 	};
 }  // namespace ffmpeg
