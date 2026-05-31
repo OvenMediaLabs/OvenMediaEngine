@@ -440,9 +440,15 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
-					return (!IsThresholdExceeded());
+					return (!IsThresholdExceeded() || _stop);
 				});
-				if (!result || _stop)
+				if (_stop)
+				{
+					logw(LOG_TAG, "[%s] Stop is requested. Failed to enqueue item.", GetInfoString().CStr());
+					delete node;
+					return;
+				}
+				else if (!result)
 				{
 					loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", _urn->ToString().CStr(), _size, _threshold);
 					delete node;
