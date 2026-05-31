@@ -40,11 +40,8 @@ namespace ov
 			std::chrono::steady_clock::time_point _start;
 			bool _urgent = false;
 
-			ManagedQueueNode(const T& value, bool urgent, ManagedQueueNode* next_node = nullptr)
-				: data(value), next(next_node), _start(std::chrono::steady_clock::time_point::min()), _urgent(urgent)
-			{
-				_start = std::chrono::steady_clock::now();
-			}
+			ManagedQueueNode(T value, bool urgent, ManagedQueueNode *next_node = nullptr)
+				: data(std::move(value)), next(next_node), _start(std::chrono::steady_clock::now()), _urgent(urgent) {}
 		};
 
 	public:
@@ -61,16 +58,11 @@ namespace ov
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
-			// Register to the server metrics
-			// If the Unique id is duplicated or memory allocation failed, retry
-			while (true)
-			{
-				SetId(IssueUniqueQueueId());
+			SetId(IssueUniqueQueueId());
 
-				if (MonitorInstance->OnQueueCreated(*this) == true)
-				{
-					break;
-				}
+			if (MonitorInstance->OnQueueCreated(*this) == false)
+			{
+				logw(LOG_TAG, "Failed to register queue to monitor. id:%u", GetId());
 			}
 		}
 
@@ -104,21 +96,17 @@ namespace ov
 			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
 
 			MonitorInstance->OnQueueUpdated(*this);
-		}				
-
-		// Urgent item will be inserted at the front of the queue
-		void Enqueue(const T& item, bool urgent = false, int timeout = Infinite)
-		{
-			auto node = new ManagedQueueNode(item, urgent);
-			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
-
-			EnqueueInternal(node, timeout, pos);
 		}
 
 		// Urgent item will be inserted at the front of the queue
-		void Enqueue(T&& item, bool urgent = false, int timeout = Infinite)
+		void Enqueue(T item, bool urgent = false, int timeout = Infinite)
 		{
-			auto node = new ManagedQueueNode(item, urgent);
+			auto node = new ManagedQueueNode(std::move(item), urgent);
+			if(node == nullptr)
+			{
+				loge(LOG_TAG, "Failed to allocate memory for queue node.");
+				return;
+			}
 			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
 
 			EnqueueInternal(node, timeout, pos);
@@ -280,11 +268,7 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			if (node->_start != std::chrono::steady_clock::time_point::max())
-			{
-				auto current = std::chrono::steady_clock::now();
-				_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(current - node->_start).count() * 0.1;
-			}
+			_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - node->_start).count() * 0.1;
 
 			delete node;
 
