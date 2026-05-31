@@ -101,8 +101,8 @@ namespace ov
 		// Urgent item will be inserted at the front of the queue
 		void Enqueue(T item, bool urgent = false, int timeout = Infinite)
 		{
-			auto node = new ManagedQueueNode(std::move(item), urgent);
-			if(node == nullptr)
+			auto node = new(std::nothrow) ManagedQueueNode(std::move(item), urgent);
+			if (node == nullptr)
 			{
 				loge(LOG_TAG, "Failed to allocate memory for queue node.");
 				return;
@@ -421,16 +421,9 @@ namespace ov
 			EnqueuFrontPos = 0,
 			EnqueuBackPos
 		};
-
 		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqeuePos push_method)
 		{
-			auto unique_lock = std::unique_lock(_mutex);			
-
-			if (!node)
-			{
-				logc(LOG_TAG, "Failed to allocate memory. id:%u", GetId());
-				return;
-			}
+			auto unique_lock = std::unique_lock(_mutex);
 
 			// Update statistics of input message count
 			_input_message_count++;
