@@ -106,7 +106,7 @@ namespace ov
 				loge(LOG_TAG, "Failed to allocate memory for queue node.");
 				return;
 			}
-			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
+			EnqueuePos pos = urgent ? EnqueuePos::EnqueueFrontPos : EnqueuePos::EnqueueBackPos;
 
 			EnqueueInternal(node, timeout, pos);
 		}
@@ -415,12 +415,13 @@ namespace ov
 		// If the queue is full, it waits until the queue is less than the threshold or the timeout expires.
 		// If the timeout expires, the message is dropped.
 		// This is to avoid dropping items when the queue size exceeds the threshold, if it exceeds it momentarily due to jitter.
-		enum EnqeuePos : int8_t
+		enum EnqueuePos : int8_t
 		{
-			EnqueuFrontPos = 0,
-			EnqueuBackPos
+			EnqueueFrontPos = 0,
+			EnqueueBackPos
 		};
-		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqeuePos push_method)
+
+		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqueuePos push_method)
 		{
 			auto unique_lock = std::unique_lock(_mutex);
 
@@ -448,7 +449,7 @@ namespace ov
 				}
 			}
 
-			if (push_method == EnqeuePos::EnqueuBackPos)
+			if (push_method == EnqueuePos::EnqueueBackPos)
 			{
 				PushBack(node);
 			}
