@@ -643,7 +643,7 @@ namespace ov
 		std::condition_variable _condition;
 
 		// Stop flag
-		bool _stop;
+		std::atomic<bool> _stop;
 
 		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
 		// wakeup. Unlike _stop, the queue stays usable.
@@ -654,7 +654,7 @@ namespace ov
 
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold
-		bool _exceed_threshold_and_wait_enabled = false;
+		std::atomic<bool> _exceed_threshold_and_wait_enabled{false};
 	};
 
 }  // namespace ov
