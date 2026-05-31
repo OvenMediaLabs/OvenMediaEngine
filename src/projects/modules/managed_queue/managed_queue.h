@@ -370,6 +370,13 @@ namespace ov
 		// Buffer keeps items for a certain amount of time
 		void SetBufferingDelay(int delay_ms)
 		{
+			auto unique_lock = std::unique_lock(_mutex);
+			if(delay_ms < 0)
+			{
+				logw(LOG_TAG, "[%s] Invalid buffering delay value: %d. Setting to 0.", GetInfoString().CStr(), delay_ms);
+				delay_ms = 0;
+			}
+
 			_buffering_delay = delay_ms;
 		}
 
