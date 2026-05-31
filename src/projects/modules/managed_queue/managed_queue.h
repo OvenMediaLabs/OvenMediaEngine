@@ -25,6 +25,8 @@
 
 namespace ov
 {
+	// Shutdown order: Stop() -> join threads -> delete queue.
+	// Deleting the queue while a thread waits in Dequeue/Front/Back is UB.  The destructor calls Stop() just in case.
 	template <typename T>
 	class ManagedQueue : public info::ManagedQueue
 	{
@@ -68,6 +70,9 @@ namespace ov
 
 		~ManagedQueue()
 		{
+			// Defensive: wake any remaining waiters so they can exit
+			Stop();
+
 			Clear();
 
 			// Unregister to the server metrics

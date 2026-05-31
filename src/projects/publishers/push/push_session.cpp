@@ -273,6 +273,8 @@ namespace pub
 	void PushSession::StopSenderThread()
 	{
 		_sender_stop_flag = true;
+		
+		_sender_packet_queue.InjectWakeup();
 
 		if (_sender_thread.joinable())
 		{
