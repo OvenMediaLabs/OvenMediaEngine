@@ -293,7 +293,7 @@ namespace ov
 		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100ms)
 		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
 		{
-			return _threshold_exceeded_time_in_us >= static_cast<int64_t>(duration.count());
+			return _threshold_exceeded_time_ms >= static_cast<int64_t>(duration.count());
 		}
 
 		// Cleared all items in the queue
@@ -535,7 +535,7 @@ namespace ov
 
 				if (IsThresholdExceeded())
 				{
-					_threshold_exceeded_time_in_us += elapsed_time;
+					_threshold_exceeded_time_ms += elapsed_time;
 
 					// Logging
 					_last_logging_time += elapsed_time;
@@ -551,7 +551,7 @@ namespace ov
 				}
 				else
 				{
-					_threshold_exceeded_time_in_us = 0;
+					_threshold_exceeded_time_ms = 0;
 #if DEBUG
 					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
 #endif					
@@ -571,7 +571,7 @@ namespace ov
 
 			_last_input_message_count = 0;
 			_last_output_message_count = 0;
-			_threshold_exceeded_time_in_us = 0;
+			_threshold_exceeded_time_ms = 0;
 
 			_last_logging_time = 0;
 			_last_logged_peak = 0;
