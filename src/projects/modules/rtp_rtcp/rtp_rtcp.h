@@ -11,12 +11,15 @@
 #include "rtp_frame_jitter_buffer.h"
 #include "rtp_minimal_jitter_buffer.h"
 #include "rtp_receive_statistics.h"
+#include "rtp_nack_generator.h"
+#include "rtp_frame_boundary_detector.h"
 
 
 
 #define RECEIVER_REPORT_CYCLE_MS	500
 #define TRANSPORT_CC_CYCLE_MS		50
 #define SDES_CYCLE_MS 500
+#define NACK_COALESCE_MS			10
 
 class RtpRtcpInterface : public ov::EnableSharedFromThis<RtpRtcpInterface>
 {
@@ -48,6 +51,10 @@ public:
 		uint32_t mid_extension_id = 0;
 		std::optional<ov::String> rid;
 		uint32_t rid_extension_id = 0;
+		// Extension id for `repaired-rtp-stream-id` carried on RTX packets
+		// (libwebrtc simulcast). When set, FindTrackId(packet) also matches
+		// mid + rrid where rrid equals this track's `rid`.
+		uint32_t rrid_extension_id = 0;
 
 	private:
 		uint32_t track_id = 0;
@@ -64,6 +71,30 @@ public:
 	bool SendRtpPacket(const std::shared_ptr<RtpPacket> &packet);
 	bool SendPLI(uint32_t track_id);
 	bool SendFIR(uint32_t track_id);
+
+	// Enable receive-side NACK for the given track. Creates a per-track
+	// RtpNackGenerator that observes incoming sequence numbers and drives
+	// outbound NACK feedback. max_hold_ms is the upper bound for the
+	// jitter buffer hold time recommendation (operator-tunable latency budget).
+	bool EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms);
+
+	// Register an RTX stream so that RTP packets arriving on rtx_ssrc with
+	// rtx_payload_type are unwrapped (RFC 4588) and re-injected as original
+	// (media_ssrc, original_payload_type) before depacketization.
+	bool RegisterRtxStream(uint32_t rtx_ssrc, uint32_t media_ssrc,
+						   uint8_t rtx_payload_type, uint8_t original_payload_type);
+
+	// Register an RTX payload type pairing. When an RTP packet arrives with
+	// this payload type on an unknown SSRC (typical for simulcast WHIP where
+	// browsers don't declare ssrc-group:FID in SDP), it is detected as RTX,
+	// the original track is resolved via mid/rid extension, and the RTX SSRC
+	// is cached for subsequent packets.
+	bool RegisterRtxPayloadType(uint8_t rtx_payload_type, uint8_t original_payload_type);
+
+	// Register negotiated Dependency Descriptor extension id (video m-line scope).
+	// Call only when DD was negotiated; otherwise the detector falls back to
+	// the codec's RTP payload header parse.
+	bool SetDependencyDescriptorExtId(uint8_t dd_extension_id);
 
 	bool IsTransportCcFeedbackEnabled() const;
 	bool EnableTransportCcFeedback(uint8_t extension_id);
@@ -83,6 +114,20 @@ public:
 private:
 	bool OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
 	bool OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
+
+	bool SendNACK(uint32_t track_id, const std::vector<uint16_t> &lost_ids);
+
+	// Coalesced NACK flush for a single track. Sends if the coalescing
+	// window has elapsed; otherwise no-op.
+	void FlushNackIfDue(uint32_t track_id, const std::shared_ptr<RtpNackGenerator> &generator);
+
+	// RTX (RFC 4588) detection + unwrap. On entry, packet is the raw RTP
+	// packet from the wire. On Unwrapped return, packet has been replaced
+	// with the original media packet (PT/SSRC/seq restored). Drop indicates
+	// the input was RTX but should not be processed further (padding-only
+	// probe, PT mismatch, unresolved track).
+	enum class RtxResult { NotRtx, Unwrapped, Drop };
+	RtxResult TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet);
 
 	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint8_t payload_type);
 
@@ -118,6 +163,27 @@ private:
 	// Receiver SSRC (For RTCP RR, FIR... etc)
 	// track_id : Receiver Statistics
 	std::unordered_map<uint32_t, std::shared_ptr<RtpReceiveStatistics>> _receive_statistics;
+
+	// Per-track receive-side NACK generator.
+	std::unordered_map<uint32_t, std::shared_ptr<RtpNackGenerator>> _nack_generators;
+	std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> _last_nack_flush_at;
+
+	// Negotiated DD extension id (0 = not negotiated). The detector falls
+	// back to codec payload parse when 0.
+	uint8_t _dd_extension_id = 0;
+
+	// RTX SSRC -> {media_ssrc, rtx_pt, original_pt}
+	struct RtxStreamInfo
+	{
+		uint32_t media_ssrc;
+		uint8_t rtx_payload_type;
+		uint8_t original_payload_type;
+	};
+	std::unordered_map<uint32_t /*rtx_ssrc*/, RtxStreamInfo> _rtx_streams;
+
+	// rtx_pt -> original_pt, set up from negotiated SDP to detect RTX packets
+	// dynamically when the RTX SSRC isn't pre-declared (simulcast WHIP).
+	std::unordered_map<uint8_t /*rtx_pt*/, uint8_t /*original_pt*/> _rtx_pt_to_original;
 
 	// Transport-cc feedback
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> _transport_cc_generator = nullptr;

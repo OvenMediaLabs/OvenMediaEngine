@@ -134,6 +134,9 @@ public:
 	void		SetFirstPacketOfFrame(bool flag) {_is_first_packet_of_frame = flag;}
 	bool		IsFirstPacketOfFrame() const {return _is_first_packet_of_frame;}
 
+	void		SetLastPacketOfFrame(bool flag) {_is_last_packet_of_frame = flag;}
+	bool		IsLastPacketOfFrame() const {return _is_last_packet_of_frame;}
+
 	void		SetRtspChannel(uint32_t rtsp_channel) {_rtsp_channel = rtsp_channel;}
 	uint32_t	GetRtspChannel() const {return _rtsp_channel;}
 
@@ -176,6 +179,7 @@ protected:
 	bool		_is_video_packet = false;
 	bool		_is_keyframe = false;
 	bool		_is_first_packet_of_frame = false;
+	bool		_is_last_packet_of_frame = false;
 
 	uint32_t	_rtsp_channel = 0; // If it is from RTSP, _rtsp_channel is valid
 };
