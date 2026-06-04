@@ -37,7 +37,7 @@ Add `<WebRTC>` under `<Bind><Publishers>` in `Server.xml`:
             <!-- ${PublicIP} is auto-resolved via <StunServer> at startup.             -->
             <!-- UDP ICE scales by PORT count: each UDP port is serviced by one thread.  -->
             <!-- Use a port range (~4) to spread UDP ICE across cores.                   -->
-            <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 ports = 4 UDP ICE threads -->
+            <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
             <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>   <!-- Direct TCP ICE (RFC 6544) -->
             <TcpRelay>${PublicIP}:3478</TcpRelay>               <!-- TURN relay (WebRTC/TCP via TURN) -->
             <TcpRelayForce>false</TcpRelayForce>
@@ -86,10 +86,10 @@ OvenMediaEngine handles each transport type independently, but they scale across
 | `<TcpIceWorkerCount>` | 1 | Direct TCP ICE (RFC 6544). Connections on one port are distributed across this many threads. |
 | `<TcpRelayWorkerCount>` | 1 | TURN relay. Connections on one port are distributed across this many threads. |
 
-**UDP ICE scales by the number of ports.** Each UDP port is bound to a single socket and serviced by a single thread, so one UDP port uses a single CPU core. To spread UDP ICE across CPU cores, advertise a range of UDP ports:
+**UDP ICE scales by the number of ports.** Each UDP port binds one socket per advertised IP, each serviced by a single thread, so a single UDP port is handled by one thread. To spread UDP ICE across CPU cores, advertise a range of UDP ports:
 
 ```xml
-<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 ports = 4 UDP ICE threads -->
+<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
 ```
 
 Each port in the range is bound separately and assigned to its own thread. Around 4 ports is a good starting point on a multi-core server.

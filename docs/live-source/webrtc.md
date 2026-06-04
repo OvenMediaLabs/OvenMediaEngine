@@ -29,7 +29,7 @@ OvenMediaEngine supports WebRTC ingest from web browsers and any encoder that im
     </Signalling>
     <IceCandidates>
         <!-- UDP ICE scales by port count: each port is handled by one thread. Use a range (~4) to spread across cores. -->
-        <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 ports = 4 UDP ICE threads -->
+        <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
         <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>  <!-- Direct TCP ICE (RFC 6544) -->
         <TcpRelay>${PublicIP}:3478</TcpRelay>              <!-- TURN relay -->
         <TcpRelayForce>false</TcpRelayForce>
@@ -77,10 +77,10 @@ OvenMediaEngine handles each transport type independently, but they scale across
 | `<TcpIceWorkerCount>` | 1 | Direct TCP ICE (RFC 6544). Connections on one port are distributed across this many threads. |
 | `<TcpRelayWorkerCount>` | 1 | TURN relay. Connections on one port are distributed across this many threads. |
 
-**UDP ICE scales by the number of ports.** Each UDP port is bound to a single socket and serviced by a single thread, so one UDP port uses a single CPU core. To spread UDP ICE across CPU cores, advertise a range of UDP ports. Around 4 is a good starting point on a multi-core server:
+**UDP ICE scales by the number of ports.** Each UDP port binds one socket per advertised IP, each serviced by a single thread, so a single UDP port is handled by one thread. To spread UDP ICE across CPU cores, advertise a range of UDP ports. Around 4 is a good starting point on a multi-core server:
 
 ```xml
-<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 ports = 4 UDP ICE threads -->
+<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
 ```
 
 Direct TCP ICE and TURN relay are connection-oriented. A single port accepts many connections that are distributed across `<TcpIceWorkerCount>` / `<TcpRelayWorkerCount>` threads, so those scale on one port without adding ports.
