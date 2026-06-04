@@ -339,17 +339,25 @@ bool RtpRtcp::SendNACK(uint32_t track_id, const std::vector<uint16_t> &lost_ids)
 void RtpRtcp::FlushNackIfDue(uint32_t track_id, const std::shared_ptr<RtpNackGenerator> &generator)
 {
 	auto now = std::chrono::steady_clock::now();
-	auto last_flush = _last_nack_flush_at[track_id];
-	if (now - last_flush < std::chrono::milliseconds(NACK_COALESCE_MS))
+
+	// Coalescing-window check + watermark update under a dedicated lock, since
+	// the receive path only holds a shared_lock on _state_lock. Stamp the
+	// watermark before sending so concurrent receives don't double-flush.
 	{
-		return;
+		std::lock_guard<std::mutex> lock(_last_nack_flush_at_lock);
+		auto it = _last_nack_flush_at.find(track_id);
+		if (it != _last_nack_flush_at.end() && (now - it->second) < std::chrono::milliseconds(NACK_COALESCE_MS))
+		{
+			return;
+		}
+		_last_nack_flush_at[track_id] = now;
 	}
+
 	auto lost_ids = generator->BuildPendingNack();
 	if (lost_ids.empty() == false)
 	{
 		SendNACK(track_id, lost_ids);
 	}
-	_last_nack_flush_at[track_id] = now;
 }
 
 bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms)
@@ -357,7 +365,10 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 	std::lock_guard<std::shared_mutex> lock(_state_lock);
 	auto generator = std::make_shared<RtpNackGenerator>(track_id, media_ssrc, max_hold_ms);
 	_nack_generators[track_id] = generator;
-	_last_nack_flush_at[track_id] = std::chrono::steady_clock::now();
+	{
+		std::lock_guard<std::mutex> flush_lock(_last_nack_flush_at_lock);
+		_last_nack_flush_at[track_id] = std::chrono::steady_clock::now();
+	}
 
 	// Wire dynamic hold window into the matching frame jitter buffer. The
 	// jitter buffer uses NACK-driven RTX latency stats to decide how long
@@ -372,6 +383,9 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 			auto gen = weak_gen.lock();
 			return gen ? gen->GetRecommendedHoldMs() : 0;
 		});
+		// MaxHoldMs is the operator's latency ceiling for the whole hold,
+		// not just the NACK/RTX RTT component.
+		buf_it->second->SetMaxHoldMs(max_hold_ms);
 		buf_it->second->SetOnProcessedSeqAdvance([weak_gen](uint16_t max_seq) {
 			auto gen = weak_gen.lock();
 			if (gen) gen->DropPendingUpTo(max_seq);

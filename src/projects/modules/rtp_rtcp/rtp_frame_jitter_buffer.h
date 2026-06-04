@@ -82,6 +82,11 @@ public:
 	// legacy "drop incomplete predecessor on next complete" behavior.
 	void SetHoldMsProvider(std::function<uint32_t()> provider) { _hold_ms_provider = std::move(provider); }
 
+	// Upper bound for the total hold (the operator's MaxHoldMs latency budget).
+	// 0 = no cap. Clamps CurrentHoldMs so the frame-interval margin can't push
+	// the hold past the configured ceiling.
+	void SetMaxHoldMs(uint32_t max_hold_ms) { _max_hold_ms = max_hold_ms; }
+
 	// RTP clock rate of the track. Used to convert RTP timestamp deltas
 	// between consecutive frames into milliseconds for the frame interval
 	// estimate. Must be set before frames start flowing.
@@ -123,6 +128,7 @@ private:
 	std::function<void(uint16_t)> _on_processed_seq_advance;
 	std::function<std::optional<uint16_t>()> _lowest_pending_seq_provider;
 	uint32_t _clock_rate = 0;
+	uint32_t _max_hold_ms = 0;  // 0 = no cap
 
 	bool _has_processed_seq = false;
 	uint16_t _last_processed_max_seq = 0;

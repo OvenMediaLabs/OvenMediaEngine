@@ -165,6 +165,23 @@ TEST(RtpFrameJitterBuffer, HoldsIncompleteHeadUntilTimeout)
 	EXPECT_TRUE(buf.HasAvailableFrame());
 }
 
+TEST(RtpFrameJitterBuffer, MaxHoldCapsTotalHold)
+{
+	// Without a cap the hold would be provider(50) + 4*dev(seed 50) ~= 250ms.
+	// SetMaxHoldMs(60) caps the total, so the incomplete head is discarded and
+	// the later frame flows well before 250ms.
+	RtpFrameJitterBuffer buf;
+	buf.SetClockRate(kClockRate);
+	buf.SetHoldMsProvider([] { return 50u; });
+	buf.SetMaxHoldMs(60);
+	buf.InsertPacket(MakeStampedPacket(100, true, false));   // F1 incomplete (no end)
+	buf.InsertPacket(MakeStampedPacket(102, true, true, kTimestamp + 3000));   // F2 complete
+
+	EXPECT_FALSE(buf.HasAvailableFrame());   // within the 60ms cap
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	EXPECT_TRUE(buf.HasAvailableFrame());    // released at the capped hold, far below 250ms
+}
+
 TEST(RtpFrameJitterBuffer, AdvanceProcessedSeqFiresOnEmit)
 {
 	RtpFrameJitterBuffer buf;

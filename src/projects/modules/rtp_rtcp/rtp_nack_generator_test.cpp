@@ -136,11 +136,11 @@ TEST(RtpNackGenerator, InitialRecommendedHoldUsesGuessClampedToMin)
 // MaxHoldMs constructor argument clamps GetRecommendedHoldMs upper bound.
 TEST(RtpNackGenerator, MaxHoldClamps)
 {
-	RtpNackGenerator gen(kTrackId, kSsrc, 80);
-	// Force stats to a very large value to test clamp.
-	// (Indirect: we can't poke private members here; instead just verify
-	// default path still respects the cap when initialized.)
-	EXPECT_LE(gen.GetRecommendedHoldMs(), 150u);  // default first
+	// Initial hold = dwell(10) + retries(5) * RTT_guess(15) + 4 * dev(0) = 85,
+	// which exceeds the 80ms cap, so the clamp is exercised here.
+	RtpNackGenerator gen(kTrackId, kSsrc, /*max_hold_ms=*/80);
+	EXPECT_LE(gen.GetRecommendedHoldMs(), 80u);
+	EXPECT_GE(gen.GetRecommendedHoldMs(), RtpNackGenerator::HOLD_MIN_MS);
 }
 
 // Retry interval respects ewma. Build twice within the interval -> only the

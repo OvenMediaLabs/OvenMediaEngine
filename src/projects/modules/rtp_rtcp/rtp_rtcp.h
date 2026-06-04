@@ -170,6 +170,11 @@ private:
 	std::unordered_map<uint32_t, std::shared_ptr<RtpNackGenerator>> _nack_generators;
 	std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> _last_nack_flush_at;
 
+	// _last_nack_flush_at is updated on the receive path (FlushNackIfDue) under
+	// only a shared_lock on _state_lock, so it needs its own mutex to serialize
+	// concurrent receives (operator[] can insert/rehash).
+	std::mutex _last_nack_flush_at_lock;
+
 	// Negotiated DD extension id (0 = not negotiated). The detector falls
 	// back to codec payload parse when 0.
 	uint8_t _dd_extension_id = 0;

@@ -162,9 +162,17 @@ uint32_t RtpFrameJitterBuffer::CurrentHoldMs()
 	// a 4*dev margin so a publisher pacing burst (BWE throttle, encoder
 	// stall, variable fps) doesn't trip a discard before the next packet
 	// arrives. Same shape as the EWMA + 4*dev rule used inside NackGen.
-	return _hold_ms_provider()
-		 + _frame_interval_ms
-		 + 4 * _frame_interval_dev_ms;
+	uint32_t hold = _hold_ms_provider()
+				  + _frame_interval_ms
+				  + 4 * _frame_interval_dev_ms;
+
+	// Cap the total to the configured MaxHoldMs so the frame-interval margin
+	// can't push the hold past the operator's latency budget.
+	if (_max_hold_ms != 0 && hold > _max_hold_ms)
+	{
+		hold = _max_hold_ms;
+	}
+	return hold;
 }
 
 void RtpFrameJitterBuffer::UpdateFrameIntervalEstimate(uint32_t rtp_ts)
