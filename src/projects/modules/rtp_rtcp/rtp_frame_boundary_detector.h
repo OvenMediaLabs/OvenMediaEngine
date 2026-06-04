@@ -3,11 +3,12 @@
 #include <base/info/media_track.h>
 #include "rtp_packet.h"
 
-// Stateless helper that stamps IsFirstPacketOfFrame and IsLastPacketOfFrame
-// on an incoming RTP packet using either the AV1 Dependency Descriptor RTP
-// header extension (when negotiated) or the codec-specific RTP payload
-// header. End-of-frame defaults to the RTP marker bit, refined by DD's E bit
-// when present.
+// Stateless helper that stamps frame boundary flags on an incoming RTP packet.
+//   - With the Dependency Descriptor present, the S/E bits give the
+//     authoritative frame start (IsFirstPacketOfFrame) and end.
+//   - Without it, the codec-specific payload header only reveals NAL/unit
+//     starts (IsStartOfUnit); the jitter buffer derives the frame start from
+//     the lowest one. End-of-frame defaults to the RTP marker bit.
 //
 // Returns false when the packet cannot be parsed (e.g. truncated payload,
 // reserved/invalid nal type). The caller is expected to drop such packets.

@@ -27,7 +27,10 @@ std::shared_ptr<RtpPacket> MakeStampedPacket(uint16_t seq, bool first, bool last
 	p->SetMarker(last);
 	uint8_t pl[4] = {0x21, 0x00, 0x00, 0x00};
 	p->SetPayload(pl, sizeof(pl));
-	p->SetFirstPacketOfFrame(first);
+	// Simulate the codec fallback path: a NAL/unit start (StartOfUnit). A
+	// multi-NAL access unit sets it on several packets; the buffer keeps the
+	// lowest as the frame start.
+	p->SetStartOfUnit(first);
 	p->SetLastPacketOfFrame(last);
 	return p;
 }
@@ -78,6 +81,30 @@ TEST(RtpFrame, CompletesAcrossSeqWrap)
 	EXPECT_TRUE(frame.IsCompleted());
 }
 
+TEST(RtpFrame, KeepsEarliestStartWhenMultipleFirstFlags)
+{
+	// A multi-NAL access unit flags several packets as "first" (e.g. STAP-A
+	// then FU-A start). The earliest must win, otherwise the frame is judged
+	// from the later NAL and never reaches its true packet count.
+	RtpFrame frame(kTimestamp);
+	frame.InsertPacket(MakeStampedPacket(100, /*first=*/true, false));   // STAP-A (SPS/PPS)
+	frame.InsertPacket(MakeStampedPacket(101, /*first=*/true, false));   // FU-A IDR start
+	frame.InsertPacket(MakeStampedPacket(102, false, /*last=*/true));
+	EXPECT_TRUE(frame.IsCompleted());
+	EXPECT_EQ(frame.GetFirstSequenceNumber(), 100);
+}
+
+TEST(RtpFrame, KeepsEarliestStartAcrossReorder)
+{
+	// Same as above but the later NAL's packet arrives first.
+	RtpFrame frame(kTimestamp);
+	frame.InsertPacket(MakeStampedPacket(101, /*first=*/true, false));
+	frame.InsertPacket(MakeStampedPacket(100, /*first=*/true, false));
+	frame.InsertPacket(MakeStampedPacket(102, false, /*last=*/true));
+	EXPECT_TRUE(frame.IsCompleted());
+	EXPECT_EQ(frame.GetFirstSequenceNumber(), 100);
+}
+
 TEST(RtpFrame, GetMaxReceivedSeqTracksHighest)
 {
 	RtpFrame frame(kTimestamp);
@@ -125,15 +152,16 @@ TEST(RtpFrameJitterBuffer, HoldsIncompleteHeadUntilTimeout)
 {
 	RtpFrameJitterBuffer buf;
 	buf.SetClockRate(kClockRate);
-	buf.SetHoldMsProvider([] { return 50u; });   // 50ms NACK hold
+	buf.SetHoldMsProvider([] { return 50u; });
 	buf.InsertPacket(MakeStampedPacket(100, true, false));   // F1 first only
 	buf.InsertPacket(MakeStampedPacket(102, true, true, kTimestamp + 3000));   // F2 single packet
 
 	// Within hold: F1 still present, F2 should not be emitted yet.
 	EXPECT_FALSE(buf.HasAvailableFrame());
 
-	// After hold expires: F1 discarded, F2 emitted.
-	std::this_thread::sleep_for(std::chrono::milliseconds(60));
+	// Effective hold = provider(50) + frame-interval mean(0) + 4*dev(seed 50)
+	// ~= 250ms, so sleep well past it before expecting F1 to be discarded.
+	std::this_thread::sleep_for(std::chrono::milliseconds(320));
 	EXPECT_TRUE(buf.HasAvailableFrame());
 }
 
@@ -184,7 +212,9 @@ TEST(RtpFrameJitterBuffer, HeadHoldExpiresEventually)
 	buf.InsertPacket(MakeStampedPacket(28255, true, true, kTimestamp));
 
 	EXPECT_FALSE(buf.HasAvailableFrame());
-	std::this_thread::sleep_for(std::chrono::milliseconds(40));
+	// Effective hold = provider(30) + frame-interval mean(0) + 4*dev(seed 50)
+	// ~= 230ms; sleep past it so the head releases despite the lower pending.
+	std::this_thread::sleep_for(std::chrono::milliseconds(320));
 	EXPECT_TRUE(buf.HasAvailableFrame()) << "hold should release once timer elapses even with lower pending";
 }
 

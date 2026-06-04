@@ -14,6 +14,8 @@
 #include "rtp_nack_generator.h"
 #include "rtp_frame_boundary_detector.h"
 
+#include <mutex>
+
 
 
 #define RECEIVER_REPORT_CYCLE_MS	500
@@ -180,6 +182,11 @@ private:
 		uint8_t original_payload_type;
 	};
 	std::unordered_map<uint32_t /*rtx_ssrc*/, RtxStreamInfo> _rtx_streams;
+
+	// _rtx_streams is learned on the receive path (TryUnwrapRtx) while only a
+	// shared_lock on _state_lock is held, so it needs its own mutex: a shared
+	// lock allows concurrent readers, and a map write racing a reader is UB.
+	std::mutex _rtx_streams_lock;
 
 	// rtx_pt -> original_pt, set up from negotiated SDP to detect RTX packets
 	// dynamically when the RTX SSRC isn't pre-declared (simulcast WHIP).

@@ -12,6 +12,7 @@
 #include "base/ovlibrary/converter.h"
 #include "base/ovlibrary/random.h"
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
+#include "modules/rtp_rtcp/rtp_header_extension/rtp_header_extension.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
 #include "webrtc_provider.h"
@@ -328,13 +329,14 @@ namespace pvd
 		}
 
 		// Register DD ext id only when the extension was negotiated. Without
-		// it the detector falls back to codec payload parse.
+		// it (or when a sender advertises but never stamps it), the jitter
+		// buffer falls back to sequence-number continuity.
 		if (track->GetMediaType() == cmn::MediaType::Video)
 		{
 			uint8_t dd_ext_id = 0;
 			ov::String dd_uri;
 			if (answer_media_desc->FindExtmapItem(
-					"https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension",
+					RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE,
 					dd_ext_id, dd_uri))
 			{
 				_rtp_rtcp->SetDependencyDescriptorExtId(dd_ext_id);
@@ -350,8 +352,14 @@ namespace pvd
 			auto app = GetApplication();
 			if (app != nullptr)
 			{
-				max_hold_ms = static_cast<uint32_t>(
-					app->GetConfig().GetProviders().GetWebrtcProvider().GetRtx().GetMaxHoldMs());
+				// MaxHoldMs is a signed config value; a negative/zero
+				// misconfiguration would wrap to a huge cap and disable the
+				// latency bound, so fall back to the default in that case.
+				int configured = app->GetConfig().GetProviders().GetWebrtcProvider().GetRtx().GetMaxHoldMs();
+				if (configured > 0)
+				{
+					max_hold_ms = static_cast<uint32_t>(configured);
+				}
 			}
 			_rtp_rtcp->EnableNack(track->GetId(), media_ssrc, max_hold_ms);
 

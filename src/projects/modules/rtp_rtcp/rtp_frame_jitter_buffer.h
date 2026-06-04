@@ -7,11 +7,12 @@
 #include <unordered_map>
 
 // One frame's worth of RTP packets, identified by a common RTP timestamp.
-// Completeness is decided strictly from packet flags stamped by
-// RtpFrameBoundaryDetector:
-//   - IsFirstPacketOfFrame: anchors the true start sequence number.
-//   - IsLastPacketOfFrame:  anchors the end sequence number.
-// A frame is complete when both flags are seen and every sequence number
+// Completeness is decided from packet flags stamped by RtpFrameBoundaryDetector:
+//   - start: IsFirstPacketOfFrame (authoritative, from DD) or IsStartOfUnit
+//     (NAL/unit starts, from codec parse); the earliest such sequence number
+//     is taken as the frame start.
+//   - end:   IsLastPacketOfFrame (RTP marker / DD E bit).
+// A frame is complete when both ends are known and every sequence number
 // between start and end (inclusive, with uint16 wrap) is present.
 class RtpFrame
 {

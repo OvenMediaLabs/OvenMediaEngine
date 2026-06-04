@@ -1,5 +1,7 @@
 #include "rtp_frame_boundary_detector.h"
 
+#include "rtp_header_extension/rtp_header_extension_dependency_descriptor.h"
+
 #define OV_LOG_TAG "RtpFrameBoundary"
 
 bool RtpFrameBoundaryDetector::Apply(RtpPacket &packet, cmn::MediaCodecId codec, uint8_t dd_extension_id)
@@ -17,9 +19,12 @@ bool RtpFrameBoundaryDetector::Apply(RtpPacket &packet, cmn::MediaCodecId codec,
 			return false;
 	}
 
-	// Default end-of-frame is the RTP marker bit; DD or codec parse may
-	// override (DD's E bit takes precedence when present).
+	// Defaults: end-of-frame is the RTP marker bit. With DD present the S/E
+	// bits give the authoritative frame start/end; without it the codec parse
+	// only marks NAL/unit starts (StartOfUnit) and the jitter buffer derives
+	// the frame start from the lowest one.
 	packet.SetFirstPacketOfFrame(false);
+	packet.SetStartOfUnit(false);
 	packet.SetLastPacketOfFrame(packet.Marker());
 
 	if (dd_extension_id != 0 && TryDependencyDescriptor(packet, dd_extension_id))
@@ -42,18 +47,24 @@ bool RtpFrameBoundaryDetector::Apply(RtpPacket &packet, cmn::MediaCodecId codec,
 	}
 }
 
-// AV1 Dependency Descriptor: first byte's MSB pair is [S][E].
-// Spec: https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension
+// Dependency Descriptor: the mandatory descriptor's S/E bits give the true
+// frame start and end. Parsed via the dedicated extension class.
 bool RtpFrameBoundaryDetector::TryDependencyDescriptor(RtpPacket &packet, uint8_t dd_extension_id)
 {
 	auto ext = packet.GetExtension(dd_extension_id);
-	if (ext.has_value() == false || ext.value().GetLength() < 1)
+	if (ext.has_value() == false)
 	{
 		return false;
 	}
-	uint8_t b = ext.value().GetDataAs<uint8_t>()[0];
-	packet.SetFirstPacketOfFrame((b & 0x80) != 0);
-	packet.SetLastPacketOfFrame((b & 0x40) != 0);
+
+	RtpHeaderExtensionDependencyDescriptor dd(dd_extension_id);
+	if (dd.SetData(ext.value().Clone()) == false)
+	{
+		return false;
+	}
+
+	packet.SetFirstPacketOfFrame(dd.IsStartOfFrame());
+	packet.SetLastPacketOfFrame(dd.IsEndOfFrame());
 	return true;
 }
 
@@ -75,12 +86,12 @@ bool RtpFrameBoundaryDetector::ApplyH264(RtpPacket &packet)
 
 	if (nal_type >= 1 && nal_type <= 23)
 	{
-		packet.SetFirstPacketOfFrame(true);
+		packet.SetStartOfUnit(true);
 		return true;
 	}
 	if (nal_type >= 24 && nal_type <= 27)
 	{
-		packet.SetFirstPacketOfFrame(true);
+		packet.SetStartOfUnit(true);
 		return true;
 	}
 	if (nal_type == 28 || nal_type == 29)
@@ -89,7 +100,7 @@ bool RtpFrameBoundaryDetector::ApplyH264(RtpPacket &packet)
 		{
 			return false;
 		}
-		packet.SetFirstPacketOfFrame((payload[1] & 0x80) != 0);
+		packet.SetStartOfUnit((payload[1] & 0x80) != 0);
 		return true;
 	}
 	return false;
@@ -113,7 +124,7 @@ bool RtpFrameBoundaryDetector::ApplyH265(RtpPacket &packet)
 
 	if (nal_type < 48 || nal_type == 48 || nal_type == 50)
 	{
-		packet.SetFirstPacketOfFrame(true);
+		packet.SetStartOfUnit(true);
 		return true;
 	}
 	if (nal_type == 49)
@@ -122,7 +133,7 @@ bool RtpFrameBoundaryDetector::ApplyH265(RtpPacket &packet)
 		{
 			return false;
 		}
-		packet.SetFirstPacketOfFrame((payload[2] & 0x80) != 0);
+		packet.SetStartOfUnit((payload[2] & 0x80) != 0);
 		return true;
 	}
 	return false;
@@ -142,7 +153,7 @@ bool RtpFrameBoundaryDetector::ApplyVp8(RtpPacket &packet)
 	uint8_t pd = payload[0];
 	bool s = (pd & 0x10) != 0;
 	uint8_t pid = pd & 0x07;
-	packet.SetFirstPacketOfFrame(s && pid == 0);
+	packet.SetStartOfUnit(s && pid == 0);
 	return true;
 }
 
@@ -160,6 +171,6 @@ bool RtpFrameBoundaryDetector::ApplyAv1(RtpPacket &packet)
 	}
 
 	uint8_t agg = payload[0];
-	packet.SetFirstPacketOfFrame((agg & 0x80) == 0);
+	packet.SetStartOfUnit((agg & 0x80) == 0);
 	return true;
 }

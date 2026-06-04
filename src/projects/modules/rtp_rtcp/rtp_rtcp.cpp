@@ -233,19 +233,25 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 	uint8_t original_pt = 0;
 	uint32_t media_ssrc = 0;
 	bool learned = false;
+	bool known = false;
 
-	auto rtx_it = _rtx_streams.find(rtx_ssrc);
-	if (rtx_it != _rtx_streams.end())
 	{
-		if (packet->PayloadType() != rtx_it->second.rtx_payload_type)
+		std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+		auto rtx_it = _rtx_streams.find(rtx_ssrc);
+		if (rtx_it != _rtx_streams.end())
 		{
-			logtt("Drop packet on RTX SSRC %u with non-RTX PT %u", rtx_ssrc, packet->PayloadType());
-			return RtxResult::Drop;
+			if (packet->PayloadType() != rtx_it->second.rtx_payload_type)
+			{
+				logtt("Drop packet on RTX SSRC %u with non-RTX PT %u", rtx_ssrc, packet->PayloadType());
+				return RtxResult::Drop;
+			}
+			original_pt = rtx_it->second.original_payload_type;
+			media_ssrc = rtx_it->second.media_ssrc;
+			known = true;
 		}
-		original_pt = rtx_it->second.original_payload_type;
-		media_ssrc = rtx_it->second.media_ssrc;
 	}
-	else
+
+	if (known == false)
 	{
 		auto pt_it = _rtx_pt_to_original.find(packet->PayloadType());
 		if (pt_it == _rtx_pt_to_original.end())
@@ -285,7 +291,10 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 
 	if (learned)
 	{
-		_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, packet->PayloadType(), original_pt};
+		{
+			std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+			_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, packet->PayloadType(), original_pt};
+		}
 		logti("Learned RTX stream rtx_ssrc(%u) -> media_ssrc(%u) pt(%u->%u)",
 			  rtx_ssrc, media_ssrc, packet->PayloadType(), original_pt);
 	}
@@ -381,7 +390,9 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 bool RtpRtcp::RegisterRtxStream(uint32_t rtx_ssrc, uint32_t media_ssrc,
 								 uint8_t rtx_payload_type, uint8_t original_payload_type)
 {
-	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	// Guarded by its own lock (not _state_lock) so it stays consistent with
+	// the receive-path learned write in TryUnwrapRtx.
+	std::lock_guard<std::mutex> lock(_rtx_streams_lock);
 	_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, rtx_payload_type, original_payload_type};
 	logti("RegisterRtxStream rtx_ssrc(%u) media_ssrc(%u) rtx_pt(%u) orig_pt(%u)",
 		  rtx_ssrc, media_ssrc, rtx_payload_type, original_payload_type);

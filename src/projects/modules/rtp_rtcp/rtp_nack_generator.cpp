@@ -271,7 +271,8 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 		dropped++;
 		it = _pending.erase(it);
 	}
-	// TEMP: debug log to verify jitter buffer -> NackGen sync.
+	// One line per jitter-buffer-driven drop so recovery rate and NACK->RTX
+	// timing can be traced against the buffer's processed-seq advances.
 	if (dropped > 0)
 	{
 		double avg_retry = static_cast<double>(total_retry) / static_cast<double>(dropped);
@@ -286,6 +287,13 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 
 void RtpNackGenerator::UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now)
 {
+	// A latency that rounds down to 0ms would drive _ewma_ms to 0 and make the
+	// retry interval 0, retrying on every flush. Floor the sample at 1ms.
+	if (sample_ms < 1.0)
+	{
+		sample_ms = 1.0;
+	}
+
 	if (_stats_initialized == false)
 	{
 		_ewma_ms = sample_ms;

@@ -60,6 +60,7 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_is_keyframe = src._is_keyframe;
 	_is_first_packet_of_frame = src._is_first_packet_of_frame;
 	_is_last_packet_of_frame = src._is_last_packet_of_frame;
+	_is_start_of_unit = src._is_start_of_unit;
 	_is_video_packet = src._is_video_packet;
 	_rtsp_channel = src._rtsp_channel;
 	_created_time = std::chrono::system_clock::now();

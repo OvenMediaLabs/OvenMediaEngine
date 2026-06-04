@@ -23,10 +23,18 @@ bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 
 	logtt("Insert packet : %s", packet->Dump().CStr());
 
-	if (packet->IsFirstPacketOfFrame())
+	// Frame start: DD marks it authoritatively (IsFirstPacketOfFrame, one per
+	// frame); without DD the codec parse only marks NAL/unit starts
+	// (IsStartOfUnit), which a multi-NAL access unit sets on several packets.
+	// Either way, keep the earliest seq as the start (wrap-safe) so it is the
+	// true frame start, not the last NAL to arrive.
+	if (packet->IsFirstPacketOfFrame() || packet->IsStartOfUnit())
 	{
-		_start_seq = packet->SequenceNumber();
-		_has_start = true;
+		if (_has_start == false || static_cast<int16_t>(packet->SequenceNumber() - _start_seq) < 0)
+		{
+			_start_seq = packet->SequenceNumber();
+			_has_start = true;
+		}
 	}
 	if (packet->IsLastPacketOfFrame())
 	{
@@ -301,7 +309,8 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		{
 			break;
 		}
-		// TEMP: dump frame extent + max received seq for debugging recovery failures.
+		// Frame dropped after exhausting the NACK hold; log its extent so
+		// recovery failures can be traced.
 		logtd("Frame discarded after NACK hold %ums - ts(%u) packets(%zu) marked(%s) "
 			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums)",
 			  hold_ms, frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false",

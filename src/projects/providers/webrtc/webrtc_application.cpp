@@ -233,6 +233,12 @@ namespace pvd
 				continue;
 			}
 
+			// NACK/RTX are only wired into the receive pipeline for video, so
+			// negotiate them on video m-lines only. Advertising them on audio
+			// would promise retransmission the pipeline never services.
+			bool rtx_for_this_media = rtx_enabled &&
+				offer_media_desc->GetMediaType() == MediaDescription::MediaType::Video;
+
 			auto answer_media_desc = std::make_shared<MediaDescription>();
 			answer_media_desc->SetMediaType(offer_media_desc->GetMediaType());
 			answer_media_desc->SetConnection(4, "0.0.0.0");
@@ -309,7 +315,7 @@ namespace pvd
 			// Repaired RTP-STREAM-ID (rrid). libwebrtc stamps this on RTX
 			// packets in simulcast in place of rid; without it the receive
 			// side can't resolve which simulcast layer an RTX packet belongs to.
-			if (rtx_enabled &&
+			if (rtx_for_this_media &&
 				offer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", extmap_id, extmap_attribute))
 			{
 				answer_media_desc->AddExtmap(extmap_id, extmap_attribute);
@@ -321,7 +327,7 @@ namespace pvd
 			// first and last packet of each frame, avoiding the order-number
 			// heuristic's false-positive complete on first-packet loss.
 			if (offer_media_desc->FindExtmapItem(
-					"https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension",
+					RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE,
 					extmap_id, extmap_attribute))
 			{
 				answer_media_desc->AddExtmap(extmap_id, extmap_attribute);
@@ -363,8 +369,9 @@ namespace pvd
 
 				if (offer_payload->GetCodec() == PayloadAttr::SupportCodec::RTX)
 				{
-					// Drop all RTX payloads when NACK is disabled by config.
-					if (rtx_enabled == false)
+					// Drop RTX payloads when NACK is disabled, or on audio
+					// m-lines where the receive pipeline doesn't service RTX.
+					if (rtx_for_this_media == false)
 					{
 						continue;
 					}
@@ -398,7 +405,7 @@ namespace pvd
 				}
 
 				// NACK
-				if (rtx_enabled && offer_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
+				if (rtx_for_this_media && offer_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
 				{
 					answer_payload->EnableRtcpFb(PayloadAttr::RtcpFbType::Nack, true);
 				}
