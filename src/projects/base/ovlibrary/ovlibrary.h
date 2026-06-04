@@ -52,5 +52,6 @@
 #include "./files.h"
 #include "./sequencial_map.h"
 #include "./thread_checker.h"
+#include "./tsa/mutex.h"
 
 #include "./logger/logger.h"
