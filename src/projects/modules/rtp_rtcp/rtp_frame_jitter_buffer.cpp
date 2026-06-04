@@ -314,7 +314,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		logtd("Frame discarded after NACK hold %ums - ts(%u) packets(%zu) marked(%s) "
 			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums)",
 			  hold_ms, frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false",
-			  frame->HasReceivedAny() ? "true" : "false",
+			  frame->HasStart() ? "true" : "false",
 			  frame->GetFirstSequenceNumber(),
 			  frame->IsMarked() ? "true" : "false",
 			  frame->GetMarkerSequenceNumber(),

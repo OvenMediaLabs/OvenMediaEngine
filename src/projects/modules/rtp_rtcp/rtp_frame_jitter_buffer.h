@@ -29,6 +29,7 @@ public:
 
 	uint32_t Timestamp() { return _timestamp; }
 	size_t PacketCount() { return _packets.size(); }
+	bool HasStart() const { return _has_start; }
 	uint16_t GetMarkerSequenceNumber() const { return _end_seq; }
 	uint16_t GetFirstSequenceNumber() const { return _start_seq; }
 
