@@ -173,6 +173,6 @@ $ sudo firewall-cmd --add-port=9999/udp
 $ sudo firewall-cmd --add-port=4000/udp
 $ sudo firewall-cmd --add-port=3478/tcp
 $ sudo firewall-cmd --add-port=9000/tcp
-$ sudo firewall-cmd --add-port=10000/udp
+$ sudo firewall-cmd --add-port=10000-10003/udp
 $ sudo firewall-cmd --add-port=10000/tcp
 ```

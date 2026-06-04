@@ -12,7 +12,7 @@ Run docker with the command below. `OME_HOST_IP` must be an IP address accessibl
 
 ```sh
 $ docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
--p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000:10000/udp -p 10000:10000/tcp \
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
 ovenmedialabs/ovenmediaengine:latest
 ```
 
