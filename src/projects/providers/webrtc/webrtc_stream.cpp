@@ -770,7 +770,7 @@ namespace pvd
 				// Our H265 depacketizer always converts packet to Annex B
 				bitstream_format = cmn::BitstreamFormat::H265_ANNEXB;
 				packet_type = cmn::PacketType::NALU;
-				cts_enabled = _cts_extmap_enabled == true;
+				// CTS/DTS reorder is implemented for H264 only; H265 is sent without reordering
 				{
 					std::lock_guard<std::mutex> lock(_sequence_header_lock);
 					// Keep refreshing until the parameter sets are actually collected
@@ -883,11 +883,6 @@ namespace pvd
 								_dts_ordered_frame_buffer.clear();
 							}
 						}
-						break;
-					}
-					case cmn::BitstreamFormat::H265_ANNEXB:
-					{
-						// logtw("H265 is not supported yet");
 						break;
 					}
 					default:
