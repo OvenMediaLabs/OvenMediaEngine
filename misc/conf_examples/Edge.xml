@@ -73,13 +73,13 @@
 				</Signalling>
 				<IceCandidates>
 					<!-- Set OME_HOST_IP to your public IP (default: * = all local IPs) -->
-					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000/udp}</IceCandidate>
+					<!-- UDP ICE scales by port count: each port is handled by one thread. The default range spreads load across cores. -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10003/udp}</IceCandidate>
 					<!-- Direct TCP ICE (RFC 6544) -->
 					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_ICE_PORT:10000/tcp}</IceCandidate>
 					<!-- TURN relay for clients that do not support Direct TCP ICE -->
 					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
 					<TcpRelayForce>false</TcpRelayForce>
-					<IceWorkerCount>1</IceWorkerCount>
 					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>

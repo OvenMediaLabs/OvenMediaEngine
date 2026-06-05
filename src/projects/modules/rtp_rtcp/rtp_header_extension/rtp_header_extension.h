@@ -23,6 +23,9 @@
 #define RTP_HEADER_EXTENSION_RTP_STREAM_ID	7
 #define RTP_HEADER_EXTENSION_RTP_STREAM_ATTRIBUTE "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
 
+// Dependency Descriptor uses a dynamically negotiated id (no fixed OME id).
+#define RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE "https://aomediacodec.github.io/av1-rtp-spec/#dependency-descriptor-rtp-header-extension"
+
 class RtpHeaderExtension
 {
 public:

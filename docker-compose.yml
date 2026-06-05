@@ -12,8 +12,8 @@ services:
     - "3333:3333/tcp" # WebRTC Signaling / LLHLS
     - "3334:3334/tcp" # TLS WebRTC Signaling / LLHLS - Optional unless TLS is enabled
     - "3478:3478/tcp" # WebRTC TURN
-    - "10000:10000/udp" # WebRTC Candidate
-    - "10000:10000/tcp" # WebRTC Candidate
+    - "10000-10003:10000-10003/udp" # WebRTC Candidate (UDP, 4 ports for thread distribution)
+    - "10000:10000/tcp" # WebRTC Candidate (Direct TCP ICE)
     environment:
     - OME_HOST_IP=192.168.0.160
     - OME_ORIGIN_PORT=9000
@@ -23,7 +23,7 @@ services:
     - OME_WEBRTC_SIGNALLING_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
     - OME_WEBRTC_SIGNALLING_TLS_PORT=3334 # Optional, unless using TLS
     - OME_WEBRTC_TCP_RELAY_PORT=3478
-    - OME_WEBRTC_CANDIDATE_PORT=10000/udp
+    - OME_WEBRTC_CANDIDATE_PORT=10000-10003/udp
     - OME_WEBRTC_TCP_ICE_PORT=10000/tcp
     restart: always
     # Uncomment the following line to use your own configuration file (./origin_conf/Server.xml)
@@ -40,8 +40,8 @@ services:
     ports:
     - "4333:3333/tcp" # WebRTC Signaling / LLHLS
     - "3479:3479/tcp" # WebRTC TURN
-    - "10001:10001/udp" # WebRTC Candidate
-    - "10001:10001/tcp" # WebRTC Candidate
+    - "10004-10007:10004-10007/udp" # WebRTC Candidate (UDP, 4 ports for thread distribution)
+    - "10004:10004/tcp" # WebRTC Candidate (Direct TCP ICE)
     environment:
     - OME_HOST_IP=192.168.0.160
     - DEFAULT_ORIGIN_SERVER=192.168.0.160
@@ -50,8 +50,8 @@ services:
     - OME_WEBRTC_SIGNALLING_PORT=3333 #LLHLS or WebRTC should be different if both are enabled.
     - OME_WEBRTC_SIGNALLING_TLS_PORT=3334 # Optional, unless using TLS
     - OME_WEBRTC_TCP_RELAY_PORT=3479
-    - OME_WEBRTC_CANDIDATE_PORT=10001/udp
-    - OME_WEBRTC_TCP_ICE_PORT=10001/tcp
+    - OME_WEBRTC_CANDIDATE_PORT=10004-10007/udp
+    - OME_WEBRTC_TCP_ICE_PORT=10004/tcp
     restart: always
     # Uncomment the following line to use your own configuration file (./edge_conf/Server.xml)
     #volumes:

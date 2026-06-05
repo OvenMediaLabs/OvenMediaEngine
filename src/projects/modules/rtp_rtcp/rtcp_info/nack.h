@@ -73,6 +73,8 @@ public:
 		return _lost_ids[index];
 	}
 
+	void AddLostId(uint16_t id){_lost_ids.push_back(id);}
+
 private:
 	uint32_t	_src_ssrc = 0;
 	uint32_t	_media_ssrc = 0;

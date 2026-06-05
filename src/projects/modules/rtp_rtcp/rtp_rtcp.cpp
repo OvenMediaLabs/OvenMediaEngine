@@ -6,6 +6,8 @@
 #include "rtcp_receiver.h"
 #include "rtcp_info/fir.h"
 #include "rtcp_info/pli.h"
+#include "rtcp_info/nack.h"
+#include "rtx_rtp_packet.h"
 
 #include "modules/rtsp/rtsp_data.h"
 
@@ -62,10 +64,17 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
 		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
-		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
-			_rtp_frame_jitter_buffers[track_id] = std::make_shared<RtpFrameJitterBuffer>();
+		{
+			auto buf = std::make_shared<RtpFrameJitterBuffer>();
+			buf->SetClockRate(track->GetTimeBase().GetDen());
+			_rtp_frame_jitter_buffers[track_id] = buf;
 			break;
+		}
+		// 1 RTP packet = 1 frame. AAC fragmentation unsupported.
+		// Not needed on WebRTC path; on RTSP path only stereo 500 kbps+ or
+		// multichannel hits it, so uncommon in practice. TODO if a real case shows up.
 		case cmn::BitstreamFormat::OPUS_RTP_RFC_7587:
+		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			_rtp_minimal_jitter_buffers[track_id] = std::make_shared<RtpMinimalJitterBuffer>();
 			break;
 		default:
@@ -145,7 +154,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 		}
 
 		compound_rtcp_data->Append(_rtcp_sdes->GetData());
-		
+
 		if(SendDataToNextNode(NodeType::Rtcp, compound_rtcp_data) == false)
 		{
 			logt("RTCP","Send RTCP failed : pt(%d) ssrc(%u)", rtp_packet->PayloadType(), rtp_packet->Ssrc());
@@ -211,6 +220,215 @@ bool RtpRtcp::SendFIR(uint32_t track_id)
 	return SendDataToNextNode(NodeType::Rtcp, rtcp_packet->GetData());
 }
 
+// RTX (RFC 4588) detection + unwrap. Two paths share the same body:
+//  (a) SSRC pre-registered via RegisterRtxStream (offer SDP declared
+//      a=ssrc-group:FID): direct lookup.
+//  (b) PT is in the negotiated RTX PT map: resolve the track via mid/rid
+//      extension, learn the media SSRC from RtpReceiveStatistics, and
+//      cache the RTX SSRC for subsequent packets. Required for simulcast
+//      WHIP where browsers omit ssrc-group:FID.
+RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
+{
+	uint32_t rtx_ssrc = packet->Ssrc();
+	uint8_t original_pt = 0;
+	uint32_t media_ssrc = 0;
+	bool learned = false;
+	bool known = false;
+
+	{
+		std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+		auto rtx_it = _rtx_streams.find(rtx_ssrc);
+		if (rtx_it != _rtx_streams.end())
+		{
+			if (packet->PayloadType() != rtx_it->second.rtx_payload_type)
+			{
+				logtt("Drop packet on RTX SSRC %u with non-RTX PT %u", rtx_ssrc, packet->PayloadType());
+				return RtxResult::Drop;
+			}
+			original_pt = rtx_it->second.original_payload_type;
+			media_ssrc = rtx_it->second.media_ssrc;
+			known = true;
+		}
+	}
+
+	if (known == false)
+	{
+		auto pt_it = _rtx_pt_to_original.find(packet->PayloadType());
+		if (pt_it == _rtx_pt_to_original.end())
+		{
+			return RtxResult::NotRtx;
+		}
+
+		auto track_id_opt = FindTrackId(packet);
+		if (track_id_opt.has_value() == false)
+		{
+			logtt("RTX packet PT %u on unknown track, dropping", packet->PayloadType());
+			return RtxResult::Drop;
+		}
+		auto stat_it = _receive_statistics.find(track_id_opt.value());
+		if (stat_it == _receive_statistics.end())
+		{
+			logtt("RTX packet PT %u before primary media seen, dropping", packet->PayloadType());
+			return RtxResult::Drop;
+		}
+		original_pt = pt_it->second;
+		media_ssrc = stat_it->second->GetMediaSSRC();
+		learned = true;
+	}
+
+	auto unpacked = RtxRtpPacket::Unpack(*packet, original_pt, media_ssrc);
+	if (unpacked == nullptr)
+	{
+		// Padding-only RTX probe; still report to transport-cc so the
+		// sender sees an ack for the wire sequence number.
+		logtt("Drop padding-only RTX ssrc(%u) pt(%u)", rtx_ssrc, packet->PayloadType());
+		if (_transport_cc_feedback_enabled && _transport_cc_generator != nullptr)
+		{
+			_transport_cc_generator->AddReceivedRtpPacket(packet);
+		}
+		return RtxResult::Drop;
+	}
+
+	if (learned)
+	{
+		{
+			std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+			_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, packet->PayloadType(), original_pt};
+		}
+		logti("Learned RTX stream rtx_ssrc(%u) -> media_ssrc(%u) pt(%u->%u)",
+			  rtx_ssrc, media_ssrc, packet->PayloadType(), original_pt);
+	}
+
+	packet = unpacked;
+	return RtxResult::Unwrapped;
+}
+
+bool RtpRtcp::SendNACK(uint32_t track_id, const std::vector<uint16_t> &lost_ids)
+{
+	if (lost_ids.empty())
+	{
+		return false;
+	}
+
+	auto stat_it = _receive_statistics.find(track_id);
+	if (stat_it == _receive_statistics.end())
+	{
+		return false;
+	}
+	auto stat = stat_it->second;
+
+	auto nack = std::make_shared<NACK>();
+	nack->SetSrcSsrc(stat->GetReceiverSSRC());
+	nack->SetMediaSsrc(stat->GetMediaSSRC());
+	for (auto id : lost_ids)
+	{
+		nack->AddLostId(id);
+	}
+
+	auto rtcp_packet = std::make_shared<RtcpPacket>();
+	if (rtcp_packet->Build(nack) == false)
+	{
+		return false;
+	}
+
+	_last_sent_rtcp_packet = rtcp_packet;
+	logtd("SendNACK track(%u) media_ssrc(%u) count(%zu)", track_id, stat->GetMediaSSRC(), lost_ids.size());
+	return SendDataToNextNode(NodeType::Rtcp, rtcp_packet->GetData());
+}
+
+void RtpRtcp::FlushNackIfDue(uint32_t track_id, const std::shared_ptr<RtpNackGenerator> &generator)
+{
+	auto now = std::chrono::steady_clock::now();
+
+	// Coalescing-window check + watermark update under a dedicated lock, since
+	// the receive path only holds a shared_lock on _state_lock. Stamp the
+	// watermark before sending so concurrent receives don't double-flush.
+	{
+		std::lock_guard<std::mutex> lock(_last_nack_flush_at_lock);
+		auto it = _last_nack_flush_at.find(track_id);
+		if (it != _last_nack_flush_at.end() && (now - it->second) < std::chrono::milliseconds(NACK_COALESCE_MS))
+		{
+			return;
+		}
+		_last_nack_flush_at[track_id] = now;
+	}
+
+	auto lost_ids = generator->BuildPendingNack();
+	if (lost_ids.empty() == false)
+	{
+		SendNACK(track_id, lost_ids);
+	}
+}
+
+bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms)
+{
+	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	auto generator = std::make_shared<RtpNackGenerator>(track_id, media_ssrc, max_hold_ms);
+	_nack_generators[track_id] = generator;
+	{
+		std::lock_guard<std::mutex> flush_lock(_last_nack_flush_at_lock);
+		_last_nack_flush_at[track_id] = std::chrono::steady_clock::now();
+	}
+
+	// Wire dynamic hold window into the matching frame jitter buffer. The
+	// jitter buffer uses NACK-driven RTX latency stats to decide how long
+	// to hold an incomplete frame before discarding it. We also wire the
+	// reverse direction so the jitter buffer can end NACK pending entries
+	// as soon as it advances past their seq.
+	auto buf_it = _rtp_frame_jitter_buffers.find(track_id);
+	if (buf_it != _rtp_frame_jitter_buffers.end())
+	{
+		std::weak_ptr<RtpNackGenerator> weak_gen = generator;
+		buf_it->second->SetHoldMsProvider([weak_gen]() -> uint32_t {
+			auto gen = weak_gen.lock();
+			return gen ? gen->GetRecommendedHoldMs() : 0;
+		});
+		// MaxHoldMs is the operator's latency ceiling for the whole hold,
+		// not just the NACK/RTX RTT component.
+		buf_it->second->SetMaxHoldMs(max_hold_ms);
+		buf_it->second->SetOnProcessedSeqAdvance([weak_gen](uint16_t max_seq) {
+			auto gen = weak_gen.lock();
+			if (gen) gen->DropPendingUpTo(max_seq);
+		});
+		buf_it->second->SetLowestPendingSeqProvider([weak_gen]() -> std::optional<uint16_t> {
+			auto gen = weak_gen.lock();
+			if (!gen) return std::nullopt;
+			return gen->GetLowestPendingSeq();
+		});
+	}
+
+	logti("EnableNack track(%u) ssrc(%u)", track_id, media_ssrc);
+	return true;
+}
+
+bool RtpRtcp::RegisterRtxStream(uint32_t rtx_ssrc, uint32_t media_ssrc,
+								 uint8_t rtx_payload_type, uint8_t original_payload_type)
+{
+	// Guarded by its own lock (not _state_lock) so it stays consistent with
+	// the receive-path learned write in TryUnwrapRtx.
+	std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+	_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, rtx_payload_type, original_payload_type};
+	logti("RegisterRtxStream rtx_ssrc(%u) media_ssrc(%u) rtx_pt(%u) orig_pt(%u)",
+		  rtx_ssrc, media_ssrc, rtx_payload_type, original_payload_type);
+	return true;
+}
+
+bool RtpRtcp::RegisterRtxPayloadType(uint8_t rtx_payload_type, uint8_t original_payload_type)
+{
+	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	_rtx_pt_to_original[rtx_payload_type] = original_payload_type;
+	logti("RegisterRtxPayloadType rtx_pt(%u) orig_pt(%u)", rtx_payload_type, original_payload_type);
+	return true;
+}
+
+bool RtpRtcp::SetDependencyDescriptorExtId(uint8_t dd_extension_id)
+{
+	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	_dd_extension_id = dd_extension_id;
+	logti("SetDependencyDescriptorExtId dd_ext(%u)", dd_extension_id);
+	return true;
+}
+
 bool RtpRtcp::IsTransportCcFeedbackEnabled() const
 {
 	return _transport_cc_feedback_enabled;
@@ -260,14 +478,24 @@ std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const RtpPack
 		// Get mid from rtp header extension
 		auto mid = rtp_packet->GetExtension(rtp_track_id.mid_extension_id);
 		auto rid = rtp_packet->GetExtension(rtp_track_id.rid_extension_id);
+		auto rrid = rtp_track_id.rrid_extension_id != 0
+						? rtp_packet->GetExtension(rtp_track_id.rrid_extension_id)
+						: std::nullopt;
 
 		// with mid or mid + rid
 		if (rtp_track_id.mid.has_value() && mid.has_value() &&
 			mid.value().ToString() == rtp_track_id.mid.value())
 		{
-			// mid + rid
+			// mid + rid (primary packets)
 			if (rtp_track_id.rid.has_value() && rid.has_value() &&
 				rid.value().ToString() == rtp_track_id.rid.value())
+			{
+				return rtp_track_id.GetTrackId();
+			}
+			// mid + rrid (RTX packets in libwebrtc simulcast; rrid carries
+			// the same string the primary stream's rid did).
+			if (rtp_track_id.rid.has_value() && rrid.has_value() &&
+				rrid.value().ToString() == rtp_track_id.rid.value())
 			{
 				return rtp_track_id.GetTrackId();
 			}
@@ -441,6 +669,11 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 {
 	auto packet = std::make_shared<RtpPacket>(data);
 
+	if (TryUnwrapRtx(packet) == RtxResult::Drop)
+	{
+		return false;
+	}
+
 	std::optional<uint32_t> track_id_opt = GetTrackId(packet->Ssrc());
 	if (track_id_opt.has_value() == false)
 	{
@@ -508,6 +741,19 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 	stat->AddReceivedRtpPacket(packet);
 
+	// Receive-side NACK: feed seq to per-track generator, then flush pending
+	// NACKs on a short coalescing window (every NACK_COALESCE_MS). Send is
+	// done on the socket thread so it shares a single writer with the
+	// other RTCP outputs (RR, transport-cc) on the Node chain.
+	{
+		auto nack_it = _nack_generators.find(track_id);
+		if (nack_it != _nack_generators.end())
+		{
+			nack_it->second->OnPacketReceived(packet->SequenceNumber());
+			FlushNackIfDue(track_id, nack_it->second);
+		}
+	}
+
 	// Send ReceiverReport
 	if (stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS) && stat->IsSenderReportReceived() == true)
 	{
@@ -558,10 +804,10 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
 		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
-		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			jitter_buffer_type = 1;
 			break;
 		case cmn::BitstreamFormat::OPUS_RTP_RFC_7587:
+		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			jitter_buffer_type = 2;
 			break;
 		default:
@@ -596,6 +842,29 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		}
 
 		auto jitter_buffer = buffer_it->second;
+
+		// Padding-only RTP (BWE probing / keepalive) carries no codec data;
+		// receive-stats / NACK gen / transport-cc above already accounted for
+		// it. Skip frame boundary stamping + jitter buffer.
+		if (packet->PayloadSize() == 0)
+		{
+			return true;
+		}
+
+		// Frame boundary flags must be stamped before jitter buffer insertion.
+		// Unparseable payloads (bad nal_type, truncated) are dropped here so
+		// downstream never sees a broken frame.
+		if (RtpFrameBoundaryDetector::Apply(*packet, track->GetCodecId(), _dd_extension_id) == false)
+		{
+			auto pl = packet->Payload();
+			auto sz = packet->PayloadSize();
+			logtw("Drop unparseable packet track(%u) ssrc(%u) seq(%u) pt(%u) codec(%d) size(%zu) head[%02x %02x %02x %02x]",
+				  track_id, packet->Ssrc(), packet->SequenceNumber(), packet->PayloadType(),
+				  static_cast<int>(track->GetCodecId()), sz,
+				  sz > 0 ? pl[0] : 0, sz > 1 ? pl[1] : 0,
+				  sz > 2 ? pl[2] : 0, sz > 3 ? pl[3] : 0);
+			return false;
+		}
 
 		jitter_buffer->InsertPacket(packet);
 

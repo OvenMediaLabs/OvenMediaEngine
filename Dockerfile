@@ -128,7 +128,7 @@ ENV     DEBIAN_FRONTEND=noninteractive
 RUN     apt-get update && apt-get install -y tzdata sudo libgomp1
 
 WORKDIR         /opt/ovenmediaengine/bin
-EXPOSE          80/tcp 8080/tcp 8090/tcp 1935/tcp 3333/tcp 3334/tcp 4000-4005/udp 10000/udp 10000/tcp 9000/tcp
+EXPOSE          80/tcp 8080/tcp 8090/tcp 1935/tcp 3333/tcp 3334/tcp 4000-4005/udp 10000-10003/udp 10000/tcp 9000/tcp
 COPY            --from=build /opt/ovenmediaengine /opt/ovenmediaengine
 
 ENV     NVIDIA_VISIBLE_DEVICES=all

@@ -45,3 +45,26 @@ void RtxRtpPacket::SetOriginalSequenceNumber(uint16_t seq_no)
 {
 	ByteWriter<uint16_t>::WriteBigEndian(&_buffer[_payload_offset - RTX_HEADER_SIZE], seq_no);
 }
+
+std::shared_ptr<RtpPacket> RtxRtpPacket::Unpack(const RtpPacket &rtx_packet, uint8_t original_payload_type, uint32_t original_ssrc)
+{
+	if (rtx_packet.PayloadSize() < RTX_HEADER_SIZE)
+	{
+		return nullptr;
+	}
+
+	uint16_t osn = ByteReader<uint16_t>::ReadBigEndian(rtx_packet.Payload());
+
+	// Copy original payload to a temp buffer first since SetPayload memcpys
+	// into the same buffer region (source/dest would overlap otherwise).
+	std::vector<uint8_t> original_payload(rtx_packet.Payload() + RTX_HEADER_SIZE,
+										   rtx_packet.Payload() + rtx_packet.PayloadSize());
+
+	auto packet = std::make_shared<RtpPacket>(rtx_packet);
+	packet->SetPayloadType(original_payload_type);
+	packet->SetSsrc(original_ssrc);
+	packet->SetSequenceNumber(osn);
+	packet->SetPayload(original_payload.data(), original_payload.size());
+
+	return packet;
+}

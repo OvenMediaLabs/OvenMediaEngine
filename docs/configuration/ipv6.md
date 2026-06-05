@@ -129,8 +129,8 @@ To use IPv6 ICE Candidate, you need to add an IPv6 `<IceCandidate>` to `/<Server
             <WebRTC>
                 ...
                 <IceCandidates>
-                    <IceCandidate>*:10000/udp</IceCandidate>
-                    <IceCandidate>[::]:10000/udp</IceCandidate>
+                    <IceCandidate>*:10000-10003/udp</IceCandidate>
+                    <IceCandidate>[::]:10000-10003/udp</IceCandidate>
                 </IceCandidates>
                 ...
             </WebRTC>

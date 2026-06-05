@@ -76,7 +76,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 		{
 			if (wide_sequence_number != static_cast<uint16_t>(_last_wide_sequence_number + 1))
 			{
-				logtw("wide sequence number is not continuous : %u -> %u", _last_wide_sequence_number, wide_sequence_number);
+				logtd("wide sequence number is not continuous : %u -> %u", _last_wide_sequence_number, wide_sequence_number);
 			}
 
 			base_sequence_number = _last_wide_sequence_number + 1;

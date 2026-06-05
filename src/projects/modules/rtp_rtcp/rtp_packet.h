@@ -131,8 +131,21 @@ public:
 	void		SetKeyframe(bool flag) {_is_keyframe = flag;}
 	bool		IsKeyframe() const {return _is_keyframe;}
 
+	// The genuine first packet of the frame. Set by the send packetizer, and
+	// on receive by the Dependency Descriptor (S bit), which marks it
+	// authoritatively. Without DD the receive path can't know it per-packet
+	// and uses StartOfUnit instead.
 	void		SetFirstPacketOfFrame(bool flag) {_is_first_packet_of_frame = flag;}
 	bool		IsFirstPacketOfFrame() const {return _is_first_packet_of_frame;}
+
+	void		SetLastPacketOfFrame(bool flag) {_is_last_packet_of_frame = flag;}
+	bool		IsLastPacketOfFrame() const {return _is_last_packet_of_frame;}
+
+	// Receive-side fallback when DD is absent: the boundary detector stamps
+	// every packet that begins a NAL/OBU/VP8 partition. The jitter buffer
+	// takes the lowest such sequence number as the frame's first packet.
+	void		SetStartOfUnit(bool flag) {_is_start_of_unit = flag;}
+	bool		IsStartOfUnit() const {return _is_start_of_unit;}
 
 	void		SetRtspChannel(uint32_t rtsp_channel) {_rtsp_channel = rtsp_channel;}
 	uint32_t	GetRtspChannel() const {return _rtsp_channel;}
@@ -176,6 +189,8 @@ protected:
 	bool		_is_video_packet = false;
 	bool		_is_keyframe = false;
 	bool		_is_first_packet_of_frame = false;
+	bool		_is_last_packet_of_frame = false;
+	bool		_is_start_of_unit = false;
 
 	uint32_t	_rtsp_channel = 0; // If it is from RTSP, _rtsp_channel is valid
 };
