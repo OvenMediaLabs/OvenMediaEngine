@@ -63,7 +63,6 @@ namespace ov
 			return;
 		}
 
-		LockGuard lock_guard(_log_stream_mutex);
 		_log_stream.close();
 		_log_stream.clear();
 
@@ -105,6 +104,10 @@ namespace ov
 		std::tm local_time{};
 		::localtime_r(&time, &local_time);
 
+		// One lock for the whole stream section (open/rotate/write); OpenNewFile()
+		// requires it to be held by the caller.
+		LockGuard lock_guard(_log_stream_mutex);
+
 		if (!_log_stream.is_open() || _log_stream.fail())
 		{
 			OpenNewFile(time);
@@ -130,7 +133,6 @@ namespace ov
 			_last_day = local_time.tm_mday;
 		}
 
-		LockGuard lock_guard(_log_stream_mutex);
 		_log_stream << log << std::endl;
 		_log_stream.flush();
 	}

@@ -32,11 +32,11 @@ namespace ov
 		static void SetAsService(bool start_service);
 
 	private:
-		void OpenNewFile(std::time_t time = 0);
+		void OpenNewFile(std::time_t time = 0) OV_REQUIRES(_log_stream_mutex);
 
 		Mutex _log_stream_mutex;
 		std::ofstream _log_stream OV_GUARDED_BY(_log_stream_mutex);
-		int _last_day;
+		int _last_day OV_GUARDED_BY(_log_stream_mutex);
 		std::string _log_path;
 		std::string _log_file_name;
 		std::string _log_file;
