@@ -62,9 +62,19 @@ namespace ov
 		return dump;
 	}
 
-	String ToHexStringWithDelimiter(const Data *data, char delimiter)
+	String ToHexStringWithDelimiter(const Data &data, char delimiter)
 	{
-		return ToHexStringWithDelimiter(data->GetData(), data->GetLength(), delimiter);
+		return ToHexStringWithDelimiter(data.GetData(), data.GetLength(), delimiter);
+	}
+
+	String ToHexStringWithDelimiter(const std::shared_ptr<const Data> &data, char delimiter)
+	{
+		if (data != nullptr)
+		{
+			return ToHexStringWithDelimiter(data->GetData(), data->GetLength(), delimiter);
+		}
+
+		return "";
 	}
 
 	String ToHexString(const void *data, size_t length)

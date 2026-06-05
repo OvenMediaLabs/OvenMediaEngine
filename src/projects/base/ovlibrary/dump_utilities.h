@@ -22,7 +22,8 @@ namespace ov
 	String ToUUIDString(const void *data, size_t length);
 	// Convert data to hex string with delimeter (like "00:01:02:03:04:A0");
 	String ToHexStringWithDelimiter(const void *data, size_t length, char delimiter);
-	String ToHexStringWithDelimiter(const Data *data, char delimiter);
+	String ToHexStringWithDelimiter(const Data &data, char delimiter);
+	String ToHexStringWithDelimiter(const std::shared_ptr<const Data> &data, char delimiter);
 
 	// Hex dump (for debugging)
 	String Dump(const void *data, size_t length, const char *title, off_t offset = 0, size_t max_bytes = 1024, const char *line_prefix = nullptr) noexcept;
