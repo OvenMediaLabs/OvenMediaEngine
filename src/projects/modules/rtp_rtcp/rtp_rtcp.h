@@ -12,6 +12,9 @@
 #include "rtp_minimal_jitter_buffer.h"
 #include "rtp_receive_statistics.h"
 
+#include <atomic>
+#include <mutex>
+#include <shared_mutex>
 
 
 #define RECEIVER_REPORT_CYCLE_MS	500
@@ -85,11 +88,21 @@ private:
 	bool OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
 
 	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint8_t payload_type);
+	std::shared_ptr<RtpMinimalJitterBuffer> GetMinimalJitterBuffer(uint8_t payload_type);
+	std::shared_ptr<MediaTrack> GetTrack(uint32_t track_id) const;
 
-	std::shared_ptr<RtcpPacket> GenerateTransportCcFeedbackIfNeeded();
+	std::shared_ptr<RtpReceiveStatistics> GetOrCreateReceiveStatistics(uint32_t track_id, uint32_t ssrc, uint32_t clock_rate);
+	std::shared_ptr<RtpReceiveStatistics> FindReceiveStatistics(uint32_t track_id) const;
 
-	std::vector<RtpTrackIdentifier> _rtp_track_identifiers;
+	// Returns the transport-cc feedback packet to send (nullptr if not due yet)
+	std::shared_ptr<RtcpPacket> GenerateTransportCcFeedbackIfNeeded(const std::shared_ptr<RtpPacket> &packet, uint32_t receiver_ssrc, bool is_video, bool marker);
+
+	void SetLastSentRtpPacket(const std::shared_ptr<RtpPacket> &packet);
+	void SetLastSentRtcpPacket(const std::shared_ptr<RtcpPacket> &packet);
+
+	// _ssrc_to_track_id_lock guards _ssrc_to_track_id
 	std::map<uint32_t /*ssrc*/, uint32_t /*track_id*/> _ssrc_to_track_id;
+	mutable std::shared_mutex _ssrc_to_track_id_lock;
 
 	// Find track id by mid or rid
 	std::optional<uint32_t> FindTrackId(const std::shared_ptr<const RtpPacket> &rtp_packet) const;
@@ -104,35 +117,41 @@ private:
     time_t _last_sender_report_time = 0;
     uint64_t _send_packet_sequence_number = 0;
 
+	// Lifecycle gate: data path (send/receive) takes it shared, Stop/setup exclusive
 	std::shared_mutex _state_lock;
 	std::shared_ptr<RtpRtcpInterface> _observer;
-    std::map<uint32_t, std::shared_ptr<RtcpSRGenerator>> _rtcp_sr_generators;
+
+	// _rtcp_send_state_lock guards the send-side RTCP state below
+	std::map<uint32_t, std::shared_ptr<RtcpSRGenerator>> _rtcp_sr_generators;
 	std::shared_ptr<Sdes> _sdes = nullptr;
 	std::shared_ptr<RtcpPacket> _rtcp_sdes = nullptr;
 	ov::StopWatch _rtcp_send_stop_watch;
 	uint64_t _rtcp_sent_count = 0;
+	mutable std::shared_mutex _rtcp_send_state_lock;
 
-	bool _transport_cc_feedback_enabled = false;
-	uint8_t _transport_cc_feedback_extension_id = 0;
-	
-	// Receiver SSRC (For RTCP RR, FIR... etc)
-	// track_id : Receiver Statistics
+	std::atomic<bool> _transport_cc_feedback_enabled = false;
+	std::atomic<uint8_t> _transport_cc_feedback_extension_id = 0;
+
+	// _receive_statistics_lock guards _receive_statistics (track_id : receiver statistics)
 	std::unordered_map<uint32_t, std::shared_ptr<RtpReceiveStatistics>> _receive_statistics;
+	mutable std::shared_mutex _receive_statistics_lock;
 
-	// Transport-cc feedback
+	// _transport_cc_generator_lock guards _transport_cc_generator
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> _transport_cc_generator = nullptr;
+	mutable std::shared_mutex _transport_cc_generator_lock;
 
-	// Jitter buffer
-	// payload type : Jitter buffer
+	// _track_info_lock guards the receive-setup containers below
+	std::vector<RtpTrackIdentifier> _rtp_track_identifiers;
 	std::unordered_map<uint8_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
 	std::unordered_map<uint8_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
-
-	// payload type : MediaTrack Info
 	std::unordered_map<uint8_t, std::shared_ptr<MediaTrack>> _tracks;
-	bool _video_receiver_enabled = false;
-	bool _audio_receiver_enabled = false;
+	mutable std::shared_mutex _track_info_lock;
 
-	// Latest packet
+	std::atomic<bool> _video_receiver_enabled = false;
+	std::atomic<bool> _audio_receiver_enabled = false;
+
+	// _last_sent_packet_lock guards both last-sent packet pointers below
 	std::shared_ptr<RtpPacket>		_last_sent_rtp_packet = nullptr;
 	std::shared_ptr<RtcpPacket>		_last_sent_rtcp_packet = nullptr;
+	mutable std::shared_mutex _last_sent_packet_lock;
 };

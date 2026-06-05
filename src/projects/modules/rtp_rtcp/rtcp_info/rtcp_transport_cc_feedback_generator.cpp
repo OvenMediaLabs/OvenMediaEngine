@@ -24,6 +24,7 @@ RtcpTransportCcFeedbackGenerator::RtcpTransportCcFeedbackGenerator(uint8_t exten
 
 bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket> &packet)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	auto wide_sequence_number_opt = packet->GetExtension<uint16_t>(_extension_id);
 	if (wide_sequence_number_opt.has_value() == false)
 	{
@@ -156,6 +157,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 bool RtcpTransportCcFeedbackGenerator::HasElapsedSinceLastTransportCc(uint32_t milliseconds)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_report_time).count();
 
@@ -169,6 +171,7 @@ bool RtcpTransportCcFeedbackGenerator::HasElapsedSinceLastTransportCc(uint32_t m
 
 std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessage()
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	if (_transport_cc == nullptr)
 	{
 		return nullptr;

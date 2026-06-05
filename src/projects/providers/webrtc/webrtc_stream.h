@@ -131,6 +131,12 @@ namespace pvd
 		std::map<uint32_t, std::shared_ptr<ov::Data>> _h26x_extradata_nalu;
 		std::map<uint32_t, bool> _sent_sequence_header;
 
+		// Guards the DTS reorder buffer and H264 bitstream parser (cts path)
+		mutable std::mutex _cts_reorder_lock;
+
+		// Guards _h26x_extradata_nalu and _sent_sequence_header
+		mutable std::mutex _sequence_header_lock;
+
 		// RID to track ID mapping
 		// Key: "mid:rid" when the SDP a=mid identifier is available (disambiguates across m= sections with reused RIDs),
 		// or just "rid" when no SDP MID is available. Each key is unique, so a single track ID per entry suffices.

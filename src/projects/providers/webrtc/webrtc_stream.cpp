@@ -752,6 +752,7 @@ namespace pvd
 			payload_list.push_back(payload);
 		}
 
+		// Depacketizer is internally thread-safe.
 		auto bitstream = depacketizer->ParseAndAssembleFrame(payload_list);
 		if (bitstream == nullptr)
 		{
@@ -770,9 +771,12 @@ namespace pvd
 				bitstream_format = cmn::BitstreamFormat::H265_ANNEXB;
 				packet_type = cmn::PacketType::NALU;
 				cts_enabled = _cts_extmap_enabled == true;
-				if( _h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
 				{
-					_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					if( _h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
+					{
+						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					}
 				}
 				break;
 
@@ -781,9 +785,12 @@ namespace pvd
 				bitstream_format = cmn::BitstreamFormat::H264_ANNEXB;
 				packet_type = cmn::PacketType::NALU;
 				cts_enabled = _cts_extmap_enabled == true;
-				if (_h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
 				{
-					_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					if (_h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
+					{
+						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					}
 				}
 				break;
 
@@ -843,6 +850,9 @@ namespace pvd
 		// Reorder frames in DTS order
 		if (cts_enabled == true)
 		{
+			// Guards the DTS reorder buffer and the H264 parser below.
+			std::lock_guard<std::mutex> lock(_cts_reorder_lock);
+
 			// PTS order to DTS order
 			// Q and Flush (if slice type is I or P)
 			_dts_ordered_frame_buffer.emplace(dts, frame);
@@ -890,32 +900,36 @@ namespace pvd
 		auto track_id = track->GetId();
 		auto codec_id = track->GetCodecId();
 		bool is_h26x = (codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265);
-		bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
-
 		auto packet_to_send = media_packet;
 
-		// If SPS/PPS/VPS are received out-of-band, replace them with the in-band format
-		// If the codec is H264 or H265 and the sequence header (SPS/PPS/VPS) has not been sent yet, prepend the sequence header to the current packet.
-		// TODO: If the current packet contains SPS/PPS/VPS, there is no need to prepend.
-		if (is_h26x && !is_sent_sequence_header)
+		// Guard the sequence-header check-and-set. SendFrame stays outside the lock.
 		{
-			auto new_packet = media_packet->ClonePacket();
+			std::lock_guard<std::mutex> lock(_sequence_header_lock);
 
-			auto it = _h26x_extradata_nalu.find(track_id);
-			if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
+			bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
+
+			// If SPS/PPS/VPS are received out-of-band, replace them with the in-band format.
+			// If the codec is H264/H265 and the sequence header has not been sent yet, prepend it.
+			if (is_h26x && !is_sent_sequence_header)
 			{
-				// Since it is a NALU type, the data can simply be concatenated
-				auto prepend = std::make_shared<ov::Data>();
-				prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
-				prepend->Append(media_packet->GetData());  // Current frame data
+				auto new_packet = media_packet->ClonePacket();
 
-				new_packet->SetData(prepend);
+				auto it = _h26x_extradata_nalu.find(track_id);
+				if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
+				{
+					// Since it is a NALU type, the data can simply be concatenated
+					auto prepend = std::make_shared<ov::Data>();
+					prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
+					prepend->Append(media_packet->GetData());  // Current frame data
 
-				logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
+					new_packet->SetData(prepend);
+
+					logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
+				}
+
+				packet_to_send = new_packet;
+				_sent_sequence_header[track_id] = true;
 			}
-
-			packet_to_send = new_packet;
-			_sent_sequence_header[track_id] = true;
 		}
 
 		SendFrame(packet_to_send);

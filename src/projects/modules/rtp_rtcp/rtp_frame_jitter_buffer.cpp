@@ -201,6 +201,7 @@ uint64_t RtpFrameJitterBuffer::GetExtentedTimestamp(uint32_t timestamp)
 
 bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	auto timestamp = GetExtentedTimestamp(packet->Timestamp());
 
 	auto it = _rtp_frames.find(timestamp);
@@ -257,6 +258,12 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 
 bool RtpFrameJitterBuffer::HasAvailableFrame()
 {
+	std::lock_guard<std::mutex> lock(_lock);
+	return HasAvailableFrameInternal();
+}
+
+bool RtpFrameJitterBuffer::HasAvailableFrameInternal()
+{
 	BurnOutExpiredFrames();
 
 	auto it = _rtp_frames.begin();
@@ -271,7 +278,8 @@ bool RtpFrameJitterBuffer::HasAvailableFrame()
 
 std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 {
-	if (HasAvailableFrame() == false)
+	std::lock_guard<std::mutex> lock(_lock);
+	if (HasAvailableFrameInternal() == false)
 	{
 		return nullptr;
 	}

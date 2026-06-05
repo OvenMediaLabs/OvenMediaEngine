@@ -3,6 +3,7 @@
 #include "base/ovlibrary/ovlibrary.h"
 #include "rtp_packet.h"
 #include <unordered_map>
+#include <mutex>
 
 #define DEFAULT_VIDEO_MAX_BUFFERING_TIME_MS	100	 // 500ms
 
@@ -56,7 +57,9 @@ public:
 	bool HasAvailableFrame();
 	std::shared_ptr<RtpFrame> PopAvailableFrame();
 	
-private:	
+private:
+	// Non-locking core shared by HasAvailableFrame() and PopAvailableFrame()
+	bool HasAvailableFrameInternal();
 	void BurnOutExpiredFrames();
 
 	uint64_t GetExtentedTimestamp(uint32_t timestamp);
@@ -67,4 +70,6 @@ private:
 	// timestamp : RtpFrameInfo
 	// it should be ordered, so use std::map
 	std::map<uint64_t, std::shared_ptr<RtpFrame>> _rtp_frames;
+
+	mutable std::mutex _lock;
 };
