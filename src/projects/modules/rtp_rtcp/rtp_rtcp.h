@@ -131,7 +131,7 @@ private:
 	enum class RtxResult { NotRtx, Unwrapped, Drop };
 	RtxResult TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet);
 
-	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint8_t payload_type);
+	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint32_t track_id);
 
 	std::shared_ptr<RtcpPacket> GenerateTransportCcFeedbackIfNeeded();
 
@@ -201,12 +201,12 @@ private:
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> _transport_cc_generator = nullptr;
 
 	// Jitter buffer
-	// payload type : Jitter buffer
-	std::unordered_map<uint8_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
-	std::unordered_map<uint8_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
+	// track_id : Jitter buffer
+	std::unordered_map<uint32_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
+	std::unordered_map<uint32_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
 
-	// payload type : MediaTrack Info
-	std::unordered_map<uint8_t, std::shared_ptr<MediaTrack>> _tracks;
+	// track_id : MediaTrack Info
+	std::unordered_map<uint32_t, std::shared_ptr<MediaTrack>> _tracks;
 	bool _video_receiver_enabled = false;
 	bool _audio_receiver_enabled = false;
 
