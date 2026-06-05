@@ -15,29 +15,29 @@ namespace ov
 {
 	void Semaphore::Notify()
 	{
-		std::unique_lock<decltype(_mutex)> lock(_mutex);
+		LockGuard lock(_mutex);
 
 		++_count;
 
-		_condition.notify_all();
+		_condition.NotifyAll();
 	}
 
 	void Semaphore::Stop()
 	{
-		std::unique_lock<decltype(_mutex)> lock(_mutex);
+		LockGuard lock(_mutex);
 
 		_stop_flag = true;
 
-		_condition.notify_all();
+		_condition.NotifyAll();
 	}
 
 	void Semaphore::Wait()
 	{
-		std::unique_lock<decltype(_mutex)> lock(_mutex);
+		LockGuard lock(_mutex);
 
 		while(_count <= 0 && !_stop_flag)
 		{
-			_condition.wait(lock);
+			_condition.Wait(lock);
 		}
 
 		if (_stop_flag)
@@ -52,11 +52,11 @@ namespace ov
 
 	bool Semaphore::WaitFor(uint32_t timeout_delta_msec)
 	{
-		std::unique_lock<decltype(_mutex)> lock(_mutex);
+		LockGuard lock(_mutex);
 
 		while(_count <= 0 && !_stop_flag)
 		{
-			auto result = _condition.wait_for(lock, std::chrono::milliseconds(timeout_delta_msec));
+			auto result = _condition.WaitFor(lock, std::chrono::milliseconds(timeout_delta_msec));
 			if(result == std::cv_status::timeout)
 			{
 				return false;
@@ -76,7 +76,7 @@ namespace ov
 
 	bool Semaphore::TryWait()
 	{
-		std::unique_lock<decltype(_mutex)> lock(_mutex);
+		LockGuard lock(_mutex);
 
 		if (_stop_flag)
 		{

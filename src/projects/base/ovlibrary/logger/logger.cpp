@@ -14,6 +14,7 @@
 
 #include <memory>
 
+#include "../tsa/mutex.h"
 #include "sinks/sinks.h"
 
 #define OV_LOG_COLOR_RESET "\x1B[0m"
@@ -94,10 +95,10 @@ namespace ov::logger
 
 	std::shared_ptr<Logger> GetLogger(const char *tag, const LogOptions &options)
 	{
-		static std::mutex logger_map_mutex;
-		static std::map<std::string, std::shared_ptr<Logger>> logger_map;
+		static Mutex logger_map_mutex;
+		static std::map<std::string, std::shared_ptr<Logger>> logger_map OV_GUARDED_BY(logger_map_mutex);
 
-		std::lock_guard lock_guard(logger_map_mutex);
+		LockGuard lock_guard(logger_map_mutex);
 
 		{
 			auto logger = logger_map.find(tag);

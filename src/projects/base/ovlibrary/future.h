@@ -8,9 +8,9 @@
 //==============================================================================
 #pragma once
 
-#include <mutex>
-#include <condition_variable>
 #include <chrono>
+
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -19,34 +19,34 @@ namespace ov
 	public:
 		void Stop()
 		{
-			std::unique_lock<std::mutex> lock(_mutex);
+			LockGuard lock(_mutex);
 			_stop_flag = true;
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 		bool Submit(bool result)
 		{
-			std::unique_lock<std::mutex> lock(_mutex);
+			LockGuard lock(_mutex);
 			_result = result;
 			_stop_flag = true;
-			_condition.notify_all();
+			_condition.NotifyAll();
 			return _result;
 		}
 
 		bool Get()
 		{
-			std::unique_lock<std::mutex> lock(_mutex);
+			LockGuard lock(_mutex);
 
-			_condition.wait(lock, [this]() { return _stop_flag; });
+			_condition.Wait(lock, [this]() OV_REQUIRES(_mutex) -> bool { return _stop_flag; });
 
 			return _result;
 		}
 
 		bool GetFor(uint32_t timeout_delta_msec)
 		{
-			std::unique_lock<std::mutex> lock(_mutex);
+			LockGuard lock(_mutex);
 
-			if (!_condition.wait_for(lock, std::chrono::milliseconds(timeout_delta_msec), [this]() { return _stop_flag; }))
+			if (!_condition.WaitFor(lock, std::chrono::milliseconds(timeout_delta_msec), [this]() OV_REQUIRES(_mutex) -> bool { return _stop_flag; }))
 			{
 				return false;
 			}
@@ -55,9 +55,9 @@ namespace ov
 		}
 
 	private:
-		std::mutex _mutex;
-		std::condition_variable _condition;
-		bool _stop_flag = false;
-		bool _result = false;
+		Mutex _mutex;
+		ConditionVariable _condition;
+		bool _stop_flag OV_GUARDED_BY(_mutex) = false;
+		bool _result OV_GUARDED_BY(_mutex) = false;
 	};
 }  // namespace ov

@@ -17,21 +17,21 @@ public:
 private:
 	struct Clock
 	{
-		std::mutex   _lock;
-		bool         _updated = false;
-		bool         _first_sr = true;
+		ov::Mutex    _lock;
+		bool         _updated OV_GUARDED_BY(_lock) = false;
+		bool         _first_sr OV_GUARDED_BY(_lock) = true;
 		double       _timebase = 0;
-		uint32_t     _last_rtcp_timestamp = 0;
-		uint64_t     _extended_rtcp_timestamp = 0;
-		uint64_t     _pts = 0;				// converted NTP timestamp to timebase timestamp
-		uint32_t     _last_rtp_timestamp = 0;
-		uint64_t     _extended_rtp_timestamp = 0;
+		uint32_t     _last_rtcp_timestamp OV_GUARDED_BY(_lock) = 0;
+		uint64_t     _extended_rtcp_timestamp OV_GUARDED_BY(_lock) = 0;
+		uint64_t     _pts OV_GUARDED_BY(_lock) = 0;				// converted NTP timestamp to timebase timestamp
+		uint32_t     _last_rtp_timestamp OV_GUARDED_BY(_lock) = 0;
+		uint64_t     _extended_rtp_timestamp OV_GUARDED_BY(_lock) = 0;
 	};
 
-	std::shared_mutex _map_lock;
+	ov::SharedMutex _map_lock;
 	// Id, Clock
-	std::map<uint32_t, std::shared_ptr<Clock>> _clock_map;
-	std::map<uint32_t, bool> _clock_enabled_map;
+	std::map<uint32_t, std::shared_ptr<Clock>> _clock_map OV_GUARDED_BY(_map_lock);
+	std::map<uint32_t, bool> _clock_enabled_map OV_GUARDED_BY(_map_lock);
 
 	std::shared_ptr<Clock> GetClock(uint32_t id);
 };

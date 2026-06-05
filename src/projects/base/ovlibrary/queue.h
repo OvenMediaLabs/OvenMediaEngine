@@ -8,16 +8,15 @@
 //==============================================================================
 #pragma once
 
-#include <condition_variable>
 #include <optional>
 #include <queue>
-#include <shared_mutex>
 
 #include "./dump_utilities.h"
 #include "./log.h"
 #include "./ovdata_structure.h"
 #include "./stop_watch.h"
 #include "./string.h"
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -38,25 +37,25 @@ namespace ov
 
 			_last_log_time.Start();
 
-			auto shared_lock = std::shared_lock(_name_mutex);
+			SharedLockGuard shared_lock(_name_mutex);
 			logt("ov.Queue", "[%p] %s is created with threshold: %zu, interval: %d", this, _queue_name.CStr(), threshold, log_interval_in_msec);
 		}
 
 		~Queue()
 		{
-			auto shared_lock = std::shared_lock(_name_mutex);
+			SharedLockGuard shared_lock(_name_mutex);
 			logt("ov.Queue", "[%p] %s is destroyed", this, _queue_name.CStr());
 		}
 
 		String GetAlias() const
 		{
-			auto shared_lock = std::shared_lock(_name_mutex);
+			SharedLockGuard shared_lock(_name_mutex);
 			return _queue_name;
 		}
 
 		void SetAlias(const char *alias)
 		{
-			auto lock_guard = std::lock_guard(_name_mutex);
+			LockGuard lock_guard(_name_mutex);
 
 			if ((alias != nullptr) && (alias[0] != '\0'))
 			{
@@ -72,7 +71,7 @@ namespace ov
 
 		void SetThreshold(size_t threshold)
 		{
-			auto lock_guard = std::lock_guard(_name_mutex);
+			LockGuard lock_guard(_name_mutex);
 
 			_threshold = threshold;
 			logt("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
@@ -80,30 +79,30 @@ namespace ov
 
 		void Enqueue(const T &item)
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_queue.push(item);
 
 			CheckThreshold();
 
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 		void Enqueue(T &&item)
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_queue.push(std::move(item));
 
 			CheckThreshold();
 
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 		// Timeout in milliseconds
 		std::optional<T> Front(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -114,7 +113,7 @@ namespace ov
 					std::chrono::steady_clock::time_point expire =
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 						return ((_queue.empty() == false) || _stop);
 					});
 				}
@@ -145,7 +144,7 @@ namespace ov
 		// Timeout in milliseconds
 		std::optional<T> Back(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -157,7 +156,7 @@ namespace ov
 					std::chrono::steady_clock::time_point expire =
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-					result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 						return ((_queue.empty() == false) || _stop);
 					});
 				}
@@ -189,7 +188,7 @@ namespace ov
 		// Timeout in milliseconds
 		std::optional<T> Dequeue(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -203,7 +202,7 @@ namespace ov
 						std::chrono::steady_clock::time_point expire =
 							(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-						result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+						result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 							return ((_queue.empty() == false) || _stop);
 						});
 					}
@@ -242,14 +241,14 @@ namespace ov
 
 		bool IsEmpty() const
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			return _queue.empty();
 		}
 
 		void Clear()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			// empty the queue
 			_queue = {};
@@ -257,7 +256,7 @@ namespace ov
 
 		size_t Size() const
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			return _queue.size();
 		}
@@ -269,21 +268,21 @@ namespace ov
 
 		void Start()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_stop = false;
 		}
 
 		void Stop()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_stop = true;
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 	protected:
-		inline void CheckThreshold()
+		inline void CheckThreshold() OV_REQUIRES(_mutex)
 		{
 			if (_peak < _queue.size())
 			{
@@ -294,7 +293,7 @@ namespace ov
 			{
 				if (_last_log_time.IsElapsed(_log_interval) && _last_log_time.Update())
 				{
-					auto shared_lock = std::shared_lock(_name_mutex);
+					SharedLockGuard shared_lock(_name_mutex);
 					logw("ov.Queue", "[%p] %s size has exceeded the threshold: queue: %zu, threshold: %zu, peak: %zu", this, _queue_name.CStr(), _queue.size(), _threshold, _peak);
 				}
 			}
@@ -303,17 +302,17 @@ namespace ov
 	private:
 		StopWatch _last_log_time;
 
-		std::shared_mutex _name_mutex;
-		String _queue_name;
+		SharedMutex _name_mutex;
+		String _queue_name OV_GUARDED_BY(_name_mutex);
 
-		size_t _threshold = 0;
-		size_t _peak = 0;
+		size_t _threshold OV_GUARDED_BY(_name_mutex) = 0;
+		size_t _peak OV_GUARDED_BY(_mutex) = 0;
 		int _log_interval = 0;
 
-		std::queue<T> _queue;
-		mutable std::mutex _mutex;
-		std::condition_variable _condition;
-		bool _stop = false;
+		std::queue<T> _queue OV_GUARDED_BY(_mutex);
+		mutable Mutex _mutex;
+		ConditionVariable _condition;
+		bool _stop OV_GUARDED_BY(_mutex) = false;
 	};
 
 }  // namespace ov

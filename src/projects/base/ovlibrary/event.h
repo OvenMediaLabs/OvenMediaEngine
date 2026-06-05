@@ -9,9 +9,7 @@
 #pragma once
 
 #include "./ovdata_structure.h"
-
-#include <mutex>
-#include <condition_variable>
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -32,9 +30,9 @@ namespace ov
 	protected:
 		bool _manual_reset;
 
-		std::mutex _mutex;
-		std::condition_variable _condition;
-		bool _event;
+		Mutex _mutex;
+		ConditionVariable _condition;
+		bool _event OV_GUARDED_BY(_mutex);
 	};
 }
 

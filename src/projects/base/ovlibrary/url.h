@@ -10,6 +10,7 @@
 
 #include "./ovlibrary.h"
 #include "./string.h"
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -112,9 +113,9 @@ namespace ov
 		ov::String _query_string;
 		bool _has_query_string = false;
 		// To reduce the cost of parsing the query map, parsing the query only when Query() or QueryMap() is called
-		mutable bool _query_parsed = false;
-		mutable std::mutex _query_map_mutex;
-		mutable std::map<ov::String, ov::String> _query_map;
+		mutable bool _query_parsed OV_GUARDED_BY(_query_map_mutex) = false;
+		mutable Mutex _query_map_mutex;
+		mutable std::map<ov::String, ov::String> _query_map OV_GUARDED_BY(_query_map_mutex);
 
 		// Valid for URLs of the form: <scheme>://<domain>[:<port>]/<app>/<stream>[<file>[/<remaining>]][?<query string>]
 		ov::String _app;

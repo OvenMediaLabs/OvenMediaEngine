@@ -8,8 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include <mutex>
-#include <condition_variable>
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -25,9 +24,9 @@ namespace ov
 		bool TryWait();
 
 	private:
-		std::mutex _mutex;
-		std::condition_variable _condition;
-		unsigned long _count = 0;
-		bool _stop_flag = false;
+		Mutex _mutex;
+		ConditionVariable _condition;
+		unsigned long _count OV_GUARDED_BY(_mutex) = 0;
+		bool _stop_flag OV_GUARDED_BY(_mutex) = false;
 	};
 }

@@ -6,7 +6,7 @@ bool LipSyncClock::RegisterRtpClock(uint32_t id, double timebase)
 {
 	auto clock = std::make_shared<Clock>();
 	clock->_timebase = timebase;
-	std::lock_guard<std::shared_mutex> lock(_map_lock);
+	ov::LockGuard lock(_map_lock);
 	_clock_map.emplace(id, clock);
 
 	return true;
@@ -14,13 +14,13 @@ bool LipSyncClock::RegisterRtpClock(uint32_t id, double timebase)
 
 bool LipSyncClock::IsEnabled()
 {
-	std::shared_lock<std::shared_mutex> lock(_map_lock);
+	ov::SharedLockGuard lock(_map_lock);
 	return !_clock_map.empty() && _clock_enabled_map.size() == _clock_map.size();
 }
 
 std::shared_ptr<LipSyncClock::Clock> LipSyncClock::GetClock(uint32_t id)
 {
-	std::shared_lock<std::shared_mutex> lock(_map_lock);
+	ov::SharedLockGuard lock(_map_lock);
 	auto it = _clock_map.find(id);
 	if (it == _clock_map.end())
 	{
@@ -37,7 +37,7 @@ std::optional<uint64_t> LipSyncClock::CalcPTS(uint32_t id, uint32_t rtp_timestam
 		return {};
 	}
 
-	std::lock_guard<std::mutex> lock(clock->_lock);
+	ov::LockGuard lock(clock->_lock);
 
 	if(clock->_updated == false)
 	{
@@ -109,11 +109,11 @@ bool LipSyncClock::UpdateSenderReportTime(uint32_t id, uint32_t ntp_msw, uint32_
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_map_lock);
+		ov::LockGuard lock(_map_lock);
 		_clock_enabled_map[id] = true;
 	}
 
-	std::lock_guard<std::mutex> lock(clock->_lock);
+	ov::LockGuard lock(clock->_lock);
 
 	if (clock->_first_sr == true)
 	{

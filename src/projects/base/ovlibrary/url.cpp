@@ -399,7 +399,7 @@ namespace ov
 			return;
 		}
 
-		auto lock_guard = std::lock_guard(_query_map_mutex);
+		LockGuard lock_guard(_query_map_mutex);
 
 		// DCL
 		if (_query_parsed == false)
