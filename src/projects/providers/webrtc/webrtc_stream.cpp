@@ -773,7 +773,9 @@ namespace pvd
 				cts_enabled = _cts_extmap_enabled == true;
 				{
 					std::lock_guard<std::mutex> lock(_sequence_header_lock);
-					if( _h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
+					// Keep refreshing until the parameter sets are actually collected
+					auto it = _h26x_extradata_nalu.find(track->GetId());
+					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
 					{
 						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
 					}
@@ -787,7 +789,9 @@ namespace pvd
 				cts_enabled = _cts_extmap_enabled == true;
 				{
 					std::lock_guard<std::mutex> lock(_sequence_header_lock);
-					if (_h26x_extradata_nalu.find(track->GetId()) == _h26x_extradata_nalu.end())
+					// Keep refreshing until the parameter sets are actually collected
+					auto it = _h26x_extradata_nalu.find(track->GetId());
+					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
 					{
 						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
 					}
@@ -912,11 +916,13 @@ namespace pvd
 			// If the codec is H264/H265 and the sequence header has not been sent yet, prepend it.
 			if (is_h26x && !is_sent_sequence_header)
 			{
-				auto new_packet = media_packet->ClonePacket();
-
+				// Prepend only once the parameter sets are available; otherwise leave it
+				// unsent so a later frame can prepend after the depacketizer collects them.
 				auto it = _h26x_extradata_nalu.find(track_id);
 				if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
 				{
+					auto new_packet = media_packet->ClonePacket();
+
 					// Since it is a NALU type, the data can simply be concatenated
 					auto prepend = std::make_shared<ov::Data>();
 					prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
@@ -925,10 +931,10 @@ namespace pvd
 					new_packet->SetData(prepend);
 
 					logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
-				}
 
-				packet_to_send = new_packet;
-				_sent_sequence_header[track_id] = true;
+					packet_to_send = new_packet;
+					_sent_sequence_header[track_id] = true;
+				}
 			}
 		}
 
