@@ -388,12 +388,10 @@ TEST(TsaConditionVariable, WaitWithPredicate)
 	waiter.join();
 }
 
-// `OV_GUARDED_WAIT(mutex, expr)` is the predicate-form macro that attaches
-// `OV_REQUIRES(mutex)` to the lambda in ON mode so the analyzer accepts the access
-// to an `OV_GUARDED_BY(mutex)` member.
+// A predicate lambda annotated with `OV_REQUIRES(mutex)` lets the analyzer accept the access
+// to an `OV_GUARDED_BY(mutex)` member in ON mode.
 // The runtime semantics are identical to a bare predicate lambda;
-// the macro only adds the annotation Clang needs to suppress the lambda-scope false positive
-// on `wait(lock, pred)`.
+// the annotation only suppresses the lambda-scope false positive on `wait(lock, pred)`.
 namespace
 {
 	class CvPredicateProbe
@@ -403,7 +401,7 @@ namespace
 		{
 			std::thread waiter([this]() {
 				ov::LockGuard lock(_mutex);
-				_cv.Wait(lock, OV_GUARDED_WAIT(_mutex, _ready));
+				_cv.Wait(lock, [&]() OV_REQUIRES(_mutex) { return (_ready); });
 				EXPECT_TRUE(_ready);
 			});
 
@@ -504,8 +502,8 @@ TEST(TsaConcurrency, MutexProtectsCounter)
 // Drives N rounds of single-item handoff through the cv to confirm there is no deadlock
 // or missed wake-up after the PascalCase rewrite.
 // The counters are OV_GUARDED_BY members (not locals - guarded_by is ignored on locals)
-// so the `OV_GUARDED_WAIT(_mutex, _produced > _consumed)` predicate actually reads guarded
-// state: in ON mode this exercises the macro's analyzer contract on a realistic counter-based
+// so the `[&]() OV_REQUIRES(_mutex) { return (_produced > _consumed); }` predicate actually reads guarded
+// state: in ON mode this exercises the OV_REQUIRES predicate annotation on a realistic counter-based
 // path (must compile warning-free), on top of the runtime deadlock/missed-wakeup check.
 namespace
 {
@@ -518,7 +516,7 @@ namespace
 				for (auto i = 0; i < rounds; ++i)
 				{
 					ov::LockGuard lk(_mutex);
-					_cv.Wait(lk, OV_GUARDED_WAIT(_mutex, _produced > _consumed));
+					_cv.Wait(lk, [&]() OV_REQUIRES(_mutex) { return (_produced > _consumed); });
 					_consumed++;
 				}
 			});

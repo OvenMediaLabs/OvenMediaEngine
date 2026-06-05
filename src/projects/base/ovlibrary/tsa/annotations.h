@@ -132,31 +132,3 @@
 // Use only when the analyzer cannot reason about a deliberately exotic locking pattern
 // (e.g. lock handoff between threads) and document the reason inline.
 #define OV_NO_THREAD_SAFETY_ANALYSIS OV_TS_ATTR(no_thread_safety_analysis)
-
-// ----------------------------------------------------------------------------
-// Predicate helpers for `ov::ConditionVariable::wait(lock, pred)`
-// ----------------------------------------------------------------------------
-
-// Clang Thread Safety Analysis analyzes lambda bodies at their point of definition and does
-// not propagate the surrounding function's held set into the lambda.
-// That is fine for most lambdas but produces a false positive for the standard `cv.wait(lock,
-// [&]{ return cond; })` idiom when the predicate reads a `OV_GUARDED_BY` member:
-// the analyzer cannot tell that `wait` invokes the predicate with the lock held.
-//
-// `OV_GUARDED_WAIT(mutex_expr, expr)` builds a predicate lambda that declares
-// `OV_REQUIRES(mutex_expr)` in ON mode so the analyzer accepts the access;
-// in OFF mode it expands to a plain lambda so source stays identical between modes.
-// Typical use:
-//
-// ```cpp
-// ov::LockGuard lock(_mutex);
-// _cv.Wait(lock, OV_GUARDED_WAIT(_mutex, _ready));
-// ```
-//
-// The expression is evaluated each time the predicate is invoked
-// by `condition_variable::wait`, exactly as with a hand-written lambda.
-#if defined(__clang__) && defined(OME_THREAD_SAFETY)
-#	define OV_GUARDED_WAIT(mutex_expr, expr) [&]() OV_REQUIRES(mutex_expr) { return (expr); }
-#else
-#	define OV_GUARDED_WAIT(mutex_expr, expr) [&]() { return (expr); }
-#endif

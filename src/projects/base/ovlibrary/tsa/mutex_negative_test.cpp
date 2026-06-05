@@ -40,7 +40,7 @@
 //     (B) Baseline TSA coverage: unguarded access without any lock
 //         is diagnosed.
 //     (C) Immediate-acquire happy path: no diagnostic.
-//     (D) CV wait + `OV_GUARDED_WAIT` predicate macro: no
+//     (D) CV wait + `OV_REQUIRES` predicate lambda: no
 //         diagnostic (verifies the lambda-requires annotation).
 //     (E) API-absence lockdown via `static_assert`. The shrunk
 //         API must not silently regrow defer/try/adopt
@@ -82,7 +82,7 @@
 //     | immediate `lk(m)` + protected access                      | none                     |
 //     | unguarded access (no lock)                                | warning (read requires)  |
 //     | shared `lk(m)` + protected access                         | none                     |
-//     | CV wait + `OV_GUARDED_WAIT` predicate                     | none                     |
+//     | CV wait + `OV_REQUIRES` predicate lambda                  | none                     |
 //     | static_assert: defer_lock ctor absent                     | compile-time enforced    |
 //     | static_assert: try_to_lock ctor absent                    | compile-time enforced    |
 //     | static_assert: adopt_lock ctor absent                     | compile-time enforced    |
@@ -532,7 +532,7 @@ namespace
 // ----------------------------------------------------------------------------
 // (D) `ov::ConditionVariable` regression - the transient `cv.Wait(lock)`
 // unlock/re-lock must still leave the analyzer convinced the lock is held after the wait
-// returns, and a `OV_GUARDED_WAIT` predicate reading an `OV_GUARDED_BY` member must compile cleanly.
+// returns, and an `OV_REQUIRES` predicate lambda reading an `OV_GUARDED_BY` member must compile cleanly.
 // ----------------------------------------------------------------------------
 
 namespace
@@ -543,7 +543,7 @@ namespace
 		void Run()
 		{
 			ov::LockGuard lk(_mutex);
-			_cv.Wait(lk, OV_GUARDED_WAIT(_mutex, _ready));
+			_cv.Wait(lk, [&]() OV_REQUIRES(_mutex) { return (_ready); });
 			_value = 1;
 		}
 

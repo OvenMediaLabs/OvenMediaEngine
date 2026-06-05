@@ -304,10 +304,8 @@ namespace ov
 	//                         ^^^^^^^^^^^^^^^^^^^ - required in `ON` mode
 	// ```
 	//
-	// `OV_GUARDED_WAIT(mutex_expr, predicate_expr)` packages this pattern: in ON mode
-	// it expands to a properly annotated lambda;
-	// in OFF mode it expands to a plain lambda so source stays identical between modes.
-	// See the macro definition in `annotations.h`.
+	// In OFF mode `OV_REQUIRES` expands to nothing, so the predicate stays a plain lambda
+	// and the source is identical between modes.
 	class ConditionVariable
 	{
 	public:
@@ -330,7 +328,7 @@ namespace ov
 		// Normal use satisfies it automatically:
 		//
 		//     ov::LockGuard lock(_mutex);
-		//     _cv.Wait(lock, OV_GUARDED_WAIT(_mutex, _ready));   // lock held - OK
+		//     _cv.Wait(lock, [this]() OV_REQUIRES(_mutex) { return _ready; });   // lock held - OK
 		//
 		// The only way to break it is to unlock the mutex behind the guard's back
 		// (`_mutex.Unlock()` while the guard is alive) and then wait - UB,
