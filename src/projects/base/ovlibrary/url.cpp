@@ -271,7 +271,7 @@ namespace ov
 			_path_components.clear();
 			_query_string	  = "";
 			_has_query_string = false;
-			ParseQuery();
+			InvalidateQueryMap();
 
 			_app			  = "";
 			_stream			  = "";
@@ -295,7 +295,7 @@ namespace ov
 		}
 		_query_string	  = group_list["qs"].GetValue();
 		_has_query_string = (_query_string.IsEmpty() == false);
-		ParseQuery();
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -323,7 +323,7 @@ namespace ov
 
 		_query_string.Append(key);
 		_has_query_string = true;
-		ParseQuery();
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -339,7 +339,7 @@ namespace ov
 
 		_query_string.AppendFormat("%s=%s", key.CStr(), Encode(value).CStr());
 		_has_query_string = true;
-		ParseQuery();
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -363,7 +363,7 @@ namespace ov
 		}
 
 		_has_query_string = true;
-		ParseQuery();
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -414,7 +414,7 @@ namespace ov
 		}
 
 		_query_string = new_query_string;
-		ParseQuery();
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -473,9 +473,21 @@ namespace ov
 		return true;
 	}
 
-	void Url::ParseQuery()
+	void Url::InvalidateQueryMap() const
 	{
+		LockGuard map_lock(_query_map_mutex);
+		_query_parsed = false;
+	}
+
+	void Url::EnsureQueryParsed() const
+	{
+		if (_query_parsed)
+		{
+			return;
+		}
+
 		_query_map.clear();
+		_query_parsed = true;
 
 		if ((_has_query_string == false) || _query_string.IsEmpty())
 		{
@@ -515,12 +527,16 @@ namespace ov
 	bool Url::HasQueryKey(ov::String key) const
 	{
 		SharedLockGuard lock(_mutex);
+		LockGuard map_lock(_query_map_mutex);
+		EnsureQueryParsed();
 		return _query_map.find(key) != _query_map.end();
 	}
 
 	ov::String Url::GetQueryValue(ov::String key) const
 	{
 		SharedLockGuard lock(_mutex);
+		LockGuard map_lock(_query_map_mutex);
+		EnsureQueryParsed();
 
 		auto item = _query_map.find(key);
 		if (item == _query_map.end())
@@ -531,7 +547,7 @@ namespace ov
 		return Decode(item->second);
 	}
 
-	Url &Url::operator=(const Url &other) noexcept
+	Url &Url::operator=(const Url &other)
 	{
 		if (this == &other)
 		{
@@ -545,7 +561,6 @@ namespace ov
 		uint32_t port = 0;
 		bool has_query_string = false;
 		std::vector<ov::String> path_components;
-		std::map<ov::String, ov::String> query_map;
 
 		{
 			SharedLockGuard lock(other._mutex);
@@ -560,7 +575,6 @@ namespace ov
 			path_components	 = other._path_components;
 			query_string	 = other._query_string;
 			has_query_string = other._has_query_string;
-			query_map		 = other._query_map;
 			app				 = other._app;
 			stream			 = other._stream;
 			file			 = other._file;
@@ -579,10 +593,12 @@ namespace ov
 			_path_components  = path_components;
 			_query_string	  = query_string;
 			_has_query_string = has_query_string;
-			_query_map		  = query_map;
 			_app			  = app;
 			_stream			  = stream;
 			_file			  = file;
+
+			// The query map is rebuilt lazily from the copied query string.
+			InvalidateQueryMap();
 		}
 
 		return *this;

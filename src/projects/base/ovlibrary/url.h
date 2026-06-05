@@ -14,12 +14,17 @@
 
 namespace ov
 {
-	// Url is fully synchronized: a single SharedMutex guards every field.
+	// Url is fully synchronized: a `SharedMutex` (`_mutex`) guards every field.
 	// Read accessors take a shared lock and return BY VALUE (a snapshot);
 	// mutators take an exclusive lock.
 	// Concurrent reads and writes on a shared Url are therefore safe,
 	// at the cost of a lock (and a copy of the returned value) per access.
 	// The internal helpers run under the caller's exclusive lock.
+	//
+	// The parsed query map is cached lazily behind its own `_query_map_mutex`
+	// (rebuilt from `_query_string` on first query read), so read accessors that
+	// hold `_mutex` only in shared mode can still populate it without racing.
+	// Lock order is always `_mutex` (outer) -> `_query_map_mutex` (inner).
 	class Url
 	{
 	public:
@@ -82,7 +87,7 @@ namespace ov
 		ov::String ToUrlString(bool include_query_string = true) const;
 		ov::String ToString() const;
 
-		Url &operator=(const Url &other) noexcept;
+		Url &operator=(const Url &other);
 
 		Url() = default;
 		Url(const Url &other);
@@ -99,10 +104,14 @@ namespace ov
 		bool UpdatePathFromComponents() OV_REQUIRES(_mutex);
 		// Update _path_components/_app/_stream/_file from _path
 		bool UpdatePathComponentsFromPath() OV_REQUIRES(_mutex);
-		// (Re)builds `_query_map` from `_query_string`. Called whenever the query string is set.
-		void ParseQuery() OV_REQUIRES(_mutex);
 		// Lock-free body of ToUrlString(); the public method takes the shared lock.
 		ov::String ToUrlStringInternal(bool include_query_string) const OV_REQUIRES_SHARED(_mutex);
+
+		// Query-map cache helpers (lock order: `_mutex` -> `_query_map_mutex`).
+		// Marks the cached query map stale; called by mutators that change `_query_string`.
+		void InvalidateQueryMap() const OV_REQUIRES(_mutex);
+		// Rebuilds the cached query map from `_query_string` if stale (lazy parse).
+		void EnsureQueryParsed() const OV_REQUIRES_SHARED(_mutex) OV_REQUIRES(_query_map_mutex);
 
 	private:
 		mutable SharedMutex _mutex;
@@ -120,8 +129,14 @@ namespace ov
 		std::vector<ov::String> _path_components OV_GUARDED_BY(_mutex);
 		ov::String _query_string OV_GUARDED_BY(_mutex);
 		bool _has_query_string OV_GUARDED_BY(_mutex) = false;
-		// Parsed from `_query_string` whenever it is set (see ParseQuery()).
-		std::map<ov::String, ov::String> _query_map OV_GUARDED_BY(_mutex);
+
+		// `_query_map` is parsed lazily from `_query_string` on first query read and cached.
+		// It has its OWN mutex so read accessors (which hold `_mutex` only in shared mode)
+		// can populate the cache without racing each other.
+		// Lock order is always `_mutex` (outer) -> `_query_map_mutex` (inner).
+		mutable Mutex _query_map_mutex;
+		mutable bool _query_parsed OV_GUARDED_BY(_query_map_mutex) = false;
+		mutable std::map<ov::String, ov::String> _query_map OV_GUARDED_BY(_query_map_mutex);
 
 		// Valid for URLs of the form: <scheme>://<domain>[:<port>]/<app>/<stream>[<file>[/<remaining>]][?<query string>]
 		ov::String _app OV_GUARDED_BY(_mutex);
