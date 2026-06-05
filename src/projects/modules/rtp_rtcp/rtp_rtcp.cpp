@@ -439,7 +439,7 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 		{
 			// Receiver SSRC is unknown, so reuse the first track's RR ssrc. Wide
 			// sequence means media ssrc may not be unique, so the first one is used.
-			_transport_cc_generator = std::make_shared<RtcpTransportCcFeedbackGenerator>(_transport_cc_feedback_extension_id, receiver_ssrc);
+			_transport_cc_generator = std::make_shared<RtcpTransportCcFeedbackGenerator>(_transport_cc_feedback_extension_id.load(), receiver_ssrc);
 		}
 		generator = _transport_cc_generator;
 	}
