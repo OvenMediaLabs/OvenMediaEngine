@@ -34,8 +34,12 @@ RtpPacket::RtpPacket(const std::shared_ptr<const ov::Data> &data)
 
 RtpPacket::RtpPacket(const RtpPacket &src)
 {
+	_has_padding = src._has_padding;
+	_has_extension = src._has_extension;
+	_cc = src._cc;
 	_marker = src._marker;
 	_payload_type = src._payload_type;
+	_is_fec = src._is_fec;
 	_origin_payload_type = src._origin_payload_type;
 	_ssrc = src._ssrc;
 	_payload_offset = src._payload_offset;
@@ -44,7 +48,6 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_extension_size = src._extension_size;
 	_sequence_number = src._sequence_number;
 	_timestamp = src._timestamp;
-	_extension_size = src._extension_size;
 	_extensions = src._extensions;
 	_extension_buffer_offset = src._extension_buffer_offset;
 	_extension_type = src._extension_type;
@@ -56,6 +59,8 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_ntp_timestamp = src._ntp_timestamp;
 	_is_keyframe = src._is_keyframe;
 	_is_first_packet_of_frame = src._is_first_packet_of_frame;
+	_is_last_packet_of_frame = src._is_last_packet_of_frame;
+	_is_start_of_unit = src._is_start_of_unit;
 	_is_video_packet = src._is_video_packet;
 	_rtsp_channel = src._rtsp_channel;
 	_created_time = std::chrono::system_clock::now();

@@ -11,7 +11,7 @@ OvenMediaEngine supports WebRTC ingest from web browsers and any encoder that im
 | **Container** | RTP / RTCP |
 | **Security** | DTLS, SRTP |
 | **Transport** | ICE |
-| **Error Correction** | ULPFEC (VP8, H.264), In-band FEC (Opus) |
+| **Error Correction** | NACK + RTX (RFC 4585 / RFC 4588), ULPFEC (VP8, H.264), In-band FEC (Opus) |
 | **Codec** | VP8, H.264, H.265, Opus |
 | **Signaling** | Self-Defined Protocol (WebSocket), WHIP (HTTP) |
 | **Additional Features** | Simulcast |
@@ -97,6 +97,10 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
     <Timeout>30000</Timeout>
     <FIRInterval>3000</FIRInterval>
     <RtcpBasedTimestamp>false</RtcpBasedTimestamp>
+    <Rtx>
+        <Enable>true</Enable>
+        <MaxHoldMs>400</MaxHoldMs>
+    </Rtx>
     <CrossDomains>
         <Url>*</Url>
     </CrossDomains>
@@ -108,7 +112,26 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
 | `Timeout` | Maximum duration (ms) to wait for an ICE Binding request/response before terminating the session. |
 | `FIRInterval` | Interval (ms) for sending a Full Intra Request (FIR) to force IDR frame generation. Set to `0` to disable. |
 | `RtcpBasedTimestamp` | `false` (default): each track's RTP timestamp starts from zero independently, no waiting for RTCP SR. `true`: RTCP Sender Reports synchronize A/V timestamps on a common clock. Use `true` only when the sender reliably sends RTCP SR; otherwise stream start may be delayed up to 5 seconds. |
+| `Rtx` | NACK + RTX retransmission for video. See [NACK + RTX](#nack--rtx) below. |
 | `CrossDomains` | Allowed domains for signaling requests (CORS). |
+
+#### NACK + RTX
+
+When `<Rtx><Enable>true</Enable></Rtx>` is set, OvenMediaEngine negotiates NACK feedback (RFC 4585) and RTX retransmission (RFC 4588) for every video codec in the SDP. On packet loss the receive-side jitter buffer asks the publisher to resend missing packets, recovering most short bursts of loss without forcing a keyframe.
+
+```xml
+<Rtx>
+    <Enable>true</Enable>          <!-- default: false -->
+    <MaxHoldMs>400</MaxHoldMs>     <!-- default: 400 -->
+</Rtx>
+```
+
+| Parameter | Description |
+|---|---|
+| `Enable` | Turn NACK + RTX on. Disabled by default. |
+| `MaxHoldMs` | Upper bound (ms) for how long the jitter buffer waits for an incomplete frame to recover before discarding it. Acts as a latency ceiling: a larger value increases recovery success in high-RTT or lossy networks at the cost of more end-to-end delay; a smaller value keeps latency tight at the cost of more discarded frames. The actual hold window is adaptive and usually lands well below this cap. Default `400`. |
+
+Audio NACK is not negotiated. Lost audio packets are concealed by Opus' in-band FEC where available, otherwise dropped.
 
 ## URL Patterns
 

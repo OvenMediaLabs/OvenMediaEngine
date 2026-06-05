@@ -42,9 +42,61 @@ bool NACK::Parse(const RtcpPacket &packet)
 }
 
 // RtcpInfo must provide raw data
-std::shared_ptr<ov::Data> NACK::GetData() const 
+// Caller (e.g. RtpNackGenerator) must add ids in ascending sequence order;
+// raw uint16 sort is unsafe across 16-bit wrap.
+std::shared_ptr<ov::Data> NACK::GetData() const
 {
-	return nullptr;
+	if (_lost_ids.empty())
+	{
+		return nullptr;
+	}
+
+	// Group ids into FCI blocks: each block is PID + 16-bit BLP covering PID+1..PID+16.
+	struct Fci
+	{
+		uint16_t pid;
+		uint16_t blp;
+	};
+	std::vector<Fci> fcis;
+
+	size_t i = 0;
+	while (i < _lost_ids.size())
+	{
+		Fci fci{_lost_ids[i], 0};
+		size_t j = i + 1;
+		while (j < _lost_ids.size())
+		{
+			uint16_t diff = static_cast<uint16_t>(_lost_ids[j] - fci.pid);
+			if (diff == 0)
+			{
+				j++;
+				continue;
+			}
+			if (diff > 16)
+			{
+				break;
+			}
+			fci.blp |= static_cast<uint16_t>(1u << (diff - 1));
+			j++;
+		}
+		fcis.push_back(fci);
+		i = j;
+	}
+
+	auto data = std::make_shared<ov::Data>();
+	data->SetLength(8 /*ssrc*2*/ + fcis.size() * 4 /*fci*/);
+	ov::ByteStream stream(data.get());
+
+	stream.WriteBE32(_src_ssrc);
+	stream.WriteBE32(_media_ssrc);
+
+	for (const auto &fci : fcis)
+	{
+		stream.WriteBE16(fci.pid);
+		stream.WriteBE16(fci.blp);
+	}
+
+	return data;
 }
 
 void NACK::DebugPrint()

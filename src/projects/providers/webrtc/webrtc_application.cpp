@@ -10,7 +10,9 @@
 #include "webrtc_private.h"
 #include "webrtc_application.h"
 
+#include <base/ovlibrary/converter.h>
 #include <modules/rtp_rtcp/rtp_header_extension/rtp_header_extension.h>
+#include <set>
 
 namespace pvd
 {
@@ -64,6 +66,7 @@ namespace pvd
 
 		bool transport_cc_enabled = true;
 		bool composition_time_enabled = true;
+		bool rtx_enabled = GetConfig().GetProviders().GetWebrtcProvider().GetRtx().IsEnabled();
 
 		auto offer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
 		offer_sdp->SetOrigin("OvenMediaEngine", ov::Random::GenerateUInt32(), 2, "IN", 4, "127.0.0.1");
@@ -107,25 +110,53 @@ namespace pvd
 		std::shared_ptr<PayloadAttr> payload;
 		// H264
 		payload = std::make_shared<PayloadAttr>();
-		payload->SetRtpmap(payload_type_num++, "H264", 90000);
+		uint8_t h264_pt = payload_type_num++;
+		payload->SetRtpmap(h264_pt, "H264", 90000);
 		payload->SetFmtp(ov::String::FormatString("packetization-mode=1;profile-level-id=%x;level-asymmetry-allowed=1",	0x42e01f));
 		payload->EnableRtcpFb(PayloadAttr::RtcpFbType::CcmFir, true);
+		if (rtx_enabled)
+		{
+			payload->EnableRtcpFb(PayloadAttr::RtcpFbType::Nack, true);
+		}
 		payload->EnableRtcpFb(PayloadAttr::RtcpFbType::NackPli, true);
 		payload->EnableRtcpFb(PayloadAttr::RtcpFbType::TransportCc, true);
 		video_media_desc->AddPayload(payload);
 
+		// H264 RTX
+		if (rtx_enabled)
+		{
+			payload = std::make_shared<PayloadAttr>();
+			payload->SetRtpmap(payload_type_num++, "rtx", 90000);
+			payload->SetFmtp(ov::String::FormatString("apt=%u", h264_pt));
+			video_media_desc->AddPayload(payload);
+		}
+
 		// VP8
 		payload = std::make_shared<PayloadAttr>();
-		payload->SetRtpmap(payload_type_num++, "VP8", 90000);
+		uint8_t vp8_pt = payload_type_num++;
+		payload->SetRtpmap(vp8_pt, "VP8", 90000);
 		payload->EnableRtcpFb(PayloadAttr::RtcpFbType::CcmFir, true);
+		if (rtx_enabled)
+		{
+			payload->EnableRtcpFb(PayloadAttr::RtcpFbType::Nack, true);
+		}
 		payload->EnableRtcpFb(PayloadAttr::RtcpFbType::NackPli, true);
-		
+
 		if (transport_cc_enabled)
 		{
 			payload->EnableRtcpFb(PayloadAttr::RtcpFbType::TransportCc, true);
 		}
 
 		video_media_desc->AddPayload(payload);
+
+		// VP8 RTX
+		if (rtx_enabled)
+		{
+			payload = std::make_shared<PayloadAttr>();
+			payload->SetRtpmap(payload_type_num++, "rtx", 90000);
+			payload->SetFmtp(ov::String::FormatString("apt=%u", vp8_pt));
+			video_media_desc->AddPayload(payload);
+		}
 
 		video_media_desc->Update();
 		offer_sdp->AddMedia(video_media_desc);
@@ -175,6 +206,8 @@ namespace pvd
 			return nullptr;
 		}
 
+		bool rtx_enabled = GetConfig().GetProviders().GetWebrtcProvider().GetRtx().IsEnabled();
+
 		auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
 		answer_sdp->SetOrigin("OvenMediaEngine", ov::Random::GenerateUInt32(), 2, "IN", 4, "127.0.0.1");
 		answer_sdp->SetTiming(0, 0);
@@ -199,6 +232,12 @@ namespace pvd
 				logte("Offer SDP has invalid media type - %s", offer_media_desc->GetMediaTypeStr().CStr());
 				continue;
 			}
+
+			// NACK/RTX are only wired into the receive pipeline for video, so
+			// negotiate them on video m-lines only. Advertising them on audio
+			// would promise retransmission the pipeline never services.
+			bool rtx_for_this_media = rtx_enabled &&
+				offer_media_desc->GetMediaType() == MediaDescription::MediaType::Video;
 
 			auto answer_media_desc = std::make_shared<MediaDescription>();
 			answer_media_desc->SetMediaType(offer_media_desc->GetMediaType());
@@ -273,10 +312,46 @@ namespace pvd
 				answer_media_desc->AddExtmap(extmap_id, extmap_attribute);
 			}
 
+			// Repaired RTP-STREAM-ID (rrid). libwebrtc stamps this on RTX
+			// packets in simulcast in place of rid; without it the receive
+			// side can't resolve which simulcast layer an RTX packet belongs to.
+			if (rtx_for_this_media &&
+				offer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", extmap_id, extmap_attribute))
+			{
+				answer_media_desc->AddExtmap(extmap_id, extmap_attribute);
+			}
+
+			// AV1 Dependency Descriptor (used codec-agnostically by modern
+			// libwebrtc to mark frame start/end). When negotiated, the
+			// receive-side jitter buffer uses S/E bits to identify the true
+			// first and last packet of each frame, avoiding the order-number
+			// heuristic's false-positive complete on first-packet loss.
+			if (offer_media_desc->FindExtmapItem(
+					RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE,
+					extmap_id, extmap_attribute))
+			{
+				answer_media_desc->AddExtmap(extmap_id, extmap_attribute);
+			}
+
 			// a=candidate
 			for (const auto &ice_candidate : ice_candidates)
 			{
 				answer_media_desc->AddIceCandidate(std::make_shared<IceCandidate>(ice_candidate));
+			}
+
+			// First pass: collect non-RTX primary PTs we will keep, so we can drop
+			// orphan RTX entries whose a=fmtp:N apt=M points at a codec we filtered out.
+			std::set<uint8_t> accepted_primary_pts;
+			for (auto &offer_payload : offer_media_desc->GetPayloadList())
+			{
+				auto codec = offer_payload->GetCodec();
+				if (codec == PayloadAttr::SupportCodec::H264 ||
+					codec == PayloadAttr::SupportCodec::H265 ||
+					codec == PayloadAttr::SupportCodec::VP8 ||
+					codec == PayloadAttr::SupportCodec::OPUS)
+				{
+					accepted_primary_pts.insert(offer_payload->GetId());
+				}
 			}
 
 			// payloads
@@ -285,10 +360,36 @@ namespace pvd
 				if (offer_payload->GetCodec() != PayloadAttr::SupportCodec::H264 &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::H265 &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::VP8 &&
-					offer_payload->GetCodec() != PayloadAttr::SupportCodec::OPUS)
+					offer_payload->GetCodec() != PayloadAttr::SupportCodec::OPUS &&
+					offer_payload->GetCodec() != PayloadAttr::SupportCodec::RTX)
 				{
 					logti("unsupported codec(%s) has ignored", offer_payload->GetCodecStr().CStr());
 					continue;
+				}
+
+				if (offer_payload->GetCodec() == PayloadAttr::SupportCodec::RTX)
+				{
+					// Drop RTX payloads when NACK is disabled, or on audio
+					// m-lines where the receive pipeline doesn't service RTX.
+					if (rtx_for_this_media == false)
+					{
+						continue;
+					}
+
+					// Drop orphan RTX whose apt= references a primary PT we filtered out.
+					auto fmtp = offer_payload->GetFmtp();
+					auto apt_pos = fmtp.IndexOf("apt=");
+					if (apt_pos < 0)
+					{
+						logti("Drop RTX pt(%u) with no apt= in fmtp", offer_payload->GetId());
+						continue;
+					}
+					uint32_t apt_pt = ov::Converter::ToUInt32(fmtp.Substring(apt_pos + 4).CStr());
+					if (accepted_primary_pts.find(static_cast<uint8_t>(apt_pt)) == accepted_primary_pts.end())
+					{
+						logti("Drop RTX pt(%u) referencing unsupported primary pt(%u)", offer_payload->GetId(), apt_pt);
+						continue;
+					}
 				}
 
 				auto answer_payload = std::make_shared<PayloadAttr>();
@@ -303,6 +404,12 @@ namespace pvd
 					answer_payload->EnableRtcpFb(PayloadAttr::RtcpFbType::CcmFir, true);
 				}
 
+				// NACK
+				if (rtx_for_this_media && offer_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
+				{
+					answer_payload->EnableRtcpFb(PayloadAttr::RtcpFbType::Nack, true);
+				}
+
 				// NACK PLI
 				if (offer_payload->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::NackPli))
 				{
@@ -314,7 +421,7 @@ namespace pvd
 				{
 					answer_payload->EnableRtcpFb(PayloadAttr::RtcpFbType::TransportCc, true);
 				}
-				
+
 				answer_media_desc->AddPayload(answer_payload);
 			}
 

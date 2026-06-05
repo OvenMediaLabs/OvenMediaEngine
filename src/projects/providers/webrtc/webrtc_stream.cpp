@@ -12,6 +12,7 @@
 #include "base/ovlibrary/converter.h"
 #include "base/ovlibrary/random.h"
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
+#include "modules/rtp_rtcp/rtp_header_extension/rtp_header_extension.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
 #include "webrtc_provider.h"
@@ -278,6 +279,12 @@ namespace pvd
 		uint8_t rid_extension_id = 0;
 		ov::String rid_extension_uri;
 		bool has_rid_extension = false;
+		// rrid (repaired-rtp-stream-id): libwebrtc stamps this on RTX packets
+		// in simulcast so the receive side can map RTX → primary via mid + rrid.
+		// Absent (id == 0) when not negotiated.
+		uint8_t rrid_extension_id = 0;
+		ov::String rrid_extension_uri;
+		answer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", rrid_extension_id, rrid_extension_uri);
 		if (rid_attr != nullptr)
 		{
 			has_rid_extension = answer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id", rid_extension_id, rid_extension_uri);
@@ -313,11 +320,77 @@ namespace pvd
 		rtp_track_id.mid_extension_id = mid_extension_id;
 		rtp_track_id.rid = has_rid_extension ? std::optional<ov::String>(rid_attr->GetId()) : std::nullopt;
 		rtp_track_id.rid_extension_id = rid_extension_id;
+		rtp_track_id.rrid_extension_id = rrid_extension_id;
 
 		if (_rtp_rtcp->AddRtpReceiver(track, rtp_track_id) == false)
 		{
 			logte("Could not add rtp receiver : track_id(%u)", track->GetId());
 			return false;
+		}
+
+		// Register DD ext id only when the extension was negotiated. Without
+		// it (or when a sender advertises but never stamps it), the jitter
+		// buffer falls back to sequence-number continuity.
+		if (track->GetMediaType() == cmn::MediaType::Video)
+		{
+			uint8_t dd_ext_id = 0;
+			ov::String dd_uri;
+			if (answer_media_desc->FindExtmapItem(
+					RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE,
+					dd_ext_id, dd_uri))
+			{
+				_rtp_rtcp->SetDependencyDescriptorExtId(dd_ext_id);
+			}
+		}
+
+		// NACK + RTX wiring (video only). Audio NACK is not negotiated.
+		if (track->GetMediaType() == cmn::MediaType::Video &&
+			payload_attr->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
+		{
+			uint32_t media_ssrc = remote_media_desc->GetSsrc().value_or(0);
+			uint32_t max_hold_ms = 400;
+			auto app = GetApplication();
+			if (app != nullptr)
+			{
+				// MaxHoldMs is a signed config value; a negative/zero
+				// misconfiguration would wrap to a huge cap and disable the
+				// latency bound, so fall back to the default in that case.
+				int configured = app->GetConfig().GetProviders().GetWebrtcProvider().GetRtx().GetMaxHoldMs();
+				if (configured > 0)
+				{
+					max_hold_ms = static_cast<uint32_t>(configured);
+				}
+			}
+			_rtp_rtcp->EnableNack(track->GetId(), media_ssrc, max_hold_ms);
+
+			// Register RTX payloads (PT-based detection) and, when the peer
+			// pre-declared an RTX SSRC via a=ssrc-group:FID, also bind the
+			// RTX SSRC for the primary PT so the first packet skips the
+			// dynamic-resolution path. Simulcast WHIP omits ssrc-group:FID
+			// and relies on the PT path alone.
+			auto rtx_ssrc_opt = remote_media_desc->GetRtxSsrc();
+			for (auto &cand : answer_media_desc->GetPayloadList())
+			{
+				if (cand->GetCodec() != PayloadAttr::SupportCodec::RTX)
+				{
+					continue;
+				}
+				auto fmtp = cand->GetFmtp();
+				auto apt_pos = fmtp.IndexOf("apt=");
+				if (apt_pos < 0)
+				{
+					continue;
+				}
+				uint8_t apt_pt = static_cast<uint8_t>(ov::Converter::ToUInt32(fmtp.Substring(apt_pos + 4).CStr()));
+				_rtp_rtcp->RegisterRtxPayloadType(cand->GetId(), apt_pt);
+				_rtx_enabled = true;
+
+				if (rtx_ssrc_opt.has_value() && apt_pt == payload_attr->GetId())
+				{
+					_rtp_rtcp->RegisterRtxStream(rtx_ssrc_opt.value(), media_ssrc,
+												 cand->GetId(), apt_pt);
+				}
+			}
 		}
 
 		// Clock

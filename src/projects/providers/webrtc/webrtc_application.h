@@ -38,7 +38,7 @@ namespace pvd
 
 		std::shared_ptr<IcePort> _ice_port = nullptr;
 		std::shared_ptr<RtcSignallingServer> _rtc_signalling = nullptr;
-		
+
 		std::shared_ptr<SessionDescription> _offer_sdp = nullptr;
 		std::shared_ptr<Certificate> _certificate = nullptr;
 	};

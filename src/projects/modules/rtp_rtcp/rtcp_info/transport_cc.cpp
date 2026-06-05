@@ -374,10 +374,11 @@ bool TransportCc::AddPacketFeedbackInfo(const std::shared_ptr<PacketFeedbackInfo
 		return false;
 	}
 	
-	// Add missing packet
+	// Add missing packet. Routine bookkeeping under any loss / reorder /
+	// NACK-recovered scenario, not a warning condition.
 	for (auto i = 0; i < diff; i++)
 	{
-		logtw("AddPacketFeedbackInfo - Add missing packet - seq(%u)", _next_sequence_number);
+		logtd("AddPacketFeedbackInfo - Add missing packet - seq(%u)", _next_sequence_number);
 		_packet_feedbacks.push_back(std::make_shared<PacketFeedbackInfo>(_next_sequence_number, false));
 		_packet_status_count++;
 		_next_sequence_number++;
