@@ -87,8 +87,8 @@ private:
 	bool OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
 	bool OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data);
 
-	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint8_t payload_type);
-	std::shared_ptr<RtpMinimalJitterBuffer> GetMinimalJitterBuffer(uint8_t payload_type);
+	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint32_t track_id);
+	std::shared_ptr<RtpMinimalJitterBuffer> GetMinimalJitterBuffer(uint32_t track_id);
 	std::shared_ptr<MediaTrack> GetTrack(uint32_t track_id) const;
 
 	std::shared_ptr<RtpReceiveStatistics> GetOrCreateReceiveStatistics(uint32_t track_id, uint32_t ssrc, uint32_t clock_rate);
@@ -142,9 +142,9 @@ private:
 
 	// _track_info_lock guards the receive-setup containers below
 	std::vector<RtpTrackIdentifier> _rtp_track_identifiers;
-	std::unordered_map<uint8_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
-	std::unordered_map<uint8_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
-	std::unordered_map<uint8_t, std::shared_ptr<MediaTrack>> _tracks;
+	std::unordered_map<uint32_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
+	std::unordered_map<uint32_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
+	std::unordered_map<uint32_t, std::shared_ptr<MediaTrack>> _tracks;
 	mutable std::shared_mutex _track_info_lock;
 
 	std::atomic<bool> _video_receiver_enabled = false;

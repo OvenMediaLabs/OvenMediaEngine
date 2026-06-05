@@ -382,10 +382,10 @@ std::shared_ptr<MediaTrack> RtpRtcp::GetTrack(uint32_t track_id) const
 	return it->second;
 }
 
-std::shared_ptr<RtpFrameJitterBuffer> RtpRtcp::GetJitterBuffer(uint8_t payload_type)
+std::shared_ptr<RtpFrameJitterBuffer> RtpRtcp::GetJitterBuffer(uint32_t track_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
-	auto it = _rtp_frame_jitter_buffers.find(payload_type);
+	auto it = _rtp_frame_jitter_buffers.find(track_id);
 	if (it == _rtp_frame_jitter_buffers.end())
 	{
 		return nullptr;
@@ -393,10 +393,10 @@ std::shared_ptr<RtpFrameJitterBuffer> RtpRtcp::GetJitterBuffer(uint8_t payload_t
 	return it->second;
 }
 
-std::shared_ptr<RtpMinimalJitterBuffer> RtpRtcp::GetMinimalJitterBuffer(uint8_t payload_type)
+std::shared_ptr<RtpMinimalJitterBuffer> RtpRtcp::GetMinimalJitterBuffer(uint32_t track_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
-	auto it = _rtp_minimal_jitter_buffers.find(payload_type);
+	auto it = _rtp_minimal_jitter_buffers.find(track_id);
 	if (it == _rtp_minimal_jitter_buffers.end())
 	{
 		return nullptr;
