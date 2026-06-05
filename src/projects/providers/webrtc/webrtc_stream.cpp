@@ -854,44 +854,54 @@ namespace pvd
 		// Reorder frames in DTS order
 		if (cts_enabled == true)
 		{
-			// Guards the DTS reorder buffer and the H264 parser below.
-			std::lock_guard<std::mutex> lock(_cts_reorder_lock);
-
-			// PTS order to DTS order
-			// Q and Flush (if slice type is I or P)
-			_dts_ordered_frame_buffer.emplace(dts, frame);
-
-			switch (bitstream_format)
+			std::vector<std::shared_ptr<MediaPacket>> frames_to_send;
 			{
-				case cmn::BitstreamFormat::H264_ANNEXB:
+				// Guards the DTS reorder buffer and the H264 parser only.
+				std::lock_guard<std::mutex> lock(_cts_reorder_lock);
+
+				// PTS order to DTS order
+				// Q and Flush (if slice type is I or P)
+				_dts_ordered_frame_buffer.emplace(dts, frame);
+
+				switch (bitstream_format)
 				{
-					if (_h264_bitstream_parser.Parse(bitstream) == true)
+					case cmn::BitstreamFormat::H264_ANNEXB:
 					{
-						auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
-
-						logtt("PTS(%" PRId64 ") DTS(%" PRId64 ") Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
-
-						if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
+						if (_h264_bitstream_parser.Parse(bitstream) == true)
 						{
-							// Flush All
-							for (auto &frame : _dts_ordered_frame_buffer)
-							{
-								OnFrame(track, frame.second);
-							}
-							_dts_ordered_frame_buffer.clear();
-						}
-					}
+							auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
 
-					return;
+							logtt("PTS(%" PRId64 ") DTS(%" PRId64 ") Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
+
+							if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
+							{
+								// Flush All
+								for (auto &buffered : _dts_ordered_frame_buffer)
+								{
+									frames_to_send.push_back(buffered.second);
+								}
+								_dts_ordered_frame_buffer.clear();
+							}
+						}
+						break;
+					}
+					case cmn::BitstreamFormat::H265_ANNEXB:
+					{
+						// logtw("H265 is not supported yet");
+						break;
+					}
+					default:
+						break;
 				}
-				case cmn::BitstreamFormat::H265_ANNEXB:
-				{
-					// logtw("H265 is not supported yet");
-					return;
-				}
-				default:
-					break;
 			}
+
+			// Send outside the lock; OnFrame takes other locks and calls SendFrame.
+			for (auto &send_frame : frames_to_send)
+			{
+				OnFrame(track, send_frame);
+			}
+
+			return;
 		}
 
 		OnFrame(track, frame);
