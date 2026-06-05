@@ -28,11 +28,11 @@ OvenMediaEngine supports WebRTC ingest from web browsers and any encoder that im
         <TLSPort>3334</TLSPort>
     </Signalling>
     <IceCandidates>
-        <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+        <!-- UDP ICE scales by port count: each port is handled by one thread. Use a range (~4) to spread across cores. -->
+        <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
         <IceCandidate>${PublicIP}:3479/tcp</IceCandidate>  <!-- Direct TCP ICE (RFC 6544) -->
         <TcpRelay>${PublicIP}:3478</TcpRelay>              <!-- TURN relay -->
         <TcpRelayForce>false</TcpRelayForce>
-        <IceWorkerCount>4</IceWorkerCount>
         <TcpIceWorkerCount>1</TcpIceWorkerCount>
         <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
         <DefaultTransport>udptcp</DefaultTransport>
@@ -62,25 +62,28 @@ Use `${PublicIP}` to have OME auto-resolve the public IP via `<StunServer>` at s
 `*` causes OME to advertise every network interface (including Docker bridge interfaces `172.17.x.x`, VPN adapters, and internal NICs) as ICE candidates. Encoders will attempt connectivity checks against all of them, which significantly increases ICE negotiation time and can cause connection delays or failures.
 
 Always specify the exact IP the encoder can reach:
-- Specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
-- Auto-detected via STUN: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>` (requires `<StunServer>` in `Server.xml`)
+- Specific IP: `<IceCandidate>203.0.113.1:10000-10003/udp</IceCandidate>`
+- Auto-detected via STUN: `<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>` (requires `<StunServer>` in `Server.xml`)
 
 :::
 
 
 #### Worker Threads
 
-Each transport type has an independent worker-thread pool:
+OvenMediaEngine handles each transport type independently, but they scale across CPU cores differently:
 
-| Configuration | Default | Applies to |
+| Configuration | Default | Scaling |
 |---|---|---|
-| `<IceWorkerCount>` | 1 | UDP ICE candidate sockets |
-| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE candidate sockets (RFC 6544) |
-| `<TcpRelayWorkerCount>` | 1 | TURN relay sockets |
+| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE (RFC 6544). Connections on one port are distributed across this many threads. |
+| `<TcpRelayWorkerCount>` | 1 | TURN relay. Connections on one port are distributed across this many threads. |
 
-The worker count applies **per port**. Increase `<IceWorkerCount>` or `<TcpIceWorkerCount>` when handling a large number of simultaneous publishers on a multi-core server.
+**UDP ICE scales by the number of ports.** Each UDP port binds one socket per advertised IP, each serviced by a single thread, so a single UDP port is handled by one thread. To spread UDP ICE across CPU cores, advertise a range of UDP ports. Around 4 is a good starting point on a multi-core server:
 
-> **Prefer a single port with a higher worker count over multiple ports.** Adding ports multiplies both the thread count and the number of ICE candidates advertised to clients, and more candidates mean slower ICE negotiation. For throughput scaling, raise the worker count on a single port instead.
+```xml
+<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
+```
+
+Direct TCP ICE and TURN relay are connection-oriented. A single port accepts many connections that are distributed across `<TcpIceWorkerCount>` / `<TcpRelayWorkerCount>` threads, so those scale on one port without adding ports.
 
 #### Default Transport
 

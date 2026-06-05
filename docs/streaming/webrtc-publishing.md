@@ -35,15 +35,14 @@ Add `<WebRTC>` under `<Bind><Publishers>` in `Server.xml`:
             <!-- * advertises every network interface (docker, VPN, etc.) as a         -->
             <!-- candidate, which slows down ICE negotiation on the browser side.      -->
             <!-- ${PublicIP} is auto-resolved via <StunServer> at startup.             -->
-            <!-- Use a single port and raise IceWorkerCount for throughput scaling     -->
-            <!-- instead of adding more ports.                                         -->
-            <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+            <!-- UDP ICE scales by PORT count: each UDP port is serviced by one thread.  -->
+            <!-- Use a port range (~4) to spread UDP ICE across cores.                   -->
+            <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
             <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>   <!-- Direct TCP ICE (RFC 6544) -->
             <TcpRelay>${PublicIP}:3478</TcpRelay>               <!-- TURN relay (WebRTC/TCP via TURN) -->
             <TcpRelayForce>false</TcpRelayForce>
-            <IceWorkerCount>4</IceWorkerCount>           <!-- Increase for high viewer count -->
-            <TcpIceWorkerCount>1</TcpIceWorkerCount>     <!-- Worker threads for Direct TCP ICE -->
-            <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- Worker threads for TURN relay -->
+            <TcpIceWorkerCount>1</TcpIceWorkerCount>     <!-- Direct TCP ICE scales with this value -->
+            <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- TURN relay scales with this value -->
             <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
         </IceCandidates>
     </WebRTC>
@@ -65,8 +64,8 @@ OvenMediaEngine supports three transport types for ICE candidates:
 
 The IP address in `<IceCandidate>` determines which addresses are advertised to browsers as ICE candidates. You can use:
 
-- A specific IP: `<IceCandidate>203.0.113.1:10000/udp</IceCandidate>`
-- `${PublicIP}` to auto-detect the public IP via the configured `<StunServer>`: `<IceCandidate>${PublicIP}:10000/udp</IceCandidate>`
+- A specific IP: `<IceCandidate>203.0.113.1:10000-10003/udp</IceCandidate>`
+- `${PublicIP}` to auto-detect the public IP via the configured `<StunServer>`: `<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>`
 
 
 :::danger
@@ -80,21 +79,22 @@ When `*` is specified, OvenMediaEngine collects the IP address of every network 
 
 When no `?transport` query parameter is specified, the behavior follows `<DefaultTransport>` (default: `udptcp`). By default, OME sends UDP and Direct TCP candidates. TURN relay info (`iceServers`) is only included when `?transport=relay` or `?transport=all` is used, or when `<TcpRelayForce>` is `true`.
 
-Each transport type has a dedicated worker-thread pool. You can tune the thread count independently:
+OvenMediaEngine handles each transport type independently, but they scale across CPU cores differently:
 
-| Configuration | Default | Applies to |
+| Configuration | Default | Scaling |
 |---|---|---|
-| `<IceWorkerCount>` | 1 | UDP ICE socket threads |
-| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE socket threads (RFC 6544) |
-| `<TcpRelayWorkerCount>` | 1 | TURN relay socket threads |
+| `<TcpIceWorkerCount>` | 1 | Direct TCP ICE (RFC 6544). Connections on one port are distributed across this many threads. |
+| `<TcpRelayWorkerCount>` | 1 | TURN relay. Connections on one port are distributed across this many threads. |
 
-For most deployments the default of `1` is fine. Increase `<IceWorkerCount>` / `<TcpIceWorkerCount>` when serving many simultaneous viewers on a multi-core server.
+**UDP ICE scales by the number of ports.** Each UDP port binds one socket per advertised IP, each serviced by a single thread, so a single UDP port is handled by one thread. To spread UDP ICE across CPU cores, advertise a range of UDP ports:
 
-> **Note:** `<IceWorkerCount>` and `<TcpIceWorkerCount>` are independent. Each defaults to `1` when not set. Setting `<IceWorkerCount>` does **not** affect Direct TCP ICE sockets; set `<TcpIceWorkerCount>` separately to tune the Direct TCP ICE thread count.
->
-> The worker count applies **per port**. For example, `IceWorkerCount=4` with a single UDP port creates **4** UDP ICE threads.
->
-> **Prefer a single port with a higher `<IceWorkerCount>` over multiple ports.** Adding more ports multiplies the thread count (`N ports x IceWorkerCount`) and, more importantly, multiplies the number of ICE candidates advertised to clients, which slows down ICE negotiation. For throughput scaling, increase `<IceWorkerCount>` on a single port instead.
+```xml
+<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate> <!-- 4 UDP ports = 4 receive threads per advertised IP -->
+```
+
+Each port in the range is bound separately and assigned to its own thread. Around 4 ports is a good starting point on a multi-core server.
+
+Direct TCP ICE and TURN relay are connection-oriented. A single port accepts many connections that are distributed across `<TcpIceWorkerCount>` / `<TcpRelayWorkerCount>` threads, so those scale on one port without adding ports.
 
 #### Default Transport
 
@@ -403,13 +403,13 @@ OME may sometimes not be able to get the server's public IP on its local interfa
                 ...
             <IceCandidates>
                 <!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
-                <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+                <!-- UDP ICE scales by port count: each port is handled by one thread. -->
+                <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>
                 <!-- Direct TCP ICE (RFC 6544) -->
                 <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
                 <!-- TURN relay for clients that do not support Direct TCP ICE -->
                 <TcpRelay>${PublicIP}:3478</TcpRelay>
                 <TcpRelayForce>false</TcpRelayForce>
-                <IceWorkerCount>1</IceWorkerCount>
                 <TcpIceWorkerCount>1</TcpIceWorkerCount>
                 <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
             </IceCandidates>
@@ -489,7 +489,7 @@ The `<DefaultTransport>` element sets the transport policy applied when no `?tra
 
 ```xml
 <IceCandidates>
-    <IceCandidate>${PublicIP}:10000/udp</IceCandidate>
+    <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>
     <IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
     <TcpRelay>${PublicIP}:3478</TcpRelay>
     <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->

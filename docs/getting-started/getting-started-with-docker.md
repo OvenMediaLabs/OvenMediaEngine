@@ -10,7 +10,7 @@ OvenMediaEngine provides the Docker image from [OvenMedia Labs Docker Hub](https
 
 ```sh
 docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
--p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000:10000/udp -p 10000:10000/tcp \
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
 ovenmedialabs/ovenmediaengine:latest
 ```
 
@@ -29,7 +29,7 @@ For example, to run a specific release:
 
 ```sh
 docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
--p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000:10000/udp -p 10000:10000/tcp \
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
 ovenmedialabs/ovenmediaengine:v0.20.5
 ```
 
@@ -59,7 +59,7 @@ You can set the following environment variables.
 | `OME_WEBRTC_SIGNALLING_PORT`     | `3333`            |
 | `OME_WEBRTC_SIGNALLING_TLS_PORT` | `3334`            |
 | `OME_WEBRTC_TCP_RELAY_PORT`      | `3478`            |
-| `OME_WEBRTC_CANDIDATE_PORT`      | `10000/udp`       |
+| `OME_WEBRTC_CANDIDATE_PORT`      | `10000-10003/udp` |
 | `OME_WEBRTC_TCP_ICE_PORT`        | `10000/tcp`       |
 
 ## Getting Started with Complex Configuration
@@ -134,7 +134,7 @@ docker run -d -it --name ome -e OME_HOST_IP=Your.HOST.IP.Address \
 -v $OME_DOCKER_HOME/conf:/opt/ovenmediaengine/bin/origin_conf \
 -v $OME_DOCKER_HOME/logs:/var/log/ovenmediaengine \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 \
--p 10000:10000/udp -p 10000:10000/tcp \
+-p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
 ovenmedialabs/ovenmediaengine:latest
 ```
 
