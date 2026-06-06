@@ -12,6 +12,7 @@
 #include "base/info/dump.h"
 
 #include <base/modules/data_format/cue_event/cue_event.h>
+#include <base/ovlibrary/tsa/mutex.h>
 #include <base/modules/data_format/scte35_event/scte35_event.h>
 
 
@@ -100,8 +101,8 @@ protected:
 	virtual std::optional<SegmentationInfo> GetSegmentationInfo() const { return std::nullopt; }
 
 private:
-	std::map<int64_t, std::shared_ptr<Marker>> _markers_by_timestamp;
-	std::map<int64_t, std::shared_ptr<Marker>> _markers_by_sequence_number;
-	mutable std::shared_mutex _markers_guard;
-	std::shared_ptr<Marker> _last_inserted_marker;
+	std::map<int64_t, std::shared_ptr<Marker>> _markers_by_timestamp OV_GUARDED_BY(_markers_guard);
+	std::map<int64_t, std::shared_ptr<Marker>> _markers_by_sequence_number OV_GUARDED_BY(_markers_guard);
+	mutable ov::SharedMutex _markers_guard;
+	std::shared_ptr<Marker> _last_inserted_marker OV_GUARDED_BY(_markers_guard);
 };

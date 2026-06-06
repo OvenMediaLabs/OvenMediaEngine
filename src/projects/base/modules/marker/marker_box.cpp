@@ -266,7 +266,7 @@ ov::String Marker::ToHlsTag(int64_t timestamp_offset) const
 
 std::tuple<bool, ov::String> MarkerBox::CanInsertMarker(const std::shared_ptr<Marker> &marker) const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 
 	auto curr_out_of_network = marker->IsOutOfNetwork();
 	if (curr_out_of_network.has_value() == false)
@@ -386,7 +386,7 @@ bool MarkerBox::InsertMarker(const std::shared_ptr<Marker> &marker)
 		return false;
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_markers_guard);
+	ov::LockGuard lock(_markers_guard);
 
 	auto curr_out_of_network = marker->IsOutOfNetwork();
 	if (curr_out_of_network.has_value() == false)
@@ -457,13 +457,13 @@ bool MarkerBox::InsertMarker(const std::shared_ptr<Marker> &marker)
 
 bool MarkerBox::HasMarker() const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	return _markers_by_timestamp.empty() == false;
 }
 
 bool MarkerBox::HasMarker(int64_t start_timestamp, int64_t end_timestamp) const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	for (auto &it : _markers_by_timestamp)
 	{
 		auto &marker = it.second;
@@ -478,7 +478,7 @@ bool MarkerBox::HasMarker(int64_t start_timestamp, int64_t end_timestamp) const
 
 bool MarkerBox::HasMarker(int64_t end_timestamp) const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	for (auto &it : _markers_by_timestamp)
 	{
 		auto &marker = it.second;
@@ -493,13 +493,13 @@ bool MarkerBox::HasMarker(int64_t end_timestamp) const
 
 bool MarkerBox::HasMarkerWithSeq(int64_t sequence_number) const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	return _markers_by_sequence_number.find(sequence_number) != _markers_by_sequence_number.end();
 }
 
 const std::shared_ptr<Marker> MarkerBox::GetFirstMarker() const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	if (_markers_by_timestamp.empty() == true)
 	{
 		return nullptr;
@@ -510,7 +510,7 @@ const std::shared_ptr<Marker> MarkerBox::GetFirstMarker() const
 
 std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t start_timestamp, int64_t end_timestamp)
 {
-	std::lock_guard<std::shared_mutex> lock(_markers_guard);
+	ov::LockGuard lock(_markers_guard);
 
 	std::vector<std::shared_ptr<Marker>> markers;
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
@@ -533,7 +533,7 @@ std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t start_timesta
 
 std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t end_timestamp)
 {
-	std::lock_guard<std::shared_mutex> lock(_markers_guard);
+	ov::LockGuard lock(_markers_guard);
 
 	std::vector<std::shared_ptr<Marker>> markers;
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
@@ -556,13 +556,13 @@ std::vector<std::shared_ptr<Marker>> MarkerBox::PopMarkers(int64_t end_timestamp
 
 uint32_t MarkerBox::GetMarkerCount() const
 {
-	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+	ov::SharedLockGuard lock(_markers_guard);
 	return _markers_by_timestamp.size();
 }
 
 bool MarkerBox::RemoveMarker(int64_t timestamp)
 {
-	std::lock_guard<std::shared_mutex> lock(_markers_guard);
+	ov::LockGuard lock(_markers_guard);
 
 	auto it = _markers_by_timestamp.find(timestamp);
 	if (it == _markers_by_timestamp.end())
@@ -579,7 +579,7 @@ bool MarkerBox::RemoveMarker(int64_t timestamp)
 
 void MarkerBox::RemoveExpiredMarkers(int64_t current_timestamp)
 {
-	std::lock_guard<std::shared_mutex> lock(_markers_guard);
+	ov::LockGuard lock(_markers_guard);
 
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
 	{
