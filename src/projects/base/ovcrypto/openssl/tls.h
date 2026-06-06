@@ -110,6 +110,6 @@ namespace ov
 
 		TlsBioCallback _callback;
 
-		std::mutex _ssl_lock;
+		Mutex _ssl_lock;
 	};
 }  // namespace ov

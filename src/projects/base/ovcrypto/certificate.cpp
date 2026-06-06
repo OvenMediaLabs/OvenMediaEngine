@@ -354,7 +354,7 @@ bool Certificate::GetDigestEVP(const ov::String &algorithm, const EVP_MD **mdp)
 bool Certificate::ComputeDigest(const ov::String &algorithm)
 {
 	const EVP_MD *md;
-	unsigned int n;
+	unsigned int n = 0;
 
 	if (!GetDigestEVP(algorithm, &md))
 	{
@@ -362,9 +362,12 @@ bool Certificate::ComputeDigest(const ov::String &algorithm)
 	}
 
 	uint8_t digest[EVP_MAX_MD_SIZE];
-	X509_digest(GetCertification(), md, digest, &n);
+	if ((X509_digest(GetCertification(), md, digest, &n) != 1) || (n == 0))
+	{
+		return false;
+	}
+
 	_digest.Append(digest, n);
-	_digest_algorithm = algorithm;
 	return true;
 }
 
@@ -385,7 +388,20 @@ STACK_OF(X509) * Certificate::GetChainCertification() const
 
 ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 {
-	std::unique_lock<std::mutex> lock(_digest_mutex);
+	// Fast path: lock-free once the fingerprint has been published.
+	if (_fingerprint_ready.load(std::memory_order_acquire))
+	{
+		return _fingerprint;
+	}
+
+	ov::LockGuard lock(_digest_mutex);
+
+	// Re-check after locking; another thread may have published it.
+	if (_fingerprint_ready.load(std::memory_order_acquire))
+	{
+		return _fingerprint;
+	}
+
 	// Create digest if not created yet
 	if (_digest.GetLength() <= 0)
 	{
@@ -394,9 +410,11 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 			return "";
 		}
 	}
-	lock.unlock();
 
-	ov::String fingerprint = ov::ToHexStringWithDelimiter(&_digest, ':');
-	fingerprint.MakeUpper();
-	return fingerprint;
+	_fingerprint = ov::ToHexStringWithDelimiter(_digest, ':');
+	_fingerprint.MakeUpper();
+	// Publish only after `_fingerprint` is fully built; release pairs with the acquire-loads.
+	_fingerprint_ready.store(true, std::memory_order_release);
+
+	return _fingerprint;
 }

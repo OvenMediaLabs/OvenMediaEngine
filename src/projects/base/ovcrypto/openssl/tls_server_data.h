@@ -76,7 +76,10 @@ namespace ov
 		size_t GetDataLength() const;
 		std::shared_ptr<const Data> GetData() const;
 
-		std::mutex& GetSequentialSendMutex()
+		// Returns the raw `std::mutex` by reference because an out-of-scope caller
+		// (`http_response.cpp`) locks it with `std::lock_guard<std::mutex>`; kept as `std::mutex`
+		// to avoid changing that caller.
+		std::mutex &GetSequentialSendMutex()
 		{
 			return _tls_sequential_send_mutex;
 		}
@@ -100,15 +103,17 @@ namespace ov
 		Tls _tls;
 		WriteCallback _write_callback;
 
-		std::mutex _cipher_data_mutex;
-		std::shared_ptr<Data> _cipher_data;
+		Mutex _cipher_data_mutex;
+		std::shared_ptr<Data> _cipher_data OV_GUARDED_BY(_cipher_data_mutex);
 
-		std::mutex _plain_data_mutex;
-		std::shared_ptr<Data> _plain_data;
+		Mutex _plain_data_mutex;
+		std::shared_ptr<Data> _plain_data OV_GUARDED_BY(_plain_data_mutex);
 
 		AlpnProtocol _selected_alpn_protocol = AlpnProtocol::Http11;
 
 	private:
+		// Kept as `std::mutex` (not `Mutex`): `GetSequentialSendMutex()` hands it out by
+		// reference to a `std::lock_guard<std::mutex>` in an out-of-scope file.
 		std::mutex _tls_sequential_send_mutex;	// for atomic send
 	};
 }  // namespace ov

@@ -19,7 +19,6 @@
 #include <openssl/tls1.h>
 #include <openssl/x509v3.h>
 
-#include <mutex>
 #include <thread>
 
 #include "./openssl_private.h"
@@ -29,7 +28,7 @@ namespace ov
 	bool OpensslManager::InitializeOpenssl()
 	{
 		// Create mutexes for OpenSSL
-		_mutex_array = new std::mutex[CRYPTO_num_locks()];
+		_mutex_array = new Mutex[CRYPTO_num_locks()];
 
 		if (_mutex_array == nullptr)
 		{
@@ -54,7 +53,7 @@ namespace ov
 		// ::FIPS_mode_set(0);
 
 		{
-			auto lock_guard = std::lock_guard(_bio_mutex);
+			LockGuard lock_guard(_bio_mutex);
 
 			for (auto item : _bio_method_map)
 			{
@@ -89,7 +88,7 @@ namespace ov
 	BIO_METHOD *OpensslManager::GetBioMethod(const String &name)
 	{
 		{
-			auto shared_lock = std::shared_lock(_bio_mutex);
+			SharedLockGuard shared_lock(_bio_mutex);
 			auto item = _bio_method_map.find(name);
 
 			if (item != _bio_method_map.end())
@@ -98,7 +97,7 @@ namespace ov
 			}
 		}
 
-		auto lock_guard = std::lock_guard(_bio_mutex);
+		LockGuard lock_guard(_bio_mutex);
 
 		// DCL
 		auto item = _bio_method_map.find(name);
@@ -126,7 +125,7 @@ namespace ov
 
 	bool OpensslManager::FreeBioMethod(const String &name)
 	{
-		auto lock_guard = std::lock_guard(_bio_mutex);
+		LockGuard lock_guard(_bio_mutex);
 
 		// DCL
 		auto item = _bio_method_map.find(name);
@@ -152,12 +151,12 @@ namespace ov
 
 	void OpensslManager::MutexLock(int n, const char *file, int line)
 	{
-		_mutex_array[n].lock();
+		_mutex_array[n].Lock();
 	}
 
 	void OpensslManager::MutexUnlock(int n, const char *file, int line)
 	{
-		_mutex_array[n].unlock();
+		_mutex_array[n].Unlock();
 	}
 
 	void OpensslManager::MutexLock(int mode, int n, const char *file, int line)

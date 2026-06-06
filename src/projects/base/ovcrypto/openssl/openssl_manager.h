@@ -25,16 +25,22 @@ namespace ov
 		bool FreeBioMethod(const String &name);
 
 	private:
-		void MutexLock(int n, const char *file, int line);
-		void MutexUnlock(int n, const char *file, int line);
+		// Lock handoff driven by OpenSSL's locking callback:
+		// lock and unlock happen in separate calls keyed by index into `_mutex_array`,
+		// so the acquire and release are not statically pairable; analysis is disabled here.
+		void MutexLock(int n, const char *file, int line) OV_NO_THREAD_SAFETY_ANALYSIS;
+		void MutexUnlock(int n, const char *file, int line) OV_NO_THREAD_SAFETY_ANALYSIS;
 
 		// Used by OpenSSL
 		static unsigned long GetThreadId();
 		static void MutexLock(int mode, int n, const char *file, int line);
 
-		std::mutex *_mutex_array = nullptr;
+		// Array of mutexes for OpenSSL's locking callback;
+		// locked/unlocked by index, so it is left unguarded
+		// (no single capability fits an index-keyed array).
+		Mutex *_mutex_array = nullptr;
 
-		std::shared_mutex _bio_mutex;
-		std::map<String, BIO_METHOD *> _bio_method_map;
+		SharedMutex _bio_mutex;
+		std::map<String, BIO_METHOD *> _bio_method_map OV_GUARDED_BY(_bio_mutex);
 	};
 }  // namespace ov

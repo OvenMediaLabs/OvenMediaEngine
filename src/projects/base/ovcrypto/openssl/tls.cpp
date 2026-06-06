@@ -70,38 +70,42 @@ namespace ov
 
 	BIO_METHOD *Tls::PrepareBioMethod()
 	{
-		static std::mutex bio_mutex;
-		static BIO_METHOD *bio_method = nullptr;
+		// The function-local static is initialized exactly once (thread-safe),
+		// with a lock-free fast path on later calls.
+		// Returns `nullptr` on setup failure, and because it is
+		// initialized only once that `nullptr` is cached and never retried -
+		// a failure here permanently disables TLS BIO creation.
+		// This is acceptable: setup only fails on a catastrophic (OOM-level)
+		// condition that a retry would not recover from.
+		static auto bio_method = []() -> BIO_METHOD * {
+			// `nullptr` means the method could not be allocated/registered.
+			BIO_METHOD *method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
 
-		if (bio_method == nullptr)
-		{
-			auto lock_guard = std::lock_guard(bio_mutex);
-
-			if (bio_method == nullptr)
+			if (method != nullptr)
 			{
-				bio_method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
+				int result = 1;
 
-				if (bio_method != nullptr)
+				result	   = result && ::BIO_meth_set_create(method, TlsCreate);
+				result	   = result && ::BIO_meth_set_ctrl(method, TlsCtrl);
+				result	   = result && ::BIO_meth_set_read(method, TlsRead);
+				result	   = result && ::BIO_meth_set_write(method, TlsWrite);
+				result	   = result && ::BIO_meth_set_puts(method, TlsPuts);
+				result	   = result && ::BIO_meth_set_destroy(method, TlsDestroy);
+
+				if (result == 0)
 				{
-					int result = 1;
+					// A `BIO_meth_set_*()` call failed: the method is only partially configured,
+					// so roll it back (drop it from the manager registry and free the OpenSSL
+					// object) and fall through to publish `nullptr` instead of a half-built method.
+					OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
+					::BIO_meth_free(method);
 
-					result	   = result && ::BIO_meth_set_create(bio_method, TlsCreate);
-					result	   = result && ::BIO_meth_set_ctrl(bio_method, TlsCtrl);
-					result	   = result && ::BIO_meth_set_read(bio_method, TlsRead);
-					result	   = result && ::BIO_meth_set_write(bio_method, TlsWrite);
-					result	   = result && ::BIO_meth_set_puts(bio_method, TlsPuts);
-					result	   = result && ::BIO_meth_set_destroy(bio_method, TlsDestroy);
-
-					if (result == 0)
-					{
-						OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
-						::BIO_meth_free(bio_method);
-
-						bio_method = nullptr;
-					}
+					method = nullptr;
 				}
 			}
-		}
+
+			return method;
+		}();
 
 		OV_ASSERT2(bio_method != nullptr);
 
@@ -265,7 +269,7 @@ namespace ov
 	std::shared_ptr<ov::Data> Tls::Read()
 	{
 		// lock
-		std::lock_guard lock(_ssl_lock);
+		LockGuard lock(_ssl_lock);
 
 		auto data = std::make_shared<ov::Data>(65535);
 
@@ -352,7 +356,7 @@ namespace ov
 		OV_ASSERT2(_ssl != nullptr);
 
 		// lock
-		std::lock_guard lock(_ssl_lock);
+		LockGuard lock(_ssl_lock);
 
 		size_t write_size = 0;
 
