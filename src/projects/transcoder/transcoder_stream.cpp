@@ -1259,12 +1259,13 @@ bool TranscoderStream::CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<in
 std::shared_ptr<TranscodeDecoder> TranscoderStream::GetDecoder(MediaTrackId decoder_id)
 {
 	std::shared_lock<std::shared_mutex> decoder_lock(_decoder_map_mutex);
-	if (_decoders.find(decoder_id) == _decoders.end())
+	auto it = _decoders.find(decoder_id);
+	if (it == _decoders.end())
 	{
 		return nullptr;
 	}
 
-	return _decoders[decoder_id];
+	return it->second;
 }
 
 void TranscoderStream::SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder)
@@ -1455,34 +1456,37 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 std::optional<std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<TranscodeEncoder>>> TranscoderStream::GetEncoderSet(MediaTrackId encoder_id)
 {
 	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
-	if (_encoders.find(encoder_id) == _encoders.end())
+	auto it = _encoders.find(encoder_id);
+	if (it == _encoders.end())
 	{
 		return std::nullopt;
 	}
 
-	return _encoders[encoder_id];
+	return it->second;
 }
 
 std::shared_ptr<TranscodeFilter> TranscoderStream::GetEncoderFilter(MediaTrackId encoder_id)
 {
 	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
-	if (_encoders.find(encoder_id) == _encoders.end())
+	auto it = _encoders.find(encoder_id);
+	if (it == _encoders.end())
 	{
 		return nullptr;
 	}
 
-	return _encoders[encoder_id].first;
+	return it->second.first;
 }
 
 std::shared_ptr<TranscodeEncoder> TranscoderStream::GetEncoder(MediaTrackId encoder_id)
 {
 	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
-	if (_encoders.find(encoder_id) == _encoders.end())
+	auto it = _encoders.find(encoder_id);
+	if (it == _encoders.end())
 	{
 		return nullptr;
 	}
 
-	return _encoders[encoder_id].second;
+	return it->second.second;
 }
 
 void TranscoderStream::SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder)
@@ -1558,12 +1562,13 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 std::shared_ptr<TranscodeFilter> TranscoderStream::GetFilter(MediaTrackId filter_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_filter_map_mutex);
-	if (_filters.find(filter_id) == _filters.end())
+	auto it = _filters.find(filter_id);
+	if (it == _filters.end())
 	{
 		return nullptr;
 	}
 
-	return _filters[filter_id];
+	return it->second;
 }
 
 void TranscoderStream::SetFilter(MediaTrackId filter_id, std::shared_ptr<TranscodeFilter> filter)
@@ -1865,10 +1870,12 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 			bool _has_last_decoded_frame_pts	   = false;
 			{
 				std::shared_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
-				if (_last_decoded_frame_pts.find(decoder_id) != _last_decoded_frame_pts.end())
+				auto pts_it = _last_decoded_frame_pts.find(decoder_id);
+				if (pts_it != _last_decoded_frame_pts.end())
 				{
-					last_decoded_frame_time_us	   = _last_decoded_frame_pts[decoder_id];
-					last_decoded_frame_duration_us = _last_decoded_frame_duration[decoder_id];
+					last_decoded_frame_time_us	   = pts_it->second;
+					auto duration_it			   = _last_decoded_frame_duration.find(decoder_id);
+					last_decoded_frame_duration_us = (duration_it != _last_decoded_frame_duration.end()) ? duration_it->second : 0;
 					_has_last_decoded_frame_pts	   = true;
 				}
 			}
@@ -1993,9 +2000,10 @@ void TranscoderStream::SetLastDecodedFrame(MediaTrackId decoder_id, std::shared_
 std::shared_ptr<MediaFrame> TranscoderStream::GetLastDecodedFrame(MediaTrackId decoder_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
-	if (_last_decoded_frames.find(decoder_id) != _last_decoded_frames.end())
+	auto it = _last_decoded_frames.find(decoder_id);
+	if (it != _last_decoded_frames.end())
 	{
-		auto frame = _last_decoded_frames[decoder_id]->CloneFrame();
+		auto frame = it->second->CloneFrame();
 		frame->SetTrackId(decoder_id);
 		return frame;
 	}

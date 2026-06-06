@@ -117,13 +117,14 @@ namespace pub
 	std::shared_ptr<Session> StreamWorker::GetSession(session_id_t id)
 	{
 		std::shared_lock<std::shared_mutex> lock(_session_map_mutex);
-		if (_sessions.count(id) <= 0)
+		auto it = _sessions.find(id);
+		if (it == _sessions.end())
 		{
 			// logte("Cannot find session : %u", id);
 			return nullptr;
 		}
 
-		return _sessions[id];
+		return it->second;
 	}
 
 	void StreamWorker::SendPacket(const std::any &packet)

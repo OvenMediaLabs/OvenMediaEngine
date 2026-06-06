@@ -710,14 +710,15 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data)
 {
 	std::shared_lock<std::shared_mutex> lock(_demultiplexers_lock);
-	if (_demultiplexers.find(remote->GetNativeHandle()) == _demultiplexers.end())
+	auto it = _demultiplexers.find(remote->GetNativeHandle());
+	if (it == _demultiplexers.end())
 	{
 		// If the client disconnects at this time, it cannot be found.
 		logtt("TCP packet input but cannot find the demultiplexer of %s.", remote->ToString().CStr());
 		return;
 	}
 
-	auto demultiplexer = _demultiplexers[remote->GetNativeHandle()];
+	auto demultiplexer = it->second;
 	lock.unlock();
 
 	ov::SocketAddressPair address_pair(*remote->GetLocalAddress(), address);
