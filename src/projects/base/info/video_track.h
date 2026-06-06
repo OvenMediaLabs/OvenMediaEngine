@@ -12,6 +12,7 @@
 #include <modules/bitstream/nalu/nal_unit_fragment_header.h>
 #include "base/info/overlay.h"
 #include "base/common_types.h"
+#include "base/ovlibrary/tsa/mutex.h"
 
 class VideoTrack
 {
@@ -142,9 +143,9 @@ protected:
 	FrameSnapshot GetFrameSnapshot() const;
 
 protected:
-	mutable std::shared_mutex _video_mutex;
+	mutable ov::SharedMutex _video_mutex;
 
-	FrameSnapshot _frame_snapshot;
+	FrameSnapshot _frame_snapshot OV_GUARDED_BY(_video_mutex);
 
 	// framerate last one second (measurement)
 	std::atomic<double> _framerate_last_second = 0;
@@ -155,9 +156,9 @@ protected:
 	std::atomic<double> _video_timescale;
 	
 	// Resolution
-	cmn::Resolution _resolution{0, 0};
-	cmn::Resolution _max_resolution{0, 0};
-	cmn::Resolution _resolution_conf{0, 0};
+	cmn::Resolution _resolution OV_GUARDED_BY(_video_mutex){0, 0};
+	cmn::Resolution _max_resolution OV_GUARDED_BY(_video_mutex){0, 0};
+	cmn::Resolution _resolution_conf OV_GUARDED_BY(_video_mutex){0, 0};
 
 	// Resolution (set by user)
 	// NOTE: kept as cmn::Resolution in _resolution_conf
@@ -184,10 +185,10 @@ protected:
 	std::atomic<cmn::VideoPixelFormatId> _colorspace = cmn::VideoPixelFormatId::None;	
 
 	// Preset for encoder (set by user)
-	ov::String _preset;
+	ov::String _preset OV_GUARDED_BY(_video_mutex);
 
 	// Profile (set by user, used for h264, h265 codec)
-	ov::String _profile;
+	ov::String _profile OV_GUARDED_BY(_video_mutex);
 	
 	// Thread count of codec (set by user)
 	std::atomic<int> _thread_count = 0;	
@@ -209,9 +210,9 @@ protected:
 
 	// Abnormal key frame interval detection
 	std::atomic<bool> _detect_abnormal_framerate = false;
-	std::deque<double> _measured_framerate_window;
+	std::deque<double> _measured_framerate_window OV_GUARDED_BY(_video_mutex);
 
-	ov::String _extra_encoder_options;
+	ov::String _extra_encoder_options OV_GUARDED_BY(_video_mutex);
 public:
 	// Overlay (set by user)
 	void SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &overlays);
@@ -219,7 +220,7 @@ public:
 	size_t GetOverlaySignature() const;
  
 protected:
-	std::vector<std::shared_ptr<info::Overlay>> _overlays;
-	size_t _overlay_signature; // Default is 0, meaning no overlay.
-	mutable std::shared_mutex _overlay_mutex;
+	std::vector<std::shared_ptr<info::Overlay>> _overlays OV_GUARDED_BY(_overlay_mutex);
+	size_t _overlay_signature OV_GUARDED_BY(_overlay_mutex); // Default is 0, meaning no overlay.
+	mutable ov::SharedMutex _overlay_mutex;
 };

@@ -6,6 +6,7 @@
 #include "base/info/media_track_group.h"
 #include "base/info/playlist.h"
 #include "base/info/track_set.h"
+#include "base/ovlibrary/tsa/mutex.h"
 #include "vhost_app_name.h"
 
 namespace info
@@ -194,8 +195,8 @@ namespace info
 		bool _from_origin_map_store = false;
 
 	private:
-		mutable std::mutex _name_path_mutex;
-		NamePath _name_path = NamePath::UnknownNamePath();
+		mutable ov::Mutex _name_path_mutex;
+		NamePath _name_path OV_GUARDED_BY(_name_path_mutex) = NamePath::UnknownNamePath();
 
 		std::chrono::system_clock::time_point _created_time;
 		std::chrono::system_clock::time_point _published_time;
