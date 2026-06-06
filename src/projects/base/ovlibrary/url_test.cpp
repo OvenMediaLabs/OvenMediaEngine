@@ -6,9 +6,8 @@
 //  Covers: ov::Url
 //
 //==============================================================================
-#include <gtest/gtest.h>
-
 #include <base/ovlibrary/url.h>
+#include <gtest/gtest.h>
 
 // ---------------------------------------------------------------------------
 // Parse - basic components
@@ -216,8 +215,33 @@ TEST(OvUrl, Clone)
 TEST(OvUrl, ToUrlStringRoundTrip)
 {
 	const char *original = "rtmp://live.example.com:1935/app/stream";
-	auto url = ov::Url::Parse(original);
+	auto url			 = ov::Url::Parse(original);
 	ASSERT_NE(url, nullptr);
 	auto reconstructed = url->ToUrlString(false);
 	EXPECT_STREQ(reconstructed.CStr(), original);
+}
+
+// ---------------------------------------------------------------------------
+// Query cache invalidation on re-parse
+// ---------------------------------------------------------------------------
+
+TEST(OvUrl, StaleCacheClearedOnSetSourceWithoutQuery)
+{
+	auto url = ov::Url::Parse("http://host.com/path?stale=yes");
+	ASSERT_NE(url, nullptr);
+	EXPECT_TRUE(url->HasQueryKey("stale"));	 // populate the cache
+
+	url->SetSource("http://host.com/path");	 // re-parse: now query-less
+	EXPECT_FALSE(url->HasQueryString());
+	EXPECT_FALSE(url->HasQueryKey("stale"));  // stale entry must be gone
+}
+
+TEST(OvUrl, StaleCacheClearedOnInvalidSource)
+{
+	auto url = ov::Url::Parse("http://host.com/path?stale=yes");
+	ASSERT_NE(url, nullptr);
+	EXPECT_TRUE(url->HasQueryKey("stale"));	 // populate the cache
+
+	url->SetSource("not-a-url");			  // error path
+	EXPECT_FALSE(url->HasQueryKey("stale"));  // stale entry must be gone
 }

@@ -414,6 +414,7 @@ namespace ov
 		}
 
 		_query_string = new_query_string;
+		_has_query_string = (_query_string.IsEmpty() == false);
 		InvalidateQueryMap();
 
 		return true;
