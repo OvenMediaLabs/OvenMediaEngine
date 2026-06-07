@@ -48,7 +48,7 @@ namespace ov
 		//--------------------------------------------------------------------
 		// Overriding of Socket
 		//--------------------------------------------------------------------
-		bool CloseInternal(SocketState close_reason) override;
+		bool CloseInternal(SocketState close_reason) override OV_REQUIRES(_dispatch_queue_lock);
 
 		//--------------------------------------------------------------------
 		// Implementation of SocketAsyncInterface

@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <base/ovlibrary/tsa/mutex.h>
+
 #include "../socket.h"
 #include "../socket_datastructure.h"
 
@@ -86,7 +88,8 @@ namespace ov
 		int EpollWait(int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);
 
-		bool ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
+		// Always called with `_socket_map_mutex` held (see `EpollWait()`).
+		bool ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event) OV_REQUIRES(_socket_map_mutex);
 
 		void AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket);
 		void EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket);
@@ -110,21 +113,21 @@ namespace ov
 		// Since there is no longer a reference to std::shared_ptr<Socket>, the socket will be released,
 		// and after EpollWait() code will refer to the released socket.
 		// To avoid this issue, _socket_map must ensure that it is modified only in the last part of ThreadProc().
-		mutable std::mutex _socket_map_mutex;
+		mutable Mutex _socket_map_mutex;
 		// key: native handle of SocketWrapper
-		std::map<int, std::shared_ptr<Socket>> _socket_map;
-		std::queue<std::shared_ptr<Socket>> _sockets_to_insert;
+		std::map<int, std::shared_ptr<Socket>> _socket_map OV_GUARDED_BY(_socket_map_mutex);
+		std::queue<std::shared_ptr<Socket>> _sockets_to_insert OV_GUARDED_BY(_socket_map_mutex);
 
-		// Socket failed to send data for too long must be forced to shut down in the future
+		// Socket failed to send data for too long must be forced to shut down in the future.
 		StopWatch _gc_interval;
 		std::map<int, std::shared_ptr<Socket>> _gc_candidates;
 
 		// A queue for handling errors such as connection timeout in nonblocking mode.
-		inline static std::mutex _connection_callback_queue_mutex;
+		inline static Mutex _connection_callback_queue_mutex;
 		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};
-		inline static bool _is_first_connection_callback_queue_start = true;
-		std::mutex _connection_timed_out_queue_mutex;
-		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue;
+		inline static std::atomic<bool> _is_first_connection_callback_queue_start = true;
+		mutable Mutex _connection_timed_out_queue_mutex;
+		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue OV_GUARDED_BY(_connection_timed_out_queue_mutex);
 
 		// Common variables
 		std::thread _epoll_thread;
@@ -134,11 +137,11 @@ namespace ov
 
 		// Occasionally, events on sockets need to be dispatched, even without events from epolls.
 		// The queue used in this case
-		std::mutex _sockets_to_dispatch_mutex;
-		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<Socket>> _sockets_to_dispatch;
+		Mutex _sockets_to_dispatch_mutex;
+		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<Socket>> _sockets_to_dispatch OV_GUARDED_BY(_sockets_to_dispatch_mutex);
 
-		std::mutex _sockets_to_call_close_callback_mutex;
-		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<SocketAsyncInterface>> _sockets_to_call_close_callback;
+		Mutex _sockets_to_call_close_callback_mutex;
+		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<SocketAsyncInterface>> _sockets_to_call_close_callback OV_GUARDED_BY(_sockets_to_call_close_callback_mutex);
 
 		// Related to epoll
 		socket_t _epoll = InvalidSocket;

@@ -12,7 +12,8 @@
 
 // This code was written by Rudolfs Bundulis. (Thank you!)
 #if IS_MACOS
-#	include <mutex>
+#	include <base/ovlibrary/tsa/mutex.h>
+
 #	include <unordered_map>
 #	include <sys/event.h>
 
@@ -139,11 +140,11 @@ public:
 						logte("unhandled flags %u passed to epoll_ctl", event->events);
 						return EINVAL;
 					}
-					std::unique_lock<decltype(_mutex)> lock(_mutex);
+					ov::ReleasableLockGuard lock(_mutex);
 					auto &epoll_fd_data = _epoll_data[epfd];
 					if (epoll_fd_data.find(fd) != epoll_fd_data.end())
 					{
-						lock.unlock();
+						lock.Release();
 						logte("socket %d has already been added to epoll %d", fd, epfd);
 						return EINVAL;
 					}
@@ -153,7 +154,7 @@ public:
 			case EPOLL_CTL_DEL:
 				ke.flags = EV_DELETE;
 				{
-					std::lock_guard<decltype(_mutex)> lock(_mutex);
+					ov::LockGuard lock(_mutex);
 					auto &epoll_fd_data = _epoll_data[epfd];
 					const auto it = epoll_fd_data.find(fd);
 					if (it != epoll_fd_data.end())
@@ -240,11 +241,11 @@ public:
 	}
 
 private:
-	static std::mutex _mutex;
-	static std::unordered_map<int, std::unordered_map<int, epoll_data_t>> _epoll_data;
+	static ov::Mutex _mutex;
+	static std::unordered_map<int, std::unordered_map<int, epoll_data_t>> _epoll_data OV_GUARDED_BY(_mutex);
 };
 
-std::mutex Epoll::_mutex;
+ov::Mutex Epoll::_mutex;
 std::unordered_map<int, std::unordered_map<int, Epoll::epoll_data_t>> Epoll::_epoll_data;
 
 static Epoll epoll;

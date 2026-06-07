@@ -198,7 +198,7 @@ namespace ov
 				// An event occurs the moment client socket is added to the epoll,
 				// so we must add the client into _client_list before calling Prepare()
 				{
-					std::lock_guard lock_guard(_client_list_mutex);
+					LockGuard lock_guard(_client_list_mutex);
 					_client_list[key] = client;
 				}
 
@@ -209,7 +209,7 @@ namespace ov
 				else
 				{
 					{
-						std::lock_guard lock_guard(_client_list_mutex);
+						LockGuard lock_guard(_client_list_mutex);
 						_client_list.erase(key);
 					}
 
@@ -223,7 +223,7 @@ namespace ov
 
 	bool ServerSocket::OnClientDisconnected(const std::shared_ptr<ClientSocket> &client)
 	{
-		std::lock_guard lock_guard(_client_list_mutex);
+		LockGuard lock_guard(_client_list_mutex);
 
 		auto item = _client_list.find(client.get());
 
@@ -246,9 +246,9 @@ namespace ov
 
 	bool ServerSocket::CloseInternal(SocketState close_reason)
 	{
-		_client_list_mutex.lock();
+		_client_list_mutex.Lock();
 		auto client_list = std::move(_client_list);
-		_client_list_mutex.unlock();
+		_client_list_mutex.Unlock();
 
 		for (const auto &client : client_list)
 		{

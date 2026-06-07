@@ -8,7 +8,7 @@
 //==============================================================================
 #pragma once
 
-#include <shared_mutex>
+#include <base/ovlibrary/tsa/mutex.h>
 
 #include "socket.h"
 #include "socket_address.h"
@@ -70,7 +70,7 @@ namespace ov
 		//--------------------------------------------------------------------
 		// Overriding of Socket
 		//--------------------------------------------------------------------
-		bool CloseInternal(SocketState close_reason) override;
+		bool CloseInternal(SocketState close_reason) override OV_REQUIRES(_dispatch_queue_lock);
 
 		//--------------------------------------------------------------------
 		// Implementation of SocketAsyncInterface
@@ -89,8 +89,8 @@ namespace ov
 
 		std::shared_ptr<SocketPool> _pool;
 
-		std::mutex _client_list_mutex;
-		std::unordered_map<const void *, std::shared_ptr<ClientSocket>> _client_list;
+		Mutex _client_list_mutex;
+		std::unordered_map<const void *, std::shared_ptr<ClientSocket>> _client_list OV_GUARDED_BY(_client_list_mutex);
 
 		ClientConnectionCallback _connection_callback = nullptr;
 		ClientDataCallback _data_callback = nullptr;

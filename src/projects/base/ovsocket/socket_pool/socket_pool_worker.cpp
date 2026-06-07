@@ -76,23 +76,26 @@ namespace ov
 
 		_socket_count = 0;
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
+			LockGuard lock_guard(_socket_map_mutex);
 			_socket_map.clear();
 
 			decltype(_sockets_to_insert)().swap(_sockets_to_insert);
 		}
 
 		{
-			std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+			LockGuard lock_guard(_sockets_to_dispatch_mutex);
 			_sockets_to_dispatch.clear();
 		}
 
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock_guard(_sockets_to_call_close_callback_mutex);
 			_sockets_to_call_close_callback.clear();
 		}
 
-		_connection_timed_out_queue.clear();
+		{
+			LockGuard lock_guard(_connection_timed_out_queue_mutex);
+			_connection_timed_out_queue.clear();
+		}
 
 		_gc_candidates.clear();
 
@@ -178,7 +181,7 @@ namespace ov
 
 	void SocketPoolWorker::MergeSocketList()
 	{
-		std::lock_guard lock_guard(_socket_map_mutex);
+		LockGuard lock_guard(_socket_map_mutex);
 
 		decltype(_sockets_to_insert) insert_queue;
 
@@ -228,14 +231,18 @@ namespace ov
 
 	void SocketPoolWorker::CallbackTimedOutConnections()
 	{
-		if (_connection_timed_out_queue.size() <= 0)
-		{
-			return;
-		}
+		decltype(_connection_timed_out_queue) timed_out_queue;
 
-		_connection_timed_out_queue_mutex.lock();
-		auto timed_out_queue = std::move(_connection_timed_out_queue);
-		_connection_timed_out_queue_mutex.unlock();
+		{
+			LockGuard lock_guard(_connection_timed_out_queue_mutex);
+
+			if (_connection_timed_out_queue.empty())
+			{
+				return;
+			}
+
+			timed_out_queue = std::move(_connection_timed_out_queue);
+		}
 
 		auto socket_error = SocketError::CreateError("Connection timed out (by worker)");
 
@@ -254,7 +261,7 @@ namespace ov
 
 		if (_is_first_connection_callback_queue_start == false)
 		{
-			std::lock_guard lock(_connection_callback_queue_mutex);
+			LockGuard lock(_connection_callback_queue_mutex);
 
 			if (_is_first_connection_callback_queue_start == false)
 			{
@@ -485,7 +492,7 @@ namespace ov
 		// Clean up all sockets
 		decltype(_socket_map) socket_map;
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
+			LockGuard lock_guard(_socket_map_mutex);
 			socket_map = std::move(_socket_map);
 		}
 
@@ -555,7 +562,7 @@ namespace ov
 
 		if (error == nullptr)
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
+			LockGuard lock_guard(_socket_map_mutex);
 			_sockets_to_insert.push(socket);
 		}
 		else
@@ -630,7 +637,7 @@ namespace ov
 
 					// Make a list of epoll_event from SRT_EPOLL_EVENTs
 					{
-						std::lock_guard lock_guard(_socket_map_mutex);
+						LockGuard lock_guard(_socket_map_mutex);
 
 						int epoll_event_count = 0;
 
@@ -671,7 +678,7 @@ namespace ov
 		return _last_epoll_event_count;
 	}
 
-	bool SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
+	bool SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event) OV_REQUIRES(_socket_map_mutex)
 	{
 		SRTSOCKET srt_socket = srt_event.fd;
 
@@ -762,7 +769,7 @@ namespace ov
 
 	void SocketPoolWorker::EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket)
 	{
-		std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+		LockGuard lock_guard(_sockets_to_dispatch_mutex);
 
 		_sockets_to_dispatch[socket] = socket;
 	}
@@ -774,7 +781,7 @@ namespace ov
 
 		if (callback != nullptr)
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock_guard(_sockets_to_call_close_callback_mutex);
 
 			_sockets_to_call_close_callback[socket] = callback;
 		}
@@ -782,7 +789,7 @@ namespace ov
 
 	void SocketPoolWorker::AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket)
 	{
-		std::lock_guard lock_guard(_connection_timed_out_queue_mutex);
+		LockGuard lock_guard(_connection_timed_out_queue_mutex);
 		_connection_timed_out_queue.push_back(socket);
 	}
 
@@ -811,7 +818,7 @@ namespace ov
 		decltype(_sockets_to_dispatch) socket_list;
 
 		{
-			std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+			LockGuard lock_guard(_sockets_to_dispatch_mutex);
 
 			if (_sockets_to_dispatch.empty())
 			{
@@ -864,15 +871,16 @@ namespace ov
 
 	void SocketPoolWorker::CallCloseCallbackIfNeeded()
 	{
-		if (_sockets_to_call_close_callback.empty())
-		{
-			return;
-		}
-
 		decltype(_sockets_to_call_close_callback) close_list;
 
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock_guard(_sockets_to_call_close_callback_mutex);
+
+			if (_sockets_to_call_close_callback.empty())
+			{
+				return;
+			}
+
 			std::swap(close_list, _sockets_to_call_close_callback);
 		}
 
@@ -950,7 +958,7 @@ namespace ov
 		}
 
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
+			LockGuard lock_guard(_socket_map_mutex);
 			_socket_map.erase(socket->GetNativeHandle());
 			DecreaseSocketCount();
 		}
@@ -972,12 +980,18 @@ namespace ov
 	{
 		String description;
 
-		std::lock_guard lock_guard(_socket_map_mutex);
+		size_t connection_queue_size;
+		{
+			LockGuard lock_guard(_connection_timed_out_queue_mutex);
+			connection_queue_size = _connection_timed_out_queue.size();
+		}
+
+		LockGuard lock_guard(_socket_map_mutex);
 		description.AppendFormat(
 			"<SocketPoolWorker: %p, socket_map: %zu, insert queue: %zu, connection queue: %zu>",
 			this, _socket_map.size(),
 			_sockets_to_insert.size(),
-			_connection_timed_out_queue.size());
+			connection_queue_size);
 
 		return description;
 	}
