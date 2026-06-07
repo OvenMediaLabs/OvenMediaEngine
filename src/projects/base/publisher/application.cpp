@@ -218,7 +218,7 @@ namespace pub
 			_application_worker_count = MAX_APPLICATION_WORKER_COUNT;
 		}
 
-		std::lock_guard<std::shared_mutex> worker_lock(_application_worker_lock);
+		ov::LockGuard worker_lock(_application_worker_lock);
 
 		for (uint32_t i = 0; i < _application_worker_count; i++)
 		{
@@ -241,14 +241,14 @@ namespace pub
 
 	bool Application::Stop()
 	{
-		std::unique_lock<std::shared_mutex> worker_lock(_application_worker_lock);
+		ov::ReleasableLockGuard worker_lock(_application_worker_lock);
 		for (const auto &worker : _application_workers)
 		{
 			worker->Stop();
 		}
 
 		_application_workers.clear();
-		worker_lock.unlock();
+		worker_lock.Release();
 
 		// release remaining streams
 		DeleteAllStreams();
@@ -260,7 +260,7 @@ namespace pub
 
 	bool Application::DeleteAllStreams()
 	{
-		std::unique_lock<std::shared_mutex> lock(_stream_map_mutex);
+		ov::LockGuard lock(_stream_map_mutex);
 
 		for (const auto &x : _streams)
 		{
@@ -286,7 +286,7 @@ namespace pub
 
 		MapStreamToWorker(info);
 
-		std::lock_guard<std::shared_mutex> lock(_stream_map_mutex);
+		ov::LockGuard lock(_stream_map_mutex);
 		_streams[info->GetId()] = stream;
 
 		return true;
@@ -294,19 +294,21 @@ namespace pub
 
 	bool Application::OnStreamDeleted(const std::shared_ptr<info::Stream> &info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_stream_map_mutex);
+		std::shared_ptr<Stream> stream;
 
-		auto stream_it = _streams.find(info->GetId());
-		if (stream_it == _streams.end())
 		{
-			// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
-			logtt("OnStreamDeleted failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
-			return true;
+			ov::LockGuard lock(_stream_map_mutex);
+
+			auto stream_it = _streams.find(info->GetId());
+			if (stream_it == _streams.end())
+			{
+				// Sometimes stream rejects stream creation if the input codec is not supported. So this is a normal situation.
+				logtt("OnStreamDeleted failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
+				return true;
+			}
+
+			stream = stream_it->second;
 		}
-
-		auto stream = stream_it->second;
-
-		lock.unlock();
 
 		UnmapStreamToWorker(info);
 
@@ -315,18 +317,21 @@ namespace pub
 			return false;
 		}
 
-		lock.lock();
-		_streams.erase(info->GetId());
+		{
+			ov::LockGuard lock(_stream_map_mutex);
+			_streams.erase(info->GetId());
 
-		// Stop stream
-		stream->EnterStop();
+			// Stop stream (kept under the lock to match the original, which held
+			// the relocked mutex across erase() and EnterStop()).
+			stream->EnterStop();
+		}
 
 		return true;
 	}
 
 	bool Application::OnStreamPrepared(const std::shared_ptr<info::Stream> &info)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_map_mutex);
+		ov::ReleasableSharedLockGuard lock(_stream_map_mutex);
 
 		auto stream_it = _streams.find(info->GetId());
 		if (stream_it == _streams.end())
@@ -338,7 +343,7 @@ namespace pub
 
 		auto stream = stream_it->second;
 
-		lock.unlock();
+		lock.Release();
 
 		// Start stream
 		if (stream->EnterStart() == false)
@@ -365,7 +370,7 @@ namespace pub
 
 	std::shared_ptr<ApplicationWorker> Application::GetLowestLoadWorker()
 	{
-		std::shared_lock lock(_application_worker_lock);
+		ov::SharedLockGuard lock(_application_worker_lock);
 		uint32_t min_load = UINT32_MAX;
 		uint32_t min_load_worker_id = 0;
 
@@ -398,7 +403,7 @@ namespace pub
 
 		app_worker->OnStreamCreated(info);
 
-		std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
+		ov::LockGuard lock(_stream_app_worker_map_lock);
 		_stream_app_worker_map[info->GetId()] = app_worker->GetWorkerId();
 	}
 	
@@ -414,7 +419,7 @@ namespace pub
 			logte("Cannot find ApplicationWorker for stream unmapping. %s / %u", info->GetName().CStr(), info->GetId());
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
+		ov::LockGuard lock(_stream_app_worker_map_lock);
 		_stream_app_worker_map.erase(info->GetId());
 	}
 
@@ -428,7 +433,7 @@ namespace pub
 		uint32_t worker_id = 0;
 
 		{
-			std::shared_lock<std::shared_mutex> lock(_stream_app_worker_map_lock);
+			ov::SharedLockGuard lock(_stream_app_worker_map_lock);
 			auto it = _stream_app_worker_map.find(stream_id);
 			if (it == _stream_app_worker_map.end())
 			{
@@ -439,7 +444,7 @@ namespace pub
 			worker_id = it->second;
 		}
 
-		std::shared_lock<std::shared_mutex> lock(_application_worker_lock);
+		ov::SharedLockGuard lock(_application_worker_lock);
 		if (worker_id >= _application_workers.size())
 		{
 			logte("Cannot find ApplicationWorker for stream mapping. %u", stream_id);
@@ -463,12 +468,13 @@ namespace pub
 
 	uint32_t Application::GetStreamCount()
 	{
+		ov::SharedLockGuard lock(_stream_map_mutex);
 		return _streams.size();
 	}
 
 	std::shared_ptr<Stream> Application::GetStream(uint32_t stream_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_map_mutex);
+		ov::SharedLockGuard lock(_stream_map_mutex);
 		auto it = _streams.find(stream_id);
 		if (it == _streams.end())
 		{
@@ -480,7 +486,7 @@ namespace pub
 
 	std::shared_ptr<Stream> Application::GetStream(ov::String stream_name)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_map_mutex);
+		ov::SharedLockGuard lock(_stream_map_mutex);
 		for (auto const &x : _streams)
 		{
 			auto stream = x.second;

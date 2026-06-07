@@ -1,7 +1,7 @@
 #pragma once
 
-#include <shared_mutex>
 #include "base/common_types.h"
+#include "base/ovlibrary/tsa/mutex.h"
 #include "base/info/stream.h"
 #include "base/info/push.h"
 #include "base/mediarouter/media_buffer.h"
@@ -35,9 +35,9 @@ namespace pub
 	private:
 		void WorkerThread();
 
-		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
-		std::shared_mutex _session_map_mutex;
-		
+		std::map<session_id_t, std::shared_ptr<Session>> _sessions OV_GUARDED_BY(_session_map_mutex);
+		ov::SharedMutex _session_map_mutex;
+
 		ov::Semaphore _queue_event;
 
 		std::optional<std::any> PopStreamPacket();
@@ -174,16 +174,16 @@ namespace pub
 
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
-		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
-		std::shared_mutex _session_map_mutex;
+		std::map<session_id_t, std::shared_ptr<Session>> _sessions OV_GUARDED_BY(_session_map_mutex);
+		ov::SharedMutex _session_map_mutex;
 
 		uint32_t _worker_count;
-		
-		std::shared_mutex _stream_worker_lock;
-		std::vector<std::shared_ptr<StreamWorker>>	_stream_workers;
+
+		ov::SharedMutex _stream_worker_lock;
+		std::vector<std::shared_ptr<StreamWorker>>	_stream_workers OV_GUARDED_BY(_stream_worker_lock);
 		std::shared_ptr<Application> _application;
 
-		session_id_t _last_issued_session_id;
+		session_id_t _last_issued_session_id OV_GUARDED_BY(_session_map_mutex);
 
 		std::chrono::system_clock::time_point _started_time;
 
@@ -191,7 +191,7 @@ namespace pub
 
 		bool LockIfIdle()
 		{
-			std::lock_guard<std::mutex> lock(_busy_lock);
+			ov::LockGuard lock(_busy_lock);
 			if (_busy)
 			{
 				return false;
@@ -202,22 +202,22 @@ namespace pub
 
 		void WaitUntilIdleAndLock()
 		{
-			std::unique_lock<std::mutex> lock(_busy_lock);
-			_busy_condition.wait(lock, [this]() { return !_busy; });
+			ov::LockGuard lock(_busy_lock);
+			_busy_condition.Wait(lock, [this]() OV_REQUIRES(_busy_lock) -> bool { return !_busy; });
 			_busy = true;
 		}
 
 		void Unlock()
 		{
 			{
-				std::lock_guard<std::mutex> lock(_busy_lock);
+				ov::LockGuard lock(_busy_lock);
 				_busy = false;
 			}
-			_busy_condition.notify_all();
+			_busy_condition.NotifyAll();
 		}
 
-		mutable std::mutex _busy_lock;
-		std::condition_variable _busy_condition;
-		bool _busy = false;
+		mutable ov::Mutex _busy_lock;
+		ov::ConditionVariable _busy_condition;
+		bool _busy OV_GUARDED_BY(_busy_lock) = false;
 	};
 }  // namespace pub

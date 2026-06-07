@@ -62,7 +62,7 @@ namespace pub
 
 		logtt("StreamWorker thread of %s has been stopped successfully", worker_name.CStr());
 
-		std::lock_guard<std::shared_mutex> lock(_session_map_mutex);
+		ov::LockGuard lock(_session_map_mutex);
 
 		logtt("Try to stop all sessions of %s", worker_name.CStr());
 		for (auto const &x : _sessions)
@@ -84,7 +84,7 @@ namespace pub
 			return true;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_session_map_mutex);
+		ov::LockGuard lock(_session_map_mutex);
 		_sessions[session->GetId()] = session;
 
 		return true;
@@ -98,7 +98,7 @@ namespace pub
 			return true;
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_session_map_mutex);
+		ov::ReleasableLockGuard lock(_session_map_mutex);
 		if (_sessions.count(id) <= 0)
 		{
 			logte("Cannot find session : %u", id);
@@ -107,7 +107,7 @@ namespace pub
 
 		auto session = _sessions[id];
 		_sessions.erase(id);
-		lock.unlock();
+		lock.Release();
 
 		session->Stop();
 
@@ -116,7 +116,7 @@ namespace pub
 
 	std::shared_ptr<Session> StreamWorker::GetSession(session_id_t id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_session_map_mutex);
+		ov::SharedLockGuard lock(_session_map_mutex);
 		if (_sessions.count(id) <= 0)
 		{
 			// logte("Cannot find session : %u", id);
@@ -169,8 +169,6 @@ namespace pub
 	{
 		ov::logger::ThreadHelper thread_helper;
 
-		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex, std::defer_lock);
-
 		while (!_stop_thread_flag)
 		{
 			_queue_event.Wait();
@@ -183,14 +181,13 @@ namespace pub
 
 			auto packet = PopStreamPacket();
 			if (packet.has_value())
-			{		
-				session_lock.lock();
+			{
+				ov::SharedLockGuard session_lock(_session_map_mutex);
 				for (auto const &x : _sessions)
 				{
 					auto session = x.second;
 					session->SendOutgoingData(packet.value());
 				}
-				session_lock.unlock();
 			}
 		}
 	}
@@ -275,7 +272,7 @@ namespace pub
 	{
 		logti("Try to stop %s stream [%s(%u)]", GetApplicationTypeName(), GetName().CStr(), GetId());
 
-		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+		ov::ReleasableLockGuard worker_lock(_stream_worker_lock);
 
 		if (_state != State::STARTED)
 		{
@@ -293,9 +290,9 @@ namespace pub
 
 		_stream_workers.clear();
 
-		worker_lock.unlock();
+		worker_lock.Release();
 
-		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+		ov::LockGuard session_lock(_session_map_mutex);
 
 		logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
 
@@ -335,8 +332,8 @@ namespace pub
 
 	bool Stream::CreateStreamWorker(uint32_t worker_count)
 	{
-		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
-		
+		ov::ReleasableLockGuard worker_lock(_stream_worker_lock);
+
 		if (worker_count > MAX_STREAM_WORKER_THREAD_COUNT)
 		{
 			worker_count = MAX_STREAM_WORKER_THREAD_COUNT;
@@ -359,7 +356,7 @@ namespace pub
 			_stream_workers.push_back(stream_worker);
 		}
 
-		worker_lock.unlock();
+		worker_lock.Release();
 
 		return true;
 	}
@@ -396,7 +393,7 @@ namespace pub
 		{
 			return nullptr;
 		}
-		std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+		ov::SharedLockGuard worker_lock(_stream_worker_lock);
 
 		size_t worker_id = session_id % _worker_count;
 		if(worker_id >= _stream_workers.size())
@@ -410,7 +407,7 @@ namespace pub
 
 	bool Stream::AddSession(std::shared_ptr<Session> session)
 	{
-		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+		ov::LockGuard session_lock(_session_map_mutex);
 
 		if (_sessions.count(session->GetId()) > 0)
 		{
@@ -438,7 +435,7 @@ namespace pub
 	bool Stream::RemoveSession(session_id_t id)
 	{
 		{
-			std::lock_guard session_lock(_session_map_mutex);
+			ov::LockGuard session_lock(_session_map_mutex);
 			auto session_iterator = _sessions.find(id);
 			if (session_iterator == _sessions.end())
 			{
@@ -465,7 +462,7 @@ namespace pub
 
 	std::shared_ptr<Session> Stream::GetSession(session_id_t id)
 	{
-		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
+		ov::SharedLockGuard session_lock(_session_map_mutex);
 		if (_sessions.count(id) <= 0)
 		{
 			return nullptr;
@@ -476,13 +473,13 @@ namespace pub
 
 	const std::map<session_id_t, std::shared_ptr<Session>> Stream::GetAllSessions()
 	{
-		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
+		ov::SharedLockGuard session_lock(_session_map_mutex);
 		return _sessions;
 	}
 
 	uint32_t Stream::GetSessionCount()
 	{
-		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
+		ov::SharedLockGuard session_lock(_session_map_mutex);
 		return _sessions.size();
 	}
 
@@ -490,7 +487,7 @@ namespace pub
 	{
 		if(_worker_count > 0)
 		{
-			std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+			ov::SharedLockGuard worker_lock(_stream_worker_lock);
 			for (uint32_t i = 0; i < _stream_workers.size(); i++)
 			{
 				_stream_workers[i]->SendPacket(packet);
@@ -498,7 +495,7 @@ namespace pub
 		}
 		else
 		{
-			std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
+			ov::SharedLockGuard session_lock(_session_map_mutex);
 			for (auto const &x : _sessions)
 			{
 				auto session = std::static_pointer_cast<Session>(x.second);
@@ -569,6 +566,8 @@ namespace pub
 
 	uint32_t Stream::IssueUniqueSessionId()
 	{
+		ov::LockGuard lock(_session_map_mutex);
+
 		auto new_session_id = _last_issued_session_id++;
 
 		while (true)

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <utility>
-#include <shared_mutex>
 #include "base/common_types.h"
+#include "base/ovlibrary/tsa/mutex.h"
 #include "base/info/stream.h"
 #include "base/info/session.h"
 #include "base/info/push.h"
@@ -116,8 +116,8 @@ namespace pub
 		explicit Application(const std::shared_ptr<Publisher> &publisher, const info::Application &application_info);
 		virtual ~Application();
 
-		std::shared_mutex 		_stream_map_mutex;
-		std::map<uint32_t, std::shared_ptr<Stream>> _streams;
+		ov::SharedMutex _stream_map_mutex;
+		std::map<uint32_t, std::shared_ptr<Stream>> _streams OV_GUARDED_BY(_stream_map_mutex);
 
 	private:
 		bool DeleteAllStreams();
@@ -131,11 +131,11 @@ namespace pub
 		void UnmapStreamToWorker(const std::shared_ptr<info::Stream> &info);
 
 		uint32_t		_application_worker_count;
-		std::shared_mutex _application_worker_lock;
-		std::vector<std::shared_ptr<ApplicationWorker>>	_application_workers;
+		ov::SharedMutex _application_worker_lock;
+		std::vector<std::shared_ptr<ApplicationWorker>>	_application_workers OV_GUARDED_BY(_application_worker_lock);
 		// stream_id : worker_id
-		std::map<info::stream_id_t, uint32_t> _stream_app_worker_map;
-		std::shared_mutex _stream_app_worker_map_lock;
+		std::map<info::stream_id_t, uint32_t> _stream_app_worker_map OV_GUARDED_BY(_stream_app_worker_map_lock);
+		ov::SharedMutex _stream_app_worker_map_lock;
 
 		std::shared_ptr<Publisher>		_publisher;
 	};

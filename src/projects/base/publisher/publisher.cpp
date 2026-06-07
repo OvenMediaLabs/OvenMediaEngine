@@ -27,7 +27,7 @@ namespace pub
 
 	bool Publisher::Stop()
 	{
-		std::unique_lock<std::shared_mutex> lock(_application_map_mutex);
+		ov::LockGuard lock(_application_map_mutex);
 		auto it = _applications.begin();
 
 		while (it != _applications.end())
@@ -90,7 +90,7 @@ namespace pub
 		
 
 		// Application Map에 보관
-		std::lock_guard<std::shared_mutex> lock(_application_map_mutex);
+		ov::LockGuard lock(_application_map_mutex);
 		_applications[application->GetId()] = application;
 
 		return true;
@@ -99,38 +99,40 @@ namespace pub
 	// Delete Application
 	bool Publisher::OnDeleteApplication(const info::Application &app_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_application_map_mutex);
-		auto item = _applications.find(app_info.GetId());
+		std::shared_ptr<Application> application;
 
-		logtt("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
-		if(item == _applications.end())
 		{
-			// Check the reason the app is not created is because it is disabled in the configuration
-			if(app_info.IsDynamicApp() == false)
+			ov::LockGuard lock(_application_map_mutex);
+			auto item = _applications.find(app_info.GetId());
+
+			logtt("Delete the application: [%s]", app_info.GetVHostAppName().CStr());
+			if(item == _applications.end())
 			{
-				auto cfg_publisher_list = app_info.GetConfig().GetPublishers().GetPublisherList();
-				for(const auto &cfg_publisher : cfg_publisher_list)
+				// Check the reason the app is not created is because it is disabled in the configuration
+				if(app_info.IsDynamicApp() == false)
 				{
-					if(cfg_publisher->GetType() == GetPublisherType())
+					auto cfg_publisher_list = app_info.GetConfig().GetPublishers().GetPublisherList();
+					for(const auto &cfg_publisher : cfg_publisher_list)
 					{
-						// this provider is disabled
-						if(!cfg_publisher->IsParsed())
+						if(cfg_publisher->GetType() == GetPublisherType())
 						{
-							return true;
+							// this provider is disabled
+							if(!cfg_publisher->IsParsed())
+							{
+								return true;
+							}
 						}
 					}
 				}
+
+				logte("%s publisher hasn't the %s application.", ::StringFromPublisherType(GetPublisherType()).CStr(), app_info.GetVHostAppName().CStr());
+				return false;
 			}
 
-			logte("%s publisher hasn't the %s application.", ::StringFromPublisherType(GetPublisherType()).CStr(), app_info.GetVHostAppName().CStr());
-			return false;
+			application = item->second;
+			application->Stop();
+			_applications.erase(item);
 		}
-
-		auto application = item->second;
-		application->Stop();
-		_applications.erase(item);
-
-		lock.unlock();
 
 		_router->UnregisterObserverApp(*application.get(), application);
 		
@@ -146,12 +148,13 @@ namespace pub
 
 	uint32_t Publisher::GetApplicationCount()
 	{
+		ov::SharedLockGuard lock(_application_map_mutex);
 		return _applications.size();
 	}
 
 	std::shared_ptr<Application> Publisher::GetApplicationByName(const info::VHostAppName &vhost_app_name)
 	{
-		std::shared_lock<std::shared_mutex> lock(_application_map_mutex);
+		ov::SharedLockGuard lock(_application_map_mutex);
 		for (auto const &x : _applications)
 		{
 			auto application = x.second;
@@ -229,7 +232,7 @@ namespace pub
 
 	std::shared_ptr<Application> Publisher::GetApplicationById(info::application_id_t application_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_application_map_mutex);
+		ov::SharedLockGuard lock(_application_map_mutex);
 
 		auto application = _applications.find(application_id);
 		if (application == _applications.end())

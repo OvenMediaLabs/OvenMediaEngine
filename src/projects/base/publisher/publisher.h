@@ -12,6 +12,7 @@
 #include <base/info/host.h>
 #include <base/mediarouter/mediarouter_application_observer.h>
 #include <base/ovcrypto/ovcrypto.h>
+#include <base/ovlibrary/tsa/mutex.h>
 #include <base/publisher/application.h>
 #include <base/publisher/stream.h>
 
@@ -150,8 +151,8 @@ namespace pub
 		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const info::Host &host_info, const std::shared_ptr<const ac::RequestInfo> &request_info);
 		std::tuple<AccessController::VerificationResult, std::shared_ptr<const AdmissionWebhooks>> VerifyByAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
 
-		std::map<info::application_id_t, std::shared_ptr<Application>> 	_applications;
-		std::shared_mutex 		_application_map_mutex;
+		std::map<info::application_id_t, std::shared_ptr<Application>> 	_applications OV_GUARDED_BY(_application_map_mutex);
+		ov::SharedMutex _application_map_mutex;
 
 		const cfg::Server _server_config;
 		std::shared_ptr<MediaRouterInterface> _router;
