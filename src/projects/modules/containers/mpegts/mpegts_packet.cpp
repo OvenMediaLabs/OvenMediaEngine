@@ -679,7 +679,7 @@ namespace mpegts
 
 		// Hex
 		str.AppendFormat("\n\tHex: ");
-		str.Append(ov::ToHexStringWithDelimiter(_data.get(), ' '));
+		str.Append(ov::ToHexStringWithDelimiter(_data, ' '));
 
 		return str;
 	}
