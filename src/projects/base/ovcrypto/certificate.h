@@ -149,6 +149,12 @@ private:
 
 	bool GetDigestEVP(const ov::String &algorithm, const EVP_MD **mdp);
 
+	// Master parity: `GetFingerprint(algorithm)` returns the digest computed on the
+	// FIRST call and ignores `algorithm` thereafter.
+	// We log a one-shot warning when a subsequent caller passes
+	// a different algorithm so the divergence is visible.
+	void WarnIfAlgorithmMismatch(const ov::String &algorithm);
+
 	// Private key
 	ov::RaiiPtr<EVP_PKEY> _private_key{nullptr, ::EVP_PKEY_free};
 	ov::String _private_key_filename;
@@ -163,8 +169,16 @@ private:
 	ov::Mutex _digest_mutex;
 
 	// Formatted fingerprint, computed once and published via `_fingerprint_ready`
-	// (release store / acquire load). Once the flag is set, `_fingerprint` is never
-	// modified, so the fast path reads it without the lock.
+	// (release store / acquire load).
+	// Once the flag is set, `_fingerprint` and `_cached_algorithm` are never modified,
+	// so the fast path reads them without the lock.
 	std::atomic<bool> _fingerprint_ready{false};
 	ov::String _fingerprint;
+	// Algorithm used to build `_digest`/`_fingerprint` on the first successful call.
+	// Subsequent calls with a different algorithm still return the cached value
+	// (master parity behavior), but we log a one-shot warning so the divergence is
+	// observable; `_algorithm_mismatch_warned` gates the log to fire at most once
+	// per Certificate instance.
+	ov::String _cached_algorithm;
+	std::atomic<bool> _algorithm_mismatch_warned{false};
 };

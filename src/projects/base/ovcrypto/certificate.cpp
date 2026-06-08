@@ -391,6 +391,7 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 	// Fast path: lock-free once the fingerprint has been published.
 	if (_fingerprint_ready.load(std::memory_order_acquire))
 	{
+		WarnIfAlgorithmMismatch(algorithm);
 		return _fingerprint;
 	}
 
@@ -399,6 +400,7 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 	// Re-check after locking; another thread may have published it.
 	if (_fingerprint_ready.load(std::memory_order_acquire))
 	{
+		WarnIfAlgorithmMismatch(algorithm);
 		return _fingerprint;
 	}
 
@@ -411,10 +413,30 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 		}
 	}
 
+	_cached_algorithm = algorithm;
 	_fingerprint = ov::ToHexStringWithDelimiter(_digest, ':');
 	_fingerprint.MakeUpper();
-	// Publish only after `_fingerprint` is fully built; release pairs with the acquire-loads.
+	// Publish only after `_fingerprint` and `_cached_algorithm` are fully built; release
+	// pairs with the acquire-loads.
 	_fingerprint_ready.store(true, std::memory_order_release);
 
 	return _fingerprint;
+}
+
+void Certificate::WarnIfAlgorithmMismatch(const ov::String &algorithm)
+{
+	// `_cached_algorithm` is safely readable here because the caller already observed
+	// `_fingerprint_ready.load(acquire) == true`, which synchronizes-with the release
+	// store that publishes both `_fingerprint` and `_cached_algorithm`.
+	if (algorithm == _cached_algorithm)
+	{
+		return;
+	}
+
+	bool expected = false;
+	if (_algorithm_mismatch_warned.compare_exchange_strong(expected, true, std::memory_order_relaxed))
+	{
+		logw("CERT", "Certificate::GetFingerprint() called with algorithm '%s' but the cached fingerprint was built with '%s'; returning the cached value regardless (master parity). Re-check call sites if a different algorithm is actually required.",
+			 algorithm.CStr(), _cached_algorithm.CStr());
+	}
 }
