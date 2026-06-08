@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <mutex>
+
 #include <base/provider/push_provider/stream.h>
 
 #include "modules/ice/ice_port.h"
