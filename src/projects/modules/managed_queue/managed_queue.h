@@ -455,7 +455,7 @@ namespace ov
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
-				auto result = _condition.WaitUntil(unique_lock, expire, [this]() -> bool {
+				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (!IsThresholdExceeded());
 				});
 				if (!result || _stop)
@@ -520,7 +520,7 @@ namespace ov
 
 	protected:
 		// Update statistical metrics and send data to monitoring module.
-		void UpdateMetrics()
+		void UpdateMetrics() OV_REQUIRES(_mutex)
 		{
 			// Update the peak statistics
 			if (_peak < _size)
@@ -573,7 +573,7 @@ namespace ov
 			}
 		}
 
-		void ClearMetrics()
+		void ClearMetrics() OV_REQUIRES(_mutex)
 		{
 			_peak = 0;
 			_input_message_per_second = 0;
@@ -596,7 +596,7 @@ namespace ov
 	private:
 		// Check if the queue has exceeded the threshold.
 		// _threshold == 0 means no threshold.
-		bool IsThresholdExceeded() const
+		bool IsThresholdExceeded() const OV_REQUIRES(_mutex)
 		{
 			SharedLockGuard shared_lock(_name_mutex);
 			if (_threshold == 0) return false;
@@ -604,7 +604,7 @@ namespace ov
 		}
 
 		// Compute the threshold
-		void UpdateThreshold()
+		void UpdateThreshold() OV_REQUIRES(_mutex)
 		{
 			LockGuard name_lock(_name_mutex);
 
