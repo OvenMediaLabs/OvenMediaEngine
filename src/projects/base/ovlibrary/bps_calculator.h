@@ -32,10 +32,9 @@ namespace ov
 		DelayQueue _timer{"BpsCalc"};
 		StopWatch _stop_watch;
 
-		SharedMutex _mutex;
+		mutable SharedMutex _mutex;
 		int64_t _bits[10] OV_GUARDED_BY(_mutex){0};
-		// Read lock-free in GetBps(); atomic like the other counters below.
-		std::atomic<int> _bits_count{0};
+		int _bits_count OV_GUARDED_BY(_mutex) = 0;
 
 		// Cumulative number of bits of last second
 		std::atomic<int64_t> _current_bits{0L};
