@@ -278,14 +278,14 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 			logtt("RTX packet PT %u on unknown track, dropping", packet->PayloadType());
 			return RtxResult::Drop;
 		}
-		auto stat_it = _receive_statistics.find(track_id_opt.value());
-		if (stat_it == _receive_statistics.end())
+		auto stat = FindReceiveStatistics(track_id_opt.value());
+		if (stat == nullptr)
 		{
 			logtt("RTX packet PT %u before primary media seen, dropping", packet->PayloadType());
 			return RtxResult::Drop;
 		}
 		original_pt = pt_it->second;
-		media_ssrc = stat_it->second->GetMediaSSRC();
+		media_ssrc = stat->GetMediaSSRC();
 		learned = true;
 	}
 
@@ -295,9 +295,17 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 		// Padding-only RTX probe; still report to transport-cc so the
 		// sender sees an ack for the wire sequence number.
 		logtt("Drop padding-only RTX ssrc(%u) pt(%u)", rtx_ssrc, packet->PayloadType());
-		if (_transport_cc_feedback_enabled && _transport_cc_generator != nullptr)
+		if (_transport_cc_feedback_enabled)
 		{
-			_transport_cc_generator->AddReceivedRtpPacket(packet);
+			std::shared_ptr<RtcpTransportCcFeedbackGenerator> generator;
+			{
+				std::shared_lock<std::shared_mutex> lock(_transport_cc_generator_lock);
+				generator = _transport_cc_generator;
+			}
+			if (generator != nullptr)
+			{
+				generator->AddReceivedRtpPacket(packet);
+			}
 		}
 		return RtxResult::Drop;
 	}
@@ -323,12 +331,11 @@ bool RtpRtcp::SendNACK(uint32_t track_id, const std::vector<uint16_t> &lost_ids)
 		return false;
 	}
 
-	auto stat_it = _receive_statistics.find(track_id);
-	if (stat_it == _receive_statistics.end())
+	auto stat = FindReceiveStatistics(track_id);
+	if (stat == nullptr)
 	{
 		return false;
 	}
-	auto stat = stat_it->second;
 
 	auto nack = std::make_shared<NACK>();
 	nack->SetSrcSsrc(stat->GetReceiverSSRC());
@@ -344,7 +351,7 @@ bool RtpRtcp::SendNACK(uint32_t track_id, const std::vector<uint16_t> &lost_ids)
 		return false;
 	}
 
-	_last_sent_rtcp_packet = rtcp_packet;
+	SetLastSentRtcpPacket(rtcp_packet);
 	logtd("SendNACK track(%u) media_ssrc(%u) count(%zu)", track_id, stat->GetMediaSSRC(), lost_ids.size());
 	return SendDataToNextNode(NodeType::Rtcp, rtcp_packet->GetData());
 }
