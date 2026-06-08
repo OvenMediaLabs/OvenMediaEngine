@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <queue>
 
@@ -71,10 +72,8 @@ namespace ov
 
 		void SetThreshold(size_t threshold)
 		{
-			LockGuard lock_guard(_name_mutex);
-
-			_threshold = threshold;
-			logt("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
+			_threshold.store(threshold, std::memory_order_relaxed);
+			logt("ov.Queue", "[%p] The threshold is changed to %zu", this, threshold);
 		}
 
 		void Enqueue(const T &item)
@@ -289,12 +288,13 @@ namespace ov
 				_peak = _queue.size();
 			}
 
-			if ((_threshold > 0) && (_queue.size() >= _threshold))
+			const auto threshold = _threshold.load(std::memory_order_relaxed);
+			if ((threshold > 0) && (_queue.size() >= threshold))
 			{
 				if (_last_log_time.IsElapsed(_log_interval) && _last_log_time.Update())
 				{
 					SharedLockGuard shared_lock(_name_mutex);
-					logw("ov.Queue", "[%p] %s size has exceeded the threshold: queue: %zu, threshold: %zu, peak: %zu", this, _queue_name.CStr(), _queue.size(), _threshold, _peak);
+					logw("ov.Queue", "[%p] %s size has exceeded the threshold: queue: %zu, threshold: %zu, peak: %zu", this, _queue_name.CStr(), _queue.size(), threshold, _peak);
 				}
 			}
 		}
@@ -305,14 +305,14 @@ namespace ov
 		mutable SharedMutex _name_mutex;
 		String _queue_name OV_GUARDED_BY(_name_mutex);
 
-		size_t _threshold OV_GUARDED_BY(_name_mutex) = 0;
+		std::atomic<size_t> _threshold = 0;
 		size_t _peak OV_GUARDED_BY(_mutex) = 0;
 		int _log_interval = 0;
 
 		std::queue<T> _queue OV_GUARDED_BY(_mutex);
 		mutable Mutex _mutex;
 		ConditionVariable _condition;
-		bool _stop OV_GUARDED_BY(_mutex) = false;
+		std::atomic<bool> _stop = false;
 	};
 
 }  // namespace ov
