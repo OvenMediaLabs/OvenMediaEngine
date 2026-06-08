@@ -32,11 +32,14 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	if (wide_sequence_number_opt.has_value() == false)
 	{
 		// There is no transport-wide sequence number in the RTP header extension.
-		// The limiter is a function-local static shared across instances/threads,
-		// so keep it atomic and stop decrementing once exhausted.
+		// The limiter is a function-local static shared across instances/threads;
+		// CAS-decrement only while positive so it never drops below zero.
 		static std::atomic<int> log_remaining{10};
-		if (log_remaining.load(std::memory_order_relaxed) > 0 &&
-			log_remaining.fetch_sub(1, std::memory_order_relaxed) > 0)
+		int cur = log_remaining.load(std::memory_order_relaxed);
+		while (cur > 0 && log_remaining.compare_exchange_weak(cur, cur - 1, std::memory_order_relaxed) == false)
+		{
+		}
+		if (cur > 0)
 		{
 			logtw("AddReceivedRtpPacket: There is no transport-wide sequence number in the RTP header extension : %s", packet->Dump().CStr());
 		}

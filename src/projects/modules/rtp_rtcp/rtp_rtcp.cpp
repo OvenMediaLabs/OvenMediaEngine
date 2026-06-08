@@ -669,11 +669,18 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 {
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> generator;
 	{
+		// Common path after init: shared lock for a concurrent read.
+		std::shared_lock<std::shared_mutex> lock(_transport_cc_generator_lock);
+		generator = _transport_cc_generator;
+	}
+	if (generator == nullptr)
+	{
+		// First packet: take the exclusive lock and create, re-checking in case
+		// another thread won the race. Receiver SSRC is unknown, so reuse the
+		// first track's RR ssrc (wide sequence means media ssrc may not be unique).
 		std::lock_guard<std::shared_mutex> lock(_transport_cc_generator_lock);
 		if (_transport_cc_generator == nullptr)
 		{
-			// Receiver SSRC is unknown, so reuse the first track's RR ssrc. Wide
-			// sequence means media ssrc may not be unique, so the first one is used.
 			_transport_cc_generator = std::make_shared<RtcpTransportCcFeedbackGenerator>(_transport_cc_feedback_extension_id.load(), receiver_ssrc);
 		}
 		generator = _transport_cc_generator;
