@@ -3,6 +3,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <chrono>
 #include <map>
+#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -93,6 +94,8 @@ private:
 	void UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now);
 	void DiscardStale(std::chrono::steady_clock::time_point now);
 	void LogPeriodicStats(std::chrono::steady_clock::time_point now);
+	// Hold recommendation core; assumes _lock is already held.
+	uint32_t GetRecommendedHoldMsInternal() const;
 
 	uint32_t _track_id = 0;
 	uint32_t _media_ssrc = 0;
@@ -124,4 +127,6 @@ private:
 	uint64_t _prev_recovered = 0;
 	uint64_t _prev_lost_permanent = 0;
 	std::chrono::steady_clock::time_point _last_stats_log_at;
+
+	mutable std::mutex _lock;
 };

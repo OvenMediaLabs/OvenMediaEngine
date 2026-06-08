@@ -32,6 +32,7 @@ std::optional<uint32_t> RtpNackGenerator::ExtendSeq(uint16_t seq) const
 
 void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
 
 	_received_total++;
@@ -136,6 +137,7 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 
 std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
 
 	DiscardStale(now);
@@ -182,13 +184,19 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 	{
 		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) hold(%ums)",
 			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(),
-			  GetRecommendedHoldMs());
+			  GetRecommendedHoldMsInternal());
 	}
 
 	return ids;
 }
 
 uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
+{
+	std::lock_guard<std::mutex> lock(_lock);
+	return GetRecommendedHoldMsInternal();
+}
+
+uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
 {
 	// Use real EWMA when we have a fresh sample; otherwise fall back to the
 	// initial RTT guess (same source used to seed _ewma_ms for retry interval).
@@ -221,6 +229,7 @@ uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	if (_pending.empty())
 	{
 		return std::nullopt;
@@ -230,6 +239,7 @@ std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
 
 void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	if (_initialized == false)
 	{
 		return;
@@ -281,7 +291,7 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 			  "ewma(%.1f) dev(%.1f) hold(%u)",
 			  _track_id, _media_ssrc, max_seq, dropped, first_dropped_seq, last_dropped_seq,
 			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(),
-			  _ewma_ms, _ewma_dev_ms, GetRecommendedHoldMs());
+			  _ewma_ms, _ewma_dev_ms, GetRecommendedHoldMsInternal());
 	}
 }
 
@@ -363,7 +373,7 @@ void RtpNackGenerator::LogPeriodicStats(std::chrono::steady_clock::time_point no
 		  "totals[recv(%lu) nack(%lu) recovered(%lu) lost(%lu)] pending(%zu) hold(%ums)",
 		  _track_id, _media_ssrc, d_received, d_nacks, d_recovered, d_lost, loss_pct, recovery_pct,
 		  _received_total, _nacks_sent_total, _recovered_total, _lost_permanent_total,
-		  _pending.size(), GetRecommendedHoldMs());
+		  _pending.size(), GetRecommendedHoldMsInternal());
 
 	_prev_received		  = _received_total;
 	_prev_nacks_sent	  = _nacks_sent_total;
