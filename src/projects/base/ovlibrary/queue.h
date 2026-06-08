@@ -302,7 +302,7 @@ namespace ov
 	private:
 		StopWatch _last_log_time;
 
-		SharedMutex _name_mutex;
+		mutable SharedMutex _name_mutex;
 		String _queue_name OV_GUARDED_BY(_name_mutex);
 
 		size_t _threshold OV_GUARDED_BY(_name_mutex) = 0;
