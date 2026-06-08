@@ -155,29 +155,24 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	return true;
 }
 
-bool RtcpTransportCcFeedbackGenerator::HasElapsedSinceLastTransportCc(uint32_t milliseconds)
+std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessageIfElapsed(uint32_t milliseconds)
 {
 	std::lock_guard<std::mutex> lock(_lock);
+
+	// Check elapsed and build under one lock so concurrent receives can't both
+	// pass the interval check and emit feedback for the same window.
 	auto now = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_report_time).count();
-
-	if (elapsed >= milliseconds)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessage()
-{
-	std::lock_guard<std::mutex> lock(_lock);
-	if (_transport_cc == nullptr)
+	if (elapsed < milliseconds || _transport_cc == nullptr)
 	{
 		return nullptr;
 	}
 
 	_transport_cc->SetMediaSsrc(_last_media_ssrc);
+
+	// TEMP(verify): remove after confirming transport-cc cadence in a live run
+	logti("transport-cc feedback generated: elapsed(%lldms) packets(%u)",
+		  static_cast<long long>(elapsed), _transport_cc->GetPacketStatusCount());
 
 	logtt("Generate Transport CC message : Sender SSRC(%u), Media SSRC(%u), Base Sequence Number(%u), Reference Time(%u), Packet Feedback Count(%u)",
 		  _transport_cc->GetSenderSsrc(), _transport_cc->GetMediaSsrc(), _transport_cc->GetBaseSequenceNumber(), _transport_cc->GetReferenceTime(), _transport_cc->GetPacketStatusCount());
@@ -185,7 +180,7 @@ std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportC
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(_transport_cc);
 
-	_last_report_time = std::chrono::steady_clock::now();
+	_last_report_time = now;
 
 	_transport_cc.reset();
 

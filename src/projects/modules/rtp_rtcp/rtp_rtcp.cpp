@@ -674,10 +674,9 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 
 	generator->AddReceivedRtpPacket(packet);
 
-	if (generator->HasElapsedSinceLastTransportCc(TRANSPORT_CC_CYCLE_MS) &&
-		(_video_receiver_enabled ? (is_video && marker) : true))
+	if (_video_receiver_enabled ? (is_video && marker) : true)
 	{
-		return generator->GenerateTransportCcMessage();
+		return generator->GenerateTransportCcMessageIfElapsed(TRANSPORT_CC_CYCLE_MS);
 	}
 	return nullptr;
 }
