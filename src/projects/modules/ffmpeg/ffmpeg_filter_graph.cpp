@@ -9,6 +9,18 @@
 
 #include "ffmpeg_filter_graph.h"
 
+extern "C"
+{
+#if LIBAVFILTER_VERSION_INT >= AV_VERSION_INT(10, 2, 102)
+// FFmpeg 7.1 moved hw_frames_ctx from the public AVFilterLink to the internal
+// FilterLink, reached via ff_filter_link() in libavfilter/filters.h. That header
+// is not part of `make install`; InstallPrerequisites.cmake copies it into the
+// prefix. Using the real accessor keeps this correct without struct-layout
+// assumptions.
+#include <libavfilter/filters.h>
+#endif
+}
+
 namespace ffmpeg
 {
 	FFmpegFilterGraph::~FFmpegFilterGraph()
@@ -273,7 +285,13 @@ namespace ffmpeg
 			return false;
 		}
 
+		// libavfilter 10.2.102 (FFmpeg 7.1) removed hw_frames_ctx from the public
+		// AVFilterLink; it now lives on the internal FilterLink via ff_filter_link().
+#if LIBAVFILTER_VERSION_INT < AV_VERSION_INT(10, 2, 102)
 		link->hw_frames_ctx = hw_frames_ref;
+#else
+		ff_filter_link(link)->hw_frames_ctx = hw_frames_ref;
+#endif
 
 		return true;
 	}

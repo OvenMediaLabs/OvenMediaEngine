@@ -582,7 +582,11 @@ set(_install_ffmpeg "
 mkdir -p ${TEMP_PATH}/ffmpeg && cd ${TEMP_PATH}/ffmpeg &&
 curl -sSLf ${FFMPEG_SOURCE_URL} | tar -xz --strip-components=1 &&
 ${_FFMPEG_PATCH_CMDS}${_FFMPEG_CONFIGURE_LINE} &&
-make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
+make ${_J} && sudo make install &&
+# filters.h (FilterLink/ff_filter_link, FFmpeg 7.1+) is not part of `make install`,
+# but OME needs it to set hw_frames_ctx on filter links. Install it when present.
+( test -f libavfilter/filters.h && sudo cp libavfilter/filters.h ${PREFIX}/include/libavfilter/ || true ) &&
+sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
 ")
 
 # ---- stubs ----
