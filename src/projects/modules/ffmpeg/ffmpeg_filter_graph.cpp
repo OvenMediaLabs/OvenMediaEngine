@@ -180,8 +180,9 @@ namespace ffmpeg
 			return false;
 		}
 
-		// libavfilter's internal "hardware-frame aware" flag (not exported in the public headers).
-		constexpr int kFilterFlagHwframeAware = (1 << 0);
+		// FFmpeg 8.0 removed AVFilter.flags_internal, so the hwframe-aware pre-check
+		// is dropped; the scale_cuda/hwupload_cuda name match below already gates the
+		// work, so behaviour is unchanged on every version.
 
 		// Detect which CUDA filters the parsed graph contains.
 		bool is_hwupload_cuda = false;
@@ -189,7 +190,7 @@ namespace ffmpeg
 		for (uint32_t i = 0; i < _filter_graph->nb_filters; i++)
 		{
 			auto filter = _filter_graph->filters[i];
-			if ((filter == nullptr) || (filter->filter->flags_internal & kFilterFlagHwframeAware) == 0)
+			if ((filter == nullptr) || (filter->name == nullptr))
 			{
 				continue;
 			}
@@ -208,7 +209,7 @@ namespace ffmpeg
 		for (uint32_t i = 0; i < _filter_graph->nb_filters; i++)
 		{
 			auto filter = _filter_graph->filters[i];
-			if ((filter == nullptr) || ((filter->filter->flags_internal & kFilterFlagHwframeAware) == 0) || (filter->inputs == nullptr))
+			if ((filter == nullptr) || (filter->name == nullptr) || (filter->inputs == nullptr))
 			{
 				continue;
 			}

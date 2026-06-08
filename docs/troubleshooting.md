@@ -148,7 +148,7 @@ rm -rf ${DIR}
 
 ```bash title="Install FFMPEG"
 PREFIX=/opt/ovenmediaengine && \
-FFMPEG_VERSION=7.1.4 && \
+FFMPEG_VERSION=8.0.2 && \
 DIR=/tmp/ffmpeg && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \

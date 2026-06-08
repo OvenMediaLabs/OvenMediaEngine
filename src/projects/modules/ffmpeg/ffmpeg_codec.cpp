@@ -190,7 +190,17 @@ namespace ffmpeg
 	void FFmpegCodec::SetRcBufferSize(int rc_buffer_size) { _context->rc_buffer_size = rc_buffer_size; }
 	void FFmpegCodec::SetGopSize(int gop_size) { _context->gop_size = gop_size; }
 	void FFmpegCodec::SetMaxBFrames(int max_b_frames) { _context->max_b_frames = max_b_frames; }
-	void FFmpegCodec::SetTicksPerFrame(int ticks_per_frame) { _context->ticks_per_frame = ticks_per_frame; }
+	void FFmpegCodec::SetTicksPerFrame(int ticks_per_frame)
+	{
+		// AVCodecContext.ticks_per_frame was removed in FFmpeg 8.0 (libavcodec 62).
+		// time_base is set from the track timebase independently, so frame timing is
+		// derived without it.
+#if LIBAVCODEC_VERSION_MAJOR < 62
+		_context->ticks_per_frame = ticks_per_frame;
+#else
+		(void)ticks_per_frame;
+#endif
+	}
 	void FFmpegCodec::SetThreadCount(int thread_count) { _context->thread_count = thread_count; }
 	void FFmpegCodec::SetThreadTypeFrame() { _context->thread_type = FF_THREAD_FRAME; }
 	void FFmpegCodec::SetSlices(int slices) { _context->slices = slices; }
