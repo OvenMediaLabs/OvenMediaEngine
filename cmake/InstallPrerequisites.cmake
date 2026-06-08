@@ -501,6 +501,8 @@ set(_FFMPEG_PATCH_CMDS        "")
 set(_SCTE35_PATCH "${CMAKE_CURRENT_LIST_DIR}/../misc/patches/ffmpeg_n${FFMPEG_VERSION}_scte35.patch")
 if(EXISTS "${_SCTE35_PATCH}")
     string(APPEND _FFMPEG_PATCH_CMDS "patch -p1 < ${_SCTE35_PATCH} && \n")
+else()
+    message(WARNING "[OME Prerequisites] SCTE-35 mpegts patch not found for FFmpeg ${FFMPEG_VERSION} (${_SCTE35_PATCH}); SCTE-35 markers will NOT be muxed into MPEG-TS output.")
 endif()
 
 if(ENABLE_X264)
@@ -559,7 +561,7 @@ set(_FFMPEG_CONFIGURE_CMD
     "--disable-everything --disable-programs --disable-avdevice --disable-dwt --disable-lsp --disable-faan --disable-pixelutils"
     "--enable-shared --disable-static --enable-pic"
     "--enable-zlib --enable-libopus --enable-libvpx --enable-libaom --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
-    "--enable-network --enable-libsrt --enable-dct --enable-rdft --enable-libwebp"
+    "--enable-network --enable-libsrt --enable-libwebp"
     "--extra-cflags=\"-I${PREFIX}/include${_FFMPEG_ADDI_CFLAGS}\""
     "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -Wl,--disable-new-dtags${_FFMPEG_ADDI_LDFLAGS}\""
     "--extra-libs=-ldl"
