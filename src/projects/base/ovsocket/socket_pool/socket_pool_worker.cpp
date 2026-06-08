@@ -678,7 +678,7 @@ namespace ov
 		return _last_epoll_event_count;
 	}
 
-	bool SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event) OV_REQUIRES(_socket_map_mutex)
+	bool SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
 	{
 		SRTSOCKET srt_socket = srt_event.fd;
 
