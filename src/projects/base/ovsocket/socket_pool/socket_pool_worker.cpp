@@ -259,13 +259,21 @@ namespace ov
 	{
 		logger::ThreadHelper thread_helper;
 
-		if (_is_first_connection_callback_queue_start == false)
+		// One-shot init: start the shared `_connection_callback_queue` dispatch thread on
+		// the first worker that reaches `ThreadProc`.
+		// Without this, every `EnqueueToCheckConnectionTimeOut(...)` ->
+		// `_connection_callback_queue.Push(...)` silently queues a callback
+		// that nobody dispatches, so non-blocking-connect timeouts never fire.
+		// (Pre-existing dead-DCL fix: the previous check/assignment pair was inverted -
+		// `if (... == false)` with init `true` meant the body was unreachable.
+		// Corrected to `if (... == true)` enter / `= false` after start.)
+		if (_is_first_connection_callback_queue_start == true)
 		{
 			LockGuard lock(_connection_callback_queue_mutex);
 
-			if (_is_first_connection_callback_queue_start == false)
+			if (_is_first_connection_callback_queue_start == true)
 			{
-				_is_first_connection_callback_queue_start = true;
+				_is_first_connection_callback_queue_start = false;
 
 				_connection_callback_queue.Start();
 			}
