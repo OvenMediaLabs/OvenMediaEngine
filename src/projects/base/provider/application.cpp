@@ -73,7 +73,7 @@ namespace pvd
 
 	const std::map<uint32_t, std::shared_ptr<Stream>> Application::GetStreams()
 	{
-		std::shared_lock<std::shared_mutex> lock(_streams_guard);
+		ov::SharedLockGuard lock(_streams_guard);
 		
 		if(_streams.empty())
 		{
@@ -85,7 +85,7 @@ namespace pvd
 
 	const std::shared_ptr<Stream> Application::GetStreamById(uint32_t stream_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_streams_guard);
+		ov::SharedLockGuard lock(_streams_guard);
 
 		if(_streams.find(stream_id) == _streams.end())
 		{
@@ -97,7 +97,7 @@ namespace pvd
 
 	const std::shared_ptr<Stream> Application::GetStreamByName(ov::String stream_name)
 	{
-		std::shared_lock<std::shared_mutex> lock(_streams_guard);
+		ov::SharedLockGuard lock(_streams_guard);
 		
 		for(auto const &x : _streams)
 		{
@@ -235,7 +235,7 @@ namespace pvd
 		stream->SetTimestampMode(timestamp_mode);
 
 		{
-			std::lock_guard<std::shared_mutex> streams_lock(_streams_guard);
+			ov::LockGuard streams_lock(_streams_guard);
 
 			// check if stream is already exist one more time
 			if (_streams.find(stream->GetId()) != _streams.end())
@@ -255,19 +255,19 @@ namespace pvd
 	// Update stream, if stream is not exist, add stream
 	bool Application::UpdateStream(const std::shared_ptr<Stream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> streams_lock(_streams_guard);
+		ov::ReleasableLockGuard streams_lock(_streams_guard);
 
 		if(_streams.find(stream->GetId()) == _streams.end())
 		{
 			// If stream is not exist, add stream
-			streams_lock.unlock();
+			streams_lock.Release();
 			AddStream(stream);
 		}
 		else
 		{
 			// If stream is exist, update stream
 			_streams[stream->GetId()] = stream;
-			streams_lock.unlock();
+			streams_lock.Release();
 		}
 
 		NotifyStreamUpdated(stream);
@@ -277,7 +277,7 @@ namespace pvd
 
 	bool Application::DeleteStream(const std::shared_ptr<Stream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> streams_lock(_streams_guard);
+		ov::ReleasableLockGuard streams_lock(_streams_guard);
 
 		if(_streams.find(stream->GetId()) == _streams.end())
 		{
@@ -286,7 +286,7 @@ namespace pvd
 		}
 		_streams.erase(stream->GetId());
 
-		streams_lock.unlock();
+		streams_lock.Release();
 		
 		stream->Stop();
 
@@ -314,7 +314,7 @@ namespace pvd
 	{
 		std::vector<std::shared_ptr<Stream>> streams_to_delete;
 		{
-			std::unique_lock<std::shared_mutex> lock(_streams_guard);
+			ov::LockGuard lock(_streams_guard);
 			for (auto it = _streams.cbegin(); it != _streams.cend();)
 			{
 				streams_to_delete.push_back(it->second);

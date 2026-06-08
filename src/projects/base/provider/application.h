@@ -16,7 +16,7 @@
 #include "base/mediarouter/mediarouter_application_connector.h"
 #include "stream.h"
 
-#include <shared_mutex>
+#include <base/ovlibrary/tsa/mutex.h>
 
 namespace pvd
 {
@@ -73,7 +73,7 @@ namespace pvd
 		std::shared_ptr<Provider> _provider;
 		ApplicationState		_state = ApplicationState::Idle;
 
-		std::shared_mutex _streams_guard;
-		std::map<uint32_t, std::shared_ptr<Stream>> _streams;
+		ov::SharedMutex _streams_guard;
+		std::map<uint32_t, std::shared_ptr<Stream>> _streams OV_GUARDED_BY(_streams_guard);
 	};
 }

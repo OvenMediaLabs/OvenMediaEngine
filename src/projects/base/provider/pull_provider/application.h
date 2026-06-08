@@ -12,6 +12,8 @@
 #include "stream_motor.h"
 #include "orchestrator/orchestrator.h"
 
+#include <base/ovlibrary/tsa/mutex.h>
+
 //TODO(Dimiden): It has to be moved to configuration
 #define MAX_APPLICATION_STREAM_MOTOR_COUNT		20
 #define MAX_UNUSED_STREAM_AVAILABLE_TIME_SEC	60
@@ -53,7 +55,7 @@ namespace pvd
 		std::atomic<bool> _stop_collector_thread_flag{false};
 		std::thread _collector_thread;
 
-		std::shared_mutex _stream_motors_guard;
-		std::map<uint32_t, std::shared_ptr<StreamMotor>> _stream_motors;
+		ov::SharedMutex _stream_motors_guard;
+		std::map<uint32_t, std::shared_ptr<StreamMotor>> _stream_motors OV_GUARDED_BY(_stream_motors_guard);
 	};
 }

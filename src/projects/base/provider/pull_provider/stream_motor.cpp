@@ -24,7 +24,7 @@ namespace pvd
 
 	uint32_t StreamMotor::GetStreamCount()
 	{
-		std::shared_lock<std::shared_mutex> lock(_streams_map_guard);
+		ov::SharedLockGuard lock(_streams_map_guard);
 		return _streams.size();
 	}
 
@@ -55,6 +55,7 @@ namespace pvd
 		close(_epoll_fd);
 
 		//STOP AND REMOVE ALL STREAM (NEXT)
+		ov::LockGuard lock(_streams_map_guard);
 		for(const auto &x : _streams)
 		{
 			auto stream = x.second;
@@ -126,9 +127,9 @@ namespace pvd
 
 	bool StreamMotor::AddStream(const std::shared_ptr<PullStream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> lock(_streams_map_guard);
+		ov::ReleasableLockGuard lock(_streams_map_guard);
 		_streams[stream->GetId()] = stream;
-		lock.unlock();
+		lock.Release();
 
 		switch (stream->GetProcessMediaEventTriggerMode())
 		{
@@ -151,14 +152,14 @@ namespace pvd
 
 	bool StreamMotor::DelStream(const std::shared_ptr<PullStream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> lock(_streams_map_guard);
+		ov::ReleasableLockGuard lock(_streams_map_guard);
 		if(_streams.find(stream->GetId()) == _streams.end())
 		{
 			// may be already deleted
 			return false;
 		}
 		_streams.erase(stream->GetId());
-		lock.unlock();
+		lock.Release();
 
 		logti("%s/%s(%u) stream has deleted from %u StreamMotor", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), GetId());
 
@@ -210,7 +211,7 @@ namespace pvd
 				auto stream_id = epoll_events[i].data.u32;
 				auto events = epoll_events[i].events;
 
-				std::shared_lock<std::shared_mutex> stream_lock(_streams_map_guard);
+				ov::ReleasableSharedLockGuard stream_lock(_streams_map_guard);
 				auto it = _streams.find(stream_id);
 				if(it == _streams.end())
 				{
@@ -218,7 +219,7 @@ namespace pvd
 				}
 
 				auto stream = it->second;
-				stream_lock.unlock();
+				stream_lock.Release();
 
 				if (OV_CHECK_FLAG(events, EPOLLHUP) || OV_CHECK_FLAG(events, EPOLLRDHUP))
 				{
@@ -253,7 +254,7 @@ namespace pvd
 				}
 			}
 
-			std::shared_lock<std::shared_mutex> stream_lock(_streams_map_guard);
+			ov::ReleasableSharedLockGuard stream_lock(_streams_map_guard);
 			for (const auto &[stream_id, stream] : _streams)
 			{
 
@@ -277,7 +278,7 @@ namespace pvd
 					stream->Stop();
 				}
 			}
-			stream_lock.unlock();
+			stream_lock.Release();
 		}
 	}
 }  // namespace pvd

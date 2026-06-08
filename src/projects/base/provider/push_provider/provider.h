@@ -16,6 +16,8 @@
 #include "application.h"
 #include "stream.h"
 
+#include <base/ovlibrary/tsa/mutex.h>
+
 namespace pvd
 {
 	static constexpr time_t DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS = 3000;
@@ -69,8 +71,8 @@ namespace pvd
 		std::thread _task_runner_thread;
 
 		// All streams (signalling streams + data streams)
-		std::shared_mutex _channels_lock;
+		ov::SharedMutex _channels_lock;
 		// channel_id : stream
-		std::map<uint32_t, std::shared_ptr<PushStream>>	_channels;
+		std::map<uint32_t, std::shared_ptr<PushStream>>	_channels OV_GUARDED_BY(_channels_lock);
     };
 }

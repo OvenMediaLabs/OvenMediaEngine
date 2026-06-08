@@ -17,7 +17,7 @@
 #include "base/mediarouter/mediarouter_application_connector.h"
 #include "stream.h"
 
-#include <shared_mutex>
+#include <base/ovlibrary/tsa/mutex.h>
 
 #define MAX_EPOLL_EVENTS						1024
 #define EPOLL_TIMEOUT_MSEC						100
@@ -49,7 +49,7 @@ namespace pvd
 
 		std::atomic<bool> _stop_thread_flag;
 		std::thread _thread;
-		std::shared_mutex _streams_map_guard;
-		std::map<uint32_t, std::shared_ptr<PullStream>> _streams;
+		ov::SharedMutex _streams_map_guard;
+		std::map<uint32_t, std::shared_ptr<PullStream>> _streams OV_GUARDED_BY(_streams_map_guard);
 	};
 }

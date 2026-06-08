@@ -14,7 +14,7 @@
 
 #include <modules/access_control/access_controller.h>
 
-#include <shared_mutex>
+#include <base/ovlibrary/tsa/mutex.h>
 
 namespace pvd
 {
@@ -65,9 +65,9 @@ namespace pvd
 		
 	private:	
 		const cfg::Server _server_config;
-		
-		std::map<info::application_id_t, std::shared_ptr<Application>> _applications;
-		std::shared_mutex  _application_map_mutex;
+
+		std::map<info::application_id_t, std::shared_ptr<Application>> _applications OV_GUARDED_BY(_application_map_mutex);
+		ov::SharedMutex _application_map_mutex;
 		std::shared_ptr<MediaRouterInterface> _router;
 		std::shared_ptr<AccessController> _access_controller = nullptr;
 	};

@@ -187,7 +187,7 @@ namespace pvd
 
 	bool PullApplication::AddStreamToMotorInternal(const std::shared_ptr<PullStream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
+		ov::LockGuard lock(_stream_motors_guard);
 
 		std::shared_ptr<StreamMotor> motor = nullptr;
 		auto motor_id = GetStreamMotorId(stream);
@@ -212,7 +212,7 @@ namespace pvd
 
 	bool PullApplication::DeleteStreamFromMotorInternal(const std::shared_ptr<PullStream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
+		ov::LockGuard lock(_stream_motors_guard);
 
 		std::shared_ptr<StreamMotor> motor = nullptr;
 		auto motor_id = GetStreamMotorId(stream);
@@ -305,13 +305,16 @@ namespace pvd
 
 	bool PullApplication::DeleteAllStreams()
 	{
-		for(const auto &x : _stream_motors)
 		{
-			auto motor = x.second;
-			motor->Stop();
-		}
+			ov::LockGuard lock(_stream_motors_guard);
+			for(const auto &x : _stream_motors)
+			{
+				auto motor = x.second;
+				motor->Stop();
+			}
 
-		_stream_motors.clear();
+			_stream_motors.clear();
+		}
 
 		return Application::DeleteAllStreams();
 	}

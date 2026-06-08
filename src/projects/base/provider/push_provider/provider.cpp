@@ -66,7 +66,7 @@ namespace pvd
 
 	std::shared_ptr<PushStream> PushProvider::GetChannel(uint32_t channel_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_channels_lock);
+		ov::SharedLockGuard lock(_channels_lock);
 		// find stream by client_id
 		auto it = _channels.find(channel_id);
 		if(it == _channels.end())
@@ -79,7 +79,7 @@ namespace pvd
 
 	bool PushProvider::OnChannelCreated(uint32_t channel_id, const std::shared_ptr<pvd::PushStream> &channel)
 	{
-		std::lock_guard<std::shared_mutex> lock(_channels_lock);
+		ov::LockGuard lock(_channels_lock);
 
 		_channels.emplace(channel_id, channel);
 
@@ -114,16 +114,16 @@ namespace pvd
 		}
 
 		// Delete from stream_mold
-		std::unique_lock<std::shared_mutex> lock(_channels_lock);
-		
+		ov::ReleasableLockGuard lock(_channels_lock);
+
 		if(_channels.erase(channel->GetChannelId()) == 0)
 		{
-			// probabliy, it was removed 
+			// probabliy, it was removed
 			logte("%d channel to be deleted cannot be found", channel->GetChannelId());
 			return false;
 		}
 
-		lock.unlock();
+		lock.Release();
 
 		// Delete from Application
 		if(channel->DoesBelongApplication())
@@ -149,7 +149,7 @@ namespace pvd
 
 	bool PushProvider::OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application)
 	{
-		std::unique_lock<std::shared_mutex> lock(_channels_lock);
+		ov::LockGuard lock(_channels_lock);
 
 		auto it = _channels.begin();
 		while(it != _channels.end())
@@ -179,13 +179,13 @@ namespace pvd
 	{
 		ov::logger::ThreadHelper thread_helper;
 
-		std::shared_lock<std::shared_mutex> lock(_channels_lock, std::defer_lock);
-
 		while (_run_task_runner.load() == true)
 		{
-			lock.lock();
-			auto channels = _channels;
-			lock.unlock();
+			std::map<uint32_t, std::shared_ptr<PushStream>> channels;
+			{
+				ov::SharedLockGuard lock(_channels_lock);
+				channels = _channels;
+			}
 
 			for (const auto &x : channels)
 			{
