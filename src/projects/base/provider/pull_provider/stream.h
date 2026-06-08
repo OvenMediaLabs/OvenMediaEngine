@@ -66,9 +66,9 @@ namespace pvd
 		}
 
 	private:
-		uint32_t	_restart_count OV_GUARDED_BY(_start_stop_stream_lock) = 0;
+		uint32_t	_restart_count = 0;
 		std::vector<std::shared_ptr<const ov::Url>> _url_list;
-		int _curr_url_index OV_GUARDED_BY(_start_stop_stream_lock) = 0;
+		int _curr_url_index = 0;
 
 		std::shared_ptr<pvd::PullStreamProperties> _properties;
 
