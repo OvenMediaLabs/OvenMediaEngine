@@ -251,7 +251,7 @@ namespace info
 
 		int64_t GetThresholdExceededTimeMs() const
 		{
-			return _threshold_exceeded_time_ms;
+			return _threshold_exceeded_time_ms.load();
 		}
 
 		void SetUrn(std::shared_ptr<URN> urn, const char* type_name)
