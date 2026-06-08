@@ -1932,22 +1932,22 @@ namespace ov
 
 	std::chrono::steady_clock::time_point Socket::GetLastRecvTime() const
 	{
-		return _last_recv_time;
+		return _last_recv_time.load(std::memory_order_relaxed);
 	}
 
 	std::chrono::steady_clock::time_point Socket::GetLastSentTime() const
 	{
-		return _last_sent_time;
+		return _last_sent_time.load(std::memory_order_relaxed);
 	}
 
 	void Socket::UpdateLastRecvTime()
 	{
-		_last_recv_time = std::chrono::steady_clock::now();
+		_last_recv_time.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 	}
 
 	void Socket::UpdateLastSentTime()
 	{
-		_last_sent_time = std::chrono::steady_clock::now();
+		_last_sent_time.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 	}
 
 	bool Socket::Flush()

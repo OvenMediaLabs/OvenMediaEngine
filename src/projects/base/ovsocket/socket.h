@@ -557,7 +557,7 @@ namespace ov
 		void UpdateLastRecvTime();
 		void UpdateLastSentTime();
 
-		std::chrono::steady_clock::time_point _last_recv_time = std::chrono::steady_clock::now();
-		std::chrono::steady_clock::time_point _last_sent_time = std::chrono::steady_clock::now();
+		std::atomic<std::chrono::steady_clock::time_point> _last_recv_time{std::chrono::steady_clock::now()};
+		std::atomic<std::chrono::steady_clock::time_point> _last_sent_time{std::chrono::steady_clock::now()};
 	};
 }  // namespace ov
