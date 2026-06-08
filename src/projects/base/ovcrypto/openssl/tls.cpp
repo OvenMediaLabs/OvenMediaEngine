@@ -70,13 +70,20 @@ namespace ov
 
 	BIO_METHOD *Tls::PrepareBioMethod()
 	{
-		// The function-local static is initialized exactly once (thread-safe),
-		// with a lock-free fast path on later calls.
-		// Returns `nullptr` on setup failure, and because it is
-		// initialized only once that `nullptr` is cached and never retried -
-		// a failure here permanently disables TLS BIO creation.
-		// This is acceptable: setup only fails on a catastrophic (OOM-level)
-		// condition that a retry would not recover from.
+		// Thread-safe one-time init via C++11 function-local static (lock-free hot path after the
+		// first call). The lambda runs exactly once; whatever it returns - including `nullptr` -
+		// is published once and reused forever. A failure therefore permanently disables TLS BIO
+		// creation for the remainder of the process lifetime.
+		//
+		// Intentional divergence from master's DCL-retry pattern (which retried allocation on
+		// every call until success): the realistic failure modes here are
+		//   (1) `BIO_meth_new()` failing under OOM / resource exhaustion, and
+		//   (2) `BIO_meth_set_*()` rejecting the configuration, which would require process-wide
+		//       OpenSSL state corruption.
+		// Neither is transient - a retry on the next call would not recover. Caching the failure
+		// trades retry capability (which had no recovery value) for a lock-free fast path and a
+		// TSA-clean static initialization, accepted as the right trade-off at the cost of losing
+		// the (never-effective) retry on OOM-class failure.
 		static auto bio_method = []() -> BIO_METHOD * {
 			// `nullptr` means the method could not be allocated/registered.
 			BIO_METHOD *method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
