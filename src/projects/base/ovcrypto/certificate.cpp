@@ -351,24 +351,61 @@ bool Certificate::GetDigestEVP(const ov::String &algorithm, const EVP_MD **mdp)
 	return true;
 }
 
-bool Certificate::ComputeDigest(const ov::String &algorithm)
+bool Certificate::ComputeDigest(const ov::String &algorithm, ov::Data &out_digest)
 {
-	const EVP_MD *md;
-	unsigned int n = 0;
-
+	const EVP_MD *md = nullptr;
 	if (!GetDigestEVP(algorithm, &md))
 	{
 		return false;
 	}
 
 	uint8_t digest[EVP_MAX_MD_SIZE];
+	unsigned int n = 0;
 	if ((X509_digest(GetCertification(), md, digest, &n) != 1) || (n == 0))
 	{
 		return false;
 	}
 
-	_digest.Append(digest, n);
+	out_digest.Append(digest, n);
 	return true;
+}
+
+int Certificate::AlgorithmToIndex(const ov::String &algorithm)
+{
+	// Ordered with the most common case (sha-256) first to short-circuit string
+	// comparisons on the slow path;
+	// the fast path does not pay this cost twice because the per-slot atomic flag is checked before the mapping.
+	if (algorithm == "sha-256")
+	{
+		return 3;
+	}
+
+	if (algorithm == "sha-1")
+	{
+		return 1;
+	}
+
+	if (algorithm == "sha-512")
+	{
+		return 5;
+	}
+
+	if (algorithm == "sha-384")
+	{
+		return 4;
+	}
+
+	if (algorithm == "sha-224")
+	{
+		return 2;
+	}
+
+	if (algorithm == "md5")
+	{
+		return 0;
+	}
+
+	return -1;
 }
 
 EVP_PKEY *Certificate::GetPrivateKey() const
@@ -388,55 +425,45 @@ STACK_OF(X509) * Certificate::GetChainCertification() const
 
 ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 {
-	// Fast path: lock-free once the fingerprint has been published.
-	if (_fingerprint_ready.load(std::memory_order_acquire))
+	const int slot_index = AlgorithmToIndex(algorithm);
+	if (slot_index < 0)
 	{
-		WarnIfAlgorithmMismatch(algorithm);
-		return _fingerprint;
+		logw("CERT", "Certificate::GetFingerprint() called with unsupported algorithm '%s'", algorithm.CStr());
+		return "";
+	}
+
+	FingerprintSlot &slot = _fingerprint_slots[slot_index];
+
+	// Fast path: lock-free once THIS algorithm's slot has been published. Each slot
+	// publishes independently, so a warm sha-256 read does not pay the mutex even if
+	// other slots (e.g. sha-1) are still cold.
+	if (slot.ready.load(std::memory_order_acquire))
+	{
+		return slot.fingerprint;
 	}
 
 	ov::LockGuard lock(_digest_mutex);
 
-	// Re-check after locking; another thread may have published it.
-	if (_fingerprint_ready.load(std::memory_order_acquire))
+	// Re-check after locking; another thread may have published this slot.
+	if (slot.ready.load(std::memory_order_acquire))
 	{
-		WarnIfAlgorithmMismatch(algorithm);
-		return _fingerprint;
+		return slot.fingerprint;
 	}
 
-	// Create digest if not created yet
-	if (_digest.GetLength() <= 0)
+	// Cold path for this algorithm: compute the digest with the requested hash and
+	// store it into this slot only. Other slots remain untouched.
+	ov::Data digest;
+	if (!ComputeDigest(algorithm, digest))
 	{
-		if (!ComputeDigest(algorithm))
-		{
-			return "";
-		}
+		// Should be unreachable given `AlgorithmToIndex` already filtered the inputs,
+		// but guard against future EVP table drift or X509_digest failure.
+		return "";
 	}
 
-	_cached_algorithm = algorithm;
-	_fingerprint = ov::ToHexStringWithDelimiter(_digest, ':');
-	_fingerprint.MakeUpper();
-	// Publish only after `_fingerprint` and `_cached_algorithm` are fully built; release
-	// pairs with the acquire-loads.
-	_fingerprint_ready.store(true, std::memory_order_release);
+	slot.fingerprint = ov::ToHexStringWithDelimiter(digest, ':');
+	slot.fingerprint.MakeUpper();
+	// Release-store publishes `slot.fingerprint`; pairs with the acquire-loads above.
+	slot.ready.store(true, std::memory_order_release);
 
-	return _fingerprint;
-}
-
-void Certificate::WarnIfAlgorithmMismatch(const ov::String &algorithm)
-{
-	// `_cached_algorithm` is safely readable here because the caller already observed
-	// `_fingerprint_ready.load(acquire) == true`, which synchronizes-with the release
-	// store that publishes both `_fingerprint` and `_cached_algorithm`.
-	if (algorithm == _cached_algorithm)
-	{
-		return;
-	}
-
-	bool expected = false;
-	if (_algorithm_mismatch_warned.compare_exchange_strong(expected, true, std::memory_order_relaxed))
-	{
-		logw("CERT", "Certificate::GetFingerprint() called with algorithm '%s' but the cached fingerprint was built with '%s'; returning the cached value regardless (master parity). Re-check call sites if a different algorithm is actually required.",
-			 algorithm.CStr(), _cached_algorithm.CStr());
-	}
+	return slot.fingerprint;
 }

@@ -75,11 +75,37 @@ public:
 	void Print();
 
 private:
+	// Number of supported hash algorithms for the `GetFingerprint` cache.
+	// See `FingerprintSlot`/`AlgorithmToIndex` below for the slot layout.
+	static constexpr size_t FINGERPRINT_ALGORITHM_COUNT = 6;
+
 	enum class LoadType
 	{
 		None = 0,
 		Pkey = OSSL_STORE_INFO_PKEY,
 		Cert = OSSL_STORE_INFO_CERT,
+	};
+
+	// Per-algorithm fingerprint cache.
+	// Each supported hash gets its own slot so that the `algorithm` argument is honored
+	// (no master-parity silent override) while keeping the post-warmup fast path lock-free.
+	//
+	// Slot index assignment (see `AlgorithmToIndex`):
+	//   0: md5, 1: sha-1, 2: sha-224, 3: sha-256, 4: sha-384, 5: sha-512.
+	//
+	// Lifecycle of a single slot:
+	//   - `ready=false`
+	//     slot is empty; the first `GetFingerprint(algorithm)` that hits
+	//     this slot enters the slow path under `_digest_mutex`, computes the digest,
+	//     formats the hex string into `fingerprint`, then `ready.store(true, release)`.
+	//   - `ready=true`
+	//     `fingerprint` is immutable for the lifetime of the Certificate.
+	//     Subsequent reads use `ready.load(acquire)` and return `fingerprint` without
+	//     touching the mutex.
+	struct FingerprintSlot
+	{
+		std::atomic<bool> ready{false};
+		ov::String fingerprint;
 	};
 
 private:
@@ -144,16 +170,14 @@ private:
 
 	// Make Self-Signed Certificate
 	X509 *MakeCertificate(EVP_PKEY *pkey);
-	// Make Digest
-	bool ComputeDigest(const ov::String &algorithm) OV_REQUIRES(_digest_mutex);
+
+	// Computes the raw digest bytes for `algorithm` and appends them to `out_digest`.
+	// Returns `false` if the algorithm is unsupported or `X509_digest` fails.
+	bool ComputeDigest(const ov::String &algorithm, ov::Data &out_digest);
 
 	bool GetDigestEVP(const ov::String &algorithm, const EVP_MD **mdp);
 
-	// Master parity: `GetFingerprint(algorithm)` returns the digest computed on the
-	// FIRST call and ignores `algorithm` thereafter.
-	// We log a one-shot warning when a subsequent caller passes
-	// a different algorithm so the divergence is visible.
-	void WarnIfAlgorithmMismatch(const ov::String &algorithm);
+	static int AlgorithmToIndex(const ov::String &algorithm);
 
 	// Private key
 	ov::RaiiPtr<EVP_PKEY> _private_key{nullptr, ::EVP_PKEY_free};
@@ -165,20 +189,10 @@ private:
 	ov::RaiiPtr<STACK_OF(X509)> _chain_certificate{nullptr, X509StackFree};
 	ov::String _chain_certificate_filename;
 
-	ov::Data _digest OV_GUARDED_BY(_digest_mutex);
+	// Serializes slow-path digest computation across all slots. A single mutex (rather
+	// than per-slot) keeps the memory footprint small; since each slot warms up only
+	// once, contention is bounded by the number of distinct algorithms ever requested
+	// (typically 1-2 per Certificate instance).
 	ov::Mutex _digest_mutex;
-
-	// Formatted fingerprint, computed once and published via `_fingerprint_ready`
-	// (release store / acquire load).
-	// Once the flag is set, `_fingerprint` and `_cached_algorithm` are never modified,
-	// so the fast path reads them without the lock.
-	std::atomic<bool> _fingerprint_ready{false};
-	ov::String _fingerprint;
-	// Algorithm used to build `_digest`/`_fingerprint` on the first successful call.
-	// Subsequent calls with a different algorithm still return the cached value
-	// (master parity behavior), but we log a one-shot warning so the divergence is
-	// observable; `_algorithm_mismatch_warned` gates the log to fire at most once
-	// per Certificate instance.
-	ov::String _cached_algorithm;
-	std::atomic<bool> _algorithm_mismatch_warned{false};
+	FingerprintSlot _fingerprint_slots[FINGERPRINT_ALGORITHM_COUNT];
 };
