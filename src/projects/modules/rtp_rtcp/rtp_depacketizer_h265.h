@@ -37,15 +37,11 @@ public:
 	std::shared_ptr<ov::Data> ParseAndAssembleFrame(std::vector<std::shared_ptr<ov::Data>> payload_list) override;
 	std::shared_ptr<ov::Data> GetDecodingParameterSetsToAnnexB() override;
 private:
-	std::shared_ptr<ov::Data> ParseFUsAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload);
+	std::shared_ptr<ov::Data> ParseFUsAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload, std::shared_ptr<ov::Data> &fu_dps_buffer, uint8_t &fu_dps_nal_type);
 	std::shared_ptr<ov::Data> ParseAPsAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload);
 	std::shared_ptr<ov::Data> ConvertSingleNaluToAnnexB(const std::shared_ptr<ov::Data> &payload);
 
 	void AppendBitstream(std::shared_ptr<ov::Data>&bitstream, uint8_t nal_type, uint8_t nal_header[2], const void *payload, size_t payload_length);
 	bool IsDecodingParmeterSets(uint8_t nal_unit_type);
-
-	// For FU DPS reassembly (VPS/SPS/PPS carried over FU units)
-	std::shared_ptr<ov::Data> _fu_dps_buffer;
-	uint8_t _fu_dps_nal_type = 0;
 
 };

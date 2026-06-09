@@ -14,6 +14,10 @@
 
 #include "push_private.h"
 
+#define OV_LOG_PREFIX_FORMAT "[%s] (Id:%s) - "
+#define OV_LOG_PREFIX_VALUE (GetStream() != nullptr ? GetStream()->GetUri().CStr() : "-"), \
+							(_push != nullptr ? _push->GetId().CStr() : "-")
+
 namespace pub
 {
 	std::shared_ptr<PushSession> PushSession::Create(const std::shared_ptr<pub::Application> &application,
@@ -40,7 +44,7 @@ namespace pub
 	PushSession::~PushSession()
 	{
 		Stop();
-		logtt("PushSession(%d) has been terminated finally", GetId());
+		logat("PushSession has been terminated finally");
 		MonitorInstance->OnSessionDisconnected(*GetStream(), PublisherType::Push);
 	}
 
@@ -49,7 +53,7 @@ namespace pub
 		auto push = GetPush();
 		if (push == nullptr)
 		{
-			logte("Push object is null");
+			logae("Push object is null");
 			SetState(SessionState::Error);
 			return false;
 		}
@@ -71,14 +75,14 @@ namespace pub
 		if (writer == nullptr)
 		{
 			SetErrorState(push);
-			logte("Failed to create session. %s", push->GetInfoString().CStr());
+			logae("Failed to create session. %s", push->GetInfoString().CStr());
 			return false;
 		}
 
 		if (writer->SetUrl(dest_url, ffmpeg::compat::GetFormatByProtocolType(push->GetProtocolType())) == false)
 		{
 			SetErrorState(push);
-			logte("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
+			logae("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
 
@@ -123,7 +127,7 @@ namespace pub
 				auto media_track	  = GetStream()->GetTrackByVariant(variant, variant_index);
 				if (media_track == nullptr)
 				{
-					logtw("PushSession(%d) - Could not find track by VariantName: %s : %d", GetId(), variant.CStr(), variant_index);
+					logaw("Could not find track by VariantName: %s : %d", variant.CStr(), variant_index);
 					continue;
 				}
 
@@ -139,7 +143,7 @@ namespace pub
 				auto media_track = GetStream()->GetTrack(track_id);
 				if (media_track == nullptr)
 				{
-					logtw("PushSession(%d) - Could not find track by TrackId: %d", GetId(), track_id);
+					logaw("Could not find track by TrackId: %d", track_id);
 					continue;
 				}
 
@@ -154,7 +158,7 @@ namespace pub
 			{
 				if (AddTrack(data_track) == false)
 				{
-					logtw("PushSession(%d) - Could not add data track. trackId:%d, variantName: %s", GetId(), data_track->GetId(), data_track->GetVariantName().CStr());
+					logaw("Could not add data track. trackId:%d, variantName: %s", data_track->GetId(), data_track->GetVariantName().CStr());
 				}
 			}
 		}
@@ -165,20 +169,20 @@ namespace pub
 		if (writer->Start() == false)
 		{
 			SetErrorState(push);
-			logte("Failed to start session. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
+			logae("Failed to start session. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 			return false;
 		}
 
 		if (StartSenderThread() == false)
 		{
 			SetErrorState(push, writer);
-			logte("Failed to start sender thread. %s", push->GetInfoString().CStr());
+			logae("Failed to start sender thread. %s", push->GetInfoString().CStr());
 			return false;
 		}
 
 		push->SetState(info::Push::PushState::Pushing);
 
-		logtd("PushSession(%d) has started.", GetId());
+		logad("PushSession(%d) has started.", GetId());
 
 		return Session::Start();
 	}
@@ -207,7 +211,7 @@ namespace pub
 
 			DestoryWriter();
 
-			logtd("PushSession(%d) has stopped", GetId());
+			logad("PushSession(%d) has stopped", GetId());
 		}
 
 		return Session::Stop();
@@ -237,7 +241,7 @@ namespace pub
 		}
 		catch (const std::bad_any_cast &e)
 		{
-			logtt("An incorrect type of packet was input from the stream. (%s)", e.what());
+			logat("An incorrect type of packet was input from the stream. (%s)", e.what());
 
 			return;
 		}
@@ -273,6 +277,8 @@ namespace pub
 	void PushSession::StopSenderThread()
 	{
 		_sender_stop_flag = true;
+		
+		_sender_packet_queue.InjectWakeup();
 
 		if (_sender_thread.joinable())
 		{
@@ -317,8 +323,8 @@ namespace pub
 
 			if (_sender_packet_queue.IsThresholdExceededFor(kThresholdGraceDuration))
 			{
-				logte("Push session queue exceeded state persisted for more than %ld seconds. Terminating session. %s",
-					  std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
+				logae("Push session queue exceeded state persisted for more than %ld seconds. Terminating session. %s",
+					   std::chrono::duration_cast<std::chrono::seconds>(kThresholdGraceDuration).count(), push->GetInfoString().CStr());
 
 				SetErrorState(push, writer);
 				_sender_stop_flag = true;
@@ -333,7 +339,7 @@ namespace pub
 			bool ret = writer->SendPacket(session_packet, &sent_bytes);
 			if (ret == false)
 			{
-				logte("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
+				logae("Failed to send packet. session will be terminated. Reason(%s), %s", writer->GetErrorMessage().CStr(), push->GetInfoString().CStr());
 
 				SetErrorState(push, writer);
 				_sender_stop_flag = true;
@@ -370,7 +376,7 @@ namespace pub
 			_writer = nullptr;
 		}
 
-		_writer = ffmpeg::Writer::Create();
+		_writer = ffmpeg::Writer::Create(ov::String::FormatString(OV_LOG_PREFIX_FORMAT, OV_LOG_PREFIX_VALUE));
 		if (_writer == nullptr)
 		{
 			return nullptr;
@@ -472,19 +478,19 @@ namespace pub
 		// Check already added
 		if (writer->GetTrackByTrackId(track->GetId()) != nullptr)
 		{
-			logtw("Track already added. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+			logaw("Track already added. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 			return false;
 		}
 
 		if (IsSupportTrack(push->GetProtocolType(), track) == false)
 		{
-			logtw("Could not supported track. trackId:%u, codecId: %d", track->GetId(), ov::ToUnderlyingType(track->GetCodecId()));
+			logaw("Could not supported track. trackId:%u, codec: %s", track->GetId(), GetCodecIdString(track->GetCodecId()));
 			return false;
 		}
 
 		if (IsSupportCodec(push->GetProtocolType(), track->GetCodecId()) == false)
 		{
-			logtw("Could not supported codec. trackId:%u, codecId: %d", track->GetId(), ov::ToUnderlyingType(track->GetCodecId()));
+			logaw("Could not supported codec. trackId:%u, codec: %s", track->GetId(), GetCodecIdString(track->GetCodecId()));
 			return false;
 		}
 
@@ -493,12 +499,12 @@ namespace pub
 		{
 			if (writer->GetTrackCountByType(track->GetMediaType()) >= 1)
 			{
-				logtw("Could not add more than one video track for RTMP. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
+				logaw("Could not add more than one video track for RTMP. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 				return false;
 			}
 		}
 
-		logtd("PushSession(%d) Adding track. trackId:%d, variantName: %s", GetId(), track->GetId(), track->GetVariantName().CStr());
+		logad("Adding track. trackId:%d, variantName: %s", track->GetId(), track->GetVariantName().CStr());
 
 		return writer->AddTrack(track);
 	}

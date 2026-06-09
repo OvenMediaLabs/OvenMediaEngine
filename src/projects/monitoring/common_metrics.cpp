@@ -86,9 +86,9 @@ namespace mon
 		return _created_time;
 	}
 
-	const std::chrono::system_clock::time_point &CommonMetrics::GetLastUpdatedTime() const
+	std::chrono::system_clock::time_point CommonMetrics::GetLastUpdatedTime() const
 	{
-		return _last_updated_time;
+		return _last_updated_time.load(std::memory_order_relaxed);
 	}
 
 	uint64_t CommonMetrics::GetTotalBytesIn() const
@@ -141,27 +141,27 @@ namespace mon
 	}
 	std::chrono::system_clock::time_point CommonMetrics::GetMaxTotalConnectionsTime() const
 	{
-		return _max_total_connection_time;
+		return _max_total_connection_time.load(std::memory_order_relaxed);
 	}
 
 	std::chrono::system_clock::time_point CommonMetrics::GetLastRecvTime() const
 	{
-		return _last_recv_time;
+		return _last_recv_time.load(std::memory_order_relaxed);
 	}
 
 	std::chrono::system_clock::time_point CommonMetrics::GetLastSentTime() const
 	{
-		return _last_sent_time;
+		return _last_sent_time.load(std::memory_order_relaxed);
 	}
 
 	std::chrono::steady_clock::time_point CommonMetrics::GetLastRecvTimeSteady() const
 	{
-		return _last_recv_time_steady;
+		return _last_recv_time_steady.load(std::memory_order_relaxed);
 	}
 
 	std::chrono::steady_clock::time_point CommonMetrics::GetLastSentTimeSteady() const
 	{
-		return _last_sent_time_steady;
+		return _last_sent_time_steady.load(std::memory_order_relaxed);
 	}
 
 	uint64_t CommonMetrics::GetBytesOut(PublisherType type) const
@@ -185,8 +185,8 @@ namespace mon
 	void CommonMetrics::IncreaseBytesIn(uint64_t value)
 	{
 		_total_bytes_in += value;
-		_last_recv_time = std::chrono::system_clock::now();
-		_last_recv_time_steady = std::chrono::steady_clock::now();
+		_last_recv_time.store(std::chrono::system_clock::now(), std::memory_order_relaxed);
+		_last_recv_time_steady.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 
 		// If there are no clients of the publisher, output throughput is not calculated.
 		// So, In/Oout throughput calculations are handled here.
@@ -204,8 +204,8 @@ namespace mon
 
 		_publisher_metrics[static_cast<int8_t>(type)]._bytes_out += value;
 		_total_bytes_out += value;
-		_last_sent_time = std::chrono::system_clock::now();
-		_last_sent_time_steady = std::chrono::steady_clock::now();
+		_last_sent_time.store(std::chrono::system_clock::now(), std::memory_order_relaxed);
+		_last_sent_time_steady.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 
 		UpdateDate();
 	}
@@ -228,7 +228,7 @@ namespace mon
 		if (_total_connections.load() > _max_total_connections.load())
 		{
 			_max_total_connections.exchange(_total_connections);
-			_max_total_connection_time = std::chrono::system_clock::now();
+			_max_total_connection_time.store(std::chrono::system_clock::now(), std::memory_order_relaxed);
 		}
 
 		UpdateDate();
@@ -252,7 +252,7 @@ namespace mon
 	// Renew last updated time
 	void CommonMetrics::UpdateDate()
 	{
-		_last_updated_time = std::chrono::system_clock::now();
+		_last_updated_time.store(std::chrono::system_clock::now(), std::memory_order_relaxed);
 	}
 
 	void CommonMetrics::UpdateThroughput()

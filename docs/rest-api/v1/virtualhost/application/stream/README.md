@@ -141,7 +141,8 @@ Content-Type: application/json
 		"persistent": false,
 		"noInputFailoverTimeoutMs": 3000,
 		"unusedStreamDeletionTimeoutMs": 60000,
-		"ignoreRtcpSRTimestamp": false
+		"ignoreRtcpSRTimestamp": false,
+		"relay": false
   	}
 }
 
@@ -161,6 +162,11 @@ Content-Type: application/json
 		the stream is deleted, but ignored if persistent is true
 	## ignoreRtcpSRTimestamp
 		No waits RTCP SR and start stream immediately
+	## relay
+		If true, the pulled stream is registered as a Relay (passthrough) 
+		instead of a transcoded Source. Useful for OVT upstreams that 
+		already expose multiple renditions, so tracks pass through without 
+		per-profile transcoding. Defaults to false.
 ```
 
 </details>

@@ -1041,12 +1041,13 @@ void RtcStream::AddPacketizer(const std::shared_ptr<const MediaTrack> &track)
 std::shared_ptr<RtpPacketizer> RtcStream::GetPacketizer(uint32_t id)
 {
 	std::shared_lock<std::shared_mutex> lock(_packetizers_lock);
-	if (!_packetizers.count(id))
+	auto it = _packetizers.find(id);
+	if (it == _packetizers.end())
 	{
 		return nullptr;
 	}
 
-	return _packetizers[id];
+	return it->second;
 }
 
 ov::String RtcStream::GetRtpHistoryKey(uint32_t track_id, uint8_t payload_type)

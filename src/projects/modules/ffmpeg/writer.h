@@ -45,9 +45,9 @@ namespace ffmpeg
 		}
 		
 	public:
-		static std::shared_ptr<Writer> Create();
+		static std::shared_ptr<Writer> Create(const ov::String &log_prefix = "");
 
-		Writer();
+		Writer(const ov::String &log_prefix = "");
 		~Writer();
 
 		static int InterruptCallback(void *opaque);
@@ -116,7 +116,7 @@ namespace ffmpeg
 
 		ov::String _output_format_name;
 		AVIOInterruptCB _interrupt_cb;
-		std::chrono::steady_clock::time_point _last_packet_sent_time;
+		std::atomic<std::chrono::steady_clock::time_point> _last_packet_sent_time{std::chrono::steady_clock::time_point{}};
 		int32_t _connection_timeout = 5000;	// Default 5s
 		int32_t _send_timeout 		= 2000;	// Default 2s
 
@@ -124,5 +124,8 @@ namespace ffmpeg
 		std::map<int32_t, int64_t> _track_last_dts_map;
 
 		ov::String _error_message;
+		mutable std::mutex _error_message_lock;
+
+		ov::String _log_prefix;
 	};
 }  // namespace ffmpeg

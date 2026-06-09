@@ -17,7 +17,7 @@ namespace mon
 		virtual void ShowInfo(bool show_children = true);
 
 		const std::chrono::system_clock::time_point &GetCreatedTime() const;
-		const std::chrono::system_clock::time_point &GetLastUpdatedTime() const;
+		std::chrono::system_clock::time_point GetLastUpdatedTime() const;
 
 		virtual uint64_t GetTotalBytesIn() const;
 		virtual uint64_t GetTotalBytesOut() const;
@@ -56,7 +56,7 @@ namespace mon
 		void UpdateThroughput();
 
 		std::chrono::system_clock::time_point _created_time;
-		std::chrono::system_clock::time_point _last_updated_time;
+		std::atomic<std::chrono::system_clock::time_point> _last_updated_time;
 
 		// From Provider
 		std::atomic<uint64_t> _total_bytes_in;
@@ -67,12 +67,11 @@ namespace mon
 		std::atomic<uint32_t> _total_connections;
 		std::atomic<uint32_t> _max_total_connections;
 		// Time to reach maximum number of connections.
-		// TODO(Getroot): Does it need mutex? Check!
-		std::chrono::system_clock::time_point _max_total_connection_time;
-		std::chrono::system_clock::time_point _last_recv_time;
-		std::chrono::system_clock::time_point _last_sent_time;
-		std::chrono::steady_clock::time_point _last_recv_time_steady;
-		std::chrono::steady_clock::time_point _last_sent_time_steady;
+		std::atomic<std::chrono::system_clock::time_point> _max_total_connection_time;
+		std::atomic<std::chrono::system_clock::time_point> _last_recv_time;
+		std::atomic<std::chrono::system_clock::time_point> _last_sent_time;
+		std::atomic<std::chrono::steady_clock::time_point> _last_recv_time_steady;
+		std::atomic<std::chrono::steady_clock::time_point> _last_sent_time_steady;
 
 		// Throughput from Provider
 		std::atomic<uint64_t> _avg_throughtput_in;

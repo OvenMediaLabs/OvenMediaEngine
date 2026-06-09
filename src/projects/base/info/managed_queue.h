@@ -153,7 +153,7 @@ namespace info
 			  _threshold(threshold),
 			  _threshold_mode(ThresholdMode::CountBased),
 			  _threshold_value(threshold),
-			  _threshold_exceeded_time_in_us(0),
+			  _threshold_exceeded_time_ms(0),
 			  _buffering_delay(0),
 			  _input_message_count(0),
 			  _output_message_count(0),
@@ -252,9 +252,9 @@ namespace info
 			return _waiting_time_in_us;
 		}
 
-		int64_t GetThresholdExceededTimeInUs() const
+		int64_t GetThresholdExceededTimeMs() const
 		{
-			return _threshold_exceeded_time_in_us;
+			return _threshold_exceeded_time_ms.load();
 		}
 
 		void SetUrn(std::shared_ptr<URN> urn, const char* type_name)
@@ -317,7 +317,7 @@ namespace info
 		size_t _threshold_value OV_GUARDED_BY(_name_mutex) = 0;
 
 		// threshold_exceeded_time increases from the point the queue is exceeded
-		int64_t _threshold_exceeded_time_in_us = 0;
+		std::atomic<int64_t> _threshold_exceeded_time_ms{0};
 
 		// Buffering delay (milliseconds).
 		int _buffering_delay = 0;

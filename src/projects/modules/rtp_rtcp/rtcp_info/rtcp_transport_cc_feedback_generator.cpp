@@ -9,6 +9,8 @@
 
 #include "rtcp_transport_cc_feedback_generator.h"
 
+#include <atomic>
+
 #include "../rtp_header_extension/rtp_header_extension_transport_cc.h"
 
 #define OV_LOG_TAG "transport-cc"
@@ -24,15 +26,22 @@ RtcpTransportCcFeedbackGenerator::RtcpTransportCcFeedbackGenerator(uint8_t exten
 
 bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket> &packet)
 {
+	// Extension read uses only the packet (local) and _extension_id (set once in
+	// ctor), so it stays outside the lock; a packet without it never contends.
 	auto wide_sequence_number_opt = packet->GetExtension<uint16_t>(_extension_id);
 	if (wide_sequence_number_opt.has_value() == false)
 	{
-		// There is no transport-wide sequence number in the RTP header extension
-		static int log_times = 10;
-		if (log_times > 0)
+		// There is no transport-wide sequence number in the RTP header extension.
+		// The limiter is a function-local static shared across instances/threads;
+		// CAS-decrement only while positive so it never drops below zero.
+		static std::atomic<int> log_remaining{10};
+		int cur = log_remaining.load(std::memory_order_relaxed);
+		while (cur > 0 && log_remaining.compare_exchange_weak(cur, cur - 1, std::memory_order_relaxed) == false)
+		{
+		}
+		if (cur > 0)
 		{
 			logtw("AddReceivedRtpPacket: There is no transport-wide sequence number in the RTP header extension : %s", packet->Dump().CStr());
-			log_times--;
 		}
 		return false;
 	}
@@ -45,6 +54,9 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	// Add feedback info
 	int64_t delta = 0;
 	uint8_t delta_size = 0;
+
+	// _transport_cc and the running counters below are shared; lock from here.
+	std::lock_guard<std::mutex> lock(_lock);
 
 	// first packet of feedback message
 	if (_transport_cc == nullptr)
@@ -154,22 +166,15 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	return true;
 }
 
-bool RtcpTransportCcFeedbackGenerator::HasElapsedSinceLastTransportCc(uint32_t milliseconds)
+std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessageIfElapsed(uint32_t milliseconds)
 {
+	std::lock_guard<std::mutex> lock(_lock);
+
+	// Check elapsed and build under one lock so concurrent receives can't both
+	// pass the interval check and emit feedback for the same window.
 	auto now = std::chrono::steady_clock::now();
 	auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_report_time).count();
-
-	if (elapsed >= milliseconds)
-	{
-		return true;
-	}
-
-	return false;
-}
-
-std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessage()
-{
-	if (_transport_cc == nullptr)
+	if (elapsed < milliseconds || _transport_cc == nullptr)
 	{
 		return nullptr;
 	}
@@ -182,7 +187,7 @@ std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportC
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(_transport_cc);
 
-	_last_report_time = std::chrono::steady_clock::now();
+	_last_report_time = now;
 
 	_transport_cc.reset();
 

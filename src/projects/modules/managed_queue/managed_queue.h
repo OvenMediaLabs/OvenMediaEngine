@@ -24,6 +24,8 @@
 
 namespace ov
 {
+	// Shutdown order: Stop() -> join threads -> delete queue.
+	// Deleting the queue while a thread waits in Dequeue/Front/Back is UB.  The destructor calls Stop() just in case.
 	template <typename T>
 	class ManagedQueue : public info::ManagedQueue
 	{
@@ -39,11 +41,8 @@ namespace ov
 			std::chrono::steady_clock::time_point _start;
 			bool _urgent = false;
 
-			ManagedQueueNode(const T& value, bool urgent, ManagedQueueNode* next_node = nullptr)
-				: data(value), next(next_node), _start(std::chrono::steady_clock::time_point::min()), _urgent(urgent)
-			{
-				_start = std::chrono::steady_clock::now();
-			}
+			ManagedQueueNode(T value, bool urgent, ManagedQueueNode *next_node = nullptr)
+				: data(std::move(value)), next(next_node), _start(std::chrono::steady_clock::now()), _urgent(urgent) {}
 		};
 
 	public:
@@ -59,21 +58,19 @@ namespace ov
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
-			// Register to the server metrics
-			// If the Unique id is duplicated or memory allocation failed, retry
-			while (true)
-			{
-				SetId(IssueUniqueQueueId());
+			SetId(IssueUniqueQueueId());
 
-				if (MonitorInstance->OnQueueCreated(*this) == true)
-				{
-					break;
-				}
+			if (MonitorInstance->OnQueueCreated(*this) == false)
+			{
+				logw(LOG_TAG, "Failed to register queue to monitor. id:%u", GetId());
 			}
 		}
 
 		~ManagedQueue()
 		{
+			// Defensive: wake any remaining waiters so they can exit
+			Stop();
+
 			Clear();
 
 			// Unregister to the server metrics
@@ -98,26 +95,21 @@ namespace ov
 		// The effective item count is estimated as: input_message_per_second * time_ms / 1000.
 		void SetThresholdByTime(size_t time_ms)
 		{
-			const size_t validated_time_ms = (time_ms < 0) ? 0U : time_ms;
-			info::ManagedQueue::SetThresholdByTime(validated_time_ms);
+			info::ManagedQueue::SetThresholdByTime(time_ms);
 
 			MonitorInstance->OnQueueUpdated(*this);
-		}				
-
-		// Urgent item will be inserted at the front of the queue
-		void Enqueue(const T& item, bool urgent = false, int timeout = Infinite)
-		{
-			auto node = new ManagedQueueNode(item, urgent);
-			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
-
-			EnqueueInternal(node, timeout, pos);
 		}
 
 		// Urgent item will be inserted at the front of the queue
-		void Enqueue(T&& item, bool urgent = false, int timeout = Infinite)
+		void Enqueue(T item, bool urgent = false, int timeout = Infinite)
 		{
-			auto node = new ManagedQueueNode(item, urgent);
-			EnqeuePos pos = urgent ? EnqeuePos::EnqueuFrontPos : EnqeuePos::EnqueuBackPos;
+			auto node = new(std::nothrow) ManagedQueueNode(std::move(item), urgent);
+			if (node == nullptr)
+			{
+				loge(LOG_TAG, "Failed to allocate memory for queue node.");
+				return;
+			}
+			EnqueuePos pos = urgent ? EnqueuePos::EnqueueFrontPos : EnqueuePos::EnqueueBackPos;
 
 			EnqueueInternal(node, timeout, pos);
 		}
@@ -278,11 +270,7 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			if (node->_start != std::chrono::steady_clock::time_point::max())
-			{
-				auto current = std::chrono::steady_clock::now();
-				_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(current - node->_start).count() * 0.1;
-			}
+			_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - node->_start).count() * 0.1;
 
 			delete node;
 
@@ -304,11 +292,11 @@ namespace ov
 		}
 
 		// Returns true if the queue has been over its threshold for at least `duration`.
-		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC 100ms)
+		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC)
 		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
 		{
 			LockGuard lock_guard(_mutex);
-			return _threshold_exceeded_time_in_us >= static_cast<int64_t>(duration.count());
+			return _threshold_exceeded_time_ms.load() >= static_cast<int64_t>(duration.count());
 		}
 
 		// Cleared all items in the queue
@@ -387,6 +375,12 @@ namespace ov
 		void SetBufferingDelay(int delay_ms)
 		{
 			LockGuard lock_guard(_mutex);
+			if(delay_ms < 0)
+			{
+				logw(LOG_TAG, "[%s] Invalid buffering delay value: %d. Setting to 0.", GetInfoString().CStr(), delay_ms);
+				delay_ms = 0;
+			}
+
 			_buffering_delay = delay_ms;
 		}
 
@@ -432,21 +426,15 @@ namespace ov
 		// If the queue is full, it waits until the queue is less than the threshold or the timeout expires.
 		// If the timeout expires, the message is dropped.
 		// This is to avoid dropping items when the queue size exceeds the threshold, if it exceeds it momentarily due to jitter.
-		enum EnqeuePos : int8_t
+		enum EnqueuePos : int8_t
 		{
-			EnqueuFrontPos = 0,
-			EnqueuBackPos
+			EnqueueFrontPos = 0,
+			EnqueueBackPos
 		};
 
-		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqeuePos push_method)
+		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqueuePos push_method)
 		{
 			LockGuard unique_lock(_mutex);
-
-			if (!node)
-			{
-				logc(LOG_TAG, "Failed to allocate memory. id:%u", GetId());
-				return;
-			}
 
 			// Update statistics of input message count
 			_input_message_count++;
@@ -456,7 +444,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
-					return (!IsThresholdExceeded());
+					return (!IsThresholdExceeded() || _stop);
 				});
 				if (!result || _stop)
 				{
@@ -469,7 +457,7 @@ namespace ov
 				}
 			}
 
-			if (push_method == EnqeuePos::EnqueuBackPos)
+			if (push_method == EnqueuePos::EnqueueBackPos)
 			{
 				PushBack(node);
 			}
@@ -548,7 +536,7 @@ namespace ov
 
 				if (IsThresholdExceeded())
 				{
-					_threshold_exceeded_time_in_us += elapsed_time;
+					_threshold_exceeded_time_ms.fetch_add(elapsed_time);
 
 					// Logging
 					_last_logging_time += elapsed_time;
@@ -563,7 +551,7 @@ namespace ov
 				}
 				else
 				{
-					_threshold_exceeded_time_in_us = 0;
+					_threshold_exceeded_time_ms.store(0);
 #if DEBUG
 					logt(LOG_TAG, "Stable. %s", GetInfoString().CStr());
 #endif					
@@ -583,7 +571,7 @@ namespace ov
 
 			_last_input_message_count = 0;
 			_last_output_message_count = 0;
-			_threshold_exceeded_time_in_us = 0;
+			_threshold_exceeded_time_ms.store(0);
 
 			_last_logging_time = 0;
 			_last_logged_peak = 0;
@@ -660,7 +648,7 @@ namespace ov
 		ConditionVariable _condition;
 
 		// Stop flag
-		std::atomic<bool> _stop = false;
+		std::atomic<bool> _stop;
 
 		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
 		// wakeup. Unlike _stop, the queue stays usable.
@@ -671,7 +659,7 @@ namespace ov
 
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold
-		std::atomic<bool> _exceed_threshold_and_wait_enabled = false;
+		std::atomic<bool> _exceed_threshold_and_wait_enabled{false};
 	};
 
 }  // namespace ov

@@ -25,8 +25,9 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseAndAssembleFrame(std::vector
 		reserve_size += 16;	 // spare
 	}
 
-	// Reset FU DPS reassembly buffer at frame boundary
-	_fu_dps_buffer = nullptr;
+	// FU VPS/SPS/PPS reassembly scratch, local to this frame
+	std::shared_ptr<ov::Data> fu_dps_buffer = nullptr;
+	uint8_t fu_dps_nal_type = 0;
 
 	auto bitstream = std::make_shared<ov::Data>(reserve_size);
 	for (const auto &payload : payload_list)
@@ -60,7 +61,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseAndAssembleFrame(std::vector
 		// Fragmentation Units (FUs)
 		if (nuh_type == H265NaluType::kFUs)
 		{
-			result = ParseFUsAndConvertAnnexB(payload);
+			result = ParseFUsAndConvertAnnexB(payload, fu_dps_buffer, fu_dps_nal_type);
 			if (result == nullptr)
 			{
 				loge("RtpDepacketizerH265", "Failed to parse FU");
@@ -103,7 +104,7 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseAndAssembleFrame(std::vector
 	return bitstream;
 }
 
-std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload)
+std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload, std::shared_ptr<ov::Data> &fu_dps_buffer, uint8_t &fu_dps_nal_type)
 {
 	/*
 	The structure of an FU
@@ -184,26 +185,26 @@ std::shared_ptr<ov::Data> RtpDepacketizerH265::ParseFUsAndConvertAnnexB(const st
 	const size_t fu_payload_length = payload->GetLength() - PAYLOAD_HEADER_SIZE - FU_HEADER_SIZE;
 	if (fu_s == 1)
 	{
-		_fu_dps_buffer = nullptr;
+		fu_dps_buffer = nullptr;
 
 		if (IsDecodingParmeterSets(fu_type))
 		{
-			_fu_dps_nal_type = fu_type;
-			_fu_dps_buffer = std::make_shared<ov::Data>();
+			fu_dps_nal_type = fu_type;
+			fu_dps_buffer = std::make_shared<ov::Data>();
 
 			uint8_t nal_header[2];
 			ByteWriter<uint16_t>::WriteBigEndian((uint8_t *)&nal_header[0], NUH_HEADER(fu_type, nuh_layer_id, nuh_temporal_id));
-			_fu_dps_buffer->Append(nal_header, PAYLOAD_HEADER_SIZE);
-			_fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
+			fu_dps_buffer->Append(nal_header, PAYLOAD_HEADER_SIZE);
+			fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
 		}
 	}
-	else if (_fu_dps_buffer != nullptr)
+	else if (fu_dps_buffer != nullptr)
 	{
-		_fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
+		fu_dps_buffer->Append(&buffer[offset], fu_payload_length);
 		if (fu_e == 1)
 		{
-			AddDecodingParameterSet(_fu_dps_nal_type, _fu_dps_buffer);
-			_fu_dps_buffer = nullptr;
+			AddDecodingParameterSet(fu_dps_nal_type, fu_dps_buffer);
+			fu_dps_buffer = nullptr;
 		}
 	}
 
@@ -394,6 +395,7 @@ bool RtpDepacketizerH265::IsDecodingParmeterSets(uint8_t nal_unit_type)
 
 std::shared_ptr<ov::Data> RtpDepacketizerH265::GetDecodingParameterSetsToAnnexB()
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	uint8_t start_prefix[ANNEXB_START_PREFIX_LENGTH] = {0, 0, 0, 1};
 
 	if(GetDecodingParameterSets().size() < 3) // It must contatin VPS, SPS, PPS

@@ -24,14 +24,10 @@ public:
 	std::shared_ptr<ov::Data> GetDecodingParameterSetsToAnnexB() override;
 
 private:
-	std::shared_ptr<ov::Data> ParseFuaAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload);
+	std::shared_ptr<ov::Data> ParseFuaAndConvertAnnexB(const std::shared_ptr<ov::Data> &payload, std::shared_ptr<ov::Data> &fua_dps_buffer, uint8_t &fua_dps_nal_type);
 	std::shared_ptr<ov::Data> ParseStapAAndConvertToAnnexB(const std::shared_ptr<ov::Data> &payload);
 	std::shared_ptr<ov::Data> ConvertSingleNaluToAnnexB(const std::shared_ptr<ov::Data> &payload);
 
 	bool IsDecodingParmeterSets(uint8_t nal_unit_type);
-
-	// For FU-A SPS/PPS reassembly
-	std::shared_ptr<ov::Data> _fua_dps_buffer;
-	uint8_t _fua_dps_nal_type = 0;
 
 };

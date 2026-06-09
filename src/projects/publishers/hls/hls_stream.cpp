@@ -331,8 +331,13 @@ bool HlsStream::SendBufferedPackets()
 bool HlsStream::AppendMediaPacket(const std::shared_ptr<MediaPacket> &media_packet)
 {
 	std::shared_lock<std::shared_mutex> lock(_ts_packetizers_guard);
-	auto& packetizers = _track_packetizers[media_packet->GetTrackId()];
-	for (auto& packetizer : packetizers)
+	auto it = _track_packetizers.find(media_packet->GetTrackId());
+	if (it == _track_packetizers.end())
+	{
+		return true;
+	}
+
+	for (auto& packetizer : it->second)
 	{
 		packetizer->AppendFrame(media_packet);
 	}

@@ -48,6 +48,7 @@ MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, 
 MediaRouteStream::~MediaRouteStream()
 {
 	_media_packet_stash.clear();
+	_packets_queue.Stop();
 	_packets_queue.Clear();
 }
 

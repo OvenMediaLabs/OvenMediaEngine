@@ -4,6 +4,7 @@
 
 bool RtpMinimalJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	// Already it determined this packet was lost
 	if(packet->SequenceNumber() < _next_sequence_number)
 	{
@@ -16,6 +17,7 @@ bool RtpMinimalJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &pack
 
 bool RtpMinimalJitterBuffer::HasAvailablePacket()
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	if(_rtp_packets.size() <= 0)
 	{
 		return false;
@@ -26,6 +28,7 @@ bool RtpMinimalJitterBuffer::HasAvailablePacket()
 
 std::shared_ptr<RtpPacket> RtpMinimalJitterBuffer::PopAvailablePacket()
 {
+	std::lock_guard<std::mutex> lock(_lock);
 	std::shared_ptr<RtpPacketBox> packet_box = nullptr;
 
 	// First packet
