@@ -263,6 +263,27 @@ namespace ov
 			return _queue.size();
 		}
 
+		// Returns the current stop state with relaxed memory ordering.
+		//
+		// Suitable for polling loops where eventual visibility is acceptable,
+		// e.g.:
+		// ```
+		//   while (queue.IsStopped() == false) { ... }
+		// ```
+		//
+		// The relaxed load may briefly return the previous value after a concurrent
+		// `Stop()`/`Start()` until the new value propagates through the cache coherence
+		// (typically nanoseconds; guaranteed finite by `[intro.progress]`).
+		//
+		// NOT suitable as a coherent snapshot with other queue state.
+		// Code such as
+		// ```
+		//   if (queue.IsStopped()) { /* assume queue is also drained */ }
+		// ```
+		// is racy because `_stop` and `_queue` are tracked by different synchronization primitives;
+		// the relaxed load gives no ordering against `_queue` mutations.
+		// Callers that need a consistent view must take `_mutex` themselves
+		// and read both `_stop` and the queue state under the same critical section.
 		bool IsStopped() const
 		{
 			return _stop.load(std::memory_order_relaxed);
