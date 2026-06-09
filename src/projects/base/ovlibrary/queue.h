@@ -72,8 +72,11 @@ namespace ov
 
 		void SetThreshold(size_t threshold)
 		{
+			// `_threshold` is published with `memory_order_relaxed`,
+			// so the new value becomes effective from a subsequent `Enqueue` (eventual visibility).
+			// Used for the threshold log, where immediate effect is not required.
 			_threshold.store(threshold, std::memory_order_relaxed);
-			logt("ov.Queue", "[%p] The threshold is changed to %zu", this, threshold);
+			logt("ov.Queue", "[%p] The threshold is set to %zu (applied to subsequent Enqueue calls)", this, threshold);
 		}
 
 		void Enqueue(const T &item)
