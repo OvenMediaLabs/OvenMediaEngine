@@ -402,7 +402,7 @@ namespace http
 			}
 			else
 			{
-				std::lock_guard<std::mutex> lock(_tls_data->GetSequentialSendMutex());
+				ov::LockGuard lock(_tls_data->GetSequentialSendMutex());
 
 				if (_tls_data->Encrypt(data, &send_data) == false)
 				{
