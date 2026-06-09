@@ -38,12 +38,9 @@ namespace pvd
 	{
 		// It handles duplicate requests while the stream is being created.
 
-		// Table lock
-		std::unique_lock<std::mutex> table_lock(_pulling_table_mutex, std::defer_lock);
-
 		while (true)
 		{
-			table_lock.lock();
+			ov::ReleasableLockGuard table_lock(_pulling_table_mutex);
 
 			auto it = _pulling_table.find(key);
 			std::shared_ptr<PullingItem> item;
@@ -64,7 +61,7 @@ namespace pvd
 				return item;
 			}
 
-			table_lock.unlock();
+			table_lock.Release();
 
 			if (item != nullptr)
 			{
@@ -101,7 +98,7 @@ namespace pvd
 		}
 
 		{
-			std::unique_lock<std::mutex> table_lock(_pulling_table_mutex);
+			ov::LockGuard table_lock(_pulling_table_mutex);
 			auto it = _pulling_table.find(key);
 			if (it != _pulling_table.end() && it->second == item)
 			{

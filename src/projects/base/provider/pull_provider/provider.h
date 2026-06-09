@@ -9,10 +9,10 @@
 #pragma once
 
 #include <base/common_types.h>
+#include <base/ovlibrary/tsa/mutex.h>
 #include <base/provider/provider.h>
 #include <base/mediarouter/mediarouter_interface.h>
 #include <orchestrator/interfaces.h>
-#include <shared_mutex>
 
 namespace pvd
 {
@@ -43,23 +43,23 @@ namespace pvd
 
 		void Wait()
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 		}
 
 		void Lock()
 		{
-			_mutex.lock();
+			_mutex.Lock();
 		}
 
 		void Unlock()
 		{
-			_mutex.unlock();
+			_mutex.Unlock();
 		}
 
 	private:
 		ov::String _key;
 		std::atomic<PullingItemState> _state = PullingItemState::PULLING;
-		std::shared_mutex _mutex;
+		ov::SharedMutex _mutex;
 	};
 
 	class PullApplication;
@@ -95,8 +95,8 @@ namespace pvd
 	private:	
 		ov::String		GeneratePullingKey(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
 
-		std::map<ov::String, std::shared_ptr<PullingItem>>	_pulling_table;
-		std::mutex 											_pulling_table_mutex;
+		std::map<ov::String, std::shared_ptr<PullingItem>>	_pulling_table OV_GUARDED_BY(_pulling_table_mutex);
+		ov::Mutex											_pulling_table_mutex;
 	};
 
 }  // namespace pvd
