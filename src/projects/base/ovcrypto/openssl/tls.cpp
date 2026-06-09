@@ -70,45 +70,61 @@ namespace ov
 
 	BIO_METHOD *Tls::PrepareBioMethod()
 	{
-		// Thread-safe one-time init via C++11 function-local static (lock-free hot path after the
-		// first call). The lambda runs exactly once; whatever it returns - including `nullptr` -
-		// is published once and reused forever. A failure therefore permanently disables TLS BIO
-		// creation for the remainder of the process lifetime.
+		// We want a lock-free fast path for every TLS BIO creation after the first one,
+		// so the per-method singleton is bound to a function-local static.
+		// C++11 guarantees the initializer runs exactly once even under concurrent callers,
+		// and subsequent calls just load the already-published pointer.
 		//
-		// Intentional divergence from master's DCL-retry pattern (which retried allocation on
-		// every call until success): the realistic failure modes here are
-		//   (1) `BIO_meth_new()` failing under OOM / resource exhaustion, and
-		//   (2) `BIO_meth_set_*()` rejecting the configuration, which would require process-wide
-		//       OpenSSL state corruption.
-		// Neither is transient - a retry on the next call would not recover. Caching the failure
-		// trades retry capability (which had no recovery value) for a lock-free fast path and a
-		// TSA-clean static initialization, accepted as the right trade-off at the cost of losing
-		// the (never-effective) retry on OOM-class failure.
+		// Whatever the lambda returns - including `nullptr` - is the cached value for the
+		// rest of the process lifetime; we deliberately do not retry on failure.
+		// The two failure modes here are
+		//   (1) `BIO_meth_new()` returning `nullptr`,
+		//       which OpenSSL only does under OOM or resource exhaustion, and
+		//   (2) `BIO_meth_set_*()` rejecting the configuration,
+		//       which would require process-wide OpenSSL state corruption
+		//       since the inputs are static function pointers.
+		// Neither is something a later call can recover from, so retrying would only cost
+		// CPU and re-acquire the same lock without ever changing the outcome.
+		// Caching the failed result keeps the hot path branch-free;
+		// the one-shot `logte` inside the lambda makes the failure visible to operators
+		// so the loss of TLS can be traced back to startup time instead of looking like a configuration mistake later.
 		static auto bio_method = []() -> BIO_METHOD * {
-			// `nullptr` means the method could not be allocated/registered.
-			BIO_METHOD *method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
+			auto method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
 
-			if (method != nullptr)
+			if (method == nullptr)
 			{
-				int result = 1;
+				logtc(
+					"Could not allocate BIO_METHOD '%s'. "
+					"TLS BIO creation is permanently  disabled for this process; "
+					"a restart is required to recover.",
+					OV_TLS_BIO_METHOD_NAME);
+				return nullptr;
+			}
 
-				result	   = result && ::BIO_meth_set_create(method, TlsCreate);
-				result	   = result && ::BIO_meth_set_ctrl(method, TlsCtrl);
-				result	   = result && ::BIO_meth_set_read(method, TlsRead);
-				result	   = result && ::BIO_meth_set_write(method, TlsWrite);
-				result	   = result && ::BIO_meth_set_puts(method, TlsPuts);
-				result	   = result && ::BIO_meth_set_destroy(method, TlsDestroy);
+			int result = 1;
 
-				if (result == 0)
-				{
-					// A `BIO_meth_set_*()` call failed: the method is only partially configured,
-					// so roll it back (drop it from the manager registry and free the OpenSSL
-					// object) and fall through to publish `nullptr` instead of a half-built method.
-					OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
-					::BIO_meth_free(method);
+			result	   = result && ::BIO_meth_set_create(method, TlsCreate);
+			result	   = result && ::BIO_meth_set_ctrl(method, TlsCtrl);
+			result	   = result && ::BIO_meth_set_read(method, TlsRead);
+			result	   = result && ::BIO_meth_set_write(method, TlsWrite);
+			result	   = result && ::BIO_meth_set_puts(method, TlsPuts);
+			result	   = result && ::BIO_meth_set_destroy(method, TlsDestroy);
 
-					method = nullptr;
-				}
+			if (result == 0)
+			{
+				// Roll back the partially-configured method
+				// (drop it from the manager registry and free the OpenSSL object)
+				// so we publish a clean `nullptr` instead of a half-built handle.
+				OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
+				::BIO_meth_free(method);
+
+				logte(
+					"Could not configure BIO_METHOD '%s' "
+					"(one of BIO_meth_set_*() rejected the configuration). "
+					"TLS BIO creation is permanently disabled for this process; "
+					"a restart is required to recover.",
+					OV_TLS_BIO_METHOD_NAME);
+				return nullptr;
 			}
 
 			return method;
