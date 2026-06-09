@@ -99,6 +99,33 @@ if(OSTYPE_VALUE STREQUAL "linux-musl")
 endif()
 
 # ------------------------------------------------------------------------------
+# Clang Thread Safety Analysis (TSA)
+#
+# When `ON`, the build defines `OME_THREAD_SAFETY`
+# so headers under `src/projects/base/ovlibrary/tsa/` swap from std-alias mode
+# to capability-annotated wrappers, and `-Wthread-safety` asks Clang
+# to verify the annotations.
+# The flag is only meaningful on Clang; GCC and MSVC ignore the
+# annotations entirely (they expand to nothing),
+# so we gate the option on the active compiler instead of erroring out.
+# ------------------------------------------------------------------------------
+if(OME_THREAD_SAFETY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-Wthread-safety -DOME_THREAD_SAFETY)
+    message(STATUS "[OME] Clang thread-safety analysis: ENABLED")
+elseif(OME_THREAD_SAFETY)
+    # The option is set but the compiler is not Clang: `-Wthread-safety` and
+	# the `OME_THREAD_SAFETY` define are NOT applied and
+	# the negative-verify guard is skipped,
+	# so the `ov::*` wrappers compile with no-op annotations.
+	# Warn loudly so this is not mistaken for an active analysis.
+    message(WARNING
+        "[OME] OME_THREAD_SAFETY=ON has NO EFFECT on ${CMAKE_CXX_COMPILER_ID}: "
+        "Clang thread-safety analysis requires Clang. The OME_THREAD_SAFETY "
+        "macro and -Wthread-safety are not enabled and the TSA negative-verify "
+        "test is skipped; build with Clang to actually run the analysis.")
+endif()
+
+# ------------------------------------------------------------------------------
 # RPATH setup - mirror CONFIG_LIBRARY_PATHS
 # ------------------------------------------------------------------------------
 set(OME_LIB_PATHS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
