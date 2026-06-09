@@ -60,7 +60,7 @@ namespace pvd
 
 		_curr_url = nullptr;
 
-		std::lock_guard<std::shared_mutex> mlock(_packetizer_lock);
+		ov::LockGuard mlock(_packetizer_lock);
 		if (_packetizer != nullptr)
 		{
 			_packetizer->Release();
@@ -227,7 +227,7 @@ namespace pvd
 
 		auto message = ov::Json::Stringify(root).ToData(false);
 
-		std::shared_lock<std::shared_mutex> lock(_packetizer_lock);
+		ov::SharedLockGuard lock(_packetizer_lock);
 		if (_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_REQUEST, ov::Clock::NowMSec(), message) == false)
 		{
 			return false;
@@ -501,7 +501,7 @@ namespace pvd
 
 		auto message = ov::Json::Stringify(root).ToData(false);
 
-		std::shared_lock<std::shared_mutex> lock(_packetizer_lock);
+		ov::SharedLockGuard lock(_packetizer_lock);
 		if (_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_REQUEST, ov::Clock::NowMSec(), message) == false)
 		{
 			logte("%s/%s(%u) - Could not request to play. Socket send error", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
@@ -580,7 +580,7 @@ namespace pvd
 
 		auto message = ov::Json::Stringify(root).ToData(false);
 
-		std::shared_lock<std::shared_mutex> lock(_packetizer_lock);
+		ov::SharedLockGuard lock(_packetizer_lock);
 		if (_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_REQUEST, ov::Clock::NowMSec(), message) == false)
 		{
 			return false;

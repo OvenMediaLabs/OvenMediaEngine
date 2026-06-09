@@ -36,8 +36,8 @@ namespace mon
 	protected:
 		std::shared_ptr<const cfg::Server> _server_config = nullptr;
 		std::chrono::system_clock::time_point _server_started_time;
-		std::shared_mutex _map_guard;
-		std::map<uint32_t, std::shared_ptr<HostMetrics>> _hosts;
+		ov::SharedMutex _map_guard;
+		std::map<uint32_t, std::shared_ptr<HostMetrics>> _hosts OV_GUARDED_BY(_map_guard);
 
 		// Queue metrics
 	public:
@@ -48,7 +48,7 @@ namespace mon
 		std::shared_ptr<mon::QueueMetrics> GetQueueMetrics(const info::ManagedQueue &queue_info);
 
 	protected:
-		std::shared_mutex _queue_map_guard;
-		std::map<uint32_t, std::shared_ptr<QueueMetrics>> _queues;
+		ov::SharedMutex _queue_map_guard;
+		std::map<uint32_t, std::shared_ptr<QueueMetrics>> _queues OV_GUARDED_BY(_queue_map_guard);
 	};
 }  // namespace mon

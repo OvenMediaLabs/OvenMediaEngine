@@ -102,18 +102,18 @@ private:
 	std::shared_ptr<MediaGroup> GetMediaGroup(const ov::String &group_id) const;
 
 	// Group ID : MediaInfo
-	std::map<ov::String, std::shared_ptr<MediaGroup>> _media_groups;
-	mutable std::shared_mutex _media_groups_guard;
-	std::vector<std::shared_ptr<StreamInfo>> _stream_infos;
-	mutable std::shared_mutex _stream_infos_guard;
+	std::map<ov::String, std::shared_ptr<MediaGroup>> _media_groups OV_GUARDED_BY(_media_groups_guard);
+	mutable ov::SharedMutex _media_groups_guard;
+	std::vector<std::shared_ptr<StreamInfo>> _stream_infos OV_GUARDED_BY(_stream_infos_guard);
+	mutable ov::SharedMutex _stream_infos_guard;
 
 	ov::String _chunk_path;
 
-	ov::String _cached_default_playlist;
-	mutable std::shared_mutex _cached_default_playlist_guard;
+	ov::String _cached_default_playlist OV_GUARDED_BY(_cached_default_playlist_guard);
+	mutable ov::SharedMutex _cached_default_playlist_guard;
 
-	std::shared_ptr<ov::Data> _cached_default_playlist_gzip = nullptr;
-	mutable std::shared_mutex _cached_default_playlist_gzip_guard;
+	std::shared_ptr<ov::Data> _cached_default_playlist_gzip OV_GUARDED_BY(_cached_default_playlist_gzip_guard) = nullptr;
+	mutable ov::SharedMutex _cached_default_playlist_gzip_guard;
 
 	bmff::CencProperty _cenc_property;
 

@@ -43,12 +43,12 @@ namespace ocst
 
 		if (info->IsInputStream())
 		{
-			std::lock_guard<std::shared_mutex> lock(_provider_stream_map_mutex);
+			ov::LockGuard lock(_provider_stream_map_mutex);
 			_provider_stream_map[info->GetName()] = std::static_pointer_cast<pvd::Stream>(info);
 		}
 		else
 		{
-			std::lock_guard<std::shared_mutex> lock(_publisher_stream_map_mutex);
+			ov::LockGuard lock(_publisher_stream_map_mutex);
 			_publisher_stream_map[info->GetName()] = std::static_pointer_cast<pub::Stream>(info);
 		}
 
@@ -63,12 +63,12 @@ namespace ocst
 
 		if (info->IsInputStream())
 		{
-			std::lock_guard<std::shared_mutex> lock(_provider_stream_map_mutex);
+			ov::LockGuard lock(_provider_stream_map_mutex);
 			_provider_stream_map.erase(info->GetName());
 		}
 		else
 		{
-			std::lock_guard<std::shared_mutex> lock(_publisher_stream_map_mutex);
+			ov::LockGuard lock(_publisher_stream_map_mutex);
 			_publisher_stream_map.erase(info->GetName());
 		}
 
@@ -82,7 +82,7 @@ namespace ocst
 
 	std::shared_ptr<pvd::Stream> Application::GetProviderStream(const ov::String &stream_name)
 	{
-		std::shared_lock<std::shared_mutex> lock(_provider_stream_map_mutex);
+		ov::SharedLockGuard lock(_provider_stream_map_mutex);
 		auto item = _provider_stream_map.find(stream_name);
 		if (item == _provider_stream_map.end())
 		{
@@ -94,7 +94,7 @@ namespace ocst
 	
 	std::shared_ptr<pub::Stream> Application::GetPublisherStream(const ov::String &stream_name)
 	{
-		std::shared_lock<std::shared_mutex> lock(_publisher_stream_map_mutex);
+		ov::SharedLockGuard lock(_publisher_stream_map_mutex);
 		auto item = _publisher_stream_map.find(stream_name);
 
 		if (item == _publisher_stream_map.end())
@@ -107,13 +107,13 @@ namespace ocst
 
 	size_t Application::GetProviderStreamCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_provider_stream_map_mutex);
+		ov::SharedLockGuard lock(_provider_stream_map_mutex);
 		return _provider_stream_map.size();
 	}
 
 	size_t Application::GetPublisherStreamCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_publisher_stream_map_mutex);
+		ov::SharedLockGuard lock(_publisher_stream_map_mutex);
 		return _publisher_stream_map.size();
 	}
 

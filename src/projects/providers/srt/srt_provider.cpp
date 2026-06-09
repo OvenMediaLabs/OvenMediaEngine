@@ -128,7 +128,7 @@ namespace pvd
 				  ov::StringFromSocketType(ov::SocketType::Srt));
 
 			{
-				std::lock_guard lock_guard{_physical_port_list_mutex};
+				ov::LockGuard lock_guard{_physical_port_list_mutex};
 				_physical_port_list = std::move(physical_port_list);
 			}
 
@@ -146,9 +146,9 @@ namespace pvd
 
 	bool SrtProvider::Stop()
 	{
-		_physical_port_list_mutex.lock();
+		ov::ReleasableLockGuard lock(_physical_port_list_mutex);
 		auto physical_port_list = std::move(_physical_port_list);
-		_physical_port_list_mutex.unlock();
+		lock.Release();
 
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
 

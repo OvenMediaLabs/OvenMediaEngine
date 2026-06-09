@@ -106,7 +106,7 @@ namespace pub
 				  ov::StringFromSocketType(ov::SocketType::Srt));
 
 			{
-				std::lock_guard lock_guard(_physical_port_list_mutex);
+				ov::LockGuard lock_guard(_physical_port_list_mutex);
 				_physical_port_list = std::move(physical_port_list);
 			}
 
@@ -117,7 +117,7 @@ namespace pub
 						decltype(_socket_list_to_disconnect) socket_list_to_disconnect;
 
 						{
-							std::lock_guard lock_guard(_socket_list_to_disconnect_mutex);
+							ov::LockGuard lock_guard(_socket_list_to_disconnect_mutex);
 							_has_socket_list_to_disconnect = false;
 							socket_list_to_disconnect = std::move(_socket_list_to_disconnect);
 						}
@@ -147,9 +147,9 @@ namespace pub
 
 	bool SrtPublisher::Stop()
 	{
-		_physical_port_list_mutex.lock();
+		ov::ReleasableLockGuard lock(_physical_port_list_mutex);
 		auto physical_port_list = std::move(_physical_port_list);
-		_physical_port_list_mutex.unlock();
+		lock.Release();
 
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
 
@@ -192,7 +192,7 @@ namespace pub
 
 	void SrtPublisher::AddToDisconnect(const std::shared_ptr<ov::Socket> &remote)
 	{
-		std::lock_guard lock(_socket_list_to_disconnect_mutex);
+		ov::LockGuard lock(_socket_list_to_disconnect_mutex);
 		_has_socket_list_to_disconnect = true;
 		_socket_list_to_disconnect.emplace_back(remote);
 	}
@@ -342,7 +342,7 @@ namespace pub
 		auto session = SrtSession::Create(application, stream, remote->GetNativeHandle(), remote, srt_playlist);
 
 		{
-			std::unique_lock lock(_session_map_mutex);
+			ov::LockGuard lock(_session_map_mutex);
 			_session_map.emplace(session->GetId(), session);
 		}
 
@@ -363,7 +363,7 @@ namespace pub
 	{
 		const auto session_id = remote->GetNativeHandle();
 
-		std::shared_lock lock(_session_map_mutex);
+		ov::SharedLockGuard lock(_session_map_mutex);
 		auto item = _session_map.find(session_id);
 
 		return (item != _session_map.end()) ? item->second : nullptr;
@@ -382,7 +382,7 @@ namespace pub
 		}
 
 		{
-			std::unique_lock lock(_session_map_mutex);
+			ov::LockGuard lock(_session_map_mutex);
 			_session_map.erase(remote->GetNativeHandle());
 		}
 

@@ -86,8 +86,8 @@ private:
 		std::chrono::steady_clock::time_point sent_time;
 	};
 	// wide_sequence_number -> RtpHistory
-	std::vector<RtpHistory> _rtp_history;
-	std::shared_mutex _rtp_history_guard;
+	std::vector<RtpHistory> _rtp_history OV_GUARDED_BY(_rtp_history_guard);
+	ov::SharedMutex _rtp_history_guard;
 
 	uint32_t GetRtpHistoryIndex(uint16_t wide_seq_no) const;
 
@@ -97,8 +97,8 @@ private:
 		bool received = false;
 		int64_t arrival_time_ms = 0;
 	};
-	std::deque<TransportCCFeedback> _tcc_feedbacks;
-	std::shared_mutex _tcc_feedbacks_guard;
+	std::deque<TransportCCFeedback> _tcc_feedbacks OV_GUARDED_BY(_tcc_feedbacks_guard);
+	ov::SharedMutex _tcc_feedbacks_guard;
 
 	struct FrameStats
 	{

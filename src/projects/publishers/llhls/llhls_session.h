@@ -106,8 +106,8 @@ private:
 
 	// ID list of connections requesting this session
 	// Connection ID : last request time
-	std::map<uint32_t, uint64_t> _last_request_time;
-	mutable std::shared_mutex _last_request_time_guard;
+	std::map<uint32_t, uint64_t> _last_request_time OV_GUARDED_BY(_last_request_time_guard);
+	mutable ov::SharedMutex _last_request_time_guard;
 	
 	// session life time
 	uint64_t _session_life_time = 0;

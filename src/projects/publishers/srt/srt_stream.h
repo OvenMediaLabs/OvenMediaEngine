@@ -57,7 +57,7 @@ namespace pub
 
 		bool IsSupportedTrack(const std::shared_ptr<MediaTrack> &track) const;
 
-		std::shared_ptr<SrtPlaylist> GetSrtPlaylistInternal(const ov::String &file_name);
+		std::shared_ptr<SrtPlaylist> GetSrtPlaylistInternal(const ov::String &file_name) OV_REQUIRES_SHARED(_srt_playlist_map_mutex);
 
 		std::map<int32_t, std::shared_ptr<MediaTrack>> GetSupportedTracks(const std::map<int32_t, std::shared_ptr<MediaTrack>> &track_map) const;
 		std::vector<std::shared_ptr<MediaTrack>> GetSupportedTracks(const std::vector<std::shared_ptr<MediaTrack>> &tracks) const;
@@ -80,10 +80,10 @@ namespace pub
 	private:
 		uint32_t _worker_count = 0;
 
-		std::shared_mutex _srt_playlist_map_mutex;
+		ov::SharedMutex _srt_playlist_map_mutex;
 		// key: track id, value: list of playlist that uses the track
-		std::map<int32_t, std::vector<std::shared_ptr<SrtPlaylist>>> _srt_playlist_map_by_track_id;
+		std::map<int32_t, std::vector<std::shared_ptr<SrtPlaylist>>> _srt_playlist_map_by_track_id OV_GUARDED_BY(_srt_playlist_map_mutex);
 		// key: playlist file name, value: playlist
-		std::map<ov::String, std::shared_ptr<SrtPlaylist>> _srt_playlist_map_by_file_name;
+		std::map<ov::String, std::shared_ptr<SrtPlaylist>> _srt_playlist_map_by_file_name OV_GUARDED_BY(_srt_playlist_map_mutex);
 	};
 }  // namespace pub

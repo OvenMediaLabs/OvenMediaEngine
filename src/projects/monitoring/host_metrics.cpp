@@ -22,7 +22,7 @@ namespace mon
 
 		if (show_children)
 		{
-			std::shared_lock<std::shared_mutex> lock(_map_guard);
+			ov::SharedLockGuard lock(_map_guard);
 			for (auto const &t : _applications)
 			{
 				auto &app = t.second;
@@ -40,7 +40,7 @@ namespace mon
 
 	bool HostMetrics::OnApplicationCreated(const info::Application &app_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_map_guard);
+		ov::LockGuard lock(_map_guard);
 		if (_applications.find(app_info.GetId()) != _applications.end())
 		{
 			return true;
@@ -60,7 +60,7 @@ namespace mon
 	}
 	bool HostMetrics::OnApplicationDeleted(const info::Application &app_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_map_guard);
+		ov::LockGuard lock(_map_guard);
 		if (_applications.find(app_info.GetId()) == _applications.end())
 		{
 			return false;
@@ -73,13 +73,13 @@ namespace mon
 
 	std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> HostMetrics::GetApplicationMetricsList()
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 		return _applications;
 	}
 
 	std::shared_ptr<ApplicationMetrics> HostMetrics::GetApplicationMetrics(info::application_id_t application_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 
 		auto application = _applications.find(application_id);
 		if (application == _applications.end())

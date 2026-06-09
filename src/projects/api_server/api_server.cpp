@@ -103,7 +103,7 @@ namespace api
 				},
 				worker_count))
 		{
-			std::lock_guard<std::mutex> lock(_http_server_list_mutex);
+			ov::LockGuard lock(_http_server_list_mutex);
 
 			_http_server_list  = std::move(http_server_list);
 			_https_server_list = std::move(https_server_list);
@@ -216,10 +216,10 @@ namespace api
 	{
 		auto manager = http::svr::HttpServerManager::GetInstance();
 
-		_http_server_list_mutex.lock();
+		ov::ReleasableLockGuard lock(_http_server_list_mutex);
 		auto http_server_list  = std::move(_http_server_list);
 		auto https_server_list = std::move(_https_server_list);
-		_http_server_list_mutex.unlock();
+		lock.Release();
 
 		auto http_result			 = manager->ReleaseServers(&http_server_list);
 		auto https_result			 = manager->ReleaseServers(&https_server_list);
@@ -311,7 +311,7 @@ namespace api
 
 		std::vector<std::shared_ptr<http::svr::HttpsServer>> https_server_list;
 		{
-			std::lock_guard<std::mutex> lock(_http_server_list_mutex);
+			ov::LockGuard lock(_http_server_list_mutex);
 			https_server_list = _https_server_list;
 		}
 		for (auto &https_server : https_server_list)

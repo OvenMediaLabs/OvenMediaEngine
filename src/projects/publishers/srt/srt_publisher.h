@@ -77,20 +77,20 @@ namespace pub
 		std::shared_ptr<SrtSession> GetSession(const std::shared_ptr<ov::Socket> &remote);
 
 	private:
-		std::mutex _physical_port_list_mutex;
-		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
+		ov::Mutex _physical_port_list_mutex;
+		std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list OV_GUARDED_BY(_physical_port_list_mutex);
 
 		modules::srt::StreamUrlResolver _stream_url_resolver;
 
-		std::shared_mutex _session_map_mutex;
-		std::map<session_id_t, std::shared_ptr<SrtSession>> _session_map;
+		ov::SharedMutex _session_map_mutex;
+		std::map<session_id_t, std::shared_ptr<SrtSession>> _session_map OV_GUARDED_BY(_session_map_mutex);
 
 		// When a request is made for a non-existent stream, the SRT socket connection is terminated.
 		// However, since the client immediately attempts to reconnect, the socket connection is now terminated with a slight delay
 		ov::DelayQueue _disconnect_timer{"SRTDiscnt"};
 		// To minimize the use of mutex, use atomic variables before using mutex
 		std::atomic<bool> _has_socket_list_to_disconnect{false};
-		std::mutex _socket_list_to_disconnect_mutex;
-		std::vector<std::shared_ptr<ov::Socket>> _socket_list_to_disconnect;
+		ov::Mutex _socket_list_to_disconnect_mutex;
+		std::vector<std::shared_ptr<ov::Socket>> _socket_list_to_disconnect OV_GUARDED_BY(_socket_list_to_disconnect_mutex);
 	};
 }  // namespace pub

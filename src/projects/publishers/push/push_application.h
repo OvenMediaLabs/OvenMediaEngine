@@ -62,7 +62,7 @@ namespace pub
 		std::thread _session_contol_thread;
 
 		// <uniqueId, pushInfo>
-		std::map<ov::String, std::shared_ptr<info::Push>> _pushes;
-		std::shared_mutex _push_map_mutex;
+		std::map<ov::String, std::shared_ptr<info::Push>> _pushes OV_GUARDED_BY(_push_map_mutex);
+		ov::SharedMutex _push_map_mutex;
 	};
 }  // namespace pub

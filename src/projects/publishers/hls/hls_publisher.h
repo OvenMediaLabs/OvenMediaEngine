@@ -52,7 +52,7 @@ private:
 	bool OnDeletePublisherApplication(const std::shared_ptr<pub::Application> &application) override;
 	std::shared_ptr<TsHttpInterceptor> CreateInterceptor();
 
-	std::mutex _http_server_list_mutex;
-	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
-	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
+	ov::Mutex _http_server_list_mutex;
+	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list OV_GUARDED_BY(_http_server_list_mutex);
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list OV_GUARDED_BY(_http_server_list_mutex);
 };

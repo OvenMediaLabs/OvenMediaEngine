@@ -258,7 +258,7 @@ namespace cfg
 		logti("Trying to load configurations... (%s)", server_config_path.CStr());
 		DataSource data_source(DataType::Xml, config_path, CFG_MAIN_FILE_NAME, XML_ROOT_NAME);
 
-		std::unique_lock lock(_server_mutex);
+		ov::LockGuard lock(_server_mutex);
 
 		_server = std::make_shared<Server>();
 		_server->SetItemName(XML_ROOT_NAME);

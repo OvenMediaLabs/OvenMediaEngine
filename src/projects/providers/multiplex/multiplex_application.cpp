@@ -52,13 +52,13 @@ namespace pvd
 
     std::map<ov::String, std::shared_ptr<MultiplexStream>> MultiplexApplication::GetMultiplexStreams()
     {
-        std::shared_lock<std::shared_mutex> lock(_multiplex_streams_mutex);
+        ov::SharedLockGuard lock(_multiplex_streams_mutex);
         return _multiplex_streams;
     }
 
     std::shared_ptr<MultiplexStream> MultiplexApplication::GetMultiplexStream(const ov::String &stream_name)
     {
-        std::shared_lock<std::shared_mutex> lock(_multiplex_streams_mutex);
+        ov::SharedLockGuard lock(_multiplex_streams_mutex);
         auto it = _multiplex_streams.find(stream_name);
         if (it == _multiplex_streams.end())
         {
@@ -262,7 +262,7 @@ namespace pvd
 
         // later stream will call AddStream by itself when it is ready
         {
-            std::lock_guard<std::shared_mutex> lock(_multiplex_streams_mutex);
+            ov::LockGuard lock(_multiplex_streams_mutex);
             _multiplex_streams.emplace(stream_info.GetName(), stream);
         }
 
@@ -306,7 +306,7 @@ namespace pvd
 
         {
             // Remove from stream list
-            std::lock_guard<std::shared_mutex> lock(_multiplex_streams_mutex);
+            ov::LockGuard lock(_multiplex_streams_mutex);
             _multiplex_streams.erase(old_profile->GetOutputStreamName());
         }
 
@@ -346,7 +346,7 @@ namespace pvd
 
         {
             // later stream will call AddStream by itself when it is ready
-            std::lock_guard<std::shared_mutex> lock(_multiplex_streams_mutex);
+            ov::LockGuard lock(_multiplex_streams_mutex);
             _multiplex_streams.emplace(stream_info.GetName(), new_stream);
         }
 
@@ -366,7 +366,7 @@ namespace pvd
                 mux_stream->Stop();
             }
 
-            std::lock_guard<std::shared_mutex> lock(_multiplex_streams_mutex);
+            ov::LockGuard lock(_multiplex_streams_mutex);
             _multiplex_streams.erase(stream_name);
         }
 

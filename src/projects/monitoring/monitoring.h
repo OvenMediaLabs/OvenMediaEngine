@@ -66,9 +66,9 @@ namespace mon
 
 	private:
 		ov::DelayQueue _timer{"MonLogTimer"};
-		mutable std::shared_mutex _server_metric_guard;
-		std::shared_ptr<ServerMetrics> _server_metric = nullptr;
-		mutable std::shared_mutex _alert_guard;
-		std::shared_ptr<alrt::Alert> _alert = nullptr;
+		mutable ov::SharedMutex _server_metric_guard;
+		std::shared_ptr<ServerMetrics> _server_metric OV_GUARDED_BY(_server_metric_guard) = nullptr;
+		mutable ov::SharedMutex _alert_guard;
+		std::shared_ptr<alrt::Alert> _alert OV_GUARDED_BY(_alert_guard) = nullptr;
 	};
 }  // namespace mon

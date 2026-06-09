@@ -66,7 +66,7 @@ bool TranscodeFilter::Configure(int32_t id,
 
 bool TranscodeFilter::CreateInternal()
 {
-	std::lock_guard<std::shared_mutex> lock(_mutex);
+	ov::LockGuard lock(_mutex);
 
 	// If there is a previously created filter, remove it.
 	if (_internal != nullptr)
@@ -121,7 +121,7 @@ bool TranscodeFilter::CreateInternal()
 
 void TranscodeFilter::Stop()
 {
-	std::lock_guard<std::shared_mutex> lock(_mutex);
+	ov::LockGuard lock(_mutex);
 
 	if (_internal != nullptr)
 	{
@@ -133,7 +133,7 @@ void TranscodeFilter::Stop()
 
 void TranscodeFilter::Flush()
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	if (_internal != nullptr)
 	{
 		// Not implemented
@@ -155,7 +155,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	if (_internal == nullptr)
 	{
 		return false;
@@ -196,7 +196,7 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 	}
 
 	// Check #2 - Resolution changed. but, this is not warned because it can be a normal case.
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 
 	if (GetInputTrack()->GetMediaType() == MediaType::Video)
 	{

@@ -369,7 +369,7 @@ namespace pub
 
 	std::shared_ptr<ffmpeg::Writer> PushSession::CreateWriter()
 	{
-		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
+		ov::LockGuard lock(_writer_mutex);
 		if (_writer != nullptr)
 		{
 			_writer->Stop();
@@ -387,13 +387,13 @@ namespace pub
 
 	std::shared_ptr<ffmpeg::Writer> PushSession::GetWriter()
 	{
-		std::shared_lock<std::shared_mutex> lock(_writer_mutex);
+		ov::SharedLockGuard lock(_writer_mutex);
 		return _writer;
 	}
 
 	void PushSession::DestoryWriter()
 	{
-		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
+		ov::LockGuard lock(_writer_mutex);
 		if (_writer != nullptr)
 		{
 			_writer->Stop();
@@ -403,7 +403,7 @@ namespace pub
 
 	std::shared_ptr<info::Push> PushSession::GetPush()
 	{
-		std::shared_lock<std::shared_mutex> lock(_push_mutex);
+		ov::SharedLockGuard lock(_push_mutex);
 		return _push;
 	}
 

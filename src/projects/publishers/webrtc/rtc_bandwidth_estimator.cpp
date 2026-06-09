@@ -50,7 +50,7 @@ void RtcBandwidthEstimator::Signal(RtcBandwidthEstimatorSignal::State state)
 
 void RtcBandwidthEstimator::OnRtpSent(uint16_t wide_seq_no, const std::shared_ptr<const RtpPacket> &rtp_packet)
 {
-	std::lock_guard<std::shared_mutex> lock(_rtp_history_guard);
+	ov::LockGuard lock(_rtp_history_guard);
 	_rtp_history[wide_seq_no % kMaxRtpPacketHistory] = RtpHistory{
 		.wide_sequence_number = wide_seq_no,
 		.payload_type = rtp_packet->PayloadType(),
@@ -68,7 +68,7 @@ void RtcBandwidthEstimator::OnTransportCc(const std::shared_ptr<const TransportC
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_tcc_feedbacks_guard);
+		ov::LockGuard lock(_tcc_feedbacks_guard);
 
 		if (transport_cc == nullptr || transport_cc->GetPacketStatusCount() == 0)
 		{
@@ -149,7 +149,7 @@ bool RtcBandwidthEstimator::ProcessTransportCc()
 	std::deque<TransportCCFeedback> batch_feedbacks;
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_tcc_feedbacks_guard);
+		ov::LockGuard lock(_tcc_feedbacks_guard);
 		batch_feedbacks.swap(_tcc_feedbacks);
 	}
 
@@ -165,7 +165,7 @@ bool RtcBandwidthEstimator::ProcessTransportCc()
 		// Find RTP history
 		RtpHistory rtp_history;
 		{
-			std::shared_lock<std::shared_mutex> lock(_rtp_history_guard);
+			ov::SharedLockGuard lock(_rtp_history_guard);
 			const auto &item = _rtp_history[GetRtpHistoryIndex(feedback.wide_seq_no)];
 			if (item.wide_sequence_number != feedback.wide_seq_no ||
 				item.sent_time.time_since_epoch().count() == 0)

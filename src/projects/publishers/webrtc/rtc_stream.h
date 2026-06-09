@@ -104,8 +104,8 @@ private:
 	std::shared_ptr<Certificate> _certificate;
 
 	// Track ID, Packetizer
-	std::shared_mutex _packetizers_lock;
-	std::map<uint32_t, std::shared_ptr<RtpPacketizer>> _packetizers;
+	ov::SharedMutex _packetizers_lock;
+	std::map<uint32_t, std::shared_ptr<RtpPacketizer>> _packetizers OV_GUARDED_BY(_packetizers_lock);
 
 	// RtpHistoryKey string, RtpHistory
 	std::map<ov::String, std::shared_ptr<RtpHistory>> _rtp_history_map;
@@ -129,8 +129,8 @@ private:
 
 	// Per-stream scheduler shared by all FramePacers (one worker thread).
 	std::shared_ptr<ov::DelayQueue> _pacer_scheduler;
-	std::map<uint32_t, std::shared_ptr<FramePacer>> _pacers;
-	std::shared_mutex _pacers_lock;
+	std::map<uint32_t, std::shared_ptr<FramePacer>> _pacers OV_GUARDED_BY(_pacers_lock);
+	ov::SharedMutex _pacers_lock;
 
 	// Stream-shared adaptive delay controller used by the frame pacers.
 	std::shared_ptr<AdaptiveDelayController> _adaptive_delay_controller;
@@ -139,10 +139,10 @@ private:
 	ov::String _default_playlist_name;
 
 	// Playlist File Name : SessionDescription
-	std::map<ov::String, std::shared_ptr<const SessionDescription>> _offer_sdp_map;
-	std::shared_mutex _offer_sdp_lock;
+	std::map<ov::String, std::shared_ptr<const SessionDescription>> _offer_sdp_map OV_GUARDED_BY(_offer_sdp_lock);
+	ov::SharedMutex _offer_sdp_lock;
 
 	// Playlist File Name : RtcPlaylist
-	std::map<ov::String, std::shared_ptr<const RtcMasterPlaylist>> _rtc_master_playlist_map;
-	std::shared_mutex _rtc_master_playlist_map_lock;
+	std::map<ov::String, std::shared_ptr<const RtcMasterPlaylist>> _rtc_master_playlist_map OV_GUARDED_BY(_rtc_master_playlist_map_lock);
+	ov::SharedMutex _rtc_master_playlist_map_lock;
 };

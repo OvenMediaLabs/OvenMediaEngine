@@ -45,6 +45,6 @@ private:
 
 	uint32_t							_worker_count = 0;
 
-	std::shared_mutex					_packetizer_lock;
-	std::shared_ptr<OvtPacketizer>		_packetizer;
+	ov::SharedMutex						_packetizer_lock;
+	std::shared_ptr<OvtPacketizer>		_packetizer OV_GUARDED_BY(_packetizer_lock);
 };

@@ -75,6 +75,6 @@ private:
 
 	CompleteHandler _complete_handler;
 
-	std::shared_mutex _mutex;
-	std::shared_ptr<FilterBase> _internal;
+	ov::SharedMutex _mutex;
+	std::shared_ptr<FilterBase> _internal OV_GUARDED_BY(_mutex);
 };

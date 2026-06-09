@@ -57,8 +57,8 @@ namespace pvd
         // File name hash -> MultiplexFileInfo
         std::map<size_t, MultiplexFileInfo> _multiplex_file_info_db;
 
-        std::map<ov::String, std::shared_ptr<MultiplexStream>> _multiplex_streams;
-        std::shared_mutex _multiplex_streams_mutex;
+        std::map<ov::String, std::shared_ptr<MultiplexStream>> _multiplex_streams OV_GUARDED_BY(_multiplex_streams_mutex);
+        ov::SharedMutex _multiplex_streams_mutex;
 
 		int _packet_silence_timeout_ms = 0;
     };

@@ -94,7 +94,7 @@ const ov::String &HlsSession::GetUserAgent() const
 
 void HlsSession::UpdateLastRequest(uint32_t connection_id)
 {
-	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
+	ov::LockGuard lock(_last_request_time_guard);
 	_last_request_time[connection_id] = ov::Clock::NowMSec();
 
 	logtt("TsSession(%u) : Request updated from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
@@ -102,7 +102,7 @@ void HlsSession::UpdateLastRequest(uint32_t connection_id)
 
 uint64_t HlsSession::GetLastRequestTime(uint32_t connection_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_last_request_time_guard);
+	ov::SharedLockGuard lock(_last_request_time_guard);
 	auto itr = _last_request_time.find(connection_id);
 	if (itr == _last_request_time.end())
 	{
@@ -115,7 +115,7 @@ uint64_t HlsSession::GetLastRequestTime(uint32_t connection_id) const
 void HlsSession::OnConnectionDisconnected(uint32_t connection_id)
 {
 	// lock
-	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
+	ov::LockGuard lock(_last_request_time_guard);
 	_last_request_time.erase(connection_id);
 
 	logtt("TsSession(%u) : Disconnected from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
@@ -123,7 +123,7 @@ void HlsSession::OnConnectionDisconnected(uint32_t connection_id)
 
 bool HlsSession::IsNoConnection() const
 {
-	std::shared_lock<std::shared_mutex> lock(_last_request_time_guard);
+	ov::SharedLockGuard lock(_last_request_time_guard);
 	return _last_request_time.empty();
 }
 

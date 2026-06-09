@@ -70,7 +70,7 @@ RtcSession::~RtcSession()
 bool RtcSession::Start()
 {
 	// start and stop must be called independently.
-	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+	ov::LockGuard lock(_start_stop_lock);
 
 	if (pub::Session::GetState() != SessionState::Ready)
 	{
@@ -225,7 +225,7 @@ bool RtcSession::Start()
 bool RtcSession::Stop()
 {
 	// start and stop must be called independently.
-	std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+	ov::LockGuard lock(_start_stop_lock);
 
 	logtt("Stop session. Peer sdp session id : %u", GetOfferSDP()->GetSessionId());
 
@@ -445,7 +445,7 @@ bool RtcSession::SendRenditionChanged(const std::shared_ptr<const RtcRendition> 
 void RtcSession::OnMessageReceived(const std::any &message)
 {
 	//It must not be called during start and stop.
-	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+	ov::SharedLockGuard lock(_start_stop_lock);
 
 	std::shared_ptr<const ov::Data> data = nullptr;
 	try
@@ -472,7 +472,7 @@ void RtcSession::OnMessageReceived(const std::any &message)
 
 void RtcSession::ChangeRendition()
 {
-	std::unique_lock<std::shared_mutex> lock(_change_rendition_lock);
+	ov::ReleasableLockGuard lock(_change_rendition_lock);
 
 	if (_next_rendition == nullptr)
 	{
@@ -488,7 +488,7 @@ void RtcSession::ChangeRendition()
 	_current_rendition = _next_rendition;
 	_next_rendition = nullptr;
 
-	lock.unlock();
+	lock.Release();
 
 	SendRenditionChanged(_current_rendition);
 }
@@ -500,19 +500,19 @@ bool RtcSession::IsNextRenditionAvailable() const
 
 void RtcSession::SetNextRendition(const std::shared_ptr<const RtcRendition> &rendition)
 {
-	std::unique_lock<std::shared_mutex> lock(_change_rendition_lock);
+	ov::LockGuard lock(_change_rendition_lock);
 	_next_rendition = rendition;
 }
 
 std::shared_ptr<const RtcRendition> RtcSession::GetCurrentRendition() const
 {
-	std::shared_lock<std::shared_mutex> change_lock(_change_rendition_lock);
+	ov::SharedLockGuard change_lock(_change_rendition_lock);
 	return _current_rendition;
 }
 
 std::shared_ptr<const RtcRendition> RtcSession::GetNextRendition() const
 {
-	std::shared_lock<std::shared_mutex> change_lock(_change_rendition_lock);
+	ov::SharedLockGuard change_lock(_change_rendition_lock);
 	return _next_rendition;
 }
 
@@ -579,7 +579,7 @@ bool RtcSession::IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_pa
 void RtcSession::SendOutgoingData(const std::any &packet)
 {
 	//It must not be called during start and stop.
-	std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+	ov::SharedLockGuard lock(_start_stop_lock);
 
 	if (pub::Session::GetState() != SessionState::Started)
 	{
@@ -707,7 +707,7 @@ bool RtcSession::RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packe
 
 	auto video_rtp_key = sent_log->_sequence_number % MAX_RTP_RECORDS;
 
-	std::lock_guard<std::shared_mutex> lock(_rtp_record_map_lock);
+	ov::LockGuard lock(_rtp_record_map_lock);
 
 	if (rtp_packet->IsVideoPacket())
 	{
@@ -719,7 +719,7 @@ bool RtcSession::RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packe
 
 std::shared_ptr<RtcSession::RtpSentLog> RtcSession::TraceRtpSentByVideoSeqNo(uint16_t sequence_number)
 {
-	std::shared_lock<std::shared_mutex> lock(_rtp_record_map_lock);
+	ov::SharedLockGuard lock(_rtp_record_map_lock);
 
 	auto key = sequence_number % MAX_RTP_RECORDS;
 	auto it	 = _video_rtp_sent_record_map.find(key);

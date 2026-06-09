@@ -140,7 +140,7 @@ private:
 	uint16_t _rtx_sequence_number = 1;
 	uint64_t _session_expired_time = 0;
 
-	std::shared_mutex _start_stop_lock;
+	ov::SharedMutex _start_stop_lock;
 
 	ov::String _file_name;
 	std::shared_ptr<const RtcPlaylist> _playlist;
@@ -157,9 +157,9 @@ private:
 	void SetNextRendition(const std::shared_ptr<const RtcRendition> &rendition);
 	bool IsNextRenditionAvailable() const;
 
-	std::shared_ptr<const RtcRendition> _current_rendition = nullptr;
-	std::shared_ptr<const RtcRendition> _next_rendition = nullptr;
-	mutable std::shared_mutex _change_rendition_lock;
+	std::shared_ptr<const RtcRendition> _current_rendition OV_GUARDED_BY(_change_rendition_lock) = nullptr;
+	std::shared_ptr<const RtcRendition> _next_rendition OV_GUARDED_BY(_change_rendition_lock) = nullptr;
+	mutable ov::SharedMutex _change_rendition_lock;
 
 	// Auto switch rendition
 	bool _auto_abr = true;
@@ -189,9 +189,9 @@ private:
 											_wide_sequence_number, _ssrc, _sequence_number, _track_id, _payload_type, _timestamp, _marker == true ? "O" : "X", _origin_sequence_number, _sent_bytes);
 		}
 	};
-	// video sequence number % MAX_RTP_RECORDS : RtpSentRecord	
-	std::unordered_map<uint16_t, std::shared_ptr<RtpSentLog>> _video_rtp_sent_record_map;
-	std::shared_mutex _rtp_record_map_lock;
+	// video sequence number % MAX_RTP_RECORDS : RtpSentRecord
+	std::unordered_map<uint16_t, std::shared_ptr<RtpSentLog>> _video_rtp_sent_record_map OV_GUARDED_BY(_rtp_record_map_lock);
+	ov::SharedMutex _rtp_record_map_lock;
 	bool RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number);
 	std::shared_ptr<RtpSentLog> TraceRtpSentByVideoSeqNo(uint16_t sequence_number);
 	/////////////////////////////// For NACK

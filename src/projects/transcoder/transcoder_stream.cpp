@@ -205,7 +205,7 @@ bool TranscoderStream::Stop()
 bool TranscoderStream::PauseEncoders(cmn::MediaCodecId codec_id)
 {
 	bool found = false;
-	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	ov::SharedLockGuard lock(_encoder_map_mutex);
 	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
 	{
 		auto &encoder = filter_encoder_pair.second;
@@ -221,7 +221,7 @@ bool TranscoderStream::PauseEncoders(cmn::MediaCodecId codec_id)
 bool TranscoderStream::ResumeEncoders(cmn::MediaCodecId codec_id)
 {
 	bool found = false;
-	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	ov::SharedLockGuard lock(_encoder_map_mutex);
 	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
 	{
 		auto &encoder = filter_encoder_pair.second;
@@ -236,7 +236,7 @@ bool TranscoderStream::ResumeEncoders(cmn::MediaCodecId codec_id)
 
 bool TranscoderStream::IsEncoderPaused(cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	ov::SharedLockGuard lock(_encoder_map_mutex);
 	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
 	{
 		auto &encoder = filter_encoder_pair.second;
@@ -256,7 +256,7 @@ ov::String TranscoderStream::GetInputStreamName() const
 std::vector<TranscodeEncoder::EncoderInfo> TranscoderStream::GetEncoderInfoList(cmn::MediaCodecId codec_id)
 {
 	std::vector<TranscodeEncoder::EncoderInfo> result;
-	std::shared_lock<std::shared_mutex> lock(_encoder_map_mutex);
+	ov::SharedLockGuard lock(_encoder_map_mutex);
 	for (auto &[encoder_id, filter_encoder_pair] : _encoders)
 	{
 		auto &encoder = filter_encoder_pair.second;
@@ -437,12 +437,12 @@ void TranscoderStream::FlushBuffers()
 
 void TranscoderStream::RemoveDecoders()
 {
-	std::unique_lock<std::shared_mutex> decoder_lock(_decoder_map_mutex);
+	ov::ReleasableLockGuard decoder_lock(_decoder_map_mutex);
 
 	auto decoders = _decoders;
 	_decoders.clear();
 
-	decoder_lock.unlock();
+	decoder_lock.Release();
 
 	for (auto &[id, object] : decoders)
 	{
@@ -456,12 +456,12 @@ void TranscoderStream::RemoveDecoders()
 
 void TranscoderStream::RemoveFilters()
 {
-	std::unique_lock<std::shared_mutex> filter_lock(_filter_map_mutex);
+	ov::ReleasableLockGuard filter_lock(_filter_map_mutex);
 
 	auto filters = _filters;
 	_filters.clear();
 
-	filter_lock.unlock();
+	filter_lock.Release();
 
 	for (auto &[id, object] : filters)
 	{
@@ -480,7 +480,7 @@ void TranscoderStream::RemoveSpecificEncoders()
 	// Collect specific encoders to remove under read lock
 	std::vector<MediaTrackId> ids_to_remove;
 	{
-		std::shared_lock<std::shared_mutex> read_lock(_encoder_map_mutex);
+		ov::SharedLockGuard read_lock(_encoder_map_mutex);
 		for (auto &[id, object] : _encoders)
 		{
 			auto &encoder = object.second;
@@ -501,7 +501,7 @@ void TranscoderStream::RemoveSpecificEncoders()
 	// Extract matching entries under write lock
 	decltype(_encoders) removed;
 	{
-		std::unique_lock<std::shared_mutex> write_lock(_encoder_map_mutex);
+		ov::LockGuard write_lock(_encoder_map_mutex);
 		for (auto id : ids_to_remove)
 		{
 			auto it = _encoders.find(id);
@@ -533,12 +533,12 @@ void TranscoderStream::RemoveSpecificEncoders()
 
 void TranscoderStream::RemoveEncoders()
 {
-	std::unique_lock<std::shared_mutex> read_lock(_encoder_map_mutex);
+	ov::ReleasableLockGuard read_lock(_encoder_map_mutex);
 
 	auto encoders = _encoders;
 	_encoders.clear();
 
-	read_lock.unlock();
+	read_lock.Release();
 
 	for (auto &[id, object] : encoders)
 	{
@@ -575,7 +575,7 @@ std::shared_ptr<info::Stream> TranscoderStream::GetInputStream()
 
 std::shared_ptr<info::Stream> TranscoderStream::GetOutputStreamByTrackId(MediaTrackId output_track_id)
 {
-	std::shared_lock<std::shared_mutex> read_lock(_output_stream_mutex);
+	ov::SharedLockGuard read_lock(_output_stream_mutex);
 	for (auto &[stream_name, output_stream] : _output_streams)
 	{
 		UNUSED_VARIABLE(stream_name)
@@ -690,14 +690,14 @@ size_t TranscoderStream::CreateOutputStreamDynamic()
 
 	// Add to Output Stream List. The key is the output stream name.
 	{
-		std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
+		ov::LockGuard lock(_output_stream_mutex);
 		_output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
 	}
 
 	logti("%s Output stream(dynamic) has been created. [%s(%u)]",
 		  _log_prefix.CStr(), output_stream->GetUri().CStr(), output_stream->GetId());
 
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	return _output_streams.size();
 }
 
@@ -727,7 +727,7 @@ size_t TranscoderStream::CreateOutputStreams()
 		}
 
 		{
-			std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
+			ov::LockGuard lock(_output_stream_mutex);
 			_output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
 		}
 
@@ -807,7 +807,7 @@ size_t TranscoderStream::CreateOutputStreams()
 			{
 				output_stream->SetInternal(true);
 				{
-					std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
+					ov::LockGuard lock(_output_stream_mutex);
 					_output_streams.insert(std::make_pair(output_stream->GetName(), output_stream));
 				}
 
@@ -816,7 +816,7 @@ size_t TranscoderStream::CreateOutputStreams()
 		}
 	}
 
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	return _output_streams.size();
 }
 
@@ -1141,7 +1141,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 
 void TranscoderStream::RemoveOutputStreams()
 {
-	std::unique_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::LockGuard lock(_output_stream_mutex);
 	_output_streams.clear();
 }
 
@@ -1258,7 +1258,7 @@ bool TranscoderStream::CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<in
 
 std::shared_ptr<TranscodeDecoder> TranscoderStream::GetDecoder(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> decoder_lock(_decoder_map_mutex);
+	ov::SharedLockGuard decoder_lock(_decoder_map_mutex);
 	auto it = _decoders.find(decoder_id);
 	if (it == _decoders.end())
 	{
@@ -1270,7 +1270,7 @@ std::shared_ptr<TranscodeDecoder> TranscoderStream::GetDecoder(MediaTrackId deco
 
 void TranscoderStream::SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder)
 {
-	std::unique_lock<std::shared_mutex> decoder_lock(_decoder_map_mutex);
+	ov::LockGuard decoder_lock(_decoder_map_mutex);
 
 	_decoders[decoder_id] = decoder;
 }
@@ -1455,7 +1455,7 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 
 std::optional<std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<TranscodeEncoder>>> TranscoderStream::GetEncoderSet(MediaTrackId encoder_id)
 {
-	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
+	ov::SharedLockGuard encoder_lock(_encoder_map_mutex);
 	auto it = _encoders.find(encoder_id);
 	if (it == _encoders.end())
 	{
@@ -1467,7 +1467,7 @@ std::optional<std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<Transc
 
 std::shared_ptr<TranscodeFilter> TranscoderStream::GetEncoderFilter(MediaTrackId encoder_id)
 {
-	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
+	ov::SharedLockGuard encoder_lock(_encoder_map_mutex);
 	auto it = _encoders.find(encoder_id);
 	if (it == _encoders.end())
 	{
@@ -1479,7 +1479,7 @@ std::shared_ptr<TranscodeFilter> TranscoderStream::GetEncoderFilter(MediaTrackId
 
 std::shared_ptr<TranscodeEncoder> TranscoderStream::GetEncoder(MediaTrackId encoder_id)
 {
-	std::shared_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
+	ov::SharedLockGuard encoder_lock(_encoder_map_mutex);
 	auto it = _encoders.find(encoder_id);
 	if (it == _encoders.end())
 	{
@@ -1491,7 +1491,7 @@ std::shared_ptr<TranscodeEncoder> TranscoderStream::GetEncoder(MediaTrackId enco
 
 void TranscoderStream::SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder)
 {
-	std::unique_lock<std::shared_mutex> encoder_lock(_encoder_map_mutex);
+	ov::LockGuard encoder_lock(_encoder_map_mutex);
 
 	_encoders[encoder_id] = std::make_pair(filter, encoder);
 }
@@ -1561,7 +1561,7 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 
 std::shared_ptr<TranscodeFilter> TranscoderStream::GetFilter(MediaTrackId filter_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_filter_map_mutex);
+	ov::SharedLockGuard lock(_filter_map_mutex);
 	auto it = _filters.find(filter_id);
 	if (it == _filters.end())
 	{
@@ -1573,7 +1573,7 @@ std::shared_ptr<TranscodeFilter> TranscoderStream::GetFilter(MediaTrackId filter
 
 void TranscoderStream::SetFilter(MediaTrackId filter_id, std::shared_ptr<TranscodeFilter> filter)
 {
-	std::unique_lock<std::shared_mutex> lock(_filter_map_mutex);
+	ov::LockGuard lock(_filter_map_mutex);
 
 	_filters[filter_id] = filter;
 }
@@ -1827,7 +1827,7 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 
 			// Record the timestamp of the last decoded frame. managed by microseconds.
 			{
-				std::unique_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
+				ov::LockGuard lock(_last_decoded_frame_mutex);
 				_last_decoded_frame_pts[decoder_id] = last_frame->GetPts() * filter_expr * 1000000.0;
 			}
 
@@ -1869,7 +1869,7 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 			int64_t last_decoded_frame_duration_us = 0;
 			bool _has_last_decoded_frame_pts	   = false;
 			{
-				std::shared_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
+				ov::SharedLockGuard lock(_last_decoded_frame_mutex);
 				auto pts_it = _last_decoded_frame_pts.find(decoder_id);
 				if (pts_it != _last_decoded_frame_pts.end())
 				{
@@ -1991,7 +1991,7 @@ void TranscoderStream::SetLastDecodedFrame(MediaTrackId decoder_id, std::shared_
 	auto duration	  = static_cast<int64_t>(decoded_frame->GetDuration() * scale_factor);
 	auto cloned		  = decoded_frame->CloneFrame();
 
-	std::unique_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
+	ov::LockGuard lock(_last_decoded_frame_mutex);
 	_last_decoded_frame_pts[decoder_id]		 = pts;
 	_last_decoded_frame_duration[decoder_id] = duration;
 	_last_decoded_frames[decoder_id]		 = std::move(cloned);
@@ -1999,7 +1999,7 @@ void TranscoderStream::SetLastDecodedFrame(MediaTrackId decoder_id, std::shared_
 
 std::shared_ptr<MediaFrame> TranscoderStream::GetLastDecodedFrame(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
+	ov::SharedLockGuard lock(_last_decoded_frame_mutex);
 	auto it = _last_decoded_frames.find(decoder_id);
 	if (it != _last_decoded_frames.end())
 	{
@@ -2013,7 +2013,7 @@ std::shared_ptr<MediaFrame> TranscoderStream::GetLastDecodedFrame(MediaTrackId d
 
 void TranscoderStream::RemoveLastDecodedFrame()
 {
-	std::unique_lock<std::shared_mutex> lock(_last_decoded_frame_mutex);
+	ov::LockGuard lock(_last_decoded_frame_mutex);
 	_last_decoded_frames.clear();
 	_last_decoded_frame_pts.clear();
 	_last_decoded_frame_duration.clear();
@@ -2210,7 +2210,7 @@ void TranscoderStream::OnEncodedPacket(TranscodeResult result, MediaTrackId enco
 
 void TranscoderStream::UpdateMsidOfOutputStreams(uint32_t msid)
 {
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	for (auto &[output_stream_name, output_stream] : _output_streams)
 	{
 		UNUSED_VARIABLE(output_stream_name)
@@ -2254,7 +2254,7 @@ void TranscoderStream::SpreadToFilters(MediaTrackId decoder_id, std::shared_ptr<
 
 void TranscoderStream::NotifyCreateStreams()
 {
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	for (auto &[output_stream_name, output_stream] : _output_streams)
 	{
 		UNUSED_VARIABLE(output_stream_name)
@@ -2268,7 +2268,7 @@ void TranscoderStream::NotifyCreateStreams()
 
 void TranscoderStream::NotifyDeleteStreams()
 {
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	for (auto &[output_stream_name, output_stream] : _output_streams)
 	{
 		UNUSED_VARIABLE(output_stream_name)
@@ -2282,7 +2282,7 @@ void TranscoderStream::NotifyDeleteStreams()
 
 void TranscoderStream::NotifyUpdateStreams()
 {
-	std::shared_lock<std::shared_mutex> lock(_output_stream_mutex);
+	ov::SharedLockGuard lock(_output_stream_mutex);
 	for (auto &[output_stream_name, output_stream] : _output_streams)
 	{
 		UNUSED_VARIABLE(output_stream_name)

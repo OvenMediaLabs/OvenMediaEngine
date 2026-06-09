@@ -23,7 +23,6 @@
 #include <modules/dump/dump.h>
 #include <memory>
 #include <map>
-#include <shared_mutex>
 
 // max initial media packet buffer size, for OOM protection
 #define MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE 10000
@@ -124,30 +123,30 @@ private:
 	bool _default_option_rewind = true;
 
 	// packetizer id : Packetizer
-	std::map<ov::String, std::shared_ptr<mpegts::Packetizer>> _ts_packetizers;
+	std::map<ov::String, std::shared_ptr<mpegts::Packetizer>> _ts_packetizers OV_GUARDED_BY(_ts_packetizers_guard);
 	// All packetizers for each track
-	std::map<uint32_t, std::vector<std::shared_ptr<mpegts::Packetizer>>> _track_packetizers;
-	std::shared_mutex _ts_packetizers_guard;
+	std::map<uint32_t, std::vector<std::shared_ptr<mpegts::Packetizer>>> _track_packetizers OV_GUARDED_BY(_ts_packetizers_guard);
+	ov::SharedMutex _ts_packetizers_guard;
 
-	std::map<ov::String, std::shared_ptr<mpegts::Packager>> _ts_packagers;
-	std::shared_mutex _ts_packagers_guard;
+	std::map<ov::String, std::shared_ptr<mpegts::Packager>> _ts_packagers OV_GUARDED_BY(_ts_packagers_guard);
+	ov::SharedMutex _ts_packagers_guard;
 
 	// playlist name : Master playlist
-	std::map<ov::String, std::shared_ptr<HlsMasterPlaylist>> _master_playlists;
-	std::shared_mutex _master_playlists_guard;
+	std::map<ov::String, std::shared_ptr<HlsMasterPlaylist>> _master_playlists OV_GUARDED_BY(_master_playlists_guard);
+	ov::SharedMutex _master_playlists_guard;
 
 	// variant name : Media playlist
-	std::map<ov::String, std::shared_ptr<HlsMediaPlaylist>> _media_playlists;
-	mutable std::shared_mutex _media_playlists_guard;
+	std::map<ov::String, std::shared_ptr<HlsMediaPlaylist>> _media_playlists OV_GUARDED_BY(_media_playlists_guard);
+	mutable ov::SharedMutex _media_playlists_guard;
 
 	// ConcludeLive
 	// Append #EXT-X-ENDLIST all chunklists, and no more update segment and chunklist
-	bool _concluded = false;
-	mutable std::shared_mutex _concluded_lock;
+	bool _concluded OV_GUARDED_BY(_concluded_lock) = false;
+	mutable ov::SharedMutex _concluded_lock;
 
 	// Dumps map
-	std::map<ov::String, std::shared_ptr<mdl::Dump>> _dumps;
-	std::shared_mutex _dumps_lock;
+	std::map<ov::String, std::shared_ptr<mdl::Dump>> _dumps OV_GUARDED_BY(_dumps_lock);
+	ov::SharedMutex _dumps_lock;
 
 	bool _ready_to_play = false; // true if the stream is ready to play, all playlists are ready and have enough segments
 
@@ -162,13 +161,13 @@ private:
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> GetVttPackagers() const;
 
 	bool _vtt_enabled = false;
-	ov::String _vtt_reference_packager_id = ""; 
-	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
-	mutable std::shared_mutex _vtt_packagers_lock;
+	ov::String _vtt_reference_packager_id = "";
+	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers OV_GUARDED_BY(_vtt_packagers_lock);
+	mutable ov::SharedMutex _vtt_packagers_lock;
 
 	// mpegts packager, vtt packager
-	std::map<ov::String, std::shared_ptr<base::modules::SegmentStorage>> _storage_map;
-	mutable std::shared_mutex _storage_map_guard;
+	std::map<ov::String, std::shared_ptr<base::modules::SegmentStorage>> _storage_map OV_GUARDED_BY(_storage_map_guard);
+	mutable ov::SharedMutex _storage_map_guard;
 
 	std::shared_ptr<base::modules::SegmentStorage> GetStorage(const ov::String &variant_name) const;
 };

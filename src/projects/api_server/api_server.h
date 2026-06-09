@@ -52,9 +52,9 @@ namespace api
 		// For HTTPS certificate reloading
 		std::optional<cfg::cmn::Host> _host_config;
 
-		std::mutex _http_server_list_mutex;
-		std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
-		std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
+		ov::Mutex _http_server_list_mutex;
+		std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list OV_GUARDED_BY(_http_server_list_mutex);
+		std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list OV_GUARDED_BY(_http_server_list_mutex);
 
 		std::shared_ptr<RootController> _root_controller;
 

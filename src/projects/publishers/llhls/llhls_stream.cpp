@@ -214,7 +214,7 @@ bool LLHlsStream::Start()
 
 	// Set renditions to each chunklist writer
 	{
-		std::lock_guard<std::shared_mutex> lock(_chunklist_map_lock);
+		ov::LockGuard lock(_chunklist_map_lock);
 		for (auto &it : _chunklist_map)
 		{
 			auto chunklist_writer = it.second;
@@ -247,7 +247,7 @@ bool LLHlsStream::Start()
 
 			auto master_playlist = CreateMasterPlaylist(playlist);
 
-			std::lock_guard<std::mutex> guard(_master_playlists_lock);
+			ov::LockGuard guard(_master_playlists_lock);
 			_master_playlists[default_playlist_info->internal_file_name] = master_playlist;
 		}
 	}
@@ -263,7 +263,7 @@ bool LLHlsStream::Start()
 	}
 
 	// Select the dump setting for this stream.
-	std::lock_guard<std::shared_mutex> lock(_dumps_lock);
+	ov::LockGuard lock(_dumps_lock);
 	for (auto dump : dump_config.GetDumps())
 	{
 		if (dump.IsEnabled() == false)
@@ -299,7 +299,7 @@ bool LLHlsStream::Stop()
 	logtt("LLHlsStream(%s) has been stopped", GetName().CStr());
 
 	{
-		std::scoped_lock lock{_packager_map_lock, _storage_map_lock, _chunklist_map_lock, _master_playlists_lock, _dumps_lock};
+		ov::ScopedLock lock(_packager_map_lock, _storage_map_lock, _chunklist_map_lock, _master_playlists_lock, _dumps_lock);
 
 		// clear all packagers
 		_packager_map.clear();
@@ -330,7 +330,7 @@ bool LLHlsStream::Stop()
 
 std::tuple<bool, ov::String> LLHlsStream::ConcludeLive()
 {
-	std::unique_lock<std::shared_mutex> lock(_concluded_lock);
+	ov::LockGuard lock(_concluded_lock);
 	if (_concluded)
 	{
 		return {false, "Already concluded"};
@@ -357,7 +357,7 @@ std::tuple<bool, ov::String> LLHlsStream::ConcludeLive()
 
 bool LLHlsStream::IsConcluded() const
 {
-	std::shared_lock<std::shared_mutex> lock(_concluded_lock);
+	ov::SharedLockGuard lock(_concluded_lock);
 	return _concluded;
 }
 
@@ -637,7 +637,7 @@ std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std
 void LLHlsStream::DumpMasterPlaylistsOfAllItems()
 {
 	// lock
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (auto &it : _dumps)
 	{
 		auto dump = it.second;
@@ -682,7 +682,7 @@ bool LLHlsStream::DumpMasterPlaylist(const std::shared_ptr<mdl::Dump> &item)
 
 void LLHlsStream::DumpInitSegmentOfAllItems(const int32_t &track_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (auto &it : _dumps)
 	{
 		auto dump = it.second;
@@ -721,7 +721,7 @@ bool LLHlsStream::DumpInitSegment(const std::shared_ptr<mdl::Dump> &item, const 
 
 void LLHlsStream::DumpSegmentOfAllItems(const int32_t &track_id, const uint32_t &segment_number)
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (auto &it : _dumps)
 	{
 		auto dump = it.second;
@@ -817,7 +817,7 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 	std::shared_ptr<LLHlsMasterPlaylist> master_playlist = nullptr;
 
 	// _master_playlists_lock
-	std::unique_lock<std::mutex> guard(_master_playlists_lock);
+	ov::ReleasableLockGuard guard(_master_playlists_lock);
 	auto it = _master_playlists.find(file_name);
 	if (it == _master_playlists.end())
 	{
@@ -839,7 +839,7 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 	{
 		master_playlist = it->second;
 	}
-	guard.unlock();
+	guard.Release();
 
 	if (master_playlist == nullptr)
 	{
@@ -1333,10 +1333,10 @@ void LLHlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 			break;
 		}
 		case EventCommand::Type::UpdateSubtitleLanguage: {
-			std::unique_lock<std::mutex> guard(_master_playlists_lock);
+			ov::ReleasableLockGuard guard(_master_playlists_lock);
 			logti("LLHlsStream(%s/%s) - Clear master playlist cache for subtitle language update.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
 			_master_playlists.clear();
-			guard.unlock();
+			guard.Release();
 			break;
 		}
 		default:
@@ -1499,17 +1499,17 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> storage_lock(_storage_map_lock);
+		ov::LockGuard storage_lock(_storage_map_lock);
 		_storage_map.emplace(media_track->GetId(), storage);
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> packager_lock(_packager_map_lock);
+		ov::LockGuard packager_lock(_packager_map_lock);
 		_packager_map.emplace(media_track->GetId(), packager);
 	}
 
 	{
-		std::unique_lock<std::shared_mutex> lock(_chunklist_map_lock);
+		ov::LockGuard lock(_chunklist_map_lock);
 		_chunklist_map.emplace(track_id, chunklist);
 	}
 
@@ -1527,14 +1527,14 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// packager
 	auto packager = std::make_shared<webvtt::Packager>(track);
 	{
-		std::lock_guard<std::shared_mutex> lock(_vtt_packagers_lock);
+		ov::LockGuard lock(_vtt_packagers_lock);
 		_vtt_packagers[track->GetId()] = packager;
 	}
 
 	// storage
 	{
 		// The VTT packager also functions as storage.
-		std::lock_guard<std::shared_mutex> storage_lock(_storage_map_lock);
+		ov::LockGuard storage_lock(_storage_map_lock);
 		_storage_map.emplace(track->GetId(), packager);
 	}
 
@@ -1556,7 +1556,7 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 													  _preload_hint_enabled);
 
 	{
-		std::unique_lock<std::shared_mutex> lock(_chunklist_map_lock);
+		ov::LockGuard lock(_chunklist_map_lock);
 		_chunklist_map.emplace(track->GetId(), chunklist);
 	}
 
@@ -1565,7 +1565,7 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 
 std::shared_ptr<webvtt::Packager> LLHlsStream::GetVttPackager(const int32_t &track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+	ov::SharedLockGuard lock(_vtt_packagers_lock);
 	auto it = _vtt_packagers.find(track_id);
 	if (it == _vtt_packagers.end())
 	{
@@ -1578,14 +1578,14 @@ std::shared_ptr<webvtt::Packager> LLHlsStream::GetVttPackager(const int32_t &tra
 
 std::map<int32_t, std::shared_ptr<webvtt::Packager>> LLHlsStream::GetVttPackagers() const
 {
-	std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+	ov::SharedLockGuard lock(_vtt_packagers_lock);
 	return _vtt_packagers;
 }
 
 // Get storage with the track id
 std::shared_ptr<base::modules::SegmentStorage> LLHlsStream::GetStorage(const int32_t &track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_storage_map_lock);
+	ov::SharedLockGuard lock(_storage_map_lock);
 	auto it = _storage_map.find(track_id);
 	if (it == _storage_map.end())
 	{
@@ -1598,7 +1598,7 @@ std::shared_ptr<base::modules::SegmentStorage> LLHlsStream::GetStorage(const int
 // Get fMP4 packager with the track id
 std::shared_ptr<bmff::FMP4Packager> LLHlsStream::GetPackager(const int32_t &track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_packager_map_lock);
+	ov::SharedLockGuard lock(_packager_map_lock);
 	auto it = _packager_map.find(track_id);
 	if (it == _packager_map.end())
 	{
@@ -1610,7 +1610,7 @@ std::shared_ptr<bmff::FMP4Packager> LLHlsStream::GetPackager(const int32_t &trac
 
 std::shared_ptr<LLHlsChunklist> LLHlsStream::GetChunklistWriter(const int32_t &track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_chunklist_map_lock);
+	ov::SharedLockGuard lock(_chunklist_map_lock);
 	auto it = _chunklist_map.find(track_id);
 	if (it == _chunklist_map.end())
 	{
@@ -1730,13 +1730,13 @@ bool LLHlsStream::IsReadyToPlay() const
 bool LLHlsStream::CheckPlaylistReady()
 {
 	// lock
-	std::lock_guard<std::shared_mutex> lock(_playlist_ready_lock);
+	ov::LockGuard lock(_playlist_ready_lock);
 	if (_playlist_ready == true)
 	{
 		return true;
 	}
 
-	std::shared_lock<std::shared_mutex> storage_lock(_storage_map_lock);
+	ov::ReleasableSharedLockGuard storage_lock(_storage_map_lock);
 
 	for (const auto &[track_id, storage] : _storage_map)
 	{
@@ -1750,9 +1750,9 @@ bool LLHlsStream::CheckPlaylistReady()
 		_min_chunk_duration_ms = std::min(_min_chunk_duration_ms, storage->GetMinPartialDurationMs());
 	}
 
-	storage_lock.unlock();
+	storage_lock.Release();
 
-	std::shared_lock<std::shared_mutex> chunklist_lock(_chunklist_map_lock);
+	ov::ReleasableSharedLockGuard chunklist_lock(_chunklist_map_lock);
 
 	double min_part_hold_back = (static_cast<double>(_max_chunk_duration_ms) / 1000.0f) * 3.0f;
 	double final_part_hold_back = std::max(min_part_hold_back, _configured_part_hold_back);
@@ -1763,7 +1763,7 @@ bool LLHlsStream::CheckPlaylistReady()
 		DumpInitSegmentOfAllItems(chunklist->GetTrack()->GetId());
 	}
 
-	chunklist_lock.unlock();
+	chunklist_lock.Release();
 
 	logti("LLHlsStream(%s/%s) - Ready to play : Part Hold Back = %f", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_part_hold_back);
 
@@ -1902,9 +1902,9 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
 	{
 		// If this is a VTT reference track, we need to create a chunklist for vtt chunklists as well
-		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
+		ov::ReleasableSharedLockGuard vtt_packagers_lock(_vtt_packagers_lock);
 		auto vtt_packagers = _vtt_packagers; // Copy to avoid deadlock
-		vtt_packagers_lock.unlock();
+		vtt_packagers_lock.Release();
 		for (const auto &it : vtt_packagers)
 		{
 			auto vtt_track_id = it.first;
@@ -1969,7 +1969,7 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 
 	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
 	{
-		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
+		ov::SharedLockGuard vtt_packagers_lock(_vtt_packagers_lock);
 		// If this is a VTT reference track, we need to delete a chunklist for vtt chunklists as well
 		for (const auto &it : _vtt_packagers)
 		{
@@ -2004,7 +2004,7 @@ void LLHlsStream::NotifyPlaylistUpdated(const int32_t &track_id, const int64_t &
 int64_t LLHlsStream::GetMinimumLastSegmentNumber() const
 {
 	// lock storage map
-	std::shared_lock<std::shared_mutex> storage_lock(_storage_map_lock);
+	ov::SharedLockGuard storage_lock(_storage_map_lock);
 	int64_t min_segment_number = std::numeric_limits<int64_t>::max();
 	for (const auto &it : _storage_map)
 	{
@@ -2026,7 +2026,7 @@ int64_t LLHlsStream::GetMinimumLastSegmentNumber() const
 
 std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::Dump> &info)
 {
-	std::lock_guard<std::shared_mutex> lock(_dumps_lock);
+	ov::LockGuard lock(_dumps_lock);
 
 	for (const auto &it : _dumps)
 	{
@@ -2047,7 +2047,7 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 	dump_info->SetEnabled(true);
 
 	// lock playlist ready
-	std::shared_lock<std::shared_mutex> lock_playlist_ready(_playlist_ready_lock);
+	ov::ReleasableSharedLockGuard lock_playlist_ready(_playlist_ready_lock);
 	if (IsReadyToPlay() == false)
 	{
 		// If the playlist is not ready, add it to the queue and wait for the playlist to be ready.
@@ -2055,12 +2055,12 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 		_dumps.emplace(dump_info->GetId(), dump_info);
 		return {true, ""};
 	}
-	lock_playlist_ready.unlock();
+	lock_playlist_ready.Release();
 
 	// Dump Init Segment for all tracks
-	std::shared_lock<std::shared_mutex> storage_lock(_storage_map_lock);
+	ov::ReleasableSharedLockGuard storage_lock(_storage_map_lock);
 	auto storage_map = _storage_map;
-	storage_lock.unlock();
+	storage_lock.Release();
 
 	// Find minimum segment number
 	int64_t min_segment_number = GetMinimumLastSegmentNumber();
@@ -2108,7 +2108,7 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 
 std::tuple<bool, ov::String> LLHlsStream::StopDump(const std::shared_ptr<info::Dump> &dump_info)
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::ReleasableSharedLockGuard lock(_dumps_lock);
 
 	if (dump_info->GetId().IsEmpty() == false)
 	{
@@ -2134,7 +2134,7 @@ std::tuple<bool, ov::String> LLHlsStream::StopDump(const std::shared_ptr<info::D
 
 	StopToSaveOldSegmentsInfo();
 
-	lock.unlock();
+	lock.Release();
 
 	return {true, ""};
 }
@@ -2158,7 +2158,7 @@ bool LLHlsStream::StopToSaveOldSegmentsInfo()
 	{
 		// stop to keep old segments in _chunklist_map
 		// shared lock
-		std::shared_lock<std::shared_mutex> chunk_lock(_chunklist_map_lock);
+		ov::SharedLockGuard chunk_lock(_chunklist_map_lock);
 		for (const auto &it : _chunklist_map)
 		{
 			auto chunklist = it.second;
@@ -2172,7 +2172,7 @@ bool LLHlsStream::StopToSaveOldSegmentsInfo()
 // Get dump info
 std::shared_ptr<const mdl::Dump> LLHlsStream::GetDumpInfo(const ov::String &dump_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	auto it = _dumps.find(dump_id);
 	if (it == _dumps.end())
 	{
@@ -2185,7 +2185,7 @@ std::shared_ptr<const mdl::Dump> LLHlsStream::GetDumpInfo(const ov::String &dump
 std::vector<std::shared_ptr<const mdl::Dump>> LLHlsStream::GetDumpInfoList()
 {
 	std::vector<std::shared_ptr<const mdl::Dump>> dump_list;
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (const auto &it : _dumps)
 	{
 		dump_list.push_back(it.second);

@@ -13,7 +13,7 @@ namespace pub
 
 		bool ExportRecordToXml(const ov::String path, const std::shared_ptr<info::Record> &record);
 
-		std::shared_mutex _mutex;
+		ov::SharedMutex _mutex;
 		;
 	};
 }  // namespace pub

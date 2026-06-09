@@ -151,8 +151,8 @@ namespace pvd
 		std::map<uint32_t, uint8_t> _ssrc_channel_id_map;
 
 		// CSeq : RequestMessage
-		std::mutex _response_subscriptions_lock;
-		std::unordered_map<uint32_t, std::shared_ptr<ResponseSubscription>> _response_subscriptions;
+		ov::Mutex _response_subscriptions_lock;
+		std::unordered_map<uint32_t, std::shared_ptr<ResponseSubscription>> _response_subscriptions OV_GUARDED_BY(_response_subscriptions_lock);
 		RtspDemuxer _rtsp_demuxer;
 
 		// Rtp

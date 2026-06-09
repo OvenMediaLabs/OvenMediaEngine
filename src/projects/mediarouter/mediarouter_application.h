@@ -134,27 +134,27 @@ private:
 	const info::Application _application_info;
 
 	// Information of Connector instance
-	std::vector<std::shared_ptr<MediaRouterApplicationConnector>> _connectors;
-	std::shared_mutex _connectors_lock;
+	std::vector<std::shared_ptr<MediaRouterApplicationConnector>> _connectors OV_GUARDED_BY(_connectors_lock);
+	ov::SharedMutex _connectors_lock;
 
 	// Information of Observer instance
-	std::vector<std::shared_ptr<MediaRouterApplicationObserver>> _observers;
-	std::shared_mutex _observers_lock;
+	std::vector<std::shared_ptr<MediaRouterApplicationObserver>> _observers OV_GUARDED_BY(_observers_lock);
+	ov::SharedMutex _observers_lock;
 
 	// Information of StreamTap instance, for performance reason, inbound/outbound stream taps are separated.
 	// stream_id -> StreamTap
-	std::multimap<uint32_t, std::shared_ptr<MediaRouterStreamTap>> _stream_taps;
-	std::shared_mutex _stream_taps_lock;
+	std::multimap<uint32_t, std::shared_ptr<MediaRouterStreamTap>> _stream_taps OV_GUARDED_BY(_stream_taps_lock);
+	ov::SharedMutex _stream_taps_lock;
 
 	// Information of MediaStream instance
 	// Inbound Streams
 	// Key : Stream.id
-	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _inbound_streams;
+	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _inbound_streams OV_GUARDED_BY(_streams_lock);
 
 	// Outbound Streams
 	// Key : Stream.id
-	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _outbound_streams;
-	std::shared_mutex _streams_lock;
+	std::map<uint32_t, std::shared_ptr<MediaRouteStream>> _outbound_streams OV_GUARDED_BY(_streams_lock);
+	ov::SharedMutex _streams_lock;
 
 private:
 	uint32_t GetWorkerIDByStreamID(info::stream_id_t stream_id);

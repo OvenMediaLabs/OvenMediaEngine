@@ -94,10 +94,10 @@ protected:
 	std::thread _thread;
 
 public:
-	std::mutex& GetDeviceMutex() {
+	ov::Mutex& GetDeviceMutex() {
 		return _device_mutex;
 	}
 protected:
 	// Global synchronization for specific hardware (Xilinx U30)
-	std::mutex _device_mutex;
+	ov::Mutex _device_mutex;
 };

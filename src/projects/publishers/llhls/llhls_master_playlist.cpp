@@ -72,7 +72,7 @@ bool LLHlsMasterPlaylist::AddMediaCandidateGroup(const std::shared_ptr<const Med
 		first = false;
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+	ov::LockGuard lock(_media_groups_guard);
 	_media_groups.emplace(new_group->_group_id, new_group);
 
 	return true;
@@ -88,7 +88,7 @@ bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo
 		media_group->_group_id = media_info._group_id;
 		first = true;
 
-		std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+		ov::LockGuard lock(_media_groups_guard);
 		_media_groups.emplace(media_group->_group_id, media_group);
 	}
 
@@ -120,7 +120,7 @@ bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo
 	new_media_info->_uri = media_info._uri;
 	new_media_info->_track = media_info._track;
 
-	std::lock_guard<std::shared_mutex> lock(_media_groups_guard);
+	ov::LockGuard lock(_media_groups_guard);
 	media_group->_media_infos.push_back(new_media_info);
 
 	return true;
@@ -247,7 +247,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 		return false;
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_stream_infos_guard);
+	ov::LockGuard lock(_stream_infos_guard);
 	_stream_infos.emplace_back(new_stream_info);
 
 	return true;
@@ -255,7 +255,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 
 std::shared_ptr<LLHlsMasterPlaylist::MediaGroup> LLHlsMasterPlaylist::GetMediaGroup(const ov::String &group_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_media_groups_guard);
+	ov::SharedLockGuard lock(_media_groups_guard);
 
 	auto it = _media_groups.find(group_id);
 	if (it == _media_groups.end())
@@ -276,13 +276,13 @@ void LLHlsMasterPlaylist::UpdateCacheForDefaultPlaylist()
 	ov::String playlist = MakePlaylist("", _default_legacy, _default_rewind, true);
 	{
 		// lock
-		std::lock_guard<std::shared_mutex> lock(_cached_default_playlist_guard);
+		ov::LockGuard lock(_cached_default_playlist_guard);
 		_cached_default_playlist = playlist;
 	}
 
 	{
 		// lock
-		std::lock_guard<std::shared_mutex> lock(_cached_default_playlist_gzip_guard);
+		ov::LockGuard lock(_cached_default_playlist_gzip_guard);
 		_cached_default_playlist_gzip = ov::Zip::CompressGzip(playlist.ToData(false));
 	}
 }
@@ -355,7 +355,7 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 
 	// Write EXT-X-MEDIA from _media_infos
 	// shared lock
-	std::shared_lock<std::shared_mutex> media_infos_lock(_media_groups_guard);
+	ov::ReleasableSharedLockGuard media_infos_lock(_media_groups_guard);
 	for (const auto &[group_id, media_group] : _media_groups)
 	{
 		if (media_group->_used == false)
@@ -446,7 +446,7 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 			playlist.AppendFormat("\"\n");
 		}
 	}
-	media_infos_lock.unlock();
+	media_infos_lock.Release();
 
 	playlist.AppendFormat("\n");
 
@@ -460,7 +460,7 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 
 	// Write EXT-X-STREAM-INF from _stream_infos
 	// shared lock
-	std::shared_lock<std::shared_mutex> stream_infos_lock(_stream_infos_guard);
+	ov::ReleasableSharedLockGuard stream_infos_lock(_stream_infos_guard);
 	for (const auto &stream_info : _stream_infos)
 	{
 		playlist.AppendFormat("#EXT-X-STREAM-INF:");
@@ -538,7 +538,7 @@ ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_strin
 
 		playlist.AppendFormat("\n");
 	}
-	stream_infos_lock.unlock();
+	stream_infos_lock.Release();
 
 	return playlist;
 }
@@ -547,7 +547,7 @@ ov::String LLHlsMasterPlaylist::ToString(const ov::String &chunk_query_string, b
 {
 	if (chunk_query_string.IsEmpty() && legacy == _default_legacy && rewind == _default_rewind && include_path == true && !_cached_default_playlist.IsEmpty())
 	{
-		std::shared_lock<std::shared_mutex> lock(_cached_default_playlist_guard);
+		ov::SharedLockGuard lock(_cached_default_playlist_guard);
 		return _cached_default_playlist;
 	}
 
@@ -558,7 +558,7 @@ std::shared_ptr<const ov::Data> LLHlsMasterPlaylist::ToGzipData(const ov::String
 {
 	if (chunk_query_string.IsEmpty() && legacy == _default_legacy && rewind == _default_rewind && _cached_default_playlist_gzip != nullptr)
 	{
-		std::shared_lock<std::shared_mutex> lock(_cached_default_playlist_gzip_guard);
+		ov::SharedLockGuard lock(_cached_default_playlist_gzip_guard);
 		return _cached_default_playlist_gzip;
 	}
 

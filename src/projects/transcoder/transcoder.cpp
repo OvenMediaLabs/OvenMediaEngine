@@ -116,7 +116,7 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 	}
 
 	{
-		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		ov::LockGuard lock(_transcode_apps_mutex);
 		_transcode_apps[application_id] = application;
 	}
 
@@ -125,7 +125,7 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 	{
 		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
-		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		ov::LockGuard lock(_transcode_apps_mutex);
 		_transcode_apps.erase(application_id);
 		return false;
 	}
@@ -136,7 +136,7 @@ bool Transcoder::OnCreateApplication(const info::Application &app_info)
 		logte("Could not register transcoder application to mediarouter. [%s]", app_info.GetVHostAppName().CStr());
 
 		_router->UnregisterObserverApp(app_info, application);
-		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		ov::LockGuard lock(_transcode_apps_mutex);
 		_transcode_apps.erase(application_id);
 		return false;
 	}
@@ -153,7 +153,7 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 
 	std::shared_ptr<TranscodeApplication> application;
 	{
-		std::unique_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+		ov::LockGuard lock(_transcode_apps_mutex);
 		auto it = _transcode_apps.find(application_id);
 		if (it == _transcode_apps.end())
 		{
@@ -188,7 +188,7 @@ bool Transcoder::OnDeleteApplication(const info::Application &app_info)
 //  Application Name으로 TranscodeApplication 찾음
 std::shared_ptr<TranscodeApplication> Transcoder::GetApplicationById(info::application_id_t application_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	ov::SharedLockGuard lock(_transcode_apps_mutex);
 	auto obj = _transcode_apps.find(application_id);
 	if (obj == _transcode_apps.end())
 	{
@@ -200,7 +200,7 @@ std::shared_ptr<TranscodeApplication> Transcoder::GetApplicationById(info::appli
 
 bool Transcoder::PauseEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	ov::SharedLockGuard lock(_transcode_apps_mutex);
 	for (auto &[id, app] : _transcode_apps)
 	{
 		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
@@ -213,7 +213,7 @@ bool Transcoder::PauseEncoders(const info::VHostAppName &vhost_app_name, const o
 
 bool Transcoder::ResumeEncoders(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	ov::SharedLockGuard lock(_transcode_apps_mutex);
 	for (auto &[id, app] : _transcode_apps)
 	{
 		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
@@ -226,7 +226,7 @@ bool Transcoder::ResumeEncoders(const info::VHostAppName &vhost_app_name, const 
 
 bool Transcoder::IsEncoderPaused(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	ov::SharedLockGuard lock(_transcode_apps_mutex);
 	for (auto &[id, app] : _transcode_apps)
 	{
 		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)
@@ -239,7 +239,7 @@ bool Transcoder::IsEncoderPaused(const info::VHostAppName &vhost_app_name, const
 
 std::vector<TranscodeEncoder::EncoderInfo> Transcoder::GetEncoderInfoList(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_transcode_apps_mutex);
+	ov::SharedLockGuard lock(_transcode_apps_mutex);
 	for (auto &[id, app] : _transcode_apps)
 	{
 		if (app && app->GetApplicationInfo().GetVHostAppName() == vhost_app_name)

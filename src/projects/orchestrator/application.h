@@ -54,10 +54,10 @@ namespace ocst
 		info::Application _app_info;
 
 		// Stream Name : Stream
-		std::map<ov::String, std::shared_ptr<pvd::Stream>> _provider_stream_map;
-		mutable std::shared_mutex _provider_stream_map_mutex;
-		std::map<ov::String, std::shared_ptr<pub::Stream>> _publisher_stream_map;
-		mutable std::shared_mutex _publisher_stream_map_mutex;
+		std::map<ov::String, std::shared_ptr<pvd::Stream>> _provider_stream_map OV_GUARDED_BY(_provider_stream_map_mutex);
+		mutable ov::SharedMutex _provider_stream_map_mutex;
+		std::map<ov::String, std::shared_ptr<pub::Stream>> _publisher_stream_map OV_GUARDED_BY(_publisher_stream_map_mutex);
+		mutable ov::SharedMutex _publisher_stream_map_mutex;
 
 		// unused timer 
 		ov::StopWatch _idle_timer;

@@ -441,7 +441,7 @@ namespace pvd
 			return nullptr;
 		}
 
-		std::lock_guard<std::mutex> lock(_stream_lock);
+		ov::LockGuard lock(_stream_lock);
 
 		// TODO(Getroot): Implement BlockDuplicateStreamName option
 		if (application->GetStreamByName(final_stream_name) != nullptr)
@@ -567,7 +567,7 @@ namespace pvd
 			return false;
 		}
 
-		std::lock_guard<std::mutex> lock(_stream_lock);
+		ov::LockGuard lock(_stream_lock);
 
 		// TODO(Getroot): Implement BlockDuplicateStreamName option
 		if (application->GetStreamByName(final_stream_name) != nullptr)
@@ -804,7 +804,7 @@ namespace pvd
 			return {http::StatusCode::NotFound, "Could not find application"};
 		}
 
-		std::lock_guard<std::mutex> lock(_stream_lock);
+		ov::LockGuard lock(_stream_lock);
 
 		if (application->GetStreamByName(final_stream_name) != nullptr)
 		{
@@ -979,7 +979,7 @@ namespace pvd
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_session_key_stream_map_guard);
+		ov::LockGuard lock(_session_key_stream_map_guard);
 
 		_session_key_stream_map.emplace(stream->GetSessionKey(), stream);
 
@@ -993,7 +993,7 @@ namespace pvd
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_session_key_stream_map_guard);
+		ov::LockGuard lock(_session_key_stream_map_guard);
 
 		auto item = _session_key_stream_map.find(session_key);
 		if (item == _session_key_stream_map.end())
@@ -1013,7 +1013,7 @@ namespace pvd
 			return nullptr;
 		}
 
-		std::shared_lock<std::shared_mutex> lock(_session_key_stream_map_guard);
+		ov::SharedLockGuard lock(_session_key_stream_map_guard);
 
 		auto item = _session_key_stream_map.find(session_key);
 		if (item == _session_key_stream_map.end())

@@ -69,8 +69,8 @@ private:
 	std::shared_ptr<const MediaTrack> _subtitle_track = nullptr;	// The subtitle track is used alone in MediaPlaylist
 
 	// Segment number : Segment
-	std::map<uint64_t, std::shared_ptr<base::modules::Segment>> _segments;
-	mutable std::shared_mutex _segments_mutex;
+	std::map<uint64_t, std::shared_ptr<base::modules::Segment>> _segments OV_GUARDED_BY(_segments_mutex);
+	mutable ov::SharedMutex _segments_mutex;
 	int64_t _wallclock_offset_ms = INT64_MIN;
 
 	bool _end_list = false;

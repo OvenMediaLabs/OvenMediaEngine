@@ -168,7 +168,7 @@ const info::Application &MediaRouteApplication::GetApplicationInfo() const
 // Called when an application is created
 bool MediaRouteApplication::RegisterConnectorApp(std::shared_ptr<MediaRouterApplicationConnector> connector)
 {
-	std::lock_guard<std::shared_mutex> lock(_connectors_lock);
+	ov::LockGuard lock(_connectors_lock);
 
 	if (connector == nullptr)
 	{
@@ -187,7 +187,7 @@ bool MediaRouteApplication::RegisterConnectorApp(std::shared_ptr<MediaRouterAppl
 // Called when an application is removed
 bool MediaRouteApplication::UnregisterConnectorApp(std::shared_ptr<MediaRouterApplicationConnector> connector)
 {
-	std::lock_guard<std::shared_mutex> lock(_connectors_lock);
+	ov::LockGuard lock(_connectors_lock);
 
 	if (!connector)
 	{
@@ -209,7 +209,7 @@ bool MediaRouteApplication::UnregisterConnectorApp(std::shared_ptr<MediaRouterAp
 
 bool MediaRouteApplication::RegisterObserverApp(std::shared_ptr<MediaRouterApplicationObserver> observer)
 {
-	std::lock_guard<std::shared_mutex> lock(_observers_lock);
+	ov::LockGuard lock(_observers_lock);
 
 	if (!observer)
 	{
@@ -225,7 +225,7 @@ bool MediaRouteApplication::RegisterObserverApp(std::shared_ptr<MediaRouterAppli
 
 bool MediaRouteApplication::UnregisterObserverApp(std::shared_ptr<MediaRouterApplicationObserver> observer)
 {
-	std::lock_guard<std::shared_mutex> lock(_observers_lock);
+	ov::LockGuard lock(_observers_lock);
 
 	if (!observer)
 	{
@@ -273,7 +273,7 @@ CommonErrorCode MediaRouteApplication::MirrorStream(std::shared_ptr<MediaRouterS
 	stream_tap->SetState(MediaRouterStreamTap::State::Tapped);
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_stream_taps_lock);
+		ov::LockGuard lock(_stream_taps_lock);
 		_stream_taps.insert(std::make_pair(stream_info->GetId(), stream_tap));
 	}
 
@@ -288,7 +288,7 @@ CommonErrorCode MediaRouteApplication::UnmirrorStream(const std::shared_ptr<Medi
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_stream_taps_lock);
+		ov::LockGuard lock(_stream_taps_lock);
 		auto it = _stream_taps.equal_range(stream_tap->GetStreamInfo()->GetId());
 		for (auto iter = it.first; iter != it.second; ++iter)
 		{
@@ -313,7 +313,7 @@ bool MediaRouteApplication::UnmirrorStream(const std::shared_ptr<info::Stream> &
 
 	// Change the state of the stream tap to UnTapped
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_taps_lock);
+		ov::SharedLockGuard lock(_stream_taps_lock);
 		auto it = _stream_taps.equal_range(stream->GetId());
 		for (auto iter = it.first; iter != it.second; ++iter)
 		{
@@ -323,7 +323,7 @@ bool MediaRouteApplication::UnmirrorStream(const std::shared_ptr<info::Stream> &
 
 	// Remove the stream tap from the list
 	{
-		std::lock_guard<std::shared_mutex> lock(_stream_taps_lock);
+		ov::LockGuard lock(_stream_taps_lock);
 		_stream_taps.erase(stream->GetId());
 	}
 
@@ -407,7 +407,7 @@ bool MediaRouteApplication::OnStreamCreated(const std::shared_ptr<MediaRouterApp
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(const std::shared_ptr<info::Stream> &stream_info)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
+	ov::LockGuard lock_guard(_streams_lock);
 
 	auto new_stream = std::make_shared<MediaRouteStream>(stream_info, cmn::MediaRouterStreamType::INBOUND);
 	if (!new_stream)
@@ -422,7 +422,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(con
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(const std::shared_ptr<info::Stream> &stream_info)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
+	ov::LockGuard lock_guard(_streams_lock);
 
 	// Since the publisher creates the stream by copying the stream_info, 
 	// it eventually loses the link to the original stream. 
@@ -458,9 +458,9 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 
 bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Stream> &stream_info, MediaRouterApplicationConnector::ConnectorType connector_type)
 {
-	std::shared_lock<std::shared_mutex> lock(_observers_lock);
+	ov::ReleasableSharedLockGuard lock(_observers_lock);
 	auto observers = _observers; // Avoid deadlock
-	lock.unlock();
+	lock.Release();
 
 	logti("[%s/%s(%u)] %sStream has been created", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId(), stream_info->IsInternal() ? "[Internal] " : "");
 
@@ -502,9 +502,9 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 
 bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStream> &stream)
 {
-	std::shared_lock<std::shared_mutex> lock(_observers_lock);
+	ov::ReleasableSharedLockGuard lock(_observers_lock);
 	auto observers = _observers;  // Avoid deadlock
-	lock.unlock();
+	lock.Release();
 
 	logti("[%s/%s(%u)] %sStream has been prepared %s", _application_info.GetVHostAppName().CStr(), stream->GetStream()->GetName().CStr(), stream->GetStream()->GetId(), stream->GetStream()->IsInternal() ? "[Internal] " : "", stream->GetStream()->GetInfoString().CStr());
 
@@ -651,7 +651,7 @@ bool MediaRouteApplication::DeleteInboundStream(const std::shared_ptr<info::Stre
 {
 	// Delete connected stream taps
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_taps_lock);
+		ov::SharedLockGuard lock(_stream_taps_lock);
 		auto it = _stream_taps.equal_range(stream_info->GetId());
 		for (auto iter = it.first; iter != it.second; ++iter)
 		{
@@ -664,14 +664,14 @@ bool MediaRouteApplication::DeleteInboundStream(const std::shared_ptr<info::Stre
 			}
 		}
 	}
-	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
+	ov::LockGuard lock_guard(_streams_lock);
 	_inbound_streams.erase(stream_info->GetId());
 
 	return true;
 }
 bool MediaRouteApplication::DeleteOutboundStream(const std::shared_ptr<info::Stream> &stream_info)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
+	ov::LockGuard lock_guard(_streams_lock);
 	_outbound_streams.erase(stream_info->GetId());
 
 	return true;
@@ -679,9 +679,9 @@ bool MediaRouteApplication::DeleteOutboundStream(const std::shared_ptr<info::Str
 
 bool MediaRouteApplication::NotifyStreamDeleted(const std::shared_ptr<info::Stream> &stream_info, const MediaRouterApplicationConnector::ConnectorType connector_type)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_observers_lock);
+	ov::ReleasableSharedLockGuard lock_guard(_observers_lock);
 	auto observers = _observers; // Avoid deadlock
-	lock_guard.unlock();
+	lock_guard.Release();
 
 	auto representation_type = stream_info->GetRepresentationType();
 
@@ -730,9 +730,9 @@ bool MediaRouteApplication::NotifyStreamDeleted(const std::shared_ptr<info::Stre
 
 bool MediaRouteApplication::NotifyStreamUpdated(const std::shared_ptr<info::Stream> &stream_info, const MediaRouterApplicationConnector::ConnectorType connector_type)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_observers_lock);
+	ov::ReleasableSharedLockGuard lock_guard(_observers_lock);
 	auto observers = _observers; // Avoid deadlock
-	lock_guard.unlock();
+	lock_guard.Release();
 
 	auto representation_type = stream_info->GetRepresentationType();
 
@@ -829,7 +829,7 @@ bool MediaRouteApplication::OnPacketReceived(const std::shared_ptr<MediaRouterAp
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetInboundStream(uint32_t stream_id)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_streams_lock);
+	ov::SharedLockGuard lock_guard(_streams_lock);
 
 	auto bucket = _inbound_streams.find(stream_id);
 	if (bucket == _inbound_streams.end())
@@ -842,7 +842,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetInboundStream(uint32
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetOutboundStream(uint32_t stream_id)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_streams_lock);
+	ov::SharedLockGuard lock_guard(_streams_lock);
 
 	auto bucket = _outbound_streams.find(stream_id);
 	if (bucket == _outbound_streams.end())
@@ -855,7 +855,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetOutboundStream(uint3
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetInboundStreamByName(const ov::String stream_name)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_streams_lock);
+	ov::SharedLockGuard lock_guard(_streams_lock);
 
 	for (const auto &item : _inbound_streams)
 	{
@@ -871,7 +871,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetInboundStreamByName(
 
 std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetOutboundStreamByName(const ov::String stream_name)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_streams_lock);
+	ov::SharedLockGuard lock_guard(_streams_lock);
 
 	for (const auto &item : _outbound_streams)
 	{
@@ -887,7 +887,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::GetOutboundStreamByName
 
 bool MediaRouteApplication::IsExistingInboundStream(ov::String stream_name)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_streams_lock);
+	ov::SharedLockGuard lock_guard(_streams_lock);
 
 	for (const auto &item : _inbound_streams)
 	{
@@ -942,9 +942,9 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 			NotifyStreamPrepared(stream);
 		}
 
-		std::shared_lock<std::shared_mutex> lock(_observers_lock);
+		ov::ReleasableSharedLockGuard lock(_observers_lock);
 		auto observers = _observers; // Avoid deadlock
-		lock.unlock();
+		lock.Release();
 		for (const auto &observer : observers)
 		{
 			auto observer_type = observer->GetObserverType();
@@ -961,7 +961,7 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 
 		// Mirror stream
 		{
-			std::shared_lock<std::shared_mutex> lock(_stream_taps_lock);
+			ov::SharedLockGuard lock(_stream_taps_lock);
 			auto it = _stream_taps.equal_range(stream->GetStream()->GetId());
 			for (auto iter = it.first; iter != it.second; ++iter)
 			{
@@ -1032,9 +1032,9 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 			NotifyStreamPrepared(stream);
 		}
 
-		std::shared_lock<std::shared_mutex> lock(_observers_lock);
+		ov::ReleasableSharedLockGuard lock(_observers_lock);
 		auto observers = _observers; // Avoid deadlock
-		lock.unlock();
+		lock.Release();
 		for (const auto &observer : observers)
 		{
 			auto observer_type = observer->GetObserverType();
@@ -1049,7 +1049,7 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 
 		// mirror stream
 		{
-			std::shared_lock<std::shared_mutex> lock(_stream_taps_lock);
+			ov::SharedLockGuard lock(_stream_taps_lock);
 			auto it = _stream_taps.equal_range(stream->GetStream()->GetId());
 			for (auto iter = it.first; iter != it.second; ++iter)
 			{

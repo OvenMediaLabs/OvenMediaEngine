@@ -15,7 +15,7 @@ namespace mon
 
 	void ServerMetrics::ShowInfo([[maybe_unused]] bool show_children)
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 		for (const auto &t : _hosts)
 		{
 			auto &host = t.second;
@@ -25,7 +25,7 @@ namespace mon
 
 	void ServerMetrics::Release()
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 		for (const auto &host : _hosts)
 		{
 			host.second->Release();
@@ -44,7 +44,7 @@ namespace mon
 
 	bool ServerMetrics::OnHostCreated(const info::Host &host_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_map_guard);
+		ov::LockGuard lock(_map_guard);
 		if (_hosts.find(host_info.GetId()) != _hosts.end())
 		{
 			return true;
@@ -65,7 +65,7 @@ namespace mon
 
 	bool ServerMetrics::OnHostDeleted(const info::Host &host_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_map_guard);
+		ov::LockGuard lock(_map_guard);
 		auto it = _hosts.find(host_info.GetId());
 
 		if (it == _hosts.end())
@@ -84,13 +84,13 @@ namespace mon
 
 	std::map<uint32_t, std::shared_ptr<HostMetrics>> ServerMetrics::GetHostMetricsList()
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 		return _hosts;
 	}
 
 	std::shared_ptr<HostMetrics> ServerMetrics::GetHostMetrics(info::host_id_t host_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_map_guard);
+		ov::SharedLockGuard lock(_map_guard);
 
 		auto host = _hosts.find(host_id);
 		if (host == _hosts.end())
@@ -116,7 +116,7 @@ namespace mon
 			return false;
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_queue_map_guard);
+		ov::LockGuard lock(_queue_map_guard);
 		_queues[queue_info.GetId()] = queue_metrics;
 
 		return true;
@@ -124,7 +124,7 @@ namespace mon
 
 	bool ServerMetrics::OnQueueDeleted(const info::ManagedQueue &queue_info)
 	{
-		std::unique_lock<std::shared_mutex> lock(_queue_map_guard);
+		ov::LockGuard lock(_queue_map_guard);
 
 		auto it = _queues.find(queue_info.GetId());
 		if (it == _queues.end())
@@ -197,14 +197,14 @@ namespace mon
 
 	std::map<uint32_t, std::shared_ptr<QueueMetrics>> ServerMetrics::GetQueueMetricsList()
 	{
-		std::shared_lock<std::shared_mutex> lock(_queue_map_guard);
+		ov::SharedLockGuard lock(_queue_map_guard);
 
 		return _queues;
 	}
 
 	std::shared_ptr<QueueMetrics> ServerMetrics::GetQueueMetrics(const info::ManagedQueue &queue_info)
 	{
-		std::shared_lock<std::shared_mutex> lock(_queue_map_guard);
+		ov::SharedLockGuard lock(_queue_map_guard);
 
 		auto queue = _queues.find(queue_info.GetId());
 

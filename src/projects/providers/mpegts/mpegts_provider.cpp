@@ -55,7 +55,7 @@ namespace pvd
 		// `SetPhysicalPortList()`.
 		decltype(_stream_port_map) stream_port_map_snapshot;
 		{
-			std::shared_lock lock(_stream_port_map_lock);
+			ov::SharedLockGuard lock(_stream_port_map_lock);
 			stream_port_map_snapshot = _stream_port_map;
 		}
 
@@ -128,7 +128,7 @@ namespace pvd
 
 	std::shared_ptr<MpegTsStreamPortItem> MpegTsProvider::GetDetachedStreamPortItem()
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_port_map_lock);
+		ov::SharedLockGuard lock(_stream_port_map_lock);
 
 		for (const auto &item : _stream_port_map)
 		{
@@ -170,7 +170,7 @@ namespace pvd
 		}
 
 		{
-			std::unique_lock lock_guard{_stream_port_map_lock};
+			ov::LockGuard lock_guard{_stream_port_map_lock};
 			_stream_port_map = std::move(stream_port_map);
 		}
 
@@ -198,7 +198,7 @@ namespace pvd
 	{
 		decltype(_stream_port_map) stream_port_map;
 		{
-			std::scoped_lock lock(_stream_port_map_lock);
+			ov::LockGuard lock(_stream_port_map_lock);
 			stream_port_map = std::move(_stream_port_map);
 		}
 
@@ -296,7 +296,7 @@ namespace pvd
 
 	bool MpegTsProvider::OnDeleteProviderApplication(const std::shared_ptr<Application> &application)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_port_map_lock);
+		ov::SharedLockGuard lock(_stream_port_map_lock);
 
 		for (const auto &item : _stream_port_map)
 		{
@@ -312,7 +312,7 @@ namespace pvd
 
 	std::shared_ptr<MpegTsStreamPortItem> MpegTsProvider::GetStreamPortItem(uint16_t local_port)
 	{
-		std::shared_lock<std::shared_mutex> lock(_stream_port_map_lock);
+		ov::SharedLockGuard lock(_stream_port_map_lock);
 
 		auto x = _stream_port_map.find(local_port);
 		if (x == _stream_port_map.end())

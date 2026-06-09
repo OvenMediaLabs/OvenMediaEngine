@@ -61,9 +61,9 @@ private:
 	// When `_track_set_filter_enabled` is `false`, no filtering is performed (full stream is forwarded).
 	// When `true`, only media packets whose track id is in `_allowed_track_ids` are forwarded;
 	// an empty `_allowed_track_ids` in this state drops every media packet.
-	mutable std::mutex _track_set_filter_mutex;
-	bool _track_set_filter_enabled = false;
-	std::set<uint32_t> _allowed_track_ids;
+	mutable ov::Mutex _track_set_filter_mutex;
+	bool _track_set_filter_enabled OV_GUARDED_BY(_track_set_filter_mutex) = false;
+	std::set<uint32_t> _allowed_track_ids OV_GUARDED_BY(_track_set_filter_mutex);
 	// Per fragment-group filter state. A "group" is the run of OvtPackets that
 	// together carry one serialized MediaPacket; only the first packet of a group
 	// contains the 4-byte track id at the start of its payload, so we cache the

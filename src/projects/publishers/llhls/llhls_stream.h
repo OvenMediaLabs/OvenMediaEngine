@@ -163,12 +163,12 @@ private:
 	bmff::FMP4Storage::Config _storage_config;
 
 	// Track ID : Storage
-	std::map<int32_t, std::shared_ptr<base::modules::SegmentStorage>> _storage_map;
-	mutable std::shared_mutex _storage_map_lock;
-	std::map<int32_t, std::shared_ptr<bmff::FMP4Packager>> _packager_map;
-	mutable std::shared_mutex _packager_map_lock;
-	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _chunklist_map;
-	mutable std::shared_mutex _chunklist_map_lock;
+	std::map<int32_t, std::shared_ptr<base::modules::SegmentStorage>> _storage_map OV_GUARDED_BY(_storage_map_lock);
+	mutable ov::SharedMutex _storage_map_lock;
+	std::map<int32_t, std::shared_ptr<bmff::FMP4Packager>> _packager_map OV_GUARDED_BY(_packager_map_lock);
+	mutable ov::SharedMutex _packager_map_lock;
+	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _chunklist_map OV_GUARDED_BY(_chunklist_map_lock);
+	mutable ov::SharedMutex _chunklist_map_lock;
 
 	uint64_t _max_chunk_duration_ms = 0;
 	uint64_t _min_chunk_duration_ms = std::numeric_limits<uint64_t>::max();
@@ -176,11 +176,11 @@ private:
 	double _configured_part_hold_back = 0;
 	bool _preload_hint_enabled = true;
 
-	std::map<ov::String, std::shared_ptr<LLHlsMasterPlaylist>> _master_playlists;
-	std::mutex _master_playlists_lock;
+	std::map<ov::String, std::shared_ptr<LLHlsMasterPlaylist>> _master_playlists OV_GUARDED_BY(_master_playlists_lock);
+	ov::Mutex _master_playlists_lock;
 
-	bool _playlist_ready = false;
-	mutable std::shared_mutex _playlist_ready_lock;
+	bool _playlist_ready OV_GUARDED_BY(_playlist_ready_lock) = false;
+	mutable ov::SharedMutex _playlist_ready_lock;
 
 	// Reserve
 	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
@@ -192,8 +192,8 @@ private:
 
 	uint32_t _worker_count = 0;
 
-	std::map<ov::String, std::shared_ptr<mdl::Dump>> _dumps;
-	std::shared_mutex _dumps_lock;
+	std::map<ov::String, std::shared_ptr<mdl::Dump>> _dumps OV_GUARDED_BY(_dumps_lock);
+	ov::SharedMutex _dumps_lock;
 
 	// DRM
 	[[maybe_unused]] bool _indentity_enabled = false; // for custom license server and player purposes
@@ -210,8 +210,8 @@ private:
 
 	// ConcludeLive
 	// Append #EXT-X-ENDLIST all chunklists, and no more update segment and chunklist
-	bool _concluded = false;
-	mutable std::shared_mutex _concluded_lock;
+	bool _concluded OV_GUARDED_BY(_concluded_lock) = false;
+	mutable ov::SharedMutex _concluded_lock;
 
 	// Subtitles, vtt
 	bool IsVttEnabled() const;
@@ -222,8 +222,8 @@ private:
 	bool _vtt_enabled = false;
 	int32_t _vtt_reference_track_id = -1; // track id of the reference track for VTT
 
-	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
-	mutable std::shared_mutex _vtt_packagers_lock;
+	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers OV_GUARDED_BY(_vtt_packagers_lock);
+	mutable ov::SharedMutex _vtt_packagers_lock;
 
 	bool CreateOriginSessionPool();
 };

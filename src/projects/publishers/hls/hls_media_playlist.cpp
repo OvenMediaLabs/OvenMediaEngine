@@ -48,7 +48,7 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Seg
 {
 	OV_ASSERT(_wallclock_offset_ms != INT64_MIN, "Wallclock offset is not set");
 
-	std::lock_guard<std::shared_mutex> lock(_segments_mutex);
+	ov::LockGuard lock(_segments_mutex);
 
 	logtt("HlsMediaPlaylist::OnSegmentCreated - number(%" PRIu64 ") url(%s) duration_us(%.3f)\n", segment->GetNumber(), segment->GetUrl().CStr(), segment->GetDurationMs());
 
@@ -64,7 +64,7 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Seg
 
 bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<base::modules::Segment> &segment)
 {
-	std::lock_guard<std::shared_mutex> lock(_segments_mutex);
+	ov::LockGuard lock(_segments_mutex);
 
 	logtt("HlsMediaPlaylist::OnSegmentDeleted - number(%" PRId64 ") url(%s) duration_ms(%.3f)\n", segment->GetNumber(), segment->GetUrl().CStr(), segment->GetDurationMs());
 
@@ -82,7 +82,7 @@ bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<base::modules::Seg
 
 ov::String HlsMediaPlaylist::ToString(bool rewind) const
 {
-	std::shared_lock<std::shared_mutex> lock(_segments_mutex);
+	ov::SharedLockGuard lock(_segments_mutex);
 
 	ov::String result = "#EXTM3U\n";
 
@@ -243,7 +243,7 @@ ov::String HlsMediaPlaylist::MakeSegmentString(const std::shared_ptr<base::modul
 
 std::shared_ptr<base::modules::Segment> HlsMediaPlaylist::GetLatestSegment() const
 {
-	std::shared_lock<std::shared_mutex> lock(_segments_mutex);
+	ov::SharedLockGuard lock(_segments_mutex);
 
 	if (_segments.empty() == true)
 	{
@@ -255,6 +255,6 @@ std::shared_ptr<base::modules::Segment> HlsMediaPlaylist::GetLatestSegment() con
 
 std::size_t HlsMediaPlaylist::GetSegmentCount() const
 {
-	std::shared_lock<std::shared_mutex> lock(_segments_mutex);
+	ov::SharedLockGuard lock(_segments_mutex);
 	return _segments.size();
 }

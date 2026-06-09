@@ -9,8 +9,6 @@
 
 #pragma once
 
-#include <mutex>
-
 #include <base/provider/push_provider/stream.h>
 
 #include "modules/ice/ice_port.h"
@@ -119,25 +117,25 @@ namespace pvd
 		std::shared_ptr<DtlsTransport>      _dtls_transport;
 
 		[[maybe_unused]] bool						_rtx_enabled = false;
-		std::shared_mutex					_start_stop_lock;
+		ov::SharedMutex						_start_stop_lock;
 
 		// CompositionTime extmap
 		bool _cts_extmap_enabled = false;
 		uint8_t _cts_extmap_id = 0;
-		std::map<int64_t, std::shared_ptr<MediaPacket>> _dts_ordered_frame_buffer;
-		H264BitstreamParser _h264_bitstream_parser;
+		std::map<int64_t, std::shared_ptr<MediaPacket>> _dts_ordered_frame_buffer OV_GUARDED_BY(_cts_reorder_lock);
+		H264BitstreamParser _h264_bitstream_parser OV_GUARDED_BY(_cts_reorder_lock);
 
 		// Track ID, Depacketizer
 		std::map<uint32_t, std::shared_ptr<RtpDepacketizingManager>> _depacketizers;
 
-		std::map<uint32_t, std::shared_ptr<ov::Data>> _h26x_extradata_nalu;
-		std::map<uint32_t, bool> _sent_sequence_header;
+		std::map<uint32_t, std::shared_ptr<ov::Data>> _h26x_extradata_nalu OV_GUARDED_BY(_sequence_header_lock);
+		std::map<uint32_t, bool> _sent_sequence_header OV_GUARDED_BY(_sequence_header_lock);
 
 		// Guards the DTS reorder buffer and H264 bitstream parser (cts path)
-		mutable std::mutex _cts_reorder_lock;
+		mutable ov::Mutex _cts_reorder_lock;
 
 		// Guards _h26x_extradata_nalu and _sent_sequence_header
-		mutable std::mutex _sequence_header_lock;
+		mutable ov::Mutex _sequence_header_lock;
 
 		// RID to track ID mapping
 		// Key: "mid:rid" when the SDP a=mid identifier is available (disambiguates across m= sections with reused RIDs),

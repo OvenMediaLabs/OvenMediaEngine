@@ -185,7 +185,7 @@ namespace pvd::rtmp
 
 		cfg::vhost::app::pvd::EventGenerator _event_generator_config;
 
-		mutable std::mutex _name_path_mutex;
-		info::NamePath _name_path;
+		mutable ov::Mutex _name_path_mutex;
+		info::NamePath _name_path OV_GUARDED_BY(_name_path_mutex);
 	};
 }  // namespace pvd::rtmp

@@ -119,7 +119,7 @@ namespace pub
 
 	std::shared_ptr<info::Push> PushApplication::GetPushById(ov::String id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_push_map_mutex);
+		ov::SharedLockGuard lock(_push_map_mutex);
 		auto it = _pushes.find(id);
 		if (it == _pushes.end())
 		{
@@ -159,7 +159,7 @@ namespace pub
 			push->SetSendTimeout(send_timeout);
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_push_map_mutex);
+		ov::LockGuard lock(_push_map_mutex);
 		_pushes[push->GetId()] = push;
 
 		return ov::Error::CreateError(PUSH_PUBLISHER_ERROR_DOMAIN, ErrorCode::Success, "Success");
@@ -197,7 +197,7 @@ namespace pub
 
 	std::vector<std::shared_ptr<info::Push>> PushApplication::GetPushesByStreamName(const ov::String streamName)
 	{
-		std::shared_lock<std::shared_mutex> lock(_push_map_mutex);
+		ov::SharedLockGuard lock(_push_map_mutex);
 		std::vector<std::shared_ptr<info::Push>> results;
 		for (auto &[id, push_info] : _pushes)
 		{
@@ -212,7 +212,7 @@ namespace pub
 
 	std::shared_ptr<ov::Error> PushApplication::GetPushes(const std::shared_ptr<info::Push> push, std::vector<std::shared_ptr<info::Push>> &results)
 	{
-		std::shared_lock<std::shared_mutex> lock(_push_map_mutex);
+		ov::SharedLockGuard lock(_push_map_mutex);
 
 		for (auto &[id, push_info] : _pushes)
 		{
@@ -309,7 +309,7 @@ namespace pub
 				{
 					// Copy the push list to the replication list.
 					// Avoid locking while starting/ending multiple pushes.
-					std::lock_guard<std::shared_mutex> lock(_push_map_mutex);
+					ov::LockGuard lock(_push_map_mutex);
 					std::copy(_pushes.begin(), _pushes.end(), std::inserter(replication_pushes, replication_pushes.begin()));
 				}
 
@@ -359,7 +359,7 @@ namespace pub
 
 				if (true)
 				{
-					std::unique_lock<std::shared_mutex> lock(_push_map_mutex);
+					ov::LockGuard lock(_push_map_mutex);
 					for (auto &push : remove_pushes)
 					{
 						auto stream = GetStream(push->GetStreamName());

@@ -84,13 +84,13 @@ bool OvtStream::Stop()
 		}
 	}
 
-	std::unique_lock<std::shared_mutex> mlock(_packetizer_lock);
+	ov::ReleasableLockGuard mlock(_packetizer_lock);
 	if(_packetizer != nullptr)
-	{	
+	{
 		_packetizer->Release();
 		_packetizer.reset();
 	}
-	mlock.unlock();
+	mlock.Release();
 
 	return Stream::Stop();
 }
@@ -212,7 +212,7 @@ void OvtStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	//logti("Recv Video Frame : pts(%" PRId64 ") data_len(%" PRId64 ")", media_packet->GetPts(), media_packet->GetDataLength());
 
 	// Callback OnOvtPacketized()
-	std::shared_lock<std::shared_mutex> mlock(_packetizer_lock);
+	ov::SharedLockGuard mlock(_packetizer_lock);
 	if(_packetizer != nullptr)
 	{
 		_packetizer->PacketizeMediaPacket(media_packet->GetPts(), media_packet);
@@ -227,7 +227,7 @@ void OvtStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 	}
 
 	// Callback OnOvtPacketized()
-	std::shared_lock<std::shared_mutex> mlock(_packetizer_lock);
+	ov::SharedLockGuard mlock(_packetizer_lock);
 	if(_packetizer != nullptr)
 	{
 		_packetizer->PacketizeMediaPacket(media_packet->GetPts(), media_packet);

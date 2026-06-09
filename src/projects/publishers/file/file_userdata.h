@@ -23,8 +23,8 @@ namespace pub
 		void DeleteByKey(ov::String record_id);
 
 	private:
-		std::shared_mutex _mutex;
+		ov::SharedMutex _mutex;
 		// <userdata_id, userdata>
-		std::map<ov::String, std::shared_ptr<info::Record>> _sets;
+		std::map<ov::String, std::shared_ptr<info::Record>> _sets OV_GUARDED_BY(_mutex);
 	};
 }  // namespace pub

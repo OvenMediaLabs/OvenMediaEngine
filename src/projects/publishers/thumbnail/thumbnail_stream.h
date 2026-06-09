@@ -25,7 +25,7 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
-	std::shared_mutex _encoded_frame_mutex;
-	std::map<cmn::MediaCodecId, std::shared_ptr<ov::Data>> _encoded_frames;
+	ov::SharedMutex _encoded_frame_mutex;
+	std::map<cmn::MediaCodecId, std::shared_ptr<ov::Data>> _encoded_frames OV_GUARDED_BY(_encoded_frame_mutex);
 	std::shared_ptr<mon::StreamMetrics> _stream_metrics;
 };

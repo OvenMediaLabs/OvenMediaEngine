@@ -238,7 +238,7 @@ bool RtcStream::Start()
 
 			pacer->SetAdaptiveController(_adaptive_delay_controller);
 
-			std::lock_guard<std::shared_mutex> lock(_pacers_lock);
+			ov::LockGuard lock(_pacers_lock);
 			_pacers[track->GetId()] = pacer;
 		}
 	}
@@ -266,7 +266,7 @@ bool RtcStream::Start()
 		auto rtc_master_playlist = CreateRtcMasterPlaylist(_default_playlist_name);
 
 		// lock
-		std::lock_guard<std::shared_mutex> lock(_rtc_master_playlist_map_lock);
+		ov::LockGuard lock(_rtc_master_playlist_map_lock);
 		_rtc_master_playlist_map[_default_playlist_name] = rtc_master_playlist;
 	}
 	else
@@ -303,12 +303,12 @@ bool RtcStream::Stop()
 		_pacer_scheduler->Stop();
 	}
 	{
-		std::lock_guard<std::shared_mutex> lock(_pacers_lock);
+		ov::LockGuard lock(_pacers_lock);
 		_pacers.clear();
 	}
 	_pacer_scheduler.reset();
 
-	std::lock_guard<std::shared_mutex> lock(_packetizers_lock);
+	ov::LockGuard lock(_packetizers_lock);
 	_packetizers.clear();
 
 	return Stream::Stop();
@@ -360,13 +360,13 @@ std::shared_ptr<const RtcMasterPlaylist> RtcStream::GetRtcMasterPlaylist(const o
 	std::shared_ptr<const RtcMasterPlaylist> rtc_master_playlist;
 
 	//lock
-	std::shared_lock<std::shared_mutex> lock(_rtc_master_playlist_map_lock);
+	ov::ReleasableSharedLockGuard lock(_rtc_master_playlist_map_lock);
 	auto it = _rtc_master_playlist_map.find(file_name);
 	if (it != _rtc_master_playlist_map.end())
 	{
 		rtc_master_playlist = it->second;
 	}
-	lock.unlock();
+	lock.Release();
 
 	if (rtc_master_playlist == nullptr)
 	{
@@ -377,7 +377,7 @@ std::shared_ptr<const RtcMasterPlaylist> RtcStream::GetRtcMasterPlaylist(const o
 		}
 
 		// lock
-		std::lock_guard<std::shared_mutex> lock(_rtc_master_playlist_map_lock);
+		ov::LockGuard write_lock(_rtc_master_playlist_map_lock);
 		_rtc_master_playlist_map[file_name] = rtc_master_playlist;
 	}
 
@@ -434,13 +434,13 @@ std::shared_ptr<const SessionDescription> RtcStream::GetSessionDescription(const
 
 	std::shared_ptr<const SessionDescription> offer_sdp;
 	//lock
-	std::shared_lock<std::shared_mutex> lock(_offer_sdp_lock);
+	ov::ReleasableSharedLockGuard lock(_offer_sdp_lock);
 	auto it = _offer_sdp_map.find(file_name);
 	if (it != _offer_sdp_map.end())
 	{
 		offer_sdp = it->second;
 	}
-	lock.unlock();
+	lock.Release();
 
 	if (offer_sdp == nullptr)
 	{
@@ -451,7 +451,7 @@ std::shared_ptr<const SessionDescription> RtcStream::GetSessionDescription(const
 		}
 
 		// lock
-		std::lock_guard<std::shared_mutex> lock(_offer_sdp_lock);
+		ov::LockGuard write_lock(_offer_sdp_lock);
 		_offer_sdp_map[file_name] = offer_sdp;
 	}
 
@@ -796,7 +796,7 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 bool RtcStream::PushToPacer(const std::shared_ptr<MediaPacket> &media_packet,
 							std::chrono::steady_clock::time_point arrival_time)
 {
-	std::shared_lock<std::shared_mutex> lock(_pacers_lock);
+	ov::SharedLockGuard lock(_pacers_lock);
 	auto it = _pacers.find(media_packet->GetTrackId());
 	if (it == _pacers.end())
 	{
@@ -1034,13 +1034,13 @@ void RtcStream::AddPacketizer(const std::shared_ptr<const MediaTrack> &track)
 		packetizer->SetPlayoutDelay(_playout_delay_min, _playout_delay_max);
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_packetizers_lock);
+	ov::LockGuard lock(_packetizers_lock);
 	_packetizers[track->GetId()] = packetizer;
 }
 
 std::shared_ptr<RtpPacketizer> RtcStream::GetPacketizer(uint32_t id)
 {
-	std::shared_lock<std::shared_mutex> lock(_packetizers_lock);
+	ov::SharedLockGuard lock(_packetizers_lock);
 	auto it = _packetizers.find(id);
 	if (it == _packetizers.end())
 	{

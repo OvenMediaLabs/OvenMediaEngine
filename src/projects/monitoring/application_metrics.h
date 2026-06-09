@@ -3,8 +3,6 @@
 //
 #pragma once
 
-#include <shared_mutex>
-
 #include "base/common_types.h"
 #include "base/info/info.h"
 #include "common_metrics.h"
@@ -37,7 +35,7 @@ namespace mon
 
 		void Release()
 		{
-			std::unique_lock<std::shared_mutex> lock(_streams_guard);
+			ov::LockGuard lock(_streams_guard);
 			_streams.clear();
 		}
 
@@ -67,10 +65,10 @@ namespace mon
 
 	private:
 		std::shared_ptr<HostMetrics> _host_metrics;
-		std::shared_mutex _streams_guard;
-		std::map<uint32_t, std::shared_ptr<StreamMetrics>> _streams;
+		ov::SharedMutex _streams_guard;
+		std::map<uint32_t, std::shared_ptr<StreamMetrics>> _streams OV_GUARDED_BY(_streams_guard);
 
-		mutable std::shared_mutex _reserved_streams_guard;
-		std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> _reserved_streams;
+		mutable ov::SharedMutex _reserved_streams_guard;
+		std::map<uint32_t, std::shared_ptr<ReservedStreamMetrics>> _reserved_streams OV_GUARDED_BY(_reserved_streams_guard);
 	};
 }  // namespace mon

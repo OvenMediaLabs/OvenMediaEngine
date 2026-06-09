@@ -149,7 +149,7 @@ namespace ocst
 		}
 
 		{
-			std::lock_guard<std::shared_mutex> lock(_virtual_host_mutex);
+			ov::LockGuard lock(_virtual_host_mutex);
 			_virtual_host_list.clear();
 			_virtual_host_map.clear();
 		}
@@ -359,20 +359,20 @@ namespace ocst
 		// lookup and the app-delete notifications below.
 		// The actual application-delete logic lives in `DeleteApplicationInternal()`;
 		// this method is the locking wrapper for that path.
-		std::scoped_lock lock(_late_module_registration_mutex);
+		ov::LockGuard lock(_late_module_registration_mutex);
 
 		return DeleteApplicationInternal(vhost_name, app_id);
 	}
 
 	std::vector<std::shared_ptr<ocst::VirtualHost>> Orchestrator::GetVirtualHostList() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_virtual_host_mutex);
+		ov::SharedLockGuard lock(_virtual_host_mutex);
 		return _virtual_host_list;
 	}
 
 	std::vector<Module> Orchestrator::GetModuleList() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_module_list_mutex);
+		ov::SharedLockGuard lock(_module_list_mutex);
 		return _module_list;
 	}
 
@@ -397,7 +397,7 @@ namespace ocst
 		}
 
 		auto try_insert_module = [&]() -> bool {
-			std::scoped_lock lock(_module_list_mutex);
+			ov::LockGuard lock(_module_list_mutex);
 
 			for (auto &module : _module_list)
 			{
@@ -434,7 +434,7 @@ namespace ocst
 
 		// Serialize against `CreateApplication()` / `DeleteApplication()`
 		// so the new module sees exactly one create/delete pair per application.
-		std::scoped_lock lock(_late_module_registration_mutex);
+		ov::LockGuard lock(_late_module_registration_mutex);
 
 		// Before `StartServer()`, the normal `CreateApplication()` path will notify this module
 		// during server start, so just insert.
@@ -550,7 +550,7 @@ namespace ocst
 		}
 
 		{
-			std::lock_guard<std::shared_mutex> lock(_module_list_mutex);
+			ov::LockGuard lock(_module_list_mutex);
 			for (auto info = _module_list.begin(); info != _module_list.end(); ++info)
 			{
 				if (info->GetModuleInterface() == module_interface)
@@ -1125,7 +1125,7 @@ namespace ocst
 
 		// Find the provider
 		{
-			std::shared_lock<std::shared_mutex> guard(_module_list_mutex);
+			ov::SharedLockGuard guard(_module_list_mutex);
 			for (const auto &module : _module_list)
 			{
 				if (module.GetType() == ModuleType::PullProvider)
@@ -1189,7 +1189,7 @@ namespace ocst
 			// Serialize existence check, vhost insertion, and module notifications against late
 			// `RegisterModule()` and `DeleteVirtualHost()`. Scoped so monitoring runs outside the
 			// lock - it does not participate in the serialization invariant.
-			std::scoped_lock lock(_late_module_registration_mutex);
+			ov::LockGuard lock(_late_module_registration_mutex);
 
 			if (GetVirtualHost(vhost_info.GetName()) != nullptr)
 			{
@@ -1200,7 +1200,7 @@ namespace ocst
 			auto vhost = std::make_shared<VirtualHost>(vhost_info);
 
 			{
-				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				ov::LockGuard guard(_virtual_host_mutex);
 				_virtual_host_map[vhost_info.GetName()] = vhost;
 				_virtual_host_list.push_back(vhost);
 			}
@@ -1237,10 +1237,10 @@ namespace ocst
 			// Serialize vhost removal and module notifications against late `RegisterModule()` and
 			// `CreateVirtualHost()`. Scoped so monitoring runs outside the lock - it does not
 			// participate in the serialization invariant.
-			std::scoped_lock lock(_late_module_registration_mutex);
+			ov::LockGuard lock(_late_module_registration_mutex);
 
 			{
-				std::lock_guard<std::shared_mutex> guard(_virtual_host_mutex);
+				ov::LockGuard guard(_virtual_host_mutex);
 				auto it = _virtual_host_list.begin();
 				while (it != _virtual_host_list.end())
 				{
@@ -1382,7 +1382,7 @@ namespace ocst
 
 	std::shared_ptr<ocst::VirtualHost> Orchestrator::GetVirtualHost(const ov::String &vhost_name)
 	{
-		std::shared_lock<std::shared_mutex> guard(_virtual_host_mutex);
+		ov::SharedLockGuard guard(_virtual_host_mutex);
 		auto vhost_item = _virtual_host_map.find(vhost_name);
 		if (vhost_item == _virtual_host_map.end())
 		{
@@ -1394,7 +1394,7 @@ namespace ocst
 
 	std::shared_ptr<const ocst::VirtualHost> Orchestrator::GetVirtualHost(const ov::String &vhost_name) const
 	{
-		std::shared_lock<std::shared_mutex> guard(_virtual_host_mutex);
+		ov::SharedLockGuard guard(_virtual_host_mutex);
 		auto vhost_item = _virtual_host_map.find(vhost_name);
 		if (vhost_item == _virtual_host_map.end())
 		{
@@ -1487,7 +1487,7 @@ namespace ocst
 			// registration - so a concurrent `DeleteApplication()` cannot interleave between
 			// app creation and observer registration. Scoped so the rollback path at the
 			// bottom can re-enter `DeleteApplication()` without recursive locking.
-			std::scoped_lock lock(_late_module_registration_mutex);
+			ov::LockGuard lock(_late_module_registration_mutex);
 
 			auto vhost = GetVirtualHost(vhost_name);
 			if (vhost == nullptr)

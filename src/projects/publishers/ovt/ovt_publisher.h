@@ -63,13 +63,13 @@ private:
 	std::shared_ptr<OvtDepacketizer> GetDepacketizer(int remote_id);
 	bool RemoveDepacketizer(int remote_id);
 
-	std::mutex _server_port_list_mutex;
-	std::vector<std::shared_ptr<PhysicalPort>> _server_port_list;
+	ov::Mutex _server_port_list_mutex;
+	std::vector<std::shared_ptr<PhysicalPort>> _server_port_list OV_GUARDED_BY(_server_port_list_mutex);
 
 	// remote id : depacketizer
-	std::mutex _depacketizers_lock;
-	std::map<int, std::shared_ptr<OvtDepacketizer>> _depacketizers;
+	ov::Mutex _depacketizers_lock;
+	std::map<int, std::shared_ptr<OvtDepacketizer>> _depacketizers OV_GUARDED_BY(_depacketizers_lock);
 	// When a client is disconnected ungracefully, this map helps to find stream and delete the session quickly
-	std::multimap<int, std::shared_ptr<OvtStream>> _remote_stream_map;
-	std::shared_mutex _remote_stream_map_lock;
+	std::multimap<int, std::shared_ptr<OvtStream>> _remote_stream_map OV_GUARDED_BY(_remote_stream_map_lock);
+	ov::SharedMutex _remote_stream_map_lock;
 };

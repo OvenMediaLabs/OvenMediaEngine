@@ -89,7 +89,7 @@ namespace pvd
 
 	bool WebRTCStream::Start()
 	{
-		std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+		ov::LockGuard lock(_start_stop_lock);
 
 		logtt("[WebRTC Provider] Local SDP");
 		logtt("%s\n", _local_sdp->ToString().CStr());
@@ -721,7 +721,7 @@ namespace pvd
 		bool result;
 
 		{
-			std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+			ov::LockGuard lock(_start_stop_lock);
 
 			if (GetState() == Stream::State::STOPPED || GetState() == Stream::State::TERMINATED)
 			{
@@ -783,7 +783,7 @@ namespace pvd
 		// To DTLS -> SRTP -> RTP|RTCP -> WebRTCStream::OnRtxpReceived
 
 		//It must not be called during start and stop.
-		std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+		ov::SharedLockGuard lock(_start_stop_lock);
 
 		return SendDataToPrevNode(data);
 	}
@@ -845,7 +845,7 @@ namespace pvd
 				packet_type = cmn::PacketType::NALU;
 				// CTS/DTS reorder is implemented for H264 only; H265 is sent without reordering
 				{
-					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					ov::LockGuard lock(_sequence_header_lock);
 					// Keep refreshing until the parameter sets are actually collected
 					auto it = _h26x_extradata_nalu.find(track->GetId());
 					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
@@ -861,7 +861,7 @@ namespace pvd
 				packet_type = cmn::PacketType::NALU;
 				cts_enabled = _cts_extmap_enabled == true;
 				{
-					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					ov::LockGuard lock(_sequence_header_lock);
 					// Keep refreshing until the parameter sets are actually collected
 					auto it = _h26x_extradata_nalu.find(track->GetId());
 					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
@@ -930,7 +930,7 @@ namespace pvd
 			std::vector<std::shared_ptr<MediaPacket>> frames_to_send;
 			{
 				// Guards the DTS reorder buffer and the H264 parser only.
-				std::lock_guard<std::mutex> lock(_cts_reorder_lock);
+				ov::LockGuard lock(_cts_reorder_lock);
 
 				// PTS order to DTS order
 				// Q and Flush (if slice type is I or P)
@@ -986,7 +986,7 @@ namespace pvd
 
 		// Guard the sequence-header check-and-set. SendFrame stays outside the lock.
 		{
-			std::lock_guard<std::mutex> lock(_sequence_header_lock);
+			ov::LockGuard lock(_sequence_header_lock);
 
 			bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
 

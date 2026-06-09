@@ -86,7 +86,7 @@ void ThumbnailStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_p
 		return;
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_encoded_frame_mutex);
+	ov::LockGuard lock(_encoded_frame_mutex);
 	if (media_packet->GetData() != nullptr)
 	{
 		_encoded_frames[track->GetCodecId()] = media_packet->GetData()->Clone();
@@ -108,7 +108,7 @@ std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCode
 	{
 		if (true)
 		{
-			std::shared_lock<std::shared_mutex> lock(_encoded_frame_mutex);
+			ov::SharedLockGuard lock(_encoded_frame_mutex);
 			auto it = _encoded_frames.find(codec_id);
 			if (it != _encoded_frames.end())
 			{

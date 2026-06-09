@@ -37,9 +37,9 @@ private:
 
 	bool _default_option_rewind = true;
 
-	std::vector<std::shared_ptr<HlsMediaPlaylist>> _media_playlists;
-	mutable std::shared_mutex _media_playlists_mutex;
+	std::vector<std::shared_ptr<HlsMediaPlaylist>> _media_playlists OV_GUARDED_BY(_media_playlists_mutex);
+	mutable ov::SharedMutex _media_playlists_mutex;
 
-	std::vector<std::shared_ptr<HlsMediaPlaylist>> _vtt_playlists;
-	mutable std::shared_mutex _vtt_playlists_mutex;
+	std::vector<std::shared_ptr<HlsMediaPlaylist>> _vtt_playlists OV_GUARDED_BY(_vtt_playlists_mutex);
+	mutable ov::SharedMutex _vtt_playlists_mutex;
 };

@@ -466,14 +466,14 @@ namespace pub
 
 	void FileSession::SetRecord(std::shared_ptr<info::Record> &record)
 	{
-		std::lock_guard<std::shared_mutex> mlock(_record_mutex);
+		ov::LockGuard mlock(_record_mutex);
 
 		_record = record;
 	}
 
 	std::shared_ptr<info::Record> FileSession::GetRecord()
 	{
-		std::shared_lock<std::shared_mutex> mlock(_record_mutex);
+		ov::SharedLockGuard mlock(_record_mutex);
 		return _record;
 	}
 
@@ -569,7 +569,7 @@ namespace pub
 
 	std::shared_ptr<ffmpeg::Writer> FileSession::CreateWriter()
 	{
-		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
+		ov::LockGuard lock(_writer_mutex);
 		if (_writer != nullptr)
 		{
 			_writer->Stop();
@@ -587,7 +587,7 @@ namespace pub
 
 	void FileSession::DestroyWriter()
 	{
-		std::lock_guard<std::shared_mutex> lock(_writer_mutex);
+		ov::LockGuard lock(_writer_mutex);
 		if (_writer != nullptr)
 		{
 			_writer->Stop();
@@ -597,7 +597,7 @@ namespace pub
 
 	std::shared_ptr<ffmpeg::Writer> FileSession::GetWriter()
 	{
-		std::shared_lock<std::shared_mutex> lock(_writer_mutex);
+		ov::SharedLockGuard lock(_writer_mutex);
 		return _writer;
 	}
 

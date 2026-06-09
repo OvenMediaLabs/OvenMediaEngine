@@ -66,20 +66,20 @@ namespace pvd
 
     std::shared_ptr<const Schedule> ScheduledStream::PeekSchedule() const
     {
-        std::shared_lock<std::shared_mutex> lock(_schedule_mutex);
+        ov::SharedLockGuard lock(_schedule_mutex);
         return _schedule;
     }
 
     std::shared_ptr<Schedule> ScheduledStream::GetSchedule() const
     {
-        std::shared_lock<std::shared_mutex> lock(_schedule_mutex);
+        ov::SharedLockGuard lock(_schedule_mutex);
         _schedule_updated.Reset();
         return _schedule;
     }
 
     bool ScheduledStream::GetCurrentProgram(std::shared_ptr<Schedule::Program> &curr_program, std::shared_ptr<Schedule::Item> &curr_item, int64_t &curr_item_pos) const
     {
-        std::shared_lock<std::shared_mutex> lock(_current_mutex);
+        ov::SharedLockGuard lock(_current_mutex);
         curr_program = _current_program;
         curr_item = _current_item;
         curr_item_pos = _current_item_position_ms;
@@ -89,7 +89,7 @@ namespace pvd
 
     bool ScheduledStream::UpdateSchedule(const std::shared_ptr<Schedule> &schedule)
     {
-        std::lock_guard<std::shared_mutex> lock(_schedule_mutex);
+        ov::LockGuard lock(_schedule_mutex);
         _schedule = schedule;
 
         _schedule_updated.SetEvent();
@@ -99,7 +99,7 @@ namespace pvd
     bool ScheduledStream::CheckCurrentProgramChanged()
     {
         // Check if pointer is same
-        std::shared_lock<std::shared_mutex> lock(_current_mutex);
+        ov::SharedLockGuard lock(_current_mutex);
 
         if (GetSchedule() == nullptr)
         {
@@ -131,7 +131,7 @@ namespace pvd
     bool ScheduledStream::CheckCurrentFallbackProgramChanged()
     {
         // Check if pointer is same
-        std::shared_lock<std::shared_mutex> lock(_current_mutex);
+        ov::SharedLockGuard lock(_current_mutex);
 
         if (GetSchedule() == nullptr)
         {
@@ -249,12 +249,13 @@ namespace pvd
         while (_worker_thread_running.load())
         {
             // Schedule
-            std::unique_lock<std::shared_mutex> guard(_current_mutex);
-            _current_schedule = GetSchedule();
-            _current_program = nullptr;
-            _current_item = nullptr;
-            _current_item_position_ms = 0;
-            guard.unlock();
+            {
+                ov::LockGuard guard(_current_mutex);
+                _current_schedule = GetSchedule();
+                _current_program = nullptr;
+                _current_item = nullptr;
+                _current_item_position_ms = 0;
+            }
 
             if (_current_schedule == nullptr)
             {
@@ -265,10 +266,11 @@ namespace pvd
             }
 
             // Programs
-            guard.lock();
-            _current_program = _current_schedule->GetCurrentProgram();
-            _fallback_program = _current_schedule->GetFallbackProgram();
-            guard.unlock();
+            {
+                ov::LockGuard guard(_current_mutex);
+                _current_program = _current_schedule->GetCurrentProgram();
+                _fallback_program = _current_schedule->GetFallbackProgram();
+            }
             if (_current_program == nullptr)
             {
                 PlayFallbackOrWait();
@@ -285,26 +287,28 @@ namespace pvd
 			bool first_item = true;
             while (_worker_thread_running.load())
             {
-                guard.lock();
-                _current_item = nullptr;
-                guard.unlock();
-                
+                {
+                    ov::LockGuard guard(_current_mutex);
+                    _current_item = nullptr;
+                }
+
                 if (CheckCurrentProgramChanged() == true)
                 {
                     logti("Scheduled Channel %s/%s: Program changed", GetApplicationName(), GetName().CStr());
                     break;
                 }
 
-                guard.lock();
-				if (first_item == true)
-				{
-					_current_item = _current_program->GetFirstItemWithPosition();
-				}
-                else
-				{
-					_current_item = _current_program->GetNextItem();
-				}
-                guard.unlock();
+                {
+                    ov::LockGuard guard(_current_mutex);
+                    if (first_item == true)
+                    {
+                        _current_item = _current_program->GetFirstItemWithPosition();
+                    }
+                    else
+                    {
+                        _current_item = _current_program->GetNextItem();
+                    }
+                }
 
                 if (_current_item == nullptr)
                 {
@@ -644,9 +648,9 @@ namespace pvd
             auto single_file_dts_ms = static_cast<double>(single_file_dts) * track->GetTimeBase().GetExpr() * 1000.0;
 			auto single_file_duration_ms = single_file_dts_ms + static_cast<double>(duration) * track->GetTimeBase().GetExpr() * 1000.0;
 
-            std::unique_lock<std::shared_mutex> lock(_current_mutex);
+            ov::ReleasableLockGuard lock(_current_mutex);
             _current_item_position_ms = single_file_duration_ms;
-            lock.unlock();
+            lock.Release();
 
              // Get current play time
             if (item->_duration_ms >= 0)
@@ -1082,9 +1086,9 @@ namespace pvd
             // dts to real time (ms)
             auto single_file_dts_ms = static_cast<double>(single_file_dts) * track->GetTimeBase().GetExpr() * static_cast<double>(1000);
 
-            std::unique_lock<std::shared_mutex> lock(_current_mutex);
+            ov::ReleasableLockGuard lock(_current_mutex);
             _current_item_position_ms = single_file_dts_ms;
-            lock.unlock();
+            lock.Release();
 
             // Get current play time
             if (item->_duration_ms >= 0)

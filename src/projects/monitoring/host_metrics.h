@@ -8,8 +8,6 @@
 //==============================================================================
 #pragma once
 
-#include <shared_mutex>
-
 #include "application_metrics.h"
 #include "base/common_types.h"
 #include "base/info/host.h"
@@ -34,7 +32,7 @@ namespace mon
 		{
 			std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> applications;
 			{
-				std::unique_lock<std::shared_mutex> lock(_map_guard);
+				ov::LockGuard lock(_map_guard);
 				applications = std::move(_applications);
 			}
 
@@ -59,7 +57,7 @@ namespace mon
 		}
 
 	private:
-		std::shared_mutex _map_guard;
-		std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> _applications;
+		ov::SharedMutex _map_guard;
+		std::map<uint32_t, std::shared_ptr<ApplicationMetrics>> _applications OV_GUARDED_BY(_map_guard);
 	};
 }  // namespace mon

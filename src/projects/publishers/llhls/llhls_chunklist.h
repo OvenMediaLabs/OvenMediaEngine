@@ -274,24 +274,24 @@ private:
 	std::atomic<int64_t> _last_partial_segment_sequence = -1;
 
 	// Segment number, SegmentInfo
-	std::map<int64_t, std::shared_ptr<SegmentInfo>> _segments;
+	std::map<int64_t, std::shared_ptr<SegmentInfo>> _segments OV_GUARDED_BY(_segments_guard);
 
 	// old_segments is for only HLS dump
-	std::map<int64_t, std::shared_ptr<SegmentInfo>> _old_segments;
-	mutable std::shared_mutex _segments_guard;
+	std::map<int64_t, std::shared_ptr<SegmentInfo>> _old_segments OV_GUARDED_BY(_segments_guard);
+	mutable ov::SharedMutex _segments_guard;
 
 	bool _keep_old_segments = false;
 
 	bool _first_segment = true;
 
-	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _renditions;
-	mutable std::shared_mutex _renditions_guard;
+	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _renditions OV_GUARDED_BY(_renditions_guard);
+	mutable ov::SharedMutex _renditions_guard;
 
-	ov::String _cached_default_chunklist;
-	mutable std::shared_mutex _cached_default_chunklist_guard;
+	ov::String _cached_default_chunklist OV_GUARDED_BY(_cached_default_chunklist_guard);
+	mutable ov::SharedMutex _cached_default_chunklist_guard;
 
-	std::shared_ptr<ov::Data> _cached_default_chunklist_gzip;
-	mutable std::shared_mutex _cached_default_chunklist_gzip_guard;
+	std::shared_ptr<ov::Data> _cached_default_chunklist_gzip OV_GUARDED_BY(_cached_default_chunklist_gzip_guard);
+	mutable ov::SharedMutex _cached_default_chunklist_gzip_guard;
 
 	bmff::CencProperty _cenc_property;
 

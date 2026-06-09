@@ -151,7 +151,7 @@ namespace pub
 
 	std::shared_ptr<SrtPlaylist> SrtStream::GetSrtPlaylist(const ov::String &file_name)
 	{
-		std::shared_lock lock(_srt_playlist_map_mutex);
+		ov::SharedLockGuard lock(_srt_playlist_map_mutex);
 
 		return GetSrtPlaylistInternal(file_name);
 	}
@@ -220,7 +220,7 @@ namespace pub
 
 	bool SrtStream::Start()
 	{
-		std::unique_lock lock(_srt_playlist_map_mutex);
+		ov::LockGuard lock(_srt_playlist_map_mutex);
 
 		if (GetState() != Stream::State::CREATED)
 		{
@@ -369,7 +369,7 @@ namespace pub
 
 	bool SrtStream::Stop()
 	{
-		std::unique_lock lock(_srt_playlist_map_mutex);
+		ov::LockGuard lock(_srt_playlist_map_mutex);
 
 		if (GetState() != Stream::State::STARTED)
 		{
@@ -400,7 +400,7 @@ namespace pub
 
 	void SrtStream::EnqueuePacket(const std::shared_ptr<MediaPacket> &media_packet)
 	{
-		std::shared_lock lock(_srt_playlist_map_mutex);
+		ov::SharedLockGuard lock(_srt_playlist_map_mutex);
 
 		if (GetState() != Stream::State::STARTED)
 		{

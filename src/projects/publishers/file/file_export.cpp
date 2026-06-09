@@ -19,7 +19,7 @@ namespace pub
 
 	bool FileExport::ExportRecordToXml(const ov::String path, const std::shared_ptr<info::Record> &record)
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		pugi::xml_document doc;
 

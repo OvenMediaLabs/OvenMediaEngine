@@ -55,7 +55,7 @@ bool LLHlsPublisher::PrepareHttpServers(
 			},
 			worker_count))
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 		_http_server_list = std::move(http_server_list);
 		_https_server_list = std::move(https_server_list);
 
@@ -112,10 +112,10 @@ bool LLHlsPublisher::Start()
 
 bool LLHlsPublisher::Stop()
 {
-	_http_server_list_mutex.lock();
+	ov::ReleasableLockGuard lock(_http_server_list_mutex);
 	auto http_server_list = std::move(_http_server_list);
 	auto https_server_list = std::move(_https_server_list);
-	_http_server_list_mutex.unlock();
+	lock.Release();
 
 	auto http_server_manager = http::svr::HttpServerManager::GetInstance();
 
@@ -132,7 +132,7 @@ bool LLHlsPublisher::OnCreateHost(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{
@@ -153,7 +153,7 @@ bool LLHlsPublisher::OnDeleteHost(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{
@@ -174,7 +174,7 @@ bool LLHlsPublisher::OnUpdateCertificate(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{

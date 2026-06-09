@@ -90,8 +90,8 @@ namespace pvd
 		bool SetDurationToAllItems(const std::shared_ptr<Schedule::Program> &program);
 		int64_t GetFileItemDurationMS(const std::shared_ptr<Schedule::Item> &item) const;
 
-        std::shared_ptr<Schedule> _schedule;
-        mutable std::shared_mutex _schedule_mutex;
+        std::shared_ptr<Schedule> _schedule OV_GUARDED_BY(_schedule_mutex);
+        mutable ov::SharedMutex _schedule_mutex;
 
         std::thread _worker_thread;
         std::atomic<bool> _worker_thread_running{false};
@@ -101,14 +101,14 @@ namespace pvd
         // Current
         const Schedule::Stream _channel_info;
 
-        mutable std::shared_mutex _current_mutex;
-        std::shared_ptr<Schedule> _current_schedule;
-        std::shared_ptr<Schedule::Program> _current_program;
-        std::shared_ptr<Schedule::Item> _current_item;
-        double _current_item_position_ms = 0;
+        mutable ov::SharedMutex _current_mutex;
+        std::shared_ptr<Schedule> _current_schedule OV_GUARDED_BY(_current_mutex);
+        std::shared_ptr<Schedule::Program> _current_program OV_GUARDED_BY(_current_mutex);
+        std::shared_ptr<Schedule::Item> _current_item OV_GUARDED_BY(_current_mutex);
+        double _current_item_position_ms OV_GUARDED_BY(_current_mutex) = 0;
 
         // Fallback
-        std::shared_ptr<Schedule::Program> _fallback_program;
+        std::shared_ptr<Schedule::Program> _fallback_program OV_GUARDED_BY(_current_mutex);
 
         std::map<int, int> _origin_id_track_id_map;
 

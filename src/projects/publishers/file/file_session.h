@@ -47,11 +47,11 @@ namespace pub
 		void DestroyWriter();
 
 	private:
-		std::shared_ptr<ffmpeg::Writer> _writer;
-		std::shared_mutex _writer_mutex;
+		std::shared_ptr<ffmpeg::Writer> _writer OV_GUARDED_BY(_writer_mutex);
+		ov::SharedMutex _writer_mutex;
 
-		std::shared_ptr<info::Record> _record;
-		std::shared_mutex _record_mutex;
+		std::shared_ptr<info::Record> _record OV_GUARDED_BY(_record_mutex);
+		ov::SharedMutex _record_mutex;
 
 		std::map<cmn::MediaType, MediaTrackId> _default_track_by_type;
 		MediaTrackId _default_track;

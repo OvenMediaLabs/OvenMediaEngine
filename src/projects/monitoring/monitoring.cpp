@@ -12,7 +12,7 @@ namespace mon
 	{
 		std::shared_ptr<ServerMetrics> to_release;
 		{
-			std::unique_lock<std::shared_mutex> lock(_server_metric_guard);
+			ov::LockGuard lock(_server_metric_guard);
 			to_release = std::move(_server_metric);
 			_server_metric = nullptr;
 		}
@@ -23,7 +23,7 @@ namespace mon
 
 		std::shared_ptr<alrt::Alert> alert_to_stop;
 		{
-			std::unique_lock<std::shared_mutex> lock(_alert_guard);
+			ov::LockGuard lock(_alert_guard);
 			alert_to_stop = std::move(_alert);
 			_alert = nullptr;
 		}
@@ -35,7 +35,7 @@ namespace mon
 
 	std::shared_ptr<ServerMetrics> Monitoring::GetServerMetrics()
 	{
-		std::shared_lock<std::shared_mutex> lock(_server_metric_guard);
+		ov::SharedLockGuard lock(_server_metric_guard);
 		return _server_metric;
 	}
 
@@ -100,7 +100,7 @@ namespace mon
 	void Monitoring::OnServerStarted(const std::shared_ptr<const cfg::Server> &server_config)
 	{
 		{
-			std::unique_lock<std::shared_mutex> lock(_server_metric_guard);
+			ov::LockGuard lock(_server_metric_guard);
 			_server_metric = std::make_shared<ServerMetrics>(server_config);
 		}
 
@@ -111,7 +111,7 @@ namespace mon
 		}
 
 		{
-			std::unique_lock<std::shared_mutex> lock(_alert_guard);
+			ov::LockGuard lock(_alert_guard);
 			_alert = std::make_shared<alrt::Alert>();
 			_alert->Start(server_config);
 		}
@@ -555,13 +555,13 @@ namespace mon
 
 	std::shared_ptr<alrt::Alert> Monitoring::GetAlert()
 	{
-		std::shared_lock<std::shared_mutex> lock(_alert_guard);
+		ov::SharedLockGuard lock(_alert_guard);
 		return _alert;
 	}
 
 	void Monitoring::SendStreamAlertMessage(alrt::Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric, const std::shared_ptr<StreamMetrics> &parent_stream_metric, const std::shared_ptr<alrt::ExtraData> &extra)
 	{
-		std::shared_lock<std::shared_mutex> lock(_alert_guard);
+		ov::SharedLockGuard lock(_alert_guard);
 		if (_alert != nullptr)
 		{
 			_alert->SendStreamMessage(code, stream_metric, parent_stream_metric, extra);
@@ -570,7 +570,7 @@ namespace mon
 
 	void Monitoring::SendStreamAlertMessage(alrt::Message::Code code, const std::shared_ptr<StreamMetrics> &stream_metric)
 	{
-		std::shared_lock<std::shared_mutex> lock(_alert_guard);
+		ov::SharedLockGuard lock(_alert_guard);
 		if (_alert != nullptr)
 		{
 			_alert->SendStreamMessage(code, stream_metric);

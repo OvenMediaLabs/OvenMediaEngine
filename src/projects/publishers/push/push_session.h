@@ -55,11 +55,11 @@ namespace pub
 		void StopSenderThread();
 		void SenderThread();
 
-		std::shared_ptr<info::Push> _push = nullptr;
-		std::shared_mutex _push_mutex;
+		std::shared_ptr<info::Push> _push OV_GUARDED_BY(_push_mutex) = nullptr;
+		ov::SharedMutex _push_mutex;
 
-		std::shared_ptr<ffmpeg::Writer> _writer = nullptr;
-		std::shared_mutex _writer_mutex;
+		std::shared_ptr<ffmpeg::Writer> _writer OV_GUARDED_BY(_writer_mutex) = nullptr;
+		ov::SharedMutex _writer_mutex;
 
 		ov::ManagedQueue<std::shared_ptr<MediaPacket>> _sender_packet_queue;
 		std::thread _sender_thread;

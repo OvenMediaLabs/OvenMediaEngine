@@ -37,7 +37,7 @@ LLHlsChunklist::~LLHlsChunklist()
 void LLHlsChunklist::SetRenditions(const std::map<int32_t, std::shared_ptr<LLHlsChunklist>> &renditions)
 {
 	// lock
-	std::lock_guard<std::shared_mutex> lock(_renditions_guard);
+	ov::LockGuard lock(_renditions_guard);
 	_renditions = renditions;
 }
 
@@ -49,7 +49,7 @@ void LLHlsChunklist::EnableCenc(const bmff::CencProperty &cenc_property)
 void LLHlsChunklist::Release()
 {
 	// lock
-	std::lock_guard<std::shared_mutex> lock(_renditions_guard);
+	ov::LockGuard lock(_renditions_guard);
 	_renditions.clear();
 }
 
@@ -76,7 +76,7 @@ void LLHlsChunklist::SaveOldSegmentInfo(bool enable)
 
 	if (_keep_old_segments == false)
 	{
-		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		ov::LockGuard lock(_segments_guard);
 		_old_segments.clear();
 	}
 }
@@ -101,7 +101,7 @@ bool LLHlsChunklist::CreateSegmentInfo(const SegmentInfo &info)
 	logtt("UpdateSegmentInfo[Track : %s/%s]: %s", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), info.ToString().CStr());
 
 	// Lock
-	std::unique_lock<std::shared_mutex> lock(_segments_guard);
+	ov::LockGuard lock(_segments_guard);
 	// Create segment
 	auto segment = std::make_shared<SegmentInfo>(info);
 	_segments.emplace(segment->GetSequence(), segment);
@@ -119,7 +119,7 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		ov::LockGuard lock(_segments_guard);
 		// part duration is calculated on first segment
 		if (_first_segment == true)
 		{
@@ -146,7 +146,7 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 
 bool LLHlsChunklist::RemoveSegmentInfo(uint32_t segment_sequence)
 {
-	std::unique_lock<std::shared_mutex> lock(_segments_guard);
+	ov::LockGuard lock(_segments_guard);
 
 	logtt("RemoveSegmentInfo[Track : %s/%s]: %u", _track->GetPublicName().CStr(), _track->GetVariantName().CStr(), segment_sequence);
 
@@ -175,13 +175,13 @@ void LLHlsChunklist::UpdateCacheForDefaultChunklist()
 	ov::String chunklist = MakeChunklist("", false, false, true);
 	{
 		// lock 
-		std::lock_guard<std::shared_mutex> lock(_cached_default_chunklist_guard);
+		ov::LockGuard lock(_cached_default_chunklist_guard);
 		_cached_default_chunklist = chunklist;
 	}
 
 	{
 		// lock 
-		std::lock_guard<std::shared_mutex> lock(_cached_default_chunklist_gzip_guard);
+		ov::LockGuard lock(_cached_default_chunklist_gzip_guard);
 		_cached_default_chunklist_gzip = ov::Zip::CompressGzip(chunklist.ToData(false));
 	}
 }
@@ -208,7 +208,7 @@ bool LLHlsChunklist::SaveOldSegmentInfo(std::shared_ptr<SegmentInfo> &segment_in
 std::shared_ptr<LLHlsChunklist::SegmentInfo> LLHlsChunklist::GetLastSegmentInfo() const
 {
 	// lock
-	std::shared_lock<std::shared_mutex> lock(_segments_guard);
+	ov::SharedLockGuard lock(_segments_guard);
 
 	if (_segments.empty())
 	{
@@ -221,7 +221,7 @@ std::shared_ptr<LLHlsChunklist::SegmentInfo> LLHlsChunklist::GetLastSegmentInfo(
 std::shared_ptr<LLHlsChunklist::SegmentInfo> LLHlsChunklist::GetSegmentInfo(uint32_t segment_sequence) const
 {
 	// lock
-	std::shared_lock<std::shared_mutex> lock(_segments_guard);
+	ov::SharedLockGuard lock(_segments_guard);
 
 	auto it = _segments.find(segment_sequence);
 	if (it == _segments.end())
@@ -234,7 +234,7 @@ std::shared_ptr<LLHlsChunklist::SegmentInfo> LLHlsChunklist::GetSegmentInfo(uint
 
 bool LLHlsChunklist::GetLastSequenceNumber(int64_t &msn, int64_t &psn) const
 {
-	std::shared_lock<std::shared_mutex> lock(_segments_guard);
+	ov::SharedLockGuard lock(_segments_guard);
 	msn = _last_segment_sequence;
 	psn = _last_partial_segment_sequence;
 	return true;
@@ -291,7 +291,7 @@ ov::String LLHlsChunklist::MakeExtXKey() const
 
 ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod, uint32_t vod_start_segment_number) const
 {
-	std::shared_lock<std::shared_mutex> segment_lock(_segments_guard);
+	ov::ReleasableSharedLockGuard segment_lock(_segments_guard);
 	uint8_t version = 6;
 	if (_segments.size() == 0)
 	{
@@ -521,7 +521,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			playlist.AppendFormat("\"\n");
 		}
 	}
-	segment_lock.unlock();
+	segment_lock.Release();
 
 #if 1
 	// only for live and low-latency mode
@@ -529,7 +529,7 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 	{
 		// Output #EXT-X-RENDITION-REPORT
 		// lock
-		std::shared_lock<std::shared_mutex> rendition_lock(_renditions_guard);
+		ov::SharedLockGuard rendition_lock(_renditions_guard);
 		for (const auto &[track_id, rendition] : _renditions)
 		{
 			// Skip mine 
@@ -588,7 +588,7 @@ ov::String LLHlsChunklist::ToString(const ov::String &query_string, bool skip, b
 	if (query_string.IsEmpty() && skip == false && legacy == false && rewind == true && vod == false && vod_start_segment_number == 0 && !_cached_default_chunklist.IsEmpty())
 	{
 		// return cached chunklist for default chunklist
-		std::shared_lock<std::shared_mutex> lock(_cached_default_chunklist_guard);
+		ov::SharedLockGuard lock(_cached_default_chunklist_guard);
 		return _cached_default_chunklist;
 	}
 
@@ -599,7 +599,7 @@ std::shared_ptr<const ov::Data> LLHlsChunklist::ToGzipData(const ov::String &que
 {
 	if (query_string.IsEmpty() && skip == false && legacy == false && _cached_default_chunklist_gzip != nullptr && rewind == true)
 	{
-		std::shared_lock<std::shared_mutex> lock(_cached_default_chunklist_gzip_guard);
+		ov::SharedLockGuard lock(_cached_default_chunklist_gzip_guard);
 		return _cached_default_chunklist_gzip;
 	}
 

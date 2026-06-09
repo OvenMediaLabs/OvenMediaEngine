@@ -23,13 +23,13 @@ bool HlsMasterPlaylist::SetDefaultOption(bool rewind)
 
 void HlsMasterPlaylist::AddMediaPlaylist(const std::shared_ptr<HlsMediaPlaylist> &media_playlist)
 {
-	std::lock_guard<std::shared_mutex> lock(_media_playlists_mutex);
+	ov::LockGuard lock(_media_playlists_mutex);
 	_media_playlists.emplace_back(media_playlist);
 }
 
 void HlsMasterPlaylist::AddVttPlaylist(const std::shared_ptr<HlsMediaPlaylist> &vtt_playlist)
 {
-	std::lock_guard<std::shared_mutex> lock(_vtt_playlists_mutex);
+	ov::LockGuard lock(_vtt_playlists_mutex);
 	_vtt_playlists.emplace_back(vtt_playlist);
 }
 
@@ -38,14 +38,14 @@ ov::String HlsMasterPlaylist::ToString(bool rewind) const
 	std::vector<std::shared_ptr<HlsMediaPlaylist>> media_playlists;
 	{
 		// Copy media playlists under lock
-		std::shared_lock<std::shared_mutex> lock(_media_playlists_mutex);
+		ov::SharedLockGuard lock(_media_playlists_mutex);
 		media_playlists = _media_playlists;
 	}
 	
 	std::vector<std::shared_ptr<HlsMediaPlaylist>> vtt_playlists;
 	{
 		// Copy VTT playlists under lock
-		std::shared_lock<std::shared_mutex> lock(_vtt_playlists_mutex);
+		ov::SharedLockGuard lock(_vtt_playlists_mutex);
 		vtt_playlists = _vtt_playlists;
 	}
 	bool has_vtt = vtt_playlists.empty() == false;

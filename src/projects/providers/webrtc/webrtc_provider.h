@@ -129,10 +129,10 @@ namespace pvd
 		std::shared_ptr<WhipServer> _whip_server = nullptr;
 		std::shared_ptr<Certificate> _certificate = nullptr;
 
-		std::mutex _stream_lock;
+		ov::Mutex _stream_lock;
 
-		mutable std::shared_mutex _session_key_stream_map_guard;
+		mutable ov::SharedMutex _session_key_stream_map_guard;
 		// Key: stream_key / Value: WebRTCStream
-		std::map<ov::String, std::shared_ptr<WebRTCStream>> _session_key_stream_map;
+		std::map<ov::String, std::shared_ptr<WebRTCStream>> _session_key_stream_map OV_GUARDED_BY(_session_key_stream_map_guard);
 	};
 }  // namespace pvd

@@ -78,12 +78,12 @@ namespace ocst
 			std::regex _regex_for_domain;
 		};
 
-		std::vector<HostName> _host_names;
-		mutable std::shared_mutex _host_names_mutex;
+		std::vector<HostName> _host_names OV_GUARDED_BY(_host_names_mutex);
+		mutable ov::SharedMutex _host_names_mutex;
 
 		// Origin list
-		std::vector<Origin> _origin_list;
-		mutable std::shared_mutex _origin_list_mutex;
+		std::vector<Origin> _origin_list OV_GUARDED_BY(_origin_list_mutex);
+		mutable ov::SharedMutex _origin_list_mutex;
 
 		// OriginMapStore
 		bool _is_origin_map_store_enabled = false;
@@ -94,7 +94,7 @@ namespace ocst
 		cfg::vhost::app::Application _app_cfg_template;
 
 		// Application list
-		std::map<info::application_id_t, std::shared_ptr<Application>> _app_map;
-		mutable std::shared_mutex _app_map_mutex;
+		std::map<info::application_id_t, std::shared_ptr<Application>> _app_map OV_GUARDED_BY(_app_map_mutex);
+		mutable ov::SharedMutex _app_map_mutex;
 	};
 }

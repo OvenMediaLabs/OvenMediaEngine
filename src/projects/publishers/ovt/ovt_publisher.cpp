@@ -93,7 +93,7 @@ bool OvtPublisher::Start()
 			  ov::StringFromSocketType(port_config.GetSocketType()));
 
 		{
-			std::lock_guard lock_guard{_server_port_list_mutex};
+			ov::LockGuard lock_guard(_server_port_list_mutex);
 			_server_port_list = std::move(server_port_list);
 		}
 
@@ -111,9 +111,9 @@ bool OvtPublisher::Start()
 
 bool OvtPublisher::Stop()
 {
-	_server_port_list_mutex.lock();
+	ov::ReleasableLockGuard lock(_server_port_list_mutex);
 	auto server_port_list = std::move(_server_port_list);
-	_server_port_list_mutex.unlock();
+	lock.Release();
 
 	auto physical_port_manager = PhysicalPortManager::GetInstance();
 
@@ -153,7 +153,7 @@ bool OvtPublisher::OnDeletePublisherApplication(const std::shared_ptr<pub::Appli
 
 std::shared_ptr<OvtDepacketizer> OvtPublisher::GetDepacketizer(int remote_id)
 {
-	std::lock_guard<std::mutex> guard(_depacketizers_lock);
+	ov::LockGuard guard(_depacketizers_lock);
 	std::shared_ptr<OvtDepacketizer> depacketizer;
 
 	// if there is no depacketizer, create
@@ -172,7 +172,7 @@ std::shared_ptr<OvtDepacketizer> OvtPublisher::GetDepacketizer(int remote_id)
 
 bool OvtPublisher::RemoveDepacketizer(int remote_id)
 {
-	std::lock_guard<std::mutex> guard(_depacketizers_lock);
+	ov::LockGuard guard(_depacketizers_lock);
 	_depacketizers.erase(remote_id);
 	return true;
 }
@@ -269,7 +269,7 @@ void OvtPublisher::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
 	// disconnect means when the stream disconnects itself.
 	if (reason != PhysicalPortDisconnectReason::Disconnect)
 	{
-		std::shared_lock<std::shared_mutex> lock(_remote_stream_map_lock);
+		ov::SharedLockGuard lock(_remote_stream_map_lock);
 		auto streams = _remote_stream_map.equal_range(remote->GetNativeHandle());
 		for (auto it = streams.first; it != streams.second; ++it)
 		{
@@ -488,7 +488,7 @@ bool OvtPublisher::LinkRemoteWithStream(int remote_id, std::shared_ptr<OvtStream
 {
 	// For ungraceful disconnect
 	// one remote id can be join multiple streams.
-	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
+	ov::LockGuard guard(_remote_stream_map_lock);
 	_remote_stream_map.insert(std::pair<int, std::shared_ptr<OvtStream>>(remote_id, stream));
 
 	return true;
@@ -496,7 +496,7 @@ bool OvtPublisher::LinkRemoteWithStream(int remote_id, std::shared_ptr<OvtStream
 
 bool OvtPublisher::UnlinkRemoteFromStream(int remote_id)
 {
-	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
+	ov::LockGuard guard(_remote_stream_map_lock);
 	_remote_stream_map.erase(remote_id);
 
 	return true;

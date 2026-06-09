@@ -292,8 +292,8 @@ namespace ocst
 		std::atomic<info::application_id_t> _last_application_id{info::MinApplicationId};
 
 		// Modules
-		std::vector<Module> _module_list;
-		mutable std::shared_mutex _module_list_mutex;
+		std::vector<Module> _module_list OV_GUARDED_BY(_module_list_mutex);
+		mutable ov::SharedMutex _module_list_mutex;
 
 		// Flipped at the start of `StartServer()`, before any vhost/app is created. While `false`,
 		// `RegisterModule()` only inserts; while `true`, it back-fills the new module with existing
@@ -309,13 +309,13 @@ namespace ocst
 		//   - `UnregisterModule()` removes the module without replaying any `OnDelete*()`.
 		// Callers shutting down or unregistering at runtime are responsible for any cleanup the
 		// module needs.
-		mutable std::mutex _late_module_registration_mutex;
+		mutable ov::Mutex _late_module_registration_mutex;
 
 		// key: vhost_name
-		std::map<ov::String, std::shared_ptr<VirtualHost>> _virtual_host_map;
+		std::map<ov::String, std::shared_ptr<VirtualHost>> _virtual_host_map OV_GUARDED_BY(_virtual_host_mutex);
 		// ordered vhost list
-		std::vector<std::shared_ptr<VirtualHost>> _virtual_host_list;
-		mutable std::shared_mutex _virtual_host_mutex;
+		std::vector<std::shared_ptr<VirtualHost>> _virtual_host_list OV_GUARDED_BY(_virtual_host_mutex);
+		mutable ov::SharedMutex _virtual_host_mutex;
 
 		std::shared_ptr<pvd::Stream> GetProviderStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
 

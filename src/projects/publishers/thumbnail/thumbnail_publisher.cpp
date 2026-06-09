@@ -108,10 +108,10 @@ bool ThumbnailPublisher::Stop()
 {
 	auto manager = http::svr::HttpServerManager::GetInstance();
 
-	_http_server_list_mutex.lock();
+	ov::ReleasableLockGuard lock(_http_server_list_mutex);
 	auto http_server_list = std::move(_http_server_list);
 	auto https_server_list = std::move(_https_server_list);
-	_http_server_list_mutex.unlock();
+	lock.Release();
 
 	manager->ReleaseServers(&http_server_list);
 	manager->ReleaseServers(&https_server_list);
@@ -126,7 +126,7 @@ bool ThumbnailPublisher::OnCreateHost(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{
@@ -147,7 +147,7 @@ bool ThumbnailPublisher::OnDeleteHost(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{
@@ -168,7 +168,7 @@ bool ThumbnailPublisher::OnUpdateCertificate(const info::Host &host_info)
 
 	if (certificate != nullptr)
 	{
-		std::lock_guard lock_guard{_http_server_list_mutex};
+		ov::LockGuard lock_guard(_http_server_list_mutex);
 
 		for (auto &https_server : _https_server_list)
 		{

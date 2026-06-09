@@ -33,7 +33,7 @@ namespace cfg
 
 		std::shared_ptr<const Server> GetServer() const noexcept
 		{
-			std::shared_lock lock(_server_mutex);
+			ov::SharedLockGuard lock(_server_mutex);
 			return _server;
 		}
 
@@ -65,8 +65,8 @@ namespace cfg
 
 		ov::String _config_path;
 
-		mutable std::shared_mutex _server_mutex;
-		std::shared_ptr<Server> _server;
+		mutable ov::SharedMutex _server_mutex;
+		std::shared_ptr<Server> _server OV_GUARDED_BY(_server_mutex);
 		ov::String _server_id;
 		ov::String _license_key;
 		std::map<ov::String, ov::String> _macros;
@@ -77,7 +77,7 @@ namespace cfg
 		// value: compatible version numbers
 		std::map<ov::String, std::vector<int>> _supported_versions_map;
 
-		mutable std::mutex _config_mutex;
+		mutable ov::Mutex _config_mutex;
 
 	private:
 		std::tuple<bool, ov::String> LoadServerIDFromStorage(const ov::String &config_path) const;

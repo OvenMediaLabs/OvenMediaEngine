@@ -23,7 +23,7 @@ namespace ocst
 		}
 
 		{
-			std::lock_guard<std::shared_mutex> lock(_origin_list_mutex);
+			ov::LockGuard lock(_origin_list_mutex);
 			// Origin list
 			for (const auto &origin_cfg : _host_info.GetOriginList())
 			{
@@ -84,7 +84,7 @@ namespace ocst
 
 	std::shared_ptr<Application> VirtualHost::GetApplication(info::application_id_t app_id) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_app_map_mutex);
+		ov::SharedLockGuard lock(_app_map_mutex);
 		auto iter = _app_map.find(app_id);
 		if (iter != _app_map.end())
 		{
@@ -96,7 +96,7 @@ namespace ocst
 
 	std::shared_ptr<Application> VirtualHost::GetApplication(const info::VHostAppName &vhost_app_name) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_app_map_mutex);
+		ov::SharedLockGuard lock(_app_map_mutex);
 		for (const auto &item : _app_map)
 		{
 			if (item.second->GetVHostAppName() == vhost_app_name)
@@ -110,7 +110,7 @@ namespace ocst
 
 	std::shared_ptr<Application> VirtualHost::GetApplication(const ov::String &app_name) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_app_map_mutex);
+		ov::SharedLockGuard lock(_app_map_mutex);
 		for (const auto &item : _app_map)
 		{
 			if (item.second->GetVHostAppName().GetAppName() == app_name)
@@ -124,7 +124,7 @@ namespace ocst
 
 	std::vector<std::shared_ptr<Application>> VirtualHost::GetApplicationList() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_app_map_mutex);
+		ov::SharedLockGuard lock(_app_map_mutex);
 		std::vector<std::shared_ptr<Application>> app_list;
 		for (const auto &item : _app_map)
 		{
@@ -142,7 +142,7 @@ namespace ocst
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_app_map_mutex);
+		ov::LockGuard lock(_app_map_mutex);
 		_app_map.emplace(app_info.GetId(), app);
 
 		return true;
@@ -150,7 +150,7 @@ namespace ocst
 
 	bool VirtualHost::DeleteApplication(info::application_id_t app_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_app_map_mutex);
+		ov::LockGuard lock(_app_map_mutex);
 		auto iter = _app_map.find(app_id);
 		if (iter != _app_map.end())
 		{
@@ -173,7 +173,7 @@ namespace ocst
 
 	bool VirtualHost::FindOriginByRequestedLocation(const ov::String &requested_location, Origin &origin) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_origin_list_mutex);
+		ov::SharedLockGuard lock(_origin_list_mutex);
 
 		const Origin *best = nullptr;
 		size_t best_len	   = 0;
@@ -212,7 +212,7 @@ namespace ocst
 
 	bool VirtualHost::ValidateDomain(const ov::String &domain) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_host_names_mutex);
+		ov::SharedLockGuard lock(_host_names_mutex);
 		for (const auto &host_name : _host_names)
 		{
 			if (host_name.Match(domain) == true)
@@ -226,7 +226,7 @@ namespace ocst
 
 	void VirtualHost::AddHostName(const ov::String &host_name)
 	{
-		std::lock_guard<std::shared_mutex> lock(_host_names_mutex);
+		ov::LockGuard lock(_host_names_mutex);
 		_host_names.emplace_back(host_name);
 	}
 

@@ -193,28 +193,28 @@ bool HlsStream::Stop()
 	logtt("TsStream(%s) has been stopped", GetName().CStr());
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+		ov::LockGuard lock(_ts_packetizers_guard);
 		_ts_packetizers.clear();
 		_track_packetizers.clear();
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_media_playlists_guard);
+		ov::LockGuard lock(_media_playlists_guard);
 		_media_playlists.clear();
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_ts_packagers_guard);
+		ov::LockGuard lock(_ts_packagers_guard);
 		_ts_packagers.clear();
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_storage_map_guard);
+		ov::LockGuard lock(_storage_map_guard);
 		_storage_map.clear();
 	}
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_master_playlists_guard);
+		ov::LockGuard lock(_master_playlists_guard);
 		_master_playlists.clear();
 
 	}
@@ -330,7 +330,7 @@ bool HlsStream::SendBufferedPackets()
 
 bool HlsStream::AppendMediaPacket(const std::shared_ptr<MediaPacket> &media_packet)
 {
-	std::shared_lock<std::shared_mutex> lock(_ts_packetizers_guard);
+	ov::SharedLockGuard lock(_ts_packetizers_guard);
 	auto it = _track_packetizers.find(media_packet->GetTrackId());
 	if (it == _track_packetizers.end())
 	{
@@ -490,7 +490,7 @@ void HlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 
 std::tuple<bool, ov::String> HlsStream::ConcludeLive()
 {
-	std::unique_lock<std::shared_mutex> lock(_concluded_lock);
+	ov::LockGuard lock(_concluded_lock);
 	if (_concluded)
 	{
 		return {false, "Already concluded"};
@@ -517,7 +517,7 @@ std::tuple<bool, ov::String> HlsStream::ConcludeLive()
 
 bool HlsStream::IsConcluded() const
 {
-	std::shared_lock<std::shared_mutex> lock(_concluded_lock);
+	ov::SharedLockGuard lock(_concluded_lock);
 	return _concluded;
 }
 
@@ -528,7 +528,7 @@ bool HlsStream::CheckIfAllPlaylistReady()
 		return true;
 	}
 
-	std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+	ov::SharedLockGuard lock(_media_playlists_guard);
 
 	int min_segments_for_ready = std::min(_ts_config.GetSegmentCount(), 2);
 
@@ -590,9 +590,9 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 
 	if (packager_id == _vtt_reference_packager_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+		ov::ReleasableSharedLockGuard lock(_vtt_packagers_lock);
 		auto vtt_packagers = _vtt_packagers;
-		lock.unlock();
+		lock.Release();
 
 		double segment_start_timestamp = static_cast<double>(segment->GetStartTimestamp()) * segment->GetTimebaseSeconds() * 1000.0;
 		double segment_duration_ms = segment->GetDurationMs();
@@ -646,11 +646,11 @@ void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::share
 
 	if (packager_id == _vtt_reference_packager_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+		ov::ReleasableSharedLockGuard lock(_vtt_packagers_lock);
 		auto vtt_packagers = _vtt_packagers;
-		lock.unlock();
+		lock.Release();
 
-		// Delete VTT segments 
+		// Delete VTT segments
 		for (auto &it : vtt_packagers)
 		{
 			auto track_id = it.first;
@@ -716,7 +716,7 @@ bool HlsStream::CreatePackagers()
 		// VTT
 		if (playlist->IsSubtitlesEnabled())
 		{
-			std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+			ov::SharedLockGuard lock(_media_playlists_guard);
 			for (const auto &[variant_name, media_playlist] : _media_playlists)
 			{
 				if (media_playlist->HasSubtitle() == true)
@@ -727,7 +727,7 @@ bool HlsStream::CreatePackagers()
 		}
 
 		{
-			std::lock_guard<std::shared_mutex> lock(_master_playlists_guard);
+			ov::LockGuard lock(_master_playlists_guard);
 			_master_playlists.emplace(master_playlist->GetFileName(), master_playlist);
 			logti("HLS Master Playlist has been created : %s", master_playlist->GetFileName().CStr());
 		}
@@ -802,7 +802,7 @@ bool HlsStream::CreatePackagers()
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_media_playlists_guard);
+				ov::LockGuard lock(_media_playlists_guard);
 				_media_playlists.emplace(variant_name, media_playlist);
 			}
 
@@ -830,12 +830,12 @@ bool HlsStream::CreatePackagers()
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_ts_packagers_guard);
+				ov::LockGuard lock(_ts_packagers_guard);
 				_ts_packagers.emplace(variant_name, packager);
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_storage_map_guard);
+				ov::LockGuard lock(_storage_map_guard);
 				_storage_map.emplace(variant_name, packager);
 			}
 
@@ -852,7 +852,7 @@ bool HlsStream::CreatePackagers()
 			}
 
 			{
-				std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+				ov::LockGuard lock(_ts_packetizers_guard);
 				_ts_packetizers.emplace(variant_name, packetizer);
 			}
 
@@ -875,7 +875,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+							ov::LockGuard lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -890,7 +890,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+							ov::LockGuard lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -920,7 +920,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+							ov::LockGuard lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -935,7 +935,7 @@ bool HlsStream::CreatePackagers()
 
 						// Add to track packetizers
 						{
-							std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+							ov::LockGuard lock(_ts_packetizers_guard);
 							_track_packetizers[track->GetId()].emplace_back(packetizer);
 						}
 
@@ -951,7 +951,7 @@ bool HlsStream::CreatePackagers()
 
 				// Add to track packetizers
 				{
-					std::lock_guard<std::shared_mutex> lock(_ts_packetizers_guard);
+					ov::LockGuard lock(_ts_packetizers_guard);
 					_track_packetizers[data_track->GetId()].emplace_back(packetizer);
 				}
 			}
@@ -990,7 +990,7 @@ ov::String HlsStream::MakeVttVariantName(const int32_t &track_id) const
 
 std::shared_ptr<HlsMasterPlaylist> HlsStream::GetMasterPlaylist(const ov::String &playlist_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_master_playlists_guard);
+	ov::SharedLockGuard lock(_master_playlists_guard);
 
 	auto it = _master_playlists.find(playlist_name);
 	if (it == _master_playlists.end())
@@ -1020,7 +1020,7 @@ ov::String HlsStream::GetSegmentName(const ov::String &variant_name, uint32_t nu
 
 std::shared_ptr<mpegts::Packetizer> HlsStream::GetTSPacketizer(const ov::String &variant_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_ts_packetizers_guard);
+	ov::SharedLockGuard lock(_ts_packetizers_guard);
 
 	auto it = _ts_packetizers.find(variant_name);
 	if (it == _ts_packetizers.end())
@@ -1033,7 +1033,7 @@ std::shared_ptr<mpegts::Packetizer> HlsStream::GetTSPacketizer(const ov::String 
 
 std::shared_ptr<mpegts::Packager> HlsStream::GetTSPackager(const ov::String &variant_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_ts_packagers_guard);
+	ov::SharedLockGuard lock(_ts_packagers_guard);
 
 	auto it = _ts_packagers.find(variant_name);
 	if (it == _ts_packagers.end())
@@ -1046,7 +1046,7 @@ std::shared_ptr<mpegts::Packager> HlsStream::GetTSPackager(const ov::String &var
 
 std::shared_ptr<webvtt::Packager> HlsStream::GetVttPackager(const int32_t &track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
+	ov::SharedLockGuard lock(_vtt_packagers_lock);
 
 	auto it = _vtt_packagers.find(track_id);
 	if (it == _vtt_packagers.end())
@@ -1059,7 +1059,7 @@ std::shared_ptr<webvtt::Packager> HlsStream::GetVttPackager(const int32_t &track
 
 std::shared_ptr<base::modules::SegmentStorage> HlsStream::GetStorage(const ov::String &variant_name) const
 {
-	std::shared_lock<std::shared_mutex> lock(_storage_map_guard);
+	ov::SharedLockGuard lock(_storage_map_guard);
 
 	auto it = _storage_map.find(variant_name);
 	if (it == _storage_map.end())
@@ -1072,7 +1072,7 @@ std::shared_ptr<base::modules::SegmentStorage> HlsStream::GetStorage(const ov::S
 
 std::shared_ptr<HlsMediaPlaylist> HlsStream::GetMediaPlaylist(const ov::String &variant_name)
 {
-	std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+	ov::SharedLockGuard lock(_media_playlists_guard);
 
 	auto it = _media_playlists.find(variant_name);
 	if (it == _media_playlists.end())
@@ -1138,7 +1138,7 @@ void HlsStream::InitializeAllDumps()
 {
 	auto dump_configs = _ts_config.GetDumps().GetDumps();
 	// Select the dump setting for this stream.
-	std::lock_guard<std::shared_mutex> lock(_dumps_lock);
+	ov::LockGuard lock(_dumps_lock);
 	for (auto dump : dump_configs)
 	{
 		if (dump.IsEnabled() == false)
@@ -1166,7 +1166,7 @@ void HlsStream::InitializeAllDumps()
 
 void HlsStream::DumpMasterPlaylistOfAllItems()
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (auto &it : _dumps)
 	{
 		auto dump = it.second;
@@ -1212,7 +1212,7 @@ bool HlsStream::DumpMasterPlaylist(const std::shared_ptr<mdl::Dump> &dump)
 
 void HlsStream::DumpSegmentOfAllItems(const ov::String &packager_id, const uint32_t &segment_number)
 {
-	std::shared_lock<std::shared_mutex> lock(_dumps_lock);
+	ov::SharedLockGuard lock(_dumps_lock);
 	for (auto &it : _dumps)
 	{
 		auto dump = it.second;
@@ -1315,7 +1315,7 @@ bool HlsStream::DumpData(const std::shared_ptr<mdl::Dump> &dump, const ov::Strin
 
 void HlsStream::StopDumps()
 {
-	std::lock_guard<std::shared_mutex> dumper_lock(_dumps_lock);
+	ov::LockGuard dumper_lock(_dumps_lock);
 	for (auto &[dump_id, dump] : _dumps)
 	{
 		StopDump(dump);
@@ -1349,7 +1349,7 @@ bool HlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// packager
 	auto packager = std::make_shared<webvtt::Packager>(track);
 	{
-		std::lock_guard<std::shared_mutex> lock(_vtt_packagers_lock);
+		ov::LockGuard lock(_vtt_packagers_lock);
 		_vtt_packagers[track->GetId()] = packager;
 	}
 
@@ -1358,7 +1358,7 @@ bool HlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// storage
 	{
 		// The VTT packager also functions as storage.
-		std::lock_guard<std::shared_mutex> storage_lock(_storage_map_guard);
+		ov::LockGuard storage_lock(_storage_map_guard);
 		_storage_map.emplace(variant_name, packager);
 	}
 
@@ -1379,7 +1379,7 @@ bool HlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	media_playlist->AddMediaTrackInfo(track);
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_media_playlists_guard);
+		ov::LockGuard lock(_media_playlists_guard);
 		_media_playlists.emplace(variant_name, media_playlist);
 	}
 

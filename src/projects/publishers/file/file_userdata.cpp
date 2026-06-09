@@ -18,7 +18,7 @@ namespace pub
 
 	bool FileUserdataSets::Set(ov::String record_id, const std::shared_ptr<info::Record> &record_info)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		auto [it, inserted] = _sets.emplace(record_id, record_info);
 		return inserted;
@@ -29,7 +29,7 @@ namespace pub
 	{
 		std::vector<std::shared_ptr<info::Record>> results;
 
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		for (auto &item : _sets)
 		{
@@ -41,7 +41,7 @@ namespace pub
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetByKey(ov::String record_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		auto iter = _sets.find(record_id);
 		if (iter == _sets.end())
@@ -56,7 +56,7 @@ namespace pub
 	{
 		std::vector<std::shared_ptr<info::Record>> results;
 
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		for (auto& [record_id, record_info] : _sets)
 		{
@@ -71,7 +71,7 @@ namespace pub
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetBySessionId(session_id_t session_id)
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		for (auto& item : _sets)
 		{
@@ -86,7 +86,7 @@ namespace pub
 
 	std::shared_ptr<info::Record> FileUserdataSets::GetAt(uint32_t index)
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		auto iter = _sets.begin();
 
@@ -102,14 +102,14 @@ namespace pub
 
 	void FileUserdataSets::DeleteByKey(ov::String record_id)
 	{
-		std::lock_guard<std::shared_mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		_sets.erase(record_id);
 	}
 
 	uint32_t FileUserdataSets::GetCount()
 	{
-		std::shared_lock<std::shared_mutex> lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		return _sets.size();
 	}
