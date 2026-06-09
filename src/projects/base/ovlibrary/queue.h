@@ -103,7 +103,7 @@ namespace ov
 		{
 			LockGuard unique_lock(_mutex);
 
-			if (_stop == false)
+			if (_stop.load(std::memory_order_relaxed) == false)
 			{
 				// If there is data in the queue, return immediately without condition wait
 				auto result = (_queue.empty() == false) ? true : false;
@@ -113,12 +113,12 @@ namespace ov
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
-						return ((_queue.empty() == false) || _stop);
+						return ((_queue.empty() == false) || _stop.load(std::memory_order_relaxed));
 					});
 				}
 				if (result)
 				{
-					if (_stop == false)
+					if (_stop.load(std::memory_order_relaxed) == false)
 					{
 						return _queue.front();
 					}
@@ -145,7 +145,7 @@ namespace ov
 		{
 			LockGuard unique_lock(_mutex);
 
-			if (_stop == false)
+			if (_stop.load(std::memory_order_relaxed) == false)
 			{
 				// If there is data in the queue, return immediately without condition wait
 				auto result = (_queue.empty() == false) ? true : false;
@@ -156,13 +156,13 @@ namespace ov
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
-						return ((_queue.empty() == false) || _stop);
+						return ((_queue.empty() == false) || _stop.load(std::memory_order_relaxed));
 					});
 				}
 
 				if (result)
 				{
-					if (_stop == false)
+					if (_stop.load(std::memory_order_relaxed) == false)
 					{
 						return _queue.back();
 					}
@@ -189,7 +189,7 @@ namespace ov
 		{
 			LockGuard unique_lock(_mutex);
 
-			if (_stop == false)
+			if (_stop.load(std::memory_order_relaxed) == false)
 			{
 				// If there is data in the queue, return immediately without condition wait
 				auto result = (_queue.empty() == false) ? true : false;
@@ -202,7 +202,7 @@ namespace ov
 							(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
 						result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
-							return ((_queue.empty() == false) || _stop);
+							return ((_queue.empty() == false) || _stop.load(std::memory_order_relaxed));
 						});
 					}
 					else
@@ -213,7 +213,7 @@ namespace ov
 
 				if (result)
 				{
-					if (_stop == false)
+					if (_stop.load(std::memory_order_relaxed) == false)
 					{
 						T value = std::move(_queue.front());
 						_queue.pop();
@@ -262,21 +262,21 @@ namespace ov
 
 		bool IsStopped() const
 		{
-			return _stop;
+			return _stop.load(std::memory_order_relaxed);
 		}
 
 		void Start()
 		{
 			LockGuard lock_guard(_mutex);
 
-			_stop = false;
+			_stop.store(false, std::memory_order_relaxed);
 		}
 
 		void Stop()
 		{
 			LockGuard lock_guard(_mutex);
 
-			_stop = true;
+			_stop.store(true, std::memory_order_relaxed);
 			_condition.NotifyAll();
 		}
 
@@ -305,6 +305,15 @@ namespace ov
 		mutable SharedMutex _name_mutex;
 		String _queue_name OV_GUARDED_BY(_name_mutex);
 
+		// Self-only atomic:
+		//
+		// This member's modification order is the only thing the atomic guarantees;
+		// it is never used to publish other shared state.
+		// All access sites use `memory_order_relaxed`,
+		// which is sufficient because cross-data visibility (queue contents, alias, etc.)
+		// is provided by `_mutex`/`_name_mutex` at higher level.
+		// If a future change adds a "publish via threshold" pattern,
+		// switch to acquire/release here AND on every read site.
 		std::atomic<size_t> _threshold = 0;
 		size_t _peak OV_GUARDED_BY(_mutex) = 0;
 		int _log_interval = 0;
@@ -312,6 +321,13 @@ namespace ov
 		std::queue<T> _queue OV_GUARDED_BY(_mutex);
 		mutable Mutex _mutex;
 		ConditionVariable _condition;
+		// Self-only atomic:
+		//
+		// Same contract as `_threshold` above.
+		// Writes happen under `_mutex` and pair with `_condition.NotifyAll()` for waiter wakeup;
+		// the lock itself supplies happens-before, so the atomic stores/loads can stay relaxed.
+		// `IsStopped()` reads without the lock and tolerates "eventual visibility" of
+		// the latest value - acceptable for polling, not for cross-data publish.
 		std::atomic<bool> _stop = false;
 	};
 
