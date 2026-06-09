@@ -66,9 +66,16 @@ namespace pvd
 		}
 
 	private:
-		uint32_t	_restart_count = 0;
+		// `_restart_count` and `_curr_url_index` are guarded by `_start_stop_stream_lock`
+		// by intent, but `Resume()`/`GetNextURL()`/`ResetUrlIndex()` access them without
+		// holding the lock. The resulting `-Wthread-safety` warnings are intentionally
+		// left live: they document a known, master-era race that is too risky to fix in
+		// this PR (a proper fix requires splitting `Stop()` into a public-locked and a
+		// private-already-locked variant because `Resume()` itself calls `Stop()` and
+		// would have to take the lock first).
+		uint32_t	_restart_count OV_GUARDED_BY(_start_stop_stream_lock) = 0;
 		std::vector<std::shared_ptr<const ov::Url>> _url_list;
-		int _curr_url_index = 0;
+		int _curr_url_index OV_GUARDED_BY(_start_stop_stream_lock) = 0;
 
 		std::shared_ptr<pvd::PullStreamProperties> _properties;
 
