@@ -648,8 +648,15 @@ namespace ov
 		ManagedQueueNode* _front_node OV_GUARDED_BY(_mutex);
 		ManagedQueueNode* _rear_node OV_GUARDED_BY(_mutex);
 
-		// Mutex and condition variable for the queue
+	protected:
+		// `_mutex` is `protected` so derived classes can take the lock when calling
+		// protected helpers like `UpdateMetrics()`/`ClearMetrics()` which are annotated
+		// `OV_REQUIRES(_mutex)`. Capability scope must match the methods that require it.
 		mutable Mutex _mutex;
+
+	private:
+		// `_condition` stays `private`: notify/wait are internal queue-thread coordination
+		// that derived classes should not touch directly.
 		ConditionVariable _condition;
 
 		// Stop flag
