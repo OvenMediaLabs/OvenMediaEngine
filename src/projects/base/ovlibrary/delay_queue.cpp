@@ -34,7 +34,7 @@ namespace ov
 
 	void DelayQueue::Push(const DelayQueueFunction &func, void *parameter, int after_msec)
 	{
-		std::lock_guard<std::mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		int64_t index = _index;
 		_index++;
@@ -54,14 +54,14 @@ namespace ov
 
 	ssize_t DelayQueue::GetCount() const
 	{
-		std::lock_guard<std::mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		return _queue.size();
 	}
 
 	void DelayQueue::Clear()
 	{
-		std::lock_guard<std::mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		// empty _queue
 		std::priority_queue<DelayQueueItem>().swap(_queue);
@@ -117,14 +117,13 @@ namespace ov
 	{
 		logger::ThreadHelper thread_helper;
 
-		std::unique_lock<std::mutex> lock(_mutex, std::defer_lock);
 		while (_stop == false)
 		{
-			lock.lock();
+			ov::ReleasableLockGuard lock(_mutex);
 			if (_queue.empty())
 			{
 				logtt("Queue is empty. Waiting for new item...");
-				lock.unlock();
+				lock.Release();
 
 				_event.Wait();
 
@@ -134,14 +133,14 @@ namespace ov
 			{
 				// Handle the first enqueued item
 				auto first_item = _queue.top();
-				lock.unlock();
+				lock.Release();
 
 				if (_event.Wait(first_item.time_point) == false)
 				{
 					// No other items pushed until waiting for first_item.time_point
 					DelayQueueAction action = first_item.function(first_item.parameter);
 
-					lock.lock();
+					ov::LockGuard pop_lock(_mutex);
 					// If we enter this step immediately after Clear(), there will be a problem
 					if (_queue.empty() == false)
 					{
@@ -153,7 +152,6 @@ namespace ov
 							_queue.push(first_item);
 						}
 					}
-					lock.unlock();
 				}
 				else
 				{

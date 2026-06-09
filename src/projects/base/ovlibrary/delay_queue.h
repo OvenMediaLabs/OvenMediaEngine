@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
-#include <mutex>
 #include <queue>
 #include <thread>
 #include <utility>
@@ -19,6 +18,7 @@
 
 #include "./event.h"
 #include "./string.h"
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -93,8 +93,8 @@ namespace ov
 		std::atomic<bool> _stop;
 
 		// A queue where the items to be executed are stored
-		mutable std::mutex _mutex;
-		std::priority_queue<DelayQueueItem> _queue;
+		mutable ov::Mutex _mutex;
+		std::priority_queue<DelayQueueItem> _queue OV_GUARDED_BY(_mutex);
 
 		// If Push() is called while DelayQueue is waiting, the priority must be recalculated.
 		// _event is used to notice this.
