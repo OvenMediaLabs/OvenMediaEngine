@@ -142,7 +142,7 @@ namespace http
 
 			prot::h1::HttpResponseParser _parser;
 
-			std::mutex _request_mutex;
+			ov::Mutex _request_mutex;
 			std::atomic<bool> _requested = false;
 
 			ov::String _url;

@@ -80,13 +80,13 @@ namespace http
 
 			ov::String _server_name;
 			ov::String _server_short_name;
-			mutable std::mutex _physical_port_mutex;
+			mutable ov::Mutex _physical_port_mutex;
 			std::shared_ptr<PhysicalPort> _physical_port = nullptr;
 
-			std::shared_mutex _client_list_mutex;
+			ov::SharedMutex _client_list_mutex;
 			ClientList _connection_list;
 
-			std::shared_mutex _interceptor_list_mutex;
+			ov::SharedMutex _interceptor_list_mutex;
 			std::vector<std::shared_ptr<RequestInterceptor>> _interceptor_list;
 			std::vector<std::shared_ptr<ocst::VirtualHost>> _virtual_host_list;
 

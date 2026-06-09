@@ -199,7 +199,7 @@ bool WhipServer::Start(
 	{
 		if (PrepareForTCPRelay() && PrepareForExternalIceServer())
 		{
-			std::lock_guard lock_guard{_http_server_list_mutex};
+			ov::LockGuard lock_guard{_http_server_list_mutex};
 			_http_server_list = std::move(http_server_list);
 			_https_server_list = std::move(https_server_list);
 
@@ -254,7 +254,7 @@ bool WhipServer::InsertCertificate(const std::shared_ptr<const info::Certificate
 	// The cache replays in `Start()` if this is called before listeners exist.
 	//
 	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
-	std::lock_guard lock_guard{_http_server_list_mutex};
+	ov::LockGuard lock_guard{_http_server_list_mutex};
 
 	_certificate_map[certificate->GetName()] = certificate;
 
@@ -278,7 +278,7 @@ bool WhipServer::RemoveCertificate(const std::shared_ptr<const info::Certificate
 		return true;
 	}
 
-	std::lock_guard lock_guard{_http_server_list_mutex};
+	ov::LockGuard lock_guard{_http_server_list_mutex};
 
 	_certificate_map.erase(certificate->GetName());
 

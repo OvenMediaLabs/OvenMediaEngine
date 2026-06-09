@@ -4,8 +4,6 @@
 #include "rtp_packet.h"
 #include "rtcp_info/sender_report.h"
 
-#include <mutex>
-
 #define RTP_SEQ_MOD	(1<<16)
 #define MAX_DROPOUT	3000
 #define	MAX_MISORDER 100
@@ -66,5 +64,5 @@ private:
 	ov::StopWatch	_report_block_timer;
 
 	// Locked at the public methods; InitSeq/UpdateSeq/UpdateStat run under it
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

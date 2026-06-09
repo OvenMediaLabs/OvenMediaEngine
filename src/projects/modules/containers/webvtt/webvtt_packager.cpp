@@ -29,7 +29,7 @@ namespace webvtt
 			return false;
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_frames_guard);
+		ov::LockGuard lock(_frames_guard);
 		_frames.emplace(frame->GetStartTimeMs(), frame);
 
 		logtd("WebVTT Packager: Added frame: StartTimeMs=%" PRId64 ", EndTimeMs=%" PRId64 ", Text Length=%zu / %s", frame->GetStartTimeMs(), frame->GetEndTimeMs(), frame->GetText().GetLength(), frame->GetText().CStr());
@@ -55,7 +55,7 @@ namespace webvtt
 		}
 
 		{
-			std::unique_lock<std::shared_mutex> lock(_segments_guard);
+			ov::LockGuard lock(_segments_guard);
 			_segments[segment_number] = segment;
 		}
 
@@ -82,7 +82,7 @@ namespace webvtt
 		if (segment == nullptr)
 		{
 			segment = std::make_shared<Segment>(segment_number);
-			std::unique_lock<std::shared_mutex> lock(_segments_guard);
+			ov::LockGuard lock(_segments_guard);
 			_segments[segment_number] = segment;
 		}
 		
@@ -112,7 +112,7 @@ namespace webvtt
 		ov::String cue_text;
 		int64_t end_time_ms = start_time_ms + static_cast<int64_t>(llround(duration_ms));
 		bool expired_frame = false;
-		std::unique_lock<std::shared_mutex> lock(_frames_guard);
+		ov::LockGuard lock(_frames_guard);
 		for (auto it = _frames.begin(); it != _frames.end();)
 		{
 			expired_frame = false;
@@ -161,7 +161,7 @@ namespace webvtt
 
 	bool Packager::DeleteSegment(int64_t segment_number)
 	{
-		std::unique_lock<std::shared_mutex> lock(_segments_guard);
+		ov::LockGuard lock(_segments_guard);
 		return _segments.erase(segment_number) > 0;
 	}
 
@@ -177,7 +177,7 @@ namespace webvtt
 
 	std::shared_ptr<base::modules::Segment> Packager::GetLastSegment() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return nullptr;
@@ -193,7 +193,7 @@ namespace webvtt
 
 	std::shared_ptr<Segment> Packager::GetSegmentInternal(int64_t segment_number) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		
 		auto it = _segments.find(segment_number);
 		if (it != _segments.end())
@@ -206,7 +206,7 @@ namespace webvtt
 
 	std::shared_ptr<PartialSegment> Packager::GetPartialSegmentInternal(int64_t segment_number, int64_t partial_segment_number) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		auto it = _segments.find(segment_number);
 		if (it != _segments.end())
 		{
@@ -218,13 +218,13 @@ namespace webvtt
 
 	uint64_t Packager::GetSegmentCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		return _segments.size();
 	}
 
 	int64_t Packager::GetLastSegmentNumber() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return -1;
@@ -235,7 +235,7 @@ namespace webvtt
 
 	std::tuple<int64_t, int64_t> Packager::GetLastPartialSegmentNumber() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return std::make_tuple(-1, -1);

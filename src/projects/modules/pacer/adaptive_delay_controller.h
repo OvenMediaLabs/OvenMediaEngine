@@ -54,7 +54,7 @@ private:
 	int _min_delay_ms;
 	int _max_delay_ms;
 
-	std::mutex _mu;
+	ov::Mutex _mu;
 	std::deque<Sample> _samples;
 	int _current_delay_ms;
 	std::chrono::steady_clock::time_point _last_recompute;

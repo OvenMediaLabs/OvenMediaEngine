@@ -5,7 +5,6 @@
 #include <functional>
 #include <optional>
 #include <unordered_map>
-#include <mutex>
 
 // One frame's worth of RTP packets, identified by a common RTP timestamp.
 // Completeness is decided from packet flags stamped by RtpFrameBoundaryDetector:
@@ -166,5 +165,5 @@ private:
 	// timestamp : RtpFrameInfo (ordered, so std::map)
 	std::map<uint64_t, std::shared_ptr<RtpFrame>> _rtp_frames;
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

@@ -147,7 +147,7 @@ protected:
 
 	std::shared_ptr<ov::ByteStream> _data_stream;
 
-	mutable std::mutex _track_mutex;
+	mutable ov::Mutex _track_mutex;
 	// Key: MediaPacket.GetTrackId()
 	// Value: Track.stream_index
 	std::map<int, std::shared_ptr<Track>> _track_map;

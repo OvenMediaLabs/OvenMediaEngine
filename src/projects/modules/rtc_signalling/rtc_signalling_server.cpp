@@ -232,7 +232,7 @@ bool RtcSignallingServer::Start(
 	{
 		if (PrepareForTCPRelay() && PrepareForExternalIceServer())
 		{
-			std::lock_guard lock_guard{_http_server_list_mutex};
+			ov::LockGuard lock_guard{_http_server_list_mutex};
 			_http_server_list = std::move(http_server_list);
 			_https_server_list = std::move(https_server_list);
 
@@ -279,7 +279,7 @@ bool RtcSignallingServer::InsertCertificate(const std::shared_ptr<const info::Ce
 	// The cache replays in `Start()` if this is called before listeners exist.
 	//
 	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
-	std::lock_guard lock_guard{_http_server_list_mutex};
+	ov::LockGuard lock_guard{_http_server_list_mutex};
 
 	_certificate_map[certificate->GetName()] = certificate;
 
@@ -303,7 +303,7 @@ bool RtcSignallingServer::RemoveCertificate(const std::shared_ptr<const info::Ce
 		return true;
 	}
 
-	std::lock_guard lock_guard{_http_server_list_mutex};
+	ov::LockGuard lock_guard{_http_server_list_mutex};
 
 	_certificate_map.erase(certificate->GetName());
 
@@ -362,7 +362,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 			auto info = std::make_shared<RtcSignallingInfo>(vhost_app_name, host_name, app_name, stream_name);
 
 			{
-				auto lock_guard = std::lock_guard(_client_list_mutex);
+				auto lock_guard = ov::LockGuard(_client_list_mutex);
 
 				while (true)
 				{
@@ -606,10 +606,10 @@ int RtcSignallingServer::GetClientPeerCount() const
 
 bool RtcSignallingServer::Stop()
 {
-	_http_server_list_mutex.lock();
+	ov::ReleasableLockGuard lock(_http_server_list_mutex);
 	auto http_server_list = std::move(_http_server_list);
 	auto https_server_list = std::move(_https_server_list);
-	_http_server_list_mutex.unlock();
+	lock.Release();
 
 	auto result = true;
 
@@ -1177,7 +1177,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 
 		if (info->id != P2P_INVALID_PEER_ID)
 		{
-			auto lock_guard = std::lock_guard(_client_list_mutex);
+			auto lock_guard = ov::LockGuard(_client_list_mutex);
 
 			_client_list.erase(info->id);
 			info->id = P2P_INVALID_PEER_ID;

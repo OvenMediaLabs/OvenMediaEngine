@@ -82,11 +82,11 @@ namespace mpegts
 		bool ExtractAACTrackInfo(const std::shared_ptr<Pes> &pes);
 		
 		// PID : Section
-		std::shared_mutex _section_draft_map_lock;
+		ov::SharedMutex _section_draft_map_lock;
 		std::map<uint16_t, std::shared_ptr<Section>> _section_draft_map;
 		// PID : PES
 		// there is only one pes saved per pid
-		std::shared_mutex _pes_draft_map_lock;
+		ov::SharedMutex _pes_draft_map_lock;
 		std::map<uint16_t, std::shared_ptr<Pes>> _pes_draft_map;
 
 		// PID : Last continuity counter
@@ -112,10 +112,10 @@ namespace mpegts
 		bool _track_list_completed = false;
 		std::map<uint16_t, std::shared_ptr<MediaTrack>> _media_tracks;
 		
-		std::shared_mutex _es_list_lock;
+		ov::SharedMutex _es_list_lock;
 		std::queue<std::shared_ptr<Pes>> _es_list;
 		
-		std::shared_mutex _section_list_lock;
+		ov::SharedMutex _section_list_lock;
 		std::queue<std::shared_ptr<Section>> _section_list;
 
 		// PMT, PES quickly search PMT, PES

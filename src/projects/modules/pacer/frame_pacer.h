@@ -68,7 +68,7 @@ private:
 	std::shared_ptr<ov::DelayQueue> _scheduler;
 	DispatchFn _dispatcher;
 
-	std::mutex _mu;
+	ov::Mutex _mu;
 	bool _anchor_set = false;
 	int64_t _anchor_pts_us = 0;
 	std::chrono::steady_clock::time_point _anchor_arrival;

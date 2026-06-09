@@ -155,7 +155,7 @@ protected:
 	const cfg::Server _server_config;
 	const cfg::bind::cmm::Webrtc _webrtc_bind_cfg;
 
-	std::recursive_mutex _http_server_list_mutex;
+	ov::RecursiveMutex _http_server_list_mutex;
 	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
 	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 
@@ -171,7 +171,7 @@ protected:
 	std::vector<std::shared_ptr<RtcSignallingObserver>> _observers;
 
 	std::map<peer_id_t, std::shared_ptr<RtcSignallingInfo>> _client_list;
-	std::shared_mutex _client_list_mutex;
+	ov::SharedMutex _client_list_mutex;
 
 	Json::Value _ice_servers;
 	Json::Value _new_ice_servers;

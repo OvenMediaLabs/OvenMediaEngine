@@ -33,7 +33,7 @@ namespace http
 
 		bool HttpServer::Start(const ov::SocketAddress &address, int worker_count, bool enable_http2)
 		{
-			auto lock_guard = std::lock_guard(_physical_port_mutex);
+			ov::LockGuard lock_guard(_physical_port_mutex);
 
 			if (_physical_port != nullptr)
 			{
@@ -70,7 +70,7 @@ namespace http
 			std::shared_ptr<PhysicalPort> physical_port;
 
 			{
-				auto lock_guard = std::lock_guard(_physical_port_mutex);
+				ov::LockGuard lock_guard(_physical_port_mutex);
 				physical_port = std::move(_physical_port);
 			}
 
@@ -88,7 +88,7 @@ namespace http
 			ClientList client_list;
 
 			{
-				auto lock_guard = std::lock_guard(_client_list_mutex);
+				ov::LockGuard lock_guard(_client_list_mutex);
 				client_list = std::move(_connection_list);
 			}
 
@@ -106,9 +106,9 @@ namespace http
 
 		ov::DelayQueueAction HttpServer::Repeater(void *parameter)
 		{
-			std::shared_lock<std::shared_mutex> guard(_client_list_mutex);
+			ov::ReleasableSharedLockGuard guard(_client_list_mutex);
 			auto client_list = _connection_list;
-			guard.unlock();
+			guard.Release();
 
 			for (const auto &item : client_list)
 			{
@@ -120,7 +120,7 @@ namespace http
 
 		bool HttpServer::IsRunning() const
 		{
-			auto lock_guard = std::lock_guard(_physical_port_mutex);
+			ov::LockGuard lock_guard(_physical_port_mutex);
 
 			return (_physical_port != nullptr);
 		}
@@ -132,7 +132,7 @@ namespace http
 
 		std::shared_ptr<HttpConnection> HttpServer::FindClient(const std::shared_ptr<ov::Socket> &remote)
 		{
-			std::shared_lock<std::shared_mutex> guard(_client_list_mutex);
+			ov::SharedLockGuard guard(_client_list_mutex);
 
 			auto item = _connection_list.find(remote.get());
 
@@ -155,7 +155,7 @@ namespace http
 				return nullptr;
 			}
 
-			std::lock_guard<std::shared_mutex> guard(_client_list_mutex);
+			ov::LockGuard guard(_client_list_mutex);
 
 			auto http_connection = std::make_shared<HttpConnection>(GetSharedPtr(), client_socket);
 			_connection_list[remote.get()] = http_connection;
@@ -195,7 +195,7 @@ namespace http
 			std::shared_ptr<HttpConnection> connection;
 
 			{
-				std::lock_guard<std::shared_mutex> guard(_client_list_mutex);
+				ov::LockGuard guard(_client_list_mutex);
 
 				auto client_iterator = _connection_list.find(remote.get());
 				if (client_iterator == _connection_list.end())
@@ -227,7 +227,7 @@ namespace http
 
 		bool HttpServer::AddInterceptor(const std::shared_ptr<RequestInterceptor> &interceptor)
 		{
-			std::lock_guard<std::shared_mutex> guard(_interceptor_list_mutex);
+			ov::LockGuard guard(_interceptor_list_mutex);
 
 			// Find interceptor in the list
 			auto item = std::find_if(_interceptor_list.begin(), _interceptor_list.end(), [&](std::shared_ptr<RequestInterceptor> const &value) -> bool {
@@ -248,7 +248,7 @@ namespace http
 		std::shared_ptr<RequestInterceptor> HttpServer::FindInterceptor(const std::shared_ptr<HttpExchange> &exchange)
 		{
 			// Find interceptor for the request
-			std::shared_lock<std::shared_mutex> guard(_interceptor_list_mutex);
+			ov::SharedLockGuard guard(_interceptor_list_mutex);
 
 			for (auto &interceptor : _interceptor_list)
 			{
@@ -265,7 +265,7 @@ namespace http
 
 		bool HttpServer::RemoveInterceptor(const std::shared_ptr<RequestInterceptor> &interceptor)
 		{
-			std::lock_guard<std::shared_mutex> guard(_interceptor_list_mutex);
+			ov::LockGuard guard(_interceptor_list_mutex);
 
 			// Find interceptor in the list
 			auto item = std::find_if(_interceptor_list.begin(), _interceptor_list.end(), [&](std::shared_ptr<RequestInterceptor> const &value) -> bool {
@@ -285,7 +285,7 @@ namespace http
 
 		ov::Socket *HttpServer::FindClient(ClientIterator iterator)
 		{
-			std::shared_lock<std::shared_mutex> guard(_client_list_mutex);
+			ov::SharedLockGuard guard(_client_list_mutex);
 
 			for (auto &client : _connection_list)
 			{
@@ -303,7 +303,7 @@ namespace http
 			std::vector<std::shared_ptr<HttpConnection>> temp_list;
 
 			{
-				std::shared_lock<std::shared_mutex> guard(_client_list_mutex);
+				ov::SharedLockGuard guard(_client_list_mutex);
 
 				for (auto client_iterator : _connection_list)
 				{

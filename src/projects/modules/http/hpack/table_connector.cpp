@@ -22,14 +22,14 @@ namespace http
 			}
 
 			// lock 
-			std::lock_guard<std::mutex> lock(_dynamic_table_lock);
+			ov::LockGuard lock(_dynamic_table_lock);
 			// DynamicTable 62 ~ (2^32 - 1)
 			return _dynamic_table->GetHeaderField(index - _static_table->GetNumberOfTableEntries(), header_field);
 		}
 
 		bool TableConnector::Index(const HeaderField &header_field)
 		{
-			std::lock_guard<std::mutex> lock(_dynamic_table_lock);
+			ov::LockGuard lock(_dynamic_table_lock);
 			// Only can index to DynamicTable
 			return _dynamic_table->Index(header_field);
 		}
@@ -42,13 +42,13 @@ namespace http
 				return {true, true, static_index};
 			}
 
-			std::unique_lock<std::mutex> lock(_dynamic_table_lock);
+			ov::ReleasableLockGuard lock(_dynamic_table_lock);
 			auto [dynamic_name_indexed, dynamic_value_indexed, dynamic_index] = _dynamic_table->LookupIndex(header_field);
 			if (dynamic_name_indexed == true && dynamic_value_indexed == true)
 			{
 				return {true, true, dynamic_index + _static_table->GetNumberOfTableEntries()};
 			}
-			lock.unlock();
+			lock.Release();
 
 			if (static_name_indexed == true)
 			{
@@ -64,13 +64,13 @@ namespace http
 
 		bool TableConnector::UpdateDynamicTableSize(size_t size)
 		{
-			std::lock_guard<std::mutex> lock(_dynamic_table_lock);
+			ov::LockGuard lock(_dynamic_table_lock);
 			return _dynamic_table->UpdateTableSize(size);
 		}
 
 		size_t TableConnector::GetDynamicTableSize()
 		{
-			std::lock_guard<std::mutex> lock(_dynamic_table_lock);
+			ov::LockGuard lock(_dynamic_table_lock);
 			return _dynamic_table->GetTableSize();
 		}
 	}

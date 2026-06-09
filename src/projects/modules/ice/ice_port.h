@@ -219,32 +219,32 @@ private:
 	std::shared_ptr<StunAttribute> _xor_relayed_address_attribute_for_ipv6;
 
 	std::vector<std::shared_ptr<PhysicalPort>> _physical_port_list;
-	std::recursive_mutex _physical_port_list_mutex;
+	ov::RecursiveMutex _physical_port_list_mutex;
 
 	// Mapping table containing related information until STUN binding.
 	// Once binding is complete, there is no need because it can be found by destination ip & port.
 	// key: offer ufrag
-	std::shared_mutex _ice_sessions_with_ufrag_lock;
+	ov::SharedMutex _ice_sessions_with_ufrag_lock;
 	std::map<const ov::String, std::shared_ptr<IceSession>> _ice_sessions_with_ufrag;
 	
 	// Find IceSession with connected CandidatePair, used when receiving TURN channel data and application data
 	// key: SocketAddressPair
-	std::shared_mutex _ice_sessions_with_address_pair_lock;
+	ov::SharedMutex _ice_sessions_with_address_pair_lock;
 	std::map<ov::SocketAddressPair, std::shared_ptr<IceSession>> _ice_sessions_with_address_pair;
 	
 	// Find IceSession with peer's session id, used for sending application data 
-	std::shared_mutex _ice_sessions_with_id_lock;
+	ov::SharedMutex _ice_sessions_with_id_lock;
 	std::map<session_id_t, std::shared_ptr<IceSession>> _ice_seesions_with_id;
 
 	// Insert item when send stun binding request
 	// Remove item when receive stun binding response or timed out
 	// Request Transaction ID : Session
-	std::shared_mutex _binding_requests_with_transaction_id_lock;
+	ov::SharedMutex _binding_requests_with_transaction_id_lock;
 	std::map<ov::String, BindingRequestInfo> _binding_requests_with_transaction_id;
 	
 	// Demultiplexer for data input through TCP
 	// remote's ID : Demultiplexer
-	std::shared_mutex _demultiplexers_lock;
+	ov::SharedMutex _demultiplexers_lock;
 	std::map<int, std::shared_ptr<IceTcpDemultiplexer>> _demultiplexers;
 
 	// TCP ports that serve as direct ICE candidates (RFC 6544).

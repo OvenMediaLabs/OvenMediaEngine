@@ -178,7 +178,7 @@ namespace mpegts
 
 	const std::shared_ptr<Pes> MpegTsDepacketizer::PopES()
 	{
-		std::lock_guard<std::shared_mutex> lock(_es_list_lock);
+		ov::LockGuard lock(_es_list_lock);
 		if (_es_list.size() == 0)
 		{
 			return nullptr;
@@ -192,7 +192,7 @@ namespace mpegts
 
 	const std::shared_ptr<Section> MpegTsDepacketizer::PopSection()
 	{
-		std::lock_guard<std::shared_mutex> lock(_section_list_lock);
+		ov::LockGuard lock(_section_list_lock);
 		if (_section_list.size() == 0)
 		{
 			return nullptr;
@@ -391,7 +391,7 @@ namespace mpegts
 
 	const std::shared_ptr<Section> MpegTsDepacketizer::GetSectionDraft(uint16_t pid)
 	{
-		std::shared_lock<std::shared_mutex> lock(_section_draft_map_lock);
+		ov::SharedLockGuard lock(_section_draft_map_lock);
 
 		auto it = _section_draft_map.find(pid);
 		if (it == _section_draft_map.end())
@@ -405,7 +405,7 @@ namespace mpegts
 	// incompleted section will be inserted
 	bool MpegTsDepacketizer::SaveSectionDraft(const std::shared_ptr<Section> &section)
 	{
-		std::lock_guard<std::shared_mutex> lock(_section_draft_map_lock);
+		ov::LockGuard lock(_section_draft_map_lock);
 
 		_section_draft_map.emplace(section->PID(), section);
 
@@ -415,7 +415,7 @@ namespace mpegts
 	// completed section will be removed
 	bool MpegTsDepacketizer::CompleteSection(const std::shared_ptr<Section> &section)
 	{
-		std::lock_guard<std::shared_mutex> lock(_section_draft_map_lock);
+		ov::LockGuard lock(_section_draft_map_lock);
 
 		if (section->IsCompleted() == false)
 		{
@@ -502,7 +502,7 @@ namespace mpegts
 
 	const std::shared_ptr<Pes> MpegTsDepacketizer::GetPesDraft(uint16_t pid)
 	{
-		std::shared_lock<std::shared_mutex> lock(_pes_draft_map_lock);
+		ov::SharedLockGuard lock(_pes_draft_map_lock);
 		auto it = _pes_draft_map.find(pid);
 		if (it == _pes_draft_map.end())
 		{
@@ -515,7 +515,7 @@ namespace mpegts
 	// incompleted section will be inserted
 	bool MpegTsDepacketizer::SavePesDraft(const std::shared_ptr<Pes> &pes)
 	{
-		std::lock_guard<std::shared_mutex> lock(_pes_draft_map_lock);
+		ov::LockGuard lock(_pes_draft_map_lock);
 		_pes_draft_map.emplace(pes->PID(), pes);
 
 		return true;
@@ -524,10 +524,10 @@ namespace mpegts
 	// process completed section and remove, extract a elementary stream (es)
 	bool MpegTsDepacketizer::CompletePes(const std::shared_ptr<Pes> &pes)
 	{
-		std::unique_lock<std::shared_mutex> lock2(_pes_draft_map_lock);
+		ov::ReleasableLockGuard lock2(_pes_draft_map_lock);
 		// if there is the pes in _pes_draft_map, remove it
 		_pes_draft_map.erase(pes->PID());
-		lock2.unlock();
+		lock2.Release();
 
 		if (pes->SetEndOfData() == false)
 		{
@@ -541,9 +541,9 @@ namespace mpegts
 			return false;
 		}
 
-		std::unique_lock<std::shared_mutex> lock(_es_list_lock);
+		ov::ReleasableLockGuard lock(_es_list_lock);
 		_es_list.push(pes);
-		lock.unlock();
+		lock.Release();
 
 		return true;
 	}

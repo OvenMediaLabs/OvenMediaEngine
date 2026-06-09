@@ -109,10 +109,10 @@ namespace ffmpeg
 		bool AddEventTrack(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream, cmn::BitstreamFormat format);
 		std::map<int32_t, std::pair<std::shared_ptr<AVStream>, std::shared_ptr<MediaTrack>>> _av_track_map;
 		std::map<std::pair<int32_t, cmn::BitstreamFormat>, std::pair<std::shared_ptr<AVStream>, std::shared_ptr<MediaTrack>>> _event_track_map;
-		mutable std::shared_mutex _track_map_lock;
+		mutable ov::SharedMutex _track_map_lock;
 
 		std::shared_ptr<AVFormatContext> _av_format = nullptr;
-		mutable std::shared_mutex _av_format_lock;
+		mutable ov::SharedMutex _av_format_lock;
 
 		ov::String _output_format_name;
 		AVIOInterruptCB _interrupt_cb;
@@ -124,7 +124,7 @@ namespace ffmpeg
 		std::map<int32_t, int64_t> _track_last_dts_map;
 
 		ov::String _error_message;
-		mutable std::mutex _error_message_lock;
+		mutable ov::Mutex _error_message_lock;
 
 		ov::String _log_prefix;
 	};

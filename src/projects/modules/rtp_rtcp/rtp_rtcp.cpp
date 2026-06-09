@@ -27,7 +27,7 @@ RtpRtcp::~RtpRtcp()
 
 bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_rate, ov::String cname)
 {
-	std::shared_lock<std::shared_mutex> state_lock(_state_lock);
+	ov::SharedLockGuard state_lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
 		logtt("It can only be called in the ready state.");
@@ -38,7 +38,7 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 	auto sdes_chunk = std::make_shared<SdesChunk>(ssrc, SdesChunk::Type::CNAME, cname);
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_rtcp_send_state_lock);
+		ov::LockGuard lock(_rtcp_send_state_lock);
 		_rtcp_sr_generators[ssrc] = sr_generator;
 
 		if(_sdes == nullptr)
@@ -55,7 +55,7 @@ bool RtpRtcp::AddRtpSender(uint8_t payload_type, uint32_t ssrc, uint32_t codec_r
 
 bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const RtpTrackIdentifier &rtp_track_id)
 {
-	std::shared_lock<std::shared_mutex> state_lock(_state_lock);
+	ov::SharedLockGuard state_lock(_state_lock);
 	if(GetNodeState() != ov::Node::NodeState::Ready)
 	{
 		logtt("It can only be called in the ready state.");
@@ -65,7 +65,7 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 	auto track_id = track->GetId();
 
 	{
-		std::lock_guard<std::shared_mutex> lock(_track_info_lock);
+		ov::LockGuard lock(_track_info_lock);
 		switch(track->GetOriginBitstream())
 		{
 			case cmn::BitstreamFormat::H264_RTP_RFC_6184:
@@ -114,7 +114,7 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 bool RtpRtcp::Stop()
 {
 	// Cross reference
-	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	ov::LockGuard lock(_state_lock);
 	_observer.reset();
 
 	return Node::Stop();
@@ -122,7 +122,7 @@ bool RtpRtcp::Stop()
 
 bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 {
-	std::shared_lock<std::shared_mutex> state_lock(_state_lock);
+	ov::SharedLockGuard state_lock(_state_lock);
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
@@ -133,7 +133,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 	// Build the compound RTCP under the send lock, then send outside the lock
 	std::shared_ptr<ov::Data> compound_rtcp_data = nullptr;
 	{
-		std::lock_guard<std::shared_mutex> lock(_rtcp_send_state_lock);
+		ov::LockGuard lock(_rtcp_send_state_lock);
 
 		// RTCP(SR + SR + SDES + SDES)
 		auto it = _rtcp_sr_generators.find(rtp_packet->Ssrc());
@@ -249,7 +249,7 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 	bool known = false;
 
 	{
-		std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+		ov::LockGuard lock(_rtx_streams_lock);
 		auto rtx_it = _rtx_streams.find(rtx_ssrc);
 		if (rtx_it != _rtx_streams.end())
 		{
@@ -299,7 +299,7 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 		{
 			std::shared_ptr<RtcpTransportCcFeedbackGenerator> generator;
 			{
-				std::shared_lock<std::shared_mutex> lock(_transport_cc_generator_lock);
+				ov::SharedLockGuard lock(_transport_cc_generator_lock);
 				generator = _transport_cc_generator;
 			}
 			if (generator != nullptr)
@@ -313,7 +313,7 @@ RtpRtcp::RtxResult RtpRtcp::TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet)
 	if (learned)
 	{
 		{
-			std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+			ov::LockGuard lock(_rtx_streams_lock);
 			_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, packet->PayloadType(), original_pt};
 		}
 		logti("Learned RTX stream rtx_ssrc(%u) -> media_ssrc(%u) pt(%u->%u)",
@@ -364,7 +364,7 @@ void RtpRtcp::FlushNackIfDue(uint32_t track_id, const std::shared_ptr<RtpNackGen
 	// the receive path only holds a shared_lock on _state_lock. Stamp the
 	// watermark before sending so concurrent receives don't double-flush.
 	{
-		std::lock_guard<std::mutex> lock(_last_nack_flush_at_lock);
+		ov::LockGuard lock(_last_nack_flush_at_lock);
 		auto it = _last_nack_flush_at.find(track_id);
 		if (it != _last_nack_flush_at.end() && (now - it->second) < std::chrono::milliseconds(NACK_COALESCE_MS))
 		{
@@ -382,11 +382,11 @@ void RtpRtcp::FlushNackIfDue(uint32_t track_id, const std::shared_ptr<RtpNackGen
 
 bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms)
 {
-	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	ov::LockGuard lock(_state_lock);
 	auto generator = std::make_shared<RtpNackGenerator>(track_id, media_ssrc, max_hold_ms);
 	_nack_generators[track_id] = generator;
 	{
-		std::lock_guard<std::mutex> flush_lock(_last_nack_flush_at_lock);
+		ov::LockGuard flush_lock(_last_nack_flush_at_lock);
 		_last_nack_flush_at[track_id] = std::chrono::steady_clock::now();
 	}
 
@@ -426,7 +426,7 @@ bool RtpRtcp::RegisterRtxStream(uint32_t rtx_ssrc, uint32_t media_ssrc,
 {
 	// Guarded by its own lock (not _state_lock) so it stays consistent with
 	// the receive-path learned write in TryUnwrapRtx.
-	std::lock_guard<std::mutex> lock(_rtx_streams_lock);
+	ov::LockGuard lock(_rtx_streams_lock);
 	_rtx_streams[rtx_ssrc] = RtxStreamInfo{media_ssrc, rtx_payload_type, original_payload_type};
 	logti("RegisterRtxStream rtx_ssrc(%u) media_ssrc(%u) rtx_pt(%u) orig_pt(%u)",
 		  rtx_ssrc, media_ssrc, rtx_payload_type, original_payload_type);
@@ -435,7 +435,7 @@ bool RtpRtcp::RegisterRtxStream(uint32_t rtx_ssrc, uint32_t media_ssrc,
 
 bool RtpRtcp::RegisterRtxPayloadType(uint8_t rtx_payload_type, uint8_t original_payload_type)
 {
-	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	ov::LockGuard lock(_state_lock);
 	_rtx_pt_to_original[rtx_payload_type] = original_payload_type;
 	logti("RegisterRtxPayloadType rtx_pt(%u) orig_pt(%u)", rtx_payload_type, original_payload_type);
 	return true;
@@ -443,7 +443,7 @@ bool RtpRtcp::RegisterRtxPayloadType(uint8_t rtx_payload_type, uint8_t original_
 
 bool RtpRtcp::SetDependencyDescriptorExtId(uint8_t dd_extension_id)
 {
-	std::lock_guard<std::shared_mutex> lock(_state_lock);
+	ov::LockGuard lock(_state_lock);
 	_dd_extension_id = dd_extension_id;
 	logti("SetDependencyDescriptorExtId dd_ext(%u)", dd_extension_id);
 	return true;
@@ -469,7 +469,7 @@ void RtpRtcp::DisableTransportCcFeedback()
 
 std::optional<uint32_t> RtpRtcp::GetTrackId(uint32_t ssrc) const
 {
-	std::shared_lock<std::shared_mutex> lock(_ssrc_to_track_id_lock);
+	ov::SharedLockGuard lock(_ssrc_to_track_id_lock);
 	auto it = _ssrc_to_track_id.find(ssrc);
 	if(it == _ssrc_to_track_id.end())
 	{
@@ -488,7 +488,7 @@ std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const RtpPack
 		return track_id;
 	}
 
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	for (const auto &rtp_track_id : _rtp_track_identifiers)
 	{
 		// with ssrc
@@ -541,7 +541,7 @@ std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const Sdes> &
 		return track_id;
 	}
 
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	for (const auto &rtp_track_id : _rtp_track_identifiers)
 	{
 		// with ssrc
@@ -579,7 +579,7 @@ std::optional<uint32_t> RtpRtcp::FindTrackId(const std::shared_ptr<const Sdes> &
 
 std::optional<uint32_t> RtpRtcp::FindTrackId(uint8_t rtsp_inter_channel) const
 {
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	for (const auto &rtp_track_id : _rtp_track_identifiers)
 	{
 		// with interleaved channel
@@ -595,7 +595,7 @@ std::optional<uint32_t> RtpRtcp::FindTrackId(uint8_t rtsp_inter_channel) const
 void RtpRtcp::ConnectSsrcToTrack(uint32_t ssrc, uint32_t track_id)
 {
 	{
-		std::lock_guard<std::shared_mutex> lock(_ssrc_to_track_id_lock);
+		ov::LockGuard lock(_ssrc_to_track_id_lock);
 		if (_ssrc_to_track_id.find(ssrc) != _ssrc_to_track_id.end())
 		{
 			logtw("SSRC(%u) is already connected to track ID(%u), it will be replaced.", ssrc, _ssrc_to_track_id[ssrc]);
@@ -608,7 +608,7 @@ void RtpRtcp::ConnectSsrcToTrack(uint32_t ssrc, uint32_t track_id)
 
 std::shared_ptr<MediaTrack> RtpRtcp::GetTrack(uint32_t track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	auto it = _tracks.find(track_id);
 	if (it == _tracks.end())
 	{
@@ -619,7 +619,7 @@ std::shared_ptr<MediaTrack> RtpRtcp::GetTrack(uint32_t track_id) const
 
 std::shared_ptr<RtpFrameJitterBuffer> RtpRtcp::GetJitterBuffer(uint32_t track_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	auto it = _rtp_frame_jitter_buffers.find(track_id);
 	if (it == _rtp_frame_jitter_buffers.end())
 	{
@@ -630,7 +630,7 @@ std::shared_ptr<RtpFrameJitterBuffer> RtpRtcp::GetJitterBuffer(uint32_t track_id
 
 std::shared_ptr<RtpMinimalJitterBuffer> RtpRtcp::GetMinimalJitterBuffer(uint32_t track_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_track_info_lock);
+	ov::SharedLockGuard lock(_track_info_lock);
 	auto it = _rtp_minimal_jitter_buffers.find(track_id);
 	if (it == _rtp_minimal_jitter_buffers.end())
 	{
@@ -641,7 +641,7 @@ std::shared_ptr<RtpMinimalJitterBuffer> RtpRtcp::GetMinimalJitterBuffer(uint32_t
 
 std::shared_ptr<RtpReceiveStatistics> RtpRtcp::GetOrCreateReceiveStatistics(uint32_t track_id, uint32_t ssrc, uint32_t clock_rate)
 {
-	std::lock_guard<std::shared_mutex> lock(_receive_statistics_lock);
+	ov::LockGuard lock(_receive_statistics_lock);
 	auto it = _receive_statistics.find(track_id);
 	// Some encoders or servers do not provide SSRC in SDP, so it is extracted from
 	// the received packet. If the ssrc changes, the previous statistics are replaced.
@@ -656,7 +656,7 @@ std::shared_ptr<RtpReceiveStatistics> RtpRtcp::GetOrCreateReceiveStatistics(uint
 
 std::shared_ptr<RtpReceiveStatistics> RtpRtcp::FindReceiveStatistics(uint32_t track_id) const
 {
-	std::shared_lock<std::shared_mutex> lock(_receive_statistics_lock);
+	ov::SharedLockGuard lock(_receive_statistics_lock);
 	auto it = _receive_statistics.find(track_id);
 	if (it == _receive_statistics.end())
 	{
@@ -670,7 +670,7 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> generator;
 	{
 		// Common path after init: shared lock for a concurrent read.
-		std::shared_lock<std::shared_mutex> lock(_transport_cc_generator_lock);
+		ov::SharedLockGuard lock(_transport_cc_generator_lock);
 		generator = _transport_cc_generator;
 	}
 	if (generator == nullptr)
@@ -678,7 +678,7 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 		// First packet: take the exclusive lock and create, re-checking in case
 		// another thread won the race. Receiver SSRC is unknown, so reuse the
 		// first track's RR ssrc (wide sequence means media ssrc may not be unique).
-		std::lock_guard<std::shared_mutex> lock(_transport_cc_generator_lock);
+		ov::LockGuard lock(_transport_cc_generator_lock);
 		if (_transport_cc_generator == nullptr)
 		{
 			_transport_cc_generator = std::make_shared<RtcpTransportCcFeedbackGenerator>(_transport_cc_feedback_extension_id.load(), receiver_ssrc);
@@ -697,20 +697,20 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 
 void RtpRtcp::SetLastSentRtpPacket(const std::shared_ptr<RtpPacket> &packet)
 {
-	std::lock_guard<std::shared_mutex> lock(_last_sent_packet_lock);
+	ov::LockGuard lock(_last_sent_packet_lock);
 	_last_sent_rtp_packet = packet;
 }
 
 void RtpRtcp::SetLastSentRtcpPacket(const std::shared_ptr<RtcpPacket> &packet)
 {
-	std::lock_guard<std::shared_mutex> lock(_last_sent_packet_lock);
+	ov::LockGuard lock(_last_sent_packet_lock);
 	_last_sent_rtcp_packet = packet;
 }
 
 // In general, since RTP_RTCP is the first node, there is no previous node. So it will not be called
 bool RtpRtcp::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data)
 {
-	std::shared_lock<std::shared_mutex> lock(_state_lock);
+	ov::SharedLockGuard lock(_state_lock);
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
@@ -737,7 +737,7 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
 	// such as IcePort or RTSP Interleaved channel to complete and input one packet.
 	// Therefore, it is not necessary to demux the packet here.
 
-	std::shared_lock<std::shared_mutex> lock(_state_lock);
+	ov::SharedLockGuard lock(_state_lock);
 	// nothing to do before node start
 	if(GetNodeState() != ov::Node::NodeState::Started)
 	{
@@ -1086,12 +1086,12 @@ bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov:
 
 std::shared_ptr<RtpPacket> RtpRtcp::GetLastSentRtpPacket()
 {
-	std::shared_lock<std::shared_mutex> lock(_last_sent_packet_lock);
+	ov::SharedLockGuard lock(_last_sent_packet_lock);
 	return _last_sent_rtp_packet;
 }
 
 std::shared_ptr<RtcpPacket> RtpRtcp::GetLastSentRtcpPacket()
 {
-	std::shared_lock<std::shared_mutex> lock(_last_sent_packet_lock);
+	ov::SharedLockGuard lock(_last_sent_packet_lock);
 	return _last_sent_rtcp_packet;
 }

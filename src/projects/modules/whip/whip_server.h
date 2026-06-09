@@ -75,7 +75,7 @@ private:
 
 	std::shared_ptr<WhipObserver> _observer;
 
-	std::recursive_mutex _http_server_list_mutex;
+	ov::RecursiveMutex _http_server_list_mutex;
 	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
 	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
 

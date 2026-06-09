@@ -32,7 +32,7 @@ namespace http
 			std::shared_ptr<DynamicTable> _dynamic_table = std::make_shared<DynamicTable>();
 
 			// The dynamic table must be atomic
-			std::mutex _dynamic_table_lock;
+			ov::Mutex _dynamic_table_lock;
 		};
 	}
 }

@@ -525,14 +525,14 @@ namespace mpegts
 
         std::map<int64_t, std::shared_ptr<Segment>> _segments;
 		double _total_segments_duration_ms = 0;
-		mutable std::shared_mutex _segments_guard;
+		mutable ov::SharedMutex _segments_guard;
 
 		std::map<int64_t, std::shared_ptr<Segment>> _file_stored_segments;
 		double _total_file_stored_segments_duration_ms = 0;
-		mutable std::shared_mutex _file_stored_segments_guard;
+		mutable ov::SharedMutex _file_stored_segments_guard;
 
 		std::map<int64_t, std::shared_ptr<Segment>> _retained_segments;
-		mutable std::shared_mutex _retained_segments_guard;
+		mutable ov::SharedMutex _retained_segments_guard;
 
 		std::vector<std::shared_ptr<PackagerSink>> _sinks;
 

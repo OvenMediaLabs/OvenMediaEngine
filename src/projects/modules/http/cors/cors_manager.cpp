@@ -21,7 +21,7 @@ namespace http
 
 	void CorsManager::SetCrossDomains(const info::VHostAppName &vhost_app_name, const cfg::cmn::CrossDomains &cross_domain_cfg)
 	{
-		std::lock_guard lock_guard(_cors_mutex);
+		ov::LockGuard lock_guard(_cors_mutex);
 
 		auto url_list = cross_domain_cfg.GetUrls();
 		_cors_cfg_map[vhost_app_name] = cross_domain_cfg;
@@ -135,7 +135,7 @@ namespace http
 
 	bool CorsManager::SetupRtmpCorsXml(const std::shared_ptr<http::svr::HttpResponse> &response) const
 	{
-		std::lock_guard lock_guard(_cors_mutex);
+		ov::LockGuard lock_guard(_cors_mutex);
 
 		if (_cors_rtmp.IsEmpty() == false)
 		{
@@ -176,7 +176,7 @@ namespace http
 		std::unordered_map<info::VHostAppName, cfg::cmn::CrossDomains>::const_iterator cors_cfg_iterator;
 
 		{
-			std::lock_guard lock_guard(_cors_mutex);
+			ov::LockGuard lock_guard(_cors_mutex);
 
 			auto cors_policy_iterator = _cors_policy_map.find(vhost_app_name);
 			auto cors_regex_list_iterator = _cors_item_list_map.find(vhost_app_name);

@@ -89,14 +89,14 @@ namespace bmff
 			// Get total number of segments
 			uint32_t GetTotalSegmentCount() const
 			{
-				std::shared_lock<std::shared_mutex> lock(_segments_lock);
+				ov::SharedLockGuard lock(_segments_lock);
 				return _segments.size();
 			}
 
 			void AppendSegment(uint32_t segment_number, double duration_ms, size_t segment_size)
 			{
 				//lock
-				std::lock_guard<std::shared_mutex> lock(_segments_lock);
+				ov::LockGuard lock(_segments_lock);
 				
 				if (_segments.empty())
 				{
@@ -118,7 +118,7 @@ namespace bmff
 			SegmentInfo PopOldestSegmentInfo()
 			{
 				//lock
-				std::lock_guard<std::shared_mutex> lock(_segments_lock);
+				ov::LockGuard lock(_segments_lock);
 
 				if(_segments.empty())
 				{
@@ -139,7 +139,7 @@ namespace bmff
 			SegmentInfo GetSegmentInfo(uint32_t segment_number) const
 			{
 				//lock
-				std::shared_lock<std::shared_mutex> lock(_segments_lock);
+				ov::SharedLockGuard lock(_segments_lock);
 
 				if(_segments.empty())
 				{
@@ -164,7 +164,7 @@ namespace bmff
 		private:
 			std::deque<SegmentInfo> _segments;
 			// segments lock
-			mutable std::shared_mutex _segments_lock;
+			mutable ov::SharedMutex _segments_lock;
 			uint32_t _first_segment_number = 0;
 			double _total_dvr_segment_duration_ms = 0;
 		};
@@ -186,7 +186,7 @@ namespace bmff
 		
 		// segment number : segment
 		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;
-		mutable std::shared_mutex _segments_lock;
+		mutable ov::SharedMutex _segments_lock;
 
 		int64_t _initial_segment_number = 0;
 		[[maybe_unused]] int64_t _start_timestamp_delta = -1;

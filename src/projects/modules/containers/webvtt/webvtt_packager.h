@@ -102,7 +102,7 @@ namespace webvtt
 
 		bool AddPartialSegment(const std::shared_ptr<webvtt::PartialSegment> &partial_segment)
 		{
-			std::unique_lock<std::shared_mutex> lock(_partial_segments_guard);
+			ov::LockGuard lock(_partial_segments_guard);
 			if (partial_segment == nullptr)
 			{
 				return false;
@@ -120,7 +120,7 @@ namespace webvtt
 
 		const std::shared_ptr<webvtt::PartialSegment> GetPartialSegment(int64_t partial_segment_number) const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partial_segments_guard);
+			ov::SharedLockGuard lock(_partial_segments_guard);
 			auto it = _partial_segments.find(partial_segment_number);
 			if (it != _partial_segments.end())
 			{
@@ -132,7 +132,7 @@ namespace webvtt
 
 		const std::shared_ptr<webvtt::PartialSegment> GetLastPartialSegment() const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partial_segments_guard);
+			ov::SharedLockGuard lock(_partial_segments_guard);
 			if (_partial_segments.empty())
 			{
 				return nullptr;
@@ -143,7 +143,7 @@ namespace webvtt
 
 		uint32_t GetPartialSegmentCount() const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partial_segments_guard);
+			ov::SharedLockGuard lock(_partial_segments_guard);
 			return _partial_segments.size();
 		}
 
@@ -157,7 +157,7 @@ namespace webvtt
 
 		// partial segments
 		std::map<int64_t, std::shared_ptr<webvtt::PartialSegment>> _partial_segments;
-		mutable std::shared_mutex _partial_segments_guard;
+		mutable ov::SharedMutex _partial_segments_guard;
 
 		ov::String _url;
 
@@ -198,10 +198,10 @@ namespace webvtt
 		// start_time_ms : frame
 		// To make ordered
 		std::map<int64_t, std::shared_ptr<WebVTTFrame>> _frames;
-		std::shared_mutex _frames_guard;
+		ov::SharedMutex _frames_guard;
 
 		std::map<int64_t, std::shared_ptr<Segment>> _segments;
-		mutable std::shared_mutex _segments_guard;
+		mutable ov::SharedMutex _segments_guard;
 
 		uint64_t _max_partial_duration_ms = 0;
 		uint64_t _min_partial_duration_ms = std::numeric_limits<uint64_t>::max();

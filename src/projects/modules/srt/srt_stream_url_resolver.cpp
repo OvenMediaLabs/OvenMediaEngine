@@ -17,7 +17,7 @@ namespace modules::srt
 {
 	void StreamUrlResolver::Initialize(const std::vector<cfg::cmn::SrtStream> &stream_list)
 	{
-		std::unique_lock lock{_stream_map_mutex};
+		ov::LockGuard lock{_stream_map_mutex};
 		for (const auto &stream : stream_list)
 		{
 			_stream_map.emplace(stream.GetPort(), stream.GetStreamPath());
@@ -26,7 +26,7 @@ namespace modules::srt
 
 	std::optional<ov::String> StreamUrlResolver::GetStreamPath(int port)
 	{
-		std::shared_lock lock{_stream_map_mutex};
+		ov::SharedLockGuard lock{_stream_map_mutex};
 		auto it = _stream_map.find(port);
 
 		return (it != _stream_map.end()) ? std::optional<ov::String>(it->second) : std::nullopt;

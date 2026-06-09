@@ -12,8 +12,6 @@
 #include "../rtp_packet.h"
 #include "transport_cc.h"
 
-#include <mutex>
-
 // https://datatracker.ietf.org/doc/html/draft-holmer-rmcat-transport-wide-cc-extensions-01
 
 // RTP header extension format
@@ -65,7 +63,7 @@ public:
 	std::shared_ptr<RtcpPacket> GenerateTransportCcMessageIfElapsed(uint32_t milliseconds);
 	uint32_t GetPacketStatusCount() const
 	{
-		std::lock_guard<std::mutex> lock(_lock);
+		ov::LockGuard lock(_lock);
 		if (_transport_cc == nullptr)
 		{
 			return 0;
@@ -91,5 +89,5 @@ private:
 
 	std::chrono::steady_clock::time_point _last_report_time;
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

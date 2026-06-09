@@ -33,7 +33,7 @@ namespace modules::srt
 		std::optional<info::Host> GetHostInfo(const ov::String &host) const;
 
 	private:
-		std::shared_mutex _stream_map_mutex;
+		ov::SharedMutex _stream_map_mutex;
 		// Key: port, Value: stream_path
 		std::map<int, ov::String> _stream_map;
 	};

@@ -137,7 +137,7 @@ namespace mpegts
 	std::shared_ptr<base::modules::Segment> Packager::GetSegment(int64_t segment_id) const
 	{
 		{
-			std::shared_lock<std::shared_mutex> lock(_segments_guard);
+			ov::SharedLockGuard lock(_segments_guard);
 			auto it = _segments.find(segment_id);
 			if (it != _segments.end())
 			{
@@ -146,7 +146,7 @@ namespace mpegts
 		}
 
 		{
-			std::shared_lock<std::shared_mutex> lock(_file_stored_segments_guard);
+			ov::SharedLockGuard lock(_file_stored_segments_guard);
 			auto it = _file_stored_segments.find(segment_id);
 			if (it != _file_stored_segments.end())
 			{
@@ -155,7 +155,7 @@ namespace mpegts
 		}
 
 		{
-			std::shared_lock<std::shared_mutex> lock(_retained_segments_guard);
+			ov::SharedLockGuard lock(_retained_segments_guard);
 			auto it = _retained_segments.find(segment_id);
 			if (it != _retained_segments.end())
 			{
@@ -168,7 +168,7 @@ namespace mpegts
 
 	std::shared_ptr<base::modules::Segment> Packager::GetLastSegment() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return nullptr;
@@ -179,13 +179,13 @@ namespace mpegts
 
 	uint64_t Packager::GetSegmentCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		return static_cast<uint64_t>(_segments.size());
 	}
 
 	int64_t Packager::GetLastSegmentNumber() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return -1;
@@ -499,20 +499,20 @@ namespace mpegts
 
 	void Packager::AddSegmentToBuffer(const std::shared_ptr<Segment> &segment)
 	{
-		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		ov::LockGuard lock(_segments_guard);
 		_segments.emplace(segment->GetId(), segment);
 		_total_segments_duration_ms += segment->GetDurationMs();
 	}
 	
 	size_t Packager::GetBufferedSegmentCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		return _segments.size();
 	}
 
 	std::shared_ptr<Segment> Packager::GetOldestSegmentFromBuffer() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_guard);
+		ov::SharedLockGuard lock(_segments_guard);
 		if (_segments.empty())
 		{
 			return nullptr;
@@ -524,7 +524,7 @@ namespace mpegts
 
 	void Packager::RemoveSegmentFromBuffer(const std::shared_ptr<Segment> &segment)
 	{
-		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		ov::LockGuard lock(_segments_guard);
 		auto it = _segments.find(segment->GetId());
 		if (it != _segments.end())
 		{
@@ -560,7 +560,7 @@ namespace mpegts
 
 		// Add segment info
 		{
-			std::lock_guard<std::shared_mutex> lock(_file_stored_segments_guard);
+			ov::LockGuard lock(_file_stored_segments_guard);
 			// Remove data from segment, it has been saved in a file
 			segment->ResetData();
 			segment->SetFilePath(file_path);
@@ -589,13 +589,13 @@ namespace mpegts
 
 	double Packager::GetTotalFileStoredSegmentsDurationMs() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_file_stored_segments_guard);
+		ov::SharedLockGuard lock(_file_stored_segments_guard);
 		return _total_file_stored_segments_duration_ms;
 	}
 
 	std::shared_ptr<Segment> Packager::GetOldestSegmentFromFile() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_file_stored_segments_guard);
+		ov::SharedLockGuard lock(_file_stored_segments_guard);
 		if (_file_stored_segments.empty())
 		{
 			return nullptr;
@@ -607,7 +607,7 @@ namespace mpegts
 
 	void Packager::DeleteSegmentFromFileStoredList(const std::shared_ptr<Segment> &segment)
 	{
-		std::lock_guard<std::shared_mutex> lock(_file_stored_segments_guard);
+		ov::LockGuard lock(_file_stored_segments_guard);
 		auto it = _file_stored_segments.find(segment->GetId());
 		if (it != _file_stored_segments.end())
 		{
@@ -631,7 +631,7 @@ namespace mpegts
 	void Packager::SaveSegmentToRetentionBuffer(const std::shared_ptr<Segment> &segment)
 	{
 		{
-			std::lock_guard<std::shared_mutex> lock(_retained_segments_guard);
+			ov::LockGuard lock(_retained_segments_guard);
 			_retained_segments.emplace(segment->GetId(), segment);
 
 			logtt("Saved segment to retention buffer: %" PRId64, segment->GetId());
@@ -657,13 +657,13 @@ namespace mpegts
 
 	size_t Packager::GetReteinedSegmentCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_retained_segments_guard);
+		ov::SharedLockGuard lock(_retained_segments_guard);
 		return _retained_segments.size();
 	}
 
 	std::shared_ptr<Segment> Packager::GetOldestSegmentFromRetentionBuffer() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_retained_segments_guard);
+		ov::SharedLockGuard lock(_retained_segments_guard);
 		if (_retained_segments.empty())
 		{
 			return nullptr;
@@ -675,7 +675,7 @@ namespace mpegts
 
 	void Packager::RemoveSegmentFromRetentionBuffer(const std::shared_ptr<Segment> &segment)
 	{
-		std::lock_guard<std::shared_mutex> lock(_retained_segments_guard);
+		ov::LockGuard lock(_retained_segments_guard);
 		auto it = _retained_segments.find(segment->GetId());
 		if (it != _retained_segments.end())
 		{

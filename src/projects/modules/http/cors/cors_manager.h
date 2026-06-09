@@ -80,7 +80,7 @@ namespace http
 		};
 
 	protected:
-		mutable std::mutex _cors_mutex;
+		mutable ov::Mutex _cors_mutex;
 
 		std::unordered_map<info::VHostAppName, CorsPolicy> _cors_policy_map;
 

@@ -56,13 +56,13 @@ namespace ffmpeg
 
 	void Writer::SetErrorMessage(const ov::String &message)
 	{
-		std::lock_guard<std::mutex> lock(_error_message_lock);
+		ov::LockGuard<ov::Mutex> lock(_error_message_lock);
 		_error_message = message;
 	}
 
 	ov::String Writer::GetErrorMessage() const
 	{
-		std::lock_guard<std::mutex> lock(_error_message_lock);
+		ov::LockGuard<ov::Mutex> lock(_error_message_lock);
 		return _error_message;
 	}
 
@@ -188,7 +188,7 @@ namespace ffmpeg
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
+		ov::LockGuard<ov::SharedMutex> mlock(_track_map_lock);
 		_av_track_map[media_track->GetId()] = std::make_pair(av_stream, media_track);
 
 		logat("Added %s track. id(%d), codec(%s), format(%s)",
@@ -208,7 +208,7 @@ namespace ffmpeg
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
+		ov::LockGuard<ov::SharedMutex> mlock(_track_map_lock);
 		_event_track_map[std::make_pair(media_track->GetId(), format)] = std::make_pair(av_stream, media_track);
 
 		logat("Added %s track. id(%d), codec(%s), format(%s)",
@@ -281,9 +281,9 @@ namespace ffmpeg
 
 	int32_t Writer::GetTrackCountByType(cmn::MediaType media_type)
 	{
-		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		ov::ReleasableSharedLockGuard<ov::SharedMutex> mlock(_track_map_lock);
 		auto track_map = _av_track_map;
-		mlock.unlock();
+		mlock.Release();
 
 		int32_t count = 0;
 		for (const auto &[track_id, track_pair] : track_map)
@@ -300,9 +300,9 @@ namespace ffmpeg
 
 	std::shared_ptr<MediaTrack> Writer::GetTrackByTrackId(int32_t media_track_id) const
 	{
-		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		ov::ReleasableSharedLockGuard<ov::SharedMutex> mlock(_track_map_lock);
 		auto track_map = _av_track_map;
-		mlock.unlock();
+		mlock.Release();
 
 		if (track_map.find(media_track_id) != track_map.end())
 		{
@@ -627,7 +627,7 @@ namespace ffmpeg
 
 		_last_packet_sent_time = std::chrono::steady_clock::now();
 
-		std::unique_lock<std::shared_mutex> mlock(_av_format_lock);
+		ov::ReleasableLockGuard<ov::SharedMutex> mlock(_av_format_lock);
 
 		// Check DTS monotonicity. if not, drop the packet.
 		auto it = _track_last_dts_map.find(av_packet.stream_index);
@@ -663,7 +663,7 @@ namespace ffmpeg
 		// Update last DTS for the track to handle DTS monotonicity
 		_track_last_dts_map[av_packet.stream_index] = av_packet.dts;
 
-		mlock.unlock();
+		mlock.Release();
 
 		if (sent_bytes != nullptr)
 		{
@@ -680,13 +680,13 @@ namespace ffmpeg
 
 	std::shared_ptr<AVFormatContext> Writer::GetAVFormatContext() const
 	{
-		std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
+		ov::SharedLockGuard<ov::SharedMutex> mlock(_av_format_lock);
 		return _av_format;
 	}
 
 	void Writer::SetAVFormatContext(AVFormatContext *av_format)
 	{
-		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+		ov::LockGuard<ov::SharedMutex> mlock(_av_format_lock);
 		// forward _need_to_flush and _need_to_close to lambda
 		_av_format.reset(av_format, [&need_to_flush = _need_to_flush, &need_to_close = _need_to_close](AVFormatContext *av_format_ptr) {
 			if (av_format_ptr == nullptr)
@@ -713,7 +713,7 @@ namespace ffmpeg
 
 	void Writer::ReleaseAVFormatContext()
 	{
-		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+		ov::LockGuard<ov::SharedMutex> mlock(_av_format_lock);
 		_av_format = nullptr;
 		_need_to_flush = false;
 		_need_to_close = false;
@@ -721,7 +721,7 @@ namespace ffmpeg
 
 	std::pair<std::shared_ptr<AVStream>, std::shared_ptr<MediaTrack>> Writer::GetTrack(int32_t track_id, cmn::BitstreamFormat format) const
 	{
-		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		ov::SharedLockGuard<ov::SharedMutex> mlock(_track_map_lock);
 
 		// Check track for Audio/Video first
 		{

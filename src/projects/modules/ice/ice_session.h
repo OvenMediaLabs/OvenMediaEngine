@@ -106,13 +106,13 @@ private:
     std::atomic<IceConnectionState> _state{IceConnectionState::New};
 
     // Candidate pairs
-	mutable std::shared_mutex _active_candidate_pair_mutex;
+	mutable ov::SharedMutex _active_candidate_pair_mutex;
     std::shared_ptr<IceCandidatePair> _active_candidate_pair;
 
-	mutable std::shared_mutex _candidate_pairs_mutex;
+	mutable ov::SharedMutex _candidate_pairs_mutex;
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs;
 
-	mutable std::shared_mutex _expire_time_mutex;
+	mutable ov::SharedMutex _expire_time_mutex;
 	std::chrono::time_point<std::chrono::steady_clock> _expire_time;
 	const int _expire_after_ms;
 	const uint64_t _lifetime_epoch_ms;

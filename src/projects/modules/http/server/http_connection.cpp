@@ -123,7 +123,7 @@ namespace http
 					auto http2_stream = std::static_pointer_cast<h2::HttpStream>(exchange);
 
 					// Lock
-					std::unique_lock<std::mutex> lock(_http_stream_map_guard);
+					ov::LockGuard lock(_http_stream_map_guard);
 					_http_stream_map.erase(http2_stream->GetStreamId());
 					break;
 				}
@@ -245,7 +245,7 @@ namespace http
 		void HttpConnection::Close(PhysicalPortDisconnectReason reason)
 		{
 			// mutex
-			std::lock_guard<std::recursive_mutex> lock(_close_mutex);
+			ov::LockGuard lock(_close_mutex);
 			if (_closed == true)
 			{
 				return;
@@ -271,9 +271,9 @@ namespace http
 				_websocket_session.reset();
 			}
 			
-			std::unique_lock<std::mutex> map_guard(_http_stream_map_guard);
+			ov::ReleasableLockGuard map_guard(_http_stream_map_guard);
 			_http_stream_map.clear();
-			map_guard.unlock();
+			map_guard.Release();
 
 			if (reason != PhysicalPortDisconnectReason::Disconnected)
 			{
@@ -287,7 +287,7 @@ namespace http
 
 		void HttpConnection::OnDataReceived(const std::shared_ptr<const ov::Data> &data)
 		{
-			std::lock_guard<std::recursive_mutex> lock(_close_mutex);
+			ov::LockGuard lock(_close_mutex);
 			if (_closed == true)
 			{
 				return;
@@ -475,7 +475,7 @@ namespace http
 				logtt("HTTP/2 Frame Received : %s", _http2_frame->ToString().CStr());
 				
 				// lock
-				std::unique_lock<std::mutex> lock(_http_stream_map_guard);
+				ov::ReleasableLockGuard lock(_http_stream_map_guard);
 				std::shared_ptr<h2::HttpStream> stream;
 				auto stream_it = _http_stream_map.find(_http2_frame->GetStreamId());
 				if (stream_it != _http_stream_map.end())
@@ -488,7 +488,7 @@ namespace http
 					_http_stream_map.emplace(_http2_frame->GetStreamId(), stream);
 					logtt("%s : Streams [%zu]", ToString().CStr(), _http_stream_map.size());
 				}
-				lock.unlock();
+				lock.Release();
 
 				stream->OnFrameReceived(_http2_frame);
 
@@ -506,7 +506,7 @@ namespace http
 			_hpack_decoder = std::make_shared<hpack::Decoder>();
 
 			// Control Stream (stream id : 0) is always open
-			std::unique_lock<std::mutex> lock(_http_stream_map_guard);
+			ov::LockGuard lock(_http_stream_map_guard);
 			_http_stream_map.emplace(0, std::make_shared<h2::HttpStream>(GetSharedPtr(), 0));
 		}
 	}  // namespace svr

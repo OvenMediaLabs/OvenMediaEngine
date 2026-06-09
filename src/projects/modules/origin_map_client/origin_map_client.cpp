@@ -37,9 +37,9 @@ OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String 
 
 bool OriginMapClient::NofifyStreamsAlive()
 {
-	std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+	ov::ReleasableLockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 	auto origin_map = _origin_map;
-	lock.unlock();
+	lock.Release();
 
 	for (auto &[key, value] : origin_map)
 	{
@@ -54,7 +54,7 @@ bool OriginMapClient::RetryRegister()
 	decltype(_origin_map_candidates) candidates;
 
 	{
-		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 		if (_origin_map_candidates.empty())
 		{
 			return true;
@@ -78,7 +78,7 @@ bool OriginMapClient::RetryRegister()
 
 	if (failed.empty() == false)
 	{
-		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 		for (auto &kv : failed)
 		{
 			_origin_map_candidates.try_emplace(kv.first, std::move(kv.second));
@@ -93,7 +93,7 @@ bool OriginMapClient::ProcessPendingUnregisters()
 	std::deque<ov::String> candidates;
 
 	{
-		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
+		ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 		if (_origin_map_remove_candidates.empty())
 		{
 			return true;
@@ -112,28 +112,28 @@ bool OriginMapClient::ProcessPendingUnregisters()
 
 bool OriginMapClient::AddOriginMap(const ov::String &app_stream_name, const ov::String &origin_host)
 {
-	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 	_origin_map[app_stream_name] = origin_host;
 	return true;
 }
 
 bool OriginMapClient::AddOriginMapCandidate(const ov::String &app_stream_name, const ov::String &origin_host)
 {
-	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 	_origin_map_candidates[app_stream_name] = origin_host;
 	return true;
 }
 
 bool OriginMapClient::RequestUnregister(const ov::String &app_stream_name)
 {
-	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 	_origin_map_remove_candidates.push_back(app_stream_name);
 	return true;
 }
 
 bool OriginMapClient::DeleteOriginMap(const ov::String &app_stream_name)
 {
-	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	ov::LockGuard<ov::RecursiveMutex> lock(_origin_map_mutex);
 	auto origin_cand_it = _origin_map_candidates.find(app_stream_name);
 	if (origin_cand_it != _origin_map_candidates.end())
 	{
@@ -276,7 +276,7 @@ CommonErrorCode OriginMapClient::GetOrigin(const ov::String &app_stream_name, ov
 
 bool OriginMapClient::ConnectRedis()
 {
-	std::lock_guard<std::mutex> lock(_redis_context_mutex);
+	ov::LockGuard<ov::Mutex> lock(_redis_context_mutex);
 
 	if (CheckConnection() == true)
 	{
@@ -342,7 +342,7 @@ std::tuple<int, ov::String> OriginMapClient::CommandToRedis(const char *format, 
 		return { REDIS_ERR, "Failed to connect redis server" };
 	}
 
-	std::unique_lock<std::mutex> lock(_redis_context_mutex);
+	ov::LockGuard<ov::Mutex> lock(_redis_context_mutex);
 
 	va_list args;
 	va_start(args, format);

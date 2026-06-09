@@ -118,7 +118,7 @@ namespace http
 			// Stream Identifier, HttpExchange
 			std::map<uint32_t, std::shared_ptr<h2::HttpStream>> _http_stream_map;
 			// mutex
-			std::mutex _http_stream_map_guard;
+			ov::Mutex _http_stream_map_guard;
 			// HTTP/2 HPACK Codec
 			std::shared_ptr<hpack::Encoder> _hpack_encoder = nullptr;
 			std::shared_ptr<hpack::Decoder> _hpack_decoder = nullptr;
@@ -133,7 +133,7 @@ namespace http
 			std::shared_ptr<RequestInterceptor> _interceptor = nullptr;
 			std::vector<std::shared_ptr<RequestInterceptor>> _need_to_close_interceptors;
 
-			std::recursive_mutex _close_mutex;
+			ov::RecursiveMutex _close_mutex;
 			bool _closed = false;
 		};
 	} // namespace svr

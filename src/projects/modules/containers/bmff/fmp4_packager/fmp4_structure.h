@@ -110,7 +110,7 @@ namespace bmff
 				return false;
 			}
 
-			std::unique_lock<std::shared_mutex> lock(_partials_lock);
+			ov::ReleasableLockGuard lock(_partials_lock);
 
 			auto partial_count = _partials.size();
 			if (partial_count == 0)
@@ -121,7 +121,7 @@ namespace bmff
 			_partials.emplace_back(std::make_shared<FMP4Partial>(partial_data, partial_count, start_timestamp, duration_ms, independent, _timebase_seconds));
 			_last_partial_number = partial_count;
 
-			lock.unlock();
+			lock.Release();
 			
 			// Append data
 			_duration_ms += duration_ms;
@@ -167,20 +167,20 @@ namespace bmff
 		// Get partial segment Count
 		uint64_t GetPartialCount() const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partials_lock);
+			ov::SharedLockGuard lock(_partials_lock);
 			return _partials.size();
 		}
 
 		int64_t GetLastPartialNumber() const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partials_lock);
+			ov::SharedLockGuard lock(_partials_lock);
 			return _last_partial_number;
 		}
 
 		// Get Partial Segment At
 		std::shared_ptr<FMP4Partial> GetPartialSegment(uint64_t index) const
 		{
-			std::shared_lock<std::shared_mutex> lock(_partials_lock);
+			ov::SharedLockGuard lock(_partials_lock);
 
 			if (index >= _partials.size())
 			{
@@ -219,7 +219,7 @@ namespace bmff
 		double _duration_ms = 0;
 
 		std::deque<std::shared_ptr<FMP4Partial>> _partials;
-		mutable std::shared_mutex _partials_lock;
+		mutable ov::SharedMutex _partials_lock;
 
 		int64_t _last_partial_number = -1;
 

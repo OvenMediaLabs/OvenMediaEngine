@@ -43,7 +43,7 @@ IcePort::~IcePort()
 
 bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count)
 {
-	std::lock_guard<std::recursive_mutex> lock_guard(_physical_port_list_mutex);
+	ov::LockGuard lock_guard(_physical_port_list_mutex);
 
 	bool result = true;
 	std::map<std::pair<ov::SocketType, ov::SocketAddress>, bool> bounded;
@@ -226,7 +226,7 @@ std::shared_ptr<PhysicalPort> IcePort::CreatePhysicalPort(const ov::SocketAddres
 
 bool IcePort::Close()
 {
-	std::lock_guard<std::recursive_mutex> lock_guard(_physical_port_list_mutex);
+	ov::LockGuard lock_guard(_physical_port_list_mutex);
 
 	bool result = true;
 
@@ -249,7 +249,7 @@ bool IcePort::Close()
 
 ov::String IcePort::GenerateUfrag()
 {
-	std::shared_lock<std::shared_mutex> lock(_ice_sessions_with_ufrag_lock);
+	ov::SharedLockGuard lock(_ice_sessions_with_ufrag_lock);
 
 	while (true)
 	{
@@ -266,7 +266,7 @@ ov::String IcePort::GenerateUfrag()
 
 bool IcePort::AddIceSession(session_id_t session_id, const std::shared_ptr<IceSession> &ice_session)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+	ov::LockGuard lock_guard(_ice_sessions_with_id_lock);
 	auto item = _ice_seesions_with_id.find(session_id);
 	if (item == _ice_seesions_with_id.end())
 	{
@@ -279,7 +279,7 @@ bool IcePort::AddIceSession(session_id_t session_id, const std::shared_ptr<IceSe
 
 bool IcePort::AddIceSession(const ov::String &local_ufrag, const std::shared_ptr<IceSession> &ice_session)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+	ov::LockGuard lock_guard(_ice_sessions_with_ufrag_lock);
 	auto item = _ice_sessions_with_ufrag.find(local_ufrag);
 	if (item == _ice_sessions_with_ufrag.end())
 	{
@@ -292,7 +292,7 @@ bool IcePort::AddIceSession(const ov::String &local_ufrag, const std::shared_ptr
 
 bool IcePort::AddIceSession(const ov::SocketAddressPair &address_pair, const std::shared_ptr<IceSession> &ice_session)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_address_pair_lock);
+	ov::LockGuard lock_guard(_ice_sessions_with_address_pair_lock);
 	auto item = _ice_sessions_with_address_pair.find(address_pair);
 	if (item == _ice_sessions_with_address_pair.end())
 	{
@@ -305,7 +305,7 @@ bool IcePort::AddIceSession(const ov::SocketAddressPair &address_pair, const std
 
 std::shared_ptr<IceSession> IcePort::FindIceSession(session_id_t session_id)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+	ov::SharedLockGuard lock_guard(_ice_sessions_with_id_lock);
 	auto item = _ice_seesions_with_id.find(session_id);
 	if (item != _ice_seesions_with_id.end())
 	{
@@ -317,7 +317,7 @@ std::shared_ptr<IceSession> IcePort::FindIceSession(session_id_t session_id)
 
 std::shared_ptr<IceSession> IcePort::FindIceSession(const ov::String &local_ufrag)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+	ov::SharedLockGuard lock_guard(_ice_sessions_with_ufrag_lock);
 	auto item = _ice_sessions_with_ufrag.find(local_ufrag);
 	if (item != _ice_sessions_with_ufrag.end())
 	{
@@ -329,7 +329,7 @@ std::shared_ptr<IceSession> IcePort::FindIceSession(const ov::String &local_ufra
 
 std::shared_ptr<IceSession> IcePort::FindIceSession(const ov::SocketAddressPair &socket_address_pair)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_address_pair_lock);
+	ov::SharedLockGuard lock_guard(_ice_sessions_with_address_pair_lock);
 	auto item = _ice_sessions_with_address_pair.find(socket_address_pair);
 	if (item != _ice_sessions_with_address_pair.end())
 	{
@@ -408,21 +408,21 @@ bool IcePort::RemoveSession(session_id_t session_id)
 
 	// Remove from _ice_sessions_with_id
 	{
-		std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+		ov::LockGuard lock_guard(_ice_sessions_with_id_lock);
 		_ice_seesions_with_id.erase(session_id);
 		ice_sessions_with_id_size = _ice_seesions_with_id.size();
 	}
 
 	// Remove from _ice_sessions_with_ufrag
 	{
-		std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+		ov::LockGuard lock_guard(_ice_sessions_with_ufrag_lock);
 		_ice_sessions_with_ufrag.erase(ice_session->GetLocalUfrag());
 		ice_sessions_with_ufrag_size = _ice_sessions_with_ufrag.size();
 	}
 
 	// Erase every pair registered for this session, not just the connected one
 	{
-		std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_address_pair_lock);
+		ov::LockGuard lock_guard(_ice_sessions_with_address_pair_lock);
 		for (auto it = _ice_sessions_with_address_pair.begin(); it != _ice_sessions_with_address_pair.end();)
 		{
 			if (it->second == ice_session)
@@ -459,7 +459,7 @@ bool IcePort::RemoveSession(session_id_t session_id)
 
 bool IcePort::StoreIceSessionWithTransactionId(const std::shared_ptr<IceSession> &ice_session, const ov::String &transaction_id)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_binding_requests_with_transaction_id_lock);
+	ov::LockGuard lock_guard(_binding_requests_with_transaction_id_lock);
 	auto item = _binding_requests_with_transaction_id.find(transaction_id);
 	if (item != _binding_requests_with_transaction_id.end())
 	{
@@ -474,7 +474,7 @@ bool IcePort::StoreIceSessionWithTransactionId(const std::shared_ptr<IceSession>
 
 std::shared_ptr<IceSession> IcePort::FindIceSessionWithTransactionId(const ov::String &transaction_id)
 {
-	std::shared_lock<std::shared_mutex> lock_guard(_binding_requests_with_transaction_id_lock);
+	ov::SharedLockGuard lock_guard(_binding_requests_with_transaction_id_lock);
 	auto item = _binding_requests_with_transaction_id.find(transaction_id);
 	if (item == _binding_requests_with_transaction_id.end())
 	{
@@ -486,7 +486,7 @@ std::shared_ptr<IceSession> IcePort::FindIceSessionWithTransactionId(const ov::S
 
 bool IcePort::RemoveTransaction(const ov::String &transaction_id)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_binding_requests_with_transaction_id_lock);
+	ov::LockGuard lock_guard(_binding_requests_with_transaction_id_lock);
 	auto item = _binding_requests_with_transaction_id.find(transaction_id);
 	if (item == _binding_requests_with_transaction_id.end())
 	{
@@ -502,7 +502,7 @@ void IcePort::CheckTimedOut()
 {
 	// Remove expired transction items
 	{
-		std::lock_guard<std::shared_mutex> brt_lock(_binding_requests_with_transaction_id_lock);
+		ov::LockGuard brt_lock(_binding_requests_with_transaction_id_lock);
 
 		for (auto it = _binding_requests_with_transaction_id.begin(); it != _binding_requests_with_transaction_id.end();)
 		{
@@ -520,7 +520,7 @@ void IcePort::CheckTimedOut()
 	// Collect terminated sessions for thread safety
 	std::vector<std::shared_ptr<IceSession>> terminated_session_list;
 	{
-		std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+		ov::SharedLockGuard lock_guard(_ice_sessions_with_id_lock);
 
 		for (const auto &item : _ice_seesions_with_id)
 		{
@@ -657,7 +657,7 @@ void IcePort::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 		logti("Turn client has connected : %s", remote->ToString().CStr());
 	}
 
-	std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
+	ov::LockGuard lock_guard(_demultiplexers_lock);
 	_demultiplexers[remote->GetNativeHandle()] = demultiplexer;
 }
 
@@ -666,7 +666,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 	bool is_ice_tcp_candidate = IsIceTcpCandidatePort(remote->GetLocalAddress()->Port());
 
 	{
-		std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
+		ov::LockGuard lock_guard(_demultiplexers_lock);
 
 		auto it = _demultiplexers.find(remote->GetNativeHandle());
 		if (it != _demultiplexers.end())
@@ -689,7 +689,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 	// DisconnectSession() must be called outside the lock to avoid deadlock.
 	std::vector<session_id_t> sessions_to_disconnect;
 	{
-		std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+		ov::SharedLockGuard lock_guard(_ice_sessions_with_id_lock);
 		for (const auto &[session_id, ice_session] : _ice_seesions_with_id)
 		{
 			auto active_socket = ice_session->GetActiveSocket();
@@ -709,7 +709,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 
 void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data)
 {
-	std::shared_lock<std::shared_mutex> lock(_demultiplexers_lock);
+	ov::ReleasableSharedLockGuard lock(_demultiplexers_lock);
 	auto it = _demultiplexers.find(remote->GetNativeHandle());
 	if (it == _demultiplexers.end())
 	{
@@ -719,7 +719,7 @@ void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov
 	}
 
 	auto demultiplexer = it->second;
-	lock.unlock();
+	lock.Release();
 
 	ov::SocketAddressPair address_pair(*remote->GetLocalAddress(), address);
 
@@ -1131,7 +1131,7 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 
 	// Store binding request transction
 	{
-		std::lock_guard<std::shared_mutex> brt_lock(_binding_requests_with_transaction_id_lock);
+		ov::LockGuard brt_lock(_binding_requests_with_transaction_id_lock);
 
 		ov::String transaction_id_key((char *)(&transaction_id[0]), OV_STUN_TRANSACTION_ID_LENGTH);
 		_binding_requests_with_transaction_id.emplace(transaction_id_key, BindingRequestInfo(transaction_id_key, ice_session));

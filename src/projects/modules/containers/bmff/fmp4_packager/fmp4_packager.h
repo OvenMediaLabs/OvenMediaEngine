@@ -67,6 +67,6 @@ namespace bmff
 		std::queue<std::shared_ptr<const MediaPacket>> _reserved_data_packets;
 
 		std::map<int64_t, Marker> _markers;
-		mutable std::shared_mutex _markers_guard;
+		mutable ov::SharedMutex _markers_guard;
 	};
 }

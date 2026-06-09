@@ -32,7 +32,7 @@ private:
 	// with 9600 sequence number differences are very old packets. 
 	// Since RTP packets have a creation time, old packets may not be used. 
 	// This can avoid collision. Therefore, set max_history_size to a large value as possible.
-	std::shared_mutex	_history_lock;
+	ov::SharedMutex	_history_lock;
 	std::unordered_map<uint16_t, std::shared_ptr<RtpPacket>> _history;
 
 	// Creating RtxRtpPacket requires computing resources, but not all of them are used
@@ -42,7 +42,7 @@ private:
 	// When GetRtxRtpPacket() is called, it first looks for a packet in the cache and 
 	// checks if it is valid (by creation time). 
 	// If it is not valid, a new RtxRtpPacket is created, cached, and returned.
-	std::shared_mutex	_history_cache_lock;
+	ov::SharedMutex	_history_cache_lock;
 	std::unordered_map<uint16_t, std::shared_ptr<RtxRtpPacket>> _history_cache;
 
 	uint8_t		_origin_paylod_type;

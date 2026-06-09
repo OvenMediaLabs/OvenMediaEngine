@@ -107,7 +107,7 @@ namespace http
 			bool _is_header_sent = false;
 			
 			// FIXME(dimiden): It is supposed to be synchronized whenever a packet is sent, but performance needs to be improved
-			std::recursive_mutex _response_mutex;
+			ov::RecursiveMutex _response_mutex;
 
 			// https://www.rfc-editor.org/rfc/rfc7230#section-3.2
 			// Each header field consists of a case-insensitive field name followed

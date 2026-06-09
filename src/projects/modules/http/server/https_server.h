@@ -55,7 +55,7 @@ namespace http
 			bool HandleSniCallback(ov::TlsContext *tls_context, SSL *ssl, const ov::String &server_name);
 
 		protected:
-			std::mutex _https_certificate_map_mutex;
+			ov::Mutex _https_certificate_map_mutex;
 
 			// Certificate Name : HttpsCertificate
 			std::map<ov::String, std::shared_ptr<HttpsCertificate>> _https_certificate_map;

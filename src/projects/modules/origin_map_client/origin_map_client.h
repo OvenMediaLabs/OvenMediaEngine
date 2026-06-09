@@ -60,8 +60,8 @@ private:
 	std::map<ov::String, ov::String> _origin_map;
 	std::map<ov::String, ov::String> _origin_map_candidates;
 	std::deque<ov::String> _origin_map_remove_candidates;
-	std::recursive_mutex _origin_map_mutex;
+	ov::RecursiveMutex _origin_map_mutex;
 
 	redisContext *_redis_context = nullptr;
-	std::mutex _redis_context_mutex;
+	ov::Mutex _redis_context_mutex;
 };

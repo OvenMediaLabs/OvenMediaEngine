@@ -62,7 +62,7 @@ namespace bmff
 
 	std::shared_ptr<FMP4Segment> FMP4Storage::GetSegmentInternal(int64_t segment_number) const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_lock);
+		ov::SharedLockGuard lock(_segments_lock);
 		
 		if (_segments.empty())
 		{
@@ -92,7 +92,7 @@ namespace bmff
 
 	std::shared_ptr<FMP4Segment> FMP4Storage::GetLastSegmentInternal() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_lock);
+		ov::SharedLockGuard lock(_segments_lock);
 		if (_segments.empty())
 		{
 			return nullptr;
@@ -135,7 +135,7 @@ namespace bmff
 
 	uint64_t FMP4Storage::GetSegmentCount() const
 	{
-		std::shared_lock<std::shared_mutex> lock(_segments_lock);
+		ov::SharedLockGuard lock(_segments_lock);
 		return _segments.size();
 	}
 
@@ -289,7 +289,7 @@ namespace bmff
 		// Create next segment
 		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, _track->GetTimeBase().GetExpr());
 		{
-			std::lock_guard<std::shared_mutex> lock(_segments_lock);
+			ov::LockGuard lock(_segments_lock);
 			_segments.emplace(segment->GetNumber(), segment);
 
 			// Delete old segments

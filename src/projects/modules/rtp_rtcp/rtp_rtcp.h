@@ -15,8 +15,6 @@
 #include "rtp_frame_boundary_detector.h"
 
 #include <atomic>
-#include <mutex>
-#include <shared_mutex>
 
 
 #define RECEIVER_REPORT_CYCLE_MS	500
@@ -147,7 +145,7 @@ private:
 
 	// _ssrc_to_track_id_lock guards _ssrc_to_track_id
 	std::map<uint32_t /*ssrc*/, uint32_t /*track_id*/> _ssrc_to_track_id;
-	mutable std::shared_mutex _ssrc_to_track_id_lock;
+	mutable ov::SharedMutex _ssrc_to_track_id_lock;
 
 	// Find track id by mid or rid
 	std::optional<uint32_t> FindTrackId(const std::shared_ptr<const RtpPacket> &rtp_packet) const;
@@ -163,7 +161,7 @@ private:
     uint64_t _send_packet_sequence_number = 0;
 
 	// Lifecycle gate: data path (send/receive) takes it shared, Stop/setup exclusive
-	std::shared_mutex _state_lock;
+	ov::SharedMutex _state_lock;
 	std::shared_ptr<RtpRtcpInterface> _observer;
 
 	// _rtcp_send_state_lock guards the send-side RTCP state below
@@ -172,14 +170,14 @@ private:
 	std::shared_ptr<RtcpPacket> _rtcp_sdes = nullptr;
 	ov::StopWatch _rtcp_send_stop_watch;
 	uint64_t _rtcp_sent_count = 0;
-	mutable std::shared_mutex _rtcp_send_state_lock;
+	mutable ov::SharedMutex _rtcp_send_state_lock;
 
 	std::atomic<bool> _transport_cc_feedback_enabled = false;
 	std::atomic<uint8_t> _transport_cc_feedback_extension_id = 0;
 
 	// _receive_statistics_lock guards _receive_statistics (track_id : receiver statistics)
 	std::unordered_map<uint32_t, std::shared_ptr<RtpReceiveStatistics>> _receive_statistics;
-	mutable std::shared_mutex _receive_statistics_lock;
+	mutable ov::SharedMutex _receive_statistics_lock;
 
 	// Per-track receive-side NACK generator.
 	std::unordered_map<uint32_t, std::shared_ptr<RtpNackGenerator>> _nack_generators;
@@ -188,7 +186,7 @@ private:
 	// _last_nack_flush_at is updated on the receive path (FlushNackIfDue) under
 	// only a shared_lock on _state_lock, so it needs its own mutex to serialize
 	// concurrent receives (operator[] can insert/rehash).
-	std::mutex _last_nack_flush_at_lock;
+	ov::Mutex _last_nack_flush_at_lock;
 
 	// Negotiated DD extension id (0 = not negotiated). The detector falls
 	// back to codec payload parse when 0.
@@ -206,7 +204,7 @@ private:
 	// _rtx_streams is learned on the receive path (TryUnwrapRtx) while only a
 	// shared_lock on _state_lock is held, so it needs its own mutex: a shared
 	// lock allows concurrent readers, and a map write racing a reader is UB.
-	std::mutex _rtx_streams_lock;
+	ov::Mutex _rtx_streams_lock;
 
 	// rtx_pt -> original_pt, set up from negotiated SDP to detect RTX packets
 	// dynamically when the RTX SSRC isn't pre-declared (simulcast WHIP).
@@ -214,14 +212,14 @@ private:
 
 	// _transport_cc_generator_lock guards _transport_cc_generator
 	std::shared_ptr<RtcpTransportCcFeedbackGenerator> _transport_cc_generator = nullptr;
-	mutable std::shared_mutex _transport_cc_generator_lock;
+	mutable ov::SharedMutex _transport_cc_generator_lock;
 
 	// _track_info_lock guards the receive-setup containers below
 	std::vector<RtpTrackIdentifier> _rtp_track_identifiers;
 	std::unordered_map<uint32_t, std::shared_ptr<RtpFrameJitterBuffer>> _rtp_frame_jitter_buffers;
 	std::unordered_map<uint32_t, std::shared_ptr<RtpMinimalJitterBuffer>> _rtp_minimal_jitter_buffers;
 	std::unordered_map<uint32_t, std::shared_ptr<MediaTrack>> _tracks;
-	mutable std::shared_mutex _track_info_lock;
+	mutable ov::SharedMutex _track_info_lock;
 
 	std::atomic<bool> _video_receiver_enabled = false;
 	std::atomic<bool> _audio_receiver_enabled = false;
@@ -229,5 +227,5 @@ private:
 	// _last_sent_packet_lock guards both last-sent packet pointers below
 	std::shared_ptr<RtpPacket>		_last_sent_rtp_packet = nullptr;
 	std::shared_ptr<RtcpPacket>		_last_sent_rtcp_packet = nullptr;
-	mutable std::shared_mutex _last_sent_packet_lock;
+	mutable ov::SharedMutex _last_sent_packet_lock;
 };

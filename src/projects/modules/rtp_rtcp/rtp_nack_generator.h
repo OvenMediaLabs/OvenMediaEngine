@@ -3,7 +3,6 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <chrono>
 #include <map>
-#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -128,5 +127,5 @@ private:
 	uint64_t _prev_lost_permanent = 0;
 	std::chrono::steady_clock::time_point _last_stats_log_at;
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };
