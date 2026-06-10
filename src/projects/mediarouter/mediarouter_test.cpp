@@ -26,7 +26,7 @@ TEST(MediaRouterPlaceholder, TodoImplementTests)
 // Regression coverage for the in-band Sequence Header to av1C field sync.
 //
 // The CodedFrames branch of `MediaRouterNormalize::ProcessAV1OBUStream` enters
-// `ApplyInBandSequenceHeaderToAv1Config` after `flv_video_parser::ParseAV1`
+// `ApplyInBandSequenceHeaderToAv1Config` after the enhanced-RTMP (FLV) ingest path
 // synthesized the lenient default av1C blob `0x81 0x00 0x00 0x00`. The helper
 // must copy every cross-checked field (per AV1 ISOBMFF binding v1.2.0 section
 // 2.3.2) from the in-band Sequence Header summary onto the av1C - including

@@ -28,7 +28,7 @@ public:
 	bool NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
 
 	/// Copy every cross-checked field from an AV1 in-band Sequence Header summary onto the
-	/// `av1C` `AV1DecoderConfigurationRecord` that was synthesized by `flv_video_parser::ParseAV1`
+	/// `av1C` `AV1DecoderConfigurationRecord` synthesized by the enhanced-RTMP (FLV) ingest path
 	/// (lenient `0x81 0x00 0x00 0x00` default) so the downstream
 	/// `AV1DecoderConfigurationRecord::ValidateConfigObus()` cross-check stays consistent with
 	/// the actual bitstream.
