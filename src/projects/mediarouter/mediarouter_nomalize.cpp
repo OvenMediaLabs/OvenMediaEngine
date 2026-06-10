@@ -1037,6 +1037,11 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	const std::shared_ptr<AV1DecoderConfigurationRecord> &av1_config,
 	const Av1SequenceHeaderSummary &summary)
 {
+	if (av1_config == nullptr)
+	{
+		return;
+	}
+
 	// Field set kept in lock-step with `AV1DecoderConfigurationRecord::ValidateConfigObus()`
 	// per AV1 ISOBMFF binding v1.2.0 section 2.3.2. The CodedFrames in-band path enters this
 	// helper only after `flv_video_parser::ParseAV1` synthesized the lenient default
