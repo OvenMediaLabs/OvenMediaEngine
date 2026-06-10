@@ -1147,7 +1147,7 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 				// Sequence Header OBU, the values of the AV1CodecConfigurationRecord fields shall
 				// match those of the OBU." The CodedFrames branch only fires when the muxer has
 				// delivered the Sequence Header in-band - in that case `flv::VideoParser::ParseAV1`
-				// synthesized a defaults `av1C` (`0x81 0x00 0x00 0x00`), which is locked at level
+				// synthesized a default `av1C` (`0x81 0x00 0x00 0x00`), which is locked at level
 				// 2.0 / 4:4:4. Push the in-band Sequence Header values into the av1C so the codec
 				// string and downstream cross-check stay aligned with the actual bitstream.
 				auto base_record = media_track->GetDecoderConfigurationRecord();
