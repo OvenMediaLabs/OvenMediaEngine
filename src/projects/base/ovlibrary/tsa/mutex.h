@@ -39,8 +39,9 @@
 //    `std::mutex` (or recursive/shared variant), but it is `private` and reachable
 //    only by the two friends that need it - `ov::ScopedLock`
 //    (to drive the `std::lock` deadlock-avoiding algorithm)
-//     and `ov::Mutex`'s `ov::ConditionVariable` (to drive `std::condition_variable::wait`,
-//    bridging the guard's `std::mutex` via `std::unique_lock` + `adopt_lock`/`release`).
+//    and `ov::ConditionVariable` (a separate class that each mutex friends, to drive
+//    `std::condition_variable::wait`, bridging the guard's `std::mutex`
+//    via `std::unique_lock` + `adopt_lock`/`release`).
 //    There is no public raw-handle escape hatch: application code never sees the `std::` type
 //    and interacts only through the PascalCase API.
 //
