@@ -1154,7 +1154,13 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 				auto av1_config	 = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(base_record);
 				if (av1_config != nullptr)
 				{
-					ApplyInBandSequenceHeaderToAv1Config(av1_config, *summary);
+					// The DCR is published via an atomic shared_ptr and read concurrently by publishers,
+					// so mutate a private copy and atomically swap it onto the track
+					// instead of editing the already-shared instance
+					// (consistent with how the H264/H265 paths always publish a freshly built record).
+					auto updated_config = std::make_shared<AV1DecoderConfigurationRecord>(*av1_config);
+					ApplyInBandSequenceHeaderToAv1Config(updated_config, *summary);
+					media_track->SetDecoderConfigurationRecord(updated_config);
 				}
 
 				media_track->SetResolution(
