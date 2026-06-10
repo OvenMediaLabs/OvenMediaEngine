@@ -133,7 +133,7 @@ public:
 	uint8_t BitDepth() const;
 
 private:
-	/// Walk `_config_obus`, enforcing AV1 ISOBMFF binding v1.2.0 rules: valid OBU sequence, at most
+	/// Walk `_config_obus`, enforcing AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) rules: valid OBU sequence, at most
 	/// one Sequence Header OBU, Sequence Header must be the first OBU, and Sequence Header fields
 	/// must match the fixed `av1C` fields (`seq_profile`, `seq_level_idx_0`).
 	bool ValidateConfigObus();

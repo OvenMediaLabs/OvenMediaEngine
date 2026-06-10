@@ -1043,7 +1043,7 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	}
 
 	// Field set kept in lock-step with `AV1DecoderConfigurationRecord::ValidateConfigObus()`
-	// per AV1 ISOBMFF binding v1.2.0 section 2.3.2. The CodedFrames in-band path enters this
+	// per AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics). The CodedFrames in-band path enters this
 	// helper only after the enhanced-RTMP (FLV) ingest path synthesized the lenient default
 	// `0x81 0x00 0x00 0x00` `av1C`; without copying these values through, every cross-checked
 	// field on the av1C stays at its default while the on-wire Sequence Header carries the
@@ -1143,9 +1143,10 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 			if (summary.has_value() &&
 				(summary->max_frame_width > 0) && (summary->max_frame_height > 0))
 			{
-				// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "When the configOBUs field contains a
-				// Sequence Header OBU, the values of the AV1CodecConfigurationRecord fields shall
-				// match those of the OBU." The CodedFrames branch only fires when the muxer has
+				// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): "When a Sequence Header OBU is contained
+				// within the configOBUs of the AV1CodecConfigurationRecord, the values present in the
+				// Sequence Header OBU contained within configOBUs SHALL match the values of the
+				// AV1CodecConfigurationRecord." The CodedFrames branch only fires when the muxer has
 				// delivered the Sequence Header in-band - in that case the enhanced-RTMP (FLV)
 				// ingest path synthesized a default `av1C` (`0x81 0x00 0x00 0x00`), locked at level
 				// 2.0 / 4:4:4. Push the in-band Sequence Header values into the av1C so the codec

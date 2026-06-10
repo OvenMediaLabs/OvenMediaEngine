@@ -73,7 +73,7 @@ struct ParsedObuHeader
 
 // AV1 spec 5.5.1 `sequence_header_obu()` - only the diagnostic-friendly leading fields, plus the
 // `color_config()` (spec 5.5.2) values needed for the `configOBUs` cross-check defined by AV1 ISOBMFF
-// binding v1.2.0 section 2.3.2.
+// binding v1.3.0 section 2.3.4 (Semantics).
 struct Av1SequenceHeaderSummary
 {
 	uint8_t seq_profile = 0;
@@ -84,9 +84,10 @@ struct Av1SequenceHeaderSummary
 	uint32_t max_frame_width = 0;
 	uint32_t max_frame_height = 0;
 
-	// AV1 spec 5.5.2 `color_config()` fields used by AV1 ISOBMFF binding v1.2.0 section 2.3.2
-	// "When the configOBUs field contains a Sequence Header OBU, the values of the
-	// AV1CodecConfigurationRecord fields shall match those of the OBU."
+	// AV1 spec 5.5.2 `color_config()` fields used by the AV1 ISOBMFF binding v1.3.0 section 2.3.4
+	// (Semantics) cross-check: "When a Sequence Header OBU is contained within the configOBUs of the
+	// AV1CodecConfigurationRecord, the values present in the Sequence Header OBU contained within
+	// configOBUs SHALL match the values of the AV1CodecConfigurationRecord."
 	uint8_t high_bitdepth = 0;
 	uint8_t twelve_bit = 0;
 	uint8_t monochrome = 0;

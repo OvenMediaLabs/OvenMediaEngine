@@ -465,7 +465,7 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 
 	// AV1 spec 5.5.1 `sequence_header_obu()`: continue past `max_frame_height_minus_1` so the
 	// `color_config()` sub-tree can be reached. Cross-checking the configOBUs requires the
-	// `color_config()` values per AV1 ISOBMFF binding v1.2.0 section 2.3.2.
+	// `color_config()` values per AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics).
 	if (out.reduced_still_picture_header == false)
 	{
 		AV1_READ_BITS(uint8_t, frame_id_numbers_present_flag, 1);
@@ -536,8 +536,8 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 	(void)enable_cdef;
 	(void)enable_restoration;
 
-	// AV1 spec 5.5.2 `color_config()` - capture every field needed by AV1 ISOBMFF binding v1.2.0
-	// section 2.3.2 cross-check.
+	// AV1 spec 5.5.2 `color_config()` - capture every field needed by AV1 ISOBMFF binding v1.3.0
+	// section 2.3.4 (Semantics) cross-check.
 	AV1_READ_BITS(uint8_t, high_bitdepth, 1);
 	out.high_bitdepth = high_bitdepth;
 	if ((out.seq_profile == 2) && (high_bitdepth != 0))
