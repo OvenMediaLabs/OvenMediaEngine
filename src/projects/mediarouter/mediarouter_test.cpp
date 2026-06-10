@@ -70,8 +70,8 @@ TEST(MediaRouterNormalizeAv1InBandSh, InBandSequenceHeaderUpdatesAllAv1ConfigFie
 	summary.chroma_subsampling_x				   = 1;
 	summary.chroma_subsampling_y				   = 0;
 	summary.chroma_sample_position				   = 2;
-	// REGRESSION GUARD: op-0 initial display delay present + non-zero value
-	// must propagate to the av1C via SetInitialPresentationDelay().
+	// op-0 initial display delay is set here only to prove it is NOT copied into the av1C
+	// (it is a distinct field from av1C `initial_presentation_delay`, with no spec match rule).
 	summary.initial_display_delay_present_for_op_0 = 1;
 	summary.initial_display_delay_minus_1_for_op_0 = 7;
 
@@ -87,23 +87,19 @@ TEST(MediaRouterNormalizeAv1InBandSh, InBandSequenceHeaderUpdatesAllAv1ConfigFie
 	EXPECT_EQ(av1_config->ChromaSubsamplingY(), summary.chroma_subsampling_y);
 	EXPECT_EQ(av1_config->ChromaSamplePosition(), summary.chroma_sample_position);
 
-	// Regression: synthesized av1C must mirror the in-band SH op-0 delay signaling
-	// so the downstream AV1DecoderConfigurationRecord::ValidateConfigObus() cross-check
-	// (AV1 ISOBMFF binding v1.2.0 section 2.3.2 "initial_presentation_delay_minus_one,
-	// when present, all shall match") stays consistent with the actual bitstream.
-	EXPECT_EQ(av1_config->InitialPresentationDelayPresent(), 1);
-	EXPECT_EQ(av1_config->InitialPresentationDelayMinusOne(), 7);
+	// `initial_presentation_delay` must NOT be copied from the Sequence Header's
+	// `initial_display_delay` (distinct fields, no match rule per AV1 ISOBMFF binding v1.3.0
+	// section 2.3.4 (Semantics)); the av1C keeps its synthesized default of 0/0.
+	EXPECT_EQ(av1_config->InitialPresentationDelayPresent(), 0);
+	EXPECT_EQ(av1_config->InitialPresentationDelayMinusOne(), 0);
 }
 
-TEST(MediaRouterNormalizeAv1InBandSh, InBandSequenceHeaderClearsInitialPresentationDelayWhenAbsent)
+TEST(MediaRouterNormalizeAv1InBandSh, InBandSequenceHeaderLeavesInitialPresentationDelayUntouched)
 {
 	std::shared_ptr<AV1DecoderConfigurationRecord> av1_config;
 	ASSERT_NO_FATAL_FAILURE(MakeSynthesizedDefaultAv1Config(av1_config));
 
-	// Seed the av1C with a non-zero op-0 presentation delay BEFORE the helper runs.
-	// This forces the test to exercise the clear-from-non-zero path: a tautological
-	// 0/0 -> 0/0 assertion would also pass if the helper omitted the
-	// SetInitialPresentationDelay() call entirely, so it must not start from default.
+	// Seed the av1C with a non-zero presentation delay BEFORE the helper runs.
 	av1_config->SetInitialPresentationDelay(true, 5);
 	ASSERT_EQ(av1_config->InitialPresentationDelayPresent(), 1);
 	ASSERT_EQ(av1_config->InitialPresentationDelayMinusOne(), 5);
@@ -119,16 +115,14 @@ TEST(MediaRouterNormalizeAv1InBandSh, InBandSequenceHeaderClearsInitialPresentat
 	summary.chroma_subsampling_x				   = 1;
 	summary.chroma_subsampling_y				   = 1;
 	summary.chroma_sample_position				   = 0;
-	// op-0 delay absent in the in-band Sequence Header: helper must encode
-	// `present = 0` and wipe the stale `initial_presentation_delay_minus_one`
-	// back to 0 (av1_decoder_configuration_record.cpp:461 false branch).
 	summary.initial_display_delay_present_for_op_0 = 0;
 	summary.initial_display_delay_minus_1_for_op_0 = 0;
 
 	MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(av1_config, summary);
 
-	// Regression: the helper must reset the seeded 1/5 state back to 0/0.
-	// If SetInitialPresentationDelay() is omitted the av1C keeps 1/5 and this fails.
-	EXPECT_EQ(av1_config->InitialPresentationDelayPresent(), 0);
-	EXPECT_EQ(av1_config->InitialPresentationDelayMinusOne(), 0);
+	// The helper must NOT touch `initial_presentation_delay` - it is a distinct field from the
+	// Sequence Header's `initial_display_delay` with no spec match rule (AV1 ISOBMFF binding
+	// v1.3.0 section 2.3.4 (Semantics)). The seeded 1/5 is preserved.
+	EXPECT_EQ(av1_config->InitialPresentationDelayPresent(), 1);
+	EXPECT_EQ(av1_config->InitialPresentationDelayMinusOne(), 5);
 }

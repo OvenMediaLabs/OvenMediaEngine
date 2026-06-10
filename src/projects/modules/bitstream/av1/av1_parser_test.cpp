@@ -734,9 +734,9 @@ TEST(Av1ParserSequenceHeaderSummary, CapturesColorConfigFields)
 TEST(Av1ParserSequenceHeaderSummary, CapturesInitialDisplayDelayForOp0)
 {
 	// AV1 spec 5.5.1: when `initial_display_delay_present_flag == 1` and the per-op presence flag
-	// for `op_0` is 1, a 4-bit `initial_display_delay_minus_1[0]` is read. AV1 ISOBMFF binding
-	// v1.2.0 section 2.3.2 cross-checks these against the `av1C` fixed header, so the summary
-	// parser must record both values for `op_0`.
+	// for `op_0` is 1, a 4-bit `initial_display_delay_minus_1[0]` is read. The summary parser
+	// records both values for `op_0` (diagnostics only - this Sequence Header field is NOT
+	// cross-checked against the av1C `initial_presentation_delay`; they are distinct fields).
 	SeqHeaderBuilder b;
 	b.seq_profile							= 0;
 	b.initial_display_delay_present_flag	= true;

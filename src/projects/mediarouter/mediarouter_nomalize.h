@@ -33,10 +33,11 @@ public:
 	/// `AV1DecoderConfigurationRecord::ValidateConfigObus()` cross-check stays consistent with
 	/// the actual bitstream.
 	///
-	/// AV1 ISOBMFF binding v1.2.0 section 2.3.2:
-	///   "When the configOBUs field contains a Sequence Header OBU, the values of the
-	///    AV1CodecConfigurationRecord fields shall match those of the OBU. Specifically:
-	///    ... initial_presentation_delay_minus_one, when present, all shall match."
+	/// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): "When a Sequence Header OBU is
+	/// contained within the configOBUs of the AV1CodecConfigurationRecord, the values present in
+	/// the Sequence Header OBU contained within configOBUs SHALL match the values of the
+	/// AV1CodecConfigurationRecord." (`initial_presentation_delay` is excluded - it is an av1C-only
+	/// field with no Sequence Header match rule.)
 	///
 	/// Exposed publicly (and as `static`) so the regression test in `mediarouter_test.cpp`
 	/// can exercise the field-mapping logic without standing up an Orchestrator fixture.

@@ -95,10 +95,11 @@ struct Av1SequenceHeaderSummary
 	uint8_t chroma_subsampling_y = 0;
 	uint8_t chroma_sample_position = 0;
 
-	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay signaling.
-	// Recorded so AV1 ISOBMFF binding v1.2.0 section 2.3.2 can cross-check
-	// `initial_presentation_delay_minus_one` from the `av1C` fixed header:
-	//   "initial_presentation_delay_minus_one, when present, all shall match."
+	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay
+	// signaling. Captured for diagnostics only. NOTE: this is a Sequence Header field and is
+	// distinct from the av1C `initial_presentation_delay_minus_one`; the AV1 ISOBMFF binding
+	// v1.3.0 section 2.3.4 (Semantics) defines no "SHALL match" rule between the two, so these
+	// values are not cross-checked against or copied into the av1C.
 	uint8_t initial_display_delay_present_for_op_0 = 0;
 	uint8_t initial_display_delay_minus_1_for_op_0 = 0;
 

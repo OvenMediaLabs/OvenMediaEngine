@@ -433,10 +433,11 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 					initial_display_delay_minus_1_for_this_op = initial_display_delay_minus_1;
 				}
 
-				// AV1 ISOBMFF binding v1.2.0 section 2.3.2 cross-check requires the `op_0`
-				// `initial_display_delay` signaling to match the `av1C` fixed header. Capture
-				// the per-op values for `i == 0` only; later operating points are still walked
-				// for bit alignment but their values are not recorded.
+				// Capture the `op_0` `initial_display_delay` signaling from the Sequence Header
+				// (AV1 spec 5.5.1) for `i == 0` only; later operating points are still walked for
+				// bit alignment but their values are not recorded. NOTE: this is NOT cross-checked
+				// against the av1C `initial_presentation_delay` - they are distinct fields with no
+				// "SHALL match" rule (AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics)).
 				if (i == 0)
 				{
 					out.initial_display_delay_present_for_op_0 = initial_display_delay_present_for_this_op;

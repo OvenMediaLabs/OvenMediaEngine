@@ -1058,16 +1058,12 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	av1_config->SetChromaSubsamplingY(summary.chroma_subsampling_y);
 	av1_config->SetChromaSamplePosition(summary.chroma_sample_position);
 
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.2:
-	//   "initial_presentation_delay_minus_one, when present, all shall match."
-	// `ParseSequenceHeaderSummary` captures `initial_display_delay_present_for_op_0` and
-	// `initial_display_delay_minus_1_for_op_0`; `ValidateConfigObus()` cross-checks them
-	// against `_initial_presentation_delay_present` / `_initial_presentation_delay_minus_one`.
-	// Without this call the synthesized av1C keeps the defaults (`present = 0`, `minus_one = 0`)
-	// and goes stale on any stream whose op-0 carries a non-zero presentation delay.
-	av1_config->SetInitialPresentationDelay(
-		summary.initial_display_delay_present_for_op_0 != 0,
-		summary.initial_display_delay_minus_1_for_op_0);
+	// `initial_presentation_delay` is intentionally NOT copied from the Sequence Header. AV1
+	// ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) defines it as an av1C-only field derived
+	// from a decoder-model procedure over all samples, distinct from the Sequence Header's
+	// `initial_display_delay_minus_1`; there is no "SHALL match" rule between them. The synthesized
+	// av1C keeps its default (`present = 0`), which is correct - it must not be forged from a
+	// single in-band Sequence Header's display-delay signaling.
 }
 
 bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)

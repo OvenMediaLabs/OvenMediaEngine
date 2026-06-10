@@ -225,12 +225,11 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 
 			// Cross-check rule: Sequence Header OBU fields SHALL match the `av1C` fixed fields.
 			//
-			// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "When the configOBUs field contains a
-			// Sequence Header OBU, the values of the AV1CodecConfigurationRecord fields shall
-			// match those of the OBU. Specifically: seq_profile, seq_level_idx_0, seq_tier_0,
-			// high_bitdepth, twelve_bit, monochrome, chroma_subsampling_x, chroma_subsampling_y,
-			// chroma_sample_position (when not zero), and initial_presentation_delay_minus_one,
-			// when present, all shall match."
+			// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): "When a Sequence Header OBU is
+			// contained within the configOBUs of the AV1CodecConfigurationRecord, the values present
+			// in the Sequence Header OBU contained within configOBUs SHALL match the values of the
+			// AV1CodecConfigurationRecord." Each fixed field below has its own "SHALL be equal to
+			// ... from the Sequence Header OBU" clause in section 2.3.4.
 			auto summary = Av1Parser::ParseSequenceHeaderSummary(base + payload_offset, payload_size);
 			if (summary.has_value() == false)
 			{
@@ -274,19 +273,11 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 				return false;
 			}
 
-			// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "initial_presentation_delay_minus_one,
-			// when present, all shall match." The av1C `initial_presentation_delay_present`
-			// flag must equal the Sequence Header's `initial_display_delay_present_for_op_0`,
-			// and when both are 1 the `_minus_one` value must match.
-			if (summary->initial_display_delay_present_for_op_0 != _initial_presentation_delay_present)
-			{
-				return false;
-			}
-			if ((_initial_presentation_delay_present != 0) &&
-				(summary->initial_display_delay_minus_1_for_op_0 != _initial_presentation_delay_minus_one))
-			{
-				return false;
-			}
+			// NOTE: `initial_presentation_delay` is deliberately NOT cross-checked against the
+			// Sequence Header. AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) gives no
+			// "SHALL match" rule for it; it is an av1C-only field derived from a decoder-model
+			// procedure over all samples, and the spec explicitly notes it differs from the
+			// Sequence Header's `initial_display_delay_minus_1`.
 		}
 
 		offset = payload_offset + payload_size;
