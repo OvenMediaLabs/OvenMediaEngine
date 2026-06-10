@@ -161,7 +161,11 @@ namespace
 		return result.get();
 	}
 
-	bool IsExclusivelyHeld(ov::SharedMutex &m)
+	// Probe for "would an exclusive (writer) acquire block right now?".
+	// A background thread tries the exclusive `TryLock`; failure means the mutex
+	// is unavailable to a writer, which covers BOTH the writer-held and the
+	// reader(s)-held states - it does NOT imply exclusive ownership specifically.
+	bool ExclusiveAcquireWouldBlock(ov::SharedMutex &m)
 	{
 		auto result = std::async(std::launch::async, [&m]() {
 			if (m.TryLock())
@@ -174,11 +178,12 @@ namespace
 		return result.get();
 	}
 
-	// Probe for "is this shared mutex held in shared mode (and not exclusively)?".
-	// `TryLockShared` succeeds when there is no exclusive writer;
-	// if it succeeds the writer side is free.
+	// Probe for "is there no exclusive writer currently holding this shared mutex?".
+	// `TryLockShared` succeeds when no thread holds the mutex exclusively;
+	// note that readers may still be holding it in shared mode (and would block a
+	// writer), so a success means "no writer holds it now", NOT "a writer could acquire now".
 	// This distinguishes the "writer-held" case from "free or reader-held".
-	bool ExclusiveSideIsFree(ov::SharedMutex &m)
+	bool NoExclusiveWriterHeld(ov::SharedMutex &m)
 	{
 		auto result = std::async(std::launch::async, [&m]() {
 			if (m.TryLockShared())
@@ -215,11 +220,12 @@ TEST(TsaSharedLockGuard, ImmediateSharedAcquireReleasesOnDtor)
 	ov::SharedMutex m;
 	{
 		ov::SharedLockGuard lk(m);
-		// Acquired in shared mode: another reader can still acquire, a writer cannot.
-		EXPECT_TRUE(ExclusiveSideIsFree(m));
-		EXPECT_TRUE(IsExclusivelyHeld(m));
+		// Held in shared mode, so no exclusive writer is present and another reader can acquire.
+		EXPECT_TRUE(NoExclusiveWriterHeld(m));
+		// But the outstanding shared lock still blocks a writer from acquiring exclusively.
+		EXPECT_TRUE(ExclusiveAcquireWouldBlock(m));
 	}
-	EXPECT_FALSE(IsExclusivelyHeld(m));
+	EXPECT_FALSE(ExclusiveAcquireWouldBlock(m));
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +256,11 @@ TEST(TsaReleasableSharedLockGuard, EarlyReleaseUnlocksAndDtorIsNoOp)
 	ov::SharedMutex m;
 	{
 		ov::ReleasableSharedLockGuard lock(m);
-		EXPECT_TRUE(IsExclusivelyHeld(m));	// shared held -> writer blocked
+		EXPECT_TRUE(ExclusiveAcquireWouldBlock(m));	 // shared held -> writer blocked
 		lock.Release();
-		EXPECT_FALSE(IsExclusivelyHeld(m));	 // released -> writer can proceed
+		EXPECT_FALSE(ExclusiveAcquireWouldBlock(m));  // released -> writer can proceed
 	}
-	EXPECT_FALSE(IsExclusivelyHeld(m));
+	EXPECT_FALSE(ExclusiveAcquireWouldBlock(m));
 }
 
 // ---------------------------------------------------------------------------
@@ -341,10 +347,15 @@ TEST(TsaConditionVariable, WaitAndNotifyOne)
 {
 	ov::Mutex m;
 	ov::ConditionVariable cv;
-	bool ready = false;
+	bool ready	 = false;
+	bool parked	 = false;
 
 	std::thread waiter([&]() {
 		ov::LockGuard lk(m);
+		// Announce, under the lock, that we are about to park on the cv, then wake
+		// the main thread's handshake. `cv.Wait` below atomically releases `m`.
+		parked = true;
+		cv.NotifyOne();
 		// Drain spurious wakeups by re-checking the flag.
 		while (ready == false)
 		{
@@ -352,11 +363,15 @@ TEST(TsaConditionVariable, WaitAndNotifyOne)
 		}
 	});
 
-	// Give the waiter time to block inside `cv.Wait`.
-	std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
 	{
 		ov::LockGuard lk(m);
+		// Deterministic handshake (no sleep): re-acquiring `m` here is only possible
+		// once the waiter has set `parked` and entered `cv.Wait`, which releases `m`.
+		// This guarantees the test exercises the real blocking-Wait + notify path.
+		while (parked == false)
+		{
+			cv.Wait(lk);
+		}
 		ready = true;
 	}
 	cv.NotifyOne();
@@ -368,17 +383,31 @@ TEST(TsaConditionVariable, WaitWithPredicate)
 {
 	ov::Mutex m;
 	ov::ConditionVariable cv;
-	int counter = 0;
+	int counter	 = 0;
+	bool parked	 = false;
 
 	std::thread waiter([&]() {
 		ov::LockGuard lk(m);
+		// Announce we are about to park, then wake the main thread's handshake.
+		parked = true;
+		cv.NotifyOne();
 		cv.Wait(lk, [&]() { return counter >= 3; });
 		EXPECT_GE(counter, 3);
 	});
 
+	{
+		ov::LockGuard lk(m);
+		// Deterministic handshake (no sleep): proceed only once the waiter is
+		// parked inside `cv.Wait`, so the increments below exercise the real
+		// predicate re-check + notify path rather than racing past it.
+		while (parked == false)
+		{
+			cv.Wait(lk);
+		}
+	}
+
 	for (auto i = 0; i < 3; ++i)
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		{
 			ov::LockGuard lk(m);
 			counter++;
@@ -401,13 +430,21 @@ namespace
 		{
 			std::thread waiter([this]() {
 				ov::LockGuard lock(_mutex);
+				// Announce we are about to park, then wake the producer's handshake.
+				_parked = true;
+				_cv.NotifyOne();
 				_cv.Wait(lock, [&]() OV_REQUIRES(_mutex) { return (_ready); });
 				EXPECT_TRUE(_ready);
 			});
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
 			{
 				ov::LockGuard lock(_mutex);
+				// Deterministic handshake (no sleep): proceed only once the consumer
+				// is parked inside `_cv.Wait`, which releases `_mutex`.
+				while (_parked == false)
+				{
+					_cv.Wait(lock);
+				}
 				_ready = true;
 			}
 			_cv.NotifyOne();
@@ -417,7 +454,8 @@ namespace
 	private:
 		ov::Mutex _mutex;
 		ov::ConditionVariable _cv;
-		bool _ready OV_GUARDED_BY(_mutex) = false;
+		bool _ready OV_GUARDED_BY(_mutex)  = false;
+		bool _parked OV_GUARDED_BY(_mutex) = false;
 	};
 }  // namespace
 
@@ -573,7 +611,8 @@ TEST(TsaConcurrency, SharedMutexReaderWriter)
 			for (auto j = 0; j < ITERATIONS; ++j)
 			{
 				ov::SharedLockGuard lock(m);
-				read_total += value;
+				// Plain accumulator checked only after join(); relaxed is enough.
+				read_total.fetch_add(value, std::memory_order_relaxed);
 			}
 		});
 	}
