@@ -16,14 +16,33 @@
 
 #include "base/info/stream.h"
 #include "base/mediarouter/media_buffer.h"
-#include "base/mediarouter/mediarouter_application_connector.h"
 #include "base/mediarouter/media_type.h"
+#include "base/mediarouter/mediarouter_application_connector.h"
+#include "modules/bitstream/av1/av1_decoder_configuration_record.h"
+#include "modules/bitstream/av1/av1_types.h"
 #include "modules/managed_queue/managed_queue.h"
 
 class MediaRouterNormalize
 {
 public:
 	bool NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+
+	/// Copy every cross-checked field from an AV1 in-band Sequence Header summary onto the
+	/// `av1C` `AV1DecoderConfigurationRecord` that was synthesized by `flv_video_parser::ParseAV1`
+	/// (lenient `0x81 0x00 0x00 0x00` default) so the downstream
+	/// `AV1DecoderConfigurationRecord::ValidateConfigObus()` cross-check stays consistent with
+	/// the actual bitstream.
+	///
+	/// AV1 ISOBMFF binding v1.2.0 section 2.3.2:
+	///   "When the configOBUs field contains a Sequence Header OBU, the values of the
+	///    AV1CodecConfigurationRecord fields shall match those of the OBU. Specifically:
+	///    ... initial_presentation_delay_minus_one, when present, all shall match."
+	///
+	/// Exposed publicly (and as `static`) so the regression test in `mediarouter_test.cpp`
+	/// can exercise the field-mapping logic without standing up an Orchestrator fixture.
+	static void ApplyInBandSequenceHeaderToAv1Config(
+		const std::shared_ptr<AV1DecoderConfigurationRecord> &av1_config,
+		const Av1SequenceHeaderSummary &summary);
 
 	bool ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
 	bool ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
@@ -37,6 +56,8 @@ public:
 	bool ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
 
 	bool ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+
+	bool ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
 
 	bool ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
 

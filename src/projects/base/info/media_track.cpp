@@ -355,6 +355,7 @@ ov::String MediaTrack::GetCodecsParameter() const
 	{
 		case cmn::MediaCodecId::H264:
 		case cmn::MediaCodecId::H265:
+		case cmn::MediaCodecId::Av1:
 		case cmn::MediaCodecId::Aac:
 		{
 			auto config = GetDecoderConfigurationRecord();
@@ -535,6 +536,7 @@ bool MediaTrack::IsValid()
 		}
 		break;
 		case MediaCodecId::Vp9:
+		case MediaCodecId::Av1:
 		case MediaCodecId::Flv: {
 			if (IsValidResolution() && IsValidTimeBase())
 			{

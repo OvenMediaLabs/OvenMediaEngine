@@ -852,6 +852,8 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 			[[fallthrough]];
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
 			[[fallthrough]];
+		case cmn::BitstreamFormat::AV1_OBU:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::AAC_LATM:
