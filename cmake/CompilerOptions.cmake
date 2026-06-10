@@ -110,7 +110,8 @@ endif()
 # so we gate the option on the active compiler instead of erroring out.
 # ------------------------------------------------------------------------------
 if(OME_THREAD_SAFETY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    add_compile_options(-Wthread-safety -DOME_THREAD_SAFETY)
+    add_compile_options(-Wthread-safety)
+    add_compile_definitions(OME_THREAD_SAFETY)
     message(STATUS "[OME] Clang thread-safety analysis: ENABLED")
 elseif(OME_THREAD_SAFETY)
     # The option is set but the compiler is not Clang: `-Wthread-safety` and
