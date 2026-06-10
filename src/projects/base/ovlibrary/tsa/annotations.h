@@ -64,8 +64,10 @@
 // Data / capability binding
 // ----------------------------------------------------------------------------
 
-// The annotated data member can only be accessed while the named capability is held
-// in exclusive mode.
+// The annotated data member may only be accessed while the named capability is held:
+// reading requires the capability held in at least shared mode, writing requires it
+// held in exclusive mode. (For a non-shared mutex every hold is exclusive, so both
+// reads and writes need the lock.)
 #define OV_GUARDED_BY(x) OV_TS_ATTR(guarded_by(x))
 
 // Same as `OV_GUARDED_BY` but applies to the pointee of a pointer member - the pointer itself
