@@ -1,0 +1,87 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
+//
+//==============================================================================
+#pragma once
+
+#include <base/ovlibrary/ovlibrary.h>
+#include <stdint.h>
+
+#include "av1_types.h"
+
+class Av1Parser
+{
+public:
+	/// Decode a `LEB128`-encoded unsigned integer per AV1 spec section 4.10.5.
+	///
+	/// Reads up to 8 bytes from `data`. The terminating byte is the first one whose continuation bit
+	/// (`0x80`) is clear.
+	///
+	/// @param data Pointer to the first `LEB128` byte.
+	///
+	/// @param size Number of bytes available at `data`.
+	///
+	/// @return `DecodedLeb128` on success, `std::nullopt` if the buffer was exhausted before a terminator.
+	static std::optional<DecodedLeb128> DecodeLeb128(const uint8_t *data, size_t size);
+
+	/// Parse `obu_header()` (and `obu_extension_header()` when `extension_flag` is set) per AV1 spec
+	/// sections 5.3.2 / 5.3.3.
+	///
+	/// The size field (when `has_size_field` is true) is NOT consumed here.
+	///
+	/// @param reader Must contain the OBU header byte (and the extension byte if `extension_flag` is set).
+	///
+	/// @return Populated `Av1ObuHeader` on success, `std::nullopt` on failure.
+	static std::optional<Av1ObuHeader> ParseObuHeader(BitReader &reader);
+
+	/// Convenience overload of `ParseObuHeader` operating on a raw byte pointer.
+	///
+	/// @param data Pointer to the first OBU header byte.
+	///
+	/// @param size Number of bytes available at `data`.
+	///
+	/// @return `ParsedObuHeader` (header + bytes consumed, 1 or 2) on success, `std::nullopt` on failure.
+	static std::optional<ParsedObuHeader> ParseObuHeader(const uint8_t *data, size_t size);
+
+	/// Walk an AV1 OBU bytestream and return the payload of the first `OBU_SEQUENCE_HEADER`.
+	///
+	/// Accepts both the `configOBUs` payload of an `AV1CodecConfigurationBox` (per AV1 ISOBMFF binding)
+	/// and a raw in-band OBU bytestream from a media packet. The returned buffer contains only the bytes
+	/// AFTER the OBU header and optional `obu_size` field.
+	///
+	/// @param config_obus Buffer containing one or more concatenated AV1 OBUs.
+	///
+	/// @return Payload bytes of the first sequence header OBU, or `nullptr` if absent or buffer is malformed.
+	static std::shared_ptr<const ov::Data> ExtractFirstSequenceHeaderObu(const std::shared_ptr<const ov::Data> &config_obus);
+
+	/// Parse the leading mandatory fields of a `sequence_header_obu()` payload per AV1 spec section 5.5.1.
+	///
+	/// Only diagnostic-friendly fields are populated (`seq_profile`, `seq_level_idx_0`,
+	/// `max_frame_width`, `max_frame_height`, ...).
+	///
+	/// @param payload Pointer to the OBU payload (bytes after `obu_header` / `obu_size`).
+	///
+	/// @param size Number of bytes available at `payload`.
+	///
+	/// @return `std::nullopt` if the buffer is shorter than the mandatory prefix.
+	static std::optional<Av1SequenceHeaderSummary> ParseSequenceHeaderSummary(const uint8_t *payload, size_t size);
+
+	/// Convenience overload of `ParseSequenceHeaderSummary` operating on a raw byte pointer.
+	///
+	/// @param payload Buffer containing the OBU payload (bytes after `obu_header` / `obu_size`).
+	///
+	/// @return `std::nullopt` if the buffer is shorter than the mandatory prefix.
+	static std::optional<Av1SequenceHeaderSummary> ParseSequenceHeaderSummary(const std::shared_ptr<const ov::Data> &payload)
+	{
+		if (payload == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		return ParseSequenceHeaderSummary(payload->GetDataAs<uint8_t>(), payload->GetLength());
+	}
+};
