@@ -50,11 +50,20 @@ if(OME_BUILD_TESTS)
             list(APPEND _neg_includes "-I${_inc}")
         endforeach()
 
+        # Mirror the global C++ standard, but fall back to 17 if it is somehow
+        # unset (e.g. driven via target features instead of the global variable)
+        # so the hardcoded flag can never degrade to a bare `-std=c++`.
+        if(CMAKE_CXX_STANDARD)
+            set(_neg_cxx_standard ${CMAKE_CXX_STANDARD})
+        else()
+            set(_neg_cxx_standard 17)
+        endif()
+
         # Single source of truth for the verify command, shared by the build
         # target and the ctest entry below so the two cannot drift apart.
         set(_neg_verify_command
             ${CMAKE_CXX_COMPILER}
-            -std=c++${CMAKE_CXX_STANDARD}
+            -std=c++${_neg_cxx_standard}
             -DOME_THREAD_SAFETY
             -Wthread-safety
             -Xclang -verify
