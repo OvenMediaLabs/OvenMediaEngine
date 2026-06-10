@@ -338,7 +338,7 @@ namespace ov
 		void Wait(LockGuard<Mutex> &user_lock);
 
 		template <class Tpredicate>
-		void Wait(LockGuard<Mutex> &user_lock, Tpredicate pred);
+		void Wait(LockGuard<Mutex> &user_lock, Tpredicate &&pred);
 
 		template <class Trep, class Tperiod>
 		std::cv_status WaitFor(LockGuard<Mutex> &user_lock,
@@ -347,7 +347,7 @@ namespace ov
 		template <class Trep, class Tperiod, class Tpredicate>
 		bool WaitFor(LockGuard<Mutex> &user_lock,
 					 const std::chrono::duration<Trep, Tperiod> &dur,
-					 Tpredicate pred);
+					 Tpredicate &&pred);
 
 		template <class Tclock, class Tduration>
 		std::cv_status WaitUntil(LockGuard<Mutex> &user_lock,
@@ -356,7 +356,7 @@ namespace ov
 		template <class Tclock, class Tduration, class Tpredicate>
 		bool WaitUntil(LockGuard<Mutex> &user_lock,
 					   const std::chrono::time_point<Tclock, Tduration> &tp,
-					   Tpredicate pred);
+					   Tpredicate &&pred);
 
 		void NotifyOne() noexcept
 		{
@@ -532,11 +532,11 @@ namespace ov
 	}
 
 	template <class Tpredicate>
-	void ConditionVariable::Wait(LockGuard<Mutex> &user_lock, Tpredicate pred)
+	void ConditionVariable::Wait(LockGuard<Mutex> &user_lock, Tpredicate &&pred)
 	{
 		std::unique_lock ul(user_lock._mutex.NativeHandle(), std::adopt_lock);
 		tsa_detail::AdoptedLockReleaser releaser(ul);
-		_cv.wait(ul, std::move(pred));
+		_cv.wait(ul, std::forward<Tpredicate>(pred));
 	}
 
 	template <class Trep, class Tperiod>
@@ -553,11 +553,11 @@ namespace ov
 	bool ConditionVariable::WaitFor(
 		LockGuard<Mutex> &user_lock,
 		const std::chrono::duration<Trep, Tperiod> &dur,
-		Tpredicate pred)
+		Tpredicate &&pred)
 	{
 		std::unique_lock ul(user_lock._mutex.NativeHandle(), std::adopt_lock);
 		tsa_detail::AdoptedLockReleaser releaser(ul);
-		return _cv.wait_for(ul, dur, std::move(pred));
+		return _cv.wait_for(ul, dur, std::forward<Tpredicate>(pred));
 	}
 
 	template <class Tclock, class Tduration>
@@ -574,11 +574,11 @@ namespace ov
 	bool ConditionVariable::WaitUntil(
 		LockGuard<Mutex> &user_lock,
 		const std::chrono::time_point<Tclock, Tduration> &tp,
-		Tpredicate pred)
+		Tpredicate &&pred)
 	{
 		std::unique_lock ul(user_lock._mutex.NativeHandle(), std::adopt_lock);
 		tsa_detail::AdoptedLockReleaser releaser(ul);
-		return _cv.wait_until(ul, tp, std::move(pred));
+		return _cv.wait_until(ul, tp, std::forward<Tpredicate>(pred));
 	}
 
 	// `ScopedLock` is the variadic guard equivalent to `std::scoped_lock`.
