@@ -6,6 +6,7 @@ ome_add_static_library(bitstream
         nalu
         h264
         h265
+        av1
         mp3
     DEPS ovlibrary
 )

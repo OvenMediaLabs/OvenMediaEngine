@@ -4,6 +4,7 @@
 
 #include "h264/h264_decoder_configuration_record.h"
 #include "h265/h265_decoder_configuration_record.h"
+#include "av1/av1_decoder_configuration_record.h"
 #include "aac/audio_specific_config.h"
 
 enum class DecoderConfigurationRecordType : uint8_t
@@ -11,7 +12,8 @@ enum class DecoderConfigurationRecordType : uint8_t
 	UNKNOWN = 0,
 	AVCConfigurationRecord,
 	HEVCConfigurationRecord,
-	AudioSpecificConfig
+	AudioSpecificConfig,
+	AV1ConfigurationRecord
 };
 
 class DecoderConfigurationRecordParser
@@ -28,6 +30,9 @@ public:
 			break;
 		case cmn::MediaCodecId::H265:
 			type = DecoderConfigurationRecordType::HEVCConfigurationRecord;
+			break;
+		case cmn::MediaCodecId::Av1:
+			type = DecoderConfigurationRecordType::AV1ConfigurationRecord;
 			break;
 		case cmn::MediaCodecId::Aac:
 			type = DecoderConfigurationRecordType::AudioSpecificConfig;
@@ -55,6 +60,9 @@ public:
 			break;
 		case DecoderConfigurationRecordType::HEVCConfigurationRecord:
 			decoder_configuration_record = std::make_shared<HEVCDecoderConfigurationRecord>();
+			break;
+		case DecoderConfigurationRecordType::AV1ConfigurationRecord:
+			decoder_configuration_record = std::make_shared<AV1DecoderConfigurationRecord>();
 			break;
 		case DecoderConfigurationRecordType::AudioSpecificConfig:
 			decoder_configuration_record = std::make_shared<AudioSpecificConfig>();
