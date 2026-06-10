@@ -535,8 +535,19 @@ bool MediaTrack::IsValid()
 			}
 		}
 		break;
+		case MediaCodecId::Av1: {
+			// `GetCodecsParameter()` derives the AV1 codecs string from the decoder configuration record,
+			// and HLS/LL-HLS playlists consume it directly;
+			// require a non-null DCR so the track is not marked valid with an empty CODECS string
+			// (aligned with H264/H265).
+			if (IsValidResolution() && IsValidTimeBase() && GetDecoderConfigurationRecord() != nullptr)
+			{
+				_is_valid = true;
+				return true;
+			}
+		}
+		break;
 		case MediaCodecId::Vp9:
-		case MediaCodecId::Av1:
 		case MediaCodecId::Flv: {
 			if (IsValidResolution() && IsValidTimeBase())
 			{
