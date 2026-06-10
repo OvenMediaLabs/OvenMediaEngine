@@ -27,11 +27,11 @@ TEST(MediaRouterPlaceholder, TodoImplementTests)
 //
 // The CodedFrames branch of `MediaRouterNormalize::ProcessAV1OBUStream` enters
 // `ApplyInBandSequenceHeaderToAv1Config` after the enhanced-RTMP (FLV) ingest path
-// synthesized the lenient default av1C blob `0x81 0x00 0x00 0x00`. The helper
-// must copy every cross-checked field (per AV1 ISOBMFF binding v1.3.0 section
-// 2.3.4 (Semantics)) from the in-band Sequence Header summary onto the av1C - including
-// the `initial_presentation_delay_*` pair that was historically missed and
-// caused the synthesized av1C to go stale on streams with op-0 delay != 0.
+// synthesized the lenient default av1C blob `0x81 0x00 0x00 0x00`. The helper copies the
+// matchable fields (per AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics)) from the
+// in-band Sequence Header summary onto the av1C. `initial_presentation_delay_*` is NOT
+// among them: it is an av1C-only field with no Sequence Header "SHALL match" rule, so the
+// helper must leave it untouched - the tests below pin down both behaviours.
 // ---------------------------------------------------------------------------
 namespace
 {
