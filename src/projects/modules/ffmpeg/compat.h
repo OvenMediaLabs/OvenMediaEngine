@@ -141,8 +141,9 @@ namespace ffmpeg
 					{
 						// `av1C` format per AOMedia ISOBMFF binding.
 						auto av1_config = std::make_shared<AV1DecoderConfigurationRecord>();
+						auto extra_data = std::make_shared<ov::Data>(stream->codecpar->extradata, stream->codecpar->extradata_size, true);
 
-						if (av1_config->Parse(stream->codecpar->extradata, stream->codecpar->extradata_size) == false)
+						if (av1_config->Parse(extra_data) == false)
 						{
 							return false;
 						}
