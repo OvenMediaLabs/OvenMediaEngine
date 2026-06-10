@@ -25,78 +25,60 @@
 // Compiled in ON mode only (`OME_THREAD_SAFETY`);
 // in OFF mode the annotations vanish, so the file is excluded from OFF builds.
 //
-// Matrix of cases (minimal API)
+// Taxonomy of pins
 //
-//   The common guards (`LockGuard`, `SharedLockGuard`,
-//   `ScopedLock`) expose only the immediate-acquire scoped shape: explicit
-//   (M&) ctor + dtor, and nothing else - no manual Lock/Unlock,
-//   no defer/try/adopt ctors, no release(), no owns_lock(), no move.
-//   (`ReleasableLockGuard`/`ReleasableSharedLockGuard` are the one opt-in exception,
-//   adding an explicit `Release()`; pinned separately below.)
-//   The matrix below pins:
+//   The common guards (`LockGuard`, `SharedLockGuard`, `ScopedLock`) expose only
+//   the immediate-acquire scoped shape: explicit (M&) ctor + dtor, and nothing
+//   else - no manual Lock/Unlock, no defer/try/adopt ctors, no release(), no
+//   owns_lock(), no move. (`ReleasableLockGuard`/`ReleasableSharedLockGuard` are
+//   the one opt-in exception, adding an explicit `Release()`.)
 //
-//     (A) Immediate-acquire happy path plus baseline: guarded access under
-//         the guard is accepted; access with no lock is diagnosed.
-//     (B) Baseline TSA coverage: unguarded access without any lock
-//         is diagnosed.
-//     (C) Immediate-acquire happy path: no diagnostic.
-//     (D) CV wait + `OV_REQUIRES` predicate lambda: no
-//         diagnostic (verifies the lambda-requires annotation).
-//     (E) API-absence lockdown via `static_assert`. The shrunk
-//         API must not silently regrow defer/try/adopt
-//         ctors, move support, default ctor, release(), or
-//         owns_lock(). Each removed entry point is pinned by a
-//         negative `is_constructible_v`/member-detection trait.
+//   Each pin is indexed by a letter. The letters are a logical index, NOT the
+//   physical order in the file: the static_assert block deliberately comes first,
+//   so on a top-to-bottom read the letters appear as E, B, C, then A, D, F, G, H, I.
+//   The pins fall into two blocks:
 //
-//     (F) Held-set hygiene on the explicit method effects of the raw mutex
-//         types (the pure-RAII guards have no manual methods). Sabotaging
-//         any of the static `OV_ACQUIRE`/`OV_RELEASE`/`OV_TRY_ACQUIRE`
-//         effects on the following 12 methods must be caught by at least one
-//         row below: `ov::Mutex::Lock`/`Unlock`/`TryLock`,
-//         `ov::RecursiveMutex::Lock`/`Unlock`/`TryLock`,
-//         `ov::SharedMutex::Lock`/`Unlock`/`TryLock`/`LockShared` /
-//         `UnlockShared`/`TryLockShared`. The guard ctor/dtor effects
-//         are pinned by (A)/(G)/(H).
+//   1. Compile-time `static_assert` pins (resolved during compilation, before the
+//      `-verify` pass even runs):
+//        (E) Guard API-absence lockdown - the shrunk guard API must not regrow a
+//            defer/try/adopt ctor, move support, a default ctor, or
+//            release()/owns_lock()/try_lock()/mutex(); the Releasable pair must
+//            keep `Release()`. Each is pinned by a negative `is_constructible_v` /
+//            member-detection trait.                                  [policy pin]
+//        (B) Friend-only `NativeHandle()` lockdown - `NativeHandle()` must stay
+//            `private` (friend-only) on every wrapper mutex, so non-friend code
+//            cannot reach the underlying `std::` handle.               [policy pin]
+//        (C) `ConditionVariable` wait-API narrowing - all six wait overloads must
+//            accept `ov::LockGuard<ov::Mutex>` and reject every other lock type.
+//                                                                      [policy pin]
 //
-//   Correctness pins vs policy pins
-//     The rows fall into two kinds, and a failure means different things:
+//   2. Clang `-verify` diagnostic pins (each marks an intentionally-incorrect
+//      access with the diagnostic that must fire on that line; the compile passes
+//      only when every marked diagnostic fires AND nothing else does):
+//        (A) Immediate-acquire happy path + baseline (exclusive and shared):
+//            guarded access under the guard is accepted; access with no lock is
+//            diagnosed.                                           [correctness pin]
+//        (D) CV wait + `OV_REQUIRES` predicate lambda: no diagnostic (verifies the
+//            lambda-requires annotation).                         [correctness pin]
+//        (F) Held-set hygiene on the explicit raw-mutex method effects (the
+//            pure-RAII guards have no manual methods). Rows F1-F8 cover the 12
+//            manual methods - `ov::Mutex`/`ov::RecursiveMutex`/`ov::SharedMutex`
+//            `Lock`/`Unlock`/`TryLock`, plus `ov::SharedMutex`
+//            `LockShared`/`UnlockShared`/`TryLockShared` - so sabotaging any
+//            `OV_ACQUIRE`/`OV_RELEASE`/`OV_TRY_ACQUIRE` effect trips at least one
+//            row.                                                 [correctness pin]
+//        (G) `ov::ScopedLock` held-set coverage (rows G1-G3).      [correctness pin]
+//        (H) `ov::LockGuard` held-set coverage.                    [correctness pin]
+//        (I) Releasable guards held-set coverage.                  [correctness pin]
 //
-//       - Correctness pins - (A), (B), (C), (D), (F), (G), (H). These pin
-//         that a TSA annotation is present and correct. If one of these
-//         changes outcome, an `OV_ACQUIRE`/`OV_RELEASE`/`OV_GUARDED_BY`
-//         /scoped-capability effect was dropped or widened, so code with a
-//         real data race would now compile clean. A failure here is a bug.
-//
-//       - Policy pins - (E). These pin a deliberate API shrink on the common
-//         guards (no defer/try/adopt ctor, no move, no release() /
-//         owns_lock()/mutex(), CV narrowed to `ov::LockGuard<ov::Mutex>`).
-//         The `ReleasableLockGuard`/`ReleasableSharedLockGuard` pair is the
-//         one exception, exposing `Release()` only; (E) also pins that narrow
-//         addition. If one of these changes outcome, the wrapper API grew or
-//         shrank - that is a design decision to revisit, not a latent race.
-//         A failure here flags a policy change for review, not a correctness
-//         regression.
-//
-//     | Case                                                      | Expected diagnostic      |
-//     |-----------------------------------------------------------|--------------------------|
-//     | immediate `lk(m)` + protected access                      | none                     |
-//     | unguarded access (no lock)                                | warning (read requires)  |
-//     | shared `lk(m)` + protected access                         | none                     |
-//     | CV wait + `OV_REQUIRES` predicate lambda                  | none                     |
-//     | static_assert: defer_lock ctor absent                     | compile-time enforced    |
-//     | static_assert: try_to_lock ctor absent                    | compile-time enforced    |
-//     | static_assert: adopt_lock ctor absent                     | compile-time enforced    |
-//     | static_assert: default ctor absent                        | compile-time enforced    |
-//     | static_assert: move ctor/assign absent                    | compile-time enforced    |
-//     | static_assert: same set for SharedLockGuard               | compile-time enforced    |
-//     | raw `ov::Mutex::Lock`/`Unlock` sequence                   | warning (write requires) |
-//     | raw `ov::Mutex::TryLock` success path                     | none                     |
-//     | raw `ov::RecursiveMutex::Lock`/`Unlock` sequence          | warning (write requires) |
-//     | raw `ov::RecursiveMutex::TryLock` success path            | none                     |
-//     | raw `ov::SharedMutex::Lock`/`Unlock` sequence             | warning (write requires) |
-//     | raw `ov::SharedMutex::TryLock` success path               | none                     |
-//     | raw `ov::SharedMutex::LockShared`/`UnlockShared` sequence | warning (read requires)  |
-//     | raw `ov::SharedMutex::TryLockShared` success path         | none                     |
+//   What a failure means
+//       - Correctness pins (A, D, F, G, H, I): a TSA annotation
+//         (`OV_ACQUIRE`/`OV_RELEASE`/`OV_GUARDED_BY`/scoped-capability) was dropped
+//         or widened, so code with a real data race would now compile clean.
+//         A failure here is a bug.
+//       - Policy pins (B, C, E): the wrapper API grew or shrank - a deliberate
+//         design decision to revisit, not a latent race. A failure here flags a
+//         policy change for review, not a correctness regression.
 //
 // Diagnostic messages are written to match Clang's exact text.
 // If Clang ever rewords them the test correctly fails - that is the signal to refresh
@@ -426,18 +408,23 @@ static_assert(has_mutex_accessor<ov::ReleasableSharedLockGuard<ov::SharedMutex>>
 static_assert(has_release_method<ov::ReleasableSharedLockGuard<ov::SharedMutex>>::value,
 			  "ov::ReleasableSharedLockGuard must keep Release()");
 
-// Raw-handle escape hatch lockdown: `NativeHandle()` must stay `private`
-// (friend-only) on every wrapper mutex, so non-friend code cannot reach the underlying `std::` mutex.
-// This pins the (F1) friend-only policy - without it,
-// re-exposing `NativeHandle()` as public would silently re-open the raw escape and no other
-// assert here would notice.
+// ----------------------------------------------------------------------------
+// (B) Friend-only `NativeHandle()` lockdown. [policy pin]
+//
+// `NativeHandle()` must stay `private` (friend-only) on every wrapper mutex, so
+// non-friend code cannot reach the underlying `std::` mutex (the raw-handle
+// escape hatch). Without this, re-exposing `NativeHandle()` as public would
+// silently re-open the escape and no other assert here would notice.
+// ----------------------------------------------------------------------------
 static_assert(has_native_handle<ov::Mutex>::value == false,
 			  "ov::Mutex::NativeHandle() must not be reachable by non-friend code");
 static_assert(has_native_handle<ov::RecursiveMutex>::value == false,
 			  "ov::RecursiveMutex::NativeHandle() must not be reachable by non-friend code");
 static_assert(has_native_handle<ov::SharedMutex>::value == false,
 			  "ov::SharedMutex::NativeHandle() must not be reachable by non-friend code");
-// `ov::ConditionVariable` wait-API lockdown.
+// ----------------------------------------------------------------------------
+// (C) `ov::ConditionVariable` wait-API narrowing lockdown. [policy pin]
+//
 // The CV intentionally narrows the lock parameter of all six wait overloads
 // (`Wait`, `Wait` + predicate, `WaitFor` with/without predicate,
 // `WaitUntil` with/without predicate) to the concrete `ov::LockGuard<ov::Mutex>` type only.
@@ -589,7 +576,7 @@ namespace
 
 namespace
 {
-	// Row F3: raw `ov::Mutex::Lock()`/`Unlock()` sequence.
+	// Row F1: raw `ov::Mutex::Lock()`/`Unlock()` sequence.
 	// Catches sabotage of `Mutex::Lock()` `OV_ACQUIRE()` and `Mutex::Unlock()` `OV_RELEASE()`.
 	// The sequence ends balanced (`Lock` paired with `Unlock`) so the function boundary stays clean.
 	class RawMutexLockUnlockSequence
@@ -611,7 +598,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F4: raw `ov::Mutex::TryLock()` success path.
+	// Row F2: raw `ov::Mutex::TryLock()` success path.
 	// Catches sabotage of `Mutex::TryLock()` `OV_TRY_ACQUIRE(true)`.
 	class RawMutexTryLockSequence
 	{
@@ -630,7 +617,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F5: raw `ov::RecursiveMutex::Lock()`/`Unlock()` sequence.
+	// Row F3: raw `ov::RecursiveMutex::Lock()`/`Unlock()` sequence.
 	// Catches sabotage of `RecursiveMutex::Lock()` `OV_ACQUIRE()`
 	// and `RecursiveMutex::Unlock()` `OV_RELEASE()`.
 	class RawRecursiveMutexLockUnlockSequence
@@ -652,7 +639,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F6: raw `ov::RecursiveMutex::TryLock()` success path.
+	// Row F4: raw `ov::RecursiveMutex::TryLock()` success path.
 	// Catches sabotage of `RecursiveMutex::TryLock()` `OV_TRY_ACQUIRE(true)`.
 	class RawRecursiveMutexTryLockSequence
 	{
@@ -671,7 +658,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F7: raw `ov::SharedMutex::Lock()`/`Unlock()` exclusive sequence.
+	// Row F5: raw `ov::SharedMutex::Lock()`/`Unlock()` exclusive sequence.
 	// Catches sabotage of `SharedMutex::Lock()` `OV_ACQUIRE()` and `SharedMutex::Unlock()` `OV_RELEASE()`.
 	class RawSharedMutexLockUnlockSequence
 	{
@@ -692,7 +679,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F8: raw `ov::SharedMutex::TryLock()` success path.
+	// Row F6: raw `ov::SharedMutex::TryLock()` success path.
 	// Catches sabotage of `SharedMutex::TryLock()` `OV_TRY_ACQUIRE(true)`.
 	class RawSharedMutexTryLockSequence
 	{
@@ -711,7 +698,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F9: raw `ov::SharedMutex::LockShared()`/`UnlockShared()` sequence.
+	// Row F7: raw `ov::SharedMutex::LockShared()`/`UnlockShared()` sequence.
 	// Catches sabotage of `SharedMutex::LockShared()` `OV_ACQUIRE_SHARED()`
 	// and `SharedMutex::UnlockShared()` `OV_RELEASE_SHARED()`.
 	class RawSharedMutexLockSharedSequence
@@ -736,7 +723,7 @@ namespace
 		int _value OV_GUARDED_BY(_mutex) = 0;
 	};
 
-	// Row F10: raw `ov::SharedMutex::TryLockShared()` success path.
+	// Row F8: raw `ov::SharedMutex::TryLockShared()` success path.
 	// Catches sabotage of `SharedMutex::TryLockShared()` `OV_TRY_ACQUIRE_SHARED(true)`.
 	class RawSharedMutexTryLockSharedSequence
 	{
