@@ -98,10 +98,11 @@ public:
 
 	/// Return the `configOBUs` payload (zero or more concatenated AV1 OBUs).
 	///
-	/// The returned buffer may be empty when the muxer chose to deliver the sequence header OBU in-band
-	/// rather than inside the `av1C` box.
+	/// `nullptr` is returned when the record carries no `configOBUs` - e.g. a minimal `av1C` whose
+	/// sequence header OBU is delivered in-band rather than inside the box. A successful `Parse` does
+	/// NOT guarantee a non-null result.
 	///
-	/// @return The `configOBUs` byte buffer (possibly empty); never `nullptr` when `Parse` has succeeded.
+	/// @return The `configOBUs` byte buffer, or `nullptr` when the record has no `configOBUs`.
 	std::shared_ptr<ov::Data> ConfigObus() const;
 
 	void SetSeqProfile(uint8_t value);
