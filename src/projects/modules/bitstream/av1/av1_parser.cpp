@@ -137,6 +137,57 @@ std::optional<ParsedObuHeader> Av1Parser::ParseObuHeader(const uint8_t *data, si
 	return parsed;
 }
 
+bool Av1Parser::ReadObu(const uint8_t *data, size_t size, size_t offset, Av1ObuSpan &out)
+{
+	if (data == nullptr || offset >= size)
+	{
+		return false;
+	}
+
+	auto parsed = ParseObuHeader(data + offset, size - offset);
+	if (parsed.has_value() == false)
+	{
+		return false;
+	}
+
+	size_t payload_offset = offset + parsed->bytes_consumed;
+	size_t payload_size	  = 0;
+
+	if (parsed->header.has_size_field)
+	{
+		auto leb = DecodeLeb128(data + payload_offset, size - payload_offset);
+		if (leb.has_value() == false)
+		{
+			return false;
+		}
+		payload_offset += leb->bytes_consumed;
+		if (leb->value > size - payload_offset)
+		{
+			return false;
+		}
+		payload_size = static_cast<size_t>(leb->value);
+	}
+	else if (parsed->header.type == Av1ObuType::TemporalDelimiter)
+	{
+		// AV1 spec 5.6: the temporal delimiter has an empty payload, so it can be walked past even
+		// in a low-overhead (`obu_has_size_field = 0`) in-band stream.
+		payload_size = 0;
+	}
+	else
+	{
+		// No size field and not a TemporalDelimiter: the remainder of the buffer is this OBU's
+		// payload. Callers that require a size field (e.g. `configOBUs`) reject on `has_size_field`.
+		payload_size = size - payload_offset;
+	}
+
+	out.header		   = parsed->header;
+	out.obu_offset	   = offset;
+	out.payload_offset = payload_offset;
+	out.payload_size   = payload_size;
+	out.next_offset	   = payload_offset + payload_size;
+	return true;
+}
+
 std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObu(const std::shared_ptr<const ov::Data> &config_obus)
 {
 	if (config_obus == nullptr || config_obus->GetLength() == 0)
@@ -147,67 +198,151 @@ std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObu(const s
 	const auto *base   = config_obus->GetDataAs<uint8_t>();
 	const size_t total = config_obus->GetLength();
 	size_t offset	   = 0;
-
+	Av1ObuSpan obu;
 	while (offset < total)
 	{
-		auto parsed = ParseObuHeader(base + offset, total - offset);
-		if (parsed.has_value() == false)
+		if (ReadObu(base, total, offset, obu) == false)
 		{
 			return nullptr;
 		}
 
-		const auto &header	  = parsed->header;
-		size_t payload_offset = offset + parsed->bytes_consumed;
-		size_t payload_size	  = 0;
-
-		if (header.has_size_field)
+		if (obu.header.type == Av1ObuType::SequenceHeader)
 		{
-			auto leb = DecodeLeb128(base + payload_offset, total - payload_offset);
-			if (leb.has_value() == false)
-			{
-				return nullptr;
-			}
-
-			payload_offset += leb->bytes_consumed;
-
-			if (leb->value > total - payload_offset)
-			{
-				return nullptr;
-			}
-
-			payload_size = static_cast<size_t>(leb->value);
-		}
-		else
-		{
-			// AV1 ISO BMFF requires `obu_has_size_field=1` inside `configOBUs`. If we hit an OBU without
-			// a size field there's no way to know where the next one starts, so the remainder of the
-			// buffer is treated as this OBU's payload.
-			//
-			// AV1 spec 5.6 `temporal_delimiter_obu()` is defined as a NO-OP: "Note: The temporal delimiter
-			// has an empty payload." When the stream uses the low-overhead bitstream format
-			// (`obu_has_size_field = 0`) we can still walk past a leading TemporalDelimiter because its
-			// payload is guaranteed to be zero bytes. This lets `ExtractFirstSequenceHeaderObu()` reach a
-			// subsequent SequenceHeader OBU in an in-band scan.
-			if (header.type == Av1ObuType::TemporalDelimiter)
-			{
-				payload_size = 0;
-			}
-			else
-			{
-				payload_size = total - payload_offset;
-			}
-		}
-
-		if (header.type == Av1ObuType::SequenceHeader)
-		{
-			if (payload_size == 0)
+			if (obu.payload_size == 0)
 			{
 				return std::make_shared<ov::Data>();
 			}
-			return std::make_shared<ov::Data>(base + payload_offset, payload_size);
+			return std::make_shared<ov::Data>(base + obu.payload_offset, obu.payload_size);
 		}
 
-		offset = payload_offset + payload_size;
+		offset = obu.next_offset;
+	}
+
+	return nullptr;
+}
+
+namespace
+{
+	// AV1 spec 5.9.2 `uncompressed_header()` key-frame prefix. With `reduced_still_picture_header`
+	// the frame is always a KEY_FRAME. Otherwise the first bit is `show_existing_frame` and the next
+	// 2 bits are `frame_type` (0 == KEY_FRAME).
+	bool FrameObuIsKeyFrame(const uint8_t *payload, size_t size, bool reduced)
+	{
+		if (reduced)
+		{
+			return true;
+		}
+
+		BitReader reader(payload, size);
+		uint8_t show_existing_frame = 0;
+		if (reader.ReadBits<uint8_t>(1, show_existing_frame) == false)
+		{
+			return false;
+		}
+		if (show_existing_frame != 0)
+		{
+			return false;  // displays an already-decoded frame, not a new key frame
+		}
+
+		uint8_t frame_type = 0;
+		if (reader.ReadBits<uint8_t>(2, frame_type) == false)
+		{
+			return false;
+		}
+		return frame_type == 0;  // 0 == KEY_FRAME
+	}
+}  // namespace
+
+bool Av1Parser::IsKeyFrame(const uint8_t *data, size_t size)
+{
+	if (data == nullptr)
+	{
+		return false;
+	}
+
+	bool reduced  = false;
+	size_t offset = 0;
+	Av1ObuSpan obu;
+	while (offset < size)
+	{
+		if (ReadObu(data, size, offset, obu) == false)
+		{
+			return false;
+		}
+
+		if (obu.header.type == Av1ObuType::SequenceHeader)
+		{
+			// Only `reduced_still_picture_header` is needed here (it decides how frame_type is read),
+			// so read just the leading bits instead of the full sequence header: AV1 spec 5.5.1
+			// seq_profile f(3), still_picture f(1), reduced_still_picture_header f(1).
+			BitReader reader(data + obu.payload_offset, obu.payload_size);
+			uint8_t seq_profile = 0, still_picture = 0, reduced_flag = 0;
+			if (reader.ReadBits<uint8_t>(3, seq_profile) &&
+				reader.ReadBits<uint8_t>(1, still_picture) &&
+				reader.ReadBits<uint8_t>(1, reduced_flag))
+			{
+				reduced = (reduced_flag != 0);
+			}
+		}
+		else if (obu.header.type == Av1ObuType::Frame || obu.header.type == Av1ObuType::FrameHeader)
+		{
+			return FrameObuIsKeyFrame(data + obu.payload_offset, obu.payload_size, reduced);
+		}
+
+		offset = obu.next_offset;
+	}
+
+	return false;
+}
+
+bool Av1Parser::HasSequenceHeaderObu(const uint8_t *data, size_t size)
+{
+	if (data == nullptr)
+	{
+		return false;
+	}
+
+	size_t offset = 0;
+	Av1ObuSpan obu;
+	while (offset < size)
+	{
+		if (ReadObu(data, size, offset, obu) == false)
+		{
+			return false;
+		}
+		if (obu.header.type == Av1ObuType::SequenceHeader)
+		{
+			return true;
+		}
+		offset = obu.next_offset;
+	}
+
+	return false;
+}
+
+std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObuRaw(const std::shared_ptr<const ov::Data> &config_obus)
+{
+	if (config_obus == nullptr || config_obus->GetLength() == 0)
+	{
+		return nullptr;
+	}
+
+	const auto *base   = config_obus->GetDataAs<uint8_t>();
+	const size_t total = config_obus->GetLength();
+	size_t offset	   = 0;
+	Av1ObuSpan obu;
+	while (offset < total)
+	{
+		if (ReadObu(base, total, offset, obu) == false)
+		{
+			return nullptr;
+		}
+		if (obu.header.type == Av1ObuType::SequenceHeader)
+		{
+			// Full OBU: header + obu_size + payload.
+			return std::make_shared<ov::Data>(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
+		}
+		offset = obu.next_offset;
 	}
 
 	return nullptr;

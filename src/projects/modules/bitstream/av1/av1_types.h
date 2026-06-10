@@ -71,6 +71,17 @@ struct ParsedObuHeader
 	size_t bytes_consumed = 0;
 };
 
+/// One OBU located by `Av1Parser::ReadObu()` while walking an OBU bytestream: the header plus the
+/// payload bounds and the offset of the next OBU.
+struct Av1ObuSpan
+{
+	Av1ObuHeader header;
+	size_t obu_offset	  = 0;	// offset of the OBU header
+	size_t payload_offset = 0;	// offset of the payload (after the header and optional obu_size)
+	size_t payload_size	  = 0;
+	size_t next_offset	  = 0;	// offset of the next OBU
+};
+
 // AV1 spec 5.5.1 `sequence_header_obu()` - only the diagnostic-friendly leading fields, plus the
 // `color_config()` (spec 5.5.2) values needed for the `configOBUs` cross-check defined by AV1 ISOBMFF
 // binding v1.3.0 section 2.3.4 (Semantics).

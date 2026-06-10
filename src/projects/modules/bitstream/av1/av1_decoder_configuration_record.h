@@ -154,5 +154,8 @@ private:
 
 	std::shared_ptr<ov::Data> _config_obus;
 
-	bool _parsed = false;
+	// Valid by default: a default-constructed record holds the lenient `0x81 0x00 0x00 0x00` fields
+	// (marker/version = 1), which is a usable av1C. Parse() clears this on entry and sets it true
+	// only on success, so a failed parse is observable as invalid via IsValid().
+	bool _valid = true;
 };

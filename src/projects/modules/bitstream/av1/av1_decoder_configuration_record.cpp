@@ -20,7 +20,7 @@
 
 bool AV1DecoderConfigurationRecord::IsValid() const
 {
-	return _parsed && _marker == 1 && _version == 1;
+	return _valid && _marker == 1 && _version == 1;
 }
 
 ov::String AV1DecoderConfigurationRecord::GetCodecsParameter() const
@@ -55,12 +55,12 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 {
 	// Invalidate any prior parse state up front.
 	// A re-parse on a reused instance must not leave the previous result observable:
-	// without this, a failure at any point below would leave `_parsed` (hence `IsValid()`) `true`
+	// without this, a failure at any point below would leave `_valid` (hence `IsValid()`) `true`
 	// and `GetData()` returning bytes cached by an earlier successful parse.
 	// `UpdateData()` drops the cached serialized buffer so `GetData()` no longer returns stale bytes.
 	// `_config_obus` is only assigned after the fixed header is fully read, so an early failure would
 	// otherwise leave the previous parse's OBU buffer reachable through `ConfigObus()`; clear it too.
-	_parsed		 = false;
+	_valid		 = false;
 	_config_obus = nullptr;
 	UpdateData();
 
@@ -156,7 +156,7 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 		}
 	}
 
-	_parsed = true;
+	_valid = true;
 
 	return true;
 }
@@ -169,45 +169,26 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 	size_t obu_index   = 0;
 	bool seen_seq_hdr  = false;
 
+	Av1ObuSpan obu;
 	while (offset < total)
 	{
-		auto parsed = Av1Parser::ParseObuHeader(base + offset, total - offset);
-		if (parsed.has_value() == false)
+		if (Av1Parser::ReadObu(base, total, offset, obu) == false)
 		{
 			return false;
 		}
 
-		const auto &header	  = parsed->header;
-		size_t payload_offset = offset + parsed->bytes_consumed;
-		size_t payload_size	  = 0;
-
-		// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): `configOBUs` is a size-delimited OBU sequence;
-		// "The flag obu_has_size_field SHALL be set to 1". This is distinct from the in-band
-		// low-overhead bitstream format walked by `Av1Parser::ExtractFirstSequenceHeaderObu()`,
-		// which tolerates a leading `obu_has_size_field = 0` `TemporalDelimiter` (spec 5.6:
-		// "Note: The temporal delimiter has an empty payload.") because its payload size is
-		// statically zero. Inside `configOBUs` there is no such heuristic - absorbing the
-		// remainder as one anonymous payload would silently swallow follow-up OBUs and bypass
-		// the cross-check rules below, so reject immediately.
-		if (header.has_size_field == false)
+		// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): `configOBUs` is a size-delimited OBU
+		// sequence; "The flag obu_has_size_field SHALL be set to 1". Unlike the tolerant in-band scan
+		// in `Av1Parser::ReadObu()`, a missing size field here would let the remainder be swallowed as
+		// one anonymous payload and bypass the cross-check rules below, so reject immediately.
+		if (obu.header.has_size_field == false)
 		{
 			return false;
 		}
 
-		auto leb = Av1Parser::DecodeLeb128(base + payload_offset, total - payload_offset);
-		if (leb.has_value() == false)
-		{
-			return false;
-		}
-
-		payload_offset += leb->bytes_consumed;
-
-		if (leb->value > total - payload_offset)
-		{
-			return false;
-		}
-
-		payload_size = static_cast<size_t>(leb->value);
+		const auto &header	  = obu.header;
+		size_t payload_offset = obu.payload_offset;
+		size_t payload_size	  = obu.payload_size;
 
 		if (header.type == Av1ObuType::SequenceHeader)
 		{
