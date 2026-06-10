@@ -1037,7 +1037,7 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	const std::shared_ptr<AV1DecoderConfigurationRecord> &av1_config,
 	const Av1SequenceHeaderSummary &summary)
 {
-	if (av1_config == nullptr)
+	if ((av1_config == nullptr) || (summary.parsed == false))
 	{
 		return;
 	}
