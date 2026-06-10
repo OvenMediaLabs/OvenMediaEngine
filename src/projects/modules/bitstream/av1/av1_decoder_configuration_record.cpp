@@ -53,6 +53,17 @@ uint8_t AV1DecoderConfigurationRecord::BitDepth() const
 
 bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 {
+	// Invalidate any prior parse state up front.
+	// A re-parse on a reused instance must not leave the previous result observable:
+	// without this, a failure at any point below would leave `_parsed` (hence `IsValid()`) `true`
+	// and `GetData()` returning bytes cached by an earlier successful parse.
+	// `UpdateData()` drops the cached serialized buffer so `GetData()` no longer returns stale bytes.
+	// `_config_obus` is only assigned after the fixed header is fully read, so an early failure would
+	// otherwise leave the previous parse's OBU buffer reachable through `ConfigObus()`; clear it too.
+	_parsed		 = false;
+	_config_obus = nullptr;
+	UpdateData();
+
 	if ((data == nullptr) || (length < MIN_AV1DECODERCONFIGURATIONRECORD_SIZE))
 	{
 		return false;
