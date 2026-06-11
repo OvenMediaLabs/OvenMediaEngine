@@ -854,6 +854,14 @@ TEST(Av1ParserExtractSequenceHeaderRaw, NullWhenAbsent)
 	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObuRaw(data), nullptr);
 }
 
+// A sequence header OBU without obu_has_size_field cannot be stored in configOBUs -> nullptr.
+TEST(Av1ParserExtractSequenceHeaderRaw, NullWhenNotSizeDelimited)
+{
+	auto seq  = MakeObu(Av1ObuType::SequenceHeader, {0xAA}, /*has_size_field=*/false);
+	auto data = std::make_shared<ov::Data>(seq.data(), seq.size());
+	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObuRaw(data), nullptr);
+}
+
 // A sequence header OBU with a zero-length payload is malformed -> treated as absent (nullptr),
 // not a non-null empty buffer.
 TEST(Av1ParserExtractSequenceHeader, ReturnsNullForEmptySequenceHeader)

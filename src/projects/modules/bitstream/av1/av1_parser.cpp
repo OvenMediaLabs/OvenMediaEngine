@@ -340,6 +340,13 @@ std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObuRaw(cons
 		}
 		if (obu.header.type == Av1ObuType::SequenceHeader)
 		{
+			// Only a size-delimited OBU is usable as a standalone / configOBUs sequence header (the
+			// AV1 ISOBMFF binding requires obu_has_size_field == 1). A size-less one carries no
+			// obu_size, so reject it rather than hand back a buffer that builds an invalid av1C.
+			if (obu.header.has_size_field == false)
+			{
+				return nullptr;
+			}
 			// Full OBU: header + obu_size + payload.
 			return std::make_shared<ov::Data>(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
 		}

@@ -85,8 +85,10 @@ public:
 		return (data != nullptr) && HasSequenceHeaderObu(data->GetDataAs<uint8_t>(), data->GetLength());
 	}
 
-	/// Return the first `OBU_SEQUENCE_HEADER` as a complete OBU (header + `obu_size` + payload), e.g.
-	/// to prepend it to a key frame that has no in-band sequence header. `nullptr` if absent.
+	/// Return the first `OBU_SEQUENCE_HEADER` as a complete, size-delimited OBU (header + `obu_size` +
+	/// payload) - suitable for `configOBUs` or for prepending to a key frame that lacks an in-band
+	/// sequence header. Returns `nullptr` if absent, or if the OBU is not size-delimited
+	/// (`obu_has_size_field == 0`), since the AV1 ISOBMFF binding requires `obu_has_size_field == 1`.
 	static std::shared_ptr<const ov::Data> ExtractFirstSequenceHeaderObuRaw(const std::shared_ptr<const ov::Data> &config_obus);
 
 	/// Parse the leading mandatory fields of a `sequence_header_obu()` payload per AV1 spec section 5.5.1.
