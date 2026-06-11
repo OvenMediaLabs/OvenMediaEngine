@@ -116,7 +116,7 @@ namespace ov
 
 		std::optional<T> Front(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop)
 			{
@@ -127,7 +127,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+				auto result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (((_size == 0) == false) || _stop);
 				});
 
@@ -150,7 +150,7 @@ namespace ov
 
 		std::optional<T> Back(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop)
 			{
@@ -161,7 +161,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+				auto result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (((_size == 0) == false) || _stop);
 				});
 
@@ -176,7 +176,7 @@ namespace ov
 
 		std::optional<T> Dequeue(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop)
 			{
@@ -241,7 +241,7 @@ namespace ov
 					}
 				}
 
-				_condition.WaitUntil(unique_lock, expire);
+				_condition.WaitUntil(lock, expire);
 
 				// Check the hard deadline after waking.
 				if (timeout != Infinite && std::chrono::steady_clock::now() >= deadline)
@@ -373,7 +373,7 @@ namespace ov
 		// Buffer keeps items for a certain amount of time
 		void SetBufferingDelay(int delay_ms)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 			if(delay_ms < 0)
 			{
 				logw(LOG_TAG, "[%s] Invalid buffering delay value: %d. Setting to 0.", GetInfoString().CStr(), delay_ms);
@@ -433,7 +433,7 @@ namespace ov
 
 		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqueuePos push_method)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			// Update statistics of input message count
 			_input_message_count++;
@@ -442,7 +442,7 @@ namespace ov
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
-				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+				auto result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (!IsThresholdExceeded() || _stop);
 				});
 				if (_stop)
