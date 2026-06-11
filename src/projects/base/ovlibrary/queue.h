@@ -102,7 +102,7 @@ namespace ov
 		// Timeout in milliseconds
 		std::optional<T> Front(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -113,7 +113,7 @@ namespace ov
 					std::chrono::steady_clock::time_point expire =
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+					result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 						return ((_queue.empty() == false) || _stop);
 					});
 				}
@@ -144,7 +144,7 @@ namespace ov
 		// Timeout in milliseconds
 		std::optional<T> Back(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -156,7 +156,7 @@ namespace ov
 					std::chrono::steady_clock::time_point expire =
 						(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-					result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+					result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 						return ((_queue.empty() == false) || _stop);
 					});
 				}
@@ -188,7 +188,7 @@ namespace ov
 		// Timeout in milliseconds
 		std::optional<T> Dequeue(int timeout = Infinite)
 		{
-			LockGuard unique_lock(_mutex);
+			LockGuard lock(_mutex);
 
 			if (_stop == false)
 			{
@@ -202,7 +202,7 @@ namespace ov
 						std::chrono::steady_clock::time_point expire =
 							(timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-						result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
+						result = _condition.WaitUntil(lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 							return ((_queue.empty() == false) || _stop);
 						});
 					}
