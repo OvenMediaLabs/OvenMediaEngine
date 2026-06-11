@@ -5,7 +5,6 @@
 #include <functional>
 #include <optional>
 #include <unordered_map>
-#include <mutex>
 
 // One frame's worth of RTP packets, identified by a common RTP timestamp.
 // Completeness is decided from packet flags stamped by RtpFrameBoundaryDetector:
@@ -112,20 +111,20 @@ public:
 
 private:
 	// Non-locking core shared by HasAvailableFrame() and PopAvailableFrame()
-	bool HasAvailableFrameInternal();
-	void BurnOutExpiredFrames();
-	uint64_t GetExtentedTimestamp(uint32_t timestamp);
-	uint32_t CurrentHoldMs();
-	void UpdateFrameIntervalEstimate(uint32_t rtp_ts);
-	void AdvanceProcessedSeq(RtpFrame &frame);
+	bool HasAvailableFrameInternal() OV_REQUIRES(_lock);
+	void BurnOutExpiredFrames() OV_REQUIRES(_lock);
+	uint64_t GetExtentedTimestamp(uint32_t timestamp) OV_REQUIRES(_lock);
+	uint32_t CurrentHoldMs() OV_REQUIRES(_lock);
+	void UpdateFrameIntervalEstimate(uint32_t rtp_ts) OV_REQUIRES(_lock);
+	void AdvanceProcessedSeq(RtpFrame &frame) OV_REQUIRES(_lock);
 	// Records bookkeeping after a frame leaves the buffer (emitted or
 	// discarded): advances the processed timestamp/seq watermarks and
 	// updates the frame-interval estimate. Caller still has to erase the
 	// frame from `_rtp_frames`.
-	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame);
+	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame) OV_REQUIRES(_lock);
 
-	uint32_t _last_timestamp = 0;
-	uint32_t _timestamp_cycle = 0;
+	uint32_t _last_timestamp OV_GUARDED_BY(_lock) = 0;
+	uint32_t _timestamp_cycle OV_GUARDED_BY(_lock) = 0;
 
 	std::function<uint32_t()> _hold_ms_provider;
 	std::function<void(uint16_t)> _on_processed_seq_advance;
@@ -133,8 +132,8 @@ private:
 	uint32_t _clock_rate = 0;
 	uint32_t _max_hold_ms = 0;  // 0 = no cap
 
-	bool _has_processed_seq = false;
-	uint16_t _last_processed_max_seq = 0;
+	bool _has_processed_seq OV_GUARDED_BY(_lock) = false;
+	uint16_t _last_processed_max_seq OV_GUARDED_BY(_lock) = 0;
 
 	// Conservative seed for the frame-interval mean-deviation. Until the
 	// EWMA collects a few real samples we have no idea what fps / pacing
@@ -152,19 +151,19 @@ private:
 	// starts at 0 (first sample seeds it directly) but the deviation
 	// starts large so the very first frame (e.g. the initial keyframe)
 	// has enough hold for NACK retries before EWMA has caught up.
-	bool _has_last_processed_rtp_ts = false;
-	uint32_t _last_processed_rtp_ts = 0;
-	uint32_t _frame_interval_ms = 0;
-	uint32_t _frame_interval_dev_ms = INITIAL_FRAME_INTERVAL_DEV_GUESS_MS;
+	bool _has_last_processed_rtp_ts OV_GUARDED_BY(_lock) = false;
+	uint32_t _last_processed_rtp_ts OV_GUARDED_BY(_lock) = 0;
+	uint32_t _frame_interval_ms OV_GUARDED_BY(_lock) = 0;
+	uint32_t _frame_interval_dev_ms OV_GUARDED_BY(_lock) = INITIAL_FRAME_INTERVAL_DEV_GUESS_MS;
 
 	// Highest extended timestamp already emitted or dropped. Rejects packets
 	// for an older timestamp (typical for late RTX after a frame has been
 	// popped) so they don't create a phantom duplicate frame.
-	bool _has_processed_timestamp = false;
-	uint64_t _last_processed_timestamp = 0;
+	bool _has_processed_timestamp OV_GUARDED_BY(_lock) = false;
+	uint64_t _last_processed_timestamp OV_GUARDED_BY(_lock) = 0;
 
 	// timestamp : RtpFrameInfo (ordered, so std::map)
-	std::map<uint64_t, std::shared_ptr<RtpFrame>> _rtp_frames;
+	std::map<uint64_t, std::shared_ptr<RtpFrame>> _rtp_frames OV_GUARDED_BY(_lock);
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

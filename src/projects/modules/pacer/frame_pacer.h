@@ -12,7 +12,6 @@
 #include <chrono>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 #include "adaptive_delay_controller.h"
@@ -68,20 +67,20 @@ private:
 	std::shared_ptr<ov::DelayQueue> _scheduler;
 	DispatchFn _dispatcher;
 
-	std::mutex _mu;
-	bool _anchor_set = false;
-	int64_t _anchor_pts_us = 0;
-	std::chrono::steady_clock::time_point _anchor_arrival;
-	std::chrono::steady_clock::time_point _last_push;
-	std::chrono::steady_clock::time_point _last_drift_warn;
+	ov::Mutex _mu;
+	bool _anchor_set OV_GUARDED_BY(_mu) = false;
+	int64_t _anchor_pts_us OV_GUARDED_BY(_mu) = 0;
+	std::chrono::steady_clock::time_point _anchor_arrival OV_GUARDED_BY(_mu);
+	std::chrono::steady_clock::time_point _last_push OV_GUARDED_BY(_mu);
+	std::chrono::steady_clock::time_point _last_drift_warn OV_GUARDED_BY(_mu);
 
 	// Anchor calibration. The provisional anchor (first frame after reset)
 	// may sit at an extreme of the path-delay distribution; calibration
 	// collects N frames and shifts the anchor by their median so baseline
 	// lateness centers on zero.
-	bool _anchor_calibrated = false;
-	std::vector<int64_t> _calibration_samples_ms;
+	bool _anchor_calibrated OV_GUARDED_BY(_mu) = false;
+	std::vector<int64_t> _calibration_samples_ms OV_GUARDED_BY(_mu);
 	// Total frames since last (re)anchor including outliers, used as a
 	// timeout when valid samples don't accumulate.
-	size_t _calibration_attempts = 0;
+	size_t _calibration_attempts OV_GUARDED_BY(_mu) = 0;
 };

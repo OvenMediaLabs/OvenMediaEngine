@@ -65,13 +65,13 @@ namespace http
 
 			void AddInterceptor(const std::shared_ptr<HttpClientInterceptor> &interceptor)
 			{
-				std::unique_lock lock(_interceptor_list_mutex);
+				ov::LockGuard lock(_interceptor_list_mutex);
 				_interceptor_list.push_back(interceptor);
 			}
 
 			void ClearInterceptors()
 			{
-				std::unique_lock lock(_interceptor_list_mutex);
+				ov::LockGuard lock(_interceptor_list_mutex);
 				_interceptor_list.clear();
 			}
 
@@ -168,8 +168,8 @@ namespace http
 			int _recv_timeout_msec			= 60 * 1000;
 			Method _method					= Method::Get;
 
-			std::shared_mutex _interceptor_list_mutex;
-			std::vector<std::shared_ptr<HttpClientInterceptor>> _interceptor_list;
+			ov::SharedMutex _interceptor_list_mutex;
+			std::vector<std::shared_ptr<HttpClientInterceptor>> _interceptor_list OV_GUARDED_BY(_interceptor_list_mutex);
 
 			bool _connected_callback_called = false;
 #ifdef DEBUG
@@ -187,7 +187,7 @@ namespace http
 
 			prot::h1::HttpResponseParser _parser;
 
-			mutable std::recursive_mutex _request_mutex;
+			mutable ov::RecursiveMutex _request_mutex;
 			std::atomic<bool> _requested = false;
 
 			ov::String _url;

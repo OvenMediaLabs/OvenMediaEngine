@@ -36,7 +36,7 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::CreatePeerInfo(peer_id_t id, const s
 
 	if (IsEnabled())
 	{
-		auto lock_guard = std::lock_guard(_list_mutex);
+		ov::LockGuard lock_guard(_list_mutex);
 
 		auto previous_peer_info = _peer_list.find(id);
 
@@ -57,7 +57,7 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::CreatePeerInfo(peer_id_t id, const s
 
 std::shared_ptr<RtcPeerInfo> RtcP2PManager::FindPeer(peer_id_t peer_id)
 {
-	auto lock_guard = std::lock_guard(_list_mutex);
+	ov::LockGuard lock_guard(_list_mutex);
 
 	auto peer_info = _peer_list.find(peer_id);
 
@@ -71,7 +71,7 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::FindPeer(peer_id_t peer_id)
 
 bool RtcP2PManager::RemovePeer(const std::shared_ptr<RtcPeerInfo> &peer)
 {
-	auto lock_guard = std::lock_guard(_list_mutex);
+	ov::LockGuard lock_guard(_list_mutex);
 
 	if (peer->IsHost())
 	{
@@ -121,7 +121,7 @@ bool RtcP2PManager::RegisterAsHostPeer(const std::shared_ptr<RtcPeerInfo> &peer)
 		return false;
 	}
 
-	auto lock_guard = std::lock_guard(_list_mutex);
+	ov::LockGuard lock_guard(_list_mutex);
 
 	auto peer_info = FindPeer(peer->GetId());
 
@@ -162,7 +162,7 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::TryToRegisterAsClientPeer(const std:
 		return nullptr;
 	}
 
-	auto lock_guard = std::lock_guard(_list_mutex);
+	ov::LockGuard lock_guard(_list_mutex);
 
 	for (const auto &host : _available_list)
 	{
@@ -208,7 +208,7 @@ std::shared_ptr<RtcPeerInfo> RtcP2PManager::GetClientPeerOf(const std::shared_pt
 {
 	if (host != nullptr)
 	{
-		auto lock_guard = std::lock_guard(_list_mutex);
+		ov::LockGuard lock_guard(_list_mutex);
 
 		auto &client_list = host->_client_list;
 		auto client = client_list.find(client_id);
@@ -238,7 +238,7 @@ std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> RtcP2PManager::GetClientPeerLi
 	}
 
 	{
-		auto lock_guard = std::lock_guard(_list_mutex);
+		ov::LockGuard lock_guard(_list_mutex);
 		list = host->_client_list;
 	}
 

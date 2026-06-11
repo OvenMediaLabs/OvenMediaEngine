@@ -79,7 +79,7 @@ namespace http
 
 		void HttpClient::SetRequestHeader(const ov::String &key, const ov::String &value)
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			if (_requested)
 			{
@@ -359,7 +359,7 @@ namespace http
 
 		void HttpClient::Request(const ov::String &url, ResponseHandler response_handler)
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			ov::SocketAddress address;
 

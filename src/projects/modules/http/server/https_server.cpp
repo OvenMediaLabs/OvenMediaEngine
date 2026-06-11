@@ -51,7 +51,7 @@ namespace http
 				return error;
 			}
 
-			std::lock_guard lock_guard(_https_certificate_map_mutex);
+			ov::LockGuard lock_guard(_https_certificate_map_mutex);
 
 			logtt("Append the certificate for host: %s", certificate->ToString().CStr());
 
@@ -64,7 +64,7 @@ namespace http
 
 		std::shared_ptr<const ov::Error> HttpsServer::RemoveCertificate(const std::shared_ptr<const info::Certificate> &certificate)
 		{
-			std::lock_guard lock_guard(_https_certificate_map_mutex);
+			ov::LockGuard lock_guard(_https_certificate_map_mutex);
 
 			logtt("Remove the certificate for host: %s", certificate->ToString().CStr());
 
@@ -94,7 +94,7 @@ namespace http
 			std::shared_ptr<HttpsCertificate> https_certificate;
 
 			{
-				std::lock_guard lock_guard(_https_certificate_map_mutex);
+				ov::LockGuard lock_guard(_https_certificate_map_mutex);
 				if (_https_certificate_map.empty())
 				{
 					logte("Could not handle connection event: there is no certificate");
@@ -180,7 +180,7 @@ namespace http
 			std::shared_ptr<HttpsCertificate> https_certificate;
 
 			{
-				std::lock_guard lock_guard(_https_certificate_map_mutex);
+				ov::LockGuard lock_guard(_https_certificate_map_mutex);
 				for (auto &[vhost_name, https_cert] : _https_certificate_map)
 				{
 					if (https_cert->certificate->IsCertificateForHost(server_name))

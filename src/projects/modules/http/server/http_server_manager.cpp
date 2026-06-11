@@ -24,7 +24,7 @@ namespace http
 			auto http2_enabled = module_config.GetHttp2().IsEnabled();
 
 			{
-				auto lock_guard = std::lock_guard(_http_servers_mutex);
+				ov::LockGuard lock_guard(_http_servers_mutex);
 				auto item = _http_servers.find(address);
 
 				if (item != _http_servers.end())
@@ -136,7 +136,7 @@ namespace http
 				http2_enabled = false;
 			}
 
-			auto lock_guard = std::lock_guard(_http_servers_mutex);
+			ov::LockGuard lock_guard(_http_servers_mutex);
 			auto item = _http_servers.find(address);
 
 			if (item != _http_servers.end())
@@ -358,7 +358,7 @@ namespace http
 		{
 			std::shared_ptr<HttpsServer> https_server = nullptr;
 
-			auto lock_guard = std::lock_guard(_http_servers_mutex);
+			ov::LockGuard lock_guard(_http_servers_mutex);
 			auto item = _http_servers.find(address);
 
 			if (item != _http_servers.end())

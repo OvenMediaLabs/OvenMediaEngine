@@ -15,7 +15,6 @@
 #include <modules/physical_port/physical_port_manager.h>
 
 #include <unordered_map>
-#include <mutex>
 
 class RtspServer : public ServerBase<RtspServer, ov::SocketType::Tcp>, public ObservableBase<RtspServer, RtspObserver>
 {
@@ -97,24 +96,24 @@ protected:
                         const std::shared_ptr<const ov::Error> &error) override;
 
 private:
-    std::vector<std::unique_ptr<RtpTrack>> *FindSessionTracks(const std::lock_guard<std::mutex> &lock, uint32_t stream_id);
-    StreamTrackInfo *FindTrackStream(const std::lock_guard<std::mutex> &lock, const std::string &track_path);
- 
-    void DeleteStream(const std::lock_guard<std::mutex> &lock, std::unordered_map<std::string, uint32_t>::iterator &stream_id_iterator);
+    std::vector<std::unique_ptr<RtpTrack>> *FindSessionTracks(const ov::LockGuard<ov::Mutex> &lock, uint32_t stream_id) OV_REQUIRES(mutex_);
+    StreamTrackInfo *FindTrackStream(const ov::LockGuard<ov::Mutex> &lock, const std::string &track_path) OV_REQUIRES(mutex_);
+
+    void DeleteStream(const ov::LockGuard<ov::Mutex> &lock, std::unordered_map<std::string, uint32_t>::iterator &stream_id_iterator) OV_REQUIRES(mutex_);
 
 private:
-    std::mutex mutex_;
-    std::unordered_map<ov::Socket *, std::shared_ptr<RtspConnection>> requests_;
+    ov::Mutex mutex_;
+    std::unordered_map<ov::Socket *, std::shared_ptr<RtspConnection>> requests_ OV_GUARDED_BY(mutex_);
     // Maps stream path (e.g. /app/live to an internal id)
-    std::unordered_map<std::string, uint32_t> stream_ids_;
+    std::unordered_map<std::string, uint32_t> stream_ids_ OV_GUARDED_BY(mutex_);
     // Holds the context for each stream (routes, RTSP session id, ...)
-    std::unordered_map<uint32_t, RtspStreamContext> stream_contexts_;
+    std::unordered_map<uint32_t, RtspStreamContext> stream_contexts_ OV_GUARDED_BY(mutex_);
     // Holds the tracks of a given session via an RtpTrack abstraction
-    std::unordered_map<uint32_t, std::vector<std::unique_ptr<RtpTrack>>> session_tracks_;
+    std::unordered_map<uint32_t, std::vector<std::unique_ptr<RtpTrack>>> session_tracks_ OV_GUARDED_BY(mutex_);
     // Maps track paths to stream id (e.g /app/live/audio_track -> 1),
     // this is needed since for UDP the control uri will be used to setup the track
     // and there is no other info to tie that setup request together with the actual stream from the setup request
-    std::unordered_map<std::string, StreamTrackInfo> stream_tracks_;
+    std::unordered_map<std::string, StreamTrackInfo> stream_tracks_ OV_GUARDED_BY(mutex_);
     // TODO(rubu): make these configurable
     ov::PortRange<ov::SocketType::Udp> rtp_udp_port_range_ = {2000, 3000};
 };

@@ -117,7 +117,7 @@ protected:
 	};
 
 	// Needed mutex lock for _track_list before calling this method
-	int DecideBufferSize() const;
+	int DecideBufferSize() const OV_REQUIRES(_track_mutex);
 
 	int OnWrite(const uint8_t *buf, int buf_size);
 	static int OnWrite(void *opaque, uint8_t *buf, int buf_size)
@@ -147,11 +147,11 @@ protected:
 
 	std::shared_ptr<ov::ByteStream> _data_stream;
 
-	mutable std::mutex _track_mutex;
+	mutable ov::Mutex _track_mutex;
 	// Key: MediaPacket.GetTrackId()
 	// Value: Track.stream_index
-	std::map<int, std::shared_ptr<Track>> _track_map;
-	std::vector<std::shared_ptr<Track>> _track_list;
+	std::map<int, std::shared_ptr<Track>> _track_map OV_GUARDED_BY(_track_mutex);
+	std::vector<std::shared_ptr<Track>> _track_list OV_GUARDED_BY(_track_mutex);
 
 	std::atomic<int> _buffer_size{-1};
 };

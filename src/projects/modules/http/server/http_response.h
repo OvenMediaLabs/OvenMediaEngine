@@ -96,7 +96,7 @@ namespace http
 			virtual int32_t SendHeader();
 			virtual int32_t SendPayload();
 
-			ov::String GetEtag();
+			ov::String GetEtag() OV_REQUIRES(_response_mutex);
 
 			std::shared_ptr<ov::ClientSocket> _client_socket;
 			std::shared_ptr<ov::TlsServerData> _tls_data;
@@ -104,10 +104,10 @@ namespace http
 			StatusCode _status_code = StatusCode::OK;
 			ov::String _reason = StringFromStatusCode(StatusCode::OK);
 
-			bool _is_header_sent = false;
-			
+			bool _is_header_sent OV_GUARDED_BY(_response_mutex) = false;
+
 			// FIXME(dimiden): It is supposed to be synchronized whenever a packet is sent, but performance needs to be improved
-			std::recursive_mutex _response_mutex;
+			ov::RecursiveMutex _response_mutex;
 
 			// https://www.rfc-editor.org/rfc/rfc7230#section-3.2
 			// Each header field consists of a case-insensitive field name followed
@@ -122,22 +122,22 @@ namespace http
 
 			// So _response_header is a map of case insentitive header key and value
 			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _response_header;
-			std::vector<std::shared_ptr<const ov::Data>> _response_data_list;
-			size_t _response_data_size = 0;
+			std::vector<std::shared_ptr<const ov::Data>> _response_data_list OV_GUARDED_BY(_response_mutex);
+			size_t _response_data_size OV_GUARDED_BY(_response_mutex) = 0;
 
 			std::vector<ov::String> _default_value{};
 
 			// Created time
 			std::chrono::system_clock::time_point _created_time;
 			// Responsed time
-			std::chrono::system_clock::time_point _response_time;
-			uint32_t _sent_size = 0;
+			std::chrono::system_clock::time_point _response_time OV_GUARDED_BY(_response_mutex);
+			uint32_t _sent_size OV_GUARDED_BY(_response_mutex) = 0;
 
 			Method _method = Method::Unknown;
 
 			bool _etag_enabled_by_config = false;
 			ov::String _if_none_match = "";
-			std::shared_ptr<ov::Data> _response_hash = nullptr;
+			std::shared_ptr<ov::Data> _response_hash OV_GUARDED_BY(_response_mutex) = nullptr;
 		};
 	}  // namespace svr
 }  // namespace http

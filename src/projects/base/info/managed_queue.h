@@ -10,9 +10,9 @@
 
 #include <base/info/vhost_app_name.h>
 
-#include <shared_mutex>
 
 #include "base/ovlibrary/ovlibrary.h"
+#include "base/ovlibrary/tsa/mutex.h"
 
 namespace info
 {
@@ -181,7 +181,7 @@ namespace info
 		// Set threshold in count-based mode.
 		void SetThreshold(size_t threshold)
 		{
-			auto lock_guard = std::lock_guard(_name_mutex);
+			ov::LockGuard lock_guard(_name_mutex);
 
 			_threshold_mode = ThresholdMode::CountBased;
 			_threshold_value = threshold;
@@ -193,7 +193,7 @@ namespace info
 		// Effective count is estimated from input_message_per_second * time_ms 
 		void SetThresholdByTime(size_t time_ms)
 		{
-			auto lock_guard = std::lock_guard(_name_mutex);
+			ov::LockGuard lock_guard(_name_mutex);
 
 			_threshold_mode = ThresholdMode::TimeBased;
 			_threshold_value = time_ms;
@@ -256,7 +256,7 @@ namespace info
 
 		void SetUrn(std::shared_ptr<URN> urn, const char* type_name)
 		{
-			auto lock_guard = std::lock_guard(_name_mutex);
+			ov::LockGuard lock_guard(_name_mutex);
 
 			_type_name = type_name;
 			_urn = urn;
@@ -289,11 +289,11 @@ namespace info
 		managed_queue_id_t _id = 0;
 
 		// Name of the queue
-		std::shared_mutex _name_mutex;
-		std::shared_ptr<URN> _urn;
+		ov::SharedMutex _name_mutex;
+		std::shared_ptr<URN> _urn OV_GUARDED_BY(_name_mutex);
 
 		// Type of template
-		ov::String _type_name;
+		ov::String _type_name OV_GUARDED_BY(_name_mutex);
 
 		// Peak size of the queue
 		size_t _peak = 0;
@@ -303,13 +303,13 @@ namespace info
 
 		// Threshold value computed according to the Threshold Mode.
 		// 0 : No threshold
-		size_t _threshold = 0;
+		size_t _threshold OV_GUARDED_BY(_name_mutex) = 0;
 
 		// Threshold mode
-		ThresholdMode _threshold_mode = ThresholdMode::CountBased;
+		ThresholdMode _threshold_mode OV_GUARDED_BY(_name_mutex) = ThresholdMode::CountBased;
 
 		// Threshold value: count (CountBased) or milliseconds (TimeBased)
-		size_t _threshold_value = 0;
+		size_t _threshold_value OV_GUARDED_BY(_name_mutex) = 0;
 
 		// threshold_exceeded_time increases from the point the queue is exceeded
 		std::atomic<int64_t> _threshold_exceeded_time_ms{0};

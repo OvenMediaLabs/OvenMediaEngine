@@ -21,7 +21,7 @@ namespace ov
 				constexpr int BITS_COUNT = OV_COUNTOF(_bits);
 				int64_t bits = _current_bits.exchange(0L);
 
-				auto lock_guard = std::lock_guard(_mutex);
+				LockGuard lock_guard(_mutex);
 				_acc_bits -= _bits[0];
 				// Shift
 				::memmove(&(_bits[0]), &(_bits[1]), sizeof(_bits[0]) * (BITS_COUNT - 1));

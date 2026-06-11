@@ -35,7 +35,7 @@ void VideoTrack::SetResolution(int32_t width, int32_t height)
 
 void VideoTrack::SetResolution(const cmn::Resolution &resolution)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 
 	_resolution			   = resolution;
 	_max_resolution.width  = std::max(_max_resolution.width, _resolution.width);
@@ -47,7 +47,7 @@ void VideoTrack::SetResolution(const cmn::Resolution &resolution)
 
 cmn::Resolution VideoTrack::GetResolution() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _resolution;
 }
 
@@ -58,7 +58,7 @@ void VideoTrack::SetMaxResolution(int32_t max_width, int32_t max_height)
 
 void VideoTrack::SetMaxResolution(const cmn::Resolution &max_resolution)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 
 	_max_resolution.width  = std::max(std::max(_max_resolution.width, _resolution.width), max_resolution.width);
 	_max_resolution.height = std::max(std::max(_max_resolution.height, _resolution.height), max_resolution.height);
@@ -69,7 +69,7 @@ void VideoTrack::SetMaxResolution(const cmn::Resolution &max_resolution)
 
 cmn::Resolution VideoTrack::GetMaxResolution() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _max_resolution;
 }
 
@@ -80,19 +80,19 @@ void VideoTrack::SetResolutionByConfig(int32_t width, int32_t height)
 
 void VideoTrack::SetResolutionByConfig(const cmn::Resolution &resolution)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_resolution_conf = resolution;
 }
 
 cmn::Resolution VideoTrack::GetResolutionByConfig() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _resolution_conf;
 }
 
 bool VideoTrack::IsValidResolution() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 
 	return (_resolution.width > 0) && (_resolution.height > 0);
 }
@@ -109,25 +109,25 @@ double VideoTrack::GetVideoTimestampScale() const
 
 void VideoTrack::SetPreset(ov::String preset)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_preset = preset;
 }
 
 ov::String VideoTrack::GetPreset() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _preset;
 }
 
 void VideoTrack::SetProfile(ov::String profile)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_profile = profile;
 }
 
 ov::String VideoTrack::GetProfile() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _profile;
 }
 
@@ -153,31 +153,31 @@ int VideoTrack::GetThreadCount()
 
 VideoTrack::FrameSnapshot VideoTrack::GetFrameSnapshot() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot;
 }
 
 double VideoTrack::GetKeyFrameInterval() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.GetKeyFrameInterval();
 }
 
 void VideoTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_frame_snapshot.key_frame_interval = key_frame_interval;
 }
 
 double VideoTrack::GetKeyFrameIntervalByMeasured() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.key_frame_interval;
 }
 
 void VideoTrack::AddToMeasuredFramerateWindow(double framerate)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 
 	size_t kAbnormalFpsCheckWindowSize = 60;
 
@@ -191,7 +191,7 @@ void VideoTrack::AddToMeasuredFramerateWindow(double framerate)
 
 std::deque<double> VideoTrack::GetMeasuredFramerateWindow() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 
 	return _measured_framerate_window;
 }
@@ -208,7 +208,7 @@ double VideoTrack::GetKeyFrameIntervalLatest() const
 
 void VideoTrack::SetKeyFrameIntervalByConfig(int32_t key_frame_interval)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 
 	if (key_frame_interval > 0)
 	{
@@ -222,7 +222,7 @@ void VideoTrack::SetKeyFrameIntervalByConfig(int32_t key_frame_interval)
 
 double VideoTrack::GetKeyFrameIntervalByConfig() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.key_frame_interval_conf.value_or(0.0);
 }
 
@@ -273,26 +273,26 @@ cmn::VideoPixelFormatId VideoTrack::GetColorspace() const
 
 double VideoTrack::GetFrameRate() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.framerate_conf.value_or(_frame_snapshot.framerate);
 }
 
 void VideoTrack::SetFrameRateByMeasured(double framerate)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_frame_snapshot.framerate = framerate;
 	_max_framerate = std::max(_max_framerate.load(), framerate);
 }
 
 double VideoTrack::GetFrameRateByMeasured() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.framerate;
 }
 
 void VideoTrack::SetMaxFrameRate(double framerate)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_max_framerate = std::max(std::max(_max_framerate.load(), _frame_snapshot.framerate), framerate);
 }
 
@@ -313,7 +313,7 @@ double VideoTrack::GetFrameRateLastSecond() const
 
 void VideoTrack::SetFrameRateByConfig(double framerate)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 
 	if (framerate > 0)
 	{
@@ -328,7 +328,7 @@ void VideoTrack::SetFrameRateByConfig(double framerate)
 
 double VideoTrack::GetFrameRateByConfig() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _frame_snapshot.framerate_conf.value_or(0.0);
 }
 
@@ -394,7 +394,7 @@ int32_t VideoTrack::GetLookaheadByConfig() const
 
 void VideoTrack::SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &overlays)
 {
-	std::scoped_lock lock(_overlay_mutex);
+	ov::ScopedLock lock(_overlay_mutex);
 
 	if (overlays.empty())
 	{
@@ -409,24 +409,24 @@ void VideoTrack::SetOverlays(const std::vector<std::shared_ptr<info::Overlay>> &
 
 std::vector<std::shared_ptr<info::Overlay>> VideoTrack::GetOverlays() const
 {
-	std::shared_lock lock(_overlay_mutex);
+	ov::SharedLockGuard lock(_overlay_mutex);
 	return _overlays;
 }
 
 size_t VideoTrack::GetOverlaySignature() const
 {
-	std::shared_lock lock(_overlay_mutex);
+	ov::SharedLockGuard lock(_overlay_mutex);
 	return _overlay_signature;
 }
 
 void VideoTrack::SetExtraEncoderOptionsByConfig(const ov::String &options)
 {
-	std::scoped_lock lock(_video_mutex);
+	ov::ScopedLock lock(_video_mutex);
 	_extra_encoder_options = options;
 }
 
 ov::String VideoTrack::GetExtraEncoderOptionsByConfig() const
 {
-	std::shared_lock lock(_video_mutex);
+	ov::SharedLockGuard lock(_video_mutex);
 	return _extra_encoder_options;
 }

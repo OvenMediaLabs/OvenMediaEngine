@@ -18,7 +18,7 @@
 
 bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models)
 {
-	std::lock_guard<std::mutex> lock(_mutex);
+	ov::LockGuard<ov::Mutex> lock(_mutex);
 
 #ifdef HWACCELS_NVIDIA_ENABLED
 	int device_count = 0;
@@ -191,7 +191,7 @@ void WhisperModelRegistry::LoadModel(const ov::String &path, int32_t cuda_device
 
 void WhisperModelRegistry::Uninitialize()
 {
-	std::lock_guard<std::mutex> lock(_mutex);
+	ov::LockGuard<ov::Mutex> lock(_mutex);
 	_models.clear();
 	_state_memory_bytes.clear();
 	logti("Whisper model registry cleared.");
@@ -199,7 +199,7 @@ void WhisperModelRegistry::Uninitialize()
 
 std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path, int32_t cuda_device_id)
 {
-	std::lock_guard<std::mutex> lock(_mutex);
+	ov::LockGuard<ov::Mutex> lock(_mutex);
 
 	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
 
@@ -225,7 +225,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov:
 
 whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int32_t cuda_device_id)
 {
-	std::lock_guard<std::mutex> lock(_mutex);
+	ov::LockGuard<ov::Mutex> lock(_mutex);
 
 	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
 
@@ -269,7 +269,7 @@ void WhisperModelRegistry::DeleteState(whisper_state *state)
 {
 	// Serialized with NewState so whisper_free_state and whisper_init_state
 	// never run concurrently on the shared whisper context.
-	std::lock_guard<std::mutex> lock(_mutex);
+	ov::LockGuard<ov::Mutex> lock(_mutex);
 
 	if (state != nullptr)
 	{

@@ -238,7 +238,7 @@ bool RtpDepacketizerH264::IsDecodingParmeterSets(uint8_t nal_unit_type)
 
 std::shared_ptr<ov::Data> RtpDepacketizerH264::GetDecodingParameterSetsToAnnexB()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	uint8_t start_prefix[ANNEXB_START_PREFIX_LENGTH] = {0, 0, 0, 1};
 
 	if(GetDecodingParameterSets().size() < 2) // It must contatin SPS, PPS

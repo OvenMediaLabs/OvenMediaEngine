@@ -16,6 +16,7 @@
 #include <base/mediarouter/media_buffer.h>
 #include <base/event/media_event.h>
 #include <base/mediarouter/mediarouter_interface.h>
+#include <base/ovlibrary/tsa/mutex.h>
 
 namespace pvd
 {
@@ -128,7 +129,7 @@ namespace pvd
 
 	private:
 		void ResetSourceStreamTimestamp();
-		int64_t GetDeltaTimestamp(uint32_t track_id, int64_t timestamp, int64_t max_timestamp);
+		int64_t GetDeltaTimestamp(uint32_t track_id, int64_t timestamp, int64_t max_timestamp) OV_REQUIRES(_source_stream_timestamp_mutex);
 		void UpdateReconnectTimeToBasetime();
 
 		// Processing events
@@ -136,19 +137,19 @@ namespace pvd
 
 		// TrackID : Timestamp(us)
 		// For the by delta update method
-		std::map<uint32_t, int64_t>			_source_timestamp_map;
+		std::map<uint32_t, int64_t>			_source_timestamp_map OV_GUARDED_BY(_source_stream_timestamp_mutex);
 
 		// For the by base timestamp method
-		std::map<uint32_t, int64_t>			_last_timestamp_us_map;
-		std::map<uint32_t, int64_t>			_last_duration_us_map;
+		std::map<uint32_t, int64_t>			_last_timestamp_us_map OV_GUARDED_BY(_source_stream_timestamp_mutex);
+		std::map<uint32_t, int64_t>			_last_duration_us_map OV_GUARDED_BY(_source_stream_timestamp_mutex);
 
-		int64_t 							_base_timestamp_us = -1;
+		int64_t 							_base_timestamp_us OV_GUARDED_BY(_source_stream_timestamp_mutex) = -1;
 
 		// For Wraparound
-		std::map<uint32_t, int64_t>			_last_origin_ts_map[2];
-		std::map<uint32_t, int64_t>			_wraparound_count_map[2]; // 0 : pts 1: dts
+		std::map<uint32_t, int64_t>			_last_origin_ts_map[2] OV_GUARDED_BY(_source_stream_timestamp_mutex);
+		std::map<uint32_t, int64_t>			_wraparound_count_map[2] OV_GUARDED_BY(_source_stream_timestamp_mutex); // 0 : pts 1: dts
 
-		int64_t								_start_timestamp_us = -1LL; // Make first timestamp to zero
+		int64_t								_start_timestamp_us OV_GUARDED_BY(_source_stream_timestamp_mutex) = -1LL; // Make first timestamp to zero
 
 		// `-1` means no media packet has been received yet.
 		std::atomic<int64_t> _last_pkt_received_time_us{-1};
@@ -163,11 +164,11 @@ namespace pvd
 		LipSyncClock 						_rtp_lip_sync_clock;
 		ov::StopWatch						_first_rtp_received_time;
 
-		mutable std::mutex _source_stream_timestamp_mutex;
-		mutable std::mutex _timestamp_mutex;
-		int64_t _last_media_timestamp_ms = -1LL;
-		ov::StopWatch _elapsed_from_last_media_timestamp;
-		int64_t _max_generated_timestamp_ms = -1LL;
+		mutable ov::Mutex _source_stream_timestamp_mutex;
+		mutable ov::Mutex _timestamp_mutex;
+		int64_t _last_media_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
+		ov::StopWatch _elapsed_from_last_media_timestamp OV_GUARDED_BY(_timestamp_mutex);
+		int64_t _max_generated_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
 
 		std::shared_ptr<pvd::Application> _application = nullptr;
 	};

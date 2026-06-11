@@ -41,15 +41,15 @@ protected:
 
 	int _max_client_peers_per_host_peer = -1;
 
-	std::recursive_mutex _list_mutex;
+	ov::RecursiveMutex _list_mutex;
 
 	// All peer list
 	// key: peer id, value: peer info list
-	std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> _peer_list;
+	std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> _peer_list OV_GUARDED_BY(_list_mutex);
 
 	// List of hosts that can accept client
 	// key: host id, value: host info
-	std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> _available_list;
+	std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> _available_list OV_GUARDED_BY(_list_mutex);
 
-	int _total_client_count = 0;
+	int _total_client_count OV_GUARDED_BY(_list_mutex) = 0;
 };

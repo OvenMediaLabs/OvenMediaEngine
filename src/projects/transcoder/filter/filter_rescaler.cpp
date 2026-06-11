@@ -751,7 +751,7 @@ void FilterRescaler::WorkerThread()
 		{
 			if (start_frame_syncronization)
 			{
-				std::lock_guard<std::mutex> lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
+				ov::LockGuard<ov::Mutex> lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
 
 				DO_FILTER_ONCE(frame);
 

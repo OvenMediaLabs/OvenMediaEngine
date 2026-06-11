@@ -44,7 +44,7 @@ MediaTrack::~MediaTrack()
 // Same ID required
 bool MediaTrack::Update(const MediaTrack &media_track)
 {
-	std::scoped_lock lock(
+	ov::ScopedLock lock(
 		_media_mutex, media_track._media_mutex,
 		_video_mutex, media_track._video_mutex,
 		_audio_mutex, media_track._audio_mutex,
@@ -123,13 +123,13 @@ uint32_t MediaTrack::GetId() const
 // Track Name (used for Renditions)
 void MediaTrack::SetVariantName(const ov::String &name)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_variant_name = name;
 }
 
 ov::String MediaTrack::GetVariantName() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	if (_variant_name.IsEmpty())
 	{
 		// If variant name is not set, return media type string
@@ -152,37 +152,37 @@ int MediaTrack::GetGroupIndex() const
 // Public Name (used for multiple audio/video tracks. e.g. multilingual audio)
 void MediaTrack::SetPublicName(const ov::String &name)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_public_name = name;
 }
 ov::String MediaTrack::GetPublicName() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _public_name;
 }
 
 // Language (rfc5646)
 void MediaTrack::SetLanguage(const ov::String &language)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_language = language;
 }
 ov::String MediaTrack::GetLanguage() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _language;
 }
 
 // Characteristics (e.g. "main", "sign", "visually-impaired")
 void MediaTrack::SetCharacteristics(const ov::String &characteristics)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_characteristics = characteristics;
 }
 
 ov::String MediaTrack::GetCharacteristics() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _characteristics;
 }
 
@@ -228,13 +228,13 @@ cmn::DeviceId MediaTrack::GetCodecDeviceId() const
 
 void MediaTrack::SetCodecModules(ov::String modules)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_codec_modules = modules;
 }
 
 ov::String MediaTrack::GetCodecModules() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _codec_modules;
 }
 
@@ -250,25 +250,25 @@ cmn::BitstreamFormat MediaTrack::GetOriginBitstream() const
 
 cmn::Timebase MediaTrack::GetTimeBase() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _time_base;
 }
 
 void MediaTrack::SetTimeBase(int32_t num, int32_t den)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_time_base.Set(num, den);
 }
 
 void MediaTrack::SetTimeBase(const cmn::Timebase &time_base)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_time_base = time_base;
 }
 
 bool MediaTrack::IsValidTimeBase() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _time_base.IsValid();
 }
 
@@ -329,13 +329,13 @@ cmn::CodecStatus MediaTrack::GetCodecStatus() const
 
 void MediaTrack::SetExtraInfo(const ov::String &info)
 {
-	std::scoped_lock lock(_media_mutex);
+	ov::ScopedLock lock(_media_mutex);
 	_extra_info = info;
 }
 
 ov::String MediaTrack::GetExtraInfo() const
 {
-	std::shared_lock lock(_media_mutex);
+	ov::SharedLockGuard lock(_media_mutex);
 	return _extra_info;
 }
 
@@ -601,7 +601,7 @@ bool MediaTrack::IsValid()
 
 bool MediaTrack::HasQualityMeasured()
 {
-	std::scoped_lock lock(_media_mutex, _video_mutex);
+	ov::ScopedLock lock(_media_mutex, _video_mutex);
 	
 	if (_has_quality_measured == true)
 	{

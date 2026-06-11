@@ -37,7 +37,7 @@ ov::String IceSession::ToString() const
 
 void IceSession::Refresh()
 {
-	std::scoped_lock lock(_expire_time_mutex);
+	ov::ScopedLock lock(_expire_time_mutex);
 	_expire_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(_expire_after_ms);
 }
 
@@ -48,7 +48,7 @@ bool IceSession::IsExpired() const
 		return true;
 	}
 
-	std::shared_lock lock(_expire_time_mutex);
+	ov::SharedLockGuard lock(_expire_time_mutex);
 	return (std::chrono::steady_clock::now() > _expire_time);
 }
 
@@ -123,7 +123,7 @@ void IceSession::SetCandidatePairTurnSendIndication(const ov::SocketAddressPair&
 
 std::shared_ptr<IceCandidatePair> IceSession::GetActiveCandidatePair() const
 {
-	std::shared_lock lock(_active_candidate_pair_mutex);
+	ov::SharedLockGuard lock(_active_candidate_pair_mutex);
 	return _active_candidate_pair;
 }
 
@@ -140,7 +140,7 @@ std::shared_ptr<ov::Socket> IceSession::GetActiveSocket() const
 
 std::shared_ptr<IceCandidatePair> IceSession::FindCandidatePair(const ov::SocketAddressPair& address_pair) const
 {
-	std::shared_lock lock(_candidate_pairs_mutex);
+	ov::SharedLockGuard lock(_candidate_pairs_mutex);
 
 	auto it = _candidate_pairs.find(address_pair);
 	if (it != _candidate_pairs.end())
@@ -153,7 +153,7 @@ std::shared_ptr<IceCandidatePair> IceSession::FindCandidatePair(const ov::Socket
 
 std::vector<std::shared_ptr<ov::Socket>> IceSession::GetCandidatePairSockets() const
 {
-	std::shared_lock lock(_candidate_pairs_mutex);
+	ov::SharedLockGuard lock(_candidate_pairs_mutex);
 
 	std::vector<std::shared_ptr<ov::Socket>> sockets;
 	for (const auto& [address_pair, candidate_pair] : _candidate_pairs)
@@ -187,7 +187,7 @@ std::vector<std::shared_ptr<ov::Socket>> IceSession::GetCandidatePairSockets() c
 
 std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
 {
-	std::scoped_lock lock(_candidate_pairs_mutex);
+	ov::ScopedLock lock(_candidate_pairs_mutex);
 
 	// Avoid TOCTOU: another thread may have inserted the same address_pair
 	// after FindCandidatePair() and before this function acquires the lock.
@@ -205,7 +205,7 @@ std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov
 
 void IceSession::RemoveCandidatePair(const ov::SocketAddressPair& address_pair)
 {
-	std::scoped_lock lock(_candidate_pairs_mutex);
+	ov::ScopedLock lock(_candidate_pairs_mutex);
 
 	_candidate_pairs.erase(address_pair);
 }
@@ -319,7 +319,7 @@ bool IceSession::MarkNominated(const ov::SocketAddressPair& address_pair)
 // and switches if the peer moves.
 bool IceSession::SelectActiveCandidatePair(const ov::SocketAddressPair& address_pair)
 {
-	std::scoped_lock lock(_active_candidate_pair_mutex);
+	ov::ScopedLock lock(_active_candidate_pair_mutex);
 
 	if (_active_candidate_pair != nullptr && _active_candidate_pair->GetAddressPair() == address_pair)
 	{

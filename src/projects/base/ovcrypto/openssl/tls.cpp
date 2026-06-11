@@ -70,38 +70,65 @@ namespace ov
 
 	BIO_METHOD *Tls::PrepareBioMethod()
 	{
-		static std::mutex bio_mutex;
-		static BIO_METHOD *bio_method = nullptr;
+		// We want a lock-free fast path for every TLS BIO creation after the first one,
+		// so the per-method singleton is bound to a function-local static.
+		// C++11 guarantees the initializer runs exactly once even under concurrent callers,
+		// and subsequent calls just load the already-published pointer.
+		//
+		// Whatever the lambda returns - including `nullptr` - is the cached value for the
+		// rest of the process lifetime; we deliberately do not retry on failure.
+		// The two failure modes here are
+		//   (1) `BIO_meth_new()` returning `nullptr`,
+		//       which OpenSSL only does under OOM or resource exhaustion, and
+		//   (2) `BIO_meth_set_*()` rejecting the configuration,
+		//       which would require process-wide OpenSSL state corruption
+		//       since the inputs are static function pointers.
+		// Neither is something a later call can recover from, so retrying would only cost
+		// CPU and re-acquire the same lock without ever changing the outcome.
+		// Caching the failed result keeps the hot path branch-free;
+		// the one-shot `logte` inside the lambda makes the failure visible to operators
+		// so the loss of TLS can be traced back to startup time instead of looking like a configuration mistake later.
+		static auto bio_method = []() -> BIO_METHOD * {
+			auto method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
 
-		if (bio_method == nullptr)
-		{
-			auto lock_guard = std::lock_guard(bio_mutex);
-
-			if (bio_method == nullptr)
+			if (method == nullptr)
 			{
-				bio_method = OpensslManager::GetInstance()->GetBioMethod(OV_TLS_BIO_METHOD_NAME);
-
-				if (bio_method != nullptr)
-				{
-					int result = 1;
-
-					result	   = result && ::BIO_meth_set_create(bio_method, TlsCreate);
-					result	   = result && ::BIO_meth_set_ctrl(bio_method, TlsCtrl);
-					result	   = result && ::BIO_meth_set_read(bio_method, TlsRead);
-					result	   = result && ::BIO_meth_set_write(bio_method, TlsWrite);
-					result	   = result && ::BIO_meth_set_puts(bio_method, TlsPuts);
-					result	   = result && ::BIO_meth_set_destroy(bio_method, TlsDestroy);
-
-					if (result == 0)
-					{
-						OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
-						::BIO_meth_free(bio_method);
-
-						bio_method = nullptr;
-					}
-				}
+				logtc(
+					"Could not allocate BIO_METHOD '%s'. "
+					"TLS BIO creation is permanently  disabled for this process; "
+					"a restart is required to recover.",
+					OV_TLS_BIO_METHOD_NAME);
+				return nullptr;
 			}
-		}
+
+			int result = 1;
+
+			result	   = result && ::BIO_meth_set_create(method, TlsCreate);
+			result	   = result && ::BIO_meth_set_ctrl(method, TlsCtrl);
+			result	   = result && ::BIO_meth_set_read(method, TlsRead);
+			result	   = result && ::BIO_meth_set_write(method, TlsWrite);
+			result	   = result && ::BIO_meth_set_puts(method, TlsPuts);
+			result	   = result && ::BIO_meth_set_destroy(method, TlsDestroy);
+
+			if (result == 0)
+			{
+				// Roll back the partially-configured method
+				// (drop it from the manager registry and free the OpenSSL object)
+				// so we publish a clean `nullptr` instead of a half-built handle.
+				OpensslManager::GetInstance()->FreeBioMethod(OV_TLS_BIO_METHOD_NAME);
+				::BIO_meth_free(method);
+
+				logte(
+					"Could not configure BIO_METHOD '%s' "
+					"(one of BIO_meth_set_*() rejected the configuration). "
+					"TLS BIO creation is permanently disabled for this process; "
+					"a restart is required to recover.",
+					OV_TLS_BIO_METHOD_NAME);
+				return nullptr;
+			}
+
+			return method;
+		}();
 
 		OV_ASSERT2(bio_method != nullptr);
 
@@ -265,7 +292,7 @@ namespace ov
 	std::shared_ptr<ov::Data> Tls::Read()
 	{
 		// lock
-		std::lock_guard lock(_ssl_lock);
+		LockGuard lock(_ssl_lock);
 
 		auto data = std::make_shared<ov::Data>(65535);
 
@@ -352,7 +379,7 @@ namespace ov
 		OV_ASSERT2(_ssl != nullptr);
 
 		// lock
-		std::lock_guard lock(_ssl_lock);
+		LockGuard lock(_ssl_lock);
 
 		size_t write_size = 0;
 

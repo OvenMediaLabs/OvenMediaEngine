@@ -80,20 +80,20 @@ namespace http
 		};
 
 	protected:
-		mutable std::mutex _cors_mutex;
+		mutable ov::Mutex _cors_mutex;
 
-		std::unordered_map<info::VHostAppName, CorsPolicy> _cors_policy_map;
+		std::unordered_map<info::VHostAppName, CorsPolicy> _cors_policy_map OV_GUARDED_BY(_cors_mutex);
 
 		// CORS for HTTP
 		// key: VHostAppName, value: regex
-		std::unordered_map<info::VHostAppName, std::vector<CorsItem>> _cors_item_list_map;
+		std::unordered_map<info::VHostAppName, std::vector<CorsItem>> _cors_item_list_map OV_GUARDED_BY(_cors_mutex);
 
-		std::unordered_map<info::VHostAppName, cfg::cmn::CrossDomains> _cors_cfg_map;
+		std::unordered_map<info::VHostAppName, cfg::cmn::CrossDomains> _cors_cfg_map OV_GUARDED_BY(_cors_mutex);
 
 		// CORS for RTMP
 		//
 		// NOTE - The RTMP CORS setting follows the first declared <CrossDomains> setting,
 		//        because crossdomain.xml must be located / and cannot be declared per app.
-		ov::String _cors_rtmp;
+		ov::String _cors_rtmp OV_GUARDED_BY(_cors_mutex);
 	};
 }  // namespace http

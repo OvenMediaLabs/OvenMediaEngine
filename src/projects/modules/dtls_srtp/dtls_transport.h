@@ -47,24 +47,24 @@ public:
 
 protected:
 	// SSL에서 암호화 할 패킷을 읽어갈 때 호출한다. _packet_buffer에 쌓인 패킷을 준다.
-	ssize_t Read(ov::Tls *tls, void *buffer, size_t length);
+	ssize_t Read(ov::Tls *tls, void *buffer, size_t length) OV_NO_THREAD_SAFETY_ANALYSIS;
 
 	// SSL에서 복호화한 패킷의 전송을 요청할 때 호출한다. ice로 최종 전송한다.
 	ssize_t Write(ov::Tls *tls, const void *data, size_t length);
 
-	bool VerifyPeerCertificate();
+	bool VerifyPeerCertificate() OV_NO_THREAD_SAFETY_ANALYSIS;
 
 private:
-	bool ContinueSSL();
+	bool ContinueSSL() OV_REQUIRES(_tls_lock);
 	// Initializes the underlying TLS session and BIO and transitions to
 	// SSL_CONNECTING. Caller MUST hold _tls_lock.
-	bool InitializeTlsLocked();
+	bool InitializeTlsLocked() OV_REQUIRES(_tls_lock);
 	bool IsDtlsPacket(const std::shared_ptr<const ov::Data> data);
 	bool IsRtpPacket(const std::shared_ptr<const ov::Data> data);
-	bool SaveDtlsPacket(const std::shared_ptr<const ov::Data> data);
-	std::shared_ptr<const ov::Data> TakeDtlsPacket();
+	bool SaveDtlsPacket(const std::shared_ptr<const ov::Data> data) OV_REQUIRES(_tls_lock);
+	std::shared_ptr<const ov::Data> TakeDtlsPacket() OV_REQUIRES(_tls_lock);
 
-	bool MakeSrtpKey();
+	bool MakeSrtpKey() OV_REQUIRES(_tls_lock);
 
 	enum SSLState
 	{
@@ -76,24 +76,24 @@ private:
 		SSL_CLOSED
 	};
 
-	SSLState _state;
-	bool _peer_certificate_verified;
+	SSLState _state OV_GUARDED_BY(_tls_lock);
+	bool _peer_certificate_verified OV_GUARDED_BY(_tls_lock);
 	std::shared_ptr<info::Session> _session_info;
 	std::shared_ptr<IcePort> _ice_port;
 	std::shared_ptr<SrtpTransport> _srtp_transport;
 	std::shared_ptr<::Certificate> _local_certificate;
 	std::shared_ptr<ov::TlsContext> _tls_context;
-	std::shared_ptr<::Certificate> _peer_certificate;
+	std::shared_ptr<::Certificate> _peer_certificate OV_GUARDED_BY(_tls_lock);
 	ov::String _peer_fingerprint_algorithm;
 	ov::String _peer_fingerprint_value;
 
 	// SSL이 가져갈 패킷을 임시로 보관하는 버퍼, 동시에 1개만 저장한다.
-	std::deque<std::shared_ptr<const ov::Data>> _packet_buffer;
+	std::deque<std::shared_ptr<const ov::Data>> _packet_buffer OV_GUARDED_BY(_tls_lock);
 
 	// SSL *_ssl;
 	// SSL_CTX *_ssl_ctx;
 
-	std::mutex _tls_lock;
+	ov::Mutex _tls_lock;
 
-	ov::Tls _tls;
+	ov::Tls _tls OV_GUARDED_BY(_tls_lock);
 };

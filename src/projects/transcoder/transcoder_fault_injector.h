@@ -115,7 +115,7 @@ public:
 			return false;
 		}
 
-		std::shared_lock lock(_mutex);
+		ov::SharedLockGuard lock(_mutex);
 
 		auto component_it = _fault_triggers.find(std::make_pair(component_type, issue_type));
 		if (component_it == _fault_triggers.end())
@@ -154,7 +154,7 @@ public:
 
 	void SetFaultRate(ComponentType component_type, IssueType issue_type, cmn::MediaCodecModuleId module_id, cmn::DeviceId device_id, double fault_rate)
 	{
-		std::unique_lock lock(_mutex);
+		ov::LockGuard lock(_mutex);
 
 		logti("Setting fault injection. ComponentType(%s), IssueType(%s), ModuleId(%s), DeviceId(%d), Rate(%.2f%%)",
 			  GetComponentTypeString(component_type), GetIssueTypeString(issue_type), cmn::GetCodecModuleIdString(module_id), device_id, fault_rate);
@@ -165,14 +165,14 @@ public:
 
 	void Clear()
 	{
-		std::unique_lock lock(_mutex);
+		ov::LockGuard lock(_mutex);
 		_fault_triggers.clear();
 		_enabled = false;
 	}
 
 private:
-	bool _enabled = false;
+	bool _enabled OV_GUARDED_BY(_mutex) = false;
 
-	std::shared_mutex _mutex;
-	std::map<std::pair<ComponentType, IssueType>, std::map<std::pair<cmn::MediaCodecModuleId, cmn::DeviceId>, double>> _fault_triggers;
+	ov::SharedMutex _mutex;
+	std::map<std::pair<ComponentType, IssueType>, std::map<std::pair<cmn::MediaCodecModuleId, cmn::DeviceId>, double>> _fault_triggers OV_GUARDED_BY(_mutex);
 };

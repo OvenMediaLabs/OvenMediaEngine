@@ -198,7 +198,7 @@ namespace ov
 			_path_components.clear();
 			_query_string	  = "";
 			_has_query_string = false;
-			_query_parsed	  = false;
+			_query_parsed.store(false, std::memory_order_release);
 
 			_app			  = "";
 			_stream			  = "";
@@ -222,7 +222,7 @@ namespace ov
 		}
 		_query_string	  = group_list["qs"].GetValue();
 		_has_query_string = (_query_string.IsEmpty() == false);
-		_query_parsed	  = false;
+		_query_parsed.store(false, std::memory_order_release);
 
 		return true;
 	}
@@ -248,7 +248,7 @@ namespace ov
 
 		_query_string.Append(key);
 		_has_query_string = true;
-		_query_parsed	  = false;
+		_query_parsed.store(false, std::memory_order_release);
 
 		return true;
 	}
@@ -262,7 +262,7 @@ namespace ov
 
 		_query_string.AppendFormat("%s=%s", key.CStr(), Encode(value).CStr());
 		_has_query_string = true;
-		_query_parsed	  = false;
+		_query_parsed.store(false, std::memory_order_release);
 
 		return true;
 	}
@@ -284,7 +284,7 @@ namespace ov
 		}
 
 		_has_query_string = true;
-		_query_parsed	  = false;
+		_query_parsed.store(false, std::memory_order_release);
 
 		return true;
 	}
@@ -333,7 +333,7 @@ namespace ov
 		}
 
 		_query_string = new_query_string;
-		_query_parsed = false;
+		_query_parsed.store(false, std::memory_order_release);
 
 		return true;
 	}
@@ -394,42 +394,43 @@ namespace ov
 
 	void Url::ParseQueryIfNeeded() const
 	{
-		if ((_has_query_string == false) || _query_parsed)
+		if ((_has_query_string == false) || _query_parsed.load(std::memory_order_acquire))
 		{
 			return;
 		}
 
-		auto lock_guard = std::lock_guard(_query_map_mutex);
+		LockGuard lock_guard(_query_map_mutex);
 
 		// DCL
-		if (_query_parsed == false)
+		if (_query_parsed.load(std::memory_order_relaxed))
 		{
-			_query_parsed = true;
+			// The query is parsed in another thread
+			return;
+		}
 
-			// Split the query string into the map
-			if (_query_string.IsEmpty() == false)
+		// Split the query string into the map
+		if (_query_string.IsEmpty() == false)
+		{
+			const auto &query_list = _query_string.Split("&");
+
+			for (auto &query : query_list)
 			{
-				const auto &query_list = _query_string.Split("&");
+				auto tokens = query.Split("=", 2);
 
-				for (auto &query : query_list)
+				if (tokens.size() == 2)
 				{
-					auto tokens = query.Split("=", 2);
-
-					if (tokens.size() == 2)
-					{
-						_query_map[tokens[0]] = Decode(tokens[1]);
-					}
-					else
-					{
-						_query_map[query] = "";
-					}
+					_query_map[tokens[0]] = Decode(tokens[1]);
+				}
+				else
+				{
+					_query_map[query] = "";
 				}
 			}
 		}
-		else
-		{
-			// The query is parsed in another thread
-		}
+
+		// Publish AFTER population so the lock-free fast path that observes `true` via
+		// acquire is guaranteed to see the fully built _query_map.
+		_query_parsed.store(true, std::memory_order_release);
 	}
 
 	bool Url::HasQueryString() const
@@ -482,7 +483,7 @@ namespace ov
 		_path_components  = other._path_components;
 		_has_query_string = other._has_query_string;
 		_query_string	  = other._query_string;
-		_query_parsed	  = other._query_parsed;
+		_query_parsed.store(other._query_parsed.load(std::memory_order_acquire), std::memory_order_release);
 		_query_map		  = other._query_map;
 		_app			  = other._app;
 		_stream			  = other._stream;

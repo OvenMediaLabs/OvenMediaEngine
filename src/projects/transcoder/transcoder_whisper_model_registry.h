@@ -11,7 +11,6 @@
 #include <whisper.h>
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,11 +43,11 @@ public:
 
 private:
         // Load a single model on the specified CUDA device and cache it. Caller must hold _mutex.
-        void LoadModel(const ov::String &model_path, int32_t cuda_device_id = 0);
+        void LoadModel(const ov::String &model_path, int32_t cuda_device_id = 0) OV_REQUIRES(_mutex);
 
-	std::mutex _mutex;
-	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models;
+	ov::Mutex _mutex;
+	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models OV_GUARDED_BY(_mutex);
 	// GPU memory (bytes) consumed by one whisper_state for each model.
 	// Populated during GPU warmup; 0 means CPU model (no pre-check needed).
-	std::unordered_map<std::string, size_t> _state_memory_bytes;
+	std::unordered_map<std::string, size_t> _state_memory_bytes OV_GUARDED_BY(_mutex);
 };

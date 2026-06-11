@@ -15,7 +15,7 @@ RtpReceiveStatistics::RtpReceiveStatistics(uint32_t media_ssrc, uint32_t clock_r
 
 bool RtpReceiveStatistics::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket> &packet)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	if(_first == true)
 	{
 		_first = false;
@@ -34,7 +34,7 @@ bool RtpReceiveStatistics::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket>
 
 bool RtpReceiveStatistics::AddReceivedRtcpSenderReport(const std::shared_ptr<SenderReport> &report)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	_last_sr_received_time = std::chrono::steady_clock::now();
 
 	// the middle 32 bits out of 64 in the NTP timestamp
@@ -46,25 +46,25 @@ bool RtpReceiveStatistics::AddReceivedRtcpSenderReport(const std::shared_ptr<Sen
 
 uint32_t RtpReceiveStatistics::GetMediaSSRC()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return _media_ssrc;
 }
 
 uint32_t RtpReceiveStatistics::GetReceiverSSRC()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return _receiver_ssrc;
 }
 
 uint64_t RtpReceiveStatistics::GetNumberOfFirRequests()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return _fir_request_count;
 }
 
 void RtpReceiveStatistics::OnFirRequested()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	_fir_request_count ++;
 }
 
@@ -132,19 +132,19 @@ bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)
 
 bool RtpReceiveStatistics::HasElapsedSinceLastReportBlock(uint32_t milliseconds)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return _report_block_timer.IsElapsed(milliseconds);
 }
 
 bool RtpReceiveStatistics::IsSenderReportReceived()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return _last_sr_timestamp != 0;
 }
 
 std::shared_ptr<ReportBlock> RtpReceiveStatistics::GenerateReportBlock()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	int32_t extented_highest_seq = _cycles + _highest_seq;
 	int32_t expected_packet_count = extented_highest_seq - _init_seq + 1;
 

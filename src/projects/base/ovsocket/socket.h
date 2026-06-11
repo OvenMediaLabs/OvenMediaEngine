@@ -10,6 +10,7 @@
 
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <base/ovlibrary/tsa/mutex.h>
 
 #include "socket_address.h"
 #include "socket_address_pair.h"
@@ -227,7 +228,7 @@ namespace ov
 
 		bool HasExpiredCommand() const
 		{
-			std::lock_guard lock_guard(_dispatch_queue_lock);
+			LockGuard lock_guard(_dispatch_queue_lock);
 
 			if (HasCommand())
 			{
@@ -439,7 +440,7 @@ namespace ov
 		void OnDataAvailableEvent() override;
 		//--------------------------------------------------------------------
 
-		DispatchResult DispatchEventInternal(DispatchCommand &command);
+		DispatchResult DispatchEventInternal(DispatchCommand &command) OV_REQUIRES(_dispatch_queue_lock);
 
 		bool IsSendable() const;
 		ssize_t HandleSendError(const ssize_t result, const size_t total_sent);
@@ -462,7 +463,7 @@ namespace ov
 
 		// CloseInternal() doesn't call the _callback directly
 		// So, we need to call CallCloseCallbackIfNeeded() after calling this api to do connection callback
-		virtual bool CloseInternal(SocketState close_reason);
+		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
 		// callback is performed outside the lock_guard to prevent acquiring the lock.
@@ -527,8 +528,8 @@ namespace ov
 		// This is a software-side retry marker, not a real pending kernel read event.
 		std::atomic<bool> _has_pending_events = false;
 
-		std::mutex _worker_mutex;
-		bool _added_to_worker = false;
+		Mutex _worker_mutex;
+		bool _added_to_worker OV_GUARDED_BY(_worker_mutex) = false;
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
@@ -538,8 +539,8 @@ namespace ov
 		std::shared_ptr<SocketAddress> _local_address = nullptr;
 		std::shared_ptr<SocketAddress> _remote_address = nullptr;
 
-		mutable std::recursive_mutex _dispatch_queue_lock;
-		std::deque<DispatchCommand> _dispatch_queue;
+		mutable RecursiveMutex _dispatch_queue_lock;
+		std::deque<DispatchCommand> _dispatch_queue OV_GUARDED_BY(_dispatch_queue_lock);
 		std::atomic<bool> _has_close_command = false;
 
 		std::atomic<bool> _connection_event_fired{false};

@@ -12,7 +12,6 @@
 #include "../rtp_packet.h"
 #include "transport_cc.h"
 
-#include <mutex>
 
 // https://datatracker.ietf.org/doc/html/draft-holmer-rmcat-transport-wide-cc-extensions-01
 
@@ -65,7 +64,7 @@ public:
 	std::shared_ptr<RtcpPacket> GenerateTransportCcMessageIfElapsed(uint32_t milliseconds);
 	uint32_t GetPacketStatusCount() const
 	{
-		std::lock_guard<std::mutex> lock(_lock);
+		ov::LockGuard<ov::Mutex> lock(_lock);
 		if (_transport_cc == nullptr)
 		{
 			return 0;
@@ -78,18 +77,18 @@ private:
 	std::chrono::steady_clock::time_point _created_time;
 	uint8_t _extension_id = 0;
 	uint32_t _sender_ssrc = 0;
-	uint32_t _last_media_ssrc = 0;
+	uint32_t _last_media_ssrc OV_GUARDED_BY(_lock) = 0;
 
-	bool _is_first_packet = true;
-	uint16_t _last_wide_sequence_number = 0;
+	bool _is_first_packet OV_GUARDED_BY(_lock) = true;
+	uint16_t _last_wide_sequence_number OV_GUARDED_BY(_lock) = 0;
 
-	uint8_t _fb_pkt_count = 0;
+	uint8_t _fb_pkt_count OV_GUARDED_BY(_lock) = 0;
 
-	std::chrono::steady_clock::time_point _last_reference_time; // multiples of 64ms, now() - created_time base
-	std::chrono::steady_clock::time_point _last_rtp_received_time;
-	std::shared_ptr<TransportCc> _transport_cc = nullptr;
+	std::chrono::steady_clock::time_point _last_reference_time OV_GUARDED_BY(_lock); // multiples of 64ms, now() - created_time base
+	std::chrono::steady_clock::time_point _last_rtp_received_time OV_GUARDED_BY(_lock);
+	std::shared_ptr<TransportCc> _transport_cc OV_GUARDED_BY(_lock) = nullptr;
 
-	std::chrono::steady_clock::time_point _last_report_time;
+	std::chrono::steady_clock::time_point _last_report_time OV_GUARDED_BY(_lock);
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

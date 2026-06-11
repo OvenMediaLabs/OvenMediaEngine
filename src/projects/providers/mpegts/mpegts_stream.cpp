@@ -93,7 +93,7 @@ namespace pvd
 			return false;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_depacketizer_lock);
+		ov::LockGuard<ov::SharedMutex> lock(_depacketizer_lock);
 		_depacketizer.AddPacket(data);
 
 		// Publish

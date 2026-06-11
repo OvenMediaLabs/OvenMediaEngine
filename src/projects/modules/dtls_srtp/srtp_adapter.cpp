@@ -26,7 +26,7 @@ SrtpAdapter::~SrtpAdapter()
 
 bool SrtpAdapter::Release()
 {
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
 
 	if(_session != nullptr)
 	{
@@ -66,7 +66,7 @@ bool SrtpAdapter::SetKey(srtp_ssrc_type_t type, uint64_t crypto_suite, std::shar
 	policy.allow_repeat_tx = 1;
 	policy.next = nullptr;
 
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
 	int err = srtp_create(&_session, &policy);
 	if(err != srtp_err_status_ok)
 	{
@@ -110,7 +110,7 @@ bool SrtpAdapter::ProtectRtp(std::shared_ptr<ov::Data> data)
 	uint8_t red_payload_type = byte_buffer[12];
 	uint16_t seq = ByteReader<uint16_t>::ReadBigEndian(&byte_buffer[2]);
 
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
 	int err = srtp_protect(_session, buffer, &out_len);
 	if(err != srtp_err_status_ok)
 	{
@@ -141,7 +141,7 @@ bool SrtpAdapter::ProtectRtcp(std::shared_ptr<ov::Data> data)
     int out_len = static_cast<int>(data->GetLength());
     data->SetLength(need_len);
 
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
     int err = srtp_protect_rtcp(_session, buffer, &out_len);
     if(err != srtp_err_status_ok)
     {
@@ -162,7 +162,7 @@ bool SrtpAdapter::UnprotectRtp(const std::shared_ptr<ov::Data> &data)
     auto buffer = data->GetWritableData();
     int out_len = static_cast<int>(data->GetLength());
 
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
     int err = srtp_unprotect(_session, buffer, &out_len);
     if (err != srtp_err_status_ok)
     {
@@ -185,7 +185,7 @@ bool SrtpAdapter::UnprotectRtcp(const std::shared_ptr<ov::Data> &data)
     auto buffer = data->GetWritableData();
     int out_len = static_cast<int>(data->GetLength());
 
-	std::lock_guard<std::mutex> lock(_session_lock);
+	ov::LockGuard<ov::Mutex> lock(_session_lock);
     int err = srtp_unprotect_rtcp(_session, buffer, &out_len);
     if (err != srtp_err_status_ok)
     {

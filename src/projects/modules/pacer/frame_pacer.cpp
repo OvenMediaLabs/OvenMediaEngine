@@ -73,7 +73,7 @@ void FramePacer::Push(const std::shared_ptr<MediaPacket> &packet,
 	uint32_t calib_track_id	   = 0;
 
 	{
-		std::lock_guard<std::mutex> lock(_mu);
+		ov::LockGuard<ov::Mutex> lock(_mu);
 
 		auto now = arrival_time;
 

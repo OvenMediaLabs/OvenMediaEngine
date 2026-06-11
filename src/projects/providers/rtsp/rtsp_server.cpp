@@ -128,7 +128,7 @@ std::unique_ptr<T> CreateTrack(const RtspServer::StreamTrackInfo *stream_track, 
 
 void RtspServer::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto request_iterator = requests_.find(remote.get());
     if (request_iterator != requests_.end())
     {
@@ -143,7 +143,7 @@ void RtspServer::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 {
     std::shared_ptr<RtspConnection> rtsp_connection;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        ov::LockGuard<ov::Mutex> lock(mutex_);
         auto request_iterator = requests_.find(remote.get());
         if (request_iterator != requests_.end())
         {
@@ -157,7 +157,7 @@ void RtspServer::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
                                 PhysicalPortDisconnectReason reason,
                                 const std::shared_ptr<const ov::Error> &error)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto request_iterator = requests_.find(remote.get());
     if (request_iterator != requests_.end())
     {
@@ -170,7 +170,7 @@ bool RtspServer::Disconnect(const ov::String &app_name, uint32_t stream_id)
     return true;
 }
 
-void RtspServer::DeleteStream(const std::lock_guard<std::mutex> &lock, std::unordered_map<std::string, uint32_t>::iterator &stream_id_iterator)
+void RtspServer::DeleteStream(const ov::LockGuard<ov::Mutex> &lock, std::unordered_map<std::string, uint32_t>::iterator &stream_id_iterator)
 
 {
     // Not sure if shut down the existing connections and continue or fail, currently erase everything
@@ -207,7 +207,7 @@ bool RtspServer::OnStreamAnnounced(const std::string_view &app_name,
     // Not sure if announce when the stream arrives or wait till all the tracks are set up, currently announce as soon as it shows up
     const auto stream_path = std::string(app_name.data(), app_name.size()).append("/").append(std::string(stream_name.data(), stream_name.size()));
     
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     {
         auto existing_stream_iterator = stream_ids_.find(stream_path);
         if (existing_stream_iterator != stream_ids_.end())
@@ -269,7 +269,7 @@ bool RtspServer::OnUdpStreamTrackSetup(const std::string_view &rtsp_uri,
 {
     const auto track_path = std::string(rtsp_uri.data(), rtsp_uri.size());
     
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     const auto *stream_track = FindTrackStream(lock, track_path);
     if (stream_track == nullptr)
     {
@@ -303,7 +303,7 @@ bool RtspServer::OnTcpStreamTrackSetup(const std::string_view &rtsp_uri,
 {
     const auto track_path = std::string(rtsp_uri.data(), rtsp_uri.size());
     
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     const auto *stream_track = FindTrackStream(lock, track_path);
     if (stream_track == nullptr)
     {
@@ -329,7 +329,7 @@ bool RtspServer::OnTcpStreamTrackSetup(const std::string_view &rtsp_uri,
     return true;
 }
 
-RtspServer::StreamTrackInfo *RtspServer::FindTrackStream(const std::lock_guard<std::mutex> &lock,
+RtspServer::StreamTrackInfo *RtspServer::FindTrackStream(const ov::LockGuard<ov::Mutex> &lock,
     const std::string &track_path)
 {
     auto stream_track_iterator = stream_tracks_.find(track_path);
@@ -341,7 +341,7 @@ RtspServer::StreamTrackInfo *RtspServer::FindTrackStream(const std::lock_guard<s
     return &stream_track_iterator->second;
 }
 
-std::vector<std::unique_ptr<RtpTrack>> *RtspServer::FindSessionTracks(const std::lock_guard<std::mutex> &lock,
+std::vector<std::unique_ptr<RtpTrack>> *RtspServer::FindSessionTracks(const ov::LockGuard<ov::Mutex> &lock,
     uint32_t stream_id)
 {
     auto stream_iterator = stream_contexts_.find(stream_id);
@@ -358,7 +358,7 @@ bool RtspServer::OnStreamTeardown(const std::string_view &app_name,
     const std::string_view &stream_name)
 {
     const auto stream_path = std::string(app_name.data(), app_name.size()).append("/").append(std::string(stream_name.data(), stream_name.size()));
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto stream_iterator = stream_ids_.find(stream_path);
     if (stream_iterator != stream_ids_.end())
     {
@@ -386,7 +386,7 @@ bool RtspServer::OnVideoData(uint32_t stream_id,
         uint8_t flags, 
         std::unique_ptr<FragmentationHeader> fragmentation_header)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto stream_context_iterator = stream_contexts_.find(stream_id);
     if (stream_context_iterator == stream_contexts_.end())
     {
@@ -404,7 +404,7 @@ bool RtspServer::OnAudioData(uint32_t stream_id,
         uint32_t timestamp,
         const std::shared_ptr<std::vector<uint8_t>> &data)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto stream_context_iterator = stream_contexts_.find(stream_id);
     if (stream_context_iterator == stream_contexts_.end())
     {
@@ -433,7 +433,7 @@ void RtspServer::OnRtcpSenderReport(uint32_t stream_id,
     uint8_t track_id,
     const RtcpSenderReport &rtcp_sender_report)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
+    ov::LockGuard<ov::Mutex> lock(mutex_);
     auto stream_context_iterator = stream_contexts_.find(stream_id);
     if (stream_context_iterator == stream_contexts_.end())
     {

@@ -8,8 +8,11 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
+
 #include "./ovlibrary.h"
 #include "./string.h"
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -111,10 +114,11 @@ namespace ov
 		std::vector<ov::String> _path_components;
 		ov::String _query_string;
 		bool _has_query_string = false;
-		// To reduce the cost of parsing the query map, parsing the query only when Query() or QueryMap() is called
-		mutable bool _query_parsed = false;
-		mutable std::mutex _query_map_mutex;
-		mutable std::map<ov::String, ov::String> _query_map;
+		// To reduce the cost of parsing the query map, parsing the query only when Query() or QueryMap() is called.
+		// Atomic acquire/release publishes _query_map so the lock-free fast path in ParseQueryIfNeeded is race-free.
+		mutable std::atomic<bool> _query_parsed{false};
+		mutable Mutex _query_map_mutex;
+		mutable std::map<ov::String, ov::String> _query_map OV_GUARDED_BY(_query_map_mutex);
 
 		// Valid for URLs of the form: <scheme>://<domain>[:<port>]/<app>/<stream>[<file>[/<remaining>]][?<query string>]
 		ov::String _app;

@@ -10,7 +10,7 @@
 
 #include <atomic>
 #include <fstream>
-#include <mutex>
+#include "./tsa/mutex.h"
 
 #define OV_LOG_DIR "logs"
 #define OV_LOG_DIR_SVC "/var/log/ovenmediaengine"
@@ -33,8 +33,8 @@ namespace ov
 	private:
 		void OpenNewFile(std::time_t time = 0);
 
-		std::mutex _log_stream_mutex;
-		std::ofstream _log_stream;
+		Mutex _log_stream_mutex;
+		std::ofstream _log_stream OV_GUARDED_BY(_log_stream_mutex);
 		int _last_day;
 		std::string _log_path;
 		std::string _log_file_name;

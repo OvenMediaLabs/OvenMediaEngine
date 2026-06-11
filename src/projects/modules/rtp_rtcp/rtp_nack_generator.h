@@ -3,7 +3,6 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <chrono>
 #include <map>
-#include <mutex>
 #include <optional>
 #include <vector>
 
@@ -90,43 +89,43 @@ private:
 		std::chrono::steady_clock::time_point inserted_at;
 	};
 
-	std::optional<uint32_t> ExtendSeq(uint16_t seq) const;
-	void UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now);
-	void DiscardStale(std::chrono::steady_clock::time_point now);
-	void LogPeriodicStats(std::chrono::steady_clock::time_point now);
+	std::optional<uint32_t> ExtendSeq(uint16_t seq) const OV_REQUIRES(_lock);
+	void UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
+	void DiscardStale(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
+	void LogPeriodicStats(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
 	// Hold recommendation core; assumes _lock is already held.
-	uint32_t GetRecommendedHoldMsInternal() const;
+	uint32_t GetRecommendedHoldMsInternal() const OV_REQUIRES(_lock);
 
 	uint32_t _track_id = 0;
 	uint32_t _media_ssrc = 0;
 	uint32_t _hold_max_ms = HOLD_MAX_MS_DEFAULT;
 
-	bool _initialized = false;
-	uint32_t _newest_extended = 0;	// last seq seen in extended (uint32) form
-	uint32_t _expected_next = 0;	// next extended seq we expect
+	bool _initialized OV_GUARDED_BY(_lock) = false;
+	uint32_t _newest_extended OV_GUARDED_BY(_lock) = 0;	// last seq seen in extended (uint32) form
+	uint32_t _expected_next OV_GUARDED_BY(_lock) = 0;	// next extended seq we expect
 
-	std::map<uint32_t /*extended seq*/, PendingEntry> _pending;
+	std::map<uint32_t /*extended seq*/, PendingEntry> _pending OV_GUARDED_BY(_lock);
 
 	// NACK->RTX latency stats (smoothed mean + mean-deviation, milliseconds).
 	// _ewma_ms doubles as the NACK retry interval. Seeded with the same
 	// initial RTT guess that GetRecommendedHoldMs falls back to, so retry
 	// timing and hold timing agree before the first sample lands.
-	bool _stats_initialized = false;
-	double _ewma_ms = INITIAL_RTT_GUESS_MS;
-	double _ewma_dev_ms = 0.0;
-	std::chrono::steady_clock::time_point _last_sample_at;
+	bool _stats_initialized OV_GUARDED_BY(_lock) = false;
+	double _ewma_ms OV_GUARDED_BY(_lock) = INITIAL_RTT_GUESS_MS;
+	double _ewma_dev_ms OV_GUARDED_BY(_lock) = 0.0;
+	std::chrono::steady_clock::time_point _last_sample_at OV_GUARDED_BY(_lock);
 
 	// Cumulative monitoring counters. Logged every STATS_LOG_INTERVAL_MS as
 	// deltas (loss / recovery snapshot) and as cumulative totals.
-	uint64_t _received_total = 0;
-	uint64_t _nacks_sent_total = 0;
-	uint64_t _recovered_total = 0;
-	uint64_t _lost_permanent_total = 0;
-	uint64_t _prev_received = 0;
-	uint64_t _prev_nacks_sent = 0;
-	uint64_t _prev_recovered = 0;
-	uint64_t _prev_lost_permanent = 0;
-	std::chrono::steady_clock::time_point _last_stats_log_at;
+	uint64_t _received_total OV_GUARDED_BY(_lock) = 0;
+	uint64_t _nacks_sent_total OV_GUARDED_BY(_lock) = 0;
+	uint64_t _recovered_total OV_GUARDED_BY(_lock) = 0;
+	uint64_t _lost_permanent_total OV_GUARDED_BY(_lock) = 0;
+	uint64_t _prev_received OV_GUARDED_BY(_lock) = 0;
+	uint64_t _prev_nacks_sent OV_GUARDED_BY(_lock) = 0;
+	uint64_t _prev_recovered OV_GUARDED_BY(_lock) = 0;
+	uint64_t _prev_lost_permanent OV_GUARDED_BY(_lock) = 0;
+	std::chrono::steady_clock::time_point _last_stats_log_at OV_GUARDED_BY(_lock);
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

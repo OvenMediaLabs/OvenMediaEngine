@@ -59,7 +59,7 @@ void AdaptiveDelayController::RecordSample(uint32_t track_id, int64_t lateness_m
 	int warn_max_value		 = 0;
 
 	{
-		std::lock_guard<std::mutex> lock(_mu);
+		ov::LockGuard<ov::Mutex> lock(_mu);
 		_samples.push_back({now, lateness_ms, track_id});
 
 		while (!_samples.empty() && (now - _samples.front().ts) > kWindow)
@@ -132,7 +132,7 @@ void AdaptiveDelayController::RecordSample(uint32_t track_id, int64_t lateness_m
 
 int AdaptiveDelayController::GetCurrentDelayMs()
 {
-	std::lock_guard<std::mutex> lock(_mu);
+	ov::LockGuard<ov::Mutex> lock(_mu);
 	return _current_delay_ms;
 }
 

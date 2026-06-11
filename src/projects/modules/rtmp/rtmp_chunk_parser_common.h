@@ -25,13 +25,13 @@ public:
 public:
 	info::NamePath GetNamePath() const
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		return _name_path;
 	}
 
 	virtual void UpdateNamePath(const info::NamePath &stream_name_path)
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		_name_path = stream_name_path;
 		_message_queue.SetAlias(ov::String::FormatString("RTMP queue for %s", _name_path.CStr()));
 	}
@@ -51,6 +51,6 @@ protected:
 	size_t _chunk_size = 0;
 
 private:
-	mutable std::mutex _name_path_mutex;
-	info::NamePath _name_path;
+	mutable ov::Mutex _name_path_mutex;
+	info::NamePath _name_path OV_GUARDED_BY(_name_path_mutex);
 };

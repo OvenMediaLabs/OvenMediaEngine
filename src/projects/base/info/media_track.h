@@ -13,8 +13,8 @@
 #include "subtitle_track.h"
 
 #include "decoder_configuration_record.h"
+#include "base/ovlibrary/tsa/mutex.h"
 
-#include <shared_mutex>
 
 #define VALID_BITRATE_CALCULATION_THRESHOLD_MSEC (1000)
 
@@ -156,7 +156,7 @@ public:
 	bool IsEssentialTrack() const;
 
 protected:
-	mutable std::shared_mutex _media_mutex;
+	mutable ov::SharedMutex _media_mutex;
 
 	// Track ID
 	std::atomic<uint32_t> _id;
@@ -168,23 +168,23 @@ protected:
 	std::atomic<cmn::MediaCodecId> _codec_id;
 	std::atomic<cmn::MediaCodecModuleId> _codec_module_id;
 	std::atomic<cmn::DeviceId> _codec_device_id;
-	ov::String _codec_modules;
+	ov::String _codec_modules OV_GUARDED_BY(_media_mutex);
 
 	// Variant Name : Original encoder profile that made this track 
 	// from <OutputProfile><Encodes>(<Video> || <Audio> || <Image>)<Name>
-	ov::String _variant_name;
+	ov::String _variant_name OV_GUARDED_BY(_media_mutex);
 	std::atomic<int> _group_index = -1;
 
 	// Set by AudioMap or VideoMap or SubtitleMap
-	ov::String _public_name;
-	ov::String _language;
-	ov::String _characteristics;
+	ov::String _public_name OV_GUARDED_BY(_media_mutex);
+	ov::String _language OV_GUARDED_BY(_media_mutex);
+	ov::String _characteristics OV_GUARDED_BY(_media_mutex);
 
 	// Bitstream format 
 	std::atomic<cmn::BitstreamFormat> _origin_bitstream_format = cmn::BitstreamFormat::Unknown;
 
 	// Timebase
-	cmn::Timebase _time_base;
+	cmn::Timebase _time_base OV_GUARDED_BY(_media_mutex);
 
 	// Bitrate
 	std::atomic<int32_t> _bitrate;
@@ -235,7 +235,7 @@ protected:
 
 	// Codec status and extra info
 	std::atomic<cmn::CodecStatus> _codec_status = cmn::CodecStatus::Unknown;
-	ov::String _extra_info;
+	ov::String _extra_info OV_GUARDED_BY(_media_mutex);
 
 	// If false, encoder failure for this track is non-fatal and the stream continues without it.
 	std::atomic<bool> _essential_track = true;

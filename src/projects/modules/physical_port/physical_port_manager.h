@@ -40,8 +40,8 @@ protected:
 
 	std::shared_ptr<ov::SocketPool> GetSocketPool(const std::pair<ov::SocketType, ov::SocketAddress> &socket_info, int socket_pool_count);
 
-	std::map<std::pair<ov::SocketType, ov::SocketAddress>, std::shared_ptr<PhysicalPort>> _port_list;
+	std::map<std::pair<ov::SocketType, ov::SocketAddress>, std::shared_ptr<PhysicalPort>> _port_list OV_GUARDED_BY(_port_list_mutex);
 	std::map<std::pair<ov::SocketType, ov::SocketAddress>, std::shared_ptr<ov::SocketPool>> _socket_pool_list;
 
-	std::mutex _port_list_mutex;
+	ov::Mutex _port_list_mutex;
 };

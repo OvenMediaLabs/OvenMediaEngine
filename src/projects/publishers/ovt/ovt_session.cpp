@@ -86,7 +86,7 @@ void OvtSession::SendOutgoingData(const std::any &packet)
 	// TrackSet filter (applied only to media packets; signaling packets are payload type
 	// MESSAGE_RESPONSE and are sent via OvtPublisher::SendResponse, not this path).
 	{
-		std::scoped_lock lock(_track_set_filter_mutex);
+		ov::ScopedLock lock(_track_set_filter_mutex);
 
 		if (_track_set_filter_enabled &&
 			session_packet->PayloadType() == OVT_PAYLOAD_TYPE_MEDIA_PACKET)
@@ -146,7 +146,7 @@ void OvtSession::SendOutgoingData(const std::any &packet)
 
 void OvtSession::SetAllowedTrackIds(const std::set<uint32_t> &allowed_track_ids)
 {
-	std::scoped_lock lock(_track_set_filter_mutex);
+	ov::ScopedLock lock(_track_set_filter_mutex);
 
 	_allowed_track_ids		  = allowed_track_ids;
 	_track_set_filter_enabled = true;

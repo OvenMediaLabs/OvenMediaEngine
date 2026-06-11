@@ -35,7 +35,7 @@ std::map<uint8_t, std::shared_ptr<ov::Data>>& RtpDepacketizingManager::GetDecodi
 
 void RtpDepacketizingManager::AddDecodingParameterSet(uint8_t type, const std::shared_ptr<ov::Data> &value)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	_parameter_sets[type] = value;
 }
 

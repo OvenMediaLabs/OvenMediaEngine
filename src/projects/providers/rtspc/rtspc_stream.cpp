@@ -788,14 +788,14 @@ namespace pvd
 
 	bool RtspcStream::SubscribeResponse(const std::shared_ptr<RtspMessage> &request_message)
 	{
-		std::lock_guard<std::mutex> lock(_response_subscriptions_lock);
+		ov::LockGuard<ov::Mutex> lock(_response_subscriptions_lock);
 		_response_subscriptions.emplace(request_message->GetCSeq(), std::make_shared<ResponseSubscription>(request_message));
 		return true;
 	}
 
 	std::shared_ptr<RtspcStream::ResponseSubscription> RtspcStream::PopResponseSubscription(uint32_t cseq)
 	{
-		std::lock_guard<std::mutex> lock(_response_subscriptions_lock);
+		ov::LockGuard<ov::Mutex> lock(_response_subscriptions_lock);
 		auto it = _response_subscriptions.find(cseq);
 		if (it == _response_subscriptions.end())
 		{

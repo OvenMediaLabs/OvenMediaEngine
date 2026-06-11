@@ -37,13 +37,13 @@ namespace pvd
 
 	private:
 		bool Start() override;	
-		bool Publish();
+		bool Publish() OV_REQUIRES(_depacketizer_lock);
 
 		// Client socket
 		std::shared_ptr<ov::Socket> _remote = nullptr;
 
-		std::shared_mutex _depacketizer_lock;
-		mpegts::MpegTsDepacketizer	_depacketizer;
+		ov::SharedMutex _depacketizer_lock;
+		mpegts::MpegTsDepacketizer	_depacketizer OV_GUARDED_BY(_depacketizer_lock);
 
 		info::VHostAppName _vhost_app_name;
 

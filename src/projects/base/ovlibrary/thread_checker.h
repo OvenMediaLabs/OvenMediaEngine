@@ -10,11 +10,11 @@
 
 #include <pthread.h>
 
-#include <mutex>
 #include <thread>
 
 #include "./assert.h"
 #include "./log.h"
+#include "./tsa/mutex.h"
 
 namespace ov
 {
@@ -131,7 +131,7 @@ namespace ov
 		// Returns `true` if the current thread matches the bound thread.
 		bool IsCurrent() const
 		{
-			std::scoped_lock lock(_mutex);
+			ScopedLock lock(_mutex);
 
 			if (_attached == false)
 			{
@@ -151,7 +151,7 @@ namespace ov
 		// no need to call Detach() first.
 		void Bind(ThreadLocation loc = {})
 		{
-			std::scoped_lock lock(_mutex);
+			ScopedLock lock(_mutex);
 			_bound_thread  = ::pthread_self();
 			_attached	   = true;
 			_bind_location = {loc, ov::StackTrace::GetStackTrace()};
@@ -163,7 +163,7 @@ namespace ov
 		// another.
 		void Detach()
 		{
-			std::scoped_lock lock(_mutex);
+			ScopedLock lock(_mutex);
 			_attached = false;
 		}
 
@@ -217,10 +217,10 @@ namespace ov
 			ov::String stack_trace;
 		};
 
-		mutable std::mutex _mutex;
-		mutable bool _attached = true;
-		mutable pthread_t _bound_thread;
-		mutable BindLocation _bind_location;
+		mutable Mutex _mutex;
+		mutable bool _attached OV_GUARDED_BY(_mutex) = true;
+		mutable pthread_t _bound_thread OV_GUARDED_BY(_mutex);
+		mutable BindLocation _bind_location OV_GUARDED_BY(_mutex);
 
 		inline static bool _main_initialized	   = false;
 		inline static ThreadChecker *_main_checker = nullptr;

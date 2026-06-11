@@ -42,7 +42,7 @@ namespace pvd
 
 	bool PullStream::Start()
 	{
-		std::lock_guard<std::mutex> lock(_start_stop_stream_lock);
+		ov::LockGuard<ov::Mutex> lock(_start_stop_stream_lock);
 		_restart_count = 0;
 		while (true)
 		{
@@ -68,7 +68,7 @@ namespace pvd
 
 	bool PullStream::Stop()
 	{
-		std::lock_guard<std::mutex> lock(_start_stop_stream_lock);
+		ov::LockGuard<ov::Mutex> lock(_start_stop_stream_lock);
 		StopStream();
 		return Stream::Stop();
 	}

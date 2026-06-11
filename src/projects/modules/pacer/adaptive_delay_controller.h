@@ -9,7 +9,6 @@
 
 #include <chrono>
 #include <deque>
-#include <mutex>
 
 // Stream-scoped adaptive smoothing-delay controller.
 //
@@ -41,7 +40,7 @@ public:
 	int GetMaxDelayMs() const { return _max_delay_ms; }
 
 private:
-	void Recompute();
+	void Recompute() OV_REQUIRES(_mu);
 
 	struct Sample
 	{
@@ -54,17 +53,17 @@ private:
 	int _min_delay_ms;
 	int _max_delay_ms;
 
-	std::mutex _mu;
-	std::deque<Sample> _samples;
-	int _current_delay_ms;
-	std::chrono::steady_clock::time_point _last_recompute;
+	ov::Mutex _mu;
+	std::deque<Sample> _samples OV_GUARDED_BY(_mu);
+	int _current_delay_ms OV_GUARDED_BY(_mu);
+	std::chrono::steady_clock::time_point _last_recompute OV_GUARDED_BY(_mu);
 
 	// Warning state (rate-limited).
-	std::chrono::steady_clock::time_point _last_lateness_warn;
-	std::chrono::steady_clock::time_point _last_max_warn;
-	bool _at_max = false;
+	std::chrono::steady_clock::time_point _last_lateness_warn OV_GUARDED_BY(_mu);
+	std::chrono::steady_clock::time_point _last_max_warn OV_GUARDED_BY(_mu);
+	bool _at_max OV_GUARDED_BY(_mu) = false;
 
 	// Periodic measurement log (for tuning Min/Max defaults).
-	std::chrono::steady_clock::time_point _last_stats_log;
-	void LogPerTrackStats();
+	std::chrono::steady_clock::time_point _last_stats_log OV_GUARDED_BY(_mu);
+	void LogPerTrackStats() OV_REQUIRES(_mu);
 };

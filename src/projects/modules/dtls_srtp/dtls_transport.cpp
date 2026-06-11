@@ -18,7 +18,7 @@ DtlsTransport::~DtlsTransport()
 
 bool DtlsTransport::Stop()
 {
-	std::lock_guard<std::mutex> lock(_tls_lock);
+	ov::LockGuard<ov::Mutex> lock(_tls_lock);
 
 	_tls.Uninitialize();
 
@@ -107,7 +107,7 @@ bool DtlsTransport::InitializeTlsLocked()
 
 bool DtlsTransport::StartDTLS()
 {
-	std::lock_guard<std::mutex> lock(_tls_lock);
+	ov::LockGuard<ov::Mutex> lock(_tls_lock);
 
 	/*
 	if(_ice_port->GetState() != IcePortConnectionState::Completed)
@@ -251,7 +251,7 @@ bool DtlsTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 			}
 			else
 			{
-				std::lock_guard<std::mutex> lock(_tls_lock);
+				ov::LockGuard<ov::Mutex> lock(_tls_lock);
 				// If it is not SRTP, it must be encrypted in DTLS.
 				// TODO: Currently, SCTP is not supported, so there is no need to encrypt,
 				// and it will be developed if it supports data channels in the future.
@@ -295,7 +295,7 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 		case SSL_CONNECTED: {
 			if (IsDtlsPacket(data))
 			{
-				std::lock_guard<std::mutex> lock(_tls_lock);
+				ov::LockGuard<ov::Mutex> lock(_tls_lock);
 				logtt("Receive DTLS packet");
 				// Packet을 Queue에 쌓는다.
 				SaveDtlsPacket(data);

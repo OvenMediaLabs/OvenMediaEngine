@@ -56,7 +56,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 	uint8_t delta_size = 0;
 
 	// _transport_cc and the running counters below are shared; lock from here.
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 
 	// first packet of feedback message
 	if (_transport_cc == nullptr)
@@ -168,7 +168,7 @@ bool RtcpTransportCcFeedbackGenerator::AddReceivedRtpPacket(const std::shared_pt
 
 std::shared_ptr<RtcpPacket> RtcpTransportCcFeedbackGenerator::GenerateTransportCcMessageIfElapsed(uint32_t milliseconds)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 
 	// Check elapsed and build under one lock so concurrent receives can't both
 	// pass the interval check and emit feedback for the same window.

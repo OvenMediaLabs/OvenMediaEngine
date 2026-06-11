@@ -9,7 +9,6 @@
 #pragma once
 
 #include <atomic>
-#include <mutex>
 
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
@@ -69,6 +68,6 @@ private:
 
 	std::atomic<TransportType> _transport_type{TransportType::Direct};
 	std::atomic<uint16_t> _turn_channel_number{0};
-	mutable std::mutex _turn_peer_address_mutex;
-	ov::SocketAddress _turn_peer_address;
+	mutable ov::Mutex _turn_peer_address_mutex;
+	ov::SocketAddress _turn_peer_address OV_GUARDED_BY(_turn_peer_address_mutex);
 };

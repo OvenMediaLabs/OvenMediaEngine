@@ -16,7 +16,6 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
-#include <mutex>
 #include <regex>
 #include <unordered_map>
 
@@ -24,6 +23,7 @@
 #include "./log.h"
 #include "./log_write.h"
 #include "./string.h"
+#include "./tsa/mutex.h"
 
 #if DEBUG
 #	define OV_LOG_SHOW_FILE_NAME 1
@@ -78,7 +78,7 @@ namespace ov
 
 		OVLogLevel _level;
 
-		std::mutex _mutex;
+		Mutex _mutex;
 
 		LogWrite _log_file;
 
@@ -90,11 +90,11 @@ namespace ov
 			ov::String regex_string;
 		};
 
-		std::vector<EnableItem> _enable_list;
+		std::vector<EnableItem> _enable_list OV_GUARDED_BY(_mutex);
 
 		// This map used for cache (It reduces regex matching cost)
 		// key: tag
 		// value: is_enabled
-		std::unordered_map<ov::String, EnableItem> _enable_map;
+		std::unordered_map<ov::String, EnableItem> _enable_map OV_GUARDED_BY(_mutex);
 	};
 }  // namespace ov

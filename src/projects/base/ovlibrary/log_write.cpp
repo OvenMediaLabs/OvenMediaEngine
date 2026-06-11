@@ -63,7 +63,7 @@ namespace ov
 			return;
 		}
 
-		std::lock_guard<std::mutex> lock_guard(_log_stream_mutex);
+		LockGuard<Mutex> lock_guard(_log_stream_mutex);
 		_log_stream.close();
 		_log_stream.clear();
 
@@ -130,7 +130,7 @@ namespace ov
 			_last_day = local_time.tm_mday;
 		}
 
-		std::lock_guard<std::mutex> lock_guard(_log_stream_mutex);
+		LockGuard<Mutex> lock_guard(_log_stream_mutex);
 		_log_stream << log << std::endl;
 		_log_stream.flush();
 	}

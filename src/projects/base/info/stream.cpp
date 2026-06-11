@@ -98,7 +98,7 @@ namespace info
 
 	NamePath Stream::GetNamePath() const
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		return _name_path;
 	}
 
@@ -142,7 +142,7 @@ namespace info
 
 	void Stream::UpdateNamePath(const info::VHostAppName &vhost_app_name)
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		_name_path = vhost_app_name.GetNamePath().Append("%s(%u)", GetName().CStr(), _id);
 	}
 

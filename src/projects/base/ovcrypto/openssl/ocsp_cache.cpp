@@ -16,7 +16,7 @@ namespace ov
 {
 	std::shared_ptr<OcspContext> OcspCache::ContextForCert(SSL_CTX *ssl_ctx, X509 *cert)
 	{
-		std::lock_guard lock_guard(_cache_mutex);
+		LockGuard lock_guard(_cache_mutex);
 
 		auto item = _cache_map.find(cert);
 
@@ -71,7 +71,7 @@ namespace ov
 
 	OcspCache::~OcspCache()
 	{
-		std::lock_guard lock_guard(_cache_mutex);
+		LockGuard lock_guard(_cache_mutex);
 
 		for (auto item : _cache_map)
 		{

@@ -79,7 +79,7 @@ namespace http
 
 		void HttpClientV2::SetRequestHeader(const ov::String &key, const ov::String &value)
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			if (_requested)
 			{
@@ -92,7 +92,7 @@ namespace http
 
 		std::optional<ov::String> HttpClientV2::GetRequestHeader(const ov::String &key)
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			auto iterator = _request_header_map.find(key);
 
@@ -106,14 +106,14 @@ namespace http
 
 		const HttpHeaderMap HttpClientV2::GetRequestHeaders() const
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			return _request_header_map;
 		}
 
 		void HttpClientV2::RemoveRequestHeader(const ov::String &key)
 		{
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			if (_requested)
 			{
@@ -143,7 +143,7 @@ namespace http
 				_connected_callback_called = true;
 
 				{
-					std::shared_lock lock(_interceptor_list_mutex);
+					ov::SharedLockGuard lock(_interceptor_list_mutex);
 					for (auto &interceptor : _interceptor_list)
 					{
 						auto error = interceptor->OnConnected();
@@ -260,7 +260,7 @@ namespace http
 				std::shared_ptr<const ov::Error> first_error;
 
 				{
-					std::shared_lock lock(_interceptor_list_mutex);
+					ov::SharedLockGuard lock(_interceptor_list_mutex);
 					for (auto &interceptor : _interceptor_list)
 					{
 						auto error = interceptor->OnRequestStarted(parsed_url);
@@ -360,7 +360,7 @@ namespace http
 
 		void HttpClientV2::CallCloseFinish()
 		{
-			std::shared_lock lock(_interceptor_list_mutex);
+			ov::SharedLockGuard lock(_interceptor_list_mutex);
 
 #ifdef DEBUG
 			OV_ASSERT2(_request_finished_callback_called == false);
@@ -448,14 +448,14 @@ namespace http
 			auto cancel_token = std::make_shared<CancelToken>();
 
 			{
-				std::shared_lock lock(_interceptor_list_mutex);
+				ov::SharedLockGuard lock(_interceptor_list_mutex);
 				for (auto &interceptor : _interceptor_list)
 				{
 					interceptor->SetCancelToken(cancel_token);
 				}
 			}
 
-			std::lock_guard lock_guard(_request_mutex);
+			ov::LockGuard lock_guard(_request_mutex);
 
 			ov::SocketAddress address;
 
@@ -610,7 +610,7 @@ namespace http
 			}
 
 			{
-				std::shared_lock lock(_interceptor_list_mutex);
+				ov::SharedLockGuard lock(_interceptor_list_mutex);
 				for (auto &interceptor : _interceptor_list)
 				{
 					interceptor->OnCompleted();
@@ -679,7 +679,7 @@ namespace http
 						auto bytes_to_copy = std::min(_chunk_length, remaining);
 
 						{
-							std::shared_lock lock(_interceptor_list_mutex);
+							ov::SharedLockGuard lock(_interceptor_list_mutex);
 							for (auto &interceptor : _interceptor_list)
 							{
 								_response_body_size += bytes_to_copy;
@@ -793,7 +793,7 @@ namespace http
 						else
 						{
 							{
-								std::shared_lock lock(_interceptor_list_mutex);
+								ov::SharedLockGuard lock(_interceptor_list_mutex);
 								for (auto &interceptor : _interceptor_list)
 								{
 									_response_body_size += sub_data->GetLength();
@@ -882,7 +882,7 @@ namespace http
 
 			{
 				auto response_info = ResponseInfo::From(_parser);
-				std::shared_lock lock(_interceptor_list_mutex);
+				ov::SharedLockGuard lock(_interceptor_list_mutex);
 				for (auto &interceptor : _interceptor_list)
 				{
 					auto error = interceptor->OnResponseInfo(response_info);
@@ -924,7 +924,7 @@ namespace http
 		void HttpClientV2::HandleError(std::shared_ptr<const ov::Error> error)
 		{
 			{
-				std::shared_lock lock(_interceptor_list_mutex);
+				ov::SharedLockGuard lock(_interceptor_list_mutex);
 				for (auto &interceptor : _interceptor_list)
 				{
 					interceptor->OnError(error);

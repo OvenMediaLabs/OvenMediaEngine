@@ -77,7 +77,7 @@ namespace ov
 			return;
 		}
 
-		std::lock_guard<std::mutex> lock(_mutex);
+		LockGuard<Mutex> lock(_mutex);
 
 		_enable_map.clear();
 		_enable_list.clear();
@@ -90,7 +90,7 @@ namespace ov
 			return false;
 		}
 
-		std::lock_guard<std::mutex> lock(_mutex);
+		LockGuard<Mutex> lock(_mutex);
 
 		auto item = _enable_map.find(tag);
 
@@ -145,7 +145,7 @@ namespace ov
 			return false;
 		}
 
-		std::lock_guard<std::mutex> lock(_mutex);
+		LockGuard<Mutex> lock(_mutex);
 
 		_enable_map.clear();
 

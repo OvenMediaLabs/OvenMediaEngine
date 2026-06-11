@@ -32,7 +32,7 @@ std::optional<uint32_t> RtpNackGenerator::ExtendSeq(uint16_t seq) const
 
 void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
 
 	_received_total++;
@@ -137,7 +137,7 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 
 std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
 
 	DiscardStale(now);
@@ -192,7 +192,7 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	return GetRecommendedHoldMsInternal();
 }
 
@@ -229,7 +229,7 @@ uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	if (_pending.empty())
 	{
 		return std::nullopt;
@@ -239,7 +239,7 @@ std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
 
 void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 {
-	std::lock_guard<std::mutex> lock(_lock);
+	ov::LockGuard<ov::Mutex> lock(_lock);
 	if (_initialized == false)
 	{
 		return;

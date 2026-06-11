@@ -27,9 +27,9 @@ public:
     bool	UnprotectRtcp(const std::shared_ptr<ov::Data> &data);
 
 private:
-	std::mutex		_session_lock;
-	srtp_ctx_t_* 	_session;
-	
-	uint32_t 		_rtp_auth_tag_len;
-    uint32_t 		_rtcp_auth_tag_len;
+	ov::Mutex		_session_lock;
+	srtp_ctx_t_* 	_session OV_GUARDED_BY(_session_lock);
+
+	uint32_t 		_rtp_auth_tag_len OV_GUARDED_BY(_session_lock);
+    uint32_t 		_rtcp_auth_tag_len OV_GUARDED_BY(_session_lock);
 };

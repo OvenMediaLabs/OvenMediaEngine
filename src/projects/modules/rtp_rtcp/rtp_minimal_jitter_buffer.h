@@ -3,7 +3,6 @@
 #include "base/ovlibrary/ovlibrary.h"
 #include "rtp_packet.h"
 #include <unordered_map>
-#include <mutex>
 
 #define DEFAULT_AUDIO_MAX_BUFFERING_TIME_MS	200
 
@@ -16,7 +15,7 @@ public:
 	std::shared_ptr<RtpPacket> PopAvailablePacket();
 	
 private:
-	uint16_t _next_sequence_number = 0;
+	uint16_t _next_sequence_number OV_GUARDED_BY(_lock) = 0;
 	uint32_t _max_buffering_time_ms = DEFAULT_AUDIO_MAX_BUFFERING_TIME_MS;
 
 	struct RtpPacketBox
@@ -33,7 +32,7 @@ private:
 
 	// sequence number : RtpFrameInfo
 	// it should be ordered, so use std::map
-	std::map<uint16_t, std::shared_ptr<RtpPacketBox>> _rtp_packets;
+	std::map<uint16_t, std::shared_ptr<RtpPacketBox>> _rtp_packets OV_GUARDED_BY(_lock);
 
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

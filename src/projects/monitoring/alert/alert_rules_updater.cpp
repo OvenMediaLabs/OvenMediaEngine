@@ -44,7 +44,7 @@ namespace mon::alrt
 	{
 		if (_is_dynamic_update)
 		{
-			std::shared_lock lock(_dynamic_rules_mutex);
+			ov::SharedLockGuard lock(_dynamic_rules_mutex);
 
 			return _rules;
 		}
@@ -134,7 +134,7 @@ namespace mon::alrt
 			rules->FromDataSource(item_name.GetName(data_source.GetType()), item_name, data_source);
 
 			{
-				std::lock_guard lock_guard(_dynamic_rules_mutex);
+				ov::LockGuard lock_guard(_dynamic_rules_mutex);
 				_rules = rules;
 			}
 

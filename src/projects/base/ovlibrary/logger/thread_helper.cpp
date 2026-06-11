@@ -11,6 +11,7 @@
 #include <spdlog/details/os.h>
 
 #include "../assert.h"
+#include "../tsa/mutex.h"
 
 namespace ov::logger
 {
@@ -21,13 +22,13 @@ namespace ov::logger
 		public:
 			void AppendThreadInfo(size_t thread_id, pthread_t pthread_id)
 			{
-				std::lock_guard lock(_thread_id_map_mutex);
+				LockGuard lock(_thread_id_map_mutex);
 				(*_thread_id_map)[thread_id] = pthread_id;
 			}
 
 			void RemoveThreadInfo(size_t thread_id)
 			{
-				std::lock_guard lock(_thread_id_map_mutex);
+				LockGuard lock(_thread_id_map_mutex);
 
 #if DEBUG
 				if (_thread_id_map->find(thread_id) == _thread_id_map->end())
@@ -41,7 +42,7 @@ namespace ov::logger
 
 			pthread_t GetPthreadId(size_t thread_id)
 			{
-				std::shared_lock lock(_thread_id_map_mutex);
+				SharedLockGuard lock(_thread_id_map_mutex);
 
 				auto it = _thread_id_map->find(thread_id);
 
@@ -58,10 +59,10 @@ namespace ov::logger
 			}
 
 		private:
-			std::shared_mutex _thread_id_map_mutex;
+			SharedMutex _thread_id_map_mutex;
 			// key: `thread_id` - This is obtained by calling `thread_id()` of `spdlog`.
 			// value: `pthread_id`
-			std::shared_ptr<std::unordered_map<size_t, pthread_t>> _thread_id_map = std::make_shared<std::unordered_map<size_t, pthread_t>>();
+			std::shared_ptr<std::unordered_map<size_t, pthread_t>> _thread_id_map OV_GUARDED_BY(_thread_id_map_mutex) = std::make_shared<std::unordered_map<size_t, pthread_t>>();
 		};
 
 		static std::shared_ptr<Helper> &GetHelper()

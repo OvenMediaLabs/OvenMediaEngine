@@ -67,8 +67,8 @@ namespace http
 			}
 
 		protected:
-			std::mutex _http_servers_mutex;
-			std::map<ov::SocketAddress, std::shared_ptr<HttpServer>> _http_servers;
+			ov::Mutex _http_servers_mutex;
+			std::map<ov::SocketAddress, std::shared_ptr<HttpServer>> _http_servers OV_GUARDED_BY(_http_servers_mutex);
 
 			http::CorsManager _default_cors_manager;
 		};

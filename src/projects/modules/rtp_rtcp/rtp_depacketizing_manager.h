@@ -3,7 +3,6 @@
 #include "rtp_rtcp_defines.h"
 #include "rtp_packet.h"
 
-#include <mutex>
 
 class RtpDepacketizingManager
 {
@@ -26,14 +25,14 @@ public:
 
 protected:
 	// Internal accessor; returns the raw map, so call only while holding _lock
-	std::map<uint8_t, std::shared_ptr<ov::Data>>& GetDecodingParameterSets();
+	std::map<uint8_t, std::shared_ptr<ov::Data>>& GetDecodingParameterSets() OV_REQUIRES(_lock);
 
 	// Guards _parameter_sets (the only cross-call shared state). Locked in
 	// AddDecodingParameterSet (write) and GetDecodingParameterSetsToAnnexB (read);
 	// GetDecodingParameterSets runs under the latter's lock
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 
 private:
-	std::map<uint8_t, std::shared_ptr<ov::Data>> _parameter_sets;
+	std::map<uint8_t, std::shared_ptr<ov::Data>> _parameter_sets OV_GUARDED_BY(_lock);
 
 };

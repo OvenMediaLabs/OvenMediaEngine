@@ -4,7 +4,6 @@
 #include "rtp_packet.h"
 #include "rtcp_info/sender_report.h"
 
-#include <mutex>
 
 #define RTP_SEQ_MOD	(1<<16)
 #define MAX_DROPOUT	3000
@@ -36,35 +35,35 @@ public:
 	bool UpdateStat(const std::shared_ptr<RtpPacket> &packet);
 
 private:
-	uint32_t	_media_ssrc = 0;
-	uint32_t	_receiver_ssrc = 0;		// random generated local ssrc, for ReceiverReport, FIR ... 
+	uint32_t	_media_ssrc OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_receiver_ssrc = 0;		// random generated local ssrc, for ReceiverReport, FIR ...
 	uint32_t	_clock_rate = 0;
 
 	// From SR
-	std::chrono::steady_clock::time_point _last_sr_received_time;
-	uint32_t	_last_sr_timestamp = 0;
+	std::chrono::steady_clock::time_point _last_sr_received_time OV_GUARDED_BY(_lock);
+	uint32_t	_last_sr_timestamp OV_GUARDED_BY(_lock) = 0;
 
 	// For Receiver Report
-	bool		_first = true;
-	
+	bool		_first OV_GUARDED_BY(_lock) = true;
+
 	// https://tools.ietf.org/html/rfc3550#page-75
-	uint16_t	_highest_seq = 0;
-	uint32_t	_cycles = 0;
-	uint32_t	_init_seq = 0;
-	uint32_t	_received_packets = 0;
-	uint32_t	_expected_packets_prior = 0;
-	uint32_t	_received_packets_prior = 0;
-	uint32_t	_interarrival_jitter = 0;
+	uint16_t	_highest_seq OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_cycles OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_init_seq OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_received_packets OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_expected_packets_prior OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_received_packets_prior OV_GUARDED_BY(_lock) = 0;
+	uint32_t	_interarrival_jitter OV_GUARDED_BY(_lock) = 0;
 
-	uint32_t 	_last_rtp_timestamp = 0;
-	std::chrono::steady_clock::time_point _last_rtp_received_time;
+	uint32_t 	_last_rtp_timestamp OV_GUARDED_BY(_lock) = 0;
+	std::chrono::steady_clock::time_point _last_rtp_received_time OV_GUARDED_BY(_lock);
 
-	uint32_t	_received_bytes = 0;
+	uint32_t	_received_bytes OV_GUARDED_BY(_lock) = 0;
 
-	uint64_t	_fir_request_count = 0;
+	uint64_t	_fir_request_count OV_GUARDED_BY(_lock) = 0;
 
-	ov::StopWatch	_report_block_timer;
+	ov::StopWatch	_report_block_timer OV_GUARDED_BY(_lock);
 
 	// Locked at the public methods; InitSeq/UpdateSeq/UpdateStat run under it
-	mutable std::mutex _lock;
+	mutable ov::Mutex _lock;
 };

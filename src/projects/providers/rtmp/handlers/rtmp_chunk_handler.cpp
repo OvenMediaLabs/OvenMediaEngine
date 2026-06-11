@@ -608,13 +608,13 @@ namespace pvd::rtmp
 
 	info::NamePath RtmpChunkHandler::GetNamePath() const
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		return _name_path;
 	}
 
 	void RtmpChunkHandler::UpdateNamePath(const info::NamePath &stream_name_path)
 	{
-		std::lock_guard lock_guard(_name_path_mutex);
+		ov::LockGuard lock_guard(_name_path_mutex);
 		_name_path = stream_name_path;
 	}
 

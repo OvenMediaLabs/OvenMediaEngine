@@ -145,7 +145,7 @@ private:
 	// Make Self-Signed Certificate
 	X509 *MakeCertificate(EVP_PKEY *pkey);
 	// Make Digest
-	bool ComputeDigest(const ov::String &algorithm);
+	bool ComputeDigest(const ov::String &algorithm) OV_REQUIRES(_digest_mutex);
 
 	bool GetDigestEVP(const ov::String &algorithm, const EVP_MD **mdp);
 
@@ -159,7 +159,7 @@ private:
 	ov::RaiiPtr<STACK_OF(X509)> _chain_certificate{nullptr, X509StackFree};
 	ov::String _chain_certificate_filename;
 
-	ov::Data _digest;
-	ov::String _digest_algorithm;
-	std::mutex _digest_mutex;
+	ov::Data _digest OV_GUARDED_BY(_digest_mutex);
+	ov::String _digest_algorithm OV_GUARDED_BY(_digest_mutex);
+	ov::Mutex _digest_mutex;
 };

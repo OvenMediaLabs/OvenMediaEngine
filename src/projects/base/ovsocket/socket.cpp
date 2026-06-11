@@ -172,7 +172,7 @@ namespace ov
 		{
 			auto state = _state.load();
 
-			std::lock_guard lock_guard(_dispatch_queue_lock);
+			LockGuard lock_guard(_dispatch_queue_lock);
 			if (CloseInternal(state))
 			{
 				SetState(SocketState::Closed);
@@ -237,7 +237,7 @@ namespace ov
 	bool Socket::AppendCommand(DispatchCommand command, bool dispatch_immediately)
 	{
 		SOCKET_PROFILER_INIT();
-		std::lock_guard lock_guard(_dispatch_queue_lock);
+		LockGuard lock_guard(_dispatch_queue_lock);
 		SOCKET_PROFILER_AFTER_LOCK();
 
 		SOCKET_PROFILER_POST_HANDLER([&](int64_t lock_elapsed, int64_t total_elapsed) {
@@ -271,7 +271,7 @@ namespace ov
 	bool Socket::AddToWorker(bool need_to_wait_first_epoll_event)
 	{
 		{
-			std::lock_guard lock_guard(_worker_mutex);
+			LockGuard lock_guard(_worker_mutex);
 
 			if (_added_to_worker)
 			{
@@ -310,7 +310,7 @@ namespace ov
 
 	bool Socket::DeleteFromWorker()
 	{
-		std::lock_guard lock_guard(_worker_mutex);
+		LockGuard lock_guard(_worker_mutex);
 
 		if (_added_to_worker)
 		{
@@ -1002,7 +1002,7 @@ namespace ov
 		{
 			SOCKET_PROFILER_AFTER_LOCK();
 
-			std::lock_guard lock_guard(_dispatch_queue_lock);
+			LockGuard lock_guard(_dispatch_queue_lock);
 
 			[[maybe_unused]] auto count = _dispatch_queue.size();
 			SOCKET_PROFILER_POST_HANDLER([&](int64_t lock_elapsed, int64_t total_elapsed) {
@@ -1082,7 +1082,7 @@ namespace ov
 			case BlockingMode::Blocking:
 #if DEBUG
 			{
-				std::lock_guard lock_guard(_dispatch_queue_lock);
+				LockGuard lock_guard(_dispatch_queue_lock);
 				[[maybe_unused]] auto count = _dispatch_queue.size();
 				OV_ASSERT2(count == 0);
 			}
@@ -1091,7 +1091,7 @@ namespace ov
 
 			case BlockingMode::NonBlocking: {
 				// Due to the connection callback point, the DispatchEventsInternal() specifically performs mutex.lock inside.
-				// std::lock_guard lock_guard(_dispatch_queue_lock);
+				// LockGuard lock_guard(_dispatch_queue_lock);
 				auto result = DispatchEventsInternal();
 
 				CallCloseCallbackIfNeeded();
@@ -2011,7 +2011,7 @@ namespace ov
 
 				// Close regardless of result
 				{
-					std::lock_guard lock_guard(_dispatch_queue_lock);
+					LockGuard lock_guard(_dispatch_queue_lock);
 
 					if (CloseInternal(new_state))
 					{
@@ -2028,7 +2028,7 @@ namespace ov
 
 			case BlockingMode::NonBlocking: {
 				SOCKET_PROFILER_INIT();
-				std::lock_guard lock_guard(_dispatch_queue_lock);
+				LockGuard lock_guard(_dispatch_queue_lock);
 				SOCKET_PROFILER_AFTER_LOCK();
 
 				SOCKET_PROFILER_POST_HANDLER([&](int64_t lock_elapsed, int64_t total_elapsed) {
@@ -2076,7 +2076,7 @@ namespace ov
 		bool result = false;
 
 		{
-			std::lock_guard lock_guard(_dispatch_queue_lock);
+			LockGuard lock_guard(_dispatch_queue_lock);
 
 			result = CloseInternal(_state);
 		}
@@ -2091,7 +2091,7 @@ namespace ov
 		bool result = false;
 
 		{
-			std::lock_guard lock_guard(_dispatch_queue_lock);
+			LockGuard lock_guard(_dispatch_queue_lock);
 
 			result = CloseInternal(new_state);
 

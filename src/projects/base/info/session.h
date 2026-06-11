@@ -8,6 +8,7 @@
 #include "./stream.h"
 #include "base/common_types.h"
 #include "base/ovlibrary/enable_shared_from_this.h"
+#include "base/ovlibrary/tsa/mutex.h"
 
 typedef uint32_t session_id_t;
 
@@ -62,8 +63,8 @@ namespace info
 		void SetIds(const info::Stream &stream);
 
 	private:
-		mutable std::mutex _name_path_mutex;
-		NamePath _name_path;
+		mutable ov::Mutex _name_path_mutex;
+		NamePath _name_path OV_GUARDED_BY(_name_path_mutex);
 
 		session_id_t _id;
 		std::optional<ov::String> _name;

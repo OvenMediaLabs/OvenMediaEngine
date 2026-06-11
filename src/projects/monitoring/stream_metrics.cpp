@@ -36,14 +36,14 @@ namespace mon
 
 	void StreamMetrics::LinkOutputStreamMetrics(const std::shared_ptr<StreamMetrics> &stream)
 	{
-		std::scoped_lock lock(_output_stream_metrics_mutex);
+		ov::ScopedLock lock(_output_stream_metrics_mutex);
 
 		_output_stream_metrics.push_back(stream);
 	}
 
 	std::vector<std::shared_ptr<StreamMetrics>> StreamMetrics::GetLinkedOutputStreamMetrics() const
 	{
-		std::shared_lock lock(_output_stream_metrics_mutex);
+		ov::SharedLockGuard lock(_output_stream_metrics_mutex);
 
 		return _output_stream_metrics;
 	}
@@ -114,7 +114,7 @@ namespace mon
 			return;
 		}
 
-		std::lock_guard lock(_module_usage_count_map_mutex);
+		ov::LockGuard lock(_module_usage_count_map_mutex);
 
 		auto it = _module_usage_count_map.find(media_track->GetId());
 
@@ -147,7 +147,7 @@ namespace mon
 			return;
 		}
 
-		std::lock_guard lock(_module_usage_count_map_mutex);
+		ov::LockGuard lock(_module_usage_count_map_mutex);
 
 		auto it = _module_usage_count_map.find(media_track->GetId());
 

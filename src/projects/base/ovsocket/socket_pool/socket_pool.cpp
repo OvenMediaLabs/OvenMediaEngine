@@ -25,7 +25,7 @@ namespace ov
 	SocketPool::~SocketPool()
 	{
 		// Verify that the epoll is closed normally
-		std::lock_guard lock_guard(_worker_list_mutex);
+		LockGuard lock_guard(_worker_list_mutex);
 
 #if DEBUG
 		for (auto &worker : _worker_list)
@@ -58,7 +58,7 @@ namespace ov
 					decltype(_worker_list) release_worker_list;
 
 					{
-						std::lock_guard lock_guard(_worker_list_mutex);
+						LockGuard lock_guard(_worker_list_mutex);
 
 						for (auto iterator = _worker_list.begin(); iterator != _worker_list.end();)
 						{
@@ -125,7 +125,7 @@ namespace ov
 			if (succeeded)
 			{
 				{
-					std::lock_guard lock_guard(_worker_list_mutex);
+					LockGuard lock_guard(_worker_list_mutex);
 					_worker_list.insert(
 						_worker_list.end(),
 						std::make_move_iterator(worker_list.begin()),
@@ -164,7 +164,7 @@ namespace ov
 		std::vector<std::shared_ptr<SocketPoolWorker>> worker_list;
 
 		{
-			std::lock_guard lock_guard(_worker_list_mutex);
+			LockGuard lock_guard(_worker_list_mutex);
 			worker_list = std::move(_worker_list);
 		}
 
@@ -175,7 +175,7 @@ namespace ov
 	{
 		String description;
 
-		std::lock_guard lock_guard(_worker_list_mutex);
+		LockGuard lock_guard(_worker_list_mutex);
 
 		description.AppendFormat(
 			"<SocketPool: %p, workers: %zu",

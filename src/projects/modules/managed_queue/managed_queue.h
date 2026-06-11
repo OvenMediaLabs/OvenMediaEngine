@@ -11,10 +11,8 @@
 
 #include <monitoring/monitoring.h>
 
-#include <condition_variable>
 #include <optional>
 #include <queue>
-#include <shared_mutex>
 
 #include "base/info/managed_queue.h"
 #include "base/ovlibrary/ovlibrary.h"
@@ -118,7 +116,7 @@ namespace ov
 
 		std::optional<T> Front(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop)
 			{
@@ -129,7 +127,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (((_size == 0) == false) || _stop);
 				});
 
@@ -145,14 +143,14 @@ namespace ov
 		// How long the first message has been buffered
 		int32_t GetBufferedTimeMs()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			return GetBufferedTimeMsInternal();
 		}
 
 		std::optional<T> Back(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop)
 			{
@@ -163,7 +161,7 @@ namespace ov
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (((_size == 0) == false) || _stop);
 				});
 
@@ -178,7 +176,7 @@ namespace ov
 
 		std::optional<T> Dequeue(int timeout = Infinite)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			if (_stop)
 			{
@@ -243,7 +241,7 @@ namespace ov
 					}
 				}
 
-				_condition.wait_until(unique_lock, expire);
+				_condition.WaitUntil(unique_lock, expire);
 
 				// Check the hard deadline after waking.
 				if (timeout != Infinite && std::chrono::steady_clock::now() >= deadline)
@@ -280,7 +278,7 @@ namespace ov
 
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
-				_condition.notify_all();
+				_condition.NotifyAll();
 			}
 
 			return value;
@@ -288,7 +286,7 @@ namespace ov
 
 		bool IsEmpty() const
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			return (_size == 0);
 		}
@@ -303,7 +301,7 @@ namespace ov
 		// Cleared all items in the queue
 		void Clear()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			while (_front_node != nullptr)
 			{
@@ -323,20 +321,20 @@ namespace ov
 
 		size_t Size() const
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			return _size;
 		}
 
 		void Stop()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_stop = true;
 
 			ClearMetrics();
 
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 		// Injects a one-shot wakeup so the consumer can re-evaluate its state.
@@ -350,11 +348,11 @@ namespace ov
 		// notify_all() keeps the wakeup reliable when Front()/Back() waiters coexist.
 		void InjectWakeup()
 		{
-			auto lock_guard = std::lock_guard(_mutex);
+			LockGuard lock_guard(_mutex);
 
 			_pending_wakeup = true;
 
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
 		bool IsStopped() const
@@ -375,7 +373,7 @@ namespace ov
 		// Buffer keeps items for a certain amount of time
 		void SetBufferingDelay(int delay_ms)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 			if(delay_ms < 0)
 			{
 				logw(LOG_TAG, "[%s] Invalid buffering delay value: %d. Setting to 0.", GetInfoString().CStr(), delay_ms);
@@ -387,7 +385,7 @@ namespace ov
 
 		ov::String GetInfoString()
 		{
-			auto shared_lock = std::shared_lock(_name_mutex);
+			SharedLockGuard shared_lock(_name_mutex);
 
 			ov::String urn_str = (_urn != nullptr) ? _urn->ToString() : ov::String("NoUrn");
 
@@ -407,7 +405,7 @@ namespace ov
 
 	private:
 
-		int32_t GetBufferedTimeMsInternal()
+		int32_t GetBufferedTimeMsInternal() OV_REQUIRES(_mutex)
 		{
 			if (_front_node == nullptr)
 			{
@@ -435,7 +433,7 @@ namespace ov
 
 		void EnqueueInternal(ManagedQueueNode* node, int timeout, EnqueuePos push_method)
 		{
-			auto unique_lock = std::unique_lock(_mutex);
+			LockGuard unique_lock(_mutex);
 
 			// Update statistics of input message count
 			_input_message_count++;
@@ -444,7 +442,7 @@ namespace ov
 			if(_exceed_threshold_and_wait_enabled == true)
 			{
 				std::chrono::steady_clock::time_point expire = (timeout == Infinite) ? std::chrono::steady_clock::time_point::max() : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
-				auto result = _condition.wait_until(unique_lock, expire, [this]() -> bool {
+				auto result = _condition.WaitUntil(unique_lock, expire, [this]() OV_REQUIRES(_mutex) -> bool {
 					return (!IsThresholdExceeded() || _stop);
 				});
 				if (_stop)
@@ -475,10 +473,10 @@ namespace ov
 			// Always notify: when buffering_delay == 0 this is the normal signal;
 			// when buffering_delay != 0 this lets the Dequeue thread recalculate
 			// its timed wait based on the (possibly new) front node.
-			_condition.notify_all();
+			_condition.NotifyAll();
 		}
 
-		void PushBack(ManagedQueueNode* node)
+		void PushBack(ManagedQueueNode* node) OV_REQUIRES(_mutex)
 		{
 			if (_size == 0)
 			{
@@ -494,7 +492,7 @@ namespace ov
 			_size++;
 		}
 
-		void PushFront(ManagedQueueNode* node)
+		void PushFront(ManagedQueueNode* node) OV_REQUIRES(_mutex)
 		{
 			if (_size == 0)
 			{
@@ -512,7 +510,7 @@ namespace ov
 
 	protected:
 		// Update statistical metrics and send data to monitoring module.
-		void UpdateMetrics()
+		void UpdateMetrics() OV_REQUIRES(_mutex)
 		{
 			// Update the peak statistics
 			if (_peak < _size)
@@ -548,7 +546,7 @@ namespace ov
 					{
 						_last_logging_time = 0;
 
-						auto shared_lock = std::shared_lock(_name_mutex);
+						SharedLockGuard shared_lock(_name_mutex);
 						logw(LOG_TAG, "Exceeded. %s", GetInfoString().CStr());
 
 						_last_logged_peak = _peak;
@@ -566,7 +564,7 @@ namespace ov
 			}
 		}
 
-		void ClearMetrics()
+		void ClearMetrics() OV_REQUIRES(_mutex)
 		{
 			_peak = 0;
 			_input_message_per_second = 0;
@@ -589,14 +587,14 @@ namespace ov
 	private:
 		// Check if the queue has exceeded the threshold.
 		// _threshold == 0 means no threshold.
-		bool IsThresholdExceeded() const
+		bool IsThresholdExceeded() const OV_REQUIRES(_mutex)
 		{
 			if (_threshold == 0) return false;
 			return _size >= _threshold;
 		}
 
 		// Compute the threshold
-		void UpdateThreshold()
+		void UpdateThreshold() OV_REQUIRES(_mutex)
 		{
 			// Compute the delay buffer count
 			size_t delay_buffer_count = 0;
@@ -627,30 +625,30 @@ namespace ov
 			}
 		}
 
-		StopWatch _timer;
+		StopWatch _timer OV_GUARDED_BY(_mutex);
 
 		int _stats_metric_interval = 0;
 
 		int _log_interval = 0;
-		int64_t _last_logging_time = 0;
+		int64_t _last_logging_time OV_GUARDED_BY(_mutex) = 0;
 
 		// Linked list of the queue
-		ManagedQueueNode* _front_node;
-		ManagedQueueNode* _rear_node;
+		ManagedQueueNode* _front_node OV_GUARDED_BY(_mutex);
+		ManagedQueueNode* _rear_node OV_GUARDED_BY(_mutex);
 
 		// Mutex and condition variable for the queue
-		mutable std::mutex _mutex;
-		std::condition_variable _condition;
+		mutable Mutex _mutex;
+		ConditionVariable _condition;
 
 		// Stop flag
 		std::atomic<bool> _stop;
 
 		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
 		// wakeup. Unlike _stop, the queue stays usable.
-		bool _pending_wakeup = false;
+		bool _pending_wakeup OV_GUARDED_BY(_mutex) = false;
 
 		// Use to print logs when the peak value of the queue is increased.
-		size_t _last_logged_peak = 0;
+		size_t _last_logged_peak OV_GUARDED_BY(_mutex) = 0;
 
 		// Prevent exceed threshold. If true, the queue will not exceed the threshold
 		// Wait until the queue falls below the threshold

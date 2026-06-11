@@ -75,9 +75,9 @@ private:
 
 	std::shared_ptr<WhipObserver> _observer;
 
-	std::recursive_mutex _http_server_list_mutex;
-	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list;
-	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list;
+	ov::RecursiveMutex _http_server_list_mutex;
+	std::vector<std::shared_ptr<http::svr::HttpServer>> _http_server_list OV_GUARDED_BY(_http_server_list_mutex);
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> _https_server_list OV_GUARDED_BY(_http_server_list_mutex);
 
 	// Cached certificates that must be applied to every HTTPS server in `_https_server_list`.
 	// `InsertCertificate()` can be called before `Start()` constructs the HTTPS servers
@@ -86,7 +86,7 @@ private:
 	// Protected by `_http_server_list_mutex`.
 	//
 	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
-	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map;
+	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map OV_GUARDED_BY(_http_server_list_mutex);
 
 	std::set<ov::String> _link_headers;
 	bool _tcp_force = false;

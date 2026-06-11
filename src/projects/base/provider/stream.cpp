@@ -92,7 +92,7 @@ namespace pvd
 	// Consider the reconnection time and add it to the base timestamp
 	void Stream::UpdateReconnectTimeToBasetime()
 	{
-		std::scoped_lock lock(_source_stream_timestamp_mutex);
+		ov::ScopedLock lock(_source_stream_timestamp_mutex);
 
 		auto last_pkt_received_time_us = _last_pkt_received_time_us.load();
 		if (last_pkt_received_time_us >= 0)
@@ -119,7 +119,7 @@ namespace pvd
 
 	int64_t Stream::GetCurrentTimestampMs()
 	{
-		std::lock_guard<std::mutex> lock(_timestamp_mutex);
+		ov::LockGuard<ov::Mutex> lock(_timestamp_mutex);
 
 		// Not yet started
 		if (_last_media_timestamp_ms == -1)
@@ -368,7 +368,7 @@ namespace pvd
 
 		if (master_clock_track != nullptr && packet->GetTrackId() == master_clock_track->GetId())
 		{
-			std::lock_guard<std::mutex> lock(_timestamp_mutex);
+			ov::LockGuard<ov::Mutex> lock(_timestamp_mutex);
 			_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
 			_elapsed_from_last_media_timestamp.Restart();
 		}
@@ -390,7 +390,7 @@ namespace pvd
 
 	void Stream::ResetSourceStreamTimestamp()
 	{
-		std::scoped_lock lock(_source_stream_timestamp_mutex);
+		ov::ScopedLock lock(_source_stream_timestamp_mutex);
 
 		// Set the last timestamp of the highest value of all tracks
 		// In this algorithm, the timestamp of A or V jumps for synchronization.
@@ -530,7 +530,7 @@ namespace pvd
 		const auto us_scale					 = AV_TIME_BASE * num_tb;
 		const auto &track_scale				 = den_tb;	// An alias of `den_tb` for clarity
 
-		std::scoped_lock lock(_source_stream_timestamp_mutex);
+		ov::ScopedLock lock(_source_stream_timestamp_mutex);
 
 		// 1. Get the start timestamp and base timebase of this stream.
 		if (_start_timestamp_us == -1LL)
@@ -657,7 +657,7 @@ namespace pvd
 
 		int64_t base_timestamp = 0;
 		{
-			std::scoped_lock lock(_source_stream_timestamp_mutex);
+			ov::ScopedLock lock(_source_stream_timestamp_mutex);
 			if (_base_timestamp_us != -1)
 			{
 				base_timestamp = _base_timestamp_us;
@@ -672,7 +672,7 @@ namespace pvd
 	// This is a method of generating a PTS with an increment value (delta) when it cannot be used as a PTS because the start value of the timestamp is random like the RTP timestamp.
 	int64_t Stream::AdjustTimestampByDelta(uint32_t track_id, int64_t timestamp, int64_t max_timestamp)
 	{
-		std::scoped_lock lock(_source_stream_timestamp_mutex);
+		ov::ScopedLock lock(_source_stream_timestamp_mutex);
 
 		int64_t curr_timestamp;
 

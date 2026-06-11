@@ -206,7 +206,7 @@ namespace http
 				return false;
 			}
 
-			std::lock_guard<decltype(_response_mutex)> lock(_response_mutex);
+			ov::LockGuard<decltype(_response_mutex)> lock(_response_mutex);
 
 			auto cloned_data = data->Clone();
 
@@ -303,7 +303,7 @@ namespace http
 
 		int32_t HttpResponse::Response()
 		{
-			std::lock_guard<decltype(_response_mutex)> lock(_response_mutex);
+			ov::LockGuard<decltype(_response_mutex)> lock(_response_mutex);
 			_response_time = std::chrono::system_clock::now();
 
 			uint32_t sent_size = 0;
@@ -402,7 +402,7 @@ namespace http
 			}
 			else
 			{
-				std::lock_guard<std::mutex> lock(_tls_data->GetSequentialSendMutex());
+				ov::LockGuard<ov::Mutex> lock(_tls_data->GetSequentialSendMutex());
 
 				if (_tls_data->Encrypt(data, &send_data) == false)
 				{

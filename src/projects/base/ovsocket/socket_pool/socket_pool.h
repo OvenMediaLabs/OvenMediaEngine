@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <base/ovlibrary/tsa/mutex.h>
 #include <stdexcept>
 
 #include "socket_pool_worker.h"
@@ -84,7 +85,7 @@ namespace ov
 
 		int GetWorkerCount() const
 		{
-			std::lock_guard lock_guard(_worker_list_mutex);
+			LockGuard lock_guard(_worker_list_mutex);
 			return static_cast<int>(_worker_list.size());
 		}
 
@@ -126,7 +127,7 @@ namespace ov
 		// This method will increase the number of sockets for that worker by 1
 		std::shared_ptr<SocketPoolWorker> GetLeastBusyWorker()
 		{
-			std::lock_guard lock_guard(_worker_list_mutex);
+			LockGuard lock_guard(_worker_list_mutex);
 
 			if (_thread_per_socket)
 			{
@@ -178,8 +179,8 @@ namespace ov
 
 		bool _initialized		= false;
 
-		mutable std::mutex _worker_list_mutex;
-		std::vector<std::shared_ptr<SocketPoolWorker>> _worker_list;
+		mutable Mutex _worker_list_mutex;
+		std::vector<std::shared_ptr<SocketPoolWorker>> _worker_list OV_GUARDED_BY(_worker_list_mutex);
 
 		// Worker releaser
 		ov::DelayQueue _timer{"SocketPoolWorkerReleaser"};

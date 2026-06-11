@@ -9,6 +9,7 @@
 #pragma once
 
 #include "base/common_types.h"
+#include "base/ovlibrary/tsa/mutex.h"
 
 class SubtitleTrack
 {
@@ -49,7 +50,7 @@ public:
 	void SetSttEnabled(bool enabled);
 	bool IsSttEnabled() const;
 
-	mutable std::shared_mutex _subtitle_mutex;
+	mutable ov::SharedMutex _subtitle_mutex;
 
 	// For subtitle 
 	std::atomic<bool> _auto_select = false;
@@ -58,11 +59,11 @@ public:
 
 	// AI Modules
 	// e.g. Speech to Text
-	ov::String _engine = "whisper"; // Whisper
-	ov::String _model = "small"; // tiny, base, small, medium, large
-	ov::String _source_language = "auto"; // input language
+	ov::String _engine OV_GUARDED_BY(_subtitle_mutex) = "whisper"; // Whisper
+	ov::String _model OV_GUARDED_BY(_subtitle_mutex) = "small"; // tiny, base, small, medium, large
+	ov::String _source_language OV_GUARDED_BY(_subtitle_mutex) = "auto"; // input language
 	std::atomic<bool> _translation = false; // whisper only supports english translation
-	ov::String _output_track_label = ""; // input audio track label for speech to text
+	ov::String _output_track_label OV_GUARDED_BY(_subtitle_mutex) = ""; // input audio track label for speech to text
 	std::atomic<int32_t> _step_ms = 2000;
 	std::atomic<int32_t> _length_ms = 10000;
 	std::atomic<int32_t> _keep_ms = 1500;

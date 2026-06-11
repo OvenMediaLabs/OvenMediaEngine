@@ -27,7 +27,7 @@ std::shared_ptr<PhysicalPort> PhysicalPortManager::CreatePort(const char *name,
 															  int recv_buffer_size,
 															  const PhysicalPort::OnSocketCreated on_socket_created)
 {
-	auto lock_guard = std::lock_guard(_port_list_mutex);
+	ov::LockGuard lock_guard(_port_list_mutex);
 
 	auto key = std::make_pair(type, address);
 	auto item = _port_list.find(key);
@@ -77,7 +77,7 @@ bool PhysicalPortManager::DeletePort(std::shared_ptr<PhysicalPort> &port)
 		return false;
 	}
 
-	auto lock_guard = std::lock_guard(_port_list_mutex);
+	ov::LockGuard lock_guard(_port_list_mutex);
 
 	auto key = std::make_pair(port->GetType(), port->GetAddress());
 	auto item = _port_list.find(key);

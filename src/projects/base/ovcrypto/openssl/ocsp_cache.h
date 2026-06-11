@@ -8,8 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <base/ovlibrary/tsa/mutex.h>
 #include <map>
-#include <mutex>
 
 #include "./ocsp_context.h"
 
@@ -31,8 +31,8 @@ namespace ov
 		};
 
 	private:
-		std::mutex _cache_mutex;
+		Mutex _cache_mutex;
 		// We should call X509_free when we erase an item from the map
-		std::map<X509 *, std::shared_ptr<OcspContext>, Comparator> _cache_map;
+		std::map<X509 *, std::shared_ptr<OcspContext>, Comparator> _cache_map OV_GUARDED_BY(_cache_mutex);
 	};
 }  // namespace ov

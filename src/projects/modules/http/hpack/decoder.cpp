@@ -18,7 +18,7 @@ namespace http
 	{
 		bool Decoder::Decode(const std::shared_ptr<const ov::Data> &data, std::vector<HeaderField> &header_fields)
 		{
-			std::lock_guard<std::mutex> lock(_decoder_lock);
+			ov::LockGuard<ov::Mutex> lock(_decoder_lock);
 			auto reader = std::make_shared<BitReader>(data->GetDataAs<uint8_t>(), data->GetLength());
 
 			while (reader->BytesRemained() > 0)

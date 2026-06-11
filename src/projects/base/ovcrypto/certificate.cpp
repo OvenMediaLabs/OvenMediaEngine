@@ -385,7 +385,8 @@ STACK_OF(X509) * Certificate::GetChainCertification() const
 
 ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 {
-	std::unique_lock<std::mutex> lock(_digest_mutex);
+	{
+		ov::LockGuard lock(_digest_mutex);
 	// Create digest if not created yet
 	if (_digest.GetLength() <= 0)
 	{
@@ -394,7 +395,7 @@ ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 			return "";
 		}
 	}
-	lock.unlock();
+	}
 
 	ov::String fingerprint = ov::ToHexStringWithDelimiter(&_digest, ':');
 	fingerprint.MakeUpper();

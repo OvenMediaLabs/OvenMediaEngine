@@ -42,7 +42,7 @@ namespace ov
 		void OnReadable() override;
 		void OnClosed() override;
 
-		bool CloseInternal(SocketState close_reason) override;
+		bool CloseInternal(SocketState close_reason) override OV_REQUIRES(_dispatch_queue_lock);
 
 		std::weak_ptr<ServerSocket> _server_socket;
 	};

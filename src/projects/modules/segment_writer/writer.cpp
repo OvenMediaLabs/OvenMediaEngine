@@ -371,7 +371,7 @@ bool Writer::AddTrack(const std::shared_ptr<const MediaTrack> &media_track)
 		return false;
 	}
 
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 
 	auto track = std::make_shared<Track>(_track_list.size(), RationalFromTimebase(media_track->GetTimeBase()), media_track);
 	_track_list.emplace_back(track);
@@ -400,7 +400,7 @@ bool Writer::Prepare(ov::String service_name)
 
 	// Prepare AVStreams
 	{
-		auto lock_guard = std::lock_guard(_track_mutex);
+		ov::LockGuard lock_guard(_track_mutex);
 		int index = 0;
 
 		for (auto &track : _track_list)
@@ -552,7 +552,7 @@ int Writer::DecideBufferSize() const
 bool Writer::ResetData(int track_id)
 {
 	{
-		auto lock_guard = std::lock_guard(_track_mutex);
+		ov::LockGuard lock_guard(_track_mutex);
 
 		if (_buffer_size == -1)
 		{
@@ -612,7 +612,7 @@ off_t Writer::GetCurrentOffset() const
 
 int64_t Writer::GetFirstPts(uint32_t track_id) const
 {
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 	auto track_item = _track_map.find(track_id);
 
 	if (track_item != _track_map.end())
@@ -626,7 +626,7 @@ int64_t Writer::GetFirstPts(uint32_t track_id) const
 
 int64_t Writer::GetFirstPts(cmn::MediaType type) const
 {
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 	for (auto &track_item : _track_list)
 	{
 		if (track_item->track->GetMediaType() == type)
@@ -640,7 +640,7 @@ int64_t Writer::GetFirstPts(cmn::MediaType type) const
 
 int64_t Writer::GetFirstPts() const
 {
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 	if (_track_list.size() > 0)
 	{
 		auto &track = _track_list[0];
@@ -652,7 +652,7 @@ int64_t Writer::GetFirstPts() const
 
 int64_t Writer::GetDuration(uint32_t track_id) const
 {
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 	auto track_item = _track_map.find(track_id);
 
 	if (track_item != _track_map.end())
@@ -665,7 +665,7 @@ int64_t Writer::GetDuration(uint32_t track_id) const
 
 int64_t Writer::GetDuration() const
 {
-	auto lock_guard = std::lock_guard(_track_mutex);
+	ov::LockGuard lock_guard(_track_mutex);
 	if (_track_list.size() > 0)
 	{
 		return _track_list[0]->duration;
@@ -681,7 +681,7 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet, const
 	std::shared_ptr<Writer::Track> track;
 
 	{
-		auto lock_guard = std::lock_guard(_track_mutex);
+		ov::LockGuard lock_guard(_track_mutex);
 		auto track_item = _track_map.find(packet->GetTrackId());
 
 		if (track_item == _track_map.end())
