@@ -208,9 +208,10 @@ std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObu(const s
 
 		if (obu.header.type == Av1ObuType::SequenceHeader)
 		{
+			// A sequence header with no payload is malformed; report it as absent.
 			if (obu.payload_size == 0)
 			{
-				return std::make_shared<ov::Data>();
+				return nullptr;
 			}
 			return std::make_shared<ov::Data>(base + obu.payload_offset, obu.payload_size);
 		}

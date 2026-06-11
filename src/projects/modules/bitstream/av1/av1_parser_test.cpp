@@ -853,3 +853,12 @@ TEST(Av1ParserExtractSequenceHeaderRaw, NullWhenAbsent)
 	auto data  = std::make_shared<ov::Data>(frame.data(), frame.size());
 	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObuRaw(data), nullptr);
 }
+
+// A sequence header OBU with a zero-length payload is malformed -> treated as absent (nullptr),
+// not a non-null empty buffer.
+TEST(Av1ParserExtractSequenceHeader, ReturnsNullForEmptySequenceHeader)
+{
+	auto seq  = MakeObu(Av1ObuType::SequenceHeader, {});
+	auto data = std::make_shared<ov::Data>(seq.data(), seq.size());
+	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObu(data), nullptr);
+}
