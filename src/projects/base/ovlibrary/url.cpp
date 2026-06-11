@@ -404,7 +404,6 @@ namespace ov
 		// DCL
 		if (_query_parsed.load(std::memory_order_relaxed))
 		{
-			// The query is parsed in another thread
 			return;
 		}
 

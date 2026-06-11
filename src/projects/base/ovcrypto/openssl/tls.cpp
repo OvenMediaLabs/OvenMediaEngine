@@ -95,7 +95,7 @@ namespace ov
 			{
 				logtc(
 					"Could not allocate BIO_METHOD '%s'. "
-					"TLS BIO creation is permanently  disabled for this process; "
+					"TLS BIO creation is permanently disabled for this process; "
 					"a restart is required to recover.",
 					OV_TLS_BIO_METHOD_NAME);
 				return nullptr;
