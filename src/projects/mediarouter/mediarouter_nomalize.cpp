@@ -1149,8 +1149,9 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 			auto new_config = std::make_shared<AV1DecoderConfigurationRecord>();
 			ApplyInBandSequenceHeaderToAv1Config(new_config, *summary);
 
-			// The depacketized stream is low-overhead, so the sequence header OBU is already
-			// size-delimited as configOBUs requires.
+			// configOBUs needs a size-delimited sequence header OBU (obu_has_size_field == 1).
+			// ExtractFirstSequenceHeaderObuRaw returns one when present, else nullptr (configOBUs
+			// then stays empty).
 			auto seq_obu = Av1Parser::ExtractFirstSequenceHeaderObuRaw(data);
 			if (seq_obu != nullptr)
 			{
