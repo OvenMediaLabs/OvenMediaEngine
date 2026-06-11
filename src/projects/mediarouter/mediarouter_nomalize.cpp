@@ -1141,11 +1141,21 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 
 			auto old_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
-			// Build a fresh av1C (default fields + the sequence-header values). Fresh rather than a
-			// copy of the old record, so a stale configOBUs/presentation-delay is not carried into
-			// fields that now describe a different sequence header.
+			// Build a fresh av1C from this sequence header: the SH-derived fixed fields, plus the
+			// sequence header itself captured into configOBUs. Building from the current SH (rather
+			// than copying the previous record) keeps the fixed fields and configOBUs consistent, and
+			// populating configOBUs both keeps the av1C self-contained and lets the prepend path below
+			// recover the SH for key frames that arrive without one in-band.
 			auto new_config = std::make_shared<AV1DecoderConfigurationRecord>();
 			ApplyInBandSequenceHeaderToAv1Config(new_config, *summary);
+
+			// The depacketized stream is low-overhead, so the sequence header OBU is already
+			// size-delimited as configOBUs requires.
+			auto seq_obu = Av1Parser::ExtractFirstSequenceHeaderObuRaw(data);
+			if (seq_obu != nullptr)
+			{
+				new_config->SetConfigObus(std::make_shared<ov::Data>(seq_obu->GetData(), seq_obu->GetLength()));
+			}
 
 			const auto resolution		  = media_track->GetResolution();
 			const bool resolution_changed = (resolution.width != width) || (resolution.height != height);
