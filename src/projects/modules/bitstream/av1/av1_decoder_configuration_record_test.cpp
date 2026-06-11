@@ -415,9 +415,10 @@ TEST(AV1DecoderConfigurationRecord, RoundTripSerialize)
 	//   seq_level_idx_0 = 4 (<=7 -> seq_tier_0 inferred to 0)
 	//   high_bitdepth = 0, twelve_bit = 0, monochrome = 0
 	//   chroma_sample_position = 0 (CSP_UNKNOWN)
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.2 also requires the embedded SH
-	// `initial_display_delay_present_for_op_0` / `_minus_1_for_op_0` to match the av1C fields, so
-	// use the full (non-reduced) SH builder that can carry initial_display_delay signaling.
+	// The av1C also carries `initial_presentation_delay` (1/5 here), which must round-trip through
+	// serialize/reparse below. It is NOT cross-checked against the Sequence Header's
+	// `initial_display_delay` (distinct fields, no match rule - see `ValidateConfigObus`); the full
+	// SH builder is used only so the embedded OBU is well-formed.
 	auto bytes = BuildAv1cHeader(0, 4, 0, 0, 0, 0, 1, 1, 0, true, 5);
 	const auto sh = BuildFullSeqHeaderPayloadWithInitialDisplayDelay(
 		/*seq_profile=*/0, /*seq_level_idx_0=*/4, /*seq_tier_0=*/0,
@@ -839,42 +840,6 @@ TEST(AV1DecoderConfigurationRecord, AcceptsZeroChromaSamplePositionMismatch)
 	EXPECT_TRUE(record.Parse(MakeData(bytes)));
 }
 
-TEST(AV1DecoderConfigurationRecord, AcceptsConfigObuInitialPresentationDelayMatch)
-{
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "initial_presentation_delay_minus_one, when present,
-	// all shall match." Positive case - av1C declares `present = 1`, `minus_one = 5`; the embedded
-	// Sequence Header carries the same per-op-0 values, so cross-check accepts.
-	auto bytes = BuildAv1cHeader(0, 4, 0, 0, 0, 0, 1, 1, 0, /*delay_present=*/true, /*delay_minus_one=*/5);
-	const auto sh = BuildFullSeqHeaderPayloadWithInitialDisplayDelay(
-		/*seq_profile=*/0, /*seq_level_idx_0=*/4, /*seq_tier_0=*/0,
-		/*initial_display_delay_present_for_op_0=*/1,
-		/*initial_display_delay_minus_1_for_op_0=*/5);
-	const auto obus = BuildObu(Av1ObuType::SequenceHeader, sh);
-	bytes.insert(bytes.end(), obus.begin(), obus.end());
-
-	AV1DecoderConfigurationRecord record;
-	ASSERT_TRUE(record.Parse(MakeData(bytes)));
-	EXPECT_EQ(record.InitialPresentationDelayPresent(), 1);
-	EXPECT_EQ(record.InitialPresentationDelayMinusOne(), 5);
-}
-
-TEST(AV1DecoderConfigurationRecord, RejectsConfigObuInitialPresentationDelayPresentMismatch)
-{
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.2: presence-flag mismatch must reject. av1C says
-	// `initial_presentation_delay_present = 1`, but the embedded SH carries
-	// `initial_display_delay_present_for_op_0 = 0` -> reject.
-	auto bytes = BuildAv1cHeader(0, 4, 0, 0, 0, 0, 1, 1, 0, /*delay_present=*/true, /*delay_minus_one=*/3);
-	const auto sh = BuildFullSeqHeaderPayloadWithInitialDisplayDelay(
-		/*seq_profile=*/0, /*seq_level_idx_0=*/4, /*seq_tier_0=*/0,
-		/*initial_display_delay_present_for_op_0=*/0,
-		/*initial_display_delay_minus_1_for_op_0=*/0);
-	const auto obus = BuildObu(Av1ObuType::SequenceHeader, sh);
-	bytes.insert(bytes.end(), obus.begin(), obus.end());
-
-	AV1DecoderConfigurationRecord record;
-	EXPECT_FALSE(record.Parse(MakeData(bytes)));
-}
-
 TEST(AV1DecoderConfigurationRecord, RejectsConfigObuWithoutSizeField)
 {
 	// AV1 ISOBMFF binding v1.2.0: every OBU inside `configOBUs` SHALL set `obu_has_size_field = 1`.
@@ -920,20 +885,4 @@ TEST(AV1DecoderConfigurationRecord, RejectsFixedHeaderReserved4BitsNonZero)
 	AV1DecoderConfigurationRecord record;
 	EXPECT_FALSE(record.Parse(MakeData(bytes)));
 	EXPECT_FALSE(record.IsValid());
-}
-
-TEST(AV1DecoderConfigurationRecord, RejectsConfigObuInitialPresentationDelayValueMismatch)
-{
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.2: when both sides set `present = 1`, the
-	// `_minus_one` values must match. av1C declares 5; SH declares 7 -> reject.
-	auto bytes = BuildAv1cHeader(0, 4, 0, 0, 0, 0, 1, 1, 0, /*delay_present=*/true, /*delay_minus_one=*/5);
-	const auto sh = BuildFullSeqHeaderPayloadWithInitialDisplayDelay(
-		/*seq_profile=*/0, /*seq_level_idx_0=*/4, /*seq_tier_0=*/0,
-		/*initial_display_delay_present_for_op_0=*/1,
-		/*initial_display_delay_minus_1_for_op_0=*/7);
-	const auto obus = BuildObu(Av1ObuType::SequenceHeader, sh);
-	bytes.insert(bytes.end(), obus.begin(), obus.end());
-
-	AV1DecoderConfigurationRecord record;
-	EXPECT_FALSE(record.Parse(MakeData(bytes)));
 }

@@ -49,6 +49,7 @@ namespace ffmpeg
 			OV_CASE_RETURN(AV_CODEC_ID_H264, cmn::MediaCodecId::H264);
 			OV_CASE_RETURN(AV_CODEC_ID_VP8, cmn::MediaCodecId::Vp8);
 			OV_CASE_RETURN(AV_CODEC_ID_VP9, cmn::MediaCodecId::Vp9);
+			OV_CASE_RETURN(AV_CODEC_ID_AV1, cmn::MediaCodecId::Av1);
 			OV_CASE_RETURN(AV_CODEC_ID_FLV1, cmn::MediaCodecId::Flv);
 			OV_CASE_RETURN(AV_CODEC_ID_AAC, cmn::MediaCodecId::Aac);
 			OV_CASE_RETURN(AV_CODEC_ID_MP2, cmn::MediaCodecId::Mp2);

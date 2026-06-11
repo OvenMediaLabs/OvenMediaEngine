@@ -47,6 +47,15 @@ public:
 	/// @return `ParsedObuHeader` (header + bytes consumed, 1 or 2) on success, `std::nullopt` on failure.
 	static std::optional<ParsedObuHeader> ParseObuHeader(const uint8_t *data, size_t size);
 
+	/// Read one OBU at `offset`: header (via `ParseObuHeader`), `obu_size` (via `DecodeLeb128`), and
+	/// the payload bounds / next-OBU offset. The single OBU-walk primitive reused by the scanners
+	/// below and by `AV1DecoderConfigurationRecord`. An OBU with `obu_has_size_field == 0` takes its
+	/// payload as the rest of the buffer (zero for a TemporalDelimiter); callers that require a size
+	/// field (e.g. `configOBUs`) check `out.header.has_size_field`.
+	///
+	/// @return `false` on a malformed header / `obu_size`, otherwise `true` with `out` populated.
+	static bool ReadObu(const uint8_t *data, size_t size, size_t offset, Av1ObuSpan &out);
+
 	/// Walk an AV1 OBU bytestream and return the payload of the first `OBU_SEQUENCE_HEADER`.
 	///
 	/// Accepts both the `configOBUs` payload of an `AV1CodecConfigurationBox` (per AV1 ISOBMFF binding)
@@ -57,6 +66,30 @@ public:
 	///
 	/// @return Payload bytes of the first sequence header OBU, or `nullptr` if absent or buffer is malformed.
 	static std::shared_ptr<const ov::Data> ExtractFirstSequenceHeaderObu(const std::shared_ptr<const ov::Data> &config_obus);
+
+	/// Return true if the OBU bytestream's coded frame is a `KEY_FRAME` (AV1 spec `frame_type`).
+	///
+	/// Uses the in-band sequence header (if present) for `reduced_still_picture_header`, then reads
+	/// `frame_type` from the first Frame / FrameHeader OBU. The presence of an `OBU_SEQUENCE_HEADER`
+	/// alone is NOT a valid key-frame test.
+	static bool IsKeyFrame(const uint8_t *data, size_t size);
+	static bool IsKeyFrame(const std::shared_ptr<const ov::Data> &data)
+	{
+		return (data != nullptr) && IsKeyFrame(data->GetDataAs<uint8_t>(), data->GetLength());
+	}
+
+	/// Return true if the OBU bytestream contains an `OBU_SEQUENCE_HEADER`.
+	static bool HasSequenceHeaderObu(const uint8_t *data, size_t size);
+	static bool HasSequenceHeaderObu(const std::shared_ptr<const ov::Data> &data)
+	{
+		return (data != nullptr) && HasSequenceHeaderObu(data->GetDataAs<uint8_t>(), data->GetLength());
+	}
+
+	/// Return the first `OBU_SEQUENCE_HEADER` as a complete, size-delimited OBU (header + `obu_size` +
+	/// payload) - suitable for `configOBUs` or for prepending to a key frame that lacks an in-band
+	/// sequence header. Returns `nullptr` if absent, or if the OBU is not size-delimited
+	/// (`obu_has_size_field == 0`), since the AV1 ISOBMFF binding requires `obu_has_size_field == 1`.
+	static std::shared_ptr<const ov::Data> ExtractFirstSequenceHeaderObuRaw(const std::shared_ptr<const ov::Data> &config_obus);
 
 	/// Parse the leading mandatory fields of a `sequence_header_obu()` payload per AV1 spec section 5.5.1.
 	///

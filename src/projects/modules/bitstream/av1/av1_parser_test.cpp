@@ -734,9 +734,9 @@ TEST(Av1ParserSequenceHeaderSummary, CapturesColorConfigFields)
 TEST(Av1ParserSequenceHeaderSummary, CapturesInitialDisplayDelayForOp0)
 {
 	// AV1 spec 5.5.1: when `initial_display_delay_present_flag == 1` and the per-op presence flag
-	// for `op_0` is 1, a 4-bit `initial_display_delay_minus_1[0]` is read. AV1 ISOBMFF binding
-	// v1.2.0 section 2.3.2 cross-checks these against the `av1C` fixed header, so the summary
-	// parser must record both values for `op_0`.
+	// for `op_0` is 1, a 4-bit `initial_display_delay_minus_1[0]` is read. The summary parser
+	// records both values for `op_0` (diagnostics only - this Sequence Header field is NOT
+	// cross-checked against the av1C `initial_presentation_delay`; they are distinct fields).
 	SeqHeaderBuilder b;
 	b.seq_profile							= 0;
 	b.initial_display_delay_present_flag	= true;
@@ -755,4 +755,118 @@ TEST(Av1ParserSequenceHeaderSummary, CapturesInitialDisplayDelayForOp0)
 	ASSERT_TRUE(summary.has_value());
 	EXPECT_EQ(summary->initial_display_delay_present_for_op_0, 1);
 	EXPECT_EQ(summary->initial_display_delay_minus_1_for_op_0, 9);
+}
+
+// frame OBU payload, uncompressed_header() prefix: show_existing_frame(1) | frame_type(2).
+//   {0x00} -> show_existing=0, frame_type=0 (KEY_FRAME)
+//   {0x20} -> show_existing=0, frame_type=1 (INTER_FRAME)
+//   {0x80} -> show_existing_frame=1
+
+TEST(Av1ParserIsKeyFrame, FrameObuKeyFrame)
+{
+	auto frame = MakeObu(Av1ObuType::Frame, {0x00});
+	auto data  = std::make_shared<ov::Data>(frame.data(), frame.size());
+	EXPECT_TRUE(Av1Parser::IsKeyFrame(data));
+}
+
+TEST(Av1ParserIsKeyFrame, FrameObuInterFrame)
+{
+	auto frame = MakeObu(Av1ObuType::Frame, {0x20});
+	auto data  = std::make_shared<ov::Data>(frame.data(), frame.size());
+	EXPECT_FALSE(Av1Parser::IsKeyFrame(data));
+}
+
+TEST(Av1ParserIsKeyFrame, ShowExistingFrameIsNotKey)
+{
+	auto frame = MakeObu(Av1ObuType::Frame, {0x80});
+	auto data  = std::make_shared<ov::Data>(frame.data(), frame.size());
+	EXPECT_FALSE(Av1Parser::IsKeyFrame(data));
+}
+
+TEST(Av1ParserIsKeyFrame, SequenceHeaderThenKeyFrame)
+{
+	SeqHeaderBuilder b;
+	auto seq   = MakeObu(Av1ObuType::SequenceHeader, BuildSequenceHeaderObuPayload(b));
+	auto frame = MakeObu(Av1ObuType::Frame, {0x00});
+
+	std::vector<uint8_t> blob;
+	blob.insert(blob.end(), seq.begin(), seq.end());
+	blob.insert(blob.end(), frame.begin(), frame.end());
+
+	auto data = std::make_shared<ov::Data>(blob.data(), blob.size());
+	EXPECT_TRUE(Av1Parser::IsKeyFrame(data));
+}
+
+// reduced_still_picture_header => frame_type is always KEY_FRAME, even when the frame OBU bits
+// would otherwise read as INTER.
+TEST(Av1ParserIsKeyFrame, ReducedStillPictureIsAlwaysKey)
+{
+	SeqHeaderBuilder b;
+	b.still_picture				   = true;
+	b.reduced_still_picture_header = true;
+	auto seq   = MakeObu(Av1ObuType::SequenceHeader, BuildSequenceHeaderObuPayload(b));
+	auto frame = MakeObu(Av1ObuType::Frame, {0x20});
+
+	std::vector<uint8_t> blob;
+	blob.insert(blob.end(), seq.begin(), seq.end());
+	blob.insert(blob.end(), frame.begin(), frame.end());
+
+	auto data = std::make_shared<ov::Data>(blob.data(), blob.size());
+	EXPECT_TRUE(Av1Parser::IsKeyFrame(data));
+}
+
+TEST(Av1ParserHasSequenceHeaderObu, PresentAndAbsent)
+{
+	auto seq   = MakeObu(Av1ObuType::SequenceHeader, {0x00});
+	auto frame = MakeObu(Av1ObuType::Frame, {0x00});
+
+	std::vector<uint8_t> with_seq;
+	with_seq.insert(with_seq.end(), seq.begin(), seq.end());
+	with_seq.insert(with_seq.end(), frame.begin(), frame.end());
+	auto d1 = std::make_shared<ov::Data>(with_seq.data(), with_seq.size());
+	EXPECT_TRUE(Av1Parser::HasSequenceHeaderObu(d1));
+
+	auto d2 = std::make_shared<ov::Data>(frame.data(), frame.size());
+	EXPECT_FALSE(Av1Parser::HasSequenceHeaderObu(d2));
+}
+
+TEST(Av1ParserExtractSequenceHeaderRaw, ReturnsFullObu)
+{
+	auto td  = MakeObu(Av1ObuType::TemporalDelimiter, {});
+	auto seq = MakeObu(Av1ObuType::SequenceHeader, {0xAA, 0xBB});
+
+	std::vector<uint8_t> blob;
+	blob.insert(blob.end(), td.begin(), td.end());
+	blob.insert(blob.end(), seq.begin(), seq.end());
+
+	auto data = std::make_shared<ov::Data>(blob.data(), blob.size());
+	auto raw  = Av1Parser::ExtractFirstSequenceHeaderObuRaw(data);
+	ASSERT_NE(raw, nullptr);
+	// The full OBU (header + obu_size + payload) equals the SequenceHeader OBU bytes.
+	ASSERT_EQ(raw->GetLength(), seq.size());
+	EXPECT_EQ(std::memcmp(raw->GetDataAs<uint8_t>(), seq.data(), seq.size()), 0);
+}
+
+TEST(Av1ParserExtractSequenceHeaderRaw, NullWhenAbsent)
+{
+	auto frame = MakeObu(Av1ObuType::Frame, {0x00});
+	auto data  = std::make_shared<ov::Data>(frame.data(), frame.size());
+	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObuRaw(data), nullptr);
+}
+
+// A sequence header OBU without obu_has_size_field cannot be stored in configOBUs -> nullptr.
+TEST(Av1ParserExtractSequenceHeaderRaw, NullWhenNotSizeDelimited)
+{
+	auto seq  = MakeObu(Av1ObuType::SequenceHeader, {0xAA}, /*has_size_field=*/false);
+	auto data = std::make_shared<ov::Data>(seq.data(), seq.size());
+	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObuRaw(data), nullptr);
+}
+
+// A sequence header OBU with a zero-length payload is malformed -> treated as absent (nullptr),
+// not a non-null empty buffer.
+TEST(Av1ParserExtractSequenceHeader, ReturnsNullForEmptySequenceHeader)
+{
+	auto seq  = MakeObu(Av1ObuType::SequenceHeader, {});
+	auto data = std::make_shared<ov::Data>(seq.data(), seq.size());
+	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObu(data), nullptr);
 }

@@ -13,6 +13,8 @@
 #include <modules/bitstream/aac/aac_adts.h>
 #include <modules/bitstream/aac/aac_converter.h>
 #include <modules/bitstream/aac/audio_specific_config.h>
+#include <modules/bitstream/av1/av1_decoder_configuration_record.h>
+#include <modules/bitstream/av1/av1_parser.h>
 #include <modules/bitstream/h264/h264_common.h>
 #include <modules/bitstream/h264/h264_decoder_configuration_record.h>
 #include <modules/bitstream/h264/h264_parser.h>
@@ -78,6 +80,9 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 			break;
 		case cmn::BitstreamFormat::VP8:
 			result = media_packet->GetData() != nullptr && ProcessVP8Stream(stream_info, media_track, media_packet);
+			break;
+		case cmn::BitstreamFormat::AV1_OBU:
+			result = media_packet->GetData() != nullptr && ProcessAV1OBUStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::AAC_RAW:
 			result = media_packet->GetData() != nullptr && ProcessAACRawStream(stream_info, media_track, media_packet);
@@ -1024,6 +1029,165 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 	}
 
 	media_track->SetResolution(parser.GetWidth(), parser.GetHeight());
+
+	return true;
+}
+
+void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
+	const std::shared_ptr<AV1DecoderConfigurationRecord> &av1_config,
+	const Av1SequenceHeaderSummary &summary)
+{
+	if ((av1_config == nullptr) || (summary.parsed == false))
+	{
+		return;
+	}
+
+	// Field set kept in lock-step with `AV1DecoderConfigurationRecord::ValidateConfigObus()`
+	// per AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics). The CodedFrames in-band path enters this
+	// helper only after the enhanced-RTMP (FLV) ingest path synthesized the lenient default
+	// `0x81 0x00 0x00 0x00` `av1C`; without copying these values through, every cross-checked
+	// field on the av1C stays at its default while the on-wire Sequence Header carries the
+	// real values, leaving the synthesized av1C stale.
+	av1_config->SetSeqProfile(summary.seq_profile);
+	av1_config->SetSeqLevelIdx0(summary.seq_level_idx_0);
+	av1_config->SetSeqTier0(summary.seq_tier_0);
+	av1_config->SetHighBitdepth(summary.high_bitdepth);
+	av1_config->SetTwelveBit(summary.twelve_bit);
+	av1_config->SetMonochrome(summary.monochrome);
+	av1_config->SetChromaSubsamplingX(summary.chroma_subsampling_x);
+	av1_config->SetChromaSubsamplingY(summary.chroma_subsampling_y);
+	av1_config->SetChromaSamplePosition(summary.chroma_sample_position);
+
+	// `initial_presentation_delay` is intentionally NOT copied from the Sequence Header. AV1
+	// ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) defines it as an av1C-only field derived
+	// from a decoder-model procedure over all samples, distinct from the Sequence Header's
+	// `initial_display_delay_minus_1`; there is no "SHALL match" rule between them. The synthesized
+	// av1C keeps its default (`present = 0`), which is correct - it must not be forged from a
+	// single in-band Sequence Header's display-delay signaling.
+}
+
+bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+{
+	// AV1 OBU is delivered as a raw bytestream by the provider; no fragment-header conversion is required.
+	// Path-agnostic responsibilities here:
+	//   1. On `SEQUENCE_HEADER` packets, parse the `av1C` blob and store the `AV1DecoderConfigurationRecord` on the track.
+	//   2. From an in-band `OBU_SEQUENCE_HEADER` (key-frame TU or a separate TU), build/update the
+	//      `av1C` and resolution, applying mid-stream changes.
+	//   3. Mark key frames, and prepend the sequence header OBU to a key frame that lacks one in-band.
+
+	auto data = media_packet->GetData();
+	if ((data == nullptr) || data->IsEmpty())
+	{
+		return false;
+	}
+
+	if (media_packet->GetPacketType() == cmn::PacketType::SEQUENCE_HEADER)
+	{
+		auto av1_config = std::make_shared<AV1DecoderConfigurationRecord>();
+
+		if (av1_config->Parse(data) == false)
+		{
+			logte("Could not parse AV1 sequence header (`av1C`) of %s/%s/%s track",
+				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+
+			return false;
+		}
+
+		media_track->SetDecoderConfigurationRecord(av1_config);
+
+		// Try to populate resolution from `configOBUs` when the encoder embedded the sequence header OBU
+		// inside `av1C`. Some encoders (notably ffmpeg's libaom over enhanced-RTMP) leave `configOBUs`
+		// empty and deliver the sequence header OBU in-band; in that case resolution is filled by the
+		// CodedFrames branch below.
+		auto config_obus = av1_config->ConfigObus();
+
+		if ((config_obus != nullptr) && (config_obus->GetLength() > 0))
+		{
+			auto seq_payload = Av1Parser::ExtractFirstSequenceHeaderObu(config_obus);
+
+			if (seq_payload != nullptr)
+			{
+				auto summary = Av1Parser::ParseSequenceHeaderSummary(seq_payload);
+
+				if (summary.has_value() &&
+					summary->max_frame_width > 0 && summary->max_frame_height > 0)
+				{
+					media_track->SetResolution(
+						static_cast<int32_t>(summary->max_frame_width),
+						static_cast<int32_t>(summary->max_frame_height));
+				}
+			}
+		}
+
+		// Sequence header packets are not forwarded as media frames downstream.
+		return false;
+	}
+
+	// CodedFrames path. Mark key frames (downstream GOP/segment handling needs it).
+	const bool is_key_frame = Av1Parser::IsKeyFrame(data);
+	media_packet->SetFlag(is_key_frame ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
+
+	// Update resolution and the av1C from an in-band sequence header whenever one is present (it may
+	// arrive in its own temporal unit, not only in the key-frame TU), and re-apply when it changes.
+	// The av1C has no resolution field, so resolution is compared against the track directly.
+	auto seq_payload = Av1Parser::ExtractFirstSequenceHeaderObu(data);
+	if (seq_payload != nullptr)
+	{
+		auto summary = Av1Parser::ParseSequenceHeaderSummary(seq_payload);
+		if (summary.has_value() && (summary->max_frame_width > 0) && (summary->max_frame_height > 0))
+		{
+			const int32_t width	 = static_cast<int32_t>(summary->max_frame_width);
+			const int32_t height = static_cast<int32_t>(summary->max_frame_height);
+
+			auto old_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
+
+			// Build a fresh av1C from this sequence header: the SH-derived fixed fields, plus the
+			// sequence header itself captured into configOBUs. Building from the current SH (rather
+			// than copying the previous record) keeps the fixed fields and configOBUs consistent, and
+			// populating configOBUs both keeps the av1C self-contained and lets the prepend path below
+			// recover the SH for key frames that arrive without one in-band.
+			auto new_config = std::make_shared<AV1DecoderConfigurationRecord>();
+			ApplyInBandSequenceHeaderToAv1Config(new_config, *summary);
+
+			// configOBUs needs a size-delimited sequence header OBU (obu_has_size_field == 1).
+			// ExtractFirstSequenceHeaderObuRaw returns one when present, else nullptr (configOBUs
+			// then stays empty).
+			auto seq_obu = Av1Parser::ExtractFirstSequenceHeaderObuRaw(data);
+			if (seq_obu != nullptr)
+			{
+				new_config->SetConfigObus(std::make_shared<ov::Data>(seq_obu->GetData(), seq_obu->GetLength()));
+			}
+
+			const auto resolution		  = media_track->GetResolution();
+			const bool resolution_changed = (resolution.width != width) || (resolution.height != height);
+			const bool config_changed	  = (old_config == nullptr) || (old_config->Equals(new_config) == false);
+
+			// Update only on change; publish a freshly built record (it is read concurrently).
+			if ((media_track->IsValidResolution() == false) || resolution_changed || config_changed)
+			{
+				media_track->SetResolution(width, height);
+				media_track->SetDecoderConfigurationRecord(new_config);
+			}
+		}
+	}
+
+	// A key frame must carry a sequence header OBU to be independently decodable. If it has none
+	// in-band (e.g. delivered out-of-band in the av1C), prepend the sequence header OBU from the av1C.
+	if (is_key_frame && (Av1Parser::HasSequenceHeaderObu(data) == false))
+	{
+		auto av1_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
+		if (av1_config != nullptr)
+		{
+			auto seq_obu = Av1Parser::ExtractFirstSequenceHeaderObuRaw(av1_config->ConfigObus());
+			if ((seq_obu != nullptr) && (seq_obu->GetLength() > 0))
+			{
+				auto merged = std::make_shared<ov::Data>(seq_obu->GetLength() + data->GetLength());
+				merged->Append(seq_obu);
+				merged->Append(data);
+				media_packet->SetData(merged);
+			}
+		}
+	}
 
 	return true;
 }

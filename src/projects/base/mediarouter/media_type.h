@@ -60,7 +60,10 @@ namespace cmn
 		SEI,	 // H.264/H.265 SEI
 		SCTE35,	 // SCTE35
 		WebVTT,	 // WebVTT (Web Video Text Tracks)
-		MP2
+		MP2,
+
+		// Backward compatibility: Logically part of Video Track. Do not change the order.
+		AV1_OBU
 	};
 
 	enum class PacketType : int8_t
@@ -391,6 +394,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, HVCC);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, VP8);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, VP8_RTP_RFC_7741);
+			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AV1_OBU);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_RAW);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_MPEG4_GENERIC);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AAC_ADTS);

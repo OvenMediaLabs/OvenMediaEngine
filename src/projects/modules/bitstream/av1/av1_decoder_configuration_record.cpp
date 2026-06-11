@@ -20,7 +20,7 @@
 
 bool AV1DecoderConfigurationRecord::IsValid() const
 {
-	return _parsed && _marker == 1 && _version == 1;
+	return _valid && _marker == 1 && _version == 1;
 }
 
 ov::String AV1DecoderConfigurationRecord::GetCodecsParameter() const
@@ -55,12 +55,12 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 {
 	// Invalidate any prior parse state up front.
 	// A re-parse on a reused instance must not leave the previous result observable:
-	// without this, a failure at any point below would leave `_parsed` (hence `IsValid()`) `true`
+	// without this, a failure at any point below would leave `_valid` (hence `IsValid()`) `true`
 	// and `GetData()` returning bytes cached by an earlier successful parse.
 	// `UpdateData()` drops the cached serialized buffer so `GetData()` no longer returns stale bytes.
 	// `_config_obus` is only assigned after the fixed header is fully read, so an early failure would
 	// otherwise leave the previous parse's OBU buffer reachable through `ConfigObus()`; clear it too.
-	_parsed		 = false;
+	_valid		 = false;
 	_config_obus = nullptr;
 	UpdateData();
 
@@ -105,7 +105,7 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 		return false;
 	}
 
-	// AV1 ISOBMFF binding v1.2.0 section 2.3.1: the 3-bit `reserved` field SHALL be 0. Reject any
+	// AV1 ISOBMFF binding v1.3.0 section 2.3.3 (Syntax) declares `unsigned int(3) reserved = 0`. Reject any
 	// av1C blob that carries non-zero reserved bits so the strict parser does not silently accept
 	// malformed records (same policy as the OBU header reserved-bit reject in `av1_parser.cpp`).
 	const uint8_t reserved_3 = parser.ReadBits<uint8_t>(3);			// reserved
@@ -121,8 +121,8 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 	}
 	else
 	{
-		// AV1 ISOBMFF binding v1.2.0 section 2.3.1: the trailing 4-bit `reserved` field (present
-		// only when `initial_presentation_delay_present == 0`) SHALL be 0.
+		// AV1 ISOBMFF binding v1.3.0 section 2.3.3 (Syntax) declares the trailing 4-bit `reserved = 0`
+		// (present only when `initial_presentation_delay_present == 0`).
 		const uint8_t reserved_4 = parser.ReadBits<uint8_t>(4);		// reserved
 		if (reserved_4 != 0)
 		{
@@ -141,12 +141,13 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 		_config_obus = nullptr;
 	}
 
-	// AV1 ISOBMFF binding v1.2.0 4.2.1:
-	//   "The `configOBUs` field SHALL contain zero or more OBUs..."
-	//   "At most one Sequence Header OBU SHALL be present..."
-	//   "If present, the Sequence Header OBU SHALL be the first OBU."
-	//   "If a Sequence Header OBU is present in `configOBUs`, the values of the fields in
-	//    `AV1CodecConfigurationRecord` SHALL match those of the Sequence Header OBU."
+	// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics):
+	//   "The configOBUs field contains zero or more OBUs."
+	//   "the configOBUs field SHALL contain at most one Sequence Header OBU and if present, it
+	//    SHALL be the first OBU."
+	//   "When a Sequence Header OBU is contained within the configOBUs of the
+	//    AV1CodecConfigurationRecord, the values present in the Sequence Header OBU contained
+	//    within configOBUs SHALL match the values of the AV1CodecConfigurationRecord."
 	if (_config_obus != nullptr && _config_obus->GetLength() > 0)
 	{
 		if (ValidateConfigObus() == false)
@@ -155,7 +156,7 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 		}
 	}
 
-	_parsed = true;
+	_valid = true;
 
 	return true;
 }
@@ -168,45 +169,26 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 	size_t obu_index   = 0;
 	bool seen_seq_hdr  = false;
 
+	Av1ObuSpan obu;
 	while (offset < total)
 	{
-		auto parsed = Av1Parser::ParseObuHeader(base + offset, total - offset);
-		if (parsed.has_value() == false)
+		if (Av1Parser::ReadObu(base, total, offset, obu) == false)
 		{
 			return false;
 		}
 
-		const auto &header	  = parsed->header;
-		size_t payload_offset = offset + parsed->bytes_consumed;
-		size_t payload_size	  = 0;
-
-		// AV1 ISOBMFF binding v1.2.0: `configOBUs` is a size-delimited OBU sequence; every OBU
-		// in the field SHALL set `obu_has_size_field = 1`. This is distinct from the in-band
-		// low-overhead bitstream format walked by `Av1Parser::ExtractFirstSequenceHeaderObu()`,
-		// which tolerates a leading `obu_has_size_field = 0` `TemporalDelimiter` (spec 5.6:
-		// "Note: The temporal delimiter has an empty payload.") because its payload size is
-		// statically zero. Inside `configOBUs` there is no such heuristic - absorbing the
-		// remainder as one anonymous payload would silently swallow follow-up OBUs and bypass
-		// the cross-check rules below, so reject immediately.
-		if (header.has_size_field == false)
+		// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): `configOBUs` is a size-delimited OBU
+		// sequence; "The flag obu_has_size_field SHALL be set to 1". Unlike the tolerant in-band scan
+		// in `Av1Parser::ReadObu()`, a missing size field here would let the remainder be swallowed as
+		// one anonymous payload and bypass the cross-check rules below, so reject immediately.
+		if (obu.header.has_size_field == false)
 		{
 			return false;
 		}
 
-		auto leb = Av1Parser::DecodeLeb128(base + payload_offset, total - payload_offset);
-		if (leb.has_value() == false)
-		{
-			return false;
-		}
-
-		payload_offset += leb->bytes_consumed;
-
-		if (leb->value > total - payload_offset)
-		{
-			return false;
-		}
-
-		payload_size = static_cast<size_t>(leb->value);
+		const auto &header	  = obu.header;
+		size_t payload_offset = obu.payload_offset;
+		size_t payload_size	  = obu.payload_size;
 
 		if (header.type == Av1ObuType::SequenceHeader)
 		{
@@ -224,12 +206,11 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 
 			// Cross-check rule: Sequence Header OBU fields SHALL match the `av1C` fixed fields.
 			//
-			// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "When the configOBUs field contains a
-			// Sequence Header OBU, the values of the AV1CodecConfigurationRecord fields shall
-			// match those of the OBU. Specifically: seq_profile, seq_level_idx_0, seq_tier_0,
-			// high_bitdepth, twelve_bit, monochrome, chroma_subsampling_x, chroma_subsampling_y,
-			// chroma_sample_position (when not zero), and initial_presentation_delay_minus_one,
-			// when present, all shall match."
+			// AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics): "When a Sequence Header OBU is
+			// contained within the configOBUs of the AV1CodecConfigurationRecord, the values present
+			// in the Sequence Header OBU contained within configOBUs SHALL match the values of the
+			// AV1CodecConfigurationRecord." Each fixed field below has its own "SHALL be equal to
+			// ... from the Sequence Header OBU" clause in section 2.3.4.
 			auto summary = Av1Parser::ParseSequenceHeaderSummary(base + payload_offset, payload_size);
 			if (summary.has_value() == false)
 			{
@@ -273,19 +254,11 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 				return false;
 			}
 
-			// AV1 ISOBMFF binding v1.2.0 section 2.3.2: "initial_presentation_delay_minus_one,
-			// when present, all shall match." The av1C `initial_presentation_delay_present`
-			// flag must equal the Sequence Header's `initial_display_delay_present_for_op_0`,
-			// and when both are 1 the `_minus_one` value must match.
-			if (summary->initial_display_delay_present_for_op_0 != _initial_presentation_delay_present)
-			{
-				return false;
-			}
-			if ((_initial_presentation_delay_present != 0) &&
-				(summary->initial_display_delay_minus_1_for_op_0 != _initial_presentation_delay_minus_one))
-			{
-				return false;
-			}
+			// NOTE: `initial_presentation_delay` is deliberately NOT cross-checked against the
+			// Sequence Header. AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) gives no
+			// "SHALL match" rule for it; it is an av1C-only field derived from a decoder-model
+			// procedure over all samples, and the spec explicitly notes it differs from the
+			// Sequence Header's `initial_display_delay_minus_1`.
 		}
 
 		offset = payload_offset + payload_size;
@@ -316,7 +289,7 @@ bool AV1DecoderConfigurationRecord::Parse(const std::shared_ptr<const ov::Data> 
 
 bool AV1DecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigurationRecord> &other)
 {
-	// AV1 ISOBMFF binding v1.2.0 section 2.3 defines `AV1CodecConfigurationRecord` as the
+	// AV1 ISOBMFF binding v1.3.0 section 2.3.3 (Syntax) defines `AV1CodecConfigurationRecord` as the
 	// canonical serialized form of the av1C box. Two records are equal iff they would emit
 	// identical bytes through that serialization, so compare the serialized buffer end-to-end
 	// rather than a hand-picked subset of fixed fields. This catches differences in any of

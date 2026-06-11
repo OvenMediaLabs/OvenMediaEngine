@@ -71,9 +71,20 @@ struct ParsedObuHeader
 	size_t bytes_consumed = 0;
 };
 
+/// One OBU located by `Av1Parser::ReadObu()` while walking an OBU bytestream: the header plus the
+/// payload bounds and the offset of the next OBU.
+struct Av1ObuSpan
+{
+	Av1ObuHeader header;
+	size_t obu_offset	  = 0;	// offset of the OBU header
+	size_t payload_offset = 0;	// offset of the payload (after the header and optional obu_size)
+	size_t payload_size	  = 0;
+	size_t next_offset	  = 0;	// offset of the next OBU
+};
+
 // AV1 spec 5.5.1 `sequence_header_obu()` - only the diagnostic-friendly leading fields, plus the
 // `color_config()` (spec 5.5.2) values needed for the `configOBUs` cross-check defined by AV1 ISOBMFF
-// binding v1.2.0 section 2.3.2.
+// binding v1.3.0 section 2.3.4 (Semantics).
 struct Av1SequenceHeaderSummary
 {
 	uint8_t seq_profile = 0;
@@ -84,9 +95,10 @@ struct Av1SequenceHeaderSummary
 	uint32_t max_frame_width = 0;
 	uint32_t max_frame_height = 0;
 
-	// AV1 spec 5.5.2 `color_config()` fields used by AV1 ISOBMFF binding v1.2.0 section 2.3.2
-	// "When the configOBUs field contains a Sequence Header OBU, the values of the
-	// AV1CodecConfigurationRecord fields shall match those of the OBU."
+	// AV1 spec 5.5.2 `color_config()` fields used by the AV1 ISOBMFF binding v1.3.0 section 2.3.4
+	// (Semantics) cross-check: "When a Sequence Header OBU is contained within the configOBUs of the
+	// AV1CodecConfigurationRecord, the values present in the Sequence Header OBU contained within
+	// configOBUs SHALL match the values of the AV1CodecConfigurationRecord."
 	uint8_t high_bitdepth = 0;
 	uint8_t twelve_bit = 0;
 	uint8_t monochrome = 0;
@@ -94,10 +106,11 @@ struct Av1SequenceHeaderSummary
 	uint8_t chroma_subsampling_y = 0;
 	uint8_t chroma_sample_position = 0;
 
-	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay signaling.
-	// Recorded so AV1 ISOBMFF binding v1.2.0 section 2.3.2 can cross-check
-	// `initial_presentation_delay_minus_one` from the `av1C` fixed header:
-	//   "initial_presentation_delay_minus_one, when present, all shall match."
+	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay
+	// signaling. Captured for diagnostics only. NOTE: this is a Sequence Header field and is
+	// distinct from the av1C `initial_presentation_delay_minus_one`; the AV1 ISOBMFF binding
+	// v1.3.0 section 2.3.4 (Semantics) defines no "SHALL match" rule between the two, so these
+	// values are not cross-checked against or copied into the av1C.
 	uint8_t initial_display_delay_present_for_op_0 = 0;
 	uint8_t initial_display_delay_minus_1_for_op_0 = 0;
 

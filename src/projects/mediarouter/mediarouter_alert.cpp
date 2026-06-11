@@ -89,8 +89,11 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 	switch (media_packet->GetBitstreamFormat())
 	{
 		case cmn::BitstreamFormat::H264_ANNEXB:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::H264_AVCC:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::H265_ANNEXB:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::HVCC:
 			if (_alert_count_bframe < 1)	// Reduced the number of warning log outputs from 10 to 1
 			{
@@ -111,6 +114,10 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 					_alert_count_bframe++;
 				}
 			}
+			break;
+		case cmn::BitstreamFormat::AV1_OBU:
+			// AV1 has no B-frames in the H.264/HEVC sense
+			// (uses reference frame indexes via `frame_header_obu`).
 			break;
 		default:
 			break;

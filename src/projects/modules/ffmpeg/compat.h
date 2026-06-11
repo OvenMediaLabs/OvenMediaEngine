@@ -35,6 +35,7 @@ extern "C"
 #include <base/mediarouter/media_type.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <modules/bitstream/aac/audio_specific_config.h>
+#include <modules/bitstream/av1/av1_decoder_configuration_record.h>
 #include <modules/bitstream/h264/h264_decoder_configuration_record.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/bitstream/opus/opus_specific_config.h>
@@ -131,6 +132,23 @@ namespace ffmpeg
 						}
 
 						media_track->SetDecoderConfigurationRecord(hevc_config);
+					}
+
+					break;
+				}
+				case cmn::MediaCodecId::Av1: {
+					if (stream->codecpar->extradata_size > 0)
+					{
+						// `av1C` format per AOMedia ISOBMFF binding.
+						auto av1_config = std::make_shared<AV1DecoderConfigurationRecord>();
+						auto extra_data = std::make_shared<ov::Data>(stream->codecpar->extradata, stream->codecpar->extradata_size, true);
+
+						if (av1_config->Parse(extra_data) == false)
+						{
+							return false;
+						}
+
+						media_track->SetDecoderConfigurationRecord(av1_config);
 					}
 
 					break;

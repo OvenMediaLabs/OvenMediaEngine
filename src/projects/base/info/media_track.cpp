@@ -355,6 +355,7 @@ ov::String MediaTrack::GetCodecsParameter() const
 	{
 		case cmn::MediaCodecId::H264:
 		case cmn::MediaCodecId::H265:
+		case cmn::MediaCodecId::Av1:
 		case cmn::MediaCodecId::Aac:
 		{
 			auto config = GetDecoderConfigurationRecord();
@@ -528,6 +529,18 @@ bool MediaTrack::IsValid()
 		break;
 		case MediaCodecId::Vp8: {
 			if (IsValidResolution() && IsValidTimeBase())
+			{
+				_is_valid = true;
+				return true;
+			}
+		}
+		break;
+		case MediaCodecId::Av1: {
+			// `GetCodecsParameter()` derives the AV1 codecs string from the decoder configuration record,
+			// and HLS/LL-HLS playlists consume it directly;
+			// require a non-null DCR so the track is not marked valid with an empty CODECS string
+			// (aligned with H264/H265).
+			if (IsValidResolution() && IsValidTimeBase() && GetDecoderConfigurationRecord() != nullptr)
 			{
 				_is_valid = true;
 				return true;
