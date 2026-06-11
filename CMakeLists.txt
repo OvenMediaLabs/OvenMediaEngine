@@ -82,7 +82,9 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 # Build type - normalize to canonical case (Debug/Release) so comparisons work
 # regardless of how the user typed it (debug, DEBUG, release, RELEASE, etc.)
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type (Debug/Release)" FORCE)
+    # Default to Release: a Debug default silently produces unoptimized images
+    # when configure re-runs without the original -DCMAKE_BUILD_TYPE.
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (Debug/Release)" FORCE)
 else()
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _BUILD_TYPE_UPPER)
     if(_BUILD_TYPE_UPPER STREQUAL "DEBUG")
