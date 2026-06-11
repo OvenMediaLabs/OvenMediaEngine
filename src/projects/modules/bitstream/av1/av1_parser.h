@@ -16,6 +16,9 @@
 class Av1Parser
 {
 public:
+	// AV1 spec 4.10.5: a `leb128()` value occupies at most 8 bytes.
+	static constexpr size_t LEB128_MAX_SIZE = 8;
+
 	/// Decode a `LEB128`-encoded unsigned integer per AV1 spec section 4.10.5.
 	///
 	/// Reads up to 8 bytes from `data`. The terminating byte is the first one whose continuation bit
@@ -27,6 +30,18 @@ public:
 	///
 	/// @return `DecodedLeb128` on success, `std::nullopt` if the buffer was exhausted before a terminator.
 	static std::optional<DecodedLeb128> DecodeLeb128(const uint8_t *data, size_t size);
+
+	/// Encode an unsigned integer as `LEB128` per AV1 spec section 4.10.5.
+	///
+	/// Writes 7 bits per byte, little-endian, setting the continuation bit (`0x80`) on every byte
+	/// but the last. At most 8 bytes (the AV1 limit).
+	///
+	/// @param value Value to encode.
+	///
+	/// @param buffer Output buffer; must hold at least `LEB128_MAX_SIZE` (8) bytes.
+	///
+	/// @return Number of bytes written (1..8).
+	static size_t EncodeLeb128(uint64_t value, uint8_t *buffer);
 
 	/// Parse `obu_header()` (and `obu_extension_header()` when `extension_flag` is set) per AV1 spec
 	/// sections 5.3.2 / 5.3.3.

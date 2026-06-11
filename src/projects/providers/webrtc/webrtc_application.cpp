@@ -348,6 +348,7 @@ namespace pvd
 				if (codec == PayloadAttr::SupportCodec::H264 ||
 					codec == PayloadAttr::SupportCodec::H265 ||
 					codec == PayloadAttr::SupportCodec::VP8 ||
+					codec == PayloadAttr::SupportCodec::AV1 ||
 					codec == PayloadAttr::SupportCodec::OPUS)
 				{
 					accepted_primary_pts.insert(offer_payload->GetId());
@@ -360,6 +361,7 @@ namespace pvd
 				if (offer_payload->GetCodec() != PayloadAttr::SupportCodec::H264 &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::H265 &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::VP8 &&
+					offer_payload->GetCodec() != PayloadAttr::SupportCodec::AV1 &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::OPUS &&
 					offer_payload->GetCodec() != PayloadAttr::SupportCodec::RTX)
 				{

@@ -51,6 +51,25 @@ std::optional<DecodedLeb128> Av1Parser::DecodeLeb128(const uint8_t *data, size_t
 	return std::nullopt;
 }
 
+size_t Av1Parser::EncodeLeb128(uint64_t value, uint8_t *buffer)
+{
+	// AV1 spec 4.10.5: low 7 bits per byte, MSB (`0x80`) set on every byte but the last. Capped at
+	// the 8-byte limit; the values written here (OBU payload sizes) stay far below that ceiling.
+	size_t i = 0;
+	do
+	{
+		uint8_t byte = value & 0x7F;
+		value >>= 7;
+		if (value != 0 && i < LEB128_MAX_SIZE - 1)
+		{
+			byte |= 0x80;
+		}
+		buffer[i++] = byte;
+	} while (value != 0 && i < LEB128_MAX_SIZE);
+
+	return i;
+}
+
 std::optional<Av1ObuHeader> Av1Parser::ParseObuHeader(BitReader &reader)
 {
 	if (reader.BytesRemained() < 1)

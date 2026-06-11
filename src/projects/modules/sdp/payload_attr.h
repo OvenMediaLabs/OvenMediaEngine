@@ -24,6 +24,7 @@ public:
 		VP9,
 		H264,
 		H265,
+		AV1,
 		MPEG4_GENERIC,
 		OPUS,
 		RED,

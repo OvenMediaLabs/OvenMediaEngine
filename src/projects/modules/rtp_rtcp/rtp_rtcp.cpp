@@ -71,6 +71,7 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 			case cmn::BitstreamFormat::H264_RTP_RFC_6184:
 			case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 			case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
+			case cmn::BitstreamFormat::AV1_RTP_AOM:
 			{
 				auto buf = std::make_shared<RtpFrameJitterBuffer>();
 				buf->SetClockRate(track->GetTimeBase().GetDen());
@@ -902,6 +903,7 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 		case cmn::BitstreamFormat::H264_RTP_RFC_6184:
 		case cmn::BitstreamFormat::H265_RTP_RFC_7798:
 		case cmn::BitstreamFormat::VP8_RTP_RFC_7741:
+		case cmn::BitstreamFormat::AV1_RTP_AOM:
 			jitter_buffer_kind = JitterBufferKind::Frame;
 			break;
 		case cmn::BitstreamFormat::OPUS_RTP_RFC_7587:

@@ -58,6 +58,10 @@ void PayloadAttr::SetRtpmap(const uint8_t payload_type, const ov::String &codec,
 	{
 		_codec = SupportCodec::VP9;
 	}
+	else if(codec.LowerCaseString() == "av1")
+	{
+		_codec = SupportCodec::AV1;
+	}
 	else if(codec.LowerCaseString() == "opus")
 	{
 		_codec = SupportCodec::OPUS;

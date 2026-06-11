@@ -63,7 +63,8 @@ namespace cmn
 		MP2,
 
 		// Backward compatibility: Logically part of Video Track. Do not change the order.
-		AV1_OBU
+		AV1_OBU,
+		AV1_RTP_AOM	 // AV1 over RTP (https://aomediacodec.github.io/av1-rtp-spec/); track origin, depacketized to AV1_OBU
 	};
 
 	enum class PacketType : int8_t
@@ -413,6 +414,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, SEI);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, SCTE35);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, WebVTT);
+			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AV1_RTP_AOM);
 		}
 
 		return "Unknown";

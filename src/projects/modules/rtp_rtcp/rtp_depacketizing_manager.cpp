@@ -5,6 +5,7 @@
 #include "rtp_depacketizer_h264.h"
 #include "rtp_depacketizer_h265.h"
 #include "rtp_depacketizer_vp8.h"
+#include "rtp_depacketizer_av1.h"
 
 std::shared_ptr<RtpDepacketizingManager> RtpDepacketizingManager::Create(SupportedDepacketizerType type)
 {
@@ -16,6 +17,8 @@ std::shared_ptr<RtpDepacketizingManager> RtpDepacketizingManager::Create(Support
 			return std::make_shared<RtpDepacketizerH265>();			
 		case RtpDepacketizingManager::SupportedDepacketizerType::VP8:
 			return std::make_shared<RtpDepacketizerVP8>();
+		case RtpDepacketizingManager::SupportedDepacketizerType::AV1:
+			return std::make_shared<RtpDepacketizerAV1>();
 		case RtpDepacketizingManager::SupportedDepacketizerType::MPEG4_GENERIC_AUDIO:
 			return std::make_shared<RtpDepacketizerMpeg4GenericAudio>();
 		case RtpDepacketizingManager::SupportedDepacketizerType::OPUS:
