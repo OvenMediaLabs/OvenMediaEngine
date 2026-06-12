@@ -573,8 +573,8 @@ set(_FFMPEG_CONFIGURE_CMD
     "--enable-parser=aac,aac_latm,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg"
     "--enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt"
     "--enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2"
-    "--enable-muxer=mp4,webm,mpegts,flv,mpjpeg"
-    "--enable-filter=asetnsamples,aresample,aformat,channelmap,channelsplit,scale,transpose,fps,settb,asettb,crop,format${_FFMPEG_ADDI_FILTERS}"
+    "--enable-muxer=mp4,webm,mpegts,flv,mpjpeg,avif"
+    "--enable-filter=asetnsamples,aresample,aformat,channelmap,channelsplit,scale,transpose,fps,settb,asettb,crop,format,colorspace${_FFMPEG_ADDI_FILTERS}"
 )
 list(JOIN _FFMPEG_CONFIGURE_CMD " " _FFMPEG_CONFIGURE_LINE)
 

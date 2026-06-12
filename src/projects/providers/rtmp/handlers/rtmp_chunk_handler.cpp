@@ -108,6 +108,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, false);
 		}

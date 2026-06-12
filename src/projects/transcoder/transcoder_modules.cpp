@@ -58,7 +58,7 @@ namespace tc
 		// Image Codecs
 		// --------------------------------------------------------------------------
 		Register(info::CodecModule("FFmpeg Image Codec", cmn::MediaType::Video, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
-						   {cmn::MediaCodecId::Jpeg, cmn::MediaCodecId::Png, cmn::MediaCodecId::Webp},
+						   {cmn::MediaCodecId::Jpeg, cmn::MediaCodecId::Png, cmn::MediaCodecId::Webp, cmn::MediaCodecId::Avif},
 						   true, false, true, false));
 
 		// --------------------------------------------------------------------------
