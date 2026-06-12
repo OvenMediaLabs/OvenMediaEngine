@@ -1955,7 +1955,7 @@ namespace ov
 		CHECK_STATE(== SocketState::Connected, false);
 
 		// Dispatch ALL commands
-		while (_dispatch_queue.size() > 0)
+		while (HasCommand())
 		{
 			if (DispatchEvents() == DispatchResult::Error)
 			{
@@ -2188,7 +2188,7 @@ namespace ov
 	{
 		CHECK_STATE(!= SocketState::Closed, false);
 
-		_post_callback = std::atomic_exchange(&_callback, {});
+		std::atomic_store(&_post_callback, std::atomic_exchange(&_callback, {}));
 		_close_reason  = close_reason;
 
 		if (_socket.IsValid())

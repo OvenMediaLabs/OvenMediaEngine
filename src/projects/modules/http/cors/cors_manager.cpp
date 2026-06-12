@@ -173,14 +173,14 @@ namespace http
 		ov::String origin_header = request->GetHeader("ORIGIN");
 		ov::String cors_header = "";
 		bool found_origin = false;
-		std::unordered_map<info::VHostAppName, cfg::cmn::CrossDomains>::const_iterator cors_cfg_iterator;
+		cfg::cmn::CrossDomains cors_cfg;
 
 		{
 			ov::LockGuard lock_guard(_cors_mutex);
 
 			auto cors_policy_iterator = _cors_policy_map.find(vhost_app_name);
 			auto cors_regex_list_iterator = _cors_item_list_map.find(vhost_app_name);
-			cors_cfg_iterator = _cors_cfg_map.find(vhost_app_name);
+			auto cors_cfg_iterator = _cors_cfg_map.find(vhost_app_name);
 			
 			if (
 				(cors_policy_iterator == _cors_policy_map.end()) ||
@@ -234,9 +234,9 @@ namespace http
 					cors_header = origin_header;
 				}
 			}
-		}
 
-		const auto &cors_cfg = cors_cfg_iterator->second;
+			cors_cfg = cors_cfg_iterator->second;
+		}
 		if (found_origin == false)
 		{
 			response->UnsetHeader("Access-Control-Allow-Origin");

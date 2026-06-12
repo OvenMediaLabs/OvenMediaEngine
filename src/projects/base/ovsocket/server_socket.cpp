@@ -255,7 +255,7 @@ namespace ov
 			client.second->Close();
 		}
 
-		_callback = nullptr;
+		std::atomic_store(&_callback, {});
 
 		if (Socket::CloseInternal(close_reason))
 		{

@@ -54,7 +54,7 @@
 
 namespace ov
 {
-	LogInternal::LogInternal(std::string log_file_name) noexcept
+	LogInternal::LogInternal(String log_file_name) noexcept
 		: _level(OVLogLevelTrace),
 		  _log_file(log_file_name)
 	{
@@ -364,7 +364,7 @@ namespace ov
 		_log_file.SetLogPath(log_path);
 	}
 
-	const char *LogInternal::GetLogPath() const
+	String LogInternal::GetLogPath() const
 	{
 		if (_released)
 		{

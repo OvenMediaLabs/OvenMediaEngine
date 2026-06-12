@@ -125,59 +125,132 @@ namespace ov
 		return absolute_url_regex.Matches(url).IsMatched();
 	}
 
+	ov::String Url::Source() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _source;
+	}
+
 	bool Url::SetSource(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_source = value;
 		return ParseFromSource();
 	}
+
+	ov::String Url::Scheme() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _scheme;
+	}
+
 	bool Url::SetScheme(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_scheme = value;
 		return UpdateSource();
 	}
+
+	ov::String Url::Host() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _host;
+	}
+
 	bool Url::SetHost(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_host = value;
 		return UpdateSource();
 	}
+
+	uint32_t Url::Port() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _port;
+	}
+
 	bool Url::SetPort(uint32_t port)
 	{
+		LockGuard lock(_mutex);
 		_port = port;
 		return UpdateSource();
 	}
 
+	ov::String Url::Path() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _path;
+	}
+
 	bool Url::SetPath(const ov::String &path)
 	{
+		LockGuard lock(_mutex);
 		_path = path;
 		return UpdatePathComponentsFromPath() && UpdateSource();
 	}
 
+	ov::String Url::App() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _app;
+	}
+
 	bool Url::SetApp(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_app = SetPathComponent(1, value);
 		return UpdatePathFromComponents() && UpdateSource();
 	}
 
+	ov::String Url::Stream() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _stream;
+	}
+
 	bool Url::SetStream(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_stream = SetPathComponent(2, value);
 		return UpdatePathFromComponents() && UpdateSource();
 	}
 
+	ov::String Url::File() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _file;
+	}
+
 	bool Url::SetFile(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_file = SetPathComponent(3, value);
 		return UpdatePathFromComponents() && UpdateSource();
 	}
 
+	ov::String Url::Id() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _id;
+	}
+
 	bool Url::SetId(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_id = value;
 		return UpdateSource();
 	}
 
+	ov::String Url::Password() const
+	{
+		SharedLockGuard lock(_mutex);
+		return _password;
+	}
+
 	bool Url::SetPassword(const ov::String &value)
 	{
+		LockGuard lock(_mutex);
 		_password = value;
 		return UpdateSource();
 	}
@@ -198,11 +271,11 @@ namespace ov
 			_path_components.clear();
 			_query_string	  = "";
 			_has_query_string = false;
-			_query_parsed.store(false, std::memory_order_release);
+			InvalidateQueryMap();
 
-			_app			  = "";
-			_stream			  = "";
-			_file			  = "";
+			_app	= "";
+			_stream = "";
+			_file	= "";
 
 			return false;
 		}
@@ -222,7 +295,7 @@ namespace ov
 		}
 		_query_string	  = group_list["qs"].GetValue();
 		_has_query_string = (_query_string.IsEmpty() == false);
-		_query_parsed.store(false, std::memory_order_release);
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -241,6 +314,8 @@ namespace ov
 
 	bool Url::PushBackQueryKey(const ov::String &key)
 	{
+		LockGuard lock(_mutex);
+
 		if (_has_query_string)
 		{
 			_query_string.Append("&");
@@ -248,13 +323,15 @@ namespace ov
 
 		_query_string.Append(key);
 		_has_query_string = true;
-		_query_parsed.store(false, std::memory_order_release);
+		InvalidateQueryMap();
 
 		return true;
 	}
 
 	bool Url::PushBackQueryKey(const ov::String &key, const ov::String &value)
 	{
+		LockGuard lock(_mutex);
+
 		if (_has_query_string)
 		{
 			_query_string.Append("&");
@@ -262,13 +339,15 @@ namespace ov
 
 		_query_string.AppendFormat("%s=%s", key.CStr(), Encode(value).CStr());
 		_has_query_string = true;
-		_query_parsed.store(false, std::memory_order_release);
+		InvalidateQueryMap();
 
 		return true;
 	}
 
 	bool Url::AppendQueryString(const ov::String &query_string)
 	{
+		LockGuard lock(_mutex);
+
 		if (_has_query_string)
 		{
 			_query_string.Append("&");
@@ -284,7 +363,7 @@ namespace ov
 		}
 
 		_has_query_string = true;
-		_query_parsed.store(false, std::memory_order_release);
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -292,6 +371,8 @@ namespace ov
 	// Keep the order of queries.
 	bool Url::RemoveQueryKey(const ov::String &remove_key)
 	{
+		LockGuard lock(_mutex);
+
 		if (_has_query_string == false)
 		{
 			return false;
@@ -332,8 +413,9 @@ namespace ov
 			}
 		}
 
-		_query_string = new_query_string;
-		_query_parsed.store(false, std::memory_order_release);
+		_query_string	  = new_query_string;
+		_has_query_string = (_query_string.IsEmpty() == false);
+		InvalidateQueryMap();
 
 		return true;
 	}
@@ -352,7 +434,7 @@ namespace ov
 
 	bool Url::UpdateSource()
 	{
-		_source = ToUrlString();
+		_source = ToUrlStringInternal(true);
 		return true;
 	}
 
@@ -392,86 +474,91 @@ namespace ov
 		return true;
 	}
 
-	void Url::ParseQueryIfNeeded() const
+	void Url::InvalidateQueryMap() const
 	{
-		if ((_has_query_string == false) || _query_parsed.load(std::memory_order_acquire))
+		LockGuard map_lock(_query_map_mutex);
+		_query_parsed = false;
+	}
+
+	void Url::EnsureQueryParsed() const
+	{
+		if (_query_parsed)
 		{
 			return;
 		}
 
-		LockGuard lock_guard(_query_map_mutex);
+		_query_map.clear();
+		_query_parsed = true;
 
-		// DCL
-		if (_query_parsed.load(std::memory_order_relaxed))
+		if ((_has_query_string == false) || _query_string.IsEmpty())
 		{
 			return;
 		}
 
 		// Split the query string into the map
-		if (_query_string.IsEmpty() == false)
+		const auto &query_list = _query_string.Split("&");
+
+		for (auto &query : query_list)
 		{
-			const auto &query_list = _query_string.Split("&");
+			auto tokens = query.Split("=", 2);
 
-			for (auto &query : query_list)
+			if (tokens.size() == 2)
 			{
-				auto tokens = query.Split("=", 2);
-
-				if (tokens.size() == 2)
-				{
-					_query_map[tokens[0]] = Decode(tokens[1]);
-				}
-				else
-				{
-					_query_map[query] = "";
-				}
+				_query_map[tokens[0]] = Decode(tokens[1]);
+			}
+			else
+			{
+				_query_map[query] = "";
 			}
 		}
-
-		// Publish AFTER population so the lock-free fast path that observes `true` via
-		// acquire is guaranteed to see the fully built _query_map.
-		_query_parsed.store(true, std::memory_order_release);
 	}
 
 	bool Url::HasQueryString() const
 	{
+		SharedLockGuard lock(_mutex);
 		return _has_query_string;
 	}
 
-	const ov::String &Url::Query() const
+	ov::String Url::Query() const
 	{
-		ParseQueryIfNeeded();
+		SharedLockGuard lock(_mutex);
 		return _query_string;
 	}
 
-	const bool Url::HasQueryKey(ov::String key) const
+	bool Url::HasQueryKey(ov::String key) const
 	{
-		ParseQueryIfNeeded();
-		if (_query_map.find(key) == _query_map.end())
-		{
-			return false;
-		}
-
-		return true;
+		SharedLockGuard lock(_mutex);
+		LockGuard map_lock(_query_map_mutex);
+		EnsureQueryParsed();
+		return _query_map.find(key) != _query_map.end();
 	}
 
-	const ov::String Url::GetQueryValue(ov::String key) const
+	ov::String Url::GetQueryValue(ov::String key) const
 	{
-		if (HasQueryKey(key) == false)
+		SharedLockGuard lock(_mutex);
+		LockGuard map_lock(_query_map_mutex);
+		EnsureQueryParsed();
+
+		auto item = _query_map.find(key);
+		if (item == _query_map.end())
 		{
 			return "";
 		}
 
-		return Decode(_query_map[key]);
+		return Decode(item->second);
 	}
 
-	const std::map<ov::String, ov::String> &Url::QueryMap() const
+	Url &Url::operator=(const Url &other)
 	{
-		ParseQueryIfNeeded();
-		return _query_map;
-	}
+		if (this == &other)
+		{
+			return *this;
+		}
 
-	Url &Url::operator=(const Url &other) noexcept
-	{
+		// ScopedLock uses std::lock internally for deadlock-free acquisition.
+		// Both exclusive is acceptable since operator= is rare.
+		ScopedLock lock(_mutex, other._mutex);
+
 		_source			  = other._source;
 		_scheme			  = other._scheme;
 		_id				  = other._id;
@@ -480,20 +567,38 @@ namespace ov
 		_port			  = other._port;
 		_path			  = other._path;
 		_path_components  = other._path_components;
-		_has_query_string = other._has_query_string;
 		_query_string	  = other._query_string;
-		_query_parsed.store(other._query_parsed.load(std::memory_order_acquire), std::memory_order_release);
-		_query_map		  = other._query_map;
+		_has_query_string = other._has_query_string;
 		_app			  = other._app;
 		_stream			  = other._stream;
 		_file			  = other._file;
+
+		{
+			LockGuard map_lock(_query_map_mutex);
+			_query_parsed = false;
+		}
 
 		return *this;
 	}
 
 	Url::Url(const Url &other)
 	{
-		operator=(other);
+		// this is under construction - no locking needed on this side
+		SharedLockGuard lock(other._mutex);
+
+		_source			  = other._source;
+		_scheme			  = other._scheme;
+		_id				  = other._id;
+		_password		  = other._password;
+		_host			  = other._host;
+		_port			  = other._port;
+		_path			  = other._path;
+		_path_components  = other._path_components;
+		_query_string	  = other._query_string;
+		_has_query_string = other._has_query_string;
+		_app			  = other._app;
+		_stream			  = other._stream;
+		_file			  = other._file;
 	}
 
 	std::shared_ptr<Url> Url::Clone() const
@@ -503,12 +608,20 @@ namespace ov
 
 	void Url::Print() const
 	{
+		SharedLockGuard lock(_mutex);
+
 		logi("URL Parser", "%s %s %d %s %s %s %s",
 			 _scheme.CStr(), _host.CStr(), _port,
 			 _app.CStr(), _stream.CStr(), _file.CStr(), _query_string.CStr());
 	}
 
 	ov::String Url::ToUrlString(bool include_query_string) const
+	{
+		SharedLockGuard lock(_mutex);
+		return ToUrlStringInternal(include_query_string);
+	}
+
+	ov::String Url::ToUrlStringInternal(bool include_query_string) const
 	{
 		ov::String url;
 
@@ -548,7 +661,9 @@ namespace ov
 
 	ov::String Url::ToString() const
 	{
-		auto url = ToUrlString();
+		SharedLockGuard lock(_mutex);
+
+		auto url = ToUrlStringInternal(true);
 
 		url.AppendFormat(" (app: %s, stream: %s, file: %s)", _app.CStr(), _stream.CStr(), _file.CStr());
 

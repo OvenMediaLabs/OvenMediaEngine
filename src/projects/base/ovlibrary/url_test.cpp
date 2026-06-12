@@ -6,9 +6,8 @@
 //  Covers: ov::Url
 //
 //==============================================================================
-#include <gtest/gtest.h>
-
 #include <base/ovlibrary/url.h>
+#include <gtest/gtest.h>
 
 // ---------------------------------------------------------------------------
 // Parse - basic components
@@ -216,8 +215,165 @@ TEST(OvUrl, Clone)
 TEST(OvUrl, ToUrlStringRoundTrip)
 {
 	const char *original = "rtmp://live.example.com:1935/app/stream";
-	auto url = ov::Url::Parse(original);
+	auto url			 = ov::Url::Parse(original);
 	ASSERT_NE(url, nullptr);
 	auto reconstructed = url->ToUrlString(false);
 	EXPECT_STREQ(reconstructed.CStr(), original);
+}
+
+// ---------------------------------------------------------------------------
+// operator= and copy constructor
+// ---------------------------------------------------------------------------
+
+TEST(OvUrl, CopyConstructor)
+{
+	auto url = ov::Url::Parse("rtmp://host.com:1935/app/stream?token=abc");
+	ASSERT_NE(url, nullptr);
+	ov::Url copy(*url);
+	EXPECT_EQ(copy.Scheme(), url->Scheme());
+	EXPECT_EQ(copy.Host(), url->Host());
+	EXPECT_EQ(copy.Port(), url->Port());
+	EXPECT_EQ(copy.App(), url->App());
+	EXPECT_EQ(copy.Stream(), url->Stream());
+	EXPECT_STREQ(copy.GetQueryValue("token").CStr(), "abc");
+}
+
+TEST(OvUrl, AssignmentOperator)
+{
+	auto a = ov::Url::Parse("rtmp://a.com:1935/app1/stream1");
+	auto b = ov::Url::Parse("https://b.com:443/app2/stream2?key=val");
+	ASSERT_NE(a, nullptr);
+	ASSERT_NE(b, nullptr);
+	*a = *b;
+	EXPECT_STREQ(a->Scheme().CStr(), "https");
+	EXPECT_STREQ(a->Host().CStr(), "b.com");
+	EXPECT_EQ(a->Port(), 443u);
+	EXPECT_STREQ(a->App().CStr(), "app2");
+	EXPECT_STREQ(a->Stream().CStr(), "stream2");
+	EXPECT_STREQ(a->GetQueryValue("key").CStr(), "val");
+}
+
+TEST(OvUrl, SelfAssignment)
+{
+	auto url = ov::Url::Parse("rtmp://host.com:1935/app/stream");
+	ASSERT_NE(url, nullptr);
+	auto &ref = *url;
+	ref		  = ref;
+	EXPECT_STREQ(url->Host().CStr(), "host.com");
+}
+
+// ---------------------------------------------------------------------------
+// Thread safety: concurrent reads
+// ---------------------------------------------------------------------------
+
+#include <thread>
+#include <vector>
+
+TEST(OvUrl, ConcurrentReads)
+{
+	auto url = ov::Url::Parse("rtmp://host.com:1935/app/stream?token=abc");
+	ASSERT_NE(url, nullptr);
+
+	constexpr int kThreads	  = 8;
+	constexpr int kIterations = 10000;
+	std::vector<std::thread> threads;
+
+	for (int i = 0; i < kThreads; i++)
+	{
+		threads.emplace_back([&url]() {
+			for (int j = 0; j < kIterations; j++)
+			{
+				EXPECT_STREQ(url->Host().CStr(), "host.com");
+				EXPECT_EQ(url->Port(), 1935u);
+				EXPECT_STREQ(url->App().CStr(), "app");
+				EXPECT_STREQ(url->Stream().CStr(), "stream");
+				EXPECT_STREQ(url->GetQueryValue("token").CStr(), "abc");
+			}
+		});
+	}
+
+	for (auto &t : threads)
+	{
+		t.join();
+	}
+}
+
+TEST(OvUrl, ConcurrentReadWrite)
+{
+	auto url = ov::Url::Parse("rtmp://host.com:1935/app/stream");
+	ASSERT_NE(url, nullptr);
+
+	constexpr int kIterations = 5000;
+	std::atomic<bool> stop{false};
+
+	// Writer: toggles between two hostnames
+	std::thread writer([&]() {
+		for (int i = 0; i < kIterations; i++)
+		{
+			if (i % 2 == 0)
+				url->SetHost("alpha.com");
+			else
+				url->SetHost("beta.com");
+		}
+		stop.store(true, std::memory_order_release);
+	});
+
+	// Readers: continuously read host, must see one of the two valid values
+	std::vector<std::thread> readers;
+	for (int i = 0; i < 4; i++)
+	{
+		readers.emplace_back([&]() {
+			while (!stop.load(std::memory_order_acquire))
+			{
+				auto host  = url->Host();
+				bool valid = (host == "host.com" || host == "alpha.com" || host == "beta.com");
+				EXPECT_TRUE(valid) << "unexpected host: " << host.CStr();
+			}
+		});
+	}
+
+	writer.join();
+	for (auto &t : readers)
+	{
+		t.join();
+	}
+}
+
+TEST(OvUrl, ConcurrentCopy)
+{
+	auto url = ov::Url::Parse("rtmp://host.com:1935/app/stream?token=abc");
+	ASSERT_NE(url, nullptr);
+
+	constexpr int kIterations = 5000;
+	std::atomic<bool> stop{false};
+
+	// Writer
+	std::thread writer([&]() {
+		for (int i = 0; i < kIterations; i++)
+		{
+			url->SetPort(static_cast<uint32_t>(1935 + (i % 100)));
+		}
+		stop.store(true, std::memory_order_release);
+	});
+
+	// Copiers: clone via copy constructor while writer is active
+	std::vector<std::thread> copiers;
+	for (int i = 0; i < 4; i++)
+	{
+		copiers.emplace_back([&]() {
+			while (!stop.load(std::memory_order_acquire))
+			{
+				auto clone = url->Clone();
+				EXPECT_NE(clone, nullptr);
+				EXPECT_STREQ(clone->Scheme().CStr(), "rtmp");
+				EXPECT_STREQ(clone->Host().CStr(), "host.com");
+			}
+		});
+	}
+
+	writer.join();
+	for (auto &t : copiers)
+	{
+		t.join();
+	}
 }

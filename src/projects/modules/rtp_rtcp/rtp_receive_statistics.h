@@ -30,11 +30,10 @@ public:
 	uint64_t GetNumberOfFirRequests();
 	void OnFirRequested();
 
-	void InitSeq(uint16_t seq);
-	bool UpdateSeq(uint16_t seq);
-	bool UpdateStat(const std::shared_ptr<RtpPacket> &packet);
-
 private:
+	void InitSeq(uint16_t seq) OV_REQUIRES(_lock);
+	bool UpdateSeq(uint16_t seq) OV_REQUIRES(_lock);
+	bool UpdateStat(const std::shared_ptr<RtpPacket> &packet) OV_REQUIRES(_lock);
 	uint32_t	_media_ssrc OV_GUARDED_BY(_lock) = 0;
 	uint32_t	_receiver_ssrc = 0;		// random generated local ssrc, for ReceiverReport, FIR ...
 	uint32_t	_clock_rate = 0;

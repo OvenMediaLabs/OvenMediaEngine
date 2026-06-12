@@ -65,7 +65,12 @@ void ov_log_set_path(const char *log_path)
 
 const char *ov_log_get_path()
 {
-	return g_log_internal.GetLogPath();
+	// extern "C" API cannot return `ov::String` directly;
+	// keep a thread-local copy so the returned pointer stays valid
+	// (per thread) until the next call.
+	static thread_local ov::String log_path;
+	log_path = g_log_internal.GetLogPath();
+	return log_path.CStr();
 }
 
 void ov_log_set_file_enabled(bool enabled)

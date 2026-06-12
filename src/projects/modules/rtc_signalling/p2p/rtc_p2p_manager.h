@@ -41,7 +41,7 @@ protected:
 
 	int _max_client_peers_per_host_peer = -1;
 
-	ov::RecursiveMutex _list_mutex;
+	mutable ov::RecursiveMutex _list_mutex;
 
 	// All peer list
 	// key: peer id, value: peer info list

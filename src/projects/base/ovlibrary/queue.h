@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <queue>
 
@@ -73,8 +74,8 @@ namespace ov
 		{
 			LockGuard lock_guard(_name_mutex);
 
-			_threshold = threshold;
-			logt("ov.Queue", "[%p] The threshold is changed to %d", this, _threshold);
+			_threshold.store(threshold, std::memory_order_release);
+			logt("ov.Queue", "[%p] The threshold is changed to %d", this, threshold);
 		}
 
 		void Enqueue(const T &item)
@@ -263,21 +264,21 @@ namespace ov
 
 		bool IsStopped() const
 		{
-			return _stop;
+			return _stop.load(std::memory_order_acquire);
 		}
 
 		void Start()
 		{
 			LockGuard lock_guard(_mutex);
 
-			_stop = false;
+			_stop.store(false, std::memory_order_release);
 		}
 
 		void Stop()
 		{
 			LockGuard lock_guard(_mutex);
 
-			_stop = true;
+			_stop.store(true, std::memory_order_release);
 			_condition.NotifyAll();
 		}
 
@@ -289,30 +290,31 @@ namespace ov
 				_peak = _queue.size();
 			}
 
-			if ((_threshold > 0) && (_queue.size() >= _threshold))
+			auto threshold = _threshold.load(std::memory_order_acquire);
+			if ((threshold > 0) && (_queue.size() >= threshold))
 			{
 				if (_last_log_time.IsElapsed(_log_interval) && _last_log_time.Update())
 				{
 					SharedLockGuard shared_lock(_name_mutex);
-					logw("ov.Queue", "[%p] %s size has exceeded the threshold: queue: %zu, threshold: %zu, peak: %zu", this, _queue_name.CStr(), _queue.size(), _threshold, _peak);
+					logw("ov.Queue", "[%p] %s size has exceeded the threshold: queue: %zu, threshold: %zu, peak: %zu", this, _queue_name.CStr(), _queue.size(), threshold, _peak);
 				}
 			}
 		}
 
 	private:
-		StopWatch _last_log_time;
+		StopWatch _last_log_time OV_GUARDED_BY(_mutex);
 
 		SharedMutex _name_mutex;
 		String _queue_name OV_GUARDED_BY(_name_mutex);
 
-		size_t _threshold = 0;
+		std::atomic<size_t> _threshold{0};
 		size_t _peak OV_GUARDED_BY(_mutex) = 0;
 		int _log_interval = 0;
 
 		std::queue<T> _queue OV_GUARDED_BY(_mutex);
 		mutable Mutex _mutex;
 		ConditionVariable _condition;
-		bool _stop OV_GUARDED_BY(_mutex) = false;
+		std::atomic<bool> _stop{false};
 	};
 
 }  // namespace ov

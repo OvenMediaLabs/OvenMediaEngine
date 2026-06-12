@@ -674,7 +674,7 @@ void MediaTrack::OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet)
 	}
 	else
 	{
-		auto duration = (media_packet->GetDts() - _last_received_timestamp) * _time_base.GetExpr();
+		auto duration = (media_packet->GetDts() - _last_received_timestamp) * GetTimeBase().GetExpr();
 		if (duration >= 1.0)
 		{
 			SetBitrateByMeasured(static_cast<int32_t>(_last_frame_bytes / duration * 8));

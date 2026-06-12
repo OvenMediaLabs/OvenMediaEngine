@@ -42,7 +42,7 @@ namespace http
 				int32_t SendPayload() override;
 
 				uint32_t _stream_id = 0;
-				bool _keep_stream = false;
+				std::atomic<bool> _keep_stream{false};
 				std::shared_ptr<hpack::Encoder> _hpack_encoder;
 			};
 		}

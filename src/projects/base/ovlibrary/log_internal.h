@@ -38,7 +38,7 @@ namespace ov
 	class LogInternal
 	{
 	public:
-		LogInternal(std::string log_file_name) noexcept;
+		LogInternal(String log_file_name) noexcept;
 		~LogInternal();
 
 		/// First filtering rule applied to all logs
@@ -67,7 +67,7 @@ namespace ov
 		void Log(bool show_format, OVLogLevel level, const char *tag, const char *file, int line, const char *method, const char *format, va_list &arg_list);
 
 		void SetLogPath(const char *log_path);
-		const char *GetLogPath() const;
+		String GetLogPath() const;
 
 		void SetFileEnabled(bool enabled);
 
@@ -87,7 +87,7 @@ namespace ov
 			std::shared_ptr<std::regex> regex;
 			OVLogLevel level;
 			bool is_enabled;
-			ov::String regex_string;
+			String regex_string;
 		};
 
 		std::vector<EnableItem> _enable_list OV_GUARDED_BY(_mutex);
@@ -95,6 +95,6 @@ namespace ov
 		// This map used for cache (It reduces regex matching cost)
 		// key: tag
 		// value: is_enabled
-		std::unordered_map<ov::String, EnableItem> _enable_map OV_GUARDED_BY(_mutex);
+		std::unordered_map<String, EnableItem> _enable_map OV_GUARDED_BY(_mutex);
 	};
 }  // namespace ov

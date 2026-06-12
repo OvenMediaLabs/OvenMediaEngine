@@ -686,7 +686,7 @@ namespace ocst
 		auto app_info = info::Application::GetInvalidApplication();
 		std::vector<ov::String> url_list;
 		Origin matched_origin;
-		auto &host_name = request_from->Host();
+		auto host_name = request_from->Host();
 
 		std::vector<ov::String> url_list_in_map;
 		if (GetUrlListForLocation(vhost_app_name, host_name, stream_name, matched_origin, url_list_in_map) == false)

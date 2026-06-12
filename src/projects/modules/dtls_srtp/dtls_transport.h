@@ -81,11 +81,11 @@ private:
 	std::shared_ptr<info::Session> _session_info;
 	std::shared_ptr<IcePort> _ice_port;
 	std::shared_ptr<SrtpTransport> _srtp_transport;
-	std::shared_ptr<::Certificate> _local_certificate;
-	std::shared_ptr<ov::TlsContext> _tls_context;
+	std::shared_ptr<::Certificate> _local_certificate OV_GUARDED_BY(_tls_lock);
+	std::shared_ptr<ov::TlsContext> _tls_context OV_GUARDED_BY(_tls_lock);
 	std::shared_ptr<::Certificate> _peer_certificate OV_GUARDED_BY(_tls_lock);
-	ov::String _peer_fingerprint_algorithm;
-	ov::String _peer_fingerprint_value;
+	ov::String _peer_fingerprint_algorithm OV_GUARDED_BY(_tls_lock);
+	ov::String _peer_fingerprint_value OV_GUARDED_BY(_tls_lock);
 
 	// SSL이 가져갈 패킷을 임시로 보관하는 버퍼, 동시에 1개만 저장한다.
 	std::deque<std::shared_ptr<const ov::Data>> _packet_buffer OV_GUARDED_BY(_tls_lock);

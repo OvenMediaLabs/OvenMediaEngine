@@ -57,9 +57,9 @@ namespace info
 			TimeBased  = 1
 		};
 
-		const char *GetThresholdModeString() const
+		static const char *GetThresholdModeString(ThresholdMode threshold_mode)
 		{
-			switch (_threshold_mode)
+			switch (threshold_mode)
 			{
 			case ThresholdMode::CountBased:
 				return "CountBased";
@@ -175,6 +175,7 @@ namespace info
 
 		ov::String GetTypeName() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			return _type_name;
 		}
 
@@ -203,6 +204,7 @@ namespace info
 
 		ThresholdMode GetThresholdMode() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			return _threshold_mode;
 		}
 
@@ -211,11 +213,13 @@ namespace info
 		//   TimeBased  mode → milliseconds
 		size_t GetThresholdValue() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			return _threshold_value;
 		}
 
 		size_t GetThreshold() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			return _threshold;
 		}
 
@@ -264,11 +268,13 @@ namespace info
 
 		std::shared_ptr<URN> GetUrn() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			return _urn;
 		}
 
 		ov::String ToString() const
 		{
+			ov::SharedLockGuard lock_guard(_name_mutex);
 			if(_urn == nullptr)
 			{
 				return "No Urn";
@@ -289,7 +295,7 @@ namespace info
 		managed_queue_id_t _id = 0;
 
 		// Name of the queue
-		ov::SharedMutex _name_mutex;
+		mutable ov::SharedMutex _name_mutex;
 		std::shared_ptr<URN> _urn OV_GUARDED_BY(_name_mutex);
 
 		// Type of template

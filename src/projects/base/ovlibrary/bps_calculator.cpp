@@ -55,6 +55,8 @@ namespace ov
 
 	int64_t BpsCalculator::GetBps() const
 	{
+		SharedLockGuard lock_guard(_mutex);
+
 		if (_bits_count == 0)
 		{
 			return _acc_bits;

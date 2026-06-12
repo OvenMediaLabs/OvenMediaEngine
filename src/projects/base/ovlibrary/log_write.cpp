@@ -18,13 +18,11 @@
 
 namespace ov
 {
-	bool LogWrite::_start_service = false;
-
-	LogWrite::LogWrite(std::string log_file_name, bool include_date_in_filename)
+	LogWrite::LogWrite(String log_file_name, bool include_date_in_filename)
 		: _last_day(0),
 		  _log_path(OV_LOG_DIR)
 	{
-		if (log_file_name.empty())
+		if (log_file_name.IsEmpty())
 		{
 			_log_file_name = OV_DEFAULT_LOG_FILE;
 		}
@@ -33,37 +31,43 @@ namespace ov
 			_log_file_name = log_file_name;
 		}
 
-		_log_file = _log_path + std::string("/") + log_file_name;
+		_log_file.Format("%s/%s", _log_path.CStr(), _log_file_name.CStr());
 		_include_date_in_filename = include_date_in_filename;
 	}
 
 	void LogWrite::SetLogPath(const char *log_path)
 	{
-		_log_path = log_path;
-		_log_file = log_path + std::string("/") + _log_file_name;
+		LockGuard lock_guard(_log_stream_mutex);
+		SetLogPathInternal(log_path);
 	}
 
-	const char *LogWrite::GetLogPath() const
+	void LogWrite::SetLogPathInternal(const char *log_path)
 	{
-		return _log_path.c_str();
+		_log_path = log_path;
+		_log_file.Format("%s/%s", _log_path.CStr(), _log_file_name.CStr());
+	}
+
+	String LogWrite::GetLogPath() const
+	{
+		LockGuard lock_guard(_log_stream_mutex);
+		return _log_path;
 	}
 
 	void LogWrite::OpenNewFile(std::time_t time)
 	{
 		if (_start_service)
 		{
-			SetLogPath(OV_LOG_DIR_SVC);
+			SetLogPathInternal(OV_LOG_DIR_SVC);
 
 			// Change default log path to /var once for running service
 			_start_service = false;
 		}
 
-		if ((::mkdir(_log_path.c_str(), 0755) == -1) && errno != EEXIST)
+		if ((::mkdir(_log_path.CStr(), 0755) == -1) && errno != EEXIST)
 		{
 			return;
 		}
 
-		LockGuard<Mutex> lock_guard(_log_stream_mutex);
 		_log_stream.close();
 		_log_stream.clear();
 
@@ -77,7 +81,7 @@ namespace ov
 		}
 		else
 		{
-			_log_stream.open(_log_file, std::ofstream::out | std::ofstream::app);
+			_log_stream.open(_log_file.CStr(), std::ofstream::out | std::ofstream::app);
 		}
 	}
 
@@ -105,6 +109,10 @@ namespace ov
 		std::tm local_time{};
 		::localtime_r(&time, &local_time);
 
+		// One lock for the whole stream section (open/rotate/write); OpenNewFile()
+		// requires it to be held by the caller.
+		LockGuard lock_guard(_log_stream_mutex);
+
 		if (!_log_stream.is_open() || _log_stream.fail())
 		{
 			OpenNewFile(time);
@@ -121,7 +129,7 @@ namespace ov
 					// Backup file to (filename.log.yymmdd)
 					std::ostringstream logfile;
 					logfile << _log_file << "." << std::put_time(&local_time, "%Y%m%d");
-					::rename(_log_file.c_str(), logfile.str().c_str());
+					::rename(_log_file.CStr(), logfile.str().c_str());
 				}
 
 				// Open new file (filename.log.yymmdd)
@@ -130,7 +138,6 @@ namespace ov
 			_last_day = local_time.tm_mday;
 		}
 
-		LockGuard<Mutex> lock_guard(_log_stream_mutex);
 		_log_stream << log << std::endl;
 		_log_stream.flush();
 	}

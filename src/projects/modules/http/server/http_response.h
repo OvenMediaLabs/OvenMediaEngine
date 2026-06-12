@@ -78,7 +78,7 @@ namespace http
 			bool IsHeaderSent() const;
 			
 			// Get Response Data List
-			const std::vector<std::shared_ptr<const ov::Data>> &GetResponseDataList() const;
+			std::vector<std::shared_ptr<const ov::Data>> GetResponseDataList() const;
 			// Get Response Header
 			const std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> &GetResponseHeaderList() const;
 			void ResetResponseData();
@@ -107,7 +107,7 @@ namespace http
 			bool _is_header_sent OV_GUARDED_BY(_response_mutex) = false;
 
 			// FIXME(dimiden): It is supposed to be synchronized whenever a packet is sent, but performance needs to be improved
-			ov::RecursiveMutex _response_mutex;
+			mutable ov::RecursiveMutex _response_mutex;
 
 			// https://www.rfc-editor.org/rfc/rfc7230#section-3.2
 			// Each header field consists of a case-insensitive field name followed
@@ -121,7 +121,7 @@ namespace http
 			// encoding in HTTP/2.
 
 			// So _response_header is a map of case insentitive header key and value
-			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _response_header;
+			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _response_header OV_GUARDED_BY(_response_mutex);
 			std::vector<std::shared_ptr<const ov::Data>> _response_data_list OV_GUARDED_BY(_response_mutex);
 			size_t _response_data_size OV_GUARDED_BY(_response_mutex) = 0;
 

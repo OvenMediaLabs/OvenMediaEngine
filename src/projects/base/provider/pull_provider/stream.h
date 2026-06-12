@@ -65,8 +65,10 @@ namespace pvd
 		}
 
 	private:
+		// FIXME: `Resume()`/`GetNextURL()`/`ResetUrlIndex()`/`IsCurrPrimaryURL()` access these without lock (data race).
+		// Split `Stop()` into `Stop()`+`StopLocked()` so `Resume()` can hold the lock without deadlocking.
 		uint32_t	_restart_count OV_GUARDED_BY(_start_stop_stream_lock) = 0;
-		std::vector<std::shared_ptr<const ov::Url>> _url_list;
+		std::vector<std::shared_ptr<const ov::Url>> _url_list OV_GUARDED_BY(_start_stop_stream_lock);
 		int _curr_url_index OV_GUARDED_BY(_start_stop_stream_lock) = 0;
 
 		std::shared_ptr<pvd::PullStreamProperties> _properties;

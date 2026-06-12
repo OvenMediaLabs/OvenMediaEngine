@@ -28,6 +28,8 @@ bool DtlsTransport::Stop()
 // Set Local Certificate
 void DtlsTransport::SetLocalCertificate(const std::shared_ptr<::Certificate> &certificate)
 {
+	ov::LockGuard<ov::Mutex> lock(_tls_lock);
+
 	_local_certificate = certificate;
 
 	ov::TlsContextCallback tls_context_callback = {
@@ -67,6 +69,8 @@ void DtlsTransport::SetLocalCertificate(const std::shared_ptr<::Certificate> &ce
 // Set Peer Fingerprint for verification
 void DtlsTransport::SetPeerFingerprint(ov::String algorithm, ov::String fingerprint)
 {
+	ov::LockGuard<ov::Mutex> lock(_tls_lock);
+
 	_peer_fingerprint_algorithm = algorithm;
 	_peer_fingerprint_value = fingerprint;
 }
@@ -237,7 +241,13 @@ bool DtlsTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 		return false;
 	}
 
-	switch (_state)
+	SSLState state;
+	{
+		ov::LockGuard lock(_tls_lock);
+		state = _state;
+	}
+
+	switch (state)
 	{
 		case SSL_NONE:
 		case SSL_WAIT:
@@ -251,7 +261,7 @@ bool DtlsTransport::OnDataReceivedFromPrevNode(NodeType from_node, const std::sh
 			}
 			else
 			{
-				ov::LockGuard<ov::Mutex> lock(_tls_lock);
+				ov::LockGuard lock(_tls_lock);
 				// If it is not SRTP, it must be encrypted in DTLS.
 				// TODO: Currently, SCTP is not supported, so there is no need to encrypt,
 				// and it will be developed if it supports data channels in the future.
@@ -286,7 +296,13 @@ bool DtlsTransport::OnDataReceivedFromNextNode(NodeType from_node, const std::sh
 
 	logtt("OnDataReceived (%zu) bytes", data->GetLength());
 
-	switch (_state)
+	SSLState state;
+	{
+		ov::LockGuard lock(_tls_lock);
+		state = _state;
+	}
+
+	switch (state)
 	{
 		case SSL_NONE:
 		case SSL_WAIT:

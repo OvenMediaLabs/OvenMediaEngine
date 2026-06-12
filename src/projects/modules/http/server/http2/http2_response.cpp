@@ -142,8 +142,10 @@ namespace http
 
 				uint32_t sent_bytes = 0;
 
-				for (const auto &data : GetResponseDataList())
+				auto response_data_list = GetResponseDataList();
+				for (size_t i = 0; i < response_data_list.size(); ++i)
 				{
+					const auto &data = response_data_list[i];
 					size_t offset = 0;
 					auto data_fragment = data;
 					while (offset + MAX_HTTP2_DATA_SIZE < data->GetLength())
@@ -169,7 +171,7 @@ namespace http
 					payload_frame->SetData(data_fragment);
 
 					// End Stream
-					if (_keep_stream == false && (&data == &GetResponseDataList().back()))
+					if (_keep_stream == false && (i == response_data_list.size() - 1))
 					{
 						payload_frame->SetEndStream();
 					}

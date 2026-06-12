@@ -247,10 +247,12 @@ std::map<peer_id_t, std::shared_ptr<RtcPeerInfo>> RtcP2PManager::GetClientPeerLi
 
 int RtcP2PManager::GetPeerCount() const
 {
+	auto lock_guard = ov::LockGuard(_list_mutex);
 	return static_cast<int>(_peer_list.size());
 }
 
 int RtcP2PManager::GetClientPeerCount() const
 {
+	auto lock_guard = ov::LockGuard(_list_mutex);
 	return _total_client_count;
 }

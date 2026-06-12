@@ -36,6 +36,8 @@ namespace http
 		{
 			OV_ASSERT2(http_response != nullptr);
 
+			ov::LockGuard lock(http_response->_response_mutex);
+
 			_client_socket = http_response->_client_socket;
 			_tls_data = http_response->_tls_data;
 			_status_code = http_response->_status_code;
@@ -206,7 +208,7 @@ namespace http
 				return false;
 			}
 
-			ov::LockGuard<decltype(_response_mutex)> lock(_response_mutex);
+			ov::LockGuard lock(_response_mutex);
 
 			auto cloned_data = data->Clone();
 
@@ -256,18 +258,21 @@ namespace http
 
 		bool HttpResponse::IsHeaderSent() const
 		{
+			ov::LockGuard lock(_response_mutex);
 			return _is_header_sent;
 		}
 
 		// Get Response Data Size
 		size_t HttpResponse::GetResponseDataSize() const
 		{
+			ov::LockGuard lock(_response_mutex);
 			return _response_data_size;
 		}
 
 		// Get Response Data List
-		const std::vector<std::shared_ptr<const ov::Data>> &HttpResponse::GetResponseDataList() const
+		std::vector<std::shared_ptr<const ov::Data>> HttpResponse::GetResponseDataList() const
 		{
+			ov::LockGuard lock(_response_mutex);
 			return _response_data_list;
 		}
 
@@ -279,6 +284,7 @@ namespace http
 
 		void HttpResponse::ResetResponseData()
 		{
+			ov::LockGuard lock(_response_mutex);
 			_response_data_list.clear();
 			_response_data_size = 0ULL;
 		}
@@ -292,18 +298,20 @@ namespace http
 		// Get Resopnsed Time
 		std::chrono::system_clock::time_point HttpResponse::GetResponseTime() const
 		{
+			ov::LockGuard lock(_response_mutex);
 			return _response_time;
 		}
-		
+
 		// Get Sent size
 		uint32_t HttpResponse::GetSentSize() const
 		{
+			ov::LockGuard lock(_response_mutex);
 			return _sent_size;
 		}
 
 		int32_t HttpResponse::Response()
 		{
-			ov::LockGuard<decltype(_response_mutex)> lock(_response_mutex);
+			ov::LockGuard lock(_response_mutex);
 			_response_time = std::chrono::system_clock::now();
 
 			uint32_t sent_size = 0;
@@ -440,6 +448,7 @@ namespace http
 		{
 			ov::String output;
 
+			ov::LockGuard lock(_response_mutex);
 			output.AppendFormat("<HttpResponse> Status(%d) Reason(%s) Header(%zu) Data(%zu)\n",
 								static_cast<int>(GetStatusCode()),
 								GetReason().CStr(),

@@ -119,7 +119,7 @@ namespace pvd
 
 	int64_t Stream::GetCurrentTimestampMs()
 	{
-		ov::LockGuard<ov::Mutex> lock(_timestamp_mutex);
+		ov::LockGuard lock(_timestamp_mutex);
 
 		// Not yet started
 		if (_last_media_timestamp_ms == -1)
@@ -165,9 +165,14 @@ namespace pvd
 				return false;
 			}
 
-			logtt("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %" PRId64 ", elapsed_from_last_media_timestamp: %" PRId64 ", timestamp: %" PRId64 " ms",
-				  GetApplicationName(), GetName().CStr(), GetId(),
-				  _last_media_timestamp_ms, _elapsed_from_last_media_timestamp.Elapsed(), timestamp_in_ms);
+#if DEBUG
+			{
+				ov::LockGuard lock(_timestamp_mutex);
+				logtt("SendDataFrame - %s/%s(%u) - last_media_timestamp_ms: %" PRId64 ", elapsed_from_last_media_timestamp: %" PRId64 ", timestamp: %" PRId64 " ms",
+					  GetApplicationName(), GetName().CStr(), GetId(),
+					  _last_media_timestamp_ms, _elapsed_from_last_media_timestamp.Elapsed(), timestamp_in_ms);
+			}
+#endif	// DEBUG
 		}
 
 		auto timestamp_in_tb = static_cast<int64_t>(timestamp_in_ms * data_track->GetTimeBase().GetTimescale() / 1000.0);
@@ -368,7 +373,7 @@ namespace pvd
 
 		if (master_clock_track != nullptr && packet->GetTrackId() == master_clock_track->GetId())
 		{
-			ov::LockGuard<ov::Mutex> lock(_timestamp_mutex);
+			ov::LockGuard lock(_timestamp_mutex);
 			_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
 			_elapsed_from_last_media_timestamp.Restart();
 		}

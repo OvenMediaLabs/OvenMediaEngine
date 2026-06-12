@@ -161,13 +161,16 @@ bool WhipServer::Start(
 	bool is_tls_port_configured, uint16_t tls_port,
 	int worker_count)
 {
-	if ((_http_server_list.empty() == false) || (_https_server_list.empty() == false))
 	{
-		OV_ASSERT(false, "%s is already running (%zu, %zu)",
-				  server_name,
-				  _http_server_list.size(),
-				  _https_server_list.size());
-		return false;
+		ov::LockGuard lock_guard{_http_server_list_mutex};
+		if ((_http_server_list.empty() == false) || (_https_server_list.empty() == false))
+		{
+			OV_ASSERT(false, "%s is already running (%zu, %zu)",
+					  server_name,
+					  _http_server_list.size(),
+					  _https_server_list.size());
+			return false;
+		}
 	}
 
 	auto interceptor = CreateInterceptor();

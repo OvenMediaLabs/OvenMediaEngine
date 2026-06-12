@@ -11,6 +11,7 @@
 
 #include <monitoring/monitoring.h>
 
+#include <atomic>
 #include <optional>
 #include <queue>
 
@@ -53,8 +54,7 @@ namespace ov
 			  _stats_metric_interval(MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC),
 			  _log_interval(log_interval_in_msec),
 			  _front_node(nullptr),
-			  _rear_node(nullptr),
-			  _stop(false)
+			  _rear_node(nullptr)
 		{
 			info::ManagedQueue::SetUrn(urn, Demangle(typeid(T).name()).CStr());
 
@@ -295,7 +295,7 @@ namespace ov
 		// Notes: exceeded time is updated only on each stats tick (MANAGED_QUEUE_METRICS_UPDATE_INTERVAL_IN_MSEC)
 		bool IsThresholdExceededFor(std::chrono::milliseconds duration) const
 		{
-			return _threshold_exceeded_time_ms.load() >= static_cast<int64_t>(duration.count());
+			return _threshold_exceeded_time_ms.load(std::memory_order_acquire) >= static_cast<int64_t>(duration.count());
 		}
 
 		// Cleared all items in the queue
@@ -330,7 +330,7 @@ namespace ov
 		{
 			LockGuard lock_guard(_mutex);
 
-			_stop = true;
+			_stop.store(true, std::memory_order_release);
 
 			ClearMetrics();
 
@@ -357,23 +357,23 @@ namespace ov
 
 		bool IsStopped() const
 		{
-			return _stop;
+			return _stop.load(std::memory_order_acquire);
 		}
 
 		void SetExceedWaitEnable(bool enable)
 		{
-			_exceed_threshold_and_wait_enabled = enable;
+			_exceed_threshold_and_wait_enabled.store(enable, std::memory_order_release);
 		}
 
 		bool IsExceedWaitEnable()
 		{
-			return _exceed_threshold_and_wait_enabled;
+			return _exceed_threshold_and_wait_enabled.load(std::memory_order_acquire);
 		}
 
 		// Buffer keeps items for a certain amount of time
 		void SetBufferingDelay(int delay_ms)
 		{
-			LockGuard lock(_mutex);
+			LockGuard lock_guard(_mutex);
 			if(delay_ms < 0)
 			{
 				logw(LOG_TAG, "[%s] Invalid buffering delay value: %d. Setting to 0.", GetInfoString().CStr(), delay_ms);
@@ -389,7 +389,7 @@ namespace ov
 
 			ov::String urn_str = (_urn != nullptr) ? _urn->ToString() : ov::String("NoUrn");
 
-			ov::String threshold_info = ov::String::FormatString("%zu (%s %zu%s", _threshold, GetThresholdModeString(), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? "ms" : "");
+			ov::String threshold_info = ov::String::FormatString("%zu (%s %zu%s", _threshold, GetThresholdModeString(_threshold_mode), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? "ms" : "");
 			if(_buffering_delay > 0)
 			{
 				threshold_info.AppendFormat(" + delay %dms", _buffering_delay);
@@ -447,13 +447,20 @@ namespace ov
 				});
 				if (_stop)
 				{
-					logw(LOG_TAG, "[%s] Stop is requested. Failed to enqueue item.", GetInfoString().CStr());
+					{
+						SharedLockGuard name_lock(_name_mutex);
+						logw(LOG_TAG, "[%s] Stop is requested. Failed to enqueue item.", _urn->ToString().CStr());
+					}
 					delete node;
 					return;
 				}
-				else if (!result)
+
+				if (!result)
 				{
-					loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", _urn->ToString().CStr(), _size, _threshold);
+					{
+						SharedLockGuard name_lock(_name_mutex);
+						loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", _urn->ToString().CStr(), _size, _threshold);
+					}
 					delete node;
 					return;
 				}
@@ -546,7 +553,6 @@ namespace ov
 					{
 						_last_logging_time = 0;
 
-						SharedLockGuard shared_lock(_name_mutex);
 						logw(LOG_TAG, "Exceeded. %s", GetInfoString().CStr());
 
 						_last_logged_peak = _peak;
@@ -589,6 +595,7 @@ namespace ov
 		// _threshold == 0 means no threshold.
 		bool IsThresholdExceeded() const OV_REQUIRES(_mutex)
 		{
+			SharedLockGuard shared_lock(_name_mutex);
 			if (_threshold == 0) return false;
 			return _size >= _threshold;
 		}
@@ -596,6 +603,8 @@ namespace ov
 		// Compute the threshold
 		void UpdateThreshold() OV_REQUIRES(_mutex)
 		{
+			LockGuard name_lock(_name_mutex);
+
 			// Compute the delay buffer count
 			size_t delay_buffer_count = 0;
 			if (_buffering_delay > 0 && _input_message_per_second > 0)
@@ -636,12 +645,19 @@ namespace ov
 		ManagedQueueNode* _front_node OV_GUARDED_BY(_mutex);
 		ManagedQueueNode* _rear_node OV_GUARDED_BY(_mutex);
 
-		// Mutex and condition variable for the queue
+	protected:
+		// `_mutex` is `protected` so derived classes can take the lock when calling
+		// protected helpers like `UpdateMetrics()`/`ClearMetrics()` which are annotated
+		// `OV_REQUIRES(_mutex)`. Capability scope must match the methods that require it.
 		mutable Mutex _mutex;
+
+	private:
+		// `_condition` stays `private`: notify/wait are internal queue-thread coordination
+		// that derived classes should not touch directly.
 		ConditionVariable _condition;
 
 		// Stop flag
-		std::atomic<bool> _stop;
+		std::atomic<bool> _stop{false};
 
 		// Set by InjectWakeup(), consumed by Dequeue(). A pending one-shot
 		// wakeup. Unlike _stop, the queue stays usable.

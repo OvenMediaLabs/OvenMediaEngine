@@ -113,7 +113,7 @@ namespace ov
 		// Binds to the current thread on construction.
 		ThreadChecker(ThreadLocation loc = {})
 			: _bound_thread(::pthread_self()),
-			  _bind_location{loc, ov::StackTrace::GetStackTrace()}
+			  _bind_location{loc, StackTrace::GetStackTrace()}
 		{
 		}
 
@@ -139,7 +139,7 @@ namespace ov
 				// No explicit call site available, so location is left empty.
 				_bound_thread  = ::pthread_self();
 				_attached	   = true;
-				_bind_location = {{}, ov::StackTrace::GetStackTrace()};
+				_bind_location = {{}, StackTrace::GetStackTrace()};
 				return true;
 			}
 
@@ -154,7 +154,7 @@ namespace ov
 			ScopedLock lock(_mutex);
 			_bound_thread  = ::pthread_self();
 			_attached	   = true;
-			_bind_location = {loc, ov::StackTrace::GetStackTrace()};
+			_bind_location = {loc, StackTrace::GetStackTrace()};
 		}
 
 		// Detaches the checker from its current thread.
@@ -176,25 +176,34 @@ namespace ov
 				return;
 			}
 
-			auto expected					= _bound_thread;
 			auto self						= ::pthread_self();
 
-			ov::String expected_thread_name = ov::Platform::GetThreadName(expected);
-			ov::String thread_name			= ov::Platform::GetThreadName(self);
-
-			ov::String bind_location_str;
-			if (_bind_location.loc.file != nullptr)
+			// Snapshot the bound-thread state under the lock before building the
+			// diagnostic, so the cold failure path does not read it unsynchronized.
+			pthread_t expected;
+			BindLocation bind_location;
 			{
-				bind_location_str = ov::String::FormatString(
+				ScopedLock lock(_mutex);
+				expected	  = _bound_thread;
+				bind_location = _bind_location;
+			}
+
+			String expected_thread_name = Platform::GetThreadName(expected);
+			String thread_name			= Platform::GetThreadName(self);
+
+			String bind_location_str;
+			if (bind_location.loc.file != nullptr)
+			{
+				bind_location_str = String::FormatString(
 					"%s:%d in %s()\n\tBind stack trace:\n%s",
-					_bind_location.loc.file, _bind_location.loc.line, _bind_location.loc.func,
-					_bind_location.stack_trace.CStr());
+					bind_location.loc.file, bind_location.loc.line, bind_location.loc.func,
+					bind_location.stack_trace.CStr());
 			}
 			else
 			{
-				bind_location_str = ov::String::FormatString(
+				bind_location_str = String::FormatString(
 					"(implicit bind)\n\tBind stack trace:\n%s",
-					_bind_location.stack_trace.CStr());
+					bind_location.stack_trace.CStr());
 			}
 
 			OV_ASSERT(false,
@@ -207,14 +216,14 @@ namespace ov
 					  expected_thread_name.CStr(), static_cast<unsigned long>(expected),
 					  bind_location_str.CStr(),
 					  thread_name.CStr(), static_cast<unsigned long>(self),
-					  ov::StackTrace::GetStackTrace().CStr());
+					  StackTrace::GetStackTrace().CStr());
 		}
 
 	private:
 		struct BindLocation
 		{
 			ThreadLocation loc;
-			ov::String stack_trace;
+			String stack_trace;
 		};
 
 		mutable Mutex _mutex;

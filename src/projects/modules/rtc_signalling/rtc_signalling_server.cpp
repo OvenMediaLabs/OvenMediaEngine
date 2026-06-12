@@ -354,8 +354,8 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 			// Find the "Host" header
 			auto host_name = request->GetHeader("HOST").Split(":")[0];
-			auto &app_name = uri->App();
-			auto &stream_name = uri->Stream();
+			auto app_name = uri->App();
+			auto stream_name = uri->Stream();
 
 			info::VHostAppName vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(host_name, app_name);
 

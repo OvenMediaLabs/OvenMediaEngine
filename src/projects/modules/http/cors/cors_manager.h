@@ -28,7 +28,7 @@ namespace http
 		//
 		// Empty url_list means 'Do not set any CORS header'
 		//
-		// NOTE - SetCrossDomains() isn't thread-safe.
+		// NOTE - All methods are protected by _cors_mutex.
 		void SetCrossDomains(const info::VHostAppName &vhost_app_name, const cfg::cmn::CrossDomains &cross_domain_cfg);
 		void SetDefaultCrossDomains(const cfg::cmn::CrossDomains &cross_domain_cfg);
 		bool SetupRtmpCorsXml(const std::shared_ptr<http::svr::HttpResponse> &response) const;

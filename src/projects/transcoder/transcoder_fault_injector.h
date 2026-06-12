@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
+
 #include <base/mediarouter/media_type.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include "codec/codec_base.h"
@@ -105,12 +107,12 @@ public:
 public:
 	bool IsEnabled()
 	{
-		return _enabled;
+		return _enabled.load(std::memory_order_acquire);
 	}
 
 	bool IsTriggered(ComponentType component_type, IssueType issue_type, cmn::MediaCodecModuleId module_id, cmn::DeviceId device_id)
 	{
-		if (!_enabled)
+		if (!_enabled.load(std::memory_order_acquire))
 		{
 			return false;
 		}
@@ -160,18 +162,18 @@ public:
 			  GetComponentTypeString(component_type), GetIssueTypeString(issue_type), cmn::GetCodecModuleIdString(module_id), device_id, fault_rate);
 
 		_fault_triggers[std::make_pair(component_type, issue_type)][std::make_pair(module_id, device_id)] = fault_rate;
-		_enabled = true;
+		_enabled.store(true, std::memory_order_release);
 	}
 
 	void Clear()
 	{
 		ov::LockGuard lock(_mutex);
 		_fault_triggers.clear();
-		_enabled = false;
+		_enabled.store(false, std::memory_order_release);
 	}
 
 private:
-	bool _enabled OV_GUARDED_BY(_mutex) = false;
+	std::atomic<bool> _enabled{false};
 
 	ov::SharedMutex _mutex;
 	std::map<std::pair<ComponentType, IssueType>, std::map<std::pair<cmn::MediaCodecModuleId, cmn::DeviceId>, double>> _fault_triggers OV_GUARDED_BY(_mutex);

@@ -385,19 +385,24 @@ STACK_OF(X509) * Certificate::GetChainCertification() const
 
 ov::String Certificate::GetFingerprint(const ov::String &algorithm)
 {
+	ov::Data digest_copy;
+
 	{
 		ov::LockGuard lock(_digest_mutex);
-	// Create digest if not created yet
-	if (_digest.GetLength() <= 0)
-	{
-		if (!ComputeDigest(algorithm))
+
+		// Create digest if not created yet
+		if (_digest.GetLength() <= 0)
 		{
-			return "";
+			if (!ComputeDigest(algorithm))
+			{
+				return "";
+			}
 		}
-	}
+
+		digest_copy = _digest;
 	}
 
-	ov::String fingerprint = ov::ToHexStringWithDelimiter(&_digest, ':');
+	ov::String fingerprint = ov::ToHexStringWithDelimiter(&digest_copy, ':');
 	fingerprint.MakeUpper();
 	return fingerprint;
 }
