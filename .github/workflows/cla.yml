@@ -32,6 +32,6 @@ jobs:
           path-to-document: 'https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CLA.md'
           branch: 'main'
           # Bots are exempt. Add core maintainers (corporate CLA holders) here, comma-separated, no spaces.
-          allowlist: dependabot[bot],*[bot]
+allowlist: 'dependabot[bot],*[bot]'
           remote-organization-name: OvenMediaLabs
           remote-repository-name: cla-signatures
