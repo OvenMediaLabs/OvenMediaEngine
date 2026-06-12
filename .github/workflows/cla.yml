@@ -1,0 +1,37 @@
+name: "CLA Assistant"
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  CLAAssistant:
+    name: CLA Assistant
+    runs-on: ubuntu-latest
+    steps:
+      # contributor-assistant/github-action pinned to the forked v2.6.1 commit
+      # (upstream is archived; the fork lives at OvenMediaLabs/cla-github-action).
+      # Signatures are stored in the private OvenMediaLabs/cla-signatures repo.
+      - name: "CLA Assistant"
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: OvenMediaLabs/cla-github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with write access to OvenMediaLabs/cla-signatures (repo secret)
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
+        with:
+          path-to-signatures: 'signatures/version1/cla.json'
+          path-to-document: 'https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CLA.md'
+          branch: 'main'
+          # Bots are exempt. Add core maintainers (corporate CLA holders) here, comma-separated, no spaces.
+          allowlist: dependabot[bot],*[bot]
+          remote-organization-name: OvenMediaLabs
+          remote-repository-name: cla-signatures
