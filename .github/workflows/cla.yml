@@ -7,6 +7,9 @@ on:
     types: [opened, synchronize]
 
 permissions:
+  # actions: write is required so the action can re-run the PR workflow
+  # after a contributor signs, flipping the CLA Assistant check to passing.
+  actions: write
   contents: read
   issues: write
   pull-requests: write
