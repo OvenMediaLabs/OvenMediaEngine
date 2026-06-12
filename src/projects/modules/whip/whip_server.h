@@ -73,6 +73,8 @@ private:
 
 	const cfg::bind::cmm::Webrtc _webrtc_bind_cfg;
 
+	// Accessed only via `std::atomic_load`/`std::atomic_store`: `Stop()` writes `nullptr`
+	// while interceptor lambdas read from HTTP worker threads (TSA cannot model this)
 	std::shared_ptr<WhipObserver> _observer;
 
 	ov::RecursiveMutex _http_server_list_mutex;
@@ -88,6 +90,10 @@ private:
 	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
 	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map OV_GUARDED_BY(_http_server_list_mutex);
 
+	// FIXME: these and `_tcp_relay_address` below are written by `PrepareForTCPRelay()`/
+	// `PrepareForExternalIceServer()` after `CreateServers()` has live listeners,
+	// and read by the POST handler lambda without a lock (data race).
+	// Same fix options as `_observer` above.
 	std::set<ov::String> _link_headers;
 	bool _tcp_force = false;
 	ov::String _default_transport{"UDPTCP"};

@@ -181,7 +181,7 @@ bool WhipServer::Start(
 		return false;
 	}
 
-	_observer = observer;
+	std::atomic_store(&_observer, observer);
 
 	auto http_server_manager = http::svr::HttpServerManager::GetInstance();
 
@@ -240,7 +240,7 @@ bool WhipServer::Start(
 
 bool WhipServer::Stop()
 {
-	_observer = nullptr;
+	std::atomic_store(&_observer, std::shared_ptr<WhipObserver>());
 
 	return true;
 }
@@ -353,7 +353,8 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 
 		logti("WHIP Requested: %s", request->ToString().CStr());
 
-		if (_observer == nullptr)
+		auto observer = std::atomic_load(&_observer);
+		if (observer == nullptr)
 		{
 			logte("Internal Server Error - Observer is not set");
 			response->SetStatusCode(http::StatusCode::InternalServerError);
@@ -393,7 +394,7 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;
 		}
 
-		auto answer = _observer->OnSdpOffer(request, offer_sdp);
+		auto answer = observer->OnSdpOffer(request, offer_sdp);
 		response->SetStatusCode(answer._status_code);
 
 		if (answer._status_code == http::StatusCode::Created)
@@ -462,7 +463,8 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 
 		logti("WHIP Requested: %s", request->ToString().CStr());
 
-		if (_observer == nullptr)
+		auto observer = std::atomic_load(&_observer);
+		if (observer == nullptr)
 		{
 			logte("Internal Server Error - Observer is not set");
 			response->SetStatusCode(http::StatusCode::InternalServerError);
@@ -485,7 +487,7 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;
 		}
 
-		auto answer = _observer->OnSessionDelete(request, session_key);
+		auto answer = observer->OnSessionDelete(request, session_key);
 		response->SetStatusCode(answer._status_code);
 
 		if (answer._status_code == http::StatusCode::OK)
@@ -513,7 +515,8 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 
 		logti("WHIP Requested: %s", request->ToString().CStr());
 
-		if (_observer == nullptr)
+		auto observer = std::atomic_load(&_observer);
+		if (observer == nullptr)
 		{
 			logte("Internal Server Error - Observer is not set");
 			response->SetStatusCode(http::StatusCode::InternalServerError);
@@ -579,7 +582,7 @@ std::shared_ptr<WhipInterceptor> WhipServer::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;
 		}
 
-		auto answer = _observer->OnTrickleCandidate(request, session_id, if_match, patch_sdp);
+		auto answer = observer->OnTrickleCandidate(request, session_id, if_match, patch_sdp);
 		response->SetStatusCode(answer._status_code);
 		response->SetHeader("Content-Type", "application/trickle-ice-sdpfrag");
 
