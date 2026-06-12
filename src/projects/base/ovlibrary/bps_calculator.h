@@ -20,6 +20,11 @@ namespace ov
 	{
 	public:
 		BpsCalculator();
+		~BpsCalculator()
+		{
+			// Join the timer thread while every member it touches is still alive
+			_timer.Stop();
+		}
 
 		void AddBits(int64_t bits);
 

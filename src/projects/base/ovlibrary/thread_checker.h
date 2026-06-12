@@ -14,6 +14,7 @@
 
 #include "./assert.h"
 #include "./log.h"
+#include "./platform.h"
 #include "./tsa/mutex.h"
 
 namespace ov

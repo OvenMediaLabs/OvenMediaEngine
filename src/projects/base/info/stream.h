@@ -172,7 +172,9 @@ namespace info
 		info::stream_id_t _id = 0;
 		uint32_t _msid = 0;
 		ov::String _name;
-		ov::String _source_url;
+		// Rewritten on every pull-stream failover, read from monitoring/serdes/publisher threads
+		mutable ov::Mutex _source_url_mutex;
+		ov::String _source_url OV_GUARDED_BY(_source_url_mutex);
 		ov::String _output_profile_name;
 		
 		// Key : MediaTrack ID

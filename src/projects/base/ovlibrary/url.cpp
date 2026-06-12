@@ -85,7 +85,7 @@ namespace ov
 
 		for (size_t index = 0; index < length;)
 		{
-			char character = val[index];
+			const char character = val[index];
 			if (character == '%')
 			{
 				// Change '%??' to ascii character
@@ -104,13 +104,8 @@ namespace ov
 					}
 				}
 			}
-			else if (character == '+')
-			{
-				// Change '+' to ' '
-				character = ' ';
-			}
 
-			result[result_index] = val[index];
+			result[result_index] = character;
 			index++;
 			result_index++;
 		}

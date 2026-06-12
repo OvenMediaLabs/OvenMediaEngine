@@ -76,7 +76,7 @@ namespace ov
 		// This situation occurs when the LogInternal instance declared static is disabled just before the OME is terminated and then logs are written by another module.
 		std::atomic<bool> _released = false;
 
-		OVLogLevel _level;
+		std::atomic<OVLogLevel> _level;
 
 		Mutex _mutex;
 

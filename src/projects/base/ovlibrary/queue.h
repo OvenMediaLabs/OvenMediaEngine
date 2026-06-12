@@ -75,7 +75,7 @@ namespace ov
 			LockGuard lock_guard(_name_mutex);
 
 			_threshold.store(threshold, std::memory_order_release);
-			logt("ov.Queue", "[%p] The threshold is changed to %d", this, threshold);
+			logt("ov.Queue", "[%p] The threshold is changed to %zu", this, threshold);
 		}
 
 		void Enqueue(const T &item)
@@ -304,7 +304,7 @@ namespace ov
 	private:
 		StopWatch _last_log_time OV_GUARDED_BY(_mutex);
 
-		SharedMutex _name_mutex;
+		mutable SharedMutex _name_mutex;
 		String _queue_name OV_GUARDED_BY(_name_mutex);
 
 		std::atomic<size_t> _threshold{0};

@@ -48,7 +48,7 @@ namespace info
 		_id = stream._id;
 		_name = stream._name;
 		_source_type = stream._source_type;
-		_source_url = stream._source_url;
+		_source_url = stream.GetMediaSource();
 		_output_profile_name = stream._output_profile_name;
 		_created_time = stream._created_time;
 		_published_time = stream._published_time;
@@ -168,10 +168,12 @@ namespace info
 
 	ov::String Stream::GetMediaSource() const
 	{
+		ov::LockGuard lock(_source_url_mutex);
 		return _source_url;
 	}
 	void Stream::SetMediaSource(ov::String url)
 	{
+		ov::LockGuard lock(_source_url_mutex);
 		_source_url = url;
 	}
 
