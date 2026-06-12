@@ -31,7 +31,7 @@ namespace mon::alrt
 		std::atomic<uint64_t> _last_modified = 0;
 		ov::String _rules_file;
 
-		mutable ov::SharedMutex _dynamic_rules_mutex;
-		std::shared_ptr<const cfg::alrt::rule::Rules> _rules OV_GUARDED_BY(_dynamic_rules_mutex) = nullptr;
+		// Accessed only via std::atomic_load/atomic_store after construction
+		std::shared_ptr<const cfg::alrt::rule::Rules> _rules = nullptr;
 	};
 }  // namespace mon::alrt

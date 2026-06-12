@@ -42,14 +42,7 @@ namespace mon::alrt
 
 	std::shared_ptr<const cfg::alrt::rule::Rules> AlertRulesUpdater::GetRules() const
 	{
-		if (_is_dynamic_update)
-		{
-			ov::SharedLockGuard lock(_dynamic_rules_mutex);
-
-			return _rules;
-		}
-
-		return _rules;
+		return std::atomic_load(&_rules);
 	}
 
 	bool AlertRulesUpdater::UpdateIfNeeded()
@@ -133,10 +126,7 @@ namespace mon::alrt
 			cfg::ItemName item_name(RULES_ITEM_NAME);
 			rules->FromDataSource(item_name.GetName(data_source.GetType()), item_name, data_source);
 
-			{
-				ov::LockGuard lock_guard(_dynamic_rules_mutex);
-				_rules = rules;
-			}
+			std::atomic_store(&_rules, std::shared_ptr<const cfg::alrt::rule::Rules>(rules));
 
 			logti("The alert rules file has been updated: %s", _rules_file.CStr());
 		}
