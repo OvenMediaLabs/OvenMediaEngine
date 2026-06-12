@@ -198,13 +198,17 @@ bool RtcSignallingServer::Start(
 	bool is_tls_port_configured, uint16_t tls_port,
 	int worker_count, std::shared_ptr<http::svr::ws::Interceptor> interceptor)
 {
-	if ((_http_server_list.empty() == false) || (_https_server_list.empty() == false))
 	{
-		OV_ASSERT(false, "%s is already running (%zu, %zu)",
-				  server_name,
-				  _http_server_list.size(),
-				  _https_server_list.size());
-		return false;
+		std::lock_guard lock_guard{_http_server_list_mutex};
+
+		if ((_http_server_list.empty() == false) || (_https_server_list.empty() == false))
+		{
+			OV_ASSERT(false, "%s is already running (%zu, %zu)",
+					  server_name,
+					  _http_server_list.size(),
+					  _https_server_list.size());
+			return false;
+		}
 	}
 
 	if (SetupWebSocketHandler(interceptor) == false)
@@ -529,7 +533,17 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 {
 	size_t disconnected_count = 0;
 
-	for (auto &http_server : _http_server_list)
+	// Snapshot under the lock so a concurrent `Stop()` moving the vectors cannot
+	// invalidate this traversal; `DisconnectIf()` runs outside the lock.
+	std::vector<std::shared_ptr<http::svr::HttpServer>> http_server_list;
+	std::vector<std::shared_ptr<http::svr::HttpsServer>> https_server_list;
+	{
+		std::lock_guard lock_guard{_http_server_list_mutex};
+		http_server_list = _http_server_list;
+		https_server_list = _https_server_list;
+	}
+
+	for (auto &http_server : http_server_list)
 	{
 		disconnected_count += http_server->DisconnectIf(
 			[vhost_app_name, stream_name, peer_sdp](const std::shared_ptr<http::svr::HttpConnection> &connection) -> bool {
@@ -556,7 +570,7 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 			});
 	}
 
-	for (auto &https_server : _https_server_list)
+	for (auto &https_server : https_server_list)
 	{
 		disconnected_count += https_server->DisconnectIf(
 			[vhost_app_name, stream_name, peer_sdp](const std::shared_ptr<http::svr::HttpConnection> &connection) -> bool {
