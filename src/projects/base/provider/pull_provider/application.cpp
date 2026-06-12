@@ -133,6 +133,14 @@ namespace pvd
 									if((state == pvd::Stream::State::PLAYING) || (state == pvd::Stream::State::DESCRIBED))
 									{
 										// Stop the current stream and switch to the Primary URL.
+
+										// FIXME: this stop -> reset -> resume sequence is not atomic.
+										// Each call locks internally, but another thread's `Start()`/`Stop()`
+										// can interleave between the steps (e.g. `GetNextURL()` advancing the index
+										// after the reset, so the resume lands on a non-primary URL,
+										// or a concurrent delete reviving the stream).
+										// Needs an API-level solution that keeps `Start()`/`Stop()`/`Resume()`
+										// safe to compose from outside.
 										stream->Stop();
 										stream->ResetUrlIndex();
 										ResumeStream(stream);
