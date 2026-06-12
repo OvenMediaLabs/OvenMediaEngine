@@ -135,12 +135,13 @@ namespace pvd
 										// Stop the current stream and switch to the Primary URL.
 
 										// FIXME: this stop -> reset -> resume sequence is not atomic.
-										// Each call locks internally, but another thread's `Start()`/`Stop()`
-										// can interleave between the steps (e.g. `GetNextURL()` advancing the index
-										// after the reset, so the resume lands on a non-primary URL,
-										// or a concurrent delete reviving the stream).
-										// Needs an API-level solution that keeps `Start()`/`Stop()`/`Resume()`
-										// safe to compose from outside.
+										// Each call locks internally, but other threads can interleave between
+										// the steps - the live hazard today is a concurrent `DeleteStream()`
+										// landing between them, after which the resume revives a stream already
+										// erased from the app map (ghost stream re-attached to a motor).
+										// (The URL-index hazard stays dormant only while this collector thread
+										// is the sole `Resume()` caller.) Needs an API-level solution that keeps
+										// `Start()`/`Stop()`/`Resume()` safe to compose from outside.
 										stream->Stop();
 										stream->ResetUrlIndex();
 										ResumeStream(stream);
