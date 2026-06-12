@@ -392,14 +392,14 @@ namespace ov
 			ov::String threshold_info = ov::String::FormatString("%zu (%s %zu%s", _threshold, GetThresholdModeString(_threshold_mode), _threshold_value, (_threshold_mode == ThresholdMode::TimeBased) ? "ms" : "");
 			if(_buffering_delay > 0)
 			{
-				threshold_info.AppendFormat(" + delay %dms", _buffering_delay);
+				threshold_info.AppendFormat(" + delay %dms", _buffering_delay.load());
 			}
 			threshold_info.Append(")");
 
 			return ov::String::FormatString(
 				"ManagedQueue [Id: %u, Size: %zu, Threshold: %s, Peak: %zu, Imps: %zu, Omps: %zu, Wait: %s, Urn: %s]",
-				GetId(), _size, threshold_info.CStr(),
-				_peak, _input_message_per_second, _output_message_per_second, _exceed_threshold_and_wait_enabled ? "On" : "Off",
+				GetId(), _size.load(), threshold_info.CStr(),
+				_peak.load(), _input_message_per_second.load(), _output_message_per_second.load(), _exceed_threshold_and_wait_enabled ? "On" : "Off",
 				urn_str.CStr());
 		}
 
@@ -449,7 +449,7 @@ namespace ov
 				{
 					{
 						SharedLockGuard name_lock(_name_mutex);
-						logw(LOG_TAG, "[%s] Stop is requested. Failed to enqueue item.", _urn->ToString().CStr());
+						logw(LOG_TAG, "[%s] Stop is requested. Failed to enqueue item.", (_urn != nullptr) ? _urn->ToString().CStr() : "NoUrn");
 					}
 					delete node;
 					return;
@@ -459,7 +459,7 @@ namespace ov
 				{
 					{
 						SharedLockGuard name_lock(_name_mutex);
-						loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", _urn->ToString().CStr(), _size, _threshold);
+						loge(LOG_TAG, "[%s] queue is full. q.size(%zu), q.threshold(%zu)", (_urn != nullptr) ? _urn->ToString().CStr() : "NoUrn", _size.load(), _threshold);
 					}
 					delete node;
 					return;
@@ -522,7 +522,7 @@ namespace ov
 			// Update the peak statistics
 			if (_peak < _size)
 			{
-				_peak = _size;
+				_peak = _size.load();
 			}
 
 			if (_timer.IsStart() == false)
@@ -538,8 +538,8 @@ namespace ov
 				// Update statistics of message per second
 				_input_message_per_second = (double)(_input_message_count - _last_input_message_count) * (1000.0 / (double)elapsed_time);
 				_output_message_per_second = (double)(_output_message_count - _last_output_message_count) * (1000.0 / (double)elapsed_time);
-				_last_input_message_count = _input_message_count;
-				_last_output_message_count = _output_message_count;
+				_last_input_message_count = _input_message_count.load();
+				_last_output_message_count = _output_message_count.load();
 	
 				UpdateThreshold();
 
