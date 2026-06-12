@@ -60,9 +60,12 @@ namespace http
 				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(65535);
 				ov::ByteStream stream(response.get());
 
-				if (_chunked_transfer == false && 
-						GetStatusCode() != StatusCode::NoContent && 
-						GetStatusCode() != StatusCode::NotModified)
+				// Load once so the status line cannot mix two different status codes
+				const auto status_code = GetStatusCode();
+
+				if (_chunked_transfer == false &&
+						status_code != StatusCode::NoContent &&
+						status_code != StatusCode::NotModified)
 				{
 					// Calculate the content length
 					SetHeader("Content-Length", ov::Converter::ToString(GetResponseDataSize()));
@@ -71,7 +74,7 @@ namespace http
 				// RFC7230 - 3.1.2.  Status Line
 				// status-line = HTTP-version SP status-code SP reason-phrase CRLF
 				// TODO(dimiden): Replace this HTTP version with the version that received from the request
-				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(GetStatusCode()), GetReason().CStr()).ToData(false));
+				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(status_code), StringFromStatusCode(status_code)).ToData(false));
 
 				// RFC7230 - 3.2.  Header Fields
 				for (const auto &pair : GetResponseHeaderList())

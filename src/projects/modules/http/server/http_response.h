@@ -38,19 +38,17 @@ namespace http
 			Method GetMethod() const;
 
 			void SetIfNoneMatch(const ov::String &etag);
-			const ov::String &GetIfNoneMatch() const;
+			ov::String GetIfNoneMatch() const;
 
 			// reason = default
 			void SetStatusCode(StatusCode status_code);
-			// custom reason
-			void SetStatusCode(StatusCode status_code, const ov::String &reason);
 
 			// Append a new item to the existing header
 			bool AddHeader(const ov::String &key, const ov::String &value);
 			// Overwrites the existing value to <value>
 			bool SetHeader(const ov::String &key, const ov::String &value);
 			bool UnsetHeader(const ov::String &key);
-			const std::vector<ov::String> &GetHeader(const ov::String &key) const;
+			std::vector<ov::String> GetHeader(const ov::String &key) const;
 			bool RemoveHeader(const ov::String &key);
 
 			// Enqueue the data into the queue (This data will be sent when SendResponse() is called)
@@ -80,7 +78,7 @@ namespace http
 			// Get Response Data List
 			std::vector<std::shared_ptr<const ov::Data>> GetResponseDataList() const;
 			// Get Response Header
-			const std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> &GetResponseHeaderList() const;
+			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> GetResponseHeaderList() const;
 			void ResetResponseData();
 
 			// Can be used for response without content-length
@@ -99,10 +97,10 @@ namespace http
 			ov::String GetEtag() OV_REQUIRES(_response_mutex);
 
 			std::shared_ptr<ov::ClientSocket> _client_socket;
+			// Accessed only via `std::atomic_load`/`std::atomic_store` (TSA cannot model this)
 			std::shared_ptr<ov::TlsServerData> _tls_data;
 
-			StatusCode _status_code = StatusCode::OK;
-			ov::String _reason = StringFromStatusCode(StatusCode::OK);
+			std::atomic<StatusCode> _status_code{StatusCode::OK};
 
 			bool _is_header_sent OV_GUARDED_BY(_response_mutex) = false;
 
@@ -123,20 +121,21 @@ namespace http
 			// So _response_header is a map of case insentitive header key and value
 			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _response_header OV_GUARDED_BY(_response_mutex);
 			std::vector<std::shared_ptr<const ov::Data>> _response_data_list OV_GUARDED_BY(_response_mutex);
-			size_t _response_data_size OV_GUARDED_BY(_response_mutex) = 0;
-
-			std::vector<ov::String> _default_value{};
+			// Written only under `_response_mutex` together with `_response_data_list`
+			// (Content-Length/etag pair consistency); atomic so standalone reads are lock-free
+			std::atomic<size_t> _response_data_size{0};
 
 			// Created time
 			std::chrono::system_clock::time_point _created_time;
 			// Responsed time
-			std::chrono::system_clock::time_point _response_time OV_GUARDED_BY(_response_mutex);
-			uint32_t _sent_size OV_GUARDED_BY(_response_mutex) = 0;
+			std::atomic<std::chrono::system_clock::time_point> _response_time{std::chrono::system_clock::time_point()};
+			std::atomic<uint32_t> _sent_size{0};
 
-			Method _method = Method::Unknown;
+			std::atomic<Method> _method{Method::Unknown};
 
 			bool _etag_enabled_by_config = false;
-			ov::String _if_none_match = "";
+			// Accessed only via `std::atomic_load`/`std::atomic_store`
+			std::shared_ptr<const ov::String> _if_none_match;
 			std::shared_ptr<ov::Data> _response_hash OV_GUARDED_BY(_response_mutex) = nullptr;
 		};
 	}  // namespace svr
