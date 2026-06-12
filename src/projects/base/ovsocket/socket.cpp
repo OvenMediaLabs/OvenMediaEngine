@@ -2188,8 +2188,11 @@ namespace ov
 	{
 		CHECK_STATE(!= SocketState::Closed, false);
 
+		// Written BEFORE the `_post_callback` store so the first close's reason is
+		// published with the handoff; atomic because a second `CloseInternal()` can
+		// rewrite it while the callback thread still reads the first value
+		_close_reason = close_reason;
 		std::atomic_store(&_post_callback, std::atomic_exchange(&_callback, {}));
-		_close_reason  = close_reason;
 
 		if (_socket.IsValid())
 		{

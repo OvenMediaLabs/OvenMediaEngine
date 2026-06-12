@@ -31,6 +31,7 @@ bool SrtpAdapter::Release()
 	if(_session != nullptr)
 	{
 		srtp_dealloc(_session);
+		_session = nullptr;
 	}
 	return true;
 }
