@@ -40,7 +40,8 @@ public:
 	///
 	/// @param buffer Output buffer; must hold at least `LEB128_MAX_SIZE` (8) bytes.
 	///
-	/// @return Number of bytes written (1..8).
+	/// @return Number of bytes written (1..8), or 0 if `buffer` is null or `value` does not fit in
+	/// AV1's 8-byte leb128 range.
 	static size_t EncodeLeb128(uint64_t value, uint8_t *buffer);
 
 	/// Parse `obu_header()` (and `obu_extension_header()` when `extension_flag` is set) per AV1 spec

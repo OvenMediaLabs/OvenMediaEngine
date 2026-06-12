@@ -10,13 +10,17 @@
 #include "webrtc_stream.h"
 
 #include "base/ovlibrary/converter.h"
-#include "base/ovlibrary/dump_utilities.h"
 #include "base/ovlibrary/random.h"
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
 #include "modules/rtp_rtcp/rtp_header_extension/rtp_header_extension.h"
 #include "webrtc_application.h"
 #include "webrtc_private.h"
 #include "webrtc_provider.h"
+
+#if DEBUG
+#	include "base/ovlibrary/dump_utilities.h"
+#	include "base/ovlibrary/path_manager.h"
+#endif	// DEBUG
 
 namespace pvd
 {
@@ -904,20 +908,23 @@ namespace pvd
 				return;
 		}
 
-		// Debug tool (disabled): dump assembled AV1 OBU temporal units to
-		// av1_dump_<stream>_track<id>.obu in the working directory. Each temporal unit is prefixed
-		// with a Temporal Delimiter OBU so the file is a standard low-overhead .obu stream that
-		// ffmpeg/dav1d can decode directly. Flip to #if 1 to enable.
-#if 0
-		if (bitstream_format == cmn::BitstreamFormat::AV1_OBU)
+#if DEBUG
+		// When OME_DUMP_WHIP is set, dump assembled AV1 OBU temporal units to
+		// <app>/dump/whip/<stream>_track<id>.obu. Each temporal unit is prefixed with a Temporal
+		// Delimiter OBU so the file is a standard low-overhead .obu stream that ffmpeg/dav1d can
+		// decode directly.
+		static const bool dump_whip = ov::Converter::ToBool(std::getenv("OME_DUMP_WHIP"));
+		if (dump_whip && bitstream_format == cmn::BitstreamFormat::AV1_OBU)
 		{
 			auto safe_name = GetName().Replace("/", "_").Replace("#", "_");
-			auto dump_path = ov::String::FormatString("av1_dump_%s_track%u.obu", safe_name.CStr(), track->GetId());
+			auto dump_path = ov::PathManager::Combine(
+				ov::PathManager::GetAppPath("dump/whip"),
+				ov::String::FormatString("%s_track%u.obu", safe_name.CStr(), track->GetId()));
 			static const uint8_t td_obu[2] = {0x12, 0x00};	// Temporal Delimiter OBU (type 2, size 0)
 			ov::DumpToFile(dump_path.CStr(), td_obu, sizeof(td_obu), 0, true);
 			ov::DumpToFile(dump_path.CStr(), bitstream, 0, true);
 		}
-#endif
+#endif	// DEBUG
 
 		int64_t adjusted_timestamp;
 		if (AdjustRtpTimestamp(track_id, first_rtp_packet->Timestamp(), std::numeric_limits<uint32_t>::max(), adjusted_timestamp) == false)

@@ -117,6 +117,13 @@ std::shared_ptr<ov::Data> RtpDepacketizerAV1::ParseAndAssembleFrame(std::vector<
 				break;
 			}
 		}
+
+		// W (when non-zero) is the exact OBU element count; a short packet that yields fewer is malformed.
+		if (w != 0 && index != w)
+		{
+			logte("AV1 aggregation header declares W=%u but %zu OBU element(s) present", w, index);
+			return nullptr;
+		}
 	}
 
 	// A trailing Y with no continuation packet: finalize what we have.
@@ -137,11 +144,23 @@ std::shared_ptr<ov::Data> RtpDepacketizerAV1::ParseAndAssembleFrame(std::vector<
 
 	for (const auto &element : obu_elements)
 	{
+		// A zero-length OBU element is non-conformant; skip just that element so one stray
+		// entry does not discard the whole temporal unit.
+		if (element->GetLength() == 0)
+		{
+			continue;
+		}
+
 		if (WriteObuWithSizeField(stream, element->GetDataAs<uint8_t>(), element->GetLength()) == false)
 		{
 			logte("Failed to rewrite AV1 OBU");
 			return nullptr;
 		}
+	}
+
+	if (bitstream->GetLength() == 0)
+	{
+		return nullptr;
 	}
 
 	return bitstream;
@@ -186,6 +205,10 @@ bool RtpDepacketizerAV1::WriteObuWithSizeField(ov::ByteStream &stream, const uin
 
 	uint8_t leb[Av1Parser::LEB128_MAX_SIZE];
 	const size_t leb_len = Av1Parser::EncodeLeb128(payload_size, leb);
+	if (leb_len == 0)
+	{
+		return false;
+	}
 	if (stream.Write(leb, leb_len) == false)
 	{
 		return false;

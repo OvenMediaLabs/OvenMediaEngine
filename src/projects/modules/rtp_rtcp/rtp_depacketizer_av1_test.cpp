@@ -129,3 +129,32 @@ TEST(RtpDepacketizerAV1, ElementLengthExceedsPacketReturnsNull)
 	// agg=0x00 (W=0), len=5 but only 1 byte follows
 	EXPECT_EQ(depacketizer.ParseAndAssembleFrame({Packet({0x00, 0x05, 0x30})}), nullptr);
 }
+
+// A stray zero-length element is skipped; the rest of the temporal unit survives.
+TEST(RtpDepacketizerAV1, ZeroLengthElementSkippedNotDropped)
+{
+	RtpDepacketizerAV1 depacketizer;
+
+	// agg=0x00 (W=0); len=0 -> empty element; len=2 -> Frame {0x30,0xAA}
+	auto out = depacketizer.ParseAndAssembleFrame({Packet({0x00, 0x00, 0x02, 0x30, 0xAA})});
+	ASSERT_NE(out, nullptr);
+	EXPECT_EQ(ToVector(out), (std::vector<uint8_t>{0x32, 0x01, 0xAA}));
+}
+
+// A temporal unit consisting solely of zero-length elements yields no OBU -> null.
+TEST(RtpDepacketizerAV1, OnlyZeroLengthElementsReturnsNull)
+{
+	RtpDepacketizerAV1 depacketizer;
+
+	// agg=0x00 (W=0); single len=0 element
+	EXPECT_EQ(depacketizer.ParseAndAssembleFrame({Packet({0x00, 0x00})}), nullptr);
+}
+
+// W declares more elements than the packet actually contains -> null.
+TEST(RtpDepacketizerAV1, WCountMismatchReturnsNull)
+{
+	RtpDepacketizerAV1 depacketizer;
+
+	// agg=0x30 (W=3) but only one element (len=1 -> {0x10}) is present
+	EXPECT_EQ(depacketizer.ParseAndAssembleFrame({Packet({0x30, 0x01, 0x10})}), nullptr);
+}
