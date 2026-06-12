@@ -29,9 +29,9 @@ jobs:
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
         with:
           path-to-signatures: 'signatures/version1/cla.json'
-path-to-document: 'https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.repository.default_branch }}/CLA.md'
+          path-to-document: 'https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.repository.default_branch }}/CLA.md'
           branch: 'main'
           # Bots are exempt. Add core maintainers (corporate CLA holders) here, comma-separated, no spaces.
-allowlist: 'dependabot[bot],*[bot]'
+          allowlist: 'dependabot[bot],*[bot]'
           remote-organization-name: OvenMediaLabs
           remote-repository-name: cla-signatures
