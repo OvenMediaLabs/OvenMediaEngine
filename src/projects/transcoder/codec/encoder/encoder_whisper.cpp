@@ -329,6 +329,13 @@ void EncoderWhisper::CodecThread()
 			}
 		}
 
+		// The inner loop also exits on _kill_flag (Stop). Skip inference then;
+		// with STT disabled _whisper_state is null and would be dereferenced below.
+		if (_kill_flag || _audio_muted.load(std::memory_order_relaxed) || _whisper_state == nullptr)
+		{
+			continue;
+		}
+
 		const int n_samples_new = static_cast<int>(pcmf32_buffer_new.size());
 		const int n_samples_old_keep = std::min(static_cast<int>(pcmf32_buffer_old.size()), std::max(0, _n_samples_keep + _n_samples_length - n_samples_new));
 
