@@ -540,7 +540,9 @@ namespace ov
 			return "";
 		}
 
-		return Decode(item->second);
+		// Values are already percent-decoded when stored in EnsureQueryParsed(),
+		// so return the cached value directly to avoid double-decoding.
+		return item->second;
 	}
 
 	Url &Url::operator=(const Url &other)
