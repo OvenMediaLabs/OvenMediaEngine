@@ -330,6 +330,7 @@ bool RtcStream::IsSupportedCodec(cmn::MediaCodecId codec_id)
 		case cmn::MediaCodecId::H264:
 		case cmn::MediaCodecId::H265:
 		case cmn::MediaCodecId::Vp8:
+		case cmn::MediaCodecId::Av1:
 		case cmn::MediaCodecId::Opus:
 			return true;
 		default:
@@ -641,6 +642,9 @@ std::shared_ptr<PayloadAttr> RtcStream::MakePayloadAttr(const std::shared_ptr<co
 	{
 		case MediaCodecId::Vp8:
 			payload->SetRtpmap(PayloadTypeFromCodecId(track->GetCodecId()), "VP8", 90000);
+			break;
+		case MediaCodecId::Av1:
+			payload->SetRtpmap(PayloadTypeFromCodecId(track->GetCodecId()), "AV1", 90000);
 			break;
 		case MediaCodecId::H265:
 			payload->SetRtpmap(PayloadTypeFromCodecId(track->GetCodecId()), "H265", 90000);
@@ -972,6 +976,12 @@ void RtcStream::MakeRtpVideoHeader(uint32_t track_id, const CodecSpecificInfo *i
 			rtp_video_header->codec								   = cmn::MediaCodecId::H265;
 			rtp_video_header->codec_header.h26X.packetization_mode = info->codec_specific.h26X.packetization_mode;
 			rtp_video_header->simulcast_idx						   = info->codec_specific.h26X.simulcast_idx;
+			return;
+
+		case cmn::MediaCodecId::Av1:
+			// AV1 carries no per-codec RTP header here; the aggregation header is built from the OBU
+			// stream by RtpPacketizerAV1.
+			rtp_video_header->codec = cmn::MediaCodecId::Av1;
 			return;
 		default:
 			break;

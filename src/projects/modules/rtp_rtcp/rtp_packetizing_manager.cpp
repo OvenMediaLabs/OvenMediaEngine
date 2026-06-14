@@ -2,6 +2,7 @@
 #include "rtp_packetizer_vp8.h"
 #include "rtp_packetizer_h264.h"
 #include "rtp_packetizer_h265.h"
+#include "rtp_packetizer_av1.h"
 
 #include <base/ovlibrary/converter.h>
 
@@ -17,6 +18,9 @@ std::shared_ptr<RtpPacketizingManager> RtpPacketizingManager::Create(cmn::MediaC
 
 		case cmn::MediaCodecId::H265:
 			return std::make_shared<RtpPacketizerH265>();
+
+		case cmn::MediaCodecId::Av1:
+			return std::make_shared<RtpPacketizerAV1>();
 
 		default:
 			// Not supported
