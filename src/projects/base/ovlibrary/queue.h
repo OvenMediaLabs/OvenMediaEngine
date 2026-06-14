@@ -72,8 +72,7 @@ namespace ov
 
 		void SetThreshold(size_t threshold)
 		{
-			LockGuard lock_guard(_name_mutex);
-
+			// `_threshold` is atomic (release/acquire pair with CheckThreshold); no lock needed
 			_threshold.store(threshold, std::memory_order_release);
 			logt("ov.Queue", "[%p] The threshold is changed to %zu", this, threshold);
 		}
