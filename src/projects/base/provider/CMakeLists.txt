@@ -14,3 +14,14 @@ ome_add_static_library(base_provider
         ovlibrary
         ovcrypto
 )
+
+if(OME_BUILD_TESTS)
+    file(GLOB _srcs
+        "${CMAKE_CURRENT_SOURCE_DIR}/*_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/pull_provider/*_test.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/push_provider/*_test.cpp"
+    )
+    ome_add_tests(ome_test_base
+        SRCS ${_srcs}
+    )
+endif()

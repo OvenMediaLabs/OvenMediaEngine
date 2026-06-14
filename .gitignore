@@ -8,6 +8,10 @@ logs
 build
 run
 
+# Ignore local temporary build trees (e.g. compile_commands / test builds)
+__temp_build/
+__test_build/
+
 # Ignore pugixml's build directory
 src/projects/third_party/pugixml-1.9/scripts/gmake
 
