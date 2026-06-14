@@ -69,6 +69,15 @@ bool RtpPacketizerAV1::BuildObuList(const uint8_t *data, size_t size)
 			continue;
 		}
 
+		// A low-overhead OBU stream is size-delimited. Without a size field, ReadObu consumes the rest
+		// of the buffer as this OBU's payload and any following OBUs are lost; fail loud instead.
+		if (span.header.has_size_field == false)
+		{
+			logte("AV1 OBU (type %s) without size field in a low-overhead stream; dropping temporal unit",
+				  EnumToString(span.header.type));
+			return false;
+		}
+
 		if (span.header.type == Av1ObuType::SequenceHeader)
 		{
 			_new_coded_video_sequence = true;
