@@ -497,7 +497,11 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 bool RtcSignallingServer::AddObserver(const std::shared_ptr<RtcSignallingObserver> &observer)
 {
-	for (const auto &item : _observers)
+	std::lock_guard lock_guard{_observers_mutex};
+
+	auto observers = std::atomic_load(&_observers);
+
+	for (const auto &item : *observers)
 	{
 		if (item == observer)
 		{
@@ -506,25 +510,33 @@ bool RtcSignallingServer::AddObserver(const std::shared_ptr<RtcSignallingObserve
 		}
 	}
 
-	_observers.push_back(observer);
+	auto new_observers = std::make_shared<ObserverList>(*observers);
+	new_observers->push_back(observer);
+	std::atomic_store(&_observers, std::shared_ptr<const ObserverList>(new_observers));
 
 	return true;
 }
 
 bool RtcSignallingServer::RemoveObserver(const std::shared_ptr<RtcSignallingObserver> &observer)
 {
-	auto item = std::find_if(_observers.begin(), _observers.end(), [&](std::shared_ptr<RtcSignallingObserver> const &value) -> bool {
+	std::lock_guard lock_guard{_observers_mutex};
+
+	auto observers = std::atomic_load(&_observers);
+
+	auto item	   = std::find_if(observers->begin(), observers->end(), [&](std::shared_ptr<RtcSignallingObserver> const &value) -> bool {
 		return value == observer;
 	});
 
-	if (item == _observers.end())
+	if (item == observers->end())
 	{
 		// 기존에 등록되어 있지 않음
 		logtw("%p is not registered observer", observer.get());
 		return false;
 	}
 
-	_observers.erase(item);
+	auto new_observers = std::make_shared<ObserverList>(*observers);
+	new_observers->erase(new_observers->begin() + (item - observers->begin()));
+	std::atomic_store(&_observers, std::shared_ptr<const ObserverList>(new_observers));
 
 	return true;
 }
@@ -743,7 +755,9 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 		bool tcp_relay = false;
 		// None of the hosts can accept this client, so the peer will be connectioned to OME
-		std::find_if(_observers.begin(), _observers.end(), [ws_session, info, &sdp, vhost_app_name, stream_name, &tcp_relay](auto &observer) -> bool {
+		auto observers = std::atomic_load(&_observers);
+
+		std::find_if(observers->begin(), observers->end(), [ws_session, info, &sdp, vhost_app_name, stream_name, &tcp_relay](auto &observer) -> bool {
 			// Ask observer to fill local_candidates
 			sdp = observer->OnRequestOffer(ws_session, vhost_app_name, info->host_name, stream_name, &(info->local_candidates), tcp_relay);
 			return sdp != nullptr;
@@ -914,7 +928,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 		{
 			info->answer_sdp = answer_sdp;
 
-			for (auto &observer : _observers)
+			auto observers	 = std::atomic_load(&_observers);
+			for (const auto &observer : *observers)
 			{
 				logtt("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
 
@@ -982,7 +997,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchChangeRendition(co
 
 	if (info->answer_sdp != nullptr)
 	{
-		for (auto &observer : _observers)
+		auto observers = std::atomic_load(&_observers);
+		for (const auto &observer : *observers)
 		{
 			if (observer->OnChangeRendition(ws_session, has_rendition_name, rendition_name, has_auto_abr, auto_abr, info->offer_sdp, info->answer_sdp) == false)
 			{
@@ -1037,7 +1053,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidate(const st
 				return std::make_shared<http::HttpError>(http::StatusCode::BadRequest, "Invalid candidate: %s", candidate.CStr());
 			}
 
-			for (auto &observer : _observers)
+			auto observers = std::atomic_load(&_observers);
+			for (const auto &observer : *observers)
 			{
 				observer->OnIceCandidate(ws_session, info->vhost_app_name, info->host_name, info->stream_name, ice_candidate, username_fragment);
 			}
@@ -1173,7 +1190,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 
 	if (info->answer_sdp != nullptr)
 	{
-		for (auto &observer : _observers)
+		auto observers = std::atomic_load(&_observers);
+		for (const auto &observer : *observers)
 		{
 			logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
 

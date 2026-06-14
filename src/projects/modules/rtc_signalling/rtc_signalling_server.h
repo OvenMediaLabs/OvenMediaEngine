@@ -168,11 +168,24 @@ protected:
 	// Lock order: this mutex (outer) -> `HttpsServer::_https_certificate_map_mutex` (inner).
 	std::map<ov::String, std::shared_ptr<const info::Certificate>> _certificate_map;
 
-	std::vector<std::shared_ptr<RtcSignallingObserver>> _observers;
+	// Copy-on-write observer list:
+	// writers (Add/RemoveObserver) rebuild the vector under `_observers_mutex`
+	// and publish with `std::atomic_store`; dispatch paths take an `std::atomic_load` snapshot,
+	// so no lock is ever held across the heavy observer callbacks.
+	// Note: a dispatch that snapshotted before `RemoveObserver()` returned
+	// may still deliver ONE trailing callback to the removed observer
+	// (the snapshot keeps it alive - no UAF, but removal is not a barrier)
+	using ObserverList = std::vector<std::shared_ptr<RtcSignallingObserver>>;
+	std::mutex _observers_mutex;
+	std::shared_ptr<const ObserverList> _observers = std::make_shared<ObserverList>();
 
 	std::map<peer_id_t, std::shared_ptr<RtcSignallingInfo>> _client_list;
 	std::shared_mutex _client_list_mutex;
 
+	// FIXME: written by `PrepareForTCPRelay()`/`PrepareForExternalIceServer()` in `Start()`
+	// after `CreateServers()` has live listeners, and read by the `request_offer` dispatch
+	// path on HTTP worker threads without a lock (data race).
+	// Same fix options as the WHIP config members: a dedicated guard, or finishing all writes before listeners go live.
 	Json::Value _ice_servers;
 	Json::Value _new_ice_servers;
 	bool _tcp_force = false;
