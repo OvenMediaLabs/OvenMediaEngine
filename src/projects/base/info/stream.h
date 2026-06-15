@@ -110,7 +110,7 @@ namespace info
 		std::shared_ptr<const TrackSet> GetTrackSet(const ov::String &name) const;
 		const std::map<ov::String, std::shared_ptr<const TrackSet>> &GetTrackSets() const;
 
-		ov::String GetInfoString();
+		ov::String GetInfoString(bool created = false);
 		void ShowInfo();
 
 		void SetApplicationInfo(const std::shared_ptr<Application> &app_info);

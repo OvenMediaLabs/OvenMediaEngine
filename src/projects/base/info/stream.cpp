@@ -584,7 +584,7 @@ namespace info
 		return (_app_info == nullptr) ? "Unknown" : _app_info->GetVHostAppName().CStr();
 	}
 
-	ov::String Stream::GetInfoString()
+	ov::String Stream::GetInfoString(bool created)
 	{
 		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), msid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
 													  GetId(), GetMsid(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
@@ -605,7 +605,7 @@ namespace info
 		{
 			auto track = it->second;
 
-			out_str.AppendFormat("\n\t%s", track->GetInfoString().CStr());
+			out_str.AppendFormat("\n\t%s", created ? track->GetInfoStringForCreated().CStr() : track->GetInfoString().CStr());
 		}
 
 		return out_str;

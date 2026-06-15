@@ -462,7 +462,7 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 	auto observers = _observers; // Avoid deadlock
 	lock.unlock();
 
-	logti("[%s/%s(%u)] %sStream has been created", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId(), stream_info->IsInternal() ? "[Internal] " : "");
+	logti("[%s/%s(%u)] %sStream has been created %s", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId(), stream_info->IsInternal() ? "[Internal] " : "", stream_info->GetInfoString(true).CStr());
 
 	if (stream_info->IsInternal())
 	{

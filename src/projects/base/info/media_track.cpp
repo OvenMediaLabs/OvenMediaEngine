@@ -494,6 +494,104 @@ ov::String MediaTrack::GetInfoString()
 	return out_str;
 }
 
+ov::String MediaTrack::GetInfoStringForCreated()
+{
+	ov::String out_str;
+
+	const char *codec_status_str = cmn::GetCodecStatusString(GetCodecStatus());
+
+	switch (GetMediaType())
+	{
+		case MediaType::Video:
+		{
+			out_str.AppendFormat(
+				"Video Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) BSF(%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetBitstreamFormatString(GetOriginBitstream()));
+
+			// Measured/negotiated values are shown only once known, so the log carries no zeros at creation
+			auto bitrate = GetBitrate();
+			if (bitrate > 0)
+				out_str.AppendFormat("Bitrate(%s) ", ov::Converter::BitToString(bitrate).CStr());
+
+			auto resolution = GetResolution();
+			if (resolution.width > 0 && resolution.height > 0)
+				out_str.AppendFormat("Resolution(%s) ", resolution.ToString().CStr());
+
+			auto max_resolution = GetMaxResolution();
+			if (max_resolution.width > 0 && max_resolution.height > 0)
+				out_str.AppendFormat("MaxResolution(%s) ", max_resolution.ToString().CStr());
+
+			auto framerate = GetFrameRate();
+			if (framerate > 0)
+				out_str.AppendFormat("Framerate(%.2f) ", framerate);
+
+			auto max_framerate = GetMaxFrameRate();
+			if (max_framerate > 0)
+				out_str.AppendFormat("MaxFramerate(%.2f) ", max_framerate);
+			break;
+		}
+
+		case MediaType::Audio:
+		{
+			out_str.AppendFormat(
+				"Audio Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) BSF(%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetBitstreamFormatString(GetOriginBitstream()));
+
+			auto bitrate = GetBitrate();
+			if (bitrate > 0)
+				out_str.AppendFormat("Bitrate(%s) ", ov::Converter::BitToString(bitrate).CStr());
+
+			auto samplerate = GetSampleRate();
+			if (samplerate > 0)
+				out_str.AppendFormat("Samplerate(%s) ", ov::Converter::ToSiString(samplerate, 1).CStr());
+
+			auto sample = GetSample();
+			if (sample.GetFormat() != cmn::AudioSample::Format::None)
+				out_str.AppendFormat("Format(%s) ", sample.GetName());
+
+			if (IsValidChannel())
+				out_str.AppendFormat("Channel(%s) ", GetChannel().GetName());
+			break;
+		}
+
+		case MediaType::Data:
+			out_str.AppendFormat(
+				"Data  Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) BSF(%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetBitstreamFormatString(GetOriginBitstream()));
+			break;
+
+		case MediaType::Subtitle:
+		{
+			out_str.AppendFormat(
+				"Subtitle Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "");
+
+			auto extra_info = GetExtraInfo();
+			if (extra_info.IsEmpty() == false)
+				out_str.AppendFormat("%s ", extra_info.CStr());
+			break;
+		}
+
+		default:
+			break;
+	}
+
+	out_str.AppendFormat("timebase(%s)", GetTimeBase().ToString().CStr());
+
+	return out_str;
+}
+
 bool MediaTrack::IsValid()
 {
 	if (_is_valid == true)

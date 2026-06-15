@@ -142,6 +142,9 @@ public:
 
 	ov::String GetInfoString();
 
+	// Track info known at stream-creation time; omits not-yet-measured fields (resolution, framerate, bitrate, ...)
+	ov::String GetInfoStringForCreated();
+
 	// Codec status: set by encoder/decoder after initialization
 	using CodecStatus = cmn::CodecStatus;
 	void SetCodecStatus(cmn::CodecStatus status);
