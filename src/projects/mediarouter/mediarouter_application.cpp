@@ -937,9 +937,17 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 
 		// When the inbound stream is finished parsing track information,
 		// Notify the Observer that the stream is parsed
-		if (stream->IsStreamPrepared() == false && stream->IsStreamReady() == true)
+		if (stream->IsStreamPrepared() == false)
 		{
-			NotifyStreamPrepared(stream);
+			if (stream->IsStreamReady() == true)
+			{
+				NotifyStreamPrepared(stream);
+			}
+			else
+			{
+				// Warn if a track has not become valid in time, blocking the stream from being prepared
+				stream->CheckUnpreparedTrackTimeout();
+			}
 		}
 
 		std::shared_lock<std::shared_mutex> lock(_observers_lock);

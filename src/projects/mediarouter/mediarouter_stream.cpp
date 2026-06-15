@@ -135,6 +135,47 @@ bool MediaRouteStream::IsStreamReady()
 	return true;
 }
 
+// While any track is invalid, IsStreamReady() stays false and the stream is never prepared. If one of the
+// negotiated tracks (e.g. a simulcast layer or audio) never arrives, the stream hangs. Warn so it is visible.
+void MediaRouteStream::CheckUnpreparedTrackTimeout()
+{
+	auto now = std::chrono::steady_clock::now();
+
+	// Anchor at the first media packet so connection/handshake delay is excluded; full silence is the provider's job.
+	if (_first_media_recv_time_set == false)
+	{
+		_first_media_recv_time = now;
+		_last_unprepared_warn_time = now;
+		_first_media_recv_time_set = true;
+		return;
+	}
+
+	// Warn periodically (not once) while tracks remain invalid
+	if (std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_unprepared_warn_time).count() < MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS)
+	{
+		return;
+	}
+	_last_unprepared_warn_time = now;
+
+	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - _first_media_recv_time).count();
+
+	auto tracks = _stream->GetTracks();
+	for (const auto &track_it : tracks)
+	{
+		auto track_id = track_it.first;
+		auto track = track_it.second;
+
+		if (track->IsValid() == true)
+		{
+			continue;
+		}
+
+		logtw("[%s/%s] Track #%u (%s) has not received valid media for %" PRId64 " ms; the stream cannot be prepared until this track is ready",
+			  _stream->GetApplicationName(), _stream->GetName().CStr(),
+			  track_id, GetMediaTypeString(track->GetMediaType()), elapsed_ms);
+	}
+}
+
 // @deprecated
 void MediaRouteStream::DropNonDecodingPackets()
 {

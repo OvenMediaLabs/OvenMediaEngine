@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+#include <chrono>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -24,6 +25,9 @@
 #include "modules/managed_queue/managed_queue.h"
 
 static constexpr int64_t MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS = 2000; // Maximum size of mirror buffer
+
+// Warn if a track stays invalid (no decodable media) this long after the first packet, which blocks stream prepare
+static constexpr int64_t MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS = 3000;
 
 class MediaRouteStream : public MediaRouterNormalize, public MediaRouterStats, public MediaRouterEventGenerator, public MediaRouterAlert
 {
@@ -71,6 +75,9 @@ public:
 	bool IsStreamPrepared();
 	bool IsStreamReady();
 
+	// Periodically warn about tracks that stay invalid too long, which blocks the stream from being prepared
+	void CheckUnpreparedTrackTimeout();
+
 	void Flush();
 	
 private:
@@ -78,6 +85,11 @@ private:
 
 	bool _is_stream_prepared = false;
 	bool _is_all_tracks_parsed = false;
+
+	// Deadline tracking for periodically warning about tracks that never become valid (anchored at the first media packet)
+	std::chrono::steady_clock::time_point _first_media_recv_time;
+	std::chrono::steady_clock::time_point _last_unprepared_warn_time;
+	bool _first_media_recv_time_set = false;
 
 	// Incoming/Outgoing Stream
 	cmn::MediaRouterStreamType _type;
