@@ -504,17 +504,18 @@ ov::String MediaTrack::GetInfoStringForCreated()
 	{
 		case MediaType::Video:
 		{
-			out_str.AppendFormat(
-				"Video Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) BSF(%s) ",
-				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				cmn::GetCodecIdString(GetCodecId()),
-				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
-				GetBitstreamFormatString(GetOriginBitstream()));
+			out_str.AppendFormat("Video Track #%u: Public Name(%s) Variant Name(%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr());
 
-			// Measured/negotiated values are shown only once known, so the log carries no zeros at creation
+			// Field order matches GetInfoString(); measured values are shown only once known, so no zeros at creation
 			auto bitrate = GetBitrate();
 			if (bitrate > 0)
 				out_str.AppendFormat("Bitrate(%s) ", ov::Converter::BitToString(bitrate).CStr());
+
+			out_str.AppendFormat("Codec(%s%s%s) BSF(%s) ",
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetBitstreamFormatString(GetOriginBitstream()));
 
 			auto resolution = GetResolution();
 			if (resolution.width > 0 && resolution.height > 0)
@@ -536,16 +537,17 @@ ov::String MediaTrack::GetInfoStringForCreated()
 
 		case MediaType::Audio:
 		{
-			out_str.AppendFormat(
-				"Audio Track #%u: Public Name(%s) Variant Name(%s) Codec(%s%s%s) BSF(%s) ",
-				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				cmn::GetCodecIdString(GetCodecId()),
-				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
-				GetBitstreamFormatString(GetOriginBitstream()));
+			out_str.AppendFormat("Audio Track #%u: Public Name(%s) Variant Name(%s) ",
+				GetId(), GetPublicName().CStr(), GetVariantName().CStr());
 
 			auto bitrate = GetBitrate();
 			if (bitrate > 0)
 				out_str.AppendFormat("Bitrate(%s) ", ov::Converter::BitToString(bitrate).CStr());
+
+			out_str.AppendFormat("Codec(%s%s%s) BSF(%s) ",
+				cmn::GetCodecIdString(GetCodecId()),
+				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
+				GetBitstreamFormatString(GetOriginBitstream()));
 
 			auto samplerate = GetSampleRate();
 			if (samplerate > 0)
