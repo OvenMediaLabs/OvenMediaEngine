@@ -159,20 +159,20 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 
 	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - _first_media_recv_time).count();
 
-	auto tracks = _stream->GetTracks();
+	const auto &tracks = _stream->GetTracks();
 	for (const auto &track_it : tracks)
 	{
-		auto track_id = track_it.first;
 		auto track = track_it.second;
 
-		if (track->IsValid() == true)
+		// Mirror IsStreamReady(): a track blocks prepare until it is both valid and quality-measured
+		if (track->IsValid() == true && track->HasQualityMeasured() == true)
 		{
 			continue;
 		}
 
-		logtw("[%s/%s] Track #%u (%s) has not received valid media for %" PRId64 " ms; the stream cannot be prepared until this track is ready",
+		logtw("[%s/%s] Track #%u (%s) is not ready %" PRId64 " ms after media started; the stream cannot be prepared until this track is ready",
 			  _stream->GetApplicationName(), _stream->GetName().CStr(),
-			  track_id, GetMediaTypeString(track->GetMediaType()), elapsed_ms);
+			  track->GetId(), GetMediaTypeString(track->GetMediaType()), static_cast<int64_t>(elapsed_ms));
 	}
 }
 
