@@ -887,7 +887,6 @@ namespace pvd
 	bool RtspcStream::ReceivePacket(bool non_block, int64_t timeout_msec)
 	{
 		uint8_t buffer[65535];
-		size_t read_bytes = 0ULL;
 
 		if (non_block == false && timeout_msec != 0)
 		{
@@ -895,27 +894,26 @@ namespace pvd
 			_signalling_socket->SetRecvTimeout(tv);
 		}
 
-		auto error = _signalling_socket->Recv(buffer, 65535, &read_bytes, non_block);
+		auto result = _signalling_socket->Recv(buffer, 65535, non_block);
+		if (result.has_value() == false)
+		{
+			logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), result.error()->What());
+			SetState(State::ERROR);
+			return false;
+		}
+
+		auto read_bytes = result.value();
 		if (read_bytes == 0)
 		{
-			if (error != nullptr)
+			if (non_block == true)
 			{
-				logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), error->What());
-				SetState(State::ERROR);
-				return false;
+				// retry later
+				return true;
 			}
 			else
 			{
-				if (non_block == true)
-				{
-					// retry later
-					return true;
-				}
-				else
-				{
-					// timeout
-					return false;
-				}
+				// timeout
+				return false;
 			}
 		}
 

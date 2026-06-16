@@ -28,6 +28,8 @@
 #include <memory>
 #include <utility>
 
+#include <tl/expected.hpp>
+
 // Failure to send data for the specified time period will be considered an error.
 // For example, it can occur when EAGAIN continues to occur for a period of time, or when the peer's TCP window is full and no longer receives data.
 #define OV_SOCKET_EXPIRE_TIMEOUT (10 * 1000)
@@ -201,7 +203,19 @@ namespace ov
 		//
 		// If MakeNonBlocking() is called, non_block is ignored
 		std::shared_ptr<const SocketError> Recv(std::shared_ptr<Data> &data, const bool non_block = false);
-		std::shared_ptr<const SocketError> Recv(void *data, size_t length, size_t *received_length, const bool non_block = false);
+
+		// On success, holds the number of bytes received; on failure, holds a `SocketError`.
+		// A received length of `0` means either "retry later" (`EAGAIN`/non-blocking with no data)
+		// or, for UDP, a valid 0-length datagram - both are reported as success, not a disconnect:
+		//
+		// ```
+		//   auto result = socket->Recv(buffer, length);
+		//   if (result.has_value()) { auto received_length = result.value(); }
+		//   else { auto error = result.error(); }
+		// ```
+		//
+		// If `MakeNonBlocking()` is called, `non_block` is ignored
+		tl::expected<size_t, std::shared_ptr<const SocketError>> Recv(void *data, size_t length, const bool non_block = false);
 
 		// If MakeNonBlocking() is called, non_block is ignored
 		std::shared_ptr<const SocketError> RecvFrom(std::shared_ptr<Data> &data, SocketAddressPair *address_pair, const bool non_block = false);
@@ -454,8 +468,6 @@ namespace ov
 		ssize_t SendInternal(const std::shared_ptr<const Data> &data);
 		ssize_t SendToInternal(const SocketAddress &address, const std::shared_ptr<const Data> &data);
 		ssize_t SendFromToInternal(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data);
-
-		std::shared_ptr<SocketError> RecvInternal(void *data, size_t length, size_t *received_length);
 
 		virtual String ToString(const char *class_name) const;
 

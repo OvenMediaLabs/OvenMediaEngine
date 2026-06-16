@@ -1563,69 +1563,87 @@ namespace ov
 		OV_ASSERT2(data != nullptr);
 		OV_ASSERT(data->GetCapacity() > 0, "Must specify a data size in advance using Reserve().");
 
-		size_t read_bytes;
 		size_t capacity = data->GetCapacity();
 
 		// Set the length of the data to the capacity to avoid memory reallocation
 		data->SetLength(capacity);
 
-		auto error = Recv(data->GetWritableData(), capacity, &read_bytes, non_block);
+		auto result = Recv(data->GetWritableData(), capacity, non_block);
 
-		if (error != nullptr)
+		if (result.has_value() == false)
 		{
-			return error;
+			return result.error();
 		}
 
-		data->SetLength(read_bytes);
+		data->SetLength(result.value());
 
 		return nullptr;
 	}
 
-	std::shared_ptr<const SocketError> Socket::Recv(void *data, size_t length, size_t *received_length, const bool non_block)
+	tl::expected<size_t, std::shared_ptr<const SocketError>> Socket::Recv(void *data, size_t length, const bool non_block)
 	{
 		if (GetState() == SocketState::Closed)
 		{
-			return SocketError::CreateError("Socket is closed");
+			return tl::make_unexpected(SocketError::CreateError("Socket is closed"));
 		}
 
 		OV_ASSERT2(data != nullptr);
-		OV_ASSERT2(received_length != nullptr);
 
 		logap("Trying to read from the socket...");
 
 		ssize_t read_bytes = -1;
 		std::shared_ptr<SocketError> socket_error;
+		size_t received_length = 0;
 
 		switch (GetType())
 		{
+			case SocketType::Unknown:
+				// Must have a concrete type before `Recv()`; reaching here is a bug.
+				OV_ASSERT2(false);
+				return tl::make_unexpected(SocketError::CreateError("Cannot receive data from a socket of unknown type"));
+
 			case SocketType::Udp:
 			case SocketType::Tcp:
 				read_bytes = ::recv(GetNativeHandle(), data, length,
 									((_blocking_mode == BlockingMode::NonBlocking) || non_block) ? MSG_DONTWAIT : 0);
 
-				if (read_bytes <= 0L)
+				if (read_bytes == 0L)
+				{
+					if (GetType() == SocketType::Tcp)
+					{
+						// `0` means orderly shutdown (EOF). `errno` is not set, so classify by the return value.
+						socket_error = SocketError::CreateError("Remote is disconnected");
+					}
+					else
+					{
+						// `0` is a valid empty datagram (no EOF), so treat it as a successful 0-byte read.
+					}
+				}
+				else if (read_bytes < 0L)
 				{
 					auto error = Error::CreateErrorFromErrno();
 
 					if (error->GetCode() == EAGAIN)
 					{
-						if (_blocking_mode == BlockingMode::NonBlocking)
+						if ((_blocking_mode == BlockingMode::NonBlocking) || non_block)
 						{
-							if (IsEndOfStream() == false)
-							{
-								// Timed out
-								read_bytes	 = 0L;
-								// Actually, it is not an error
-								socket_error = nullptr;
-							}
-							else
+							// Non-blocking read: `EAGAIN` means no data right now -> retry later (0 bytes), not an error.
+							// Only a non-blocking socket at end-of-stream is actually closed.
+							if ((_blocking_mode == BlockingMode::NonBlocking) && IsEndOfStream())
 							{
 								// Socket is closed
 								socket_error = SocketError::CreateError(error);
 							}
+							else
+							{
+								// No data available now - retry later
+								read_bytes	 = 0L;
+								socket_error = nullptr;
+							}
 						}
 						else
 						{
+							// Blocking read timed out (`SO_RCVTIMEO`)
 							socket_error = SocketError::CreateError(error->GetCode(), "Receive timed out: %s", error->GetMessage().CStr());
 						}
 					}
@@ -1641,7 +1659,15 @@ namespace ov
 				SRT_MSGCTRL msg_ctrl{};
 				read_bytes = ::srt_recvmsg2(GetNativeHandle(), reinterpret_cast<char *>(data), static_cast<int>(length), &msg_ctrl);
 
-				if (read_bytes <= 0L)
+				if (read_bytes == 0L)
+				{
+					// `srt_recvmsg2()` returns `0` only on EOF (buffer/stream mode);
+					// no-data is `EASYNCRCV` and a broken link is `ECONNLOST`, both negative.
+					// The `0` return does not set the SRT last error, so classify by the return value -
+					// `srt_getlasterror()` may be stale here.
+					socket_error = SocketError::CreateError("Remote is disconnected");
+				}
+				else if (read_bytes < 0L)
 				{
 					auto error = SrtError::CreateErrorFromSrt();
 
@@ -1660,21 +1686,17 @@ namespace ov
 
 				break;
 			}
-
-			default:
-				break;
 		}
 
 		if (socket_error != nullptr)
 		{
 			if (
-				((_socket.GetType() != SocketType::Srt) && (read_bytes == 0L)) ||
+				(read_bytes == 0L) ||
 				((_socket.GetType() == SocketType::Srt) && (socket_error->GetCode() == SRT_ECONNLOST)))
 			{
 				logtt("Remote is disconnected with error: %s", socket_error->What());
 
-				socket_error	 = SocketError::CreateError("Remote is disconnected");
-				*received_length = 0UL;
+				socket_error = SocketError::CreateError("Remote is disconnected");
 
 				// NOTE: `SRT_ECONNLOST` is ambiguous - close as plain Disconnected.
 				//
@@ -1687,7 +1709,7 @@ namespace ov
 				// so downstream does not treat this as an unambiguous transport failure.
 				CloseWithState(SocketState::Disconnected);
 
-				return socket_error;
+				return tl::make_unexpected(socket_error);
 			}
 			else if (read_bytes < 0L)
 			{
@@ -1749,11 +1771,16 @@ namespace ov
 		else
 		{
 			logap("%zd bytes read", read_bytes);
-			*received_length = static_cast<size_t>(read_bytes);
+			received_length = static_cast<size_t>(read_bytes);
 			UpdateLastRecvTime();
 		}
 
-		return socket_error;
+		if (socket_error != nullptr)
+		{
+			return tl::make_unexpected(socket_error);
+		}
+
+		return received_length;
 	}
 
 	template <typename Tpktinfo>

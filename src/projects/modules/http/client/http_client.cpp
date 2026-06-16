@@ -164,12 +164,11 @@ namespace http
 
 			if (socket != nullptr)
 			{
-				size_t received_length;
-				auto error = socket->Recv(data, length, &received_length);
+				auto result = socket->Recv(data, length);
 
-				if (error == nullptr)
+				if (result.has_value())
 				{
-					return received_length;
+					return result.value();
 				}
 			}
 

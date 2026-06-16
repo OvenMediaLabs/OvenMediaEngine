@@ -148,5 +148,6 @@ set(OME_GLOBAL_INCLUDE_DIRS
     "${CMAKE_SOURCE_DIR}/src/projects"
     "${CMAKE_SOURCE_DIR}/src/projects/third_party"
     "${CMAKE_SOURCE_DIR}/src/projects/third_party/spdlog-1.15.1/include"
+    "${CMAKE_SOURCE_DIR}/src/projects/third_party/expected-1.3.1/include"
     "${OME_DEP_PREFIX}/include"
 )
