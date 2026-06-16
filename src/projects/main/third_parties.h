@@ -62,15 +62,15 @@ std::shared_ptr<ov::Error> TerminateJemalloc();
 
 // By default, `jemalloc` is enabled in release builds and disabled in debug builds, so this API
 // does nothing in debug builds unless you enable it explicitly.
-// To enable it regardless of the build type, configure CMake with `-DOME_ENABLE_JEMALLOC=ON`,
-// which builds jemalloc and defines the `OME_USE_JEMALLOC` compile definition once the library is
-// available. See `cmake/README.md#build-options` for details.
+// To enable it regardless of the build type, configure CMake with `-DOME_ENABLE_JEMALLOC=ON`.
+// Once jemalloc is available, CMake defines the `OME_USE_JEMALLOC` compile definition.
+// See `cmake/README.md#build-options` for details.
 bool JemallocShowStats();
 
 // `JemallocTriggerDump()` works only when jemalloc is built with heap profiling enabled.
 // Configure CMake with `-DOME_USE_JEMALLOC_PROFILE=ON` (which requires `-DOME_ENABLE_JEMALLOC=ON`):
-// this defines the `OME_USE_JEMALLOC_PROFILE` compile definition and builds jemalloc with
-// `--enable-prof` when it is (re)installed. See `cmake/README.md#build-options` for details.
+// once jemalloc is available, this defines the `OME_USE_JEMALLOC_PROFILE` compile definition and
+// builds jemalloc with `--enable-prof` when it is (re)installed. See `cmake/README.md#build-options` for details.
 //
 // Without heap profiling enabled, this function does nothing and returns `false`.
 bool JemallocTriggerDump();
