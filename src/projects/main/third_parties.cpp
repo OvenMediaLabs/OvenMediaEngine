@@ -391,7 +391,7 @@ bool JemallocTriggerDump()
 	loge(JEMALLOC_LOG_TAG, "Could not dump jemalloc profile (err: %d)", result);
 	return false;
 #else	// OME_USE_JEMALLOC_PROFILE
-	logw(JEMALLOC_LOG_TAG, "Dumping jemalloc profile is not enabled. To enable it, define `OME_USE_JEMALLOC_PROFILE` in `global_config.mk`.");
+	logw(JEMALLOC_LOG_TAG, "Dumping jemalloc profile is not enabled. To enable it, configure CMake with `-DOME_USE_JEMALLOC_PROFILE=ON` (which requires `-DOME_ENABLE_JEMALLOC=ON`). See `cmake/README.md#build-options` for details.");
 	return false;
 #endif	// OME_USE_JEMALLOC_PROFILE
 }

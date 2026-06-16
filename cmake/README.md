@@ -1,8 +1,7 @@
 # OvenMediaEngine CMake Build System
 
-> **Note**: OvenMediaEngine is currently migrating from the legacy `make` build system to CMake.
-> The CMake build is under active development and may not yet cover all edge cases.
-> The legacy `make` build (`src/Makefile`) remains available during the transition period.
+> **Note**: CMake is the official build system for OvenMediaEngine.
+> The legacy `make` build system has been removed.
 
 ---
 
