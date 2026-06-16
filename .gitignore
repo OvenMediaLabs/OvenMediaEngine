@@ -47,6 +47,3 @@ src/projects/main/git_info.h
 # For third-party libraries
 misc/oven_rtc_tester/OvenRtcTester
 misc/FFmpeg*
-
-# AMS
-src/core/local_config.mk

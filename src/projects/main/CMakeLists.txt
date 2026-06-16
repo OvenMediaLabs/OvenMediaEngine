@@ -1,7 +1,6 @@
 #
 # src/projects/main/CMakeLists.txt
 # Builds the final OvenMediaEngine executable.
-# Mirrors the role of projects/main/AMS.mk.
 #
 
 # ome_git_info target is defined in the parent CMakeLists.txt (projects/)
@@ -44,7 +43,7 @@ target_link_libraries(OvenMediaEngine PRIVATE
 )
 
 # ==============================================================================
-# System / pkg-config libraries  (mirrors add_pkg_config and LOCAL_LDFLAGS)
+# System / pkg-config libraries
 # ==============================================================================
 target_link_libraries(OvenMediaEngine PRIVATE
     PkgConfig::PKG_SRT

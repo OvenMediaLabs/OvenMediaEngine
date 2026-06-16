@@ -1,8 +1,7 @@
 #
 # src/projects/CMakeLists.txt
 # Top-level of all OME libraries.
-# Mirrors the role of projects/AMS.mk: sets global project flags and
-# recurses into every sub-project.
+# Sets global project flags and recurses into every sub-project.
 #
 
 # ==============================================================================

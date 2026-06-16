@@ -232,7 +232,7 @@ add_subdirectory(src)
 # ==============================================================================
 set(OME_INSTALL_DIR /usr/share/ovenmediaengine)
 
-# Strip symbols on install for Release builds only (mirrors 'install -s' in main.mk)
+# Strip symbols on install for Release builds only
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_INSTALL_DO_STRIP TRUE)
 endif()

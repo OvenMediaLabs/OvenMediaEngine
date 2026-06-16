@@ -1,6 +1,6 @@
 #
 # CompilerOptions.cmake
-# Global compiler flags mirroring those in the AMS.mk build system.
+# Global compiler flags.
 #
 
 # Require C++17
@@ -28,7 +28,7 @@ execute_process(
 )
 
 # ------------------------------------------------------------------------------
-# Common flags (mirroring GLOBAL_C/CXXFLAGS_COMMON)
+# Common flags
 # ------------------------------------------------------------------------------
 set(OME_COMMON_FLAGS
     -Wall
@@ -45,7 +45,7 @@ endif()
 set(OME_CFLAGS_COMMON   ${OME_COMMON_FLAGS})
 set(OME_CXXFLAGS_COMMON ${OME_COMMON_FLAGS})
 
-# Project-level flags (from projects/AMS.mk)
+# Project-level flags
 set(OME_PROJECT_CFLAGS
     -D__STDC_CONSTANT_MACROS
     -Wfatal-errors
@@ -127,7 +127,7 @@ elseif(OME_THREAD_SAFETY)
 endif()
 
 # ------------------------------------------------------------------------------
-# RPATH setup - mirror CONFIG_LIBRARY_PATHS
+# RPATH setup
 # ------------------------------------------------------------------------------
 set(OME_LIB_PATHS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
 
