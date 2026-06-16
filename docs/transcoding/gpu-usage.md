@@ -109,7 +109,7 @@ ldconfig -p | grep libxcoder_logan.so
 
 #### 2. Prerequisites
 
-If you have finished installing the driver to use the VPU, you need to reinstall the open source libraries with NiLogan support enabled. The purpose is to allow external libraries to use the installed graphics driver. You also have to unzip the ffmpeg patch provide by netint in a specfic path
+If you have finished installing the driver to use the VPU, you need to reinstall the open source libraries with NiLogan support enabled. The purpose is to allow external libraries to use the installed graphics driver. You also need to extract the FFmpeg patch file provided by Netint, then pass its path to `OME_NILOGAN_PATCH_PATH` as shown below.
 
 #### Using Netint VPU
 
