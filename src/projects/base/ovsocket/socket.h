@@ -206,7 +206,9 @@ namespace ov
 
 		// On success, holds the number of bytes received; on failure, holds a `SocketError`.
 		// A received length of `0` means either "retry later" (`EAGAIN`/non-blocking with no data)
-		// or, for UDP, a valid 0-length datagram - both are reported as success, not a disconnect:
+		// or, for UDP, a valid 0-length datagram - both are reported as success, not a disconnect.
+		// A TCP/SRT EOF (orderly peer shutdown) is reported as a failure (`has_value() == false`),
+		// never as a `0`-length success:
 		//
 		// ```
 		//   auto result = socket->Recv(buffer, length);

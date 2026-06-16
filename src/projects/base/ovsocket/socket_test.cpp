@@ -26,6 +26,11 @@
 #include <thread>
 #include <vector>
 
+// macOS lacks MSG_NOSIGNAL; fall back to no flag so the peer helpers stay portable.
+#ifndef MSG_NOSIGNAL
+#	define MSG_NOSIGNAL 0
+#endif
+
 namespace
 {
 	constexpr int kLoopbackTimeoutMsec = 3000;
@@ -47,6 +52,25 @@ namespace
 			return 0;
 		}
 		return ntohs(sa.sin_port);
+	}
+
+	// Reads exactly `want` bytes into `out`. A TCP stream may legally arrive across
+	// several reads (even on loopback), so this loops; returns false on
+	// error/disconnect/timeout.
+	bool RecvExactly(const std::shared_ptr<ov::Socket> &socket, void *out, size_t want)
+	{
+		auto *cursor	= static_cast<uint8_t *>(out);
+		size_t received = 0;
+		while (received < want)
+		{
+			auto result = socket->Recv(cursor + received, want - received);
+			if (result.has_value() == false)
+			{
+				return false;
+			}
+			received += result.value();
+		}
+		return true;
 	}
 
 	// A minimal POSIX TCP server that accepts a single connection. It lets the
@@ -461,7 +485,8 @@ protected:
 // TCP
 // ===========================================================================
 
-// Successful read: `value()` holds the byte count and the payload is intact.
+// A successful read returns the data intact. TCP is a stream, so the payload may
+// span several reads; accumulate via `RecvExactly` rather than assuming one call.
 TEST_F(SocketRecvTcpTest, RawBufferReceivesData)
 {
 	PosixTcpPeer peer;
@@ -473,16 +498,13 @@ TEST_F(SocketRecvTcpTest, RawBufferReceivesData)
 	ASSERT_EQ(peer.Send(payload, sizeof(payload)), static_cast<ssize_t>(sizeof(payload)));
 
 	char buffer[64] = {0};
-	auto result		= client->Recv(buffer, sizeof(buffer));
-
-	ASSERT_TRUE(result.has_value());
-	EXPECT_EQ(result.value(), sizeof(payload));
-	EXPECT_STREQ(buffer, payload);
+	ASSERT_TRUE(RecvExactly(client, buffer, sizeof(payload)));
+	EXPECT_EQ(::memcmp(buffer, payload, sizeof(payload)), 0);
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
 }
 
-// A buffer larger than the data still reports the actual number of bytes read.
-TEST_F(SocketRecvTcpTest, RawBufferReportsActualLengthForPartialFill)
+// A single read reports the bytes actually available, never the buffer capacity.
+TEST_F(SocketRecvTcpTest, RawBufferReportsActualLengthNotCapacity)
 {
 	PosixTcpPeer peer;
 	ASSERT_TRUE(peer.Listen());
@@ -496,10 +518,13 @@ TEST_F(SocketRecvTcpTest, RawBufferReportsActualLengthForPartialFill)
 	auto result = client->Recv(buffer, sizeof(buffer));
 
 	ASSERT_TRUE(result.has_value());
-	EXPECT_EQ(result.value(), 3u);
+	// May be a short read (1..3) on a stream, but never the 4096 buffer capacity.
+	EXPECT_GT(result.value(), 0u);
+	EXPECT_LE(result.value(), 3u);
 }
 
-// The `Data` overload sets the data length to the number of bytes received.
+// The `Data` overload sets the data length to the number of bytes received. TCP
+// may split the payload across reads, so accumulate until the whole thing arrives.
 TEST_F(SocketRecvTcpTest, DataOverloadSetsLength)
 {
 	PosixTcpPeer peer;
@@ -510,14 +535,19 @@ TEST_F(SocketRecvTcpTest, DataOverloadSetsLength)
 	const char payload[] = "hello-data";
 	ASSERT_EQ(peer.Send(payload, sizeof(payload)), static_cast<ssize_t>(sizeof(payload)));
 
-	auto data = std::make_shared<ov::Data>();
-	ASSERT_TRUE(data->Reserve(2048));
+	std::string received;
+	while (received.size() < sizeof(payload))
+	{
+		auto data = std::make_shared<ov::Data>();
+		ASSERT_TRUE(data->Reserve(2048));
 
-	auto error = client->Recv(data);
+		auto error = client->Recv(data);
+		ASSERT_EQ(error, nullptr);
+		received.append(static_cast<const char *>(data->GetData()), data->GetLength());
+	}
 
-	ASSERT_EQ(error, nullptr);
-	EXPECT_EQ(data->GetLength(), sizeof(payload));
-	EXPECT_EQ(::memcmp(data->GetData(), payload, sizeof(payload)), 0);
+	EXPECT_EQ(received.size(), sizeof(payload));
+	EXPECT_EQ(::memcmp(received.data(), payload, sizeof(payload)), 0);
 }
 
 // An orderly peer shutdown (`recv() == 0`) must be classified as a disconnect,

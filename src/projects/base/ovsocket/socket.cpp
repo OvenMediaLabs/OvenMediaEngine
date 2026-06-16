@@ -1772,7 +1772,13 @@ namespace ov
 		{
 			logap("%zd bytes read", read_bytes);
 			received_length = static_cast<size_t>(read_bytes);
-			UpdateLastRecvTime();
+
+			// Only refresh the last-recv time when data actually arrived;
+			// a 0-byte success (retry-later / would-block) must not mask idle timeouts.
+			if (read_bytes > 0L)
+			{
+				UpdateLastRecvTime();
+			}
 		}
 
 		if (socket_error != nullptr)
