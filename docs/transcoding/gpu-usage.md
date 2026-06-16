@@ -65,7 +65,7 @@ $ nvidia-smi
 If you have finished installing the driver to use the GPU, you need to reinstall the open source libraries with NVIDIA support enabled. The purpose is to allow external libraries to use the installed graphics driver.
 
 ```bash
-cmake -DOME_HWACCEL_NVIDIA=ON -P cmake/InstallPrerequisites.cmake
+cmake -DOME_HWACCEL_NVIDIA=ON -P OvenMediaEngine-master/cmake/InstallPrerequisites.cmake
 ```
 
 </TabItem>
@@ -114,7 +114,7 @@ If you have finished installing the driver to use the VPU, you need to reinstall
 #### Using Netint VPU
 
 ```bash
-cmake -DOME_HWACCEL_NILOGAN=ON -DOME_NILOGAN_PATCH_PATH=/root/T4xx/release/FFmpeg-n5.0_t4xx_patch -P cmake/InstallPrerequisites.cmake
+cmake -DOME_HWACCEL_NILOGAN=ON -DOME_NILOGAN_PATCH_PATH=/root/T4xx/release/FFmpeg-n5.0_t4xx_patch -P OvenMediaEngine-master/cmake/InstallPrerequisites.cmake
 ```
 
 </TabItem>
