@@ -69,8 +69,8 @@ bool JemallocShowStats();
 
 // `JemallocTriggerDump()` works only when jemalloc is built with heap profiling enabled.
 // Configure CMake with `-DOME_USE_JEMALLOC_PROFILE=ON` (which requires `-DOME_ENABLE_JEMALLOC=ON`):
-// this builds jemalloc with `--enable-prof` and defines the `OME_USE_JEMALLOC_PROFILE` compile definition.
-// See `cmake/README.md#build-options` for details.
+// this defines the `OME_USE_JEMALLOC_PROFILE` compile definition and builds jemalloc with
+// `--enable-prof` when it is (re)installed. See `cmake/README.md#build-options` for details.
 //
 // Without heap profiling enabled, this function does nothing and returns `false`.
 bool JemallocTriggerDump();
