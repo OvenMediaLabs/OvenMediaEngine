@@ -905,16 +905,9 @@ namespace pvd
 		auto read_bytes = result.value();
 		if (read_bytes == 0)
 		{
-			if (non_block == true)
-			{
-				// retry later
-				return true;
-			}
-			else
-			{
-				// timeout
-				return false;
-			}
+			// No data available right now - retry later. A real error/timeout arrives as
+			// a failed result and is handled above, so 0 is never fatal here.
+			return true;
 		}
 
 		// Since the response to the Play request and part of the interleaved data can be received at once,

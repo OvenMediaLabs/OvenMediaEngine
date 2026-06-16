@@ -650,16 +650,9 @@ namespace pvd
 		auto read_bytes = result.value();
 		if (read_bytes == 0)
 		{
-			if (non_block == true)
-			{
-				// retry later
-				return true;
-			}
-			else
-			{
-				// timeout
-				return false;
-			}
+			// No data available right now - retry later. A real error/disconnect arrives
+			// as a failed result and is handled above, so 0 is never fatal here.
+			return true;
 		}
 
 		if (_depacketizer.AppendPacket(buffer, read_bytes) == false)

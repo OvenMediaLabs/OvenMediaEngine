@@ -147,9 +147,22 @@ namespace
 			return _conn_fd >= 0;
 		}
 
+		// Sends the whole buffer; a TCP stream may accept a short write, so loop until
+		// everything is queued. Returns total bytes sent, or the failing return value.
 		ssize_t Send(const void *data, size_t length)
 		{
-			return ::send(_conn_fd, data, length, MSG_NOSIGNAL);
+			auto *cursor = static_cast<const uint8_t *>(data);
+			size_t sent	 = 0;
+			while (sent < length)
+			{
+				ssize_t written = ::send(_conn_fd, cursor + sent, length - sent, MSG_NOSIGNAL);
+				if (written <= 0)
+				{
+					return written;
+				}
+				sent += static_cast<size_t>(written);
+			}
+			return static_cast<ssize_t>(sent);
 		}
 
 		void CloseConnection()
@@ -858,8 +871,7 @@ TEST_F(SocketConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 			peers[i]->Send(payload, sizeof(payload));
 
 			char buffer[64] = {0};
-			auto result		= clients[i]->Recv(buffer, sizeof(buffer));
-			if (result.has_value() && result.value() == sizeof(payload) &&
+			if (RecvExactly(clients[i], buffer, sizeof(payload)) &&
 				::memcmp(buffer, payload, sizeof(payload)) == 0)
 			{
 				success.fetch_add(1);
