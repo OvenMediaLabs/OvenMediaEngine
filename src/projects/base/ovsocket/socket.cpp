@@ -1631,8 +1631,10 @@ namespace ov
 							// Only a non-blocking socket at end-of-stream is actually closed.
 							if ((_blocking_mode == BlockingMode::NonBlocking) && IsEndOfStream())
 							{
-								// Socket is closed
-								socket_error = SocketError::CreateError(error);
+								// End of stream - route through the disconnect handling below
+								// (`read_bytes` == 0), not the `EAGAIN`/timeout path.
+								read_bytes	 = 0L;
+								socket_error = SocketError::CreateError("Remote is disconnected");
 							}
 							else
 							{
