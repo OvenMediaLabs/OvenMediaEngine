@@ -17,7 +17,6 @@
 
 #include "base/info/stream.h"
 #include "base/mediarouter/media_type.h"
-#include "transcoder_context.h"
 #include "codec/codec_base.h"
 
 class TranscoderAlerts

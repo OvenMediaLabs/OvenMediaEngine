@@ -71,36 +71,12 @@ bool EncoderWhisper::Configure(std::shared_ptr<MediaTrack> context)
 	// Initialize muted state from config (can be changed at runtime via API).
 	_audio_muted.store(!context->IsSttEnabled(), std::memory_order_relaxed);
 
-	if (TranscodeEncoder::Configure(context, _n_samples_step) == false)
-	{
-		return false;
-	}
-
-	try
-	{
-		_kill_flag = false;
-
-		_codec_thread = std::thread(&EncoderWhisper::CodecThread, this);
-		pthread_setname_np(_codec_thread.native_handle(), ov::String::FormatString("ENC-%s-t%d", cmn::GetCodecIdString(GetCodecID()), _track->GetId()).CStr());
-		
-		// Initialize the codec and wait for completion.
-		if(_codec_init_event.Get() == false)
-		{
-			_kill_flag = true;
-			return false;
-		}
-	}
-	catch (const std::system_error &e)
-	{
-		_kill_flag = true;
-		return false;
-	}
-
-	return true;
+	// The base Configure starts the encoding thread (ThreadLoop) and waits for init.
+	return TranscodeEncoder::Configure(context, _n_samples_step);
 }
 
 // Called by CodecThread
-bool EncoderWhisper::InitCodec()
+bool EncoderWhisper::Initialize()
 {
 	// check sample rate and channel
 	if (_track->GetSampleRate() != WHISPER_SAMPLE_RATE)
@@ -185,12 +161,12 @@ void EncoderWhisper::FreeWhisperState()
 	}
 }
 
-void EncoderWhisper::CodecThread()
+void EncoderWhisper::ThreadLoop()
 {
 	ov::logger::ThreadHelper thread_helper;
 
 	// Initialize the codec and notify the main thread.
-	if (_codec_init_event.Submit(InitCodecInteral()) == false)
+	if (_codec_init_event.Submit(Initialize()) == false)
 	{
 		return;
 	}
@@ -280,7 +256,7 @@ void EncoderWhisper::CodecThread()
 			start_ts = ov::Converter::Rescale(start_ts, 100, _track->GetTimeBase().GetDen());
 			end_ts = ov::Converter::Rescale(end_ts, 100, _track->GetTimeBase().GetDen());
 
-			auto av_frame = ffmpeg::compat::ToAVFrame(cmn::MediaType::Audio, media_frame);
+			auto av_frame = static_cast<AVFrame *>(media_frame->GetPrivData());
 			if (!av_frame)
 			{
 				logte("Could not allocate the frame data");

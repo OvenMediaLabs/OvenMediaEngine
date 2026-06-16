@@ -10,30 +10,17 @@
 
 #include <utility>
 
-#include "codec/encoder/encoder_aac.h"
-#include "codec/encoder/encoder_avc_nilogan.h"
-#include "codec/encoder/encoder_avc_nv.h"
-#include "codec/encoder/encoder_avc_openh264.h"
-#include "codec/encoder/encoder_avc_qsv.h"
-#include "codec/encoder/encoder_avc_x264.h"
-#include "codec/encoder/encoder_avc_xma.h"
-#include "codec/encoder/encoder_ffopus.h"
-#include "codec/encoder/encoder_hevc_nilogan.h"
-#include "codec/encoder/encoder_hevc_nv.h"
-#include "codec/encoder/encoder_hevc_qsv.h"
-#include "codec/encoder/encoder_hevc_xma.h"
-#include "codec/encoder/encoder_jpeg.h"
-#include "codec/encoder/encoder_opus.h"
-#include "codec/encoder/encoder_png.h"
-#include "codec/encoder/encoder_vp8.h"
-#include "codec/encoder/encoder_webp.h"
+#include "codec/encoder/encoder_avcodec_video.h"
+#include "codec/encoder/encoder_avcodec_audio.h"
+#include "codec/encoder/encoder_avcodec_image.h"
 #include "codec/encoder/encoder_whisper.h"
 #include "transcoder_fault_injector.h"
 #include "transcoder_gpu.h"
 #include "transcoder_modules.h"
 #include "transcoder_private.h"
 
-#define USE_LEGACY_LIBOPUS false
+
+
 #define MAX_QUEUE_SIZE 2
 #define ALL_GPU_ID -1
 #define DEFAULT_MODULE_NAME "DEFAULT"
@@ -87,7 +74,6 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 		{
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "XMA", ALL_GPU_ID));
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "NV", ALL_GPU_ID));
-			desire_modules.push_back(ov::String::FormatString("%s:%d", "QSV", ALL_GPU_ID));
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "NILOGAN", ALL_GPU_ID));
 		}
 
@@ -166,12 +152,8 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 		switch (module_id)
 		{
 			case cmn::MediaCodecModuleId::DEFAULT:
-			case cmn::MediaCodecModuleId::OPENH264: return std::make_shared<EncoderAVCxOpenH264>(stream_info);
-			case cmn::MediaCodecModuleId::X264:     return std::make_shared<EncoderAVCx264>(stream_info);
-			case cmn::MediaCodecModuleId::QSV:      return std::make_shared<EncoderAVCxQSV>(stream_info);
-			case cmn::MediaCodecModuleId::NILOGAN:  return std::make_shared<EncoderAVCxNILOGAN>(stream_info);
-			case cmn::MediaCodecModuleId::XMA:      return std::make_shared<EncoderAVCxXMA>(stream_info);
-			case cmn::MediaCodecModuleId::NVENC:    return std::make_shared<EncoderAVCxNV>(stream_info);
+			case cmn::MediaCodecModuleId::OPENH264: return std::make_shared<AVCodecVideoEncoder>(stream_info, codec_id, cmn::MediaCodecModuleId::OPENH264);
+			case cmn::MediaCodecModuleId::X264:     return std::make_shared<AVCodecVideoEncoder>(stream_info, codec_id, cmn::MediaCodecModuleId::X264);
 			default: break;
 		}
 	}
@@ -179,26 +161,18 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 	{
 		switch (module_id)
 		{
-			case cmn::MediaCodecModuleId::QSV:     return std::make_shared<EncoderHEVCxQSV>(stream_info);
-			case cmn::MediaCodecModuleId::NILOGAN: return std::make_shared<EncoderHEVCxNILOGAN>(stream_info);
-			case cmn::MediaCodecModuleId::XMA:     return std::make_shared<EncoderHEVCxXMA>(stream_info);
-			case cmn::MediaCodecModuleId::NVENC:   return std::make_shared<EncoderHEVCxNV>(stream_info);
 			default: break;
 		}
 	}
-	else if (codec_id == cmn::MediaCodecId::Vp8)    return std::make_shared<EncoderVP8>(stream_info);
-	else if (codec_id == cmn::MediaCodecId::Aac)    return std::make_shared<EncoderAAC>(stream_info);
+	else if (codec_id == cmn::MediaCodecId::Vp8)    return std::make_shared<AVCodecVideoEncoder>(stream_info, codec_id, cmn::MediaCodecModuleId::LIBVPX);
+	else if (codec_id == cmn::MediaCodecId::Aac)    return std::make_shared<AVCodecAudioEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Opus)
 	{
-#if USE_LEGACY_LIBOPUS
-		return std::make_shared<EncoderOPUS>(stream_info);
-#else
-		return std::make_shared<EncoderFFOPUS>(stream_info);
-#endif
+		return std::make_shared<AVCodecAudioEncoder>(stream_info, codec_id);
 	}
-	else if (codec_id == cmn::MediaCodecId::Jpeg)    return std::make_shared<EncoderJPEG>(stream_info);
-	else if (codec_id == cmn::MediaCodecId::Png)     return std::make_shared<EncoderPNG>(stream_info);
-	else if (codec_id == cmn::MediaCodecId::Webp)    return std::make_shared<EncoderWEBP>(stream_info);
+	else if (codec_id == cmn::MediaCodecId::Jpeg)    return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
+	else if (codec_id == cmn::MediaCodecId::Png)     return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
+	else if (codec_id == cmn::MediaCodecId::Webp)    return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Whisper) return std::make_shared<EncoderWhisper>(stream_info);
 	else
 	{
@@ -269,22 +243,15 @@ TranscodeEncoder::TranscodeEncoder(info::Stream stream_info)
 	: _encoder_id(-1),
 	  _stream_info(stream_info),
 	  _track(nullptr),
-	  _bitstream_format(cmn::BitstreamFormat::Unknown),
-	  _packet_type(cmn::PacketType::Unknown),
 	  _kill_flag(false),
 	  _complete_handler(nullptr),
 	  _force_keyframe_by_time_interval(0),
-	  _accumulate_frame_duration(-1),
-	  _codec_context(nullptr),
-	  _packet(nullptr),
-	  _frame(nullptr)
+	  _accumulate_frame_duration(-1)
 {
 }
 
 TranscodeEncoder::~TranscodeEncoder()
 {
-	DeinitCodec();
-
 	_input_buffer.Clear();
 }
 
@@ -327,7 +294,31 @@ bool TranscodeEncoder::Configure(std::shared_ptr<MediaTrack> output_track, size_
 
 	tc::TranscodeModules::GetInstance()->OnCreated(true, GetCodecID(), GetModuleID(), GetDeviceID());
 
-	return (_track != nullptr);
+	if (_track == nullptr)
+	{
+		return false;
+	}
+
+	// Start the encoding thread and wait for codec initialization to complete.
+	try
+	{
+		_kill_flag = false;
+		_codec_thread = std::thread([this]() { ThreadLoop(); });
+		pthread_setname_np(_codec_thread.native_handle(), name.CStr());
+
+		if (_codec_init_event.Get() == false)
+		{
+			_kill_flag = true;
+			return false;
+		}
+	}
+	catch (const std::system_error &e)
+	{
+		_kill_flag = true;
+		return false;
+	}
+
+	return true;
 }
 
 std::shared_ptr<MediaTrack> &TranscodeEncoder::GetRefTrack()
@@ -402,195 +393,20 @@ void TranscodeEncoder::Stop()
 	tc::TranscodeModules::GetInstance()->OnDeleted(true, GetCodecID(), GetModuleID(), GetDeviceID());
 }
 
-bool TranscodeEncoder::InitCodecInteral()
-{
-	_packet = ::av_packet_alloc();
-	_frame = ::av_frame_alloc();
-
-	// Called the codec specific initialization function.
-	auto result = InitCodec();
-	if (_track != nullptr)
-	{
-		_track->SetCodecStatus(result ? cmn::CodecStatus::Ready : cmn::CodecStatus::Failed);
-	}
-	return result;
-}
-
-void TranscodeEncoder::DeinitCodec()
-{
-	if (_codec_context != nullptr)
-	{
-		if (_codec_context->codec != nullptr && _codec_context->codec->capabilities & AV_CODEC_CAP_ENCODER_FLUSH)
-		{
-			::avcodec_flush_buffers(_codec_context);
-		}
-
-		OV_SAFE_FUNC(_codec_context, nullptr, ::avcodec_free_context, &);
-	}
-
-	OV_SAFE_FUNC(_frame, nullptr, ::av_frame_free, &);
-	OV_SAFE_FUNC(_packet, nullptr, ::av_packet_free, &);
-}
-
 void TranscodeEncoder::Flush()
 {
 	// Not implemented
 }
 
-bool TranscodeEncoder::PushProcess(std::shared_ptr<const MediaFrame> media_frame)
+bool TranscodeEncoder::Reinitialize()
 {
-	// Flush the encoder if the frame is nullptr.
-	if (media_frame == nullptr)
-	{
-		int ret = ::avcodec_send_frame(_codec_context, nullptr);
-		if (ret < 0)
-		{
-			logte("Error sending a frame for encoding : %d", ret);
-			
-			return false;
-		}
+	Uninitialize();
 
-		return true;
-	}
-
-	// Convert MediaFrame to AVFrame
-	auto av_frame = ffmpeg::compat::ToAVFrame(GetRefTrack()->GetMediaType(), media_frame);
-	if (!av_frame)
-	{
-		logte("Could not allocate the video frame data");
-		return false;
-	}
-
-	// Force inserts keyframes based on accumulated frame duration.
-	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Video)
-	{
-		av_frame->pict_type = AV_PICTURE_TYPE_NONE;
-
-		// If _force_keyframe_by_time_interval value is > 0,
-		// Enabled force keyframe by time interval.
-		if (_force_keyframe_by_time_interval > 0)
-		{
-			if (_accumulate_frame_duration >= _force_keyframe_by_time_interval ||  // Accumulated duration exceeds keyframe interval
-				_accumulate_frame_duration == -1)								   // Force keyframe the first frame
-			{
-				_last_keyframe_delta_time = _accumulate_frame_duration;
-				av_frame->pict_type		   = AV_PICTURE_TYPE_I;
-				_accumulate_frame_duration = 0;
-			}
-			_accumulate_frame_duration += media_frame->GetDuration();
-		}
-	}
-
-	// Send the frame to the encoder
-	int ret = ::avcodec_send_frame(_codec_context, av_frame);
-	if (ret == AVERROR(EAGAIN))
-	{
-		logtw("Encoder internal buffer is full, need to flush packets.");
-	}
-	else if (ret == AVERROR_INVALIDDATA)
-	{
-		logtw("Invalid data while sending a frame for encoding.");
-	}
-	else if (ret == AVERROR(ENOMEM))
-	{
-		logte("Could not allocate memory while sending a frame for encoding.");
-
-		Complete(TranscodeResult::DataError, nullptr);
-
-		return false;
-	}
-	else if (ret < 0)
-	{
-		logte("Error sending a frame for encoding. reason(%s)", ffmpeg::compat::AVErrorToString(ret).CStr());
-
-		Complete(TranscodeResult::DataError, nullptr);
-
-		return false;
-	}
-
-	return true;
+	return Initialize();
 }
 
-// true: continue, false: stop
-bool TranscodeEncoder::PopProcess()
+void TranscodeEncoder::SetupForceKeyframeByTime()
 {
-	// Check frame is available
-	int ret = ::avcodec_receive_packet(_codec_context, _packet);
-	if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-	{
-		// There is no more remain frame.
-		return false;
-	}
-	else if (ret == AVERROR_INVALIDDATA)
-	{
-		logtw("Invalid data while receiving a packet for encoding.");
-
-		return false;
-	}
-	else if (ret == AVERROR(ENOMEM))
-	{
-		logtw("Could not allocate memory while receiving a packet for encoding.");
-		Complete(TranscodeResult::DataError, nullptr);
-
-		return false;
-	}
-	else if (ret < 0)
-	{
-		logte("Error receiving a packet for encoding : %s", ffmpeg::compat::AVErrorToString(ret).CStr());
-
-		Complete(TranscodeResult::DataError, nullptr);
-
-		return false;
-	}
-
-	auto media_packet = ffmpeg::compat::ToMediaPacket(_packet, GetRefTrack()->GetMediaType(), _bitstream_format, _packet_type);
-	::av_packet_unref(_packet);
-	if (media_packet == nullptr)
-	{
-		logte("Could not allocate the media packet");
-
-		Complete(TranscodeResult::DataError, nullptr);
-
-		return false;
-	}
-
-
-	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Audio)
-	{
-		// If the pts value are under zero, the dash packetizer does not work.
-		if (media_packet->GetPts() < 0)
-		{
-			return true;
-		}
-	}
-
-#if DEBUG
-	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame() == true)
-	{
-		logtt("keyframe is encoded. pts:%" PRId64 "ms, dts:%" PRId64 "ms, delta:%" PRId64 "ms",
-			  static_cast<int64_t>(media_packet->GetPts() * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()),
-			  static_cast<int64_t>(media_packet->GetDts() * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()),
-			  static_cast<int64_t>(_last_keyframe_delta_time * 1000 / GetRefTrack()->GetTimeBase().GetTimescale()));
-	}
-#endif
-	
-	// Call the complete handler.
-	Complete(TranscodeResult::DataReady, std::move(media_packet));
-
-	return true;
-}
-
-void TranscodeEncoder::CodecThread()
-{
-	ov::logger::ThreadHelper thread_helper;
-
-	// Initialize the codec and notify to the main thread.
-	if (_codec_init_event.Submit(InitCodecInteral()) == false)
-	{
-		return;
-	}
-
-	// Initialize for Force Keyframe by time interval.
 	if ((GetRefTrack()->GetMediaType() == cmn::MediaType::Video) &&
 		(GetRefTrack()->GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME))
 	{
@@ -600,9 +416,9 @@ void TranscodeEncoder::CodecThread()
 		_force_keyframe_by_time_interval = static_cast<int64_t>(timebase_timescale * (double)key_frame_interval_ms / 1000.0);
 
 		// Insert keyframe in first frame
-		_accumulate_frame_duration		 = -1;
+		_accumulate_frame_duration = -1;
 
-		if (key_frame_interval_ms > 0 && key_frame_interval_ms < 500) // 500ms 
+		if (key_frame_interval_ms > 0 && key_frame_interval_ms < 500)  // 500ms
 		{
 			logtw("Force keyframe interval(by time) is enabled. but, interval is too short (%.0f ms). It may cause quality issues.", key_frame_interval_ms);
 		}
@@ -619,65 +435,117 @@ void TranscodeEncoder::CodecThread()
 
 		logtt("Force keyframe by time interval is disabled.");
 	}
+}
 
-	[[maybe_unused]] 
-	int32_t curr_source_id = 0;
+bool TranscodeEncoder::ComputeForceKeyframe(const std::shared_ptr<const MediaFrame> &frame)
+{
+	if (GetRefTrack()->GetMediaType() != cmn::MediaType::Video)
+	{
+		return false;
+	}
+
+	if (_force_keyframe_by_time_interval <= 0)
+	{
+		return false;
+	}
+
+	bool force = false;
+	if (_accumulate_frame_duration >= _force_keyframe_by_time_interval ||  // Accumulated duration exceeds keyframe interval
+		_accumulate_frame_duration == -1)								  // Force keyframe the first frame
+	{
+		_last_keyframe_delta_time  = _accumulate_frame_duration;
+		force					   = true;
+		_accumulate_frame_duration = 0;
+	}
+	_accumulate_frame_duration += frame->GetDuration();
+
+	return force;
+}
+
+void TranscodeEncoder::ThreadLoop()
+{
+	ov::logger::ThreadHelper thread_helper;
+
+	// Initialize the codec and notify the main thread.
+	if (_codec_init_event.Submit(Initialize()) == false)
+	{
+		return;
+	}
+
+	// Initialize force-keyframe-by-time-interval state.
+	SetupForceKeyframeByTime();
 
 	while (!_kill_flag)
 	{
 		auto obj = _input_buffer.Dequeue();
 		if (obj.has_value() == false)
+		{
 			continue;
+		}
 
 		auto media_frame = std::move(obj.value());
 
-#ifdef HWACCELS_XMA_ENABLED
-		///////////////////////////////////////////////////
-		// Recreate the codec context if the source id is changed.
-		// Xilinx VCU does not support frame buffer sharing between xvbm multi sclaler filter.
-		///////////////////////////////////////////////////
-		if (GetSupportVideoFormat() == cmn::VideoPixelFormatId::XVBM_8 || GetSupportVideoFormat() == cmn::VideoPixelFormatId::XVBM_10)
+		// Reinitialize the codec if the current frame requires it (e.g. XVBM source change).
+		if (NeedReinitForFrame(media_frame) == true)
 		{
-			if (curr_source_id != media_frame->GetSourceId() && curr_source_id != 0)
+			// Flush and drain the encoder before reinitializing.
+			auto sent = SendFrame(nullptr, false);
+			if (sent.result == TranscodeResult::DataError)
 			{
-				///////////////////////////////////////////////////
-				// Flush encoder
-				///////////////////////////////////////////////////
-				if (PushProcess(nullptr) == true)
-				{
-					while (PopProcess() == true && !_kill_flag)
-					{
-					}
-				}
+				break;
+			}
 
-				///////////////////////////////////////////////////
-				// Reinit codec
-				///////////////////////////////////////////////////
-				DeinitCodec();
-
-				if (InitCodecInteral() == false)
+			// Flush encoder and drain remaining packets. 
+			while (!_kill_flag)
+			{
+				auto received = ReceivePacket();
+				if ( received.result == TranscodeResult::Again)
 				{
 					break;
 				}
-			}
-			curr_source_id = media_frame->GetSourceId();
-		}
-#endif
 
-		///////////////////////////////////////////////////
-		// Request frame encoding to codec
-		///////////////////////////////////////////////////
-		if(PushProcess(media_frame) == false)
+				Complete(received.result, std::move(received.packet));
+			}
+
+			if (Reinitialize() == false)
+			{
+				break;
+			}
+		}
+
+		// Send the frame to the encoder (force-keyframe decision is FFmpeg-free, made here).
+		bool force_keyframe = ComputeForceKeyframe(media_frame);
+
+		auto sent = SendFrame(media_frame, force_keyframe);
+		if (sent.result == TranscodeResult::DataReady)
 		{
+			Complete(sent.result, std::move(sent.packet));
+		}
+		else if (sent.result == TranscodeResult::DataError)
+		{
+			logte("Error occurred while sending a frame for encoding. frame_pts(%" PRId64 "), reason(%s)", media_frame->GetPts(), sent.error.CStr());
 			break;
 		}
+		// else if(sent.result == TranscodeResult::Again) {}
 
-		///////////////////////////////////////////////////
-		// The encoded packet is taken from the codec.
-		///////////////////////////////////////////////////
-		while (PopProcess() == true && !_kill_flag)
+
+		// Drain encoded packets.
+		while (!_kill_flag)
 		{
+			auto recv = ReceivePacket();
+			if (recv.result == TranscodeResult::Again)
+			{
+				break;
+			}
+			else if (recv.result == TranscodeResult::DataReady)
+			{
+				Complete(recv.result, std::move(recv.packet));
+			}
+			else if (recv.result == TranscodeResult::DataError)
+			{
+				logte("Error occurred while receiving a packet for encoding. frame_pts(%" PRId64 "), reason(%s)", media_frame->GetPts(), recv.error.CStr());
+				break;
+			}
 		}
 	}
 }
-

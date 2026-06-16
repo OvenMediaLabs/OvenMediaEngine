@@ -348,8 +348,6 @@ bool TranscoderStream::PrepareInternal()
 
 	if (CreateDecoders() == false)
 	{
-		logte("%s Failed to create decoders", _log_prefix.CStr());
-
 		return false;
 	}
 
@@ -1504,10 +1502,10 @@ bool TranscoderStream::CreateFilters(std::shared_ptr<MediaFrame> buffer)
 	{
 		if (!CreateFilter(filter_id, input_stream, input_track, output_stream, output_track))
 		{
-			logte("%s Failed to create filter. Id(%d), Decoder(%d)<Codec:%s, Module:%s:%d>, Encoder(%d)<Codec:%s, Module:%s:%d>, InputTrack(%d), OutputTrack(%d)", _log_prefix.CStr(),
-				  filter_id, decoder_id, cmn::GetCodecIdString(input_track->GetCodecId()), cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(),
-				  output_stream->GetId(), cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(),
-				  input_track->GetId(), output_track->GetId());
+			logte("%s Failed to create filter. Id(%d), Decoder(%u)<Codec:%s, Module:%s:%d, Type:%s>, Encoder(%u)<Codec:%s, Module:%s:%d, Type:%s>",
+				 _log_prefix.CStr(), filter_id, 
+				  input_track->GetId(), cmn::GetCodecIdString(input_track->GetCodecId()), cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), cmn::GetMediaTypeString(input_track->GetMediaType()),
+				  output_track->GetId(), cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), cmn::GetMediaTypeString(output_track->GetMediaType()));
 
 #if NOTIFICATION_ENABLED
 			auto output_profile_ptr = GetOutputProfileByName(output_stream->GetOutputProfileName());

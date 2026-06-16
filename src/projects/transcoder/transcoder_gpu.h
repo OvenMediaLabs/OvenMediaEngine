@@ -11,7 +11,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/mediarouter/media_type.h>
 
-#include "codec/codec_base.h"
+#include "hw_device_context.h"
 
 #define MAX_DEVICE_COUNT 16
 
@@ -29,7 +29,7 @@ public:
 
 	int32_t GetDeviceCount(cmn::MediaCodecModuleId id);
 
-	AVBufferRef *GetDeviceContext(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
+	std::shared_ptr<HwDeviceContext> GetDeviceContext(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
 
 	int32_t GetExternalDeviceId(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
 	
@@ -37,34 +37,21 @@ public:
 
 	ov::String GetDeviceBusId(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
 
-	enum class IPType : int32_t
-	{
-		DECODER = 0,
-		ENCODER,
-		SCALER,
-	};
-
-	uint32_t GetUtilization(IPType type, cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
-
 protected:
-	bool CheckSupportedQSV();
 	bool CheckSupportedNILOGAN();
 	bool CheckSupportedNV();
 	bool CheckSupportedXMA();
 
-	AVBufferRef *GetDeviceContextQSV(cmn::DeviceId gpu_id = 0);
-	AVBufferRef *GetDeviceContextNILOGAN(cmn::DeviceId gpu_id = 0);
-	AVBufferRef *GetDeviceContextNV(cmn::DeviceId gpu_id = 0);
+	std::shared_ptr<HwDeviceContext> GetDeviceContextNILOGAN(cmn::DeviceId gpu_id = 0);
+	std::shared_ptr<HwDeviceContext> GetDeviceContextNV(cmn::DeviceId gpu_id = 0);
 
-	bool IsSupportedQSV(cmn::DeviceId gpu_id = 0);
 	bool IsSupportedNILOGAN(cmn::DeviceId gpu_id = 0);
 	bool IsSupportedNV(cmn::DeviceId gpu_id = 0);
 	bool IsSupportedXMA(cmn::DeviceId gpu_id = 0);
 
-	cmn::DeviceId GetDeviceCountQSV();
-	cmn::DeviceId GetDeviceCountNILOGAN();
-	cmn::DeviceId GetDeviceCountNV();
-	cmn::DeviceId GetDeviceCountXMA();
+	int32_t GetDeviceCountNILOGAN();
+	int32_t GetDeviceCountNV();
+	int32_t GetDeviceCountXMA();
 
 	int32_t GetDeviceIdNV(cmn::DeviceId gpu_id = 0);
 
@@ -76,22 +63,15 @@ protected:
 	ov::String _device_display_name_xma[MAX_DEVICE_COUNT];
 	ov::String _device_bus_id_xma[MAX_DEVICE_COUNT];
 	
-	AVBufferRef *_device_context_qsv[MAX_DEVICE_COUNT];
-	ov::String _device_display_name_qsv[MAX_DEVICE_COUNT];
-	int32_t _device_count_qsv;
-
-	AVBufferRef *_device_context_nilogan[MAX_DEVICE_COUNT];
+	std::shared_ptr<HwDeviceContext> _device_context_nilogan[MAX_DEVICE_COUNT];
 	ov::String _device_display_name_nilogan[MAX_DEVICE_COUNT];
 	int32_t _device_count_nilogan;
 
-	AVBufferRef *_device_context_nv[MAX_DEVICE_COUNT];
+	std::shared_ptr<HwDeviceContext> _device_context_nv[MAX_DEVICE_COUNT];
 	ov::String _device_display_name_nv[MAX_DEVICE_COUNT];
 	ov::String _device_bus_id_nv[MAX_DEVICE_COUNT];
 	int32_t _device_cuda_id_nv[MAX_DEVICE_COUNT];
 	int32_t _device_count_nv;
-
-	void CodecThread();
-	std::thread _thread;
 
 public:
 	ov::Mutex& GetDeviceMutex() {

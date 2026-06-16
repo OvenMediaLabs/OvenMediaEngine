@@ -14,6 +14,37 @@
 #include "base/info/codec.h"
 #include "codec/codec_base.h"
 
+// Outcome of an encode step (SendFrame / ReceivePacket).
+// The result enum carries both "is there output" and "keep draining", so no
+// separate flags are needed:
+//   Again     : encoder drained for now — stop the receive loop, nothing to report
+//   NoData    : nothing to report, but keep draining (e.g. a packet was dropped)
+//   DataReady : a packet was encoded; forward it and keep draining
+//   DataError : a fatal error occurred; forward it (terminates the thread)
+struct EncodeResult
+{
+	TranscodeResult result = TranscodeResult::Again;
+	std::shared_ptr<MediaPacket> packet = nullptr;
+	ov::String error = "";
+
+	static EncodeResult NoOutput()
+	{
+		return { TranscodeResult::Again, nullptr };
+	}
+
+	// A packet was encoded; forward it and keep draining.
+	static EncodeResult Encoded(std::shared_ptr<MediaPacket> packet)
+	{
+		return { TranscodeResult::DataReady, std::move(packet) };
+	}
+
+	// A fatal error occurred; no packet.
+	static EncodeResult Error(ov::String error = "")
+	{
+		return { TranscodeResult::DataError, nullptr, error };
+	}
+};
+
 class TranscodeEncoder : public TranscodeBase<MediaFrame, MediaPacket>
 {
 public:
@@ -67,23 +98,35 @@ public:
 	virtual void Resume()         {}
 	virtual bool IsPaused() const { return false; }
 
-	bool InitCodecInteral();
-	virtual bool InitCodec() = 0;
-	virtual void DeinitCodec();
-	virtual bool SetCodecParams() = 0;
-	virtual void CodecThread();
-
-	virtual void Stop();
-
-	bool PushProcess(std::shared_ptr<const MediaFrame> media_frame);
-	bool PopProcess();
-
-	virtual void Flush();
-
 	virtual bool Configure(std::shared_ptr<MediaTrack> output_track) override;
 	bool Configure(std::shared_ptr<MediaTrack> output_track, size_t max_queue_size);
 
 	void SendBuffer(std::shared_ptr<const MediaFrame> media_frame) override;
+
+	virtual void Stop();
+	virtual void Flush();
+
+protected:
+	virtual void ThreadLoop();
+
+	// Implemented by each per-backend encoder.
+	virtual bool Initialize() = 0;
+	virtual void Uninitialize() {}
+	virtual EncodeResult SendFrame(const std::shared_ptr<const MediaFrame> &frame, bool force_keyframe)
+	{
+		(void)frame;
+		(void)force_keyframe;
+		return EncodeResult::NoOutput();
+	}
+	virtual EncodeResult ReceivePacket() { return EncodeResult::NoOutput(); }
+	virtual bool NeedReinitForFrame(const std::shared_ptr<const MediaFrame> &frame)
+	{
+		(void)frame;
+		return false;
+	}
+	bool Reinitialize();
+	bool ComputeForceKeyframe(const std::shared_ptr<const MediaFrame> &frame);
+	void SetupForceKeyframeByTime();
 
 protected:
 	int32_t _encoder_id = -1;
@@ -93,24 +136,15 @@ protected:
 
 	ov::Future _codec_init_event;
 
-	cmn::BitstreamFormat _bitstream_format = cmn::BitstreamFormat::Unknown;
-	cmn::PacketType _packet_type = cmn::PacketType::Unknown;
-
 	std::atomic<bool> _kill_flag{false};
 	std::thread _codec_thread;
 
 	CompleteHandler _complete_handler;
 
-	// Force Keyframce
-	ov::PreciseTimer _force_keyframe_timer;
 	// 0: no force keyframe,  > 0: force keyframe by sum of duration
-	int64_t _force_keyframe_by_time_interval;
+	int64_t _force_keyframe_by_time_interval = 0;
 	// -1: force keyframe
-	int64_t _accumulate_frame_duration;	
+	int64_t _accumulate_frame_duration = -1;
 	// Time interval from the last inserted keyframe
 	int64_t _last_keyframe_delta_time = 0;
-
-	AVCodecContext *_codec_context = nullptr;
-	AVPacket *_packet = nullptr;
-	AVFrame *_frame = nullptr;
 };

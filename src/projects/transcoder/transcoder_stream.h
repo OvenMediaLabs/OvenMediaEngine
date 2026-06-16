@@ -18,7 +18,7 @@
 #include "base/info/stream.h"
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
-#include "transcoder_context.h"
+#include "media_frame.h"
 #include "transcoder_decoder.h"
 #include "transcoder_encoder.h"
 #include "transcoder_filter.h"
