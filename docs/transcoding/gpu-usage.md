@@ -62,10 +62,10 @@ $ nvidia-smi
 
 #### 2 . Prerequisites
 
-If you have finished installing the driver to use the GPU, you need to reinstall the open source library using Prerequisites.sh . The purpose is to allow external libraries to use the installed graphics driver.
+If you have finished installing the driver to use the GPU, you need to reinstall the open source libraries with NVIDIA support enabled. The purpose is to allow external libraries to use the installed graphics driver.
 
 ```bash
-OvenMediaEngine-master/misc/prerequisites.sh --enable-nv
+cmake -DOME_HWACCEL_NVIDIA=ON -P cmake/InstallPrerequisites.cmake
 ```
 
 </TabItem>
@@ -109,12 +109,12 @@ ldconfig -p | grep libxcoder_logan.so
 
 #### 2. Prerequisites
 
-If you have finished installing the driver to use the VPU, you need to reinstall the open source library using Prerequisites.sh . The purpose is to allow external libraries to use the installed graphics driver. You also have to unzip the ffmpeg patch provide by netint in a specfic path
+If you have finished installing the driver to use the VPU, you need to reinstall the open source libraries with NiLogan support enabled. The purpose is to allow external libraries to use the installed graphics driver. You also have to unzip the ffmpeg patch provide by netint in a specfic path
 
 #### Using Netint VPU
 
 ```bash
-./prerequisites.sh --enable-nilogan --nilogan-path=/root/T4xx/release/FFmpeg-n5.0_t4xx_patch
+cmake -DOME_HWACCEL_NILOGAN=ON -DOME_NILOGAN_PATCH_PATH=/root/T4xx/release/FFmpeg-n5.0_t4xx_patch -P cmake/InstallPrerequisites.cmake
 ```
 
 </TabItem>

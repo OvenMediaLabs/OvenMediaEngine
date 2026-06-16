@@ -68,10 +68,10 @@ CUDA Toolkit is required to build whisper.cpp with GPU acceleration.
 
 ### Build and Install whisper.cpp
 
-Run the latest prerequisites.sh script from the OME source root to build and install whisper.cpp.
+Install the prerequisites (including `whisper.cpp` built with GPU support) from the OME source root:
 
 ```
-$ ./misc/prerequisites.sh --enable-nv
+$ cmake -DOME_HWACCEL_NVIDIA=ON -P cmake/InstallPrerequisites.cmake
 ```
 
 ## Configuration

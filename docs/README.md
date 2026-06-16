@@ -85,9 +85,9 @@ Standard fenced code with optional language, title, and highlights:
 
 ````mdx
 ```bash title="Build OME"
-./configure
-make -j$(nproc)
-sudo make install
+cmake -B build/Release -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/Release
+sudo cmake --install build/Release
 ```
 ````
 
