@@ -12,6 +12,9 @@
 #include <modules/bitstream/av1/av1_decoder_configuration_record.h>
 #include <modules/containers/flv_v2/flv_video_parser.h>
 
+#include <cstring>
+#include <vector>
+
 namespace
 {
 	constexpr uint32_t TRACK_ID		 = 100;
@@ -104,7 +107,7 @@ TEST(FlvAv1Parser, SequenceStartWithValidAv1C)
 	// header_data must contain the raw av1C bytes
 	ASSERT_NE(video_data->header_data, nullptr);
 	EXPECT_EQ(video_data->header_data->GetLength(), sizeof(MINIMAL_AV1C));
-	EXPECT_EQ(memcmp(video_data->header_data->GetData(), MINIMAL_AV1C, sizeof(MINIMAL_AV1C)), 0);
+	EXPECT_EQ(std::memcmp(video_data->header_data->GetData(), MINIMAL_AV1C, sizeof(MINIMAL_AV1C)), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +162,7 @@ TEST(FlvAv1Parser, CodedFramesKeyFramePayloadPassthrough)
 	// payload must contain the entire OBU body
 	ASSERT_NE(video_data->payload, nullptr);
 	EXPECT_EQ(video_data->payload->GetLength(), sizeof(DUMMY_OBU_PAYLOAD));
-	EXPECT_EQ(memcmp(video_data->payload->GetData(), DUMMY_OBU_PAYLOAD, sizeof(DUMMY_OBU_PAYLOAD)), 0);
+	EXPECT_EQ(std::memcmp(video_data->payload->GetData(), DUMMY_OBU_PAYLOAD, sizeof(DUMMY_OBU_PAYLOAD)), 0);
 
 	// No header for CodedFrames
 	EXPECT_EQ(video_data->header, nullptr);
@@ -201,7 +204,7 @@ TEST(FlvAv1Parser, CodedFramesNoCtsConsumed)
 	// All 5 bytes must appear in the payload (no 3-byte CTS consumed)
 	ASSERT_NE(video_data->payload, nullptr);
 	EXPECT_EQ(video_data->payload->GetLength(), sizeof(body));
-	EXPECT_EQ(memcmp(video_data->payload->GetData(), body, sizeof(body)), 0);
+	EXPECT_EQ(std::memcmp(video_data->payload->GetData(), body, sizeof(body)), 0);
 	EXPECT_EQ(video_data->composition_time_offset, 0);
 }
 
@@ -281,7 +284,7 @@ TEST(FlvAv1Pipeline, CodedFramesPayloadIsObuData)
 	// The payload is what becomes the NALU MediaPacket's data
 	ASSERT_NE(video_data->payload, nullptr);
 	EXPECT_EQ(video_data->payload->GetLength(), sizeof(DUMMY_OBU_PAYLOAD));
-	EXPECT_EQ(memcmp(video_data->payload->GetData(), DUMMY_OBU_PAYLOAD, sizeof(DUMMY_OBU_PAYLOAD)), 0);
+	EXPECT_EQ(std::memcmp(video_data->payload->GetData(), DUMMY_OBU_PAYLOAD, sizeof(DUMMY_OBU_PAYLOAD)), 0);
 
 	// CTS must be 0 (not consumed from wire)
 	EXPECT_EQ(video_data->composition_time_offset, 0);
