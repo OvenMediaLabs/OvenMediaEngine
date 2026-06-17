@@ -32,13 +32,18 @@ public:
 			return false;
 		}
 
+		if (!Append(data->GetDataAs<uint8_t>(), static_cast<uint32_t>(data->GetLength())))
+		{
+			return false;
+		}
+
 		_remained_size = packet->GetDataLength();
 		_offset		   = 0LL;
 		_pts		   = (packet->GetPts() == -1LL) ? kNoPtsValue : packet->GetPts();
 		_dts		   = (packet->GetDts() == -1LL) ? kNoPtsValue : packet->GetDts();
 		_duration	   = (packet->GetDuration() == -1LL) ? kNoPtsValue : packet->GetDuration();
 
-		return Append(data->GetDataAs<uint8_t>(), static_cast<uint32_t>(data->GetLength()));
+		return true;
 	}
 
 	bool Append(const uint8_t* src_data, uint32_t src_size)
