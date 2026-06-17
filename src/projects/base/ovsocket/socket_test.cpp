@@ -26,14 +26,14 @@
 #include <thread>
 #include <vector>
 
-// macOS lacks MSG_NOSIGNAL; fall back to no flag so the peer helpers stay portable.
+// macOS lacks `MSG_NOSIGNAL`; fall back to no flag so the peer helpers stay portable.
 #ifndef MSG_NOSIGNAL
 #	define MSG_NOSIGNAL 0
 #endif
 
 namespace
 {
-	constexpr int kLoopbackTimeoutMsec = 3000;
+	constexpr int LOOPBACK_TIMEOUT_MSEC = 3000;
 
 	ov::SocketAddress LoopbackAddress(uint16_t port)
 	{
@@ -55,7 +55,7 @@ namespace
 	}
 
 	// Reads exactly `want` bytes into `out`. A TCP stream may legally arrive across
-	// several reads (even on loopback), so this loops; returns false on
+	// several reads (even on loopback), so this loops; returns `false` on
 	// error/disconnect/timeout.
 	bool RecvExactly(const std::shared_ptr<ov::Socket> &socket, void *out, size_t want)
 	{
@@ -98,6 +98,10 @@ namespace
 			int yes = 1;
 			::setsockopt(_listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
 
+			// Bound `accept()` so a failed client connect cannot hang `WaitAccepted()`.
+			timeval tv = {LOOPBACK_TIMEOUT_MSEC / 1000, (LOOPBACK_TIMEOUT_MSEC % 1000) * 1000};
+			::setsockopt(_listen_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
 			sockaddr_in sa{};
 			sa.sin_family	   = AF_INET;
 			sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -121,8 +125,9 @@ namespace
 			return true;
 		}
 
-		// Accepts in a background thread so the `ov::Socket` blocking `Connect()`
-		// and this `accept()` can proceed concurrently.
+		// Accepts in a background thread so the `ov::Socket` blocking `Connect()` and
+		// this `accept()` can proceed concurrently. `accept()` is bounded by the
+		// listener's `SO_RCVTIMEO`, so a failed client connect cannot hang `WaitAccepted()`.
 		void AcceptAsync()
 		{
 			_accept_thread = std::thread([this]() {
@@ -291,11 +296,22 @@ namespace
 		}
 
 		// Accepts in a background thread so the OME blocking `Connect()` and this
-		// accept can proceed concurrently.
+		// accept can proceed concurrently. The listener is non-blocking and the
+		// accept is polled up to a timeout, so a failed client connect cannot hang
+		// `WaitAccepted()`.
 		void AcceptAsync()
 		{
 			_accept_thread = std::thread([this]() {
-				_accepted = ::srt_accept(_listener, nullptr, nullptr);
+				for (int waited = 0; waited < LOOPBACK_TIMEOUT_MSEC; waited += 5)
+				{
+					SRTSOCKET accepted = ::srt_accept(_listener, nullptr, nullptr);
+					if (accepted != SRT_INVALID_SOCK)
+					{
+						_accepted = accepted;
+						return;
+					}
+					std::this_thread::sleep_for(std::chrono::milliseconds(5));
+				}
 			});
 		}
 
@@ -336,15 +352,17 @@ namespace
 
 	private:
 		// Match OME's SRT configuration (live transtype + message API) so the
-		// handshake succeeds; the peer uses sync (blocking) accept/send.
+		// handshake succeeds. The listener uses non-blocking accept (so a failed
+		// connect cannot hang the accept thread) and blocking send.
 		static void Configure(SRTSOCKET s)
 		{
 			int live = SRTT_LIVE;
 			::srt_setsockopt(s, 0, SRTO_TRANSTYPE, &live, sizeof(live));
 			int yes = 1;
 			::srt_setsockopt(s, 0, SRTO_MESSAGEAPI, &yes, sizeof(yes));
+			int async = 0;
+			::srt_setsockopt(s, 0, SRTO_RCVSYN, &async, sizeof(async));
 			int sync = 1;
-			::srt_setsockopt(s, 0, SRTO_RCVSYN, &sync, sizeof(sync));
 			::srt_setsockopt(s, 0, SRTO_SNDSYN, &sync, sizeof(sync));
 		}
 
@@ -446,11 +464,11 @@ protected:
 		}
 
 		client->MakeBlocking();
-		timeval tv = {kLoopbackTimeoutMsec / 1000, (kLoopbackTimeoutMsec % 1000) * 1000};
+		timeval tv = {LOOPBACK_TIMEOUT_MSEC / 1000, (LOOPBACK_TIMEOUT_MSEC % 1000) * 1000};
 		client->SetRecvTimeout(tv);
 
 		peer.AcceptAsync();
-		auto error = client->Connect(LoopbackAddress(peer.Port()), kLoopbackTimeoutMsec);
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
 		peer.WaitAccepted();
 
 		if (error != nullptr || peer.IsConnected() == false)
@@ -481,10 +499,10 @@ protected:
 		}
 
 		client->MakeBlocking();
-		timeval tv = {kLoopbackTimeoutMsec / 1000, (kLoopbackTimeoutMsec % 1000) * 1000};
+		timeval tv = {LOOPBACK_TIMEOUT_MSEC / 1000, (LOOPBACK_TIMEOUT_MSEC % 1000) * 1000};
 		client->SetRecvTimeout(tv);
 
-		if (client->Connect(LoopbackAddress(peer_port), kLoopbackTimeoutMsec) != nullptr)
+		if (client->Connect(LoopbackAddress(peer_port), LOOPBACK_TIMEOUT_MSEC) != nullptr)
 		{
 			return nullptr;
 		}
@@ -753,7 +771,7 @@ protected:
 		client->MakeBlocking();
 
 		peer.AcceptAsync();
-		auto error = client->Connect(LoopbackAddress(peer.Port()), kLoopbackTimeoutMsec);
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
 		peer.WaitAccepted();
 
 		if (error != nullptr || peer.IsConnected() == false)
@@ -827,7 +845,7 @@ protected:
 		client->SetRecvTimeout(tv);
 
 		peer.AcceptAsync();
-		auto error = client->Connect(LoopbackAddress(peer.Port()), kLoopbackTimeoutMsec);
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
 		peer.WaitAccepted();
 
 		if (error != nullptr || peer.IsConnected() == false)
@@ -847,12 +865,12 @@ TEST_F(SocketConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 {
 	Watchdog watchdog(std::chrono::seconds(30), "ManyIndependentSocketsReceiveConcurrently");
 
-	constexpr int kSocketCount = 48;
+	constexpr int SOCKET_COUNT = 48;
 	const char payload[]	   = "concurrent-payload";
 
 	std::vector<std::unique_ptr<PosixTcpPeer>> peers;
 	std::vector<std::shared_ptr<ov::Socket>> clients;
-	for (int i = 0; i < kSocketCount; i++)
+	for (int i = 0; i < SOCKET_COUNT; i++)
 	{
 		auto peer = std::make_unique<PosixTcpPeer>();
 		ASSERT_TRUE(peer->Listen());
@@ -864,8 +882,8 @@ TEST_F(SocketConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 
 	std::atomic<int> success{0};
 	std::vector<std::thread> threads;
-	threads.reserve(kSocketCount);
-	for (int i = 0; i < kSocketCount; i++)
+	threads.reserve(SOCKET_COUNT);
+	for (int i = 0; i < SOCKET_COUNT; i++)
 	{
 		threads.emplace_back([&, i]() {
 			peers[i]->Send(payload, sizeof(payload));
@@ -883,7 +901,7 @@ TEST_F(SocketConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 		thread.join();
 	}
 
-	EXPECT_EQ(success.load(), kSocketCount);
+	EXPECT_EQ(success.load(), SOCKET_COUNT);
 
 	for (auto &client : clients)
 	{
@@ -898,11 +916,11 @@ TEST_F(SocketConcurrencyTest, RecvRacesPeerDisconnectStorm)
 {
 	Watchdog watchdog(std::chrono::seconds(30), "RecvRacesPeerDisconnectStorm");
 
-	constexpr int kSocketCount = 48;
+	constexpr int SOCKET_COUNT = 48;
 
 	std::vector<std::unique_ptr<PosixTcpPeer>> peers;
 	std::vector<std::shared_ptr<ov::Socket>> clients;
-	for (int i = 0; i < kSocketCount; i++)
+	for (int i = 0; i < SOCKET_COUNT; i++)
 	{
 		auto peer = std::make_unique<PosixTcpPeer>();
 		ASSERT_TRUE(peer->Listen());
@@ -914,8 +932,8 @@ TEST_F(SocketConcurrencyTest, RecvRacesPeerDisconnectStorm)
 
 	std::atomic<int> failed_as_expected{0};
 	std::vector<std::thread> threads;
-	threads.reserve(kSocketCount);
-	for (int i = 0; i < kSocketCount; i++)
+	threads.reserve(SOCKET_COUNT);
+	for (int i = 0; i < SOCKET_COUNT; i++)
 	{
 		threads.emplace_back([&, i]() {
 			std::thread peer_closer([&, i]() { peers[i]->CloseConnection(); });
@@ -936,7 +954,7 @@ TEST_F(SocketConcurrencyTest, RecvRacesPeerDisconnectStorm)
 		thread.join();
 	}
 
-	EXPECT_EQ(failed_as_expected.load(), kSocketCount);
+	EXPECT_EQ(failed_as_expected.load(), SOCKET_COUNT);
 
 	for (auto &client : clients)
 	{

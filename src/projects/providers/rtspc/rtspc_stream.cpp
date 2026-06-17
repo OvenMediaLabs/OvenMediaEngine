@@ -906,7 +906,7 @@ namespace pvd
 		if (read_bytes == 0)
 		{
 			// No data available right now - retry later. A real error/timeout arrives as
-			// a failed result and is handled above, so 0 is never fatal here.
+			// a failed result and is handled above, so `0` is never fatal here.
 			return true;
 		}
 

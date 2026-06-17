@@ -651,7 +651,7 @@ namespace pvd
 		if (read_bytes == 0)
 		{
 			// No data available right now - retry later. A real error/disconnect arrives
-			// as a failed result and is handled above, so 0 is never fatal here.
+			// as a failed result and is handled above, so `0` is never fatal here.
 			return true;
 		}
 
