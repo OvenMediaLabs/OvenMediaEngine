@@ -52,7 +52,11 @@ namespace ffmpeg
 		if (deep == true)
 		{
 			// Detach from the shared buffer so the copy can be modified in-place.
-			::av_frame_make_writable(cloned);
+ 			if (::av_frame_make_writable(cloned) < 0)
+ 			{
+ 				::av_frame_free(&cloned);
+ 				return nullptr;
+ 			}
 		}
 
 		return std::make_shared<FFmpegMediaFrameData>(cloned);
