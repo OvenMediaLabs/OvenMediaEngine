@@ -40,16 +40,36 @@ namespace ffmpeg
 													 const uint8_t *buf, int buf_size,
 													 int64_t pts, int64_t dts, int &consumed, int64_t pos)
 	{
+		consumed		  = 0;
+
+		if (IsValid() == false)
+		{
+			return nullptr;
+		}
+
 		uint8_t *out_data = nullptr;
 		int out_size	  = 0;
 
-		consumed		  = Parse(codec_context, &out_data, &out_size, buf, buf_size, pts, dts, pos);
+		const int ret	  = Parse(codec_context, &out_data, &out_size, buf, buf_size, pts, dts, pos);
+		if (ret < 0)
+		{
+			return nullptr;
+		}
+
+		consumed = ret;
 
 		// The parser has not yet assembled a complete frame from the input.
 		if (out_data == nullptr || out_size <= 0)
 		{
 			return nullptr;
 		}
+
+		// The first frame (or a frame without a valid DTS) has no reference to compute the duration from.
+		const int64_t dts_value		 = GetDts();
+		const int64_t last_dts_value = GetLastDts();
+		const int64_t duration		 = (dts_value != AV_NOPTS_VALUE && last_dts_value != AV_NOPTS_VALUE)
+										   ? (dts_value - last_dts_value)
+										   : 0;
 
 		return std::make_shared<MediaPacket>(
 			0,
@@ -59,7 +79,7 @@ namespace ffmpeg
 			out_size,
 			GetPts(),
 			GetDts(),
-			GetDts() - GetLastDts(),
+			duration,
 			IsKeyFrame() ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag,
 			cmn::BitstreamFormat::Unknown,
 			cmn::PacketType::Unknown);
@@ -67,27 +87,27 @@ namespace ffmpeg
 
 	int64_t FFmpegBitstreamFramer::GetPts() const noexcept
 	{
-		return _parser->pts;
+		return IsValid() ? _parser->pts : AV_NOPTS_VALUE;
 	}
 	int64_t FFmpegBitstreamFramer::GetDts() const noexcept
 	{
-		return _parser->dts;
+		return IsValid() ? _parser->dts : AV_NOPTS_VALUE;
 	}
 	int64_t FFmpegBitstreamFramer::GetLastDts() const noexcept
 	{
-		return _parser->last_dts;
+		return IsValid() ? _parser->last_dts : AV_NOPTS_VALUE;
 	}
 	bool FFmpegBitstreamFramer::IsKeyFrame() const noexcept
 	{
-		return _parser->key_frame == 1;
+		return IsValid() ? (_parser->key_frame == 1) : false;
 	}
 	int FFmpegBitstreamFramer::GetWidth() const noexcept
 	{
-		return _parser->width;
+		return IsValid() ? _parser->width : 0;
 	}
 	int FFmpegBitstreamFramer::GetHeight() const noexcept
 	{
-		return _parser->height;
+		return IsValid() ? _parser->height : 0;
 	}
 
 	void FFmpegBitstreamFramer::Close()
