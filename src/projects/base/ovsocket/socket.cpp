@@ -1622,8 +1622,16 @@ namespace ov
 				else if (read_bytes < 0L)
 				{
 					auto error = Error::CreateErrorFromErrno();
+					auto code  = error->GetCode();
 
-					if (error->GetCode() == EAGAIN)
+					// Some platforms report the would-block condition as `EWOULDBLOCK`;
+					// normalize it to `EAGAIN` (mirrors `Accept()`).
+					if (code == EWOULDBLOCK)
+					{
+						code = EAGAIN;
+					}
+
+					if (code == EAGAIN)
 					{
 						if ((_blocking_mode == BlockingMode::NonBlocking) || non_block)
 						{
@@ -1646,7 +1654,7 @@ namespace ov
 						else
 						{
 							// Blocking read timed out (`SO_RCVTIMEO`)
-							socket_error = SocketError::CreateError(error->GetCode(), "Receive timed out: %s", error->GetMessage().CStr());
+							socket_error = SocketError::CreateError(code, "Receive timed out: %s", error->GetMessage().CStr());
 						}
 					}
 					else
