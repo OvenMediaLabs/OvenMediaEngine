@@ -6,7 +6,7 @@
 //  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
 //
 //==============================================================================
-#include <base/ovlibrary/bit_reader.h>
+#include <base/ovlibrary/bit_reader_v2.h>
 #include <base/ovlibrary/data.h>
 #include <gtest/gtest.h>
 #include <modules/bitstream/av1/av1_decoder_configuration_record.h>
