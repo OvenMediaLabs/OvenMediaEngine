@@ -47,7 +47,7 @@ bool FilterLavfiResampler::InitializeSinkFilter()
 {
 	if (_graph.CreateBufferSink() == false)
 	{
-		logte("Coud not create audio buffer sink filter for resampling: %s", _graph.GetLastErrorString().CStr());
+		logte("Could not create audio buffer sink filter for resampling: %s", _graph.GetLastErrorString().CStr());
 
 		return false;
 	}
