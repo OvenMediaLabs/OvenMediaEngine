@@ -193,15 +193,16 @@ namespace ov
 		bool SendFromTo(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data);
 		bool SendFromTo(const SocketAddressPair &address_pair, const void *data, size_t length);
 
-		// When Recv is called in non-blocking mode,
+		// On success, writes the received byte count into `data->Length()` and returns `nullptr`.
+		// A length of `0` means either "retry later" (`EAGAIN`/non-blocking with no data)
+		// or, for UDP, a valid 0-length datagram - both are reported as success, not a disconnect.
+		// A TCP/SRT EOF (orderly peer shutdown) is reported as a non-null `SocketError`,
+		// never as a `0`-length success.
 		//
-		// 1. return != nullptr: An error occurred (Include disconnecting the client)
-		// 2. return == nullptr:
-		// 2-1. data->Length() == 0: Retry later (EAGAIN)
-		// 2-2. data->Length() > 0: Data is remained, so must call Recv() again to empty socket buffer
-		//                          (If not, epoll event will not occur later)
+		// In non-blocking mode, if `data->Length() > 0`, more data may still remain in the socket
+		// buffer, so callers should continue reading until it returns `0` (retry later) or an error.
 		//
-		// If MakeNonBlocking() is called, non_block is ignored
+		// If `MakeNonBlocking()` is called, `non_block` is ignored.
 		std::shared_ptr<const SocketError> Recv(std::shared_ptr<Data> &data, const bool non_block = false);
 
 		// On success, holds the number of bytes received; on failure, holds a `SocketError`.
