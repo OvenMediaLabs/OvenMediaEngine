@@ -29,7 +29,15 @@ namespace cfg
 				protected:
 					void MakeList() override
 					{
-						Register<Optional>("Enable", &_enable);
+						Register<Optional>("Enable", &_enable, nullptr,
+										   [=]() -> std::shared_ptr<ConfigError> {
+											   if (_enable == true)
+											   {
+												   logw("Config", "Hardware acceleration (HWAccels.Decoder) is deprecated. Falling back to the software decoder.");
+												   _enable = false;
+											   }
+											   return nullptr;
+										   });
 						Register<Optional>("Modules", &_modules);
 					}
 				};
