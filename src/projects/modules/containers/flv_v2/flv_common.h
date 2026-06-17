@@ -11,6 +11,8 @@
 #include <base/info/decoder_configuration_record.h>
 #include <base/ovlibrary/ovlibrary.h>
 
+#include <algorithm>
+
 #include "./flv_datastructure.h"
 
 namespace modules
@@ -62,15 +64,25 @@ namespace modules
 			// reader holding several concatenated tracks does not spill into the next track.
 			size_t GetRemainingTrackSize(bool is_multi_track, const ov::BitReader &reader, uint24_t size_of_track, size_t size_of_track_offset)
 			{
+				const auto remaining_bytes = reader.GetRemainingBytes();
+
 				if ((is_multi_track == false) || (size_of_track == 0))
 				{
-					return reader.GetRemainingBytes();
+					return remaining_bytes;
 				}
 
 				// How many bytes have been read since the sizeOfVideoTrack field
 				auto read_bytes_since_size_of_track = reader.GetByteOffset() - size_of_track_offset;
 
-				return size_of_track - read_bytes_since_size_of_track;
+				// A malformed `sizeOfVideoTrack` may be smaller than what has already been read.
+				// Treat that as an empty track rather than underflowing to a huge `size_t`.
+				if (size_of_track <= read_bytes_since_size_of_track)
+				{
+					return 0;
+				}
+
+				// Never report more than what is actually left in the buffer.
+				return std::min(static_cast<size_t>(size_of_track) - read_bytes_since_size_of_track, remaining_bytes);
 			}
 
 			std::shared_ptr<const ov::Data> GetPayload(bool is_multi_track, ov::BitReader &reader, uint24_t size_of_track, size_t size_of_track_offset)
