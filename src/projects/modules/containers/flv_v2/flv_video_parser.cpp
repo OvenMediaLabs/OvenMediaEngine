@@ -10,6 +10,8 @@
 
 #include <modules/rtmp_v2/amf0/amf_document.h>
 
+#include <algorithm>
+
 #include "./flv_private.h"
 
 #undef OV_LOG_TAG
@@ -269,21 +271,23 @@ namespace modules
 			return record;
 		}
 
-		std::shared_ptr<AV1DecoderConfigurationRecord> VideoParser::ParseAV1(ov::BitReader &reader)
+		std::shared_ptr<AV1DecoderConfigurationRecord> VideoParser::ParseAV1(ov::BitReader &reader, size_t available_bytes)
 		{
 			if ((reader.GetBitOffset() % 8) != 0)
 			{
 				OV_ASSERT2(false);
 			}
 
-			// `AV1CodecConfigurationRecord` (`av1C`) consumes all remaining bytes
-			// of the `ExVideoTagBody` `SequenceStart` payload.
-			const auto remaining_bytes = reader.GetRemainingBytes();
-			auto buffer				   = (remaining_bytes > 0)
-											 ? reader.ReadBytes(remaining_bytes)
-											 : std::make_shared<ov::Data>();
+			// `AV1CodecConfigurationRecord` (`av1C`) has no internal length field; it spans the
+			// rest of the current track's `SequenceStart` payload. In multitrack mode that span
+			// is bounded by `sizeOfVideoTrack` (`available_bytes`), so it must not be read with
+			// `GetRemainingBytes()` - that would consume bytes belonging to subsequent tracks.
+			const auto record_bytes = std::min(available_bytes, reader.GetRemainingBytes());
+			auto buffer				= (record_bytes > 0)
+										  ? reader.ReadBytes(record_bytes)
+										  : std::make_shared<ov::Data>();
 
-			auto record				   = std::make_shared<AV1DecoderConfigurationRecord>();
+			auto record				= std::make_shared<AV1DecoderConfigurationRecord>();
 
 			// ffmpeg's `libaom-av1` muxer over enhanced-RTMP emits a `SequenceStart` with an empty body -
 			// the AV1 sequence header OBU is delivered in-band in the first `CodedFrames` packet instead.
@@ -424,7 +428,16 @@ namespace modules
 						// for the description of the `AV1CodecConfigurationRecord`.
 						// av1Header = [AV1CodecConfigurationRecord]
 						logap("[SequenceStart] AV1CodecConfigurationRecord");
-						video_data->header = ParseAV1(reader);
+
+						// Bound the record to the current track so that, in multitrack mode, parsing
+						// does not read past `sizeOfVideoTrack` into the next track's bytes.
+						auto available_bytes = GetRemainingTrackSize(
+							_is_multitrack,
+							reader,
+							size_of_video_track,
+							size_of_video_track_offset);
+
+						video_data->header = ParseAV1(reader, available_bytes);
 
 						if (video_data->header != nullptr)
 						{
