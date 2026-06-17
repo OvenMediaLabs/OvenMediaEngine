@@ -16,6 +16,8 @@ extern "C"
 {
 #include <libavutil/frame.h>
 #include <libavutil/hwcontext.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/samplefmt.h>
 }
 
 #include <transcoder/media_frame.h>
