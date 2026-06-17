@@ -66,7 +66,6 @@ public:
 		}
 
 		// Copy the data to the aligned buffer and fill the remaining space with zeros.
-		std::memset(_buffer.get(), 0, _buffer_size);
 		std::memcpy(_buffer.get(), src_data, src_size);
 		std::memset(_buffer.get() + src_size, 0, _buffer_size - src_size);
 		_last_data_size = src_size;
