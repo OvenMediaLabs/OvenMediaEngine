@@ -891,7 +891,7 @@ namespace cmn
 
 		bool IsValid() const
 		{
-			return (_num != 0) && (_den != 0);
+ 			return (_den != 0);
 		}
 
 		bool operator==(const Rational &rational) const
