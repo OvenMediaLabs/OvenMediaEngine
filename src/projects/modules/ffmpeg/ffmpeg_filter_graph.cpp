@@ -87,6 +87,12 @@ namespace ffmpeg
 
 	CodecResult FFmpegFilterGraph::PushFrame(const std::shared_ptr<const MediaFrame> &media_frame, bool hwframe_transfer)
 	{
+		// If media_frame is nullptr, it indicates the end of the stream.
+		if(media_frame == nullptr)
+		{
+			return ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, nullptr));
+		}
+
 		const auto &data = media_frame->GetData();
 
 		std::shared_ptr<MediaFrameData> host_holder;
