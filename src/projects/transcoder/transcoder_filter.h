@@ -78,6 +78,6 @@ private:
 
 	std::atomic<bool> _setup_pending{false};
 
-	mutable std::shared_mutex _mutex;
-	std::shared_ptr<FilterBase> _filter_base;
+	mutable ov::SharedMutex _mutex;
+	std::shared_ptr<FilterBase> _filter_base OV_GUARDED_BY(_mutex);
 };

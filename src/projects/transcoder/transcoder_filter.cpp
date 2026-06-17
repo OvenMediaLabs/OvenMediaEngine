@@ -168,7 +168,7 @@ std::shared_ptr<FilterBase> TranscodeFilter::CreateBaseFilter()
 
 std::shared_ptr<FilterBase> TranscodeFilter::GetBaseFilter() const
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 
 	return _filter_base;
 }
@@ -186,7 +186,7 @@ bool TranscodeFilter::Initialize()
 		return false;
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_mutex);
+	ov::LockGuard lock(_mutex);
 	_filter_base = base;
 
 	return true;
@@ -266,7 +266,7 @@ void TranscodeFilter::Stop()
 		logtt("filter %s thread has ended", cmn::GetMediaTypeString(GetInputTrack()->GetMediaType()));
 	}
 
-	std::lock_guard<std::shared_mutex> lock(_mutex);
+	ov::LockGuard lock(_mutex);
 	_filter_base.reset();
 	_filter_base = nullptr;
 }
@@ -289,7 +289,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 
 bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 
 	// Single track(paired with encoder) does not need to be updated.
 	if (_filter_base == nullptr || _filter_base->IsSingleTrack() == true)
@@ -422,7 +422,7 @@ std::shared_ptr<MediaTrack> TranscodeFilter::GetOutputTrack() const
 
 ov::String TranscodeFilter::GetDescription() const
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 
 	if (_filter_base == nullptr)
 	{

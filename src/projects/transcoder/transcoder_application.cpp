@@ -68,7 +68,7 @@ bool TranscodeApplication::OnStreamCreated(const std::shared_ptr<info::Stream> &
 	std::shared_ptr<TranscoderStream> stream = nullptr;
 
 	{
-		std::unique_lock<std::shared_mutex> write_lock(_mutex);
+		ov::LockGuard write_lock(_mutex);
 
 		stream = TranscoderStream::Create(_application_info, stream_info, this);
 		if (!stream)
@@ -87,7 +87,7 @@ bool TranscodeApplication::OnStreamDeleted(const std::shared_ptr<info::Stream> &
 	std::shared_ptr<TranscoderStream> stream = nullptr;
 
 	{
-		std::unique_lock<std::shared_mutex> write_lock(_mutex);
+		ov::LockGuard write_lock(_mutex);
 
 		auto bucket = _streams.find(stream_info->GetId());
 		if (bucket == _streams.end())
@@ -145,7 +145,7 @@ std::shared_ptr<TranscoderStream> TranscodeApplication::GetStream(const std::sha
 	std::shared_ptr<TranscoderStream> stream = nullptr;
 
 	{
-		std::shared_lock<std::shared_mutex> read_lock(_mutex);
+		ov::SharedLockGuard read_lock(_mutex);
 
 		auto bucket = _streams.find(stream_info->GetId());
 		if (bucket == _streams.end())
@@ -165,7 +165,7 @@ std::shared_ptr<TranscoderStream> TranscodeApplication::GetStream(const std::sha
 
 bool TranscodeApplication::PauseEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	ov::SharedLockGuard read_lock(_mutex);
 	for (auto &[id, stream] : _streams)
 	{
 		if (stream && stream->GetInputStreamName() == stream_name)
@@ -178,7 +178,7 @@ bool TranscodeApplication::PauseEncoders(const ov::String &stream_name, cmn::Med
 
 bool TranscodeApplication::ResumeEncoders(const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	ov::SharedLockGuard read_lock(_mutex);
 	for (auto &[id, stream] : _streams)
 	{
 		if (stream && stream->GetInputStreamName() == stream_name)
@@ -191,7 +191,7 @@ bool TranscodeApplication::ResumeEncoders(const ov::String &stream_name, cmn::Me
 
 bool TranscodeApplication::IsEncoderPaused(const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	ov::SharedLockGuard read_lock(_mutex);
 	for (auto &[id, stream] : _streams)
 	{
 		if (stream && stream->GetInputStreamName() == stream_name)
@@ -204,7 +204,7 @@ bool TranscodeApplication::IsEncoderPaused(const ov::String &stream_name, cmn::M
 
 std::vector<TranscodeEncoder::EncoderInfo> TranscodeApplication::GetEncoderInfoList(const ov::String &stream_name, cmn::MediaCodecId codec_id)
 {
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	ov::SharedLockGuard read_lock(_mutex);
 	for (auto &[id, stream] : _streams)
 	{
 		if (stream && stream->GetInputStreamName() == stream_name)

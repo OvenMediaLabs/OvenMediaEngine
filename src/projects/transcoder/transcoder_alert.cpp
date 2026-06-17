@@ -151,24 +151,24 @@ void TranscoderAlerts::UpdateErrorCountIfNeeded(
 	auto key							= std::make_pair(error_type, track_id);
 	std::shared_ptr<ErrorRecord> record = nullptr;
 
-	std::shared_lock<std::shared_mutex> read_lock(_mutex);
+	ov::ReleasableSharedLockGuard read_lock(_mutex);
 	auto record_it = _error_records.find(key);
 	if (record_it == _error_records.end())
 	{
-		read_lock.unlock();
+		read_lock.Release();
 
 		// No existing record, create a new one and send alert
 		record = ErrorRecord::Create(error_type, track_id);
 		if (record)
 		{
-			std::unique_lock<std::shared_mutex> lock(_mutex);
+			ov::LockGuard lock(_mutex);
 			_error_records[key] = record;
 			is_needed_alert		= true;
 		}
 	}
 	else
 	{
-		read_lock.unlock();
+		read_lock.Release();
 
 		record = record_it->second;
 		if (record->GetElapsedMs() <= _error_evaluation_interval_ms)

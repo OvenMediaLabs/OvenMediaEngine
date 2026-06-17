@@ -15,7 +15,6 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <shared_mutex>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -122,7 +121,7 @@ public:
 	{
 		auto key		= std::make_pair(serialized_profile, input_track->GetMediaType());
 
-		std::unique_lock<std::shared_mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 		auto &composite = _contexts[key];
 		if (composite == nullptr)
 		{
@@ -136,7 +135,7 @@ public:
 
 	void Clear()
 	{
-		std::unique_lock<std::shared_mutex> lock(_mutex);
+		ov::LockGuard lock(_mutex);
 		_contexts.clear();
 		_last_composite_id = 0;
 
@@ -195,37 +194,37 @@ public:
 	std::atomic<MediaTrackId> _last_composite_id = 0;
 
 	// Profile key → CompositeContext
-	std::map<std::pair<ov::String, cmn::MediaType>, std::shared_ptr<CompositeContext>> _contexts;
+	std::map<std::pair<ov::String, cmn::MediaType>, std::shared_ptr<CompositeContext>> _contexts OV_GUARDED_BY(_mutex);
 
-	std::shared_ptr<info::Stream> _input_stream = nullptr;
+	std::shared_ptr<info::Stream> _input_stream = nullptr OV_GUARDED_BY(_mutex);
 
 	// Bypass:   InputTrackId  → [(OutputStream, OutputTrackId)]
-	std::map<MediaTrackId, std::vector<StreamNo>> _input_to_outputs;
+	std::map<MediaTrackId, std::vector<StreamNo>> _input_to_outputs OV_GUARDED_BY(_mutex);
 
 	// Decode:   InputTrackId  → DecoderId  (1:1)
-	std::map<MediaTrackId, MediaTrackId> _input_to_decoder;
+	std::map<MediaTrackId, MediaTrackId> _input_to_decoder OV_GUARDED_BY(_mutex);
 
 	// Filter:   DecoderId     → [FilterId]  (1:N)
-	std::map<MediaTrackId, std::vector<MediaTrackId>> _decoder_to_filters;
+	std::map<MediaTrackId, std::vector<MediaTrackId>> _decoder_to_filters OV_GUARDED_BY(_mutex);
 
 	// Encode:   FilterId      → EncoderId  (1:1)
-	std::map<MediaTrackId, MediaTrackId> _filter_to_encoder;
+	std::map<MediaTrackId, MediaTrackId> _filter_to_encoder OV_GUARDED_BY(_mutex);
 
 	// Output:   EncoderId     → [(OutputStream, OutputTrackId)]  (1:N)
-	std::map<MediaTrackId, std::vector<StreamNo>> _encoder_to_outputs;
+	std::map<MediaTrackId, std::vector<StreamNo>> _encoder_to_outputs OV_GUARDED_BY(_mutex);
 
 private:
-	mutable std::shared_mutex _mutex;
+	mutable ov::SharedMutex _mutex;
 
 	// Lock-free versions for internal use (caller must hold _mutex).
-	std::shared_ptr<MediaTrack> GetInputTrackByOutputTrackIdLocked(MediaTrackId track_id) const;
-	std::vector<MediaTrackId>   GetFilterIdsByDecoderIdLocked(MediaTrackId decoder_id) const;
-	void                        BuildCachesLocked();
+	std::shared_ptr<MediaTrack> GetInputTrackByOutputTrackIdLocked(MediaTrackId track_id) const OV_REQUIRES(_mutex);
+	std::vector<MediaTrackId>   GetFilterIdsByDecoderIdLocked(MediaTrackId decoder_id) const OV_REQUIRES(_mutex);
+	void                        BuildCachesLocked() OV_REQUIRES(_mutex);
 
 	// Caches
 	// These are for hot-path lookups in the transcoding pipeline. 
-	std::unordered_map<MediaTrackId, std::vector<StreamTrackPair>> _cache_bypass_outputs_by_input;
-	std::unordered_map<MediaTrackId, StreamTrackPair>              _cache_input_output_by_filter;
-	std::unordered_map<MediaTrackId, StreamTrackPair>              _cache_input_output_by_encoder;
-	std::unordered_map<MediaTrackId, std::vector<StreamTrack>>     _cache_outputs_by_encoder;
+	std::unordered_map<MediaTrackId, std::vector<StreamTrackPair>> _cache_bypass_outputs_by_input OV_GUARDED_BY(_mutex);
+	std::unordered_map<MediaTrackId, StreamTrackPair>              _cache_input_output_by_filter OV_GUARDED_BY(_mutex);
+	std::unordered_map<MediaTrackId, StreamTrackPair>              _cache_input_output_by_encoder OV_GUARDED_BY(_mutex);
+	std::unordered_map<MediaTrackId, std::vector<StreamTrack>>     _cache_outputs_by_encoder OV_GUARDED_BY(_mutex);
 };
