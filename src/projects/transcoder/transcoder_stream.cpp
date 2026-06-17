@@ -1502,7 +1502,7 @@ bool TranscoderStream::CreateFilters(std::shared_ptr<MediaFrame> buffer)
 	{
 		if (!CreateFilter(filter_id, input_stream, input_track, output_stream, output_track))
 		{
-			logte("%s Failed to create filter. Id(%d), Decoder(%u)<Codec:%s, Module:%s:%d, Type:%s>, Encoder(%u)<Codec:%s, Module:%s:%d, Type:%s>",
+			logte("%s Failed to create filter. Id(%d), InputTrack(%u) <Codec:%s, Module:%s:%d, Type:%s>, OutputTrack(%u) <Codec:%s, Module:%s:%d, Type:%s>",
 				 _log_prefix.CStr(), filter_id, 
 				  input_track->GetId(), cmn::GetCodecIdString(input_track->GetCodecId()), cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), cmn::GetMediaTypeString(input_track->GetMediaType()),
 				  output_track->GetId(), cmn::GetCodecIdString(output_track->GetCodecId()), cmn::GetCodecModuleIdString(output_track->GetCodecModuleId()), output_track->GetCodecDeviceId(), cmn::GetMediaTypeString(output_track->GetMediaType()));
