@@ -193,13 +193,13 @@ namespace ov
 		bool SendFromTo(const SocketAddressPair &address_pair, const std::shared_ptr<const Data> &data);
 		bool SendFromTo(const SocketAddressPair &address_pair, const void *data, size_t length);
 
-		// On success, writes the received byte count into `data->Length()` and returns `nullptr`.
+		// On success, sets `data->GetLength()` to the received byte count and returns `nullptr`.
 		// A length of `0` means either "retry later" (`EAGAIN`/non-blocking with no data)
 		// or, for UDP, a valid 0-length datagram - both are reported as success, not a disconnect.
 		// A TCP/SRT EOF (orderly peer shutdown) is reported as a non-null `SocketError`,
 		// never as a `0`-length success.
 		//
-		// In non-blocking mode, if `data->Length() > 0`, more data may still remain in the socket
+		// In non-blocking mode, if `data->GetLength() > 0`, more data may still remain in the socket
 		// buffer, so callers should continue reading until it returns `0` (retry later) or an error.
 		//
 		// If `MakeNonBlocking()` is called, `non_block` is ignored.
