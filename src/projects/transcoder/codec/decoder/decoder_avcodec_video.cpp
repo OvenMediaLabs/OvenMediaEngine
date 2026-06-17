@@ -94,18 +94,29 @@ std::shared_ptr<MediaPacket> AVCodecVideoDecoder::GetFramedPacket()
 		}
 
 		auto media_packet = std::move(obj.value());
-		_framing_buffer.Append(media_packet, media_packet->GetData());
+		if (_framing_buffer.Append(media_packet, media_packet->GetData()) == false)
+		{
+			logte("[%s] Could not prepare framing buffer", _stream_info.GetUri().CStr());
+			_framing_buffer.Reset();
+			return nullptr;
+		}
+	}
+
+	auto *data = _framing_buffer.DataAtCurrentOffset();
+	if (data == nullptr)
+	{
+		_framing_buffer.Reset();
+		return nullptr;
 	}
 
 	int parsed_size = 0;
 	auto parsed_pkt = _framer.Parse(
 		_codec,
 		cmn::MediaType::Video,
-		_framing_buffer.DataAtCurrentOffset(),
+		data,
 		_framing_buffer.GetRemainedSize(),
 		_framing_buffer.GetPts(),
 		_framing_buffer.GetDts(), parsed_size);
-
 	if (parsed_size < 0)
 	{
 		logte("[%s] An error occurred while parsing: %d", _stream_info.GetUri().CStr(), parsed_size);
@@ -125,6 +136,7 @@ std::shared_ptr<MediaPacket> AVCodecVideoDecoder::GetFramedPacket()
 
 	return parsed_pkt;
 }
+
 
 DecodeResult AVCodecVideoDecoder::SendPacket(const std::shared_ptr<MediaPacket> &packet)
 {
