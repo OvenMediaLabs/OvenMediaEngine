@@ -343,7 +343,9 @@ namespace pvd::rtmp
 	ov::String RtmpChunkHandler::Stats::GetStatsString(int64_t elapsed_ms) const
 	{
 		// last: interval between the two most recent key frames (stale when key frames stop arriving)
-		// since: elapsed time since the last key frame (grows in real time, reveals long gaps)
+		// since: stream-timestamp distance from the last key frame to the latest video frame;
+		//        advances as video frames arrive (not wall-clock) and reveals long gaps within a GOP.
+		//        May go negative on regressing/malformed timestamps - shown as-is to surface the anomaly.
 		auto since_last_key_frame = last_video_timestamp - previous_key_frame_timestamp;
 
 		return ov::String::FormatString(
