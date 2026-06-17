@@ -95,12 +95,12 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::H264, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::H265, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, true);
+			OV_CASE_RETURN(cmn::MediaCodecId::Av1, true);
 
 			// Unsupported codecs
 			OV_CASE_RETURN(cmn::MediaCodecId::None, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Vp8, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Vp9, false);
-			OV_CASE_RETURN(cmn::MediaCodecId::Av1, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp3, false);
@@ -166,10 +166,10 @@ namespace pvd::rtmp
 		{
 			switch (four_cc.value())
 			{
-				// VP8/VP9/AV1 are not supported yet
+				// VP8/VP9 are not supported yet
 				OV_CASE_RETURN(modules::flv::VideoFourCc::Vp8, cmn::MediaCodecId::None);
 				OV_CASE_RETURN(modules::flv::VideoFourCc::Vp9, cmn::MediaCodecId::None);
-				OV_CASE_RETURN(modules::flv::VideoFourCc::Av1, cmn::MediaCodecId::None);
+				OV_CASE_RETURN(modules::flv::VideoFourCc::Av1, cmn::MediaCodecId::Av1);
 				OV_CASE_RETURN(modules::flv::VideoFourCc::Avc, cmn::MediaCodecId::H264);
 				OV_CASE_RETURN(modules::flv::VideoFourCc::Hevc, cmn::MediaCodecId::H265);
 			}
@@ -342,9 +342,13 @@ namespace pvd::rtmp
 
 	ov::String RtmpChunkHandler::Stats::GetStatsString(int64_t elapsed_ms) const
 	{
+		// last: interval between the two most recent key frames (stale when key frames stop arriving)
+		// since: elapsed time since the last key frame (grows in real time, reveals long gaps)
+		auto since_last_key_frame = last_video_timestamp - previous_key_frame_timestamp;
+
 		return ov::String::FormatString(
-			"keyint_ms(%u) ts_ms(v:%" PRId64 "/a:%" PRId64 "/v-a:%" PRId64 ") fps(v:%.2f/a:%.2f) gap_ms(v:%" PRId64 "/a:%" PRId64 ")",
-			key_frame_interval,
+			"keyint_ms(last:%u/since:%" PRId64 ") ts_ms(v:%" PRId64 "/a:%" PRId64 "/v-a:%" PRId64 ") fps(v:%.2f/a:%.2f) gap_ms(v:%" PRId64 "/a:%" PRId64 ")",
+			key_frame_interval, since_last_key_frame,
 			last_video_timestamp, last_audio_timestamp, GetVADelta(),
 			((video_frame_count * 1000) / static_cast<double>(elapsed_ms)),
 			((audio_frame_count * 1000) / static_cast<double>(elapsed_ms)),
@@ -1574,8 +1578,9 @@ namespace pvd::rtmp
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
 
-					// In this case, it is highly likely that the sequence header
-					// was not processed correctly in RtmpTrack.
+					// This branch usually indicates that the sequence header was not processed correctly
+					// in `RtmpTrack`. Release falls through and ignores the track;
+					// remote input (peer sends frames before/without a valid `SequenceStart`) must not abort the process.
 					OV_ASSERT2(false);
 				}
 			}
@@ -1726,8 +1731,9 @@ namespace pvd::rtmp
 					rtmp_track->SetIgnored(true);
 					rtmp_track->ClearMediaPacketList();
 
-					// In this case, it is highly likely that the sequence header
-					// was not processed correctly in RtmpTrack.
+					// This branch usually indicates that the sequence header was not processed correctly in `RtmpTrack`.
+					// Release falls through and ignores the track;
+					// remote input (peer sends frames before/without a valid `SequenceStart`) must not abort the process.
 					OV_ASSERT2(false);
 				}
 			}

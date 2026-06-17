@@ -282,6 +282,7 @@ enum class RtmpCodecType : int32_t
 	AAC,	//	AAC          mp4a(10)
 	MP3,	//	MP3(2)
 	Speex,	//	SPEEX(11)
+	AV1,	//	AV1 (Enhanced RTMP)
 };
 
 enum class RtmpHandshakeState

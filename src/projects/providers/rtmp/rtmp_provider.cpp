@@ -34,7 +34,9 @@ namespace pvd
 
 			if (remote_address != nullptr)
 			{
-				auto file_name = remote_address->ToString().Replace(":", "_");
+				auto file_name = remote_address->ToString()
+									 .Replace(":", "_")
+									 .Replace("/", "_");
 
 				ov::DumpToFile(ov::PathManager::Combine(ov::PathManager::GetAppPath("dump/rtmp"), file_name), data, 0L, true);
 			}

@@ -11,6 +11,7 @@
 #include "../rtmp_provider_private.h"
 #include "../rtmp_stream_v2.h"
 #include "./rtmp_aac_track.h"
+#include "./rtmp_av1_track.h"
 #include "./rtmp_avc_track.h"
 #include "./rtmp_hevc_track.h"
 
@@ -25,7 +26,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::H265, std::make_shared<RtmpHevcTrack>(stream, track_id, from_ex_header));
 			OV_CASE_RETURN(cmn::MediaCodecId::Vp8, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Vp9, nullptr);
-			OV_CASE_RETURN(cmn::MediaCodecId::Av1, nullptr);
+			OV_CASE_RETURN(cmn::MediaCodecId::Av1, std::make_shared<RtmpAv1Track>(stream, track_id, from_ex_header));
 			OV_CASE_RETURN(cmn::MediaCodecId::Flv, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Aac, std::make_shared<RtmpAacTrack>(stream, track_id, from_ex_header));
 			OV_CASE_RETURN(cmn::MediaCodecId::Mp2, nullptr);

@@ -148,6 +148,7 @@ namespace modules
 			//         colorConfig: {}  (Object)
 			//     }
 			// }
+			// ```
 			auto data = reader.GetData();
 			ov::ByteStream byte_stream(data);
 			rtmp::AmfDocument document;
@@ -239,7 +240,9 @@ namespace modules
 
 			if (record == nullptr)
 			{
-				logae("FAILED TO PARSE!");
+				// Release falls through to graceful reject of a malformed
+				// `AVCDecoderConfigurationRecord` from remote input.
+				logae("Failed to parse AVCDecoderConfigurationRecord");
 				OV_ASSERT2(false);
 			}
 
@@ -257,8 +260,59 @@ namespace modules
 
 			if (record == nullptr)
 			{
-				logae("FAILED TO PARSE!");
+				// Release falls through to graceful reject of a malformed
+				// `HEVCDecoderConfigurationRecord` from remote input.
+				logae("Failed to parse HEVCDecoderConfigurationRecord");
 				OV_ASSERT2(false);
+			}
+
+			return record;
+		}
+
+		std::shared_ptr<AV1DecoderConfigurationRecord> VideoParser::ParseAV1(ov::BitReader &reader)
+		{
+			if ((reader.GetBitOffset() % 8) != 0)
+			{
+				OV_ASSERT2(false);
+			}
+
+			// `AV1CodecConfigurationRecord` (`av1C`) consumes all remaining bytes
+			// of the `ExVideoTagBody` `SequenceStart` payload.
+			const auto remaining_bytes = reader.GetRemainingBytes();
+			auto buffer				   = (remaining_bytes > 0)
+											 ? reader.ReadBytes(remaining_bytes)
+											 : std::make_shared<ov::Data>();
+
+			auto record				   = std::make_shared<AV1DecoderConfigurationRecord>();
+
+			// ffmpeg's `libaom-av1` muxer over enhanced-RTMP emits a `SequenceStart` with an empty body -
+			// the AV1 sequence header OBU is delivered in-band in the first `CodedFrames` packet instead.
+			// Tolerate that: synthesize a minimal-default `AV1DecoderConfigurationRecord`;
+			// the actual sequence header OBU will be picked up from the bytestream by downstream consumers
+			// (transcoder / packagers parse the OBU stream directly).
+			if (buffer->GetLength() == 0)
+			{
+				logaw(
+					"Empty AV1CodecConfigurationRecord in SequenceStart - "
+					"using defaults (sequence header OBU is expected in-band in CodedFrames)");
+
+				// Minimal `av1C` blob: `marker=1`, `version=1` -> `0x81`, then three zero bytes covering
+				// `seq_profile`/`seq_level_idx_0`/... defaults. Sequence header OBU arrives in-band.
+				static constexpr uint8_t kDefaultAv1Config[] = {0x81, 0x00, 0x00, 0x00};
+
+				if (record->Parse(kDefaultAv1Config, OV_COUNTOF(kDefaultAv1Config)) == false)
+				{
+					logae("Failed to synthesize default AV1DecoderConfigurationRecord");
+					return nullptr;
+				}
+
+				return record;
+			}
+
+			if (record->Parse(buffer) == false)
+			{
+				logae("Failed to parse AV1DecoderConfigurationRecord");
+				return nullptr;
 			}
 
 			return record;
@@ -363,9 +417,22 @@ namespace modules
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Av1)
 					{
-						// body contains a configuration record to start the sequence
+						auto current_data = reader.GetData();
+
+						// body contains a configuration record to start the sequence.
+						// See https://aomediacodec.github.io/av1-isobmff/#av1codecconfigurationbox-syntax
+						// for the description of the `AV1CodecConfigurationRecord`.
 						// av1Header = [AV1CodecConfigurationRecord]
 						logap("[SequenceStart] AV1CodecConfigurationRecord");
+						video_data->header = ParseAV1(reader);
+
+						if (video_data->header != nullptr)
+						{
+							auto used_bits			= (reader.GetBitOffset() - last_bit_offset);
+							auto used_bytes			= (used_bits + 7) / 8;
+
+							video_data->header_data = current_data->Subdata(0, used_bytes);
+						}
 					}
 					else if (video_data->video_fourcc == VideoFourCc::Avc)
 					{
@@ -529,12 +596,12 @@ namespace modules
 						auto current_bit_offset = reader.GetBitOffset();
 #endif	// DEBUG
 
-						auto payload = GetPayload(
-										   _is_multitrack,
-										   reader,
-										   size_of_video_track,
-										   size_of_video_track_offset)
-										   ->Clone();
+						auto payload		= GetPayload(
+												  _is_multitrack,
+												  reader,
+												  size_of_video_track,
+												  size_of_video_track_offset)
+												  ->Clone();
 						video_data->payload = payload;
 #if DEBUG
 						[[maybe_unused]] auto used_bits = reader.GetBitOffset() - current_bit_offset;

@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <modules/bitstream/av1/av1_decoder_configuration_record.h>
 #include <modules/bitstream/h264/h264_decoder_configuration_record.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/rtmp_v2/amf0/amf_document.h>

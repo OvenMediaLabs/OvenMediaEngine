@@ -44,6 +44,9 @@ namespace modules
 			std::shared_ptr<HEVCDecoderConfigurationRecord> ParseHEVC(ov::BitReader &reader);
 
 			MAY_THROWS(BitReaderError)
+			std::shared_ptr<AV1DecoderConfigurationRecord> ParseAV1(ov::BitReader &reader);
+
+			MAY_THROWS(BitReaderError)
 			std::shared_ptr<VideoData> ProcessExVideoTagBody(ov::BitReader &reader, bool process_video_body, std::shared_ptr<VideoData> video_data);
 
 			std::vector<std::shared_ptr<VideoData>> _data_list;

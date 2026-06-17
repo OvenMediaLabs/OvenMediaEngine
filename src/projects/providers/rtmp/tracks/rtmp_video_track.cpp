@@ -77,7 +77,12 @@ namespace pvd::rtmp
 				if (video_data->header == nullptr)
 				{
 					logte("%s sequence header is not found", cmn::GetCodecIdString(_codec_id));
+
+					// Release falls through to graceful reject.
+					// The parser failed to extract a decoder configuration record from the `SequenceStart` payload
+					// (e.g. a malformed or unsupported av1C/avcC/hevcC blob from remote input).
 					OV_ASSERT2(false);
+
 					return false;
 				}
 
@@ -94,7 +99,10 @@ namespace pvd::rtmp
 				if (video_data->payload == nullptr)
 				{
 					logte("%s payload is not found", cmn::GetCodecIdString(_codec_id));
+
+					// Release falls through to graceful reject of a remote-input `CodedFrames` record without a payload.
 					OV_ASSERT2(false);
+
 					return false;
 				}
 
