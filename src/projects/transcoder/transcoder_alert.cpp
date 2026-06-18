@@ -168,9 +168,10 @@ void TranscoderAlerts::UpdateErrorCountIfNeeded(
 	}
 	else
 	{
-		read_lock.Release();
-
 		record = record_it->second;
+		
+		read_lock.Release();		
+		
 		if (record->GetElapsedMs() <= _error_evaluation_interval_ms)
 		{
 			// Error evaluation window has not passed, increment count.
