@@ -596,8 +596,10 @@ namespace bmff
 			// - OBU_TEMPORAL_DELIMITER, OBU_PADDING, and OBU_REDUNDANT_FRAME_HEADER
 			//   SHOULD NOT be used. We strip temporal delimiters here; padding and
 			//   redundant frame headers are not expected from our encoder pipeline.
-			// - Each OBU SHALL have obu_has_size_field == 1 (last OBU MAY be 0 per spec,
-			//   but we reject unsized OBUs unconditionally for simplicity)
+			// - obu_has_size_field SHALL be 1 for every OBU except the last in a sample,
+			//   which MAY omit it. `Av1Parser::ReadObu()` handles both cases: an unsized
+			//   TemporalDelimiter has an empty payload, and any other unsized OBU takes
+			//   the remainder of the buffer (so it is necessarily the terminal OBU).
 			auto data		   = media_packet->GetData();
 			const auto *base   = data->GetDataAs<uint8_t>();
 			const size_t total = data->GetLength();
@@ -620,7 +622,12 @@ namespace bmff
 					return nullptr;
 				}
 
-				if (obu.header.has_size_field == false)
+				// A missing size field is only valid for a TemporalDelimiter (stripped below) or for
+				// the terminal OBU of the sample. `ReadObu()` makes any other unsized OBU consume the
+				// rest of the buffer, so `next_offset == total` holds whenever it is genuinely terminal.
+				if (obu.header.has_size_field == false &&
+					obu.header.type != Av1ObuType::TemporalDelimiter &&
+					obu.next_offset != total)
 				{
 					logte("FMP4Packager::ConvertBitstreamFormat() - AV1 OBU at offset %zu missing obu_has_size_field", offset);
 					return nullptr;
@@ -689,7 +696,8 @@ namespace bmff
 					break;
 
 				case cmn::MediaCodecId::H265:
-					stream.WriteText("hvc1");
+					// Must match the sample entry fourcc written by `WriteHvc1Box()` (`hev1`)
+					stream.WriteText("hev1");
 					break;
 
 				case cmn::MediaCodecId::Av1:
