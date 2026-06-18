@@ -12,6 +12,8 @@
 #include <modules/bitstream/av1/av1_decoder_configuration_record.h>
 #include <modules/containers/flv_v2/flv_video_parser.h>
 
+#include "../../providers/rtmp/tracks/rtmp_track.h"
+
 #include <cstring>
 #include <vector>
 
@@ -230,9 +232,6 @@ TEST(FlvAv1Parser, CodedFramesXReturnsNull)
 //   - ToCommonPacketType mapping
 //   - Track sequence header state
 // ===========================================================================
-
-#include "../../providers/rtmp/tracks/rtmp_av1_track.h"
-#include "../../providers/rtmp/tracks/rtmp_track.h"
 
 TEST(FlvAv1Pipeline, SequenceStartVideoPacketTypeIsCorrect)
 {
