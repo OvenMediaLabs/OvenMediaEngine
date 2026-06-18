@@ -77,9 +77,8 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 		{
 			// Some hardware (e.g. Xilinx U30) may expand their memory pool while processing the first frame, which is not thread safe.
 			// The first frame is processed under the device mutex to prevent allocation failures.
-
-			TranscodeGPU::GetInstance()->GetDeviceMutex().Lock();
-			_is_first_frame = false;
+			ov::ScopedLock first_frame_lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
+ 			_is_first_frame = false;
 			if(SendFrame(frame) == false)
 			{
 				logte("[%s] Failed to push frame into backend pipeline.", GetLogPrefix().CStr());
