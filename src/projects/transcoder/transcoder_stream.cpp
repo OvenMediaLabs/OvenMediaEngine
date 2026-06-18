@@ -9,8 +9,11 @@
 
 #include "transcoder_stream.h"
 
+#include <modules/bitstream/av1/av1_decoder_configuration_record.h>
+#include <modules/bitstream/av1/av1_parser.h>
 #include <monitoring/monitoring.h>
 
+#include "codec/encoder/encoder_avif.h"
 #include "config/config_manager.h"
 #include "modules/transcode_webhook/transcode_webhook.h"
 #include "orchestrator/orchestrator.h"
@@ -335,7 +338,9 @@ bool TranscoderStream::StartInternal()
 
 bool TranscoderStream::PrepareInternal()
 {
-	if (!_composite.Build())
+	// An empty composite is fine when every output is an AVIF rewrap track;
+	// those route packets without any decoder/filter/encoder component.
+	if (!_composite.Build() && _avif_rewrap_outputs.empty())
 	{
 		logte("%s Failed to create components", _log_prefix.CStr());
 
@@ -885,6 +890,34 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 					}
 
 					output_stream->AddTrack(output_track);
+
+					// AV1 input to an AVIF output with PassthroughAV1 set: the source key
+					// frames are rewrapped into AVIF at the source resolution without
+					// transcoding (no decoder/filter/encoder chain), so thumbnail size
+					// follows the source. Requires the input track's av1C (set by the ingest
+					// path) for the AVIF codec-configuration box; without it the transcoding
+					// path is used. When PassthroughAV1 is unset (default), AV1 is transcoded
+					// to the configured resolution like any other input.
+					if (input_track->GetCodecId() == cmn::MediaCodecId::Av1 &&
+						output_track->GetCodecId() == cmn::MediaCodecId::Avif &&
+						profile.GetPassthroughAV1() == true)
+					{
+						if (input_track->GetDecoderConfigurationRecord() != nullptr)
+						{
+							output_track->SetResolution(input_track->GetResolution());
+							output_track->SetTimeBase(input_track->GetTimeBase());
+							output_track->SetOriginBitstream(cmn::BitstreamFormat::AVIF);
+
+							_avif_rewrap_outputs[input_track_id].push_back({output_stream, output_track});
+
+							logti("%s AV1 input rewrapped into AVIF without transcoding (PassthroughAV1). InputTrack(%d) -> OutputTrack(%d): thumbnails follow the source keyframe cadence and resolution; configured Width/Height/Speed/Crf/ChromaSampling/Framerate are ignored",
+								  _log_prefix.CStr(), input_track_id, output_track->GetId());
+
+							continue;
+						}
+
+						logtw("%s PassthroughAV1 is set but the AV1 input track has no decoder configuration record; AVIF falls back to the transcoding path. InputTrack(%d)", _log_prefix.CStr(), input_track_id);
+					}
 
 					auto signature = ProfileToSerialize(input_track_id, profile);
 					_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
@@ -1700,6 +1733,8 @@ void TranscoderStream::ProcessPacket(const std::shared_ptr<MediaPacket> &packet)
 
 	BypassPacket(packet);
 
+	RewrapAvifPacket(packet);
+
 	DecodePacket(packet);
 }
 
@@ -1735,6 +1770,173 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 		clone->SetTrackId(output_track->GetId());
 
 		SendFrame(output_stream, std::move(clone));
+	}
+}
+
+void TranscoderStream::RewrapAvifPacket(const std::shared_ptr<MediaPacket> &packet)
+{
+	auto it = _avif_rewrap_outputs.find(packet->GetTrackId());
+	if (it == _avif_rewrap_outputs.end())
+	{
+		return;
+	}
+
+	// Thumbnail cadence follows the source keyframe cadence: only key frames
+	// are self-contained AV1 stills. Mediarouter normalization ensures a key
+	// frame carries its sequence header in-band (prepended from the av1C when
+	// the source omits it).
+	if (packet->IsKeyFrame() == false || packet->GetBitstreamFormat() != cmn::BitstreamFormat::AV1_OBU)
+	{
+		return;
+	}
+
+	auto data = packet->GetData();
+	auto input_track = GetInputTrack(packet->GetTrackId());
+	if (data == nullptr || data->IsEmpty() || input_track == nullptr)
+	{
+		return;
+	}
+
+	// Fetched per key frame so a mid-stream av1C change is picked up.
+	auto dcr = input_track->GetDecoderConfigurationRecord();
+	auto av1c = (dcr != nullptr) ? dcr->GetData() : nullptr;
+	auto resolution = input_track->GetResolution();
+	if (av1c == nullptr || av1c->GetLength() == 0 || resolution.width <= 0 || resolution.height <= 0)
+	{
+		logtw("%s Could not rewrap AV1 key frame into AVIF: missing av1C or resolution. InputTrack(%d)", _log_prefix.CStr(), packet->GetTrackId());
+		return;
+	}
+
+	auto codec_params = ::avcodec_parameters_alloc();
+	if (codec_params == nullptr)
+	{
+		return;
+	}
+	codec_params->codec_type = AVMEDIA_TYPE_VIDEO;
+	codec_params->codec_id = AV_CODEC_ID_AV1;
+	codec_params->width = resolution.width;
+	codec_params->height = resolution.height;
+	codec_params->extradata = static_cast<uint8_t *>(::av_mallocz(av1c->GetLength() + AV_INPUT_BUFFER_PADDING_SIZE));
+	if (codec_params->extradata == nullptr)
+	{
+		::avcodec_parameters_free(&codec_params);
+		return;
+	}
+	::memcpy(codec_params->extradata, av1c->GetData(), av1c->GetLength());
+	codec_params->extradata_size = static_cast<int>(av1c->GetLength());
+
+	// The avif muxer dereferences av_pix_fmt_desc_get(codecpar->format) without
+	// a null check, so format must be a real pixel format. Derive it from av1C.
+	codec_params->format = AV_PIX_FMT_YUV420P;
+	auto av1_dcr = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(dcr);
+	if (av1_dcr != nullptr)
+	{
+		const int depth = av1_dcr->BitDepth();
+		if (av1_dcr->Monochrome())
+		{
+			codec_params->format = (depth == 12) ? AV_PIX_FMT_GRAY12 : (depth == 10) ? AV_PIX_FMT_GRAY10 : AV_PIX_FMT_GRAY8;
+		}
+		else if (av1_dcr->ChromaSubsamplingX() && av1_dcr->ChromaSubsamplingY())
+		{
+			codec_params->format = (depth == 12) ? AV_PIX_FMT_YUV420P12 : (depth == 10) ? AV_PIX_FMT_YUV420P10 : AV_PIX_FMT_YUV420P;
+		}
+		else if (av1_dcr->ChromaSubsamplingX())
+		{
+			codec_params->format = (depth == 12) ? AV_PIX_FMT_YUV422P12 : (depth == 10) ? AV_PIX_FMT_YUV422P10 : AV_PIX_FMT_YUV422P;
+		}
+		else
+		{
+			codec_params->format = (depth == 12) ? AV_PIX_FMT_YUV444P12 : (depth == 10) ? AV_PIX_FMT_YUV444P10 : AV_PIX_FMT_YUV444P;
+		}
+	}
+
+	// The rewrap copies the AV1 still as-is, so the AVIF must carry a valid CICP
+	// in the colr box or decoders that rely on it render the colors wrong.
+	// Carry the source's signaled color_config through. AV1 CICP code
+	// points (ISO/IEC 23091-2) are numerically identical to FFmpeg's AVCOL_*
+	// enums, so they map across directly.
+	//
+	// The color_config lives in the sequence header. The key frame carries it
+	// in-band, so read the in-band sequence header first. The av1C fallback
+	// below only resolves for ingest whose record was built through Parse()
+	// with a configOBUs sequence header (e.g. AV1-in-MP4 whose samples do not
+	// repeat the SH in-band); the mediarouter-normalized ingest path builds its
+	// av1C with SetConfigObus() rather than Parse(), so the av1C carries no
+	// parsed color_config there.
+	//
+	// When the source omits color_description, the
+	// primaries/transfer/matrix are "unspecified" (2), which decoders resolve
+	// inconsistently; default those to BT.709 - the same matrix the transcoding
+	// path stamps - so every AVIF thumbnail of a stream shares one matrix. Range
+	// is taken from the source as-is: the rewrap does not touch the pixels, so it
+	// honors the sequence header's color_range bit (limited or full). The
+	// transcoding path instead tags full because it range-expands the samples, so
+	// the two paths legitimately differ on range while agreeing on matrix.
+	uint8_t src_cp = 2, src_tc = 2, src_mc = 2, src_range = 0;
+	bool from_inband_sh = false;
+	if (auto sh_payload = Av1Parser::ExtractFirstSequenceHeaderObu(data); sh_payload != nullptr)
+	{
+		if (auto summary = Av1Parser::ParseSequenceHeaderSummary(sh_payload); summary.has_value())
+		{
+			src_cp	  = summary->color_primaries;
+			src_tc	  = summary->transfer_characteristics;
+			src_mc	  = summary->matrix_coefficients;
+			src_range = summary->color_range;
+			from_inband_sh = true;
+		}
+	}
+	if (from_inband_sh == false && av1_dcr != nullptr && av1_dcr->ColorConfigParsed())
+	{
+		src_cp	  = av1_dcr->ColorPrimaries();
+		src_tc	  = av1_dcr->TransferCharacteristics();
+		src_mc	  = av1_dcr->MatrixCoefficients();
+		src_range = av1_dcr->ColorRange();
+	}
+	codec_params->color_primaries = (src_cp != AVCOL_PRI_UNSPECIFIED) ? static_cast<AVColorPrimaries>(src_cp) : AVCOL_PRI_BT709;
+	codec_params->color_trc		  = (src_tc != AVCOL_TRC_UNSPECIFIED) ? static_cast<AVColorTransferCharacteristic>(src_tc) : AVCOL_TRC_BT709;
+	codec_params->color_space	  = (src_mc != AVCOL_SPC_UNSPECIFIED) ? static_cast<AVColorSpace>(src_mc) : AVCOL_SPC_BT709;
+	codec_params->color_range	  = (src_range != 0) ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+
+	std::vector<uint8_t> avif_bytes;
+	bool muxed = EncoderAVIF::MuxAvif(codec_params,
+									  AVRational{input_track->GetTimeBase().GetNum(), input_track->GetTimeBase().GetDen()},
+									  data->GetData(), data->GetLength(), avif_bytes);
+	::avcodec_parameters_free(&codec_params);
+
+	if (muxed == false)
+	{
+		logtw("%s Could not rewrap AV1 key frame into AVIF. InputTrack(%d)", _log_prefix.CStr(), packet->GetTrackId());
+		return;
+	}
+
+	for (auto &rewrap : it->second)
+	{
+		auto &output_stream = rewrap.stream;
+		auto &output_track = rewrap.track;
+
+		// The source can change resolution mid-stream; keep the published
+		// track dimensions in step with what the rewrapped images carry.
+		if ((output_track->GetResolution() == resolution) == false)
+		{
+			output_track->SetResolution(resolution);
+		}
+
+		// MediaPacket takes ownership of an ov::Data; copy the muxed bytes (the
+		// local vector is reused for the next output).
+		auto avif_data = std::make_shared<ov::Data>(avif_bytes.data(), avif_bytes.size());
+		auto avif_packet = std::make_shared<MediaPacket>(
+			0,
+			cmn::MediaType::Video,
+			output_track->GetId(),
+			avif_data,
+			packet->GetPts(), packet->GetDts(), packet->GetDuration(),
+			MediaPacketFlag::Key,
+			cmn::BitstreamFormat::AVIF,
+			cmn::PacketType::RAW);
+
+		// The output track inherits the input timebase, so timestamps pass
+		// through unscaled.
+		SendFrame(output_stream, std::move(avif_packet));
 	}
 }
 

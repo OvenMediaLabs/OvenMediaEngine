@@ -735,6 +735,7 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 	}
 
 	AV1_READ_BITS(uint8_t, color_description_present_flag, 1);
+	out.color_description_present = color_description_present_flag;
 	uint8_t color_primaries			= 2;	// AV1 spec: CP_UNSPECIFIED
 	uint8_t transfer_characteristics = 2;	// AV1 spec: TC_UNSPECIFIED
 	uint8_t matrix_coefficients		= 2;	// AV1 spec: MC_UNSPECIFIED
@@ -747,13 +748,16 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 		transfer_characteristics = tc;
 		matrix_coefficients		 = mc;
 	}
+	out.color_primaries			 = color_primaries;
+	out.transfer_characteristics = transfer_characteristics;
+	out.matrix_coefficients		 = matrix_coefficients;
 
 	if (out.monochrome != 0)
 	{
 		// AV1 spec 5.5.2 monochrome branch: read color_range, infer subsampling 4:0:0 mapped to (1,1)
 		// per spec, `chroma_sample_position = CSP_UNKNOWN (0)`.
 		AV1_READ_BITS(uint8_t, color_range_mono, 1);
-		(void)color_range_mono;
+		out.color_range				= color_range_mono;
 		out.chroma_subsampling_x	= 1;
 		out.chroma_subsampling_y	= 1;
 		out.chroma_sample_position	= 0;
@@ -761,6 +765,7 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 	else if ((color_primaries == 1) && (transfer_characteristics == 13) && (matrix_coefficients == 0))
 	{
 		// AV1 spec 5.5.2: sRGB shortcut - color_range = 1, subsampling 4:4:4.
+		out.color_range				= 1;
 		out.chroma_subsampling_x	= 0;
 		out.chroma_subsampling_y	= 0;
 		out.chroma_sample_position	= 0;
@@ -768,7 +773,7 @@ std::optional<Av1SequenceHeaderSummary> Av1Parser::ParseSequenceHeaderSummary(co
 	else
 	{
 		AV1_READ_BITS(uint8_t, color_range_full, 1);
-		(void)color_range_full;
+		out.color_range				= color_range_full;
 		if (out.seq_profile == 0)
 		{
 			out.chroma_subsampling_x = 1;

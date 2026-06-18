@@ -106,6 +106,17 @@ struct Av1SequenceHeaderSummary
 	uint8_t chroma_subsampling_y = 0;
 	uint8_t chroma_sample_position = 0;
 
+	// AV1 spec 5.5.2 `color_config()` CICP code points (ISO/IEC 23091-2 / ITU-T H.273), which are
+	// numerically identical to FFmpeg's `AVCOL_*` enums. `color_description_present` is 0 when the
+	// source omits `color_config`, in which case primaries/transfer/matrix stay CP/TC/MC_UNSPECIFIED
+	// (2). `color_range` is always signaled in the sequence header (0 = studio/limited, 1 = full),
+	// except in the sRGB shortcut where the spec implies full range with no bit read.
+	uint8_t color_description_present = 0;
+	uint8_t color_primaries = 2;		   // CP_UNSPECIFIED
+	uint8_t transfer_characteristics = 2;  // TC_UNSPECIFIED
+	uint8_t matrix_coefficients = 2;	   // MC_UNSPECIFIED
+	uint8_t color_range = 0;			   // 0 = studio/limited, 1 = full
+
 	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay
 	// signaling. Captured for diagnostics only. NOTE: this is a Sequence Header field and is
 	// distinct from the av1C `initial_presentation_delay_minus_one`; the AV1 ISOBMFF binding

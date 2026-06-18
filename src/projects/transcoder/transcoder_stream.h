@@ -154,6 +154,19 @@ private:
 
 	CompositeMap _composite;
 
+	// AV1 ingest → AVIF image profile: source key packets are rewrapped into
+	// single-image AVIF files instead of running a decode→filter→encode
+	// chain. Populated once in CreateOutputStream (before packets flow);
+	// afterwards only the packet thread touches the entries, so no lock is
+	// needed.
+	struct AvifRewrapOutput
+	{
+		std::shared_ptr<info::Stream> stream;
+		std::shared_ptr<MediaTrack> track;
+	};
+	// [INPUT_TRACK_ID, [outputs]]
+	std::map<MediaTrackId, std::vector<AvifRewrapOutput>> _avif_rewrap_outputs;
+
 	// Decoder Component
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
@@ -215,7 +228,8 @@ private:
 	void ProcessPacket(const std::shared_ptr<MediaPacket> &packet);
 
 	// Step 1: Decode (Decode a frame from given packets)
-	void BypassPacket(const std::shared_ptr<MediaPacket> &packet);	
+	void BypassPacket(const std::shared_ptr<MediaPacket> &packet);
+	void RewrapAvifPacket(const std::shared_ptr<MediaPacket> &packet);
 	void DecodePacket(const std::shared_ptr<MediaPacket> &packet);
 	void OnDecodedFrame(TranscodeResult result, MediaTrackId decoder_id, std::shared_ptr<MediaFrame> decoded_frame);
 	void SetLastDecodedFrame(MediaTrackId decoder_id, std::shared_ptr<MediaFrame> &decoded_frame);

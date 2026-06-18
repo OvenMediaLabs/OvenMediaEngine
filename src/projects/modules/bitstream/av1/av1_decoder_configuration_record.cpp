@@ -62,6 +62,13 @@ bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)
 	// otherwise leave the previous parse's OBU buffer reachable through `ConfigObus()`; clear it too.
 	_valid		 = false;
 	_config_obus = nullptr;
+	// A re-parse must not leave a prior source's color_config observable when the new stream omits it.
+	_color_config_parsed	  = false;
+	_color_description_present = 0;
+	_color_primaries		  = 2;
+	_transfer_characteristics = 2;
+	_matrix_coefficients	  = 2;
+	_color_range			  = 0;
 	UpdateData();
 
 	if ((data == nullptr) || (length < MIN_AV1DECODERCONFIGURATIONRECORD_SIZE))
@@ -259,6 +266,15 @@ bool AV1DecoderConfigurationRecord::ValidateConfigObus()
 			// "SHALL match" rule for it; it is an av1C-only field derived from a decoder-model
 			// procedure over all samples, and the spec explicitly notes it differs from the
 			// Sequence Header's `initial_display_delay_minus_1`.
+
+			// `color_config()` is not an av1C fixed field, so it is not cross-checked - just captured.
+			// Downstream consumers (e.g. the AV1->AVIF rewrap) need the source CICP to tag the colr box.
+			_color_config_parsed	  = true;
+			_color_description_present = summary->color_description_present;
+			_color_primaries		  = summary->color_primaries;
+			_transfer_characteristics = summary->transfer_characteristics;
+			_matrix_coefficients	  = summary->matrix_coefficients;
+			_color_range			  = summary->color_range;
 		}
 
 		offset = payload_offset + payload_size;
@@ -379,6 +395,12 @@ uint8_t AV1DecoderConfigurationRecord::ChromaSubsamplingY() const { return _chro
 uint8_t AV1DecoderConfigurationRecord::ChromaSamplePosition() const { return _chroma_sample_position; }
 uint8_t AV1DecoderConfigurationRecord::InitialPresentationDelayPresent() const { return _initial_presentation_delay_present; }
 uint8_t AV1DecoderConfigurationRecord::InitialPresentationDelayMinusOne() const { return _initial_presentation_delay_minus_one; }
+bool AV1DecoderConfigurationRecord::ColorConfigParsed() const { return _color_config_parsed; }
+uint8_t AV1DecoderConfigurationRecord::ColorDescriptionPresent() const { return _color_description_present; }
+uint8_t AV1DecoderConfigurationRecord::ColorPrimaries() const { return _color_primaries; }
+uint8_t AV1DecoderConfigurationRecord::TransferCharacteristics() const { return _transfer_characteristics; }
+uint8_t AV1DecoderConfigurationRecord::MatrixCoefficients() const { return _matrix_coefficients; }
+uint8_t AV1DecoderConfigurationRecord::ColorRange() const { return _color_range; }
 
 std::shared_ptr<ov::Data> AV1DecoderConfigurationRecord::ConfigObus() const
 {

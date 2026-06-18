@@ -96,6 +96,24 @@ public:
 	uint8_t InitialPresentationDelayPresent() const;
 	uint8_t InitialPresentationDelayMinusOne() const;
 
+	/// Whether a Sequence Header OBU was found in `configOBUs` and its `color_config()` captured.
+	///
+	/// When `false`, the color accessors below return their unspecified defaults and callers should
+	/// fall back to their own default (the av1C fixed fields do not carry CICP). `color_config()` is
+	/// only present in the in-band/`configOBUs` Sequence Header, not the av1C header itself.
+	///
+	/// @return `true` if `color_config()` was parsed from a `configOBUs` Sequence Header OBU.
+	bool ColorConfigParsed() const;
+
+	/// AV1 `color_config()` CICP fields (ISO/IEC 23091-2), valid only when `ColorConfigParsed()`.
+	/// Primaries/transfer/matrix are `*_UNSPECIFIED` (2) when the source omits `color_description`.
+	/// `ColorRange()` is `0` (studio/limited) or `1` (full).
+	uint8_t ColorDescriptionPresent() const;
+	uint8_t ColorPrimaries() const;
+	uint8_t TransferCharacteristics() const;
+	uint8_t MatrixCoefficients() const;
+	uint8_t ColorRange() const;
+
 	/// Return the `configOBUs` payload (zero or more concatenated AV1 OBUs).
 	///
 	/// `nullptr` is returned when the record carries no `configOBUs` - e.g. a minimal `av1C` whose
@@ -153,6 +171,15 @@ private:
 	uint8_t _chroma_sample_position = 0;
 	uint8_t _initial_presentation_delay_present = 0;
 	uint8_t _initial_presentation_delay_minus_one = 0;
+
+	// AV1 spec 5.5.2 `color_config()` captured from the `configOBUs` Sequence Header OBU (the av1C
+	// header itself carries no CICP). `_color_config_parsed` gates whether these hold real values.
+	bool _color_config_parsed = false;
+	uint8_t _color_description_present = 0;
+	uint8_t _color_primaries = 2;			// CP_UNSPECIFIED
+	uint8_t _transfer_characteristics = 2;	// TC_UNSPECIFIED
+	uint8_t _matrix_coefficients = 2;		// MC_UNSPECIFIED
+	uint8_t _color_range = 0;				// 0 = studio/limited, 1 = full
 
 	std::shared_ptr<ov::Data> _config_obus;
 
