@@ -849,8 +849,8 @@ namespace pvd
 			(audio_available && (audio_codec_type != RtmpCodecType::AAC)))
 		{
 			logaw("AmfMeta has incompatible codec information. - video(%s) audio(%s)",
-				  GetCodecString(video_codec_type).CStr(),
-				  GetCodecString(audio_codec_type).CStr());
+				  ToString(video_codec_type),
+				  ToString(audio_codec_type));
 		}
 
 		return true;
@@ -2322,62 +2322,5 @@ namespace pvd
 		}
 
 		return SendAmfCommand(message_header, document);
-	}
-
-	ov::String RtmpStream::GetCodecString(RtmpCodecType codec_type)
-	{
-		ov::String codec_string;
-
-		switch (codec_type)
-		{
-			case RtmpCodecType::H264:
-				codec_string = "h264";
-				break;
-			case RtmpCodecType::AAC:
-				codec_string = "aac";
-				break;
-			case RtmpCodecType::MP3:
-				codec_string = "mp3";
-				break;
-			case RtmpCodecType::Speex:
-				codec_string = "speex";
-				break;
-			case RtmpCodecType::AV1:
-				codec_string = "av1";
-				break;
-
-			case RtmpCodecType::Unknown:
-				codec_string = "unknown";
-				break;
-		}
-
-		return codec_string;
-	}
-
-	ov::String RtmpStream::GetEncoderTypeString(RtmpEncoderType encoder_type)
-	{
-		ov::String codec_string;
-
-		switch (encoder_type)
-		{
-			case RtmpEncoderType::Xsplit:
-				codec_string = "Xsplit";
-				break;
-			case RtmpEncoderType::OBS:
-				codec_string = "OBS";
-				break;
-			case RtmpEncoderType::Lavf:
-				codec_string = "Lavf/ffmpeg";
-				break;
-			case RtmpEncoderType::Custom:
-				codec_string = "Unknown";
-				break;
-
-			default:
-				codec_string = "Unknown";
-				break;
-		}
-
-		return codec_string;
 	}
 }  // namespace pvd

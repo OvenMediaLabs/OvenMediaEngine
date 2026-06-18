@@ -111,9 +111,6 @@ namespace pvd
 		bool ReceiveAudioMessage(const std::shared_ptr<const RtmpMessage> &message);
 		bool ReceiveVideoMessage(const std::shared_ptr<const RtmpMessage> &message);
 
-		ov::String GetCodecString(RtmpCodecType codec_type);
-		ov::String GetEncoderTypeString(RtmpEncoderType encoder_type);
-
 		bool CheckReadyToPublish();
 		bool PublishStream();
 		bool SetTrackInfo(const std::shared_ptr<RtmpMediaInfo> &media_info);

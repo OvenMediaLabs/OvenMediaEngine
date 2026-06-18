@@ -275,6 +275,19 @@ enum class RtmpEncoderType : int32_t
 	Lavf,		 // Libavformat (lavf)
 };
 
+constexpr const char *ToString(RtmpEncoderType encoder_type)
+{
+	switch (encoder_type)
+	{
+		OV_CASE_RETURN(RtmpEncoderType::Custom, "General");
+		OV_CASE_RETURN(RtmpEncoderType::Xsplit, "Xsplit");
+		OV_CASE_RETURN(RtmpEncoderType::OBS, "OBS");
+		OV_CASE_RETURN(RtmpEncoderType::Lavf, "Lavf/ffmpeg");
+	}
+
+	return "Unknown";
+}
+
 enum class RtmpCodecType : int32_t
 {
 	Unknown,
@@ -284,6 +297,23 @@ enum class RtmpCodecType : int32_t
 	Speex,	//	SPEEX(11)
 	AV1,	//	AV1 (Enhanced RTMP)
 };
+
+constexpr const char *ToString(RtmpCodecType codec_type)
+{
+	switch (codec_type)
+	{
+		OV_CASE_RETURN(RtmpCodecType::H264, "h264");
+		OV_CASE_RETURN(RtmpCodecType::AAC, "aac");
+		OV_CASE_RETURN(RtmpCodecType::MP3, "mp3");
+		OV_CASE_RETURN(RtmpCodecType::Speex, "speex");
+		OV_CASE_RETURN(RtmpCodecType::AV1, "av1");
+
+		case RtmpCodecType::Unknown:
+			break;
+	}
+
+	return "unknown";
+}
 
 enum class RtmpHandshakeState
 {
