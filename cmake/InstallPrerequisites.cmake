@@ -725,7 +725,7 @@ endif()
 if(DEFINED TARGET)
     if("${TARGET}" STREQUAL "ffmpeg")
         # ffmpeg depends on codec libs; install them first in case they are missing
-        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac)
+        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac libaom)
         if(ENABLE_X264)
             list(APPEND _ffmpeg_deps libx264)
         endif()
