@@ -136,6 +136,20 @@ EncodeResult AVCodecImageEncoder::SendFrame(const std::shared_ptr<const MediaFra
 		return EncodeResult::NoOutput();
 	}
 
+	// PNG thumbnails are canonical sRGB-implied: strip colorimetry tags so the encoder
+	// writes no cICP/cHRM/gAMA chunks. Browsers honor cICP above all else, so a BT.709
+	// tag would render the same samples differently from every untagged thumbnail.
+	if (_codec_id == cmn::MediaCodecId::Png)
+	{
+		auto *av_frame = static_cast<AVFrame *>(frame->GetPrivData());
+		if (av_frame != nullptr)
+		{
+			av_frame->color_primaries = AVCOL_PRI_UNSPECIFIED;
+			av_frame->color_trc		  = AVCOL_TRC_UNSPECIFIED;
+			av_frame->colorspace	  = AVCOL_SPC_UNSPECIFIED;
+		}
+	}
+
 	auto result = _codec.SendFrame(frame, force_keyframe);
 	if (result == ffmpeg::CodecResult::Again)
 	{

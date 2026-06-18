@@ -66,7 +66,56 @@ bool FilterLavfiRescaler::BuildDescription(ov::String &desc)
 
 	// Scaler description of default module
 	auto resolution = _output_track->GetResolution();
-	desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
+	auto out_codec_id = _output_track->GetCodecId();
+	bool image_track = cmn::IsImageCodec(out_codec_id);
+	if (image_track)
+	{
+		_image_color_managed = true;
+		ov::String color_args = "";
+		auto out_fmt = ffmpeg::compat::ToAVPixelFormat(_output_track->GetColorspace());
+		// Per-format swscale flags, chosen from the thumbnail colour sweep as a
+		// fidelity/performance compromise: full_chroma_int is a no-op on its own
+		// (and only adds cost paired with accurate_rnd), so it is dropped
+		// everywhere; accurate_rnd is kept only for WebP, where it meaningfully
+		// improves colour accuracy for an acceptable cost. JPEG and PNG are
+		// accurate enough with plain bilinear. AVIF's matrix conversion is done
+		// by the colorspace filter (below), so the scale flags are inert there.
+		const char *sws_flags = (out_codec_id == cmn::MediaCodecId::Webp)
+									? "bilinear+accurate_rnd"
+									: "bilinear";
+		if (out_codec_id == cmn::MediaCodecId::Avif)
+		{
+			// Normalize AVIF thumbnails to BT.709 full range in both the samples and
+			// the CICP tag: scale does geometry, the colorspace filter does the matrix
+			// conversion, reading the input matrix per frame from the source tag.
+			// iprimaries/itrc are pinned BT.709, so a BT.601-matrix source is treated
+			// as BT.709 gamut; genuine BT.601-gamut content is not gamut-converted.
+			desc += ov::String::FormatString(
+				"scale=%dx%d:flags=%s,"
+				"colorspace=all=bt709:range=pc:iprimaries=bt709:itrc=bt709",
+				resolution.width, resolution.height, sws_flags);
+		}
+		else
+		{
+			// Color-managed scale for JPEG/WebP/PNG: convert samples to each format's
+			// implied convention (JFIF 601-full for JPEG, 601-limited for WebP; PNG
+			// converts to RGB via the input matrix).
+			if (out_fmt == AV_PIX_FMT_YUVJ420P || out_fmt == AV_PIX_FMT_YUVJ444P)
+			{
+				color_args = ":out_color_matrix=smpte170m:out_range=jpeg";
+			}
+			else if (out_fmt == AV_PIX_FMT_YUV420P)
+			{
+				color_args = ":out_color_matrix=smpte170m:out_range=mpeg";
+			}
+			desc += ov::String::FormatString("scale=%dx%d:flags=%s%s",
+											 resolution.width, resolution.height, sws_flags, color_args.CStr());
+		}
+	}
+	else
+	{
+		desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
+	}
 
 	return true;
 }
@@ -80,6 +129,16 @@ bool FilterLavfiRescaler::InitializeSourceFilter()
 	src_params.push_back(ov::String::FormatString("pix_fmt=%s", ffmpeg::compat::GetAVPixelFormatName(ffmpeg::compat::ToAVPixelFormat(_src_pixfmt)).CStr()));
 	src_params.push_back(ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()));
 	src_params.push_back(ov::String::FormatString("pixel_aspect=%d/%d", 1, 1));
+
+	// The colorspace filter (AVIF leg) rejects an unspecified input matrix, so seed
+	// the source link with a defined matrix/range. scale reconfigures its links to
+	// each frame's tags, so a genuine BT.601 frame still reaches colorspace as BT.601
+	// and is converted. (Only the matrix must be set; primaries/trc default.)
+	if (_output_track->GetCodecId() == cmn::MediaCodecId::Avif)
+	{
+		src_params.push_back("colorspace=bt709");
+		src_params.push_back("range=tv");
+	}
 
 	_src_args = ov::String::Join(src_params, ":");
 
@@ -259,6 +318,34 @@ bool FilterLavfiRescaler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 			  media_frame->GetWidth(), media_frame->GetHeight(), _src_width, _src_height);
 
 		return false;
+	}
+
+	// Untagged image-track sources are stamped BT.709 (full range for yuvj) at every
+	// resolution -- intentional, to match OME's own playback, not a fallback guess. OME
+	// serves WebRTC + LL-HLS, which render untagged content as BT.709 regardless of size
+	// (verified: Chromium over WebRTC/LL-HLS, Firefox over LL-HLS). The 601-SD/709-HD
+	// split only matches progressive <video> file playback, which OME does not serve, so
+	// a height-based gate made SD thumbnails diverge from the player. Unconditional 709
+	// keeps thumbnails consistent with the player and the AV1->AVIF rewrap default, and
+	// gives one matrix per stream across output sizes. The scale filter then reads these
+	// tags to drive the out_color_matrix conversion above.
+	if (_image_color_managed)
+	{
+		auto *frame = static_cast<AVFrame *>(media_frame->GetPrivData());
+		if (frame != nullptr)
+		{
+			if (frame->colorspace == AVCOL_SPC_UNSPECIFIED)
+			{
+				frame->colorspace = AVCOL_SPC_BT709;
+			}
+			if (frame->color_range == AVCOL_RANGE_UNSPECIFIED)
+			{
+				bool yuvj = (frame->format == AV_PIX_FMT_YUVJ420P ||
+							 frame->format == AV_PIX_FMT_YUVJ422P ||
+							 frame->format == AV_PIX_FMT_YUVJ444P);
+				frame->color_range = yuvj ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+			}
+		}
 	}
 
 	// PushFrame transfers the frame from GPU to host memory when _use_hwframe_transfer is set.

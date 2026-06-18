@@ -72,6 +72,9 @@ The image encoding profile is only used by thumbnail publishers. and, bypass opt
 
 :::
 
+#### Color handling
+
+Thumbnails are converted to the colorimetry each format implies: BT.601 full range (JFIF) for JPEG, BT.601 limited range for WebP, and RGB for PNG. Sources tagged BT.709 or BT.601 are converted accordingly. Untagged sources are assumed BT.709. PNG thumbnails are written without color chunks (untagged like the others). Transcoded AVIF is converted to BT.709 full range and signals exactly that via CICP.
 
 ### Publisher
 

@@ -34,6 +34,9 @@ private:
 
 	// ----- Members -----
 	ffmpeg::FFmpegFilterGraph _graph;
+
+	// Color-managed scale active for this image (thumbnail) track.
+	bool _image_color_managed = false;
 #if _SIMULATE_PROCESSING_DELAY_ENABLED
 	int32_t _simulate_overload = 0;
 #endif
