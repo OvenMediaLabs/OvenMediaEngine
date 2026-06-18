@@ -20,7 +20,7 @@ FilterLavfiRescaler::~FilterLavfiRescaler()
 
 /**
  * Output Module Cases
- * - DEFAULT, OPENH264, X264, LIBVPX, NILOGAN : SW-based module (CPU memory)
+ * - OPENH264(default), X264, LIBVPX : SW-based module (CPU memory)
  *
  * The scaler runs in host memory with the `scale` filter. Input frames that
  * live in device memory are brought down to the host first (NVENC via hwframe

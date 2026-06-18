@@ -475,7 +475,7 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecModuleId::OPENH264, "openh264");
 			OV_CASE_RETURN(MediaCodecModuleId::NVENC, "nv");
 			OV_CASE_RETURN(MediaCodecModuleId::NILOGAN, "nilogan");
-			OV_CASE_RETURN(MediaCodecModuleId::XMA, "xma";);
+			OV_CASE_RETURN(MediaCodecModuleId::XMA, "xma");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBVPX, "libvpx");
 			OV_CASE_RETURN(MediaCodecModuleId::FDKAAC, "fdkaac");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBOPUS, "libopus");
