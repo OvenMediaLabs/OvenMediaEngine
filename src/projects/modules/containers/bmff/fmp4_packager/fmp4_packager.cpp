@@ -609,9 +609,11 @@ namespace bmff
 				return nullptr;
 			}
 
-			// Scan: validate `obu_has_size_field` and detect temporal delimiters
-			bool needs_filter = false;
-			size_t offset	  = 0;
+			// Walk the OBUs once, copying everything except temporal delimiters. `ReadObu()`
+			// returns false on malformed input and tolerates a missing size field on the
+			// terminal OBU, so no separate size-field validation pass is needed.
+			auto filtered = std::make_shared<ov::Data>(total);
+			size_t offset = 0;
 			Av1ObuSpan obu;
 
 			while (offset < total)
@@ -622,55 +624,22 @@ namespace bmff
 					return nullptr;
 				}
 
-				// A missing size field is only valid for a TemporalDelimiter (stripped below) or for
-				// the terminal OBU of the sample. `ReadObu()` makes any other unsized OBU consume the
-				// rest of the buffer, so `next_offset == total` holds whenever it is genuinely terminal.
-				if (obu.header.has_size_field == false &&
-					obu.header.type != Av1ObuType::TemporalDelimiter &&
-					obu.next_offset != total)
+				if (obu.header.type != Av1ObuType::TemporalDelimiter)
 				{
-					logte("FMP4Packager::ConvertBitstreamFormat() - AV1 OBU at offset %zu missing obu_has_size_field", offset);
-					return nullptr;
-				}
-
-				if (obu.header.type == Av1ObuType::TemporalDelimiter)
-				{
-					needs_filter = true;
+					filtered->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
 				}
 
 				offset = obu.next_offset;
 			}
 
-			if (needs_filter)
+			if (filtered->GetLength() == 0)
 			{
-				auto filtered = std::make_shared<ov::Data>(total);
-				offset		  = 0;
-
-				while (offset < total)
-				{
-					if (Av1Parser::ReadObu(base, total, offset, obu) == false)
-					{
-						logte("FMP4Packager::ConvertBitstreamFormat() - Failed to parse AV1 OBU at offset %zu", offset);
-						return nullptr;
-					}
-
-					if (obu.header.type != Av1ObuType::TemporalDelimiter)
-					{
-						filtered->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
-					}
-
-					offset = obu.next_offset;
-				}
-
-				if (filtered->GetLength() == 0)
-				{
-					return nullptr;
-				}
-
-				auto new_packet = std::make_shared<MediaPacket>(*media_packet);
-				new_packet->SetData(filtered);
-				converted_packet = new_packet;
+				return nullptr;
 			}
+
+			auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+			new_packet->SetData(filtered);
+			converted_packet = new_packet;
 		}
 		else
 		{
