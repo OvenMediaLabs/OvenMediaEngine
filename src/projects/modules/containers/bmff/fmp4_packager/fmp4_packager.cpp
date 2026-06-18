@@ -679,7 +679,27 @@ namespace bmff
 
 		stream.WriteText("iso6"); // major brand
 		stream.WriteBE32(0); // minor version
-		stream.WriteText("iso6mp42avc1dashhlsfaid3"); // compatible brands
+		stream.WriteText("iso6mp42");  // compatible brands
+
+		{
+			switch (GetMediaTrack()->GetCodecId())
+			{
+				case cmn::MediaCodecId::H264:
+				default:
+					stream.WriteText("avc1");
+					break;
+
+				case cmn::MediaCodecId::H265:
+					stream.WriteText("hvc1");
+					break;
+
+				case cmn::MediaCodecId::Av1:
+					stream.WriteText("av01");
+					break;
+			}
+		}
+
+		stream.WriteText("dashhlsfaid3");
 
 		// stream.WriteText("mp42"); // major brand
 		// stream.WriteBE32(0); // minor version
