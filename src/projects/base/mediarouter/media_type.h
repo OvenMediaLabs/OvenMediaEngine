@@ -255,6 +255,15 @@ namespace cmn
 		return "Unknown";
 	}
 
+	enum class ColorRange : int8_t
+	{
+		Unspecified = 0,  
+		// Limited(=narrow) range, MPEG/TV range (e.g. 16-235 for 8-bit luma)
+		Limited, 
+		// Full(=wide) range, JPEG/PC range (e.g. 0-255 for 8-bit luma)
+		Full 
+	};
+
 	enum class KeyFrameIntervalType : uint8_t
 	{
 		FRAME = 0,
@@ -735,6 +744,179 @@ namespace cmn
 
 	private:
 		// 1/1000
+		int32_t _num;
+		int32_t _den;
+	};
+
+
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+	// Rational number (num/den)
+	//////////////////////////////////////////////////////////////////////////////////////////////////
+
+	class Rational
+	{
+	public:
+		Rational()
+			: Rational(0, 1)
+		{
+		}
+
+		Rational(int32_t num, int32_t den)
+			: _num(num), _den(den)
+		{
+		}
+
+		static Rational FromDouble(double value, int32_t max = 1000000)
+		{
+			// NaN
+			if (value != value)
+			{
+				return Rational(0, 0);
+			}
+
+			bool negative = (value < 0.0);
+			double frac	  = negative ? -value : value;
+
+			// Continued fraction approximation (same goal as av_d2q)
+			int64_t prev_num = 0, prev_den = 1;
+			int64_t curr_num = 1, curr_den = 0;
+
+			for (int32_t i = 0; i < 64; i++)
+			{
+				int64_t whole = static_cast<int64_t>(frac);
+
+				int64_t next_num = whole * curr_num + prev_num;
+				int64_t next_den = whole * curr_den + prev_den;
+
+				if (next_num > max || next_den > max)
+				{
+					break;
+				}
+
+				prev_num = curr_num;
+				prev_den = curr_den;
+				curr_num = next_num;
+				curr_den = next_den;
+
+				double remainder = frac - static_cast<double>(whole);
+				if (remainder < 1e-9)
+				{
+					break;
+				}
+
+				frac = 1.0 / remainder;
+			}
+
+			return Rational(static_cast<int32_t>(negative ? -curr_num : curr_num), static_cast<int32_t>(curr_den));
+		}
+
+		static int64_t Rescale(int64_t value, const Rational &from, const Rational &to)
+		{
+			if (value == kNoPtsValue)
+			{
+				return value;
+			}
+
+			// value * (from.num / from.den) / (to.num / to.den)
+			//   = value * (from.num * to.den) / (from.den * to.num)
+			__int128 num = static_cast<__int128>(value) * (static_cast<__int128>(from._num) * to._den);
+			__int128 den = static_cast<__int128>(from._den) * to._num;
+
+			if (den == 0)
+			{
+				return value;
+			}
+
+			// Normalize so the denominator is positive, then round half away from zero.
+			if (den < 0)
+			{
+				num = -num;
+				den = -den;
+			}
+
+			const __int128 half = den / 2;
+			num += (num < 0) ? -half : half;
+
+			return static_cast<int64_t>(num / den);
+		}
+
+		Rational &operator=(const Rational &R) noexcept
+		{
+			_num = R._num;
+			_den = R._den;
+
+			return *this;
+		}
+
+		void Set(int32_t num, int32_t den)
+		{
+			SetNum(num);
+			SetDen(den);
+		}
+
+		void SetNum(int32_t num)
+		{
+			_num = num;
+		}
+
+		void SetDen(int32_t den)
+		{
+			_den = den;
+		}
+
+		int32_t GetNum() const
+		{
+			return _num;
+		}
+
+		int32_t GetDen() const
+		{
+			return _den;
+		}
+
+		double GetExpr() const
+		{
+			if (_den == 0)
+			{
+				return 0.0;
+			}
+
+			return (double)_num / (double)_den;
+		}
+
+		Rational Invert() const
+		{
+			return Rational(_den, _num);
+		}
+
+		bool IsValid() const
+		{
+ 			return (_den != 0);
+		}
+
+		bool operator==(const Rational &rational) const
+		{
+			return (rational._num == _num) && (rational._den == _den);
+		}
+
+		bool operator!=(const Rational &rational) const
+		{
+			return operator==(rational) == false;
+		}
+
+		ov::String GetStringExpr() const
+		{
+			return ov::String::FormatString("%d/%d", GetNum(), GetDen());
+		}
+
+		ov::String ToString() const
+		{
+			return GetStringExpr();
+		}
+
+	private:
+		static constexpr int64_t kNoPtsValue = INT64_MIN;
+
 		int32_t _num;
 		int32_t _den;
 	};

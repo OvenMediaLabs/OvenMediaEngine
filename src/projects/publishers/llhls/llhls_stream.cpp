@@ -869,7 +869,7 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 		return {RequestResult::Accepted, nullptr};
 	}
 
-	if (msn >= 0 && psn >= 0)
+	if (msn >= 0)
 	{
 		int64_t last_msn, last_psn;
 		if (chunklist->GetLastSequenceNumber(last_msn, last_psn) == false)
@@ -878,15 +878,20 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 			return {RequestResult::NotFound, nullptr};
 		}
 
-		if (msn > last_msn || (msn >= last_msn && psn > last_psn))
+		// When _HLS_part is omitted, treat it as part 0 so the request blocks until
+		// the first partial segment of the requested MSN is available (Safari sends
+		// _HLS_msn without _HLS_part to wait for a new segment's first part).
+		const int64_t requested_psn = (psn >= 0) ? psn : 0;
+
+		if (msn > last_msn || (msn >= last_msn && requested_psn > last_psn))
 		{
 			// Hold the request until a Playlist contains a Segment with the requested Sequence Number
-			logtt("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (requested_psn = %ld, last_msn = %ld, last_psn = %ld)", track_id, msn, psn, requested_psn, last_msn, last_psn);
 			return {RequestResult::Accepted, nullptr};
 		}
 		else
 		{
-			logtt("Get chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Get chunklist for track_id = %d, msn = %ld, psn = %ld (requested_psn = %ld, last_msn = %ld, last_psn = %ld)", track_id, msn, psn, requested_psn, last_msn, last_psn);
 		}
 	}
 

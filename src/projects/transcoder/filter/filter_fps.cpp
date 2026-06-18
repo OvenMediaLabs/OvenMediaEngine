@@ -19,10 +19,10 @@ FilterFps::FilterFps()
 	_output_framerate = 0;
 	_skip_frames = SkipFramesDisabled; 
 
-	_curr_pts = AV_NOPTS_VALUE;
-	_next_pts = AV_NOPTS_VALUE;
-	_last_input_pts = AV_NOPTS_VALUE;
-	_last_input_scaled_pts = AV_NOPTS_VALUE;
+	_curr_pts = kNoPtsValue;
+	_next_pts = kNoPtsValue;
+	_last_input_pts = kNoPtsValue;
+	_last_input_scaled_pts = kNoPtsValue;
 
 	_stat_ideal_output_frame_count = 0;
 	_stat_actual_output_frame_count = 0;
@@ -66,12 +66,13 @@ double FilterFps::GetInputFrameRate() const
 
 void FilterFps::SetOutputFrameRate(double framerate)
 {
-	if (_next_pts != AV_NOPTS_VALUE)
+	if (_next_pts != kNoPtsValue)
 	{
-		int64_t scaled_next_pts = av_rescale_q_rnd(_next_pts,
-												   av_inv_q(av_d2q(_output_framerate, INT_MAX)),
-												   av_inv_q(av_d2q(framerate, INT_MAX)),
-												   (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+		// Rescale _next_pts from the old framerate timebase (1/_output_framerate) to the new one.
+		int64_t scaled_next_pts = cmn::Rational::Rescale(
+			_next_pts,
+			cmn::Rational::FromDouble(_output_framerate, std::numeric_limits<int32_t>::max()).Invert(),
+			cmn::Rational::FromDouble(framerate, std::numeric_limits<int32_t>::max()).Invert());
 
 		// logtt("Change NextPTS : %" PRId64 " -> %" PRId64 "", _next_pts, scaled_next_pts);
 
@@ -114,12 +115,12 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 	// Changed from Timebase PTS to Framerate PTS.
 	//  ex) 1/90000 -> 1/30
 	//  ex )1/1000 -> 100/2997
-	int64_t scaled_pts = av_rescale_q_rnd(media_frame->GetPts(),
-										  (AVRational){_input_timebase.GetNum(), _input_timebase.GetDen()},
-										  av_inv_q(av_d2q(_output_framerate, INT_MAX)),
-										  (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+	int64_t scaled_pts = cmn::Rational::Rescale(
+		media_frame->GetPts(),
+		cmn::Rational(_input_timebase.GetNum(), _input_timebase.GetDen()),
+		cmn::Rational::FromDouble(_output_framerate, std::numeric_limits<int32_t>::max()).Invert());
 
-	if ((scaled_pts - _last_input_scaled_pts) != 1 && _last_input_scaled_pts != AV_NOPTS_VALUE)
+	if ((scaled_pts - _last_input_scaled_pts) != 1 && _last_input_scaled_pts != kNoPtsValue)
 	{
 		// logtt("PTS is not continuous. lastPts(%" PRId64 "/%" PRId64 ") -> currPts(%" PRId64 "/%" PRId64 ")", _last_input_scaled_pts, _last_input_pts, scaled_pts, media_frame->GetPts());
 	}
@@ -129,7 +130,7 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 
 	media_frame->SetPts(scaled_pts);
 
-	if (_next_pts == AV_NOPTS_VALUE)
+	if (_next_pts == kNoPtsValue)
 	{
 		_next_pts = media_frame->GetPts();
 	}
@@ -137,10 +138,11 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 	_frames.push_back(media_frame);
 
 #if 0
+	auto output_frame_tb = cmn::Rational::FromDouble(_output_framerate, std::numeric_limits<int32_t>::max()).Invert();
 	logtt("Push Frame. PTS(%" PRId64 ") -> PTS(%" PRId64 ") (%d/%d) -> (%d/%d)",
 		_last_input_pts, _last_input_scaled_pts,
 		_input_timebase.GetNum(),  _input_timebase.GetDen(),
-		av_inv_q(av_d2q(_output_framerate, INT_MAX)).num, av_inv_q(av_d2q(_output_framerate, INT_MAX)).den);
+		output_frame_tb.GetNum(), output_frame_tb.GetDen());
 #endif
 
 	return true;
@@ -172,17 +174,14 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 		}
 
 		// Changed from Framerate PTS to Timebase PTS
-		int64_t curr_timebase_pts = av_rescale_q_rnd(_curr_pts,
-													 av_inv_q(av_d2q(_output_framerate, INT_MAX)),
-													 (AVRational){_input_timebase.GetNum(), _input_timebase.GetDen()},
-													 (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+		const auto output_frame_tb = cmn::Rational::FromDouble(_output_framerate, std::numeric_limits<int32_t>::max()).Invert();
+		const cmn::Rational input_tb(_input_timebase.GetNum(), _input_timebase.GetDen());
+
+		int64_t curr_timebase_pts = cmn::Rational::Rescale(_curr_pts, output_frame_tb, input_tb);
 
 		// Calculate the next frame's PTS based on _skip_frames.
 		int64_t delta = (_skip_frames <= SkipFramesMin) ? 0 : _skip_frames;
-		int64_t next_timebase_pts = av_rescale_q_rnd(_next_pts + delta,
-													 av_inv_q(av_d2q(_output_framerate, INT_MAX)),
-													 (AVRational){_input_timebase.GetNum(), _input_timebase.GetDen()},
-													 (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+		int64_t next_timebase_pts = cmn::Rational::Rescale(_next_pts + delta, output_frame_tb, input_tb);
 
 		auto pop_frame = _frames[0]->CloneFrame(_output_frame_copy_mode == OutputFrameCopyMode::DeepCopy ? true : false);
 		pop_frame->SetPts(curr_timebase_pts);

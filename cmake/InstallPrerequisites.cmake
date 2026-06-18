@@ -151,6 +151,7 @@ ome_parse_dep_version(OME_VER_SRTP SRTP_VERSION SRTP_SOURCE_REF SRTP_HAS_OVERRID
 ome_parse_dep_version(OME_VER_SRT SRT_VERSION SRT_SOURCE_REF SRT_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_OPUS OPUS_VERSION OPUS_SOURCE_REF OPUS_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_VPX VPX_VERSION VPX_SOURCE_REF VPX_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_AOM AOM_VERSION AOM_SOURCE_REF AOM_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FDKAAC FDKAAC_VERSION FDKAAC_SOURCE_REF FDKAAC_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_NASM NASM_VERSION NASM_SOURCE_REF NASM_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FFMPEG FFMPEG_VERSION FFMPEG_SOURCE_REF FFMPEG_HAS_OVERRIDE)
@@ -171,6 +172,7 @@ ome_select_archive_ref(SRTP_ARCHIVE_REF "${SRTP_HAS_OVERRIDE}" "${SRTP_SOURCE_RE
 ome_select_archive_ref(SRT_ARCHIVE_REF "${SRT_HAS_OVERRIDE}" "${SRT_SOURCE_REF}" "v${SRT_SOURCE_REF}")
 ome_select_archive_ref(OPUS_ARCHIVE_REF "${OPUS_HAS_OVERRIDE}" "${OPUS_SOURCE_REF}" "refs/tags/v${OPUS_SOURCE_REF}")
 ome_select_archive_ref(VPX_ARCHIVE_REF "${VPX_HAS_OVERRIDE}" "${VPX_SOURCE_REF}" "refs/tags/v${VPX_SOURCE_REF}")
+ome_select_archive_ref(AOM_ARCHIVE_REF "${AOM_HAS_OVERRIDE}" "${AOM_SOURCE_REF}/libaom-${AOM_SOURCE_REF}" "v${AOM_SOURCE_REF}/libaom-v${AOM_SOURCE_REF}")
 ome_select_archive_ref(FDKAAC_ARCHIVE_REF "${FDKAAC_HAS_OVERRIDE}" "${FDKAAC_SOURCE_REF}" "v${FDKAAC_SOURCE_REF}")
 ome_select_archive_ref(NASM_ARCHIVE_REF "${NASM_HAS_OVERRIDE}" "${NASM_SOURCE_REF}" "refs/tags/nasm-${NASM_SOURCE_REF}")
 ome_select_archive_ref(FFMPEG_ARCHIVE_REF "${FFMPEG_HAS_OVERRIDE}" "${FFMPEG_SOURCE_REF}" "refs/tags/n${FFMPEG_SOURCE_REF}")
@@ -189,6 +191,7 @@ set(SRTP_SOURCE_URL "https://github.com/cisco/libsrtp/archive/${SRTP_ARCHIVE_REF
 set(SRT_SOURCE_URL "https://github.com/Haivision/srt/archive/${SRT_ARCHIVE_REF}.tar.gz")
 set(OPUS_SOURCE_URL "https://archive.mozilla.org/pub/opus/opus-${OPUS_SOURCE_REF}.tar.gz")
 set(VPX_SOURCE_URL "https://codeload.github.com/webmproject/libvpx/tar.gz/${VPX_ARCHIVE_REF}")
+set(AOM_SOURCE_URL "https://gitlab.com/webmproject/libaom/-/archive/${AOM_ARCHIVE_REF}.tar.gz")
 set(FDKAAC_SOURCE_URL "https://github.com/mstorsjo/fdk-aac/archive/${FDKAAC_ARCHIVE_REF}.tar.gz")
 set(NASM_SOURCE_URL "https://github.com/netwide-assembler/nasm/archive/${NASM_ARCHIVE_REF}.tar.gz")
 set(FFMPEG_SOURCE_URL "https://github.com/FFmpeg/FFmpeg/archive/${FFMPEG_ARCHIVE_REF}.tar.gz")
@@ -439,6 +442,16 @@ curl -sSLf ${VPX_SOURCE_URL} | tar -xz --strip-components=1 &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
 ")
 
+# ---- libaom (AV1) ----
+# Requires NASM for x86 assembly optimizations; nasm is installed earlier in _targets.
+set(_install_libaom "
+mkdir -p ${TEMP_PATH}/aom && cd ${TEMP_PATH}/aom &&
+curl -sSLf ${AOM_SOURCE_URL} | tar -xz --strip-components=1 &&
+cmake -S . -B aom_build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DENABLE_NASM=ON -DENABLE_DOCS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF -DENABLE_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+cmake --build aom_build ${_J} &&
+sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
+")
+
 # ---- libwebp ----
 set(_install_libwebp "
 mkdir -p ${TEMP_PATH}/webp && cd ${TEMP_PATH}/webp &&
@@ -556,7 +569,7 @@ set(_FFMPEG_CONFIGURE_CMD
     "--prefix=${PREFIX}"
     "--disable-everything --disable-programs --disable-avdevice --disable-dwt --disable-lsp --disable-faan --disable-pixelutils"
     "--enable-shared --disable-static --enable-pic"
-    "--enable-zlib --enable-libopus --enable-libvpx --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
+    "--enable-zlib --enable-libopus --enable-libvpx --enable-libaom --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
     "--enable-network --enable-libsrt --enable-dct --enable-rdft --enable-libwebp"
     "--extra-cflags=\"-I${PREFIX}/include${_FFMPEG_ADDI_CFLAGS}\""
     "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -Wl,--disable-new-dtags${_FFMPEG_ADDI_LDFLAGS}\""
@@ -564,8 +577,8 @@ set(_FFMPEG_CONFIGURE_CMD
     "${_FFMPEG_ADDI_EXTRA_LIBS}"
     "${_FFMPEG_ADDI_LICENSE}"
     "${_FFMPEG_ADDI_LIBS}"
-    "--enable-encoder=libvpx_vp8,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${_FFMPEG_ADDI_ENCODER}"
-    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
+    "--enable-encoder=libvpx_vp8,libaom-av1,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${_FFMPEG_ADDI_ENCODER}"
+    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,libaom-av1,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
     "--enable-parser=aac,aac_latm,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg"
     "--enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt"
     "--enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2"
@@ -688,6 +701,7 @@ set(_targets
     libopus
     libopenh264
     libvpx
+    libaom
     libwebp
     fdk_aac
     ffmpeg
@@ -711,7 +725,7 @@ endif()
 if(DEFINED TARGET)
     if("${TARGET}" STREQUAL "ffmpeg")
         # ffmpeg depends on codec libs; install them first in case they are missing
-        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac)
+        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac libaom)
         if(ENABLE_X264)
             list(APPEND _ffmpeg_deps libx264)
         endif()
@@ -719,9 +733,9 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps ffnvcodec)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
-    elseif("${TARGET}" STREQUAL "libvpx")
-        # libvpx requires nasm as assembler
-        set(_targets nasm libvpx)
+    elseif("${TARGET}" STREQUAL "libvpx" OR "${TARGET}" STREQUAL "libaom")
+        # libvpx/libaom require nasm as assembler
+        set(_targets nasm ${TARGET})
     elseif("${TARGET}" STREQUAL "fdk_aac" OR "${TARGET}" STREQUAL "libx264")
         # these also require nasm
         set(_targets nasm ${TARGET})

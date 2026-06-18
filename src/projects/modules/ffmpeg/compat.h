@@ -23,6 +23,7 @@ extern "C"
 #include <libavutil/channel_layout.h>
 #include <libavutil/cpu.h>
 #include <libavutil/file.h>
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/samplefmt.h>
@@ -35,11 +36,12 @@ extern "C"
 #include <base/mediarouter/media_type.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <modules/bitstream/aac/audio_specific_config.h>
-#include <modules/bitstream/av1/av1_decoder_configuration_record.h>
 #include <modules/bitstream/h264/h264_decoder_configuration_record.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/bitstream/opus/opus_specific_config.h>
-#include <transcoder/transcoder_context.h>
+#include <modules/ffmpeg/ffmpeg_hw_device_context.h>
+#include <modules/ffmpeg/ffmpeg_media_frame.h>
+#include <transcoder/media_frame.h>
 
 namespace ffmpeg
 {
@@ -52,11 +54,19 @@ namespace ffmpeg
 		static AVCodecID ToAVCodecId(cmn::MediaCodecId codec_id);
 		static cmn::AudioSample::Format ToAudioSampleFormat(int format);
 		static int ToAvSampleFormat(cmn::AudioSample::Format format);
-		static int ToAVChannelLayout(cmn::AudioChannel::Layout channel_layout);
 		static cmn::AudioChannel::Layout ToAudioChannelLayout(int channel_layout);
 		static AVPixelFormat ToAVPixelFormat(cmn::VideoPixelFormatId pixel_format);
 		static cmn::VideoPixelFormatId ToVideoPixelFormat(int32_t pixel_format);
+		static enum AVColorRange ToAVColorRange(cmn::ColorRange color_range);
 		static AVPixelFormat GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true);
+
+		// OME-typed variant of GetAVPixelFormatOfHWDevice(). Returns cmn::VideoPixelFormatId::None when
+		// the device has no matching pixel format.
+		static cmn::VideoPixelFormatId GetVideoPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true)
+		{
+			return ToVideoPixelFormat(GetAVPixelFormatOfHWDevice(module_id, gpu_id, is_sw_format));
+		}
+
 		static ov::String GetAVOptionsString(void *opts);
 
 		static std::shared_ptr<MediaTrack> CreateMediaTrack(AVStream* stream)
@@ -136,23 +146,6 @@ namespace ffmpeg
 
 					break;
 				}
-				case cmn::MediaCodecId::Av1: {
-					if (stream->codecpar->extradata_size > 0)
-					{
-						// `av1C` format per AOMedia ISOBMFF binding.
-						auto av1_config = std::make_shared<AV1DecoderConfigurationRecord>();
-						auto extra_data = std::make_shared<ov::Data>(stream->codecpar->extradata, stream->codecpar->extradata_size, true);
-
-						if (av1_config->Parse(extra_data) == false)
-						{
-							return false;
-						}
-
-						media_track->SetDecoderConfigurationRecord(av1_config);
-					}
-
-					break;
-				}
 				case cmn::MediaCodecId::Aac: {
 					if (stream->codecpar->extradata_size > 0)
 					{
@@ -217,7 +210,7 @@ namespace ffmpeg
 
 					AVFrame* moved_frame = av_frame_alloc();
 					av_frame_move_ref(moved_frame, frame);
-					media_frame->SetPrivData(moved_frame);
+					media_frame->SetData(std::make_shared<FFmpegMediaFrameData>(moved_frame));
 
 					return media_frame;
 				}
@@ -236,55 +229,7 @@ namespace ffmpeg
 
 					AVFrame* moved_frame = av_frame_alloc();
 					av_frame_move_ref(moved_frame, frame);
-					media_frame->SetPrivData(moved_frame);
-
-					return media_frame;
-				}
-				break;
-				default:
-					return nullptr;
-					break;
-			}
-
-			return nullptr;
-		}
-
-		static inline std::shared_ptr<MediaFrame> ToMediaFrameV2(cmn::MediaType media_type, AVFrame* frame)
-		{
-			switch (media_type)
-			{
-				case cmn::MediaType::Video: {
-					auto media_frame = std::make_shared<MediaFrame>();
-
-					media_frame->SetMediaType(media_type);
-					media_frame->SetWidth(frame->width);
-					media_frame->SetHeight(frame->height);
-					media_frame->SetFormat((int32_t)ffmpeg::compat::ToVideoPixelFormat(frame->format));
-					media_frame->SetPts((frame->pts == AV_NOPTS_VALUE) ? -1LL : frame->pts);
-					media_frame->SetDuration(frame->pkt_duration);
-
-					AVFrame* moved_frame = av_frame_alloc();
-					av_frame_move_ref(moved_frame, frame);
-					media_frame->SetPrivData(moved_frame);
-
-					return media_frame;
-				}
-				break;
-				case cmn::MediaType::Audio: {
-					auto media_frame = std::make_shared<MediaFrame>();
-
-					media_frame->SetMediaType(media_type);
-					media_frame->SetBytesPerSample(::av_get_bytes_per_sample(static_cast<AVSampleFormat>(frame->format)));
-					media_frame->SetNbSamples(frame->nb_samples);
-					media_frame->GetChannels().SetLayout(ffmpeg::compat::ToAudioChannelLayout(frame->ch_layout.u.mask));
-					media_frame->SetSampleRate(frame->sample_rate);
-					media_frame->SetFormat(frame->format);
-					media_frame->SetDuration(frame->pkt_duration);
-					media_frame->SetPts((frame->pts == AV_NOPTS_VALUE) ? -1LL : frame->pts);
-
-					AVFrame* moved_frame = av_frame_alloc();
-					av_frame_move_ref(moved_frame, frame);
-					media_frame->SetPrivData(moved_frame);
+					media_frame->SetData(std::make_shared<FFmpegMediaFrameData>(moved_frame));
 
 					return media_frame;
 				}
@@ -321,16 +266,6 @@ namespace ffmpeg
 			}
 
 			return 0LL;
-		}
-
-		static AVFrame* ToAVFrame(cmn::MediaType media_type, std::shared_ptr<const MediaFrame> src)
-		{
-			if (src->GetPrivData() != nullptr)
-			{
-				return static_cast<AVFrame*>(src->GetPrivData());
-			}
-
-			return nullptr;
 		}
 
 		static std::shared_ptr<MediaPacket> ToMediaPacket(AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
@@ -382,11 +317,15 @@ namespace ffmpeg
 			return packet_buffer;
 		}
 
-		static AVRational TimebaseToAVRational(const cmn::Timebase& timebase)
+		static void ToAVPacket(AVPacket* dst, const std::shared_ptr<MediaPacket>& src)
 		{
-			return (AVRational){
-				.num = timebase.GetNum(),
-				.den = timebase.GetDen()};
+			::av_packet_unref(dst);
+			dst->data	  = const_cast<uint8_t*>(src->GetData()->GetDataAs<uint8_t>());
+			dst->size	  = static_cast<int>(src->GetDataLength());
+			dst->pts	  = src->GetPts();
+			dst->dts	  = src->GetDts();
+			dst->duration = src->GetDuration();
+			dst->flags	  = (src->GetFlag() == MediaPacketFlag::Key) ? AV_PKT_FLAG_KEY : 0;
 		}
 
 		static ov::String CodecInfoToString(const AVCodecContext* context)
@@ -502,6 +441,15 @@ namespace ffmpeg
 			ov::String message = error_buffer;
 
 			return error_buffer;
+		}
+
+		// Returns the FFmpeg name of a pixel format (the raw AVPixelFormat int value), or an empty
+		// string if unknown. Used to build avfilter source/format argument strings.
+		static ov::String GetAVPixelFormatName(int pixel_format)
+		{
+			const char *name = ::av_get_pix_fmt_name(static_cast<AVPixelFormat>(pixel_format));
+
+			return (name != nullptr) ? ov::String(name) : ov::String("");
 		}
 
 		static bool ToAVStream(std::shared_ptr<MediaTrack> media_track, AVStream* av_stream)
@@ -651,55 +599,6 @@ namespace ffmpeg
 			return false;
 		}
 
-		static bool SetHwDeviceCtxOfAVCodecContext(AVCodecContext* context, AVBufferRef* hw_device_ctx)
-		{
-			context->hw_device_ctx = ::av_buffer_ref(hw_device_ctx);
-			if (context->hw_device_ctx == nullptr)
-			{
-				return false;
-			}
-
-			return true;
-		}
-
-		static bool SetHWFramesCtxOfAVCodecContext(AVCodecContext* context)
-		{
-			AVBufferRef* hw_frames_ref;
-			int err		  = 0;
-			hw_frames_ref = ::av_hwframe_ctx_alloc(context->hw_device_ctx);
-			if (!hw_frames_ref)
-			{
-				return false;
-			}
-
-			auto constraints = ::av_hwdevice_get_hwframe_constraints(context->hw_device_ctx, nullptr);
-			if (constraints == nullptr)
-			{
-				::av_buffer_unref(&hw_frames_ref);
-				return false;
-			}
-
-			AVHWFramesContext* frames_ctx = nullptr;
-			frames_ctx					  = (AVHWFramesContext*)(hw_frames_ref->data);
-			frames_ctx->format			  = *(constraints->valid_hw_formats);
-			frames_ctx->sw_format		  = *(constraints->valid_sw_formats);
-			frames_ctx->width			  = context->width;
-			frames_ctx->height			  = context->height;
-			frames_ctx->initial_pool_size = 2;
-
-			::av_hwframe_constraints_free(&constraints);
-
-			if ((err = ::av_hwframe_ctx_init(hw_frames_ref)) < 0)
-			{
-				::av_buffer_unref(&hw_frames_ref);
-				return false;
-			}
-
-			context->hw_frames_ctx = hw_frames_ref;
-
-			return true;
-		}
-
 		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidSWFormat(std::shared_ptr<const MediaFrame> frame)
 		{
 			if (frame == nullptr || frame->GetPrivData() == nullptr)
@@ -709,17 +608,6 @@ namespace ffmpeg
 
 			auto av_frame = static_cast<AVFrame*>(frame->GetPrivData());
 			return GetHWFramesConstraintsValidSWFormat(av_frame);
-		}
-
-		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidHWFormat(std::shared_ptr<const MediaFrame> frame)
-		{
-			if (frame == nullptr || frame->GetPrivData() == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto av_frame = static_cast<AVFrame*>(frame->GetPrivData());
-			return GetHWFramesConstraintsValidHWFormat(av_frame);
 		}
 
 		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidSWFormat(AVFrame* frame)
@@ -746,239 +634,6 @@ namespace ffmpeg
 			return ToVideoPixelFormat(valid_sw_formats);
 		}
 
-		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidHWFormat(AVFrame* frame)
-		{
-			if (frame == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			if (frame->hw_frames_ctx == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto constraints = ::av_hwdevice_get_hwframe_constraints(frame->hw_frames_ctx, nullptr);
-			if (constraints == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto valid_hw_formats = *(constraints->valid_hw_formats);
-			::av_hwframe_constraints_free(&constraints);
-
-			return ToVideoPixelFormat(valid_hw_formats);
-		}
-
-		static bool SetHwDeviceCtxOfAVFilterContext(AVFilterContext* context, AVBufferRef* hw_device_ctx)
-		{
-			context->hw_device_ctx = ::av_buffer_ref(hw_device_ctx);
-			if (context->hw_device_ctx == nullptr)
-			{
-				return false;
-			}
-
-			return true;
-		}
-		
-		static bool SetHWFramesCtxOfAVFilterLink(AVFilterLink* context, AVBufferRef* hw_device_ctx, int32_t width, int32_t height)
-		{
-			AVBufferRef* hw_frames_ref;
-			AVHWFramesContext* frames_ctx = NULL;
-
-			if (!(hw_frames_ref = av_hwframe_ctx_alloc(hw_device_ctx)))
-			{
-				return false;
-			}
-
-			auto constraints = av_hwdevice_get_hwframe_constraints(hw_device_ctx, nullptr);
-			if (constraints == nullptr)
-			{
-				av_buffer_unref(&hw_frames_ref);
-				return false;
-			}
-
-			frames_ctx					  = (AVHWFramesContext*)(hw_frames_ref->data);
-			frames_ctx->format			  = *(constraints->valid_hw_formats);
-			frames_ctx->sw_format		  = *(constraints->valid_sw_formats);
-			frames_ctx->width			  = width;
-			frames_ctx->height			  = height;
-			frames_ctx->initial_pool_size = 2;
-
-			::av_hwframe_constraints_free(&constraints);
-
-			if (av_hwframe_ctx_init(hw_frames_ref) < 0)
-			{
-				av_buffer_unref(&hw_frames_ref);
-				return false;
-			}
-
-			context->hw_frames_ctx = hw_frames_ref;
-
-			return true;
-		}
-
-		class PadedAlignedBuffer
-		{
-		public:
-			PadedAlignedBuffer()  = default;
-			~PadedAlignedBuffer() = default;
-
-			bool CopyFrom(std::shared_ptr<const MediaPacket> packet, const std::shared_ptr<const ov::Data> data)
-			{
-				if (!packet || packet->GetData() == nullptr || packet->GetDataLength() == 0)
-				{
-					return false;
-				}
-
-				_remained_size = packet->GetDataLength();
-				_offset		   = 0LL;
-				_pts		   = (packet->GetPts() == -1LL) ? AV_NOPTS_VALUE : packet->GetPts();
-				_dts		   = (packet->GetDts() == -1LL) ? AV_NOPTS_VALUE : packet->GetDts();
-				_duration	   = (packet->GetDuration() == -1LL) ? AV_NOPTS_VALUE : packet->GetDuration();
-
-				return CopyFrom(data->GetDataAs<uint8_t>(), static_cast<uint32_t>(data->GetLength()));
-			}
-
-			bool CopyFrom(const uint8_t* src_data, uint32_t src_size)
-			{
-				const uint32_t required_size = src_size + AV_INPUT_BUFFER_PADDING_SIZE;
-
-				// The starting address of the memory buffer passed to av_parser_parse2 must be aligned to 32 bytes (@av_malloc),
-				// and it must include padding of size AV_INPUT_BUFFER_PADDING_SIZE to prevent crashes.
-				if (!_buffer || _buffer_size < required_size)
-				{
-					// Free the existing buffer if it exists
-					uint8_t* raw_ptr = static_cast<uint8_t*>(::av_malloc(required_size));
-					if (!raw_ptr)
-					{
-						return false;
-					}
-
-					if (reinterpret_cast<uintptr_t>(raw_ptr) % 32 != 0)
-					{
-						loge("FFmpegCompat", "Buffer pointer is not 32-byte aligned.");
-					}
-
-					_buffer		 = BufferPtr(raw_ptr, Deleter());
-					_buffer_size = required_size;
-				}
-
-				// Copy the data to the aligned buffer and fill the remaining space with zeros.
-				std::memset(_buffer.get(), 0, _buffer_size);
-				std::memcpy(_buffer.get(), src_data, src_size);
-				std::memset(_buffer.get() + src_size, 0, _buffer_size - src_size);
-				_last_data_size = src_size;
-
-				return true;
-			}
-
-			uint8_t* Data() const
-			{
-				return _buffer.get();
-			}
-
-			uint8_t* DataAt(uint32_t offset) const
-			{
-				if (offset >= _buffer_size)
-				{
-					return nullptr;
-				}
-				return _buffer.get() + offset;
-			}
-
-			uint8_t* DataAtCurrentOffset()
-			{
-				if (_remained_size <= 0)
-				{
-					return nullptr;
-				}
-
-				if (_offset >= _buffer_size)
-				{
-					return nullptr;
-				}
-
-				uint8_t* data = _buffer.get() + _offset;
-
-				return data;
-			}
-
-			int64_t GetRemainedSize()
-			{
-				return _remained_size;
-			}
-
-			void Advance(int64_t size)
-			{
-				if (size < 0 || _offset + size > _buffer_size)
-				{
-					return;
-				}
-
-				_offset += size;
-				_remained_size -= size;
-
-				if (_remained_size < 0)
-				{
-					_remained_size = 0;
-				}
-			}
-
-			uint32_t Capacity() const
-			{
-				return _buffer_size;
-			}
-
-			uint32_t Size() const
-			{
-				return _last_data_size;
-			}
-
-			bool Empty() const
-			{
-				return !_buffer;
-			}
-
-			int64_t GetPts()
-			{
-				return _pts;
-			}
-
-			int64_t GetDts()
-			{
-				return _dts;
-			}
-
-			int64_t GetDuration()
-			{
-				return _duration;
-			}
-
-		private:
-			struct Deleter
-			{
-				void operator()(uint8_t* ptr) const
-				{
-					if (ptr)
-					{
-						::av_free(ptr);
-					}
-				}
-			};
-
-			using BufferPtr			 = std::shared_ptr<uint8_t>;
-			BufferPtr _buffer		 = nullptr;
-			uint32_t _buffer_size	 = 0;
-			uint32_t _last_data_size = 0;
-
-			int64_t _pts			 = 0;
-			int64_t _dts			 = 0;
-			int64_t _duration		 = 0;
-
-			int64_t _remained_size	 = 0;
-			off_t _offset			 = 0;
-		};
 	};
 
 }  // namespace ffmpeg

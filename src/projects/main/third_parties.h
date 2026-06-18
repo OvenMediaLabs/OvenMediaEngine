@@ -47,6 +47,11 @@ std::shared_ptr<ov::Error> InitializeOpenSsl();
 std::shared_ptr<ov::Error> TerminateOpenSsl();
 
 //--------------------------------------------------------------------
+// Related to AOM (AV1)
+//--------------------------------------------------------------------
+const char *GetAomVersion();
+
+//--------------------------------------------------------------------
 // Related to JsonCpp
 //--------------------------------------------------------------------
 const char *GetJsonCppVersion();

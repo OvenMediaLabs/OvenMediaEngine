@@ -67,6 +67,6 @@ private:
 
 private:
 	const info::Application _application_info;
-	std::map<int32_t, std::shared_ptr<TranscoderStream>> _streams;
-	mutable std::shared_mutex _mutex;
+	mutable ov::SharedMutex _mutex;
+	std::map<int32_t, std::shared_ptr<TranscoderStream>> _streams OV_GUARDED_BY(_mutex);
 };

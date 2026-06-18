@@ -8,9 +8,6 @@
 //==============================================================================
 #pragma once
 
-#include "../transcoder_context.h"
-
-
 #include <base/mediarouter/media_buffer.h>
 #include <base/mediarouter/media_type.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -29,7 +26,7 @@ enum class TranscodeResult : int32_t
 	Again = -5,
 	// An error occurred while process the packet/frame
 	DataError = -4,
-	// An error occurred while parse the packet using av_parser_parse2()
+	// An error occurred while parse the packet 
 	ParseError = -3,
 	// There is no data to process
 	NoData = -2,

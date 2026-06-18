@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "../transcoder_context.h"
+#include "../media_frame.h"
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
 #include "filter_base.h"
@@ -59,6 +59,8 @@ public:
 	static const int32_t SkipFramesMin		= 0;
 
 private:
+	static constexpr int64_t kNoPtsValue = INT64_MIN;
+
 	cmn::Timebase _input_timebase;
 	double _input_framerate;
 	double _output_framerate;
@@ -83,8 +85,8 @@ private:
 	int64_t _curr_pts;
 	int64_t _next_pts;
 
-	int64_t _last_input_pts					= AV_NOPTS_VALUE;
-	int64_t _last_input_scaled_pts			= AV_NOPTS_VALUE;
+	int64_t _last_input_pts					= kNoPtsValue;
+	int64_t _last_input_scaled_pts			= kNoPtsValue;
 
 	int64_t _stat_input_frame_count			= 0;
 	int64_t _stat_ideal_output_frame_count	= 0;

@@ -15,8 +15,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <mutex>
-#include <shared_mutex>
 #include <thread>
 #include <vector>
 
@@ -55,8 +53,7 @@ private:
 	// Application Name으로 RouteApplication을 찾음
 	std::shared_ptr<TranscodeApplication> GetApplicationById(info::application_id_t application_id);
 
-	std::vector<info::Application> _app_info_list;
-	std::map<info::application_id_t, std::shared_ptr<TranscodeApplication>> _transcode_apps;
-	mutable std::shared_mutex _transcode_apps_mutex;
+	mutable ov::SharedMutex _transcode_apps_mutex;
+	std::map<info::application_id_t, std::shared_ptr<TranscodeApplication>> _transcode_apps OV_GUARDED_BY(_transcode_apps_mutex);
 	std::shared_ptr<MediaRouterInterface> _router;
 };

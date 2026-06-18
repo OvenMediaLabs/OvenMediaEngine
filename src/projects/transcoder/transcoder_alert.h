@@ -17,7 +17,6 @@
 
 #include "base/info/stream.h"
 #include "base/mediarouter/media_type.h"
-#include "transcoder_context.h"
 #include "codec/codec_base.h"
 
 class TranscoderAlerts
@@ -96,6 +95,6 @@ private:
 	};
 
 	// Mutex for thread safety can be added if needed
-	std::shared_mutex _mutex;
-	std::map<std::pair<ErrorType, uint32_t>, std::shared_ptr<ErrorRecord>> _error_records;
+	ov::SharedMutex _mutex;
+	std::map<std::pair<ErrorType, uint32_t>, std::shared_ptr<ErrorRecord>> _error_records OV_GUARDED_BY(_mutex);
 };

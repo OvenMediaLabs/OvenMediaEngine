@@ -18,7 +18,7 @@
 #include "base/info/stream.h"
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
-#include "transcoder_context.h"
+#include "media_frame.h"
 #include "transcoder_decoder.h"
 #include "transcoder_encoder.h"
 #include "transcoder_filter.h"
@@ -109,10 +109,10 @@ private:
 	
 	TranscodeApplication *_parent;
 
-	std::shared_mutex _decoder_map_mutex;
-	std::shared_mutex _filter_map_mutex;
-	std::shared_mutex _encoder_map_mutex;
-	std::shared_mutex _last_decoded_frame_mutex;
+	ov::SharedMutex _decoder_map_mutex;
+	ov::SharedMutex _filter_map_mutex;
+	ov::SharedMutex _encoder_map_mutex;
+	ov::SharedMutex _last_decoded_frame_mutex;
 
 
 	const info::Application _application_info;
@@ -149,29 +149,29 @@ private:
 
 	// Output Stream Info
 	// [OUTPUT_STREAM_NAME, OUTPUT_stream]
-	mutable std::shared_mutex _output_stream_mutex;
-	std::map<ov::String, std::shared_ptr<info::Stream>> _output_streams;
+	mutable ov::SharedMutex _output_stream_mutex;
+	std::map<ov::String, std::shared_ptr<info::Stream>> _output_streams OV_GUARDED_BY(_output_stream_mutex);
 
 	CompositeMap _composite;
 
 	// Decoder Component
 	// [DECODER_ID, DECODER]
-	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders;
+	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
 	// Last decoded frame and timestamp
 	// [DECODER_ID, MediaFrame]
-	std::map<MediaTrackId, std::shared_ptr<MediaFrame>> _last_decoded_frames;
+	std::map<MediaTrackId, std::shared_ptr<MediaFrame>> _last_decoded_frames OV_GUARDED_BY(_last_decoded_frame_mutex);
 	// [DECODER_ID, Timestamp(microseconds)]
-	std::map<MediaTrackId, int64_t> _last_decoded_frame_pts;
-	std::map<MediaTrackId, int64_t> _last_decoded_frame_duration;
+	std::map<MediaTrackId, int64_t> _last_decoded_frame_pts OV_GUARDED_BY(_last_decoded_frame_mutex);
+	std::map<MediaTrackId, int64_t> _last_decoded_frame_duration OV_GUARDED_BY(_last_decoded_frame_mutex);
 
 	// Filters
 	// [FILTER_ID, FILTER]
-	std::map<MediaTrackId, std::shared_ptr<TranscodeFilter>> _filters;
+	std::map<MediaTrackId, std::shared_ptr<TranscodeFilter>> _filters OV_GUARDED_BY(_filter_map_mutex);
 
 	// Encoder Component
 	// [ENCODER_ID, [FILTER, ENCODER]]
-	std::map<MediaTrackId, std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<TranscodeEncoder>>> _encoders;
+	std::map<MediaTrackId, std::pair<std::shared_ptr<TranscodeFilter>, std::shared_ptr<TranscodeEncoder>>> _encoders OV_GUARDED_BY(_encoder_map_mutex);
 
 private:
 	std::shared_ptr<MediaTrack> GetInputTrack(MediaTrackId track_id);
@@ -188,18 +188,18 @@ private:
 	std::shared_ptr<info::Stream> CreateOutputStream(const cfg::vhost::app::oprf::OutputProfile &cfg_output_profile);
 	void RemoveOutputStreams();
 
-	bool CreateDecoders();
+	bool CreateDecoders() OV_REQUIRES(_pipeline_mutex);
 	bool CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track);
 	std::shared_ptr<TranscodeDecoder> GetDecoder(MediaTrackId decoder_id);
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
-	void RemoveDecoders();
+	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
 
 
 	bool CreateFilters(std::shared_ptr<MediaFrame> buffer);
 	bool CreateFilter(MediaTrackId filter_id, std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track, std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track);
 	std::shared_ptr<TranscodeFilter> GetFilter(MediaTrackId filter_id);
 	void SetFilter(MediaTrackId filter_id, std::shared_ptr<TranscodeFilter> filter);
-	void RemoveFilters();
+	void RemoveFilters() OV_REQUIRES(_pipeline_mutex);
 
 	std::shared_ptr<MediaTrack> GetInputTrackOfFilter(MediaTrackId decoder_id);
 
@@ -209,7 +209,7 @@ private:
 	std::shared_ptr<TranscodeFilter> GetEncoderFilter(MediaTrackId encoder_id);
 	std::shared_ptr<TranscodeEncoder> GetEncoder(MediaTrackId encoder_id);
 	void SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder);
-	void RemoveEncoders();
+	void RemoveEncoders() OV_REQUIRES(_pipeline_mutex);
 	void RemoveSpecificEncoders();
 
 	void ProcessPacket(const std::shared_ptr<MediaPacket> &packet);
@@ -226,8 +226,8 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
-	void UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream);
-	void UpdateMsidOfOutputStreams(uint32_t msid);
+	void UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream) OV_REQUIRES(_pipeline_mutex);
+	void UpdateMsidOfOutputStreams(uint32_t msid) OV_REQUIRES(_pipeline_mutex);
 	bool CanSeamlessTransition(const std::shared_ptr<info::Stream> &stream);
 	void FlushBuffers();
 
@@ -260,5 +260,5 @@ private:
 	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
 
 	// Guards the pipeline during updates (UpdateInternal acquires unique_lock;
-	std::shared_mutex _pipeline_mutex;
+	ov::SharedMutex _pipeline_mutex;
 };

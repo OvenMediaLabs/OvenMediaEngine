@@ -20,7 +20,7 @@ using StreamTrackPairNo      = CompositeMap::StreamTrackPairNo;
 //==============================================================================
 bool CompositeMap::Build()
 {
-	std::unique_lock<std::shared_mutex> lock(_mutex);
+	ov::LockGuard lock(_mutex);
 	int32_t output_count = 0;
 	for (auto &[key, composite] : _contexts)
 	{
@@ -174,7 +174,7 @@ void CompositeMap::BuildCachesLocked()
 
 ov::String CompositeMap::GetInfoString() const
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	ov::String log = "Component composition list\n";
 
 	auto input_stream = _input_stream;
@@ -259,7 +259,7 @@ ov::String CompositeMap::GetInfoString() const
 //==============================================================================
 std::vector<StreamTrackNo> CompositeMap::GetDecoderList()
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	std::vector<StreamTrackNo> result;
 
 	for (auto &[input_track_id, decoder_id] : _input_to_decoder)
@@ -277,7 +277,7 @@ std::vector<StreamTrackNo> CompositeMap::GetDecoderList()
 
 std::vector<StreamTrackNo> CompositeMap::GetEncoderListByDecoderId(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	std::vector<StreamTrackNo> result;
 
 	for (auto filter_id : GetFilterIdsByDecoderIdLocked(decoder_id))
@@ -310,7 +310,7 @@ std::vector<StreamTrackNo> CompositeMap::GetEncoderListByDecoderId(MediaTrackId 
 
 std::vector<StreamTrackPairNo> CompositeMap::GetFilterListByDecoderId(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	std::vector<StreamTrackPairNo> result;
 
 	for (auto filter_id : GetFilterIdsByDecoderIdLocked(decoder_id))
@@ -344,7 +344,7 @@ std::vector<StreamTrackPairNo> CompositeMap::GetFilterListByDecoderId(MediaTrack
 
 std::vector<StreamTrackPair> CompositeMap::GetInputOutputListByDecoderId(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	std::vector<StreamTrackPair> result;
 
 	for (auto filter_id : GetFilterIdsByDecoderIdLocked(decoder_id))
@@ -378,7 +378,7 @@ std::vector<StreamTrackPair> CompositeMap::GetInputOutputListByDecoderId(MediaTr
 
 std::vector<StreamTrackPair> CompositeMap::GetBypassOutputListByInputTrackId(MediaTrackId input_track_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _cache_bypass_outputs_by_input.find(input_track_id);
 	if (it == _cache_bypass_outputs_by_input.end())
 	{
@@ -389,7 +389,7 @@ std::vector<StreamTrackPair> CompositeMap::GetBypassOutputListByInputTrackId(Med
 
 std::optional<StreamTrackPair> CompositeMap::GetInputOutputByFilterId(MediaTrackId filter_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _cache_input_output_by_filter.find(filter_id);
 	if (it == _cache_input_output_by_filter.end())
 	{
@@ -400,7 +400,7 @@ std::optional<StreamTrackPair> CompositeMap::GetInputOutputByFilterId(MediaTrack
 
 std::optional<StreamTrackPair> CompositeMap::GetInputOutputByEncoderId(MediaTrackId encoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _cache_input_output_by_encoder.find(encoder_id);
 	if (it == _cache_input_output_by_encoder.end())
 	{
@@ -411,7 +411,7 @@ std::optional<StreamTrackPair> CompositeMap::GetInputOutputByEncoderId(MediaTrac
 
 std::vector<StreamTrack> CompositeMap::GetOutputListByEncoderId(MediaTrackId encoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _cache_outputs_by_encoder.find(encoder_id);
 	if (it == _cache_outputs_by_encoder.end())
 	{
@@ -450,7 +450,7 @@ std::vector<MediaTrackId> CompositeMap::GetFilterIdsByDecoderIdLocked(MediaTrack
 
 std::optional<MediaTrackId> CompositeMap::GetDecoderIdByInputTrackId(MediaTrackId input_track_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _input_to_decoder.find(input_track_id);
 	if (it == _input_to_decoder.end())
 	{
@@ -461,13 +461,13 @@ std::optional<MediaTrackId> CompositeMap::GetDecoderIdByInputTrackId(MediaTrackI
 
 std::vector<MediaTrackId> CompositeMap::GetFilterIdsByDecoderId(MediaTrackId decoder_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	return GetFilterIdsByDecoderIdLocked(decoder_id);
 }
 
 std::optional<MediaTrackId> CompositeMap::GetEncoderIdByFilterId(MediaTrackId filter_id)
 {
-	std::shared_lock<std::shared_mutex> lock(_mutex);
+	ov::SharedLockGuard lock(_mutex);
 	auto it = _filter_to_encoder.find(filter_id);
 	if (it == _filter_to_encoder.end())
 	{

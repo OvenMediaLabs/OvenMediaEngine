@@ -22,6 +22,7 @@ public:
 	EncoderWhisper(const info::Stream &stream_info);
 	~EncoderWhisper() override;
 	
+	// ----- Codec info -----
 	cmn::MediaCodecId GetCodecID() const noexcept override
 	{
 		return cmn::MediaCodecId::Whisper;
@@ -42,6 +43,7 @@ public:
 		return true;
 	}
 
+	// ----- Supported formats -----
 	cmn::AudioSample::Format GetSupportAudioFormat() const noexcept override
 	{
 		return cmn::AudioSample::Format::S16;
@@ -62,9 +64,10 @@ public:
 		return true;
 	}
 	
+	// ----- Encoder interface -----
 	bool Configure(std::shared_ptr<MediaTrack> context) override;
-	bool InitCodec() override;
-	void CodecThread() override;
+	bool Initialize() override;
+	void ThreadLoop() override;
 
 	// Flip the mute flag and wake the codec thread (which may be blocked in
 	// _input_buffer.Dequeue()) so it acts on the transition without waiting for audio.
@@ -83,7 +86,8 @@ public:
 	}
 
 private:
-	bool SetCodecParams() override;	
+	// ----- Internal helpers -----
+	bool SetCodecParams();	
 	ov::String ToTimeString(int64_t ten_ms);
 	bool SendVttToProvider(const ov::String &text);
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
@@ -93,6 +97,7 @@ private:
 	bool AllocWhisperState();
 	void FreeWhisperState();
 
+	// ----- Members -----
 	std::atomic<bool> _audio_muted{false};
 
 	int32_t _step_ms = 2000;

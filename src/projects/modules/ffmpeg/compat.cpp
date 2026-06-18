@@ -131,41 +131,16 @@ namespace ffmpeg
 		return AV_SAMPLE_FMT_NONE;
 	}
 
-	int compat::ToAVChannelLayout(cmn::AudioChannel::Layout channel_layout)
+	enum AVColorRange compat::ToAVColorRange(cmn::ColorRange color_range)
 	{
-		switch (channel_layout)
+		switch (color_range)
 		{
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutUnknown, AV_CH_LAYOUT_MONO);
-
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutMono, AV_CH_LAYOUT_MONO);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutStereo, AV_CH_LAYOUT_STEREO);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout2Point1, AV_CH_LAYOUT_2POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout21, AV_CH_LAYOUT_2_1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutSurround, AV_CH_LAYOUT_SURROUND);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout3Point1, AV_CH_LAYOUT_3POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout4Point0, AV_CH_LAYOUT_4POINT0);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout4Point1, AV_CH_LAYOUT_4POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout22, AV_CH_LAYOUT_2_2);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutQuad, AV_CH_LAYOUT_QUAD);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout5Point0, AV_CH_LAYOUT_QUAD);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout5Point1, AV_CH_LAYOUT_5POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout5Point0Back, AV_CH_LAYOUT_5POINT0_BACK);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout5Point1Back, AV_CH_LAYOUT_5POINT1_BACK);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout6Point0, AV_CH_LAYOUT_6POINT0);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout6Point0Front, AV_CH_LAYOUT_6POINT0_FRONT);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutHexagonal, AV_CH_LAYOUT_HEXAGONAL);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout6Point1, AV_CH_LAYOUT_6POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout6Point1Back, AV_CH_LAYOUT_6POINT1_BACK);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout6Point1Front, AV_CH_LAYOUT_6POINT1_FRONT);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout7Point0, AV_CH_LAYOUT_7POINT0);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout7Point0Front, AV_CH_LAYOUT_7POINT0_FRONT);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout7Point1, AV_CH_LAYOUT_7POINT1);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout7Point1Wide, AV_CH_LAYOUT_7POINT1_WIDE);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::Layout7Point1WideBack, AV_CH_LAYOUT_7POINT1_WIDE_BACK);
-			OV_CASE_RETURN(cmn::AudioChannel::Layout::LayoutOctagonal, AV_CH_LAYOUT_OCTAGONAL);
+			OV_CASE_RETURN(cmn::ColorRange::Unspecified, AVCOL_RANGE_UNSPECIFIED);
+			OV_CASE_RETURN(cmn::ColorRange::Limited, AVCOL_RANGE_MPEG);
+			OV_CASE_RETURN(cmn::ColorRange::Full, AVCOL_RANGE_JPEG);
 		}
 
-		return AV_CH_LAYOUT_MONO;
+		return AVCOL_RANGE_UNSPECIFIED;
 	}
 
 	cmn::AudioChannel::Layout compat::ToAudioChannelLayout(int channel_layout)
@@ -317,7 +292,7 @@ namespace ffmpeg
 			return AV_PIX_FMT_NONE;
 		}
 
-		auto constraints = av_hwdevice_get_hwframe_constraints(hw_device_ctx, nullptr);
+		auto constraints = av_hwdevice_get_hwframe_constraints(static_cast<AVBufferRef *>(hw_device_ctx->GetNativeHandle()), nullptr);
 		if(constraints == nullptr)
 		{
 			return AV_PIX_FMT_NONE;
