@@ -196,7 +196,7 @@ public:
 	// Profile key → CompositeContext
 	std::map<std::pair<ov::String, cmn::MediaType>, std::shared_ptr<CompositeContext>> _contexts OV_GUARDED_BY(_mutex);
 
-	std::shared_ptr<info::Stream> _input_stream = nullptr OV_GUARDED_BY(_mutex);
+	std::shared_ptr<info::Stream> _input_stream OV_GUARDED_BY(_mutex) = nullptr;
 
 	// Bypass:   InputTrackId  → [(OutputStream, OutputTrackId)]
 	std::map<MediaTrackId, std::vector<StreamNo>> _input_to_outputs OV_GUARDED_BY(_mutex);
