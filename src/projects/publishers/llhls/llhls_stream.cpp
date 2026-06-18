@@ -1453,7 +1453,6 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 			cenc_property.scheme = bmff::CencProtectScheme::None;
 			// Not yet support for other codec
 			logte("LLHlsStream::AddPackager() - CENC is not supported for this codec(%s), this track will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()));
-			_cenc_property.scheme = bmff::CencProtectScheme::None;
 		}
 	}
 
