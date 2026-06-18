@@ -2342,8 +2342,11 @@ namespace pvd
 			case RtmpCodecType::Speex:
 				codec_string = "speex";
 				break;
+			case RtmpCodecType::AV1:
+				codec_string = "av1";
+				break;
+
 			case RtmpCodecType::Unknown:
-			default:
 				codec_string = "unknown";
 				break;
 		}
