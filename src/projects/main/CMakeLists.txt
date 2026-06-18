@@ -55,6 +55,7 @@ target_link_libraries(OvenMediaEngine PRIVATE
     PkgConfig::PKG_LIBAVUTIL
     PkgConfig::PKG_OPENSSL
     PkgConfig::PKG_VPX
+    PkgConfig::PKG_AOM
     PkgConfig::PKG_OPUS
     PkgConfig::PKG_LIBSRTP2
     PkgConfig::PKG_LIBPCRE2_8

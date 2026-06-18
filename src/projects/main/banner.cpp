@@ -33,6 +33,7 @@ void PrintBanner()
 	logti("    libavfilter: %s", GetFFmpegAvFilterVersion());
 	logti("    libswresample: %s", GetFFmpegSwResampleVersion());
 	logti("    libswscale: %s", GetFFmpegSwScaleVersion());
+	logti("  libaom: %s", GetAomVersion());
 	logti("  SRT: %s", GetSrtVersion());
 	logti("  SRTP: %s", GetSrtpVersion());
 	logti("  OpenSSL: %s", GetOpenSslVersion());

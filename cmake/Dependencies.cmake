@@ -342,6 +342,7 @@ ome_find_pkg(PKG_OPENSSL        openssl         OME_VER_OPENSSL         REINSTAL
 ome_find_pkg(PKG_SRT            srt             OME_VER_SRT             REINSTALL_TARGET libsrt)
 ome_find_pkg(PKG_LIBSRTP2       libsrtp2        OME_VER_SRTP            REINSTALL_TARGET libsrtp)
 ome_find_pkg(PKG_VPX            vpx             OME_VER_VPX             REINSTALL_TARGET libvpx)
+ome_find_pkg(PKG_AOM            aom             OME_VER_AOM             REINSTALL_TARGET libaom)
 ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTALL_TARGET libopus)
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
 ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)

@@ -327,6 +327,16 @@ std::shared_ptr<ov::Error> TerminateOpenSsl()
 	return std::make_shared<ov::OpensslError>();
 }
 
+//--------------------------------------------------------------------
+// Related to AOM (AV1)
+//--------------------------------------------------------------------
+#include <aom/aom_codec.h>
+
+const char *GetAomVersion()
+{
+	return aom_codec_version_str();
+}
+
 const char *GetJsonCppVersion()
 {
 	return JSONCPP_VERSION_STRING;
