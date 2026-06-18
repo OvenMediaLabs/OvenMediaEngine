@@ -447,9 +447,9 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
 set(_install_libaom "
 mkdir -p ${TEMP_PATH}/aom && cd ${TEMP_PATH}/aom &&
 curl -sSLf ${AOM_SOURCE_URL} | tar -xz --strip-components=1 &&
-mkdir -p aom_build && cd aom_build &&
-cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=1 -DENABLE_NASM=ON -DENABLE_DOCS=0 -DENABLE_EXAMPLES=0 -DENABLE_TESTS=0 -DENABLE_TOOLS=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
-make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/aom
+cmake -S . -B aom_build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DENABLE_NASM=ON -DENABLE_DOCS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF -DENABLE_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+cmake --build aom_build ${_J} &&
+sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
 ")
 
 # ---- libwebp ----
