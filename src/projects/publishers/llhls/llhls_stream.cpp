@@ -885,12 +885,12 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStr
 		if (msn > last_msn || (msn >= last_msn && requested_psn > last_psn))
 		{
 			// Hold the request until a Playlist contains a Segment with the requested Sequence Number
-			logtt("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Accepted chunklist for track_id = %d, msn = %ld, psn = %ld (requested_psn = %ld, last_msn = %ld, last_psn = %ld)", track_id, msn, psn, requested_psn, last_msn, last_psn);
 			return {RequestResult::Accepted, nullptr};
 		}
 		else
 		{
-			logtt("Get chunklist for track_id = %d, msn = %ld, psn = %ld (last_msn = %ld, last_psn = %ld)", track_id, msn, psn, last_msn, last_psn);
+			logtt("Get chunklist for track_id = %d, msn = %ld, psn = %ld (requested_psn = %ld, last_msn = %ld, last_psn = %ld)", track_id, msn, psn, requested_psn, last_msn, last_psn);
 		}
 	}
 
