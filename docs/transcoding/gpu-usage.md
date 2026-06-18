@@ -7,7 +7,7 @@ sidebar_position: 22
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-OvenMediaEngine supports GPU-based hardware decoding and encoding. Currently supported GPU acceleration devices are Intel's QuickSync and NVIDIA. This article explains how to install the drivers for OvenMediaEngine and set up the configuration to use your GPU.
+OvenMediaEngine supports GPU-based hardware decoding and encoding. Currently supported GPU acceleration devices are NVIDIA, Xilinx, and Netint. This article explains how to install the drivers for OvenMediaEngine and set up the configuration to use your GPU.
 
 ## 1. Install Drivers
 

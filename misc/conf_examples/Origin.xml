@@ -215,7 +215,6 @@
 									<!-- 
 										Setting for Hardware Modules.
 										 - xma :Xilinx Media Accelerator
-										 - qsv :Intel Quick Sync Video
 										 - nv : Nvidia Video Codec SDK
 										 - nilogan: Netint VPU
 

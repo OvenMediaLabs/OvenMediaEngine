@@ -11,7 +11,6 @@
 # Options (set via -D on the command line before -P):
 #   -DOME_DEP_PREFIX=/opt/ovenmediaengine  Installation prefix (default)
 #   -DOME_HWACCEL_NVIDIA=ON                Enable NVIDIA nv-codec-headers + CUDA FFmpeg/Whisper support
-#   -DOME_HWACCEL_QSV=ON                   Enable Intel QSV (libmfx) FFmpeg support
 #   -DOME_HWACCEL_XMA=ON                   Enable Xilinx XMA FFmpeg support
 #   -DOME_HWACCEL_NILOGAN=ON               Enable Netint NiLogan FFmpeg support
 #   -DOME_NILOGAN_PATCH_PATH=<path>        Path to NiLogan FFmpeg patch file (required with OME_HWACCEL_NILOGAN)
@@ -50,9 +49,6 @@ if(NOT DEFINED OME_HWACCEL_NVIDIA)
 endif()
 # Internal alias used throughout this file
 set(ENABLE_NVIDIA ${OME_HWACCEL_NVIDIA})
-if(NOT DEFINED OME_HWACCEL_QSV)
-    set(OME_HWACCEL_QSV OFF)
-endif()
 if(NOT DEFINED OME_HWACCEL_XMA)
     set(OME_HWACCEL_XMA OFF)
 endif()
@@ -66,7 +62,6 @@ if(NOT DEFINED OME_NILOGAN_XCODER_COMPILE_PATH)
     set(OME_NILOGAN_XCODER_COMPILE_PATH "")
 endif()
 # Internal aliases used throughout this file
-set(ENABLE_QSV ${OME_HWACCEL_QSV})
 set(ENABLE_XMA ${OME_HWACCEL_XMA})
 set(ENABLE_NILOGAN ${OME_HWACCEL_NILOGAN})
 set(NILOGAN_PATCH_PATH ${OME_NILOGAN_PATCH_PATH})
@@ -523,12 +518,6 @@ if(ENABLE_NVIDIA)
     string(APPEND _FFMPEG_ADDI_CFLAGS  " -I/usr/local/cuda/include")
     string(APPEND _FFMPEG_ADDI_LDFLAGS " -L/usr/local/cuda/lib64")
     string(APPEND _FFMPEG_ADDI_LICENSE " --enable-nonfree")
-endif()
-
-if(ENABLE_QSV)
-    string(APPEND _FFMPEG_ADDI_LIBS    " --enable-libmfx")
-    string(APPEND _FFMPEG_ADDI_ENCODER ",h264_qsv,hevc_qsv")
-    string(APPEND _FFMPEG_ADDI_DECODER ",vp8_qsv,h264_qsv,hevc_qsv")
 endif()
 
 if(ENABLE_XMA)

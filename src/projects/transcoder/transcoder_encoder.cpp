@@ -62,7 +62,7 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 		configuration = track->GetCodecModules().Trim();
 	}
 
-	// ex) hwaccels_modules = "XMA:0,NV:0,QSV:0"
+	// ex) hwaccels_modules = "XMA:0,NV:0"
 	std::vector<ov::String> desire_modules = configuration.Split(",");
 
 	// If no modules are configured, all modules are designated as candidates.

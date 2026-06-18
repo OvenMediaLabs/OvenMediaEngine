@@ -36,7 +36,6 @@ cmake --build build/Release
 | `OME_SANITIZE_THREAD` | OFF | Enable ThreadSanitizer (TSan). Debug builds only |
 | `OME_SKIP_DEPENDENCY_CHECK` | OFF | Skip auto-install of missing/wrong-version packages. Useful for CI or offline builds |
 | `OME_HWACCEL_NVIDIA` | OFF | Enable NVIDIA GPU acceleration. |
-| `OME_HWACCEL_QSV` | OFF | Enable Intel QSV acceleration. Requires Intel driver (`libmfx`) installed separately |
 | `OME_HWACCEL_XMA` | OFF | Enable Xilinx XMA acceleration. |
 | `OME_HWACCEL_NILOGAN` | OFF | Enable Netint NiLogan acceleration. Requires `OME_NILOGAN_PATCH_PATH` |
 | `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file. Required when `OME_HWACCEL_NILOGAN=ON` |
@@ -99,7 +98,6 @@ Available `-D` options:
 | `TARGET` | *(all)* | Install a single target only (e.g. `ffmpeg`, `openssl`) |
 | `OME_ENABLE_X264` | `ON` | Include libx264 |
 | `OME_HWACCEL_NVIDIA` | `OFF` | Include NVIDIA codec headers, build FFmpeg/Whisper with CUDA/NVENC/NVDEC |
-| `OME_HWACCEL_QSV` | `OFF` | Build FFmpeg with Intel QSV support (`libmfx` must be pre-installed) |
 | `OME_HWACCEL_XMA` | `OFF` | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed) |
 | `OME_HWACCEL_NILOGAN` | `OFF` | Build FFmpeg with Netint NiLogan support. Requires `OME_NILOGAN_PATCH_PATH` |
 | `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file |

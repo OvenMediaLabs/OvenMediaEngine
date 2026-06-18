@@ -127,7 +127,6 @@ namespace cmn
 		OPENH264,  // SW
 		X264,	   // SW
 		NVENC,	   // HW
-		QSV,	   // HW
 		XMA,	   // HW
 		NILOGAN,   // HW
 		LIBVPX,	   // SW
@@ -145,7 +144,6 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, OPENH264);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, X264);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NVENC);
-			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, QSV);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, XMA);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NILOGAN);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBVPX);
@@ -441,10 +439,6 @@ namespace cmn
 		{
 			return cmn::MediaCodecModuleId::NVENC;
 		}
-		else if (name.HasSuffix("_QSV") || name.HasSuffix("QSV"))
-		{
-			return cmn::MediaCodecModuleId::QSV;
-		}
 		else if (name.HasSuffix("_NILOGAN") || name.HasSuffix("NILOGAN"))
 		{
 			return cmn::MediaCodecModuleId::NILOGAN;
@@ -480,7 +474,6 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecModuleId::DEFAULT, "default");
 			OV_CASE_RETURN(MediaCodecModuleId::OPENH264, "openh264");
 			OV_CASE_RETURN(MediaCodecModuleId::NVENC, "nv");
-			OV_CASE_RETURN(MediaCodecModuleId::QSV, "qsv");
 			OV_CASE_RETURN(MediaCodecModuleId::NILOGAN, "nilogan");
 			OV_CASE_RETURN(MediaCodecModuleId::XMA, "xma";);
 			OV_CASE_RETURN(MediaCodecModuleId::LIBVPX, "libvpx");
@@ -501,7 +494,6 @@ namespace cmn
 		switch (id)
 		{
 			case cmn::MediaCodecModuleId::NVENC:
-			case cmn::MediaCodecModuleId::QSV:
 			case cmn::MediaCodecModuleId::XMA:
 			case cmn::MediaCodecModuleId::NILOGAN:
 				return true;

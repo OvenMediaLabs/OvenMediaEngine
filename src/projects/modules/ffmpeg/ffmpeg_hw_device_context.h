@@ -36,9 +36,6 @@ namespace ffmpeg
 					device_type = AV_HWDEVICE_TYPE_CUDA;
 					flags		= 1;  // Use the primary CUDA context
 					break;
-				case cmn::MediaCodecModuleId::QSV:
-					device_type = AV_HWDEVICE_TYPE_QSV;
-					break;
 #ifdef HWACCELS_NILOGAN_ENABLED
 				case cmn::MediaCodecModuleId::NILOGAN:
 					device_type = AV_HWDEVICE_TYPE_NI_LOGAN;
