@@ -14,6 +14,7 @@
 #include "../transcoder_gpu.h"
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
+#include "../transcoder_thumbnail_stat.h"
 
 bool FilterVideoBase::InitializeFpsFilter()
 {
@@ -73,6 +74,9 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 	{
 		auto start_time = std::chrono::steady_clock::now();
 
+		// Per-frame transform stats for image (thumbnail) tracks
+		ThumbStatTimer thumb_stat(cmn::IsImageCodec(GetOutputTrack()->GetCodecId()) && ::ov_log_get_enabled("ThumbStat", OVLogLevelDebug));
+
 		if (_is_first_frame && GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
 		{
 			// Some hardware (e.g. Xilinx U30) may expand their memory pool while processing the first frame, which is not thread safe.
@@ -111,6 +115,8 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 		// Update the weighted average frame processing time
 		// It includes the time taken for filtering + overlay + delivery to the encoder (including waiting time if there is a load on the encoder).
 		_weighted_avg_frame_processing_time_us = (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (elapsed_time_us * kProcessingTimeEmaAlpha);
+
+		thumb_stat.Emit("transform impl=lavfi_rescaler", GetOutputTrack()->GetCodecId(), GetOutputTrack()->GetVariantName(), elapsed_time_us);
 	}
 
 #if _SKIP_FRAMES_ENABLED

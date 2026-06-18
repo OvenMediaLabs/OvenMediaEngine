@@ -155,6 +155,14 @@ _Supported since OvenmediaEngine version 0.17.2_
 </OutputProfiles>
 ```
 
+### Encoding statistics
+
+Per-frame timing for image tracks can be logged by raising the ThumbStat tag to debug level in Logger.xml. Each transform and encode step then logs its wall-clock and thread-CPU time in microseconds.
+
+```xml
+<Tag name="ThumbStat" level="debug" />
+```
+
 ### CrossDomains
 
 For information on CrossDomains, see [CrossDomains ](crossdomains.md)chapter.

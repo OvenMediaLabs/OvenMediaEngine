@@ -19,6 +19,7 @@
 #include "transcoder_gpu.h"
 #include "transcoder_modules.h"
 #include "transcoder_private.h"
+#include "transcoder_thumbnail_stat.h"
 
 
 
@@ -515,6 +516,10 @@ void TranscodeEncoder::ThreadLoop()
 			}
 		}
 
+		// Per-frame encode stats for image (thumbnail) tracks
+		auto codec_id = GetCodecID();
+		ThumbStatTimer thumb_stat(cmn::IsImageCodec(codec_id) && ::ov_log_get_enabled("ThumbStat", OVLogLevelDebug));
+
 		// Send the frame to the encoder (force-keyframe decision is FFmpeg-free, made here).
 		bool force_keyframe = ComputeForceKeyframe(media_frame);
 
@@ -549,5 +554,7 @@ void TranscodeEncoder::ThreadLoop()
 				break;
 			}
 		}
+
+		thumb_stat.Emit("encode", codec_id, GetRefTrack()->GetVariantName());
 	}
 }
