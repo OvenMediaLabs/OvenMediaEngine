@@ -518,6 +518,7 @@ bool LLHlsStream::IsSupportedMediaCodec(cmn::MediaCodecId codec_id) const
 	{
 		case cmn::MediaCodecId::H264:
 		case cmn::MediaCodecId::H265:
+		case cmn::MediaCodecId::Av1:
 		case cmn::MediaCodecId::Aac:
 		case cmn::MediaCodecId::WebVTT:
 			return true;

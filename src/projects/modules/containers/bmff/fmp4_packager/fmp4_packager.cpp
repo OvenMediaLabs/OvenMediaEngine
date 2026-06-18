@@ -12,6 +12,8 @@
 
 #include <modules/bitstream/nalu/nal_stream_converter.h>
 #include <modules/bitstream/aac/aac_converter.h>
+#include <modules/bitstream/av1/av1_parser.h>
+#include <modules/bitstream/av1/av1_types.h>
 
 #include <base/modules/data_format/id3v2/id3v2.h>
 #include <base/modules/data_format/id3v2/frames/id3v2_text_frame.h>
@@ -57,9 +59,10 @@ namespace bmff
 			return false;
 		}
 
-		if (track->GetCodecId() == cmn::MediaCodecId::H264 || 
-			track->GetCodecId() == cmn::MediaCodecId::H265 ||
-			track->GetCodecId() == cmn::MediaCodecId::Aac)
+		if ((track->GetCodecId() == cmn::MediaCodecId::H264) ||
+			(track->GetCodecId() == cmn::MediaCodecId::H265) ||
+			(track->GetCodecId() == cmn::MediaCodecId::Av1) ||
+			(track->GetCodecId() == cmn::MediaCodecId::Aac))
 		{
 			// Supported codecs
 		}
@@ -586,7 +589,81 @@ namespace bmff
 		}
 		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::AAC_RAW)
 		{
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::AV1_OBU)
+		{
+			// AV1 ISOBMFF v1.3.0 section 2.4:
+			// - OBU_TEMPORAL_DELIMITER, OBU_PADDING, and OBU_REDUNDANT_FRAME_HEADER
+			//   SHOULD NOT be used. We strip temporal delimiters here; padding and
+			//   redundant frame headers are not expected from our encoder pipeline.
+			// - Each OBU SHALL have obu_has_size_field == 1 (last OBU MAY be 0 per spec,
+			//   but we reject unsized OBUs unconditionally for simplicity)
+			auto data		   = media_packet->GetData();
+			const auto *base   = data->GetDataAs<uint8_t>();
+			const size_t total = data->GetLength();
 
+			if (total == 0)
+			{
+				return nullptr;
+			}
+
+			// Scan: validate `obu_has_size_field` and detect temporal delimiters
+			bool needs_filter = false;
+			size_t offset	  = 0;
+			Av1ObuSpan obu;
+
+			while (offset < total)
+			{
+				if (Av1Parser::ReadObu(base, total, offset, obu) == false)
+				{
+					logte("FMP4Packager::ConvertBitstreamFormat() - Failed to parse AV1 OBU at offset %zu", offset);
+					return nullptr;
+				}
+
+				if (obu.header.has_size_field == false)
+				{
+					logte("FMP4Packager::ConvertBitstreamFormat() - AV1 OBU at offset %zu missing obu_has_size_field", offset);
+					return nullptr;
+				}
+
+				if (obu.header.type == Av1ObuType::TemporalDelimiter)
+				{
+					needs_filter = true;
+				}
+
+				offset = obu.next_offset;
+			}
+
+			if (needs_filter)
+			{
+				auto filtered = std::make_shared<ov::Data>(total);
+				offset		  = 0;
+
+				while (offset < total)
+				{
+					if (Av1Parser::ReadObu(base, total, offset, obu) == false)
+					{
+						logte("FMP4Packager::ConvertBitstreamFormat() - Failed to parse AV1 OBU at offset %zu", offset);
+						return nullptr;
+					}
+
+					if (obu.header.type != Av1ObuType::TemporalDelimiter)
+					{
+						filtered->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
+					}
+
+					offset = obu.next_offset;
+				}
+
+				if (filtered->GetLength() == 0)
+				{
+					return nullptr;
+				}
+
+				auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+				new_packet->SetData(filtered);
+				converted_packet = new_packet;
+			}
 		}
 		else
 		{

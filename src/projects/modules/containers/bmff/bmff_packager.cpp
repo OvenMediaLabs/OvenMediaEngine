@@ -635,6 +635,14 @@ namespace bmff
 				return false;
 			}
 		}
+		else if (GetMediaTrack()->GetCodecId() == cmn::MediaCodecId::Av1)
+		{
+			if (WriteAv01Box(stream) == false)
+			{
+				logte("Packager::WriteStsdBox() - Failed to write av01 box");
+				return false;
+			}
+		}
 		else if (GetMediaTrack()->GetCodecId() == cmn::MediaCodecId::Aac)
 		{
 			if (WriteMp4aBox(stream) == false)
@@ -874,7 +882,7 @@ namespace bmff
 
 		if (WriteHvccBox(stream) == false)
 		{
-			logte("Packager::WriteHvccBox() - Failed to write hvcC box");
+			logte("Packager::WriteHvc1Box() - Failed to write hvcC box");
 			return false;
 		}
 
@@ -932,6 +940,53 @@ namespace bmff
 		}
 
 		return WriteBox(container_stream, "hvcC", *hevc_config->GetData());
+	}
+
+	bool Packager::WriteAv01Box(ov::ByteStream &container_stream)
+	{
+		// AV1 ISOBMFF binding v1.3.0 section 2.2
+		// class AV1SampleEntry extends VisualSampleEntry('av01') {
+		//     AV1CodecConfigurationBox config;
+		// }
+
+		ov::ByteStream stream(4096);
+
+		if (WriteVisualSampleEntry(stream) == false)
+		{
+			return false;
+		}
+
+		if (WriteAv1cBox(stream) == false)
+		{
+			logte("Packager::WriteAv01Box() - Failed to write av1C box");
+			return false;
+		}
+
+		return WriteBox(container_stream, "av01", *stream.GetData());
+	}
+
+	bool Packager::WriteAv1cBox(ov::ByteStream &container_stream)
+	{
+		// AV1 ISOBMFF binding v1.3.0 section 2.3
+		// class AV1CodecConfigurationBox extends Box('av1C') {
+		//     AV1CodecConfigurationRecord av1Config;
+		// }
+
+		auto av1_config = GetMediaTrack()->GetDecoderConfigurationRecord();
+		if (av1_config == nullptr)
+		{
+			logte("Packager::WriteAv1cBox() - Failed to get AV1 decoder config");
+			return false;
+		}
+
+		auto data = av1_config->GetData();
+		if (data == nullptr)
+		{
+			logte("Packager::WriteAv1cBox() - Failed to serialize AV1 decoder config");
+			return false;
+		}
+
+		return WriteBox(container_stream, "av1C", *data);
 	}
 
 	bool Packager::WriteMp4aBox(ov::ByteStream &container_stream)
