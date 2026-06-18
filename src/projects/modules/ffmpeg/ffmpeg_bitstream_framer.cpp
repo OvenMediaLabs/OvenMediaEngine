@@ -67,9 +67,10 @@ namespace ffmpeg
 		// The first frame (or a frame without a valid DTS) has no reference to compute the duration from.
 		const int64_t dts_value		 = GetDts();
 		const int64_t last_dts_value = GetLastDts();
-		const int64_t duration		 = (dts_value != AV_NOPTS_VALUE && last_dts_value != AV_NOPTS_VALUE)
+		const int64_t delta			 = (dts_value != AV_NOPTS_VALUE && last_dts_value != AV_NOPTS_VALUE)
 										   ? (dts_value - last_dts_value)
 										   : 0;
+		const int64_t duration		 = (delta > 0) ? delta : 0;
 
 		return std::make_shared<MediaPacket>(
 			0,
