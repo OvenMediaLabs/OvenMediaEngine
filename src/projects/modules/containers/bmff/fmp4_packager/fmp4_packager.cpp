@@ -685,7 +685,6 @@ namespace bmff
 			switch (GetMediaTrack()->GetCodecId())
 			{
 				case cmn::MediaCodecId::H264:
-				default:
 					stream.WriteText("avc1");
 					break;
 
@@ -695,6 +694,10 @@ namespace bmff
 
 				case cmn::MediaCodecId::Av1:
 					stream.WriteText("av01");
+					break;
+
+				default:
+					// Non-video tracks (e.g. AAC) carry no video codec brand
 					break;
 			}
 		}
