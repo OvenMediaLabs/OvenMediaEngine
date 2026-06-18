@@ -6,7 +6,7 @@ sidebar_position: 11
 
 RTMP is one of the most widely used protocols in live streaming.
 
-<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>FLV</td></tr><tr><td>Transport</td><td>TCP</td></tr><tr><td>Codec</td><td>H.264, AAC / H.265 (E-RTMP only)</td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Functions</th></tr></thead><tbody><tr><td>Container</td><td>FLV</td></tr><tr><td>Transport</td><td>TCP</td></tr><tr><td>Codec</td><td>H.264, AAC / H.265, AV1 (E-RTMP only)</td></tr></tbody></table>
 
 ## Configuration
 
@@ -112,14 +112,14 @@ You can set the Stream Key to any name you like at any time.
 
 ## E-RTMP
 
-Enhanced RTMP (E-RTMP) is an experimental streaming feature that extends the capabilities of the traditional RTMP protocol. One of its key advantages is support for modern video codecs such as H.265 (HEVC), which are not available in standard RTMP. This allows for better video quality and lower bitrates, making it ideal for high-efficiency streaming workflows. The list of supported codecs will continue to grow as development progresses.
+Enhanced RTMP (E-RTMP) is an experimental streaming feature that extends the capabilities of the traditional RTMP protocol. One of its key advantages is support for modern video codecs such as H.265 (HEVC) and AV1, which are not available in standard RTMP. This allows for better video quality and lower bitrates, making it ideal for high-efficiency streaming workflows. The list of supported codecs will continue to grow as development progresses.
 
-| Title               | Functions             |
-| ------------------- | --------------------- |
-| Container           | FLV                   |
-| Transport           | TCP                   |
-| Codec               | H.264, H.265, AAC     |
-| Additional Features | Simulcast, Multitrack |
+| Title               | Functions              |
+| ------------------- | ---------------------- |
+| Container           | FLV                    |
+| Transport           | TCP                    |
+| Codec               | H.264, H.265, AV1, AAC |
+| Additional Features | Simulcast, Multitrack  |
 
 Since E-RTMP is still experimental, **it is disabled by default** and must be manually enabled in the server settings.
 
