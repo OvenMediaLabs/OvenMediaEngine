@@ -31,7 +31,14 @@ bool AVCodecImageEncoder::SetParamsJpeg()
 	SetParamsCommon();
 
 	_codec.SetFixedQScale();
-	_codec.SetGlobalQualityFromQp(_codec.GetQMin());
+	// <QScale> sets the mjpeg qscale (lower is better); unset leaves it at qmin
+	// (the prior behaviour). CreateOutputTrack has validated it into 1-31.
+	int jpeg_qscale = GetRefTrack()->GetQuality();
+	if (jpeg_qscale > 0 && jpeg_qscale < _codec.GetQMin())
+	{
+		_codec.SetQMin(jpeg_qscale);
+	}
+	_codec.SetGlobalQualityFromQp((jpeg_qscale > 0) ? jpeg_qscale : _codec.GetQMin());
 
 	// Set color range to JPEG
 	_codec.SetColorRange(cmn::ColorRange::Full);
@@ -53,17 +60,42 @@ bool AVCodecImageEncoder::SetParamsWebp()
 {
 	SetParamsCommon();
 
-	_codec.SetCompressionLevel(1);
-
+	// A configured <Preset> is honored ("none" = no preset). With a preset the lavc
+	// libwebp wrapper passes <Quality> into WebPConfigPreset but replaces method and
+	// lossless with the preset's values, so those are ignored then. When no preset
+	// applies, none is set so the compression_level below takes effect (a preset
+	// silently forces libwebp's default method 4 over the intended 1).
 	auto preset = GetRefTrack()->GetPreset();
-	if (preset.IsEmpty())
+	if (preset.IsEmpty() == false && preset != "none")
 	{
-		_codec.SetOption("preset", "default");
-	}
-	else if (preset == "none" || preset == "default" || preset == "picture" ||
-			 preset == "photo" || preset == "drawing" || preset == "icon" || preset == "text")
-	{
+		if (GetRefTrack()->GetMethod() >= 0 || GetRefTrack()->GetLossless())
+		{
+			logtw("WebP <Preset> overrides <Method> and <Lossless>; the configured values are ignored");
+		}
 		_codec.SetOption("preset", preset.CStr());
+	}
+	else
+	{
+		// compression_level maps to libwebp "method"; <Method> overrides it.
+		_codec.SetCompressionLevel(1);
+		int method = GetRefTrack()->GetMethod();
+		if (method >= 0)
+		{
+			_codec.SetCompressionLevel(method);
+		}
+		// <Lossless> switches to lossless coding; <Quality> then controls effort.
+		if (GetRefTrack()->GetLossless())
+		{
+			_codec.SetOption("lossless", static_cast<int64_t>(1));
+		}
+	}
+
+	// <Quality> sets the lossy quality factor (lavc default 75). CreateOutputTrack
+	// validated it into 0-100.
+	int quality = GetRefTrack()->GetQuality();
+	if (quality > 0)
+	{
+		_codec.SetOption("quality", static_cast<int64_t>(quality));
 	}
 
 	return true;

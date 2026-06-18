@@ -119,6 +119,66 @@ ov::String VideoTrack::GetPreset() const
 	return _preset;
 }
 
+void VideoTrack::SetQuality(int quality)
+{
+	ov::ScopedLock lock(_video_mutex);
+	_quality = quality;
+}
+
+int VideoTrack::GetQuality() const
+{
+	ov::SharedLockGuard lock(_video_mutex);
+	return _quality;
+}
+
+void VideoTrack::SetSpeed(int speed)
+{
+	ov::ScopedLock lock(_video_mutex);
+	_speed = speed;
+}
+
+int VideoTrack::GetSpeed() const
+{
+	ov::SharedLockGuard lock(_video_mutex);
+	return _speed;
+}
+
+void VideoTrack::SetChromaSampling(ov::String chroma_sampling)
+{
+	ov::ScopedLock lock(_video_mutex);
+	_chroma_sampling = chroma_sampling;
+}
+
+ov::String VideoTrack::GetChromaSampling() const
+{
+	ov::SharedLockGuard lock(_video_mutex);
+	return _chroma_sampling;
+}
+
+void VideoTrack::SetMethod(int method)
+{
+	ov::ScopedLock lock(_video_mutex);
+	_method = method;
+}
+
+int VideoTrack::GetMethod() const
+{
+	ov::SharedLockGuard lock(_video_mutex);
+	return _method;
+}
+
+void VideoTrack::SetLossless(bool lossless)
+{
+	ov::ScopedLock lock(_video_mutex);
+	_lossless = lossless;
+}
+
+bool VideoTrack::GetLossless() const
+{
+	ov::SharedLockGuard lock(_video_mutex);
+	return _lossless;
+}
+
 void VideoTrack::SetProfile(ov::String profile)
 {
 	ov::ScopedLock lock(_video_mutex);

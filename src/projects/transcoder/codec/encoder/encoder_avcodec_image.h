@@ -37,7 +37,10 @@ public:
 			case cmn::MediaCodecId::Png:
 				return cmn::VideoPixelFormatId::RGBA;
 			case cmn::MediaCodecId::Jpeg:
-				return cmn::VideoPixelFormatId::YUVJ420P;
+				// <ChromaSampling>444</ChromaSampling> keeps full chroma for text/line-art.
+				return (_track != nullptr && _track->GetChromaSampling() == "444")
+						   ? cmn::VideoPixelFormatId::YUVJ444P
+						   : cmn::VideoPixelFormatId::YUVJ420P;
 			case cmn::MediaCodecId::Webp:
 				return cmn::VideoPixelFormatId::YUV420P;
 			default:

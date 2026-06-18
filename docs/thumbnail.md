@@ -28,7 +28,7 @@ Thumbnails are published via HTTP(s). Set the port for thumbnails as follows. Th
 
 ### Encoding
 
-To publish thumbnails, you need to set up an encoding profile. You can choose **JPG, PNG** and **WEBP** as the format.  You can set the Framerate and Resolution. Please refer to the sample below.
+To publish thumbnails, you need to set up an encoding profile. You can choose **JPG, PNG, WEBP** and **AVIF** as the format.  You can set the Framerate and Resolution. Please refer to the sample below.
 
 ```markup
 <OutputProfiles>
@@ -53,17 +53,29 @@ To publish thumbnails, you need to set up an encoding profile. You can choose **
                 <Framerate>1</Framerate>
                 <Width>1280</Width>
                 <Height>720</Height>
+            </Image>
+            <Image>
+                <Codec>avif</Codec>
+                <Framerate>1</Framerate>
+                <Width>1280</Width>
+                <Height>720</Height>
             </Image>            
         </Encodes>
     </OutputProfile>
 </OutputProfiles>
 ```
 
-<table><thead><tr><th width="290">Property</th><th>Description</th></tr></thead><tbody><tr><td>Codec</td><td>Specifies the image codec to use</td></tr><tr><td>Width</td><td>Width of resolution</td></tr><tr><td>Height</td><td>Height of resolution</td></tr><tr><td>Framerate</td><td>Frames per second</td></tr></tbody></table>
+<table><thead><tr><th width="290">Property</th><th>Description</th></tr></thead><tbody><tr><td>Codec</td><td>Specifies the image codec to use</td></tr><tr><td>Width</td><td>Width of resolution</td></tr><tr><td>Height</td><td>Height of resolution</td></tr><tr><td>Framerate</td><td>Frames per second</td></tr><tr><td>QScale</td><td>JPEG only. mjpeg quantizer scale, 1-31. Lower is better quality; 2 (the encoder default) when not set</td></tr><tr><td>Quality</td><td>WebP only. libwebp quality factor, 0-100. Higher is better quality; 75 (the encoder default) when not set</td></tr><tr><td>ChromaSampling</td><td>JPEG and AVIF. <code>420</code> (default) or <code>444</code>. 4:4:4 keeps full chroma resolution: sharper text and line art at the cost of larger files</td></tr><tr><td>Method</td><td>WebP only. libwebp method, 0-6. Higher methods spend more CPU to fit the same quality into fewer bytes; 1 when not set</td></tr><tr><td>Lossless</td><td>WebP only. <code>true</code> encodes losslessly; Quality then controls compression effort instead of quantization. Default <code>false</code></td></tr><tr><td>Preset</td><td>WebP only. libwebp preset: <code>default</code>, <code>picture</code>, <code>photo</code>, <code>drawing</code>, <code>icon</code> or <code>text</code>. A preset overrides Method and Lossless (a warning is logged if either is set), while Quality still applies; leave unset for the fastest method at default quality. Preset meanings are described in the <a href="https://developers.google.com/speed/webp/docs/cwebp">libwebp documentation</a></td></tr><tr><td>Speed</td><td>AVIF only. libaom cpu-used, 0-8. Lower spends more CPU for better compression; 8 (fastest) when not set</td></tr><tr><td>Crf</td><td>AVIF only. libaom constant-quality factor, 0-63. Lower is better quality; 30 when not set</td></tr><tr><td>PassthroughAV1</td><td>AVIF only. When <code>true</code>, AV1 input is rewrapped into AVIF at the source resolution without transcoding, so Width/Height/Speed/Crf/ChromaSampling/Framerate are ignored for AV1; non-AV1 input is unaffected. Default <code>false</code></td></tr></tbody></table>
+
+Invalid option values log a warning and fall back to the defaults (out-of-range numbers are clamped). Options set on a profile whose codec they do not apply to are ignored, with a warning. AVIF encoding is single-threaded: at thumbnail rates threading buys nothing.
+
+#### AV1 sources and AVIF
+
+When the input is AV1 and the AVIF profile sets `PassthroughAV1`, thumbnails are the source key frames rewrapped into AVIF files without transcoding, at the source resolution — so thumbnail size follows the source, and different AV1 streams produce different sizes. Width/Height/Framerate/Speed/Crf/ChromaSampling are ignored on this path, and the cadence equals the source keyframe interval — the publisher controls that, so a long GOP means stale thumbnails. The file carries the publisher's original CICP rather than the canonical BT.709 full-range conversion described below. Without `PassthroughAV1` (the default), AV1 input is transcoded to the configured resolution like any other input. This option affects AV1 ingest only.
 
 #### Supported image codecs
 
-<table><thead><tr><th width="149">Encode Type</th><th width="177.33333333333331">Codec</th><th>Codec of Configuration</th></tr></thead><tbody><tr><td>Image</td><td>JPEG</td><td>jpeg</td></tr><tr><td></td><td>PNG</td><td>png</td></tr><tr><td></td><td>WEBP</td><td>webp</td></tr></tbody></table>
+<table><thead><tr><th width="149">Encode Type</th><th width="177.33333333333331">Codec</th><th>Codec of Configuration</th></tr></thead><tbody><tr><td>Image</td><td>JPEG</td><td>jpeg</td></tr><tr><td></td><td>PNG</td><td>png</td></tr><tr><td></td><td>WEBP</td><td>webp</td></tr><tr><td></td><td>AVIF</td><td>avif</td></tr></tbody></table>
 
 
 :::warning
@@ -97,7 +109,7 @@ When the setting is made for the thumbnail and the stream is input, you can view
 
 | Method | URL Pattern                                                                                        |
 | ------ | -------------------------------------------------------------------------------------------------- |
-| GET    | http(s)://\<ome\_hos&#x74;_>:\<port>/\<app\_name>/\<output\_stream\_name>/thumb.\<jpg\|png\|webp>_ |
+| GET    | http(s)://\<ome\_hos&#x74;_>:\<port>/\<app\_name>/\<output\_stream\_name>/thumb.\<jpg\|png\|webp\|avif>_ |
 
 ## Advanced&#x20;
 

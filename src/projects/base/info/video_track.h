@@ -90,6 +90,21 @@ public:
 	void SetPreset(ov::String preset);
 	ov::String GetPreset() const;
 
+	void SetQuality(int quality);
+	int GetQuality() const;
+
+	void SetSpeed(int speed);
+	int GetSpeed() const;
+
+	void SetChromaSampling(ov::String chroma_sampling);
+	ov::String GetChromaSampling() const;
+
+	void SetMethod(int method);
+	int GetMethod() const;
+
+	void SetLossless(bool lossless);
+	bool GetLossless() const;
+
 	void SetProfile(ov::String profile);
 	ov::String GetProfile() const;
 
@@ -186,6 +201,26 @@ protected:
 
 	// Preset for encoder (set by user)
 	ov::String _preset OV_GUARDED_BY(_video_mutex);
+
+	// Encoder quality (set by user). Codec-specific meaning:
+	//   mjpeg  qscale 1-31, lower is better; 0 = use encoder default
+	//   webp   0-100,  higher is better; 0 = use encoder default
+	//   avif   crf 0-63, lower is better; 0 is a real maximum-quality value
+	//          (the unset sentinel is -1, defaulted to 30 before it reaches here)
+	int _quality OV_GUARDED_BY(_video_mutex) = 0;
+
+	// Encoder speed/effort (set by user; -1 = encoder default.
+	// AVIF: libaom cpu-used 0-8, lower is slower/better compression)
+	int _speed OV_GUARDED_BY(_video_mutex) = -1;
+
+	// Chroma subsampling for image codecs (set by user; "420" or "444")
+	ov::String _chroma_sampling OV_GUARDED_BY(_video_mutex);
+
+	// WebP encoding method (set by user; -1 = encoder default)
+	int _method OV_GUARDED_BY(_video_mutex) = -1;
+
+	// WebP lossless mode (set by user)
+	bool _lossless OV_GUARDED_BY(_video_mutex) = false;
 
 	// Profile (set by user, used for h264, h265 codec)
 	ov::String _profile OV_GUARDED_BY(_video_mutex);
