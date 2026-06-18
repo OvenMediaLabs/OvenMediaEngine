@@ -8,7 +8,7 @@ Apple supports Low-Latency HLS (LLHLS), which enables low-latency video streamin
 
 LLHLS is an extension of HLS, so legacy HLS players can play LLHLS streams. However, the legacy HLS player plays the stream without using the low-latency function.
 
-<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AAC</td></tr><tr><td>Default URL Pattern</td><td>`http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8`</td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AV1, AAC</td></tr><tr><td>Default URL Pattern</td><td>`http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8`</td></tr></tbody></table>
 
 ## Configuration
 
