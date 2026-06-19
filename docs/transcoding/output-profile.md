@@ -202,8 +202,8 @@ To support WebRTC and LLHLS, AAC and Opus codecs must be supported at the same t
 ```xml
 <Encodes>
 	<Video>
-        <Name>bypass_video</Name>
-        <Bypass>true</Bypass>	
+		<Name>bypass_video</Name>
+		<Bypass>true</Bypass>	
 	</Video>
 	<Audio>
 		<Name>cond_audio_aac</Name>
