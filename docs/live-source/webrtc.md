@@ -235,6 +235,7 @@ Reference each layer by index using `<VideoIndexHint>` / `<AudioIndexHint>`:
         <FileName>template</FileName>
         <Options>
             <WebRtcAutoAbr>true</WebRtcAutoAbr>
+            <WebRtcAudioOnlyFallback>false</WebRtcAudioOnlyFallback>
             <HLSChunklistPathDepth>0</HLSChunklistPathDepth>
             <EnableTsPackaging>true</EnableTsPackaging>
         </Options>
@@ -270,6 +271,7 @@ Manually defining a Rendition per simulcast layer requires a config change and s
         <FileName>template</FileName>
         <Options>
             <WebRtcAutoAbr>true</WebRtcAutoAbr>
+            <WebRtcAudioOnlyFallback>false</WebRtcAudioOnlyFallback>
             <HLSChunklistPathDepth>0</HLSChunklistPathDepth>
             <EnableTsPackaging>true</EnableTsPackaging>
         </Options>

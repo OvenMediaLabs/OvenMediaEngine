@@ -129,6 +129,7 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 
 		Json::Value json_options;
 		json_options["webrtcAutoAbr"] = playlist->IsWebRtcAutoAbr();
+		json_options["webrtcAudioOnlyFallback"] = playlist->IsWebRtcAudioOnlyFallback();
 		json_options["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
 		json_options["enableTsPackaging"] = playlist->IsTsPackagingEnabled();
 
