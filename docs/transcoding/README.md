@@ -47,16 +47,22 @@ These are the types of supported decoding and encoding codecs.
 <Tabs>
 <TabItem value="decoding-codecs" label="Decoding Codecs">
 
-**Video**&#x20;
+<div style={{paddingLeft: '1rem'}}>
+
+**Video**
 
 * VP8, H.264, H.265
 
-**Audio**&#x20;
+**Audio**
 
 * AAC, Opus, MP3, MP2
 
+</div>
+
 </TabItem>
 <TabItem value="encoding-codecs" label="Encoding Codecs">
+
+<div style={{paddingLeft: '1rem'}}>
 
 **Video**
 
@@ -66,9 +72,11 @@ These are the types of supported decoding and encoding codecs.
 
 * AAC, Opus
 
-**Image**&#x20;
+**Image**
 
-* &#x20;Jpeg, Png, WebP
+* Jpeg, Png, WebP
+
+</div>
 
 </TabItem>
 </Tabs>
