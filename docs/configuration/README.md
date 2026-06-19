@@ -682,8 +682,6 @@ Finally, `Server.xml` is configured as follows:
                     <!-- Application type (live/vod) -->
                     <Type>live</Type>
                     <OutputProfiles>
-                        <!-- Enable this configuration if you want to hardware acceleration using GPU -->
-                        <HardwareAcceleration>false</HardwareAcceleration>
                         <OutputProfile>
                             <Name>bypass_stream</Name>
                             <OutputStreamName>${OriginStreamName}</OutputStreamName>

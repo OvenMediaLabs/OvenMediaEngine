@@ -60,7 +60,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Video**
 
-* VP8, H.264, H.265
+* VP8, H.264, H.265 <sub>(Not supported, SW codec support planned)</sub>
 
 **Audio**
 
@@ -76,11 +76,7 @@ These are the types of supported decoding and encoding codecs.
 
 ### **Hardware accelerators**
 
-These are the types of hardware accelerators officially supported.
-
-* NVIDIA GPU
-* Xilinx Alveo U30 MA <sub>enterpise only</sub>
-* NETINT VPU <sub>enterpise only (experiment)</sub>
+Hardware acceleration is no longer supported in the open-source version as of **v0.20.8**.
 
 
 

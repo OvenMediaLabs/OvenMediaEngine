@@ -280,14 +280,7 @@ Also, if the device's network speed, which is running the player, isn't fast eno
 
 If the Origin server uses excessive CPU/Memory/Network, all players may experience stuttering during streaming.
 
-When you see Origin is CPU intensive on your Origin-Edge structure, the transcoding options in the OvenMediaEngine may be the primary cause. That is, you may have set the quality of the input stream too high, or the output stream to exceed the capabilities of your hardware significantly. In this case, it can be solved by **enabling the hardware encoder** in OvenMediaEngine.
-
-
-:::info
-
-Setting up GPU Acceleration in OvenMediaEngine: [transcoding/gpu-usage.md](transcoding/gpu-usage.md)
-
-:::
+When you see Origin is CPU intensive on your Origin-Edge structure, the transcoding options in the OvenMediaEngine may be the primary cause. That is, you may have set the quality of the input stream too high, or the output stream to exceed the capabilities of your hardware significantly. In this case, it can be solved by lowering the quality or resolution of the output stream.
 
 
 ### **4.** When streaming fails due to excessive CPU/Memory/Network usage of Edge in OvenMediaEngine
