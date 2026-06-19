@@ -55,7 +55,7 @@ The `<OutputProfile>` setting allows incoming streams to be re-encoded via the `
 </OutputProfiles>
 ```
 
-According to the above setting, if the incoming stream name is `stream`, the output stream becomes `stream`and the stream URL can be used as follows.
+According to the above setting, if the incoming stream name is `stream`, the output stream becomes `stream` and the stream URL can be used as follows.
 
 * **`WebRTC`** ws://\{IP\}:\{PORT\}/app/stream
 * **`LLHLS`** http://\{IP\}:\{PORT\}/app/stream/llhls.m3u8
