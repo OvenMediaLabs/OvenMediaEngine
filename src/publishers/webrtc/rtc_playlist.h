@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <vector>
+
 #include <base/common_types.h>
 #include <base/info/media_track.h>
 #include <modules/json_serdes/stream.h>
@@ -92,6 +94,11 @@ public:
 		_audio_codec_id = audio_codec_id;
 	}
 
+	// Expose the codecs this per-session playlist was built for, so the master
+	// playlist can cross-add audio-only renditions into matching video playlists.
+	cmn::MediaCodecId GetVideoCodecId() const { return _video_codec_id; }
+	cmn::MediaCodecId GetAudioCodecId() const { return _audio_codec_id; }
+
 	void SetWebRtcAutoAbr(bool auto_abr)
 	{
 		_webrtc_auto_abr = auto_abr;
@@ -123,12 +130,28 @@ public:
 	// Get next higher bitrates rendition
 	std::shared_ptr<const RtcRendition> GetNextHigherBitrateRendition(const std::shared_ptr<const RtcRendition> &base_rendition) const
 	{
+		// A session on an audio-only rendition inside a video playlist was put there by an
+		// explicit change_rendition; automatic ABR must keep it there (never auto-resume
+		// video) until the client explicitly switches back. An audio-only playlist
+		// (_video_codec_id == None) keeps normal bitrate ABR among its renditions.
+		if (_video_codec_id != cmn::MediaCodecId::None && base_rendition->GetVideoTrack() == nullptr)
+		{
+			return nullptr;
+		}
+
 		std::shared_ptr<const RtcRendition> next_rendition = nullptr;
 		uint64_t base_bitrates = base_rendition->GetBitrates();
 
 		for (const auto &[name, rendition] : _rendition_map)
 		{
 			if (rendition == base_rendition)
+			{
+				continue;
+			}
+
+			// Never auto-select an audio-only rendition as an ABR destination in a video
+			// playlist (an audio-only playlist keeps normal bitrate ABR among its renditions).
+			if (_video_codec_id != cmn::MediaCodecId::None && rendition->GetVideoTrack() == nullptr)
 			{
 				continue;
 			}
@@ -153,12 +176,27 @@ public:
 	// Get next lower bitrates rendition
 	std::shared_ptr<const RtcRendition> GetNextLowerBitrateRendition(const std::shared_ptr<const RtcRendition> &base_rendition) const
 	{
+		// See GetNextHigherBitrateRendition: a video session that explicitly switched to an
+		// audio-only rendition stays there; automatic ABR never moves it. An audio-only
+		// playlist (_video_codec_id == None) keeps normal bitrate ABR among its renditions.
+		if (_video_codec_id != cmn::MediaCodecId::None && base_rendition->GetVideoTrack() == nullptr)
+		{
+			return nullptr;
+		}
+
 		std::shared_ptr<const RtcRendition> next_rendition = nullptr;
 		uint64_t base_bitrates							   = base_rendition->GetBitrates();
 
 		for (const auto &[name, rendition] : _rendition_map)
 		{
 			if (rendition == base_rendition)
+			{
+				continue;
+			}
+
+			// Never auto-select an audio-only rendition as an ABR destination in a video
+			// playlist (an audio-only playlist keeps normal bitrate ABR among its renditions).
+			if (_video_codec_id != cmn::MediaCodecId::None && rendition->GetVideoTrack() == nullptr)
 			{
 				continue;
 			}
@@ -246,13 +284,46 @@ public:
 		return _webrtc_auto_abr;
 	}
 
+	// When enabled, audio-only renditions are cross-added into video playlists that share
+	// their audio codec (see AddRendition), so a video session can switch to audio-only.
+	void SetWebRtcAudioOnlyFallback(bool enabled)
+	{
+		_webrtc_audio_only_fallback = enabled;
+	}
+
+	bool IsWebRtcAudioOnlyFallback() const
+	{
+		return _webrtc_audio_only_fallback;
+	}
+
 	bool AddRendition(const std::shared_ptr<const RtcRendition> &rendition)
 	{
 		auto video_codec_id = rendition->GetVideoTrack() ? rendition->GetVideoTrack()->GetCodecId() : cmn::MediaCodecId::None;
 		auto audio_codec_id = rendition->GetAudioTrack() ? rendition->GetAudioTrack()->GetCodecId() : cmn::MediaCodecId::None;
 
-		auto playlist		= GetPlaylist(video_codec_id, audio_codec_id);
-		if (playlist == nullptr)
+		// An audio-only rendition (no video track) is otherwise bucketed into its own
+		// (None, audio) playlist, so a session that negotiated video never sees it and
+		// cannot switch down to audio-only on the SAME PeerConnection. When the feature is
+		// enabled, expose audio-only renditions inside every existing video playlist that
+		// shares the same audio codec.
+		if (_webrtc_audio_only_fallback && video_codec_id == cmn::MediaCodecId::None && audio_codec_id != cmn::MediaCodecId::None)
+		{
+			_audio_only_renditions.push_back(rendition);
+			for (auto &[key, pl] : _playlist_map)
+			{
+				// Match on audio codec id only: WebRTC advertises a single payload type per
+				// codec, so the audio-only rendition's packets ride the video playlist's
+				// already-negotiated audio payload type even though it is a different track.
+				if (pl->GetVideoCodecId() != cmn::MediaCodecId::None && pl->GetAudioCodecId() == audio_codec_id)
+				{
+					pl->AddRendition(rendition);
+				}
+			}
+		}
+
+		auto playlist		  = GetPlaylist(video_codec_id, audio_codec_id);
+		bool created_playlist = (playlist == nullptr);
+		if (created_playlist)
 		{
 			playlist = CreatePlaylist(video_codec_id, audio_codec_id);
 
@@ -262,7 +333,25 @@ public:
 			_playlist_map.emplace(GetPlaylistKey(video_codec_id, audio_codec_id), playlist);
 		}
 
+		// Add the triggering rendition first so it stays the playlist's default
+		// rendition (GetFirstRendition), before any cross-added audio-only rendition.
 		playlist->AddRendition(rendition);
+
+		// Back-fill a newly-created video playlist with audio-only renditions already
+		// seen that share its audio codec (handles an audio-only rendition declared
+		// before the video one). Done after the video rendition is added so the video
+		// rendition - not the audio-only one - remains the default.
+		if (_webrtc_audio_only_fallback && created_playlist && video_codec_id != cmn::MediaCodecId::None)
+		{
+			for (const auto &ao : _audio_only_renditions)
+			{
+				auto ao_audio = ao->GetAudioTrack() ? ao->GetAudioTrack()->GetCodecId() : cmn::MediaCodecId::None;
+				if (ao_audio == audio_codec_id)
+				{
+					playlist->AddRendition(ao);
+				}
+			}
+		}
 
 		AddPayloadTrack(rendition->GetVideoTrack());
 		AddPayloadTrack(rendition->GetAudioTrack());
@@ -325,6 +414,7 @@ private:
 	ov::String _name;
 	ov::String _file_name;
 	bool _webrtc_auto_abr = false;
+	bool _webrtc_audio_only_fallback = false;
 
 	// Track list for payload list
 	// OME specifies only one payload per codec in WebRTC SDP.
@@ -333,4 +423,7 @@ private:
 	// Key : string(%d_%d), video_codec_id, audio_codec_id
 	// Value : Rendition list
 	std::map<ov::String, std::shared_ptr<RtcPlaylist>> _playlist_map;
+
+	// Audio-only renditions, cross-added into matching video playlists (see AddRendition).
+	std::vector<std::shared_ptr<const RtcRendition>> _audio_only_renditions;
 };
