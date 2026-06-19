@@ -23,10 +23,11 @@ The `<OutputProfile>` setting allows incoming streams to be re-encoded via the `
     -->
 
     <OutputProfile>
-        <Name>bypass_stream</Name>
-        <OutputStreamName>${OriginStreamName}_bypass</OutputStreamName>
+        <Name>default</Name>
+        <OutputStreamName>${OriginStreamName}</OutputStreamName>
         <Encodes>
             <Video>
+                <Name>bypass_video</Name>
                 <Bypass>true</Bypass>
             </Video>
             <Audio>
@@ -54,11 +55,11 @@ The `<OutputProfile>` setting allows incoming streams to be re-encoded via the `
 </OutputProfiles>
 ```
 
-According to the above setting, if the incoming stream name is `stream`, the output stream becomes `stream_bypass`and the stream URL can be used as follows.
+According to the above setting, if the incoming stream name is `stream`, the output stream becomes `stream`and the stream URL can be used as follows.
 
-* **`WebRTC`** ws://192.168.0.1:3333/app/stream\_bypass
-* **`LLHLS`** http://192.168.0.1:8080/app/stream\_bypass/llhls.m3u8
-* **`HLS`** http://192.168.0.1:8080/app/stream\_bypass/ts:playlist.m3u8
+* **`WebRTC`** ws://\{IP\}:\{PORT\}/app/stream
+* **`LLHLS`** http://\{IP\}:\{PORT\}/app/stream/llhls.m3u8
+* **`HLS`** http://\{IP\}:\{PORT\}/app/stream/ts:playlist.m3u8
 
 ## Encodes
 
@@ -87,24 +88,23 @@ You can set the video profile as below:
 </Encodes>
 ```
 
-<table><thead><tr><th width="238">Property</th><th>Description</th></tr></thead><tbody><tr><td>Codec*</td><td>Type of codec to be encoded<br />See the table below</td></tr><tr><td>Bitrate*</td><td>Bit per second</td></tr><tr><td>Name*</td><td>Encode name for Renditions<br />No duplicates allowed</td></tr><tr><td>Width</td><td>Width of resolution</td></tr><tr><td>Height</td><td>Height of resolution</td></tr><tr><td>Framerate</td><td>Frames per second</td></tr><tr><td>KeyFrameInterval</td><td>Number of frames between two keyframes (0&#126;600)<br />default is framerate (i.e. 1 second)</td></tr><tr><td>BFrames</td><td>Number of B-frames (0&#126;16)<br />default is 0</td></tr><tr><td>Profile</td><td>H264 only encoding profile (baseline, main, high)</td></tr><tr><td>Preset</td><td>Presets of encoding quality and performance<br />See the table below</td></tr><tr><td>ThreadCount</td><td>Number of threads in encoding</td></tr><tr><td>Lookahead</td><td><p>Number of frames to look ahead <br />default is 0<br />x264 is 0-250</p><p>nvenc is 0-31<br />xma is 0-20</p></td></tr><tr><td>Modules</td><td>An encoder library can be specified; otherwise, the default codec See the table below</td></tr></tbody></table>
+<table><thead><tr><th width="238">Property</th><th>Description</th></tr></thead><tbody><tr><td>Codec*</td><td>Type of codec to be encoded<br />See the table below</td></tr><tr><td>Bitrate*</td><td>Bit per second</td></tr><tr><td>Name*</td><td>Encode name for Renditions<br />No duplicates allowed</td></tr><tr><td>Width</td><td>Width of resolution</td></tr><tr><td>Height</td><td>Height of resolution</td></tr><tr><td>Framerate</td><td>Frames per second</td></tr><tr><td>KeyFrameInterval</td><td>Number of frames between two keyframes (0&#126;600)<br />default is framerate (i.e. 1 second)</td></tr><tr><td>BFrames</td><td>Number of B-frames (0&#126;16)<br />default is 0</td></tr><tr><td>Profile</td><td>H264 only encoding profile (baseline, main, high)</td></tr><tr><td>Preset</td><td>Presets of encoding quality and performance<br />See the table below</td></tr><tr><td>ThreadCount</td><td>Number of threads in encoding</td></tr><tr><td>Lookahead</td><td><p>Number of frames to look ahead <br />default is 0<br />x264 is 0-250</p></td></tr><tr><td>Modules</td><td>An encoder library can be specified; otherwise, the default codec See the table below</td></tr></tbody></table>
 
 \* required
 
 #### _**Supported Video Codecs**_
 
-<table><thead><tr><th width="116">Type</th><th width="208.33333333333331">Description</th><th width="142">Codec</th><th>Modules</th></tr></thead><tbody><tr><td>Video</td><td>VP8</td><td>vp8</td><td>SW: libvpx* </td></tr><tr><td></td><td>H.264 </td><td>h264</td><td><p>SW: openh264*,  x264</p><p>HW: nv, xma</p></td></tr><tr><td></td><td>H.265 <br />(Hardware Only)</td><td>h265</td><td>HW: nv, xma </td></tr></tbody></table>
+<table><thead><tr><th width="116">Type</th><th width="208.33333333333331">Description</th><th width="142">Codec</th><th>Modules</th></tr></thead><tbody><tr><td>Video</td><td>VP8</td><td>vp8</td><td>SW: libvpx* </td></tr><tr><td></td><td>H.264 </td><td>h264</td><td>SW: openh264*,  x264</td></tr></tbody></table>
 
 #### _**Preset**_
 
 A table in which presets provided for each codec library are mapped to OvenMediaEngine presets. Slow presets are of good quality and use a lot of resources, whereas Fast presets have lower quality and better performance. It can be set according to your own system environment and service purpose.
 
-<table><thead><tr><th width="133">Presets</th><th width="138">openh264</th><th width="173">h264_nvenc</th><th width="122">vp8</th></tr></thead><tbody><tr><td><strong>slower</strong></td><td>QP( 10-39)</td><td>p7</td><td>best</td></tr><tr><td><strong>slow</strong></td><td>QP (16-45)</td><td>p6</td><td>best</td></tr><tr><td><strong>medium</strong></td><td>QP (24-51)</td><td>p5</td><td>good</td></tr><tr><td><strong>fast</strong></td><td>QP (32-51)</td><td>p4</td><td>realtime</td></tr><tr><td><strong>faster</strong></td><td>QP (40-51)</td><td>p3</td><td>realtime</td></tr></tbody></table>
+<table><thead><tr><th width="133">Presets</th><th width="138">openh264</th><th width="122">x264</th><th width="122">vp8</th></tr></thead><tbody><tr><td><strong>slower</strong></td><td>QP( 10-39)</td><td>slower</td><td>best</td></tr><tr><td><strong>slow</strong></td><td>QP (16-45)</td><td>slow</td><td>best</td></tr><tr><td><strong>medium</strong></td><td>QP (24-51)</td><td>medium</td><td>good</td></tr><tr><td><strong>fast</strong></td><td>QP (32-51)</td><td>fast</td><td>realtime</td></tr><tr><td><strong>faster</strong></td><td>QP (40-51)</td><td>faster</td><td>realtime</td></tr></tbody></table>
 
 _References_
 
 * https://trac.ffmpeg.org/wiki/Encode/VP8
-* https://docs.nvidia.com/video-technologies/video-codec-sdk/nvenc-preset-migration-guide/
 
 
 
@@ -142,9 +142,11 @@ You can configure Video and Audio to bypass transcoding as follows:
 
 ```markup
 <Video>
+    <Name>bypass_video</Name>
     <Bypass>true</Bypass>
 </Video>
 <Audio>
+    <Name>bypass_audio</Name>
     <Bypass>true</Bypass>
 </Audio>
 ```
@@ -162,9 +164,11 @@ WebRTC doesn't support AAC, so if video bypasses transcoding, audio must be enco
 ```markup
 <Encodes>
     <Video>
+        <Name>bypass_video</Name>
         <Bypass>true</Bypass>
     </Video>
     <Audio>
+        <Name>opus_audio</Name>
         <Codec>opus</Codec>
         <Bitrate>128000</Bitrate>
         <Samplerate>48000</Samplerate>
@@ -198,7 +202,8 @@ To support WebRTC and LLHLS, AAC and Opus codecs must be supported at the same t
 ```xml
 <Encodes>
 	<Video>
-                <Bypass>true</Bypass>	
+        <Name>bypass_video</Name>
+        <Bypass>true</Bypass>	
 	</Video>
 	<Audio>
 		<Name>cond_audio_aac</Name>
@@ -257,10 +262,12 @@ If you want to transcode with the same quality as the original. See the sample b
 ```xml
 <Encodes>
     <Video>
+        <Name>vp8_keep_video</Name>
         <Codec>vp8</Codec>
         <Bitrate>2000000</Bitrate>
     </Video>
      <Audio>
+        <Name>opus_keep_audio</Name>
         <Codec>opus</Codec>
         <Bitrate>128000</Bitrate>
     </Audio>  
@@ -276,6 +283,7 @@ To change the video resolution when transcoding, use the values of width and hei
 ```xml
 <Encodes>
     <Video>
+        <Name>h264_fixed_width</Name>
         <Codec>h264</Codec>
         <Bitrate>2000000</Bitrate>
         <Width>1280</Width>
@@ -283,6 +291,7 @@ To change the video resolution when transcoding, use the values of width and hei
         <Framerate>30.0</Framerate>
     </Video>
     <Video>
+        <Name>h264_fixed_height</Name>
         <Codec>h264</Codec>
         <Bitrate>2000000</Bitrate>
         <!-- Width is automatically calculated as the original video ratio -->
@@ -304,8 +313,8 @@ The software decoder uses 2 threads by default. If the CPU speed is too low for 
     Common setting for decoders. Decodes is optional.
     -->
     <Decodes>
-	<!-- Number of threads for the decoder.-->
-	<ThreadCount>2</ThreadCount>
+        <!-- Number of threads for the decoder.-->
+        <ThreadCount>2</ThreadCount>
     </Decodes>
 
     <OutputProfile>
