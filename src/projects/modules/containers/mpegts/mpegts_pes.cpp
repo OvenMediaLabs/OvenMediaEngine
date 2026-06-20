@@ -376,10 +376,19 @@ namespace mpegts
 		// m: marker_bit (should be 1)
 		// T: timestamp
 		auto prefix = parser->ReadBits<uint8_t>(4);
-		if (prefix != start_bits)
+		// Some encoders (e.g. Moblin/libsrt) set the high bit of the 4-bit PTS/DTS
+		// prefix, sending 0b1010 instead of the spec's 0b0010. ffmpeg, SRS and
+		// srt-live-server ignore the prefix entirely and read only the timestamp
+		// bits; match that leniency by validating only the meaningful low 3 bits so
+		// these otherwise-valid streams still ingest instead of being rejected.
+		if ((prefix & 0b0111) != (start_bits & 0b0111))
 		{
 			logte("Invalid PTS_DTS start bits: %d (%02X), expected: %d (%02X)", prefix, prefix, start_bits, start_bits);
 			return false;
+		}
+		if (prefix != start_bits)
+		{
+			logtw("Tolerating non-standard PTS_DTS start bits: %d (%02X), expected: %d (%02X)", prefix, prefix, start_bits, start_bits);
 		}
 
 		int64_t ts = parser->ReadBits<int64_t>(3) << 30;
