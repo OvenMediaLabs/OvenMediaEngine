@@ -119,7 +119,7 @@ protected:
 	ov::SocketAddress _address;
 
 	std::shared_ptr<ov::ServerSocket> _server_socket;
-	std::shared_ptr<ov::DatagramSocket> _datagram_socket;
+	std::vector<std::shared_ptr<ov::DatagramSocket>> _datagram_sockets;
 
 	std::atomic<int> _ref_count{0};
 

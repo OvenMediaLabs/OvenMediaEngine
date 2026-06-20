@@ -922,7 +922,7 @@ void IcePort::OnStunPacketReceived(const std::shared_ptr<ov::Socket> &remote, co
 	}
 }
 
-bool IcePort::MarkNominated(const std::shared_ptr<IceSession> &ice_session, const ov::SocketAddressPair &address_pair)
+bool IcePort::MarkNominated(const std::shared_ptr<const ov::Socket> &remote, const std::shared_ptr<IceSession> &ice_session, const ov::SocketAddressPair &address_pair)
 {
 	if (ice_session->MarkNominated(address_pair) == false)
 	{
@@ -949,8 +949,9 @@ bool IcePort::MarkNominated(const std::shared_ptr<IceSession> &ice_session, cons
 		}
 	}
 
-	logti("Session %u nominated candidate: %s%s", ice_session->GetSessionID(),
-		  address_pair.ToString().CStr(), transport);
+	logti("Session %u nominated candidate: %s%s (socket fd: %d)", ice_session->GetSessionID(),
+		  address_pair.ToString().CStr(), transport,
+		  (remote != nullptr) ? remote->GetNativeHandle() : -1);
 
 	return true;
 }
@@ -1010,7 +1011,7 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 		auto use_candidate_attr = message.GetAttribute<StunAttribute>(StunAttributeType::UseCandidate);
 		if (use_candidate_attr != nullptr)
 		{
-			MarkNominated(ice_session, address_pair);
+			MarkNominated(remote, ice_session, address_pair);
 		}
 	}
 
@@ -1101,7 +1102,7 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 		// decided later by where the peer sends application data.
 		if (ice_session->IsConnectable(address_pair))
 		{
-			MarkNominated(ice_session, address_pair);
+			MarkNominated(remote, ice_session, address_pair);
 
 			auto use_candidate_attr = std::make_shared<StunUseCandidateAttribute>();
 			message.AddAttribute(use_candidate_attr);
@@ -1181,7 +1182,7 @@ bool IcePort::OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &r
 	// On the first time this pair is validated, nominate it and immediately
 	// send a binding request so the peer receives USE-CANDIDATE quickly.
 	// MarkNominated() is idempotent, so this burst happens once per pair.
-	if (ice_session->IsConnectable(address_pair) && MarkNominated(ice_session, address_pair))
+	if (ice_session->IsConnectable(address_pair) && MarkNominated(remote, ice_session, address_pair))
 	{
 		SendStunBindingRequest(remote, address_pair, gate_info, ice_session);
 	}

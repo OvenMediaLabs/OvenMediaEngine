@@ -79,10 +79,11 @@ bool PhysicalPort::Create(const char *name,
 						  int recv_buffer_size,
 						  const OnSocketCreated on_socket_created)
 {
-	if ((_server_socket != nullptr) || (_datagram_socket != nullptr))
+	if ((_server_socket != nullptr) || (_datagram_sockets.empty() == false))
 	{
 		logte("Physical port already created");
-		OV_ASSERT2((_server_socket == nullptr) && (_datagram_socket == nullptr));
+		OV_ASSERT2((_server_socket == nullptr) && (_datagram_sockets.empty()));
+		return false;
 	}
 
 	_name = name;
@@ -173,37 +174,112 @@ bool PhysicalPort::CreateDatagramSocket(
 {
 	_socket_pool = ov::SocketPool::Create(GetSocketPoolName(type, name, address), type, thread_per_socket);
 
-	if (_socket_pool != nullptr)
+	if (_socket_pool == nullptr)
 	{
-		if (_socket_pool->Initialize(worker_count))
-		{
-			auto socket = _socket_pool->AllocSocket<ov::DatagramSocket>(address.GetFamily());
-
-			if (socket != nullptr)
-			{
-				if (socket->Prepare(
-							 address,
-							 on_socket_created,
-							 std::bind(&PhysicalPort::OnDatagram, this,
-									   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)))
-				{
-					_type = type;
-					_datagram_socket = socket;
-					_address = address;
-
-					return true;
-				}
-
-				_socket_pool->ReleaseSocket(socket);
-			}
-
-			OV_SAFE_RESET(_socket_pool, nullptr, _socket_pool->Uninitialize(), _socket_pool);
-		}
-		else
-		{
-			_socket_pool = nullptr;
-		}
+		return false;
 	}
+
+	if (_socket_pool->Initialize(worker_count) == false)
+	{
+		_socket_pool = nullptr;
+		return false;
+	}
+
+	auto datagram_callback = std::bind(
+		&PhysicalPort::OnDatagram, this,
+		std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+
+	// Set `SO_REUSEPORT` before `Bind()` via the additional-options callback.
+	// On failure, returns an error so the loop skips this socket and the caller falls back to a single non-reuseport socket.
+	auto reuseport_callback = [on_socket_created](const std::shared_ptr<ov::Socket> &socket) -> std::shared_ptr<ov::Error> {
+#ifdef SO_REUSEPORT
+		if (socket->SetSockOpt<int>(SO_REUSEPORT, 1) == false)
+		{
+			logtw("Failed to set SO_REUSEPORT on socket fd %d", socket->GetNativeHandle());
+			return ov::Error::CreateError(
+				"PhyPort",
+				"Failed to set SO_REUSEPORT on socket fd %d", socket->GetNativeHandle());
+		}
+
+		return (on_socket_created != nullptr)
+				   ? on_socket_created(socket)
+				   : nullptr;
+#else	// SO_REUSEPORT
+		logtw("SO_REUSEPORT is not available on this platform (socket fd %d)", socket->GetNativeHandle());
+		return ov::Error::CreateError("PhyPort", "SO_REUSEPORT is not available on this platform");
+#endif	// SO_REUSEPORT
+	};
+
+	// Create `worker_count` sockets with `SO_REUSEPORT` - the kernel distributes incoming UDP packets across them by 4-tuple hash.
+	// `AllocSocket()` internally calls `GetLeastBusyWorker()`, but since we allocate exactly N sockets to N workers it's effectively a 1:1 assignment.
+	auto succeeded_count = 0;
+
+	for (auto index = 0; index < worker_count; index++)
+	{
+		auto socket = _socket_pool->AllocSocket<ov::DatagramSocket>(address.GetFamily());
+
+		if (socket == nullptr)
+		{
+			logtw("Failed to allocate datagram socket %d/%d for %s",
+				  index + 1, worker_count, address.ToString().CStr());
+
+			continue;
+		}
+
+		if (socket->Prepare(address, reuseport_callback, datagram_callback) == false)
+		{
+			logtw("Failed to prepare datagram socket %d/%d for %s",
+				  index + 1, worker_count, address.ToString().CStr());
+
+			_socket_pool->ReleaseSocket(socket);
+			continue;
+		}
+
+		logti("Created SO_REUSEPORT datagram socket fd=%d, worker %d/%d, address=%s",
+			  socket->GetNativeHandle(), index + 1, worker_count,
+			  address.ToString().CStr());
+
+		_datagram_sockets.push_back(socket);
+		succeeded_count++;
+	}
+
+	if (succeeded_count > 0)
+	{
+		if (succeeded_count < worker_count)
+		{
+			logtw("Only %d of %d SO_REUSEPORT sockets created for %s",
+				  succeeded_count, worker_count, address.ToString().CStr());
+		}
+
+		_type	 = type;
+		_address = address;
+		return true;
+	}
+
+	// `SO_REUSEPORT` unavailable - fall back to a single socket without it
+	logtw("SO_REUSEPORT is not available, falling back to a single datagram socket for %s",
+		  address.ToString().CStr());
+
+	auto socket = _socket_pool->AllocSocket<ov::DatagramSocket>(address.GetFamily());
+
+	if ((socket != nullptr) && socket->Prepare(address, on_socket_created, datagram_callback))
+	{
+		logti("Created fallback datagram socket fd=%d, address=%s",
+			  socket->GetNativeHandle(), address.ToString().CStr());
+
+		_datagram_sockets.push_back(socket);
+		_type	 = type;
+		_address = address;
+		return true;
+	}
+
+	if (socket != nullptr)
+	{
+		_socket_pool->ReleaseSocket(socket);
+	}
+
+	logte("All datagram socket creations failed for %s", address.ToString().CStr());
+	OV_SAFE_RESET(_socket_pool, nullptr, _socket_pool->Uninitialize(), _socket_pool);
 
 	return false;
 }
@@ -287,15 +363,17 @@ void PhysicalPort::OnDatagram(const std::shared_ptr<ov::DatagramSocket> &client,
 
 bool PhysicalPort::Close()
 {
-	auto socket = GetSocket();
-
-	if (socket != nullptr)
+	if (_server_socket != nullptr)
 	{
-		_socket_pool->ReleaseSocket(socket);
-
+		_socket_pool->ReleaseSocket(_server_socket);
 		_server_socket = nullptr;
-		_datagram_socket = nullptr;
 	}
+
+	for (auto &datagram_socket : _datagram_sockets)
+	{
+		_socket_pool->ReleaseSocket(datagram_socket);
+	}
+	_datagram_sockets.clear();
 
 	_socket_pool->Uninitialize();
 	_socket_pool = nullptr;
@@ -328,8 +406,8 @@ std::shared_ptr<const ov::Socket> PhysicalPort::GetSocket() const
 			return _server_socket;
 
 		case ov::SocketType::Udp:
-			OV_ASSERT2(_datagram_socket != nullptr);
-			return _datagram_socket;
+			OV_ASSERT2(_datagram_sockets.empty() == false);
+			return _datagram_sockets.empty() ? nullptr : _datagram_sockets.front();
 	}
 }
 
@@ -343,7 +421,7 @@ std::shared_ptr<ov::Socket> PhysicalPort::GetSocket()
 			return _server_socket;
 
 		case ov::SocketType::Udp:
-			return _datagram_socket;
+			return _datagram_sockets.empty() ? nullptr : _datagram_sockets.front();
 	}
 }
 
@@ -381,6 +459,24 @@ ov::String PhysicalPort::ToString() const
 	if (_server_socket != nullptr)
 	{
 		description.AppendFormat(", socket: %s", _server_socket->ToString().CStr());
+	}
+
+	if (_datagram_sockets.empty() == false)
+	{
+		auto count = _datagram_sockets.size();
+		description.AppendFormat(", datagram_sockets: %zu [", count);
+
+		for (size_t index = 0; index < count; index++)
+		{
+			if (index > 0)
+			{
+				description.Append(", ");
+			}
+
+			description.AppendFormat("fd: %d", _datagram_sockets[index]->GetNativeHandle());
+		}
+
+		description.Append(']');
 	}
 
 	description.Append('>');

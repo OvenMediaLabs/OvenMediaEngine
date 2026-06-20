@@ -44,7 +44,10 @@ protected:
 	std::shared_ptr<IceSession> FindUfrag(IcePort &p, const ov::String &u) { return p.FindIceSession(u); }
 	std::shared_ptr<IceSession> FindPair(IcePort &p, const ov::SocketAddressPair &ap) { return p.FindIceSession(ap); }
 
-	bool MarkNom(IcePort &p, const std::shared_ptr<IceSession> &s, const ov::SocketAddressPair &ap) { return p.MarkNominated(s, ap); }
+	bool MarkNom(IcePort &p, const std::shared_ptr<IceSession> &s, const ov::SocketAddressPair &ap)
+	{
+		return p.MarkNominated(nullptr, s, ap);
+	}
 
 	// Stop the background sweeper so these registry tests are deterministic and
 	// free of a data race between CheckTimedOut() and the helpers below. The
