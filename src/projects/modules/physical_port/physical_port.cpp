@@ -189,10 +189,10 @@ bool PhysicalPort::CreateDatagramSocket(
 		&PhysicalPort::OnDatagram, this,
 		std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
 
+#ifdef SO_REUSEPORT
 	// Set `SO_REUSEPORT` before `Bind()` via the additional-options callback.
 	// On failure, returns an error so the loop skips this socket and the caller falls back to a single non-reuseport socket.
 	auto reuseport_callback = [on_socket_created](const std::shared_ptr<ov::Socket> &socket) -> std::shared_ptr<ov::Error> {
-#ifdef SO_REUSEPORT
 		if (socket->SetSockOpt<int>(SO_REUSEPORT, 1) == false)
 		{
 			logtw("Failed to set SO_REUSEPORT on socket fd %d", socket->GetNativeHandle());
@@ -204,10 +204,6 @@ bool PhysicalPort::CreateDatagramSocket(
 		return (on_socket_created != nullptr)
 				   ? on_socket_created(socket)
 				   : nullptr;
-#else	// SO_REUSEPORT
-		logtw("SO_REUSEPORT is not available on this platform (socket fd %d)", socket->GetNativeHandle());
-		return ov::Error::CreateError("PhyPort", "SO_REUSEPORT is not available on this platform");
-#endif	// SO_REUSEPORT
 	};
 
 	// Create `worker_count` sockets with `SO_REUSEPORT` - the kernel distributes incoming UDP packets across them by 4-tuple hash.
@@ -256,9 +252,14 @@ bool PhysicalPort::CreateDatagramSocket(
 		return true;
 	}
 
-	// `SO_REUSEPORT` unavailable - fall back to a single socket without it
-	logtw("SO_REUSEPORT is not available, falling back to a single datagram socket for %s",
+	// All `SO_REUSEPORT` sockets failed at runtime - fall back to a single socket without it
+	logtw("SO_REUSEPORT sockets could not be created, falling back to a single datagram socket for %s",
 		  address.ToString().CStr());
+#else	// SO_REUSEPORT
+	// `SO_REUSEPORT` is unavailable at build time - create a single datagram socket directly to avoid redundant work and log spam
+	logti("SO_REUSEPORT is not supported on this platform, creating a single datagram socket for %s",
+		  address.ToString().CStr());
+#endif	// SO_REUSEPORT
 
 	auto socket = _socket_pool->AllocSocket<ov::DatagramSocket>(address.GetFamily());
 
