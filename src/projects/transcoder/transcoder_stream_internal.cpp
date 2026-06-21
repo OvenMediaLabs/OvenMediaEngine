@@ -817,7 +817,7 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 		else if (buffer->GetDuration() > 0)
 		{
 			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
-			logtd("Id(%d), Output framerate from decoded frame duration(%ld). %.2f -> %.2f", output_track->GetId(), buffer->GetDuration(), output_framerate, new_output_framerate);
+			logtd("Id(%d), Output framerate from decoded frame duration(" PRId64 "). %.2f -> %.2f", output_track->GetId(), buffer->GetDuration(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the default value
 		else
