@@ -800,18 +800,23 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	{
 		// If the framerate is not set, it is set based on the input video framerate.
 		double new_output_framerate;
+
+		// Set Output framerate based on the input track configured framerate
 		if (input_track->GetFrameRateByConfig() > 0.0f)
 		{
 			new_output_framerate = input_track->GetFrameRateByConfig();
 		}
-		else if (buffer->GetDuration() > 0)
-		{
-			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
-		}
+		// Set Output framerate based on the input track measured framerate
 		else if (input_track->GetFrameRateByMeasured() > 0.0f)
 		{
 			new_output_framerate = input_track->GetFrameRateByMeasured();
 		}
+		// Set Output framerate based on the decoded frame duration
+		else if (buffer->GetDuration() > 0)
+		{
+			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
+		}
+		// Set Output framerate based on the default value
 		else
 		{
 			new_output_framerate = 1.0f;
