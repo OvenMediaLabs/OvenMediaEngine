@@ -786,15 +786,15 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 
 	// Update framerate of the output track
-	logtt("Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Output Framerate: %.02f(conf) %.02f(measure) %.02f(max)",
-		  input_track->GetFrameRateByConfig(), input_track->GetFrameRateByMeasured(), input_track->GetMaxFrameRate(),
-		  output_track->GetFrameRateByConfig(), output_track->GetFrameRateByMeasured(), output_track->GetMaxFrameRate());
+	logtd("Id(%d), Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Id(%d), Output Framerate: %.02f(conf) %.02f(measure) %.02f(max)",
+		  input_track->GetId(), input_track->GetFrameRateByConfig(), input_track->GetFrameRateByMeasured(), input_track->GetMaxFrameRate(),
+		  output_track->GetId(), output_track->GetFrameRateByConfig(), output_track->GetFrameRateByMeasured(), output_track->GetMaxFrameRate());
 
 	auto output_framerate = output_track->GetFrameRateByConfig();
 	if (output_framerate > 0.0f)
 	{
 		// The framerate is already set. It should be maintained until the stream end.
-		logtt("Framerate is not changed.  %.2f", output_framerate);
+		logtt("Id(%d), Output framerate is not changed. %.2f", output_track->GetId(), output_framerate);
 	}
 	else
 	{
@@ -805,27 +805,28 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 		if (input_track->GetFrameRateByConfig() > 0.0f)
 		{
 			new_output_framerate = input_track->GetFrameRateByConfig();
+			logtd("Id(%d), Output framerate from input config. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the input track measured framerate
 		else if (input_track->GetFrameRateByMeasured() > 0.0f)
 		{
 			new_output_framerate = input_track->GetFrameRateByMeasured();
+			logtd("Id(%d), Output framerate from input measured. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the decoded frame duration
 		else if (buffer->GetDuration() > 0)
 		{
 			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
+			logtd("Id(%d), Output framerate from decoded frame duration(%ld). %.2f -> %.2f", output_track->GetId(), buffer->GetDuration(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the default value
 		else
 		{
 			new_output_framerate = 1.0f;
+			logtw("Id(%d), Output framerate undetermined, using default. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
 		}
 
 		output_track->SetFrameRateByConfig(new_output_framerate);
-
-		logtd("Id(%d), Framerate is changed. %.2f -> %.2f",
-			  output_track->GetId(), output_framerate, new_output_framerate);
 	}
 
 	// Update Output bitrate
