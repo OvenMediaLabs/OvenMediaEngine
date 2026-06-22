@@ -80,7 +80,7 @@ namespace pvd
 
 			for (const auto &address : address_list)
 			{
-				auto physical_port = physical_port_manager->CreatePort("MPEGTS", socket_type, address, 1);
+				auto physical_port = physical_port_manager->CreatePort("MPEGTS", socket_type, address, mpegts_provider_config.GetWorkerCount());
 
 				if (physical_port == nullptr)
 				{
