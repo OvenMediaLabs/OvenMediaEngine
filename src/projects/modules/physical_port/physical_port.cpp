@@ -179,6 +179,12 @@ bool PhysicalPort::CreateDatagramSocket(
 		return false;
 	}
 
+#ifndef SO_REUSEPORT
+	// Without `SO_REUSEPORT` only a single datagram socket is created, so a single worker is enough -
+	// initializing more would just leave idle epoll threads.
+	worker_count = 1;
+#endif	// SO_REUSEPORT
+
 	if (_socket_pool->Initialize(worker_count) == false)
 	{
 		_socket_pool = nullptr;
