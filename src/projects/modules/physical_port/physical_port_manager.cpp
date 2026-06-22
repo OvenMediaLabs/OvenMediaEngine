@@ -38,6 +38,16 @@ std::shared_ptr<PhysicalPort> PhysicalPortManager::CreatePort(const char *name,
 		worker_count = PHYSICAL_PORT_DEFAULT_WORKER_COUNT;
 	}
 
+#ifndef SO_REUSEPORT
+	// Without `SO_REUSEPORT`, UDP physical ports fall back to a single socket/worker, so clamp the
+	// requested count here to keep the requested and actual worker counts consistent (avoids a misleading
+	// mismatch warning below) and to skip spawning idle epoll workers.
+	if (type == ov::SocketType::Udp)
+	{
+		worker_count = 1;
+	}
+#endif	// SO_REUSEPORT
+
 	if (item == _port_list.end())
 	{
 		port = std::make_shared<PhysicalPort>(PhysicalPort::PrivateToken{nullptr});

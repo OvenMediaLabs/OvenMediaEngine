@@ -179,12 +179,8 @@ bool PhysicalPort::CreateDatagramSocket(
 		return false;
 	}
 
-#ifndef SO_REUSEPORT
-	// Without `SO_REUSEPORT` only a single datagram socket is created, so a single worker is enough -
-	// initializing more would just leave idle epoll threads.
-	worker_count = 1;
-#endif	// SO_REUSEPORT
-
+	// Without `SO_REUSEPORT` only a single datagram socket is created, so the caller
+	// (`PhysicalPortManager::CreatePort()`) already clamps `worker_count` to 1 on those platforms.
 	if (_socket_pool->Initialize(worker_count) == false)
 	{
 		_socket_pool = nullptr;
@@ -238,7 +234,7 @@ bool PhysicalPort::CreateDatagramSocket(
 			continue;
 		}
 
-		logtd("Created SO_REUSEPORT datagram socket fd=%d, worker %d/%d, address=%s",
+		logtd("Created SO_REUSEPORT datagram socket fd=%d, socket %d/%d, address=%s",
 			  socket->GetNativeHandle(), index + 1, worker_count,
 			  address.ToString().CStr());
 
