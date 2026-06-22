@@ -231,7 +231,7 @@ bool PhysicalPort::CreateDatagramSocket(
 			continue;
 		}
 
-		logti("Created SO_REUSEPORT datagram socket fd=%d, worker %d/%d, address=%s",
+		logtd("Created SO_REUSEPORT datagram socket fd=%d, worker %d/%d, address=%s",
 			  socket->GetNativeHandle(), index + 1, worker_count,
 			  address.ToString().CStr());
 
