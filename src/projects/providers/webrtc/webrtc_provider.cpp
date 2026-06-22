@@ -84,7 +84,7 @@ namespace pvd
 			// Initialize WHIP Server
 			if (_whip_server->Start(
 					WhipObserver::GetSharedPtr(),
-					GetProviderName(), "WhpSig",
+					ov::String::FormatString("%s-WHIP", GetProviderName()), "WhpSig",
 					ip_list,
 					is_port_configured, port_config.GetPort(),
 					is_tls_port_configured, tls_port_config.GetPort(),
