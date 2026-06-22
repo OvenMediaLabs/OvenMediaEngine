@@ -364,6 +364,12 @@ void PhysicalPort::OnDatagram(const std::shared_ptr<ov::DatagramSocket> &client,
 
 bool PhysicalPort::Close()
 {
+	// `Close()` may be called directly (outside `PhysicalPortManager::DeletePort()`), so make it idempotent.
+	if (_socket_pool == nullptr)
+	{
+		return true;
+	}
+
 	if (_server_socket != nullptr)
 	{
 		_socket_pool->ReleaseSocket(_server_socket);
