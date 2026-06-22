@@ -255,7 +255,10 @@ bool PhysicalPort::CreateDatagramSocket(
 		return true;
 	}
 
-	// All `SO_REUSEPORT` sockets failed at runtime - fall back to a single socket without it
+	// All `SO_REUSEPORT` sockets failed at runtime - fall back to a single socket without it.
+	// The pool intentionally keeps its `worker_count` workers (some now idle): the caller requested that
+	// many and `GetWorkerCount()` must stay consistent with the request, so we do not resize the pool on
+	// this rare degraded path. The partial-failure case above leaves idle workers for the same reason.
 	logtw("SO_REUSEPORT sockets could not be created, falling back to a single datagram socket for %s",
 		  address.ToString().CStr());
 #else	// SO_REUSEPORT
