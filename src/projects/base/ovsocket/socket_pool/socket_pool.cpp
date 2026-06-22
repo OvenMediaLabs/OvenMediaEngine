@@ -44,14 +44,14 @@ namespace ov
 	{
 		if (_initialized)
 		{
-			logaw("Epoll is already initialized");
+			logaw("%s is already initialized", ToString().CStr());
 			return false;
 		}
 
 		if (_thread_per_socket)
 		{
 			_initialized  = true;
-			logai("Socket pool (%s) is initialized with thread per socket mode", ToString().CStr());
+			logai("%s is initialized with thread per socket mode", ToString().CStr());
 
 			_timer.Push(
 				[this](void *parameter) -> ov::DelayQueueAction {
@@ -178,8 +178,8 @@ namespace ov
 		LockGuard lock_guard(_worker_list_mutex);
 
 		description.AppendFormat(
-			"<SocketPool: %p, workers: %zu",
-			this, _worker_list.size());
+			"<SocketPool: %p, %s, workers: %zu",
+			this, _name.CStr(), _worker_list.size());
 
 		for (auto &worker : _worker_list)
 		{
