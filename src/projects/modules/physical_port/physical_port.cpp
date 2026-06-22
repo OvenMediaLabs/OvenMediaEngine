@@ -257,7 +257,7 @@ bool PhysicalPort::CreateDatagramSocket(
 		  address.ToString().CStr());
 #else	// SO_REUSEPORT
 	// `SO_REUSEPORT` is unavailable at build time - create a single datagram socket directly to avoid redundant work and log spam
-	logti("SO_REUSEPORT is not supported on this platform, creating a single datagram socket for %s",
+	logtw("SO_REUSEPORT is not supported on this platform, creating a single datagram socket for %s",
 		  address.ToString().CStr());
 #endif	// SO_REUSEPORT
 
