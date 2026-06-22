@@ -191,7 +191,8 @@ bool PhysicalPort::CreateDatagramSocket(
 
 #ifdef SO_REUSEPORT
 	// Set `SO_REUSEPORT` before `Bind()` via the additional-options callback.
-	// On failure, returns an error so the loop skips this socket and the caller falls back to a single non-reuseport socket.
+	// On failure, returns an error so the loop skips this socket;
+	// the caller falls back to a single non-reuseport socket only if every socket fails (`succeeded_count == 0`).
 	auto reuseport_callback = [on_socket_created](const std::shared_ptr<ov::Socket> &socket) -> std::shared_ptr<ov::Error> {
 		if (socket->SetSockOpt<int>(SO_REUSEPORT, 1) == false)
 		{
