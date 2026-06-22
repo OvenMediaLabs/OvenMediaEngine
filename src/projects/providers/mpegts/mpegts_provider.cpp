@@ -50,6 +50,13 @@ namespace pvd
 		std::vector<ov::String> address_string_list;
 		auto physical_port_manager = PhysicalPortManager::GetInstance();
 
+		// MPEG-TS uses one stream per port, so multiple workers have no effect.
+		if (mpegts_provider_config.GetWorkerCount() > 1)
+		{
+			logtw("MPEG-TS WorkerCount is set to %d, but only 1 worker is used per port",
+				  mpegts_provider_config.GetWorkerCount());
+		}
+
 		// Snapshot to bind. Items were populated by `Start()` with empty
 		// `_physical_port_list`; here we create the physical ports and attach them via
 		// `SetPhysicalPortList()`.
@@ -80,7 +87,7 @@ namespace pvd
 
 			for (const auto &address : address_list)
 			{
-				auto physical_port = physical_port_manager->CreatePort("MPEGTS", socket_type, address, mpegts_provider_config.GetWorkerCount());
+				auto physical_port = physical_port_manager->CreatePort("MPEGTS", socket_type, address, 1);
 
 				if (physical_port == nullptr)
 				{
