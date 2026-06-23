@@ -109,6 +109,7 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 		case cmn::BitstreamFormat::JPEG:
 		case cmn::BitstreamFormat::PNG:
 		case cmn::BitstreamFormat::WEBP:
+		case cmn::BitstreamFormat::AVIF:
 			result = true;
 			break;
 		case cmn::BitstreamFormat::AAC_LATM:

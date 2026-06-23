@@ -22,7 +22,7 @@ namespace tc
 		// Video Codecs
 		// --------------------------------------------------------------------------
 		Register(info::CodecModule("FFmpeg Video Codecs", cmn::MediaType::Video, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
-						   {cmn::MediaCodecId::H264, cmn::MediaCodecId::H265, cmn::MediaCodecId::Vp8},
+						   {cmn::MediaCodecId::H264, cmn::MediaCodecId::H265, cmn::MediaCodecId::Vp8, cmn::MediaCodecId::Av1},
 						   true, true, false, false));
 
 		Register(info::CodecModule("Open Source H.264 Codec", cmn::MediaType::Video, cmn::MediaCodecModuleId::OPENH264, 0, "-",
@@ -58,7 +58,7 @@ namespace tc
 		// Image Codecs
 		// --------------------------------------------------------------------------
 		Register(info::CodecModule("FFmpeg Image Codec", cmn::MediaType::Video, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
-						   {cmn::MediaCodecId::Jpeg, cmn::MediaCodecId::Png, cmn::MediaCodecId::Webp},
+						   {cmn::MediaCodecId::Jpeg, cmn::MediaCodecId::Png, cmn::MediaCodecId::Webp, cmn::MediaCodecId::Avif},
 						   true, false, true, false));
 
 		// --------------------------------------------------------------------------
