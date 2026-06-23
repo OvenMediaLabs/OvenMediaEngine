@@ -66,7 +66,26 @@ bool FilterLavfiRescaler::BuildDescription(ov::String &desc)
 
 	// Scaler description of default module
 	auto resolution = _output_track->GetResolution();
-	desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
+	if (_output_track->GetCodecId() == cmn::MediaCodecId::Avif)
+	{
+		// Colour-managed AVIF thumbnails only. AVIF carries an explicit CICP tag
+		// that browsers honour, so the samples and the tag must agree. The scale
+		// step does geometry; the colorspace filter does the matrix conversion to
+		// BT.709 full range, reading the input matrix per frame from the source tag
+		// (SendFrame stamps untagged frames so the matrix is always defined).
+		// iprimaries/itrc are pinned BT.709, so a BT.601-matrix source is treated as
+		// BT.709 gamut and is not gamut-converted. JPEG/PNG/WEBP are unchanged: they
+		// stay on the plain bilinear path below.
+		_image_color_managed = true;
+		desc += ov::String::FormatString(
+			"scale=%dx%d:flags=bilinear,"
+			"colorspace=all=bt709:range=pc:iprimaries=bt709:itrc=bt709",
+			resolution.width, resolution.height);
+	}
+	else
+	{
+		desc += ov::String::FormatString("scale=%dx%d:flags=bilinear", resolution.width, resolution.height);
+	}
 
 	return true;
 }
@@ -259,6 +278,31 @@ bool FilterLavfiRescaler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 			  media_frame->GetWidth(), media_frame->GetHeight(), _src_width, _src_height);
 
 		return false;
+	}
+
+	// The colorspace filter (AVIF colour leg) rejects an unspecified input matrix.
+	// Rather than seed the buffersrc with colorspace/range options (those are
+	// FFmpeg 7.0+), stamp the matrix/range onto each untagged frame here so the
+	// filter always sees a defined matrix. A genuine BT.601 frame keeps its own tag
+	// and is converted; only untagged frames are stamped BT.709 (full range for
+	// yuvj), matching OME's own WebRTC/LL-HLS playback of untagged content.
+	if (_image_color_managed)
+	{
+		auto *frame = static_cast<AVFrame *>(media_frame->GetPrivData());
+		if (frame != nullptr)
+		{
+			if (frame->colorspace == AVCOL_SPC_UNSPECIFIED)
+			{
+				frame->colorspace = AVCOL_SPC_BT709;
+			}
+			if (frame->color_range == AVCOL_RANGE_UNSPECIFIED)
+			{
+				bool yuvj = (frame->format == AV_PIX_FMT_YUVJ420P ||
+							 frame->format == AV_PIX_FMT_YUVJ422P ||
+							 frame->format == AV_PIX_FMT_YUVJ444P);
+				frame->color_range = yuvj ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+			}
+		}
 	}
 
 	// PushFrame transfers the frame from GPU to host memory when _use_hwframe_transfer is set.
