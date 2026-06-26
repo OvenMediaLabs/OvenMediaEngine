@@ -99,7 +99,7 @@ Each `<PreloadModel>` entry has the following fields:
 | Key | Description |
 |---|---|
 | Path | Path to the model file. Can be absolute or relative to the config directory. |
-| Devices | Comma-separated list of CUDA device indices to load the model onto (e.g. `0`, `0,1`, `2`). Set to `all` to load on every available GPU. If omitted, defaults to device 0. |
+| Devices | Comma-separated list of OME device indices to load the model onto (e.g. `0`, `0,1`, `2`), the same numbering as `<Video><Modules>nv:N</Modules>`. Set to `all` to load on every available GPU. If omitted, defaults to device 0. |
 
 ```xml
 <Server>

@@ -52,25 +52,42 @@ bool Transcoder::Start()
 		{
 			ov::String resolved = ov::GetFilePath(entry.GetPath(), config_path);
 
-			// Parse <Devices>:
-			// - Omitted/empty → device 0 (default)
+			// Parse <Devices> as OME device indices (the same namespace as
+			// <Modules>nv:N), then map each to its CUDA device id. This keeps the
+			// preloaded context and the per-stream STT encoder on the same GPU,
+			// since OME and CUDA device ordering can differ (e.g. CUDA orders by
+			// performance, OME by PCI bus).
+			// - Omitted/empty → OME device 0 (default)
 			// - "all" → empty list passed to Preload (= load on every available GPU)
-			// - "0,1" etc → specific device indices
+			// - "0,1" etc → specific OME device indices
 			std::vector<int32_t> device_ids;
 			const ov::String &devices_str = entry.GetDevices();
 			if (devices_str.IsEmpty())
 			{
-				device_ids.push_back(0);
+				int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, 0);
+				if (cuda_id >= 0)
+				{
+					device_ids.push_back(cuda_id);
+				}
 			}
 			else if (devices_str.LowerCaseString() != "all")
 			{
 				for (const auto &token : devices_str.Split(","))
 				{
 					ov::String trimmed = token.Trim();
-					if (!trimmed.IsEmpty())
+					if (trimmed.IsEmpty())
 					{
-						device_ids.push_back(ov::Converter::ToInt32(trimmed));
+						continue;
 					}
+
+					int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(
+						cmn::MediaCodecModuleId::NVENC, ov::Converter::ToInt32(trimmed));
+					if (cuda_id < 0)
+					{
+						logtw("Whisper preload: no NVIDIA device for OME device id %s, skipping. path=%s", trimmed.CStr(), resolved.CStr());
+						continue;
+					}
+					device_ids.push_back(cuda_id);
 				}
 			}
 			// "all" → device_ids remains empty → Preload loads on all available GPUs
