@@ -95,8 +95,14 @@ bool Transcoder::Start()
 				for (const auto &token : devices_str.Split(","))
 				{
 					ov::String trimmed = token.Trim();
-					if (is_numeric(trimmed) == false)
+					if (trimmed.IsEmpty())
 					{
+						// e.g. a trailing comma in "0,1," — ignore quietly.
+						continue;
+					}
+					if (is_numeric(trimmed) == false || trimmed.GetLength() > 9)
+					{
+						// Non-numeric, or too many digits to be a valid int32 device index.
 						logtw("Whisper preload: ignoring invalid device id \"%s\" in Devices(\"%s\"). path=%s", trimmed.CStr(), devices_str.CStr(), resolved.CStr());
 						continue;
 					}
