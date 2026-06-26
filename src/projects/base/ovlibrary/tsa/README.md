@@ -99,9 +99,12 @@ with `static_assert`). So you write the source once and build with `ON` only whe
 the analysis.
 
 > [!IMPORTANT]
-> Even with `OME_THREAD_SAFETY=ON`, no analysis happens unless the compiler is Clang. In
-> that case CMake prints a warning at build time. To actually run the analysis, build with
-> Clang (OME defaults to `OME_USE_CLANG=ON`, so it uses Clang without any extra setup).
+> Even with `OME_THREAD_SAFETY=ON`, no analysis happens unless the compiler is actually
+> Clang. OME defaults to `OME_USE_CLANG=ON`, but that falls back to the system compiler
+> (GCC) when `clang`/`clang++` are not installed, so make sure Clang is available. If TSA
+> ends up off, CMake prints a `NO EFFECT` warning at configure time (not during the build);
+> look for `[OME] Clang thread-safety analysis: ENABLED` in the configure log to confirm it
+> is on (`cmake/CompilerOptions.cmake`).
 
 ---
 
