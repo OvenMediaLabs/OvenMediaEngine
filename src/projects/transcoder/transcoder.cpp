@@ -77,16 +77,16 @@ bool Transcoder::Start()
 			// - Omitted/empty → OME device 0 (default)
 			// - "all" → load on every available GPU
 			// - "0,1" etc → specific OME device indices
-			const ov::String &devices_str = entry.GetDevices();
+			const ov::String devices_str = entry.GetDevices().Trim();
 			const bool load_all = devices_str.LowerCaseString() == "all";
 
 			std::vector<int32_t> device_ids;
 			if (devices_str.IsEmpty())
 			{
-				int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, 0);
-				if (cuda_id >= 0)
+				// Default: OME device 0, only if it is an available NVIDIA device.
+				if (TranscodeGPU::GetInstance()->IsSupported(cmn::MediaCodecModuleId::NVENC, 0) == true)
 				{
-					device_ids.push_back(cuda_id);
+					device_ids.push_back(TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, 0));
 				}
 			}
 			else if (load_all == false)
@@ -100,14 +100,16 @@ bool Transcoder::Start()
 						continue;
 					}
 
-					int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(
-						cmn::MediaCodecModuleId::NVENC, ov::Converter::ToInt32(trimmed));
-					if (cuda_id < 0)
+					// Validate the index against the actual device count before
+					// resolving; GetExternalDeviceId does not range-check and may
+					// return a stale CUDA id for an out-of-range index.
+					int32_t ome_device_id = ov::Converter::ToInt32(trimmed);
+					if (TranscodeGPU::GetInstance()->IsSupported(cmn::MediaCodecModuleId::NVENC, ome_device_id) == false)
 					{
-						logtw("Whisper preload: no NVIDIA device for OME device id %s, skipping. path=%s", trimmed.CStr(), resolved.CStr());
+						logtw("Whisper preload: OME device id %s is not an available NVIDIA device, skipping. path=%s", trimmed.CStr(), resolved.CStr());
 						continue;
 					}
-					device_ids.push_back(cuda_id);
+					device_ids.push_back(TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, ome_device_id));
 				}
 			}
 
