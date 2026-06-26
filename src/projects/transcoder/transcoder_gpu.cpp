@@ -477,7 +477,9 @@ std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNV(cmn::DeviceId 
 
 int32_t TranscodeGPU::GetDeviceIdNV(cmn::DeviceId gpu_id)
 {
-	if (gpu_id >= MAX_DEVICE_COUNT)
+	// Range-check against the actual device count, not just the array bound, so
+	// an out-of-range index returns -1 instead of a stale CUDA id.
+	if (gpu_id < 0 || gpu_id >= _device_count_nv)
 	{
 		return -1;
 	}
