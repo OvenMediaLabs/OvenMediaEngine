@@ -48,6 +48,23 @@ bool Transcoder::Start()
 		const auto &config_path = cfg::ConfigManager::GetInstance()->GetConfigPath();
 
 		std::vector<std::pair<ov::String, std::vector<int32_t>>> preload_models;
+
+		// A <Devices> token must be a plain non-negative integer (an OME device index).
+		auto is_numeric = [](const ov::String &value) -> bool {
+			if (value.IsEmpty())
+			{
+				return false;
+			}
+			for (const char *p = value.CStr(); *p != '\0'; ++p)
+			{
+				if (*p < '0' || *p > '9')
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+
 		for (const auto &entry : whisper_cfg.GetPreloadModels())
 		{
 			ov::String resolved = ov::GetFilePath(entry.GetPath(), config_path);
@@ -58,10 +75,12 @@ bool Transcoder::Start()
 			// since OME and CUDA device ordering can differ (e.g. CUDA orders by
 			// performance, OME by PCI bus).
 			// - Omitted/empty → OME device 0 (default)
-			// - "all" → empty list passed to Preload (= load on every available GPU)
+			// - "all" → load on every available GPU
 			// - "0,1" etc → specific OME device indices
-			std::vector<int32_t> device_ids;
 			const ov::String &devices_str = entry.GetDevices();
+			const bool load_all = devices_str.LowerCaseString() == "all";
+
+			std::vector<int32_t> device_ids;
 			if (devices_str.IsEmpty())
 			{
 				int32_t cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, 0);
@@ -70,13 +89,14 @@ bool Transcoder::Start()
 					device_ids.push_back(cuda_id);
 				}
 			}
-			else if (devices_str.LowerCaseString() != "all")
+			else if (load_all == false)
 			{
 				for (const auto &token : devices_str.Split(","))
 				{
 					ov::String trimmed = token.Trim();
-					if (trimmed.IsEmpty())
+					if (is_numeric(trimmed) == false)
 					{
+						logtw("Whisper preload: ignoring invalid device id \"%s\" in Devices(\"%s\"). path=%s", trimmed.CStr(), devices_str.CStr(), resolved.CStr());
 						continue;
 					}
 
@@ -90,7 +110,15 @@ bool Transcoder::Start()
 					device_ids.push_back(cuda_id);
 				}
 			}
-			// "all" → device_ids remains empty → Preload loads on all available GPUs
+
+			// Only "all" loads on every GPU (empty device_ids). If a specific or
+			// default selection resolved nothing, skip the model rather than letting
+			// an empty list fall through to "all".
+			if (load_all == false && device_ids.empty())
+			{
+				logtw("Whisper preload: no usable GPU resolved from Devices(\"%s\"), skipping model. path=%s", devices_str.CStr(), resolved.CStr());
+				continue;
+			}
 
 			preload_models.emplace_back(std::move(resolved), std::move(device_ids));
 		}
