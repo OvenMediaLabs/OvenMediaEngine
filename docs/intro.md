@@ -82,6 +82,7 @@ We need your help to keep and develop our open-source project, and we want to te
 
 * [Finding Bugs](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#finding-bugs)
 * [Reviewing Code](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#reviewing-code)
+* [Writing Code: Thread Safety Analysis (TSA) Guide](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/projects/base/ovlibrary/tsa/README.md)
 * [Sharing Ideas](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#sharing-ideas)
 * [Testing](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#testing)
 * [Improving Documentation](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#improving-documentation)
