@@ -52,21 +52,35 @@ namespace mon
 
 		void UpdateMetadata(const info::ManagedQueue &info)
 		{
+			// Read from info first (its getters take ManagedQueue's own lock); then take
+			// _mutex only for the assignment to keep the exclusive section minimal and
+			// avoid nested locking.
+			auto urn	   = info.GetUrn();
+			auto type_name = info.GetTypeName();
+
 			ov::LockGuard lock(_mutex);
-			_urn	   = info.GetUrn();
-			_type_name = info.GetTypeName();
+			_urn	   = std::move(urn);
+			_type_name = std::move(type_name);
 		}
 
 		void UpdateMetrics(const info::ManagedQueue &info)
 		{
+			const auto peak						 = info.GetPeak();
+			const auto size						 = info.GetSize();
+			const auto threshold				 = info.GetThreshold();
+			const auto input_message_per_second	 = info.GetInputMessagePerSecond();
+			const auto output_message_per_second = info.GetOutputMessagePerSecond();
+			const auto drop_count				 = info.GetDropCount();
+			const auto waiting_time				 = info.GetWaitingTimeInUs();
+
 			ov::LockGuard lock(_mutex);
-			_peak					   = info.GetPeak();
-			_size					   = info.GetSize();
-			_threshold				   = info.GetThreshold();
-			_input_message_per_second  = info.GetInputMessagePerSecond();
-			_output_message_per_second = info.GetOutputMessagePerSecond();
-			_drop_count				   = info.GetDropCount();
-			_waiting_time			   = info.GetWaitingTimeInUs();
+			_peak					   = peak;
+			_size					   = size;
+			_threshold				   = threshold;
+			_input_message_per_second  = input_message_per_second;
+			_output_message_per_second = output_message_per_second;
+			_drop_count				   = drop_count;
+			_waiting_time			   = waiting_time;
 		}
 
 		size_t GetPeak() const
