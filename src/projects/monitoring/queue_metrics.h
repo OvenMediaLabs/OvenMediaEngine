@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include <mutex>
-#include <shared_mutex>
+#include <base/ovlibrary/ovlibrary.h>
 
 #include "base/info/managed_queue.h"
 
@@ -41,26 +40,26 @@ namespace mon
 		// thread may reassign _urn concurrently (see UpdateMetadata).
 		std::shared_ptr<info::ManagedQueue::URN> GetUrn() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _urn;
 		}
 
 		ov::String GetTypeName() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _type_name;
 		}
 
 		void UpdateMetadata(const info::ManagedQueue &info)
 		{
-			std::unique_lock lock(_mutex);
+			ov::LockGuard lock(_mutex);
 			_urn	   = info.GetUrn();
 			_type_name = info.GetTypeName();
 		}
 
 		void UpdateMetrics(const info::ManagedQueue &info)
 		{
-			std::unique_lock lock(_mutex);
+			ov::LockGuard lock(_mutex);
 			_peak					   = info.GetPeak();
 			_size					   = info.GetSize();
 			_threshold				   = info.GetThreshold();
@@ -72,61 +71,61 @@ namespace mon
 
 		size_t GetPeak() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _peak;
 		}
 
 		size_t GetSize() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _size;
 		}
 
 		size_t GetThreshold() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _threshold;
 		}
 
 		size_t GetInputMessagePerSecond() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _input_message_per_second;
 		}
 
 		size_t GetOutputMessagePerSecond() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _output_message_per_second;
 		}
 
 		size_t GetDropCount() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _drop_count;
 		}
 
 		int64_t GetWaitingTime() const
 		{
-			std::shared_lock lock(_mutex);
+			ov::SharedLockGuard lock(_mutex);
 			return _waiting_time;
 		}
 
 	private:
-		mutable std::shared_mutex _mutex;
+		mutable ov::SharedMutex _mutex;
 
 		// metadata
 		uint32_t _id;
-		std::shared_ptr<info::ManagedQueue::URN> _urn;
-		ov::String _type_name;
+		std::shared_ptr<info::ManagedQueue::URN> _urn OV_GUARDED_BY(_mutex);
+		ov::String _type_name OV_GUARDED_BY(_mutex);
 
 		// metrics
-		size_t _threshold;
-		size_t _peak;
-		size_t _size;
-		size_t _input_message_per_second;
-		size_t _output_message_per_second;
-		size_t _drop_count;
-		int64_t _waiting_time;
+		size_t _threshold OV_GUARDED_BY(_mutex);
+		size_t _peak OV_GUARDED_BY(_mutex);
+		size_t _size OV_GUARDED_BY(_mutex);
+		size_t _input_message_per_second OV_GUARDED_BY(_mutex);
+		size_t _output_message_per_second OV_GUARDED_BY(_mutex);
+		size_t _drop_count OV_GUARDED_BY(_mutex);
+		int64_t _waiting_time OV_GUARDED_BY(_mutex);
 	};
 }  // namespace mon
