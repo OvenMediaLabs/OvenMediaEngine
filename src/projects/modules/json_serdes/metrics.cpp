@@ -84,9 +84,11 @@ namespace serdes
 
 		SetInt64(value, "id", metrics->GetId());
 		// A queue can be registered before its URN is set (e.g. default-constructed
-		// queue, URN assigned later via SetUrn), so GetUrn() may be null.
+		// queue, URN assigned later via SetUrn), so GetUrn() may be null. Use the same
+		// "No Urn" sentinel as info::ManagedQueue::ToString(); an empty string would trip
+		// the non-optional SetString assert and omit the key.
 		auto urn = metrics->GetUrn();
-		SetString(value, "urn", (urn != nullptr) ? urn->ToString() : ov::String(""), Optional::False);
+		SetString(value, "urn", (urn != nullptr) ? urn->ToString() : ov::String("No Urn"), Optional::False);
 		SetString(value, "type", metrics->GetTypeName(), Optional::False);
 		SetInt(value, "size", metrics->GetSize());
 		SetInt(value, "peak", metrics->GetPeak());
