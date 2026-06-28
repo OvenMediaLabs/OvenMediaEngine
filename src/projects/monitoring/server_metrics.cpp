@@ -174,13 +174,14 @@ namespace mon
 		auto delete_lazy_stream_timeout_conf = _server_config->GetModules().GetRecovery().GetDeleteLazyStreamTimeout();
 		if (delete_lazy_stream_timeout_conf > 0)
 		{
-			if ((queue_info.GetThresholdExceededTimeMs() > delete_lazy_stream_timeout_conf) && (!queue_info.GetUrn()->GetStreamName().IsEmpty()))
+			auto urn = queue_info.GetUrn();
+			if ((urn != nullptr) && (queue_info.GetThresholdExceededTimeMs() > delete_lazy_stream_timeout_conf) && (!urn->GetStreamName().IsEmpty()))
 			{
-				auto vhost_app	 = queue_info.GetUrn()->GetVHostAppName();
-				auto stream_name = queue_info.GetUrn()->GetStreamName();
+				auto vhost_app	 = urn->GetVHostAppName();
+				auto stream_name = urn->GetStreamName();
 
 				logtc("The %s queue has been exceeded for %" PRId64 " ms. stream will be forcibly deleted. VhostApp(%s), Stream(%s)",
-					  queue_info.GetUrn()->ToString().CStr(), queue_info.GetThresholdExceededTimeMs(), vhost_app.CStr(), stream_name.CStr());
+					  urn->ToString().CStr(), queue_info.GetThresholdExceededTimeMs(), vhost_app.CStr(), stream_name.CStr());
 
 				if (vhost_app.IsValid())
 				{

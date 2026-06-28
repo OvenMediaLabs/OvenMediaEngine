@@ -83,7 +83,10 @@ namespace serdes
 		Json::Value value;
 
 		SetInt64(value, "id", metrics->GetId());
-		SetString(value, "urn", metrics->GetUrn()->ToString(), Optional::False);
+		// A queue can be registered before its URN is set (e.g. default-constructed
+		// queue, URN assigned later via SetUrn), so GetUrn() may be null.
+		auto urn = metrics->GetUrn();
+		SetString(value, "urn", (urn != nullptr) ? urn->ToString() : ov::String(""), Optional::False);
 		SetString(value, "type", metrics->GetTypeName(), Optional::False);
 		SetInt(value, "size", metrics->GetSize());
 		SetInt(value, "peak", metrics->GetPeak());
