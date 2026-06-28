@@ -477,9 +477,9 @@ std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNV(cmn::DeviceId 
 
 int32_t TranscodeGPU::GetDeviceIdNV(cmn::DeviceId gpu_id)
 {
-	// Range-check against the actual device count, not just the array bound, so
-	// an out-of-range index returns -1 instead of a stale CUDA id.
-	if (gpu_id < 0 || gpu_id >= _device_count_nv)
+	// Valid only for a populated slot. Arrays are indexed by NVML device id
+	// (sparse), so _device_count_nv (a success counter) is not the index bound.
+	if (gpu_id < 0 || gpu_id >= MAX_DEVICE_COUNT || _device_context_nv[gpu_id] == nullptr)
 	{
 		return -1;
 	}
@@ -499,12 +499,9 @@ bool TranscodeGPU::IsSupportedNILOGAN(cmn::DeviceId gpu_id)
 
 bool TranscodeGPU::IsSupportedNV(cmn::DeviceId gpu_id)
 {
-	if (_device_count_nv == 0 || gpu_id >= _device_count_nv)
-	{
-		return false;
-	}
-
-	return true;
+	// Supported iff this slot was successfully initialized. Indices are sparse
+	// (by NVML device id), so a count comparison is not enough.
+	return gpu_id >= 0 && gpu_id < MAX_DEVICE_COUNT && _device_context_nv[gpu_id] != nullptr;
 }
 
 bool TranscodeGPU::IsSupportedXMA(cmn::DeviceId gpu_id)
