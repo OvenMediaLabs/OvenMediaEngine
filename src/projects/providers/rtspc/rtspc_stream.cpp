@@ -11,6 +11,7 @@
 
 #include <base/info/application.h>
 #include <base/ovlibrary/byte_io.h>
+#include <modules/bitstream/aac/aac_adts.h>
 #include <modules/rtp_rtcp/rtp_depacketizer_mpeg4_generic_audio.h>
 
 #include "rtspc_provider.h"
@@ -1080,6 +1081,119 @@ namespace pvd
 
 		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
+
+		// A single RTP packet may carry several AAC access units (e.g. MediaMTX/gortsplib aggregates AUs),
+		// and our depacketizer assembles them into one ADTS buffer with one timestamp.
+		// fMP4/LL-HLS requires one access unit (1024 samples) per sample,
+		// so split the assembled ADTS stream into per-frame MediaPackets here,
+		// advancing the timestamp by one frame duration.
+		// Otherwise the packager emits a single oversized sample per RTP packet (N frames glued together),
+		// which strict fMP4 audio decoders (e.g. Safari) reject.
+		if (track->GetCodecId() == cmn::MediaCodecId::Aac)
+		{
+			const int64_t timescale			= track->GetTimeBase().GetDen();
+			const int64_t samples_per_frame = (track->GetAudioSamplesPerFrame() > 0) ? track->GetAudioSamplesPerFrame() : 1024;
+
+			// Forward each frame as a copy-on-write slice of the assembled ADTS buffer (no per-frame copy).
+			auto data						= bitstream->GetDataAs<uint8_t>();
+			const auto length				= bitstream->GetLength();
+
+			// frame_duration is resolved once from the first ADTS header; the sample rate is constant per track.
+			int64_t frame_duration			= 0;
+			size_t offset					= 0;
+
+			auto frame_pts					= adjusted_timestamp;
+			auto frame_dts					= adjusted_timestamp;
+
+			while ((offset + ADTS_MIN_SIZE) <= length)
+			{
+				AACAdts adts;
+
+				if (AACAdts::Parse(data + offset, length - offset, adts) == false)
+				{
+					logtd(
+						"[%s] Stopped AAC ADTS splitting: no valid ADTS header at offset %zu/%zu (channel %u). "
+						"The assembled buffer is likely truncated or corrupted (e.g. RTP packet loss).",
+						GetNamePath().CStr(), offset, length, channel);
+					break;
+				}
+
+				const auto frame_length = adts.AacFrameLength();
+				if ((frame_length < ADTS_MIN_SIZE) || ((offset + frame_length) > length))
+				{
+					logtd(
+						"[%s] Stopped AAC ADTS splitting: frame length %u at offset %zu exceeds assembled buffer %zu (channel %u). "
+						"The assembled buffer is likely truncated or corrupted (e.g. RTP packet loss).",
+						GetNamePath().CStr(), static_cast<uint32_t>(frame_length), offset, length, channel);
+					break;
+				}
+
+				// Resolve the per-frame duration once; the sample rate is constant within a track.
+				//
+				// NOTE: an invalid sampling-frequency index trips `OV_ASSERT2()` in debug builds,
+				// which is intentional (it surfaces malformed input).
+				// Release builds `return 0;`. A non-positive duration (invalid sample rate or timebase) means we cannot time the frames,
+				// so we stop splitting and forward the whole assembled buffer unsplit below instead of emitting identical-timestamp samples.
+				if (frame_duration == 0)
+				{
+					const auto samplerate = adts.Samplerate();
+
+					if (samplerate != 0)
+					{
+						frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
+					}
+
+					if (frame_duration <= 0)
+					{
+						break;
+					}
+				}
+
+				auto media_packet = std::make_shared<MediaPacket>(
+					GetMsid(),
+					track->GetMediaType(),
+					track->GetId(),
+					bitstream->Subdata(offset, frame_length),
+					frame_pts,
+					frame_dts,
+					-1LL,
+					MediaPacketFlag::Unknown,
+					bitstream_format,
+					packet_type);
+				SendFrame(media_packet);
+
+				frame_pts += frame_duration;
+				frame_dts += frame_duration;
+				offset += frame_length;
+			}
+
+			if (offset == 0)
+			{
+				// No frame could be emitted (unparseable first frame, assembled buffer shorter than an ADTS header,
+				// or indeterminable timing): forward the whole assembled buffer unsplit, preserving the previous behavior.
+				auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
+																  track->GetMediaType(),
+																  track->GetId(),
+																  bitstream,
+																  adjusted_timestamp,
+																  adjusted_timestamp,
+																  -1LL,
+																  MediaPacketFlag::Unknown,
+																  bitstream_format,
+																  packet_type);
+				SendFrame(media_packet);
+			}
+			else if ((offset < length) && ((length - offset) < ADTS_MIN_SIZE))
+			{
+				// The loop ended on a truncated tail: fewer than one ADTS header (`< ADTS_MIN_SIZE`) remained.
+				// A mid-stream break on a malformed header/length leaves `>= ADTS_MIN_SIZE` bytes and was already
+				// logged at the break, so it is excluded here to avoid double logging.
+				logtd("[%s] Dropped %zu trailing byte(s) of the assembled AAC buffer after splitting (offset %zu/%zu, channel %u).",
+					  GetNamePath().CStr(), static_cast<size_t>(length - offset), offset, length, channel);
+			}
+
+			return;
+		}
 
 		auto frame = std::make_shared<MediaPacket>(GetMsid(),
 												   track->GetMediaType(),
