@@ -264,11 +264,13 @@ namespace pvd
 
 							SendFrame(media_packet);
 						}
-						else if (offset < payload_length)
+						else if ((offset < payload_length) && ((payload_length - offset) < ADTS_MIN_SIZE))
 						{
-							// Some frames were emitted; the trailing remainder was dropped (truncated/corrupt tail).
+							// The loop ended on a truncated tail: fewer than one ADTS header (`< ADTS_MIN_SIZE`) remained.
+							// A mid-PES break on a malformed header/length leaves `>= ADTS_MIN_SIZE` bytes and was already
+							// logged at the break, so it is excluded here to avoid double logging.
 							logtd("[%s] Dropped %zu trailing byte(s) of the AAC PES after splitting (offset %zu/%u, PID: %d).",
-								GetNamePath().CStr(), static_cast<size_t>(payload_length - offset), offset, payload_length, es->PID());
+								  GetNamePath().CStr(), static_cast<size_t>(payload_length - offset), offset, payload_length, es->PID());
 						}
 					}
 					else
