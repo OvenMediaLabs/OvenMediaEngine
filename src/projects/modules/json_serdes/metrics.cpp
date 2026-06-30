@@ -94,6 +94,12 @@ namespace serdes
 		SetInt(value, "peak", metrics->GetPeak());
 		SetInt(value, "threshold", metrics->GetThreshold());
 		SetInt(value, "avgWaitingTime", metrics->GetWaitingTime());
+		SetInt(value, "dwellMinUs", metrics->GetDwellMin());
+		SetInt(value, "dwellAvgUs", metrics->GetDwellAvg());
+		SetInt(value, "dwellP50Us", metrics->GetDwellP50());
+		SetInt(value, "dwellP90Us", metrics->GetDwellP90());
+		SetInt(value, "dwellP99Us", metrics->GetDwellP99());
+		SetInt(value, "dwellMaxUs", metrics->GetDwellMax());
 		SetInt(value, "inputPerSecond", metrics->GetInputMessagePerSecond());
 		SetInt(value, "outputPerSecond", metrics->GetOutputMessagePerSecond());
 		SetInt(value, "drop", metrics->GetDropCount());

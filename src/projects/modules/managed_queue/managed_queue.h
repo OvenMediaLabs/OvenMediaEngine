@@ -270,7 +270,9 @@ namespace ov
 			_output_message_count++;
 
 			// Update statistics of waiting time (microseconds)
-			_waiting_time_in_us = _waiting_time_in_us * 0.9 + std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - node->_start).count() * 0.1;
+			int64_t dwell_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - node->_start).count();
+			_waiting_time_in_us = _waiting_time_in_us * 0.9 + dwell_us * 0.1;
+			RecordDwellUs(dwell_us);
 
 			delete node;
 
@@ -549,11 +551,13 @@ namespace ov
 
 					// Logging
 					_last_logging_time += elapsed_time;
-					if ((_last_logging_time >= _log_interval) && (_last_logged_peak < _peak))
+					if ((_last_logged_peak < _peak) || (_last_logging_time >= _log_interval))
 					{
 						_last_logging_time = 0;
 
-						logw(LOG_TAG, "Exceeded. %s", GetInfoString().CStr());
+						logw(LOG_TAG, "Exceeded. %s dwell_us[n=%llu min=%lld avg=%lld p50=%lld p90=%lld p99=%lld max=%lld]", GetInfoString().CStr(),
+							static_cast<unsigned long long>(GetDwellCount()), static_cast<long long>(GetDwellMinUs()), static_cast<long long>(GetDwellAvgUs()),
+							static_cast<long long>(GetDwellPercentileUs(0.5)), static_cast<long long>(GetDwellPercentileUs(0.9)), static_cast<long long>(GetDwellPercentileUs(0.99)), static_cast<long long>(GetDwellMaxUs()));
 
 						_last_logged_peak = _peak;
 					}

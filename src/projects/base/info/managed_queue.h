@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <limits>
+
 #include <base/info/vhost_app_name.h>
 
 
@@ -253,6 +255,92 @@ namespace info
 			return _waiting_time_in_us;
 		}
 
+		// Dwell-time distribution: microseconds each item waited in the queue, recorded per
+		// Dequeue into log2 buckets so percentiles stay cheap on the hot path.
+		void RecordDwellUs(int64_t dwell_us)
+		{
+			if (dwell_us < 0)
+			{
+				dwell_us = 0;
+			}
+
+			// Bucket index = right-shifts until zero (~log2), clamped to the last bucket.
+			int bucket = 0;
+			int64_t value = dwell_us;
+			while (value > 0 && bucket < DWELL_BUCKETS - 1)
+			{
+				value >>= 1;
+				bucket++;
+			}
+
+			_dwell_hist[bucket].fetch_add(1, std::memory_order_relaxed);
+			_dwell_count.fetch_add(1, std::memory_order_relaxed);
+			_dwell_sum_us.fetch_add(static_cast<uint64_t>(dwell_us), std::memory_order_relaxed);
+
+			if (dwell_us < _dwell_min_us.load(std::memory_order_relaxed))
+			{
+				_dwell_min_us.store(dwell_us, std::memory_order_relaxed);
+			}
+
+			if (dwell_us > _dwell_max_us.load(std::memory_order_relaxed))
+			{
+				_dwell_max_us.store(dwell_us, std::memory_order_relaxed);
+			}
+		}
+
+		int64_t GetDwellPercentileUs(double percentile) const
+		{
+			uint64_t total = _dwell_count.load(std::memory_order_relaxed);
+			if (total == 0)
+			{
+				return 0;
+			}
+
+			uint64_t target = static_cast<uint64_t>(total * percentile);
+			uint64_t cumulative = 0;
+			for (int i = 0; i < DWELL_BUCKETS; i++)
+			{
+				cumulative += _dwell_hist[i].load(std::memory_order_relaxed);
+				if (cumulative >= target)
+				{
+					return static_cast<int64_t>(1) << i;
+				}
+			}
+
+			return static_cast<int64_t>(1) << (DWELL_BUCKETS - 1);
+		}
+
+		int64_t GetDwellAvgUs() const
+		{
+			uint64_t total = _dwell_count.load(std::memory_order_relaxed);
+			if (total == 0)
+			{
+				return 0;
+			}
+
+			return static_cast<int64_t>(_dwell_sum_us.load(std::memory_order_relaxed) / total);
+		}
+
+		uint64_t GetDwellCount() const
+		{
+			return _dwell_count.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellMinUs() const
+		{
+			if (_dwell_count.load(std::memory_order_relaxed) == 0)
+			{
+				return 0;
+			}
+
+			return _dwell_min_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellMaxUs() const
+		{
+			return _dwell_max_us.load(std::memory_order_relaxed);
+		}
+
 		int64_t GetThresholdExceededTimeMs() const
 		{
 			return _threshold_exceeded_time_ms.load();
@@ -348,6 +436,14 @@ namespace info
 
 		// Drop Count
 		std::atomic<uint64_t> _drop_message_count{0};
+
+		// Dwell-time histogram (log2 microsecond buckets), see RecordDwellUs()
+		static constexpr int DWELL_BUCKETS = 48;
+		std::atomic<uint64_t> _dwell_hist[DWELL_BUCKETS] = {};
+		std::atomic<uint64_t> _dwell_count{0};
+		std::atomic<uint64_t> _dwell_sum_us{0};
+		std::atomic<int64_t> _dwell_min_us{std::numeric_limits<int64_t>::max()};
+		std::atomic<int64_t> _dwell_max_us{0};
 	};
 
 }  // namespace info

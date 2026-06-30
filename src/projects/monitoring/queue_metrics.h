@@ -72,6 +72,12 @@ namespace mon
 			const auto output_message_per_second = info.GetOutputMessagePerSecond();
 			const auto drop_count				 = info.GetDropCount();
 			const auto waiting_time				 = info.GetWaitingTimeInUs();
+			const auto dwell_p50 = info.GetDwellPercentileUs(0.5);
+			const auto dwell_p90 = info.GetDwellPercentileUs(0.9);
+			const auto dwell_p99 = info.GetDwellPercentileUs(0.99);
+			const auto dwell_avg = info.GetDwellAvgUs();
+			const auto dwell_min = info.GetDwellMinUs();
+			const auto dwell_max = info.GetDwellMaxUs();
 
 			ov::LockGuard lock(_mutex);
 			_peak					   = peak;
@@ -81,6 +87,12 @@ namespace mon
 			_output_message_per_second = output_message_per_second;
 			_drop_count				   = drop_count;
 			_waiting_time			   = waiting_time;
+			_dwell_p50 = dwell_p50;
+			_dwell_p90 = dwell_p90;
+			_dwell_p99 = dwell_p99;
+			_dwell_avg = dwell_avg;
+			_dwell_min = dwell_min;
+			_dwell_max = dwell_max;
 		}
 
 		size_t GetPeak() const
@@ -125,6 +137,42 @@ namespace mon
 			return _waiting_time;
 		}
 
+		int64_t GetDwellP50() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_p50;
+		}
+
+		int64_t GetDwellP90() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_p90;
+		}
+
+		int64_t GetDwellP99() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_p99;
+		}
+
+		int64_t GetDwellAvg() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_avg;
+		}
+
+		int64_t GetDwellMin() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_min;
+		}
+
+		int64_t GetDwellMax() const
+		{
+			ov::SharedLockGuard lock(_mutex);
+			return _dwell_max;
+		}
+
 	private:
 		mutable ov::SharedMutex _mutex;
 
@@ -141,5 +189,11 @@ namespace mon
 		size_t _output_message_per_second OV_GUARDED_BY(_mutex);
 		size_t _drop_count OV_GUARDED_BY(_mutex);
 		int64_t _waiting_time OV_GUARDED_BY(_mutex);
+		int64_t _dwell_p50 OV_GUARDED_BY(_mutex) = 0;
+		int64_t _dwell_p90 OV_GUARDED_BY(_mutex) = 0;
+		int64_t _dwell_p99 OV_GUARDED_BY(_mutex) = 0;
+		int64_t _dwell_avg OV_GUARDED_BY(_mutex) = 0;
+		int64_t _dwell_min OV_GUARDED_BY(_mutex) = 0;
+		int64_t _dwell_max OV_GUARDED_BY(_mutex) = 0;
 	};
 }  // namespace mon
