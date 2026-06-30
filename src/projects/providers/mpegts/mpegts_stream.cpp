@@ -181,7 +181,6 @@ namespace pvd
 						size_t offset					= 0;
 						auto frame_pts					= pts;
 						auto frame_dts					= dts;
-						bool split						= true;
 
 						while ((offset + ADTS_MIN_SIZE) <= payload_length)
 						{
@@ -209,21 +208,23 @@ namespace pvd
 
 							// Resolve the per-frame duration once; the sample rate is constant within a track.
 							//
-							// NOTE: an invalid sampling-frequency index trips `OV_ASSERT2()` in debug builds,
-							// which is intentional (it surfaces malformed input).
-							// Release builds `return 0;` we treat that as "timing unknown" and fall back to forwarding the PES unsplit,
-							// rather than emitting samples with identical timestamps.
+							// NOTE: an invalid sampling-frequency index trips OV_ASSERT2() in debug builds, which is
+							// intentional (it surfaces malformed input).
+							// Release builds return 0. A non-positive duration (invalid sample rate or timebase) means we cannot time the frames,
+							// so we stop splitting and forward the whole PES unsplit below instead of emitting identical-timestamp samples.
 							if (frame_duration == 0)
 							{
 								const auto samplerate = adts.Samplerate();
 
-								if (samplerate == 0)
+								if (samplerate != 0)
 								{
-									split = false;
-									break;
+									frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
 								}
 
-								frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
+								if (frame_duration <= 0)
+								{
+									break;
+								}
 							}
 
 							auto media_packet = std::make_shared<MediaPacket>(
@@ -245,10 +246,10 @@ namespace pvd
 							offset += frame_length;
 						}
 
-						// Timing could not be resolved (e.g. invalid sampling-frequency index):
-						// forward the whole PES as a single packet (previous behavior) instead of emitting identical-timestamp samples.
-						if (split == false)
+						if (offset == 0)
 						{
+							// No frame could be emitted (unparseable first frame, payload shorter than an ADTS header, or indeterminable timing):
+							// forward the whole PES unsplit, preserving the previous behavior.
 							auto media_packet = std::make_shared<MediaPacket>(
 								GetMsid(),
 								cmn::MediaType::Audio,
@@ -262,6 +263,12 @@ namespace pvd
 								cmn::PacketType::RAW);
 
 							SendFrame(media_packet);
+						}
+						else if (offset < payload_length)
+						{
+							// Some frames were emitted; the trailing remainder was dropped (truncated/corrupt tail).
+							logtd("[%s] Dropped %zu trailing byte(s) of the AAC PES after splitting (offset %zu/%u, PID: %d).",
+								GetNamePath().CStr(), static_cast<size_t>(payload_length - offset), offset, payload_length, es->PID());
 						}
 					}
 					else
