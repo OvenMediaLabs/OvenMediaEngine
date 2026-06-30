@@ -1,5 +1,13 @@
 # OvenMediaEngine
 
+[![GitHub release](https://img.shields.io/github/v/release/OvenMediaLabs/OvenMediaEngine?color=blue)](https://github.com/OvenMediaLabs/OvenMediaEngine/releases)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-orange)](LICENSE)
+[![Docker Build](https://img.shields.io/github/actions/workflow/status/OvenMediaLabs/OvenMediaEngine/docker-image-release-multi.yml?label=docker%20build)](https://github.com/OvenMediaLabs/OvenMediaEngine/actions/workflows/docker-image-release-multi.yml)
+[![Docs Build](https://img.shields.io/github/actions/workflow/status/OvenMediaLabs/OvenMediaEngine/check-docs-build.yml?label=docs%20build)](https://github.com/OvenMediaLabs/OvenMediaEngine/actions/workflows/check-docs-build.yml)
+
+[![Docker Pulls (current)](https://img.shields.io/docker/pulls/ovenmedialabs/ovenmediaengine?label=docker%20pulls%20(current)&color=blue)](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine)
+[![Docker Pulls (legacy)](https://img.shields.io/docker/pulls/airensoft/ovenmediaengine?label=docker%20pulls%20(legacy)&color=lightgrey)](https://hub.docker.com/r/airensoft/ovenmediaengine)
+
 ## What is OvenMediaEngine?
 <img src="dist/OME_LLHLS_220610.svg" style="max-width: 100%; height: auto;">
 
@@ -7,12 +15,12 @@ OvenMediaEngine (OME) is a Sub-Second Latency Streaming Server that can stream L
 
 OME can ingest live streams over WebRTC, SRT, RTMP, RTSP, and MPEG2-TS protocols, encode them to ABR with the embedded live transcoder, and stream them to viewers over LLHLS and WebRTC.
 
-With OvenMediaEngine, you can build your powerful and sub-second latency media service very easily.
+With OvenMediaEngine, you can easily build a powerful, sub-second latency media service.
 
-## Demo https://space.ovenplayer.com/
+## Demo https://space.ovenplayer.com
 <img src="dist/05_OvenSpace_230214.png" style="max-width: 100%; height: auto;">
 
-OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine](https://github.com/OvenMediaLabs/OvenMediaEngine), [OvenPlayer](https://github.com/OvenMediaLabs/OvenPlayer) and [OvenLiveKit](https://github.com/OvenMediaLabs/OvenLiveKit-Web). You can experience OvenMediaEngine in the **[OvenSpace Demo](https://space.ovenplayer.com/)** and see examples of applying in [OvenSpace Repository](https://github.com/OvenMediaLabs/OvenSpace).
+OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine](https://github.com/OvenMediaLabs/OvenMediaEngine), [OvenPlayer](https://github.com/OvenMediaLabs/OvenPlayer) and [OvenLiveKit](https://github.com/OvenMediaLabs/OvenLiveKit-Web). You can experience OvenMediaEngine live at the **[OvenSpace Demo](https://space.ovenplayer.com/)** and browse implementation examples in the [OvenSpace Repository](https://github.com/OvenMediaLabs/OvenSpace).
 
 ## Features
 * Ingest
@@ -58,7 +66,6 @@ OvenSpace is a sub-second latency streaming demo service using [OvenMediaEngine]
 * REST API
 
 ## Supported Platforms
-We have tested OvenMediaEngine on the platforms listed below.
 Although we have tested OvenMediaEngine on the platforms listed below, it may work with other Linux packages as well:
 
 * [Docker](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine)
@@ -108,11 +115,11 @@ Please read the [Getting Started](https://docs.ovenmediaengine.com/getting-start
 * Without TLS: http://demo.ovenplayer.com
 * With TLS: https://demo.ovenplayer.com
 
-## How to contribute
-Thank you so much for being so interested in OvenMediaEngine.
+## How to Contribute
+Thank you for your interest in contributing to OvenMediaEngine.
 
-We need your help to keep and develop our open-source project, and we want to tell you that you can contribute in many ways.
-For more information on how to contribute, please see our [Guidelines](CONTRIBUTING.md), [Rules](CODE_OF_CONDUCT.md), and [Contribute](https://www.ovenmediaengine.com/contribute).
+We need your help to keep this project growing. There are many ways to contribute.
+For more information on how to contribute, please see our [Guidelines](CONTRIBUTING.md) and [Rules](CODE_OF_CONDUCT.md).
 
 - [Finding Bugs](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#finding-bugs)
 - [Reviewing Code](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#reviewing-code)
@@ -122,33 +129,28 @@ For more information on how to contribute, please see our [Guidelines](CONTRIBUT
 - [Spreading & Use Cases](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#spreading--use-cases)
 - [Recurring Donations](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/CONTRIBUTING.md#recurring-donations)
 
-We always hope that OvenMediaEngine will give you good inspiration.
+We hope OvenMediaEngine inspires you to build something great.
 
-## For more information
-* [OvenMedia Labs Website](https://ovenmedialabs.com) 
-  * About OvenMediaEngine, OvenMediaEngine Enterprise, OvenVideo, AirenBlog and more
-* [OvenMediaEngine Getting Started](https://docs.ovenmediaengine.com/)
-  * User guide for OvenMediaEngine Configuration, ABR, Clustering, and more
-* [OvenMediaEngine Docker Hub](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine)
-  * Install and use OvenMeidaEngine easily using Docker
-* [OvenPlayer GitHub](https://github.com/OvenMediaLabs/OvenPlayer)
-  * JavaScript-based Player with LLHLS and WebRTC
-* [OvenPlayer Getting Started](https://docs.ovenplayer.com)
-  * User guide for OvenPlayer UI Customize, API Reference, Examples, and more
-* [OvenLiveKit](https://github.com/OvenMediaLabs/OvenLiveKit-Web)
-  * JavaScript-based Live Streaming Encoder for OvenMediaEngine
-* [OvenSpace Demo](https://space.ovenplayer.com/)
-  * Sub-Second Latency Streaming Demo Service
+## About OvenMedia Labs and Projects
+OvenMedia Labs aims to make it easier for you to build a stable broadcasting/streaming service with Sub-Second Latency.
+Therefore, we will continue developing and providing the most optimized tools for smooth Sub-Second Latency Streaming.
+
+* Information
+  * [OvenMedia Labs Website](https://ovenmedialabs.com): About OvenMediaEngine, Enterprise on Marketplace, and more
+  * [OvenMedia Labs' Blog](https://ovenmedialabs.com/blog): A blog researched and written directly by an OvenMediaEngine developer
+* Open-Source Repository
+  * [OvenMediaEngine GitHub](https://github.com/OvenMediaLabs/OvenMediaEngine): Sub-Second Latency Live Streaming Server
+  * [OvenMediaEngine Docker Hub](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine): Docker image for quick deployment
+  * [OvenPlayer GitHub](https://github.com/OvenMediaLabs/OvenPlayer): JavaScript-based WebRTC and LLHLS Player for OvenMediaEngine
+  * [OvenLiveKit GitHub](https://github.com/OvenMediaLabs/OvenLiveKit-Web): JavaScript-based Live Streaming Encoder for OvenMediaEngine
+* Documentation
+  * [OvenMediaEngine Getting Started](https://docs.ovenmediaengine.com): Configuration, ABR, Clustering, and more
+  * [OvenPlayer Getting Started](https://docs.ovenplayer.com): UI Customization, API Reference, Examples, and more
+* Demo
+  * [OvenSpace Demo](https://space.ovenplayer.com): Sub-Second Latency Streaming Demo Service
+  * [OvenPlayer Demo with TLS](https://demo.ovenplayer.com): For testing playback with HTTPS and WSS endpoints
+  * [OvenPlayer Demo without TLS](http://demo.ovenplayer.com): For testing playback with HTTP and WS endpoints
 
 ## License
 OvenMediaEngine is licensed under the [AGPL-3.0-only](LICENSE).
 However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).
-
-## About OvenMedia Labs
-OvenMedia Labs aims to make it easier for you to build a stable broadcasting/streaming service with Sub-Second Latency.
-Therefore, we will continue developing and providing the most optimized tools for smooth Sub-Second Latency Streaming.
-
-Would you please click on each link below for details:
-* ["JavaScript-based Live Streaming Encoder" **OvenLiveKit**](https://github.com/OvenMediaLabs/OvenLiveKit-Web)
-* ["Sub-Second Latency Streaming Server with LLHLS and WebRTC" **OvenMediaEngine**](https://github.com/OvenMediaLabs/OvenMediaEngine)
-* ["JavaScript-based Player with LLHLS and WebRTC" **OvenPlayer**](https://github.com/OvenMediaLabs/OvenPlayer)
