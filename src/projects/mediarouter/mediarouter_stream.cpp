@@ -35,8 +35,9 @@
 
 using namespace cmn;
 
-MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type)
-	: _stream(stream),
+MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type, uint32_t worker_id)
+	: _worker_id(worker_id),
+	  _stream(stream),
 	  _packets_queue(nullptr, 600)
 {
 	SetType(type);
