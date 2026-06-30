@@ -173,11 +173,15 @@ namespace pvd
 						const int64_t timescale			= track->GetTimeBase().GetDen();
 						const int64_t samples_per_frame = (track->GetAudioSamplesPerFrame() > 0) ? track->GetAudioSamplesPerFrame() : 1024;
 
-						// resolved once from the first ADTS header; the sample rate is constant per track
+						// Forward each frame as a copy-on-write slice of the PES payload (no per-frame copy).
+						auto pes_data					= std::make_shared<ov::Data>(payload, payload_length);
+
+						// frame_duration is resolved once from the first ADTS header; the sample rate is constant per track.
 						int64_t frame_duration			= 0;
 						size_t offset					= 0;
 						auto frame_pts					= pts;
 						auto frame_dts					= dts;
+						bool split						= true;
 
 						while ((offset + ADTS_MIN_SIZE) <= payload_length)
 						{
@@ -203,12 +207,30 @@ namespace pvd
 								break;
 							}
 
-							auto data		  = std::make_shared<ov::Data>(payload + offset, frame_length);
+							// Resolve the per-frame duration once; the sample rate is constant within a track.
+							//
+							// NOTE: an invalid sampling-frequency index trips `OV_ASSERT2()` in debug builds,
+							// which is intentional (it surfaces malformed input).
+							// Release builds `return 0;` we treat that as "timing unknown" and fall back to forwarding the PES unsplit,
+							// rather than emitting samples with identical timestamps.
+							if (frame_duration == 0)
+							{
+								const auto samplerate = adts.Samplerate();
+
+								if (samplerate == 0)
+								{
+									split = false;
+									break;
+								}
+
+								frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
+							}
+
 							auto media_packet = std::make_shared<MediaPacket>(
 								GetMsid(),
 								cmn::MediaType::Audio,
 								es->PID(),
-								data,
+								pes_data->Subdata(offset, frame_length),
 								frame_pts,
 								frame_dts,
 								-1LL,
@@ -218,21 +240,28 @@ namespace pvd
 
 							SendFrame(media_packet);
 
-							// Resolve the per-frame duration once; the sample rate is constant within a track.
-							if (frame_duration == 0)
-							{
-								const auto samplerate = adts.Samplerate();
-
-								if (samplerate > 0)
-								{
-									frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
-								}
-							}
-
 							frame_pts += frame_duration;
 							frame_dts += frame_duration;
-
 							offset += frame_length;
+						}
+
+						// Timing could not be resolved (e.g. invalid sampling-frequency index):
+						// forward the whole PES as a single packet (previous behavior) instead of emitting identical-timestamp samples.
+						if (split == false)
+						{
+							auto media_packet = std::make_shared<MediaPacket>(
+								GetMsid(),
+								cmn::MediaType::Audio,
+								es->PID(),
+								pes_data,
+								pts,
+								dts,
+								-1LL,
+								MediaPacketFlag::Unknown,
+								bitstream,
+								cmn::PacketType::RAW);
+
+							SendFrame(media_packet);
 						}
 					}
 					else
