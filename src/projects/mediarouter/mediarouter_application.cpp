@@ -415,6 +415,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(con
 		return nullptr;
 	}
 
+	new_stream->SetWorkerID((_inbound_worker_rr++) % _max_worker_thread_count);
 	_inbound_streams.insert(std::make_pair(stream_info->GetId(), new_stream));
 
 	return new_stream;
@@ -451,6 +452,7 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 		new_stream->SetBufferRetentionDuration(delay_buffer_time_ms);
 	}
 
+	new_stream->SetWorkerID((_outbound_worker_rr++) % _max_worker_thread_count);
 	_outbound_streams.insert(std::make_pair(out_stream_info->GetId(), new_stream));
 
 	return new_stream;
@@ -802,7 +804,7 @@ bool MediaRouteApplication::OnPacketReceived(const std::shared_ptr<MediaRouterAp
 
 		stream->Push(packet);
 
-		_inbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
+		_inbound_stream_indicator[stream->GetWorkerID()]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
 	}
 	// Provider(relay), Transcoder => Outbound Stream
 	else if ((IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_RELAY(representation_type)) ||
@@ -816,7 +818,7 @@ bool MediaRouteApplication::OnPacketReceived(const std::shared_ptr<MediaRouterAp
 
 		stream->Push(packet);
 
-		_outbound_stream_indicator[GetWorkerIDByStreamID(stream_info->GetId())]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
+		_outbound_stream_indicator[stream->GetWorkerID()]->Enqueue(std::weak_ptr<MediaRouteStream>(stream), packet->IsHighPriority());
 	}
 	else
 	{
@@ -899,11 +901,6 @@ bool MediaRouteApplication::IsExistingInboundStream(ov::String stream_name)
 	}
 
 	return false;
-}
-
-uint32_t MediaRouteApplication::GetWorkerIDByStreamID(info::stream_id_t stream_id)
-{
-	return stream_id % _max_worker_thread_count;
 }
 
 void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)

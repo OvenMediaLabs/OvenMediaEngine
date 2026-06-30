@@ -157,7 +157,6 @@ private:
 	std::shared_mutex _streams_lock;
 
 private:
-	uint32_t GetWorkerIDByStreamID(info::stream_id_t stream_id);
 	void InboundWorkerThread(uint32_t worker_id);
 	void OutboundWorkerThread(uint32_t worker_id);
 
@@ -166,6 +165,12 @@ private:
 	std::vector<std::thread> _outbound_threads;
 
 	uint32_t _max_worker_thread_count;
+
+	// Round-robin worker assignment so streams spread evenly across all workers, instead
+	// of stream_id % N clustering onto a subset (the global stream-id counter is strided
+	// across apps). Only touched at stream creation, under _streams_lock.
+	uint32_t _inbound_worker_rr = 0;
+	uint32_t _outbound_worker_rr = 0;
 
 private:
 	std::vector<std::shared_ptr<ov::ManagedQueue<std::weak_ptr<MediaRouteStream>>>> _inbound_stream_indicator;

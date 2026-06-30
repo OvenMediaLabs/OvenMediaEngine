@@ -71,6 +71,10 @@ public:
 	// Query original stream information
 	std::shared_ptr<info::Stream> GetStream();
 
+	// MediaRouter worker assigned round-robin at creation; stable for the stream's life.
+	void SetWorkerID(uint32_t worker_id) { _worker_id = worker_id; }
+	uint32_t GetWorkerID() const { return _worker_id; }
+
 	void OnStreamPrepared(bool completed);
 	bool IsStreamPrepared();
 	bool IsStreamReady();
@@ -93,6 +97,8 @@ private:
 
 	// Incoming/Outgoing Stream
 	cmn::MediaRouterStreamType _type;
+
+	uint32_t _worker_id = 0;
 
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
