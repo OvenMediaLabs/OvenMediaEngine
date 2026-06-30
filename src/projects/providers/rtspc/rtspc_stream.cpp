@@ -1077,14 +1077,13 @@ namespace pvd
 			MonitorInstance->IncreaseBytesIn(*Stream::GetSharedPtr(), bitstream->GetLength());
 			return;
 		}
-		
 
 		logtt("Channel(%d) Payload Type(%d) Ssrc(%u) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
 			  channel, first_rtp_packet->PayloadType(), first_rtp_packet->Ssrc(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
 
 		// A single RTP packet may carry several AAC access units (e.g. MediaMTX/gortsplib aggregates AUs),
 		// and our depacketizer assembles them into one ADTS buffer with one timestamp.
-		// fMP4/LL-HLS requires one access unit (1024 samples) per sample,
+		// fMP4/LL-HLS requires one access unit (one AAC frame) per sample,
 		// so split the assembled ADTS stream into per-frame MediaPackets here,
 		// advancing the timestamp by one frame duration.
 		// Otherwise the packager emits a single oversized sample per RTP packet (N frames glued together),
@@ -1145,6 +1144,9 @@ namespace pvd
 
 					if (frame_duration <= 0)
 					{
+						logtd(
+							"[%s] Stopped AAC ADTS splitting: cannot resolve per-frame duration (samplerate %u, timescale %" PRId64 ", channel %u). Forwarding the buffer unsplit.",
+							GetNamePath().CStr(), samplerate, timescale, channel);
 						break;
 					}
 				}
