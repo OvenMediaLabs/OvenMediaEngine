@@ -159,21 +159,97 @@ namespace pvd
 				}
 				else if (es->IsAudioStream())
 				{
-					auto payload = es->Payload();
-					auto payload_length = es->PayloadLength();
+					auto payload		 = es->Payload();
+					auto payload_length	 = es->PayloadLength();
+					const auto bitstream = track->GetOriginBitstream();
 
-					auto data = std::make_shared<ov::Data>(payload, payload_length);
-					auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-																	  cmn::MediaType::Audio,
-																	  es->PID(),
-																	  data,
-																	  pts,
-																	  dts,
-																	  -1LL,
-																	  MediaPacketFlag::Unknown,
-																	  track->GetOriginBitstream(),
-																	  cmn::PacketType::RAW);
-					SendFrame(media_packet);
+					// A single MPEG-TS PES payload for AAC carries one or more ADTS frames.
+					// fMP4/LL-HLS packaging requires one access unit (1024 samples) per sample,
+					// so split the PES into individual ADTS frames here.
+					// Otherwise the muxer emits a single oversized sample per PES (N frames glued together),
+					// which strict fMP4 audio decoders (e.g. Safari) reject.
+					if (bitstream == cmn::BitstreamFormat::AAC_ADTS)
+					{
+						const int64_t timescale			= track->GetTimeBase().GetDen();
+						const int64_t samples_per_frame = (track->GetAudioSamplesPerFrame() > 0) ? track->GetAudioSamplesPerFrame() : 1024;
+
+						// resolved once from the first ADTS header; the sample rate is constant per track
+						int64_t frame_duration			= 0;
+						size_t offset					= 0;
+						auto frame_pts					= pts;
+						auto frame_dts					= dts;
+
+						while ((offset + ADTS_MIN_SIZE) <= payload_length)
+						{
+							AACAdts adts;
+
+							if (AACAdts::Parse(payload + offset, payload_length - offset, adts) == false)
+							{
+								logtd(
+									"[%s] Stopped AAC ADTS splitting: no valid ADTS header at offset %zu/%u (PID: %d). "
+									"The PES is likely truncated or corrupted (e.g. UDP packet loss).",
+									GetNamePath().CStr(), offset, payload_length, es->PID());
+								break;
+							}
+
+							const auto frame_length = adts.AacFrameLength();
+
+							if ((frame_length < ADTS_MIN_SIZE) || ((offset + frame_length) > payload_length))
+							{
+								logtd(
+									"[%s] Stopped AAC ADTS splitting: frame length %u at offset %zu exceeds PES payload %u (PID: %d). "
+									"The PES is likely truncated or corrupted (e.g. UDP packet loss).",
+									GetNamePath().CStr(), static_cast<uint32_t>(frame_length), offset, payload_length, es->PID());
+								break;
+							}
+
+							auto data		  = std::make_shared<ov::Data>(payload + offset, frame_length);
+							auto media_packet = std::make_shared<MediaPacket>(
+								GetMsid(),
+								cmn::MediaType::Audio,
+								es->PID(),
+								data,
+								frame_pts,
+								frame_dts,
+								-1LL,
+								MediaPacketFlag::Unknown,
+								bitstream,
+								cmn::PacketType::RAW);
+
+							SendFrame(media_packet);
+
+							// Resolve the per-frame duration once; the sample rate is constant within a track.
+							if (frame_duration == 0)
+							{
+								const auto samplerate = adts.Samplerate();
+
+								if (samplerate > 0)
+								{
+									frame_duration = cmn::Rational::Rescale(samples_per_frame, cmn::Rational(1, static_cast<int32_t>(samplerate)), cmn::Rational(1, static_cast<int32_t>(timescale)));
+								}
+							}
+
+							frame_pts += frame_duration;
+							frame_dts += frame_duration;
+
+							offset += frame_length;
+						}
+					}
+					else
+					{
+						auto data		  = std::make_shared<ov::Data>(payload, payload_length);
+						auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
+																		  cmn::MediaType::Audio,
+																		  es->PID(),
+																		  data,
+																		  pts,
+																		  dts,
+																		  -1LL,
+																		  MediaPacketFlag::Unknown,
+																		  bitstream,
+																		  cmn::PacketType::RAW);
+						SendFrame(media_packet);
+					}
 				}
 
 				logtt("Frame - PID(%d) AdjustPTS(%" PRId64 ") AdjustDTS(%" PRId64 ") PTS(%" PRId64 ") DTS(%" PRId64 ") Size(%d)", es->PID(), pts, dts, origin_pts, origin_dts, es->PayloadLength());
