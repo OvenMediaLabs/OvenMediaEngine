@@ -277,14 +277,15 @@ namespace info
 			_dwell_count.fetch_add(1, std::memory_order_relaxed);
 			_dwell_sum_us.fetch_add(static_cast<uint64_t>(dwell_us), std::memory_order_relaxed);
 
-			if (dwell_us < _dwell_min_us.load(std::memory_order_relaxed))
+			// compare_exchange loops so min/max stay correct even without the caller's lock.
+			int64_t prev_min = _dwell_min_us.load(std::memory_order_relaxed);
+			while (dwell_us < prev_min && !_dwell_min_us.compare_exchange_weak(prev_min, dwell_us, std::memory_order_relaxed))
 			{
-				_dwell_min_us.store(dwell_us, std::memory_order_relaxed);
 			}
 
-			if (dwell_us > _dwell_max_us.load(std::memory_order_relaxed))
+			int64_t prev_max = _dwell_max_us.load(std::memory_order_relaxed);
+			while (dwell_us > prev_max && !_dwell_max_us.compare_exchange_weak(prev_max, dwell_us, std::memory_order_relaxed))
 			{
-				_dwell_max_us.store(dwell_us, std::memory_order_relaxed);
 			}
 		}
 
@@ -296,7 +297,13 @@ namespace info
 				return 0;
 			}
 
+			// Clamp to at least 1 so a small total does not truncate the target to 0
+			// (which would otherwise return bucket 0 regardless of where the samples are).
 			uint64_t target = static_cast<uint64_t>(total * percentile);
+			if (target == 0)
+			{
+				target = 1;
+			}
 			uint64_t cumulative = 0;
 			for (int i = 0; i < DWELL_BUCKETS; i++)
 			{
