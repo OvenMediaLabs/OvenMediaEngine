@@ -199,7 +199,7 @@ bool ThumbnailPublisher::OnDeletePublisherApplication(const std::shared_ptr<pub:
 
 std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 {
-	ov::String thumbnail_url_pattern = R"(.+thumb\.(jpg|png|webp)$)";
+	ov::String thumbnail_url_pattern = R"(.+thumb\.(jpg|png|webp|avif)$)";
 
 	auto http_interceptor = std::make_shared<ThumbnailInterceptor>();
 
@@ -340,6 +340,10 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 		{
 			media_codec_id = cmn::MediaCodecId::Png;
 		}
+		else if (request_url->File().LowerCaseString().IndexOf(".avif") >= 0)
+		{
+			media_codec_id = cmn::MediaCodecId::Avif;
+		}
 		else if (request_url->File().LowerCaseString().IndexOf(".webp") >= 0)
 		{
 			media_codec_id = cmn::MediaCodecId::Webp;
@@ -429,6 +433,8 @@ ov::String ThumbnailPublisher::MimeTypeFromMediaCodecId(const cmn::MediaCodecId 
 			return "image/png";
 		case cmn::MediaCodecId::Webp:
 			return "image/webp";
+		case cmn::MediaCodecId::Avif:
+			return "image/avif";
 		default:
 			return "application/octet-stream";
 	}

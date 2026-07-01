@@ -14,7 +14,9 @@
 bool AVCodecVideoDecoder::Initialize()
 {
 	// Create the bitstream framer bound to this decoder's codec (once).
-	if (_framer.IsValid() == false)
+	// Pre-framed codecs (AV1) skip this: their packets are already complete
+	// frames and the build has no parser for them.
+	if (IsPreFramed() == false && _framer.IsValid() == false)
 	{
 		if (_framer.Init(GetCodecID()) == false)
 		{
@@ -34,6 +36,11 @@ bool AVCodecVideoDecoder::Initialize()
 			break;
 		case cmn::MediaCodecId::Vp8:
 			decoder_name = "vp8";
+			break;
+		case cmn::MediaCodecId::Av1:
+			// The only AV1 decoder enabled in the bundled FFmpeg; select it by
+			// name rather than relying on avcodec_find_decoder()'s preference.
+			decoder_name = "libaom-av1";
 			break;
 		default:
 			logte("Unsupported codec for video decoder: %s", cmn::GetCodecIdString(GetCodecID()));
@@ -63,6 +70,13 @@ bool AVCodecVideoDecoder::Initialize()
 
 bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 {
+	// Pre-framed codecs (AV1) have no framer to report a new resolution from,
+	// and libaom-av1 adapts to format changes internally; nothing to do.
+	if (IsPreFramed() == true)
+	{
+		return true;
+	}
+
 	if (_codec.GetWidth() != 0 &&
 		_codec.GetHeight() != 0 &&
 		(_framer.GetWidth() != _codec.GetWidth() || _framer.GetHeight() != _codec.GetHeight()))
@@ -85,6 +99,22 @@ bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 
 std::shared_ptr<MediaPacket> AVCodecVideoDecoder::GetFramedPacket()
 {
+	// Pre-framed codecs (AV1): each input packet is already one complete frame,
+	// so hand it straight to the decoder without running the bitstream framer.
+	// SendPacket only reads the packet (ToAVPacket aliases its bytes into an
+	// AVPacket without writing them), so dropping const to satisfy the non-const
+	// return type is safe.
+	if (IsPreFramed() == true)
+	{
+		auto obj = _input_buffer.Dequeue();
+		if (obj.has_value() == false)
+		{
+			return nullptr;
+		}
+
+		return std::const_pointer_cast<MediaPacket>(obj.value());
+	}
+
 	if (_framing_buffer.GetRemainedSize() <= 0)
 	{
 		auto obj = _input_buffer.Dequeue();

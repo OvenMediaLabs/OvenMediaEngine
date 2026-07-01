@@ -658,7 +658,8 @@ bool MediaTrack::IsValid()
 		break;
 		case MediaCodecId::Jpeg:
 		case MediaCodecId::Png:
-		case MediaCodecId::Webp: {
+		case MediaCodecId::Webp:
+		case MediaCodecId::Avif: {
 			if (IsValidResolution() && IsValidTimeBase())
 			{
 				_is_valid = true;
