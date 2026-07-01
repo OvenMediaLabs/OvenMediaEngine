@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <cmath>
 #include <limits>
 
 #include <base/info/vhost_app_name.h>
@@ -297,24 +298,31 @@ namespace info
 				return 0;
 			}
 
-			// Clamp to at least 1 so a small total does not truncate the target to 0
-			// (which would otherwise return bucket 0 regardless of where the samples are).
-			uint64_t target = static_cast<uint64_t>(total * percentile);
-			if (target == 0)
+			// Nearest-rank: ceil so the rank is not biased downward, clamped to [1, total].
+			uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
+			if (target < 1)
 			{
 				target = 1;
 			}
+			if (target > total)
+			{
+				target = total;
+			}
+
+			// RecordDwellUs puts dwell 0 in bucket 0 and dwell in [2^(k-1), 2^k - 1] in
+			// bucket k, so a bucket's reported value is its lower bound: 0 for bucket 0,
+			// 2^(i-1) otherwise.
 			uint64_t cumulative = 0;
 			for (int i = 0; i < DWELL_BUCKETS; i++)
 			{
 				cumulative += _dwell_hist[i].load(std::memory_order_relaxed);
 				if (cumulative >= target)
 				{
-					return static_cast<int64_t>(1) << i;
+					return (i == 0) ? 0 : (static_cast<int64_t>(1) << (i - 1));
 				}
 			}
 
-			return static_cast<int64_t>(1) << (DWELL_BUCKETS - 1);
+			return static_cast<int64_t>(1) << (DWELL_BUCKETS - 2);
 		}
 
 		int64_t GetDwellAvgUs() const
