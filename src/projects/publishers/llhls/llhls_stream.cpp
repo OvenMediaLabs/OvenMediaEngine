@@ -300,6 +300,11 @@ bool LLHlsStream::Stop()
 {
 	logtt("LLHlsStream(%s) has been stopped", GetName().CStr());
 
+	// Finalize any subtitle chunks/segments still waiting out their hold-back delay, before the
+	// storage/chunklist maps they depend on are cleared below. Must run outside the lock scope
+	// below: ProcessVttChunk() takes shared_locks on those same (non-recursive) mutexes.
+	FlushPendingVttChunks();
+
 	{
 		std::scoped_lock lock{_packager_map_lock, _storage_map_lock, _chunklist_map_lock, _master_playlists_lock, _dumps_lock};
 
@@ -346,6 +351,10 @@ std::tuple<bool, ov::String> LLHlsStream::ConcludeLive()
 		auto packager = it.second;
 		packager->Flush();
 	}
+
+	// Finalize any subtitle chunks/segments still waiting out their hold-back delay (including
+	// any final chunk the packager flush above just produced) before marking playlists ended.
+	FlushPendingVttChunks();
 
 	// Append #EXT-X-ENDLIST all chunklists
 	for (auto &it : _chunklist_map)
@@ -1767,7 +1776,7 @@ bool LLHlsStream::CheckPlaylistReady()
 	{
 		double hold_back = final_part_hold_back;
 		auto track = GetTrack(track_id);
-		if (track != nullptr && track->GetMediaType() == cmn::MediaType::Subtitle && _subtitle_hold_back_ms > 0)
+		if (track != nullptr && track->GetMediaType() == cmn::MediaType::Subtitle && IsSubtitleHoldBackEnabled())
 		{
 			hold_back += (_subtitle_hold_back_ms / 1000.0);
 		}
@@ -1881,6 +1890,16 @@ void LLHlsStream::ProcessVttChunk(const PendingVttChunk &job)
 	OnMediaChunkUpdated(job.vtt_track_id, job.segment_number, job.chunk_number, job.last_chunk);
 }
 
+void LLHlsStream::FlushPendingVttChunks()
+{
+	while (_pending_vtt_chunks.empty() == false)
+	{
+		auto job = _pending_vtt_chunks.front();
+		_pending_vtt_chunks.pop_front();
+		ProcessVttChunk(job);
+	}
+}
+
 void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk)
 {
 	auto playlist = GetChunklistWriter(track_id);
@@ -1982,7 +2001,7 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 				}
 			}
 
-			if (_subtitle_hold_back_ms <= 0)
+			if (IsSubtitleHoldBackEnabled() == false)
 			{
 				// No hold-back configured: preserve the previous synchronous behavior exactly.
 				ProcessVttChunk(job);
@@ -2026,10 +2045,18 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 	{
 		// Drop any hold-back-deferred job still targeting this segment - it is being evicted from
 		// the DVR window, so finalizing it later would re-insert an already-removed segment.
-		_pending_vtt_chunks.erase(
-			std::remove_if(_pending_vtt_chunks.begin(), _pending_vtt_chunks.end(),
-						   [segment_number](const PendingVttChunk &job) { return job.segment_number == segment_number; }),
-			_pending_vtt_chunks.end());
+		// Reaching here means SubtitleHoldBack is close to (or exceeds) the retention window
+		// (SegmentCount * SegmentDuration), so surface it instead of dropping silently.
+		auto dropped_begin = std::remove_if(_pending_vtt_chunks.begin(), _pending_vtt_chunks.end(),
+											 [segment_number](const PendingVttChunk &job) { return job.segment_number == segment_number; });
+		size_t dropped_count = static_cast<size_t>(std::distance(dropped_begin, _pending_vtt_chunks.end()));
+		_pending_vtt_chunks.erase(dropped_begin, _pending_vtt_chunks.end());
+
+		if (dropped_count > 0)
+		{
+			logtw("LLHlsStream(%s/%s) - Dropped %zu pending subtitle chunk(s) for segment_number = %u: SubtitleHoldBack exceeded the DVR retention window",
+				  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), dropped_count, segment_number);
+		}
 
 		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
 		// If this is a VTT reference track, we need to delete a chunklist for vtt chunklists as well

@@ -197,7 +197,15 @@ private:
 		int64_t dispatch_after_ms = 0;
 	};
 
+	bool IsSubtitleHoldBackEnabled() const
+	{
+		return _subtitle_hold_back_ms > 0;
+	}
+
 	void ProcessVttChunk(const PendingVttChunk &job);
+	// Finalize every job still waiting out its hold-back delay. Must be called before the
+	// storage/chunklist maps it depends on (via ProcessVttChunk) are torn down.
+	void FlushPendingVttChunks();
 
 	std::deque<PendingVttChunk> _pending_vtt_chunks;
 
