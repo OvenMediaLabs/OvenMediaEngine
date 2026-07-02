@@ -71,12 +71,14 @@ namespace mon::alrt
 
 		void CleanupReleasedMessages(const std::vector<ov::String> &new_messages_keys);
 		bool PutVerifiedMessages(const ov::String &messages_key, std::vector<std::shared_ptr<Message>> &message_list);
-		bool RemoveVerifiedMessages(const ov::String &messages_key);
 		std::vector<std::shared_ptr<Message>> GetVerifiedMessages(const ov::String &messages_key);
 
 		std::shared_ptr<const cfg::Server> _server_config = nullptr;
 		std::shared_ptr<AlertRulesUpdater> _rules_updater = nullptr;
 
+		// Accessed by both the metric worker thread (via _timer) and the threads calling
+		// SendStreamMessage(), so it must be guarded by _last_verified_messages_mutex.
+		std::mutex _last_verified_messages_mutex;
 		std::map<ov::String, std::vector<std::shared_ptr<Message>>> _last_verified_messages_map;
 
 		ov::DelayQueue _timer{"MonAlert"};

@@ -666,13 +666,14 @@ namespace mon::alrt
 	{
 		// Find and cleanup the messages that have already been released among the alerts that were sent.
 
-		std::vector<ov::String> messages_keys_to_cleanup;
-		for (const auto &[messages_key, verified_messages] : _last_verified_messages_map)
+		std::lock_guard lock(_last_verified_messages_mutex);
+
+		for (auto it = _last_verified_messages_map.begin(); it != _last_verified_messages_map.end();)
 		{
 			bool exist = false;
 			for (const auto &new_messages_key : new_messages_keys)
 			{
-				if (messages_key == new_messages_key)
+				if (it->first == new_messages_key)
 				{
 					exist = true;
 					break;
@@ -681,13 +682,12 @@ namespace mon::alrt
 
 			if (!exist)
 			{
-				messages_keys_to_cleanup.push_back(messages_key);
+				it = _last_verified_messages_map.erase(it);
 			}
-		}
-
-		for (auto const &messages_key : messages_keys_to_cleanup)
-		{
-			RemoveVerifiedMessages(messages_key);
+			else
+			{
+				++it;
+			}
 		}
 	}
 
@@ -698,25 +698,9 @@ namespace mon::alrt
 			return false;
 		}
 
-		RemoveVerifiedMessages(messages_key);
+		std::lock_guard lock(_last_verified_messages_mutex);
 
-		_last_verified_messages_map.emplace(messages_key, std::move(message_list));
-
-		return true;
-	}
-
-	bool Alert::RemoveVerifiedMessages(const ov::String &messages_key)
-	{
-		if (messages_key.IsEmpty())
-		{
-			return false;
-		}
-
-		auto messages = _last_verified_messages_map.find(messages_key);
-		if (messages != _last_verified_messages_map.end())
-		{
-			_last_verified_messages_map.erase(messages);
-		}
+		_last_verified_messages_map.insert_or_assign(messages_key, std::move(message_list));
 
 		return true;
 	}
@@ -727,6 +711,8 @@ namespace mon::alrt
 		{
 			return {};
 		}
+
+		std::lock_guard lock(_last_verified_messages_mutex);
 
 		auto item = _last_verified_messages_map.find(messages_key);
 		if (item == _last_verified_messages_map.end())
