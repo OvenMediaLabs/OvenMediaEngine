@@ -92,6 +92,15 @@ namespace mon::alrt
 		return true;
 	}
 
+	static ov::String MakeMessagesKey(NotificationData::Type type, const ov::String &source_uri)
+	{
+		// _last_verified_messages_map is shared by all alert categories, so the key must be
+		// namespaced by the notification type. Otherwise, categories that derive the same key
+		// from the same source (e.g. INTERNAL_QUEUE and INGRESS both use "#Vhost#App/Stream")
+		// overwrite each other's last verified messages and fire spurious alerts.
+		return ov::String::FormatString("%s:%s", NotificationData::StringFromType(type), source_uri.CStr());
+	}
+
 	void Alert::MetricWorkerThread()
 	{
 		auto rules = _rules_updater->GetRules();
@@ -158,9 +167,10 @@ namespace mon::alrt
 			// Fire an alert per source URI (same pattern as stream-metric alerts)
 			for (auto &[source_uri, msgs] : per_source_messages)
 			{
-				new_messages_keys.push_back(source_uri);
+				messages_key = MakeMessagesKey(type, source_uri);
+				new_messages_keys.push_back(messages_key);
 
-				if (IsAlertNeeded(source_uri, msgs))
+				if (IsAlertNeeded(messages_key, msgs))
 				{
 					// Reduce to a single message before sending: the queue list in
 					// internalQueues already carries the per-queue detail.
@@ -173,7 +183,7 @@ namespace mon::alrt
 					SendNotification(type, send_msgs, source_uri, per_source_queues[source_uri]);
 				}
 
-				PutVerifiedMessages(source_uri, msgs);
+				PutVerifiedMessages(messages_key, msgs);
 			}
 		}
 
@@ -192,7 +202,7 @@ namespace mon::alrt
 						{
 							type		 = NotificationData::Type::INGRESS;
 
-							messages_key = stream_metric->GetUri();
+							messages_key = MakeMessagesKey(type, stream_metric->GetUri());
 							new_messages_keys.push_back(messages_key);
 
 							VerifyIngressMetricRules(*rules, stream_metric, message_list);
@@ -336,14 +346,14 @@ namespace mon::alrt
 
 		std::vector<std::shared_ptr<Message>> message_list(1, message);
 
-		ov::String messages_key;
+		ov::String source_uri;
 		if (stream_metric)
 		{
-			messages_key = stream_metric->GetUri();
+			source_uri = stream_metric->GetUri();
 		}
 		else if (parent_stream_metric)
 		{
-			messages_key = parent_stream_metric->GetUri();
+			source_uri = parent_stream_metric->GetUri();
 		}
 		else
 		{
@@ -351,7 +361,8 @@ namespace mon::alrt
 			return;
 		}
 
-		auto type = NotificationData::TypeFromMessageCode(code);
+		auto type		  = NotificationData::TypeFromMessageCode(code);
+		auto messages_key = MakeMessagesKey(type, source_uri);
 
 		if (IsAlertNeeded(messages_key, message_list))
 		{
