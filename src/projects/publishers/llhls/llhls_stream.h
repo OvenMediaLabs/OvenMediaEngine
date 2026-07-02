@@ -13,6 +13,8 @@
 #include <base/info/dump.h>
 #include <modules/dump/dump.h>
 
+#include <deque>
+
 #include "monitoring/monitoring.h"
 
 #include "modules/containers/bmff/fmp4_packager/fmp4_packager.h"
@@ -174,7 +176,38 @@ private:
 	uint64_t _min_chunk_duration_ms = std::numeric_limits<uint64_t>::max();
 
 	double _configured_part_hold_back = 0;
+	double _subtitle_hold_back_ms = 0;
 	bool _preload_hint_enabled = true;
+
+	// A VTT chunk/segment whose finalization (and therefore the destructive expiry of buffered
+	// WebVTT cues older than it) is deferred by _subtitle_hold_back_ms, keyed off the reference
+	// track's own advancing timeline so no separate timer thread is needed.
+	struct PendingVttChunk
+	{
+		int32_t vtt_track_id = -1;
+		uint32_t segment_number = 0;
+		uint32_t chunk_number = 0;
+		int64_t chunk_start_timestamp_ms = 0;
+		double chunk_duration_ms = 0.0;
+		bool last_chunk = false;
+		int64_t segment_start_timestamp_ms = 0;
+		double segment_duration_ms = 0.0;
+		bool segment_has_marker = false;
+		std::vector<std::shared_ptr<Marker>> segment_markers;
+		int64_t dispatch_after_ms = 0;
+	};
+
+	bool IsSubtitleHoldBackEnabled() const
+	{
+		return _subtitle_hold_back_ms > 0;
+	}
+
+	void ProcessVttChunk(const PendingVttChunk &job);
+	// Finalize every job still waiting out its hold-back delay. Must be called before the
+	// storage/chunklist maps it depends on (via ProcessVttChunk) are torn down.
+	void FlushPendingVttChunks();
+
+	std::deque<PendingVttChunk> _pending_vtt_chunks;
 
 	std::map<ov::String, std::shared_ptr<LLHlsMasterPlaylist>> _master_playlists;
 	std::mutex _master_playlists_lock;
