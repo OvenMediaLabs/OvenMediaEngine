@@ -48,7 +48,7 @@ bool AVCodecVideoEncoder::SetParamsX264()
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (_codec.GetFrameRate().num / _codec.GetFrameRate().den) : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
@@ -156,7 +156,7 @@ bool AVCodecVideoEncoder::SetParamsOpenH264()
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (_codec.GetFrameRate().num / _codec.GetFrameRate().den) : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
@@ -267,7 +267,7 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (_codec.GetFrameRate().num / _codec.GetFrameRate().den) : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
