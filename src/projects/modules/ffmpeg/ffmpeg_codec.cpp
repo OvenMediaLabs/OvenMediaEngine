@@ -283,7 +283,7 @@ namespace ffmpeg
 	int FFmpegCodec::SetOption(const char *name, int64_t value) { return ::av_opt_set_int(_context->priv_data, name, value, 0); }
 
 	int64_t FFmpegCodec::GetBitrate() const noexcept { return _context->bit_rate; }
-	AVRational FFmpegCodec::GetFrameRate() const noexcept { return _context->framerate; }
+	cmn::Rational FFmpegCodec::GetFrameRate() const noexcept { return cmn::Rational(_context->framerate.num, _context->framerate.den); }
 	int FFmpegCodec::GetWidth() const noexcept { return _context->width; }
 	int FFmpegCodec::GetHeight() const noexcept { return _context->height; }
 	int FFmpegCodec::GetGopSize() const noexcept { return _context->gop_size; }

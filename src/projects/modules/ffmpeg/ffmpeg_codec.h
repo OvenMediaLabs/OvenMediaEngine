@@ -130,7 +130,7 @@ namespace ffmpeg
 		int SetOption(const char *name, int64_t value);
 
 		int64_t GetBitrate() const noexcept;
-		AVRational GetFrameRate() const noexcept;
+		cmn::Rational GetFrameRate() const noexcept;
 		int GetWidth() const noexcept;
 		int GetHeight() const noexcept;
 		int GetGopSize() const noexcept;
