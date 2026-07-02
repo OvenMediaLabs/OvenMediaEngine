@@ -206,9 +206,10 @@ DecodeResult AVCodecVideoDecoder::ReceiveFrame()
 
 	// If the decoder did not provide a duration, calculate it from the frame rate
 	const auto framerate = _codec.GetFrameRate();
-	if (decoded_frame->GetDuration() <= 0LL && framerate.GetExpr() > 0)
+	const auto timebase_expr = GetRefTrack()->GetTimeBase().GetExpr();
+	if (decoded_frame->GetDuration() <= 0LL && framerate.GetExpr() > 0 && timebase_expr > 0)
 	{
-		decoded_frame->SetDuration((int64_t)((1.0 / framerate.GetExpr()) / GetRefTrack()->GetTimeBase().GetExpr()));
+		decoded_frame->SetDuration((int64_t)((1.0 / framerate.GetExpr()) / timebase_expr));
 	}
 
 	return DecodeResult::Decoded(std::move(decoded_frame), format_changed);
