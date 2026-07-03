@@ -36,7 +36,14 @@ namespace mpegts
 		// Must be enabled before any data is processed: otherwise the byte buffer may already hold a
 		// partial datagram and the continuity map is primed, while the reorder buffer would start
 		// fresh and second-guess the counter order.
-		OV_ASSERT2((_buffer->GetLength() == 0) && _last_continuity_counter_map.empty());
+		// Enforce this in every build type (`OV_ASSERT2` alone is compiled out in release):
+		// refuse to enable mid-stream rather than corrupt the baseline.
+		if ((_buffer->GetLength() != 0) || (_last_continuity_counter_map.empty() == false))
+		{
+			OV_ASSERT2(false);
+			logaw("Ignored a request to enable MPEG-TS packet reordering after data was already processed");
+			return;
+		}
 
 		if (_reorder_buffer == nullptr)
 		{
