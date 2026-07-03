@@ -666,21 +666,14 @@ namespace mon::alrt
 	{
 		// Find and cleanup the messages that have already been released among the alerts that were sent.
 
+		// Build the lookup set outside the lock to keep the critical section short.
+		const std::set<ov::String> new_keys(new_messages_keys.begin(), new_messages_keys.end());
+
 		std::lock_guard lock(_last_verified_messages_mutex);
 
 		for (auto it = _last_verified_messages_map.begin(); it != _last_verified_messages_map.end();)
 		{
-			bool exist = false;
-			for (const auto &new_messages_key : new_messages_keys)
-			{
-				if (it->first == new_messages_key)
-				{
-					exist = true;
-					break;
-				}
-			}
-
-			if (!exist)
+			if (new_keys.find(it->first) == new_keys.end())
 			{
 				it = _last_verified_messages_map.erase(it);
 			}
