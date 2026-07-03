@@ -23,7 +23,47 @@ namespace mpegts
 	{
 	}
 
+	void MpegTsDepacketizer::EnablePacketReordering()
+	{
+		// Must be enabled before any data is processed: otherwise the byte buffer may already hold a
+		// partial datagram and the continuity map is primed, while the reorder buffer would start
+		// fresh and second-guess the counter order.
+		OV_ASSERT2((_buffer->GetLength() == 0) && _last_continuity_counter_map.empty());
+
+		if (_reorder_buffer == nullptr)
+		{
+			_reorder_buffer = std::make_unique<DatagramReorderBuffer>();
+		}
+	}
+
 	bool MpegTsDepacketizer::AddPacket(const std::shared_ptr<const ov::Data> &datagram)
+	{
+		if (_reorder_buffer != nullptr)
+		{
+			std::vector<std::shared_ptr<const ov::Data>> ordered;
+			const auto gap_loss = _reorder_buffer->Enqueue(datagram, &ordered);
+
+			if (gap_loss > 0)
+			{
+				logtd("MPEG-TS reorder: declared %zu datagram gap(s) lost (depth/timeout flush)", gap_loss);
+			}
+
+			bool result = true;
+			for (const auto &d : ordered)
+			{
+				if (ProcessDatagram(d) == false)
+				{
+					result = false;
+				}
+			}
+
+			return result;
+		}
+
+		return ProcessDatagram(datagram);
+	}
+
+	bool MpegTsDepacketizer::ProcessDatagram(const std::shared_ptr<const ov::Data> &datagram)
 	{
 		_buffer->Append(datagram);
 
@@ -103,6 +143,8 @@ namespace mpegts
 			_synced = true;
 			_buffer = _buffer->Subdata(parsed_length);
 
+			// Resolves to the Packet overload (the per-packet sink), NOT the datagram entry point,
+			// so this must never re-enter the reorder buffer.
 			if (AddPacket(packet) == false)
 			{
 				continue;

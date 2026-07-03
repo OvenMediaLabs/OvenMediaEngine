@@ -12,39 +12,33 @@
 #include "provider.h"
 #include "track_map/audio_map.h"
 
-namespace cfg
+namespace cfg::vhost::app::pvd
 {
-	namespace vhost
+	struct MpegtsProvider : public Provider
 	{
-		namespace app
+	protected:
+		mpegts::StreamMap _stream_map;
+		AudioMap _audio_map;
+		bool _packet_reordering = false;
+
+	public:
+		ProviderType GetType() const override
 		{
-			namespace pvd
-			{
-				struct MpegtsProvider : public Provider
-				{
-				protected:
-					mpegts::StreamMap _stream_map;
-					AudioMap _audio_map;
+			return ProviderType::Mpegts;
+		}
 
-				public:
-					ProviderType GetType() const override
-					{
-						return ProviderType::Mpegts;
-					}
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetStreamMap, _stream_map)
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetAudioMap, _audio_map)
+		CFG_DECLARE_CONST_REF_GETTER_OF(GetPacketReordering, _packet_reordering)
 
-					CFG_DECLARE_CONST_REF_GETTER_OF(GetStreamMap, _stream_map)
-					CFG_DECLARE_CONST_REF_GETTER_OF(GetAudioMap, _audio_map)
+	protected:
+		void MakeList() override
+		{
+			Provider::MakeList();
 
-				protected:
-					void MakeList() override
-					{
-						Provider::MakeList();
-
-						Register<Optional>({"StreamMap", "streams"}, &_stream_map);
-						Register<Optional>("AudioMap", &_audio_map);
-					}
-				};
-			}  // namespace pvd
-		}  // namespace app
-	}  // namespace vhost
-}  // namespace cfg
+			Register<Optional>({"StreamMap", "streams"}, &_stream_map);
+			Register<Optional>("AudioMap", &_audio_map);
+			Register<Optional>("PacketReordering", &_packet_reordering);
+		}
+	};
+}  // namespace cfg::vhost::app::pvd

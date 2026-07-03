@@ -18,6 +18,7 @@
 #include "mpegts_packet.h"
 #include "mpegts_section.h"
 #include "mpegts_pes.h"
+#include "mpegts_datagram_reorder_buffer.h"
 
 /*  PES Depacketization Process
 
@@ -50,6 +51,10 @@ namespace mpegts
 		bool AddPacket(const std::shared_ptr<const ov::Data> &packet);
 		bool AddPacket(const std::shared_ptr<Packet> &packet);
 
+		// Enable UDP datagram reordering. Must be called before feeding data.
+		// Only meaningful for datagram-framed (UDP) input.
+		void EnablePacketReordering();
+
 		bool IsTrackInfoAvailable();
 		bool IsESAvailable();
 		bool IsSectionAvailable();
@@ -62,6 +67,8 @@ namespace mpegts
 		const std::shared_ptr<Pes> PopES();
 		const std::shared_ptr<Section> PopSection();
 	private:
+		// Feeds one contiguous run of TS packets into the byte parser (with sync-byte resync).
+		bool ProcessDatagram(const std::shared_ptr<const ov::Data> &datagram);
 		// Finds the next confirmed packet boundary in `_buffer`, or 0 if none can be confirmed yet.
 		size_t FindResyncOffset() const;
 
@@ -101,7 +108,7 @@ namespace mpegts
 		// NOTE: unlike the draft maps above (each self-locked), the members below have no internal lock.
 		// They are protected by the owner's lock: the `MpegTsDepacketizer` instance is
 		// `OV_GUARDED_BY(_depacketizer_lock)` in `MpegTsStream`, and every method that touches them
-		// (`AddPacket`) runs with that lock held.
+		// (`AddPacket`/`ProcessDatagram`/`EnablePacketReordering`) runs with that lock held.
 		// Any new accessor must also hold it.
 
 		// True once the byte parser is locked to the 188-byte packet grid
@@ -148,5 +155,8 @@ namespace mpegts
 		std::map<uint16_t, PacketType>	_packet_type_table;
 
 		std::shared_ptr<ov::Data> _buffer = std::make_shared<ov::Data>();
+
+		// UDP datagram reordering (disabled by default; enabled via `EnablePacketReordering()`).
+		std::unique_ptr<DatagramReorderBuffer> _reorder_buffer;
 	};
 }

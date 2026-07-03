@@ -52,6 +52,31 @@ namespace pvd
 
 	bool MpegTsStream::Start()
 	{
+		// UDP datagram reordering is opt-in per application and only applies to datagram-framed(UDP) input;
+		// SRT/TCP are byte streams that the transport already delivers in order.
+		//
+		// Thread-safety note: the depacketizer (including the reorder buffer) has no internal lock;
+		// its state is protected by _depacketizer_lock, held here and in OnDataReceived
+		// (the member is `OV_GUARDED_BY(_depacketizer_lock)`).
+		// Enabling here also runs before the channel is registered, so it happens-before any data reaches the depacketizer.
+		if ((_remote != nullptr) && (_remote->GetType() == ov::SocketType::Udp))
+		{
+			const auto &app_info = ocst::Orchestrator::GetInstance()->GetApplicationInfo(_vhost_app_name);
+
+			if (app_info.IsValid() == false)
+			{
+				logtd("[%s/%s] Could not resolve application config at stream start; MPEG-TS packet reordering left disabled",
+					  _vhost_app_name.CStr(), GetName().CStr());
+			}
+			else if (app_info.GetConfig().GetProviders().GetMpegtsProvider().GetPacketReordering())
+			{
+				ov::LockGuard<ov::SharedMutex> lock(_depacketizer_lock);
+				_depacketizer.EnablePacketReordering();
+
+				logti("[%s/%s] MPEG-TS UDP packet reordering is enabled", _vhost_app_name.CStr(), GetName().CStr());
+			}
+		}
+
 		SetState(Stream::State::PLAYING);
 		return PushStream::Start();
 	}
