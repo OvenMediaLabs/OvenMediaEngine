@@ -23,21 +23,84 @@ namespace mpegts
 	{
 	}
 
-	bool MpegTsDepacketizer::AddPacket(const std::shared_ptr<const ov::Data> &packet)
+	bool MpegTsDepacketizer::AddPacket(const std::shared_ptr<const ov::Data> &datagram)
 	{
-		_buffer->Append(packet);
+		_buffer->Append(datagram);
 
 		while (_buffer->GetLength() >= MPEGTS_MIN_PACKET_SIZE)
 		{
-			auto packet = std::make_shared<Packet>(_buffer);
+			auto packet			   = std::make_shared<Packet>(_buffer);
 
 			uint32_t parsed_length = packet->Parse();
 			if (parsed_length == 0)
 			{
-				_buffer = _buffer->Subdata(MPEGTS_MIN_PACKET_SIZE);
+				// Parse can fail either because the grid is misaligned (bad sync byte) or because an
+				// otherwise-aligned packet failed a later field check (e.g. transport_error_indicator).
+				// If we are locked to the 188-byte grid and the leading byte is a sync byte, `data[0]` is
+				// a genuine boundary and this is an aligned-but-corrupt packet: drop exactly one packet
+				// and stay aligned (this preserves the grid for the TEI packets a lossy link produces).
+				if (_synced && (_buffer->GetDataAs<uint8_t>()[0] == MPEGTS_SYNC_BYTE))
+				{
+					logtd("Dropped an aligned but unparsable MPEG-TS packet (sync byte present); staying on the grid");
+					_buffer = _buffer->Subdata(MPEGTS_MIN_PACKET_SIZE);
+					continue;
+				}
+
+				// Not locked to the grid (or the leading byte is not a sync byte):
+				// the grid is (or may be) misaligned. Rather than blindly skipping a fixed 188 bytes,
+				// scan for the next sync byte confirmed by another sync byte one/two packet lengths ahead,
+				// and drop the bytes before it.
+				if (_synced)
+				{
+					logtd("Lost MPEG-TS sync; scanning to resynchronize");
+				}
+
+				_synced				 = false;
+
+				size_t resync_offset = FindResyncOffset();
+				if (resync_offset == 0)
+				{
+					// No boundary can be confirmed yet (a candidate needs another sync byte a packet length ahead).
+					// Best-effort minimal advance: keep from the earliest sync byte and wait for more data.
+					// That byte may be a stray payload 0x47 rather than a true boundary;
+					// if so the next append re-runs Parse/resync from there and converges. If
+					// there is no sync byte at all, the buffer is pure garbage and is dropped.
+					const uint8_t *data = _buffer->GetDataAs<uint8_t>();
+					const size_t length = _buffer->GetLength();
+					size_t keep_from	= length;
+					for (size_t i = 1; i < length; i++)
+					{
+						if (data[i] == MPEGTS_SYNC_BYTE)
+						{
+							keep_from = i;
+							break;
+						}
+					}
+
+					if (keep_from < length)
+					{
+						logtd("Resync: no confirmed boundary yet; dropped %zu byte(s), waiting for more data", keep_from);
+						_buffer = _buffer->Subdata(keep_from);
+					}
+					else
+					{
+						logtd("Resync: no sync byte in %zu byte(s); dropped the whole buffer", length);
+						_buffer = std::make_shared<ov::Data>();
+					}
+					break;
+				}
+
+				// Candidate boundary from the double/triple-sync scan.
+				// Do NOT mark synced yet: only a successful Parse at this offset confirms it,
+				// so a false payload-0x47 lock re-scans on the next parse failure
+				// instead of being trusted by the aligned-but-corrupt path.
+				logtd("Resync: candidate boundary at offset %zu; dropped %zu leading byte(s)", resync_offset, resync_offset);
+				_buffer = _buffer->Subdata(resync_offset);
 				continue;
 			}
 
+			// A full packet parsed: data now points at the next 188-byte boundary.
+			_synced = true;
 			_buffer = _buffer->Subdata(parsed_length);
 
 			if (AddPacket(packet) == false)
@@ -47,6 +110,39 @@ namespace mpegts
 		}
 
 		return true;
+	}
+
+	size_t MpegTsDepacketizer::FindResyncOffset() const
+	{
+		const auto data	  = _buffer->GetDataAs<uint8_t>();
+		const auto length = _buffer->GetLength();
+
+		// A boundary is confirmed by a second sync byte one packet length ahead (double-sync),
+		// and by a third one two packet lengths ahead when the buffer is long enough.
+		// This avoids relocking onto a 0x47 byte that merely appears inside a packet payload.
+		for (size_t offset = 1; offset + MPEGTS_MIN_PACKET_SIZE < length; offset++)
+		{
+			if (data[offset] != MPEGTS_SYNC_BYTE)
+			{
+				continue;
+			}
+
+			if (data[offset + MPEGTS_MIN_PACKET_SIZE] != MPEGTS_SYNC_BYTE)
+			{
+				continue;
+			}
+
+			const auto third = offset + (2 * MPEGTS_MIN_PACKET_SIZE);
+
+			if ((third < length) && (data[third] != MPEGTS_SYNC_BYTE))
+			{
+				continue;
+			}
+
+			return offset;
+		}
+
+		return 0;
 	}
 
 	bool MpegTsDepacketizer::AddPacket(const std::shared_ptr<Packet> &packet)

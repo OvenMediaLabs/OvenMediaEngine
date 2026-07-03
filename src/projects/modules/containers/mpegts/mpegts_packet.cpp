@@ -531,6 +531,12 @@ namespace mpegts
 		// [ssssssss][tpTPPPPP][PPPPPPPP][SSaacccc]...
 
 		_sync_byte = _ts_parser->ReadBytes<uint8_t>();
+		if (_sync_byte != MPEGTS_SYNC_BYTE)
+		{
+			// Not aligned to a packet boundary; the caller resynchronizes on the next sync byte.
+			return 0;
+		}
+
 		_transport_error_indicator = _ts_parser->ReadBoolBit();
 		if (_transport_error_indicator)
 		{

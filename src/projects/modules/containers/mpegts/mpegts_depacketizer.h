@@ -60,12 +60,15 @@ namespace mpegts
 		const std::shared_ptr<Pes> PopES();
 		const std::shared_ptr<Section> PopSection();
 	private:
+		// Finds the next confirmed packet boundary in `_buffer`, or 0 if none can be confirmed yet.
+		size_t FindResyncOffset() const;
+
 		PacketType GetPacketType(const std::shared_ptr<Packet> &packet);
 
 		bool ParseSection(const std::shared_ptr<Packet> &packet);
 		bool ParsePes(const std::shared_ptr<Packet> &packet);
-		
-		const std::shared_ptr<Section> GetSectionDraft(uint16_t pid);	
+
+		const std::shared_ptr<Section> GetSectionDraft(uint16_t pid);
 		// incompleted section will be inserted
 		bool SaveSectionDraft(const std::shared_ptr<Section> &section);
 		// process completed section and remove, extract a table
@@ -88,6 +91,17 @@ namespace mpegts
 		// there is only one pes saved per pid
 		std::shared_mutex _pes_draft_map_lock;
 		std::map<uint16_t, std::shared_ptr<Pes>> _pes_draft_map;
+
+		// NOTE: unlike the draft maps above (each self-locked), the members below have no internal lock.
+		// They are protected by the owner's lock: the `MpegTsDepacketizer` instance is
+		// `OV_GUARDED_BY(_depacketizer_lock)` in `MpegTsStream`, and every method that touches them
+		// (`AddPacket`) runs with that lock held.
+		// Any new accessor must also hold it.
+
+		// True once the byte parser is locked to the 188-byte packet grid
+		// (a packet parsed or a boundary was confirmed by resync);
+		// makes an aligned-but-corrupt packet drop one packet instead of triggering a resync scan.
+		bool _synced = false;
 
 		// PID : Last continuity counter
 		std::map<uint16_t, uint8_t> _last_continuity_counter_map;
