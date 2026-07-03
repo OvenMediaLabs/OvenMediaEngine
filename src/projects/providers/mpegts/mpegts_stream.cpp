@@ -52,6 +52,12 @@ namespace pvd
 
 	bool MpegTsStream::Start()
 	{
+		// Prefix every depacketizer log line with this stream's name path.
+		{
+			ov::LockGuard<ov::SharedMutex> lock(_depacketizer_lock);
+			_depacketizer.SetNamePath(GetNamePath().CStr());
+		}
+
 		// UDP datagram reordering is opt-in per application and only applies to datagram-framed(UDP) input;
 		// SRT/TCP are byte streams that the transport already delivers in order.
 		//

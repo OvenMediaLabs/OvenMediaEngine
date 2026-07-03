@@ -55,6 +55,12 @@ namespace mpegts
 		// Only meaningful for datagram-framed (UDP) input.
 		void EnablePacketReordering();
 
+		// Sets the owning stream's name path; it is prefixed on every log line from this depacketizer.
+		void SetNamePath(const ov::String &name_path)
+		{
+			_name_path = name_path;
+		}
+
 		bool IsTrackInfoAvailable();
 		bool IsESAvailable();
 		bool IsSectionAvailable();
@@ -71,6 +77,9 @@ namespace mpegts
 		bool ProcessDatagram(const std::shared_ptr<const ov::Data> &datagram);
 		// Finds the next confirmed packet boundary in `_buffer`, or 0 if none can be confirmed yet.
 		size_t FindResyncOffset() const;
+
+		// Emits a rate-limited, count-aggregated continuity-break warning (see `_cc_break_*`).
+		void LogContinuityBreak();
 
 		PacketType GetPacketType(const std::shared_ptr<Packet> &packet);
 
@@ -108,7 +117,7 @@ namespace mpegts
 		// NOTE: unlike the draft maps above (each self-locked), the members below have no internal lock.
 		// They are protected by the owner's lock: the `MpegTsDepacketizer` instance is
 		// `OV_GUARDED_BY(_depacketizer_lock)` in `MpegTsStream`, and every method that touches them
-		// (`AddPacket`/`ProcessDatagram`/`EnablePacketReordering`) runs with that lock held.
+		// (`AddPacket`/`ProcessDatagram`/`EnablePacketReordering`/`SetNamePath`) runs with that lock held.
 		// Any new accessor must also hold it.
 
 		// True once the byte parser is locked to the 188-byte packet grid
@@ -121,6 +130,16 @@ namespace mpegts
 		// PIDs for which a legal single duplicate has already been consumed (a second
 		// consecutive same-counter packet is then treated as a continuity error).
 		std::set<uint16_t> _cc_duplicate_seen;
+
+		// Owning stream's name path, prefixed on every log line (set via `SetNamePath()`).
+		ov::String _name_path{"?"};
+		// Cached at construction: whether debug logging is enabled for this tag, so the per-packet
+		// continuity-break detail is skipped entirely (no formatting) when debug is off.
+		bool _debug_enabled											= false;
+		// Continuity-break warnings are rate-limited to one line per this interval, with an aggregated count.
+		static constexpr int64_t MPEGTS_CC_BREAK_WARN_INTERVAL_MSEC = 5000;
+		int64_t _cc_break_last_warn_msec							= 0;
+		uint64_t _cc_break_count									= 0;
 
 		// PAT
 		bool _pat_list_completed = false;
