@@ -156,37 +156,67 @@ namespace mpegts
 			return false;
 		}
 
-		// Check continuity counter
-		// TODO(Getroot): Later, it can be used for jitter buffer to correct the UDP packet order
+		// Continuity handling. This hardening applies to every transport (not only the reordering path):
+		// a continuity break on a reliable transport (SRT/TCP) originates at the encoder,
+		// and discarding the partial frame there is also correct.
+		// Duplicate handling is inert on transports that never duplicate.
+		const auto pid = packet->PacketIdentifier();
+
+		// A signalled adaptation-field discontinuity may be carried on a payload packet OR on an
+		// adaptation-field-only packet (e.g. a PCR discontinuity).
+		// Honor it regardless of payload: drop any partial assembly and reset continuity tracking
+		// so the next packet re-establishes the baseline without a spurious continuity-break warning.
+		// The discontinuity_indicator only exists when the adaptation field actually carries its flag
+		// byte (length > 0); guard on it to avoid trusting a defaulted bit.
+		if (packet->HasAdaptationField() &&
+			(packet->GetAdaptationField()._length > 0) &&
+			packet->GetAdaptationField()._discontinuity_indicator)
+		{
+			DiscardPesDraft(pid);
+			DiscardSectionDraft(pid);
+			_last_continuity_counter_map.erase(pid);
+			_cc_duplicate_seen.erase(pid);
+		}
+
+		// The continuity counter only advances on packets that carry a payload (adaptation-field-only
+		// packets do not increment it).
 		if (packet->HasPayload())
 		{
-			auto it = _last_continuity_counter_map.find(packet->PacketIdentifier());
-			if (it == _last_continuity_counter_map.end())
-			{
-				_last_continuity_counter_map.emplace(packet->PacketIdentifier(), packet->ContinuityCounter());
-			}
-			else
-			{
-				auto prev_counter = it->second;
-				uint8_t expected_counter;
+			const uint8_t counter = packet->ContinuityCounter();
 
-				if (prev_counter < 0x0f)
+			auto it = _last_continuity_counter_map.find(pid);
+			if (it != _last_continuity_counter_map.end())
+			{
+				const uint8_t prev_counter = it->second;
+				const uint8_t expected_counter = (prev_counter + 1) & 0x0F;
+
+				if (counter == expected_counter)
 				{
-					expected_counter = prev_counter + 1;
+					_cc_duplicate_seen.erase(pid);
+				}
+				else if ((counter == prev_counter) && (_cc_duplicate_seen.count(pid) == 0))
+				{
+					// A packet may legally be duplicated once with the same continuity counter and
+					// identical content. Drop the duplicate so its payload is not appended twice.
+					// (With only a 4-bit counter, losing exactly a multiple of 16 payload packets is
+					// indistinguishable from a duplicate; that residual ambiguity is unavoidable.)
+					_cc_duplicate_seen.insert(pid);
+					logtd("Dropped duplicate MPEG-TS packet (PID: %d CC: %d)", pid, counter);
+					return true;
 				}
 				else
 				{
-					expected_counter = 0;
+					// Genuine continuity break (loss, a second consecutive same-counter packet, or corruption):
+					// drop any partial assembly so nothing corrupt is forwarded.
+					logtw("MPEG-TS continuity break (PID: %d Expected: %d Received: %d); discarding partial data",
+						  pid, expected_counter, counter);
+					DiscardPesDraft(pid);
+					DiscardSectionDraft(pid);
+					_cc_duplicate_seen.erase(pid);
 				}
-
-				if (packet->ContinuityCounter() != expected_counter)
-				{
-					logtw("An out-of-order packet was received.(PID : %d Expected : %d, Received : %d",
-						  packet->PacketIdentifier(), expected_counter, packet->ContinuityCounter());
-				}
-
-				_last_continuity_counter_map[packet->PacketIdentifier()] = packet->ContinuityCounter();
 			}
+
+			_last_continuity_counter_map[pid] = counter;
 		}
 
 		// If PAT and PMT are completed, it doesn't need to parse anymore
@@ -403,8 +433,10 @@ namespace mpegts
 			auto section = GetSectionDraft(packet->PacketIdentifier());
 			if (section == nullptr)
 			{
-				// Something wrong
-				logte("Could not find section(PID: %d) for depacketizing", packet->PacketIdentifier());
+				// Expected when the section draft for this PID was discarded on a continuity break:
+				// the following continuation packets then have no draft to append to. This is normal recovery
+				// (a warning was already logged at the break), so trace it rather than error.
+				logtd("No section draft for continuation (PID: %d); likely discarded on a continuity break", packet->PacketIdentifier());
 				return false;
 			}
 
@@ -615,6 +647,18 @@ namespace mpegts
 		_pes_draft_map.emplace(pes->PID(), pes);
 
 		return true;
+	}
+
+	void MpegTsDepacketizer::DiscardPesDraft(uint16_t pid)
+	{
+		std::scoped_lock lock(_pes_draft_map_lock);
+		_pes_draft_map.erase(pid);
+	}
+
+	void MpegTsDepacketizer::DiscardSectionDraft(uint16_t pid)
+	{
+		std::scoped_lock lock(_section_draft_map_lock);
+		_section_draft_map.erase(pid);
 	}
 
 	// process completed section and remove, extract a elementary stream (es)

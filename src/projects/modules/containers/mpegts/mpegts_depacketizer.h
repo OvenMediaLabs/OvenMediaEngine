@@ -12,6 +12,8 @@
 #include <base/mediarouter/media_type.h>
 #include <base/info/media_track.h>
 
+#include <set>
+
 #include "mpegts_common.h"
 #include "mpegts_packet.h"
 #include "mpegts_section.h"
@@ -68,6 +70,10 @@ namespace mpegts
 		bool ParseSection(const std::shared_ptr<Packet> &packet);
 		bool ParsePes(const std::shared_ptr<Packet> &packet);
 
+		// Drops any in-progress assembly for a PID after a continuity discontinuity.
+		void DiscardPesDraft(uint16_t pid);
+		void DiscardSectionDraft(uint16_t pid);
+
 		const std::shared_ptr<Section> GetSectionDraft(uint16_t pid);
 		// incompleted section will be inserted
 		bool SaveSectionDraft(const std::shared_ptr<Section> &section);
@@ -105,6 +111,9 @@ namespace mpegts
 
 		// PID : Last continuity counter
 		std::map<uint16_t, uint8_t> _last_continuity_counter_map;
+		// PIDs for which a legal single duplicate has already been consumed (a second
+		// consecutive same-counter packet is then treated as a continuity error).
+		std::set<uint16_t> _cc_duplicate_seen;
 
 		// PAT
 		bool _pat_list_completed = false;
