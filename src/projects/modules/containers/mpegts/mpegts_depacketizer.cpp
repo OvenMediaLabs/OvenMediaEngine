@@ -225,7 +225,7 @@ namespace mpegts
 
 		if (packet_type == PacketType::UNSUPPORTED_SECTION || packet_type == PacketType::UNKNOWN)
 		{
-			// FFMPEG ususally sends PID 17 (DVB - SDT), but we don't use this table now
+			// FFMPEG usually sends PID 17 (DVB - SDT), but we don't use this table now
 			logat("Ignored unsupported or unknown MPEG-TS packets.(PID: %d)", packet->PacketIdentifier());
 			return false;
 		}
@@ -472,7 +472,7 @@ namespace mpegts
 				}
 				else
 				{
-					// Somethind wrong
+					// Something wrong
 					logae("Could not complete section(PID: %d)", packet->PacketIdentifier());
 				}
 			}
