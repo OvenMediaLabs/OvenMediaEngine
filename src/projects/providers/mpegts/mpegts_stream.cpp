@@ -94,6 +94,17 @@ namespace pvd
 			return true;
 		}
 
+		// Drain any datagrams the reorder buffer is still holding behind a gap and forward the
+		// resulting frames before teardown, so already-received data is delivered rather than
+		// dropped. This runs while the stream is still playing (before `PushStream::Stop()`)
+		// and is a no-op unless reordering is enabled and something is buffered.
+		// `Stop()` is never entered with `_depacketizer_lock` held, so acquiring it here is safe.
+		{
+			ov::ScopedLock lock(_depacketizer_lock);
+			_depacketizer.FlushReorderBuffer();
+			ForwardDepacketizedFrames();
+		}
+
 		if (_remote->GetState() == ov::SocketState::Connected)
 		{
 			_remote->Close();
@@ -124,18 +135,38 @@ namespace pvd
 			return false;
 		}
 
-		ov::LockGuard<ov::SharedMutex> lock(_depacketizer_lock);
-		_depacketizer.AddPacket(data);
-
-		// Publish
-		if (IsPublished() == false && _depacketizer.IsTrackInfoAvailable())
+		bool publish_failed = false;
 		{
-			if (Publish() == false)
+			ov::ScopedLock lock(_depacketizer_lock);
+			_depacketizer.AddPacket(data);
+
+			// Publish once the track information becomes available.
+			if (IsPublished() == false && _depacketizer.IsTrackInfoAvailable())
+			{
+				publish_failed = (Publish() == false);
+			}
+
+			// Forward whatever is ready. A fatal per-frame error bails out without stopping;
+			// a publish failure stops the stream below, outside the lock.
+			if ((publish_failed == false) && (ForwardDepacketizedFrames() == false))
 			{
 				return false;
 			}
 		}
 
+		if (publish_failed == true)
+		{
+			// PublishChannel failed. Stop outside the depacketizer lock so the reorder-drain in
+			// `Stop()` can acquire it without re-entering (the lock is not held here).
+			Stop();
+			return false;
+		}
+
+		return true;
+	}
+
+	bool MpegTsStream::ForwardDepacketizedFrames()
+	{
 		if (IsPublished() == true)
 		{
 			while (_depacketizer.IsESAvailable())
@@ -347,7 +378,7 @@ namespace pvd
 		// Publish
 		if (PublishChannel(_vhost_app_name) == false)
 		{
-			Stop();
+			// The caller stops the stream (outside the depacketizer lock).
 			return false;
 		}
 

@@ -78,6 +78,23 @@ namespace mpegts
 		return ProcessDatagram(datagram);
 	}
 
+	void MpegTsDepacketizer::FlushReorderBuffer()
+	{
+		if (_reorder_buffer == nullptr)
+		{
+			return;
+		}
+
+		std::vector<std::shared_ptr<const ov::Data>> ordered;
+
+		_reorder_buffer->Flush(&ordered);
+
+		for (const auto &datagram : ordered)
+		{
+			ProcessDatagram(datagram);
+		}
+	}
+
 	bool MpegTsDepacketizer::ProcessDatagram(const std::shared_ptr<const ov::Data> &datagram)
 	{
 		_buffer->Append(datagram);

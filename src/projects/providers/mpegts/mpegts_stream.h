@@ -36,8 +36,13 @@ namespace pvd
 		bool OnDataReceived(const std::shared_ptr<const ov::Data> &data) override;
 
 	private:
-		bool Start() override;	
+		bool Start() override;
 		bool Publish() OV_REQUIRES(_depacketizer_lock);
+
+		// Forwards the elementary-stream frames the depacketizer has ready to the publishers.
+		// Returns false only on a fatal per-frame error (missing track).
+		// Shared by `OnDataReceived()` and the teardown drain in `Stop()`.
+		bool ForwardDepacketizedFrames() OV_REQUIRES(_depacketizer_lock);
 
 		// Client socket
 		std::shared_ptr<ov::Socket> _remote = nullptr;

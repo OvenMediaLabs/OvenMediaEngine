@@ -55,6 +55,11 @@ namespace mpegts
 		// Only meaningful for datagram-framed (UDP) input.
 		void EnablePacketReordering();
 
+		// Drains any datagrams the reorder buffer is still holding behind a gap into the byte parser,
+		// so their frames become available. Used on stream teardown so buffered, already-received
+		// datagrams are not dropped. No-op when reordering is disabled.
+		void FlushReorderBuffer();
+
 		// Sets the owning stream's name path; it is prefixed on every log line from this depacketizer.
 		void SetNamePath(const ov::String &name_path)
 		{
