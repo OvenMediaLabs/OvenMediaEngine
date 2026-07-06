@@ -173,6 +173,7 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 	else if (codec_id == cmn::MediaCodecId::Jpeg)    return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Png)     return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Webp)    return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
+	else if (codec_id == cmn::MediaCodecId::Avif)    return std::make_shared<AVCodecImageEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Whisper) return std::make_shared<EncoderWhisper>(stream_info);
 	else
 	{

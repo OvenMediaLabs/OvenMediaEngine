@@ -35,6 +35,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, nullptr);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, nullptr);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, nullptr);
 		}

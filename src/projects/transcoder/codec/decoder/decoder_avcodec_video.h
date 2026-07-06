@@ -13,7 +13,7 @@
 #include <modules/ffmpeg/ffmpeg_bitstream_framer.h>
 #include <transcoder/padded_aligned_buffer.h>
 
-// Software (FFmpeg/libavcodec) video decoder (H264/H265/VP8). Selected for the DEFAULT module.
+// Software (FFmpeg/libavcodec) video decoder (H264/H265/VP8/AV1). Selected for the DEFAULT module.
 class AVCodecVideoDecoder : public TranscodeDecoder
 {
 public:
@@ -46,6 +46,11 @@ private:
 
 	// ----- Internal helpers -----
 	bool ReinitCodecIfNeed();
+
+	// AV1 ingest arrives as complete temporal units (AV1_OBU) and the bundled
+	// FFmpeg has no AV1 parser, so these tracks decode without a bitstream
+	// framer: packets are fed to the decoder as-is.
+	bool IsPreFramed() const noexcept { return _codec_id == cmn::MediaCodecId::Av1; }
 
 	// ----- Members -----
 	cmn::MediaCodecId _codec_id;
