@@ -214,23 +214,14 @@ namespace ffmpeg
 					return false;
 				}
 			}
+		}
 
-			if (is_hwupload_cuda == false && is_scale_cuda == true)
+		if (is_hwupload_cuda == false && is_scale_cuda == true)
+		{
+			if (SetHwFramesContextOfBufferSource(hw_device_ctx, width, height) == false)
 			{
-				for (uint32_t j = 0; j < filter->nb_inputs; j++)
-				{
-					auto input = filter->inputs[j];
-					if (input == nullptr)
-					{
-						continue;
-					}
-
-					if (SetHwFramesContextOfFilterLink(input, hw_device_ctx, width, height) == false)
-					{
-						loge("FFmpegFilterGraph", "Could not set hw frames context for %s", filter->name);
-						return false;
-					}
-				}
+				loge("FFmpegFilterGraph", "Could not set hw frames context on the buffer source");
+				return false;
 			}
 		}
 
@@ -243,8 +234,13 @@ namespace ffmpeg
 		return filter->hw_device_ctx != nullptr;
 	}
 
-	bool FFmpegFilterGraph::SetHwFramesContextOfFilterLink(AVFilterLink *link, AVBufferRef *hw_device_ctx, int32_t width, int32_t height)
+	bool FFmpegFilterGraph::SetHwFramesContextOfBufferSource(AVBufferRef *hw_device_ctx, int32_t width, int32_t height)
 	{
+		if (_buffersrc_ctx == nullptr)
+		{
+			return false;
+		}
+
 		AVBufferRef *hw_frames_ref = ::av_hwframe_ctx_alloc(hw_device_ctx);
 		if (hw_frames_ref == nullptr)
 		{
@@ -273,9 +269,25 @@ namespace ffmpeg
 			return false;
 		}
 
-		link->hw_frames_ctx = hw_frames_ref;
+		// Attach the frames context (and matching hw pixel format) to the buffer source.
+		AVBufferSrcParameters *params = ::av_buffersrc_parameters_alloc();
+		if (params == nullptr)
+		{
+			::av_buffer_unref(&hw_frames_ref);
+			return false;
+		}
 
-		return true;
+		params->format		  = frames_ctx->format;
+		params->width		  = width;
+		params->height		  = height;
+		params->hw_frames_ctx = hw_frames_ref;
+
+		int ret = ::av_buffersrc_parameters_set(_buffersrc_ctx, params);
+		::av_free(params);
+		// av_buffersrc_parameters_set() took its own reference, so release ours.
+		::av_buffer_unref(&hw_frames_ref);
+
+		return ret >= 0;
 	}
 
 	CodecResult FFmpegFilterGraph::ToCodecResult(int error)

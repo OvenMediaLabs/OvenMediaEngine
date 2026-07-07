@@ -151,7 +151,7 @@ namespace ffmpeg
 	{
 		if (_frame != nullptr)
 		{
-			_frame->pkt_duration = duration;
+			_frame->duration = duration;
 		}
 	}
 
