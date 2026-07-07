@@ -63,18 +63,16 @@ namespace ffmpeg
 		// Human-readable description of the most recent avfilter error.
 		ov::String GetLastErrorString() const;
 
-		// Injects the given hardware device context into the parsed graph's CUDA-aware filters
-		// (hwupload_cuda / scale_cuda), and a hardware frames context into scale_cuda's input link when
-		// no hwupload precedes it. The device context is owned by the caller.
+		// Injects the hardware device/frames context into the parsed graph's CUDA filters.
+		// The device context is owned by the caller.
 		bool ApplyCudaHwContext(const std::shared_ptr<HwDeviceContext> &device_ctx, int32_t width, int32_t height);
 
 	private:
 		// Attaches a new reference to hw_device_ctx onto the given CUDA-aware filter.
 		static bool SetHwDeviceContextOfFilter(AVFilterContext *filter, AVBufferRef *hw_device_ctx);
 
-		// Allocates a hardware frames context from hw_device_ctx and attaches it to the given
-		// filter link's input (used for scale_cuda when no hwupload precedes it).
-		static bool SetHwFramesContextOfFilterLink(AVFilterLink *link, AVBufferRef *hw_device_ctx, int32_t width, int32_t height);
+		// Attaches a hardware frames context to the buffer source (used for scale_cuda without hwupload).
+		bool SetHwFramesContextOfBufferSource(AVBufferRef *hw_device_ctx, int32_t width, int32_t height);
 
 		// Maps an FFmpeg avfilter return code to CodecResult, remembering the raw error for
 		// GetLastErrorString().
