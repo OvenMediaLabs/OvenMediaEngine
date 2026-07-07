@@ -288,6 +288,45 @@ uint8_t MP3Parser::GetChannelCount()
     return _channel_count;
 }
 
+uint32_t MP3Parser::GetFrameLength()
+{
+    uint32_t bitrate    = GetBitrate();
+    uint32_t samplerate = GetSampleRate();
+    if (bitrate == 0 || samplerate == 0)
+    {
+		// invalid: cannot derive the length from the header
+		return 0; 
+    }
+
+    double  version = GetVersion();
+    uint8_t layer   = GetLayer();
+
+    // Layer I: 384 samples, measured in 4-byte slots.
+	if (layer == 1)	 
+	{
+		// frame = (12 * bitrate / samplerate + padding) * 4
+		// The slot count is floored first, so the whole frame stays a multiple of 4.
+		return (12 * bitrate / samplerate + (_padding_bit ? 1 : 0)) * 4;
+	}
+    // Layer II: 1152 samples
+	else if (layer == 2)  
+	{
+		// frame = 1152 / 8 * bitrate / samplerate + padding
+		uint32_t coeff = 1152 / 8;  // 144
+		return coeff * bitrate / samplerate + (_padding_bit ? 1 : 0);
+	}
+    // Layer III: 1152 (MPEG-1) / 576 (MPEG-2/2.5) samples
+	else if (layer == 3)  
+	{
+        // frame = (version == 1) ? (1152 / 8 * bitrate / samplerate + padding) : (576 / 8 * bitrate / samplerate + padding)
+		uint32_t coeff = (version == 1) ? (1152 / 8) : (576 / 8);  // 144 or 72
+		return coeff * bitrate / samplerate + (_padding_bit ? 1 : 0);
+	}
+
+    // unknown layer
+	return 0; 
+}
+
 double MP3Parser::GetVersion()
 {
     switch (_version_id)
