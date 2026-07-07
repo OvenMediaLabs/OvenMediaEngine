@@ -10,8 +10,7 @@
 
 #include "../../transcoder_decoder.h"
 #include <modules/ffmpeg/ffmpeg_codec.h>
-#include <modules/ffmpeg/ffmpeg_bitstream_framer.h>
-#include <transcoder/padded_aligned_buffer.h>
+#include <transcoder/analyzer/bitstream_analyzer.h>
 
 // Software (FFmpeg/libavcodec) video decoder (H264/H265/VP8). Selected for the DEFAULT module.
 class AVCodecVideoDecoder : public TranscodeDecoder
@@ -50,7 +49,6 @@ private:
 	// ----- Members -----
 	cmn::MediaCodecId _codec_id;
 	ffmpeg::FFmpegCodec _codec;
-	ffmpeg::FFmpegBitstreamFramer _framer;
-	PaddedAlignedBuffer _framing_buffer;
+	BitstreamAnalyzer _analyzer;
 	bool _change_format = false;
 };

@@ -13,9 +13,9 @@
 
 bool AVCodecAudioDecoder::Initialize()
 {
-	if (_framer.IsValid() == false)
+	if (_analyzer.IsValid() == false)
 	{
-		if (_framer.Init(GetCodecID()) == false)
+		if (_analyzer.Init(GetCodecID()) == false)
 		{
 			logte("Bitstream parser not found");
 			return false;
@@ -64,56 +64,21 @@ bool AVCodecAudioDecoder::Initialize()
 
 std::shared_ptr<MediaPacket> AVCodecAudioDecoder::GetFramedPacket()
 {
-	if (_framing_buffer.GetRemainedSize() <= 0)
-	{
-		auto obj = _input_buffer.Dequeue();
-		if (obj.has_value() == false)
-		{
-			return nullptr;
-		}
-
-		auto media_packet = std::move(obj.value());
-		if (_framing_buffer.Append(media_packet, media_packet->GetData()) == false)
-		{
-			logte("[%s] Could not prepare framing buffer", _stream_info.GetUri().CStr());
-			_framing_buffer.Reset();
-			return nullptr;
-		}
-	}
-
-	auto *data = _framing_buffer.DataAtCurrentOffset();
-	if (data == nullptr)
-	{
-		_framing_buffer.Reset();
-		return nullptr;
-	}
-
-	int parsed_size = 0;
-	auto parsed_pkt = _framer.Parse(
-		_codec,
-		cmn::MediaType::Audio,
-		data,
-		_framing_buffer.GetRemainedSize(),
-		_framing_buffer.GetPts(),
-		_framing_buffer.GetDts(), parsed_size);
-	if (parsed_size < 0)
-	{
-		logte("[%s] An error occurred while parsing: %d", _stream_info.GetUri().CStr(), parsed_size);
-		_framing_buffer.Reset();
-		return nullptr;
-	}
-	else if (parsed_size > 0)
-	{
-		_framing_buffer.Advance(parsed_size);
-	}
-
-	// No complete frame yet; more input data is needed.
-	if (parsed_pkt == nullptr)
+	auto obj = _input_buffer.Dequeue();
+	if (obj.has_value() == false)
 	{
 		return nullptr;
 	}
 
-	return parsed_pkt;
+	auto media_packet = std::move(obj.value());
+
+	if (_analyzer.Analyze(media_packet) == false)
+	{
+		logte("[%s] Could not analyze the bitstream packet", _stream_info.GetUri().CStr());
+		return nullptr;
+	}
+
+	return std::const_pointer_cast<MediaPacket>(media_packet);
 }
 
 DecodeResult AVCodecAudioDecoder::SendPacket(const std::shared_ptr<MediaPacket> &packet)
@@ -131,7 +96,7 @@ DecodeResult AVCodecAudioDecoder::SendPacket(const std::shared_ptr<MediaPacket> 
 		logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 			  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), packet->GetPts());
 
-		auto empty_frame = MediaFrame::Create(cmn::MediaType::Audio, _framing_buffer.GetDts());
+		auto empty_frame = MediaFrame::Create(cmn::MediaType::Audio, packet->GetDts());
 		return DecodeResult::InvalidData(std::move(empty_frame));
 	}
 	else if (result != ffmpeg::CodecResult::Ok)
@@ -159,7 +124,7 @@ DecodeResult AVCodecAudioDecoder::ReceiveFrame()
 	else if (received.result == ffmpeg::CodecResult::InvalidData)
 	{
 		logtw("Invalid data while receiving a packet for decoding");
-		auto empty_frame = MediaFrame::Create(cmn::MediaType::Audio, _framing_buffer.GetDts());
+		auto empty_frame = MediaFrame::Create(cmn::MediaType::Audio, _analyzer.GetDts());
 		return DecodeResult::InvalidData(std::move(empty_frame));
 	}
 	else if (received.result != ffmpeg::CodecResult::Ok)

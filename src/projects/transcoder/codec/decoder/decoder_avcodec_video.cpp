@@ -14,9 +14,9 @@
 bool AVCodecVideoDecoder::Initialize()
 {
 	// Create the bitstream framer bound to this decoder's codec (once).
-	if (_framer.IsValid() == false)
+	if (_analyzer.IsValid() == false)
 	{
-		if (_framer.Init(GetCodecID()) == false)
+		if (_analyzer.Init(GetCodecID()) == false)
 		{
 			logte("Bitstream parser not found");
 			return false;
@@ -64,13 +64,12 @@ bool AVCodecVideoDecoder::Initialize()
 bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 {
 	if (_codec.GetWidth() != 0 &&
-		_codec.GetHeight() != 0 &&
-		(_framer.GetWidth() != _codec.GetWidth() || _framer.GetHeight() != _codec.GetHeight()))
+		_codec.GetHeight() != 0)
 	{
 		logti("[%s] Input frame resolution of the %u track has been changed. Size:%dx%d -> %dx%d",
 			  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(),
 			  _codec.GetWidth(), _codec.GetHeight(),
-			  _framer.GetWidth(), _framer.GetHeight());
+			  _analyzer.GetWidth(), _analyzer.GetHeight());
 
 		Uninitialize();
 
@@ -85,66 +84,36 @@ bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 
 std::shared_ptr<MediaPacket> AVCodecVideoDecoder::GetFramedPacket()
 {
-	if (_framing_buffer.GetRemainedSize() <= 0)
+	auto obj = _input_buffer.Dequeue();
+	if (obj.has_value() == false)
 	{
-		auto obj = _input_buffer.Dequeue();
-		if (obj.has_value() == false)
+		return nullptr;
+	}
+
+	auto media_packet = std::move(obj.value());
+
+	const auto &data = media_packet->GetData();
+	if (data == nullptr || data->GetLength() == 0)
+	{
+		logte("[%s] Could not analyze the bitstream packet", _stream_info.GetUri().CStr());
+		return nullptr;
+	}
+
+	// Analyze the packet; if the input format (resolution) changed, reinit the codec.
+	if (_analyzer.IsFormatChanged(media_packet) == true)
+	{
+		if (ReinitCodecIfNeed() == false)
 		{
 			return nullptr;
 		}
-
-		auto media_packet = std::move(obj.value());
-		if (_framing_buffer.Append(media_packet, media_packet->GetData()) == false)
-		{
-			logte("[%s] Could not prepare framing buffer", _stream_info.GetUri().CStr());
-			_framing_buffer.Reset();
-			return nullptr;
-		}
 	}
 
-	auto *data = _framing_buffer.DataAtCurrentOffset();
-	if (data == nullptr)
-	{
-		_framing_buffer.Reset();
-		return nullptr;
-	}
-
-	int parsed_size = 0;
-	auto parsed_pkt = _framer.Parse(
-		_codec,
-		cmn::MediaType::Video,
-		data,
-		_framing_buffer.GetRemainedSize(),
-		_framing_buffer.GetPts(),
-		_framing_buffer.GetDts(), parsed_size);
-	if (parsed_size < 0)
-	{
-		logte("[%s] An error occurred while parsing: %d", _stream_info.GetUri().CStr(), parsed_size);
-		_framing_buffer.Reset();
-		return nullptr;
-	}
-	else if (parsed_size > 0)
-	{
-		_framing_buffer.Advance(parsed_size);
-	}
-
-	// No complete frame yet; more input data is needed.
-	if (parsed_pkt == nullptr)
-	{
-		return nullptr;
-	}
-
-	return parsed_pkt;
+	return std::const_pointer_cast<MediaPacket>(media_packet);
 }
 
 
 DecodeResult AVCodecVideoDecoder::SendPacket(const std::shared_ptr<MediaPacket> &packet)
 {
-	if (ReinitCodecIfNeed() == false)
-	{
-		return DecodeResult::NoOutput();
-	}
-
 	bool drop_non_keyframe = (GetRefTrack()->IsKeyframeDecodeOnly() == true) && (packet->GetFlag() != MediaPacketFlag::Key);
 	if (drop_non_keyframe == true)
 	{
@@ -157,7 +126,7 @@ DecodeResult AVCodecVideoDecoder::SendPacket(const std::shared_ptr<MediaPacket> 
 		logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 			  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), packet->GetPts());
 
-		auto empty_frame = MediaFrame::Create(cmn::MediaType::Video, _framing_buffer.GetDts());
+		auto empty_frame = MediaFrame::Create(cmn::MediaType::Video, packet->GetDts());
 
 		return DecodeResult::InvalidData(std::move(empty_frame));
 	}
@@ -204,10 +173,12 @@ DecodeResult AVCodecVideoDecoder::ReceiveFrame()
 		return DecodeResult::NoOutput();
 	}
 
-	// If the decoder did not provide a duration, calculate it from the frame rate 
-	if (decoded_frame->GetDuration() <= 0LL && _codec.GetFrameRate().num > 0 && _codec.GetFrameRate().den > 0)
+	// If the decoder did not provide a duration, calculate it from the frame rate
+	const auto framerate = _codec.GetFrameRate();
+	const auto timebase_expr = GetRefTrack()->GetTimeBase().GetExpr();
+	if (decoded_frame->GetDuration() <= 0LL && framerate.GetExpr() > 0 && timebase_expr > 0)
 	{
-		decoded_frame->SetDuration((int64_t)(((double)_codec.GetFrameRate().den / (double)_codec.GetFrameRate().num) / (double)GetRefTrack()->GetTimeBase().GetExpr()));
+		decoded_frame->SetDuration((int64_t)((1.0 / framerate.GetExpr()) / timebase_expr));
 	}
 
 	return DecodeResult::Decoded(std::move(decoded_frame), format_changed);
