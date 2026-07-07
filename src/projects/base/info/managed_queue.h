@@ -257,7 +257,9 @@ namespace info
 		}
 
 		// Dwell-time distribution: microseconds each item waited in the queue, recorded per
-		// Dequeue into log2 buckets so percentiles stay cheap on the hot path.
+		// Dequeue into log2 buckets so percentiles stay cheap on the hot path. Fed into two
+		// sets: a cumulative (whole-lifetime) set and a current-interval set that
+		// RollDwellLatest publishes as the "latest" values and resets each stats tick.
 		void RecordDwellUs(int64_t dwell_us)
 		{
 			if (dwell_us < 0)
@@ -274,55 +276,47 @@ namespace info
 				bucket++;
 			}
 
-			_dwell_hist[bucket].fetch_add(1, std::memory_order_relaxed);
-			_dwell_count.fetch_add(1, std::memory_order_relaxed);
-			_dwell_sum_us.fetch_add(static_cast<uint64_t>(dwell_us), std::memory_order_relaxed);
+			AccumulateDwell(_dwell_hist, _dwell_count, _dwell_sum_us, _dwell_min_us, _dwell_max_us, bucket, dwell_us);
+			AccumulateDwell(_dwell_cur_hist, _dwell_cur_count, _dwell_cur_sum_us, _dwell_cur_min_us, _dwell_cur_max_us, bucket, dwell_us);
+		}
 
-			// compare_exchange loops so min/max stay correct even without the caller's lock.
-			int64_t prev_min = _dwell_min_us.load(std::memory_order_relaxed);
-			while (dwell_us < prev_min && !_dwell_min_us.compare_exchange_weak(prev_min, dwell_us, std::memory_order_relaxed))
+		// Publish the current interval's dwell stats as the "latest" (last completed
+		// interval) values, then reset the interval accumulators for the next window. Called
+		// once per stats tick under the queue lock, mirroring how per-second stats roll over.
+		void RollDwellLatest()
+		{
+			const uint64_t count = _dwell_cur_count.load(std::memory_order_relaxed);
+			if (count == 0)
 			{
+				_dwell_latest_min_us.store(0, std::memory_order_relaxed);
+				_dwell_latest_avg_us.store(0, std::memory_order_relaxed);
+				_dwell_latest_p50_us.store(0, std::memory_order_relaxed);
+				_dwell_latest_p90_us.store(0, std::memory_order_relaxed);
+				_dwell_latest_p99_us.store(0, std::memory_order_relaxed);
+				_dwell_latest_max_us.store(0, std::memory_order_relaxed);
+				return;
 			}
 
-			int64_t prev_max = _dwell_max_us.load(std::memory_order_relaxed);
-			while (dwell_us > prev_max && !_dwell_max_us.compare_exchange_weak(prev_max, dwell_us, std::memory_order_relaxed))
+			_dwell_latest_min_us.store(_dwell_cur_min_us.load(std::memory_order_relaxed), std::memory_order_relaxed);
+			_dwell_latest_max_us.store(_dwell_cur_max_us.load(std::memory_order_relaxed), std::memory_order_relaxed);
+			_dwell_latest_avg_us.store(static_cast<int64_t>(_dwell_cur_sum_us.load(std::memory_order_relaxed) / count), std::memory_order_relaxed);
+			_dwell_latest_p50_us.store(DwellPercentileUs(_dwell_cur_hist, count, 0.5), std::memory_order_relaxed);
+			_dwell_latest_p90_us.store(DwellPercentileUs(_dwell_cur_hist, count, 0.9), std::memory_order_relaxed);
+			_dwell_latest_p99_us.store(DwellPercentileUs(_dwell_cur_hist, count, 0.99), std::memory_order_relaxed);
+
+			for (int i = 0; i < DWELL_BUCKETS; i++)
 			{
+				_dwell_cur_hist[i].store(0, std::memory_order_relaxed);
 			}
+			_dwell_cur_count.store(0, std::memory_order_relaxed);
+			_dwell_cur_sum_us.store(0, std::memory_order_relaxed);
+			_dwell_cur_min_us.store(std::numeric_limits<int64_t>::max(), std::memory_order_relaxed);
+			_dwell_cur_max_us.store(0, std::memory_order_relaxed);
 		}
 
 		int64_t GetDwellPercentileUs(double percentile) const
 		{
-			uint64_t total = _dwell_count.load(std::memory_order_relaxed);
-			if (total == 0)
-			{
-				return 0;
-			}
-
-			// Nearest-rank: ceil so the rank is not biased downward, clamped to [1, total].
-			uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
-			if (target < 1)
-			{
-				target = 1;
-			}
-			if (target > total)
-			{
-				target = total;
-			}
-
-			// RecordDwellUs puts dwell 0 in bucket 0 and dwell in [2^(k-1), 2^k - 1] in
-			// bucket k, so a bucket's reported value is its lower bound: 0 for bucket 0,
-			// 2^(i-1) otherwise.
-			uint64_t cumulative = 0;
-			for (int i = 0; i < DWELL_BUCKETS; i++)
-			{
-				cumulative += _dwell_hist[i].load(std::memory_order_relaxed);
-				if (cumulative >= target)
-				{
-					return (i == 0) ? 0 : (static_cast<int64_t>(1) << (i - 1));
-				}
-			}
-
-			return static_cast<int64_t>(1) << (DWELL_BUCKETS - 2);
+			return DwellPercentileUs(_dwell_hist, _dwell_count.load(std::memory_order_relaxed), percentile);
 		}
 
 		int64_t GetDwellAvgUs() const
@@ -354,6 +348,37 @@ namespace info
 		int64_t GetDwellMaxUs() const
 		{
 			return _dwell_max_us.load(std::memory_order_relaxed);
+		}
+
+		// "Latest" dwell stats: the last completed interval only (see RollDwellLatest).
+		int64_t GetDwellLatestMinUs() const
+		{
+			return _dwell_latest_min_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellLatestAvgUs() const
+		{
+			return _dwell_latest_avg_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellLatestP50Us() const
+		{
+			return _dwell_latest_p50_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellLatestP90Us() const
+		{
+			return _dwell_latest_p90_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellLatestP99Us() const
+		{
+			return _dwell_latest_p99_us.load(std::memory_order_relaxed);
+		}
+
+		int64_t GetDwellLatestMaxUs() const
+		{
+			return _dwell_latest_max_us.load(std::memory_order_relaxed);
 		}
 
 		int64_t GetThresholdExceededTimeMs() const
@@ -454,11 +479,82 @@ namespace info
 
 		// Dwell-time histogram (log2 microsecond buckets), see RecordDwellUs()
 		static constexpr int DWELL_BUCKETS = 48;
+		// Cumulative (whole-lifetime) dwell distribution.
 		std::atomic<uint64_t> _dwell_hist[DWELL_BUCKETS] = {};
 		std::atomic<uint64_t> _dwell_count{0};
 		std::atomic<uint64_t> _dwell_sum_us{0};
 		std::atomic<int64_t> _dwell_min_us{std::numeric_limits<int64_t>::max()};
 		std::atomic<int64_t> _dwell_max_us{0};
+
+		// Current-interval dwell distribution, published and reset each stats tick.
+		std::atomic<uint64_t> _dwell_cur_hist[DWELL_BUCKETS] = {};
+		std::atomic<uint64_t> _dwell_cur_count{0};
+		std::atomic<uint64_t> _dwell_cur_sum_us{0};
+		std::atomic<int64_t> _dwell_cur_min_us{std::numeric_limits<int64_t>::max()};
+		std::atomic<int64_t> _dwell_cur_max_us{0};
+
+		// Dwell stats of the last completed interval (published by RollDwellLatest).
+		std::atomic<int64_t> _dwell_latest_min_us{0};
+		std::atomic<int64_t> _dwell_latest_avg_us{0};
+		std::atomic<int64_t> _dwell_latest_p50_us{0};
+		std::atomic<int64_t> _dwell_latest_p90_us{0};
+		std::atomic<int64_t> _dwell_latest_p99_us{0};
+		std::atomic<int64_t> _dwell_latest_max_us{0};
+
+		// Add one dwell sample to a (histogram, count, sum, min, max) set. The min/max
+		// compare_exchange loops keep them correct even for a lock-free caller.
+		static void AccumulateDwell(std::atomic<uint64_t> *hist, std::atomic<uint64_t> &count,
+									std::atomic<uint64_t> &sum_us, std::atomic<int64_t> &min_us,
+									std::atomic<int64_t> &max_us, int bucket, int64_t dwell_us)
+		{
+			hist[bucket].fetch_add(1, std::memory_order_relaxed);
+			count.fetch_add(1, std::memory_order_relaxed);
+			sum_us.fetch_add(static_cast<uint64_t>(dwell_us), std::memory_order_relaxed);
+
+			int64_t prev_min = min_us.load(std::memory_order_relaxed);
+			while (dwell_us < prev_min && !min_us.compare_exchange_weak(prev_min, dwell_us, std::memory_order_relaxed))
+			{
+			}
+
+			int64_t prev_max = max_us.load(std::memory_order_relaxed);
+			while (dwell_us > prev_max && !max_us.compare_exchange_weak(prev_max, dwell_us, std::memory_order_relaxed))
+			{
+			}
+		}
+
+		// Nearest-rank percentile over a log2 dwell histogram. RecordDwellUs puts dwell 0 in
+		// bucket 0 and dwell in [2^(k-1), 2^k - 1] in bucket k, so a bucket's reported value
+		// is its lower bound: 0 for bucket 0, 2^(i-1) otherwise.
+		static int64_t DwellPercentileUs(const std::atomic<uint64_t> *hist, uint64_t total, double percentile)
+		{
+			if (total == 0)
+			{
+				return 0;
+			}
+
+			// Nearest-rank: ceil so the rank is not biased downward, clamped to [1, total].
+			uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
+			if (target < 1)
+			{
+				target = 1;
+			}
+			if (target > total)
+			{
+				target = total;
+			}
+
+			uint64_t cumulative = 0;
+			for (int i = 0; i < DWELL_BUCKETS; i++)
+			{
+				cumulative += hist[i].load(std::memory_order_relaxed);
+				if (cumulative >= target)
+				{
+					return (i == 0) ? 0 : (static_cast<int64_t>(1) << (i - 1));
+				}
+			}
+
+			return static_cast<int64_t>(1) << (DWELL_BUCKETS - 2);
+		}
 	};
 
 }  // namespace info

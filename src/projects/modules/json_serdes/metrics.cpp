@@ -100,6 +100,12 @@ namespace serdes
 		SetInt64(value, "dwellP90Us", metrics->GetDwellP90());
 		SetInt64(value, "dwellP99Us", metrics->GetDwellP99());
 		SetInt64(value, "dwellMaxUs", metrics->GetDwellMax());
+		SetInt64(value, "dwellLatestMinUs", metrics->GetDwellLatestMin());
+		SetInt64(value, "dwellLatestAvgUs", metrics->GetDwellLatestAvg());
+		SetInt64(value, "dwellLatestP50Us", metrics->GetDwellLatestP50());
+		SetInt64(value, "dwellLatestP90Us", metrics->GetDwellLatestP90());
+		SetInt64(value, "dwellLatestP99Us", metrics->GetDwellLatestP99());
+		SetInt64(value, "dwellLatestMaxUs", metrics->GetDwellLatestMax());
 		SetInt(value, "inputPerSecond", metrics->GetInputMessagePerSecond());
 		SetInt(value, "outputPerSecond", metrics->GetOutputMessagePerSecond());
 		SetInt(value, "drop", metrics->GetDropCount());
