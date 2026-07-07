@@ -532,6 +532,16 @@ namespace info
 				return 0;
 			}
 
+			// Clamp to [0, 1] first so a stray or NaN percentile can't wrap the unsigned target.
+			if (std::isnan(percentile) || percentile < 0.0)
+			{
+				percentile = 0.0;
+			}
+			else if (percentile > 1.0)
+			{
+				percentile = 1.0;
+			}
+
 			// Nearest-rank: ceil so the rank is not biased downward, clamped to [1, total].
 			uint64_t target = static_cast<uint64_t>(std::ceil(static_cast<double>(total) * percentile));
 			if (target < 1)
