@@ -558,10 +558,10 @@ namespace ov
 					{
 						_last_logging_time = 0;
 
-						logw(LOG_TAG, "Exceeded. %s dwell_us[n=%llu min=%lld avg=%lld p50=%lld p90=%lld p99=%lld max=%lld] latest_dwell_us[p50=%lld p90=%lld p99=%lld max=%lld]", GetInfoString().CStr(),
+						logw(LOG_TAG, "Exceeded. %s dwell_us[n=%llu min=%lld avg=%lld p50=%lld p90=%lld p99=%lld max=%lld] latest_dwell_us[min=%lld avg=%lld p50=%lld p90=%lld p99=%lld max=%lld]", GetInfoString().CStr(),
 							static_cast<unsigned long long>(GetDwellCount()), static_cast<long long>(GetDwellMinUs()), static_cast<long long>(GetDwellAvgUs()),
 							static_cast<long long>(GetDwellPercentileUs(0.5)), static_cast<long long>(GetDwellPercentileUs(0.9)), static_cast<long long>(GetDwellPercentileUs(0.99)), static_cast<long long>(GetDwellMaxUs()),
-							static_cast<long long>(GetDwellLatestP50Us()), static_cast<long long>(GetDwellLatestP90Us()), static_cast<long long>(GetDwellLatestP99Us()), static_cast<long long>(GetDwellLatestMaxUs()));
+							static_cast<long long>(GetDwellLatestMinUs()), static_cast<long long>(GetDwellLatestAvgUs()), static_cast<long long>(GetDwellLatestP50Us()), static_cast<long long>(GetDwellLatestP90Us()), static_cast<long long>(GetDwellLatestP99Us()), static_cast<long long>(GetDwellLatestMaxUs()));
 
 						_last_logged_peak = _peak;
 					}
