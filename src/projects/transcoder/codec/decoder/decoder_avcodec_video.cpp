@@ -13,7 +13,6 @@
 
 bool AVCodecVideoDecoder::Initialize()
 {
-	// Create the bitstream framer bound to this decoder's codec (once).
 	if (_analyzer.IsValid() == false)
 	{
 		if (_analyzer.Init(GetCodecID()) == false)
