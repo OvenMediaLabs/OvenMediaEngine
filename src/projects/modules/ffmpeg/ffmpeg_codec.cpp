@@ -78,6 +78,11 @@ namespace ffmpeg
 
 	CodecResult FFmpegCodec::SendPacket(const std::shared_ptr<MediaPacket> &media_packet)
 	{
+		if (media_packet == nullptr || media_packet->GetData() == nullptr)
+		{
+			return CodecResult::InvalidData;
+		}
+
 		if (_send_packet == nullptr)
 		{
 			_send_packet = ::av_packet_alloc();
