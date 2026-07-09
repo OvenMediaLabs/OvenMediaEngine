@@ -22,24 +22,31 @@ public:
 	uint32_t GetSampleRate();
 	uint8_t GetChannelCount();
 
+	// Total frame size in bytes (header + payload). Returns 0 if it cannot be determined.
+	// Use it to find where the next frame starts.
+	uint32_t GetFrameLength();
+
 	double GetVersion();
 	uint8_t GetLayer();
 
 	ov::String GetInfoString();
 	
 private:
-	uint8_t _version_id;
-	uint8_t _layer_id;
-	uint8_t _protection_bit;
-	uint8_t _bitrate_index;
-	uint8_t _sampling_frequency;
-	uint8_t _padding_bit;
-	uint8_t _private_bit;
-	uint8_t _channel_mode;
-	uint8_t _mode_extension;
-	uint8_t _copy_right;
-	uint8_t _original;
-	uint8_t _emphasis;
+	// Default-initialized so the getters never read indeterminate values when
+	// Parse() fails early (e.g. syncword mismatch) or the object is queried
+	// without a successful Parse().
+	uint8_t _version_id = 0;
+	uint8_t _layer_id = 0;
+	uint8_t _protection_bit = 0;
+	uint8_t _bitrate_index = 0;
+	uint8_t _sampling_frequency = 0;
+	uint8_t _padding_bit = 0;
+	uint8_t _private_bit = 0;
+	uint8_t _channel_mode = 0;
+	uint8_t _mode_extension = 0;
+	uint8_t _copy_right = 0;
+	uint8_t _original = 0;
+	uint8_t _emphasis = 0;
 
 	uint32_t _bitrate = 0;
 	uint32_t _sampling_rate = 0;

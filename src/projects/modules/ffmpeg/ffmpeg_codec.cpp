@@ -78,6 +78,11 @@ namespace ffmpeg
 
 	CodecResult FFmpegCodec::SendPacket(const std::shared_ptr<MediaPacket> &media_packet)
 	{
+		if (media_packet == nullptr || media_packet->GetData() == nullptr)
+		{
+			return CodecResult::InvalidData;
+		}
+
 		if (_send_packet == nullptr)
 		{
 			_send_packet = ::av_packet_alloc();
@@ -87,8 +92,20 @@ namespace ffmpeg
 			}
 		}
 
-		// MediaPacket -> AVPacket
-		compat::ToAVPacket(_send_packet, media_packet);
+		::av_packet_unref(_send_packet);
+
+		if (_padded_input_buffer.Append(media_packet->GetData()->GetDataAs<uint8_t>(),
+								static_cast<uint32_t>(media_packet->GetDataLength())) == false)
+		{
+			return CodecResult::NoMemory;
+		}
+
+		_send_packet->data	   = _padded_input_buffer.Data();
+		_send_packet->size	   = static_cast<int>(_padded_input_buffer.Size());
+		_send_packet->pts	   = media_packet->GetPts();
+		_send_packet->dts	   = media_packet->GetDts();
+		_send_packet->duration = media_packet->GetDuration();
+		_send_packet->flags	   = (media_packet->GetFlag() == MediaPacketFlag::Key) ? AV_PKT_FLAG_KEY : 0;
 
 		return ToCodecResult(::avcodec_send_packet(_context, _send_packet));
 	}
@@ -283,7 +300,7 @@ namespace ffmpeg
 	int FFmpegCodec::SetOption(const char *name, int64_t value) { return ::av_opt_set_int(_context->priv_data, name, value, 0); }
 
 	int64_t FFmpegCodec::GetBitrate() const noexcept { return _context->bit_rate; }
-	AVRational FFmpegCodec::GetFrameRate() const noexcept { return _context->framerate; }
+	cmn::Rational FFmpegCodec::GetFrameRate() const noexcept { return cmn::Rational(_context->framerate.num, _context->framerate.den); }
 	int FFmpegCodec::GetWidth() const noexcept { return _context->width; }
 	int FFmpegCodec::GetHeight() const noexcept { return _context->height; }
 	int FFmpegCodec::GetGopSize() const noexcept { return _context->gop_size; }

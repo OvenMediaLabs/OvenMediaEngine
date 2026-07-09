@@ -3,6 +3,7 @@ ome_add_static_library(transcoder
         codec
         codec/decoder
         codec/encoder
+        analyzer
         filter
     DEPS
         bitstream

@@ -10,8 +10,7 @@
 
 #include "../../transcoder_decoder.h"
 #include <modules/ffmpeg/ffmpeg_codec.h>
-#include <modules/ffmpeg/ffmpeg_bitstream_framer.h>
-#include <transcoder/padded_aligned_buffer.h>
+#include <transcoder/analyzer/bitstream_analyzer.h>
 
 // Software (FFmpeg/libavcodec) audio decoder (AAC/MP3/OPUS/MP2). 
 class AVCodecAudioDecoder : public TranscodeDecoder
@@ -47,8 +46,7 @@ private:
 	// ----- Members -----
 	cmn::MediaCodecId _codec_id;
 	ffmpeg::FFmpegCodec _codec;
-	ffmpeg::FFmpegBitstreamFramer _framer;
-	PaddedAlignedBuffer _framing_buffer;
+	BitstreamAnalyzer _analyzer;
 	bool _change_format = false;
 	
 	int64_t _first_pkt_pts = INT64_MIN;

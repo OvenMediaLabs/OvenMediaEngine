@@ -11,6 +11,8 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 #include <modules/ffmpeg/compat.h>
+// TODO(Keukhan): This file will be moved to avoid the compile dependency
+#include <transcoder/padded_aligned_buffer.h>
 
 #include <cstring>
 
@@ -130,7 +132,7 @@ namespace ffmpeg
 		int SetOption(const char *name, int64_t value);
 
 		int64_t GetBitrate() const noexcept;
-		AVRational GetFrameRate() const noexcept;
+		cmn::Rational GetFrameRate() const noexcept;
 		int GetWidth() const noexcept;
 		int GetHeight() const noexcept;
 		int GetGopSize() const noexcept;
@@ -153,6 +155,10 @@ namespace ffmpeg
 
 		AVCodecContext *_context = nullptr;
 		AVPacket *_send_packet = nullptr;	 // Reused input packet filled by SendPacket(MediaPacket).
+
+		// 32-byte aligned input buffer with FFmpeg required trailing padding.
+		PaddedAlignedBuffer _padded_input_buffer;  
+
 		AVFrame *_receive_frame = nullptr;	 // Reused output frame used by ReceiveFrame().
 		AVPacket *_receive_packet = nullptr; // Reused output packet used by ReceivePacket().
 		int _last_error = 0;

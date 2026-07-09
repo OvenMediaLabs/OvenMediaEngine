@@ -317,17 +317,6 @@ namespace ffmpeg
 			return packet_buffer;
 		}
 
-		static void ToAVPacket(AVPacket* dst, const std::shared_ptr<MediaPacket>& src)
-		{
-			::av_packet_unref(dst);
-			dst->data	  = const_cast<uint8_t*>(src->GetData()->GetDataAs<uint8_t>());
-			dst->size	  = static_cast<int>(src->GetDataLength());
-			dst->pts	  = src->GetPts();
-			dst->dts	  = src->GetDts();
-			dst->duration = src->GetDuration();
-			dst->flags	  = (src->GetFlag() == MediaPacketFlag::Key) ? AV_PKT_FLAG_KEY : 0;
-		}
-
 		static ov::String CodecInfoToString(const AVCodecContext* context)
 		{
 			ov::String message;
