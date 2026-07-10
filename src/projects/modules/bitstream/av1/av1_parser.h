@@ -133,4 +133,17 @@ public:
 
 		return ParseSequenceHeaderSummary(payload->GetDataAs<uint8_t>(), payload->GetLength());
 	}
+
+	/// Return a copy of an AV1 OBU bytestream with every `OBU_TEMPORAL_DELIMITER` removed.
+	///
+	/// AV1 ISOBMFF v1.3.0 section 2.4 states that `OBU_TEMPORAL_DELIMITER` SHOULD NOT be present in
+	/// ISOBMFF samples, so both the fMP4 packager and the ffmpeg MP4 muxer strip them before muxing.
+	/// All other OBUs are copied verbatim (including their optional `obu_size` field). Handles both
+	/// size-delimited and low-overhead (`obu_has_size_field == 0`) in-band streams via `ReadObu()`.
+	///
+	/// @param data Buffer containing one or more concatenated AV1 OBUs.
+	///
+	/// @return Filtered OBU bytestream, or `nullptr` if `data` is empty/malformed or nothing remains
+	/// after stripping.
+	static std::shared_ptr<ov::Data> StripTemporalDelimiters(const std::shared_ptr<const ov::Data> &data);
 };

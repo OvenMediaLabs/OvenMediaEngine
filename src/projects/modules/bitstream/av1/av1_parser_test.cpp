@@ -870,3 +870,59 @@ TEST(Av1ParserExtractSequenceHeader, ReturnsNullForEmptySequenceHeader)
 	auto data = std::make_shared<ov::Data>(seq.data(), seq.size());
 	EXPECT_EQ(Av1Parser::ExtractFirstSequenceHeaderObu(data), nullptr);
 }
+
+// StripTemporalDelimiters removes every OBU_TEMPORAL_DELIMITER and copies the rest verbatim.
+TEST(Av1ParserStripTemporalDelimiters, RemovesTemporalDelimiters)
+{
+	auto td	   = MakeObu(Av1ObuType::TemporalDelimiter, {});
+	auto seq   = MakeObu(Av1ObuType::SequenceHeader, {0xAA, 0xBB});
+	auto frame = MakeObu(Av1ObuType::Frame, {0x01, 0x02, 0x03});
+
+	std::vector<uint8_t> in;
+	in.insert(in.end(), td.begin(), td.end());
+	in.insert(in.end(), seq.begin(), seq.end());
+	in.insert(in.end(), frame.begin(), frame.end());
+
+	std::vector<uint8_t> expected;
+	expected.insert(expected.end(), seq.begin(), seq.end());
+	expected.insert(expected.end(), frame.begin(), frame.end());
+
+	auto data	 = std::make_shared<ov::Data>(in.data(), in.size());
+	auto stripped = Av1Parser::StripTemporalDelimiters(data);
+	ASSERT_NE(stripped, nullptr);
+	ASSERT_EQ(stripped->GetLength(), expected.size());
+	EXPECT_EQ(std::memcmp(stripped->GetData(), expected.data(), expected.size()), 0);
+}
+
+// A low-overhead stream whose terminal OBU omits obu_has_size_field is handled the same way.
+TEST(Av1ParserStripTemporalDelimiters, HandlesUnsizedTerminalObu)
+{
+	auto td	   = MakeObu(Av1ObuType::TemporalDelimiter, {}, /*has_size_field=*/false);
+	auto frame = MakeObu(Av1ObuType::Frame, {0x01, 0x02}, /*has_size_field=*/false);
+
+	std::vector<uint8_t> in;
+	in.insert(in.end(), td.begin(), td.end());
+	in.insert(in.end(), frame.begin(), frame.end());
+
+	auto data	  = std::make_shared<ov::Data>(in.data(), in.size());
+	auto stripped = Av1Parser::StripTemporalDelimiters(data);
+	ASSERT_NE(stripped, nullptr);
+	ASSERT_EQ(stripped->GetLength(), frame.size());
+	EXPECT_EQ(std::memcmp(stripped->GetData(), frame.data(), frame.size()), 0);
+}
+
+// A bytestream containing only temporal delimiters strips to nothing -> nullptr.
+TEST(Av1ParserStripTemporalDelimiters, ReturnsNullWhenOnlyTemporalDelimiters)
+{
+	auto td	  = MakeObu(Av1ObuType::TemporalDelimiter, {});
+	auto data = std::make_shared<ov::Data>(td.data(), td.size());
+	EXPECT_EQ(Av1Parser::StripTemporalDelimiters(data), nullptr);
+}
+
+// Empty / null input -> nullptr.
+TEST(Av1ParserStripTemporalDelimiters, ReturnsNullForEmptyInput)
+{
+	EXPECT_EQ(Av1Parser::StripTemporalDelimiters(nullptr), nullptr);
+	auto empty = std::make_shared<ov::Data>();
+	EXPECT_EQ(Av1Parser::StripTemporalDelimiters(empty), nullptr);
+}

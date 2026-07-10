@@ -608,6 +608,7 @@ namespace pub
 			// For mp4 format, only a limited number of codecs are supported.
 			if (codec_id == cmn::MediaCodecId::H264 ||
 				codec_id == cmn::MediaCodecId::H265 ||
+				codec_id == cmn::MediaCodecId::Av1 ||
 				codec_id == cmn::MediaCodecId::Aac ||
 				codec_id == cmn::MediaCodecId::Mp3 ||
 				codec_id == cmn::MediaCodecId::Opus)
@@ -628,7 +629,6 @@ namespace pub
 				return true;
 			}
 		}
-		// Webm 지원 코덱
 		else if (output_format == "webm")
 		{
 			if (codec_id == cmn::MediaCodecId::Vp8 ||

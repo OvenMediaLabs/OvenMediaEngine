@@ -4,6 +4,7 @@
 
 #include <base/modules/data_format/scte35_event/scte35_event.h>
 #include <modules/bitstream/aac/aac_converter.h>
+#include <modules/bitstream/av1/av1_parser.h>
 #include <modules/bitstream/nalu/nal_stream_converter.h>
 #include <modules/bitstream/opus/opus_specific_config.h>
 #include <modules/ffmpeg/compat.h>
@@ -563,6 +564,23 @@ namespace ffmpeg
 					if (new_data == nullptr)
 					{
 						logae(this, "Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+				case cmn::BitstreamFormat::AV1_OBU: {
+					// AV1 ISOBMFF v1.3.0 section 2.4: OBU_TEMPORAL_DELIMITER SHOULD NOT be present in
+					// ISOBMFF samples. Strip it here (matching FMP4Packager) before handing the sample
+					// to ffmpeg's MP4 muxer, which writes the OBUs as-is.
+					new_data = Av1Parser::StripTemporalDelimiters(packet->GetData());
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to strip AV1 temporal delimiters. track:%d, format:%s, size:%zu",
 							media_track->GetId(),
 							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
 							packet->GetData()->GetLength());
