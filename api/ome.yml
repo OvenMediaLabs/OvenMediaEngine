@@ -1293,7 +1293,9 @@ paths:
               schema:
                 allOf:
                 - $ref: '#/components/schemas/HttpStatus'
-                - properties:
+                - type: object
+                  required: [response]
+                  properties:
                     response:
                       type: object
                       required: [version, gitVersion]
