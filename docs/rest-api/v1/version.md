@@ -1,10 +1,10 @@
 ---
 title: Version
 description: "Get the current OvenMediaEngine version and git version via the v1 REST API."
-sidebar_position: 40
+sidebar_position: 41
 ---
 
-Returns OvenMediaEngine version metadata.
+## Returns OvenMediaEngine version metadata.
 
 > **Request**
 
@@ -44,8 +44,8 @@ Content-Type: application/json
     "statusCode": 200,
     "message": "OK",
     "response": {
-        "version": "0.20.5",
-        "gitVersion": "v0.20.5-0-g1234567"
+        "version": "x.y.z",
+        "gitVersion": "vx.y.z-0-g1234567"
     }
 }
 ```
@@ -68,8 +68,8 @@ WWW-Authenticate: Basic realm="OvenMediaEngine"
 
 ```json
 {
-    "message": "[HTTP] Authorization header is required to call API (401)",
-    "statusCode": 401
+    "statusCode": 401,
+    "message": "[HTTP] Authorization header is required to call API (401)"
 }
 ```
 

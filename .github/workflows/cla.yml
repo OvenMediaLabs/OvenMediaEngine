@@ -19,9 +19,6 @@ jobs:
   CLAAssistant:
     name: CLA Assistant
     runs-on: ubuntu-latest
-    env:
-      # Temporary compatibility switch for legacy Node 20 actions on GitHub-hosted runners.
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
     steps:
       # contributor-assistant/github-action pinned to the forked v2.6.1 commit
       # (upstream is archived; the fork lives at OvenMediaLabs/cla-github-action).
