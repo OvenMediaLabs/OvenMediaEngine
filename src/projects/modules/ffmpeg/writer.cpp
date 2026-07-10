@@ -574,17 +574,21 @@ namespace ffmpeg
 				}
 				break;
 				case cmn::BitstreamFormat::AV1_OBU: {
-					// AV1 ISOBMFF v1.3.0 section 2.4: OBU_TEMPORAL_DELIMITER SHOULD NOT be present in
-					// ISOBMFF samples. Strip it here (matching FMP4Packager) before handing the sample
-					// to ffmpeg's MP4 muxer, which writes the OBUs as-is.
+					// Strip Temporal Delimiter OBUs
 					new_data = Av1Parser::StripTemporalDelimiters(packet->GetData());
 					if (new_data == nullptr)
 					{
 						logae(this, "Failed to strip AV1 temporal delimiters. track:%d, format:%s, size:%zu",
 							media_track->GetId(),
 							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
-							packet->GetData()->GetLength());
+							packet->GetDataLength());
+						av_packet_unref(&av_packet);
 						return false;
+					}
+					if (new_data->GetLength() == 0)
+					{
+						av_packet_unref(&av_packet);
+						return true;
 					}
 					av_packet.size = new_data->GetLength();
 					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
