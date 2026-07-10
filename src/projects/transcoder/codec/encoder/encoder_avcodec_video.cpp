@@ -306,9 +306,12 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 bool AVCodecVideoEncoder::SetParamsLibAOM()
 {
 	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+#if 0
+	// Warning: The code below causes the error "malloc(): unaligned tcache chunk detected".
 	_codec.SetRcMaxRate(_codec.GetBitrate());
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetRcBufferSize(static_cast<int>(_codec.GetBitrate() / 2));
+#endif
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
 	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
@@ -331,10 +334,13 @@ bool AVCodecVideoEncoder::SetParamsLibAOM()
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
 
 	// Low-latency live streaming configuration for libaom-av1.
+#if 0
+	// Warning: The code below causes the error "malloc(): unaligned tcache chunk detected".
 	_codec.SetOption("usage", "realtime");
 	_codec.SetOption("row-mt", 1);
 	_codec.SetOption("tile-columns", 1);
 	_codec.SetOption("tile-rows", static_cast<int64_t>(0));
+#endif
 
 	// libaom uses look-ahead buffering(lag-in-frames). For realtime it must be 0.
 	if (GetRefTrack()->GetLookaheadByConfig() >= 0)
