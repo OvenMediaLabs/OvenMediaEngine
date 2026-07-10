@@ -911,12 +911,15 @@ TEST(Av1ParserStripTemporalDelimiters, HandlesUnsizedTerminalObu)
 	EXPECT_EQ(std::memcmp(stripped->GetData(), frame.data(), frame.size()), 0);
 }
 
-// A bytestream containing only temporal delimiters strips to nothing -> nullptr.
-TEST(Av1ParserStripTemporalDelimiters, ReturnsNullWhenOnlyTemporalDelimiters)
+// A well-formed bytestream containing only temporal delimiters strips to a valid, empty buffer
+// (not nullptr) so the caller can distinguish "valid but empty" from a malformed bytestream.
+TEST(Av1ParserStripTemporalDelimiters, ReturnsEmptyWhenOnlyTemporalDelimiters)
 {
 	auto td	  = MakeObu(Av1ObuType::TemporalDelimiter, {});
 	auto data = std::make_shared<ov::Data>(td.data(), td.size());
-	EXPECT_EQ(Av1Parser::StripTemporalDelimiters(data), nullptr);
+	auto stripped = Av1Parser::StripTemporalDelimiters(data);
+	ASSERT_NE(stripped, nullptr);
+	EXPECT_EQ(stripped->GetLength(), 0U);
 }
 
 // Empty / null input -> nullptr.

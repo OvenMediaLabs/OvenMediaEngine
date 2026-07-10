@@ -266,10 +266,7 @@ std::shared_ptr<ov::Data> Av1Parser::StripTemporalDelimiters(const std::shared_p
 		return nullptr;
 	}
 
-	// Walk the OBUs once, copying everything except temporal delimiters. `ReadObu()` returns false on
-	// malformed input and tolerates a missing size field on the terminal OBU, so no separate
-	// size-field validation pass is needed.
-	auto filtered = std::make_shared<ov::Data>(total);
+	auto stripped = std::make_shared<ov::Data>(total);
 	size_t offset = 0;
 	Av1ObuSpan obu;
 
@@ -282,18 +279,16 @@ std::shared_ptr<ov::Data> Av1Parser::StripTemporalDelimiters(const std::shared_p
 
 		if (obu.header.type != Av1ObuType::TemporalDelimiter)
 		{
-			filtered->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
+			if (stripped->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset) == false)
+			{
+				return nullptr;
+			}
 		}
 
 		offset = obu.next_offset;
 	}
 
-	if (filtered->GetLength() == 0)
-	{
-		return nullptr;
-	}
-
-	return filtered;
+	return stripped;
 }
 
 namespace
