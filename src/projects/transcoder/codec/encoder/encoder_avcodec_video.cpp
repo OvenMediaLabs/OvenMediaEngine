@@ -300,6 +300,93 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// libaom (AV1)
+// ---------------------------------------------------------------------------
+bool AVCodecVideoEncoder::SetParamsLibAOM()
+{
+	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetRcMaxRate(_codec.GetBitrate());
+	_codec.SetRcMinRate(_codec.GetBitrate());
+	_codec.SetRcBufferSize(static_cast<int>(_codec.GetBitrate() / 2));
+	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
+	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
+	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetMaxBFrames(0);
+	_codec.SetPixelFormat(GetSupportVideoFormat());
+	auto resolution = GetRefTrack()->GetResolution();
+	_codec.SetWidth(resolution.width);
+	_codec.SetHeight(resolution.height);
+
+	auto key_frame_interval_type = GetRefTrack()->GetKeyFrameIntervalTypeByConfig();
+	if (key_frame_interval_type == cmn::KeyFrameIntervalType::TIME)
+	{
+		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRate() * (double)GetRefTrack()->GetKeyFrameInterval() / 1000 * 2));
+	}
+	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
+	{
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
+	}
+
+	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
+
+	// Low-latency live streaming configuration for libaom-av1.
+	_codec.SetOption("usage", "realtime");
+	_codec.SetOption("row-mt", 1);
+	_codec.SetOption("tile-columns", 1);
+	_codec.SetOption("tile-rows", static_cast<int64_t>(0));
+
+	// libaom uses look-ahead buffering(lag-in-frames). For realtime it must be 0.
+	if (GetRefTrack()->GetLookaheadByConfig() >= 0)
+	{
+		_codec.SetOption("lag-in-frames", GetRefTrack()->GetLookaheadByConfig());
+	}
+	else
+	{
+		_codec.SetOption("lag-in-frames", static_cast<int64_t>(0));
+	}
+
+	// cpu-used controls the speed/quality trade-off (0:slowest/best ... 8:fastest).
+	auto preset = GetRefTrack()->GetPreset().LowerCaseString();
+	if (preset.IsEmpty() == true)
+	{
+		_codec.SetOption("cpu-used", 8);
+	}
+	else if (preset == "slower")
+	{
+		_codec.SetOption("cpu-used", 5);
+	}
+	else if (preset == "slow")
+	{
+		_codec.SetOption("cpu-used", 6);
+	}
+	else if (preset == "medium")
+	{
+		_codec.SetOption("cpu-used", 7);
+	}
+	else if (preset == "fast" || preset == "faster")
+	{
+		_codec.SetOption("cpu-used", 8);
+	}
+	else
+	{
+		logtw("Unknown preset: %s. Use the default(fastest) cpu-used.", preset.CStr());
+		_codec.SetOption("cpu-used", 8);
+	}
+
+	if (!GetRefTrack()->GetExtraEncoderOptionsByConfig().IsEmpty())
+	{
+		_codec.SetOption("aom-params", GetRefTrack()->GetExtraEncoderOptionsByConfig().CStr());
+	}
+
+	logtd("opts: %s", ffmpeg::compat::GetAVOptionsString(_codec.GetPrivData()).CStr());
+
+	_bitstream_format = cmn::BitstreamFormat::AV1_OBU;
+	_packet_type = cmn::PacketType::RAW;
+
+	return true;
+}
+
 bool AVCodecVideoEncoder::OpenCodec()
 {
 	bool allocated = false;
@@ -307,6 +394,10 @@ bool AVCodecVideoEncoder::OpenCodec()
 	if (_codec_id == cmn::MediaCodecId::Vp8)
 	{
 		allocated = _codec.AllocEncoder(GetCodecID());
+	}
+	else if (_codec_id == cmn::MediaCodecId::Av1)
+	{
+		allocated = _codec.AllocEncoderByName("libaom-av1");
 	}
 	else if (_module_id == cmn::MediaCodecModuleId::X264)
 	{
@@ -329,6 +420,9 @@ bool AVCodecVideoEncoder::OpenCodec()
 	{
 		case cmn::MediaCodecId::Vp8:
 			result = SetParamsVp8();
+			break;
+		case cmn::MediaCodecId::Av1:
+			result = SetParamsLibAOM();
 			break;
 		default:
 			if (_module_id == cmn::MediaCodecModuleId::X264)

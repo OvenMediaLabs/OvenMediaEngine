@@ -34,6 +34,9 @@ bool AVCodecVideoDecoder::Initialize()
 		case cmn::MediaCodecId::Vp8:
 			decoder_name = "vp8";
 			break;
+		case cmn::MediaCodecId::Av1:
+			decoder_name = "libaom-av1";
+			break;
 		default:
 			logte("Unsupported codec for video decoder: %s", cmn::GetCodecIdString(GetCodecID()));
 			return false;

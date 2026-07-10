@@ -165,6 +165,7 @@ std::shared_ptr<TranscodeEncoder> TranscodeEncoder::Instantiate(
 		}
 	}
 	else if (codec_id == cmn::MediaCodecId::Vp8)    return std::make_shared<AVCodecVideoEncoder>(stream_info, codec_id, cmn::MediaCodecModuleId::LIBVPX);
+	else if (codec_id == cmn::MediaCodecId::Av1)    return std::make_shared<AVCodecVideoEncoder>(stream_info, codec_id, cmn::MediaCodecModuleId::LIBAOM);
 	else if (codec_id == cmn::MediaCodecId::Aac)    return std::make_shared<AVCodecAudioEncoder>(stream_info, codec_id);
 	else if (codec_id == cmn::MediaCodecId::Opus)
 	{

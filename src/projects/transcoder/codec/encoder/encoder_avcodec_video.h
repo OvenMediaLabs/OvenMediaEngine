@@ -14,6 +14,7 @@
 // AVCodecVideoEncoder handles the software FFmpeg video encoders:
 //   - H.264 : libx264 (X264) / libopenh264 (OPENH264, DEFAULT)
 //   - VP8   : libvpx (LIBVPX)
+//   - AV1   : libaom (libaom-av1)
 class AVCodecVideoEncoder : public TranscodeEncoder
 {
 public:
@@ -43,6 +44,8 @@ public:
 				return cmn::BitstreamFormat::H264_ANNEXB;
 			case cmn::MediaCodecId::H265:
 				return cmn::BitstreamFormat::H265_ANNEXB;
+			case cmn::MediaCodecId::Av1:
+				return cmn::BitstreamFormat::AV1_OBU;
 			default:
 				return cmn::BitstreamFormat::Unknown;
 		}
@@ -61,6 +64,7 @@ private:
 	bool SetParamsX264();
 	bool SetParamsOpenH264();
 	bool SetParamsVp8();
+	bool SetParamsLibAOM();
 
 	// ----- Members -----
 	cmn::MediaCodecId _codec_id;

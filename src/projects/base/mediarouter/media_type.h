@@ -130,6 +130,7 @@ namespace cmn
 		XMA,	   // HW
 		NILOGAN,   // HW
 		LIBVPX,	   // SW
+		LIBAOM,	   // SW
 		FDKAAC,	   // SW
 		LIBOPUS,   // SW
 		NB
@@ -147,6 +148,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, XMA);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NILOGAN);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBVPX);
+			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBAOM);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, FDKAAC);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBOPUS);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NB);
@@ -451,6 +453,10 @@ namespace cmn
 		{
 			return cmn::MediaCodecModuleId::LIBVPX;
 		}
+		else if (name.HasSuffix("_LIBAOM") || name.HasSuffix("LIBAOM"))
+		{
+			return cmn::MediaCodecModuleId::LIBAOM;
+		}
 		else if (name.HasSuffix("_FDKAAC") || name.HasSuffix("FDKAAC"))
 		{
 			return cmn::MediaCodecModuleId::FDKAAC;
@@ -477,6 +483,7 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecModuleId::NILOGAN, "nilogan");
 			OV_CASE_RETURN(MediaCodecModuleId::XMA, "xma");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBVPX, "libvpx");
+			OV_CASE_RETURN(MediaCodecModuleId::LIBAOM, "libaom");
 			OV_CASE_RETURN(MediaCodecModuleId::FDKAAC, "fdkaac");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBOPUS, "libopus");
 			OV_CASE_RETURN(MediaCodecModuleId::X264, "x264");
@@ -574,6 +581,10 @@ namespace cmn
 		else if (name.HasPrefix("FLV"))
 		{
 			return cmn::MediaCodecId::Flv;
+		}
+		else if (name.HasPrefix("AV1"))
+		{
+			return cmn::MediaCodecId::Av1;
 		}
 		// Image codecs
 		else if (name.HasPrefix("JPEG"))
