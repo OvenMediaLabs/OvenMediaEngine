@@ -487,7 +487,7 @@ namespace ffmpeg
 					{
 						codecpar->codec_tag = MKTAG('a', 'v', 'c', '1');
 					}
-					else if(media_track->GetCodecId() == cmn::MediaCodecId::Av1)
+					else if (media_track->GetCodecId() == cmn::MediaCodecId::Av1)
 					{
 						codecpar->codec_tag = MKTAG('a', 'v', '0', '1');
 					}
