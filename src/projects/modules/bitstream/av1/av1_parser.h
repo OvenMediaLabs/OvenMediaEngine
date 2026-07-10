@@ -137,9 +137,7 @@ public:
 	/// Return a copy of an AV1 OBU bytestream with every `OBU_TEMPORAL_DELIMITER` removed.
 	///
 	/// AV1 ISOBMFF v1.3.0 section 2.4 states that `OBU_TEMPORAL_DELIMITER` SHOULD NOT be present in
-	/// ISOBMFF samples, so both the fMP4 packager and the ffmpeg MP4 muxer strip them before muxing.
-	/// All other OBUs are copied verbatim (including their optional `obu_size` field). Handles both
-	/// size-delimited and low-overhead (`obu_has_size_field == 0`) in-band streams via `ReadObu()`.
+	/// ISOBMFF samples.
 	///
 	/// @param data Buffer containing one or more concatenated AV1 OBUs.
 	///
