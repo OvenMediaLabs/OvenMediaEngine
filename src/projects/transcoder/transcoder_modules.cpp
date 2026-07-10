@@ -39,6 +39,10 @@ namespace tc
 						   {cmn::MediaCodecId::Vp8},
 						   true, false, true, false));
 
+		Register(info::CodecModule("AOMedia AV1 Codec SDK", cmn::MediaType::Video, cmn::MediaCodecModuleId::LIBAOM, 0, "-",
+						   {cmn::MediaCodecId::Av1},
+						   true, true, true, false));
+
 		// --------------------------------------------------------------------------
 		// Audio Codecs
 		// --------------------------------------------------------------------------
