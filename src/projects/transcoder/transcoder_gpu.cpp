@@ -437,22 +437,8 @@ bool TranscodeGPU::CheckSupportedXMA()
 bool TranscodeGPU::CheckSupportedNILOGAN()
 {
 	_device_count_nilogan = 0;
-#ifdef HWACCELS_NILOGAN_ENABLED
-	_device_context_nilogan[0] = ffmpeg::FFmpegHwDeviceContext::Create(cmn::MediaCodecModuleId::NILOGAN);
-	if (_device_context_nilogan[0] == nullptr)
-	{
-		logtt("Netint: Driver is not loaded or installed");
-		return false;
-	}
 
-	_device_count_nilogan++;
-
-	_supported_devices.push_back(std::make_pair(cmn::MediaCodecModuleId::NILOGAN, 0));
-
-	return true;
-#else
 	return false;
-#endif
 }
 
 std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNILOGAN(cmn::DeviceId gpu_id)
