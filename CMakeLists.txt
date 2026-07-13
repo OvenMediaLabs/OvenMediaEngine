@@ -114,6 +114,7 @@ option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version 
 option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
 option(OME_THREAD_SAFETY            "Enable Clang thread-safety analysis"                OFF)
 option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
+option(OME_LATENCY_PROBE            "Build serving-path latency/stall instrumentation"  OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     option(OME_WHISPER_STATIC       "Build Whisper/ggml as a static library"             ON)
 else()
@@ -135,7 +136,16 @@ message(STATUS "  OME_SKIP_DEPENDENCY_CHECK: ${OME_SKIP_DEPENDENCY_CHECK}")
 message(STATUS "  OME_SANITIZE_THREAD: ${OME_SANITIZE_THREAD}")
 message(STATUS "  OME_THREAD_SAFETY: ${OME_THREAD_SAFETY}")
 message(STATUS "  OME_BUILD_TESTS: ${OME_BUILD_TESTS}")
+message(STATUS "  OME_LATENCY_PROBE: ${OME_LATENCY_PROBE}")
 message(STATUS "  OME_WHISPER_STATIC: ${OME_WHISPER_STATIC}")
+
+# Serving-path latency/stall instrumentation. OFF by default: none of the probe code is
+# compiled and there is zero runtime cost. When ON, records serving-path stage timings and
+# worker stalls to a single latency_probe.log (directory via the OME_LATENCY_PROBE_DIR
+# environment variable, default /dev/shm).
+if(OME_LATENCY_PROBE)
+    add_compile_definitions(OME_LATENCY_PROBE)
+endif()
 
 # ==============================================================================
 # Include cmake modules

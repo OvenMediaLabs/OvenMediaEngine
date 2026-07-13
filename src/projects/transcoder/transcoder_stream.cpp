@@ -18,6 +18,10 @@
 #include "transcoder_modules.h"
 #include "transcoder_private.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <base/ovlibrary/latency_probe.h>
+#endif	// OME_LATENCY_PROBE
+
 #define UNUSED_VARIABLE(var) (void)var;
 #define MAX_FILLER_FRAMES 100
 #define FILLER_ENABLED true
@@ -1237,6 +1241,11 @@ bool TranscoderStream::CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<in
 		return false;
 	}
 
+#ifdef OME_LATENCY_PROBE
+	ov::StopWatch creation_timer;
+	creation_timer.Start();
+#endif	// OME_LATENCY_PROBE
+
 	// Create a decoder
 	auto decoder = TranscodeDecoder::Create(
 		decoder_id,
@@ -1250,6 +1259,14 @@ bool TranscoderStream::CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<in
 	}
 
 	SetDecoder(decoder_id, decoder);
+
+#ifdef OME_LATENCY_PROBE
+	// Latency probe (OME_LATENCY_PROBE only): pipeline creation latency. Serialized decoder/encoder
+	// creation can back up the pipeline; this records how long each element took to build.
+	ov::LatencyProbeLog("CREATE", "kind=decoder ms=%lld decoder=%d codec=%s in_track=%u name=%s",
+						static_cast<long long>(creation_timer.Elapsed()), decoder_id,
+						cmn::GetCodecIdString(input_track->GetCodecId()), input_track->GetId(), input_stream->GetName().CStr());
+#endif	// OME_LATENCY_PROBE
 
 	return true;
 }
@@ -1385,6 +1402,11 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 		return false;
 	}
 
+#ifdef OME_LATENCY_PROBE
+	ov::StopWatch creation_timer;
+	creation_timer.Start();
+#endif	// OME_LATENCY_PROBE
+
 	// Create Encoder
 	auto encoder = TranscodeEncoder::Create(
 		encoder_id, output_stream, output_track, candidates,
@@ -1417,6 +1439,14 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 	}
 
 	SetEncoderWithFilter(encoder_id, post_filter, encoder);
+
+#ifdef OME_LATENCY_PROBE
+	ov::LatencyProbeLog("CREATE", "kind=encoder ms=%lld encoder=%d codec=%s module=%s:%d out_track=%d name=%s",
+						static_cast<long long>(creation_timer.Elapsed()), encoder_id,
+						cmn::GetCodecIdString(output_track->GetCodecId()),
+						cmn::GetCodecModuleIdString(encoder->GetModuleID()), encoder->GetDeviceID(),
+						output_track->GetId(), output_stream->GetName().CStr());
+#endif	// OME_LATENCY_PROBE
 
 	ov::String description = ov::String::FormatString("Id(%d)<Codec:%s,Module:%s:%d>, OutputTrack(%d)",
 													  encoder_id, cmn::GetCodecIdString(output_track->GetCodecId()),
@@ -1544,6 +1574,11 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 		return true;
 	}
 
+#ifdef OME_LATENCY_PROBE
+	ov::StopWatch creation_timer;
+	creation_timer.Start();
+#endif	// OME_LATENCY_PROBE
+
 	auto filter = TranscodeFilter::Create(filter_id, input_stream, input_track, output_stream, output_track, bind(&TranscoderStream::OnFilteredFrame, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 	if (filter == nullptr)
 	{
@@ -1553,6 +1588,11 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 	SetFilter(filter_id, filter);
 
 	logtd("%s Filter has been created. Id(%d), %s", _log_prefix.CStr(), filter_id, filter->GetDescription().CStr());
+
+#ifdef OME_LATENCY_PROBE
+	ov::LatencyProbeLog("CREATE", "kind=filter ms=%lld filter=%d name=%s",
+						static_cast<long long>(creation_timer.Elapsed()), filter_id, input_stream->GetName().CStr());
+#endif	// OME_LATENCY_PROBE
 
 	return true;
 }
@@ -1587,6 +1627,11 @@ void TranscoderStream::ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer)
 		return;
 	}
 
+#ifdef OME_LATENCY_PROBE
+	ov::StopWatch creation_timer;
+	creation_timer.Start();
+#endif	// OME_LATENCY_PROBE
+
 	// Update Track of Input Stream
 	UpdateInputTrack(buffer);
 
@@ -1608,6 +1653,11 @@ void TranscoderStream::ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer)
 
 		return;
 	}
+
+#ifdef OME_LATENCY_PROBE
+	ov::LatencyProbeLog("CREATE", "kind=format ms=%lld in_track=%u",
+						static_cast<long long>(creation_timer.Elapsed()), buffer->GetTrackId());
+#endif	// OME_LATENCY_PROBE
 }
 
 // Information of the input track is updated by the decoded frame

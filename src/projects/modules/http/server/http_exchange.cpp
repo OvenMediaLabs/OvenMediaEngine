@@ -12,6 +12,21 @@
 #include "http_connection.h"
 #include "http_server_manager.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <chrono>
+
+#include <base/ovlibrary/latency_probe.h>
+
+// Latency probe (OME_LATENCY_PROBE only): per-request OME-internal handling time
+// (request received -> response ready) for "response too late / not sent" analysis.
+static void HttpRespLog(int64_t handle_ms, int status, int64_t sent, const char *method, const char *uri)
+{
+	ov::LatencyProbeLog("HTTP", "handle_ms=%lld status=%d sent=%lld method=%s uri=%s",
+						static_cast<long long>(handle_ms), status, static_cast<long long>(sent),
+						method ? method : "?", uri ? uri : "?");
+}
+#endif	// OME_LATENCY_PROBE
+
 namespace http
 {
 	namespace svr
@@ -48,6 +63,19 @@ namespace http
 			{
 				logtt("\n%s", GetDebugInfo().CStr());
 			}
+
+#ifdef OME_LATENCY_PROBE
+			{
+				auto req = GetRequest();
+				auto resp = GetResponse();
+				auto handle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(resp->GetResponseTime() - req->GetCreateTime()).count();
+				HttpRespLog(handle_ms,
+							static_cast<int>(ov::ToUnderlyingType(resp->GetStatusCode())),
+							resp->GetSentSize(),
+							http::StringFromMethod(req->GetMethod()).CStr(),
+							req->GetUri().CStr());
+			}
+#endif	// OME_LATENCY_PROBE
 
 			_status = Status::Completed;
 			_connection->OnExchangeCompleted(GetSharedPtr());

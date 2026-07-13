@@ -271,9 +271,23 @@ namespace ov
 			return _has_close_command;
 		}
 
+#ifdef OME_LATENCY_PROBE
+		// Latency probe (OME_LATENCY_PROBE only): kernel software RX timestamp (ms) of the most
+		// recent read on this socket (from SO_TIMESTAMPING). Lets the serving layer log when the
+		// request bytes actually arrived in the kernel vs when OME served the response.
+		int64_t GetLastRxKernelMs() const
+		{
+			return _last_rx_kernel_ms.load(std::memory_order_relaxed);
+		}
+#endif	// OME_LATENCY_PROBE
+
 		virtual String ToString() const;
 
 	protected:
+#ifdef OME_LATENCY_PROBE
+		std::atomic<int64_t> _last_rx_kernel_ms{0};
+#endif	// OME_LATENCY_PROBE
+
 		struct DispatchCommand
 		{
 			static constexpr int CLOSE_TYPE_MASK = 0x40;

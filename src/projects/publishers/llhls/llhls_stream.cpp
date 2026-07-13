@@ -23,6 +23,18 @@
 #include "llhls_private.h"
 #include "llhls_session.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <base/ovlibrary/latency_probe.h>
+
+// Latency probe (OME_LATENCY_PROBE only) jitter analysis: log every segment/chunk creation,
+// so delayed/bursty creation can be inspected after a collapse. type=S (segment) has chunk=-1.
+static void SegCreateLog(char type, const char *stream, int32_t track, int64_t seg, int32_t chunk)
+{
+	ov::LatencyProbeLog("SEG", "type=%c stream=%s track=%d seg=%lld chunk=%d",
+						type, stream, track, static_cast<long long>(seg), chunk);
+}
+#endif	// OME_LATENCY_PROBE
+
 std::shared_ptr<LLHlsStream> LLHlsStream::Create(const std::shared_ptr<pub::Application> application, const info::Stream &info, bool origin_mode, uint32_t worker_count)
 {
 	auto stream = std::make_shared<LLHlsStream>(application, info, origin_mode, worker_count);
@@ -1785,6 +1797,10 @@ bool LLHlsStream::CheckPlaylistReady()
 
 void LLHlsStream::OnMediaSegmentCreated(const int32_t &track_id, const uint32_t &segment_number)
 {
+#ifdef OME_LATENCY_PROBE
+	SegCreateLog('S', GetName().CStr(), track_id, segment_number, -1);
+#endif	// OME_LATENCY_PROBE
+
 	// Check whether at least one segment of every track has been created.
 	CheckPlaylistReady();
 
@@ -1837,6 +1853,10 @@ void LLHlsStream::OnMediaSegmentCreated(const int32_t &track_id, const uint32_t 
 
 void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk)
 {
+#ifdef OME_LATENCY_PROBE
+	SegCreateLog('C', GetName().CStr(), track_id, segment_number, chunk_number);
+#endif	// OME_LATENCY_PROBE
+
 	auto playlist = GetChunklistWriter(track_id);
 	if (playlist == nullptr)
 	{

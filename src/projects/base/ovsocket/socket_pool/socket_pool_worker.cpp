@@ -11,6 +11,45 @@
 #include "../socket_private.h"
 #include "socket_pool.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <sched.h>
+#include <sys/prctl.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+
+#include <chrono>
+
+#include <base/ovlibrary/latency_probe.h>
+
+// Latency probe (OME_LATENCY_PROBE only): log when EpollWait returned WITH events but only after a
+// long wall time (>20ms). Events were ready yet the thread took that long to return them =>
+// the worker was off-CPU (couldn't be scheduled). psr=CPU, nivcsw>0 => preempted/starved.
+static void EpollWaitLog(long long ew_ms, int count, long nivcsw, long nvcsw)
+{
+	char comm[32] = {0};
+	::prctl(PR_GET_NAME, comm, 0, 0, 0);
+	ov::LatencyProbeLog("EPOLL", "comm=%s psr=%d ew_ms=%lld count=%d nivcsw=%ld nvcsw=%ld",
+						comm, ::sched_getcpu(), ew_ms, count, nivcsw, nvcsw);
+}
+
+// Latency probe (OME_LATENCY_PROBE only): log any epoll-loop iteration whose processing
+// (everything after EpollWait returns) exceeds the threshold.
+// psr = CPU the worker is on; nivcsw/nvcsw = involuntary/voluntary context switches
+// during the stalled iteration:
+//   nivcsw>0 => OS preempted the worker off-core (scheduling/IRQ pressure)
+//   nvcsw>0  => worker blocked waiting (lock/syscall)
+//   both 0   => worker ran in userspace the whole time (slow compute)
+// comm identifies which pool worker (SPLLHLS/SPRTMP/SPAPISvr/SPOvtPub/SPSRTPub...) stalled,
+// since SocketPoolWorker is shared across all listeners.
+static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long nvcsw, long minflt, long majflt)
+{
+	char comm[32] = {0};
+	::prctl(PR_GET_NAME, comm, 0, 0, 0);
+	ov::LatencyProbeLog("SPW", "tid=%ld comm=%s psr=%d stall_ms=%lld events=%d nivcsw=%ld nvcsw=%ld minflt=%ld majflt=%ld",
+						static_cast<long>(::syscall(SYS_gettid)), comm, ::sched_getcpu(), stall_ms, event_count, nivcsw, nvcsw, minflt, majflt);
+}
+#endif	// OME_LATENCY_PROBE
+
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Pool.Worker"
 
@@ -268,7 +307,32 @@ namespace ov
 
 		while (_stop_epoll_thread == false)
 		{
+#ifdef OME_LATENCY_PROBE
+			// Measure how long EpollWait itself takes and whether the thread was preempted
+			// during it. If it returns WITH events (count>0) after a long wall time, the
+			// events were ready but the thread could not be scheduled to return them = off-CPU.
+			const auto ew_start = std::chrono::steady_clock::now();
+			struct rusage ru_ew_start;
+			::getrusage(RUSAGE_THREAD, &ru_ew_start);
+#endif	// OME_LATENCY_PROBE
+
 			int count = EpollWait(100);
+
+#ifdef OME_LATENCY_PROBE
+			auto ew_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - ew_start).count();
+			if (count > 0 && ew_ms > 20)
+			{
+				struct rusage ru_ew_end;
+				::getrusage(RUSAGE_THREAD, &ru_ew_end);
+				EpollWaitLog(ew_ms, count,
+							 ru_ew_end.ru_nivcsw - ru_ew_start.ru_nivcsw,
+							 ru_ew_end.ru_nvcsw - ru_ew_start.ru_nvcsw);
+			}
+
+			const auto iteration_started = std::chrono::steady_clock::now();
+			struct rusage ru_start;
+			::getrusage(RUSAGE_THREAD, &ru_start);
+#endif	// OME_LATENCY_PROBE
 
 			if (count < 0)
 			{
@@ -480,6 +544,20 @@ namespace ov
 			GarbageCollection();
 
 			MergeSocketList();
+
+#ifdef OME_LATENCY_PROBE
+			auto iteration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - iteration_started).count();
+			if (iteration_ms > 20)
+			{
+				struct rusage ru_end;
+				::getrusage(RUSAGE_THREAD, &ru_end);
+				SpwStallLog(iteration_ms, count,
+							ru_end.ru_nivcsw - ru_start.ru_nivcsw,
+							ru_end.ru_nvcsw - ru_start.ru_nvcsw,
+							ru_end.ru_minflt - ru_start.ru_minflt,
+							ru_end.ru_majflt - ru_start.ru_majflt);
+			}
+#endif	// OME_LATENCY_PROBE
 		}
 
 		// Clean up all sockets

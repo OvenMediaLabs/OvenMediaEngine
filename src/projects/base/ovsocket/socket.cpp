@@ -30,6 +30,37 @@
 #include "socket_profiler.h"
 #include "stats_counter.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <linux/net_tstamp.h>
+#include <sched.h>
+#include <sys/prctl.h>
+
+#include <base/ovlibrary/latency_probe.h>
+
+// Latency probe (OME_LATENCY_PROBE only): measure "kernel received the request bytes"
+// (SO_TIMESTAMPING software RX timestamp) vs "we actually read them" (recvmsg return). A large
+// gap means the request sat in the kernel socket buffer while our epoll worker was late to read
+// it (epoll/scheduling lateness before our session-level read). Logged only when the gap is big.
+static void RecvLateLog(int handle, long long late_ms, long bytes)
+{
+	char comm[24] = {0};
+	::prctl(PR_GET_NAME, comm, 0, 0, 0);
+	ov::LatencyProbeLog("RECV_LATE", "comm=%s psr=%d fd=%d late_ms=%lld bytes=%ld",
+						comm, ::sched_getcpu(), handle, late_ms, bytes);
+}
+
+// Latency probe (OME_LATENCY_PROBE only): log when a socket Send cannot fully flush inline
+// (kernel send buffer full -> EAGAIN/partial), i.e. the peer is not draining.
+// comm identifies the pool worker (SPLLHLS/SPRTMP/...).
+static void SendStallLog(int handle, long sent_now, long left)
+{
+	char comm[24] = {0};
+	::prctl(PR_GET_NAME, comm, 0, 0, 0);
+	ov::LatencyProbeLog("SEND_STALL", "comm=%s fd=%d sent_now=%ld left=%ld",
+						comm, handle, sent_now, left);
+}
+#endif	// OME_LATENCY_PROBE
+
 namespace ov
 {
 	// Used to wait for connection
@@ -383,6 +414,17 @@ namespace ov
 		auto old_callback = std::atomic_exchange(&_callback, callback);
 
 		_blocking_mode	  = BlockingMode::NonBlocking;
+
+#ifdef OME_LATENCY_PROBE
+		// Latency probe (OME_LATENCY_PROBE only): enable software RX timestamping on TCP client
+		// sockets so Recv() can measure how long a request sat in the kernel buffer before our
+		// worker read it.
+		if (GetType() == SocketType::Tcp)
+		{
+			int ts_flags = SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE;
+			SetSockOpt(SOL_SOCKET, SO_TIMESTAMPING, &ts_flags, sizeof(ts_flags));
+		}
+#endif	// OME_LATENCY_PROBE
 
 		if (
 			SetBlockingInternal(BlockingMode::NonBlocking) &&
@@ -989,6 +1031,13 @@ namespace ov
 		{
 			// logat("Could not send data: %ld bytes (%s)", data->GetLength(), command.ToString().CStr());
 		}
+
+#ifdef OME_LATENCY_PROBE
+		if (command.type == DispatchCommand::Type::Send)
+		{
+			SendStallLog(GetNativeHandle(), static_cast<long>(sent_bytes), static_cast<long>(data->GetLength()));
+		}
+#endif	// OME_LATENCY_PROBE
 
 		return DispatchResult::PartialDispatched;
 	}
@@ -1604,8 +1653,51 @@ namespace ov
 
 			case SocketType::Udp:
 			case SocketType::Tcp:
-				read_bytes = ::recv(GetNativeHandle(), data, length,
-									((_blocking_mode == BlockingMode::NonBlocking) || non_block) ? MSG_DONTWAIT : 0);
+			{
+				const int recv_flags = ((_blocking_mode == BlockingMode::NonBlocking) || non_block) ? MSG_DONTWAIT : 0;
+#ifdef OME_LATENCY_PROBE
+				// Latency probe (OME_LATENCY_PROBE only): use recvmsg to pull the SO_TIMESTAMPING
+				// software RX timestamp, so the serving layer can compare kernel-arrival vs serve time.
+				struct iovec iov;
+				iov.iov_base = data;
+				iov.iov_len	 = length;
+				char ts_cbuf[256];
+				struct msghdr msg = {};
+				msg.msg_iov		   = &iov;
+				msg.msg_iovlen	   = 1;
+				msg.msg_control	   = ts_cbuf;
+				msg.msg_controllen = sizeof(ts_cbuf);
+
+				read_bytes = ::recvmsg(GetNativeHandle(), &msg, recv_flags);
+
+				if (read_bytes > 0L && GetType() == SocketType::Tcp)
+				{
+					for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm != nullptr; cm = CMSG_NXTHDR(&msg, cm))
+					{
+						if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_TIMESTAMPING)
+						{
+							// scm_timestamping layout: struct timespec ts[3]; ts[0]=software RX time
+							auto *ts = reinterpret_cast<struct timespec *>(CMSG_DATA(cm));
+							int64_t kernel_ms = static_cast<int64_t>(ts[0].tv_sec) * 1000 + ts[0].tv_nsec / 1000000;
+							if (kernel_ms > 0)
+							{
+								// Store for the serving layer to read (per-request K timestamp).
+								_last_rx_kernel_ms.store(kernel_ms, std::memory_order_relaxed);
+
+								auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+								int64_t late = now_ms - kernel_ms;
+								if (late > 15)
+								{
+									RecvLateLog(GetNativeHandle(), static_cast<long long>(late), static_cast<long>(read_bytes));
+								}
+							}
+							break;
+						}
+					}
+				}
+#else	// OME_LATENCY_PROBE
+				read_bytes = ::recv(GetNativeHandle(), data, length, recv_flags);
+#endif	// OME_LATENCY_PROBE
 
 				if (read_bytes == 0L)
 				{
@@ -1664,6 +1756,7 @@ namespace ov
 				}
 
 				break;
+			}
 
 			case SocketType::Srt: {
 				SRT_MSGCTRL msg_ctrl{};

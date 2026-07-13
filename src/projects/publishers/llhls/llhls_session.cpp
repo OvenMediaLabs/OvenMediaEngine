@@ -12,6 +12,25 @@
 #include "llhls_stream.h"
 #include "llhls_private.h"
 
+#ifdef OME_LATENCY_PROBE
+#include <modules/http/server/http_connection.h>
+#include <base/ovsocket/client_socket.h>
+#include <base/ovlibrary/latency_probe.h>
+
+#include <sys/syscall.h>
+
+// Latency probe (OME_LATENCY_PROBE only): log each serving stage
+// (K=kernel RX time of request bytes, R=request routed to session, D=response ready,
+// S=sent to socket layer). The K field (only meaningful on R lines) lets us prove, per
+// request, how long after the request bytes hit OME's kernel OME served it.
+static void LLHlsTraceLog(char stage, uint32_t session_id, const char *file, int64_t sent, int64_t kernel_ms = 0)
+{
+	ov::LatencyProbeLog("LLHLS", "stage=%c sid=%u tid=%ld sent=%ld K=%lld file=%s",
+						stage, session_id, static_cast<long>(::syscall(SYS_gettid)),
+						static_cast<long>(sent), static_cast<long long>(kernel_ms), file);
+}
+#endif	// OME_LATENCY_PROBE
+
 std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id, 
 												const bool &origin_mode,
 												const ov::String &session_key,
@@ -223,6 +242,18 @@ void LLHlsSession::OnMessageReceived(const std::any &message)
 		ResponseData(exchange);
 		return;
 	}
+
+#ifdef OME_LATENCY_PROBE
+	int64_t rx_kernel_ms = 0;
+	if (auto conn = exchange->GetConnection(); conn != nullptr)
+	{
+		if (auto sock = conn->GetSocket(); sock != nullptr)
+		{
+			rx_kernel_ms = sock->GetLastRxKernelMs();
+		}
+	}
+	LLHlsTraceLog('R', GetId(), file.CStr(), 0, rx_kernel_ms);
+#endif	// OME_LATENCY_PROBE
 
 	auto llhls_stream = std::static_pointer_cast<LLHlsStream>(GetStream());
 	if (llhls_stream == nullptr)
@@ -796,7 +827,22 @@ void LLHlsSession::ResponsePartialSegment(const std::shared_ptr<http::svr::HttpE
 void LLHlsSession::ResponseData(const std::shared_ptr<http::svr::HttpExchange> &exchange)
 {
 	auto response = exchange->GetResponse();
+
+#ifdef OME_LATENCY_PROBE
+	ov::String trace_file = "-";
+	auto trace_request = exchange->GetRequest();
+	if (trace_request != nullptr && trace_request->GetParsedUri() != nullptr)
+	{
+		trace_file = trace_request->GetParsedUri()->File();
+	}
+	LLHlsTraceLog('D', GetId(), trace_file.CStr(), 0);
+#endif	// OME_LATENCY_PROBE
+
 	auto sent_size = response->Response();
+
+#ifdef OME_LATENCY_PROBE
+	LLHlsTraceLog('S', GetId(), trace_file.CStr(), sent_size);
+#endif	// OME_LATENCY_PROBE
 
 	if (sent_size > 0)
 	{
