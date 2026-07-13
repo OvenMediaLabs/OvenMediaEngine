@@ -9,6 +9,7 @@
 #pragma once
 
 #include "jemalloc.h"
+#include "module_template.h"
 #include "p2p.h"
 #include "recovery.h"
 #include "whisper.h"

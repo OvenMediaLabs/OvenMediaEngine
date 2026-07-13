@@ -12,10 +12,10 @@
 #include <base/ovsocket/ovsocket.h>
 #include <srt/srt.h>
 #ifdef OME_USE_JEMALLOC
+#	include <config/config_manager.h>
 #	include <jemalloc/jemalloc.h>
 #endif	// OME_USE_JEMALLOC
 
-#include <config/config_manager.h>
 #include <spdlog/spdlog.h>
 
 #include <regex>
