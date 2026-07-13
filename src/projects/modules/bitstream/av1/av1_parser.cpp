@@ -251,46 +251,6 @@ std::shared_ptr<const ov::Data> Av1Parser::ExtractFirstSequenceHeaderObu(const s
 	return nullptr;
 }
 
-std::shared_ptr<ov::Data> Av1Parser::StripTemporalDelimiters(const std::shared_ptr<const ov::Data> &data)
-{
-	if (data == nullptr)
-	{
-		return nullptr;
-	}
-
-	const auto *base   = data->GetDataAs<uint8_t>();
-	const size_t total = data->GetLength();
-
-	if (total == 0)
-	{
-		return nullptr;
-	}
-
-	auto stripped = std::make_shared<ov::Data>(total);
-	size_t offset = 0;
-	Av1ObuSpan obu;
-
-	while (offset < total)
-	{
-		if (ReadObu(base, total, offset, obu) == false)
-		{
-			return nullptr;
-		}
-
-		if (obu.header.type != Av1ObuType::TemporalDelimiter)
-		{
-			if (stripped->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset) == false)
-			{
-				return nullptr;
-			}
-		}
-
-		offset = obu.next_offset;
-	}
-
-	return stripped;
-}
-
 namespace
 {
 	// AV1 spec 5.9.2 `uncompressed_header()` key-frame prefix. With `reduced_still_picture_header`

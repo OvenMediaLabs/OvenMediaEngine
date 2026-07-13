@@ -4,7 +4,6 @@
 
 #include <base/modules/data_format/scte35_event/scte35_event.h>
 #include <modules/bitstream/aac/aac_converter.h>
-#include <modules/bitstream/av1/av1_parser.h>
 #include <modules/bitstream/nalu/nal_stream_converter.h>
 #include <modules/bitstream/opus/opus_specific_config.h>
 #include <modules/ffmpeg/compat.h>
@@ -573,27 +572,10 @@ namespace ffmpeg
 					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
 				}
 				break;
-				case cmn::BitstreamFormat::AV1_OBU: {
-					// Strip Temporal Delimiter OBUs
-					new_data = Av1Parser::StripTemporalDelimiters(packet->GetData());
-					if (new_data == nullptr)
-					{
-						logae(this, "Failed to strip AV1 temporal delimiters. track:%d, format:%s, size:%zu",
-							media_track->GetId(),
-							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
-							packet->GetDataLength());
-						av_packet_unref(&av_packet);
-						return false;
-					}
-					if (new_data->GetLength() == 0)
-					{
-						av_packet_unref(&av_packet);
-						return true;
-					}
-					av_packet.size = new_data->GetLength();
-					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
-				}
-				break;
+				case cmn::BitstreamFormat::AV1_OBU:
+					// The MP4 muxer strips OBU_TEMPORAL_DELIMITER (and other muxer-unfriendly OBUs)
+					// itself via ff_av1_filter_obus(), so the packet is passed through unchanged.
+					break;
 				case cmn::BitstreamFormat::AAC_RAW:
 				case cmn::BitstreamFormat::OPUS:
 					break;

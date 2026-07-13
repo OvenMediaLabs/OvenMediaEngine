@@ -133,16 +133,4 @@ public:
 
 		return ParseSequenceHeaderSummary(payload->GetDataAs<uint8_t>(), payload->GetLength());
 	}
-
-	/// Return a copy of an AV1 OBU bytestream with every `OBU_TEMPORAL_DELIMITER` removed.
-	///
-	/// AV1 ISOBMFF v1.3.0 section 2.4 states that `OBU_TEMPORAL_DELIMITER` SHOULD NOT be present in
-	/// ISOBMFF samples, so strips them here before muxing
-	///
-	/// @param data Buffer containing one or more concatenated AV1 OBUs.
-	///
-	/// @return Filtered OBU bytestream. The result may be an (non-null) empty buffer when the input
-	/// was well-formed but contained only temporal delimiters — callers should drop such a sample.
-	/// Returns `nullptr` only when `data` is null/empty or the bytestream is malformed.
-	static std::shared_ptr<ov::Data> StripTemporalDelimiters(const std::shared_ptr<const ov::Data> &data);
 };
