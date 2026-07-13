@@ -96,26 +96,68 @@ namespace ffmpeg
 		const auto &data = media_frame->GetData();
 
 		std::shared_ptr<MediaFrameData> host_holder;
-		AVFrame *src_frame = static_cast<AVFrame *>(media_frame->GetPrivData());
+		AVFrame *src_frame	 = static_cast<AVFrame *>(media_frame->GetPrivData());
 
-		// GPU to CPU transfer 
+		// GPU to CPU transfer
+		AVFrame *local_frame = nullptr;	 // built from generic host planes; freed below
+
 		if (hwframe_transfer && data != nullptr && data->IsHardwareFrame())
 		{
+			// Download to host memory(CPU)
 			host_holder = data->DownloadToHost();
 			if (host_holder == nullptr)
 			{
 				return CodecResult::NoMemory;
 			}
 
-			src_frame = static_cast<AVFrame *>(host_holder->GetNativeHandle());
+			if (host_holder->GetBackend() == MediaFrameData::Backend::FFmpeg)
+			{
+				// Reuse the AVFrame
+				src_frame = static_cast<AVFrame *>(host_holder->GetNativeHandle());
+			}
+			else
+			{
+				// Build a new AVFrame from generic host planes.
+				// For future non-FFmpeg backends; such a backend must override
+				// GetPixelFormat()/GetPlaneCount()/GetPlaneData()/GetStride().
+				local_frame = ::av_frame_alloc();
+				if (local_frame == nullptr)
+				{
+					return CodecResult::NoMemory;
+				}
+
+				local_frame->format = static_cast<int>(compat::ToAVPixelFormat(host_holder->GetPixelFormat()));
+				local_frame->width	= media_frame->GetWidth();
+				local_frame->height = media_frame->GetHeight();
+
+				int planes = host_holder->GetPlaneCount();
+				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
+				{
+					local_frame->data[i]	 = host_holder->GetPlaneData(i);
+					local_frame->linesize[i] = host_holder->GetStride(i);
+				}
+				local_frame->pts = media_frame->GetPts();
+				src_frame		 = local_frame;
+			}
 		}
 
 		if (src_frame == nullptr)
 		{
+			if (local_frame != nullptr)
+			{
+				::av_frame_free(&local_frame);
+			}
 			return CodecResult::NoMemory;
 		}
 
-		return ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, src_frame));
+		CodecResult result = ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, src_frame));
+
+		if (local_frame != nullptr)
+		{
+			::av_frame_free(&local_frame);
+		}
+
+		return result;
 	}
 
 	ReceiveResult FFmpegFilterGraph::PullFrame()
