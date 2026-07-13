@@ -8,6 +8,7 @@
 //==============================================================================
 
 #include "ffmpeg_media_frame.h"
+#include "compat.h"
 
 namespace ffmpeg
 {
@@ -90,6 +91,50 @@ namespace ffmpeg
 		host->pts = _frame->pts;
 
 		return std::make_shared<FFmpegMediaFrameData>(host);
+	}
+
+	int FFmpegMediaFrameData::GetPlaneCount() const
+	{
+		// Host pixel planes only;
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr)
+		{
+			return 0;
+		}
+
+		int planes = ::av_pix_fmt_count_planes(static_cast<AVPixelFormat>(_frame->format));
+		return (planes < 0) ? 0 : planes;
+	}
+
+	const uint8_t *FFmpegMediaFrameData::GetPlaneData(int plane) const
+	{
+		// Host pixel planes only; a hardware frame has no CPU-side data.
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
+		{
+			return nullptr;
+		}
+
+		return _frame->data[plane];
+	}
+
+	int FFmpegMediaFrameData::GetStride(int plane) const
+	{
+		// Host pixel planes only; a hardware frame has no CPU-side data.
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
+		{
+			return 0;
+		}
+
+		return _frame->linesize[plane];
+	}
+
+	cmn::VideoPixelFormatId FFmpegMediaFrameData::GetPixelFormat() const
+	{
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr)
+		{
+			return cmn::VideoPixelFormatId::None;
+		}
+
+		return ffmpeg::compat::ToVideoPixelFormat(_frame->format);
 	}
 
 	void FFmpegMediaFrameData::FillZero()

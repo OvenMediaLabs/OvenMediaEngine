@@ -38,6 +38,12 @@ namespace ffmpeg
 		bool IsHardwareFrame() const override;
 		std::shared_ptr<MediaFrameData> DownloadToHost() const override;
 		void FillZero() override;
+
+		int GetPlaneCount() const override;
+		const uint8_t *GetPlaneData(int plane) const override;
+		int GetStride(int plane) const override;
+		cmn::VideoPixelFormatId GetPixelFormat() const override;
+
 		void SetPts(int64_t pts) override;
 		void SetDuration(int64_t duration) override;
 		void SetNbSamples(int32_t nb_samples) override;

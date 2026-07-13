@@ -41,6 +41,12 @@ public:
 	virtual bool IsHardwareFrame() const = 0;
 	virtual std::shared_ptr<MediaFrameData> DownloadToHost() const = 0;
 	virtual void FillZero() = 0;
+
+	virtual int GetPlaneCount() const { return 0; }
+	virtual const uint8_t *GetPlaneData(int plane) const { return nullptr; }
+	virtual int GetStride(int plane) const { return 0; }
+	virtual cmn::VideoPixelFormatId GetPixelFormat() const { return cmn::VideoPixelFormatId::None; }
+
 	virtual void SetPts(int64_t pts) = 0;
 	virtual void SetDuration(int64_t duration) = 0;
 	virtual void SetNbSamples(int32_t nb_samples) = 0;
