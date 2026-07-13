@@ -1675,7 +1675,8 @@ namespace ov
 				{
 					for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm != nullptr; cm = CMSG_NXTHDR(&msg, cm))
 					{
-						if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_TIMESTAMPING)
+						if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_TIMESTAMPING &&
+							cm->cmsg_len >= CMSG_LEN(sizeof(struct timespec)))
 						{
 							// scm_timestamping layout: struct timespec ts[3]; ts[0]=software RX time
 							auto *ts = reinterpret_cast<struct timespec *>(CMSG_DATA(cm));

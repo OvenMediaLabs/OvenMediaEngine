@@ -28,6 +28,10 @@
 #include <memory>
 #include <utility>
 
+#ifdef OME_LATENCY_PROBE
+#include <atomic>
+#endif	// OME_LATENCY_PROBE
+
 #include <tl/expected.hpp>
 
 // Failure to send data for the specified time period will be considered an error.

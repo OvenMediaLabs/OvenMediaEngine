@@ -25,9 +25,9 @@
 // request, how long after the request bytes hit OME's kernel OME served it.
 static void LLHlsTraceLog(char stage, uint32_t session_id, const char *file, int64_t sent, int64_t kernel_ms = 0)
 {
-	ov::LatencyProbeLog("LLHLS", "stage=%c sid=%u tid=%ld sent=%ld K=%lld file=%s",
+	ov::LatencyProbeLog("LLHLS", "stage=%c sid=%u tid=%ld sent=%lld K=%lld file=%s",
 						stage, session_id, static_cast<long>(::syscall(SYS_gettid)),
-						static_cast<long>(sent), static_cast<long long>(kernel_ms), file);
+						static_cast<long long>(sent), static_cast<long long>(kernel_ms), file);
 }
 #endif	// OME_LATENCY_PROBE
 

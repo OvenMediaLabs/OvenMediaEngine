@@ -144,6 +144,9 @@ message(STATUS "  OME_WHISPER_STATIC: ${OME_WHISPER_STATIC}")
 # worker stalls to a single latency_probe.log (directory via the OME_LATENCY_PROBE_DIR
 # environment variable, default /dev/shm).
 if(OME_LATENCY_PROBE)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "[OME] OME_LATENCY_PROBE is Linux-only (uses epoll, SO_TIMESTAMPING, SCM_TIMESTAMPING, prctl(PR_GET_NAME), getrusage(RUSAGE_THREAD)). Disable it on ${CMAKE_SYSTEM_NAME}.")
+    endif()
     add_compile_definitions(OME_LATENCY_PROBE)
 endif()
 
