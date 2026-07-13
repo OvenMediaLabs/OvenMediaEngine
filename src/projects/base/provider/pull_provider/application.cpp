@@ -13,7 +13,9 @@
 #include "stream_props.h"
 #include "provider_private.h"
 
+#include <chrono>
 #include <cinttypes>
+#include <map>
 
 namespace pvd
 {
@@ -59,20 +61,49 @@ namespace pvd
 
 		auto global_no_input_timeout_ms = GetHostInfo().GetOrigins().GetProperties().GetNoInputFailoverTimeout(); 
 		auto global_unused_stream_timeout_ms = GetHostInfo().GetOrigins().GetProperties().GetUnusedStreamDeletionTimeout();
-		auto global_failback_timeout_ms = GetHostInfo().GetOrigins().GetProperties().GetStreamFailbackTimeout();	
-		
-		constexpr int64_t idle_wait_time_ms = 100; 
+		auto global_failback_timeout_ms = GetHostInfo().GetOrigins().GetProperties().GetStreamFailbackTimeout();
+
+		// The no-input timer below is measured from
+		// max(last_recv, last_reconnect) so a reachable-but-silent origin (the reconnect succeeds but no
+		// media follows) is not stopped and re-DESCRIBEd on every tick, which would flood the origin's
+		// OVT publisher. Touched only by this collector thread, so it needs no lock.
+		std::map<info::stream_id_t, std::chrono::steady_clock::time_point> last_reconnect_time;
+
+		constexpr int64_t idle_wait_time_ms = 100;
 		while (!_stop_collector_thread_flag.load())
 		{
 			auto streams = GetStreams();
+
+			// Drop reconnect timestamps for streams that no longer exist.
+			for (auto it = last_reconnect_time.begin(); it != last_reconnect_time.end();)
+			{
+				if (streams.find(it->first) == streams.end())
+				{
+					it = last_reconnect_time.erase(it);
+				}
+				else
+				{
+					++it;
+				}
+			}
+
 			for (auto const &x : streams)
 			{
 				auto stream = std::dynamic_pointer_cast<PullStream>(x.second);
 
+				auto current = std::chrono::steady_clock::now();
+
 				if (stream->GetState() == Stream::State::STOPPED || stream->GetState() == Stream::State::ERROR)
 				{
-					// Retry
-					ResumeStream(stream);
+					// Retry. On a successful reconnect, remember when: the no-input timer restarts from
+					// this reconnect, so a reachable-but-silent origin (the reconnect succeeds but
+					// delivers no media, leaving last_recv old) is not stopped and re-DESCRIBEd again on
+					// the very next tick.
+					if (ResumeStream(stream))
+					{
+						last_reconnect_time[stream->GetId()] = current;
+						logtd("Re-pulled %s/%s(%u): reconnected to the origin", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+					}
 				}
 				else if (stream->GetState() == Stream::State::TERMINATED)
 				{
@@ -81,8 +112,6 @@ namespace pvd
 				}
 				else
 				{
-					auto current = std::chrono::steady_clock::now();
-
 					// Default Properties of PullStream
 					auto is_persistent = false;
 					auto is_failback = false;
@@ -144,7 +173,13 @@ namespace pvd
 										// `Start()`/`Stop()`/`Resume()` safe to compose from outside.
 										stream->Stop();
 										stream->ResetUrlIndex();
-										ResumeStream(stream);
+										// Same as the retry path: on a successful reconnect, restart the no-input
+										// timer from here so the just-switched primary is not stopped before it
+										// can deliver media.
+										if (ResumeStream(stream))
+										{
+											last_reconnect_time[stream->GetId()] = current;
+										}
 									}
 									
 								}
@@ -165,14 +200,39 @@ namespace pvd
 						int64_t elapsed_time_from_last_sent = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastSentTimeSteady()).count();
 						int64_t elapsed_time_from_last_recv = std::chrono::duration_cast<std::chrono::milliseconds>(current - stream_metrics->GetLastRecvTimeSteady()).count();
 
+						// Measure no-input from whichever is more recent - the last media packet or the last
+						// reconnect - so a successful-but-silent reconnect is not immediately re-stopped. The
+						// monitoring last_recv is left untouched (only real media advances it), so the reported
+						// stats stay honest.
+						auto last_input_time = stream_metrics->GetLastRecvTimeSteady();
+						auto reconnect_it = last_reconnect_time.find(stream->GetId());
+						if (reconnect_it != last_reconnect_time.end())
+						{
+							if (last_input_time > reconnect_it->second)
+							{
+								// Media arrived after the reconnect -> the stream has recovered. Log it once and
+								// drop the marker; from here the timer runs off last_recv again.
+								logti("Media resumed on %s/%s(%u) after re-pulling a silent origin", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+								last_reconnect_time.erase(reconnect_it);
+							}
+							else
+							{
+								// Still no media since the reconnect -> measure no-input from the reconnect.
+								last_input_time = reconnect_it->second;
+							}
+						}
+						int64_t elapsed_time_from_last_input = std::chrono::duration_cast<std::chrono::milliseconds>(current - last_input_time).count();
+
 						if((elapsed_time_from_last_sent > unused_stream_timeout_ms) && (!is_persistent))
 						{
 							logtw("%s/%s(%u) stream will be deleted because it hasn't been used for %" PRId64 " milliseconds", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_sent);
 							DeleteStream(stream);
 						}
 						// The stream type is pull stream, if packets do NOT arrive for more than 3 seconds, it is a seriously warning situation
-						else if(elapsed_time_from_last_recv > no_input_timeout_ms && (!is_persistent))
+						else if(elapsed_time_from_last_input > no_input_timeout_ms && (!is_persistent))
 						{
+							// The decision uses last_input (which counts from the reconnect); the log reports the
+							// true time since the last media packet, so it can read higher than the timeout.
 							logtw("Stop stream %s/%s(%u) : there are no incoming packets. %" PRId64 " milliseconds have elapsed since the last packet was received.",
 								  stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId(), elapsed_time_from_last_recv);
 
