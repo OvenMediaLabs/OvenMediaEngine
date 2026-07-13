@@ -41,7 +41,9 @@ namespace ov
 	// Single append-only log file shared by every subsystem, opened once.
 	static int LatencyProbeFd()
 	{
-		static const int s_fd = ::open(PathManager::Combine(LatencyProbeDir(), "latency_probe.log").CStr(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+		// 0600 + O_CLOEXEC: records can include request URIs, so keep the file owner-only and
+		// prevent the fd from leaking into forked/exec'd child processes.
+		static const int s_fd = ::open(PathManager::Combine(LatencyProbeDir(), "latency_probe.log").CStr(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
 
 		return s_fd;
 	}

@@ -1661,7 +1661,8 @@ namespace ov
 				struct iovec iov;
 				iov.iov_base = data;
 				iov.iov_len	 = length;
-				char ts_cbuf[256];
+				// Control buffer must be aligned for struct cmsghdr access via the CMSG_* macros.
+				alignas(struct cmsghdr) char ts_cbuf[256];
 				struct msghdr msg = {};
 				msg.msg_iov		   = &iov;
 				msg.msg_iovlen	   = 1;

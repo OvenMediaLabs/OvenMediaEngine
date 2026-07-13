@@ -15,13 +15,15 @@
 // The directory is created if missing, and the resolved path is announced once on stderr.
 #ifdef OME_LATENCY_PROBE
 
+#include "format_string.h"
+
 namespace ov
 {
 	// Appends one record to "<dir>/latency_probe.log". The current wall-clock time and the tag
 	// are prepended automatically, so records from every subsystem form one time-sorted stream:
 	//   "<epoch_ms> <TAG> <fields...>"
 	// Filter a single subsystem with e.g. `grep RECV_LATE`.
-	void LatencyProbeLog(const char *tag, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+	void LatencyProbeLog(const char *tag, const char *fmt, ...) OV_PRINTF_FORMAT(2, 3);
 }  // namespace ov
 
 #endif	// OME_LATENCY_PROBE
