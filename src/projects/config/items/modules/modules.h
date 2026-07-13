@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include "jemalloc.h"
 #include "p2p.h"
 #include "recovery.h"
 #include "whisper.h"
@@ -31,6 +32,7 @@ namespace cfg
 			// Experimental feature is disabled by default
 			ModuleTemplate _ertmp{false};
 			Whisper _whisper;
+			Jemalloc _jemalloc;
 
 		public:
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetHttp2, _http2)
@@ -41,6 +43,7 @@ namespace cfg
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetETag, _etag)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetERTMP, _ertmp)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetWhisper, _whisper)
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetJemalloc, _jemalloc)
 
 		protected:
 			void MakeList() override
@@ -53,6 +56,7 @@ namespace cfg
 				Register<Optional>("ETag", &_etag);
 				Register<Optional>({"ERTMP", "ertmp"}, &_ertmp);
 				Register<Optional>("Whisper", &_whisper);
+				Register<Optional>("Jemalloc", &_jemalloc);
 			}
 		};
 	}  // namespace modules

@@ -15,6 +15,7 @@
 #	include <jemalloc/jemalloc.h>
 #endif	// OME_USE_JEMALLOC
 
+#include <config/config_manager.h>
 #include <spdlog/spdlog.h>
 
 #include <regex>
@@ -359,6 +360,31 @@ std::shared_ptr<ov::Error> InitializeJemalloc()
 #	ifdef OME_USE_JEMALLOC_PROFILE
 	logw(JEMALLOC_LOG_TAG, "Jemalloc profiling is enabled - this may slow down the performance.");
 #	endif	// OME_USE_JEMALLOC_PROFILE
+
+	// Enable jemalloc's background purge thread. This moves decay/purge work off the allocating
+	// (serving) thread onto a dedicated thread, which smooths out latency spikes. jemalloc leaves
+	// this OFF by default, so OME opts in here (configurable via <Modules><Jemalloc> in Server.xml,
+	// default on). It is fork-safe because OME forks only once at daemonize, before this runs, so
+	// no background thread exists across that fork.
+	const bool enable_background_thread = cfg::ConfigManager::GetInstance()->GetServer()->GetModules().GetJemalloc().IsBackgroundPurgeEnabled();
+
+	if (enable_background_thread)
+	{
+		bool bg			 = true;
+		const int result = ::mallctl("background_thread", nullptr, nullptr, &bg, sizeof(bg));
+		if (result == 0)
+		{
+			logi(JEMALLOC_LOG_TAG, "Jemalloc background purge thread is enabled.");
+		}
+		else
+		{
+			logw(JEMALLOC_LOG_TAG, "Could not enable the jemalloc background purge thread (mallctl returned %d).", result);
+		}
+	}
+	else
+	{
+		logi(JEMALLOC_LOG_TAG, "Jemalloc background purge thread is disabled by configuration.");
+	}
 #endif		// OME_USE_JEMALLOC
 
 	return nullptr;
