@@ -416,9 +416,10 @@ namespace ov
 		_blocking_mode	  = BlockingMode::NonBlocking;
 
 #ifdef OME_LATENCY_PROBE
-		// Latency probe (OME_LATENCY_PROBE only): enable software RX timestamping on TCP client
-		// sockets so Recv() can measure how long a request sat in the kernel buffer before our
-		// worker read it.
+		// Latency probe (OME_LATENCY_PROBE only): enable software RX timestamping on all
+		// non-blocking TCP sockets (accepted server-side ClientSockets and outgoing client
+		// sockets) so Recv() can measure how long a request sat in the kernel buffer before
+		// our worker read it.
 		if (GetType() == SocketType::Tcp)
 		{
 			int ts_flags = SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE;
