@@ -119,7 +119,8 @@ namespace ffmpeg
 	int FFmpegMediaFrameData::GetStride(int plane) const
 	{
 		// Host pixel planes only; a hardware frame has no CPU-side data.
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0 ||
+			plane < 0 || plane >= AV_NUM_DATA_POINTERS)
 		{
 			return 0;
 		}
@@ -129,7 +130,7 @@ namespace ffmpeg
 
 	cmn::VideoPixelFormatId FFmpegMediaFrameData::GetPixelFormat() const
 	{
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr)
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0)
 		{
 			return cmn::VideoPixelFormatId::None;
 		}

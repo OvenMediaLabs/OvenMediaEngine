@@ -104,7 +104,8 @@ namespace ffmpeg
 		AVFrame *local_frame = nullptr;	 // built from generic host planes; freed below
 
 		// GPU to CPU transfer
-		if (hwframe_transfer == false && data->GetBackend() == MediaFrameData::Backend::FFmpeg)
+		if (data->GetBackend() == MediaFrameData::Backend::FFmpeg &&
+			(hwframe_transfer == false || data->IsHardwareFrame() == false))
 		{
 			// Software / already-host FFmpeg frame: use its AVFrame directly.
 			src_frame = static_cast<AVFrame *>(data->GetNativeHandle());
@@ -134,17 +135,24 @@ namespace ffmpeg
 					return CodecResult::NoMemory;
 				}
 
-				local_frame->format = static_cast<int>(compat::ToAVPixelFormat(host_holder->GetPixelFormat()));
+ 				AVPixelFormat pix_fmt = compat::ToAVPixelFormat(host_holder->GetPixelFormat());
+ 				if (pix_fmt == AV_PIX_FMT_NONE)
+ 				{
+ 					::av_frame_free(&local_frame);
+ 					return CodecResult::InvalidData;
+ 				}
+ 				local_frame->format = static_cast<int>(pix_fmt);
 				local_frame->width	= media_frame->GetWidth();
 				local_frame->height = media_frame->GetHeight();
 
 				// Copy the host planes into an owned (reference-counted) buffer so the
 				// data stays valid after host_holder is released, and the filter graph
 				// can reference the frame without copying it again.
-				if (::av_frame_get_buffer(local_frame, 0) < 0)
+				int rc = ::av_frame_get_buffer(local_frame, 0);
+				if (rc < 0)
 				{
 					::av_frame_free(&local_frame);
-					return CodecResult::NoMemory;
+					return (rc == AVERROR(ENOMEM)) ? CodecResult::NoMemory : CodecResult::InvalidData;
 				}
 
 				// Validate before copying the host planes into the AVFrame.
@@ -157,13 +165,20 @@ namespace ffmpeg
 
 				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
 				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
+ 				int min_linesize[AV_NUM_DATA_POINTERS] = { 0 };
+
+				if (::av_image_fill_linesizes(min_linesize, static_cast<AVPixelFormat>(local_frame->format), local_frame->width) < 0)
+				{
+ 					::av_frame_free(&local_frame);
+ 					return CodecResult::InvalidData;
+ 				}
 
 				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
 				{
 					src_data[i]		= host_holder->GetPlaneData(i);
 					src_linesize[i] = host_holder->GetStride(i);
 
-					if (src_data[i] == nullptr || src_linesize[i] <= 0)
+					if (src_data[i] == nullptr || src_linesize[i] < min_linesize[i])
 					{
 						::av_frame_free(&local_frame);
 						return CodecResult::InvalidData;
