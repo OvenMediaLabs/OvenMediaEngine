@@ -94,14 +94,22 @@ namespace ffmpeg
 		}
 
 		const auto &data = media_frame->GetData();
+		if(data == nullptr)
+		{
+			return CodecResult::InvalidData;
+		}
 
 		std::shared_ptr<MediaFrameData> host_holder;
-		AVFrame *src_frame	 = static_cast<AVFrame *>(media_frame->GetPrivData());
-
-		// GPU to CPU transfer
+		AVFrame *src_frame	 = nullptr;
 		AVFrame *local_frame = nullptr;	 // built from generic host planes; freed below
 
-		if (hwframe_transfer && data != nullptr && data->IsHardwareFrame())
+		// GPU to CPU transfer
+		if (hwframe_transfer == false && data->GetBackend() == MediaFrameData::Backend::FFmpeg)
+		{
+			// Software / already-host FFmpeg frame: use its AVFrame directly.
+			src_frame = static_cast<AVFrame *>(data->GetNativeHandle());
+		}
+		else if (hwframe_transfer == true && data->IsHardwareFrame())
 		{
 			// Download to host memory(CPU)
 			host_holder = data->DownloadToHost();
@@ -139,14 +147,27 @@ namespace ffmpeg
 					return CodecResult::NoMemory;
 				}
 
+				// Validate before copying the host planes into the AVFrame.
+				int planes = ::av_pix_fmt_count_planes(static_cast<AVPixelFormat>(local_frame->format));
+				if (planes <= 0 || host_holder->GetPlaneCount() != planes)
+				{
+					::av_frame_free(&local_frame);
+					return CodecResult::InvalidData;
+				}
+
 				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
 				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
 
-				int planes = host_holder->GetPlaneCount();
 				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
 				{
 					src_data[i]		= host_holder->GetPlaneData(i);
 					src_linesize[i] = host_holder->GetStride(i);
+
+					if (src_data[i] == nullptr || src_linesize[i] <= 0)
+					{
+						::av_frame_free(&local_frame);
+						return CodecResult::InvalidData;
+					}
 				}
 
 				::av_image_copy(local_frame->data, local_frame->linesize,

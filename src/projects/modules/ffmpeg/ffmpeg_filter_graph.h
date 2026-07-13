@@ -22,6 +22,7 @@ extern "C"
 #include <libavfilter/buffersrc.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 }
 
 namespace ffmpeg
