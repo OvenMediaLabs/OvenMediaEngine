@@ -43,7 +43,7 @@ public:
 	virtual void FillZero() = 0;
 
 	virtual int GetPlaneCount() const { return 0; }
-	virtual uint8_t *GetPlaneData(int plane) const { return nullptr; }
+	virtual const uint8_t *GetPlaneData(int plane) const { return nullptr; }
 	virtual int GetStride(int plane) const { return 0; }
 	virtual cmn::VideoPixelFormatId GetPixelFormat() const { return cmn::VideoPixelFormatId::None; }
 

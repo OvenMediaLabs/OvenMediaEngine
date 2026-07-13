@@ -130,12 +130,29 @@ namespace ffmpeg
 				local_frame->width	= media_frame->GetWidth();
 				local_frame->height = media_frame->GetHeight();
 
+				// Allocate owned buffers and copy the host planes into them, so the
+				// frame data outlives host_holder (which is released when this returns).
+				if (::av_frame_get_buffer(local_frame, 0) < 0)
+				{
+					::av_frame_free(&local_frame);
+					return CodecResult::NoMemory;
+				}
+
+				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
+				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
+
 				int planes = host_holder->GetPlaneCount();
 				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
 				{
-					local_frame->data[i]	 = host_holder->GetPlaneData(i);
-					local_frame->linesize[i] = host_holder->GetStride(i);
+					src_data[i]		= host_holder->GetPlaneData(i);
+					src_linesize[i] = host_holder->GetStride(i);
 				}
+
+				::av_image_copy(local_frame->data, local_frame->linesize,
+								src_data, src_linesize,
+								static_cast<AVPixelFormat>(local_frame->format),
+								local_frame->width, local_frame->height);
+
 				local_frame->pts = media_frame->GetPts();
 				src_frame		 = local_frame;
 			}

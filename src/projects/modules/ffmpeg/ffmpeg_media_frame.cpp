@@ -105,9 +105,10 @@ namespace ffmpeg
 		return (planes < 0) ? 0 : planes;
 	}
 
-	uint8_t *FFmpegMediaFrameData::GetPlaneData(int plane) const
+	const uint8_t *FFmpegMediaFrameData::GetPlaneData(int plane) const
 	{
-		if (_frame == nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
+		// Host pixel planes only; a hardware frame has no CPU-side data.
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
 		{
 			return nullptr;
 		}
@@ -117,7 +118,8 @@ namespace ffmpeg
 
 	int FFmpegMediaFrameData::GetStride(int plane) const
 	{
-		if (_frame == nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
+		// Host pixel planes only; a hardware frame has no CPU-side data.
+		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || plane < 0 || plane >= AV_NUM_DATA_POINTERS)
 		{
 			return 0;
 		}
