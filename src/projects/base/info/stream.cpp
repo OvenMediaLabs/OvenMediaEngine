@@ -325,19 +325,23 @@ namespace info
 			group->AddTrack(track);
 		}
 
-		// public label to track id map
-		auto label = track->GetPublicName();
-		if (label.IsEmpty() == false)
+		// public label to track id map (subtitle tracks only - GetTrackByLabel() callers all
+		// expect a subtitle track back, so a same-named audio/video/data track must not shadow it)
+		if (track->GetMediaType() == cmn::MediaType::Subtitle)
 		{
-			auto label_it = _public_label_map.find(label);
-			if (label_it == _public_label_map.end())
+			auto label = track->GetPublicName();
+			if (label.IsEmpty() == false)
 			{
-				_public_label_map.emplace(label, track->GetId());
+				auto label_it = _public_label_map.find(label);
+				if (label_it == _public_label_map.end())
+				{
+					_public_label_map.emplace(label, track->GetId());
+				}
+				// else
+				// {
+				// 	logw("DEBUG", "Public label '%s' already exists for track ID %d", label.CStr(), track->GetId());
+				// }
 			}
-			// else
-			// {
-			// 	logw("DEBUG", "Public label '%s' already exists for track ID %d", label.CStr(), track->GetId());
-			// }
 		}
 
 		return true;

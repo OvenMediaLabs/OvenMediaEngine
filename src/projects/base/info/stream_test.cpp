@@ -6,6 +6,7 @@
 //  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
 //
 //==============================================================================
+#include <base/info/media_track.h>
 #include <base/info/stream.h>
 #include <gtest/gtest.h>
 
@@ -121,4 +122,37 @@ TEST(InfoStreamSourceUrl, CopyConstructorRacingWriterObservesOnlyWholeValues)
 
 	EXPECT_TRUE(all_copies_valid.load());
 	EXPECT_GT(copy_count.load(), 0u);
+}
+
+// Regression test for the fix on this branch:
+// `GetTrackByLabel()` is only ever used by callers expecting a *subtitle* track back
+// (STT output routing, the sendSubtitles API, subtitle commands). Before the fix, the
+// lookup map was populated from every track's PublicName regardless of media type, so an
+// audio track sharing a name with a subtitle rendition (e.g. an <AudioMap> <Item><Name>
+// matching a <Subtitles><Rendition><Label>, as happens with Scheduler + AudioMap) would
+// shadow the subtitle track and make it unreachable by label - which in turn made
+// pvd::Application::AddStream() believe the subtitle rendition already existed and skip
+// creating it entirely.
+TEST(InfoStreamTrackByLabel, SubtitleLabelIsNotShadowedByNonSubtitleTrackWithSameName)
+{
+	const ov::String kSharedLabel = "American English";
+
+	info::Stream stream(StreamSourceType::Ovt);
+
+	auto audio_track = std::make_shared<MediaTrack>();
+	audio_track->SetId(stream.IssueUniqueTrackId());
+	audio_track->SetMediaType(cmn::MediaType::Audio);
+	audio_track->SetPublicName(kSharedLabel);
+	ASSERT_TRUE(stream.AddTrack(audio_track));
+
+	auto subtitle_track = std::make_shared<MediaTrack>();
+	subtitle_track->SetId(stream.IssueUniqueTrackId());
+	subtitle_track->SetMediaType(cmn::MediaType::Subtitle);
+	subtitle_track->SetPublicName(kSharedLabel);
+	ASSERT_TRUE(stream.AddTrack(subtitle_track));
+
+	auto found = stream.GetTrackByLabel(kSharedLabel);
+	ASSERT_NE(found, nullptr);
+	EXPECT_EQ(found->GetId(), subtitle_track->GetId());
+	EXPECT_EQ(found->GetMediaType(), cmn::MediaType::Subtitle);
 }
