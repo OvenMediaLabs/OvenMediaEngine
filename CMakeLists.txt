@@ -100,9 +100,6 @@ set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for ex
 
 option(OME_HWACCEL_NVIDIA           "Enable NVIDIA GPU hardware acceleration"            OFF)
 option(OME_HWACCEL_XMA              "Enable Xilinx XMA hardware acceleration"            OFF)
-option(OME_HWACCEL_NILOGAN          "Enable Netint NiLogan acceleration"                 OFF)
-set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmpeg patch file (required when OME_HWACCEL_NILOGAN=ON)")
-set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
 option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     option(OME_ENABLE_JEMALLOC      "Enable jemalloc memory allocator"                   ON)
@@ -126,9 +123,6 @@ message(STATUS "  OME_USE_CLANG: ${OME_USE_CLANG}")
 message(STATUS "  OME_DEP_PREFIX: ${OME_DEP_PREFIX}")
 message(STATUS "  OME_HWACCEL_NVIDIA: ${OME_HWACCEL_NVIDIA}")
 message(STATUS "  OME_HWACCEL_XMA: ${OME_HWACCEL_XMA}")
-message(STATUS "  OME_HWACCEL_NILOGAN: ${OME_HWACCEL_NILOGAN}")
-message(STATUS "  OME_NILOGAN_PATCH_PATH: ${OME_NILOGAN_PATCH_PATH}")
-message(STATUS "  OME_NILOGAN_XCODER_COMPILE_PATH: ${OME_NILOGAN_XCODER_COMPILE_PATH}")
 message(STATUS "  OME_ENABLE_X264: ${OME_ENABLE_X264}")
 message(STATUS "  OME_ENABLE_JEMALLOC: ${OME_ENABLE_JEMALLOC}")
 message(STATUS "  OME_ENABLE_JEMALLOC_LG_PAGE_MAX: ${OME_ENABLE_JEMALLOC_LG_PAGE_MAX}")
@@ -208,7 +202,7 @@ if(OME_BUILD_TESTS)
     # Mirror the optional hardware-acceleration libs that
     # src/projects/main/CMakeLists.txt links into the main executable so that
     # test binaries linking the same static archives (e.g. libtranscoder.a)
-    # can resolve CUDA / XMA / NiLogan symbols.
+    # can resolve CUDA / XMA symbols.
     if(OME_HWACCEL_NVIDIA)
         set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
             ${OME_NVIDIA_LIBS}
@@ -221,9 +215,6 @@ if(OME_BUILD_TESTS)
             PkgConfig::PKG_XVBM
             PkgConfig::PKG_LIBXRM
         )
-    endif()
-    if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
-        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS xcoder_logan)
     endif()
 
     # System libraries must come last so that any static archive listed earlier

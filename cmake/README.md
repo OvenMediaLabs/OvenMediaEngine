@@ -37,9 +37,6 @@ cmake --build build/Release
 | `OME_SKIP_DEPENDENCY_CHECK` | OFF | Skip auto-install of missing/wrong-version packages. Useful for CI or offline builds |
 | `OME_HWACCEL_NVIDIA` | OFF | Enable NVIDIA GPU acceleration. |
 | `OME_HWACCEL_XMA` | OFF | Enable Xilinx XMA acceleration. |
-| `OME_HWACCEL_NILOGAN` | OFF | Enable Netint NiLogan acceleration. Requires `OME_NILOGAN_PATCH_PATH` |
-| `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file. Required when `OME_HWACCEL_NILOGAN=ON` |
-| `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
 | `OME_ENABLE_X264` | ON | Enable libx264 encoder support |
 | `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
 | `OME_ENABLE_JEMALLOC_LG_PAGE_MAX` | OFF | Build jemalloc with 16 KiB maximum page size on aarch64/arm64 targets (`--with-lg-page=16`) |
@@ -100,9 +97,6 @@ Available `-D` options:
 | `OME_ENABLE_X264` | `ON` | Include libx264 |
 | `OME_HWACCEL_NVIDIA` | `OFF` | Include NVIDIA codec headers, build FFmpeg/Whisper with CUDA/NVENC/NVDEC |
 | `OME_HWACCEL_XMA` | `OFF` | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed) |
-| `OME_HWACCEL_NILOGAN` | `OFF` | Build FFmpeg with Netint NiLogan support. Requires `OME_NILOGAN_PATCH_PATH` |
-| `OME_NILOGAN_PATCH_PATH` | `""` | Path to the NiLogan FFmpeg patch file |
-| `OME_NILOGAN_XCODER_COMPILE_PATH` | `""` | Path to `xcoder_logan` source directory to compile (optional) |
 | `OME_USE_CLANG` | `ON` | Install `clang`/`lld` OS packages and use Clang as the compiler. Set `OFF` to skip and keep GCC |
 
 ---
