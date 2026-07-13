@@ -4,7 +4,7 @@ description: "Get the current OvenMediaEngine version and git version via the v1
 sidebar_position: 41
 ---
 
-## Returns OvenMediaEngine version metadata.
+## Get Version
 
 > **Request**
 
