@@ -18,6 +18,7 @@
 #include <base/ovlibrary/latency_probe.h>
 
 #include <sys/syscall.h>
+#include <unistd.h>
 
 // Latency probe (OME_LATENCY_PROBE only): log each serving stage
 // (K=kernel RX time of request bytes, R=request routed to session, D=response ready,

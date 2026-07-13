@@ -1263,7 +1263,7 @@ bool TranscoderStream::CreateDecoder(MediaTrackId decoder_id, std::shared_ptr<in
 #ifdef OME_LATENCY_PROBE
 	// Latency probe (OME_LATENCY_PROBE only): pipeline creation latency. Serialized decoder/encoder
 	// creation can back up the pipeline; this records how long each element took to build.
-	ov::LatencyProbeLog("CREATE", "kind=decoder ms=%lld decoder=%d codec=%s in_track=%u name=%s",
+	ov::LatencyProbeLog("CREATE", "kind=decoder ms=%lld decoder=%u codec=%s in_track=%u name=%s",
 						static_cast<long long>(creation_timer.Elapsed()), decoder_id,
 						cmn::GetCodecIdString(input_track->GetCodecId()), input_track->GetId(), input_stream->GetName().CStr());
 #endif	// OME_LATENCY_PROBE
@@ -1441,7 +1441,7 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 	SetEncoderWithFilter(encoder_id, post_filter, encoder);
 
 #ifdef OME_LATENCY_PROBE
-	ov::LatencyProbeLog("CREATE", "kind=encoder ms=%lld encoder=%d codec=%s module=%s:%d out_track=%d name=%s",
+	ov::LatencyProbeLog("CREATE", "kind=encoder ms=%lld encoder=%u codec=%s module=%s:%d out_track=%u name=%s",
 						static_cast<long long>(creation_timer.Elapsed()), encoder_id,
 						cmn::GetCodecIdString(output_track->GetCodecId()),
 						cmn::GetCodecModuleIdString(encoder->GetModuleID()), encoder->GetDeviceID(),
@@ -1590,7 +1590,7 @@ bool TranscoderStream::CreateFilter(MediaTrackId filter_id, std::shared_ptr<info
 	logtd("%s Filter has been created. Id(%d), %s", _log_prefix.CStr(), filter_id, filter->GetDescription().CStr());
 
 #ifdef OME_LATENCY_PROBE
-	ov::LatencyProbeLog("CREATE", "kind=filter ms=%lld filter=%d name=%s",
+	ov::LatencyProbeLog("CREATE", "kind=filter ms=%lld filter=%u name=%s",
 						static_cast<long long>(creation_timer.Elapsed()), filter_id, input_stream->GetName().CStr());
 #endif	// OME_LATENCY_PROBE
 

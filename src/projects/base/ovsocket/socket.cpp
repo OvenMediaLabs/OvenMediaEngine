@@ -1673,6 +1673,10 @@ namespace ov
 
 				if (read_bytes > 0L && GetType() == SocketType::Tcp)
 				{
+					// Clear first so a read without a timestamp cmsg reports 0 (unknown) to the
+					// serving layer, instead of reusing the previous read's kernel arrival time.
+					_last_rx_kernel_ms.store(0, std::memory_order_relaxed);
+
 					for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm != nullptr; cm = CMSG_NXTHDR(&msg, cm))
 					{
 						if (cm->cmsg_level == SOL_SOCKET && cm->cmsg_type == SCM_TIMESTAMPING &&
