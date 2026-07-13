@@ -32,6 +32,12 @@
 			<Enable>false</Enable>
 			<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 		</P2P>
+
+		<!-- jemalloc allocator tuning (effective only in jemalloc builds) -->
+		<Jemalloc>
+			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
+			<BackgroundPurge>true</BackgroundPurge>
+		</Jemalloc>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->
