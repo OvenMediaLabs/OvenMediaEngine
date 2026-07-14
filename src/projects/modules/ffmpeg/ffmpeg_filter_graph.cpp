@@ -9,6 +9,11 @@
 
 #include "ffmpeg_filter_graph.h"
 
+extern "C"
+{
+#include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
+}
 namespace ffmpeg
 {
 	FFmpegFilterGraph::~FFmpegFilterGraph()
@@ -126,6 +131,19 @@ namespace ffmpeg
 			}
 			else
 			{
+				AVPixelFormat pix_fmt = compat::ToAVPixelFormat(host_holder->GetPixelFormat());
+				if (pix_fmt == AV_PIX_FMT_NONE)
+				{
+					return CodecResult::InvalidData;
+				}
+
+				// Validate before copying the host planes into the AVFrame.
+				int planes = ::av_pix_fmt_count_planes(pix_fmt);
+				if (planes <= 0 || host_holder->GetPlaneCount() != planes)
+				{
+					return CodecResult::InvalidData;
+				}
+
 				// Build a new AVFrame from the generic host planes.
 				// For future non-FFmpeg backends; such a backend must override
 				// GetPixelFormat()/GetPlaneCount()/GetPlaneData()/GetStride().
@@ -135,13 +153,7 @@ namespace ffmpeg
 					return CodecResult::NoMemory;
 				}
 
- 				AVPixelFormat pix_fmt = compat::ToAVPixelFormat(host_holder->GetPixelFormat());
- 				if (pix_fmt == AV_PIX_FMT_NONE)
- 				{
- 					::av_frame_free(&local_frame);
- 					return CodecResult::InvalidData;
- 				}
- 				local_frame->format = static_cast<int>(pix_fmt);
+				local_frame->format = static_cast<int>(pix_fmt);
 				local_frame->width	= media_frame->GetWidth();
 				local_frame->height = media_frame->GetHeight();
 
@@ -155,23 +167,15 @@ namespace ffmpeg
 					return (rc == AVERROR(ENOMEM)) ? CodecResult::NoMemory : CodecResult::InvalidData;
 				}
 
-				// Validate before copying the host planes into the AVFrame.
-				int planes = ::av_pix_fmt_count_planes(static_cast<AVPixelFormat>(local_frame->format));
-				if (planes <= 0 || host_holder->GetPlaneCount() != planes)
+				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
+				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
+				int min_linesize[AV_NUM_DATA_POINTERS] = { 0 };
+
+				if (::av_image_fill_linesizes(min_linesize, static_cast<AVPixelFormat>(local_frame->format), local_frame->width) < 0)
 				{
 					::av_frame_free(&local_frame);
 					return CodecResult::InvalidData;
 				}
-
-				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
-				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
- 				int min_linesize[AV_NUM_DATA_POINTERS] = { 0 };
-
-				if (::av_image_fill_linesizes(min_linesize, static_cast<AVPixelFormat>(local_frame->format), local_frame->width) < 0)
-				{
- 					::av_frame_free(&local_frame);
- 					return CodecResult::InvalidData;
- 				}
 
 				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
 				{
@@ -190,18 +194,16 @@ namespace ffmpeg
 								static_cast<AVPixelFormat>(local_frame->format),
 								local_frame->width, local_frame->height);
 
-				local_frame->pts = media_frame->GetPts();
-				src_frame		 = local_frame;
+				local_frame->pts	  = media_frame->GetPts();
+				local_frame->pkt_dts  = media_frame->GetPts();
+				local_frame->duration = media_frame->GetDuration();
+				src_frame			  = local_frame;
 			}
 		}
 
 		if (src_frame == nullptr)
 		{
-			if (local_frame != nullptr)
-			{
-				::av_frame_free(&local_frame);
-			}
-			return CodecResult::NoMemory;
+			return CodecResult::InvalidData;
 		}
 
 		CodecResult result = ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, src_frame));
