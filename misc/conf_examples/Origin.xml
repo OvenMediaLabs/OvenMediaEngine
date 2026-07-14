@@ -209,34 +209,7 @@
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
-						<!--  This option is deprecated. Please use the 'HWAccels' option. -->
-						<!-- 
-							<HardwareAcceleration>false</HardwareAcceleration>
-						-->
-
-						<!-- Enable this configuration if you want to hardware acceleration using GPU -->
-						<HWAccels>
-							<Decoder>
-									<Enable>false</Enable>
-									<!-- 
-										Setting for Hardware Modules.
-										 - xma :Xilinx Media Accelerator
-										 - nv : Nvidia Video Codec SDK
-										 - nilogan: Netint VPU
-
-										You can use multiple modules by separating them with commas.
-										For example, if you want to use xma and nv, you can set it as follows.
-
-										<Modules>[ModuleName]:[DeviceId],[ModuleName]:[DeviceId],...</Modules>
-										<Modules>xma:0,nv:0</Modules>
-									-->
-									<!-- <Modules>nv</Modules> -->
-							</Decoder>
-							<Encoder>
-									<Enable>false</Enable>
-									<!-- <Modules>nv:0</Modules> -->
-							</Encoder>
-						</HWAccels>
+						<!-- 'HWAccels' option is deprecated. -->
 
 						<OutputProfile>
 							<Name>bypass_stream</Name>
