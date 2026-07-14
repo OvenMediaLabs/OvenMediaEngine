@@ -175,14 +175,6 @@ The `outputProfiles` section in the JSON structure mirrors the configuration in 
 
 ```
 "outputProfiles": {
-  "hwaccels": {
-    "decoder": {
-      "enable": false
-    },
-    "encoder": {
-      "enable": false
-    }
-  },
   "decodes": {
     "threadCount": 2,
     "onlyKeyframes": false

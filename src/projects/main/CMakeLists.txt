@@ -86,10 +86,6 @@ if(OME_HWACCEL_XMA AND PKG_LIBXMA2API_FOUND)
     )
 endif()
 
-if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
-    target_link_libraries(OvenMediaEngine PRIVATE xcoder_logan)
-endif()
-
 if(PKG_JEMALLOC_FOUND)
     target_link_libraries(OvenMediaEngine PRIVATE PkgConfig::PKG_JEMALLOC)
 endif()
