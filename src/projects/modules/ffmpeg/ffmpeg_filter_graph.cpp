@@ -128,6 +128,12 @@ namespace ffmpeg
 			{
 				// Reuse the AVFrame
 				src_frame = static_cast<AVFrame *>(host_holder->GetNativeHandle());
+				if (src_frame != nullptr)
+				{
+					src_frame->pts		 = media_frame->GetPts();
+					src_frame->pkt_dts	 = media_frame->GetPts();
+					src_frame->duration = media_frame->GetDuration();
+				}
 			}
 			else
 			{
