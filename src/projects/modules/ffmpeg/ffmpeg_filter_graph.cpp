@@ -9,6 +9,11 @@
 
 #include "ffmpeg_filter_graph.h"
 
+extern "C"
+{
+#include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
+}
 namespace ffmpeg
 {
 	FFmpegFilterGraph::~FFmpegFilterGraph()
@@ -94,28 +99,132 @@ namespace ffmpeg
 		}
 
 		const auto &data = media_frame->GetData();
+		if(data == nullptr)
+		{
+			return CodecResult::InvalidData;
+		}
 
 		std::shared_ptr<MediaFrameData> host_holder;
-		AVFrame *src_frame = static_cast<AVFrame *>(media_frame->GetPrivData());
+		AVFrame *src_frame	 = nullptr;
+		AVFrame *local_frame = nullptr;	 // built from generic host planes; freed below
 
-		// GPU to CPU transfer 
-		if (hwframe_transfer && data != nullptr && data->IsHardwareFrame())
+		// GPU to CPU transfer
+		if (data->GetBackend() == MediaFrameData::Backend::FFmpeg &&
+			(hwframe_transfer == false || data->IsHardwareFrame() == false))
 		{
+			// Software / already-host FFmpeg frame: use its AVFrame directly.
+			src_frame = static_cast<AVFrame *>(data->GetNativeHandle());
+		}
+		else if (hwframe_transfer == true && data->IsHardwareFrame())
+		{
+			// Download to host memory(CPU)
 			host_holder = data->DownloadToHost();
 			if (host_holder == nullptr)
 			{
 				return CodecResult::NoMemory;
 			}
 
-			src_frame = static_cast<AVFrame *>(host_holder->GetNativeHandle());
+			if (host_holder->GetBackend() == MediaFrameData::Backend::FFmpeg)
+			{
+				// Reuse the AVFrame
+				src_frame = static_cast<AVFrame *>(host_holder->GetNativeHandle());
+				if (src_frame != nullptr)
+				{
+					src_frame->pts		 = media_frame->GetPts();
+					src_frame->pkt_dts	 = media_frame->GetPts();
+					src_frame->duration = media_frame->GetDuration();
+				}
+			}
+			else
+			{
+				AVPixelFormat pix_fmt = compat::ToAVPixelFormat(host_holder->GetPixelFormat());
+				if (pix_fmt == AV_PIX_FMT_NONE)
+				{
+					return CodecResult::InvalidData;
+				}
+
+				// Validate before copying the host planes into the AVFrame.
+				int planes = ::av_pix_fmt_count_planes(pix_fmt);
+				if (planes <= 0 || host_holder->GetPlaneCount() != planes)
+				{
+					return CodecResult::InvalidData;
+				}
+
+				if (media_frame->GetWidth() <= 0 || media_frame->GetHeight() <= 0)
+				{
+					return CodecResult::InvalidData;
+				}
+
+				// Build a new AVFrame from the generic host planes.
+				// For future non-FFmpeg backends; such a backend must override
+				// GetPixelFormat()/GetPlaneCount()/GetPlaneData()/GetStride().
+				local_frame = ::av_frame_alloc();
+				if (local_frame == nullptr)
+				{
+					return CodecResult::NoMemory;
+				}
+
+				local_frame->format = static_cast<int>(pix_fmt);
+				local_frame->width	= media_frame->GetWidth();
+				local_frame->height = media_frame->GetHeight();
+
+				// Copy the host planes into an owned (reference-counted) buffer so the
+				// data stays valid after host_holder is released, and the filter graph
+				// can reference the frame without copying it again.
+				int rc = ::av_frame_get_buffer(local_frame, 0);
+				if (rc < 0)
+				{
+					::av_frame_free(&local_frame);
+					return (rc == AVERROR(ENOMEM)) ? CodecResult::NoMemory : CodecResult::InvalidData;
+				}
+
+				const uint8_t *src_data[AV_NUM_DATA_POINTERS] = { nullptr };
+				int src_linesize[AV_NUM_DATA_POINTERS]		  = { 0 };
+				int min_linesize[AV_NUM_DATA_POINTERS] = { 0 };
+
+				if (::av_image_fill_linesizes(min_linesize, static_cast<AVPixelFormat>(local_frame->format), local_frame->width) < 0)
+				{
+					::av_frame_free(&local_frame);
+					return CodecResult::InvalidData;
+				}
+
+				for (int i = 0; i < planes && i < AV_NUM_DATA_POINTERS; i++)
+				{
+					src_data[i]		= host_holder->GetPlaneData(i);
+					src_linesize[i] = host_holder->GetStride(i);
+
+					if (src_data[i] == nullptr || src_linesize[i] < min_linesize[i])
+					{
+						::av_frame_free(&local_frame);
+						return CodecResult::InvalidData;
+					}
+				}
+
+				::av_image_copy(local_frame->data, local_frame->linesize,
+								src_data, src_linesize,
+								static_cast<AVPixelFormat>(local_frame->format),
+								local_frame->width, local_frame->height);
+
+				local_frame->pts	  = media_frame->GetPts();
+				local_frame->pkt_dts  = media_frame->GetPts();
+				local_frame->duration = media_frame->GetDuration();
+				src_frame			  = local_frame;
+			}
 		}
 
 		if (src_frame == nullptr)
 		{
-			return CodecResult::NoMemory;
+			return CodecResult::InvalidData;
 		}
 
-		return ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, src_frame));
+		CodecResult result = ToCodecResult(::av_buffersrc_write_frame(_buffersrc_ctx, src_frame));
+
+		if (local_frame != nullptr)
+		{
+			::av_frame_free(&local_frame);
+		}
+
+		return result;
 	}
 
 	ReceiveResult FFmpegFilterGraph::PullFrame()
