@@ -144,6 +144,11 @@ namespace ffmpeg
 					return CodecResult::InvalidData;
 				}
 
+				if (media_frame->GetWidth() <= 0 || media_frame->GetHeight() <= 0)
+				{
+					return CodecResult::InvalidData;
+				}
+
 				// Build a new AVFrame from the generic host planes.
 				// For future non-FFmpeg backends; such a backend must override
 				// GetPixelFormat()/GetPlaneCount()/GetPlaneData()/GetStride().
