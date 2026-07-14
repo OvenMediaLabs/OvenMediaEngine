@@ -396,6 +396,7 @@ std::shared_ptr<RtcMasterPlaylist> RtcStream::CreateRtcMasterPlaylist(const ov::
 
 	auto rtc_master_playlist = std::make_shared<RtcMasterPlaylist>(file_name, playlist->GetName());
 	rtc_master_playlist->SetWebRtcAutoAbr(playlist->IsWebRtcAutoAbr());
+	rtc_master_playlist->SetWebRtcAudioOnlyFallback(playlist->IsWebRtcAudioOnlyFallback());
 
 	for (const auto &rendition : playlist->GetRenditionList())
 	{

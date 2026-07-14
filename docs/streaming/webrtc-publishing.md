@@ -218,6 +218,28 @@ It is not recommended to use a \<Bypass>true\</Bypass> encode item if you want a
 
 If `<Options>/<WebRtcAutoAbr>` is set to true, OvenMediaEngine will measure the bandwidth of the player session and automatically switch to the appropriate rendition.
 
+If `<Options>/<WebRtcAudioOnlyFallback>` is set to true, OvenMediaEngine cross-adds any audio-only rendition of the playlist (a `<Rendition>` with no `<Video>`) into the video renditions that share its audio codec. A WebRTC player can then switch to the audio-only rendition on the same PeerConnection without renegotiation — for example to keep audio while dropping video bandwidth when the player is in the background. The option is off by default. Automatic ABR never switches to the audio-only rendition; it is reachable only by an explicit rendition change, and a session that has switched to it stays there until the player switches back.
+
+```xml
+<Playlist>
+    <Name>for webrtc</Name>
+    <FileName>master</FileName>
+    <Options>
+        <WebRtcAutoAbr>true</WebRtcAutoAbr>
+        <WebRtcAudioOnlyFallback>true</WebRtcAudioOnlyFallback>
+    </Options>
+    <Rendition>
+        <Name>720p</Name>
+        <Video>720p</Video>
+        <Audio>opus</Audio>
+    </Rendition>
+    <Rendition>
+        <Name>audio</Name>
+        <Audio>opus</Audio>
+    </Rendition>
+</Playlist>
+```
+
 Here is an example play URL for ABR in the playlist settings below. `wss://domain:13334/app/stream/master`
 
 
