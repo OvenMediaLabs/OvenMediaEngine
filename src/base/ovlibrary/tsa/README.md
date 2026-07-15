@@ -2,7 +2,7 @@
 
 This document is a guide to Thread Safety Analysis (TSA) for developers who want to contribute code to OvenMediaEngine (OME). It covers what TSA is and why it is used (background), what you must follow when writing new code (rules), examples for common situations, and how to deal with problems you will run into (troubleshooting).
 
-All the related sources live under `src/projects/base/ovlibrary/tsa/`.
+All the related sources live under `src/base/ovlibrary/tsa/`.
 
 - `annotations.h` - TSA annotation macro definitions
 - `mutex.h` - `ov::` mutex / guard / condition variable wrappers
@@ -72,10 +72,10 @@ The analysis is purely static, and the annotations expand to empty macros, so th
 
 OME has a single set of `ov::` wrapper classes, and the CMake option `OME_THREAD_SAFETY` (default `OFF`) only toggles whether the annotations are active.
 
-| Mode | Description |
-| --- | --- |
-| `OFF` (default) | All `OV_*` macros expand to nothing. Each `ov::` type is just a thin wrapper around the corresponding `std::` type. |
-| `ON` | The same classes gain TSA capability annotations. They expand to real attributes (analyzed under `-Wthread-safety`) only on Clang; on other compilers they vanish into empty macros. |
+| Mode            | Description                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OFF` (default) | All `OV_*` macros expand to nothing. Each `ov::` type is just a thin wrapper around the corresponding `std::` type.                                                                  |
+| `ON`            | The same classes gain TSA capability annotations. They expand to real attributes (analyzed under `-Wthread-safety`) only on Clang; on other compilers they vanish into empty macros. |
 
 The two modes have identical `sizeof` / `alignof` / method signatures (tests guard this with `static_assert`). So you write the source once and build with `ON` only when you need the analysis.
 
@@ -150,11 +150,11 @@ For details on the macros used above, see [5.4](#54-declaring-that-the-caller-ho
 
 After writing new code, always build in `ON` mode (Clang) to check for violations. The relevant options are:
 
-| Option | Default | Role |
-| --- | --- | --- |
-| `OME_THREAD_SAFETY` | `OFF` | When `ON` (Clang only), defines the `OME_THREAD_SAFETY` macro + enables `-Wthread-safety` |
-| `OME_USE_CLANG` | `ON` | Use Clang as the compiler (required for TSA analysis) |
-| `OME_BUILD_TESTS` | `OFF` | When `ON`, the TSA regression test is built/registered |
+| Option              | Default | Role                                                                                      |
+| ------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `OME_THREAD_SAFETY` | `OFF`   | When `ON` (Clang only), defines the `OME_THREAD_SAFETY` macro + enables `-Wthread-safety` |
+| `OME_USE_CLANG`     | `ON`    | Use Clang as the compiler (required for TSA analysis)                                     |
+| `OME_BUILD_TESTS`   | `OFF`   | When `ON`, the TSA regression test is built/registered                                    |
 
 If you configure CMake directly, add `OME_THREAD_SAFETY=ON` like this (the other options are the same as a normal build).
 
@@ -179,11 +179,11 @@ All types are in the `ov::` namespace and are pulled in via `<base/ovlibrary/ovl
 
 When you need manual lock/unlock, use the mutex's own methods rather than a guard.
 
-| Type | std equivalent | Methods |
-| --- | --- | --- |
-| `ov::Mutex` | `std::mutex` | `Lock()` / `Unlock()` / `TryLock()` |
-| `ov::RecursiveMutex` | `std::recursive_mutex` | same |
-| `ov::SharedMutex` | `std::shared_mutex` | the above + `LockShared()` / `UnlockShared()` / `TryLockShared()` |
+| Type                    | std equivalent            | Methods                                                                |
+| ----------------------- | ------------------------- | ---------------------------------------------------------------------- |
+| `ov::Mutex`             | `std::mutex`              | `Lock()` / `Unlock()` / `TryLock()`                                    |
+| `ov::RecursiveMutex`    | `std::recursive_mutex`    | same                                                                   |
+| `ov::SharedMutex`       | `std::shared_mutex`       | the above + `LockShared()` / `UnlockShared()` / `TryLockShared()`      |
 | `ov::ConditionVariable` | `std::condition_variable` | `Wait()` / `WaitFor()` / `WaitUntil()` + `NotifyOne()` / `NotifyAll()` |
 
 > [!NOTE]
@@ -193,13 +193,13 @@ When you need manual lock/unlock, use the mutex's own methods rather than a guar
 
 The guards are all pure RAII: they lock in the constructor and release in the destructor, and do nothing else.
 
-| Type | std equivalent | Use |
-| --- | --- | --- |
-| `ov::LockGuard<T>` | `std::lock_guard<T>` | exclusive guard that locks a single mutex immediately |
-| `ov::SharedLockGuard<T>` | `std::shared_lock<T>` (immediate-acquire) | locks immediately in shared mode |
-| `ov::ScopedLock<T...>` | `std::scoped_lock<T...>` | locks multiple mutexes at once (avoids deadlock internally) |
-| `ov::ReleasableLockGuard<T>` | N/A | immediate exclusive lock + early `Release()` before scope end |
-| `ov::ReleasableSharedLockGuard<T>` | N/A | immediate shared lock + early `Release()` |
+| Type                               | std equivalent                            | Use                                                           |
+| ---------------------------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| `ov::LockGuard<T>`                 | `std::lock_guard<T>`                      | exclusive guard that locks a single mutex immediately         |
+| `ov::SharedLockGuard<T>`           | `std::shared_lock<T>` (immediate-acquire) | locks immediately in shared mode                              |
+| `ov::ScopedLock<T...>`             | `std::scoped_lock<T...>`                  | locks multiple mutexes at once (avoids deadlock internally)   |
+| `ov::ReleasableLockGuard<T>`       | N/A                                       | immediate exclusive lock + early `Release()` before scope end |
+| `ov::ReleasableSharedLockGuard<T>` | N/A                                       | immediate shared lock + early `Release()`                     |
 
 Class template argument deduction (CTAD) is supported, so you can write `ov::LockGuard lock(_mutex);` without the type argument.
 
@@ -210,25 +210,25 @@ Class template argument deduction (CTAD) is supported, so you can write `ov::Loc
 
 All of these are defined in `annotations.h`. At first it is enough to learn just the ones used in [2.2](#22-the-most-common-pattern-guarding-a-member-with-a-mutex): `OV_GUARDED_BY` and `OV_REQUIRES` (use `OV_REQUIRES_SHARED` for read-only paths), plus `OV_NO_THREAD_SAFETY_ANALYSIS` for opting out of analysis. You usually do not write `OV_ACQUIRE` / `OV_RELEASE` by hand; they are needed only when you build a function or guard that has a lock/unlock effect of its own.
 
-| Category | Macro | Meaning |
-| --- | --- | --- |
-| Guarded data | `OV_GUARDED_BY(m)` | this member/global is protected by `m` (the most common one) |
-|  | `OV_PT_GUARDED_BY(m)` | the value a pointer points to is protected by `m` |
-| Capability | `OV_LOCKABLE` | put on a mutex-like class (same as `OV_CAPABILITY("mutex")`) |
-|  | `OV_CAPABILITY("label")` | label a non-mutex capability (e.g. a thread role) |
-|  | `OV_SCOPED_CAPABILITY` | RAII guard (acquires in ctor, releases in dtor) |
-| Preconditions | `OV_REQUIRES(m...)` | `m` must be held exclusively at call time |
-|  | `OV_REQUIRES_SHARED(m...)` | `m` must be held in shared mode at call time |
-|  | `OV_EXCLUDES(m...)` | `m` must NOT be held at call time |
-| State transitions | `OV_ACQUIRE(m...)` | the function acquires `m` exclusively and keeps it on return |
-|  | `OV_ACQUIRE_SHARED(m...)` | the function acquires `m` in shared mode |
-|  | `OV_RELEASE(m...)` | the function releases a capability held exclusively |
-|  | `OV_RELEASE_SHARED(m...)` | the function releases a capability held in shared mode |
-|  | `OV_TRY_ACQUIRE(ok, m...)` | try-acquire (`ok` is the success return value, usually `true`) |
-|  | `OV_TRY_ACQUIRE_SHARED(ok, m...)` | shared-mode try-acquire |
-| Runtime asserts | `OV_ASSERT_CAPABILITY(m)` | tell the analyzer `m` is held exclusively at this point |
-|  | `OV_ASSERT_SHARED_CAPABILITY(m)` | tell the analyzer `m` is held in shared mode at this point |
-| Opt out | `OV_NO_THREAD_SAFETY_ANALYSIS` | skip analysis for this function body (last resort) |
+| Category          | Macro                             | Meaning                                                        |
+| ----------------- | --------------------------------- | -------------------------------------------------------------- |
+| Guarded data      | `OV_GUARDED_BY(m)`                | this member/global is protected by `m` (the most common one)   |
+|                   | `OV_PT_GUARDED_BY(m)`             | the value a pointer points to is protected by `m`              |
+| Capability        | `OV_LOCKABLE`                     | put on a mutex-like class (same as `OV_CAPABILITY("mutex")`)   |
+|                   | `OV_CAPABILITY("label")`          | label a non-mutex capability (e.g. a thread role)              |
+|                   | `OV_SCOPED_CAPABILITY`            | RAII guard (acquires in ctor, releases in dtor)                |
+| Preconditions     | `OV_REQUIRES(m...)`               | `m` must be held exclusively at call time                      |
+|                   | `OV_REQUIRES_SHARED(m...)`        | `m` must be held in shared mode at call time                   |
+|                   | `OV_EXCLUDES(m...)`               | `m` must NOT be held at call time                              |
+| State transitions | `OV_ACQUIRE(m...)`                | the function acquires `m` exclusively and keeps it on return   |
+|                   | `OV_ACQUIRE_SHARED(m...)`         | the function acquires `m` in shared mode                       |
+|                   | `OV_RELEASE(m...)`                | the function releases a capability held exclusively            |
+|                   | `OV_RELEASE_SHARED(m...)`         | the function releases a capability held in shared mode         |
+|                   | `OV_TRY_ACQUIRE(ok, m...)`        | try-acquire (`ok` is the success return value, usually `true`) |
+|                   | `OV_TRY_ACQUIRE_SHARED(ok, m...)` | shared-mode try-acquire                                        |
+| Runtime asserts   | `OV_ASSERT_CAPABILITY(m)`         | tell the analyzer `m` is held exclusively at this point        |
+|                   | `OV_ASSERT_SHARED_CAPABILITY(m)`  | tell the analyzer `m` is held in shared mode at this point     |
+| Opt out           | `OV_NO_THREAD_SAFETY_ANALYSIS`    | skip analysis for this function body (last resort)             |
 
 The precondition/state-transition macros such as `OV_REQUIRES` / `OV_ACQUIRE` / `OV_RELEASE` / `OV_EXCLUDES` are variadic, so you can list several mutexes separated by commas (e.g. `OV_REQUIRES(_a, _b)`).
 
@@ -430,12 +430,12 @@ _cv.Wait(lock, [this]() OV_REQUIRES(_mutex) -> bool { return _ready; });
 
 The `OV_GUARDED_BY` family applies only to members/globals and is ignored on local variables.
 
-| Alias form | annotation | what is tracked |
-| --- | --- | --- |
-| member pointer (the pointer) | `int *_p OV_GUARDED_BY(_m);` | reassigning/reading `_p` |
-| member pointer (the pointee) | `int *_p OV_PT_GUARDED_BY(_m);` | accessing `*_p` |
-| member reference | `int &_r OV_GUARDED_BY(_m);` | accessing `_r` |
-| local pointer/reference | (anything) | ignored (blind spot) |
+| Alias form                   | annotation                      | what is tracked          |
+| ---------------------------- | ------------------------------- | ------------------------ |
+| member pointer (the pointer) | `int *_p OV_GUARDED_BY(_m);`    | reassigning/reading `_p` |
+| member pointer (the pointee) | `int *_p OV_PT_GUARDED_BY(_m);` | accessing `*_p`          |
+| member reference             | `int &_r OV_GUARDED_BY(_m);`    | accessing `_r`           |
+| local pointer/reference      | (anything)                      | ignored (blind spot)     |
 
 ```cpp
 // the value pointed to by *_p is guarded by _mutex
@@ -459,29 +459,29 @@ void Ok()
 
 ### 6.1. Mapping Table
 
-| Old (`std::`) | New (`ov::`) | Note |
-| --- | --- | --- |
-| `std::mutex` | `ov::Mutex` | `NativeHandle()` is private |
-| `std::recursive_mutex` | `ov::RecursiveMutex` |  |
-| `std::shared_mutex` | `ov::SharedMutex` |  |
-| `std::condition_variable` | `ov::ConditionVariable` | PascalCase methods; `Wait` takes only `LockGuard<ov::Mutex>` |
-| `std::lock_guard<T>` | `ov::LockGuard<T>` | direct mapping |
-| `std::unique_lock<T> lock(m);` (immediate) | `ov::LockGuard lock(m);` | use `LockGuard` for the immediate-acquire case |
-| `std::shared_lock<T> lock(m);` | `ov::SharedLockGuard lock(m);` | immediate-acquire only |
-| `std::scoped_lock<T...> lock(...);` | `ov::ScopedLock lock(...);` |  |
+| Old (`std::`)                              | New (`ov::`)                   | Note                                                         |
+| ------------------------------------------ | ------------------------------ | ------------------------------------------------------------ |
+| `std::mutex`                               | `ov::Mutex`                    | `NativeHandle()` is private                                  |
+| `std::recursive_mutex`                     | `ov::RecursiveMutex`           |                                                              |
+| `std::shared_mutex`                        | `ov::SharedMutex`              |                                                              |
+| `std::condition_variable`                  | `ov::ConditionVariable`        | PascalCase methods; `Wait` takes only `LockGuard<ov::Mutex>` |
+| `std::lock_guard<T>`                       | `ov::LockGuard<T>`             | direct mapping                                               |
+| `std::unique_lock<T> lock(m);` (immediate) | `ov::LockGuard lock(m);`       | use `LockGuard` for the immediate-acquire case               |
+| `std::shared_lock<T> lock(m);`             | `ov::SharedLockGuard lock(m);` | immediate-acquire only                                       |
+| `std::scoped_lock<T...> lock(...);`        | `ov::ScopedLock lock(...);`    |                                                              |
 
 ### 6.2. Intentionally Blocked Patterns
 
 The patterns below are compile errors. Restructure as described in the alternative column.
 
-| Old pattern | Alternative |
-| --- | --- |
-| `std::unique_lock(m, std::defer_lock)` then `lock.lock()` | restructure the critical section to avoid `defer_lock` |
-| `std::unique_lock(m, std::try_to_lock)` + `owns_lock()` branch | branch directly with `mutex.TryLock()` |
-| `std::unique_lock(m, std::adopt_lock)` | do not pre-lock; let `ov::ScopedLock` do the locking |
-| `lock.release()` to transfer ownership | split the critical section into a function and re-enter the guard |
-| `lock.owns_lock()` conditional unlock | move the branch outside the critical section |
-| `std::move(lock)` | restructure the scope (move is not allowed) |
+| Old pattern                                                    | Alternative                                                       |
+| -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `std::unique_lock(m, std::defer_lock)` then `lock.lock()`      | restructure the critical section to avoid `defer_lock`            |
+| `std::unique_lock(m, std::try_to_lock)` + `owns_lock()` branch | branch directly with `mutex.TryLock()`                            |
+| `std::unique_lock(m, std::adopt_lock)`                         | do not pre-lock; let `ov::ScopedLock` do the locking              |
+| `lock.release()` to transfer ownership                         | split the critical section into a function and re-enter the guard |
+| `lock.owns_lock()` conditional unlock                          | move the branch outside the critical section                      |
+| `std::move(lock)`                                              | restructure the scope (move is not allowed)                       |
 
 ---
 
@@ -572,14 +572,14 @@ Even a lambda called while holding the lock -- such as a `cv.Wait` predicate -- 
 
 ### 8.1. Common Diagnostics
 
-| Diagnostic | Cause | Fix |
-| --- | --- | --- |
-| `reading variable 'x' requires holding mutex 'm'` | reading an `OV_GUARDED_BY(m)` member without a lock | lock with `LockGuard`/`SharedLockGuard` before access, or declare `OV_REQUIRES` |
-| `writing variable 'x' requires holding mutex 'm' exclusively` | writing a protected member without a lock | lock exclusively before access |
-| `mutex 'm' is not held on every path through here` | conditional locking at runtime (dynamic ownership) | hoist the branch to the caller and declare `OV_REQUIRES` (see [7.3](#73-dynamic-ownership-cannot-be-expressed-over-detection)) |
-| `reading variable 'x' requires holding mutex 'm'` (inside a predicate lambda) | a cv predicate reads a protected member with no annotation | add `OV_REQUIRES(m)` to the lambda (see [5.7](#57-condition-variable)) |
-| `calling function 'f' requires holding mutex 'm' exclusively` | calling an `OV_REQUIRES` function without the lock | lock the mutex before the call |
-| `acquiring mutex 'm' that is already held` | re-locking a mutex already held within analyzer-visible scope | remove the double-lock path, or split it out into an `OV_REQUIRES` helper (switching to `RecursiveMutex` does NOT silence this warning) |
+| Diagnostic                                                                    | Cause                                                         | Fix                                                                                                                                     |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `reading variable 'x' requires holding mutex 'm'`                             | reading an `OV_GUARDED_BY(m)` member without a lock           | lock with `LockGuard`/`SharedLockGuard` before access, or declare `OV_REQUIRES`                                                         |
+| `writing variable 'x' requires holding mutex 'm' exclusively`                 | writing a protected member without a lock                     | lock exclusively before access                                                                                                          |
+| `mutex 'm' is not held on every path through here`                            | conditional locking at runtime (dynamic ownership)            | hoist the branch to the caller and declare `OV_REQUIRES` (see [7.3](#73-dynamic-ownership-cannot-be-expressed-over-detection))          |
+| `reading variable 'x' requires holding mutex 'm'` (inside a predicate lambda) | a cv predicate reads a protected member with no annotation    | add `OV_REQUIRES(m)` to the lambda (see [5.7](#57-condition-variable))                                                                  |
+| `calling function 'f' requires holding mutex 'm' exclusively`                 | calling an `OV_REQUIRES` function without the lock            | lock the mutex before the call                                                                                                          |
+| `acquiring mutex 'm' that is already held`                                    | re-locking a mutex already held within analyzer-visible scope | remove the double-lock path, or split it out into an `OV_REQUIRES` helper (switching to `RecursiveMutex` does NOT silence this warning) |
 
 ### 8.2. Built with `ON` but No Warnings Appear
 
@@ -658,4 +658,4 @@ This is not a defect specific to this implementation; it is the same structural 
 ## 10. References
 
 - Clang Thread Safety Analysis official documentation: <https://clang.llvm.org/docs/ThreadSafetyAnalysis.html>
-- Source: `src/projects/base/ovlibrary/tsa/` (`annotations.h`, `mutex.h`, `mutex_test.cpp`, `mutex_negative_test.cpp`)
+- Source: `src/base/ovlibrary/tsa/` (`annotations.h`, `mutex.h`, `mutex_test.cpp`, `mutex_negative_test.cpp`)
