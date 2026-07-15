@@ -90,6 +90,11 @@ private:
 	// This stream is the single author of MediaConfig for its direction.
 	void StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
 
+	// Adopt a provider/upstream-authored config hint carried by the packet into this
+	// stream's own track lineage, so extradata-dependent formats stay decodable
+	// without cross-module track mutation. Runs before normalization.
+	void ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+
 	bool _is_stream_prepared = false;
 	bool _is_all_tracks_parsed = false;
 

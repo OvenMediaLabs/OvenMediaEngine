@@ -8,6 +8,8 @@
 //==============================================================================
 
 #include "scheduled_stream.h"
+
+#include <base/info/media_config.h>
 #include "schedule_private.h"
 
 #include <base/provider/application.h>
@@ -636,6 +638,7 @@ namespace pvd
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f, dts_ms %f, dts_gap %" PRId64 "", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
 
+            AttachPacketConfigHint(media_packet);
             SendFrame(media_packet);
 
             _last_packet_map[track_id] = media_packet;
@@ -817,6 +820,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(stream->index, kScheduledVideoTrackId);
                 UpdateTrack(new_track);
+				UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -857,6 +861,7 @@ namespace pvd
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
                 _origin_id_track_id_map.emplace(stream->index, audio_track_id);
                 UpdateTrack(new_track);
+				UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -1089,6 +1094,7 @@ namespace pvd
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
 
+            AttachPacketConfigHint(media_packet);
             SendFrame(media_packet);
 
             // dts to real time (ms)
@@ -1272,6 +1278,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(track_id, kScheduledVideoTrackId);
                 UpdateTrack(new_track);
+				UpdatePacketConfigHint(new_track);
 
                 video_track_needed = false;
             }
@@ -1303,6 +1310,7 @@ namespace pvd
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
                 _origin_id_track_id_map.emplace(track_id, audio_track_id);
                 UpdateTrack(new_track);
+				UpdatePacketConfigHint(new_track);
 				
 				if (audio_index + 1 > _channel_info._audio_map.size())
 				{
@@ -1329,6 +1337,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(track_id, kScheduledDataTrackId);
                 UpdateTrack(new_track);
+				UpdatePacketConfigHint(new_track);
 
                 forward_data_needed = false;
             }
@@ -1369,4 +1378,29 @@ namespace pvd
 
         return it->second;
     }
+}
+
+// Build the per-item MediaConfig hint that rides on every packet of this track.
+// The media router adopts it at the generation boundary, so extradata-dependent
+// formats (AVCC, RAW AAC) stay decodable without mutating shared tracks.
+void pvd::ScheduledStream::UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track)
+{
+	if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
+	{
+		return;
+	}
+
+	std::lock_guard<std::shared_mutex> lock(_packet_config_hint_mutex);
+	_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0, 0);
+}
+
+void pvd::ScheduledStream::AttachPacketConfigHint(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	std::shared_lock<std::shared_mutex> lock(_packet_config_hint_mutex);
+
+	auto it = _packet_config_hints.find(media_packet->GetTrackId());
+	if (it != _packet_config_hints.end())
+	{
+		media_packet->SetMediaConfig(it->second);
+	}
 }

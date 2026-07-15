@@ -366,6 +366,10 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		return nullptr;
 	}
 
+	// Adopt an upstream-authored config hint (e.g. a scheduled item's extradata)
+	// exactly at its first packet, before the bitstream is normalized with it
+	ApplyPacketConfigHint(media_track, pop_media_packet);
+
 	// Convert bitstream format and normalize (e.g. Add SPS/PPS to head of H264 IDR frame)
 	// @MediaRouterNormalize
 	if (MediaRouterNormalize::NormalizeMediaPacket(GetStream(), media_track, pop_media_packet) == false)
@@ -407,6 +411,55 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	}
 
 	return pop_media_packet;
+}
+
+void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto hint = media_packet->GetMediaConfig();
+	if (hint == nullptr)
+	{
+		return;
+	}
+
+	auto hint_record = hint->GetDecoderConfigurationRecord();
+	if (hint_record == nullptr || hint_record == media_track->GetDecoderConfigurationRecord())
+	{
+		return;
+	}
+
+	if (media_track->GetCodecId() == cmn::MediaCodecId::None)
+	{
+		media_track->SetCodecId(hint->GetCodecId());
+	}
+	else if (media_track->GetCodecId() != hint->GetCodecId())
+	{
+		logte("[%s/%s(%u)] Track(%d) codec of the packet config hint differs from the track (%s -> %s). Changing the codec mid-stream is not supported",
+			  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+			  media_packet->GetTrackId(), cmn::GetCodecIdString(media_track->GetCodecId()), cmn::GetCodecIdString(hint->GetCodecId()));
+		return;
+	}
+
+	if (media_track->IsValidTimeBase() == false)
+	{
+		media_track->SetTimeBase(hint->GetTimeBase());
+	}
+
+	media_track->SetDecoderConfigurationRecord(hint_record);
+
+	if (hint->GetMediaType() == MediaType::Video)
+	{
+		media_track->SetResolution(hint->GetResolution());
+	}
+	else if (hint->GetMediaType() == MediaType::Audio)
+	{
+		media_track->SetSampleRate(hint->GetSample().GetRateNum());
+		media_track->SetSampleFormat(hint->GetSample().GetFormat());
+		media_track->SetChannelLayout(hint->GetChannel().GetLayout());
+	}
+
+	logti("[%s/%s(%u)] Adopted packet config hint. Track(%d) %s",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  media_packet->GetTrackId(), hint->GetInfoString().CStr());
 }
 
 void MediaRouteStream::StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
