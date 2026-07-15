@@ -178,7 +178,7 @@ if(OME_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
 
     # Common external libraries linked into every test binary automatically.
-    # Mirrors the system/pkg-config libs in src/projects/main/CMakeLists.txt.
+    # Mirrors the system/pkg-config libs in src/main/CMakeLists.txt.
     # Individual modules do NOT need to specify EXT_LIBS unless they need extras.
     set_property(GLOBAL PROPERTY OME_COMMON_TEST_EXT_LIBS
         PkgConfig::PKG_SRT
@@ -200,7 +200,7 @@ if(OME_BUILD_TESTS)
     )
 
     # Mirror the optional hardware-acceleration libs that
-    # src/projects/main/CMakeLists.txt links into the main executable so that
+    # src/main/CMakeLists.txt links into the main executable so that
     # test binaries linking the same static archives (e.g. libtranscoder.a)
     # can resolve CUDA / XMA symbols.
     if(OME_HWACCEL_NVIDIA)

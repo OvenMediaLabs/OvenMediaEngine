@@ -28,22 +28,22 @@ cmake --build build/Release
 
 ## Build Options
 
-| Option | Default | Description |
-|---|---|---|
-| `CMAKE_BUILD_TYPE` | `Debug` | `Debug` / `Release` |
-| `OME_USE_CLANG` | ON | Use Clang/Clang++ compiler. Set to OFF to use the system default (GCC) |
-| `OME_DEP_PREFIX` | `/opt/ovenmediaengine` | Installation prefix for external dependencies |
-| `OME_SANITIZE_THREAD` | OFF | Enable ThreadSanitizer (TSan). Debug builds only |
-| `OME_SKIP_DEPENDENCY_CHECK` | OFF | Skip auto-install of missing/wrong-version packages. Useful for CI or offline builds |
-| `OME_HWACCEL_NVIDIA` | OFF | Enable NVIDIA GPU acceleration. |
-| `OME_HWACCEL_XMA` | OFF | Enable Xilinx XMA acceleration. |
-| `OME_ENABLE_X264` | ON | Enable libx264 encoder support |
-| `OME_ENABLE_JEMALLOC` | OFF/ON | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug |
-| `OME_ENABLE_JEMALLOC_LG_PAGE_MAX` | OFF | Build jemalloc with 16 KiB maximum page size on aarch64/arm64 targets (`--with-lg-page=16`) |
-| `OME_USE_JEMALLOC_PROFILE` | OFF | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON` |
-| `OME_BUILD_TESTS` | OFF | Build unit tests (requires internet access to fetch GTest v1.14.0) |
-| `OME_LATENCY_PROBE` | OFF | Build serving-path latency/stall instrumentation. OFF has zero runtime cost (code is not compiled). When ON, records serving-path stage timings and worker stalls to a single `latency_probe.log`; set the output directory with the `OME_LATENCY_PROBE_DIR` environment variable (default `/dev/shm`) |
-| `OME_WHISPER_STATIC` | OFF | Build Whisper/ggml as a static library. |
+| Option                            | Default                | Description                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CMAKE_BUILD_TYPE`                | `Debug`                | `Debug` / `Release`                                                                                                                                                                                                                                                                                    |
+| `OME_USE_CLANG`                   | ON                     | Use Clang/Clang++ compiler. Set to OFF to use the system default (GCC)                                                                                                                                                                                                                                 |
+| `OME_DEP_PREFIX`                  | `/opt/ovenmediaengine` | Installation prefix for external dependencies                                                                                                                                                                                                                                                          |
+| `OME_SANITIZE_THREAD`             | OFF                    | Enable ThreadSanitizer (TSan). Debug builds only                                                                                                                                                                                                                                                       |
+| `OME_SKIP_DEPENDENCY_CHECK`       | OFF                    | Skip auto-install of missing/wrong-version packages. Useful for CI or offline builds                                                                                                                                                                                                                   |
+| `OME_HWACCEL_NVIDIA`              | OFF                    | Enable NVIDIA GPU acceleration.                                                                                                                                                                                                                                                                        |
+| `OME_HWACCEL_XMA`                 | OFF                    | Enable Xilinx XMA acceleration.                                                                                                                                                                                                                                                                        |
+| `OME_ENABLE_X264`                 | ON                     | Enable libx264 encoder support                                                                                                                                                                                                                                                                         |
+| `OME_ENABLE_JEMALLOC`             | OFF/ON                 | Enable jemalloc allocator. Always ON in Release, OFF by default in Debug                                                                                                                                                                                                                               |
+| `OME_ENABLE_JEMALLOC_LG_PAGE_MAX` | OFF                    | Build jemalloc with 16 KiB maximum page size on aarch64/arm64 targets (`--with-lg-page=16`)                                                                                                                                                                                                            |
+| `OME_USE_JEMALLOC_PROFILE`        | OFF                    | Enable jemalloc heap profiling (`OME_USE_JEMALLOC_PROFILE` compile definition). Requires `OME_ENABLE_JEMALLOC=ON`                                                                                                                                                                                      |
+| `OME_BUILD_TESTS`                 | OFF                    | Build unit tests (requires internet access to fetch GTest v1.14.0)                                                                                                                                                                                                                                     |
+| `OME_LATENCY_PROBE`               | OFF                    | Build serving-path latency/stall instrumentation. OFF has zero runtime cost (code is not compiled). When ON, records serving-path stage timings and worker stalls to a single `latency_probe.log`; set the output directory with the `OME_LATENCY_PROBE_DIR` environment variable (default `/dev/shm`) |
+| `OME_WHISPER_STATIC`              | OFF                    | Build Whisper/ggml as a static library.                                                                                                                                                                                                                                                                |
 ---
 
 ## Install
@@ -53,12 +53,12 @@ cmake --build build/Release
 sudo cmake --install build/Release
 ```
 
-| Path | Description |
-|---|---|
-| `/usr/share/ovenmediaengine/OvenMediaEngine` | Binary (symbols stripped for Release) |
-| `/usr/bin/OvenMediaEngine` | Symlink |
-| `/usr/share/ovenmediaengine/conf/` | Config files (not overwritten if already present) |
-| `/lib/systemd/system/ovenmediaengine.service` | systemd service |
+| Path                                          | Description                                       |
+| --------------------------------------------- | ------------------------------------------------- |
+| `/usr/share/ovenmediaengine/OvenMediaEngine`  | Binary (symbols stripped for Release)             |
+| `/usr/bin/OvenMediaEngine`                    | Symlink                                           |
+| `/usr/share/ovenmediaengine/conf/`            | Config files (not overwritten if already present) |
+| `/lib/systemd/system/ovenmediaengine.service` | systemd service                                   |
 
 ```bash
 sudo systemctl daemon-reload
@@ -90,14 +90,14 @@ jemalloc    libpcre2    hiredis     spdlog      whisper     ffnvcodec
 
 Available `-D` options:
 
-| Option | Default | Description |
-|---|---|---|
-| `OME_DEP_PREFIX` | `/opt/ovenmediaengine` | Installation prefix |
-| `TARGET` | *(all)* | Install a single target only (e.g. `ffmpeg`, `openssl`) |
-| `OME_ENABLE_X264` | `ON` | Include libx264 |
-| `OME_HWACCEL_NVIDIA` | `OFF` | Include NVIDIA codec headers, build FFmpeg/Whisper with CUDA/NVENC/NVDEC |
-| `OME_HWACCEL_XMA` | `OFF` | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed) |
-| `OME_USE_CLANG` | `ON` | Install `clang`/`lld` OS packages and use Clang as the compiler. Set `OFF` to skip and keep GCC |
+| Option               | Default                | Description                                                                                     |
+| -------------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| `OME_DEP_PREFIX`     | `/opt/ovenmediaengine` | Installation prefix                                                                             |
+| `TARGET`             | *(all)*                | Install a single target only (e.g. `ffmpeg`, `openssl`)                                         |
+| `OME_ENABLE_X264`    | `ON`                   | Include libx264                                                                                 |
+| `OME_HWACCEL_NVIDIA` | `OFF`                  | Include NVIDIA codec headers, build FFmpeg/Whisper with CUDA/NVENC/NVDEC                        |
+| `OME_HWACCEL_XMA`    | `OFF`                  | Build FFmpeg with Xilinx XMA support (Xilinx XRT must be pre-installed)                         |
+| `OME_USE_CLANG`      | `ON`                   | Install `clang`/`lld` OS packages and use Clang as the compiler. Set `OFF` to skip and keep GCC |
 
 ---
 
@@ -125,31 +125,31 @@ ctest --test-dir build/Debug
 
 Each module group compiles into a separate binary with a ctest label:
 
-| Label | Binary | Source path |
-|---|---|---|
-| `base` | `ome_test_base` | `src/projects/base/` |
-| `modules` | `ome_test_modules` | `src/projects/modules/` |
-| `config` | `ome_test_config` | `src/projects/config/` |
-| `mediarouter` | `ome_test_mediarouter` | `src/projects/mediarouter/` |
-| `transcoder` | `ome_test_transcoder` | `src/projects/transcoder/` |
-| `orchestrator` | `ome_test_orchestrator` | `src/projects/orchestrator/` |
-| `providers_rtmp` | `ome_test_providers_rtmp` | `src/projects/providers/rtmp/` |
-| `providers_mpegts` | `ome_test_providers_mpegts` | `src/projects/providers/mpegts/` |
-| `providers_multiplex` | `ome_test_providers_multiplex` | `src/projects/providers/multiplex/` |
-| `providers_ovt` | `ome_test_providers_ovt` | `src/projects/providers/ovt/` |
-| `providers_file` | `ome_test_providers_file` | `src/projects/providers/file/` |
-| `providers_rtspc` | `ome_test_providers_rtspc` | `src/projects/providers/rtspc/` |
-| `providers_scheduled` | `ome_test_providers_scheduled` | `src/projects/providers/scheduled/` |
-| `providers_srt` | `ome_test_providers_srt` | `src/projects/providers/srt/` |
-| `providers_webrtc` | `ome_test_providers_webrtc` | `src/projects/providers/webrtc/` |
-| `publishers_hls` | `ome_test_publishers_hls` | `src/projects/publishers/hls/` |
-| `publishers_llhls` | `ome_test_publishers_llhls` | `src/projects/publishers/llhls/` |
-| `publishers_push` | `ome_test_publishers_push` | `src/projects/publishers/push/` |
-| `publishers_thumbnail` | `ome_test_publishers_thumbnail` | `src/projects/publishers/thumbnail/` |
-| `publishers_file` | `ome_test_publishers_file` | `src/projects/publishers/file/` |
-| `publishers_ovt` | `ome_test_publishers_ovt` | `src/projects/publishers/ovt/` |
-| `publishers_webrtc` | `ome_test_publishers_webrtc` | `src/projects/publishers/webrtc/` |
-| `publishers_srt` | `ome_test_publishers_srt` | `src/projects/publishers/srt/` |
+| Label                  | Binary                          | Source path                 |
+| ---------------------- | ------------------------------- | --------------------------- |
+| `base`                 | `ome_test_base`                 | `src/base/`                 |
+| `modules`              | `ome_test_modules`              | `src/modules/`              |
+| `config`               | `ome_test_config`               | `src/config/`               |
+| `mediarouter`          | `ome_test_mediarouter`          | `src/mediarouter/`          |
+| `transcoder`           | `ome_test_transcoder`           | `src/transcoder/`           |
+| `orchestrator`         | `ome_test_orchestrator`         | `src/orchestrator/`         |
+| `providers_rtmp`       | `ome_test_providers_rtmp`       | `src/providers/rtmp/`       |
+| `providers_mpegts`     | `ome_test_providers_mpegts`     | `src/providers/mpegts/`     |
+| `providers_multiplex`  | `ome_test_providers_multiplex`  | `src/providers/multiplex/`  |
+| `providers_ovt`        | `ome_test_providers_ovt`        | `src/providers/ovt/`        |
+| `providers_file`       | `ome_test_providers_file`       | `src/providers/file/`       |
+| `providers_rtspc`      | `ome_test_providers_rtspc`      | `src/providers/rtspc/`      |
+| `providers_scheduled`  | `ome_test_providers_scheduled`  | `src/providers/scheduled/`  |
+| `providers_srt`        | `ome_test_providers_srt`        | `src/providers/srt/`        |
+| `providers_webrtc`     | `ome_test_providers_webrtc`     | `src/providers/webrtc/`     |
+| `publishers_hls`       | `ome_test_publishers_hls`       | `src/publishers/hls/`       |
+| `publishers_llhls`     | `ome_test_publishers_llhls`     | `src/publishers/llhls/`     |
+| `publishers_push`      | `ome_test_publishers_push`      | `src/publishers/push/`      |
+| `publishers_thumbnail` | `ome_test_publishers_thumbnail` | `src/publishers/thumbnail/` |
+| `publishers_file`      | `ome_test_publishers_file`      | `src/publishers/file/`      |
+| `publishers_ovt`       | `ome_test_publishers_ovt`       | `src/publishers/ovt/`       |
+| `publishers_webrtc`    | `ome_test_publishers_webrtc`    | `src/publishers/webrtc/`    |
+| `publishers_srt`       | `ome_test_publishers_srt`       | `src/publishers/srt/`       |
 
 ### Filtering tests
 

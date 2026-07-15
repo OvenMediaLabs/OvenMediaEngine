@@ -13,7 +13,7 @@ __temp_build/
 __test_build/
 
 # Ignore pugixml's build directory
-src/projects/third_party/pugixml-1.9/scripts/gmake
+src/third_party/pugixml-1.9/scripts/gmake
 
 # For CLion
 .idea
@@ -24,7 +24,7 @@ cmake-build-debug
 .vscode
 
 # For information data
-src/projects/main/git_info.h
+src/main/git_info.h
 
 # For Qt Creator
 *.user

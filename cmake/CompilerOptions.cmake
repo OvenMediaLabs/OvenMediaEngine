@@ -102,7 +102,7 @@ endif()
 # Clang Thread Safety Analysis (TSA)
 #
 # When `ON`, the build defines `OME_THREAD_SAFETY`
-# so headers under `src/projects/base/ovlibrary/tsa/` swap from std-alias mode
+# so headers under `src/base/ovlibrary/tsa/` swap from std-alias mode
 # to capability-annotated wrappers, and `-Wthread-safety` asks Clang
 # to verify the annotations.
 # The flag is only meaningful on Clang; GCC and MSVC ignore the
@@ -142,12 +142,12 @@ set(ENV{PKG_CONFIG_PATH}
 
 # ------------------------------------------------------------------------------
 # Global include directories (exposed to all targets via OME_GLOBAL_INCLUDE_DIRS)
-# This is set after src/projects is known (done in src/projects/CMakeLists.txt).
+# This is set after src is known (done in src/CMakeLists.txt).
 # ------------------------------------------------------------------------------
 set(OME_GLOBAL_INCLUDE_DIRS
-    "${CMAKE_SOURCE_DIR}/src/projects"
-    "${CMAKE_SOURCE_DIR}/src/projects/third_party"
-    "${CMAKE_SOURCE_DIR}/src/projects/third_party/spdlog-1.15.1/include"
-    "${CMAKE_SOURCE_DIR}/src/projects/third_party/expected-1.3.1/include"
+    "${CMAKE_SOURCE_DIR}/src"
+    "${CMAKE_SOURCE_DIR}/src/third_party"
+    "${CMAKE_SOURCE_DIR}/src/third_party/spdlog-1.15.1/include"
+    "${CMAKE_SOURCE_DIR}/src/third_party/expected-1.3.1/include"
     "${OME_DEP_PREFIX}/include"
 )

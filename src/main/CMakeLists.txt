@@ -1,9 +1,9 @@
 #
-# src/projects/main/CMakeLists.txt
+# src/main/CMakeLists.txt
 # Builds the final OvenMediaEngine executable.
 #
 
-# ome_git_info target is defined in the parent CMakeLists.txt (projects/)
+# ome_git_info target is defined in the parent CMakeLists.txt (src/)
 # and runs before all subdirectories are processed.
 
 # ==============================================================================
