@@ -193,11 +193,10 @@ private:
 	std::shared_ptr<TranscodeDecoder> GetDecoder(MediaTrackId decoder_id);
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
-	void RemoveDecoder(MediaTrackId decoder_id) OV_REQUIRES(_pipeline_mutex);
-	void RemoveFiltersByDecoderId(MediaTrackId decoder_id) OV_REQUIRES(_pipeline_mutex);
 
-	// Rebuild the pipeline of a single input track at exactly the boundary
-	// packet of a new MediaConfig generation, without dropping queued packets
+	// Track the MediaConfig generation per input track and log the boundary.
+	// The pipeline itself is not touched here: decoder/filter/encoder each
+	// handle the change at their own consumption position.
 	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
 
 
@@ -216,7 +215,6 @@ private:
 	std::shared_ptr<TranscodeEncoder> GetEncoder(MediaTrackId encoder_id);
 	void SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder);
 	void RemoveEncoders() OV_REQUIRES(_pipeline_mutex);
-	void RemoveSpecificEncoders();
 
 	void ProcessPacket(const std::shared_ptr<MediaPacket> &packet);
 
@@ -232,7 +230,6 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
-	void FlushBuffers();
 
 	// Step 2: Filter (resample/rescale the decoded frame)
 	void SpreadToFilters(MediaTrackId decoder_id, std::shared_ptr<MediaFrame> frame);

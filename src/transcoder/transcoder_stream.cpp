@@ -348,24 +348,6 @@ bool TranscoderStream::PrepareInternal()
 	return true;
 }
 
-void TranscoderStream::FlushBuffers()
-{
-	for (auto &[id, object] : _encoders)
-	{
-		auto filter = object.first;
-		if (filter != nullptr)
-		{
-			filter->Flush();
-		}
-
-		auto encoder = object.second;
-		if (encoder != nullptr)
-		{
-			encoder->Flush();
-		}
-	}
-}
-
 void TranscoderStream::RemoveDecoders()
 {
 	ov::ReleasableLockGuard decoder_lock(_decoder_map_mutex);
@@ -385,57 +367,6 @@ void TranscoderStream::RemoveDecoders()
 	}
 }
 
-void TranscoderStream::RemoveDecoder(MediaTrackId decoder_id)
-{
-	std::shared_ptr<TranscodeDecoder> decoder = nullptr;
-
-	{
-		ov::LockGuard decoder_lock(_decoder_map_mutex);
-
-		auto it = _decoders.find(decoder_id);
-		if (it == _decoders.end())
-		{
-			return;
-		}
-
-		decoder = it->second;
-		_decoders.erase(it);
-	}
-
-	if (decoder != nullptr)
-	{
-		decoder->Stop();
-		decoder.reset();
-	}
-}
-
-void TranscoderStream::RemoveFiltersByDecoderId(MediaTrackId decoder_id)
-{
-	for (auto &filter_id : _composite.GetFilterIdsByDecoderId(decoder_id))
-	{
-		std::shared_ptr<TranscodeFilter> filter = nullptr;
-
-		{
-			ov::LockGuard filter_lock(_filter_map_mutex);
-
-			auto it = _filters.find(filter_id);
-			if (it == _filters.end())
-			{
-				continue;
-			}
-
-			filter = it->second;
-			_filters.erase(it);
-		}
-
-		if (filter != nullptr)
-		{
-			filter->Stop();
-			filter.reset();
-		}
-	}
-}
-
 void TranscoderStream::RemoveFilters()
 {
 	ov::ReleasableLockGuard filter_lock(_filter_map_mutex);
@@ -451,64 +382,6 @@ void TranscoderStream::RemoveFilters()
 		{
 			object->Stop();
 			object.reset();
-		}
-	}
-}
-
-// In a scheduled stream, when the video input changes and the decoder is reinitialized,
-//  the NVIDIA encoder must also be reinitialized. If not, video corruption may occur.
-void TranscoderStream::RemoveSpecificEncoders()
-{
-	// Collect specific encoders to remove under read lock
-	std::vector<MediaTrackId> ids_to_remove;
-	{
-		ov::SharedLockGuard read_lock(_encoder_map_mutex);
-		for (auto &[id, object] : _encoders)
-		{
-			auto &encoder = object.second;
-			if (encoder->GetRefTrack()->GetMediaType() != cmn::MediaType::Video)
-			{
-				continue;
-			}
-
-			if (encoder->GetRefTrack()->GetCodecModuleId() != cmn::MediaCodecModuleId::NVENC)
-			{
-				continue;
-			}
-
-			ids_to_remove.push_back(id);
-		}
-	}
-
-	// Extract matching entries under write lock
-	decltype(_encoders) removed;
-	{
-		ov::LockGuard write_lock(_encoder_map_mutex);
-		for (auto id : ids_to_remove)
-		{
-			auto it = _encoders.find(id);
-			if (it != _encoders.end())
-			{
-				removed.insert(_encoders.extract(it));
-			}
-		}
-	}
-
-	// Stop components outside the lock (Stop() may block)
-	for (auto &[id, object] : removed)
-	{
-		UNUSED_VARIABLE(id)
-
-		if (auto &filter = object.first)
-		{
-			filter->Stop();
-			filter.reset();
-		}
-
-		if (auto &encoder = object.second)
-		{
-			encoder->Stop();
-			encoder.reset();
 		}
 	}
 }
@@ -1722,44 +1595,13 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 		return;
 	}
 
+	// No pipeline rebuild here: every element handles the change at its own
+	// consumption position without losing queued data. The decoder re-inits on an
+	// in-band format change (GetFramedPacket), the filter re-inits when the frame
+	// format changes (IsNeedUpdate), and encoders are rewired by ChangeOutputFormat.
+	// Bypass tracks are re-parsed by the outbound mediarouter.
 	logti("%s Input track(%d) media config has been changed. [%s] -> [%s]",
 		  _log_prefix.CStr(), track_id, current->GetInfoString().CStr(), config->GetInfoString().CStr());
-
-	auto decoder_id = _composite.GetDecoderIdByInputTrackId(track_id);
-	if (decoder_id == std::nullopt)
-	{
-		// Bypass-only track. The outbound mediarouter re-parses the bitstream,
-		// so there is nothing to rebuild here.
-		return;
-	}
-
-	auto input_track = _input_stream->GetTrack(track_id);
-	if (input_track == nullptr)
-	{
-		logte("%s Could not find input track. InputTrack(%d)", _log_prefix.CStr(), track_id);
-		return;
-	}
-
-	// Drain frames already decoded so they are not lost with the old pipeline
-	FlushBuffers();
-
-	// Restrict transcoding while this track's pipeline is being rebuilt
-	ov::LockGuard pipeline_lock(_pipeline_mutex);
-
-	RemoveDecoder(decoder_id.value());
-	RemoveFiltersByDecoderId(decoder_id.value());
-
-	if (config->GetMediaType() == cmn::MediaType::Video)
-	{
-		// Video encoders must be reinitialized along with the decoder,
-		// otherwise some hardware encoders produce corrupted video
-		RemoveSpecificEncoders();
-	}
-
-	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
-	{
-		logte("%s Failed to re-create decoder. Decoder(%d), InputTrack(%d)", _log_prefix.CStr(), decoder_id.value(), track_id);
-	}
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)

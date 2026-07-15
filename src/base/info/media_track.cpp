@@ -768,6 +768,14 @@ std::shared_ptr<TrackStats> MediaTrack::GetStats() const
 	return _stats;
 }
 
+void MediaTrack::AdoptStats(const std::shared_ptr<TrackStats> &stats)
+{
+	if (stats != nullptr)
+	{
+		_stats = stats;
+	}
+}
+
 int32_t MediaTrack::GetBitrate() const
 {
 	if (_bitrate_conf > 0)

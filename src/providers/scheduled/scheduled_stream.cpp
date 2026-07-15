@@ -803,6 +803,14 @@ namespace pvd
                 }
 
 				auto old_track = GetTrack(kScheduledVideoTrackId);
+				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
+					old_track->GetCodecId() != new_track->GetCodecId())
+				{
+					logte("%s/%s: Video codec of item %s is different from the current one (%s -> %s). Changing the codec between items is not supported",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr(),
+						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+					return false;
+				}
 
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
@@ -833,6 +841,14 @@ namespace pvd
 				auto audio_track_id = kScheduledAudioTrackId + audio_index;
 				audio_index++;
 				auto old_track = GetTrack(audio_track_id);
+				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
+					old_track->GetCodecId() != new_track->GetCodecId())
+				{
+					logte("%s/%s: Audio codec of item %s is different from the current one (%s -> %s). Changing the codec between items is not supported",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr(),
+						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+					return false;
+				}
 
                 new_track->SetId(audio_track_id);
                 new_track->SetTimeBase(1, kScheduledAudioTimebase);
@@ -1242,6 +1258,14 @@ namespace pvd
                 }
 
 				auto old_track = GetTrack(kScheduledVideoTrackId);
+				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
+					old_track->GetCodecId() != new_track->GetCodecId())
+				{
+					logte("%s/%s: Video codec of the tapped stream is different from the current one (%s -> %s). Changing the codec between items is not supported",
+						  GetApplicationName(), GetName().CStr(),
+						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+					return nullptr;
+				}
 
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
@@ -1263,6 +1287,14 @@ namespace pvd
 				auto audio_track_id = kScheduledAudioTrackId + audio_index;
 				audio_index++;
 				auto old_track = GetTrack(audio_track_id);
+				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
+					old_track->GetCodecId() != new_track->GetCodecId())
+				{
+					logte("%s/%s: Audio codec of the tapped stream is different from the current one (%s -> %s). Changing the codec between items is not supported",
+						  GetApplicationName(), GetName().CStr(),
+						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+					return nullptr;
+				}
 
                 new_track->SetId(audio_track_id);
                 new_track->SetTimeBase(1, kScheduledAudioTimebase);

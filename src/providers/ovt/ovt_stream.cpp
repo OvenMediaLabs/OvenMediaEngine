@@ -475,7 +475,16 @@ namespace pvd
 				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
-			// If there is an existing track with the same ID, just update the value
+			// A re-describe replaces the track with its next generation
+			auto ex_track = GetTrack(new_track->GetId());
+			if (ex_track != nullptr && ex_track->GetCodecId() != new_track->GetCodecId())
+			{
+				logte("%s/%s(%u) - Codec of track(%u) has been changed by the origin (%s -> %s). Changing the codec mid-stream is not supported",
+					  GetApplicationTypeName(), GetName().CStr(), GetId(), new_track->GetId(),
+					  cmn::GetCodecIdString(ex_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+				return false;
+			}
+
 			UpdateTrack(new_track);
 		}
 

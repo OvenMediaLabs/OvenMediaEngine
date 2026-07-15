@@ -143,6 +143,10 @@ public:
 	// object of a track. The accessors below delegate to it.
 	std::shared_ptr<TrackStats> GetStats() const;
 
+	// Inherit the statistics of the previous generation of this logical track.
+	// Used when a new generation replaces the track object (Stream::UpdateTrack).
+	void AdoptStats(const std::shared_ptr<TrackStats> &stats);
+
 	// Return the proper framerate for this track.
 	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned
 	double GetFrameRate() const;

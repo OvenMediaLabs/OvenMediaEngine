@@ -46,6 +46,8 @@ namespace info
 		_name_path = stream.GetNamePath();
 		
 		_id = stream._id;
+		_msid = stream._msid;
+		_internal = stream._internal;
 		_name = stream._name;
 		_source_type = stream._source_type;
 		_source_url = stream.GetMediaSource();
@@ -367,7 +369,10 @@ namespace info
 		return it->second;
 	}
 
-	// If track is not exist, add track or update track
+	// Replace a track with its next generation, or add it if it does not exist.
+	// The previous track object is never mutated: holders of the old pointer keep
+	// a consistent snapshot, and the runtime statistics of the logical track are
+	// carried over to the new generation.
 	bool Stream::UpdateTrack(const std::shared_ptr<MediaTrack> &track)
 	{
 		auto ex_track = GetTrack(track->GetId());
@@ -376,7 +381,30 @@ namespace info
 			return AddTrack(track);
 		}
 
-		return ex_track->Update(*track);
+		track->AdoptStats(ex_track->GetStats());
+
+		_tracks[track->GetId()] = track;
+
+		auto replace_in = [&track](std::vector<std::shared_ptr<MediaTrack>> &tracks) {
+			for (auto &item : tracks)
+			{
+				if (item->GetId() == track->GetId())
+				{
+					item = track;
+				}
+			}
+		};
+		replace_in(_video_tracks);
+		replace_in(_audio_tracks);
+
+		auto group_it = _track_group_map.find(ex_track->GetVariantName());
+		if (group_it != _track_group_map.end())
+		{
+			group_it->second->RemoveTrack(track->GetId());
+			group_it->second->AddTrack(track);
+		}
+
+		return true;
 	}
 
 	bool Stream::RemoveTrack(uint32_t id)
