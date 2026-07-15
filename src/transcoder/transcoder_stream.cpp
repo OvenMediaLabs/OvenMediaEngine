@@ -43,7 +43,7 @@ std::shared_ptr<TranscoderStream> TranscoderStream::Create(const info::Applicati
 }
 
 TranscoderStream::TranscoderStream(const info::Application &application_info, const std::shared_ptr<info::Stream> &stream, TranscodeApplication *parent)
-	: _parent(parent), _application_info(application_info), _input_stream(stream)
+	: _parent(parent), _application_info(application_info), _input_stream(std::make_shared<info::Stream>(*stream))
 {
 	_log_prefix			 = ov::String::FormatString("[%s(%u)]", _input_stream->GetUri().CStr(), _input_stream->GetId());
 

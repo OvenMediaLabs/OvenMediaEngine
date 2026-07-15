@@ -409,7 +409,12 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(con
 {
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 
-	auto new_stream = std::make_shared<MediaRouteStream>(stream_info, cmn::MediaRouterStreamType::INBOUND, (_inbound_worker_rr++) % _max_worker_thread_count);
+	// The router owns its own copy of the stream info. MediaTrack pointers are
+	// still shared, so in-band track updates from the normalizer stay visible to
+	// every holder; only the stream object itself is per-module.
+	auto in_stream_info = std::make_shared<info::Stream>(*stream_info);
+
+	auto new_stream = std::make_shared<MediaRouteStream>(in_stream_info, cmn::MediaRouterStreamType::INBOUND, (_inbound_worker_rr++) % _max_worker_thread_count);
 	if (!new_stream)
 	{
 		return nullptr;
@@ -424,17 +429,14 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 {
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 
-	// Since the publisher creates the stream by copying the stream_info, 
-	// it eventually loses the link to the original stream. 
+	// The router owns its own copy of the stream info (MediaTrack pointers stay shared).
+	auto out_stream_info = std::make_shared<info::Stream>(*stream_info);
+
+	// Since the publisher creates the stream by copying the stream_info,
+	// it eventually loses the link to the original stream.
 	// For this, the relay stream must also be linked to the input stream.
-	auto out_stream_info = stream_info;
 	if (stream_info->GetRepresentationType() == StreamRepresentationType::Relay)
 	{
-		out_stream_info = std::make_shared<info::Stream>(*stream_info);
-		if (!out_stream_info)
-		{
-			return nullptr;
-		}
 		out_stream_info->LinkInputStream(stream_info);
 	}
 

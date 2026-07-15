@@ -41,8 +41,11 @@ namespace ocst
 
 		ObserverType GetObserverType() override;
 
-		std::shared_ptr<pvd::Stream> GetProviderStream(const ov::String &stream_name);
-		std::shared_ptr<pub::Stream> GetPublisherStream(const ov::String &stream_name);
+		// Stream info as observed through the media router. To call into the real
+		// provider/publisher stream, resolve it through the owning module
+		// (e.g. Orchestrator::GetProviderStream(stream_info)).
+		std::shared_ptr<info::Stream> GetProviderStream(const ov::String &stream_name);
+		std::shared_ptr<info::Stream> GetPublisherStream(const ov::String &stream_name);
 		size_t GetProviderStreamCount() const;
 		size_t GetPublisherStreamCount() const;
 		bool IsUnusedFor(int seconds) const;
@@ -52,9 +55,9 @@ namespace ocst
 		info::Application _app_info;
 
 		// Stream Name : Stream
-		std::map<ov::String, std::shared_ptr<pvd::Stream>> _provider_stream_map;
+		std::map<ov::String, std::shared_ptr<info::Stream>> _provider_stream_map;
 		mutable std::shared_mutex _provider_stream_map_mutex;
-		std::map<ov::String, std::shared_ptr<pub::Stream>> _publisher_stream_map;
+		std::map<ov::String, std::shared_ptr<info::Stream>> _publisher_stream_map;
 		mutable std::shared_mutex _publisher_stream_map_mutex;
 
 		// unused timer 

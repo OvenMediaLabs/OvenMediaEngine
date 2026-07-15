@@ -1607,13 +1607,20 @@ namespace ocst
 	std::shared_ptr<pvd::Stream> Orchestrator::GetProviderStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
 	{
 		auto app = GetApplication(vhost_app_name);
-
-		if (app != nullptr)
+		if (app == nullptr)
 		{
-			return app->GetProviderStream(stream_name);
+			return nullptr;
 		}
 
-		return nullptr;
+		auto stream_info = app->GetProviderStream(stream_name);
+		if (stream_info == nullptr)
+		{
+			return nullptr;
+		}
+
+		// Resolve the real provider stream through the owning module. The object
+		// observed through the media router is a plain info::Stream copy.
+		return GetProviderStream(stream_info);
 	}
 
 	std::shared_ptr<pub::Stream> Orchestrator::GetPublisherStream(PublisherType publisher_type, const std::shared_ptr<const info::Stream> &stream_info)
