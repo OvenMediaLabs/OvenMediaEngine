@@ -28,7 +28,7 @@ If you find any bugs while using OvenMediaEngine and OvenPlayer, please feel fre
 We review our code countless times before release, but we can make mistakes. So let us know if you find it. Also, if you know any code or structure that OvenMediaEngine and OvenPlayer can work on more efficiently, please let us know.
 
 ### Writing Code
-OvenMediaEngine is written in C++ and uses Clang Thread Safety Analysis (TSA) to catch data races at compile time. Before contributing C++ code, please read the [Thread Safety Analysis (TSA) Guide](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/projects/base/ovlibrary/tsa/README.md). It explains the `ov::` synchronization types and the `OV_*` annotations to use, with examples and troubleshooting.
+OvenMediaEngine is written in C++ and uses Clang Thread Safety Analysis (TSA) to catch data races at compile time. Before contributing C++ code, please read the [Thread Safety Analysis (TSA) Guide](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/src/base/ovlibrary/tsa/README.md). It explains the `ov::` synchronization types and the `OV_*` annotations to use, with examples and troubleshooting.
 
 ### Sharing Ideas
 If you have any ideas about technology trends that can advance OvenMediaEngine and OvenPlayer and features that will work synergistically, please request us. We are ready to review and embrace it for development.
