@@ -135,6 +135,9 @@ namespace pub
 				continue;
 			}
 
+			// Track the packet's MediaConfig at this stream's consumption position
+			stream->UpdateMediaConfig(media_packet);
+
 			if (media_packet->GetMediaType() == cmn::MediaType::Video)
 			{
 				stream->SendVideoFrame(stream_data->_media_packet);

@@ -1,6 +1,7 @@
 #include "stream.h"
 #include "application.h"
 #include "publisher_private.h"
+#include <base/info/media_config.h>
 #include <base/event/command/commands.h>
 
 namespace pub
@@ -206,6 +207,41 @@ namespace pub
 
 	Stream::~Stream()
 	{
+	}
+
+	void Stream::UpdateMediaConfig(const std::shared_ptr<MediaPacket> &media_packet)
+	{
+		auto new_config = media_packet->GetMediaConfig();
+		if (new_config == nullptr)
+		{
+			return;
+		}
+
+		auto track_id = static_cast<int32_t>(media_packet->GetTrackId());
+		auto old_config = GetMediaConfig(track_id);
+		if (old_config == new_config)
+		{
+			return;
+		}
+
+		SetMediaConfig(track_id, new_config);
+
+		// The first config seen is the initial generation, not a change
+		if (old_config == nullptr)
+		{
+			return;
+		}
+
+		OnMediaConfigChanged(track_id, old_config, new_config);
+	}
+
+	void Stream::OnMediaConfigChanged(int32_t track_id, const std::shared_ptr<const MediaConfig> &old_config, const std::shared_ptr<const MediaConfig> &new_config)
+	{
+		// A publisher that does not override this cannot switch its output to the
+		// new configuration, so the output may be broken from this point.
+		logtw("%s/%s(%u) Track(%d) media config has been changed but this publisher does not support it. %s -> %s",
+			  GetApplicationName(), GetName().CStr(), GetId(),
+			  track_id, old_config->GetInfoString().CStr(), new_config->GetInfoString().CStr());
 	}
 
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const

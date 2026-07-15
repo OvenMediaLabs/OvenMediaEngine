@@ -59,7 +59,6 @@ public:
 	// Notify event to mediarouter
 	void NotifyCreateStreams();
 	void NotifyDeleteStreams();
-	void NotifyUpdateStreams();
 
 private:
 	// Create stream --> Start stream --> Stop stream --> Delete stream
@@ -158,6 +157,9 @@ private:
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
+	// Current MediaConfig per input track (accessed only on the packet-push thread)
+	std::map<MediaTrackId, std::shared_ptr<const MediaConfig>> _input_media_configs;
+
 	// Last decoded frame and timestamp
 	// [DECODER_ID, MediaFrame]
 	std::map<MediaTrackId, std::shared_ptr<MediaFrame>> _last_decoded_frames OV_GUARDED_BY(_last_decoded_frame_mutex);
@@ -193,6 +195,12 @@ private:
 	std::shared_ptr<TranscodeDecoder> GetDecoder(MediaTrackId decoder_id);
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
+	void RemoveDecoder(MediaTrackId decoder_id) OV_REQUIRES(_pipeline_mutex);
+	void RemoveFiltersByDecoderId(MediaTrackId decoder_id) OV_REQUIRES(_pipeline_mutex);
+
+	// Rebuild the pipeline of a single input track at exactly the boundary
+	// packet of a new MediaConfig generation, without dropping queued packets
+	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
 
 
 	bool CreateFilters(std::shared_ptr<MediaFrame> buffer);
@@ -226,9 +234,7 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
-	void UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream) OV_REQUIRES(_pipeline_mutex);
-	void UpdateMsidOfOutputStreams(uint32_t msid) OV_REQUIRES(_pipeline_mutex);
-	bool CanSeamlessTransition(const std::shared_ptr<info::Stream> &stream);
+	bool IsSameTrackLayout(const std::shared_ptr<info::Stream> &stream);
 	void FlushBuffers();
 
 	// Step 2: Filter (resample/rescale the decoded frame)

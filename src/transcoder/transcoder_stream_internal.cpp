@@ -649,32 +649,6 @@ double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerat
 	return ::floor(recommend_framerate);
 }
 
-// Update the output track information based on the input track and the decoded frame from the decoded frame (bypass)
-void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
-{
-	output_track->SetCodecId(input_track->GetCodecId());
-	output_track->SetCodecModules(input_track->GetCodecModules());
-	output_track->SetCodecModuleId(input_track->GetCodecModuleId());
-
-	output_track->SetFrameRateByConfig(input_track->GetFrameRateByConfig());
-	output_track->SetFrameRateByMeasured(input_track->GetFrameRateByMeasured());
-	output_track->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
-	output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
-	output_track->SetTimeBase(input_track->GetTimeBase());
-	output_track->SetDecoderConfigurationRecord(input_track->GetDecoderConfigurationRecord());
-
-	if (output_track->GetMediaType() == cmn::MediaType::Video)
-	{
-		output_track->SetResolution(input_track->GetResolution());
-		output_track->SetColorspace(input_track->GetColorspace());
-	}
-	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
-	{
-		output_track->SetSampleRate(input_track->GetSampleRate());
-		output_track->SetSampleFormat(input_track->GetSample().GetFormat());
-		output_track->SetChannel(input_track->GetChannel());
-	}
-}
 
 // Update the output track information based on the decoded frame from the decoder before creating the encoder. (encoding)
 // If the user has not specified it, the output specification is automatically determined.
@@ -973,7 +947,7 @@ std::map<int32_t, std::shared_ptr<MediaTrack>>& TranscoderStreamInternal::GetSto
 	return _store_tracks;
 }
 
-bool TranscoderStreamInternal::CompareTracksForSeamlessTransition(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks)
+bool TranscoderStreamInternal::CompareTrackLayout(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks)
 {
 	// #1 Check the number of tracks
 	if (prev_tracks.size() != new_tracks.size())

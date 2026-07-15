@@ -137,6 +137,10 @@ namespace pub
 		virtual void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) = 0;
 		virtual void OnEvent(const std::shared_ptr<MediaEvent> &event) {}
 
+		// Track the MediaConfig of the packet at this stream's consumption position.
+		// Called by pub::Application before Send*Frame; fires OnMediaConfigChanged on a generation change.
+		void UpdateMediaConfig(const std::shared_ptr<MediaPacket> &media_packet);
+
 		bool EnterStart();
 		bool EnterStop();
 		bool EnterUpdate(const std::shared_ptr<info::Stream> &info);
@@ -171,6 +175,10 @@ namespace pub
 		virtual bool Start();
 		virtual bool Update(const std::shared_ptr<info::Stream> &info);
 		virtual bool Stop();
+
+		// Called before the first packet of a new MediaConfig generation is delivered.
+		// A publisher that supports mid-stream configuration changes must override this.
+		virtual void OnMediaConfigChanged(int32_t track_id, const std::shared_ptr<const MediaConfig> &old_config, const std::shared_ptr<const MediaConfig> &new_config);
 
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);

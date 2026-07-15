@@ -48,7 +48,6 @@ public:
 
 	static double MeasurementToRecommendFramerate(double framerate);
 
-	void UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track);
 	void UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
 
 private:
@@ -72,10 +71,10 @@ public:
 								  uint32_t &image, uint32_t &data);
 
 public:
-	// This is used to check if the input track has changed during the update.
+	// This is used to check if the track layout has changed during the update.
 	bool StoreTracks(std::shared_ptr<info::Stream> stream);
 	std::map<int32_t, std::shared_ptr<MediaTrack>> &GetStoredTracks();
-	bool CompareTracksForSeamlessTransition(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks);
+	bool CompareTrackLayout(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks);
 
 	std::map<int32_t, std::shared_ptr<MediaTrack>> _store_tracks;	
 };

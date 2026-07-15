@@ -9,6 +9,7 @@
 
 #include "transcoder_stream.h"
 
+#include <base/info/media_config.h>
 #include <monitoring/monitoring.h>
 
 #include "config/config_manager.h"
@@ -363,58 +364,21 @@ bool TranscoderStream::PrepareInternal()
 
 bool TranscoderStream::UpdateInternal(const std::shared_ptr<info::Stream> &stream)
 {
-	logtd("%s Trying to update a stream", _log_prefix.CStr());
-
-	if (CanSeamlessTransition(stream) == true)
+	// Changing the track layout (adding/removing tracks or changing their type)
+	// mid-stream is not supported. The provider must recreate the stream instead.
+	if (IsSameTrackLayout(stream) == false)
 	{
-		logtt("%s This stream support seamless transitions", _log_prefix.CStr());
+		logte("%s The track layout of the input stream has been changed. This is not supported, so the stream is terminated", _log_prefix.CStr());
 
-		FlushBuffers();
+		SetState(State::ERROR);
 
-		{
-			// Restrict transcoding while all decoders/filters/encoders are being generated
-			ov::LockGuard pipeline_lock(_pipeline_mutex);
-
-			// For tracks created as bypass, update the track data to match the input track.
-			UpdatePassthroughOutputTracks(stream);
-
-			RemoveDecoders();
-			RemoveFilters();
-			RemoveSpecificEncoders();
-
-			CreateDecoders();
-		}
-
-		logti("%s stream has been updated", _log_prefix.CStr());
+		return false;
 	}
-	else
-	{
-		logtw("%s This stream does not support seamless transitions. Renewing all", _log_prefix.CStr());
 
-		FlushBuffers();
-	
-		{
-			// Restrict transcoding while all decoders/filters/encoders are being generated			
-			ov::LockGuard pipeline_lock(_pipeline_mutex);
-
-			// When the entire stream is changed, update the MSID.
-			UpdateMsidOfOutputStreams(stream->GetMsid());
-			// For tracks created as bypass, update the track data to match the input track.
-			UpdatePassthroughOutputTracks(stream);
-
-			RemoveDecoders();
-			RemoveFilters();
-			RemoveEncoders();
-
-			CreateDecoders();
-		}
-
-		logti("%s stream has been updated", _log_prefix.CStr());
-
-		NotifyUpdateStreams();
-
-		StoreTracks(stream);
-	}
+	// A configuration change within the same layout is handled per track at the
+	// boundary packet (HandleInputConfigChange), which is ordered with the packet
+	// flow. Rebuilding the pipeline here would race ahead of the queued packets.
+	logti("%s Stream update notified. The pipeline will be rebuilt at the config boundary packet", _log_prefix.CStr());
 
 	return true;
 }
@@ -452,6 +416,57 @@ void TranscoderStream::RemoveDecoders()
 		{
 			object->Stop();
 			object.reset();
+		}
+	}
+}
+
+void TranscoderStream::RemoveDecoder(MediaTrackId decoder_id)
+{
+	std::shared_ptr<TranscodeDecoder> decoder = nullptr;
+
+	{
+		ov::LockGuard decoder_lock(_decoder_map_mutex);
+
+		auto it = _decoders.find(decoder_id);
+		if (it == _decoders.end())
+		{
+			return;
+		}
+
+		decoder = it->second;
+		_decoders.erase(it);
+	}
+
+	if (decoder != nullptr)
+	{
+		decoder->Stop();
+		decoder.reset();
+	}
+}
+
+void TranscoderStream::RemoveFiltersByDecoderId(MediaTrackId decoder_id)
+{
+	for (auto &filter_id : _composite.GetFilterIdsByDecoderId(decoder_id))
+	{
+		std::shared_ptr<TranscodeFilter> filter = nullptr;
+
+		{
+			ov::LockGuard filter_lock(_filter_map_mutex);
+
+			auto it = _filters.find(filter_id);
+			if (it == _filters.end())
+			{
+				continue;
+			}
+
+			filter = it->second;
+			_filters.erase(it);
+		}
+
+		if (filter != nullptr)
+		{
+			filter->Stop();
+			filter.reset();
 		}
 	}
 }
@@ -591,18 +606,10 @@ std::shared_ptr<info::Stream> TranscoderStream::GetOutputStreamByTrackId(MediaTr
 	return nullptr;
 }
 
-bool TranscoderStream::CanSeamlessTransition(const std::shared_ptr<info::Stream> &input_stream)
+bool TranscoderStream::IsSameTrackLayout(const std::shared_ptr<info::Stream> &input_stream)
 {
-	auto new_tracks = input_stream->GetTracks();
-
-	// Check if the number and type of original tracks are different.
-	if (CompareTracksForSeamlessTransition(new_tracks, GetStoredTracks()) == false)
-	{
-		logtw("%s The input track has changed. It does not support smooth transitions.", _log_prefix.CStr());
-		return false;
-	}
-
-	return true;
+	// Compare the number, ids and types of tracks against the layout stored at prepare time
+	return CompareTrackLayout(input_stream->GetTracks(), GetStoredTracks());
 }
 
 bool TranscoderStream::Push(std::shared_ptr<MediaPacket> packet)
@@ -1715,27 +1722,6 @@ void TranscoderStream::UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer)
 	}
 }
 
-void TranscoderStream::UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream)
-{
-	for (auto it : stream->GetTracks())
-	{
-		for (auto &[input_stream, input_track, output_stream, output_track] : _composite.GetBypassOutputListByInputTrackId(it.first))
-		{
-			UNUSED_VARIABLE(input_stream);
-			UNUSED_VARIABLE(input_track);
-			UNUSED_VARIABLE(output_stream);
-
-			if (output_track->IsBypass() == false)
-			{
-				logtw("%s Invalid output track. Only bypass track can be updated. OutputTrack(%d)", _log_prefix.CStr(), output_track->GetId());
-				continue;
-			}
-
-			UpdateOutputTrackPassthrough(output_track, input_track);
-		}
-	}
-}
-
 void TranscoderStream::ProcessPacket(const std::shared_ptr<MediaPacket> &packet)
 {
 	if (!packet)
@@ -1743,14 +1729,78 @@ void TranscoderStream::ProcessPacket(const std::shared_ptr<MediaPacket> &packet)
 		return;
 	}
 
-	if (_input_stream->GetMsid() != packet->GetMsid() && packet->GetMediaType() != cmn::MediaType::Data)
-	{
-		return;
-	}
+	// Packets carry their own MediaConfig, so a configuration change is handled
+	// per track at exactly the boundary packet instead of dropping stale packets.
+	HandleInputConfigChange(packet);
 
 	BypassPacket(packet);
 
 	DecodePacket(packet);
+}
+
+void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet)
+{
+	auto config = packet->GetMediaConfig();
+	if (config == nullptr)
+	{
+		return;
+	}
+
+	auto track_id = packet->GetTrackId();
+
+	auto it = _input_media_configs.find(track_id);
+	auto current = (it != _input_media_configs.end()) ? it->second : nullptr;
+	if (current == config)
+	{
+		return;
+	}
+
+	_input_media_configs[track_id] = config;
+
+	// The first config seen is the initial generation, not a change
+	if (current == nullptr)
+	{
+		return;
+	}
+
+	logti("%s Input track(%d) media config has been changed. [%s] -> [%s]",
+		  _log_prefix.CStr(), track_id, current->GetInfoString().CStr(), config->GetInfoString().CStr());
+
+	auto decoder_id = _composite.GetDecoderIdByInputTrackId(track_id);
+	if (decoder_id == std::nullopt)
+	{
+		// Bypass-only track. The outbound mediarouter re-parses the bitstream,
+		// so there is nothing to rebuild here.
+		return;
+	}
+
+	auto input_track = _input_stream->GetTrack(track_id);
+	if (input_track == nullptr)
+	{
+		logte("%s Could not find input track. InputTrack(%d)", _log_prefix.CStr(), track_id);
+		return;
+	}
+
+	// Drain frames already decoded so they are not lost with the old pipeline
+	FlushBuffers();
+
+	// Restrict transcoding while this track's pipeline is being rebuilt
+	ov::LockGuard pipeline_lock(_pipeline_mutex);
+
+	RemoveDecoder(decoder_id.value());
+	RemoveFiltersByDecoderId(decoder_id.value());
+
+	if (config->GetMediaType() == cmn::MediaType::Video)
+	{
+		// Video encoders must be reinitialized along with the decoder,
+		// otherwise some hardware encoders produce corrupted video
+		RemoveSpecificEncoders();
+	}
+
+	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
+	{
+		logte("%s Failed to re-create decoder. Decoder(%d), InputTrack(%d)", _log_prefix.CStr(), decoder_id.value(), track_id);
+	}
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
@@ -1779,7 +1829,12 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 			clone = packet->ClonePacket();
 		}
 
-		double scale = input_track->GetTimeBase().GetExpr() / output_track->GetTimeBase().GetExpr();
+		// Use the timebase of the packet's own generation. The shared input track
+		// may already have been updated ahead of the packets still in flight.
+		auto packet_config = packet->GetMediaConfig();
+		auto input_timebase = (packet_config != nullptr) ? packet_config->GetTimeBase() : input_track->GetTimeBase();
+
+		double scale = input_timebase.GetExpr() / output_track->GetTimeBase().GetExpr();
 		clone->SetPts(static_cast<int64_t>((double)clone->GetPts() * scale));
 		clone->SetDts(static_cast<int64_t>((double)clone->GetDts() * scale));
 		clone->SetTrackId(output_track->GetId());
@@ -2267,17 +2322,6 @@ void TranscoderStream::OnEncodedPacket(TranscodeResult result, MediaTrackId enco
 	}
 }
 
-void TranscoderStream::UpdateMsidOfOutputStreams(uint32_t msid)
-{
-	ov::SharedLockGuard lock(_output_stream_mutex);
-	for (auto &[output_stream_name, output_stream] : _output_streams)
-	{
-		UNUSED_VARIABLE(output_stream_name)
-
-		output_stream->SetMsid(msid);
-	}
-}
-
 void TranscoderStream::SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet)
 {
 	packet->SetMsid(stream->GetMsid());
@@ -2339,16 +2383,3 @@ void TranscoderStream::NotifyDeleteStreams()
 	}
 }
 
-void TranscoderStream::NotifyUpdateStreams()
-{
-	ov::SharedLockGuard lock(_output_stream_mutex);
-	for (auto &[output_stream_name, output_stream] : _output_streams)
-	{
-		UNUSED_VARIABLE(output_stream_name)
-
-		if (_parent->UpdateStream(output_stream) == false)
-		{
-			logtw("%s Could not update stream. %s(%u)", _log_prefix.CStr(), output_stream->GetUri().CStr(), output_stream->GetId());
-		}
-	}
-}
