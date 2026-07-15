@@ -22,12 +22,9 @@ MediaTrack::MediaTrack()
 	  _codec_module_id(cmn::MediaCodecModuleId::None),
 	  _codec_device_id(0),
 	  _codec_modules(""),
-	  _bitrate(0),
 	  _bitrate_conf(0),
 	  _byass(false),
-	  _bypass_conf(false),
-	  _start_frame_time(0),
-	  _last_frame_time(0)
+	  _bypass_conf(false)
 {
 }
 
@@ -68,21 +65,18 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 
 	_time_base = media_track._time_base;
 
-	_bitrate = media_track._bitrate.load();
 	_bitrate_conf = media_track._bitrate_conf.load();
 
 	_byass = media_track._byass.load();
 	_bypass_conf = media_track._bypass_conf.load();
-
-	_start_frame_time = 0;
-	_last_frame_time = 0;
 
 	std::atomic_store(&_decoder_configuration_record, std::atomic_load(&media_track._decoder_configuration_record));
 
 	_origin_bitstream_format = media_track._origin_bitstream_format.load();
 
 	// Video
-	_frame_snapshot = media_track._frame_snapshot;
+	_framerate_conf = media_track._framerate_conf;
+	_key_frame_interval_conf = media_track._key_frame_interval_conf;
 	_max_framerate = media_track._max_framerate.load();
 	_resolution = media_track._resolution;
 	_max_resolution = media_track._max_resolution;
@@ -274,22 +268,22 @@ bool MediaTrack::IsValidTimeBase() const
 
 void MediaTrack::SetStartFrameTime(int64_t time)
 {
-	_start_frame_time = time;
+	_stats->SetStartFrameTime(time);
 }
 
 int64_t MediaTrack::GetStartFrameTime() const
 {
-	return _start_frame_time;
+	return _stats->GetStartFrameTime();
 }
 
 void MediaTrack::SetLastFrameTime(int64_t time)
 {
-	_last_frame_time = time;
+	_stats->SetLastFrameTime(time);
 }
 
 int64_t MediaTrack::GetLastFrameTime() const
 {
-	return _last_frame_time;
+	return _stats->GetLastFrameTime();
 }
 
 void MediaTrack::SetBypass(bool flag)
@@ -714,9 +708,7 @@ bool MediaTrack::IsValid()
 
 bool MediaTrack::HasQualityMeasured()
 {
-	ov::ScopedLock lock(_media_mutex, _video_mutex);
-	
-	if (_has_quality_measured == true)
+	if (_stats->IsQualityMeasured() == true)
 	{
 		return true;
 	}
@@ -726,127 +718,55 @@ bool MediaTrack::HasQualityMeasured()
 		case MediaType::Video:
 		{
 			// It can be used when the value is set in the provider or settings, or when it is measured.
-			if ((_bitrate > 0 || _bitrate_conf > 0) && (_frame_snapshot.GetFrameRate() > 0.0))
+			if ((_stats->GetBitrateByMeasured() > 0 || _bitrate_conf > 0) && (GetFrameRate() > 0.0))
 			{
-				_has_quality_measured = true;
+				_stats->SetQualityMeasured();
 			}
 		}
 		break;
 
 		case MediaType::Audio:
 		{
-			if (_bitrate > 0 || _bitrate_conf > 0)
+			if (_stats->GetBitrateByMeasured() > 0 || _bitrate_conf > 0)
 			{
-				_has_quality_measured = true;
+				_stats->SetQualityMeasured();
 			}
 		}
 		break;
 
 		default:
-			_has_quality_measured = true;
+			_stats->SetQualityMeasured();
 			break;
 	}
 
-	return _has_quality_measured;
+	return _stats->IsQualityMeasured();
 }
 
 void MediaTrack::OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet)
 {
-	if (_clock_from_first_frame_received.IsStart() == false)
-	{
-		_clock_from_first_frame_received.Start();
-	}
+	_stats->OnFrameAdded(media_packet, GetTimeBase(), GetMediaType());
 
-	if (_timer_one_second.IsStart() == false)
-	{
-		_timer_one_second.Start();
-	}
-
-	size_t bytes = media_packet->GetDataLength();
-
-	// [Timestamp-based] Calculate framerate/bitrate from the previous window, then reset.
-	// The current frame is counted into the new window after accumulation below.
-	if (_last_received_timestamp == -1)
-	{
-		_last_received_timestamp = media_packet->GetDts();
-		_last_frame_count = 0;
-		_last_frame_bytes = 0;
-	}
-	else
-	{
-		auto duration = (media_packet->GetDts() - _last_received_timestamp) * GetTimeBase().GetExpr();
-		if (duration >= 1.0)
-		{
-			SetBitrateByMeasured(static_cast<int32_t>(_last_frame_bytes / duration * 8));
-			SetFrameRateByMeasured(static_cast<double>(_last_frame_count) / duration);
-
-			_last_received_timestamp = media_packet->GetDts();
-			_last_frame_count = 0;
-			_last_frame_bytes = 0;
-		}
-	}
-
-	// [Wall-clock] Calculate framerate/bitrate from the previous window, then reset.
-	// The current frame is counted into the new window after accumulation below.
-	if (_timer_one_second.IsElapsed(1000))
-	{
-		// It can be greater than 1 second due to timer delay or frame processing time.
-		auto seconds = static_cast<double>(_timer_one_second.Elapsed()) / 1000.0;
-
-		SetBitrateLastSecond(static_cast<int32_t>(_last_seconds_frame_bytes * 8.0 / seconds));
-		SetFrameRateLastSecond(static_cast<double>(_last_seconds_frame_count) / seconds);
-
-		_last_seconds_frame_count = 0;
-		_last_seconds_frame_bytes = 0;
-
-		_timer_one_second.Restart();
-	}
-
-	// Accumulate all counters after both calculation windows have been evaluated.
-	_total_frame_count++;
-	_total_frame_bytes += bytes;
-	_last_frame_count++;
-	_last_frame_bytes += bytes;
-	_last_seconds_frame_count++;
-	_last_seconds_frame_bytes += bytes;
-
-	// Keyframe statistics (uses _total_frame_count, so must follow accumulation above).
 	if (GetMediaType() == cmn::MediaType::Video)
 	{
-		if (media_packet->GetFlag() == MediaPacketFlag::Key)
-		{
-			_total_key_frame_count++;
-			if (_total_key_frame_count >= 2)
-			{
-				SetKeyFrameIntervalByMeasured(static_cast<double>(_total_frame_count - 1) / static_cast<double>(_total_key_frame_count - 1));
-			}
-			SetKeyFrameIntervalLastet(_key_frame_interval_count);
-			_key_frame_interval_count = 1;
-			_delta_frame_count_since_last_key_frame = 0;
-		}
-		else if (_key_frame_interval_count > 0)
-		{
-			_key_frame_interval_count++;
-			_delta_frame_count_since_last_key_frame++;
-			SetDeltaFrameCountSinceLastKeyFrame(_delta_frame_count_since_last_key_frame);
-		}
+		// Keep the high-water mark in sync with the measurement
+		SetMaxFrameRate(_stats->GetFrameRateByMeasured());
 	}
 }
 
 int64_t MediaTrack::GetTotalFrameCount() const
 {
-	return _total_frame_count;
+	return _stats->GetTotalFrameCount();
 }
 
 int64_t MediaTrack::GetTotalFrameBytes() const
 {
-	return _total_frame_bytes;
+	return _stats->GetTotalFrameBytes();
 }
 
-// void MediaTrack::SetBitrate(int32_t bitrate)
-// {
-// 	_bitrate = bitrate;
-// }
+std::shared_ptr<TrackStats> MediaTrack::GetStats() const
+{
+	return _stats;
+}
 
 int32_t MediaTrack::GetBitrate() const
 {
@@ -855,17 +775,17 @@ int32_t MediaTrack::GetBitrate() const
 		return _bitrate_conf;
 	}
 
-	return _bitrate;
+	return _stats->GetBitrateByMeasured();
 }
 
 void MediaTrack::SetBitrateByMeasured(int32_t bitrate)
 {
-	_bitrate = bitrate;
+	_stats->SetBitrateByMeasured(bitrate);
 }
 
 int32_t MediaTrack::GetBitrateByMeasured() const
 {
-	return _bitrate;
+	return _stats->GetBitrateByMeasured();
 }
 
 void MediaTrack::SetBitrateByConfig(int32_t bitrate)
@@ -880,12 +800,108 @@ int32_t MediaTrack::GetBitrateByConfig() const
 
 void MediaTrack::SetBitrateLastSecond(int32_t bitrate)
 {
-	_bitrate_last_second = bitrate;
+	_stats->SetBitrateLastSecond(bitrate);
 }
 
 int32_t MediaTrack::GetBitrateLastSecond() const
 {
-	return _bitrate_last_second;
+	return _stats->GetBitrateLastSecond();
+}
+
+double MediaTrack::GetFrameRate() const
+{
+	auto framerate_conf = GetFrameRateByConfig();
+	if (framerate_conf > 0.0)
+	{
+		return framerate_conf;
+	}
+
+	return _stats->GetFrameRateByMeasured();
+}
+
+void MediaTrack::SetFrameRateByMeasured(double framerate)
+{
+	_stats->SetFrameRateByMeasured(framerate);
+	SetMaxFrameRate(framerate);
+}
+
+double MediaTrack::GetFrameRateByMeasured() const
+{
+	return _stats->GetFrameRateByMeasured();
+}
+
+void MediaTrack::SetFrameRateLastSecond(double framerate)
+{
+	_stats->SetFrameRateLastSecond(framerate);
+}
+
+double MediaTrack::GetFrameRateLastSecond() const
+{
+	return _stats->GetFrameRateLastSecond();
+}
+
+void MediaTrack::AddToMeasuredFramerateWindow(double framerate)
+{
+	_stats->AddToMeasuredFramerateWindow(framerate);
+}
+
+std::deque<double> MediaTrack::GetMeasuredFramerateWindow() const
+{
+	return _stats->GetMeasuredFramerateWindow();
+}
+
+double MediaTrack::GetKeyFrameInterval() const
+{
+	auto key_frame_interval_conf = GetKeyFrameIntervalByConfig();
+	if (key_frame_interval_conf > 0.0)
+	{
+		return key_frame_interval_conf;
+	}
+
+	return _stats->GetKeyFrameIntervalByMeasured();
+}
+
+void MediaTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval)
+{
+	_stats->SetKeyFrameIntervalByMeasured(key_frame_interval);
+}
+
+double MediaTrack::GetKeyFrameIntervalByMeasured() const
+{
+	return _stats->GetKeyFrameIntervalByMeasured();
+}
+
+void MediaTrack::SetKeyFrameIntervalLastet(double key_frame_interval)
+{
+	_stats->SetKeyFrameIntervalLatest(key_frame_interval);
+}
+
+double MediaTrack::GetKeyFrameIntervalLatest() const
+{
+	return _stats->GetKeyFrameIntervalLatest();
+}
+
+void MediaTrack::SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count)
+{
+	_stats->SetDeltaFrameCountSinceLastKeyFrame(delta_frame_count);
+}
+
+int32_t MediaTrack::GetDeltaFramesSinceLastKeyFrame() const
+{
+	return _stats->GetDeltaFramesSinceLastKeyFrame();
+}
+
+double MediaTrack::GetKeyframeIntervalDurationMs() const
+{
+	double keyframe_interval = std::ceil(GetKeyFrameInterval());
+	double framerate = std::ceil(GetFrameRate());
+
+	if (framerate <= 0.0)
+	{
+		return 0.0;
+	}
+
+	return (keyframe_interval / framerate) * 1000.0;
 }
 
 void MediaTrack::SetBypassByConfig(bool flag)

@@ -9,11 +9,8 @@
 #include "video_track.h"
 
 VideoTrack::VideoTrack()
-	: _framerate_last_second(0),
-	  _max_framerate(0),
+	: _max_framerate(0),
 	  _video_timescale(0),
-	  _key_frame_interval_latest(0),
-	  _delta_frame_count_since_last_key_frame(0),
 	  _key_frame_interval_type_conf(cmn::KeyFrameIntervalType::FRAME),
 	  _b_frames(0),
 	  _has_bframe(false),
@@ -151,79 +148,24 @@ int VideoTrack::GetThreadCount()
 	return _thread_count;
 }
 
-VideoTrack::FrameSnapshot VideoTrack::GetFrameSnapshot() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot;
-}
-
-double VideoTrack::GetKeyFrameInterval() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.GetKeyFrameInterval();
-}
-
-void VideoTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval)
-{
-	ov::ScopedLock lock(_video_mutex);
-	_frame_snapshot.key_frame_interval = key_frame_interval;
-}
-
-double VideoTrack::GetKeyFrameIntervalByMeasured() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.key_frame_interval;
-}
-
-void VideoTrack::AddToMeasuredFramerateWindow(double framerate)
-{
-	ov::ScopedLock lock(_video_mutex);
-
-	size_t kAbnormalFpsCheckWindowSize = 60;
-
-	_measured_framerate_window.push_back(framerate);
-
-	if (_measured_framerate_window.size() > kAbnormalFpsCheckWindowSize)
-	{
-		_measured_framerate_window.pop_front();
-	}
-}
-
-std::deque<double> VideoTrack::GetMeasuredFramerateWindow() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-
-	return _measured_framerate_window;
-}
-
-void VideoTrack::SetKeyFrameIntervalLastet(double key_frame_interval)
-{
-	_key_frame_interval_latest = key_frame_interval;
-}
-
-double VideoTrack::GetKeyFrameIntervalLatest() const
-{
-	return _key_frame_interval_latest;
-}
-
 void VideoTrack::SetKeyFrameIntervalByConfig(int32_t key_frame_interval)
 {
 	ov::ScopedLock lock(_video_mutex);
 
 	if (key_frame_interval > 0)
 	{
-		_frame_snapshot.key_frame_interval_conf = key_frame_interval;
+		_key_frame_interval_conf = key_frame_interval;
 	}
 	else
 	{
-		_frame_snapshot.key_frame_interval_conf.reset();
+		_key_frame_interval_conf.reset();
 	}
 }
 
 double VideoTrack::GetKeyFrameIntervalByConfig() const
 {
 	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.key_frame_interval_conf.value_or(0.0);
+	return _key_frame_interval_conf.value_or(0.0);
 }
 
 void VideoTrack::SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType key_frame_interval_type)
@@ -234,21 +176,6 @@ void VideoTrack::SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType key_f
 cmn::KeyFrameIntervalType VideoTrack::GetKeyFrameIntervalTypeByConfig() const
 {
 	return _key_frame_interval_type_conf;
-}
-
-double VideoTrack::GetKeyframeIntervalDurationMs() const
-{
-	const auto frame_snapshot = GetFrameSnapshot();
-
-	double keyframe_interval = std::ceil(frame_snapshot.GetKeyFrameInterval());
-	double framerate = std::ceil(frame_snapshot.GetFrameRate());
-
-	if (framerate <= 0.0)
-	{
-		return 0.0;
-	}
-
-	return (keyframe_interval / framerate) * 1000.0;
 }
 
 void VideoTrack::SetBFrames(int32_t b_frames)
@@ -271,44 +198,15 @@ cmn::VideoPixelFormatId VideoTrack::GetColorspace() const
 	return _colorspace;
 }
 
-double VideoTrack::GetFrameRate() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.framerate_conf.value_or(_frame_snapshot.framerate);
-}
-
-void VideoTrack::SetFrameRateByMeasured(double framerate)
-{
-	ov::ScopedLock lock(_video_mutex);
-	_frame_snapshot.framerate = framerate;
-	_max_framerate = std::max(_max_framerate.load(), framerate);
-}
-
-double VideoTrack::GetFrameRateByMeasured() const
-{
-	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.framerate;
-}
-
 void VideoTrack::SetMaxFrameRate(double framerate)
 {
-	ov::ScopedLock lock(_video_mutex);
-	_max_framerate = std::max(std::max(_max_framerate.load(), _frame_snapshot.framerate), framerate);
+	// Measured framerate is folded in by MediaTrack::SetFrameRateByMeasured()
+	_max_framerate = std::max(_max_framerate.load(), framerate);
 }
 
 double VideoTrack::GetMaxFrameRate() const
 {
 	return _max_framerate;
-}
-
-void VideoTrack::SetFrameRateLastSecond(double framerate)
-{
-	_framerate_last_second = framerate;
-}
-
-double VideoTrack::GetFrameRateLastSecond() const
-{
-	return _framerate_last_second;
 }
 
 void VideoTrack::SetFrameRateByConfig(double framerate)
@@ -317,29 +215,19 @@ void VideoTrack::SetFrameRateByConfig(double framerate)
 
 	if (framerate > 0)
 	{
-		_frame_snapshot.framerate_conf = framerate;
+		_framerate_conf = framerate;
 		_max_framerate = std::max(_max_framerate.load(), framerate);
 	}
 	else
 	{
-		_frame_snapshot.framerate_conf.reset();
+		_framerate_conf.reset();
 	}
 }
 
 double VideoTrack::GetFrameRateByConfig() const
 {
 	ov::SharedLockGuard lock(_video_mutex);
-	return _frame_snapshot.framerate_conf.value_or(0.0);
-}
-
-void VideoTrack::SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count)
-{
-	_delta_frame_count_since_last_key_frame = delta_frame_count;
-}
-
-int32_t VideoTrack::GetDeltaFramesSinceLastKeyFrame() const
-{
-	return _delta_frame_count_since_last_key_frame;
+	return _framerate_conf.value_or(0.0);
 }
 
 void VideoTrack::SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval)

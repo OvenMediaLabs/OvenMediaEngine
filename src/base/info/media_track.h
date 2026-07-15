@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include "track_stats.h"
 #include "video_track.h"
 #include "audio_track.h"
 #include "subtitle_track.h"
@@ -138,6 +139,31 @@ public:
 	int64_t GetTotalFrameCount() const;
 	int64_t GetTotalFrameBytes() const;
 
+	// Runtime measurements live in TrackStats, the explicitly shared mutable
+	// object of a track. The accessors below delegate to it.
+	std::shared_ptr<TrackStats> GetStats() const;
+
+	// Return the proper framerate for this track.
+	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned
+	double GetFrameRate() const;
+	void SetFrameRateByMeasured(double framerate);
+	double GetFrameRateByMeasured() const;
+	void SetFrameRateLastSecond(double framerate);
+	double GetFrameRateLastSecond() const;
+	void AddToMeasuredFramerateWindow(double framerate);
+	std::deque<double> GetMeasuredFramerateWindow() const;
+
+	// Return the proper key_frame_interval for this track.
+	// If there is a key_frame_interval set by the user, it is returned. If not, the automatically measured key_frame_interval is returned
+	double GetKeyFrameInterval() const;
+	void SetKeyFrameIntervalByMeasured(double key_frame_interval);
+	double GetKeyFrameIntervalByMeasured() const;
+	void SetKeyFrameIntervalLastet(double key_frame_interval);
+	double GetKeyFrameIntervalLatest() const;
+	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
+	int32_t GetDeltaFramesSinceLastKeyFrame() const;
+	double GetKeyframeIntervalDurationMs() const;
+
 	std::shared_ptr<MediaTrack> Clone();
 
 	ov::String GetInfoString();
@@ -183,54 +209,27 @@ protected:
 	ov::String _language OV_GUARDED_BY(_media_mutex);
 	ov::String _characteristics OV_GUARDED_BY(_media_mutex);
 
+	// Bitrate (Set by user)
+	std::atomic<int32_t> _bitrate_conf = 0;
+
+	// Runtime measurement counters, deliberately shared between all holders of this track
+	std::shared_ptr<TrackStats> _stats = std::make_shared<TrackStats>();
+
 	// Bitstream format 
 	std::atomic<cmn::BitstreamFormat> _origin_bitstream_format = cmn::BitstreamFormat::Unknown;
 
 	// Timebase
 	cmn::Timebase _time_base OV_GUARDED_BY(_media_mutex);
 
-	// Bitrate
-	std::atomic<int32_t> _bitrate;
-	// Bitrate (Set by user)
-	std::atomic<int32_t> _bitrate_conf;
-	// Bitrate last one second
-	std::atomic<int32_t> _bitrate_last_second;
-	
+
 	// Bypass
 	std::atomic<bool> _byass;
 	// Bypass (Set by user)
 	std::atomic<bool> _bypass_conf;
 
-
-	// Time of start frame(packet)
-	std::atomic<int64_t> _start_frame_time;
-
-	// Time of last frame(packet)
-	std::atomic<int64_t> _last_frame_time;
-
-	// First frame received time
-	ov::StopWatch _clock_from_first_frame_received;
-	ov::StopWatch _timer_one_second;
-
-	// Statistics
-	std::atomic<uint64_t> _total_frame_count = 0;
-	std::atomic<uint64_t> _total_frame_bytes = 0;
-	std::atomic<uint64_t> _total_key_frame_count = 0;
-	std::atomic<int32_t> _key_frame_interval_count = 0;
-	std::atomic<int32_t> _delta_frame_count_since_last_key_frame = 0;
-
-	std::atomic<uint64_t> _last_seconds_frame_count = 0;
-	std::atomic<uint64_t> _last_seconds_frame_bytes = 0;
-
-	std::atomic<uint64_t> _last_frame_count = 0;
-	std::atomic<uint64_t> _last_frame_bytes = 0;
-	
-	std::atomic<int64_t> _last_received_timestamp = -1;
-
 	// Validity
 	std::atomic<bool> _is_valid = false;
 
-	std::atomic<bool> _has_quality_measured = false;
 
 	// Codec specific object
 	// AVCDecoderConfigurationRecord, HEVCDecoderConfigurationRecord, AudioSpecificConfig 

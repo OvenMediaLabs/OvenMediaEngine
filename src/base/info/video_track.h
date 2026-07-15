@@ -16,50 +16,11 @@
 
 class VideoTrack
 {
-protected:
-	struct FrameSnapshot
-	{
-		// framerate (set by user)
-		std::optional<double> framerate_conf;
-
-		// framerate (measurement)
-		double framerate					 = 0;
-
-		// Key Frame Interval (set by user)
-		std::optional<double> key_frame_interval_conf;
-
-		// Key Frame Interval Avg (measurement)
-		double key_frame_interval = 0;
-
-		double GetFrameRate() const
-		{
-			return framerate_conf.value_or(framerate);
-		}
-
-		double GetKeyFrameInterval() const
-		{
-			return key_frame_interval_conf.value_or(key_frame_interval);
-		}
-	};
-
 public:
 	VideoTrack();
 
-	// Return the proper framerate for this track. 
-	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned	
-	double GetFrameRate() const;
-
-	void SetFrameRateByMeasured(double framerate);
-	double GetFrameRateByMeasured() const;
-
 	void SetMaxFrameRate(double framerate);
 	double GetMaxFrameRate() const;
-
-	void AddToMeasuredFramerateWindow(double framerate);
-	std::deque<double>  GetMeasuredFramerateWindow() const;
-
-	void SetFrameRateLastSecond(double framerate);
-	double GetFrameRateLastSecond() const;
 
 	void SetFrameRateByConfig(double framerate);
 	double GetFrameRateByConfig() const;
@@ -96,26 +57,11 @@ public:
 	void SetThreadCount(int thread_count);
 	int GetThreadCount();
 
-	// Return the proper key_frame_interval for this track. 
-	// If there is a key_frame_interval set by the user, it is returned. If not, the automatically measured key_frame_interval is returned
-	double GetKeyFrameInterval() const;
-
-	void SetKeyFrameIntervalByMeasured(double key_frame_interval);
-	double GetKeyFrameIntervalByMeasured() const;
-
-	void SetKeyFrameIntervalLastet(double key_frame_interval);
-	double GetKeyFrameIntervalLatest() const;
-	
 	void SetKeyFrameIntervalByConfig(int32_t key_frame_interval);
 	double GetKeyFrameIntervalByConfig() const;
 
-	double GetKeyframeIntervalDurationMs() const;
-
 	void SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType key_frame_interval_type);
 	cmn::KeyFrameIntervalType GetKeyFrameIntervalTypeByConfig() const;
-
-	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
-	int32_t GetDeltaFramesSinceLastKeyFrame() const;
 
 	void SetDetectLongKeyFrameInterval(bool detect_long_key_frame_interval);
 	int32_t GetDetectLongKeyFrameInterval() const;
@@ -140,15 +86,13 @@ public:
 	ov::String GetExtraEncoderOptionsByConfig() const;
 
 protected:
-	FrameSnapshot GetFrameSnapshot() const;
-
-protected:
 	mutable ov::SharedMutex _video_mutex;
 
-	FrameSnapshot _frame_snapshot OV_GUARDED_BY(_video_mutex);
+	// framerate (set by user)
+	std::optional<double> _framerate_conf OV_GUARDED_BY(_video_mutex);
 
-	// framerate last one second (measurement)
-	std::atomic<double> _framerate_last_second = 0;
+	// Key Frame Interval (set by user)
+	std::optional<double> _key_frame_interval_conf OV_GUARDED_BY(_video_mutex);
 
 	// Max FrameRate (high-water mark of measured + external cap)
 	std::atomic<double> _max_framerate = 0.0;
@@ -162,11 +106,6 @@ protected:
 
 	// Resolution (set by user)
 	// NOTE: kept as cmn::Resolution in _resolution_conf
-
-	// Key Frame Interval Latest (measurement)
-	std::atomic<double> _key_frame_interval_latest = 0;
-	// Delta Frame Count since last key frame
-	std::atomic<int32_t> _delta_frame_count_since_last_key_frame = 0;
 
 	// Detect long key frame interval (set by mediarouter)
 	std::atomic<bool> _detect_long_key_frame_interval = false;
@@ -210,7 +149,6 @@ protected:
 
 	// Abnormal key frame interval detection
 	std::atomic<bool> _detect_abnormal_framerate = false;
-	std::deque<double> _measured_framerate_window OV_GUARDED_BY(_video_mutex);
 
 	ov::String _extra_encoder_options OV_GUARDED_BY(_video_mutex);
 public:
