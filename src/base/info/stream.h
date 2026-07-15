@@ -9,6 +9,8 @@
 #include "base/ovlibrary/tsa/mutex.h"
 #include "vhost_app_name.h"
 
+class MediaConfig;
+
 namespace info
 {
 	typedef uint32_t stream_id_t;
@@ -83,6 +85,12 @@ namespace info
 		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
 		bool UpdateTrack(const std::shared_ptr<MediaTrack> &track);
 		bool RemoveTrack(uint32_t id);
+
+		// Current MediaConfig per track, as seen at the packet-consumption
+		// position of the module that owns this Stream object. Time-sensitive
+		// readers must use MediaPacket::GetMediaConfig() instead.
+		void SetMediaConfig(int32_t track_id, const std::shared_ptr<const MediaConfig> &media_config);
+		std::shared_ptr<const MediaConfig> GetMediaConfig(int32_t track_id) const;
 		
 		const std::shared_ptr<MediaTrack> GetTrack(int32_t id) const;
 		const std::shared_ptr<MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
@@ -177,6 +185,10 @@ namespace info
 		ov::String _source_url OV_GUARDED_BY(_source_url_mutex);
 		ov::String _output_profile_name;
 		
+		// Key : MediaTrack ID
+		mutable ov::SharedMutex _media_config_mutex;
+		std::map<int32_t, std::shared_ptr<const MediaConfig>> _media_configs OV_GUARDED_BY(_media_config_mutex);
+
 		// Key : MediaTrack ID
 		std::map<int32_t, std::shared_ptr<MediaTrack>> _tracks; // For fast access by ID
 		std::vector<std::shared_ptr<MediaTrack>> _audio_tracks; // For fast access by order

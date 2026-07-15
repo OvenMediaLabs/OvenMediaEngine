@@ -86,6 +86,10 @@ public:
 private:
 	void DropNonDecodingPackets();
 
+	// Publish/keep the current MediaConfig of the track and attach it to the packet.
+	// This stream is the single author of MediaConfig for its direction.
+	void StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+
 	bool _is_stream_prepared = false;
 	bool _is_all_tracks_parsed = false;
 
@@ -101,6 +105,15 @@ private:
 
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
+
+	// Current MediaConfig per track (accessed only on the worker thread of this stream)
+	// last_msid avoids rebuilding when the msid changed but the content did not
+	struct MediaConfigState
+	{
+		std::shared_ptr<const MediaConfig> config = nullptr;
+		uint32_t last_msid = 0;
+	};
+	std::map<MediaTrackId, MediaConfigState> _media_configs;
 
 	// Temporary packet store. for calculating packet duration
 	std::map<MediaTrackId, std::shared_ptr<MediaPacket>> _media_packet_stash;

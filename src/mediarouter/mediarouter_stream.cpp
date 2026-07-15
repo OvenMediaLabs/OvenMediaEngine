@@ -28,6 +28,7 @@
 
 #include "mediarouter_stream.h"
 
+#include <base/info/media_config.h>
 #include <base/ovlibrary/ovlibrary.h>
 
 #include "mediarouter_private.h"
@@ -372,6 +373,9 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		return nullptr;
 	}
 
+	// Publish/attach the immutable MediaConfig of this packet's generation
+	StampMediaConfig(media_track, pop_media_packet);
+
 	// Update statistics of media track
 	media_track->OnFrameAdded(pop_media_packet);
 
@@ -403,6 +407,51 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	}
 
 	return pop_media_packet;
+}
+
+void MediaRouteStream::StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto media_type = media_packet->GetMediaType();
+	if (media_type != MediaType::Video && media_type != MediaType::Audio)
+	{
+		return;
+	}
+
+	// Do not publish half-parsed configs. Until the track becomes valid the
+	// stream is not prepared, so no consumer misses a generation.
+	if (media_track->IsValid() == false)
+	{
+		return;
+	}
+
+	auto &state = _media_configs[media_packet->GetTrackId()];
+
+	// Rebuild candidates only on cheap triggers: first packet, generation (msid) change,
+	// or the normalizer replaced the DCR object because of an in-band change
+	bool need_rebuild = (state.config == nullptr) ||
+						(media_packet->GetMsid() != state.last_msid) ||
+						(media_track->GetDecoderConfigurationRecord() != state.config->GetDecoderConfigurationRecord());
+
+	if (need_rebuild)
+	{
+		uint32_t next_version = (state.config != nullptr) ? state.config->GetVersion() + 1 : 1;
+		auto candidate = MediaConfig::FromMediaTrack(*media_track, next_version, media_packet->GetMsid());
+
+		// Content equality wins: same content is the same generation even across msid changes
+		if (candidate->HasSameContent(state.config) == false)
+		{
+			state.config = candidate;
+			_stream->SetMediaConfig(media_packet->GetTrackId(), state.config);
+
+			logti("[%s/%s(%u)] MediaConfig has been published. Track(%d) %s",
+				  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+				  media_packet->GetTrackId(), state.config->GetInfoString().CStr());
+		}
+
+		state.last_msid = media_packet->GetMsid();
+	}
+
+	media_packet->SetMediaConfig(state.config);
 }
 
 std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::GetMirrorBuffer()

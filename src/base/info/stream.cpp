@@ -59,6 +59,11 @@ namespace info
 		_video_tracks = stream._video_tracks;
 		_audio_tracks = stream._audio_tracks;
 
+		{
+			ov::SharedLockGuard lock(stream._media_config_mutex);
+			_media_configs = stream._media_configs;
+		}
+
 		_track_group_map = stream._track_group_map;
 
 		_public_label_map = stream._public_label_map;
@@ -341,6 +346,25 @@ namespace info
 		}
 
 		return true;
+	}
+
+	void Stream::SetMediaConfig(int32_t track_id, const std::shared_ptr<const MediaConfig> &media_config)
+	{
+		ov::ScopedLock lock(_media_config_mutex);
+		_media_configs[track_id] = media_config;
+	}
+
+	std::shared_ptr<const MediaConfig> Stream::GetMediaConfig(int32_t track_id) const
+	{
+		ov::SharedLockGuard lock(_media_config_mutex);
+
+		auto it = _media_configs.find(track_id);
+		if (it == _media_configs.end())
+		{
+			return nullptr;
+		}
+
+		return it->second;
 	}
 
 	// If track is not exist, add track or update track
