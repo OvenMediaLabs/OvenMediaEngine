@@ -828,12 +828,6 @@ namespace ocst
 		return true;
 	}
 
-	bool Orchestrator::OnStreamUpdated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info)
-	{
-		logtt("%s/%s stream of %s is updated", app_info.GetVHostAppName().CStr(), info->GetName().CStr(), info->IsInputStream() ? "inbound" : "outbound");
-		return true;
-	}
-
 	std::shared_ptr<pvd::Provider> Orchestrator::GetProviderFromType(const ProviderType type)
 	{
 		auto module_list = GetModuleList();

@@ -86,7 +86,6 @@ namespace pub
 		bool OnStreamCreated(const std::shared_ptr<info::Stream> &info) override;
 		bool OnStreamDeleted(const std::shared_ptr<info::Stream> &info) override;
 		bool OnStreamPrepared(const std::shared_ptr<info::Stream> &info) override;
-		bool OnStreamUpdated(const std::shared_ptr<info::Stream> &info) override;
 
 		// Put data in ApplicationWorker's queue.
 		bool OnSendFrame(const std::shared_ptr<info::Stream> &stream,

@@ -301,8 +301,6 @@ namespace pvd
 			return false;
 		}
 
-		NotifyStreamUpdated(pull_stream);
-
 		return true;
 	}
 

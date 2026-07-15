@@ -21,7 +21,7 @@ public:
 	virtual bool IsExistingInboundStream(ov::String stream_name) = 0;
 	virtual bool OnStreamCreated(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
 	virtual bool OnStreamDeleted(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
-	virtual bool OnStreamUpdated(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
+	virtual bool OnStreamReadyCheckRequested(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream) = 0;
 	virtual bool OnPacketReceived(const std::shared_ptr<MediaRouterApplicationConnector> &application, const std::shared_ptr<info::Stream> &stream, const std::shared_ptr<MediaPacket> &packet) = 0;
 };
 

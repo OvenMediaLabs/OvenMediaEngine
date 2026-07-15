@@ -87,7 +87,7 @@ public:
 		const std::shared_ptr<MediaRouterApplicationConnector> &app_conn,
 		const std::shared_ptr<info::Stream> &stream) override;
 
-	bool OnStreamUpdated(
+	bool OnStreamReadyCheckRequested(
 		const std::shared_ptr<MediaRouterApplicationConnector> &app_conn,
 		const std::shared_ptr<info::Stream> &stream) override;
 
@@ -108,10 +108,6 @@ public:
 		std::shared_ptr<MediaRouteStream> &stream);
 	
 	bool NotifyStreamDeleted(
-		const std::shared_ptr<info::Stream> &stream_info,
-		const MediaRouterApplicationConnector::ConnectorType connector_type);
-
-	bool NotifyStreamUpdated(
 		const std::shared_ptr<info::Stream> &stream_info,
 		const MediaRouterApplicationConnector::ConnectorType connector_type);
 

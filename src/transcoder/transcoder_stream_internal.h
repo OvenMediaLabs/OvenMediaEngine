@@ -69,12 +69,4 @@ public:
 								  uint32_t &video, uint32_t &video_bypass,
 								  uint32_t &audio, uint32_t &audio_bypass,
 								  uint32_t &image, uint32_t &data);
-
-public:
-	// This is used to check if the track layout has changed during the update.
-	bool StoreTracks(std::shared_ptr<info::Stream> stream);
-	std::map<int32_t, std::shared_ptr<MediaTrack>> &GetStoredTracks();
-	bool CompareTrackLayout(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks);
-
-	std::map<int32_t, std::shared_ptr<MediaTrack>> _store_tracks;	
 };

@@ -929,49 +929,6 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 }
 
-bool TranscoderStreamInternal::StoreTracks(std::shared_ptr<info::Stream> stream)
-{
-	_store_tracks.clear();
-	
-	for (auto &[track_id, track] : stream->GetTracks())
-	{
-		auto clone = track->Clone();
-		_store_tracks[track_id] = clone;
-	}	
-
-	return true;
-}
-
-std::map<int32_t, std::shared_ptr<MediaTrack>>& TranscoderStreamInternal::GetStoredTracks()
-{
-	return _store_tracks;
-}
-
-bool TranscoderStreamInternal::CompareTrackLayout(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks)
-{
-	// #1 Check the number of tracks
-	if (prev_tracks.size() != new_tracks.size())
-	{
-		return false;
-	}
-
-	// #2 Check type of tracks
-	for (auto &[track_id, prev_track] : prev_tracks)
-	{
-		if (new_tracks.find(track_id) == new_tracks.end())
-		{
-			return false;
-		}
-
-		if(prev_track->GetMediaType() != new_tracks[track_id]->GetMediaType())
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
 bool TranscoderStreamInternal::IsKeyframeOnlyDecodable(const std::map<ov::String, std::shared_ptr<info::Stream>> &streams)
 {
 	uint32_t video, video_bypass, audio, audio_bypass, image, data;

@@ -44,7 +44,6 @@ namespace mon
 		bool OnStreamCreationFailed(const info::Stream &stream_info);
 		bool OnStreamPrepared(const info::Stream &stream_info);
 		bool OnStreamDeleted(const info::Stream &stream_info);
-		bool OnStreamUpdated(const info::Stream &stream_info);
 
 		void IncreaseBytesIn(const info::Stream &stream_info, uint64_t value);
 		void IncreaseBytesOut(const info::Stream &stream_info, PublisherType type, uint64_t value);

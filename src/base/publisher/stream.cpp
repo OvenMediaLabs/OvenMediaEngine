@@ -283,17 +283,6 @@ namespace pub
 		return ok;
 	}
 
-	bool Stream::EnterUpdate(const std::shared_ptr<info::Stream> &info)
-	{
-		WaitUntilIdleAndLock();
-
-		bool ok = Update(info);
-
-		Unlock();
-
-		return ok;
-	}
-
 	bool Stream::Start()
 	{
 		if (_state != State::CREATED)
@@ -344,14 +333,6 @@ namespace pub
 		_sessions.clear();
 
 		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
-
-		return true;
-	}
-
-	bool Stream::Update(const std::shared_ptr<info::Stream> &info)
-	{
-		logti("[%s(%u)] %s stream has been updated (MSID : %d)", 
-							info->GetName().CStr(), info->GetId(), GetApplicationTypeName(), info->GetMsid());
 
 		return true;
 	}

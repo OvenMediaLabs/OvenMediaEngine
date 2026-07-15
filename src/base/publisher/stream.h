@@ -143,7 +143,6 @@ namespace pub
 
 		bool EnterStart();
 		bool EnterStop();
-		bool EnterUpdate(const std::shared_ptr<info::Stream> &info);
 		
 
 		bool WaitUntilStart(uint32_t timeout_ms);
@@ -173,7 +172,6 @@ namespace pub
 		virtual ~Stream();
 
 		virtual bool Start();
-		virtual bool Update(const std::shared_ptr<info::Stream> &info);
 		virtual bool Stop();
 
 		// Called before the first packet of a new MediaConfig generation is delivered.

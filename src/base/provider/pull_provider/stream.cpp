@@ -99,7 +99,7 @@ namespace pvd
 			}
 		}
 
-		UpdateStream();
+		IncreaseMsid();
 
 		return Stream::Start();
 	}

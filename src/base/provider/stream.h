@@ -96,7 +96,7 @@ namespace pvd
 			return DirectionType::UNSPECIFIED;
 		}
 
-		bool UpdateStream();
+		void IncreaseMsid();
 
 		bool SetState(State state);
 		bool SendFrame(const std::shared_ptr<MediaPacket> &packet);

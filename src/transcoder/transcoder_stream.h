@@ -47,7 +47,6 @@ public:
 	bool Start();
 	bool Stop();
 	bool Prepare(const std::shared_ptr<info::Stream> &stream);
-	bool Update(const std::shared_ptr<info::Stream> &stream);
 	bool Push(std::shared_ptr<MediaPacket> packet);
 
 	bool PauseEncoders(cmn::MediaCodecId codec_id);
@@ -183,7 +182,6 @@ private:
 	const cfg::vhost::app::oprf::OutputProfiles* RequestWebhook();
 	bool StartInternal();
 	bool PrepareInternal();
-	bool UpdateInternal(const std::shared_ptr<info::Stream> &stream);
 
 	size_t CreateOutputStreamDynamic();
 	size_t CreateOutputStreams();
@@ -234,7 +232,6 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
-	bool IsSameTrackLayout(const std::shared_ptr<info::Stream> &stream);
 	void FlushBuffers();
 
 	// Step 2: Filter (resample/rescale the decoded frame)
@@ -265,6 +262,6 @@ private:
 	bool SendBufferedPackets();
 	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
 
-	// Guards the pipeline during updates (UpdateInternal acquires unique_lock;
+	// Guards the pipeline during a rebuild (HandleInputConfigChange acquires unique_lock)
 	ov::SharedMutex _pipeline_mutex;
 };

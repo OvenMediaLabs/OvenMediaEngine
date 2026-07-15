@@ -159,17 +159,6 @@ void TranscoderStream::PrepareAsync()
 	logti("%s stream has been prepared", _log_prefix.CStr());
 }
 
-bool TranscoderStream::Update(const std::shared_ptr<info::Stream> &stream)
-{
-	if (GetState() != State::STARTED)
-	{
-		logtt("%s stream is not started", _log_prefix.CStr());
-		return false;
-	}
-
-	return UpdateInternal(stream);
-}
-
 bool TranscoderStream::Stop()
 {
 	if (_prepare_thread.joinable())
@@ -355,30 +344,6 @@ bool TranscoderStream::PrepareInternal()
 	{
 		return false;
 	}
-
-	// Store track information for later use in transcoding and seamless transition.
-	StoreTracks(GetInputStream());
-
-	return true;
-}
-
-bool TranscoderStream::UpdateInternal(const std::shared_ptr<info::Stream> &stream)
-{
-	// Changing the track layout (adding/removing tracks or changing their type)
-	// mid-stream is not supported. The provider must recreate the stream instead.
-	if (IsSameTrackLayout(stream) == false)
-	{
-		logte("%s The track layout of the input stream has been changed. This is not supported, so the stream is terminated", _log_prefix.CStr());
-
-		SetState(State::ERROR);
-
-		return false;
-	}
-
-	// A configuration change within the same layout is handled per track at the
-	// boundary packet (HandleInputConfigChange), which is ordered with the packet
-	// flow. Rebuilding the pipeline here would race ahead of the queued packets.
-	logti("%s Stream update notified. The pipeline will be rebuilt at the config boundary packet", _log_prefix.CStr());
 
 	return true;
 }
@@ -604,12 +569,6 @@ std::shared_ptr<info::Stream> TranscoderStream::GetOutputStreamByTrackId(MediaTr
 	}
 
 	return nullptr;
-}
-
-bool TranscoderStream::IsSameTrackLayout(const std::shared_ptr<info::Stream> &input_stream)
-{
-	// Compare the number, ids and types of tracks against the layout stored at prepare time
-	return CompareTrackLayout(input_stream->GetTracks(), GetStoredTracks());
 }
 
 bool TranscoderStream::Push(std::shared_ptr<MediaPacket> packet)
@@ -1319,7 +1278,7 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 				// to re-check stream readiness (they never push packets into the pipeline).
 				if (is_input_only)
 				{
-					_parent->UpdateStream(output_stream);
+					_parent->RequestStreamReadyCheck(output_stream);
 				}
 				continue;
 			}
@@ -1347,7 +1306,7 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 		// will never trigger IsStreamReady. Notify MediaRouter explicitly after init.
 		if (is_input_only)
 		{
-			_parent->UpdateStream(output_stream);
+			_parent->RequestStreamReadyCheck(output_stream);
 		}
 	}
 

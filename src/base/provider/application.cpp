@@ -252,29 +252,6 @@ namespace pvd
 		return true;
 	}
 
-	// Update stream, if stream is not exist, add stream
-	bool Application::UpdateStream(const std::shared_ptr<Stream> &stream)
-	{
-		std::unique_lock<std::shared_mutex> streams_lock(_streams_guard);
-
-		if(_streams.find(stream->GetId()) == _streams.end())
-		{
-			// If stream is not exist, add stream
-			streams_lock.unlock();
-			AddStream(stream);
-		}
-		else
-		{
-			// If stream is exist, update stream
-			_streams[stream->GetId()] = stream;
-			streams_lock.unlock();
-		}
-
-		NotifyStreamUpdated(stream);
-
-		return true;
-	}
-
 	bool Application::DeleteStream(const std::shared_ptr<Stream> &stream)
 	{
 		std::unique_lock<std::shared_mutex> streams_lock(_streams_guard);
@@ -298,11 +275,6 @@ namespace pvd
 	bool Application::NotifyStreamCreated(const std::shared_ptr<Stream> &stream)
 	{
 		return MediaRouterApplicationConnector::CreateStream(stream);
-	}
-
-	bool Application::NotifyStreamUpdated(const std::shared_ptr<info::Stream> &stream)
-	{
-		return MediaRouterApplicationConnector::UpdateStream(stream);
 	}
 
 	bool Application::NotifyStreamDeleted(const std::shared_ptr<Stream> &stream)

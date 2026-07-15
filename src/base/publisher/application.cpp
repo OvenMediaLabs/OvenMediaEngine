@@ -354,18 +354,6 @@ namespace pub
 		return true;
 	}
 
-	bool Application::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
-	{
-		auto stream = GetStream(info->GetId());
-		if (stream == nullptr)
-		{
-			logte("OnStreamUpdated failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
-			return false;
-		}
-
-		return stream->EnterUpdate(info);
-	}
-
 	std::shared_ptr<ApplicationWorker> Application::GetLowestLoadWorker()
 	{
 		std::shared_lock lock(_application_worker_lock);

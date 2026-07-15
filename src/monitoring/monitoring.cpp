@@ -370,11 +370,6 @@ namespace mon
 		return true;
 	}
 
-	bool Monitoring::OnStreamUpdated(const info::Stream &stream_info)
-	{
-		return true;
-	}
-
 	bool Monitoring::OnQueueCreated(const info::ManagedQueue &queue_info)
 	{
 		auto server_metric = GetServerMetrics();

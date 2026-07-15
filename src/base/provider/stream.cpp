@@ -737,25 +737,17 @@ namespace pvd
 		return delta;
 	}
 
-	// Increase MSID and notify the application of the stream update
-	bool Stream::UpdateStream()
+	// Start a new generation of this stream (e.g. the source item has changed).
+	// The change itself propagates downstream with the packets: the new msid is
+	// stamped on the following packets and the media router publishes a new
+	// MediaConfig at the boundary. The track layout must not change; only the
+	// configuration of existing tracks may.
+	void Stream::IncreaseMsid()
 	{
-		if (_application == nullptr)
-		{
-			return false;
-		}
-
-		if (_application->UpdateStream(GetSharedPtr()) == false)
-		{
-			return false;
-		}
-
 		ResetSourceStreamTimestamp();
 		SetMsid(GetMsid() + 1);
 
-		logti("%s/%s(%u) has been updated stream", GetApplicationName(), GetName().CStr(), GetId());
+		logti("%s/%s(%u) has started a new generation (msid: %u)", GetApplicationName(), GetName().CStr(), GetId(), GetMsid());
 		logti("%s", GetInfoString().CStr());
-
-		return true;
 	}
 }  // namespace pvd

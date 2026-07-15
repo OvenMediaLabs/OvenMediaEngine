@@ -247,7 +247,6 @@ namespace ocst
 		bool OnStreamCreated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
 		bool OnStreamDeleted(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
 		bool OnStreamPrepared(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
-		bool OnStreamUpdated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
 
 	private:
 		void DeleteUnusedDynamicApplications();

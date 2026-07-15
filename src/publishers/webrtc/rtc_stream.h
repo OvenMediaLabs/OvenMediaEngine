@@ -58,7 +58,7 @@ public:
 private:
 	bool Start() override;
 	bool Stop() override;
-	bool Update(const std::shared_ptr<info::Stream> &info) override;
+	// TODO(Getroot): Re-create the SDP when OnMediaConfigChanged fires (track config change)
 
 	bool IsSupportedCodec(cmn::MediaCodecId codec_id);
 
