@@ -112,10 +112,12 @@ private:
 	std::shared_ptr<info::Stream> _stream = nullptr;
 
 	// Current MediaConfig per track (accessed only on the worker thread of this stream)
-	// last_msid avoids rebuilding when the msid changed but the content did not
+	// last_msid avoids rebuilding when the msid changed but the content did not,
+	// last_hint makes an upstream hint adopted exactly once per hint object
 	struct MediaConfigState
 	{
 		std::shared_ptr<const MediaConfig> config = nullptr;
+		std::shared_ptr<const MediaConfig> last_hint = nullptr;
 		uint32_t last_msid = 0;
 	};
 	std::map<MediaTrackId, MediaConfigState> _media_configs;

@@ -421,8 +421,18 @@ void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &
 		return;
 	}
 
+	// Adopt each hint object exactly once. After adoption the normalizer owns the
+	// track values (in-band data wins), so a hint whose content differs from the
+	// bitstream cannot ping-pong with it.
+	auto &state = _media_configs[media_packet->GetTrackId()];
+	if (hint == state.last_hint)
+	{
+		return;
+	}
+	state.last_hint = hint;
+
 	auto hint_record = hint->GetDecoderConfigurationRecord();
-	if (hint_record == nullptr || hint_record == media_track->GetDecoderConfigurationRecord())
+	if (hint_record == nullptr)
 	{
 		return;
 	}
@@ -471,9 +481,11 @@ void MediaRouteStream::StampMediaConfig(const std::shared_ptr<MediaTrack> &media
 	}
 
 	// Do not publish half-parsed configs. Until the track becomes valid the
-	// stream is not prepared, so no consumer misses a generation.
+	// stream is not prepared, so no consumer misses a generation. The provider
+	// hint is cleared so it does not leak downstream as a config generation.
 	if (media_track->IsValid() == false)
 	{
+		media_packet->SetMediaConfig(nullptr);
 		return;
 	}
 

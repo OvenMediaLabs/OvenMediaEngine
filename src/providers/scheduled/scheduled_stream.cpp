@@ -820,7 +820,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(stream->index, kScheduledVideoTrackId);
                 UpdateTrack(new_track);
-				UpdatePacketConfigHint(new_track);
+                UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -861,7 +861,7 @@ namespace pvd
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
                 _origin_id_track_id_map.emplace(stream->index, audio_track_id);
                 UpdateTrack(new_track);
-				UpdatePacketConfigHint(new_track);
+                UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -1278,7 +1278,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(track_id, kScheduledVideoTrackId);
                 UpdateTrack(new_track);
-				UpdatePacketConfigHint(new_track);
+                UpdatePacketConfigHint(new_track);
 
                 video_track_needed = false;
             }
@@ -1310,7 +1310,7 @@ namespace pvd
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
                 _origin_id_track_id_map.emplace(track_id, audio_track_id);
                 UpdateTrack(new_track);
-				UpdatePacketConfigHint(new_track);
+                UpdatePacketConfigHint(new_track);
 				
 				if (audio_index + 1 > _channel_info._audio_map.size())
 				{
@@ -1337,7 +1337,7 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(track_id, kScheduledDataTrackId);
                 UpdateTrack(new_track);
-				UpdatePacketConfigHint(new_track);
+                UpdatePacketConfigHint(new_track);
 
                 forward_data_needed = false;
             }
