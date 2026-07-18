@@ -13,7 +13,6 @@ VideoTrack::VideoTrack()
 	  _video_timescale(0),
 	  _key_frame_interval_type_conf(cmn::KeyFrameIntervalType::FRAME),
 	  _b_frames(0),
-	  _has_bframe(false),
 	  _colorspace(cmn::VideoPixelFormatId::None),	  
 	  _preset(""),
 	  _profile(""),
@@ -126,16 +125,6 @@ ov::String VideoTrack::GetProfile() const
 {
 	ov::SharedLockGuard lock(_video_mutex);
 	return _profile;
-}
-
-void VideoTrack::SetHasBframes(bool has_bframe)
-{
-	_has_bframe = has_bframe;
-}
-
-bool VideoTrack::HasBframes() const
-{
-	return _has_bframe;
 }
 
 void VideoTrack::SetThreadCount(int thread_count)

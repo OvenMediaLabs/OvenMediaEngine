@@ -89,7 +89,6 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_max_resolution = media_track._max_resolution;
 	_resolution_conf = media_track._resolution_conf;
 	_b_frames = media_track._b_frames.load();
-	_has_bframe = media_track._has_bframe.load();
 	_colorspace = media_track._colorspace.load();
 	_preset = media_track._preset;
 	_profile = media_track._profile;
@@ -125,6 +124,16 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_essential_track = media_track._essential_track.load();
 
 	return true;
+}
+
+void MediaTrack::SetHasBframes(bool has_bframe)
+{
+	_stats->SetHasBframes(has_bframe);
+}
+
+bool MediaTrack::HasBframes() const
+{
+	return _stats->HasBframes();
 }
 
 void MediaTrack::SetId(uint32_t id)

@@ -42,9 +42,6 @@ public:
 	void SetVideoTimestampScale(double scale);
 	double GetVideoTimestampScale() const;
 
-	void SetHasBframes(bool has_bframe);
-	bool HasBframes() const;
-
 	void SetColorspace(cmn::VideoPixelFormatId colorspace);
 	cmn::VideoPixelFormatId GetColorspace() const;	
 
@@ -116,9 +113,6 @@ protected:
 	// Number of B-frame (set by user)
 	std::atomic<int32_t> _b_frames = 0;
 	
-	// B-frame (set by mediarouter)
-	std::atomic<bool> _has_bframe = false;
-
 	// Colorspace of video
 	// This variable is temporarily used in the Pixel Format defined by FFMPEG.
 	std::atomic<cmn::VideoPixelFormatId> _colorspace = cmn::VideoPixelFormatId::None;	

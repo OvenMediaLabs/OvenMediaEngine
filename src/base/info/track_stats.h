@@ -58,6 +58,10 @@ public:
 	bool IsQualityMeasured() const;
 	void SetQualityMeasured();
 
+	// B-frames detected in the bitstream by the config author
+	void SetHasBframes(bool has_bframe);
+	bool HasBframes() const;
+
 	// Media config changes observed by the config author (operator-facing:
 	// how many times this track's content configuration changed, and when last)
 	void OnConfigChanged(int64_t time_ms);
@@ -104,6 +108,8 @@ private:
 	std::atomic<int64_t> _last_received_timestamp = -1;
 
 	std::atomic<bool> _quality_measured = false;
+
+	std::atomic<bool> _has_bframe = false;
 
 	// Media config changes
 	std::atomic<uint32_t> _config_change_count = 0;

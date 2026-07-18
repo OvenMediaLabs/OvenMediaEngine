@@ -133,6 +133,10 @@ public:
 	
 	ov::String GetCodecsParameter() const;
 
+	// B-frames detected in the bitstream (runtime state, lives in TrackStats)
+	void SetHasBframes(bool has_bframe);
+	bool HasBframes() const;
+
 	// For statistics
 	void OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet);
 
