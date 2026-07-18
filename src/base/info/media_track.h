@@ -69,8 +69,9 @@ public:
 	void SetVariantName(const ov::String &name);
 	ov::String GetVariantName() const;
 
-	// Group Index (used for rendition of playlist)
-	void SetGroupIndex(int index);
+	// Group Index (used for rendition of playlist). Registration metadata,
+	// assigned when the track joins a group; callable on a published track
+	void SetGroupIndex(int index) const;
 	int GetGroupIndex() const;
 
 	// Public Name (used for multiple audio/video tracks. e.g. multilingual audio)
@@ -113,11 +114,11 @@ public:
 	int32_t GetBitrate() const;
 
 	// Bitrate (Set by measured)
-	void SetBitrateByMeasured(int32_t bitrate);
+	void SetBitrateByMeasured(int32_t bitrate) const;
 	int32_t GetBitrateByMeasured() const;
 
 	// Bitrate last second (Set by measured)
-	void SetBitrateLastSecond(int32_t bitrate);
+	void SetBitrateLastSecond(int32_t bitrate) const;
 	int32_t GetBitrateLastSecond() const;
 
 	// Bitrate (Set by user)
@@ -125,13 +126,13 @@ public:
 	int32_t GetBitrateByConfig() const;
 	
 	// Frame Time 
-	void SetStartFrameTime(int64_t time);
+	void SetStartFrameTime(int64_t time) const;
 	int64_t GetStartFrameTime() const;
-	void SetLastFrameTime(int64_t time);
+	void SetLastFrameTime(int64_t time) const;
 	int64_t GetLastFrameTime() const;
 
-	bool IsValid();
-	bool HasQualityMeasured();
+	bool IsValid() const;
+	bool HasQualityMeasured() const;
 
 	std::shared_ptr<DecoderConfigurationRecord> GetDecoderConfigurationRecord() const;
 	template <typename T, typename = typename std::enable_if<std::is_base_of<DecoderConfigurationRecord, T>::value>::type>
@@ -144,11 +145,11 @@ public:
 	ov::String GetCodecsParameter() const;
 
 	// B-frames detected in the bitstream (runtime state, lives in TrackStats)
-	void SetHasBframes(bool has_bframe);
+	void SetHasBframes(bool has_bframe) const;
 	bool HasBframes() const;
 
 	// For statistics
-	void OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet);
+	void OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet) const;
 
 	int64_t GetTotalFrameCount() const;
 	int64_t GetTotalFrameBytes() const;
@@ -164,30 +165,30 @@ public:
 	// Return the proper framerate for this track.
 	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned
 	double GetFrameRate() const;
-	void SetFrameRateByMeasured(double framerate);
+	void SetFrameRateByMeasured(double framerate) const;
 	double GetFrameRateByMeasured() const;
-	void SetFrameRateLastSecond(double framerate);
+	void SetFrameRateLastSecond(double framerate) const;
 	double GetFrameRateLastSecond() const;
-	void AddToMeasuredFramerateWindow(double framerate);
+	void AddToMeasuredFramerateWindow(double framerate) const;
 	std::deque<double> GetMeasuredFramerateWindow() const;
 
 	// Return the proper key_frame_interval for this track.
 	// If there is a key_frame_interval set by the user, it is returned. If not, the automatically measured key_frame_interval is returned
 	double GetKeyFrameInterval() const;
-	void SetKeyFrameIntervalByMeasured(double key_frame_interval);
+	void SetKeyFrameIntervalByMeasured(double key_frame_interval) const;
 	double GetKeyFrameIntervalByMeasured() const;
-	void SetKeyFrameIntervalLastet(double key_frame_interval);
+	void SetKeyFrameIntervalLastet(double key_frame_interval) const;
 	double GetKeyFrameIntervalLatest() const;
-	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count);
+	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count) const;
 	int32_t GetDeltaFramesSinceLastKeyFrame() const;
 	double GetKeyframeIntervalDurationMs() const;
 
-	std::shared_ptr<MediaTrack> Clone();
+	std::shared_ptr<MediaTrack> Clone() const;
 
-	ov::String GetInfoString();
+	ov::String GetInfoString() const;
 
 	// Track info for the stream-created log; measured fields (resolution, framerate, bitrate, ...) are shown only once known
-	ov::String GetInfoStringForCreated();
+	ov::String GetInfoStringForCreated() const;
 
 	// Codec status: set by encoder/decoder after initialization
 	using CodecStatus = cmn::CodecStatus;
@@ -220,7 +221,7 @@ protected:
 	// Variant Name : Original encoder profile that made this track 
 	// from <OutputProfile><Encodes>(<Video> || <Audio> || <Image>)<Name>
 	ov::String _variant_name OV_GUARDED_BY(_media_mutex);
-	std::atomic<int> _group_index = -1;
+	mutable std::atomic<int> _group_index = -1;
 
 	// Set by AudioMap or VideoMap or SubtitleMap
 	ov::String _public_name OV_GUARDED_BY(_media_mutex);
@@ -245,8 +246,8 @@ protected:
 	// Bypass (Set by user)
 	std::atomic<bool> _bypass_conf;
 
-	// Validity
-	std::atomic<bool> _is_valid = false;
+	// Validity (lazily computed cache)
+	mutable std::atomic<bool> _is_valid = false;
 
 
 	// Codec specific object

@@ -175,7 +175,7 @@ bool MediaTrack::HasSameContent(const MediaTrack &other) const
 	return record->Equals(other_record);
 }
 
-void MediaTrack::SetHasBframes(bool has_bframe)
+void MediaTrack::SetHasBframes(bool has_bframe) const
 {
 	_stats->SetHasBframes(has_bframe);
 }
@@ -214,7 +214,7 @@ ov::String MediaTrack::GetVariantName() const
 	return _variant_name;
 }
 
-void MediaTrack::SetGroupIndex(int index)
+void MediaTrack::SetGroupIndex(int index) const
 {
 	_group_index = index;
 }
@@ -347,7 +347,7 @@ bool MediaTrack::IsValidTimeBase() const
 	return _time_base.IsValid();
 }
 
-void MediaTrack::SetStartFrameTime(int64_t time)
+void MediaTrack::SetStartFrameTime(int64_t time) const
 {
 	_stats->SetStartFrameTime(time);
 }
@@ -357,7 +357,7 @@ int64_t MediaTrack::GetStartFrameTime() const
 	return _stats->GetStartFrameTime();
 }
 
-void MediaTrack::SetLastFrameTime(int64_t time)
+void MediaTrack::SetLastFrameTime(int64_t time) const
 {
 	_stats->SetLastFrameTime(time);
 }
@@ -466,7 +466,7 @@ ov::String MediaTrack::GetCodecsParameter() const
 	return "";
 }
 
-ov::String MediaTrack::GetInfoString()
+ov::String MediaTrack::GetInfoString() const
 {
 	ov::String out_str = "";
 
@@ -569,7 +569,7 @@ ov::String MediaTrack::GetInfoString()
 	return out_str;
 }
 
-ov::String MediaTrack::GetInfoStringForCreated()
+ov::String MediaTrack::GetInfoStringForCreated() const
 {
 	ov::String out_str;
 
@@ -669,7 +669,7 @@ ov::String MediaTrack::GetInfoStringForCreated()
 	return out_str;
 }
 
-bool MediaTrack::IsValid()
+bool MediaTrack::IsValid() const
 {
 	if (_is_valid == true)
 	{
@@ -787,7 +787,7 @@ bool MediaTrack::IsValid()
 	return false;
 }
 
-bool MediaTrack::HasQualityMeasured()
+bool MediaTrack::HasQualityMeasured() const
 {
 	if (_stats->IsQualityMeasured() == true)
 	{
@@ -823,7 +823,7 @@ bool MediaTrack::HasQualityMeasured()
 	return _stats->IsQualityMeasured();
 }
 
-void MediaTrack::OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet)
+void MediaTrack::OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet) const
 {
 	_stats->OnFrameAdded(media_packet, GetTimeBase(), GetMediaType());
 
@@ -867,7 +867,7 @@ int32_t MediaTrack::GetBitrate() const
 	return _stats->GetBitrateByMeasured();
 }
 
-void MediaTrack::SetBitrateByMeasured(int32_t bitrate)
+void MediaTrack::SetBitrateByMeasured(int32_t bitrate) const
 {
 	_stats->SetBitrateByMeasured(bitrate);
 }
@@ -887,7 +887,7 @@ int32_t MediaTrack::GetBitrateByConfig() const
 	return _bitrate_conf;
 }
 
-void MediaTrack::SetBitrateLastSecond(int32_t bitrate)
+void MediaTrack::SetBitrateLastSecond(int32_t bitrate) const
 {
 	_stats->SetBitrateLastSecond(bitrate);
 }
@@ -908,7 +908,7 @@ double MediaTrack::GetFrameRate() const
 	return _stats->GetFrameRateByMeasured();
 }
 
-void MediaTrack::SetFrameRateByMeasured(double framerate)
+void MediaTrack::SetFrameRateByMeasured(double framerate) const
 {
 	_stats->SetFrameRateByMeasured(framerate);
 	SetMaxFrameRate(framerate);
@@ -919,7 +919,7 @@ double MediaTrack::GetFrameRateByMeasured() const
 	return _stats->GetFrameRateByMeasured();
 }
 
-void MediaTrack::SetFrameRateLastSecond(double framerate)
+void MediaTrack::SetFrameRateLastSecond(double framerate) const
 {
 	_stats->SetFrameRateLastSecond(framerate);
 }
@@ -929,7 +929,7 @@ double MediaTrack::GetFrameRateLastSecond() const
 	return _stats->GetFrameRateLastSecond();
 }
 
-void MediaTrack::AddToMeasuredFramerateWindow(double framerate)
+void MediaTrack::AddToMeasuredFramerateWindow(double framerate) const
 {
 	_stats->AddToMeasuredFramerateWindow(framerate);
 }
@@ -950,7 +950,7 @@ double MediaTrack::GetKeyFrameInterval() const
 	return _stats->GetKeyFrameIntervalByMeasured();
 }
 
-void MediaTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval)
+void MediaTrack::SetKeyFrameIntervalByMeasured(double key_frame_interval) const
 {
 	_stats->SetKeyFrameIntervalByMeasured(key_frame_interval);
 }
@@ -960,7 +960,7 @@ double MediaTrack::GetKeyFrameIntervalByMeasured() const
 	return _stats->GetKeyFrameIntervalByMeasured();
 }
 
-void MediaTrack::SetKeyFrameIntervalLastet(double key_frame_interval)
+void MediaTrack::SetKeyFrameIntervalLastet(double key_frame_interval) const
 {
 	_stats->SetKeyFrameIntervalLatest(key_frame_interval);
 }
@@ -970,7 +970,7 @@ double MediaTrack::GetKeyFrameIntervalLatest() const
 	return _stats->GetKeyFrameIntervalLatest();
 }
 
-void MediaTrack::SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count)
+void MediaTrack::SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count) const
 {
 	_stats->SetDeltaFrameCountSinceLastKeyFrame(delta_frame_count);
 }
@@ -1003,7 +1003,7 @@ bool MediaTrack::IsBypassByConf() const
 	return _bypass_conf;
 }
 
-std::shared_ptr<MediaTrack> MediaTrack::Clone()
+std::shared_ptr<MediaTrack> MediaTrack::Clone() const
 {
 	return std::make_shared<MediaTrack>(*this);
 }

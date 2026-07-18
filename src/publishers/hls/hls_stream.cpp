@@ -241,7 +241,7 @@ bool HlsStream::IsSupportedCodec(cmn::MediaCodecId codec_id) const
 
 bool HlsStream::CreateDefaultPlaylist()
 {
-	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
+	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
 	for (const auto &[id, track] : _tracks)
 	{
 		if (IsSupportedCodec(track->GetCodecId()) == true)

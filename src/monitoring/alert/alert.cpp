@@ -500,7 +500,7 @@ namespace mon::alrt
 		}
 	}
 
-	void Alert::VerifyVideoIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<MediaTrack> &video_track, std::vector<std::shared_ptr<Message>> &message_list)
+	void Alert::VerifyVideoIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<const MediaTrack> &video_track, std::vector<std::shared_ptr<Message>> &message_list)
 	{
 		// Verify HasBFrame
 		if (ingress.GetHasBFrames())
@@ -586,7 +586,7 @@ namespace mon::alrt
 		}
 	}
 
-	void Alert::VerifyAudioIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<MediaTrack> &audio_track, std::vector<std::shared_ptr<Message>> &message_list)
+	void Alert::VerifyAudioIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<const MediaTrack> &audio_track, std::vector<std::shared_ptr<Message>> &message_list)
 	{
 		if (audio_track->GetSampleRate() > 0)
 		{

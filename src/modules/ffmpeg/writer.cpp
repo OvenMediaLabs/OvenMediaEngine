@@ -147,7 +147,7 @@ namespace ffmpeg
 		return _timestamp_mode;
 	}
 
-	std::shared_ptr<AVStream> Writer::CreateAVStream(const std::shared_ptr<MediaTrack> &media_track)
+	std::shared_ptr<AVStream> Writer::CreateAVStream(const std::shared_ptr<const MediaTrack> &media_track)
 	{
 		auto av_format = GetAVFormatContext();
 		if (!av_format)
@@ -180,7 +180,7 @@ namespace ffmpeg
 		return av_stream;
 	}
 
-	bool Writer::AddMediaTrack(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream)
+	bool Writer::AddMediaTrack(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream)
 	{
 		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
 		{
@@ -200,7 +200,7 @@ namespace ffmpeg
 		return true;
 	}
 
-	bool Writer::AddEventTrack(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream, cmn::BitstreamFormat format)
+	bool Writer::AddEventTrack(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream, cmn::BitstreamFormat format)
 	{
 		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
 		{
@@ -220,7 +220,7 @@ namespace ffmpeg
 		return true;
 	}
 
-	bool Writer::AddTrack(const std::shared_ptr<MediaTrack> &media_track)
+	bool Writer::AddTrack(const std::shared_ptr<const MediaTrack> &media_track)
 	{
 		// A missing Opus config is synthesized inside ToAVStream(); the track itself
 		// is a frozen snapshot here and must not be modified.
@@ -293,7 +293,7 @@ namespace ffmpeg
 		return count;
 	}
 
-	std::shared_ptr<MediaTrack> Writer::GetTrackByTrackId(int32_t media_track_id) const
+	std::shared_ptr<const MediaTrack> Writer::GetTrackByTrackId(int32_t media_track_id) const
 	{
 		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
 		auto track_map = _av_track_map;
@@ -718,7 +718,7 @@ namespace ffmpeg
 		_need_to_close = false;
 	}
 
-	std::pair<std::shared_ptr<AVStream>, std::shared_ptr<MediaTrack>> Writer::GetTrack(int32_t track_id, cmn::BitstreamFormat format) const
+	std::pair<std::shared_ptr<AVStream>, std::shared_ptr<const MediaTrack>> Writer::GetTrack(int32_t track_id, cmn::BitstreamFormat format) const
 	{
 		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
 
@@ -743,7 +743,7 @@ namespace ffmpeg
 		return std::make_pair(nullptr, nullptr);
 	}
 
-	bool Writer::ToAVPacket(AVPacket &av_packet, const std::shared_ptr<AVStream> av_stream, const std::shared_ptr<MediaPacket> &media_packet, const std::shared_ptr<MediaTrack> &media_track, int64_t start_time)
+	bool Writer::ToAVPacket(AVPacket &av_packet, const std::shared_ptr<AVStream> av_stream, const std::shared_ptr<MediaPacket> &media_packet, const std::shared_ptr<const MediaTrack> &media_track, int64_t start_time)
 	{
 		if (av_stream == nullptr || media_packet == nullptr || media_packet->GetData() == nullptr || media_track == nullptr)
 		{

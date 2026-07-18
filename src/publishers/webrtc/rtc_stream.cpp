@@ -177,8 +177,8 @@ bool RtcStream::Start()
 	_video_rtx_ssrc								   = ov::Random::GenerateUInt32();
 	_audio_ssrc									   = ov::Random::GenerateUInt32();
 
-	std::shared_ptr<MediaTrack> _first_video_track = nullptr;
-	std::shared_ptr<MediaTrack> _first_audio_track = nullptr;
+	std::shared_ptr<const MediaTrack> _first_video_track = nullptr;
+	std::shared_ptr<const MediaTrack> _first_audio_track = nullptr;
 
 	// Create Packetizer
 	for (auto &[track_id, track] : GetTracks())

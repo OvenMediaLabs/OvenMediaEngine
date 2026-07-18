@@ -606,9 +606,11 @@ namespace pvd
 		// Apply plain params to the first video track
 		if (plain_max_width.has_value() && plain_max_height.has_value())
 		{
-			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-			if (first_video_track != nullptr)
+			auto first_video_track_info = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track_info != nullptr)
 			{
+				// Author-time setup: the stream is not shared yet
+				auto first_video_track = GetMutableTrack(first_video_track_info->GetId());
 				first_video_track->SetResolution(plain_max_width.value(), plain_max_height.value());
 
 				auto max_resolution = first_video_track->GetMaxResolution();
@@ -653,7 +655,8 @@ namespace pvd
 			auto it_fps    = rid_max_fps.find(key);
 			if (it_fps    == rid_max_fps.end())    it_fps    = rid_max_fps.find(rid_suffix);
 
-			auto track = GetTrack(track_id);
+			// Author-time setup: the stream is not shared yet
+			auto track = GetMutableTrack(track_id);
 			if (track != nullptr)
 			{
 				if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
@@ -1014,7 +1017,7 @@ namespace pvd
 		OnFrame(track, frame);
 	}
 
-	void WebRTCStream::OnFrame(const std::shared_ptr<MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet)
+	void WebRTCStream::OnFrame(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet)
 	{
 		logtp("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
 

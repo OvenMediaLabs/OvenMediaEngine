@@ -195,12 +195,14 @@ namespace pvd
 			for (size_t index=0; index < audio_map_item_count; index++)
 			{
 				auto audio_map_item = GetAudioMapItem(index);
-				auto audio_track = stream->GetMediaTrackByOrder(cmn::MediaType::Audio, index);
-				if (audio_map_item == nullptr || audio_track == nullptr)
+				auto audio_track_info = stream->GetMediaTrackByOrder(cmn::MediaType::Audio, index);
+				if (audio_map_item == nullptr || audio_track_info == nullptr)
 				{
 					break;
 				}
 
+				// Author-time setup: the stream is not shared yet
+				auto audio_track = stream->GetMutableTrack(audio_track_info->GetId());
 				audio_track->SetPublicName(audio_map_item->GetName());
 				audio_track->SetLanguage(audio_map_item->GetLanguage());
 				audio_track->SetCharacteristics(audio_map_item->GetCharacteristics());
@@ -210,10 +212,10 @@ namespace pvd
 		// If track has not PublicName, set PublicName as TrackId
 		for (auto &it : stream->GetTracks())
 		{
-			auto track = it.second;
-			if (track->GetPublicName().IsEmpty())
+			if (it.second->GetPublicName().IsEmpty())
 			{
-				// MediaType_TrackId
+				// MediaType_TrackId; author-time setup, the stream is not shared yet
+				auto track = stream->GetMutableTrack(it.first);
 				auto public_name = ov::String::FormatString("%s_%u", cmn::GetMediaTypeString(track->GetMediaType()), track->GetId());
 				track->SetPublicName(public_name);
 			}

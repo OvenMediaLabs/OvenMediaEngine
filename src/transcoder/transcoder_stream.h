@@ -198,7 +198,7 @@ private:
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
 
-	// Track the MediaConfig generation per input track and log the boundary.
+	// Track the generation per input track and log the boundary.
 	// The pipeline itself is not touched here: decoder/filter/encoder each
 	// handle the change at their own consumption position.
 	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
@@ -250,7 +250,7 @@ private:
 	// Send encoded packet to mediarouter via transcoder application
 	void SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet);
 
-	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<MediaTrack> &video_track, const std::shared_ptr<MediaTrack> &audio_track);
+	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<const MediaTrack> &video_track, const std::shared_ptr<const MediaTrack> &audio_track);
 
 private:
 	// Async prepare handling

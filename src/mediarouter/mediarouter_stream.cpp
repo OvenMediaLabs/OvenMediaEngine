@@ -94,6 +94,11 @@ bool MediaRouteStream::IsStreamPrepared()
 	return _is_stream_prepared;
 }
 
+bool MediaRouteStream::MarkPreparedNotified()
+{
+	return _prepared_notified.exchange(true) == false;
+}
+
 void MediaRouteStream::Flush()
 {
 	// Clear queued packets
@@ -104,6 +109,7 @@ void MediaRouteStream::Flush()
 	_is_all_tracks_parsed = false;
 
 	_is_stream_prepared = false;
+	_prepared_notified = false;
 }
 
 // Check whether the information extraction for all tracks has been completed.
@@ -459,6 +465,12 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 	{
 		working->SetTimeBase(hint->GetTimeBase());
 	}
+
+	// Provider-authored labels travel with the generation (e.g. a detected
+	// subtitle language)
+	working->SetPublicName(hint->GetPublicName());
+	working->SetLanguage(hint->GetLanguage());
+	working->SetCharacteristics(hint->GetCharacteristics());
 
 	// Adopt only the values the hint actually carries; a codec without a DCR
 	// (e.g. Opus described by SDP) still delivers its audio parameters

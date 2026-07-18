@@ -179,7 +179,7 @@ bool LLHlsStream::Start()
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
 	// Find the first video track and audio track with supported codec, and set the reference track id for VTT track.
-	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
+	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
 	for (const auto &[id, track] : GetTracks())
 	{
 		if (IsSupportedMediaCodec(track->GetCodecId()) == true)

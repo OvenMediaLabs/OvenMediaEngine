@@ -78,6 +78,10 @@ public:
 	bool IsStreamPrepared();
 	bool IsStreamReady();
 
+	// The prepared notification must run exactly once even when two threads
+	// pass the readiness check at the same time (creation thread + worker)
+	bool MarkPreparedNotified();
+
 	// Periodically warn about tracks that stay invalid too long, which blocks the stream from being prepared
 	void CheckUnpreparedTrackTimeout();
 
@@ -111,6 +115,7 @@ private:
 	void ApplyPacketConfigHint(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
 	bool _is_stream_prepared = false;
+	std::atomic<bool> _prepared_notified = false;
 	bool _is_all_tracks_parsed = false;
 
 	// Deadline tracking for periodically warning about tracks that never become valid (anchored at the first media packet)

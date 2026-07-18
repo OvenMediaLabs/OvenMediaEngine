@@ -167,7 +167,7 @@ namespace serdes
 		}
 	}
 
-	static void SetTracks(Json::Value &parent_object, const char *key, const std::map<int32_t, std::shared_ptr<MediaTrack>> &tracks, Optional optional)
+	static void SetTracks(Json::Value &parent_object, const char *key, const std::map<int32_t, std::shared_ptr<const MediaTrack>> &tracks, Optional optional)
 	{
 		CONVERTER_RETURN_IF(false, Json::arrayValue);
 
@@ -265,7 +265,7 @@ namespace serdes
 		return response;
 	}
 
-	Json::Value JsonFromTracks(const std::map<int32_t, std::shared_ptr<MediaTrack>> &tracks)
+	Json::Value JsonFromTracks(const std::map<int32_t, std::shared_ptr<const MediaTrack>> &tracks)
 	{
 		Json::Value response(Json::ValueType::arrayValue);
 		SetTracks(response, nullptr, tracks, Optional::False);

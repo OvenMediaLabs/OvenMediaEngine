@@ -565,9 +565,9 @@ namespace pub
 					auto track = GetTrackByLabel(command->GetTrackLabel());
 					if (track != nullptr)
 					{
-						auto old_language = track->GetLanguage();
-						track->SetLanguage(command->GetLanguage());
-						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
+						// The provider publishes a new track generation for this change;
+						// it arrives attached to the following packets and is adopted there
+						logtt("[%s/%s(%u)] Subtitle track language update received (%s); waiting for the new track generation", GetApplicationName(), GetName().CStr(), GetId(), command->GetLanguage().CStr());
 					}
 					else
 					{

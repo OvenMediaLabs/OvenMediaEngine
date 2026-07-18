@@ -99,7 +99,7 @@ namespace pvd
 		bool AddDepacketizer(uint32_t track_id);
 		std::shared_ptr<RtpDepacketizingManager> GetDepacketizer(uint32_t track_id);
 
-		void OnFrame(const std::shared_ptr<MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet);
+		void OnFrame(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet);
 
 		ov::StopWatch _fir_timer;
 		int _fir_interval = 3000; // ms

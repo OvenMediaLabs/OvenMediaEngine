@@ -407,7 +407,7 @@ namespace pub
 		return _push;
 	}
 
-	bool PushSession::IsSupportTrack(const info::Push::ProtocolType protocol_type, const std::shared_ptr<MediaTrack> &track)
+	bool PushSession::IsSupportTrack(const info::Push::ProtocolType protocol_type, const std::shared_ptr<const MediaTrack> &track)
 	{
 		if (protocol_type == info::Push::ProtocolType::RTMP)
 		{
@@ -461,7 +461,7 @@ namespace pub
 		return false;
 	}
 
-	bool PushSession::AddTrack(const std::shared_ptr<MediaTrack> &track)
+	bool PushSession::AddTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		auto writer = GetWriter();
 		if (writer == nullptr)

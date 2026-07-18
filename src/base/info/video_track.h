@@ -19,7 +19,7 @@ class VideoTrack
 public:
 	VideoTrack();
 
-	void SetMaxFrameRate(double framerate);
+	void SetMaxFrameRate(double framerate) const;
 	double GetMaxFrameRate() const;
 
 	void SetFrameRateByConfig(double framerate);
@@ -52,7 +52,7 @@ public:
 	ov::String GetProfile() const;
 
 	void SetThreadCount(int thread_count);
-	int GetThreadCount();
+	int GetThreadCount() const;
 
 	void SetKeyFrameIntervalByConfig(int32_t key_frame_interval);
 	double GetKeyFrameIntervalByConfig() const;
@@ -67,7 +67,7 @@ public:
 	bool GetDetectAbnormalFramerate() const;
 
 	void SetBFrames(int32_t b_frames);
-	int32_t GetBFrames();
+	int32_t GetBFrames() const;
 
 	void SetSkipFramesByConfig(int32_t skip_frames);
 	int32_t GetSkipFramesByConfig() const;
@@ -92,7 +92,7 @@ protected:
 	std::optional<double> _key_frame_interval_conf OV_GUARDED_BY(_video_mutex);
 
 	// Max FrameRate (high-water mark of measured + external cap)
-	std::atomic<double> _max_framerate = 0.0;
+	mutable std::atomic<double> _max_framerate = 0.0;
 
 	std::atomic<double> _video_timescale;
 	

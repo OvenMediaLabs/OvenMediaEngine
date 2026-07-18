@@ -55,22 +55,22 @@ namespace pub
 		bool Start() override;
 		bool Stop() override;
 
-		bool IsSupportedTrack(const std::shared_ptr<MediaTrack> &track) const;
+		bool IsSupportedTrack(const std::shared_ptr<const MediaTrack> &track) const;
 
 		std::shared_ptr<SrtPlaylist> GetSrtPlaylistInternal(const ov::String &file_name) OV_REQUIRES_SHARED(_srt_playlist_map_mutex);
 
-		std::map<int32_t, std::shared_ptr<MediaTrack>> GetSupportedTracks(const std::map<int32_t, std::shared_ptr<MediaTrack>> &track_map) const;
-		std::vector<std::shared_ptr<MediaTrack>> GetSupportedTracks(const std::vector<std::shared_ptr<MediaTrack>> &tracks) const;
-		std::vector<std::shared_ptr<MediaTrack>> GetSupportedTracks(const std::shared_ptr<MediaTrackGroup> &group) const;
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> GetSupportedTracks(const std::map<int32_t, std::shared_ptr<const MediaTrack>> &track_map) const;
+		std::vector<std::shared_ptr<const MediaTrack>> GetSupportedTracks(const std::vector<std::shared_ptr<const MediaTrack>> &tracks) const;
+		std::vector<std::shared_ptr<const MediaTrack>> GetSupportedTracks(const std::shared_ptr<MediaTrackGroup> &group) const;
 
 		std::shared_ptr<const info::Playlist> PrepareDefaultPlaylist();
 		// std::shared_ptr<const info::Playlist> CreatePlaylist(
 		// 	const cfg::vhost::app::oprf::Playlist &playlist_config,
 		// 	const TrackMapSet &track_map_set);
-		void AddSupportedTrack(const std::shared_ptr<MediaTrack> &track, std::map<ov::String, std::shared_ptr<MediaTrack>> &to);
+		void AddSupportedTrack(const std::shared_ptr<const MediaTrack> &track, std::map<ov::String, std::shared_ptr<const MediaTrack>> &to);
 
 		void PrepareForTrack(
-			const std::shared_ptr<MediaTrack> &track,
+			const std::shared_ptr<const MediaTrack> &track,
 			std::map<uint32_t, std::shared_ptr<ov::Data>> &psi_data_map,
 			std::map<uint32_t, std::shared_ptr<ov::Data>> &data_to_send_map);
 

@@ -439,7 +439,7 @@ namespace ffmpeg
 			return (name != nullptr) ? ov::String(name) : ov::String("");
 		}
 
-		static bool ToAVStream(std::shared_ptr<MediaTrack> media_track, AVStream* av_stream)
+		static bool ToAVStream(std::shared_ptr<const MediaTrack> media_track, AVStream* av_stream)
 		{
 			if (media_track == nullptr || av_stream == nullptr)
 			{

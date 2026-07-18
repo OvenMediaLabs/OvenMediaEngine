@@ -41,14 +41,14 @@ public:
 
 	void UpdateErrorCountIfNeeded(
 		ErrorType error_type,
-		std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track,
-		std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track);
+		std::shared_ptr<info::Stream> input_stream, std::shared_ptr<const MediaTrack> input_track,
+		std::shared_ptr<info::Stream> output_stream, std::shared_ptr<const MediaTrack> output_track);
 
 	void UpdateErrorWithoutCount(
 		ErrorType error_type,
 		std::shared_ptr<cfg::vhost::app::oprf::OutputProfile> output_profile,
-		std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track,
-		std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track);		
+		std::shared_ptr<info::Stream> input_stream, std::shared_ptr<const MediaTrack> input_track,
+		std::shared_ptr<info::Stream> output_stream, std::shared_ptr<const MediaTrack> output_track);		
 	
 private:
 

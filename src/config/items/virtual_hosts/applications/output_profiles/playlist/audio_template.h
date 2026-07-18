@@ -57,7 +57,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMaxChannel, _max_channel);
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMinChannel, _min_channel);
 
-					bool IsMatched(const std::shared_ptr<MediaTrack> &track) const
+					bool IsMatched(const std::shared_ptr<const MediaTrack> &track) const
 					{
 						if (track->GetMediaType() != ::cmn::MediaType::Audio)
 						{

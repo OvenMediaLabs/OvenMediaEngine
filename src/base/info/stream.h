@@ -79,8 +79,8 @@ namespace info
 		void SetInternal(bool internal) { _internal = internal; }
 
 		uint32_t IssueUniqueTrackId();
-		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
-		bool UpdateTrack(const std::shared_ptr<MediaTrack> &track);
+		bool AddTrack(const std::shared_ptr<const MediaTrack> &track);
+		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &track);
 
 		// Take over the source's current track generations by pointer, so this
 		// copy and the source share the same immutable objects and packet stamps
@@ -88,9 +88,14 @@ namespace info
 		void AdoptTrackGenerations(const Stream &source);
 		bool RemoveTrack(uint32_t id);
 
-		const std::shared_ptr<MediaTrack> GetTrack(int32_t id) const;
-		const std::shared_ptr<MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
-		const std::map<int32_t, std::shared_ptr<MediaTrack>> &GetTracks() const;
+		std::shared_ptr<const MediaTrack> GetTrack(int32_t id) const;
+
+		// Author-side access to a track this stream owns, usable only before the
+		// track is shared (published/handed to other modules). Consumers must
+		// never call this; they receive new generations attached to packets.
+		std::shared_ptr<MediaTrack> GetMutableTrack(int32_t id) const;
+		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
+		const std::map<int32_t, std::shared_ptr<const MediaTrack>> &GetTracks() const;
 
 		const std::shared_ptr<MediaTrackGroup> GetMediaTrackGroup(const ov::String &group_name) const;
 		// Get Track Groups
@@ -100,11 +105,11 @@ namespace info
 		// Get track nth
 		// @param order : 0 ~ (track count - 1)
 		uint32_t GetMediaTrackCount(const cmn::MediaType &type) const;
-		const std::shared_ptr<MediaTrack> GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const;
+		std::shared_ptr<const MediaTrack> GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const;
 		
-		const std::shared_ptr<MediaTrack> GetFirstTrackByType(const cmn::MediaType &type) const;
-		const std::shared_ptr<MediaTrack> GetFirstTrackByVariant(const ov::String &name) const;
-		const std::shared_ptr<MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
+		std::shared_ptr<const MediaTrack> GetFirstTrackByType(const cmn::MediaType &type) const;
+		std::shared_ptr<const MediaTrack> GetFirstTrackByVariant(const ov::String &name) const;
+		std::shared_ptr<const MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
 
 		bool AddPlaylist(const std::shared_ptr<const Playlist> &playlist);
 		std::shared_ptr<const Playlist> GetPlaylist(const ov::String &file_name) const;
@@ -181,9 +186,9 @@ namespace info
 		ov::String _output_profile_name;
 		
 		// Key : MediaTrack ID
-		std::map<int32_t, std::shared_ptr<MediaTrack>> _tracks; // For fast access by ID
-		std::vector<std::shared_ptr<MediaTrack>> _audio_tracks; // For fast access by order
-		std::vector<std::shared_ptr<MediaTrack>> _video_tracks; // For fast access by order
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> _tracks; // For fast access by ID
+		std::vector<std::shared_ptr<const MediaTrack>> _audio_tracks; // For fast access by order
+		std::vector<std::shared_ptr<const MediaTrack>> _video_tracks; // For fast access by order
 
 		// Group Name (variant name) : MediaTrackGroup
 		std::map<ov::String, std::shared_ptr<MediaTrackGroup>> _track_group_map; // Track group

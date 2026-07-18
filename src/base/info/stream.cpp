@@ -60,7 +60,17 @@ namespace info
 		_video_tracks = stream._video_tracks;
 		_audio_tracks = stream._audio_tracks;
 
-		_track_group_map = stream._track_group_map;
+		// Groups are per-copy indexes over the shared immutable tracks; sharing
+		// the group objects themselves would let copies mutate each other's index
+		for (const auto &[group_name, group] : stream._track_group_map)
+		{
+			auto cloned_group = std::make_shared<MediaTrackGroup>(group_name);
+			for (const auto &track : group->GetTracks())
+			{
+				cloned_group->AddTrack(track);
+			}
+			_track_group_map.emplace(group_name, cloned_group);
+		}
 
 		_public_label_map = stream._public_label_map;
 
@@ -283,7 +293,7 @@ namespace info
 		return last_issued_track_id.load();
 	}
 
-	bool Stream::AddTrack(const std::shared_ptr<MediaTrack> &track)
+	bool Stream::AddTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		auto item = _tracks.find(track->GetId());
 		if (item != _tracks.end())
@@ -348,10 +358,15 @@ namespace info
 	}
 
 	// Replace a track with its next generation, or add it if it does not exist.
-	// The previous track object is never mutated: holders of the old pointer keep
-	// a consistent snapshot, and the runtime statistics of the logical track are
-	// carried over to the new generation.
-	bool Stream::UpdateTrack(const std::shared_ptr<MediaTrack> &track)
+	// A pure pointer swap: the previous object is never mutated, so holders of
+	// the old pointer keep a consistent snapshot. Carrying the shared TrackStats
+	// over to the new generation is the author's job, before publishing it here.
+	std::shared_ptr<MediaTrack> Stream::GetMutableTrack(int32_t id) const
+	{
+		return std::const_pointer_cast<MediaTrack>(GetTrack(id));
+	}
+
+	bool Stream::UpdateTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		auto ex_track = GetTrack(track->GetId());
 		if (ex_track == nullptr)
@@ -359,11 +374,9 @@ namespace info
 			return AddTrack(track);
 		}
 
-		track->AdoptStats(ex_track->GetStats());
-
 		_tracks[track->GetId()] = track;
 
-		auto replace_in = [&track](std::vector<std::shared_ptr<MediaTrack>> &tracks) {
+		auto replace_in = [&track](std::vector<std::shared_ptr<const MediaTrack>> &tracks) {
 			for (auto &item : tracks)
 			{
 				if (item->GetId() == track->GetId())
@@ -430,7 +443,7 @@ namespace info
 		return true;
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrack(int32_t id) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrack(int32_t id) const
 	{
 		auto item = _tracks.find(id);
 		if (item == _tracks.end())
@@ -441,7 +454,7 @@ namespace info
 		return item->second;
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrackByLabel(const ov::String &public_label) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrackByLabel(const ov::String &public_label) const
 	{
 		auto label_it = _public_label_map.find(public_label);
 		if (label_it == _public_label_map.end())
@@ -484,7 +497,7 @@ namespace info
 	}
 	
 	// start from 0
-	const std::shared_ptr<MediaTrack> Stream::GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const
+	std::shared_ptr<const MediaTrack> Stream::GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const
 	{
 		if (type == cmn::MediaType::Video)
 		{
@@ -509,7 +522,7 @@ namespace info
 	}
 
 	// Get Track by variant name
-	const std::shared_ptr<MediaTrack> Stream::GetFirstTrackByVariant(const ov::String &variant_name) const
+	std::shared_ptr<const MediaTrack> Stream::GetFirstTrackByVariant(const ov::String &variant_name) const
 	{
 		auto group = GetMediaTrackGroup(variant_name);
 		if (group == nullptr || group->GetTrackCount() == 0)
@@ -520,7 +533,7 @@ namespace info
 		return group->GetTrack(0);
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrackByVariant(const ov::String &variant_name, uint32_t order) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrackByVariant(const ov::String &variant_name, uint32_t order) const
 	{
 		auto group = GetMediaTrackGroup(variant_name);
 		if (group == nullptr || group->GetTrackCount() == 0)
@@ -531,7 +544,7 @@ namespace info
 		return group->GetTrack(order);
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetFirstTrackByType(const cmn::MediaType &type) const
+	std::shared_ptr<const MediaTrack> Stream::GetFirstTrackByType(const cmn::MediaType &type) const
 	{
 		for (auto &item : _tracks)
 		{
@@ -544,7 +557,7 @@ namespace info
 		return nullptr;
 	}
 
-	const std::map<int32_t, std::shared_ptr<MediaTrack>> &Stream::GetTracks() const
+	const std::map<int32_t, std::shared_ptr<const MediaTrack>> &Stream::GetTracks() const
 	{
 		return _tracks;
 	}

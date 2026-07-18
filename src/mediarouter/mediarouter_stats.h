@@ -33,7 +33,7 @@ public:
 		const bool prepared,
 		const ov::ManagedQueue<std::shared_ptr<MediaPacket>> &packets_queue,
 		const std::shared_ptr<info::Stream> &stream_info,
-		const std::shared_ptr<MediaTrack> &media_track,
+		const std::shared_ptr<const MediaTrack> &media_track,
 		const std::shared_ptr<MediaPacket> &media_packet);
 
 	// <TrackId, Values>

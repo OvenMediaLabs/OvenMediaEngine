@@ -98,7 +98,7 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 
 	// Build the private input state of this module: cloned tracks seeded from
 	// the published configs. From here on, input content values are module-local
-	// working state; cross-module changes arrive only as MediaConfig on packets.
+	// working state; cross-module changes arrive only as generations on packets.
 	BuildPrivateInputStream(stream);
 
 	try
@@ -440,7 +440,9 @@ std::shared_ptr<MediaTrack> TranscoderStream::GetInputTrack(MediaTrackId track_i
 		return nullptr;
 	}
 
-	return _input_stream->GetTrack(track_id);
+	// The input stream holds this module's private clones (BuildPrivateInputStream),
+	// refined from decoded frames; author-side access is legitimate here
+	return _input_stream->GetMutableTrack(track_id);
 }
 
 std::shared_ptr<info::Stream> TranscoderStream::GetInputStream()
@@ -546,7 +548,7 @@ size_t TranscoderStream::CreateOutputStreamDynamic()
 		output_stream->AddTrack(output_track);
 
 		auto signature = ov::String::FormatString("dynamic");
-		_composite.AddComposite(_input_stream, input_track, signature, output_stream, output_track);
+		_composite.AddComposite(_input_stream, _input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 	}
 
 	// Add to Output Stream List. The key is the output stream name.
@@ -733,7 +735,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 					output_stream->AddTrack(output_track);
 
 					auto signature = ProfileToSerialize(input_track_id, profile);
-					_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
+					_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 				}
 
 				// Image Profile
@@ -750,7 +752,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 					output_stream->AddTrack(output_track);
 
 					auto signature = ProfileToSerialize(input_track_id, profile);
-					_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
+					_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 				}
 			}
 			break;
@@ -769,7 +771,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 					output_stream->AddTrack(output_track);
 
 					auto signature = ProfileToSerialize(input_track_id, profile);
-					_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
+					_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 				}
 
 				// SpeechToText Profile
@@ -792,7 +794,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 					output_stream->AddTrack(output_track);
 
 					auto signature = ProfileToSerialize(input_track_id, profile);
-					_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
+					_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 				}
 			}
 			break;
@@ -818,7 +820,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 				output_stream->AddTrack(output_track);
 
 				auto signature = ProfileToSerialize(input_track_id);
-				_composite.AddComposite(input_stream, input_track, signature, output_stream, output_track);
+				_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 			}
 			break;
 			default: {
@@ -847,7 +849,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 				auto video_template = rendition_template.GetVideoTemplate(&has_video_template);
 				auto audio_template = rendition_template.GetAudioTemplate(&has_audio_template);
 
-				std::vector<std::shared_ptr<MediaTrack>> matched_video_tracks, matched_audio_tracks;
+				std::vector<std::shared_ptr<const MediaTrack>> matched_video_tracks, matched_audio_tracks;
 
 				if (has_video_template)
 				{
@@ -1006,7 +1008,7 @@ void TranscoderStream::RemoveOutputStreams()
 	_output_streams.clear();
 }
 
-ov::String TranscoderStream::MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<MediaTrack> &video_track, const std::shared_ptr<MediaTrack> &audio_track)
+ov::String TranscoderStream::MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<const MediaTrack> &video_track, const std::shared_ptr<const MediaTrack> &audio_track)
 {
 	ov::String rendition_name = name_template;
 
@@ -1526,7 +1528,8 @@ void TranscoderStream::UpdateInputTrack(std::shared_ptr<MediaFrame> buffer)
 
 	logtt("%s Updated input track. InputTrack(%u)", _log_prefix.CStr(), track_id);
 
-	auto input_track = _input_stream->GetTrack(track_id);
+	// This module's private clone (BuildPrivateInputStream); author-side access
+	auto input_track = _input_stream->GetMutableTrack(track_id);
 	if (input_track == nullptr)
 	{
 		logte("Could not found output track. InputTrack(%u)", track_id);
@@ -1581,7 +1584,7 @@ void TranscoderStream::ProcessPacket(const std::shared_ptr<MediaPacket> &packet)
 		return;
 	}
 
-	// Packets carry their own MediaConfig, so a configuration change is handled
+	// Packets carry their own track generation, so a configuration change is handled
 	// per track at exactly the boundary packet instead of dropping stale packets.
 	HandleInputConfigChange(packet);
 

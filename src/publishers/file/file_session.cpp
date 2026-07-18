@@ -254,7 +254,7 @@ namespace pub
 
 	// Select the first video track as the default track.
 	// If there is no video track, the first track of the audio is selected as the default track.
-	void FileSession::SelectDefaultTrack(const std::shared_ptr<MediaTrack> &track)
+	void FileSession::SelectDefaultTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		if (_default_track_by_type.find(track->GetMediaType()) == _default_track_by_type.end())
 		{
@@ -643,7 +643,7 @@ namespace pub
 		return false;
 	}
 
-	bool FileSession::AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track)
+	bool FileSession::AddTrack(const ov::String output_format, const std::shared_ptr<const MediaTrack> &track)
 	{
 		auto writer = GetWriter();
 		if (writer == nullptr)

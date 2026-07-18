@@ -143,7 +143,7 @@ MediaTrackId TranscoderStreamInternal::NewTrackId()
 }
 
 std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
-	const std::shared_ptr<MediaTrack> &input_track, 
+	const std::shared_ptr<const MediaTrack> &input_track, 
 	const cfg::vhost::app::oprf::VideoProfile &profile
 	)
 {
@@ -231,7 +231,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -307,7 +307,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -355,7 +355,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(const std::shared_ptr<MediaTrack> &input_track)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(const std::shared_ptr<const MediaTrack> &input_track)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -386,7 +386,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -444,7 +444,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	return output_track;
 }
 
-bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile)
+bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile)
 {
 	bool is_parsed = false;
 	uint32_t if_count;
@@ -551,7 +551,7 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	return (if_count > 0) ? true : false;
 }
 
-bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
+bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
 {
 	bool is_parsed = false;
 	uint32_t if_count;
@@ -653,7 +653,7 @@ double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerat
 // Update the output track information based on the decoded frame from the decoder before creating the encoder. (encoding)
 // If the user has not specified it, the output specification is automatically determined.
 // Once determined for the first time, the specification is maintained until the stream ends.
-void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
@@ -669,7 +669,7 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	const int32_t src_width	 = buffer->GetWidth();
 	const int32_t src_height = buffer->GetHeight();
@@ -829,7 +829,7 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
  	if (buffer->GetSampleRate() <= 0)
  	{
@@ -1029,7 +1029,7 @@ cmn::Resolution TranscoderStreamInternal::GetAlignmentResolution(const cmn::Reso
 	return aligned;
 }
 
-void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
+void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track)
 {
 	int32_t skip_frames = output_track->GetSkipFramesByConfig();
 	if (skip_frames < 0)

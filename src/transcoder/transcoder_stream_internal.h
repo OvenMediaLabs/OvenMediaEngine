@@ -37,28 +37,28 @@ public:
 	
 	static cmn::Timebase GetDefaultTimebaseByCodecId(cmn::MediaCodecId codec_id);
 
-	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile);
-	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile);
-	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile);
-	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile);
-	std::shared_ptr<MediaTrack> CreateOutputTrackDataType(const std::shared_ptr<MediaTrack> &input_track);	
+	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile);
+	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile);
+	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile);
+	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile);
+	std::shared_ptr<MediaTrack> CreateOutputTrackDataType(const std::shared_ptr<const MediaTrack> &input_track);	
 
-	bool IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile);
-	bool IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile);
+	bool IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile);
+	bool IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile);
 
 	static double MeasurementToRecommendFramerate(double framerate);
 
-	void UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
+	void UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
 
 private:
-	void UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
-	void UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
+	void UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
+	void UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer);
 
 	// Optimized resolution for a specific encoder.
 	static cmn::Resolution GetAlignmentResolution(const cmn::Resolution &resolution);
 
 	// If SkipFrames is enabled, adjust the output framerate.
-	static void ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track);	
+	static void ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track);	
 
 public:
 	// This is used to check if only keyframes can be decoded.

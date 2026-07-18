@@ -132,7 +132,7 @@ void VideoTrack::SetThreadCount(int thread_count)
 	_thread_count = thread_count;
 }
 
-int VideoTrack::GetThreadCount()
+int VideoTrack::GetThreadCount() const
 {
 	return _thread_count;
 }
@@ -172,7 +172,7 @@ void VideoTrack::SetBFrames(int32_t b_frames)
 	_b_frames = b_frames;
 }
 
-int32_t VideoTrack::GetBFrames()
+int32_t VideoTrack::GetBFrames() const
 {
 	return _b_frames;
 }
@@ -187,7 +187,7 @@ cmn::VideoPixelFormatId VideoTrack::GetColorspace() const
 	return _colorspace;
 }
 
-void VideoTrack::SetMaxFrameRate(double framerate)
+void VideoTrack::SetMaxFrameRate(double framerate) const
 {
 	// Measured framerate is folded in by MediaTrack::SetFrameRateByMeasured()
 	_max_framerate = std::max(_max_framerate.load(), framerate);

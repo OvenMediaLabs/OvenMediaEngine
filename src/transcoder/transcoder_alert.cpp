@@ -25,8 +25,8 @@ TranscoderAlerts::~TranscoderAlerts()
 void TranscoderAlerts::UpdateErrorWithoutCount(
 	ErrorType error_type,
 	std::shared_ptr<cfg::vhost::app::oprf::OutputProfile> output_profile,
-	std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track,
-	std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track)
+	std::shared_ptr<info::Stream> input_stream, std::shared_ptr<const MediaTrack> input_track,
+	std::shared_ptr<info::Stream> output_stream, std::shared_ptr<const MediaTrack> output_track)
 {
 	switch (error_type)
 	{
@@ -125,8 +125,8 @@ void TranscoderAlerts::UpdateErrorWithoutCount(
 
 void TranscoderAlerts::UpdateErrorCountIfNeeded(
 	ErrorType error_type,
-	std::shared_ptr<info::Stream> input_stream, std::shared_ptr<MediaTrack> input_track,
-	std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track)
+	std::shared_ptr<info::Stream> input_stream, std::shared_ptr<const MediaTrack> input_track,
+	std::shared_ptr<info::Stream> output_stream, std::shared_ptr<const MediaTrack> output_track)
 {
 	uint32_t track_id;
 	switch (error_type)

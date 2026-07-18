@@ -300,9 +300,12 @@ namespace pvd
 					auto track = GetTrackByLabel(command->GetTrackLabel());
 					if (track != nullptr)
 					{
+						// A label change is a new generation of the track description
 						auto old_language = track->GetLanguage();
-						track->SetLanguage(command->GetLanguage());
-						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
+						auto new_track = std::make_shared<MediaTrack>(*track);
+						new_track->SetLanguage(command->GetLanguage());
+						ReplaceTrack(new_track);
+						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), new_track->GetLanguage().CStr());
 					}
 				}
 
@@ -748,7 +751,7 @@ namespace pvd
 
 	// Start a new generation of this stream (e.g. the source item has changed):
 	// re-base the source timestamps so the next item continues seamlessly. The
-	// content change itself travels with the packets as MediaConfig. The track
+	// content change itself travels with the packets as a new track generation. The track
 	// layout must not change; only the configuration of existing tracks may.
 	void Stream::StartNewGeneration()
 	{

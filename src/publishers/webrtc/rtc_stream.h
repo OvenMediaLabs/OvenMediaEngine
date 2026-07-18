@@ -58,7 +58,7 @@ public:
 private:
 	bool Start() override;
 	bool Stop() override;
-	// TODO(Getroot): Re-create the SDP when OnMediaConfigChanged fires (track config change)
+	// TODO(Getroot): Re-create the SDP when OnTrackChanged fires (track configuration change)
 
 	bool IsSupportedCodec(cmn::MediaCodecId codec_id);
 

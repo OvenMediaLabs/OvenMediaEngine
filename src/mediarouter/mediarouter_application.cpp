@@ -504,6 +504,12 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 
 bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStream> &stream)
 {
+	// Exactly once: the readiness check can pass on two threads at the same time
+	if (stream->MarkPreparedNotified() == false)
+	{
+		return true;
+	}
+
 	std::shared_lock<std::shared_mutex> lock(_observers_lock);
 	auto observers = _observers;  // Avoid deadlock
 	lock.unlock();

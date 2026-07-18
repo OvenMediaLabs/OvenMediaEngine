@@ -37,7 +37,7 @@ bool MediaRouterAlert::Update(
 	const bool prepared,
 	const ov::ManagedQueue<std::shared_ptr<MediaPacket>> &packets_queue,
 	const std::shared_ptr<info::Stream> &stream_info,
-	const std::shared_ptr<MediaTrack> &media_track,
+	const std::shared_ptr<const MediaTrack> &media_track,
 	const std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (type == cmn::MediaRouterStreamType::OUTBOUND)
@@ -67,7 +67,7 @@ bool MediaRouterAlert::Update(
 	return true;
 }
 
-bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (media_packet->GetDuration() < 0)
 	{
@@ -84,7 +84,7 @@ bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::S
 	return true;
 }
 
-bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	switch (media_packet->GetBitstreamFormat())
 	{
@@ -127,7 +127,7 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 	return true;
 }
 
-bool MediaRouterAlert::DetectPTSDiscontinuity(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectPTSDiscontinuity(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto track_id = media_packet->GetTrackId();
 
