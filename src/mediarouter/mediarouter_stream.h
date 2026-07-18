@@ -84,16 +84,28 @@ public:
 	void Flush();
 	
 private:
+	// Author state per track, accessed only on the worker thread of this stream.
+	// The builder collects values from hints and in-band parsing; `config` is the
+	// currently published generation; `last_hint` makes an upstream hint adopted
+	// exactly once per hint object.
+	struct MediaConfigState
+	{
+		MediaConfigBuilder builder;
+		std::shared_ptr<const MediaConfig> config = nullptr;
+		std::shared_ptr<const MediaConfig> last_hint = nullptr;
+	};
+
 	void DropNonDecodingPackets();
 
-	// Publish/keep the current MediaConfig of the track and attach it to the packet.
-	// This stream is the single author of MediaConfig for its direction.
-	void StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+	// Publish the current MediaConfig built from the author state and attach it
+	// to the packet. This stream is the single author of MediaConfig for its
+	// direction.
+	void StampMediaConfig(MediaConfigState &state, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
 
-	// Adopt a provider/upstream-authored config hint carried by the packet into this
-	// stream's own track lineage, so extradata-dependent formats stay decodable
-	// without cross-module track mutation. Runs before normalization.
-	void ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+	// Adopt a provider/upstream-authored config hint carried by the packet into
+	// the author state, so extradata-dependent formats stay decodable without
+	// cross-module track mutation. Runs before normalization.
+	void ApplyPacketConfigHint(MediaConfigState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
 	bool _is_stream_prepared = false;
 	bool _is_all_tracks_parsed = false;
@@ -111,15 +123,6 @@ private:
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
 
-	// Current MediaConfig per track (accessed only on the worker thread of this stream)
-	// last_msid avoids rebuilding when the msid changed but the content did not,
-	// last_hint makes an upstream hint adopted exactly once per hint object
-	struct MediaConfigState
-	{
-		std::shared_ptr<const MediaConfig> config = nullptr;
-		std::shared_ptr<const MediaConfig> last_hint = nullptr;
-		uint32_t last_msid = 0;
-	};
 	std::map<MediaTrackId, MediaConfigState> _media_configs;
 
 	// Temporary packet store. for calculating packet duration

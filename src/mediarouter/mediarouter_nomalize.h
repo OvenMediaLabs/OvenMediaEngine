@@ -14,6 +14,7 @@
 #include <queue>
 #include <vector>
 
+#include "base/info/media_config.h"
 #include "base/info/stream.h"
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
@@ -22,10 +23,13 @@
 #include "modules/bitstream/av1/av1_types.h"
 #include "modules/managed_queue/managed_queue.h"
 
+// Normalizes bitstreams and parses content configuration out of them.
+// The parsed values go into the MediaConfigBuilder (the author's working
+// state); the track itself is read-only here (identity and stats only).
 class MediaRouterNormalize
 {
 public:
-	bool NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
 	/// Copy every cross-checked field from an AV1 in-band Sequence Header summary onto the
 	/// `av1C` `AV1DecoderConfigurationRecord` synthesized by the enhanced-RTMP (FLV) ingest path
@@ -45,22 +49,22 @@ public:
 		const std::shared_ptr<AV1DecoderConfigurationRecord> &av1_config,
 		const Av1SequenceHeaderSummary &summary);
 
-	bool ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
-	bool ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
-	bool InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet, bool need_aud = false);
-	bool InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
+	bool InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet, bool need_aud = false);
+	bool InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
-	bool ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
-	bool ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 
-	bool ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet);
+	bool ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet);
 };

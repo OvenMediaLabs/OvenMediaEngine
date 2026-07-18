@@ -58,6 +58,12 @@ public:
 	bool IsQualityMeasured() const;
 	void SetQualityMeasured();
 
+	// Media config changes observed by the config author (operator-facing:
+	// how many times this track's content configuration changed, and when last)
+	void OnConfigChanged(int64_t time_ms);
+	uint32_t GetConfigChangeCount() const;
+	int64_t GetLastConfigChangeTimeMs() const;
+
 private:
 	// Bitrate
 	std::atomic<int32_t> _bitrate_measured = 0;
@@ -98,4 +104,8 @@ private:
 	std::atomic<int64_t> _last_received_timestamp = -1;
 
 	std::atomic<bool> _quality_measured = false;
+
+	// Media config changes
+	std::atomic<uint32_t> _config_change_count = 0;
+	std::atomic<int64_t> _last_config_change_time_ms = 0;
 };

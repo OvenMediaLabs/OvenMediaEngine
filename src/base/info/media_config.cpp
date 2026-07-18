@@ -143,3 +143,239 @@ ov::String MediaConfig::GetInfoString() const
 
 	return info;
 }
+
+void MediaConfigBuilder::SeedFromTrack(const MediaTrack &track)
+{
+	if (_seeded)
+	{
+		return;
+	}
+	_seeded = true;
+
+	_media_type = track.GetMediaType();
+	_codec_id = track.GetCodecId();
+	_time_base = track.GetTimeBase();
+
+	_decoder_configuration_record = track.GetDecoderConfigurationRecord();
+
+	_resolution = track.GetResolution();
+
+	_sample = track.GetSample();
+	_channel = track.GetChannel();
+	_audio_samples_per_frame = track.GetAudioSamplesPerFrame();
+
+	_dirty = true;
+}
+
+cmn::MediaType MediaConfigBuilder::GetMediaType() const
+{
+	return _media_type;
+}
+
+cmn::MediaCodecId MediaConfigBuilder::GetCodecId() const
+{
+	return _codec_id;
+}
+
+void MediaConfigBuilder::SetCodecId(cmn::MediaCodecId codec_id)
+{
+	if (_codec_id == codec_id)
+	{
+		return;
+	}
+	_codec_id = codec_id;
+	_dirty = true;
+}
+
+const cmn::Timebase &MediaConfigBuilder::GetTimeBase() const
+{
+	return _time_base;
+}
+
+void MediaConfigBuilder::SetTimeBase(const cmn::Timebase &time_base)
+{
+	if (_time_base == time_base)
+	{
+		return;
+	}
+	_time_base = time_base;
+	_dirty = true;
+}
+
+bool MediaConfigBuilder::IsValidTimeBase() const
+{
+	return _time_base.IsValid();
+}
+
+std::shared_ptr<DecoderConfigurationRecord> MediaConfigBuilder::GetDecoderConfigurationRecord() const
+{
+	return _decoder_configuration_record;
+}
+
+void MediaConfigBuilder::SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConfigurationRecord> &dcr)
+{
+	if (_decoder_configuration_record == dcr)
+	{
+		return;
+	}
+
+	// A content-equal record is the same generation; keep the current object so
+	// re-sent identical sequence headers do not trigger a rebuild
+	if (_decoder_configuration_record != nullptr && dcr != nullptr &&
+		_decoder_configuration_record->Equals(dcr))
+	{
+		return;
+	}
+
+	_decoder_configuration_record = dcr;
+	_dirty = true;
+}
+
+const cmn::Resolution &MediaConfigBuilder::GetResolution() const
+{
+	return _resolution;
+}
+
+void MediaConfigBuilder::SetResolution(int32_t width, int32_t height)
+{
+	SetResolution(cmn::Resolution{width, height});
+}
+
+void MediaConfigBuilder::SetResolution(const cmn::Resolution &resolution)
+{
+	if (_resolution == resolution)
+	{
+		return;
+	}
+	_resolution = resolution;
+	_dirty = true;
+}
+
+bool MediaConfigBuilder::IsValidResolution() const
+{
+	return (_resolution.width > 0) && (_resolution.height > 0);
+}
+
+int32_t MediaConfigBuilder::GetSampleRate() const
+{
+	return ov::ToUnderlyingType(_sample.GetRate());
+}
+
+void MediaConfigBuilder::SetSampleRate(int32_t sample_rate)
+{
+	if (GetSampleRate() == sample_rate)
+	{
+		return;
+	}
+	_sample.SetRate(static_cast<cmn::AudioSample::Rate>(sample_rate));
+	_dirty = true;
+}
+
+void MediaConfigBuilder::SetSampleFormat(cmn::AudioSample::Format format)
+{
+	if (_sample.GetFormat() == format)
+	{
+		return;
+	}
+	_sample.SetFormat(format);
+	_dirty = true;
+}
+
+const cmn::AudioSample &MediaConfigBuilder::GetSample() const
+{
+	return _sample;
+}
+
+const cmn::AudioChannel &MediaConfigBuilder::GetChannel() const
+{
+	return _channel;
+}
+
+void MediaConfigBuilder::SetChannelLayout(cmn::AudioChannel::Layout layout)
+{
+	if (_channel.GetLayout() == layout)
+	{
+		return;
+	}
+	_channel.SetLayout(layout);
+	_dirty = true;
+}
+
+bool MediaConfigBuilder::IsValidChannel() const
+{
+	return _channel.IsValid();
+}
+
+void MediaConfigBuilder::SetAudioSamplesPerFrame(int nbsamples)
+{
+	if (_audio_samples_per_frame == nbsamples)
+	{
+		return;
+	}
+	_audio_samples_per_frame = nbsamples;
+	_dirty = true;
+}
+
+bool MediaConfigBuilder::IsComplete() const
+{
+	switch (_codec_id)
+	{
+		case cmn::MediaCodecId::H264:
+		case cmn::MediaCodecId::H265:
+		case cmn::MediaCodecId::Av1:
+			return IsValidResolution() && IsValidTimeBase() && (_decoder_configuration_record != nullptr);
+
+		case cmn::MediaCodecId::Vp8:
+		case cmn::MediaCodecId::Vp9:
+		case cmn::MediaCodecId::Flv:
+		case cmn::MediaCodecId::Jpeg:
+		case cmn::MediaCodecId::Png:
+		case cmn::MediaCodecId::Webp:
+			return IsValidResolution() && IsValidTimeBase();
+
+		case cmn::MediaCodecId::Aac:
+			return IsValidTimeBase() && IsValidChannel() && (GetSampleRate() > 0) && (_decoder_configuration_record != nullptr);
+
+		case cmn::MediaCodecId::Opus:
+			return IsValidTimeBase() && IsValidChannel() && (_sample.GetRate() == cmn::AudioSample::Rate::R48000);
+
+		case cmn::MediaCodecId::Mp2:
+		case cmn::MediaCodecId::Mp3:
+			return IsValidTimeBase() && IsValidChannel();
+
+		default:
+			return false;
+	}
+}
+
+bool MediaConfigBuilder::IsDirty() const
+{
+	return _dirty;
+}
+
+void MediaConfigBuilder::ClearDirty()
+{
+	_dirty = false;
+}
+
+std::shared_ptr<const MediaConfig> MediaConfigBuilder::Build(uint32_t version, uint32_t msid) const
+{
+	auto config = std::make_shared<MediaConfig>();
+
+	config->_version = version;
+	config->_msid = msid;
+
+	config->_media_type = _media_type;
+	config->_codec_id = _codec_id;
+	config->_time_base = _time_base;
+
+	config->_decoder_configuration_record = _decoder_configuration_record;
+
+	config->_resolution = _resolution;
+
+	config->_sample = _sample;
+	config->_channel = _channel;
+	config->_audio_samples_per_frame = _audio_samples_per_frame;
+
+	return config;
+}

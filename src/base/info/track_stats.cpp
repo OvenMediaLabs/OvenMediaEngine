@@ -222,3 +222,19 @@ void TrackStats::SetQualityMeasured()
 {
 	_quality_measured = true;
 }
+
+void TrackStats::OnConfigChanged(int64_t time_ms)
+{
+	_config_change_count++;
+	_last_config_change_time_ms = time_ms;
+}
+
+uint32_t TrackStats::GetConfigChangeCount() const
+{
+	return _config_change_count;
+}
+
+int64_t TrackStats::GetLastConfigChangeTimeMs() const
+{
+	return _last_config_change_time_ms;
+}

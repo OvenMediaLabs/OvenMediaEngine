@@ -120,7 +120,23 @@ bool MediaRouteStream::IsStreamReady()
 	for (const auto &track_it : tracks)
 	{
 		auto track = track_it.second;
-		if (track->IsValid() == false)
+		auto media_type = track->GetMediaType();
+
+		if (media_type == MediaType::Data)
+		{
+			continue;
+		}
+
+		// A media track is ready when its config has been published; this is the
+		// thread-safe projection of the author state
+		if (media_type == MediaType::Video || media_type == MediaType::Audio)
+		{
+			if (_stream->GetMediaConfig(track->GetId()) == nullptr)
+			{
+				return false;
+			}
+		}
+		else if (track->IsValid() == false)
 		{
 			return false;
 		}
@@ -165,9 +181,24 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 	for (const auto &track_it : tracks)
 	{
 		auto track = track_it.second;
+		auto media_type = track->GetMediaType();
 
-		// Mirror IsStreamReady(): a track blocks prepare until it is both valid and quality-measured
-		if (track->IsValid() == true && track->HasQualityMeasured() == true)
+		// Mirror IsStreamReady(): a track blocks prepare until it is described and quality-measured
+		bool described = false;
+		if (media_type == MediaType::Data)
+		{
+			described = true;
+		}
+		else if (media_type == MediaType::Video || media_type == MediaType::Audio)
+		{
+			described = (_stream->GetMediaConfig(track->GetId()) != nullptr);
+		}
+		else
+		{
+			described = track->IsValid();
+		}
+
+		if (described && track->HasQualityMeasured() == true)
 		{
 			continue;
 		}
@@ -366,19 +397,23 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		return nullptr;
 	}
 
+	// The author state of this track starts from the track's setup values
+	auto &config_state = _media_configs[track_id];
+	config_state.builder.SeedFromTrack(*media_track);
+
 	// Adopt an upstream-authored config hint (e.g. a scheduled item's extradata)
 	// exactly at its first packet, before the bitstream is normalized with it
-	ApplyPacketConfigHint(media_track, pop_media_packet);
+	ApplyPacketConfigHint(config_state, pop_media_packet);
 
 	// Convert bitstream format and normalize (e.g. Add SPS/PPS to head of H264 IDR frame)
 	// @MediaRouterNormalize
-	if (MediaRouterNormalize::NormalizeMediaPacket(GetStream(), media_track, pop_media_packet) == false)
+	if (MediaRouterNormalize::NormalizeMediaPacket(GetStream(), *media_track, config_state.builder, pop_media_packet) == false)
 	{
 		return nullptr;
 	}
 
 	// Publish/attach the immutable MediaConfig of this packet's generation
-	StampMediaConfig(media_track, pop_media_packet);
+	StampMediaConfig(config_state, media_track, pop_media_packet);
 
 	// Update statistics of media track
 	media_track->OnFrameAdded(pop_media_packet);
@@ -413,7 +448,7 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	return pop_media_packet;
 }
 
-void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+void MediaRouteStream::ApplyPacketConfigHint(MediaConfigState &state, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto hint = media_packet->GetMediaConfig();
 	if (hint == nullptr)
@@ -421,10 +456,9 @@ void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &
 		return;
 	}
 
-	// Adopt each hint object exactly once. After adoption the normalizer owns the
-	// track values (in-band data wins), so a hint whose content differs from the
-	// bitstream cannot ping-pong with it.
-	auto &state = _media_configs[media_packet->GetTrackId()];
+	// Adopt each hint object exactly once. After adoption the normalizer owns
+	// the author state (in-band data wins), so a hint whose content differs
+	// from the bitstream cannot ping-pong with it.
 	if (hint == state.last_hint)
 	{
 		return;
@@ -437,34 +471,36 @@ void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &
 		return;
 	}
 
-	if (media_track->GetCodecId() == cmn::MediaCodecId::None)
+	auto &builder = state.builder;
+
+	if (builder.GetCodecId() == cmn::MediaCodecId::None)
 	{
-		media_track->SetCodecId(hint->GetCodecId());
+		builder.SetCodecId(hint->GetCodecId());
 	}
-	else if (media_track->GetCodecId() != hint->GetCodecId())
+	else if (builder.GetCodecId() != hint->GetCodecId())
 	{
 		logte("[%s/%s(%u)] Track(%d) codec of the packet config hint differs from the track (%s -> %s). Changing the codec mid-stream is not supported",
 			  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
-			  media_packet->GetTrackId(), cmn::GetCodecIdString(media_track->GetCodecId()), cmn::GetCodecIdString(hint->GetCodecId()));
+			  media_packet->GetTrackId(), cmn::GetCodecIdString(builder.GetCodecId()), cmn::GetCodecIdString(hint->GetCodecId()));
 		return;
 	}
 
-	if (media_track->IsValidTimeBase() == false)
+	if (builder.IsValidTimeBase() == false)
 	{
-		media_track->SetTimeBase(hint->GetTimeBase());
+		builder.SetTimeBase(hint->GetTimeBase());
 	}
 
-	media_track->SetDecoderConfigurationRecord(hint_record);
+	builder.SetDecoderConfigurationRecord(hint_record);
 
 	if (hint->GetMediaType() == MediaType::Video)
 	{
-		media_track->SetResolution(hint->GetResolution());
+		builder.SetResolution(hint->GetResolution());
 	}
 	else if (hint->GetMediaType() == MediaType::Audio)
 	{
-		media_track->SetSampleRate(hint->GetSample().GetRateNum());
-		media_track->SetSampleFormat(hint->GetSample().GetFormat());
-		media_track->SetChannelLayout(hint->GetChannel().GetLayout());
+		builder.SetSampleRate(hint->GetSample().GetRateNum());
+		builder.SetSampleFormat(hint->GetSample().GetFormat());
+		builder.SetChannelLayout(hint->GetChannel().GetLayout());
 	}
 
 	logti("[%s/%s(%u)] Adopted packet config hint. Track(%d) %s",
@@ -472,7 +508,7 @@ void MediaRouteStream::ApplyPacketConfigHint(const std::shared_ptr<MediaTrack> &
 		  media_packet->GetTrackId(), hint->GetInfoString().CStr());
 }
 
-void MediaRouteStream::StampMediaConfig(const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+void MediaRouteStream::StampMediaConfig(MediaConfigState &state, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto media_type = media_packet->GetMediaType();
 	if (media_type != MediaType::Video && media_type != MediaType::Audio)
@@ -480,40 +516,43 @@ void MediaRouteStream::StampMediaConfig(const std::shared_ptr<MediaTrack> &media
 		return;
 	}
 
-	// Do not publish half-parsed configs. Until the track becomes valid the
-	// stream is not prepared, so no consumer misses a generation. The provider
-	// hint is cleared so it does not leak downstream as a config generation.
-	if (media_track->IsValid() == false)
+	// Do not publish half-collected configs. Until the author state is complete
+	// the stream is not prepared, so no consumer misses a generation. The
+	// provider hint is cleared so it does not leak downstream as a generation.
+	if (state.builder.IsComplete() == false)
 	{
 		media_packet->SetMediaConfig(nullptr);
 		return;
 	}
 
-	auto &state = _media_configs[media_packet->GetTrackId()];
-
-	// Rebuild candidates only on cheap triggers: first packet, generation (msid) change,
-	// or the normalizer replaced the DCR object because of an in-band change
-	bool need_rebuild = (state.config == nullptr) ||
-						(media_packet->GetMsid() != state.last_msid) ||
-						(media_track->GetDecoderConfigurationRecord() != state.config->GetDecoderConfigurationRecord());
-
-	if (need_rebuild)
+	// Rebuild only when a hint or the normalizer actually changed a value
+	if (state.config == nullptr || state.builder.IsDirty())
 	{
-		uint32_t next_version = (state.config != nullptr) ? state.config->GetVersion() + 1 : 1;
-		auto candidate = MediaConfig::FromMediaTrack(*media_track, next_version, media_packet->GetMsid());
+		state.builder.ClearDirty();
 
-		// Content equality wins: same content is the same generation even across msid changes
+		uint32_t next_version = (state.config != nullptr) ? state.config->GetVersion() + 1 : 1;
+		auto candidate = state.builder.Build(next_version, media_packet->GetMsid());
+
+		// Content equality wins: same content is the same generation
 		if (candidate->HasSameContent(state.config) == false)
 		{
+			bool is_change = (state.config != nullptr);
+
 			state.config = candidate;
 			_stream->SetMediaConfig(media_packet->GetTrackId(), state.config);
+
+			if (is_change)
+			{
+				auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+								  std::chrono::system_clock::now().time_since_epoch())
+								  .count();
+				media_track->GetStats()->OnConfigChanged(now_ms);
+			}
 
 			logti("[%s/%s(%u)] MediaConfig has been published. Track(%d) %s",
 				  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
 				  media_packet->GetTrackId(), state.config->GetInfoString().CStr());
 		}
-
-		state.last_msid = media_packet->GetMsid();
 	}
 
 	media_packet->SetMediaConfig(state.config);
