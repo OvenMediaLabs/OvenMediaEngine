@@ -97,6 +97,11 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 		return false;
 	}
 
+	// Build the private input state of this module: cloned tracks seeded from
+	// the published configs. From here on, input content values are module-local
+	// working state; cross-module changes arrive only as MediaConfig on packets.
+	BuildPrivateInputStream(stream);
+
 	try
 	{
 		_prepare_thread = std::thread(&TranscoderStream::PrepareAsync, this);
@@ -113,6 +118,15 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 	logtd("%s stream preparation started asynchronously", _log_prefix.CStr());
 
 	return true;
+}
+
+void TranscoderStream::BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream)
+{
+	// The plain copy shares the source's MediaTrack objects; AdoptMediaConfigs
+	// replaces them with private clones seeded from the published MediaConfig of
+	// each track. TrackStats objects stay shared.
+	_input_stream = std::make_shared<info::Stream>(*stream);
+	_input_stream->AdoptMediaConfigs(*stream);
 }
 
 void TranscoderStream::PrepareAsync()

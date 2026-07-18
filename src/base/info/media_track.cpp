@@ -57,9 +57,12 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 
 	_codec_id = media_track._codec_id.load();
 	_codec_module_id = media_track._codec_module_id.load();
+	_codec_device_id = media_track._codec_device_id.load();
+	_codec_modules = media_track._codec_modules;
 
 	_public_name = media_track._public_name;
 	_variant_name = media_track._variant_name;
+	_group_index = media_track._group_index.load();
 	_language = media_track._language;
 	_characteristics = media_track._characteristics;
 
@@ -77,10 +80,25 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	// Video
 	_framerate_conf = media_track._framerate_conf;
 	_key_frame_interval_conf = media_track._key_frame_interval_conf;
+	_key_frame_interval_type_conf = media_track._key_frame_interval_type_conf.load();
+	_detect_long_key_frame_interval = media_track._detect_long_key_frame_interval.load();
+	_detect_abnormal_framerate = media_track._detect_abnormal_framerate.load();
 	_max_framerate = media_track._max_framerate.load();
+	_video_timescale = media_track._video_timescale.load();
 	_resolution = media_track._resolution;
 	_max_resolution = media_track._max_resolution;
 	_resolution_conf = media_track._resolution_conf;
+	_b_frames = media_track._b_frames.load();
+	_has_bframe = media_track._has_bframe.load();
+	_colorspace = media_track._colorspace.load();
+	_preset = media_track._preset;
+	_profile = media_track._profile;
+	_thread_count = media_track._thread_count.load();
+	_skip_frames_conf = media_track._skip_frames_conf.load();
+	_keyframe_decode_only = media_track._keyframe_decode_only.load();
+	_lookahead_conf = media_track._lookahead_conf.load();
+	_extra_encoder_options = media_track._extra_encoder_options;
+	SetOverlays(media_track.GetOverlays());
 
 	// Audio
 	_sample = media_track._sample;
@@ -96,6 +114,11 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_model = media_track._model;
 	_source_language = media_track._source_language;
 	_translation = media_track._translation.load();
+	_output_track_label = media_track._output_track_label;
+	_step_ms = media_track._step_ms.load();
+	_length_ms = media_track._length_ms.load();
+	_keep_ms = media_track._keep_ms.load();
+	_stt_enabled = media_track._stt_enabled.load();
 
 	_codec_status = media_track._codec_status.load();
 	_extra_info = media_track._extra_info;

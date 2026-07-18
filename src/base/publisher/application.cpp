@@ -343,6 +343,11 @@ namespace pub
 
 		lock.unlock();
 
+		// The copy of this stream was made at creation, before the configs were
+		// published. Materialize the private track snapshot from the published
+		// configs so every publisher reads prepared values.
+		stream->AdoptMediaConfigs(*info);
+
 		// Start stream
 		if (stream->EnterStart() == false)
 		{

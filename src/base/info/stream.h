@@ -84,6 +84,12 @@ namespace info
 		uint32_t IssueUniqueTrackId();
 		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
 		bool UpdateTrack(const std::shared_ptr<MediaTrack> &track);
+
+		// Make this copy's tracks a private snapshot of the source's published
+		// configuration: take over the media configs and replace each described
+		// track with a clone seeded from its config. TrackStats objects stay
+		// shared. Consumers call this once, when the stream is prepared.
+		void AdoptMediaConfigs(const Stream &source);
 		bool RemoveTrack(uint32_t id);
 
 		// Current MediaConfig per track, as seen at the packet-consumption

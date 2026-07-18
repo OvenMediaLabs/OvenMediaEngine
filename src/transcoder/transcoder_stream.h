@@ -183,6 +183,11 @@ private:
 	bool StartInternal();
 	bool PrepareInternal();
 
+	// Rebuild _input_stream with private track clones seeded from the published
+	// MediaConfig of each track. The clones are this module's working state for
+	// the input side; TrackStats objects stay shared.
+	void BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream);
+
 	size_t CreateOutputStreamDynamic();
 	size_t CreateOutputStreams();
 	std::shared_ptr<info::Stream> CreateOutputStream(const cfg::vhost::app::oprf::OutputProfile &cfg_output_profile);

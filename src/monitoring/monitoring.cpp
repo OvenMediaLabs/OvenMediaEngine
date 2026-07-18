@@ -294,6 +294,9 @@ namespace mon
 				return false;
 			}
 
+			// The metrics copy was made at creation; materialize the prepared values
+			stream_metrics->AdoptMediaConfigs(stream);
+
 			SendStreamAlertMessage(alrt::Message::Code::INGRESS_STREAM_PREPARED, stream_metrics);
 		}
 		else
@@ -303,6 +306,8 @@ namespace mon
 			{
 				return false;
 			}
+
+			output_stream_metric->AdoptMediaConfigs(stream);
 
 			// Update module usage count for the tracks in the stream if the stream is an output stream
 			for (const auto &[id, track] : stream.GetTracks())

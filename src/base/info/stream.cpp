@@ -11,6 +11,7 @@
 #include <random>
 
 #include "application.h"
+#include "media_config.h"
 
 #define OV_LOG_TAG "Stream"
 
@@ -367,6 +368,48 @@ namespace info
 		}
 
 		return it->second;
+	}
+
+	void Stream::AdoptMediaConfigs(const Stream &source)
+	{
+		{
+			ov::SharedLockGuard source_lock(source._media_config_mutex);
+			ov::ScopedLock lock(_media_config_mutex);
+			_media_configs = source._media_configs;
+		}
+
+		for (const auto &[track_id, track] : _tracks)
+		{
+			auto config = GetMediaConfig(track_id);
+			if (config == nullptr)
+			{
+				continue;
+			}
+
+			auto clone = std::make_shared<MediaTrack>(*track);
+
+			if (clone->GetCodecId() == cmn::MediaCodecId::None)
+			{
+				clone->SetCodecId(config->GetCodecId());
+			}
+			clone->SetTimeBase(config->GetTimeBase());
+			clone->SetDecoderConfigurationRecord(config->GetDecoderConfigurationRecord());
+
+			if (config->GetMediaType() == cmn::MediaType::Video)
+			{
+				clone->SetResolution(config->GetResolution());
+			}
+			else if (config->GetMediaType() == cmn::MediaType::Audio)
+			{
+				clone->SetSampleRate(config->GetSample().GetRateNum());
+				clone->SetSampleFormat(config->GetSample().GetFormat());
+				clone->SetChannelLayout(config->GetChannel().GetLayout());
+				clone->SetAudioSamplesPerFrame(config->GetAudioSamplesPerFrame());
+			}
+
+			// Replaces the map entry only; stats carry over inside UpdateTrack
+			UpdateTrack(clone);
+		}
 	}
 
 	// Replace a track with its next generation, or add it if it does not exist.

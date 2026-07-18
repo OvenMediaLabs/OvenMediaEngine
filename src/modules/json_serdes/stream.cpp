@@ -68,6 +68,9 @@ namespace serdes
 		SetFloat(object, "keyFrameIntervalAvg", track->GetKeyFrameIntervalByMeasured());
 		SetFloat(object, "keyFrameIntervalLatest", track->GetKeyFrameIntervalLatest());
 		SetInt(object, "deltaFramesSinceLastKeyFrame", track->GetDeltaFramesSinceLastKeyFrame());
+
+		SetInt(object, "configChangeCount", track->GetStats()->GetConfigChangeCount());
+		SetInt64(object, "lastConfigChanged", track->GetStats()->GetLastConfigChangeTimeMs());
 	}
 
 	static void SetAudioChannel(Json::Value &parent_object, const char *key, const cmn::AudioChannel &channel, Optional optional)
@@ -100,6 +103,9 @@ namespace serdes
 		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());
 		SetInt(object, "bitrateLatest", track->GetBitrateLastSecond());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
+
+		SetInt(object, "configChangeCount", track->GetStats()->GetConfigChangeCount());
+		SetInt64(object, "lastConfigChanged", track->GetStats()->GetLastConfigChangeTimeMs());
 	}
 
 	static void SetTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
