@@ -457,14 +457,22 @@ namespace ffmpeg
 			codecpar->bit_rate			= media_track->GetBitrate();
 
 			// Set Decoder Configuration Record to extradata
-			if (media_track->GetDecoderConfigurationRecord() != nullptr &&
-				media_track->GetDecoderConfigurationRecord()->GetData() != nullptr &&
-				media_track->GetDecoderConfigurationRecord()->GetData()->GetLength() > 0)
+			auto dcr = media_track->GetDecoderConfigurationRecord();
+			if (dcr == nullptr && media_track->GetCodecId() == cmn::MediaCodecId::Opus)
 			{
-				codecpar->extradata_size = media_track->GetDecoderConfigurationRecord()->GetData()->GetLength();
+				// Opus carries no config in the bitstream; synthesize one from the
+				// track parameters without modifying the track
+				dcr = std::make_shared<OpusSpecificConfig>(media_track->GetChannel().GetCounts(), media_track->GetSampleRate());
+			}
+
+			if (dcr != nullptr &&
+				dcr->GetData() != nullptr &&
+				dcr->GetData()->GetLength() > 0)
+			{
+				codecpar->extradata_size = dcr->GetData()->GetLength();
 				codecpar->extradata		 = (uint8_t*)av_malloc(codecpar->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
 				memset(codecpar->extradata, 0, codecpar->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
-				memcpy(codecpar->extradata, media_track->GetDecoderConfigurationRecord()->GetData()->GetDataAs<uint8_t>(), codecpar->extradata_size);
+				memcpy(codecpar->extradata, dcr->GetData()->GetDataAs<uint8_t>(), codecpar->extradata_size);
 			}
 
 			switch (media_track->GetMediaType())

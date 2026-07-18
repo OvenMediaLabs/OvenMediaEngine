@@ -222,13 +222,8 @@ namespace ffmpeg
 
 	bool Writer::AddTrack(const std::shared_ptr<MediaTrack> &media_track)
 	{
-		// TODO: This code will move to mediarouter.
-		if (media_track->GetCodecId() == cmn::MediaCodecId::Opus &&
-			media_track->GetDecoderConfigurationRecord() == nullptr)
-		{
-			auto opus_config{std::make_shared<OpusSpecificConfig>(media_track->GetChannel().GetCounts(), media_track->GetSampleRate())};
-			media_track->SetDecoderConfigurationRecord(opus_config);
-		}
+		// A missing Opus config is synthesized inside ToAVStream(); the track itself
+		// is a frozen snapshot here and must not be modified.
 
 		// Video/Audio is mapped 1:1
 		if (media_track->GetMediaType() == cmn::MediaType::Video ||
