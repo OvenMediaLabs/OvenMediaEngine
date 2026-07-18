@@ -74,6 +74,8 @@ namespace info
 
 		_public_label_map = stream._public_label_map;
 
+		_track_stats = stream._track_stats;
+
 		_from_origin_map_store = stream._from_origin_map_store;
 
 		_playlists = stream._playlists;
@@ -303,6 +305,11 @@ namespace info
 
 		_tracks.emplace(track->GetId(), track);
 
+		if (_track_stats.find(track->GetId()) == _track_stats.end())
+		{
+			_track_stats.emplace(track->GetId(), std::make_shared<TrackStats>());
+		}
+
 		if (track->GetMediaType() == cmn::MediaType::Video)
 		{
 			_video_tracks.push_back(track);
@@ -364,6 +371,123 @@ namespace info
 	std::shared_ptr<MediaTrack> Stream::GetMutableTrack(int32_t id) const
 	{
 		return std::const_pointer_cast<MediaTrack>(GetTrack(id));
+	}
+
+	std::shared_ptr<TrackStats> Stream::GetTrackStats(int32_t track_id) const
+	{
+		auto it = _track_stats.find(track_id);
+		if (it == _track_stats.end())
+		{
+			return nullptr;
+		}
+
+		return it->second;
+	}
+
+	int32_t Stream::GetTrackBitrate(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0;
+		}
+
+		auto bitrate_conf = track->GetBitrateByConfig();
+		if (bitrate_conf > 0)
+		{
+			return bitrate_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetBitrateByMeasured() : 0;
+	}
+
+	double Stream::GetTrackFrameRate(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0.0;
+		}
+
+		auto framerate_conf = track->GetFrameRateByConfig();
+		if (framerate_conf > 0.0)
+		{
+			return framerate_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0;
+	}
+
+	double Stream::GetTrackKeyFrameInterval(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0.0;
+		}
+
+		auto key_frame_interval_conf = track->GetKeyFrameIntervalByConfig();
+		if (key_frame_interval_conf > 0.0)
+		{
+			return key_frame_interval_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetKeyFrameIntervalByMeasured() : 0.0;
+	}
+
+	double Stream::GetTrackKeyframeIntervalDurationMs(int32_t track_id) const
+	{
+		double keyframe_interval = std::ceil(GetTrackKeyFrameInterval(track_id));
+		double framerate = std::ceil(GetTrackFrameRate(track_id));
+
+		if (framerate <= 0.0)
+		{
+			return 0.0;
+		}
+
+		return (keyframe_interval / framerate) * 1000.0;
+	}
+
+	bool Stream::HasTrackQualityMeasured(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		auto stats = GetTrackStats(track_id);
+		if (track == nullptr || stats == nullptr)
+		{
+			return false;
+		}
+
+		if (stats->IsQualityMeasured())
+		{
+			return true;
+		}
+
+		switch (track->GetMediaType())
+		{
+			case cmn::MediaType::Video:
+				// Usable once the value was configured or could be measured
+				if ((stats->GetBitrateByMeasured() > 0 || track->GetBitrateByConfig() > 0) && (GetTrackFrameRate(track_id) > 0.0))
+				{
+					stats->SetQualityMeasured();
+				}
+				break;
+
+			case cmn::MediaType::Audio:
+				if (stats->GetBitrateByMeasured() > 0 || track->GetBitrateByConfig() > 0)
+				{
+					stats->SetQualityMeasured();
+				}
+				break;
+
+			default:
+				stats->SetQualityMeasured();
+				break;
+		}
+
+		return stats->IsQualityMeasured();
 	}
 
 	bool Stream::UpdateTrack(const std::shared_ptr<const MediaTrack> &track)

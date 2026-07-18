@@ -4,6 +4,7 @@
 
 #include "base/common_types.h"
 #include "base/info/media_track_group.h"
+#include "base/info/track_stats.h"
 #include "base/info/playlist.h"
 #include "base/info/track_set.h"
 #include "base/ovlibrary/tsa/mutex.h"
@@ -94,6 +95,20 @@ namespace info
 		// track is shared (published/handed to other modules). Consumers must
 		// never call this; they receive new generations attached to packets.
 		std::shared_ptr<MediaTrack> GetMutableTrack(int32_t id) const;
+
+		// Runtime measurements of a track, keyed by track id: they survive
+		// generation replacement and every copy of this stream shares the same
+		// objects. Never null for a track that exists.
+		std::shared_ptr<TrackStats> GetTrackStats(int32_t track_id) const;
+
+		// Configured value if set, otherwise the measured one
+		int32_t GetTrackBitrate(int32_t track_id) const;
+		double GetTrackFrameRate(int32_t track_id) const;
+		double GetTrackKeyFrameInterval(int32_t track_id) const;
+		double GetTrackKeyframeIntervalDurationMs(int32_t track_id) const;
+
+		// True once the quality of the track could be measured (or was configured)
+		bool HasTrackQualityMeasured(int32_t track_id) const;
 		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
 		const std::map<int32_t, std::shared_ptr<const MediaTrack>> &GetTracks() const;
 
@@ -195,6 +210,10 @@ namespace info
 
 		// Subtitle label : track id
 		std::map<ov::String, int32_t> _public_label_map; // Subtitle label map
+
+		// Runtime measurements per track id; entries are created with the track
+		// and shared by every copy of this stream
+		std::map<int32_t, std::shared_ptr<TrackStats>> _track_stats;
 
 		// File name : Playlist
 		std::map<ov::String, std::shared_ptr<const Playlist>> _playlists;

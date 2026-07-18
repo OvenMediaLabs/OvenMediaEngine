@@ -32,7 +32,7 @@ namespace serdes
 		}
 	}
 
-	static void SetVideoTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetVideoTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(track == nullptr, Json::objectValue);
 
@@ -52,25 +52,31 @@ namespace serdes
 		SetInt(object, "maxWidth", max_resolution.width);
 		SetInt(object, "height", resolution.height);
 		SetInt(object, "maxHeight", max_resolution.height);
-		SetInt(object, "bitrate", track->GetBitrate());
+		auto track_id = track->GetId();
+		auto stats = (stream != nullptr) ? stream->GetTrackStats(track_id) : nullptr;
+
+		SetInt(object, "bitrate", (stream != nullptr) ? stream->GetTrackBitrate(track_id) : track->GetBitrateByConfig());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
-		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());
-		SetInt(object, "bitrateLatest", track->GetBitrateLastSecond());
-		SetFloat(object, "framerate", track->GetFrameRate());
+		SetFloat(object, "framerate", (stream != nullptr) ? stream->GetTrackFrameRate(track_id) : track->GetFrameRateByConfig());
 		SetFloat(object, "framerateConf", track->GetFrameRateByConfig());
-		SetFloat(object, "framerateAvg", track->GetFrameRateByMeasured());
-		SetFloat(object, "framerateLatest", track->GetFrameRateLastSecond());
 		SetFloat(object, "maxFramerate", track->GetMaxFrameRate());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
-		SetBool(object, "hasBframes", track->HasBframes());
-		SetFloat(object, "keyFrameInterval", track->GetKeyFrameInterval());
+		SetFloat(object, "keyFrameInterval", (stream != nullptr) ? stream->GetTrackKeyFrameInterval(track_id) : track->GetKeyFrameIntervalByConfig());
 		SetFloat(object, "keyFrameIntervalConf", track->GetKeyFrameIntervalByConfig());
-		SetFloat(object, "keyFrameIntervalAvg", track->GetKeyFrameIntervalByMeasured());
-		SetFloat(object, "keyFrameIntervalLatest", track->GetKeyFrameIntervalLatest());
-		SetInt(object, "deltaFramesSinceLastKeyFrame", track->GetDeltaFramesSinceLastKeyFrame());
 
-		SetInt(object, "configChangeCount", track->GetStats()->GetConfigChangeCount());
-		SetInt64(object, "lastConfigChanged", track->GetStats()->GetLastConfigChangeTimeMs());
+		if (stats != nullptr)
+		{
+			SetInt(object, "bitrateAvg", stats->GetBitrateByMeasured());
+			SetInt(object, "bitrateLatest", stats->GetBitrateLastSecond());
+			SetFloat(object, "framerateAvg", stats->GetFrameRateByMeasured());
+			SetFloat(object, "framerateLatest", stats->GetFrameRateLastSecond());
+			SetBool(object, "hasBframes", stats->HasBframes());
+			SetFloat(object, "keyFrameIntervalAvg", stats->GetKeyFrameIntervalByMeasured());
+			SetFloat(object, "keyFrameIntervalLatest", stats->GetKeyFrameIntervalLatest());
+			SetInt(object, "deltaFramesSinceLastKeyFrame", stats->GetDeltaFramesSinceLastKeyFrame());
+			SetInt(object, "configChangeCount", stats->GetConfigChangeCount());
+			SetInt64(object, "lastConfigChanged", stats->GetLastConfigChangeTimeMs());
+		}
 	}
 
 	static void SetAudioChannel(Json::Value &parent_object, const char *key, const cmn::AudioChannel &channel, Optional optional)
@@ -81,7 +87,7 @@ namespace serdes
 		SetInt(object, "count", channel.GetCounts());
 	}
 
-	static void SetAudioTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetAudioTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(track == nullptr, Json::objectValue);
 
@@ -95,20 +101,26 @@ namespace serdes
 		SetCodecStatus(object, "codecStatus", track, Optional::True);
 		SetString(object, "language", track->GetLanguage(), Optional::True);
 		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
+		auto track_id = track->GetId();
+		auto stats = (stream != nullptr) ? stream->GetTrackStats(track_id) : nullptr;
+
 		SetInt(object, "samplerate", track->GetSampleRate());
 		// SetAudioChannel(object, "channel", track->GetChannel(), Optional::False);
 		SetInt(object, "channel", track->GetChannel().GetCounts());
-		SetInt(object, "bitrate", track->GetBitrate());
+		SetInt(object, "bitrate", (stream != nullptr) ? stream->GetTrackBitrate(track_id) : track->GetBitrateByConfig());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
-		SetInt(object, "bitrateAvg", track->GetBitrateByMeasured());
-		SetInt(object, "bitrateLatest", track->GetBitrateLastSecond());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
 
-		SetInt(object, "configChangeCount", track->GetStats()->GetConfigChangeCount());
-		SetInt64(object, "lastConfigChanged", track->GetStats()->GetLastConfigChangeTimeMs());
+		if (stats != nullptr)
+		{
+			SetInt(object, "bitrateAvg", stats->GetBitrateByMeasured());
+			SetInt(object, "bitrateLatest", stats->GetBitrateLastSecond());
+			SetInt(object, "configChangeCount", stats->GetConfigChangeCount());
+			SetInt64(object, "lastConfigChanged", stats->GetLastConfigChangeTimeMs());
+		}
 	}
 
-	static void SetTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(false, Json::objectValue);
 
@@ -119,10 +131,10 @@ namespace serdes
 		switch (track->GetMediaType())
 		{
 			case cmn::MediaType::Video:
-				SetVideoTrack(object, "video", track, Optional::False);
+				SetVideoTrack(object, "video", stream, track, Optional::False);
 				break;
 			case cmn::MediaType::Audio:
-				SetAudioTrack(object, "audio", track, Optional::False);
+				SetAudioTrack(object, "audio", stream, track, Optional::False);
 				break;
 
 			case cmn::MediaType::Data:
@@ -167,17 +179,17 @@ namespace serdes
 		}
 	}
 
-	static void SetTracks(Json::Value &parent_object, const char *key, const std::map<int32_t, std::shared_ptr<const MediaTrack>> &tracks, Optional optional)
+	static void SetTracks(Json::Value &parent_object, const char *key, const info::Stream &stream, Optional optional)
 	{
 		CONVERTER_RETURN_IF(false, Json::arrayValue);
 
-		for (auto &item : tracks)
+		for (auto &item : stream.GetTracks())
 		{
 			auto &track = item.second;
 
 			Json::Value track_value;
 
-			SetTrack(track_value, nullptr, track, Optional::False);
+			SetTrack(track_value, nullptr, &stream, track, Optional::False);
 
 			object.append(track_value);
 		}
@@ -237,7 +249,7 @@ namespace serdes
 		SetString(object, "sourceUrl", stream->GetMediaSource(), Optional::True);
 		// TODO(dimiden): Complete this function
 		SetConnection(object, "connection", stream.get(), Optional::True);
-		SetTracks(object, "tracks", stream->GetTracks(), Optional::False);
+		SetTracks(object, "tracks", *stream, Optional::False);
 		SetTimestamp(object, "createdTime", common_metrics->GetCreatedTime());
 	}
 
@@ -251,7 +263,7 @@ namespace serdes
 			Json::Value output_value;
 
 			SetString(output_value, "name", output_stream->GetName(), Optional::False);
-			SetTracks(output_value, "tracks", output_stream->GetTracks(), Optional::False);
+			SetTracks(output_value, "tracks", *output_stream, Optional::False);
 			SetPlaylists(output_value, "playlists", output_stream->GetPlaylists(), Optional::True);
 
 			object.append(output_value);
@@ -261,14 +273,14 @@ namespace serdes
 	Json::Value JsonFromTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		Json::Value response(Json::ValueType::objectValue);
-		SetTrack(response, nullptr, track, Optional::False);
+		SetTrack(response, nullptr, nullptr, track, Optional::False);
 		return response;
 	}
 
-	Json::Value JsonFromTracks(const std::map<int32_t, std::shared_ptr<const MediaTrack>> &tracks)
+	Json::Value JsonFromTracks(const info::Stream &stream)
 	{
 		Json::Value response(Json::ValueType::arrayValue);
-		SetTracks(response, nullptr, tracks, Optional::False);
+		SetTracks(response, nullptr, stream, Optional::False);
 		return response;
 	}
 

@@ -431,8 +431,6 @@ namespace pvd
 			new_track->SetMediaType(static_cast<cmn::MediaType>(json_track["mediaType"].asUInt()));
 			new_track->SetTimeBase(json_track["timebaseNum"].asUInt(), json_track["timebaseDen"].asUInt());
 			new_track->SetBitrateByConfig(json_track["bitrate"].asUInt());
-			new_track->SetStartFrameTime(json_track["startFrameTime"].asUInt64());
-			new_track->SetLastFrameTime(json_track["lastFrameTime"].asUInt64());
 
 			// video or audio
 			if (new_track->GetMediaType() == cmn::MediaType::Video)

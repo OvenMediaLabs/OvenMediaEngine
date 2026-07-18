@@ -27,11 +27,11 @@ AVCodecVideoEncoder::~AVCodecVideoEncoder()
 // ---------------------------------------------------------------------------
 bool AVCodecVideoEncoder::SetParamsX264()
 {
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetRcMaxRate(_codec.GetBitrate());
 	_codec.SetRcBufferSize(static_cast<int>(_codec.GetBitrate() / 2));
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRateByConfig()));
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTicksPerFrame(2);
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
@@ -44,11 +44,11 @@ bool AVCodecVideoEncoder::SetParamsX264()
 	auto key_frame_interval_type = GetRefTrack()->GetKeyFrameIntervalTypeByConfig();
 	if (key_frame_interval_type == cmn::KeyFrameIntervalType::TIME)
 	{
-		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRate() * (double)GetRefTrack()->GetKeyFrameInterval() / 1000 * 2));
+		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRateByConfig() * (double)GetRefTrack()->GetKeyFrameIntervalByConfig() / 1000 * 2));
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameIntervalByConfig() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameIntervalByConfig());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
@@ -136,8 +136,8 @@ bool AVCodecVideoEncoder::SetParamsX264()
 // ---------------------------------------------------------------------------
 bool AVCodecVideoEncoder::SetParamsOpenH264()
 {
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRateByConfig()));
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetRcMaxRate(_codec.GetBitrate());
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
@@ -156,7 +156,7 @@ bool AVCodecVideoEncoder::SetParamsOpenH264()
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameIntervalByConfig() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameIntervalByConfig());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
@@ -248,12 +248,12 @@ bool AVCodecVideoEncoder::SetParamsOpenH264()
 // ---------------------------------------------------------------------------
 bool AVCodecVideoEncoder::SetParamsVp8()
 {
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 	_codec.SetRcMaxRate(_codec.GetBitrate());
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRateByConfig()));
 	_codec.SetMaxBFrames(0);
 	_codec.SetPixelFormat(GetSupportVideoFormat());
 	auto resolution = GetRefTrack()->GetResolution();
@@ -263,11 +263,11 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 	auto key_frame_interval_type = GetRefTrack()->GetKeyFrameIntervalTypeByConfig();
 	if (key_frame_interval_type == cmn::KeyFrameIntervalType::TIME)
 	{
-		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRate() * (double)GetRefTrack()->GetKeyFrameInterval() / 1000 * 2));
+		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRateByConfig() * (double)GetRefTrack()->GetKeyFrameIntervalByConfig() / 1000 * 2));
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameIntervalByConfig() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameIntervalByConfig());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());
@@ -305,7 +305,7 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 // ---------------------------------------------------------------------------
 bool AVCodecVideoEncoder::SetParamsLibAOM()
 {
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 #if 0
 	// Warning: The code below causes the error "malloc(): unaligned tcache chunk detected".
 	_codec.SetRcMaxRate(_codec.GetBitrate());
@@ -314,7 +314,7 @@ bool AVCodecVideoEncoder::SetParamsLibAOM()
 #endif
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRateByConfig()));
 	_codec.SetMaxBFrames(0);
 	_codec.SetPixelFormat(GetSupportVideoFormat());
 	auto resolution = GetRefTrack()->GetResolution();
@@ -324,11 +324,11 @@ bool AVCodecVideoEncoder::SetParamsLibAOM()
 	auto key_frame_interval_type = GetRefTrack()->GetKeyFrameIntervalTypeByConfig();
 	if (key_frame_interval_type == cmn::KeyFrameIntervalType::TIME)
 	{
-		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRate() * (double)GetRefTrack()->GetKeyFrameInterval() / 1000 * 2));
+		_codec.SetGopSize((int32_t)(GetRefTrack()->GetFrameRateByConfig() * (double)GetRefTrack()->GetKeyFrameIntervalByConfig() / 1000 * 2));
 	}
 	else if (key_frame_interval_type == cmn::KeyFrameIntervalType::FRAME)
 	{
-		_codec.SetGopSize((GetRefTrack()->GetKeyFrameInterval() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameInterval());
+		_codec.SetGopSize((GetRefTrack()->GetKeyFrameIntervalByConfig() == 0) ? (int32_t)_codec.GetFrameRate().GetExpr() : GetRefTrack()->GetKeyFrameIntervalByConfig());
 	}
 
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount() < 0 ? std::min(std::max(4, static_cast<int>(std::max(1u, std::thread::hardware_concurrency())) / 3), 8) : GetRefTrack()->GetThreadCount());

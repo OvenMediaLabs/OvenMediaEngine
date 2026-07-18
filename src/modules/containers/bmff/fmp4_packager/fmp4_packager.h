@@ -24,7 +24,11 @@ namespace bmff
 		{
 			double chunk_duration_ms = 500.0;
 			double segment_duration_ms = 6000.0;
-			
+
+			// Resolved by the owner (configured value, or measured when absent)
+			double keyframe_interval = 0.0;
+			double framerate = 0.0;
+
 			CencProperty cenc_property;
 		};
 

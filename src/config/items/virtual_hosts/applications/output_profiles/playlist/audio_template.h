@@ -84,12 +84,12 @@ namespace cfg
 							return false;
 						}
 
-						if (_max_bitrate > 0 && track->GetBitrate() > _max_bitrate)
+						if (_max_bitrate > 0 && track->GetBitrateByConfig() > _max_bitrate)
 						{
 							return false;
 						}
 
-						if (_min_bitrate > 0 && track->GetBitrate() < _min_bitrate)
+						if (_min_bitrate > 0 && track->GetBitrateByConfig() < _min_bitrate)
 						{
 							return false;
 						}

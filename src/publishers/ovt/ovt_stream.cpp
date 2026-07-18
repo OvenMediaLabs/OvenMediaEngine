@@ -164,11 +164,12 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 		json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
 		json_track["timebaseNum"] = track->GetTimeBase().GetNum();
 		json_track["timebaseDen"] = track->GetTimeBase().GetDen();
-		json_track["bitrate"] = track->GetBitrate();
-		json_track["startFrameTime"] = track->GetStartFrameTime();
-		json_track["lastFrameTime"] = track->GetLastFrameTime();
+		json_track["bitrate"] = GetTrackBitrate(track->GetId());
+		// Kept for wire compatibility; the receiver measures its own frame times
+		json_track["startFrameTime"] = 0;
+		json_track["lastFrameTime"] = 0;
 
-		json_video_track["framerate"] = track->GetFrameRate();
+		json_video_track["framerate"] = GetTrackFrameRate(track->GetId());
 		json_video_track["maxFramerate"] = track->GetMaxFrameRate();
 		auto resolution = track->GetResolution();
 		json_video_track["width"] = resolution.width;

@@ -1235,8 +1235,13 @@ bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> 
 	logti("MP3Parser : %s", parser.GetInfoString().CStr());
 
 	media_track->SetSampleRate(parser.GetSampleRate());
-	media_track->SetBitrateByMeasured(parser.GetBitrate());
 	media_track->SetChannelLayout(parser.GetChannelCount() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+
+	auto stats = stream_info->GetTrackStats(media_track->GetId());
+	if (stats != nullptr)
+	{
+		stats->SetBitrateByMeasured(parser.GetBitrate());
+	}
 
 	return true;
 }

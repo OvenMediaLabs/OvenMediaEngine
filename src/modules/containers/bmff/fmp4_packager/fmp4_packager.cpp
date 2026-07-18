@@ -32,7 +32,7 @@ namespace bmff
 
 		if (media_track->GetMediaType() == cmn::MediaType::Video)
 		{
-			_segmentation_info.keyframe_interval = media_track->GetKeyFrameInterval();
+			_segmentation_info.keyframe_interval = _config.keyframe_interval;
 		}
 		else 
 		{
@@ -40,7 +40,7 @@ namespace bmff
 		}
 		
 		_segmentation_info.media_type = media_track->GetMediaType();
-		_segmentation_info.framerate = media_track->GetFrameRate();
+		_segmentation_info.framerate = _config.framerate;
 		_segmentation_info.target_segment_duration_ms = _config.segment_duration_ms;
 	}
 

@@ -87,8 +87,6 @@ namespace ffmpeg
 			media_track->SetCodecId(ffmpeg::compat::ToCodecId(stream->codecpar->codec_id));
 			media_track->SetTimeBase(stream->time_base.num, stream->time_base.den);
 			media_track->SetBitrateByConfig(stream->codecpar->bit_rate);
-			media_track->SetStartFrameTime(0);
-			media_track->SetLastFrameTime(0);
 
 			if (media_track->GetMediaType() == cmn::MediaType::Unknown || media_track->GetCodecId() == cmn::MediaCodecId::None)
 			{
@@ -253,7 +251,7 @@ namespace ffmpeg
 			{
 				case cmn::MediaType::Video: {
 					// The video frame rate changes, so this code finds the average duration. It does not show the exact frame rate.
-					double frame_duration_per_timebase = (double)(track->GetTimeBase().GetDen()) / track->GetFrameRate();
+					double frame_duration_per_timebase = (double)(track->GetTimeBase().GetDen()) / track->GetFrameRateByConfig();
 					return static_cast<int64_t>(frame_duration_per_timebase);
 				}
 				break;
@@ -439,7 +437,7 @@ namespace ffmpeg
 			return (name != nullptr) ? ov::String(name) : ov::String("");
 		}
 
-		static bool ToAVStream(std::shared_ptr<const MediaTrack> media_track, AVStream* av_stream)
+		static bool ToAVStream(std::shared_ptr<const MediaTrack> media_track, AVStream* av_stream, const std::shared_ptr<TrackStats> &stats = nullptr)
 		{
 			if (media_track == nullptr || av_stream == nullptr)
 			{
@@ -452,7 +450,12 @@ namespace ffmpeg
 			codecpar->codec_type		= ToAVMediaType(media_track->GetMediaType());
 			codecpar->codec_id			= ToAVCodecId(media_track->GetCodecId());
 			codecpar->codec_tag			= 0;
-			codecpar->bit_rate			= media_track->GetBitrate();
+			auto bitrate = media_track->GetBitrateByConfig();
+			if (bitrate <= 0 && stats != nullptr)
+			{
+				bitrate = stats->GetBitrateByMeasured();
+			}
+			codecpar->bit_rate			= bitrate;
 
 			// Set Decoder Configuration Record to extradata
 			auto dcr = media_track->GetDecoderConfigurationRecord();
@@ -476,8 +479,13 @@ namespace ffmpeg
 			switch (media_track->GetMediaType())
 			{
 				case cmn::MediaType::Video: {
-					av_stream->r_frame_rate		   = AVRational{(int)round(media_track->GetFrameRate() * 1000), 1000};
-					av_stream->avg_frame_rate	   = AVRational{(int)round(media_track->GetFrameRate() * 1000), 1000};
+					auto framerate = media_track->GetFrameRateByConfig();
+					if (framerate <= 0.0 && stats != nullptr)
+					{
+						framerate = stats->GetFrameRateByMeasured();
+					}
+					av_stream->r_frame_rate		   = AVRational{(int)round(framerate * 1000), 1000};
+					av_stream->avg_frame_rate	   = AVRational{(int)round(framerate * 1000), 1000};
 					av_stream->sample_aspect_ratio = AVRational{1, 1};
 					auto resolution				   = media_track->GetResolution();
 					codecpar->width				   = resolution.width;

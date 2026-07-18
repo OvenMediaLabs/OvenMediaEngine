@@ -134,7 +134,7 @@ bool MediaRouteStream::IsStreamReady()
 		}
 
 		// If the track is an outbound track, it is necessary to check the quality.
-		if (track->HasQualityMeasured() == false)
+		if (_stream->HasTrackQualityMeasured(track->GetId()) == false)
 		{
 			return false;
 		}
@@ -175,7 +175,7 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 		auto track = track_it.second;
 
 		// Mirror IsStreamReady(): a track blocks prepare until it is both valid and quality-measured
-		if (track->IsValid() == true && track->HasQualityMeasured() == true)
+		if (track->IsValid() == true && _stream->HasTrackQualityMeasured(track->GetId()) == true)
 		{
 			continue;
 		}
@@ -375,12 +375,10 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	}
 
 	// The author's private working copy starts from the track's setup values;
-	// the shared TrackStats object is carried over
 	auto &author_state = _track_authors[track_id];
 	if (author_state.working == nullptr)
 	{
 		author_state.working = std::make_shared<MediaTrack>(*media_track);
-		author_state.working->AdoptStats(media_track->GetStats());
 	}
 
 	// Adopt an upstream-authored track generation (e.g. a scheduled item's
@@ -398,7 +396,17 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	StampTrackGeneration(author_state, pop_media_packet);
 
 	// Update statistics of media track
-	media_track->OnFrameAdded(pop_media_packet);
+	auto track_stats = _stream->GetTrackStats(track_id);
+	if (track_stats != nullptr)
+	{
+		track_stats->OnFrameAdded(pop_media_packet, media_track->GetTimeBase(), media_track->GetMediaType());
+
+		if (media_track->GetMediaType() == MediaType::Video)
+		{
+			// Keep the high-water mark in sync with the measurement
+			media_track->SetMaxFrameRate(track_stats->GetFrameRateByMeasured());
+		}
+	}
 
 	// Detect the abnormal packets
 	if(MediaRouterAlert::Update(_type, IsStreamPrepared(), _packets_queue, GetStream(), media_track, pop_media_packet) == false)
@@ -549,7 +557,6 @@ void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::
 			working->SetGeneration((state.published != nullptr) ? state.published->GetGeneration() + 1 : 1);
 
 			auto generation = std::make_shared<MediaTrack>(*working);
-			generation->AdoptStats(working->GetStats());
 
 			state.published = generation;
 
@@ -558,10 +565,14 @@ void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::
 
 			if (is_change)
 			{
-				auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-								  std::chrono::system_clock::now().time_since_epoch())
-								  .count();
-				working->GetStats()->OnConfigChanged(now_ms);
+				auto stats = _stream->GetTrackStats(media_packet->GetTrackId());
+				if (stats != nullptr)
+				{
+					auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+									  std::chrono::system_clock::now().time_since_epoch())
+									  .count();
+					stats->OnConfigChanged(now_ms);
+				}
 			}
 
 			logti("[%s/%s(%u)] Track generation has been published. Track(%d) generation(%u) %s",

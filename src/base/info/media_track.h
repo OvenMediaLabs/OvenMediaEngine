@@ -8,7 +8,6 @@
 //==============================================================================
 #pragma once
 
-#include "track_stats.h"
 #include "video_track.h"
 #include "audio_track.h"
 #include "subtitle_track.h"
@@ -108,31 +107,15 @@ public:
 	void SetTimeBase(const cmn::Timebase &time_base);
 	bool IsValidTimeBase() const;
 
-	// Bitrate 
-	// Return the proper bitrate for this track. 
-	// If there is a bitrate set by the user, it is returned. If not, the automatically measured bitrate is returned	
-	int32_t GetBitrate() const;
 
-	// Bitrate (Set by measured)
-	void SetBitrateByMeasured(int32_t bitrate) const;
-	int32_t GetBitrateByMeasured() const;
 
-	// Bitrate last second (Set by measured)
-	void SetBitrateLastSecond(int32_t bitrate) const;
-	int32_t GetBitrateLastSecond() const;
 
 	// Bitrate (Set by user)
 	void SetBitrateByConfig(int32_t bitrate);
 	int32_t GetBitrateByConfig() const;
 	
-	// Frame Time 
-	void SetStartFrameTime(int64_t time) const;
-	int64_t GetStartFrameTime() const;
-	void SetLastFrameTime(int64_t time) const;
-	int64_t GetLastFrameTime() const;
 
 	bool IsValid() const;
-	bool HasQualityMeasured() const;
 
 	std::shared_ptr<DecoderConfigurationRecord> GetDecoderConfigurationRecord() const;
 	template <typename T, typename = typename std::enable_if<std::is_base_of<DecoderConfigurationRecord, T>::value>::type>
@@ -144,44 +127,12 @@ public:
 	
 	ov::String GetCodecsParameter() const;
 
-	// B-frames detected in the bitstream (runtime state, lives in TrackStats)
-	void SetHasBframes(bool has_bframe) const;
-	bool HasBframes() const;
 
-	// For statistics
-	void OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet) const;
 
-	int64_t GetTotalFrameCount() const;
-	int64_t GetTotalFrameBytes() const;
 
-	// Runtime measurements live in TrackStats, the explicitly shared mutable
-	// object of a track. The accessors below delegate to it.
-	std::shared_ptr<TrackStats> GetStats() const;
 
-	// Inherit the statistics of the previous generation of this logical track.
-	// Used when a new generation replaces the track object (Stream::UpdateTrack).
-	void AdoptStats(const std::shared_ptr<TrackStats> &stats);
 
-	// Return the proper framerate for this track.
-	// If there is a framerate set by the user, it is returned. If not, the automatically measured framerate is returned
-	double GetFrameRate() const;
-	void SetFrameRateByMeasured(double framerate) const;
-	double GetFrameRateByMeasured() const;
-	void SetFrameRateLastSecond(double framerate) const;
-	double GetFrameRateLastSecond() const;
-	void AddToMeasuredFramerateWindow(double framerate) const;
-	std::deque<double> GetMeasuredFramerateWindow() const;
 
-	// Return the proper key_frame_interval for this track.
-	// If there is a key_frame_interval set by the user, it is returned. If not, the automatically measured key_frame_interval is returned
-	double GetKeyFrameInterval() const;
-	void SetKeyFrameIntervalByMeasured(double key_frame_interval) const;
-	double GetKeyFrameIntervalByMeasured() const;
-	void SetKeyFrameIntervalLastet(double key_frame_interval) const;
-	double GetKeyFrameIntervalLatest() const;
-	void SetDeltaFrameCountSinceLastKeyFrame(int32_t delta_frame_count) const;
-	int32_t GetDeltaFramesSinceLastKeyFrame() const;
-	double GetKeyframeIntervalDurationMs() const;
 
 	std::shared_ptr<MediaTrack> Clone() const;
 
@@ -230,9 +181,6 @@ protected:
 
 	// Bitrate (Set by user)
 	std::atomic<int32_t> _bitrate_conf = 0;
-
-	// Runtime measurement counters, deliberately shared between all holders of this track
-	std::shared_ptr<TrackStats> _stats = std::make_shared<TrackStats>();
 
 	// Bitstream format 
 	std::atomic<cmn::BitstreamFormat> _origin_bitstream_format = cmn::BitstreamFormat::Unknown;

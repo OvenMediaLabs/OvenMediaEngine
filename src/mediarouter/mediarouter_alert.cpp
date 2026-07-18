@@ -97,13 +97,19 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 		case cmn::BitstreamFormat::HVCC:
 			if (_alert_count_bframe < 1)	// Reduced the number of warning log outputs from 10 to 1
 			{
-				if (media_track->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
+				auto stats = stream_info->GetTrackStats(media_track->GetId());
+				if (stats == nullptr)
 				{
-					media_track->SetHasBframes(true);
+					break;
+				}
+
+				if (stats->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
+				{
+					stats->SetHasBframes(true);
 				}
 
 				// Display a warning message that b-frame exists
-				if (media_track->HasBframes() == true)
+				if (stats->HasBframes() == true)
 				{
 					logtw("[%s/%s(%u)] Detected a B-frame track. track:%u",
 						  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),

@@ -64,6 +64,7 @@ void MediaRouterStats::Update(
 
 		for (const auto &[track_id, track] : stream_info->GetTracks())
 		{
+			auto stats = stream_info->GetTrackStats(track_id);
 			int64_t scaled_last_pts = (int64_t)((double)(_stat_recv_pkt_lpts[track_id] * 1000) * track->GetTimeBase().GetExpr());
 			int64_t scaled_acc_duration = (int64_t)((double)(_stat_recv_pkt_adur[track_id] * 1000) * track->GetTimeBase().GetExpr());
 
@@ -81,9 +82,9 @@ void MediaRouterStats::Update(
 										scaled_acc_duration,
 										(scaled_acc_duration > 0) ? scaled_last_pts - scaled_acc_duration : 0,
 										timebase.CStr(),
-										track->GetTotalFrameCount(),
-										ov::Converter::ToSiString(track->GetTotalFrameBytes(), 1).CStr(),
-										ov::Converter::BitToString(track->GetBitrateByMeasured()).CStr(), ov::Converter::BitToString(track->GetBitrateByConfig()).CStr());
+										(stats != nullptr) ? stats->GetTotalFrameCount() : 0,
+										ov::Converter::ToSiString((stats != nullptr) ? stats->GetTotalFrameBytes() : 0, 1).CStr(),
+										ov::Converter::BitToString((stats != nullptr) ? stats->GetBitrateByMeasured() : 0).CStr(), ov::Converter::BitToString(track->GetBitrateByConfig()).CStr());
 
 			if (track->GetMediaType() == MediaType::Data)
 			{
@@ -93,11 +94,11 @@ void MediaRouterStats::Update(
 			if (track->GetMediaType() == MediaType::Video)
 			{
 				stat_track_str.AppendFormat(", fps: %.2f/%.2f",
-											track->GetFrameRateByMeasured(), 
+											(stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0,
 											track->GetFrameRateByConfig());
 											
 				stat_track_str.AppendFormat(", kint: %.2f/%.2f/%s",
-											track->GetKeyFrameIntervalByMeasured(),
+											(stats != nullptr) ? stats->GetKeyFrameIntervalByMeasured() : 0.0,
 											track->GetKeyFrameIntervalByConfig(),
 											cmn::GetKeyFrameIntervalTypeToString(track->GetKeyFrameIntervalTypeByConfig()));
 			}

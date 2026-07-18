@@ -149,11 +149,11 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 			return false;
 		}
 
-		new_stream_info->_bandwidth += video_track->GetBitrate();
+		new_stream_info->_bandwidth += (_stream_info != nullptr) ? _stream_info->GetTrackBitrate(video_track->GetId()) : video_track->GetBitrateByConfig();
 		auto resolution = video_track->GetResolution();
 		new_stream_info->_width = resolution.width;
 		new_stream_info->_height = resolution.height;
-		new_stream_info->_framerate = video_track->GetFrameRate();
+		new_stream_info->_framerate = (_stream_info != nullptr) ? _stream_info->GetTrackFrameRate(video_track->GetId()) : video_track->GetFrameRateByConfig();
 		new_stream_info->_codecs = video_track->GetCodecsParameter();
 
 		// 25-01-27 : Video group is not used now
@@ -183,7 +183,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 				return false;
 			}
 
-			new_stream_info->_bandwidth += audio_track->GetBitrate();
+			new_stream_info->_bandwidth += (_stream_info != nullptr) ? _stream_info->GetTrackBitrate(audio_track->GetId()) : audio_track->GetBitrateByConfig();
 			new_stream_info->_codecs += ov::String::FormatString(",%s", audio_track->GetCodecsParameter().CStr());
 		}
 
@@ -219,7 +219,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 			return false;
 		}
 
-		new_stream_info->_bandwidth += audio_track->GetBitrate();
+		new_stream_info->_bandwidth += (_stream_info != nullptr) ? _stream_info->GetTrackBitrate(audio_track->GetId()) : audio_track->GetBitrateByConfig();
 		new_stream_info->_codecs = audio_track->GetCodecsParameter();
 
 		if (audio_group->_media_infos.size() > 1)

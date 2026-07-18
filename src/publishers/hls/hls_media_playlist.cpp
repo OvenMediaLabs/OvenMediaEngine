@@ -152,7 +152,8 @@ uint32_t HlsMediaPlaylist::GetBitrates() const
 	for (const auto &track_it : _media_tracks)
 	{
 		const auto &track = track_it.second;
-		bitrates += track->GetBitrateLastSecond();
+		auto stats = (_stream_info != nullptr) ? _stream_info->GetTrackStats(track->GetId()) : nullptr;
+		bitrates += (stats != nullptr) ? stats->GetBitrateLastSecond() : track->GetBitrateByConfig();
 	}
 
 	return bitrates;
@@ -166,7 +167,7 @@ uint32_t HlsMediaPlaylist::GetAverageBitrate() const
 		const auto &track = track_it.second;
 
 		// conf first, measure next
-		bitrates += track->GetBitrate();
+		bitrates += (_stream_info != nullptr) ? _stream_info->GetTrackBitrate(track->GetId()) : track->GetBitrateByConfig();
 	}
 
 	return bitrates;
@@ -205,7 +206,7 @@ double HlsMediaPlaylist::GetFramerate() const
 		return 0.0;
 	}
 
-	return _first_video_track->GetFrameRate();
+	return (_stream_info != nullptr) ? _stream_info->GetTrackFrameRate(_first_video_track->GetId()) : _first_video_track->GetFrameRateByConfig();
 }
 
 ov::String HlsMediaPlaylist::GetCodecsString() const

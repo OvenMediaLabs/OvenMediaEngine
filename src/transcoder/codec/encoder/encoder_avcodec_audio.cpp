@@ -12,7 +12,7 @@
 
 bool AVCodecAudioEncoder::SetParamsAac()
 {
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 	_codec.SetSampleFormat(GetSupportAudioFormat());
 	_codec.SetSampleRate(GetRefTrack()->GetSampleRate());
 	_codec.SetDefaultChannelLayout(GetRefTrack()->GetChannel().GetCounts());
@@ -26,7 +26,7 @@ bool AVCodecAudioEncoder::SetParamsAac()
 
 bool AVCodecAudioEncoder::SetParamsOpus()
 {
-	_codec.SetBitrate(GetRefTrack()->GetBitrate());
+	_codec.SetBitrate(GetRefTrack()->GetBitrateByConfig());
 	_codec.SetSampleFormat(GetSupportAudioFormat());
 	_codec.SetSampleRate(GetRefTrack()->GetSampleRate());
 	_codec.SetDefaultChannelLayout(GetRefTrack()->GetChannel().GetCounts());

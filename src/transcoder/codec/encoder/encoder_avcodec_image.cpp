@@ -15,7 +15,7 @@
 void AVCodecImageEncoder::SetParamsCommon()
 {
 	_codec.SetMediaType(cmn::MediaType::Video);
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRateByConfig()));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
 	_codec.SetPixelFormat(GetSupportVideoFormat());
 	auto resolution = GetRefTrack()->GetResolution();
