@@ -207,8 +207,7 @@ namespace pvd
 					}
 
 					auto data = std::make_shared<ov::Data>(es->Payload(), es->PayloadLength());
-					auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-																	  cmn::MediaType::Video,
+					auto media_packet = std::make_shared<MediaPacket>(cmn::MediaType::Video,
 																	  es->PID(),
 																	  data,
 																	  pts,
@@ -290,7 +289,6 @@ namespace pvd
 							}
 
 							auto media_packet = std::make_shared<MediaPacket>(
-								GetMsid(),
 								cmn::MediaType::Audio,
 								es->PID(),
 								pes_data->Subdata(offset, frame_length),
@@ -313,7 +311,6 @@ namespace pvd
 							// No frame could be emitted (unparseable first frame, payload shorter than an ADTS header, or indeterminable timing):
 							// forward the whole PES unsplit, preserving the previous behavior.
 							auto media_packet = std::make_shared<MediaPacket>(
-								GetMsid(),
 								cmn::MediaType::Audio,
 								es->PID(),
 								pes_data,
@@ -338,8 +335,7 @@ namespace pvd
 					else
 					{
 						auto data		  = std::make_shared<ov::Data>(payload, payload_length);
-						auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-																		  cmn::MediaType::Audio,
+						auto media_packet = std::make_shared<MediaPacket>(cmn::MediaType::Audio,
 																		  es->PID(),
 																		  data,
 																		  pts,

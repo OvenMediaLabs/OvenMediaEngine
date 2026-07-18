@@ -55,7 +55,6 @@ namespace pvd::rtmp
 		bool is_key_frame)
 	{
 		auto media_packet = std::make_shared<MediaPacket>(
-			_stream->GetMsid(),
 			GetMediaType(),
 			_track_id,
 			payload,

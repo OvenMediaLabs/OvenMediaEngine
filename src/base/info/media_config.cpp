@@ -10,12 +10,11 @@
 
 #include "media_track.h"
 
-std::shared_ptr<MediaConfig> MediaConfig::FromMediaTrack(const MediaTrack &track, uint32_t version, uint32_t msid)
+std::shared_ptr<MediaConfig> MediaConfig::FromMediaTrack(const MediaTrack &track, uint32_t version)
 {
 	auto config = std::make_shared<MediaConfig>();
 
 	config->_version = version;
-	config->_msid = msid;
 
 	config->_media_type = track.GetMediaType();
 	config->_codec_id = track.GetCodecId();
@@ -35,11 +34,6 @@ std::shared_ptr<MediaConfig> MediaConfig::FromMediaTrack(const MediaTrack &track
 uint32_t MediaConfig::GetVersion() const
 {
 	return _version;
-}
-
-uint32_t MediaConfig::GetMsid() const
-{
-	return _msid;
 }
 
 cmn::MediaType MediaConfig::GetMediaType() const
@@ -127,8 +121,8 @@ ov::String MediaConfig::GetInfoString() const
 {
 	ov::String info;
 
-	info.AppendFormat("Version(%u) Msid(%u) Codec(%s) Timebase(%s) ",
-					  _version, _msid, cmn::GetCodecIdString(_codec_id), _time_base.GetStringExpr().CStr());
+	info.AppendFormat("Version(%u) Codec(%s) Timebase(%s) ",
+					  _version, cmn::GetCodecIdString(_codec_id), _time_base.GetStringExpr().CStr());
 
 	if (_media_type == cmn::MediaType::Video)
 	{
@@ -358,12 +352,11 @@ void MediaConfigBuilder::ClearDirty()
 	_dirty = false;
 }
 
-std::shared_ptr<const MediaConfig> MediaConfigBuilder::Build(uint32_t version, uint32_t msid) const
+std::shared_ptr<const MediaConfig> MediaConfigBuilder::Build(uint32_t version) const
 {
 	auto config = std::make_shared<MediaConfig>();
 
 	config->_version = version;
-	config->_msid = msid;
 
 	config->_media_type = _media_type;
 	config->_codec_id = _codec_id;

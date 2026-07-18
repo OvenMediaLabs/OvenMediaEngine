@@ -40,8 +40,6 @@ namespace info
 		// Get Stream Resource ID in ovenmediaengine (vhost#app/stream)
 		ov::String GetUri() const;
 
-		void SetMsid(uint32_t);
-		uint32_t GetMsid();
 
 		ov::String GetUUID() const;
 		ov::String GetName() const;
@@ -184,7 +182,6 @@ namespace info
 
 	protected:
 		info::stream_id_t _id = 0;
-		uint32_t _msid = 0;
 		ov::String _name;
 		// Rewritten on every pull-stream failover, read from monitoring/serdes/publisher threads
 		mutable ov::Mutex _source_url_mutex;

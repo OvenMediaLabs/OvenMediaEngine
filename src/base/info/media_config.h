@@ -26,12 +26,10 @@ class MediaConfig
 
 public:
 	// Build a snapshot from the current state of the media track
-	static std::shared_ptr<MediaConfig> FromMediaTrack(const MediaTrack &track, uint32_t version, uint32_t msid);
+	static std::shared_ptr<MediaConfig> FromMediaTrack(const MediaTrack &track, uint32_t version);
 
 	// Monotonically increasing per track (starts at 1)
 	uint32_t GetVersion() const;
-	// Msid of the stream when this config was published (label for debugging)
-	uint32_t GetMsid() const;
 
 	cmn::MediaType GetMediaType() const;
 	cmn::MediaCodecId GetCodecId() const;
@@ -47,14 +45,13 @@ public:
 	const cmn::AudioChannel &GetChannel() const;
 	int GetAudioSamplesPerFrame() const;
 
-	// Compares interpretation content only, excluding version/msid labels
+	// Compares interpretation content only, excluding the version label
 	bool HasSameContent(const std::shared_ptr<const MediaConfig> &other) const;
 
 	ov::String GetInfoString() const;
 
 private:
 	uint32_t _version = 0;
-	uint32_t _msid = 0;
 
 	cmn::MediaType _media_type = cmn::MediaType::Unknown;
 	cmn::MediaCodecId _codec_id = cmn::MediaCodecId::None;
@@ -121,7 +118,7 @@ public:
 	bool IsDirty() const;
 	void ClearDirty();
 
-	std::shared_ptr<const MediaConfig> Build(uint32_t version, uint32_t msid) const;
+	std::shared_ptr<const MediaConfig> Build(uint32_t version) const;
 
 private:
 	bool _seeded = false;

@@ -531,7 +531,7 @@ void MediaRouteStream::StampMediaConfig(MediaConfigState &state, const std::shar
 		state.builder.ClearDirty();
 
 		uint32_t next_version = (state.config != nullptr) ? state.config->GetVersion() + 1 : 1;
-		auto candidate = state.builder.Build(next_version, media_packet->GetMsid());
+		auto candidate = state.builder.Build(next_version);
 
 		// Content equality wins: same content is the same generation
 		if (candidate->HasSameContent(state.config) == false)

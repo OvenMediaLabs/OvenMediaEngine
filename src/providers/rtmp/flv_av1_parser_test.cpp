@@ -226,7 +226,7 @@ TEST(FlvAv1Parser, CodedFramesXReturnsNull)
 // Pipeline: FLV parse -> VideoData -> verify packet-type mapping and data
 // that RtmpVideoTrack::Handle() would produce.
 //
-// RtmpTrack::CreateMediaPacket() requires a non-null RtmpStreamV2 (for GetMsid()),
+// RtmpTrack::CreateMediaPacket() requires a non-null RtmpStreamV2,
 // so we verify the intermediate data structures that feed into it:
 //   - VideoData fields (header, header_data, payload, composition_time_offset)
 //   - ToCommonPacketType mapping

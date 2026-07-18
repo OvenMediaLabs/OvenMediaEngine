@@ -39,7 +39,7 @@ namespace
 											int64_t pts, int64_t dts)
 	{
 		return std::make_shared<MediaPacket>(
-			0, type, 0,
+			type, 0,
 			data.data(), static_cast<int32_t>(data.size()),
 			pts, dts, 0,
 			MediaPacketFlag::NoFlag,

@@ -119,7 +119,7 @@ void MediaRouterStats::Update(
 
 		ov::String stat_stream_str = "";
 
-		stat_stream_str.AppendFormat("Stream. id: %10u, type: %s, name: %s/%s, status: %s, uptime: %" PRId64 "ms, queue: %zu, msid: %u, sync: %" PRId64 "ms",
+		stat_stream_str.AppendFormat("Stream. id: %10u, type: %s, name: %s/%s, status: %s, uptime: %" PRId64 "ms, queue: %zu, sync: %" PRId64 "ms",
 									 stream_info->GetId(),
 									 (type == 0) ? "Inbound" : "Outbound",
 									 stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
@@ -127,8 +127,7 @@ void MediaRouterStats::Update(
 									 prepared ? "Started" : "Preapring",
 									 (int64_t)uptime,
 									 packets_queue.Size(),
-									 stream_info->GetMsid(),
-									 max_pts - min_pts);
+										 max_pts - min_pts);
 
 		stat_track_str = stat_stream_str + stat_track_str;
 

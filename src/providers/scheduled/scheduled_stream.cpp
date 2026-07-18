@@ -585,7 +585,7 @@ namespace pvd
 					continue;
 			}
 
-			auto media_packet = ffmpeg::compat::ToMediaPacket(GetMsid(), track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
+			auto media_packet = ffmpeg::compat::ToMediaPacket(track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
 
             // Convert to fixed time base
             auto origin_tb = context->streams[packet.stream_index]->time_base;
@@ -922,7 +922,7 @@ namespace pvd
 		logti("Scheduled Channel : %s/%s: File %s prepared. Start time %" PRId64 " ms, Duration %" PRId64 " ms",
 			GetApplicationName(), GetName().CStr(), item->_file_path.CStr(), item->_start_time_ms, item->_duration_ms);
 
-        IncreaseMsid();
+        StartNewGeneration();
 
         return true;
     }
@@ -1079,8 +1079,6 @@ namespace pvd
 			{
 				_global_track_offset_us_map[track_id] = dts_us;
 			}
-
-			media_packet->SetMsid(GetMsid());
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
 			media_packet->SetDuration(-1); // It will be calculated in MediaRouter
@@ -1350,7 +1348,7 @@ namespace pvd
             logtw("%s/%s: Failed to find data track from stream %s. Data forwarding will be skipped.", GetApplicationName(), GetName().CStr(), item->_url.CStr());
         }
 
-        IncreaseMsid();
+        StartNewGeneration();
 
         stream_tap->Start();
 

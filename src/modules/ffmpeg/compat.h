@@ -271,7 +271,6 @@ namespace ffmpeg
 		static std::shared_ptr<MediaPacket> ToMediaPacket(AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(
-				0,
 				media_type,
 				0,
 				src->data,
@@ -293,10 +292,9 @@ namespace ffmpeg
 			return packet_buffer;
 		}
 
-		static std::shared_ptr<MediaPacket> ToMediaPacket(uint32_t msid, int32_t track_id, AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
+		static std::shared_ptr<MediaPacket> ToMediaPacket(int32_t track_id, AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(
-				msid,
 				media_type,
 				track_id,
 				src->data,

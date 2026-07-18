@@ -17,7 +17,7 @@ class MediaEvent : public MediaPacket
 {
 public:
 	MediaEvent()
-		: MediaPacket(0, cmn::MediaType::Data, 0, nullptr, 0LL, 0LL, 0LL, MediaPacketFlag::Unknown, cmn::BitstreamFormat::OVEN_EVENT, cmn::PacketType::EVENT)
+		: MediaPacket(cmn::MediaType::Data, 0, nullptr, 0LL, 0LL, 0LL, MediaPacketFlag::Unknown, cmn::BitstreamFormat::OVEN_EVENT, cmn::PacketType::EVENT)
 	{
 	}
 

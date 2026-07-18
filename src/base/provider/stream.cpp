@@ -195,8 +195,7 @@ namespace pvd
 			}
 		}
 
-		auto event_message = std::make_shared<MediaPacket>(GetMsid(),
-															cmn::MediaType::Data,
+		auto event_message = std::make_shared<MediaPacket>(cmn::MediaType::Data,
 															data_track->GetId(),
 															frame, 
 															timestamp_in_tb,
@@ -246,8 +245,7 @@ namespace pvd
 		auto timestamp_in_tb = static_cast<int64_t>(timestamp_in_ms * subtitle_track->GetTimeBase().GetTimescale() / 1000.0);
 		auto duration_in_tb = static_cast<int64_t>(duration_ms * subtitle_track->GetTimeBase().GetTimescale() / 1000.0);
 
-		auto subtitle_message = std::make_shared<MediaPacket>(GetMsid(),
-															cmn::MediaType::Subtitle,
+		auto subtitle_message = std::make_shared<MediaPacket>(cmn::MediaType::Subtitle,
 															subtitle_track->GetId(),
 															frame, 
 															timestamp_in_tb,
@@ -278,7 +276,6 @@ namespace pvd
 			return false;
 		}
 
-		event->SetMsid(GetMsid());
 		event->SetTrackId(data_track->GetId());
 		event->SetPacketType(cmn::PacketType::EVENT);
 		event->SetBitstreamFormat(cmn::BitstreamFormat::OVEN_EVENT);
@@ -750,17 +747,15 @@ namespace pvd
 		return delta;
 	}
 
-	// Start a new generation of this stream (e.g. the source item has changed).
-	// The change itself propagates downstream with the packets: the new msid is
-	// stamped on the following packets and the media router publishes a new
-	// MediaConfig at the boundary. The track layout must not change; only the
-	// configuration of existing tracks may.
-	void Stream::IncreaseMsid()
+	// Start a new generation of this stream (e.g. the source item has changed):
+	// re-base the source timestamps so the next item continues seamlessly. The
+	// content change itself travels with the packets as MediaConfig. The track
+	// layout must not change; only the configuration of existing tracks may.
+	void Stream::StartNewGeneration()
 	{
 		ResetSourceStreamTimestamp();
-		SetMsid(GetMsid() + 1);
 
-		logti("%s/%s(%u) has started a new generation (msid: %u)", GetApplicationName(), GetName().CStr(), GetId(), GetMsid());
+		logti("%s/%s(%u) has started a new generation", GetApplicationName(), GetName().CStr(), GetId());
 		logti("%s", GetInfoString().CStr());
 	}
 
@@ -772,7 +767,7 @@ namespace pvd
 		}
 
 		ov::ScopedLock lock(_packet_config_hint_mutex);
-		_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0, 0);
+		_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0);
 	}
 
 	bool Stream::ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track)

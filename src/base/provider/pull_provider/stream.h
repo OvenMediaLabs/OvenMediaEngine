@@ -68,7 +68,7 @@ namespace pvd
 		bool StopInternal() OV_REQUIRES(_start_stop_stream_lock);
 
 		// Locked body of `Resume()`: retry-count check + one `RestartStream()` attempt.
-		// `IncreaseMsid()`/`Stream::Start()` are deliberately called by the wrapper AFTER
+		// `StartNewGeneration()`/`Stream::Start()` are deliberately called by the wrapper AFTER
 		// the lock is released, so this lock is never held while entering
 		// `Application`/`MediaRouter`.
 		bool ResumeInternal() OV_REQUIRES(_start_stop_stream_lock);

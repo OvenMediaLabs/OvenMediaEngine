@@ -47,7 +47,6 @@ namespace info
 		_name_path = stream.GetNamePath();
 		
 		_id = stream._id;
-		_msid = stream._msid;
 		_internal = stream._internal;
 		_name = stream._name;
 		_source_type = stream._source_type;
@@ -126,16 +125,6 @@ namespace info
 		// #vhost name#appname/stream name
 		ov::String vhost_app_name = (_app_info != nullptr) ? _app_info->GetVHostAppName().CStr() : "Unknown";
 		return ov::String::FormatString("%s/%s", vhost_app_name.CStr(), GetName().CStr());
-	}
-
-	void Stream::SetMsid(uint32_t msid)
-	{
-		_msid = msid;
-	}
-
-	uint32_t Stream::GetMsid()
-	{
-		return _msid;
 	}
 
 	ov::String Stream::GetUUID() const
@@ -681,8 +670,8 @@ namespace info
 
 	ov::String Stream::GetInfoString(bool created)
 	{
-		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), msid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
-													  GetId(), GetMsid(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
+		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
+													  GetId(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
 													  ov::Converter::ToString(_created_time).CStr(), GetUUID().CStr());
 		if (GetLinkedInputStream() != nullptr)
 		{

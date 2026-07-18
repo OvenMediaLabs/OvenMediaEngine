@@ -1152,7 +1152,6 @@ namespace pvd
 				}
 
 				auto media_packet = std::make_shared<MediaPacket>(
-					GetMsid(),
 					track->GetMediaType(),
 					track->GetId(),
 					bitstream->Subdata(offset, frame_length),
@@ -1173,8 +1172,7 @@ namespace pvd
 			{
 				// No frame could be emitted (unparseable first frame, assembled buffer shorter than an ADTS header,
 				// or indeterminable timing): forward the whole assembled buffer unsplit, preserving the previous behavior.
-				auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-																  track->GetMediaType(),
+				auto media_packet = std::make_shared<MediaPacket>(track->GetMediaType(),
 																  track->GetId(),
 																  bitstream,
 																  adjusted_timestamp,
@@ -1197,8 +1195,7 @@ namespace pvd
 			return;
 		}
 
-		auto frame = std::make_shared<MediaPacket>(GetMsid(),
-												   track->GetMediaType(),
+		auto frame = std::make_shared<MediaPacket>(track->GetMediaType(),
 												   track->GetId(),
 												   bitstream,
 												   adjusted_timestamp,
@@ -1213,8 +1210,7 @@ namespace pvd
 		// Send SPS/PPS if stream is H264
 		if (_sent_sequence_header == false && track->GetCodecId() == cmn::MediaCodecId::H264 && _h264_extradata_nalu != nullptr)
 		{
-			auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-															  track->GetMediaType(),
+			auto media_packet = std::make_shared<MediaPacket>(track->GetMediaType(),
 															  track->GetId(),
 															  _h264_extradata_nalu,
 															  adjusted_timestamp,
@@ -1229,8 +1225,7 @@ namespace pvd
 		// Send VPS/SPS/PPS if stream is H265
 		else if (_sent_sequence_header == false && track->GetCodecId() == cmn::MediaCodecId::H265 && _h265_extradata_nalu != nullptr)
 		{
-			auto media_packet = std::make_shared<MediaPacket>(GetMsid(),
-															  track->GetMediaType(),
+			auto media_packet = std::make_shared<MediaPacket>(track->GetMediaType(),
 															  track->GetId(),
 															  _h265_extradata_nalu,
 															  adjusted_timestamp,

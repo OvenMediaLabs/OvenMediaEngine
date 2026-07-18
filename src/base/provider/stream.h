@@ -96,7 +96,7 @@ namespace pvd
 			return DirectionType::UNSPECIFIED;
 		}
 
-		void IncreaseMsid();
+		void StartNewGeneration();
 
 		// Register/refresh the config hint of a track. The hint is a MediaConfig
 		// built from the values this provider already knows (container extradata,
@@ -107,7 +107,7 @@ namespace pvd
 
 		// Replace a track with its next generation (same codec required; a codec
 		// change is rejected with an error). Statistics carry over and the config
-		// hint is refreshed. Call IncreaseMsid() once per transition separately.
+		// hint is refreshed. Call StartNewGeneration() once per transition separately.
 		bool ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track);
 
 		bool SetState(State state);

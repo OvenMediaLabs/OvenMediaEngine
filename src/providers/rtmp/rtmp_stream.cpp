@@ -1687,8 +1687,7 @@ namespace pvd
 			}
 
 			auto data		 = std::make_shared<ov::Data>(flv_video.Payload(), flv_video.PayloadLength());
-			auto video_frame = std::make_shared<MediaPacket>(GetMsid(),
-															 cmn::MediaType::Video,
+			auto video_frame = std::make_shared<MediaPacket>(cmn::MediaType::Video,
 															 RTMP_VIDEO_TRACK_ID,
 															 data,
 															 pts,
@@ -1863,8 +1862,7 @@ namespace pvd
 				}
 			}
 
-			auto frame = std::make_shared<MediaPacket>(GetMsid(),
-													   cmn::MediaType::Audio,
+			auto frame = std::make_shared<MediaPacket>(cmn::MediaType::Audio,
 													   RTMP_AUDIO_TRACK_ID,
 													   data,
 													   pts,

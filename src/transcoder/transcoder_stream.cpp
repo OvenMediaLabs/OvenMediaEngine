@@ -2139,7 +2139,6 @@ void TranscoderStream::OnEncodedPacket(TranscodeResult result, MediaTrackId enco
 
 void TranscoderStream::SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet)
 {
-	packet->SetMsid(stream->GetMsid());
 
 	if (!(_parent->SendFrame(stream, std::move(packet))))
 	{

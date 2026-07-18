@@ -693,8 +693,6 @@ namespace pvd
 			if (_depacketizer.IsAvailableMediaPacket()) 
 			{
 				auto media_packet = _depacketizer.PopMediaPacket();
-
-				media_packet->SetMsid(GetMsid());
 				media_packet->SetPacketType(cmn::PacketType::OVT);
 
 				int64_t pts = media_packet->GetPts();
@@ -709,9 +707,9 @@ namespace pvd
 				media_packet->SetDts(dts);
 				media_packet->SetDuration(-1); // Duration should be set by MediaRouter again due to the AdjustTimestampByBase
 
-				logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu) MSID(%u)",
+				logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu)",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
-					  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength(), GetMsid());
+					  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength());
 
 				SendFrame(media_packet);
 
