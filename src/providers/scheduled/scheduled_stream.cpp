@@ -638,7 +638,6 @@ namespace pvd
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f, dts_ms %f, dts_gap %" PRId64 "", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
 
-            AttachPacketConfigHint(media_packet);
             SendFrame(media_packet);
 
             _last_packet_map[track_id] = media_packet;
@@ -806,21 +805,19 @@ namespace pvd
                 }
 
 				auto old_track = GetTrack(kScheduledVideoTrackId);
-				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
-					old_track->GetCodecId() != new_track->GetCodecId())
-				{
-					logte("%s/%s: Video codec of item %s is different from the current one (%s -> %s). Changing the codec between items is not supported",
-						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr(),
-						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
-					return false;
-				}
 
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
+
+				if (ReplaceTrack(new_track) == false)
+				{
+					logte("%s/%s: Video track of item %s was rejected",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
+					return false;
+				}
+
                 _origin_id_track_id_map.emplace(stream->index, kScheduledVideoTrackId);
-                UpdateTrack(new_track);
-                UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -845,23 +842,21 @@ namespace pvd
 				auto audio_track_id = kScheduledAudioTrackId + audio_index;
 				audio_index++;
 				auto old_track = GetTrack(audio_track_id);
-				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
-					old_track->GetCodecId() != new_track->GetCodecId())
-				{
-					logte("%s/%s: Audio codec of item %s is different from the current one (%s -> %s). Changing the codec between items is not supported",
-						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr(),
-						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
-					return false;
-				}
 
                 new_track->SetId(audio_track_id);
                 new_track->SetTimeBase(1, kScheduledAudioTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
+
+				if (ReplaceTrack(new_track) == false)
+				{
+					logte("%s/%s: Audio track of item %s was rejected",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
+					return false;
+				}
+
                 _origin_id_track_id_map.emplace(stream->index, audio_track_id);
-                UpdateTrack(new_track);
-                UpdatePacketConfigHint(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -1094,7 +1089,6 @@ namespace pvd
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
 
-            AttachPacketConfigHint(media_packet);
             SendFrame(media_packet);
 
             // dts to real time (ms)
@@ -1264,21 +1258,19 @@ namespace pvd
                 }
 
 				auto old_track = GetTrack(kScheduledVideoTrackId);
-				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
-					old_track->GetCodecId() != new_track->GetCodecId())
-				{
-					logte("%s/%s: Video codec of the tapped stream is different from the current one (%s -> %s). Changing the codec between items is not supported",
-						  GetApplicationName(), GetName().CStr(),
-						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
-					return nullptr;
-				}
 
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
+
+				if (ReplaceTrack(new_track) == false)
+				{
+					logte("%s/%s: Video track of the tapped stream was rejected",
+						  GetApplicationName(), GetName().CStr());
+					return nullptr;
+				}
+
                 _origin_id_track_id_map.emplace(track_id, kScheduledVideoTrackId);
-                UpdateTrack(new_track);
-                UpdatePacketConfigHint(new_track);
 
                 video_track_needed = false;
             }
@@ -1294,23 +1286,21 @@ namespace pvd
 				auto audio_track_id = kScheduledAudioTrackId + audio_index;
 				audio_index++;
 				auto old_track = GetTrack(audio_track_id);
-				if (old_track->GetCodecId() != cmn::MediaCodecId::None &&
-					old_track->GetCodecId() != new_track->GetCodecId())
-				{
-					logte("%s/%s: Audio codec of the tapped stream is different from the current one (%s -> %s). Changing the codec between items is not supported",
-						  GetApplicationName(), GetName().CStr(),
-						  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
-					return nullptr;
-				}
 
                 new_track->SetId(audio_track_id);
                 new_track->SetTimeBase(1, kScheduledAudioTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
+
+				if (ReplaceTrack(new_track) == false)
+				{
+					logte("%s/%s: Audio track of the tapped stream was rejected",
+						  GetApplicationName(), GetName().CStr());
+					return nullptr;
+				}
+
                 _origin_id_track_id_map.emplace(track_id, audio_track_id);
-                UpdateTrack(new_track);
-                UpdatePacketConfigHint(new_track);
 				
 				if (audio_index + 1 > _channel_info._audio_map.size())
 				{
@@ -1337,7 +1327,6 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
                 _origin_id_track_id_map.emplace(track_id, kScheduledDataTrackId);
                 UpdateTrack(new_track);
-                UpdatePacketConfigHint(new_track);
 
                 forward_data_needed = false;
             }
@@ -1380,27 +1369,3 @@ namespace pvd
     }
 }
 
-// Build the per-item MediaConfig hint that rides on every packet of this track.
-// The media router adopts it at the generation boundary, so extradata-dependent
-// formats (AVCC, RAW AAC) stay decodable without mutating shared tracks.
-void pvd::ScheduledStream::UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track)
-{
-	if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
-	{
-		return;
-	}
-
-	std::lock_guard<std::shared_mutex> lock(_packet_config_hint_mutex);
-	_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0, 0);
-}
-
-void pvd::ScheduledStream::AttachPacketConfigHint(const std::shared_ptr<MediaPacket> &media_packet)
-{
-	std::shared_lock<std::shared_mutex> lock(_packet_config_hint_mutex);
-
-	auto it = _packet_config_hints.find(media_packet->GetTrackId());
-	if (it != _packet_config_hints.end())
-	{
-		media_packet->SetMediaConfig(it->second);
-	}
-}

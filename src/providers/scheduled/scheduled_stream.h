@@ -44,14 +44,6 @@ namespace pvd
         bool GetCurrentProgram(std::shared_ptr<Schedule::Program> &curr_program, std::shared_ptr<Schedule::Item> &curr_item, int64_t &curr_item_pos) const;
 
     private:
-		// Per-item MediaConfig hint attached to every outgoing packet so the media
-		// router can adopt extradata at the item boundary (see UpdatePacketConfigHint)
-		void UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track);
-		void AttachPacketConfigHint(const std::shared_ptr<MediaPacket> &media_packet);
-
-		mutable std::shared_mutex _packet_config_hint_mutex;
-		std::map<uint32_t, std::shared_ptr<const MediaConfig>> _packet_config_hints;
-
         void WorkerThread();
 
         enum class PlaybackResult

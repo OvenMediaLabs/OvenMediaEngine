@@ -98,6 +98,18 @@ namespace pvd
 
 		void IncreaseMsid();
 
+		// Register/refresh the config hint of a track. The hint is a MediaConfig
+		// built from the values this provider already knows (container extradata,
+		// SDP, describe); SendFrame() attaches it to every packet of the track and
+		// the media router adopts it as author input. Optional: a provider whose
+		// bitstream is self-describing does not need hints at all.
+		void UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track);
+
+		// Replace a track with its next generation (same codec required; a codec
+		// change is rejected with an error). Statistics carry over and the config
+		// hint is refreshed. Call IncreaseMsid() once per transition separately.
+		bool ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track);
+
 		bool SetState(State state);
 		bool SendFrame(const std::shared_ptr<MediaPacket> &packet);
 
@@ -131,6 +143,10 @@ namespace pvd
 		void ResetSourceStreamTimestamp();
 		int64_t GetDeltaTimestamp(uint32_t track_id, int64_t timestamp, int64_t max_timestamp) OV_REQUIRES(_source_stream_timestamp_mutex);
 		void UpdateReconnectTimeToBasetime();
+
+		// Config hints registered by UpdatePacketConfigHint(), attached per packet in SendFrame()
+		mutable ov::SharedMutex _packet_config_hint_mutex;
+		std::map<uint32_t, std::shared_ptr<const MediaConfig>> _packet_config_hints OV_GUARDED_BY(_packet_config_hint_mutex);
 
 		// Processing events
 		bool ProcessEvent(const std::shared_ptr<MediaEvent> &event);

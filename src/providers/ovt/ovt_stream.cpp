@@ -475,17 +475,12 @@ namespace pvd
 				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
-			// A re-describe replaces the track with its next generation
-			auto ex_track = GetTrack(new_track->GetId());
-			if (ex_track != nullptr && ex_track->GetCodecId() != new_track->GetCodecId())
+			// A re-describe replaces the track with its next generation; the base
+			// rejects a codec change and refreshes the config hint of the track
+			if (ReplaceTrack(new_track) == false)
 			{
-				logte("%s/%s(%u) - Codec of track(%u) has been changed by the origin (%s -> %s). Changing the codec mid-stream is not supported",
-					  GetApplicationTypeName(), GetName().CStr(), GetId(), new_track->GetId(),
-					  cmn::GetCodecIdString(ex_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
 				return false;
 			}
-
-			UpdateTrack(new_track);
 		}
 
 		// logti("[%s/%s(%u)] stream has been described . %s", GetApplicationTypeName(), GetName().CStr(), GetId(), payload.CStr());

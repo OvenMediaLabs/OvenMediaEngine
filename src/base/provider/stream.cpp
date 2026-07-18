@@ -11,6 +11,7 @@
 
 #include "application.h"
 #include "base/info/application.h"
+#include "base/info/media_config.h"
 #include "provider_private.h"
 #include "base/provider/pull_provider/stream_props.h"
 #include "base/provider/pull_provider/stream.h"
@@ -357,6 +358,18 @@ namespace pvd
 		{
 			logte("The bitstream format must be specified. %s/%s(%u)", GetApplicationName(), GetName().CStr(), GetId());
 			return false;
+		}
+
+		// Attach the config hint of this track, if the provider registered one.
+		// The router adopts each hint object once, so re-attaching the same
+		// object to every packet costs nothing downstream.
+		{
+			ov::SharedLockGuard lock(_packet_config_hint_mutex);
+			auto hint_it = _packet_config_hints.find(packet->GetTrackId());
+			if (hint_it != _packet_config_hints.end())
+			{
+				packet->SetMediaConfig(hint_it->second);
+			}
 		}
 
 		// Statistics
@@ -749,5 +762,35 @@ namespace pvd
 
 		logti("%s/%s(%u) has started a new generation (msid: %u)", GetApplicationName(), GetName().CStr(), GetId(), GetMsid());
 		logti("%s", GetInfoString().CStr());
+	}
+
+	void Stream::UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track)
+	{
+		if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
+		{
+			return;
+		}
+
+		ov::ScopedLock lock(_packet_config_hint_mutex);
+		_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0, 0);
+	}
+
+	bool Stream::ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track)
+	{
+		auto ex_track = GetTrack(new_track->GetId());
+		if (ex_track != nullptr &&
+			ex_track->GetCodecId() != cmn::MediaCodecId::None &&
+			new_track->GetCodecId() != ex_track->GetCodecId())
+		{
+			logte("%s/%s(%u) Track(%d) codec change is not supported (%s -> %s). The track is kept as is",
+				  GetApplicationName(), GetName().CStr(), GetId(), new_track->GetId(),
+				  cmn::GetCodecIdString(ex_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+			return false;
+		}
+
+		UpdateTrack(new_track);
+		UpdatePacketConfigHint(new_track);
+
+		return true;
 	}
 }  // namespace pvd
