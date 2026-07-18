@@ -15,7 +15,7 @@ class MediaPacket;
 // Runtime measurement counters of one track.
 // This is the deliberately shared mutable state between modules: every copy of
 // a stream shares the same TrackStats instance through its MediaTrack, while
-// codec configuration flows separately as immutable MediaConfig snapshots.
+// the track description flows separately as immutable generation snapshots.
 class TrackStats
 {
 public:

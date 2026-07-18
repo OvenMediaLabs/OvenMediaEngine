@@ -55,11 +55,11 @@ size_t GetStartCodeSize(const uint8_t *data, size_t length)
 // H264 : AVCC -> AnnexB, Add SPS/PPS in front of IDR frame
 // H265 :
 // AAC : Raw -> ADTS
-bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	bool result = false;
 
-	if (media_track.GetMediaType() == cmn::MediaType::Data)
+	if (media_track->GetMediaType() == cmn::MediaType::Data)
 	{
 		return true;
 	}
@@ -67,35 +67,35 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 	switch (media_packet->GetBitstreamFormat())
 	{
 		case cmn::BitstreamFormat::H264_ANNEXB:
-			result = media_packet->GetData() != nullptr && ProcessH264AnnexBStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessH264AnnexBStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::H264_AVCC:
-			result = media_packet->GetData() != nullptr && ProcessH264AVCCStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessH264AVCCStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::H265_ANNEXB:
-			result = media_packet->GetData() != nullptr && ProcessH265AnnexBStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessH265AnnexBStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::HVCC:
-			result = media_packet->GetData() != nullptr && ProcessH265HVCCStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessH265HVCCStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::VP8:
-			result = media_packet->GetData() != nullptr && ProcessVP8Stream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessVP8Stream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::AV1_OBU:
-			result = media_packet->GetData() != nullptr && ProcessAV1OBUStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessAV1OBUStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::AAC_RAW:
-			result = media_packet->GetData() != nullptr && ProcessAACRawStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessAACRawStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::AAC_ADTS:
-			result = media_packet->GetData() != nullptr && ProcessAACAdtsStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessAACAdtsStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::OPUS:
-			result = media_packet->GetData() != nullptr && ProcessOPUSStream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessOPUSStream(stream_info, media_track, media_packet);
 			break;
 		case cmn::BitstreamFormat::MP2:
 		case cmn::BitstreamFormat::MP3:
-			result = media_packet->GetData() != nullptr && ProcessMP3Stream(stream_info, media_track, builder, media_packet);
+			result = media_packet->GetData() != nullptr && ProcessMP3Stream(stream_info, media_track, media_packet);
 			break;
 		// Data Format
 		case cmn::BitstreamFormat::ID3v2:
@@ -122,7 +122,7 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 }
 
 #include <base/ovcrypto/base_64.h>
-bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Convert to AnnexB, Make fragment header, Set keyframe flag, Append SPS/PPS nal units in front of IDR frame
 	// one time : Parse track info from sps/pps and generate codec_extra_data
@@ -143,9 +143,9 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		builder.SetResolution(avc_config->GetWidth(), avc_config->GetHeight());
+		media_track->SetResolution(avc_config->GetWidth(), avc_config->GetHeight());
 
-		builder.SetDecoderConfigurationRecord(avc_config);
+		media_track->SetDecoderConfigurationRecord(avc_config);
 
 		return false;
 	}
@@ -265,33 +265,33 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 
 			if (new_avc_config->IsValid())
 			{
-				auto old_avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+				auto old_avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
-				if (builder.IsComplete() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
+				if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 				{
-					builder.SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
-					builder.SetDecoderConfigurationRecord(new_avc_config);
+					media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
+					media_track->SetDecoderConfigurationRecord(new_avc_config);
 				}
 			}
 			else
 			{
-				logtw("Failed to make AVCDecoderConfigurationRecord of %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				logtw("Failed to make AVCDecoderConfigurationRecord of %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 		}
 
 		// Insert SPS/PPS if there are no SPS/PPS nal units before IDR frame.
 		if (has_idr == true && (has_sps == false || has_pps == false))
 		{
-			if (InsertH264SPSPPSAnnexB(stream_info, media_track, builder, media_packet, !has_aud) == false)
+			if (InsertH264SPSPPSAnnexB(stream_info, media_track, media_packet, !has_aud) == false)
 			{
-				logtw("Failed to insert SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				logtw("Failed to insert SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 		}
 		else if (has_aud == false)
 		{
-			if (InsertH264AudAnnexB(stream_info, media_track, builder, media_packet) == false)
+			if (InsertH264AudAnnexB(stream_info, media_track, media_packet) == false)
 			{
-				logtw("Failed to insert AUD before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				logtw("Failed to insert AUD before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 		}
 
@@ -301,7 +301,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 	return false;
 }
 
-bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Make fragment header, Set keyframe flag, Append SPS/PPS nal units in front of IDR frame
 	// one time : Parse track info from sps/pps and generate codec_extra_data
@@ -405,48 +405,48 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 
 		if (new_avc_config->IsValid())
 		{
-			auto old_avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+			auto old_avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
-			if (builder.IsComplete() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
+			if (media_track->IsValid() == false || old_avc_config == nullptr || old_avc_config->Equals(new_avc_config) == false)
 			{
-				builder.SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
-				builder.SetDecoderConfigurationRecord(new_avc_config);
+				media_track->SetResolution(new_avc_config->GetWidth(), new_avc_config->GetHeight());
+				media_track->SetDecoderConfigurationRecord(new_avc_config);
 			}
 		}
 		else
 		{
-			logtw("Failed to make AVCDecoderConfigurationRecord of %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+			logtw("Failed to make AVCDecoderConfigurationRecord of %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 		}
 	}
 
 	// Insert SPS/PPS if there are no SPS/PPS nal units before IDR frame.
-	if (has_idr == true && builder.IsComplete() && (has_sps == false || has_pps == false))
+	if (has_idr == true && media_track->IsValid() && (has_sps == false || has_pps == false))
 	{
-		if (InsertH264SPSPPSAnnexB(stream_info, media_track, builder, media_packet, !has_aud) == false)
+		if (InsertH264SPSPPSAnnexB(stream_info, media_track, media_packet, !has_aud) == false)
 		{
-			logtw("Failed to insert SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+			logtw("Failed to insert SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 		}
 	}
 	else if (has_aud == false)
 	{
-		if (InsertH264AudAnnexB(stream_info, media_track, builder, media_packet) == false)
+		if (InsertH264AudAnnexB(stream_info, media_track, media_packet) == false)
 		{
-			logtw("Failed to insert AUD before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+			logtw("Failed to insert AUD before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 		}
 	}
 
 	return true;
 }
 
-bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet, bool need_aud)
+bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet, bool need_aud)
 {
-	if (builder.IsComplete() == false)
+	if (media_track->IsValid() == false)
 	{
 		return false;
 	}
 
 	// Get AVC Decoder Configuration Record
-	auto avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+	auto avc_config = std::static_pointer_cast<AVCDecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 	if (avc_config == nullptr)
 	{
 		return false;
@@ -491,9 +491,9 @@ bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::St
 	return true;
 }
 
-bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
-	if (builder.IsComplete() == false)
+	if (media_track->IsValid() == false)
 	{
 		return false;
 	}
@@ -533,7 +533,7 @@ bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	media_packet->SetFlag(MediaPacketFlag::Key);
 	// everytime : Convert to ADTS
@@ -552,26 +552,26 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 
 		if (audio_config->Samplerate() == 0)
 		{
-			logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+			logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			return false;
 		}
 
-		builder.SetSampleRate(audio_config->Samplerate());
-		builder.SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
-		builder.SetDecoderConfigurationRecord(audio_config);
+		media_track->SetSampleRate(audio_config->Samplerate());
+		media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+		media_track->SetDecoderConfigurationRecord(audio_config);
 
 		return false;
 	}
 	else
 	{
-		if (builder.IsComplete() == false)
+		if (media_track->IsValid() == false)
 		{
 			// Track information has not been parsed yet.
 			logte("Raw aac sequence header has not parsed yet.");
 			return false;
 		}
 
-		auto audio_config = std::static_pointer_cast<AudioSpecificConfig>(builder.GetDecoderConfigurationRecord());
+		auto audio_config = std::static_pointer_cast<AudioSpecificConfig>(media_track->GetDecoderConfigurationRecord());
 		if (audio_config == nullptr)
 		{
 			logte("Failed to get audio specific config.");
@@ -594,7 +594,7 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	media_packet->SetFlag(MediaPacketFlag::Key);
 
@@ -608,7 +608,7 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 		return false;
 	}
 
-	auto current_config = builder.GetDecoderConfigurationRecordAs<AudioSpecificConfig>();
+	auto current_config = media_track->GetDecoderConfigurationRecordAs<AudioSpecificConfig>();
 	if (current_config != nullptr &&
 		current_config->ObjectType() == adts.ObjectType() &&
 		current_config->SamplingFrequencyIndex() == adts.SamplingFrequencyIndex() &&
@@ -625,19 +625,19 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 
 	if (audio_config->Samplerate() == 0)
 	{
-		logte("AAC ADTS header parsed but samplerate is 0. The ADTS may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+		logte("AAC ADTS header parsed but samplerate is 0. The ADTS may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 		return false;
 	}
 
-	builder.SetSampleRate(audio_config->Samplerate());
-	builder.SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+	media_track->SetSampleRate(audio_config->Samplerate());
+	media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
-	builder.SetDecoderConfigurationRecord(audio_config);
+	media_track->SetDecoderConfigurationRecord(audio_config);
 
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Generate fragmentation header, Check key frame
 	// One time : Parse SPS and Set width/height (track information)
@@ -709,7 +709,7 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 		}
 
 		// Track info
-		if (builder.IsComplete() == false)
+		if (media_track->IsValid() == false)
 		{
 			if (hevc_config == nullptr)
 			{
@@ -738,19 +738,19 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 	// Update DecoderConfigurationRecord
 	if (hevc_config && hevc_config->IsValid())
 	{
-		auto old_hevc_config = std::static_pointer_cast<HEVCDecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+		auto old_hevc_config = std::static_pointer_cast<HEVCDecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
 		if (old_hevc_config == nullptr || old_hevc_config->Equals(hevc_config) == false)
 		{
-			builder.SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
-			builder.SetDecoderConfigurationRecord(hevc_config);
+			media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
+			media_track->SetDecoderConfigurationRecord(hevc_config);
 		}
 	}
 
 	// Insert VPS/SPS/PPS if there are no VPS/SPS/PPS nal units before IDR frame.
-	if (builder.IsComplete() && has_idr && ((has_vps == false) || (has_sps == false) || (has_pps == false)))
+	if (media_track->IsValid() && has_idr && ((has_vps == false) || (has_sps == false) || (has_pps == false)))
 	{
-		hevc_config = std::static_pointer_cast<HEVCDecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+		hevc_config = std::static_pointer_cast<HEVCDecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
 		if (hevc_config != nullptr)
 		{
@@ -760,7 +760,7 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 
 			if (hevc_config->AddVpsSpsPpsAnnexB(new_data, &new_fragment_header) == false)
 			{
-				logtw("Failed to insert VPS/SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				logtw("Failed to insert VPS/SPS/PPS before IDR frame in %s/%s/%s track", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 
 			new_data->Append(current_data);
@@ -772,14 +772,14 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 		else
 		{
 			logte("[%s/%s/%s] HEVCDecoderConfigurationRecord is not set",
-				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 		}
 	}
 
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (media_packet->GetBitstreamFormat() != cmn::BitstreamFormat::HVCC)
 	{
@@ -797,9 +797,9 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			return false;
 		}
 
-		builder.SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
+		media_track->SetResolution(hevc_config->GetWidth(), hevc_config->GetHeight());
 
-		builder.SetDecoderConfigurationRecord(hevc_config);
+		media_track->SetDecoderConfigurationRecord(hevc_config);
 
 		return false;
 	}
@@ -911,18 +911,18 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 			if (new_hevc_config->IsValid())
 			{
-				auto old_hevc_config = builder.GetDecoderConfigurationRecordAs<HEVCDecoderConfigurationRecord>();
+				auto old_hevc_config = media_track->GetDecoderConfigurationRecordAs<HEVCDecoderConfigurationRecord>();
 
-				if ((builder.IsComplete() == false) || (new_hevc_config->Equals(old_hevc_config) == false))
+				if ((media_track->IsValid() == false) || (new_hevc_config->Equals(old_hevc_config) == false))
 				{
-					builder.SetResolution(new_hevc_config->GetWidth(), new_hevc_config->GetHeight());
-					builder.SetDecoderConfigurationRecord(new_hevc_config);
+					media_track->SetResolution(new_hevc_config->GetWidth(), new_hevc_config->GetHeight());
+					media_track->SetDecoderConfigurationRecord(new_hevc_config);
 				}
 			}
 			else
 			{
 				logtw("[%s/%s/%s] Failed to make HEVCDecoderConfigurationRecord",
-					  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+					  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 		}
 
@@ -931,9 +931,9 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 
 		std::shared_ptr<ov::Data> additional_data = nullptr;
 
-		if (builder.IsComplete() && (need_to_add_aud || need_to_add_vps_sps_pps))
+		if (media_track->IsValid() && (need_to_add_aud || need_to_add_vps_sps_pps))
 		{
-			auto hevc_config = builder.GetDecoderConfigurationRecordAs<HEVCDecoderConfigurationRecord>();
+			auto hevc_config = media_track->GetDecoderConfigurationRecordAs<HEVCDecoderConfigurationRecord>();
 
 			if (hevc_config != nullptr)
 			{
@@ -946,7 +946,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 					if (hevc_config->AddAudAnnexB(additional_data, &additional_fragment_header) == false)
 					{
 						logtw("[%s/%s/%s] Failed to insert AUD before frame",
-							  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+							  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 					}
 				}
 
@@ -956,7 +956,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 					if (hevc_config->AddVpsSpsPpsAnnexB(additional_data, &additional_fragment_header) == false)
 					{
 						logtw("[%s/%s/%s] Failed to insert VPS/SPS/PPS before IDR frame",
-							  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+							  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 					}
 				}
 
@@ -965,7 +965,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 			else
 			{
 				logte("[%s/%s/%s] HEVCDecoderConfigurationRecord is not set",
-					  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+					  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 			}
 		}
 
@@ -1007,7 +1007,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	bool is_key_frame = false;
 	if (VP8Parser::ParseKeyFrame(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), is_key_frame) == false)
@@ -1019,7 +1019,7 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 	media_packet->SetFlag(is_key_frame ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
 
 	// One time: parse width, height
-	if (builder.IsComplete() == true)
+	if (media_track->IsValid() == true)
 	{
 		return true;
 	}
@@ -1031,7 +1031,7 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 		return false;
 	}
 
-	builder.SetResolution(parser.GetWidth(), parser.GetHeight());
+	media_track->SetResolution(parser.GetWidth(), parser.GetHeight());
 
 	return true;
 }
@@ -1069,7 +1069,7 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	// single in-band Sequence Header's display-delay signaling.
 }
 
-bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// AV1 OBU is delivered as a raw bytestream by the provider; no fragment-header conversion is required.
 	// Path-agnostic responsibilities here:
@@ -1091,12 +1091,12 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 		if (av1_config->Parse(data) == false)
 		{
 			logte("Could not parse AV1 sequence header (`av1C`) of %s/%s/%s track",
-				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track.GetVariantName().CStr());
+				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
 
 			return false;
 		}
 
-		builder.SetDecoderConfigurationRecord(av1_config);
+		media_track->SetDecoderConfigurationRecord(av1_config);
 
 		// Try to populate resolution from `configOBUs` when the encoder embedded the sequence header OBU
 		// inside `av1C`. Some encoders (notably ffmpeg's libaom over enhanced-RTMP) leave `configOBUs`
@@ -1115,7 +1115,7 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 				if (summary.has_value() &&
 					summary->max_frame_width > 0 && summary->max_frame_height > 0)
 				{
-					builder.SetResolution(
+					media_track->SetResolution(
 						static_cast<int32_t>(summary->max_frame_width),
 						static_cast<int32_t>(summary->max_frame_height));
 				}
@@ -1142,7 +1142,7 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 			const int32_t width	 = static_cast<int32_t>(summary->max_frame_width);
 			const int32_t height = static_cast<int32_t>(summary->max_frame_height);
 
-			auto old_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+			auto old_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 
 			// Build a fresh av1C from this sequence header: the SH-derived fixed fields, plus the
 			// sequence header itself captured into configOBUs. Building from the current SH (rather
@@ -1161,15 +1161,15 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 				new_config->SetConfigObus(std::make_shared<ov::Data>(seq_obu->GetData(), seq_obu->GetLength()));
 			}
 
-			const auto resolution		  = builder.GetResolution();
+			const auto resolution		  = media_track->GetResolution();
 			const bool resolution_changed = (resolution.width != width) || (resolution.height != height);
 			const bool config_changed	  = (old_config == nullptr) || (old_config->Equals(new_config) == false);
 
 			// Update only on change; publish a freshly built record (it is read concurrently).
-			if ((builder.IsValidResolution() == false) || resolution_changed || config_changed)
+			if ((media_track->IsValidResolution() == false) || resolution_changed || config_changed)
 			{
-				builder.SetResolution(width, height);
-				builder.SetDecoderConfigurationRecord(new_config);
+				media_track->SetResolution(width, height);
+				media_track->SetDecoderConfigurationRecord(new_config);
 			}
 		}
 	}
@@ -1178,7 +1178,7 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 	// in-band (e.g. delivered out-of-band in the av1C), prepend the sequence header OBU from the av1C.
 	if (is_key_frame && (Av1Parser::HasSequenceHeaderObu(data) == false))
 	{
-		auto av1_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(builder.GetDecoderConfigurationRecord());
+		auto av1_config = std::dynamic_pointer_cast<AV1DecoderConfigurationRecord>(media_track->GetDecoderConfigurationRecord());
 		if (av1_config != nullptr)
 		{
 			auto seq_obu = Av1Parser::ExtractFirstSequenceHeaderObuRaw(av1_config->ConfigObus());
@@ -1195,10 +1195,10 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// One time : parse samplerate, channel
-	if (builder.IsComplete() == true)
+	if (media_track->IsValid() == true)
 	{
 		return true;
 	}
@@ -1211,16 +1211,16 @@ bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream>
 	}
 
 	// The opus has a fixed samplerate of 48000
-	builder.SetSampleRate(48000);
-	builder.SetChannelLayout(parser.GetStereoFlag() == 0 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+	media_track->SetSampleRate(48000);
+	media_track->SetChannelLayout(parser.GetStereoFlag() == 0 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, const MediaTrack &media_track, MediaConfigBuilder &builder, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// One time : parse samplerate, channel
-	if (builder.IsComplete() == true)
+	if (media_track->IsValid() == true)
 	{
 		return true;
 	}
@@ -1234,9 +1234,9 @@ bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> 
 
 	logti("MP3Parser : %s", parser.GetInfoString().CStr());
 
-	builder.SetSampleRate(parser.GetSampleRate());
-	media_track.GetStats()->SetBitrateByMeasured(parser.GetBitrate());
-	builder.SetChannelLayout(parser.GetChannelCount() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+	media_track->SetSampleRate(parser.GetSampleRate());
+	media_track->SetBitrateByMeasured(parser.GetBitrate());
+	media_track->SetChannelLayout(parser.GetChannelCount() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
 
 	return true;
 }

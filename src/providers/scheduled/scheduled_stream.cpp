@@ -9,7 +9,6 @@
 
 #include "scheduled_stream.h"
 
-#include <base/info/media_config.h>
 #include "schedule_private.h"
 
 #include <base/provider/application.h>

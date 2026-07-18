@@ -135,8 +135,8 @@ namespace pub
 				continue;
 			}
 
-			// Track the packet's MediaConfig at this stream's consumption position
-			stream->UpdateMediaConfig(media_packet);
+			// Track the packet's generation at this stream's consumption position
+			stream->UpdateTrackGeneration(media_packet);
 
 			if (media_packet->GetMediaType() == cmn::MediaType::Video)
 			{
@@ -343,10 +343,10 @@ namespace pub
 
 		lock.unlock();
 
-		// The copy of this stream was made at creation, before the configs were
-		// published. Materialize the private track snapshot from the published
-		// configs so every publisher reads prepared values.
-		stream->AdoptMediaConfigs(*info);
+		// The copy of this stream was made at creation, before the first
+		// generations were published. Adopt the prepared generations so the
+		// packet stamps compare equal from the first packet on.
+		stream->AdoptTrackGenerations(*info);
 
 		// Start stream
 		if (stream->EnterStart() == false)

@@ -85,27 +85,30 @@ public:
 	
 private:
 	// Author state per track, accessed only on the worker thread of this stream.
-	// The builder collects values from hints and in-band parsing; `config` is the
-	// currently published generation; `last_hint` makes an upstream hint adopted
-	// exactly once per hint object.
-	struct MediaConfigState
+	// `working` is the private mutable copy the normalizer parses into; a new
+	// immutable generation is cloned from it and published on a content change.
+	// `last_hint` makes an upstream hint adopted exactly once per hint object;
+	// `last_dcr` re-arms the rebuild trigger after a content-equal replacement.
+	struct TrackAuthorState
 	{
-		MediaConfigBuilder builder;
-		std::shared_ptr<const MediaConfig> config = nullptr;
-		std::shared_ptr<const MediaConfig> last_hint = nullptr;
+		std::shared_ptr<MediaTrack> working = nullptr;
+		std::shared_ptr<const MediaTrack> published = nullptr;
+		std::shared_ptr<const MediaTrack> last_hint = nullptr;
+		std::shared_ptr<DecoderConfigurationRecord> last_dcr = nullptr;
+		bool recheck = false;
 	};
 
 	void DropNonDecodingPackets();
 
-	// Publish the current MediaConfig built from the author state and attach it
-	// to the packet. This stream is the single author of MediaConfig for its
-	// direction.
-	void StampMediaConfig(MediaConfigState &state, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet);
+	// Publish a new immutable track generation from the author state when the
+	// content changed, and attach the current generation to the packet. This
+	// stream is the single author of track generations for its direction.
+	void StampTrackGeneration(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
-	// Adopt a provider/upstream-authored config hint carried by the packet into
-	// the author state, so extradata-dependent formats stay decodable without
-	// cross-module track mutation. Runs before normalization.
-	void ApplyPacketConfigHint(MediaConfigState &state, const std::shared_ptr<MediaPacket> &media_packet);
+	// Adopt a provider/upstream-authored track generation carried by the packet
+	// into the author state, so extradata-dependent formats stay decodable
+	// without cross-module track mutation. Runs before normalization.
+	void ApplyPacketConfigHint(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
 	bool _is_stream_prepared = false;
 	bool _is_all_tracks_parsed = false;
@@ -123,7 +126,7 @@ private:
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
 
-	std::map<MediaTrackId, MediaConfigState> _media_configs;
+	std::map<MediaTrackId, TrackAuthorState> _track_authors;
 
 	// Temporary packet store. for calculating packet duration
 	std::map<MediaTrackId, std::shared_ptr<MediaPacket>> _media_packet_stash;

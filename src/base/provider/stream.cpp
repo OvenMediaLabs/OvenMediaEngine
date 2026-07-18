@@ -11,7 +11,6 @@
 
 #include "application.h"
 #include "base/info/application.h"
-#include "base/info/media_config.h"
 #include "provider_private.h"
 #include "base/provider/pull_provider/stream_props.h"
 #include "base/provider/pull_provider/stream.h"
@@ -365,7 +364,7 @@ namespace pvd
 			auto hint_it = _packet_config_hints.find(packet->GetTrackId());
 			if (hint_it != _packet_config_hints.end())
 			{
-				packet->SetMediaConfig(hint_it->second);
+				packet->SetTrack(hint_it->second);
 			}
 		}
 
@@ -767,7 +766,7 @@ namespace pvd
 		}
 
 		ov::ScopedLock lock(_packet_config_hint_mutex);
-		_packet_config_hints[track->GetId()] = MediaConfig::FromMediaTrack(*track, 0);
+		_packet_config_hints[track->GetId()] = track;
 	}
 
 	bool Stream::ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track)
@@ -783,6 +782,11 @@ namespace pvd
 			return false;
 		}
 
+		if (ex_track != nullptr)
+		{
+			new_track->AdoptStats(ex_track->GetStats());
+			new_track->SetGeneration(ex_track->GetGeneration() + 1);
+		}
 		UpdateTrack(new_track);
 		UpdatePacketConfigHint(new_track);
 

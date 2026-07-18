@@ -30,6 +30,16 @@ public:
 
 	bool Update(const MediaTrack &media_track);
 
+	// Generation of this track description. A published MediaTrack is immutable;
+	// a configuration change is delivered as a new generation object attached to
+	// the packets (consumers detect the boundary by pointer comparison).
+	uint32_t GetGeneration() const;
+	void SetGeneration(uint32_t generation);
+
+	// Compares the content description only (codec, timebase, DCR, resolution,
+	// audio parameters), excluding identity labels, conf values and generation
+	bool HasSameContent(const MediaTrack &other) const;
+
 	// Track ID
 	void SetId(uint32_t id);
 	uint32_t GetId() const;
@@ -249,4 +259,7 @@ protected:
 
 	// If false, encoder failure for this track is non-fatal and the stream continues without it.
 	std::atomic<bool> _essential_track = true;
+
+	// Generation number of this description (0 = setup skeleton, 1 = first published)
+	std::atomic<uint32_t> _generation = 0;
 };

@@ -123,7 +123,56 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_extra_info = media_track._extra_info;
 	_essential_track = media_track._essential_track.load();
 
+	_generation = media_track._generation.load();
+
 	return true;
+}
+
+uint32_t MediaTrack::GetGeneration() const
+{
+	return _generation;
+}
+
+void MediaTrack::SetGeneration(uint32_t generation)
+{
+	_generation = generation;
+}
+
+bool MediaTrack::HasSameContent(const MediaTrack &other) const
+{
+	if (GetMediaType() != other.GetMediaType() ||
+		GetCodecId() != other.GetCodecId() ||
+		GetTimeBase() != other.GetTimeBase())
+	{
+		return false;
+	}
+
+	if (GetMediaType() == MediaType::Video)
+	{
+		if ((GetResolution() == other.GetResolution()) == false)
+		{
+			return false;
+		}
+	}
+	else if (GetMediaType() == MediaType::Audio)
+	{
+		if (GetSample().GetFormat() != other.GetSample().GetFormat() ||
+			GetSample().GetRateNum() != other.GetSample().GetRateNum() ||
+			GetChannel().GetLayout() != other.GetChannel().GetLayout() ||
+			GetAudioSamplesPerFrame() != other.GetAudioSamplesPerFrame())
+		{
+			return false;
+		}
+	}
+
+	auto record = GetDecoderConfigurationRecord();
+	auto other_record = other.GetDecoderConfigurationRecord();
+	if (record == nullptr || other_record == nullptr)
+	{
+		return record == other_record;
+	}
+
+	return record->Equals(other_record);
 }
 
 void MediaTrack::SetHasBframes(bool has_bframe)

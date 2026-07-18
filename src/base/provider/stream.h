@@ -98,11 +98,10 @@ namespace pvd
 
 		void StartNewGeneration();
 
-		// Register/refresh the config hint of a track. The hint is a MediaConfig
-		// built from the values this provider already knows (container extradata,
-		// SDP, describe); SendFrame() attaches it to every packet of the track and
-		// the media router adopts it as author input. Optional: a provider whose
-		// bitstream is self-describing does not need hints at all.
+		// Register/refresh the config hint of a track: the provider-authored track
+		// generation itself. SendFrame() attaches it to every packet of the track
+		// and the media router adopts it as author input. Optional: a provider
+		// whose bitstream is self-describing does not need hints at all.
 		void UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track);
 
 		// Replace a track with its next generation (same codec required; a codec
@@ -146,7 +145,7 @@ namespace pvd
 
 		// Config hints registered by UpdatePacketConfigHint(), attached per packet in SendFrame()
 		mutable ov::SharedMutex _packet_config_hint_mutex;
-		std::map<uint32_t, std::shared_ptr<const MediaConfig>> _packet_config_hints OV_GUARDED_BY(_packet_config_hint_mutex);
+		std::map<uint32_t, std::shared_ptr<const MediaTrack>> _packet_config_hints OV_GUARDED_BY(_packet_config_hint_mutex);
 
 		// Processing events
 		bool ProcessEvent(const std::shared_ptr<MediaEvent> &event);

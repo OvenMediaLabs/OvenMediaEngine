@@ -1,7 +1,6 @@
 #include "stream.h"
 #include "application.h"
 #include "publisher_private.h"
-#include <base/info/media_config.h>
 #include <base/event/command/commands.h>
 
 namespace pub
@@ -209,39 +208,41 @@ namespace pub
 	{
 	}
 
-	void Stream::UpdateMediaConfig(const std::shared_ptr<MediaPacket> &media_packet)
+	void Stream::UpdateTrackGeneration(const std::shared_ptr<MediaPacket> &media_packet)
 	{
-		auto new_config = media_packet->GetMediaConfig();
-		if (new_config == nullptr)
+		auto new_track = media_packet->GetTrack();
+		if (new_track == nullptr)
 		{
 			return;
 		}
 
 		auto track_id = static_cast<int32_t>(media_packet->GetTrackId());
-		auto old_config = GetMediaConfig(track_id);
-		if (old_config == new_config)
+		auto old_track = GetTrack(track_id);
+		if (old_track == new_track)
 		{
 			return;
 		}
 
-		SetMediaConfig(track_id, new_config);
+		// Swap in the packet's generation; the map const conversion follows in a
+		// later commit, until then the shared object is adopted via a const cast
+		UpdateTrack(std::const_pointer_cast<MediaTrack>(new_track));
 
-		// The first config seen is the initial generation, not a change
-		if (old_config == nullptr)
+		// A generation the stream was created with is the initial one, not a change
+		if (old_track == nullptr || old_track->GetGeneration() == new_track->GetGeneration())
 		{
 			return;
 		}
 
-		OnMediaConfigChanged(track_id, old_config, new_config);
+		OnTrackChanged(track_id, old_track, new_track);
 	}
 
-	void Stream::OnMediaConfigChanged(int32_t track_id, const std::shared_ptr<const MediaConfig> &old_config, const std::shared_ptr<const MediaConfig> &new_config)
+	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
 	{
 		// A publisher that does not override this cannot switch its output to the
 		// new configuration, so the output may be broken from this point.
-		logtw("%s/%s(%u) Track(%d) media config has been changed but this publisher does not support it. %s -> %s",
+		logtw("%s/%s(%u) Track(%d) configuration has been changed but this publisher does not support it. generation(%u) -> generation(%u)",
 			  GetApplicationName(), GetName().CStr(), GetId(),
-			  track_id, old_config->GetInfoString().CStr(), new_config->GetInfoString().CStr());
+			  track_id, old_track->GetGeneration(), new_track->GetGeneration());
 	}
 
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const

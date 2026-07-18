@@ -156,8 +156,8 @@ private:
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
-	// Current MediaConfig per input track (accessed only on the packet-push thread)
-	std::map<MediaTrackId, std::shared_ptr<const MediaConfig>> _input_media_configs;
+	// Current generation per input track (accessed only on the packet-push thread)
+	std::map<MediaTrackId, std::shared_ptr<const MediaTrack>> _input_track_generations;
 
 	// Last decoded frame and timestamp
 	// [DECODER_ID, MediaFrame]
@@ -183,9 +183,8 @@ private:
 	bool StartInternal();
 	bool PrepareInternal();
 
-	// Rebuild _input_stream with private track clones seeded from the published
-	// MediaConfig of each track. The clones are this module's working state for
-	// the input side; TrackStats objects stay shared.
+	// Snapshot the prepared input stream; the shared track generations are
+	// immutable, later generations arrive attached to the packets.
 	void BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream);
 
 	size_t CreateOutputStreamDynamic();

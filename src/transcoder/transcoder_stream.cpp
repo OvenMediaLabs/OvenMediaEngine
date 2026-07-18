@@ -9,7 +9,6 @@
 
 #include "transcoder_stream.h"
 
-#include <base/info/media_config.h>
 #include <monitoring/monitoring.h>
 
 #include "config/config_manager.h"
@@ -122,11 +121,18 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 
 void TranscoderStream::BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream)
 {
-	// The plain copy shares the source's MediaTrack objects; AdoptMediaConfigs
-	// replaces them with private clones seeded from the published MediaConfig of
-	// each track. TrackStats objects stay shared.
+	// The plain copy would share the source's published generations, but this
+	// module refines its input view from decoded frames (UpdateInputTrack), so
+	// it must own private clones. Published generations stay untouched;
+	// TrackStats objects stay shared.
 	_input_stream = std::make_shared<info::Stream>(*stream);
-	_input_stream->AdoptMediaConfigs(*stream);
+
+	for (const auto &[track_id, track] : stream->GetTracks())
+	{
+		auto clone = std::make_shared<MediaTrack>(*track);
+		clone->AdoptStats(track->GetStats());
+		_input_stream->UpdateTrack(clone);
+	}
 }
 
 void TranscoderStream::PrepareAsync()
@@ -1586,24 +1592,24 @@ void TranscoderStream::ProcessPacket(const std::shared_ptr<MediaPacket> &packet)
 
 void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet)
 {
-	auto config = packet->GetMediaConfig();
-	if (config == nullptr)
+	auto generation = packet->GetTrack();
+	if (generation == nullptr)
 	{
 		return;
 	}
 
 	auto track_id = packet->GetTrackId();
 
-	auto it = _input_media_configs.find(track_id);
-	auto current = (it != _input_media_configs.end()) ? it->second : nullptr;
-	if (current == config)
+	auto it = _input_track_generations.find(track_id);
+	auto current = (it != _input_track_generations.end()) ? it->second : nullptr;
+	if (current == generation)
 	{
 		return;
 	}
 
-	_input_media_configs[track_id] = config;
+	_input_track_generations[track_id] = generation;
 
-	// The first config seen is the initial generation, not a change
+	// The first generation seen is the initial one, not a change
 	if (current == nullptr)
 	{
 		return;
@@ -1614,8 +1620,8 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 	// in-band format change (GetFramedPacket), the filter re-inits when the frame
 	// format changes (IsNeedUpdate), and encoders are rewired by ChangeOutputFormat.
 	// Bypass tracks are re-parsed by the outbound mediarouter.
-	logti("%s Input track(%d) media config has been changed. [%s] -> [%s]",
-		  _log_prefix.CStr(), track_id, current->GetInfoString().CStr(), config->GetInfoString().CStr());
+	logti("%s Input track(%d) configuration has been changed. generation(%u) -> generation(%u)",
+		  _log_prefix.CStr(), track_id, current->GetGeneration(), generation->GetGeneration());
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
@@ -1644,10 +1650,10 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 			clone = packet->ClonePacket();
 		}
 
-		// Use the timebase of the packet's own generation. The shared input track
-		// may already have been updated ahead of the packets still in flight.
-		auto packet_config = packet->GetMediaConfig();
-		auto input_timebase = (packet_config != nullptr) ? packet_config->GetTimeBase() : input_track->GetTimeBase();
+		// Use the timebase of the packet's own generation. The map entry may
+		// already be a newer generation than the packets still in flight.
+		auto packet_track = packet->GetTrack();
+		auto input_timebase = (packet_track != nullptr) ? packet_track->GetTimeBase() : input_track->GetTimeBase();
 
 		double scale = input_timebase.GetExpr() / output_track->GetTimeBase().GetExpr();
 		clone->SetPts(static_cast<int64_t>((double)clone->GetPts() * scale));

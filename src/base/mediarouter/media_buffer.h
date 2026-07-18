@@ -16,7 +16,7 @@
 
 #include "media_type.h"
 
-class MediaConfig;
+class MediaTrack;
 
 enum class MediaPacketFlag : uint8_t
 {
@@ -131,17 +131,18 @@ public:
 		_track_id = track_id;
 	}
 
-	// Immutable codec configuration this packet belongs to.
-	// Stamped by MediaRouter (inbound/outbound); consumers detect a
-	// configuration change by comparing this pointer with their current one.
-	void SetMediaConfig(const std::shared_ptr<const MediaConfig> &media_config)
+	// The track generation this packet belongs to: the immutable MediaTrack
+	// description stamped by the author (MediaRouter inbound/outbound).
+	// Consumers detect a configuration change by comparing this pointer with
+	// the entry in their own track map, and swap on change.
+	void SetTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
-		_media_config = media_config;
+		_track = track;
 	}
 
-	const std::shared_ptr<const MediaConfig> &GetMediaConfig() const
+	const std::shared_ptr<const MediaTrack> &GetTrack() const
 	{
-		return _media_config;
+		return _track;
 	}
 
 	MediaPacketFlag GetFlag() const noexcept
@@ -230,7 +231,7 @@ public:
 		packet->_frag_hdr = _frag_hdr;
 		packet->_high_priority = _high_priority;
 		packet->_is_internal_created = _is_internal_created;
-		packet->_media_config = _media_config;
+		packet->_track = _track;
 
 		return packet;
 	}
@@ -258,7 +259,7 @@ public:
 	}
 
 protected:
-	std::shared_ptr<const MediaConfig> _media_config = nullptr;
+	std::shared_ptr<const MediaTrack> _track = nullptr;
 	cmn::MediaType _media_type = cmn::MediaType::Unknown;
 	uint32_t _track_id = UINT32_MAX;
 

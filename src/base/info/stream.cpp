@@ -11,7 +11,6 @@
 #include <random>
 
 #include "application.h"
-#include "media_config.h"
 
 #define OV_LOG_TAG "Stream"
 
@@ -60,11 +59,6 @@ namespace info
 		_tracks = stream._tracks;
 		_video_tracks = stream._video_tracks;
 		_audio_tracks = stream._audio_tracks;
-
-		{
-			ov::SharedLockGuard lock(stream._media_config_mutex);
-			_media_configs = stream._media_configs;
-		}
 
 		_track_group_map = stream._track_group_map;
 
@@ -340,64 +334,16 @@ namespace info
 		return true;
 	}
 
-	void Stream::SetMediaConfig(int32_t track_id, const std::shared_ptr<const MediaConfig> &media_config)
+	void Stream::AdoptTrackGenerations(const Stream &source)
 	{
-		ov::ScopedLock lock(_media_config_mutex);
-		_media_configs[track_id] = media_config;
-	}
-
-	std::shared_ptr<const MediaConfig> Stream::GetMediaConfig(int32_t track_id) const
-	{
-		ov::SharedLockGuard lock(_media_config_mutex);
-
-		auto it = _media_configs.find(track_id);
-		if (it == _media_configs.end())
+		for (const auto &[track_id, track] : source._tracks)
 		{
-			return nullptr;
-		}
-
-		return it->second;
-	}
-
-	void Stream::AdoptMediaConfigs(const Stream &source)
-	{
-		{
-			ov::SharedLockGuard source_lock(source._media_config_mutex);
-			ov::ScopedLock lock(_media_config_mutex);
-			_media_configs = source._media_configs;
-		}
-
-		for (const auto &[track_id, track] : _tracks)
-		{
-			auto config = GetMediaConfig(track_id);
-			if (config == nullptr)
+			if (_tracks.find(track_id) == _tracks.end())
 			{
 				continue;
 			}
 
-			auto clone = std::make_shared<MediaTrack>(*track);
-
-			if (clone->GetCodecId() == cmn::MediaCodecId::None)
-			{
-				clone->SetCodecId(config->GetCodecId());
-			}
-			clone->SetTimeBase(config->GetTimeBase());
-			clone->SetDecoderConfigurationRecord(config->GetDecoderConfigurationRecord());
-
-			if (config->GetMediaType() == cmn::MediaType::Video)
-			{
-				clone->SetResolution(config->GetResolution());
-			}
-			else if (config->GetMediaType() == cmn::MediaType::Audio)
-			{
-				clone->SetSampleRate(config->GetSample().GetRateNum());
-				clone->SetSampleFormat(config->GetSample().GetFormat());
-				clone->SetChannelLayout(config->GetChannel().GetLayout());
-				clone->SetAudioSamplesPerFrame(config->GetAudioSamplesPerFrame());
-			}
-
-			// Replaces the map entry only; stats carry over inside UpdateTrack
-			UpdateTrack(clone);
+			UpdateTrack(track);
 		}
 	}
 
