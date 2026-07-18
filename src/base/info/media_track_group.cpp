@@ -35,6 +35,22 @@ bool MediaTrackGroup::AddTrack(const std::shared_ptr<const MediaTrack> &track)
 	return true;
 }
 
+bool MediaTrackGroup::ReplaceTrack(const std::shared_ptr<const MediaTrack> &track)
+{
+	for (auto &item : _tracks)
+	{
+		auto current = std::atomic_load(&item);
+		if (current != nullptr && current->GetId() == track->GetId())
+		{
+			track->SetGroupIndex(current->GetGroupIndex());
+			std::atomic_store(&item, track);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool MediaTrackGroup::RemoveTrack(uint32_t id)
 {
 	auto it = std::find_if(_tracks.begin(), _tracks.end(), [id](const std::shared_ptr<const MediaTrack> &t) {
@@ -74,7 +90,7 @@ std::shared_ptr<const MediaTrack> MediaTrackGroup::GetTrack(uint32_t order) cons
 		return nullptr;
 	}
 
-	return _tracks[order];
+	return std::atomic_load(&_tracks[order]);
 }
 
 const std::vector<std::shared_ptr<const MediaTrack>> &MediaTrackGroup::GetTracks() const

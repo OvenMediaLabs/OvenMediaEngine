@@ -141,6 +141,12 @@ namespace pub
 		// Called by pub::Application before Send*Frame; fires OnTrackChanged on a generation change.
 		void UpdateTrackGeneration(const std::shared_ptr<MediaPacket> &media_packet);
 
+		// True when the packet belongs to an older generation than this stream's
+		// current track description. Publishers use this to drop pre-start
+		// buffered packets that a configuration change overtook during
+		// initialization: the pipeline was initialized for the newer generation.
+		bool IsStaleGeneration(const std::shared_ptr<MediaPacket> &media_packet) const;
+
 		bool EnterStart();
 		bool EnterStop();
 		

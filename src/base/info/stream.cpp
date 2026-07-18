@@ -374,14 +374,24 @@ namespace info
 			return AddTrack(track);
 		}
 
-		_tracks[track->GetId()] = track;
+		// A late adoption must not undo a newer generation already swapped in
+		if (ex_track->GetGeneration() > track->GetGeneration())
+		{
+			return true;
+		}
+
+		// The track layout is fixed after creation, so every slot address is
+		// stable; swapping the slots atomically lets readers on other threads
+		// (sessions, API) load them without a lock
+		std::atomic_store(&_tracks[track->GetId()], track);
 
 		auto replace_in = [&track](std::vector<std::shared_ptr<const MediaTrack>> &tracks) {
 			for (auto &item : tracks)
 			{
-				if (item->GetId() == track->GetId())
+				auto current = std::atomic_load(&item);
+				if (current != nullptr && current->GetId() == track->GetId())
 				{
-					item = track;
+					std::atomic_store(&item, track);
 				}
 			}
 		};
@@ -391,8 +401,7 @@ namespace info
 		auto group_it = _track_group_map.find(ex_track->GetVariantName());
 		if (group_it != _track_group_map.end())
 		{
-			group_it->second->RemoveTrack(track->GetId());
-			group_it->second->AddTrack(track);
+			group_it->second->ReplaceTrack(track);
 		}
 
 		return true;
@@ -451,7 +460,8 @@ namespace info
 			return nullptr;
 		}
 
-		return item->second;
+		// Slots are swapped at runtime by UpdateTrack(); loads must pair with its atomic store
+		return std::atomic_load(&item->second);
 	}
 
 	std::shared_ptr<const MediaTrack> Stream::GetTrackByLabel(const ov::String &public_label) const
@@ -506,7 +516,7 @@ namespace info
 				return nullptr;
 			}
 
-			return _video_tracks[order];
+			return std::atomic_load(&_video_tracks[order]);
 		}
 		else if (type == cmn::MediaType::Audio)
 		{
@@ -515,7 +525,7 @@ namespace info
 				return nullptr;
 			}
 
-			return _audio_tracks[order];
+			return std::atomic_load(&_audio_tracks[order]);
 		}
 
 		return nullptr;
@@ -548,9 +558,10 @@ namespace info
 	{
 		for (auto &item : _tracks)
 		{
-			if (item.second->GetMediaType() == type)
+			auto track = std::atomic_load(&item.second);
+			if (track != nullptr && track->GetMediaType() == type)
 			{
-				return item.second;
+				return track;
 			}
 		}
 

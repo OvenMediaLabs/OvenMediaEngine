@@ -19,6 +19,10 @@ public:
 	ov::String GetName() const;
 
 	bool AddTrack(const std::shared_ptr<const MediaTrack> &track);
+
+	// Swap the slot of the same track id in place (keeps the group index).
+	// Used for generation replacement; safe against concurrent readers.
+	bool ReplaceTrack(const std::shared_ptr<const MediaTrack> &track);
 	bool RemoveTrack(uint32_t id);
 
 	size_t GetTrackCount() const;

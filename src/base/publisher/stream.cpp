@@ -236,6 +236,23 @@ namespace pub
 		OnTrackChanged(track_id, old_track, new_track);
 	}
 
+	bool Stream::IsStaleGeneration(const std::shared_ptr<MediaPacket> &media_packet) const
+	{
+		auto packet_track = media_packet->GetTrack();
+		if (packet_track == nullptr)
+		{
+			return false;
+		}
+
+		auto current_track = GetTrack(media_packet->GetTrackId());
+		if (current_track == nullptr)
+		{
+			return false;
+		}
+
+		return packet_track->GetGeneration() < current_track->GetGeneration();
+	}
+
 	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
 	{
 		// A publisher that does not override this cannot switch its output to the

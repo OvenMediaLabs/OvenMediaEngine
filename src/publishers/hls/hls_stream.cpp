@@ -306,6 +306,7 @@ void HlsStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPac
 bool HlsStream::SendBufferedPackets()
 {
 	logtt("SendBufferedPackets - BufferSize (%zu)", _initial_media_packet_buffer.Size());
+	size_t stale_packet_count = 0;
 	while (_initial_media_packet_buffer.IsEmpty() == false)
 	{
 		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
@@ -315,6 +316,15 @@ bool HlsStream::SendBufferedPackets()
 		}
 
 		auto media_packet = buffered_media_packet.value();
+
+		// The stream was initialized for the current generation; packets of an
+		// older generation would corrupt the output
+		if (IsStaleGeneration(media_packet))
+		{
+			stale_packet_count++;
+			continue;
+		}
+
 		if (media_packet->GetMediaType() == cmn::MediaType::Data)
 		{
 			SendDataFrame(media_packet);
