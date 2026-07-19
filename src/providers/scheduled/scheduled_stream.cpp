@@ -809,7 +809,7 @@ namespace pvd
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
 
-				if (ReplaceTrack(new_track) == false)
+				if (ChangeTrack(new_track) == false)
 				{
 					logte("%s/%s: Video track of item %s was rejected",
 						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
@@ -848,7 +848,7 @@ namespace pvd
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
 
-				if (ReplaceTrack(new_track) == false)
+				if (ChangeTrack(new_track) == false)
 				{
 					logte("%s/%s: Audio track of item %s was rejected",
 						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
@@ -1260,7 +1260,7 @@ namespace pvd
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
 
-				if (ReplaceTrack(new_track) == false)
+				if (ChangeTrack(new_track) == false)
 				{
 					logte("%s/%s: Video track of the tapped stream was rejected",
 						  GetApplicationName(), GetName().CStr());
@@ -1290,7 +1290,7 @@ namespace pvd
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
 
-				if (ReplaceTrack(new_track) == false)
+				if (ChangeTrack(new_track) == false)
 				{
 					logte("%s/%s: Audio track of the tapped stream was rejected",
 						  GetApplicationName(), GetName().CStr());

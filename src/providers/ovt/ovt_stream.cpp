@@ -475,7 +475,7 @@ namespace pvd
 
 			// A re-describe replaces the track with its next version; the base
 			// rejects a codec change and refreshes the config hint of the track
-			if (ReplaceTrack(new_track) == false)
+			if (ChangeTrack(new_track) == false)
 			{
 				return false;
 			}

@@ -305,7 +305,7 @@ namespace pvd
 						auto old_language = track->GetLanguage();
 						auto new_track = std::make_shared<MediaTrack>(*track);
 						new_track->SetLanguage(command->GetLanguage());
-						ReplaceTrack(new_track);
+						ChangeTrack(new_track);
 						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), new_track->GetLanguage().CStr());
 					}
 				}
@@ -774,7 +774,7 @@ namespace pvd
 		_packet_config_hints[track->GetId()] = track;
 	}
 
-	bool Stream::ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track)
+	bool Stream::ChangeTrack(const std::shared_ptr<MediaTrack> &new_track)
 	{
 		auto ex_track = GetTrack(new_track->GetId());
 		if (ex_track != nullptr &&
