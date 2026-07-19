@@ -257,6 +257,16 @@ namespace pub
 
 	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
 	{
+		// A label-only change (e.g. a detected subtitle language) does not affect
+		// the media itself, so the output stays correct without publisher support
+		if (old_track->HasSameContent(*new_track))
+		{
+			logti("%s/%s(%u) Track(%d) metadata has been updated (version %u -> %u)",
+				  GetApplicationName(), GetName().CStr(), GetId(),
+				  track_id, old_track->GetVersion(), new_track->GetVersion());
+			return;
+		}
+
 		// A publisher that does not override this cannot switch its output to the
 		// new configuration, so the output may be broken from this point.
 		logtw("%s/%s(%u) Track(%d) configuration has changed (version %u -> %u), but the %s publisher does not support runtime configuration changes. The output of this track may be broken",
@@ -580,21 +590,31 @@ namespace pub
 			case EventCommand::Type::UpdateSubtitleLanguage:
 			{
 				auto command = event->GetCommand<EventCommandUpdateLanguage>();
-				if (command != nullptr)
+				if (command == nullptr)
 				{
-					auto track = GetTrackByLabel(command->GetTrackLabel());
-					if (track != nullptr)
-					{
-						// The provider publishes a new track version for this change;
-						// it arrives attached to the following packets and is adopted there
-						logtt("[%s/%s(%u)] Subtitle track language update received (%s); waiting for the new track version", GetApplicationName(), GetName().CStr(), GetId(), command->GetLanguage().CStr());
-					}
-					else
-					{
-						logtw("Cannot find subtitle track by label : %s - %s/%s(%u)", command->GetTrackLabel().CStr(), GetApplicationName(), GetName().CStr(), GetId());
-					}
+					break;
 				}
 
+				auto track = GetTrackByLabel(command->GetTrackLabel());
+				if (track == nullptr)
+				{
+					logtw("Cannot find subtitle track by label : %s - %s/%s(%u)", command->GetTrackLabel().CStr(), GetApplicationName(), GetName().CStr(), GetId());
+					break;
+				}
+
+				if (track->GetLanguage() == command->GetLanguage())
+				{
+					break;
+				}
+
+				// The urgent event applies immediately; the router's published
+				// version arrives with the next packet and converges to the same
+				// content, so the extra swap is harmless
+				auto new_track = std::make_shared<MediaTrack>(*track);
+				new_track->SetLanguage(command->GetLanguage());
+				UpdateTrack(new_track);
+
+				OnTrackChanged(track->GetId(), track, new_track);
 				break;
 			}
 

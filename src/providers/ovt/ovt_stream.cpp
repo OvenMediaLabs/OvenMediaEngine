@@ -473,9 +473,15 @@ namespace pvd
 				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
-			// A re-describe replaces the track with its next version; the base
-			// rejects a codec change and refreshes the config hint of the track
-			if (ChangeTrack(new_track) == false)
+			// The initial describe registers the track; a re-describe replaces it
+			// with the next version. Both register the config hint so the router
+			// adopts the described values (e.g. Opus parameters not in the bitstream)
+			if (GetTrack(new_track->GetId()) == nullptr)
+			{
+				AddTrack(new_track);
+				UpdatePacketConfigHint(new_track);
+			}
+			else if (ChangeTrack(new_track) == false)
 			{
 				return false;
 			}

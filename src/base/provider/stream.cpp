@@ -764,7 +764,9 @@ namespace pvd
 
 	void Stream::UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track)
 	{
-		if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
+		if (track->GetMediaType() != cmn::MediaType::Video &&
+			track->GetMediaType() != cmn::MediaType::Audio &&
+			track->GetMediaType() != cmn::MediaType::Subtitle)
 		{
 			return;
 		}
@@ -776,8 +778,14 @@ namespace pvd
 	bool Stream::ChangeTrack(const std::shared_ptr<MediaTrack> &new_track)
 	{
 		auto ex_track = GetTrack(new_track->GetId());
-		if (ex_track != nullptr &&
-			ex_track->GetCodecId() != cmn::MediaCodecId::None &&
+		if (ex_track == nullptr)
+		{
+			logte("%s/%s(%u) Track(%d) does not exist. ChangeTrack only replaces an existing track",
+				  GetApplicationName(), GetName().CStr(), GetId(), new_track->GetId());
+			return false;
+		}
+
+		if (ex_track->GetCodecId() != cmn::MediaCodecId::None &&
 			new_track->GetCodecId() != ex_track->GetCodecId())
 		{
 			logte("%s/%s(%u) Track(%d) codec change is not supported (%s -> %s). The track is kept as is",
@@ -788,10 +796,7 @@ namespace pvd
 
 		// Runtime statistics are keyed by the track id on the stream, so they
 		// survive the replacement without any hand-over
-		if (ex_track != nullptr)
-		{
-			new_track->SetVersion(ex_track->GetVersion() + 1);
-		}
+		new_track->SetVersion(ex_track->GetVersion() + 1);
 		UpdateTrack(new_track);
 		UpdatePacketConfigHint(new_track);
 

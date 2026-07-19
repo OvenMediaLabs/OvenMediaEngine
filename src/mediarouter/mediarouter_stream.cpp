@@ -28,7 +28,10 @@
 
 #include "mediarouter_stream.h"
 
+#include <base/event/media_event.h>
+#include <base/event/command/update_language.h>
 #include <base/ovlibrary/ovlibrary.h>
+#include <monitoring/monitoring.h>
 
 #include "mediarouter_private.h"
 
@@ -357,6 +360,10 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		if (pop_media_packet->GetMediaType() == MediaType::Data)
 		{
 			pop_media_packet->SetDuration(0);
+
+			// In-band commands are author input for this direction (e.g. a
+			// detected subtitle language updates the subtitle track)
+			HandleEventPacket(pop_media_packet);
 		}
 	}
 
@@ -520,10 +527,59 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 		  media_packet->GetTrackId(), hint->GetVersion());
 }
 
+void MediaRouteStream::HandleEventPacket(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto event = std::dynamic_pointer_cast<MediaEvent>(media_packet);
+	if (event == nullptr || event->GetCommandType() != EventCommand::Type::UpdateSubtitleLanguage)
+	{
+		return;
+	}
+
+	auto command = event->GetCommand<EventCommandUpdateLanguage>();
+	if (command == nullptr)
+	{
+		return;
+	}
+
+	auto track = _stream->GetTrackByLabel(command->GetTrackLabel());
+	if (track == nullptr || track->GetMediaType() != MediaType::Subtitle)
+	{
+		return;
+	}
+
+	auto &state = _track_authors[track->GetId()];
+	if (state.working == nullptr)
+	{
+		state.working = std::make_shared<MediaTrack>(*track);
+	}
+
+	if (state.working->GetLanguage() == command->GetLanguage())
+	{
+		return;
+	}
+
+	state.working->SetLanguage(command->GetLanguage());
+
+	logti("[%s/%s(%u)] Subtitle track(%d) language has been updated (%s)",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  track->GetId(), command->GetLanguage().CStr());
+
+	// The event is delivered urgently, so the new version is published right
+	// away; the next packet of the track is stamped with it as usual
+	if (state.working->IsValid())
+	{
+		PublishWorkingVersion(state, track->GetId());
+	}
+	else
+	{
+		state.recheck = true;
+	}
+}
+
 void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto media_type = media_packet->GetMediaType();
-	if (media_type != MediaType::Video && media_type != MediaType::Audio)
+	if (media_type != MediaType::Video && media_type != MediaType::Audio && media_type != MediaType::Subtitle)
 	{
 		return;
 	}
@@ -546,43 +602,59 @@ void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr
 	auto working_dcr = working->GetDecoderConfigurationRecord();
 	if (state.published == nullptr || working_dcr != state.last_dcr || state.recheck)
 	{
-		state.last_dcr = working_dcr;
-		state.recheck = false;
-
-		// Content equality wins: same content is the same version
-		if (state.published == nullptr || working->HasSameContent(*state.published) == false)
-		{
-			bool is_change = (state.published != nullptr);
-
-			working->SetVersion((state.published != nullptr) ? state.published->GetVersion() + 1 : 1);
-
-			auto new_version = std::make_shared<MediaTrack>(*working);
-
-			state.published = new_version;
-
-			// This module's stream map always holds the latest published version
-			_stream->UpdateTrack(new_version);
-
-			if (is_change)
-			{
-				auto stats = _stream->GetTrackStats(media_packet->GetTrackId());
-				if (stats != nullptr)
-				{
-					auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-									  std::chrono::system_clock::now().time_since_epoch())
-									  .count();
-					stats->OnConfigChanged(now_ms);
-				}
-			}
-
-			logti("[%s/%s(%u)] Track version has been published. Track(%d) version(%u) %s",
-				  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
-				  media_packet->GetTrackId(), new_version->GetVersion(),
-				  cmn::GetCodecIdString(new_version->GetCodecId()));
-		}
+		PublishWorkingVersion(state, media_packet->GetTrackId());
 	}
 
 	media_packet->SetTrack(state.published);
+}
+
+void MediaRouteStream::PublishWorkingVersion(TrackAuthorState &state, uint32_t track_id)
+{
+	auto &working = state.working;
+
+	state.last_dcr = working->GetDecoderConfigurationRecord();
+	state.recheck = false;
+
+	// Content equality wins: same content is the same version. Label changes
+	// (e.g. a detected subtitle language) also publish, so they reach consumers
+	if (state.published != nullptr &&
+		working->HasSameContent(*state.published) == true &&
+		working->HasSameLabels(*state.published) == true)
+	{
+		return;
+	}
+
+	bool is_change = (state.published != nullptr);
+
+	working->SetVersion((state.published != nullptr) ? state.published->GetVersion() + 1 : 1);
+
+	auto new_version = std::make_shared<MediaTrack>(*working);
+
+	state.published = new_version;
+
+	// This module's stream map always holds the latest published version
+	_stream->UpdateTrack(new_version);
+
+	// The monitoring metrics copies adopt tracks only when the stream is
+	// prepared, so runtime publishes are pushed to them explicitly
+	MonitorInstance->OnTrackUpdated(*_stream, new_version);
+
+	if (is_change)
+	{
+		auto stats = _stream->GetTrackStats(track_id);
+		if (stats != nullptr)
+		{
+			auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+							  std::chrono::system_clock::now().time_since_epoch())
+							  .count();
+			stats->OnConfigChanged(now_ms);
+		}
+	}
+
+	logti("[%s/%s(%u)] Track version has been published. Track(%d) version(%u) %s",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  track_id, new_version->GetVersion(),
+		  cmn::GetCodecIdString(new_version->GetCodecId()));
 }
 
 std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::GetMirrorBuffer()

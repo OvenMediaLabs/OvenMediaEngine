@@ -45,6 +45,9 @@ public:
 	// audio parameters), excluding identity labels, conf values and version
 	bool HasSameContent(const MediaTrack &other) const;
 
+	// Compares the identity labels only (public name, language, characteristics)
+	bool HasSameLabels(const MediaTrack &other) const;
+
 	// Track ID
 	void SetId(uint32_t id);
 	uint32_t GetId() const;

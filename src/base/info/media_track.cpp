@@ -182,6 +182,13 @@ bool MediaTrack::HasSameContent(const MediaTrack &other) const
 	return record->Equals(other_record);
 }
 
+bool MediaTrack::HasSameLabels(const MediaTrack &other) const
+{
+	return GetPublicName() == other.GetPublicName() &&
+		   GetLanguage() == other.GetLanguage() &&
+		   GetCharacteristics() == other.GetCharacteristics();
+}
+
 void MediaTrack::SetId(uint32_t id)
 {
 	_id = id;

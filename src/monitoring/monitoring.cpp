@@ -278,6 +278,24 @@ namespace mon
 		return true;
 	}
 
+	bool Monitoring::OnTrackUpdated(const info::Stream &stream, const std::shared_ptr<const MediaTrack> &track)
+	{
+		auto app_metrics = GetApplicationMetrics(stream.GetApplicationInfo());
+		if (app_metrics == nullptr)
+		{
+			return false;
+		}
+
+		auto stream_metrics = app_metrics->GetStreamMetrics(stream);
+		if (stream_metrics == nullptr)
+		{
+			return false;
+		}
+
+		stream_metrics->UpdateTrack(track);
+		return true;
+	}
+
 	bool Monitoring::OnStreamPrepared(const info::Stream &stream)
 	{
 		auto app_metrics = GetApplicationMetrics(stream.GetApplicationInfo());

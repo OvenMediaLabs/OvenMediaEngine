@@ -109,6 +109,13 @@ private:
 	// stream is the single author of track versions for its direction.
 	void StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
+	// Apply an in-band command to the author state (e.g. UpdateSubtitleLanguage)
+	void HandleEventPacket(const std::shared_ptr<MediaPacket> &media_packet);
+
+	// Publish an immutable version from the author state when it differs from
+	// the published one (content or labels)
+	void PublishWorkingVersion(TrackAuthorState &state, uint32_t track_id);
+
 	// Adopt a provider/upstream-authored track version carried by the packet
 	// into the author state, so extradata-dependent formats stay decodable
 	// without cross-module track mutation. Runs before normalization.
