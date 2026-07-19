@@ -227,8 +227,10 @@ namespace pub
 		// later commit, until then the shared object is adopted via a const cast
 		UpdateTrack(std::const_pointer_cast<MediaTrack>(new_track));
 
-		// A version the stream was created with is the initial one, not a change
-		if (old_track == nullptr || old_track->GetVersion() == new_track->GetVersion())
+		// The first published version replacing the setup skeleton is the
+		// initial handover, not a configuration change
+		if (old_track == nullptr || old_track->IsPublished() == false ||
+			old_track->GetVersion() == new_track->GetVersion())
 		{
 			return;
 		}
@@ -257,9 +259,10 @@ namespace pub
 	{
 		// A publisher that does not override this cannot switch its output to the
 		// new configuration, so the output may be broken from this point.
-		logtw("%s/%s(%u) Track(%d) configuration has been changed but this publisher does not support it. version(%u) -> version(%u)",
+		logtw("%s/%s(%u) Track(%d) configuration has changed (version %u -> %u), but the %s publisher does not support runtime configuration changes. The output of this track may be broken",
 			  GetApplicationName(), GetName().CStr(), GetId(),
-			  track_id, old_track->GetVersion(), new_track->GetVersion());
+			  track_id, old_track->GetVersion(), new_track->GetVersion(),
+			  GetApplication()->GetPublisherTypeName());
 	}
 
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const

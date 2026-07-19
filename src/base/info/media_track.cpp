@@ -140,6 +140,11 @@ void MediaTrack::SetVersion(uint32_t version)
 	_version = version;
 }
 
+bool MediaTrack::IsPublished() const
+{
+	return _version > 0;
+}
+
 bool MediaTrack::HasSameContent(const MediaTrack &other) const
 {
 	if (GetMediaType() != other.GetMediaType() ||

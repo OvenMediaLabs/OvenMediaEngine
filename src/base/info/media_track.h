@@ -36,6 +36,11 @@ public:
 	uint32_t GetVersion() const;
 	void SetVersion(uint32_t version);
 
+	// False while this is still the setup skeleton the stream was created with.
+	// Published versions start at 1, so a change between published versions is
+	// a real configuration change; the first published version arriving is not.
+	bool IsPublished() const;
+
 	// Compares the content description only (codec, timebase, DCR, resolution,
 	// audio parameters), excluding identity labels, conf values and version
 	bool HasSameContent(const MediaTrack &other) const;
