@@ -93,7 +93,14 @@ std::shared_ptr<const MediaTrack> MediaTrackGroup::GetTrack(uint32_t order) cons
 	return std::atomic_load(&_tracks[order]);
 }
 
-const std::vector<std::shared_ptr<const MediaTrack>> &MediaTrackGroup::GetTracks() const
+std::vector<std::shared_ptr<const MediaTrack>> MediaTrackGroup::GetTracks() const
 {
-	return _tracks;
+	std::vector<std::shared_ptr<const MediaTrack>> snapshot;
+	snapshot.reserve(_tracks.size());
+	for (const auto &item : _tracks)
+	{
+		snapshot.push_back(std::atomic_load(&item));
+	}
+
+	return snapshot;
 }

@@ -110,7 +110,9 @@ namespace info
 		// True once the quality of the track could be measured (or was configured)
 		bool HasTrackQualityMeasured(int32_t track_id) const;
 		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
-		const std::map<int32_t, std::shared_ptr<const MediaTrack>> &GetTracks() const;
+		// Returns a snapshot: the slots are loaded atomically, so iterating is
+		// safe while the owner swaps generations on another thread
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> GetTracks() const;
 
 		const std::shared_ptr<MediaTrackGroup> GetMediaTrackGroup(const ov::String &group_name) const;
 		// Get Track Groups

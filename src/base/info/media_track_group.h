@@ -10,6 +10,10 @@
 
 #include "media_track.h"
 
+// Rendition index of the tracks sharing one variant name.
+// Concurrency contract: the vector structure is fixed after setup
+// (AddTrack/RemoveTrack run before the stream is shared); at runtime only
+// ReplaceTrack() swaps slots in place. Slots are accessed atomically.
 class MediaTrackGroup
 {
 public:
@@ -28,7 +32,8 @@ public:
 	size_t GetTrackCount() const;
 	std::shared_ptr<const MediaTrack> GetFirstTrack() const;
 	std::shared_ptr<const MediaTrack> GetTrack(uint32_t order) const;
-	const std::vector<std::shared_ptr<const MediaTrack>> &GetTracks() const;
+	// Returns a snapshot; safe to iterate while the owner swaps generations
+	std::vector<std::shared_ptr<const MediaTrack>> GetTracks() const;
 
 private:
 	ov::String _name;

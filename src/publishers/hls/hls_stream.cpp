@@ -242,7 +242,7 @@ bool HlsStream::IsSupportedCodec(cmn::MediaCodecId codec_id) const
 bool HlsStream::CreateDefaultPlaylist()
 {
 	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
-	for (const auto &[id, track] : _tracks)
+	for (const auto &[id, track] : GetTracks())
 	{
 		if (IsSupportedCodec(track->GetCodecId()) == true)
 		{
@@ -333,6 +333,11 @@ bool HlsStream::SendBufferedPackets()
 		{
 			AppendMediaPacket(media_packet);
 		}
+	}
+
+	if (stale_packet_count > 0)
+	{
+		logti("%s Dropped %zu buffered packets of an older track generation", GetName().CStr(), stale_packet_count);
 	}
 
 	return true;
@@ -690,8 +695,7 @@ void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::share
 bool HlsStream::CreatePackagers()
 {
 	// VTT
-	auto &tracks = GetTracks();
-	for (const auto &[id, track] : tracks)
+	for (const auto &[id, track] : GetTracks())
 	{
 		if (track->GetCodecId() != cmn::MediaCodecId::WebVTT)
 		{

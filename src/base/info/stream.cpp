@@ -56,9 +56,20 @@ namespace info
 		_app_info = stream._app_info;
 		_origin_stream = stream._origin_stream;
 
-		_tracks = stream._tracks;
-		_video_tracks = stream._video_tracks;
-		_audio_tracks = stream._audio_tracks;
+		// The source's owner may swap track generations concurrently, so every
+		// slot is loaded atomically
+		for (const auto &item : stream._tracks)
+		{
+			_tracks.emplace(item.first, std::atomic_load(&item.second));
+		}
+		for (const auto &item : stream._video_tracks)
+		{
+			_video_tracks.push_back(std::atomic_load(&item));
+		}
+		for (const auto &item : stream._audio_tracks)
+		{
+			_audio_tracks.push_back(std::atomic_load(&item));
+		}
 
 		// Groups are per-copy indexes over the shared immutable tracks; sharing
 		// the group objects themselves would let copies mutate each other's index
@@ -353,7 +364,7 @@ namespace info
 
 	void Stream::AdoptTrackGenerations(const Stream &source)
 	{
-		for (const auto &[track_id, track] : source._tracks)
+		for (const auto &[track_id, track] : source.GetTracks())
 		{
 			if (_tracks.find(track_id) == _tracks.end())
 			{
@@ -692,9 +703,17 @@ namespace info
 		return nullptr;
 	}
 
-	const std::map<int32_t, std::shared_ptr<const MediaTrack>> &Stream::GetTracks() const
+	std::map<int32_t, std::shared_ptr<const MediaTrack>> Stream::GetTracks() const
 	{
-		return _tracks;
+		// Snapshot with atomic loads: the map structure is fixed after setup,
+		// but the slots are swapped at runtime by UpdateTrack()
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> snapshot;
+		for (const auto &item : _tracks)
+		{
+			snapshot.emplace(item.first, std::atomic_load(&item.second));
+		}
+
+		return snapshot;
 	}
 
 	bool Stream::AddPlaylist(const std::shared_ptr<const Playlist> &playlist)
@@ -781,7 +800,7 @@ namespace info
 
 		for (auto it = _tracks.begin(); it != _tracks.end(); ++it)
 		{
-			auto track = it->second;
+			auto track = std::atomic_load(&it->second);
 
 			out_str.AppendFormat("\n\t%s", created ? track->GetInfoStringForCreated().CStr() : track->GetInfoString().CStr());
 		}

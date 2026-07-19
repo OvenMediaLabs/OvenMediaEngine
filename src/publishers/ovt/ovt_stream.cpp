@@ -147,7 +147,7 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 		json_playlists.append(json_playlist);
 	}
 
-	for(auto &track_item : _tracks)
+	for (auto &track_item : GetTracks())
 	{
 		auto &track = track_item.second;
 

@@ -1024,6 +1024,11 @@ bool LLHlsStream::SendBufferedPackets()
 		}
 	}
 
+	if (stale_packet_count > 0)
+	{
+		logti("%s Dropped %zu buffered packets of an older track generation", GetName().CStr(), stale_packet_count);
+	}
+
 	return true;
 }
 

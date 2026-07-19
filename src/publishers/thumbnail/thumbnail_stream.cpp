@@ -36,7 +36,7 @@ bool ThumbnailStream::Start()
 
 	// Check if there is a supported codec
 	bool found = false;
-	for (const auto &[id, track] : _tracks)
+	for (const auto &[id, track] : GetTracks())
 	{
 		if ((track->GetCodecId() == cmn::MediaCodecId::Png ||
 			 track->GetCodecId() == cmn::MediaCodecId::Jpeg ||
