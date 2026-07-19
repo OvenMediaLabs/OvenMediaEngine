@@ -137,15 +137,15 @@ namespace pub
 		virtual void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) = 0;
 		virtual void OnEvent(const std::shared_ptr<MediaEvent> &event) {}
 
-		// Track the generation of the packet at this stream's consumption position.
-		// Called by pub::Application before Send*Frame; fires OnTrackChanged on a generation change.
-		void UpdateTrackGeneration(const std::shared_ptr<MediaPacket> &media_packet);
+		// Track the version of the packet at this stream's consumption position.
+		// Called by pub::Application before Send*Frame; fires OnTrackChanged on a version change.
+		void UpdateTrackFromPacket(const std::shared_ptr<MediaPacket> &media_packet);
 
-		// True when the packet belongs to an older generation than this stream's
+		// True when the packet belongs to an older version than this stream's
 		// current track description. Publishers use this to drop pre-start
 		// buffered packets that a configuration change overtook during
-		// initialization: the pipeline was initialized for the newer generation.
-		bool IsStaleGeneration(const std::shared_ptr<MediaPacket> &media_packet) const;
+		// initialization: the pipeline was initialized for the newer version.
+		bool IsStalePacket(const std::shared_ptr<MediaPacket> &media_packet) const;
 
 		bool EnterStart();
 		bool EnterStop();
@@ -180,7 +180,7 @@ namespace pub
 		virtual bool Start();
 		virtual bool Stop();
 
-		// Called before the first packet of a new track generation is delivered.
+		// Called before the first packet of a new track version is delivered.
 		// A publisher that supports mid-stream configuration changes must override this.
 		virtual void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
 

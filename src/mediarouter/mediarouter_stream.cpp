@@ -126,8 +126,8 @@ bool MediaRouteStream::IsStreamReady()
 	{
 		auto track = track_it.second;
 
-		// The map entry is the latest published generation of this track; while a
-		// track stays undescribed no generation has been published yet
+		// The map entry is the latest published version of this track; while a
+		// track stays undescribed no version has been published yet
 		if (track->IsValid() == false)
 		{
 			return false;
@@ -381,7 +381,7 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		author_state.working = std::make_shared<MediaTrack>(*media_track);
 	}
 
-	// Adopt an upstream-authored track generation (e.g. a scheduled item's
+	// Adopt an upstream-authored track version (e.g. a scheduled item's
 	// extradata) exactly at its first packet, before the bitstream is normalized
 	ApplyPacketConfigHint(author_state, pop_media_packet);
 
@@ -392,8 +392,8 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 		return nullptr;
 	}
 
-	// Publish/attach the immutable track generation of this packet
-	StampTrackGeneration(author_state, pop_media_packet);
+	// Publish/attach the immutable track version of this packet
+	StampTrack(author_state, pop_media_packet);
 
 	// Update statistics of media track
 	auto track_stats = _stream->GetTrackStats(track_id);
@@ -474,7 +474,7 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 		working->SetTimeBase(hint->GetTimeBase());
 	}
 
-	// Provider-authored labels travel with the generation (e.g. a detected
+	// Provider-authored labels travel with the version (e.g. a detected
 	// subtitle language)
 	working->SetPublicName(hint->GetPublicName());
 	working->SetLanguage(hint->GetLanguage());
@@ -515,12 +515,12 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 
 	state.recheck = true;
 
-	logti("[%s/%s(%u)] Adopted packet track hint. Track(%d) generation(%u)",
+	logti("[%s/%s(%u)] Adopted packet track hint. Track(%d) version(%u)",
 		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
-		  media_packet->GetTrackId(), hint->GetGeneration());
+		  media_packet->GetTrackId(), hint->GetVersion());
 }
 
-void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet)
+void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto media_type = media_packet->GetMediaType();
 	if (media_type != MediaType::Video && media_type != MediaType::Audio)
@@ -531,8 +531,8 @@ void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::
 	auto &working = state.working;
 
 	// Do not publish half-parsed descriptions. Until the working copy is valid
-	// the stream is not prepared, so no consumer misses a generation. The
-	// provider hint is cleared so it does not leak downstream as a generation.
+	// the stream is not prepared, so no consumer misses a version. The
+	// provider hint is cleared so it does not leak downstream as a version.
 	if (working->IsValid() == false)
 	{
 		media_packet->SetTrack(nullptr);
@@ -549,19 +549,19 @@ void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::
 		state.last_dcr = working_dcr;
 		state.recheck = false;
 
-		// Content equality wins: same content is the same generation
+		// Content equality wins: same content is the same version
 		if (state.published == nullptr || working->HasSameContent(*state.published) == false)
 		{
 			bool is_change = (state.published != nullptr);
 
-			working->SetGeneration((state.published != nullptr) ? state.published->GetGeneration() + 1 : 1);
+			working->SetVersion((state.published != nullptr) ? state.published->GetVersion() + 1 : 1);
 
-			auto generation = std::make_shared<MediaTrack>(*working);
+			auto new_version = std::make_shared<MediaTrack>(*working);
 
-			state.published = generation;
+			state.published = new_version;
 
-			// This module's stream map always holds the latest published generation
-			_stream->UpdateTrack(generation);
+			// This module's stream map always holds the latest published version
+			_stream->UpdateTrack(new_version);
 
 			if (is_change)
 			{
@@ -575,10 +575,10 @@ void MediaRouteStream::StampTrackGeneration(TrackAuthorState &state, const std::
 				}
 			}
 
-			logti("[%s/%s(%u)] Track generation has been published. Track(%d) generation(%u) %s",
+			logti("[%s/%s(%u)] Track version has been published. Track(%d) version(%u) %s",
 				  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
-				  media_packet->GetTrackId(), generation->GetGeneration(),
-				  cmn::GetCodecIdString(generation->GetCodecId()));
+				  media_packet->GetTrackId(), new_version->GetVersion(),
+				  cmn::GetCodecIdString(new_version->GetCodecId()));
 		}
 	}
 

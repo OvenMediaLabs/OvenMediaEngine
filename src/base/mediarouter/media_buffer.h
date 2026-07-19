@@ -131,7 +131,7 @@ public:
 		_track_id = track_id;
 	}
 
-	// The track generation this packet belongs to: the immutable MediaTrack
+	// The track version this packet belongs to: the immutable MediaTrack
 	// description stamped by the author (MediaRouter inbound/outbound).
 	// Consumers detect a configuration change by comparing this pointer with
 	// the entry in their own track map, and swap on change.

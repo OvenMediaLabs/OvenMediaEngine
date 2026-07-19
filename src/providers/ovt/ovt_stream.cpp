@@ -473,7 +473,7 @@ namespace pvd
 				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
-			// A re-describe replaces the track with its next generation; the base
+			// A re-describe replaces the track with its next version; the base
 			// rejects a codec change and refreshes the config hint of the track
 			if (ReplaceTrack(new_track) == false)
 			{

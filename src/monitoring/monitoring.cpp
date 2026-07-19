@@ -294,8 +294,8 @@ namespace mon
 				return false;
 			}
 
-			// The metrics copy was made at creation; adopt the prepared generations
-			stream_metrics->AdoptTrackGenerations(stream);
+			// The metrics copy was made at creation; adopt the prepared versions
+			stream_metrics->UpdateTracksFrom(stream);
 
 			SendStreamAlertMessage(alrt::Message::Code::INGRESS_STREAM_PREPARED, stream_metrics);
 		}
@@ -307,7 +307,7 @@ namespace mon
 				return false;
 			}
 
-			output_stream_metric->AdoptTrackGenerations(stream);
+			output_stream_metric->UpdateTracksFrom(stream);
 
 			// Update module usage count for the tracks in the stream if the stream is an output stream
 			for (const auto &[id, track] : stream.GetTracks())

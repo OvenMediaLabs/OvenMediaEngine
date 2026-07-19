@@ -156,8 +156,8 @@ private:
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
-	// Current generation per input track (accessed only on the packet-push thread)
-	std::map<MediaTrackId, std::shared_ptr<const MediaTrack>> _input_track_generations;
+	// Current version per input track (accessed only on the packet-push thread)
+	std::map<MediaTrackId, std::shared_ptr<const MediaTrack>> _last_input_tracks;
 
 	// Last decoded frame and timestamp
 	// [DECODER_ID, MediaFrame]
@@ -183,8 +183,8 @@ private:
 	bool StartInternal();
 	bool PrepareInternal();
 
-	// Snapshot the prepared input stream; the shared track generations are
-	// immutable, later generations arrive attached to the packets.
+	// Snapshot the prepared input stream; the shared track versions are
+	// immutable, later versions arrive attached to the packets.
 	void BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream);
 
 	size_t CreateOutputStreamDynamic();
@@ -198,7 +198,7 @@ private:
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
 
-	// Track the generation per input track and log the boundary.
+	// Track the version per input track and log the boundary.
 	// The pipeline itself is not touched here: decoder/filter/encoder each
 	// handle the change at their own consumption position.
 	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);

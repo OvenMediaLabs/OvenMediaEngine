@@ -123,19 +123,19 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_extra_info = media_track._extra_info;
 	_essential_track = media_track._essential_track.load();
 
-	_generation = media_track._generation.load();
+	_version = media_track._version.load();
 
 	return true;
 }
 
-uint32_t MediaTrack::GetGeneration() const
+uint32_t MediaTrack::GetVersion() const
 {
-	return _generation;
+	return _version;
 }
 
-void MediaTrack::SetGeneration(uint32_t generation)
+void MediaTrack::SetVersion(uint32_t version)
 {
-	_generation = generation;
+	_version = version;
 }
 
 bool MediaTrack::HasSameContent(const MediaTrack &other) const

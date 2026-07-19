@@ -301,7 +301,7 @@ namespace pvd
 					auto track = GetTrackByLabel(command->GetTrackLabel());
 					if (track != nullptr)
 					{
-						// A label change is a new generation of the track description
+						// A label change is a new version of the track description
 						auto old_language = track->GetLanguage();
 						auto new_track = std::make_shared<MediaTrack>(*track);
 						new_track->SetLanguage(command->GetLanguage());
@@ -750,15 +750,16 @@ namespace pvd
 		return delta;
 	}
 
-	// Start a new generation of this stream (e.g. the source item has changed):
-	// re-base the source timestamps so the next item continues seamlessly. The
-	// content change itself travels with the packets as a new track generation. The track
-	// layout must not change; only the configuration of existing tracks may.
-	void Stream::StartNewGeneration()
+	// The source behind this stream has changed (e.g. the next scheduled item,
+	// a pull failover): re-base the source timestamps so playback continues
+	// seamlessly. A content change travels with the packets as a new track
+	// version. The track layout must not change; only the configuration of
+	// existing tracks may.
+	void Stream::OnSourceChanged()
 	{
 		ResetSourceStreamTimestamp();
 
-		logti("%s/%s(%u) has started a new generation", GetApplicationName(), GetName().CStr(), GetId());
+		logti("%s/%s(%u) source has changed", GetApplicationName(), GetName().CStr(), GetId());
 		logti("%s", GetInfoString().CStr());
 	}
 
@@ -790,7 +791,7 @@ namespace pvd
 		// survive the replacement without any hand-over
 		if (ex_track != nullptr)
 		{
-			new_track->SetGeneration(ex_track->GetGeneration() + 1);
+			new_track->SetVersion(ex_track->GetVersion() + 1);
 		}
 		UpdateTrack(new_track);
 		UpdatePacketConfigHint(new_track);

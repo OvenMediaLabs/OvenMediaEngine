@@ -83,21 +83,21 @@ namespace info
 		bool AddTrack(const std::shared_ptr<const MediaTrack> &track);
 		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &track);
 
-		// Take over the source's current track generations by pointer, so this
+		// Take over the source's current track versions by pointer, so this
 		// copy and the source share the same immutable objects and packet stamps
 		// compare equal. Consumers call this once, when the stream is prepared.
-		void AdoptTrackGenerations(const Stream &source);
+		void UpdateTracksFrom(const Stream &source);
 		bool RemoveTrack(uint32_t id);
 
 		std::shared_ptr<const MediaTrack> GetTrack(int32_t id) const;
 
 		// Author-side access to a track this stream owns, usable only before the
 		// track is shared (published/handed to other modules). Consumers must
-		// never call this; they receive new generations attached to packets.
+		// never call this; they receive new versions attached to packets.
 		std::shared_ptr<MediaTrack> GetMutableTrack(int32_t id) const;
 
 		// Runtime measurements of a track, keyed by track id: they survive
-		// generation replacement and every copy of this stream shares the same
+		// version replacement and every copy of this stream shares the same
 		// objects. Never null for a track that exists.
 		std::shared_ptr<TrackStats> GetTrackStats(int32_t track_id) const;
 
@@ -111,7 +111,7 @@ namespace info
 		bool HasTrackQualityMeasured(int32_t track_id) const;
 		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
 		// Returns a snapshot: the slots are loaded atomically, so iterating is
-		// safe while the owner swaps generations on another thread
+		// safe while the owner swaps versions on another thread
 		std::map<int32_t, std::shared_ptr<const MediaTrack>> GetTracks() const;
 
 		const std::shared_ptr<MediaTrackGroup> GetMediaTrackGroup(const ov::String &group_name) const;

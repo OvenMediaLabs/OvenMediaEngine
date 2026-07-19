@@ -208,7 +208,7 @@ namespace pub
 	{
 	}
 
-	void Stream::UpdateTrackGeneration(const std::shared_ptr<MediaPacket> &media_packet)
+	void Stream::UpdateTrackFromPacket(const std::shared_ptr<MediaPacket> &media_packet)
 	{
 		auto new_track = media_packet->GetTrack();
 		if (new_track == nullptr)
@@ -223,12 +223,12 @@ namespace pub
 			return;
 		}
 
-		// Swap in the packet's generation; the map const conversion follows in a
+		// Swap in the packet's version; the map const conversion follows in a
 		// later commit, until then the shared object is adopted via a const cast
 		UpdateTrack(std::const_pointer_cast<MediaTrack>(new_track));
 
-		// A generation the stream was created with is the initial one, not a change
-		if (old_track == nullptr || old_track->GetGeneration() == new_track->GetGeneration())
+		// A version the stream was created with is the initial one, not a change
+		if (old_track == nullptr || old_track->GetVersion() == new_track->GetVersion())
 		{
 			return;
 		}
@@ -236,7 +236,7 @@ namespace pub
 		OnTrackChanged(track_id, old_track, new_track);
 	}
 
-	bool Stream::IsStaleGeneration(const std::shared_ptr<MediaPacket> &media_packet) const
+	bool Stream::IsStalePacket(const std::shared_ptr<MediaPacket> &media_packet) const
 	{
 		auto packet_track = media_packet->GetTrack();
 		if (packet_track == nullptr)
@@ -250,16 +250,16 @@ namespace pub
 			return false;
 		}
 
-		return packet_track->GetGeneration() < current_track->GetGeneration();
+		return packet_track->GetVersion() < current_track->GetVersion();
 	}
 
 	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
 	{
 		// A publisher that does not override this cannot switch its output to the
 		// new configuration, so the output may be broken from this point.
-		logtw("%s/%s(%u) Track(%d) configuration has been changed but this publisher does not support it. generation(%u) -> generation(%u)",
+		logtw("%s/%s(%u) Track(%d) configuration has been changed but this publisher does not support it. version(%u) -> version(%u)",
 			  GetApplicationName(), GetName().CStr(), GetId(),
-			  track_id, old_track->GetGeneration(), new_track->GetGeneration());
+			  track_id, old_track->GetVersion(), new_track->GetVersion());
 	}
 
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const
@@ -582,9 +582,9 @@ namespace pub
 					auto track = GetTrackByLabel(command->GetTrackLabel());
 					if (track != nullptr)
 					{
-						// The provider publishes a new track generation for this change;
+						// The provider publishes a new track version for this change;
 						// it arrives attached to the following packets and is adopted there
-						logtt("[%s/%s(%u)] Subtitle track language update received (%s); waiting for the new track generation", GetApplicationName(), GetName().CStr(), GetId(), command->GetLanguage().CStr());
+						logtt("[%s/%s(%u)] Subtitle track language update received (%s); waiting for the new track version", GetApplicationName(), GetName().CStr(), GetId(), command->GetLanguage().CStr());
 					}
 					else
 					{

@@ -135,8 +135,8 @@ namespace pub
 				continue;
 			}
 
-			// Track the packet's generation at this stream's consumption position
-			stream->UpdateTrackGeneration(media_packet);
+			// Track the packet's version at this stream's consumption position
+			stream->UpdateTrackFromPacket(media_packet);
 
 			if (media_packet->GetMediaType() == cmn::MediaType::Video)
 			{
@@ -344,9 +344,9 @@ namespace pub
 		lock.unlock();
 
 		// The copy of this stream was made at creation, before the first
-		// generations were published. Adopt the prepared generations so the
+		// versions were published. Adopt the prepared versions so the
 		// packet stamps compare equal from the first packet on.
-		stream->AdoptTrackGenerations(*info);
+		stream->UpdateTracksFrom(*info);
 
 		// Start stream
 		if (stream->EnterStart() == false)

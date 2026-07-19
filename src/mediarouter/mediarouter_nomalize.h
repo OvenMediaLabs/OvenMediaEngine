@@ -24,7 +24,7 @@
 
 // Normalizes bitstreams and parses content configuration out of them.
 // The track passed in is the author's PRIVATE working copy: parsed values are
-// written to it, and the author publishes an immutable generation from it.
+// written to it, and the author publishes an immutable version from it.
 class MediaRouterNormalize
 {
 public:

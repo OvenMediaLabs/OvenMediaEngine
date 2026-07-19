@@ -56,7 +56,7 @@ namespace info
 		_app_info = stream._app_info;
 		_origin_stream = stream._origin_stream;
 
-		// The source's owner may swap track generations concurrently, so every
+		// The source's owner may swap track versions concurrently, so every
 		// slot is loaded atomically
 		for (const auto &item : stream._tracks)
 		{
@@ -362,7 +362,7 @@ namespace info
 		return true;
 	}
 
-	void Stream::AdoptTrackGenerations(const Stream &source)
+	void Stream::UpdateTracksFrom(const Stream &source)
 	{
 		for (const auto &[track_id, track] : source.GetTracks())
 		{
@@ -375,10 +375,10 @@ namespace info
 		}
 	}
 
-	// Replace a track with its next generation, or add it if it does not exist.
+	// Replace a track with its next version, or add it if it does not exist.
 	// A pure pointer swap: the previous object is never mutated, so holders of
 	// the old pointer keep a consistent snapshot. Carrying the shared TrackStats
-	// over to the new generation is the author's job, before publishing it here.
+	// over to the new version is the author's job, before publishing it here.
 	std::shared_ptr<MediaTrack> Stream::GetMutableTrack(int32_t id) const
 	{
 		return std::const_pointer_cast<MediaTrack>(GetTrack(id));
@@ -509,8 +509,8 @@ namespace info
 			return AddTrack(track);
 		}
 
-		// A late adoption must not undo a newer generation already swapped in
-		if (ex_track->GetGeneration() > track->GetGeneration())
+		// A late adoption must not undo a newer version already swapped in
+		if (ex_track->GetVersion() > track->GetVersion())
 		{
 			return true;
 		}

@@ -1006,9 +1006,9 @@ bool LLHlsStream::SendBufferedPackets()
 
 		auto media_packet = buffered_media_packet.value();
 
-		// The stream was initialized for the current generation; packets of an
-		// older generation would corrupt the output
-		if (IsStaleGeneration(media_packet))
+		// The stream was initialized for the current version; packets of an
+		// older version would corrupt the output
+		if (IsStalePacket(media_packet))
 		{
 			stale_packet_count++;
 			continue;
@@ -1026,7 +1026,7 @@ bool LLHlsStream::SendBufferedPackets()
 
 	if (stale_packet_count > 0)
 	{
-		logti("%s Dropped %zu buffered packets of an older track generation", GetName().CStr(), stale_packet_count);
+		logti("%s Dropped %zu buffered packets of an older track version", GetName().CStr(), stale_packet_count);
 	}
 
 	return true;

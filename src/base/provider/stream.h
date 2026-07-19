@@ -96,17 +96,17 @@ namespace pvd
 			return DirectionType::UNSPECIFIED;
 		}
 
-		void StartNewGeneration();
+		void OnSourceChanged();
 
 		// Register/refresh the config hint of a track: the provider-authored track
-		// generation itself. SendFrame() attaches it to every packet of the track
+		// version itself. SendFrame() attaches it to every packet of the track
 		// and the media router adopts it as author input. Optional: a provider
 		// whose bitstream is self-describing does not need hints at all.
 		void UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track);
 
-		// Replace a track with its next generation (same codec required; a codec
+		// Replace a track with its next version (same codec required; a codec
 		// change is rejected with an error). Statistics carry over and the config
-		// hint is refreshed. Call StartNewGeneration() once per transition separately.
+		// hint is refreshed. Call OnSourceChanged() once per transition separately.
 		bool ReplaceTrack(const std::shared_ptr<MediaTrack> &new_track);
 
 		bool SetState(State state);

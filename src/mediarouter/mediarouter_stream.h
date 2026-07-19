@@ -90,7 +90,7 @@ public:
 private:
 	// Author state per track, accessed only on the worker thread of this stream.
 	// `working` is the private mutable copy the normalizer parses into; a new
-	// immutable generation is cloned from it and published on a content change.
+	// immutable version is cloned from it and published on a content change.
 	// `last_hint` makes an upstream hint adopted exactly once per hint object;
 	// `last_dcr` re-arms the rebuild trigger after a content-equal replacement.
 	struct TrackAuthorState
@@ -104,12 +104,12 @@ private:
 
 	void DropNonDecodingPackets();
 
-	// Publish a new immutable track generation from the author state when the
-	// content changed, and attach the current generation to the packet. This
-	// stream is the single author of track generations for its direction.
-	void StampTrackGeneration(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
+	// Publish a new immutable track version from the author state when the
+	// content changed, and attach the current version to the packet. This
+	// stream is the single author of track versions for its direction.
+	void StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
 
-	// Adopt a provider/upstream-authored track generation carried by the packet
+	// Adopt a provider/upstream-authored track version carried by the packet
 	// into the author state, so extradata-dependent formats stay decodable
 	// without cross-module track mutation. Runs before normalization.
 	void ApplyPacketConfigHint(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);

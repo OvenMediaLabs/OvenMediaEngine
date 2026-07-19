@@ -538,7 +538,7 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 	media_packet->SetFlag(MediaPacketFlag::Key);
 	// everytime : Convert to ADTS
 	// sequence header : Parse and adopt. Every header is parsed so an in-band
-	// configuration change starts a new config generation (a content-equal
+	// configuration change starts a new track version (a content-equal
 	// record is deduplicated by the builder)
 	if (media_packet->GetPacketType() == cmn::PacketType::SEQUENCE_HEADER)
 	{
@@ -599,7 +599,7 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 	media_packet->SetFlag(MediaPacketFlag::Key);
 
 	// Parse the fixed header of every frame so an in-band configuration change
-	// (e.g. samplerate) starts a new config generation. A new
+	// (e.g. samplerate) starts a new track version. A new
 	// AudioSpecificConfig is built only when a value actually changed.
 	AACAdts adts;
 	if (AACAdts::Parse(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), adts) == false)

@@ -921,7 +921,7 @@ namespace pvd
 		logti("Scheduled Channel : %s/%s: File %s prepared. Start time %" PRId64 " ms, Duration %" PRId64 " ms",
 			GetApplicationName(), GetName().CStr(), item->_file_path.CStr(), item->_start_time_ms, item->_duration_ms);
 
-        StartNewGeneration();
+        OnSourceChanged();
 
         return true;
     }
@@ -1347,7 +1347,7 @@ namespace pvd
             logtw("%s/%s: Failed to find data track from stream %s. Data forwarding will be skipped.", GetApplicationName(), GetName().CStr(), item->_url.CStr());
         }
 
-        StartNewGeneration();
+        OnSourceChanged();
 
         stream_tap->Start();
 
