@@ -8,7 +8,12 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
+#include <deque>
+
 #include <base/common_types.h>
+#include <base/ovlibrary/stop_watch.h>
+#include <base/ovlibrary/tsa/mutex.h>
 
 class MediaPacket;
 
