@@ -25,6 +25,10 @@ void FilterLavfiResampler::Uninitialize()
 
 bool FilterLavfiResampler::InitializeSourceFilter()
 {
+	_src_samplerate = _input_track->GetSampleRate();
+	_src_sample_format = _input_track->GetSample().GetFormat();
+	_src_channel_layout = _input_track->GetChannel().GetLayout();
+
 	std::vector<ov::String> src_params = {
 		ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()),
 		ov::String::FormatString("sample_rate=%d", _input_track->GetSampleRate()),
