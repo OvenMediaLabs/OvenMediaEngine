@@ -15,24 +15,11 @@
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
 
-double FilterVideoBase::GetEffectiveInputFrameRate() const
-{
-	auto framerate = _input_track->GetFrameRateByConfig();
-	if (framerate > 0.0)
-	{
-		return framerate;
-	}
-
-	auto stream_info = GetInputStreamInfo();
-	auto stats = (stream_info != nullptr) ? stream_info->GetTrackStats(_input_track->GetId()) : nullptr;
-	return (stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0;
-}
-
 bool FilterVideoBase::InitializeFpsFilter()
 {
 	// Set input parameters
 	_fps_filter.SetInputTimebase(_input_track->GetTimeBase());
-	_fps_filter.SetInputFrameRate(GetEffectiveInputFrameRate());
+	_fps_filter.SetInputFrameRate(_input_track->GetFrameRate());
 
 	// Configure skip frames
 	int32_t skip_frames_config = _output_track->GetSkipFramesByConfig();
@@ -42,11 +29,11 @@ bool FilterVideoBase::InitializeFpsFilter()
 
 	// If skip frames is enabled, maintain input framerate; otherwise use output framerate
 	bool is_skip_enabled = (skip_frames >= FilterFps::SkipFramesMin);
-	float output_framerate = is_skip_enabled ? GetEffectiveInputFrameRate() : _output_track->GetFrameRateByConfig();
+	float output_framerate = is_skip_enabled ? _input_track->GetFrameRate() : _output_track->GetFrameRate();
 	_fps_filter.SetOutputFrameRate(output_framerate);
 #else
 	_fps_filter.SetSkipFrames(FilterFps::SkipFramesDisabled);
-	_fps_filter.SetOutputFrameRate(_output_track->GetFrameRateByConfig());
+	_fps_filter.SetOutputFrameRate(_output_track->GetFrameRate());
 #endif
 
 	// Set frame copy mode based on resolution
@@ -67,11 +54,10 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 	// It is similar to maintaining the original frame rate.
 	if (_output_track->GetFrameRateByConfig() == 0.0f)
 	{
-		auto effective_input_framerate = GetEffectiveInputFrameRate();
-		auto recommended_output_framerate = TranscoderStreamInternal::MeasurementToRecommendFramerate(effective_input_framerate);
+		auto recommended_output_framerate = TranscoderStreamInternal::MeasurementToRecommendFramerate(_input_track->GetFrameRate());
 		if (_fps_filter.GetOutputFrameRate() != recommended_output_framerate)
 		{
-			logtd("[%s] Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", GetLogPrefix().CStr(), effective_input_framerate, _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
+			logtd("[%s] Change output framerate. Input: %.2ffps, Output: %.2f -> %.2ffps", GetLogPrefix().CStr(), _input_track->GetFrameRate(), _fps_filter.GetOutputFrameRate(), recommended_output_framerate);
 			_fps_filter.SetOutputFrameRate(recommended_output_framerate);
 		}
 	}

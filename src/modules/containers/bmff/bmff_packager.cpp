@@ -1218,11 +1218,11 @@ namespace bmff
 		// bit(24) bufferSizeDB;
 		stream.WriteBE24(0);
 
-		// bit(32) maxBitrate; advisory, the configured value is enough here
-		stream.WriteBE32(GetMediaTrack()->GetBitrateByConfig());
+		// bit(32) maxBitrate;
+		stream.WriteBE32(GetMediaTrack()->GetBitrate());
 
 		// bit(32) avgBitrate;
-		stream.WriteBE32(GetMediaTrack()->GetBitrateByConfig());
+		stream.WriteBE32(GetMediaTrack()->GetBitrate());
 
 		// DecoderSpecificInfo decSpecificInfo[0..1];
 		if (WriteAudioSpecificInfo(stream) == false)

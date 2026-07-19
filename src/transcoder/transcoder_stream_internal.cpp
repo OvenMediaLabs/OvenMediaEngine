@@ -346,12 +346,30 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	// Github Issue : #1417
 	// Set any value for quick validation of the output track.
 	// If the validation of OutputTrack is delayed, the Stream Prepare event occurs late in Publisher.
-	// The bitrate of an image doesn't mean much anyway.
-	output_track->SetBitrateByConfig(1000000);
+	// The bitrate of an image doesn't mean much anyway. The seed goes into the
+	// stats right after the track is added to the output stream.
+	output_track->SetBitrateByConfig(0);
 
 	ApplySkipFrames(output_track, input_track);
 
 	return output_track;
+}
+
+void TranscoderStreamInternal::SeedOutputTrackStats(const std::shared_ptr<const MediaTrack> &input_track, const std::shared_ptr<const MediaTrack> &output_track)
+{
+	auto stats = output_track->GetStats();
+	if (stats == nullptr)
+	{
+		return;
+	}
+
+	stats->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
+	if (output_track->GetMediaType() == cmn::MediaType::Video ||
+		output_track->GetMediaType() == cmn::MediaType::Data ||
+		output_track->GetMediaType() == cmn::MediaType::Subtitle)
+	{
+		stats->SetFrameRateByMeasured(input_track->GetFrameRate());
+	}
 }
 
 std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(const std::shared_ptr<const MediaTrack> &input_track)
@@ -379,7 +397,6 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(
 	output_track->SetMaxResolution(input_track->GetMaxResolution());
 	output_track->SetMaxFrameRate(input_track->GetMaxFrameRate());
 	output_track->SetResolution(input_track->GetResolution());
-	output_track->SetFrameRateByConfig(input_track->GetFrameRateByConfig());
 	output_track->SetTimeBase(input_track->GetTimeBase());
 
 	return output_track;
@@ -514,15 +531,15 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<co
 	condition = if_match.GetFramerate(&is_parsed).UpperCaseString();
 	if (is_parsed == true)
 	{
-		if ((condition == "EQ") && (input_track->GetFrameRateByConfig() != profile.GetFramerate()))
+		if ((condition == "EQ") && (input_track->GetFrameRate() != profile.GetFramerate()))
 		{
 			return false;
 		}
-		else if ((condition == "LTE") && input_track->GetFrameRateByConfig() > profile.GetFramerate())
+		else if ((condition == "LTE") && input_track->GetFrameRate() > profile.GetFramerate())
 		{
 			return false;
 		}
-		else if (condition == "GTE" && (input_track->GetFrameRateByConfig() < profile.GetFramerate()))
+		else if (condition == "GTE" && (input_track->GetFrameRate() < profile.GetFramerate()))
 		{
 			return false;
 		}
@@ -759,8 +776,8 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 
 	// Update framerate of the output track
-	logtd("Id(%d), Input Framerate: %.02f(conf) %.02f(max), Id(%d), Output Framerate: %.02f(conf) %.02f(max)",
-		  input_track->GetId(), input_track->GetFrameRateByConfig(), input_track->GetMaxFrameRate(),
+	logtd("Id(%d), Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Id(%d), Output Framerate: %.02f(conf) %.02f(max)",
+		  input_track->GetId(), input_track->GetFrameRateByConfig(), input_track->GetFrameRateByMeasured(), input_track->GetMaxFrameRate(),
 		  output_track->GetId(), output_track->GetFrameRateByConfig(), output_track->GetMaxFrameRate());
 
 	auto output_framerate = output_track->GetFrameRateByConfig();
@@ -774,12 +791,17 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 		// If the framerate is not set, it is set based on the input video framerate.
 		double new_output_framerate;
 
-		// Set Output framerate based on the input track resolved framerate
-		// (configured, or materialized from the measurement at prepare)
+		// Set Output framerate based on the input track configured framerate
 		if (input_track->GetFrameRateByConfig() > 0.0f)
 		{
 			new_output_framerate = input_track->GetFrameRateByConfig();
-			logtd("Id(%d), Output framerate from input. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
+			logtd("Id(%d), Output framerate from input config. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
+		}
+		// Set Output framerate based on the input track measured framerate
+		else if (input_track->GetFrameRateByMeasured() > 0.0f)
+		{
+			new_output_framerate = input_track->GetFrameRateByMeasured();
+			logtd("Id(%d), Output framerate from input measured. %.2f -> %.2f", output_track->GetId(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the decoded frame duration
 		else if (buffer->GetDuration() > 0)
@@ -798,8 +820,8 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 
 	// Update Output bitrate
-	logtt("Input Bitrate: %d(conf), Output Bitrate: %d(conf)",
-		  input_track->GetBitrateByConfig(), output_track->GetBitrateByConfig());
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig());
 
 	auto output_bitrate = output_track->GetBitrateByConfig();
 	if (output_bitrate > 0)
@@ -809,9 +831,13 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 	else
 	{
-		// If the bitrate is not set, it is set based on the input bitrate
-		// (configured, or materialized from the measurement at prepare)
+		// If the bitrate is not set, it is set based on the input bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
+		if (new_output_bitrate <= 0)
+		{
+			// If the input bitrate is not set, it is set based on the measured bitrate.
+			new_output_bitrate = input_track->GetBitrateByMeasured();
+		}
 
 		output_track->SetBitrateByConfig(new_output_bitrate);
 
@@ -893,8 +919,8 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 
 	// Update Output bitrate
-	logtt("Input Bitrate: %d(conf), Output Bitrate: %d(conf)",
-		  input_track->GetBitrateByConfig(), output_track->GetBitrateByConfig());
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig());
 
 	auto output_bitrate = output_track->GetBitrateByConfig();
 	if (output_bitrate > 0)
@@ -904,9 +930,13 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 	else
 	{
-		// If the bitrate is not set, it is set based on the input bitrate
-		// (configured, or materialized from the measurement at prepare)
+		// If the bitrate is not set, it is set based on the input bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
+		if (new_output_bitrate <= 0)
+		{
+			// If the input bitrate is not set, it is set based on the measured bitrate.
+			new_output_bitrate = input_track->GetBitrateByMeasured();
+		}
 
 		output_track->SetBitrateByConfig(new_output_bitrate);
 
@@ -1025,9 +1055,9 @@ void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack>
 
 	// When skipFrames is enabled, the user-set framerate is ignored, and the input framerate is adjusted by applying skipFrames.
 	constexpr double precision	   = 100.0;
-	auto adjusted_output_framerate = std::round(input_track->GetFrameRateByConfig() / (skip_frames + 1.0) * precision) / precision;
+	auto adjusted_output_framerate = std::round(input_track->GetFrameRate() / (skip_frames + 1.0) * precision) / precision;
 
 	output_track->SetFrameRateByConfig(adjusted_output_framerate);
 
-	logtd("Adjust the output framerate %.02f -> %.02f according to the skip frames %d", input_track->GetFrameRateByConfig(), adjusted_output_framerate, skip_frames);
+	logtd("Adjust the output framerate %.02f -> %.02f according to the skip frames %d", input_track->GetFrameRate(), adjusted_output_framerate, skip_frames);
 }

@@ -31,11 +31,6 @@ public:
 
 	// The owning stream resolves configured-else-measured values per track.
 	// A raw back-pointer is enough: the playlist is owned by that stream.
-	void SetStreamInfo(const info::Stream *stream_info)
-	{
-		_stream_info = stream_info;
-	}
-
 	int64_t GetWallclockOffset() const { return _wallclock_offset_ms; }
 	void SetWallclockOffset(int64_t offset_ms) { _wallclock_offset_ms = offset_ms; }
 
@@ -67,7 +62,6 @@ public:
 	std::size_t GetSegmentCount() const;
 
 private:
-	const info::Stream *_stream_info = nullptr;
 
 	HlsMediaPlaylistConfig _config;
 	ov::String _variant_name;

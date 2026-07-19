@@ -43,6 +43,11 @@ public:
 	std::shared_ptr<MediaTrack> CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile);
 	std::shared_ptr<MediaTrack> CreateOutputTrackDataType(const std::shared_ptr<const MediaTrack> &input_track);	
 
+	// Seed the freshly added output track's stats with the input's current
+	// values, so passthrough tracks report meaningful values before their own
+	// packets have been measured
+	static void SeedOutputTrackStats(const std::shared_ptr<const MediaTrack> &input_track, const std::shared_ptr<const MediaTrack> &output_track);
+
 	bool IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile);
 	bool IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile);
 

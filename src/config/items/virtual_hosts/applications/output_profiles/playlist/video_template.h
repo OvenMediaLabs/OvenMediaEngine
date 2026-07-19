@@ -115,22 +115,22 @@ namespace cfg
 							return false;
 						}
 
-						if (_max_framerate > 0 && track->GetFrameRateByConfig() > _max_framerate)
+						if (_max_framerate > 0 && track->GetFrameRate() > _max_framerate)
 						{
 							return false;
 						}
 
-						if (_min_framerate > 0 && track->GetFrameRateByConfig() < _min_framerate)
+						if (_min_framerate > 0 && track->GetFrameRate() < _min_framerate)
 						{
 							return false;
 						}
 
-						if (_max_bitrate > 0 && track->GetBitrateByConfig() > _max_bitrate)
+						if (_max_bitrate > 0 && track->GetBitrate() > _max_bitrate)
 						{
 							return false;
 						}
 
-						if (_min_bitrate > 0 && track->GetBitrateByConfig() < _min_bitrate)
+						if (_min_bitrate > 0 && track->GetBitrate() < _min_bitrate)
 						{
 							return false;
 						}

@@ -11,6 +11,7 @@
 #include "video_track.h"
 #include "audio_track.h"
 #include "subtitle_track.h"
+#include "track_stats.h"
 
 #include "decoder_configuration_record.h"
 #include "base/ovlibrary/tsa/mutex.h"
@@ -113,7 +114,24 @@ public:
 	// Bitrate (Set by user)
 	void SetBitrateByConfig(int32_t bitrate);
 	int32_t GetBitrateByConfig() const;
-	
+
+	// Runtime statistics of this track. The owning stream links the same
+	// TrackStats instance into every version of the track, so the reference
+	// survives version swaps. Read-only for consumers.
+	void LinkStats(const std::shared_ptr<TrackStats> &stats) const;
+	std::shared_ptr<TrackStats> GetStats() const;
+
+	// Configured value if set, otherwise the measured one (0 before measurement)
+	int32_t GetBitrate() const;
+	double GetFrameRate() const;
+	double GetKeyFrameInterval() const;
+	double GetKeyframeIntervalDurationMs() const;
+
+	// Measured values, delegated to the linked statistics
+	int32_t GetBitrateByMeasured() const;
+	int32_t GetBitrateLastSecond() const;
+	double GetFrameRateByMeasured() const;
+
 
 	bool IsValid() const;
 
@@ -211,4 +229,8 @@ protected:
 
 	// Version number of this description (0 = setup skeleton, 1 = first published)
 	std::atomic<uint32_t> _version = 0;
+
+	// Shared measurement object, linked by the owning stream (not part of the
+	// description; every version of the track points to the same instance)
+	mutable std::shared_ptr<TrackStats> _stats;
 };

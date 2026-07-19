@@ -320,6 +320,7 @@ namespace info
 		{
 			_track_stats.emplace(track->GetId(), std::make_shared<TrackStats>());
 		}
+		track->LinkStats(_track_stats[track->GetId()]);
 
 		if (track->GetMediaType() == cmn::MediaType::Video)
 		{
@@ -514,6 +515,9 @@ namespace info
 		{
 			return true;
 		}
+
+		// Every version of a track shares the same measurement object
+		track->LinkStats(GetTrackStats(track->GetId()));
 
 		// The track layout is fixed after creation, so every slot address is
 		// stable; swapping the slots atomically lets readers on other threads

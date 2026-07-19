@@ -549,7 +549,6 @@ const ov::String &LLHlsStream::GetStreamKey() const
 std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist) const
 {
 	auto master_playlist = std::make_shared<LLHlsMasterPlaylist>();
-	master_playlist->SetStreamInfo(this);
 
 	ov::String chunk_path;
 	ov::String app_name = GetApplicationInfo().GetVHostAppName().GetAppName();
@@ -1433,14 +1432,14 @@ double LLHlsStream::ComputeOptimalPartDuration(const std::shared_ptr<const Media
 	else if (track->GetMediaType() == cmn::MediaType::Video)
 	{
 		// Duration of a frame is 1 / frame rate
-		auto frame_duration = 1.0 / GetTrackFrameRate(track->GetId());
+		auto frame_duration = 1.0 / track->GetFrameRate();
 		auto frame_duration_ms = frame_duration * 1000.0;
 
 		// Find the closest multiple of frame_duration_ms to part_target
 		auto optimal_frame_count = std::round(part_target / frame_duration_ms);
 		optimal_part_target = optimal_frame_count * frame_duration_ms;
 
-		logti("LLHlsStream::ComputeOptimalPartDuration() - Video track(%d) FrameRate(%f) frame_duration_ms(%f) optimal_frame_count(%f) part_target(%f) optimal_part_target(%f)", track->GetId(), GetTrackFrameRate(track->GetId()), frame_duration_ms, optimal_frame_count, part_target, optimal_part_target);
+		logti("LLHlsStream::ComputeOptimalPartDuration() - Video track(%d) FrameRate(%f) frame_duration_ms(%f) optimal_frame_count(%f) part_target(%f) optimal_part_target(%f)", track->GetId(), track->GetFrameRate(), frame_duration_ms, optimal_frame_count, part_target, optimal_part_target);
 	}
 
 	return optimal_part_target;
@@ -1494,8 +1493,6 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 
 	// Create fMP4 Packager
 	packager_config.cenc_property = cenc_property;
-	packager_config.keyframe_interval = GetTrackKeyFrameInterval(media_track->GetId());
-	packager_config.framerate = GetTrackFrameRate(media_track->GetId());
 	auto packager = std::make_shared<bmff::FMP4Packager>(storage, media_track, data_track, packager_config);
 
 	// Create Initialization Segment

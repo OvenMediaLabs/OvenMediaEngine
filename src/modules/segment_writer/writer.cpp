@@ -218,7 +218,7 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 		case cmn::MediaType::Video: {
 			codec_parameters->codec_type = AVMEDIA_TYPE_VIDEO;
 			codec_parameters->codec_id = AvCodecIdFromMediaCodecId(media_track->GetCodecId());
-			codec_parameters->bit_rate = media_track->GetBitrateByConfig();
+			codec_parameters->bit_rate = media_track->GetBitrate();
 			auto resolution = media_track->GetResolution();
 			codec_parameters->width = resolution.width;
 			codec_parameters->height = resolution.height;
@@ -256,7 +256,7 @@ bool Writer::FillCodecParameters(const std::shared_ptr<const Track> &track, AVCo
 		case cmn::MediaType::Audio: {
 			codec_parameters->codec_type = AVMEDIA_TYPE_AUDIO;
 			codec_parameters->codec_id = AvCodecIdFromMediaCodecId(media_track->GetCodecId());
-			codec_parameters->bit_rate = media_track->GetBitrateByConfig();
+			codec_parameters->bit_rate = media_track->GetBitrate();
 			::av_channel_layout_default(&codec_parameters->ch_layout, media_track->GetChannel().GetCounts());
 			codec_parameters->sample_rate = media_track->GetSample().GetRateNum();
 			codec_parameters->frame_size = 1024;
@@ -510,7 +510,7 @@ int Writer::DecideBufferSize() const
 			case cmn::MediaType::Video:
 				[[fallthrough]];
 			case cmn::MediaType::Audio: {
-				auto bitrate = track->track->GetBitrateByConfig();
+				auto bitrate = track->track->GetBitrate();
 
 				if (bitrate > 0)
 				{

@@ -75,6 +75,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 
 	std::atomic_store(&_decoder_configuration_record, std::atomic_load(&media_track._decoder_configuration_record));
 
+	std::atomic_store(&_stats, std::atomic_load(&media_track._stats));
+
 	_origin_bitstream_format = media_track._origin_bitstream_format.load();
 
 	// Video
@@ -460,14 +462,14 @@ ov::String MediaTrack::GetInfoString() const
 				"SkipFrames(%d) "
 				"BFrames(%d) ",
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				ov::Converter::BitToString(GetBitrateByConfig()).CStr(),
+				ov::Converter::BitToString(GetBitrate()).CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
 				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
 				GetBitstreamFormatString(GetOriginBitstream()),
 				GetResolution().ToString().CStr(),
 				GetMaxResolution().ToString().CStr(),
-				GetFrameRateByConfig(), GetMaxFrameRate(),
-				GetKeyFrameIntervalByConfig(),
+				GetFrameRate(), GetMaxFrameRate(),
+				GetKeyFrameInterval(),
 				cmn::GetKeyFrameIntervalTypeToString(GetKeyFrameIntervalTypeByConfig()),
 				GetSkipFramesByConfig(),
 				GetBFrames());
@@ -485,7 +487,7 @@ ov::String MediaTrack::GetInfoString() const
 				"Format(%s) "
 				"Channel(%s) ",
 				GetId(), GetPublicName().CStr(), GetVariantName().CStr(),
-				ov::Converter::BitToString(GetBitrateByConfig()).CStr(),
+				ov::Converter::BitToString(GetBitrate()).CStr(),
 				cmn::GetCodecIdString(GetCodecId()), IsBypass()?"Passthrough":cmn::GetCodecModuleIdString(GetCodecModuleId()), GetCodecDeviceId(),
 				codec_status_str ? "," : "", codec_status_str ? codec_status_str : "",
 				GetBitstreamFormatString(GetOriginBitstream()),
@@ -769,8 +771,82 @@ int32_t MediaTrack::GetBitrateByConfig() const
 	return _bitrate_conf;
 }
 
+void MediaTrack::LinkStats(const std::shared_ptr<TrackStats> &stats) const
+{
+	std::atomic_store(&_stats, stats);
+}
 
+std::shared_ptr<TrackStats> MediaTrack::GetStats() const
+{
+	return std::atomic_load(&_stats);
+}
 
+int32_t MediaTrack::GetBitrate() const
+{
+	auto bitrate_conf = GetBitrateByConfig();
+	if (bitrate_conf > 0)
+	{
+		return bitrate_conf;
+	}
+
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetBitrateByMeasured() : 0;
+}
+
+double MediaTrack::GetFrameRate() const
+{
+	auto framerate_conf = GetFrameRateByConfig();
+	if (framerate_conf > 0.0)
+	{
+		return framerate_conf;
+	}
+
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0;
+}
+
+double MediaTrack::GetKeyFrameInterval() const
+{
+	auto key_frame_interval_conf = GetKeyFrameIntervalByConfig();
+	if (key_frame_interval_conf > 0.0)
+	{
+		return key_frame_interval_conf;
+	}
+
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetKeyFrameIntervalByMeasured() : 0.0;
+}
+
+double MediaTrack::GetKeyframeIntervalDurationMs() const
+{
+	double keyframe_interval = std::ceil(GetKeyFrameInterval());
+	double framerate = std::ceil(GetFrameRate());
+
+	if (framerate <= 0.0)
+	{
+		return 0.0;
+	}
+
+	return (keyframe_interval / framerate) * 1000.0;
+}
+
+int32_t MediaTrack::GetBitrateByMeasured() const
+{
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetBitrateByMeasured() : 0;
+}
+
+int32_t MediaTrack::GetBitrateLastSecond() const
+{
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetBitrateLastSecond() : 0;
+}
+
+double MediaTrack::GetFrameRateByMeasured() const
+{
+	auto stats = GetStats();
+	return (stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0;
+}
 
 void MediaTrack::SetBypassByConfig(bool flag)
 {

@@ -131,18 +131,6 @@ void TranscoderStream::BuildPrivateInputStream(const std::shared_ptr<info::Strea
 	{
 		auto clone = std::make_shared<MediaTrack>(*track);
 
-		// Resolve the effective input values (configured, or measured during
-		// prepare) into this module's working copy, so filters, bypass
-		// conditions and output derivation read one settled value
-		if (clone->GetMediaType() == cmn::MediaType::Video && clone->GetFrameRateByConfig() <= 0.0)
-		{
-			clone->SetFrameRateByConfig(stream->GetTrackFrameRate(track_id));
-		}
-		if (clone->GetBitrateByConfig() <= 0)
-		{
-			clone->SetBitrateByConfig(stream->GetTrackBitrate(track_id));
-		}
-
 		_input_stream->UpdateTrack(clone);
 	}
 }
@@ -558,6 +546,7 @@ size_t TranscoderStream::CreateOutputStreamDynamic()
 		output_track->SetId(NewTrackId());
 
 		output_stream->AddTrack(output_track);
+		SeedOutputTrackStats(input_track, output_track);
 
 		auto signature = ov::String::FormatString("dynamic");
 		_composite.AddComposite(_input_stream, _input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
@@ -763,6 +752,12 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 
 					output_stream->AddTrack(output_track);
 
+					// Quick validation seed; the bitrate of an image means nothing (#1417)
+					if (auto stats = output_track->GetStats(); stats != nullptr)
+					{
+						stats->SetBitrateByMeasured(1000000);
+					}
+
 					auto signature = ProfileToSerialize(input_track_id, profile);
 					_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
 				}
@@ -830,6 +825,7 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 				}
 
 				output_stream->AddTrack(output_track);
+				SeedOutputTrackStats(input_track, output_track);
 
 				auto signature = ProfileToSerialize(input_track_id);
 				_composite.AddComposite(input_stream, input_stream->GetMutableTrack(input_track_id), signature, output_stream, output_track);
@@ -1029,9 +1025,9 @@ ov::String TranscoderStream::MakeRenditionName(const ov::String &name_template, 
 		auto resolution = video_track->GetResolution();
 		rendition_name	= rendition_name.Replace("${Width}", ov::String::FormatString("%d", resolution.width).CStr());
 		rendition_name	= rendition_name.Replace("${Height}", ov::String::FormatString("%d", resolution.height).CStr());
-		rendition_name	= rendition_name.Replace("${Bitrate}", ov::String::FormatString("%d", video_track->GetBitrateByConfig()).CStr());
+		rendition_name	= rendition_name.Replace("${Bitrate}", ov::String::FormatString("%d", video_track->GetBitrate()).CStr());
 		// TODO: Check if there are cases where the rendition name includes decimal points. (e.g., 29.97fps)
-		rendition_name	= rendition_name.Replace("${Framerate}", ov::String::FormatString("%.0f", video_track->GetFrameRateByConfig()).CStr());
+		rendition_name	= rendition_name.Replace("${Framerate}", ov::String::FormatString("%.0f", video_track->GetFrameRate()).CStr());
 	}
 
 	if (audio_track != nullptr)
@@ -1331,7 +1327,7 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 		case cmn::MediaType::Video:
 			description += ov::String::FormatString(", Size(%s), Fps(%.2f), KetInt(%s/%.2f)",
 													output_track->GetResolution().ToString().CStr(),
-													output_track->GetFrameRateByConfig(),
+													output_track->GetFrameRate(),
 													cmn::GetKeyFrameIntervalTypeToString(output_track->GetKeyFrameIntervalTypeByConfig()),
 													output_track->GetKeyFrameIntervalByConfig());
 			break;
@@ -1834,9 +1830,9 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 				switch (input_track->GetMediaType())
 				{
 					case cmn::MediaType::Video:
-						if (input_track->GetFrameRateByConfig() > 0 && input_track->GetTimeBase().GetTimescale() > 0)
+						if (input_track->GetFrameRate() > 0 && input_track->GetTimeBase().GetTimescale() > 0)
 						{
-							duration_per_frame = static_cast<int64_t>(input_track->GetTimeBase().GetTimescale() / input_track->GetFrameRateByConfig());
+							duration_per_frame = static_cast<int64_t>(input_track->GetTimeBase().GetTimescale() / input_track->GetFrameRate());
 						}
 						break;
 					case cmn::MediaType::Audio:
@@ -1895,7 +1891,7 @@ void TranscoderStream::OnDecodedFrame(TranscodeResult result, MediaTrackId decod
 					if (duration_per_frame <= 0)
 					{
 						logtw("%s Could not create filler frame. track(%d), timebase(%s), framerate(%.2f), samples(%d)",
-							  _log_prefix.CStr(), input_track->GetId(), input_track->GetTimeBase().GetStringExpr().CStr(), input_track->GetFrameRateByConfig(), decoded_frame->GetNbSamples());
+							  _log_prefix.CStr(), input_track->GetId(), input_track->GetTimeBase().GetStringExpr().CStr(), input_track->GetFrameRate(), decoded_frame->GetNbSamples());
 					}
 				}
 			}

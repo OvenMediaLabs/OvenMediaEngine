@@ -32,7 +32,7 @@ namespace serdes
 		}
 	}
 
-	static void SetVideoTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetVideoTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(track == nullptr, Json::objectValue);
 
@@ -52,16 +52,15 @@ namespace serdes
 		SetInt(object, "maxWidth", max_resolution.width);
 		SetInt(object, "height", resolution.height);
 		SetInt(object, "maxHeight", max_resolution.height);
-		auto track_id = track->GetId();
-		auto stats = (stream != nullptr) ? stream->GetTrackStats(track_id) : nullptr;
+		auto stats = track->GetStats();
 
-		SetInt(object, "bitrate", (stream != nullptr) ? stream->GetTrackBitrate(track_id) : track->GetBitrateByConfig());
+		SetInt(object, "bitrate", track->GetBitrate());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
-		SetFloat(object, "framerate", (stream != nullptr) ? stream->GetTrackFrameRate(track_id) : track->GetFrameRateByConfig());
+		SetFloat(object, "framerate", track->GetFrameRate());
 		SetFloat(object, "framerateConf", track->GetFrameRateByConfig());
 		SetFloat(object, "maxFramerate", track->GetMaxFrameRate());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
-		SetFloat(object, "keyFrameInterval", (stream != nullptr) ? stream->GetTrackKeyFrameInterval(track_id) : track->GetKeyFrameIntervalByConfig());
+		SetFloat(object, "keyFrameInterval", track->GetKeyFrameInterval());
 		SetFloat(object, "keyFrameIntervalConf", track->GetKeyFrameIntervalByConfig());
 
 		if (stats != nullptr)
@@ -87,7 +86,7 @@ namespace serdes
 		SetInt(object, "count", channel.GetCounts());
 	}
 
-	static void SetAudioTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetAudioTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(track == nullptr, Json::objectValue);
 
@@ -101,13 +100,12 @@ namespace serdes
 		SetCodecStatus(object, "codecStatus", track, Optional::True);
 		SetString(object, "language", track->GetLanguage(), Optional::True);
 		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
-		auto track_id = track->GetId();
-		auto stats = (stream != nullptr) ? stream->GetTrackStats(track_id) : nullptr;
+		auto stats = track->GetStats();
 
 		SetInt(object, "samplerate", track->GetSampleRate());
 		// SetAudioChannel(object, "channel", track->GetChannel(), Optional::False);
 		SetInt(object, "channel", track->GetChannel().GetCounts());
-		SetInt(object, "bitrate", (stream != nullptr) ? stream->GetTrackBitrate(track_id) : track->GetBitrateByConfig());
+		SetInt(object, "bitrate", track->GetBitrate());
 		SetInt(object, "bitrateConf", track->GetBitrateByConfig());
 		SetTimebase(object, "timebase", track->GetTimeBase(), Optional::False);
 
@@ -120,7 +118,7 @@ namespace serdes
 		}
 	}
 
-	static void SetTrack(Json::Value &parent_object, const char *key, const info::Stream *stream, const std::shared_ptr<const MediaTrack> &track, Optional optional)
+	static void SetTrack(Json::Value &parent_object, const char *key, const std::shared_ptr<const MediaTrack> &track, Optional optional)
 	{
 		CONVERTER_RETURN_IF(false, Json::objectValue);
 
@@ -131,10 +129,10 @@ namespace serdes
 		switch (track->GetMediaType())
 		{
 			case cmn::MediaType::Video:
-				SetVideoTrack(object, "video", stream, track, Optional::False);
+				SetVideoTrack(object, "video", track, Optional::False);
 				break;
 			case cmn::MediaType::Audio:
-				SetAudioTrack(object, "audio", stream, track, Optional::False);
+				SetAudioTrack(object, "audio", track, Optional::False);
 				break;
 
 			case cmn::MediaType::Data:
@@ -189,7 +187,7 @@ namespace serdes
 
 			Json::Value track_value;
 
-			SetTrack(track_value, nullptr, &stream, track, Optional::False);
+			SetTrack(track_value, nullptr, track, Optional::False);
 
 			object.append(track_value);
 		}
@@ -273,7 +271,7 @@ namespace serdes
 	Json::Value JsonFromTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		Json::Value response(Json::ValueType::objectValue);
-		SetTrack(response, nullptr, nullptr, track, Optional::False);
+		SetTrack(response, nullptr, track, Optional::False);
 		return response;
 	}
 

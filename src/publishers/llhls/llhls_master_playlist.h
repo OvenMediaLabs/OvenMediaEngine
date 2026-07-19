@@ -19,11 +19,6 @@ class LLHlsMasterPlaylist
 public:
 	// The owning stream resolves configured-else-measured values per track.
 	// A raw back-pointer is enough: the playlist is owned by that stream.
-	void SetStreamInfo(const info::Stream *stream_info)
-	{
-		_stream_info = stream_info;
-	}
-
 	struct MediaInfo
 	{
 		ov::String GetTypeStr() const
@@ -71,7 +66,6 @@ public:
 	std::shared_ptr<const ov::Data> ToGzipData(const ov::String &chunk_query_string, bool legacy, bool rewind) const;
 
 private:
-	const info::Stream *_stream_info = nullptr;
 
 	struct MediaGroup
 	{

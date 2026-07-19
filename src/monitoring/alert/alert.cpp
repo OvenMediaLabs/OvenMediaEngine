@@ -538,7 +538,7 @@ namespace mon::alrt
 			}
 
 			// Verify LongKeyFrameInterval
-			auto key_frame_interval = (video_track->GetKeyFrameIntervalByConfig() > 0.0) ? video_track->GetKeyFrameIntervalByConfig() : stats->GetKeyFrameIntervalByMeasured();
+			auto key_frame_interval = video_track->GetKeyFrameInterval();
 			if (key_frame_interval > 0 && ingress.IsLongKeyFrameInterval())
 			{
 				double interval = key_frame_interval / stats->GetFrameRateByMeasured();

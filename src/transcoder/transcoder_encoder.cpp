@@ -420,7 +420,7 @@ void TranscodeEncoder::SetupForceKeyframeByTime()
 		(GetRefTrack()->GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME))
 	{
 		// Enable force keyframe by time interval.
-		auto key_frame_interval_ms		 = GetRefTrack()->GetKeyFrameIntervalByConfig();
+		auto key_frame_interval_ms		 = GetRefTrack()->GetKeyFrameInterval();
 		auto timebase_timescale			 = GetRefTrack()->GetTimeBase().GetTimescale();
 		_force_keyframe_by_time_interval = static_cast<int64_t>(timebase_timescale * (double)key_frame_interval_ms / 1000.0);
 

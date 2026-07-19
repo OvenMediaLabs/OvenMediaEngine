@@ -42,12 +42,12 @@ public:
 
 		if (_video_track != nullptr)
 		{
-			bitrates += _video_track->GetBitrateByConfig();
+			bitrates += _video_track->GetBitrate();
 		}
 
 		if (_audio_track != nullptr)
 		{
-			bitrates += _audio_track->GetBitrateByConfig();
+			bitrates += _audio_track->GetBitrate();
 		}
 
 		return bitrates;

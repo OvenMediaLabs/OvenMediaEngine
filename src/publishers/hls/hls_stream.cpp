@@ -809,7 +809,6 @@ bool HlsStream::CreatePackagers()
 
 			auto media_playlist_name = GetMediaPlaylistName(variant_name);
 			media_playlist = std::make_shared<HlsMediaPlaylist>(variant_name, media_playlist_name, media_playlist_config);
-			media_playlist->SetStreamInfo(this);
 			if (media_playlist == nullptr)
 			{
 				logte("Failed to create media playlist");
@@ -1385,7 +1384,6 @@ bool HlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 
 	auto media_playlist_name = GetMediaPlaylistName(variant_name);
 	auto media_playlist = std::make_shared<HlsMediaPlaylist>(variant_name, media_playlist_name, media_playlist_config);
-	media_playlist->SetStreamInfo(this);
 	if (media_playlist == nullptr)
 	{
 		logte("Failed to create media playlist");

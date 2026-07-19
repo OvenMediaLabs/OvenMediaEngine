@@ -185,13 +185,12 @@ namespace pvd
 			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
 			if (first_video_track != nullptr)
 			{
-				auto video_track_id = first_video_track->GetId();
-				double keyframe_interval_duration_ms = GetTrackKeyframeIntervalDurationMs(video_track_id);
+				double keyframe_interval_duration_ms = first_video_track->GetKeyframeIntervalDurationMs();
 				double keyframe_interval_duration = keyframe_interval_duration_ms / 1000.0 * data_track->GetTimeBase().GetTimescale();
 				timestamp_in_tb += std::ceil(keyframe_interval_duration);
 
 				logti("SendDataFrame - %s/%s(%u) - timestamp: %" PRId64 " tb, keyframe_interval_duration_ms: %f ms, keyframe_interval_duration: %f tb, keyframe_interval: %f, framerate: %f",
-				GetApplicationName(), GetName().CStr(), GetId(), timestamp_in_tb, keyframe_interval_duration_ms, std::ceil(keyframe_interval_duration), GetTrackKeyFrameInterval(video_track_id), GetTrackFrameRate(video_track_id));
+				GetApplicationName(), GetName().CStr(), GetId(), timestamp_in_tb, keyframe_interval_duration_ms, std::ceil(keyframe_interval_duration), first_video_track->GetKeyFrameInterval(), first_video_track->GetFrameRate());
 			}
 		}
 
