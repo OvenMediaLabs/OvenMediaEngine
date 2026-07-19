@@ -223,9 +223,7 @@ namespace pub
 			return;
 		}
 
-		// Swap in the packet's version; the map const conversion follows in a
-		// later commit, until then the shared object is adopted via a const cast
-		UpdateTrack(std::const_pointer_cast<MediaTrack>(new_track));
+		UpdateTrack(new_track);
 
 		// The first published version replacing the setup skeleton is the
 		// initial handover, not a configuration change
