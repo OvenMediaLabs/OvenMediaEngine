@@ -104,10 +104,10 @@ namespace pvd
 		// whose bitstream is self-describing does not need hints at all.
 		void UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track);
 
-		// Change a track to a new version; consumers receive OnTrackChanged (same
-		// codec required; a codec change is rejected with an error). Statistics
-		// carry over and the config hint is refreshed. Call OnSourceChanged()
-		// once per transition separately.
+		// Change an existing track to a new version; consumers receive
+		// OnTrackChanged. A codec change is allowed for transcoded outputs (the
+		// decoder is recreated downstream). Statistics carry over and the config
+		// hint is refreshed. Call OnSourceChanged() once per transition separately.
 		bool ChangeTrack(const std::shared_ptr<MediaTrack> &new_track);
 
 		bool SetState(State state);

@@ -376,10 +376,6 @@ namespace info
 		}
 	}
 
-	// Replace a track with its next version, or add it if it does not exist.
-	// A pure pointer swap: the previous object is never mutated, so holders of
-	// the old pointer keep a consistent snapshot. Carrying the shared TrackStats
-	// over to the new version is the author's job, before publishing it here.
 	std::shared_ptr<MediaTrack> Stream::GetMutableTrack(int32_t id) const
 	{
 		return std::const_pointer_cast<MediaTrack>(GetTrack(id));

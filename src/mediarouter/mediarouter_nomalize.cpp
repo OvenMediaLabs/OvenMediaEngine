@@ -546,7 +546,7 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 		auto audio_config = std::make_shared<AudioSpecificConfig>();
 		if (audio_config->Parse(media_packet->GetData()) == false)
 		{
-			logte("aac sequence header paring error");
+			logte("aac sequence header parsing error");
 			return false;
 		}
 
