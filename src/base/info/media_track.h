@@ -16,7 +16,6 @@
 #include "decoder_configuration_record.h"
 #include "base/ovlibrary/tsa/mutex.h"
 
-
 #define VALID_BITRATE_CALCULATION_THRESHOLD_MSEC (1000)
 
 typedef uint32_t MediaTrackId;
@@ -116,9 +115,6 @@ public:
 	void SetTimeBase(const cmn::Timebase &time_base);
 	bool IsValidTimeBase() const;
 
-
-
-
 	// Bitrate (Set by user)
 	void SetBitrateByConfig(int32_t bitrate);
 	int32_t GetBitrateByConfig() const;
@@ -140,7 +136,6 @@ public:
 	int32_t GetBitrateLastSecond() const;
 	double GetFrameRateByMeasured() const;
 
-
 	bool IsValid() const;
 
 	std::shared_ptr<DecoderConfigurationRecord> GetDecoderConfigurationRecord() const;
@@ -152,13 +147,6 @@ public:
 	void SetDecoderConfigurationRecord(const std::shared_ptr<DecoderConfigurationRecord> &dcr);
 	
 	ov::String GetCodecsParameter() const;
-
-
-
-
-
-
-
 
 	std::shared_ptr<MediaTrack> Clone() const;
 
@@ -214,7 +202,6 @@ protected:
 	// Timebase
 	cmn::Timebase _time_base OV_GUARDED_BY(_media_mutex);
 
-
 	// Bypass
 	std::atomic<bool> _byass;
 	// Bypass (Set by user)
@@ -222,7 +209,6 @@ protected:
 
 	// Validity (lazily computed cache)
 	mutable std::atomic<bool> _is_valid = false;
-
 
 	// Codec specific object
 	// AVCDecoderConfigurationRecord, HEVCDecoderConfigurationRecord, AudioSpecificConfig 

@@ -128,7 +128,7 @@ void MediaRouterStats::Update(
 									 prepared ? "Started" : "Preapring",
 									 (int64_t)uptime,
 									 packets_queue.Size(),
-										 max_pts - min_pts);
+									 max_pts - min_pts);
 
 		stat_track_str = stat_stream_str + stat_track_str;
 

@@ -470,9 +470,15 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 	}
 	else if (working->GetCodecId() != hint->GetCodecId())
 	{
-		logte("[%s/%s(%u)] Track(%d) codec of the packet hint differs from the track (%s -> %s). Changing the codec mid-stream is not supported",
+		// A codec change restarts the working copy from the hint, so the old
+		// codec's parsed values (DCR, resolution, validity) do not leak into
+		// the new description. The versions continue from the published one
+		logti("[%s/%s(%u)] Track(%d) codec has changed (%s -> %s)",
 			  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
 			  media_packet->GetTrackId(), cmn::GetCodecIdString(working->GetCodecId()), cmn::GetCodecIdString(hint->GetCodecId()));
+
+		state.working = std::make_shared<MediaTrack>(*hint);
+		state.recheck = true;
 		return;
 	}
 

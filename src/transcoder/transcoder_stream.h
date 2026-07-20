@@ -202,6 +202,7 @@ private:
 	// The pipeline itself is not touched here: decoder/filter/encoder each
 	// handle the change at their own consumption position.
 	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
+	void RecreateDecoderForCodecChange(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track);
 
 
 	bool CreateFilters(std::shared_ptr<MediaFrame> buffer);

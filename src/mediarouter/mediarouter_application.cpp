@@ -409,9 +409,9 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(con
 {
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 
-	// The router owns its own copy of the stream info. MediaTrack pointers are
-	// still shared, so in-band track updates from the normalizer stay visible to
-	// every holder; only the stream object itself is per-module.
+	// The router owns its own copy of the stream info and publishes new track
+	// versions into this copy only. Other modules keep their own copies and
+	// receive new versions attached to the packets (or at prepared time)
 	auto in_stream_info = std::make_shared<info::Stream>(*stream_info);
 
 	auto new_stream = std::make_shared<MediaRouteStream>(in_stream_info, cmn::MediaRouterStreamType::INBOUND, (_inbound_worker_rr++) % _max_worker_thread_count);

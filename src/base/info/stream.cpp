@@ -507,7 +507,10 @@ namespace info
 		auto ex_track = GetTrack(track->GetId());
 		if (ex_track == nullptr)
 		{
-			return AddTrack(track);
+			// The track layout is fixed after setup; a structural change here
+			// would race with the lock-free slot readers
+			logte("[%s] Track(%d) cannot be updated because it does not exist", GetNamePath().CStr(), track->GetId());
+			return false;
 		}
 
 		// A late adoption must not undo a newer version already swapped in

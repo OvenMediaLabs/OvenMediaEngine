@@ -27,8 +27,6 @@ public:
 protected:
 	bool InitializeFpsFilter();
 
-	// Configured input framerate, or the live measurement when not configured
-
 	// Constant FrameRate & SkipFrame Filter
 	FilterFps _fps_filter;
 

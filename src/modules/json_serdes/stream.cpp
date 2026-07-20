@@ -74,7 +74,13 @@ namespace serdes
 			SetFloat(object, "keyFrameIntervalLatest", stats->GetKeyFrameIntervalLatest());
 			SetInt(object, "deltaFramesSinceLastKeyFrame", stats->GetDeltaFramesSinceLastKeyFrame());
 			SetInt(object, "configChangeCount", stats->GetConfigChangeCount());
-			SetInt64(object, "lastConfigChanged", stats->GetLastConfigChangeTimeMs());
+			if (stats->GetConfigChangeCount() > 0)
+			{
+				auto last_changed = std::chrono::system_clock::time_point(
+					std::chrono::duration_cast<std::chrono::system_clock::duration>(
+						std::chrono::milliseconds(stats->GetLastConfigChangeTimeMs())));
+				SetTimestamp(object, "lastConfigChanged", last_changed);
+			}
 		}
 	}
 
@@ -114,7 +120,13 @@ namespace serdes
 			SetInt(object, "bitrateAvg", stats->GetBitrateByMeasured());
 			SetInt(object, "bitrateLatest", stats->GetBitrateLastSecond());
 			SetInt(object, "configChangeCount", stats->GetConfigChangeCount());
-			SetInt64(object, "lastConfigChanged", stats->GetLastConfigChangeTimeMs());
+			if (stats->GetConfigChangeCount() > 0)
+			{
+				auto last_changed = std::chrono::system_clock::time_point(
+					std::chrono::duration_cast<std::chrono::system_clock::duration>(
+						std::chrono::milliseconds(stats->GetLastConfigChangeTimeMs())));
+				SetTimestamp(object, "lastConfigChanged", last_changed);
+			}
 		}
 	}
 

@@ -893,8 +893,8 @@ namespace pvd
 			data_track->SetMediaType(cmn::MediaType::Data);
 			data_track->SetTimeBase(1, 1000); // Data track time base is always 1/1000 in
 			data_track->SetOriginBitstream(cmn::BitstreamFormat::Unknown);
-			
-			UpdateTrack(data_track);
+
+			AddTrack(data_track);
 		}
 
         if (item->_duration_ms == 0)

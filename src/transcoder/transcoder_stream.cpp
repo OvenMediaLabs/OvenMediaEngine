@@ -1633,6 +1633,58 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 	// Bypass tracks are re-parsed by the outbound mediarouter.
 	logti("%s Input track(%d) configuration has been changed. version(%u) -> version(%u)",
 		  _log_prefix.CStr(), track_id, current->GetVersion(), packet_track->GetVersion());
+
+	// A codec change is the one case an element cannot absorb: the decoder
+	// itself is codec-bound, so it is replaced here before the packet is decoded
+	if (current->GetCodecId() != packet_track->GetCodecId())
+	{
+		RecreateDecoderForCodecChange(track_id, packet_track);
+	}
+}
+
+void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track)
+{
+	auto input_track = _input_stream->GetMutableTrack(track_id);
+	if (input_track == nullptr)
+	{
+		return;
+	}
+
+	// This module's private input clone follows the new description
+	input_track->Update(*packet_track);
+
+	auto decoder_id = _composite.GetDecoderIdByInputTrackId(track_id);
+	if (decoder_id == std::nullopt)
+	{
+		return;
+	}
+
+	std::shared_ptr<TranscodeDecoder> old_decoder;
+	{
+		ov::LockGuard decoder_lock(_decoder_map_mutex);
+		auto it = _decoders.find(decoder_id.value());
+		if (it != _decoders.end())
+		{
+			old_decoder = it->second;
+			_decoders.erase(it);
+		}
+	}
+
+	if (old_decoder != nullptr)
+	{
+		old_decoder->Stop();
+		old_decoder.reset();
+	}
+
+	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
+	{
+		logte("%s Failed to recreate decoder for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
+			  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
+		return;
+	}
+
+	logti("%s Decoder has been recreated for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
+		  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
@@ -2156,7 +2208,6 @@ void TranscoderStream::OnEncodedPacket(TranscodeResult result, MediaTrackId enco
 
 void TranscoderStream::SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet)
 {
-
 	if (!(_parent->SendFrame(stream, std::move(packet))))
 	{
 		logtw("%s Could not send frame to mediarouter. Stream(%s(%u)), OutputTrack(%u)",

@@ -17,8 +17,6 @@
 class LLHlsMasterPlaylist
 {
 public:
-	// The owning stream resolves configured-else-measured values per track.
-	// A raw back-pointer is enough: the playlist is owned by that stream.
 	struct MediaInfo
 	{
 		ov::String GetTypeStr() const

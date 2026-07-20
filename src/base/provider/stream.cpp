@@ -788,10 +788,9 @@ namespace pvd
 		if (ex_track->GetCodecId() != cmn::MediaCodecId::None &&
 			new_track->GetCodecId() != ex_track->GetCodecId())
 		{
-			logte("%s/%s(%u) Track(%d) codec change is not supported (%s -> %s). The track is kept as is",
+			logti("%s/%s(%u) Track(%d) codec has changed (%s -> %s)",
 				  GetApplicationName(), GetName().CStr(), GetId(), new_track->GetId(),
 				  cmn::GetCodecIdString(ex_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
-			return false;
 		}
 
 		// Runtime statistics are keyed by the track id on the stream, so they

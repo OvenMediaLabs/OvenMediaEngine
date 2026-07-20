@@ -29,8 +29,6 @@ public:
 
 	void AddMediaTrackInfo(const std::shared_ptr<const MediaTrack> &track);
 
-	// The owning stream resolves configured-else-measured values per track.
-	// A raw back-pointer is enough: the playlist is owned by that stream.
 	int64_t GetWallclockOffset() const { return _wallclock_offset_ms; }
 	void SetWallclockOffset(int64_t offset_ms) { _wallclock_offset_ms = offset_ms; }
 

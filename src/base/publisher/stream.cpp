@@ -250,7 +250,14 @@ namespace pub
 			return false;
 		}
 
-		return packet_track->GetVersion() < current_track->GetVersion();
+		if (packet_track->GetVersion() >= current_track->GetVersion())
+		{
+			return false;
+		}
+
+		// An older version with identical content (e.g. a label-only change)
+		// is still valid under the current configuration
+		return packet_track->HasSameContent(*current_track) == false;
 	}
 
 	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
@@ -605,11 +612,12 @@ namespace pub
 					break;
 				}
 
-				// The urgent event applies immediately; the router's published
-				// version arrives with the next packet and converges to the same
-				// content, so the extra swap is harmless
+				// The urgent event applies immediately with the version number the
+				// router is about to publish, so the stamped packet that follows
+				// converges silently without a second callback
 				auto new_track = std::make_shared<MediaTrack>(*track);
 				new_track->SetLanguage(command->GetLanguage());
+				new_track->SetVersion(track->GetVersion() + 1);
 				UpdateTrack(new_track);
 
 				OnTrackChanged(track->GetId(), track, new_track);
