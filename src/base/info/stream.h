@@ -4,10 +4,12 @@
 
 #include "base/common_types.h"
 #include "base/info/media_track_group.h"
+#include "base/info/track_stats.h"
 #include "base/info/playlist.h"
 #include "base/info/track_set.h"
 #include "base/ovlibrary/tsa/mutex.h"
 #include "vhost_app_name.h"
+
 
 namespace info
 {
@@ -38,8 +40,6 @@ namespace info
 		// Get Stream Resource ID in ovenmediaengine (vhost#app/stream)
 		ov::String GetUri() const;
 
-		void SetMsid(uint32_t);
-		uint32_t GetMsid();
 
 		ov::String GetUUID() const;
 		ov::String GetName() const;
@@ -80,13 +80,39 @@ namespace info
 		void SetInternal(bool internal) { _internal = internal; }
 
 		uint32_t IssueUniqueTrackId();
-		bool AddTrack(const std::shared_ptr<MediaTrack> &track);
-		bool UpdateTrack(const std::shared_ptr<MediaTrack> &track);
+		bool AddTrack(const std::shared_ptr<const MediaTrack> &track);
+		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &track);
+
+		// Take over the source's current track versions by pointer, so this
+		// copy and the source share the same immutable objects and packet stamps
+		// compare equal. Consumers call this once, when the stream is prepared.
+		void UpdateTracksFrom(const Stream &source);
 		bool RemoveTrack(uint32_t id);
-		
-		const std::shared_ptr<MediaTrack> GetTrack(int32_t id) const;
-		const std::shared_ptr<MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
-		const std::map<int32_t, std::shared_ptr<MediaTrack>> &GetTracks() const;
+
+		std::shared_ptr<const MediaTrack> GetTrack(int32_t id) const;
+
+		// Author-side access to a track this stream owns, usable only before the
+		// track is shared (published/handed to other modules). Consumers must
+		// never call this; they receive new versions attached to packets.
+		std::shared_ptr<MediaTrack> GetMutableTrack(int32_t id) const;
+
+		// Runtime measurements of a track, keyed by track id: they survive
+		// version replacement and every copy of this stream shares the same
+		// objects. Never null for a track that exists.
+		std::shared_ptr<TrackStats> GetTrackStats(int32_t track_id) const;
+
+		// Configured value if set, otherwise the measured one
+		int32_t GetTrackBitrate(int32_t track_id) const;
+		double GetTrackFrameRate(int32_t track_id) const;
+		double GetTrackKeyFrameInterval(int32_t track_id) const;
+		double GetTrackKeyframeIntervalDurationMs(int32_t track_id) const;
+
+		// True once the quality of the track could be measured (or was configured)
+		bool HasTrackQualityMeasured(int32_t track_id) const;
+		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
+		// Returns a snapshot: the slots are loaded atomically, so iterating is
+		// safe while the owner swaps versions on another thread
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> GetTracks() const;
 
 		const std::shared_ptr<MediaTrackGroup> GetMediaTrackGroup(const ov::String &group_name) const;
 		// Get Track Groups
@@ -96,11 +122,11 @@ namespace info
 		// Get track nth
 		// @param order : 0 ~ (track count - 1)
 		uint32_t GetMediaTrackCount(const cmn::MediaType &type) const;
-		const std::shared_ptr<MediaTrack> GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const;
+		std::shared_ptr<const MediaTrack> GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const;
 		
-		const std::shared_ptr<MediaTrack> GetFirstTrackByType(const cmn::MediaType &type) const;
-		const std::shared_ptr<MediaTrack> GetFirstTrackByVariant(const ov::String &name) const;
-		const std::shared_ptr<MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
+		std::shared_ptr<const MediaTrack> GetFirstTrackByType(const cmn::MediaType &type) const;
+		std::shared_ptr<const MediaTrack> GetFirstTrackByVariant(const ov::String &name) const;
+		std::shared_ptr<const MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
 
 		bool AddPlaylist(const std::shared_ptr<const Playlist> &playlist);
 		std::shared_ptr<const Playlist> GetPlaylist(const ov::String &file_name) const;
@@ -170,7 +196,6 @@ namespace info
 
 	protected:
 		info::stream_id_t _id = 0;
-		uint32_t _msid = 0;
 		ov::String _name;
 		// Rewritten on every pull-stream failover, read from monitoring/serdes/publisher threads
 		mutable ov::Mutex _source_url_mutex;
@@ -178,15 +203,19 @@ namespace info
 		ov::String _output_profile_name;
 		
 		// Key : MediaTrack ID
-		std::map<int32_t, std::shared_ptr<MediaTrack>> _tracks; // For fast access by ID
-		std::vector<std::shared_ptr<MediaTrack>> _audio_tracks; // For fast access by order
-		std::vector<std::shared_ptr<MediaTrack>> _video_tracks; // For fast access by order
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> _tracks; // For fast access by ID
+		std::vector<std::shared_ptr<const MediaTrack>> _audio_tracks; // For fast access by order
+		std::vector<std::shared_ptr<const MediaTrack>> _video_tracks; // For fast access by order
 
 		// Group Name (variant name) : MediaTrackGroup
 		std::map<ov::String, std::shared_ptr<MediaTrackGroup>> _track_group_map; // Track group
 
 		// Subtitle label : track id
 		std::map<ov::String, int32_t> _public_label_map; // Subtitle label map
+
+		// Runtime measurements per track id; entries are created with the track
+		// and shared by every copy of this stream
+		std::map<int32_t, std::shared_ptr<TrackStats>> _track_stats;
 
 		// File name : Playlist
 		std::map<ov::String, std::shared_ptr<const Playlist>> _playlists;

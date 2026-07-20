@@ -118,17 +118,6 @@ bool TranscodeApplication::OnStreamPrepared(const std::shared_ptr<info::Stream> 
 	return stream->Prepare(stream_info);
 }
 
-bool TranscodeApplication::OnStreamUpdated(const std::shared_ptr<info::Stream> &stream_info)
-{
-	std::shared_ptr<TranscoderStream> stream = GetStream(stream_info);
-	if (!stream)
-	{
-		return false;
-	}
-
-	return stream->Update(stream_info);
-}
-
 bool TranscodeApplication::OnSendFrame(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaPacket> &packet)
 {
 	std::shared_ptr<TranscoderStream> stream = GetStream(stream_info);

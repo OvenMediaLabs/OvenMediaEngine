@@ -330,7 +330,7 @@ namespace mon
 			json_source["streamID"] = stream_metric->GetOriginStreamUUID().CStr();
 		}
 
-		json_stream["tracks"] = serdes::JsonFromTracks(stream_metric->GetTracks());
+		json_stream["tracks"] = serdes::JsonFromTracks(*stream_metric);
 
 		auto stream_metrics = stream_metric->GetLinkedOutputStreamMetrics();
 		if (stream_metrics.empty() == false)
@@ -344,7 +344,7 @@ namespace mon
 				json_output_stream["streamID"]	  = output_stream_metric->GetUUID().CStr();
 				json_output_stream["name"]		  = output_stream_metric->GetName().CStr();
 				json_output_stream["createdTime"] = ov::Converter::ToISO8601String(output_stream_metric->CommonMetrics::GetCreatedTime()).CStr();
-				json_output_stream["tracks"]	  = serdes::JsonFromTracks(output_stream_metric->GetTracks());
+				json_output_stream["tracks"]	  = serdes::JsonFromTracks(*output_stream_metric);
 
 				json_outputs.append(json_output_stream);
 			}

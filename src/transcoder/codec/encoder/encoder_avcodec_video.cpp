@@ -31,7 +31,7 @@ bool AVCodecVideoEncoder::SetParamsX264()
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetRcMaxRate(_codec.GetBitrate());
 	_codec.SetRcBufferSize(static_cast<int>(_codec.GetBitrate() / 2));
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRate()));
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTicksPerFrame(2);
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
@@ -136,7 +136,7 @@ bool AVCodecVideoEncoder::SetParamsX264()
 // ---------------------------------------------------------------------------
 bool AVCodecVideoEncoder::SetParamsOpenH264()
 {
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRate()));
 	_codec.SetBitrate(GetRefTrack()->GetBitrate());
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetRcMaxRate(_codec.GetBitrate());
@@ -253,7 +253,7 @@ bool AVCodecVideoEncoder::SetParamsVp8()
 	_codec.SetRcMinRate(_codec.GetBitrate());
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRate()));
 	_codec.SetMaxBFrames(0);
 	_codec.SetPixelFormat(GetSupportVideoFormat());
 	auto resolution = GetRefTrack()->GetResolution();
@@ -314,7 +314,7 @@ bool AVCodecVideoEncoder::SetParamsLibAOM()
 #endif
 	_codec.SetSampleAspectRatio(cmn::Rational(1, 1));
 	_codec.SetTimeBase(GetRefTrack()->GetTimeBase());
-	_codec.SetFrameRate(cmn::Rational::FromDouble((GetRefTrack()->GetFrameRateByConfig() > 0) ? GetRefTrack()->GetFrameRateByConfig() : GetRefTrack()->GetFrameRateByMeasured()));
+	_codec.SetFrameRate(cmn::Rational::FromDouble(GetRefTrack()->GetFrameRate()));
 	_codec.SetMaxBFrames(0);
 	_codec.SetPixelFormat(GetSupportVideoFormat());
 	auto resolution = GetRefTrack()->GetResolution();

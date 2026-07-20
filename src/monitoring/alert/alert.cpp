@@ -466,15 +466,21 @@ namespace mon::alrt
 
 		for (auto &[track_id, track] : stream_metric->GetTracks())
 		{
+			auto stats = stream_metric->GetTrackStats(track_id);
+			if (stats == nullptr)
+			{
+				continue;
+			}
+
 			if (track->GetMediaType() == cmn::MediaType::Video)
 			{
-				totalBitrate += track->GetBitrateByMeasured();
-				VerifyVideoIngressRules(ingress, track, message_list);
+				totalBitrate += stats->GetBitrateByMeasured();
+				VerifyVideoIngressRules(ingress, track, stats, message_list);
 			}
 			else if (track->GetMediaType() == cmn::MediaType::Audio)
 			{
-				totalBitrate += track->GetBitrateByMeasured();
-				VerifyAudioIngressRules(ingress, track, message_list);
+				totalBitrate += stats->GetBitrateByMeasured();
+				VerifyAudioIngressRules(ingress, track, stats, message_list);
 			}
 		}
 
@@ -500,41 +506,42 @@ namespace mon::alrt
 		}
 	}
 
-	void Alert::VerifyVideoIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<MediaTrack> &video_track, std::vector<std::shared_ptr<Message>> &message_list)
+	void Alert::VerifyVideoIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<const MediaTrack> &video_track, const std::shared_ptr<TrackStats> &stats, std::vector<std::shared_ptr<Message>> &message_list)
 	{
 		// Verify HasBFrame
 		if (ingress.GetHasBFrames())
 		{
-			if (video_track->HasBframes())
+			if (stats->HasBframes())
 			{
 				AddNonOkMessage<bool>(message_list, Message::Code::INGRESS_HAS_BFRAME, true, true);
 			}
 		}
 
-		if (video_track->GetFrameRateByMeasured() > 0)
+		if (stats->GetFrameRateByMeasured() > 0)
 		{
 			// Verify MinFramerate
 			if (ingress.GetMinFramerate() > 0)
 			{
-				if (video_track->GetFrameRateByMeasured() < ingress.GetMinFramerate())
+				if (stats->GetFrameRateByMeasured() < ingress.GetMinFramerate())
 				{
-					AddNonOkMessage<double>(message_list, Message::Code::INGRESS_FRAMERATE_LOW, ingress.GetMinFramerate(), video_track->GetFrameRateByMeasured());
+					AddNonOkMessage<double>(message_list, Message::Code::INGRESS_FRAMERATE_LOW, ingress.GetMinFramerate(), stats->GetFrameRateByMeasured());
 				}
 			}
 
 			// Verify MaxFramerate
 			if (ingress.GetMaxFramerate() > 0)
 			{
-				if (video_track->GetFrameRateByMeasured() > ingress.GetMaxFramerate())
+				if (stats->GetFrameRateByMeasured() > ingress.GetMaxFramerate())
 				{
-					AddNonOkMessage<double>(message_list, Message::Code::INGRESS_FRAMERATE_HIGH, ingress.GetMaxFramerate(), video_track->GetFrameRateByMeasured());
+					AddNonOkMessage<double>(message_list, Message::Code::INGRESS_FRAMERATE_HIGH, ingress.GetMaxFramerate(), stats->GetFrameRateByMeasured());
 				}
 			}
 
 			// Verify LongKeyFrameInterval
-			if (video_track->GetKeyFrameInterval() > 0 && ingress.IsLongKeyFrameInterval())
+			auto key_frame_interval = video_track->GetKeyFrameInterval();
+			if (key_frame_interval > 0 && ingress.IsLongKeyFrameInterval())
 			{
-				double interval = video_track->GetKeyFrameInterval() / video_track->GetFrameRateByMeasured();
+				double interval = key_frame_interval / stats->GetFrameRateByMeasured();
 				if (interval > LONG_KEY_FRAME_INTERVAL_SIZE)
 				{
 					AddNonOkMessage<double>(message_list, Message::Code::INGRESS_LONG_KEY_FRAME_INTERVAL, LONG_KEY_FRAME_INTERVAL_SIZE, interval);
@@ -586,7 +593,7 @@ namespace mon::alrt
 		}
 	}
 
-	void Alert::VerifyAudioIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<MediaTrack> &audio_track, std::vector<std::shared_ptr<Message>> &message_list)
+	void Alert::VerifyAudioIngressRules(const cfg::alrt::rule::Ingress &ingress, const std::shared_ptr<const MediaTrack> &audio_track, const std::shared_ptr<TrackStats> &stats, std::vector<std::shared_ptr<Message>> &message_list)
 	{
 		if (audio_track->GetSampleRate() > 0)
 		{

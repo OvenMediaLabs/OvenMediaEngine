@@ -65,7 +65,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMaxBitrate, _max_bitrate);
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMinBitrate, _min_bitrate);
 
-					bool IsMatched(const std::shared_ptr<MediaTrack> &track) const
+					bool IsMatched(const std::shared_ptr<const MediaTrack> &track) const
 					{
 						if (track->GetMediaType() != ::cmn::MediaType::Video)
 						{

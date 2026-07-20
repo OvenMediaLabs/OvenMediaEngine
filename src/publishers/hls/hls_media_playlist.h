@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <base/info/stream.h>
+
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/info/media_track.h>
 #include <modules/containers/mpegts/mpegts_packager.h>
@@ -58,6 +60,7 @@ public:
 	std::size_t GetSegmentCount() const;
 
 private:
+
 	HlsMediaPlaylistConfig _config;
 	ov::String _variant_name;
 	ov::String _playlist_file_name;

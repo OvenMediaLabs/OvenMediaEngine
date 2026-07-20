@@ -179,7 +179,7 @@ bool LLHlsStream::Start()
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
 	// Find the first video track and audio track with supported codec, and set the reference track id for VTT track.
-	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
+	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
 	for (const auto &[id, track] : GetTracks())
 	{
 		if (IsSupportedMediaCodec(track->GetCodecId()) == true)
@@ -994,6 +994,7 @@ void LLHlsStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaP
 bool LLHlsStream::SendBufferedPackets()
 {
 	logtt("SendBufferedPackets - BufferSize (%zu)", _initial_media_packet_buffer.Size());
+	size_t stale_packet_count = 0;
 	while (_initial_media_packet_buffer.IsEmpty() == false)
 	{
 		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
@@ -1003,6 +1004,15 @@ bool LLHlsStream::SendBufferedPackets()
 		}
 
 		auto media_packet = buffered_media_packet.value();
+
+		// The stream was initialized for the current version; packets of an
+		// older version would corrupt the output
+		if (IsStalePacket(media_packet))
+		{
+			stale_packet_count++;
+			continue;
+		}
+
 		if (media_packet->GetMediaType() == cmn::MediaType::Data)
 		{
 			SendDataFrame(media_packet);
@@ -1011,6 +1021,11 @@ bool LLHlsStream::SendBufferedPackets()
 		{
 			AppendMediaPacket(media_packet);
 		}
+	}
+
+	if (stale_packet_count > 0)
+	{
+		logti("%s Dropped %zu buffered packets of an older track version", GetName().CStr(), stale_packet_count);
 	}
 
 	return true;
@@ -1350,16 +1365,26 @@ void LLHlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 			}
 			break;
 		}
-		case EventCommand::Type::UpdateSubtitleLanguage: {
-			std::unique_lock<std::mutex> guard(_master_playlists_lock);
-			logti("LLHlsStream(%s/%s) - Clear master playlist cache for subtitle language update.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			_master_playlists.clear();
-			guard.unlock();
-			break;
-		}
 		default:
 			break;
 	}
+}
+
+void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+{
+	// A subtitle track update (e.g. a detected language) only affects the master
+	// playlist; regenerate it from the updated track
+	if (new_track->GetMediaType() == cmn::MediaType::Subtitle)
+	{
+		std::unique_lock<std::mutex> guard(_master_playlists_lock);
+		_master_playlists.clear();
+		guard.unlock();
+
+		logti("LLHlsStream(%s/%s) - Master playlist cache has been cleared for the subtitle track(%d) update", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id);
+		return;
+	}
+
+	Stream::OnTrackChanged(track_id, old_track, new_track);
 }
 
 bool LLHlsStream::AppendMediaPacket(const std::shared_ptr<MediaPacket> &media_packet)

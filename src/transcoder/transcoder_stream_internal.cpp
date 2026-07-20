@@ -143,7 +143,7 @@ MediaTrackId TranscoderStreamInternal::NewTrackId()
 }
 
 std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
-	const std::shared_ptr<MediaTrack> &input_track, 
+	const std::shared_ptr<const MediaTrack> &input_track, 
 	const cfg::vhost::app::oprf::VideoProfile &profile
 	)
 {
@@ -231,7 +231,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -307,7 +307,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::ImageProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -346,16 +346,33 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	// Github Issue : #1417
 	// Set any value for quick validation of the output track.
 	// If the validation of OutputTrack is delayed, the Stream Prepare event occurs late in Publisher.
-	// The bitrate of an image doesn’t mean much anyway.
+	// The bitrate of an image doesn't mean much anyway. The seed goes into the
+	// stats right after the track is added to the output stream.
 	output_track->SetBitrateByConfig(0);
-	output_track->SetBitrateByMeasured(1000000);
 
 	ApplySkipFrames(output_track, input_track);
 
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(const std::shared_ptr<MediaTrack> &input_track)
+void TranscoderStreamInternal::SeedOutputTrackStats(const std::shared_ptr<const MediaTrack> &input_track, const std::shared_ptr<const MediaTrack> &output_track)
+{
+	auto stats = output_track->GetStats();
+	if (stats == nullptr)
+	{
+		return;
+	}
+
+	stats->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
+	if (output_track->GetMediaType() == cmn::MediaType::Video ||
+		output_track->GetMediaType() == cmn::MediaType::Data ||
+		output_track->GetMediaType() == cmn::MediaType::Subtitle)
+	{
+		stats->SetFrameRateByMeasured(input_track->GetFrameRate());
+	}
+}
+
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(const std::shared_ptr<const MediaTrack> &input_track)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -380,13 +397,12 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrackDataType(
 	output_track->SetMaxResolution(input_track->GetMaxResolution());
 	output_track->SetMaxFrameRate(input_track->GetMaxFrameRate());
 	output_track->SetResolution(input_track->GetResolution());
-	output_track->SetFrameRateByMeasured(input_track->GetFrameRate());
 	output_track->SetTimeBase(input_track->GetTimeBase());
 
 	return output_track;
 }
 
-std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile)
+std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::SpeechToTextProfile &profile)
 {
 	auto output_track = std::make_shared<MediaTrack>();
 	if (output_track == nullptr)
@@ -444,7 +460,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	return output_track;
 }
 
-bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile)
+bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::VideoProfile &profile)
 {
 	bool is_parsed = false;
 	uint32_t if_count;
@@ -551,7 +567,7 @@ bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<Me
 	return (if_count > 0) ? true : false;
 }
 
-bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
+bool TranscoderStreamInternal::IsMatchesBypassCondition(const std::shared_ptr<const MediaTrack> &input_track, const cfg::vhost::app::oprf::AudioProfile &profile)
 {
 	bool is_parsed = false;
 	uint32_t if_count;
@@ -649,37 +665,11 @@ double TranscoderStreamInternal::MeasurementToRecommendFramerate(double framerat
 	return ::floor(recommend_framerate);
 }
 
-// Update the output track information based on the input track and the decoded frame from the decoded frame (bypass)
-void TranscoderStreamInternal::UpdateOutputTrackPassthrough(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
-{
-	output_track->SetCodecId(input_track->GetCodecId());
-	output_track->SetCodecModules(input_track->GetCodecModules());
-	output_track->SetCodecModuleId(input_track->GetCodecModuleId());
-
-	output_track->SetFrameRateByConfig(input_track->GetFrameRateByConfig());
-	output_track->SetFrameRateByMeasured(input_track->GetFrameRateByMeasured());
-	output_track->SetBitrateByMeasured(input_track->GetBitrateByMeasured());
-	output_track->SetBitrateByConfig(input_track->GetBitrateByConfig());
-	output_track->SetTimeBase(input_track->GetTimeBase());
-	output_track->SetDecoderConfigurationRecord(input_track->GetDecoderConfigurationRecord());
-
-	if (output_track->GetMediaType() == cmn::MediaType::Video)
-	{
-		output_track->SetResolution(input_track->GetResolution());
-		output_track->SetColorspace(input_track->GetColorspace());
-	}
-	else if (output_track->GetMediaType() == cmn::MediaType::Audio)
-	{
-		output_track->SetSampleRate(input_track->GetSampleRate());
-		output_track->SetSampleFormat(input_track->GetSample().GetFormat());
-		output_track->SetChannel(input_track->GetChannel());
-	}
-}
 
 // Update the output track information based on the decoded frame from the decoder before creating the encoder. (encoding)
 // If the user has not specified it, the output specification is automatically determined.
 // Once determined for the first time, the specification is maintained until the stream ends.
-void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	if (output_track->GetMediaType() == cmn::MediaType::Video)
 	{
@@ -695,7 +685,7 @@ void TranscoderStreamInternal::UpdateOutputTrackByDecodedFrame(const std::shared
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
 	const int32_t src_width	 = buffer->GetWidth();
 	const int32_t src_height = buffer->GetHeight();
@@ -786,9 +776,9 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 
 	// Update framerate of the output track
-	logtd("Id(%d), Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Id(%d), Output Framerate: %.02f(conf) %.02f(measure) %.02f(max)",
+	logtd("Id(%d), Input Framerate: %.02f(conf) %.02f(measure) %.02f(max), Id(%d), Output Framerate: %.02f(conf) %.02f(max)",
 		  input_track->GetId(), input_track->GetFrameRateByConfig(), input_track->GetFrameRateByMeasured(), input_track->GetMaxFrameRate(),
-		  output_track->GetId(), output_track->GetFrameRateByConfig(), output_track->GetFrameRateByMeasured(), output_track->GetMaxFrameRate());
+		  output_track->GetId(), output_track->GetFrameRateByConfig(), output_track->GetMaxFrameRate());
 
 	auto output_framerate = output_track->GetFrameRateByConfig();
 	if (output_framerate > 0.0f)
@@ -817,7 +807,7 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 		else if (buffer->GetDuration() > 0)
 		{
 			new_output_framerate = 1.0f / (input_track->GetTimeBase().GetExpr() * buffer->GetDuration());
-			logtd("Id(%d), Output framerate from decoded frame duration(" PRId64 "). %.2f -> %.2f", output_track->GetId(), buffer->GetDuration(), output_framerate, new_output_framerate);
+			logtd("Id(%d), Output framerate from decoded frame duration(%" PRId64 "). %.2f -> %.2f", output_track->GetId(), buffer->GetDuration(), output_framerate, new_output_framerate);
 		}
 		// Set Output framerate based on the default value
 		else
@@ -830,8 +820,8 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 
 	// Update Output bitrate
-	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf) %d(measure)",
-		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig(), output_track->GetBitrateByMeasured());
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig());
 
 	auto output_bitrate = output_track->GetBitrateByConfig();
 	if (output_bitrate > 0)
@@ -841,9 +831,9 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 	else
 	{
-		// If the bitrate is not set, it is set based on the input video bitrate.
+		// If the bitrate is not set, it is set based on the input bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
-		if(new_output_bitrate <= 0)
+		if (new_output_bitrate <= 0)
 		{
 			// If the input bitrate is not set, it is set based on the measured bitrate.
 			new_output_bitrate = input_track->GetBitrateByMeasured();
@@ -855,7 +845,7 @@ void TranscoderStreamInternal::UpdateOutputVideoTrackByDecodedFrame(const std::s
 	}
 }
 
-void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
+void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track, std::shared_ptr<MediaFrame> buffer)
 {
  	if (buffer->GetSampleRate() <= 0)
  	{
@@ -929,8 +919,8 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 
 	// Update Output bitrate
-	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf) %d(measure)",
-		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig(), output_track->GetBitrateByMeasured());
+	logtt("Input Bitrate: %d(conf) %d(measure), Output Bitrate: %d(conf)",
+		  input_track->GetBitrateByConfig(), input_track->GetBitrateByMeasured(), output_track->GetBitrateByConfig());
 
 	auto output_bitrate = output_track->GetBitrateByConfig();
 	if (output_bitrate > 0)
@@ -940,9 +930,9 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 	}
 	else
 	{
-		// If the bitrate is not set, it is set based on the input audio bitrate.
+		// If the bitrate is not set, it is set based on the input bitrate.
 		auto new_output_bitrate = input_track->GetBitrateByConfig();
-		if(new_output_bitrate <= 0)
+		if (new_output_bitrate <= 0)
 		{
 			// If the input bitrate is not set, it is set based on the measured bitrate.
 			new_output_bitrate = input_track->GetBitrateByMeasured();
@@ -953,49 +943,6 @@ void TranscoderStreamInternal::UpdateOutputAudioTrackByDecodedFrame(const std::s
 		logtd("Id(%d), Bitrate is changed. %d -> %d",
 			  output_track->GetId(), output_bitrate, new_output_bitrate);
 	}
-}
-
-bool TranscoderStreamInternal::StoreTracks(std::shared_ptr<info::Stream> stream)
-{
-	_store_tracks.clear();
-	
-	for (auto &[track_id, track] : stream->GetTracks())
-	{
-		auto clone = track->Clone();
-		_store_tracks[track_id] = clone;
-	}	
-
-	return true;
-}
-
-std::map<int32_t, std::shared_ptr<MediaTrack>>& TranscoderStreamInternal::GetStoredTracks()
-{
-	return _store_tracks;
-}
-
-bool TranscoderStreamInternal::CompareTracksForSeamlessTransition(std::map<int32_t, std::shared_ptr<MediaTrack>> prev_tracks, std::map<int32_t, std::shared_ptr<MediaTrack>> new_tracks)
-{
-	// #1 Check the number of tracks
-	if (prev_tracks.size() != new_tracks.size())
-	{
-		return false;
-	}
-
-	// #2 Check type of tracks
-	for (auto &[track_id, prev_track] : prev_tracks)
-	{
-		if (new_tracks.find(track_id) == new_tracks.end())
-		{
-			return false;
-		}
-
-		if(prev_track->GetMediaType() != new_tracks[track_id]->GetMediaType())
-		{
-			return false;
-		}
-	}
-
-	return true;
 }
 
 bool TranscoderStreamInternal::IsKeyframeOnlyDecodable(const std::map<ov::String, std::shared_ptr<info::Stream>> &streams)
@@ -1098,7 +1045,7 @@ cmn::Resolution TranscoderStreamInternal::GetAlignmentResolution(const cmn::Reso
 	return aligned;
 }
 
-void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<MediaTrack> &input_track)
+void TranscoderStreamInternal::ApplySkipFrames(const std::shared_ptr<MediaTrack> &output_track, const std::shared_ptr<const MediaTrack> &input_track)
 {
 	int32_t skip_frames = output_track->GetSkipFramesByConfig();
 	if (skip_frames < 0)

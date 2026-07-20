@@ -30,7 +30,7 @@ namespace pub
 		_packetizer = std::make_shared<mpegts::Packetizer>();
 	}
 
-	void SrtPlaylist::AddTrack(const std::shared_ptr<MediaTrack> &track)
+	void SrtPlaylist::AddTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		// Duplicated tracks will be ignored by the packetizer
 		_packetizer->AddTrack(track);
@@ -38,7 +38,7 @@ namespace pub
 		_track_info_map.emplace(track->GetId(), track);
 	}
 
-	void SrtPlaylist::AddTracks(const std::vector<std::shared_ptr<MediaTrack>> &tracks)
+	void SrtPlaylist::AddTracks(const std::vector<std::shared_ptr<const MediaTrack>> &tracks)
 	{
 		std::for_each(tracks.begin(), tracks.end(), std::bind(&SrtPlaylist::AddTrack, this, std::placeholders::_1));
 	}

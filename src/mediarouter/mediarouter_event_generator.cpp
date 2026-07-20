@@ -50,7 +50,7 @@ void MediaRouterEventGenerator::Init(const std::shared_ptr<info::Stream> &stream
 
 void MediaRouterEventGenerator::Update(
 	const std::shared_ptr<info::Stream> &stream_info,
-	const std::shared_ptr<MediaTrack> &media_track,
+	const std::shared_ptr<const MediaTrack> &media_track,
 	const std::shared_ptr<MediaPacket> &media_packet)
 {
 

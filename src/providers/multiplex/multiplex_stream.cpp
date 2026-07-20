@@ -156,6 +156,9 @@ namespace pvd
                     continue;
                 }
 
+                // The stamp of the source stream does not describe this stream's
+                // track; SendFrame() attaches this stream's own hint instead
+                media_packet->SetTrack(nullptr);
                 media_packet->SetTrackId(new_track_id);
 
                 SendFrame(media_packet);
@@ -279,6 +282,11 @@ namespace pvd
                 }
 
                 AddTrack(new_track);
+
+                // Register this stream's own description as the packet hint, so the
+                // profile-authored labels reach the router instead of the source's
+                UpdatePacketConfigHint(new_track);
+
                 _source_track_id_to_new_id_map.emplace(MakeSourceTrackIdUnique(stream_tap->GetId(), source_track_id), new_track->GetId());
 
                 logti("Multiplex Stream : %s/%s: Added track [id=%d variant=%s public_name='%s' lang='%s' characteristics='%s'] from src[%s occ=%d src_id=%d]",

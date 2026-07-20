@@ -147,7 +147,7 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 		json_playlists.append(json_playlist);
 	}
 
-	for(auto &track_item : _tracks)
+	for (auto &track_item : GetTracks())
 	{
 		auto &track = track_item.second;
 
@@ -165,8 +165,9 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 		json_track["timebaseNum"] = track->GetTimeBase().GetNum();
 		json_track["timebaseDen"] = track->GetTimeBase().GetDen();
 		json_track["bitrate"] = track->GetBitrate();
-		json_track["startFrameTime"] = track->GetStartFrameTime();
-		json_track["lastFrameTime"] = track->GetLastFrameTime();
+		// Kept for wire compatibility; the receiver measures its own frame times
+		json_track["startFrameTime"] = 0;
+		json_track["lastFrameTime"] = 0;
 
 		json_video_track["framerate"] = track->GetFrameRate();
 		json_video_track["maxFramerate"] = track->GetMaxFrameRate();

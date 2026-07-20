@@ -339,6 +339,30 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		}
 	}
 
+	// Check #2-audio - Input audio properties changed (e.g. a scheduled item switch).
+	// The audio buffer source rejects mismatched frames, so the filter must be rebuilt.
+	if (GetInputTrack()->GetMediaType() == MediaType::Audio)
+	{
+		if (buffer->GetSampleRate() != _filter_base->GetInputSampleRate() ||
+			buffer->GetChannels().GetLayout() != _filter_base->GetInputChannelLayout() ||
+			buffer->GetFormat<cmn::AudioSample::Format>() != _filter_base->GetInputSampleFormat())
+		{
+			logtd("[%s] input audio frame properties have been changed. track:%u. %dHz/%s -> %dHz/%s",
+				  _input_stream_info->GetUri().CStr(),
+				  GetInputTrack()->GetId(),
+				  _filter_base->GetInputSampleRate(),
+				  cmn::AudioChannel::GetLayoutName(_filter_base->GetInputChannelLayout()),
+				  buffer->GetSampleRate(),
+				  buffer->GetChannels().GetName());
+
+			GetInputTrack()->SetSampleRate(buffer->GetSampleRate());
+			GetInputTrack()->SetChannel(buffer->GetChannels());
+			GetInputTrack()->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
+
+			return true;
+		}
+	}
+
 	// Check #3 - Filter error state
 	//  When using an XMA scaler, resource allocation failures may occur intermittently.
 	//  Avoid problems in this way until the underlying problem is resolved.

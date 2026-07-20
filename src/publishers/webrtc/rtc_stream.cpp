@@ -177,8 +177,8 @@ bool RtcStream::Start()
 	_video_rtx_ssrc								   = ov::Random::GenerateUInt32();
 	_audio_ssrc									   = ov::Random::GenerateUInt32();
 
-	std::shared_ptr<MediaTrack> _first_video_track = nullptr;
-	std::shared_ptr<MediaTrack> _first_audio_track = nullptr;
+	std::shared_ptr<const MediaTrack> _first_video_track = nullptr;
+	std::shared_ptr<const MediaTrack> _first_audio_track = nullptr;
 
 	// Create Packetizer
 	for (auto &[track_id, track] : GetTracks())
@@ -312,15 +312,6 @@ bool RtcStream::Stop()
 	_packetizers.clear();
 
 	return Stream::Stop();
-}
-
-bool RtcStream::Update(const std::shared_ptr<info::Stream> &info)
-{
-	SetMsid(info->GetMsid());
-
-	//TODO(Getroot): check if the track has changed and re-create the SDP.
-
-	return Stream::Update(info);
 }
 
 bool RtcStream::IsSupportedCodec(cmn::MediaCodecId codec_id)

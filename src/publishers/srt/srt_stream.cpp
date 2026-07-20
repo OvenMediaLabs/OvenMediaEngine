@@ -67,8 +67,8 @@ namespace pub
 		}
 
 		// Pick the first track of each media type
-		std::shared_ptr<MediaTrack> first_video_track = nullptr;
-		std::shared_ptr<MediaTrack> first_audio_track = nullptr;
+		std::shared_ptr<const MediaTrack> first_video_track = nullptr;
+		std::shared_ptr<const MediaTrack> first_audio_track = nullptr;
 
 		for (const auto &[id, track] : GetSupportedTracks(GetTracks()))
 		{
@@ -109,7 +109,7 @@ namespace pub
 		return new_playlist;
 	}
 
-	bool SrtStream::IsSupportedTrack(const std::shared_ptr<MediaTrack> &track) const
+	bool SrtStream::IsSupportedTrack(const std::shared_ptr<const MediaTrack> &track) const
 	{
 		auto media_type = track->GetMediaType();
 
@@ -156,16 +156,16 @@ namespace pub
 		return GetSrtPlaylistInternal(file_name);
 	}
 
-	std::map<int32_t, std::shared_ptr<MediaTrack>> SrtStream::GetSupportedTracks(const std::map<int32_t, std::shared_ptr<MediaTrack>> &track_map) const
+	std::map<int32_t, std::shared_ptr<const MediaTrack>> SrtStream::GetSupportedTracks(const std::map<int32_t, std::shared_ptr<const MediaTrack>> &track_map) const
 	{
 		return ov::maputils::Filter(
 			track_map,
 			std::bind(&SrtStream::IsSupportedTrack, this, std::placeholders::_2));
 	}
 
-	std::vector<std::shared_ptr<MediaTrack>> SrtStream::GetSupportedTracks(const std::vector<std::shared_ptr<MediaTrack>> &tracks) const
+	std::vector<std::shared_ptr<const MediaTrack>> SrtStream::GetSupportedTracks(const std::vector<std::shared_ptr<const MediaTrack>> &tracks) const
 	{
-		std::vector<std::shared_ptr<MediaTrack>> supported_tracks;
+		std::vector<std::shared_ptr<const MediaTrack>> supported_tracks;
 
 		std::copy_if(
 			tracks.begin(), tracks.end(),
@@ -175,12 +175,12 @@ namespace pub
 		return supported_tracks;
 	}
 
-	std::vector<std::shared_ptr<MediaTrack>> SrtStream::GetSupportedTracks(const std::shared_ptr<MediaTrackGroup> &group) const
+	std::vector<std::shared_ptr<const MediaTrack>> SrtStream::GetSupportedTracks(const std::shared_ptr<MediaTrackGroup> &group) const
 	{
-		return (group != nullptr) ? GetSupportedTracks(group->GetTracks()) : std::vector<std::shared_ptr<MediaTrack>>();
+		return (group != nullptr) ? GetSupportedTracks(group->GetTracks()) : std::vector<std::shared_ptr<const MediaTrack>>();
 	}
 
-	void SrtStream::AddSupportedTrack(const std::shared_ptr<MediaTrack> &track, std::map<ov::String, std::shared_ptr<MediaTrack>> &to)
+	void SrtStream::AddSupportedTrack(const std::shared_ptr<const MediaTrack> &track, std::map<ov::String, std::shared_ptr<const MediaTrack>> &to)
 	{
 		auto media_type = track->GetMediaType();
 
@@ -210,7 +210,7 @@ namespace pub
 	}
 
 	void SrtStream::PrepareForTrack(
-		const std::shared_ptr<MediaTrack> &track,
+		const std::shared_ptr<const MediaTrack> &track,
 		std::map<uint32_t, std::shared_ptr<ov::Data>> &psi_data_map,
 		std::map<uint32_t, std::shared_ptr<ov::Data>> &data_to_send_map)
 	{
@@ -235,11 +235,11 @@ namespace pub
 		auto config = GetApplication()->GetConfig();
 		auto srt_config = config.GetPublishers().GetSrtPublisher();
 
-		std::map<int32_t, std::shared_ptr<MediaTrack>> data_tracks;
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> data_tracks;
 
 		PrepareDefaultPlaylist();
 
-		data_tracks = ov::maputils::Filter(GetSupportedTracks(GetTracks()), [](int32_t track_id, const std::shared_ptr<MediaTrack> &track) {
+		data_tracks = ov::maputils::Filter(GetSupportedTracks(GetTracks()), [](int32_t track_id, const std::shared_ptr<const MediaTrack> &track) {
 			return track->GetMediaType() == cmn::MediaType::Data;
 		});
 

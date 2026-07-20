@@ -194,8 +194,7 @@ namespace pvd
 			}
 		}
 
-		auto event_message = std::make_shared<MediaPacket>(GetMsid(),
-															cmn::MediaType::Data,
+		auto event_message = std::make_shared<MediaPacket>(cmn::MediaType::Data,
 															data_track->GetId(),
 															frame, 
 															timestamp_in_tb,
@@ -245,8 +244,7 @@ namespace pvd
 		auto timestamp_in_tb = static_cast<int64_t>(timestamp_in_ms * subtitle_track->GetTimeBase().GetTimescale() / 1000.0);
 		auto duration_in_tb = static_cast<int64_t>(duration_ms * subtitle_track->GetTimeBase().GetTimescale() / 1000.0);
 
-		auto subtitle_message = std::make_shared<MediaPacket>(GetMsid(),
-															cmn::MediaType::Subtitle,
+		auto subtitle_message = std::make_shared<MediaPacket>(cmn::MediaType::Subtitle,
 															subtitle_track->GetId(),
 															frame, 
 															timestamp_in_tb,
@@ -277,7 +275,6 @@ namespace pvd
 			return false;
 		}
 
-		event->SetMsid(GetMsid());
 		event->SetTrackId(data_track->GetId());
 		event->SetPacketType(cmn::PacketType::EVENT);
 		event->SetBitstreamFormat(cmn::BitstreamFormat::OVEN_EVENT);
@@ -303,9 +300,12 @@ namespace pvd
 					auto track = GetTrackByLabel(command->GetTrackLabel());
 					if (track != nullptr)
 					{
+						// A label change is a new version of the track description
 						auto old_language = track->GetLanguage();
-						track->SetLanguage(command->GetLanguage());
-						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
+						auto new_track = std::make_shared<MediaTrack>(*track);
+						new_track->SetLanguage(command->GetLanguage());
+						ChangeTrack(new_track);
+						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), new_track->GetLanguage().CStr());
 					}
 				}
 
@@ -357,6 +357,18 @@ namespace pvd
 		{
 			logte("The bitstream format must be specified. %s/%s(%u)", GetApplicationName(), GetName().CStr(), GetId());
 			return false;
+		}
+
+		// Attach the config hint of this track, if the provider registered one.
+		// The router adopts each hint object once, so re-attaching the same
+		// object to every packet costs nothing downstream.
+		{
+			ov::SharedLockGuard lock(_packet_config_hint_mutex);
+			auto hint_it = _packet_config_hints.find(packet->GetTrackId());
+			if (hint_it != _packet_config_hints.end())
+			{
+				packet->SetTrack(hint_it->second);
+			}
 		}
 
 		// Statistics
@@ -737,24 +749,55 @@ namespace pvd
 		return delta;
 	}
 
-	// Increase MSID and notify the application of the stream update
-	bool Stream::UpdateStream()
+	// The source behind this stream has changed (e.g. the next scheduled item,
+	// a pull failover): re-base the source timestamps so playback continues
+	// seamlessly. A content change travels with the packets as a new track
+	// version. The track layout must not change; only the configuration of
+	// existing tracks may.
+	void Stream::OnSourceChanged()
 	{
-		if (_application == nullptr)
-		{
-			return false;
-		}
-
-		if (_application->UpdateStream(GetSharedPtr()) == false)
-		{
-			return false;
-		}
-
 		ResetSourceStreamTimestamp();
-		SetMsid(GetMsid() + 1);
 
-		logti("%s/%s(%u) has been updated stream", GetApplicationName(), GetName().CStr(), GetId());
+		logti("%s/%s(%u) source has changed", GetApplicationName(), GetName().CStr(), GetId());
 		logti("%s", GetInfoString().CStr());
+	}
+
+	void Stream::UpdatePacketConfigHint(const std::shared_ptr<MediaTrack> &track)
+	{
+		if (track->GetMediaType() != cmn::MediaType::Video &&
+			track->GetMediaType() != cmn::MediaType::Audio &&
+			track->GetMediaType() != cmn::MediaType::Subtitle)
+		{
+			return;
+		}
+
+		ov::ScopedLock lock(_packet_config_hint_mutex);
+		_packet_config_hints[track->GetId()] = track;
+	}
+
+	bool Stream::ChangeTrack(const std::shared_ptr<MediaTrack> &new_track)
+	{
+		auto ex_track = GetTrack(new_track->GetId());
+		if (ex_track == nullptr)
+		{
+			logte("%s/%s(%u) Track(%d) does not exist. ChangeTrack only replaces an existing track",
+				  GetApplicationName(), GetName().CStr(), GetId(), new_track->GetId());
+			return false;
+		}
+
+		if (ex_track->GetCodecId() != cmn::MediaCodecId::None &&
+			new_track->GetCodecId() != ex_track->GetCodecId())
+		{
+			logti("%s/%s(%u) Track(%d) codec has changed (%s -> %s)",
+				  GetApplicationName(), GetName().CStr(), GetId(), new_track->GetId(),
+				  cmn::GetCodecIdString(ex_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()));
+		}
+
+		// Runtime statistics are keyed by the track id on the stream, so they
+		// survive the replacement without any hand-over
+		new_track->SetVersion(ex_track->GetVersion() + 1);
+		UpdateTrack(new_track);
+		UpdatePacketConfigHint(new_track);
 
 		return true;
 	}

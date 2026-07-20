@@ -11,6 +11,7 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/info/media_track_group.h>
 #include <base/mediarouter/media_buffer.h>
+#include <base/info/stream.h>
 #include <modules/containers/bmff/cenc.h>
 
 class LLHlsMasterPlaylist
@@ -63,6 +64,7 @@ public:
 	std::shared_ptr<const ov::Data> ToGzipData(const ov::String &chunk_query_string, bool legacy, bool rewind) const;
 
 private:
+
 	struct MediaGroup
 	{
 		ov::String _group_id;

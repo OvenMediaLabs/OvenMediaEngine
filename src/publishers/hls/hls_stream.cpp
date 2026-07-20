@@ -241,8 +241,8 @@ bool HlsStream::IsSupportedCodec(cmn::MediaCodecId codec_id) const
 
 bool HlsStream::CreateDefaultPlaylist()
 {
-	std::shared_ptr<MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
-	for (const auto &[id, track] : _tracks)
+	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
+	for (const auto &[id, track] : GetTracks())
 	{
 		if (IsSupportedCodec(track->GetCodecId()) == true)
 		{
@@ -306,6 +306,7 @@ void HlsStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPac
 bool HlsStream::SendBufferedPackets()
 {
 	logtt("SendBufferedPackets - BufferSize (%zu)", _initial_media_packet_buffer.Size());
+	size_t stale_packet_count = 0;
 	while (_initial_media_packet_buffer.IsEmpty() == false)
 	{
 		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
@@ -315,6 +316,15 @@ bool HlsStream::SendBufferedPackets()
 		}
 
 		auto media_packet = buffered_media_packet.value();
+
+		// The stream was initialized for the current version; packets of an
+		// older version would corrupt the output
+		if (IsStalePacket(media_packet))
+		{
+			stale_packet_count++;
+			continue;
+		}
+
 		if (media_packet->GetMediaType() == cmn::MediaType::Data)
 		{
 			SendDataFrame(media_packet);
@@ -323,6 +333,11 @@ bool HlsStream::SendBufferedPackets()
 		{
 			AppendMediaPacket(media_packet);
 		}
+	}
+
+	if (stale_packet_count > 0)
+	{
+		logti("%s Dropped %zu buffered packets of an older track version", GetName().CStr(), stale_packet_count);
 	}
 
 	return true;
@@ -680,8 +695,7 @@ void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::share
 bool HlsStream::CreatePackagers()
 {
 	// VTT
-	auto &tracks = GetTracks();
-	for (const auto &[id, track] : tracks)
+	for (const auto &[id, track] : GetTracks())
 	{
 		if (track->GetCodecId() != cmn::MediaCodecId::WebVTT)
 		{

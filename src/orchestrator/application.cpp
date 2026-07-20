@@ -44,12 +44,12 @@ namespace ocst
 		if (info->IsInputStream())
 		{
 			std::lock_guard<std::shared_mutex> lock(_provider_stream_map_mutex);
-			_provider_stream_map[info->GetName()] = std::static_pointer_cast<pvd::Stream>(info);
+			_provider_stream_map[info->GetName()] = info;
 		}
 		else
 		{
 			std::lock_guard<std::shared_mutex> lock(_publisher_stream_map_mutex);
-			_publisher_stream_map[info->GetName()] = std::static_pointer_cast<pub::Stream>(info);
+			_publisher_stream_map[info->GetName()] = info;
 		}
 
 		_idle_timer.Stop();
@@ -80,7 +80,7 @@ namespace ocst
 		return _callback->OnStreamDeleted(_app_info, info);
 	}
 
-	std::shared_ptr<pvd::Stream> Application::GetProviderStream(const ov::String &stream_name)
+	std::shared_ptr<info::Stream> Application::GetProviderStream(const ov::String &stream_name)
 	{
 		std::shared_lock<std::shared_mutex> lock(_provider_stream_map_mutex);
 		auto item = _provider_stream_map.find(stream_name);
@@ -92,7 +92,7 @@ namespace ocst
 		return item->second;
 	}
 	
-	std::shared_ptr<pub::Stream> Application::GetPublisherStream(const ov::String &stream_name)
+	std::shared_ptr<info::Stream> Application::GetPublisherStream(const ov::String &stream_name)
 	{
 		std::shared_lock<std::shared_mutex> lock(_publisher_stream_map_mutex);
 		auto item = _publisher_stream_map.find(stream_name);
@@ -120,11 +120,6 @@ namespace ocst
 	bool Application::OnStreamPrepared(const std::shared_ptr<info::Stream> &info)
 	{
 		return _callback->OnStreamPrepared(_app_info, info);
-	}
-
-	bool Application::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
-	{
-		return _callback->OnStreamUpdated(_app_info, info);
 	}
 
 	bool Application::OnSendFrame(const std::shared_ptr<info::Stream> &info, const std::shared_ptr<MediaPacket> &packet)

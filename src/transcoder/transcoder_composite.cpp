@@ -87,14 +87,14 @@ void CompositeMap::BuildCachesLocked()
 	// Cache : input_track_id → [(in_stream, in_track, out_stream, out_track)]  (bypass)
 	for (auto &[input_track_id, stream_nos] : _input_to_outputs)
 	{
-		auto input_track = _input_stream->GetTrack(input_track_id);
+		auto input_track = _input_stream->GetMutableTrack(input_track_id);
 		if (input_track == nullptr)
 		{
 			continue;
 		}
 		for (auto &[output_stream, output_track_id] : stream_nos)
 		{
-			auto output_track = output_stream->GetTrack(output_track_id);
+			auto output_track = output_stream->GetMutableTrack(output_track_id);
 			if (output_track != nullptr)
 			{
 				_cache_bypass_outputs_by_input[input_track_id].emplace_back(
@@ -129,7 +129,7 @@ void CompositeMap::BuildCachesLocked()
 		}
 		for (auto &[stream, track_id] : outputs_it->second)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			auto input_track  = resolve_input_track(track_id);
 			if (output_track == nullptr || input_track == nullptr)
 			{
@@ -146,7 +146,7 @@ void CompositeMap::BuildCachesLocked()
 	{
 		for (auto &[stream, track_id] : stream_nos)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			auto input_track  = resolve_input_track(track_id);
 			if (output_track == nullptr || input_track == nullptr)
 			{
@@ -163,7 +163,7 @@ void CompositeMap::BuildCachesLocked()
 	{
 		for (auto &[stream, track_id] : stream_nos)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			if (output_track != nullptr)
 			{
 				_cache_outputs_by_encoder[encoder_id].emplace_back(stream, output_track);
@@ -198,7 +198,7 @@ ov::String CompositeMap::GetInfoString() const
 			matched = true;
 			for (auto &[stream, track_id] : bypass_it->second)
 			{
-				auto output_track = stream->GetTrack(track_id);
+				auto output_track = stream->GetMutableTrack(track_id);
 				log.AppendFormat("  + Output(%s/%d) : Passthrough, %s\n",
 								 stream->GetName().CStr(),
 								 track_id,
@@ -235,7 +235,7 @@ ov::String CompositeMap::GetInfoString() const
 					}
 					for (auto &[stream, track_id] : outputs_it->second)
 					{
-						auto output_track = stream->GetTrack(track_id);
+						auto output_track = stream->GetMutableTrack(track_id);
 						log.AppendFormat("        + Output(%s/%u) : %s\n",
 										 stream->GetName().CStr(),
 										 track_id,
@@ -264,12 +264,12 @@ std::vector<StreamTrackNo> CompositeMap::GetDecoderList()
 
 	for (auto &[input_track_id, decoder_id] : _input_to_decoder)
 	{
-		auto it = _input_stream->GetTracks().find(input_track_id);
-		if (it == _input_stream->GetTracks().end())
+		auto input_track = _input_stream->GetMutableTrack(input_track_id);
+		if (input_track == nullptr)
 		{
 			continue;
 		}
-		result.emplace_back(_input_stream, it->second, decoder_id);
+		result.emplace_back(_input_stream, input_track, decoder_id);
 	}
 
 	return result;
@@ -297,7 +297,7 @@ std::vector<StreamTrackNo> CompositeMap::GetEncoderListByDecoderId(MediaTrackId 
 
 		for (auto &[stream, track_id] : outputs_it->second)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			if (output_track != nullptr)
 			{
 				result.emplace_back(stream, output_track, encoder_id);
@@ -329,7 +329,7 @@ std::vector<StreamTrackPairNo> CompositeMap::GetFilterListByDecoderId(MediaTrack
 
 		for (auto &[stream, track_id] : outputs_it->second)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			auto input_track  = GetInputTrackByOutputTrackIdLocked(track_id);
 			if (output_track == nullptr || input_track == nullptr)
 			{
@@ -363,7 +363,7 @@ std::vector<StreamTrackPair> CompositeMap::GetInputOutputListByDecoderId(MediaTr
 
 		for (auto &[stream, track_id] : outputs_it->second)
 		{
-			auto output_track = stream->GetTrack(track_id);
+			auto output_track = stream->GetMutableTrack(track_id);
 			auto input_track  = GetInputTrackByOutputTrackIdLocked(track_id);
 			if (output_track == nullptr || input_track == nullptr)
 			{

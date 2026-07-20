@@ -55,8 +55,8 @@ namespace pub
 			const std::shared_ptr<const info::Playlist> &playlist_info,
 			const std::shared_ptr<SrtPlaylistSink> &sink);
 
-		void AddTrack(const std::shared_ptr<MediaTrack> &track);
-		void AddTracks(const std::vector<std::shared_ptr<MediaTrack>> &tracks);
+		void AddTrack(const std::shared_ptr<const MediaTrack> &track);
+		void AddTracks(const std::vector<std::shared_ptr<const MediaTrack>> &tracks);
 
 		bool Start();
 		bool Stop();
@@ -81,11 +81,11 @@ namespace pub
 	private:
 		struct TrackInfo
 		{
-			std::shared_ptr<MediaTrack> track;
+			std::shared_ptr<const MediaTrack> track;
 
 			bool first_key_frame_received = false;
 
-			TrackInfo(const std::shared_ptr<MediaTrack> &track)
+			TrackInfo(const std::shared_ptr<const MediaTrack> &track)
 				: track(track)
 			{
 			}

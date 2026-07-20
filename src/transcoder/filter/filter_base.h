@@ -72,6 +72,21 @@ public:
 		return _src_height;
 	}
 
+	int32_t GetInputSampleRate() const
+	{
+		return _src_samplerate;
+	}
+
+	cmn::AudioChannel::Layout GetInputChannelLayout() const
+	{
+		return _src_channel_layout;
+	}
+
+	cmn::AudioSample::Format GetInputSampleFormat() const
+	{
+		return _src_sample_format;
+	}
+
 	// If the input track and output track are the same, the filter is used for a single track.
 	// The main goal of this filter is to handle frame drops.
 	bool IsSingleTrack() const
@@ -169,6 +184,10 @@ protected:
 	cmn::VideoPixelFormatId _src_pixfmt = cmn::VideoPixelFormatId::None;
 	int32_t 	_src_width = 0;
 	int32_t 	_src_height = 0;
+
+	int32_t 	_src_samplerate = 0;
+	cmn::AudioChannel::Layout _src_channel_layout = cmn::AudioChannel::Layout::LayoutUnknown;
+	cmn::AudioSample::Format _src_sample_format = cmn::AudioSample::Format::None;
 
 	ov::String 	_src_args = "";
 

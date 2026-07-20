@@ -137,9 +137,18 @@ namespace pub
 		virtual void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) = 0;
 		virtual void OnEvent(const std::shared_ptr<MediaEvent> &event) {}
 
+		// Track the version of the packet at this stream's consumption position.
+		// Called by pub::Application before Send*Frame; fires OnTrackChanged on a version change.
+		void UpdateTrackFromPacket(const std::shared_ptr<MediaPacket> &media_packet);
+
+		// True when the packet belongs to an older version than this stream's
+		// current track description. Publishers use this to drop pre-start
+		// buffered packets that a configuration change overtook during
+		// initialization: the pipeline was initialized for the newer version.
+		bool IsStalePacket(const std::shared_ptr<MediaPacket> &media_packet) const;
+
 		bool EnterStart();
 		bool EnterStop();
-		bool EnterUpdate(const std::shared_ptr<info::Stream> &info);
 		
 
 		bool WaitUntilStart(uint32_t timeout_ms);
@@ -169,8 +178,11 @@ namespace pub
 		virtual ~Stream();
 
 		virtual bool Start();
-		virtual bool Update(const std::shared_ptr<info::Stream> &info);
 		virtual bool Stop();
+
+		// Called before the first packet of a new track version is delivered.
+		// A publisher that supports mid-stream configuration changes must override this.
+		virtual void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
 
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);

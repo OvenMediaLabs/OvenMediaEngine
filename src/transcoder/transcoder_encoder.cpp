@@ -338,7 +338,6 @@ std::shared_ptr<MediaTrack> &TranscodeEncoder::GetRefTrack()
 
 void TranscodeEncoder::SendBuffer(std::shared_ptr<const MediaFrame> frame)
 {
-	// logte("%" PRId64 ", msid:%u", frame->GetPts(), frame->GetMsid());
 		
 	if (_input_buffer.IsExceedWaitEnable() == true)
 	{

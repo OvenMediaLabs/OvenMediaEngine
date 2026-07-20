@@ -37,7 +37,7 @@ bool MediaRouterAlert::Update(
 	const bool prepared,
 	const ov::ManagedQueue<std::shared_ptr<MediaPacket>> &packets_queue,
 	const std::shared_ptr<info::Stream> &stream_info,
-	const std::shared_ptr<MediaTrack> &media_track,
+	const std::shared_ptr<const MediaTrack> &media_track,
 	const std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (type == cmn::MediaRouterStreamType::OUTBOUND)
@@ -67,7 +67,7 @@ bool MediaRouterAlert::Update(
 	return true;
 }
 
-bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (media_packet->GetDuration() < 0)
 	{
@@ -84,7 +84,7 @@ bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::S
 	return true;
 }
 
-bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	switch (media_packet->GetBitstreamFormat())
 	{
@@ -97,13 +97,19 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 		case cmn::BitstreamFormat::HVCC:
 			if (_alert_count_bframe < 1)	// Reduced the number of warning log outputs from 10 to 1
 			{
-				if (media_track->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
+				auto stats = stream_info->GetTrackStats(media_track->GetId());
+				if (stats == nullptr)
 				{
-					media_track->SetHasBframes(true);
+					break;
+				}
+
+				if (stats->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
+				{
+					stats->SetHasBframes(true);
 				}
 
 				// Display a warning message that b-frame exists
-				if (media_track->HasBframes() == true)
+				if (stats->HasBframes() == true)
 				{
 					logtw("[%s/%s(%u)] Detected a B-frame track. track:%u",
 						  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
@@ -127,7 +133,7 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 	return true;
 }
 
-bool MediaRouterAlert::DetectPTSDiscontinuity(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterAlert::DetectPTSDiscontinuity(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
 	auto track_id = media_packet->GetTrackId();
 

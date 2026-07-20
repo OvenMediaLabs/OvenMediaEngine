@@ -47,7 +47,6 @@ public:
 	bool Start();
 	bool Stop();
 	bool Prepare(const std::shared_ptr<info::Stream> &stream);
-	bool Update(const std::shared_ptr<info::Stream> &stream);
 	bool Push(std::shared_ptr<MediaPacket> packet);
 
 	bool PauseEncoders(cmn::MediaCodecId codec_id);
@@ -59,7 +58,6 @@ public:
 	// Notify event to mediarouter
 	void NotifyCreateStreams();
 	void NotifyDeleteStreams();
-	void NotifyUpdateStreams();
 
 private:
 	// Create stream --> Start stream --> Stop stream --> Delete stream
@@ -158,6 +156,9 @@ private:
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
+	// Current version per input track (accessed only on the packet-push thread)
+	std::map<MediaTrackId, std::shared_ptr<const MediaTrack>> _last_input_tracks;
+
 	// Last decoded frame and timestamp
 	// [DECODER_ID, MediaFrame]
 	std::map<MediaTrackId, std::shared_ptr<MediaFrame>> _last_decoded_frames OV_GUARDED_BY(_last_decoded_frame_mutex);
@@ -181,7 +182,10 @@ private:
 	const cfg::vhost::app::oprf::OutputProfiles* RequestWebhook();
 	bool StartInternal();
 	bool PrepareInternal();
-	bool UpdateInternal(const std::shared_ptr<info::Stream> &stream);
+
+	// Snapshot the prepared input stream; the shared track versions are
+	// immutable, later versions arrive attached to the packets.
+	void BuildPrivateInputStream(const std::shared_ptr<info::Stream> &stream);
 
 	size_t CreateOutputStreamDynamic();
 	size_t CreateOutputStreams();
@@ -193,6 +197,12 @@ private:
 	std::shared_ptr<TranscodeDecoder> GetDecoder(MediaTrackId decoder_id);
 	void SetDecoder(MediaTrackId decoder_id, std::shared_ptr<TranscodeDecoder> decoder);
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
+
+	// Track the version per input track and log the boundary.
+	// The pipeline itself is not touched here: decoder/filter/encoder each
+	// handle the change at their own consumption position.
+	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
+	void RecreateDecoderForCodecChange(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track);
 
 
 	bool CreateFilters(std::shared_ptr<MediaFrame> buffer);
@@ -210,7 +220,6 @@ private:
 	std::shared_ptr<TranscodeEncoder> GetEncoder(MediaTrackId encoder_id);
 	void SetEncoderWithFilter(MediaTrackId encoder_id, std::shared_ptr<TranscodeFilter> filter, std::shared_ptr<TranscodeEncoder> encoder);
 	void RemoveEncoders() OV_REQUIRES(_pipeline_mutex);
-	void RemoveSpecificEncoders();
 
 	void ProcessPacket(const std::shared_ptr<MediaPacket> &packet);
 
@@ -226,10 +235,6 @@ private:
 	void ChangeOutputFormat(std::shared_ptr<MediaFrame> buffer);
 	void UpdateInputTrack(std::shared_ptr<MediaFrame> buffer);
 	void UpdateOutputTrack(std::shared_ptr<MediaFrame> buffer);
-	void UpdatePassthroughOutputTracks(const std::shared_ptr<info::Stream> &stream) OV_REQUIRES(_pipeline_mutex);
-	void UpdateMsidOfOutputStreams(uint32_t msid) OV_REQUIRES(_pipeline_mutex);
-	bool CanSeamlessTransition(const std::shared_ptr<info::Stream> &stream);
-	void FlushBuffers();
 
 	// Step 2: Filter (resample/rescale the decoded frame)
 	void SpreadToFilters(MediaTrackId decoder_id, std::shared_ptr<MediaFrame> frame);
@@ -246,7 +251,7 @@ private:
 	// Send encoded packet to mediarouter via transcoder application
 	void SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet);
 
-	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<MediaTrack> &video_track, const std::shared_ptr<MediaTrack> &audio_track);
+	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<const MediaTrack> &video_track, const std::shared_ptr<const MediaTrack> &audio_track);
 
 private:
 	// Async prepare handling
@@ -259,6 +264,6 @@ private:
 	bool SendBufferedPackets();
 	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
 
-	// Guards the pipeline during updates (UpdateInternal acquires unique_lock;
+	// Guards the pipeline during a rebuild (HandleInputConfigChange acquires unique_lock)
 	ov::SharedMutex _pipeline_mutex;
 };

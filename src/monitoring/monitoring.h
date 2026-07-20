@@ -43,8 +43,9 @@ namespace mon
 		bool OnStreamCreated(const info::Stream &stream_info);
 		bool OnStreamCreationFailed(const info::Stream &stream_info);
 		bool OnStreamPrepared(const info::Stream &stream_info);
+		// A new track version was published at runtime; refresh the metrics copy
+		bool OnTrackUpdated(const info::Stream &stream_info, const std::shared_ptr<const MediaTrack> &track);
 		bool OnStreamDeleted(const info::Stream &stream_info);
-		bool OnStreamUpdated(const info::Stream &stream_info);
 
 		void IncreaseBytesIn(const info::Stream &stream_info, uint64_t value);
 		void IncreaseBytesOut(const info::Stream &stream_info, PublisherType type, uint64_t value);

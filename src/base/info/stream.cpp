@@ -46,6 +46,7 @@ namespace info
 		_name_path = stream.GetNamePath();
 		
 		_id = stream._id;
+		_internal = stream._internal;
 		_name = stream._name;
 		_source_type = stream._source_type;
 		_source_url = stream.GetMediaSource();
@@ -55,13 +56,36 @@ namespace info
 		_app_info = stream._app_info;
 		_origin_stream = stream._origin_stream;
 
-		_tracks = stream._tracks;
-		_video_tracks = stream._video_tracks;
-		_audio_tracks = stream._audio_tracks;
+		// The source's owner may swap track versions concurrently, so every
+		// slot is loaded atomically
+		for (const auto &item : stream._tracks)
+		{
+			_tracks.emplace(item.first, std::atomic_load(&item.second));
+		}
+		for (const auto &item : stream._video_tracks)
+		{
+			_video_tracks.push_back(std::atomic_load(&item));
+		}
+		for (const auto &item : stream._audio_tracks)
+		{
+			_audio_tracks.push_back(std::atomic_load(&item));
+		}
 
-		_track_group_map = stream._track_group_map;
+		// Groups are per-copy indexes over the shared immutable tracks; sharing
+		// the group objects themselves would let copies mutate each other's index
+		for (const auto &[group_name, group] : stream._track_group_map)
+		{
+			auto cloned_group = std::make_shared<MediaTrackGroup>(group_name);
+			for (const auto &track : group->GetTracks())
+			{
+				cloned_group->AddTrack(track);
+			}
+			_track_group_map.emplace(group_name, cloned_group);
+		}
 
 		_public_label_map = stream._public_label_map;
+
+		_track_stats = stream._track_stats;
 
 		_from_origin_map_store = stream._from_origin_map_store;
 
@@ -118,16 +142,6 @@ namespace info
 		// #vhost name#appname/stream name
 		ov::String vhost_app_name = (_app_info != nullptr) ? _app_info->GetVHostAppName().CStr() : "Unknown";
 		return ov::String::FormatString("%s/%s", vhost_app_name.CStr(), GetName().CStr());
-	}
-
-	void Stream::SetMsid(uint32_t msid)
-	{
-		_msid = msid;
-	}
-
-	uint32_t Stream::GetMsid()
-	{
-		return _msid;
 	}
 
 	ov::String Stream::GetUUID() const
@@ -292,7 +306,7 @@ namespace info
 		return last_issued_track_id.load();
 	}
 
-	bool Stream::AddTrack(const std::shared_ptr<MediaTrack> &track)
+	bool Stream::AddTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
 		auto item = _tracks.find(track->GetId());
 		if (item != _tracks.end())
@@ -301,6 +315,12 @@ namespace info
 		}
 
 		_tracks.emplace(track->GetId(), track);
+
+		if (_track_stats.find(track->GetId()) == _track_stats.end())
+		{
+			_track_stats.emplace(track->GetId(), std::make_shared<TrackStats>());
+		}
+		track->LinkStats(_track_stats[track->GetId()]);
 
 		if (track->GetMediaType() == cmn::MediaType::Video)
 		{
@@ -343,16 +363,188 @@ namespace info
 		return true;
 	}
 
-	// If track is not exist, add track or update track
-	bool Stream::UpdateTrack(const std::shared_ptr<MediaTrack> &track)
+	void Stream::UpdateTracksFrom(const Stream &source)
 	{
-		auto ex_track = GetTrack(track->GetId());
-		if (ex_track == nullptr)
+		for (const auto &[track_id, track] : source.GetTracks())
 		{
-			return AddTrack(track);
+			if (_tracks.find(track_id) == _tracks.end())
+			{
+				continue;
+			}
+
+			UpdateTrack(track);
+		}
+	}
+
+	std::shared_ptr<MediaTrack> Stream::GetMutableTrack(int32_t id) const
+	{
+		return std::const_pointer_cast<MediaTrack>(GetTrack(id));
+	}
+
+	std::shared_ptr<TrackStats> Stream::GetTrackStats(int32_t track_id) const
+	{
+		auto it = _track_stats.find(track_id);
+		if (it == _track_stats.end())
+		{
+			return nullptr;
 		}
 
-		return ex_track->Update(*track);
+		return it->second;
+	}
+
+	int32_t Stream::GetTrackBitrate(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0;
+		}
+
+		auto bitrate_conf = track->GetBitrateByConfig();
+		if (bitrate_conf > 0)
+		{
+			return bitrate_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetBitrateByMeasured() : 0;
+	}
+
+	double Stream::GetTrackFrameRate(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0.0;
+		}
+
+		auto framerate_conf = track->GetFrameRateByConfig();
+		if (framerate_conf > 0.0)
+		{
+			return framerate_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetFrameRateByMeasured() : 0.0;
+	}
+
+	double Stream::GetTrackKeyFrameInterval(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			return 0.0;
+		}
+
+		auto key_frame_interval_conf = track->GetKeyFrameIntervalByConfig();
+		if (key_frame_interval_conf > 0.0)
+		{
+			return key_frame_interval_conf;
+		}
+
+		auto stats = GetTrackStats(track_id);
+		return (stats != nullptr) ? stats->GetKeyFrameIntervalByMeasured() : 0.0;
+	}
+
+	double Stream::GetTrackKeyframeIntervalDurationMs(int32_t track_id) const
+	{
+		double keyframe_interval = std::ceil(GetTrackKeyFrameInterval(track_id));
+		double framerate = std::ceil(GetTrackFrameRate(track_id));
+
+		if (framerate <= 0.0)
+		{
+			return 0.0;
+		}
+
+		return (keyframe_interval / framerate) * 1000.0;
+	}
+
+	bool Stream::HasTrackQualityMeasured(int32_t track_id) const
+	{
+		auto track = GetTrack(track_id);
+		auto stats = GetTrackStats(track_id);
+		if (track == nullptr || stats == nullptr)
+		{
+			return false;
+		}
+
+		if (stats->IsQualityMeasured())
+		{
+			return true;
+		}
+
+		switch (track->GetMediaType())
+		{
+			case cmn::MediaType::Video:
+				// Usable once the value was configured or could be measured
+				if ((stats->GetBitrateByMeasured() > 0 || track->GetBitrateByConfig() > 0) && (GetTrackFrameRate(track_id) > 0.0))
+				{
+					stats->SetQualityMeasured();
+				}
+				break;
+
+			case cmn::MediaType::Audio:
+				if (stats->GetBitrateByMeasured() > 0 || track->GetBitrateByConfig() > 0)
+				{
+					stats->SetQualityMeasured();
+				}
+				break;
+
+			default:
+				stats->SetQualityMeasured();
+				break;
+		}
+
+		return stats->IsQualityMeasured();
+	}
+
+	bool Stream::UpdateTrack(const std::shared_ptr<const MediaTrack> &track)
+	{
+		auto slot_it = _tracks.find(track->GetId());
+		if (slot_it == _tracks.end())
+		{
+			// The track layout is fixed after setup; a structural change here
+			// would race with the lock-free slot readers
+			logte("[%s] Track(%d) cannot be updated because it does not exist", GetNamePath().CStr(), track->GetId());
+			return false;
+		}
+
+		auto ex_track = std::atomic_load(&slot_it->second);
+
+		// A late adoption must not undo a newer version already swapped in
+		if (ex_track->GetVersion() > track->GetVersion())
+		{
+			return true;
+		}
+
+		// Every version of a track shares the same measurement object
+		track->LinkStats(GetTrackStats(track->GetId()));
+
+		// The track layout is fixed after creation, so every slot address is
+		// stable; swapping the slots atomically lets readers on other threads
+		// (sessions, API) load them without a lock
+		std::atomic_store(&slot_it->second, track);
+
+		auto replace_in = [&track](std::vector<std::shared_ptr<const MediaTrack>> &tracks) {
+			for (auto &item : tracks)
+			{
+				auto current = std::atomic_load(&item);
+				if (current != nullptr && current->GetId() == track->GetId())
+				{
+					std::atomic_store(&item, track);
+				}
+			}
+		};
+		replace_in(_video_tracks);
+		replace_in(_audio_tracks);
+
+		auto group_it = _track_group_map.find(ex_track->GetVariantName());
+		if (group_it != _track_group_map.end())
+		{
+			group_it->second->ReplaceTrack(track);
+		}
+
+		return true;
 	}
 
 	bool Stream::RemoveTrack(uint32_t id)
@@ -400,7 +592,7 @@ namespace info
 		return true;
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrack(int32_t id) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrack(int32_t id) const
 	{
 		auto item = _tracks.find(id);
 		if (item == _tracks.end())
@@ -408,10 +600,11 @@ namespace info
 			return nullptr;
 		}
 
-		return item->second;
+		// Slots are swapped at runtime by UpdateTrack(); loads must pair with its atomic store
+		return std::atomic_load(&item->second);
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrackByLabel(const ov::String &public_label) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrackByLabel(const ov::String &public_label) const
 	{
 		auto label_it = _public_label_map.find(public_label);
 		if (label_it == _public_label_map.end())
@@ -454,7 +647,7 @@ namespace info
 	}
 	
 	// start from 0
-	const std::shared_ptr<MediaTrack> Stream::GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const
+	std::shared_ptr<const MediaTrack> Stream::GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const
 	{
 		if (type == cmn::MediaType::Video)
 		{
@@ -463,7 +656,7 @@ namespace info
 				return nullptr;
 			}
 
-			return _video_tracks[order];
+			return std::atomic_load(&_video_tracks[order]);
 		}
 		else if (type == cmn::MediaType::Audio)
 		{
@@ -472,14 +665,14 @@ namespace info
 				return nullptr;
 			}
 
-			return _audio_tracks[order];
+			return std::atomic_load(&_audio_tracks[order]);
 		}
 
 		return nullptr;
 	}
 
 	// Get Track by variant name
-	const std::shared_ptr<MediaTrack> Stream::GetFirstTrackByVariant(const ov::String &variant_name) const
+	std::shared_ptr<const MediaTrack> Stream::GetFirstTrackByVariant(const ov::String &variant_name) const
 	{
 		auto group = GetMediaTrackGroup(variant_name);
 		if (group == nullptr || group->GetTrackCount() == 0)
@@ -490,7 +683,7 @@ namespace info
 		return group->GetTrack(0);
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetTrackByVariant(const ov::String &variant_name, uint32_t order) const
+	std::shared_ptr<const MediaTrack> Stream::GetTrackByVariant(const ov::String &variant_name, uint32_t order) const
 	{
 		auto group = GetMediaTrackGroup(variant_name);
 		if (group == nullptr || group->GetTrackCount() == 0)
@@ -501,22 +694,31 @@ namespace info
 		return group->GetTrack(order);
 	}
 
-	const std::shared_ptr<MediaTrack> Stream::GetFirstTrackByType(const cmn::MediaType &type) const
+	std::shared_ptr<const MediaTrack> Stream::GetFirstTrackByType(const cmn::MediaType &type) const
 	{
 		for (auto &item : _tracks)
 		{
-			if (item.second->GetMediaType() == type)
+			auto track = std::atomic_load(&item.second);
+			if (track != nullptr && track->GetMediaType() == type)
 			{
-				return item.second;
+				return track;
 			}
 		}
 
 		return nullptr;
 	}
 
-	const std::map<int32_t, std::shared_ptr<MediaTrack>> &Stream::GetTracks() const
+	std::map<int32_t, std::shared_ptr<const MediaTrack>> Stream::GetTracks() const
 	{
-		return _tracks;
+		// Snapshot with atomic loads: the map structure is fixed after setup,
+		// but the slots are swapped at runtime by UpdateTrack()
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> snapshot;
+		for (const auto &item : _tracks)
+		{
+			snapshot.emplace(item.first, std::atomic_load(&item.second));
+		}
+
+		return snapshot;
 	}
 
 	bool Stream::AddPlaylist(const std::shared_ptr<const Playlist> &playlist)
@@ -586,8 +788,8 @@ namespace info
 
 	ov::String Stream::GetInfoString(bool created)
 	{
-		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), msid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
-													  GetId(), GetMsid(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
+		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
+													  GetId(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
 													  ov::Converter::ToString(_created_time).CStr(), GetUUID().CStr());
 		if (GetLinkedInputStream() != nullptr)
 		{
@@ -603,7 +805,7 @@ namespace info
 
 		for (auto it = _tracks.begin(); it != _tracks.end(); ++it)
 		{
-			auto track = it->second;
+			auto track = std::atomic_load(&it->second);
 
 			out_str.AppendFormat("\n\t%s", created ? track->GetInfoStringForCreated().CStr() : track->GetInfoString().CStr());
 		}

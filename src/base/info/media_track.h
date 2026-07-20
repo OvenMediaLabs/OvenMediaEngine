@@ -11,10 +11,10 @@
 #include "video_track.h"
 #include "audio_track.h"
 #include "subtitle_track.h"
+#include "track_stats.h"
 
 #include "decoder_configuration_record.h"
 #include "base/ovlibrary/tsa/mutex.h"
-
 
 #define VALID_BITRATE_CALCULATION_THRESHOLD_MSEC (1000)
 
@@ -28,6 +28,24 @@ public:
 	~MediaTrack();
 
 	bool Update(const MediaTrack &media_track);
+
+	// Version of this track description. A published MediaTrack is immutable;
+	// a configuration change is delivered as a new version object attached to
+	// the packets (consumers detect the boundary by pointer comparison).
+	uint32_t GetVersion() const;
+	void SetVersion(uint32_t version);
+
+	// False while this is still the setup skeleton the stream was created with.
+	// Published versions start at 1, so a change between published versions is
+	// a real configuration change; the first published version arriving is not.
+	bool IsPublished() const;
+
+	// Compares the content description only (codec, timebase, DCR, resolution,
+	// audio parameters), excluding identity labels, conf values and version
+	bool HasSameContent(const MediaTrack &other) const;
+
+	// Compares the identity labels only (public name, language, characteristics)
+	bool HasSameLabels(const MediaTrack &other) const;
 
 	// Track ID
 	void SetId(uint32_t id);
@@ -58,8 +76,9 @@ public:
 	void SetVariantName(const ov::String &name);
 	ov::String GetVariantName() const;
 
-	// Group Index (used for rendition of playlist)
-	void SetGroupIndex(int index);
+	// Group Index (used for rendition of playlist). Registration metadata,
+	// assigned when the track joins a group; callable on a published track
+	void SetGroupIndex(int index) const;
 	int GetGroupIndex() const;
 
 	// Public Name (used for multiple audio/video tracks. e.g. multilingual audio)
@@ -96,31 +115,28 @@ public:
 	void SetTimeBase(const cmn::Timebase &time_base);
 	bool IsValidTimeBase() const;
 
-	// Bitrate 
-	// Return the proper bitrate for this track. 
-	// If there is a bitrate set by the user, it is returned. If not, the automatically measured bitrate is returned	
-	int32_t GetBitrate() const;
-
-	// Bitrate (Set by measured)
-	void SetBitrateByMeasured(int32_t bitrate);
-	int32_t GetBitrateByMeasured() const;
-
-	// Bitrate last second (Set by measured)
-	void SetBitrateLastSecond(int32_t bitrate);
-	int32_t GetBitrateLastSecond() const;
-
 	// Bitrate (Set by user)
 	void SetBitrateByConfig(int32_t bitrate);
 	int32_t GetBitrateByConfig() const;
-	
-	// Frame Time 
-	void SetStartFrameTime(int64_t time);
-	int64_t GetStartFrameTime() const;
-	void SetLastFrameTime(int64_t time);
-	int64_t GetLastFrameTime() const;
 
-	bool IsValid();
-	bool HasQualityMeasured();
+	// Runtime statistics of this track. The owning stream links the same
+	// TrackStats instance into every version of the track, so the reference
+	// survives version swaps. Read-only for consumers.
+	void LinkStats(const std::shared_ptr<TrackStats> &stats) const;
+	std::shared_ptr<TrackStats> GetStats() const;
+
+	// Configured value if set, otherwise the measured one (0 before measurement)
+	int32_t GetBitrate() const;
+	double GetFrameRate() const;
+	double GetKeyFrameInterval() const;
+	double GetKeyframeIntervalDurationMs() const;
+
+	// Measured values, delegated to the linked statistics
+	int32_t GetBitrateByMeasured() const;
+	int32_t GetBitrateLastSecond() const;
+	double GetFrameRateByMeasured() const;
+
+	bool IsValid() const;
 
 	std::shared_ptr<DecoderConfigurationRecord> GetDecoderConfigurationRecord() const;
 	template <typename T, typename = typename std::enable_if<std::is_base_of<DecoderConfigurationRecord, T>::value>::type>
@@ -132,18 +148,12 @@ public:
 	
 	ov::String GetCodecsParameter() const;
 
-	// For statistics
-	void OnFrameAdded(const std::shared_ptr<MediaPacket> &media_packet);
+	std::shared_ptr<MediaTrack> Clone() const;
 
-	int64_t GetTotalFrameCount() const;
-	int64_t GetTotalFrameBytes() const;
-
-	std::shared_ptr<MediaTrack> Clone();
-
-	ov::String GetInfoString();
+	ov::String GetInfoString() const;
 
 	// Track info for the stream-created log; measured fields (resolution, framerate, bitrate, ...) are shown only once known
-	ov::String GetInfoStringForCreated();
+	ov::String GetInfoStringForCreated() const;
 
 	// Codec status: set by encoder/decoder after initialization
 	using CodecStatus = cmn::CodecStatus;
@@ -176,12 +186,15 @@ protected:
 	// Variant Name : Original encoder profile that made this track 
 	// from <OutputProfile><Encodes>(<Video> || <Audio> || <Image>)<Name>
 	ov::String _variant_name OV_GUARDED_BY(_media_mutex);
-	std::atomic<int> _group_index = -1;
+	mutable std::atomic<int> _group_index = -1;
 
 	// Set by AudioMap or VideoMap or SubtitleMap
 	ov::String _public_name OV_GUARDED_BY(_media_mutex);
 	ov::String _language OV_GUARDED_BY(_media_mutex);
 	ov::String _characteristics OV_GUARDED_BY(_media_mutex);
+
+	// Bitrate (Set by user)
+	std::atomic<int32_t> _bitrate_conf = 0;
 
 	// Bitstream format 
 	std::atomic<cmn::BitstreamFormat> _origin_bitstream_format = cmn::BitstreamFormat::Unknown;
@@ -189,48 +202,13 @@ protected:
 	// Timebase
 	cmn::Timebase _time_base OV_GUARDED_BY(_media_mutex);
 
-	// Bitrate
-	std::atomic<int32_t> _bitrate;
-	// Bitrate (Set by user)
-	std::atomic<int32_t> _bitrate_conf;
-	// Bitrate last one second
-	std::atomic<int32_t> _bitrate_last_second;
-	
 	// Bypass
 	std::atomic<bool> _byass;
 	// Bypass (Set by user)
 	std::atomic<bool> _bypass_conf;
 
-
-	// Time of start frame(packet)
-	std::atomic<int64_t> _start_frame_time;
-
-	// Time of last frame(packet)
-	std::atomic<int64_t> _last_frame_time;
-
-	// First frame received time
-	ov::StopWatch _clock_from_first_frame_received;
-	ov::StopWatch _timer_one_second;
-
-	// Statistics
-	std::atomic<uint64_t> _total_frame_count = 0;
-	std::atomic<uint64_t> _total_frame_bytes = 0;
-	std::atomic<uint64_t> _total_key_frame_count = 0;
-	std::atomic<int32_t> _key_frame_interval_count = 0;
-	std::atomic<int32_t> _delta_frame_count_since_last_key_frame = 0;
-
-	std::atomic<uint64_t> _last_seconds_frame_count = 0;
-	std::atomic<uint64_t> _last_seconds_frame_bytes = 0;
-
-	std::atomic<uint64_t> _last_frame_count = 0;
-	std::atomic<uint64_t> _last_frame_bytes = 0;
-	
-	std::atomic<int64_t> _last_received_timestamp = -1;
-
-	// Validity
-	std::atomic<bool> _is_valid = false;
-
-	std::atomic<bool> _has_quality_measured = false;
+	// Validity (lazily computed cache)
+	mutable std::atomic<bool> _is_valid = false;
 
 	// Codec specific object
 	// AVCDecoderConfigurationRecord, HEVCDecoderConfigurationRecord, AudioSpecificConfig 
@@ -242,4 +220,11 @@ protected:
 
 	// If false, encoder failure for this track is non-fatal and the stream continues without it.
 	std::atomic<bool> _essential_track = true;
+
+	// Version number of this description (0 = setup skeleton, 1 = first published)
+	std::atomic<uint32_t> _version = 0;
+
+	// Shared measurement object, linked by the owning stream (not part of the
+	// description; every version of the track points to the same instance)
+	mutable std::shared_ptr<TrackStats> _stats;
 };

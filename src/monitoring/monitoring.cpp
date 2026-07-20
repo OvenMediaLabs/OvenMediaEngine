@@ -278,6 +278,24 @@ namespace mon
 		return true;
 	}
 
+	bool Monitoring::OnTrackUpdated(const info::Stream &stream, const std::shared_ptr<const MediaTrack> &track)
+	{
+		auto app_metrics = GetApplicationMetrics(stream.GetApplicationInfo());
+		if (app_metrics == nullptr)
+		{
+			return false;
+		}
+
+		auto stream_metrics = app_metrics->GetStreamMetrics(stream);
+		if (stream_metrics == nullptr)
+		{
+			return false;
+		}
+
+		stream_metrics->UpdateTrack(track);
+		return true;
+	}
+
 	bool Monitoring::OnStreamPrepared(const info::Stream &stream)
 	{
 		auto app_metrics = GetApplicationMetrics(stream.GetApplicationInfo());
@@ -294,6 +312,9 @@ namespace mon
 				return false;
 			}
 
+			// The metrics copy was made at creation; adopt the prepared versions
+			stream_metrics->UpdateTracksFrom(stream);
+
 			SendStreamAlertMessage(alrt::Message::Code::INGRESS_STREAM_PREPARED, stream_metrics);
 		}
 		else
@@ -303,6 +324,8 @@ namespace mon
 			{
 				return false;
 			}
+
+			output_stream_metric->UpdateTracksFrom(stream);
 
 			// Update module usage count for the tracks in the stream if the stream is an output stream
 			for (const auto &[id, track] : stream.GetTracks())
@@ -367,11 +390,6 @@ namespace mon
 			}
 		}
 
-		return true;
-	}
-
-	bool Monitoring::OnStreamUpdated(const info::Stream &stream_info)
-	{
 		return true;
 	}
 

@@ -47,6 +47,7 @@ public:
 	void SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet) override;
 	void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) override;
 	void OnEvent(const std::shared_ptr<MediaEvent> &event) override;
+	void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track) override;
 
 	enum class RequestResult : uint8_t
 	{

@@ -78,15 +78,51 @@ public:
 	bool IsStreamPrepared();
 	bool IsStreamReady();
 
+	// The prepared notification must run exactly once even when two threads
+	// pass the readiness check at the same time (creation thread + worker)
+	bool MarkPreparedNotified();
+
 	// Periodically warn about tracks that stay invalid too long, which blocks the stream from being prepared
 	void CheckUnpreparedTrackTimeout();
 
 	void Flush();
 	
 private:
+	// Author state per track, accessed only on the worker thread of this stream.
+	// `working` is the private mutable copy the normalizer parses into; a new
+	// immutable version is cloned from it and published on a content change.
+	// `last_hint` makes an upstream hint adopted exactly once per hint object;
+	// `last_dcr` re-arms the rebuild trigger after a content-equal replacement.
+	struct TrackAuthorState
+	{
+		std::shared_ptr<MediaTrack> working = nullptr;
+		std::shared_ptr<const MediaTrack> published = nullptr;
+		std::shared_ptr<const MediaTrack> last_hint = nullptr;
+		std::shared_ptr<DecoderConfigurationRecord> last_dcr = nullptr;
+		bool recheck = false;
+	};
+
 	void DropNonDecodingPackets();
 
+	// Publish a new immutable track version from the author state when the
+	// content changed, and attach the current version to the packet. This
+	// stream is the single author of track versions for its direction.
+	void StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
+
+	// Apply an in-band command to the author state (e.g. UpdateSubtitleLanguage)
+	void HandleEventPacket(const std::shared_ptr<MediaPacket> &media_packet);
+
+	// Publish an immutable version from the author state when it differs from
+	// the published one (content or labels)
+	void PublishWorkingVersion(TrackAuthorState &state, uint32_t track_id);
+
+	// Adopt a provider/upstream-authored track version carried by the packet
+	// into the author state, so extradata-dependent formats stay decodable
+	// without cross-module track mutation. Runs before normalization.
+	void ApplyPacketConfigHint(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet);
+
 	bool _is_stream_prepared = false;
+	std::atomic<bool> _prepared_notified = false;
 	bool _is_all_tracks_parsed = false;
 
 	// Deadline tracking for periodically warning about tracks that never become valid (anchored at the first media packet)
@@ -101,6 +137,8 @@ private:
 
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
+
+	std::map<MediaTrackId, TrackAuthorState> _track_authors;
 
 	// Temporary packet store. for calculating packet duration
 	std::map<MediaTrackId, std::shared_ptr<MediaPacket>> _media_packet_stash;

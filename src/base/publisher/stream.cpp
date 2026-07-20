@@ -208,6 +208,78 @@ namespace pub
 	{
 	}
 
+	void Stream::UpdateTrackFromPacket(const std::shared_ptr<MediaPacket> &media_packet)
+	{
+		auto new_track = media_packet->GetTrack();
+		if (new_track == nullptr)
+		{
+			return;
+		}
+
+		auto track_id = static_cast<int32_t>(media_packet->GetTrackId());
+		auto old_track = GetTrack(track_id);
+		if (old_track == new_track)
+		{
+			return;
+		}
+
+		UpdateTrack(new_track);
+
+		// The first published version replacing the setup skeleton is the
+		// initial handover, not a configuration change
+		if (old_track == nullptr || old_track->IsPublished() == false ||
+			old_track->GetVersion() == new_track->GetVersion())
+		{
+			return;
+		}
+
+		OnTrackChanged(track_id, old_track, new_track);
+	}
+
+	bool Stream::IsStalePacket(const std::shared_ptr<MediaPacket> &media_packet) const
+	{
+		auto packet_track = media_packet->GetTrack();
+		if (packet_track == nullptr)
+		{
+			return false;
+		}
+
+		auto current_track = GetTrack(media_packet->GetTrackId());
+		if (current_track == nullptr)
+		{
+			return false;
+		}
+
+		if (packet_track->GetVersion() >= current_track->GetVersion())
+		{
+			return false;
+		}
+
+		// An older version with identical content (e.g. a label-only change)
+		// is still valid under the current configuration
+		return packet_track->HasSameContent(*current_track) == false;
+	}
+
+	void Stream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+	{
+		// A label-only change (e.g. a detected subtitle language) does not affect
+		// the media itself, so the output stays correct without publisher support
+		if (old_track->HasSameContent(*new_track))
+		{
+			logti("%s/%s(%u) Track(%d) metadata has been updated (version %u -> %u)",
+				  GetApplicationName(), GetName().CStr(), GetId(),
+				  track_id, old_track->GetVersion(), new_track->GetVersion());
+			return;
+		}
+
+		// A publisher that does not override this cannot switch its output to the
+		// new configuration, so the output may be broken from this point.
+		logtw("%s/%s(%u) Track(%d) configuration has changed (version %u -> %u), but the %s publisher does not support runtime configuration changes. The output of this track may be broken",
+			  GetApplicationName(), GetName().CStr(), GetId(),
+			  track_id, old_track->GetVersion(), new_track->GetVersion(),
+			  GetApplication()->GetPublisherTypeName());
+	}
+
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const
 	{
 		auto info = GetDefaultPlaylistInfo();
@@ -247,17 +319,6 @@ namespace pub
 		return ok;
 	}
 
-	bool Stream::EnterUpdate(const std::shared_ptr<info::Stream> &info)
-	{
-		WaitUntilIdleAndLock();
-
-		bool ok = Update(info);
-
-		Unlock();
-
-		return ok;
-	}
-
 	bool Stream::Start()
 	{
 		if (_state != State::CREATED)
@@ -265,7 +326,7 @@ namespace pub
 			return false;
 		}
 
-		logti("%s has started [%s(%u)] stream (MSID : %d)", GetApplicationTypeName(), GetName().CStr(), GetId(), GetMsid());
+		logti("%s has started [%s(%u)] stream", GetApplicationTypeName(), GetName().CStr(), GetId());
 
 		_started_time = std::chrono::system_clock::now();
 		_state = State::STARTED;
@@ -308,14 +369,6 @@ namespace pub
 		_sessions.clear();
 
 		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
-
-		return true;
-	}
-
-	bool Stream::Update(const std::shared_ptr<info::Stream> &info)
-	{
-		logti("[%s(%u)] %s stream has been updated (MSID : %d)", 
-							info->GetName().CStr(), info->GetId(), GetApplicationTypeName(), info->GetMsid());
 
 		return true;
 	}
@@ -542,21 +595,32 @@ namespace pub
 			case EventCommand::Type::UpdateSubtitleLanguage:
 			{
 				auto command = event->GetCommand<EventCommandUpdateLanguage>();
-				if (command != nullptr)
+				if (command == nullptr)
 				{
-					auto track = GetTrackByLabel(command->GetTrackLabel());
-					if (track != nullptr)
-					{
-						auto old_language = track->GetLanguage();
-						track->SetLanguage(command->GetLanguage());
-						logtt("[%s/%s(%u)] Subtitle track language has been updated %s -> %s", GetApplicationName(), GetName().CStr(), GetId(), old_language.CStr(), track->GetLanguage().CStr());
-					}
-					else
-					{
-						logtw("Cannot find subtitle track by label : %s - %s/%s(%u)", command->GetTrackLabel().CStr(), GetApplicationName(), GetName().CStr(), GetId());
-					}
+					break;
 				}
 
+				auto track = GetTrackByLabel(command->GetTrackLabel());
+				if (track == nullptr)
+				{
+					logtw("Cannot find subtitle track by label : %s - %s/%s(%u)", command->GetTrackLabel().CStr(), GetApplicationName(), GetName().CStr(), GetId());
+					break;
+				}
+
+				if (track->GetLanguage() == command->GetLanguage())
+				{
+					break;
+				}
+
+				// The urgent event applies immediately with the version number the
+				// router is about to publish, so the stamped packet that follows
+				// converges silently without a second callback
+				auto new_track = std::make_shared<MediaTrack>(*track);
+				new_track->SetLanguage(command->GetLanguage());
+				new_track->SetVersion(track->GetVersion() + 1);
+				UpdateTrack(new_track);
+
+				OnTrackChanged(track->GetId(), track, new_track);
 				break;
 			}
 

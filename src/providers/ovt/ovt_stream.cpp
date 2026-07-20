@@ -431,8 +431,6 @@ namespace pvd
 			new_track->SetMediaType(static_cast<cmn::MediaType>(json_track["mediaType"].asUInt()));
 			new_track->SetTimeBase(json_track["timebaseNum"].asUInt(), json_track["timebaseDen"].asUInt());
 			new_track->SetBitrateByConfig(json_track["bitrate"].asUInt());
-			new_track->SetStartFrameTime(json_track["startFrameTime"].asUInt64());
-			new_track->SetLastFrameTime(json_track["lastFrameTime"].asUInt64());
 
 			// video or audio
 			if (new_track->GetMediaType() == cmn::MediaType::Video)
@@ -475,8 +473,18 @@ namespace pvd
 				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
-			// If there is an existing track with the same ID, just update the value
-			UpdateTrack(new_track);
+			// The initial describe registers the track; a re-describe replaces it
+			// with the next version. Both register the config hint so the router
+			// adopts the described values (e.g. Opus parameters not in the bitstream)
+			if (GetTrack(new_track->GetId()) == nullptr)
+			{
+				AddTrack(new_track);
+				UpdatePacketConfigHint(new_track);
+			}
+			else if (ChangeTrack(new_track) == false)
+			{
+				return false;
+			}
 		}
 
 		// logti("[%s/%s(%u)] stream has been described . %s", GetApplicationTypeName(), GetName().CStr(), GetId(), payload.CStr());
@@ -689,8 +697,6 @@ namespace pvd
 			if (_depacketizer.IsAvailableMediaPacket()) 
 			{
 				auto media_packet = _depacketizer.PopMediaPacket();
-
-				media_packet->SetMsid(GetMsid());
 				media_packet->SetPacketType(cmn::PacketType::OVT);
 
 				int64_t pts = media_packet->GetPts();
@@ -705,9 +711,9 @@ namespace pvd
 				media_packet->SetDts(dts);
 				media_packet->SetDuration(-1); // Duration should be set by MediaRouter again due to the AdjustTimestampByBase
 
-				logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu) MSID(%u)",
+				logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu)",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
-					  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength(), GetMsid());
+					  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength());
 
 				SendFrame(media_packet);
 

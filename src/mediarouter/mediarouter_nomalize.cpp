@@ -55,7 +55,7 @@ size_t GetStartCodeSize(const uint8_t *data, size_t length)
 // H264 : AVCC -> AnnexB, Add SPS/PPS in front of IDR frame
 // H265 :
 // AAC : Raw -> ADTS
-bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	bool result = false;
 
@@ -122,7 +122,7 @@ bool MediaRouterNormalize::NormalizeMediaPacket(const std::shared_ptr<info::Stre
 }
 
 #include <base/ovcrypto/base_64.h>
-bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Convert to AnnexB, Make fragment header, Set keyframe flag, Append SPS/PPS nal units in front of IDR frame
 	// one time : Parse track info from sps/pps and generate codec_extra_data
@@ -301,7 +301,7 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 	return false;
 }
 
-bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Make fragment header, Set keyframe flag, Append SPS/PPS nal units in front of IDR frame
 	// one time : Parse track info from sps/pps and generate codec_extra_data
@@ -438,7 +438,7 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 	return true;
 }
 
-bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet, bool need_aud)
+bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet, bool need_aud)
 {
 	if (media_track->IsValid() == false)
 	{
@@ -491,7 +491,7 @@ bool MediaRouterNormalize::InsertH264SPSPPSAnnexB(const std::shared_ptr<info::St
 	return true;
 }
 
-bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (media_track->IsValid() == false)
 	{
@@ -533,33 +533,32 @@ bool MediaRouterNormalize::InsertH264AudAnnexB(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	media_packet->SetFlag(MediaPacketFlag::Key);
 	// everytime : Convert to ADTS
-	// one time : Parse sequence header
+	// sequence header : Parse and adopt. Every header is parsed so an in-band
+	// configuration change starts a new track version (a content-equal
+	// record is deduplicated by the builder)
 	if (media_packet->GetPacketType() == cmn::PacketType::SEQUENCE_HEADER)
 	{
-		if (media_track->IsValid() == false)
+		// Validation
+		auto audio_config = std::make_shared<AudioSpecificConfig>();
+		if (audio_config->Parse(media_packet->GetData()) == false)
 		{
-			// Validation
-			auto audio_config = std::make_shared<AudioSpecificConfig>();
-			if (audio_config->Parse(media_packet->GetData()) == false)
-			{
-				logte("aac sequence header paring error");
-				return false;
-			}
-
-			if (audio_config->Samplerate() == 0)
-			{
-				logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
-				return false;
-			}
-
-			media_track->SetSampleRate(audio_config->Samplerate());
-			media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
-			media_track->SetDecoderConfigurationRecord(audio_config);
+			logte("aac sequence header parsing error");
+			return false;
 		}
+
+		if (audio_config->Samplerate() == 0)
+		{
+			logte("AAC sequence header parsed but samplerate is 0. The AudioSpecificConfig may contain a reserved or invalid sampling frequency index. Track: %s/%s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+			return false;
+		}
+
+		media_track->SetSampleRate(audio_config->Samplerate());
+		media_track->SetChannelLayout(audio_config->Channel() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+		media_track->SetDecoderConfigurationRecord(audio_config);
 
 		return false;
 	}
@@ -595,19 +594,13 @@ bool MediaRouterNormalize::ProcessAACRawStream(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
-	// One time : Parse track information
-
 	media_packet->SetFlag(MediaPacketFlag::Key);
 
-	// AAC ADTS only needs to analyze the track information of the media stream once.
-	if (media_track->IsValid() == true)
-	{
-		return true;
-	}
-
-	// Make AudioSpecificConfig from ADTS Header
+	// Parse the fixed header of every frame so an in-band configuration change
+	// (e.g. samplerate) starts a new track version. A new
+	// AudioSpecificConfig is built only when a value actually changed.
 	AACAdts adts;
 	if (AACAdts::Parse(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), adts) == false)
 	{
@@ -615,6 +608,16 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 		return false;
 	}
 
+	auto current_config = media_track->GetDecoderConfigurationRecordAs<AudioSpecificConfig>();
+	if (current_config != nullptr &&
+		current_config->ObjectType() == adts.ObjectType() &&
+		current_config->SamplingFrequencyIndex() == adts.SamplingFrequencyIndex() &&
+		current_config->Channel() == adts.ChannelConfiguration())
+	{
+		return true;
+	}
+
+	// Make AudioSpecificConfig from ADTS Header
 	auto audio_config = std::make_shared<AudioSpecificConfig>();
 	audio_config->SetObjectType(adts.ObjectType());
 	audio_config->SetSamplingFrequencyIndex(adts.SamplingFrequencyIndex());
@@ -634,7 +637,7 @@ bool MediaRouterNormalize::ProcessAACAdtsStream(const std::shared_ptr<info::Stre
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// Everytime : Generate fragmentation header, Check key frame
 	// One time : Parse SPS and Set width/height (track information)
@@ -776,7 +779,7 @@ bool MediaRouterNormalize::ProcessH265AnnexBStream(const std::shared_ptr<info::S
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	if (media_packet->GetBitstreamFormat() != cmn::BitstreamFormat::HVCC)
 	{
@@ -1004,7 +1007,7 @@ bool MediaRouterNormalize::ProcessH265HVCCStream(const std::shared_ptr<info::Str
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	bool is_key_frame = false;
 	if (VP8Parser::ParseKeyFrame(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), is_key_frame) == false)
@@ -1066,7 +1069,7 @@ void MediaRouterNormalize::ApplyInBandSequenceHeaderToAv1Config(
 	// single in-band Sequence Header's display-delay signaling.
 }
 
-bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// AV1 OBU is delivered as a raw bytestream by the provider; no fragment-header conversion is required.
 	// Path-agnostic responsibilities here:
@@ -1192,7 +1195,7 @@ bool MediaRouterNormalize::ProcessAV1OBUStream(const std::shared_ptr<info::Strea
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// One time : parse samplerate, channel
 	if (media_track->IsValid() == true)
@@ -1214,7 +1217,7 @@ bool MediaRouterNormalize::ProcessOPUSStream(const std::shared_ptr<info::Stream>
 	return true;
 }
 
-bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<MediaTrack> &media_track, std::shared_ptr<MediaPacket> &media_packet)
 {
 	// One time : parse samplerate, channel
 	if (media_track->IsValid() == true)
@@ -1232,8 +1235,13 @@ bool MediaRouterNormalize::ProcessMP3Stream(const std::shared_ptr<info::Stream> 
 	logti("MP3Parser : %s", parser.GetInfoString().CStr());
 
 	media_track->SetSampleRate(parser.GetSampleRate());
-	media_track->SetBitrateByMeasured(parser.GetBitrate());
 	media_track->SetChannelLayout(parser.GetChannelCount() == 1 ? AudioChannel::Layout::LayoutMono : AudioChannel::Layout::LayoutStereo);
+
+	auto stats = stream_info->GetTrackStats(media_track->GetId());
+	if (stats != nullptr)
+	{
+		stats->SetBitrateByMeasured(parser.GetBitrate());
+	}
 
 	return true;
 }

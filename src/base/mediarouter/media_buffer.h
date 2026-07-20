@@ -16,6 +16,7 @@
 
 #include "media_type.h"
 
+class MediaTrack;
 
 enum class MediaPacketFlag : uint8_t
 {
@@ -40,11 +41,10 @@ static ov::String GetMediaPacketFlagString(const MediaPacketFlag flag)
 class MediaPacket
 {
 public:
-	MediaPacket(uint32_t msid, cmn::MediaType media_type, uint32_t track_id,
+	MediaPacket(cmn::MediaType media_type, uint32_t track_id,
 				const std::shared_ptr<const ov::Data> &data,
 				int64_t pts, int64_t dts, int64_t duration, MediaPacketFlag flag, cmn::BitstreamFormat bitstream_format, cmn::PacketType packet_type)
-		: _msid(msid),
-		  _media_type(media_type),
+		: _media_type(media_type),
 		  _track_id(track_id),
 		  _data(data),
 		  _pts(pts),
@@ -56,10 +56,10 @@ public:
 	{
 	}
 
-	MediaPacket(uint32_t msid, cmn::MediaType media_type, uint32_t track_id,
+	MediaPacket(cmn::MediaType media_type, uint32_t track_id,
 				const void *data, int32_t data_size,
 				int64_t pts, int64_t dts, int64_t duration, MediaPacketFlag flag, cmn::BitstreamFormat bitstream_format, cmn::PacketType packet_type)
-		: MediaPacket(msid, media_type, track_id, nullptr, pts, dts, duration, flag, bitstream_format, packet_type)
+		: MediaPacket(media_type, track_id, nullptr, pts, dts, duration, flag, bitstream_format, packet_type)
 	{
 		_data = std::make_shared<ov::Data>(data, data_size);
 	}
@@ -131,14 +131,18 @@ public:
 		_track_id = track_id;
 	}
 
-	void SetMsid(uint32_t msid)
+	// The track version this packet belongs to: the immutable MediaTrack
+	// description stamped by the author (MediaRouter inbound/outbound).
+	// Consumers detect a configuration change by comparing this pointer with
+	// the entry in their own track map, and swap on change.
+	void SetTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
-		_msid = msid;
+		_track = track;
 	}
 
-	uint32_t GetMsid() const
+	const std::shared_ptr<const MediaTrack> &GetTrack() const
 	{
-		return _msid;
+		return _track;
 	}
 
 	MediaPacketFlag GetFlag() const noexcept
@@ -214,7 +218,6 @@ public:
 	std::shared_ptr<MediaPacket> ClonePacket() const
 	{
 		auto packet = std::make_shared<MediaPacket>(
-			GetMsid(),
 			GetMediaType(),
 			GetTrackId(),
 			GetData()->Clone(),
@@ -228,6 +231,7 @@ public:
 		packet->_frag_hdr = _frag_hdr;
 		packet->_high_priority = _high_priority;
 		packet->_is_internal_created = _is_internal_created;
+		packet->_track = _track;
 
 		return packet;
 	}
@@ -235,7 +239,6 @@ public:
 	ov::String GetInfoString() const {
 		ov::String info;
 
-		info.AppendFormat("MSID(%u) ", GetMsid());
 		info.AppendFormat("TrackID(%d) ", GetTrackId());
 		info.AppendFormat("PTS(%" PRId64 ") ", GetPts());
 		info.AppendFormat("DTS(%" PRId64 ") ", GetDts());
@@ -256,7 +259,7 @@ public:
 	}
 
 protected:
-	uint32_t _msid = 0;
+	std::shared_ptr<const MediaTrack> _track = nullptr;
 	cmn::MediaType _media_type = cmn::MediaType::Unknown;
 	uint32_t _track_id = UINT32_MAX;
 

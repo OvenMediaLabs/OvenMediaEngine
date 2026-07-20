@@ -99,7 +99,7 @@ namespace pvd
 			}
 		}
 
-		UpdateStream();
+		OnSourceChanged();
 
 		return Stream::Start();
 	}

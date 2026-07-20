@@ -48,8 +48,8 @@ std::shared_ptr<MediaEvent> MediaEvent::Convert(const std::shared_ptr<MediaPacke
 	}
 
 	// Copy MediaPacket members
-	event->SetMsid(packet->GetMsid());
 	event->SetTrackId(packet->GetTrackId());
+	event->SetTrack(packet->GetTrack());
 	event->SetPts(packet->GetPts());
 	event->SetDts(packet->GetDts());
 	event->SetDuration(packet->GetDuration());
@@ -192,8 +192,8 @@ std::shared_ptr<MediaEvent> MediaEvent::Clone() const
 	}
 
 	// Copy MediaPacket members
-	cloned_event->SetMsid(GetMsid());
 	cloned_event->SetTrackId(GetTrackId());
+	cloned_event->SetTrack(GetTrack());
 
 	cloned_event->SetPts(GetPts());
 	cloned_event->SetDts(GetDts());

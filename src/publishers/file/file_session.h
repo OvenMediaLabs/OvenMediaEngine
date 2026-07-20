@@ -32,7 +32,7 @@ namespace pub
 		void SetRecord(std::shared_ptr<info::Record> &record);
 		std::shared_ptr<info::Record> GetRecord();
 		
-		bool AddTrack(const ov::String output_format, const std::shared_ptr<MediaTrack> &track);
+		bool AddTrack(const ov::String output_format, const std::shared_ptr<const MediaTrack> &track);
 		
 	private:
 		ov::String GetRootPath();
@@ -40,7 +40,7 @@ namespace pub
 		ov::String GetOutputFilePath();
 		ov::String GetOutputFileInfoPath();
 
-		void SelectDefaultTrack(const std::shared_ptr<MediaTrack> &track);
+		void SelectDefaultTrack(const std::shared_ptr<const MediaTrack> &track);
 		bool IsSupportCodec(const ov::String output_format, const cmn::MediaCodecId codec_id);
 		std::shared_ptr<ffmpeg::Writer> CreateWriter();
 		std::shared_ptr<ffmpeg::Writer> GetWriter();

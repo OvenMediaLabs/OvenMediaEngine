@@ -8,6 +8,7 @@
 //==============================================================================
 
 #include "scheduled_stream.h"
+
 #include "schedule_private.h"
 
 #include <base/provider/application.h>
@@ -583,7 +584,7 @@ namespace pvd
 					continue;
 			}
 
-			auto media_packet = ffmpeg::compat::ToMediaPacket(GetMsid(), track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
+			auto media_packet = ffmpeg::compat::ToMediaPacket(track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
 
             // Convert to fixed time base
             auto origin_tb = context->streams[packet.stream_index]->time_base;
@@ -807,8 +808,15 @@ namespace pvd
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
+
+				if (ChangeTrack(new_track) == false)
+				{
+					logte("%s/%s: Video track of item %s was rejected",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
+					return false;
+				}
+
                 _origin_id_track_id_map.emplace(stream->index, kScheduledVideoTrackId);
-                UpdateTrack(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -839,8 +847,15 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
+
+				if (ChangeTrack(new_track) == false)
+				{
+					logte("%s/%s: Audio track of item %s was rejected",
+						  GetApplicationName(), GetName().CStr(), item->_file_path.CStr());
+					return false;
+				}
+
                 _origin_id_track_id_map.emplace(stream->index, audio_track_id);
-                UpdateTrack(new_track);
 
                 if (total_duration_ms == 0)
                 {
@@ -878,8 +893,8 @@ namespace pvd
 			data_track->SetMediaType(cmn::MediaType::Data);
 			data_track->SetTimeBase(1, 1000); // Data track time base is always 1/1000 in
 			data_track->SetOriginBitstream(cmn::BitstreamFormat::Unknown);
-			
-			UpdateTrack(data_track);
+
+			AddTrack(data_track);
 		}
 
         if (item->_duration_ms == 0)
@@ -906,11 +921,7 @@ namespace pvd
 		logti("Scheduled Channel : %s/%s: File %s prepared. Start time %" PRId64 " ms, Duration %" PRId64 " ms",
 			GetApplicationName(), GetName().CStr(), item->_file_path.CStr(), item->_start_time_ms, item->_duration_ms);
 
-        if (UpdateStream() == false)
-        {
-            logte("%s/%s: Failed to update stream", GetApplicationName(), GetName().CStr());
-            return false;
-        }
+        OnSourceChanged();
 
         return true;
     }
@@ -1067,8 +1078,6 @@ namespace pvd
 			{
 				_global_track_offset_us_map[track_id] = dts_us;
 			}
-
-			media_packet->SetMsid(GetMsid());
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
 			media_packet->SetDuration(-1); // It will be calculated in MediaRouter
@@ -1250,8 +1259,15 @@ namespace pvd
                 new_track->SetId(kScheduledVideoTrackId);
                 new_track->SetTimeBase(1, kScheduledVideoTimebase);
 				new_track->SetPublicName(old_track->GetPublicName());
+
+				if (ChangeTrack(new_track) == false)
+				{
+					logte("%s/%s: Video track of the tapped stream was rejected",
+						  GetApplicationName(), GetName().CStr());
+					return nullptr;
+				}
+
                 _origin_id_track_id_map.emplace(track_id, kScheduledVideoTrackId);
-                UpdateTrack(new_track);
 
                 video_track_needed = false;
             }
@@ -1273,8 +1289,15 @@ namespace pvd
 				new_track->SetPublicName(old_track->GetPublicName());
 				new_track->SetLanguage(old_track->GetLanguage());
 				new_track->SetCharacteristics(old_track->GetCharacteristics());
+
+				if (ChangeTrack(new_track) == false)
+				{
+					logte("%s/%s: Audio track of the tapped stream was rejected",
+						  GetApplicationName(), GetName().CStr());
+					return nullptr;
+				}
+
                 _origin_id_track_id_map.emplace(track_id, audio_track_id);
-                UpdateTrack(new_track);
 				
 				if (audio_index + 1 > _channel_info._audio_map.size())
 				{
@@ -1324,12 +1347,7 @@ namespace pvd
             logtw("%s/%s: Failed to find data track from stream %s. Data forwarding will be skipped.", GetApplicationName(), GetName().CStr(), item->_url.CStr());
         }
 
-        if (UpdateStream() == false)
-        {
-            logte("%s/%s: Failed to update stream", GetApplicationName(), GetName().CStr());
-            ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
-            return nullptr;
-        }
+        OnSourceChanged();
 
         stream_tap->Start();
 
@@ -1347,3 +1365,4 @@ namespace pvd
         return it->second;
     }
 }
+

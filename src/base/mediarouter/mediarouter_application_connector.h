@@ -54,14 +54,17 @@ public:
 		return GetMediaRouteApplication()->OnStreamDeleted(this->GetSharedPtr(), stream);
 	}
 
-	inline bool UpdateStream(const std::shared_ptr<info::Stream> &stream)
+	// Ask the media router to re-evaluate whether the stream is ready to be
+	// prepared. Used by tracks that never push packets (input-only encoders),
+	// which would otherwise never trigger the readiness check.
+	inline bool RequestStreamReadyCheck(const std::shared_ptr<info::Stream> &stream)
 	{
 		if (GetMediaRouteApplication() == nullptr)
 		{
 			return false;
 		}
 
-		return GetMediaRouteApplication()->OnStreamUpdated(this->GetSharedPtr(), stream);
+		return GetMediaRouteApplication()->OnStreamReadyCheckRequested(this->GetSharedPtr(), stream);
 	}
 
 	// MediaRouteApplication -> Stream-> Frame

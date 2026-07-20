@@ -135,6 +135,9 @@ namespace pub
 				continue;
 			}
 
+			// Track the packet's version at this stream's consumption position
+			stream->UpdateTrackFromPacket(media_packet);
+
 			if (media_packet->GetMediaType() == cmn::MediaType::Video)
 			{
 				stream->SendVideoFrame(stream_data->_media_packet);
@@ -340,6 +343,11 @@ namespace pub
 
 		lock.unlock();
 
+		// The copy of this stream was made at creation, before the first
+		// versions were published. Adopt the prepared versions so the
+		// packet stamps compare equal from the first packet on.
+		stream->UpdateTracksFrom(*info);
+
 		// Start stream
 		if (stream->EnterStart() == false)
 		{
@@ -349,18 +357,6 @@ namespace pub
 		}
 
 		return true;
-	}
-
-	bool Application::OnStreamUpdated(const std::shared_ptr<info::Stream> &info)
-	{
-		auto stream = GetStream(info->GetId());
-		if (stream == nullptr)
-		{
-			logte("OnStreamUpdated failed. Cannot find stream : %s/%u", info->GetName().CStr(), info->GetId());
-			return false;
-		}
-
-		return stream->EnterUpdate(info);
 	}
 
 	std::shared_ptr<ApplicationWorker> Application::GetLowestLoadWorker()

@@ -409,7 +409,12 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateInboundStream(con
 {
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 
-	auto new_stream = std::make_shared<MediaRouteStream>(stream_info, cmn::MediaRouterStreamType::INBOUND, (_inbound_worker_rr++) % _max_worker_thread_count);
+	// The router owns its own copy of the stream info and publishes new track
+	// versions into this copy only. Other modules keep their own copies and
+	// receive new versions attached to the packets (or at prepared time)
+	auto in_stream_info = std::make_shared<info::Stream>(*stream_info);
+
+	auto new_stream = std::make_shared<MediaRouteStream>(in_stream_info, cmn::MediaRouterStreamType::INBOUND, (_inbound_worker_rr++) % _max_worker_thread_count);
 	if (!new_stream)
 	{
 		return nullptr;
@@ -424,17 +429,14 @@ std::shared_ptr<MediaRouteStream> MediaRouteApplication::CreateOutboundStream(co
 {
 	std::lock_guard<std::shared_mutex> lock_guard(_streams_lock);
 
-	// Since the publisher creates the stream by copying the stream_info, 
-	// it eventually loses the link to the original stream. 
+	// The router owns its own copy of the stream info (MediaTrack pointers stay shared).
+	auto out_stream_info = std::make_shared<info::Stream>(*stream_info);
+
+	// Since the publisher creates the stream by copying the stream_info,
+	// it eventually loses the link to the original stream.
 	// For this, the relay stream must also be linked to the input stream.
-	auto out_stream_info = stream_info;
 	if (stream_info->GetRepresentationType() == StreamRepresentationType::Relay)
 	{
-		out_stream_info = std::make_shared<info::Stream>(*stream_info);
-		if (!out_stream_info)
-		{
-			return nullptr;
-		}
 		out_stream_info->LinkInputStream(stream_info);
 	}
 
@@ -502,6 +504,12 @@ bool MediaRouteApplication::NotifyStreamCreate(const std::shared_ptr<info::Strea
 
 bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStream> &stream)
 {
+	// Exactly once: the readiness check can pass on two threads at the same time
+	if (stream->MarkPreparedNotified() == false)
+	{
+		return true;
+	}
+
 	std::shared_lock<std::shared_mutex> lock(_observers_lock);
 	auto observers = _observers;  // Avoid deadlock
 	lock.unlock();
@@ -550,54 +558,23 @@ bool MediaRouteApplication::NotifyStreamPrepared(std::shared_ptr<MediaRouteStrea
 	return true;
 }
 
-bool MediaRouteApplication::OnStreamUpdated(const std::shared_ptr<MediaRouterApplicationConnector> &app_conn, const std::shared_ptr<info::Stream> &stream_info)
+bool MediaRouteApplication::OnStreamReadyCheckRequested(const std::shared_ptr<MediaRouterApplicationConnector> &app_conn, const std::shared_ptr<info::Stream> &stream_info)
 {
-	logti(" [%s/%s(%u)] %sTrying to update a stream", _application_info.GetVHostAppName().CStr(), stream_info->GetName().CStr(), stream_info->GetId(), stream_info->IsInternal() ? "[Internal] " : "");
-
 	if (!app_conn || !stream_info)
 	{
 		logte("Invalid arguments: connector: %p, stream: %p", app_conn.get(), stream_info.get());
 		return false;
 	}
 
-	auto connector_type = app_conn->GetConnectorType();
-	auto representation_type = stream_info->GetRepresentationType();
-
-	// For Monitoring
-	mon::Monitoring::GetInstance()->OnStreamUpdated(*stream_info);
-
-	// Provider(source) => Inbound Stream
-	if (IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_SOURCE(representation_type))
-	{
-		auto stream = GetInboundStream(stream_info->GetId());
-		if (stream)
-		{
-			//stream->Flush();
-		}
-	}
-	// Provider(relay), Transcoder => Outbound Stream
-	else if ((IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_RELAY(representation_type)) ||
-			 (IS_CONNECTOR_TRANSCODER(connector_type)))
-	{
-		auto stream = GetOutboundStream(stream_info->GetId());
-		if (stream)
-		{
-			//stream->Flush();
-			if (stream->IsStreamPrepared() == false && stream->IsStreamReady() == true)
-			{
-				NotifyStreamPrepared(stream);
-			}
-		}
-	}
-	else
-	{
-		logte("Unknown connector");
-		return false;
-	}
-
-	if (!NotifyStreamUpdated(stream_info, app_conn->GetConnectorType()))
+	auto stream = GetOutboundStream(stream_info->GetId());
+	if (stream == nullptr)
 	{
 		return false;
+	}
+
+	if (stream->IsStreamPrepared() == false && stream->IsStreamReady() == true)
+	{
+		return NotifyStreamPrepared(stream);
 	}
 
 	return true;
@@ -717,57 +694,6 @@ bool MediaRouteApplication::NotifyStreamDeleted(const std::shared_ptr<info::Stre
 			{
 				logtt("Notify deleted stream from transcoder, provider(relay) to publisher, relay, orchestrator.  %s/%s", stream_info->GetApplicationName(), stream_info->GetName().CStr());
 				observer->OnStreamDeleted(stream_info);
-			}
-		}
-		else
-		{
-			logtw("Unknown Connector");
-		}
-	}
-
-	return true;
-}
-
-bool MediaRouteApplication::NotifyStreamUpdated(const std::shared_ptr<info::Stream> &stream_info, const MediaRouterApplicationConnector::ConnectorType connector_type)
-{
-	std::shared_lock<std::shared_mutex> lock_guard(_observers_lock);
-	auto observers = _observers; // Avoid deadlock
-	lock_guard.unlock();
-
-	auto representation_type = stream_info->GetRepresentationType();
-
-	if (stream_info->IsInternal())
-	{
-		return true;
-	}
-
-	for (auto it = observers.begin(); it != observers.end(); ++it)
-	{
-		auto observer = *it;
-
-		auto observer_type = observer->GetObserverType();
-
-		// Provider(source) => Transcoder, Relay(not used), Orchestrator
-		if (IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_SOURCE(representation_type))
-		{
-			if (IS_OBSERVER_TRANSCODER(observer_type) ||
-				IS_OBSERVER_RELAY(observer_type) ||
-				IS_OBSERVER_ORCHESTRATOR(observer_type))
-			{
-				logtt("[%s/%s] Notify updated stream from provider(source) to transcoder, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
-				observer->OnStreamUpdated(stream_info);
-			}
-		}
-		// Provider(Relay), Transcoder  => Publisher, Relay(not used), Orchestrator
-		else if ((IS_CONNECTOR_PROVIDER(connector_type) && IS_REPRENT_RELAY(representation_type)) ||
-				 (IS_CONNECTOR_TRANSCODER(connector_type)))
-		{
-			if (IS_OBSERVER_PUBLISHER(observer_type) ||
-				IS_OBSERVER_RELAY(observer_type) ||
-				IS_OBSERVER_ORCHESTRATOR(observer_type))
-			{
-				logtt("[%s/%s] Notify updated stream from transcoder, provider(relay) to publisher, relay, orchestrator", stream_info->GetApplicationName(), stream_info->GetName().CStr());
-				observer->OnStreamUpdated(stream_info);
 			}
 		}
 		else

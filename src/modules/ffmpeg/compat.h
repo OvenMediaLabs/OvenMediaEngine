@@ -87,8 +87,6 @@ namespace ffmpeg
 			media_track->SetCodecId(ffmpeg::compat::ToCodecId(stream->codecpar->codec_id));
 			media_track->SetTimeBase(stream->time_base.num, stream->time_base.den);
 			media_track->SetBitrateByConfig(stream->codecpar->bit_rate);
-			media_track->SetStartFrameTime(0);
-			media_track->SetLastFrameTime(0);
 
 			if (media_track->GetMediaType() == cmn::MediaType::Unknown || media_track->GetCodecId() == cmn::MediaCodecId::None)
 			{
@@ -271,7 +269,6 @@ namespace ffmpeg
 		static std::shared_ptr<MediaPacket> ToMediaPacket(AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(
-				0,
 				media_type,
 				0,
 				src->data,
@@ -293,10 +290,9 @@ namespace ffmpeg
 			return packet_buffer;
 		}
 
-		static std::shared_ptr<MediaPacket> ToMediaPacket(uint32_t msid, int32_t track_id, AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
+		static std::shared_ptr<MediaPacket> ToMediaPacket(int32_t track_id, AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(
-				msid,
 				media_type,
 				track_id,
 				src->data,
@@ -441,7 +437,7 @@ namespace ffmpeg
 			return (name != nullptr) ? ov::String(name) : ov::String("");
 		}
 
-		static bool ToAVStream(std::shared_ptr<MediaTrack> media_track, AVStream* av_stream)
+		static bool ToAVStream(std::shared_ptr<const MediaTrack> media_track, AVStream* av_stream)
 		{
 			if (media_track == nullptr || av_stream == nullptr)
 			{
@@ -457,14 +453,22 @@ namespace ffmpeg
 			codecpar->bit_rate			= media_track->GetBitrate();
 
 			// Set Decoder Configuration Record to extradata
-			if (media_track->GetDecoderConfigurationRecord() != nullptr &&
-				media_track->GetDecoderConfigurationRecord()->GetData() != nullptr &&
-				media_track->GetDecoderConfigurationRecord()->GetData()->GetLength() > 0)
+			auto dcr = media_track->GetDecoderConfigurationRecord();
+			if (dcr == nullptr && media_track->GetCodecId() == cmn::MediaCodecId::Opus)
 			{
-				codecpar->extradata_size = media_track->GetDecoderConfigurationRecord()->GetData()->GetLength();
+				// Opus carries no config in the bitstream; synthesize one from the
+				// track parameters without modifying the track
+				dcr = std::make_shared<OpusSpecificConfig>(media_track->GetChannel().GetCounts(), media_track->GetSampleRate());
+			}
+
+			if (dcr != nullptr &&
+				dcr->GetData() != nullptr &&
+				dcr->GetData()->GetLength() > 0)
+			{
+				codecpar->extradata_size = dcr->GetData()->GetLength();
 				codecpar->extradata		 = (uint8_t*)av_malloc(codecpar->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
 				memset(codecpar->extradata, 0, codecpar->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
-				memcpy(codecpar->extradata, media_track->GetDecoderConfigurationRecord()->GetData()->GetDataAs<uint8_t>(), codecpar->extradata_size);
+				memcpy(codecpar->extradata, dcr->GetData()->GetDataAs<uint8_t>(), codecpar->extradata_size);
 			}
 
 			switch (media_track->GetMediaType())
