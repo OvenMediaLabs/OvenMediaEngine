@@ -554,7 +554,9 @@ namespace ov
 
 					// Logging
 					_last_logging_time += elapsed_time;
-					if ((_last_logged_peak < _peak) || (_last_logging_time >= _log_interval))
+
+					// Skip the warning when exceed-and-wait is enabled 
+					if ((_exceed_threshold_and_wait_enabled == false) && ((_last_logged_peak < _peak) || (_last_logging_time >= _log_interval)))
 					{
 						_last_logging_time = 0;
 
