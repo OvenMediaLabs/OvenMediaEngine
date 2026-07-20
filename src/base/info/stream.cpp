@@ -500,14 +500,16 @@ namespace info
 
 	bool Stream::UpdateTrack(const std::shared_ptr<const MediaTrack> &track)
 	{
-		auto ex_track = GetTrack(track->GetId());
-		if (ex_track == nullptr)
+		auto slot_it = _tracks.find(track->GetId());
+		if (slot_it == _tracks.end())
 		{
 			// The track layout is fixed after setup; a structural change here
 			// would race with the lock-free slot readers
 			logte("[%s] Track(%d) cannot be updated because it does not exist", GetNamePath().CStr(), track->GetId());
 			return false;
 		}
+
+		auto ex_track = std::atomic_load(&slot_it->second);
 
 		// A late adoption must not undo a newer version already swapped in
 		if (ex_track->GetVersion() > track->GetVersion())
@@ -521,7 +523,7 @@ namespace info
 		// The track layout is fixed after creation, so every slot address is
 		// stable; swapping the slots atomically lets readers on other threads
 		// (sessions, API) load them without a lock
-		std::atomic_store(&_tracks[track->GetId()], track);
+		std::atomic_store(&slot_it->second, track);
 
 		auto replace_in = [&track](std::vector<std::shared_ptr<const MediaTrack>> &tracks) {
 			for (auto &item : tracks)
