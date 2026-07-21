@@ -184,6 +184,7 @@ namespace pub
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
 			logae("Failed to set URL. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+			DestroyWriter();
 			return false;
 		}
 
@@ -260,6 +261,7 @@ namespace pub
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
 			logae("No tracks to record. check the variant/track selection. %s", record->GetInfoString().CStr());
+			DestroyWriter();
 			return false;
 		}
 
@@ -268,6 +270,7 @@ namespace pub
 			SetState(SessionState::Error);
 			record->SetState(info::Record::RecordState::Error);
 			logae("Failed to start writer. Reason(%s), %s", writer->GetErrorMessage().CStr(), record->GetInfoString().CStr());
+			DestroyWriter();
 			return false;
 		}
 
