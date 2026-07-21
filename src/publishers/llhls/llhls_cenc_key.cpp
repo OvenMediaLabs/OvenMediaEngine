@@ -31,10 +31,11 @@ namespace pub::llhls
 				continue;
 			}
 
-			if (pssh.drm_system == bmff::DRMSystem::All)
+			const auto drm_value = ov::ToUnderlyingType(pssh.drm_system);
+			if ((drm_value & (drm_value - 1)) != 0)
 			{
-				// A pssh box maps to exactly one `systemId`, so this always holds a single system
-				// (never a combination such as `DRMSystem::All`).
+				// A pssh box maps to exactly one `systemId`, so this should never be a combination.
+				logte("Multiple DRM systems in pssh box, skipping the %s tag.", tag_name);
 				OV_ASSERT2(false);
 				continue;
 			}
