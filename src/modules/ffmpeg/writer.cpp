@@ -133,7 +133,7 @@ namespace ffmpeg
 			std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
 			if (_av_format != nullptr)
 			{
-				logae(this, "URL is already set. Create a new Writer instead of reusing this one.");
+				logae(this, "URL is already set. url(%s)", _url.CStr());
 				return false;
 			}
 		}
