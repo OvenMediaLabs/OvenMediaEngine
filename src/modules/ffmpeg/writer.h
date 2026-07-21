@@ -86,7 +86,6 @@ namespace ffmpeg
 		ov::String GetErrorMessage() const;
 
 	private:
-		void SetAVFormatContext(AVFormatContext* av_format);
 		void ReleaseAVFormatContext();
 		std::pair<std::shared_ptr<AVStream>, std::shared_ptr<const MediaTrack>> GetTrack(int32_t track_id, cmn::BitstreamFormat format) const;
 		bool ToAVPacket(AVPacket &av_packet, const std::shared_ptr<AVStream> av_stream, const std::shared_ptr<MediaPacket> &media_packet, const std::shared_ptr<const MediaTrack> &media_track, int64_t start_time);

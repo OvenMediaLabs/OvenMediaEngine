@@ -131,13 +131,13 @@ namespace ffmpeg
 			return false;
 		}
 
+
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+		
+		if (_av_format != nullptr)
 		{
-			std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
-			if (_av_format != nullptr)
-			{
-				logae(this, "URL is already set. url(%s)", _url.CStr());
-				return false;
-			}
+			logae(this, "URL is already set. url(%s)", _url.CStr());
+			return false;
 		}
 
 		_url = url;
@@ -152,13 +152,22 @@ namespace ffmpeg
 			return false;
 		}
 
-		SetAVFormatContext(av_format);
+		_av_format.reset(av_format, [](AVFormatContext *av_format_ptr) {
+			if (av_format_ptr == nullptr)
+			{
+				return;
+			}
+
+			avformat_free_context(av_format_ptr);
+		});
+		_output_format_name = _av_format->oformat->name;
 
 		return true;
 	}
 
 	ov::String Writer::GetUrl()
 	{
+		std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
 		return _url;
 	}
 
@@ -725,24 +734,6 @@ namespace ffmpeg
 	std::chrono::steady_clock::time_point Writer::GetLastPacketSentTime()
 	{
 		return _last_packet_sent_time.load();
-	}
-
-	void Writer::SetAVFormatContext(AVFormatContext *av_format)
-	{
-		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
-
-		// Deleter only frees. Finalization (trailer/close) is done in ReleaseAVFormatContext()
-		_av_format.reset(av_format, [](AVFormatContext *av_format_ptr) {
-			if (av_format_ptr == nullptr)
-			{
-				return;
-			}
-
-			avformat_free_context(av_format_ptr);
-		});
-
-		// Set output format name
-		_output_format_name = _av_format->oformat->name;
 	}
 
 	void Writer::ReleaseAVFormatContext()
