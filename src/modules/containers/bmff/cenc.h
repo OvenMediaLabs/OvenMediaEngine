@@ -137,19 +137,49 @@ namespace bmff
 
 				// Extract the PlayReady Object (PRO) from the pssh Data field.
 				// HLS signaling carries the PRO (not the whole pssh box) in the `EXT-X-KEY` URI.
+				// Every read below is bounds-checked so a malformed/truncated box cannot crash the parser.
 				stream.Skip<uint8_t>(16);  // advance past the 16-byte SystemID
+
+				bool valid = true;
 
 				if (version > 0)
 				{
-					auto kid_count = stream.ReadBE32();
+					// For `version > 0` (only version 1 is defined), `KID_count` (4 bytes) is followed by `KID_count * 16` bytes of KIDs.
+					if (stream.IsRemained(sizeof(uint32_t)))
+					{
+						const auto kid_count	 = stream.ReadBE32();
+						const auto kid_list_size = static_cast<size_t>(kid_count) * 16;
 
-					stream.Skip<uint8_t>(16 * kid_count);
+						valid					 = stream.IsRemained(kid_list_size);
+						if (valid)
+						{
+							stream.Skip<uint8_t>(kid_list_size);
+						}
+					}
+					else
+					{
+						valid = false;
+					}
 				}
 
-				auto data_size = stream.ReadBE32();
-				// Note: the constructor parameter is also named 'data', so qualify the member with this->
+				// DataSize (4 bytes) followed by the PRO payload.
+				if (valid && stream.IsRemained(sizeof(uint32_t)))
+				{
+					const auto data_size = stream.ReadBE32();
 
-				this->data	   = stream.GetRemainData(data_size)->Clone();
+					if (stream.IsRemained(data_size))
+					{
+						// Note: the constructor parameter is also named 'data', so qualify the member with this->
+						this->data = stream.GetRemainData(data_size)->Clone();
+					}
+				}
+
+				if (this->data == nullptr)
+				{
+					// Malformed PlayReady `pssh` box: treat it as an unknown/unusable system.
+					loge("BMFF.CENC", "Malformed PlayReady pssh box, could not extract the PlayReady Object");
+					drm_system = DRMSystem::None;
+				}
 			}
 		}
 

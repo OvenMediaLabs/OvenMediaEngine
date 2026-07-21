@@ -25,7 +25,7 @@ namespace pub::llhls
 		{
 			if (pssh.drm_system == bmff::DRMSystem::None)
 			{
-				// Unknown or unsupported systemId. Keep the old behavior (emit an empty line), but log it.
+				// Unknown or unsupported systemId. Keep the "old" behavior (emit an empty line), but log it.
 				logte("Unknown DRM system in pssh box, skipping the %s tag.", tag_name);
 				xkey.Append("\n");
 				continue;
@@ -37,6 +37,9 @@ namespace pub::llhls
 				// A pssh box maps to exactly one `systemId`, so this should never be a combination.
 				logte("Multiple DRM systems in pssh box, skipping the %s tag.", tag_name);
 				OV_ASSERT2(false);
+
+				// Keep the "old" behavior (emit an empty line)
+				xkey.Append("\n");
 				continue;
 			}
 
@@ -46,6 +49,9 @@ namespace pub::llhls
 			{
 				logte("PlayReady pssh is missing its PlayReady Object (PRO), skipping the %s tag.", tag_name);
 				OV_ASSERT2(false);
+
+				// Keep the "old" behavior (emit an empty line)
+				xkey.Append("\n");
 				continue;
 			}
 
