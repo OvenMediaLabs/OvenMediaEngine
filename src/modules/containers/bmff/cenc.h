@@ -222,14 +222,12 @@ namespace bmff
 
 			stream.Write(system_id);  // system id
 
-			if (kid_hex_list.size() > 0)
-			{
-				stream.WriteBE32(kid_hex_list.size());	// kid count
+			// `KID_count` is mandatory for version 1, even when the list is empty.
+			stream.WriteBE32(kid_hex_list.size());	// kid count
 
-				for (const auto &kid_hex : kid_hex_list)
-				{
-					stream.Write(kid_hex);	// kid
-				}
+			for (const auto &kid_hex : kid_hex_list)
+			{
+				stream.Write(kid_hex);	// kid
 			}
 
 			if (user_data != nullptr)

@@ -25,8 +25,8 @@ namespace pub::llhls
 		{
 			if (pssh.drm_system == bmff::DRMSystem::None)
 			{
-				// This is the old behavior
-				logte("Invalid DRM system in pssh box, skipping EXT-X-KEY tag.");
+				// Unknown or unsupported systemId. Keep the old behavior (emit an empty line), but log it.
+				logte("Unknown DRM system in pssh box, skipping the %s tag.", tag_name);
 				xkey.Append("\n");
 				continue;
 			}
@@ -43,7 +43,7 @@ namespace pub::llhls
 			// Without it we cannot emit a proper URI, so skip the entry instead of writing a broken tag.
 			if ((pssh.drm_system == bmff::DRMSystem::PlayReady) && (pssh.data == nullptr))
 			{
-				logte("PlayReady pssh is missing its PlayReady Object (PRO), skipping EXT-X-KEY tag.");
+				logte("PlayReady pssh is missing its PlayReady Object (PRO), skipping the %s tag.", tag_name);
 				OV_ASSERT2(false);
 				continue;
 			}
