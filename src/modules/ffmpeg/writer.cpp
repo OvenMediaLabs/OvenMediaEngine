@@ -352,24 +352,19 @@ namespace ffmpeg
 
 	bool Writer::Start()
 	{
-		// Only a fresh (None) or cleanly stopped (Closed) writer may start; any other state
-		// means a Start() is still in effect and restarting would corrupt the context.
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
 		const WriterState current_state = GetState();
-		if (current_state == WriterStateConnected ||
-			current_state == WriterStateConnecting ||
-			current_state == WriterStateClosing ||
-			current_state == WriterStateError)
+		if (current_state != WriterStateNone &&
+			current_state != WriterStateClosed)
 		{
-			logae(this, "Writer is already started. state:%s", WriterStateToString(current_state));
+			logae(this, "Cannot start writer. state:%s", WriterStateToString(current_state));
 			return false;
 		}
 
 		SetState(WriterStateConnecting);
 
-		_start_time = -1LL;
-
-		// Serialize open/write-header with SendPacket() and teardown.
-		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+		_start_time	   = -1LL;
 
 		_need_to_flush = false;
 		_need_to_close = false;
