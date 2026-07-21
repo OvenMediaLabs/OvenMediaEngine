@@ -66,6 +66,8 @@ namespace ffmpeg
 		return _error_message;
 	}
 
+	// Interrupt callback for FFmpeg I/O operations
+	// 1 = interrupt, 0 = continue
 	int Writer::InterruptCallback(void *opaque)
 	{
 		Writer *writer = (Writer *)opaque;
@@ -101,7 +103,19 @@ namespace ffmpeg
 		}
 		else if(writer->GetState() == WriterStateClosing)
 		{
-			// In closing state, Ignore interrupt to finish flushing and closing properly.
+			// Nothing opened or written yet: nothing to finalize, so interrupt the pending I/O now.
+			if (writer->_need_to_flush.load() == false && writer->_need_to_close.load() == false)
+			{
+				return 1;
+			}
+
+			// Close timeout
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if(elapsed_ms > writer->GetSendTimeout())
+			{
+				logae(writer, "Close timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				return 1;
+			}
 		}
 
 		return 0;
@@ -113,6 +127,15 @@ namespace ffmpeg
 		{
 			logae(this, "Destination url is empty");
 			return false;
+		}
+
+		{
+			std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
+			if (_av_format != nullptr)
+			{
+				logae(this, "URL is already set. Create a new Writer instead of reusing this one.");
+				return false;
+			}
 		}
 
 		_url = url;
@@ -149,14 +172,14 @@ namespace ffmpeg
 
 	std::shared_ptr<AVStream> Writer::CreateAVStream(const std::shared_ptr<const MediaTrack> &media_track)
 	{
-		auto av_format = GetAVFormatContext();
-		if (!av_format)
+		// Caller (AddTrack) must hold _av_format_lock
+		if (_av_format == nullptr)
 		{
 			logae(this, "Context is not available");
 			return nullptr;
 		}
 
-		AVStream *new_stream = avformat_new_stream(av_format.get(), nullptr);
+		AVStream *new_stream = avformat_new_stream(_av_format.get(), nullptr);
 		if (!new_stream)
 		{
 			logae(this, "Could not allocate stream");
@@ -224,6 +247,15 @@ namespace ffmpeg
 	{
 		// A missing Opus config is synthesized inside ToAVStream(); the track itself
 		// is a frozen snapshot here and must not be modified.
+
+		// Serialize with other context ops; concurrent AddTrack() corrupts the stream array.
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
+		if (_av_format == nullptr)
+		{
+			logae(this, "Context is not available");
+			return false;
+		}
 
 		// Video/Audio is mapped 1:1
 		if (media_track->GetMediaType() == cmn::MediaType::Video ||
@@ -309,18 +341,36 @@ namespace ffmpeg
 
 	bool Writer::Start()
 	{
+		// Only a fresh (None) or cleanly stopped (Closed) writer may start; any other state
+		// means a Start() is still in effect and restarting would corrupt the context.
+		const WriterState current_state = GetState();
+		if (current_state == WriterStateConnected ||
+			current_state == WriterStateConnecting ||
+			current_state == WriterStateClosing ||
+			current_state == WriterStateError)
+		{
+			logae(this, "Writer is already started. state:%s", WriterStateToString(current_state));
+			return false;
+		}
+
 		SetState(WriterStateConnecting);
 
 		_start_time = -1LL;
+
+		// Serialize open/write-header with SendPacket() and teardown.
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
 		_need_to_flush = false;
 		_need_to_close = false;
 
-		auto av_format = GetAVFormatContext();
-		if (av_format == nullptr)
+		if (_av_format == nullptr)
 		{
+			SetState(WriterStateError);
 			logae(this, "Context is not available");
 			return false;
 		}
+
+		auto *av_format = _av_format.get();
 
 		// Set service & provider metadata
 		av_dict_set(&av_format->metadata, "service_provider", "OvenMediaEngine", 0);
@@ -364,7 +414,9 @@ namespace ffmpeg
 		AVDictionary *format_options = nullptr;
 		av_dict_set_int(&format_options, "use_editlist", 0, 0);
 
-		if (avformat_write_header(av_format.get(), &format_options) < 0)
+		int error = avformat_write_header(av_format, &format_options);
+		av_dict_free(&format_options);
+		if (error < 0)
 		{
 			SetState(WriterStateError);
 			logae(this, "Could not create header");
@@ -375,7 +427,7 @@ namespace ffmpeg
 		_need_to_flush = true;
 
 		SetState(WriterStateConnected);
-		
+
 		return true;
 	}
 
@@ -427,6 +479,14 @@ namespace ffmpeg
 		if (!packet)
 		{
 			logaw("Invalid packet. packet is null. Dropping.");
+			return true;
+		}
+
+		// av_stream/context are owned by _av_format; hold the lock through the write so a
+		// concurrent Stop()/Split() can't free them mid-use (UAF). Drop if already torn down.
+		std::unique_lock<std::shared_mutex> mlock(_av_format_lock);
+		if (_av_format == nullptr || GetState() != WriterStateConnected)
+		{
 			return true;
 		}
 
@@ -614,19 +674,7 @@ namespace ffmpeg
 			}
 		}
 
-		auto av_format = GetAVFormatContext();
-		if (!av_format)
-		{
-			av_packet_unref(&av_packet);
-			SetState(WriterStateError);
-			logae(this, "Context is not available");
-
-			return false;
-		}
-
 		_last_packet_sent_time = std::chrono::steady_clock::now();
-
-		std::unique_lock<std::shared_mutex> mlock(_av_format_lock);
 
 		// Check DTS monotonicity. if not, drop the packet.
 		auto it = _track_last_dts_map.find(av_packet.stream_index);
@@ -643,7 +691,7 @@ namespace ffmpeg
 		}
 
 		// Write packet
-		int error = ::av_write_frame(av_format.get(), &av_packet);
+		int error = ::av_write_frame(_av_format.get(), &av_packet);
 		if (error != 0)
 		{
 			av_packet_unref(&av_packet);
@@ -677,32 +725,17 @@ namespace ffmpeg
 		return _last_packet_sent_time.load();
 	}
 
-	std::shared_ptr<AVFormatContext> Writer::GetAVFormatContext() const
-	{
-		std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
-		return _av_format;
-	}
-
 	void Writer::SetAVFormatContext(AVFormatContext *av_format)
 	{
 		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
-		// forward _need_to_flush and _need_to_close to lambda
-		_av_format.reset(av_format, [&need_to_flush = _need_to_flush, &need_to_close = _need_to_close](AVFormatContext *av_format_ptr) {
+
+		// Deleter only frees. Finalization (trailer/close) is done in ReleaseAVFormatContext()
+		_av_format.reset(av_format, [](AVFormatContext *av_format_ptr) {
 			if (av_format_ptr == nullptr)
 			{
 				return;
 			}
 
-			if (need_to_flush)
-			{
-				av_write_trailer(av_format_ptr);
-			}
-
-			if (need_to_close && av_format_ptr->pb != nullptr)
-			{
-				avio_closep(&av_format_ptr->pb);
-			}
-			
 			avformat_free_context(av_format_ptr);
 		});
 
@@ -713,6 +746,26 @@ namespace ffmpeg
 	void Writer::ReleaseAVFormatContext()
 	{
 		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
+		// Finalize under the lock so trailer/close runs once, never racing a write.
+		if (_av_format != nullptr)
+		{
+			if (_need_to_flush)
+			{
+				// Time the flush itself (not prior idle) so a dead peer can't hang Stop().
+				_last_packet_sent_time = std::chrono::steady_clock::now();
+				av_write_trailer(_av_format.get());
+				_need_to_flush = false;
+			}
+
+			if (_need_to_close && _av_format->pb != nullptr)
+			{
+				_last_packet_sent_time = std::chrono::steady_clock::now();
+				avio_closep(&_av_format->pb);
+				_need_to_close = false;
+			}
+		}
+
 		_av_format = nullptr;
 		_need_to_flush = false;
 		_need_to_close = false;

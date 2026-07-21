@@ -103,12 +103,13 @@ namespace pub
 
 		switch (session_state)
 		{
-			// State of disconnected and ready to connect
 			case pub::Session::SessionState::Ready:
 				[[fallthrough]];
 			case pub::Session::SessionState::Stopped:
-				session->Start();
-				logti("Recording Started. %s", session->GetRecord()->GetInfoString().CStr());
+				if (session->Start() == true)
+				{
+					logti("Recording Started. %s", session->GetRecord()->GetInfoString().CStr());
+				}
 
 				break;
 			// State of Recording
@@ -154,18 +155,23 @@ namespace pub
 
 	void FileApplication::SessionControllInternal(std::shared_ptr<FileStream> stream, std::shared_ptr<info::Record> userdata)
 	{
-		// If there is no session, create a new file(record) session.
-		auto session = std::static_pointer_cast<FileSession>(stream->GetSession(userdata->GetSessionId()));
-		if (session == nullptr || userdata->GetSessionId() == 0)
+		std::shared_ptr<FileSession> session;
+
 		{
-			session = stream->CreateSession();
-			if (session == nullptr)
+			std::lock_guard<std::mutex> lock(_session_control_mutex);
+
+			session = std::static_pointer_cast<FileSession>(stream->GetSession(userdata->GetSessionId()));
+			if (session == nullptr || userdata->GetSessionId() == 0)
 			{
-				logte("Failed to create session");
-				return;
+				session = stream->CreateSession();
+				if (session == nullptr)
+				{
+					logte("Failed to create session");
+					return;
+				}
+				userdata->SetSessionId(session->GetId());
+				session->SetRecord(userdata);
 			}
-			userdata->SetSessionId(session->GetId());
-			session->SetRecord(userdata);
 		}
 
 		if (userdata->GetEnable() == true && userdata->GetRemove() == false)

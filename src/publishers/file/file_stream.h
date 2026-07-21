@@ -1,6 +1,7 @@
 #pragma once
 
 #include <base/common_types.h>
+#include <base/ovlibrary/interval_gate.h>
 #include <base/publisher/stream.h>
 #include <modules/ovt_packetizer/ovt_packetizer.h>
 
@@ -31,7 +32,8 @@ namespace pub
 		bool Start() override;
 		bool Stop() override;
 
-		ov::StopWatch _stop_watch;
+		// Rate-limits the periodic session-retry in SendFrame() to one thread per interval.
+		ov::IntervalGate _stream_interval_gate{5000};
 		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
 	};
 }  // namespace pub

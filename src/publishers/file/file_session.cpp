@@ -49,7 +49,17 @@ namespace pub
 
 	bool FileSession::Start()
 	{
+		std::lock_guard<std::mutex> lock(_record_control_mutex);
+
+		// If the session is already started, return true to avoid restarting it.
+		if (GetState() == SessionState::Started)
+		{
+			return true;
+		}
+
 		_is_splitting.store(false);
+
+		_found_first_keyframe = false;
 
 		if (StartRecord() == false)
 		{
@@ -71,6 +81,8 @@ namespace pub
 
 	bool FileSession::Stop()
 	{
+		std::lock_guard<std::mutex> lock(_record_control_mutex);
+
 		if (StopRecord() == false)
 		{
 			logae("Failed to stop recording. id(%d)", GetId());
@@ -90,6 +102,8 @@ namespace pub
 
 	bool FileSession::Split()
 	{
+		std::lock_guard<std::mutex> lock(_record_control_mutex);
+
 		if (StopRecord() == false)
 		{
 			logae("Failed to stop recording. id(%d)", GetId());
@@ -238,6 +252,16 @@ namespace pub
 		}
 
 		logad("Create temporary file(%s) and default track id(%d)", writer->GetUrl().CStr(), _default_track);
+
+		// No tracks added: skip Start() to avoid a "No streams to mux" header failure.
+		if (writer->GetTrackCountByType(cmn::MediaType::Video) == 0 &&
+			writer->GetTrackCountByType(cmn::MediaType::Audio) == 0)
+		{
+			SetState(SessionState::Error);
+			record->SetState(info::Record::RecordState::Error);
+			logae("No tracks to record. check the variant/track selection. %s", record->GetInfoString().CStr());
+			return false;
+		}
 
 		if (writer->Start() == false)
 		{

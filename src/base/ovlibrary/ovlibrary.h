@@ -53,5 +53,6 @@
 #include "./sequencial_map.h"
 #include "./thread_checker.h"
 #include "./tsa/mutex.h"
+#include "./interval_gate.h"
 
 #include "./logger/logger.h"

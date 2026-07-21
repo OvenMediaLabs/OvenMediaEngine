@@ -47,6 +47,8 @@ namespace pub
 		void DestroyWriter();
 
 	private:
+		std::mutex _record_control_mutex;
+
 		std::shared_ptr<ffmpeg::Writer> _writer;
 		std::shared_mutex _writer_mutex;
 
