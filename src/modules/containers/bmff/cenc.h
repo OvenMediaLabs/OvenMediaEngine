@@ -231,6 +231,9 @@ namespace bmff
 			else if (system_id_hex_lower == SYSTEM_ID_PLAYREADY)
 			{
 				drm_system = DRMSystem::PlayReady;
+
+				// The PRO is carried in the pssh Data field; keep it for HLS signaling.
+				data	   = user_data;
 			}
 			else
 			{

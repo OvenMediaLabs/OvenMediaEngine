@@ -78,6 +78,14 @@ namespace pub::llhls
 					break;
 			}
 
+			if (scheme == bmff::CencProtectScheme::None)
+			{
+				// Without a CENC scheme we cannot form a valid METHOD; skip instead of emitting a malformed tag.
+				logte("Missing CENC scheme for pssh, skipping the %s tag.", tag_name);
+				xkey.Append("\n");
+				continue;
+			}
+
 			xkey.AppendFormat("%s:%s", tag_name, method);
 
 			switch (pssh.drm_system)
