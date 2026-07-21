@@ -1437,6 +1437,13 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 	if (IsSupportedMediaCodec(new_track->GetCodecId()) == false)
 	{
 		logte("LLHlsStream(%s/%s) - Track(%d) has changed to an unsupported codec(%s), the track is excluded from the output from this point", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, cmn::GetCodecIdString(new_track->GetCodecId()));
+
+		// Newly served master playlists stop advertising the excluded rendition
+		{
+			std::unique_lock<std::mutex> guard(_master_playlists_lock);
+			_master_playlists.clear();
+		}
+
 		return;
 	}
 
