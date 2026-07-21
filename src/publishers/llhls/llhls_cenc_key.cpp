@@ -10,6 +10,8 @@
 
 #include <base/ovcrypto/base_64.h>
 
+#include "llhls_private.h"
+
 namespace pub::llhls
 {
 	ov::String MakeCencKeyTag(const bmff::CencProperty &cenc_property, PlaylistType playlist_type)
@@ -24,6 +26,7 @@ namespace pub::llhls
 			if (pssh.drm_system == bmff::DRMSystem::None)
 			{
 				// This is the old behavior
+				logte("Invalid DRM system in pssh box, skipping EXT-X-KEY tag.");
 				xkey.Append("\n");
 				continue;
 			}
@@ -32,6 +35,15 @@ namespace pub::llhls
 			{
 				// A pssh box maps to exactly one `systemId`, so this always holds a single system
 				// (never a combination such as `DRMSystem::All`).
+				OV_ASSERT2(false);
+				continue;
+			}
+
+			// PlayReady needs its Object (PRO) to build a valid key tag.
+			// Without it we cannot emit a proper URI, so skip the entry instead of writing a broken tag.
+			if ((pssh.drm_system == bmff::DRMSystem::PlayReady) && (pssh.data == nullptr))
+			{
+				logte("PlayReady pssh is missing its PlayReady Object (PRO), skipping EXT-X-KEY tag.");
 				OV_ASSERT2(false);
 				continue;
 			}
@@ -94,11 +106,8 @@ namespace pub::llhls
 
 				case bmff::DRMSystem::PlayReady:
 					// PlayReady carries the PlayReady Object (PRO) in the URI (UTF-16, base64), not the whole pssh box.
-					if (pssh.data != nullptr)
-					{
-						xkey.AppendFormat(",URI=\"data:text/plain;charset=UTF-16;base64,%s\"", ov::Base64::Encode(pssh.data, false).CStr());
-					}
-
+					// `pssh.data` is guaranteed non-null here (checked at the top of the loop).
+					xkey.AppendFormat(",URI=\"data:text/plain;charset=UTF-16;base64,%s\"", ov::Base64::Encode(pssh.data, false).CStr());
 					xkey.AppendFormat(",KEYFORMAT=\"com.microsoft.playready\"");
 					xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
 					break;

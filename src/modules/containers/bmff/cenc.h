@@ -71,14 +71,14 @@ namespace bmff
 	};
 
 	// `DRMSystem` is used as a bit flag so that multiple systems can be combined.
-	inline DRMSystem operator|(DRMSystem a, DRMSystem b)
+	constexpr inline DRMSystem operator|(DRMSystem a, DRMSystem b)
 	{
-		return static_cast<DRMSystem>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+		return static_cast<DRMSystem>(ov::ToUnderlyingType(a) | ov::ToUnderlyingType(b));
 	}
 
-	inline bool HasDRMSystem(DRMSystem set, DRMSystem flag)
+	constexpr inline bool HasDRMSystem(DRMSystem set, DRMSystem flag)
 	{
-		return (static_cast<uint8_t>(set) & static_cast<uint8_t>(flag)) != 0;
+		return (ov::ToUnderlyingType(set) & ov::ToUnderlyingType(flag)) != 0;
 	}
 
 	struct PsshBox
