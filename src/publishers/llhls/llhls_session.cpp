@@ -426,7 +426,19 @@ bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type,
 
 		if (name_items.size() >= 6 && name_items[4].HasPrefix('v') == true)
 		{
-			init_version = ov::Converter::ToInt64(name_items[4].Substring(1).CStr());
+			auto version_token = name_items[4].Substring(1);
+			if (version_token.IsEmpty() == true || version_token.IsNumeric() == false)
+			{
+				logtw("Invalid file name requested: %s", file_name.CStr());
+				return false;
+			}
+
+			init_version = ov::Converter::ToInt64(version_token.CStr());
+			if (init_version < 0 || init_version > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))
+			{
+				logtw("Invalid file name requested: %s", file_name.CStr());
+				return false;
+			}
 		}
 	}
 	else if (name_items[0] == "seg" && (name_ext_items[1] == "m4s" || name_ext_items[1] == "vtt"))

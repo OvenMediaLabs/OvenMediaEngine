@@ -414,7 +414,7 @@ namespace bmff
 
 			if (_observer != nullptr)
 			{
-				_observer->OnMediaSegmentDeleted(_track->GetId(), segment_to_delete.segment_number);
+				_observer->OnMediaSegmentDeleted(GetTrack()->GetId(), segment_to_delete.segment_number);
 			}
 		}
 
@@ -554,7 +554,7 @@ namespace bmff
 			last_chunk = true;
 			// Too long segment buffered
 			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
-			_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
+			_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
 		}
 
 		// Complete Segment if segment duration is over and new chunk data is independent(new segment should be started with independent chunk)
@@ -563,7 +563,7 @@ namespace bmff
 			segment->SetCompleted();
 			CreateNextSegment();
 
-			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), _track->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
+			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), GetTrack()->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
 			
 			_total_expected_duration_ms += _config.segment_duration_ms;
 			_total_segment_duration_ms += segment->GetDurationMs();
@@ -574,7 +574,7 @@ namespace bmff
 			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
 			if (segment->HasMarker() == true)
 			{
-				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
+				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
 
 				_total_expected_duration_ms -= _config.segment_duration_ms;
 				
@@ -594,7 +594,7 @@ namespace bmff
 			double next_target_duration = _total_expected_duration_ms - _total_segment_duration_ms + _config.segment_duration_ms;
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
-				_stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
+				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
 			
 			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
 			{
@@ -645,7 +645,7 @@ namespace bmff
 			// }
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
-				_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
+				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
 		}
 
 		_max_chunk_duration_ms = std::max(_max_chunk_duration_ms, duration_ms);
@@ -655,7 +655,7 @@ namespace bmff
 		if (_observer != nullptr)
 		{
 			bool last_chunk = segment->IsCompleted() == true;
-			_observer->OnMediaChunkUpdated(_track->GetId(), segment->GetNumber(), segment->GetLastPartialNumber(), last_chunk);
+			_observer->OnMediaChunkUpdated(GetTrack()->GetId(), segment->GetNumber(), segment->GetLastPartialNumber(), last_chunk);
 		}
 
 		return true;
