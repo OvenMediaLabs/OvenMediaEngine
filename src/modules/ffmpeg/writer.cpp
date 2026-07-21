@@ -101,7 +101,8 @@ namespace ffmpeg
 				return 1;
 			}
 		}
-		else if(writer->GetState() == WriterStateClosing)
+		// Error: a racing SendPacket() flipped this after Stop() began closing; the trailer/close still runs, so bound it too.
+		else if(writer->GetState() == WriterStateClosing || writer->GetState() == WriterStateError)
 		{
 			// Nothing opened or written yet: nothing to finalize, so interrupt the pending I/O now.
 			if (writer->_need_to_flush.load() == false && writer->_need_to_close.load() == false)
@@ -109,9 +110,10 @@ namespace ffmpeg
 				return 1;
 			}
 
-			// Close timeout
+			// Close timeout: give the final flush enough time (temporarily 2x send timeout)
+			// TODO: add a dedicated CloseTimeout
 			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
-			if(elapsed_ms > writer->GetSendTimeout())
+			if (elapsed_ms > (int64_t)writer->GetSendTimeout() * 2)
 			{
 				logae(writer, "Close timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
 				return 1;
