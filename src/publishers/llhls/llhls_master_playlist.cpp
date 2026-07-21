@@ -11,6 +11,7 @@
 #include <base/ovcrypto/base_64.h>
 #include <base/ovlibrary/zip.h>
 
+#include "llhls_cenc_key.h"
 #include "llhls_private.h"
 
 void LLHlsMasterPlaylist::SetDefaultOptions(bool legacy, bool rewind)
@@ -289,51 +290,7 @@ void LLHlsMasterPlaylist::UpdateCacheForDefaultPlaylist()
 
 ov::String LLHlsMasterPlaylist::MakeSessionKey() const
 {
-	ov::String xkey;
-
-	for (const auto &pssh : _cenc_property.pssh_box_list)
-	{
-		if (pssh.drm_system == bmff::DRMSystem::Widevine)
-		{
-			xkey.AppendFormat("#EXT-X-SESSION-KEY:");
-
-			if (_cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
-			{
-				xkey.AppendFormat("METHOD=SAMPLE-AES");
-			}
-			else if (_cenc_property.scheme == bmff::CencProtectScheme::Cenc)
-			{
-				xkey.AppendFormat("METHOD=SAMPLE-AES-CTR");
-			}
-
-			xkey.AppendFormat(",URI=\"data:text/plain;base64,%s\"", ov::Base64::Encode(pssh.pssh_box_data, false).CStr());
-
-			xkey.AppendFormat(",KEYID=0x%s", _cenc_property.key_id->ToHexString().CStr());
-			xkey.AppendFormat(",KEYFORMAT=\"urn:uuid:%s\"", ov::ToUUIDString(pssh.system_id->GetData(), pssh.system_id->GetLength()).LowerCaseString().CStr());
-			xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
-		}
-		else if (pssh.drm_system == bmff::DRMSystem::FairPlay)
-		{
-			if (_cenc_property.keyformat.LowerCaseString() == "identity")
-			{
-				xkey.AppendFormat("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES");
-				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
-				xkey.AppendFormat(",KEYFORMAT=\"identity\"");
-				xkey.AppendFormat(",IV=0x%s", _cenc_property.iv->ToHexString().CStr());
-			}
-			else
-			{
-				xkey.AppendFormat("#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES");
-				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
-				xkey.AppendFormat(",KEYFORMAT=\"com.apple.streamingkeydelivery\"");
-				xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
-			}
-		}
-
-		xkey.Append("\n");
-	}
-
-	return xkey;
+	return pub::llhls::MakeCencKeyTag(_cenc_property, pub::llhls::PlaylistType::Master);
 }
 
 ov::String LLHlsMasterPlaylist::MakePlaylist(const ov::String &chunk_query_string, bool legacy, bool rewind, bool include_path) const

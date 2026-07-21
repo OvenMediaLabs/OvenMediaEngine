@@ -27,6 +27,19 @@ namespace bmff
 		Cbcs
 	};
 
+	constexpr const char *CencProtectSchemeToString(CencProtectScheme scheme)
+	{
+		switch (scheme)
+		{
+			OV_CASE_RETURN(CencProtectScheme::Cenc, "cenc");
+			OV_CASE_RETURN(CencProtectScheme::Cbcs, "cbcs");
+			OV_CASE_RETURN(CencProtectScheme::None, "none");
+		}
+
+		OV_ASSERT(false, "Invalid CencProtectScheme: %d", ov::ToUnderlyingType(scheme));
+		return "none";
+	}
+
 	enum class CencEncryptMode : uint8_t
 	{
 		None,
@@ -34,30 +47,48 @@ namespace bmff
 		Cbc
 	};
 
+	constexpr const char *CencEncryptModeToString(CencEncryptMode mode)
+	{
+		switch (mode)
+		{
+			OV_CASE_RETURN(CencEncryptMode::Ctr, "ctr");
+			OV_CASE_RETURN(CencEncryptMode::Cbc, "cbc");
+			OV_CASE_RETURN(CencEncryptMode::None, "none");
+		}
+
+		OV_ASSERT(false, "Invalid CencEncryptMode: %d", ov::ToUnderlyingType(mode));
+		return "none";
+	}
+
 	enum class DRMSystem : uint8_t
 	{
-		None,
-		Widevine,
-		FairPlay,
-		All = Widevine | FairPlay
+		None	  = 0,
+		Widevine  = 1,
+		FairPlay  = 2,
+		PlayReady = 4,
+
+		All		  = Widevine | FairPlay | PlayReady
 	};
 
-	static const char *CencProtectSchemeToString(CencProtectScheme scheme)
+	// `DRMSystem` is used as a bit flag so that multiple systems can be combined.
+	inline DRMSystem operator|(DRMSystem a, DRMSystem b)
 	{
-		switch (scheme)
-		{
-			case CencProtectScheme::Cenc:
-				return "cenc";
-			case CencProtectScheme::Cbcs:
-				return "cbcs";
-			case CencProtectScheme::None:
-			default:
-				return "none";
-		}
+		return static_cast<DRMSystem>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+	}
+
+	inline bool HasDRMSystem(DRMSystem set, DRMSystem flag)
+	{
+		return (static_cast<uint8_t>(set) & static_cast<uint8_t>(flag)) != 0;
 	}
 
 	struct PsshBox
 	{
+	private:
+		constexpr static const char *SYSTEM_ID_WIDEVINE	 = "edef8ba979d64acea3c827dcd51d21ed";
+		constexpr static const char *SYSTEM_ID_FAIRPLAY	 = "94ce86fb07ff4f43adb893d2fa968ca2";
+		constexpr static const char *SYSTEM_ID_PLAYREADY = "9a04f07998404286ab92e65be0885f95";
+
+	public:
 		PsshBox(const std::shared_ptr<ov::Data> &data)
 			: pssh_box_data(data)
 		{
@@ -88,15 +119,37 @@ namespace bmff
 
 			system_id					  = stream.GetRemainData(16)->Clone();
 
-			logt("DEBUG", "System ID : %s", system_id->ToHexString().LowerCaseString().CStr());
+			auto system_id_hex			  = system_id->ToHexString().LowerCaseString();
 
-			if (system_id->ToHexString().LowerCaseString() == "edef8ba979d64acea3c827dcd51d21ed")
+			logt("DEBUG", "System ID : %s", system_id_hex.CStr());
+
+			if (system_id_hex == SYSTEM_ID_WIDEVINE)
 			{
 				drm_system = DRMSystem::Widevine;
 			}
-			else if (system_id->ToHexString().LowerCaseString() == "94ce86fb07ff4f43adb893d2fa968ca2")
+			else if (system_id_hex == SYSTEM_ID_FAIRPLAY)
 			{
 				drm_system = DRMSystem::FairPlay;
+			}
+			else if (system_id_hex == SYSTEM_ID_PLAYREADY)
+			{
+				drm_system = DRMSystem::PlayReady;
+
+				// Extract the PlayReady Object (PRO) from the pssh Data field.
+				// HLS signaling carries the PRO (not the whole pssh box) in the `EXT-X-KEY` URI.
+				stream.Skip<uint8_t>(16);  // advance past the 16-byte SystemID
+
+				if (version > 0)
+				{
+					auto kid_count = stream.ReadBE32();
+
+					stream.Skip<uint8_t>(16 * kid_count);
+				}
+
+				auto data_size = stream.ReadBE32();
+				// Note: the constructor parameter is also named 'data', so qualify the member with this->
+
+				this->data	   = stream.GetRemainData(data_size)->Clone();
 			}
 		}
 
@@ -127,13 +180,19 @@ namespace bmff
 				return;
 			}
 
-			if (system_id_hex.LowerCaseString() == "edef8ba979d64acea3c827dcd51d21ed")
+			auto system_id_hex_lower = system_id_hex.LowerCaseString();
+
+			if (system_id_hex_lower == SYSTEM_ID_WIDEVINE)
 			{
 				drm_system = DRMSystem::Widevine;
 			}
-			else if (system_id_hex.LowerCaseString() == "94ce86fb07ff4f43adb893d2fa968ca2")
+			else if (system_id_hex_lower == SYSTEM_ID_FAIRPLAY)
 			{
 				drm_system = DRMSystem::FairPlay;
+			}
+			else if (system_id_hex_lower == SYSTEM_ID_PLAYREADY)
+			{
+				drm_system = DRMSystem::PlayReady;
 			}
 			else
 			{
@@ -186,9 +245,14 @@ namespace bmff
 			pssh_box_data = stream.GetDataPointer();
 		}
 
+		// A pssh box maps to exactly one systemId,
+		// so this always holds a single system (never a combination such as `DRMSystem::All`).
 		DRMSystem drm_system					= DRMSystem::None;
 		std::shared_ptr<ov::Data> system_id		= nullptr;
 		std::shared_ptr<ov::Data> pssh_box_data = nullptr;
+
+		// PlayReady Object (PRO) extracted from the pssh Data field, used for HLS signaling.
+		std::shared_ptr<ov::Data> data			= nullptr;
 	};
 
 	struct CencProperty
