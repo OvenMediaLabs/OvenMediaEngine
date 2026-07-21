@@ -37,6 +37,20 @@ namespace base
 		public:
 			// All partial segments are included
 			virtual bool IsCompleted() const = 0;
+
+			// Version of the track configuration this segment was packaged against.
+			// 0 means the container does not track versions.
+			virtual uint32_t GetTrackVersion() const
+			{
+				return 0;
+			}
+
+			// This segment starts a new discontinuity domain (a boundary was cut right
+			// before it), independent of whether its own track configuration changed
+			virtual bool IsDiscontinuityPoint() const
+			{
+				return false;
+			}
 			virtual bool HasMarker() const = 0;
 			virtual const std::vector<std::shared_ptr<Marker>> &GetMarkers() const = 0;
 			virtual void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) = 0;

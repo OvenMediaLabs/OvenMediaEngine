@@ -126,6 +126,22 @@ bool LLHlsMasterPlaylist::AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo
 	return true;
 }
 
+void LLHlsMasterPlaylist::SetTrackCodecs(int32_t track_id, const ov::String &codecs)
+{
+	_track_codecs[track_id] = codecs;
+}
+
+ov::String LLHlsMasterPlaylist::GetTrackCodecs(const std::shared_ptr<const MediaTrack> &track) const
+{
+	auto it = _track_codecs.find(track->GetId());
+	if (it != _track_codecs.end() && it->second.IsEmpty() == false)
+	{
+		return it->second;
+	}
+
+	return track->GetCodecsParameter();
+}
+
 bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int video_index_hint, const ov::String &audio_group_id, const ov::String &subtitle_group_id)
 {
 	auto new_stream_info = std::make_shared<StreamInfo>();
@@ -154,7 +170,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 		new_stream_info->_width = resolution.width;
 		new_stream_info->_height = resolution.height;
 		new_stream_info->_framerate = video_track->GetFrameRate();
-		new_stream_info->_codecs = video_track->GetCodecsParameter();
+		new_stream_info->_codecs = GetTrackCodecs(video_track);
 
 		// 25-01-27 : Video group is not used now
 		// Active media group if video group has more than 1 media info
@@ -184,7 +200,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 			}
 
 			new_stream_info->_bandwidth += audio_track->GetBitrate();
-			new_stream_info->_codecs += ov::String::FormatString(",%s", audio_track->GetCodecsParameter().CStr());
+			new_stream_info->_codecs += ov::String::FormatString(",%s", GetTrackCodecs(audio_track).CStr());
 		}
 
 		if (subtitle_group_id.IsEmpty() == false)
@@ -220,7 +236,7 @@ bool LLHlsMasterPlaylist::AddStreamInfo(const ov::String &video_group_id, int vi
 		}
 
 		new_stream_info->_bandwidth += audio_track->GetBitrate();
-		new_stream_info->_codecs = audio_track->GetCodecsParameter();
+		new_stream_info->_codecs = GetTrackCodecs(audio_track);
 
 		if (audio_group->_media_infos.size() > 1)
 		{

@@ -58,6 +58,11 @@ public:
 	bool AddMediaCandidate(const LLHlsMasterPlaylist::MediaInfo &media_info);
 	bool AddStreamInfo(const ov::String &video_group_id, int video_index_hint, const ov::String &audio_group_id, const ov::String &subtitle_group_id);
 
+	// Codecs the CODECS attribute advertises for a track. A runtime configuration
+	// change can leave segments of several codecs in the window, so this can list
+	// more than the track's current parameter. Set before AddStreamInfo.
+	void SetTrackCodecs(int32_t track_id, const ov::String &codecs);
+
 	void UpdateCacheForDefaultPlaylist();
 
 	ov::String ToString(const ov::String &chunk_query_string, bool legacy, bool rewind, bool include_path=true) const;
@@ -102,6 +107,12 @@ private:
 
 	// Get Media Group
 	std::shared_ptr<MediaGroup> GetMediaGroup(const ov::String &group_id) const;
+
+	// Codecs set via SetTrackCodecs, falling back to the track's current parameter
+	ov::String GetTrackCodecs(const std::shared_ptr<const MediaTrack> &track) const;
+
+	// Track ID : codecs for the CODECS attribute
+	std::map<int32_t, ov::String> _track_codecs;
 
 	// Group ID : MediaInfo
 	std::map<ov::String, std::shared_ptr<MediaGroup>> _media_groups;

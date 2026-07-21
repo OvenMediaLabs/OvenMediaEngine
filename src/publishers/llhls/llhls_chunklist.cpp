@@ -109,6 +109,45 @@ bool LLHlsChunklist::CreateSegmentInfo(const SegmentInfo &info)
 	return true;
 }
 
+bool LLHlsChunklist::CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri)
+{
+	std::shared_ptr<SegmentInfo> segment = GetSegmentInfo(segment_sequence);
+	if (segment == nullptr)
+	{
+		logte("Could not find segment info to complete. segment(%u)", segment_sequence);
+		return false;
+	}
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		segment->SetCompleted();
+		_last_completed_segment_sequence = segment_sequence;
+		_first_segment = false;
+
+		auto &partial_segments = segment->GetPartialSegments();
+		if (partial_segments.empty() == false && next_partial_url.IsEmpty() == false)
+		{
+			partial_segments.back()->SetNextUrl(next_partial_url);
+		}
+
+		_upcoming_map_uri = next_partial_map_uri;
+	}
+
+	UpdateCacheForDefaultChunklist();
+
+	return true;
+}
+
+void LLHlsChunklist::SetUpcomingMapUri(const ov::String &map_uri)
+{
+	{
+		std::lock_guard<std::shared_mutex> lock(_segments_guard);
+		_upcoming_map_uri = map_uri;
+	}
+
+	UpdateCacheForDefaultChunklist();
+}
+
 bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const SegmentInfo &info)
 {
 	std::shared_ptr<SegmentInfo> segment = GetSegmentInfo(segment_sequence);
@@ -124,6 +163,28 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 		if (_first_segment == true)
 		{
 			_max_part_duration = std::max(_max_part_duration, info.GetDuration());
+		}
+
+		// A starting segment is stamped with the configuration it was packaged
+		// against; a version different from the previous segment or an explicitly
+		// flagged boundary cut is a discontinuity
+		if (segment->GetPartialSegmentsCount() == 0)
+		{
+			segment->SetTrackVersion(info.GetTrackVersion());
+			segment->SetMapUri(info.GetMapUri());
+
+			if (info.IsDiscontinuity() == true ||
+				(_last_started_track_version.has_value() == true &&
+				 _last_started_track_version.value() != info.GetTrackVersion()))
+			{
+				segment->SetDiscontinuity();
+				_total_discontinuity_count++;
+
+				// The hinted map is inline from this partial on
+				_upcoming_map_uri.Clear();
+			}
+
+			_last_started_track_version = info.GetTrackVersion();
 		}
 
 		if (info.IsCompleted() == true)
@@ -160,6 +221,12 @@ bool LLHlsChunklist::RemoveSegmentInfo(uint32_t segment_sequence)
 	{
 		logtc("The sequence number of the segment to be deleted is not the first segment. segment(%u) first(%" PRId64 ")", segment_sequence, old_segment->GetSequence());
 		return false;
+	}
+
+	if (old_segment->IsDiscontinuity() == true)
+	{
+		// Its EXT-X-DISCONTINUITY tag leaves the playlist with it
+		_removed_discontinuity_count++;
 	}
 
 	SaveOldSegmentInfo(old_segment);
@@ -403,9 +470,62 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 
 	playlist.AppendFormat("#EXT-X-MEDIA-SEQUENCE:%" PRId64 "\n", vod == false ? first_segment->GetSequence() : static_cast<int64_t>(0));
 
-	if (_map_uri.IsEmpty() == false)
+	if (_total_discontinuity_count > 0)
 	{
-		playlist.AppendFormat("#EXT-X-MAP:URI=\"%s", _map_uri.CStr());
+		int64_t discontinuity_sequence = _removed_discontinuity_count;
+
+		if (vod == true)
+		{
+			// Removed segments listed again in the VOD playlist reclaim their tags
+			for (const auto &[number, old_segment] : _old_segments)
+			{
+				if (number >= vod_start_segment_number && old_segment->IsDiscontinuity() == true)
+				{
+					discontinuity_sequence--;
+				}
+			}
+		}
+
+		// Retained segments ahead of the playlist window count as removed for this view
+		for (auto it = _segments.begin(); it != _segments.end() && it->first < first_segment->GetSequence(); it++)
+		{
+			if (it->second->IsDiscontinuity() == true)
+			{
+				discontinuity_sequence++;
+			}
+		}
+
+		playlist.AppendFormat("#EXT-X-DISCONTINUITY-SEQUENCE:%" PRId64 "\n", discontinuity_sequence);
+	}
+
+	// The map of the first listed segment leads the playlist, following segments
+	// declare a new EXT-X-MAP when theirs differs
+	ov::String current_map_uri = _map_uri;
+	{
+		std::shared_ptr<SegmentInfo> first_listed_segment = first_segment;
+		if (vod == true)
+		{
+			for (const auto &[number, old_segment] : _old_segments)
+			{
+				if (number < vod_start_segment_number)
+				{
+					continue;
+				}
+
+				first_listed_segment = old_segment;
+				break;
+			}
+		}
+
+		if (first_listed_segment != nullptr && first_listed_segment->GetMapUri().IsEmpty() == false)
+		{
+			current_map_uri = first_listed_segment->GetMapUri();
+		}
+	}
+
+	if (current_map_uri.IsEmpty() == false)
+	{
+		playlist.AppendFormat("#EXT-X-MAP:URI=\"%s", current_map_uri.CStr());
 		if (query_string.IsEmpty() == false)
 		{
 			playlist.AppendFormat("?%s", query_string.CStr());
@@ -426,6 +546,22 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			if (number < vod_start_segment_number)
 			{
 				continue;
+			}
+
+			if (segment->IsDiscontinuity() == true)
+			{
+				playlist.AppendFormat("#EXT-X-DISCONTINUITY\n");
+			}
+
+			if (segment->GetMapUri().IsEmpty() == false && segment->GetMapUri() != current_map_uri)
+			{
+				current_map_uri = segment->GetMapUri();
+				playlist.AppendFormat("#EXT-X-MAP:URI=\"%s", current_map_uri.CStr());
+				if (query_string.IsEmpty() == false)
+				{
+					playlist.AppendFormat("?%s", query_string.CStr());
+				}
+				playlist.AppendFormat("\"\n");
 			}
 
 			std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
@@ -459,6 +595,22 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		if (legacy == true && (segment->IsCompleted() == false))
 		{
 			continue;
+		}
+
+		if (segment->IsDiscontinuity() == true)
+		{
+			playlist.AppendFormat("#EXT-X-DISCONTINUITY\n");
+		}
+
+		if (segment->GetMapUri().IsEmpty() == false && segment->GetMapUri() != current_map_uri)
+		{
+			current_map_uri = segment->GetMapUri();
+			playlist.AppendFormat("#EXT-X-MAP:URI=\"%s", current_map_uri.CStr());
+			if (query_string.IsEmpty() == false)
+			{
+				playlist.AppendFormat("?%s", query_string.CStr());
+			}
+			playlist.AppendFormat("\"\n");
 		}
 
 		std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
@@ -512,6 +664,18 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			segment->GetSequence() == last_segment->GetSequence() &&
 			segment->GetPartialSegmentsCount() > 0)
 		{
+			// The hinted partial opens a new map after a boundary cut; hint the new
+			// initialization section too so clients can fetch it ahead
+			if (_upcoming_map_uri.IsEmpty() == false && _upcoming_map_uri != current_map_uri)
+			{
+				playlist.AppendFormat("#EXT-X-PRELOAD-HINT:TYPE=MAP,URI=\"%s", _upcoming_map_uri.CStr());
+				if (query_string.IsEmpty() == false)
+				{
+					playlist.AppendFormat("?%s", query_string.CStr());
+				}
+				playlist.AppendFormat("\"\n");
+			}
+
 			auto &last_partial = segment->GetPartialSegments().back();
 			playlist.AppendFormat("#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"%s", last_partial->GetNextUrl().CStr());
 			if (query_string.IsEmpty() == false)

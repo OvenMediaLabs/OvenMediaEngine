@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <optional>
+
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
@@ -96,6 +98,11 @@ public:
 			return _next_url;
 		}
 
+		void SetNextUrl(const ov::String &next_url)
+		{
+			_next_url = next_url;
+		}
+
 		bool IsIndependent() const
 		{
 			return _is_independent;
@@ -156,6 +163,39 @@ public:
 			return _completed;
 		}
 
+		// This segment starts a new track configuration, EXT-X-DISCONTINUITY precedes it
+		void SetDiscontinuity()
+		{
+			_discontinuity = true;
+		}
+
+		bool IsDiscontinuity() const
+		{
+			return _discontinuity;
+		}
+
+		// Initialization segment (EXT-X-MAP) this segment was packaged against
+		void SetMapUri(const ov::String &map_uri)
+		{
+			_map_uri = map_uri;
+		}
+
+		const ov::String &GetMapUri() const
+		{
+			return _map_uri;
+		}
+
+		// Version of the track configuration this segment was packaged against
+		void SetTrackVersion(uint32_t track_version)
+		{
+			_track_version = track_version;
+		}
+
+		uint32_t GetTrackVersion() const
+		{
+			return _track_version;
+		}
+
 		ov::String GetStartDate() const
 		{
 			ov::String start_date;
@@ -201,6 +241,9 @@ public:
 		ov::String _next_url;
 		bool _is_independent = false;
 		bool _completed = false;
+		bool _discontinuity = false;
+		ov::String _map_uri;
+		uint32_t _track_version = 0;
 
 		std::deque<std::shared_ptr<SegmentInfo>> _partial_segments;
 
@@ -235,6 +278,17 @@ public:
 	bool AppendPartialSegmentInfo(uint32_t segment_sequence, const SegmentInfo &info);
 	bool RemoveSegmentInfo(uint32_t segment_sequence);
 
+	// Mark a segment completed without a new partial (track change boundary cut).
+	// The last partial advertised a next part that will never exist, so its next url
+	// is redirected to the first part of the following segment. The map that part
+	// will be packaged against is hinted as TYPE=MAP until the part is listed.
+	bool CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri);
+
+	// Map the first partial of the next discontinuity domain will be packaged
+	// against, emitted as a TYPE=MAP preload hint while it differs from the last
+	// listed map. Set it only once the initialization section is servable.
+	void SetUpcomingMapUri(const ov::String &map_uri);
+
 	ov::String ToString(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod = false, uint32_t vod_start_segment_number = 0) const;
 	std::shared_ptr<const ov::Data> ToGzipData(const ov::String &query_string, bool skip, bool legacy, bool rewind) const;
 
@@ -268,6 +322,19 @@ private:
 	double _part_hold_back = 0;
 	ov::String _map_uri;
 	bool _preload_hint_enabled = true;
+
+	// Track version of the most recently started segment; a segment starting with a
+	// different version gets the discontinuity flag. Guarded by _segments_guard.
+	std::optional<uint32_t> _last_started_track_version;
+
+	// Map of the hinted-but-not-yet-listed partial. Emitted as a TYPE=MAP preload
+	// hint while it differs from the last listed map. Guarded by _segments_guard.
+	ov::String _upcoming_map_uri;
+
+	// Discontinuity-flagged segments that left the live window (EXT-X-DISCONTINUITY-SEQUENCE base)
+	std::atomic<int64_t> _removed_discontinuity_count = 0;
+	// Total flagged segments ever, to decide whether the tag set must be emitted
+	std::atomic<int64_t> _total_discontinuity_count = 0;
 
 	std::atomic<int64_t> _last_segment_sequence = -1;
 	std::atomic<int64_t> _last_completed_segment_sequence = -1;

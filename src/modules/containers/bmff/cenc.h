@@ -20,6 +20,12 @@ namespace bmff
 {
     constexpr uint8_t AES_BLOCK_SIZE = 16;
 
+    // Codecs the CENC implementation can encrypt
+    inline bool IsCencSupportedCodec(cmn::MediaCodecId codec_id)
+    {
+        return codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::Aac;
+    }
+
     enum class CencProtectScheme : uint8_t
     {
         None,

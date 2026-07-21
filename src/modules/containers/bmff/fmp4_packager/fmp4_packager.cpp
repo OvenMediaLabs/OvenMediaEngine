@@ -7,6 +7,8 @@
 //
 //==============================================================================
 
+#include <cmath>
+
 #include "fmp4_packager.h"
 #include "fmp4_private.h"
 
@@ -90,6 +92,91 @@ namespace bmff
 		return StoreInitializationSection(stream.GetDataPointer());
 	}
 
+	bool FMP4Packager::UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		if (media_track == nullptr)
+		{
+			return false;
+		}
+
+		// The same codecs CreateInitializationSegment supports; validate before mutating
+		if ((media_track->GetCodecId() == cmn::MediaCodecId::H264) ||
+			(media_track->GetCodecId() == cmn::MediaCodecId::H265) ||
+			(media_track->GetCodecId() == cmn::MediaCodecId::Av1) ||
+			(media_track->GetCodecId() == cmn::MediaCodecId::Aac))
+		{
+			// Supported codecs
+		}
+		else
+		{
+			logtw("FMP4Packager::UpdateTrack() - Unsupported codec id(%s)", cmn::GetCodecIdString(media_track->GetCodecId()));
+			return false;
+		}
+
+		// Close the current content so that samples of different track versions never
+		// share a segment
+		if (Flush() == false)
+		{
+			return false;
+		}
+
+		int64_t completed_segment_number = -1;
+		if (_storage == nullptr || _storage->UpdateTrack(media_track, completed_segment_number) == false)
+		{
+			return false;
+		}
+
+		if (UpdateMediaTrack(media_track) == false)
+		{
+			// Publish the completion even on failure so the playlist can close the segment
+			_storage->NotifySegmentCompleted(completed_segment_number);
+			return false;
+		}
+
+		if (media_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_segmentation_info.keyframe_interval = media_track->GetKeyFrameInterval();
+
+			// The new content must start with a keyframe
+			_waiting_for_keyframe = true;
+			_dropped_samples_while_waiting = 0;
+		}
+		_segmentation_info.framerate = media_track->GetFrameRate();
+
+		// This track's own boundary supersedes a cut propagated from another track
+		_pending_cut_timestamp_ms = -1.0;
+		_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
+
+		bool init_section_created = CreateInitializationSegment();
+
+		// The completion is published only after the new initialization section is
+		// stored; the playlist hints the new map, so it must be servable immediately
+		_storage->NotifySegmentCompleted(completed_segment_number);
+
+		return init_section_created;
+	}
+
+	void FMP4Packager::RequestCutForDiscontinuity(double boundary_timestamp_ms)
+	{
+		// Tracks changing together propagate to each other; a boundary within a
+		// segment length of the last handled one is the same event
+		if (_last_boundary_timestamp_ms >= 0 &&
+			std::abs(boundary_timestamp_ms - _last_boundary_timestamp_ms) <= _config.segment_duration_ms)
+		{
+			return;
+		}
+
+		if (_pending_cut_timestamp_ms < 0 || boundary_timestamp_ms < _pending_cut_timestamp_ms)
+		{
+			_pending_cut_timestamp_ms = boundary_timestamp_ms;
+		}
+	}
+
+	double FMP4Packager::GetLastSampleEndTimestampMs() const
+	{
+		return _segmentation_info.last_sample_timestamp_ms + _segmentation_info.last_sample_duration_ms;
+	}
+
 	bool FMP4Packager::ReserveDataPacket(const std::shared_ptr<const MediaPacket> &media_packet)
 	{
 		if (GetDataTrack() == nullptr)
@@ -164,6 +251,46 @@ namespace bmff
 	bool FMP4Packager::AppendSample(const std::shared_ptr<const MediaPacket> &media_packet)
 	{
 		logtt("MediaPacket : track(%d) pts(%" PRId64 "), dts(%" PRId64 "), duration(%" PRId64 "), flag(%d), size(%zu)", media_packet->GetTrackId(), media_packet->GetPts(), media_packet->GetDts(), media_packet->GetDuration(), ov::ToUnderlyingType(media_packet->GetFlag()), media_packet->GetDataLength());
+
+		if (_waiting_for_keyframe == true)
+		{
+			if (media_packet->GetFlag() != MediaPacketFlag::Key)
+			{
+				_dropped_samples_while_waiting++;
+				return true;
+			}
+
+			_waiting_for_keyframe = false;
+			if (_dropped_samples_while_waiting > 0)
+			{
+				logtw("track(%u) - Dropped %u non-keyframe samples until the first keyframe of the new track configuration", GetMediaTrack()->GetId(), _dropped_samples_while_waiting);
+				_dropped_samples_while_waiting = 0;
+			}
+		}
+
+		// A discontinuity propagated from another track cuts a boundary here; this
+		// sample is the first of the new domain, so it must be independent
+		if (_pending_cut_timestamp_ms >= 0)
+		{
+			double sample_timestamp_ms = (static_cast<double>(media_packet->GetDts()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+			bool independent = (media_packet->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
+
+			if (sample_timestamp_ms >= _pending_cut_timestamp_ms && independent == true)
+			{
+				if (Flush() == false)
+				{
+					return false;
+				}
+
+				if (_storage != nullptr)
+				{
+					_storage->CutSegmentForDiscontinuity();
+				}
+
+				_last_boundary_timestamp_ms = _pending_cut_timestamp_ms;
+				_pending_cut_timestamp_ms = -1.0;
+			}
+		}
 
 		// Convert bitstream format
 		auto next_frame = ConvertBitstreamFormat(media_packet);
@@ -485,9 +612,12 @@ namespace bmff
 
 			auto chunk = chunk_stream.GetDataPointer();
 
-			if (_storage != nullptr && _storage->AppendMediaChunk(chunk, 
-											samples->GetStartTimestamp(), 
-											samples->GetTotalDuration(), 
+			// Storage expects milliseconds, samples hold durations in timescale units
+			double total_sample_duration_ms = (static_cast<double>(samples->GetTotalDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+
+			if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
+											samples->GetStartTimestamp(),
+											total_sample_duration_ms,
 											samples->IsIndependent(), true) == false)
 			{
 				logte("FMP4Packager::Flush() - Failed to store media chunk");
