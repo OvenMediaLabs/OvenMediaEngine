@@ -108,6 +108,14 @@ namespace bmff
 			// 	unsigned int(8)[DataSize] Data;
 			// }
 
+			// A valid pssh box needs at least size(4) + 'pssh'(4) + version/flags(4) + SystemID(16) = 28 bytes.
+			// Bail out on a malformed/truncated box so the header reads below cannot crash.
+			if ((data == nullptr) || (data->GetLength() < 28))
+			{
+				loge("BMFF.CENC", "Malformed pssh box: too small to hold the header and SystemID");
+				return;
+			}
+
 			// Parse pssh box
 			ov::ByteStream stream(data);
 
