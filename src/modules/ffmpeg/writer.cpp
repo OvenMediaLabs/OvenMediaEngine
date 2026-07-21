@@ -757,6 +757,14 @@ namespace ffmpeg
 		_av_format = nullptr;
 		_need_to_flush = false;
 		_need_to_close = false;
+
+		_track_last_dts_map.clear();
+
+		{
+			std::lock_guard<std::shared_mutex> tlock(_track_map_lock);
+			_av_track_map.clear();
+			_event_track_map.clear();
+		}
 	}
 
 	std::pair<std::shared_ptr<AVStream>, std::shared_ptr<const MediaTrack>> Writer::GetTrack(int32_t track_id, cmn::BitstreamFormat format) const
