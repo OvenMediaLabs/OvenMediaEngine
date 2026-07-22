@@ -68,10 +68,6 @@ namespace bmff
 		// Notify the observer of a segment completed without a new chunk
 		void NotifySegmentCompleted(int64_t segment_number);
 
-		// Track version of the oldest retained segment, 0 until a segment has been
-		// dropped. Lock-free, safe to call from observer callbacks.
-		uint32_t GetMinRetainedTrackVersion() const;
-
 		// Complete the in-progress segment and start a new discontinuity domain
 		// without a configuration change (another track of the stream changed)
 		void CutSegmentForDiscontinuity();
@@ -232,10 +228,6 @@ namespace bmff
 		// segment number : segment
 		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;
 		mutable std::shared_mutex _segments_lock;
-
-		// Version of the oldest retained segment, updated when the oldest is dropped.
-		// Versions are non-decreasing along segment numbers.
-		std::atomic<uint32_t> _min_retained_track_version{0};
 
 		int64_t _initial_segment_number = 0;
 		[[maybe_unused]] int64_t _start_timestamp_delta = -1;

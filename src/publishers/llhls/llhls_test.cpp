@@ -25,7 +25,7 @@ namespace
 
 	// Simulates a segment packaged against the given track version, the way
 	// LLHlsStream::OnMediaChunkUpdated stamps partial infos from the storage segment
-	void AppendSegment(const std::shared_ptr<LLHlsChunklist> &chunklist, uint32_t sequence, uint32_t track_version, const ov::String &map_uri, bool discontinuity_point = false)
+	void AppendSegment(const std::shared_ptr<LLHlsChunklist> &chunklist, uint32_t sequence, uint32_t track_version, const ov::String &map_uri, bool discontinuity_point = false, const ov::String &codecs = "")
 	{
 		auto url = ov::String::FormatString("seg_1_%u_video_key_llhls.m4s", sequence);
 		chunklist->CreateSegmentInfo(LLHlsChunklist::SegmentInfo(sequence, url));
@@ -35,6 +35,7 @@ namespace
 		auto partial_info = LLHlsChunklist::SegmentInfo(0, sequence * 6000, 6.0, 1000, partial_url, next_partial_url, true, true);
 		partial_info.SetTrackVersion(track_version);
 		partial_info.SetMapUri(map_uri);
+		partial_info.SetCodecsParameter(codecs);
 		if (discontinuity_point == true)
 		{
 			partial_info.SetDiscontinuity();
@@ -195,6 +196,23 @@ TEST(LLHlsChunklist, PropagatedBoundaryCutDoesNotHintMap)
 	// No map change, so no map hint; the redirected part hint stays
 	EXPECT_EQ(playlist.IndexOf("#EXT-X-PRELOAD-HINT:TYPE=MAP"), -1);
 	EXPECT_NE(playlist.IndexOf("#EXT-X-PRELOAD-HINT:TYPE=PART,URI=\"part_1_2_0_video_key_llhls.m4s\""), -1);
+}
+
+TEST(LLHlsChunklist, CodecsUnionFollowsListing)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri, false, "avc1.42c00d");
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, false, "avc1.640029");
+
+	// Both versions are listed
+	EXPECT_STREQ(chunklist->GetListedCodecsUnion().CStr(), "avc1.42c00d,avc1.640029");
+
+	// The old version left the listing, its codecs leave the listed union but
+	// stay in the learned history for dumped output
+	chunklist->RemoveSegmentInfo(0);
+	EXPECT_STREQ(chunklist->GetListedCodecsUnion().CStr(), "avc1.640029");
+	EXPECT_STREQ(chunklist->GetAllCodecsUnion().CStr(), "avc1.42c00d,avc1.640029");
 }
 
 TEST(LLHlsChunklist, VersionChangeBeforeFirstSegmentHasNoTag)

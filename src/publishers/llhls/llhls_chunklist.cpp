@@ -138,6 +138,62 @@ bool LLHlsChunklist::CompleteSegmentInfo(uint32_t segment_sequence, const ov::St
 	return true;
 }
 
+ov::String LLHlsChunklist::GetListedCodecsUnion() const
+{
+	std::shared_lock<std::shared_mutex> lock(_segments_guard);
+	if (_segments.empty() == true)
+	{
+		return "";
+	}
+
+	return MakeCodecsUnionInternal(_segments.begin()->second->GetTrackVersion());
+}
+
+ov::String LLHlsChunklist::GetAllCodecsUnion() const
+{
+	std::shared_lock<std::shared_mutex> lock(_segments_guard);
+	return MakeCodecsUnionInternal(0);
+}
+
+ov::String LLHlsChunklist::MakeCodecsUnionInternal(uint32_t min_track_version) const
+{
+	// Versions can share the same parameter (e.g. a samplerate-only change)
+	ov::String codecs_union;
+	std::vector<ov::String> distinct_codecs;
+	for (auto it = _version_codecs.lower_bound(min_track_version); it != _version_codecs.end(); it++)
+	{
+		const auto &codecs = it->second;
+		if (codecs.IsEmpty() == true)
+		{
+			continue;
+		}
+
+		bool exists = false;
+		for (const auto &existing : distinct_codecs)
+		{
+			if (existing == codecs)
+			{
+				exists = true;
+				break;
+			}
+		}
+
+		if (exists == true)
+		{
+			continue;
+		}
+
+		distinct_codecs.push_back(codecs);
+		if (codecs_union.IsEmpty() == false)
+		{
+			codecs_union.Append(",");
+		}
+		codecs_union.Append(codecs);
+	}
+
+	return codecs_union;
+}
+
 void LLHlsChunklist::SetUpcomingMapUri(const ov::String &map_uri)
 {
 	{
@@ -172,6 +228,12 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 		{
 			segment->SetTrackVersion(info.GetTrackVersion());
 			segment->SetMapUri(info.GetMapUri());
+
+			// The chunklist learns each version's codecs from its segments
+			if (info.GetCodecsParameter().IsEmpty() == false)
+			{
+				_version_codecs[info.GetTrackVersion()] = info.GetCodecsParameter();
+			}
 
 			if (info.IsDiscontinuity() == true ||
 				(_last_started_track_version.has_value() == true &&

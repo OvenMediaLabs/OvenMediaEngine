@@ -51,6 +51,13 @@ namespace base
 			{
 				return false;
 			}
+
+			// Codecs parameter (RFC 6381) of the track version this segment was
+			// packaged against, empty when the container does not track it
+			virtual ov::String GetCodecsParameter() const
+			{
+				return "";
+			}
 			virtual bool HasMarker() const = 0;
 			virtual const std::vector<std::shared_ptr<Marker>> &GetMarkers() const = 0;
 			virtual void SetMarkers(const std::vector<std::shared_ptr<Marker>> &markers) = 0;

@@ -546,7 +546,7 @@ const ov::String &LLHlsStream::GetStreamKey() const
 	return _stream_key;
 }
 
-std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist) const
+std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist, bool include_unlisted_codecs) const
 {
 	auto master_playlist = std::make_shared<LLHlsMasterPlaylist>();
 
@@ -622,11 +622,11 @@ std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std
 		// The CODECS attribute must cover every version whose segments remain
 		if (video_track != nullptr)
 		{
-			master_playlist->SetTrackCodecs(video_track->GetId(), GetCodecsParameterUnion(video_track));
+			master_playlist->SetTrackCodecs(video_track->GetId(), GetCodecsParameterUnion(video_track, include_unlisted_codecs));
 		}
 		if (audio_track != nullptr)
 		{
-			master_playlist->SetTrackCodecs(audio_track->GetId(), GetCodecsParameterUnion(audio_track));
+			master_playlist->SetTrackCodecs(audio_track->GetId(), GetCodecsParameterUnion(audio_track, include_unlisted_codecs));
 		}
 
 		// If there is no media track, it is not added to the master playlist
@@ -686,7 +686,7 @@ bool LLHlsStream::DumpMasterPlaylist(const std::shared_ptr<mdl::Dump> &item)
 
 	for (auto &playlist : item->GetPlaylists())
 	{
-		auto [result, data] = GetMasterPlaylist(playlist, "", false, false, true, false);
+		auto [result, data] = GetMasterPlaylistForDump(playlist);
 		if (result != RequestResult::Success)
 		{
 			logtw("Could not get master playlist(%s) for dump", playlist.CStr());
@@ -837,6 +837,25 @@ bool LLHlsStream::DumpSegment(const std::shared_ptr<mdl::Dump> &item, const int3
 bool LLHlsStream::DumpData(const std::shared_ptr<mdl::Dump> &item, const ov::String &file_name, const std::shared_ptr<const ov::Data> &data)
 {
 	return item->DumpData(file_name, data);
+}
+
+std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStream::GetMasterPlaylistForDump(const ov::String &file_name) const
+{
+	auto file_name_without_ext = file_name.Substring(0, file_name.IndexOfRev('.'));
+
+	auto playlist = GetPlaylist(file_name_without_ext);
+	if (playlist == nullptr)
+	{
+		return {RequestResult::NotFound, nullptr};
+	}
+
+	auto master_playlist = CreateMasterPlaylist(playlist, true);
+	if (master_playlist == nullptr)
+	{
+		return {RequestResult::NotFound, nullptr};
+	}
+
+	return {RequestResult::Success, master_playlist->ToString("", false, true, false).ToData(false)};
 }
 
 std::tuple<LLHlsStream::RequestResult, std::shared_ptr<const ov::Data>> LLHlsStream::GetMasterPlaylist(const ov::String &file_name, const ov::String &chunk_query_string, bool gzip, bool legacy, bool rewind, bool include_path)
@@ -1499,19 +1518,6 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 		}
 	}
 
-	{
-		std::lock_guard<std::shared_mutex> lock(_track_version_codecs_lock);
-		auto &version_codecs = _track_version_codecs[track_id];
-
-		// No segment of the previous configuration was ever published
-		if (has_published_content == false)
-		{
-			version_codecs.clear();
-		}
-
-		version_codecs[new_track->GetVersion()] = new_track->GetCodecsParameter();
-	}
-
 	// CODECS/RESOLUTION attributes of the master playlist follow the change
 	{
 		std::unique_lock<std::mutex> guard(_master_playlists_lock);
@@ -1519,6 +1525,9 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 	}
 
 	DumpInitSegmentOfAllItems(track_id);
+
+	// Dumped master playlists must advertise the new codec as well
+	DumpMasterPlaylistsOfAllItems();
 
 	logti("LLHlsStream(%s/%s) - Track(%d) configuration change has been applied (version %u -> %u)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, old_track->GetVersion(), new_track->GetVersion());
 }
@@ -1682,11 +1691,6 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 		_initial_track_versions[track_id] = media_track->GetVersion();
 	}
 
-	{
-		std::lock_guard<std::shared_mutex> lock(_track_version_codecs_lock);
-		_track_version_codecs[track_id][media_track->GetVersion()] = media_track->GetCodecsParameter();
-	}
-
 	return true;
 }
 
@@ -1847,86 +1851,19 @@ ov::String LLHlsStream::GetMapUriForTrackVersion(const int32_t &track_id, uint32
 	return GetInitializationSegmentName(track_id, track_version);
 }
 
-ov::String LLHlsStream::GetCodecsParameterUnion(const std::shared_ptr<const MediaTrack> &track) const
+ov::String LLHlsStream::GetCodecsParameterUnion(const std::shared_ptr<const MediaTrack> &track, bool include_unlisted) const
 {
-	std::shared_lock<std::shared_mutex> lock(_track_version_codecs_lock);
-
-	auto it = _track_version_codecs.find(track->GetId());
-	if (it == _track_version_codecs.end() || it->second.empty() == true)
+	auto chunklist = GetChunklistWriter(track->GetId());
+	if (chunklist != nullptr)
 	{
-		return track->GetCodecsParameter();
-	}
-
-	// Versions can share the same parameter (e.g. a samplerate-only change)
-	ov::String codecs_union;
-	std::vector<ov::String> distinct_codecs;
-	for (const auto &[version, codecs] : it->second)
-	{
-		bool exists = false;
-		for (const auto &existing : distinct_codecs)
-		{
-			if (existing == codecs)
-			{
-				exists = true;
-				break;
-			}
-		}
-
-		if (exists == true)
-		{
-			continue;
-		}
-
-		distinct_codecs.push_back(codecs);
+		auto codecs_union = include_unlisted ? chunklist->GetAllCodecsUnion() : chunklist->GetListedCodecsUnion();
 		if (codecs_union.IsEmpty() == false)
 		{
-			codecs_union.Append(",");
-		}
-		codecs_union.Append(codecs);
-	}
-
-	return codecs_union;
-}
-
-void LLHlsStream::PruneTrackVersionCodecs(const int32_t &track_id)
-{
-	// DVR keeps old segments servable, so their codecs stay advertised
-	if (_storage_config.dvr_enabled == true)
-	{
-		return;
-	}
-
-	auto storage = GetFmp4Storage(track_id);
-	if (storage == nullptr)
-	{
-		return;
-	}
-
-	auto min_retained_version = storage->GetMinRetainedTrackVersion();
-
-	bool pruned = false;
-	{
-		std::lock_guard<std::shared_mutex> lock(_track_version_codecs_lock);
-		auto it = _track_version_codecs.find(track_id);
-		if (it == _track_version_codecs.end())
-		{
-			return;
-		}
-
-		auto &version_codecs = it->second;
-		for (auto version_it = version_codecs.begin(); version_it != version_codecs.end() && version_it->first < min_retained_version;)
-		{
-			version_it = version_codecs.erase(version_it);
-			pruned = true;
+			return codecs_union;
 		}
 	}
 
-	// The cached master playlists still advertise the dropped codecs
-	if (pruned == true)
-	{
-		std::unique_lock<std::mutex> guard(_master_playlists_lock);
-		_master_playlists.clear();
-	}
+	return track->GetCodecsParameter();
 }
 
 ov::String LLHlsStream::GetSegmentName(const int32_t &track_id, const int64_t &segment_number) const
@@ -2193,9 +2130,10 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		}
 
 		// The configuration the segment was packaged against; the chunklist derives
-		// discontinuities and map switches from it
+		// discontinuities, map switches, and its codecs description from it
 		partial_info.SetTrackVersion(segment->GetTrackVersion());
 		partial_info.SetMapUri(GetMapUriForTrackVersion(track_id, segment->GetTrackVersion()));
+		partial_info.SetCodecsParameter(segment->GetCodecsParameter());
 
 		// A boundary cut propagated from another track flags the segment even though
 		// this track's own configuration did not change
@@ -2205,7 +2143,17 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		}
 	}
 
+	// A segment's first chunk can bring a codec into the listing; the cached
+	// master playlists do not advertise it yet
+	auto codecs_union_before = (chunk_number == 0) ? playlist->GetListedCodecsUnion() : ov::String();
+
 	playlist->AppendPartialSegmentInfo(segment_number, partial_info);
+
+	if (chunk_number == 0 && playlist->GetListedCodecsUnion() != codecs_union_before)
+	{
+		std::unique_lock<std::mutex> guard(_master_playlists_lock);
+		_master_playlists.clear();
+	}
 
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
 
@@ -2298,10 +2246,16 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 		}
 	}
 
+	auto codecs_union_before = playlist->GetListedCodecsUnion();
+
 	playlist->RemoveSegmentInfo(segment_number);
 
-	// Codecs of versions that just left the window leave the CODECS attribute
-	PruneTrackVersionCodecs(track_id);
+	// The cached master playlists still advertise codecs that just left the listing
+	if (playlist->GetListedCodecsUnion() != codecs_union_before)
+	{
+		std::unique_lock<std::mutex> guard(_master_playlists_lock);
+		_master_playlists.clear();
+	}
 
 	logtt("Media segment deleted : track_id = %d, segment_number = %d", track_id, segment_number);
 }

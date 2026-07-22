@@ -123,6 +123,16 @@ namespace bmff
 			return _discontinuity_point;
 		}
 
+		void SetCodecsParameter(const ov::String &codecs)
+		{
+			_codecs_parameter = codecs;
+		}
+
+		ov::String GetCodecsParameter() const override
+		{
+			return _codecs_parameter;
+		}
+
 		bool AppendPartialData(const std::shared_ptr<ov::Data> &partial_data, int64_t start_timestamp, double duration_ms, bool independent)
 		{
 			if (_is_completed)
@@ -235,6 +245,7 @@ namespace bmff
 
 		uint32_t _track_version = 0;
 		bool _discontinuity_point = false;
+		ov::String _codecs_parameter;
 
 		int64_t _number = -1;
 

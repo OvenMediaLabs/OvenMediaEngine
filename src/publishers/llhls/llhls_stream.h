@@ -129,13 +129,15 @@ private:
 	// Get Playlist with the track id
 	std::shared_ptr<LLHlsChunklist> GetChunklistWriter(const int32_t &track_id) const;
 
-	std::shared_ptr<LLHlsMasterPlaylist> CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist) const;
+	std::shared_ptr<LLHlsMasterPlaylist> CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist, bool include_unlisted_codecs = false) const;
 
-	// Every codec parameter whose segments remain in the window, oldest first.
-	// The CODECS attribute of the master playlist must cover all of them.
-	ov::String GetCodecsParameterUnion(const std::shared_ptr<const MediaTrack> &track) const;
-	// Drop codec parameters of versions whose segments all left the window
-	void PruneTrackVersionCodecs(const int32_t &track_id);
+	// Uncached master playlist for dumped output; its CODECS attribute covers
+	// unlisted versions too because the dump keeps segments of every version
+	std::tuple<RequestResult, std::shared_ptr<const ov::Data>> GetMasterPlaylistForDump(const ov::String &file_name) const;
+
+	// Codecs the CODECS attribute advertises for a track, answered by the track's
+	// chunklist from its own listing (or registration history for dumped output)
+	ov::String GetCodecsParameterUnion(const std::shared_ptr<const MediaTrack> &track, bool include_unlisted = false) const;
 
 	ov::String GetChunklistName(const int32_t &track_id) const;
 	ov::String GetInitializationSegmentName(const int32_t &track_id) const;
@@ -190,10 +192,6 @@ private:
 	std::map<int32_t, uint32_t> _initial_track_versions;
 	mutable std::shared_mutex _initial_track_versions_lock;
 
-	// Track ID : (track version : codecs parameter) of versions whose segments
-	// remain in the window, source of the master playlist CODECS attribute
-	std::map<int32_t, std::map<uint32_t, ov::String>> _track_version_codecs;
-	mutable std::shared_mutex _track_version_codecs_lock;
 
 	uint64_t _max_chunk_duration_ms = 0;
 	uint64_t _min_chunk_duration_ms = std::numeric_limits<uint64_t>::max();

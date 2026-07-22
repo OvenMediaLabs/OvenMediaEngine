@@ -196,6 +196,17 @@ public:
 			return _track_version;
 		}
 
+		// Codecs parameter of the track version this segment was packaged against
+		void SetCodecsParameter(const ov::String &codecs)
+		{
+			_codecs_parameter = codecs;
+		}
+
+		const ov::String &GetCodecsParameter() const
+		{
+			return _codecs_parameter;
+		}
+
 		ov::String GetStartDate() const
 		{
 			ov::String start_date;
@@ -244,6 +255,7 @@ public:
 		bool _discontinuity = false;
 		ov::String _map_uri;
 		uint32_t _track_version = 0;
+		ov::String _codecs_parameter;
 
 		std::deque<std::shared_ptr<SegmentInfo>> _partial_segments;
 
@@ -289,6 +301,16 @@ public:
 	// listed map. Set it only once the initialization section is servable.
 	void SetUpcomingMapUri(const ov::String &map_uri);
 
+	// The chunklist describes which codecs its own listing contains, learned from
+	// the segments it was fed; the master playlist CODECS attribute is built from
+	// that description.
+	// Every distinct codecs parameter among the listed segments, oldest first
+	ov::String GetListedCodecsUnion() const;
+
+	// Every distinct codecs parameter ever listed; dumped output keeps segments
+	// of every version, so it needs them all
+	ov::String GetAllCodecsUnion() const;
+
 	ov::String ToString(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod = false, uint32_t vod_start_segment_number = 0) const;
 	std::shared_ptr<const ov::Data> ToGzipData(const ov::String &query_string, bool skip, bool legacy, bool rewind) const;
 
@@ -330,6 +352,13 @@ private:
 	// Map of the hinted-but-not-yet-listed partial. Emitted as a TYPE=MAP preload
 	// hint while it differs from the last listed map. Guarded by _segments_guard.
 	ov::String _upcoming_map_uri;
+
+	// Called with _segments_guard held; versions are non-decreasing along segments
+	ov::String MakeCodecsUnionInternal(uint32_t min_track_version) const;
+
+	// Track version : codecs parameter, learned from the first partial of each
+	// version's segments. Guarded by _segments_guard.
+	std::map<uint32_t, ov::String> _version_codecs;
 
 	// Discontinuity-flagged segments that left the live window (EXT-X-DISCONTINUITY-SEQUENCE base)
 	std::atomic<int64_t> _removed_discontinuity_count = 0;

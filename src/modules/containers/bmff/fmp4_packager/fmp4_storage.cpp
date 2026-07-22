@@ -267,6 +267,7 @@ namespace bmff
 				{
 					auto new_segment = std::make_shared<FMP4Segment>(last_segment->GetNumber(), _config.segment_duration_ms, track->GetTimeBase().GetExpr());
 					new_segment->SetTrackVersion(track->GetVersion());
+					new_segment->SetCodecsParameter(track->GetCodecsParameter());
 					_segments[last_segment->GetNumber()] = new_segment;
 				}
 			}
@@ -294,11 +295,6 @@ namespace bmff
 		{
 			_observer->OnMediaSegmentCompleted(GetTrack()->GetId(), segment_number);
 		}
-	}
-
-	uint32_t FMP4Storage::GetMinRetainedTrackVersion() const
-	{
-		return _min_retained_track_version;
 	}
 
 	void FMP4Storage::MarkPendingSegmentDiscontinuity()
@@ -461,6 +457,7 @@ namespace bmff
 		// Create next segment
 		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, track->GetTimeBase().GetExpr());
 		segment->SetTrackVersion(track->GetVersion());
+		segment->SetCodecsParameter(track->GetCodecsParameter());
 		{
 			std::lock_guard<std::shared_mutex> lock(_segments_lock);
 			_segments.emplace(segment->GetNumber(), segment);
@@ -477,7 +474,6 @@ namespace bmff
 				if (_segments.size() > _config.max_segments + 3)
 				{
 					_segments.erase(_segments.begin());
-					_min_retained_track_version = _segments.empty() ? 0 : _segments.begin()->second->GetTrackVersion();
 					DropUnreferencedInitializationSections();
 				}
 
