@@ -603,6 +603,14 @@ void HlsStream::OnSegmentCreated(const ov::String &packager_id, const std::share
 
 	DumpSegmentOfAllItems(packager_id, segment->GetNumber());
 
+	// A discontinuity carries a new configuration generation, so the master CODECS
+	// (and RESOLUTION) may have changed; refresh the dumped master. This is where the
+	// new codec first appears in the segment listing the union is derived from.
+	if (segment->IsDiscontinuityPoint() == true)
+	{
+		DumpMasterPlaylistOfAllItems();
+	}
+
 	if (packager_id == _vtt_reference_packager_id)
 	{
 		std::shared_lock<std::shared_mutex> lock(_vtt_packagers_lock);
@@ -688,6 +696,132 @@ void HlsStream::OnSegmentDeleted(const ov::String &packager_id, const std::share
 			OnSegmentDeleted(variant_name, vtt_segment);
 
 			vtt_packager->DeleteSegment(segment->GetNumber());
+		}
+	}
+}
+
+void HlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+{
+	// A subtitle track change only affects the master playlist metadata (name,
+	// language); refresh the track the master reads and stop.
+	if (new_track->GetMediaType() == cmn::MediaType::Subtitle)
+	{
+		UpdateMediaPlaylistTrackInfo(track_id, new_track);
+		DumpMasterPlaylistOfAllItems();	// subtitle name/language in the dumped master
+		logti("HlsStream(%s/%s) - Subtitle track(%d) metadata has been updated (version %u -> %u)",
+			  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, old_track->GetVersion(), new_track->GetVersion());
+		return;
+	}
+
+	// A label-only change does not affect the packaged output
+	if (old_track->HasSameContent(*new_track) == true)
+	{
+		Stream::OnTrackChanged(track_id, old_track, new_track);
+		return;
+	}
+
+	if (IsSupportedCodec(new_track->GetCodecId()) == false)
+	{
+		logte("HlsStream(%s/%s) - Track(%d) has changed to an unsupported codec(%s), the track is excluded from the output from this point",
+			  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, cmn::GetCodecIdString(new_track->GetCodecId()));
+
+		// Newly served master playlists stop advertising the affected renditions
+		SetRenditionsExcludedByTrack(track_id, true);
+		DumpMasterPlaylistOfAllItems();	// the dumped master drops the excluded rendition too
+		return;
+	}
+
+	// Supported content change: repackage the renditions carrying this track and
+	// align every other rendition on the same boundary.
+	std::map<ov::String, std::shared_ptr<mpegts::Packager>> packagers;
+	{
+		std::shared_lock<std::shared_mutex> lock(_ts_packagers_guard);
+		packagers = _ts_packagers;
+	}
+
+	double boundary_timestamp_ms = -1.0;
+	std::vector<std::shared_ptr<mpegts::Packager>> sibling_packagers;
+
+	for (const auto &[variant_name, packager] : packagers)
+	{
+		if (packager == nullptr)
+		{
+			continue;
+		}
+
+		if (packager->HasTrack(track_id) == false)
+		{
+			sibling_packagers.push_back(packager);
+			continue;
+		}
+
+		if (boundary_timestamp_ms < 0.0)
+		{
+			boundary_timestamp_ms = packager->GetLastSampleEndTimestampMs();
+		}
+
+		// The packager closes the current content (old codecs/PSI) and starts a new
+		// generation; the packetizer rebuilds the PMT only on a codec change. The
+		// packager runs first so the flushed tail keeps the old PSI.
+		packager->UpdateTrack(new_track);
+
+		auto packetizer = GetTSPacketizer(variant_name);
+		if (packetizer != nullptr)
+		{
+			packetizer->UpdateTrack(new_track);
+		}
+	}
+
+	// Players keep renditions in sync by their discontinuity sequences, so every
+	// other rendition must cut an aligned boundary even though it did not change.
+	if (boundary_timestamp_ms >= 0.0)
+	{
+		for (const auto &packager : sibling_packagers)
+		{
+			packager->RequestCutForDiscontinuity(boundary_timestamp_ms);
+		}
+	}
+
+	// Master CODECS/RESOLUTION follow the change; re-include if it had been excluded
+	UpdateMediaPlaylistTrackInfo(track_id, new_track);
+	SetRenditionsExcludedByTrack(track_id, false);
+
+	logti("HlsStream(%s/%s) - Track(%d) configuration change has been applied (version %u -> %u)",
+		  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, old_track->GetVersion(), new_track->GetVersion());
+}
+
+void HlsStream::UpdateMediaPlaylistTrackInfo(int32_t track_id, const std::shared_ptr<const MediaTrack> &new_track)
+{
+	std::map<ov::String, std::shared_ptr<HlsMediaPlaylist>> playlists;
+	{
+		std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+		playlists = _media_playlists;
+	}
+
+	for (const auto &it : playlists)
+	{
+		const auto &playlist = it.second;
+		if (playlist != nullptr && playlist->HasTrack(track_id) == true)
+		{
+			playlist->UpdateMediaTrackInfo(new_track);
+		}
+	}
+}
+
+void HlsStream::SetRenditionsExcludedByTrack(int32_t track_id, bool excluded)
+{
+	std::map<ov::String, std::shared_ptr<HlsMediaPlaylist>> playlists;
+	{
+		std::shared_lock<std::shared_mutex> lock(_media_playlists_guard);
+		playlists = _media_playlists;
+	}
+
+	for (const auto &it : playlists)
+	{
+		const auto &playlist = it.second;
+		if (playlist != nullptr && playlist->HasTrack(track_id) == true)
+		{
+			playlist->SetExcluded(excluded);
 		}
 	}
 }

@@ -76,6 +76,36 @@ namespace mpegts
             return true;
         }
 
+        uint32_t GetTrackVersion() const override
+        {
+            return _track_version;
+        }
+
+        bool IsDiscontinuityPoint() const override
+        {
+            return _is_discontinuity;
+        }
+
+        ov::String GetCodecsParameter() const override
+        {
+            return _codecs;
+        }
+
+        void SetTrackVersion(uint32_t track_version)
+        {
+            _track_version = track_version;
+        }
+
+        void SetDiscontinuityPoint(bool is_discontinuity)
+        {
+            _is_discontinuity = is_discontinuity;
+        }
+
+        void SetCodecsParameter(const ov::String &codecs)
+        {
+            _codecs = codecs;
+        }
+
         bool HasMarker() const override
 		{
 			return _markers.empty() == false;
@@ -159,6 +189,12 @@ namespace mpegts
         int64_t _segment_id = 0;
         int64_t _first_dts = -1;
         double _duration_ms = 0;
+
+		// Track configuration this segment was packaged against (discontinuity signaling)
+		uint32_t _track_version = 0;
+		bool _is_discontinuity = false;
+		ov::String _codecs;
+
 		ov::String _url;
         
 		ov::String _file_path;
@@ -188,7 +224,11 @@ namespace mpegts
 		int64_t _pts = -1;
 		int64_t _dts = -1;
 		int64_t _duration = -1;
-		
+
+		// Configuration generation stamped at ingestion; the segment inherits the
+		// generation of its first sample for discontinuity detection
+		uint32_t generation = 0;
+
         std::shared_ptr<const MediaPacket> media_packet = nullptr;
         std::shared_ptr<const ov::Data> ts_packet_data = nullptr;
     };
@@ -204,6 +244,11 @@ namespace mpegts
         std::shared_ptr<const MediaTrack> GetTrack() const
         {
             return _track;
+        }
+
+        void SetTrack(const std::shared_ptr<const MediaTrack> &track)
+        {
+            _track = track;
         }
 
         bool AddSample(const Sample &sample)
@@ -429,6 +474,27 @@ namespace mpegts
         void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data) override;
 
 		void Flush();
+
+		////////////////////////////////
+		// Runtime track configuration changes
+		////////////////////////////////
+
+		// Replace an existing track with a new configuration version. Closes the
+		// current content into its own segment (old codecs/PSI), then starts a new
+		// configuration generation so the following segment is a discontinuity point.
+		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track);
+
+		// Request a discontinuity-aligned cut at boundary_timestamp_ms, applied at the
+		// first independent sample at or after it. Used to align sibling packagers when
+		// another track changes. Deduplicated against the last handled boundary.
+		void RequestCutForDiscontinuity(double boundary_timestamp_ms);
+
+		// End timestamp (ms) of the most recent main-track sample
+		double GetLastSampleEndTimestampMs() const;
+
+		// Whether this packager carries the given track
+		bool HasTrack(uint32_t track_id) const;
+
         ////////////////////////////////
         // SegmentStorage interface
         ////////////////////////////////
@@ -473,7 +539,10 @@ namespace mpegts
         int64_t GetNextSegmentId();
 
         std::shared_ptr<ov::Data> MergeTsPacketData(const std::vector<std::shared_ptr<mpegts::Packet>> &ts_packets);
-    
+
+        // Codecs parameter (RFC 6381) of the current media tracks (video first, then audio)
+        ov::String MakeCodecsParameter() const;
+
         std::shared_ptr<const MediaTrack> GetMediaTrack(uint32_t track_id) const;
         std::shared_ptr<SampleBuffer> GetSampleBuffer(uint32_t track_id) const;
 
@@ -513,6 +582,13 @@ namespace mpegts
 		// make segment boundary as soon as possible
 		bool _force_make_boundary = false;
 
+		// Runtime track change state
+		uint32_t _track_config_generation = 0;		// current generation, stamped on samples
+		uint32_t _last_created_generation = 0;		// generation of the last created segment
+		double _pending_cut_timestamp_ms = -1.0;	// pending propagated discontinuity cut
+		double _last_boundary_timestamp_ms = -1.0;	// last handled boundary, for dedup
+		double _last_sample_end_timestamp_ms = 0.0;	// end of the most recent main-track sample
+
         // track_id -> SampleBuffer
         std::map<uint32_t, std::shared_ptr<SampleBuffer>> _sample_buffers;
 
@@ -520,6 +596,9 @@ namespace mpegts
         std::map<uint32_t, std::shared_ptr<const MediaTrack>> _media_tracks;
         std::vector<std::shared_ptr<mpegts::Packet>> _psi_packets;
         std::shared_ptr<ov::Data> _psi_packet_data;
+        // Codecs of the current tracks, recomputed only when they change (OnPsi/UpdateTrack)
+        // so segment stamping does not rebuild it per segment
+        ov::String _codecs_parameter;
 
         int64_t _last_segment_id = 0;
 
