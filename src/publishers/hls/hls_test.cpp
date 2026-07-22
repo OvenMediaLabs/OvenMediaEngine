@@ -300,7 +300,8 @@ TEST(HlsPackager, PropagatedCutOnEmptyBufferProducesNoEmptySegment)
 	ASSERT_GT(sink->_created.size(), 0u);
 	for (const auto &segment : sink->_created)
 	{
-		EXPECT_GT(segment->GetDurationMs(), 0.0);	// the empty-buffer cut must not create a 0-duration segment
+		EXPECT_GT(segment->GetDurationMs(), 0.0);		// the empty-buffer cut must not create a 0-duration segment
+		EXPECT_FALSE(segment->IsDiscontinuityPoint());	// nor a discontinuity, since there is no prior domain
 	}
 }
 

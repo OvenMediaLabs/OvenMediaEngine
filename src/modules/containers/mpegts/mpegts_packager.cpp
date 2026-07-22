@@ -371,12 +371,21 @@ namespace mpegts
 					// Close the old domain only if it has samples; otherwise the cut
 					// merely starts the new generation with the upcoming sample, so no
 					// empty 0-duration segment is produced.
+					bool has_prior_domain = (_last_segment_id > 0);
 					if (sample_buffer->GetCurrentDurationMs() > 0.0)
 					{
 						sample_buffer->MarkSegmentBoundary();
 						boundary_marked = true;
+						has_prior_domain = true;
 					}
-					_track_config_generation++;
+
+					// Only start a new generation when there is a prior domain to be
+					// discontinuous from; a cut before any content simply establishes
+					// the initial configuration.
+					if (has_prior_domain == true)
+					{
+						_track_config_generation++;
+					}
 					_last_boundary_timestamp_ms = sample_dts_ms;
 					_pending_cut_timestamp_ms = -1.0;
 					// The cut supersedes a pending forced boundary at this point
