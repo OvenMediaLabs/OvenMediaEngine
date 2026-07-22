@@ -190,7 +190,8 @@ namespace mpegts
 			// and PSI (the swap happens after the flush). The new content starts at the
 			// new track's first key frame, which the packetizer key-frame gate ensures.
 			auto main_sample_buffer = GetSampleBuffer(_main_track_id);
-			if (main_sample_buffer != nullptr && main_sample_buffer->GetCurrentDurationMs() > 0.0)
+			bool has_buffered_content = (main_sample_buffer != nullptr && main_sample_buffer->GetCurrentDurationMs() > 0.0);
+			if (has_buffered_content == true)
 			{
 				Flush();
 			}
@@ -203,11 +204,15 @@ namespace mpegts
 			}
 			_codecs_parameter = MakeCodecsParameter();
 
-			// Start a new configuration generation so the next segment is a
-			// discontinuity point. An own cut supersedes a pending propagated one.
-			_track_config_generation++;
-			_pending_cut_timestamp_ms = -1.0;
-			_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
+			// A change before any content is produced only establishes the initial
+			// configuration, so it is not a discontinuity. Otherwise start a new
+			// generation; an own cut supersedes a pending propagated one.
+			if (has_buffered_content == true || _last_segment_id > 0)
+			{
+				_track_config_generation++;
+				_pending_cut_timestamp_ms = -1.0;
+				_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
+			}
 		}
 		else
 		{
@@ -225,7 +230,12 @@ namespace mpegts
 			}
 			_codecs_parameter = MakeCodecsParameter();
 
-			RequestCutForDiscontinuity(GetLastSampleEndTimestampMs());
+			// Only after content exists is there a prior domain to be discontinuous
+			// from; before the first segment the change is just the initial configuration.
+			if (_last_segment_id > 0)
+			{
+				RequestCutForDiscontinuity(GetLastSampleEndTimestampMs());
+			}
 		}
 
 		return true;
@@ -358,11 +368,19 @@ namespace mpegts
 				double sample_dts_ms = static_cast<double>(sample._dts) / TIMEBASE_DBL * 1000.0;
 				if (sample_dts_ms >= _pending_cut_timestamp_ms)
 				{
-					sample_buffer->MarkSegmentBoundary();
+					// Close the old domain only if it has samples; otherwise the cut
+					// merely starts the new generation with the upcoming sample, so no
+					// empty 0-duration segment is produced.
+					if (sample_buffer->GetCurrentDurationMs() > 0.0)
+					{
+						sample_buffer->MarkSegmentBoundary();
+						boundary_marked = true;
+					}
 					_track_config_generation++;
 					_last_boundary_timestamp_ms = sample_dts_ms;
 					_pending_cut_timestamp_ms = -1.0;
-					boundary_marked = true;
+					// The cut supersedes a pending forced boundary at this point
+					_force_make_boundary = false;
 				}
 			}
 

@@ -218,6 +218,73 @@ TEST(HlsPackager, RequestCutDeduplicatesNearbyBoundary)
 	SUCCEED();
 }
 
+TEST(HlsPackager, TrackChangeBeforeContentIsNotDiscontinuity)
+{
+	mpegts::Packager::Config config;
+	config.target_duration_ms = 1000;
+	config.max_segment_count = 100;
+
+	auto packager = std::make_shared<mpegts::Packager>("variant", config);
+	auto sink = std::make_shared<CollectingPackagerSink>();
+	packager->AddSink(sink);
+
+	packager->OnPsi({MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H264, 1)}, {});
+
+	// Change the track before a single frame is packaged
+	ASSERT_TRUE(packager->UpdateTrack(MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H265, 2)));
+
+	auto ts = std::make_shared<ov::Data>();
+	uint8_t byte = 0x47;
+	ts->Append(&byte, 1);
+
+	int64_t dts = 0;
+	for (int i = 0; i < 4; i++)
+	{
+		packager->OnFrame(MakeVideoKeyFrame(1, dts, 90000), ts);
+		dts += 90000;
+	}
+
+	ASSERT_GT(sink->_created.size(), 0u);
+	for (const auto &segment : sink->_created)
+	{
+		EXPECT_FALSE(segment->IsDiscontinuityPoint());	// pre-content change is the initial config
+		EXPECT_GT(segment->GetDurationMs(), 0.0);
+	}
+}
+
+TEST(HlsPackager, PropagatedCutOnEmptyBufferProducesNoEmptySegment)
+{
+	mpegts::Packager::Config config;
+	config.target_duration_ms = 1000;
+	config.max_segment_count = 100;
+
+	auto packager = std::make_shared<mpegts::Packager>("variant", config);
+	auto sink = std::make_shared<CollectingPackagerSink>();
+	packager->AddSink(sink);
+
+	packager->OnPsi({MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H264, 1)}, {});
+
+	// A sibling requests an aligned cut while nothing is buffered yet
+	packager->RequestCutForDiscontinuity(0.0);
+
+	auto ts = std::make_shared<ov::Data>();
+	uint8_t byte = 0x47;
+	ts->Append(&byte, 1);
+
+	int64_t dts = 0;
+	for (int i = 0; i < 5; i++)
+	{
+		packager->OnFrame(MakeVideoKeyFrame(1, dts, 90000), ts);
+		dts += 90000;
+	}
+
+	ASSERT_GT(sink->_created.size(), 0u);
+	for (const auto &segment : sink->_created)
+	{
+		EXPECT_GT(segment->GetDurationMs(), 0.0);	// the empty-buffer cut must not create a 0-duration segment
+	}
+}
+
 // ---------------------------------------------------------------------------
 // HlsMediaPlaylist - EXT-X-DISCONTINUITY, EXT-X-DISCONTINUITY-SEQUENCE, CODECS
 // union and the fixed EXT-X-VERSION.
