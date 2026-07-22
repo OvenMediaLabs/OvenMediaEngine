@@ -176,7 +176,7 @@ void OvtStream::GenerateTrackDescription(const std::shared_ptr<const MediaTrack>
 	out_json_track["publicName"] = track->GetPublicName().CStr();
 	out_json_track["language"] = track->GetLanguage().CStr();
 	out_json_track["characteristics"] = track->GetCharacteristics().CStr();
-	out_json_track["codecId"] = static_cast<int8_t>(track->GetCodecId());
+	out_json_track["codecId"] = static_cast<uint8_t>(track->GetCodecId());
 	out_json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
 	out_json_track["timebaseNum"] = track->GetTimeBase().GetNum();
 	out_json_track["timebaseDen"] = track->GetTimeBase().GetDen();
