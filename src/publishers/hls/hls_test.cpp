@@ -119,6 +119,25 @@ TEST(HlsPacketizer, KeepsPsiOnSameCodecChange)
 	EXPECT_EQ(sink->_psi_count, 1);
 }
 
+TEST(HlsPacketizer, PreStartUpdateReplacesExistingTrack)
+{
+	auto sink = std::make_shared<CountingPacketizerSink>();
+
+	mpegts::Packetizer packetizer;
+	packetizer.AddSink(sink);
+	ASSERT_TRUE(packetizer.AddTrack(MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H264, 1)));
+
+	// An update before Start must replace the already-added track, not silently keep it
+	ASSERT_TRUE(packetizer.UpdateTrack(MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H265, 2)));
+	ASSERT_TRUE(packetizer.Start());
+	EXPECT_EQ(sink->_psi_count, 1);
+
+	// The started track is now H265, so an H265 update is a no-op with no PSI rebroadcast.
+	// Had the pre-Start replace been dropped, this would be an H264->H265 change and rebroadcast.
+	ASSERT_TRUE(packetizer.UpdateTrack(MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H265, 3)));
+	EXPECT_EQ(sink->_psi_count, 1);
+}
+
 // ---------------------------------------------------------------------------
 // mpegts::Packager - a main-track change starts a new configuration generation,
 // so the following segment is a discontinuity point and the pre-change tail is not.

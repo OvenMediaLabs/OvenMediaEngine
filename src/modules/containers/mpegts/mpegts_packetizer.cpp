@@ -85,12 +85,6 @@ namespace mpegts
             return false;
         }
 
-        if (IsStarted() == false)
-        {
-            // Not started yet, the track is included when Start() builds the PSI
-            return AddTrack(media_track);
-        }
-
         if (media_track->GetMediaType() == cmn::MediaType::Audio || media_track->GetMediaType() == cmn::MediaType::Video)
         {
             if (GetElementaryStreamTypeByCodecId(media_track->GetCodecId()) == WellKnownStreamTypes::None)
@@ -98,6 +92,24 @@ namespace mpegts
                 logte("%s codec is not supported for a runtime track change", cmn::GetCodecIdString(media_track->GetCodecId()));
                 return false;
             }
+        }
+
+        if (IsStarted() == false)
+        {
+            // Not started yet; the track is included when Start() builds the PSI. An
+            // already-added track must be replaced in place because AddTrack() uses
+            // emplace() and would silently keep the old one.
+            auto existing = _media_tracks.find(media_track->GetId());
+            if (existing != _media_tracks.end())
+            {
+                existing->second = media_track;
+                if (media_track->GetMediaType() == cmn::MediaType::Video)
+                {
+                    _first_video_frame_received = false;
+                }
+                return true;
+            }
+            return AddTrack(media_track);
         }
 
         auto it = _media_tracks.find(media_track->GetId());

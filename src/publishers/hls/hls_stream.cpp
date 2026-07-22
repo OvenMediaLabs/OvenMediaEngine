@@ -755,26 +755,33 @@ void HlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const Med
 			continue;
 		}
 
-		if (boundary_timestamp_ms < 0.0)
+		// Track the furthest-along boundary across the changed packagers; it stays at
+		// 0 only while no content has been produced yet.
+		auto packager_boundary_ms = packager->GetLastSampleEndTimestampMs();
+		if (packager_boundary_ms > boundary_timestamp_ms)
 		{
-			boundary_timestamp_ms = packager->GetLastSampleEndTimestampMs();
+			boundary_timestamp_ms = packager_boundary_ms;
 		}
 
 		// The packager closes the current content (old codecs/PSI) and starts a new
 		// generation; the packetizer rebuilds the PMT only on a codec change. The
 		// packager runs first so the flushed tail keeps the old PSI.
-		packager->UpdateTrack(new_track);
+		if (packager->UpdateTrack(new_track) == false)
+		{
+			logte("HlsStream(%s/%s) - Failed to update packager track(%d) for variant %s", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, variant_name.CStr());
+		}
 
 		auto packetizer = GetTSPacketizer(variant_name);
-		if (packetizer != nullptr)
+		if (packetizer != nullptr && packetizer->UpdateTrack(new_track) == false)
 		{
-			packetizer->UpdateTrack(new_track);
+			logte("HlsStream(%s/%s) - Failed to update packetizer track(%d) for variant %s", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, variant_name.CStr());
 		}
 	}
 
-	// Players keep renditions in sync by their discontinuity sequences, so every
-	// other rendition must cut an aligned boundary even though it did not change.
-	if (boundary_timestamp_ms >= 0.0)
+	// Players keep renditions in sync by their discontinuity sequences, so every other
+	// rendition must cut an aligned boundary. Skip this when the change arrives before
+	// any content, since there is no prior domain to be discontinuous from.
+	if (boundary_timestamp_ms > 0.0)
 	{
 		for (const auto &packager : sibling_packagers)
 		{
