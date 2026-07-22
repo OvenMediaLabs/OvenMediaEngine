@@ -762,8 +762,18 @@ namespace pvd
 			}
 			else if (application.UpperCaseString() == "NOTIFY")
 			{
-				// Origin relayed a runtime track configuration change
-				ApplyTrackNotification(object.GetJsonValue()["contents"]);
+				// Only the track configuration relay is understood. Ignore any other
+				// NOTIFY kind (or a malformed payload) so it cannot be misapplied.
+				auto &json_notify = object.GetJsonValue()["message"];
+				if (json_notify.isString() && ov::String(json_notify.asString().c_str()) == "track_changed")
+				{
+					ApplyTrackNotification(object.GetJsonValue()["contents"]);
+				}
+				else
+				{
+					logtd("[%s/%s(%u)] Ignored unknown NOTIFY message",
+						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+				}
 			}
 			else
 			{
