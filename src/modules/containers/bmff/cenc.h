@@ -11,6 +11,7 @@
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
 #include <base/ovcrypto/aes.h>
+#include <base/ovlibrary/constexpr_utilities.h>
 #include <base/ovlibrary/hex.h>
 #include <base/ovlibrary/ovlibrary.h>
 
@@ -81,13 +82,23 @@ namespace bmff
 		return (ov::ToUnderlyingType(set) & ov::ToUnderlyingType(flag)) != 0;
 	}
 
+	// Canonical DRM System IDs as published in the DASH-IF Content Protection registry (dashed UUID form).
+	// The undashed hex form embedded in the pssh box binary is derived from these at compile time,
+	// so each identifier is declared exactly once.
+	inline constexpr char SYSTEM_ID_WIDEVINE_UUID[]		 = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed";
+	inline constexpr char SYSTEM_ID_FAIRPLAY_UUID[]		 = "94ce86fb-07ff-4f43-adb8-93d2fa968ca2";
+	inline constexpr char SYSTEM_ID_PLAYREADY_UUID[]	 = "9a04f079-9840-4286-ab92-e65be0885f95";
+
+	inline constexpr auto _SYSTEM_ID_WIDEVINE_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_WIDEVINE_UUID, '-');
+	inline constexpr auto _SYSTEM_ID_FAIRPLAY_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_FAIRPLAY_UUID, '-');
+	inline constexpr auto _SYSTEM_ID_PLAYREADY_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_PLAYREADY_UUID, '-');
+
+	inline constexpr const char *SYSTEM_ID_WIDEVINE_HEX	 = _SYSTEM_ID_WIDEVINE_HEX.CStr();
+	inline constexpr const char *SYSTEM_ID_FAIRPLAY_HEX	 = _SYSTEM_ID_FAIRPLAY_HEX.CStr();
+	inline constexpr const char *SYSTEM_ID_PLAYREADY_HEX = _SYSTEM_ID_PLAYREADY_HEX.CStr();
+
 	struct PsshBox
 	{
-	private:
-		constexpr static const char *SYSTEM_ID_WIDEVINE	 = "edef8ba979d64acea3c827dcd51d21ed";
-		constexpr static const char *SYSTEM_ID_FAIRPLAY	 = "94ce86fb07ff4f43adb893d2fa968ca2";
-		constexpr static const char *SYSTEM_ID_PLAYREADY = "9a04f07998404286ab92e65be0885f95";
-
 	public:
 		PsshBox(const std::shared_ptr<ov::Data> &data)
 			: pssh_box_data(data)
@@ -131,15 +142,15 @@ namespace bmff
 
 			logt("DEBUG", "System ID : %s", system_id_hex.CStr());
 
-			if (system_id_hex == SYSTEM_ID_WIDEVINE)
+			if (system_id_hex == SYSTEM_ID_WIDEVINE_HEX)
 			{
 				drm_system = DRMSystem::Widevine;
 			}
-			else if (system_id_hex == SYSTEM_ID_FAIRPLAY)
+			else if (system_id_hex == SYSTEM_ID_FAIRPLAY_HEX)
 			{
 				drm_system = DRMSystem::FairPlay;
 			}
-			else if (system_id_hex == SYSTEM_ID_PLAYREADY)
+			else if (system_id_hex == SYSTEM_ID_PLAYREADY_HEX)
 			{
 				drm_system = DRMSystem::PlayReady;
 
@@ -220,15 +231,15 @@ namespace bmff
 
 			auto system_id_hex_lower = system_id_hex.LowerCaseString();
 
-			if (system_id_hex_lower == SYSTEM_ID_WIDEVINE)
+			if (system_id_hex_lower == SYSTEM_ID_WIDEVINE_HEX)
 			{
 				drm_system = DRMSystem::Widevine;
 			}
-			else if (system_id_hex_lower == SYSTEM_ID_FAIRPLAY)
+			else if (system_id_hex_lower == SYSTEM_ID_FAIRPLAY_HEX)
 			{
 				drm_system = DRMSystem::FairPlay;
 			}
-			else if (system_id_hex_lower == SYSTEM_ID_PLAYREADY)
+			else if (system_id_hex_lower == SYSTEM_ID_PLAYREADY_HEX)
 			{
 				drm_system = DRMSystem::PlayReady;
 
