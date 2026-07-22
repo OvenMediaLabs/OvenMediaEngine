@@ -404,73 +404,13 @@ namespace pvd
 		}
 
 		//SetName(json_stream["streamName"].asString().c_str());
-		std::shared_ptr<MediaTrack> new_track;
-
 		for (size_t i = 0; i < json_tracks.size(); i++)
 		{
-			auto json_track = json_tracks[static_cast<int>(i)];
-
-			new_track = std::make_shared<MediaTrack>();
-
-			// Validation
-			if (!json_track["id"].isUInt() || !json_track["name"].isString() || !json_track["codecId"].isUInt() || !json_track["mediaType"].isUInt() ||
-				!json_track["timebaseNum"].isUInt() || !json_track["timebaseDen"].isUInt() ||
-				!json_track["bitrate"].isUInt() ||
-				!json_track["startFrameTime"].isUInt64() || !json_track["lastFrameTime"].isUInt64())
+			auto new_track = ParseTrackFromJson(json_tracks[static_cast<int>(i)]);
+			if (new_track == nullptr)
 			{
 				logte("Invalid json track [%zu]", i);
 				return false;
-			}
-
-			new_track->SetId(json_track["id"].asUInt());
-			new_track->SetVariantName(json_track["name"].asString().c_str());
-			new_track->SetPublicName(json_track["publicName"].asString().c_str());
-			new_track->SetLanguage(json_track["language"].asString().c_str());
-			new_track->SetCharacteristics(json_track["characteristics"].asString().c_str());
-			new_track->SetCodecId(static_cast<cmn::MediaCodecId>(json_track["codecId"].asUInt()));
-			new_track->SetMediaType(static_cast<cmn::MediaType>(json_track["mediaType"].asUInt()));
-			new_track->SetTimeBase(json_track["timebaseNum"].asUInt(), json_track["timebaseDen"].asUInt());
-			new_track->SetBitrateByConfig(json_track["bitrate"].asUInt());
-
-			// video or audio
-			if (new_track->GetMediaType() == cmn::MediaType::Video)
-			{
-				auto json_video_track = json_track["videoTrack"];
-				if (json_video_track.isNull())
-				{
-					logte("Invalid json videoTrack");
-					return false;
-				}
-
-				new_track->SetFrameRateByConfig(json_video_track["framerate"].asDouble());
-				new_track->SetMaxFrameRate(json_video_track["maxFramerate"].asDouble());
-				new_track->SetResolution(json_video_track["width"].asUInt(), json_video_track["height"].asUInt());
-				new_track->SetMaxResolution(json_video_track["maxWidth"].asUInt(), json_video_track["maxHeight"].asUInt());
-			}
-			else if (new_track->GetMediaType() == cmn::MediaType::Audio)
-			{
-				auto json_audio_track = json_track["audioTrack"];
-				if (json_audio_track.isNull())
-				{
-					logte("Invalid json audioTrack");
-					return false;
-				}
-
-				new_track->SetSampleRate(json_audio_track["samplerate"].asUInt());
-				if (new_track->GetSampleRate() == 0)
-				{
-					logte("Audio track(%u) received from origin has samplerate=0. The origin may have sent an invalid AudioSpecificConfig.", new_track->GetId());
-				}
-				new_track->SetSampleFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
-				new_track->SetChannelLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
-			}
-
-			auto decoder_config = json_track["decoderConfig"];
-			if (decoder_config.isString())
-			{
-				auto config_data = ov::Base64::Decode(decoder_config.asString().c_str());
-				auto decoder_config = DecoderConfigurationRecordParser::Parse(new_track->GetCodecId(), config_data);
-				new_track->SetDecoderConfigurationRecord(decoder_config);
 			}
 
 			// The initial describe registers the track; a re-describe replaces it
@@ -491,6 +431,111 @@ namespace pvd
 
 		SetState(State::DESCRIBED);
 		return true;
+	}
+
+	std::shared_ptr<MediaTrack> OvtStream::ParseTrackFromJson(const Json::Value &json_track)
+	{
+		// Validation
+		if (!json_track["id"].isUInt() || !json_track["name"].isString() || !json_track["codecId"].isUInt() || !json_track["mediaType"].isUInt() ||
+			!json_track["timebaseNum"].isUInt() || !json_track["timebaseDen"].isUInt() ||
+			!json_track["bitrate"].isUInt() ||
+			!json_track["startFrameTime"].isUInt64() || !json_track["lastFrameTime"].isUInt64())
+		{
+			return nullptr;
+		}
+
+		auto new_track = std::make_shared<MediaTrack>();
+
+		new_track->SetId(json_track["id"].asUInt());
+		new_track->SetVariantName(json_track["name"].asString().c_str());
+		new_track->SetPublicName(json_track["publicName"].asString().c_str());
+		new_track->SetLanguage(json_track["language"].asString().c_str());
+		new_track->SetCharacteristics(json_track["characteristics"].asString().c_str());
+		new_track->SetCodecId(static_cast<cmn::MediaCodecId>(json_track["codecId"].asUInt()));
+		new_track->SetMediaType(static_cast<cmn::MediaType>(json_track["mediaType"].asUInt()));
+		new_track->SetTimeBase(json_track["timebaseNum"].asUInt(), json_track["timebaseDen"].asUInt());
+		new_track->SetBitrateByConfig(json_track["bitrate"].asUInt());
+
+		// video or audio
+		if (new_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			auto json_video_track = json_track["videoTrack"];
+			if (json_video_track.isNull())
+			{
+				logte("Invalid json videoTrack");
+				return nullptr;
+			}
+
+			new_track->SetFrameRateByConfig(json_video_track["framerate"].asDouble());
+			new_track->SetMaxFrameRate(json_video_track["maxFramerate"].asDouble());
+			new_track->SetResolution(json_video_track["width"].asUInt(), json_video_track["height"].asUInt());
+			new_track->SetMaxResolution(json_video_track["maxWidth"].asUInt(), json_video_track["maxHeight"].asUInt());
+		}
+		else if (new_track->GetMediaType() == cmn::MediaType::Audio)
+		{
+			auto json_audio_track = json_track["audioTrack"];
+			if (json_audio_track.isNull())
+			{
+				logte("Invalid json audioTrack");
+				return nullptr;
+			}
+
+			new_track->SetSampleRate(json_audio_track["samplerate"].asUInt());
+			if (new_track->GetSampleRate() == 0)
+			{
+				logte("Audio track(%u) received from origin has samplerate=0. The origin may have sent an invalid AudioSpecificConfig.", new_track->GetId());
+			}
+			new_track->SetSampleFormat(static_cast<cmn::AudioSample::Format>(json_audio_track["sampleFormat"].asInt()));
+			new_track->SetChannelLayout(static_cast<cmn::AudioChannel::Layout>(json_audio_track["layout"].asUInt()));
+		}
+
+		auto decoder_config = json_track["decoderConfig"];
+		if (decoder_config.isString())
+		{
+			auto config_data = ov::Base64::Decode(decoder_config.asString().c_str());
+			auto decoder_config_record = DecoderConfigurationRecordParser::Parse(new_track->GetCodecId(), config_data);
+			new_track->SetDecoderConfigurationRecord(decoder_config_record);
+		}
+
+		return new_track;
+	}
+
+	void OvtStream::ApplyTrackNotification(const Json::Value &contents)
+	{
+		auto json_tracks = contents["stream"]["tracks"];
+		if (json_tracks.isArray() == false)
+		{
+			logtw("[%s/%s(%u)] Received a track change notification without a valid tracks array",
+				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+			return;
+		}
+
+		for (size_t i = 0; i < json_tracks.size(); i++)
+		{
+			auto new_track = ParseTrackFromJson(json_tracks[static_cast<int>(i)]);
+			if (new_track == nullptr)
+			{
+				logtw("[%s/%s(%u)] Ignored an invalid track in a change notification",
+					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+				continue;
+			}
+
+			// Only replace tracks this stream actually subscribed to. A TrackSet
+			// edge legitimately omits tracks the origin still notifies about.
+			if (GetTrack(new_track->GetId()) == nullptr)
+			{
+				continue;
+			}
+
+			if (ChangeTrack(new_track) == false)
+			{
+				continue;
+			}
+
+			logti("[%s/%s(%u)] Applied origin track(%u) configuration change (version %u)",
+				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
+				  new_track->GetId(), new_track->GetVersion());
+		}
 	}
 
 	bool OvtStream::RequestPlay()
@@ -692,75 +737,69 @@ namespace pvd
 			return ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 		}
 
-		while (true)
+		// Apply signaling that arrived in this batch before forwarding media, so an
+		// origin-pushed configuration change is active for the packets that follow
+		// it on the wire.
+		while (_depacketizer.IsAvailableMessage())
 		{
-			if (_depacketizer.IsAvailableMediaPacket()) 
+			auto message = _depacketizer.PopMessage();
+
+			// Parsing Payload
+			ov::String payload(message->GetDataAs<char>(), message->GetLength());
+			ov::JsonObject object = ov::Json::Parse(payload);
+
+			if (object.IsNull())
 			{
-				auto media_packet = _depacketizer.PopMediaPacket();
-				media_packet->SetPacketType(cmn::PacketType::OVT);
-
-				int64_t pts = media_packet->GetPts();
-				int64_t dts = media_packet->GetDts();
-				int64_t duration = media_packet->GetDuration();
-
-				AdjustTimestampByBase(media_packet->GetTrackId(), pts, dts, std::numeric_limits<int64_t>::max(), duration);
-				[[maybe_unused]] auto old_pts = media_packet->GetPts();
-				[[maybe_unused]] auto old_dts = media_packet->GetDts();
-
-				media_packet->SetPts(pts);
-				media_packet->SetDts(dts);
-				media_packet->SetDuration(-1); // Duration should be set by MediaRouter again due to the AdjustTimestampByBase
-
-				logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu)",
-					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
-					  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength());
-
-				SendFrame(media_packet);
-
-				if (_depacketizer.IsAvailableMediaPacket() || _depacketizer.IsAvailableMessage())
-				{
-					continue;
-				}
-
-				return PullStream::ProcessMediaResult::PROCESS_MEDIA_SUCCESS;
+				logte("An invalid response : Json format");
+				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 			}
-			else if (_depacketizer.IsAvailableMessage())
+
+			ov::String application = object.GetJsonValue()["application"].asString().c_str();
+
+			if (application.UpperCaseString() == "STOP")
 			{
-				auto message = _depacketizer.PopMessage();
-
-				// Parsing Payload
-				ov::String payload(message->GetDataAs<char>(), message->GetLength());
-				ov::JsonObject object = ov::Json::Parse(payload);
-
-				if (object.IsNull())
-				{
-					logte("An invalid response : Json format");
-					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
-				}
-
-				//Json::Value &json_id = object.GetJsonValue()["id"];
-				Json::Value &json_app = object.GetJsonValue()["application"];
-
-				ov::String application = json_app.asString().c_str();
-
-				if (application.UpperCaseString() == "STOP")
-				{
-					logte("An invalid response : application is wrong (%s).", application.CStr());
-					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FINISH;
-				}
-				else
-				{
-					logte("An error occurred while receive data: An unexpected packet was received. Terminate stream thread : %s/%s(%u)",
-						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
-					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
-				}
+				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FINISH;
+			}
+			else if (application.UpperCaseString() == "NOTIFY")
+			{
+				// Origin relayed a runtime track configuration change
+				ApplyTrackNotification(object.GetJsonValue()["contents"]);
 			}
 			else
 			{
-				return ProcessMediaResult::PROCESS_MEDIA_TRY_AGAIN;
+				logte("An error occurred while receive data: An unexpected packet was received. Terminate stream thread : %s/%s(%u)",
+					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 			}
 		}
 
-		return PullStream::ProcessMediaResult::PROCESS_MEDIA_SUCCESS;
+		bool processed = false;
+		while (_depacketizer.IsAvailableMediaPacket())
+		{
+			auto media_packet = _depacketizer.PopMediaPacket();
+			media_packet->SetPacketType(cmn::PacketType::OVT);
+
+			int64_t pts = media_packet->GetPts();
+			int64_t dts = media_packet->GetDts();
+			int64_t duration = media_packet->GetDuration();
+
+			AdjustTimestampByBase(media_packet->GetTrackId(), pts, dts, std::numeric_limits<int64_t>::max(), duration);
+			[[maybe_unused]] auto old_pts = media_packet->GetPts();
+			[[maybe_unused]] auto old_dts = media_packet->GetDts();
+
+			media_packet->SetPts(pts);
+			media_packet->SetDts(dts);
+			media_packet->SetDuration(-1); // Duration should be set by MediaRouter again due to the AdjustTimestampByBase
+
+			logtt("[%s/%s(%u)] ProcessMediaPacket : TrackId(%d) ORI_PTS(%" PRId64 ") PTS(%" PRId64 ") ORI_DTS(%" PRId64 ") DTS(%" PRId64 ") Size(%zu)",
+				  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
+				  media_packet->GetTrackId(), old_pts, media_packet->GetPts(), old_dts, media_packet->GetDts(), media_packet->GetDataLength());
+
+			SendFrame(media_packet);
+			processed = true;
+		}
+
+		return processed ? PullStream::ProcessMediaResult::PROCESS_MEDIA_SUCCESS
+						 : PullStream::ProcessMediaResult::PROCESS_MEDIA_TRY_AGAIN;
 	}
 }  // namespace pvd

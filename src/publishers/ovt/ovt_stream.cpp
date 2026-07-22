@@ -8,6 +8,9 @@
 #include "base/publisher/application.h"
 #include "base/publisher/stream.h"
 
+#include <base/ovlibrary/clock.h>
+#include <base/ovlibrary/json.h>
+#include <modules/ovt_packetizer/ovt_packet.h>
 #include <modules/ovt_packetizer/ovt_signaling.h>
 #include <orchestrator/orchestrator.h>
 
@@ -147,50 +150,10 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 		json_playlists.append(json_playlist);
 	}
 
-	for (auto &track_item : GetTracks())
+	for (const auto &item : GetTracks())
 	{
-		auto &track = track_item.second;
-
 		Json::Value json_track;
-		Json::Value json_video_track;
-		Json::Value json_audio_track;
-
-		json_track["id"] = track->GetId();
-		json_track["name"] = track->GetVariantName().CStr();
-		json_track["publicName"] = track->GetPublicName().CStr();
-		json_track["language"] = track->GetLanguage().CStr();
-		json_track["characteristics"] = track->GetCharacteristics().CStr();
-		json_track["codecId"] = static_cast<int8_t>(track->GetCodecId());
-		json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
-		json_track["timebaseNum"] = track->GetTimeBase().GetNum();
-		json_track["timebaseDen"] = track->GetTimeBase().GetDen();
-		json_track["bitrate"] = track->GetBitrate();
-		// Kept for wire compatibility; the receiver measures its own frame times
-		json_track["startFrameTime"] = 0;
-		json_track["lastFrameTime"] = 0;
-
-		json_video_track["framerate"] = track->GetFrameRate();
-		json_video_track["maxFramerate"] = track->GetMaxFrameRate();
-		auto resolution = track->GetResolution();
-		json_video_track["width"] = resolution.width;
-		json_video_track["height"] = resolution.height;
-		auto max_resolution = track->GetMaxResolution();
-		json_video_track["maxWidth"] = max_resolution.width;
-		json_video_track["maxHeight"] = max_resolution.height;
-
-		json_audio_track["samplerate"] = track->GetSampleRate();
-		json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());
-		json_audio_track["layout"] = static_cast<uint32_t>(track->GetChannel().GetLayout());
-
-		json_track["videoTrack"] = json_video_track;
-		json_track["audioTrack"] = json_audio_track;
-
-		auto decoder_config = track->GetDecoderConfigurationRecord();
-		if (decoder_config != nullptr)
-		{
-			json_track["decoderConfig"] = ov::Base64::Encode(decoder_config->GetData()).CStr();
-		}
-		
+		GenerateTrackDescription(item.second, json_track);
 		json_tracks.append(json_track);
 	}
 
@@ -201,6 +164,95 @@ bool OvtStream::GenerateDescription(Json::Value &out_description)
 	out_description = std::move(json_root);
 
 	return true;
+}
+
+void OvtStream::GenerateTrackDescription(const std::shared_ptr<const MediaTrack> &track, Json::Value &out_json_track)
+{
+	Json::Value json_video_track;
+	Json::Value json_audio_track;
+
+	out_json_track["id"] = track->GetId();
+	out_json_track["name"] = track->GetVariantName().CStr();
+	out_json_track["publicName"] = track->GetPublicName().CStr();
+	out_json_track["language"] = track->GetLanguage().CStr();
+	out_json_track["characteristics"] = track->GetCharacteristics().CStr();
+	out_json_track["codecId"] = static_cast<int8_t>(track->GetCodecId());
+	out_json_track["mediaType"] = static_cast<int8_t>(track->GetMediaType());
+	out_json_track["timebaseNum"] = track->GetTimeBase().GetNum();
+	out_json_track["timebaseDen"] = track->GetTimeBase().GetDen();
+	out_json_track["bitrate"] = track->GetBitrate();
+	// Kept for wire compatibility; the receiver measures its own frame times
+	out_json_track["startFrameTime"] = 0;
+	out_json_track["lastFrameTime"] = 0;
+
+	json_video_track["framerate"] = track->GetFrameRate();
+	json_video_track["maxFramerate"] = track->GetMaxFrameRate();
+	auto resolution = track->GetResolution();
+	json_video_track["width"] = resolution.width;
+	json_video_track["height"] = resolution.height;
+	auto max_resolution = track->GetMaxResolution();
+	json_video_track["maxWidth"] = max_resolution.width;
+	json_video_track["maxHeight"] = max_resolution.height;
+
+	json_audio_track["samplerate"] = track->GetSampleRate();
+	json_audio_track["sampleFormat"] = static_cast<int8_t>(track->GetSample().GetFormat());
+	json_audio_track["layout"] = static_cast<uint32_t>(track->GetChannel().GetLayout());
+
+	out_json_track["videoTrack"] = json_video_track;
+	out_json_track["audioTrack"] = json_audio_track;
+
+	auto decoder_config = track->GetDecoderConfigurationRecord();
+	if (decoder_config != nullptr)
+	{
+		out_json_track["decoderConfig"] = ov::Base64::Encode(decoder_config->GetData()).CStr();
+	}
+}
+
+void OvtStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+{
+	if (GetState() != Stream::State::STARTED)
+	{
+		return;
+	}
+
+	// Relay the changed track's already-parsed configuration to connected edges.
+	// OnTrackChanged runs right before the first media packet of the new version
+	// is broadcast, so the message reaches the edge ahead of that packet on the
+	// same connection. Only the changed track is sent; the edge replaces its own
+	// copy and skips tracks it did not subscribe to.
+	Json::Value json_track;
+	GenerateTrackDescription(new_track, json_track);
+
+	Json::Value json_tracks(Json::arrayValue);
+	json_tracks.append(json_track);
+
+	Json::Value json_stream;
+	json_stream["tracks"] = json_tracks;
+
+	Json::Value contents;
+	contents["version"] = OVT_SIGNALING_VERSION;
+	contents["stream"] = json_stream;
+
+	Json::Value root;
+	root["id"] = 0;
+	root["application"] = "notify";
+	root["code"] = 200;
+	root["message"] = "track_changed";
+	root["contents"] = contents;
+
+	auto payload = ov::Json::Stringify(root).ToData(false);
+
+	std::shared_lock<std::shared_mutex> mlock(_packetizer_lock);
+	if (_packetizer == nullptr)
+	{
+		return;
+	}
+
+	// Routed through OnOvtPacketized() -> BroadcastPacket() to every session
+	_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_RESPONSE, ov::Clock::NowMSec(), payload);
+
+	logti("%s/%s(%u) Relayed Track(%d) configuration change to edges (version %u -> %u)",
+		  GetApplicationName(), GetName().CStr(), GetId(), track_id, old_track->GetVersion(), new_track->GetVersion());
 }
 
 void OvtStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
