@@ -58,7 +58,8 @@ public:
 private:
 	bool Start() override;
 	bool Stop() override;
-	// TODO(Getroot): Re-create the SDP when OnTrackChanged fires (track configuration change)
+	// TODO(Getroot): Re-create the SDP when the codec changes so an active session can adopt it
+	void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track) override;
 
 	bool IsSupportedCodec(cmn::MediaCodecId codec_id);
 

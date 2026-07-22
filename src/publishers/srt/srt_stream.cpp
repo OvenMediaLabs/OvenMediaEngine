@@ -109,6 +109,14 @@ namespace pub
 		return new_playlist;
 	}
 
+	void SrtStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+	{
+		// A same-codec change (resolution, bitrate, parameter sets) is carried
+		// in-band in the MPEG-TS elementary stream, so the output stays valid. A
+		// codec change would need a new PMT that a running SRT client cannot adopt.
+		LogInbandRecoverableTrackChange(track_id, old_track, new_track);
+	}
+
 	bool SrtStream::IsSupportedTrack(const std::shared_ptr<const MediaTrack> &track) const
 	{
 		auto media_type = track->GetMediaType();
