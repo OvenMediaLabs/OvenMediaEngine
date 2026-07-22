@@ -249,7 +249,12 @@ void OvtStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const Med
 	}
 
 	// Routed through OnOvtPacketized() -> BroadcastPacket() to every session
-	_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_RESPONSE, ov::Clock::NowMSec(), payload);
+	if (_packetizer->PacketizeMessage(OVT_PAYLOAD_TYPE_MESSAGE_RESPONSE, ov::Clock::NowMSec(), payload) == false)
+	{
+		logtw("%s/%s(%u) Failed to relay Track(%d) configuration change to edges (version %u -> %u)",
+			  GetApplicationName(), GetName().CStr(), GetId(), track_id, old_track->GetVersion(), new_track->GetVersion());
+		return;
+	}
 
 	logti("%s/%s(%u) Relayed Track(%d) configuration change to edges (version %u -> %u)",
 		  GetApplicationName(), GetName().CStr(), GetId(), track_id, old_track->GetVersion(), new_track->GetVersion());

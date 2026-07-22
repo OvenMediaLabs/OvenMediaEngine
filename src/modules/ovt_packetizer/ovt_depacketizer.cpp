@@ -91,6 +91,16 @@ bool OvtDepacketizer::IsAvailableMediaPacket()
 	return !_media_packets.empty();
 }
 
+bool OvtDepacketizer::IsAvailable()
+{
+	return !_order.empty();
+}
+
+bool OvtDepacketizer::IsNextMessage()
+{
+	return !_order.empty() && _order.front() == ItemType::Message;
+}
+
 bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &packet)
 {
 	//TODO(Getroot): Need to validate packet
@@ -108,7 +118,8 @@ bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &pack
 
 		auto message = _message_buffer.Clone();
 		_messages.push(message);
-		
+		_order.push(ItemType::Message);
+
 		_message_buffer.Clear();
 	}
 
@@ -161,6 +172,7 @@ bool OvtDepacketizer::AppendMediaPacket(const std::shared_ptr<OvtPacket> &packet
 		media_packet->SetDuration(duration);
 
 		_media_packets.push(media_packet);
+		_order.push(ItemType::MediaPacket);
 
 		_media_packet_buffer.Clear();
 	}
@@ -177,6 +189,7 @@ const std::shared_ptr<ov::Data> OvtDepacketizer::PopMessage()
 
 	auto message = _messages.front();
 	_messages.pop();
+	_order.pop();
 
 	return message;
 }
@@ -190,6 +203,7 @@ const std::shared_ptr<MediaPacket> OvtDepacketizer::PopMediaPacket()
 
 	auto media_packet = _media_packets.front();
 	_media_packets.pop();
+	_order.pop();
 
 	return media_packet;
 }

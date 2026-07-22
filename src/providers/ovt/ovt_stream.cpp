@@ -462,7 +462,7 @@ namespace pvd
 			auto json_video_track = json_track["videoTrack"];
 			if (json_video_track.isNull())
 			{
-				logte("Invalid json videoTrack");
+				logtd("Invalid json videoTrack");
 				return nullptr;
 			}
 
@@ -476,7 +476,7 @@ namespace pvd
 			auto json_audio_track = json_track["audioTrack"];
 			if (json_audio_track.isNull())
 			{
-				logte("Invalid json audioTrack");
+				logtd("Invalid json audioTrack");
 				return nullptr;
 			}
 
@@ -737,55 +737,57 @@ namespace pvd
 			return ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 		}
 
-		// Apply signaling that arrived in this batch before forwarding media, so an
-		// origin-pushed configuration change is active for the packets that follow
-		// it on the wire.
-		while (_depacketizer.IsAvailableMessage())
+		// Consume messages and media in on-wire parse order, so an origin-pushed
+		// configuration change applies to the packets that follow it and not to the
+		// tail of the previous configuration that preceded it on the wire.
+		bool processed = false;
+		while (_depacketizer.IsAvailable())
 		{
-			auto message = _depacketizer.PopMessage();
-
-			// Parsing Payload
-			ov::String payload(message->GetDataAs<char>(), message->GetLength());
-			ov::JsonObject object = ov::Json::Parse(payload);
-
-			if (object.IsNull())
+			if (_depacketizer.IsNextMessage())
 			{
-				logte("An invalid response : Json format");
-				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
-			}
+				auto message = _depacketizer.PopMessage();
 
-			ov::String application = object.GetJsonValue()["application"].asString().c_str();
+				// Parsing Payload
+				ov::String payload(message->GetDataAs<char>(), message->GetLength());
+				ov::JsonObject object = ov::Json::Parse(payload);
 
-			if (application.UpperCaseString() == "STOP")
-			{
-				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FINISH;
-			}
-			else if (application.UpperCaseString() == "NOTIFY")
-			{
-				// Only the track configuration relay is understood. Ignore any other
-				// NOTIFY kind (or a malformed payload) so it cannot be misapplied.
-				auto &json_notify = object.GetJsonValue()["message"];
-				if (json_notify.isString() && ov::String(json_notify.asString().c_str()) == "track_changed")
+				if (object.IsNull())
 				{
-					ApplyTrackNotification(object.GetJsonValue()["contents"]);
+					logte("An invalid response : Json format");
+					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
+				}
+
+				ov::String application = object.GetJsonValue()["application"].asString().c_str();
+
+				if (application.UpperCaseString() == "STOP")
+				{
+					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FINISH;
+				}
+				else if (application.UpperCaseString() == "NOTIFY")
+				{
+					// Only the track configuration relay is understood. Ignore any other
+					// NOTIFY kind (or a malformed payload) so it cannot be misapplied.
+					auto &json_notify = object.GetJsonValue()["message"];
+					if (json_notify.isString() && ov::String(json_notify.asString().c_str()) == "track_changed")
+					{
+						ApplyTrackNotification(object.GetJsonValue()["contents"]);
+					}
+					else
+					{
+						logtd("[%s/%s(%u)] Ignored unknown NOTIFY message",
+							  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+					}
 				}
 				else
 				{
-					logtd("[%s/%s(%u)] Ignored unknown NOTIFY message",
+					logte("An error occurred while receive data: An unexpected packet was received. Terminate stream thread : %s/%s(%u)",
 						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+					return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
 				}
-			}
-			else
-			{
-				logte("An error occurred while receive data: An unexpected packet was received. Terminate stream thread : %s/%s(%u)",
-					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
-				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FAILURE;
-			}
-		}
 
-		bool processed = false;
-		while (_depacketizer.IsAvailableMediaPacket())
-		{
+				continue;
+			}
+
 			auto media_packet = _depacketizer.PopMediaPacket();
 			media_packet->SetPacketType(cmn::PacketType::OVT);
 
