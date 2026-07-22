@@ -19,7 +19,25 @@
 
 namespace bmff
 {
-	constexpr uint8_t AES_BLOCK_SIZE = 16;
+	constexpr uint8_t AES_BLOCK_SIZE				 = 16;
+
+	// Canonical DRM System IDs as published in the DASH-IF Content Protection registry (dashed UUID form).
+	// The undashed hex form embedded in the pssh box binary is derived from these at compile time,
+	// so each identifier is declared exactly once.
+	inline constexpr char SYSTEM_ID_WIDEVINE_UUID[]	 = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed";
+	inline constexpr char SYSTEM_ID_FAIRPLAY_UUID[]	 = "94ce86fb-07ff-4f43-adb8-93d2fa968ca2";
+	inline constexpr char SYSTEM_ID_PLAYREADY_UUID[] = "9a04f079-9840-4286-ab92-e65be0885f95";
+
+	namespace internal
+	{
+		inline constexpr auto SYSTEM_ID_WIDEVINE_HEX_BUF  = ov::cexpr::StrRemove(SYSTEM_ID_WIDEVINE_UUID, '-');
+		inline constexpr auto SYSTEM_ID_FAIRPLAY_HEX_BUF  = ov::cexpr::StrRemove(SYSTEM_ID_FAIRPLAY_UUID, '-');
+		inline constexpr auto SYSTEM_ID_PLAYREADY_HEX_BUF = ov::cexpr::StrRemove(SYSTEM_ID_PLAYREADY_UUID, '-');
+	}  // namespace internal
+
+	inline constexpr const char *SYSTEM_ID_WIDEVINE_HEX	 = internal::SYSTEM_ID_WIDEVINE_HEX_BUF.CStr();
+	inline constexpr const char *SYSTEM_ID_FAIRPLAY_HEX	 = internal::SYSTEM_ID_FAIRPLAY_HEX_BUF.CStr();
+	inline constexpr const char *SYSTEM_ID_PLAYREADY_HEX = internal::SYSTEM_ID_PLAYREADY_HEX_BUF.CStr();
 
 	enum class CencProtectScheme : uint8_t
 	{
@@ -81,21 +99,6 @@ namespace bmff
 	{
 		return (ov::ToUnderlyingType(set) & ov::ToUnderlyingType(flag)) != 0;
 	}
-
-	// Canonical DRM System IDs as published in the DASH-IF Content Protection registry (dashed UUID form).
-	// The undashed hex form embedded in the pssh box binary is derived from these at compile time,
-	// so each identifier is declared exactly once.
-	inline constexpr char SYSTEM_ID_WIDEVINE_UUID[]		 = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed";
-	inline constexpr char SYSTEM_ID_FAIRPLAY_UUID[]		 = "94ce86fb-07ff-4f43-adb8-93d2fa968ca2";
-	inline constexpr char SYSTEM_ID_PLAYREADY_UUID[]	 = "9a04f079-9840-4286-ab92-e65be0885f95";
-
-	inline constexpr auto _SYSTEM_ID_WIDEVINE_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_WIDEVINE_UUID, '-');
-	inline constexpr auto _SYSTEM_ID_FAIRPLAY_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_FAIRPLAY_UUID, '-');
-	inline constexpr auto _SYSTEM_ID_PLAYREADY_HEX		 = ov::cexpr::StrRemove(SYSTEM_ID_PLAYREADY_UUID, '-');
-
-	inline constexpr const char *SYSTEM_ID_WIDEVINE_HEX	 = _SYSTEM_ID_WIDEVINE_HEX.CStr();
-	inline constexpr const char *SYSTEM_ID_FAIRPLAY_HEX	 = _SYSTEM_ID_FAIRPLAY_HEX.CStr();
-	inline constexpr const char *SYSTEM_ID_PLAYREADY_HEX = _SYSTEM_ID_PLAYREADY_HEX.CStr();
 
 	struct PsshBox
 	{
