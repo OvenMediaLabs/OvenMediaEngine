@@ -36,6 +36,15 @@ namespace
 											 MediaPacketFlag::Key, cmn::BitstreamFormat::H264_ANNEXB, cmn::PacketType::NALU);
 	}
 
+	std::shared_ptr<const MediaPacket> MakeAudioFrame(uint32_t track_id, int64_t dts, int64_t duration)
+	{
+		auto data = std::make_shared<ov::Data>();
+		uint8_t byte = 0x00;
+		data->Append(&byte, 1);
+		return std::make_shared<MediaPacket>(cmn::MediaType::Audio, track_id, data, dts, dts, duration,
+											 MediaPacketFlag::Key, cmn::BitstreamFormat::AAC_ADTS, cmn::PacketType::RAW);
+	}
+
 	std::shared_ptr<mpegts::Segment> MakeSegment(int64_t number, int64_t dts, double duration_ms,
 												 uint32_t version, bool discontinuity, const ov::String &codecs)
 	{
@@ -303,6 +312,53 @@ TEST(HlsPackager, PropagatedCutOnEmptyBufferProducesNoEmptySegment)
 		EXPECT_GT(segment->GetDurationMs(), 0.0);		// the empty-buffer cut must not create a 0-duration segment
 		EXPECT_FALSE(segment->IsDiscontinuityPoint());	// nor a discontinuity, since there is no prior domain
 	}
+}
+
+TEST(HlsPackager, SecondaryTrackChangeWhileBufferingCutsAtBoundary)
+{
+	mpegts::Packager::Config config;
+	config.target_duration_ms = 1000;
+	config.max_segment_count = 100;
+
+	auto packager = std::make_shared<mpegts::Packager>("variant", config);
+	auto sink = std::make_shared<CollectingPackagerSink>();
+	packager->AddSink(sink);
+
+	auto video = MakeTrack(1, cmn::MediaType::Video, cmn::MediaCodecId::H264, 1);
+	auto audio = MakeTrack(2, cmn::MediaType::Audio, cmn::MediaCodecId::Aac, 1);
+	packager->OnPsi({video, audio}, {});
+
+	auto ts = std::make_shared<ov::Data>();
+	uint8_t byte = 0x47;
+	ts->Append(&byte, 1);
+
+	// One video + audio frame is buffered, but no segment has been created yet
+	packager->OnFrame(MakeVideoKeyFrame(1, 0, 90000), ts);
+	packager->OnFrame(MakeAudioFrame(2, 0, 90000), ts);
+
+	// The audio track changes during the first segment's buffering window
+	ASSERT_TRUE(packager->UpdateTrack(MakeTrack(2, cmn::MediaType::Audio, cmn::MediaCodecId::Aac, 2)));
+
+	int64_t dts = 90000;
+	for (int i = 0; i < 6; i++)
+	{
+		packager->OnFrame(MakeVideoKeyFrame(1, dts, 90000), ts);
+		packager->OnFrame(MakeAudioFrame(2, dts, 90000), ts);
+		dts += 90000;
+	}
+
+	// The transition is not swallowed into the first segment: a later segment is a
+	// discontinuity point.
+	int discontinuity_count = 0;
+	for (const auto &segment : sink->_created)
+	{
+		if (segment->IsDiscontinuityPoint())
+		{
+			discontinuity_count++;
+		}
+		EXPECT_GT(segment->GetDurationMs(), 0.0);
+	}
+	EXPECT_EQ(discontinuity_count, 1);
 }
 
 // ---------------------------------------------------------------------------

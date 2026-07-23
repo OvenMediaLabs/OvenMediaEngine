@@ -230,9 +230,14 @@ namespace mpegts
 			}
 			_codecs_parameter = MakeCodecsParameter();
 
-			// Only after content exists is there a prior domain to be discontinuous
-			// from; before the first segment the change is just the initial configuration.
-			if (_last_segment_id > 0)
+			// Request an aligned cut once content has started (a segment exists or the
+			// main track has buffered samples), matching the main-track path. This
+			// covers a change during the first segment's buffering window, which would
+			// otherwise land inside that segment without a discontinuity boundary.
+			auto main_sample_buffer = GetSampleBuffer(_main_track_id);
+			bool has_content = (_last_segment_id > 0) ||
+							   (main_sample_buffer != nullptr && main_sample_buffer->GetCurrentDurationMs() > 0.0);
+			if (has_content == true)
 			{
 				RequestCutForDiscontinuity(GetLastSampleEndTimestampMs());
 			}
