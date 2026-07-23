@@ -146,6 +146,9 @@ ov::String LLHlsChunklist::GetListedCodecsUnion() const
 		return "";
 	}
 
+	// Keyed off the oldest retained segment, which trails the listed window by a
+	// few segments; a codec lingers in the union a little after leaving the window,
+	// which is a harmless superset for the CODECS attribute
 	return MakeCodecsUnionInternal(_segments.begin()->second->GetTrackVersion());
 }
 

@@ -301,14 +301,16 @@ public:
 	// listed map. Set it only once the initialization section is servable.
 	void SetUpcomingMapUri(const ov::String &map_uri);
 
-	// The chunklist describes which codecs its own listing contains, learned from
+	// The chunklist describes which codecs its own segments contain, learned from
 	// the segments it was fed; the master playlist CODECS attribute is built from
 	// that description.
-	// Every distinct codecs parameter among the listed segments, oldest first
+	// Every distinct codecs parameter among the retained segments, oldest first.
+	// Retention runs a few segments behind the listed window, so this is a safe
+	// superset of the strictly-listed codecs (over-inclusive, never missing one).
 	ov::String GetListedCodecsUnion() const;
 
-	// Every distinct codecs parameter ever listed; dumped output keeps segments
-	// of every version, so it needs them all
+	// Every distinct codecs parameter ever seen; dumped output keeps segments of
+	// every version, so it needs them all
 	ov::String GetAllCodecsUnion() const;
 
 	ov::String ToString(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod = false, uint32_t vod_start_segment_number = 0) const;
