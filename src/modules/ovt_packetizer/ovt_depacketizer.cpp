@@ -98,7 +98,9 @@ bool OvtDepacketizer::IsAvailable()
 
 bool OvtDepacketizer::IsNextMessage()
 {
-	return !_items.empty() && _items.front().type == ItemType::Message;
+	// Same question as IsAvailableMessage() now that items share one ordered queue;
+	// delegate so the type check has a single source of truth.
+	return IsAvailableMessage();
 }
 
 bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &packet)
