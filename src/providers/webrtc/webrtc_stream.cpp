@@ -1,0 +1,1113 @@
+//==============================================================================
+//
+//  WebRTC Provider
+//
+//  Created by Getroot
+//  Copyright (c) 2021 AirenSoft. All rights reserved.
+//
+//==============================================================================
+
+#include "webrtc_stream.h"
+
+#include "base/ovlibrary/converter.h"
+#include "base/ovlibrary/random.h"
+#include "modules/rtp_rtcp/rtcp_info/sender_report.h"
+#include "modules/rtp_rtcp/rtp_header_extension/rtp_header_extension.h"
+#include "webrtc_application.h"
+#include "webrtc_private.h"
+#include "webrtc_provider.h"
+
+#if DEBUG
+#	include "base/ovlibrary/dump_utilities.h"
+#	include "base/ovlibrary/path_manager.h"
+#endif	// DEBUG
+
+namespace pvd
+{
+	std::shared_ptr<WebRTCStream> WebRTCStream::Create(StreamSourceType source_type, ov::String stream_name,
+													   const std::shared_ptr<PushProvider> &provider,
+													   const std::shared_ptr<const SessionDescription> &local_sdp,
+													   const std::shared_ptr<const SessionDescription> &remote_sdp,
+													   const std::shared_ptr<Certificate> &certificate,
+													   const std::shared_ptr<IcePort> &ice_port,
+													   session_id_t ice_session_id, 
+													   const std::shared_ptr<const ac::RequestInfo> &request_info,
+													   const cfg::vhost::app::pvd::WebrtcProvider &config)
+	{
+		auto stream = std::make_shared<WebRTCStream>(source_type, stream_name, provider, local_sdp, remote_sdp, certificate, ice_port, ice_session_id, request_info, config);
+		if (stream != nullptr)
+		{
+			if (stream->Start() == false)
+			{
+				return nullptr;
+			}
+		}
+		return stream;
+	}
+
+	WebRTCStream::WebRTCStream(StreamSourceType source_type, ov::String stream_name,
+							   const std::shared_ptr<PushProvider> &provider,
+							   const std::shared_ptr<const SessionDescription> &local_sdp,
+							   const std::shared_ptr<const SessionDescription> &remote_sdp,
+							   const std::shared_ptr<Certificate> &certificate,
+							   const std::shared_ptr<IcePort> &ice_port,
+							   session_id_t ice_session_id, 
+							   const std::shared_ptr<const ac::RequestInfo> &request_info,
+							   const cfg::vhost::app::pvd::WebrtcProvider &config)
+		: PushStream(source_type, stream_name, provider), Node(NodeType::Edge)
+	{
+		_local_sdp = local_sdp;
+		_remote_sdp = remote_sdp;
+
+		if (_local_sdp->GetType() == SessionDescription::SdpType::Offer)
+		{
+			_offer_sdp = _local_sdp;
+			_answer_sdp = _remote_sdp;
+		}
+		else
+		{
+			_offer_sdp = _remote_sdp;
+			_answer_sdp = _local_sdp;
+		}
+
+		_ice_port = ice_port;
+		_certificate = certificate;
+		_session_key = ov::Random::GenerateString(8);
+		_ice_session_id = ice_session_id;
+
+		_h264_bitstream_parser.SetConfig(H264BitstreamParser::Config{._parse_slice_type = true});
+
+		_fir_interval = config.GetFIRInterval();
+		if (config.GetRtcpBasedTimestamp() == false)
+		{
+			SetRtpTimestampMethod(RtpTimestampCalculationMethod::SINGLE_DELTA);
+		}
+		// else: leave as UNDER_DECISION so RTCP SR wait / auto-fallback logic runs
+
+		_request_info = request_info;
+	}
+
+	WebRTCStream::~WebRTCStream()
+	{
+		logtt("WebRTCStream(%s/%d) is destroyed", GetName().CStr(), GetId());
+	}
+
+	bool WebRTCStream::Start()
+	{
+		std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+
+		logtt("[WebRTC Provider] Local SDP");
+		logtt("%s\n", _local_sdp->ToString().CStr());
+		logtt("[WebRTC Provider] Peer SDP");
+		logtt("%s", _remote_sdp->ToString().CStr());
+
+		auto local_media_desc_list = _local_sdp->GetMediaList();
+		auto remote_media_desc_list = _remote_sdp->GetMediaList();
+		auto answer_media_desc_list = _answer_sdp->GetMediaList();
+
+		if (local_media_desc_list.size() != remote_media_desc_list.size())
+		{
+			logte("m= line of peer does not correspond with local");
+			return false;
+		}
+
+		// Create Nodes
+		_rtp_rtcp = std::make_shared<RtpRtcp>(RtpRtcpInterface::GetSharedPtr());
+		_srtp_transport = std::make_shared<SrtpTransport>();
+		_dtls_transport = std::make_shared<DtlsTransport>();
+		_dtls_transport->SetLocalCertificate(_certificate);
+
+		// Bind the peer fingerprint advertised in the remote SDP so that the
+		// DTLS handshake refuses any peer whose certificate digest does not match.
+		ov::String peer_fingerprint_algorithm = _remote_sdp->GetFingerprintAlgorithm();
+		ov::String peer_fingerprint_value = _remote_sdp->GetFingerprintValue();
+		if (peer_fingerprint_algorithm.IsEmpty() || peer_fingerprint_value.IsEmpty())
+		{
+			logte("Remote SDP does not include a DTLS fingerprint; refusing to start DTLS");
+			return false;
+		}
+		_dtls_transport->SetPeerFingerprint(peer_fingerprint_algorithm, peer_fingerprint_value);
+
+		_dtls_transport->StartDTLS();
+
+		// RFC3264
+		// For each "m=" line in the local, there MUST be a corresponding "m=" line in the peer.
+		for (size_t i = 0; i < remote_media_desc_list.size(); i++)
+		{
+			auto remote_media_desc = remote_media_desc_list[i];
+			auto local_media_desc = local_media_desc_list[i];
+			auto offer_media_desc = local_media_desc_list[i];
+			auto answer_media_desc = answer_media_desc_list[i];
+
+			if(remote_media_desc->GetDirection() != MediaDescription::Direction::SendOnly &&
+				remote_media_desc->GetDirection() != MediaDescription::Direction::SendRecv)
+			{
+				logtt("Media (%s) is inactive", remote_media_desc->GetMediaTypeStr().CStr());
+				continue;
+			}
+
+			// Create Channel
+
+			// Simulcast Layer
+			if (local_media_desc->GetRecvLayerList().size() == 0)
+			{
+				auto first_payload = answer_media_desc->GetFirstPayload();
+				if (first_payload == nullptr)
+				{
+					logte("Could not find payload in the media description");
+					continue;
+				}
+				
+				if (CreateChannel(remote_media_desc, local_media_desc, nullptr, first_payload) == false)
+				{
+					logte("Could not create channel : pt(%d)", first_payload->GetId());
+					continue;
+				}
+			}
+			else
+			{
+				for (auto &layer : local_media_desc->GetRecvLayerList())
+				{
+					// OME doesn't support alternative rid and alternative pt
+					// It already has been discarded in the SDP
+					auto first_rid = layer->GetFirstRid();
+					if (first_rid == nullptr)
+					{
+						logte("Could not find RID in the simulcast layer");
+						continue;
+					}
+
+					auto first_pt = first_rid->GetFirstPt();
+					if (first_pt.has_value() == false)	
+					{
+						// If there is no payload type, use the first payload type of the media description.
+						auto first_payload = local_media_desc->GetFirstPayload();
+						if (first_payload == nullptr)
+						{
+							logte("Could not find payload in the RID of the simulcast layer : rid(%s)", first_rid->GetId().CStr());
+							continue;
+						}
+
+						first_pt = first_payload->GetId();
+					}
+
+					auto payload_attr = local_media_desc->GetPayload(first_pt.value());
+					if (payload_attr == nullptr)
+					{
+						logte("Could not find payload in the RID of the simulcast layer : rid(%s), pt(%d)", first_rid->GetId().CStr(), first_pt.value());
+						continue;
+					}
+
+					if (CreateChannel(offer_media_desc, answer_media_desc, first_rid, payload_attr) == false)
+					{
+						logte("Could not create channel : rid(%s), pt(%d)", first_rid->GetId().CStr(), first_pt.value());
+						continue;
+					}
+				}
+			}
+		}
+
+		// Connect nodes
+		_rtp_rtcp->RegisterPrevNode(nullptr);
+		_rtp_rtcp->RegisterNextNode(_srtp_transport);
+		_rtp_rtcp->Start();
+		_srtp_transport->RegisterPrevNode(_rtp_rtcp);
+		_srtp_transport->RegisterNextNode(_dtls_transport);
+		_srtp_transport->Start();
+		_dtls_transport->RegisterPrevNode(_srtp_transport);
+		_dtls_transport->RegisterNextNode(ov::Node::GetSharedPtr());
+		_dtls_transport->Start();
+
+		RegisterPrevNode(_dtls_transport);
+		RegisterNextNode(nullptr);
+		ov::Node::Start();
+
+		_fir_timer.Start();
+
+		// _sent_sequence_header = false;
+
+		return pvd::Stream::Start();
+	}
+
+	bool WebRTCStream::CreateChannel(const std::shared_ptr<const MediaDescription> &remote_media_desc, 
+						const std::shared_ptr<const MediaDescription> &local_media_desc,
+						const std::shared_ptr<const RidAttr> &rid_attr, /* Optional / can be nullptr */
+						const std::shared_ptr<const PayloadAttr> &payload_attr)
+	{
+		auto offer_media_desc = _local_sdp->GetType() == SessionDescription::SdpType::Offer ? local_media_desc : remote_media_desc;
+		auto answer_media_desc = _local_sdp->GetType() == SessionDescription::SdpType::Offer ? remote_media_desc : local_media_desc;
+
+		auto track = CreateTrack(payload_attr);
+		if (track == nullptr)
+		{
+			logte("Could not create track : pt(%d)", payload_attr->GetId());
+			return false;
+		}
+
+		if (AddTrack(track) == false)
+		{
+			logte("Could not add track : pt(%d)", payload_attr->GetId());
+			return false;
+		}
+
+		// Add Depacketizer
+		if (AddDepacketizer(track->GetId()) == false)
+		{
+			logte("Could not add depacketizer : pt(%d)", payload_attr->GetId());
+			return false;
+		}
+
+		if (_rtp_rtcp->IsTransportCcFeedbackEnabled() == false && payload_attr->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::TransportCc) == true)
+		{
+			// a=extmap:id http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01
+			uint8_t transport_cc_extension_id = 0;
+			ov::String transport_cc_extension_uri;
+			if (answer_media_desc->FindExtmapItem("transport-wide-cc-extensions", transport_cc_extension_id, transport_cc_extension_uri) == true)
+			{
+				_rtp_rtcp->EnableTransportCcFeedback(transport_cc_extension_id);
+			}
+		}
+
+		// uri:ietf:rtc:rtp-hdrext:video:CompositionTime
+		ov::String cts_extmap_uri;
+		if (answer_media_desc->FindExtmapItem("CompositionTime", _cts_extmap_id, cts_extmap_uri))
+		{
+			_cts_extmap_enabled = true;
+		}
+
+		// mid extension
+		uint8_t mid_extension_id = 0;
+		ov::String mid_extension_uri;
+		bool has_mid_extension = answer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:mid", mid_extension_id, mid_extension_uri);
+
+		// rid extension
+		uint8_t rid_extension_id = 0;
+		ov::String rid_extension_uri;
+		bool has_rid_extension = false;
+		// rrid (repaired-rtp-stream-id): libwebrtc stamps this on RTX packets
+		// in simulcast so the receive side can map RTX → primary via mid + rrid.
+		// Absent (id == 0) when not negotiated.
+		uint8_t rrid_extension_id = 0;
+		ov::String rrid_extension_uri;
+		answer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id", rrid_extension_id, rrid_extension_uri);
+		if (rid_attr != nullptr)
+		{
+			has_rid_extension = answer_media_desc->FindExtmapItem("urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id", rid_extension_id, rid_extension_uri);
+			
+			if (has_rid_extension)
+			{
+				// Key: "mid:rid" when the SDP a=mid identifier is available to disambiguate across m= sections
+				// that reuse the same RID values; otherwise just "rid".
+				// RID values are [a-zA-Z0-9\-_]+ and MID tokens contain no ':', so ':' is a safe separator.
+				//
+				// Examples:
+				//   MID="video0", RID="high" → key = "video0:high"
+				//   MID="video0", RID="low"  → key = "video0:low"
+				//   no MID,       RID="high" → key = "high"
+				auto mid = answer_media_desc->GetMid();
+				auto key = (mid.has_value() && !mid->IsEmpty())
+							? (mid.value() + ":" + rid_attr->GetId())
+							: rid_attr->GetId();
+				_simulcast_track_map[key] = track->GetId();
+
+				logti("[%s(%u)] Simulcast track mapped - key(%s), track_id(%u), mid_ext(%s), rid(%s)",
+					GetName().CStr(), GetId(), key.CStr(), track->GetId(),
+					has_mid_extension ? "yes" : "no", rid_attr->GetId().CStr());
+			}
+		}
+
+		// Add Rtp Receiver
+		RtpRtcp::RtpTrackIdentifier rtp_track_id(track->GetId());
+
+		rtp_track_id.ssrc = remote_media_desc->GetSsrc();
+		rtp_track_id.cname = answer_media_desc->GetCname();
+		rtp_track_id.mid = has_mid_extension ? answer_media_desc->GetMid() : std::nullopt;
+		rtp_track_id.mid_extension_id = mid_extension_id;
+		rtp_track_id.rid = has_rid_extension ? std::optional<ov::String>(rid_attr->GetId()) : std::nullopt;
+		rtp_track_id.rid_extension_id = rid_extension_id;
+		rtp_track_id.rrid_extension_id = rrid_extension_id;
+
+		if (_rtp_rtcp->AddRtpReceiver(track, rtp_track_id) == false)
+		{
+			logte("Could not add rtp receiver : track_id(%u)", track->GetId());
+			return false;
+		}
+
+		// Register DD ext id only when the extension was negotiated. Without
+		// it (or when a sender advertises but never stamps it), the jitter
+		// buffer falls back to sequence-number continuity.
+		if (track->GetMediaType() == cmn::MediaType::Video)
+		{
+			uint8_t dd_ext_id = 0;
+			ov::String dd_uri;
+			if (answer_media_desc->FindExtmapItem(
+					RTP_HEADER_EXTENSION_DEPENDENCY_DESCRIPTOR_ATTRIBUTE,
+					dd_ext_id, dd_uri))
+			{
+				_rtp_rtcp->SetDependencyDescriptorExtId(dd_ext_id);
+			}
+		}
+
+		// NACK + RTX wiring (video only). Audio NACK is not negotiated.
+		if (track->GetMediaType() == cmn::MediaType::Video &&
+			payload_attr->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
+		{
+			uint32_t media_ssrc = remote_media_desc->GetSsrc().value_or(0);
+			uint32_t max_hold_ms = 400;
+			auto app = GetApplication();
+			if (app != nullptr)
+			{
+				// MaxHoldMs is a signed config value; a negative/zero
+				// misconfiguration would wrap to a huge cap and disable the
+				// latency bound, so fall back to the default in that case.
+				int configured = app->GetConfig().GetProviders().GetWebrtcProvider().GetRtx().GetMaxHoldMs();
+				if (configured > 0)
+				{
+					max_hold_ms = static_cast<uint32_t>(configured);
+				}
+			}
+			_rtp_rtcp->EnableNack(track->GetId(), media_ssrc, max_hold_ms);
+
+			// Register RTX payloads (PT-based detection) and, when the peer
+			// pre-declared an RTX SSRC via a=ssrc-group:FID, also bind the
+			// RTX SSRC for the primary PT so the first packet skips the
+			// dynamic-resolution path. Simulcast WHIP omits ssrc-group:FID
+			// and relies on the PT path alone.
+			auto rtx_ssrc_opt = remote_media_desc->GetRtxSsrc();
+			for (auto &cand : answer_media_desc->GetPayloadList())
+			{
+				if (cand->GetCodec() != PayloadAttr::SupportCodec::RTX)
+				{
+					continue;
+				}
+				auto fmtp = cand->GetFmtp();
+				auto apt_pos = fmtp.IndexOf("apt=");
+				if (apt_pos < 0)
+				{
+					continue;
+				}
+				uint8_t apt_pt = static_cast<uint8_t>(ov::Converter::ToUInt32(fmtp.Substring(apt_pos + 4).CStr()));
+				_rtp_rtcp->RegisterRtxPayloadType(cand->GetId(), apt_pt);
+				_rtx_enabled = true;
+
+				if (rtx_ssrc_opt.has_value() && apt_pt == payload_attr->GetId())
+				{
+					_rtp_rtcp->RegisterRtxStream(rtx_ssrc_opt.value(), media_ssrc,
+												 cand->GetId(), apt_pt);
+				}
+			}
+		}
+
+		// Clock
+		RegisterRtpClock(track->GetId(), track->GetTimeBase().GetExpr());
+
+		return true;
+	}
+
+	std::shared_ptr<MediaTrack> WebRTCStream::CreateTrack(const std::shared_ptr<const PayloadAttr> &payload_attr)
+	{
+		auto track = std::make_shared<MediaTrack>();
+
+		track->SetId(IssueUniqueTrackId());
+		track->SetTimeBase(1, payload_attr->GetCodecRate());
+
+		auto codec = payload_attr->GetCodec();
+		if (codec == PayloadAttr::SupportCodec::OPUS)
+		{
+			track->SetMediaType(cmn::MediaType::Audio);
+			track->SetCodecId(cmn::MediaCodecId::Opus);
+			track->SetOriginBitstream(cmn::BitstreamFormat::OPUS_RTP_RFC_7587);
+		}
+		else if (codec == PayloadAttr::SupportCodec::MPEG4_GENERIC)
+		{
+			track->SetMediaType(cmn::MediaType::Audio);
+			track->SetCodecId(cmn::MediaCodecId::Aac);
+			track->SetOriginBitstream(cmn::BitstreamFormat::AAC_MPEG4_GENERIC);
+		}
+		else if (codec == PayloadAttr::SupportCodec::H264)
+		{
+			track->SetMediaType(cmn::MediaType::Video);
+			track->SetCodecId(cmn::MediaCodecId::H264);
+			track->SetOriginBitstream(cmn::BitstreamFormat::H264_RTP_RFC_6184);
+			track->SetVideoTimestampScale(1.0);
+		}
+		else if (codec == PayloadAttr::SupportCodec::H265)
+		{
+			track->SetMediaType(cmn::MediaType::Video);
+			track->SetCodecId(cmn::MediaCodecId::H265);
+			track->SetOriginBitstream(cmn::BitstreamFormat::H265_RTP_RFC_7798);
+			track->SetVideoTimestampScale(1.0);
+		}
+		else if (codec == PayloadAttr::SupportCodec::VP8)
+		{
+			track->SetMediaType(cmn::MediaType::Video);
+			track->SetCodecId(cmn::MediaCodecId::Vp8);
+			track->SetOriginBitstream(cmn::BitstreamFormat::VP8_RTP_RFC_7741);
+			track->SetVideoTimestampScale(1.0);
+		}
+		else if (codec == PayloadAttr::SupportCodec::AV1)
+		{
+			track->SetMediaType(cmn::MediaType::Video);
+			track->SetCodecId(cmn::MediaCodecId::Av1);
+			track->SetOriginBitstream(cmn::BitstreamFormat::AV1_RTP_AOM);
+			track->SetVideoTimestampScale(1.0);
+		}
+		else
+		{
+			logte("%s - Unsupported codec : codec(%d)", GetName().CStr(), static_cast<uint8_t>(codec));
+			return nullptr;
+		}
+
+		if (track->GetMediaType() == cmn::MediaType::Audio)
+		{	
+			// channel
+			auto channels = std::atoi(payload_attr->GetCodecParams());
+			track->SetChannelLayout((channels == 1) ? cmn::AudioChannel::Layout::LayoutMono : cmn::AudioChannel::Layout::LayoutStereo);
+		}
+
+		return track;
+	}
+
+	ov::String WebRTCStream::GetSessionKey() const
+	{
+		return _session_key;
+	}
+
+	void WebRTCStream::SetOvenCapabilities(const ov::String &capabilities)
+	{
+		_oven_capabilities = capabilities;
+
+		// Oven-Capabilities header format:
+		//
+		// 1. Plain format (applied to the first video track only):
+		//    max_width=1920, max_height=1080, max_fps=30
+		//
+		//    capabilities = "max_width=1920, max_height=1080, max_fps=30"
+		//
+		// 2. RID format (applied per RID to the corresponding simulcast track):
+		//    rid:high:max_width=1280, rid:high:max_height=720, rid:high:max_fps=30, rid:low:max_width=640, rid:low:max_height=360
+		//
+		//    capabilities = "rid:high:max_width=1280, rid:high:max_height=720, rid:high:max_fps=30, rid:low:max_width=640, rid:low:max_height=360"
+		//
+		// 3. MID+RID format (disambiguates RIDs across multiple m= sections):
+		//    mid:<mid_id>:rid:<rid_id>:<field>=<value>
+		//
+		//    capabilities = "mid:0:rid:high:max_width=1280, mid:0:rid:high:max_height=720, mid:0:rid:high:max_fps=30, mid:0:rid:low:max_width=640, mid:0:rid:low:max_height=360"
+		//
+		//    Internally keyed by "mid:rid" in _simulcast_track_map (e.g. "0:high" → track_id),
+		//    so the same maps (rid_max_*) cover both RID-only and MID+RID formats.
+		//
+		// If plain format params are present in a simulcast stream, they are applied to the first video track (backward compatibility).
+
+		logtt("%s - Set Oven-Capabilities: %s", GetName().CStr(), capabilities.CStr());
+
+		auto params = ov::String::Split(capabilities.CStr(), ",");
+
+		std::optional<int> plain_max_width;
+		std::optional<int> plain_max_height;
+		std::optional<double> plain_max_fps;
+
+		std::map<ov::String, int> rid_max_width;
+		std::map<ov::String, int> rid_max_height;
+		std::map<ov::String, double> rid_max_fps;
+
+		for (const auto &param : params)
+		{
+			auto key_value = ov::String::Split(param.CStr(), "=");
+			if (key_value.size() != 2)
+			{
+				continue;
+			}
+
+			auto key   = key_value[0].Trim();
+			auto value = key_value[1].Trim();
+
+			auto key_lower = key.LowerCaseString();
+			if (key_lower.HasPrefix("rid:"))
+			{
+				// RID format: rid:<rid_id>:<field>
+				// rid_id preserves original case to match _simulcast_track_map keys from SDP
+				auto parts = ov::String::Split(key.CStr(), ":");
+				if (parts.size() != 3)
+				{
+					continue;
+				}
+
+				const auto &rid_id = parts[1];
+				auto field = parts[2].LowerCaseString();
+
+				if (field == "max_width")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_width[rid_id] = v;
+				}
+				else if (field == "max_height")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_height[rid_id] = v;
+				}
+				else if (field == "max_fps")
+				{
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) rid_max_fps[rid_id] = v;
+				}
+			}
+			else if (key_lower.HasPrefix("mid:"))
+			{
+				// MID+RID format: mid:<mid_id>:rid:<rid_id>:<field>
+				// e.g. "mid:0:rid:high:max_width" → mid_rid_key = "0:high", field = "max_width"
+				auto parts = ov::String::Split(key.CStr(), ":");
+				if (parts.size() != 5 || parts[2].LowerCaseString() != "rid")
+				{
+					continue;
+				}
+
+				// Build the same "mid:rid" composite key used in _simulcast_track_map
+				auto mid_rid_key = parts[1] + ":" + parts[3];
+				auto field = parts[4].LowerCaseString();
+
+				if (field == "max_width")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_width[mid_rid_key] = v;
+				}
+				else if (field == "max_height")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) rid_max_height[mid_rid_key] = v;
+				}
+				else if (field == "max_fps")
+				{
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) rid_max_fps[mid_rid_key] = v;
+				}
+			}
+			else
+			{
+				// Plain format: applied to the first video track
+				if (key_lower == "max_width")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) plain_max_width = v;
+				}
+				else if (key_lower == "max_height")
+				{
+					auto v = ov::Converter::ToInt32(value.CStr());
+					if (v > 0) plain_max_height = v;
+				}
+				else if (key_lower == "max_fps")
+				{
+					auto v = ov::Converter::ToDouble(value.CStr());
+					if (v > 0) plain_max_fps = v;
+				}
+			}
+		}
+
+		// Apply plain params to the first video track
+		if (plain_max_width.has_value() && plain_max_height.has_value())
+		{
+			auto first_video_track_info = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track_info != nullptr)
+			{
+				// Author-time setup: the stream is not shared yet
+				auto first_video_track = GetMutableTrack(first_video_track_info->GetId());
+				first_video_track->SetResolution(plain_max_width.value(), plain_max_height.value());
+
+				auto max_resolution = first_video_track->GetMaxResolution();
+				logtt("%s - Set max resolution: %s", GetName().CStr(), max_resolution.ToString().CStr());
+			}
+		}
+
+		if (plain_max_fps.has_value())
+		{
+			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (first_video_track != nullptr)
+			{
+				first_video_track->SetMaxFrameRate(plain_max_fps.value());
+
+				logtt("%s - Set max fps: %.2f", GetName().CStr(), first_video_track->GetMaxFrameRate());
+			}
+		}
+
+		// Apply RID params to the corresponding simulcast track (_simulcast_track_map is empty for unicast, so this loop is a no-op)
+		for (const auto &[key, track_id] : _simulcast_track_map)
+		{
+			// _simulcast_track_map key is "mid:rid" (MID present) or "rid" (no MID).
+			// rid_max_* maps may be keyed by:
+			//   - "mid:rid" composite key (format 3: mid:0:rid:high:max_width=...)
+			//   - "rid" only             (format 2: rid:high:max_width=...)
+			//
+			// Try the full key first (handles format 3 and no-MID format 2).
+			// Fall back to the RID-only suffix (last ':'-token) to handle the common case
+			// where the sender uses RID-only format but the SDP contains a MID extension,
+			// making the internal key "mid:rid" (e.g. "0:high") while the header says "rid:high".
+			//
+			// Examples:
+			//   key="0:high", rid_max_* has "0:high" → direct hit  (format 3)
+			//   key="0:high", rid_max_* has "high"   → fallback hit (format 2 + MID present)
+			//   key="high",   rid_max_* has "high"   → direct hit  (format 2, no MID)
+			const auto rid_suffix = ov::String(ov::String::Split(key.CStr(), ":").back());
+
+			auto it_width  = rid_max_width.find(key);
+			if (it_width  == rid_max_width.end())  it_width  = rid_max_width.find(rid_suffix);
+			auto it_height = rid_max_height.find(key);
+			if (it_height == rid_max_height.end()) it_height = rid_max_height.find(rid_suffix);
+			auto it_fps    = rid_max_fps.find(key);
+			if (it_fps    == rid_max_fps.end())    it_fps    = rid_max_fps.find(rid_suffix);
+
+			// Author-time setup: the stream is not shared yet
+			auto track = GetMutableTrack(track_id);
+			if (track != nullptr)
+			{
+				if (it_width != rid_max_width.end() && it_height != rid_max_height.end())
+				{
+					track->SetResolution(it_width->second, it_height->second);
+
+					auto max_resolution = track->GetMaxResolution();
+					logtt("%s - Set max resolution for key(%s): %s", GetName().CStr(), key.CStr(), max_resolution.ToString().CStr());
+				}
+
+				if (it_fps != rid_max_fps.end())
+				{
+					track->SetMaxFrameRate(it_fps->second);
+					logtt("%s - Set max fps for key(%s): %.2f", GetName().CStr(), key.CStr(), track->GetMaxFrameRate());
+				}
+			}
+		}
+	}
+
+	bool WebRTCStream::AddDepacketizer(uint32_t track_id)
+	{
+		auto track = GetTrack(track_id);
+		RtpDepacketizingManager::SupportedDepacketizerType depacketizer_codec_id;
+
+		switch (track->GetCodecId())
+		{
+			case cmn::MediaCodecId::H264:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::H264;
+				break;
+
+			case cmn::MediaCodecId::H265:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::H265;
+				break;
+
+			case cmn::MediaCodecId::Opus:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::OPUS;
+				break;
+
+			case cmn::MediaCodecId::Vp8:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::VP8;
+				break;
+
+			case cmn::MediaCodecId::Av1:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::AV1;
+				break;
+
+			case cmn::MediaCodecId::Aac:
+				depacketizer_codec_id = RtpDepacketizingManager::SupportedDepacketizerType::MPEG4_GENERIC_AUDIO;
+				break;
+
+			default:
+				logte("%s - Unsupported codec : codec(%d)", GetName().CStr(), static_cast<uint8_t>(track->GetCodecId()));
+				return false;
+		}
+
+		auto depacketizer = RtpDepacketizingManager::Create(depacketizer_codec_id);
+		if (depacketizer == nullptr)
+		{
+			logte("%s - Could not create depacketizer : codec_id(%d)", GetName().CStr(), static_cast<uint8_t>(depacketizer_codec_id));
+			return false;
+		}
+
+		_depacketizers[track_id] = depacketizer;
+
+		return true;
+	}
+
+	std::shared_ptr<RtpDepacketizingManager> WebRTCStream::GetDepacketizer(uint32_t track_id)
+	{
+		auto it = _depacketizers.find(track_id);
+		if (it == _depacketizers.end())
+		{
+			return nullptr;
+		}
+
+		return it->second;
+	}
+
+	bool WebRTCStream::Stop()
+	{
+		bool result;
+
+		{
+			std::lock_guard<std::shared_mutex> lock(_start_stop_lock);
+
+			if (GetState() == Stream::State::STOPPED || GetState() == Stream::State::TERMINATED)
+			{
+				return true;
+			}
+
+			if (_rtp_rtcp != nullptr)
+			{
+				_rtp_rtcp->Stop();
+			}
+
+			if (_dtls_transport != nullptr)
+			{
+				_dtls_transport->Stop();
+			}
+
+			if (_srtp_transport != nullptr)
+			{
+				_srtp_transport->Stop();
+			}
+
+			_ice_port->DisconnectSession(_ice_session_id);
+
+			ov::Node::Stop();
+
+			result = pvd::Stream::Stop();
+		}
+
+		if (_request_info != nullptr)
+		{
+			auto provider = GetProviderAs<WebRTCProvider>();
+
+			if (provider != nullptr)
+			{
+				provider->SendCloseAdmissionWebhooks(_request_info);
+			}
+			else
+			{
+				OV_ASSERT2(false);
+			}
+		}
+
+		return result;
+	}
+
+	std::shared_ptr<const SessionDescription> WebRTCStream::GetLocalSDP()
+	{
+		return _local_sdp;
+	}
+
+	std::shared_ptr<const SessionDescription> WebRTCStream::GetPeerSDP()
+	{
+		return _remote_sdp;
+	}
+
+	bool WebRTCStream::OnDataReceived(const std::shared_ptr<const ov::Data> &data)
+	{
+		logtp("OnDataReceived (%d)", data->GetLength());
+		// To DTLS -> SRTP -> RTP|RTCP -> WebRTCStream::OnRtxpReceived
+
+		//It must not be called during start and stop.
+		std::shared_lock<std::shared_mutex> lock(_start_stop_lock);
+
+		return SendDataToPrevNode(data);
+	}
+
+	// From RtpRtcp node
+	void WebRTCStream::OnRtpFrameReceived(const std::vector<std::shared_ptr<RtpPacket>> &rtp_packets)
+	{
+		auto first_rtp_packet = rtp_packets.front();
+		auto ssrc = first_rtp_packet->Ssrc();
+		auto track_id_opt = _rtp_rtcp->GetTrackId(ssrc);
+		if (track_id_opt.has_value() == false)
+		{
+			logte("%s - Could not find track id : ssrc(%u)", GetName().CStr(), ssrc);
+			return;
+		}
+		auto track_id = track_id_opt.value();
+
+		logtp("%s", first_rtp_packet->Dump().CStr());
+
+		auto track = GetTrack(track_id);
+		if (track == nullptr)
+		{
+			logte("%s - Could not find track : ssrc(%u)", GetName().CStr(), ssrc);
+			return;
+		}
+
+		auto depacketizer = GetDepacketizer(track_id);
+		if (depacketizer == nullptr)
+		{
+			logte("%s - Could not find depacketizer : ssrc(%u", GetName().CStr(), ssrc);
+			return;
+		}
+
+		std::vector<std::shared_ptr<ov::Data>> payload_list;
+		for (const auto &packet : rtp_packets)
+		{
+			logtp("%s", packet->Dump().CStr());
+			auto payload = std::make_shared<ov::Data>(packet->Payload(), packet->PayloadSize());
+			payload_list.push_back(payload);
+		}
+
+		// Depacketizer is internally thread-safe.
+		auto bitstream = depacketizer->ParseAndAssembleFrame(payload_list);
+		if (bitstream == nullptr)
+		{
+			logte("%s - Could not depacketize packet : ssrc(%u)", GetName().CStr(), ssrc);
+			return;
+		}
+
+		cmn::BitstreamFormat bitstream_format;
+		cmn::PacketType packet_type;
+
+		bool cts_enabled = false;
+		switch (track->GetCodecId())
+		{
+			case cmn::MediaCodecId::H265:
+				// Our H265 depacketizer always converts packet to Annex B
+				bitstream_format = cmn::BitstreamFormat::H265_ANNEXB;
+				packet_type = cmn::PacketType::NALU;
+				// CTS/DTS reorder is implemented for H264 only; H265 is sent without reordering
+				{
+					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					// Keep refreshing until the parameter sets are actually collected
+					auto it = _h26x_extradata_nalu.find(track->GetId());
+					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
+					{
+						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					}
+				}
+				break;
+
+			case cmn::MediaCodecId::H264:
+				// Our H264 depacketizer always converts packet to Annex B
+				bitstream_format = cmn::BitstreamFormat::H264_ANNEXB;
+				packet_type = cmn::PacketType::NALU;
+				cts_enabled = _cts_extmap_enabled == true;
+				{
+					std::lock_guard<std::mutex> lock(_sequence_header_lock);
+					// Keep refreshing until the parameter sets are actually collected
+					auto it = _h26x_extradata_nalu.find(track->GetId());
+					if (it == _h26x_extradata_nalu.end() || it->second == nullptr)
+					{
+						_h26x_extradata_nalu[track->GetId()] = depacketizer->GetDecodingParameterSetsToAnnexB();
+					}
+				}
+				break;
+
+			case cmn::MediaCodecId::Opus:
+				bitstream_format = cmn::BitstreamFormat::OPUS;
+				packet_type = cmn::PacketType::RAW;
+				break;
+
+			case cmn::MediaCodecId::Vp8:
+				bitstream_format = cmn::BitstreamFormat::VP8;
+				packet_type = cmn::PacketType::RAW;
+				break;
+
+			case cmn::MediaCodecId::Av1:
+				// Depacketizer emits a low-overhead OBU temporal unit
+				bitstream_format = cmn::BitstreamFormat::AV1_OBU;
+				packet_type = cmn::PacketType::RAW;
+				break;
+
+			// It can't be reached here because it has already failed in GetDepacketizer.
+			default:
+				return;
+		}
+
+#if DEBUG
+		// When OME_DUMP_WHIP is set, dump assembled AV1 OBU temporal units to
+		// <app>/dump/whip/<stream>_track<id>.obu. Each temporal unit is prefixed with a Temporal
+		// Delimiter OBU so the file is a standard low-overhead .obu stream that ffmpeg/dav1d can
+		// decode directly.
+		static const bool dump_whip = ov::Converter::ToBool(std::getenv("OME_DUMP_WHIP"));
+		if (dump_whip && bitstream_format == cmn::BitstreamFormat::AV1_OBU)
+		{
+			auto safe_name = GetName().Replace("/", "_").Replace("#", "_");
+			auto dump_path = ov::PathManager::Combine(
+				ov::PathManager::GetAppPath("dump/whip"),
+				ov::String::FormatString("%s_track%u.obu", safe_name.CStr(), track->GetId()));
+			static const uint8_t td_obu[2] = {0x12, 0x00};	// Temporal Delimiter OBU (type 2, size 0)
+			ov::DumpToFile(dump_path.CStr(), td_obu, sizeof(td_obu), 0, true);
+			ov::DumpToFile(dump_path.CStr(), bitstream, 0, true);
+		}
+#endif	// DEBUG
+
+		int64_t adjusted_timestamp;
+		if (AdjustRtpTimestamp(track_id, first_rtp_packet->Timestamp(), std::numeric_limits<uint32_t>::max(), adjusted_timestamp) == false)
+		{
+			// Prevents the stream from being deleted because there is no input data
+			MonitorInstance->IncreaseBytesIn(*Stream::GetSharedPtr(), bitstream->GetLength());
+			return;
+		}
+		
+		int64_t dts = adjusted_timestamp;
+		if (cts_enabled == true)
+		{
+			auto cts_extension_opt = first_rtp_packet->GetExtension<int24_t>(_cts_extmap_id);
+			if (cts_extension_opt.has_value() == true)
+			{
+				int32_t cts = cts_extension_opt.value();
+				dts = adjusted_timestamp - (cts * 90);
+				logtt("PTS(%" PRId64 ") CTS(%d) DTS(%" PRId64 ")", adjusted_timestamp, cts, dts);
+			}
+			else
+			{
+				logte("CTS is enabled but not found in the packet");
+			}
+		}
+		
+		logtt("Payload Type(%d) Timestamp(%u) PTS(%" PRId64 ") Time scale(%f) Adjust Timestamp(%f)",
+			  first_rtp_packet->PayloadType(), first_rtp_packet->Timestamp(), adjusted_timestamp, track->GetTimeBase().GetExpr(), static_cast<double>(adjusted_timestamp) * track->GetTimeBase().GetExpr());
+
+		auto frame = std::make_shared<MediaPacket>(track->GetMediaType(),
+												   track->GetId(),
+												   bitstream,
+												   adjusted_timestamp,
+												   dts,
+												   -1LL,
+												   MediaPacketFlag::Unknown,
+												   bitstream_format,
+												   packet_type);
+
+		// Reorder frames in DTS order
+		if (cts_enabled == true)
+		{
+			std::vector<std::shared_ptr<MediaPacket>> frames_to_send;
+			{
+				// Guards the DTS reorder buffer and the H264 parser only.
+				std::lock_guard<std::mutex> lock(_cts_reorder_lock);
+
+				// PTS order to DTS order
+				// Q and Flush (if slice type is I or P)
+				_dts_ordered_frame_buffer.emplace(dts, frame);
+
+				switch (bitstream_format)
+				{
+					case cmn::BitstreamFormat::H264_ANNEXB:
+					{
+						if (_h264_bitstream_parser.Parse(bitstream) == true)
+						{
+							auto last_slice_type = _h264_bitstream_parser.GetLastSliceType();
+
+							logtt("PTS(%" PRId64 ") DTS(%" PRId64 ") Slice Type(%d)", adjusted_timestamp, dts, last_slice_type.has_value()?static_cast<int>(last_slice_type.value()):-1);
+
+							if (last_slice_type.has_value() == true && last_slice_type.value() != H264SliceType::B)
+							{
+								// Flush All
+								for (auto &buffered : _dts_ordered_frame_buffer)
+								{
+									frames_to_send.push_back(buffered.second);
+								}
+								_dts_ordered_frame_buffer.clear();
+							}
+						}
+						break;
+					}
+					default:
+						break;
+				}
+			}
+
+			// Send outside the lock; OnFrame takes other locks and calls SendFrame.
+			for (auto &send_frame : frames_to_send)
+			{
+				OnFrame(track, send_frame);
+			}
+
+			return;
+		}
+
+		OnFrame(track, frame);
+	}
+
+	void WebRTCStream::OnFrame(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet)
+	{
+		logtp("Send Frame : track_id(%d) codec_id(%d) bitstream_format(%d) packet_type(%d) data_length(%d) pts(%u)", track->GetId(), track->GetCodecId(), media_packet->GetBitstreamFormat(), media_packet->GetPacketType(), media_packet->GetDataLength(), media_packet->GetPts());
+
+		auto track_id = track->GetId();
+		auto codec_id = track->GetCodecId();
+		bool is_h26x = (codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265);
+		auto packet_to_send = media_packet;
+
+		// Guard the sequence-header check-and-set. SendFrame stays outside the lock.
+		{
+			std::lock_guard<std::mutex> lock(_sequence_header_lock);
+
+			bool is_sent_sequence_header = _sent_sequence_header.find(track_id) != _sent_sequence_header.end();
+
+			// If SPS/PPS/VPS are received out-of-band, replace them with the in-band format.
+			// If the codec is H264/H265 and the sequence header has not been sent yet, prepend it.
+			if (is_h26x && !is_sent_sequence_header)
+			{
+				// Prepend only once the parameter sets are available; otherwise leave it
+				// unsent so a later frame can prepend after the depacketizer collects them.
+				auto it = _h26x_extradata_nalu.find(track_id);
+				if (it != _h26x_extradata_nalu.end() && it->second != nullptr)
+				{
+					auto new_packet = media_packet->ClonePacket();
+
+					// Since it is a NALU type, the data can simply be concatenated
+					auto prepend = std::make_shared<ov::Data>();
+					prepend->Append(it->second);			   // Decoding Parameter Sets (SPS/PPS/VPS)
+					prepend->Append(media_packet->GetData());  // Current frame data
+
+					new_packet->SetData(prepend);
+
+					logtp("Prepend Decoding Parameter Sets. track_id(%d) codec_id(%d) original_data_length(%d) new_data_length(%d)", track_id, codec_id, media_packet->GetDataLength(), new_packet->GetDataLength());
+
+					packet_to_send = new_packet;
+					_sent_sequence_header[track_id] = true;
+				}
+			}
+		}
+
+		SendFrame(packet_to_send);
+
+		// Send FIR to reduce keyframe interval
+		// _fir_interval can be 0 to disable FIR sending. The default value is 3000 ms.
+		if (_fir_interval != 0 && _fir_timer.IsElapsed(_fir_interval) && track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_fir_timer.Update();
+			//_rtp_rtcp->SendPLI(first_rtp_packet->Ssrc());
+			_rtp_rtcp->SendFIR(track->GetId());
+		}
+
+		// Send Receiver Report
+	}
+
+	// From RtpRtcp node
+	void WebRTCStream::OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info)
+	{
+		// Receive Sender Report
+		if (rtcp_info->GetPacketType() == RtcpPacketType::SR)
+		{
+			auto sr = std::dynamic_pointer_cast<SenderReport>(rtcp_info);
+
+			auto track_id = _rtp_rtcp->GetTrackId(sr->GetSenderSsrc());
+			if (track_id.has_value() == false)
+			{
+				// This can happen if RTCP arrives before RTP
+				logtw("%s - Could not find track id for RTCP SR : ssrc(%u)", GetName().CStr(), sr->GetSenderSsrc());
+				return;
+			}
+
+			UpdateSenderReportTimestamp(track_id.value(), sr->GetMsw(), sr->GetLsw(), sr->GetTimestamp());
+		}
+	}
+
+	// ov::Node Interface
+	// RtpRtcp -> SRTP -> DTLS -> Edge(this) -> IcePort
+	bool WebRTCStream::OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data)
+	{
+		if (ov::Node::GetNodeState() != ov::Node::NodeState::Started)
+		{
+			logtt("Node has not started, so the received data has been canceled.");
+			return false;
+		}
+
+		return _ice_port->Send(_ice_session_id, data);
+	}
+
+	// WebRTCStream Node has not a lower node so it will not be called
+	bool WebRTCStream::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data)
+	{
+		return true;
+	}
+}  // namespace pvd

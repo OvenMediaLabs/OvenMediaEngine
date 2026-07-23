@@ -1,0 +1,670 @@
+//==============================================================================
+//
+//  MediaRouteStream
+//
+//  Created by Keukhan
+//  Copyright (c) 2018 AirenSoft. All rights reserved.
+//
+//==============================================================================
+
+// Role Definition
+// ------------------------
+// Inbound stream process
+//		Calculating packet duration ->
+//		Changing the bitstream format  ->
+// 		Parsing Track Information ->
+// 		Parsing Fragmentation Header ->
+// 		Parsing Key-frame ->
+// 		Append Decoder ParameterSets ->
+// 		Changing the timestamp based on the timebase
+
+// Outbound Stream process
+//		Calculating packet duration ->
+// 		Parsing Track Information ->
+// 		Parsing Fragmentation Header ->
+// 		Parsing Key-frame ->
+// 		Append Decoder ParameterSets ->
+// 		Changing the timestamp based on the timebase
+
+#include "mediarouter_stream.h"
+
+#include <base/event/media_event.h>
+#include <base/event/command/update_language.h>
+#include <base/ovlibrary/ovlibrary.h>
+#include <monitoring/monitoring.h>
+
+#include "mediarouter_private.h"
+
+
+using namespace cmn;
+
+MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type, uint32_t worker_id)
+	: _worker_id(worker_id),
+	  _stream(stream),
+	  _packets_queue(nullptr, 600)
+{
+	SetType(type);
+
+	MediaRouterStats::Init(stream);
+	MediaRouterAlert::Init(stream);
+}
+
+MediaRouteStream::~MediaRouteStream()
+{
+	_media_packet_stash.clear();
+	_packets_queue.Stop();
+	_packets_queue.Clear();
+}
+
+std::shared_ptr<info::Stream> MediaRouteStream::GetStream()
+{
+	return _stream;
+}
+
+void MediaRouteStream::SetType(cmn::MediaRouterStreamType type)
+{
+	_type = type;
+
+	auto urn = std::make_shared<info::ManagedQueue::URN>(
+		_stream->GetApplicationInfo().GetVHostAppName(),
+		_stream->GetName(),
+		(_type == cmn::MediaRouterStreamType::INBOUND) ? "imr" : "omr",
+		"stream");
+	_packets_queue.SetUrn(urn);
+}
+
+void MediaRouteStream::SetBufferRetentionDuration(int delay_ms)
+{
+	if (delay_ms <= 0)
+	{
+		logtw("%s Invalid buffer retention duration value: %d ms", _stream->GetUri().CStr(), delay_ms);
+		return;
+	}
+
+	// If buffer retention duration is set, the control is performed in the queue of MediaRouterApplication,
+	// so only the threshold is set to prevent warnings in this queue.
+	// Add a buffer of 1 second to prevent spikes.
+	_packets_queue.SetThresholdByTime(delay_ms + 1000); 
+}
+
+void MediaRouteStream::OnStreamPrepared(bool completed)
+{
+	_is_stream_prepared = completed;
+}
+
+bool MediaRouteStream::IsStreamPrepared()
+{
+	return _is_stream_prepared;
+}
+
+bool MediaRouteStream::MarkPreparedNotified()
+{
+	return _prepared_notified.exchange(true) == false;
+}
+
+void MediaRouteStream::Flush()
+{
+	// Clear queued packets
+	_packets_queue.Clear();
+	// Clear stashed Packets
+	_media_packet_stash.clear();
+
+	_is_all_tracks_parsed = false;
+
+	_is_stream_prepared = false;
+	_prepared_notified = false;
+}
+
+// Check whether the information extraction for all tracks has been completed.
+bool MediaRouteStream::IsStreamReady()
+{
+	if (_is_all_tracks_parsed == true)
+	{
+		return true;
+	}
+
+	auto tracks = _stream->GetTracks();
+
+	for (const auto &track_it : tracks)
+	{
+		auto track = track_it.second;
+
+		// The map entry is the latest published version of this track; while a
+		// track stays undescribed no version has been published yet
+		if (track->IsValid() == false)
+		{
+			return false;
+		}
+
+		// If the track is an outbound track, it is necessary to check the quality.
+		if (_stream->HasTrackQualityMeasured(track->GetId()) == false)
+		{
+			return false;
+		}
+	}
+
+	_is_all_tracks_parsed = true;
+
+	return true;
+}
+
+// While any track is invalid, IsStreamReady() stays false and the stream is never prepared. If one of the
+// negotiated tracks (e.g. a simulcast layer or audio) never arrives, the stream hangs. Warn so it is visible.
+void MediaRouteStream::CheckUnpreparedTrackTimeout()
+{
+	auto now = std::chrono::steady_clock::now();
+
+	// Anchor at the first media packet so connection/handshake delay is excluded; full silence is the provider's job.
+	if (_first_media_recv_time_set == false)
+	{
+		_first_media_recv_time = now;
+		_last_unprepared_warn_time = now;
+		_first_media_recv_time_set = true;
+		return;
+	}
+
+	// Warn periodically (not once) while tracks remain invalid
+	if (std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_unprepared_warn_time).count() < MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS)
+	{
+		return;
+	}
+	_last_unprepared_warn_time = now;
+
+	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - _first_media_recv_time).count();
+
+	const auto &tracks = _stream->GetTracks();
+	for (const auto &track_it : tracks)
+	{
+		auto track = track_it.second;
+
+		// Mirror IsStreamReady(): a track blocks prepare until it is both valid and quality-measured
+		if (track->IsValid() == true && _stream->HasTrackQualityMeasured(track->GetId()) == true)
+		{
+			continue;
+		}
+
+		logtw("[%s/%s] Track #%u (%s) is not ready %" PRId64 " ms after media started; the stream cannot be prepared until this track is ready",
+			  _stream->GetApplicationName(), _stream->GetName().CStr(),
+			  track->GetId(), GetMediaTypeString(track->GetMediaType()), static_cast<int64_t>(elapsed_ms));
+	}
+}
+
+// @deprecated
+void MediaRouteStream::DropNonDecodingPackets()
+{
+	////////////////////////////////////////////////////////////////////////////////////
+	// 1. Discover to the highest PTS value in the keyframe against packets on all tracks.
+
+	std::vector<std::shared_ptr<MediaPacket>> tmp_packets_queue;
+	int64_t base_pts = -1LL;
+
+	while (true)
+	{
+		if (_packets_queue.IsEmpty())
+			break;
+
+		auto media_packet_ref = _packets_queue.Dequeue();
+		if (media_packet_ref.has_value() == false)
+			continue;
+
+		auto &media_packet = media_packet_ref.value();
+
+		if (media_packet->GetFlag() == MediaPacketFlag::Key)
+		{
+			if (base_pts < media_packet->GetPts())
+			{
+				base_pts = media_packet->GetPts();
+				logtw("Discovered base PTS value track_id:%u, flags:%d, size:%zu,  pts:%" PRId64 "", media_packet->GetTrackId(), static_cast<int>(media_packet->GetFlag()), media_packet->GetDataLength(), base_pts);
+			}
+		}
+
+		tmp_packets_queue.push_back(std::move(media_packet));
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 2. Obtain the PTS values for all tracks close to the reference PTS.
+
+	// <TrackId, <diff, Pts>>
+	std::map<MediaTrackId, std::pair<int64_t, int64_t>> map_near_pts;
+
+	for (auto it = tmp_packets_queue.begin(); it != tmp_packets_queue.end(); it++)
+	{
+		auto &media_packet = *it;
+
+		if (media_packet->GetFlag() == MediaPacketFlag::Key)
+		{
+			MediaTrackId track_id = media_packet->GetTrackId();
+
+			int64_t pts_diff = std::abs(media_packet->GetPts() - base_pts);
+
+			auto it_near_pts = map_near_pts.find(track_id);
+
+			if (it_near_pts == map_near_pts.end())
+			{
+				map_near_pts[track_id] = std::make_pair(pts_diff, media_packet->GetPts());
+			}
+			else
+			{
+				auto pair_value = it_near_pts->second;
+				int64_t prev_pts_diff = pair_value.first;
+
+				if (prev_pts_diff > pts_diff)
+				{
+					map_near_pts[track_id] = std::make_pair(pts_diff, media_packet->GetPts());
+				}
+			}
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// 3. Drop all packets below PTS by all tracks
+
+	uint32_t dropped_packets = 0;
+	for (auto it = tmp_packets_queue.begin(); it != tmp_packets_queue.end(); it++)
+	{
+		auto &media_packet = *it;
+
+		if (media_packet->GetPts() < map_near_pts[media_packet->GetTrackId()].second)
+		{
+			dropped_packets++;
+			continue;
+		}
+
+		_packets_queue.Enqueue(std::move(media_packet));
+	}
+	tmp_packets_queue.clear();
+
+	if (dropped_packets > 0)
+	{
+		logtw("Number of dropped packets : %d", dropped_packets);
+	}
+}
+
+void MediaRouteStream::Push(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	_packets_queue.Enqueue(media_packet, media_packet->IsHighPriority());
+}
+
+std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
+{
+	// Get Media Packet
+	if (_packets_queue.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	auto media_packet_ref = _packets_queue.Dequeue();
+	if (media_packet_ref.has_value() == false)
+	{
+		return nullptr;
+	}
+
+	auto &media_packet = media_packet_ref.value();
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// [ Calculating Packet Timestamp, Duration]
+
+	// If there is no pts/dts value, do the same as pts/dts value.
+	if (media_packet->GetDts() == -1LL)
+	{
+		media_packet->SetDts(media_packet->GetPts());
+	}
+
+	if (media_packet->GetPts() == -1LL)
+	{
+		media_packet->SetPts(media_packet->GetDts());
+	}
+
+
+	std::shared_ptr<MediaPacket> pop_media_packet = nullptr;
+
+	// Update PTS, DTS, Duration
+	if ((IsOutbound()) &&
+		(media_packet->GetDuration()) <= 0 &&
+		// The packet duration recalculation applies only to video and audio types.
+		(media_packet->GetMediaType() == MediaType::Video || media_packet->GetMediaType() == MediaType::Audio))
+	{
+		auto it = _media_packet_stash.find(media_packet->GetTrackId());
+		if (it == _media_packet_stash.end())
+		{
+			_media_packet_stash[media_packet->GetTrackId()] = std::move(media_packet);
+
+			return nullptr;
+		}
+
+		pop_media_packet = std::move(it->second);
+
+		// [#743] Recording and HLS packetizing are failing due to non-monotonically increasing dts.
+		// So, the code below is a temporary measure to avoid this problem. A more fundamental solution should be considered.
+		if (pop_media_packet->GetDts() >= media_packet->GetDts())
+		{
+			logtw("[%s/%s] Detected out of order DTS of packet. track_id:%d dts:%" PRId64 "->%" PRId64 "",
+				  _stream->GetApplicationName(), _stream->GetName().CStr(), pop_media_packet->GetTrackId(), pop_media_packet->GetDts(), media_packet->GetDts());
+
+			// If a packet has entered this function, it's a really weird stream.
+			// It must be seen that the order of the packets is jumbled.
+			media_packet->SetPts(pop_media_packet->GetPts() + 1);
+			media_packet->SetDts(pop_media_packet->GetDts() + 1);
+		} 
+
+		int64_t duration = media_packet->GetDts() - pop_media_packet->GetDts();
+		pop_media_packet->SetDuration(duration);
+
+		_media_packet_stash[media_packet->GetTrackId()] = std::move(media_packet);
+	}
+	else
+	{
+		pop_media_packet = std::move(media_packet);
+
+		// The packet duration of data type is always 0.
+		if (pop_media_packet->GetMediaType() == MediaType::Data)
+		{
+			pop_media_packet->SetDuration(0);
+
+			// In-band commands are author input for this direction (e.g. a
+			// detected subtitle language updates the subtitle track)
+			HandleEventPacket(pop_media_packet);
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////////////////////
+	// Bitstream format converting to standard format. and, parsing track information
+	auto media_type = pop_media_packet->GetMediaType();
+	auto track_id = pop_media_packet->GetTrackId();
+	auto media_track = _stream->GetTrack(track_id);
+	if (media_track == nullptr)
+	{
+		logte("Could not find the media track. track_id: %d, media_type: %s",
+			  track_id,
+			  GetMediaTypeString(media_type));
+
+		return nullptr;
+	}
+
+	// The author's private working copy starts from the track's setup values;
+	auto &author_state = _track_authors[track_id];
+	if (author_state.working == nullptr)
+	{
+		author_state.working = std::make_shared<MediaTrack>(*media_track);
+	}
+
+	// Adopt an upstream-authored track version (e.g. a scheduled item's
+	// extradata) exactly at its first packet, before the bitstream is normalized
+	ApplyPacketConfigHint(author_state, pop_media_packet);
+
+	// Convert bitstream format and normalize (e.g. Add SPS/PPS to head of H264 IDR frame)
+	// @MediaRouterNormalize
+	if (MediaRouterNormalize::NormalizeMediaPacket(GetStream(), author_state.working, pop_media_packet) == false)
+	{
+		return nullptr;
+	}
+
+	// Publish/attach the immutable track version of this packet
+	StampTrack(author_state, pop_media_packet);
+
+	// Update statistics of media track
+	auto track_stats = _stream->GetTrackStats(track_id);
+	if (track_stats != nullptr)
+	{
+		track_stats->OnFrameAdded(pop_media_packet, media_track->GetTimeBase(), media_track->GetMediaType());
+
+		if (media_track->GetMediaType() == MediaType::Video)
+		{
+			// Keep the high-water mark in sync with the measurement
+			media_track->SetMaxFrameRate(track_stats->GetFrameRateByMeasured());
+		}
+	}
+
+	// Detect the abnormal packets
+	if(MediaRouterAlert::Update(_type, IsStreamPrepared(), _packets_queue, GetStream(), media_track, pop_media_packet) == false)
+	{
+		// If the packet is judged to be incorrect, drop the packet.
+		return nullptr;
+	}
+
+	// Update statistics
+	MediaRouterStats::Update(static_cast<uint8_t>(_type), IsStreamPrepared(), _packets_queue, GetStream(), media_track, pop_media_packet);
+
+	// Mirror Buffer
+	_mirror_buffer.emplace_back(std::make_shared<MirrorBufferItem>(pop_media_packet));
+
+	// Delete old packets
+	for (auto it = _mirror_buffer.begin(); it != _mirror_buffer.end();)
+	{
+		auto item = *it;
+		if (item->GetElapsedMilliseconds() > MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
+		{
+			it = _mirror_buffer.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	return pop_media_packet;
+}
+
+void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto hint = media_packet->GetTrack();
+	if (hint == nullptr)
+	{
+		return;
+	}
+
+	// Adopt each hint object exactly once. After adoption the normalizer owns
+	// the author state (in-band data wins), so a hint whose content differs
+	// from the bitstream cannot ping-pong with it.
+	if (hint == state.last_hint)
+	{
+		return;
+	}
+	state.last_hint = hint;
+
+	auto &working = state.working;
+
+	if (working->GetCodecId() == cmn::MediaCodecId::None)
+	{
+		working->SetCodecId(hint->GetCodecId());
+	}
+	else if (working->GetCodecId() != hint->GetCodecId())
+	{
+		// A codec change restarts the working copy from the hint, so the old
+		// codec's parsed values (DCR, resolution, validity) do not leak into
+		// the new description. The versions continue from the published one
+		logti("[%s/%s(%u)] Track(%d) codec has changed (%s -> %s)",
+			  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+			  media_packet->GetTrackId(), cmn::GetCodecIdString(working->GetCodecId()), cmn::GetCodecIdString(hint->GetCodecId()));
+
+		state.working = std::make_shared<MediaTrack>(*hint);
+		state.recheck = true;
+		return;
+	}
+
+	if (working->IsValidTimeBase() == false)
+	{
+		working->SetTimeBase(hint->GetTimeBase());
+	}
+
+	// Provider-authored labels travel with the version (e.g. a detected
+	// subtitle language)
+	working->SetPublicName(hint->GetPublicName());
+	working->SetLanguage(hint->GetLanguage());
+	working->SetCharacteristics(hint->GetCharacteristics());
+
+	// Adopt only the values the hint actually carries; a codec without a DCR
+	// (e.g. Opus described by SDP) still delivers its audio parameters
+	auto hint_record = hint->GetDecoderConfigurationRecord();
+	if (hint_record != nullptr)
+	{
+		working->SetDecoderConfigurationRecord(hint_record);
+	}
+
+	if (hint->GetMediaType() == MediaType::Video)
+	{
+		auto resolution = hint->GetResolution();
+		if (resolution.width > 0 && resolution.height > 0)
+		{
+			working->SetResolution(resolution);
+		}
+	}
+	else if (hint->GetMediaType() == MediaType::Audio)
+	{
+		if (hint->GetSampleRate() > 0)
+		{
+			working->SetSampleRate(hint->GetSampleRate());
+			working->SetSampleFormat(hint->GetSample().GetFormat());
+		}
+		if (hint->GetChannel().IsValid())
+		{
+			working->SetChannelLayout(hint->GetChannel().GetLayout());
+		}
+		if (hint->GetAudioSamplesPerFrame() > 0)
+		{
+			working->SetAudioSamplesPerFrame(hint->GetAudioSamplesPerFrame());
+		}
+	}
+
+	state.recheck = true;
+
+	logti("[%s/%s(%u)] Adopted packet track hint. Track(%d) version(%u)",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  media_packet->GetTrackId(), hint->GetVersion());
+}
+
+void MediaRouteStream::HandleEventPacket(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto event = std::dynamic_pointer_cast<MediaEvent>(media_packet);
+	if (event == nullptr || event->GetCommandType() != EventCommand::Type::UpdateSubtitleLanguage)
+	{
+		return;
+	}
+
+	auto command = event->GetCommand<EventCommandUpdateLanguage>();
+	if (command == nullptr)
+	{
+		return;
+	}
+
+	auto track = _stream->GetTrackByLabel(command->GetTrackLabel());
+	if (track == nullptr || track->GetMediaType() != MediaType::Subtitle)
+	{
+		return;
+	}
+
+	auto &state = _track_authors[track->GetId()];
+	if (state.working == nullptr)
+	{
+		state.working = std::make_shared<MediaTrack>(*track);
+	}
+
+	if (state.working->GetLanguage() == command->GetLanguage())
+	{
+		return;
+	}
+
+	state.working->SetLanguage(command->GetLanguage());
+
+	logti("[%s/%s(%u)] Subtitle track(%d) language has been updated (%s)",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  track->GetId(), command->GetLanguage().CStr());
+
+	// The event is delivered urgently, so the new version is published right
+	// away; the next packet of the track is stamped with it as usual
+	if (state.working->IsValid())
+	{
+		PublishWorkingVersion(state, track->GetId());
+	}
+	else
+	{
+		state.recheck = true;
+	}
+}
+
+void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr<MediaPacket> &media_packet)
+{
+	auto media_type = media_packet->GetMediaType();
+	if (media_type != MediaType::Video && media_type != MediaType::Audio && media_type != MediaType::Subtitle)
+	{
+		return;
+	}
+
+	auto &working = state.working;
+
+	// Do not publish half-parsed descriptions. Until the working copy is valid
+	// the stream is not prepared, so no consumer misses a version. The
+	// provider hint is cleared so it does not leak downstream as a version.
+	if (working->IsValid() == false)
+	{
+		media_packet->SetTrack(nullptr);
+		return;
+	}
+
+	// Rebuild candidates only on cheap triggers: first packet, an adopted hint,
+	// or the DCR object was replaced since the last check. Comparing against the
+	// last observed pointer re-arms the trigger after a content-equal
+	// replacement (e.g. a re-sent identical sequence header)
+	auto working_dcr = working->GetDecoderConfigurationRecord();
+	if (state.published == nullptr || working_dcr != state.last_dcr || state.recheck)
+	{
+		PublishWorkingVersion(state, media_packet->GetTrackId());
+	}
+
+	media_packet->SetTrack(state.published);
+}
+
+void MediaRouteStream::PublishWorkingVersion(TrackAuthorState &state, uint32_t track_id)
+{
+	auto &working = state.working;
+
+	state.last_dcr = working->GetDecoderConfigurationRecord();
+	state.recheck = false;
+
+	// Content equality wins: same content is the same version. Label changes
+	// (e.g. a detected subtitle language) also publish, so they reach consumers
+	if (state.published != nullptr &&
+		working->HasSameContent(*state.published) == true &&
+		working->HasSameLabels(*state.published) == true)
+	{
+		return;
+	}
+
+	bool is_change = (state.published != nullptr);
+
+	working->SetVersion((state.published != nullptr) ? state.published->GetVersion() + 1 : 1);
+
+	auto new_version = std::make_shared<MediaTrack>(*working);
+
+	state.published = new_version;
+
+	// This module's stream map always holds the latest published version
+	_stream->UpdateTrack(new_version);
+
+	// The monitoring metrics copies adopt tracks only when the stream is
+	// prepared, so runtime publishes are pushed to them explicitly
+	MonitorInstance->OnTrackUpdated(*_stream, new_version);
+
+	if (is_change)
+	{
+		auto stats = _stream->GetTrackStats(track_id);
+		if (stats != nullptr)
+		{
+			auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+							  std::chrono::system_clock::now().time_since_epoch())
+							  .count();
+			stats->OnConfigChanged(now_ms);
+		}
+	}
+
+	logti("[%s/%s(%u)] Track version has been published. Track(%d) version(%u) %s",
+		  _stream->GetApplicationName(), _stream->GetName().CStr(), _stream->GetId(),
+		  track_id, new_version->GetVersion(),
+		  cmn::GetCodecIdString(new_version->GetCodecId()));
+}
+
+std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::GetMirrorBuffer()
+{
+	return _mirror_buffer;
+}
+

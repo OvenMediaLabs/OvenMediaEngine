@@ -51,7 +51,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Video**
 
-* VP8, H.264, H.265
+* VP8, H.264, H.265, AV1
 
 **Audio**
 
@@ -66,7 +66,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Video**
 
-* VP8, H.264, H.265 <sub>(Not supported, SW codec support planned)</sub>
+* VP8, H.264, AV1, H.265 <sub>(Not supported, SW codec support planned)</sub>
 
 **Audio**
 

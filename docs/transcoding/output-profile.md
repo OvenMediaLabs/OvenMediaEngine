@@ -94,13 +94,13 @@ You can set the video profile as below:
 
 #### _**Supported Video Codecs**_
 
-<table><thead><tr><th width="116">Type</th><th width="208.33333333333331">Description</th><th width="142">Codec</th><th>Modules</th></tr></thead><tbody><tr><td>Video</td><td>VP8</td><td>vp8</td><td>SW: libvpx* </td></tr><tr><td></td><td>H.264 </td><td>h264</td><td>SW: openh264*,  x264</td></tr></tbody></table>
+<table><thead><tr><th width="116">Type</th><th width="208.33333333333331">Description</th><th width="142">Codec</th><th>Modules</th></tr></thead><tbody><tr><td>Video</td><td>VP8</td><td>vp8</td><td>SW: libvpx* </td></tr><tr><td></td><td>H.264 </td><td>h264</td><td>SW: openh264*,  x264</td></tr><tr><td></td><td>AV1</td><td>av1</td><td>SW: libaom*</td></tr></tbody></table>
 
 #### _**Preset**_
 
 A table in which presets provided for each codec library are mapped to OvenMediaEngine presets. Slow presets are of good quality and use a lot of resources, whereas Fast presets have lower quality and better performance. It can be set according to your own system environment and service purpose.
 
-<table><thead><tr><th width="133">Presets</th><th width="138">openh264</th><th width="122">x264</th><th width="122">vp8</th></tr></thead><tbody><tr><td><strong>slower</strong></td><td>QP( 10-39)</td><td>slower</td><td>best</td></tr><tr><td><strong>slow</strong></td><td>QP (16-45)</td><td>slow</td><td>best</td></tr><tr><td><strong>medium</strong></td><td>QP (24-51)</td><td>medium</td><td>good</td></tr><tr><td><strong>fast</strong></td><td>QP (32-51)</td><td>fast</td><td>realtime</td></tr><tr><td><strong>faster</strong></td><td>QP (40-51)</td><td>faster</td><td>realtime</td></tr></tbody></table>
+<table><thead><tr><th width="133">Presets</th><th width="138">openh264</th><th width="122">x264</th><th width="122">vp8</th><th width="122">libaom (av1)</th></tr></thead><tbody><tr><td><strong>slower</strong></td><td>QP( 10-39)</td><td>slower</td><td>best</td><td>cpu-used 5</td></tr><tr><td><strong>slow</strong></td><td>QP (16-45)</td><td>slow</td><td>best</td><td>cpu-used 6</td></tr><tr><td><strong>medium</strong></td><td>QP (24-51)</td><td>medium</td><td>good</td><td>cpu-used 7</td></tr><tr><td><strong>fast</strong></td><td>QP (32-51)</td><td>fast</td><td>realtime</td><td>cpu-used 8</td></tr><tr><td><strong>faster</strong></td><td>QP (40-51)</td><td>faster</td><td>realtime</td><td>cpu-used 8</td></tr></tbody></table>
 
 _References_
 

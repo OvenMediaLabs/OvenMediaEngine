@@ -100,9 +100,6 @@ set(OME_DEP_PREFIX "/opt/ovenmediaengine" CACHE PATH "Installation prefix for ex
 
 option(OME_HWACCEL_NVIDIA           "Enable NVIDIA GPU hardware acceleration"            OFF)
 option(OME_HWACCEL_XMA              "Enable Xilinx XMA hardware acceleration"            OFF)
-option(OME_HWACCEL_NILOGAN          "Enable Netint NiLogan acceleration"                 OFF)
-set(OME_NILOGAN_PATCH_PATH          "" CACHE PATH   "Path to Netint NiLogan FFmpeg patch file (required when OME_HWACCEL_NILOGAN=ON)")
-set(OME_NILOGAN_XCODER_COMPILE_PATH "" CACHE PATH   "Path to xcoder_logan source directory to compile (optional)")
 option(OME_ENABLE_X264              "Enable libx264 encoder support"                     ON)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     option(OME_ENABLE_JEMALLOC      "Enable jemalloc memory allocator"                   ON)
@@ -114,6 +111,7 @@ option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version 
 option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
 option(OME_THREAD_SAFETY            "Enable Clang thread-safety analysis"                OFF)
 option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
+option(OME_LATENCY_PROBE            "Build serving-path latency/stall instrumentation"  OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     option(OME_WHISPER_STATIC       "Build Whisper/ggml as a static library"             ON)
 else()
@@ -125,9 +123,6 @@ message(STATUS "  OME_USE_CLANG: ${OME_USE_CLANG}")
 message(STATUS "  OME_DEP_PREFIX: ${OME_DEP_PREFIX}")
 message(STATUS "  OME_HWACCEL_NVIDIA: ${OME_HWACCEL_NVIDIA}")
 message(STATUS "  OME_HWACCEL_XMA: ${OME_HWACCEL_XMA}")
-message(STATUS "  OME_HWACCEL_NILOGAN: ${OME_HWACCEL_NILOGAN}")
-message(STATUS "  OME_NILOGAN_PATCH_PATH: ${OME_NILOGAN_PATCH_PATH}")
-message(STATUS "  OME_NILOGAN_XCODER_COMPILE_PATH: ${OME_NILOGAN_XCODER_COMPILE_PATH}")
 message(STATUS "  OME_ENABLE_X264: ${OME_ENABLE_X264}")
 message(STATUS "  OME_ENABLE_JEMALLOC: ${OME_ENABLE_JEMALLOC}")
 message(STATUS "  OME_ENABLE_JEMALLOC_LG_PAGE_MAX: ${OME_ENABLE_JEMALLOC_LG_PAGE_MAX}")
@@ -135,7 +130,19 @@ message(STATUS "  OME_SKIP_DEPENDENCY_CHECK: ${OME_SKIP_DEPENDENCY_CHECK}")
 message(STATUS "  OME_SANITIZE_THREAD: ${OME_SANITIZE_THREAD}")
 message(STATUS "  OME_THREAD_SAFETY: ${OME_THREAD_SAFETY}")
 message(STATUS "  OME_BUILD_TESTS: ${OME_BUILD_TESTS}")
+message(STATUS "  OME_LATENCY_PROBE: ${OME_LATENCY_PROBE}")
 message(STATUS "  OME_WHISPER_STATIC: ${OME_WHISPER_STATIC}")
+
+# Serving-path latency/stall instrumentation. OFF by default: none of the probe code is
+# compiled and there is zero runtime cost. When ON, records serving-path stage timings and
+# worker stalls to a single latency_probe.log (directory via the OME_LATENCY_PROBE_DIR
+# environment variable, default /dev/shm).
+if(OME_LATENCY_PROBE)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "[OME] OME_LATENCY_PROBE is Linux-only (uses epoll, SO_TIMESTAMPING, SCM_TIMESTAMPING, prctl(PR_GET_NAME), getrusage(RUSAGE_THREAD)). Disable it on ${CMAKE_SYSTEM_NAME}.")
+    endif()
+    add_compile_definitions(OME_LATENCY_PROBE)
+endif()
 
 # ==============================================================================
 # Include cmake modules
@@ -171,7 +178,7 @@ if(OME_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
 
     # Common external libraries linked into every test binary automatically.
-    # Mirrors the system/pkg-config libs in src/projects/main/CMakeLists.txt.
+    # Mirrors the system/pkg-config libs in src/main/CMakeLists.txt.
     # Individual modules do NOT need to specify EXT_LIBS unless they need extras.
     set_property(GLOBAL PROPERTY OME_COMMON_TEST_EXT_LIBS
         PkgConfig::PKG_SRT
@@ -193,9 +200,9 @@ if(OME_BUILD_TESTS)
     )
 
     # Mirror the optional hardware-acceleration libs that
-    # src/projects/main/CMakeLists.txt links into the main executable so that
+    # src/main/CMakeLists.txt links into the main executable so that
     # test binaries linking the same static archives (e.g. libtranscoder.a)
-    # can resolve CUDA / XMA / NiLogan symbols.
+    # can resolve CUDA / XMA symbols.
     if(OME_HWACCEL_NVIDIA)
         set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS
             ${OME_NVIDIA_LIBS}
@@ -208,9 +215,6 @@ if(OME_BUILD_TESTS)
             PkgConfig::PKG_XVBM
             PkgConfig::PKG_LIBXRM
         )
-    endif()
-    if(OME_HWACCEL_NILOGAN AND XCODER_LOGAN_LIB)
-        set_property(GLOBAL APPEND PROPERTY OME_COMMON_TEST_EXT_LIBS xcoder_logan)
     endif()
 
     # System libraries must come last so that any static archive listed earlier

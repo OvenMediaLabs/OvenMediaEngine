@@ -1,0 +1,259 @@
+#pragma once
+
+#include <config/config_manager.h>
+
+#include "base/common_types.h"
+#include "base/info/media_track_group.h"
+#include "base/info/track_stats.h"
+#include "base/info/playlist.h"
+#include "base/info/track_set.h"
+#include "base/ovlibrary/tsa/mutex.h"
+#include "vhost_app_name.h"
+
+
+namespace info
+{
+	typedef uint32_t stream_id_t;
+	constexpr stream_id_t InvalidStreamId = std::numeric_limits<stream_id_t>::max();
+	constexpr stream_id_t MinStreamId = std::numeric_limits<stream_id_t>::min();
+	constexpr stream_id_t MaxStreamId = (InvalidStreamId - static_cast<stream_id_t>(1));
+
+	class Application;
+
+	//TODO: It should be changed class name to Stream
+	class Stream
+	{
+	public:
+		Stream(StreamSourceType source);
+		Stream(const info::Application &app_info, StreamSourceType source);
+		Stream(const info::Application &app_info, info::stream_id_t stream_id, StreamSourceType source);
+		Stream(const Stream &stream);
+		virtual ~Stream();
+
+		bool operator==(const Stream &stream_info) const;
+
+		NamePath GetNamePath() const;
+
+		void SetId(info::stream_id_t id);
+		info::stream_id_t GetId() const;
+
+		// Get Stream Resource ID in ovenmediaengine (vhost#app/stream)
+		ov::String GetUri() const;
+
+
+		ov::String GetUUID() const;
+		ov::String GetName() const;
+		void SetName(ov::String name);
+
+		ov::String GetMediaSource() const;
+		void SetMediaSource(ov::String url);
+
+		void SetOutputProfileName(ov::String name);
+		ov::String GetOutputProfileName() const;
+
+		bool IsInputStream() const;
+		bool IsOutputStream() const;
+
+		void LinkInputStream(const std::shared_ptr<Stream> &stream);
+		const std::shared_ptr<Stream> GetLinkedInputStream() const;
+
+		// Only used in OVT provider
+		void SetOriginStreamUUID(const ov::String &uuid);
+		ov::String GetOriginStreamUUID() const;
+
+		const std::chrono::system_clock::time_point &GetInputStreamCreatedTime() const;
+		const std::chrono::system_clock::time_point &GetCreatedTime() const;
+
+		void SetPublishedTime(const std::chrono::system_clock::time_point &time);
+		const std::chrono::system_clock::time_point &GetInputStreamPublishedTime() const;
+		const std::chrono::system_clock::time_point &GetPublishedTime() const;
+
+		StreamSourceType GetSourceType() const;
+		ProviderType GetProviderType() const;
+		
+		StreamRepresentationType GetRepresentationType() const;
+		void SetRepresentationType(const StreamRepresentationType &type);
+
+		// Internal streams are used for internal processing (e.g. STT) and must not
+		// be exposed to Publishers.
+		bool IsInternal() const { return _internal; }
+		void SetInternal(bool internal) { _internal = internal; }
+
+		uint32_t IssueUniqueTrackId();
+		bool AddTrack(const std::shared_ptr<const MediaTrack> &track);
+		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &track);
+
+		// Take over the source's current track versions by pointer, so this
+		// copy and the source share the same immutable objects and packet stamps
+		// compare equal. Consumers call this once, when the stream is prepared.
+		void UpdateTracksFrom(const Stream &source);
+		bool RemoveTrack(uint32_t id);
+
+		std::shared_ptr<const MediaTrack> GetTrack(int32_t id) const;
+
+		// Author-side access to a track this stream owns, usable only before the
+		// track is shared (published/handed to other modules). Consumers must
+		// never call this; they receive new versions attached to packets.
+		std::shared_ptr<MediaTrack> GetMutableTrack(int32_t id) const;
+
+		// Runtime measurements of a track, keyed by track id: they survive
+		// version replacement and every copy of this stream shares the same
+		// objects. Never null for a track that exists.
+		std::shared_ptr<TrackStats> GetTrackStats(int32_t track_id) const;
+
+		// Configured value if set, otherwise the measured one
+		int32_t GetTrackBitrate(int32_t track_id) const;
+		double GetTrackFrameRate(int32_t track_id) const;
+		double GetTrackKeyFrameInterval(int32_t track_id) const;
+		double GetTrackKeyframeIntervalDurationMs(int32_t track_id) const;
+
+		// True once the quality of the track could be measured (or was configured)
+		bool HasTrackQualityMeasured(int32_t track_id) const;
+		std::shared_ptr<const MediaTrack> GetTrackByLabel(const ov::String &public_label) const;
+		// Returns a snapshot: the slots are loaded atomically, so iterating is
+		// safe while the owner swaps versions on another thread
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> GetTracks() const;
+
+		const std::shared_ptr<MediaTrackGroup> GetMediaTrackGroup(const ov::String &group_name) const;
+		// Get Track Groups
+		const std::map<ov::String, std::shared_ptr<MediaTrackGroup>> &GetMediaTrackGroups() const;
+
+		// Get number of tracks
+		// Get track nth
+		// @param order : 0 ~ (track count - 1)
+		uint32_t GetMediaTrackCount(const cmn::MediaType &type) const;
+		std::shared_ptr<const MediaTrack> GetMediaTrackByOrder(const cmn::MediaType &type, uint32_t order) const;
+		
+		std::shared_ptr<const MediaTrack> GetFirstTrackByType(const cmn::MediaType &type) const;
+		std::shared_ptr<const MediaTrack> GetFirstTrackByVariant(const ov::String &name) const;
+		std::shared_ptr<const MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
+
+		bool AddPlaylist(const std::shared_ptr<const Playlist> &playlist);
+		std::shared_ptr<const Playlist> GetPlaylist(const ov::String &file_name) const;
+		const std::map<ov::String, std::shared_ptr<const Playlist>> &GetPlaylists() const;
+
+		bool AddTrackSet(const std::shared_ptr<const TrackSet> &track_set);
+		std::shared_ptr<const TrackSet> GetTrackSet(const ov::String &name) const;
+		const std::map<ov::String, std::shared_ptr<const TrackSet>> &GetTrackSets() const;
+
+		ov::String GetInfoString(bool created = false);
+		void ShowInfo();
+
+		void SetApplicationInfo(const std::shared_ptr<Application> &app_info);
+		const Application &GetApplicationInfo() const
+		{
+			return *_app_info;
+		}
+
+		const char *GetApplicationName();
+		const char *GetApplicationName() const;
+
+		bool HasVideoTrack() const
+		{
+			return _video_tracks.size() > 0;
+		}
+
+		bool HasAudioTrack() const
+		{
+			return _audio_tracks.size() > 0;
+		}
+
+		bool IsFromOriginMapStore() const
+		{
+			return _from_origin_map_store;
+		}
+
+		bool IsOnAir() const
+		{
+			return _on_air;
+		}
+
+		void SetOnAir(bool on_air)
+		{
+			_on_air = on_air;
+
+			if (_on_air)
+			{
+				_published_time = std::chrono::system_clock::now();
+			}
+		}
+
+		void SetTimestampMode(TimestampMode mode)
+		{
+			_timestamp_mode = mode;
+		}
+
+		TimestampMode GetTimestampMode() const
+		{
+			return _timestamp_mode;
+		}
+
+	protected:
+		// Update name path from given `vhost_app_name` and `_name`
+		void UpdateNamePath(const info::VHostAppName &vhost_app_name);
+		// Update name path using `_app_info` and `_name`
+		void UpdateNamePath();
+
+	protected:
+		info::stream_id_t _id = 0;
+		ov::String _name;
+		// Rewritten on every pull-stream failover, read from monitoring/serdes/publisher threads
+		mutable ov::Mutex _source_url_mutex;
+		ov::String _source_url OV_GUARDED_BY(_source_url_mutex);
+		ov::String _output_profile_name;
+		
+		// Key : MediaTrack ID
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> _tracks; // For fast access by ID
+		std::vector<std::shared_ptr<const MediaTrack>> _audio_tracks; // For fast access by order
+		std::vector<std::shared_ptr<const MediaTrack>> _video_tracks; // For fast access by order
+
+		// Group Name (variant name) : MediaTrackGroup
+		std::map<ov::String, std::shared_ptr<MediaTrackGroup>> _track_group_map; // Track group
+
+		// Subtitle label : track id
+		std::map<ov::String, int32_t> _public_label_map; // Subtitle label map
+
+		// Runtime measurements per track id; entries are created with the track
+		// and shared by every copy of this stream
+		std::map<int32_t, std::shared_ptr<TrackStats>> _track_stats;
+
+		// File name : Playlist
+		std::map<ov::String, std::shared_ptr<const Playlist>> _playlists;
+
+		// Name : TrackSet
+		std::map<ov::String, std::shared_ptr<const TrackSet>> _track_sets;
+
+		bool _from_origin_map_store = false;
+
+	private:
+		mutable ov::Mutex _name_path_mutex;
+		NamePath _name_path OV_GUARDED_BY(_name_path_mutex) = NamePath::UnknownNamePath();
+
+		std::chrono::system_clock::time_point _created_time;
+		std::chrono::system_clock::time_point _published_time;
+
+		// Where does the stream come from?
+		StreamSourceType _source_type;
+
+		// Defines the purpose of this stream. Stream for relay? Stream for source?
+		// Source Type : [Provider -> Transcoder -> Publisher]
+		// 		- Affected by Output Profile.
+		// Relay Type : [Provider -> Publisher]
+		// 		- It is sent directly to the Publisher without affecting the Output Profile.
+		StreamRepresentationType _representation_type = StreamRepresentationType::Source;
+		bool _internal = false;
+
+		std::shared_ptr<Application> _app_info = nullptr;
+
+		// If the Source Type of this stream is LiveTranscoder,
+		// the original stream coming from the Provider can be recognized with _origin_stream.
+		std::shared_ptr<Stream> _origin_stream = nullptr;
+
+		// If the source if this stream is a remote stream of the origin server, store the uuid of origin stream
+		ov::String _origin_stream_uuid;
+
+		std::atomic<bool> _on_air = false;
+
+		TimestampMode _timestamp_mode = TimestampMode::Auto;
+	};
+}  // namespace info

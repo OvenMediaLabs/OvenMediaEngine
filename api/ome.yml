@@ -1279,6 +1279,35 @@ paths:
         '200':
           $ref: '#/components/responses/Transcoded'
       security: []
+  /version:
+    get:
+      operationId: VersionGet
+      tags: [api]
+      summary: Get OvenMediaEngine version information
+      description: Returns the current OvenMediaEngine release version and git version.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/HttpStatus'
+                - type: object
+                  required: [response]
+                  properties:
+                    response:
+                      type: object
+                      required: [version, gitVersion]
+                      properties:
+                        version:
+                          type: string
+                          description: OvenMediaEngine release version.
+                        gitVersion:
+                          type: string
+                          description: Git describe/version information.
+        '401':
+          $ref: '#/components/responses/Status'
   /vhosts:
     get:
       operationId: VHostsGet
