@@ -103,6 +103,36 @@ namespace bmff
 			return _is_completed;
 		}
 
+		void SetTrackVersion(uint32_t track_version)
+		{
+			_track_version = track_version;
+		}
+
+		uint32_t GetTrackVersion() const override
+		{
+			return _track_version;
+		}
+
+		void SetDiscontinuityPoint()
+		{
+			_discontinuity_point = true;
+		}
+
+		bool IsDiscontinuityPoint() const override
+		{
+			return _discontinuity_point;
+		}
+
+		void SetCodecsParameter(const ov::String &codecs)
+		{
+			_codecs_parameter = codecs;
+		}
+
+		ov::String GetCodecsParameter() const override
+		{
+			return _codecs_parameter;
+		}
+
 		bool AppendPartialData(const std::shared_ptr<ov::Data> &partial_data, int64_t start_timestamp, double duration_ms, bool independent)
 		{
 			if (_is_completed)
@@ -212,6 +242,10 @@ namespace bmff
 
 	private:
 		bool _is_completed = false;
+
+		uint32_t _track_version = 0;
+		bool _discontinuity_point = false;
+		ov::String _codecs_parameter;
 
 		int64_t _number = -1;
 

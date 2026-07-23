@@ -235,9 +235,10 @@ void LLHlsSession::OnMessageReceived(const std::any &message)
 	int32_t track_id;
 	int64_t segment_number;
 	int64_t partial_number;
+	int64_t init_version;
 	ov::String stream_key;
 
-	if (ParseFileName(file, file_type, track_id, segment_number, partial_number, stream_key) == false)
+	if (ParseFileName(file, file_type, track_id, segment_number, partial_number, init_version, stream_key) == false)
 	{
 		response->SetStatusCode(http::StatusCode::NotFound);
 		ResponseData(exchange);
@@ -365,7 +366,7 @@ void LLHlsSession::OnMessageReceived(const std::any &message)
 		break;
 	}
 	case RequestType::InitializationSegment:
-		ResponseInitializationSegment(exchange, file, track_id);
+		ResponseInitializationSegment(exchange, file, track_id, init_version);
 		break;
 	case RequestType::Segment:
 		ResponseSegment(exchange, file, track_id, segment_number);
@@ -378,8 +379,11 @@ void LLHlsSession::OnMessageReceived(const std::any &message)
 	}
 }
 
-bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type, int32_t &track_id, int64_t &segment_number, int64_t &partial_number, ov::String &stream_key) const
+bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type, int32_t &track_id, int64_t &segment_number, int64_t &partial_number, int64_t &init_version, ov::String &stream_key) const
 {
+	// Negative means the version-less initial initialization segment
+	init_version = -1;
+
 	// Split to filename.ext
 	auto name_ext_items = file_name.Split(".");
 	if (name_ext_items.size() < 2 || (name_ext_items[1] != "m4s" && name_ext_items[1] != "m3u8" && name_ext_items[1] != "vtt"))
@@ -409,6 +413,7 @@ bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type,
 	else if (name_items[0] == "init")
 	{
 		// init_<track id>_<media type>_<stream key>_llhls
+		// init_<track id>_<media type>_<stream key>_v<track version>_llhls (after a track change)
 		if (name_items.size() < 5 || name_ext_items[1] != "m4s")
 		{
 			logtw("Invalid file name requested: %s", file_name.CStr());
@@ -418,6 +423,23 @@ bool LLHlsSession::ParseFileName(const ov::String &file_name, RequestType &type,
 		type = RequestType::InitializationSegment;
 		track_id = ov::Converter::ToInt32(name_items[1].CStr());
 		stream_key = name_items[3];
+
+		if (name_items.size() >= 6 && name_items[4].HasPrefix('v') == true)
+		{
+			auto version_token = name_items[4].Substring(1);
+			if (version_token.IsEmpty() == true || version_token.IsNumeric() == false)
+			{
+				logtw("Invalid file name requested: %s", file_name.CStr());
+				return false;
+			}
+
+			init_version = ov::Converter::ToInt64(version_token.CStr());
+			if (init_version < 0 || init_version > static_cast<int64_t>(std::numeric_limits<uint32_t>::max()))
+			{
+				logtw("Invalid file name requested: %s", file_name.CStr());
+				return false;
+			}
+		}
 	}
 	else if (name_items[0] == "seg" && (name_ext_items[1] == "m4s" || name_ext_items[1] == "vtt"))
 	{
@@ -644,7 +666,7 @@ void LLHlsSession::ResponseChunklist(const std::shared_ptr<http::svr::HttpExchan
 	ResponseData(exchange);
 }
 
-void LLHlsSession::ResponseInitializationSegment(const std::shared_ptr<http::svr::HttpExchange> &exchange, const ov::String &file_name, const int32_t &track_id)
+void LLHlsSession::ResponseInitializationSegment(const std::shared_ptr<http::svr::HttpExchange> &exchange, const ov::String &file_name, const int32_t &track_id, const int64_t &init_version)
 {
 	auto llhls_stream = std::static_pointer_cast<LLHlsStream>(GetStream());
 	if (llhls_stream == nullptr)
@@ -655,7 +677,8 @@ void LLHlsSession::ResponseInitializationSegment(const std::shared_ptr<http::svr
 	auto response = exchange->GetResponse();
 
 	// Get the initialization segment
-	auto [result, initialization_segment] = llhls_stream->GetInitializationSegment(track_id);
+	auto [result, initialization_segment] = (init_version >= 0) ? llhls_stream->GetInitializationSegment(track_id, static_cast<uint32_t>(init_version))
+																: llhls_stream->GetInitializationSegment(track_id);
 	if (result == LLHlsStream::RequestResult::Success)
 	{
 		// Send the initialization segment

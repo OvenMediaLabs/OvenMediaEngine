@@ -36,6 +36,33 @@ namespace bmff
 		return _data_track;
 	}
 
+	bool Packager::UpdateMediaTrack(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		if (media_track == nullptr || media_track->GetId() != _media_track->GetId())
+		{
+			return false;
+		}
+
+		_media_track = media_track;
+
+		if (_cenc_property.scheme != CencProtectScheme::None && IsCencSupportedCodec(media_track->GetCodecId()) == false)
+		{
+			logte("CENC is not supported for the changed codec(%s), track(%u) will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()), media_track->GetId());
+			_cenc_property.scheme = CencProtectScheme::None;
+		}
+
+		if (_media_track->GetMediaType() == cmn::MediaType::Audio)
+		{
+			_cenc_property.crypt_bytes_block = 0;
+			_cenc_property.skip_bytes_block = 0;
+		}
+
+		// The buffer was flushed at the boundary; rebuild it on the new track
+		_sample_buffer = SampleBuffer(_media_track, _cenc_property);
+
+		return true;
+	}
+
 	bool Packager::WriteFtypBox(ov::ByteStream &container_stream)
 	{
 		// ISO/IEC 14496-12 4.3

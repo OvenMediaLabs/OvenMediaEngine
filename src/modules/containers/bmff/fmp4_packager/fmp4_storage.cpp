@@ -50,9 +50,40 @@ namespace bmff
 		logtt("FMP4 Storage has been terminated successfully");
 	}
 
+	std::shared_ptr<const MediaTrack> FMP4Storage::GetTrack() const
+	{
+		return std::atomic_load(&_track);
+	}
+
 	std::shared_ptr<ov::Data> FMP4Storage::GetInitializationSection() const
 	{
-		return _initialization_section;
+		// The version-less legacy URL always means the first section of the stream
+		std::shared_lock<std::shared_mutex> lock(_initialization_sections_lock);
+		auto it = _initialization_sections.find(_initial_track_version);
+		if (it == _initialization_sections.end())
+		{
+			return nullptr;
+		}
+
+		return it->second;
+	}
+
+	std::shared_ptr<ov::Data> FMP4Storage::GetInitializationSection(uint32_t track_version) const
+	{
+		std::shared_lock<std::shared_mutex> lock(_initialization_sections_lock);
+		auto it = _initialization_sections.find(track_version);
+		if (it == _initialization_sections.end())
+		{
+			return nullptr;
+		}
+
+		return it->second;
+	}
+
+	std::map<uint32_t, std::shared_ptr<ov::Data>> FMP4Storage::GetInitializationSections() const
+	{
+		std::shared_lock<std::shared_mutex> lock(_initialization_sections_lock);
+		return _initialization_sections;
 	}
 
 	std::shared_ptr<base::modules::Segment> FMP4Storage::GetSegment(int64_t segment_number) const
@@ -114,12 +145,22 @@ namespace bmff
 		// last chunk number + 1 of completed segment is the first chunk of the next segment
 		if (segment->IsCompleted() && segment->GetLastPartialNumber() + 1 == partial_number)
 		{
-			segment = GetSegmentInternal(segment_number + 1);
-			if (segment == nullptr)
+			auto next_segment = GetSegmentInternal(segment_number + 1);
+			if (next_segment == nullptr)
 			{
 				return nullptr;
 			}
 
+			// Never roll over across a discontinuity; the hinted name belongs to the
+			// previous domain and its content would be appended without the new
+			// initialization segment. The player re-syncs from the playlist on 404.
+			if (next_segment->IsDiscontinuityPoint() == true ||
+				next_segment->GetTrackVersion() != segment->GetTrackVersion())
+			{
+				return nullptr;
+			}
+
+			segment = next_segment;
 			partial_number = 0;
 		}
 
@@ -173,12 +214,136 @@ namespace bmff
 
 	bool FMP4Storage::StoreInitializationSection(const std::shared_ptr<ov::Data> &section)
 	{
-		_initialization_section = section;
+		auto track = GetTrack();
+		auto track_version = track->GetVersion();
+
+		{
+			std::lock_guard<std::shared_mutex> lock(_initialization_sections_lock);
+
+			if (_initialization_sections.empty())
+			{
+				_initial_track_version = track_version;
+			}
+
+			_initialization_sections[track_version] = section;
+		}
+
 		if (_observer != nullptr)
 		{
-			_observer->OnFMp4StorageInitialized(_track->GetId());
+			_observer->OnFMp4StorageInitialized(track->GetId());
 		}
 		return true;
+	}
+
+	bool FMP4Storage::UpdateTrack(const std::shared_ptr<const MediaTrack> &track, int64_t &completed_segment_number)
+	{
+		completed_segment_number = -1;
+
+		auto old_track = GetTrack();
+		if (track == nullptr || track->GetId() != old_track->GetId())
+		{
+			return false;
+		}
+
+		// Close the old content (the buffered samples were already flushed). The
+		// completion is reported to the caller instead of the observer here, so that
+		// it can be published after the new initialization section is stored.
+		completed_segment_number = CompleteLastSegment();
+
+		RealignSegmentDurationPacing();
+
+		std::atomic_store(&_track, track);
+
+		{
+			std::lock_guard<std::shared_mutex> segments_lock(_segments_lock);
+
+			if (_segments.empty() == false)
+			{
+				auto last_segment = _segments.rbegin()->second;
+
+				// The empty segment pre-created at the last completion still carries the
+				// old track timebase and version, so rebuild it on the new track
+				if (last_segment->IsCompleted() == false && last_segment->GetPartialCount() == 0)
+				{
+					auto new_segment = std::make_shared<FMP4Segment>(last_segment->GetNumber(), _config.segment_duration_ms, track->GetTimeBase().GetExpr());
+					new_segment->SetTrackVersion(track->GetVersion());
+					new_segment->SetCodecsParameter(track->GetCodecsParameter());
+					_segments[last_segment->GetNumber()] = new_segment;
+				}
+			}
+		}
+
+		MarkPendingSegmentDiscontinuity();
+
+		return true;
+	}
+
+	void FMP4Storage::CutSegmentForDiscontinuity()
+	{
+		auto completed_segment_number = CompleteLastSegment();
+
+		RealignSegmentDurationPacing();
+
+		MarkPendingSegmentDiscontinuity();
+
+		NotifySegmentCompleted(completed_segment_number);
+	}
+
+	void FMP4Storage::NotifySegmentCompleted(int64_t segment_number)
+	{
+		if (segment_number >= 0 && _observer != nullptr)
+		{
+			_observer->OnMediaSegmentCompleted(GetTrack()->GetId(), segment_number);
+		}
+	}
+
+	void FMP4Storage::MarkPendingSegmentDiscontinuity()
+	{
+		std::lock_guard<std::shared_mutex> lock(_segments_lock);
+
+		// Nothing was published yet; the first segment is not a discontinuity
+		if (_segments.empty() == true)
+		{
+			return;
+		}
+
+		auto last_segment = _segments.rbegin()->second;
+		if (last_segment->IsCompleted() == false && last_segment->GetPartialCount() == 0)
+		{
+			last_segment->SetDiscontinuityPoint();
+		}
+	}
+
+	int64_t FMP4Storage::CompleteLastSegment()
+	{
+		auto segment = GetLastSegmentInternal();
+		if (segment == nullptr || segment->IsCompleted() == true || segment->GetPartialCount() == 0)
+		{
+			return -1;
+		}
+
+		segment->SetCompleted();
+
+		_total_segment_duration_ms += segment->GetDurationMs();
+
+		CreateNextSegment();
+
+		return segment->GetNumber();
+	}
+
+	void FMP4Storage::RealignSegmentDurationPacing()
+	{
+		// Server-time based numbering relies on the catch-up pacing to keep segment
+		// numbers aligned to the wall clock, so the drift must not be reset
+		if (_config.server_time_based_segment_numbering == true)
+		{
+			return;
+		}
+
+		// A boundary segment can be completed short of the target. Without this reset
+		// the pacing would stretch the next segment past EXT-X-TARGETDURATION to catch up.
+		_total_expected_duration_ms = _total_segment_duration_ms;
+		_target_segment_duration_ms = _config.segment_duration_ms;
 	}
 
 	double FMP4Storage::GetTargetSegmentDuration() const
@@ -188,7 +353,8 @@ namespace bmff
 
 	ov::String FMP4Storage::GetDVRDirectory() const
 	{
-		return ov::String::FormatString("%s/%s/%d", _config.dvr_storage_path.CStr(), _stream_tag.CStr(), _track->GetId());
+		// Read via GetTrack, this path also runs on HTTP request threads
+		return ov::String::FormatString("%s/%s/%d", _config.dvr_storage_path.CStr(), _stream_tag.CStr(), GetTrack()->GetId());
 	}
 
 	ov::String FMP4Storage::GetSegmentFilePath(uint32_t segment_number) const
@@ -244,7 +410,7 @@ namespace bmff
 
 			if (_observer != nullptr)
 			{
-				_observer->OnMediaSegmentDeleted(_track->GetId(), segment_to_delete.segment_number);
+				_observer->OnMediaSegmentDeleted(GetTrack()->GetId(), segment_to_delete.segment_number);
 			}
 		}
 
@@ -286,8 +452,12 @@ namespace bmff
 
 	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment()
 	{
+		auto track = GetTrack();
+
 		// Create next segment
-		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, _track->GetTimeBase().GetExpr());
+		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, track->GetTimeBase().GetExpr());
+		segment->SetTrackVersion(track->GetVersion());
+		segment->SetCodecsParameter(track->GetCodecsParameter());
 		{
 			std::lock_guard<std::shared_mutex> lock(_segments_lock);
 			_segments.emplace(segment->GetNumber(), segment);
@@ -304,6 +474,7 @@ namespace bmff
 				if (_segments.size() > _config.max_segments + 3)
 				{
 					_segments.erase(_segments.begin());
+					DropUnreferencedInitializationSections();
 				}
 
 				// DVR
@@ -315,7 +486,7 @@ namespace bmff
 				{
 					if (_observer != nullptr)
 					{
-						_observer->OnMediaSegmentDeleted(_track->GetId(), old_segment->GetNumber());
+						_observer->OnMediaSegmentDeleted(track->GetId(), old_segment->GetNumber());
 					}
 				}
 			}
@@ -323,10 +494,39 @@ namespace bmff
 
 		if (_observer != nullptr)
 		{
-			_observer->OnMediaSegmentCreated(_track->GetId(), segment->GetNumber());
+			_observer->OnMediaSegmentCreated(track->GetId(), segment->GetNumber());
 		}
 
 		return segment;
+	}
+
+	// Called with _segments_lock held
+	void FMP4Storage::DropUnreferencedInitializationSections()
+	{
+		// DVR keeps old segments servable from files, so their sections must be kept too
+		if (_config.dvr_enabled == true || _segments.empty() == true)
+		{
+			return;
+		}
+
+		// Versions are non-decreasing along segment numbers, so anything below the
+		// oldest retained segment's version is unreferenced. The initial version is
+		// kept for the version-less legacy URL.
+		auto min_retained_version = _segments.begin()->second->GetTrackVersion();
+
+		std::lock_guard<std::shared_mutex> lock(_initialization_sections_lock);
+
+		for (auto it = _initialization_sections.begin(); it != _initialization_sections.end() && it->first < min_retained_version;)
+		{
+			if (it->first != _initial_track_version)
+			{
+				it = _initialization_sections.erase(it);
+			}
+			else
+			{
+				it++;
+			}
+		}
 	}
 
 	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers)
@@ -350,7 +550,7 @@ namespace bmff
 			last_chunk = true;
 			// Too long segment buffered
 			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
-			_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
+			_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
 		}
 
 		// Complete Segment if segment duration is over and new chunk data is independent(new segment should be started with independent chunk)
@@ -359,7 +559,7 @@ namespace bmff
 			segment->SetCompleted();
 			CreateNextSegment();
 
-			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), _track->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
+			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), GetTrack()->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
 			
 			_total_expected_duration_ms += _config.segment_duration_ms;
 			_total_segment_duration_ms += segment->GetDurationMs();
@@ -370,7 +570,7 @@ namespace bmff
 			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
 			if (segment->HasMarker() == true)
 			{
-				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
+				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
 
 				_total_expected_duration_ms -= _config.segment_duration_ms;
 				
@@ -390,7 +590,7 @@ namespace bmff
 			double next_target_duration = _total_expected_duration_ms - _total_segment_duration_ms + _config.segment_duration_ms;
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
-				_stream_tag.CStr(), _track->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
+				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
 			
 			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
 			{
@@ -441,7 +641,7 @@ namespace bmff
 			// }
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
-				_stream_tag.CStr(), _track->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
+				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
 		}
 
 		_max_chunk_duration_ms = std::max(_max_chunk_duration_ms, duration_ms);
@@ -451,7 +651,7 @@ namespace bmff
 		if (_observer != nullptr)
 		{
 			bool last_chunk = segment->IsCompleted() == true;
-			_observer->OnMediaChunkUpdated(_track->GetId(), segment->GetNumber(), segment->GetLastPartialNumber(), last_chunk);
+			_observer->OnMediaChunkUpdated(GetTrack()->GetId(), segment->GetNumber(), segment->GetLastPartialNumber(), last_chunk);
 		}
 
 		return true;

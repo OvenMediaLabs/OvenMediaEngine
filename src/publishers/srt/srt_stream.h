@@ -55,6 +55,8 @@ namespace pub
 		bool Start() override;
 		bool Stop() override;
 
+		void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track) override;
+
 		bool IsSupportedTrack(const std::shared_ptr<const MediaTrack> &track) const;
 
 		std::shared_ptr<SrtPlaylist> GetSrtPlaylistInternal(const ov::String &file_name) OV_REQUIRES_SHARED(_srt_playlist_map_mutex);

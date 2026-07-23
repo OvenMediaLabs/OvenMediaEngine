@@ -280,6 +280,37 @@ namespace pub
 			  GetApplication()->GetPublisherTypeName());
 	}
 
+	void Stream::LogInbandRecoverableTrackChange(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+	{
+		// A label-only change (e.g. a detected subtitle language) does not affect the
+		// media, so report it as a metadata update like the base does, not a config change.
+		if (old_track->HasSameContent(*new_track))
+		{
+			logti("%s/%s(%u) Track(%d) metadata has been updated (version %u -> %u)",
+				  GetApplicationName(), GetName().CStr(), GetId(),
+				  track_id, old_track->GetVersion(), new_track->GetVersion());
+			return;
+		}
+
+		// A codec change requires renegotiating the running session, which these
+		// publishers cannot do, so the track's output stops working from here.
+		if (old_track->GetCodecId() != new_track->GetCodecId())
+		{
+			logtw("%s/%s(%u) Track(%d) codec has changed (%s -> %s), which the %s publisher cannot apply to a running session. The output of this track stops working from here",
+				  GetApplicationName(), GetName().CStr(), GetId(), track_id,
+				  cmn::GetCodecIdString(old_track->GetCodecId()), cmn::GetCodecIdString(new_track->GetCodecId()),
+				  GetApplication()->GetPublisherTypeName());
+			return;
+		}
+
+		// The codec is unchanged, so the new parameter sets are delivered in-band
+		// and playback continues without renegotiation.
+		logti("%s/%s(%u) Track(%d) configuration has changed (version %u -> %u); the %s publisher applies it in-band",
+			  GetApplicationName(), GetName().CStr(), GetId(), track_id,
+			  old_track->GetVersion(), new_track->GetVersion(),
+			  GetApplication()->GetPublisherTypeName());
+	}
+
 	std::shared_ptr<const info::Playlist> Stream::GetDefaultPlaylist() const
 	{
 		auto info = GetDefaultPlaylistInfo();

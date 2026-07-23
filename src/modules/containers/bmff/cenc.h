@@ -28,6 +28,12 @@ namespace bmff
 	inline constexpr char SYSTEM_ID_FAIRPLAY_UUID[]	 = "94ce86fb-07ff-4f43-adb8-93d2fa968ca2";
 	inline constexpr char SYSTEM_ID_PLAYREADY_UUID[] = "9a04f079-9840-4286-ab92-e65be0885f95";
 
+	// Codecs the CENC implementation can encrypt
+	inline bool IsCencSupportedCodec(cmn::MediaCodecId codec_id)
+	{
+		return codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::Aac;
+	}
+
 	namespace internal
 	{
 		inline constexpr auto SYSTEM_ID_WIDEVINE_HEX_BUF  = ov::cexpr::StrRemove(SYSTEM_ID_WIDEVINE_UUID, '-');

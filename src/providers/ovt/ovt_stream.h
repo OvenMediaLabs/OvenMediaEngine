@@ -62,6 +62,12 @@ namespace pvd
 		bool ConnectOrigin();
 		bool RequestDescribe();
 		bool ReceiveDescribe(uint32_t request_id);
+		// Builds a MediaTrack from one track entry of a DESCRIBE/notify payload.
+		// Returns nullptr if the entry is invalid.
+		std::shared_ptr<MediaTrack> ParseTrackFromJson(const Json::Value &json_track);
+		// Applies an origin-pushed track configuration change (server "notify").
+		// Only tracks this stream already has are replaced; others are ignored.
+		void ApplyTrackNotification(const Json::Value &contents);
 		bool RequestPlay();
 		bool ReceivePlay(uint32_t request_id);
 		bool RequestStop();

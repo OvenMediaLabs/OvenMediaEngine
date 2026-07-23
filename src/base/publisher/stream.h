@@ -184,6 +184,11 @@ namespace pub
 		// A publisher that supports mid-stream configuration changes must override this.
 		virtual void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
 
+		// Log helper for publishers that carry parameter sets in-band (e.g. WebRTC,
+		// SRT/MPEG-TS). A same-codec change is a benign in-band update; a codec
+		// change cannot be applied to an already running session.
+		void LogInbandRecoverableTrackChange(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
+
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;

@@ -10,6 +10,7 @@
 
 #include "fmp4_structure.h"
 #include <base/common_types.h>
+#include <base/info/media_track.h>
 #include <base/modules/container/segment_storage.h>
 #include <base/modules/marker/marker_box.h>
 
@@ -22,6 +23,8 @@ namespace bmff
 		virtual void OnMediaSegmentCreated(const int32_t &track_id, const uint32_t &segment_number) = 0;
 		virtual void OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk) = 0;
 		virtual void OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t &segment_number) = 0;
+		// A segment was force-completed without a new chunk (track change boundary)
+		virtual void OnMediaSegmentCompleted(const int32_t &track_id, const uint32_t &segment_number) = 0;
 	};
 
 	class FMP4Storage : public base::modules::SegmentStorage
@@ -42,6 +45,9 @@ namespace bmff
 		virtual ~FMP4Storage();
 
 		std::shared_ptr<ov::Data> GetInitializationSection() const override;
+		std::shared_ptr<ov::Data> GetInitializationSection(uint32_t track_version) const;
+		// Snapshot of all retained sections, keyed by track version
+		std::map<uint32_t, std::shared_ptr<ov::Data>> GetInitializationSections() const;
 		std::shared_ptr<base::modules::Segment> GetSegment(int64_t segment_number) const override;
 		std::shared_ptr<base::modules::Segment> GetLastSegment() const override;
 		std::shared_ptr<base::modules::PartialSegment> GetPartialSegment(int64_t segment_number, int64_t partial_number) const override;
@@ -51,6 +57,20 @@ namespace bmff
 		
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &section);
 		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
+
+		// Switch to a new version of the track at a runtime configuration change.
+		// Completes the in-progress segment and creates subsequent segments with the
+		// new track. The completed segment number (-1 if none) is handed back so the
+		// caller can publish it via NotifySegmentCompleted once the new
+		// initialization section exists.
+		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &track, int64_t &completed_segment_number);
+
+		// Notify the observer of a segment completed without a new chunk
+		void NotifySegmentCompleted(int64_t segment_number);
+
+		// Complete the in-progress segment and start a new discontinuity domain
+		// without a configuration change (another track of the stream changed)
+		void CutSegmentForDiscontinuity();
 
 		uint64_t GetMaxPartialDurationMs() const override;
 		uint64_t GetMinPartialDurationMs() const override;
@@ -62,6 +82,18 @@ namespace bmff
 	private:
 		std::shared_ptr<FMP4Segment> GetSegmentInternal(int64_t segment_number) const;
 		std::shared_ptr<FMP4Segment> GetLastSegmentInternal() const;
+
+		// Force the in-progress segment to complete at a track change boundary.
+		// Returns the completed segment number, or -1 if there was nothing to complete.
+		int64_t CompleteLastSegment();
+
+		// Reset the segment duration pacing after a boundary cut
+		void RealignSegmentDurationPacing();
+
+		// Flag the pre-created empty segment as the start of a new discontinuity domain
+		void MarkPendingSegmentDiscontinuity();
+
+		void DropUnreferencedInitializationSections();
 		
 
 		// For DVR
@@ -178,12 +210,21 @@ namespace bmff
 
 		std::shared_ptr<FMP4Segment> CreateNextSegment();
 
+		std::shared_ptr<const MediaTrack> GetTrack() const;
+
 		Config	_config;
 
+		// Swapped by UpdateTrack at a runtime configuration change, read via GetTrack
 		std::shared_ptr<const MediaTrack> _track;
 
-		std::shared_ptr<ov::Data> _initialization_section = nullptr;
-		
+		// Initialization sections keyed by the track version that produced them.
+		// A runtime track change stores a new entry so that segments of the old
+		// version remain playable with their own section.
+		std::map<uint32_t, std::shared_ptr<ov::Data>> _initialization_sections;
+		// The first stored version, served for the version-less legacy URL
+		uint32_t _initial_track_version = 0;
+		mutable std::shared_mutex _initialization_sections_lock;
+
 		// segment number : segment
 		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;
 		mutable std::shared_mutex _segments_lock;

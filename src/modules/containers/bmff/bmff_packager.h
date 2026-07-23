@@ -27,9 +27,13 @@ namespace bmff
 		Packager(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const CencProperty &cenc_property);
 
 	protected:
-		// Get track 
+		// Get track
 		const std::shared_ptr<const MediaTrack> &GetMediaTrack() const;
 		const std::shared_ptr<const MediaTrack> &GetDataTrack() const;
+
+		// Switch to a new version of the same track at a runtime configuration change.
+		// Re-evaluates the CENC codec capability and rebuilds the sample buffer.
+		bool UpdateMediaTrack(const std::shared_ptr<const MediaTrack> &media_track);
 
 		// Fytp Box
 		virtual bool WriteFtypBox(ov::ByteStream &container_stream);

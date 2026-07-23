@@ -76,6 +76,7 @@ public:
 	std::tuple<RequestResult, std::shared_ptr<const ov::Data>> GetMasterPlaylist(const ov::String &file_name, const ov::String &chunk_query_string, bool gzip, bool legacy, bool rewind, bool include_path=true);
 	std::tuple<RequestResult, std::shared_ptr<const ov::Data>> GetChunklist(const ov::String &chunk_query_string, const int32_t &track_id, int64_t msn, int64_t psn, bool skip, bool gzip, bool legacy, bool rewind) const;
 	std::tuple<RequestResult, std::shared_ptr<ov::Data>> GetInitializationSegment(const int32_t &track_id) const;
+	std::tuple<RequestResult, std::shared_ptr<ov::Data>> GetInitializationSegment(const int32_t &track_id, uint32_t track_version) const;
 	std::tuple<RequestResult, std::shared_ptr<ov::Data>> GetSegment(const int32_t &track_id, const int64_t &segment_number) const;
 	std::tuple<RequestResult, std::shared_ptr<ov::Data>> GetPartial(const int32_t &track_id, const int64_t &segment_number, const int64_t &chunk_number) const;
 
@@ -114,6 +115,7 @@ private:
 	void OnMediaSegmentCreated(const int32_t &track_id, const uint32_t &segment_number) override;
 	void OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk) override;
 	void OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t &segment_number) override;
+	void OnMediaSegmentCompleted(const int32_t &track_id, const uint32_t &segment_number) override;
 
 	// Create and Get fMP4 packager and storage with track info, storage and packager_config
 	bool AddPackager(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track);
@@ -122,13 +124,27 @@ private:
 	std::shared_ptr<bmff::FMP4Packager> GetPackager(const int32_t &track_id) const;
 	// Get storage with the track id
 	std::shared_ptr<base::modules::SegmentStorage> GetStorage(const int32_t &track_id) const;
+	// Get storage of a fMP4 media track (VTT tracks use a different storage type)
+	std::shared_ptr<bmff::FMP4Storage> GetFmp4Storage(const int32_t &track_id) const;
 	// Get Playlist with the track id
 	std::shared_ptr<LLHlsChunklist> GetChunklistWriter(const int32_t &track_id) const;
 
-	std::shared_ptr<LLHlsMasterPlaylist> CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist) const;
+	std::shared_ptr<LLHlsMasterPlaylist> CreateMasterPlaylist(const std::shared_ptr<const info::Playlist> &playlist, bool include_unlisted_codecs = false) const;
+
+	// Uncached master playlist for dumped output; its CODECS attribute covers
+	// unlisted versions too because the dump keeps segments of every version
+	std::tuple<RequestResult, std::shared_ptr<const ov::Data>> GetMasterPlaylistForDump(const ov::String &file_name) const;
+
+	// Codecs the CODECS attribute advertises for a track, answered by the track's
+	// chunklist from its own listing (or registration history for dumped output)
+	ov::String GetCodecsParameterUnion(const std::shared_ptr<const MediaTrack> &track, bool include_unlisted = false) const;
 
 	ov::String GetChunklistName(const int32_t &track_id) const;
 	ov::String GetInitializationSegmentName(const int32_t &track_id) const;
+	ov::String GetInitializationSegmentName(const int32_t &track_id, uint32_t track_version) const;
+	// Map uri a segment of the given version references; the initial version keeps
+	// the version-less name, tracks without a fMP4 packager have none
+	ov::String GetMapUriForTrackVersion(const int32_t &track_id, uint32_t track_version) const;
 	ov::String GetSegmentName(const int32_t &track_id, const int64_t &segment_number) const;
 	ov::String GetPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number) const;
 	ov::String GetNextPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number, bool last_chunk) const;
@@ -170,6 +186,12 @@ private:
 	mutable std::shared_mutex _packager_map_lock;
 	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _chunklist_map;
 	mutable std::shared_mutex _chunklist_map_lock;
+
+	// Track ID : track version the stream started with (uses the version-less
+	// initialization segment name, later versions carry a version suffix)
+	std::map<int32_t, uint32_t> _initial_track_versions;
+	mutable std::shared_mutex _initial_track_versions_lock;
+
 
 	uint64_t _max_chunk_duration_ms = 0;
 	uint64_t _min_chunk_duration_ms = std::numeric_limits<uint64_t>::max();
