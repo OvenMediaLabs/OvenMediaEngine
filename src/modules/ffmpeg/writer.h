@@ -86,8 +86,6 @@ namespace ffmpeg
 		ov::String GetErrorMessage() const;
 
 	private:
-		std::shared_ptr<AVFormatContext> GetAVFormatContext() const;
-		void SetAVFormatContext(AVFormatContext* av_format);
 		void ReleaseAVFormatContext();
 		std::pair<std::shared_ptr<AVStream>, std::shared_ptr<const MediaTrack>> GetTrack(int32_t track_id, cmn::BitstreamFormat format) const;
 		bool ToAVPacket(AVPacket &av_packet, const std::shared_ptr<AVStream> av_stream, const std::shared_ptr<MediaPacket> &media_packet, const std::shared_ptr<const MediaTrack> &media_track, int64_t start_time);
@@ -101,8 +99,8 @@ namespace ffmpeg
 		int64_t _start_time = -1LL;
 		TimestampMode _timestamp_mode = TIMESTAMP_STARTZERO_MODE;
 
-		bool _need_to_flush = false;
-		bool _need_to_close = false;
+		std::atomic<bool> _need_to_flush = false;
+		std::atomic<bool> _need_to_close = false;
 
 		// MediaTrackId -> AVStream, MediaTrack
 		bool AddMediaTrack(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream);

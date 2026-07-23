@@ -47,6 +47,8 @@ namespace pub
 		void DestroyWriter();
 
 	private:
+		std::mutex _record_control_mutex;
+
 		std::shared_ptr<ffmpeg::Writer> _writer;
 		std::shared_mutex _writer_mutex;
 
@@ -55,7 +57,8 @@ namespace pub
 
 		std::map<cmn::MediaType, MediaTrackId> _default_track_by_type;
 		MediaTrackId _default_track;
-		bool _found_first_keyframe = false;
+
+		std::atomic<bool> _found_first_keyframe = false;
 
 		std::atomic<bool> _is_splitting = false;
 	};

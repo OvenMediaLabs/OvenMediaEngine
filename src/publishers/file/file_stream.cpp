@@ -42,11 +42,12 @@ namespace pub
 			return false;
 		}
 
+		_stream_interval_gate.Reset();
+
 		auto result = Stream::Start();
 		if (result == true)
 		{
 			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), false);
-			_stop_watch.Start();
 		}
 
 		return result;
@@ -63,7 +64,6 @@ namespace pub
 		if (result == true)
 		{
 			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), true);
-			_stop_watch.Stop();
 		}
 
 		return result;
@@ -76,10 +76,9 @@ namespace pub
 			return;
 		}
 
-		// Periodically check the session. Retry the session in which the error occurred.
-		if (_stop_watch.IsElapsed(5000) && _stop_watch.Update())
+		// Periodically update sessions that still need (re)starting
+		if (_stream_interval_gate.TryConsume())
 		{
-			// If the recording is failed, it is for retrying.
 			std::static_pointer_cast<FileApplication>(GetApplication())->SessionUpdateByStream(std::static_pointer_cast<FileStream>(GetSharedPtr()), false);
 		}
 

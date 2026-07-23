@@ -45,5 +45,6 @@ namespace pub
 
 	private:
 		FileUserdataSets _record_info_list;
+		std::mutex _session_control_mutex;
 	};
 }  // namespace pub
