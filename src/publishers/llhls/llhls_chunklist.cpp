@@ -8,8 +8,8 @@
 //==============================================================================
 
 #include "llhls_chunklist.h"
+#include "llhls_cenc_key.h"
 #include "llhls_private.h"
-#include <base/ovcrypto/base_64.h>
 #include <base/ovlibrary/zip.h>
 
 LLHlsChunklist::LLHlsChunklist(const ov::String &url, const std::shared_ptr<const MediaTrack> &track, 
@@ -374,51 +374,7 @@ bool LLHlsChunklist::GetLastSequenceNumber(int64_t &msn, int64_t &psn) const
 
 ov::String LLHlsChunklist::MakeExtXKey() const
 {
-	ov::String xkey;
-
-	for (const auto &pssh : _cenc_property.pssh_box_list)
-	{
-		if (pssh.drm_system == bmff::DRMSystem::Widevine)
-		{
-			xkey.AppendFormat("#EXT-X-KEY:");
-
-			if (_cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
-			{
-				xkey.AppendFormat("METHOD=SAMPLE-AES");
-			}
-			else if (_cenc_property.scheme == bmff::CencProtectScheme::Cenc)
-			{
-				xkey.AppendFormat("METHOD=SAMPLE-AES-CTR");
-			}
-
-			xkey.AppendFormat(",URI=\"data:text/plain;base64,%s\"", ov::Base64::Encode(pssh.pssh_box_data, false).CStr());
-
-			xkey.AppendFormat(",KEYID=0x%s", _cenc_property.key_id->ToHexString().CStr());
-			xkey.AppendFormat(",KEYFORMAT=\"urn:uuid:%s\"", ov::ToUUIDString(pssh.system_id->GetData(), pssh.system_id->GetLength()).LowerCaseString().CStr());
-			xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
-		}
-		else if (pssh.drm_system == bmff::DRMSystem::FairPlay)
-		{
-			if (_cenc_property.keyformat.LowerCaseString() == "identity")
-			{
-				xkey.AppendFormat("#EXT-X-KEY:METHOD=SAMPLE-AES");
-				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
-				xkey.AppendFormat(",KEYFORMAT=\"identity\"");
-				xkey.AppendFormat(",IV=0x%s", _cenc_property.iv->ToHexString().CStr());
-			}
-			else
-			{
-				xkey.AppendFormat("#EXT-X-KEY:METHOD=SAMPLE-AES");
-				xkey.AppendFormat(",URI=\"%s\"", _cenc_property.fairplay_key_uri.CStr());
-				xkey.AppendFormat(",KEYFORMAT=\"com.apple.streamingkeydelivery\"");
-				xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
-			}
-		}
-
-		xkey.Append("\n");
-	}
-
-	return xkey;
+	return pub::llhls::MakeCencKeyTag(_cenc_property, pub::llhls::PlaylistType::Media);
 }
 
 ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod, uint32_t vod_start_segment_number) const

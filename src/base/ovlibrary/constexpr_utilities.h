@@ -176,5 +176,59 @@ namespace ov
 			}
 		}
 		static_assert(Max(3, 1, 2) == 3, "Max() doesn't work properly");
+
+		// A fixed-capacity, null-terminated character buffer usable in a constexpr context.
+		// `Capacity` counts the terminating null, so it matches the size of the source string literal.
+		template <size_t Capacity>
+		struct FixedString
+		{
+			char value[Capacity] = {};
+
+			constexpr const char *CStr() const
+			{
+				return value;
+			}
+
+			constexpr operator const char *() const
+			{
+				return value;
+			}
+		};
+
+		// Returns `input` with every occurrence of `ch` removed, evaluated at compile time.
+		// The result keeps the source capacity, so removed characters leave zero-filled trailing bytes
+		// after the null terminator; read as a C string it yields the shortened text.
+		template <size_t Capacity>
+		constexpr FixedString<Capacity> StrRemove(const char (&input)[Capacity], char ch)
+		{
+			FixedString<Capacity> result{};
+			size_t out = 0;
+
+			for (size_t in = 0; in < Capacity; ++in)
+			{
+				if (input[in] != ch)
+				{
+					// Keep the buffer null-terminated even if `input` is not.
+					if (out + 1 >= Capacity)
+					{
+						break;
+					}
+
+					result.value[out++] = input[in];
+
+					if (input[in] == '\0')
+					{
+						break;
+					}
+				}
+			}
+
+			return result;
+		}
+		static_assert(StrCmp(StrRemove("a-b-c", '-').CStr(), "abc") == 0, "StrRemove() doesn't work properly");
+		static_assert(StrCmp(StrRemove("nodash", '-').CStr(), "nodash") == 0, "StrRemove() doesn't work properly");
+		static_assert(StrCmp(StrRemove("ab-", '-').CStr(), "ab") == 0, "StrRemove() doesn't work properly");
+		static_assert(StrCmp(StrRemove("---", '-').CStr(), "") == 0, "StrRemove() doesn't work properly");
+		static_assert(StrCmp(StrRemove("", '-').CStr(), "") == 0, "StrRemove() doesn't work properly");
 	}  // namespace cexpr
 }  // namespace ov
