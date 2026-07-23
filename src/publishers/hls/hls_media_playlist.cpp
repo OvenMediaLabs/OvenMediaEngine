@@ -99,14 +99,20 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Seg
 		logtd("Marker is found in the segment %" PRIu64 " (%zu)", segment->GetNumber(), segment->GetMarkers().size());
 	}
 
-	_segments.emplace(segment->GetNumber(), segment);
-
-	// The codecs union can only grow at a discontinuity; a normal segment repeats
-	// the codecs of its generation, which are already covered. A stream that never
-	// changes configuration therefore never builds the cache and uses the fallback.
 	if (segment->IsDiscontinuityPoint() == true)
 	{
 		_total_discontinuity_count++;
+	}
+
+	_segments.emplace(segment->GetNumber(), segment);
+
+	// Keep the CODECS cache reflecting the retained segments: build it on the first
+	// segment and whenever a discontinuity changes the codec set. GetCodecsString then
+	// derives from the segments and never advertises a codec (e.g. from a just-updated
+	// track) that the retained segments do not yet contain. A normal segment repeats
+	// the codecs already covered, so it needs no rebuild.
+	if (segment->IsDiscontinuityPoint() == true || _codecs_parameter.IsEmpty() == true)
+	{
 		RebuildCodecsParameter();
 	}
 

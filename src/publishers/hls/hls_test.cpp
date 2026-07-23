@@ -475,6 +475,20 @@ TEST_F(HlsMediaPlaylistTest, CodecsUnionShrinksWhenOldCodecScrollsOut)
 	EXPECT_NE(codecs.IndexOf("hev1.1.6.L93.B0"), -1L);
 }
 
+TEST_F(HlsMediaPlaylistTest, CodecsDeriveFromSegmentsWhenPresent)
+{
+	auto playlist = MakePlaylist();
+
+	// No AddMediaTrackInfo, so the track fallback would be empty. A single
+	// non-discontinuity segment must still drive CODECS, so the master never
+	// advertises something the retained segments do not contain.
+	playlist->OnSegmentCreated(MakeSegment(0, 0, 6000, 0, false, "avc1.640028,mp4a.40.2"));
+
+	auto codecs = playlist->GetCodecsString();
+	EXPECT_NE(codecs.IndexOf("avc1.640028"), -1L);
+	EXPECT_NE(codecs.IndexOf("mp4a.40.2"), -1L);
+}
+
 TEST_F(HlsMediaPlaylistTest, NoDiscontinuityWithoutChange)
 {
 	auto playlist = MakePlaylist();
