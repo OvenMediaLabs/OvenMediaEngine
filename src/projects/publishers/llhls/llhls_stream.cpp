@@ -1892,10 +1892,14 @@ void LLHlsStream::ProcessVttChunk(const PendingVttChunk &job)
 
 void LLHlsStream::FlushPendingVttChunks()
 {
-	while (_pending_vtt_chunks.empty() == false)
+	std::deque<PendingVttChunk> jobs;
 	{
-		auto job = _pending_vtt_chunks.front();
-		_pending_vtt_chunks.pop_front();
+		std::lock_guard<std::mutex> lock(_pending_vtt_chunks_lock);
+		jobs.swap(_pending_vtt_chunks);
+	}
+
+	for (const auto &job : jobs)
+	{
 		ProcessVttChunk(job);
 	}
 }
@@ -2009,16 +2013,28 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 			else
 			{
 				job.dispatch_after_ms = reference_timestamp_ms + static_cast<int64_t>(_subtitle_hold_back_ms);
+
+				std::lock_guard<std::mutex> pending_lock(_pending_vtt_chunks_lock);
 				_pending_vtt_chunks.push_back(job);
 			}
 		}
 
 		// Dispatch every pending VTT chunk whose hold-back window has now elapsed, using the
 		// reference track's own timeline as the clock (ticks every chunk, no timer thread needed).
-		while (_pending_vtt_chunks.empty() == false && _pending_vtt_chunks.front().dispatch_after_ms <= reference_timestamp_ms)
+		// Pop the due jobs out under the lock, then process them with the lock released, since
+		// ProcessVttChunk() re-enters this function for the VTT track.
+		std::vector<PendingVttChunk> due_jobs;
 		{
-			auto job = _pending_vtt_chunks.front();
-			_pending_vtt_chunks.pop_front();
+			std::lock_guard<std::mutex> pending_lock(_pending_vtt_chunks_lock);
+			while (_pending_vtt_chunks.empty() == false && _pending_vtt_chunks.front().dispatch_after_ms <= reference_timestamp_ms)
+			{
+				due_jobs.push_back(_pending_vtt_chunks.front());
+				_pending_vtt_chunks.pop_front();
+			}
+		}
+
+		for (const auto &job : due_jobs)
+		{
 			ProcessVttChunk(job);
 		}
 	}
@@ -2047,10 +2063,14 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 		// the DVR window, so finalizing it later would re-insert an already-removed segment.
 		// Reaching here means SubtitleHoldBack is close to (or exceeds) the retention window
 		// (SegmentCount * SegmentDuration), so surface it instead of dropping silently.
-		auto dropped_begin = std::remove_if(_pending_vtt_chunks.begin(), _pending_vtt_chunks.end(),
-											 [segment_number](const PendingVttChunk &job) { return job.segment_number == segment_number; });
-		size_t dropped_count = static_cast<size_t>(std::distance(dropped_begin, _pending_vtt_chunks.end()));
-		_pending_vtt_chunks.erase(dropped_begin, _pending_vtt_chunks.end());
+		size_t dropped_count = 0;
+		{
+			std::lock_guard<std::mutex> pending_lock(_pending_vtt_chunks_lock);
+			auto dropped_begin = std::remove_if(_pending_vtt_chunks.begin(), _pending_vtt_chunks.end(),
+												 [segment_number](const PendingVttChunk &job) { return job.segment_number == segment_number; });
+			dropped_count = static_cast<size_t>(std::distance(dropped_begin, _pending_vtt_chunks.end()));
+			_pending_vtt_chunks.erase(dropped_begin, _pending_vtt_chunks.end());
+		}
 
 		if (dropped_count > 0)
 		{

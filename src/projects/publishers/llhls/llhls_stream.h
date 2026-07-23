@@ -207,6 +207,11 @@ private:
 	// storage/chunklist maps it depends on (via ProcessVttChunk) are torn down.
 	void FlushPendingVttChunks();
 
+	// Guards _pending_vtt_chunks: OnMediaChunkUpdated/OnMediaSegmentDeleted (data-plane chunk
+	// callbacks) and Stop()/ConcludeLive() (lifecycle/control-plane) are not guaranteed to run
+	// on the same thread. Never hold this while calling ProcessVttChunk() - pop/erase the
+	// relevant jobs into a local container under the lock, then process outside it.
+	std::mutex _pending_vtt_chunks_lock;
 	std::deque<PendingVttChunk> _pending_vtt_chunks;
 
 	std::map<ov::String, std::shared_ptr<LLHlsMasterPlaylist>> _master_playlists;
