@@ -40,7 +40,12 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
+	// Relays the origin's already-parsed track configuration to connected edges
+	// so a runtime change (codec, resolution, decoder config) is applied there.
+	void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track) override;
+
 	bool GenerateDescription(Json::Value &out_description);
+	void GenerateTrackDescription(const std::shared_ptr<const MediaTrack> &track, Json::Value &out_json_track);
 	void FilterDescriptionByTrackIds(Json::Value &description, const std::set<uint32_t> &allowed_track_ids);
 
 	uint32_t							_worker_count = 0;

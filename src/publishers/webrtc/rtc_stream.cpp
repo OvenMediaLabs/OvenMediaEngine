@@ -314,6 +314,14 @@ bool RtcStream::Stop()
 	return Stream::Stop();
 }
 
+void RtcStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
+{
+	// A same-codec change (resolution, bitrate, parameter sets) is delivered
+	// in-band via RTP, so a running session keeps decoding. A codec change would
+	// require a new SDP offer, which cannot be applied to an active session.
+	LogInbandRecoverableTrackChange(track_id, old_track, new_track);
+}
+
 bool RtcStream::IsSupportedCodec(cmn::MediaCodecId codec_id)
 {
 	switch (codec_id)

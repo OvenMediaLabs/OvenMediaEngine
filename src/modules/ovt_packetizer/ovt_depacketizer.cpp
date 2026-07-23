@@ -83,12 +83,24 @@ bool OvtDepacketizer::ParsePacket()
 
 bool OvtDepacketizer::IsAvailableMessage()
 {
-	return !_messages.empty();
+	return !_items.empty() && _items.front().type == ItemType::Message;
 }
 
 bool OvtDepacketizer::IsAvailableMediaPacket()
 {
-	return !_media_packets.empty();
+	return !_items.empty() && _items.front().type == ItemType::MediaPacket;
+}
+
+bool OvtDepacketizer::IsAvailable()
+{
+	return !_items.empty();
+}
+
+bool OvtDepacketizer::IsNextMessage()
+{
+	// Same question as IsAvailableMessage() now that items share one ordered queue;
+	// delegate so the type check has a single source of truth.
+	return IsAvailableMessage();
 }
 
 bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &packet)
@@ -106,9 +118,8 @@ bool OvtDepacketizer::AppendMessagePacket(const std::shared_ptr<OvtPacket> &pack
 			return false;
 		}
 
-		auto message = _message_buffer.Clone();
-		_messages.push(message);
-		
+		_items.push(Item{ItemType::Message, _message_buffer.Clone(), nullptr});
+
 		_message_buffer.Clear();
 	}
 
@@ -160,7 +171,7 @@ bool OvtDepacketizer::AppendMediaPacket(const std::shared_ptr<OvtPacket> &packet
 		media_packet->SetFlag(media_flag);
 		media_packet->SetDuration(duration);
 
-		_media_packets.push(media_packet);
+		_items.push(Item{ItemType::MediaPacket, nullptr, std::move(media_packet)});
 
 		_media_packet_buffer.Clear();
 	}
@@ -175,8 +186,8 @@ const std::shared_ptr<ov::Data> OvtDepacketizer::PopMessage()
 		return nullptr;
 	}
 
-	auto message = _messages.front();
-	_messages.pop();
+	auto message = _items.front().message;
+	_items.pop();
 
 	return message;
 }
@@ -188,8 +199,8 @@ const std::shared_ptr<MediaPacket> OvtDepacketizer::PopMediaPacket()
 		return nullptr;
 	}
 
-	auto media_packet = _media_packets.front();
-	_media_packets.pop();
+	auto media_packet = _items.front().media_packet;
+	_items.pop();
 
 	return media_packet;
 }
