@@ -97,7 +97,9 @@ namespace bmff
 
 	constexpr inline bool HasDRMSystem(DRMSystem set, DRMSystem flag)
 	{
-		return (ov::ToUnderlyingType(set) & ov::ToUnderlyingType(flag)) != 0;
+		const auto flag_value = ov::ToUnderlyingType(flag);
+
+		return (flag_value != 0) && ((ov::ToUnderlyingType(set) & flag_value) == flag_value);
 	}
 
 	struct PsshBox
