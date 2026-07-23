@@ -216,9 +216,11 @@ void OvtStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const Med
 	}
 
 	// A label-only change does not affect the media configuration, so there is
-	// nothing for the edge to re-apply; the base treats it as a metadata update.
+	// nothing for the edge to re-apply. Defer to the base metadata-update handling
+	// and skip the edge relay.
 	if (old_track->HasSameContent(*new_track))
 	{
+		Stream::OnTrackChanged(track_id, old_track, new_track);
 		return;
 	}
 
