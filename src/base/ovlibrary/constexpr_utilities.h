@@ -208,7 +208,18 @@ namespace ov
 			{
 				if (input[in] != ch)
 				{
+					// Keep the buffer null-terminated even if `input` is not.
+					if (out + 1 >= Capacity)
+					{
+						break;
+					}
+
 					result.value[out++] = input[in];
+
+					if (input[in] == '\0')
+					{
+						break;
+					}
 				}
 			}
 
