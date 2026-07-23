@@ -204,9 +204,10 @@ namespace bmff
 					}
 				}
 
-				if (this->data == nullptr)
+				if ((this->data == nullptr) || (this->data->GetLength() == 0))
 				{
 					// Malformed PlayReady `pssh` box: treat it as an unknown/unusable system.
+					// An empty PRO is as unusable as a missing one, so reject a zero-length payload too.
 					loge("BMFF.CENC", "Malformed PlayReady pssh box, could not extract the PlayReady Object");
 					drm_system = DRMSystem::None;
 				}

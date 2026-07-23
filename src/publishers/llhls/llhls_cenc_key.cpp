@@ -44,8 +44,8 @@ namespace pub::llhls
 			}
 
 			// PlayReady needs its Object (PRO) to build a valid key tag.
-			// Without it we cannot emit a proper URI, so skip the entry instead of writing a broken tag.
-			if ((pssh.drm_system == bmff::DRMSystem::PlayReady) && (pssh.data == nullptr))
+			// Without it (null or empty) we cannot emit a proper URI, so skip the entry instead of writing a broken tag.
+			if ((pssh.drm_system == bmff::DRMSystem::PlayReady) && ((pssh.data == nullptr) || (pssh.data->GetLength() == 0)))
 			{
 				logte("PlayReady pssh is missing its PlayReady Object (PRO), skipping the %s tag.", tag_name);
 				OV_ASSERT2(false);
@@ -86,6 +86,26 @@ namespace pub::llhls
 				continue;
 			}
 
+			// Widevine signals the key id in the tag, so it needs `key_id`.
+			if ((pssh.drm_system == bmff::DRMSystem::Widevine) && (cenc_property.key_id == nullptr))
+			{
+				logte("Missing key_id for Widevine pssh, skipping the %s tag.", tag_name);
+				OV_ASSERT2(false);
+				xkey.Append("\n");
+				continue;
+			}
+
+			// FairPlay with the `identity` keyformat signals the IV in the tag, so it needs `iv`.
+			if ((pssh.drm_system == bmff::DRMSystem::FairPlay) &&
+				(cenc_property.keyformat.LowerCaseString() == "identity") &&
+				(cenc_property.iv == nullptr))
+			{
+				logte("Missing iv for FairPlay (identity) pssh, skipping the %s tag.", tag_name);
+				OV_ASSERT2(false);
+				xkey.Append("\n");
+				continue;
+			}
+
 			xkey.AppendFormat("%s:%s", tag_name, method);
 
 			switch (pssh.drm_system)
@@ -121,7 +141,7 @@ namespace pub::llhls
 
 				case bmff::DRMSystem::PlayReady:
 					// PlayReady carries the PlayReady Object (PRO) in the URI (UTF-16, base64), not the whole pssh box.
-					// `pssh.data` is guaranteed non-null here (checked at the top of the loop).
+					// `pssh.data` is guaranteed non-null and non-empty here (checked at the top of the loop).
 					xkey.AppendFormat(",URI=\"data:text/plain;charset=UTF-16;base64,%s\"", ov::Base64::Encode(pssh.data, false).CStr());
 					xkey.AppendFormat(",KEYFORMAT=\"com.microsoft.playready\"");
 					xkey.AppendFormat(",KEYFORMATVERSIONS=\"1\"");
