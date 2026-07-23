@@ -31,7 +31,7 @@ namespace bmff
 	// Codecs the CENC implementation can encrypt
 	inline bool IsCencSupportedCodec(cmn::MediaCodecId codec_id)
 	{
-		return codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::Aac;
+		return codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265 || codec_id == cmn::MediaCodecId::Aac;
 	}
 
 	namespace internal
@@ -365,6 +365,7 @@ namespace bmff
 	private:
 		bool GenerateSubSamples(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples);
 		bool GenerateSubSamplesFromH264(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples);
+		bool GenerateSubSamplesFromH265(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples);
 
 		// If sub_samples is empty, it means that the full sample encryption is performed.
 		bool EncryptInternal(const std::shared_ptr<const ov::Data> &clear_data, std::shared_ptr<ov::Data> &encrypted_data, const std::vector<Sample::SubSample> &sub_samples);

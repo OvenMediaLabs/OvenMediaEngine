@@ -913,6 +913,21 @@ namespace bmff
 			return false;
 		}
 
+		// CENC
+		if (_cenc_property.scheme != CencProtectScheme::None)
+		{
+			// Encrypted HEVC must use the 'hvc1' sample entry (parameter sets in the sample
+			// entry), matching the 'hvc1' codec string advertised by
+			// HEVCDecoderConfigurationRecord::GetCodecsParameter(). Browser EME / Widevine
+			if (WriteSinfBox(stream, "hvc1") == false)
+			{
+				logte("Packager::WriteHvc1Box() - Failed to write sinf box");
+				return false;
+			}
+
+			return WriteBox(container_stream, "encv", *stream.GetData());
+		}
+				
 		return WriteBox(container_stream, "hvc1", *stream.GetData());
 	}
 	

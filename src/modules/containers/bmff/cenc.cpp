@@ -106,9 +106,8 @@ namespace bmff
 		{
 			case cmn::BitstreamFormat::H264_AVCC:
 				return GenerateSubSamplesFromH264(media_packet, sub_samples);
-            case cmn::BitstreamFormat::HVCC:
-                // TODO: Implement
-                return true;
+			case cmn::BitstreamFormat::HVCC:
+				return GenerateSubSamplesFromH265(media_packet, sub_samples);
 			default:
 				// Others, full sample encryption
 				return true;
@@ -230,6 +229,12 @@ namespace bmff
 
         logtt("Subsample count : %zu Total subsamples : %u / %zu", sub_samples.size(), total_bytes, media_packet->GetDataLength());
 
+		return true;
+	}
+
+	bool Encryptor::GenerateSubSamplesFromH265(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples)
+	{
+		// HEVC subsample encryption is not supported in the OSS version.
 		return true;
 	}
 
