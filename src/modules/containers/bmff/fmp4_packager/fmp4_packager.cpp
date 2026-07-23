@@ -100,17 +100,17 @@ namespace bmff
 		}
 
 		// The same codecs CreateInitializationSegment supports; validate before mutating
-		if ((media_track->GetCodecId() == cmn::MediaCodecId::H264) ||
-			(media_track->GetCodecId() == cmn::MediaCodecId::H265) ||
-			(media_track->GetCodecId() == cmn::MediaCodecId::Av1) ||
-			(media_track->GetCodecId() == cmn::MediaCodecId::Aac))
+		switch (media_track->GetCodecId())
 		{
-			// Supported codecs
-		}
-		else
-		{
-			logtw("FMP4Packager::UpdateTrack() - Unsupported codec id(%s)", cmn::GetCodecIdString(media_track->GetCodecId()));
-			return false;
+			case cmn::MediaCodecId::H264:
+			case cmn::MediaCodecId::H265:
+			case cmn::MediaCodecId::Av1:
+			case cmn::MediaCodecId::Aac:
+				// Supported codecs
+				break;
+			default:
+				logtw("FMP4Packager::UpdateTrack() - Unsupported codec id(%s)", cmn::GetCodecIdString(media_track->GetCodecId()));
+				return false;
 		}
 
 		// Close the current content so that samples of different track versions never

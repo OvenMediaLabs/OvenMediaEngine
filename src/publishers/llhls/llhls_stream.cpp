@@ -1492,6 +1492,24 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 		return;
 	}
 
+	// Keep the EXT-X-KEY signaling honest about the track's real encryption state.
+	// When the codec changes to one CENC cannot encrypt (e.g. H265, AV1), the
+	// current policy is that the track keeps being produced in the clear (same as
+	// AddPackager at startup), so the playlist must stop advertising EXT-X-KEY;
+	// a return to a supported codec restores it. Leaving a stale EXT-X-KEY on clear
+	// segments would confuse players into attempting decryption.
+	// TODO: when the DRM-failure policy is decided, this may change to blocking the
+	// track update instead of producing clear output.
+	if (_cenc_property.scheme != bmff::CencProtectScheme::None && chunklist != nullptr)
+	{
+		auto track_cenc_property = _cenc_property;
+		if (bmff::IsCencSupportedCodec(new_track->GetCodecId()) == false)
+		{
+			track_cenc_property.scheme = bmff::CencProtectScheme::None;
+		}
+		chunklist->EnableCenc(track_cenc_property);
+	}
+
 	// The new initialization section is stored from here, safe to hint its map
 	if (has_published_content == true && chunklist != nullptr)
 	{
