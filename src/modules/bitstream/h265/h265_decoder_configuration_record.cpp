@@ -60,7 +60,9 @@ ov::String HEVCDecoderConfigurationRecord::GetCodecsParameter() const
 
 	ov::String codecs_parameter;
 
-	codecs_parameter += "hev1";
+	// Use 'hvc1' (parameter sets in the sample entry) rather than 'hev1' (in-band allowed).
+	// This parallels AVC's use of 'avc1' and is required for encrypted HEVC
+	codecs_parameter += "hvc1";
 
 	if (_general_profile_space == 0)
 	{
@@ -659,6 +661,32 @@ bool HEVCDecoderConfigurationRecord::AddPPS(const std::shared_ptr<ov::Data> &nal
 	// else 
 	// 		parallelism_type = 1 // slice-based parallel decoding
 	_parallelism_type = 0;
+
+	return true;
+}
+
+bool HEVCDecoderConfigurationRecord::GetSPS(int sps_id, H265SPS &sps) const
+{
+	auto it = _sps_map.find(sps_id);
+	if (it == _sps_map.end())
+	{
+		return false;
+	}
+
+	sps = it->second;
+
+	return true;
+}
+
+bool HEVCDecoderConfigurationRecord::GetPPS(int pps_id, H265PPS &pps) const
+{
+	auto it = _pps_map.find(pps_id);
+	if (it == _pps_map.end())
+	{
+		return false;
+	}
+
+	pps = it->second;
 
 	return true;
 }

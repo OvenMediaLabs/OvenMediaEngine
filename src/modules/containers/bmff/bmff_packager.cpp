@@ -913,7 +913,7 @@ namespace bmff
 			return false;
 		}
 
-		return WriteBox(container_stream, "hev1", *stream.GetData());
+		return WriteBox(container_stream, "hvc1", *stream.GetData());
 	}
 	
 	bool Packager::WriteHvccBox(ov::ByteStream &container_stream)

@@ -795,8 +795,7 @@ namespace bmff
 					break;
 
 				case cmn::MediaCodecId::H265:
-					// Must match the sample entry fourcc written by `WriteHvc1Box()` (`hev1`)
-					stream.WriteText("hev1");
+					stream.WriteText("hvc1");
 					break;
 
 				case cmn::MediaCodecId::Av1:

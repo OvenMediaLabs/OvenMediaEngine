@@ -90,6 +90,10 @@ public:
 	// Get NAL units by NAL unit type
 	std::vector<std::shared_ptr<ov::Data>> GetNalUnits(H265NALUnitType nal_type);
 
+	// Get parsed SPS/PPS by id (used e.g. by the slice header parser for CENC)
+	bool GetSPS(int sps_id, H265SPS &sps) const;
+	bool GetPPS(int pps_id, H265PPS &pps) const;
+
 	// Helpers
 	int32_t GetWidth();
 	int32_t GetHeight();
