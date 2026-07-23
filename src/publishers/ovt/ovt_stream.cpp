@@ -215,6 +215,13 @@ void OvtStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const Med
 		return;
 	}
 
+	// A label-only change does not affect the media configuration, so there is
+	// nothing for the edge to re-apply; the base treats it as a metadata update.
+	if (old_track->HasSameContent(*new_track))
+	{
+		return;
+	}
+
 	// Relay the changed track's already-parsed configuration to connected edges.
 	// OnTrackChanged runs right before the first media packet of the new version
 	// is broadcast, so the message reaches the edge ahead of that packet on the
