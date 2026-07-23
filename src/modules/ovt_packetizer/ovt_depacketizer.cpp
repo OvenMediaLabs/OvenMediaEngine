@@ -169,7 +169,7 @@ bool OvtDepacketizer::AppendMediaPacket(const std::shared_ptr<OvtPacket> &packet
 		media_packet->SetFlag(media_flag);
 		media_packet->SetDuration(duration);
 
-		_items.push(Item{ItemType::MediaPacket, nullptr, media_packet});
+		_items.push(Item{ItemType::MediaPacket, nullptr, std::move(media_packet)});
 
 		_media_packet_buffer.Clear();
 	}
