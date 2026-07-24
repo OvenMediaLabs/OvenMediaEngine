@@ -579,7 +579,7 @@ bool HEVCDecoderConfigurationRecord::AddVPS(const std::shared_ptr<ov::Data> &nal
 		return false;
 	}
 
-	_vps_map.emplace(vps.GetId(), vps);
+	_vps_map.emplace(vps.GetId(), std::make_shared<H265VPS>(vps));
 	_vps_data_list.push_back(nalu);
 
 	//_num_temporal_layers = std::max<uint8_t>(_num_temporal_layers, vps.GetMaxSubLayersMinus1() + 1);
@@ -627,7 +627,7 @@ bool HEVCDecoderConfigurationRecord::AddSPS(const std::shared_ptr<ov::Data> &nal
 	_constant_frame_rate = 0;
 
 	_sps_data_list.push_back(nalu);
-	_sps_map.emplace(sps.GetId(), sps);
+	_sps_map.emplace(sps.GetId(), std::make_shared<H265SPS>(sps));
 
 	return true;
 }
@@ -647,7 +647,7 @@ bool HEVCDecoderConfigurationRecord::AddPPS(const std::shared_ptr<ov::Data> &nal
 		return false;
 	}
 
-	_pps_map.emplace(pps.GetId(), pps);
+	_pps_map.emplace(pps.GetId(), std::make_shared<H265PPS>(pps));
 	_pps_data_list.push_back(nalu);
 
 	// TODO(Getroot) : Implement PPS parser for getting following values
@@ -665,30 +665,38 @@ bool HEVCDecoderConfigurationRecord::AddPPS(const std::shared_ptr<ov::Data> &nal
 	return true;
 }
 
-bool HEVCDecoderConfigurationRecord::GetSPS(int sps_id, H265SPS &sps) const
+std::shared_ptr<H265SPS> HEVCDecoderConfigurationRecord::GetSPS(int sps_id) const
 {
-	auto it = _sps_map.find(sps_id);
+	// sps_seq_parameter_set_id is in the range [0, 15] (Rec. ITU-T H.265 7.4.3.2.1). 
+	if (sps_id < 0 || sps_id > 15)
+	{
+		return nullptr;
+	}
+
+	auto it = _sps_map.find(static_cast<uint8_t>(sps_id));
 	if (it == _sps_map.end())
 	{
-		return false;
+		return nullptr;
 	}
 
-	sps = it->second;
-
-	return true;
+	return it->second;
 }
 
-bool HEVCDecoderConfigurationRecord::GetPPS(int pps_id, H265PPS &pps) const
+std::shared_ptr<H265PPS> HEVCDecoderConfigurationRecord::GetPPS(int pps_id) const
 {
-	auto it = _pps_map.find(pps_id);
-	if (it == _pps_map.end())
+	// pps_pic_parameter_set_id is in the range [0, 63] (Rec. ITU-T H.265 7.4.3.3.1).
+	if (pps_id < 0 || pps_id > 63)
 	{
-		return false;
+		return nullptr;
 	}
 
-	pps = it->second;
+	auto it = _pps_map.find(static_cast<uint8_t>(pps_id));
+	if (it == _pps_map.end())
+	{
+		return nullptr;
+	}
 
-	return true;
+	return it->second;
 }
 
 std::tuple<std::shared_ptr<ov::Data>, FragmentationHeader> HEVCDecoderConfigurationRecord::GetVpsSpsPpsAsAnnexB()

@@ -91,8 +91,8 @@ public:
 	std::vector<std::shared_ptr<ov::Data>> GetNalUnits(H265NALUnitType nal_type);
 
 	// Get parsed SPS/PPS by id (used e.g. by the slice header parser for CENC)
-	bool GetSPS(int sps_id, H265SPS &sps) const;
-	bool GetPPS(int pps_id, H265PPS &pps) const;
+	std::shared_ptr<H265SPS> GetSPS(int sps_id) const;
+	std::shared_ptr<H265PPS> GetPPS(int pps_id) const;
 
 	// Helpers
 	int32_t GetWidth();
@@ -136,15 +136,15 @@ private:
 	// Extra data
 	std::vector<std::shared_ptr<ov::Data>>	_vps_data_list;
 	// vps_id, vps
-	std::map<uint8_t, H265VPS> _vps_map;
+	std::map<uint8_t, std::shared_ptr<H265VPS>> _vps_map;
 
 	std::vector<std::shared_ptr<ov::Data>>	_sps_data_list;
 	// sps_id, sps
-	std::map<uint8_t, H265SPS> _sps_map;
+	std::map<uint8_t, std::shared_ptr<H265SPS>> _sps_map;
 
 	std::vector<std::shared_ptr<ov::Data>>	_pps_data_list;
 	// pps_id, pps
-	std::map<uint8_t, H265PPS> _pps_map;
+	std::map<uint8_t, std::shared_ptr<H265PPS>> _pps_map;
 
 	H265SPS _h265_sps;
 	std::shared_ptr<ov::Data> _vps_sps_pps_annexb_data = nullptr;
