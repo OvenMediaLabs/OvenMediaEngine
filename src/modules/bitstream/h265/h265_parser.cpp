@@ -1428,14 +1428,14 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 	auto pps = hvcc->GetPPS(slice_pic_parameter_set_id);
 	if (pps == nullptr)
 	{
-		logte("H265 slice header: PPS(%u) not found", slice_pic_parameter_set_id);
+		logtd("H265 slice header: PPS(%u) not found", slice_pic_parameter_set_id);
 		return false;
 	}
 
 	auto sps = hvcc->GetSPS(pps->pps_seq_parameter_set_id);
 	if (sps == nullptr)
 	{
-		logte("H265 slice header: SPS(%u) not found", pps->pps_seq_parameter_set_id);
+		logtd("H265 slice header: SPS(%u) not found", pps->pps_seq_parameter_set_id);
 		return false;
 	}
 
