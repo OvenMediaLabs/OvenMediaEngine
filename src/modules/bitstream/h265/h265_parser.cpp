@@ -1801,8 +1801,8 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 	uint8_t H265_READ_BITS(alignment_bit_equal_to_one, 1);
 	(void)alignment_bit_equal_to_one;
 
-	// The remaining alignment_bit_equal_to_zero bits pad to the next byte boundary.
-	// GetHeaderSizeInBytes() rounds up, giving the raw byte length of [NAL header + slice header].
+	// The slice header size in bits is BitsConsumed - NAL unit header size in bits.
+	//the slice header size does not include the NAL unit header.
 	shd._header_size_in_bits = parser.BitsConsumed() - (H265_NAL_UNIT_HEADER_SIZE * 8);
 
 	return true;
