@@ -2502,7 +2502,9 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 		rpset.used_by_curr_pic_flag.resize(num_delta_pocs + 1);
 		rpset.use_delta_flag.resize(num_delta_pocs + 1, 1);
 
-		for (uint32_t i = 0; i < num_delta_pocs; i++)
+		// Rec. ITU-T H.265 7.3.7: the loop is inclusive
+		// for( j = 0; j <= NumDeltaPocs[RefRpsIdx]; j++ )
+		for (uint32_t i = 0; i <= num_delta_pocs; i++)
 		{
 			if (parser.ReadBits(1, rpset.used_by_curr_pic_flag[i]) == false)
 			{
