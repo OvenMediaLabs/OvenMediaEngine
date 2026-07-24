@@ -1,9 +1,15 @@
 // I developed the code of this file by referring to the source code of virinext's hevcsbrowser (https://github.com/virinext/hevcesbrowser).
 // Thanks to virinext.
 // - Getroot
+//
+// Bitstream syntax and semantics follow Rec. ITU-T H.265 (HEVC) | ISO/IEC 23008-2.
+// Standard document (all versions): https://www.itu.int/rec/T-REC-H.265
+// The section numbers cited throughout this file (e.g. 7.3.2.1 VPS, 7.3.2.2 SPS,
+// 7.3.2.3 PPS, 7.3.6.1 slice_segment_header) refer to that specification.
 
 #include "h265_parser.h"
 
+#include "h265_decoder_configuration_record.h"
 #include "h265_types.h"
 
 #define OV_LOG_TAG "H265Parser"
@@ -357,17 +363,21 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		}
 	}
 
+	sps._separate_colour_plane_flag = separate_colour_plane_flag;
+
 	uint32_t pic_width_in_luma_samples;
 	if (parser.ReadUEV(pic_width_in_luma_samples) == false)
 	{
 		return false;
 	}
+	sps._pic_width_in_luma_samples = pic_width_in_luma_samples;
 
 	uint32_t pic_height_in_luma_samples;
 	if (parser.ReadUEV(pic_height_in_luma_samples) == false)
 	{
 		return false;
 	}
+	sps._pic_height_in_luma_samples = pic_height_in_luma_samples;
 
 	uint8_t conformance_window_flag;
 	if (parser.ReadBits(1, conformance_window_flag) == false)
@@ -469,6 +479,7 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+	sps._log2_max_pic_order_cnt_lsb_minus4 = log2_max_pic_order_cnt_lsb_minus4;
 
 	uint8_t sps_sub_layer_ordering_info_present_flag;
 	if (parser.ReadBits(1, sps_sub_layer_ordering_info_present_flag) == false)
@@ -502,12 +513,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+	sps._log2_min_luma_coding_block_size_minus3 = log2_min_luma_coding_block_size_minus3;
 
 	uint32_t log2_diff_max_min_luma_coding_block_size;
 	if (parser.ReadUEV(log2_diff_max_min_luma_coding_block_size) == false)
 	{
 		return false;
 	}
+	sps._log2_diff_max_min_luma_coding_block_size = log2_diff_max_min_luma_coding_block_size;
 
 	uint32_t log2_min_transform_block_size_minus2;
 	if (parser.ReadUEV(log2_min_transform_block_size_minus2) == false)
@@ -605,6 +618,7 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+	sps._sample_adaptive_offset_enabled_flag = sample_adaptive_offset_enabled_flag;
 
 	uint8_t pcm_enabled_flag;
 	if (parser.ReadBits(1, pcm_enabled_flag) == false)
@@ -652,6 +666,7 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+	sps._num_short_term_ref_pic_sets = num_short_term_ref_pic_sets;
 
 	std::vector<ShortTermRefPicSet> rpset_list(num_short_term_ref_pic_sets);
 	for (uint32_t i = 0; i < num_short_term_ref_pic_sets; i++)
@@ -661,12 +676,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 			return false;
 		}
 	}
+	sps._short_term_ref_pic_sets = rpset_list;
 
 	uint8_t long_term_ref_pics_present_flag;
 	if (parser.ReadBits(1, long_term_ref_pics_present_flag) == false)
 	{
 		return false;
 	}
+	sps._long_term_ref_pics_present_flag = long_term_ref_pics_present_flag;
 
 	if (long_term_ref_pics_present_flag == 1)
 	{
@@ -675,7 +692,9 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		{
 			return false;
 		}
+		sps._num_long_term_ref_pics_sps = num_long_term_ref_pics_sps;
 
+		sps._used_by_curr_pic_lt_sps_flag.resize(num_long_term_ref_pics_sps);
 		for (uint32_t i = 0; i < num_long_term_ref_pics_sps; i++)
 		{
 			uint32_t lt_ref_pic_poc_lsb_sps;
@@ -689,6 +708,7 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 			{
 				return false;
 			}
+			sps._used_by_curr_pic_lt_sps_flag[i] = used_by_curr_pic_lt_sps_flag;
 		}
 	}
 
@@ -697,6 +717,8 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+	sps._sps_temporal_mvp_enabled_flag = sps_temporal_mvp_enabled_flag;
+
 	uint8_t strong_intra_smoothing_enabled_flag;
 	if (parser.ReadBits(1, strong_intra_smoothing_enabled_flag) == false)
 	{
@@ -1154,12 +1176,18 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 	(void)H265_READ_UEV(pps.pps_pic_parameter_set_id);
 	(void)H265_READ_UEV(pps.pps_seq_parameter_set_id);
 	uint8_t H265_READ_BITS(dependent_slice_segments_enabled_flag, 1);
+	pps.dependent_slice_segments_enabled_flag = dependent_slice_segments_enabled_flag;
 	uint8_t H265_READ_BITS(output_flag_present_flag, 1);
+	pps.output_flag_present_flag = output_flag_present_flag;
 	uint8_t H265_READ_BITS(num_extra_slice_header_bits, 3);
+	pps.num_extra_slice_header_bits = num_extra_slice_header_bits;
 	uint8_t H265_READ_BITS(sign_data_hiding_enabled_flag, 1);
 	uint8_t H265_READ_BITS(cabac_init_present_flag, 1);
+	pps.cabac_init_present_flag = cabac_init_present_flag;
 	uint32_t H265_READ_UEV(num_ref_idx_l0_default_active_minus1);
+	pps.num_ref_idx_l0_default_active_minus1 = num_ref_idx_l0_default_active_minus1;
 	uint32_t H265_READ_UEV(num_ref_idx_l1_default_active_minus1);
+	pps.num_ref_idx_l1_default_active_minus1 = num_ref_idx_l1_default_active_minus1;
 	int32_t H265_READ_SEV(init_qp_minus26);
 	uint8_t H265_READ_BITS(constrained_intra_pred_flag, 1);
 	uint8_t H265_READ_BITS(transform_skip_enabled_flag, 1);
@@ -1171,11 +1199,16 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 	int32_t H265_READ_SEV(pps_cb_qp_offset);
 	int32_t H265_READ_SEV(pps_cr_qp_offset);
 	uint8_t H265_READ_BITS(pps_slice_chroma_qp_offsets_present_flag, 1);
+	pps.pps_slice_chroma_qp_offsets_present_flag = pps_slice_chroma_qp_offsets_present_flag;
 	uint8_t H265_READ_BITS(weighted_pred_flag, 1);
+	pps.weighted_pred_flag = weighted_pred_flag;
 	uint8_t H265_READ_BITS(weighted_bipred_flag, 1);
+	pps.weighted_bipred_flag = weighted_bipred_flag;
 	uint8_t H265_READ_BITS(transquant_bypass_enabled_flag, 1);
 	uint8_t H265_READ_BITS(tiles_enabled_flag, 1);
+	pps.tiles_enabled_flag = tiles_enabled_flag;
 	uint8_t H265_READ_BITS(entropy_coding_sync_enabled_flag, 1);
+	pps.entropy_coding_sync_enabled_flag = entropy_coding_sync_enabled_flag;
 	if (tiles_enabled_flag)
 	{
 		uint32_t H265_READ_UEV(num_tile_columns_minus1);
@@ -1197,11 +1230,14 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 		uint8_t H265_READ_BITS(loop_filter_across_tiles_enabled_flag, 1);
 	}
 	uint8_t H265_READ_BITS(pps_loop_filter_across_slices_enabled_flag, 1);
+	pps.pps_loop_filter_across_slices_enabled_flag = pps_loop_filter_across_slices_enabled_flag;
 	uint8_t H265_READ_BITS(deblocking_filter_control_present_flag, 1);
 	if (deblocking_filter_control_present_flag)
 	{
 		uint8_t H265_READ_BITS(deblocking_filter_override_enabled_flag, 1);
+		pps.deblocking_filter_override_enabled_flag = deblocking_filter_override_enabled_flag;
 		uint8_t H265_READ_BITS(pps_deblocking_filter_disabled_flag, 1);
+		pps.pps_deblocking_filter_disabled_flag = pps_deblocking_filter_disabled_flag;
 		if (pps_deblocking_filter_disabled_flag == 0)
 		{
 			int32_t H265_READ_SEV(pps_beta_offset_div2);
@@ -1217,8 +1253,10 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 		}
 	}
 	uint8_t H265_READ_BITS(lists_modification_present_flag, 1);
+	pps.lists_modification_present_flag = lists_modification_present_flag;
 	uint32_t H265_READ_UEV(log2_parallel_merge_level_minus2);
 	uint8_t H265_READ_BITS(slice_segment_header_extension_present_flag, 1);
+	pps.slice_segment_header_extension_present_flag = slice_segment_header_extension_present_flag;
 	uint8_t H265_READ_BITS(pps_extension_present_flag, 1);
 	uint8_t pps_range_extension_flag = 0;
 	uint8_t pps_multilayer_extension_flag = 0;
@@ -1232,6 +1270,8 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 		(void)H265_READ_BITS(pps_3d_extension_flag, 1);
 		(void)H265_READ_BITS(pps_scc_extension_flag, 1);
 		(void)H265_READ_BITS(pps_extension_4bits, 4);
+		pps.pps_range_extension_flag = pps_range_extension_flag;
+		pps.pps_scc_extension_flag = pps_scc_extension_flag;
 	}
 	if (pps_range_extension_flag)
 	{
@@ -1261,6 +1301,510 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 		// }
 	}
 	// rbsp_trailing_bits()
+
+	return true;
+}
+
+// Rec. ITU-T H.265 (V10), 7.3.6.3 Weighted prediction parameters syntax
+bool H265Parser::ProcessPredWeightTable(NalUnitBitstreamParser &parser, uint32_t chroma_array_type, uint32_t num_ref_idx_l0_active_minus1, uint32_t num_ref_idx_l1_active_minus1, bool is_b_slice)
+{
+	uint32_t luma_log2_weight_denom;
+	if (parser.ReadUEV(luma_log2_weight_denom) == false)
+	{
+		return false;
+	}
+
+	if (chroma_array_type != 0)
+	{
+		int32_t delta_chroma_log2_weight_denom;
+		if (parser.ReadSEV(delta_chroma_log2_weight_denom) == false)
+		{
+			return false;
+		}
+	}
+
+	for (int list = 0; list < (is_b_slice ? 2 : 1); list++)
+	{
+		const uint32_t num_ref = (list == 0) ? num_ref_idx_l0_active_minus1 : num_ref_idx_l1_active_minus1;
+
+		std::vector<uint8_t> luma_weight_flag(num_ref + 1, 0);
+		for (uint32_t i = 0; i <= num_ref; i++)
+		{
+			if (parser.ReadBits(1, luma_weight_flag[i]) == false)
+			{
+				return false;
+			}
+		}
+
+		std::vector<uint8_t> chroma_weight_flag(num_ref + 1, 0);
+		if (chroma_array_type != 0)
+		{
+			for (uint32_t i = 0; i <= num_ref; i++)
+			{
+				if (parser.ReadBits(1, chroma_weight_flag[i]) == false)
+				{
+					return false;
+				}
+			}
+		}
+
+		for (uint32_t i = 0; i <= num_ref; i++)
+		{
+			if (luma_weight_flag[i])
+			{
+				int32_t delta_luma_weight, luma_offset;
+				if (parser.ReadSEV(delta_luma_weight) == false || parser.ReadSEV(luma_offset) == false)
+				{
+					return false;
+				}
+			}
+			if (chroma_weight_flag[i])
+			{
+				for (int j = 0; j < 2; j++)
+				{
+					int32_t delta_chroma_weight, delta_chroma_offset;
+					if (parser.ReadSEV(delta_chroma_weight) == false || parser.ReadSEV(delta_chroma_offset) == false)
+					{
+						return false;
+					}
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+// Ceil(Log2(n)) : minimum number of bits to represent values [0, n-1]
+static uint32_t CeilLog2(uint32_t n)
+{
+	uint32_t bits = 0;
+	// Guard bits < 32
+	while (bits < 32 && (1u << bits) < n)
+	{
+		bits++;
+	}
+	return bits;
+}
+
+// Rec. ITU-T H.265 (V10), 7.3.6.1 General slice segment header syntax
+// Parses through byte_alignment() so that GetHeaderSizeInBytes() returns the exact
+// number of leading bytes (NAL header excluded) that must be left in the clear for
+// CENC subsample encryption.
+bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceHeader &shd, const std::shared_ptr<HEVCDecoderConfigurationRecord> &hvcc)
+{
+	if (hvcc == nullptr)
+	{
+		return false;
+	}
+
+	NalUnitBitstreamParser parser(nalu, length);
+
+	H265NalUnitHeader nal_header;
+	if (ParseNalUnitHeader(parser, nal_header) == false)
+	{
+		return false;
+	}
+
+	if (nal_header.IsVideoSlice() == false)
+	{
+		return false;
+	}
+
+	const auto nal_type = nal_header.GetNalUnitType();
+	const uint8_t nal_type_num = ov::ToUnderlyingType(nal_type);
+	const bool is_irap = (nal_type_num >= 16 && nal_type_num <= 23);
+	const bool is_idr = (nal_type == H265NALUnitType::IDR_W_RADL || nal_type == H265NALUnitType::IDR_N_LP);
+
+	uint8_t H265_READ_BITS(first_slice_segment_in_pic_flag, 1);
+
+	if (is_irap)
+	{
+		uint8_t H265_READ_BITS(no_output_of_prior_pics_flag, 1);
+		(void)no_output_of_prior_pics_flag;
+	}
+
+	uint32_t H265_READ_UEV(slice_pic_parameter_set_id);
+
+	auto pps = hvcc->GetPPS(slice_pic_parameter_set_id);
+	if (pps == nullptr)
+	{
+		logtd("H265 slice header: PPS(%u) not found", slice_pic_parameter_set_id);
+		return false;
+	}
+
+	auto sps = hvcc->GetSPS(pps->pps_seq_parameter_set_id);
+	if (sps == nullptr)
+	{
+		logtd("H265 slice header: SPS(%u) not found", pps->pps_seq_parameter_set_id);
+		return false;
+	}
+
+	// Fail-safe: range/SCC extension PPS may add conditional slice syntax that is not
+	// handled here. Refuse rather than risk miscomputing the header size.
+	if (pps->pps_range_extension_flag || pps->pps_scc_extension_flag)
+	{
+		logtw("H265 slice header: range/SCC extension is not supported for CENC subsample encryption");
+		return false;
+	}
+
+	const uint32_t chroma_array_type = sps->GetChromaArrayType();
+
+	uint8_t dependent_slice_segment_flag = 0;
+	if (first_slice_segment_in_pic_flag == 0)
+	{
+		if (pps->dependent_slice_segments_enabled_flag)
+		{
+			(void)H265_READ_BITS(dependent_slice_segment_flag, 1);
+		}
+
+		// slice_segment_address is u(Ceil(Log2(PicSizeInCtbsY))). 
+		// PicSizeInCtbsY == 0 indicates an invalid SPS
+		const uint32_t pic_size_in_ctbs_y = sps->GetPicSizeInCtbsY();
+		if (pic_size_in_ctbs_y == 0)
+		{
+			logtw("H265 slice header: invalid PicSizeInCtbsY(%u)", pic_size_in_ctbs_y);
+			return false;
+		}
+
+		const uint32_t addr_bits = CeilLog2(pic_size_in_ctbs_y);
+		if (addr_bits > 0)
+		{
+			uint32_t H265_READ_BITS(slice_segment_address, addr_bits);
+			(void)slice_segment_address;
+		}
+	}
+
+	if (dependent_slice_segment_flag == 0)
+	{
+		for (uint8_t i = 0; i < pps->num_extra_slice_header_bits; i++)
+		{
+			uint8_t H265_READ_BITS(slice_reserved_flag, 1);
+			(void)slice_reserved_flag;
+		}
+
+		uint32_t H265_READ_UEV(slice_type);
+
+		// slice_type : 0 = B, 1 = P, 2 = I. Values > 2 are invalid
+		if (slice_type > 2)
+		{
+			logtw("H265 slice header: invalid slice_type(%u)", slice_type);
+			return false;
+		}
+		shd._slice_type = slice_type;
+
+		const bool is_p_or_b = (slice_type == 0 || slice_type == 1);
+		const bool is_b = (slice_type == 0);
+
+		if (pps->output_flag_present_flag)
+		{
+			uint8_t H265_READ_BITS(pic_output_flag, 1);
+			(void)pic_output_flag;
+		}
+
+		if (sps->_separate_colour_plane_flag == 1)
+		{
+			uint8_t H265_READ_BITS(colour_plane_id, 2);
+			(void)colour_plane_id;
+		}
+
+		uint8_t slice_temporal_mvp_enabled_flag = 0;
+		uint32_t num_pic_total_curr = 0;
+
+		if (is_idr == false)
+		{
+			uint32_t H265_READ_BITS(slice_pic_order_cnt_lsb, sps->_log2_max_pic_order_cnt_lsb_minus4 + 4);
+			(void)slice_pic_order_cnt_lsb;
+
+			uint8_t H265_READ_BITS(short_term_ref_pic_set_sps_flag, 1);
+
+			ShortTermRefPicSet current_strps;
+			bool current_strps_valid = false;
+
+			if (short_term_ref_pic_set_sps_flag == 0)
+			{
+				// st_ref_pic_set(num_short_term_ref_pic_sets)
+				std::vector<ShortTermRefPicSet> rpset_list = sps->_short_term_ref_pic_sets;
+				rpset_list.resize(sps->_num_short_term_ref_pic_sets + 1);
+				if (ProcessShortTermRefPicSet(sps->_num_short_term_ref_pic_sets, sps->_num_short_term_ref_pic_sets, rpset_list, parser, rpset_list[sps->_num_short_term_ref_pic_sets]) == false)
+				{
+					return false;
+				}
+				current_strps = rpset_list[sps->_num_short_term_ref_pic_sets];
+				current_strps_valid = true;
+			}
+			else if (sps->_num_short_term_ref_pic_sets > 1)
+			{
+				uint32_t H265_READ_BITS(short_term_ref_pic_set_idx, CeilLog2(sps->_num_short_term_ref_pic_sets));
+
+				if (short_term_ref_pic_set_idx >= sps->_short_term_ref_pic_sets.size())
+				{
+					return false;
+				}
+				current_strps = sps->_short_term_ref_pic_sets[short_term_ref_pic_set_idx];
+				current_strps_valid = true;
+			}
+			else if (sps->_num_short_term_ref_pic_sets == 1)
+			{
+				current_strps = sps->_short_term_ref_pic_sets[0];
+				current_strps_valid = true;
+			}
+
+			if (current_strps_valid)
+			{
+				if (current_strps.inter_ref_pic_set_prediction_flag)
+				{
+					// NumPicTotalCurr derivation for an inter-predicted current RPS is not
+					// implemented; it is only required when list modification is present.
+					if (pps->lists_modification_present_flag)
+					{
+						logtw("H265 slice header: inter-predicted RPS with list modification is not supported for CENC");
+						return false;
+					}
+				}
+				else
+				{
+					for (auto f : current_strps.used_by_curr_pic_s0_flag)
+					{
+						if (f)
+						{
+							num_pic_total_curr++;
+						}
+					}
+					for (auto f : current_strps.used_by_curr_pic_s1_flag)
+					{
+						if (f)
+						{
+							num_pic_total_curr++;
+						}
+					}
+				}
+			}
+
+			if (sps->_long_term_ref_pics_present_flag)
+			{
+				uint32_t num_long_term_sps = 0;
+				if (sps->_num_long_term_ref_pics_sps > 0)
+				{
+					(void)H265_READ_UEV(num_long_term_sps);
+				}
+				uint32_t H265_READ_UEV(num_long_term_pics);
+				const uint32_t num_long_term = num_long_term_sps + num_long_term_pics;
+				const uint32_t lt_idx_sps_bits = CeilLog2(sps->_num_long_term_ref_pics_sps);
+
+				for (uint32_t i = 0; i < num_long_term; i++)
+				{
+					uint8_t used_by_curr_pic_lt_flag = 0;
+					if (i < num_long_term_sps)
+					{
+						uint32_t lt_idx_sps = 0;
+						if (sps->_num_long_term_ref_pics_sps > 1)
+						{
+							(void)H265_READ_BITS(lt_idx_sps, lt_idx_sps_bits);
+						}
+						if (lt_idx_sps < sps->_used_by_curr_pic_lt_sps_flag.size())
+						{
+							used_by_curr_pic_lt_flag = sps->_used_by_curr_pic_lt_sps_flag[lt_idx_sps];
+						}
+					}
+					else
+					{
+						uint32_t H265_READ_BITS(poc_lsb_lt, sps->_log2_max_pic_order_cnt_lsb_minus4 + 4);
+						(void)poc_lsb_lt;
+						(void)H265_READ_BITS(used_by_curr_pic_lt_flag, 1);
+					}
+
+					if (used_by_curr_pic_lt_flag)
+					{
+						num_pic_total_curr++;
+					}
+
+					uint8_t H265_READ_BITS(delta_poc_msb_present_flag, 1);
+					if (delta_poc_msb_present_flag)
+					{
+						uint32_t H265_READ_UEV(delta_poc_msb_cycle_lt);
+						(void)delta_poc_msb_cycle_lt;
+					}
+				}
+			}
+
+			if (sps->_sps_temporal_mvp_enabled_flag)
+			{
+				(void)H265_READ_BITS(slice_temporal_mvp_enabled_flag, 1);
+			}
+		}
+
+		uint8_t slice_sao_luma_flag = 0;
+		uint8_t slice_sao_chroma_flag = 0;
+		if (sps->_sample_adaptive_offset_enabled_flag)
+		{
+			(void)H265_READ_BITS(slice_sao_luma_flag, 1);
+			if (chroma_array_type != 0)
+			{
+				(void)H265_READ_BITS(slice_sao_chroma_flag, 1);
+			}
+		}
+
+		// When not overridden below, slice_deblocking_filter_disabled_flag is inferred to be
+		// equal to pps_deblocking_filter_disabled_flag (Rec. ITU-T H.265 7.4.7.1).
+		uint8_t slice_deblocking_filter_disabled_flag = pps->pps_deblocking_filter_disabled_flag;
+
+		if (is_p_or_b)
+		{
+			uint32_t num_ref_idx_l0_active_minus1 = pps->num_ref_idx_l0_default_active_minus1;
+			uint32_t num_ref_idx_l1_active_minus1 = pps->num_ref_idx_l1_default_active_minus1;
+
+			uint8_t H265_READ_BITS(num_ref_idx_active_override_flag, 1);
+			if (num_ref_idx_active_override_flag)
+			{
+				(void)H265_READ_UEV(num_ref_idx_l0_active_minus1);
+				if (is_b)
+				{
+					(void)H265_READ_UEV(num_ref_idx_l1_active_minus1);
+				}
+			}
+
+			// ref_pic_lists_modification()
+			if (pps->lists_modification_present_flag && num_pic_total_curr > 1)
+			{
+				const uint32_t list_entry_bits = CeilLog2(num_pic_total_curr);
+
+				uint8_t H265_READ_BITS(ref_pic_list_modification_flag_l0, 1);
+				if (ref_pic_list_modification_flag_l0)
+				{
+					for (uint32_t i = 0; i <= num_ref_idx_l0_active_minus1; i++)
+					{
+						uint32_t H265_READ_BITS(list_entry_l0, list_entry_bits);
+						(void)list_entry_l0;
+					}
+				}
+
+				if (is_b)
+				{
+					uint8_t H265_READ_BITS(ref_pic_list_modification_flag_l1, 1);
+					if (ref_pic_list_modification_flag_l1)
+					{
+						for (uint32_t i = 0; i <= num_ref_idx_l1_active_minus1; i++)
+						{
+							uint32_t H265_READ_BITS(list_entry_l1, list_entry_bits);
+							(void)list_entry_l1;
+						}
+					}
+				}
+			}
+
+			if (is_b)
+			{
+				uint8_t H265_READ_BITS(mvd_l1_zero_flag, 1);
+				(void)mvd_l1_zero_flag;
+			}
+
+			if (pps->cabac_init_present_flag)
+			{
+				uint8_t H265_READ_BITS(cabac_init_flag, 1);
+				(void)cabac_init_flag;
+			}
+
+			if (slice_temporal_mvp_enabled_flag)
+			{
+				uint8_t collocated_from_l0_flag = 1;
+				if (is_b)
+				{
+					(void)H265_READ_BITS(collocated_from_l0_flag, 1);
+				}
+
+				const uint32_t collocated_list_ref = collocated_from_l0_flag ? num_ref_idx_l0_active_minus1 : num_ref_idx_l1_active_minus1;
+				if (collocated_list_ref > 0)
+				{
+					uint32_t H265_READ_UEV(collocated_ref_idx);
+					(void)collocated_ref_idx;
+				}
+			}
+
+			if ((pps->weighted_pred_flag && slice_type == 1 /* P */) ||
+				(pps->weighted_bipred_flag && is_b))
+			{
+				if (ProcessPredWeightTable(parser, chroma_array_type, num_ref_idx_l0_active_minus1, num_ref_idx_l1_active_minus1, is_b) == false)
+				{
+					return false;
+				}
+			}
+
+			uint32_t H265_READ_UEV(five_minus_max_num_merge_cand);
+			(void)five_minus_max_num_merge_cand;
+
+			// use_integer_mv_flag (SCC) is omitted; SCC PPS is fail-safed above.
+		}
+
+		int32_t H265_READ_SEV(slice_qp_delta);
+		(void)slice_qp_delta;
+
+		if (pps->pps_slice_chroma_qp_offsets_present_flag)
+		{
+			int32_t H265_READ_SEV(slice_cb_qp_offset);
+			(void)slice_cb_qp_offset;
+			int32_t H265_READ_SEV(slice_cr_qp_offset);
+			(void)slice_cr_qp_offset;
+		}
+
+		// pps_slice_act_qp_offsets (SCC) and cu_chroma_qp_offset (range ext) omitted; fail-safed above.
+
+		uint8_t deblocking_filter_override_flag = 0;
+		if (pps->deblocking_filter_override_enabled_flag)
+		{
+			(void)H265_READ_BITS(deblocking_filter_override_flag, 1);
+		}
+		if (deblocking_filter_override_flag)
+		{
+			(void)H265_READ_BITS(slice_deblocking_filter_disabled_flag, 1);
+			if (slice_deblocking_filter_disabled_flag == 0)
+			{
+				int32_t H265_READ_SEV(slice_beta_offset_div2);
+				(void)slice_beta_offset_div2;
+				int32_t H265_READ_SEV(slice_tc_offset_div2);
+				(void)slice_tc_offset_div2;
+			}
+		}
+
+		if (pps->pps_loop_filter_across_slices_enabled_flag &&
+			(slice_sao_luma_flag || slice_sao_chroma_flag || slice_deblocking_filter_disabled_flag == 0))
+		{
+			uint8_t H265_READ_BITS(slice_loop_filter_across_slices_enabled_flag, 1);
+			(void)slice_loop_filter_across_slices_enabled_flag;
+		}
+	}
+
+	if (pps->tiles_enabled_flag || pps->entropy_coding_sync_enabled_flag)
+	{
+		uint32_t H265_READ_UEV(num_entry_point_offsets);
+		if (num_entry_point_offsets > 0)
+		{
+			uint32_t H265_READ_UEV(offset_len_minus1);
+			for (uint32_t i = 0; i < num_entry_point_offsets; i++)
+			{
+				uint32_t H265_READ_BITS(entry_point_offset_minus1, offset_len_minus1 + 1);
+				(void)entry_point_offset_minus1;
+			}
+		}
+	}
+
+	if (pps->slice_segment_header_extension_present_flag)
+	{
+		uint32_t H265_READ_UEV(slice_segment_header_extension_length);
+		for (uint32_t i = 0; i < slice_segment_header_extension_length; i++)
+		{
+			uint8_t H265_READ_BITS(slice_segment_header_extension_data_byte, 8);
+			(void)slice_segment_header_extension_data_byte;
+		}
+	}
+
+	// byte_alignment()
+	uint8_t H265_READ_BITS(alignment_bit_equal_to_one, 1);
+	(void)alignment_bit_equal_to_one;
+
+	// The slice header size in bits is BitsConsumed - NAL unit header size in bits.
+	//the slice header size does not include the NAL unit header.
+	shd._header_size_in_bits = parser.BitsConsumed() - (H265_NAL_UNIT_HEADER_SIZE * 8);
 
 	return true;
 }
@@ -1910,7 +2454,9 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 
 	if (rpset.inter_ref_pic_set_prediction_flag == 1)
 	{
-		if (idx == rpset.inter_ref_pic_set_prediction_flag)
+		// delta_idx_minus1 is present only for the slice-level inline set,
+		// i.e. when stRpsIdx == num_short_term_ref_pic_sets (Rec. ITU-T H.265 7.3.7).
+		if (idx == num_short_term_ref_pic_sets)
 		{
 			if (parser.ReadUEV(rpset.delta_idx_minus1) == false)
 			{
@@ -1928,7 +2474,19 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 			return false;
 		}
 
+		// RefRpsIdx = idx - (delta_idx_minus1 + 1) must reference an earlier set (Rec. ITU-T H.265 7.4.8).
+		// Reject delta_idx_minus1 >= idx to avoid unsigned underflow.
+		if (rpset.delta_idx_minus1 >= idx)
+		{
+			return false;
+		}
+
 		uint32_t ref_rps_idx = idx - (rpset.delta_idx_minus1 + 1);
+		if (ref_rps_idx >= rpset_list.size())
+		{
+			return false;
+		}
+
 		uint32_t num_delta_pocs = 0;
 
 		if (rpset_list[ref_rps_idx].inter_ref_pic_set_prediction_flag)
@@ -1949,7 +2507,9 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 		rpset.used_by_curr_pic_flag.resize(num_delta_pocs + 1);
 		rpset.use_delta_flag.resize(num_delta_pocs + 1, 1);
 
-		for (uint32_t i = 0; i < num_delta_pocs; i++)
+		// Rec. ITU-T H.265 7.3.7: the loop is inclusive
+		// for( j = 0; j <= NumDeltaPocs[RefRpsIdx]; j++ )
+		for (uint32_t i = 0; i <= num_delta_pocs; i++)
 		{
 			if (parser.ReadBits(1, rpset.used_by_curr_pic_flag[i]) == false)
 			{

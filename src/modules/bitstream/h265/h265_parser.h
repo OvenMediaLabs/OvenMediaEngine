@@ -1,6 +1,11 @@
-// I developed the code of this file by referring to the source code of virinext's hevcsbrowser (https://github.com/virinext/hevcesbrowser). 
+// I developed the code of this file by referring to the source code of virinext's hevcsbrowser (https://github.com/virinext/hevcesbrowser).
 // Thanks to virinext.
 // - Getroot
+//
+// Bitstream syntax and semantics follow Rec. ITU-T H.265 (HEVC) | ISO/IEC 23008-2.
+// Standard document (all versions): https://www.itu.int/rec/T-REC-H.265
+// The section numbers cited throughout this file (e.g. 7.3.2.2 SPS, 7.3.2.3 PPS,
+// 7.3.6.1 slice_segment_header) refer to that specification.
 
 #pragma once
 
@@ -79,6 +84,13 @@ public:
         return _type;
     }
 
+	// VCL NAL units (coded slice segments) have NAL unit type in the range [0, 31].
+	// Rec. ITU-T H.265 Table 7-1.
+	bool IsVideoSlice() const
+	{
+		return ov::ToUnderlyingType(_type) <= 31;
+	}
+
     uint8_t GetLayerId()
     {
         return _layer_id;
@@ -106,6 +118,8 @@ struct H265VPS
 	uint8_t vps_video_parameter_set_id;
 };
 
+// Sequence Parameter Set (Rec. ITU-T H.265 7.3.2.2)
+// Only the fields needed to parse the slice segment header (7.3.6.1) are retained.
 class H265SPS
 {
 public:
@@ -180,6 +194,30 @@ public:
         return out_str;
     }
 
+	// ChromaArrayType (Rec. ITU-T H.265 eq. 7-10)
+	uint32_t GetChromaArrayType() const
+	{
+		return (_separate_colour_plane_flag == 1) ? 0 : _chroma_format_idc;
+	}
+
+	// PicSizeInCtbsY (Rec. ITU-T H.265 eq. 7-15..7-20) - used to size slice_segment_address.
+	uint32_t GetPicSizeInCtbsY() const
+	{
+		const uint32_t min_cb_log2_size_y = _log2_min_luma_coding_block_size_minus3 + 3;
+		const uint32_t ctb_log2_size_y = min_cb_log2_size_y + _log2_diff_max_min_luma_coding_block_size;
+
+		// CtbLog2SizeY is 4..6 for conformant streams (Rec. ITU-T H.265 7.4.3.2.1; CtbSizeY in {16,32,64}).
+		if (ctb_log2_size_y < 4 || ctb_log2_size_y > 6)
+		{
+			return 0;
+		}
+
+		const uint32_t ctb_size_y = 1u << ctb_log2_size_y;
+		const uint32_t pic_width_in_ctbs_y = (_pic_width_in_luma_samples + ctb_size_y - 1) / ctb_size_y;
+		const uint32_t pic_height_in_ctbs_y = (_pic_height_in_luma_samples + ctb_size_y - 1) / ctb_size_y;
+		return pic_width_in_ctbs_y * pic_height_in_ctbs_y;
+	}
+
 private:
     unsigned int _width = 0;
     unsigned int _height = 0;
@@ -196,9 +234,26 @@ private:
 	uint32_t _bit_depth_luma_minus8 = 0;
 	uint32_t _bit_depth_chroma_minus8 = 0;
 
+	// Fields required to parse the slice_segment_header (Rec. ITU-T H.265 7.3.6.1)
+	uint8_t _separate_colour_plane_flag = 0;
+	uint32_t _pic_width_in_luma_samples = 0;
+	uint32_t _pic_height_in_luma_samples = 0;
+	uint32_t _log2_min_luma_coding_block_size_minus3 = 0;
+	uint32_t _log2_diff_max_min_luma_coding_block_size = 0;
+	uint32_t _log2_max_pic_order_cnt_lsb_minus4 = 0;
+	uint8_t _sample_adaptive_offset_enabled_flag = 0;
+	uint8_t _sps_temporal_mvp_enabled_flag = 0;
+	uint8_t _long_term_ref_pics_present_flag = 0;
+	uint32_t _num_long_term_ref_pics_sps = 0;
+	std::vector<uint8_t> _used_by_curr_pic_lt_sps_flag;
+	uint32_t _num_short_term_ref_pic_sets = 0;
+	std::vector<ShortTermRefPicSet> _short_term_ref_pic_sets;
+
     friend class H265Parser;
 };
 
+// Picture Parameter Set (Rec. ITU-T H.265 7.3.2.3)
+// Only the flags needed to know which slice_segment_header elements are present are retained.
 struct H265PPS
 {
 public:
@@ -212,9 +267,68 @@ public:
 		return pps_seq_parameter_set_id;
 	}
 
-	uint32_t pps_pic_parameter_set_id;
-	uint32_t pps_seq_parameter_set_id;
+	uint32_t pps_pic_parameter_set_id = 0;
+	uint32_t pps_seq_parameter_set_id = 0;
+
+	// Fields required to parse the slice_segment_header (Rec. ITU-T H.265 7.3.6.1)
+	uint8_t dependent_slice_segments_enabled_flag = 0;
+	uint8_t output_flag_present_flag = 0;
+	uint8_t num_extra_slice_header_bits = 0;
+	uint8_t cabac_init_present_flag = 0;
+	uint32_t num_ref_idx_l0_default_active_minus1 = 0;
+	uint32_t num_ref_idx_l1_default_active_minus1 = 0;
+	uint8_t weighted_pred_flag = 0;
+	uint8_t weighted_bipred_flag = 0;
+	uint8_t pps_slice_chroma_qp_offsets_present_flag = 0;
+	uint8_t deblocking_filter_override_enabled_flag = 0;
+	uint8_t pps_deblocking_filter_disabled_flag = 0;
+	uint8_t pps_loop_filter_across_slices_enabled_flag = 0;
+	uint8_t lists_modification_present_flag = 0;
+	uint8_t tiles_enabled_flag = 0;
+	uint8_t entropy_coding_sync_enabled_flag = 0;
+	uint8_t slice_segment_header_extension_present_flag = 0;
+
+	// Extension flags. When set, the slice_segment_header may contain additional
+	// conditional syntax that this parser does not handle; treated as fail-safe.
+	uint8_t pps_range_extension_flag = 0;
+	uint8_t pps_scc_extension_flag = 0;
 };
+
+// Slice segment header (Rec. ITU-T H.265 7.3.6.1)
+// ParseSliceHeader walks it through byte_alignment() to measure the header size in bytes.
+class H265SliceHeader
+{
+public:
+	enum class SliceType : uint8_t
+	{
+		BSlice = 0,
+		PSlice = 1,
+		ISlice = 2
+	};
+
+	SliceType GetSliceType() const
+	{
+		return static_cast<SliceType>(_slice_type);
+	}
+
+	size_t GetHeaderSizeInBits() const
+	{
+		return _header_size_in_bits;
+	}
+
+	size_t GetHeaderSizeInBytes() const
+	{
+		return ((_header_size_in_bits + 7) / 8);
+	}
+
+private:
+	uint32_t _slice_type = 2;
+	size_t _header_size_in_bits = 0;
+
+	friend class H265Parser;
+};
+
+class HEVCDecoderConfigurationRecord;
 
 class H265Parser
 {
@@ -229,6 +343,10 @@ public:
     static bool ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps);
 	static bool ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps);
 
+	// Parses the slice_segment_header up to (and including) byte_alignment() so that the
+	// header size in bytes can be used to split CENC clear/protected byte ranges.
+	static bool ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceHeader &header, const std::shared_ptr<HEVCDecoderConfigurationRecord> &hvcc);
+
 private:
     static bool ParseNalUnitHeader(NalUnitBitstreamParser &parser, H265NalUnitHeader &header);
     static bool ProcessProfileTierLevel(uint32_t max_sub_layers_minus1, NalUnitBitstreamParser &parser, ProfileTierLevel &profile);
@@ -236,4 +354,5 @@ private:
     static bool ProcessVuiParameters(uint32_t max_sub_layers_minus1, NalUnitBitstreamParser &parser, VuiParameters &params);
     static bool ProcessHrdParameters(uint8_t common_inf_present_flag, uint32_t max_sub_layers_minus1, NalUnitBitstreamParser &parser, HrdParameters &params);
     static bool ProcessSubLayerHrdParameters(uint8_t sub_pic_hrd_params_present_flag, uint32_t cpb_cnt, NalUnitBitstreamParser &parser, SubLayerHrdParameters &params);
+    static bool ProcessPredWeightTable(NalUnitBitstreamParser &parser, uint32_t chroma_array_type, uint32_t num_ref_idx_l0_active_minus1, uint32_t num_ref_idx_l1_active_minus1, bool is_b_slice);
 };

@@ -913,7 +913,21 @@ namespace bmff
 			return false;
 		}
 
-		return WriteBox(container_stream, "hev1", *stream.GetData());
+		// CENC
+		if (_cenc_property.scheme != CencProtectScheme::None)
+		{
+			// Encrypted HEVC must use the 'hvc1' sample entry
+			// (parameter sets stored in the sample entry, not in-band)
+			if (WriteSinfBox(stream, "hvc1") == false)
+			{
+				logte("Packager::WriteHvc1Box() - Failed to write sinf box");
+				return false;
+			}
+
+			return WriteBox(container_stream, "encv", *stream.GetData());
+		}
+
+		return WriteBox(container_stream, "hvc1", *stream.GetData());
 	}
 	
 	bool Packager::WriteHvccBox(ov::ByteStream &container_stream)
