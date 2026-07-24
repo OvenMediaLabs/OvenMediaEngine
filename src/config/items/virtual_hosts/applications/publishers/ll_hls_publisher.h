@@ -26,6 +26,7 @@ namespace cfg
 					double _part_hold_back	  = 0;	// it will be set to 3 * chunk_duration automatically
 					bool _enable_preload_hint = true;
 					Drm _drm;
+					double _subtitle_hold_back_ms = 0;
 
 				public:
 					PublisherType GetType() const override
@@ -37,6 +38,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPartHoldBack, _part_hold_back)
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsPreloadHintEnabled, _enable_preload_hint)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetDrm, _drm)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetSubtitleHoldBackMs, _subtitle_hold_back_ms)
 
 				protected:
 					void MakeList() override
@@ -47,6 +49,7 @@ namespace cfg
 						Register<Optional>("PartHoldBack", &_part_hold_back);
 						Register<Optional>("EnablePreloadHint", &_enable_preload_hint);
 						Register<Optional>({"DRM", "drm"}, &_drm);
+						Register<Optional>("SubtitleHoldBack", &_subtitle_hold_back_ms);
 					}
 				};
 			}  // namespace pub
