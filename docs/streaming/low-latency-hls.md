@@ -268,7 +268,7 @@ To assign labels to audio signals in the SRT Provider, configure the `<AudioMap>
 
 ## DRM
 
-OvenMediaEngine supports Widevine and Fairplay in LLHLS with simple setup since version 0.16.0.
+OvenMediaEngine supports Widevine and Fairplay in LLHLS with simple setup since version 0.16.0, and PlayReady is also supported.
 
 
 :::warning
@@ -315,6 +315,10 @@ Here's how you should structure your DRM Info File:
         <KeyId>572543f964e34dc68ba9ba9ef91d4xxx</KeyId> <!-- Hexadecimal -->
         <Key>16cf4232a86364b519e1982a27d90xxx</Key> <!-- Hexadecimal -->
         <Iv>572547f914e34dc68ba9ba9ef91d4xxx</Iv> <!-- Hexadecimal -->
+        <!-- Add one <Pssh> per DRM system.
+             For PlayReady, its systemId is 9a04f079-9840-4286-ab92-e65be0885f95
+             and the pssh Data field must hold the PlayReady Object (PRO). -->
+        <Pssh>...70737368000000009a04f07998404286ab92e65be0885f95...</Pssh> <!-- for PlayReady: 'pssh'(70737368) + version/flags(00000000) + SystemID(9a04f079...) are fixed; leading box size and trailing DataSize + PRO are per-content -->
         <Pssh>0000003f7073736800000000edef8ba979d64acea3c827dcd51d21ed0000001f1210572547f964e34dc68ba9ba9ef91d4c4a1a05657a64726d48f3c6899xxx</Pssh> <!-- Hexadecimal, for Widevine -->
         <!-- Add Pssh for FairPlay if needed -->
         <FairPlayKeyUrl>skd://fiarplay_key_url</FairPlayKeyUrl> <!-- FairPlay only -->
