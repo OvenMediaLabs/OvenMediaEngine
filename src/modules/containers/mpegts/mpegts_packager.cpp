@@ -9,6 +9,8 @@
 #include "mpegts_packager.h"
 #include "mpegts_private.h"
 
+#include <cmath>
+
 #include <base/modules/data_format/cue_event/cue_event.h>
 
 namespace mpegts
@@ -119,6 +121,8 @@ namespace mpegts
 
         _psi_packets = psi_packets;
         _psi_packet_data = MergeTsPacketData(psi_packets);
+
+        _codecs_parameter = MakeCodecsParameter();
     }
 
 	void Packager::Flush()
@@ -132,6 +136,140 @@ namespace mpegts
 		sample_buffer->MarkSegmentBoundary();
 
 		CreateSegmentIfReady(true);
+	}
+
+	ov::String Packager::MakeCodecsParameter() const
+	{
+		ov::String video_codecs;
+		ov::String audio_codecs;
+
+		for (const auto &track_it : _media_tracks)
+		{
+			const auto &track = track_it.second;
+			if (track->GetMediaType() == cmn::MediaType::Video && video_codecs.IsEmpty() == true)
+			{
+				video_codecs = track->GetCodecsParameter();
+			}
+			else if (track->GetMediaType() == cmn::MediaType::Audio && audio_codecs.IsEmpty() == true)
+			{
+				audio_codecs = track->GetCodecsParameter();
+			}
+		}
+
+		ov::String result = video_codecs;
+		if (audio_codecs.IsEmpty() == false)
+		{
+			if (result.IsEmpty() == false)
+			{
+				result += ",";
+			}
+			result += audio_codecs;
+		}
+
+		return result;
+	}
+
+	bool Packager::UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		if (media_track == nullptr)
+		{
+			return false;
+		}
+
+		auto it = _media_tracks.find(media_track->GetId());
+		if (it == _media_tracks.end())
+		{
+			logtw("[%s] Track(%u) is not part of this packager, cannot update", _packager_id.CStr(), media_track->GetId());
+			return false;
+		}
+
+		if (media_track->GetId() == _main_track_id)
+		{
+			// Main track (video, or the sole track): close the current content into its
+			// own segment right away so that the pre-change tail keeps the old codecs
+			// and PSI (the swap happens after the flush). The new content starts at the
+			// new track's first key frame, which the packetizer key-frame gate ensures.
+			auto main_sample_buffer = GetSampleBuffer(_main_track_id);
+			bool has_buffered_content = (main_sample_buffer != nullptr && main_sample_buffer->GetCurrentDurationMs() > 0.0);
+			if (has_buffered_content == true)
+			{
+				Flush();
+			}
+
+			it->second = media_track;
+			auto sample_buffer = GetSampleBuffer(media_track->GetId());
+			if (sample_buffer != nullptr)
+			{
+				sample_buffer->SetTrack(media_track);
+			}
+			_codecs_parameter = MakeCodecsParameter();
+
+			// A change before any content is produced only establishes the initial
+			// configuration, so it is not a discontinuity. Otherwise start a new
+			// generation; an own cut supersedes a pending propagated one.
+			if (has_buffered_content == true || _last_segment_id > 0)
+			{
+				_track_config_generation++;
+				_pending_cut_timestamp_ms = -1.0;
+				_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
+			}
+		}
+		else
+		{
+			// Secondary track (audio) on a muxed packager: cutting now would split the
+			// video mid-GOP. Swap the reference and request a key-frame-aligned cut. The
+			// audio codec is AAC either way, so the PMT is unchanged. The cut is
+			// deduplicated against a concurrent main-track change (item switch), and a
+			// following main-track update supersedes it, so a video+audio switch yields
+			// a single discontinuity regardless of the order the changes arrive.
+			it->second = media_track;
+			auto sample_buffer = GetSampleBuffer(media_track->GetId());
+			if (sample_buffer != nullptr)
+			{
+				sample_buffer->SetTrack(media_track);
+			}
+			_codecs_parameter = MakeCodecsParameter();
+
+			// Request an aligned cut once content has started (a segment exists or the
+			// main track has buffered samples), matching the main-track path. This
+			// covers a change during the first segment's buffering window, which would
+			// otherwise land inside that segment without a discontinuity boundary.
+			auto main_sample_buffer = GetSampleBuffer(_main_track_id);
+			bool has_content = (_last_segment_id > 0) ||
+							   (main_sample_buffer != nullptr && main_sample_buffer->GetCurrentDurationMs() > 0.0);
+			if (has_content == true)
+			{
+				RequestCutForDiscontinuity(GetLastSampleEndTimestampMs());
+			}
+		}
+
+		return true;
+	}
+
+	void Packager::RequestCutForDiscontinuity(double boundary_timestamp_ms)
+	{
+		// Ignore a boundary within one segment of the last handled one. This absorbs
+		// reciprocal propagation when multiple tracks change together.
+		if (_last_boundary_timestamp_ms >= 0.0 &&
+			std::abs(boundary_timestamp_ms - _last_boundary_timestamp_ms) <= static_cast<double>(_config.target_duration_ms))
+		{
+			return;
+		}
+
+		if (_pending_cut_timestamp_ms < 0.0 || boundary_timestamp_ms < _pending_cut_timestamp_ms)
+		{
+			_pending_cut_timestamp_ms = boundary_timestamp_ms;
+		}
+	}
+
+	double Packager::GetLastSampleEndTimestampMs() const
+	{
+		return _last_sample_end_timestamp_ms;
+	}
+
+	bool Packager::HasTrack(uint32_t track_id) const
+	{
+		return _media_tracks.find(track_id) != _media_tracks.end();
 	}
 
 	std::shared_ptr<base::modules::Segment> Packager::GetSegment(int64_t segment_id) const
@@ -223,6 +361,43 @@ namespace mpegts
 
 		if (track_id == _main_track_id)
 		{
+			bool is_independent = (media_packet->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame()) ||
+								  (media_packet->GetMediaType() == cmn::MediaType::Audio);
+			bool boundary_marked = false;
+
+			// A sibling track changed and requested an aligned cut. Apply it at the
+			// first independent sample at or after the requested boundary so the new
+			// domain starts on a key frame.
+			if (_pending_cut_timestamp_ms >= 0.0 && is_independent == true)
+			{
+				double sample_dts_ms = static_cast<double>(sample._dts) / TIMEBASE_DBL * 1000.0;
+				if (sample_dts_ms >= _pending_cut_timestamp_ms)
+				{
+					// Close the old domain only if it has samples; otherwise the cut
+					// merely starts the new generation with the upcoming sample, so no
+					// empty 0-duration segment is produced.
+					bool has_prior_domain = (_last_segment_id > 0);
+					if (sample_buffer->GetCurrentDurationMs() > 0.0)
+					{
+						sample_buffer->MarkSegmentBoundary();
+						boundary_marked = true;
+						has_prior_domain = true;
+					}
+
+					// Only start a new generation when there is a prior domain to be
+					// discontinuous from; a cut before any content simply establishes
+					// the initial configuration.
+					if (has_prior_domain == true)
+					{
+						_track_config_generation++;
+					}
+					_last_boundary_timestamp_ms = sample_dts_ms;
+					_pending_cut_timestamp_ms = -1.0;
+					// The cut supersedes a pending forced boundary at this point
+					_force_make_boundary = false;
+				}
+			}
+
 			// sample._dts is "the last dts + sample duration" of the sample_buffer
 			if (_force_make_boundary == false && HasMarker(sample._dts) == true)
 			{
@@ -231,7 +406,7 @@ namespace mpegts
 				_force_make_boundary = true;
 			}
 
-			if ((sample_buffer->GetCurrentDurationMs() >= _next_target_duration_ms) || _force_make_boundary == true)
+			if (boundary_marked == false && ((sample_buffer->GetCurrentDurationMs() >= _next_target_duration_ms) || _force_make_boundary == true))
 			{
 				if (media_packet->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame())
 				{
@@ -246,7 +421,16 @@ namespace mpegts
 			}
 		}
 
+		// Stamp the current configuration generation so the segment inherits the
+		// generation of its first sample (used for discontinuity detection)
+		sample.generation = _track_config_generation;
+
         sample_buffer->AddSample(sample);
+
+		if (track_id == _main_track_id)
+		{
+			_last_sample_end_timestamp_ms = static_cast<double>(sample._dts + sample._duration) / TIMEBASE_DBL * 1000.0;
+		}
 
 		CreateSegmentIfReady();
     }
@@ -361,6 +545,19 @@ namespace mpegts
         }
 
         auto segment = std::make_shared<Segment>(GetNextSegmentId(), first_sample._dts, main_segment_duration_ms);
+
+		// Stamp configuration metadata: a segment is a discontinuity point when its
+		// generation differs from the previously created one (own change or an
+		// aligned sibling cut). The codecs reflect the tracks active at creation.
+		uint32_t segment_generation = first_sample.generation;
+		segment->SetTrackVersion(segment_generation);
+		segment->SetCodecsParameter(_codecs_parameter);
+		if (segment_generation != _last_created_generation)
+		{
+			segment->SetDiscontinuityPoint(true);
+		}
+		_last_created_generation = segment_generation;
+
 		if (markers.empty() == false)
 		{
 			segment->SetMarkers(markers);

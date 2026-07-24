@@ -79,8 +79,14 @@ ov::String HlsMasterPlaylist::ToString(bool rewind) const
 
 	for (const auto &media_playlist : media_playlists)
 	{
+		// A rendition whose current codec became unsupported is not advertised
+		if (media_playlist->IsExcluded())
+		{
+			continue;
+		}
+
 		if (media_playlist->HasVideo())
-		{			
+		{
 			result += ov::String::FormatString("#EXT-X-STREAM-INF:BANDWIDTH=%d,AVERAGE-BANDWIDTH=%d,RESOLUTION=%s,FRAME-RATE=%.3f,CODECS=\"%s\"",
 											media_playlist->GetBitrates(),
 											media_playlist->GetAverageBitrate(),
