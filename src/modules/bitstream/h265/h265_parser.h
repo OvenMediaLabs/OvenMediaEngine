@@ -241,11 +241,14 @@ public:
 	{
 		const uint32_t min_cb_log2_size_y = _log2_min_luma_coding_block_size_minus3 + 3;
 		const uint32_t ctb_log2_size_y = min_cb_log2_size_y + _log2_diff_max_min_luma_coding_block_size;
-		const uint32_t ctb_size_y = 1u << ctb_log2_size_y;
-		if (ctb_size_y == 0)
+
+		// CtbLog2SizeY is 4..6 for conformant streams (Rec. ITU-T H.265 7.4.3.2.1; CtbSizeY in {16,32,64}).
+		if (ctb_log2_size_y < 4 || ctb_log2_size_y > 6)
 		{
 			return 0;
 		}
+
+		const uint32_t ctb_size_y = 1u << ctb_log2_size_y;
 		const uint32_t pic_width_in_ctbs_y = (_pic_width_in_luma_samples + ctb_size_y - 1) / ctb_size_y;
 		const uint32_t pic_height_in_ctbs_y = (_pic_height_in_luma_samples + ctb_size_y - 1) / ctb_size_y;
 		return pic_width_in_ctbs_y * pic_height_in_ctbs_y;
