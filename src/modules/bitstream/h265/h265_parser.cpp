@@ -2473,11 +2473,15 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 			return false;
 		}
 
-		// An inter-predicted RPS must reference a strictly earlier, already-parsed set
-		// (Rec. ITU-T H.265 7.4.8). ref_rps_idx is computed with unsigned arithmetic, so a
-		// malformed delta_idx_minus1 (>= idx) would underflow and index out of bounds; reject it.
+		// RefRpsIdx = idx - (delta_idx_minus1 + 1) must reference an earlier set (Rec. ITU-T H.265 7.4.8).
+		// Reject delta_idx_minus1 >= idx to avoid unsigned underflow.
+		if (rpset.delta_idx_minus1 >= idx)
+		{
+			return false;
+		}
+
 		uint32_t ref_rps_idx = idx - (rpset.delta_idx_minus1 + 1);
-		if (rpset.delta_idx_minus1 + 1 > idx || ref_rps_idx >= rpset_list.size())
+		if (ref_rps_idx >= rpset_list.size())
 		{
 			return false;
 		}
