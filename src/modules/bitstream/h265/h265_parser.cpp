@@ -1457,7 +1457,16 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 			(void)H265_READ_BITS(dependent_slice_segment_flag, 1);
 		}
 
-		const uint32_t addr_bits = CeilLog2(sps.GetPicSizeInCtbsY());
+		// slice_segment_address is u(Ceil(Log2(PicSizeInCtbsY))). 
+		// PicSizeInCtbsY == 0 indicates an invalid SPS
+		const uint32_t pic_size_in_ctbs_y = sps.GetPicSizeInCtbsY();
+		if (pic_size_in_ctbs_y == 0)
+		{
+			logtw("H265 slice header: invalid PicSizeInCtbsY(%u)", pic_size_in_ctbs_y);
+			return false;
+		}
+
+		const uint32_t addr_bits = CeilLog2(pic_size_in_ctbs_y);
 		if (addr_bits > 0)
 		{
 			uint32_t H265_READ_BITS(slice_segment_address, addr_bits);
