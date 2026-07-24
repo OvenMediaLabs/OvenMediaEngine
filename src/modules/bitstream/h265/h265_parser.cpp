@@ -1474,9 +1474,15 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 		}
 
 		uint32_t H265_READ_UEV(slice_type);
+
+		// slice_type : 0 = B, 1 = P, 2 = I. Values > 2 are invalid
+		if (slice_type > 2)
+		{
+			logtw("H265 slice header: invalid slice_type(%u)", slice_type);
+			return false;
+		}
 		shd._slice_type = slice_type;
 
-		// slice_type : 0 = B, 1 = P, 2 = I
 		const bool is_p_or_b = (slice_type == 0 || slice_type == 1);
 		const bool is_b = (slice_type == 0);
 
