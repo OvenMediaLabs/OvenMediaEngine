@@ -31,7 +31,15 @@ namespace bmff
 	// Codecs the CENC implementation can encrypt
 	inline bool IsCencSupportedCodec(cmn::MediaCodecId codec_id)
 	{
-		return codec_id == cmn::MediaCodecId::H264 || codec_id == cmn::MediaCodecId::H265 || codec_id == cmn::MediaCodecId::Aac;
+		switch(codec_id)
+		{
+			case cmn::MediaCodecId::H264:
+				return true;
+			case cmn::MediaCodecId::Aac:
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	namespace internal

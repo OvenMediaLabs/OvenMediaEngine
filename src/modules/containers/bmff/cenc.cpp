@@ -234,8 +234,10 @@ namespace bmff
 
 	bool Encryptor::GenerateSubSamplesFromH265(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples)
 	{
-		// HEVC subsample encryption is not supported in the OSS version.
-		return true;
+		(void)media_packet;
+		(void)sub_samples;
+		// HEVC subsample encryption is not supported in the OSS version
+		return false;
 	}
 
 	bool Encryptor::EncryptInternal(const std::shared_ptr<const ov::Data> &clear_sample_data, std::shared_ptr<ov::Data> &encrypted_sample_data, const std::vector<Sample::SubSample> &sub_samples)
