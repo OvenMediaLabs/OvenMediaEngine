@@ -1379,7 +1379,8 @@ bool H265Parser::ProcessPredWeightTable(NalUnitBitstreamParser &parser, uint32_t
 static uint32_t CeilLog2(uint32_t n)
 {
 	uint32_t bits = 0;
-	while ((1u << bits) < n)
+	// Guard bits < 32
+	while (bits < 32 && (1u << bits) < n)
 	{
 		bits++;
 	}
