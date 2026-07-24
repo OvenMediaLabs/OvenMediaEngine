@@ -1520,11 +1520,13 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 			else if (sps._num_short_term_ref_pic_sets > 1)
 			{
 				uint32_t H265_READ_BITS(short_term_ref_pic_set_idx, CeilLog2(sps._num_short_term_ref_pic_sets));
-				if (short_term_ref_pic_set_idx < sps._short_term_ref_pic_sets.size())
+
+				if (short_term_ref_pic_set_idx >= sps._short_term_ref_pic_sets.size())
 				{
-					current_strps = sps._short_term_ref_pic_sets[short_term_ref_pic_set_idx];
-					current_strps_valid = true;
+					return false;
 				}
+				current_strps = sps._short_term_ref_pic_sets[short_term_ref_pic_set_idx];
+				current_strps_valid = true;
 			}
 			else if (sps._num_short_term_ref_pic_sets == 1)
 			{
