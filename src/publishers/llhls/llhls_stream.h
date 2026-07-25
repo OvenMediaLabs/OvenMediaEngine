@@ -104,7 +104,18 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
-	bool GetDrmInfo(const ov::String &file_path, bmff::CencProperty &cenc_property);
+	// Parse the DRM info file into the ordered key list for the matched stream and
+	// its auto key rotation period. A single flat key yields a one-entry list.
+	bool GetDrmInfo(const ov::String &file_path, std::vector<bmff::CencProperty> &cenc_key_list, uint64_t &key_rotation_period_ms);
+
+	// Rotate the DRM key to the next key in the list, from the next segment of each
+	// track. Triggered by the auto rotation period and by a RotateDrmKey event. The
+	// keys form a cycle; a single configured key is kept as is.
+	void RotateDrmKey();
+
+	// Trigger an auto key rotation once the media time crosses a period boundary.
+	// Called as segments are produced; a no-op when auto rotation is off.
+	void CheckAutoKeyRotation(int64_t media_time_ms);
 
 	bool IsSupportedMediaCodec(cmn::MediaCodecId codec_id) const; 
 
@@ -226,6 +237,28 @@ private:
 
 	bmff::CencProperty _cenc_property;
 	ov::String _key_uri; // string, only for FairPlay
+
+	// Path of the DRM info file, re-read on each rotation so operators can append
+	// keys to the list while the stream runs
+	ov::String _drm_info_path;
+	// Ordered keys the stream rotates through (manual provider). One entry when there
+	// is no rotation. _cenc_property mirrors the current key. Guarded by _cenc_lock.
+	std::vector<bmff::CencProperty> _cenc_key_list;
+	size_t _current_key_index = 0;
+	// Auto key rotation period in media time; 0 disables auto rotation, while a
+	// RotateDrmKey event still rotates. Guarded by _cenc_lock.
+	uint64_t _key_rotation_period_ms = 0;
+	// Media time of the last applied rotation, to space out auto rotations. Guarded by _cenc_lock.
+	int64_t _last_key_rotation_media_time_ms = -1;
+	// A rotation with a single configured key is reported once, not every period.
+	// Guarded by _cenc_lock.
+	bool _single_key_rotation_warned = false;
+	mutable std::shared_mutex _cenc_lock;
+
+	// Highest content version already advertised to each track's chunklist, so a new
+	// version's EXT-X-KEY is registered once when its first segment appears.
+	// Media-thread only (the storage observer callbacks).
+	std::map<int32_t, uint32_t> _last_registered_cenc_version;
 
 	// PROGRAM-DATE-TIME
 	bool _first_chunk = true;

@@ -36,6 +36,11 @@ namespace bmff
 		return _data_track;
 	}
 
+	const CencProperty &Packager::GetCencProperty() const
+	{
+		return _cenc_property;
+	}
+
 	bool Packager::UpdateMediaTrack(const std::shared_ptr<const MediaTrack> &media_track)
 	{
 		if (media_track == nullptr || media_track->GetId() != _media_track->GetId())
@@ -61,6 +66,27 @@ namespace bmff
 		_sample_buffer = SampleBuffer(_media_track, _cenc_property);
 
 		return true;
+	}
+
+	void Packager::UpdateCencProperty(const CencProperty &cenc_property)
+	{
+		_cenc_property = cenc_property;
+
+		if (_media_track->GetMediaType() == cmn::MediaType::Audio)
+		{
+			_cenc_property.crypt_bytes_block = 0;
+			_cenc_property.skip_bytes_block = 0;
+		}
+
+		if (_cenc_property.scheme != CencProtectScheme::None && IsCencSupportedCodec(_media_track->GetCodecId()) == false)
+		{
+			logte("CENC is not supported for the codec(%s), track(%u) will be excluded from CENC protection", cmn::GetCodecIdString(_media_track->GetCodecId()), _media_track->GetId());
+			_cenc_property.scheme = CencProtectScheme::None;
+		}
+
+		// The samples of the previous key were already written out; rebuild the buffer so
+		// the following samples are encrypted with the new key
+		_sample_buffer = SampleBuffer(_media_track, _cenc_property);
 	}
 
 	bool Packager::WriteFtypBox(ov::ByteStream &container_stream)

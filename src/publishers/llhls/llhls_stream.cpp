@@ -153,7 +153,13 @@ bool LLHlsStream::Start()
 	auto drm_config = llhls_config.GetDrm();
 	if (drm_config.IsEnabled())
 	{
-		GetDrmInfo(drm_config.GetDrmInfoPath(), _cenc_property);
+		_drm_info_path = drm_config.GetDrmInfoPath();
+		if (GetDrmInfo(_drm_info_path, _cenc_key_list, _key_rotation_period_ms) == true && _cenc_key_list.empty() == false)
+		{
+			// The first key in the list is the current one; rotations advance the index
+			_current_key_index = 0;
+			_cenc_property = _cenc_key_list[_current_key_index];
+		}
 	}
 
 	_packager_config.chunk_duration_ms = llhls_config.GetChunkDuration() * 1000.0;
@@ -373,8 +379,11 @@ bool LLHlsStream::IsConcluded() const
 	return _concluded;
 }
 
-bool LLHlsStream::GetDrmInfo(const ov::String &file_path, bmff::CencProperty &cenc_property)
+bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::CencProperty> &cenc_key_list, uint64_t &key_rotation_period_ms)
 {
+	cenc_key_list.clear();
+	key_rotation_period_ms = 0;
+
 	ov::String final_path = ov::GetFilePath(file_path, cfg::ConfigManager::GetInstance()->GetConfigPath());
 
 	pugi::xml_document xml_doc;
@@ -391,8 +400,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, bmff::CencProperty &ce
 		logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because root node is not found", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
 		return false;
 	}
-
-	bool has_fairplay_pssh_box = false;
 
 	for (pugi::xml_node drm_node = root_node.child("DRM"); drm_node; drm_node = drm_node.next_sibling("DRM"))
 	{
@@ -414,80 +421,135 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, bmff::CencProperty &ce
 			if (drm_provider.IsEmpty() || drm_provider.LowerCaseString() == "manual")
 			{
 				ov::String cenc_protect_scheme = drm_node.child_value("CencProtectScheme");
-				ov::String key_id = drm_node.child_value("KeyId");
-				ov::String key = drm_node.child_value("Key");
-				ov::String iv = drm_node.child_value("Iv");
-				ov::String fairplay_key_url = drm_node.child_value("FairPlayKeyUrl");
-				ov::String keyformat = drm_node.child_value("Keyformat");
-
-				// required
-				if (cenc_protect_scheme.IsEmpty() || key_id.IsEmpty() || key.IsEmpty() || iv.IsEmpty())
+				if (cenc_protect_scheme.IsEmpty())
 				{
-					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because required field is empty", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
+					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because CencProtectScheme is empty", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
 					return false;
 				}
 
+				bmff::CencProtectScheme scheme_enum = bmff::CencProtectScheme::None;
 				if (cenc_protect_scheme == "cbcs")
 				{
-					cenc_property.scheme = bmff::CencProtectScheme::Cbcs;
+					scheme_enum = bmff::CencProtectScheme::Cbcs;
 				}
 				else if (cenc_protect_scheme == "cenc")
 				{
-					cenc_property.scheme = bmff::CencProtectScheme::Cenc;
+					scheme_enum = bmff::CencProtectScheme::Cenc;
 				}
 				else
 				{
 					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because CencProtectScheme(%s) is not supported", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), cenc_protect_scheme.CStr());
-				}
-
-				cenc_property.key_id = ov::Hex::Decode(key_id);
-				if (cenc_property.key_id == nullptr || cenc_property.key_id->GetLength() != 16)
-				{
-					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because KeyId(%s) is invalid (must be 16 bytes HEX foramt)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), key_id.CStr());
-					cenc_property.scheme = bmff::CencProtectScheme::None;
 					return false;
 				}
 
-				cenc_property.key = ov::Hex::Decode(key);
-				if (cenc_property.key == nullptr || cenc_property.key->GetLength() != 16)
+				// Auto key rotation period (seconds). Absent or 0 keeps a single key for
+				// the whole stream; a RotateDrmKey event still rotates regardless.
+				ov::String rotation_period_value = drm_node.child_value("KeyRotationPeriod");
+				if (rotation_period_value.IsEmpty() == false)
 				{
-					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Key(%s) is invalid (must be 16 bytes HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), key.CStr());
-					cenc_property.scheme = bmff::CencProtectScheme::None;
-					return false;
+					auto rotation_period_sec = ov::Converter::ToInt64(rotation_period_value.Trim().CStr());
+					key_rotation_period_ms = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) * 1000 : 0;
 				}
 
-				cenc_property.iv = ov::Hex::Decode(iv);
-				if (cenc_property.iv == nullptr || cenc_property.iv->GetLength() != 16)
+				// A <Keys> block lists the ordered keys the stream rotates through. A
+				// single flat key on the <DRM> node stays supported (one-entry list).
+				std::vector<pugi::xml_node> content_key_nodes;
+				auto keys_node = drm_node.child("Keys");
+				if (keys_node)
 				{
-					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Iv(%s) is invalid (must be 16 bytes HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), iv.CStr());
-					cenc_property.scheme = bmff::CencProtectScheme::None;
-					return false;
-				}
-
-				pugi::xml_node pssh_node = drm_node.child("Pssh");
-				while (pssh_node)
-				{
-					auto pssh_box_data = ov::Hex::Decode(pssh_node.child_value());
-					if (pssh_box_data == nullptr)
+					for (pugi::xml_node content_key_node = keys_node.child("ContentKey"); content_key_node; content_key_node = content_key_node.next_sibling("ContentKey"))
 					{
-						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Pssh(%s) is invalid (must be HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), pssh_node.child_value());
-						cenc_property.scheme = bmff::CencProtectScheme::None;
+						content_key_nodes.push_back(content_key_node);
+					}
+				}
+				else
+				{
+					content_key_nodes.push_back(drm_node);
+				}
+
+				for (const auto &key_node : content_key_nodes)
+				{
+					bmff::CencProperty cenc_property;
+					cenc_property.scheme = scheme_enum;
+
+					ov::String key_id = key_node.child_value("KeyId");
+					ov::String key = key_node.child_value("Key");
+					ov::String iv = key_node.child_value("Iv");
+					ov::String fairplay_key_url = key_node.child_value("FairPlayKeyUrl");
+					ov::String keyformat = key_node.child_value("Keyformat");
+
+					// required
+					if (key_id.IsEmpty() || key.IsEmpty() || iv.IsEmpty())
+					{
+						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because required field is empty", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
 						return false;
 					}
 
-					auto pssh_box = bmff::PsshBox(pssh_box_data);
-					cenc_property.pssh_box_list.push_back(pssh_box);
-
-					if (pssh_box.drm_system == bmff::DRMSystem::FairPlay)
+					cenc_property.key_id = ov::Hex::Decode(key_id);
+					if (cenc_property.key_id == nullptr || cenc_property.key_id->GetLength() != 16)
 					{
-						has_fairplay_pssh_box = true;
+						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because KeyId(%s) is invalid (must be 16 bytes HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), key_id.CStr());
+						return false;
 					}
 
-					pssh_node = pssh_node.next_sibling("Pssh");
-				}
+					cenc_property.key = ov::Hex::Decode(key);
+					if (cenc_property.key == nullptr || cenc_property.key->GetLength() != 16)
+					{
+						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Key(%s) is invalid (must be 16 bytes HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), key.CStr());
+						return false;
+					}
 
-				cenc_property.fairplay_key_uri = fairplay_key_url;
-				cenc_property.keyformat = keyformat;
+					cenc_property.iv = ov::Hex::Decode(iv);
+					if (cenc_property.iv == nullptr || cenc_property.iv->GetLength() != 16)
+					{
+						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Iv(%s) is invalid (must be 16 bytes HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), iv.CStr());
+						return false;
+					}
+
+					bool has_fairplay_pssh_box = false;
+					for (pugi::xml_node pssh_node = key_node.child("Pssh"); pssh_node; pssh_node = pssh_node.next_sibling("Pssh"))
+					{
+						auto pssh_box_data = ov::Hex::Decode(pssh_node.child_value());
+						if (pssh_box_data == nullptr)
+						{
+							logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Pssh(%s) is invalid (must be HEX format)", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), pssh_node.child_value());
+							return false;
+						}
+
+						auto pssh_box = bmff::PsshBox(pssh_box_data);
+						cenc_property.pssh_box_list.push_back(pssh_box);
+
+						if (pssh_box.drm_system == bmff::DRMSystem::FairPlay)
+						{
+							has_fairplay_pssh_box = true;
+						}
+					}
+
+					cenc_property.fairplay_key_uri = fairplay_key_url;
+					cenc_property.keyformat = keyformat;
+
+					// If a FairPlay key URI is set but no FairPlay pssh was given, add a default one
+					if (cenc_property.fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh_box == false)
+					{
+						cenc_property.pssh_box_list.push_back(bmff::PsshBox("94ce86fb-07ff-4f43-adb8-93d2fa968ca2", {cenc_property.key_id}, nullptr));
+					}
+
+					// Set profiles
+					if (cenc_property.scheme == bmff::CencProtectScheme::Cenc)
+					{
+						cenc_property.crypt_bytes_block = 0;
+						cenc_property.skip_bytes_block = 0;
+						cenc_property.per_sample_iv_size = 16;
+					}
+					else if (cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
+					{
+						cenc_property.crypt_bytes_block = 1;
+						cenc_property.skip_bytes_block = 9;
+						cenc_property.per_sample_iv_size = 0;
+					}
+
+					cenc_key_list.push_back(cenc_property);
+				}
 			}
 			else
 			{
@@ -498,27 +560,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, bmff::CencProperty &ce
 			// Just first DRM info matched is enough for one stream
 			break;
 		}
-	}
-
-	// If cenc_property has fairplay_key_uri, but there is no pssh box for fairplay, add it.
-	// default pssh box
-	if (cenc_property.fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh_box == false)
-	{
-		cenc_property.pssh_box_list.push_back(bmff::PsshBox("94ce86fb-07ff-4f43-adb8-93d2fa968ca2", {cenc_property.key_id}, nullptr));
-	}
-
-	// Set profiles
-	if (cenc_property.scheme == bmff::CencProtectScheme::Cenc)
-	{
-		cenc_property.crypt_bytes_block = 0;
-		cenc_property.skip_bytes_block = 0;
-		cenc_property.per_sample_iv_size = 16;
-	}
-	else if (cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
-	{
-		cenc_property.crypt_bytes_block = 1;
-		cenc_property.skip_bytes_block = 9;
-		cenc_property.per_sample_iv_size = 0;
 	}
 
 	return true;
@@ -577,7 +618,11 @@ std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std
 
 	master_playlist->SetDefaultOptions(default_query_value_hls_legacy, default_query_value_hls_rewind);
 	master_playlist->SetChunkPath(chunk_path);
-	master_playlist->SetCencProperty(_cenc_property);
+	{
+		// The current key; a rotation updates it on the media thread
+		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
+		master_playlist->SetCencProperty(_cenc_property);
+	}
 
 	// Add all media candidates to master playlist
 	for (const auto &[track_id, track_group] : GetMediaTrackGroups())
@@ -1427,9 +1472,131 @@ void LLHlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 			}
 			break;
 		}
+		case EventCommand::Type::RotateDrmKey: {
+			RotateDrmKey();
+			break;
+		}
 		default:
 			break;
 	}
+}
+
+void LLHlsStream::RotateDrmKey()
+{
+	// Re-read the DRM info file outside the lock so operators can append keys to the
+	// list while the stream runs. Keep the current list if the re-read fails.
+	std::vector<bmff::CencProperty> reloaded_list;
+	uint64_t reloaded_period_ms = 0;
+	bool reloaded = false;
+	if (_drm_info_path.IsEmpty() == false)
+	{
+		reloaded = (GetDrmInfo(_drm_info_path, reloaded_list, reloaded_period_ms) == true) && (reloaded_list.empty() == false);
+	}
+
+	bmff::CencProperty next_property;
+	size_t next_index = 0;
+	{
+		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+
+		if (reloaded == true)
+		{
+			_cenc_key_list = reloaded_list;
+			_key_rotation_period_ms = reloaded_period_ms;
+		}
+
+		if (_cenc_key_list.empty() == true)
+		{
+			// No DRM configured on this stream
+			return;
+		}
+
+		if (_cenc_key_list.size() == 1)
+		{
+			// The auto rotation period retries every period, so warn once. The file is
+			// re-read above, so appended keys are picked up on a later attempt.
+			if (_single_key_rotation_warned == false)
+			{
+				_single_key_rotation_warned = true;
+				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but only one key is configured; keeping it. Add more keys to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+			return;
+		}
+
+		// The configured keys form a cycle, so rotation continues for the life of the
+		// stream. Appending keys to the DRM info file lengthens the cycle; the file is
+		// re-read above on every rotation.
+		_current_key_index = (_current_key_index + 1) % _cenc_key_list.size();
+		_cenc_property = _cenc_key_list[_current_key_index];
+		next_property = _cenc_property;
+		next_index = _current_key_index;
+	}
+
+	// Every track picks the new key up where its next segment starts, so no boundary has
+	// to be negotiated between them
+	std::shared_lock<std::shared_mutex> packager_lock(_packager_map_lock);
+	auto packager_map = _packager_map;
+	packager_lock.unlock();
+
+	for (const auto &[track_id, packager] : packager_map)
+	{
+		// A track whose codec CENC cannot encrypt stays clear
+		auto track_property = next_property;
+		if (bmff::IsCencSupportedCodec(GetTrack(track_id)->GetCodecId()) == false)
+		{
+			track_property.scheme = bmff::CencProtectScheme::None;
+		}
+
+		packager->RequestKeyRotation(track_property);
+	}
+
+	// Newly served master playlists advertise the current key
+	{
+		std::unique_lock<std::mutex> guard(_master_playlists_lock);
+		_master_playlists.clear();
+	}
+
+	logti("LLHlsStream(%s/%s) - DRM key rotation to key index %zu will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), next_index);
+}
+
+void LLHlsStream::CheckAutoKeyRotation(int64_t media_time_ms)
+{
+	uint64_t period_ms = 0;
+	int64_t last_rotation_ms = -1;
+	{
+		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
+		period_ms = _key_rotation_period_ms;
+		last_rotation_ms = _last_key_rotation_media_time_ms;
+	}
+
+	if (period_ms == 0)
+	{
+		// Auto rotation disabled
+		return;
+	}
+
+	// Anchor the period to the first media time seen; don't rotate on the first call
+	if (last_rotation_ms < 0)
+	{
+		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+		if (_last_key_rotation_media_time_ms < 0)
+		{
+			_last_key_rotation_media_time_ms = media_time_ms;
+		}
+		return;
+	}
+
+	if (media_time_ms - last_rotation_ms < static_cast<int64_t>(period_ms))
+	{
+		return;
+	}
+
+	// Advance the anchor before rotating so the same boundary is not retriggered
+	{
+		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+		_last_key_rotation_media_time_ms = media_time_ms;
+	}
+
+	RotateDrmKey();
 }
 
 void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track)
@@ -1492,28 +1659,18 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 		return;
 	}
 
-	// Keep the EXT-X-KEY signaling honest about the track's real encryption state.
-	// When the codec changes to one CENC cannot encrypt (e.g. H265, AV1), the
-	// current policy is that the track keeps being produced in the clear (same as
-	// AddPackager at startup), so the playlist must stop advertising EXT-X-KEY;
-	// a return to a supported codec restores it. Leaving a stale EXT-X-KEY on clear
-	// segments would confuse players into attempting decryption.
+	// The chunklist advertises the EXT-X-KEY for the new content version as its first
+	// segment appears (OnMediaChunkUpdated), using the packager's actual encryption
+	// state. When the codec changes to one CENC cannot encrypt (e.g. H265, AV1), the
+	// current policy keeps the track producing clear output, so no key is registered
+	// for that version and the playlist stops advertising EXT-X-KEY.
 	// TODO: when the DRM-failure policy is decided, this may change to blocking the
 	// track update instead of producing clear output.
-	if (_cenc_property.scheme != bmff::CencProtectScheme::None && chunklist != nullptr)
-	{
-		auto track_cenc_property = _cenc_property;
-		if (bmff::IsCencSupportedCodec(new_track->GetCodecId()) == false)
-		{
-			track_cenc_property.scheme = bmff::CencProtectScheme::None;
-		}
-		chunklist->EnableCenc(track_cenc_property);
-	}
 
 	// The new initialization section is stored from here, safe to hint its map
 	if (has_published_content == true && chunklist != nullptr)
 	{
-		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, new_track->GetVersion()));
+		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, packager->GetCurrentContentVersion()));
 	}
 
 	// Players keep renditions in sync by their discontinuity sequences, so every
@@ -1637,7 +1794,12 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 
 	logti("LLHlsStream::AddPackager() - Track(%d) ChunkDuration(%f)", media_track->GetId(), packager_config.chunk_duration_ms);
 
-	auto cenc_property = _cenc_property;
+	bmff::CencProperty cenc_property;
+	{
+		// The current key; a rotation replaces it on the media thread
+		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
+		cenc_property = _cenc_property;
+	}
 
 	auto tag = ov::String::FormatString("%s/%s", GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr());
 
@@ -1684,10 +1846,8 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 													  GetInitializationSegmentName(track_id),
 													  _preload_hint_enabled);
 
-	if (cenc_property.scheme != bmff::CencProtectScheme::None)
-	{
-		chunklist->EnableCenc(cenc_property);
-	}
+	// The chunklist's EXT-X-KEY is registered per content version as each version's
+	// first segment appears (OnMediaChunkUpdated), so it also covers key rotations.
 
 	{
 		std::lock_guard<std::shared_mutex> storage_lock(_storage_map_lock);
@@ -2159,6 +2319,32 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		{
 			partial_info.SetDiscontinuity();
 		}
+
+		// Advertise the EXT-X-KEY of the key this version was actually encrypted with.
+		// The packager recorded it when the version's initialization section was created,
+		// so this holds even when a rotation and a track change land close together. A
+		// version that was produced in the clear records a scheme of None and so
+		// registers no key.
+		auto content_version = segment->GetTrackVersion();
+		auto registered_it = _last_registered_cenc_version.find(track_id);
+		bool already_registered = (registered_it != _last_registered_cenc_version.end() && registered_it->second >= content_version);
+		if (already_registered == false)
+		{
+			auto packager = GetPackager(track_id);
+			if (packager != nullptr)
+			{
+				auto version_cenc_property = packager->GetCencPropertyForVersion(content_version);
+				if (version_cenc_property.has_value() == true)
+				{
+					playlist->EnableCenc(content_version, version_cenc_property.value());
+					_last_registered_cenc_version[track_id] = content_version;
+				}
+				else
+				{
+					logte("LLHlsStream(%s/%s) - No CENC key recorded for track(%d) content version %u; its segments would be advertised with the previous key", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, content_version);
+				}
+			}
+		}
 	}
 
 	// A segment's first chunk can bring a codec into the listing; the cached
@@ -2171,6 +2357,13 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	{
 		std::unique_lock<std::mutex> guard(_master_playlists_lock);
 		_master_playlists.clear();
+	}
+
+	// Drive auto key rotation off the media timeline at each new segment
+	if (chunk_number == 0)
+	{
+		auto media_time_ms = static_cast<int64_t>((static_cast<double>(partial_segment->GetStartTimestamp()) / GetTrack(track_id)->GetTimeBase().GetTimescale()) * 1000.0);
+		CheckAutoKeyRotation(media_time_ms);
 	}
 
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);

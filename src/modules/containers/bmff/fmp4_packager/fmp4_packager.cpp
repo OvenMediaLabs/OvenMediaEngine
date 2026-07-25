@@ -89,7 +89,36 @@ namespace bmff
 			return false;
 		}
 
-		return StoreInitializationSection(stream.GetDataPointer());
+		if (StoreInitializationSection(stream.GetDataPointer()) == false)
+		{
+			return false;
+		}
+
+		// The moov just written carries this version's tenc/pssh, so the key it was built
+		// with is the key every segment of this version is encrypted with
+		if (_storage != nullptr)
+		{
+			auto content_version = _storage->GetContentVersion();
+			_cenc_property_by_version[content_version] = GetCencProperty();
+
+			while (_cenc_property_by_version.size() > kMaxRetainedCencVersions)
+			{
+				_cenc_property_by_version.erase(_cenc_property_by_version.begin());
+			}
+		}
+
+		return true;
+	}
+
+	std::optional<CencProperty> FMP4Packager::GetCencPropertyForVersion(uint32_t content_version) const
+	{
+		auto it = _cenc_property_by_version.find(content_version);
+		if (it == _cenc_property_by_version.end())
+		{
+			return std::nullopt;
+		}
+
+		return it->second;
 	}
 
 	bool FMP4Packager::UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track)
@@ -172,9 +201,19 @@ namespace bmff
 		}
 	}
 
+	void FMP4Packager::RequestKeyRotation(const CencProperty &cenc_property)
+	{
+		_pending_key_rotation = cenc_property;
+	}
+
 	double FMP4Packager::GetLastSampleEndTimestampMs() const
 	{
 		return _segmentation_info.last_sample_timestamp_ms + _segmentation_info.last_sample_duration_ms;
+	}
+
+	uint32_t FMP4Packager::GetCurrentContentVersion() const
+	{
+		return (_storage != nullptr) ? _storage->GetContentVersion() : 0;
 	}
 
 	bool FMP4Packager::ReserveDataPacket(const std::shared_ptr<const MediaPacket> &media_packet)
@@ -547,6 +586,40 @@ namespace bmff
 				// Set the average chunk duration to config.chunk_duration_ms
 				// _target_chunk_duration_ms -= total_sample_duration_ms;
 				// _target_chunk_duration_ms += _config.chunk_duration_ms;
+			}
+		}
+
+		// A DRM key rotation changes no content, so it needs no cut: it takes effect where
+		// a new segment starts on its own. Applying it here keeps every segment on a
+		// single key and leaves the segment duration pacing untouched.
+		if (_pending_key_rotation.has_value() == true)
+		{
+			auto buffered_samples = _sample_buffer.GetSamples();
+			bool buffer_is_empty = (buffered_samples == nullptr) || (buffered_samples->GetTotalCount() == 0);
+
+			auto pending_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
+			bool segment_is_starting = (pending_segment == nullptr) ||
+									   ((pending_segment->IsCompleted() == false) && (pending_segment->GetPartialCount() == 0));
+
+			// The new version starts at an independently decodable sample
+			bool independent = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
+
+			if (buffer_is_empty == true && segment_is_starting == true && independent == true)
+			{
+				_storage->StartNewContentVersionForKeyRotation();
+
+				// Rebuild the encryptor with the new key, then regenerate the
+				// initialization section so its tenc/pssh carry that key; it is stored
+				// under the version advanced above
+				UpdateCencProperty(_pending_key_rotation.value());
+				if (CreateInitializationSegment() == false)
+				{
+					// The version has no initialization section and no key to advertise,
+					// so this track cannot be played from here on
+					logtc("FMP4Packager::AppendSample() - Failed to regenerate initialization segment for key rotation, track(%u)", GetMediaTrack()->GetId());
+				}
+
+				_pending_key_rotation.reset();
 			}
 		}
 

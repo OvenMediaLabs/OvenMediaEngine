@@ -10,6 +10,7 @@
 #include "media_event.h"
 #include "command/update_language.h"
 #include "command/conclude_live.h"
+#include "command/rotate_drm_key.h"
 
 std::shared_ptr<MediaEvent> MediaEvent::Convert(const std::shared_ptr<MediaPacket> &packet)
 {
@@ -151,6 +152,10 @@ bool MediaEvent::ParseCommandData()
 	case EventCommand::Type::ConcludeLive:
 		// No payload
 		_command = std::make_shared<EventCommandConcludeLive>();
+		break;
+	case EventCommand::Type::RotateDrmKey:
+		// No payload
+		_command = std::make_shared<EventCommandRotateDrmKey>();
 		break;
 	case EventCommand::Type::NOP:
 		// No payload

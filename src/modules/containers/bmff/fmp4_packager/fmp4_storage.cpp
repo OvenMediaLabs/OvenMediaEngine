@@ -23,6 +23,10 @@ namespace bmff
 		_track = track;
 		_observer = observer;
 
+		// Seed the content version from the track's initial version so the version-less
+		// legacy URL keeps mapping to the first initialization section
+		_content_version = track->GetVersion();
+
 		// Keep one more to prevent download failure due to timing issue
 		_target_segment_duration_ms = static_cast<int64_t>(_config.segment_duration_ms);
 		_stream_tag = stream_tag;
@@ -215,17 +219,17 @@ namespace bmff
 	bool FMP4Storage::StoreInitializationSection(const std::shared_ptr<ov::Data> &section)
 	{
 		auto track = GetTrack();
-		auto track_version = track->GetVersion();
+		auto content_version = GetContentVersion();
 
 		{
 			std::lock_guard<std::shared_mutex> lock(_initialization_sections_lock);
 
 			if (_initialization_sections.empty())
 			{
-				_initial_track_version = track_version;
+				_initial_track_version = content_version;
 			}
 
-			_initialization_sections[track_version] = section;
+			_initialization_sections[content_version] = section;
 		}
 
 		if (_observer != nullptr)
@@ -245,6 +249,10 @@ namespace bmff
 			return false;
 		}
 
+		// A track configuration change starts a new content version, so its segments
+		// and initialization section are addressed separately from the old track
+		_content_version++;
+
 		// Close the old content (the buffered samples were already flushed). The
 		// completion is reported to the caller instead of the observer here, so that
 		// it can be published after the new initialization section is stored.
@@ -254,28 +262,36 @@ namespace bmff
 
 		std::atomic_store(&_track, track);
 
-		{
-			std::lock_guard<std::shared_mutex> segments_lock(_segments_lock);
-
-			if (_segments.empty() == false)
-			{
-				auto last_segment = _segments.rbegin()->second;
-
-				// The empty segment pre-created at the last completion still carries the
-				// old track timebase and version, so rebuild it on the new track
-				if (last_segment->IsCompleted() == false && last_segment->GetPartialCount() == 0)
-				{
-					auto new_segment = std::make_shared<FMP4Segment>(last_segment->GetNumber(), _config.segment_duration_ms, track->GetTimeBase().GetExpr());
-					new_segment->SetTrackVersion(track->GetVersion());
-					new_segment->SetCodecsParameter(track->GetCodecsParameter());
-					_segments[last_segment->GetNumber()] = new_segment;
-				}
-			}
-		}
+		RebuildPendingSegmentOnCurrentTrack();
 
 		MarkPendingSegmentDiscontinuity();
 
 		return true;
+	}
+
+	void FMP4Storage::RebuildPendingSegmentOnCurrentTrack()
+	{
+		auto track = GetTrack();
+
+		std::lock_guard<std::shared_mutex> segments_lock(_segments_lock);
+
+		if (_segments.empty() == true)
+		{
+			return;
+		}
+
+		auto last_segment = _segments.rbegin()->second;
+
+		// An empty segment pre-created at the last completion still carries the track
+		// timebase and content version of that moment. Samples of the new content would
+		// land in it and be served under the old version, so rebuild it.
+		if (last_segment->IsCompleted() == false && last_segment->GetPartialCount() == 0)
+		{
+			auto new_segment = std::make_shared<FMP4Segment>(last_segment->GetNumber(), _config.segment_duration_ms, track->GetTimeBase().GetExpr());
+			new_segment->SetTrackVersion(GetContentVersion());
+			new_segment->SetCodecsParameter(track->GetCodecsParameter());
+			_segments[last_segment->GetNumber()] = new_segment;
+		}
 	}
 
 	void FMP4Storage::CutSegmentForDiscontinuity()
@@ -287,6 +303,18 @@ namespace bmff
 		MarkPendingSegmentDiscontinuity();
 
 		NotifySegmentCompleted(completed_segment_number);
+	}
+
+	void FMP4Storage::StartNewContentVersionForKeyRotation()
+	{
+		// A key change does not change the content, so no segment is cut and the duration
+		// pacing is left alone. Only the version advances, so the segments encrypted with
+		// the new key get their own initialization section and key tag.
+		_content_version++;
+
+		// The empty segment waiting for the new samples was stamped with the previous
+		// version when it was pre-created
+		RebuildPendingSegmentOnCurrentTrack();
 	}
 
 	void FMP4Storage::NotifySegmentCompleted(int64_t segment_number)
@@ -456,7 +484,7 @@ namespace bmff
 
 		// Create next segment
 		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, track->GetTimeBase().GetExpr());
-		segment->SetTrackVersion(track->GetVersion());
+		segment->SetTrackVersion(GetContentVersion());
 		segment->SetCodecsParameter(track->GetCodecsParameter());
 		{
 			std::lock_guard<std::shared_mutex> lock(_segments_lock);
@@ -591,7 +619,7 @@ namespace bmff
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
 				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
-			
+
 			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
 			{
 				_target_segment_duration_ms = next_target_duration;
