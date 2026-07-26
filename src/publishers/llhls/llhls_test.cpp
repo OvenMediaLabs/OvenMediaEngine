@@ -395,6 +395,42 @@ TEST(LLHlsChunklist, ClearVersionEndsTheKeyScope)
 	EXPECT_LT(none_index, playlist.IndexOf("seg_1_1_video_key_llhls.m4s"));
 }
 
+TEST(LLHlsChunklist, ClearOnlyPlaylistHasNoKeyTag)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	// A stream without DRM registers its versions with a scheme of None. There is no key
+	// scope to end, so the playlist carries no key tag at all.
+	chunklist->EnableCenc(1, bmff::CencProperty());
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY"), -1);
+}
+
+TEST(LLHlsChunklist, WindowStartingOnClearVersionHasNoKeyTag)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+
+	// The protected segment leaves the window, so the key it belonged to is no longer
+	// advertised and there is nothing left to end
+	chunklist->RemoveSegmentInfo(0);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY"), -1);
+}
+
 TEST(LLHlsChunklist, NoKeyTagWhenCencDisabled)
 {
 	auto chunklist = CreateChunklist(CreateVideoTrack());

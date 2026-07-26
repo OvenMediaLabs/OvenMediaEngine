@@ -2323,8 +2323,8 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		// Advertise the EXT-X-KEY of the key this version was actually encrypted with.
 		// The packager recorded it when the version's initialization section was created,
 		// so this holds even when a rotation and a track change land close together. A
-		// version that was produced in the clear records a scheme of None and so
-		// registers no key.
+		// version produced in the clear is registered with a scheme of None, from which
+		// the chunklist ends the scope of the preceding key.
 		auto content_version = segment->GetTrackVersion();
 		auto registered_it = _last_registered_cenc_version.find(track_id);
 		bool already_registered = (registered_it != _last_registered_cenc_version.end() && registered_it->second >= content_version);

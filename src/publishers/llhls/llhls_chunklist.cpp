@@ -610,11 +610,21 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 	ov::String current_ext_x_key;
 	auto emit_ext_x_key_if_changed = [&](uint32_t content_version) {
 		auto ext_x_key = MakeExtXKey(content_version);
-		if (ext_x_key.IsEmpty() == false && ext_x_key != current_ext_x_key)
+		if (ext_x_key.IsEmpty() == true || ext_x_key == current_ext_x_key)
 		{
-			playlist.AppendFormat("%s\n", ext_x_key.CStr());
-			current_ext_x_key = ext_x_key;
+			return;
 		}
+
+		// METHOD=NONE ends the scope of the key in effect, so it is only meaningful once
+		// a key has been advertised. Without this an unprotected stream, or a window that
+		// no longer lists any protected segment, would carry a tag that ends nothing.
+		if (current_ext_x_key.IsEmpty() == true && ext_x_key.HasPrefix("#EXT-X-KEY:METHOD=NONE") == true)
+		{
+			return;
+		}
+
+		playlist.AppendFormat("%s\n", ext_x_key.CStr());
+		current_ext_x_key = ext_x_key;
 	};
 
 	// CENC key for the leading segment's content version
