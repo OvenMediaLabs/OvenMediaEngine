@@ -103,21 +103,71 @@ namespace
 	}
 
 	// Ceil(Log2(n)) : bits needed to represent [0, n-1].
+	// Mirrors the parser's helper, including its bits < 32 guard.
 	uint32_t CeilLog2(uint32_t n)
 	{
 		uint32_t bits = 0;
-		while ((1u << bits) < n)
+		while (bits < 32 && (1u << bits) < n)
 		{
 			bits++;
 		}
 		return bits;
 	}
 
+	// Out-of-range SPS values for the range guards; defaults are conformant.
+	struct SpsOverrides
+	{
+		uint32_t pic_width = 320;
+		uint32_t pic_height = 240;
+		uint32_t num_negative_pics = 1;
+		uint32_t num_positive_pics = 0;
+		bool long_term_ref_pics_present = false;
+		uint32_t num_long_term_ref_pics_sps = 0;
+	};
+
+	// ---- Minimal VPS (Rec. ITU-T H.265 7.3.2.1). Only needed so a record becomes valid. ----
+	std::vector<uint8_t> BuildVps()
+	{
+		ov::BitWriter w(32);
+		w.WriteBits(4, 0);		// vps_video_parameter_set_id
+		w.WriteBits(1, 1);		// vps_base_layer_internal_flag
+		w.WriteBits(1, 1);		// vps_base_layer_available_flag
+		w.WriteBits(6, 0);		// vps_max_layers_minus1
+		w.WriteBits(3, 0);		// vps_max_sub_layers_minus1
+		w.WriteBits(1, 0);		// vps_temporal_id_nesting_flag
+		w.WriteBits(16, 0xFFFF);  // vps_reserved_0xffff_16bits
+
+		// profile_tier_level (max_sub_layers_minus1 == 0 -> 96 bits)
+		w.WriteBits(2, 0);			  // general_profile_space
+		w.WriteBits(1, 0);			  // general_tier_flag
+		w.WriteBits(5, 1);			  // general_profile_idc (Main)
+		w.WriteBits(32, 0x60000000);  // general_profile_compatibility_flags
+		w.WriteBits(32, 0);			  // general_constraint_indicator_flags (hi 32)
+		w.WriteBits(16, 0);			  // general_constraint_indicator_flags (lo 16)
+		w.WriteBits(8, 93);			  // general_level_idc (3.1)
+
+		w.WriteBits(1, 0);	// vps_sub_layer_ordering_info_present_flag -> one iteration
+		WriteUE(w, 0);	// vps_max_dec_pic_buffering_minus1
+		WriteUE(w, 0);	// vps_max_num_reorder_pics
+		WriteUE(w, 0);	// vps_max_latency_increase_plus1
+
+		w.WriteBits(6, 0);	// vps_max_layer_id
+		WriteUE(w, 0);	// vps_num_layer_sets_minus1
+		w.WriteBits(1, 0);	// vps_timing_info_present_flag
+		w.WriteBits(1, 0);	// vps_extension_flag
+
+		WriteTrailing(w);
+		return MakeNal(32, ToBytes(w));	 // VPS
+	}
+
 	// ---- Minimal SPS (4:2:0, 320x240, SAO configurable) ----
 	// num_strps short-term RPS are stored, each with num_negative_pics=1
 	// (delta_poc_s0_minus1=0, used_by_curr_pic_s0_flag=1), num_positive_pics=0
 	// -> NumDeltaPocs == 1. log2_diff selects CtbLog2SizeY (= 3 + log2_diff).
-	std::vector<uint8_t> BuildSps(bool sao_enabled, uint32_t num_strps = 0, uint32_t log2_diff = 3)
+	std::vector<uint8_t> BuildSps(bool sao_enabled, uint32_t num_strps = 0, uint32_t log2_diff = 3,
+								  const SpsOverrides &overrides = {},
+								  uint32_t log2_max_pic_order_cnt_lsb_minus4 = 0,
+								  uint32_t sps_id = 0)
 	{
 		ov::BitWriter w(64);
 		w.WriteBits(4, 0);	// sps_video_parameter_set_id
@@ -133,14 +183,14 @@ namespace
 		w.WriteBits(16, 0);			 // general_constraint_indicator_flags (lo 16)
 		w.WriteBits(8, 93);			 // general_level_idc (3.1)
 
-		WriteUE(w, 0);	// sps_seq_parameter_set_id
+		WriteUE(w, sps_id);	// sps_seq_parameter_set_id
 		WriteUE(w, 1);	// chroma_format_idc (4:2:0)
-		WriteUE(w, 320);  // pic_width_in_luma_samples
-		WriteUE(w, 240);  // pic_height_in_luma_samples
+		WriteUE(w, overrides.pic_width);   // pic_width_in_luma_samples
+		WriteUE(w, overrides.pic_height);  // pic_height_in_luma_samples
 		w.WriteBits(1, 0);	// conformance_window_flag
 		WriteUE(w, 0);	// bit_depth_luma_minus8
 		WriteUE(w, 0);	// bit_depth_chroma_minus8
-		WriteUE(w, 0);	// log2_max_pic_order_cnt_lsb_minus4
+		WriteUE(w, log2_max_pic_order_cnt_lsb_minus4);	// log2_max_pic_order_cnt_lsb_minus4
 
 		w.WriteBits(1, 0);	// sps_sub_layer_ordering_info_present_flag -> one iteration
 		WriteUE(w, 0);	// sps_max_dec_pic_buffering_minus1
@@ -164,12 +214,31 @@ namespace
 			{
 				w.WriteBits(1, 0);	// inter_ref_pic_set_prediction_flag (idx > 0)
 			}
-			WriteUE(w, 1);	// num_negative_pics
-			WriteUE(w, 0);	// num_positive_pics
-			WriteUE(w, 0);	// delta_poc_s0_minus1[0]
-			w.WriteBits(1, 1);	// used_by_curr_pic_s0_flag[0]
+			WriteUE(w, overrides.num_negative_pics);	// num_negative_pics
+			WriteUE(w, overrides.num_positive_pics);	// num_positive_pics
+			for (uint32_t j = 0; j < overrides.num_negative_pics; j++)
+			{
+				WriteUE(w, 0);	// delta_poc_s0_minus1[j]
+				w.WriteBits(1, 1);	// used_by_curr_pic_s0_flag[j]
+			}
+			for (uint32_t j = 0; j < overrides.num_positive_pics; j++)
+			{
+				WriteUE(w, 0);	// delta_poc_s1_minus1[j]
+				w.WriteBits(1, 1);	// used_by_curr_pic_s1_flag[j]
+			}
 		}
-		w.WriteBits(1, 0);	// long_term_ref_pics_present_flag
+
+		w.WriteBits(1, overrides.long_term_ref_pics_present ? 1 : 0);  // long_term_ref_pics_present_flag
+		if (overrides.long_term_ref_pics_present)
+		{
+			WriteUE(w, overrides.num_long_term_ref_pics_sps);
+			for (uint32_t i = 0; i < overrides.num_long_term_ref_pics_sps; i++)
+			{
+				// lt_ref_pic_poc_lsb_sps[i] is u(log2_max_pic_order_cnt_lsb_minus4 + 4).
+				w.WriteBits(log2_max_pic_order_cnt_lsb_minus4 + 4, 0);
+				w.WriteBits(1, 0);	// used_by_curr_pic_lt_sps_flag[i]
+			}
+		}
 		w.WriteBits(1, 0);	// sps_temporal_mvp_enabled_flag
 		w.WriteBits(1, 0);	// strong_intra_smoothing_enabled_flag
 		w.WriteBits(1, 0);	// vui_parameters_present_flag
@@ -183,18 +252,23 @@ namespace
 	// range_extension sets pps_extension_present_flag + pps_range_extension_flag so the
 	// slice-header parser must fail-safe (transform_skip_enabled_flag is 0, so the range
 	// extension carries no extra payload).
-	std::vector<uint8_t> BuildPps(uint32_t num_extra_slice_header_bits = 0, bool range_extension = false)
+	// entropy_coding_sync selects WPP: the slice header gains num_entry_point_offsets
+	// and, unlike tiles_enabled_flag, the PPS gains no syntax of its own.
+	std::vector<uint8_t> BuildPps(uint32_t num_extra_slice_header_bits = 0, bool range_extension = false,
+								  uint32_t num_ref_idx_default_active_minus1 = 0,
+								  bool entropy_coding_sync = false,
+								  uint32_t pps_id = 0, uint32_t sps_id = 0)
 	{
 		ov::BitWriter w(32);
-		WriteUE(w, 0);	// pps_pic_parameter_set_id
-		WriteUE(w, 0);	// pps_seq_parameter_set_id
+		WriteUE(w, pps_id);	// pps_pic_parameter_set_id
+		WriteUE(w, sps_id);	// pps_seq_parameter_set_id
 		w.WriteBits(1, 0);	// dependent_slice_segments_enabled_flag
 		w.WriteBits(1, 0);	// output_flag_present_flag
 		w.WriteBits(3, num_extra_slice_header_bits);  // num_extra_slice_header_bits
 		w.WriteBits(1, 0);	// sign_data_hiding_enabled_flag
 		w.WriteBits(1, 0);	// cabac_init_present_flag
-		WriteUE(w, 0);	// num_ref_idx_l0_default_active_minus1
-		WriteUE(w, 0);	// num_ref_idx_l1_default_active_minus1
+		WriteUE(w, num_ref_idx_default_active_minus1);	// num_ref_idx_l0_default_active_minus1
+		WriteUE(w, num_ref_idx_default_active_minus1);	// num_ref_idx_l1_default_active_minus1
 		WriteSE(w, 0);	// init_qp_minus26
 		w.WriteBits(1, 0);	// constrained_intra_pred_flag
 		w.WriteBits(1, 0);	// transform_skip_enabled_flag
@@ -206,7 +280,7 @@ namespace
 		w.WriteBits(1, 0);	// weighted_bipred_flag
 		w.WriteBits(1, 0);	// transquant_bypass_enabled_flag
 		w.WriteBits(1, 0);	// tiles_enabled_flag
-		w.WriteBits(1, 0);	// entropy_coding_sync_enabled_flag
+		w.WriteBits(1, entropy_coding_sync ? 1 : 0);  // entropy_coding_sync_enabled_flag
 		w.WriteBits(1, 0);	// pps_loop_filter_across_slices_enabled_flag
 		w.WriteBits(1, 0);	// deblocking_filter_control_present_flag
 		w.WriteBits(1, 0);	// pps_scaling_list_data_present_flag
@@ -263,11 +337,14 @@ namespace
 															   uint32_t num_strps = 0,
 															   uint32_t num_extra_slice_header_bits = 0,
 															   uint32_t log2_diff = 3,
-															   bool range_extension = false)
+															   bool range_extension = false,
+															   bool entropy_coding_sync = false,
+															   const SpsOverrides &overrides = {})
 	{
 		auto record = std::make_shared<HEVCDecoderConfigurationRecord>();
-		record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(sao_enabled, num_strps, log2_diff)));
-		record->AddNalUnit(H265NALUnitType::PPS, ToData(BuildPps(num_extra_slice_header_bits, range_extension)));
+		record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(sao_enabled, num_strps, log2_diff, overrides)));
+		record->AddNalUnit(H265NALUnitType::PPS, ToData(BuildPps(num_extra_slice_header_bits, range_extension,
+																/*num_ref_idx_default_active_minus1=*/0, entropy_coding_sync)));
 		return record;
 	}
 
@@ -335,6 +412,155 @@ namespace
 		auto rbsp = ToBytes(w);
 		rbsp.push_back(0xFF);
 		return MakeNal(1, rbsp);  // TRAIL_R
+	}
+
+	// ---- Non-IDR B slice (7.3.6.1). Needs an SPS with exactly one short-term RPS.
+	// 1 + 1 + 1 + 4 + 1 + 1 + 1 + 1 + 1 = 12 bits, + 1 alignment bit -> 2 bytes.
+	std::vector<uint8_t> BuildBSlice()
+	{
+		ov::BitWriter w(16);
+		w.WriteBits(1, 1);	// first_slice_segment_in_pic_flag
+		WriteUE(w, 0);	// slice_pic_parameter_set_id
+		WriteUE(w, 0);	// slice_type (0 = B)
+		w.WriteBits(4, 0);	// slice_pic_order_cnt_lsb (log2_max_pic_order_cnt_lsb == 4)
+		w.WriteBits(1, 1);	// short_term_ref_pic_set_sps_flag (num_strps == 1 -> no index)
+		w.WriteBits(1, 0);	// num_ref_idx_active_override_flag
+		w.WriteBits(1, 0);	// mvd_l1_zero_flag (B only)
+		WriteUE(w, 0);	// five_minus_max_num_merge_cand
+		WriteSE(w, 0);	// slice_qp_delta
+
+		// byte_alignment()
+		w.WriteBits(1, 1);
+		while (w.GetBitCount() % 8 != 0)
+		{
+			w.WriteBits(1, 0);
+		}
+		auto rbsp = ToBytes(w);
+		rbsp.push_back(0xFF);
+		rbsp.push_back(0xFF);
+		return MakeNal(1, rbsp);  // TRAIL_R
+	}
+
+	// ---- IDR slice carrying entry point offsets (WPP). Walks the
+	// num_entry_point_offsets / offset_len_minus1 path (7.3.6.1).
+	std::vector<uint8_t> BuildWppIdrSlice(uint32_t num_entry_point_offsets, uint32_t offset_len_minus1)
+	{
+		ov::BitWriter w(32);
+		w.WriteBits(1, 1);	// first_slice_segment_in_pic_flag
+		w.WriteBits(1, 0);	// no_output_of_prior_pics_flag (IRAP)
+		WriteUE(w, 0);	// slice_pic_parameter_set_id
+		WriteUE(w, 2);	// slice_type (I)
+		WriteSE(w, 0);	// slice_qp_delta
+
+		WriteUE(w, num_entry_point_offsets);
+		if (num_entry_point_offsets > 0)
+		{
+			WriteUE(w, offset_len_minus1);
+			// Offsets are written only for a representable width.
+			if (offset_len_minus1 < 32)
+			{
+				for (uint32_t i = 0; i < num_entry_point_offsets; i++)
+				{
+					w.WriteBits(offset_len_minus1 + 1, 0);	// entry_point_offset_minus1[i]
+				}
+			}
+		}
+
+		// byte_alignment()
+		w.WriteBits(1, 1);
+		while (w.GetBitCount() % 8 != 0)
+		{
+			w.WriteBits(1, 0);
+		}
+		auto rbsp = ToBytes(w);
+		rbsp.push_back(0xFF);
+		rbsp.push_back(0xFF);
+		return MakeNal(19, rbsp);  // IDR_W_RADL
+	}
+
+	// ---- Non-IDR P slice with long-term refs (7.3.6.1). Needs an SPS with
+	// num_long_term_ref_pics_sps == 2, so lt_idx_sps is 1 bit. One entry comes from the
+	// SPS and one is coded explicitly, walking both branches of the long-term loop.
+	// 1 + 1 + 3 + 4 + 1 + 3 + 3 + (1+1) + (4+1+1) + 1 + 1 + 1 = 27 bits,
+	// + 1 alignment bit -> 4 bytes.
+	// num_long_term_ref_pics_sps selects the lt_idx_sps width, so it must match the SPS.
+	std::vector<uint8_t> BuildLongTermRefPSlice(uint32_t num_long_term_sps = 1, uint32_t num_long_term_pics = 1,
+											   uint32_t lt_idx_sps = 0, uint32_t num_long_term_ref_pics_sps = 2)
+	{
+		ov::BitWriter w(16);
+		w.WriteBits(1, 1);	// first_slice_segment_in_pic_flag
+		WriteUE(w, 0);	// slice_pic_parameter_set_id
+		WriteUE(w, 1);	// slice_type (P)
+		w.WriteBits(4, 0);	// slice_pic_order_cnt_lsb
+		w.WriteBits(1, 1);	// short_term_ref_pic_set_sps_flag (num_strps == 1 -> no index)
+
+		WriteUE(w, num_long_term_sps);	// num_long_term_sps (num_long_term_ref_pics_sps > 0 -> present)
+		WriteUE(w, num_long_term_pics);	// num_long_term_pics
+
+		// Entries are only written for counts small enough to be walked.
+		const bool write_entries = (num_long_term_sps <= H265_MAX_DPB_SIZE && num_long_term_pics <= H265_MAX_DPB_SIZE);
+		for (uint32_t i = 0; write_entries && i < num_long_term_sps + num_long_term_pics; i++)
+		{
+			if (i < num_long_term_sps)
+			{
+				// Taken from the SPS list; lt_idx_sps is present when the list has > 1 entry.
+				if (num_long_term_ref_pics_sps > 1)
+				{
+					w.WriteBits(CeilLog2(num_long_term_ref_pics_sps), lt_idx_sps);
+				}
+			}
+			else
+			{
+				// Coded explicitly.
+				w.WriteBits(4, 0);	// poc_lsb_lt[i]
+				w.WriteBits(1, 0);	// used_by_curr_pic_lt_flag[i]
+			}
+			w.WriteBits(1, 0);	// delta_poc_msb_present_flag[i]
+		}
+
+		w.WriteBits(1, 0);	// num_ref_idx_active_override_flag
+		WriteUE(w, 0);	// five_minus_max_num_merge_cand
+		WriteSE(w, 0);	// slice_qp_delta
+
+		// byte_alignment()
+		w.WriteBits(1, 1);
+		while (w.GetBitCount() % 8 != 0)
+		{
+			w.WriteBits(1, 0);
+		}
+		auto rbsp = ToBytes(w);
+		rbsp.push_back(0xFF);
+		rbsp.push_back(0xFF);
+		return MakeNal(1, rbsp);  // TRAIL_R
+	}
+
+	// ---- Non-first IDR slice segment that parses successfully (7.3.6.1).
+	// slice_segment_address is u(Ceil(Log2(PicSizeInCtbsY))), so address_bits must match the
+	// SPS; num_extra shifts the total off the byte boundary.
+	std::vector<uint8_t> BuildNonFirstIdrSlice(uint32_t address_bits, uint32_t num_extra = 0)
+	{
+		ov::BitWriter w(16);
+		w.WriteBits(1, 0);	// first_slice_segment_in_pic_flag
+		w.WriteBits(1, 0);	// no_output_of_prior_pics_flag (IRAP)
+		WriteUE(w, 0);	// slice_pic_parameter_set_id
+		w.WriteBits(address_bits, 1);	// slice_segment_address
+		for (uint32_t i = 0; i < num_extra; i++)
+		{
+			w.WriteBits(1, 0);	// slice_reserved_flag[i]
+		}
+		WriteUE(w, 2);	// slice_type (I)
+		WriteSE(w, 0);	// slice_qp_delta
+
+		// byte_alignment()
+		w.WriteBits(1, 1);
+		while (w.GetBitCount() % 8 != 0)
+		{
+			w.WriteBits(1, 0);
+		}
+		auto rbsp = ToBytes(w);
+		rbsp.push_back(0xFF);
+		rbsp.push_back(0xFF);
+		return MakeNal(19, rbsp);  // IDR_W_RADL
 	}
 
 	// Non-first slice segment (first_slice_segment_in_pic_flag == 0). The parser must
@@ -477,6 +703,49 @@ TEST(H265Parser, SliceHeaderSize_InlineInterPredictedRps)
 	EXPECT_EQ(shd.GetHeaderSizeInBytes(), 4u);
 }
 
+TEST(H265Parser, BSliceHeaderSize)
+{
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/1);
+	auto slice = BuildBSlice();
+
+	H265SliceHeader shd;
+	ASSERT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+	EXPECT_EQ(shd.GetSliceType(), H265SliceHeader::SliceType::BSlice);
+	// 12 header bits + 1 alignment bit = 13 bits -> 2 bytes.
+	EXPECT_EQ(shd.GetHeaderSizeInBytes(), 2u);
+}
+
+// Two entry point offsets 8 bits wide:
+// 1 + 1 + 1 + 3 + 1 + 3 + 7 + 2*8 = 33 bits, + 1 alignment bit -> 5 bytes.
+TEST(H265Parser, WppSliceHeaderSize_EntryPointOffsets)
+{
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/0, /*num_extra=*/0,
+							  /*log2_diff=*/3, /*range_extension=*/false, /*entropy_coding_sync=*/true);
+	auto slice = BuildWppIdrSlice(/*num_entry_point_offsets=*/2, /*offset_len_minus1=*/7);
+
+	H265SliceHeader shd;
+	ASSERT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+	EXPECT_EQ(shd.GetSliceType(), H265SliceHeader::SliceType::ISlice);
+	EXPECT_EQ(shd.GetHeaderSizeInBytes(), 5u);
+}
+
+TEST(H265Parser, LongTermRefSliceHeaderSize)
+{
+	SpsOverrides overrides;
+	overrides.long_term_ref_pics_present = true;
+	overrides.num_long_term_ref_pics_sps = 2;
+
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/1, /*num_extra=*/0, /*log2_diff=*/3,
+							  /*range_extension=*/false, /*entropy_coding_sync=*/false, overrides);
+	auto slice = BuildLongTermRefPSlice();
+
+	H265SliceHeader shd;
+	ASSERT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+	EXPECT_EQ(shd.GetSliceType(), H265SliceHeader::SliceType::PSlice);
+	// 27 header bits + 1 alignment bit = 28 bits -> 4 bytes.
+	EXPECT_EQ(shd.GetHeaderSizeInBytes(), 4u);
+}
+
 // ============================================================================
 // Fail-safe / robustness guards (validate the review fixes)
 // ============================================================================
@@ -539,5 +808,351 @@ TEST(H265Parser, SliceHeaderRejectsRangeExtensionPps)
 	auto slice = BuildIdrSlice(/*sao=*/false);
 
 	H265SliceHeader shd;
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+}
+
+// ============================================================================
+// Range guards on Exp-Golomb values used as allocation sizes or loop bounds
+// ============================================================================
+
+TEST(H265Parser, SpsRejectsOversizedPictureDimensions)
+{
+	SpsOverrides overrides;
+	overrides.pic_width = H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES + 1;
+
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// Rejected before the rounding and the product in GetPicSizeInCtbsY() can overflow.
+	overrides.pic_width = 320;
+	overrides.pic_height = 1u << 20;
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+TEST(H265Parser, SpsRejectsZeroPictureDimensions)
+{
+	SpsOverrides overrides;
+	overrides.pic_width = 0;
+
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	overrides.pic_width = 320;
+	overrides.pic_height = 0;
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+// num_short_term_ref_pic_sets is 0..64 (7.4.3.2.1); the slice header also does resize(n + 1).
+TEST(H265Parser, SpsRejectsExcessiveShortTermRefPicSets)
+{
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/H265_MAX_NUM_SHORT_TERM_REF_PIC_SETS + 1);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// The boundary value is still accepted.
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/H265_MAX_NUM_SHORT_TERM_REF_PIC_SETS);
+	EXPECT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+// num_negative_pics / num_positive_pics size four vectors in st_ref_pic_set() (7.4.8).
+TEST(H265Parser, SpsRejectsExcessiveRefPicCounts)
+{
+	SpsOverrides overrides;
+	overrides.num_negative_pics = H265_MAX_DPB_SIZE + 1;
+
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/1, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// Each count is in range but their sum is not.
+	overrides.num_negative_pics = 10;
+	overrides.num_positive_pics = 10;
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/1, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// The boundary sum is still accepted.
+	overrides.num_negative_pics = H265_MAX_DPB_SIZE - 1;
+	overrides.num_positive_pics = 1;
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/1, /*log2_diff=*/3, overrides);
+	EXPECT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+// num_long_term_ref_pics_sps is 0..32 (7.4.3.2.1); resizes _used_by_curr_pic_lt_sps_flag.
+TEST(H265Parser, SpsRejectsExcessiveLongTermRefPics)
+{
+	SpsOverrides overrides;
+	overrides.long_term_ref_pics_present = true;
+	overrides.num_long_term_ref_pics_sps = H265_MAX_NUM_LONG_TERM_REF_PICS_SPS + 1;
+
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// The boundary value is still accepted.
+	overrides.num_long_term_ref_pics_sps = H265_MAX_NUM_LONG_TERM_REF_PICS_SPS;
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, overrides);
+	EXPECT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+// num_ref_idx_lX_default_active_minus1 is 0..14 (7.4.7.1); becomes the slice header default.
+TEST(H265Parser, PpsRejectsExcessiveNumRefIdxDefaultActive)
+{
+	H265PPS pps;
+	auto pps_nal = BuildPps(/*num_extra=*/0, /*range_extension=*/false,
+							/*num_ref_idx_default_active_minus1=*/H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1 + 1);
+	EXPECT_FALSE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+
+	// The boundary value is still accepted.
+	pps_nal = BuildPps(/*num_extra=*/0, /*range_extension=*/false,
+					   /*num_ref_idx_default_active_minus1=*/H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1);
+	EXPECT_TRUE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+}
+
+// slice_segment_address is u(Ceil(Log2(PicSizeInCtbsY))) and sizes the clear range of every
+// non-first slice segment. 1920x1080 with CtbSizeY 64 gives 30*17 = 510 CTBs -> 9 bits.
+// The two cases bracket the byte boundary so a one-bit error either way is caught.
+TEST(H265Parser, NonFirstSliceSegmentHeaderSize)
+{
+	SpsOverrides overrides;
+	overrides.pic_width = 1920;
+	overrides.pic_height = 1080;
+
+	{
+		// 1 + 1 + 1 + 9 + 3 + 1 = 16 bits, + 1 alignment bit = 17 -> 3 bytes.
+		// An 8-bit address would give 16 bits -> 2 bytes.
+		auto record = BuildRecord(/*sao=*/false, /*num_strps=*/0, /*num_extra=*/0, /*log2_diff=*/3,
+								  /*range_extension=*/false, /*entropy_coding_sync=*/false, overrides);
+		ASSERT_EQ(record->GetSPS(0)->GetPicSizeInCtbsY(), 510u);
+
+		auto slice = BuildNonFirstIdrSlice(/*address_bits=*/9);
+		H265SliceHeader shd;
+		ASSERT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+		EXPECT_EQ(shd.GetHeaderSizeInBytes(), 3u);
+	}
+
+	{
+		// With 7 extra slice header bits: 16 + 7 = 23 bits, + 1 = 24 -> 3 bytes.
+		// A 10-bit address would give 25 bits -> 4 bytes.
+		auto record = BuildRecord(/*sao=*/false, /*num_strps=*/0, /*num_extra=*/7, /*log2_diff=*/3,
+								  /*range_extension=*/false, /*entropy_coding_sync=*/false, overrides);
+
+		auto slice = BuildNonFirstIdrSlice(/*address_bits=*/9, /*num_extra=*/7);
+		H265SliceHeader shd;
+		ASSERT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+		EXPECT_EQ(shd.GetHeaderSizeInBytes(), 3u);
+	}
+}
+
+// A failed parse leaves the output struct cleared, not holding the previous slice's values.
+TEST(H265Parser, SliceHeaderIsResetOnFailure)
+{
+	auto record = BuildRecord(/*sao=*/false);
+
+	H265SliceHeader shd;
+	auto good = BuildIdrSlice(/*sao=*/false);
+	ASSERT_TRUE(H265Parser::ParseSliceHeader(good.data(), good.size(), shd, record));
+	ASSERT_EQ(shd.GetHeaderSizeInBytes(), 1u);
+
+	// Reusing the same struct for a NAL that fails must clear it.
+	auto bad = BuildIdrSlice(/*sao=*/false, /*slice_type=*/3);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(bad.data(), bad.size(), shd, record));
+	EXPECT_EQ(shd.GetHeaderSizeInBytes(), 0u);
+}
+
+// ============================================================================
+// Long-term reference picture counts and indices (7.4.7.1)
+// ============================================================================
+
+// num_long_term_sps + num_long_term_pics is summed in uint32 and drives the long-term loop.
+TEST(H265Parser, SliceHeaderRejectsWrappingLongTermCount)
+{
+	SpsOverrides overrides;
+	overrides.long_term_ref_pics_present = true;
+	overrides.num_long_term_ref_pics_sps = 2;
+
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/1, /*num_extra=*/0, /*log2_diff=*/3,
+							  /*range_extension=*/false, /*entropy_coding_sync=*/false, overrides);
+
+	H265SliceHeader shd;
+	// 0x80000000 + 0x80000000 wraps to 0.
+	auto slice = BuildLongTermRefPSlice(/*num_long_term_sps=*/0x80000000, /*num_long_term_pics=*/0x80000000);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+
+	// num_long_term_sps must not exceed the SPS list size.
+	slice = BuildLongTermRefPSlice(/*num_long_term_sps=*/3, /*num_long_term_pics=*/0);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+
+	// The sum must fit the DPB.
+	slice = BuildLongTermRefPSlice(/*num_long_term_sps=*/2, /*num_long_term_pics=*/H265_MAX_DPB_SIZE);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+}
+
+// lt_idx_sps is read with Ceil(Log2(num_long_term_ref_pics_sps)) bits, so for a list of 3
+// the value 3 is representable but out of range.
+TEST(H265Parser, SliceHeaderRejectsOutOfRangeLtIdxSps)
+{
+	SpsOverrides overrides;
+	overrides.long_term_ref_pics_present = true;
+	overrides.num_long_term_ref_pics_sps = 3;	 // Ceil(Log2(3)) == 2 bits -> 0..3 representable
+
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/1, /*num_extra=*/0, /*log2_diff=*/3,
+							  /*range_extension=*/false, /*entropy_coding_sync=*/false, overrides);
+
+	H265SliceHeader shd;
+	auto slice = BuildLongTermRefPSlice(/*num_long_term_sps=*/1, /*num_long_term_pics=*/0,
+										/*lt_idx_sps=*/3, /*num_long_term_ref_pics_sps=*/3);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+
+	// The last valid index is still accepted.
+	slice = BuildLongTermRefPSlice(/*num_long_term_sps=*/1, /*num_long_term_pics=*/0,
+								   /*lt_idx_sps=*/2, /*num_long_term_ref_pics_sps=*/3);
+	EXPECT_TRUE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+}
+
+// ============================================================================
+// Parameter set ids
+// ============================================================================
+
+// The record keys its SPS map by sps_seq_parameter_set_id, so it must be stored.
+TEST(H265Parser, SpsIdIsParsedAndStored)
+{
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, /*overrides=*/{},
+							/*log2_max_pic_order_cnt_lsb_minus4=*/0, /*sps_id=*/7);
+	ASSERT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+	EXPECT_EQ(sps.GetId(), 7u);
+}
+
+// Two SPS with different ids must both be retrievable.
+TEST(H265DecoderConfig, DistinctSpsIdsCoexist)
+{
+	auto record = std::make_shared<HEVCDecoderConfigurationRecord>();
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false, 0, 3, {}, 0, /*sps_id=*/0)));
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false, 0, 3, {}, 0, /*sps_id=*/1)));
+
+	ASSERT_NE(record->GetSPS(0), nullptr);
+	ASSERT_NE(record->GetSPS(1), nullptr);
+	EXPECT_EQ(record->GetSPS(0)->GetId(), 0u);
+	EXPECT_EQ(record->GetSPS(1)->GetId(), 1u);
+}
+
+// A parameter set that reuses an id is an update: the stored parse and the hvcC arrays follow it.
+TEST(H265DecoderConfig, SameSpsIdIsReplacedNotDropped)
+{
+	SpsOverrides wide;
+	wide.pic_width = 1280;
+	wide.pic_height = 720;
+
+	auto record = std::make_shared<HEVCDecoderConfigurationRecord>();
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false)));	 // 320x240, id 0
+	ASSERT_NE(record->GetSPS(0), nullptr);
+	EXPECT_EQ(record->GetSPS(0)->GetWidth(), 320u);
+
+	const auto nal_count_before = record->GetNalUnits(H265NALUnitType::SPS).size();
+
+	// Same id, different resolution.
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false, 0, 3, wide)));
+
+	ASSERT_NE(record->GetSPS(0), nullptr);
+	EXPECT_EQ(record->GetSPS(0)->GetWidth(), 1280u);
+	// The hvcC array holds one SPS for the id, not two.
+	EXPECT_EQ(record->GetNalUnits(H265NALUnitType::SPS).size(), nal_count_before);
+}
+
+// GetVpsSpsPpsAsAnnexB() caches its result, so a later parameter set update must clear it.
+TEST(H265DecoderConfig, AnnexBCacheFollowsSpsUpdate)
+{
+	SpsOverrides wide;
+	wide.pic_width = 1280;
+	wide.pic_height = 720;
+
+	auto record = std::make_shared<HEVCDecoderConfigurationRecord>();
+	record->AddNalUnit(H265NALUnitType::VPS, ToData(BuildVps()));
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false)));
+	record->AddNalUnit(H265NALUnitType::PPS, ToData(BuildPps()));
+	ASSERT_TRUE(record->IsValid());
+
+	// Populate the cache.
+	auto [first_data, first_frag] = record->GetVpsSpsPpsAsAnnexB();
+	ASSERT_NE(first_data, nullptr);
+
+	// Same id, larger SPS.
+	auto wide_sps = BuildSps(/*sao=*/false, 0, 3, wide);
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(wide_sps));
+
+	auto [second_data, second_frag] = record->GetVpsSpsPpsAsAnnexB();
+	ASSERT_NE(second_data, nullptr);
+	// The rebuilt Annex B must contain the new SPS, so it cannot be the cached buffer.
+	EXPECT_NE(second_data->GetLength(), first_data->GetLength());
+}
+
+// Ids out of the spec range would narrow into the uint8_t map key and alias a valid entry.
+TEST(H265Parser, SpsRejectsOutOfRangeId)
+{
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, 0, 3, {}, 0, /*sps_id=*/H265_MAX_SPS_ID + 1);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	sps_nal = BuildSps(/*sao=*/false, 0, 3, {}, 0, /*sps_id=*/256);	 // would wrap to 0
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	sps_nal = BuildSps(/*sao=*/false, 0, 3, {}, 0, /*sps_id=*/H265_MAX_SPS_ID);
+	EXPECT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+TEST(H265Parser, PpsRejectsOutOfRangeId)
+{
+	H265PPS pps;
+	auto pps_nal = BuildPps(0, false, 0, false, /*pps_id=*/H265_MAX_PPS_ID + 1);
+	EXPECT_FALSE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+
+	pps_nal = BuildPps(0, false, 0, false, /*pps_id=*/256);	 // would wrap to 0
+	EXPECT_FALSE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+
+	// pps_seq_parameter_set_id follows the SPS range, not the PPS range.
+	pps_nal = BuildPps(0, false, 0, false, /*pps_id=*/0, /*sps_id=*/H265_MAX_SPS_ID + 1);
+	EXPECT_FALSE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+
+	pps_nal = BuildPps(0, false, 0, false, /*pps_id=*/H265_MAX_PPS_ID, /*sps_id=*/H265_MAX_SPS_ID);
+	EXPECT_TRUE(H265Parser::ParsePPS(pps_nal.data(), pps_nal.size(), pps));
+}
+
+// ============================================================================
+// Values that reach ReadBits() as a bit count (uint8_t, so they can narrow)
+// ============================================================================
+
+// log2_max_pic_order_cnt_lsb_minus4 is 0..12 (7.4.3.2.1); value + 4 is used as a bit count.
+TEST(H265Parser, SpsRejectsExcessiveLog2MaxPicOrderCntLsb)
+{
+	H265SPS sps;
+	auto sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, /*overrides=*/{},
+							/*log2_max_pic_order_cnt_lsb_minus4=*/H265_MAX_LOG2_MAX_PIC_ORDER_CNT_LSB_MINUS4 + 1);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, /*overrides=*/{},
+					   /*log2_max_pic_order_cnt_lsb_minus4=*/252);
+	EXPECT_FALSE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	// The boundary value is still accepted.
+	sps_nal = BuildSps(/*sao=*/false, /*num_strps=*/0, /*log2_diff=*/3, /*overrides=*/{},
+					   /*log2_max_pic_order_cnt_lsb_minus4=*/H265_MAX_LOG2_MAX_PIC_ORDER_CNT_LSB_MINUS4);
+	EXPECT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+}
+
+// offset_len_minus1 is 0..31 (7.4.7.1); at 255 the width narrows to 0 and consumes nothing.
+TEST(H265Parser, SliceHeaderRejectsExcessiveOffsetLen)
+{
+	auto record = BuildRecord(/*sao=*/false, /*num_strps=*/0, /*num_extra=*/0,
+							  /*log2_diff=*/3, /*range_extension=*/false, /*entropy_coding_sync=*/true);
+
+	H265SliceHeader shd;
+	auto slice = BuildWppIdrSlice(/*num_entry_point_offsets=*/2, /*offset_len_minus1=*/255);
+	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
+
+	slice = BuildWppIdrSlice(/*num_entry_point_offsets=*/2, /*offset_len_minus1=*/H265_MAX_OFFSET_LEN_MINUS1 + 1);
 	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
 }
