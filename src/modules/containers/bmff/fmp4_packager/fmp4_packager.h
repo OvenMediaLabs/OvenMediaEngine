@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <optional>
+
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
 #include <base/modules/marker/marker_box.h>
