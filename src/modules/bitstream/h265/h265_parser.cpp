@@ -336,6 +336,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		return false;
 	}
 
+	if (sps_seq_parameter_set_id > H265_MAX_SPS_ID)
+	{
+		logte("H265 SPS: invalid sps_seq_parameter_set_id(%u)", sps_seq_parameter_set_id);
+		return false;
+	}
+
+	sps._id = sps_seq_parameter_set_id;
+
 	uint32_t chroma_format_idc;
 	if (parser.ReadUEV(chroma_format_idc) == false)
 	{
@@ -378,6 +386,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		return false;
 	}
 	sps._pic_height_in_luma_samples = pic_height_in_luma_samples;
+
+	// Bounded so GetPicSizeInCtbsY() cannot overflow (A.4.1).
+	if (pic_width_in_luma_samples == 0 || pic_width_in_luma_samples > H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES ||
+		pic_height_in_luma_samples == 0 || pic_height_in_luma_samples > H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES)
+	{
+		logte("H265 SPS: invalid picture size (%ux%u)", pic_width_in_luma_samples, pic_height_in_luma_samples);
+		return false;
+	}
 
 	uint8_t conformance_window_flag;
 	if (parser.ReadBits(1, conformance_window_flag) == false)
@@ -479,6 +495,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+
+	// Value + 4 is used as a ReadBits() count (7.4.3.2.1).
+	if (log2_max_pic_order_cnt_lsb_minus4 > H265_MAX_LOG2_MAX_PIC_ORDER_CNT_LSB_MINUS4)
+	{
+		logte("H265 SPS: invalid log2_max_pic_order_cnt_lsb_minus4(%u)", log2_max_pic_order_cnt_lsb_minus4);
+		return false;
+	}
+
 	sps._log2_max_pic_order_cnt_lsb_minus4 = log2_max_pic_order_cnt_lsb_minus4;
 
 	uint8_t sps_sub_layer_ordering_info_present_flag;
@@ -666,6 +690,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	{
 		return false;
 	}
+
+	// 7.4.3.2.1
+	if (num_short_term_ref_pic_sets > H265_MAX_NUM_SHORT_TERM_REF_PIC_SETS)
+	{
+		logte("H265 SPS: invalid num_short_term_ref_pic_sets(%u)", num_short_term_ref_pic_sets);
+		return false;
+	}
+
 	sps._num_short_term_ref_pic_sets = num_short_term_ref_pic_sets;
 
 	std::vector<ShortTermRefPicSet> rpset_list(num_short_term_ref_pic_sets);
@@ -692,6 +724,14 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 		{
 			return false;
 		}
+
+		// 7.4.3.2.1
+		if (num_long_term_ref_pics_sps > H265_MAX_NUM_LONG_TERM_REF_PICS_SPS)
+		{
+			logte("H265 SPS: invalid num_long_term_ref_pics_sps(%u)", num_long_term_ref_pics_sps);
+			return false;
+		}
+
 		sps._num_long_term_ref_pics_sps = num_long_term_ref_pics_sps;
 
 		sps._used_by_curr_pic_lt_sps_flag.resize(num_long_term_ref_pics_sps);
@@ -1175,6 +1215,14 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 
 	(void)H265_READ_UEV(pps.pps_pic_parameter_set_id);
 	(void)H265_READ_UEV(pps.pps_seq_parameter_set_id);
+
+	if (pps.pps_pic_parameter_set_id > H265_MAX_PPS_ID || pps.pps_seq_parameter_set_id > H265_MAX_SPS_ID)
+	{
+		logte("H265 PPS: invalid parameter set id (pps: %u, sps: %u)",
+			  pps.pps_pic_parameter_set_id, pps.pps_seq_parameter_set_id);
+		return false;
+	}
+
 	uint8_t H265_READ_BITS(dependent_slice_segments_enabled_flag, 1);
 	pps.dependent_slice_segments_enabled_flag = dependent_slice_segments_enabled_flag;
 	uint8_t H265_READ_BITS(output_flag_present_flag, 1);
@@ -1185,8 +1233,18 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 	uint8_t H265_READ_BITS(cabac_init_present_flag, 1);
 	pps.cabac_init_present_flag = cabac_init_present_flag;
 	uint32_t H265_READ_UEV(num_ref_idx_l0_default_active_minus1);
-	pps.num_ref_idx_l0_default_active_minus1 = num_ref_idx_l0_default_active_minus1;
 	uint32_t H265_READ_UEV(num_ref_idx_l1_default_active_minus1);
+
+	// Become loop bounds and vector sizes in the slice header (7.4.7.1).
+	if (num_ref_idx_l0_default_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1 ||
+		num_ref_idx_l1_default_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1)
+	{
+		logte("H265 PPS: invalid num_ref_idx_default_active_minus1 (l0: %u, l1: %u)",
+			  num_ref_idx_l0_default_active_minus1, num_ref_idx_l1_default_active_minus1);
+		return false;
+	}
+
+	pps.num_ref_idx_l0_default_active_minus1 = num_ref_idx_l0_default_active_minus1;
 	pps.num_ref_idx_l1_default_active_minus1 = num_ref_idx_l1_default_active_minus1;
 	int32_t H265_READ_SEV(init_qp_minus26);
 	uint8_t H265_READ_BITS(constrained_intra_pred_flag, 1);
@@ -1308,6 +1366,13 @@ bool H265Parser::ParsePPS(const uint8_t *nalu, size_t length, H265PPS &pps)
 // Rec. ITU-T H.265 (V10), 7.3.6.3 Weighted prediction parameters syntax
 bool H265Parser::ProcessPredWeightTable(NalUnitBitstreamParser &parser, uint32_t chroma_array_type, uint32_t num_ref_idx_l0_active_minus1, uint32_t num_ref_idx_l1_active_minus1, bool is_b_slice)
 {
+	// Sizes the vectors below (7.4.7.1).
+	if (num_ref_idx_l0_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1 ||
+		num_ref_idx_l1_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1)
+	{
+		return false;
+	}
+
 	uint32_t luma_log2_weight_denom;
 	if (parser.ReadUEV(luma_log2_weight_denom) == false)
 	{
@@ -1393,6 +1458,8 @@ static uint32_t CeilLog2(uint32_t n)
 // CENC subsample encryption.
 bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceHeader &shd, const std::shared_ptr<HEVCDecoderConfigurationRecord> &hvcc)
 {
+	shd = H265SliceHeader();
+
 	if (hvcc == nullptr)
 	{
 		return false;
@@ -1444,7 +1511,7 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 	// handled here. Refuse rather than risk miscomputing the header size.
 	if (pps->pps_range_extension_flag || pps->pps_scc_extension_flag)
 	{
-		logtw("H265 slice header: range/SCC extension is not supported for CENC subsample encryption");
+		logtd("H265 slice header: range/SCC extension is not supported for CENC subsample encryption");
 		return false;
 	}
 
@@ -1463,7 +1530,7 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 		const uint32_t pic_size_in_ctbs_y = sps->GetPicSizeInCtbsY();
 		if (pic_size_in_ctbs_y == 0)
 		{
-			logtw("H265 slice header: invalid PicSizeInCtbsY(%u)", pic_size_in_ctbs_y);
+			logtd("H265 slice header: invalid PicSizeInCtbsY(%u)", pic_size_in_ctbs_y);
 			return false;
 		}
 
@@ -1488,7 +1555,7 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 		// slice_type : 0 = B, 1 = P, 2 = I. Values > 2 are invalid
 		if (slice_type > 2)
 		{
-			logtw("H265 slice header: invalid slice_type(%u)", slice_type);
+			logtd("H265 slice header: invalid slice_type(%u)", slice_type);
 			return false;
 		}
 		shd._slice_type = slice_type;
@@ -1558,7 +1625,7 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 					// implemented; it is only required when list modification is present.
 					if (pps->lists_modification_present_flag)
 					{
-						logtw("H265 slice header: inter-predicted RPS with list modification is not supported for CENC");
+						logtd("H265 slice header: inter-predicted RPS with list modification is not supported for CENC");
 						return false;
 					}
 				}
@@ -1589,6 +1656,16 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 					(void)H265_READ_UEV(num_long_term_sps);
 				}
 				uint32_t H265_READ_UEV(num_long_term_pics);
+				// Each is checked before the sum so the sum cannot wrap (7.4.7.1).
+				if (num_long_term_sps > sps->_num_long_term_ref_pics_sps ||
+					num_long_term_pics > H265_MAX_DPB_SIZE ||
+					(num_long_term_sps + num_long_term_pics) > H265_MAX_DPB_SIZE)
+				{
+					logtd("H265 slice header: invalid long-term ref count (sps: %u, pics: %u)",
+						  num_long_term_sps, num_long_term_pics);
+					return false;
+				}
+
 				const uint32_t num_long_term = num_long_term_sps + num_long_term_pics;
 				const uint32_t lt_idx_sps_bits = CeilLog2(sps->_num_long_term_ref_pics_sps);
 
@@ -1602,10 +1679,15 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 						{
 							(void)H265_READ_BITS(lt_idx_sps, lt_idx_sps_bits);
 						}
-						if (lt_idx_sps < sps->_used_by_curr_pic_lt_sps_flag.size())
+						// Read with Ceil(Log2(num_long_term_ref_pics_sps)) bits, so an
+						// out-of-range index is representable (7.4.7.1).
+						if (lt_idx_sps >= sps->_used_by_curr_pic_lt_sps_flag.size())
 						{
-							used_by_curr_pic_lt_flag = sps->_used_by_curr_pic_lt_sps_flag[lt_idx_sps];
+							logtd("H265 slice header: invalid lt_idx_sps(%u)", lt_idx_sps);
+							return false;
 						}
+
+						used_by_curr_pic_lt_flag = sps->_used_by_curr_pic_lt_sps_flag[lt_idx_sps];
 					}
 					else
 					{
@@ -1661,6 +1743,15 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 				if (is_b)
 				{
 					(void)H265_READ_UEV(num_ref_idx_l1_active_minus1);
+				}
+
+				// Drive the loops below and the pred_weight_table() vector sizes (7.4.7.1).
+				if (num_ref_idx_l0_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1 ||
+					num_ref_idx_l1_active_minus1 > H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1)
+				{
+					logtd("H265 slice header: invalid num_ref_idx_active_minus1 (l0: %u, l1: %u)",
+						  num_ref_idx_l0_active_minus1, num_ref_idx_l1_active_minus1);
+					return false;
 				}
 			}
 
@@ -1780,9 +1871,18 @@ bool H265Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H265SliceH
 		if (num_entry_point_offsets > 0)
 		{
 			uint32_t H265_READ_UEV(offset_len_minus1);
+
+			// Used as a ReadBits() count (7.4.7.1).
+			if (offset_len_minus1 > H265_MAX_OFFSET_LEN_MINUS1)
+			{
+				logtd("H265 slice header: invalid offset_len_minus1(%u)", offset_len_minus1);
+				return false;
+			}
+
+			const uint8_t offset_len = static_cast<uint8_t>(offset_len_minus1 + 1);
 			for (uint32_t i = 0; i < num_entry_point_offsets; i++)
 			{
-				uint32_t H265_READ_BITS(entry_point_offset_minus1, offset_len_minus1 + 1);
+				uint32_t H265_READ_BITS(entry_point_offset_minus1, offset_len);
 				(void)entry_point_offset_minus1;
 			}
 		}
@@ -2528,6 +2628,15 @@ bool H265Parser::ProcessShortTermRefPicSet(uint32_t idx, uint32_t num_short_term
 	{
 		if (parser.ReadUEV(rpset.num_negative_pics) == false || parser.ReadUEV(rpset.num_positive_pics) == false)
 		{
+			return false;
+		}
+
+		// The sum becomes NumDeltaPocs for a later set (7.4.8).
+		if (rpset.num_negative_pics > H265_MAX_DPB_SIZE || rpset.num_positive_pics > H265_MAX_DPB_SIZE ||
+			(rpset.num_negative_pics + rpset.num_positive_pics) > H265_MAX_DPB_SIZE)
+		{
+			logtd("H265 st_ref_pic_set: invalid ref pic count (negative: %u, positive: %u)",
+				  rpset.num_negative_pics, rpset.num_positive_pics);
 			return false;
 		}
 

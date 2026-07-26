@@ -17,6 +17,20 @@
 
 
 constexpr size_t H265_NAL_UNIT_HEADER_SIZE = 2;
+
+// Spec ranges for Exp-Golomb values used as allocation sizes, loop bounds or bit counts.
+constexpr uint32_t H265_MAX_NUM_SHORT_TERM_REF_PIC_SETS = 64;			// 7.4.3.2.1
+constexpr uint32_t H265_MAX_NUM_LONG_TERM_REF_PICS_SPS = 32;			// 7.4.3.2.1
+constexpr uint32_t H265_MAX_NUM_REF_IDX_ACTIVE_MINUS1 = 14;				// 7.4.7.1
+constexpr uint32_t H265_MAX_DPB_SIZE = 16;								// A.4.2 (bounds 7.4.8)
+constexpr uint32_t H265_MAX_LOG2_MAX_PIC_ORDER_CNT_LSB_MINUS4 = 12;		// 7.4.3.2.1
+constexpr uint32_t H265_MAX_OFFSET_LEN_MINUS1 = 31;						// 7.4.7.1
+constexpr uint32_t H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES = 65536;		// A.4.1, with headroom
+
+// Parameter set ids. The maps in HEVCDecoderConfigurationRecord are keyed by uint8_t.
+constexpr uint32_t H265_MAX_SPS_ID = 15;								// 7.4.3.2.1
+constexpr uint32_t H265_MAX_PPS_ID = 63;								// 7.4.3.3.1
+
 struct ProfileTierLevel
 {
 	uint8_t _general_profile_space = 0;
@@ -201,13 +215,22 @@ public:
 	}
 
 	// PicSizeInCtbsY (Rec. ITU-T H.265 eq. 7-15..7-20) - used to size slice_segment_address.
+	// Returns 0 when the SPS is unusable; callers treat 0 as a parse failure.
 	uint32_t GetPicSizeInCtbsY() const
 	{
-		const uint32_t min_cb_log2_size_y = _log2_min_luma_coding_block_size_minus3 + 3;
-		const uint32_t ctb_log2_size_y = min_cb_log2_size_y + _log2_diff_max_min_luma_coding_block_size;
+		// Summed in 64 bits: both fields are unbounded ue(v).
+		const uint64_t min_cb_log2_size_y = static_cast<uint64_t>(_log2_min_luma_coding_block_size_minus3) + 3;
+		const uint64_t ctb_log2_size_y = min_cb_log2_size_y + _log2_diff_max_min_luma_coding_block_size;
 
 		// CtbLog2SizeY is 4..6 for conformant streams (Rec. ITU-T H.265 7.4.3.2.1; CtbSizeY in {16,32,64}).
 		if (ctb_log2_size_y < 4 || ctb_log2_size_y > 6)
+		{
+			return 0;
+		}
+
+		// Keeps the rounding and the product below from overflowing.
+		if (_pic_width_in_luma_samples == 0 || _pic_width_in_luma_samples > H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES ||
+			_pic_height_in_luma_samples == 0 || _pic_height_in_luma_samples > H265_MAX_PIC_DIMENSION_IN_LUMA_SAMPLES)
 		{
 			return 0;
 		}
