@@ -303,7 +303,7 @@ Turn DRM on in the LLHLS publisher and point it at your DRM info file. `<InfoFil
 </Publishers>
 ```
 
-A stream reads the DRM info file when it starts, so edits to the file apply to streams created after the change.
+A stream reads the DRM info file when it starts.
 
 ### DRM Info File
 

@@ -8,6 +8,9 @@
 //==============================================================================
 #include "llhls_stream.h"
 
+#include <algorithm>
+#include <cctype>
+
 #include <base/ovlibrary/hex.h>
 #include <base/publisher/application.h>
 #include <base/publisher/stream.h>
@@ -444,11 +447,23 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 
 				// Auto key rotation period (seconds). Absent or 0 keeps a single key for
 				// the whole stream; a RotateDrmKey event still rotates regardless.
-				ov::String rotation_period_value = drm_node.child_value("KeyRotationPeriod");
+				ov::String rotation_period_value = ov::String(drm_node.child_value("KeyRotationPeriod")).Trim();
 				if (rotation_period_value.IsEmpty() == false)
 				{
-					auto rotation_period_sec = ov::Converter::ToInt64(rotation_period_value.Trim().CStr());
-					key_rotation_period_ms = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) * 1000 : 0;
+					// Digits only, so a value such as "1h" is reported instead of being read
+					// as the number it happens to start with
+					auto is_seconds = std::all_of(rotation_period_value.CStr(), rotation_period_value.CStr() + rotation_period_value.GetLength(),
+												  [](char character) { return ::isdigit(static_cast<unsigned char>(character)) != 0; });
+
+					if (is_seconds == false)
+					{
+						logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds. The key is not rotated automatically.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
+					}
+					else
+					{
+						auto rotation_period_sec = ov::Converter::ToInt64(rotation_period_value.CStr());
+						key_rotation_period_ms = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) * 1000 : 0;
+					}
 				}
 
 				// A <Keys> block lists the ordered keys the stream rotates through. A
@@ -460,6 +475,12 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 					for (pugi::xml_node content_key_node = keys_node.child("ContentKey"); content_key_node; content_key_node = content_key_node.next_sibling("ContentKey"))
 					{
 						content_key_nodes.push_back(content_key_node);
+					}
+
+					if (content_key_nodes.empty() == true)
+					{
+						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Keys has no ContentKey", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
+						return false;
 					}
 				}
 				else
