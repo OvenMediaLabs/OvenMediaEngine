@@ -482,6 +482,17 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 						logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because Keys has no ContentKey", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr());
 						return false;
 					}
+
+					// Key material is read from each ContentKey. A single key layout leaves
+					// it on the DRM node, where it is not read, so say so rather than
+					// dropping it silently.
+					for (const char *element_name : {"KeyId", "Key", "Iv", "Pssh", "FairPlayKeyUrl", "Keyformat"})
+					{
+						if (drm_node.child(element_name))
+						{
+							logtw("LLHlsStream(%s/%s) - DRM info file(%s) has %s on the DRM node while Keys is used, so it is ignored. Put it in each ContentKey.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), element_name);
+						}
+					}
 				}
 				else
 				{
