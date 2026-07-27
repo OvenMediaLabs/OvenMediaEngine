@@ -121,25 +121,14 @@ namespace pvd
 			return;
 		}
 
-		for (const auto &provider_cfg : application->GetConfig().GetProviders().GetProviderList())
+		// Apply the effective `PacketSilenceTimeoutMs` for this provider.
+		// This includes any provider-specific default (MPEG-TS defaults to `1500` ms).
+		// A value of `0` means no silence timeout is configured,
+		// so the channel-creation default is left in place.
+		const auto timeout_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType());
+		if (timeout_ms > 0)
 		{
-			if (provider_cfg->GetType() != provider->GetProviderType())
-			{
-				continue;
-			}
-
-			const auto timeout_ms = provider_cfg->GetPacketSilenceTimeoutMs();
-
-			// Apply the effective `PacketSilenceTimeoutMs` for this provider.
-			// This includes any provider-specific default (MPEG-TS defaults to `1500` ms).
-			// A value of `0` means no silence timeout is configured,
-			// so the channel-creation default is left in place.
-			if (timeout_ms > 0)
-			{
-				SetPacketSilenceTimeoutMs(timeout_ms);
-			}
-
-			return;
+			SetPacketSilenceTimeoutMs(timeout_ms);
 		}
 	}
 

@@ -27,20 +27,22 @@ namespace pvd
 			return false;
 		}
 
-		int packet_silence_timeout_ms = 0;
-		auto cfg_provider_list = GetConfig().GetProviders().GetProviderList();
-		for (const auto &cfg_provider : cfg_provider_list)
-		{
-			if (cfg_provider->GetType() == GetParentProvider()->GetProviderType())
-			{
-				packet_silence_timeout_ms = cfg_provider->GetPacketSilenceTimeoutMs();
-				break;
-			}
-		}
-		
-		stream->SetPacketSilenceTimeoutMs(packet_silence_timeout_ms);
+		stream->SetPacketSilenceTimeoutMs(GetConfiguredPacketSilenceTimeoutMs(GetParentProvider()->GetProviderType()));
 
 		return AddStream(stream);
+	}
+
+	time_t PushApplication::GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type)
+	{
+		for (const auto &provider_cfg : GetConfig().GetProviders().GetProviderList())
+		{
+			if (provider_cfg->GetType() == provider_type)
+			{
+				return provider_cfg->GetPacketSilenceTimeoutMs();
+			}
+		}
+
+		return 0;
 	}
 
 	bool PushApplication::DeleteAllStreams()
