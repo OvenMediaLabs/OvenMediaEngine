@@ -29,6 +29,9 @@ namespace ov
 	//
 	// The workers start with the first task and stay until the pool stops.
 	//
+	// GetInstance() gives the pool the modules share. A caller that needs workers of its own,
+	// for work it does not want to leave behind other modules, can construct one instead.
+	//
 	//     // Run it and move on
 	//     ov::TaskPool::GetInstance()->Post([]() { DoWork(); });
 	//

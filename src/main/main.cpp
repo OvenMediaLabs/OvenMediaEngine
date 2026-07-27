@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 	// a new thread count
 	if (ov::TaskPool::GetInstance()->Initialize() == false)
 	{
-		logtw("Could not read the task pool configuration, so the default values are used");
+		logtw("Could not read the server configuration, so the task pool uses its default values");
 	}
 
 	// Get public IP
