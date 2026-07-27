@@ -34,6 +34,7 @@ namespace bmff
 		switch(codec_id)
 		{
 			case cmn::MediaCodecId::H264:
+			case cmn::MediaCodecId::H265:
 				return true;
 			case cmn::MediaCodecId::Aac:
 				return true;
