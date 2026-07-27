@@ -20,8 +20,8 @@ namespace pvd
 	public:
 		virtual bool JoinStream(const std::shared_ptr<PushStream> &stream);
 
-		// Look up the `PacketSilenceTimeoutMs` configured for the given provider type in
-		// this application. Returns `0` when the provider is not configured.
+		// Returns the `PacketSilenceTimeoutMs` configured for the given provider type
+		// in this application, or `0` when it is unset or disabled.
 		time_t GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type);
 
 	protected:
