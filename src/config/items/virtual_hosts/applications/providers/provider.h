@@ -84,6 +84,14 @@ namespace cfg
 
 						Register<Optional>("PacketSilenceTimeoutMs", &_packet_silence_timeout_ms, nullptr,
 										   [=]() -> std::shared_ptr<ConfigError> {
+											   // A negative value would defeat both guards in the channel task runner:
+											   // it is not `0`, so the timeout counts as active, and every elapsed value
+											   // exceeds it - including the `-1` that means no data has arrived yet.
+											   if (_packet_silence_timeout_ms < 0)
+											   {
+												   return CreateConfigErrorPtr("PacketSilenceTimeoutMs must not be negative: %d", _packet_silence_timeout_ms);
+											   }
+
 											   // This callback only runs when the option is present in the configuration
 											   _is_packet_silence_timeout_ms_configured = true;
 

@@ -46,9 +46,10 @@ namespace pvd
 		time_t GetElapsedMsSinceLastReceived();
 
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
-		// Concrete providers call this once the application is known but before publishing, so the
-		// pre-publish window honors the configured value. An option the operator did not set leaves
-		// the channel-creation default in place.
+		// Concrete providers call this as soon as the application is known, which for RTMP, MPEG-TS
+		// and SRT is while the channel is still unpublished, and for WebRTC is right after
+		// `OnChannelCreated()` overwrote the value with the channel-creation default.
+		// An option the operator did not set leaves that default in place.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()
