@@ -75,7 +75,7 @@ namespace cfg
 											   if (_mpegts_provider.GetPacketSilenceTimeoutMs() == 0)
 											   {
 												   logi("Config", "Setting default PacketSilenceTimeoutMs to 1500 ms for MPEGTS provider.");
-												   _mpegts_provider.SetPacketSilenceTimeoutMs(1500);
+												   _mpegts_provider.SetDefaultPacketSilenceTimeoutMs(1500);
 											   }
 
 											   return nullptr;

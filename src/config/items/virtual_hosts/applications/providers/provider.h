@@ -27,8 +27,8 @@ namespace cfg
 					ov::String _timestamp_mode_str;
 					int _packet_silence_timeout_ms				  = 0;	// Default value for packet silence timeout
 					// Whether `_packet_silence_timeout_ms` currently holds the value the operator asked
-					// for. Set while parsing `PacketSilenceTimeoutMs` and cleared again by
-					// `SetPacketSilenceTimeoutMs()`, which exists to fill in provider defaults.
+					// for, rather than a provider default. Set while parsing `PacketSilenceTimeoutMs`
+					// and cleared again by `SetDefaultPacketSilenceTimeoutMs()`.
 					bool _is_packet_silence_timeout_ms_configured = false;
 
 				public:
@@ -40,9 +40,9 @@ namespace cfg
 					{
 						return _is_packet_silence_timeout_ms_configured;
 					}
-					// Fills in a provider default. The value is no longer the operator's after this,
-					// so anything that must honor only an explicit setting stops seeing it.
-					void SetPacketSilenceTimeoutMs(int timeout_ms)
+					// Overrides the value with a provider default. The value is no longer the operator's
+					// after this, so anything that must honor only an explicit setting stops seeing it.
+					void SetDefaultPacketSilenceTimeoutMs(int timeout_ms)
 					{
 						_packet_silence_timeout_ms				 = timeout_ms;
 						_is_packet_silence_timeout_ms_configured = false;
