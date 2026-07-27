@@ -43,15 +43,10 @@
 
 		<!-- Shared worker threads that run short tasks for the modules that need them -->
 		<TaskPool>
-			<!-- Workers the pool keeps once work arrives -->
+			<!-- Workers the pool runs on, started with the first task -->
 			<ThreadCount>4</ThreadCount>
-			<!-- Tasks that may wait to start. Reaching this either adds a worker or rejects the task. -->
+			<!-- Tasks that may wait to start. Reaching this rejects further tasks. -->
 			<MaxTasks>128</MaxTasks>
-			<!-- Add a worker when the waiting tasks reach MaxTasks, up to MaxThreadCount -->
-			<AutoScale>true</AutoScale>
-			<MaxThreadCount>32</MaxThreadCount>
-			<!-- A worker with no task for this long stops itself. Zero keeps the workers running. -->
-			<IdleTimeoutMs>60000</IdleTimeoutMs>
 		</TaskPool>
 	</Modules>
 

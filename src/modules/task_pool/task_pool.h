@@ -14,7 +14,6 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -28,8 +27,7 @@ namespace ov
 	// each. It is meant for work that mostly waits, such as a name lookup or a request to a
 	// remote service, rather than for work that keeps a CPU busy.
 	//
-	// Workers start when a task arrives and stop again once they have been idle, so a pool
-	// nobody uses holds no threads.
+	// The workers start with the first task and stay until the pool stops.
 	//
 	//     // Run it and move on
 	//     ov::TaskPool::GetInstance()->Post([]() { DoWork(); });
@@ -58,19 +56,12 @@ namespace ov
 
 		struct Config
 		{
-			// Workers the pool keeps once work arrives. Sized for tasks that wait rather than
-			// compute, so it does not follow the core count.
+			// Workers the pool runs on. Sized for tasks that wait rather than compute, so it
+			// does not follow the core count.
 			size_t thread_count = 4;
 			// Tasks that may wait to start. Reaching this means the producers outrun the
-			// workers, which either adds a worker or rejects the task.
+			// workers, and further tasks are rejected rather than queued without end.
 			size_t max_tasks = 128;
-			// Whether reaching max_tasks adds a worker instead of rejecting the task
-			bool auto_scale = true;
-			// Ceiling for auto scaling, so that a module which keeps posting cannot make
-			// threads without end
-			size_t max_thread_count = 32;
-			// A worker with no task for this long stops itself. Zero keeps them running.
-			int idle_timeout_msec = 60000;
 		};
 
 		TaskPool();
@@ -82,13 +73,11 @@ namespace ov
 		bool Initialize();
 
 		// Applies a configuration directly, for callers that do not take it from the server
-		// configuration. The workers already running keep reading it, so a new idle timeout
-		// takes effect on their next wait, but their number stays as it is.
+		// configuration. The workers already running are left as they are.
 		void Configure(const Config &config);
 
 		// Hands the task to a worker and returns without waiting for it. Returns false when
-		// the pool is stopped, when the queue is full and no worker can be added, or when no
-		// worker could be started at all.
+		// the pool is stopped, when the queue is full, or when no worker could be started.
 		bool Post(Task task);
 
 		// Posts a task and hands back its result through a future. When the task cannot be
@@ -110,7 +99,7 @@ namespace ov
 
 		// Tasks waiting to start, not counting the ones already running
 		size_t GetPendingCount() const;
-		// Workers running right now, which is zero while the pool sits idle
+		// Workers running right now, which is zero until the first task arrives
 		size_t GetThreadCount() const;
 
 		// Lets the running tasks finish and drops the ones still waiting. The pool does not
@@ -121,8 +110,6 @@ namespace ov
 		void WorkerThreadProc();
 		// Adds up to `count` workers and returns how many started. The caller holds _mutex.
 		size_t AddWorkers(size_t count);
-		// Joins the workers that stopped themselves. The caller must not hold _mutex.
-		void JoinFinishedWorkers();
 		// Counts a rejected task and reports the count at most once a second. The caller
 		// holds _mutex.
 		void ReportRejection();
@@ -136,19 +123,7 @@ namespace ov
 
 		Config _config;
 		std::queue<Task> _task_queue;
-
-		// Kept per thread id so that a worker which stops itself can hand its own thread
-		// over to be joined, which it cannot do on its own. The handed over threads are
-		// joined by the next Post() or Stop(), so an idle pool holds at most one thread
-		// object per worker it had.
-		std::map<std::thread::id, std::thread> _workers;
-		std::vector<std::thread> _finished_workers;
-
-		// Workers waiting for a task, which tells Post() whether the workers on hand can
-		// take one right away
-		size_t _idle_worker_count = 0;
-		// Only for the thread name, so that the workers can be told apart in a stack dump
-		size_t _next_worker_index = 0;
+		std::vector<std::thread> _workers;
 
 		// A full queue rejects every task that follows, so the rejections are counted and
 		// reported at intervals rather than one log line each

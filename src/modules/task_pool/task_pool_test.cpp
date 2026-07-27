@@ -3,8 +3,8 @@
 //  OvenMediaEngine - Unit Tests
 //
 //  src/modules/task_pool/task_pool_test.cpp
-//  Covers: TaskPool (posting, results, worker isolation, queue limit, auto scaling,
-//          idle shutdown, concurrent posting, stop)
+//  Covers: TaskPool (posting, results, worker isolation, queue limit, concurrent
+//          posting, stop)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -73,30 +73,12 @@ namespace
 		});
 	}
 
-	// Polled because a worker retires on its own schedule rather than at a point the test can
-	// observe
-	[[nodiscard]] bool WaitForThreadCount(const ov::TaskPool &pool, size_t expected_count)
-	{
-		auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
-
-		while ((pool.GetThreadCount() != expected_count) && (std::chrono::steady_clock::now() < deadline))
-		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
-		}
-
-		return pool.GetThreadCount() == expected_count;
-	}
-
-	ov::TaskPool::Config MakeConfig(size_t thread_count, size_t max_tasks, bool auto_scale, size_t max_thread_count)
+	ov::TaskPool::Config MakeConfig(size_t thread_count, size_t max_tasks)
 	{
 		ov::TaskPool::Config config;
 
-		config.thread_count		 = thread_count;
-		config.max_tasks		 = max_tasks;
-		config.auto_scale		 = auto_scale;
-		config.max_thread_count	 = max_thread_count;
-		// Long enough that no worker stops itself while a test runs
-		config.idle_timeout_msec = 60000;
+		config.thread_count = thread_count;
+		config.max_tasks	= max_tasks;
 
 		return config;
 	}
@@ -140,9 +122,11 @@ TEST(TaskPool, SubmitReportsAnExceptionThrownByTheTask)
 	EXPECT_THROW(future.get(), std::runtime_error);
 }
 
-TEST(TaskPool, StartsNoWorkerUntilATaskArrives)
+TEST(TaskPool, StartsTheWorkersWithTheFirstTask)
 {
 	ov::TaskPool pool;
+
+	pool.Configure(MakeConfig(4, 128));
 
 	EXPECT_EQ(pool.GetThreadCount(), 0u);
 
@@ -154,7 +138,7 @@ TEST(TaskPool, StartsNoWorkerUntilATaskArrives)
 	}));
 
 	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
-	EXPECT_GT(pool.GetThreadCount(), 0u);
+	EXPECT_EQ(pool.GetThreadCount(), 4u);
 }
 
 // Every worker has to be able to run at the same time, otherwise a task that waits would
@@ -165,10 +149,9 @@ TEST(TaskPool, RunsTasksOnEveryWorkerAtOnce)
 	TaskGate gate;
 	ov::TaskPool pool;
 
-	pool.Configure(MakeConfig(4, 128, false, 4));
+	pool.Configure(MakeConfig(4, 128));
 
 	EXPECT_TRUE(OccupyWorkers(pool, gate, 4));
-	EXPECT_EQ(pool.GetThreadCount(), 4u);
 
 	gate.Open();
 }
@@ -190,12 +173,12 @@ TEST(TaskPool, WorkerSurvivesATaskThatThrows)
 	EXPECT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
 }
 
-TEST(TaskPool, RejectsATaskOnceTooManyAreWaitingWithoutAutoScale)
+TEST(TaskPool, RejectsATaskOnceTooManyAreWaiting)
 {
 	TaskGate gate;
 	ov::TaskPool pool;
 
-	pool.Configure(MakeConfig(1, 2, false, 4));
+	pool.Configure(MakeConfig(1, 2));
 
 	// Nothing leaves the queue while the only worker is blocked
 	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
@@ -204,132 +187,9 @@ TEST(TaskPool, RejectsATaskOnceTooManyAreWaitingWithoutAutoScale)
 	ASSERT_TRUE(pool.Post([]() {}));
 
 	EXPECT_FALSE(pool.Post([]() {}));
-	EXPECT_EQ(pool.GetThreadCount(), 1u);
+	EXPECT_EQ(pool.GetPendingCount(), 2u);
 
 	gate.Open();
-}
-
-TEST(TaskPool, AddsAWorkerWhenTheQueueIsFull)
-{
-	TaskGate gate;
-	ov::TaskPool pool;
-
-	pool.Configure(MakeConfig(1, 2, true, 3));
-
-	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
-
-	ASSERT_TRUE(pool.Post([&gate]() {
-		gate.Wait();
-	}));
-	ASSERT_TRUE(pool.Post([&gate]() {
-		gate.Wait();
-	}));
-
-	// The queue is full, so this one is taken by a worker that did not exist before
-	ASSERT_TRUE(pool.Post([&gate]() {
-		gate.Wait();
-	}));
-	EXPECT_EQ(pool.GetThreadCount(), 2u);
-
-	gate.Open();
-}
-
-TEST(TaskPool, AddsNoWorkerPastTheCeiling)
-{
-	TaskGate gate;
-	ov::TaskPool pool;
-
-	// Auto scaling is on, but there is no room above the workers it already has
-	pool.Configure(MakeConfig(1, 2, true, 1));
-
-	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
-
-	ASSERT_TRUE(pool.Post([]() {}));
-	ASSERT_TRUE(pool.Post([]() {}));
-
-	EXPECT_FALSE(pool.Post([]() {}));
-	EXPECT_EQ(pool.GetThreadCount(), 1u);
-
-	gate.Open();
-}
-
-TEST(TaskPool, StopsAWorkerThatHasBeenIdle)
-{
-	ov::TaskPool pool;
-
-	auto config = MakeConfig(1, 128, false, 1);
-	config.idle_timeout_msec = 100;
-	pool.Configure(config);
-
-	std::promise<void> promise;
-	auto future = promise.get_future();
-
-	ASSERT_TRUE(pool.Post([&promise]() {
-		promise.set_value();
-	}));
-	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
-
-	EXPECT_TRUE(WaitForThreadCount(pool, 0u));
-
-	// A task that arrives later brings the workers back
-	std::promise<void> next_promise;
-	auto next_future = next_promise.get_future();
-
-	ASSERT_TRUE(pool.Post([&next_promise]() {
-		next_promise.set_value();
-	}));
-	EXPECT_EQ(next_future.wait_for(kWaitTimeout), std::future_status::ready);
-}
-
-// A pool that kept one busy worker while the rest retired still has to come back to its
-// configured size, otherwise a burst queues behind that one worker
-TEST(TaskPool, RestoresTheWorkerCountWhenWorkReturns)
-{
-	TaskGate gate;
-	ov::TaskPool pool;
-
-	auto config = MakeConfig(4, 128, false, 4);
-	config.idle_timeout_msec = 100;
-	pool.Configure(config);
-
-	// One worker stays busy on the gate while the other three give up on waiting
-	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
-	ASSERT_TRUE(WaitForThreadCount(pool, 1u));
-
-	// Three more tasks all start at once only if the pool tops itself back up. The queue
-	// stays well under MaxTasks here, so auto scaling cannot be what does it.
-	EXPECT_TRUE(OccupyWorkers(pool, gate, 3));
-	EXPECT_EQ(pool.GetThreadCount(), 4u);
-
-	gate.Open();
-}
-
-// Retiring and starting workers again must not lose a task on the way. Each task is awaited
-// before the next is posted, because a later task would otherwise start a worker that runs
-// the lost one along with it.
-TEST(TaskPool, RunsEveryTaskWhileWorkersKeepRetiring)
-{
-	ov::TaskPool pool;
-
-	auto config = MakeConfig(1, 128, false, 1);
-	config.idle_timeout_msec = 1;
-	pool.Configure(config);
-
-	for (size_t round = 0; round < 200; round++)
-	{
-		// Long enough for the only worker to give up in between
-		std::this_thread::sleep_for(std::chrono::milliseconds(2));
-
-		std::promise<void> promise;
-		auto future = promise.get_future();
-
-		ASSERT_TRUE(pool.Post([&promise]() {
-			promise.set_value();
-		}));
-
-		ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready)
-			<< "A task posted in round " << round << " was never run";
-	}
 }
 
 TEST(TaskPool, RunsEveryTaskPostedFromManyThreadsAtOnce)
@@ -344,7 +204,7 @@ TEST(TaskPool, RunsEveryTaskPostedFromManyThreadsAtOnce)
 	ov::TaskPool pool;
 
 	// Room to spare for every task, so that a rejection can only mean the pool lost one
-	pool.Configure(MakeConfig(4, kPosterCount * kTasksPerPoster * 2, true, 8));
+	pool.Configure(MakeConfig(4, kPosterCount * kTasksPerPoster * 2));
 
 	std::vector<std::thread> posters;
 
@@ -415,7 +275,7 @@ TEST(TaskPool, BreaksThePromiseOfATaskDroppedByStop)
 	TaskGate gate;
 	ov::TaskPool pool;
 
-	pool.Configure(MakeConfig(1, 128, false, 1));
+	pool.Configure(MakeConfig(1, 128));
 
 	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
 

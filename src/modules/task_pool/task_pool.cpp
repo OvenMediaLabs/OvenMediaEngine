@@ -37,11 +37,8 @@ namespace ov
 		const auto &pool_config = server_config->GetModules().GetTaskPool();
 
 		Config config;
-		config.thread_count		 = static_cast<size_t>(std::max(pool_config.GetThreadCount(), 1));
-		config.max_tasks		 = static_cast<size_t>(std::max(pool_config.GetMaxTasks(), 1));
-		config.auto_scale		 = pool_config.IsAutoScaleEnabled();
-		config.max_thread_count	 = static_cast<size_t>(std::max(pool_config.GetMaxThreadCount(), 1));
-		config.idle_timeout_msec = std::max(pool_config.GetIdleTimeoutMs(), 0);
+		config.thread_count = static_cast<size_t>(std::max(pool_config.GetThreadCount(), 1));
+		config.max_tasks	= static_cast<size_t>(std::max(pool_config.GetMaxTasks(), 1));
 
 		Configure(config);
 
@@ -56,14 +53,9 @@ namespace ov
 
 		// A pool that cannot hold a task or run one is not a pool
 		_config.thread_count = std::max<size_t>(_config.thread_count, 1);
-		_config.max_tasks = std::max<size_t>(_config.max_tasks, 1);
-		_config.max_thread_count = std::max(_config.max_thread_count, _config.thread_count);
-		// A negative timeout would otherwise read as "keep the workers running"
-		_config.idle_timeout_msec = std::max(_config.idle_timeout_msec, 0);
+		_config.max_tasks	 = std::max<size_t>(_config.max_tasks, 1);
 
-		logti("TaskPool is configured - threads: %zu (max: %zu, auto scale: %s), max tasks: %zu, idle timeout: %d ms",
-			  _config.thread_count, _config.max_thread_count, _config.auto_scale ? "on" : "off",
-			  _config.max_tasks, _config.idle_timeout_msec);
+		logti("TaskPool is configured - threads: %zu, max tasks: %zu", _config.thread_count, _config.max_tasks);
 	}
 
 	size_t TaskPool::AddWorkers(size_t count)
@@ -76,9 +68,9 @@ namespace ov
 			{
 				std::thread worker(&TaskPool::WorkerThreadProc, this);
 
-				::pthread_setname_np(worker.native_handle(), ov::String::FormatString("TaskPool-%zu", _next_worker_index++).CStr());
+				::pthread_setname_np(worker.native_handle(), ov::String::FormatString("TaskPool-%zu", _workers.size()).CStr());
 
-				_workers.emplace(worker.get_id(), std::move(worker));
+				_workers.push_back(std::move(worker));
 
 				added_count++;
 			}
@@ -93,24 +85,6 @@ namespace ov
 		return added_count;
 	}
 
-	void TaskPool::JoinFinishedWorkers()
-	{
-		std::vector<std::thread> finished_workers;
-
-		{
-			std::lock_guard<std::mutex> lock(_mutex);
-			finished_workers.swap(_finished_workers);
-		}
-
-		for (auto &worker : finished_workers)
-		{
-			if (worker.joinable())
-			{
-				worker.join();
-			}
-		}
-	}
-
 	void TaskPool::ReportRejection()
 	{
 		_rejected_count++;
@@ -123,8 +97,8 @@ namespace ov
 			return;
 		}
 
-		logte("Too many tasks are waiting (%zu) for %zu workers, so %zu task(s) have been rejected",
-			  _task_queue.size(), _workers.size(), _rejected_count);
+		logte("The task queue is full (MaxTasks %zu) with %zu workers, so %zu task(s) have been rejected. Raise ThreadCount or MaxTasks under <Modules><TaskPool> if this keeps happening.",
+			  _config.max_tasks, _workers.size(), _rejected_count);
 
 		_last_reject_log_time = now;
 		_rejected_count		  = 0;
@@ -138,10 +112,6 @@ namespace ov
 			return false;
 		}
 
-		// Workers that stopped themselves are reaped here, outside the lock, so that an idle
-		// pool does not keep their thread objects around until it shuts down
-		JoinFinishedWorkers();
-
 		{
 			std::lock_guard<std::mutex> lock(_mutex);
 
@@ -150,37 +120,23 @@ namespace ov
 				return false;
 			}
 
-			// Workers exist only once there is work for them, so the pool is topped up to its
-			// configured size whenever the ones already waiting cannot take this task right
-			// away. Without this, a pool that lost workers to the idle timeout would queue a
-			// burst behind the few workers that happened to stay busy.
+			// The workers are started by the first task and stay until the pool stops, so a
+			// pool nobody uses holds no threads
 			if (_workers.empty())
 			{
 				AddWorkers(_config.thread_count);
-			}
 
-			if (_workers.empty())
-			{
-				logte("No worker could be started, so the task is rejected");
-				return false;
+				if (_workers.empty())
+				{
+					logte("No worker could be started, so the task is rejected");
+					return false;
+				}
 			}
 
 			if (_task_queue.size() >= _config.max_tasks)
 			{
-				bool worker_added = _config.auto_scale && (_workers.size() < _config.max_thread_count);
-
-				if (worker_added)
-				{
-					worker_added = (AddWorkers(1) > 0);
-				}
-
-				if (worker_added == false)
-				{
-					ReportRejection();
-					return false;
-				}
-
-				logtw("Added a worker because %zu tasks are waiting (workers: %zu)", _task_queue.size(), _workers.size());
+				ReportRejection();
+				return false;
 			}
 
 			_task_queue.push(std::move(task));
@@ -211,7 +167,7 @@ namespace ov
 		// instead of returning while the first one is still joining them
 		std::lock_guard<std::mutex> stop_lock(_stop_mutex);
 
-		std::map<std::thread::id, std::thread> workers;
+		std::vector<std::thread> workers;
 
 		{
 			std::lock_guard<std::mutex> lock(_mutex);
@@ -233,15 +189,13 @@ namespace ov
 
 		_condition.notify_all();
 
-		for (auto &[thread_id, worker] : workers)
+		for (auto &worker : workers)
 		{
 			if (worker.joinable())
 			{
 				worker.join();
 			}
 		}
-
-		JoinFinishedWorkers();
 	}
 
 	void TaskPool::WorkerThreadProc()
@@ -253,43 +207,12 @@ namespace ov
 			{
 				std::unique_lock<std::mutex> lock(_mutex);
 
-				auto is_ready = [this]() {
+				_condition.wait(lock, [this]() {
 					return _stopped || (_task_queue.empty() == false);
-				};
-
-				_idle_worker_count++;
-
-				bool has_work = true;
-				if (_config.idle_timeout_msec > 0)
-				{
-					has_work = _condition.wait_for(lock, std::chrono::milliseconds(_config.idle_timeout_msec), is_ready);
-				}
-				else
-				{
-					// No timeout means the workers stay until the pool stops
-					_condition.wait(lock, is_ready);
-				}
-
-				_idle_worker_count--;
+				});
 
 				if (_stopped)
 				{
-					break;
-				}
-
-				// A timed out wait reports the predicate as it stands once the lock is back,
-				// so an empty result here means no task arrived while this worker gave up
-				if (has_work == false)
-				{
-					// Idle for long enough. Its own thread cannot be joined from here, so it
-					// is handed over for the next Post() or Stop() to join.
-					auto iterator = _workers.find(std::this_thread::get_id());
-					if (iterator != _workers.end())
-					{
-						_finished_workers.push_back(std::move(iterator->second));
-						_workers.erase(iterator);
-					}
-
 					break;
 				}
 
