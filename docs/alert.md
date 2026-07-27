@@ -75,6 +75,11 @@ Content-Type: application/json
 Accept: application/json
 X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
 {
+	"serverInfo":{
+		"serverID":"b8e2f6a1-58f6-4451-b6f6-97f2b3ee4c39",
+		"serverName":"MyEdge-01",
+		"hostname":"ome-edge-01"
+	},
 	"sourceUri":"#default#app/stream",
 	"messages":[
 		{
@@ -133,6 +138,7 @@ Here is a detailed explanation of each element of JSON payload:
 
 | Element    | Description                                                                                                                                                                       |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| serverInfo | Information identifying the server that sent the notification. This is useful for distinguishing alerts when multiple OvenMediaEngine instances report to the same notification server.<br />`serverID`: Unique ID of the server. It is generated when the server first starts and is persisted in the `Server.id` file in the configuration directory.<br />`serverName`: The value of `<Server><Name>` in the configuration. Omitted if not set.<br />`hostname`: The OS hostname of the machine running OvenMediaEngine. On Kubernetes this is the pod name, and on Docker it is the container ID unless `--hostname` is specified. |
 | sourceUri  | URI information of the detected source.<br />`INGRESS`: #&#x3C;vhost>#&#x3C;application>/&#x3C;input_stream>                                                                      |
 | messages   | List of messages detected by the Rules.                                                                                                                                           |
 | sourceInfo | Detailed information about the source at the time of detection. It is identical to the response of the REST API's source information query for the detected source.               |

@@ -8,6 +8,9 @@
 //==============================================================================
 #include "alert.h"
 
+#include <climits>
+#include <unistd.h>
+
 #include "../monitoring_private.h"
 #include "monitoring/monitoring.h"
 #include "notification.h"
@@ -20,6 +23,26 @@ namespace mon::alrt
 	Alert::~Alert()
 	{
 		Stop();
+	}
+
+	static Json::Value MakeServerInfo(const std::shared_ptr<const cfg::Server> &server_config)
+	{
+		Json::Value server_info;
+
+		server_info["serverID"] = server_config->GetID().CStr();
+
+		if (server_config->GetName().IsEmpty() == false)
+		{
+			server_info["serverName"] = server_config->GetName().CStr();
+		}
+
+		char hostname[HOST_NAME_MAX + 1] = {0};
+		if (::gethostname(hostname, sizeof(hostname) - 1) == 0)
+		{
+			server_info["hostname"] = hostname;
+		}
+
+		return server_info;
 	}
 
 	bool Alert::Start(const std::shared_ptr<const cfg::Server> &server_config)
@@ -50,6 +73,7 @@ namespace mon::alrt
 		}
 
 		_server_config = server_config;
+		_server_info   = MakeServerInfo(server_config);
 
 		_rules_updater = std::make_shared<AlertRulesUpdater>(alert);
 		_rules_updater->UpdateIfNeeded();
@@ -240,7 +264,7 @@ namespace mon::alrt
 
 			auto alert		  = _server_config->GetAlert();
 
-			auto message_body = notification_data->ToJsonString();
+			auto message_body = notification_data->ToJsonString(_server_info);
 			if (message_body.IsEmpty())
 			{
 				logte("Message body is empty");
