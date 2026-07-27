@@ -186,6 +186,18 @@ namespace ov
 				return;
 			}
 
+			// Joining its own thread would throw, and the workers left unjoined by that would
+			// take the process down with them
+			auto current_thread_id = std::this_thread::get_id();
+			for (const auto &worker : _workers)
+			{
+				if (worker.get_id() == current_thread_id)
+				{
+					logte("A task tried to stop the pool it runs on, which it cannot do");
+					return;
+				}
+			}
+
 			_stopped = true;
 
 			// Dropped rather than run, because whatever they were going to use may already

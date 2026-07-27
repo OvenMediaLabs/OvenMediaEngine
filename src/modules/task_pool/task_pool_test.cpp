@@ -332,6 +332,32 @@ TEST(TaskPool, TakesNoTaskAfterItIsStopped)
 	EXPECT_THROW(future.get(), std::future_error);
 }
 
+// Stopping from a task would have the pool join the very thread that asks, which takes the
+// process down rather than just failing
+TEST(TaskPool, RefusesToStopFromItsOwnTask)
+{
+	ov::TaskPool pool;
+
+	std::promise<void> promise;
+	auto future = promise.get_future();
+
+	ASSERT_TRUE(pool.Post([&pool, &promise]() {
+		pool.Stop();
+		promise.set_value();
+	}));
+
+	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	// The pool is left as it was, so it still takes work
+	std::promise<void> next_promise;
+	auto next_future = next_promise.get_future();
+
+	ASSERT_TRUE(pool.Post([&next_promise]() {
+		next_promise.set_value();
+	}));
+	EXPECT_EQ(next_future.wait_for(kWaitTimeout), std::future_status::ready);
+}
+
 TEST(TaskPool, StopIsSafeToCallTwice)
 {
 	ov::TaskPool pool;
