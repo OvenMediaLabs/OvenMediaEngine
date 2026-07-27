@@ -44,7 +44,12 @@ namespace pvd
 		void SetPacketSilenceTimeoutMs(time_t timeout_ms);
 		time_t GetPacketSilenceTimeoutMs();
 		time_t GetElapsedMsSinceLastReceived();
-		
+
+		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
+		// Concrete providers call this once the application is known but before
+		// publishing, so the pre-publish window honors the configured value.
+		void ApplyConfiguredPacketSilenceTimeout(const info::VHostAppName &vhost_app_name);
+
 		uint32_t GetNumberOfAttempsToPublish()
 		{
 			return _attemps_publish_count;

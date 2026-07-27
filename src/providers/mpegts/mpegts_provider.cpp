@@ -358,6 +358,10 @@ namespace pvd
 		{
 			logti("A MPEG-TS client has connected");  // %s", remote->ToString().CStr());
 			stream_port_item->OnClientConnected(channel_id);
+
+			// The application is already known at channel creation,
+			// so honor its configured `PacketSilenceTimeoutMs` for the pre-publish window.
+			stream->ApplyConfiguredPacketSilenceTimeout(stream_port_item->GetVhostAppName());
 		}
 
 		return true;

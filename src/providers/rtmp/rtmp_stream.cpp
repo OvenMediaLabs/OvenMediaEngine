@@ -493,6 +493,11 @@ namespace pvd
 		if (app_info.IsValid())
 		{
 			_app_id = app_info.GetId();
+
+			// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`
+			// during the pre-publish window as well.
+			ApplyConfiguredPacketSilenceTimeout(vhost_app_name);
+
 			return true;
 		}
 

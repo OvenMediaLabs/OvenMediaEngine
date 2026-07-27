@@ -304,6 +304,10 @@ namespace pvd
 		stream->SetFinalUrl(final_url);
 
 		PushProvider::OnChannelCreated(remote->GetNativeHandle(), stream);
+
+		// The application is already known at channel creation,
+		// so honor its configured `PacketSilenceTimeoutMs` for the pre-publish window.
+		stream->ApplyConfiguredPacketSilenceTimeout(vhost_app_name);
 	}
 
 	void SrtProvider::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,

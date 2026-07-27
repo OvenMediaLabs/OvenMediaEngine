@@ -107,6 +107,40 @@ namespace pvd
 		return static_cast<time_t>(SteadyNowMs() - last_received_time_ms);
 	}
 
+	void PushStream::ApplyConfiguredPacketSilenceTimeout(const info::VHostAppName &vhost_app_name)
+	{
+		auto provider = GetProvider();
+		if (provider == nullptr)
+		{
+			return;
+		}
+
+		auto application = provider->GetApplicationByName(vhost_app_name);
+		if (application == nullptr)
+		{
+			return;
+		}
+
+		for (const auto &provider_cfg : application->GetConfig().GetProviders().GetProviderList())
+		{
+			if (provider_cfg->GetType() != provider->GetProviderType())
+			{
+				continue;
+			}
+
+			const auto timeout_ms = provider_cfg->GetPacketSilenceTimeoutMs();
+
+			// Apply only when explicitly configured.
+			// An unset value (0) keeps the default armed at channel creation.
+			if (timeout_ms > 0)
+			{
+				SetPacketSilenceTimeoutMs(timeout_ms);
+			}
+
+			return;
+		}
+	}
+
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
 	{
 		if(GetProvider() == nullptr)
