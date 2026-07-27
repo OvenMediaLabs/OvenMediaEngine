@@ -121,12 +121,15 @@ namespace pvd
 			return;
 		}
 
-		// Apply the effective `PacketSilenceTimeoutMs` for this provider.
-		// This includes any provider-specific default (MPEG-TS defaults to `1500` ms).
-		// A value of `0` means no silence timeout is configured,
-		// so the channel-creation default is left in place.
-		const auto timeout_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType());
-		if (timeout_ms > 0)
+		// Apply `PacketSilenceTimeoutMs` only when the operator set it to a positive value.
+		// A provider default filled in during config parsing (MPEG-TS gets `1500` ms) is not the
+		// operator's intent and keeps applying only once the stream is published, and an explicit `0`
+		// leaves the channel-creation default in place rather than removing the guard, which for
+		// MPEG-TS over UDP is the only thing that can reap a channel that never publishes.
+		bool is_configured	  = false;
+		const auto timeout_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType(), &is_configured);
+
+		if (is_configured && (timeout_ms > 0))
 		{
 			SetPacketSilenceTimeoutMs(timeout_ms);
 		}

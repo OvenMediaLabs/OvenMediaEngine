@@ -602,6 +602,11 @@ namespace pvd
 			return false;
 		}
 
+		// This provider calls `PublishChannel()` before `OnChannelCreated()`, so the value
+		// `JoinStream()` applied has just been overwritten with the channel-creation default.
+		// Re-apply the configured one.
+		stream->ApplyConfiguredPacketSilenceTimeoutMs(final_vhost_app_name);
+
 		RegisterStreamToSessionKeyStreamMap(stream);
 
 		auto ice_timeout = application->GetConfig().GetProviders().GetWebrtcProvider().GetTimeout();
@@ -895,6 +900,11 @@ namespace pvd
 		{
 			return {http::StatusCode::InternalServerError, "Could not publish stream"};
 		}
+
+		// This provider calls `PublishChannel()` before `OnChannelCreated()`, so the value
+		// `JoinStream()` applied has just been overwritten with the channel-creation default.
+		// Re-apply the configured one.
+		stream->ApplyConfiguredPacketSilenceTimeoutMs(final_vhost_app_name);
 
 		RegisterStreamToSessionKeyStreamMap(stream);
 

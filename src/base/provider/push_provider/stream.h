@@ -46,8 +46,9 @@ namespace pvd
 		time_t GetElapsedMsSinceLastReceived();
 
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
-		// Concrete providers call this once the application is known but before
-		// publishing, so the pre-publish window honors the configured value.
+		// Concrete providers call this once the application is known but before publishing, so the
+		// pre-publish window honors the configured value. An option the operator did not set leaves
+		// the channel-creation default in place.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()

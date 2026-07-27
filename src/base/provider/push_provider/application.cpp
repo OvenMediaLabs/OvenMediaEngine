@@ -32,12 +32,22 @@ namespace pvd
 		return AddStream(stream);
 	}
 
-	time_t PushApplication::GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type)
+	time_t PushApplication::GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type, bool *is_configured)
 	{
+		if (is_configured != nullptr)
+		{
+			*is_configured = false;
+		}
+
 		for (const auto &provider_cfg : GetConfig().GetProviders().GetProviderList())
 		{
 			if (provider_cfg->GetType() == provider_type)
 			{
+				if (is_configured != nullptr)
+				{
+					*is_configured = provider_cfg->IsPacketSilenceTimeoutMsConfigured();
+				}
+
 				return provider_cfg->GetPacketSilenceTimeoutMs();
 			}
 		}
