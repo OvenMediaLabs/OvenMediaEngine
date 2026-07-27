@@ -130,8 +130,10 @@ namespace pvd
 
 			const auto timeout_ms = provider_cfg->GetPacketSilenceTimeoutMs();
 
-			// Apply only when explicitly configured.
-			// An unset value (0) keeps the default armed at channel creation.
+			// Apply the effective `PacketSilenceTimeoutMs` for this provider.
+			// This includes any provider-specific default (MPEG-TS defaults to `1500` ms).
+			// A value of `0` means no silence timeout is configured,
+			// so the channel-creation default is left in place.
 			if (timeout_ms > 0)
 			{
 				SetPacketSilenceTimeoutMs(timeout_ms);
