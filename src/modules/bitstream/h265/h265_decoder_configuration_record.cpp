@@ -60,7 +60,9 @@ ov::String HEVCDecoderConfigurationRecord::GetCodecsParameter() const
 
 	ov::String codecs_parameter;
 
-	codecs_parameter += "hev1";
+	// Use 'hvc1' (parameter sets in the sample entry) rather than 'hev1' (in-band allowed).
+	// This parallels AVC's use of 'avc1' and is required for encrypted HEVC
+	codecs_parameter += "hvc1";
 
 	if (_general_profile_space == 0)
 	{
@@ -458,24 +460,44 @@ std::shared_ptr<const ov::Data> HEVCDecoderConfigurationRecord::Serialize()
 	return bit.GetDataObject();
 }
 
-void HEVCDecoderConfigurationRecord::AddNalUnit(H265NALUnitType nal_type, const std::shared_ptr<ov::Data> &nal_unit)
+void HEVCDecoderConfigurationRecord::RebuildNalUnitArray(H265NALUnitType nal_type, const std::map<uint8_t, std::shared_ptr<ov::Data>> &data_list)
 {
 	auto &v = _nal_units[static_cast<uint8_t>(nal_type)];
-	v.push_back(nal_unit);
-	
+	v.clear();
+	v.reserve(data_list.size());
+	for (const auto &[id, nalu] : data_list)
+	{
+		v.push_back(nalu);
+	}
+
+	// Both cached forms are built from these lists, so neither matches any more: the Annex B
+	// bitstream here and the serialized record behind GetData() in the base class.
+	_vps_sps_pps_annexb_data = nullptr;
+	_vps_sps_pps_annexb_frag_header = FragmentationHeader();
+	UpdateData();
+}
+
+void HEVCDecoderConfigurationRecord::AddNalUnit(H265NALUnitType nal_type, const std::shared_ptr<ov::Data> &nal_unit)
+{
+	// Parameter sets are keyed by id, so Add*() maintains _nal_units itself.
 	if (nal_type == H265NALUnitType::VPS)
 	{
 		AddVPS(nal_unit);
+		return;
 	}
-	else if (nal_type == H265NALUnitType::SPS)
+	if (nal_type == H265NALUnitType::SPS)
 	{
 		// Set Info from SPS
 		AddSPS(nal_unit);
+		return;
 	}
-	else if (nal_type == H265NALUnitType::PPS)
+	if (nal_type == H265NALUnitType::PPS)
 	{
 		AddPPS(nal_unit);
+		return;
 	}
+
+	_nal_units[static_cast<uint8_t>(nal_type)].push_back(nal_unit);
 }
 
 uint8_t HEVCDecoderConfigurationRecord::Version()
@@ -572,13 +594,9 @@ bool HEVCDecoderConfigurationRecord::AddVPS(const std::shared_ptr<ov::Data> &nal
 		return false;
 	}
 
-	if (_vps_map.find(vps.GetId()) != _vps_map.end())
-	{
-		return false;
-	}
-
-	_vps_map.emplace(vps.GetId(), vps);
-	_vps_data_list.push_back(nalu);
+	_vps_map[vps.GetId()] = std::make_shared<H265VPS>(vps);
+	_vps_data_list[vps.GetId()] = nalu;
+	RebuildNalUnitArray(H265NALUnitType::VPS, _vps_data_list);
 
 	//_num_temporal_layers = std::max<uint8_t>(_num_temporal_layers, vps.GetMaxSubLayersMinus1() + 1);
 
@@ -591,11 +609,6 @@ bool HEVCDecoderConfigurationRecord::AddSPS(const std::shared_ptr<ov::Data> &nal
 	if (H265Parser::ParseSPS(nalu->GetDataAs<uint8_t>(), nalu->GetLength(), sps) == false)
 	{
 		logte("Could not parse H265 SPS unit");
-		return false;
-	}
-
-	if (_sps_map.find(sps.GetId()) != _sps_map.end())
-	{
 		return false;
 	}
 
@@ -624,8 +637,9 @@ bool HEVCDecoderConfigurationRecord::AddSPS(const std::shared_ptr<ov::Data> &nal
 	_avg_frame_rate = 0;
 	_constant_frame_rate = 0;
 
-	_sps_data_list.push_back(nalu);
-	_sps_map.emplace(sps.GetId(), sps);
+	_sps_map[sps.GetId()] = std::make_shared<H265SPS>(sps);
+	_sps_data_list[sps.GetId()] = nalu;
+	RebuildNalUnitArray(H265NALUnitType::SPS, _sps_data_list);
 
 	return true;
 }
@@ -640,13 +654,9 @@ bool HEVCDecoderConfigurationRecord::AddPPS(const std::shared_ptr<ov::Data> &nal
 		return false;
 	}
 
-	if (_pps_map.find(pps.GetId()) != _pps_map.end())
-	{
-		return false;
-	}
-
-	_pps_map.emplace(pps.GetId(), pps);
-	_pps_data_list.push_back(nalu);
+	_pps_map[pps.GetId()] = std::make_shared<H265PPS>(pps);
+	_pps_data_list[pps.GetId()] = nalu;
+	RebuildNalUnitArray(H265NALUnitType::PPS, _pps_data_list);
 
 	// TODO(Getroot) : Implement PPS parser for getting following values
 	// _parallelism_type can be derived from the following PPS values:
@@ -661,6 +671,38 @@ bool HEVCDecoderConfigurationRecord::AddPPS(const std::shared_ptr<ov::Data> &nal
 	_parallelism_type = 0;
 
 	return true;
+}
+
+std::shared_ptr<const H265SPS> HEVCDecoderConfigurationRecord::GetSPS(int sps_id) const
+{
+	if (sps_id < 0 || static_cast<uint32_t>(sps_id) > H265_MAX_SPS_ID)
+	{
+		return nullptr;
+	}
+
+	auto it = _sps_map.find(static_cast<uint8_t>(sps_id));
+	if (it == _sps_map.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
+}
+
+std::shared_ptr<const H265PPS> HEVCDecoderConfigurationRecord::GetPPS(int pps_id) const
+{
+	if (pps_id < 0 || static_cast<uint32_t>(pps_id) > H265_MAX_PPS_ID)
+	{
+		return nullptr;
+	}
+
+	auto it = _pps_map.find(static_cast<uint8_t>(pps_id));
+	if (it == _pps_map.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
 }
 
 std::tuple<std::shared_ptr<ov::Data>, FragmentationHeader> HEVCDecoderConfigurationRecord::GetVpsSpsPpsAsAnnexB()
@@ -679,7 +721,7 @@ std::tuple<std::shared_ptr<ov::Data>, FragmentationHeader> HEVCDecoderConfigurat
 	FragmentationHeader frag_header;
 	size_t offset = 0;
 
-	for (auto &vps_data : _vps_data_list)
+	for (auto &[vps_id, vps_data] : _vps_data_list)
 	{
 		data->Append(H26X_START_CODE_PREFIX, H26X_START_CODE_PREFIX_LEN);
 		offset += H26X_START_CODE_PREFIX_LEN;
@@ -690,7 +732,7 @@ std::tuple<std::shared_ptr<ov::Data>, FragmentationHeader> HEVCDecoderConfigurat
 		offset += vps_data->GetLength();
 	}
 
-	for (auto &sps_data : _sps_data_list)
+	for (auto &[sps_id, sps_data] : _sps_data_list)
 	{
 		data->Append(H26X_START_CODE_PREFIX, H26X_START_CODE_PREFIX_LEN);
 		offset += H26X_START_CODE_PREFIX_LEN;
@@ -701,7 +743,7 @@ std::tuple<std::shared_ptr<ov::Data>, FragmentationHeader> HEVCDecoderConfigurat
 		offset += sps_data->GetLength();
 	}
 
-	for (auto &pps_data : _pps_data_list)
+	for (auto &[pps_id, pps_data] : _pps_data_list)
 	{
 		data->Append(H26X_START_CODE_PREFIX, H26X_START_CODE_PREFIX_LEN);
 		offset += H26X_START_CODE_PREFIX_LEN;

@@ -90,6 +90,10 @@ public:
 	// Get NAL units by NAL unit type
 	std::vector<std::shared_ptr<ov::Data>> GetNalUnits(H265NALUnitType nal_type);
 
+	// Get parsed SPS/PPS by id (used e.g. by the slice header parser for CENC)
+	std::shared_ptr<const H265SPS> GetSPS(int sps_id) const;
+	std::shared_ptr<const H265PPS> GetPPS(int pps_id) const;
+
 	// Helpers
 	int32_t GetWidth();
 	int32_t GetHeight();
@@ -129,18 +133,18 @@ private:
 	// NAL unit type -> NAL unit vector
 	std::map<uint8_t, std::vector<std::shared_ptr<ov::Data>>> _nal_units;
 
-	// Extra data
-	std::vector<std::shared_ptr<ov::Data>>	_vps_data_list;
-	// vps_id, vps
-	std::map<uint8_t, H265VPS> _vps_map;
+	// Raw NAL units and their parsed form, keyed by parameter set id.
+	std::map<uint8_t, std::shared_ptr<ov::Data>> _vps_data_list;
+	std::map<uint8_t, std::shared_ptr<H265VPS>> _vps_map;
 
-	std::vector<std::shared_ptr<ov::Data>>	_sps_data_list;
-	// sps_id, sps
-	std::map<uint8_t, H265SPS> _sps_map;
+	std::map<uint8_t, std::shared_ptr<ov::Data>> _sps_data_list;
+	std::map<uint8_t, std::shared_ptr<H265SPS>> _sps_map;
 
-	std::vector<std::shared_ptr<ov::Data>>	_pps_data_list;
-	// pps_id, pps
-	std::map<uint8_t, H265PPS> _pps_map;
+	std::map<uint8_t, std::shared_ptr<ov::Data>> _pps_data_list;
+	std::map<uint8_t, std::shared_ptr<H265PPS>> _pps_map;
+
+	// Replaces _nal_units[nal_type] with the id-ordered contents of a keyed data list.
+	void RebuildNalUnitArray(H265NALUnitType nal_type, const std::map<uint8_t, std::shared_ptr<ov::Data>> &data_list);
 
 	H265SPS _h265_sps;
 	std::shared_ptr<ov::Data> _vps_sps_pps_annexb_data = nullptr;

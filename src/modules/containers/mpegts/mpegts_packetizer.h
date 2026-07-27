@@ -48,6 +48,11 @@ namespace mpegts
 
         bool AddTrack(const std::shared_ptr<const MediaTrack> &media_track);
 
+        // Replace an existing track with a new configuration version at runtime.
+        // The PMT version_number is bumped and the PSI re-broadcast only when the
+        // elementary stream_type (codec) changes; a same-codec change leaves it as is.
+        bool UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track);
+
         bool Start();
         bool IsStarted() const;
         bool Stop();

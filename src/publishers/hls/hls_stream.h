@@ -74,7 +74,12 @@ public:
 private:
 	bool Start() override;
 	bool Stop() override;
-	bool IsSupportedCodec(cmn::MediaCodecId codec_id) const; 
+	bool IsSupportedCodec(cmn::MediaCodecId codec_id) const;
+
+	// Runtime track configuration change (mirrors the LLHLS publisher)
+	void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track) override;
+	void UpdateMediaPlaylistTrackInfo(int32_t track_id, const std::shared_ptr<const MediaTrack> &new_track);
+	void SetRenditionsExcludedByTrack(int32_t track_id, bool excluded);
 
 	bool CreateDefaultPlaylist();
 	bool CreatePackagers();

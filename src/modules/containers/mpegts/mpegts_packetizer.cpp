@@ -78,6 +78,82 @@ namespace mpegts
         return true;
     }
 
+    bool Packetizer::UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track)
+    {
+        if (media_track == nullptr)
+        {
+            return false;
+        }
+
+        if (media_track->GetMediaType() == cmn::MediaType::Audio || media_track->GetMediaType() == cmn::MediaType::Video)
+        {
+            if (GetElementaryStreamTypeByCodecId(media_track->GetCodecId()) == WellKnownStreamTypes::None)
+            {
+                logte("%s codec is not supported for a runtime track change", cmn::GetCodecIdString(media_track->GetCodecId()));
+                return false;
+            }
+        }
+
+        if (IsStarted() == false)
+        {
+            // Not started yet; the track is included when Start() builds the PSI. An
+            // already-added track must be replaced in place because AddTrack() uses
+            // emplace() and would silently keep the old one.
+            auto existing = _media_tracks.find(media_track->GetId());
+            if (existing != _media_tracks.end())
+            {
+                existing->second = media_track;
+                if (media_track->GetMediaType() == cmn::MediaType::Video)
+                {
+                    _first_video_frame_received = false;
+                }
+                return true;
+            }
+            return AddTrack(media_track);
+        }
+
+        auto it = _media_tracks.find(media_track->GetId());
+        if (it == _media_tracks.end())
+        {
+            // Adding a new track at runtime is not supported
+            logtw("Track(%u) is not part of this packetizer, cannot update", media_track->GetId());
+            return false;
+        }
+
+        auto old_track = it->second;
+
+        // Replace the track. The elementary PID stays stable through _pids.
+        it->second = media_track;
+
+        if (media_track->GetMediaType() == cmn::MediaType::Video)
+        {
+            // A fresh key frame is required after any encoding-parameter change
+            _first_video_frame_received = false;
+        }
+
+        // The PMT only carries the elementary stream_type and PID; SPS/PPS, resolution
+        // and bitrate all travel in-band in the PES. A same-codec change leaves the PMT
+        // byte-identical, so the version is bumped and the PSI re-broadcast only when the
+        // stream_type actually changes.
+        auto old_stream_type = GetElementaryStreamTypeByCodecId(old_track->GetCodecId());
+        auto new_stream_type = GetElementaryStreamTypeByCodecId(media_track->GetCodecId());
+        if (old_stream_type != new_stream_type)
+        {
+            _pmt._version_number = (_pmt._version_number + 1) & 0x1F;
+
+            _pmt_packet = BuildPmtPacket();
+            if (_pmt_packet == nullptr)
+            {
+                logte("Failed to rebuild PMT for a runtime track change");
+                return false;
+            }
+
+            BroadcastPsi();
+        }
+
+        return true;
+    }
+
     std::shared_ptr<const MediaTrack> Packetizer::GetMediaTrack(uint32_t track_id) const
     {
         auto it = _media_tracks.find(track_id);
@@ -263,10 +339,16 @@ namespace mpegts
     std::shared_ptr<mpegts::Packet> Packetizer::BuildPmtPacket()
     {
 		_pmt._table_id_extension = PROGRAM_NUMBER;
-		_pmt._version_number = 0;
 		_pmt._current_next_indicator = true;
 		_pmt._section_number = 0;
 		_pmt._last_section_number = 0;
+
+		// Reset per-build fields so the PMT can be rebuilt on a runtime track change.
+		// _version_number is preserved (bumped by UpdateTrack, 0 on the initial build).
+		_pmt._pcr_pid = 0x1FFF;
+		_pmt._program_info_length = 0;
+		_pmt._program_descriptors.clear();
+		_pmt._es_info_list.clear();
 
 		auto program_info_descriptor = BuildID3MetadataPointerDescriptor();
 		auto program_info_descriptor_data = program_info_descriptor->Build();

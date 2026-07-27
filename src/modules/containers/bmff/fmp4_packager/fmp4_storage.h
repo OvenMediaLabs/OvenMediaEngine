@@ -72,12 +72,27 @@ namespace bmff
 		// without a configuration change (another track of the stream changed)
 		void CutSegmentForDiscontinuity();
 
+		// Start a new content version for a DRM key rotation, so the segments encrypted
+		// with the new key are addressed separately from the old key. Called when a new
+		// segment is about to start: no segment is cut, no discontinuity is marked, and
+		// the segment duration pacing is untouched, because the content is unchanged.
+		void StartNewContentVersionForKeyRotation();
+
 		uint64_t GetMaxPartialDurationMs() const override;
 		uint64_t GetMinPartialDurationMs() const override;
 
 		ov::String GetContainerExtension() const override { return "m4s"; }
 
 		double GetTargetSegmentDuration() const;
+
+		// Monotonic identifier stamped on initialization sections and segments. Both a
+		// track configuration change and a DRM key rotation advance it, because each
+		// produces a new initialization section that must be addressed separately.
+		// Non-decreasing along segment numbers. Media-thread only.
+		uint32_t GetContentVersion() const
+		{
+			return _content_version;
+		}
 
 	private:
 		std::shared_ptr<FMP4Segment> GetSegmentInternal(int64_t segment_number) const;
@@ -93,8 +108,13 @@ namespace bmff
 		// Flag the pre-created empty segment as the start of a new discontinuity domain
 		void MarkPendingSegmentDiscontinuity();
 
+		// Re-create the pre-created empty segment on the current track and content
+		// version, so content of a new version never lands in a segment stamped with the
+		// previous one
+		void RebuildPendingSegmentOnCurrentTrack();
+
 		void DropUnreferencedInitializationSections();
-		
+
 
 		// For DVR
 		class DvrInfo
@@ -224,6 +244,11 @@ namespace bmff
 		// The first stored version, served for the version-less legacy URL
 		uint32_t _initial_track_version = 0;
 		mutable std::shared_mutex _initialization_sections_lock;
+
+		// Content version, advanced on each track configuration change and DRM key
+		// rotation. Seeded from the track's initial version so the version-less legacy
+		// URL keeps mapping to the first section. Media-thread only.
+		uint32_t _content_version = 0;
 
 		// segment number : segment
 		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;

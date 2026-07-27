@@ -46,6 +46,22 @@ namespace
 
 	const ov::String kInitialMapUri = "init_1_video_key_llhls.m4s";
 	const ov::String kSecondMapUri = "init_1_video_key_v2_llhls.m4s";
+
+	// A cbcs Widevine key. Distinct key_ids produce distinct EXT-X-KEY tags (the
+	// KEYID attribute), the way a DRM key rotation registers each content version.
+	bmff::CencProperty MakeCencProperty(const char *key_id_hex)
+	{
+		bmff::CencProperty cenc_property;
+		cenc_property.scheme = bmff::CencProtectScheme::Cbcs;
+		cenc_property.key_id = ov::Hex::Decode(key_id_hex);
+		cenc_property.key = ov::Hex::Decode("16cf4232a86364b519e1982a27d90087");
+		cenc_property.iv = ov::Hex::Decode("572547f914e34dc68ba9ba9ef91d4c4a");
+		cenc_property.pssh_box_list.push_back(bmff::PsshBox("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed", {cenc_property.key_id}, nullptr));
+		return cenc_property;
+	}
+
+	const char *kKeyIdA = "572543f964e34dc68ba9ba9ef91d4c4a";
+	const char *kKeyIdB = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 } // namespace
 
 TEST(LLHlsChunklist, NoDiscontinuityTagsByDefault)
@@ -68,8 +84,10 @@ TEST(LLHlsChunklist, TrackVersionChangeInsertsTagAndNewMap)
 	AppendSegment(chunklist, 0, 1, kInitialMapUri);
 	AppendSegment(chunklist, 1, 1, kInitialMapUri);
 
-	// The next segment was packaged against a new track configuration
-	AppendSegment(chunklist, 2, 2, kSecondMapUri);
+	// The next segment was packaged against a new track configuration. A real track
+	// change flags the boundary segment as a discontinuity point (the storage marks
+	// it), which is what the chunklist turns into an EXT-X-DISCONTINUITY.
+	AppendSegment(chunklist, 2, 2, kSecondMapUri, true);
 
 	auto playlist = chunklist->ToString("", false, false, false);
 
@@ -95,7 +113,7 @@ TEST(LLHlsChunklist, DiscontinuitySequenceCountsRemovedTags)
 	auto chunklist = CreateChunklist(CreateVideoTrack());
 
 	AppendSegment(chunklist, 0, 1, kInitialMapUri);
-	AppendSegment(chunklist, 1, 2, kSecondMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
 	AppendSegment(chunklist, 2, 2, kSecondMapUri);
 	AppendSegment(chunklist, 3, 2, kSecondMapUri);
 
@@ -229,4 +247,199 @@ TEST(LLHlsChunklist, VersionChangeBeforeFirstSegmentHasNoTag)
 	EXPECT_EQ(playlist.IndexOf("#EXT-X-DISCONTINUITY"), -1);
 	EXPECT_NE(playlist.IndexOf("#EXT-X-MAP:URI=\"init_1_video_key_v2_llhls.m4s\""), -1);
 	EXPECT_EQ(playlist.IndexOf("#EXT-X-MAP:URI=\"init_1_video_key_llhls.m4s\""), -1);
+}
+
+TEST(LLHlsChunklist, SingleKeyEmittedOnce)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 1, kInitialMapUri);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	// Exactly one EXT-X-KEY for the single content version
+	auto first_key = playlist.IndexOf("#EXT-X-KEY:");
+	EXPECT_NE(first_key, -1);
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY:", first_key + 1), -1);
+}
+
+TEST(LLHlsChunklist, KeyRotationEmitsNewKeyWithoutDiscontinuity)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	chunklist->EnableCenc(2, MakeCencProperty(kKeyIdB));
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 1, kInitialMapUri);
+
+	// A key rotation: a new content version and map, but no discontinuity flag
+	AppendSegment(chunklist, 2, 2, kSecondMapUri);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	// A key rotation is seamless: no discontinuity tag
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-DISCONTINUITY"), -1);
+
+	// The new initialization section still switches in
+	EXPECT_NE(playlist.IndexOf("#EXT-X-MAP:URI=\"init_1_video_key_v2_llhls.m4s\""), -1);
+
+	// Both keys are advertised, the new one after the old one
+	auto key_a = ov::String::FormatString("KEYID=0x%s", ov::String(kKeyIdA).UpperCaseString().CStr());
+	auto key_b = ov::String::FormatString("KEYID=0x%s", ov::String(kKeyIdB).UpperCaseString().CStr());
+	auto key_a_index = playlist.IndexOf(key_a.CStr());
+	auto key_b_index = playlist.IndexOf(key_b.CStr());
+	EXPECT_NE(key_a_index, -1);
+	EXPECT_NE(key_b_index, -1);
+	EXPECT_LT(key_a_index, key_b_index);
+
+	// The new key precedes the segment it applies to
+	EXPECT_LT(key_b_index, playlist.IndexOf("seg_1_2_video_key_llhls.m4s"));
+}
+
+TEST(LLHlsChunklist, TrackChangeKeepingTheKeyDoesNotRepeatIt)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	// A scheduled channel changes tracks often; those versions keep the current key
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	chunklist->EnableCenc(2, MakeCencProperty(kKeyIdA));
+	// Then a rotation brings a new key
+	chunklist->EnableCenc(3, MakeCencProperty(kKeyIdB));
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	// Track change: new version and map, discontinuity, same key
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+	// Key rotation: new version and map, no discontinuity, new key
+	AppendSegment(chunklist, 2, 3, "init_1_video_key_v3_llhls.m4s");
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	auto key_a = ov::String::FormatString("KEYID=0x%s", ov::String(kKeyIdA).UpperCaseString().CStr());
+	auto key_b = ov::String::FormatString("KEYID=0x%s", ov::String(kKeyIdB).UpperCaseString().CStr());
+
+	// The unchanged key is advertised once, not repeated for the track change
+	auto first_key_a = playlist.IndexOf(key_a.CStr());
+	EXPECT_NE(first_key_a, -1);
+	EXPECT_EQ(playlist.IndexOf(key_a.CStr(), first_key_a + 1), -1);
+
+	// The rotated key appears before the segment it applies to
+	auto key_b_index = playlist.IndexOf(key_b.CStr());
+	EXPECT_NE(key_b_index, -1);
+	EXPECT_LT(first_key_a, key_b_index);
+	EXPECT_LT(key_b_index, playlist.IndexOf("seg_1_2_video_key_llhls.m4s"));
+
+	// Only the track change carries a discontinuity, the rotation does not
+	auto discontinuity_index = playlist.IndexOf("#EXT-X-DISCONTINUITY\n");
+	EXPECT_NE(discontinuity_index, -1);
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-DISCONTINUITY\n", discontinuity_index + 1), -1);
+	EXPECT_LT(discontinuity_index, key_b_index);
+}
+
+TEST(LLHlsChunklist, DumpedOutputKeepsEveryVersionKey)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+	// Dumped output lists every segment ever produced
+	chunklist->SaveOldSegmentInfo(true);
+
+	// More versions than any fixed retention would keep. A version whose key was dropped
+	// while still listed would inherit the previous EXT-X-KEY and fail to decrypt.
+	constexpr uint32_t kVersions = 70;
+	for (uint32_t version = 1; version <= kVersions; version++)
+	{
+		auto key_id = ov::String::FormatString("%032x", version);
+		chunklist->EnableCenc(version, MakeCencProperty(key_id.CStr()));
+		AppendSegment(chunklist, version - 1, version, ov::String::FormatString("init_1_video_key_v%u_llhls.m4s", version));
+	}
+
+	// The live window slides past the early segments; they stay listed in the dumped view
+	for (uint32_t sequence = 0; sequence + 10 < kVersions; sequence++)
+	{
+		chunklist->RemoveSegmentInfo(sequence);
+	}
+
+	auto playlist = chunklist->ToString("", false, false, false, true, 0);
+
+	for (uint32_t version : {static_cast<uint32_t>(1), kVersions / 2, kVersions})
+	{
+		auto key_id = ov::String::FormatString("%032x", version).UpperCaseString();
+		auto expected = ov::String::FormatString("KEYID=0x%s", key_id.CStr());
+		EXPECT_NE(playlist.IndexOf(expected.CStr()), -1) << "missing key of version " << version;
+	}
+}
+
+TEST(LLHlsChunklist, ClearVersionEndsTheKeyScope)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	// The track changed to a codec CENC cannot encrypt, so this version is produced in
+	// the clear. Its segments must not stay covered by the preceding key.
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	auto key_id = ov::String::FormatString("KEYID=0x%s", ov::String(kKeyIdA).UpperCaseString().CStr());
+	auto key_index = playlist.IndexOf(key_id.CStr());
+	auto none_index = playlist.IndexOf("#EXT-X-KEY:METHOD=NONE");
+
+	EXPECT_NE(key_index, -1);
+	EXPECT_NE(none_index, -1);
+	EXPECT_LT(key_index, none_index);
+
+	// The scope ends before the clear segment
+	EXPECT_LT(none_index, playlist.IndexOf("seg_1_1_video_key_llhls.m4s"));
+}
+
+TEST(LLHlsChunklist, ClearOnlyPlaylistHasNoKeyTag)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	// A stream without DRM registers its versions with a scheme of None. There is no key
+	// scope to end, so the playlist carries no key tag at all.
+	chunklist->EnableCenc(1, bmff::CencProperty());
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY"), -1);
+}
+
+TEST(LLHlsChunklist, WindowStartingOnClearVersionHasNoKeyTag)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 2, kSecondMapUri, true);
+
+	// The protected segment leaves the window, so the key it belonged to is no longer
+	// advertised and there is nothing left to end
+	chunklist->RemoveSegmentInfo(0);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY"), -1);
+}
+
+TEST(LLHlsChunklist, NoKeyTagWhenCencDisabled)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 1, kInitialMapUri);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	// No key registered, so the playlist carries no EXT-X-KEY
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-KEY:"), -1);
 }

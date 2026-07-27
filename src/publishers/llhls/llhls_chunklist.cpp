@@ -41,9 +41,30 @@ void LLHlsChunklist::SetRenditions(const std::map<int32_t, std::shared_ptr<LLHls
 	_renditions = renditions;
 }
 
-void LLHlsChunklist::EnableCenc(const bmff::CencProperty &cenc_property)
+void LLHlsChunklist::EnableCenc(uint32_t content_version, const bmff::CencProperty &cenc_property)
 {
-	_cenc_property = cenc_property;
+	std::lock_guard<std::shared_mutex> lock(_segments_guard);
+	_cenc_properties[content_version] = cenc_property;
+
+	DropUnreferencedCencProperties();
+}
+
+// Called with _segments_guard held
+void LLHlsChunklist::DropUnreferencedCencProperties()
+{
+	// A listed segment whose key is gone would inherit the previous EXT-X-KEY and fail to
+	// decrypt, so a version's key may only be dropped once no segment can list it.
+	// Dumped output keeps every segment ever produced, so every key stays referenced.
+	if (_keep_old_segments == true || _segments.empty() == true)
+	{
+		return;
+	}
+
+	// Versions are non-decreasing along segment numbers, so anything below the oldest
+	// retained segment's version can no longer appear in any view of the playlist
+	auto min_referenced_version = _segments.begin()->second->GetTrackVersion();
+
+	_cenc_properties.erase(_cenc_properties.begin(), _cenc_properties.lower_bound(min_referenced_version));
 }
 
 void LLHlsChunklist::Release()
@@ -238,14 +259,22 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 				_version_codecs[info.GetTrackVersion()] = info.GetCodecsParameter();
 			}
 
+			// Only an explicitly flagged boundary (a track configuration change) is a
+			// discontinuity. A DRM key rotation also starts a new version and map but is
+			// seamless, so the chunklist must not infer a discontinuity from the version
+			// change alone.
+			if (info.IsDiscontinuity() == true)
+			{
+				segment->SetDiscontinuity();
+				_total_discontinuity_count++;
+			}
+
+			// A new version (a track change or a key rotation) makes the hinted map
+			// inline from this partial on
 			if (info.IsDiscontinuity() == true ||
 				(_last_started_track_version.has_value() == true &&
 				 _last_started_track_version.value() != info.GetTrackVersion()))
 			{
-				segment->SetDiscontinuity();
-				_total_discontinuity_count++;
-
-				// The hinted map is inline from this partial on
 				_upcoming_map_uri.Clear();
 			}
 
@@ -372,9 +401,23 @@ bool LLHlsChunklist::GetLastSequenceNumber(int64_t &msn, int64_t &psn) const
 	return true;
 }
 
-ov::String LLHlsChunklist::MakeExtXKey() const
+ov::String LLHlsChunklist::MakeExtXKey(uint32_t content_version) const
 {
-	return pub::llhls::MakeCencKeyTag(_cenc_property, pub::llhls::PlaylistType::Media);
+	auto it = _cenc_properties.find(content_version);
+	if (it == _cenc_properties.end())
+	{
+		return "";
+	}
+
+	// A version produced in the clear (a codec CENC cannot encrypt) has to end the scope of
+	// the preceding key, otherwise its segments are still covered by it and players try to
+	// decrypt them. METHOD=NONE carries no other attribute.
+	if (it->second.scheme == bmff::CencProtectScheme::None)
+	{
+		return "#EXT-X-KEY:METHOD=NONE";
+	}
+
+	return pub::llhls::MakeCencKeyTag(it->second, pub::llhls::PlaylistType::Media);
 }
 
 ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod, uint32_t vod_start_segment_number) const
@@ -522,6 +565,8 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 	// The map of the first listed segment leads the playlist, following segments
 	// declare a new EXT-X-MAP when theirs differs
 	ov::String current_map_uri = _map_uri;
+	uint32_t current_content_version = 0;
+	bool has_current_content_version = false;
 	{
 		std::shared_ptr<SegmentInfo> first_listed_segment = first_segment;
 		if (vod == true)
@@ -538,9 +583,15 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			}
 		}
 
-		if (first_listed_segment != nullptr && first_listed_segment->GetMapUri().IsEmpty() == false)
+		if (first_listed_segment != nullptr)
 		{
-			current_map_uri = first_listed_segment->GetMapUri();
+			if (first_listed_segment->GetMapUri().IsEmpty() == false)
+			{
+				current_map_uri = first_listed_segment->GetMapUri();
+			}
+
+			current_content_version = first_listed_segment->GetTrackVersion();
+			has_current_content_version = true;
 		}
 	}
 
@@ -554,10 +605,32 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 		playlist.AppendFormat("\"\n");
 	}
 
-	// CENC
-	if (_cenc_property.scheme != bmff::CencProtectScheme::None)
+	// The EXT-X-KEY in effect. Re-emitted only when the key changes (a rotation), so
+	// a track change that keeps the same key does not repeat it.
+	ov::String current_ext_x_key;
+	auto emit_ext_x_key_if_changed = [&](uint32_t content_version) {
+		auto ext_x_key = MakeExtXKey(content_version);
+		if (ext_x_key.IsEmpty() == true || ext_x_key == current_ext_x_key)
+		{
+			return;
+		}
+
+		// METHOD=NONE ends the scope of the key in effect, so it is only meaningful once
+		// a key has been advertised. Without this an unprotected stream, or a window that
+		// no longer lists any protected segment, would carry a tag that ends nothing.
+		if (current_ext_x_key.IsEmpty() == true && ext_x_key.HasPrefix("#EXT-X-KEY:METHOD=NONE") == true)
+		{
+			return;
+		}
+
+		playlist.AppendFormat("%s\n", ext_x_key.CStr());
+		current_ext_x_key = ext_x_key;
+	};
+
+	// CENC key for the leading segment's content version
+	if (has_current_content_version == true)
 	{
-		playlist.AppendFormat("%s\n", MakeExtXKey().CStr());
+		emit_ext_x_key_if_changed(current_content_version);
 	}
 
 	if (vod == true)
@@ -583,6 +656,10 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 					playlist.AppendFormat("?%s", query_string.CStr());
 				}
 				playlist.AppendFormat("\"\n");
+
+				// A new map means a new content version; its key follows the map
+				current_content_version = segment->GetTrackVersion();
+				emit_ext_x_key_if_changed(current_content_version);
 			}
 
 			std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};
@@ -632,6 +709,10 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 				playlist.AppendFormat("?%s", query_string.CStr());
 			}
 			playlist.AppendFormat("\"\n");
+
+			// A new map means a new content version; its key follows the map
+			current_content_version = segment->GetTrackVersion();
+			emit_ext_x_key_if_changed(current_content_version);
 		}
 
 		std::chrono::system_clock::time_point tp{std::chrono::milliseconds{segment->GetStartTime()}};

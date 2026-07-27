@@ -268,17 +268,21 @@ To assign labels to audio signals in the SRT Provider, configure the `<AudioMap>
 
 ## DRM
 
-OvenMediaEngine supports Widevine and Fairplay in LLHLS with simple setup since version 0.16.0.
+OvenMediaEngine encrypts LLHLS streams with Common Encryption (CENC) and signals the keys in the playlists, so players can obtain a license and decrypt the content. Widevine, FairPlay and PlayReady are supported.
+
+Encryption keys are described in a separate DRM info file, which lets you apply different keys to different streams and change them without editing `Server.xml`.
 
 
 :::warning
 
-Currently, DRM is only supported for H.264 and AAC codecs. Support for H.265 will be added soon.
+Only H.264 video and AAC audio are encrypted. A track of any other codec is delivered without encryption, so a stream that has to be fully protected must be transcoded to H.264 and AAC.
 
 :::
 
 
-To include DRM information in your LLHLS Publisher configuration, follow these steps. You can set the `<InfoFile>` path as either a relative path, starting from the directory where `Server.xml` is located, or as an absolute path.
+### Enabling DRM
+
+Turn DRM on in the LLHLS publisher and point it at your DRM info file. `<InfoFile>` takes a path relative to the directory where `Server.xml` is located, or an absolute path.
 
 ```xml
 <!-- /Server/VirtualHosts/VirtualHost/Applications/Application -->
@@ -289,7 +293,7 @@ To include DRM information in your LLHLS Publisher configuration, follow these s
         <SegmentDuration>6</SegmentDuration>
         <SegmentCount>10</SegmentCount>
         <DRM>
-            <Enable>false</Enable>
+            <Enable>true</Enable>
             <InfoFile>path/to/file.xml</InfoFile>
         </DRM>
         <CrossDomains>
@@ -299,9 +303,11 @@ To include DRM information in your LLHLS Publisher configuration, follow these s
 </Publishers>
 ```
 
-The separation of the `<DRM>/<InfoFile>` is designed to allow dynamic changes to the file. Any modifications to the `<DRM>/<InfoFile>` will take effect when a new stream is generated.
+A stream reads the DRM info file when it starts.
 
-Here's how you should structure your DRM Info File:
+### DRM Info File
+
+The file holds one or more `<DRM>` entries. Each entry states which streams it applies to and which key protects them. A stream uses the first entry it matches, so put more specific entries before broader ones.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -310,66 +316,62 @@ Here's how you should structure your DRM Info File:
         <Name>MultiDRM</Name>
         <VirtualHostName>default</VirtualHostName>
         <ApplicationName>app</ApplicationName>
-        <StreamName>stream*</StreamName> <!-- Can be a wildcard regular expression -->
-        <CencProtectScheme>cbcs</CencProtectScheme> <!-- Currently supports cbcs only -->
-        <KeyId>572543f964e34dc68ba9ba9ef91d4xxx</KeyId> <!-- Hexadecimal -->
-        <Key>16cf4232a86364b519e1982a27d90xxx</Key> <!-- Hexadecimal -->
-        <Iv>572547f914e34dc68ba9ba9ef91d4xxx</Iv> <!-- Hexadecimal -->
-        <Pssh>0000003f7073736800000000edef8ba979d64acea3c827dcd51d21ed0000001f1210572547f964e34dc68ba9ba9ef91d4c4a1a05657a64726d48f3c6899xxx</Pssh> <!-- Hexadecimal, for Widevine -->
-        <!-- Add Pssh for FairPlay if needed -->
-        <FairPlayKeyUrl>skd://fiarplay_key_url</FairPlayKeyUrl> <!-- FairPlay only -->
-    </DRM>
-    <DRM>
-        <Name>MultiDRM2</Name>
-        <VirtualHostName>default</VirtualHostName>
-        <ApplicationName>app2</ApplicationName>
-        <StreamName>stream*</StreamName> <!-- Can be a wildcard regular expression -->
-        ...........
+        <StreamName>stream*</StreamName>
+
+        <CencProtectScheme>cbcs</CencProtectScheme>
+        <KeyId>572543f964e34dc68ba9ba9ef91d4c4a</KeyId>
+        <Key>16cf4232a86364b519e1982a27d90087</Key>
+        <Iv>572547f914e34dc68ba9ba9ef91d4c4a</Iv>
+        <Pssh>0000003f7073736800000000edef8ba979d64acea3c827dcd51d21ed0000001f1210572547f964e34dc68ba9ba9ef91d4c4a1a05657a64726d48f3c6899b06</Pssh>
+        <FairPlayKeyUrl>skd://fairplay_key_url</FairPlayKeyUrl>
     </DRM>
 </DRMInfo>
 ```
 
-Multiple `<DRM>` can be set. Specify the `<VirtualHostName>`, `<ApplicationName>`, and `<StreamName>` where DRM should be applied. `<StreamName>` supports wildcard regular expressions.
+**Stream matching**
 
-Currently, `<CencProtectScheme>` only supports `cbcs` since FairPlay also supports only `cbcs`. There may be limited prospects for adding other schemes in the near future.
+| Element | Description |
+| --- | --- |
+| `<Name>` | A label for the entry. It is only used to tell entries apart. |
+| `<VirtualHostName>` | Virtual host the entry applies to. |
+| `<ApplicationName>` | Application the entry applies to. |
+| `<StreamName>` | Stream the entry applies to. Wildcards are supported, so `stream*` covers every stream whose name starts with `stream`. |
 
-`<KeyId>`, `<Key>`, `<Iv>` and `<Pssh>` values are essential and should be provided by your DRM provider. `<FairPlayKeyUrl>` is only need for FairPlay and if you want to enable FairPlay to your stream, it is required. It will be also provided by your DRM provider.
+**Key material**
 
-OvenPlayer now includes DRM-related options. Enable DRM and input the License URL. Your content is now securely protected.
+Your DRM provider supplies these values.
+
+| Element | Description |
+| --- | --- |
+| `<CencProtectScheme>` | `cenc` or `cbcs`. See [Protection Schemes](#protection-schemes). |
+| `<KeyId>` | Key ID, 16 bytes in hexadecimal. |
+| `<Key>` | Content key, 16 bytes in hexadecimal. |
+| `<Iv>` | Initialization vector, 16 bytes in hexadecimal. |
+| `<Pssh>` | A protection system header in hexadecimal. Add one `<Pssh>` per DRM system you want to offer. |
+| `<FairPlayKeyUrl>` | Key URI for FairPlay. Required to offer FairPlay. |
+| `<Keyformat>` | FairPlay key format. Leave it out for FairPlay Streaming, or set it to `identity` to have the URI return the key itself. |
+
+Which DRM systems a stream offers follows from what you provide: each `<Pssh>` carries in its SystemID the system it belongs to, and `<FairPlayKeyUrl>` enables FairPlay. A PlayReady `<Pssh>` uses the SystemID `9a04f079-9840-4286-ab92-e65be0885f95` and has to carry the PlayReady Object (PRO) in its Data field.
+
+### Protection Schemes
+
+`<CencProtectScheme>` selects how the media is encrypted.
+
+| Scheme | Description |
+| --- | --- |
+| `cbcs` | AES-CBC with pattern encryption. Required for FairPlay, and supported by Widevine and PlayReady. |
+| `cenc` | AES-CTR full sample encryption. Supported by Widevine and PlayReady. |
+
+Use `cbcs` when a single stream has to serve FairPlay together with other systems.
+
+### Playback
+
+OvenPlayer provides DRM options. Enable DRM and enter the license URL of your DRM provider.
 
 ![](../images/llhls-drm-scheduled-channel.png)
 
-### Pallycon DRM
+### DRM Provider Integration
 
+The Open Source edition implements the standard side of DRM in full. It encrypts with Common Encryption and signals the keys for Widevine, FairPlay and PlayReady, which is everything a player needs to acquire a license and decrypt. A stream can therefore be served with the license server of a commercial DRM provider: you enter the key material the provider issues to you, as shown above.
 
-:::danger
-
-Pallycon is no longer supported by the Open Source project and is only supported in the [Enterprise](https://ovenmedialabs.com/docs/ome-enterprise/pre-built-package-installation/getting-started/getting-started-with-linux) version. For more information, see this [article](https://github.com/OvenMediaLabs/OvenMediaEngine/discussions/1634).
-
-:::
-
-
-OvenMediaEngine integrates with [Pallycon](https://pallycon.com/), allowing you to more easily apply DRM to LLHLS streams.
-
-To integrate Pallycon, configure the `DRMInfo.xml` file as follows.
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<DRMInfo>
-    <DRM>
-        <Name>Pallycon</Name>
-        <VirtualHostName>default</VirtualHostName>
-        <ApplicationName>app</ApplicationName>
-        <StreamName>stream*</StreamName> <!-- Can be wildcard regular expression -->
-
-        <DRMProvider>Pallycon</DRMProvider> <!-- Manual(default), Pallycon -->
-        <DRMSystem>Widevine,Fairplay</DRMSystem> <!-- Widevine, Fairplay -->
-        <CencProtectScheme>cbcs</CencProtectScheme> <!-- cbcs, cenc -->
-        <ContentId>${VHostName}_${AppName}_${StreamName}</ContentId>
-        <KMSUrl>https://kms.pallycon.com/v2/cpix/pallycon/getKey/</KMSUrl>
-        <KMSToken>xxxx</KMSToken>
-    </DRM>
-</DRMInfo>
-```
-
-Set `<DRMProvider>` to `Pallycon`. Then, set the necessary information as shown in the example. `<KMSUrl>` and `<KMSToken>` are values provided by the Pallycon console. `<ContentId>` can be created using `${VHostName}`, `${AppName}`, and `${StreamName}` macros.
+Automating key issuance and application requires integrating with the key management service (KMS) of a DRM provider such as DoveRunner, which issues a key for each stream on request. Such an integration is specific to each provider, since the service, the credentials it issues and the details of its requests are the provider's own and are revised on their schedule, and it can only be exercised with a paid account at that provider. Keeping it working therefore takes those accounts and continuous testing against the live service, and it is provided in the [Enterprise](https://ovenmedia.com/docs/ome-enterprise/features/access-control-and-security/digital-rights-management-drm) edition.

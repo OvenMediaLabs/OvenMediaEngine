@@ -10,6 +10,8 @@
 #include "hls_media_playlist.h"
 #include "hls_private.h"
 
+#include <algorithm>
+
 #include <base/modules/data_format/cue_event/cue_event.h>
 
 HlsMediaPlaylist::HlsMediaPlaylist(const ov::String &id, const ov::String &playlist_file_name, const HlsMediaPlaylistConfig &config)
@@ -21,6 +23,8 @@ HlsMediaPlaylist::HlsMediaPlaylist(const ov::String &id, const ov::String &playl
 
 void HlsMediaPlaylist::AddMediaTrackInfo(const std::shared_ptr<const MediaTrack> &track)
 {
+	std::lock_guard<std::shared_mutex> lock(_tracks_mutex);
+
 	_media_tracks.emplace(track->GetId(), track);
 
 	if (_first_video_track == nullptr && track->GetMediaType() == cmn::MediaType::Video)
@@ -37,6 +41,44 @@ void HlsMediaPlaylist::AddMediaTrackInfo(const std::shared_ptr<const MediaTrack>
 	{
 		_subtitle_track = track;
 	}
+}
+
+void HlsMediaPlaylist::UpdateMediaTrackInfo(const std::shared_ptr<const MediaTrack> &track)
+{
+	std::lock_guard<std::shared_mutex> lock(_tracks_mutex);
+
+	auto it = _media_tracks.find(track->GetId());
+	if (it == _media_tracks.end())
+	{
+		return;
+	}
+	it->second = track;
+
+	// Refresh the representative track of each type so the master follows the change
+	if (_first_video_track != nullptr && _first_video_track->GetId() == track->GetId())
+	{
+		_first_video_track = track;
+	}
+	if (_first_audio_track != nullptr && _first_audio_track->GetId() == track->GetId())
+	{
+		_first_audio_track = track;
+	}
+	if (_subtitle_track != nullptr && _subtitle_track->GetId() == track->GetId())
+	{
+		_subtitle_track = track;
+	}
+}
+
+bool HlsMediaPlaylist::HasTrack(uint32_t track_id) const
+{
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
+	return _media_tracks.find(track_id) != _media_tracks.end();
+}
+
+std::shared_ptr<const MediaTrack> HlsMediaPlaylist::GetSubtitleTrack() const
+{
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
+	return _subtitle_track;
 }
 
 void HlsMediaPlaylist::SetEndList()
@@ -57,7 +99,22 @@ bool HlsMediaPlaylist::OnSegmentCreated(const std::shared_ptr<base::modules::Seg
 		logtd("Marker is found in the segment %" PRIu64 " (%zu)", segment->GetNumber(), segment->GetMarkers().size());
 	}
 
+	if (segment->IsDiscontinuityPoint() == true)
+	{
+		_total_discontinuity_count++;
+	}
+
 	_segments.emplace(segment->GetNumber(), segment);
+
+	// Keep the CODECS cache reflecting the retained segments: build it on the first
+	// segment and whenever a discontinuity changes the codec set. GetCodecsString then
+	// derives from the segments and never advertises a codec (e.g. from a just-updated
+	// track) that the retained segments do not yet contain. A normal segment repeats
+	// the codecs already covered, so it needs no rebuild.
+	if (segment->IsDiscontinuityPoint() == true || _codecs_parameter.IsEmpty() == true)
+	{
+		RebuildCodecsParameter();
+	}
 
 	return true;
 }
@@ -75,7 +132,32 @@ bool HlsMediaPlaylist::OnSegmentDeleted(const std::shared_ptr<base::modules::Seg
 		return false;
 	}
 
+	// A discontinuity that scrolls out entirely raises the base of the sequence
+	if (it->second->IsDiscontinuityPoint() == true)
+	{
+		_removed_discontinuity_count++;
+	}
+
+	uint32_t removed_version = it->second->GetTrackVersion();
 	_segments.erase(it);
+
+	// The codecs union can shrink only after the playlist spans more than one version.
+	// Segments leave oldest-first and versions are monotonic, so the union changes only
+	// when the removed (oldest) version keeps no segment behind.
+	if (_total_discontinuity_count > 0)
+	{
+		bool oldest_version_gone = true;
+		if (_segments.empty() == false)
+		{
+			auto oldest_segment = _segments.begin()->second;
+			oldest_version_gone = (oldest_segment->GetTrackVersion() != removed_version);
+		}
+
+		if (oldest_version_gone == true)
+		{
+			RebuildCodecsParameter();
+		}
+	}
 
 	return true;
 }
@@ -117,6 +199,23 @@ ov::String HlsMediaPlaylist::ToString(bool rewind) const
 
 	result += ov::String::FormatString("#EXT-X-MEDIA-SEQUENCE:%" PRIu64 "\n", first_segment->GetNumber());
 
+	// EXT-X-DISCONTINUITY-SEQUENCE counts the discontinuities that precede the first
+	// listed segment: those that scrolled out entirely plus those still retained but
+	// ahead of the playlist window. The per-segment EXT-X-DISCONTINUITY tags (emitted
+	// by MakeSegmentString) cover the rest.
+	if (_total_discontinuity_count > 0)
+	{
+		int64_t discontinuity_sequence = _removed_discontinuity_count;
+		for (auto it = _segments.begin(); it != _segments.end() && it->first < first_segment->GetNumber(); ++it)
+		{
+			if (it->second->IsDiscontinuityPoint() == true)
+			{
+				discontinuity_sequence++;
+			}
+		}
+		result += ov::String::FormatString("#EXT-X-DISCONTINUITY-SEQUENCE:%" PRId64 "\n", discontinuity_sequence);
+	}
+
 	for (auto it = _segments.find(first_segment->GetNumber()); it != _segments.end(); it++)
 	{
 		const auto &segment = it->second;
@@ -133,21 +232,25 @@ ov::String HlsMediaPlaylist::ToString(bool rewind) const
 
 bool HlsMediaPlaylist::HasVideo() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	return _first_video_track != nullptr;
 }
 
 bool HlsMediaPlaylist::HasAudio() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	return _first_audio_track != nullptr;
 }
 
 bool HlsMediaPlaylist::HasSubtitle() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	return _subtitle_track != nullptr;
 }
 
 uint32_t HlsMediaPlaylist::GetBitrates() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	uint32_t bitrates = 0;
 	for (const auto &track_it : _media_tracks)
 	{
@@ -160,6 +263,7 @@ uint32_t HlsMediaPlaylist::GetBitrates() const
 
 uint32_t HlsMediaPlaylist::GetAverageBitrate() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	uint32_t bitrates = 0;
 	for (const auto &track_it : _media_tracks)
 	{
@@ -174,6 +278,7 @@ uint32_t HlsMediaPlaylist::GetAverageBitrate() const
 
 bool HlsMediaPlaylist::GetResolution(uint32_t &width, uint32_t &height) const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	if (_first_video_track == nullptr)
 	{
 		return false;
@@ -188,18 +293,19 @@ bool HlsMediaPlaylist::GetResolution(uint32_t &width, uint32_t &height) const
 
 ov::String HlsMediaPlaylist::GetResolutionString() const
 {
-	uint32_t width = 0;
-	uint32_t height = 0;
-	if (GetResolution(width, height) == false)
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
+	if (_first_video_track == nullptr)
 	{
 		return "";
 	}
 
-	return ov::String::FormatString("%dx%d", width, height);
+	auto resolution = _first_video_track->GetResolution();
+	return ov::String::FormatString("%dx%d", resolution.width, resolution.height);
 }
 
 double HlsMediaPlaylist::GetFramerate() const
 {
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
 	if (_first_video_track == nullptr)
 	{
 		return 0.0;
@@ -208,10 +314,55 @@ double HlsMediaPlaylist::GetFramerate() const
 	return _first_video_track->GetFrameRate();
 }
 
+void HlsMediaPlaylist::RebuildCodecsParameter()
+{
+	// Union of the codecs of every retained segment, so CODECS covers a playlist
+	// window that spans a runtime codec change (RFC 8216 6.2.4). Distinct tokens are
+	// kept oldest-first. Rebuilt only on add/remove; readers use the cached value.
+	std::vector<ov::String> tokens;
+	for (const auto &segment_it : _segments)
+	{
+		auto codecs = segment_it.second->GetCodecsParameter();
+		if (codecs.IsEmpty() == true)
+		{
+			continue;
+		}
+
+		for (const auto &token : codecs.Split(","))
+		{
+			if (token.IsEmpty() == false && std::find(tokens.begin(), tokens.end(), token) == tokens.end())
+			{
+				tokens.push_back(token);
+			}
+		}
+	}
+
+	ov::String result;
+	for (size_t i = 0; i < tokens.size(); i++)
+	{
+		if (i > 0)
+		{
+			result += ",";
+		}
+		result += tokens[i];
+	}
+
+	_codecs_parameter = result;
+}
+
 ov::String HlsMediaPlaylist::GetCodecsString() const
 {
-	ov::String result;
+	{
+		std::shared_lock<std::shared_mutex> lock(_segments_mutex);
+		if (_codecs_parameter.IsEmpty() == false)
+		{
+			return _codecs_parameter;
+		}
+	}
 
+	// Fallback before any segment carries codecs (e.g. the very first playlist)
+	std::shared_lock<std::shared_mutex> lock(_tracks_mutex);
+	ov::String result;
 	if (_first_video_track != nullptr)
 	{
 		result += _first_video_track->GetCodecsParameter();
@@ -233,6 +384,10 @@ ov::String HlsMediaPlaylist::GetCodecsString() const
 ov::String HlsMediaPlaylist::MakeSegmentString(const std::shared_ptr<base::modules::Segment> &segment) const
 {
 	ov::String result;
+	if (segment->IsDiscontinuityPoint() == true)
+	{
+		result += "#EXT-X-DISCONTINUITY\n";
+	}
 	auto start_time = static_cast<int64_t>(((segment->GetStartTimestamp() * segment->GetTimebaseSeconds()) * 1000.0) + _wallclock_offset_ms);
 	std::chrono::system_clock::time_point tp{std::chrono::milliseconds{start_time}};
 	result += ov::String::FormatString("#EXT-X-PROGRAM-DATE-TIME:%s\n", ov::Converter::ToISO8601String(tp).CStr());

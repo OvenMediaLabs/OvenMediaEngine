@@ -20,6 +20,7 @@ public:
 		UpdateSubtitleLanguage, // Detected Subtitle Language
 		// Data format (json)
 		// { "trackLabel": "Origin", "language": "en" }
+		RotateDrmKey, // Rotate the DRM key to the next key (no payload)
 	};
 
 	virtual ~EventCommand() = default;

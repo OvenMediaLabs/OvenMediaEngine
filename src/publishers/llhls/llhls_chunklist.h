@@ -268,7 +268,10 @@ public:
 
 	~LLHlsChunklist();
 
-	void EnableCenc(const bmff::CencProperty &cenc_property);
+	// Register the CENC key material for a content version. A stream without key
+	// rotation registers a single version; each rotation registers the next one, so
+	// the chunklist can emit the EXT-X-KEY that matches each segment's version.
+	void EnableCenc(uint32_t content_version, const bmff::CencProperty &cenc_property);
 
 	// A LLHlsChunklist has circular dependency issues because it holds its own pointer and pointers to all other chunklists. 
 	// Therefore, you must call the Release function.
@@ -331,7 +334,9 @@ private:
 
 	ov::String MakeChunklist(const ov::String &query_string, bool skip, bool legacy, bool rewind, bool vod = false, uint32_t vod_start_segment_number = 0) const;
 
-	ov::String MakeExtXKey() const;
+	// EXT-X-KEY tag for the given content version, empty when that version carries
+	// no key (unencrypted, or unknown version)
+	ov::String MakeExtXKey(uint32_t content_version) const;
 
 	ov::String MakeMarkers(const std::vector<std::shared_ptr<Marker>> &markers) const;
 
@@ -391,7 +396,13 @@ private:
 	std::shared_ptr<ov::Data> _cached_default_chunklist_gzip;
 	mutable std::shared_mutex _cached_default_chunklist_gzip_guard;
 
-	bmff::CencProperty _cenc_property;
+	// CENC key material per content version, so each segment's EXT-X-KEY matches the
+	// key its version was packaged with. A single entry when there is no key rotation.
+	// Guarded by _segments_guard.
+	std::map<uint32_t, bmff::CencProperty> _cenc_properties;
+
+	// Drop the keys of versions no segment can list any more
+	void DropUnreferencedCencProperties();
 
 	bool _end_list = false;
 

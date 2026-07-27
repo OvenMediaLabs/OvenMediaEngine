@@ -31,9 +31,18 @@ namespace bmff
 		const std::shared_ptr<const MediaTrack> &GetMediaTrack() const;
 		const std::shared_ptr<const MediaTrack> &GetDataTrack() const;
 
+		// The CENC key material currently in effect (codec capability already applied),
+		// so the playlist can advertise the key each segment was encrypted with
+		const CencProperty &GetCencProperty() const;
+
 		// Switch to a new version of the same track at a runtime configuration change.
 		// Re-evaluates the CENC codec capability and rebuilds the sample buffer.
 		bool UpdateMediaTrack(const std::shared_ptr<const MediaTrack> &media_track);
+
+		// Swap the CENC key material at a runtime key rotation. Rebuilds the sample
+		// buffer so following samples are encrypted with the new key; the caller
+		// regenerates the initialization segment so its tenc/pssh carry the new key.
+		void UpdateCencProperty(const CencProperty &cenc_property);
 
 		// Fytp Box
 		virtual bool WriteFtypBox(ov::ByteStream &container_stream);
