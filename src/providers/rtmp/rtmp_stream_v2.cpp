@@ -394,7 +394,7 @@ namespace pvd::rtmp
 
 		// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`
 		// during the pre-publish window as well.
-		ApplyConfiguredPacketSilenceTimeout(_vhost_app_name);
+		ApplyConfiguredPacketSilenceTimeoutMs(_vhost_app_name);
 
 		return true;
 	}

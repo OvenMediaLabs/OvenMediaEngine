@@ -107,7 +107,7 @@ namespace pvd
 		return static_cast<time_t>(SteadyNowMs() - last_received_time_ms);
 	}
 
-	void PushStream::ApplyConfiguredPacketSilenceTimeout(const info::VHostAppName &vhost_app_name)
+	void PushStream::ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name)
 	{
 		auto provider = GetProvider();
 		if (provider == nullptr)

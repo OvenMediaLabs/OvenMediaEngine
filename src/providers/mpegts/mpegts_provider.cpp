@@ -363,7 +363,7 @@ namespace pvd
 			// now that the application is known.
 			// For MPEG-TS this defaults to `1500` ms during config parsing,
 			// not the generic channel-creation default.
-			stream->ApplyConfiguredPacketSilenceTimeout(stream_port_item->GetVhostAppName());
+			stream->ApplyConfiguredPacketSilenceTimeoutMs(stream_port_item->GetVhostAppName());
 		}
 
 		return true;

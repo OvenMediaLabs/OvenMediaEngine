@@ -496,7 +496,7 @@ namespace pvd
 
 			// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`
 			// during the pre-publish window as well.
-			ApplyConfiguredPacketSilenceTimeout(vhost_app_name);
+			ApplyConfiguredPacketSilenceTimeoutMs(vhost_app_name);
 
 			return true;
 		}
