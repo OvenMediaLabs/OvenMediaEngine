@@ -1090,6 +1090,33 @@ TEST(H265DecoderConfig, AnnexBCacheFollowsSpsUpdate)
 	EXPECT_NE(second_data->GetLength(), first_data->GetLength());
 }
 
+// GetData() in the base class caches the serialized record until UpdateData() is called, so a
+// later parameter set update must mark it stale or WriteHvccBox() keeps writing the old bytes.
+TEST(H265DecoderConfig, SerializedRecordFollowsSpsUpdate)
+{
+	SpsOverrides wide;
+	wide.pic_width = 1280;
+	wide.pic_height = 720;
+
+	auto record = std::make_shared<HEVCDecoderConfigurationRecord>();
+	record->AddNalUnit(H265NALUnitType::VPS, ToData(BuildVps()));
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false)));
+	record->AddNalUnit(H265NALUnitType::PPS, ToData(BuildPps()));
+	ASSERT_TRUE(record->IsValid());
+
+	// Populate the cache.
+	auto first = record->GetData();
+	ASSERT_NE(first, nullptr);
+	const auto first_length = first->GetLength();
+
+	// Same id, larger SPS.
+	record->AddNalUnit(H265NALUnitType::SPS, ToData(BuildSps(/*sao=*/false, 0, 3, wide)));
+
+	auto second = record->GetData();
+	ASSERT_NE(second, nullptr);
+	EXPECT_NE(second->GetLength(), first_length);
+}
+
 // Ids out of the spec range would narrow into the uint8_t map key and alias a valid entry.
 TEST(H265Parser, SpsRejectsOutOfRangeId)
 {

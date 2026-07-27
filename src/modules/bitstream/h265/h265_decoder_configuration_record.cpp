@@ -470,9 +470,11 @@ void HEVCDecoderConfigurationRecord::RebuildNalUnitArray(H265NALUnitType nal_typ
 		v.push_back(nalu);
 	}
 
-	// The Annex B form is built from these lists and cached, so it no longer matches.
+	// Both cached forms are built from these lists, so neither matches any more: the Annex B
+	// bitstream here and the serialized record behind GetData() in the base class.
 	_vps_sps_pps_annexb_data = nullptr;
 	_vps_sps_pps_annexb_frag_header = FragmentationHeader();
+	UpdateData();
 }
 
 void HEVCDecoderConfigurationRecord::AddNalUnit(H265NALUnitType nal_type, const std::shared_ptr<ov::Data> &nal_unit)
