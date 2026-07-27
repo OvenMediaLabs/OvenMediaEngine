@@ -154,9 +154,9 @@ namespace ov
 			// configured size whenever the ones already waiting cannot take this task right
 			// away. Without this, a pool that lost workers to the idle timeout would queue a
 			// burst behind the few workers that happened to stay busy.
-			if ((_workers.size() < _config.thread_count) && ((_task_queue.size() + 1) > _idle_worker_count))
+			if (_workers.empty())
 			{
-				AddWorkers(_config.thread_count - _workers.size());
+				AddWorkers(_config.thread_count);
 			}
 
 			if (_workers.empty())

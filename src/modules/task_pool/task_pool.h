@@ -76,13 +76,14 @@ namespace ov
 		TaskPool();
 		~TaskPool() override;
 
-		// Applies the <TaskPool> settings of the server configuration. Only the workers
-		// started afterwards follow them, so this belongs in the startup path before any
-		// module posts a task.
+		// Applies the <TaskPool> settings of the server configuration. The workers already
+		// running are not resized to a new thread count, so this belongs in the startup path
+		// before any module posts a task.
 		bool Initialize();
 
 		// Applies a configuration directly, for callers that do not take it from the server
-		// configuration
+		// configuration. The workers already running keep reading it, so a new idle timeout
+		// takes effect on their next wait, but their number stays as it is.
 		void Configure(const Config &config);
 
 		// Hands the task to a worker and returns without waiting for it. Returns false when

@@ -73,8 +73,8 @@ int main(int argc, char *argv[])
 
 	logti("Server ID : %s", server_config->GetID().CStr());
 
-	// Before any module posts a task, because only the workers started afterwards follow the
-	// configuration
+	// Before any module posts a task, because the workers already running are not resized to
+	// a new thread count
 	if (ov::TaskPool::GetInstance()->Initialize() == false)
 	{
 		logtw("Could not read the task pool configuration, so the default values are used");
