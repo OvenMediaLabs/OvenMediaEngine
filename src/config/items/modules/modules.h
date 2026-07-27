@@ -12,6 +12,7 @@
 #include "module_template.h"
 #include "p2p.h"
 #include "recovery.h"
+#include "task_pool.h"
 #include "whisper.h"
 
 namespace cfg
@@ -34,6 +35,7 @@ namespace cfg
 			ModuleTemplate _ertmp{false};
 			Whisper _whisper;
 			Jemalloc _jemalloc;
+			TaskPool _task_pool;
 
 		public:
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetHttp2, _http2)
@@ -45,6 +47,7 @@ namespace cfg
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetERTMP, _ertmp)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetWhisper, _whisper)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetJemalloc, _jemalloc)
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetTaskPool, _task_pool)
 
 		protected:
 			void MakeList() override
@@ -58,6 +61,7 @@ namespace cfg
 				Register<Optional>({"ERTMP", "ertmp"}, &_ertmp);
 				Register<Optional>("Whisper", &_whisper);
 				Register<Optional>("Jemalloc", &_jemalloc);
+				Register<Optional>("TaskPool", &_task_pool);
 			}
 		};
 	}  // namespace modules
