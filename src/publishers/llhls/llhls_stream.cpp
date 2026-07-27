@@ -157,8 +157,16 @@ bool LLHlsStream::Start()
 	if (drm_config.IsEnabled())
 	{
 		_drm_info_path = drm_config.GetDrmInfoPath();
-		if (GetDrmInfo(_drm_info_path, _cenc_key_list, _key_rotation_period_ms) == true && _cenc_key_list.empty() == false)
+
+		// Parsed into locals and committed only on success, so a file that fails midway
+		// leaves no keys behind for a later rotation to pick up
+		std::vector<bmff::CencProperty> key_list;
+		uint64_t rotation_period_ms = 0;
+		if (GetDrmInfo(_drm_info_path, key_list, rotation_period_ms) == true && key_list.empty() == false)
 		{
+			_cenc_key_list = std::move(key_list);
+			_key_rotation_period_ms = rotation_period_ms;
+
 			// The first key in the list is the current one; rotations advance the index
 			_current_key_index = 0;
 			_cenc_property = _cenc_key_list[_current_key_index];

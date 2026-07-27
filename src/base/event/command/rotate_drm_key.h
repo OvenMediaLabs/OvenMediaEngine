@@ -3,7 +3,7 @@
 //  MediaEvent Payload
 //
 //  Created by Getroot
-//  Copyright (c) 2026 AirenSoft. All rights reserved.
+//  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
 //
 //==============================================================================
 #pragma once
