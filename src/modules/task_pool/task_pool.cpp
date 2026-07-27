@@ -10,8 +10,6 @@
 
 #include <config/config_manager.h>
 
-#include <algorithm>
-
 #define OV_LOG_TAG "TaskPool"
 
 namespace ov
@@ -36,9 +34,13 @@ namespace ov
 
 		const auto &pool_config = server_config->GetModules().GetTaskPool();
 
+		auto thread_count = pool_config.GetThreadCount();
+		auto max_tasks	  = pool_config.GetMaxTasks();
+
+		// Checked before the cast, because a negative value would turn into a huge one
 		Config config;
-		config.thread_count = static_cast<size_t>(std::max(pool_config.GetThreadCount(), 1));
-		config.max_tasks	= static_cast<size_t>(std::max(pool_config.GetMaxTasks(), 1));
+		config.thread_count = static_cast<size_t>((thread_count > 0) ? thread_count : 1);
+		config.max_tasks	= static_cast<size_t>((max_tasks > 0) ? max_tasks : 1);
 
 		Configure(config);
 
@@ -52,8 +54,15 @@ namespace ov
 		_config = config;
 
 		// A pool that cannot hold a task or run one is not a pool
-		_config.thread_count = std::max<size_t>(_config.thread_count, 1);
-		_config.max_tasks	 = std::max<size_t>(_config.max_tasks, 1);
+		if (_config.thread_count == 0)
+		{
+			_config.thread_count = 1;
+		}
+
+		if (_config.max_tasks == 0)
+		{
+			_config.max_tasks = 1;
+		}
 
 		logti("TaskPool is configured - threads: %zu, max tasks: %zu", _config.thread_count, _config.max_tasks);
 	}

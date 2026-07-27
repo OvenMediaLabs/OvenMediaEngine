@@ -18,13 +18,15 @@ namespace
 {
 	constexpr auto kWaitTimeout = std::chrono::seconds(5);
 
-	// Blocks the workers so that the queue can be observed while they are busy
+	// Blocks the workers so that the queue can be observed while they are busy. The wait is
+	// bounded because a failed assertion returns before the gate is opened, and a worker left
+	// waiting for good would hang the whole binary once the pool joins it.
 	class TaskGate
 	{
 	public:
 		void Wait()
 		{
-			_future.wait();
+			_future.wait_for(kWaitTimeout);
 		}
 
 		void Open()
