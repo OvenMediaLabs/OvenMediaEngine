@@ -122,6 +122,22 @@ TEST(TaskPool, SubmitReportsAnExceptionThrownByTheTask)
 	EXPECT_THROW(future.get(), std::runtime_error);
 }
 
+// A callable that is not a temporary is deduced as a reference, which the return type has to
+// survive
+TEST(TaskPool, SubmitTakesACallableThatIsNotATemporary)
+{
+	ov::TaskPool pool;
+
+	auto work = []() {
+		return 7;
+	};
+
+	auto future = pool.Submit(work);
+
+	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
+	EXPECT_EQ(future.get(), 7);
+}
+
 TEST(TaskPool, StartsTheWorkersWithTheFirstTask)
 {
 	ov::TaskPool pool;

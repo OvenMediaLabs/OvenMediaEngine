@@ -83,11 +83,11 @@ namespace ov
 		// Posts a task and hands back its result through a future. When the task cannot be
 		// posted, or the pool stops before it runs, the future reports a broken promise.
 		template <typename Func>
-		auto Submit(Func func) -> std::future<std::invoke_result_t<Func>>
+		auto Submit(Func &&func) -> std::future<std::invoke_result_t<Func>>
 		{
 			using ResultType = std::invoke_result_t<Func>;
 
-			auto task = std::make_shared<std::packaged_task<ResultType()>>(std::move(func));
+			auto task = std::make_shared<std::packaged_task<ResultType()>>(std::forward<Func>(func));
 			auto future = task->get_future();
 
 			Post([task]() {
