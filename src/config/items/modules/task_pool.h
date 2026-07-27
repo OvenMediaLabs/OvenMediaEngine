@@ -8,13 +8,11 @@
 //==============================================================================
 #pragma once
 
-#include "module_template.h"
-
 namespace cfg
 {
 	namespace modules
 	{
-		struct TaskPool : public ModuleTemplate
+		struct TaskPool : public Item
 		{
 		protected:
 			int _thread_count = 4;
@@ -24,10 +22,6 @@ namespace cfg
 			int _idle_timeout_ms = 60000;
 
 		public:
-			TaskPool() : ModuleTemplate(true)
-			{
-			}
-
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetThreadCount, _thread_count)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetMaxTasks, _max_tasks)
 			CFG_DECLARE_CONST_REF_GETTER_OF(IsAutoScaleEnabled, _auto_scale)
@@ -37,8 +31,6 @@ namespace cfg
 		protected:
 			void MakeList() override
 			{
-				ModuleTemplate::MakeList();
-
 				/**
 					Shared worker threads that modules use to run short tasks off their own
 					thread, such as a name lookup or a request to a remote service.
@@ -46,9 +38,9 @@ namespace cfg
 					server.xml:
 						<Modules>
 							<TaskPool>
-								<!-- Workers created when a task arrives and no worker is running -->
+								<!-- Workers the pool keeps once work arrives -->
 								<ThreadCount>4</ThreadCount>
-								<!-- Tasks that may wait to start before further tasks are rejected -->
+								<!-- Tasks that may wait to start. Reaching this either adds a worker or rejects the task. -->
 								<MaxTasks>128</MaxTasks>
 								<!-- Add a worker when the waiting tasks reach MaxTasks, up to MaxThreadCount -->
 								<AutoScale>true</AutoScale>

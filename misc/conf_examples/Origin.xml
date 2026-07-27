@@ -38,6 +38,19 @@
 			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
 			<BackgroundPurge>true</BackgroundPurge>
 		</Jemalloc>
+
+		<!-- Shared worker threads that run short tasks for the modules that need them -->
+		<TaskPool>
+			<!-- Workers the pool keeps once work arrives -->
+			<ThreadCount>4</ThreadCount>
+			<!-- Tasks that may wait to start. Reaching this either adds a worker or rejects the task. -->
+			<MaxTasks>128</MaxTasks>
+			<!-- Add a worker when the waiting tasks reach MaxTasks, up to MaxThreadCount -->
+			<AutoScale>true</AutoScale>
+			<MaxThreadCount>32</MaxThreadCount>
+			<!-- A worker with no task for this long stops itself. Zero keeps the workers running. -->
+			<IdleTimeoutMs>60000</IdleTimeoutMs>
+		</TaskPool>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->

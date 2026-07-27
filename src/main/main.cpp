@@ -75,7 +75,10 @@ int main(int argc, char *argv[])
 
 	// Before any module posts a task, because only the workers started afterwards follow the
 	// configuration
-	ov::TaskPool::GetInstance()->Initialize();
+	if (ov::TaskPool::GetInstance()->Initialize() == false)
+	{
+		logtw("Could not read the task pool configuration, so the default values are used");
+	}
 
 	// Get public IP
 	bool stun_server_parsed;

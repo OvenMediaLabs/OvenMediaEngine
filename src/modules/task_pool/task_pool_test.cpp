@@ -4,13 +4,14 @@
 //
 //  src/modules/task_pool/task_pool_test.cpp
 //  Covers: TaskPool (posting, results, worker isolation, queue limit, auto scaling,
-//          idle shutdown, stop)
+//          idle shutdown, concurrent posting, stop)
 //
 //==============================================================================
 #include <gtest/gtest.h>
 
 #include <modules/task_pool/task_pool.h>
 
+#include <atomic>
 #include <chrono>
 
 namespace
@@ -70,6 +71,20 @@ namespace
 		return counter->condition.wait_for(lock, kWaitTimeout, [&counter, worker_count]() {
 			return counter->count == worker_count;
 		});
+	}
+
+	// Polled because a worker retires on its own schedule rather than at a point the test can
+	// observe
+	[[nodiscard]] bool WaitForThreadCount(const ov::TaskPool &pool, size_t expected_count)
+	{
+		auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
+
+		while ((pool.GetThreadCount() != expected_count) && (std::chrono::steady_clock::now() < deadline))
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		}
+
+		return pool.GetThreadCount() == expected_count;
 	}
 
 	ov::TaskPool::Config MakeConfig(size_t thread_count, size_t max_tasks, bool auto_scale, size_t max_thread_count)
@@ -254,13 +269,7 @@ TEST(TaskPool, StopsAWorkerThatHasBeenIdle)
 	}));
 	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
 
-	auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
-	while ((pool.GetThreadCount() > 0u) && (std::chrono::steady_clock::now() < deadline))
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(20));
-	}
-
-	EXPECT_EQ(pool.GetThreadCount(), 0u);
+	EXPECT_TRUE(WaitForThreadCount(pool, 0u));
 
 	// A task that arrives later brings the workers back
 	std::promise<void> next_promise;
@@ -270,6 +279,29 @@ TEST(TaskPool, StopsAWorkerThatHasBeenIdle)
 		next_promise.set_value();
 	}));
 	EXPECT_EQ(next_future.wait_for(kWaitTimeout), std::future_status::ready);
+}
+
+// A pool that kept one busy worker while the rest retired still has to come back to its
+// configured size, otherwise a burst queues behind that one worker
+TEST(TaskPool, RestoresTheWorkerCountWhenWorkReturns)
+{
+	TaskGate gate;
+	ov::TaskPool pool;
+
+	auto config = MakeConfig(4, 128, false, 4);
+	config.idle_timeout_msec = 100;
+	pool.Configure(config);
+
+	// One worker stays busy on the gate while the other three give up on waiting
+	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
+	ASSERT_TRUE(WaitForThreadCount(pool, 1u));
+
+	// Three more tasks all start at once only if the pool tops itself back up. The queue
+	// stays well under MaxTasks here, so auto scaling cannot be what does it.
+	EXPECT_TRUE(OccupyWorkers(pool, gate, 3));
+	EXPECT_EQ(pool.GetThreadCount(), 4u);
+
+	gate.Open();
 }
 
 // Retiring and starting workers again must not lose a task on the way. Each task is awaited
@@ -298,6 +330,110 @@ TEST(TaskPool, RunsEveryTaskWhileWorkersKeepRetiring)
 		ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready)
 			<< "A task posted in round " << round << " was never run";
 	}
+}
+
+TEST(TaskPool, RunsEveryTaskPostedFromManyThreadsAtOnce)
+{
+	constexpr size_t kPosterCount	 = 8;
+	constexpr size_t kTasksPerPoster = 100;
+
+	// Declared before the pool so that the workers are joined while the counters still exist
+	std::atomic<size_t> done_count{0};
+	std::atomic<size_t> rejected_count{0};
+
+	ov::TaskPool pool;
+
+	// Room to spare for every task, so that a rejection can only mean the pool lost one
+	pool.Configure(MakeConfig(4, kPosterCount * kTasksPerPoster * 2, true, 8));
+
+	std::vector<std::thread> posters;
+
+	for (size_t index = 0; index < kPosterCount; index++)
+	{
+		posters.emplace_back([&pool, &done_count, &rejected_count]() {
+			for (size_t count = 0; count < kTasksPerPoster; count++)
+			{
+				if (pool.Post([&done_count]() {
+						done_count++;
+					}) == false)
+				{
+					rejected_count++;
+				}
+			}
+		});
+	}
+
+	for (auto &poster : posters)
+	{
+		poster.join();
+	}
+
+	auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
+	while ((done_count.load() < (kPosterCount * kTasksPerPoster)) && (std::chrono::steady_clock::now() < deadline))
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	EXPECT_EQ(rejected_count.load(), 0u);
+	EXPECT_EQ(done_count.load(), kPosterCount * kTasksPerPoster);
+	EXPECT_EQ(pool.GetPendingCount(), 0u);
+}
+
+// Whatever a running task is holding must still be valid until it returns, so Stop() cannot
+// come back while one is in the middle of its work
+TEST(TaskPool, StopWaitsForARunningTask)
+{
+	TaskGate gate;
+	ov::TaskPool pool;
+
+	std::atomic<bool> task_finished{false};
+	std::promise<void> started;
+	auto started_future = started.get_future();
+
+	ASSERT_TRUE(pool.Post([&started, &gate, &task_finished]() {
+		started.set_value();
+		gate.Wait();
+		task_finished = true;
+	}));
+	ASSERT_EQ(started_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	// Held long enough that a Stop() which did not wait would be back before the task is
+	std::thread opener([&gate]() {
+		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		gate.Open();
+	});
+
+	pool.Stop();
+
+	EXPECT_TRUE(task_finished.load());
+
+	opener.join();
+}
+
+TEST(TaskPool, BreaksThePromiseOfATaskDroppedByStop)
+{
+	TaskGate gate;
+	ov::TaskPool pool;
+
+	pool.Configure(MakeConfig(1, 128, false, 1));
+
+	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
+
+	// Waits behind the blocked worker, so Stop() drops it before it can run
+	auto future = pool.Submit([]() {
+		return 1;
+	});
+
+	std::thread opener([&gate]() {
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		gate.Open();
+	});
+
+	pool.Stop();
+	opener.join();
+
+	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
+	EXPECT_THROW(future.get(), std::future_error);
 }
 
 TEST(TaskPool, TakesNoTaskAfterItIsStopped)

@@ -41,7 +41,7 @@ namespace ov
 		config.max_tasks		 = static_cast<size_t>(std::max(pool_config.GetMaxTasks(), 1));
 		config.auto_scale		 = pool_config.IsAutoScaleEnabled();
 		config.max_thread_count	 = static_cast<size_t>(std::max(pool_config.GetMaxThreadCount(), 1));
-		config.idle_timeout_msec = pool_config.GetIdleTimeoutMs();
+		config.idle_timeout_msec = std::max(pool_config.GetIdleTimeoutMs(), 0);
 
 		Configure(config);
 
@@ -58,22 +58,39 @@ namespace ov
 		_config.thread_count = std::max<size_t>(_config.thread_count, 1);
 		_config.max_tasks = std::max<size_t>(_config.max_tasks, 1);
 		_config.max_thread_count = std::max(_config.max_thread_count, _config.thread_count);
+		// A negative timeout would otherwise read as "keep the workers running"
+		_config.idle_timeout_msec = std::max(_config.idle_timeout_msec, 0);
 
 		logti("TaskPool is configured - threads: %zu (max: %zu, auto scale: %s), max tasks: %zu, idle timeout: %d ms",
 			  _config.thread_count, _config.max_thread_count, _config.auto_scale ? "on" : "off",
 			  _config.max_tasks, _config.idle_timeout_msec);
 	}
 
-	void TaskPool::AddWorkers(size_t count)
+	size_t TaskPool::AddWorkers(size_t count)
 	{
+		size_t added_count = 0;
+
 		for (size_t index = 0; index < count; index++)
 		{
-			std::thread worker(&TaskPool::WorkerThreadProc, this);
+			try
+			{
+				std::thread worker(&TaskPool::WorkerThreadProc, this);
 
-			::pthread_setname_np(worker.native_handle(), "TaskPool");
+				::pthread_setname_np(worker.native_handle(), ov::String::FormatString("TaskPool-%zu", _next_worker_index++).CStr());
 
-			_workers.emplace(worker.get_id(), std::move(worker));
+				_workers.emplace(worker.get_id(), std::move(worker));
+
+				added_count++;
+			}
+			catch (const std::system_error &e)
+			{
+				// Post() must not throw at a caller that only expects false back
+				logte("Could not start a worker: %s", e.what());
+				break;
+			}
 		}
+
+		return added_count;
 	}
 
 	void TaskPool::JoinFinishedWorkers()
@@ -92,6 +109,25 @@ namespace ov
 				worker.join();
 			}
 		}
+	}
+
+	void TaskPool::ReportRejection()
+	{
+		_rejected_count++;
+
+		// A full queue rejects everything that follows, and that is exactly when the log
+		// must not be flooded
+		auto now = std::chrono::steady_clock::now();
+		if ((now - _last_reject_log_time) < std::chrono::seconds(1))
+		{
+			return;
+		}
+
+		logte("Too many tasks are waiting (%zu) for %zu workers, so %zu task(s) have been rejected",
+			  _task_queue.size(), _workers.size(), _rejected_count);
+
+		_last_reject_log_time = now;
+		_rejected_count		  = 0;
 	}
 
 	bool TaskPool::Post(Task task)
@@ -114,21 +150,35 @@ namespace ov
 				return false;
 			}
 
+			// Workers exist only once there is work for them, so the pool is topped up to its
+			// configured size whenever the ones already waiting cannot take this task right
+			// away. Without this, a pool that lost workers to the idle timeout would queue a
+			// burst behind the few workers that happened to stay busy.
+			if ((_workers.size() < _config.thread_count) && ((_task_queue.size() + 1) > _idle_worker_count))
+			{
+				AddWorkers(_config.thread_count - _workers.size());
+			}
+
 			if (_workers.empty())
 			{
-				AddWorkers(_config.thread_count);
+				logte("No worker could be started, so the task is rejected");
+				return false;
 			}
 
 			if (_task_queue.size() >= _config.max_tasks)
 			{
-				if ((_config.auto_scale == false) || (_workers.size() >= _config.max_thread_count))
+				bool worker_added = _config.auto_scale && (_workers.size() < _config.max_thread_count);
+
+				if (worker_added)
 				{
-					logte("Too many tasks are waiting (%zu) for %zu workers, so the task is rejected",
-						  _task_queue.size(), _workers.size());
-					return false;
+					worker_added = (AddWorkers(1) > 0);
 				}
 
-				AddWorkers(1);
+				if (worker_added == false)
+				{
+					ReportRejection();
+					return false;
+				}
 
 				logtw("Added a worker because %zu tasks are waiting (workers: %zu)", _task_queue.size(), _workers.size());
 			}
@@ -207,6 +257,8 @@ namespace ov
 					return _stopped || (_task_queue.empty() == false);
 				};
 
+				_idle_worker_count++;
+
 				bool has_work = true;
 				if (_config.idle_timeout_msec > 0)
 				{
@@ -217,6 +269,8 @@ namespace ov
 					// No timeout means the workers stay until the pool stops
 					_condition.wait(lock, is_ready);
 				}
+
+				_idle_worker_count--;
 
 				if (_stopped)
 				{
