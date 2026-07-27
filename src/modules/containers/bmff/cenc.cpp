@@ -83,6 +83,27 @@ namespace bmff
             return false;
         }
 
+        // saiz can describe up to MAX_SENC_AUX_INFO_SIZE bytes of aux info per sample
+        uint8_t stored_iv_size = 0;
+        if (_cenc_property.per_sample_iv_size != 0 && _cenc_property.iv != nullptr)
+        {
+            stored_iv_size = static_cast<uint8_t>(_cenc_property.iv->GetLength());
+        }
+
+        const auto aux_info_size = Sample::SampleAuxInfo::CalcSencAuxInfoSize(stored_iv_size, sub_samples.size());
+        if (aux_info_size > Sample::SampleAuxInfo::MAX_SENC_AUX_INFO_SIZE)
+        {
+            if (_aux_info_size_error_logged == false)
+            {
+                _aux_info_size_error_logged = true;
+                logte("SENC aux info size (%zu) exceeds the saiz limit (%zu). Subsample count (%zu) is too large to be packaged. "
+                      "Reduce the number of slices per frame of the input stream. (This message is logged only once)",
+                      aux_info_size, Sample::SampleAuxInfo::MAX_SENC_AUX_INFO_SIZE, sub_samples.size());
+            }
+
+            return false;
+        }
+
         auto clear_data = clear_sample._media_packet->GetData();
         auto cipher_data = std::make_shared<ov::Data>(clear_data->GetLength());
 
@@ -208,8 +229,15 @@ namespace bmff
 					// Calc subsample
 					// Clear bytes : Nal Length Size(1 or 2 or 4) + Nal Header Length(1) + Slice Header Size
 					// Protected bytes : Nal Length - Clear bytes
-					clear_bytes += nal_length_size + H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
-					cipher_bytes = nal_length - (H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes());
+					const size_t header_bytes = H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
+					if (header_bytes > nal_length)
+					{
+						logte("Slice header size (%zu) is greater than NAL length (%zu)", header_bytes, nal_length);
+						return false;
+					}
+
+					clear_bytes += nal_length_size + header_bytes;
+					cipher_bytes = nal_length - header_bytes;
                     total_bytes += clear_bytes + cipher_bytes;
                     
 					AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);
@@ -330,8 +358,15 @@ namespace bmff
 
 					// Clear bytes : Nal Length Size(1 or 2 or 4) + Nal Header Length(2) + Slice Header Size
 					// Protected bytes : Nal Length - (Nal Header Length + Slice Header Size)
-					clear_bytes += nal_length_size + H265_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
-					cipher_bytes = nal_length - (H265_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes());
+					const size_t header_bytes = H265_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
+					if (header_bytes > nal_length)
+					{
+						logte("Slice header size (%zu) is greater than NAL length (%zu)", header_bytes, nal_length);
+						return false;
+					}
+
+					clear_bytes += nal_length_size + header_bytes;
+					cipher_bytes = nal_length - header_bytes;
 					total_bytes += clear_bytes + cipher_bytes;
 
 					AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);

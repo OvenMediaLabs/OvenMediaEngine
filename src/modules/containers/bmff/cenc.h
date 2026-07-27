@@ -391,6 +391,8 @@ namespace bmff
 		CencProperty _cenc_property;
 		std::shared_ptr<const MediaTrack> _media_track								= nullptr;
 
+		bool _aux_info_size_error_logged											= false;
+
 		std::function<bool(const uint8_t *, size_t, uint8_t *, bool)> _encrypt_func = nullptr;
 
 		ov::AES _aes;

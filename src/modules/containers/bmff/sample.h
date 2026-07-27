@@ -30,24 +30,32 @@ namespace bmff
 
         struct SampleAuxInfo
         {
-            int8_t GetSencAuxInfoSize() const
+            // ISO/IEC 14496-12 8.7.8 : saiz's sample_info_size is unsigned int(8)
+            static constexpr size_t MAX_SENC_AUX_INFO_SIZE = 0xFF;
+
+            // for SENC
+            // int(per_sample_IV_Size*8) + int(16) subsample_count + (unsigned int(16) clear_bytes + unsigned int(32) cipher_bytes)*subsample_count
+            // return byte size
+            static size_t CalcSencAuxInfoSize(uint8_t per_sample_iv_size, size_t sub_sample_count)
+            {
+                size_t sub_sample_count_size = 2;
+                if (sub_sample_count == 0)
+                {
+                    sub_sample_count_size = 0;
+                }
+
+                return per_sample_iv_size + sub_sample_count_size + ((2+4) * sub_sample_count);
+            }
+
+            uint8_t GetSencAuxInfoSize() const
             {
                 uint8_t per_sample_iv_size = 0;
                 if (per_sample_iv)
                 {
                     per_sample_iv_size = per_sample_iv->GetLength();
                 }
-                
-                // for SENC
-                // int(per_sample_IV_Size*8) + int(16) subsample_count + (unsigned int(16) clear_bytes + unsigned int(32) cipher_bytes)*subsample_count
-                // return byte size
-                uint8_t sub_sample_count_size = 2;
-                if (_sub_samples.size() == 0)
-                {
-                    sub_sample_count_size = 0;
-                }
-            
-                return per_sample_iv_size + sub_sample_count_size + ((2+4) * _sub_samples.size());
+
+                return static_cast<uint8_t>(CalcSencAuxInfoSize(per_sample_iv_size, _sub_samples.size()));
             }
 
             // Later, it can have more information, for example Per_Sample_IV_Size, etc.
