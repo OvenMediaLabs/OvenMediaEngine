@@ -33,7 +33,7 @@ namespace info
 		void SetPublishedTime(const std::chrono::system_clock::time_point &time);
 		std::chrono::system_clock::time_point GetPublishedTime() const;
 
-		// Same moment as the published time, for measuring elapsed time
+		// Read when the published time is set, for measuring elapsed time
 		std::chrono::steady_clock::time_point GetPublishedTimeSteady() const;
 
 		bool IsOnAir() const;

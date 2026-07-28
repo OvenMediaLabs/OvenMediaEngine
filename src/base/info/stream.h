@@ -71,7 +71,7 @@ namespace info
 
 		// Runtime state of this stream instance. Every copy of this stream shares the
 		// same object, so state that changes after creation stays visible to all of them
-		const std::shared_ptr<StreamStats> &GetStats() const
+		std::shared_ptr<StreamStats> GetStats() const
 		{
 			return _stats;
 		}
