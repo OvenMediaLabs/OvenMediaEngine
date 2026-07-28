@@ -29,15 +29,20 @@ namespace info
 		std::chrono::system_clock::time_point GetCreatedTime() const;
 
 		// Stamped when the first media packet of the stream is sent to the media router.
-		// Epoch while the stream has not gone on air
+		// Epoch until the stream goes on air
 		void SetPublishedTime(const std::chrono::system_clock::time_point &time);
 		std::chrono::system_clock::time_point GetPublishedTime() const;
 
-		// Read when the published time is set, for measuring elapsed time
-		std::chrono::steady_clock::time_point GetPublishedTimeSteady() const;
-
 		bool IsOnAir() const;
 		void SetOnAir(bool on_air);
+
+		// Latched when the media router first sees a packet of this stream. A provider can
+		// declare itself published before media flows, so this is the only reliable anchor
+		// for how long media has actually been running
+		void SetFirstMediaTime();
+		bool HasFirstMediaTime() const;
+		std::chrono::system_clock::time_point GetFirstMediaTime() const;
+		std::chrono::steady_clock::time_point GetFirstMediaTimeSteady() const;
 
 		// Stamped when every track has been described and the stream is notified as
 		// prepared. Epoch while the stream is not prepared
@@ -52,8 +57,10 @@ namespace info
 		const std::chrono::system_clock::time_point _created_time;
 
 		std::atomic<int64_t> _published_time = 0;
-		std::atomic<int64_t> _published_time_steady = 0;
 		std::atomic<bool> _on_air = false;
+
+		std::atomic<int64_t> _first_media_time = 0;
+		std::atomic<int64_t> _first_media_time_steady = 0;
 
 		std::atomic<int64_t> _prepared_time = 0;
 

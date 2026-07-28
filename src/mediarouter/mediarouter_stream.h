@@ -136,6 +136,9 @@ private:
 	// Stream Information
 	std::shared_ptr<info::Stream> _stream = nullptr;
 
+	// Held next to the stream so the per-packet path does not copy the pointer
+	std::shared_ptr<info::StreamStats> _stats = nullptr;
+
 	std::map<MediaTrackId, TrackAuthorState> _track_authors;
 
 	// Temporary packet store. for calculating packet duration

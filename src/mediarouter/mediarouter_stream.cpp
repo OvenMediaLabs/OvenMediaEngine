@@ -41,6 +41,7 @@ using namespace cmn;
 MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type, uint32_t worker_id)
 	: _worker_id(worker_id),
 	  _stream(stream),
+	  _stats(stream->GetStats()),
 	  _packets_queue(nullptr, 600)
 {
 	SetType(type);
@@ -91,7 +92,7 @@ void MediaRouteStream::OnStreamPrepared(bool completed)
 {
 	_is_stream_prepared = completed;
 
-	_stream->GetStats()->SetPrepared(completed);
+	_stats->SetPrepared(completed);
 }
 
 bool MediaRouteStream::IsStreamPrepared()
@@ -154,13 +155,13 @@ bool MediaRouteStream::IsStreamReady()
 // negotiated tracks (e.g. a simulcast layer or audio) never arrives, the stream hangs. Warn so it is visible.
 void MediaRouteStream::CheckUnpreparedTrackTimeout()
 {
-	if (_stream->IsOnAir() == false)
+	if (_stats->HasFirstMediaTime() == false)
 	{
 		return;
 	}
 
 	// Anchor at the first media packet so connection/handshake delay is excluded; full silence is the provider's job.
-	auto media_start_time = _stream->GetStats()->GetPublishedTimeSteady();
+	auto media_start_time = _stats->GetFirstMediaTimeSteady();
 	auto now = std::chrono::steady_clock::now();
 	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - media_start_time).count();
 
@@ -286,6 +287,8 @@ void MediaRouteStream::DropNonDecodingPackets()
 
 void MediaRouteStream::Push(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	_stats->SetFirstMediaTime();
+
 	_packets_queue.Enqueue(media_packet, media_packet->IsHighPriority());
 }
 

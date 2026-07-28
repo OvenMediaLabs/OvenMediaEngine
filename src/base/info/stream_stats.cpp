@@ -23,7 +23,6 @@ namespace info
 	void StreamStats::SetPublishedTime(const std::chrono::system_clock::time_point &time)
 	{
 		_published_time = time.time_since_epoch().count();
-		_published_time_steady = std::chrono::steady_clock::now().time_since_epoch().count();
 
 		// Set last, so a reader that checks the on-air state finds a valid time
 		_on_air = true;
@@ -32,11 +31,6 @@ namespace info
 	std::chrono::system_clock::time_point StreamStats::GetPublishedTime() const
 	{
 		return std::chrono::system_clock::time_point(std::chrono::system_clock::duration(_published_time.load()));
-	}
-
-	std::chrono::steady_clock::time_point StreamStats::GetPublishedTimeSteady() const
-	{
-		return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(_published_time_steady.load()));
 	}
 
 	bool StreamStats::IsOnAir() const
@@ -53,6 +47,34 @@ namespace info
 		}
 
 		_on_air = false;
+	}
+
+	void StreamStats::SetFirstMediaTime()
+	{
+		if (_first_media_time.load() != 0)
+		{
+			return;
+		}
+
+		// Set the steady value first, so a reader that finds the wall clock time set
+		// always finds the steady one too
+		_first_media_time_steady = std::chrono::steady_clock::now().time_since_epoch().count();
+		_first_media_time = std::chrono::system_clock::now().time_since_epoch().count();
+	}
+
+	bool StreamStats::HasFirstMediaTime() const
+	{
+		return _first_media_time.load() != 0;
+	}
+
+	std::chrono::system_clock::time_point StreamStats::GetFirstMediaTime() const
+	{
+		return std::chrono::system_clock::time_point(std::chrono::system_clock::duration(_first_media_time.load()));
+	}
+
+	std::chrono::steady_clock::time_point StreamStats::GetFirstMediaTimeSteady() const
+	{
+		return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(_first_media_time_steady.load()));
 	}
 
 	void StreamStats::SetPrepared(bool prepared)
