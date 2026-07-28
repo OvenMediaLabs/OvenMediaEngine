@@ -135,6 +135,23 @@ namespace pvd
 		}
 	}
 
+	void PushStream::ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name)
+	{
+		auto provider = GetProvider();
+		if (provider == nullptr)
+		{
+			return;
+		}
+
+		auto application = provider->GetApplicationByName(vhost_app_name);
+		if (application == nullptr)
+		{
+			return;
+		}
+
+		SetPacketSilenceTimeoutMs(application->GetConfiguredFirstMediaWaitTimeoutMs(provider->GetProviderType()));
+	}
+
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
 	{
 		if(GetProvider() == nullptr)

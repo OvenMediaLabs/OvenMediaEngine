@@ -18,6 +18,12 @@ namespace cfg
 		{
 			namespace pvd
 			{
+				// How long an input may stay silent between the moment it asks to publish and its
+				// first media packet. A source at a low frame rate can legitimately send nothing for a
+				// long time: a captured OBS session at 1 fps sent nothing at all for 23.5 s after its
+				// publish command, and only then its first media packet.
+				static constexpr int DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS = 30000;
+
 				struct Provider : public Item
 				{
 				protected:
@@ -30,12 +36,14 @@ namespace cfg
 					// for, rather than a provider default. Set while parsing `PacketSilenceTimeoutMs`
 					// and cleared again by `SetDefaultPacketSilenceTimeoutMs()`.
 					bool _is_packet_silence_timeout_ms_configured = false;
+					int _first_media_wait_timeout_ms			  = DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
 
 				public:
 					virtual ProviderType GetType() const = 0;
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetMaxConnection, _max_connection)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetTimestampMode, _timestamp_mode)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPacketSilenceTimeoutMs, _packet_silence_timeout_ms)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetFirstMediaWaitTimeoutMs, _first_media_wait_timeout_ms)
 					bool IsPacketSilenceTimeoutMsConfigured() const
 					{
 						return _is_packet_silence_timeout_ms_configured;
@@ -107,6 +115,26 @@ namespace cfg
 
 												   default:
 													   return CreateConfigErrorPtr("PacketSilenceTimeoutMs is not supported for this provider type: %s", StringFromProviderType(GetType()).CStr());
+											   }
+											   return nullptr;
+										   });
+
+						Register<Optional>("FirstMediaWaitTimeoutMs", &_first_media_wait_timeout_ms, nullptr,
+										   [=]() -> std::shared_ptr<ConfigError> {
+											   if (_first_media_wait_timeout_ms < 0)
+											   {
+												   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs must not be negative: %d", _first_media_wait_timeout_ms);
+											   }
+
+											   switch (GetType())
+											   {
+												   case ProviderType::Rtmp:
+													   // Only RTMP waits for a first media packet it cannot publish without:
+													   // the codec sequence headers arrive with it.
+													   break;
+
+												   default:
+													   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs is not supported for this provider type: %s", StringFromProviderType(GetType()).CStr());
 											   }
 											   return nullptr;
 										   });

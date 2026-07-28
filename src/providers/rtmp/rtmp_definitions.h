@@ -29,15 +29,6 @@ namespace pvd::rtmp
 	// If this number is exceeded, the track will be ignored.
 	static constexpr const size_t MAX_PACKET_COUNT_BEFORE_SEQ_HEADER	= 10;
 
-	// How long a channel may stay silent between the `publish` command and its first media packet.
-	// An encoder legitimately sends nothing during that wait: OBS puts nothing on the wire,
-	// audio included, until its first video keyframe, and x264 frame threading holds that frame back for
-	// roughly `thread_count / fps` seconds. A 1 fps source has been measured at 23.5 s,
-	// so the generic channel-creation default of a few seconds deletes the channel
-	// before the stream is ever created. An operator who needs an even longer wait can raise `PacketSilenceTimeoutMs`,
-	// which is applied right after this and takes precedence.
-	static constexpr const time_t PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS = 30000;
-
 	// Used for legacy RTMP streams
 	// TODO(dimiden): Assigning a sufficiently large temporary value to avoid `track_id` conflicts.
 	// Needs to be changed later.

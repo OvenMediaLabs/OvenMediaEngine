@@ -20,7 +20,6 @@
 #include "base/info/application.h"
 #include "base/provider/push_provider/application.h"
 #include "base/provider/push_provider/provider.h"
-#include "rtmp_definitions.h"
 #include "rtmp_provider_private.h"
 
 /*
@@ -505,7 +504,7 @@ namespace pvd
 
 			// The wait for the first media packet starts here, and an encoder may send nothing at
 			// all during it, so widen the silence window the channel was created with.
-			SetPacketSilenceTimeoutMs(rtmp::PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS);
+			ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 
 			// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`.
 			// It runs afterwards so that a value the operator set takes precedence.

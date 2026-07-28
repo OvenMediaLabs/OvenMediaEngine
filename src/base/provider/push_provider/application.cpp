@@ -55,6 +55,19 @@ namespace pvd
 		return 0;
 	}
 
+	time_t PushApplication::GetConfiguredFirstMediaWaitTimeoutMs(ProviderType provider_type)
+	{
+		for (const auto &provider_cfg : GetConfig().GetProviders().GetProviderList())
+		{
+			if (provider_cfg->GetType() == provider_type)
+			{
+				return provider_cfg->GetFirstMediaWaitTimeoutMs();
+			}
+		}
+
+		return cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
+	}
+
 	bool PushApplication::DeleteAllStreams()
 	{
 		return Application::DeleteAllStreams();

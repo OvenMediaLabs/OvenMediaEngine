@@ -402,7 +402,7 @@ namespace pvd::rtmp
 
 		// The wait for the first media packet starts here, and an encoder may send nothing at all
 		// during it, so widen the silence window the channel was created with.
-		SetPacketSilenceTimeoutMs(PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS);
+		ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 		// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`.
 		// It runs afterwards so that a value the operator set takes precedence.
