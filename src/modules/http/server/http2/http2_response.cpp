@@ -92,8 +92,9 @@ namespace http
 				}
 
 				// RFC 7540 §6.2/§6.10: no other frame may appear between HEADERS and its
-				// CONTINUATION frames, so the whole sequence goes out as a single write
-				auto wire_data = headers_frame->ToData()->Clone();
+				// CONTINUATION frames, so the whole sequence goes out as a single write.
+				// ToData() returns a freshly allocated buffer, so appending to it is safe.
+				auto wire_data = headers_frame->ToData();
 
 				auto offset = fragment_size;
 				while (offset < block_size)

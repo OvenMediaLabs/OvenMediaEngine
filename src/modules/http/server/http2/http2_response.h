@@ -13,8 +13,8 @@
 #include "../../protocol/http2/frames/http2_frames.h"
 #include "../../hpack/encoder.h"
 
-// SETTINGS_MAX_FRAME_SIZE floor (RFC 7540 §6.5.2). The peer can only raise this
-// limit, never lower it, so frames capped here are always legal to send.
+// SETTINGS_MAX_FRAME_SIZE floor (RFC 7540 §6.5.2). The advertised value can
+// never go below this, so frames capped here are always legal to send.
 #define MAX_HTTP2_HEADER_SIZE (16384)
 #define MAX_HTTP2_DATA_SIZE (16384)
 
