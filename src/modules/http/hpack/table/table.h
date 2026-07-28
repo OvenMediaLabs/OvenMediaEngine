@@ -50,6 +50,7 @@ namespace http
 				// to be emptied of all existing entries and results in an empty table.
 				if (header_field.GetSize() + _table_usage > _table_size)
 				{
+					// Not an error. The oversized entry is simply not indexed
 					return true;
 				}
 
@@ -69,7 +70,7 @@ namespace http
 
 				_table_usage += header_field.GetSize();
 
-				return false;
+				return true;
 			};
 
 			// Return: <Name indexed, Value indexed, Index Number>
@@ -79,23 +80,22 @@ namespace http
 				auto it = _header_field_sequence_map.find(header_field.GetKey().CStr());
 				if (it != _header_field_sequence_map.end())
 				{
-					// Found {name, value} in static table
-					auto sequence_number = it->second;
-					auto index = CalcIndexNumber(sequence_number, _header_fields_table.size(), _removed_count);
-
-					return {true, true, index};
+					auto index = CalcIndexNumber(it->second, _header_fields_table.size(), _removed_count);
+					if (IsLiveIndex(index))
+					{
+						return {true, true, index};
+					}
 				}
 
 				// Else if only name is matched in the table, return the index number.
 				it = _header_field_name_sequence_map.find(header_field.GetName().CStr());
 				if (it != _header_field_name_sequence_map.end())
 				{
-					// Found {name, value} in table
-					auto sequence_number = it->second;
-					auto index = CalcIndexNumber(sequence_number, _header_fields_table.size(), _removed_count);
-
-					// Found {only name} in table
-					return {true, false, index};
+					auto index = CalcIndexNumber(it->second, _header_fields_table.size(), _removed_count);
+					if (IsLiveIndex(index))
+					{
+						return {true, false, index};
+					}
 				}
 
 				return {false, false, 0};
@@ -103,7 +103,10 @@ namespace http
 
 			bool UpdateTableSize(size_t size)
 			{
-				while (_table_usage >= size)
+				// https://datatracker.ietf.org/doc/html/rfc7541#section-4.3
+				// Evict only while the usage exceeds the new size. Evicting at equality
+				// would remove one entry more than the peer does.
+				while (_table_usage > size)
 				{
 					// Pop the oldest entry from the table.
 					if (PopHeaderField() == 0)
@@ -140,10 +143,28 @@ namespace http
 				}
 
 				auto header_field = _header_fields_table.back();
+				// The oldest entry always holds this sequence number
+				auto evicted_sequence = _removed_count + 1;
+
 				_header_fields_table.pop_back();
-				
+
 				_removed_count ++;
 				_table_usage -= header_field.GetSize();
+
+				// The maps keep only the latest sequence per key, so erase an entry
+				// only while it still points at the one being evicted. Otherwise a
+				// live duplicate would lose its index.
+				auto key_it = _header_field_sequence_map.find(header_field.GetKey());
+				if ((key_it != _header_field_sequence_map.end()) && (key_it->second == evicted_sequence))
+				{
+					_header_field_sequence_map.erase(key_it);
+				}
+
+				auto name_it = _header_field_name_sequence_map.find(header_field.GetName());
+				if ((name_it != _header_field_name_sequence_map.end()) && (name_it->second == evicted_sequence))
+				{
+					_header_field_name_sequence_map.erase(name_it);
+				}
 
 				return header_field.GetSize();
 			}
@@ -158,6 +179,22 @@ namespace http
 			std::unordered_map<ov::String, uint32_t, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> _header_field_sequence_map;
 
 		private:
+			// A live entry always maps to 1 ~ table.size(). Anything outside means a map
+			// entry outlived its table entry; sending that index would be a connection-fatal
+			// COMPRESSION_ERROR on the peer, so treat it as a miss.
+			bool IsLiveIndex(uint32_t index)
+			{
+				if ((index >= 1) && (index <= _header_fields_table.size()))
+				{
+					return true;
+				}
+
+				logw("HPACK", "STALE INDEX: suppressed an index beyond the table (index=%u, entries=%zu)",
+					 index, _header_fields_table.size());
+
+				return false;
+			}
+
 			virtual bool Insert(const HeaderField &header_field) = 0;
 
 			virtual uint32_t CalcIndexNumber(uint32_t sequence, uint32_t table_size, uint32_t removed_item_count) = 0;

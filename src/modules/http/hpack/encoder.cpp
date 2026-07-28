@@ -16,6 +16,9 @@ namespace http
 	{
 		bool Encoder::UpdateDynamicTableSize(size_t size)
 		{
+			// A size update must sit at the start of a header block, so it cannot be
+			// signalled while another stream is in the middle of encoding one
+			ov::LockGuard<ov::Mutex> block_lock(_header_block_lock);
 			ov::LockGuard<ov::Mutex> lock(_encoder_lock);
 			if (_table_connector.UpdateDynamicTableSize(size) == false)
 			{
