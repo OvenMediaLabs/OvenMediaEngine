@@ -1,4 +1,5 @@
 add_subdirectory(webvtt)
+add_subdirectory(avif)
 add_subdirectory(bmff)
 add_subdirectory(flv)
 add_subdirectory(flv_v2)

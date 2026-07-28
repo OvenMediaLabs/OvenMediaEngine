@@ -64,7 +64,8 @@ namespace cmn
 
 		// Backward compatibility: Logically part of Video Track. Do not change the order.
 		AV1_OBU,
-		AV1_RTP_AOM	 // AV1 over RTP (https://aomediacodec.github.io/av1-rtp-spec/); track origin, depacketized to AV1_OBU
+		AV1_RTP_AOM,  // AV1 over RTP (https://aomediacodec.github.io/av1-rtp-spec/); track origin, depacketized to AV1_OBU
+		AVIF,		  // a complete AVIF file: one AV1 still inside a HEIF container
 	};
 
 	enum class PacketType : int8_t
@@ -114,7 +115,8 @@ namespace cmn
 		Webp,
 		WebVTT,
 		Whisper,
-		Mp2
+		Mp2,
+		Avif
 	};
 
 	// DeviceId is used to identify a hwardware accelerator device.
@@ -291,6 +293,8 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, false);
+
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, false);
 		}
@@ -319,6 +323,8 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, true);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, true);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, true);
+
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, false);
 		}
@@ -347,6 +353,8 @@ namespace cmn
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, false);
+
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, false);
 		}
@@ -416,6 +424,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, JPEG);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, PNG);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, WEBP);
+			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, AVIF);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, ID3v2);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, OVEN_EVENT);
 			OV_CASE_RETURN_ENUM_STRING(BitstreamFormat, CUE);
@@ -544,6 +553,7 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecId::Jpeg, "JPEG");
 			OV_CASE_RETURN(MediaCodecId::Png, "PNG");
 			OV_CASE_RETURN(MediaCodecId::Webp, "WEBP");
+			OV_CASE_RETURN(MediaCodecId::Avif, "AVIF");
 			// Audio codecs
 			OV_CASE_RETURN(MediaCodecId::Aac, "AAC");
 			OV_CASE_RETURN(MediaCodecId::Mp2, "MP2");
@@ -598,6 +608,10 @@ namespace cmn
 		else if (name.HasPrefix("WEBP"))
 		{
 			return cmn::MediaCodecId::Webp;
+		}
+		else if (name.HasPrefix("AVIF"))
+		{
+			return cmn::MediaCodecId::Avif;
 		}
 		// Audio codecs
 		else if (name.HasPrefix("AAC"))

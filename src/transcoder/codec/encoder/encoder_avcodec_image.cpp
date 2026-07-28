@@ -8,7 +8,7 @@
 //==============================================================================
 #include "encoder_avcodec_image.h"
 
-#include <unistd.h>
+#include <modules/containers/avif/avif_packager.h>
 
 #include "../../transcoder_private.h"
 
@@ -69,6 +69,35 @@ bool AVCodecImageEncoder::SetParamsWebp()
 	return true;
 }
 
+bool AVCodecImageEncoder::SetParamsAvif()
+{
+	SetParamsCommon();
+
+	_codec.SetOption("usage", "allintra");
+	_codec.SetGopSize(0);
+
+	// The context defaults to UNSPECIFIED and libaom takes the CICP verbatim, so without these
+	// the still carries no colour tag. It goes into the sequence header, hence before open.
+	//
+	// TODO(Keukhan): a non-BT.709 source (BT.601 SD, BT.2020/HLG) is mistagged - nothing in
+	// the filter graph converts the frames.
+	AVCodecContext *context	 = _codec.Get();
+	context->color_primaries = AVCOL_PRI_BT709;
+	context->color_trc		 = AVCOL_TRC_BT709;
+	context->colorspace		 = AVCOL_SPC_BT709;
+	_codec.SetColorRange(cmn::ColorRange::Limited);
+
+	_codec.SetThreadCount(1);
+
+	// The libaom encoder is very slow, so use the fastest preset FFmpeg allows and a reasonable
+	// CRF. bit_rate 0 selects pure constant quality (AOM_Q) over AOM_CQ.
+	_codec.SetOption("cpu-used", static_cast<int64_t>(8));
+	_codec.SetOption("crf", static_cast<int64_t>(23));
+	_codec.SetBitrate(0);
+
+	return true;
+}
+
 bool AVCodecImageEncoder::OpenCodec()
 {
 	if (_codec.AllocEncoder(GetCodecID()) == false)
@@ -85,6 +114,9 @@ bool AVCodecImageEncoder::OpenCodec()
 			break;
 		case cmn::MediaCodecId::Png:
 			result = SetParamsPng();
+			break;
+		case cmn::MediaCodecId::Avif:
+			result = SetParamsAvif();
 			break;
 		case cmn::MediaCodecId::Webp:
 		default:
@@ -186,6 +218,21 @@ EncodeResult AVCodecImageEncoder::ReceivePacket()
 	{
 		logte("Could not allocate the media packet");
 		return EncodeResult::Error();
+	}
+
+	// libaom emits the AV1 bitstream only, so wrap the still into its container here - an
+	// image encoder must hand downstream a complete file. Drop rather than error out: a bad
+	// thumbnail must not tear down the encode thread.
+	if (_codec_id == cmn::MediaCodecId::Avif)
+	{
+		auto avif_image = avif::Packager::Pack(media_packet->GetData());
+		if (avif_image == nullptr)
+		{
+			logtw("Could not wrap the AV1 still into an AVIF image; dropping this thumbnail frame");
+			return EncodeResult::NoOutput();
+		}
+
+		media_packet->SetData(avif_image);
 	}
 
 	if (GetRefTrack()->GetMediaType() == cmn::MediaType::Audio)

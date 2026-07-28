@@ -120,6 +120,8 @@ cmn::Timebase TranscoderStreamInternal::GetDefaultTimebaseByCodecId(cmn::MediaCo
 		case cmn::MediaCodecId::Flv:
 		case cmn::MediaCodecId::Jpeg:
 		case cmn::MediaCodecId::Png:
+		case cmn::MediaCodecId::Webp:
+		case cmn::MediaCodecId::Avif:
 			timebase.SetNum(1);
 			timebase.SetDen(90000);
 			break;

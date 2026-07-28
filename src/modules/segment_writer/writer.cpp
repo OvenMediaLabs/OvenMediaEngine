@@ -149,6 +149,7 @@ static AVCodecID AvCodecIdFromMediaCodecId(cmn::MediaCodecId codec_id)
 		WRITER_CASE(cmn::MediaCodecId::Jpeg, AV_CODEC_ID_JPEG2000)
 		WRITER_CASE(cmn::MediaCodecId::Png, AV_CODEC_ID_PNG)
 		WRITER_CASE(cmn::MediaCodecId::Webp, AV_CODEC_ID_WEBP)
+		WRITER_CASE(cmn::MediaCodecId::Avif, AV_CODEC_ID_NONE)
 		WRITER_CASE(cmn::MediaCodecId::Whisper, AV_CODEC_ID_NONE)
 		WRITER_CASE(cmn::MediaCodecId::WebVTT, AV_CODEC_ID_NONE)
 	}
@@ -854,6 +855,8 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 			[[fallthrough]];
 		case cmn::BitstreamFormat::AV1_OBU:
 			[[fallthrough]];
+		case cmn::BitstreamFormat::AV1_RTP_AOM:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::AAC_MPEG4_GENERIC:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::AAC_LATM:
@@ -868,6 +871,8 @@ bool Writer::WritePacket(const std::shared_ptr<const MediaPacket> &packet)
 			[[fallthrough]];
 		case cmn::BitstreamFormat::WEBP:
 			[[fallthrough]];			
+		case cmn::BitstreamFormat::AVIF:
+			[[fallthrough]];
 		case cmn::BitstreamFormat::ID3v2:
 			[[fallthrough]];
 		case cmn::BitstreamFormat::MP3:
