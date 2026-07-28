@@ -31,7 +31,7 @@ namespace http
 				Http2ContinuationFrame(uint32_t stream_id)
 					: Http2Frame(stream_id)
 				{
-					SetType(Http2Frame::Type::Headers);
+					SetType(Http2Frame::Type::Continuation);
 				}
 
 				Http2ContinuationFrame(const std::shared_ptr<Http2Frame> &frame)

@@ -25,7 +25,7 @@ namespace http
 				Http2RstStreamFrame(uint32_t stream_id)
 					: Http2Frame(stream_id)
 				{
-					SetType(Http2Frame::Type::GoAway);
+					SetType(Http2Frame::Type::RstStream);
 				}
 
 				Http2RstStreamFrame(const std::shared_ptr<Http2Frame> &frame)
