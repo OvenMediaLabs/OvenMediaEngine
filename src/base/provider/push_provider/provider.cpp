@@ -138,6 +138,13 @@ namespace pvd
 
 			application->DeleteStream(channel);
 		}
+		else
+		{
+			// The channel never joined an application, so `Application::DeleteStream()` did not run
+			// and nothing has torn down the transport. Without this the client keeps its connection
+			// open and believes it is still streaming after the channel is gone.
+			channel->CloseTransport();
+		}
 
 		return true;
 	}

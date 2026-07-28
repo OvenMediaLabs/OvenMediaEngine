@@ -50,6 +50,7 @@ namespace pvd::rtmp
 		// Implementation of PushStream
 		//--------------------------------------------------------------------
 		bool Stop() override;
+		void CloseTransport() override;
 
 		PushStreamType GetPushStreamType() override
 		{

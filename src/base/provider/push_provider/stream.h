@@ -39,6 +39,14 @@ namespace pvd
 		bool IsReadyToReceiveStreamData();
 		bool IsPublished();
 
+		// Closes the transport this channel owns, without any of the teardown `Stop()` performs.
+		// `PushProvider::OnChannelDeleted()` calls this for a channel that never joined an
+		// application, where `Application::DeleteStream()` and therefore `Stop()` never run and
+		// nothing else would let the client know it is no longer streaming.
+		// The default is a no-op: a provider whose transport is shared between channels, or is torn
+		// down elsewhere, must not close it here.
+		virtual void CloseTransport() {}
+
 		// channel may not yet determined, so we manage the timer separately
 		void UpdateLastReceivedTime();
 		void SetPacketSilenceTimeoutMs(time_t timeout_ms);

@@ -88,6 +88,14 @@ namespace pvd::rtmp
 		return PushStream::Stop();
 	}
 
+	void RtmpStreamV2::CloseTransport()
+	{
+		if ((_remote != nullptr) && (_remote->GetState() == ov::SocketState::Connected))
+		{
+			_remote->Close();
+		}
+	}
+
 	bool RtmpStreamV2::CheckStreamExpired() const
 	{
 		return ((_stream_expired_msec != 0) && (_stream_expired_msec < ov::Clock::NowMSec()));
