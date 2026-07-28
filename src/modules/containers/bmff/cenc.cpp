@@ -8,6 +8,8 @@
 //==============================================================================
 #include <base/ovcrypto/aes.h>
 
+#include <algorithm>
+
 #include "bmff_private.h"
 #include "cenc.h"
 #include "modules/bitstream/h264/h264_parser.h"
@@ -17,6 +19,30 @@
 
 namespace bmff
 {
+    void CencProperty::Complete()
+    {
+        auto has_fairplay_pssh = std::any_of(pssh_box_list.begin(), pssh_box_list.end(),
+                                             [](const PsshBox &pssh_box) { return pssh_box.drm_system == DRMSystem::FairPlay; });
+
+        if (fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh == false)
+        {
+            pssh_box_list.push_back(PsshBox(SYSTEM_ID_FAIRPLAY_UUID, {key_id}, nullptr));
+        }
+
+        if (scheme == CencProtectScheme::Cenc)
+        {
+            crypt_bytes_block = 0;
+            skip_bytes_block = 0;
+            per_sample_iv_size = 16;
+        }
+        else if (scheme == CencProtectScheme::Cbcs)
+        {
+            crypt_bytes_block = 1;
+            skip_bytes_block = 9;
+            per_sample_iv_size = 0;
+        }
+    }
+
     // senc BytesOfClearData is 16-bit, so split clear runs larger than 65535 across subsamples.
     static void AppendCencSubSample(std::vector<Sample::SubSample> &sub_samples, uint32_t clear_bytes, uint32_t cipher_bytes)
     {
