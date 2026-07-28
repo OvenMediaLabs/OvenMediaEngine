@@ -8,8 +8,6 @@
 //==============================================================================
 #include "data_source.h"
 
-#include <unistd.h>
-
 #include <fstream>
 #include <regex>
 
@@ -43,14 +41,11 @@ namespace cfg
 
 		if (::strcmp(key, "HOSTNAME") == 0)
 		{
-			ov::String hostname;
+			auto hostname = ov::Platform::GetHostname();
 
-			if (hostname.SetCapacity(HOST_NAME_MAX))
+			if (hostname.empty() == false)
 			{
-				if (::gethostname(hostname.GetBuffer(), hostname.GetCapacity()) == 0)
-				{
-					return hostname;
-				}
+				return hostname.c_str();
 			}
 		}
 

@@ -125,6 +125,8 @@ namespace ov
 		static uint64_t GetThreadId();
 		static const char *GetThreadName(pthread_t thread_id);
 		static const char *GetThreadName();
+		// Returns an empty string if the hostname cannot be retrieved
+		static std::string GetHostname();
 
 	public:
 		enum class CPUFeature

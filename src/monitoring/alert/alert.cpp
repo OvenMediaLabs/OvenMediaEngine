@@ -9,8 +9,6 @@
 #include "alert.h"
 
 #include <algorithm>
-#include <climits>
-#include <unistd.h>
 
 #include <modules/address/address_utilities.h>
 
@@ -39,8 +37,8 @@ namespace mon::alrt
 			server_info["serverName"] = server_config->GetName().CStr();
 		}
 
-		char hostname[HOST_NAME_MAX + 1] = {0};
-		if (::gethostname(hostname, sizeof(hostname) - 1) == 0)
+		auto hostname = ov::Platform::GetHostname();
+		if (hostname.empty() == false)
 		{
 			server_info["hostname"] = hostname;
 		}

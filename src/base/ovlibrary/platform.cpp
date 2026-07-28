@@ -13,7 +13,13 @@
 #include <unistd.h>
 #include <zconf.h>
 
+#include <climits>
 #include <cstring>
+
+#ifndef HOST_NAME_MAX
+// HOST_NAME_MAX is not defined on some platforms such as macOS
+#	define HOST_NAME_MAX 255
+#endif
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))
 #define HAVE_CPUID_H 1
@@ -65,6 +71,18 @@ namespace ov
 	const char *Platform::GetThreadName()
 	{
 		return GetThreadName(::pthread_self());
+	}
+
+	std::string Platform::GetHostname()
+	{
+		char hostname[HOST_NAME_MAX + 1]{0};
+
+		if (::gethostname(hostname, sizeof(hostname) - 1) != 0)
+		{
+			return {};
+		}
+
+		return hostname;
 	}
 
 	// Check if the CPU supports a specific feature
