@@ -392,8 +392,12 @@ namespace pvd::rtmp
 		_chunk_handler.UpdateNamePath(GetNamePath());
 		_chunk_handler.UpdateQueueAlias();
 
-		// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`
-		// during the pre-publish window as well.
+		// The wait for the first media packet starts here, and an encoder may send nothing at all
+		// during it, so widen the silence window the channel was created with.
+		SetPacketSilenceTimeoutMs(PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS);
+
+		// Now that the application is resolved, honor its configured `PacketSilenceTimeoutMs`.
+		// It runs afterwards so that a value the operator set takes precedence.
 		ApplyConfiguredPacketSilenceTimeoutMs(_vhost_app_name);
 
 		return true;
