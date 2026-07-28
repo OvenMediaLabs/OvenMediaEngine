@@ -502,10 +502,17 @@ namespace pvd
 		{
 			_app_id = app_info.GetId();
 
+			// Admission webhooks may have redirected the stream, so this is the first point where the
+			// final application is known. Store it, because ending the first-media wait must read the
+			// same application this begins it with, and it happens long before `PublishStream()`
+			// recomputes the member.
+			_vhost_app_name = app_info.GetVHostAppName();
+			UpdateNamePath(_vhost_app_name);
+
 			// The wait for the first media packet starts here,
 			// and a source may send nothing at all during it,
 			// so replace the silence budget the channel was created with.
-			ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
+			ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 			return true;
 		}

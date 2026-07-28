@@ -120,19 +120,18 @@ namespace pvd
 
 		// In the future,
 		// it may be necessary to send data to an application rather than sending it directly to a stream.
-		bool handled = false;
-
 		{
 			// Mark the channel while its handler runs so the channel task runner does not read the
 			// handler's own duration as client silence. Access control blocks inside this call.
+			// The received time is published before the mark is cleared: otherwise the runner could
+			// see a channel that is no longer processing but still carries the time from before a
+			// long handler, and delete it.
 			ProcessingDataGuard guard(channel);
 
-			handled = channel->OnDataReceived(data);
-		}
-
-		if (handled)
-		{
-			channel->UpdateLastReceivedTime();
+			if (channel->OnDataReceived(data) == true)
+			{
+				channel->UpdateLastReceivedTime();
+			}
 		}
 
 		return true;
