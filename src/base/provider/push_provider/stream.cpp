@@ -149,7 +149,30 @@ namespace pvd
 			return;
 		}
 
-		SetPacketSilenceTimeoutMs(application->GetConfiguredFirstMediaWaitTimeoutMs(provider->GetProviderType()));
+		const auto provider_type = provider->GetProviderType();
+
+		bool is_configured		 = false;
+		const auto configured_ms = application->GetConfiguredFirstMediaWaitTimeoutMs(provider_type, &is_configured);
+
+		// A `0` is not honored: it would leave this wait with no timeout at all,
+		// and the config layer also yields `0` for an empty or non-numeric element,
+		// so a typo must not remove the guard.
+		if (is_configured && (configured_ms > 0))
+		{
+			// The operator sized this wait, so it governs even when `PacketSilenceTimeoutMs` is set too.
+			// That option describes a stream that has already published.
+			SetPacketSilenceTimeoutMs(configured_ms);
+			return;
+		}
+
+		// This wait was not sized. An operator-configured `PacketSilenceTimeoutMs` keeps governing it,
+		// as it did before this option existed; otherwise this option's default applies.
+		bool is_silence_configured = false;
+		const auto silence_ms	   = application->GetConfiguredPacketSilenceTimeoutMs(provider_type, &is_silence_configured);
+
+		SetPacketSilenceTimeoutMs((is_silence_configured && (silence_ms > 0))
+									  ? silence_ms
+									  : cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)

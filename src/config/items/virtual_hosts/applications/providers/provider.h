@@ -37,6 +37,8 @@ namespace cfg
 					// and cleared again by `SetDefaultPacketSilenceTimeoutMs()`.
 					bool _is_packet_silence_timeout_ms_configured = false;
 					int _first_media_wait_timeout_ms			  = DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
+					// Whether `_first_media_wait_timeout_ms` holds the value the operator asked for
+					bool _is_first_media_wait_timeout_ms_configured = false;
 
 				public:
 					virtual ProviderType GetType() const = 0;
@@ -44,6 +46,10 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetTimestampMode, _timestamp_mode)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPacketSilenceTimeoutMs, _packet_silence_timeout_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetFirstMediaWaitTimeoutMs, _first_media_wait_timeout_ms)
+					bool IsFirstMediaWaitTimeoutMsConfigured() const
+					{
+						return _is_first_media_wait_timeout_ms_configured;
+					}
 					bool IsPacketSilenceTimeoutMsConfigured() const
 					{
 						return _is_packet_silence_timeout_ms_configured;
@@ -121,6 +127,9 @@ namespace cfg
 
 						Register<Optional>("FirstMediaWaitTimeoutMs", &_first_media_wait_timeout_ms, nullptr,
 										   [=]() -> std::shared_ptr<ConfigError> {
+											   // This callback only runs when the option is present in the configuration
+											   _is_first_media_wait_timeout_ms_configured = true;
+
 											   if (_first_media_wait_timeout_ms < 0)
 											   {
 												   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs must not be negative: %d", _first_media_wait_timeout_ms);

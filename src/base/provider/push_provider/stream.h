@@ -60,10 +60,11 @@ namespace pvd
 		// An option the operator did not set leaves that default in place.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// Apply the `FirstMediaWaitTimeoutMs` configured for the resolved application as the silence
-		// budget for the wait that ends with the first media packet. A provider calls this when that
-		// wait begins, before `ApplyConfiguredPacketSilenceTimeoutMs()`, so an operator-configured
-		// `PacketSilenceTimeoutMs` still takes precedence.
+		// Set the silence budget for the wait that ends with the first media packet.
+		// A provider calls this when that wait begins. `FirstMediaWaitTimeoutMs` governs it
+		// when the operator sized it; otherwise an operator-configured `PacketSilenceTimeoutMs` does,
+		// and failing that the default for this wait.
+		// So this call decides the budget on its own and needs no second call.
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()
