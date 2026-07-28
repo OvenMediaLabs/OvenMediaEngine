@@ -125,7 +125,13 @@ namespace cfg
 			if (result == true)
 			{
 				_server_id = server_id;
-				StoreServerID(config_path, server_id);
+
+				if (StoreServerID(config_path, server_id) == false)
+				{
+					logtw("Could not persist the server ID to %s. A new server ID will be generated on every restart, so the ID reported to external systems (e.g. serverInfo.serverID of alert notifications) will not be stable. Please make sure the directory is writable.",
+						  ov::PathManager::Combine(config_path, SERVER_ID_STORAGE_FILE).CStr());
+				}
+
 				return;
 			}
 		}
