@@ -8,6 +8,7 @@
 //==============================================================================
 #include "alert.h"
 
+#include <algorithm>
 #include <climits>
 #include <unistd.h>
 
