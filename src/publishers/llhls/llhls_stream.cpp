@@ -161,9 +161,10 @@ bool LLHlsStream::Start()
 		_drm_info_path = drm_config.GetDrmInfoPath();
 
 		// Parsed into a local and committed only on success, so a file that fails midway
-		// leaves no keys behind for a later rotation to pick up
+		// leaves no keys behind for a later rotation to pick up. A file that says nothing
+		// about this stream leaves the provider unset and the stream unprotected.
 		DrmInfo drm_info;
-		if (GetDrmInfo(_drm_info_path, drm_info) == true)
+		if ((GetDrmInfo(_drm_info_path, drm_info) == true) && (drm_info.provider.IsEmpty() == false))
 		{
 			_drm_info = std::move(drm_info);
 
@@ -470,7 +471,7 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, DrmInfo &drm_info)
 
 				if (is_seconds == false)
 				{
-					logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds. The key is not rotated automatically.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
+					logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds, so it is read as if it were not stated and the key is not rotated.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
 				}
 				else
 				{
