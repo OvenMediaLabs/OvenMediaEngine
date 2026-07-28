@@ -1616,6 +1616,10 @@ namespace pvd
 
 		if (!IsPublished())
 		{
+			// Media is flowing now, so the wait sized for the first packet is over even though
+			// publishing may still be waiting for the other track or for enough messages.
+			EndFirstMediaWait(_vhost_app_name);
+
 			_media_info->video_stream_coming = true;
 
 			if (CheckReadyToPublish() == true)
@@ -1806,6 +1810,10 @@ namespace pvd
 
 		if (!IsPublished())
 		{
+			// Media is flowing now, so the wait sized for the first packet is over even though
+			// publishing may still be waiting for the other track or for enough messages.
+			EndFirstMediaWait(_vhost_app_name);
+
 			_media_info->audio_stream_coming = true;
 
 			if (CheckReadyToPublish() == true)

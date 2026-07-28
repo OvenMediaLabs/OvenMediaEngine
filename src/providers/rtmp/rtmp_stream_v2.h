@@ -52,6 +52,13 @@ namespace pvd::rtmp
 		bool Stop() override;
 		void CloseTransport() override;
 
+		// Ends the wait sized for the first media packet, using this stream's application.
+		// `RtmpChunkHandler` calls this when media starts flowing.
+		void EndFirstMediaWait()
+		{
+			PushStream::EndFirstMediaWait(_vhost_app_name);
+		}
+
 		PushStreamType GetPushStreamType() override
 		{
 			return PushStream::PushStreamType::INTERLEAVED;

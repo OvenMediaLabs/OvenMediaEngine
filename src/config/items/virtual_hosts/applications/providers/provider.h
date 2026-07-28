@@ -130,9 +130,13 @@ namespace cfg
 											   // This callback only runs when the option is present in the configuration
 											   _is_first_media_wait_timeout_ms_configured = true;
 
-											   if (_first_media_wait_timeout_ms < 0)
+											   // A `0` is rejected rather than silently ignored:
+											   // it would leave this wait with no timeout at all,
+											   // and the config layer yields `0` for an empty
+											   // or non-numeric element too.
+											   if (_first_media_wait_timeout_ms <= 0)
 											   {
-												   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs must not be negative: %d", _first_media_wait_timeout_ms);
+												   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs requires a positive value: %d", _first_media_wait_timeout_ms);
 											   }
 
 											   switch (GetType())

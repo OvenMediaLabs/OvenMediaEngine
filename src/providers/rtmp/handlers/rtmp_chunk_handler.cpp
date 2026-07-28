@@ -1590,6 +1590,10 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
+			// Media is flowing now, so the wait sized for the first packet is over even though
+			// publishing may still be waiting for the other track or for enough packets.
+			_stream->EndFirstMediaWait();
+
 			if (_stream->IsReadyToPublish() == false)
 			{
 				return true;
@@ -1743,6 +1747,10 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
+			// Media is flowing now, so the wait sized for the first packet is over even though
+			// publishing may still be waiting for the other track or for enough packets.
+			_stream->EndFirstMediaWait();
+
 			if (_stream->IsReadyToPublish() == false)
 			{
 				return true;

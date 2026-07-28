@@ -249,10 +249,18 @@ namespace pvd
 		auto channel = GetChannel(remote->GetNativeHandle());
 		if (channel == nullptr)
 		{
-			// `PushProvider::OnChannelDeleted()` erases the channel before it closes the transport,
-			// so this is the expected path when the channel task runner reaps a channel: the close
-			// it performs brings us back here with nothing left to look up.
-			logtd("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
+			if (reason == PhysicalPortDisconnectReason::Disconnect)
+			{
+				// OME closed this socket itself. `PushProvider::OnChannelDeleted()` erases the channel
+				// before closing the transport, so having nothing left to look up is expected here.
+				logtd("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
+			}
+			else
+			{
+				// The peer closed it or the socket failed, so a channel should still have been here.
+				logte("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
+			}
+
 			return;
 		}
 

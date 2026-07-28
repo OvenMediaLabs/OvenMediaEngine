@@ -47,6 +47,14 @@ namespace pvd
 		// down elsewhere, must not close it here.
 		virtual void CloseTransport() {}
 
+		// Whether this channel's own data handler is running.
+		// The channel task runner must not judge such a channel:
+		// the time the handler spends is not client silence,
+		// and access control can block it for seconds
+		// because `<AdmissionWebhooks><Timeout>` has no upper bound.
+		void SetProcessingData(bool processing);
+		bool IsProcessingData();
+
 		// channel may not yet determined, so we manage the timer separately
 		void UpdateLastReceivedTime();
 		void SetPacketSilenceTimeoutMs(time_t timeout_ms);
@@ -66,6 +74,13 @@ namespace pvd
 		// and failing that the default for this wait.
 		// So this call decides the budget on its own and needs no second call.
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
+
+		// End the wait that `ApplyConfiguredFirstMediaWaitTimeoutMs()` sized.
+		// A provider calls this when the first media packet arrives,
+		// so the channel is judged from then on by the same `PacketSilenceTimeoutMs` policy
+		// that governs a published stream, rather than keeping the first-media budget
+		// until publishing completes. Only the first call has an effect.
+		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()
 		{
@@ -110,6 +125,10 @@ namespace pvd
 		std::atomic<time_t> _packet_silence_timeout_ms = 0;
 
 		std::atomic<uint32_t> _attemps_publish_count   = 0;
+		// Whether the first media packet has ended the wait sized for it
+		std::atomic<bool> _first_media_wait_ended	   = false;
+		// Whether this channel's data handler is running
+		std::atomic<bool> _is_processing_data		   = false;
 
 		// Push Provider
 		std::shared_ptr<PushProvider>	_provider;

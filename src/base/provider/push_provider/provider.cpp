@@ -6,6 +6,28 @@
 
 namespace pvd
 {
+	namespace
+	{
+		// Clears the mark even if the handler throws
+		class ProcessingDataGuard
+		{
+		public:
+			explicit ProcessingDataGuard(const std::shared_ptr<PushStream> &channel)
+				: _channel(channel)
+			{
+				_channel->SetProcessingData(true);
+			}
+
+			~ProcessingDataGuard()
+			{
+				_channel->SetProcessingData(false);
+			}
+
+		private:
+			std::shared_ptr<PushStream> _channel;
+		};
+	}  // namespace
+
 	PushProvider::PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 		: Provider(server_config, router)
 	{
@@ -96,9 +118,19 @@ namespace pvd
 			return false;
 		}
 
-		// In the future, 
+		// In the future,
 		// it may be necessary to send data to an application rather than sending it directly to a stream.
-		if(channel->OnDataReceived(data) == true)
+		bool handled = false;
+
+		{
+			// Mark the channel while its handler runs so the channel task runner does not read the
+			// handler's own duration as client silence. Access control blocks inside this call.
+			ProcessingDataGuard guard(channel);
+
+			handled = channel->OnDataReceived(data);
+		}
+
+		if (handled)
 		{
 			channel->UpdateLastReceivedTime();
 		}
@@ -198,6 +230,13 @@ namespace pvd
 			{
 				auto channel = x.second;
 
+				if (channel->IsProcessingData())
+				{
+					// Its handler is running, so the channel is not silent.
+					// Judging it here would delete a channel that is in the middle of access control.
+					continue;
+				}
+
 				if (channel->GetPacketSilenceTimeoutMs() == 0)
 				{
 					// If the packet silence timeout is 0, it means that the channel is not timed out.
@@ -227,4 +266,4 @@ namespace pvd
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		}
 	}
-}
+}  // namespace pvd

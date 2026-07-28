@@ -81,6 +81,16 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
+	void PushStream::SetProcessingData(bool processing)
+	{
+		_is_processing_data = processing;
+	}
+
+	bool PushStream::IsProcessingData()
+	{
+		return _is_processing_data;
+	}
+
 	void PushStream::UpdateLastReceivedTime()
 	{
 		_last_received_time_ms = SteadyNowMs();
@@ -173,6 +183,32 @@ namespace pvd
 		SetPacketSilenceTimeoutMs((is_silence_configured && (silence_ms > 0))
 									  ? silence_ms
 									  : cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
+	}
+
+	void PushStream::EndFirstMediaWait(const info::VHostAppName &vhost_app_name)
+	{
+		if (_first_media_wait_ended.load())
+		{
+			return;
+		}
+
+		auto provider = GetProvider();
+		if (provider == nullptr)
+		{
+			return;
+		}
+
+		auto application = provider->GetApplicationByName(vhost_app_name);
+		if (application == nullptr)
+		{
+			return;
+		}
+
+		// The same value `PushApplication::JoinStream()` applies once the stream publishes,
+		// so the budget does not depend on how long publishing still takes after this first packet.
+		SetPacketSilenceTimeoutMs(application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType()));
+
+		_first_media_wait_ended = true;
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
