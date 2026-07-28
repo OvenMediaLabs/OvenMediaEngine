@@ -364,7 +364,8 @@ namespace bmff
 
 		std::vector<PsshBox> pssh_box_list;
 
-		// set by Complete() from the protection scheme
+		// Complete() fills these in from the protection scheme, and the packager adjusts
+		// them for the track it encrypts
 		uint8_t crypt_bytes_block  = 1;	 // number of encrypted blocks in pattern based encryption
 		uint8_t skip_bytes_block   = 9;	 // number of unencrypted blocks in pattern based encryption
 		uint8_t per_sample_iv_size = 0;	 // 0 or 16
