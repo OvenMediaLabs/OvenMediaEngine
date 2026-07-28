@@ -11,6 +11,8 @@
 #include <climits>
 #include <unistd.h>
 
+#include <modules/address/address_utilities.h>
+
 #include "../monitoring_private.h"
 #include "monitoring/monitoring.h"
 #include "notification.h"
@@ -40,6 +42,31 @@ namespace mon::alrt
 		if (::gethostname(hostname, sizeof(hostname) - 1) == 0)
 		{
 			server_info["hostname"] = hostname;
+		}
+
+		auto address_utilities = ov::AddressUtilities::GetInstance();
+
+		// The public IP addresses resolved from the stun server (if configured) come first,
+		// followed by the local interface addresses.
+		auto ip_list	= address_utilities->GetIPv4List();
+		auto ipv6_list	= address_utilities->GetIPv6List(false);
+		ip_list.insert(ip_list.end(), ipv6_list.begin(), ipv6_list.end());
+
+		Json::Value ip_addresses{Json::arrayValue};
+		std::vector<ov::String> appended;
+		for (const auto &ip : ip_list)
+		{
+			// A mapped address can also appear as a local interface address, so deduplicate
+			if (std::find(appended.begin(), appended.end(), ip) == appended.end())
+			{
+				appended.push_back(ip);
+				ip_addresses.append(ip.CStr());
+			}
+		}
+
+		if (ip_addresses.empty() == false)
+		{
+			server_info["ipAddresses"] = ip_addresses;
 		}
 
 		return server_info;
