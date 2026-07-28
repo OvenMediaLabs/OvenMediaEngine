@@ -125,10 +125,8 @@ private:
 	std::atomic<bool> _prepared_notified = false;
 	bool _is_all_tracks_parsed = false;
 
-	// Deadline tracking for periodically warning about tracks that never become valid (anchored at the first media packet)
-	std::chrono::steady_clock::time_point _first_media_recv_time;
+	// Deadline tracking for periodically warning about tracks that never become valid
 	std::chrono::steady_clock::time_point _last_unprepared_warn_time;
-	bool _first_media_recv_time_set = false;
 
 	// Incoming/Outgoing Stream
 	cmn::MediaRouterStreamType _type;

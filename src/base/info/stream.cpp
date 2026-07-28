@@ -27,7 +27,6 @@ namespace info
 
 		SetId(ov::Random::GenerateUInt32() - 1);
 
-		_created_time = std::chrono::system_clock::now();
 		_source_type = source;
 	}
 
@@ -37,22 +36,21 @@ namespace info
 
 		SetId(stream_id);
 
-		_created_time = std::chrono::system_clock::now();
 		_source_type = source;
 	}
 
+	// The runtime state is shared with the source: it keeps changing after this copy was
+	// taken, and every module has to see the same values
 	Stream::Stream(const Stream &stream)
+		: _stats(stream._stats)
 	{
 		_name_path = stream.GetNamePath();
-		
+
 		_id = stream._id;
 		_internal = stream._internal;
 		_name = stream._name;
 		_source_type = stream._source_type;
-		_source_url = stream.GetMediaSource();
 		_output_profile_name = stream._output_profile_name;
-		_created_time = stream._created_time;
-		_published_time = stream._published_time;
 		_app_info = stream._app_info;
 		_origin_stream = stream._origin_stream;
 
@@ -94,7 +92,6 @@ namespace info
 		_representation_type = stream._representation_type;
 
 		_origin_stream_uuid = stream._origin_stream_uuid;
-		_on_air.store(stream._on_air);
 
 		_timestamp_mode = stream._timestamp_mode;
 	}
@@ -102,7 +99,6 @@ namespace info
 	Stream::Stream(StreamSourceType source)
 	{
 		_source_type = source;
-		_created_time = std::chrono::system_clock::now();
 	}
 
 	Stream::~Stream()
@@ -182,13 +178,11 @@ namespace info
 
 	ov::String Stream::GetMediaSource() const
 	{
-		ov::LockGuard lock(_source_url_mutex);
-		return _source_url;
+		return _stats->GetMediaSource();
 	}
 	void Stream::SetMediaSource(ov::String url)
 	{
-		ov::LockGuard lock(_source_url_mutex);
-		_source_url = url;
+		_stats->SetMediaSource(url);
 	}
 
 	void Stream::SetOutputProfileName(ov::String name)
@@ -232,7 +226,7 @@ namespace info
 		return _origin_stream_uuid;
 	}
 
-	const std::chrono::system_clock::time_point &Stream::GetInputStreamCreatedTime() const
+	std::chrono::system_clock::time_point Stream::GetInputStreamCreatedTime() const
 	{
 		if (GetLinkedInputStream() != nullptr)
 		{
@@ -242,23 +236,22 @@ namespace info
 		return GetCreatedTime();
 	}
 
-	const std::chrono::system_clock::time_point &Stream::GetCreatedTime() const
+	std::chrono::system_clock::time_point Stream::GetCreatedTime() const
 	{
-		return _created_time;
+		return _stats->GetCreatedTime();
 	}
 
 	void Stream::SetPublishedTime(const std::chrono::system_clock::time_point &time)
 	{
-		_published_time = time;
-		_on_air = true;
+		_stats->SetPublishedTime(time);
 	}
 
-	const std::chrono::system_clock::time_point &Stream::GetPublishedTime() const
+	std::chrono::system_clock::time_point Stream::GetPublishedTime() const
 	{
-		return _published_time;
+		return _stats->GetPublishedTime();
 	}
 
-	const std::chrono::system_clock::time_point &Stream::GetInputStreamPublishedTime() const
+	std::chrono::system_clock::time_point Stream::GetInputStreamPublishedTime() const
 	{
 		if (GetLinkedInputStream() != nullptr)
 		{
@@ -790,7 +783,7 @@ namespace info
 	{
 		ov::String out_str = ov::String::FormatString("\n[Stream Info]\nid(%u), output(%s), SourceType(%s), RepresentationType(%s), Created Time (%s) UUID(%s)\n",
 													  GetId(), GetName().CStr(), ::StringFromStreamSourceType(_source_type).CStr(), ::StringFromStreamRepresentationType(_representation_type).CStr(),
-													  ov::Converter::ToString(_created_time).CStr(), GetUUID().CStr());
+													  ov::Converter::ToString(GetCreatedTime()).CStr(), GetUUID().CStr());
 		if (GetLinkedInputStream() != nullptr)
 		{
 			out_str.AppendFormat("\t>> Origin Stream Info\n\tid(%u), output(%s), SourceType(%s), Created Time (%s)\n",
