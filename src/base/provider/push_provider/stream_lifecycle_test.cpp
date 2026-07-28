@@ -9,8 +9,10 @@
 #include <base/mediarouter/mediarouter_interface.h>
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
 #include <functional>
+#include <future>
 #include <thread>
 
 #include "provider.h"
@@ -86,9 +88,9 @@ namespace
 
 		bool OnDataReceived(const std::shared_ptr<const ov::Data> &data) override
 		{
-			_handler_ran		 = true;
-			_marked_in_handler	 = IsProcessingData();
-			_elapsed_in_handler	 = GetElapsedMsSinceLastReceived();
+			_handler_ran		= true;
+			_marked_in_handler	= IsProcessingData();
+			_elapsed_in_handler = GetElapsedMsSinceLastReceived();
 
 			if (_handler != nullptr)
 			{
@@ -103,9 +105,9 @@ namespace
 		bool _handler_result		   = true;
 
 		// What the handler saw while it was running
-		bool _handler_ran		   = false;
-		bool _marked_in_handler	   = false;
-		time_t _elapsed_in_handler = 0;
+		bool _handler_ran			   = false;
+		bool _marked_in_handler		   = false;
+		time_t _elapsed_in_handler	   = 0;
 	};
 
 	// Holds the provider and one channel already registered with it, which is the state every
@@ -209,8 +211,8 @@ TEST(PushStreamLifecycle, HandlerLongerThanTheBudgetDoesNotLeaveTheChannelReapab
 {
 	Fixture f;
 
-	constexpr time_t BUDGET_MS	= 100;
-	constexpr int HANDLER_MS	= 300;
+	constexpr time_t BUDGET_MS = 100;
+	constexpr int HANDLER_MS   = 300;
 
 	f.channel->SetPacketSilenceTimeoutMs(BUDGET_MS);
 	f.channel->_handler = [HANDLER_MS]() { std::this_thread::sleep_for(std::chrono::milliseconds(HANDLER_MS)); };
@@ -222,6 +224,41 @@ TEST(PushStreamLifecycle, HandlerLongerThanTheBudgetDoesNotLeaveTheChannelReapab
 	// finished rather than since it started.
 	EXPECT_FALSE(f.channel->IsProcessingData());
 	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), BUDGET_MS);
+}
+
+TEST(PushStreamLifecycle, ProcessingMarkSurvivesUntilTheLastOverlappingHandlerLeaves)
+{
+	Fixture f;
+
+	std::promise<void> first_entered;
+	std::promise<void> second_left;
+	std::atomic<bool> mark_after_second_left = true;
+
+	// The first handler stays inside until the second one has come and gone, which is the order a
+	// flag cannot express: the second handler leaving must not clear the mark the first still needs.
+	f.channel->_handler						 = [&]() {
+		first_entered.set_value();
+		second_left.get_future().wait();
+	};
+
+	auto first = std::async(std::launch::async, [&]() {
+		f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData());
+	});
+
+	first_entered.get_future().wait();
+
+	// Reuse the same channel from another thread, as a base class with several sockets or workers per
+	// channel would. This one returns immediately.
+	f.channel->_handler = nullptr;
+	f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData());
+
+	mark_after_second_left = f.channel->IsProcessingData();
+
+	second_left.set_value();
+	first.wait();
+
+	EXPECT_TRUE(mark_after_second_left.load());
+	EXPECT_FALSE(f.channel->IsProcessingData());
 }
 
 TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheBudgetWhenTheApplicationIsUnknown)

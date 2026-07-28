@@ -47,12 +47,15 @@ namespace pvd
 		// down elsewhere, must not close it here.
 		virtual void CloseTransport() {}
 
-		// Whether this channel's own data handler is running.
-		// The channel task runner must not judge such a channel:
+		// Marks this channel's own data handler as entered and left.
+		// The channel task runner must not judge a channel whose handler is running:
 		// the time the handler spends is not client silence,
-		// and access control can block it for seconds
-		// because `<AdmissionWebhooks><Timeout>` has no upper bound.
-		void SetProcessingData(bool processing);
+		// and access control can block it for seconds because `<AdmissionWebhooks><Timeout>`
+		// has no upper bound. These count rather than set a flag, because nothing in this base class
+		// guarantees that two handlers for one channel never overlap, and the first one to leave
+		// must not clear the mark the other still needs.
+		void BeginProcessingData();
+		void EndProcessingData();
 		bool IsProcessingData();
 
 		// channel may not yet determined, so we manage the timer separately
@@ -127,8 +130,8 @@ namespace pvd
 		std::atomic<uint32_t> _attemps_publish_count   = 0;
 		// Whether the first media packet has ended the wait sized for it
 		std::atomic<bool> _first_media_wait_ended	   = false;
-		// Whether this channel's data handler is running
-		std::atomic<bool> _is_processing_data		   = false;
+		// How many of this channel's data handlers are running
+		std::atomic<int32_t> _processing_data_count	   = 0;
 
 		// Push Provider
 		std::shared_ptr<PushProvider>	_provider;

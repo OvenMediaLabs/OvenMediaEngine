@@ -15,12 +15,12 @@ namespace pvd
 			explicit ProcessingDataGuard(const std::shared_ptr<PushStream> &channel)
 				: _channel(channel)
 			{
-				_channel->SetProcessingData(true);
+				_channel->BeginProcessingData();
 			}
 
 			~ProcessingDataGuard()
 			{
-				_channel->SetProcessingData(false);
+				_channel->EndProcessingData();
 			}
 
 		private:

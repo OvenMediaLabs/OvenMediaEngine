@@ -81,14 +81,19 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
-	void PushStream::SetProcessingData(bool processing)
+	void PushStream::BeginProcessingData()
 	{
-		_is_processing_data = processing;
+		_processing_data_count.fetch_add(1);
+	}
+
+	void PushStream::EndProcessingData()
+	{
+		_processing_data_count.fetch_sub(1);
 	}
 
 	bool PushStream::IsProcessingData()
 	{
-		return _is_processing_data;
+		return _processing_data_count.load() != 0;
 	}
 
 	void PushStream::UpdateLastReceivedTime()
@@ -204,9 +209,19 @@ namespace pvd
 			return;
 		}
 
-		// The same value `PushApplication::JoinStream()` applies once the stream publishes,
-		// so the budget does not depend on how long publishing still takes after this first packet.
-		SetPacketSilenceTimeoutMs(application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType()));
+		bool is_configured		 = false;
+		const auto configured_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType(), &is_configured);
+
+		// Only a value the operator set positively takes over here. A provider default,
+		// an option left out, and an explicit `0` all leave the wait's budget in place,
+		// because the channel is still unpublished: a source that sent one media packet
+		// and then went silent has to be reaped like any other unpublished channel.
+		// `PushApplication::JoinStream()` applies the effective value, `0` included,
+		// once the stream actually publishes.
+		if (is_configured && (configured_ms > 0))
+		{
+			SetPacketSilenceTimeoutMs(configured_ms);
+		}
 
 		_first_media_wait_ended = true;
 	}
