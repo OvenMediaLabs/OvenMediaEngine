@@ -79,10 +79,13 @@ namespace pvd
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
 
 		// End the wait that `ApplyConfiguredFirstMediaWaitTimeoutMs()` sized.
-		// A provider calls this when the first media packet arrives,
-		// so the channel is judged from then on by the same `PacketSilenceTimeoutMs` policy
-		// that governs a published stream, rather than keeping the first-media budget
-		// until publishing completes. Only the first call has an effect.
+		// A provider calls this when the first media packet arrives, so the channel stops being
+		// judged by a budget meant for a source that has not sent anything yet.
+		// The channel is still unpublished, so an operator-configured positive `PacketSilenceTimeoutMs`
+		// governs it from here and everything else falls back to the same budget an unpublished channel is created with.
+		// `PushApplication::JoinStream()` applies the effective value, `0` included, once the stream publishes.
+		// This does nothing unless the wait is actually running: a media message that arrives before
+		// the provider sized the wait must not consume it, and only the first call after that ends it.
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()
@@ -128,10 +131,18 @@ namespace pvd
 		std::atomic<time_t> _packet_silence_timeout_ms = 0;
 
 		std::atomic<uint32_t> _attemps_publish_count   = 0;
-		// Whether the first media packet has ended the wait sized for it
-		std::atomic<bool> _first_media_wait_ended	   = false;
+		// Where this channel stands in the wait for its first media packet.
+		// A media message can reach a channel before the wait was sized,
+		// so `NotStarted` and `Ended` are distinct: only the former is still waiting to be armed.
+		enum class FirstMediaWaitPhase : uint8_t
+		{
+			NotStarted,
+			Waiting,
+			Ended
+		};
+		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
 		// How many of this channel's data handlers are running
-		std::atomic<int32_t> _processing_data_count	   = 0;
+		std::atomic<int32_t> _processing_data_count				 = 0;
 
 		// Push Provider
 		std::shared_ptr<PushProvider>	_provider;

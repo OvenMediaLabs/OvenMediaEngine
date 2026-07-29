@@ -177,23 +177,29 @@ namespace pvd
 			// The operator sized this wait, so it governs even when `PacketSilenceTimeoutMs` is set too.
 			// That option describes a stream that has already published.
 			SetPacketSilenceTimeoutMs(configured_ms);
-			return;
+		}
+		else
+		{
+			// This wait was not sized. An operator-configured `PacketSilenceTimeoutMs` keeps governing it,
+			// as it did before this option existed; otherwise this option's default applies.
+			bool is_silence_configured = false;
+			const auto silence_ms	   = application->GetConfiguredPacketSilenceTimeoutMs(provider_type, &is_silence_configured);
+
+			SetPacketSilenceTimeoutMs((is_silence_configured && (silence_ms > 0))
+										  ? silence_ms
+										  : cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
 		}
 
-		// This wait was not sized. An operator-configured `PacketSilenceTimeoutMs` keeps governing it,
-		// as it did before this option existed; otherwise this option's default applies.
-		bool is_silence_configured = false;
-		const auto silence_ms	   = application->GetConfiguredPacketSilenceTimeoutMs(provider_type, &is_silence_configured);
-
-		SetPacketSilenceTimeoutMs((is_silence_configured && (silence_ms > 0))
-									  ? silence_ms
-									  : cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
+		// The budget is in place, so the first media packet can end this wait from here.
+		// Arming it only now is what keeps a media message that arrived earlier from consuming it.
+		_first_media_wait_phase = FirstMediaWaitPhase::Waiting;
 	}
 
 	void PushStream::EndFirstMediaWait(const info::VHostAppName &vhost_app_name)
 	{
-		if (_first_media_wait_ended.load())
+		if (_first_media_wait_phase.load() != FirstMediaWaitPhase::Waiting)
 		{
+			// Either the provider has not sized the wait yet, or the wait is already over.
 			return;
 		}
 
@@ -206,24 +212,28 @@ namespace pvd
 		auto application = provider->GetApplicationByName(vhost_app_name);
 		if (application == nullptr)
 		{
+			// The wait keeps running so a later packet can still end it,
+			// rather than being spent on a lookup that may succeed next time.
 			return;
 		}
 
 		bool is_configured		 = false;
 		const auto configured_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType(), &is_configured);
 
-		// Only a value the operator set positively takes over here. A provider default,
-		// an option left out, and an explicit `0` all leave the wait's budget in place,
-		// because the channel is still unpublished: a source that sent one media packet
-		// and then went silent has to be reaped like any other unpublished channel.
-		// `PushApplication::JoinStream()` applies the effective value, `0` included,
-		// once the stream actually publishes.
-		if (is_configured && (configured_ms > 0))
+		auto expected = FirstMediaWaitPhase::Waiting;
+		if (_first_media_wait_phase.compare_exchange_strong(expected, FirstMediaWaitPhase::Ended) == false)
 		{
-			SetPacketSilenceTimeoutMs(configured_ms);
+			// Another packet ended the wait first.
+			return;
 		}
 
-		_first_media_wait_ended = true;
+		// Only a value the operator set positively governs the channel from here.
+		// Everything else falls back to the budget an unpublished channel is created with:
+		// this wait's budget is sized for a source that has not sent anything yet, and keeping it
+		// would let a channel that sent one packet and went silent hold its connection that long again.
+		SetPacketSilenceTimeoutMs((is_configured && (configured_ms > 0))
+									  ? configured_ms
+									  : DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)
