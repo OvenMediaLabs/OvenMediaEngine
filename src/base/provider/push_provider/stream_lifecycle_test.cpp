@@ -410,15 +410,23 @@ TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheBudgetWhenTheApplicatio
 {
 	Fixture f;
 
-	constexpr time_t WAIT_MS = 30000;
+	const auto vhost_app_name = f.CreateApplication("<FirstMediaWaitTimeoutMs>8000</FirstMediaWaitTimeoutMs>");
+	ASSERT_TRUE(vhost_app_name.IsValid());
 
-	f.channel->SetPacketSilenceTimeoutMs(WAIT_MS);
+	// The wait has to be running for this to reach the lookup at all.
+	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
+	ASSERT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
 
-	// The stub provider has no applications, which is also what a channel sees when its application
-	// is deleted while it waits. Losing the budget here would leave the channel with no guard at all.
+	// A name that resolves to nothing, which is also what a channel sees when its application is
+	// deleted while it waits. Losing the budget here would leave the channel with no guard at all.
 	f.channel->EndFirstMediaWait(info::VHostAppName::InvalidVHostAppName());
 
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), WAIT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
+
+	// The failed lookup must not have spent the wait either, so the next packet still ends it.
+	f.channel->EndFirstMediaWait(vhost_app_name);
+
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 }
 
 TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenNothingIsConfigured)
