@@ -99,11 +99,31 @@ namespace pvd
 	void PushStream::UpdateLastReceivedTime()
 	{
 		_last_received_time_ms = SteadyNowMs();
+		_state_generation.fetch_add(1);
 	}
 
 	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
 	{
 		_packet_silence_timeout_ms = timeout_ms;
+		_state_generation.fetch_add(1);
+	}
+
+	PushStream::SilenceState PushStream::GetSilenceState()
+	{
+		SilenceState state;
+
+		// The generation is read first, so a write to any field below shows up as a change.
+		state.generation	= _state_generation.load();
+		state.is_processing = IsProcessingData();
+		state.timeout_ms	= GetPacketSilenceTimeoutMs();
+		state.elapsed_ms	= GetElapsedMsSinceLastReceived();
+
+		return state;
+	}
+
+	bool PushStream::HasSilenceStateChangedSince(const SilenceState &state)
+	{
+		return (_state_generation.load() != state.generation) || IsProcessingData();
 	}
 	
 	time_t PushStream::GetPacketSilenceTimeoutMs()
@@ -247,7 +267,7 @@ namespace pvd
 		
 		_is_published = GetProvider()->PublishChannel(GetChannelId(), vhost_app_name, GetSharedPtrAs<PushStream>());
 
-		_last_received_time_ms = SteadyNowMs();
+		UpdateLastReceivedTime();
 
 		return _is_published;
 	}

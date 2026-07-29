@@ -229,33 +229,45 @@ namespace pvd
 			{
 				auto channel = x.second;
 
-				if (channel->IsProcessingData())
+				// Everything this judgment needs, read once, so it cannot mix an elapsed time from
+				// before the channel's handler with a timeout from after it.
+				const auto state = channel->GetSilenceState();
+
+				if (state.is_processing)
 				{
 					// Its handler is running, so the channel is not silent.
 					// Judging it here would delete a channel that is in the middle of access control.
 					continue;
 				}
 
-				if (channel->GetPacketSilenceTimeoutMs() == 0)
+				if (state.timeout_ms == 0)
 				{
 					// If the packet silence timeout is 0, it means that the channel is not timed out.
 					continue;
 				}
 
-				const intmax_t elapsed_ms = static_cast<intmax_t>(channel->GetElapsedMsSinceLastReceived());
-				const intmax_t timeout_ms = static_cast<intmax_t>(channel->GetPacketSilenceTimeoutMs());
+				const auto elapsed_ms = static_cast<intmax_t>(state.elapsed_ms);
+				const auto timeout_ms = static_cast<intmax_t>(state.timeout_ms);
 
 				logtt("Checking channel %u, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId(),
 					  elapsed_ms,
 					  timeout_ms);
 
-				if (elapsed_ms > timeout_ms)
+				if (state.IsSilentBeyondTimeout())
 				{
+					if (channel->HasSilenceStateChangedSince(state))
+					{
+						// The channel's own handler replaced this state while the judgment was being
+						// made, so the numbers above no longer belong together. The next tick judges it
+						// again against whatever the handler left behind.
+						continue;
+					}
+
 					logtw("Channel %u is timed out, %" PRIdMAX " ms elapsed since last received, deleting it", channel->GetChannelId(), elapsed_ms);
 
 					// Notify the channel timed out
 					OnTimedOut(channel);
-					
+
 					// Delete the channel
 					OnChannelDeleted(channel);
 				}

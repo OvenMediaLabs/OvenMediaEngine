@@ -64,6 +64,32 @@ namespace pvd
 		time_t GetPacketSilenceTimeoutMs();
 		time_t GetElapsedMsSinceLastReceived();
 
+		// One view of everything the channel task runner judges a channel by.
+		// Reading these fields one at a time lets the channel's own handler change some of them in between,
+		// and a judgment that mixes an elapsed time from before a handler with a budget
+		// from after it deletes a channel that is perfectly alive.
+		struct SilenceState
+		{
+			uint64_t generation = 0;
+			time_t timeout_ms	= 0;
+			time_t elapsed_ms	= -1;
+			bool is_processing	= false;
+
+			// Whether this view says the channel has been silent for longer than it may be.
+			// A `0` budget disables the judgment, and a negative elapsed time means nothing has arrived yet.
+			bool IsSilentBeyondTimeout() const
+			{
+				return (is_processing == false) && (timeout_ms > 0) && (elapsed_ms > timeout_ms);
+			}
+		};
+
+		SilenceState GetSilenceState();
+
+		// Whether anything `GetSilenceState()` read has moved since it was read.
+		// A judgment asks this before it deletes the channel, so one made across a handler is dropped
+		// and tried again.
+		bool HasSilenceStateChangedSince(const SilenceState &state);
+
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
 		// Concrete providers call this as soon as the application is known, which for RTMP, MPEG-TS
 		// and SRT is while the channel is still unpublished, and for WebRTC is right after
@@ -143,6 +169,9 @@ namespace pvd
 		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
 		// How many of this channel's data handlers are running
 		std::atomic<int32_t> _processing_data_count				 = 0;
+		// Bumped by every write a silence judgment depends on,
+		// so a judgment can tell that the state it read has since been replaced.
+		std::atomic<uint64_t> _state_generation					 = 0;
 
 		// Push Provider
 		std::shared_ptr<PushProvider>	_provider;

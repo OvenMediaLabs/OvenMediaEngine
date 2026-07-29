@@ -501,3 +501,106 @@ TEST(PushStreamLifecycle, MediaThatArrivesBeforeTheWaitIsSizedDoesNotConsumeIt)
 	f.channel->EndFirstMediaWait(vhost_app_name);
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 1234);
 }
+
+//  The channel task runner reads a channel's state on its own thread  while the channel's handler can be writing it.
+//  These pin the rule it judges by: one view of the state, and no deletion if that view has been replaced since.
+namespace
+{
+	// Leaves the channel silent for longer than its budget allows, which is the only state the runner
+	// ever deletes a channel from.
+	void MakeSilentBeyondTimeout(const std::shared_ptr<StubPushStream> &channel)
+	{
+		channel->SetPacketSilenceTimeoutMs(1);
+		channel->UpdateLastReceivedTime();
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+}  // namespace
+
+TEST(PushStreamLifecycle, ASilentChannelIsJudgedFromOneViewOfItsState)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+
+	EXPECT_TRUE(state.IsSilentBeyondTimeout());
+	EXPECT_FALSE(f.channel->HasSilenceStateChangedSince(state));
+}
+
+TEST(PushStreamLifecycle, AChannelWithNoBudgetIsNeverJudgedSilent)
+{
+	Fixture f;
+
+	f.channel->UpdateLastReceivedTime();
+	f.channel->SetPacketSilenceTimeoutMs(0);
+
+	EXPECT_FALSE(f.channel->GetSilenceState().IsSilentBeyondTimeout());
+}
+
+TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheBudgetChangesUnderIt)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+	// What `PushApplication::JoinStream()` does the moment a stream publishes. Acting on the view above
+	// would delete a stream that has just gone live.
+	f.channel->SetPacketSilenceTimeoutMs(0);
+
+	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+}
+
+TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenDataArrivesUnderIt)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+	f.channel->UpdateLastReceivedTime();
+
+	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+}
+
+TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenAHandlerStartsUnderIt)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+	f.channel->BeginProcessingData();
+
+	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+
+	f.channel->EndProcessingData();
+}
+
+TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheFirstMediaPacketEndsTheWaitUnderIt)
+{
+	Fixture f;
+
+	const auto vhost_app_name = f.CreateApplication("");
+	ASSERT_TRUE(vhost_app_name.IsValid());
+
+	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+	// The channel's handler ends the wait and lowers the budget while the runner sits between reading
+	// this state and acting on it, which is the interleaving that used to delete a live channel.
+	f.channel->EndFirstMediaWait(vhost_app_name);
+
+	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+}
