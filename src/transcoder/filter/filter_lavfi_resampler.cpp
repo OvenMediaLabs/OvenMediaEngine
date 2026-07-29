@@ -164,9 +164,11 @@ bool FilterLavfiResampler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 		media_frame->GetChannels().GetLayout() != _src_channel_layout ||
 		media_frame->GetFormat<cmn::AudioSample::Format>() != _src_sample_format)
 	{
-		logtw("Input frame parameters do not match the expected source parameters. %dHz/%s (expected: %dHz/%s)",
+		logtw("Input frame parameters do not match the expected source parameters. %dHz/%s/%s (expected: %dHz/%s/%s)",
 			  media_frame->GetSampleRate(), media_frame->GetChannels().GetName(),
-			  _src_samplerate, cmn::AudioChannel::GetLayoutName(_src_channel_layout));
+			  cmn::AudioSample(media_frame->GetFormat<cmn::AudioSample::Format>()).GetName(),
+			  _src_samplerate, cmn::AudioChannel::GetLayoutName(_src_channel_layout),
+			  cmn::AudioSample(_src_sample_format).GetName());
 
 		return false;
 	}

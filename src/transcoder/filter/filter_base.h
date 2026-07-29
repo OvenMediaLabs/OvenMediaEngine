@@ -72,6 +72,24 @@ public:
 		return _src_height;
 	}
 
+	// Properties of the frames arriving from the decoder. Unlike _src_pixfmt,
+	// _src_frame_pixfmt keeps the decoder-side format label (e.g. CUDA for
+	// hardware frames), so it can be compared against incoming frames directly.
+	cmn::VideoPixelFormatId GetInputFramePixelFormat() const
+	{
+		return _src_frame_pixfmt;
+	}
+
+	cmn::ColorMatrix GetInputColorMatrix() const
+	{
+		return _src_color_matrix;
+	}
+
+	cmn::ColorRange GetInputColorRange() const
+	{
+		return _src_color_range;
+	}
+
 	int32_t GetInputSampleRate() const
 	{
 		return _src_samplerate;
@@ -112,6 +130,15 @@ public:
 	void SetInputTrack(std::shared_ptr<MediaTrack> input_track)
 	{
 		_input_track = input_track;
+
+		// Captured here so that every filter implementation gets the decoder-side
+		// snapshot without having to set it in its own Initialize()
+		if (input_track != nullptr && input_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_src_frame_pixfmt = input_track->GetColorspace();
+			_src_color_matrix = input_track->GetColorMatrix();
+			_src_color_range = input_track->GetColorRange();
+		}
 	}
 
 	void SetOutputStreamInfo(std::shared_ptr<info::Stream> output_stream_info)
@@ -184,6 +211,11 @@ protected:
 	cmn::VideoPixelFormatId _src_pixfmt = cmn::VideoPixelFormatId::None;
 	int32_t 	_src_width = 0;
 	int32_t 	_src_height = 0;
+
+	// Decoder-side snapshot captured by SetInputTrack()
+	cmn::VideoPixelFormatId _src_frame_pixfmt = cmn::VideoPixelFormatId::None;
+	cmn::ColorMatrix _src_color_matrix = cmn::ColorMatrix::Unspecified;
+	cmn::ColorRange _src_color_range = cmn::ColorRange::Unspecified;
 
 	int32_t 	_src_samplerate = 0;
 	cmn::AudioChannel::Layout _src_channel_layout = cmn::AudioChannel::Layout::LayoutUnknown;

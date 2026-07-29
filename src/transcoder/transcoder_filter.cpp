@@ -340,9 +340,10 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	// NOTE: Input format changes (resolution, audio properties) are detected per
-	// frame in ThreadLoop(). A flag set here is consumed at whatever frame the
-	// worker dequeues next, so it cannot be tied to the frame that triggered it.
+	// NOTE: Input format changes (video resolution/pixel format/color tags and
+	// audio properties) are detected per frame in ThreadLoop(). A flag set here is
+	// consumed at whatever frame the worker dequeues next, so it cannot be tied to
+	// the frame that triggered it.
 
 	// Check #2 - Filter error state
 	//  When using an XMA scaler, resource allocation failures may occur intermittently.
@@ -371,8 +372,13 @@ bool TranscodeFilter::IsFormatChanged(const std::shared_ptr<FilterBase> &base, c
 	switch (frame->GetMediaType())
 	{
 		case MediaType::Video:
+			// The pixel format is compared with the decoder-side label, so hardware
+			// frames (e.g. CUDA) do not falsely mismatch the downloaded host format
 			return (frame->GetWidth() != base->GetInputWidth() ||
-					frame->GetHeight() != base->GetInputHeight());
+					frame->GetHeight() != base->GetInputHeight() ||
+					frame->GetFormat<cmn::VideoPixelFormatId>() != base->GetInputFramePixelFormat() ||
+					frame->GetColorMatrix() != base->GetInputColorMatrix() ||
+					frame->GetColorRange() != base->GetInputColorRange());
 
 		case MediaType::Audio:
 			return (frame->GetSampleRate() != base->GetInputSampleRate() ||
@@ -393,15 +399,22 @@ void TranscodeFilter::UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> 
 	switch (frame->GetMediaType())
 	{
 		case MediaType::Video:
-			logtd("[%s] input video frame resolution has been changed. track:%u. Size:%dx%d -> %dx%d",
+			logtd("[%s] input video frame properties have been changed. track:%u. %dx%d/%s(csp:%d/%d) -> %dx%d/%s(csp:%d/%d)",
 				  _input_stream_info->GetUri().CStr(),
 				  input_track->GetId(),
 				  base->GetInputWidth(),
 				  base->GetInputHeight(),
+				  cmn::GetVideoPixelFormatIdString(base->GetInputFramePixelFormat()),
+				  static_cast<int32_t>(base->GetInputColorMatrix()),
+				  static_cast<int32_t>(base->GetInputColorRange()),
 				  frame->GetWidth(),
-				  frame->GetHeight());
+				  frame->GetHeight(),
+				  cmn::GetVideoPixelFormatIdString(frame->GetFormat<cmn::VideoPixelFormatId>()),
+				  static_cast<int32_t>(frame->GetColorMatrix()),
+				  static_cast<int32_t>(frame->GetColorRange()));
 
 			input_track->SetResolution(frame->GetWidth(), frame->GetHeight());
+			input_track->SetColorspace(frame->GetFormat<cmn::VideoPixelFormatId>());
 			input_track->SetColorMatrix(frame->GetColorMatrix());
 			input_track->SetColorRange(frame->GetColorRange());
 			break;

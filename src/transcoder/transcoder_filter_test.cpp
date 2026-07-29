@@ -36,6 +36,44 @@ namespace
 		return track;
 	}
 
+	std::shared_ptr<MediaTrack> MakeVideoTrack(int32_t id, int32_t width, int32_t height)
+	{
+		auto track = std::make_shared<MediaTrack>();
+		track->SetId(id);
+		track->SetMediaType(cmn::MediaType::Video);
+		track->SetCodecId(cmn::MediaCodecId::H264);
+		track->SetCodecModuleId(cmn::MediaCodecModuleId::DEFAULT);
+		track->SetTimeBase(1, 90000);
+		track->SetFrameRateByConfig(30.0);
+		track->SetResolution(width, height);
+		track->SetColorspace(cmn::VideoPixelFormatId::YUV420P);
+
+		return track;
+	}
+
+	std::shared_ptr<MediaFrame> MakeVideoFrame(int32_t width, int32_t height, enum AVPixelFormat pix_fmt,
+											   enum AVColorSpace color_space, enum AVColorRange color_range, int64_t pts)
+	{
+		AVFrame *av_frame	  = ::av_frame_alloc();
+		av_frame->format	  = pix_fmt;
+		av_frame->width		  = width;
+		av_frame->height	  = height;
+		av_frame->colorspace  = color_space;
+		av_frame->color_range = color_range;
+		av_frame->pts		  = pts;
+
+		if (::av_frame_get_buffer(av_frame, 0) < 0)
+		{
+			::av_frame_free(&av_frame);
+			return nullptr;
+		}
+
+		auto media_frame = ffmpeg::compat::ToMediaFrame(cmn::MediaType::Video, av_frame);
+		::av_frame_free(&av_frame);
+
+		return media_frame;
+	}
+
 	// A silent stereo fltp frame, built through the same path as decoder output
 	std::shared_ptr<MediaFrame> MakeAudioFrame(int32_t sample_rate, int64_t pts, int32_t nb_samples)
 	{
@@ -114,6 +152,63 @@ TEST(TranscodeFilterFormatChange, AudioPropertyChangeWithQueuedBacklog)
 
 	EXPECT_EQ(error_count.load(), 0);
 	EXPECT_GE(output_count.load(), 30);
+}
+
+// Color tag and pixel format changes at the same resolution must also rebuild
+// the video filter at the boundary frame, without any error or warning storm
+TEST(TranscodeFilterFormatChange, VideoColorTagAndPixelFormatChange)
+{
+	auto input_stream_info	= std::make_shared<info::Stream>(StreamSourceType::Ovt);
+	auto output_stream_info = std::make_shared<info::Stream>(StreamSourceType::Ovt);
+
+	auto input_track  = MakeVideoTrack(0, 640, 360);
+	auto output_track = MakeVideoTrack(100, 640, 360);
+
+	std::atomic<int> error_count{0};
+	std::atomic<int> output_count{0};
+
+	auto filter = TranscodeFilter::Create(
+		0, input_stream_info, input_track, output_stream_info, output_track,
+		[&](TranscodeResult result, int32_t id, std::shared_ptr<MediaFrame> frame) {
+			if (result == TranscodeResult::DataReady && frame != nullptr)
+			{
+				output_count++;
+			}
+			else if (result == TranscodeResult::DataError)
+			{
+				error_count++;
+			}
+		});
+	ASSERT_NE(filter, nullptr);
+
+	// Untagged frames, then bt709-tagged frames (tag-only change), then 10-bit
+	// frames (pixel format change), all at the same resolution
+	int64_t pts = 0;
+	for (int i = 0; i < 10; i++)
+	{
+		filter->SendBuffer(MakeVideoFrame(640, 360, AV_PIX_FMT_YUV420P, AVCOL_SPC_UNSPECIFIED, AVCOL_RANGE_UNSPECIFIED, pts));
+		pts += 3000;
+	}
+	for (int i = 0; i < 10; i++)
+	{
+		filter->SendBuffer(MakeVideoFrame(640, 360, AV_PIX_FMT_YUV420P, AVCOL_SPC_BT709, AVCOL_RANGE_MPEG, pts));
+		pts += 3000;
+	}
+	for (int i = 0; i < 10; i++)
+	{
+		filter->SendBuffer(MakeVideoFrame(640, 360, AV_PIX_FMT_YUV420P10, AVCOL_SPC_BT709, AVCOL_RANGE_MPEG, pts));
+		pts += 3000;
+	}
+
+	for (int i = 0; i < 100 && output_count.load() < 25; i++)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+
+	filter->Stop();
+
+	EXPECT_EQ(error_count.load(), 0);
+	EXPECT_GE(output_count.load(), 25);
 }
 
 // A frame that does not match the graph must be dropped without putting the
