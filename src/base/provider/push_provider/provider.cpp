@@ -121,11 +121,11 @@ namespace pvd
 		// In the future,
 		// it may be necessary to send data to an application rather than sending it directly to a stream.
 		{
-			// Mark the channel while its handler runs so the channel task runner does not read the
-			// handler's own duration as client silence. Access control blocks inside this call.
-			// The received time is published before the mark is cleared: otherwise the runner could
-			// see a channel that is no longer processing but still carries the time from before a
-			// long handler, and delete it.
+			// Mark the channel while its handler runs, so its own duration is not read as client silence.
+			// Access control blocks inside this call.
+			// The received time is published before the mark is cleared.
+			// Otherwise the runner could see a channel that is no longer processing,
+			// yet still carrying a time from before a long handler.
 			ProcessingDataGuard guard(channel);
 
 			if (channel->OnDataReceived(data) == true)
@@ -172,8 +172,8 @@ namespace pvd
 		else
 		{
 			// The channel never joined an application, so `Application::DeleteStream()` did not run
-			// and nothing has torn down the transport. Without this the client keeps its connection
-			// open and believes it is still streaming after the channel is gone.
+			// and nothing has torn down the transport.
+			// Without this, the client keeps its connection open and believes it is still streaming.
 			channel->CloseTransport();
 		}
 
@@ -229,8 +229,8 @@ namespace pvd
 			{
 				auto channel = x.second;
 
-				// Everything this judgment needs, read once, so it cannot mix an elapsed time from
-				// before the channel's handler with a timeout from after it.
+				// Everything this judgment needs, read once,
+				// so it cannot pair an elapsed time from before the channel's handler with a later timeout.
 				const auto state = channel->GetSilenceState();
 
 				if (state.is_processing)
@@ -257,9 +257,9 @@ namespace pvd
 				{
 					if (channel->HasSilenceStateChangedSince(state))
 					{
-						// The channel's own handler replaced this state while the judgment was being
-						// made, so the numbers above no longer belong together. The next tick judges it
-						// again against whatever the handler left behind.
+						// The channel's own handler replaced this state mid-judgment,
+						// so the numbers above no longer belong together.
+						// The next tick judges it again against whatever the handler left behind.
 						continue;
 					}
 

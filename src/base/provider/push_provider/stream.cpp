@@ -248,9 +248,9 @@ namespace pvd
 		}
 
 		// Only a value the operator set positively governs the channel from here.
-		// Everything else falls back to the budget an unpublished channel is created with:
-		// this wait's budget is sized for a source that has not sent anything yet, and keeping it
-		// would let a channel that sent one packet and went silent hold its connection that long again.
+		// Everything else falls back to the budget an unpublished channel is created with.
+		// This wait's budget is sized for a source that has not sent anything yet,
+		// so keeping it would let a channel that sent one packet and stopped hold on for that long again.
 		SetPacketSilenceTimeoutMs((is_configured && (configured_ms > 0))
 									  ? configured_ms
 									  : DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);

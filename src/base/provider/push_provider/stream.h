@@ -39,21 +39,15 @@ namespace pvd
 		bool IsReadyToReceiveStreamData();
 		bool IsPublished();
 
-		// Closes the transport this channel owns, without any of the teardown `Stop()` performs.
-		// `PushProvider::OnChannelDeleted()` calls this for a channel that never joined an
-		// application, where `Application::DeleteStream()` and therefore `Stop()` never run and
-		// nothing else would let the client know it is no longer streaming.
-		// The default is a no-op: a provider whose transport is shared between channels, or is torn
-		// down elsewhere, must not close it here.
+		// Closes the transport this channel owns, without the teardown `Stop()` performs.
+		// `PushProvider::OnChannelDeleted()` calls this for a channel that never joined an application,
+		// where nothing else would tell the client it is no longer streaming.
+		// The default is a no-op, because a provider may share this transport or tear it down elsewhere.
 		virtual void CloseTransport() {}
 
-		// Marks this channel's own data handler as entered and left.
-		// The channel task runner must not judge a channel whose handler is running:
-		// the time the handler spends is not client silence,
-		// and access control can block it for seconds because `<AdmissionWebhooks><Timeout>`
-		// has no upper bound. These count rather than set a flag, because nothing in this base class
-		// guarantees that two handlers for one channel never overlap, and the first one to leave
-		// must not clear the mark the other still needs.
+		// Marks this channel's own data handler as entered and left, for the channel task runner to skip.
+		// A handler's own duration is not client silence, and `<AdmissionWebhooks><Timeout>` is unbounded.
+		// These count instead of setting a flag, because two handlers for one channel may overlap.
 		void BeginProcessingData();
 		void EndProcessingData();
 		bool IsProcessingData();
@@ -65,9 +59,8 @@ namespace pvd
 		time_t GetElapsedMsSinceLastReceived();
 
 		// One view of everything the channel task runner judges a channel by.
-		// Reading these fields one at a time lets the channel's own handler change some of them in between,
-		// and a judgment that mixes an elapsed time from before a handler with a budget
-		// from after it deletes a channel that is perfectly alive.
+		// Field-by-field reads let a handler change some of them in between,
+		// and a judgment pairing an old elapsed time with a new budget deletes a live channel.
 		struct SilenceState
 		{
 			uint64_t generation = 0;
@@ -76,7 +69,7 @@ namespace pvd
 			bool is_processing	= false;
 
 			// Whether this view says the channel has been silent for longer than it may be.
-			// A `0` budget disables the judgment, and a negative elapsed time means nothing has arrived yet.
+			// A `0` budget disables the judgment, and a negative elapsed time means nothing has arrived.
 			bool IsSilentBeyondTimeout() const
 			{
 				return (is_processing == false) && (timeout_ms > 0) && (elapsed_ms > timeout_ms);
@@ -86,8 +79,7 @@ namespace pvd
 		SilenceState GetSilenceState();
 
 		// Whether anything `GetSilenceState()` read has moved since it was read.
-		// A judgment asks this before it deletes the channel, so one made across a handler is dropped
-		// and tried again.
+		// A judgment asks this before deleting, so one made across a handler is dropped and retried.
 		bool HasSilenceStateChangedSince(const SilenceState &state);
 
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
@@ -97,21 +89,16 @@ namespace pvd
 		// An option the operator did not set leaves that default in place.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// Set the silence budget for the wait that ends with the first media packet.
-		// A provider calls this when that wait begins. `FirstMediaWaitTimeoutMs` governs it
-		// when the operator sized it; otherwise an operator-configured `PacketSilenceTimeoutMs` does,
-		// and failing that the default for this wait.
-		// So this call decides the budget on its own and needs no second call.
+		// Sizes the wait that ends with the first media packet, and starts it.
+		// `FirstMediaWaitTimeoutMs` governs the budget when the operator sized it,
+		// otherwise an operator-configured `PacketSilenceTimeoutMs` does, and failing that its default.
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// End the wait that `ApplyConfiguredFirstMediaWaitTimeoutMs()` sized.
-		// A provider calls this when the first media packet arrives, so the channel stops being
-		// judged by a budget meant for a source that has not sent anything yet.
-		// The channel is still unpublished, so an operator-configured positive `PacketSilenceTimeoutMs`
-		// governs it from here and everything else falls back to the same budget an unpublished channel is created with.
-		// `PushApplication::JoinStream()` applies the effective value, `0` included, once the stream publishes.
-		// This does nothing unless the wait is actually running: a media message that arrives before
-		// the provider sized the wait must not consume it, and only the first call after that ends it.
+		// Ends the wait `ApplyConfiguredFirstMediaWaitTimeoutMs()` started, on the first media packet.
+		// The channel is still unpublished: a positive `PacketSilenceTimeoutMs` set by the operator wins,
+		// and everything else falls back to the channel-creation budget.
+		// `PushApplication::JoinStream()` applies the effective value, `0` included, at publish.
+		// Only the first media packet after the wait started has an effect: an earlier one does nothing.
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 
 		uint32_t GetNumberOfAttempsToPublish()
@@ -158,8 +145,7 @@ namespace pvd
 
 		std::atomic<uint32_t> _attemps_publish_count   = 0;
 		// Where this channel stands in the wait for its first media packet.
-		// A media message can reach a channel before the wait was sized,
-		// so `NotStarted` and `Ended` are distinct: only the former is still waiting to be armed.
+		// `NotStarted` and `Ended` are distinct, because a media message can arrive before it starts.
 		enum class FirstMediaWaitPhase : uint8_t
 		{
 			NotStarted,
@@ -169,8 +155,7 @@ namespace pvd
 		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
 		// How many of this channel's data handlers are running
 		std::atomic<int32_t> _processing_data_count				 = 0;
-		// Bumped by every write a silence judgment depends on,
-		// so a judgment can tell that the state it read has since been replaced.
+		// Bumped by every write a silence judgment depends on, so it can tell its own read is stale
 		std::atomic<uint64_t> _state_generation					 = 0;
 
 		// Push Provider

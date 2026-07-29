@@ -18,10 +18,10 @@ namespace cfg
 		{
 			namespace pvd
 			{
-				// How long an input may stay silent between the moment it asks to publish and its
-				// first media packet. A source at a low frame rate can legitimately send nothing for a
-				// long time: a captured OBS session at 1 fps sent nothing at all for 23.5 s after its
-				// publish command, and only then its first media packet.
+				// How long an input may stay silent between asking to publish and its first media packet.
+				// A source at a low frame rate can legitimately send nothing for a long time:
+				// a captured OBS session at 1 fps sent nothing for 23.5 s after its publish command,
+				// and only then its first media packet.
 				static constexpr int DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS = 30000;
 
 				struct Provider : public Item
@@ -37,7 +37,7 @@ namespace cfg
 					// and cleared again by `SetDefaultPacketSilenceTimeoutMs()`.
 					bool _is_packet_silence_timeout_ms_configured = false;
 					int _first_media_wait_timeout_ms			  = DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
-					// Whether `_first_media_wait_timeout_ms` holds the value the operator asked for
+					// Whether the value in `_first_media_wait_timeout_ms` came from the operator
 					bool _is_first_media_wait_timeout_ms_configured = false;
 
 				public:
@@ -106,7 +106,7 @@ namespace cfg
 												   return CreateConfigErrorPtr("PacketSilenceTimeoutMs must not be negative: %d", _packet_silence_timeout_ms);
 											   }
 
-											   // This callback only runs when the option is present in the configuration
+											   // This callback only runs when the option is present in the config
 											   _is_packet_silence_timeout_ms_configured = true;
 
 											   switch (GetType())
@@ -127,13 +127,12 @@ namespace cfg
 
 						Register<Optional>("FirstMediaWaitTimeoutMs", &_first_media_wait_timeout_ms, nullptr,
 										   [=]() -> std::shared_ptr<ConfigError> {
-											   // This callback only runs when the option is present in the configuration
+											   // This callback only runs when the option is present in the config
 											   _is_first_media_wait_timeout_ms_configured = true;
 
 											   // A `0` is rejected rather than silently ignored:
 											   // it would leave this wait with no timeout at all,
-											   // and the config layer yields `0` for an empty
-											   // or non-numeric element too.
+											   // and an empty or non-numeric element also yields `0`.
 											   if (_first_media_wait_timeout_ms <= 0)
 											   {
 												   return CreateConfigErrorPtr("FirstMediaWaitTimeoutMs requires a positive value: %d", _first_media_wait_timeout_ms);
@@ -142,7 +141,7 @@ namespace cfg
 											   switch (GetType())
 											   {
 												   case ProviderType::Rtmp:
-													   // Only RTMP waits for a first media packet it cannot publish without:
+													   // Only RTMP waits for a first packet it cannot publish without:
 													   // the codec sequence headers arrive with it.
 													   break;
 

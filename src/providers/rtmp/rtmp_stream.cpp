@@ -502,10 +502,10 @@ namespace pvd
 		{
 			_app_id = app_info.GetId();
 
-			// Admission webhooks may have redirected the stream, so this is the first point where the
-			// final application is known. Store it, because ending the first-media wait must read the
-			// same application this begins it with, and it happens long before `PublishStream()`
-			// recomputes the member.
+			// Admission webhooks may have redirected the stream,
+			// so this is the first point where the final application is known.
+			// Store it, because ending the first-media wait has to read the application that began it,
+			// and that happens long before `PublishStream()` recomputes the member.
 			_vhost_app_name = app_info.GetVHostAppName();
 			UpdateNamePath(_vhost_app_name);
 
@@ -1623,8 +1623,8 @@ namespace pvd
 
 		if (!IsPublished())
 		{
-			// Media is flowing now, so the wait sized for the first packet is over even though
-			// publishing may still be waiting for the other track or for enough messages.
+			// Media is flowing now, so the wait sized for the first packet is over,
+			// even though publishing may still be waiting for the other track or for enough messages.
 			EndFirstMediaWait(_vhost_app_name);
 
 			_media_info->video_stream_coming = true;
@@ -1817,8 +1817,8 @@ namespace pvd
 
 		if (!IsPublished())
 		{
-			// Media is flowing now, so the wait sized for the first packet is over even though
-			// publishing may still be waiting for the other track or for enough messages.
+			// Media is flowing now, so the wait sized for the first packet is over,
+			// even though publishing may still be waiting for the other track or for enough messages.
 			EndFirstMediaWait(_vhost_app_name);
 
 			_media_info->audio_stream_coming = true;

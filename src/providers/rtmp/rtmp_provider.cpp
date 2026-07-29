@@ -251,8 +251,9 @@ namespace pvd
 		{
 			if (reason == PhysicalPortDisconnectReason::Disconnect)
 			{
-				// OME closed this socket itself. `PushProvider::OnChannelDeleted()` erases the channel
-				// before closing the transport, so having nothing left to look up is expected here.
+				// OME closed this socket itself.
+				// `PushProvider::OnChannelDeleted()` erases the channel before closing the transport,
+				// so having nothing left to look up is expected here.
 				logtd("Failed to find channel to delete stream (remote : %s)", remote->ToString().CStr());
 			}
 			else

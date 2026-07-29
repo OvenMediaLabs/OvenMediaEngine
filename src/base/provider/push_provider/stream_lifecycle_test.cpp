@@ -25,8 +25,9 @@
 //  Covers the channel state the channel task runner reads before it deletes a channel:
 //  the silence budget, the last received time, and the mark that says a handler is running.
 //
-//  These are what decide whether a live input survives, and the runner reads them from another
-//  thread, so a wrong transition shows up as a deleted stream rather than as a failure here.
+//  These are what decide whether a live input survives,
+//  and the runner reads them from another thread,
+//  so a wrong transition shows up as a deleted stream rather than as a failure here.
 namespace
 {
 	class StubPushApplication;
@@ -78,8 +79,8 @@ namespace
 		using PushProvider::OnCreateApplication;
 	};
 
-	// The provider registers its applications with the router before storing them, so a channel
-	// cannot reach its application without one.
+	// The provider registers its applications with the router before storing them,
+	// so a channel cannot reach its application without one.
 	class StubMediaRouter : public MediaRouterInterface
 	{
 	public:
@@ -119,8 +120,8 @@ namespace
 		}
 	};
 
-	// Both constructors are reachable only from a subclass, because normally the orchestrator and the
-	// concrete providers are the ones that build these.
+	// Both constructors are reachable only from a subclass,
+	// because normally the orchestrator and the concrete providers are the ones that build these.
 	class TestApplicationInfo : public info::Application
 	{
 	public:
@@ -160,9 +161,9 @@ namespace
 
 		bool OnDataReceived(const std::shared_ptr<const ov::Data> &data) override
 		{
-			// Which call this is, so an immutable handler can tell them apart. Every field below is
-			// atomic because a test may run two of these at once, and `_handler` is never reassigned
-			// while one is running.
+			// Which call this is, so an immutable handler can tell them apart.
+			// Every field below is atomic because a test may run two of these at once,
+			// and `_handler` is never reassigned while one is running.
 			const int index		= _call_count.fetch_add(1);
 
 			_handler_ran		= true;
@@ -188,8 +189,8 @@ namespace
 		std::atomic<time_t> _elapsed_in_handler = 0;
 	};
 
-	// Holds the provider and one channel already registered with it, which is the state every
-	// concrete push provider hands to `OnDataReceived()`.
+	// Holds the provider and one channel already registered with it,
+	// which is the state every concrete push provider hands to `OnDataReceived()`.
 	struct Fixture
 	{
 		static constexpr uint32_t CHANNEL_ID = 7;
@@ -285,8 +286,8 @@ TEST(PushStreamLifecycle, ChannelWithoutDataIsNeverJudged)
 {
 	Fixture f;
 
-	// The runner compares this against the budget, so a negative value is what keeps a channel that
-	// has not received anything yet from being deleted on the first tick.
+	// The runner compares this against the budget,
+	// so a negative value is what keeps a channel that has never received anything from being deleted.
 	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), 0);
 }
 
@@ -358,9 +359,9 @@ TEST(PushStreamLifecycle, HandlerLongerThanTheBudgetDoesNotLeaveTheChannelReapab
 
 	EXPECT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
 
-	// Access control can hold a handler for seconds, and the runner must not read that as client
-	// silence, so once the mark is gone the elapsed time has to be the time since the handler
-	// finished rather than since it started.
+	// Access control can hold a handler for seconds, and the runner must not read that as client silence.
+	// So once the mark is gone, the elapsed time has to run from when the handler finished,
+	// not from when it started.
 	EXPECT_FALSE(f.channel->IsProcessingData());
 	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), BUDGET_MS);
 }
@@ -373,10 +374,11 @@ TEST(PushStreamLifecycle, ProcessingMarkSurvivesUntilTheLastOverlappingHandlerLe
 	std::promise<void> second_left;
 	auto second_left_future = second_left.get_future().share();
 
-	// One handler for both calls, branching on the call index, because reassigning the handler while
-	// the first call is inside it would be a data race on the same object. The first call stays inside
-	// until the second one has come and gone, which is the order a flag cannot express: the second
-	// handler leaving must not clear the mark the first one still needs.
+	// One handler for both calls, branching on the call index:
+	// reassigning it while the first call is inside would be a data race on the same object.
+	// The first call stays inside until the second one has come and gone,
+	// which is the order a flag cannot express.
+	// The second handler leaving must not clear the mark the first one still needs.
 	f.channel->_handler		= [&first_entered, second_left_future](int index) {
 		if (index == 0)
 		{
@@ -391,8 +393,8 @@ TEST(PushStreamLifecycle, ProcessingMarkSurvivesUntilTheLastOverlappingHandlerLe
 
 	first_entered.get_future().wait();
 
-	// Reuse the same channel from this thread, as a base class with several sockets or workers per
-	// channel would. This call returns immediately.
+	// Reuse the same channel from this thread,
+	// as a base class with several sockets or workers per channel would. This call returns immediately.
 	EXPECT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
 
 	const bool marked_after_second_left = f.channel->IsProcessingData();
@@ -417,8 +419,9 @@ TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheBudgetWhenTheApplicatio
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 	ASSERT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
 
-	// A name that resolves to nothing, which is also what a channel sees when its application is
-	// deleted while it waits. Losing the budget here would leave the channel with no guard at all.
+	// A name that resolves to nothing, which is also what a channel sees
+	// when its application is deleted while it waits.
+	// Losing the budget here would leave the channel with no guard at all.
 	f.channel->EndFirstMediaWait(info::VHostAppName::InvalidVHostAppName());
 
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
@@ -441,8 +444,8 @@ TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenNothi
 
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	// The channel is still unpublished, so it falls back to the budget it was created with rather than
-	// keeping a budget sized for a source that had not sent anything yet.
+	// The channel is still unpublished, so it falls back to the budget it was created with,
+	// rather than keeping one sized for a source that had not sent anything yet.
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 }
 
@@ -456,8 +459,9 @@ TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenTheTi
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	// An explicit `0` disables the timeout for a published stream. Honoring it here would leave an
-	// unpublished channel with no guard at all, so it holds its connection for as long as it likes.
+	// An explicit `0` disables the timeout for a published stream.
+	// Honoring it here would leave an unpublished channel with no guard at all,
+	// so it holds its connection for as long as it likes.
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 }
 
@@ -483,16 +487,17 @@ TEST(PushStreamLifecycle, MediaThatArrivesBeforeTheWaitIsSizedDoesNotConsumeIt)
 		"<PacketSilenceTimeoutMs>4000</PacketSilenceTimeoutMs>");
 	ASSERT_TRUE(vhost_app_name.IsValid());
 
-	// A message dispatcher hands media to a channel whether or not it has asked to publish yet, so
-	// this can run before the provider sized the wait.
+	// A message dispatcher hands media to a channel whether or not it has asked to publish yet,
+	// so this can run before the provider sized the wait.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
 
-	// The wait has to still be endable here. Had the earlier call consumed it, the channel would stay
-	// on the 8000 ms budget until it publishes, and a source slower than that would never get there.
+	// The wait has to still be endable here.
+	// Had the earlier call consumed it, the channel would stay on the 8000 ms budget until it publishes,
+	// and a source slower than that would never get there.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 4000);
 
@@ -502,12 +507,14 @@ TEST(PushStreamLifecycle, MediaThatArrivesBeforeTheWaitIsSizedDoesNotConsumeIt)
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 1234);
 }
 
-//  The channel task runner reads a channel's state on its own thread  while the channel's handler can be writing it.
-//  These pin the rule it judges by: one view of the state, and no deletion if that view has been replaced since.
+//  The channel task runner reads a channel's state on its own thread,
+//  while the channel's handler can be writing it.
+//  These pin the rule it judges by: one view of the state,
+//  and no deletion if that view has been replaced since.
 namespace
 {
-	// Leaves the channel silent for longer than its budget allows, which is the only state the runner
-	// ever deletes a channel from.
+	// Leaves the channel silent for longer than its budget allows,
+	// which is the only state the runner ever deletes a channel from.
 	void MakeSilentBeyondTimeout(const std::shared_ptr<StubPushStream> &channel)
 	{
 		channel->SetPacketSilenceTimeoutMs(1);
@@ -548,8 +555,8 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheBudgetChangesUnderIt)
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
-	// What `PushApplication::JoinStream()` does the moment a stream publishes. Acting on the view above
-	// would delete a stream that has just gone live.
+	// What `PushApplication::JoinStream()` does the moment a stream publishes.
+	// Acting on the view above would delete a stream that has just gone live.
 	f.channel->SetPacketSilenceTimeoutMs(0);
 
 	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
@@ -598,8 +605,9 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheFirstMediaPacketEndsTheWaitUn
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
-	// The channel's handler ends the wait and lowers the budget while the runner sits between reading
-	// this state and acting on it, which is the interleaving that used to delete a live channel.
+	// The channel's handler ends the wait and lowers the budget
+	// while the runner sits between reading this state and acting on it,
+	// which is the interleaving that used to delete a live channel.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
 	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));

@@ -15,8 +15,8 @@
 //  Covers the silence timeout options on the per-application provider item:
 //  `PacketSilenceTimeoutMs` and `FirstMediaWaitTimeoutMs`.
 //
-//  These pin the boundary values, because the runtime cannot tell an operator's
-//  value from a default or from a parse artifact once the item is loaded.
+//  These pin the boundary values, because once the item is loaded,
+//  the runtime cannot tell an operator's value from a default or from a parse artifact.
 namespace
 {
 	// Writes an `<RTMP>` element and parses it into the RTMP provider config item.
@@ -62,8 +62,8 @@ TEST(ProviderTimeout, FirstMediaWaitDefaultsWhenAbsent)
 	ASSERT_TRUE(ParseRtmpProvider("", &provider));
 
 	EXPECT_EQ(provider.GetFirstMediaWaitTimeoutMs(), cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
-	// The default must not look like the operator's value: the runtime lets an operator-set
-	// `PacketSilenceTimeoutMs` govern the first-media wait only while this is false.
+	// The default must not look like the operator's value.
+	// An operator-set `PacketSilenceTimeoutMs` governs the first-media wait only while this is false.
 	EXPECT_FALSE(provider.IsFirstMediaWaitTimeoutMsConfigured());
 }
 
@@ -81,8 +81,8 @@ TEST(ProviderTimeout, FirstMediaWaitRejectsZero)
 {
 	cfg::vhost::app::pvd::RtmpProvider provider;
 
-	// `0` would leave the wait with no timeout at all, so it is rejected rather than accepted and
-	// then ignored at runtime.
+	// `0` would leave the wait with no timeout at all,
+	// so it is rejected rather than accepted and then ignored at runtime.
 	EXPECT_FALSE(ParseRtmpProvider("<FirstMediaWaitTimeoutMs>0</FirstMediaWaitTimeoutMs>", &provider));
 }
 
@@ -95,8 +95,8 @@ TEST(ProviderTimeout, FirstMediaWaitRejectsNegative)
 
 TEST(ProviderTimeout, FirstMediaWaitRejectsEmptyAndNonNumeric)
 {
-	// The config layer converts both to `0`, which must be rejected for the same reason as a
-	// literal `0`: a typo cannot be allowed to remove the guard.
+	// The config layer converts both to `0`,
+	// which must be rejected for the same reason as a literal `0`: a typo cannot remove the guard.
 	{
 		cfg::vhost::app::pvd::RtmpProvider provider;
 		EXPECT_FALSE(ParseRtmpProvider("<FirstMediaWaitTimeoutMs></FirstMediaWaitTimeoutMs>", &provider));
@@ -136,8 +136,8 @@ TEST(ProviderTimeout, PacketSilenceTimeoutTracksWhoSetIt)
 	}
 
 	{
-		// Filling in a provider default drops the operator marker, so nothing that must honor only
-		// an explicit setting picks the default up.
+		// Filling in a provider default drops the operator marker,
+		// so nothing that must honor only an explicit setting picks the default up.
 		cfg::vhost::app::pvd::RtmpProvider provider;
 		ASSERT_TRUE(ParseRtmpProvider("<PacketSilenceTimeoutMs>0</PacketSilenceTimeoutMs>", &provider));
 		provider.SetDefaultPacketSilenceTimeoutMs(1500);
