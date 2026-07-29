@@ -187,6 +187,26 @@ cmn::VideoPixelFormatId VideoTrack::GetColorspace() const
 	return _colorspace;
 }
 
+void VideoTrack::SetColorMatrix(cmn::ColorMatrix color_matrix)
+{
+	_color_matrix = color_matrix;
+}
+
+cmn::ColorMatrix VideoTrack::GetColorMatrix() const
+{
+	return _color_matrix;
+}
+
+void VideoTrack::SetColorRange(cmn::ColorRange color_range)
+{
+	_color_range = color_range;
+}
+
+cmn::ColorRange VideoTrack::GetColorRange() const
+{
+	return _color_range;
+}
+
 void VideoTrack::SetMaxFrameRate(double framerate) const
 {
 	// Measured framerate is folded in by MediaTrack::SetFrameRateByMeasured()

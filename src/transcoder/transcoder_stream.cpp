@@ -1549,6 +1549,8 @@ void TranscoderStream::UpdateInputTrack(std::shared_ptr<MediaFrame> buffer)
 		case cmn::MediaType::Video: {
 			input_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
 			input_track->SetColorspace(buffer->GetFormat<cmn::VideoPixelFormatId>());
+			input_track->SetColorMatrix(buffer->GetColorMatrix());
+			input_track->SetColorRange(buffer->GetColorRange());
 		}
 		break;
 		case cmn::MediaType::Audio: {
@@ -1629,7 +1631,7 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 	// No pipeline rebuild here: every element handles the change at its own
 	// consumption position without losing queued data. The decoder re-inits on an
 	// in-band format change (GetFramedPacket), the filter re-inits when the frame
-	// format changes (IsNeedUpdate), and encoders are rewired by ChangeOutputFormat.
+	// format changes (IsFormatChanged), and encoders are rewired by ChangeOutputFormat.
 	// Bypass tracks are re-parsed by the outbound mediarouter.
 	logti("%s Input track(%d) configuration has been changed. version(%u) -> version(%u)",
 		  _log_prefix.CStr(), track_id, current->GetVersion(), packet_track->GetVersion());

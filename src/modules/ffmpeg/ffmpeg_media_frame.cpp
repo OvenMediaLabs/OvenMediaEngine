@@ -88,7 +88,11 @@ namespace ffmpeg
 			return nullptr;
 		}
 
+		// av_hwframe_transfer_data() copies pixel data only, so carry over the
+		// properties needed by the filter graph
 		host->pts = _frame->pts;
+		host->colorspace = _frame->colorspace;
+		host->color_range = _frame->color_range;
 
 		return std::make_shared<FFmpegMediaFrameData>(host);
 	}

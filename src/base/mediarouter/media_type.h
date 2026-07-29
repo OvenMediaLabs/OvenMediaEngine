@@ -266,6 +266,26 @@ namespace cmn
 		Full 
 	};
 
+	// YUV matrix coefficients of the video
+	// Uses the same values as ISO/IEC 23091-2 (H.273), so it maps 1:1 to FFmpeg AVColorSpace
+	enum class ColorMatrix : int8_t
+	{
+		RGB = 0,
+		BT709 = 1,
+		Unspecified = 2,
+		FCC = 4,
+		BT470BG = 5,
+		SMPTE170M = 6,
+		SMPTE240M = 7,
+		YCGCO = 8,
+		BT2020NCL = 9,
+		BT2020CL = 10,
+		SMPTE2085 = 11,
+		ChromaDerivedNCL = 12,
+		ChromaDerivedCL = 13,
+		ICTCP = 14
+	};
+
 	enum class KeyFrameIntervalType : uint8_t
 	{
 		FRAME = 0,

@@ -144,6 +144,43 @@ namespace ffmpeg
 		return AVCOL_RANGE_UNSPECIFIED;
 	}
 
+	cmn::ColorRange compat::ToColorRange(enum AVColorRange color_range)
+	{
+		switch (color_range)
+		{
+			OV_CASE_RETURN(AVCOL_RANGE_UNSPECIFIED, cmn::ColorRange::Unspecified);
+			OV_CASE_RETURN(AVCOL_RANGE_MPEG, cmn::ColorRange::Limited);
+			OV_CASE_RETURN(AVCOL_RANGE_JPEG, cmn::ColorRange::Full);
+			OV_CASE_RETURN(AVCOL_RANGE_NB, cmn::ColorRange::Unspecified);
+		}
+
+		return cmn::ColorRange::Unspecified;
+	}
+
+	enum AVColorSpace compat::ToAVColorSpace(cmn::ColorMatrix color_matrix)
+	{
+		// cmn::ColorMatrix uses the same H.273 values as AVColorSpace
+		int32_t value = static_cast<int32_t>(color_matrix);
+		if (value < 0 || value >= AVCOL_SPC_NB)
+		{
+			return AVCOL_SPC_UNSPECIFIED;
+		}
+
+		return static_cast<enum AVColorSpace>(value);
+	}
+
+	cmn::ColorMatrix compat::ToColorMatrix(enum AVColorSpace color_space)
+	{
+		// cmn::ColorMatrix uses the same H.273 values as AVColorSpace
+		int32_t value = static_cast<int32_t>(color_space);
+		if (value < 0 || value >= AVCOL_SPC_NB)
+		{
+			return cmn::ColorMatrix::Unspecified;
+		}
+
+		return static_cast<cmn::ColorMatrix>(value);
+	}
+
 	cmn::AudioChannel::Layout compat::ToAudioChannelLayout(int channel_layout)
 	{
 		switch (channel_layout)

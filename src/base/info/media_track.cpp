@@ -92,6 +92,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_resolution_conf = media_track._resolution_conf;
 	_b_frames = media_track._b_frames.load();
 	_colorspace = media_track._colorspace.load();
+	_color_matrix = media_track._color_matrix.load();
+	_color_range = media_track._color_range.load();
 	_preset = media_track._preset;
 	_profile = media_track._profile;
 	_thread_count = media_track._thread_count.load();
