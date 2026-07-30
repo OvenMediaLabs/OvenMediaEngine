@@ -692,7 +692,7 @@ std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStrea
 			continue;
 		}
 
-		auto [it, inserted] = video_start_indexes.emplace(packet->GetTrackId(), 0);
+		auto it = video_start_indexes.emplace(packet->GetTrackId(), 0).first;
 		if (packet->IsKeyFrame())
 		{
 			it->second = index;
@@ -740,7 +740,7 @@ std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStrea
 			auto &packet = item->packet;
 			if (packet->GetMediaType() == cmn::MediaType::Video)
 			{
-				auto [it, inserted] = keyframe_seen.emplace(packet->GetTrackId(), false);
+				auto it = keyframe_seen.emplace(packet->GetTrackId(), false).first;
 				if (packet->IsKeyFrame())
 				{
 					it->second = true;
