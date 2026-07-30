@@ -26,6 +26,10 @@
 
 static constexpr int64_t MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS = 2000; // Maximum size of mirror buffer
 
+// Headroom subtracted from a tap's queue warning threshold when capping past-data
+// backfill, covering live packets that arrive while the backfill is being pushed
+static constexpr size_t MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM = 30;
+
 // Warn if a track stays invalid (no decodable media) this long after the first packet, which blocks stream prepare
 static constexpr int64_t MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS = 3000;
 
@@ -67,6 +71,12 @@ public:
 		std::shared_ptr<MediaPacket> packet;
 	};
 	std::vector<std::shared_ptr<MirrorBufferItem>> GetMirrorBuffer();
+
+	// Selects the past-data range to inject into a new tap: each video track starts
+	// at its most recent keyframe, non-video tracks follow the earliest video start.
+	// Falls back to the full buffer when there is no video track. If max_count > 0,
+	// keeps only the newest max_count items with video tracks still keyframe-led.
+	static std::vector<std::shared_ptr<MirrorBufferItem>> SelectPastData(const std::vector<std::shared_ptr<MirrorBufferItem>> &mirror_buffer, size_t max_count = 0);
 
 	// Query original stream information
 	std::shared_ptr<info::Stream> GetStream();

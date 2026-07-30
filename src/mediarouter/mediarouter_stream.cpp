@@ -28,6 +28,10 @@
 
 #include "mediarouter_stream.h"
 
+#include <algorithm>
+#include <limits>
+#include <map>
+
 #include <base/event/media_event.h>
 #include <base/event/command/update_language.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -673,5 +677,87 @@ void MediaRouteStream::PublishWorkingVersion(TrackAuthorState &state, uint32_t t
 std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::GetMirrorBuffer()
 {
 	return _mirror_buffer;
+}
+
+std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::SelectPastData(const std::vector<std::shared_ptr<MirrorBufferItem>> &mirror_buffer, size_t max_count)
+{
+	// Most recent keyframe index per video track; 0 keeps the full range for a
+	// video track that has no keyframe in the buffer
+	std::map<uint32_t, size_t> video_start_indexes;
+	for (size_t index = 0; index < mirror_buffer.size(); index++)
+	{
+		auto &packet = mirror_buffer[index]->packet;
+		if (packet->GetMediaType() != cmn::MediaType::Video)
+		{
+			continue;
+		}
+
+		auto [it, inserted] = video_start_indexes.emplace(packet->GetTrackId(), 0);
+		if (packet->IsKeyFrame())
+		{
+			it->second = index;
+		}
+	}
+
+	std::vector<std::shared_ptr<MirrorBufferItem>> selected;
+
+	if (video_start_indexes.empty())
+	{
+		selected = mirror_buffer;
+	}
+	else
+	{
+		size_t non_video_start_index = std::numeric_limits<size_t>::max();
+		for (const auto &[track_id, start_index] : video_start_indexes)
+		{
+			non_video_start_index = std::min(non_video_start_index, start_index);
+		}
+
+		for (size_t index = non_video_start_index; index < mirror_buffer.size(); index++)
+		{
+			auto &packet = mirror_buffer[index]->packet;
+			if (packet->GetMediaType() == cmn::MediaType::Video && index < video_start_indexes[packet->GetTrackId()])
+			{
+				continue;
+			}
+
+			selected.push_back(mirror_buffer[index]);
+		}
+	}
+
+	if (max_count > 0 && selected.size() > max_count)
+	{
+		// Keep the newest packets so the backfill burst stays below the cap
+		selected.erase(selected.begin(), selected.end() - max_count);
+
+		// The front trim may leave a video track starting mid-GOP; drop its packets
+		// until its next keyframe so every video track still starts decodable
+		std::map<uint32_t, bool> keyframe_seen;
+		std::vector<std::shared_ptr<MirrorBufferItem>> trimmed;
+		trimmed.reserve(selected.size());
+		for (auto &item : selected)
+		{
+			auto &packet = item->packet;
+			if (packet->GetMediaType() == cmn::MediaType::Video)
+			{
+				auto [it, inserted] = keyframe_seen.emplace(packet->GetTrackId(), false);
+				if (packet->IsKeyFrame())
+				{
+					it->second = true;
+				}
+
+				if (it->second == false)
+				{
+					continue;
+				}
+			}
+
+			trimmed.push_back(item);
+		}
+
+		selected = std::move(trimmed);
+	}
+
+	return selected;
 }
 
