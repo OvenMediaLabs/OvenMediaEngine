@@ -84,9 +84,9 @@ components:
             type: string
     Pass:
       type: object
-      required: [schema,urls]
+      required: [scheme,urls]
       properties:
-        schema:
+        scheme:
           type: string
         urls:
           $ref: '#/components/schemas/Urls'
