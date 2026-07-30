@@ -18,7 +18,7 @@ namespace pvd
 	namespace
 	{
 		// How `PushStream::_activity_state` is laid out.
-		// Handlers and the change counter share the word with the reaping flag,
+		// The `OnDataReceived()` count and the change counter share the word with `REAPING_FLAG`,
 		// so one compare-and-swap can require that none of them has moved.
 		constexpr uint64_t HANDLER_COUNT_MASK = 0x000000000000FFFFULL;
 		constexpr uint64_t CHANGE_COUNT_MASK  = 0x7FFFFFFFFFFF0000ULL;
@@ -89,8 +89,8 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
-	// Records that something a silence judgment reads has changed, without disturbing the handler count
-	// or letting the counter carry into the reaping flag.
+	// Records that something `GetSilenceState()` reads has changed,
+	// without disturbing the `OnDataReceived()` count or letting the counter carry into `REAPING_FLAG`.
 	void PushStream::CountStateChange()
 	{
 		auto state = _activity_state.load();
@@ -119,14 +119,14 @@ namespace pvd
 			}
 		}
 
-		// A judgment has committed to deleting this channel, so there is nothing left to hand data to.
+		// `TryBeginReaping()` has succeeded on this channel, so there is nothing left to hand data to.
 		return false;
 	}
 
 	void PushStream::EndProcessingData()
 	{
-		// A reservation is only taken while no handler is inside,
-		// so this never has to preserve the flag.
+		// `TryBeginReaping()` only succeeds while no `OnDataReceived()` is inside,
+		// so this never has to preserve `REAPING_FLAG`.
 		_activity_state.fetch_sub(1);
 	}
 
@@ -151,7 +151,7 @@ namespace pvd
 	{
 		SilenceState state;
 
-		// The activity word is read first, so a write to any field below shows up as a change.
+		// `_activity_state` is read first, so a write to any field below shows up as a change.
 		state.activity		= _activity_state.load();
 		state.is_processing = (state.activity & HANDLER_COUNT_MASK) != 0;
 		state.timeout_ms	= GetPacketSilenceTimeoutMs();
@@ -162,11 +162,12 @@ namespace pvd
 
 	bool PushStream::TryBeginReaping(const SilenceState &state)
 	{
-		// The word has to still hold no handler, no reservation, and the change count this judgment saw.
-		// A single swap therefore rules out a handler being inside,
-		// another judgment having reserved the channel,
-		// and anything having moved since the state was read.
-		// Losing changes nothing, so a judgment that turns out to be stale never costs a packet.
+		// The word has to still hold no `OnDataReceived()`, no `REAPING_FLAG`,
+		// and the change count `state` was read with.
+		// One swap therefore rules out a call being inside the channel,
+		// another caller having got here first,
+		// and anything having moved since `GetSilenceState()` read it.
+		// Losing changes nothing, so a stale caller never costs a packet.
 		uint64_t expected = state.activity & CHANGE_COUNT_MASK;
 
 		return _activity_state.compare_exchange_strong(expected, expected | REAPING_FLAG);

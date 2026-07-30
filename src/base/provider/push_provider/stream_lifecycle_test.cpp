@@ -22,11 +22,11 @@
 #include "provider.h"
 #include "stream.h"
 
-//  Covers the channel state the channel task runner reads before it deletes a channel:
-//  the silence budget, the last received time, and the mark that says a handler is running.
+//  Covers the channel state `PushProvider::ChannelTaskRunner()` reads before it deletes a channel:
+//  `PacketSilenceTimeoutMs`, the last received time, and the mark `BeginProcessingData()` sets.
 //
 //  These are what decide whether a live input survives,
-//  and the runner reads them from another thread,
+//  and `ChannelTaskRunner()` reads them from another thread,
 //  so a wrong transition shows up as a deleted stream rather than as a failure here.
 namespace
 {
@@ -77,8 +77,8 @@ namespace
 		using PushProvider::OnDataReceived;
 		// The orchestrator calls this one.
 		using PushProvider::OnCreateApplication;
-		// Each concrete provider decides this for itself.
-		using PushProvider::DoesSilenceStartAtChannelCreation;
+		// `ChannelTaskRunner()` and the socket callbacks call this one.
+		using PushProvider::OnChannelDeleted;
 	};
 
 	// The provider registers its applications with the router before storing them,
@@ -141,6 +141,16 @@ namespace
 			: PushApplication(provider, application_info)
 		{
 		}
+
+		// The real one tears the stream down through the media router, which these stubs cannot stand in
+		// for. Only the fact that this path was taken matters here.
+		bool DeleteStream(const std::shared_ptr<pvd::Stream> &stream) override
+		{
+			_deleted_stream_count++;
+			return true;
+		}
+
+		std::atomic<int> _deleted_stream_count = 0;
 	};
 
 	std::shared_ptr<pvd::Application> StubPushProvider::OnCreateProviderApplication(const info::Application &app_info)
@@ -160,6 +170,13 @@ namespace
 		{
 			return PushStreamType::UNKNOWN;
 		}
+
+		void CloseTransport() override
+		{
+			_close_transport_count++;
+		}
+
+		std::atomic<int> _close_transport_count = 0;
 
 		bool OnDataReceived(const std::shared_ptr<const ov::Data> &data) override
 		{
@@ -275,27 +292,16 @@ namespace
 		std::shared_ptr<info::Host> host_info;
 		std::shared_ptr<TestApplicationInfo> application_info;
 	};
-	// A provider whose client connects and then sends, which is what RTMP does.
-	class StampingPushProvider : public StubPushProvider
-	{
-	public:
-		using StubPushProvider::StubPushProvider;
-
-		bool DoesSilenceStartAtChannelCreation() const override
-		{
-			return true;
-		}
-	};
 }  // namespace
 
-TEST(PushStreamLifecycle, ChannelStartsWithTheCreationDefaultBudget)
+TEST(PushStreamLifecycle, ChannelStartsWithTheCreationDefaultTimeout)
 {
 	Fixture f;
 
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 }
 
-TEST(PushStreamLifecycle, ChannelWithoutDataIsNeverJudged)
+TEST(PushStreamLifecycle, ChannelWithoutDataIsNeverSilentBeyondItsTimeout)
 {
 	Fixture f;
 
@@ -312,7 +318,7 @@ TEST(PushStreamLifecycle, DataForAnUnknownChannelIsRejected)
 	EXPECT_FALSE(f.channel->_handler_ran);
 }
 
-TEST(PushStreamLifecycle, ProcessingMarkIsSetOnlyWhileTheHandlerRuns)
+TEST(PushStreamLifecycle, TheMarkIsSetOnlyWhileOnDataReceivedRuns)
 {
 	Fixture f;
 
@@ -325,7 +331,7 @@ TEST(PushStreamLifecycle, ProcessingMarkIsSetOnlyWhileTheHandlerRuns)
 	EXPECT_FALSE(f.channel->IsProcessingData());
 }
 
-TEST(PushStreamLifecycle, ProcessingMarkIsClearedWhenTheHandlerThrows)
+TEST(PushStreamLifecycle, TheMarkIsClearedWhenOnDataReceivedThrows)
 {
 	Fixture f;
 
@@ -360,7 +366,7 @@ TEST(PushStreamLifecycle, RejectedDataLeavesTheReceivedTimeAlone)
 	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), 0);
 }
 
-TEST(PushStreamLifecycle, HandlerLongerThanTheBudgetDoesNotLeaveTheChannelReapable)
+TEST(PushStreamLifecycle, OnDataReceivedLongerThanTheTimeoutDoesNotLeaveTheChannelReservable)
 {
 	Fixture f;
 
@@ -379,7 +385,7 @@ TEST(PushStreamLifecycle, HandlerLongerThanTheBudgetDoesNotLeaveTheChannelReapab
 	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), BUDGET_MS);
 }
 
-TEST(PushStreamLifecycle, ProcessingMarkSurvivesUntilTheLastOverlappingHandlerLeaves)
+TEST(PushStreamLifecycle, TheMarkSurvivesUntilTheLastOverlappingOnDataReceivedLeaves)
 {
 	Fixture f;
 
@@ -421,7 +427,7 @@ TEST(PushStreamLifecycle, ProcessingMarkSurvivesUntilTheLastOverlappingHandlerLe
 	EXPECT_FALSE(f.channel->IsProcessingData());
 }
 
-TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheBudgetWhenTheApplicationIsUnknown)
+TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheTimeoutWhenTheApplicationIsUnknown)
 {
 	Fixture f;
 
@@ -520,14 +526,14 @@ TEST(PushStreamLifecycle, MediaThatArrivesBeforeTheWaitIsSizedDoesNotConsumeIt)
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 1234);
 }
 
-//  The channel task runner reads a channel's state on its own thread,
-//  while the channel's handler can be writing it.
-//  These pin the rule it judges by: one view of the state,
-//  and no deletion if that view has been replaced since.
+//  `ChannelTaskRunner()` reads a channel's state on its own thread,
+//  while `PushStream::OnDataReceived()` can be writing it.
+//  These pin the rule it decides by: one read of the state,
+//  and no deletion if that read has been replaced since.
 namespace
 {
-	// Leaves the channel silent for longer than its budget allows,
-	// which is the only state the runner ever deletes a channel from.
+	// Leaves the channel silent for longer than its `PacketSilenceTimeoutMs` allows,
+	// which is the only state `ChannelTaskRunner()` ever deletes a channel from.
 	void MakeSilentBeyondTimeout(const std::shared_ptr<StubPushStream> &channel)
 	{
 		channel->SetPacketSilenceTimeoutMs(1);
@@ -537,7 +543,7 @@ namespace
 	}
 }  // namespace
 
-TEST(PushStreamLifecycle, ASilentChannelIsJudgedFromOneViewOfItsState)
+TEST(PushStreamLifecycle, ASilentChannelIsReadInOnePassBeforeItIsReserved)
 {
 	Fixture f;
 
@@ -549,7 +555,7 @@ TEST(PushStreamLifecycle, ASilentChannelIsJudgedFromOneViewOfItsState)
 	EXPECT_TRUE(f.channel->TryBeginReaping(state));
 }
 
-TEST(PushStreamLifecycle, AChannelWithNoBudgetIsNeverJudgedSilent)
+TEST(PushStreamLifecycle, AChannelWithNoTimeoutIsNeverSilentBeyondIt)
 {
 	Fixture f;
 
@@ -559,7 +565,7 @@ TEST(PushStreamLifecycle, AChannelWithNoBudgetIsNeverJudgedSilent)
 	EXPECT_FALSE(f.channel->GetSilenceState().IsSilentBeyondTimeout());
 }
 
-TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheBudgetChangesUnderIt)
+TEST(PushStreamLifecycle, TryBeginReapingFailsWhenTheTimeoutChangesUnderIt)
 {
 	Fixture f;
 
@@ -569,13 +575,13 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheBudgetChangesUnderIt)
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
 	// What `PushApplication::JoinStream()` does the moment a stream publishes.
-	// Acting on the view above would delete a stream that has just gone live.
+	// Acting on the state above would delete a stream that has just gone live.
 	f.channel->SetPacketSilenceTimeoutMs(0);
 
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
-TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenDataArrivesUnderIt)
+TEST(PushStreamLifecycle, TryBeginReapingFailsWhenDataArrivesUnderIt)
 {
 	Fixture f;
 
@@ -589,7 +595,7 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenDataArrivesUnderIt)
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
-TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenAHandlerStartsUnderIt)
+TEST(PushStreamLifecycle, TryBeginReapingFailsWhenOnDataReceivedStartsUnderIt)
 {
 	Fixture f;
 
@@ -605,7 +611,7 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenAHandlerStartsUnderIt)
 	f.channel->EndProcessingData();
 }
 
-TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheFirstMediaPacketEndsTheWaitUnderIt)
+TEST(PushStreamLifecycle, TryBeginReapingFailsWhenTheFirstMediaPacketEndsTheWaitUnderIt)
 {
 	Fixture f;
 
@@ -618,15 +624,14 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheFirstMediaPacketEndsTheWaitUn
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
-	// The channel's handler ends the wait and lowers the budget
-	// while the runner sits between reading this state and acting on it,
-	// which is the interleaving that used to delete a live channel.
+	// `OnDataReceived()` ends the wait and lowers the timeout while `ChannelTaskRunner()` sits between
+	// reading this state and acting on it, which is the interleaving that used to delete a live channel.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
-TEST(PushStreamLifecycle, AReservedChannelRefusesEveryLaterHandler)
+TEST(PushStreamLifecycle, AReservedChannelRefusesEveryLaterOnDataReceived)
 {
 	Fixture f;
 
@@ -635,8 +640,8 @@ TEST(PushStreamLifecycle, AReservedChannelRefusesEveryLaterHandler)
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(f.channel->TryBeginReaping(state));
 
-	// A receive thread that arrives after the judgment has committed. Letting it in would run a handler
-	// against a channel whose transport and stream are already being torn down.
+	// A receive thread that arrives after `TryBeginReaping()` succeeded.
+	// Letting it in would run `OnDataReceived()` against a channel already being torn down.
 	EXPECT_FALSE(f.channel->BeginProcessingData());
 	EXPECT_FALSE(f.channel->IsProcessingData());
 
@@ -645,7 +650,7 @@ TEST(PushStreamLifecycle, AReservedChannelRefusesEveryLaterHandler)
 	EXPECT_FALSE(f.channel->_handler_ran);
 }
 
-TEST(PushStreamLifecycle, OnlyOneJudgmentReservesAChannel)
+TEST(PushStreamLifecycle, OnlyOneTryBeginReapingSucceedsOnAChannel)
 {
 	Fixture f;
 
@@ -657,10 +662,10 @@ TEST(PushStreamLifecycle, OnlyOneJudgmentReservesAChannel)
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
-TEST(PushStreamLifecycle, ExactlyOneOfAReservationAndAHandlerWins)
+TEST(PushStreamLifecycle, ExactlyOneOfTryBeginReapingAndBeginProcessingDataWins)
 {
-	// Both threads meet on the same channel at the same moment, which is the race between the channel
-	// task runner committing a deletion and a receive thread entering a handler.
+	// Both threads meet on the same channel at the same moment, which is the race between
+	// `ChannelTaskRunner()` committing a deletion and a receive thread entering `OnDataReceived()`.
 	for (int round = 0; round < 200; round++)
 	{
 		Fixture f;
@@ -693,7 +698,7 @@ TEST(PushStreamLifecycle, ExactlyOneOfAReservationAndAHandlerWins)
 
 		reaper.wait();
 
-		// Never both: a handler inside blocks the reservation, and a reservation refuses the handler.
+		// Never both: a call inside blocks `TryBeginReaping()`, and a reservation refuses the call.
 		EXPECT_NE(reserved.load(), entered.load());
 
 		if (entered.load())
@@ -703,7 +708,7 @@ TEST(PushStreamLifecycle, ExactlyOneOfAReservationAndAHandlerWins)
 	}
 }
 
-TEST(PushStreamLifecycle, ACancelledJudgmentCostsNoData)
+TEST(PushStreamLifecycle, ALosingTryBeginReapingCostsNoData)
 {
 	Fixture f;
 
@@ -712,14 +717,14 @@ TEST(PushStreamLifecycle, ACancelledJudgmentCostsNoData)
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
-	// A packet arrives between the state being read and the judgment acting on it,
-	// which is what makes the judgment stale.
+	// A packet arrives between `GetSilenceState()` reading the state and `TryBeginReaping()` using it,
+	// which is what makes that state stale.
 	ASSERT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
 
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 
-	// The judgment lost, so it must not have held the channel while it found that out.
-	// A handler that arrives now still gets in, and its bytes still reach the channel.
+	// `TryBeginReaping()` lost, so it must not have held the channel while it found that out.
+	// A call that arrives now still gets in, and its bytes still reach the channel.
 	f.channel->_call_count	= 0;
 	f.channel->_handler_ran = false;
 
@@ -728,9 +733,9 @@ TEST(PushStreamLifecycle, ACancelledJudgmentCostsNoData)
 	EXPECT_EQ(f.channel->_call_count.load(), 1);
 }
 
-TEST(PushStreamLifecycle, AStaleJudgmentRacingAReceiveNeverDropsData)
+TEST(PushStreamLifecycle, AStaleTryBeginReapingRacingAReceiveNeverDropsData)
 {
-	// The judgment is stale before it starts, so it has to lose every round.
+	// The state is stale before `TryBeginReaping()` starts, so it has to lose every round.
 	// Whether it loses before or after the receive thread arrives, that thread must always get in.
 	for (int round = 0; round < 200; round++)
 	{
@@ -772,39 +777,7 @@ TEST(PushStreamLifecycle, AStaleJudgmentRacingAReceiveNeverDropsData)
 	}
 }
 
-TEST(PushStreamLifecycle, AChannelIsNotStampedAtCreationByDefault)
-{
-	Fixture f;
-
-	// Most transports hand a channel data before it can be judged, and WebRTC receives nothing through
-	// this path at all while its session starts.
-	EXPECT_FALSE(f.provider->DoesSilenceStartAtChannelCreation());
-	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), 0);
-}
-
-TEST(PushStreamLifecycle, AProviderThatAsksForItGetsItsChannelsStampedAtCreation)
-{
-	cfg::Server server_config;
-	auto router	  = std::make_shared<StubMediaRouter>();
-	auto provider = std::make_shared<StampingPushProvider>(server_config, router);
-	auto channel  = std::make_shared<StubPushStream>(Fixture::CHANNEL_ID, provider);
-
-	provider->OnChannelCreated(Fixture::CHANNEL_ID, channel);
-
-	// Creating the channel is what starts its budget, so a peer that connects and then sends nothing at
-	// all still runs the budget down and gets reaped.
-	EXPECT_GE(channel->GetElapsedMsSinceLastReceived(), 0);
-
-	channel->SetPacketSilenceTimeoutMs(1);
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-	const auto state = channel->GetSilenceState();
-
-	EXPECT_TRUE(state.IsSilentBeyondTimeout());
-	EXPECT_TRUE(channel->TryBeginReaping(state));
-}
-
-TEST(PushStreamLifecycle, CountingStateChangesLeavesTheHandlerCountAlone)
+TEST(PushStreamLifecycle, CountingStateChangesLeavesTheOnDataReceivedCountAlone)
 {
 	Fixture f;
 
@@ -826,11 +799,49 @@ TEST(PushStreamLifecycle, CountingStateChangesLeavesTheHandlerCountAlone)
 
 	EXPECT_FALSE(f.channel->IsProcessingData());
 
-	// Two changes per round have moved the counter, and a judgment taken now still reserves the channel.
+	// Two changes per round have moved the counter, and `TryBeginReaping()` still succeeds now.
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
 	const auto state = f.channel->GetSilenceState();
 
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 	EXPECT_TRUE(f.channel->TryBeginReaping(state));
+}
+
+TEST(PushStreamLifecycle, DeletingAChannelThatNeverJoinedAnApplicationClosesItsTransport)
+{
+	Fixture f;
+
+	ASSERT_FALSE(f.channel->DoesBelongApplication());
+
+	EXPECT_TRUE(f.provider->OnChannelDeleted(f.channel));
+
+	// Nothing else tears the transport down on this path: `Application::DeleteStream()` never runs, so
+	// neither does `Stream::Stop()`, and the physical port owns the socket rather than the stream.
+	// Without this the client keeps a connection it believes is still streaming.
+	EXPECT_EQ(f.channel->_close_transport_count.load(), 1);
+}
+
+TEST(PushStreamLifecycle, DeletingAJoinedChannelLeavesItsTransportToTheApplication)
+{
+	Fixture f;
+
+	const auto vhost_app_name = f.CreateApplication("");
+	ASSERT_TRUE(vhost_app_name.IsValid());
+
+	auto application = f.provider->GetApplicationByName(vhost_app_name);
+	ASSERT_NE(application, nullptr);
+
+	f.channel->SetApplication(application);
+	ASSERT_TRUE(f.channel->DoesBelongApplication());
+
+	EXPECT_TRUE(f.provider->OnChannelDeleted(f.channel));
+
+	// The application's own teardown reaches `Stream::Stop()`, which closes the transport with the rest
+	// of it. Closing it here as well would be a double teardown.
+	EXPECT_EQ(f.channel->_close_transport_count.load(), 0);
+
+	auto stub = std::dynamic_pointer_cast<StubPushApplication>(application);
+	ASSERT_NE(stub, nullptr);
+	EXPECT_EQ(stub->_deleted_stream_count.load(), 1);
 }

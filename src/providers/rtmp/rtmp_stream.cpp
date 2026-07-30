@@ -511,7 +511,7 @@ namespace pvd
 
 			// The wait for the first media packet starts here,
 			// and a source may send nothing at all during it,
-			// so replace the silence budget the channel was created with.
+			// so replace the `PacketSilenceTimeoutMs` the channel was created with.
 			ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 			return true;

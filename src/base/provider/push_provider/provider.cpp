@@ -8,7 +8,7 @@ namespace pvd
 {
 	namespace
 	{
-		// Leaves the handler even if it throws
+		// Leaves `PushStream::OnDataReceived()` even if it throws
 		class ProcessingDataGuard
 		{
 		public:
@@ -116,15 +116,6 @@ namespace pvd
 
 		channel->SetPacketSilenceTimeoutMs(DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 
-		if (DoesSilenceStartAtChannelCreation())
-		{
-			// The budget above has to run from here,
-			// because this provider's client is the one that connects and then sends.
-			// Without a last received time the channel is never judged silent,
-			// and a peer that connects and sends nothing at all keeps its connection for good.
-			channel->UpdateLastReceivedTime();
-		}
-
 		return true;
 	}
 
@@ -139,16 +130,16 @@ namespace pvd
 		// In the future,
 		// it may be necessary to send data to an application rather than sending it directly to a stream.
 		{
-			// Mark the channel while its handler runs, so its own duration is not read as client silence.
-			// Access control blocks inside this call.
+			// Mark the channel while `PushStream::OnDataReceived()` runs,
+			// so its own duration is not read as client silence. Access control blocks inside that call.
 			// The received time is published before the mark is cleared.
-			// Otherwise the runner could see a channel that is no longer processing,
-			// yet still carrying a time from before a long handler.
+			// Otherwise `ChannelTaskRunner()` could see a channel that no longer has a call inside it,
+			// yet still carrying a time from before a long one.
 			ProcessingDataGuard guard(channel);
 
 			if (guard.IsEntered() == false)
 			{
-				// A silence judgment owns this channel, so nothing is left to hand the data to.
+				// `TryBeginReaping()` has succeeded on this channel, so nothing is left to hand data to.
 				return false;
 			}
 
@@ -253,14 +244,14 @@ namespace pvd
 			{
 				auto channel = x.second;
 
-				// Everything this judgment needs, read once,
-				// so it cannot pair an elapsed time from before the channel's handler with a later timeout.
+				// Everything this needs, read once, so it cannot pair an elapsed time from before a call to
+				// `PushStream::OnDataReceived()` with a `PacketSilenceTimeoutMs` from after it.
 				const auto state = channel->GetSilenceState();
 
 				if (state.is_processing)
 				{
-					// Its handler is running, so the channel is not silent.
-					// Judging it here would delete a channel that is in the middle of access control.
+					// `PushStream::OnDataReceived()` is inside this channel, so it is not silent.
+					// Acting here would delete a channel that is in the middle of access control.
 					continue;
 				}
 
@@ -281,8 +272,8 @@ namespace pvd
 				{
 					if (channel->TryBeginReaping(state) == false)
 					{
-						// A handler entered, or replaced this state, while the judgment was being made.
-						// The next tick judges the channel again against whatever it left behind.
+						// `PushStream::OnDataReceived()` entered the channel, or replaced this state, since
+						// `GetSilenceState()` read it. The next tick reads the channel again.
 						continue;
 					}
 

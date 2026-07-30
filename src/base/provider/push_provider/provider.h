@@ -54,18 +54,6 @@ namespace pvd
 
 		// [Interleaved protocols such as RTSP/TCP, RTMP, MPEG-TS]
 		// - OnChannelCreated() -> [Collect app/stream name and track informaiton] -> PublishChannel() -> OnChannelDeleted(Signalling)
-		// Whether a channel's silence budget starts when the channel is created,
-		// rather than when its first data arrives.
-		// True for a transport whose client connects and then sends,
-		// where a connection carrying no bytes at all still has to be reaped.
-		// False where a channel legitimately receives nothing through `OnDataReceived()` for a while:
-		// WebRTC's STUN and ICE traffic never reaches it,
-		// so its channels would be deleted before the session could start.
-		virtual bool DoesSilenceStartAtChannelCreation() const
-		{
-			return false;
-		}
-
 		bool OnChannelCreated(uint32_t channel_id, const std::shared_ptr<pvd::PushStream> &channel);
 		bool OnDataReceived(uint32_t channel_id, const std::shared_ptr<const ov::Data> &data);
 		bool OnChannelDeleted(uint32_t channel_id);

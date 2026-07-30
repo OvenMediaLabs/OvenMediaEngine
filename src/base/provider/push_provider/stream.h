@@ -45,14 +45,15 @@ namespace pvd
 		// The default is a no-op, because a provider may share this transport or tear it down elsewhere.
 		virtual void CloseTransport() {}
 
-		// Enters and leaves this channel's own data handler.
-		// Entering fails only once a silence judgment has committed to deleting this channel,
+		// Enters and leaves `OnDataReceived()` on this channel.
+		// Entering fails only once `TryBeginReaping()` has succeeded on this channel,
 		// and the caller then has to drop the data.
-		// A judgment that ends up cancelled never refuses a handler, because it never holds the channel
-		// while it makes up its mind.
-		// A handler's own duration is not client silence, and `<AdmissionWebhooks><Timeout>` is unbounded,
-		// so the channel task runner skips a channel with a handler inside.
-		// Handlers count rather than set a flag, because two of them for one channel may overlap.
+		// A `TryBeginReaping()` that fails never refuses an `OnDataReceived()`,
+		// because it changes nothing when it loses.
+		// The time `OnDataReceived()` spends is not client silence,
+		// and `<AdmissionWebhooks><Timeout>` does not bound it,
+		// so `PushProvider::ChannelTaskRunner()` passes over a channel that is inside it.
+		// These count rather than set a flag, because two calls for one channel may overlap.
 		bool BeginProcessingData();
 		void EndProcessingData();
 		bool IsProcessingData();
@@ -63,9 +64,9 @@ namespace pvd
 		time_t GetPacketSilenceTimeoutMs();
 		time_t GetElapsedMsSinceLastReceived();
 
-		// One read of each field the channel task runner judges a channel by.
-		// Field-by-field reads let a handler change some of them in between,
-		// and a judgment pairing an old elapsed time with a new budget deletes a live channel.
+		// One read of each field `PushProvider::ChannelTaskRunner()` decides by.
+		// Reading them one at a time lets `OnDataReceived()` change some of them in between,
+		// and pairing an old elapsed time with a new `PacketSilenceTimeoutMs` deletes a live channel.
 		// This is not an atomic snapshot: `TryBeginReaping()` is what makes acting on it safe.
 		struct SilenceState
 		{
@@ -76,7 +77,7 @@ namespace pvd
 			bool is_processing = false;
 
 			// Whether this view says the channel has been silent for longer than it may be.
-			// A `0` budget disables the judgment, and a negative elapsed time means nothing has arrived.
+			// A `0` timeout disables the check, and a negative elapsed time means nothing has arrived.
 			bool IsSilentBeyondTimeout() const
 			{
 				return (is_processing == false) && (timeout_ms > 0) && (elapsed_ms > timeout_ms);
@@ -87,9 +88,9 @@ namespace pvd
 
 		// Reserves this channel for deletion by the caller, on the state `GetSilenceState()` returned.
 		// One compare-and-swap decides it, so a caller that loses changes nothing at all:
-		// it fails when a handler is inside, when another caller reserved the channel first,
+		// it fails while `OnDataReceived()` is inside the channel, when another caller got here first,
 		// or when anything that state was read from has moved since.
-		// A reservation refuses every later handler, so nothing changes once this has succeeded.
+		// Once it has succeeded, `BeginProcessingData()` refuses every later call, so nothing moves.
 		bool TryBeginReaping(const SilenceState &state);
 
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
@@ -144,7 +145,7 @@ namespace pvd
 		}
 
 	private:
-		// Records that something a silence judgment reads has changed
+		// Records that something `GetSilenceState()` reads has changed
 		void CountStateChange();
 
 		uint32_t _channel_id						   = 0;
@@ -167,10 +168,9 @@ namespace pvd
 		};
 		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
 
-		// Everything a silence judgment has to agree on, in one word,
-		// so that one compare-and-swap can check all of it:
-		// how many data handlers are running, a counter bumped by every write the judgment depends on,
-		// and the flag that reserves this channel for deletion.
+		// Everything `TryBeginReaping()` has to agree on, in one word, so that its one compare-and-swap
+		// can check all of it: how many `OnDataReceived()` calls are inside this channel, a counter
+		// bumped by every write `GetSilenceState()` reads, and the flag that reserves it for deletion.
 		std::atomic<uint64_t> _activity_state					 = 0;
 
 		// Push Provider
