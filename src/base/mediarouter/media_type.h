@@ -263,8 +263,20 @@ namespace cmn
 		// Limited(=narrow) range, MPEG/TV range (e.g. 16-235 for 8-bit luma)
 		Limited, 
 		// Full(=wide) range, JPEG/PC range (e.g. 0-255 for 8-bit luma)
-		Full 
+		Full
 	};
+
+	constexpr const char *GetColorRangeString(cmn::ColorRange color_range)
+	{
+		switch (color_range)
+		{
+			OV_CASE_RETURN_ENUM_STRING(ColorRange, Unspecified);
+			OV_CASE_RETURN_ENUM_STRING(ColorRange, Limited);
+			OV_CASE_RETURN_ENUM_STRING(ColorRange, Full);
+		}
+
+		return "Unknown";
+	}
 
 	// YUV matrix coefficients of the video
 	// Uses the same values as ISO/IEC 23091-2 (H.273), so it maps 1:1 to FFmpeg AVColorSpace
@@ -285,6 +297,29 @@ namespace cmn
 		ChromaDerivedCL = 13,
 		ICTCP = 14
 	};
+
+	constexpr const char *GetColorMatrixString(cmn::ColorMatrix color_matrix)
+	{
+		switch (color_matrix)
+		{
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, RGB);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, BT709);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, Unspecified);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, FCC);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, BT470BG);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, SMPTE170M);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, SMPTE240M);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, YCGCO);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, BT2020NCL);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, BT2020CL);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, SMPTE2085);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, ChromaDerivedNCL);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, ChromaDerivedCL);
+			OV_CASE_RETURN_ENUM_STRING(ColorMatrix, ICTCP);
+		}
+
+		return "Unknown";
+	}
 
 	enum class KeyFrameIntervalType : uint8_t
 	{

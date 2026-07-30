@@ -395,23 +395,25 @@ bool TranscodeFilter::IsFormatChanged(const std::shared_ptr<FilterBase> &base, c
 void TranscodeFilter::UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame)
 {
 	auto input_track = GetInputTrack();
+	auto output_track = GetOutputTrack();
 
 	switch (frame->GetMediaType())
 	{
 		case MediaType::Video:
-			logtd("[%s] input video frame properties have been changed. track:%u. %dx%d/%s(csp:%d/%d) -> %dx%d/%s(csp:%d/%d)",
+			logtd("[%s] input video frame properties have been changed. track:%u -> %u. %dx%d/%s(%s,%s) -> %dx%d/%s(%s,%s)",
 				  _input_stream_info->GetUri().CStr(),
 				  input_track->GetId(),
+				  output_track->GetId(),
 				  base->GetInputWidth(),
 				  base->GetInputHeight(),
 				  cmn::GetVideoPixelFormatIdString(base->GetInputFramePixelFormat()),
-				  static_cast<int32_t>(base->GetInputColorMatrix()),
-				  static_cast<int32_t>(base->GetInputColorRange()),
+				  cmn::GetColorMatrixString(base->GetInputColorMatrix()),
+				  cmn::GetColorRangeString(base->GetInputColorRange()),
 				  frame->GetWidth(),
 				  frame->GetHeight(),
 				  cmn::GetVideoPixelFormatIdString(frame->GetFormat<cmn::VideoPixelFormatId>()),
-				  static_cast<int32_t>(frame->GetColorMatrix()),
-				  static_cast<int32_t>(frame->GetColorRange()));
+				  cmn::GetColorMatrixString(frame->GetColorMatrix()),
+				  cmn::GetColorRangeString(frame->GetColorRange()));
 
 			input_track->SetResolution(frame->GetWidth(), frame->GetHeight());
 			input_track->SetColorspace(frame->GetFormat<cmn::VideoPixelFormatId>());
@@ -420,9 +422,10 @@ void TranscodeFilter::UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> 
 			break;
 
 		case MediaType::Audio:
-			logtd("[%s] input audio frame properties have been changed. track:%u. %dHz/%s -> %dHz/%s",
+			logtd("[%s] input audio frame properties have been changed. track:%u -> %u. %dHz/%s -> %dHz/%s",
 				  _input_stream_info->GetUri().CStr(),
 				  input_track->GetId(),
+				  output_track->GetId(),
 				  base->GetInputSampleRate(),
 				  cmn::AudioChannel::GetLayoutName(base->GetInputChannelLayout()),
 				  frame->GetSampleRate(),
