@@ -113,7 +113,15 @@ namespace pvd
 
 		while ((state & REAPING_FLAG) == 0)
 		{
-			if (_activity_state.compare_exchange_weak(state, state + 1))
+			const auto handler_count = (state & HANDLER_COUNT_MASK);
+			if (handler_count == HANDLER_COUNT_MASK)
+			{
+				// Prevent carry into the change counter/`REAPING_FLAG` region.
+				return false;
+			}
+
+			const auto next = (state & ~HANDLER_COUNT_MASK) | (handler_count + 1);
+			if (_activity_state.compare_exchange_weak(state, next))
 			{
 				return true;
 			}
