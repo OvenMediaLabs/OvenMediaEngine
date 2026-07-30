@@ -701,16 +701,14 @@ void MediaRouteStream::RetainMirrorBuffer(MirrorBufferMap &mirror_buffers, std::
 
 	// Non-video keeps the last retention window of content
 	track_buffer.emplace_back(std::make_shared<MirrorBufferItem>(media_packet, dts_us));
-	while (true)
-	{
-		auto &oldest_item = track_buffer.front();
-		if (dts_us - oldest_item->dts_us <= retention_us)
-		{
-			break;
-		}
 
-		track_buffer.erase(track_buffer.begin());
+	size_t first_kept_index = 0;
+	while (dts_us - track_buffer[first_kept_index]->dts_us > retention_us)
+	{
+		first_kept_index++;
 	}
+
+	track_buffer.erase(track_buffer.begin(), track_buffer.begin() + first_kept_index);
 }
 
 std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::BuildPastData(const MirrorBufferMap &mirror_buffers)
