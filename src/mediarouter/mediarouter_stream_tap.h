@@ -19,9 +19,10 @@ class MediaRouterStreamTap
 {
 friend class MediaRouteApplication;
 public:
-    static std::shared_ptr<MediaRouterStreamTap> Create(size_t buffer_size = 300);
+    // The threshold only triggers a queue-size warning log; the buffer is unbounded
+    static std::shared_ptr<MediaRouterStreamTap> Create(size_t threshold = 300);
 
-    MediaRouterStreamTap(size_t buffer_size);
+    MediaRouterStreamTap(size_t threshold);
     ~MediaRouterStreamTap();
 
     enum class State : int8_t
@@ -46,6 +47,11 @@ public:
     // If the stream is not Tapped and the buffer is empty, nullptr will be returned immediately without waiting.
     std::shared_ptr<MediaPacket> Pop(int timeout_in_msec = 0);
 
+    size_t GetThreshold() const
+    {
+        return _threshold;
+    }
+
     // return stream info reference
     std::shared_ptr<info::Stream> GetStreamInfo() const;
 
@@ -60,13 +66,14 @@ private:
 
     std::shared_ptr<info::Stream> _tapped_stream_info;
     ov::Queue<std::shared_ptr<MediaPacket>> _buffer;
+    size_t _threshold = 0;
     std::atomic<State> _state = State::Idle;
 
     std::atomic<bool> _is_destroy_requested = false;
 
     std::atomic<bool> _is_started = false;
 
-	bool _need_past_data = false;
+	std::atomic<bool> _need_past_data = false;
 
     uint32_t _id = 0;
 };

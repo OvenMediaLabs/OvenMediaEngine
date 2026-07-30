@@ -9,13 +9,13 @@
 
 #include "mediarouter_stream_tap.h"
 
-std::shared_ptr<MediaRouterStreamTap> MediaRouterStreamTap::Create(size_t buffer_size)
+std::shared_ptr<MediaRouterStreamTap> MediaRouterStreamTap::Create(size_t threshold)
 {
-    return std::make_shared<MediaRouterStreamTap>(buffer_size);
+    return std::make_shared<MediaRouterStreamTap>(threshold);
 }
 
-MediaRouterStreamTap::MediaRouterStreamTap(size_t buffer_size)
-    : _buffer("MediaRouterStreamTap", buffer_size)
+MediaRouterStreamTap::MediaRouterStreamTap(size_t threshold)
+    : _buffer("MediaRouterStreamTap", threshold), _threshold(threshold)
 {
     _id = IssueUniqueId();
 }
