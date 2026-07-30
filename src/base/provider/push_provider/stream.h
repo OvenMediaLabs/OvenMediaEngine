@@ -46,8 +46,10 @@ namespace pvd
 		virtual void CloseTransport() {}
 
 		// Enters and leaves this channel's own data handler.
-		// Entering fails once a silence judgment has reserved this channel for deletion,
+		// Entering fails only once a silence judgment has committed to deleting this channel,
 		// and the caller then has to drop the data.
+		// A judgment that ends up cancelled never refuses a handler, because it never holds the channel
+		// while it makes up its mind.
 		// A handler's own duration is not client silence, and `<AdmissionWebhooks><Timeout>` is unbounded,
 		// so the channel task runner skips a channel with a handler inside.
 		// Handlers count rather than set a flag, because two of them for one channel may overlap.
@@ -67,10 +69,11 @@ namespace pvd
 		// This is not an atomic snapshot: `TryBeginReaping()` is what makes acting on it safe.
 		struct SilenceState
 		{
-			uint64_t generation = 0;
-			time_t timeout_ms	= 0;
-			time_t elapsed_ms	= -1;
-			bool is_processing	= false;
+			// The activity word exactly as it was read, which is what `TryBeginReaping()` compares against
+			uint64_t activity  = 0;
+			time_t timeout_ms  = 0;
+			time_t elapsed_ms  = -1;
+			bool is_processing = false;
 
 			// Whether this view says the channel has been silent for longer than it may be.
 			// A `0` budget disables the judgment, and a negative elapsed time means nothing has arrived.
@@ -83,7 +86,8 @@ namespace pvd
 		SilenceState GetSilenceState();
 
 		// Reserves this channel for deletion by the caller, on the state `GetSilenceState()` returned.
-		// It fails when a handler is inside, when another caller already reserved the channel,
+		// One compare-and-swap decides it, so a caller that loses changes nothing at all:
+		// it fails when a handler is inside, when another caller reserved the channel first,
 		// or when anything that state was read from has moved since.
 		// A reservation refuses every later handler, so nothing changes once this has succeeded.
 		bool TryBeginReaping(const SilenceState &state);
@@ -140,8 +144,11 @@ namespace pvd
 		}
 
 	private:
-		uint32_t 		_channel_id = 0;
-		// If it's type is DATA, related channel is Signalling, or vice versa. 
+		// Records that something a silence judgment reads has changed
+		void CountStateChange();
+
+		uint32_t _channel_id						   = 0;
+		// If it's type is DATA, related channel is Signalling, or vice versa.
 		uint32_t		_related_channel_id = 0; 
 		// Published?
 		bool			_is_published = false;
@@ -160,11 +167,11 @@ namespace pvd
 		};
 		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
 
-		// How many of this channel's data handlers are running,
-		// plus a top-bit flag a silence judgment sets to reserve this channel for deletion.
-		std::atomic<uint32_t> _activity_state					 = 0;
-		// Bumped by every write a silence judgment depends on, so it can tell its own read is stale
-		std::atomic<uint64_t> _state_generation					 = 0;
+		// Everything a silence judgment has to agree on, in one word,
+		// so that one compare-and-swap can check all of it:
+		// how many data handlers are running, a counter bumped by every write the judgment depends on,
+		// and the flag that reserves this channel for deletion.
+		std::atomic<uint64_t> _activity_state					 = 0;
 
 		// Push Provider
 		std::shared_ptr<PushProvider>	_provider;

@@ -17,8 +17,13 @@ namespace pvd
 {
 	namespace
 	{
-		// The top bit of `PushStream::_activity_state`. The rest of it counts running handlers.
-		constexpr uint32_t REAPING_FLAG = 0x80000000U;
+		// How `PushStream::_activity_state` is laid out.
+		// Handlers and the change counter share the word with the reaping flag,
+		// so one compare-and-swap can require that none of them has moved.
+		constexpr uint64_t HANDLER_COUNT_MASK = 0x000000000000FFFFULL;
+		constexpr uint64_t CHANGE_COUNT_MASK  = 0x7FFFFFFFFFFF0000ULL;
+		constexpr uint64_t CHANGE_COUNT_STEP  = 0x0000000000010000ULL;
+		constexpr uint64_t REAPING_FLAG		  = 0x8000000000000000ULL;
 
 		int64_t SteadyNowMs()
 		{
@@ -84,6 +89,24 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
+	// Records that something a silence judgment reads has changed, without disturbing the handler count
+	// or letting the counter carry into the reaping flag.
+	void PushStream::CountStateChange()
+	{
+		auto state = _activity_state.load();
+
+		while (true)
+		{
+			const uint64_t counted = (state & CHANGE_COUNT_MASK) + CHANGE_COUNT_STEP;
+			const uint64_t next	   = (state & ~CHANGE_COUNT_MASK) | (counted & CHANGE_COUNT_MASK);
+
+			if (_activity_state.compare_exchange_weak(state, next))
+			{
+				return;
+			}
+		}
+	}
+
 	bool PushStream::BeginProcessingData()
 	{
 		auto state = _activity_state.load();
@@ -96,7 +119,7 @@ namespace pvd
 			}
 		}
 
-		// A silence judgment owns this channel now, and it is about to be deleted.
+		// A judgment has committed to deleting this channel, so there is nothing left to hand data to.
 		return false;
 	}
 
@@ -109,28 +132,28 @@ namespace pvd
 
 	bool PushStream::IsProcessingData()
 	{
-		return (_activity_state.load() & ~REAPING_FLAG) != 0;
+		return (_activity_state.load() & HANDLER_COUNT_MASK) != 0;
 	}
 
 	void PushStream::UpdateLastReceivedTime()
 	{
 		_last_received_time_ms = SteadyNowMs();
-		_state_generation.fetch_add(1);
+		CountStateChange();
 	}
 
 	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
 	{
 		_packet_silence_timeout_ms = timeout_ms;
-		_state_generation.fetch_add(1);
+		CountStateChange();
 	}
 
 	PushStream::SilenceState PushStream::GetSilenceState()
 	{
 		SilenceState state;
 
-		// The generation is read first, so a write to any field below shows up as a change.
-		state.generation	= _state_generation.load();
-		state.is_processing = IsProcessingData();
+		// The activity word is read first, so a write to any field below shows up as a change.
+		state.activity		= _activity_state.load();
+		state.is_processing = (state.activity & HANDLER_COUNT_MASK) != 0;
 		state.timeout_ms	= GetPacketSilenceTimeoutMs();
 		state.elapsed_ms	= GetElapsedMsSinceLastReceived();
 
@@ -139,23 +162,14 @@ namespace pvd
 
 	bool PushStream::TryBeginReaping(const SilenceState &state)
 	{
-		uint32_t idle = 0;
+		// The word has to still hold no handler, no reservation, and the change count this judgment saw.
+		// A single swap therefore rules out a handler being inside,
+		// another judgment having reserved the channel,
+		// and anything having moved since the state was read.
+		// Losing changes nothing, so a judgment that turns out to be stale never costs a packet.
+		uint64_t expected = state.activity & CHANGE_COUNT_MASK;
 
-		if (_activity_state.compare_exchange_strong(idle, REAPING_FLAG) == false)
-		{
-			// A handler is inside, or another judgment reserved this channel first.
-			return false;
-		}
-
-		// No handler can enter from here, so nothing else can move the generation on.
-		// A value that still matches therefore means the whole state above is the one that was judged.
-		if (_state_generation.load() != state.generation)
-		{
-			_activity_state.store(0);
-			return false;
-		}
-
-		return true;
+		return _activity_state.compare_exchange_strong(expected, expected | REAPING_FLAG);
 	}
 
 	time_t PushStream::GetPacketSilenceTimeoutMs()
