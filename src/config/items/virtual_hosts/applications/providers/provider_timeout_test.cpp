@@ -8,6 +8,8 @@
 //==============================================================================
 #include <config/config.h>
 #include <gtest/gtest.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <fstream>

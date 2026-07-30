@@ -9,6 +9,8 @@
 #include <base/mediarouter/mediarouter_interface.h>
 #include <config/config.h>
 #include <gtest/gtest.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <chrono>
