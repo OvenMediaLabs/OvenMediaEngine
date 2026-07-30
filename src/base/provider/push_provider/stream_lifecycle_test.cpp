@@ -533,7 +533,7 @@ TEST(PushStreamLifecycle, ASilentChannelIsJudgedFromOneViewOfItsState)
 	const auto state = f.channel->GetSilenceState();
 
 	EXPECT_TRUE(state.IsSilentBeyondTimeout());
-	EXPECT_FALSE(f.channel->HasSilenceStateChangedSince(state));
+	EXPECT_TRUE(f.channel->TryBeginReaping(state));
 }
 
 TEST(PushStreamLifecycle, AChannelWithNoBudgetIsNeverJudgedSilent)
@@ -559,7 +559,7 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheBudgetChangesUnderIt)
 	// Acting on the view above would delete a stream that has just gone live.
 	f.channel->SetPacketSilenceTimeoutMs(0);
 
-	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
 TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenDataArrivesUnderIt)
@@ -573,7 +573,7 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenDataArrivesUnderIt)
 
 	f.channel->UpdateLastReceivedTime();
 
-	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 }
 
 TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenAHandlerStartsUnderIt)
@@ -585,9 +585,9 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenAHandlerStartsUnderIt)
 	const auto state = f.channel->GetSilenceState();
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
-	f.channel->BeginProcessingData();
+	EXPECT_TRUE(f.channel->BeginProcessingData());
 
-	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
 
 	f.channel->EndProcessingData();
 }
@@ -610,5 +610,82 @@ TEST(PushStreamLifecycle, AJudgmentIsDroppedWhenTheFirstMediaPacketEndsTheWaitUn
 	// which is the interleaving that used to delete a live channel.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	EXPECT_TRUE(f.channel->HasSilenceStateChangedSince(state));
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
+}
+
+TEST(PushStreamLifecycle, AReservedChannelRefusesEveryLaterHandler)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(f.channel->TryBeginReaping(state));
+
+	// A receive thread that arrives after the judgment has committed. Letting it in would run a handler
+	// against a channel whose transport and stream are already being torn down.
+	EXPECT_FALSE(f.channel->BeginProcessingData());
+	EXPECT_FALSE(f.channel->IsProcessingData());
+
+	// The data has nowhere to go, so the provider drops it instead of handing it to the channel.
+	EXPECT_FALSE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
+	EXPECT_FALSE(f.channel->_handler_ran);
+}
+
+TEST(PushStreamLifecycle, OnlyOneJudgmentReservesAChannel)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+
+	EXPECT_TRUE(f.channel->TryBeginReaping(state));
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
+}
+
+TEST(PushStreamLifecycle, ExactlyOneOfAReservationAndAHandlerWins)
+{
+	// Both threads meet on the same channel at the same moment, which is the race between the channel
+	// task runner committing a deletion and a receive thread entering a handler.
+	for (int round = 0; round < 200; round++)
+	{
+		Fixture f;
+
+		MakeSilentBeyondTimeout(f.channel);
+
+		const auto state = f.channel->GetSilenceState();
+		ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+		std::atomic<int> arrived   = 0;
+		std::atomic<bool> reserved = false;
+		std::atomic<bool> entered  = false;
+
+		auto barrier			   = [&arrived]() {
+			arrived.fetch_add(1);
+
+			while (arrived.load() < 2)
+			{
+				std::this_thread::yield();
+			}
+		};
+
+		auto reaper = std::async(std::launch::async, [&]() {
+			barrier();
+			reserved = f.channel->TryBeginReaping(state);
+		});
+
+		barrier();
+		entered = f.channel->BeginProcessingData();
+
+		reaper.wait();
+
+		// Never both: a handler inside blocks the reservation, and a reservation refuses the handler.
+		EXPECT_NE(reserved.load(), entered.load());
+
+		if (entered.load())
+		{
+			f.channel->EndProcessingData();
+		}
+	}
 }

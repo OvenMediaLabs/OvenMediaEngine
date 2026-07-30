@@ -17,6 +17,9 @@ namespace pvd
 {
 	namespace
 	{
+		// The top bit of `PushStream::_activity_state`. The rest of it counts running handlers.
+		constexpr uint32_t REAPING_FLAG = 0x80000000U;
+
 		int64_t SteadyNowMs()
 		{
 			return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -81,19 +84,32 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
-	void PushStream::BeginProcessingData()
+	bool PushStream::BeginProcessingData()
 	{
-		_processing_data_count.fetch_add(1);
+		auto state = _activity_state.load();
+
+		while ((state & REAPING_FLAG) == 0)
+		{
+			if (_activity_state.compare_exchange_weak(state, state + 1))
+			{
+				return true;
+			}
+		}
+
+		// A silence judgment owns this channel now, and it is about to be deleted.
+		return false;
 	}
 
 	void PushStream::EndProcessingData()
 	{
-		_processing_data_count.fetch_sub(1);
+		// A reservation is only taken while no handler is inside,
+		// so this never has to preserve the flag.
+		_activity_state.fetch_sub(1);
 	}
 
 	bool PushStream::IsProcessingData()
 	{
-		return _processing_data_count.load() != 0;
+		return (_activity_state.load() & ~REAPING_FLAG) != 0;
 	}
 
 	void PushStream::UpdateLastReceivedTime()
@@ -121,11 +137,27 @@ namespace pvd
 		return state;
 	}
 
-	bool PushStream::HasSilenceStateChangedSince(const SilenceState &state)
+	bool PushStream::TryBeginReaping(const SilenceState &state)
 	{
-		return (_state_generation.load() != state.generation) || IsProcessingData();
+		uint32_t idle = 0;
+
+		if (_activity_state.compare_exchange_strong(idle, REAPING_FLAG) == false)
+		{
+			// A handler is inside, or another judgment reserved this channel first.
+			return false;
+		}
+
+		// No handler can enter from here, so nothing else can move the generation on.
+		// A value that still matches therefore means the whole state above is the one that was judged.
+		if (_state_generation.load() != state.generation)
+		{
+			_activity_state.store(0);
+			return false;
+		}
+
+		return true;
 	}
-	
+
 	time_t PushStream::GetPacketSilenceTimeoutMs()
 	{
 		return _packet_silence_timeout_ms;

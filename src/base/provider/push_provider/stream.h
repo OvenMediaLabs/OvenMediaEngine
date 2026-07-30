@@ -45,10 +45,13 @@ namespace pvd
 		// The default is a no-op, because a provider may share this transport or tear it down elsewhere.
 		virtual void CloseTransport() {}
 
-		// Marks this channel's own data handler as entered and left, for the channel task runner to skip.
-		// A handler's own duration is not client silence, and `<AdmissionWebhooks><Timeout>` is unbounded.
-		// These count instead of setting a flag, because two handlers for one channel may overlap.
-		void BeginProcessingData();
+		// Enters and leaves this channel's own data handler.
+		// Entering fails once a silence judgment has reserved this channel for deletion,
+		// and the caller then has to drop the data.
+		// A handler's own duration is not client silence, and `<AdmissionWebhooks><Timeout>` is unbounded,
+		// so the channel task runner skips a channel with a handler inside.
+		// Handlers count rather than set a flag, because two of them for one channel may overlap.
+		bool BeginProcessingData();
 		void EndProcessingData();
 		bool IsProcessingData();
 
@@ -58,9 +61,10 @@ namespace pvd
 		time_t GetPacketSilenceTimeoutMs();
 		time_t GetElapsedMsSinceLastReceived();
 
-		// One view of everything the channel task runner judges a channel by.
+		// One read of each field the channel task runner judges a channel by.
 		// Field-by-field reads let a handler change some of them in between,
 		// and a judgment pairing an old elapsed time with a new budget deletes a live channel.
+		// This is not an atomic snapshot: `TryBeginReaping()` is what makes acting on it safe.
 		struct SilenceState
 		{
 			uint64_t generation = 0;
@@ -78,9 +82,11 @@ namespace pvd
 
 		SilenceState GetSilenceState();
 
-		// Whether anything `GetSilenceState()` read has moved since it was read.
-		// A judgment asks this before deleting, so one made across a handler is dropped and retried.
-		bool HasSilenceStateChangedSince(const SilenceState &state);
+		// Reserves this channel for deletion by the caller, on the state `GetSilenceState()` returned.
+		// It fails when a handler is inside, when another caller already reserved the channel,
+		// or when anything that state was read from has moved since.
+		// A reservation refuses every later handler, so nothing changes once this has succeeded.
+		bool TryBeginReaping(const SilenceState &state);
 
 		// Apply the `PacketSilenceTimeoutMs` configured for the resolved application.
 		// Concrete providers call this as soon as the application is known, which for RTMP, MPEG-TS
@@ -153,8 +159,10 @@ namespace pvd
 			Ended
 		};
 		std::atomic<FirstMediaWaitPhase> _first_media_wait_phase = FirstMediaWaitPhase::NotStarted;
-		// How many of this channel's data handlers are running
-		std::atomic<int32_t> _processing_data_count				 = 0;
+
+		// How many of this channel's data handlers are running,
+		// plus a top-bit flag a silence judgment sets to reserve this channel for deletion.
+		std::atomic<uint32_t> _activity_state					 = 0;
 		// Bumped by every write a silence judgment depends on, so it can tell its own read is stale
 		std::atomic<uint64_t> _state_generation					 = 0;
 

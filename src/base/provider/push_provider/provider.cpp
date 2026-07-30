@@ -8,23 +8,32 @@ namespace pvd
 {
 	namespace
 	{
-		// Clears the mark even if the handler throws
+		// Leaves the handler even if it throws
 		class ProcessingDataGuard
 		{
 		public:
 			explicit ProcessingDataGuard(const std::shared_ptr<PushStream> &channel)
-				: _channel(channel)
+				: _channel(channel),
+				  _entered(channel->BeginProcessingData())
 			{
-				_channel->BeginProcessingData();
 			}
 
 			~ProcessingDataGuard()
 			{
-				_channel->EndProcessingData();
+				if (_entered)
+				{
+					_channel->EndProcessingData();
+				}
+			}
+
+			bool IsEntered() const
+			{
+				return _entered;
 			}
 
 		private:
 			std::shared_ptr<PushStream> _channel;
+			bool _entered;
 		};
 	}  // namespace
 
@@ -127,6 +136,12 @@ namespace pvd
 			// Otherwise the runner could see a channel that is no longer processing,
 			// yet still carrying a time from before a long handler.
 			ProcessingDataGuard guard(channel);
+
+			if (guard.IsEntered() == false)
+			{
+				// A silence judgment owns this channel, so nothing is left to hand the data to.
+				return false;
+			}
 
 			if (channel->OnDataReceived(data) == true)
 			{
@@ -255,11 +270,10 @@ namespace pvd
 
 				if (state.IsSilentBeyondTimeout())
 				{
-					if (channel->HasSilenceStateChangedSince(state))
+					if (channel->TryBeginReaping(state) == false)
 					{
-						// The channel's own handler replaced this state mid-judgment,
-						// so the numbers above no longer belong together.
-						// The next tick judges it again against whatever the handler left behind.
+						// A handler entered, or replaced this state, while the judgment was being made.
+						// The next tick judges the channel again against whatever it left behind.
 						continue;
 					}
 
