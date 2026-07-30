@@ -146,6 +146,18 @@ bool FilterLavfiResampler::Initialize()
 	return true;
 }
 
+bool FilterLavfiResampler::IsSourceParametersMatched(const std::shared_ptr<MediaFrame> &media_frame) const
+{
+	if (media_frame->GetSampleRate() == _src_samplerate &&
+		media_frame->GetChannels().GetLayout() == _src_channel_layout &&
+		media_frame->GetFormat<cmn::AudioSample::Format>() == _src_sample_format)
+	{
+		return true;
+	}
+
+	return false;
+}
+
 bool FilterLavfiResampler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 {
 	if (GetState() == State::ERROR)
@@ -158,13 +170,10 @@ bool FilterLavfiResampler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
-	// Drop a frame that does not match the source parameters. The audio buffer
-	// source rejects such a frame with an error that would disable the filter.
-	if (media_frame->GetSampleRate() != _src_samplerate ||
-		media_frame->GetChannels().GetLayout() != _src_channel_layout ||
-		media_frame->GetFormat<cmn::AudioSample::Format>() != _src_sample_format)
+	// Drop a frame that does not match the source parameters.
+	if (IsSourceParametersMatched(media_frame) == false)
 	{
-		logtw("Input frame parameters do not match the expected source parameters. %dHz/%s/%s (expected: %dHz/%s/%s)",
+		logtw("Input audio frame parameters do not match the expected source parameters. %dHz/%s/%s (expected: %dHz/%s/%s)",
 			  media_frame->GetSampleRate(), media_frame->GetChannels().GetName(),
 			  cmn::AudioSample(media_frame->GetFormat<cmn::AudioSample::Format>()).GetName(),
 			  _src_samplerate, cmn::AudioChannel::GetLayoutName(_src_channel_layout),

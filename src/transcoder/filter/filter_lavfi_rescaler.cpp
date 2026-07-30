@@ -80,8 +80,6 @@ bool FilterLavfiRescaler::InitializeSourceFilter()
 	src_params.push_back(ov::String::FormatString("pix_fmt=%s", ffmpeg::compat::GetAVPixelFormatName(ffmpeg::compat::ToAVPixelFormat(_src_pixfmt)).CStr()));
 	src_params.push_back(ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()));
 	src_params.push_back(ov::String::FormatString("pixel_aspect=%d/%d", 1, 1));
-	// Declare the color tags of the incoming frames so that buffersrc does not
-	// warn about on-the-fly property changes
 	src_params.push_back(ov::String::FormatString("colorspace=%d", static_cast<int32_t>(ffmpeg::compat::ToAVColorSpace(_input_track->GetColorMatrix()))));
 	src_params.push_back(ov::String::FormatString("range=%d", static_cast<int32_t>(ffmpeg::compat::ToAVColorRange(_input_track->GetColorRange()))));
 
