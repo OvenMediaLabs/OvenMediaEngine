@@ -689,3 +689,121 @@ TEST(PushStreamLifecycle, ExactlyOneOfAReservationAndAHandlerWins)
 		}
 	}
 }
+
+TEST(PushStreamLifecycle, ACancelledJudgmentCostsNoData)
+{
+	Fixture f;
+
+	MakeSilentBeyondTimeout(f.channel);
+
+	const auto state = f.channel->GetSilenceState();
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+	// A packet arrives between the state being read and the judgment acting on it,
+	// which is what makes the judgment stale.
+	ASSERT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
+
+	EXPECT_FALSE(f.channel->TryBeginReaping(state));
+
+	// The judgment lost, so it must not have held the channel while it found that out.
+	// A handler that arrives now still gets in, and its bytes still reach the channel.
+	f.channel->_call_count	= 0;
+	f.channel->_handler_ran = false;
+
+	EXPECT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
+	EXPECT_TRUE(f.channel->_handler_ran);
+	EXPECT_EQ(f.channel->_call_count.load(), 1);
+}
+
+TEST(PushStreamLifecycle, AStaleJudgmentRacingAReceiveNeverDropsData)
+{
+	// The judgment is stale before it starts, so it has to lose every round.
+	// Whether it loses before or after the receive thread arrives, that thread must always get in.
+	for (int round = 0; round < 200; round++)
+	{
+		Fixture f;
+
+		MakeSilentBeyondTimeout(f.channel);
+
+		const auto state = f.channel->GetSilenceState();
+		ASSERT_TRUE(state.IsSilentBeyondTimeout());
+
+		// Moves the change count on, which is what leaves the state above behind.
+		f.channel->SetPacketSilenceTimeoutMs(1);
+
+		std::atomic<int> arrived   = 0;
+		std::atomic<bool> reserved = false;
+
+		auto barrier			   = [&arrived]() {
+			arrived.fetch_add(1);
+
+			while (arrived.load() < 2)
+			{
+				std::this_thread::yield();
+			}
+		};
+
+		auto reaper = std::async(std::launch::async, [&]() {
+			barrier();
+			reserved = f.channel->TryBeginReaping(state);
+		});
+
+		barrier();
+		const bool handled = f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData());
+
+		reaper.wait();
+
+		EXPECT_FALSE(reserved.load());
+		EXPECT_TRUE(handled);
+		EXPECT_TRUE(f.channel->_handler_ran);
+	}
+}
+
+TEST(PushStreamLifecycle, AChannelStampedAtCreationIsJudged)
+{
+	Fixture f;
+
+	// What `RtmpProvider::OnConnected()` does right after the channel is created,
+	// so that a peer which opens the connection and then sends nothing at all still runs down its budget.
+	f.channel->UpdateLastReceivedTime();
+	f.channel->SetPacketSilenceTimeoutMs(1);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+	const auto state = f.channel->GetSilenceState();
+
+	EXPECT_GE(state.elapsed_ms, 0);
+	EXPECT_TRUE(state.IsSilentBeyondTimeout());
+	EXPECT_TRUE(f.channel->TryBeginReaping(state));
+}
+
+TEST(PushStreamLifecycle, CountingStateChangesLeavesTheHandlerCountAlone)
+{
+	Fixture f;
+
+	// Handlers, the change counter and the reaping flag share one word,
+	// so counting a change must not reach the other two.
+	// A handler stays inside across all of these.
+	ASSERT_TRUE(f.channel->BeginProcessingData());
+
+	for (int i = 0; i < 1000; i++)
+	{
+		f.channel->UpdateLastReceivedTime();
+		f.channel->SetPacketSilenceTimeoutMs(1);
+
+		ASSERT_TRUE(f.channel->IsProcessingData());
+		ASSERT_FALSE(f.channel->GetSilenceState().IsSilentBeyondTimeout());
+	}
+
+	f.channel->EndProcessingData();
+
+	EXPECT_FALSE(f.channel->IsProcessingData());
+
+	// The counter has moved a thousand times, and a judgment taken now still reserves the channel.
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+	const auto state = f.channel->GetSilenceState();
+
+	ASSERT_TRUE(state.IsSilentBeyondTimeout());
+	EXPECT_TRUE(f.channel->TryBeginReaping(state));
+}
