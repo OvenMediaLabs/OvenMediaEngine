@@ -16,6 +16,11 @@
 // cannot monopolize the worker loop
 static constexpr int MULTIPLEX_MAX_DRAIN_PER_SOURCE = 128;
 
+// Idle sleep bounds for the worker loop; the sleep backs off on consecutive
+// empty rounds so an idle channel does not burn wakeups
+static constexpr int MULTIPLEX_IDLE_SLEEP_MIN_MS = 1;
+static constexpr int MULTIPLEX_IDLE_SLEEP_MAX_MS = 10;
+
 namespace pvd
 {
     // Implementation of MultiplexStream
@@ -124,6 +129,8 @@ namespace pvd
         // The source list is fixed for the stream's lifetime; a profile change recreates the stream
         const auto &source_streams = _multiplex_profile->GetSourceStreams();
 
+        int idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MIN_MS;
+
         while (_worker_thread_running.load())
         {
             _mux_state = MuxState::Playing;
@@ -190,7 +197,17 @@ namespace pvd
             if (any_packet_popped == false)
             {
                 // Every tap was empty in this round
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(idle_sleep_ms));
+
+                idle_sleep_ms *= 2;
+                if (idle_sleep_ms > MULTIPLEX_IDLE_SLEEP_MAX_MS)
+                {
+                    idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MAX_MS;
+                }
+            }
+            else
+            {
+                idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MIN_MS;
             }
         }
 
