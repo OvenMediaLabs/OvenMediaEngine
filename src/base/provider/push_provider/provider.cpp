@@ -264,7 +264,7 @@ namespace pvd
 				const auto elapsed_ms = static_cast<intmax_t>(state.elapsed_ms);
 				const auto timeout_ms = static_cast<intmax_t>(state.timeout_ms);
 
-				logtt("Checking channel %u, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId(),
+				logtd("Checking channel %u, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId(),
 					  elapsed_ms,
 					  timeout_ms);
 
