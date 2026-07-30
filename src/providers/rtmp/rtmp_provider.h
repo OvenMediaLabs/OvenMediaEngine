@@ -53,6 +53,13 @@ namespace pvd
 		}
 
 	protected:
+		// An RTMP client opens the connection and immediately sends its handshake,
+		// so a channel that never receives anything is a peer holding a connection it does not use.
+		bool DoesSilenceStartAtChannelCreation() const override
+		{
+			return true;
+		}
+
 		//--------------------------------------------------------------------
 		// Implementation of Provider's pure virtual functions
 		//--------------------------------------------------------------------

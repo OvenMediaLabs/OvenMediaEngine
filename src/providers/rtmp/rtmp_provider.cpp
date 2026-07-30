@@ -229,11 +229,6 @@ namespace pvd
 			  _is_ertmp_enabled ? " (E-RTMP)" : "");
 
 		PushProvider::OnChannelCreated(channel_id, stream);
-
-		// An RTMP client opens the connection and sends its handshake, so the silence budget the channel
-		// was just given has to run from here. Without this the channel has no last received time,
-		// and a peer that connects and then sends nothing at all is never judged silent.
-		stream->UpdateLastReceivedTime();
 	}
 
 	void RtmpProvider::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,

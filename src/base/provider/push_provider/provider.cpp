@@ -116,6 +116,15 @@ namespace pvd
 
 		channel->SetPacketSilenceTimeoutMs(DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 
+		if (DoesSilenceStartAtChannelCreation())
+		{
+			// The budget above has to run from here,
+			// because this provider's client is the one that connects and then sends.
+			// Without a last received time the channel is never judged silent,
+			// and a peer that connects and sends nothing at all keeps its connection for good.
+			channel->UpdateLastReceivedTime();
+		}
+
 		return true;
 	}
 

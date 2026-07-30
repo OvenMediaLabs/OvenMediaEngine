@@ -77,6 +77,8 @@ namespace
 		using PushProvider::OnDataReceived;
 		// The orchestrator calls this one.
 		using PushProvider::OnCreateApplication;
+		// Each concrete provider decides this for itself.
+		using PushProvider::DoesSilenceStartAtChannelCreation;
 	};
 
 	// The provider registers its applications with the router before storing them,
@@ -272,6 +274,17 @@ namespace
 		std::shared_ptr<StubPushStream> channel;
 		std::shared_ptr<info::Host> host_info;
 		std::shared_ptr<TestApplicationInfo> application_info;
+	};
+	// A provider whose client connects and then sends, which is what RTMP does.
+	class StampingPushProvider : public StubPushProvider
+	{
+	public:
+		using StubPushProvider::StubPushProvider;
+
+		bool DoesSilenceStartAtChannelCreation() const override
+		{
+			return true;
+		}
 	};
 }  // namespace
 
@@ -759,22 +772,36 @@ TEST(PushStreamLifecycle, AStaleJudgmentRacingAReceiveNeverDropsData)
 	}
 }
 
-TEST(PushStreamLifecycle, AChannelStampedAtCreationIsJudged)
+TEST(PushStreamLifecycle, AChannelIsNotStampedAtCreationByDefault)
 {
 	Fixture f;
 
-	// What `RtmpProvider::OnConnected()` does right after the channel is created,
-	// so that a peer which opens the connection and then sends nothing at all still runs down its budget.
-	f.channel->UpdateLastReceivedTime();
-	f.channel->SetPacketSilenceTimeoutMs(1);
+	// Most transports hand a channel data before it can be judged, and WebRTC receives nothing through
+	// this path at all while its session starts.
+	EXPECT_FALSE(f.provider->DoesSilenceStartAtChannelCreation());
+	EXPECT_LT(f.channel->GetElapsedMsSinceLastReceived(), 0);
+}
 
+TEST(PushStreamLifecycle, AProviderThatAsksForItGetsItsChannelsStampedAtCreation)
+{
+	cfg::Server server_config;
+	auto router	  = std::make_shared<StubMediaRouter>();
+	auto provider = std::make_shared<StampingPushProvider>(server_config, router);
+	auto channel  = std::make_shared<StubPushStream>(Fixture::CHANNEL_ID, provider);
+
+	provider->OnChannelCreated(Fixture::CHANNEL_ID, channel);
+
+	// Creating the channel is what starts its budget, so a peer that connects and then sends nothing at
+	// all still runs the budget down and gets reaped.
+	EXPECT_GE(channel->GetElapsedMsSinceLastReceived(), 0);
+
+	channel->SetPacketSilenceTimeoutMs(1);
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-	const auto state = f.channel->GetSilenceState();
+	const auto state = channel->GetSilenceState();
 
-	EXPECT_GE(state.elapsed_ms, 0);
 	EXPECT_TRUE(state.IsSilentBeyondTimeout());
-	EXPECT_TRUE(f.channel->TryBeginReaping(state));
+	EXPECT_TRUE(channel->TryBeginReaping(state));
 }
 
 TEST(PushStreamLifecycle, CountingStateChangesLeavesTheHandlerCountAlone)
@@ -799,7 +826,7 @@ TEST(PushStreamLifecycle, CountingStateChangesLeavesTheHandlerCountAlone)
 
 	EXPECT_FALSE(f.channel->IsProcessingData());
 
-	// The counter has moved a thousand times, and a judgment taken now still reserves the channel.
+	// Two changes per round have moved the counter, and a judgment taken now still reserves the channel.
 	std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
 	const auto state = f.channel->GetSilenceState();
