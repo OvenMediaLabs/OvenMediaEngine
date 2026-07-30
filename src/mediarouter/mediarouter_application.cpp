@@ -906,17 +906,9 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 					{
 						stream_tap->SetNeedPastData(false);
 
-						// Keep the backfill burst below the tap's queue warning threshold,
-						// leaving headroom for live packets arriving during the burst
-						auto threshold = stream_tap->GetThreshold();
-						auto max_backfill = (threshold > MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM) ? threshold - MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM : threshold;
-
-						for (const auto &item : MediaRouteStream::SelectPastData(stream->GetMirrorBuffer(), max_backfill))
+						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							if (item->GetElapsedMilliseconds() < MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
-							{
-								stream_tap->Push(item->packet);
-							}
+							stream_tap->PushBackfill(item->packet);
 						}
 					}
 					else
@@ -998,17 +990,9 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 					{
 						stream_tap->SetNeedPastData(false);
 
-						// Keep the backfill burst below the tap's queue warning threshold,
-						// leaving headroom for live packets arriving during the burst
-						auto threshold = stream_tap->GetThreshold();
-						auto max_backfill = (threshold > MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM) ? threshold - MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM : threshold;
-
-						for (const auto &item : MediaRouteStream::SelectPastData(stream->GetMirrorBuffer(), max_backfill))
+						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							if (item->GetElapsedMilliseconds() < MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
-							{
-								stream_tap->Push(item->packet);
-							}
+							stream_tap->PushBackfill(item->packet);
 						}
 					}
 					else

@@ -44,13 +44,9 @@ public:
 	bool DoesNeedPastData() const;
 
     // If the stream is Tapped, MediaPacket will be popped from the buffer.
-    // If the stream is not Tapped and the buffer is empty, nullptr will be returned immediately without waiting.
+    // If the stream is not Tapped and the buffers are empty, nullptr will be returned immediately without waiting.
+    // The backfill buffer is drained before the live buffer; backfill is always older than any live packet.
     std::shared_ptr<MediaPacket> Pop(int timeout_in_msec = 0);
-
-    size_t GetThreshold() const
-    {
-        return _threshold;
-    }
 
     // return stream info reference
     std::shared_ptr<info::Stream> GetStreamInfo() const;
@@ -59,6 +55,13 @@ public:
 
 private:
     bool Push(const std::shared_ptr<MediaPacket> &media_packet);
+
+    // Backfill (past data) is buffered apart from the live buffer, so its one-shot
+    // burst cannot trip the live buffer's congestion warning
+    bool PushBackfill(const std::shared_ptr<MediaPacket> &media_packet);
+
+    bool PushTo(ov::Queue<std::shared_ptr<MediaPacket>> &buffer, const std::shared_ptr<MediaPacket> &media_packet);
+
     void SetStreamInfo(const std::shared_ptr<info::Stream> &stream_info);
     void SetState(State state);
 
@@ -66,7 +69,11 @@ private:
 
     std::shared_ptr<info::Stream> _tapped_stream_info;
     ov::Queue<std::shared_ptr<MediaPacket>> _buffer;
-    size_t _threshold = 0;
+    ov::Queue<std::shared_ptr<MediaPacket>> _backfill_buffer;
+
+    // True once the backfill buffer has run dry (or nothing was ever backfilled),
+    // so the steady-state Pop() skips the backfill buffer without locking it
+    std::atomic<bool> _backfill_sent = true;
     std::atomic<State> _state = State::Idle;
 
     std::atomic<bool> _is_destroy_requested = false;

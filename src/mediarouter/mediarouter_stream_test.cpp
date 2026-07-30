@@ -2,8 +2,8 @@
 //
 //  OvenMediaEngine - Unit Tests
 //
-//  Covers: MediaRouteStream::SelectPastData - past-data range selection for
-//  new stream taps (mirror buffer backfill)
+//  Covers: MediaRouteStream mirror buffer policies - RetainMirrorBuffer
+//  (per-track keyframe-led retention) and BuildPastData (tap backfill assembly)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -12,173 +12,174 @@
 
 namespace
 {
-	std::shared_ptr<MediaRouteStream::MirrorBufferItem> MakeItem(cmn::MediaType media_type, uint32_t track_id, bool keyframe)
+	constexpr int64_t kRetentionUs = MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS * 1000;
+	constexpr int64_t kBaseBackfillUs = MEDIA_ROUTE_STREAM_MIRROR_BASE_BACKFILL_MS * 1000;
+
+	std::shared_ptr<MediaPacket> MakePacket(cmn::MediaType media_type, uint32_t track_id, bool keyframe)
 	{
-		auto packet = std::make_shared<MediaPacket>(media_type, track_id, nullptr, 0, 0, 0,
-													keyframe ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag,
-													cmn::BitstreamFormat::Unknown, cmn::PacketType::Unknown);
-		return std::make_shared<MediaRouteStream::MirrorBufferItem>(packet);
+		return std::make_shared<MediaPacket>(media_type, track_id, nullptr, 0, 0, 0,
+											 keyframe ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag,
+											 cmn::BitstreamFormat::Unknown, cmn::PacketType::Unknown);
+	}
+
+	std::shared_ptr<MediaRouteStream::MirrorBufferItem> MakeItem(cmn::MediaType media_type, uint32_t track_id, bool keyframe, int64_t dts_us = 0, int64_t age_ms = 0)
+	{
+		auto packet = MakePacket(media_type, track_id, keyframe);
+		auto item = std::make_shared<MediaRouteStream::MirrorBufferItem>(packet, dts_us);
+		item->created_time = std::chrono::steady_clock::now() - std::chrono::milliseconds(age_ms);
+		return item;
 	}
 }  // namespace
 
-TEST(MediaRouterSelectPastData, VideoStartsAtMostRecentKeyframe)
+TEST(MediaRouterRetainMirrorBuffer, KeyframeSupersedesTrackGop)
 {
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Video, 1, true),
-		MakeItem(cmn::MediaType::Video, 1, false),
-		MakeItem(cmn::MediaType::Video, 1, false),
-		MakeItem(cmn::MediaType::Video, 1, true),
-		MakeItem(cmn::MediaType::Video, 1, false),
-		MakeItem(cmn::MediaType::Video, 1, false),
-	};
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[1] = {MakeItem(cmn::MediaType::Video, 1, true), MakeItem(cmn::MediaType::Video, 1, false)};
+	buffers[3] = {MakeItem(cmn::MediaType::Audio, 3, false)};
+	auto audio = buffers[3][0];
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto keyframe = MakePacket(cmn::MediaType::Video, 1, true);
+	MediaRouteStream::RetainMirrorBuffer(buffers, keyframe, 0);
 
-	ASSERT_EQ(selected.size(), 3u);
-	EXPECT_EQ(selected[0], buffer[3]);
-	EXPECT_EQ(selected[1], buffer[4]);
-	EXPECT_EQ(selected[2], buffer[5]);
+	// Track 1 holds only the new keyframe; the audio track is untouched
+	ASSERT_EQ(buffers[1].size(), 1u);
+	EXPECT_EQ(buffers[1][0]->packet, keyframe);
+	ASSERT_EQ(buffers[3].size(), 1u);
+	EXPECT_EQ(buffers[3][0], audio);
 }
 
-TEST(MediaRouterSelectPastData, NonVideoFollowsEarliestVideoStart)
+TEST(MediaRouterRetainMirrorBuffer, VideoStaysEmptyUntilKeyframe)
 {
-	// Video track 1 keyframes at 1 and 6, video track 2 keyframe at 4, audio track 3 interleaved.
-	// Expected: track 1 from 6, track 2 from 4, audio from min(6, 4) = 4.
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 0: dropped
-		MakeItem(cmn::MediaType::Video, 1, true),	// 1: dropped (older keyframe)
-		MakeItem(cmn::MediaType::Video, 2, false),	// 2: dropped
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 3: dropped
-		MakeItem(cmn::MediaType::Video, 2, true),	// 4: kept
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 5: kept
-		MakeItem(cmn::MediaType::Video, 1, true),	// 6: kept
-		MakeItem(cmn::MediaType::Video, 2, false),	// 7: kept
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 8: kept
-	};
+	MediaRouteStream::MirrorBufferMap buffers;
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto non_key = MakePacket(cmn::MediaType::Video, 1, false);
+	MediaRouteStream::RetainMirrorBuffer(buffers, non_key, 0);
 
-	ASSERT_EQ(selected.size(), 5u);
-	EXPECT_EQ(selected[0], buffer[4]);
-	EXPECT_EQ(selected[1], buffer[5]);
-	EXPECT_EQ(selected[2], buffer[6]);
-	EXPECT_EQ(selected[3], buffer[7]);
-	EXPECT_EQ(selected[4], buffer[8]);
+	EXPECT_TRUE(buffers[1].empty());
+
+	auto keyframe = MakePacket(cmn::MediaType::Video, 1, true);
+	MediaRouteStream::RetainMirrorBuffer(buffers, keyframe, 0);
+
+	ASSERT_EQ(buffers[1].size(), 1u);
+	EXPECT_EQ(buffers[1][0]->packet, keyframe);
 }
 
-TEST(MediaRouterSelectPastData, VideoBeforeItsOwnKeyframeIsDroppedAfterCommonStart)
+TEST(MediaRouterRetainMirrorBuffer, OverlongGopDiscardedWhole)
 {
-	// Track 2's packets between the common start and its own keyframe must be dropped
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Video, 1, true),	// 0: kept (track 1 start)
-		MakeItem(cmn::MediaType::Video, 2, false),	// 1: dropped (before track 2 keyframe)
-		MakeItem(cmn::MediaType::Video, 2, true),	// 2: kept (track 2 start)
-		MakeItem(cmn::MediaType::Video, 1, false),	// 3: kept
+	// The GOP has grown past the retention window in media time, so the arriving
+	// non-key packet discards the whole GOP and the track waits for a keyframe
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[1] = {
+		MakeItem(cmn::MediaType::Video, 1, true, 0),
+		MakeItem(cmn::MediaType::Video, 1, false, 33000),
 	};
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto non_key = MakePacket(cmn::MediaType::Video, 1, false);
+	MediaRouteStream::RetainMirrorBuffer(buffers, non_key, kRetentionUs + 1000);
 
-	ASSERT_EQ(selected.size(), 3u);
-	EXPECT_EQ(selected[0], buffer[0]);
-	EXPECT_EQ(selected[1], buffer[2]);
-	EXPECT_EQ(selected[2], buffer[3]);
+	EXPECT_TRUE(buffers[1].empty());
 }
 
-TEST(MediaRouterSelectPastData, KeepsFullBufferWhenVideoHasNoKeyframe)
+TEST(MediaRouterRetainMirrorBuffer, NonVideoKeepsRetentionWindowOfContent)
 {
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Audio, 3, false),
-		MakeItem(cmn::MediaType::Video, 1, false),
-		MakeItem(cmn::MediaType::Audio, 3, false),
-		MakeItem(cmn::MediaType::Video, 1, false),
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[3] = {
+		MakeItem(cmn::MediaType::Audio, 3, false, 0),	  // falls out of the window
+		MakeItem(cmn::MediaType::Audio, 3, false, 2000000),
+	};
+	auto recent = buffers[3][1];
+
+	auto packet = MakePacket(cmn::MediaType::Audio, 3, false);
+	MediaRouteStream::RetainMirrorBuffer(buffers, packet, kRetentionUs + 1000000);
+
+	ASSERT_EQ(buffers[3].size(), 2u);
+	EXPECT_EQ(buffers[3][0], recent);
+	EXPECT_EQ(buffers[3][1]->packet, packet);
+}
+
+TEST(MediaRouterBuildPastData, NonVideoCutAtEarliestKeyframeDts)
+{
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[1] = {
+		MakeItem(cmn::MediaType::Video, 1, true, 5000000),
+		MakeItem(cmn::MediaType::Video, 1, false, 5033000),
+	};
+	buffers[3] = {
+		MakeItem(cmn::MediaType::Audio, 3, false, 4900000),	 // before the keyframe DTS: cut
+		MakeItem(cmn::MediaType::Audio, 3, false, 5100000),
+		MakeItem(cmn::MediaType::Audio, 3, false, 9000000),
 	};
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto past_data = MediaRouteStream::BuildPastData(buffers);
 
-	ASSERT_EQ(selected.size(), buffer.size());
-	for (size_t i = 0; i < buffer.size(); i++)
-	{
-		EXPECT_EQ(selected[i], buffer[i]);
-	}
+	ASSERT_EQ(past_data.size(), 4u);
+	EXPECT_EQ(past_data[0], buffers[1][0]);
+	EXPECT_EQ(past_data[1], buffers[1][1]);
+	EXPECT_EQ(past_data[2], buffers[3][1]);
+	EXPECT_EQ(past_data[3], buffers[3][2]);
 }
 
-TEST(MediaRouterSelectPastData, KeepsFullBufferWhenNoVideoTrack)
+TEST(MediaRouterBuildPastData, NonVideoBaseWindowWithoutVideo)
 {
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Audio, 3, false),
-		MakeItem(cmn::MediaType::Audio, 3, false),
+	// Without video the track keeps only the last base window of content,
+	// anchored at its newest DTS
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[3] = {
+		MakeItem(cmn::MediaType::Audio, 3, false, 5000000 - kBaseBackfillUs - 1000),  // outside the window: cut
+		MakeItem(cmn::MediaType::Audio, 3, false, 5000000 - kBaseBackfillUs + 1000),
+		MakeItem(cmn::MediaType::Audio, 3, false, 5000000),
 	};
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto past_data = MediaRouteStream::BuildPastData(buffers);
 
-	ASSERT_EQ(selected.size(), buffer.size());
-	EXPECT_EQ(selected[0], buffer[0]);
-	EXPECT_EQ(selected[1], buffer[1]);
+	ASSERT_EQ(past_data.size(), 2u);
+	EXPECT_EQ(past_data[0], buffers[3][1]);
+	EXPECT_EQ(past_data[1], buffers[3][2]);
 }
 
-TEST(MediaRouterSelectPastData, EmptyBufferReturnsEmpty)
+TEST(MediaRouterBuildPastData, StaleVideoTrackSkipped)
 {
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer;
+	// A stalled track still holding an old GOP contributes no past data; the
+	// audio then falls back to its own base window
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[1] = {
+		MakeItem(cmn::MediaType::Video, 1, true, 0, MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS + 1000),
+		MakeItem(cmn::MediaType::Video, 1, false, 33000, MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS + 500),
+	};
+	buffers[3] = {MakeItem(cmn::MediaType::Audio, 3, false, 1500000)};
 
-	auto selected = MediaRouteStream::SelectPastData(buffer);
+	auto past_data = MediaRouteStream::BuildPastData(buffers);
 
-	EXPECT_TRUE(selected.empty());
+	ASSERT_EQ(past_data.size(), 1u);
+	EXPECT_EQ(past_data[0], buffers[3][0]);
 }
 
-TEST(MediaRouterSelectPastData, MaxCountKeepsNewestAndVideoStaysKeyframeLed)
+TEST(MediaRouterBuildPastData, InterleavesTracksByDts)
 {
-	// Selection is all 7 items (track 1 keyframe at 0, track 2 keyframe at 4);
-	// cap 4 keeps the newest 4, track 2 survives keyframe-led, track 1 whose
-	// keyframe fell before the cap is dropped entirely
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Video, 1, true),	// 0: dropped by cap
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 1: dropped by cap
-		MakeItem(cmn::MediaType::Video, 1, false),	// 2: dropped by cap
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 3: kept (audio is independent)
-		MakeItem(cmn::MediaType::Video, 2, true),	// 4: kept (keyframe survives the trim)
-		MakeItem(cmn::MediaType::Video, 2, false),	// 5: kept
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 6: kept
+	MediaRouteStream::MirrorBufferMap buffers;
+	buffers[1] = {
+		MakeItem(cmn::MediaType::Video, 1, true, 1000000),
+		MakeItem(cmn::MediaType::Video, 1, false, 1066000),
+	};
+	buffers[3] = {
+		MakeItem(cmn::MediaType::Audio, 3, false, 1030000),
+		MakeItem(cmn::MediaType::Audio, 3, false, 1090000),
 	};
 
-	auto selected = MediaRouteStream::SelectPastData(buffer, 4);
+	auto past_data = MediaRouteStream::BuildPastData(buffers);
 
-	ASSERT_EQ(selected.size(), 4u);
-	EXPECT_EQ(selected[0], buffer[3]);
-	EXPECT_EQ(selected[1], buffer[4]);
-	EXPECT_EQ(selected[2], buffer[5]);
-	EXPECT_EQ(selected[3], buffer[6]);
+	ASSERT_EQ(past_data.size(), 4u);
+	EXPECT_EQ(past_data[0], buffers[1][0]);	 // video 1000000
+	EXPECT_EQ(past_data[1], buffers[3][0]);	 // audio 1030000
+	EXPECT_EQ(past_data[2], buffers[1][1]);	 // video 1066000
+	EXPECT_EQ(past_data[3], buffers[3][1]);	 // audio 1090000
 }
 
-TEST(MediaRouterSelectPastData, MaxCountDropsVideoTrackWithoutKeyframeInWindow)
+TEST(MediaRouterBuildPastData, EmptyBuffersReturnEmpty)
 {
-	// After the cap trim track 1 has no keyframe left, so only audio survives
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Video, 1, true),	// 0: dropped by cap
-		MakeItem(cmn::MediaType::Video, 1, false),	// 1: dropped (no keyframe in window)
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 2: kept
-		MakeItem(cmn::MediaType::Video, 1, false),	// 3: dropped (no keyframe in window)
-		MakeItem(cmn::MediaType::Audio, 3, false),	// 4: kept
-	};
+	MediaRouteStream::MirrorBufferMap buffers;
 
-	auto selected = MediaRouteStream::SelectPastData(buffer, 4);
+	auto past_data = MediaRouteStream::BuildPastData(buffers);
 
-	ASSERT_EQ(selected.size(), 2u);
-	EXPECT_EQ(selected[0], buffer[2]);
-	EXPECT_EQ(selected[1], buffer[4]);
-}
-
-TEST(MediaRouterSelectPastData, MaxCountNotExceededLeavesSelectionUnchanged)
-{
-	std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> buffer{
-		MakeItem(cmn::MediaType::Video, 1, true),
-		MakeItem(cmn::MediaType::Video, 1, false),
-		MakeItem(cmn::MediaType::Audio, 3, false),
-	};
-
-	auto selected = MediaRouteStream::SelectPastData(buffer, 10);
-
-	ASSERT_EQ(selected.size(), 3u);
-	EXPECT_EQ(selected[0], buffer[0]);
-	EXPECT_EQ(selected[1], buffer[1]);
-	EXPECT_EQ(selected[2], buffer[2]);
+	EXPECT_TRUE(past_data.empty());
 }

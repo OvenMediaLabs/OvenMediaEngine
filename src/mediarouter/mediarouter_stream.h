@@ -24,11 +24,13 @@
 #include "mediarouter_alert.h"
 #include "modules/managed_queue/managed_queue.h"
 
-static constexpr int64_t MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS = 2000; // Maximum size of mirror buffer
+// Mirror buffer retention window, measured in media time (DTS). A video track
+// keeps only its current GOP and is cleared whole when the GOP grows longer
+// than this; non-video tracks keep this much trailing content
+static constexpr int64_t MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS = 10000;
 
-// Headroom subtracted from a tap's queue warning threshold when capping past-data
-// backfill, covering live packets that arrive while the backfill is being pushed
-static constexpr size_t MEDIA_ROUTE_STREAM_TAP_BACKFILL_HEADROOM = 30;
+// Backfill depth for non-video tracks when there is no video track to align with
+static constexpr int64_t MEDIA_ROUTE_STREAM_MIRROR_BASE_BACKFILL_MS = 2000;
 
 // Warn if a track stays invalid (no decodable media) this long after the first packet, which blocks stream prepare
 static constexpr int64_t MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS = 3000;
@@ -49,11 +51,10 @@ public:
 	void Push(const std::shared_ptr<MediaPacket> &media_packet);
 	std::shared_ptr<MediaPacket> PopAndNormalize();
 	
-	// Return mirror buffer reference
 	struct MirrorBufferItem
 	{
-		MirrorBufferItem(std::shared_ptr<MediaPacket> &packet)
-			: packet(packet)
+		MirrorBufferItem(std::shared_ptr<MediaPacket> &packet, int64_t dts_us)
+			: dts_us(dts_us), packet(packet)
 		{
 			created_time = std::chrono::steady_clock::now();
 		}
@@ -68,15 +69,29 @@ public:
 
 		// timepoint created
 		std::chrono::time_point<std::chrono::steady_clock> created_time;
+
+		// DTS converted to microseconds; monotonic per track and comparable
+		// across tracks of the stream
+		int64_t dts_us = 0;
+
 		std::shared_ptr<MediaPacket> packet;
 	};
-	std::vector<std::shared_ptr<MirrorBufferItem>> GetMirrorBuffer();
 
-	// Selects the past-data range to inject into a new tap: each video track starts
-	// at its most recent keyframe, non-video tracks follow the earliest video start.
-	// Falls back to the full buffer when there is no video track. If max_count > 0,
-	// keeps only the newest max_count items with video tracks still keyframe-led.
-	static std::vector<std::shared_ptr<MirrorBufferItem>> SelectPastData(const std::vector<std::shared_ptr<MirrorBufferItem>> &mirror_buffer, size_t max_count = 0);
+	// Per-track mirror buffers, each in arrival order
+	using MirrorBufferMap = std::map<MediaTrackId, std::vector<std::shared_ptr<MirrorBufferItem>>>;
+
+	MirrorBufferMap GetMirrorBuffers();
+
+	// Applies the retention policy when a packet enters its track's mirror buffer.
+	// A video track holds only its current GOP: a keyframe restarts the buffer and
+	// a GOP longer than the retention window is discarded whole, so a video track
+	// is always keyframe-led or empty. Non-video keeps a sliding content window
+	static void RetainMirrorBuffer(MirrorBufferMap &mirror_buffers, std::shared_ptr<MediaPacket> &media_packet, int64_t dts_us);
+
+	// Builds the past-data backfill for a new tap: fresh video tracks are included
+	// whole from their leading keyframe, and non-video is cut at the earliest
+	// included keyframe's DTS so the backfill starts aligned
+	static std::vector<std::shared_ptr<MirrorBufferItem>> BuildPastData(const MirrorBufferMap &mirror_buffers);
 
 	// Query original stream information
 	std::shared_ptr<info::Stream> GetStream();
@@ -157,6 +172,6 @@ private:
 	// Packets queue
 	ov::ManagedQueue<std::shared_ptr<MediaPacket>> _packets_queue;
 
-	// Mirror buffer
-	std::vector<std::shared_ptr<MirrorBufferItem>> _mirror_buffer;
+	// Mirror buffers, one per track
+	MirrorBufferMap _mirror_buffers;
 };
