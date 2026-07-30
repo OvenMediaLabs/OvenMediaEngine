@@ -70,10 +70,6 @@ private:
     std::shared_ptr<info::Stream> _tapped_stream_info;
     ov::Queue<std::shared_ptr<MediaPacket>> _buffer;
     ov::Queue<std::shared_ptr<MediaPacket>> _backfill_buffer;
-
-    // True once the backfill buffer has run dry (or nothing was ever backfilled),
-    // so the steady-state Pop() skips the backfill buffer without locking it
-    std::atomic<bool> _backfill_sent = true;
     std::atomic<State> _state = State::Idle;
 
     std::atomic<bool> _is_destroy_requested = false;

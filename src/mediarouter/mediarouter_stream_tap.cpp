@@ -66,7 +66,6 @@ void MediaRouterStreamTap::Stop()
     _buffer.Clear();
     _backfill_buffer.Stop();
     _backfill_buffer.Clear();
-    _backfill_sent = true;
 }
 
 std::shared_ptr<MediaPacket> MediaRouterStreamTap::Pop(int timeout_in_msec)
@@ -76,16 +75,12 @@ std::shared_ptr<MediaPacket> MediaRouterStreamTap::Pop(int timeout_in_msec)
         return nullptr;
     }
 
-    // Backfill first; it is always older than any live packet
-    if (_backfill_sent == false)
+    // Backfill first; it is always older than any live packet, and live packets
+    // only start arriving after the whole backfill has been enqueued
+    auto backfill = _backfill_buffer.Dequeue(0);
+    if (backfill.has_value())
     {
-        auto backfill = _backfill_buffer.Dequeue(0);
-        if (backfill.has_value())
-        {
-            return backfill.value();
-        }
-
-        _backfill_sent = true;
+        return backfill.value();
     }
 
     auto object = _buffer.Dequeue(timeout_in_msec);
@@ -119,13 +114,7 @@ bool MediaRouterStreamTap::Push(const std::shared_ptr<MediaPacket> &media_packet
 
 bool MediaRouterStreamTap::PushBackfill(const std::shared_ptr<MediaPacket> &media_packet)
 {
-    if (PushTo(_backfill_buffer, media_packet) == false)
-    {
-        return false;
-    }
-
-    _backfill_sent = false;
-    return true;
+    return PushTo(_backfill_buffer, media_packet);
 }
 
 bool MediaRouterStreamTap::PushTo(ov::Queue<std::shared_ptr<MediaPacket>> &buffer, const std::shared_ptr<MediaPacket> &media_packet)
