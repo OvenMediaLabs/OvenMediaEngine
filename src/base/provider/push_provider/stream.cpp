@@ -89,8 +89,11 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
-	// Records that something `GetSilenceState()` reads has changed,
-	// without disturbing the `OnDataReceived()` count or letting the counter carry into `REAPING_FLAG`.
+	// Marks a write to something `GetSilenceState()` reads, without disturbing the `OnDataReceived()`
+	// count or letting the counter carry into `REAPING_FLAG`. Called once before the write and once
+	// after, so the counter is odd exactly while a write is in flight. `TryBeginReaping()` needs that:
+	// publishing the value before the counter would leave a write that lands between
+	// `GetSilenceState()` and the swap invisible to the swap.
 	void PushStream::CountStateChange()
 	{
 		auto state = _activity_state.load();
@@ -145,12 +148,14 @@ namespace pvd
 
 	void PushStream::UpdateLastReceivedTime()
 	{
+		CountStateChange();
 		_last_received_time_ms = SteadyNowMs();
 		CountStateChange();
 	}
 
 	void PushStream::SetPacketSilenceTimeoutMs(time_t timeout_ms)
 	{
+		CountStateChange();
 		_packet_silence_timeout_ms = timeout_ms;
 		CountStateChange();
 	}
@@ -170,14 +175,21 @@ namespace pvd
 
 	bool PushStream::TryBeginReaping(const SilenceState &state)
 	{
+		uint64_t expected = state.activity & CHANGE_COUNT_MASK;
+
+		if ((expected & CHANGE_COUNT_STEP) != 0)
+		{
+			// An odd count means a write was in flight when `GetSilenceState()` read the fields below it,
+			// so at least one of them is from either side of that write.
+			return false;
+		}
+
 		// The word has to still hold no `OnDataReceived()`, no `REAPING_FLAG`,
 		// and the change count `state` was read with.
 		// One swap therefore rules out a call being inside the channel,
 		// another caller having got here first,
 		// and anything having moved since `GetSilenceState()` read it.
 		// Losing changes nothing, so a stale caller never costs a packet.
-		uint64_t expected = state.activity & CHANGE_COUNT_MASK;
-
 		return _activity_state.compare_exchange_strong(expected, expected | REAPING_FLAG);
 	}
 
