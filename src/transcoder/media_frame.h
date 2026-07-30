@@ -162,6 +162,26 @@ public:
 		return static_cast<T>(_format);
 	}
 
+	void SetColorMatrix(cmn::ColorMatrix color_matrix)
+	{
+		_color_matrix = color_matrix;
+	}
+
+	cmn::ColorMatrix GetColorMatrix() const
+	{
+		return _color_matrix;
+	}
+
+	void SetColorRange(cmn::ColorRange color_range)
+	{
+		_color_range = color_range;
+	}
+
+	cmn::ColorRange GetColorRange() const
+	{
+		return _color_range;
+	}
+
 	int32_t GetBytesPerSample() const
 	{
 		return _bytes_per_sample;
@@ -273,6 +293,8 @@ public:
 			frame->SetWidth(_width);
 			frame->SetHeight(_height);
 			frame->SetFormat(_format);
+			frame->SetColorMatrix(_color_matrix);
+			frame->SetColorRange(_color_range);
 			frame->SetPts(_pts);
 			frame->SetDuration(_duration);
 		}
@@ -342,6 +364,8 @@ private:
 	int32_t _width = 0;
 	int32_t _height = 0;
 	int32_t _format = 0;
+	cmn::ColorMatrix _color_matrix = cmn::ColorMatrix::Unspecified;
+	cmn::ColorRange _color_range = cmn::ColorRange::Unspecified;
 
 	// Audio 
 	int32_t _bytes_per_sample = 0;

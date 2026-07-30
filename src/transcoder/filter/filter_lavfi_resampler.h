@@ -35,6 +35,8 @@ private:
 	bool InitializeFilterDescription();
 	bool InitializeSinkFilter();
 
+	bool IsSourceParametersMatched(const std::shared_ptr<MediaFrame> &media_frame) const;
+
 	// ----- Members -----
 	ffmpeg::FFmpegFilterGraph _graph;
 };

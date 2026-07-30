@@ -206,10 +206,26 @@ message(STATUS "[OME Prerequisites] Prefix: ${PREFIX}")
 # ==============================================================================
 # Helper: run shell command and fail loudly
 # ==============================================================================
+# Download a source archive into the current directory and extract it there.
+# Retries make transient server errors (e.g. GitHub sporadically answering
+# HTTP 500) non-fatal instead of aborting a long build: 8 retries with
+# curl's default exponential backoff (1s, 2s, 4s, ...) ride out outages of
+# up to ~4 minutes, while genuine errors such as 404 still fail immediately.
+# The archive must be fetched to a file first: piping curl straight into tar
+# cannot be retried, because a retry restarts the transfer while tar has
+# already consumed the bytes of the failed attempt. tar auto-detects the
+# compression (gz/bz2) when reading from a file.
+set(_OME_FETCH "ome_fetch()
+{
+    curl -sSLf --retry 8 -o ome_source_archive \"$1\" &&
+    tar -x --strip-components=1 -f ome_source_archive &&
+    rm -f ome_source_archive
+}")
+
 macro(ome_run cmd label)
     message(STATUS "[OME Prerequisites] Building: ${label}")
     set(_ome_script "${TEMP_PATH}/_ome_${label}.sh")
-    file(WRITE "${_ome_script}" "#!/bin/bash\nset -e\nexport ${_COMMON_ENV}\n${cmd}\n")
+    file(WRITE "${_ome_script}" "#!/bin/bash\nset -e\nexport ${_COMMON_ENV}\n${_OME_FETCH}\n${cmd}\n")
     execute_process(
         COMMAND bash "${_ome_script}"
         RESULT_VARIABLE _ret
@@ -376,7 +392,7 @@ set(_J "-j$(nproc)")
 # ---- NASM ----
 set(_install_nasm "
 mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
-curl -sSLf ${NASM_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${NASM_SOURCE_URL} &&
 ./autogen.sh && ./configure --prefix=${PREFIX} &&
 make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}/nasm
 ")
@@ -384,7 +400,7 @@ make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}
 # ---- OpenSSL ----
 set(_install_openssl "
 mkdir -p ${TEMP_PATH}/openssl && cd ${TEMP_PATH}/openssl &&
-curl -sSLf ${OPENSSL_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${OPENSSL_SOURCE_URL} &&
 ./config --prefix=${PREFIX} --openssldir=${PREFIX} --libdir=lib -Wl,-rpath,${PREFIX}/lib shared no-idea no-mdc2 no-rc5 no-ec2m no-ecdh no-ecdsa no-async &&
 make ${_J} && sudo make install_sw && rm -rf ${TEMP_PATH}/openssl
 ")
@@ -392,7 +408,7 @@ make ${_J} && sudo make install_sw && rm -rf ${TEMP_PATH}/openssl
 # ---- libsrtp ----
 set(_install_libsrtp "
 mkdir -p ${TEMP_PATH}/srtp && cd ${TEMP_PATH}/srtp &&
-curl -sSLf ${SRTP_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${SRTP_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-openssl --with-openssl-dir=${PREFIX} &&
 make ${_J} shared_library && sudo make install && rm -rf ${TEMP_PATH}/srtp
 ")
@@ -400,7 +416,7 @@ make ${_J} shared_library && sudo make install && rm -rf ${TEMP_PATH}/srtp
 # ---- SRT ----
 set(_install_libsrt "
 mkdir -p ${TEMP_PATH}/srt && cd ${TEMP_PATH}/srt &&
-curl -sSLf ${SRT_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${SRT_SOURCE_URL} &&
 cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DENABLE_SHARED=1 -DENABLE_STATIC=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build build ${_J} &&
 sudo cmake --install build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/srt
@@ -409,7 +425,7 @@ sudo cmake --install build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/srt
 # ---- Opus ----
 set(_install_libopus "
 mkdir -p ${TEMP_PATH}/opus && cd ${TEMP_PATH}/opus &&
-curl -sSLf ${OPUS_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${OPUS_SOURCE_URL} &&
 autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
 make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/opus
 ")
@@ -417,7 +433,7 @@ make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_
 # ---- libvpx ----
 set(_install_libvpx "
 mkdir -p ${TEMP_PATH}/vpx && cd ${TEMP_PATH}/vpx &&
-curl -sSLf ${VPX_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${VPX_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-vp8 --enable-pic --enable-shared --disable-static --disable-vp9 --disable-debug --disable-examples --disable-docs --disable-install-bins &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
 ")
@@ -426,7 +442,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
 # Requires NASM for x86 assembly optimizations; nasm is installed earlier in _targets.
 set(_install_libaom "
 mkdir -p ${TEMP_PATH}/aom && cd ${TEMP_PATH}/aom &&
-curl -sSLf ${AOM_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${AOM_SOURCE_URL} &&
 cmake -S . -B aom_build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DENABLE_NASM=ON -DENABLE_DOCS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF -DENABLE_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 cmake --build aom_build ${_J} &&
 sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
@@ -435,7 +451,7 @@ sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
 # ---- libwebp ----
 set(_install_libwebp "
 mkdir -p ${TEMP_PATH}/webp && cd ${TEMP_PATH}/webp &&
-curl -sSLf ${WEBP_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${WEBP_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/webp
 ")
@@ -443,7 +459,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/webp
 # ---- fdk-aac ----
 set(_install_fdk_aac "
 mkdir -p ${TEMP_PATH}/aac && cd ${TEMP_PATH}/aac &&
-curl -sSLf ${FDKAAC_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${FDKAAC_SOURCE_URL} &&
 autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static --datadir=/tmp/aac &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/aac
 ")
@@ -451,7 +467,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/aac
 # ---- openh264 ----
 set(_install_libopenh264 "
 mkdir -p ${TEMP_PATH}/openh264 && cd ${TEMP_PATH}/openh264 &&
-curl -sSLf ${OPENH264_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${OPENH264_SOURCE_URL} &&
 sed -i -e 's|PREFIX=/usr/local|PREFIX=${PREFIX}|' Makefile &&
 make OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
 ")
@@ -459,7 +475,7 @@ make OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
 # ---- x264 (optional) ----
 set(_install_libx264 "
 mkdir -p ${TEMP_PATH}/x264 && cd ${TEMP_PATH}/x264 &&
-curl -sLf ${X264_SOURCE_URL} | tar -jx --strip-components=1 &&
+ome_fetch ${X264_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-shared --enable-pic --disable-cli &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
 ")
@@ -467,7 +483,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
 # ---- nv-codec-headers (optional) ----
 set(_install_ffnvcodec "
 mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
-curl -sSLf ${NVCC_HDR_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${NVCC_HDR_SOURCE_URL} &&
 sudo make PREFIX=${PREFIX} LIBDIR=lib install
 ")
 
@@ -546,7 +562,7 @@ list(JOIN _FFMPEG_CONFIGURE_CMD " " _FFMPEG_CONFIGURE_LINE)
 
 set(_install_ffmpeg "
 mkdir -p ${TEMP_PATH}/ffmpeg && cd ${TEMP_PATH}/ffmpeg &&
-curl -sSLf ${FFMPEG_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${FFMPEG_SOURCE_URL} &&
 ${_FFMPEG_PATCH_CMDS}${_FFMPEG_CONFIGURE_LINE} &&
 make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
 ")
@@ -575,7 +591,7 @@ endif()
 unset(_OME_TARGET_PROCESSOR_LOWER)
 set(_install_jemalloc "
 mkdir -p ${TEMP_PATH}/jemalloc && cd ${TEMP_PATH}/jemalloc &&
-curl -sSLf ${JEMALLOC_SOURCE_URL} | tar -jx --strip-components=1 &&
+ome_fetch ${JEMALLOC_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-shared ${_JEMALLOC_PROF_FLAG} ${_JEMALLOC_LG_PAGE_FLAG} &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/jemalloc
 ")
@@ -583,7 +599,7 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/jemalloc
 # ---- PCRE2 ----
 set(_install_libpcre2 "
 mkdir -p ${TEMP_PATH}/pcre2 && cd ${TEMP_PATH}/pcre2 &&
-curl -sSLf ${PCRE2_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${PCRE2_SOURCE_URL} &&
 ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
 ")
@@ -591,14 +607,14 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
 # ---- hiredis ----
 set(_install_hiredis "
 mkdir -p ${TEMP_PATH}/hiredis && cd ${TEMP_PATH}/hiredis &&
-curl -sSLf ${HIREDIS_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${HIREDIS_SOURCE_URL} &&
 make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && sudo make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
 ")
 
 # ---- spdlog ----
 set(_install_spdlog "
 mkdir -p ${TEMP_PATH}/spdlog && cd ${TEMP_PATH}/spdlog &&
-curl -sSLf ${SPDLOG_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${SPDLOG_SOURCE_URL} &&
 mkdir -p build && cd build &&
 cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
 make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
@@ -642,7 +658,7 @@ endif()
 list(JOIN _WHISPER_CMAKE_ARGS " " _WHISPER_CMAKE_LINE)
 set(_install_whisper "
 mkdir -p ${TEMP_PATH}/whisper && cd ${TEMP_PATH}/whisper &&
-curl -sSLf ${WHISPER_SOURCE_URL} | tar -xz --strip-components=1 &&
+ome_fetch ${WHISPER_SOURCE_URL} &&
 ${_WHISPER_CMAKE_LINE} &&
 cd build && make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/whisper
 ")

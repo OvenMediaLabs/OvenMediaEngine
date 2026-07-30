@@ -229,6 +229,27 @@ void TranscodeFilter::ThreadLoop()
 			continue;
 		}
 
+		// The input format is compared per frame at the consumption position, so a
+		// format change is applied exactly at its boundary frame even when frames
+		// of the previous format are still queued behind it.
+		if (IsFormatChanged(base, media_frame) == true)
+		{
+			UpdateInputTrackByFrame(base, media_frame);
+
+			if (Initialize() == false)
+			{
+				logte("[%s] Failed to reconfigure filter", _input_stream_info->GetUri().CStr());
+
+				break;
+			}
+
+			base = GetBaseFilter();
+			if (base == nullptr)
+			{
+				continue;
+			}
+		}
+
 		// Feed the frame into the filter graph.
 		auto sent = base->ProcessFrameInternal(media_frame);
 		if (sent.result == TranscodeResult::DataError)
@@ -319,51 +340,12 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	// Check #2 - Resolution changed. but, this is not warned because it can be a normal case.
-	if (GetInputTrack()->GetMediaType() == MediaType::Video)
-	{
-		if (buffer->GetWidth() != (int32_t)_filter_base->GetInputWidth() ||
-			buffer->GetHeight() != (int32_t)_filter_base->GetInputHeight())
-		{
-			logtd("[%s] input video frame resolution has been changed. track:%u. Size:%dx%d -> %dx%d",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId(),
-				  _filter_base->GetInputWidth(),
-				  _filter_base->GetInputHeight(),
-				  buffer->GetWidth(),
-				  buffer->GetHeight());
+	// NOTE: Input format changes (video resolution/pixel format/color tags and
+	// audio properties) are detected per frame in ThreadLoop(). A flag set here is
+	// consumed at whatever frame the worker dequeues next, so it cannot be tied to
+	// the frame that triggered it.
 
-			GetInputTrack()->SetResolution(buffer->GetWidth(), buffer->GetHeight());
-
-			return true;
-		}
-	}
-
-	// Check #2-audio - Input audio properties changed (e.g. a scheduled item switch).
-	// The audio buffer source rejects mismatched frames, so the filter must be rebuilt.
-	if (GetInputTrack()->GetMediaType() == MediaType::Audio)
-	{
-		if (buffer->GetSampleRate() != _filter_base->GetInputSampleRate() ||
-			buffer->GetChannels().GetLayout() != _filter_base->GetInputChannelLayout() ||
-			buffer->GetFormat<cmn::AudioSample::Format>() != _filter_base->GetInputSampleFormat())
-		{
-			logtd("[%s] input audio frame properties have been changed. track:%u. %dHz/%s -> %dHz/%s",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId(),
-				  _filter_base->GetInputSampleRate(),
-				  cmn::AudioChannel::GetLayoutName(_filter_base->GetInputChannelLayout()),
-				  buffer->GetSampleRate(),
-				  buffer->GetChannels().GetName());
-
-			GetInputTrack()->SetSampleRate(buffer->GetSampleRate());
-			GetInputTrack()->SetChannel(buffer->GetChannels());
-			GetInputTrack()->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
-
-			return true;
-		}
-	}
-
-	// Check #3 - Filter error state
+	// Check #2 - Filter error state
 	//  When using an XMA scaler, resource allocation failures may occur intermittently.
 	//  Avoid problems in this way until the underlying problem is resolved.
 	if (_filter_base->GetState() == FilterBase::State::ERROR &&
@@ -377,6 +359,86 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 	}
 
 	return false;
+}
+
+bool TranscodeFilter::IsFormatChanged(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame) const
+{
+	// Single track(paired with encoder) does not need to be updated.
+	if (base->IsSingleTrack() == true)
+	{
+		return false;
+	}
+
+	switch (frame->GetMediaType())
+	{
+		case MediaType::Video:
+			// The pixel format is compared with the decoder-side label, so hardware
+			// frames (e.g. CUDA) do not falsely mismatch the downloaded host format
+			return (frame->GetWidth() != base->GetInputWidth() ||
+					frame->GetHeight() != base->GetInputHeight() ||
+					frame->GetFormat<cmn::VideoPixelFormatId>() != base->GetInputFramePixelFormat() ||
+					frame->GetColorMatrix() != base->GetInputColorMatrix() ||
+					frame->GetColorRange() != base->GetInputColorRange());
+
+		case MediaType::Audio:
+			return (frame->GetSampleRate() != base->GetInputSampleRate() ||
+					frame->GetChannels().GetLayout() != base->GetInputChannelLayout() ||
+					frame->GetFormat<cmn::AudioSample::Format>() != base->GetInputSampleFormat());
+
+		default:
+			return false;
+	}
+}
+
+// Update the input track with the properties of the frame so that the filter is
+// rebuilt to match the frame that triggered the change.
+void TranscodeFilter::UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame)
+{
+	auto input_track = GetInputTrack();
+	auto output_track = GetOutputTrack();
+
+	switch (frame->GetMediaType())
+	{
+		case MediaType::Video:
+			logtd("[%s] input video frame properties have been changed. track:%u -> %u. %dx%d/%s(%s,%s) -> %dx%d/%s(%s,%s)",
+				  _input_stream_info->GetUri().CStr(),
+				  input_track->GetId(),
+				  output_track->GetId(),
+				  base->GetInputWidth(),
+				  base->GetInputHeight(),
+				  cmn::GetVideoPixelFormatIdString(base->GetInputFramePixelFormat()),
+				  cmn::GetColorMatrixString(base->GetInputColorMatrix()),
+				  cmn::GetColorRangeString(base->GetInputColorRange()),
+				  frame->GetWidth(),
+				  frame->GetHeight(),
+				  cmn::GetVideoPixelFormatIdString(frame->GetFormat<cmn::VideoPixelFormatId>()),
+				  cmn::GetColorMatrixString(frame->GetColorMatrix()),
+				  cmn::GetColorRangeString(frame->GetColorRange()));
+
+			input_track->SetResolution(frame->GetWidth(), frame->GetHeight());
+			input_track->SetColorspace(frame->GetFormat<cmn::VideoPixelFormatId>());
+			input_track->SetColorMatrix(frame->GetColorMatrix());
+			input_track->SetColorRange(frame->GetColorRange());
+			break;
+
+		case MediaType::Audio:
+			logtd("[%s] input audio frame properties have been changed. track:%u -> %u. %dHz/%s -> %dHz/%s",
+				  _input_stream_info->GetUri().CStr(),
+				  input_track->GetId(),
+				  output_track->GetId(),
+				  base->GetInputSampleRate(),
+				  cmn::AudioChannel::GetLayoutName(base->GetInputChannelLayout()),
+				  frame->GetSampleRate(),
+				  frame->GetChannels().GetName());
+
+			input_track->SetSampleRate(frame->GetSampleRate());
+			input_track->SetChannel(frame->GetChannels());
+			input_track->SetSampleFormat(frame->GetFormat<cmn::AudioSample::Format>());
+			break;
+
+		default:
+			break;
+	}
 }
 
 void TranscodeFilter::SetCompleteHandler(CompleteHandler complete_handler)

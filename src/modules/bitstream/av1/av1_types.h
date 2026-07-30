@@ -106,6 +106,13 @@ struct Av1SequenceHeaderSummary
 	uint8_t chroma_subsampling_y = 0;
 	uint8_t chroma_sample_position = 0;
 
+	// AV1 spec 5.5.2 `color_config()` CICP. Defaults are the values the spec infers when
+	// `color_description_present_flag` is 0.
+	uint8_t color_primaries = 2;			// CP_UNSPECIFIED
+	uint8_t transfer_characteristics = 2;	// TC_UNSPECIFIED
+	uint8_t matrix_coefficients = 2;		// MC_UNSPECIFIED
+	uint8_t color_range = 0;				// 0 = studio swing, 1 = full swing
+
 	// AV1 spec 5.5.1 `sequence_header_obu()` operating-point `i == 0` initial display delay
 	// signaling. Captured for diagnostics only. NOTE: this is a Sequence Header field and is
 	// distinct from the av1C `initial_presentation_delay_minus_one`; the AV1 ISOBMFF binding

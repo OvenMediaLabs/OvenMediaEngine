@@ -22,6 +22,8 @@
 
 #include <pugixml-1.9/src/pugixml.hpp>
 
+#include <modules/task_pool/task_pool.h>
+
 #include "llhls_application.h"
 #include "llhls_private.h"
 #include "llhls_session.h"
@@ -158,18 +160,35 @@ bool LLHlsStream::Start()
 	{
 		_drm_info_path = drm_config.GetDrmInfoPath();
 
-		// Parsed into locals and committed only on success, so a file that fails midway
-		// leaves no keys behind for a later rotation to pick up
-		std::vector<bmff::CencProperty> key_list;
-		uint64_t rotation_period_ms = 0;
-		if (GetDrmInfo(_drm_info_path, key_list, rotation_period_ms) == true && key_list.empty() == false)
+		// Parsed into a local and committed only on success, so a file that fails midway
+		// leaves no keys behind for a later rotation to pick up. A file that says nothing
+		// about this stream leaves the provider unset and the stream unprotected.
+		DrmInfo drm_info;
+		if ((GetDrmInfo(_drm_info_path, drm_info) == true) && (drm_info.provider.IsEmpty() == false))
 		{
-			_cenc_key_list = std::move(key_list);
-			_key_rotation_period_ms = rotation_period_ms;
+			_drm_info = std::move(drm_info);
 
-			// The first key in the list is the current one; rotations advance the index
-			_current_key_index = 0;
-			_cenc_property = _cenc_key_list[_current_key_index];
+			// Which period the stream is on. A key list is walked from its first entry.
+			_key_period_index = 0;
+
+			bmff::CencProperty cenc_property;
+			if (RequestKeyOfPeriod(_key_period_index, cenc_property) == true)
+			{
+				_cenc_property = cenc_property;
+
+				// The key of the next period is asked for right away, so that the very
+				// first rotation has a full period of room for a slow source. Later
+				// periods are topped up from the media path as each rotation uses one up.
+				PrefetchNextKeyIfNeeded(0);
+			}
+			else
+			{
+				logte("LLHlsStream(%s/%s) - Could not get the first DRM key, the stream is not protected", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+
+				// Cleared so that a stream left without a key does not keep looking for a
+				// rotation it has nothing to rotate to
+				_drm_info = DrmInfo();
+			}
 		}
 	}
 
@@ -390,10 +409,11 @@ bool LLHlsStream::IsConcluded() const
 	return _concluded;
 }
 
-bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::CencProperty> &cenc_key_list, uint64_t &key_rotation_period_ms)
+bool LLHlsStream::GetDrmInfo(const ov::String &file_path, DrmInfo &drm_info)
 {
-	cenc_key_list.clear();
-	key_rotation_period_ms = 0;
+	drm_info = DrmInfo();
+
+	auto &cenc_key_list = drm_info.key_list;
 
 	ov::String final_path = ov::GetFilePath(file_path, cfg::ConfigManager::GetInstance()->GetConfigPath());
 
@@ -427,10 +447,42 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 			app_name == GetApplication()->GetVHostAppName().GetAppName() &&
 			match_result.IsMatched())
 		{
-			ov::String drm_provider = drm_node.child_value("DRMProvider");
-
-			if (drm_provider.IsEmpty() || drm_provider.LowerCaseString() == "manual")
+			// Settled on one spelling here, so that everything below compares against a
+			// single name. Left out, the file means the provider that keeps its keys in
+			// the file itself.
+			ov::String drm_provider = ov::String(drm_node.child_value("DRMProvider")).Trim().LowerCaseString();
+			if (drm_provider.IsEmpty())
 			{
+				drm_provider = "manual";
+			}
+
+			drm_info.provider = drm_provider;
+
+			// Both providers rotate, so the period is read before the provider is known.
+			// Stating 0 asks for rotation on request only, while leaving the element out
+			// asks for a single key that never changes.
+			ov::String rotation_period_value = ov::String(drm_node.child_value("KeyRotationPeriod")).Trim();
+			if (rotation_period_value.IsEmpty() == false)
+			{
+				// Digits only, so a value such as "1h" is reported instead of being read
+				// as the number it happens to start with
+				auto is_seconds = std::all_of(rotation_period_value.CStr(), rotation_period_value.CStr() + rotation_period_value.GetLength(),
+											  [](char character) { return ::isdigit(static_cast<unsigned char>(character)) != 0; });
+
+				if (is_seconds == false)
+				{
+					logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds, so it is read as if it were not stated and the key is not rotated.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
+				}
+				else
+				{
+					auto rotation_period_sec	= ov::Converter::ToInt64(rotation_period_value.CStr());
+					drm_info.rotation_period_sec = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) : 0;
+				}
+			}
+
+			if (drm_provider == "manual")
+			{
+
 				ov::String cenc_protect_scheme = drm_node.child_value("CencProtectScheme");
 				if (cenc_protect_scheme.IsEmpty())
 				{
@@ -451,27 +503,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 				{
 					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because CencProtectScheme(%s) is not supported", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), cenc_protect_scheme.CStr());
 					return false;
-				}
-
-				// Auto key rotation period (seconds). Absent or 0 keeps a single key for
-				// the whole stream; a RotateDrmKey event still rotates regardless.
-				ov::String rotation_period_value = ov::String(drm_node.child_value("KeyRotationPeriod")).Trim();
-				if (rotation_period_value.IsEmpty() == false)
-				{
-					// Digits only, so a value such as "1h" is reported instead of being read
-					// as the number it happens to start with
-					auto is_seconds = std::all_of(rotation_period_value.CStr(), rotation_period_value.CStr() + rotation_period_value.GetLength(),
-												  [](char character) { return ::isdigit(static_cast<unsigned char>(character)) != 0; });
-
-					if (is_seconds == false)
-					{
-						logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds. The key is not rotated automatically.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
-					}
-					else
-					{
-						auto rotation_period_sec = ov::Converter::ToInt64(rotation_period_value.CStr());
-						key_rotation_period_ms = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) * 1000 : 0;
-					}
 				}
 
 				// A <Keys> block lists the ordered keys the stream rotates through. A
@@ -546,7 +577,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 						return false;
 					}
 
-					bool has_fairplay_pssh_box = false;
 					for (pugi::xml_node pssh_node = key_node.child("Pssh"); pssh_node; pssh_node = pssh_node.next_sibling("Pssh"))
 					{
 						auto pssh_box_data = ov::Hex::Decode(pssh_node.child_value());
@@ -556,37 +586,13 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 							return false;
 						}
 
-						auto pssh_box = bmff::PsshBox(pssh_box_data);
-						cenc_property.pssh_box_list.push_back(pssh_box);
-
-						if (pssh_box.drm_system == bmff::DRMSystem::FairPlay)
-						{
-							has_fairplay_pssh_box = true;
-						}
+						cenc_property.pssh_box_list.push_back(bmff::PsshBox(pssh_box_data));
 					}
 
 					cenc_property.fairplay_key_uri = fairplay_key_url;
 					cenc_property.keyformat = keyformat;
 
-					// If a FairPlay key URI is set but no FairPlay pssh was given, add a default one
-					if (cenc_property.fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh_box == false)
-					{
-						cenc_property.pssh_box_list.push_back(bmff::PsshBox("94ce86fb-07ff-4f43-adb8-93d2fa968ca2", {cenc_property.key_id}, nullptr));
-					}
-
-					// Set profiles
-					if (cenc_property.scheme == bmff::CencProtectScheme::Cenc)
-					{
-						cenc_property.crypt_bytes_block = 0;
-						cenc_property.skip_bytes_block = 0;
-						cenc_property.per_sample_iv_size = 16;
-					}
-					else if (cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
-					{
-						cenc_property.crypt_bytes_block = 1;
-						cenc_property.skip_bytes_block = 9;
-						cenc_property.per_sample_iv_size = 0;
-					}
+					cenc_property.Complete();
 
 					cenc_key_list.push_back(cenc_property);
 				}
@@ -1521,56 +1527,8 @@ void LLHlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 	}
 }
 
-void LLHlsStream::RotateDrmKey()
+void LLHlsStream::ApplyRotatedKey(const bmff::CencProperty &cenc_property)
 {
-	// Re-read the DRM info file outside the lock so operators can append keys to the
-	// list while the stream runs. Keep the current list if the re-read fails.
-	std::vector<bmff::CencProperty> reloaded_list;
-	uint64_t reloaded_period_ms = 0;
-	bool reloaded = false;
-	if (_drm_info_path.IsEmpty() == false)
-	{
-		reloaded = (GetDrmInfo(_drm_info_path, reloaded_list, reloaded_period_ms) == true) && (reloaded_list.empty() == false);
-	}
-
-	bmff::CencProperty next_property;
-	size_t next_index = 0;
-	{
-		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
-
-		if (reloaded == true)
-		{
-			_cenc_key_list = reloaded_list;
-			_key_rotation_period_ms = reloaded_period_ms;
-		}
-
-		if (_cenc_key_list.empty() == true)
-		{
-			// No DRM configured on this stream
-			return;
-		}
-
-		if (_cenc_key_list.size() == 1)
-		{
-			// The auto rotation period retries every period, so warn once. The file is
-			// re-read above, so appended keys are picked up on a later attempt.
-			if (_single_key_rotation_warned == false)
-			{
-				_single_key_rotation_warned = true;
-				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but only one key is configured; keeping it. Add more keys to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			}
-			return;
-		}
-
-		// The configured keys form a cycle, so rotation continues for the life of the
-		// stream. Appending keys to the DRM info file lengthens the cycle; the file is
-		// re-read above on every rotation.
-		_current_key_index = (_current_key_index + 1) % _cenc_key_list.size();
-		_cenc_property = _cenc_key_list[_current_key_index];
-		next_property = _cenc_property;
-		next_index = _current_key_index;
-	}
-
 	// Every track picks the new key up where its next segment starts, so no boundary has
 	// to be negotiated between them
 	std::shared_lock<std::shared_mutex> packager_lock(_packager_map_lock);
@@ -1580,7 +1538,7 @@ void LLHlsStream::RotateDrmKey()
 	for (const auto &[track_id, packager] : packager_map)
 	{
 		// A track whose codec CENC cannot encrypt stays clear
-		auto track_property = next_property;
+		auto track_property = cenc_property;
 		if (bmff::IsCencSupportedCodec(GetTrack(track_id)->GetCodecId()) == false)
 		{
 			track_property.scheme = bmff::CencProtectScheme::None;
@@ -1594,45 +1552,202 @@ void LLHlsStream::RotateDrmKey()
 		std::unique_lock<std::mutex> guard(_master_playlists_lock);
 		_master_playlists.clear();
 	}
+}
 
-	logti("LLHlsStream(%s/%s) - DRM key rotation to key index %zu will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), next_index);
+bool LLHlsStream::RequestKeyOfPeriod(uint64_t key_period_index, bmff::CencProperty &cenc_property)
+{
+	DrmInfo drm_info;
+	{
+		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
+		drm_info = _drm_info;
+	}
+
+	const auto &drm_provider = drm_info.provider;
+
+	if (drm_provider == "manual")
+	{
+		// The keys were read from the DRM info file when the stream started
+		if (drm_info.key_list.empty() == true)
+		{
+			return false;
+		}
+
+		// The keys form a cycle, so a period past the end of the list starts over
+		cenc_property = drm_info.key_list[key_period_index % drm_info.key_list.size()];
+
+		return true;
+	}
+
+
+	logte("LLHlsStream(%s/%s) - Could not get the DRM key because DRMProvider(%s) is not supported", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), drm_info.provider.CStr());
+
+	return false;
+}
+
+void LLHlsStream::PrefetchNextKeyIfNeeded(int64_t media_time_ms)
+{
+	uint64_t next_index = 0;
+	{
+		std::lock_guard<std::shared_mutex> lock(_cenc_lock);
+
+		// A file that states no rotation keeps one key for the whole stream, so there is
+		// nothing to hold ready. Stating 0 rotates only when asked to, and that request
+		// still needs a key waiting for it.
+		if (_drm_info.rotation_period_sec.has_value() == false)
+		{
+			return;
+		}
+
+		// A list of one key has no next key either, and the list is read once as the
+		// stream starts, so it never gains one
+		if ((_drm_info.key_list.empty() == false) && (_drm_info.key_list.size() == 1))
+		{
+			return;
+		}
+
+		if ((_prefetched_key.has_value() == true) || (_key_request_in_flight == true))
+		{
+			return;
+		}
+
+		if (media_time_ms < _next_key_request_media_time_ms)
+		{
+			return;
+		}
+
+		_key_request_in_flight = true;
+
+		next_index = _key_period_index + 1;
+	}
+
+	// The request waits on a remote service, so it runs on a shared worker rather than on
+	// the thread that carries media. The worker may outlive this stream.
+	std::weak_ptr<LLHlsStream> weak_stream = pub::Stream::GetSharedPtrAs<LLHlsStream>();
+
+	auto posted = ov::TaskPool::GetInstance()->Post([weak_stream, next_index, media_time_ms]() {
+		auto stream = weak_stream.lock();
+		if (stream == nullptr)
+		{
+			return;
+		}
+
+		bmff::CencProperty cenc_property;
+		auto succeeded = stream->RequestKeyOfPeriod(next_index, cenc_property);
+
+		stream->OnKeyPrefetched(next_index, succeeded, cenc_property, media_time_ms);
+	});
+
+	if (posted == false)
+	{
+		// Nothing will report the outcome, so the slot is released here
+		OnKeyPrefetched(next_index, false, {}, media_time_ms);
+	}
+}
+
+void LLHlsStream::OnKeyPrefetched(uint64_t key_period_index, bool succeeded, const bmff::CencProperty &cenc_property, int64_t requested_media_time_ms)
+{
+	{
+		std::lock_guard<std::shared_mutex> lock(_cenc_lock);
+
+		_key_request_in_flight = false;
+
+		if (succeeded == false)
+		{
+			// Held off for a while, so that a source that is failing is not asked again at
+			// every segment
+			_next_key_request_media_time_ms = requested_media_time_ms + kKeyRequestRetryIntervalMs;
+			return;
+		}
+
+		if (_key_period_index + 1 != key_period_index)
+		{
+			// The stream moved on to another period while the request was on its way
+			return;
+		}
+
+		// Already completed where the key was requested
+		_prefetched_key = cenc_property;
+	}
+
+	logti("LLHlsStream(%s/%s) - Fetched the DRM key of period %" PRIu64 " ahead of the rotation", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_period_index);
+}
+
+void LLHlsStream::RotateDrmKey()
+{
+	// The key of the next period is fetched ahead of the rotation, because the request can
+	// block. Only what is already there is applied.
+	bmff::CencProperty next_property;
+	uint64_t applied_index = 0;
+	{
+		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+
+		if (_drm_info.rotation_period_sec.has_value() == false)
+		{
+			// Every period would hand out the same key, so there is nothing to rotate to
+			if (_rotation_unavailable_warned == false)
+			{
+				_rotation_unavailable_warned = true;
+				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but no key rotation period is configured; keeping the current key. Add KeyRotationPeriod to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+			return;
+		}
+
+		if (_drm_info.key_list.size() == 1)
+		{
+			if (_rotation_unavailable_warned == false)
+			{
+				_rotation_unavailable_warned = true;
+				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but only one key is configured; keeping it. Add more keys to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+			_prefetched_key.reset();
+			return;
+		}
+
+		if (_prefetched_key.has_value() == false)
+		{
+			logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but the key of the next period is not ready yet, so the current key is kept", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			return;
+		}
+
+		_key_period_index++;
+		_cenc_property = _prefetched_key.value();
+		_prefetched_key.reset();
+
+		next_property = _cenc_property;
+		applied_index = _key_period_index;
+	}
+
+	ApplyRotatedKey(next_property);
+
+	logti("LLHlsStream(%s/%s) - DRM key rotation to key period %" PRIu64 " will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), applied_index);
 }
 
 void LLHlsStream::CheckAutoKeyRotation(int64_t media_time_ms)
 {
-	uint64_t period_ms = 0;
-	int64_t last_rotation_ms = -1;
-	{
-		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
-		period_ms = _key_rotation_period_ms;
-		last_rotation_ms = _last_key_rotation_media_time_ms;
-	}
-
-	if (period_ms == 0)
-	{
-		// Auto rotation disabled
-		return;
-	}
-
-	// Anchor the period to the first media time seen; don't rotate on the first call
-	if (last_rotation_ms < 0)
+	// Read and advanced under one lock, so that two callers cannot both find the same
+	// boundary uncrossed and rotate on it
 	{
 		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+
+		// Left out, or stated as 0 to rotate only when asked to
+		if (_drm_info.rotation_period_sec.value_or(0) == 0)
+		{
+			return;
+		}
+
+		// Anchor the period to the first media time seen; don't rotate on the first call
 		if (_last_key_rotation_media_time_ms < 0)
 		{
 			_last_key_rotation_media_time_ms = media_time_ms;
+			return;
 		}
-		return;
-	}
 
-	if (media_time_ms - last_rotation_ms < static_cast<int64_t>(period_ms))
-	{
-		return;
-	}
+		if (media_time_ms - _last_key_rotation_media_time_ms < static_cast<int64_t>(_drm_info.rotation_period_sec.value() * 1000))
+		{
+			return;
+		}
 
-	// Advance the anchor before rotating so the same boundary is not retriggered
-	{
-		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+		// Advanced before rotating so the same boundary is not retriggered
 		_last_key_rotation_media_time_ms = media_time_ms;
 	}
 
@@ -2399,11 +2514,15 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		_master_playlists.clear();
 	}
 
-	// Drive auto key rotation off the media timeline at each new segment
-	if (chunk_number == 0)
+	// Drive auto key rotation off the media timeline, then top up the key of the next period
+	// so that a rotation always has one ready. A rotation takes effect where a new segment
+	// starts whenever it is decided, so this point carries no meaning of its own; it is
+	// simply where the check runs once per segment instead of once per chunk.
+	if (last_chunk == true)
 	{
 		auto media_time_ms = static_cast<int64_t>((static_cast<double>(partial_segment->GetStartTimestamp()) / GetTrack(track_id)->GetTimeBase().GetTimescale()) * 1000.0);
 		CheckAutoKeyRotation(media_time_ms);
+		PrefetchNextKeyIfNeeded(media_time_ms);
 	}
 
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);

@@ -273,13 +273,6 @@ OvenMediaEngine encrypts LLHLS streams with Common Encryption (CENC) and signals
 Encryption keys are described in a separate DRM info file, which lets you apply different keys to different streams and change them without editing `Server.xml`.
 
 
-:::warning
-
-Only H.264 video and AAC audio are encrypted. A track of any other codec is delivered without encryption, so a stream that has to be fully protected must be transcoded to H.264 and AAC.
-
-:::
-
-
 ### Enabling DRM
 
 Turn DRM on in the LLHLS publisher and point it at your DRM info file. `<InfoFile>` takes a path relative to the directory where `Server.xml` is located, or an absolute path.

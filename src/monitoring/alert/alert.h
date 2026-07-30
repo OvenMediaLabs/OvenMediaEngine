@@ -76,6 +76,10 @@ namespace mon::alrt
 		std::shared_ptr<const cfg::Server> _server_config = nullptr;
 		std::shared_ptr<AlertRulesUpdater> _rules_updater = nullptr;
 
+		// Identifies which server sent the notification. Built once in Start() and
+		// read-only afterwards, so it is accessed without a lock.
+		Json::Value _server_info;
+
 		// Accessed by both the metric worker thread (via _timer) and the threads calling
 		// SendStreamMessage(), so it must be guarded by _last_verified_messages_mutex.
 		std::mutex _last_verified_messages_mutex;

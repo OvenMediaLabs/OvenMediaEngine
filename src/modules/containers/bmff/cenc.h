@@ -347,6 +347,11 @@ namespace bmff
 			return *this;
 		}
 
+		// Fills in what the key material itself does not carry, whichever provider supplied
+		// it: FairPlay is offered from its key URI alone, and the block layout follows from
+		// the protection scheme. Called once a provider has handed over a key.
+		void Complete();
+
 		// set by user or drm provider
 		CencProtectScheme scheme		 = CencProtectScheme::None;
 
@@ -359,7 +364,8 @@ namespace bmff
 
 		std::vector<PsshBox> pssh_box_list;
 
-		// will be set by stream
+		// Complete() fills these in from the protection scheme, and the packager adjusts
+		// them for the track it encrypts
 		uint8_t crypt_bytes_block  = 1;	 // number of encrypted blocks in pattern based encryption
 		uint8_t skip_bytes_block   = 9;	 // number of unencrypted blocks in pattern based encryption
 		uint8_t per_sample_iv_size = 0;	 // 0 or 16

@@ -41,6 +41,7 @@ using namespace cmn;
 MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type, uint32_t worker_id)
 	: _worker_id(worker_id),
 	  _stream(stream),
+	  _stats(stream->GetStats()),
 	  _packets_queue(nullptr, 600)
 {
 	SetType(type);
@@ -90,6 +91,8 @@ void MediaRouteStream::SetBufferRetentionDuration(int delay_ms)
 void MediaRouteStream::OnStreamPrepared(bool completed)
 {
 	_is_stream_prepared = completed;
+
+	_stats->SetPrepared(completed);
 }
 
 bool MediaRouteStream::IsStreamPrepared()
@@ -111,7 +114,7 @@ void MediaRouteStream::Flush()
 
 	_is_all_tracks_parsed = false;
 
-	_is_stream_prepared = false;
+	OnStreamPrepared(false);
 	_prepared_notified = false;
 }
 
@@ -152,14 +155,18 @@ bool MediaRouteStream::IsStreamReady()
 // negotiated tracks (e.g. a simulcast layer or audio) never arrives, the stream hangs. Warn so it is visible.
 void MediaRouteStream::CheckUnpreparedTrackTimeout()
 {
-	auto now = std::chrono::steady_clock::now();
+	if (_stats->HasFirstMediaTime() == false)
+	{
+		return;
+	}
 
 	// Anchor at the first media packet so connection/handshake delay is excluded; full silence is the provider's job.
-	if (_first_media_recv_time_set == false)
+	auto media_start_time = _stats->GetFirstMediaTimeSteady();
+	auto now = std::chrono::steady_clock::now();
+	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - media_start_time).count();
+
+	if (elapsed_ms < MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS)
 	{
-		_first_media_recv_time = now;
-		_last_unprepared_warn_time = now;
-		_first_media_recv_time_set = true;
 		return;
 	}
 
@@ -169,8 +176,6 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 		return;
 	}
 	_last_unprepared_warn_time = now;
-
-	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - _first_media_recv_time).count();
 
 	const auto &tracks = _stream->GetTracks();
 	for (const auto &track_it : tracks)
@@ -282,6 +287,8 @@ void MediaRouteStream::DropNonDecodingPackets()
 
 void MediaRouteStream::Push(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	_stats->SetFirstMediaTime();
+
 	_packets_queue.Enqueue(media_packet, media_packet->IsHighPriority());
 }
 

@@ -14,14 +14,12 @@
 #include <thread>
 #include <vector>
 
-// Tests for `info::Stream` thread-safety fixes on this branch:
-// `_source_url` is rewritten on every pull-stream failover (`SetMediaSource()`)
-// while monitoring/serdes/publisher threads read it concurrently;
-// both accessors now synchronize on `_source_url_mutex`.
+// Tests for `info::Stream` source URL thread-safety:
+// the URL is rewritten on every pull-stream failover (`SetMediaSource()`)
+// while monitoring/serdes/publisher threads read it concurrently.
 // These tests pin the value-integrity contract
 // (a reader/copier can only ever observe a fully written value, never a torn one)
-// and are intended to run under TSan as well,
-// where the pre-fix code would report a data race.
+// and are intended to run under TSan as well.
 
 namespace
 {

@@ -6,6 +6,7 @@
 #include "base/info/media_track_group.h"
 #include "base/info/track_stats.h"
 #include "base/info/playlist.h"
+#include "base/info/stream_stats.h"
 #include "base/info/track_set.h"
 #include "base/ovlibrary/tsa/mutex.h"
 #include "vhost_app_name.h"
@@ -61,12 +62,19 @@ namespace info
 		void SetOriginStreamUUID(const ov::String &uuid);
 		ov::String GetOriginStreamUUID() const;
 
-		const std::chrono::system_clock::time_point &GetInputStreamCreatedTime() const;
-		const std::chrono::system_clock::time_point &GetCreatedTime() const;
+		std::chrono::system_clock::time_point GetInputStreamCreatedTime() const;
+		std::chrono::system_clock::time_point GetCreatedTime() const;
 
 		void SetPublishedTime(const std::chrono::system_clock::time_point &time);
-		const std::chrono::system_clock::time_point &GetInputStreamPublishedTime() const;
-		const std::chrono::system_clock::time_point &GetPublishedTime() const;
+		std::chrono::system_clock::time_point GetInputStreamPublishedTime() const;
+		std::chrono::system_clock::time_point GetPublishedTime() const;
+
+		// Runtime state of this stream instance. Every copy of this stream shares the
+		// same object, so state that changes after creation stays visible to all of them
+		std::shared_ptr<StreamStats> GetStats() const
+		{
+			return _stats;
+		}
 
 		StreamSourceType GetSourceType() const;
 		ProviderType GetProviderType() const;
@@ -165,17 +173,12 @@ namespace info
 
 		bool IsOnAir() const
 		{
-			return _on_air;
+			return _stats->IsOnAir();
 		}
 
 		void SetOnAir(bool on_air)
 		{
-			_on_air = on_air;
-
-			if (_on_air)
-			{
-				_published_time = std::chrono::system_clock::now();
-			}
+			_stats->SetOnAir(on_air);
 		}
 
 		void SetTimestampMode(TimestampMode mode)
@@ -197,9 +200,6 @@ namespace info
 	protected:
 		info::stream_id_t _id = 0;
 		ov::String _name;
-		// Rewritten on every pull-stream failover, read from monitoring/serdes/publisher threads
-		mutable ov::Mutex _source_url_mutex;
-		ov::String _source_url OV_GUARDED_BY(_source_url_mutex);
 		ov::String _output_profile_name;
 		
 		// Key : MediaTrack ID
@@ -229,8 +229,8 @@ namespace info
 		mutable ov::Mutex _name_path_mutex;
 		NamePath _name_path OV_GUARDED_BY(_name_path_mutex) = NamePath::UnknownNamePath();
 
-		std::chrono::system_clock::time_point _created_time;
-		std::chrono::system_clock::time_point _published_time;
+		// Runtime state, created with the stream and shared by every copy of it
+		std::shared_ptr<StreamStats> _stats = std::make_shared<StreamStats>();
 
 		// Where does the stream come from?
 		StreamSourceType _source_type;
@@ -251,8 +251,6 @@ namespace info
 
 		// If the source if this stream is a remote stream of the origin server, store the uuid of origin stream
 		ov::String _origin_stream_uuid;
-
-		std::atomic<bool> _on_air = false;
 
 		TimestampMode _timestamp_mode = TimestampMode::Auto;
 	};

@@ -74,7 +74,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Image**
 
-* Jpeg, Png, WebP
+* Jpeg, Png, WebP, AVIF
 
 </div>
 

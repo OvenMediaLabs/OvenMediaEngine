@@ -56,6 +56,8 @@ private:
 	void ThreadLoop();
 
 	bool IsNeedUpdate(std::shared_ptr<MediaFrame> buffer);
+	bool IsFormatChanged(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame) const;
+	void UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame);
 
 	int32_t _id;
 

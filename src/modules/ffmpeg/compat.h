@@ -58,6 +58,9 @@ namespace ffmpeg
 		static AVPixelFormat ToAVPixelFormat(cmn::VideoPixelFormatId pixel_format);
 		static cmn::VideoPixelFormatId ToVideoPixelFormat(int32_t pixel_format);
 		static enum AVColorRange ToAVColorRange(cmn::ColorRange color_range);
+		static cmn::ColorRange ToColorRange(enum AVColorRange color_range);
+		static enum AVColorSpace ToAVColorSpace(cmn::ColorMatrix color_matrix);
+		static cmn::ColorMatrix ToColorMatrix(enum AVColorSpace color_space);
 		static AVPixelFormat GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true);
 
 		// OME-typed variant of GetAVPixelFormatOfHWDevice(). Returns cmn::VideoPixelFormatId::None when
@@ -203,6 +206,8 @@ namespace ffmpeg
 					media_frame->SetWidth(frame->width);
 					media_frame->SetHeight(frame->height);
 					media_frame->SetFormat((int32_t)ffmpeg::compat::ToVideoPixelFormat(frame->format));
+					media_frame->SetColorMatrix(ffmpeg::compat::ToColorMatrix(frame->colorspace));
+					media_frame->SetColorRange(ffmpeg::compat::ToColorRange(frame->color_range));
 					media_frame->SetPts((frame->pts == AV_NOPTS_VALUE) ? -1LL : frame->pts);
 					media_frame->SetDuration(frame->duration);
 

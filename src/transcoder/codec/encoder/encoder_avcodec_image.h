@@ -11,7 +11,10 @@
 #include "../../transcoder_encoder.h"
 #include <modules/ffmpeg/ffmpeg_codec.h>
 
-// AVCodecImageEncoder handles the software FFmpeg image encoders: JPEG, PNG, WEBP.
+// AVCodecImageEncoder handles the software FFmpeg image encoders: JPEG, PNG, WEBP, AVIF.
+//
+// JPEG/PNG/WEBP encoder output is already the file format.
+// AVIF is not. libaom-av1 emits the AV1 bitstream only, so ReceivePacket() wraps each still with avif::Packager.
 class AVCodecImageEncoder : public TranscodeEncoder
 {
 public:
@@ -40,6 +43,8 @@ public:
 				return cmn::VideoPixelFormatId::YUVJ420P;
 			case cmn::MediaCodecId::Webp:
 				return cmn::VideoPixelFormatId::YUV420P;
+			case cmn::MediaCodecId::Avif:
+				return cmn::VideoPixelFormatId::YUV420P;
 			default:
 				return cmn::VideoPixelFormatId::None;
 		}
@@ -54,6 +59,8 @@ public:
 				return cmn::BitstreamFormat::JPEG;
 			case cmn::MediaCodecId::Webp:
 				return cmn::BitstreamFormat::WEBP;
+			case cmn::MediaCodecId::Avif:
+				return cmn::BitstreamFormat::AVIF;
 			default:
 				return cmn::BitstreamFormat::Unknown;
 		}
@@ -73,6 +80,7 @@ private:
 	bool SetParamsJpeg();
 	bool SetParamsPng();
 	bool SetParamsWebp();
+	bool SetParamsAvif();
 
 	// ----- Members -----
 	cmn::MediaCodecId _codec_id;

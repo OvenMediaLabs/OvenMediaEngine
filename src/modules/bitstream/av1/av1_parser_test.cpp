@@ -729,6 +729,109 @@ TEST(Av1ParserSequenceHeaderSummary, CapturesColorConfigFields)
 	EXPECT_EQ(summary->chroma_subsampling_x, 1);
 	EXPECT_EQ(summary->chroma_subsampling_y, 0);
 	EXPECT_EQ(summary->chroma_sample_position, 0);
+	// `color_description_present_flag == 0`: the CICP comes out as the spec's inferred values.
+	EXPECT_EQ(summary->color_primaries, 2);			 // CP_UNSPECIFIED
+	EXPECT_EQ(summary->transfer_characteristics, 2); // TC_UNSPECIFIED
+	EXPECT_EQ(summary->matrix_coefficients, 2);		 // MC_UNSPECIFIED
+	EXPECT_EQ(summary->color_range, 0);
+}
+
+TEST(Av1ParserSequenceHeaderSummary, CapturesExplicitCicp)
+{
+	// `color_description_present_flag == 1`: BT.709 primaries/transfer/matrix at full range -
+	// what OME's AVIF thumbnail encoder signals, and what its `colr` box has to restate.
+	SeqHeaderBuilder b;
+	b.seq_profile					  = 0;
+	b.operating_points_cnt_minus_1	  = 0;
+	b.operating_point_idc			  = {0};
+	b.seq_level_idx					  = {0};
+	b.frame_width_bits_minus_1		  = 8;
+	b.frame_height_bits_minus_1		  = 8;
+	b.max_frame_width_minus_1		  = 319;
+	b.max_frame_height_minus_1		  = 179;
+	b.color_description_present_flag  = 1;
+	b.color_primaries				  = 1;	// CP_BT_709
+	b.transfer_characteristics		  = 1;	// TC_BT_709
+	b.matrix_coefficients			  = 1;	// MC_BT_709
+	b.color_range					  = 1;	// full swing
+	b.chroma_sample_position		  = 0;
+
+	auto payload = BuildSequenceHeaderObuPayload(b);
+	auto summary = Av1Parser::ParseSequenceHeaderSummary(payload.data(), payload.size());
+	ASSERT_TRUE(summary.has_value());
+	EXPECT_EQ(summary->max_frame_width, 320u);
+	EXPECT_EQ(summary->max_frame_height, 180u);
+	EXPECT_EQ(summary->color_primaries, 1);
+	EXPECT_EQ(summary->transfer_characteristics, 1);
+	EXPECT_EQ(summary->matrix_coefficients, 1);
+	EXPECT_EQ(summary->color_range, 1);
+	EXPECT_EQ(summary->monochrome, 0);
+	EXPECT_EQ(summary->chroma_subsampling_x, 1);
+	EXPECT_EQ(summary->chroma_subsampling_y, 1);
+}
+
+TEST(Av1ParserSequenceHeaderSummary, CapturesColorRangeOnMonochromeBranch)
+{
+	// AV1 spec 5.5.2 monochrome branch: `color_range` is read there, and subsampling /
+	// `chroma_sample_position` are inferred rather than present.
+	SeqHeaderBuilder b;
+	b.seq_profile					 = 0;
+	b.operating_points_cnt_minus_1	 = 0;
+	b.operating_point_idc			 = {0};
+	b.seq_level_idx					 = {0};
+	b.frame_width_bits_minus_1		 = 8;
+	b.frame_height_bits_minus_1		 = 8;
+	b.max_frame_width_minus_1		 = 319;
+	b.max_frame_height_minus_1		 = 179;
+	b.monochrome					 = 1;
+	b.color_description_present_flag = 1;
+	b.color_primaries				 = 9;	// CP_BT_2020
+	b.transfer_characteristics		 = 16;	// TC_SMPTE_2084
+	b.matrix_coefficients			 = 9;	// MC_BT_2020_NCL
+	b.color_range					 = 1;
+
+	auto payload = BuildSequenceHeaderObuPayload(b);
+	auto summary = Av1Parser::ParseSequenceHeaderSummary(payload.data(), payload.size());
+	ASSERT_TRUE(summary.has_value());
+	EXPECT_EQ(summary->monochrome, 1);
+	EXPECT_EQ(summary->color_primaries, 9);
+	EXPECT_EQ(summary->transfer_characteristics, 16);
+	EXPECT_EQ(summary->matrix_coefficients, 9);
+	EXPECT_EQ(summary->color_range, 1);
+	EXPECT_EQ(summary->chroma_subsampling_x, 1);
+	EXPECT_EQ(summary->chroma_subsampling_y, 1);
+	EXPECT_EQ(summary->chroma_sample_position, 0);
+}
+
+TEST(Av1ParserSequenceHeaderSummary, InfersFullRangeOnSrgbShortcut)
+{
+	// AV1 spec 5.5.2 sRGB shortcut (CP_BT_709 + TC_SRGB + MC_IDENTITY): no `color_range` bit
+	// is present and it is inferred as full swing, with 4:4:4 subsampling.
+	SeqHeaderBuilder b;
+	b.seq_profile					 = 1;
+	b.operating_points_cnt_minus_1	 = 0;
+	b.operating_point_idc			 = {0};
+	b.seq_level_idx					 = {0};
+	b.frame_width_bits_minus_1		 = 8;
+	b.frame_height_bits_minus_1		 = 8;
+	b.max_frame_width_minus_1		 = 319;
+	b.max_frame_height_minus_1		 = 179;
+	b.color_description_present_flag = 1;
+	b.color_primaries				 = 1;	// CP_BT_709
+	b.transfer_characteristics		 = 13;	// TC_SRGB
+	b.matrix_coefficients			 = 0;	// MC_IDENTITY
+	b.color_range					 = 0;	// not written by the builder; must still parse as 1
+
+	auto payload = BuildSequenceHeaderObuPayload(b);
+	auto summary = Av1Parser::ParseSequenceHeaderSummary(payload.data(), payload.size());
+	ASSERT_TRUE(summary.has_value());
+	EXPECT_EQ(summary->color_primaries, 1);
+	EXPECT_EQ(summary->transfer_characteristics, 13);
+	EXPECT_EQ(summary->matrix_coefficients, 0);
+	EXPECT_EQ(summary->color_range, 1);
+	EXPECT_EQ(summary->chroma_subsampling_x, 0);
+	EXPECT_EQ(summary->chroma_subsampling_y, 0);
+	EXPECT_EQ(summary->chroma_sample_position, 0);
 }
 
 TEST(Av1ParserSequenceHeaderSummary, CapturesInitialDisplayDelayForOp0)
