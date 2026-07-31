@@ -57,16 +57,16 @@ namespace
 	}
 }  // namespace
 
-TEST(ProviderTimeout, FirstMediaWaitDefaultsWhenAbsent)
+TEST(ProviderTimeout, FirstMediaWaitIsOffWhenAbsent)
 {
 	cfg::vhost::app::pvd::RtmpProvider provider;
 
 	ASSERT_TRUE(ParseRtmpProvider("", &provider));
 
-	EXPECT_EQ(provider.GetFirstMediaWaitTimeoutMs(), cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
-	// The default must not look like the operator's value.
-	// An operator-set `PacketSilenceTimeoutMs` governs the first-media wait only while this is false.
+	// The option has no default. Nothing applies it while this is false, so an absent option leaves the
+	// window on the `PacketSilenceTimeoutMs` policy it had before the option existed.
 	EXPECT_FALSE(provider.IsFirstMediaWaitTimeoutMsConfigured());
+	EXPECT_EQ(provider.GetFirstMediaWaitTimeoutMs(), 0);
 }
 
 TEST(ProviderTimeout, FirstMediaWaitKeepsPositiveValue)

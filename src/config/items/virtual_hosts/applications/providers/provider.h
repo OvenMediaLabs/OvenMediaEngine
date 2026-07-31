@@ -18,11 +18,6 @@ namespace cfg
 		{
 			namespace pvd
 			{
-				// How long an input may stay silent between asking to publish and its first media packet.
-				// A source at a low frame rate can legitimately send nothing for a long time:
-				// a captured OBS session at 1 fps sent nothing for 23.5 s after its publish command,
-				// and only then its first media packet.
-				static constexpr int DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS = 30000;
 
 				struct Provider : public Item
 				{
@@ -31,12 +26,18 @@ namespace cfg
 					TimestampMode _timestamp_mode = TimestampMode::Auto;
 					bool _use_incoming_timestamp  = false;	// For backward compatibility
 					ov::String _timestamp_mode_str;
-					int _packet_silence_timeout_ms				  = 0;	// Default value for packet silence timeout
+					int _packet_silence_timeout_ms					= 0;  // Default value for packet silence timeout
 					// Whether `_packet_silence_timeout_ms` currently holds the value the operator asked
 					// for, rather than a provider default. Set while parsing `PacketSilenceTimeoutMs`
 					// and cleared again by `SetDefaultPacketSilenceTimeoutMs()`.
-					bool _is_packet_silence_timeout_ms_configured = false;
-					int _first_media_wait_timeout_ms			  = DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
+					bool _is_packet_silence_timeout_ms_configured	= false;
+					// How long an input may stay silent between asking to publish and its first media packet.
+					// Off unless the operator sets it: a source that needs a longer wait is rare enough
+					// that widening the window for everyone would change behaviour nobody asked to change.
+					// A source at a low frame rate can legitimately send nothing for a long time:
+					// a captured OBS session at 1 fps sent nothing for 23.5 s after its publish command,
+					// and only then its first media packet.
+					int _first_media_wait_timeout_ms				= 0;
 					// Whether the value in `_first_media_wait_timeout_ms` came from the operator
 					bool _is_first_media_wait_timeout_ms_configured = false;
 

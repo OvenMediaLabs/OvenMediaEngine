@@ -453,21 +453,34 @@ TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheTimeoutWhenTheApplicati
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 }
 
-TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenNothingIsConfigured)
+TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionChangesNothing)
 {
 	Fixture f;
 
 	const auto vhost_app_name = f.CreateApplication("");
 	ASSERT_TRUE(vhost_app_name.IsValid());
 
+	// With the option off, this leaves the channel on the timeout it was created with, and never starts
+	// the wait, so the first media packet has nothing to end.
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	// The channel is still unpublished, so it falls back to the budget it was created with,
-	// rather than keeping one sized for a source that had not sent anything yet.
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+}
+
+TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionStillHonorsPacketSilenceTimeoutMs)
+{
+	Fixture f;
+
+	const auto vhost_app_name = f.CreateApplication("<PacketSilenceTimeoutMs>4000</PacketSilenceTimeoutMs>");
+	ASSERT_TRUE(vhost_app_name.IsValid());
+
+	// This is what the RTMP provider did before the option existed, and has to keep doing.
+	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
+
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 4000);
 }
 
 TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenTheTimeoutIsExplicitlyZero)
@@ -617,7 +630,8 @@ TEST(PushStreamLifecycle, TryBeginReapingFailsWhenTheFirstMediaPacketEndsTheWait
 {
 	Fixture f;
 
-	const auto vhost_app_name = f.CreateApplication("");
+	// The option has to be set for there to be a wait to end at all.
+	const auto vhost_app_name = f.CreateApplication("<FirstMediaWaitTimeoutMs>30000</FirstMediaWaitTimeoutMs>");
 	ASSERT_TRUE(vhost_app_name.IsValid());
 
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);

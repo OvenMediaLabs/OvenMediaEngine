@@ -27,8 +27,8 @@ namespace pvd
 		time_t GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type, bool *is_configured = nullptr);
 
 		// Returns the `FirstMediaWaitTimeoutMs` configured for this provider type in this application,
-		// or `cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS` when the option is absent.
-		// `is_configured` reports whether the returned value is the operator's.
+		// or `0` when the option is absent. The option has no default: `is_configured` reports whether
+		// the operator set it, and nothing applies it otherwise.
 		time_t GetConfiguredFirstMediaWaitTimeoutMs(ProviderType provider_type, bool *is_configured = nullptr);
 
 	protected:

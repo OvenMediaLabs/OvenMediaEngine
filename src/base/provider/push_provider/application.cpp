@@ -75,7 +75,7 @@ namespace pvd
 			}
 		}
 
-		return cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS;
+		return 0;
 	}
 
 	bool PushApplication::DeleteAllStreams()

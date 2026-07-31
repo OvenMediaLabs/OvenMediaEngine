@@ -256,28 +256,21 @@ namespace pvd
 		bool is_configured		 = false;
 		const auto configured_ms = application->GetConfiguredFirstMediaWaitTimeoutMs(provider_type, &is_configured);
 
-		// A `0` is not honored: it would leave this wait with no timeout at all,
-		// and the config layer also yields `0` for an empty or non-numeric element,
-		// so a typo must not remove the guard.
-		if (is_configured && (configured_ms > 0))
+		// The option is off unless the operator set it. With it off, this window keeps the
+		// `PacketSilenceTimeoutMs` policy it had before the option existed, and the wait never starts,
+		// so `EndFirstMediaWait()` has nothing to end either.
+		// A `0` cannot get here: the config layer rejects it, along with an empty or non-numeric element.
+		if ((is_configured == false) || (configured_ms <= 0))
 		{
-			// The operator sized this wait, so it governs even when `PacketSilenceTimeoutMs` is set too.
-			// That option describes a stream that has already published.
-			SetPacketSilenceTimeoutMs(configured_ms);
-		}
-		else
-		{
-			// This wait was not sized. An operator-configured `PacketSilenceTimeoutMs` keeps governing it,
-			// as it did before this option existed; otherwise this option's default applies.
-			bool is_silence_configured = false;
-			const auto silence_ms	   = application->GetConfiguredPacketSilenceTimeoutMs(provider_type, &is_silence_configured);
-
-			SetPacketSilenceTimeoutMs((is_silence_configured && (silence_ms > 0))
-										  ? silence_ms
-										  : cfg::vhost::app::pvd::DEFAULT_FIRST_MEDIA_WAIT_TIMEOUT_MS);
+			ApplyConfiguredPacketSilenceTimeoutMs(vhost_app_name);
+			return;
 		}
 
-		// The budget is in place, so the first media packet can end this wait from here.
+		// The operator sized this wait, so it governs even when `PacketSilenceTimeoutMs` is set too.
+		// That option describes a stream that has already published.
+		SetPacketSilenceTimeoutMs(configured_ms);
+
+		// The timeout is in place, so the first media packet can end this wait from here.
 		// Arming it only now is what keeps a media message that arrived earlier from consuming it.
 		_first_media_wait_phase = FirstMediaWaitPhase::Waiting;
 	}
