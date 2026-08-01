@@ -264,12 +264,33 @@ void TranscodeFilter::ThreadLoop()
 		while (!_kill_flag)
 		{
 			auto recv = base->PopCompletedFrameInternal();
-			if (recv.result == TranscodeResult::Again)
+			if (recv.result == TranscodeResult::DataReady)
 			{
+				OnComplete(recv.result, std::move(recv.frame));
+
+				// Keep draining to check whether more frames are pending.
+				continue;
+			}
+			else if (recv.result == TranscodeResult::Again)
+			{
+				// The filter has no more frames to hand over; leave the loop.
 				break;
 			}
+			else if (recv.result == TranscodeResult::DataError)
+			{
+				logte("[%s] Error occurred while draining filtered frames. reason(%s)", _input_stream_info->GetUri().CStr(), recv.error.CStr());
 
-			OnComplete(recv.result, std::move(recv.frame));
+				// Report the error, then stop draining rather than asking the filter
+				// again - it would keep returning the same error.
+				OnComplete(recv.result, std::move(recv.frame));
+				break;
+			}
+			else
+			{
+				// Unhandled result; leave the loop rather than spinning forever.
+				logtw("[%s] Unexpected result while draining filtered frames. result(%d)", _input_stream_info->GetUri().CStr(), static_cast<int32_t>(recv.result));
+				break;
+			}
 		}
 	}
 }

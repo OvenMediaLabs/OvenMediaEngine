@@ -505,16 +505,19 @@ void TranscodeEncoder::ThreadLoop()
 				break;
 			}
 
-			// Flush encoder and drain remaining packets. 
+			// Flush encoder and drain remaining packets.
 			while (!_kill_flag)
 			{
 				auto received = ReceivePacket();
-				if ( received.result == TranscodeResult::Again)
+				if (received.result == TranscodeResult::DataReady)
 				{
-					break;
+					Complete(received.result, std::move(received.packet));
+
+					// Keep draining to check whether more packets are pending.
+					continue;
 				}
 
-				Complete(received.result, std::move(received.packet));
+				break;
 			}
 
 			if (Reinitialize() == false)
@@ -543,17 +546,32 @@ void TranscodeEncoder::ThreadLoop()
 		while (!_kill_flag)
 		{
 			auto recv = ReceivePacket();
-			if (recv.result == TranscodeResult::Again)
+			if (recv.result == TranscodeResult::Again ||
+				recv.result == TranscodeResult::EndOfFile)
 			{
+				// The encoder has no more packets to hand over; leave the loop.
 				break;
-			}
-			else if (recv.result == TranscodeResult::DataReady)
-			{
-				Complete(recv.result, std::move(recv.packet));
 			}
 			else if (recv.result == TranscodeResult::DataError)
 			{
 				logte("Error occurred while receiving a packet for encoding. frame_pts(%" PRId64 "), reason(%s)", media_frame->GetPts(), recv.error.CStr());
+
+				// Report the error so the stream can account for it, then stop draining.
+				Complete(recv.result, std::move(recv.packet));
+				break;
+			}
+			else if (recv.result == TranscodeResult::DataReady ||
+					 recv.result == TranscodeResult::NoData)
+			{
+				Complete(recv.result, std::move(recv.packet));
+
+				// Keep draining to check whether more packets are pending.
+				continue;
+			}
+			else
+			{
+				// Unhandled result; leave the loop
+				logtw("Unexpected result while receiving a packet for encoding. result(%d)", static_cast<int32_t>(recv.result));
 				break;
 			}
 		}
