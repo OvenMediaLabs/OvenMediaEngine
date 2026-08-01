@@ -12,7 +12,7 @@
 using namespace cmn;
 
 #define PTS_INCREMENT_LIMIT 15
-#define MAX_QUEUE_SIZE 5
+#define MAX_QUEUE_SIZE 2
 #define ENABLE_QUEUE_EXCEED_WAIT true
 
 TranscodeFilter::TranscodeFilter()
@@ -319,14 +319,22 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 	// Check if the filter is ready to process frames
 	{
 		ov::SharedLockGuard lock(_mutex);
-		if (_filter_base == nullptr ||
-			_filter_base->GetState() == FilterBase::State::ERROR ||
-			_filter_base->GetState() == FilterBase::State::STOPPED)
+		if (_filter_base == nullptr)
+		{
+			logtw("[%s] Filter is not created yet. track:%u",
+				  _input_stream_info->GetUri().CStr(),
+				  GetInputTrack()->GetId());
+
+			return false;
+		}
+
+		auto state = _filter_base->GetState();
+		if (state == FilterBase::State::ERROR || state == FilterBase::State::STOPPED)
 		{
 			logtw("[%s] Filter is not ready to process frames. track:%u, state:%d",
 				  _input_stream_info->GetUri().CStr(),
 				  GetInputTrack()->GetId(),
-				  (int32_t)_filter_base->GetState());
+				  (int32_t)state);
 
 			return false;
 		}
