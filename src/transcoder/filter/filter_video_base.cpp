@@ -95,17 +95,6 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 			}
 		}
 
-		// Drain every frame produced by this push into the output queue.
-		while (auto completed_frame = ReceiveFrame())
-		{
-			_output_frames.push(std::move(completed_frame));
-		}
-
-		if (GetState() == State::ERROR)
-		{
-			return FilterResult::Error();
-		}
-
 		auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
 
 		// Update the weighted average frame processing time
@@ -122,15 +111,18 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 
 FilterResult FilterVideoBase::PopCompletedFrameInternal()
 {
-	if (_output_frames.empty())
+	if(GetState() == FilterBase::State::ERROR)
+	{
+		return FilterResult::Error();
+	}
+
+	auto completed_frame = ReceiveFrame();
+	if(completed_frame == nullptr)
 	{
 		return FilterResult::NoOutput();
 	}
 
-	auto output_frame = std::move(_output_frames.front());
-	_output_frames.pop();
-
-	return FilterResult::Ready(std::move(output_frame));
+	return FilterResult::Ready(std::move(completed_frame));
 }
 
 #if _SKIP_FRAMES_ENABLED

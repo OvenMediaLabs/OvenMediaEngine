@@ -235,7 +235,4 @@ protected:
 	bool _use_hwframe_transfer = false;
 
 	int32_t _source_id = 0;
-
-	// Output frames drained from the backend pipeline, served by PopCompletedFrameInternal().
-	std::queue<std::shared_ptr<MediaFrame>> _output_frames;
 };
