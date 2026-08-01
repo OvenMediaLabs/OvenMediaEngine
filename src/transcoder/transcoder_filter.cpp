@@ -316,6 +316,23 @@ void TranscodeFilter::Stop()
 
 bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 {
+	// Check if the filter is ready to process frames
+	{
+		ov::SharedLockGuard lock(_mutex);
+		if (_filter_base == nullptr ||
+			_filter_base->GetState() == FilterBase::State::ERROR ||
+			_filter_base->GetState() == FilterBase::State::STOPPED)
+		{
+			logtw("[%s] Filter is not ready to process frames. track:%u, state:%d",
+				  _input_stream_info->GetUri().CStr(),
+				  GetInputTrack()->GetId(),
+				  (int32_t)_filter_base->GetState());
+
+			return false;
+		}
+	}
+
+	// Check if the filter needs to be updated
 	if (IsNeedUpdate(buffer) == true)
 	{
 		logtd("[%s] Filter needs to be updated. reinitialize the filter. track:%u, pts:%" PRId64,
@@ -324,6 +341,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 		_setup_pending = true;
 	}
 
+	// Enqueue the buffer to the input buffer queue for processing by the worker thread.
 	_input_buffer.Enqueue(std::move(buffer));
 
 	return true;
