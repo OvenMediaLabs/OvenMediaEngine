@@ -357,7 +357,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 
 bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 {
-	ov::SharedLockGuard lock(_mutex);
+	ov::LockGuard lock(_mutex);
 
 	// Single track(paired with encoder) does not need to be updated.
 	if (_filter_base == nullptr || _filter_base->IsSingleTrack() == true)
@@ -388,10 +388,8 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 	}
 
 	// Check #2 - Filter error state
-	//  TODO(Keukhan): XMA support is scheduled for removal, so this recovery path is not
-	//  maintained. SendBuffer() already rejects frames while the filter is in the ERROR
-	//  state, which makes this branch dead code, and it will be deleted along with the
-	//  rest of the XMA code.
+	//  Rarely reached, because SendBuffer() already rejects frames in the ERROR state.
+	//  TODO(Keukhan): Will be removed together with the XMA code.
 	if (_filter_base->GetState() == FilterBase::State::ERROR &&
 		GetInputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA &&
 		GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)

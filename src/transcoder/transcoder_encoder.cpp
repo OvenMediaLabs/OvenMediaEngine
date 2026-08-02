@@ -560,8 +560,7 @@ void TranscodeEncoder::ThreadLoop()
 				Complete(recv.result, std::move(recv.packet));
 				break;
 			}
-			else if (recv.result == TranscodeResult::DataReady ||
-					 recv.result == TranscodeResult::NoData)
+			else if (recv.result == TranscodeResult::DataReady)
 			{
 				Complete(recv.result, std::move(recv.packet));
 
