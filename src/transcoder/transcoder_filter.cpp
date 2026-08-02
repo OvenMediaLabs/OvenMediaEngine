@@ -387,14 +387,7 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	// NOTE: Input format changes (video resolution/pixel format/color tags and
-	// audio properties) are detected per frame in ThreadLoop(). A flag set here is
-	// consumed at whatever frame the worker dequeues next, so it cannot be tied to
-	// the frame that triggered it.
-
-	// Check #2 - Filter error state
-	//  When using an XMA scaler, resource allocation failures may occur intermittently.
-	//  Avoid problems in this way until the underlying problem is resolved.
+	// TODO(Keukhan): This will be deprecated soon. It doesn't matter even if this code is dead code.
 	if (_filter_base->GetState() == FilterBase::State::ERROR &&
 		GetInputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA &&
 		GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
