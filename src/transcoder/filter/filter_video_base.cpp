@@ -100,7 +100,7 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 			// The measured time belongs to work that will never complete.
 			_pending_processing_time_us = 0;
 
-			return FilterResult::Error("Failed to receive frame from backend rescaler");
+			return FilterResult::Error("The backend rescaler has failed");
 		}
 
 		// Drain FPS filter to get completed frames.
@@ -120,10 +120,9 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 
 		if (SendFrame(frame) == false)
 		{
-			// The measured time belongs to work that will never complete.
-			_pending_processing_time_us = 0;
-
-			return FilterResult::Error("Failed to push frame into backend rescaler");
+			// A fatal failure is carried in the filter state and reported by the check at the
+			// top of the next round. Anything else only dropped this frame.
+			logtw("[%s] Dropped a frame that could not be pushed into the backend rescaler.", GetLogPrefix().CStr());
 		}
 	}
 }
