@@ -1523,12 +1523,12 @@ namespace pvd::rtmp
 		const bool is_published	 = _stream->IsPublished();
 
 		// A multitrack message parses into one entry per track,
-		// and any one of them carrying a coded frame ends the wait for the first media.
-		bool carries_media_frame = false;
+		// and any one of them holding a coded frame ends the wait for the first media.
+		bool has_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			carries_media_frame = carries_media_frame || CarriesAudioFrame(*parsed_data);
+			has_media_frame = has_media_frame || HasAudioFrame(*parsed_data);
 
 			auto track_id		= parsed_data->track_id;
 			auto rtmp_track		= _stream->GetRtmpTrack(track_id);
@@ -1598,7 +1598,7 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
-			if (carries_media_frame)
+			if (has_media_frame)
 			{
 				// Media is flowing now, so the wait sized for the first frame is over,
 				// even though publishing may still be waiting for the other track or for enough packets.
@@ -1658,12 +1658,12 @@ namespace pvd::rtmp
 		const bool is_published	 = _stream->IsPublished();
 
 		// A multitrack message parses into one entry per track,
-		// and any one of them carrying a coded frame ends the wait for the first media.
-		bool carries_media_frame = false;
+		// and any one of them holding a coded frame ends the wait for the first media.
+		bool has_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			carries_media_frame = carries_media_frame || CarriesVideoFrame(*parsed_data);
+			has_media_frame = has_media_frame || HasVideoFrame(*parsed_data);
 
 			// Currently, metadata is not handled separately.
 			// If an RTMP client that sends metadata is found later, it will be added.
@@ -1764,7 +1764,7 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
-			if (carries_media_frame)
+			if (has_media_frame)
 			{
 				// Media is flowing now, so the wait sized for the first frame is over,
 				// even though publishing may still be waiting for the other track or for enough packets.

@@ -1624,7 +1624,7 @@ namespace pvd
 
 		if (!IsPublished())
 		{
-			if (IsWaitingForFirstMedia() && rtmp::CarriesVideoFrame(payload))
+			if (IsWaitingForFirstMedia() && rtmp::HasVideoFrame(payload))
 			{
 				// Publishing may still be waiting for another track, but the wait for media is over.
 				EndFirstMediaWait(_vhost_app_name);
@@ -1820,7 +1820,7 @@ namespace pvd
 
 		if (!IsPublished())
 		{
-			if (IsWaitingForFirstMedia() && rtmp::CarriesAudioFrame(message->payload))
+			if (IsWaitingForFirstMedia() && rtmp::HasAudioFrame(message->payload))
 			{
 				// Publishing may still be waiting for another track, but the wait for media is over.
 				EndFirstMediaWait(_vhost_app_name);

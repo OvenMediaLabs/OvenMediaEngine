@@ -98,7 +98,7 @@ namespace pvd
 		// and this applies `PacketSilenceTimeoutMs` instead.
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// Ends that wait. A provider calls this for a message carrying a coded frame, never for a codec
+		// Ends that wait. A provider calls this for a message holding a coded frame, never for a codec
 		// description, which an encoder can send long before its first frame.
 		// The channel is still unpublished, so the timeout becomes a positive `PacketSilenceTimeoutMs`
 		// the operator set, or the channel-creation timeout otherwise.
@@ -106,7 +106,7 @@ namespace pvd
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 
 		// Whether that wait is running.
-		// A caller can ask this first, and skip working out whether a message carries a coded frame.
+		// A caller can ask this first, and skip working out whether a message holds a coded frame.
 		bool IsWaitingForFirstMedia() const;
 
 		uint32_t GetNumberOfAttempsToPublish()

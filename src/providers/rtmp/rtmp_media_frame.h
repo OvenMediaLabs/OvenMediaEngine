@@ -15,18 +15,18 @@
 
 namespace pvd::rtmp
 {
-	// Whether an RTMP message carries a coded frame,
+	// Whether an RTMP message has a coded frame,
 	// which is what ends `PushStream`'s wait for an input's first media.
 	// A codec description does not: an encoder can send its sequence header long before its first frame.
 	//
-	// Only a layout known to carry a coded frame counts, because the two wrong answers differ in cost.
+	// Only a layout known to hold a coded frame counts, because the two wrong answers differ in cost.
 	// Taking a description for a frame ends the wait early and gets the channel deleted.
 	// Taking a frame for a description keeps the wait running until the stream publishes.
 	//
 	// The legacy overloads read the tag header directly rather than through `flv::VideoData::Parse()`,
 	// which logs an error for every video codec it does not service.
 
-	inline bool CarriesVideoFrame(const std::shared_ptr<const ov::Data> &payload)
+	inline bool HasVideoFrame(const std::shared_ptr<const ov::Data> &payload)
 	{
 		if ((payload == nullptr) || (payload->GetLength() < 2))
 		{
@@ -41,7 +41,7 @@ namespace pvd::rtmp
 			return false;
 		}
 
-		// A video info or command frame carries a command in place of a coded frame.
+		// A video info or command frame holds a command in place of a coded frame.
 		if ((header[0] >> 4) == ov::ToUnderlyingType(flv::VideoFrameType::VideoInfoCommand))
 		{
 			return false;
@@ -56,7 +56,7 @@ namespace pvd::rtmp
 		return header[1] == ov::ToUnderlyingType(flv::AvcPacketType::NALU);
 	}
 
-	inline bool CarriesAudioFrame(const std::shared_ptr<const ov::Data> &payload)
+	inline bool HasAudioFrame(const std::shared_ptr<const ov::Data> &payload)
 	{
 		if ((payload == nullptr) || (payload->GetLength() < 2))
 		{
@@ -79,7 +79,7 @@ namespace pvd::rtmp
 	// The E-RTMP overloads answer for one parsed track.
 	// A multitrack message yields one of these per track, and the caller combines them.
 
-	inline bool CarriesAudioFrame(const modules::flv::AudioData &data)
+	inline bool HasAudioFrame(const modules::flv::AudioData &data)
 	{
 		// The enhanced path fills `audio_packet_type`, and legacy AAC fills `aac_packet_type`.
 		if (data.audio_packet_type.has_value())
@@ -95,7 +95,7 @@ namespace pvd::rtmp
 		return false;
 	}
 
-	inline bool CarriesVideoFrame(const modules::flv::VideoData &data)
+	inline bool HasVideoFrame(const modules::flv::VideoData &data)
 	{
 		if (data.video_frame_type == modules::flv::VideoFrameType::Command)
 		{
