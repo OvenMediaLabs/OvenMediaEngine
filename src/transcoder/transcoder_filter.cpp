@@ -316,28 +316,9 @@ void TranscodeFilter::Stop()
 
 bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 {
-	// Check if the filter is ready to process frames
+	if (IsReadyToProcess() == false)
 	{
-		ov::SharedLockGuard lock(_mutex);
-		if (_filter_base == nullptr)
-		{
-			logtd("[%s] Filter is not created yet. track:%u",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId());
-
-			return false;
-		}
-
-		auto state = _filter_base->GetState();
-		if (state == FilterBase::State::ERROR || state == FilterBase::State::STOPPED)
-		{
-			logtd("[%s] Filter is not ready to process frames. track:%u, state:%d",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId(),
-				  (int32_t)state);
-
-			return false;
-		}
+		return false;
 	}
 
 	// Check if the filter needs to be updated
@@ -351,6 +332,45 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 
 	// Enqueue the buffer to the input buffer queue for processing by the worker thread.
 	_input_buffer.Enqueue(std::move(buffer));
+
+	return true;
+}
+
+bool TranscodeFilter::IsReadyToProcess()
+{
+	ov::SharedLockGuard lock(_mutex);
+
+	if (_filter_base == nullptr)
+	{
+		// This case can only occur if the TranscoderFilter object has been destroyed, so it
+		// should not happen. However, we handle the exception just in case.
+		return false;
+	}
+
+	auto state = _filter_base->GetState();
+	if (state == FilterBase::State::ERROR)
+	{
+		// Reported once per failure. Frames are rejected from here on and the worker stops
+		// reporting, so this is the last signal that the track went dark.
+		if (_failure_reported.exchange(true) == false)
+		{
+			logtw("[%s] Filter has failed, so frames are dropped from now on. track:%u",
+				  _input_stream_info->GetUri().CStr(), GetInputTrack()->GetId());
+		}
+
+		return false;
+	}
+
+	if (state == FilterBase::State::STOPPED)
+	{
+		// Expected while the filter is being torn down.
+		logtd("[%s] Filter is not ready to process frames. track:%u",
+			  _input_stream_info->GetUri().CStr(), GetInputTrack()->GetId());
+
+		return false;
+	}
+
+	_failure_reported = false;
 
 	return true;
 }
