@@ -144,8 +144,9 @@ namespace
 		{
 		}
 
-		// The real one tears the stream down through the media router, which these stubs cannot stand in
-		// for. Only the fact that this path was taken matters here.
+		// The real one tears the stream down through the media router,
+		// which these stubs cannot stand in for.
+		// Only the fact that this path was taken matters here.
 		bool DeleteStream(const std::shared_ptr<pvd::Stream> &stream) override
 		{
 			_deleted_stream_count++;
@@ -477,7 +478,7 @@ TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionStillHonorsPacketSilenceTi
 	const auto vhost_app_name = f.CreateApplication("<PacketSilenceTimeoutMs>4000</PacketSilenceTimeoutMs>");
 	ASSERT_TRUE(vhost_app_name.IsValid());
 
-	// This is what the RTMP provider did before the option existed, and has to keep doing.
+	// With the option unset, this applies `PacketSilenceTimeoutMs` and starts no wait.
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 4000);
@@ -641,7 +642,7 @@ TEST(PushStreamLifecycle, TryBeginReapingFailsWhenTheFirstMediaPacketEndsTheWait
 	ASSERT_TRUE(state.IsSilentBeyondTimeout());
 
 	// `OnDataReceived()` ends the wait and lowers the timeout while `ChannelTaskRunner()` sits between
-	// reading this state and acting on it, which is the interleaving that used to delete a live channel.
+	// reading this state and acting on it. Acting on it here would delete a live channel.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
 	EXPECT_FALSE(f.channel->TryBeginReaping(state));
@@ -832,8 +833,9 @@ TEST(PushStreamLifecycle, DeletingAChannelThatNeverJoinedAnApplicationClosesItsT
 
 	EXPECT_TRUE(f.provider->OnChannelDeleted(f.channel));
 
-	// Nothing else tears the transport down on this path: `Application::DeleteStream()` never runs, so
-	// neither does `Stream::Stop()`, and the physical port owns the socket rather than the stream.
+	// Nothing else tears the transport down on this path:
+	// `Application::DeleteStream()` never runs, so neither does `Stream::Stop()`,
+	// and the physical port owns the socket rather than the stream.
 	// Without this the client keeps a connection it believes is still streaming.
 	EXPECT_EQ(f.channel->_close_transport_count.load(), 1);
 }

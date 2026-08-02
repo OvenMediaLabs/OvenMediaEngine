@@ -63,8 +63,8 @@ TEST(ProviderTimeout, FirstMediaWaitIsOffWhenAbsent)
 
 	ASSERT_TRUE(ParseRtmpProvider("", &provider));
 
-	// The option has no default. Nothing applies it while this is false, so an absent option leaves the
-	// window on the `PacketSilenceTimeoutMs` policy it had before the option existed.
+	// The option has no default, and nothing applies it while this is false,
+	// so an absent option leaves the window on the `PacketSilenceTimeoutMs` policy.
 	EXPECT_FALSE(provider.IsFirstMediaWaitTimeoutMsConfigured());
 	EXPECT_EQ(provider.GetFirstMediaWaitTimeoutMs(), 0);
 }
