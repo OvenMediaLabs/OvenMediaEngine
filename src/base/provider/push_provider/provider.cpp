@@ -137,7 +137,7 @@ namespace pvd
 
 			if (guard.IsEntered() == false)
 			{
-				// `TryBeginReaping()` has succeeded on this channel, so nothing is left to hand data to.
+				// The channel is reserved for deletion, so nothing is left to hand data to.
 				return false;
 			}
 

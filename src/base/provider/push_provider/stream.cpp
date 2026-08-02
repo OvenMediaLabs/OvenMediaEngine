@@ -89,8 +89,9 @@ namespace pvd
 	}
 
 	// Marks a write to something `GetSilenceState()` reads. Called once before and once after the write,
-	// so the counter is odd exactly while a write is in flight,
+	// so a lone write leaves the counter odd while it is in flight,
 	// which is how `TryBeginReaping()` rejects a state read across one.
+	// Writes that overlap are covered by the handler count instead.
 	void PushStream::CountStateChange()
 	{
 		auto state = _activity_state.load();

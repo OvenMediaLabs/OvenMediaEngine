@@ -1522,7 +1522,8 @@ namespace pvd::rtmp
 		const bool is_ex_header	 = parser.IsExHeader();
 		const bool is_published	 = _stream->IsPublished();
 
-		// Any one message of this chunk carrying a coded frame ends the wait for the first media.
+		// A multitrack message parses into one entry per track,
+		// and any one of them carrying a coded frame ends the wait for the first media.
 		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
@@ -1656,7 +1657,8 @@ namespace pvd::rtmp
 		const bool is_ex_header	 = parser.IsExHeader();
 		const bool is_published	 = _stream->IsPublished();
 
-		// Any one message of this chunk carrying a coded frame ends the wait for the first media.
+		// A multitrack message parses into one entry per track,
+		// and any one of them carrying a coded frame ends the wait for the first media.
 		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())

@@ -400,9 +400,9 @@ namespace pvd::rtmp
 		_chunk_handler.UpdateNamePath(GetNamePath());
 		_chunk_handler.UpdateQueueAlias();
 
-		// The wait for the first media packet starts here,
-		// and a source may send nothing at all during it,
-		// so replace the `PacketSilenceTimeoutMs` the channel was created with.
+		// A source may send nothing between here and its first media,
+		// which is the window `FirstMediaWaitTimeoutMs` sizes.
+		// Without that option this applies `PacketSilenceTimeoutMs`.
 		ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 		return true;

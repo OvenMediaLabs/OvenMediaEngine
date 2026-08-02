@@ -49,6 +49,16 @@ namespace
 
 		return data;
 	}
+
+	// The legacy AVC path builds the same struct with `from_ex_header` false,
+	// after reading the `AvcPacketType` byte into `video_packet_type`.
+	std::shared_ptr<modules::flv::VideoData> LegacyAvcVideo(modules::flv::VideoPacketType packet_type)
+	{
+		auto data				= std::make_shared<modules::flv::VideoData>(0, modules::flv::VideoFrameType::KeyFrame, false);
+		data->video_packet_type = packet_type;
+
+		return data;
+	}
 }  // namespace
 
 //--------------------------------------------------------------------
@@ -158,6 +168,7 @@ TEST(RtmpMediaFrame, EveryOtherExAudioPacketTypeIsNotAFrame)
 	EXPECT_FALSE(pvd::rtmp::CarriesAudioFrame(*ExAudio(modules::flv::AudioPacketType::MultichannelConfig)));
 	// reserved
 	EXPECT_FALSE(pvd::rtmp::CarriesAudioFrame(*ExAudio(static_cast<modules::flv::AudioPacketType>(3))));
+	EXPECT_FALSE(pvd::rtmp::CarriesAudioFrame(*ExAudio(static_cast<modules::flv::AudioPacketType>(6))));
 }
 
 TEST(RtmpMediaFrame, AParsedLegacyAacMessageFollowsItsOwnPacketType)
@@ -214,7 +225,7 @@ TEST(RtmpMediaFrame, BothPathsAgreeOnLegacyAvc)
 			<< "legacy path, packet type " << static_cast<int>(c.packet_type);
 
 		// The E-RTMP parser reads the same byte into `video_packet_type`.
-		EXPECT_EQ(pvd::rtmp::CarriesVideoFrame(*ExVideo(static_cast<modules::flv::VideoPacketType>(c.packet_type))), c.is_frame)
+		EXPECT_EQ(pvd::rtmp::CarriesVideoFrame(*LegacyAvcVideo(static_cast<modules::flv::VideoPacketType>(c.packet_type))), c.is_frame)
 			<< "E-RTMP path, packet type " << static_cast<int>(c.packet_type);
 	}
 }

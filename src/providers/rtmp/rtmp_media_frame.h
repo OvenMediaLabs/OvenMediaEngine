@@ -24,7 +24,7 @@ namespace pvd::rtmp
 	// Taking a frame for a description keeps the wait running until the stream publishes.
 	//
 	// The legacy overloads read the tag header directly rather than through `flv::VideoData::Parse()`,
-	// which logs an error for every codec it does not service.
+	// which logs an error for every video codec it does not service.
 
 	inline bool CarriesVideoFrame(const std::shared_ptr<const ov::Data> &payload)
 	{
@@ -65,9 +65,9 @@ namespace pvd::rtmp
 
 		const auto *header = payload->GetDataAs<uint8_t>();
 
-		// This path services AAC only.
+		// This path services AAC only, and AAC is the one sound format whose byte 1 is a packet type.
 		// Sound format 9 keeps an `AudioPacketType` in the low nibble and a FOURCC in byte 1,
-		// and every other format has no packet type byte at all.
+		// and byte 1 is already media data for the rest.
 		if ((header[0] >> 4) != ov::ToUnderlyingType(flv::SoundFormat::AAC))
 		{
 			return false;
@@ -76,7 +76,8 @@ namespace pvd::rtmp
 		return header[1] == ov::ToUnderlyingType(flv::AACPacketType::Raw);
 	}
 
-	// The E-RTMP overloads answer for one parsed message.
+	// The E-RTMP overloads answer for one parsed track.
+	// A multitrack message yields one of these per track, and the caller combines them.
 
 	inline bool CarriesAudioFrame(const modules::flv::AudioData &data)
 	{

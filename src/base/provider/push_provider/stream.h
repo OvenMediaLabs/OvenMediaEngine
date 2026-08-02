@@ -106,7 +106,7 @@ namespace pvd
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 
 		// Whether that wait is running.
-		// A provider asks this before working out whether a message carries a coded frame.
+		// A caller can ask this first, and skip working out whether a message carries a coded frame.
 		bool IsWaitingForFirstMedia() const;
 
 		uint32_t GetNumberOfAttempsToPublish()
