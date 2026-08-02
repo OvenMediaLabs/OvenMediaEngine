@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "../media_frame.h"
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
@@ -41,11 +43,13 @@ protected:
 	int32_t _skip_frames				   = -1;
 #endif
 
+
+	int64_t ElapsedTimeInUs(const std::chrono::steady_clock::time_point &start_time) const;
+	void UpdateProcessingTimePerFrame(const std::chrono::steady_clock::time_point &start_time);
+
 	// Weighted average of frame processing time.
 	double _weighted_avg_frame_processing_time_us = 0.0;
 
-	// Some devices (e.g. XMA) expand their memory pool while processing the first
-	// frame, which is not thread safe. The first frame is processed under the
-	// device mutex to prevent allocation failures.
-	bool _is_first_frame = true;
+	// Processing time that has not been charged to a completed frame yet.
+	int64_t _pending_processing_time_us = 0;
 };

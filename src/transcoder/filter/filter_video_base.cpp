@@ -11,7 +11,6 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
-#include "../transcoder_gpu.h"
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
 
@@ -62,67 +61,86 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 		}
 	}
 
-	if (media_frame != nullptr)
+	if (media_frame == nullptr)
 	{
-		_fps_filter.Push(media_frame);
+		return FilterResult::Error("Received frame is null");
 	}
 
-	static constexpr double kProcessingTimeEmaAlpha = 0.1;
-
-	while (auto frame = _fps_filter.Pop())
+	if (_fps_filter.Push(media_frame) == false)
 	{
-		auto start_time = std::chrono::steady_clock::now();
-
-		if (_is_first_frame && GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
-		{
-			// Some hardware (e.g. Xilinx U30) may expand their memory pool while processing the first frame, which is not thread safe.
-			// The first frame is processed under the device mutex to prevent allocation failures.
-			ov::ScopedLock first_frame_lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
- 			_is_first_frame = false;
-			if(SendFrame(frame) == false)
-			{
-				logte("[%s] Failed to push frame into backend pipeline.", GetLogPrefix().CStr());
-				return FilterResult::Error();
-			}				
-
-		}
-		else
-		{
-			if (SendFrame(frame) == false)
-			{
-				logte("[%s] Failed to push frame into backend pipeline.", GetLogPrefix().CStr());
-				return FilterResult::Error();
-			}
-		}
-
-		auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
-
-		// Update the weighted average frame processing time
-		// It includes the time taken for filtering + overlay + delivery to the encoder (including waiting time if there is a load on the encoder).
-		_weighted_avg_frame_processing_time_us = (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (elapsed_time_us * kProcessingTimeEmaAlpha);
+		logtw("[%s] Dropped a frame because the FPS filter is full.", GetLogPrefix().CStr());
 	}
-
-#if _SKIP_FRAMES_ENABLED
-	UpdateSkipFrames();
-#endif
 
 	return FilterResult::NoOutput();
 }
 
 FilterResult FilterVideoBase::PopCompletedFrameInternal()
 {
-	if(GetState() == FilterBase::State::ERROR)
+	if (GetState() == FilterBase::State::ERROR)
 	{
-		return FilterResult::Error();
+		_pending_processing_time_us = 0;
+
+		return FilterResult::Error("The filter is in the error state");
 	}
 
-	auto completed_frame = ReceiveFrame();
-	if(completed_frame == nullptr)
-	{
-		return FilterResult::NoOutput();
-	}
+	auto start_time = std::chrono::steady_clock::now();
 
-	return FilterResult::Ready(std::move(completed_frame));
+	while (true)
+	{
+		auto completed_frame = ReceiveFrame();
+		if (completed_frame != nullptr)
+		{
+			UpdateProcessingTimePerFrame(start_time);
+
+			return FilterResult::Ready(std::move(completed_frame));
+		}
+
+		if (GetState() == FilterBase::State::ERROR)
+		{
+			// The measured time belongs to work that will never complete.
+			_pending_processing_time_us = 0;
+
+			return FilterResult::Error("Failed to receive frame from backend rescaler");
+		}
+
+		// Drain FPS filter to get completed frames.
+		auto frame = _fps_filter.Pop();
+		if (frame == nullptr)
+		{
+			// No completed frame available yet. Update pending processing time
+			_pending_processing_time_us += ElapsedTimeInUs(start_time);
+
+#if _SKIP_FRAMES_ENABLED
+			// Update skip frames based on the current processing time and framerate.
+			UpdateSkipFrames();
+#endif
+
+			return FilterResult::NoOutput();
+		}
+
+		if (SendFrame(frame) == false)
+		{
+			// The measured time belongs to work that will never complete.
+			_pending_processing_time_us = 0;
+
+			return FilterResult::Error("Failed to push frame into backend rescaler");
+		}
+	}
+}
+
+int64_t FilterVideoBase::ElapsedTimeInUs(const std::chrono::steady_clock::time_point &start_time) const
+{
+	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+}
+
+void FilterVideoBase::UpdateProcessingTimePerFrame(const std::chrono::steady_clock::time_point &start_time)
+{
+	static constexpr double kProcessingTimeEmaAlpha = 0.1;
+
+	auto elapsed_time_us = _pending_processing_time_us + ElapsedTimeInUs(start_time);
+
+	_pending_processing_time_us				= 0;
+	_weighted_avg_frame_processing_time_us	= (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (elapsed_time_us * kProcessingTimeEmaAlpha);
 }
 
 #if _SKIP_FRAMES_ENABLED

@@ -321,7 +321,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 		ov::SharedLockGuard lock(_mutex);
 		if (_filter_base == nullptr)
 		{
-			logtw("[%s] Filter is not created yet. track:%u",
+			logtd("[%s] Filter is not created yet. track:%u",
 				  _input_stream_info->GetUri().CStr(),
 				  GetInputTrack()->GetId());
 
@@ -331,7 +331,7 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 		auto state = _filter_base->GetState();
 		if (state == FilterBase::State::ERROR || state == FilterBase::State::STOPPED)
 		{
-			logtw("[%s] Filter is not ready to process frames. track:%u, state:%d",
+			logtd("[%s] Filter is not ready to process frames. track:%u, state:%d",
 				  _input_stream_info->GetUri().CStr(),
 				  GetInputTrack()->GetId(),
 				  (int32_t)state);
@@ -387,7 +387,11 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	// TODO(Keukhan): This will be deprecated soon. It doesn't matter even if this code is dead code.
+	// Check #2 - Filter error state
+	//  TODO(Keukhan): XMA support is scheduled for removal, so this recovery path is not
+	//  maintained. SendBuffer() already rejects frames while the filter is in the ERROR
+	//  state, which makes this branch dead code, and it will be deleted along with the
+	//  rest of the XMA code.
 	if (_filter_base->GetState() == FilterBase::State::ERROR &&
 		GetInputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA &&
 		GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)

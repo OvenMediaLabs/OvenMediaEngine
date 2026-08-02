@@ -223,8 +223,6 @@ bool FilterLavfiRescaler::Initialize()
 	_skip_frames	  = _skip_frames_conf;
 #endif
 
-	_is_first_frame = true;
-
 	SetState(State::STARTED);
 
 	return true;
