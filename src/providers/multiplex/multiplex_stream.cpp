@@ -12,6 +12,15 @@
 
 #include <base/provider/application.h>
 
+// Maximum packets drained from one source tap per round, so one bursty source
+// cannot monopolize the worker loop
+static constexpr int MULTIPLEX_MAX_DRAIN_PER_SOURCE = 128;
+
+// Idle sleep bounds for the worker loop; the sleep backs off on consecutive
+// empty rounds so an idle channel does not burn wakeups
+static constexpr int MULTIPLEX_IDLE_SLEEP_MIN_MS = 1;
+static constexpr int MULTIPLEX_IDLE_SLEEP_MAX_MS = 10;
+
 namespace pvd
 {
     // Implementation of MultiplexStream
@@ -117,12 +126,17 @@ namespace pvd
             break;
         }
 
+        // The source list is fixed for the stream's lifetime; a profile change recreates the stream
+        const auto &source_streams = _multiplex_profile->GetSourceStreams();
+
+        int idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MIN_MS;
+
         while (_worker_thread_running.load())
         {
             _mux_state = MuxState::Playing;
             bool break_loop = false;
-            // Get Streams and Push
-            auto source_streams = _multiplex_profile->GetSourceStreams();
+            bool any_packet_popped = false;
+
             for (auto &source_stream : source_streams)
             {
                 auto stream_tap = source_stream->GetStreamTap();
@@ -134,39 +148,66 @@ namespace pvd
                     break;
                 }
 
-                auto media_packet = stream_tap->Pop(100);
-                if (media_packet == nullptr)
+                // Drain without waiting so an empty source cannot throttle the other sources
+                for (int drain_count = 0; drain_count < MULTIPLEX_MAX_DRAIN_PER_SOURCE; drain_count++)
                 {
-                    continue;
+                    auto media_packet = stream_tap->Pop(0);
+                    if (media_packet == nullptr)
+                    {
+                        break;
+                    }
+
+                    any_packet_popped = true;
+
+                    if (IsPublished() == false)
+                    {
+                        if (Publish() == false)
+                        {
+                            break_loop = true;
+                            break;
+                        }
+                    }
+
+                    auto source_track_id = MakeSourceTrackIdUnique(stream_tap->GetId(), media_packet->GetTrackId());
+                    auto new_track_id = GetNewTrackId(source_track_id);
+                    if (new_track_id == 0)
+                    {
+                        continue;
+                    }
+
+                    // The stamp of the source stream does not describe this stream's
+                    // track; SendFrame() attaches this stream's own hint instead
+                    media_packet->SetTrack(nullptr);
+                    media_packet->SetTrackId(new_track_id);
+
+                    SendFrame(media_packet);
                 }
 
-				if (IsPublished() == false)
-				{
-					if (Publish() == false)
-					{
-						break_loop = true;
-						break;
-					}
-				}
-
-                auto source_track_id = MakeSourceTrackIdUnique(stream_tap->GetId(), media_packet->GetTrackId());
-                auto new_track_id = GetNewTrackId(source_track_id);
-                if (new_track_id == 0)
+                if (break_loop)
                 {
-                    continue;
+                    break;
                 }
-
-                // The stamp of the source stream does not describe this stream's
-                // track; SendFrame() attaches this stream's own hint instead
-                media_packet->SetTrack(nullptr);
-                media_packet->SetTrackId(new_track_id);
-
-                SendFrame(media_packet);
             }
 
             if (break_loop)
             {
                 break;
+            }
+
+            if (any_packet_popped == false)
+            {
+                // Every tap was empty in this round
+                std::this_thread::sleep_for(std::chrono::milliseconds(idle_sleep_ms));
+
+                idle_sleep_ms *= 2;
+                if (idle_sleep_ms > MULTIPLEX_IDLE_SLEEP_MAX_MS)
+                {
+                    idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MAX_MS;
+                }
+            }
+            else
+            {
+                idle_sleep_ms = MULTIPLEX_IDLE_SLEEP_MIN_MS;
             }
         }
 

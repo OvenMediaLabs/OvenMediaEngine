@@ -84,9 +84,9 @@ components:
             type: string
     Pass:
       type: object
-      required: [schema,urls]
+      required: [scheme,urls]
       properties:
-        schme:
+        scheme:
           type: string
         urls:
           $ref: '#/components/schemas/Urls'
@@ -255,27 +255,36 @@ components:
           type: string
         input:
           type: object
-          required: [sourceType,tracks]
+          required: [createdTime,sourceType,tracks]
           properties:
             createdTime:
               type: string
               format: date-time
             sourceType:
               type: string
+              description: Provider that ingested this stream.
+              enum: [WebRTC,Ovt,Rtmp,RtmpPull,Rtsp,RtspPull,Transcoder,SRT,MPEGTS,Scheduled,Multiplex,File,Unknown]
             sourceUrl:
               type: string
+              description: Source address of the input stream. Omitted when the provider has no source address.
             tracks:
               $ref: '#/components/schemas/Tracks'
         outputs:
-          type: object
-          required: [name,tracks]
-          properties:
-            name:
-              type: string
-            tracks:
-              $ref: '#/components/schemas/Tracks'
-            playlists:
-              $ref: '#/components/schemas/Playlists'
+          type: array
+          description: For a source or transcoded stream, the output streams created by the output profiles, or an empty array until one exists. For a relay stream with no child output stream, the relay stream itself as the single entry.
+          items:
+            type: object
+            required: [name,tracks,playlists]
+            properties:
+              name:
+                type: string
+              tracks:
+                $ref: '#/components/schemas/Tracks'
+              playlists:
+                type: array
+                description: Playlists of this output stream. Empty when the output stream has no playlist.
+                items:
+                  $ref: '#/components/schemas/StreamPlaylist'
     StreamPush:
       type: object
       required: [stream,protocol,url]
@@ -639,6 +648,8 @@ components:
           type: boolean
     Timebase:
       type: object
+      required: [num,den]
+      description: Timebase of the track. The owning object omits this field when the track has no valid timebase.
       properties:
         num:
           type: integer
@@ -648,103 +659,324 @@ components:
           format: int32
     AudioTrack:
       type: object
+      required: [id,name,type,audio]
       properties:
         id:
           type: integer
-          format: uint32
+          format: int32
         name:
           type: string
+          description: Variant name of the track. Falls back to the media type name, such as Video or Audio, when no variant name is set.
         type:
           type: string
+          enum: [Audio]
         audio:
           type: object
+          required: [bypass,codec,samplerate,channel,bitrate,bitrateConf]
           properties:
+            bypass:
+              type: boolean
             codec:
               type: string
+              description: Codec of the track, such as AAC, MP3 or OPUS.
+            codecModule:
+              type: string
+              description: Codec module in use, such as default, fdkaac or libopus. Present only when bypass is false.
+            codecStatus:
+              type: string
+              enum: [Ready,Failed]
+              description: State of the codec. A bypass track always reports Ready. Other tracks omit this field until a codec reports its state.
+            language:
+              type: string
+              description: Omitted when the track has no language.
+            characteristics:
+              type: string
+              description: Omitted when the track has no characteristics.
             samplerate:
               type: integer
               format: int32
             channel:
               type: integer
               format: int32
+              description: Number of audio channels.
             bitrate:
-              type: string
+              type: integer
+              format: int32
+              description: Bitrate in bps. The configured bitrate when it is set, otherwise the measured average bitrate.
             bitrateConf:
-              type: string
+              type: integer
+              format: int32
+              description: Configured bitrate in bps. The output profile setting for an encoded track, or the value declared by the source for an input track. 0 when it is not configured.
             bitrateAvg:
-              type: string
+              type: integer
+              format: int32
+              description: Measured average bitrate in bps. Omitted when the track has no measurement.
             bitrateLatest:
+              type: integer
+              format: int32
+              description: Measured bitrate of the last second in bps. Omitted when the track has no measurement.
+            configChangeCount:
+              type: integer
+              format: int32
+              description: Number of runtime configuration changes of the track. Omitted when the track has no measurement.
+            lastConfigChanged:
               type: string
+              format: date-time
+              description: Time of the last configuration change. Present only when configChangeCount is greater than 0.
             timebase:
               $ref: '#/components/schemas/Timebase'
     VideoTrack:
       type: object
+      required: [id,name,type,video]
       properties:
         id:
           type: integer
-          format: uint32
+          format: int32
         name:
           type: string
+          description: Variant name of the track. Falls back to the media type name, such as Video or Audio, when no variant name is set.
         type:
           type: string
+          enum: [Video]
         video:
           type: object
+          required: [bypass,codec,width,maxWidth,height,maxHeight,bitrate,bitrateConf,framerate,framerateConf,maxFramerate,keyFrameInterval,keyFrameIntervalConf]
           properties:
             bypass:
               type: boolean
             codec:
               type: string
+              description: Codec of the track, such as H264, H265, VP8, VP9 or AV1.
+            codecModule:
+              type: string
+              description: Codec module in use, such as default, x264, openh264 or nv. Present only when bypass is false.
+            codecStatus:
+              type: string
+              enum: [Ready,Failed]
+              description: State of the codec. A bypass track always reports Ready. Other tracks omit this field until a codec reports its state.
+            language:
+              type: string
+              description: Omitted when the track has no language.
+            characteristics:
+              type: string
+              description: Omitted when the track has no characteristics.
             width:
               type: integer
               format: int32
             height:
               type: integer
               format: int32
+            maxWidth:
+              type: integer
+              format: int32
+              description: Highest width seen on this track. This value never decreases.
+            maxHeight:
+              type: integer
+              format: int32
+              description: Highest height seen on this track. This value never decreases.
             bitrate:
-              type: string
+              type: integer
+              format: int32
+              description: Bitrate in bps. The configured bitrate when it is set, otherwise the measured average bitrate.
             bitrateConf:
-              type: string
+              type: integer
+              format: int32
+              description: Configured bitrate in bps. The output profile setting for an encoded track, or the value declared by the source for an input track. 0 when it is not configured.
             bitrateAvg:
-              type: string
+              type: integer
+              format: int32
+              description: Measured average bitrate in bps. Omitted when the track has no measurement.
             bitrateLatest:
-              type: string
+              type: integer
+              format: int32
+              description: Measured bitrate of the last second in bps. Omitted when the track has no measurement.
             framerate:
               type: number
               format: float
+              description: The configured framerate when it is set, otherwise the measured average framerate.
             framerateConf:
               type: number
               format: float
+              description: Configured framerate. The output profile setting for an encoded track, or the value declared by the source for an input track. 0 when it is not configured.
             framerateAvg:
               type: number
               format: float
+              description: Measured average framerate. Omitted when the track has no measurement.
             framerateLatest:
               type: number
               format: float
-            timebase:
-              $ref: '#/components/schemas/Timebase'
+              description: Measured framerate of the last second. Omitted when the track has no measurement.
+            maxFramerate:
+              type: number
+              format: float
+              description: Highest framerate seen on this track. This value never decreases.
             hasBframes:
               type: boolean
+              description: Whether B frames were detected. Omitted when the track has no measurement.
             keyFrameInterval:
               type: number
               format: float
+              description: GOP size in frames. The configured value when it is set, otherwise the measured average.
             keyFrameIntervalConf:
               type: number
               format: float
+              description: Key frame interval configured by the output profile. 0 when it is not configured.
             keyFrameIntervalAvg:
               type: number
               format: float
+              description: Measured average key frame interval. Omitted when the track has no measurement.
             keyFrameIntervalLatest:
               type: number
               format: float
+              description: Most recently measured key frame interval. Omitted when the track has no measurement.
             deltaFramesSinceLastKeyFrame:
               type: integer
               format: int32
+              description: Number of delta frames after the last key frame. Omitted when the track has no measurement.
+            configChangeCount:
+              type: integer
+              format: int32
+              description: Number of runtime configuration changes of the track. Omitted when the track has no measurement.
+            lastConfigChanged:
+              type: string
+              format: date-time
+              description: Time of the last configuration change. Present only when configChangeCount is greater than 0.
+            timebase:
+              $ref: '#/components/schemas/Timebase'
+    DataTrack:
+      type: object
+      required: [id,name,type,data]
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+          description: Variant name of the track. Falls back to the media type name, such as Video or Audio, when no variant name is set.
+        type:
+          type: string
+          enum: [Data]
+        data:
+          type: object
+          required: [codec]
+          properties:
+            codec:
+              type: string
+    SubtitleTrack:
+      type: object
+      required: [id,name,type,subtitle]
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+          description: Variant name of the track. Falls back to the media type name, such as Video or Audio, when no variant name is set.
+        type:
+          type: string
+          enum: [Subtitle]
+        subtitle:
+          type: object
+          required: [codec,autoSelect,default,forced]
+          properties:
+            codec:
+              type: string
+              description: Codec of the track, such as WebVTT or WHISPER.
+            codecStatus:
+              type: string
+              enum: [Ready,Failed]
+              description: State of the codec. A bypass track always reports Ready. Other tracks omit this field until a codec reports its state.
+            language:
+              type: string
+              description: Omitted when the track has no language.
+            characteristics:
+              type: string
+              description: Omitted when the track has no characteristics.
+            autoSelect:
+              type: boolean
+            default:
+              type: boolean
+            forced:
+              type: boolean
+            timebase:
+              $ref: '#/components/schemas/Timebase'
+            stt:
+              type: object
+              description: Speech to text metadata. Present only when codec is WHISPER.
+              required: [translation]
+              properties:
+                engine:
+                  type: string
+                model:
+                  type: string
+                sourceLanguage:
+                  type: string
+                translation:
+                  type: boolean
+                outputLabel:
+                  type: string
+    OtherTrack:
+      type: object
+      description: Track kind that carries no media payload object. Rarely produced.
+      required: [id,name,type]
+      properties:
+        id:
+          type: integer
+          format: int32
+        name:
+          type: string
+          description: Variant name of the track. Falls back to the media type name, such as Video or Audio, when no variant name is set.
+        type:
+          type: string
+          enum: [Attachment,Unknown]
     Tracks:
       type: array
       items:
         anyOf:
           - $ref: '#/components/schemas/AudioTrack'
           - $ref: '#/components/schemas/VideoTrack'
+          - $ref: '#/components/schemas/DataTrack'
+          - $ref: '#/components/schemas/SubtitleTrack'
+          - $ref: '#/components/schemas/OtherTrack'
+    StreamRendition:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Omitted when the rendition has no name.
+        videoVariantName:
+          type: string
+          description: Omitted when the rendition has no video variant.
+        audioVariantName:
+          type: string
+          description: Omitted when the rendition has no audio variant.
+    StreamPlaylistOptions:
+      type: object
+      required: [webrtcAutoAbr,hlsChunklistPathDepth,enableTsPackaging]
+      properties:
+        webrtcAutoAbr:
+          type: boolean
+        hlsChunklistPathDepth:
+          type: integer
+          format: int32
+        enableTsPackaging:
+          type: boolean
+    StreamPlaylist:
+      type: object
+      required: [options,renditions]
+      properties:
+        name:
+          type: string
+          description: Omitted when the playlist has no name.
+        fileName:
+          type: string
+          description: Omitted when the playlist has no file name.
+        options:
+          $ref: '#/components/schemas/StreamPlaylistOptions'
+        renditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StreamRendition'
     Rendition:
       type: object
       required: [name]
@@ -833,7 +1065,7 @@ components:
           $ref: '#/components/schemas/AudioTemplate'
     Playlist:
       type: object
-      required: [name,filename]
+      required: [name,fileName]
       properties:
         name:
           type: string
@@ -1715,7 +1947,8 @@ paths:
               schema:
                 allOf:
                   - $ref: '#/components/schemas/HttpStatus'
-                  - properties:
+                  - required: [response]
+                    properties:
                       response:
                         $ref: '#/components/schemas/Stream'
         '401':

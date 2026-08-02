@@ -906,12 +906,9 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 					{
 						stream_tap->SetNeedPastData(false);
 
-						for (const auto &item : stream->GetMirrorBuffer())
+						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							if (item->GetElapsedMilliseconds() < MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
-							{
-								stream_tap->Push(item->packet);
-							}
+							stream_tap->PushBackfill(item->packet);
 						}
 					}
 					else
@@ -993,12 +990,9 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 					{
 						stream_tap->SetNeedPastData(false);
 
-						for (const auto &item : stream->GetMirrorBuffer())
+						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							if (item->GetElapsedMilliseconds() < MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
-							{
-								stream_tap->Push(item->packet);
-							}
+							stream_tap->PushBackfill(item->packet);
 						}
 					}
 					else

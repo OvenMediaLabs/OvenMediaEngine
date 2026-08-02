@@ -17,7 +17,7 @@ namespace serdes
 
 	static void SetTimebase(Json::Value &parent_object, const char *key, const cmn::Timebase &timebase, Optional optional)
 	{
-		CONVERTER_RETURN_IF(timebase.GetDen() > 0, Json::objectValue);
+		CONVERTER_RETURN_IF(timebase.IsValid() == false, Json::objectValue);
 
 		SetInt(object, "num", timebase.GetNum());
 		SetInt(object, "den", timebase.GetDen());
