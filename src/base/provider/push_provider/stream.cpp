@@ -17,9 +17,8 @@ namespace pvd
 {
 	namespace
 	{
-		// How `PushStream::_activity_state` is laid out.
-		// The `OnDataReceived()` count and the change counter share the word with `REAPING_FLAG`,
-		// so one compare-and-swap can require that none of them has moved.
+		// `PushStream::_activity_state` layout. All three live in one word,
+		// so a single compare-and-swap can require that none of them has moved.
 		constexpr uint64_t HANDLER_COUNT_MASK = 0x000000000000FFFFULL;
 		constexpr uint64_t CHANGE_COUNT_MASK  = 0x7FFFFFFFFFFF0000ULL;
 		constexpr uint64_t CHANGE_COUNT_STEP  = 0x0000000000010000ULL;
@@ -89,11 +88,9 @@ namespace pvd
 		_related_channel_id = related_channel_id;
 	}
 
-	// Marks a write to something `GetSilenceState()` reads, without disturbing the `OnDataReceived()`
-	// count or letting the counter carry into `REAPING_FLAG`. Called once before the write and once
-	// after, so the counter is odd exactly while a write is in flight. `TryBeginReaping()` needs that:
-	// publishing the value before the counter would leave a write that lands between
-	// `GetSilenceState()` and the swap invisible to the swap.
+	// Marks a write to something `GetSilenceState()` reads. Called once before and once after the write,
+	// so the counter is odd exactly while a write is in flight,
+	// which is how `TryBeginReaping()` rejects a state read across one.
 	void PushStream::CountStateChange()
 	{
 		auto state = _activity_state.load();
@@ -179,17 +176,13 @@ namespace pvd
 
 		if ((expected & CHANGE_COUNT_STEP) != 0)
 		{
-			// An odd count means a write was in flight when `GetSilenceState()` read the fields below it,
-			// so at least one of them is from either side of that write.
+			// A write was in flight while the fields below the counter were read.
 			return false;
 		}
 
-		// The word has to still hold no `OnDataReceived()`, no `REAPING_FLAG`,
-		// and the change count `state` was read with.
-		// One swap therefore rules out a call being inside the channel,
-		// another caller having got here first,
-		// and anything having moved since `GetSilenceState()` read it.
-		// Losing changes nothing, so a stale caller never costs a packet.
+		// The word must still hold no `OnDataReceived()`, no `REAPING_FLAG`,
+		// and the change count that `state` was read with.
+		// Losing the swap changes nothing, so a stale caller costs no data.
 		return _activity_state.compare_exchange_strong(expected, expected | REAPING_FLAG);
 	}
 
@@ -223,11 +216,9 @@ namespace pvd
 			return;
 		}
 
-		// Apply `PacketSilenceTimeoutMs` only when the operator set it to a positive value.
-		// A provider default filled in during config parsing (MPEG-TS gets `1500` ms) is not the
-		// operator's intent and keeps applying only once the stream is published, and an explicit `0`
-		// leaves the channel-creation default in place rather than removing the guard, which for
-		// MPEG-TS over UDP is the only thing that can reap a channel that never publishes.
+		// Only a positive value the operator set applies here. A provider default filled in during
+		// config parsing (MPEG-TS gets `1500` ms) is not the operator's intent, and an explicit `0`
+		// leaves the channel-creation default in place instead of removing the timeout altogether.
 		bool is_configured	  = false;
 		const auto timeout_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType(), &is_configured);
 
@@ -256,22 +247,18 @@ namespace pvd
 		bool is_configured		 = false;
 		const auto configured_ms = application->GetConfiguredFirstMediaWaitTimeoutMs(provider_type, &is_configured);
 
-		// The option is off unless the operator set it. With it off, this window keeps the
-		// `PacketSilenceTimeoutMs` policy it had before the option existed, and the wait never starts,
-		// so `EndFirstMediaWait()` has nothing to end either.
-		// A `0` cannot get here: the config layer rejects it, along with an empty or non-numeric element.
+		// With the option unset no wait runs, and `PacketSilenceTimeoutMs` governs this window instead.
+		// A `0` cannot get here: the config layer rejects it, as it does an empty or non-numeric value.
 		if ((is_configured == false) || (configured_ms <= 0))
 		{
 			ApplyConfiguredPacketSilenceTimeoutMs(vhost_app_name);
 			return;
 		}
 
-		// The operator sized this wait, so it governs even when `PacketSilenceTimeoutMs` is set too.
-		// That option describes a stream that has already published.
+		// This wait governs even with `PacketSilenceTimeoutMs` set, which sizes a published stream.
 		SetPacketSilenceTimeoutMs(configured_ms);
 
-		// The timeout is in place, so the first media packet can end this wait from here.
-		// Arming it only now is what keeps a media message that arrived earlier from consuming it.
+		// Armed only after the timeout is in place, so a message that arrived earlier cannot consume it.
 		_first_media_wait_phase = FirstMediaWaitPhase::Waiting;
 	}
 
@@ -297,8 +284,7 @@ namespace pvd
 		auto application = provider->GetApplicationByName(vhost_app_name);
 		if (application == nullptr)
 		{
-			// The wait keeps running so a later packet can still end it,
-			// rather than being spent on a lookup that may succeed next time.
+			// The wait keeps running, so a later message can still end it.
 			return;
 		}
 
@@ -308,14 +294,14 @@ namespace pvd
 		auto expected = FirstMediaWaitPhase::Waiting;
 		if (_first_media_wait_phase.compare_exchange_strong(expected, FirstMediaWaitPhase::Ended) == false)
 		{
-			// Another packet ended the wait first.
+			// Another message ended the wait first.
 			return;
 		}
 
-		// Only a value the operator set positively governs the channel from here.
-		// Everything else falls back to the budget an unpublished channel is created with.
-		// This wait's budget is sized for a source that has not sent anything yet,
-		// so keeping it would let a channel that sent one packet and stopped hold on for that long again.
+		// Only a positive value the operator set governs from here,
+		// and everything else falls back to the channel-creation timeout.
+		// This wait is sized for a source that has not sent anything yet,
+		// so it must not survive the first frame.
 		SetPacketSilenceTimeoutMs((is_configured && (configured_ms > 0))
 									  ? configured_ms
 									  : DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);

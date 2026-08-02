@@ -505,14 +505,12 @@ namespace pvd
 
 			// Admission webhooks may have redirected the stream,
 			// so this is the first point where the final application is known.
-			// Store it, because ending the first-media wait has to read the application that began it,
-			// and that happens long before `PublishStream()` recomputes the member.
+			// Ending the first-media wait reads it again, before `PublishStream()` recomputes the member.
 			_vhost_app_name = app_info.GetVHostAppName();
 			UpdateNamePath(_vhost_app_name);
 
-			// The wait for the first media packet starts here,
-			// and a source may send nothing at all during it,
-			// so replace the `PacketSilenceTimeoutMs` the channel was created with.
+			// A source may send nothing between here and its first media,
+			// so this replaces the `PacketSilenceTimeoutMs` the channel was created with.
 			ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 			return true;
@@ -1626,8 +1624,7 @@ namespace pvd
 		{
 			if (IsWaitingForFirstMedia() && rtmp::CarriesVideoFrame(payload))
 			{
-				// Media is flowing now, so the wait sized for the first frame is over,
-				// even though publishing may still be waiting for the other track or for enough messages.
+				// Publishing may still be waiting for another track, but the wait for media is over.
 				EndFirstMediaWait(_vhost_app_name);
 			}
 
@@ -1823,8 +1820,7 @@ namespace pvd
 		{
 			if (IsWaitingForFirstMedia() && rtmp::CarriesAudioFrame(message->payload))
 			{
-				// Media is flowing now, so the wait sized for the first frame is over,
-				// even though publishing may still be waiting for the other track or for enough messages.
+				// Publishing may still be waiting for another track, but the wait for media is over.
 				EndFirstMediaWait(_vhost_app_name);
 			}
 

@@ -130,11 +130,9 @@ namespace pvd
 		// In the future,
 		// it may be necessary to send data to an application rather than sending it directly to a stream.
 		{
-			// Mark the channel while `PushStream::OnDataReceived()` runs,
-			// so its own duration is not read as client silence. Access control blocks inside that call.
-			// The received time is published before the mark is cleared.
-			// Otherwise `ChannelTaskRunner()` could see a channel that no longer has a call inside it,
-			// yet still carrying a time from before a long one.
+			// Marks the channel while `PushStream::OnDataReceived()` runs, so the time it spends there,
+			// access control included, is not read as client silence. The received time is published
+			// before the mark is cleared, so no reader sees a cleared mark with an older time.
 			ProcessingDataGuard guard(channel);
 
 			if (guard.IsEntered() == false)
@@ -186,9 +184,8 @@ namespace pvd
 		}
 		else
 		{
-			// The channel never joined an application, so `Application::DeleteStream()` did not run
-			// and nothing has torn down the transport.
-			// Without this, the client keeps its connection open and believes it is still streaming.
+			// The channel never joined an application.
+			// `Application::DeleteStream()` did not run, so nothing tells the client it stopped.
 			channel->CloseTransport();
 		}
 
@@ -244,14 +241,13 @@ namespace pvd
 			{
 				auto channel = x.second;
 
-				// Everything this needs, read once, so it cannot pair an elapsed time from before a call to
-				// `PushStream::OnDataReceived()` with a `PacketSilenceTimeoutMs` from after it.
+				// Read once, so nothing below pairs an elapsed time from one side of an `OnDataReceived()`
+				// with a `PacketSilenceTimeoutMs` from the other.
 				const auto state = channel->GetSilenceState();
 
 				if (state.is_processing)
 				{
-					// `PushStream::OnDataReceived()` is inside this channel, so it is not silent.
-					// Acting here would delete a channel that is in the middle of access control.
+					// A call is inside this channel, so the channel is not silent.
 					continue;
 				}
 
@@ -272,8 +268,7 @@ namespace pvd
 				{
 					if (channel->TryBeginReaping(state) == false)
 					{
-						// `PushStream::OnDataReceived()` entered the channel, or replaced this state, since
-						// `GetSilenceState()` read it. The next tick reads the channel again.
+						// The channel changed since `GetSilenceState()` read it. The next tick reads again.
 						continue;
 					}
 

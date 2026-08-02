@@ -13,6 +13,7 @@
 #include <modules/rtmp_v2/rtmp.h>
 #include <orchestrator/orchestrator.h>
 
+#include "../rtmp_media_frame.h"
 #include "../rtmp_provider_private.h"
 #include "../rtmp_stream_v2.h"
 #include "../tracks/rtmp_audio_track.h"
@@ -1521,31 +1522,15 @@ namespace pvd::rtmp
 		const bool is_ex_header	 = parser.IsExHeader();
 		const bool is_published	 = _stream->IsPublished();
 
-		// A codec description is not media, so it must not end the wait for the first frame.
-		// Only a description is excluded; anything else counts,
-		// which is what this path did for every media message before the wait existed.
+		// Any one message of this chunk carrying a coded frame ends the wait for the first media.
 		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			if (parsed_data->audio_packet_type.has_value())
-			{
-				carries_media_frame = carries_media_frame ||
-									  (parsed_data->audio_packet_type.value() != modules::flv::AudioPacketType::SequenceStart);
-			}
-			else if (parsed_data->sound_format == modules::flv::SoundFormat::Aac)
-			{
-				carries_media_frame = carries_media_frame ||
-									  (parsed_data->aac_packet_type != modules::flv::AACPacketType::SequenceHeader);
-			}
-			else
-			{
-				// No packet type byte exists for this sound format, so every message is a frame.
-				carries_media_frame = true;
-			}
+			carries_media_frame = carries_media_frame || CarriesAudioFrame(*parsed_data);
 
-			auto track_id	= parsed_data->track_id;
-			auto rtmp_track = _stream->GetRtmpTrack(track_id);
+			auto track_id		= parsed_data->track_id;
+			auto rtmp_track		= _stream->GetRtmpTrack(track_id);
 
 			if (rtmp_track == nullptr)
 			{
@@ -1671,27 +1656,15 @@ namespace pvd::rtmp
 		const bool is_ex_header	 = parser.IsExHeader();
 		const bool is_published	 = _stream->IsPublished();
 
-		// See the note in `HandleAudio()`: a codec description must not end the wait for the first frame.
+		// Any one message of this chunk carrying a coded frame ends the wait for the first media.
 		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			switch (parsed_data->video_packet_type)
-			{
-				case modules::flv::VideoPacketType::SequenceStart:
-					[[fallthrough]];
-				case modules::flv::VideoPacketType::SequenceEnd:
-					[[fallthrough]];
-				case modules::flv::VideoPacketType::Metadata:
-					break;
+			carries_media_frame = carries_media_frame || CarriesVideoFrame(*parsed_data);
 
-				default:
-					carries_media_frame = true;
-					break;
-			}
-
-				// Currently, metadata is not handled separately.
-				// If an RTMP client that sends metadata is found later, it will be added.
+			// Currently, metadata is not handled separately.
+			// If an RTMP client that sends metadata is found later, it will be added.
 #if DEBUG
 			if (parsed_data->video_metadata.has_value())
 			{

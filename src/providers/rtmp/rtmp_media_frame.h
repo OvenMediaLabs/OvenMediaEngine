@@ -10,62 +10,108 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 #include <modules/containers/flv/flv_parser.h>
+#include <modules/containers/flv_v2/flv_audio_data.h>
+#include <modules/containers/flv_v2/flv_video_data.h>
 
 namespace pvd::rtmp
 {
-	// A codec description is not media, so it must not end the wait for an input's first frame.
-	// An encoder can send the sequence header as soon as it has initialised, long before its first frame:
-	// ffmpeg at 1 fps sends it within 100 ms of `publish` and its first frame 65 s later.
+	// Whether an RTMP message carries a coded frame,
+	// which is what ends `PushStream`'s wait for an input's first media.
+	// A codec description does not: an encoder can send its sequence header long before its first frame.
 	//
-	// These read the FLV tag header directly rather than going through `flv::VideoData::Parse()`
-	// or `flv::AudioData::Parse()`.
-	// That parser rejects every video codec this provider cannot service and logs an error for it,
-	// and it reads the audio packet type byte without checking that the sound format has one.
-	// Only a layout known to carry a description is excluded here; anything else counts as a frame,
-	// which is what the provider did for every media message before the wait existed.
+	// Only a layout known to carry a coded frame counts, because the two wrong answers differ in cost.
+	// Taking a description for a frame ends the wait early and gets the channel deleted.
+	// Taking a frame for a description keeps the wait running until the stream publishes.
+	//
+	// The legacy overloads read the tag header directly rather than through `flv::VideoData::Parse()`,
+	// which logs an error for every codec it does not service.
 
 	inline bool CarriesVideoFrame(const std::shared_ptr<const ov::Data> &payload)
 	{
 		if ((payload == nullptr) || (payload->GetLength() < 2))
 		{
-			return true;
-		}
-
-		auto header = payload->GetDataAs<uint8_t>();
-
-		// An enhanced video tag header carries `videoPacketType` in the low nibble instead of a codec id.
-		// The legacy provider cannot service those codecs at all and drops the connection on the first
-		// one, so there is nothing to gain from telling their descriptions apart here.
-		if (OV_CHECK_FLAG(header[0], 0x80))
-		{
-			return true;
-		}
-
-		if ((header[0] & 0x0F) != ov::ToUnderlyingType(flv::VideoCodecId::AVC))
-		{
-			return true;
-		}
-
-		return header[1] != ov::ToUnderlyingType(flv::AvcPacketType::SequenceHeader);
-	}
-
-	inline bool CarriesAudioFrame(const std::shared_ptr<const ov::Data> &payload)
-	{
-		// An audio message with no tag header at all is RTMP's silence message, not a description.
-		if ((payload == nullptr) || (payload->GetLength() < 2))
-		{
-			return true;
+			return false;
 		}
 
 		const auto *header = payload->GetDataAs<uint8_t>();
 
-		// The packet type byte exists only for AAC. For every other sound format that byte is already
-		// media data, so reading it as a packet type would decide this at random.
-		if ((header[0] >> 4) != ov::ToUnderlyingType(flv::SoundFormat::AAC))
+		// Bit 7 marks an enhanced tag header, whose codec is a FOURCC. This path services AVC only.
+		if (OV_CHECK_FLAG(header[0], 0x80))
 		{
-			return true;
+			return false;
 		}
 
-		return header[1] != ov::ToUnderlyingType(flv::AACPacketType::SequenceHeader);
+		// A video info or command frame carries a command in place of a coded frame.
+		if ((header[0] >> 4) == ov::ToUnderlyingType(flv::VideoFrameType::VideoInfoCommand))
+		{
+			return false;
+		}
+
+		if ((header[0] & 0x0F) != ov::ToUnderlyingType(flv::VideoCodecId::AVC))
+		{
+			return false;
+		}
+
+		// `SequenceHeader` describes the codec, and `EndOfSequence` has an empty body.
+		return header[1] == ov::ToUnderlyingType(flv::AvcPacketType::NALU);
+	}
+
+	inline bool CarriesAudioFrame(const std::shared_ptr<const ov::Data> &payload)
+	{
+		if ((payload == nullptr) || (payload->GetLength() < 2))
+		{
+			return false;
+		}
+
+		const auto *header = payload->GetDataAs<uint8_t>();
+
+		// This path services AAC only.
+		// Sound format 9 keeps an `AudioPacketType` in the low nibble and a FOURCC in byte 1,
+		// and every other format has no packet type byte at all.
+		if ((header[0] >> 4) != ov::ToUnderlyingType(flv::SoundFormat::AAC))
+		{
+			return false;
+		}
+
+		return header[1] == ov::ToUnderlyingType(flv::AACPacketType::Raw);
+	}
+
+	// The E-RTMP overloads answer for one parsed message.
+
+	inline bool CarriesAudioFrame(const modules::flv::AudioData &data)
+	{
+		// The enhanced path fills `audio_packet_type`, and legacy AAC fills `aac_packet_type`.
+		if (data.audio_packet_type.has_value())
+		{
+			return data.audio_packet_type.value() == modules::flv::AudioPacketType::CodedFrames;
+		}
+
+		if (data.sound_format == modules::flv::SoundFormat::Aac)
+		{
+			return data.aac_packet_type == modules::flv::AACPacketType::Raw;
+		}
+
+		return false;
+	}
+
+	inline bool CarriesVideoFrame(const modules::flv::VideoData &data)
+	{
+		if (data.video_frame_type == modules::flv::VideoFrameType::Command)
+		{
+			return false;
+		}
+
+		// The legacy AVC path reads its `AvcPacketType` byte into this field,
+		// so `CodedFrames` covers an AVC NALU as well as an enhanced coded frame.
+		switch (data.video_packet_type)
+		{
+			case modules::flv::VideoPacketType::CodedFrames:
+				[[fallthrough]];
+			case modules::flv::VideoPacketType::CodedFramesX:
+				return true;
+
+			default:
+				return false;
+		}
 	}
 }  // namespace pvd::rtmp
