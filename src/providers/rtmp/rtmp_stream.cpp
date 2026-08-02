@@ -501,16 +501,18 @@ namespace pvd
 
 		if (app_info.IsValid())
 		{
-			_app_id = app_info.GetId();
+			_app_id			= app_info.GetId();
 
 			// Admission webhooks may have redirected the stream,
 			// so this is the first point where the final application is known.
 			// Ending the first-media wait reads it again, before `PublishStream()` recomputes the member.
 			_vhost_app_name = app_info.GetVHostAppName();
 			UpdateNamePath(_vhost_app_name);
+			_import_chunk->UpdateNamePath(GetNamePath());
 
 			// A source may send nothing between here and its first media,
-			// so this replaces the `PacketSilenceTimeoutMs` the channel was created with.
+			// which is the window `FirstMediaWaitTimeoutMs` sizes.
+			// Without that option this applies `PacketSilenceTimeoutMs`.
 			ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 			return true;
