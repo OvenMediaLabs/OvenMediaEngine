@@ -1518,11 +1518,32 @@ namespace pvd::rtmp
 		}
 
 		std::map<int, std::shared_ptr<RtmpTrack>> rtmp_track_to_send_map;
-		const bool is_ex_header = parser.IsExHeader();
-		const bool is_published = _stream->IsPublished();
+		const bool is_ex_header	 = parser.IsExHeader();
+		const bool is_published	 = _stream->IsPublished();
+
+		// A codec description is not media, so it must not end the wait for the first frame.
+		// Only a description is excluded; anything else counts,
+		// which is what this path did for every media message before the wait existed.
+		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
+			if (parsed_data->audio_packet_type.has_value())
+			{
+				carries_media_frame = carries_media_frame ||
+									  (parsed_data->audio_packet_type.value() != modules::flv::AudioPacketType::SequenceStart);
+			}
+			else if (parsed_data->sound_format == modules::flv::SoundFormat::Aac)
+			{
+				carries_media_frame = carries_media_frame ||
+									  (parsed_data->aac_packet_type != modules::flv::AACPacketType::SequenceHeader);
+			}
+			else
+			{
+				// No packet type byte exists for this sound format, so every message is a frame.
+				carries_media_frame = true;
+			}
+
 			auto track_id	= parsed_data->track_id;
 			auto rtmp_track = _stream->GetRtmpTrack(track_id);
 
@@ -1591,9 +1612,12 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
-			// Media is flowing now, so the wait sized for the first packet is over,
-			// even though publishing may still be waiting for the other track or for enough packets.
-			_stream->EndFirstMediaWait();
+			if (carries_media_frame)
+			{
+				// Media is flowing now, so the wait sized for the first frame is over,
+				// even though publishing may still be waiting for the other track or for enough packets.
+				_stream->EndFirstMediaWait();
+			}
 
 			if (_stream->IsReadyToPublish() == false)
 			{
@@ -1644,13 +1668,30 @@ namespace pvd::rtmp
 		}
 
 		std::map<int, std::shared_ptr<RtmpTrack>> rtmp_track_to_send_map;
-		const bool is_ex_header = parser.IsExHeader();
-		const bool is_published = _stream->IsPublished();
+		const bool is_ex_header	 = parser.IsExHeader();
+		const bool is_published	 = _stream->IsPublished();
+
+		// See the note in `HandleAudio()`: a codec description must not end the wait for the first frame.
+		bool carries_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			// Currently, metadata is not handled separately.
-			// If an RTMP client that sends metadata is found later, it will be added.
+			switch (parsed_data->video_packet_type)
+			{
+				case modules::flv::VideoPacketType::SequenceStart:
+					[[fallthrough]];
+				case modules::flv::VideoPacketType::SequenceEnd:
+					[[fallthrough]];
+				case modules::flv::VideoPacketType::Metadata:
+					break;
+
+				default:
+					carries_media_frame = true;
+					break;
+			}
+
+				// Currently, metadata is not handled separately.
+				// If an RTMP client that sends metadata is found later, it will be added.
 #if DEBUG
 			if (parsed_data->video_metadata.has_value())
 			{
@@ -1748,9 +1789,12 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
-			// Media is flowing now, so the wait sized for the first packet is over,
-			// even though publishing may still be waiting for the other track or for enough packets.
-			_stream->EndFirstMediaWait();
+			if (carries_media_frame)
+			{
+				// Media is flowing now, so the wait sized for the first frame is over,
+				// even though publishing may still be waiting for the other track or for enough packets.
+				_stream->EndFirstMediaWait();
+			}
 
 			if (_stream->IsReadyToPublish() == false)
 			{

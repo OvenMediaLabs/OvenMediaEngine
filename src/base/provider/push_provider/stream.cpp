@@ -275,6 +275,11 @@ namespace pvd
 		_first_media_wait_phase = FirstMediaWaitPhase::Waiting;
 	}
 
+	bool PushStream::IsWaitingForFirstMedia() const
+	{
+		return _first_media_wait_phase.load() == FirstMediaWaitPhase::Waiting;
+	}
+
 	void PushStream::EndFirstMediaWait(const info::VHostAppName &vhost_app_name)
 	{
 		if (_first_media_wait_phase.load() != FirstMediaWaitPhase::Waiting)

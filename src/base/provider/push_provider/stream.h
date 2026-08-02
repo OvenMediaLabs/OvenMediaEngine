@@ -100,17 +100,26 @@ namespace pvd
 		// An option the operator did not set leaves that default in place.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// Sizes the wait that ends with the first media packet, and starts it.
-		// `FirstMediaWaitTimeoutMs` governs the budget when the operator sized it,
-		// otherwise an operator-configured `PacketSilenceTimeoutMs` does, and failing that its default.
+		// Sizes the wait for an input's first coded frame, and starts it.
+		// `FirstMediaWaitTimeoutMs` governs the wait, and the option is off unless the operator set it.
+		// With it absent this applies `PacketSilenceTimeoutMs` and never starts the wait,
+		// so the window keeps the policy it had before the option existed.
 		void ApplyConfiguredFirstMediaWaitTimeoutMs(const info::VHostAppName &vhost_app_name);
 
-		// Ends the wait `ApplyConfiguredFirstMediaWaitTimeoutMs()` started, on the first media packet.
+		// Ends the wait `ApplyConfiguredFirstMediaWaitTimeoutMs()` started.
+		// A provider calls this for a message carrying a coded frame, never for a codec description:
+		// an encoder can send the sequence header long before its first frame,
+		// and ending the wait on that header would leave the wait doing nothing.
 		// The channel is still unpublished: a positive `PacketSilenceTimeoutMs` set by the operator wins,
-		// and everything else falls back to the channel-creation budget.
+		// and everything else falls back to the channel-creation timeout.
 		// `PushApplication::JoinStream()` applies the effective value, `0` included, at publish.
-		// Only the first media packet after the wait started has an effect: an earlier one does nothing.
+		// Only the first such frame after the wait started has an effect: an earlier one does nothing.
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
+
+		// Whether the wait above is running.
+		// A provider asks this before working out whether a message carries a frame,
+		// so nothing is spent on that question while the option is off.
+		bool IsWaitingForFirstMedia() const;
 
 		uint32_t GetNumberOfAttempsToPublish()
 		{
