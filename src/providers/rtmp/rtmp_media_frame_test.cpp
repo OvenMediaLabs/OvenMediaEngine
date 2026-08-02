@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 
+#include <initializer_list>
+#include <vector>
+
 //  Covers which FLV tag layouts count as a coded frame, on both the legacy and the E-RTMP path.
 namespace
 {
