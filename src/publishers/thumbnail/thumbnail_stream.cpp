@@ -103,7 +103,7 @@ void ThumbnailStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_p
 
 std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCodecId codec_id, int64_t timeout_ms)
 {
-	// If the stream has no track for the codec, return nullptr immediately
+	// There is no track for this codec, so the image will never arrive
 	auto tracks = GetTracks();
 	if (std::any_of(tracks.begin(), tracks.end(), [codec_id](const auto &item) {
 			return (item.second != nullptr) && (item.second->GetCodecId() == codec_id);

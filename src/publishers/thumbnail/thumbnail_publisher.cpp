@@ -355,9 +355,8 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;	
 		}
 
-		// Return the cached image without waiting, this handler runs on the socket worker thread
-		// TODO(Keukhan): PullStream() and the AdmissionWebhooks call still block that thread. The exchange
-		// should be handed over to a worker thread as the HLS publisher does, then it can wait again.
+		// Do not wait here, this handler runs on the socket worker thread
+		// TODO(Keukhan): PullStream() and AdmissionWebhooks still block it, handle this on a worker thread
 		auto endcoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 0);
 		if (endcoded_video_frame == nullptr)
 		{
