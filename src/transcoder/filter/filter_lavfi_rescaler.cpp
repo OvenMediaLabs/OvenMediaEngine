@@ -329,8 +329,6 @@ std::shared_ptr<MediaFrame> FilterLavfiRescaler::ReceiveFrame()
 			continue;
 		}
 
-		// Convert duration to output track timebase
-		output_frame->SetDuration((int64_t)((double)output_frame->GetDuration() * _input_track->GetTimeBase().GetExpr() / _output_track->GetTimeBase().GetExpr()));
 		output_frame->SetSourceId(_source_id);
 
 #if _SIMULATE_PROCESSING_DELAY_ENABLED

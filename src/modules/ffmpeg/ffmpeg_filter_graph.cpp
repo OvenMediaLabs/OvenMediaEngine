@@ -144,7 +144,7 @@ namespace ffmpeg
 				}
 
 				// Validate before copying the host planes into the AVFrame.
-				int planes = ::av_pix_fmt_count_planes(pix_fmt);
+				int planes = compat::GetPlaneCount(pix_fmt);
 				if (planes <= 0 || host_holder->GetPlaneCount() != planes)
 				{
 					return CodecResult::InvalidData;

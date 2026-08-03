@@ -322,6 +322,39 @@ namespace ffmpeg
 		return cmn::VideoPixelFormatId::None;
 	}
 
+	int compat::GetPlaneCount(AVPixelFormat pixel_format)
+	{
+		int planes = ::av_pix_fmt_count_planes(pixel_format);
+		return (planes < 0) ? 0 : planes;
+	}
+
+	int compat::GetPlaneCount(cmn::VideoPixelFormatId pixel_format)
+	{
+		return GetPlaneCount(ToAVPixelFormat(pixel_format));
+	}
+
+	AVPixelFormat compat::GetSampleAVPixelFormat(const AVFrame *frame)
+	{
+		// An audio frame's format is an AVSampleFormat, so it must not be read as a pixel format.
+		if (frame == nullptr || frame->width <= 0 || frame->height <= 0)
+		{
+			return AV_PIX_FMT_NONE;
+		}
+
+		if (frame->hw_frames_ctx == nullptr)
+		{
+			return static_cast<AVPixelFormat>(frame->format);
+		}
+
+		auto *frames_ctx = reinterpret_cast<AVHWFramesContext *>(frame->hw_frames_ctx->data);
+		return (frames_ctx != nullptr) ? frames_ctx->sw_format : AV_PIX_FMT_NONE;
+	}
+
+	cmn::VideoPixelFormatId compat::GetSampleVideoPixelFormat(const AVFrame *frame)
+	{
+		return ToVideoPixelFormat(GetSampleAVPixelFormat(frame));
+	}
+
 	AVPixelFormat compat::GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format)
 	{
 		auto hw_device_ctx = TranscodeGPU::GetInstance()->GetDeviceContext(module_id, gpu_id);

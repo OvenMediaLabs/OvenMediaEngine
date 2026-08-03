@@ -40,7 +40,7 @@ namespace ffmpeg
 		void FillZero() override;
 
 		int GetPlaneCount() const override;
-		const uint8_t *GetPlaneData(int plane) const override;
+		uint8_t *GetPlaneData(int plane) override;
 		int GetStride(int plane) const override;
 		cmn::VideoPixelFormatId GetPixelFormat() const override;
 
