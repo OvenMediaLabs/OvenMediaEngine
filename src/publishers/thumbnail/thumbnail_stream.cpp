@@ -106,9 +106,12 @@ std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCode
 	// If the stream has no track for the codec, return nullptr immediately
 	auto tracks = GetTracks();
 	if (std::any_of(tracks.begin(), tracks.end(), [codec_id](const auto &item) {
-			return item.second->GetCodecId() == codec_id;
+			return (item.second != nullptr) && (item.second->GetCodecId() == codec_id);
 		}) == false)
 	{
+		logtd("There is no %s track in the stream [%s/%s]",
+			  cmn::GetCodecIdString(codec_id), GetApplicationName(), GetName().CStr());
+
 		return nullptr;
 	}
 
