@@ -301,17 +301,6 @@ namespace api
 			//   ]
 			// }
 
-			// Cue Event
-			// {
-			// 	"eventFormat": "cue",
-			// 	"events":[
-			// 		{
-			// 			"cueType": "out", // out | in
-			// 			"duration": 60500 // milliseconds, only available when cueType is out
-			// 		}
-			// 	]
-			// }
-
 			// SEI Event
 			// {
 			// 	"eventFormat": "sei",

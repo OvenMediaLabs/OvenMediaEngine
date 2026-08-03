@@ -1315,7 +1315,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 			return;
 		}
 
-		// The IN paired with an OUT arrives as its own event from the creation point
+		// An OUT and its return(IN) arrive as separate events
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::WebVTT)
 	{

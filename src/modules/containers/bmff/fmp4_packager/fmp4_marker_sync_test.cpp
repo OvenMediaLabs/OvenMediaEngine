@@ -25,8 +25,7 @@
 // marker. This holds when the keyframe interval is strictly shorter than the
 // segment duration and divides it evenly; these tests drive the supported
 // configurations with the real packagers and verify the invariants over many
-// cues. OUT and IN arrive as separate events, as the event creation point emits
-// them.
+// cues. An OUT and its return(IN) arrive as separate events.
 
 namespace
 {
@@ -196,7 +195,7 @@ namespace
 		auto video = MakePipeline(MakeVideoTrack(gop_frames), observer, segment_duration_ms);
 		auto audio = MakePipeline(MakeAudioTrack(), observer, segment_duration_ms);
 
-		// The event creation point stamps the marker one keyframe interval ahead
+		// Marker events are stamped one keyframe interval ahead of the media time
 		const int64_t marker_lead_ms = static_cast<int64_t>(gop_ms);
 
 		std::vector<int64_t> cue_out_timestamps;
