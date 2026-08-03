@@ -223,7 +223,9 @@ TEST(FilterLavfiResampler, MismatchedFrameDoesNotDisableFilter)
 
 	// Hands the frame over and drains whatever the graph produced for it
 	auto push_and_drain = [&resampler](std::shared_ptr<MediaFrame> media_frame) -> int {
-		EXPECT_NE(resampler->ProcessFrameInternal(media_frame).result, TranscodeResult::DataError);
+		// Handing a frame over never yields output on its own; a non-null frame
+		// always reports Again, so draining is the only way to get output
+		EXPECT_EQ(resampler->ProcessFrameInternal(media_frame).result, TranscodeResult::Again);
 
 		int completed = 0;
 
@@ -232,7 +234,8 @@ TEST(FilterLavfiResampler, MismatchedFrameDoesNotDisableFilter)
 			auto recv = resampler->PopCompletedFrameInternal();
 			if (recv.result != TranscodeResult::DataReady)
 			{
-				EXPECT_NE(recv.result, TranscodeResult::DataError);
+				// A usable graph only ever reports DataReady or Again
+				EXPECT_EQ(recv.result, TranscodeResult::Again);
 				break;
 			}
 
