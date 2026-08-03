@@ -20,6 +20,8 @@ public:
 	void SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet) override;
 	void SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet) override {} // Not supported
 
+	// Returns nullptr if the stream has no track for the codec, or if no image
+	// has arrived until timeout_ms has elapsed
 	std::shared_ptr<ov::Data> GetVideoFrameByCodecId(cmn::MediaCodecId codec_id, int64_t timeout_ms = 0);
 private:
 	bool Start() override;

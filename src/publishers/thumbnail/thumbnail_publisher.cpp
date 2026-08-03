@@ -355,12 +355,14 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;	
 		}
 
-		// Wait O seconds for thumbnail image to be received
+		// TODO(Keukhan): This handler runs on the socket worker thread, so waiting here also stalls the
+		// publishers sharing the port. The exchange should be handed over to a worker thread and answered
+		// there, as the HLS publisher does with Stream::SendMessage() + DoNotCallAndDoNotResponse.
 		auto endcoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 5000);
 		if (endcoded_video_frame == nullptr)
 		{
 			response->AppendString(ov::String::FormatString("There is no thumbnail image"));
-			response->SetStatusCode(http::StatusCode::NotFound);					
+			response->SetStatusCode(http::StatusCode::NotFound);
 			return http::svr::NextHandler::DoNotCall;
 		}
 

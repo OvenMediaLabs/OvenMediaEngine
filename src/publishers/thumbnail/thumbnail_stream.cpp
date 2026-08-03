@@ -1,5 +1,6 @@
 #include "thumbnail_stream.h"
 
+#include <algorithm>
 #include <regex>
 
 #include "base/publisher/application.h"
@@ -102,8 +103,17 @@ void ThumbnailStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_p
 
 std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCodecId codec_id, int64_t timeout_ms)
 {
+	// If the stream has no track for the codec, return nullptr immediately
+	auto tracks = GetTracks();
+	if (std::any_of(tracks.begin(), tracks.end(), [codec_id](const auto &item) {
+			return item.second->GetCodecId() == codec_id;
+		}) == false)
+	{
+		return nullptr;
+	}
+
 	ov::StopWatch	watch;
-	
+
 	watch.Start();
 
 	do
