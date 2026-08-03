@@ -107,6 +107,11 @@ namespace bmff
 
 		// Negative when no cut is pending
 		double _pending_cut_timestamp_ms = -1.0;
+
+		// Position of a marker already consumed by a mid-segment chunk; the segment
+		// still has to end at the first cuttable frame at or after this position.
+		// Negative when none is pending, track timescale
+		int64_t _pending_marker_cut_timestamp = -1;
 		// Timestamp of the last boundary this packager handled (own track change or
 		// an applied cut), to ignore re-propagation of the same boundary event
 		double _last_boundary_timestamp_ms = -1.0;

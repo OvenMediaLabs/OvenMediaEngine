@@ -10,15 +10,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 #include <base/ovlibrary/hex.h>
 #include <base/publisher/application.h>
 #include <base/publisher/stream.h>
 #include <config/config_manager.h>
-
-#include <pugixml-1.9/src/pugixml.hpp>
-
-#include <base/modules/data_format/cue_event/cue_event.h>
 
 #include <pugixml-1.9/src/pugixml.hpp>
 
@@ -1284,6 +1281,31 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE || media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
 	{
+		// Marker alignment across tracks requires the keyframe interval to be
+		// strictly shorter than the segment duration and to divide it evenly;
+		// an equal interval also breaks the alignment
+		if (_cue_alignment_warned == false)
+		{
+			auto video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (video_track != nullptr)
+			{
+				auto keyframe_interval_ms = video_track->GetKeyframeIntervalDurationMs();
+				auto segment_duration_ms = static_cast<double>(_storage_config.segment_duration_ms);
+				if (keyframe_interval_ms > 0)
+				{
+					auto remainder_ms = std::fmod(segment_duration_ms, keyframe_interval_ms);
+					bool divides = (remainder_ms <= 1.0) || ((keyframe_interval_ms - remainder_ms) <= 1.0);
+					bool shorter = keyframe_interval_ms < (segment_duration_ms - 1.0);
+					if (divides == false || shorter == false)
+					{
+						logtw("LLHlsStream(%s/%s) - The keyframe interval (%.0f ms) must be shorter than the segment duration (%.0f ms) and divide it evenly. CUE/SCTE-35 markers cannot be kept aligned across renditions with this configuration. Adjust the encoder GOP or <SegmentDuration>.",
+							  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), keyframe_interval_ms, segment_duration_ms);
+						_cue_alignment_warned = true;
+					}
+				}
+			}
+		}
+
 		// milliseconds scale
 		auto timestamp_ms = static_cast<double>(media_packet->GetDts()) / data_track->GetTimeBase().GetTimescale() * 1000.0;
 		std::shared_ptr<ov::Data> data = media_packet->GetData() != nullptr ? media_packet->GetData()->Clone() : nullptr;
@@ -1293,54 +1315,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 			return;
 		}
 
-		// Parse data
-		if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE)
-		{
-			auto cue_event = CueEvent::Parse(media_packet->GetData());
-			if (cue_event == nullptr)
-			{
-				logte("Failed to parse cue event");
-				return;
-			}
-
-			if (cue_event->GetCueType() == CueEvent::CueType::OUT)
-			{
-				// Make CUE-IN event
-				auto cue_out_duration_ms = cue_event->GetDurationMsec();
-				auto cue_in_timestamp_ms = timestamp_ms + cue_out_duration_ms;
-				auto cue_in_data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
-
-				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::CUE, cue_in_timestamp_ms, cue_in_data) == false)
-				{
-					logte("Failed to insert CUE-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), cue_in_timestamp_ms);
-					return;
-				}
-			}
-		}
-		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
-		{
-			auto scte35_event = Scte35Event::Parse(media_packet->GetData());
-			if (scte35_event == nullptr)
-			{
-				logte("Failed to parse scte35 event (track_id: %u, timestamp: %" PRId64 ")", media_packet->GetTrackId(), media_packet->GetDts());
-				return;
-			}
-
-			if (scte35_event->IsOutOfNetwork() == true)
-			{
-				// Make SCTE35-IN event
-				auto scte_out_duration_ms = scte35_event->GetDurationMsec();
-				auto scte_in_timestamp_ms = timestamp_ms + scte_out_duration_ms;
-				auto scte_in_data = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, scte35_event->GetID(), false, scte_in_timestamp_ms, scte_out_duration_ms, false)->Serialize();
-
-				// xxx-OUT marker will create one more segment, so we need to shift the sequence number by 1
-				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::SCTE35, scte_in_timestamp_ms, scte_in_data) == false)
-				{
-					logte("Failed to insert SCTE35-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), scte_in_timestamp_ms);
-					return;
-				}
-			}
-		}
+		// The IN paired with an OUT arrives as its own event from the creation point
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::WebVTT)
 	{
@@ -1371,9 +1346,6 @@ std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat b
 	{
 		return {false, "Could not find data track"};
 	}
-
-	auto first_video_media_track = GetFirstTrackByType(cmn::MediaType::Video);
-	auto first_video_packager = GetPackager(first_video_media_track->GetId());
 
 	// Insert marker to all packagers
 	for (const auto &it : GetTracks())
@@ -1422,10 +1394,12 @@ bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::Bitstr
 	}
 
 	auto first_video_media_track = GetFirstTrackByType(cmn::MediaType::Video);
-	auto first_video_packager = GetPackager(first_video_media_track->GetId());
+	auto first_video_packager = (first_video_media_track != nullptr) ? GetPackager(first_video_media_track->GetId()) : nullptr;
 
-	// Create marker
-	int64_t estimated_seq = first_video_packager->GetEstimatedSequenceNumber(timestamp_ms);
+	// The estimate comes from the video packager because video owns the coarsest
+	// cut granularity; without a video track it falls back to the highest
+	// current sequence number below
+	int64_t estimated_seq = (first_video_packager != nullptr) ? first_video_packager->GetEstimatedSequenceNumber(timestamp_ms) : -1;
 	int64_t max_current_seq = 0;
 	// 0: check if it can insert
 	// 1: insert
