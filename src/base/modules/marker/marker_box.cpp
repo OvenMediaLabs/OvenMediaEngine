@@ -371,10 +371,11 @@ std::tuple<bool, ov::String> MarkerBox::CanInsertMarker(const std::shared_ptr<Ma
 		{
 			bool last_still_pending = _markers_by_timestamp.find(_last_inserted_marker->GetTimestamp()) != _markers_by_timestamp.end();
 
-			if (_last_inserted_marker->GetTimestamp() >= marker->GetTimestamp())
+			if (last_still_pending == true && _last_inserted_marker->GetTimestamp() >= marker->GetTimestamp())
 			{
 				// An earlier IN cancels the pending one; the same timestamp is a
-				// duplicate of the same return point and replaces it harmlessly
+				// duplicate of the same return point and replaces it harmlessly.
+				// Once it has been emitted there is no open break left to modify
 			}
 			else if (_last_inserted_marker->IsProvisional() == true && last_still_pending == true && marker->IsProvisional() == false)
 			{
@@ -384,7 +385,7 @@ std::tuple<bool, ov::String> MarkerBox::CanInsertMarker(const std::shared_ptr<Ma
 			}
 			else
 			{
-				return {false, "IN marker only can be modified with the less timestamp"};
+				return {false, "IN marker can only be modified while it is pending, with an equal or earlier timestamp"};
 			}
 		}
 		// OUT -> IN

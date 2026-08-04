@@ -556,6 +556,19 @@ namespace bmff
 					last_chunk = true;
 				}
 
+				if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
+												samples->GetStartTimestamp(),
+												total_sample_duration_ms,
+												samples->IsIndependent(),
+												last_chunk,
+												markers) == false)
+				{
+					logte("FMP4Packager::AppendSample() - Failed to store media chunk");
+					return false;
+				}
+
+				// The storage may have force-completed an overlong segment, so the
+				// pending cut is settled on the flag it reports back
 				if (last_chunk == true)
 				{
 					// A completed boundary satisfies any pending marker cut
@@ -577,17 +590,6 @@ namespace bmff
 					{
 						_pending_marker_cut_timestamp = std::max(_pending_marker_cut_timestamp, marker->GetTimestamp());
 					}
-				}
-
-				if (_storage != nullptr && _storage->AppendMediaChunk(chunk, 
-												samples->GetStartTimestamp(), 
-												total_sample_duration_ms, 
-												samples->IsIndependent(), 
-												last_chunk, 
-												markers) == false)
-				{
-					logte("FMP4Packager::AppendSample() - Failed to store media chunk");
-					return false;
 				}
 
 				_sample_buffer.Reset();
@@ -697,10 +699,11 @@ namespace bmff
 			// Storage expects milliseconds, samples hold durations in timescale units
 			double total_sample_duration_ms = (static_cast<double>(samples->GetTotalDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
 
+			bool last_chunk = true;
 			if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
 											samples->GetStartTimestamp(),
 											total_sample_duration_ms,
-											samples->IsIndependent(), true) == false)
+											samples->IsIndependent(), last_chunk) == false)
 			{
 				logte("FMP4Packager::Flush() - Failed to store media chunk");
 				return false;

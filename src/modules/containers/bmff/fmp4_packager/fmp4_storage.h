@@ -56,7 +56,9 @@ namespace bmff
 		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override;
 		
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &section);
-		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
+		// last_chunk is in/out: the storage force-completes an overlong segment on
+		// its own and reports it back through this flag
+		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool &last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
 
 		// Switch to a new version of the track at a runtime configuration change.
 		// Completes the in-progress segment and creates subsequent segments with the

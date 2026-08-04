@@ -448,6 +448,70 @@ TEST(FMP4MarkerSyncTest, ProvisionalInRejectsProvisionalExtension)
 	EXPECT_TRUE(can_insert_explicit);
 }
 
+TEST(FMP4MarkerSyncTest, EmittedInRejectsDuplicate)
+{
+	constexpr double kSegmentMs = 1600.0;
+	constexpr int kGopFrames = 24;
+
+	auto observer = std::make_shared<NullStorageObserver>();
+	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
+
+	// Feed well past the return point so both markers were emitted into segments
+	const int64_t out_ts = 4800;
+	const int64_t planned_in_ts = out_ts + 20000;
+	run.Feed(kGopFrames, planned_in_ts + 10000, out_ts, 20000, -1, 0, true);
+
+	ASSERT_EQ(CollectMarkers(run.video, CueEvent::CueType::IN).size(), 1u);
+
+	// A late duplicate of the emitted IN has no open break left to modify
+	auto data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
+	auto duplicate_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts, planned_in_ts, data);
+	auto [can_insert, message] = run.video.packager->CanInsertMarker(duplicate_marker);
+	EXPECT_FALSE(can_insert);
+
+	// An earlier IN is equally stale after the emission
+	auto earlier_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts - 5000, planned_in_ts - 5000, data);
+	auto [can_insert_earlier, message_earlier] = run.video.packager->CanInsertMarker(earlier_marker);
+	EXPECT_FALSE(can_insert_earlier);
+
+	// The next break still opens normally
+	auto out_data = CueEvent::Create(CueEvent::CueType::OUT, 20000, 0)->Serialize();
+	auto next_out_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts + 20000, planned_in_ts + 20000, out_data);
+	auto [can_insert_out, message_out] = run.video.packager->CanInsertMarker(next_out_marker);
+	EXPECT_TRUE(can_insert_out);
+}
+
+TEST(FMP4MarkerSyncTest, ForcedCompletionSettlesPendingMarkerCut)
+{
+	// A keyframe interval beyond twice the segment duration makes the storage
+	// force-complete every video segment; the forced boundary must also settle
+	// the pending marker cut, or the next keyframe cuts a spurious boundary
+	constexpr double kSegmentMs = 1600.0;
+	constexpr int kGopFrames = 240;	 // 8 s
+
+	auto observer = std::make_shared<NullStorageObserver>();
+	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
+
+	// The OUT position falls mid-GOP, so no keyframe can serve the cut before
+	// the segment is forced closed
+	run.Feed(kGopFrames, 12000, 4000, 20000, -1, 0, true);
+
+	ASSERT_EQ(CollectMarkers(run.video, CueEvent::CueType::OUT).size(), 1u);
+
+	// Every completed video segment here is a forced one, well past the target;
+	// a short segment can only come from a stale pending cut
+	for (int64_t number = 0; number <= run.video.storage->GetLastSegmentNumber(); number++)
+	{
+		auto segment = run.video.storage->GetSegment(number);
+		if (segment == nullptr || segment->IsCompleted() == false)
+		{
+			continue;
+		}
+
+		EXPECT_GT(segment->GetDurationMs(), kSegmentMs) << "video segment " << number << " was cut by a stale pending marker cut";
+	}
+}
+
 TEST(FMP4MarkerSyncTest, HalfSegmentGop)
 {
 	// 1.6 s segments, 0.8 s keyframe interval
