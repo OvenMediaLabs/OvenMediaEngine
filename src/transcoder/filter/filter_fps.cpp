@@ -251,7 +251,10 @@ std::shared_ptr<MediaFrame> FilterFps::Flush()
 	const cmn::Rational input_tb(_input_timebase.GetNum(), _input_timebase.GetDen());
 
 	int64_t curr_timebase_pts = cmn::Rational::Rescale(_curr_pts, output_frame_tb, input_tb);
-	int64_t next_timebase_pts = cmn::Rational::Rescale(_next_pts, output_frame_tb, input_tb);
+
+	// The duration spans the skipped slots as well, the same way Pop() does
+	int64_t delta = (_skip_frames <= SkipFramesMin) ? 0 : _skip_frames;
+	int64_t next_timebase_pts = cmn::Rational::Rescale(_next_pts + delta, output_frame_tb, input_tb);
 
 	auto flush_frame = _frames[0]->CloneFrame(_output_frame_copy_mode == OutputFrameCopyMode::DeepCopy ? true : false);
 	flush_frame->SetPts(curr_timebase_pts);

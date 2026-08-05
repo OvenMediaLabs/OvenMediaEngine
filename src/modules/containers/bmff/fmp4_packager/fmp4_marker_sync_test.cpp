@@ -505,8 +505,8 @@ TEST(FMP4MarkerSyncTest, TimeModeKeyframeIntervalGapValidation)
 	EXPECT_TRUE(accepted) << accept_message.CStr();
 
 	auto short_cue = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 5000, 5000, CueEvent::Create(CueEvent::CueType::OUT, 2000, 0)->Serialize());
-	auto [rejected, reject_message] = pipeline.packager->CanInsertMarker(short_cue);
-	EXPECT_FALSE(rejected);
+	auto [short_cue_accepted, reject_message] = pipeline.packager->CanInsertMarker(short_cue);
+	EXPECT_FALSE(short_cue_accepted) << reject_message.CStr();
 }
 
 TEST(FMP4MarkerSyncTest, HalfSegmentGop)

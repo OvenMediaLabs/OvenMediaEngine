@@ -159,7 +159,8 @@ protected:
 
 	// KeyframeGridRestore state. The last output keyframe position is tracked
 	// in Complete(); the frame counter and the restore target are touched only
-	// by the codec thread.
+	// by the codec thread. Arming is best-effort: a restore firing may absorb a
+	// re-arm racing in from another thread, and the next track change re-arms.
 	std::atomic<int64_t> _last_keyframe_pts{-1};
 	std::atomic<bool> _keyframe_grid_restore_armed{false};
 	int64_t _keyframe_grid_restore_target_pts = -1;

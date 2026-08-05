@@ -511,7 +511,7 @@ bool TranscodeEncoder::ComputeTimeModeGridRestore(const std::shared_ptr<const Me
 		logtd("Keyframe cadence restored at pts(%" PRId64 "), target(%" PRId64 ")", frame->GetPts(), _keyframe_grid_restore_target_pts);
 
 		_keyframe_grid_restore_target_pts = -1;
-		_keyframe_grid_restore_armed = false;
+		_keyframe_grid_restore_armed.exchange(false);
 		return true;
 	}
 
