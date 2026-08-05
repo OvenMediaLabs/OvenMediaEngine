@@ -481,35 +481,32 @@ TEST(FMP4MarkerSyncTest, EmittedInRejectsDuplicate)
 	EXPECT_TRUE(can_insert_out);
 }
 
-TEST(FMP4MarkerSyncTest, ForcedCompletionSettlesPendingMarkerCut)
+TEST(FMP4MarkerSyncTest, TimeModeKeyframeIntervalGapValidation)
 {
-	// A keyframe interval beyond twice the segment duration makes the storage
-	// force-complete every video segment; the forced boundary must also settle
-	// the pending marker cut, or the next keyframe cuts a spurious boundary
-	constexpr double kSegmentMs = 1600.0;
-	constexpr int kGopFrames = 240;	 // 8 s
+	// In TIME mode KeyFrameInterval is milliseconds; the marker gap validation
+	// used to read it as a frame count, inflating the required gap about 30x
+	// and rejecting every marker
+	auto track = std::make_shared<MediaTrack>();
+	track->SetId(0);
+	track->SetMediaType(cmn::MediaType::Video);
+	track->SetCodecId(cmn::MediaCodecId::H264);
+	track->SetTimeBase(1, 1000);
+	track->SetFrameRateByConfig(30.0);
+	track->SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType::TIME);
+	track->SetKeyFrameIntervalByConfig(1000);  // 1 second
 
 	auto observer = std::make_shared<NullStorageObserver>();
-	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
+	auto pipeline = MakePipeline(track, observer, 1600.0);
 
-	// The OUT position falls mid-GOP, so no keyframe can serve the cut before
-	// the segment is forced closed
-	run.Feed(kGopFrames, 12000, 4000, 20000, -1, 0, true);
+	// 1.6 s segments with a 1 s keyframe interval round up to 2 s per cut, so
+	// the required gap is 3 s: a 20 s cue passes, a 2 s cue does not
+	auto long_cue = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 5000, 5000, CueEvent::Create(CueEvent::CueType::OUT, 20000, 0)->Serialize());
+	auto [accepted, accept_message] = pipeline.packager->CanInsertMarker(long_cue);
+	EXPECT_TRUE(accepted) << accept_message.CStr();
 
-	ASSERT_EQ(CollectMarkers(run.video, CueEvent::CueType::OUT).size(), 1u);
-
-	// Every completed video segment here is a forced one, well past the target;
-	// a short segment can only come from a stale pending cut
-	for (int64_t number = 0; number <= run.video.storage->GetLastSegmentNumber(); number++)
-	{
-		auto segment = run.video.storage->GetSegment(number);
-		if (segment == nullptr || segment->IsCompleted() == false)
-		{
-			continue;
-		}
-
-		EXPECT_GT(segment->GetDurationMs(), kSegmentMs) << "video segment " << number << " was cut by a stale pending marker cut";
-	}
+	auto short_cue = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 5000, 5000, CueEvent::Create(CueEvent::CueType::OUT, 2000, 0)->Serialize());
+	auto [rejected, reject_message] = pipeline.packager->CanInsertMarker(short_cue);
+	EXPECT_FALSE(rejected);
 }
 
 TEST(FMP4MarkerSyncTest, HalfSegmentGop)

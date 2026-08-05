@@ -709,13 +709,9 @@ double MarkerBox::GetActualTargetSegmentDurationMs() const
 
 	// Video can only cut at keyframes, so its real cadence is the target rounded
 	// up to the keyframe interval; the interval may be unknown (0) at this point
-	if (segment_info->media_type == cmn::MediaType::Video && segment_info->framerate > 0)
+	if (segment_info->media_type == cmn::MediaType::Video && segment_info->keyframe_interval_ms > 0)
 	{
-		auto keyframe_interval_ms = segment_info->keyframe_interval / segment_info->framerate * 1000;
-		if (keyframe_interval_ms > 0)
-		{
-			actual_segment_duration_ms = std::ceil(segment_info->target_segment_duration_ms / keyframe_interval_ms) * keyframe_interval_ms;
-		}
+		actual_segment_duration_ms = std::ceil(segment_info->target_segment_duration_ms / segment_info->keyframe_interval_ms) * segment_info->keyframe_interval_ms;
 	}
 
 	return actual_segment_duration_ms;

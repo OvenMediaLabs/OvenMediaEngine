@@ -88,19 +88,19 @@ protected:
 
 	struct SegmentationInfo
 	{
-		// 1/1000 scale 
+		// 1/1000 scale
 		cmn::MediaType media_type = cmn::MediaType::Unknown;
 
 		double last_sample_timestamp_ms = 0;
 		double last_sample_duration_ms = 0;
-		
+
 		bool is_last_segment_completed = false;
 		int64_t last_segment_number = -1;
 		int64_t last_partial_segment_number = -1;
 		double last_segement_duration_ms = 0;
-		
-		double keyframe_interval = 1.0; // 29, 30, 31...
-		double framerate = 0.0;
+
+		// 0 when unknown
+		double keyframe_interval_ms = 0.0;
 		double target_segment_duration_ms = 0;
 	};
 
