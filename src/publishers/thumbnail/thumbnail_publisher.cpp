@@ -357,8 +357,8 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 
 		// Do not wait here, this handler runs on the socket worker thread
 		// TODO(Keukhan): PullStream() and AdmissionWebhooks still block it, handle this on a worker thread
-		auto endcoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 0);
-		if (endcoded_video_frame == nullptr)
+		auto encoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 0);
+		if (encoded_video_frame == nullptr)
 		{
 			response->AppendString(ov::String::FormatString("There is no thumbnail image"));
 			response->SetStatusCode(http::StatusCode::NotFound);
@@ -367,7 +367,7 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 
 		response->SetHeader("Content-Type", MimeTypeFromMediaCodecId(media_codec_id));
 		response->SetStatusCode(http::StatusCode::OK);
-		response->AppendData(endcoded_video_frame);
+		response->AppendData(encoded_video_frame);
 		auto sent_size = response->Response();
 		exchange->Release();
 
