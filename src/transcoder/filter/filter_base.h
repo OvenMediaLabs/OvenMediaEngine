@@ -61,6 +61,18 @@ public:
 	virtual void Uninitialize() = 0;
 	virtual FilterResult ProcessFrameInternal(const std::shared_ptr<MediaFrame> &media_frame) = 0;
 	virtual FilterResult PopCompletedFrameInternal() = 0;
+	// Deliver frames still parked inside the filter before this instance is
+	// replaced by a reconfiguration; the default has nothing parked
+	virtual std::vector<std::shared_ptr<MediaFrame>> FlushBuffered()
+	{
+		return {};
+	}
+	// Carry timing continuity (e.g. the CFR output slot position) over from the
+	// filter instance this one replaces; the default carries nothing
+	virtual void InheritContinuity(const FilterBase *previous)
+	{
+		(void)previous;
+	}
 
 	int32_t GetInputWidth() const
 	{

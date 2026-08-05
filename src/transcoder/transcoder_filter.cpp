@@ -187,6 +187,10 @@ bool TranscodeFilter::Initialize()
 	}
 
 	ov::LockGuard lock(_mutex);
+	if (_filter_base != nullptr)
+	{
+		base->InheritContinuity(_filter_base.get());
+	}
 	_filter_base = base;
 
 	return true;
@@ -215,6 +219,16 @@ void TranscodeFilter::ThreadLoop()
 		// Recreate the (Rescaler/Resampler) filter if needed.
 		if (_setup_pending.exchange(false) == true)
 		{
+			// The outgoing filter still parks a frame in its FPS queue; deliver it
+			// before the swap or one output frame is lost at every boundary
+			if (auto old_base = GetBaseFilter(); old_base != nullptr)
+			{
+				for (auto &flushed_frame : old_base->FlushBuffered())
+				{
+					OnComplete(TranscodeResult::DataReady, std::move(flushed_frame));
+				}
+			}
+
 			if (Initialize() == false)
 			{
 				logte("[%s] Failed to reconfigure filter", _input_stream_info->GetUri().CStr());
@@ -234,6 +248,12 @@ void TranscodeFilter::ThreadLoop()
 		// of the previous format are still queued behind it.
 		if (IsFormatChanged(base, media_frame) == true)
 		{
+			// Deliver the frame parked in the outgoing filter before the swap
+			for (auto &flushed_frame : base->FlushBuffered())
+			{
+				OnComplete(TranscodeResult::DataReady, std::move(flushed_frame));
+			}
+
 			UpdateInputTrackByFrame(base, media_frame);
 
 			if (Initialize() == false)

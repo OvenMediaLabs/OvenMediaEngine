@@ -127,6 +127,60 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 	}
 }
 
+std::vector<std::shared_ptr<MediaFrame>> FilterVideoBase::FlushBuffered()
+{
+	std::vector<std::shared_ptr<MediaFrame>> flushed_frames;
+
+	// Push the frames parked in the FPS filter through the rescaler graph
+	while (true)
+	{
+		auto parked_frame = _fps_filter.Flush();
+		if (parked_frame == nullptr)
+		{
+			break;
+		}
+
+		if (SendFrame(parked_frame) == false)
+		{
+			logtw("[%s] Dropped a parked frame that could not be pushed into the backend rescaler.", GetLogPrefix().CStr());
+		}
+	}
+
+	// Drain whatever the graph completes
+	while (true)
+	{
+		auto completed_frame = ReceiveFrame();
+		if (completed_frame == nullptr)
+		{
+			break;
+		}
+
+		flushed_frames.push_back(std::move(completed_frame));
+	}
+
+	return flushed_frames;
+}
+
+void FilterVideoBase::InheritContinuity(const FilterBase *previous)
+{
+	auto previous_video = dynamic_cast<const FilterVideoBase *>(previous);
+	if (previous_video == nullptr)
+	{
+		return;
+	}
+
+	// The slot position only transfers within the same output cadence
+	if (_fps_filter.GetOutputFrameRate() != previous_video->_fps_filter.GetOutputFrameRate())
+	{
+		return;
+	}
+
+	// A frame lost around the swap (e.g. still inside the decoder at a format
+	// change) leaves a slot hole no instance can see on its own; carrying the
+	// slot position lets the new filter refill it
+	_fps_filter.SetContinuationPts(previous_video->_fps_filter.GetNextPts());
+}
+
 int64_t FilterVideoBase::ElapsedTimeInUs(const std::chrono::steady_clock::time_point &start_time) const
 {
 	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();

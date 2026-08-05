@@ -1234,29 +1234,26 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 
 bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track)
 {
-	bool is_recreated = false;
-
 	// Check if an identical encoder already exists.
+	// An encoder that must reinitialize its codec session on an input change
+	// (e.g. a hardware frame pool swap) detects it per frame on its own thread
+	// (NeedReinitForFrame), so no encoder is ever torn down here.
 	if (auto encoder = GetEncoder(encoder_id); encoder != nullptr)
 	{
-		if (encoder->GetModuleID() == cmn::MediaCodecModuleId::NVENC)
+		logtd("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
+
+		// This track reuses an identical encoder that was previously created.
+		// No new encoder is created; only encoder-related information is updated on the track
+		UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
+
+		// The track change behind this call may have disturbed the pipeline
+		// (decoder or filter recreation); restore the keyframe cadence once
+		if (output_track->GetMediaType() == cmn::MediaType::Video)
 		{
-			logtd("%s Identical encoder already exists. but, it will be recreated because the encoder is %s. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), cmn::GetCodecModuleIdString(encoder->GetModuleID()), encoder_id, output_track->GetId());
-			encoder->Stop();
-			encoder.reset();
-
-			is_recreated = true;
+			encoder->ArmKeyframeGridRestore();
 		}
-		else
-		{
-			logtd("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
 
-			// This track reuses an identical encoder that was previously created.
-			// No new encoder is created; only encoder-related information is updated on the track
-			UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
-
-			return true;
-		}
+		return true;
 	}
 
 	// Get a list of available encoder candidates(modules)
@@ -1338,14 +1335,7 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 			break;
 	}
 
-	if (is_recreated)
-	{
-		logtd("%s Encoder has been recreated. %s", _log_prefix.CStr(), description.CStr());
-	}
-	else
-	{
-		logtd("%s Encoder has been created. %s", _log_prefix.CStr(), description.CStr());
-	}
+	logtd("%s Encoder has been created. %s", _log_prefix.CStr(), description.CStr());
 
 	return true;
 }

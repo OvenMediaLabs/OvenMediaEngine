@@ -380,6 +380,13 @@ void TranscodeEncoder::Complete(TranscodeResult result, std::shared_ptr<MediaPac
 		}
 	}
 
+	if (packet != nullptr && packet->GetFlag() == MediaPacketFlag::Key &&
+		GetRefTrack() != nullptr && GetRefTrack()->GetMediaType() == cmn::MediaType::Video)
+	{
+		// The keyframe cadence position, used by KeyframeGridRestore
+		_last_keyframe_pts = packet->GetPts();
+	}
+
 	if (!_complete_handler)
 	{
 		return;
@@ -445,6 +452,98 @@ void TranscodeEncoder::SetupForceKeyframeByTime()
 
 		logtt("Force keyframe by time interval is disabled.");
 	}
+}
+
+void TranscodeEncoder::ArmKeyframeGridRestore()
+{
+	_keyframe_grid_restore_armed = true;
+}
+
+bool TranscodeEncoder::ComputeKeyframeGridRestore(const std::shared_ptr<const MediaFrame> &frame)
+{
+	auto track = GetRefTrack();
+	if (track == nullptr || track->GetMediaType() != cmn::MediaType::Video)
+	{
+		return false;
+	}
+
+	if (track->GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME)
+	{
+		return ComputeTimeModeGridRestore(frame, track);
+	}
+
+	return ComputeFrameModeGridRestore(track);
+}
+
+bool TranscodeEncoder::ComputeTimeModeGridRestore(const std::shared_ptr<const MediaFrame> &frame, const std::shared_ptr<MediaTrack> &track)
+{
+	if (_keyframe_grid_restore_armed == false)
+	{
+		return false;
+	}
+
+	if (_keyframe_grid_restore_target_pts < 0)
+	{
+		int64_t last_keyframe_pts = _last_keyframe_pts;
+
+		// A TIME interval only ever comes from the configuration; the resolved
+		// getter falls back to a measured value in frames
+		int64_t interval = static_cast<int64_t>(track->GetKeyFrameIntervalByConfig() * track->GetTimeBase().GetTimescale() / 1000.0);
+
+		if (last_keyframe_pts < 0 || interval <= 0)
+		{
+			// No cadence to restore yet
+			_keyframe_grid_restore_armed = false;
+			return false;
+		}
+
+		// The first cadence position ahead of this frame
+		int64_t steps = (frame->GetPts() - last_keyframe_pts + interval - 1) / interval;
+		if (steps < 1)
+		{
+			steps = 1;
+		}
+		_keyframe_grid_restore_target_pts = last_keyframe_pts + steps * interval;
+	}
+
+	if (frame->GetPts() >= _keyframe_grid_restore_target_pts)
+	{
+		logtd("Keyframe cadence restored at pts(%" PRId64 "), target(%" PRId64 ")", frame->GetPts(), _keyframe_grid_restore_target_pts);
+
+		_keyframe_grid_restore_target_pts = -1;
+		_keyframe_grid_restore_armed = false;
+		return true;
+	}
+
+	return false;
+}
+
+bool TranscodeEncoder::ComputeFrameModeGridRestore(const std::shared_ptr<MediaTrack> &track)
+{
+	// Mirror the codec's own frame counting: every KeyFrameInterval-th frame is
+	// a cadence position, counted independently of any forced keyframes
+	int32_t interval_frames = track->GetKeyFrameInterval();
+	if (interval_frames <= 0)
+	{
+		_keyframe_grid_restore_armed = false;
+		return false;
+	}
+
+	bool at_cadence_position = false;
+	if (_frames_since_cadence_keyframe >= interval_frames)
+	{
+		at_cadence_position = true;
+		_frames_since_cadence_keyframe = 0;
+	}
+	_frames_since_cadence_keyframe++;
+
+	if (at_cadence_position == true && _keyframe_grid_restore_armed.exchange(false) == true)
+	{
+		logtd("Keyframe cadence restored");
+		return true;
+	}
+
+	return false;
 }
 
 bool TranscodeEncoder::ComputeForceKeyframe(const std::shared_ptr<const MediaFrame> &frame)
@@ -524,10 +623,18 @@ void TranscodeEncoder::ThreadLoop()
 			{
 				break;
 			}
+
+			// The fresh codec session opens with an immediate keyframe, shifting
+			// the cadence; restore it at the next original position
+			ArmKeyframeGridRestore();
 		}
 
 		// Send the frame to the encoder (force-keyframe decision is FFmpeg-free, made here).
 		bool force_keyframe = ComputeForceKeyframe(media_frame);
+
+		// Mirrors the cadence position every frame; when armed after a track
+		// change, forces one keyframe there so the cadence does not shift
+		force_keyframe = ComputeKeyframeGridRestore(media_frame) || force_keyframe;
 
 		auto sent = SendFrame(media_frame, force_keyframe);
 		if (sent.result == TranscodeResult::DataReady)
