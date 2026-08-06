@@ -87,7 +87,12 @@ namespace info
 
 		_from_origin_map_store = stream._from_origin_map_store;
 
-		_playlists = stream._playlists;
+		{
+			// The source keeps accepting playlists while this copy is taken
+			ov::SharedLockGuard lock(stream._playlists_mutex);
+			_playlists = stream._playlists;
+		}
+
 		_track_sets = stream._track_sets;
 		_representation_type = stream._representation_type;
 
@@ -716,12 +721,16 @@ namespace info
 
 	bool Stream::AddPlaylist(const std::shared_ptr<const Playlist> &playlist)
 	{
+		ov::ScopedLock lock(_playlists_mutex);
+
 		auto result = _playlists.emplace(playlist->GetFileName(), playlist);
 		return result.second;
 	}
 
 	std::shared_ptr<const Playlist> Stream::GetPlaylist(const ov::String &file_name) const
 	{
+		ov::SharedLockGuard lock(_playlists_mutex);
+
 		auto item = _playlists.find(file_name);
 		if (item == _playlists.end())
 		{
@@ -731,8 +740,11 @@ namespace info
 		return item->second;
 	}
 
-	const std::map<ov::String, std::shared_ptr<const Playlist>> &Stream::GetPlaylists() const
+	std::map<ov::String, std::shared_ptr<const Playlist>> Stream::GetPlaylists() const
 	{
+		// The entries are immutable and shared, so the snapshot stays valid after the lock is dropped
+		ov::SharedLockGuard lock(_playlists_mutex);
+
 		return _playlists;
 	}
 
