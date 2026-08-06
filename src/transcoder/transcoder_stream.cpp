@@ -1711,8 +1711,8 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 		auto input_timebase = (packet_track != nullptr) ? packet_track->GetTimeBase() : input_track->GetTimeBase();
 
 		// Rescale with integers: the double scale is inexact for common ratios
-		// (48000 -> 90000 gives 1.8749999999999998) and the cast truncates instead of
-		// rounding, so every packet lands a tick low.
+		// (e.g. 48000 -> 90000 gives 1.8749999999999998) and the cast truncates instead of
+		// rounding, so packets can land a tick off (48000 -> 90000 is worst-case: always 1 tick low).
 		const cmn::Rational input_tb(input_timebase.GetNum(), input_timebase.GetDen());
 		const cmn::Rational output_tb(output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
 
