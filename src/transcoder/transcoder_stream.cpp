@@ -1710,9 +1710,14 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 		auto packet_track = packet->GetTrack();
 		auto input_timebase = (packet_track != nullptr) ? packet_track->GetTimeBase() : input_track->GetTimeBase();
 
-		double scale = input_timebase.GetExpr() / output_track->GetTimeBase().GetExpr();
-		clone->SetPts(static_cast<int64_t>((double)clone->GetPts() * scale));
-		clone->SetDts(static_cast<int64_t>((double)clone->GetDts() * scale));
+		// Rescale with integers: the double scale is inexact for common ratios
+		// (48000 -> 90000 gives 1.8749999999999998) and the cast truncates instead of
+		// rounding, so every packet lands a tick low.
+		const cmn::Rational input_tb(input_timebase.GetNum(), input_timebase.GetDen());
+		const cmn::Rational output_tb(output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
+
+		clone->SetPts(cmn::Rational::Rescale(clone->GetPts(), input_tb, output_tb));
+		clone->SetDts(cmn::Rational::Rescale(clone->GetDts(), input_tb, output_tb));
 		clone->SetTrackId(output_track->GetId());
 
 		SendFrame(output_stream, std::move(clone));
