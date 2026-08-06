@@ -138,12 +138,28 @@ TEST(FilterFpsTest, ContinuationReAnchorsOnRealDiscontinuity)
 	EXPECT_EQ(DrainSlots(filter), (std::vector<int64_t>{25}));
 }
 
-TEST(FilterFpsTest, ContinuationReAnchorsBackward)
+TEST(FilterFpsTest, ContinuationDiscardsSmallBackwardOverlap)
 {
 	auto filter = MakeFilter();
 	filter.SetContinuationPts(10);
 
-	// Behind the inherited position: the timeline restarted
+	// An item splice re-bases the new item less than one frame after the old
+	// one, so its first frame can land on an already-emitted slot; the overlap
+	// is discarded instead of re-emitting the slot
+	ASSERT_TRUE(filter.Push(MakeFrame(9)));
+	ASSERT_TRUE(filter.Push(MakeFrame(10)));
+	EXPECT_EQ(DrainSlots(filter), (std::vector<int64_t>{}));
+
+	ASSERT_TRUE(filter.Push(MakeFrame(11)));
+	EXPECT_EQ(DrainSlots(filter), (std::vector<int64_t>{10}));
+}
+
+TEST(FilterFpsTest, ContinuationReAnchorsBackward)
+{
+	auto filter = MakeFilter();
+	filter.SetContinuationPts(30);
+
+	// Far behind the inherited position: the timeline restarted
 	ASSERT_TRUE(filter.Push(MakeFrame(5)));
 	ASSERT_TRUE(filter.Push(MakeFrame(6)));
 

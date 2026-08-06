@@ -124,7 +124,7 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 
 	if ((scaled_pts - _last_input_scaled_pts) != 1 && _last_input_scaled_pts != kNoPtsValue)
 	{
-		logtd("FPS filter input discontinuity: slot %" PRId64 " -> %" PRId64 " (hole %" PRId64 "), input pts %" PRId64,
+		logtt("FPS filter input discontinuity: slot %" PRId64 " -> %" PRId64 " (hole %" PRId64 "), input pts %" PRId64,
 			  _last_input_scaled_pts, scaled_pts, scaled_pts - _last_input_scaled_pts - 1, media_frame->GetPts());
 	}
 
@@ -139,10 +139,13 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 	}
 	else if (_continuation_pending == true)
 	{
-		// An inherited slot position covers at most a few frames lost around the
-		// filter swap; anything farther is a real discontinuity, so re-anchor
+		// An inherited slot position covers a few frames of overlap or loss around
+		// the filter swap: a small backward overlap (an item splice re-bases the new
+		// item less than one frame after the previous one) is discarded by the queue
+		// rules, a small hole is filled. Anything farther is a real discontinuity,
+		// so re-anchor
 		constexpr int64_t kMaxContinuationGap = 15;
-		if (media_frame->GetPts() - _next_pts > kMaxContinuationGap || media_frame->GetPts() < _next_pts)
+		if (media_frame->GetPts() - _next_pts > kMaxContinuationGap || _next_pts - media_frame->GetPts() > kMaxContinuationGap)
 		{
 			_next_pts = media_frame->GetPts();
 		}
