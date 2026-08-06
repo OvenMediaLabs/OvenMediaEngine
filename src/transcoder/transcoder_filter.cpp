@@ -148,7 +148,14 @@ std::shared_ptr<FilterBase> TranscodeFilter::CreateBaseFilter()
 	base->SetInputTrack(GetInputTrack());
 	base->SetOutputStreamInfo(GetOutputStreamInfo());
 	base->SetOutputTrack(GetOutputTrack());
-	base->SetSourceId(ov::Random::GenerateInt32());
+
+	// 0 is the encoders' "no frame seen yet" sentinel, so never assign it as an id
+	int32_t source_id = 0;
+	while (source_id == 0)
+	{
+		source_id = ov::Random::GenerateInt32();
+	}
+	base->SetSourceId(source_id);
 
 	// Fault Injection for testing
 	if (TranscodeFaultInjector::GetInstance()->IsEnabled() && (GetInputStreamInfo() != GetOutputStreamInfo()))
