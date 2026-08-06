@@ -1716,8 +1716,9 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 		const cmn::Rational input_tb(input_timebase.GetNum(), input_timebase.GetDen());
 		const cmn::Rational output_tb(output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
 
-		clone->SetPts(cmn::Rational::Rescale(clone->GetPts(), input_tb, output_tb));
-		clone->SetDts(cmn::Rational::Rescale(clone->GetDts(), input_tb, output_tb));
+		clone->SetPts(clone->GetPts() != -1L ? cmn::Rational::Rescale(clone->GetPts(), input_tb, output_tb) : -1L);
+		clone->SetDts(clone->GetDts() != -1L ? cmn::Rational::Rescale(clone->GetDts(), input_tb, output_tb) : -1L);
+
 		clone->SetTrackId(output_track->GetId());
 
 		SendFrame(output_stream, std::move(clone));
