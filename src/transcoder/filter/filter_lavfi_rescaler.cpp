@@ -219,8 +219,7 @@ bool FilterLavfiRescaler::Initialize()
 
 #if _SKIP_FRAMES_ENABLED
 	// Set initial Skip Frames
-	_skip_frames_conf = _output_track->GetSkipFramesByConfig();
-	_skip_frames	  = _skip_frames_conf;
+	_skip_frames_controller.Configure(_output_track->GetSkipFramesByConfig());
 #endif
 
 	SetState(State::STARTED);

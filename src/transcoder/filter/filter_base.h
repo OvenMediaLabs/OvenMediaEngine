@@ -74,6 +74,13 @@ public:
 		(void)previous;
 	}
 
+	// How long the handoff of a completed frame blocked the filter thread. A full
+	// queue on the far side throttles the filter as much as slow filtering does.
+	virtual void AddHandoffTime(int64_t elapsed_us)
+	{
+		(void)elapsed_us;
+	}
+
 	int32_t GetInputWidth() const
 	{
 		return _src_width;
