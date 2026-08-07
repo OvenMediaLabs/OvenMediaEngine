@@ -537,6 +537,7 @@ void TranscodeFilter::SetCompleteHandler(CompleteHandler complete_handler)
 
 void TranscodeFilter::OnComplete(TranscodeResult result, std::shared_ptr<MediaFrame> frame)
 {
+	auto handoff_start = std::chrono::steady_clock::now();
 
 	// Fault Injection for testing
 	if (TranscodeFaultInjector::GetInstance()->IsEnabled())
@@ -572,6 +573,12 @@ void TranscodeFilter::OnComplete(TranscodeResult result, std::shared_ptr<MediaFr
 	if (_complete_handler)
 	{
 		_complete_handler(result, _id, frame);
+	}
+
+	auto handoff_time_us = ov::Clock::GetElapsedMicroSecondsFromNow(handoff_start);
+	if (auto base = GetBaseFilter(); base != nullptr)
+	{
+		base->AddHandoffTime(handoff_time_us);
 	}
 }
 

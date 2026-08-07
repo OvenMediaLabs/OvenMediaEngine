@@ -61,10 +61,16 @@ namespace ov
 			lsw = (uint32_t)((double)(now.tv_nsec/1000)*(double)(((uint64_t)1)<<32)*1.0e-6);
 		}
 
-		static uint64_t GetElapsedMiliSecondsFromNow(std::chrono::steady_clock::time_point time)
+		static int64_t GetElapsedMiliSecondsFromNow(std::chrono::steady_clock::time_point time)
 		{
 			auto current = std::chrono::steady_clock::now();
 			return std::chrono::duration_cast<std::chrono::milliseconds>(current - time).count();
+		}
+
+		static int64_t GetElapsedMicroSecondsFromNow(std::chrono::steady_clock::time_point time)
+		{
+			auto current = std::chrono::steady_clock::now();
+			return std::chrono::duration_cast<std::chrono::microseconds>(current - time).count();
 		}
 	};
 }
