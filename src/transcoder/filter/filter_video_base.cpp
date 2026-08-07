@@ -66,10 +66,16 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 		return FilterResult::Error("Received frame is null");
 	}
 
+	auto start_time = std::chrono::steady_clock::now();
+
 	if (_fps_filter.Push(media_frame) == false)
 	{
 		logtw("[%s] Dropped a frame because the FPS filter is full.", GetLogPrefix().CStr());
 	}
+
+	// The push runs on the filter thread like everything else, so it counts toward how
+	// busy the thread was this window.
+	_window_busy_time_us += ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
 
 	return FilterResult::NoOutput();
 }
@@ -166,7 +172,6 @@ void FilterVideoBase::InheritContinuity(const FilterBase *previous)
 	{
 		return;
 	}
-
 	// The slot position only transfers within the same output cadence
 	if (_fps_filter.GetOutputFrameRate() != previous_video->_fps_filter.GetOutputFrameRate())
 	{
@@ -177,11 +182,57 @@ void FilterVideoBase::InheritContinuity(const FilterBase *previous)
 	// change) leaves a slot hole no instance can see on its own; carrying the
 	// slot position lets the new filter refill it
 	_fps_filter.SetContinuationPts(previous_video->_fps_filter.GetNextPts());
+
+
+	// The encoder does not empty out because this filter was replaced, so the load the
+	// outgoing filter measured still describes the pipeline.
+	_weighted_avg_frame_processing_time_us = previous_video->_weighted_avg_frame_processing_time_us;
+	_weighted_avg_frame_handoff_time_us	   = previous_video->_weighted_avg_frame_handoff_time_us;
+
+#if _SKIP_FRAMES_ENABLED
+	// Only the automatic skip level transfers; a configured one was already applied from
+	// config.
+	if (_skip_frames_conf == 0 && previous_video->_skip_frames_conf == 0)
+	{
+		_skip_frames				   = previous_video->_skip_frames;
+		_skip_frames_bottleneck_count  = previous_video->_skip_frames_bottleneck_count;
+		_skip_frames_last_changed_time = previous_video->_skip_frames_last_changed_time;
+
+		_fps_filter.SetSkipFrames(_skip_frames);
+	}
+#endif
 }
+
+// Most a single handoff may contribute, as a multiple of the output frame interval.
+static constexpr double kHandoffSampleClampRatio = 4.0;
 
 void FilterVideoBase::AddHandoffTime(int64_t elapsed_us)
 {
 	// Called on the filter thread, so no synchronization is needed.
+	if (elapsed_us <= 0)
+	{
+		return;
+	}
+
+	// The thread was blocked for the whole wait, however long it was.
+	_window_busy_time_us += elapsed_us;
+
+	// A one-off stall on the far side - an encoder reinit, GPU contention, a queue
+	// enqueue timing out - says nothing about how many frames this filter can sustain,
+	// so cap what a single handoff may contribute. Sustained overload still pins the
+	// average at the cap.
+	double output_fps = _fps_filter.GetOutputFrameRate();
+	if (output_fps > 0.0)
+	{
+		auto clamp_us = static_cast<int64_t>((1000000.0 / output_fps) * kHandoffSampleClampRatio);
+		if (elapsed_us > clamp_us)
+		{
+			logtd("[%s] Clamped a handoff sample: %" PRId64 "us -> %" PRId64 "us", GetLogPrefix().CStr(), elapsed_us, clamp_us);
+
+			elapsed_us = clamp_us;
+		}
+	}
+
 	_pending_handoff_time_us += elapsed_us;
 }
 
@@ -189,8 +240,13 @@ void FilterVideoBase::CommitPendingTime(const std::chrono::steady_clock::time_po
 {
 	static constexpr double kProcessingTimeEmaAlpha = 0.1;
 
-	auto processing_time_us = _pending_processing_time_us + ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+	auto elapsed_us			= ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+	auto processing_time_us = _pending_processing_time_us + elapsed_us;
 	auto handoff_time_us	= _pending_handoff_time_us;
+
+	// Only this round is added; the pending rounds already went into the window when
+	// they were measured.
+	_window_busy_time_us += elapsed_us;
 
 	ClearPendingTime();
 
@@ -200,15 +256,20 @@ void FilterVideoBase::CommitPendingTime(const std::chrono::steady_clock::time_po
 
 void FilterVideoBase::AddProcessingTime(const std::chrono::steady_clock::time_point &start_time)
 {
-	// No frame came out this round, so the time waits for one that does.
-	_pending_processing_time_us += ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+	auto elapsed_us = ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+
+	// No frame came out this round, so the time waits for one that does - but the thread
+	// was busy either way, and the window tracks the thread rather than the frame.
+	_pending_processing_time_us += elapsed_us;
+	_window_busy_time_us += elapsed_us;
 }
 
 void FilterVideoBase::ClearPendingTime()
 {
-	// Called once the pending time has been charged to a completed frame, and on
-	// the failure paths, where time spent on work that will never complete must
-	// not be pinned on a later frame.
+	// Called once the pending time has been charged to a completed frame, and on the
+	// failure paths, where time spent on work that will never complete must not be
+	// pinned on a later frame. The window is deliberately left alone: the thread was
+	// busy whether or not the work produced anything.
 	_pending_processing_time_us = 0;
 	_pending_handoff_time_us	= 0;
 }
@@ -217,6 +278,10 @@ void FilterVideoBase::ClearPendingTime()
 #define _SKIP_FRAMES_EVALUATION_INTERVAL_MS 	1000	// 1s
 #define _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS 	5000	// 5s
 #define _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO 	0.9f	// 90%
+#define _SKIP_FRAMES_SATURATION_RATIO 			0.95f	// 95% of the window with no idle time
+#define _SKIP_FRAMES_RECOVERY_BUSY_RATIO 		0.80f	// headroom required before stepping back down
+#define _SKIP_FRAMES_BOTTLENECK_HOLD_COUNT 		2		// consecutive windows
+#define _SKIP_FRAMES_MAX_INCREASE_PER_STEP 		1
 
 void FilterVideoBase::UpdateSkipFrames()
 {
@@ -257,6 +322,14 @@ void FilterVideoBase::UpdateSkipFrames()
 	}
 	_skip_frames_last_check_time = curr_time;
 
+	// Whatever is left of the window went to waiting for input. A thread with idle time
+	// left is keeping up no matter how long its handoffs blocked, so close the window
+	// here - before any of the early returns below can skip the reset.
+	double window_us   = static_cast<double>(elapsed_check_time) * 1000.0;
+	double utilization = (window_us > 0.0) ? (static_cast<double>(_window_busy_time_us) / window_us) : 0.0;
+
+	_window_busy_time_us = 0;
+
 	double fixed_output_fps			   = _fps_filter.GetOutputFrameRate();
 	double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
 	double actual_output_fps		   = _fps_filter.GetOutputFramesPerSecond();
@@ -292,10 +365,54 @@ void FilterVideoBase::UpdateSkipFrames()
 		next_skip_frames = FilterFps::SkipFramesMin;
 	}
 
-	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f, Frame Budget: %.2fus (Inproc: %.2fus + Handoff: %.2fus)",
+	// The frame budget only measures capacity while the thread has nothing else to do.
+	// The encoder queue is two frames deep and the handoff waits on it, so a burst of
+	// input or one jittery encode blocks this thread on a chain that is comfortably
+	// keeping up. Idle time left in the window is what separates the two.
+	bool is_saturated = (utilization >= _SKIP_FRAMES_SATURATION_RATIO);
+
+	// A saturated thread still has to be missing the rate it is already set to. Falling
+	// short of a rate nobody asked for is not a bottleneck. No measurement yet is not
+	// evidence of one either, and skipping frames would not rescue a pipeline that is
+	// producing nothing at all.
+	bool is_missing_target = (actual_output_fps > 0.0) && (actual_output_fps < expected_output_fps * _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO);
+
+	if (is_saturated == true && is_missing_target == true)
+	{
+		_skip_frames_bottleneck_count++;
+	}
+	else
+	{
+		_skip_frames_bottleneck_count = 0;
+
+		// The budget measured backpressure, not a shortage of capacity, so aim at no
+		// skipping and let the recovery branch walk down at its own rate. Stepping down
+		// needs its own evidence though: with the thread still close to capacity the level
+		// below would put it straight back over, which is how a marginal encoder turns into
+		// a slow oscillation. Hold until real headroom shows up.
+		next_skip_frames = (utilization < _SKIP_FRAMES_RECOVERY_BUSY_RATIO) ? FilterFps::SkipFramesMin : _skip_frames;
+	}
+
+	if (next_skip_frames > _skip_frames)
+	{
+		// One bad window is a hiccup - a stalled encoder reinit, a GPU spike. A bottleneck
+		// is still there on the next one.
+		if (_skip_frames_bottleneck_count < _SKIP_FRAMES_BOTTLENECK_HOLD_COUNT)
+		{
+			next_skip_frames = _skip_frames;
+		}
+		// Rise in single steps, so no single window can collapse the output rate.
+		else if (next_skip_frames > _skip_frames + _SKIP_FRAMES_MAX_INCREASE_PER_STEP)
+		{
+			next_skip_frames = _skip_frames + _SKIP_FRAMES_MAX_INCREASE_PER_STEP;
+		}
+	}
+
+	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f, Frame Budget: %.2fus (Inproc: %.2fus + Handoff: %.2fus), Busy: %.1f%%",
 													 max_frames_per_second, ideal_frames_per_second,
 													 fixed_output_fps, expected_output_fps, actual_output_fps,
-													 frame_budget_us, _weighted_avg_frame_processing_time_us, _weighted_avg_frame_handoff_time_us);
+													 frame_budget_us, _weighted_avg_frame_processing_time_us, _weighted_avg_frame_handoff_time_us,
+													 utilization * 100.0);
 
 	// Increase skip frames immediately when bottleneck occurs.
 	if (_skip_frames < next_skip_frames)
@@ -329,13 +446,13 @@ void FilterVideoBase::UpdateSkipFrames()
 		}
 		else
 		{
-			logtt("[%s] Hold SkipFrames %d (Waiting for recovery). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
+			logtd("[%s] Hold SkipFrames %d (Waiting for recovery). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
 		}
 	}
 	// Keep skip frames unchanged when the system is stable.
 	else
 	{
-		logtt("[%s] Unchanged SkipFrames %d (Stable). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
+		logtd("[%s] Unchanged SkipFrames %d (Stable). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
 	}
 }
 #endif // _SKIP_FRAMES_ENABLED

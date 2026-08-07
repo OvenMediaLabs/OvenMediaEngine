@@ -44,6 +44,10 @@ protected:
 	// Set initial Skip Frames
 	int32_t _skip_frames_conf			   = -1;
 	int32_t _skip_frames				   = -1;
+
+	// Consecutive evaluation windows that looked like a bottleneck. One bad window is a
+	// hiccup, so the skip level only rises once a window repeats the diagnosis.
+	int32_t _skip_frames_bottleneck_count  = 0;
 #endif
 
 	void CommitPendingTime(const std::chrono::steady_clock::time_point &start_time);
@@ -61,4 +65,10 @@ protected:
 
 	// Handoff time that has not been charged to a completed frame yet.
 	int64_t _pending_handoff_time_us			  = 0;
+
+	// Everything the thread was busy with during the current evaluation window, both
+	// filtering and handing frames off. Whatever is left of the window went to waiting
+	// for input, and that idle time is what tells a saturated thread apart from an
+	// overloaded one.
+	int64_t _window_busy_time_us				  = 0;
 };
