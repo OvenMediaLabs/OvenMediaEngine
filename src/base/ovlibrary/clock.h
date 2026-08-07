@@ -66,5 +66,11 @@ namespace ov
 			auto current = std::chrono::steady_clock::now();
 			return std::chrono::duration_cast<std::chrono::milliseconds>(current - time).count();
 		}
+
+		static int64_t GetElapsedMicroSecondsFromNow(std::chrono::steady_clock::time_point time)
+		{
+			auto current = std::chrono::steady_clock::now();
+			return std::chrono::duration_cast<std::chrono::microseconds>(current - time).count();
+		}
 	};
 }

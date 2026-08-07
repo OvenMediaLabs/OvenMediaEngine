@@ -46,12 +46,20 @@ protected:
 #endif
 
 
-	int64_t ElapsedTimeInUs(const std::chrono::steady_clock::time_point &start_time) const;
-	void UpdateProcessingTimePerFrame(const std::chrono::steady_clock::time_point &start_time);
+public:
+	void AddHandoffTime(int64_t elapsed_us) override;
+protected:
+	void CommitPendingTime(const std::chrono::steady_clock::time_point &start_time);
+	void AddProcessingTime(const std::chrono::steady_clock::time_point &start_time);
+	void ClearPendingTime();
 
-	// Weighted average of frame processing time.
+	// Time spent inside this filter (FPS filter + rescaler graph).
 	double _weighted_avg_frame_processing_time_us = 0.0;
 
-	// Processing time that has not been charged to a completed frame yet.
+	// Time the thread sat blocked handing completed frames to the next stage.
+	double _weighted_avg_frame_handoff_time_us = 0.0;
+
+	// Time that no completed frame has taken over yet.
 	int64_t _pending_processing_time_us = 0;
+	int64_t _pending_handoff_time_us = 0;
 };

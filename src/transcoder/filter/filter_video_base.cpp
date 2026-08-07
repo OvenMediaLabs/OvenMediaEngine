@@ -78,7 +78,7 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 {
 	if (GetState() == FilterBase::State::ERROR)
 	{
-		_pending_processing_time_us = 0;
+		ClearPendingTime();
 
 		return FilterResult::Error("The filter is in the error state");
 	}
@@ -90,15 +90,14 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 		auto completed_frame = ReceiveFrame();
 		if (completed_frame != nullptr)
 		{
-			UpdateProcessingTimePerFrame(start_time);
+			CommitPendingTime(start_time);
 
 			return FilterResult::Ready(std::move(completed_frame));
 		}
 
 		if (GetState() == FilterBase::State::ERROR)
 		{
-			// The measured time belongs to work that will never complete.
-			_pending_processing_time_us = 0;
+			ClearPendingTime();
 
 			return FilterResult::Error("The backend rescaler has failed");
 		}
@@ -107,8 +106,7 @@ FilterResult FilterVideoBase::PopCompletedFrameInternal()
 		auto frame = _fps_filter.Pop();
 		if (frame == nullptr)
 		{
-			// No completed frame available yet. Update pending processing time
-			_pending_processing_time_us += ElapsedTimeInUs(start_time);
+			AddProcessingTime(start_time);
 
 #if _SKIP_FRAMES_ENABLED
 			// Update skip frames based on the current processing time and framerate.
@@ -181,19 +179,36 @@ void FilterVideoBase::InheritContinuity(const FilterBase *previous)
 	_fps_filter.SetContinuationPts(previous_video->_fps_filter.GetNextPts());
 }
 
-int64_t FilterVideoBase::ElapsedTimeInUs(const std::chrono::steady_clock::time_point &start_time) const
+void FilterVideoBase::AddHandoffTime(int64_t elapsed_us)
 {
-	return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+	// Called on the filter thread, so no synchronization is needed.
+	_pending_handoff_time_us += elapsed_us;
 }
 
-void FilterVideoBase::UpdateProcessingTimePerFrame(const std::chrono::steady_clock::time_point &start_time)
+void FilterVideoBase::CommitPendingTime(const std::chrono::steady_clock::time_point &start_time)
 {
 	static constexpr double kProcessingTimeEmaAlpha = 0.1;
 
-	auto elapsed_time_us = _pending_processing_time_us + ElapsedTimeInUs(start_time);
+	auto processing_time_us = _pending_processing_time_us + ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+	auto handoff_time_us	= _pending_handoff_time_us;
 
-	_pending_processing_time_us				= 0;
-	_weighted_avg_frame_processing_time_us	= (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (elapsed_time_us * kProcessingTimeEmaAlpha);
+	ClearPendingTime();
+
+	_weighted_avg_frame_processing_time_us	= (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (processing_time_us * kProcessingTimeEmaAlpha);
+	_weighted_avg_frame_handoff_time_us		= (_weighted_avg_frame_handoff_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (handoff_time_us * kProcessingTimeEmaAlpha);
+}
+
+void FilterVideoBase::AddProcessingTime(const std::chrono::steady_clock::time_point &start_time)
+{
+	// No frame came out this round, so the time waits for one that does.
+	_pending_processing_time_us += ov::Clock::GetElapsedMicroSecondsFromNow(start_time);
+}
+
+void FilterVideoBase::ClearPendingTime()
+{
+	// Time spent on work that failed must not be pinned on a later frame.
+	_pending_processing_time_us = 0;
+	_pending_handoff_time_us	= 0;
 }
 
 #if _SKIP_FRAMES_ENABLED
@@ -240,31 +255,21 @@ void FilterVideoBase::UpdateSkipFrames()
 	}
 	_skip_frames_last_check_time = curr_time;
 
-	// Remain for debugging and future improvement for queue-based skip frame adjustment
-	// -----------------------------------------------------------------------------
-	// double actual_input_fps			   = _fps_filter.GetInputFramesPerSecond();
-	// double expected_input_fps		   = _fps_filter.GetInputFrameRate();
-
-	// double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
-
-	// int64_t queue_waiting_deviation_us = _input_buffer.GetWaitingTimeInUs();
-	// double expected_frame_interval_us  = (expected_input_fps > 0.0) ? (1000000.0 / expected_input_fps) : 0.0;
-	// bool is_queue_overload			   = (expected_frame_interval_us > 0.0) &&
-	// 						 (queue_waiting_deviation_us > expected_frame_interval_us * _SKIP_FRAMES_QUEUE_BACKLOG_RATIO);
-	// bool is_queue_stable = (expected_frame_interval_us > 0.0) &&
-	// 					   (queue_waiting_deviation_us < expected_frame_interval_us * _SKIP_FRAMES_QUEUE_RECOVERY_RATIO);
-
 	double fixed_output_fps			   = _fps_filter.GetOutputFrameRate();
 	double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
 	double actual_output_fps		   = _fps_filter.GetOutputFramesPerSecond();
 
-	if (_weighted_avg_frame_processing_time_us <= 0.0 || fixed_output_fps <= 0.0)
+	// A slow rescaler and a backed-up encoder each throttle this thread, and it
+	// cannot outrun their sum, so the skip decision uses the total.
+	double frame_budget_us = _weighted_avg_frame_processing_time_us + _weighted_avg_frame_handoff_time_us;
+
+	if (frame_budget_us <= 0.0 || fixed_output_fps <= 0.0)
 	{
 		return;
 	}
 
 	// Calculate the maximum possible frames per second.
-	double max_frames_per_second = (1000000.0 / _weighted_avg_frame_processing_time_us);
+	double max_frames_per_second = (1000000.0 / frame_budget_us);
 	// To ensure stability, set a margin and use OO% of the calculated maximum FPS.
 	double ideal_frames_per_second = max_frames_per_second * _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO;
 
@@ -285,12 +290,15 @@ void FilterVideoBase::UpdateSkipFrames()
 		next_skip_frames = FilterFps::SkipFramesMin;
 	}
 
-	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f", max_frames_per_second, ideal_frames_per_second, fixed_output_fps, expected_output_fps, actual_output_fps);
+	ov::String common_log = ov::String::FormatString("Output FPS: %.2f (Conf: %.2f, Expect: %.2f), Frame Budget: %.2fus (Inproc: %.2fus + Handoff: %.2fus = Possible FPS: %.2f)",
+													 actual_output_fps, fixed_output_fps, expected_output_fps,
+													 frame_budget_us, _weighted_avg_frame_processing_time_us, _weighted_avg_frame_handoff_time_us,
+													ideal_frames_per_second);
 
 	// Increase skip frames immediately when bottleneck occurs.
 	if (_skip_frames < next_skip_frames)
 	{
-		logtw("[%s] Changed SkipFrames %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
+		logtw("[%s] Changed SkipFrames() %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
 
 		_skip_frames = next_skip_frames;
 		_fps_filter.SetSkipFrames(_skip_frames);

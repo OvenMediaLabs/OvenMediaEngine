@@ -293,7 +293,13 @@ void TranscodeFilter::ThreadLoop()
 			auto recv = base->PopCompletedFrameInternal();
 			if (recv.result == TranscodeResult::DataReady)
 			{
+				// OnComplete() blocks here while the encoder queue is full, so the
+				// filter needs that wait to react to a backed-up encoder.
+				auto handoff_start = std::chrono::steady_clock::now();
+
 				OnComplete(recv.result, std::move(recv.frame));
+
+				base->AddHandoffTime(ov::Clock::GetElapsedMicroSecondsFromNow(handoff_start));
 
 				// Keep draining to check whether more frames are pending.
 				continue;
