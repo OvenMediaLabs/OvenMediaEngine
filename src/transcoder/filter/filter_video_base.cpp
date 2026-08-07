@@ -206,7 +206,9 @@ void FilterVideoBase::AddProcessingTime(const std::chrono::steady_clock::time_po
 
 void FilterVideoBase::ClearPendingTime()
 {
-	// Time spent on work that failed must not be pinned on a later frame.
+	// Called once the pending time has been charged to a completed frame, and on
+	// the failure paths, where time spent on work that will never complete must
+	// not be pinned on a later frame.
 	_pending_processing_time_us = 0;
 	_pending_handoff_time_us	= 0;
 }
@@ -290,15 +292,15 @@ void FilterVideoBase::UpdateSkipFrames()
 		next_skip_frames = FilterFps::SkipFramesMin;
 	}
 
-	ov::String common_log = ov::String::FormatString("Output FPS: %.2f (Conf: %.2f, Expect: %.2f), Frame Budget: %.2fus (Inproc: %.2fus + Handoff: %.2fus = Possible FPS: %.2f)",
-													 actual_output_fps, fixed_output_fps, expected_output_fps,
-													 frame_budget_us, _weighted_avg_frame_processing_time_us, _weighted_avg_frame_handoff_time_us,
-													ideal_frames_per_second);
+	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f, Frame Budget: %.2fus (Inproc: %.2fus + Handoff: %.2fus)",
+													 max_frames_per_second, ideal_frames_per_second,
+													 fixed_output_fps, expected_output_fps, actual_output_fps,
+													 frame_budget_us, _weighted_avg_frame_processing_time_us, _weighted_avg_frame_handoff_time_us);
 
 	// Increase skip frames immediately when bottleneck occurs.
 	if (_skip_frames < next_skip_frames)
 	{
-		logtw("[%s] Changed SkipFrames() %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
+		logtw("[%s] Changed SkipFrames %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
 
 		_skip_frames = next_skip_frames;
 		_fps_filter.SetSkipFrames(_skip_frames);

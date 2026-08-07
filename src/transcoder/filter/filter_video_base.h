@@ -27,6 +27,7 @@ public:
 	FilterResult PopCompletedFrameInternal() override;
 	std::vector<std::shared_ptr<MediaFrame>> FlushBuffered() override;
 	void InheritContinuity(const FilterBase *previous) override;
+	void AddHandoffTime(int64_t elapsed_us) override;
 
 protected:
 	bool InitializeFpsFilter();
@@ -45,21 +46,19 @@ protected:
 	int32_t _skip_frames				   = -1;
 #endif
 
-
-public:
-	void AddHandoffTime(int64_t elapsed_us) override;
-protected:
 	void CommitPendingTime(const std::chrono::steady_clock::time_point &start_time);
 	void AddProcessingTime(const std::chrono::steady_clock::time_point &start_time);
 	void ClearPendingTime();
 
-	// Time spent inside this filter (FPS filter + rescaler graph).
+	// Weighted average of the time spent inside this filter (FPS filter + rescaler graph).
 	double _weighted_avg_frame_processing_time_us = 0.0;
 
-	// Time the thread sat blocked handing completed frames to the next stage.
-	double _weighted_avg_frame_handoff_time_us = 0.0;
+	// Weighted average of the time the thread sat blocked handing completed frames to the next stage.
+	double _weighted_avg_frame_handoff_time_us	  = 0.0;
 
-	// Time that no completed frame has taken over yet.
-	int64_t _pending_processing_time_us = 0;
-	int64_t _pending_handoff_time_us = 0;
+	// Processing time that has not been charged to a completed frame yet.
+	int64_t _pending_processing_time_us			  = 0;
+
+	// Handoff time that has not been charged to a completed frame yet.
+	int64_t _pending_handoff_time_us			  = 0;
 };
