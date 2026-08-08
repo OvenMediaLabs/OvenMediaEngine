@@ -1670,13 +1670,26 @@ void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, cons
 
 	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
 	{
-		logte("%s Failed to recreate decoder for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
-			  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
+		logte("%s Failed to recreate decoder for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+			  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
+			  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
+
+#if NOTIFICATION_ENABLED
+		TranscoderAlerts::UpdateErrorWithoutCount(
+			TranscoderAlerts::ErrorType::CREATION_ERROR_DECODER,
+			nullptr,
+			_input_stream,
+			input_track,
+			nullptr,
+			nullptr);
+#endif
+
 		return;
 	}
 
-	logti("%s Decoder has been recreated for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
-		  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
+	logti("%s Decoder has been recreated for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+		  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
+		  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
