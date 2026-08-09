@@ -14,18 +14,6 @@
 
 #include "filter_fps.h"
 
-#define _SKIP_FRAMES_EVALUATION_INTERVAL_MS 	1000	// how often the level is reconsidered
-#define _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS 	5000	// how long a level must stand before it may drop
-#define _SKIP_FRAMES_SAFETY_MARGIN_RATIO 		0.9f	// aim at 90% of what the budget allows
-#define _SKIP_FRAMES_SATURATION_RATIO 			0.95f	// busy this much of a window counts as saturated
-#define _SKIP_FRAMES_RECOVERY_MAX_BUSY_RATIO 	0.80f	// below this the thread has room to try one level down
-#define _SKIP_FRAMES_INPUT_KEEP_UP_RATIO 		0.95f	// share of the input rate the thread must consume
-#define _SKIP_FRAMES_BOTTLENECK_CONFIRM_COUNT 	2		// windows that must agree before the level rises
-#define _SKIP_FRAMES_MAX_INCREASE_PER_WINDOW 	1		// steps the level may rise in one window
-
-// Weight given to the newest sample in the per-frame time averages.
-static constexpr double kFrameTimeEmaAlpha = 0.1;
-
 void SkipFramesController::Configure(int32_t skip_frames_conf)
 {
 	_skip_frames_conf = skip_frames_conf;
@@ -131,7 +119,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	auto elapsed_since_check_ms	 = curr_time_ms - _last_check_time_ms;
 	auto elapsed_since_change_ms = curr_time_ms - _last_changed_time_ms;
 
-	if (elapsed_since_check_ms <= _SKIP_FRAMES_EVALUATION_INTERVAL_MS)
+	if (elapsed_since_check_ms <= kEvaluationIntervalMs)
 	{
 		return std::nullopt;
 	}
@@ -154,7 +142,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// The most frames per second the budget allows, less a safety margin.
 	double peak_fps		   = (1000000.0 / frame_budget_us);
-	double sustainable_fps = peak_fps * _SKIP_FRAMES_SAFETY_MARGIN_RATIO;
+	double sustainable_fps = peak_fps * kSafetyMarginRatio;
 
 	// How far the cadence has to be divided down to land on the sustainable rate.
 	auto next_skip_frames = static_cast<int32_t>(std::ceil(observation.cadence_fps / sustainable_fps - 1.0));
@@ -169,13 +157,13 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// Busy is not the same as overloaded. The encoder queue is only two frames deep, so the
 	// handoff blocks even on a chain that keeps up. Idle time is what tells the two apart.
-	bool is_saturated = (utilization >= _SKIP_FRAMES_SATURATION_RATIO);
+	bool is_saturated = (utilization >= kSaturationRatio);
 
 	// A saturated thread also has to be losing ground. Zero means the FPS filter has not
 	// measured a second yet, not that nothing was consumed.
 	bool is_falling_behind = (observation.expected_input_fps > 0.0) &&
 							 (observation.actual_input_fps > 0.0) &&
-							 (observation.actual_input_fps < observation.expected_input_fps * _SKIP_FRAMES_INPUT_KEEP_UP_RATIO);
+							 (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
 
 	if (is_saturated == true && is_falling_behind == true)
 	{
@@ -193,7 +181,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		// busy; gating on utilization alone would pin a level reached during a spike
 		// forever. The hold interval makes this a probe - if the level below cannot hold,
 		// the next window says so and puts it back.
-		bool has_headroom = (utilization < _SKIP_FRAMES_RECOVERY_MAX_BUSY_RATIO) || (is_falling_behind == false);
+		bool has_headroom = (utilization < kRecoveryMaxBusyRatio) || (is_falling_behind == false);
 
 		next_skip_frames = has_headroom ? FilterFps::SkipFramesMin : _skip_frames;
 	}
@@ -201,14 +189,14 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	if (next_skip_frames > _skip_frames)
 	{
 		// One bad window is a hiccup; a bottleneck is still there on the next one.
-		if (_bottleneck_count < _SKIP_FRAMES_BOTTLENECK_CONFIRM_COUNT)
+		if (_bottleneck_count < kBottleneckConfirmCount)
 		{
 			next_skip_frames = _skip_frames;
 		}
 		// Rise in single steps, so no single window can collapse the output rate.
-		else if (next_skip_frames > _skip_frames + _SKIP_FRAMES_MAX_INCREASE_PER_WINDOW)
+		else if (next_skip_frames > _skip_frames + kMaxIncreasePerWindow)
 		{
-			next_skip_frames = _skip_frames + _SKIP_FRAMES_MAX_INCREASE_PER_WINDOW;
+			next_skip_frames = _skip_frames + kMaxIncreasePerWindow;
 		}
 	}
 
@@ -234,7 +222,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	// Decrease skip frames slowly when the system is recovering.
 	else if (_skip_frames > next_skip_frames)
 	{
-		if (elapsed_since_change_ms > _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS)
+		if (elapsed_since_change_ms > kRecoveryHoldIntervalMs)
 		{
 			// Come down 20% at a time, never in one jump.
 			int32_t rate_limited_next = _skip_frames - std::max(1, _skip_frames / 5);
