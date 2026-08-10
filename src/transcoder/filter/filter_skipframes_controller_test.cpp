@@ -189,8 +189,8 @@ TEST(SkipFramesControllerTest, DoesNotRaiseBeforeTheInputRateIsMeasured)
 	controller.Configure(0);
 	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
-	// A zero input rate means the FPS filter has not measured a second yet. Raising on it
-	// would act on a sample that does not exist.
+	// A zero input rate means the FPS filter has not measured a second yet. Deciding on it
+	// would act on a sample that does not exist, so no window closes on one.
 	auto no_sample_yet = MakeObservation(0.0);
 
 	int64_t now = 1000;
@@ -201,9 +201,7 @@ TEST(SkipFramesControllerTest, DoesNotRaiseBeforeTheInputRateIsMeasured)
 		controller.AddBusyTime(BusyUsFor(0.99));
 		now += kWindowMs;
 
-		auto result = controller.Evaluate(now, no_sample_yet);
-		ASSERT_TRUE(result.has_value());
-		EXPECT_EQ(result->decision, Decision::Unchanged);
+		EXPECT_FALSE(controller.Evaluate(now, no_sample_yet).has_value());
 	}
 
 	EXPECT_EQ(controller.GetSkipFrames(), 0);
@@ -511,4 +509,62 @@ TEST(SkipFramesControllerTest, ReturnsToTheBaseHoldOnceAProbeStands)
 	ASSERT_TRUE(at_base_again.has_value());
 	EXPECT_EQ(at_base_again->decision, Decision::Recovery);
 	EXPECT_EQ(controller.GetSkipFrames(), 1);
+}
+
+// A replacement filter reports no input rate until it has measured a second of its own.
+// That is a missing sample, not a thread that is keeping up.
+TEST(SkipFramesControllerTest, DoesNotStepDownBeforeTheInputRateIsMeasured)
+{
+	SkipFramesController previous;
+	previous.Configure(0);
+	FeedFrames(previous, 1000, kCostForLevel4Us - 1000);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(previous.Evaluate(now, FallingBehind()).has_value());
+	ClimbTo(previous, 4, now);
+
+	FeedFrames(previous, kCheapCostUs, 0);
+
+	SkipFramesController replacement;
+	replacement.Configure(0);
+	replacement.InheritFrom(previous);
+
+	// Saturated, and the recovery hold carried over has already expired.
+	replacement.AddBusyTime(BusyUsFor(0.995, 6000));
+	now += 6000;
+
+	EXPECT_FALSE(replacement.Evaluate(now, MakeObservation(0.0)).has_value());
+	EXPECT_EQ(replacement.GetSkipFrames(), 4);
+}
+
+// The window start carries across a replacement, so the busy time measured in it has to
+// carry too - otherwise a partial window reads as idle.
+TEST(SkipFramesControllerTest, InheritKeepsTheBusyTimeMeasuredInTheWindow)
+{
+	SkipFramesController previous;
+	previous.Configure(0);
+	FeedFrames(previous, 1000, kCostForLevel4Us - 1000);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(previous.Evaluate(now, FallingBehind()).has_value());
+	ClimbTo(previous, 4, now);
+
+	FeedFrames(previous, kCheapCostUs, 0);
+
+	// Six seconds of the window are spent busy, then the filter is replaced.
+	previous.AddBusyTime(BusyUsFor(0.99, 6000));
+	now += 6000;
+
+	SkipFramesController replacement;
+	replacement.Configure(0);
+	replacement.InheritFrom(previous);
+
+	// The remainder is busy as well, so the window closes saturated rather than idle.
+	replacement.AddBusyTime(BusyUsFor(0.99, 1000));
+	now += 1000;
+
+	auto result = replacement.Evaluate(now, FallingBehind());
+	ASSERT_TRUE(result.has_value());
+	EXPECT_EQ(result->decision, Decision::Unchanged);
+	EXPECT_EQ(replacement.GetSkipFrames(), 4);
 }

@@ -155,16 +155,18 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		next_skip_frames = FilterFps::SkipFramesMin;
 	}
 
+	if (observation.expected_input_fps <= 0.0 || observation.actual_input_fps <= 0.0)
+	{
+		return std::nullopt;
+	}
+
 	// Busy is not the same as overloaded. The encoder queue is only two frames deep, so the
 	// handoff blocks even on a chain that keeps up. Idle time is what tells the two apart.
 	bool is_fully_busy = (utilization >= kSaturationRatio);
 
-	// A fully busy thread also has to be losing input. Zero means the FPS filter has not
-	// measured a second yet, not that nothing was consumed.
-	bool is_losing_input = (observation.expected_input_fps > 0.0) &&
-						   (observation.actual_input_fps > 0.0) &&
-						   (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
+	bool is_losing_input = (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
 
+	// A fully busy thread also has to be losing input.
 	if (is_fully_busy == true && is_losing_input == true)
 	{
 		_bottleneck_count++;
@@ -287,5 +289,7 @@ void SkipFramesController::InheritFrom(const SkipFramesController &previous)
 		// which would restart the recovery hold at every replacement.
 		_last_check_time_ms	  = previous._last_check_time_ms;
 		_last_changed_time_ms = previous._last_changed_time_ms;
+
+		_window_busy_time_us = previous._window_busy_time_us;
 	}
 }
