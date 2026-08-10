@@ -45,28 +45,6 @@
 class SkipFramesController
 {
 public:
-	// how often the level is reconsidered
-	static constexpr int64_t kEvaluationIntervalMs	 = 1000;
-	// how long a level must stand before it may drop
-	static constexpr int64_t kRecoveryHoldIntervalMs = 5000;
-	// ceiling the hold backs off to while probes keep failing
-	static constexpr int64_t kRecoveryHoldMaxMs		 = 30000;
-	// aim at 90% of what the frame cost allows
-	static constexpr double kSafetyMarginRatio		 = 0.9;
-	// busy this much of a window counts as saturated
-	static constexpr double kSaturationRatio		 = 0.95;
-	// below this the thread has room to try one level down
-	static constexpr double kRecoveryMaxBusyRatio	 = 0.80;
-	// share of the input rate the thread must consume
-	static constexpr double kInputKeepUpRatio		 = 0.95;
-	// windows that must agree before the level rises
-	static constexpr int32_t kBottleneckConfirmCount = 2;
-	// steps the level may rise in one window
-	static constexpr int32_t kMaxIncreasePerWindow	 = 1;
-
-	// Weight given to the newest sample in the per-frame time averages.
-	static constexpr double kFrameTimeEmaAlpha = 0.1;
-
 	enum class Decision
 	{
 		Unchanged,
@@ -139,7 +117,7 @@ private:
 	int32_t _bottleneck_count = 0;
 
 	// Grows while probes keep failing, back to the base interval as soon as one stands.
-	int64_t _recovery_hold_ms = kRecoveryHoldIntervalMs;
+	int64_t _recovery_hold_ms = 0;
 
 	// The level the outstanding step down was taken from, or 0 when there is none.
 	int32_t _probe_origin_level = 0;

@@ -14,10 +14,36 @@
 
 #include "filter_fps.h"
 
+namespace
+{
+	// how often the level is reconsidered
+	constexpr int64_t EVALUATION_INTERVAL_MS	= 1000;
+	// how long a level must stand before it may drop
+	constexpr int64_t RECOVERY_HOLD_INTERVAL_MS	= 5000;
+	// ceiling the hold backs off to while probes keep failing
+	constexpr int64_t RECOVERY_HOLD_MAX_MS		= 30000;
+	// aim at 90% of what the frame cost allows
+	constexpr double SAFETY_MARGIN_RATIO		= 0.9;
+	// busy this much of a window counts as saturated
+	constexpr double SATURATION_RATIO			= 0.95;
+	// below this the thread has room to try one level down
+	constexpr double RECOVERY_MAX_BUSY_RATIO	= 0.80;
+	// share of the input rate the thread must consume
+	constexpr double INPUT_KEEP_UP_RATIO		= 0.95;
+	// windows that must agree before the level rises
+	constexpr int32_t BOTTLENECK_CONFIRM_COUNT	= 2;
+	// steps the level may rise in one window
+	constexpr int32_t MAX_INCREASE_PER_WINDOW	= 1;
+
+	// Weight given to the newest sample in the per-frame time averages.
+	constexpr double FRAME_TIME_EMA_ALPHA = 0.1;
+}  // namespace
+
 void SkipFramesController::Configure(int32_t skip_frames_conf)
 {
 	_skip_frames_conf = skip_frames_conf;
 	_skip_frames	  = skip_frames_conf;
+	_recovery_hold_ms = RECOVERY_HOLD_INTERVAL_MS;
 }
 
 int32_t SkipFramesController::GetConfiguredSkipFrames() const
@@ -90,8 +116,8 @@ void SkipFramesController::CommitFrame(int64_t elapsed_us)
 
 	DiscardPending();
 
-	_weighted_avg_frame_processing_time_us	= (_weighted_avg_frame_processing_time_us * (1.0 - kFrameTimeEmaAlpha)) + (processing_time_us * kFrameTimeEmaAlpha);
-	_weighted_avg_frame_handoff_time_us		= (_weighted_avg_frame_handoff_time_us * (1.0 - kFrameTimeEmaAlpha)) + (handoff_time_us * kFrameTimeEmaAlpha);
+	_weighted_avg_frame_processing_time_us	= (_weighted_avg_frame_processing_time_us * (1.0 - FRAME_TIME_EMA_ALPHA)) + (processing_time_us * FRAME_TIME_EMA_ALPHA);
+	_weighted_avg_frame_handoff_time_us		= (_weighted_avg_frame_handoff_time_us * (1.0 - FRAME_TIME_EMA_ALPHA)) + (handoff_time_us * FRAME_TIME_EMA_ALPHA);
 }
 
 void SkipFramesController::DiscardPending()
@@ -119,7 +145,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	auto elapsed_since_check_ms	 = curr_time_ms - _last_check_time_ms;
 	auto elapsed_since_change_ms = curr_time_ms - _last_changed_time_ms;
 
-	if (elapsed_since_check_ms <= kEvaluationIntervalMs)
+	if (elapsed_since_check_ms <= EVALUATION_INTERVAL_MS)
 	{
 		return std::nullopt;
 	}
@@ -142,7 +168,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// The most frames per second the cost allows, less a safety margin.
 	double peak_fps		   = (1000000.0 / frame_cost_us);
-	double sustainable_fps = peak_fps * kSafetyMarginRatio;
+	double sustainable_fps = peak_fps * SAFETY_MARGIN_RATIO;
 
 	// How far the output ceiling has to be divided down to land on the sustainable rate.
 	auto next_skip_frames = static_cast<int32_t>(std::ceil(observation.max_output_fps / sustainable_fps - 1.0));
@@ -162,9 +188,9 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// Busy is not the same as overloaded. The encoder queue is only two frames deep, so the
 	// handoff blocks even on a chain that keeps up. Idle time is what tells the two apart.
-	bool is_fully_busy = (utilization >= kSaturationRatio);
+	bool is_fully_busy = (utilization >= SATURATION_RATIO);
 
-	bool is_losing_input = (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
+	bool is_losing_input = (observation.actual_input_fps < observation.expected_input_fps * INPUT_KEEP_UP_RATIO);
 
 	// A fully busy thread also has to be losing input.
 	if (is_fully_busy == true && is_losing_input == true)
@@ -183,7 +209,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		// busy; gating on utilization alone would pin a level reached during a spike
 		// forever. The hold interval makes this a probe - if the level below cannot hold,
 		// the next window says so and puts it back.
-		bool may_step_down = (utilization < kRecoveryMaxBusyRatio) || (is_losing_input == false);
+		bool may_step_down = (utilization < RECOVERY_MAX_BUSY_RATIO) || (is_losing_input == false);
 
 		// The step down lands where the cost allows, not at nothing.
 		if (may_step_down == false)
@@ -195,14 +221,14 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	if (next_skip_frames > _skip_frames)
 	{
 		// One bad window is a hiccup; a bottleneck is still there on the next one.
-		if (_bottleneck_count < kBottleneckConfirmCount)
+		if (_bottleneck_count < BOTTLENECK_CONFIRM_COUNT)
 		{
 			next_skip_frames = _skip_frames;
 		}
 		// Rise in single steps, so no single window can collapse the output rate.
-		else if (next_skip_frames > _skip_frames + kMaxIncreasePerWindow)
+		else if (next_skip_frames > _skip_frames + MAX_INCREASE_PER_WINDOW)
 		{
-			next_skip_frames = _skip_frames + kMaxIncreasePerWindow;
+			next_skip_frames = _skip_frames + MAX_INCREASE_PER_WINDOW;
 		}
 	}
 
@@ -222,7 +248,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		// The step down could not hold. Wait longer before trying the next one.
 		if (_probe_origin_level > 0)
 		{
-			_recovery_hold_ms	= std::min(_recovery_hold_ms * 2, kRecoveryHoldMaxMs);
+			_recovery_hold_ms	= std::min(_recovery_hold_ms * 2, RECOVERY_HOLD_MAX_MS);
 			_probe_origin_level = 0;
 		}
 
@@ -240,7 +266,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 			// The last step down stood. Back to the base interval.
 			if (_probe_origin_level > 0)
 			{
-				_recovery_hold_ms = kRecoveryHoldIntervalMs;
+				_recovery_hold_ms = RECOVERY_HOLD_INTERVAL_MS;
 			}
 			_probe_origin_level = _skip_frames;
 
