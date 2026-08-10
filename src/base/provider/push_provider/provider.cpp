@@ -110,11 +110,12 @@ namespace pvd
 
 	bool PushProvider::OnChannelCreated(uint32_t channel_id, const std::shared_ptr<pvd::PushStream> &channel)
 	{
+		// This must leave the silence timeout alone.
+		// `WebRTCProvider` registers its channel after `JoinStream()` has applied the configured value,
+		// so a write here would discard it.
 		std::lock_guard<std::shared_mutex> lock(_channels_lock);
 
 		_channels.emplace(channel_id, channel);
-
-		channel->SetPacketSilenceTimeoutMs(DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
 
 		return true;
 	}

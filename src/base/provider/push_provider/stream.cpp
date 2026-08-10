@@ -217,9 +217,9 @@ namespace pvd
 			return;
 		}
 
-		// Only a positive value the operator set applies here. A provider default filled in during
-		// config parsing (MPEG-TS gets `1500` ms) is not the operator's intent, and an explicit `0`
-		// leaves the channel-creation default in place instead of removing the timeout altogether.
+		// Only a positive value the operator set applies here.
+		// A provider default filled in during config parsing (MPEG-TS gets `1500` ms) is not that,
+		// and `0` is what the channel already carries.
 		bool is_configured	  = false;
 		const auto timeout_ms = application->GetConfiguredPacketSilenceTimeoutMs(provider->GetProviderType(), &is_configured);
 
@@ -299,13 +299,10 @@ namespace pvd
 			return;
 		}
 
+		// This wait is sized for a source that has not sent anything yet, so it must not survive the first frame.
 		// Only a positive value the operator set governs from here,
-		// and everything else falls back to the channel-creation timeout.
-		// This wait is sized for a source that has not sent anything yet,
-		// so it must not survive the first frame.
-		SetPacketSilenceTimeoutMs((is_configured && (configured_ms > 0))
-									  ? configured_ms
-									  : DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+		// and everything else leaves the channel with no timeout until it publishes.
+		SetPacketSilenceTimeoutMs((is_configured && (configured_ms > 0)) ? configured_ms : 0);
 	}
 
 	bool PushStream::PublishChannel(const info::VHostAppName &vhost_app_name)

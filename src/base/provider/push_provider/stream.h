@@ -90,7 +90,7 @@ namespace pvd
 
 		// Applies the `PacketSilenceTimeoutMs` configured for the resolved application, which providers
 		// call as soon as that application is known.
-		// An option the operator did not set leaves the channel-creation default in place.
+		// An option the operator did not set leaves the channel with no timeout.
 		void ApplyConfiguredPacketSilenceTimeoutMs(const info::VHostAppName &vhost_app_name);
 
 		// Sizes the wait for an input's first coded frame and starts it, when the operator set
@@ -101,7 +101,7 @@ namespace pvd
 		// Ends that wait. A provider calls this for a message holding a coded frame, never for a codec
 		// description, which an encoder can send long before its first frame.
 		// The channel is still unpublished, so the timeout becomes a positive `PacketSilenceTimeoutMs`
-		// the operator set, or the channel-creation timeout otherwise.
+		// the operator set, and no timeout at all otherwise.
 		// `PushApplication::JoinStream()` applies the configured value, `0` included, at publish.
 		void EndFirstMediaWait(const info::VHostAppName &vhost_app_name);
 

@@ -297,11 +297,56 @@ namespace
 	};
 }  // namespace
 
-TEST(PushStreamLifecycle, ChannelStartsWithTheCreationDefaultTimeout)
+TEST(PushStreamLifecycle, ChannelStartsWithNoSilenceTimeout)
 {
 	Fixture f;
 
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	// A budget here deletes an input that is still signalling,
+	// before anything has told the channel what the operator wants.
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
+}
+
+TEST(PushStreamLifecycle, AnUnpublishedChannelSurvivesSilenceThatFollowsItsFirstData)
+{
+	Fixture f;
+
+	ASSERT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
+
+	// The first packet is what gives this channel a measurable elapsed time.
+	std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+	const auto state = f.channel->GetSilenceState();
+
+	// The budget itself, not only the verdict:
+	// a channel carrying one would reach the same verdict this early,
+	// so without this the test says nothing about which budget it is carrying.
+	EXPECT_EQ(state.timeout_ms, 0);
+	EXPECT_GE(state.elapsed_ms, 0);
+	EXPECT_FALSE(state.IsSilentBeyondTimeout());
+}
+
+TEST(PushStreamLifecycle, AConfiguredTimeoutStillGovernsAnUnpublishedChannel)
+{
+	Fixture f;
+
+	const auto vhost_app_name = f.CreateApplication("<PacketSilenceTimeoutMs>4000</PacketSilenceTimeoutMs>");
+	ASSERT_TRUE(vhost_app_name.IsValid());
+
+	f.channel->ApplyConfiguredPacketSilenceTimeoutMs(vhost_app_name);
+
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 4000);
+}
+
+TEST(PushStreamLifecycle, AnAbsentTimeoutOptionLeavesAnUnpublishedChannelUnguarded)
+{
+	Fixture f;
+
+	const auto vhost_app_name = f.CreateApplication("");
+	ASSERT_TRUE(vhost_app_name.IsValid());
+
+	f.channel->ApplyConfiguredPacketSilenceTimeoutMs(vhost_app_name);
+
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 }
 
 TEST(PushStreamLifecycle, ChannelWithoutDataIsNeverSilentBeyondItsTimeout)
@@ -443,7 +488,8 @@ TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheTimeoutWhenTheApplicati
 
 	// A name that resolves to nothing, which is also what a channel sees
 	// when its application is deleted while it waits.
-	// Losing the budget here would leave the channel with no guard at all.
+	// A lookup that failed has learned nothing about what should govern from here,
+	// so it must leave the wait exactly as it found it.
 	f.channel->EndFirstMediaWait(info::VHostAppName::InvalidVHostAppName());
 
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
@@ -451,7 +497,7 @@ TEST(PushStreamLifecycle, EndingTheFirstMediaWaitKeepsTheTimeoutWhenTheApplicati
 	// The failed lookup must not have spent the wait either, so the next packet still ends it.
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 }
 
 TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionChangesNothing)
@@ -461,14 +507,14 @@ TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionChangesNothing)
 	const auto vhost_app_name = f.CreateApplication("");
 	ASSERT_TRUE(vhost_app_name.IsValid());
 
-	// With the option off, this leaves the channel on the timeout it was created with, and never starts
-	// the wait, so the first media packet has nothing to end.
+	// With the option off this applies `PacketSilenceTimeoutMs`, which this application does not set,
+	// and it never starts the wait, so the first media packet has nothing to end.
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 }
 
 TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionStillHonorsPacketSilenceTimeoutMs)
@@ -484,7 +530,7 @@ TEST(PushStreamLifecycle, AnAbsentFirstMediaWaitOptionStillHonorsPacketSilenceTi
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 4000);
 }
 
-TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenTheTimeoutIsExplicitlyZero)
+TEST(PushStreamLifecycle, FirstMediaLeavesTheChannelUnguardedWhenTheTimeoutIsExplicitlyZero)
 {
 	Fixture f;
 
@@ -494,10 +540,9 @@ TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnTheUnpublishedFallbackWhenTheTi
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 	f.channel->EndFirstMediaWait(vhost_app_name);
 
-	// An explicit `0` disables the timeout for a published stream.
-	// Honoring it here would leave an unpublished channel with no guard at all,
-	// so it holds its connection for as long as it likes.
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	// The wait was sized for a source that had sent nothing, and the first frame has now arrived,
+	// so it must not survive. Nothing the operator did not ask for may take its place either.
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 }
 
 TEST(PushStreamLifecycle, FirstMediaEndsTheWaitOnAnOperatorConfiguredTimeout)
@@ -525,7 +570,7 @@ TEST(PushStreamLifecycle, MediaThatArrivesBeforeTheWaitIsSizedDoesNotConsumeIt)
 	// A message dispatcher hands media to a channel whether or not it has asked to publish yet,
 	// so this can run before the provider sized the wait.
 	f.channel->EndFirstMediaWait(vhost_app_name);
-	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), pvd::DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS);
+	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 0);
 
 	f.channel->ApplyConfiguredFirstMediaWaitTimeoutMs(vhost_app_name);
 	EXPECT_EQ(f.channel->GetPacketSilenceTimeoutMs(), 8000);
