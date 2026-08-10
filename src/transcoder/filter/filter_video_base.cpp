@@ -23,6 +23,8 @@ bool FilterVideoBase::InitializeFpsFilter()
 	// Configure skip frames
 #if _SKIP_FRAMES_ENABLED
 	int32_t skip_frames_config = _output_track->GetSkipFramesByConfig();
+	_skip_frames_controller.Configure(skip_frames_config);
+
 	int32_t skip_frames = (skip_frames_config >= FilterFps::SkipFramesMin) ? skip_frames_config : FilterFps::SkipFramesDisabled;
 	_fps_filter.SetSkipFrames(skip_frames);
 

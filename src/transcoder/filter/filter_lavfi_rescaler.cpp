@@ -217,11 +217,6 @@ bool FilterLavfiRescaler::Initialize()
 		return false;
 	}
 
-#if _SKIP_FRAMES_ENABLED
-	// Set initial Skip Frames
-	_skip_frames_controller.Configure(_output_track->GetSkipFramesByConfig());
-#endif
-
 	SetState(State::STARTED);
 
 	return true;
