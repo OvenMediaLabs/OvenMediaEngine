@@ -21,7 +21,7 @@ namespace
 	// how long a level must stand before it may drop
 	constexpr int64_t RECOVERY_HOLD_INTERVAL_MS	= 5000;
 	// ceiling the hold backs off to while probes keep failing
-	constexpr int64_t RECOVERY_HOLD_MAX_MS		= 30000;
+	constexpr int64_t RECOVERY_HOLD_MAX_MS		= 60000;
 	// aim at 90% of what the frame cost allows
 	constexpr double SAFETY_MARGIN_RATIO		= 0.9;
 	// busy this much of a window counts as saturated
