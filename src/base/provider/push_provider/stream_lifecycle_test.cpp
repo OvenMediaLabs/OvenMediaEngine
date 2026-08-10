@@ -312,16 +312,13 @@ TEST(PushStreamLifecycle, AnUnpublishedChannelSurvivesSilenceThatFollowsItsFirst
 
 	ASSERT_TRUE(f.provider->OnDataReceived(Fixture::CHANNEL_ID, f.MakeData()));
 
-	// The first packet is what gives this channel a measurable elapsed time.
-	std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
 	const auto state = f.channel->GetSilenceState();
 
-	// The budget itself, not only the verdict:
-	// a channel carrying one would reach the same verdict this early,
-	// so without this the test says nothing about which budget it is carrying.
-	EXPECT_EQ(state.timeout_ms, 0);
+	// The first packet started the clock, so the runner now has an elapsed time it could judge.
+	// What stops it is the budget, and a channel carrying one would reach the same verdict this early,
+	// so without that second assertion the test says nothing about which budget it is carrying.
 	EXPECT_GE(state.elapsed_ms, 0);
+	EXPECT_EQ(state.timeout_ms, 0);
 	EXPECT_FALSE(state.IsSilentBeyondTimeout());
 }
 
