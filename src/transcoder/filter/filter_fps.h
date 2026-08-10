@@ -34,6 +34,17 @@ public:
 	void SetMaximumDupulicateFrames(int32_t max_dupulicate_frames);
 	bool Push(std::shared_ptr<MediaFrame> media_frame);
 	std::shared_ptr<MediaFrame> Pop();
+	// Pop() parks the last pushed frame until its successor arrives. When the
+	// filter is being replaced there is no successor, so this emits the parked
+	// frame at the next output slot instead of dropping it.
+	std::shared_ptr<MediaFrame> Flush();
+
+	// Carry the output slot position across a filter replacement, so a frame
+	// lost around the swap is refilled instead of leaving a hole. The first
+	// pushed frame re-anchors instead when it is too far ahead (a real
+	// discontinuity, not a swap).
+	int64_t GetNextPts() const;
+	void SetContinuationPts(int64_t next_pts);
 
 	double GetOutputFramesPerSecond() const;
 	double GetExpectedOutputFramesPerSecond() const;
@@ -84,6 +95,8 @@ private:
 	// The next PTS to be output
 	int64_t _curr_pts;
 	int64_t _next_pts;
+	// True while an inherited _next_pts is waiting for its first frame
+	bool _continuation_pending = false;
 
 	int64_t _last_input_pts					= kNoPtsValue;
 	int64_t _last_input_scaled_pts			= kNoPtsValue;

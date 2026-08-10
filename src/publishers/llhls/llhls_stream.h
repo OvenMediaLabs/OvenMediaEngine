@@ -213,6 +213,10 @@ private:
 
 	bool InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
 
+	// Warn only once when markers arrive while the keyframe interval does not
+	// divide the segment duration
+	bool _cue_alignment_warned = false;
+
 	// Config
 	bmff::FMP4Packager::Config _packager_config;
 	bmff::FMP4Storage::Config _storage_config;

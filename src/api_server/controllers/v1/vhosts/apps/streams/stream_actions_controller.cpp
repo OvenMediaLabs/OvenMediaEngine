@@ -11,10 +11,8 @@
 #include <base/provider/application.h>
 #include <modules/bitstream/h264/h264_sei.h>
 #include <base/modules/data_format/amf_event/amf_event.h>
-#include <base/modules/data_format/cue_event/cue_event.h>
 #include <base/modules/data_format/id3v2/frames/id3v2_frames.h>
 #include <base/modules/data_format/id3v2/id3v2.h>
-#include <base/modules/data_format/scte35_event/scte35_event.h>
 #include <base/modules/data_format/webvtt/webvtt_frame.h>
 
 #include <base/event/command/commands.h>
@@ -303,17 +301,6 @@ namespace api
 			//   ]
 			// }
 
-			// Cue Event
-			// {
-			// 	"eventFormat": "cue",
-			// 	"events":[
-			// 		{
-			// 			"cueType": "out", // out | in
-			// 			"duration": 60500 // milliseconds, only available when cueType is out
-			// 		}
-			// 	]
-			// }
-
 			// SEI Event
 			// {
 			// 	"eventFormat": "sei",
@@ -350,18 +337,6 @@ namespace api
 			{
 				event_format = cmn::BitstreamFormat::ID3v2;
 				events_data	 = MakeID3Data(request_body["events"]);
-			}
-			else if (event_format_string.UpperCaseString() == "CUE")
-			{
-				event_format = cmn::BitstreamFormat::CUE;
-				timestamp	 = source_stream->GetCurrentTimestampMs();
-				events_data	 = MakeCueData(request_body["events"]);
-			}
-			else if (event_format_string.UpperCaseString() == "SCTE35")
-			{
-				event_format = cmn::BitstreamFormat::SCTE35;
-				timestamp	 = source_stream->GetCurrentTimestampMs();
-				events_data	 = MakeScte35Data(request_body["events"], timestamp);
 			}
 			else
 			{
@@ -415,6 +390,7 @@ namespace api
 									  "Internal Server Error - Could not inject event: [%s/%s/%s]",
 									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
 			}
+
 			return {http::StatusCode::OK};
 		}
 
@@ -758,38 +734,6 @@ namespace api
 			return id3v2_event->Serialize();
 		}
 
-		std::shared_ptr<ov::Data> StreamActionsController::MakeCueData(const Json::Value &events)
-		{
-			if (events.size() == 0)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "events must have at least one event");
-			}
-
-			// only first event is used
-			auto event = events[0];
-			if (event.isMember("cueType") == false || event["cueType"].isString() == false)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "cueType is required in events");
-			}
-
-			ov::String cue_type	   = event["cueType"].asString().c_str();
-			CueEvent::CueType type = CueEvent::GetCueTypeByName(cue_type);
-			if (type == CueEvent::CueType::Unknown)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "cueType is not supported: [%s]", cue_type.CStr());
-			}
-
-			// duration (optional)
-			uint32_t duration_msec = 0;
-			if (event.isMember("duration") == true && event["duration"].isUInt() == true)
-			{
-				duration_msec = event["duration"].asUInt();
-			}
-
-			auto cue_event = CueEvent::Create(type, duration_msec);
-
-			return cue_event->Serialize();
-		}
 
 		std::shared_ptr<ov::Data> StreamActionsController::MakeAMFData(const Json::Value &events)
 		{
@@ -880,85 +824,5 @@ namespace api
 			return sei_event->Serialize();
 		}
 
-		std::shared_ptr<ov::Data> StreamActionsController::MakeScte35Data(const Json::Value &events, int64_t timestamp)
-		{
-			if (events.size() == 0)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "events must have at least one event");
-			}
-
-			// only first event is used
-			auto event				  = events[0];
-
-			/*
-			{
-				"eventFormat": "scte35",
-				"events":[
-					{
-						"spliceCommand": "spliceInsert", // optional, spliceNull, spliceTime ...
-						"id": 12345, // optional, 32bits unsigned number, auto filled if not present
-						"type": "out", // required, out | in
-						"duration": 60500, // milliseconds, only available when cueType is out
-						"autoReturn": false 
-					}
-				]
-			}
-			*/
-
-			// spliceCommand (optional)
-			ov::String splice_command = "spliceInsert";
-			if (event.isMember("spliceCommand") == true && event["spliceCommand"].isString() == true)
-			{
-				splice_command = event["spliceCommand"].asString().c_str();
-			}
-
-			if (splice_command.UpperCaseString() != "SPLICEINSERT")
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "Now only spliceInsert is supported");
-			}
-
-			// id (required)
-			if (event.isMember("id") == false || event["id"].isUInt() == false)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "id is required in events");
-			}
-			uint32_t id = event["id"].asUInt();
-
-			// type (required)
-			if (event.isMember("type") == false || event["type"].isString() == false)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "type is required in events");
-			}
-
-			ov::String type = event["type"].asString().c_str();
-			if (type.UpperCaseString() != "OUT" && type.UpperCaseString() != "IN")
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "type must be 'out' or 'in'");
-			}
-
-			bool out_of_network	   = type.UpperCaseString() == "OUT";
-
-			// duration (optional)
-			uint32_t duration_msec = 0;
-			if (event.isMember("duration") == true && event["duration"].isUInt() == true)
-			{
-				duration_msec = event["duration"].asUInt();
-			}
-
-			// autoReturn (optional)
-			bool auto_return = false;
-			if (event.isMember("autoReturn") == true && event["autoReturn"].isBool() == true)
-			{
-				auto_return = event["autoReturn"].asBool();
-			}
-
-			auto scte_event = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, id, out_of_network, timestamp, duration_msec, auto_return);
-			if (scte_event == nullptr)
-			{
-				throw http::HttpError(http::StatusCode::BadRequest, "Could not create SCTE35 event");
-			}
-
-			return scte_event->Serialize();
-		}
 	}  // namespace v1
 }  // namespace api

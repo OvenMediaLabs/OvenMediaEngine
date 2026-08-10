@@ -27,6 +27,9 @@ public:
 	ov::String GetTag() const;
 	std::shared_ptr<ov::Data> GetData() const;
 	std::optional<bool> IsOutOfNetwork() const;
+	// A provisional IN announces the planned return point; while it is pending it
+	// may be replaced by an explicit IN, earlier or later
+	bool IsProvisional() const;
 	std::shared_ptr<CueEvent> GetCueEvent() const;
 	std::shared_ptr<Scte35Event> GetScte35Event() const;
 	ov::String ToHlsTag(int64_t timestamp_offset = 0) const;
@@ -71,29 +74,33 @@ protected:
 	bool HasMarker(int64_t end_timestamp) const;
 	bool HasMarkerWithSeq(int64_t sequence_number) const;
 	uint32_t GetMarkerCount() const;
+	// Markers that will cut before the given time; only these shift the sequence
+	// number of a later marker
+	uint32_t GetMarkerCountBefore(int64_t timestamp_ms) const;
 	const std::shared_ptr<Marker> GetFirstMarker() const;
 	std::vector<std::shared_ptr<Marker>> PopMarkers(int64_t start_timestamp, int64_t end_timestamp);
 	std::vector<std::shared_ptr<Marker>> PopMarkers(int64_t end_timestamp);
 	bool RemoveMarker(int64_t timestamp);
-	// remove expired markers
-	void RemoveExpiredMarkers(int64_t current_timestamp);
+	// Pop markers whose timestamp has already passed the given position; a
+	// leftover would corrupt the sequence estimation of every later marker
+	std::vector<std::shared_ptr<Marker>> PopExpiredMarkers(int64_t before_timestamp);
 	double GetActualTargetSegmentDurationMs() const;
 
 	struct SegmentationInfo
 	{
-		// 1/1000 scale 
+		// 1/1000 scale
 		cmn::MediaType media_type = cmn::MediaType::Unknown;
 
 		double last_sample_timestamp_ms = 0;
 		double last_sample_duration_ms = 0;
-		
+
 		bool is_last_segment_completed = false;
 		int64_t last_segment_number = -1;
 		int64_t last_partial_segment_number = -1;
 		double last_segement_duration_ms = 0;
-		
-		double keyframe_interval = 1.0; // 29, 30, 31...
-		double framerate = 0.0;
+
+		// 0 when unknown
+		double keyframe_interval_ms = 0.0;
 		double target_segment_duration_ms = 0;
 	};
 

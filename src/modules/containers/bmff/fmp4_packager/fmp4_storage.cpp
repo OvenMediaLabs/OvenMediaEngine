@@ -557,7 +557,7 @@ namespace bmff
 		}
 	}
 
-	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers)
+	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool &last_chunk, const std::vector<std::shared_ptr<Marker>> &markers)
 	{
 		auto segment = GetLastSegmentInternal();
 		if (segment == nullptr || segment->IsCompleted() == true)
@@ -577,7 +577,7 @@ namespace bmff
 			// Force to complete the segment
 			last_chunk = true;
 			// Too long segment buffered
-			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
+			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because no cuttable boundary (keyframe or target duration) appeared for a long time. This segment is forcibly created and may not play normally.",
 			_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
 		}
 
@@ -592,27 +592,15 @@ namespace bmff
 			_total_expected_duration_ms += _config.segment_duration_ms;
 			_total_segment_duration_ms += segment->GetDurationMs();
 
-			// When there is a marker, it comes out smaller than or equal to the expected Segment.
-			// Depending on the conditions, Audio may come out smaller or equal, but Video may come out smaller, equal or larger.
-			// If Audio comes out smaller and Video comes out the equal, the Sequnce is broken.
-			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
+			// A marker segment is discounted so the following segment comes out
+			// smaller: every track gains exactly one boundary per marker and returns
+			// to the same segment grid, keeping the sequence numbers aligned.
+			// Requires the keyframe interval to be shorter than the segment duration
 			if (segment->HasMarker() == true)
 			{
 				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
 
 				_total_expected_duration_ms -= _config.segment_duration_ms;
-				
-				// auto last_marker = segment->GetMarkers().back();
-				// if (last_marker != nullptr && last_marker->IsOutOfNetwork() == true)
-				// {
-				// 	// We can initialize the all time variables here
-				// 	_total_expected_duration_ms = 0;
-				// 	_total_segment_duration_ms = 0;
-				// }
-				// else if (last_marker != nullptr && last_marker->IsOutOfNetwork() == false)
-				// {
-				// 	_total_expected_duration_ms -= _config.segment_duration_ms;
-				// }
 			}
 
 			double next_target_duration = _total_expected_duration_ms - _total_segment_duration_ms + _config.segment_duration_ms;
@@ -620,53 +608,7 @@ namespace bmff
 			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
 				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
 
-			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
-			{
-				_target_segment_duration_ms = next_target_duration;
-			}
-			else
-			{
-				_target_segment_duration_ms = next_target_duration; //static_cast<double>(_config.segment_duration_ms / 2);
-			}
-
-			// Make CUE-OUT-CONT
-			// TODO(Getroot): Later it will be added with server option
-			// if (segment->HasMarker())
-			// {
-			// 	for (const auto &it : segment->GetMarkers())
-			// 	{
-			// 		if (it.tag.UpperCaseString() == "CUEEVENT-OUT")
-			// 		{
-			// 			// Get duration
-			// 			auto cue_out_event = ::CueEvent::Parse(it.data);
-			// 			if (cue_out_event != nullptr)
-			// 			{
-			// 				_is_cue_out_on = true;
-			// 				_cue_out_duration_msec = cue_out_event->GetDurationMsec();
-			// 				_cue_out_elapsed_msec = 0;
-			// 			}
-
-			// 		}
-			// 		else if (it.tag.UpperCaseString() == "CUEEVENT-IN")
-			// 		{
-			// 			_is_cue_out_on = false;
-			// 			_cue_out_duration_msec = 0;
-			// 			_cue_out_elapsed_msec = 0;
-			// 		}
-			// 	}
-			// }
-			// else if (segment->HasMarker() == false && _is_cue_out_on == true)
-			// {
-			// 	_cue_out_elapsed_msec += segment->GetDuration();
-
-			// 	// Make CUE-OUT-CONT
-			// 	Marker marker;
-			// 	marker.timestamp = segment->GetStartTimestamp() + segment->GetDuration();
-			// 	marker.tag = "CUEEVENT-OUT-CONT";
-			// 	marker.data = CueEvent::Create(::CueEvent::CueType::CONT, _cue_out_duration_msec, _cue_out_elapsed_msec)->Serialize();
-
-			// 	segment->SetMarkers({ marker });
-			// }
+			_target_segment_duration_ms = next_target_duration;
 
 			logtt("LLHLS stream (%s) / track (%u) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
 				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());

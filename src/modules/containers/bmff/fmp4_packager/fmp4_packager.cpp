@@ -7,6 +7,7 @@
 //
 //==============================================================================
 
+#include <algorithm>
 #include <cmath>
 
 #include "fmp4_packager.h"
@@ -34,15 +35,10 @@ namespace bmff
 
 		if (media_track->GetMediaType() == cmn::MediaType::Video)
 		{
-			_segmentation_info.keyframe_interval = media_track->GetKeyFrameInterval();
+			_segmentation_info.keyframe_interval_ms = media_track->GetKeyframeIntervalDurationMs();
 		}
-		else 
-		{
-			_segmentation_info.keyframe_interval = 1;
-		}
-		
+
 		_segmentation_info.media_type = media_track->GetMediaType();
-		_segmentation_info.framerate = media_track->GetFrameRate();
 		_segmentation_info.target_segment_duration_ms = _config.segment_duration_ms;
 	}
 
@@ -164,16 +160,17 @@ namespace bmff
 
 		if (media_track->GetMediaType() == cmn::MediaType::Video)
 		{
-			_segmentation_info.keyframe_interval = media_track->GetKeyFrameInterval();
+			_segmentation_info.keyframe_interval_ms = media_track->GetKeyframeIntervalDurationMs();
 
 			// The new content must start with a keyframe
 			_waiting_for_keyframe = true;
 			_dropped_samples_while_waiting = 0;
 		}
-		_segmentation_info.framerate = media_track->GetFrameRate();
 
 		// This track's own boundary supersedes a cut propagated from another track
+		// or owed to a consumed marker
 		_pending_cut_timestamp_ms = -1.0;
+		_pending_marker_cut_timestamp = -1;
 		_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
 
 		bool init_section_created = CreateInitializationSegment();
@@ -349,6 +346,18 @@ namespace bmff
 		double next_total_sample_duration_ms = (static_cast<double>(next_total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
 		bool next_frame_is_idr = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
 
+		// A marker position must end the segment at the first cuttable frame at or
+		// after it, even if the marker was already consumed by an earlier chunk of
+		// this segment or sits exactly on this frame
+		bool return_cut = false;
+		if (next_frame_is_idr == true && samples != nullptr && samples->GetTotalCount() > 0)
+		{
+			// Only positions from the current samples on; an older leftover is
+			// expired and gets discarded at the next completion instead of cutting
+			return_cut = (_pending_marker_cut_timestamp >= 0 && next_frame->GetDts() >= _pending_marker_cut_timestamp) ||
+						 (HasMarker(samples->GetStartTimestamp(), next_frame->GetDts() + 1) == true);
+		}
+
 		// Marker handling
 		constexpr uint8_t kNoMarker = 0;
 		constexpr uint8_t kFlushAsSoonAsPossible = 1;
@@ -461,19 +470,27 @@ namespace bmff
 				can_be_last_chunk = true;
 			}
 
+			if (return_cut == true)
+			{
+				// The marker boundary cut overrides a deferred flush
+				can_be_last_chunk = true;
+			}
+
 			logtt("track(%d), total_sample_duration_ms: %lf, next_total_sample_duration_ms: %lf, target_chunk_duration_ms: %lf, next_frame_is_idr: %d, is_last_partial_segment: %d last_segment_duration: %lf, target_segment_duration: %f", GetMediaTrack()->GetId(), total_sample_duration_ms, next_total_sample_duration_ms, _target_chunk_duration_ms, next_frame_is_idr, can_be_last_chunk, last_segment != nullptr ? last_segment->GetDurationMs() : -1, _storage->GetTargetSegmentDuration());
 
 			// - In the last partial segment, if the next frame is a keyframe, a segment is created immediately. This allows the segment to start with a keyframe.
 			// - When adding samples, if the Part Target Duration is exceeded, a chunk is created immediately.
 			// - If it exceeds 85% and the next sample is independent, a chunk is created. This makes the next chunk start independent.
 			if (	(total_sample_duration_ms >= _target_chunk_duration_ms) ||
-				
+
 					(marker_handling == kShouldFlushImmediately) ||
+
+					(return_cut == true) ||
 
 					(can_be_last_chunk == true && GetMediaTrack()->GetMediaType() == cmn::MediaType::Video && next_frame_is_idr == true) ||
 					(can_be_last_chunk == true && GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio) ||
-					
-					((next_total_sample_duration_ms > _target_chunk_duration_ms) && (total_sample_duration_ms >= _target_chunk_duration_ms * 0.85)) 
+
+					((next_total_sample_duration_ms > _target_chunk_duration_ms) && (total_sample_duration_ms >= _target_chunk_duration_ms * 0.85))
 				)
 			{
 				double reserve_buffer_size;
@@ -514,55 +531,18 @@ namespace bmff
 
 				auto chunk = chunk_stream.GetDataPointer();
 
-				auto markers = PopMarkers(samples->GetStartTimestamp(), samples->GetEndTimestamp());
+				// The marker boundary cut ends the segment exactly at this frame's
+				// position, so a marker sitting on it belongs to the closing segment
+				auto pop_end_timestamp = (return_cut == true) ? std::max(samples->GetEndTimestamp(), next_frame->GetDts() + 1) : samples->GetEndTimestamp();
+				auto markers = PopMarkers(samples->GetStartTimestamp(), pop_end_timestamp);
 
-				////////////////////////////////////////////////////
-				// Auto Insertion of Cue-In/SCTE35-IN Marker
-				// It is moved to the upper layer (LLHLS Stream) to synchronize with all tracks
-				////////////////////////////////////////////////////
-
-				// if (markers.empty() == false)
-				// {
-				// 	// If the last marker is a cue-out marker, insert a cue-in marker automatically after duration of cue-out marker
-				// 	auto last_pop_marker = markers.back();
-				// 	auto next_marker = GetFirstMarker();
-				// 	if (last_pop_marker != nullptr && last_pop_marker->IsOutOfNetwork() == true && next_marker == nullptr)
-				// 	{
-				// 		// If there is no next xxx-IN marker, insert a xxx-in marker automatically
-				// 		if (last_pop_marker->GetMarkerFormat() == cmn::BitstreamFormat::CUE)
-				// 		{
-				// 			// Insert a CUE-IN marker
-				// 			auto cue_out_event = last_pop_marker->GetCueEvent();
-				// 			if (cue_out_event != nullptr)
-				// 			{
-				// 				auto duration_msec = cue_out_event->GetDurationMsec();
-				// 				auto main_track = GetMediaTrack();
-				// 				int64_t cue_in_timestamp = (samples->GetEndTimestamp() - 1) + (static_cast<double>(duration_msec) / 1000.0 * main_track->GetTimeBase().GetTimescale());
-
-				// 				auto cue_in_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, cue_in_timestamp, CueEvent::Create(CueEvent::CueType::IN, 0)->Serialize());
-
-				// 				InsertMarker(cue_in_marker);
-				// 			}
-				// 		}
-				// 		else if (last_pop_marker->GetMarkerFormat() == cmn::BitstreamFormat::SCTE35)
-				// 		{
-				// 			// Insert a SCTE35-IN marker
-				// 			auto scte35_out_event = last_pop_marker->GetScte35Event();
-				// 			if (scte35_out_event != nullptr)
-				// 			{
-				// 				auto duration_msec = scte35_out_event->GetDurationMsec();
-				// 				auto main_track = GetMediaTrack();
-				// 				int64_t scte35_in_timestamp = (samples->GetEndTimestamp() - 1) + (static_cast<double>(duration_msec) / 1000.0 * main_track->GetTimeBase().GetTimescale());
-
-				// 				auto scte_in_data = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, scte35_out_event->GetID(), false, scte35_in_timestamp, duration_msec, false)->Serialize();
-
-				// 				auto marker = Marker::CreateMarker(cmn::BitstreamFormat::SCTE35, scte35_in_timestamp, scte_in_data);
-
-				// 				InsertMarker(marker);
-				// 			}
-				// 		}
-				// 	}
-				// }
+				if (return_cut == true && marker_handling != kShouldFlushImmediately)
+				{
+					for (const auto &marker : markers)
+					{
+						logti("track(%u) - Segment cut at the marker boundary (%s, timestamp: %" PRId64 ")", GetMediaTrack()->GetId(), marker->GetTag().CStr(), marker->GetTimestamp());
+					}
+				}
 
 				bool last_chunk = can_be_last_chunk && next_frame_is_idr;
 				if (marker_handling == kShouldFlushImmediately)
@@ -570,15 +550,40 @@ namespace bmff
 					last_chunk = true;
 				}
 
-				if (_storage != nullptr && _storage->AppendMediaChunk(chunk, 
-												samples->GetStartTimestamp(), 
-												total_sample_duration_ms, 
-												samples->IsIndependent(), 
-												last_chunk, 
+				if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
+												samples->GetStartTimestamp(),
+												total_sample_duration_ms,
+												samples->IsIndependent(),
+												last_chunk,
 												markers) == false)
 				{
 					logte("FMP4Packager::AppendSample() - Failed to store media chunk");
 					return false;
+				}
+
+				// The storage may have force-completed an overlong segment, so the
+				// pending cut is settled on the flag it reports back
+				if (last_chunk == true)
+				{
+					// A completed boundary satisfies any pending marker cut
+					_pending_marker_cut_timestamp = -1;
+
+					// A marker whose position was skipped over can never be popped by a
+					// sample range again, and a leftover would corrupt the sequence
+					// estimation of every later marker
+					for (const auto &expired_marker : PopExpiredMarkers(samples->GetStartTimestamp()))
+					{
+						logtw("track(%u) - Discarded the marker (%s, timestamp: %" PRId64 ") because its position was never reached", GetMediaTrack()->GetId(), expired_marker->GetTag().CStr(), expired_marker->GetTimestamp());
+					}
+				}
+				else
+				{
+					// A marker consumed by a mid-segment chunk still owes the segment a
+					// cut at the first cuttable frame at or after its position
+					for (const auto &marker : markers)
+					{
+						_pending_marker_cut_timestamp = std::max(_pending_marker_cut_timestamp, marker->GetTimestamp());
+					}
 				}
 
 				_sample_buffer.Reset();
@@ -688,10 +693,11 @@ namespace bmff
 			// Storage expects milliseconds, samples hold durations in timescale units
 			double total_sample_duration_ms = (static_cast<double>(samples->GetTotalDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
 
+			bool last_chunk = true;
 			if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
 											samples->GetStartTimestamp(),
 											total_sample_duration_ms,
-											samples->IsIndependent(), true) == false)
+											samples->IsIndependent(), last_chunk) == false)
 			{
 				logte("FMP4Packager::Flush() - Failed to store media chunk");
 				return false;

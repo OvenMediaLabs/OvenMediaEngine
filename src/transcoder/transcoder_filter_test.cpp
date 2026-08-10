@@ -221,15 +221,39 @@ TEST(FilterLavfiResampler, MismatchedFrameDoesNotDisableFilter)
 
 	ASSERT_TRUE(resampler->Initialize());
 
-	auto matched = resampler->ProcessFrameInternal(MakeAudioFrame(48000, 0, 1024));
-	EXPECT_NE(matched.result, TranscodeResult::DataError);
+	// Hands the frame over and drains whatever the graph produced for it
+	auto push_and_drain = [&resampler](std::shared_ptr<MediaFrame> media_frame) -> int {
+		// Handing a frame over never yields output on its own; a non-null frame
+		// always reports Again, so draining is the only way to get output
+		EXPECT_EQ(resampler->ProcessFrameInternal(media_frame).result, TranscodeResult::Again);
 
-	auto mismatched = resampler->ProcessFrameInternal(MakeAudioFrame(44100, 1024, 1024));
-	EXPECT_EQ(mismatched.result, TranscodeResult::DataError);
+		int completed = 0;
+
+		while (true)
+		{
+			auto recv = resampler->PopCompletedFrameInternal();
+			if (recv.result != TranscodeResult::DataReady)
+			{
+				// A usable graph only ever reports DataReady or Again
+				EXPECT_EQ(recv.result, TranscodeResult::Again);
+				break;
+			}
+
+			completed++;
+		}
+
+		return completed;
+	};
+
+	EXPECT_GT(push_and_drain(MakeAudioFrame(48000, 0, 1024)), 0);
+
+	// The mismatched frame is dropped with a warning instead of being reported as
+	// an error, so nothing reaches the output and the graph stays usable
+	EXPECT_EQ(push_and_drain(MakeAudioFrame(44100, 1024, 1024)), 0);
 	EXPECT_NE(resampler->GetState(), FilterBase::State::ERROR);
 
-	auto recovered = resampler->ProcessFrameInternal(MakeAudioFrame(48000, 2048, 1024));
-	EXPECT_NE(recovered.result, TranscodeResult::DataError);
+	// The next matching frame still flows through the same graph
+	EXPECT_GT(push_and_drain(MakeAudioFrame(48000, 2048, 1024)), 0);
 }
 
 TEST(MediaFrameClone, CopiesColorTags)

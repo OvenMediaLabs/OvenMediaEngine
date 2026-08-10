@@ -43,9 +43,11 @@ void FilterFps::Clear()
 {
 	if(_frames.size() > 0)
 	{
+		logtd("FPS filter cleared, discarding %zu queued frames (first pts: %" PRId64 ")",
+			  _frames.size(), _frames.front() != nullptr ? _frames.front()->GetPts() : -1);
 		_frames.clear();
 	}
-	
+
 	_timer.Stop();
 }
 
@@ -122,7 +124,8 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 
 	if ((scaled_pts - _last_input_scaled_pts) != 1 && _last_input_scaled_pts != kNoPtsValue)
 	{
-		// logtt("PTS is not continuous. lastPts(%" PRId64 "/%" PRId64 ") -> currPts(%" PRId64 "/%" PRId64 ")", _last_input_scaled_pts, _last_input_pts, scaled_pts, media_frame->GetPts());
+		logtt("FPS filter input discontinuity: slot %" PRId64 " -> %" PRId64 " (hole %" PRId64 "), input pts %" PRId64,
+			  _last_input_scaled_pts, scaled_pts, scaled_pts - _last_input_scaled_pts - 1, media_frame->GetPts());
 	}
 
 	_last_input_pts = media_frame->GetPts();
@@ -133,6 +136,20 @@ bool FilterFps::Push(std::shared_ptr<MediaFrame> media_frame)
 	if (_next_pts == kNoPtsValue)
 	{
 		_next_pts = media_frame->GetPts();
+	}
+	else if (_continuation_pending == true)
+	{
+		// An inherited slot position covers a few frames of overlap or loss around
+		// the filter swap: a small backward overlap (an item splice re-bases the new
+		// item less than one frame after the previous one) is discarded by the queue
+		// rules, a small hole is filled. Anything farther is a real discontinuity,
+		// so re-anchor
+		constexpr int64_t kMaxContinuationGap = 15;
+		if (media_frame->GetPts() - _next_pts > kMaxContinuationGap || _next_pts - media_frame->GetPts() > kMaxContinuationGap)
+		{
+			_next_pts = media_frame->GetPts();
+		}
+		_continuation_pending = false;
 	}
 
 	_frames.push_back(media_frame);
@@ -214,6 +231,59 @@ std::shared_ptr<MediaFrame> FilterFps::Pop()
 	}
 
 	return nullptr;
+}
+
+std::shared_ptr<MediaFrame> FilterFps::Flush()
+{
+	if (_frames.empty() == true || _next_pts == kNoPtsValue)
+	{
+		return nullptr;
+	}
+
+	// Discard queued frames that already fell behind the next output slot,
+	// the same rule Pop() applies
+	while (_frames.size() >= 2 && _frames[1]->GetPts() <= _next_pts)
+	{
+		_frames.erase(_frames.begin());
+	}
+
+	_curr_pts = _next_pts;
+	_next_pts++;
+
+	const auto output_frame_tb = cmn::Rational::FromDouble(_output_framerate, std::numeric_limits<int32_t>::max()).Invert();
+	const cmn::Rational input_tb(_input_timebase.GetNum(), _input_timebase.GetDen());
+
+	int64_t curr_timebase_pts = cmn::Rational::Rescale(_curr_pts, output_frame_tb, input_tb);
+
+	// The duration spans the skipped slots as well, the same way Pop() does
+	int64_t delta = (_skip_frames <= SkipFramesMin) ? 0 : _skip_frames;
+	int64_t next_timebase_pts = cmn::Rational::Rescale(_next_pts + delta, output_frame_tb, input_tb);
+
+	auto flush_frame = _frames[0]->CloneFrame(_output_frame_copy_mode == OutputFrameCopyMode::DeepCopy ? true : false);
+	flush_frame->SetPts(curr_timebase_pts);
+	flush_frame->SetDuration(next_timebase_pts - curr_timebase_pts);
+	_frames.erase(_frames.begin());
+
+	_stat_ideal_output_frame_count++;
+	_stat_actual_output_frame_count = _stat_ideal_output_frame_count - _stat_skip_frame_count;
+
+	return flush_frame;
+}
+
+int64_t FilterFps::GetNextPts() const
+{
+	return _next_pts;
+}
+
+void FilterFps::SetContinuationPts(int64_t next_pts)
+{
+	if (next_pts == kNoPtsValue)
+	{
+		return;
+	}
+
+	_next_pts = next_pts;
+	_continuation_pending = true;
 }
 
 double FilterFps::GetOutputFramesPerSecond() const

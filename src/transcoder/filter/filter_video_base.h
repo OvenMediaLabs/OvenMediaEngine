@@ -25,6 +25,8 @@ class FilterVideoBase : public FilterBase
 public:
 	FilterResult ProcessFrameInternal(const std::shared_ptr<MediaFrame> &media_frame) override;
 	FilterResult PopCompletedFrameInternal() override;
+	std::vector<std::shared_ptr<MediaFrame>> FlushBuffered() override;
+	void InheritContinuity(const FilterBase *previous) override;
 
 protected:
 	bool InitializeFpsFilter();

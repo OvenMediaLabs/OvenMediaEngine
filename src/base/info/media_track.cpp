@@ -834,6 +834,13 @@ double MediaTrack::GetKeyFrameInterval() const
 
 double MediaTrack::GetKeyframeIntervalDurationMs() const
 {
+	// A TIME interval is already milliseconds, and it only ever comes from the
+	// configuration; the resolved getter falls back to a measured frame count
+	if (GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME)
+	{
+		return GetKeyFrameIntervalByConfig();
+	}
+
 	double keyframe_interval = std::ceil(GetKeyFrameInterval());
 	double framerate = std::ceil(GetFrameRate());
 

@@ -138,7 +138,9 @@ namespace info
 
 		bool AddPlaylist(const std::shared_ptr<const Playlist> &playlist);
 		std::shared_ptr<const Playlist> GetPlaylist(const ov::String &file_name) const;
-		const std::map<ov::String, std::shared_ptr<const Playlist>> &GetPlaylists() const;
+		// Returns a snapshot: playlists are still inserted after the stream is published,
+		// so handing out a reference would let a caller iterate while another thread inserts.
+		std::map<ov::String, std::shared_ptr<const Playlist>> GetPlaylists() const;
 
 		bool AddTrackSet(const std::shared_ptr<const TrackSet> &track_set);
 		std::shared_ptr<const TrackSet> GetTrackSet(const ov::String &name) const;
@@ -218,7 +220,8 @@ namespace info
 		std::map<int32_t, std::shared_ptr<TrackStats>> _track_stats;
 
 		// File name : Playlist
-		std::map<ov::String, std::shared_ptr<const Playlist>> _playlists;
+		mutable ov::SharedMutex _playlists_mutex;
+		std::map<ov::String, std::shared_ptr<const Playlist>> _playlists OV_GUARDED_BY(_playlists_mutex);
 
 		// Name : TrackSet
 		std::map<ov::String, std::shared_ptr<const TrackSet>> _track_sets;

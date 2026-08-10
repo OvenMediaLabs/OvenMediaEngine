@@ -116,6 +116,22 @@ std::shared_ptr<ov::Data> Marker::GetData() const
 	return _data;
 }
 
+bool Marker::IsProvisional() const
+{
+	if (_marker_format == cmn::BitstreamFormat::SCTE35)
+	{
+		auto scte_event = GetScte35Event();
+		return (scte_event != nullptr) ? scte_event->IsProvisional() : false;
+	}
+	else if (_marker_format == cmn::BitstreamFormat::CUE)
+	{
+		auto cue_event = GetCueEvent();
+		return (cue_event != nullptr) ? cue_event->IsProvisional() : false;
+	}
+
+	return false;
+}
+
 std::optional<bool> Marker::IsOutOfNetwork() const
 {
 	if (_marker_format == cmn::BitstreamFormat::SCTE35)
@@ -228,7 +244,7 @@ ov::String Marker::ToHlsTag(int64_t timestamp_offset) const
 
 			// PLANNED-DURATION
 			tag += ov::String::FormatString(",PLANNED-DURATION=%.3f", static_cast<double>(scte_event->GetDurationMsec()) / 1000.0);
-			tag += ov::String::FormatString(",SCTE35-OUT=%s", scte_data->ToHexString().CStr());
+			tag += ov::String::FormatString(",SCTE35-OUT=0x%s", scte_data->ToHexString().CStr());
 		}
 		else
 		{
@@ -254,7 +270,7 @@ ov::String Marker::ToHlsTag(int64_t timestamp_offset) const
 			// // DURATION
 			// tag += ov::String::FormatString(",DURATION=%.3f", static_cast<double>(scte_event->GetDurationMsec()) / 1000.0);
 
-			tag += ov::String::FormatString(",SCTE35-IN=%s", scte_data->ToHexString().CStr());
+			tag += ov::String::FormatString(",SCTE35-IN=0x%s", scte_data->ToHexString().CStr());
 		}
 
 		tag += "\n";
@@ -353,13 +369,23 @@ std::tuple<bool, ov::String> MarkerBox::CanInsertMarker(const std::shared_ptr<Ma
 		// IN -> IN
 		if (last_out_of_network_value == false)
 		{
-			if (_last_inserted_marker->GetTimestamp() > marker->GetTimestamp())
+			bool last_still_pending = _markers_by_timestamp.find(_last_inserted_marker->GetTimestamp()) != _markers_by_timestamp.end();
+
+			if (last_still_pending == true && _last_inserted_marker->GetTimestamp() >= marker->GetTimestamp())
 			{
-				// IN -> IN with the earlier timestamp, it will cancel the last IN marker
+				// An earlier IN cancels the pending one; the same timestamp is a
+				// duplicate of the same return point and replaces it harmlessly.
+				// Once it has been emitted there is no open break left to modify
+			}
+			else if (_last_inserted_marker->IsProvisional() == true && last_still_pending == true && marker->IsProvisional() == false)
+			{
+				// Only an explicit IN may move a pending provisional return point
+				// later; a provisional one is the companion of a rejected OUT and
+				// must not extend the open break
 			}
 			else
 			{
-				return {false, "IN marker only can be modified with the less timestamp"};
+				return {false, "IN marker can only be modified while it is pending, with an equal or earlier timestamp"};
 			}
 		}
 		// OUT -> IN
@@ -428,12 +454,14 @@ bool MarkerBox::InsertMarker(const std::shared_ptr<Marker> &marker)
 	{
 		if (last_out_of_network_value == false)
 		{
-			if (_last_inserted_marker->GetTimestamp() > marker->GetTimestamp())
+			if (_last_inserted_marker->GetTimestamp() >= marker->GetTimestamp() || _last_inserted_marker->IsProvisional() == true)
 			{
-				// remove the last CUEEVENT-IN marker
+				// remove the replaced xxx-IN marker (duplicate, earlier return
+				// point, or a provisional one being confirmed or moved)
 				_markers_by_timestamp.erase(_last_inserted_marker->GetTimestamp());
+				_markers_by_sequence_number.erase(_last_inserted_marker->GetDesiredSequenceNumber());
 			}
-			
+
 			// Inherit the parent
 			marker->SetParent(_last_inserted_marker->GetParent());
 		}
@@ -560,6 +588,22 @@ uint32_t MarkerBox::GetMarkerCount() const
 	return _markers_by_timestamp.size();
 }
 
+uint32_t MarkerBox::GetMarkerCountBefore(int64_t timestamp_ms) const
+{
+	std::shared_lock<std::shared_mutex> lock(_markers_guard);
+
+	uint32_t count = 0;
+	for (auto &it : _markers_by_timestamp)
+	{
+		if (it.second->GetTimestampMs() < timestamp_ms)
+		{
+			count++;
+		}
+	}
+
+	return count;
+}
+
 bool MarkerBox::RemoveMarker(int64_t timestamp)
 {
 	std::lock_guard<std::shared_mutex> lock(_markers_guard);
@@ -577,16 +621,17 @@ bool MarkerBox::RemoveMarker(int64_t timestamp)
 	return true;
 }
 
-void MarkerBox::RemoveExpiredMarkers(int64_t current_timestamp)
+std::vector<std::shared_ptr<Marker>> MarkerBox::PopExpiredMarkers(int64_t before_timestamp)
 {
 	std::lock_guard<std::shared_mutex> lock(_markers_guard);
 
+	std::vector<std::shared_ptr<Marker>> markers;
 	for (auto it = _markers_by_timestamp.begin(); it != _markers_by_timestamp.end();)
 	{
 		auto marker = it->second;  // copy shared_ptr to prevent use-after-free after erase
-		if (marker->GetTimestamp() < current_timestamp)
+		if (marker->GetTimestamp() < before_timestamp)
 		{
-			logtc("Remove expired marker:(%" PRId64 ") %" PRId64 " - %s", current_timestamp, marker->GetTimestamp(), marker->GetTag().CStr());
+			markers.push_back(marker);
 			it = _markers_by_timestamp.erase(it);
 			_markers_by_sequence_number.erase(marker->GetDesiredSequenceNumber());
 		}
@@ -595,6 +640,8 @@ void MarkerBox::RemoveExpiredMarkers(int64_t current_timestamp)
 			++it;
 		}
 	}
+
+	return markers;
 }
 
 int64_t MarkerBox::GetCurrentSequenceNumber() const
@@ -638,8 +685,10 @@ int64_t MarkerBox::GetEstimatedSequenceNumber(int64_t timestamp_ms) const
 		estimated_sequence_number += std::ceil((time_until_marker_ms - remaining_time_in_current_segment_ms) / actual_segment_duration_ms);
 	}
 
-	// Plus previous markers count, marker makes the sequence number increase
-	auto prev_markers = GetMarkerCount();
+	// Every pending marker before this timestamp adds one segment boundary;
+	// one at or after it (e.g. the pending marker this one replaces) must
+	// not be counted
+	auto prev_markers = GetMarkerCountBefore(timestamp_ms);
 	estimated_sequence_number += prev_markers;
 
 	logtt("actual_segment_duration_ms: %f, last_sample_end_timestamp_ms: %f, time_until_marker_ms: %f, remaining_time_in_current_segment_ms: %f, estimated_sequence_number: %" PRId64 " last_segment_number: %" PRId64 " last_segment_duration: %f is_last_segment_completed: %d",
@@ -658,10 +707,11 @@ double MarkerBox::GetActualTargetSegmentDurationMs() const
 
 	double actual_segment_duration_ms = segment_info->target_segment_duration_ms;
 
-	if (segment_info->media_type != cmn::MediaType::Video)
+	// Video can only cut at keyframes, so its real cadence is the target rounded
+	// up to the keyframe interval; the interval may be unknown (0) at this point
+	if (segment_info->media_type == cmn::MediaType::Video && segment_info->keyframe_interval_ms > 0)
 	{
-		auto keyframe_interval_ms = segment_info->keyframe_interval / segment_info->framerate * 1000;
-		actual_segment_duration_ms = std::ceil(segment_info->target_segment_duration_ms / keyframe_interval_ms) * keyframe_interval_ms;
+		actual_segment_duration_ms = std::ceil(segment_info->target_segment_duration_ms / segment_info->keyframe_interval_ms) * segment_info->keyframe_interval_ms;
 	}
 
 	return actual_segment_duration_ms;

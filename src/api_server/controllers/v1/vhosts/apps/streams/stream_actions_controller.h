@@ -120,11 +120,9 @@ namespace api
 				return std::static_pointer_cast<T>(stream);
 			}
 
-			std::shared_ptr<ov::Data> MakeID3Data(const Json::Value &events);						 // ID3v2
-			std::shared_ptr<ov::Data> MakeCueData(const Json::Value &events);						 // CUE
-			std::shared_ptr<ov::Data> MakeAMFData(const Json::Value &events);						 // AMF
-			std::shared_ptr<ov::Data> MakeSEIData(const Json::Value &events);						 // SEI
-			std::shared_ptr<ov::Data> MakeScte35Data(const Json::Value &events, int64_t timestamp);	 // SCTE35
+			std::shared_ptr<ov::Data> MakeID3Data(const Json::Value &events);  // ID3v2
+			std::shared_ptr<ov::Data> MakeAMFData(const Json::Value &events);  // AMF
+			std::shared_ptr<ov::Data> MakeSEIData(const Json::Value &events);  // SEI
 		};
 	}  // namespace v1
 }  // namespace api
