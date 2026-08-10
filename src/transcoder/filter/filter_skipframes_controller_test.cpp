@@ -34,6 +34,10 @@ namespace
 	constexpr int64_t kCostForLevel10Us	= 316000;
 	constexpr int64_t kCheapCostUs		= 200;
 
+	// Just past the base recovery hold: a wait under this came at the base interval, a
+	// wait over it means the backoff engaged.
+	constexpr int64_t kBaseHoldCeilingMs = 7000;
+
 	SkipFramesController::Observation MakeObservation(double actual_input_fps)
 	{
 		SkipFramesController::Observation observation;
@@ -567,6 +571,101 @@ TEST(SkipFramesControllerTest, InheritKeepsTheBusyTimeMeasuredInTheWindow)
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result->decision, Decision::Unchanged);
 	EXPECT_EQ(replacement.GetSkipFrames(), 4);
+}
+
+namespace
+{
+	// Cheap, keeping-up windows until the level steps down. Returns the wait in ms, or -1.
+	int64_t WaitForRecovery(SkipFramesController &controller, int64_t &now, int32_t max_windows = 80)
+	{
+		int64_t started_at = now;
+
+		for (int32_t guard = 0; guard < max_windows; guard++)
+		{
+			FeedFrames(controller, kCheapCostUs, 0);
+			controller.AddBusyTime(BusyUsFor(0.99));
+			now += kWindowMs;
+
+			auto result = controller.Evaluate(now, KeepingUp());
+			if (result.has_value() && result->decision == Decision::Recovery)
+			{
+				return now - started_at;
+			}
+		}
+
+		return -1;
+	}
+}  // namespace
+
+// A step down that stood must stop counting as outstanding, or the next unrelated overload
+// is charged as a failed probe and the interval ratchets up for a pipeline that is fine.
+TEST(SkipFramesControllerTest, UnrelatedOverloadDoesNotBackOffTheProbe)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
+
+	// Three separate episodes of the same overload arriving and clearing again. Level 1
+	// cannot produce a step down of its own, so nothing but this can clear the flag.
+	for (int32_t episode = 0; episode < 3; episode++)
+	{
+		FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+		ClimbTo(controller, 1, now);
+
+		int64_t wait_ms = WaitForRecovery(controller, now);
+		ASSERT_GT(wait_ms, 0) << "episode " << episode;
+		EXPECT_LT(wait_ms, kBaseHoldCeilingMs) << "episode " << episode;
+
+		ASSERT_EQ(controller.GetSkipFrames(), 0) << "episode " << episode;
+
+		// The step down settles: the next episode is a new overload, not this one failing.
+		for (int32_t guard = 0; guard < 5; guard++)
+		{
+			FeedFrames(controller, kCheapCostUs, 0);
+			controller.AddBusyTime(BusyUsFor(0.99));
+			now += kWindowMs;
+			controller.Evaluate(now, KeepingUp());
+		}
+	}
+}
+
+// A descent of several steps must not treat an early step as proof the pipeline recovered.
+// The level that actually fails is further down, and the interval has to keep growing for it
+// across cycles rather than being handed back every time the harmless step succeeds.
+TEST(SkipFramesControllerTest, BacksOffWhenTheFailingLevelIsSeveralStepsDown)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+	ClimbTo(controller, 4, now);
+
+	int64_t previous_wait_ms = 0;
+
+	for (int32_t cycle = 0; cycle < 3; cycle++)
+	{
+		// 4 -> 3 always holds; it is the step after it that cannot.
+		int64_t wait_ms = WaitForRecovery(controller, now);
+		ASSERT_GT(wait_ms, 0) << "cycle " << cycle;
+		ASSERT_EQ(controller.GetSkipFrames(), 3) << "cycle " << cycle;
+
+		if (cycle > 0)
+		{
+			EXPECT_GT(wait_ms, previous_wait_ms) << "cycle " << cycle << " waited no longer than the one before it";
+		}
+		previous_wait_ms = wait_ms;
+
+		ASSERT_GT(WaitForRecovery(controller, now), 0) << "cycle " << cycle;
+		ASSERT_EQ(controller.GetSkipFrames(), 2) << "cycle " << cycle;
+
+		// Level 2 cannot hold: the load is back.
+		FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+		ClimbTo(controller, 4, now);
+	}
 }
 
 // An output ceiling under 1fps drives the ceiling clamp negative, and -1 is not a level -

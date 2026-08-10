@@ -119,8 +119,11 @@ private:
 	// Grows while probes keep failing, back to the base interval as soon as one stands.
 	int64_t _recovery_hold_ms = 0;
 
-	// The level the outstanding step down was taken from, or 0 when there is none.
-	int32_t _probe_origin_level = 0;
+	// When the outstanding step down gets judged, or 0 when there is none.
+	int64_t _probe_deadline_ms = 0;
+
+	// The highest skip frames a step down failed at, or -1 when none has.
+	int32_t _known_bad_skip_frames = -1;
 
 	// The per-frame cost, split so the log can name the bottleneck.
 	double _weighted_avg_frame_processing_time_us = 0.0;

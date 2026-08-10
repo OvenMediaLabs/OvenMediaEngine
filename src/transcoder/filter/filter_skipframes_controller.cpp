@@ -35,6 +35,9 @@ namespace
 	// steps the level may rise in one window
 	constexpr int32_t MAX_INCREASE_PER_WINDOW	= 1;
 
+	// how long a step down must stand before it counts
+	constexpr int64_t PROBE_SETTLE_INTERVAL_MS = EVALUATION_INTERVAL_MS * (BOTTLENECK_CONFIRM_COUNT + 1);
+
 	// Weight given to the newest sample in the per-frame time averages.
 	constexpr double FRAME_TIME_EMA_ALPHA = 0.1;
 }  // namespace
@@ -211,7 +214,9 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		// busy; gating on utilization alone would pin a level reached during a spike
 		// forever. The hold interval makes this a probe - if the level below cannot hold,
 		// the next window says so and puts it back.
-		bool may_step_down = (utilization < RECOVERY_MAX_BUSY_RATIO) || (is_losing_input == false);
+		bool is_recoverable_busy = (utilization < RECOVERY_MAX_BUSY_RATIO);
+
+		bool may_step_down = (is_recoverable_busy == true) || (is_losing_input == false);
 
 		// The step down lands where the cost allows, not at nothing.
 		if (may_step_down == false)
@@ -222,12 +227,13 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	if (next_skip_frames > _skip_frames)
 	{
-		// One bad window is a hiccup; a bottleneck is still there on the next one.
+		// Check for a second window of agreement before rising
 		if (_bottleneck_count < BOTTLENECK_CONFIRM_COUNT)
 		{
 			next_skip_frames = _skip_frames;
 		}
-		// Rise in single steps, so no single window can collapse the output rate.
+		
+		// The level may only rise one step per window, to avoid overshooting the target.
 		else if (next_skip_frames > _skip_frames + MAX_INCREASE_PER_WINDOW)
 		{
 			next_skip_frames = _skip_frames + MAX_INCREASE_PER_WINDOW;
@@ -244,14 +250,28 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 												  sustainable_fps,
 												  observation.actual_output_fps, observation.expected_output_fps, observation.max_output_fps);
 
-	// Increase skip frames immediately when bottleneck occurs.
+	// The step down stood. Judged here, not at the next one - that never comes at the minimum.
+	if (_probe_deadline_ms > 0 && curr_time_ms > _probe_deadline_ms)
+	{
+		// Only a step at or below the one that failed proves the pipeline gained room.
+		if (_skip_frames <= _known_bad_skip_frames)
+		{
+			_known_bad_skip_frames = -1;
+			_recovery_hold_ms	   = RECOVERY_HOLD_INTERVAL_MS;
+		}
+
+		_probe_deadline_ms = 0;
+	}
+
+	// [Bottleneck] Increase skip frames immediately when bottleneck occurs.
 	if (_skip_frames < next_skip_frames)
 	{
-		// The step down could not hold. Wait longer before trying the next one.
-		if (_probe_origin_level > 0)
+		// The step down could not hold. Remember where, and wait longer next time.
+		if (_probe_deadline_ms > 0)
 		{
-			_recovery_hold_ms	= std::min(_recovery_hold_ms * 2, RECOVERY_HOLD_MAX_MS);
-			_probe_origin_level = 0;
+			_known_bad_skip_frames = std::max(_known_bad_skip_frames, _skip_frames);
+			_recovery_hold_ms	   = std::min(_recovery_hold_ms * 2, RECOVERY_HOLD_MAX_MS);
+			_probe_deadline_ms	   = 0;
 		}
 
 		result.decision	   = Decision::Bottleneck;
@@ -260,17 +280,12 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		_skip_frames		  = next_skip_frames;
 		_last_changed_time_ms = curr_time_ms;
 	}
-	// Decrease skip frames slowly when the system is recovering.
+	// [Recovery & HoldRecovery] Decrease skip frames slowly when the system is recovering.
 	else if (_skip_frames > next_skip_frames)
 	{
 		if (elapsed_since_change_ms > _recovery_hold_ms)
 		{
-			// The last step down stood. Back to the base interval.
-			if (_probe_origin_level > 0)
-			{
-				_recovery_hold_ms = RECOVERY_HOLD_INTERVAL_MS;
-			}
-			_probe_origin_level = _skip_frames;
+			_probe_deadline_ms = curr_time_ms + PROBE_SETTLE_INTERVAL_MS;
 
 			// Come down 20% at a time, never in one jump.
 			int32_t rate_limited_next = _skip_frames - std::max(1, _skip_frames / 5);
@@ -287,7 +302,7 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 			result.decision = Decision::HoldRecovery;
 		}
 	}
-	// Keep skip frames unchanged when the system is stable.
+	// [Unchanged] Keep skip frames unchanged when the system is stable.
 	else
 	{
 		result.decision = Decision::Unchanged;
@@ -310,8 +325,9 @@ void SkipFramesController::InheritFrom(const SkipFramesController &previous)
 		_bottleneck_count = previous._bottleneck_count;
 
 		// What the probes learned describes the pipeline, not the filter measuring it.
-		_recovery_hold_ms	= previous._recovery_hold_ms;
-		_probe_origin_level = previous._probe_origin_level;
+		_recovery_hold_ms	   = previous._recovery_hold_ms;
+		_probe_deadline_ms	   = previous._probe_deadline_ms;
+		_known_bad_skip_frames = previous._known_bad_skip_frames;
 
 		// Both carry, or neither does: Evaluate() re-seeds the pair whenever either is zero,
 		// which would restart the recovery hold at every replacement.
