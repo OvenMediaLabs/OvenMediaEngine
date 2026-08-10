@@ -697,3 +697,93 @@ TEST(SkipFramesControllerTest, NeverFallsBelowSkipFramesMin)
 	EXPECT_GE(result->skip_frames, skip_frames_min);
 	EXPECT_GE(controller.GetSkipFrames(), skip_frames_min);
 }
+
+namespace
+{
+	// A closed loop, so the cost average ramps the way it does in production. FeedFrames()
+	// drives it straight to a target, which hides how many windows a step down needs before
+	// the level it left is detected as insufficient again.
+	constexpr double  kLoopInputFps	  = 30.0;
+	constexpr int64_t kLoopProcessUs  = 5000;  // a cheap rescale
+	constexpr double  kLoopEncoderFps = 6.5;   // 30/(4+1)=6.0 fits, 30/(3+1)=7.5 does not
+	constexpr int32_t kLoopFitLevel	  = 4;
+
+	// One second of an encoder-bound pipeline at whatever level the controller is asking for.
+	std::optional<SkipFramesController::Result> RunEncoderBoundWindow(SkipFramesController &controller, int64_t &now)
+	{
+		int32_t skip_frames = controller.GetSkipFrames();
+		double	output_fps	= kLoopInputFps / static_cast<double>(skip_frames + 1);
+
+		// Handing off faster than the encoder drains fills its queue and blocks the thread
+		// at the encoder's pace; at or below it the queue never fills and the blocking - the
+		// only evidence of the encoder's limit - disappears.
+		bool   is_throttled	   = (output_fps > kLoopEncoderFps);
+		double actual_output   = is_throttled ? kLoopEncoderFps : output_fps;
+		double actual_input	   = std::min(kLoopInputFps, actual_output * static_cast<double>(skip_frames + 1));
+		int64_t handoff_us	   = is_throttled ? static_cast<int64_t>(1000000.0 / kLoopEncoderFps) - kLoopProcessUs : 0;
+
+		for (int32_t frame = 0; frame < static_cast<int32_t>(std::lround(actual_output)); frame++)
+		{
+			controller.AddHandoffTime(handoff_us);
+			controller.CommitFrame(kLoopProcessUs);
+		}
+
+		now += kWindowMs;
+
+		SkipFramesController::Observation observation;
+		observation.expected_input_fps	= kLoopInputFps;
+		observation.actual_input_fps	= actual_input;
+		observation.max_output_fps		= kLoopInputFps;
+		observation.expected_output_fps	= actual_output;
+		observation.actual_output_fps	= actual_output;
+
+		return controller.Evaluate(now, observation);
+	}
+}  // namespace
+
+// The step down has to stand for longer than it takes to notice it failed. Re-detection
+// waits for the cost average to climb back before the target exceeds the level again, and
+// only then for the confirming windows - if the settle interval expires first, the failure
+// is read as a success and the interval never grows.
+TEST(SkipFramesControllerTest, BacksOffWhenReDetectionNeedsSeveralWindows)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(RunEncoderBoundWindow(controller, now).has_value());
+
+	int64_t last_recovery_at_ms = 0;
+	int64_t first_gap_ms		= 0;
+	int64_t last_gap_ms			= 0;
+	int32_t below_target		= 0;
+
+	for (int32_t window = 0; window < 300; window++)
+	{
+		auto result = RunEncoderBoundWindow(controller, now);
+
+		if (result.has_value() && result->decision == Decision::Recovery)
+		{
+			if (last_recovery_at_ms > 0)
+			{
+				last_gap_ms = now - last_recovery_at_ms;
+				if (first_gap_ms == 0)
+				{
+					first_gap_ms = last_gap_ms;
+				}
+			}
+			last_recovery_at_ms = now;
+		}
+
+		if (controller.GetSkipFrames() < kLoopFitLevel)
+		{
+			below_target++;
+		}
+	}
+
+	// The pipeline never recovers, so the attempts have to spread out rather than repeat at
+	// the base interval for as long as the overload lasts.
+	ASSERT_GT(first_gap_ms, 0);
+	EXPECT_GT(last_gap_ms, first_gap_ms * 2) << "the attempts never spread out";
+	EXPECT_LT(below_target, 45) << below_target << "/300 windows below the level that fits";
+}

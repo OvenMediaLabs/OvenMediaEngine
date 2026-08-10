@@ -36,7 +36,7 @@ namespace
 	constexpr int32_t MAX_INCREASE_PER_WINDOW	= 1;
 
 	// how long a step down must stand before it counts
-	constexpr int64_t PROBE_SETTLE_INTERVAL_MS = EVALUATION_INTERVAL_MS * (BOTTLENECK_CONFIRM_COUNT + 1);
+	constexpr int64_t PROBE_SETTLE_INTERVAL_MS = RECOVERY_HOLD_INTERVAL_MS;
 
 	// Weight given to the newest sample in the per-frame time averages.
 	constexpr double FRAME_TIME_EMA_ALPHA = 0.1;
