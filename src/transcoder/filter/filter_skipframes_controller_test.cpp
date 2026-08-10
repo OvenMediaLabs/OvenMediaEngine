@@ -568,3 +568,33 @@ TEST(SkipFramesControllerTest, InheritKeepsTheBusyTimeMeasuredInTheWindow)
 	EXPECT_EQ(result->decision, Decision::Unchanged);
 	EXPECT_EQ(replacement.GetSkipFrames(), 4);
 }
+
+// An output ceiling under 1fps drives the ceiling clamp negative, and -1 is not a level -
+// it is SkipFramesDisabled.
+TEST(SkipFramesControllerTest, NeverFallsBelowSkipFramesMin)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+
+	SkipFramesController::Observation slow;
+	slow.expected_input_fps	 = 0.5;
+	slow.actual_input_fps	 = 0.5;
+	slow.max_output_fps		 = 0.5;
+	slow.expected_output_fps = 0.5;
+	slow.actual_output_fps	 = 0.5;
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, slow).has_value());
+	FeedFrames(controller, kCostForLevel4Us, 0);
+
+	// Keeping up and past the hold, so the step down is free to act on the clamped value.
+	controller.AddBusyTime(BusyUsFor(0.99, 6000));
+	now += 6000;
+
+	auto result = controller.Evaluate(now, slow);
+	ASSERT_TRUE(result.has_value());
+
+	const int32_t skip_frames_min = FilterFps::SkipFramesMin;
+	EXPECT_GE(result->skip_frames, skip_frames_min);
+	EXPECT_GE(controller.GetSkipFrames(), skip_frames_min);
+}

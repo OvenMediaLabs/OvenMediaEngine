@@ -176,7 +176,9 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	{
 		next_skip_frames = static_cast<int32_t>(std::floor(observation.max_output_fps - 1));
 	}
-	else if (next_skip_frames < FilterFps::SkipFramesMin)
+
+	// Prevent the level from going below the minimum, which is also the disabled value.
+	if (next_skip_frames < FilterFps::SkipFramesMin)
 	{
 		next_skip_frames = FilterFps::SkipFramesMin;
 	}
