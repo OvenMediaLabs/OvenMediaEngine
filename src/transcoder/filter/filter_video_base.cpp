@@ -236,7 +236,7 @@ void FilterVideoBase::UpdateSkipFrames()
 	SkipFramesController::Observation observation;
 	observation.expected_input_fps	= _fps_filter.GetInputFrameRate();
 	observation.actual_input_fps	= _fps_filter.GetInputFramesPerSecond();
-	observation.cadence_fps	= _fps_filter.GetOutputFrameRate();
+	observation.max_output_fps		= _fps_filter.GetOutputFrameRate();
 	observation.expected_output_fps	= _fps_filter.GetExpectedOutputFramesPerSecond();
 	observation.actual_output_fps	= _fps_filter.GetOutputFramesPerSecond();
 

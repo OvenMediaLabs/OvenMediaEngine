@@ -133,22 +133,22 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// A slow rescaler and a backed-up encoder both throttle the thread, and it cannot outrun
 	// their sum, so the decision uses the total.
-	double frame_budget_us = _weighted_avg_frame_processing_time_us + _weighted_avg_frame_handoff_time_us;
+	double frame_cost_us = _weighted_avg_frame_processing_time_us + _weighted_avg_frame_handoff_time_us;
 
-	if (frame_budget_us <= 0.0 || observation.cadence_fps <= 0.0)
+	if (frame_cost_us <= 0.0 || observation.max_output_fps <= 0.0)
 	{
 		return std::nullopt;
 	}
 
-	// The most frames per second the budget allows, less a safety margin.
-	double peak_fps		   = (1000000.0 / frame_budget_us);
+	// The most frames per second the cost allows, less a safety margin.
+	double peak_fps		   = (1000000.0 / frame_cost_us);
 	double sustainable_fps = peak_fps * kSafetyMarginRatio;
 
-	// How far the cadence has to be divided down to land on the sustainable rate.
-	auto next_skip_frames = static_cast<int32_t>(std::ceil(observation.cadence_fps / sustainable_fps - 1.0));
-	if (next_skip_frames > observation.cadence_fps - 1)
+	// How far the output ceiling has to be divided down to land on the sustainable rate.
+	auto next_skip_frames = static_cast<int32_t>(std::ceil(observation.max_output_fps / sustainable_fps - 1.0));
+	if (next_skip_frames > observation.max_output_fps - 1)
 	{
-		next_skip_frames = static_cast<int32_t>(std::floor(observation.cadence_fps - 1));
+		next_skip_frames = static_cast<int32_t>(std::floor(observation.max_output_fps - 1));
 	}
 	else if (next_skip_frames < FilterFps::SkipFramesMin)
 	{
@@ -157,19 +157,19 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 
 	// Busy is not the same as overloaded. The encoder queue is only two frames deep, so the
 	// handoff blocks even on a chain that keeps up. Idle time is what tells the two apart.
-	bool is_saturated = (utilization >= kSaturationRatio);
+	bool is_fully_busy = (utilization >= kSaturationRatio);
 
-	// A saturated thread also has to be losing ground. Zero means the FPS filter has not
+	// A fully busy thread also has to be losing input. Zero means the FPS filter has not
 	// measured a second yet, not that nothing was consumed.
-	bool is_falling_behind = (observation.expected_input_fps > 0.0) &&
-							 (observation.actual_input_fps > 0.0) &&
-							 (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
+	bool is_losing_input = (observation.expected_input_fps > 0.0) &&
+						   (observation.actual_input_fps > 0.0) &&
+						   (observation.actual_input_fps < observation.expected_input_fps * kInputKeepUpRatio);
 
-	if (is_saturated == true && is_falling_behind == true)
+	if (is_fully_busy == true && is_losing_input == true)
 	{
 		_bottleneck_count++;
 
-		// The budget decays between stalls, so without this the recovery branch below could
+		// The cost decays between stalls, so without this the recovery branch below could
 		// walk the level down while the bottleneck is still there.
 		next_skip_frames = std::max(next_skip_frames, _skip_frames);
 	}
@@ -181,9 +181,13 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 		// busy; gating on utilization alone would pin a level reached during a spike
 		// forever. The hold interval makes this a probe - if the level below cannot hold,
 		// the next window says so and puts it back.
-		bool has_headroom = (utilization < kRecoveryMaxBusyRatio) || (is_falling_behind == false);
+		bool may_step_down = (utilization < kRecoveryMaxBusyRatio) || (is_losing_input == false);
 
-		next_skip_frames = has_headroom ? FilterFps::SkipFramesMin : _skip_frames;
+		// The step down lands where the cost allows, not at nothing.
+		if (may_step_down == false)
+		{
+			next_skip_frames = _skip_frames;
+		}
 	}
 
 	if (next_skip_frames > _skip_frames)
@@ -203,16 +207,23 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	// Every value labelled, every pair actual/target, times in ms - readable on its own.
 	Result result;
 	result.skip_frames = _skip_frames;
-	result.metrics	   = ov::String::FormatString("Input: %.1f/%.1ffps, Busy: %.1f%%, Budget: %.2fms (proc %.2f + handoff %.2f), Capacity: %.1ffps, Output: %.1f/%.1ffps (cadence %.1f)",
+	result.metrics	   = ov::String::FormatString("Input: %.1f/%.1ffps, Busy: %.1f%%, Cost: %.2fms (proc %.2f + handoff %.2f), Capacity: %.1ffps, Output: %.1f/%.1ffps (max %.1f)",
 												  observation.actual_input_fps, observation.expected_input_fps,
 												  utilization * 100.0,
-												  frame_budget_us / 1000.0, _weighted_avg_frame_processing_time_us / 1000.0, _weighted_avg_frame_handoff_time_us / 1000.0,
+												  frame_cost_us / 1000.0, _weighted_avg_frame_processing_time_us / 1000.0, _weighted_avg_frame_handoff_time_us / 1000.0,
 												  sustainable_fps,
-												  observation.actual_output_fps, observation.expected_output_fps, observation.cadence_fps);
+												  observation.actual_output_fps, observation.expected_output_fps, observation.max_output_fps);
 
 	// Increase skip frames immediately when bottleneck occurs.
 	if (_skip_frames < next_skip_frames)
 	{
+		// The step down could not hold. Wait longer before trying the next one.
+		if (_probe_origin_level > 0)
+		{
+			_recovery_hold_ms	= std::min(_recovery_hold_ms * 2, kRecoveryHoldMaxMs);
+			_probe_origin_level = 0;
+		}
+
 		result.decision	   = Decision::Bottleneck;
 		result.skip_frames = next_skip_frames;
 
@@ -222,8 +233,15 @@ std::optional<SkipFramesController::Result> SkipFramesController::Evaluate(int64
 	// Decrease skip frames slowly when the system is recovering.
 	else if (_skip_frames > next_skip_frames)
 	{
-		if (elapsed_since_change_ms > kRecoveryHoldIntervalMs)
+		if (elapsed_since_change_ms > _recovery_hold_ms)
 		{
+			// The last step down stood. Back to the base interval.
+			if (_probe_origin_level > 0)
+			{
+				_recovery_hold_ms = kRecoveryHoldIntervalMs;
+			}
+			_probe_origin_level = _skip_frames;
+
 			// Come down 20% at a time, never in one jump.
 			int32_t rate_limited_next = _skip_frames - std::max(1, _skip_frames / 5);
 			next_skip_frames		  = std::max(rate_limited_next, next_skip_frames);
@@ -254,12 +272,16 @@ void SkipFramesController::InheritFrom(const SkipFramesController &previous)
 	_weighted_avg_frame_processing_time_us = previous._weighted_avg_frame_processing_time_us;
 	_weighted_avg_frame_handoff_time_us	   = previous._weighted_avg_frame_handoff_time_us;
 
-	// The level counts frames within a cadence, so it only transfers between two automatic
+	// The level is a divisor of the output rate, so it only transfers between two automatic
 	// controllers. A configured level was already applied by Configure().
 	if (IsAutomatic() == true && previous.IsAutomatic() == true)
 	{
 		_skip_frames	  = previous._skip_frames;
 		_bottleneck_count = previous._bottleneck_count;
+
+		// What the probes learned describes the pipeline, not the filter measuring it.
+		_recovery_hold_ms	= previous._recovery_hold_ms;
+		_probe_origin_level = previous._probe_origin_level;
 
 		// Both carry, or neither does: Evaluate() re-seeds the pair whenever either is zero,
 		// which would restart the recovery hold at every replacement.

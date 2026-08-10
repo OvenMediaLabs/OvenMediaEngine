@@ -25,24 +25,24 @@ namespace
 
 	constexpr int64_t kWindowMs	  = 1001;  // one tick past the 1s evaluation interval
 	constexpr int32_t kEmaFrames  = 80;	   // enough commits for the average to reach the target
-	constexpr double  kCadenceFps = 30.0;
+	constexpr double  kMaxOutputFps = 30.0;
 
-	// Budgets chosen to land clear of an integer boundary, so rounding cannot flip the level.
+	// Costs chosen to land clear of an integer boundary, so rounding cannot flip the level.
 	//   138ms -> 6.52fps sustainable -> skip 4
 	//   316ms -> 2.85fps sustainable -> skip 10
-	constexpr int64_t kBudgetForLevel4Us  = 138000;
-	constexpr int64_t kBudgetForLevel10Us = 316000;
-	constexpr int64_t kCheapBudgetUs	  = 200;
+	constexpr int64_t kCostForLevel4Us	= 138000;
+	constexpr int64_t kCostForLevel10Us	= 316000;
+	constexpr int64_t kCheapCostUs		= 200;
 
 	SkipFramesController::Observation MakeObservation(double actual_input_fps)
 	{
 		SkipFramesController::Observation observation;
 
-		observation.expected_input_fps	= kCadenceFps;
+		observation.expected_input_fps	= kMaxOutputFps;
 		observation.actual_input_fps	= actual_input_fps;
-		observation.cadence_fps			= kCadenceFps;
-		observation.expected_output_fps	= kCadenceFps;
-		observation.actual_output_fps	= kCadenceFps;
+		observation.max_output_fps		= kMaxOutputFps;
+		observation.expected_output_fps	= kMaxOutputFps;
+		observation.actual_output_fps	= kMaxOutputFps;
 
 		return observation;
 	}
@@ -50,12 +50,12 @@ namespace
 	// The threshold is 95% of the expected input rate.
 	SkipFramesController::Observation KeepingUp()
 	{
-		return MakeObservation(kCadenceFps);
+		return MakeObservation(kMaxOutputFps);
 	}
 
 	SkipFramesController::Observation FallingBehind()
 	{
-		return MakeObservation(kCadenceFps * 0.5);
+		return MakeObservation(kMaxOutputFps * 0.5);
 	}
 
 	// Drives the per-frame average to processing_us + handoff_us.
@@ -125,7 +125,7 @@ TEST(SkipFramesControllerTest, WaitsForTheEvaluationInterval)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
@@ -139,12 +139,12 @@ TEST(SkipFramesControllerTest, RaisesOnlyAfterASecondWindowAgrees)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 
-	// The budget asks for 4, but one window is a hiccup.
+	// The frame cost asks for 4, but one window is a hiccup.
 	auto first = RunOverloadedWindow(controller, now);
 	ASSERT_TRUE(first.has_value());
 	EXPECT_EQ(first->decision, Decision::Unchanged);
@@ -158,11 +158,11 @@ TEST(SkipFramesControllerTest, RaisesOnlyAfterASecondWindowAgrees)
 	EXPECT_EQ(controller.GetSkipFrames(), 1);
 }
 
-TEST(SkipFramesControllerTest, ClimbsOneStepPerWindowAndStopsAtTheBudget)
+TEST(SkipFramesControllerTest, ClimbsOneStepPerWindowAndStopsAtTheFrameCost)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
@@ -176,7 +176,7 @@ TEST(SkipFramesControllerTest, ClimbsOneStepPerWindowAndStopsAtTheBudget)
 		EXPECT_EQ(controller.GetSkipFrames(), expected);
 	}
 
-	// The budget wanted 4, so it stops there however long the overload lasts.
+	// The frame cost wanted 4, so it stops there however long the overload lasts.
 	auto settled = RunOverloadedWindow(controller, now);
 	ASSERT_TRUE(settled.has_value());
 	EXPECT_EQ(settled->decision, Decision::Unchanged);
@@ -187,7 +187,7 @@ TEST(SkipFramesControllerTest, DoesNotRaiseBeforeTheInputRateIsMeasured)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	// A zero input rate means the FPS filter has not measured a second yet. Raising on it
 	// would act on a sample that does not exist.
@@ -213,12 +213,12 @@ TEST(SkipFramesControllerTest, DoesNotRaiseWhenTheThreadHasIdleTime)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 
-	// The budget looks expensive, but the thread is only half busy - the handoff was waiting
+	// The frame cost looks expensive, but the thread is only half busy - the handoff was waiting
 	// on a shallow queue, not running out of capacity.
 	for (int32_t i = 0; i < 3; i++)
 	{
@@ -237,14 +237,14 @@ TEST(SkipFramesControllerTest, DoesNotStepDownWhileTheBottleneckStands)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(controller, 2, now);
 
-	// The budget decays between stalls, so on its own it now asks for no skipping at all.
-	FeedFrames(controller, kCheapBudgetUs, 0);
+	// The cost decays between stalls, so on its own it now asks for no skipping at all.
+	FeedFrames(controller, kCheapCostUs, 0);
 
 	// The thread is still saturated and still losing input, and the recovery hold has long
 	// passed - the level must not come down on a window that was just counted as overloaded.
@@ -261,13 +261,13 @@ TEST(SkipFramesControllerTest, HoldsRecoveryUntilTheIntervalPasses)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(controller, 1, now);
 
-	FeedFrames(controller, kCheapBudgetUs, 0);
+	FeedFrames(controller, kCheapCostUs, 0);
 
 	// Capacity is back, but the level has only just changed.
 	controller.AddBusyTime(BusyUsFor(0.10));
@@ -293,15 +293,17 @@ TEST(SkipFramesControllerTest, StepsDownWhileBusyIfTheInputIsKeptUp)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(controller, 1, now);
 
-	// Still 99% busy, but the filter is taking in everything that arrives. Utilization alone
-	// cannot tell real work from waiting on a two-frame queue, so a level reached during a
-	// spike has to be allowed back down.
+	FeedFrames(controller, kCheapCostUs, 0);
+
+	// Still 99% busy, but the filter is taking in everything that arrives and the cost no
+	// longer asks for a level. Utilization alone cannot tell real work from waiting on a
+	// two-frame queue, so a level reached during a spike has to be allowed back down.
 	controller.AddBusyTime(BusyUsFor(0.99, 6000));
 	now += 6000;
 
@@ -315,13 +317,13 @@ TEST(SkipFramesControllerTest, RecoveryComesDownTwentyPercentAtATime)
 {
 	SkipFramesController controller;
 	controller.Configure(0);
-	FeedFrames(controller, 1000, kBudgetForLevel10Us - 1000);
+	FeedFrames(controller, 1000, kCostForLevel10Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(controller, 10, now);
 
-	FeedFrames(controller, kCheapBudgetUs, 0);
+	FeedFrames(controller, kCheapCostUs, 0);
 
 	// 10 - max(1, 10/5) = 8, not straight to 0.
 	controller.AddBusyTime(BusyUsFor(0.10, 6000));
@@ -346,11 +348,13 @@ TEST(SkipFramesControllerTest, InheritKeepsTheLevelAndTheRecoveryHold)
 {
 	SkipFramesController previous;
 	previous.Configure(0);
-	FeedFrames(previous, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(previous, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(previous.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(previous, 1, now);
+
+	FeedFrames(previous, kCheapCostUs, 0);
 
 	SkipFramesController replacement;
 	replacement.Configure(0);
@@ -374,17 +378,137 @@ TEST(SkipFramesControllerTest, InheritDoesNotCarryTheLevelToAFixedConfig)
 {
 	SkipFramesController previous;
 	previous.Configure(0);
-	FeedFrames(previous, 1000, kBudgetForLevel4Us - 1000);
+	FeedFrames(previous, 1000, kCostForLevel4Us - 1000);
 
 	int64_t now = 1000;
 	ASSERT_FALSE(previous.Evaluate(now, FallingBehind()).has_value());
 	ClimbTo(previous, 1, now);
 
-	// The level counts frames within a cadence, so it only transfers between two automatic
+	// The level is a divisor of the output rate, so it only transfers between two automatic
 	// controllers. A configured level was already applied by Configure().
 	SkipFramesController replacement;
 	replacement.Configure(3);
 	replacement.InheritFrom(previous);
 
 	EXPECT_EQ(replacement.GetSkipFrames(), 3);
+}
+
+// A filter that is itself the bottleneck costs the same per frame at every level, so the
+// level has no reason to move.
+TEST(SkipFramesControllerTest, HoldsTheLevelTheFrameCostStillDemands)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+	FeedFrames(controller, kCostForLevel4Us, 0);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
+	ClimbTo(controller, 4, now);
+
+	// Far longer than the recovery hold. The thread now keeps up with its input - which is
+	// what level 4 bought - and nothing may read that as grounds to hand the level back.
+	for (int32_t i = 0; i < 30; i++)
+	{
+		controller.AddBusyTime(BusyUsFor(0.99));
+		now += kWindowMs;
+
+		auto result = controller.Evaluate(now, KeepingUp());
+		ASSERT_TRUE(result.has_value());
+		ASSERT_EQ(result->decision, Decision::Unchanged) << "window " << i;
+	}
+
+	EXPECT_EQ(controller.GetSkipFrames(), 4);
+}
+
+namespace
+{
+	// Takes the step down the way an encoder-bound pipeline gets one: the level is holding
+	// the backpressure off, so the cost no longer asks for anything.
+	std::optional<SkipFramesController::Result> ProbeAfter(SkipFramesController &controller, int64_t wait_ms, int64_t &now)
+	{
+		FeedFrames(controller, kCheapCostUs, 0);
+
+		controller.AddBusyTime(BusyUsFor(0.99, wait_ms));
+		now += wait_ms;
+
+		return controller.Evaluate(now, KeepingUp());
+	}
+
+	// The level below could not hold: the backpressure is back in the cost, and with it
+	// the level.
+	void FailTheProbe(SkipFramesController &controller, int32_t back_to, int64_t &now)
+	{
+		FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+
+		for (int32_t guard = 0; guard < 8 && controller.GetSkipFrames() < back_to; guard++)
+		{
+			RunOverloadedWindow(controller, now);
+		}
+
+		ASSERT_EQ(controller.GetSkipFrames(), back_to);
+	}
+}  // namespace
+
+// When the encoder is the bottleneck, stepping down is a blind probe. One that keeps
+// failing has to get rarer.
+TEST(SkipFramesControllerTest, BacksOffTheProbeWhileItKeepsFailing)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
+	ClimbTo(controller, 4, now);
+
+	// The base hold buys the first probe.
+	auto first = ProbeAfter(controller, 6000, now);
+	ASSERT_TRUE(first.has_value());
+	ASSERT_EQ(first->decision, Decision::Recovery);
+	ASSERT_EQ(controller.GetSkipFrames(), 3);
+
+	FailTheProbe(controller, 4, now);
+
+	// The same wait no longer does.
+	auto second = ProbeAfter(controller, 6000, now);
+	ASSERT_TRUE(second.has_value());
+	EXPECT_EQ(second->decision, Decision::HoldRecovery);
+	EXPECT_EQ(controller.GetSkipFrames(), 4);
+}
+
+// The backoff is not a ratchet: the first step down that stands puts the interval back.
+TEST(SkipFramesControllerTest, ReturnsToTheBaseHoldOnceAProbeStands)
+{
+	SkipFramesController controller;
+	controller.Configure(0);
+	FeedFrames(controller, 1000, kCostForLevel4Us - 1000);
+
+	int64_t now = 1000;
+	ASSERT_FALSE(controller.Evaluate(now, FallingBehind()).has_value());
+	ClimbTo(controller, 4, now);
+
+	ASSERT_EQ(ProbeAfter(controller, 6000, now)->decision, Decision::Recovery);
+	ASSERT_EQ(controller.GetSkipFrames(), 3);
+
+	FailTheProbe(controller, 4, now);
+
+	// Backed off, so this one has to wait longer than the base interval.
+	ASSERT_EQ(ProbeAfter(controller, 6000, now)->decision, Decision::HoldRecovery);
+
+	auto taken = ProbeAfter(controller, 11000, now);
+	ASSERT_TRUE(taken.has_value());
+	ASSERT_EQ(taken->decision, Decision::Recovery);
+	ASSERT_EQ(controller.GetSkipFrames(), 3);
+
+	// This one is not taken back. Reaching the next step down proves it stood for a whole
+	// hold, so the interval goes back to where it started.
+	auto stood = ProbeAfter(controller, 11000, now);
+	ASSERT_TRUE(stood.has_value());
+	ASSERT_EQ(stood->decision, Decision::Recovery);
+	ASSERT_EQ(controller.GetSkipFrames(), 2);
+
+	auto at_base_again = ProbeAfter(controller, 6000, now);
+	ASSERT_TRUE(at_base_again.has_value());
+	EXPECT_EQ(at_base_again->decision, Decision::Recovery);
+	EXPECT_EQ(controller.GetSkipFrames(), 1);
 }

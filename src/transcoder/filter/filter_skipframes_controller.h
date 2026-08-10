@@ -18,22 +18,27 @@
 //
 // Measured over one evaluation window (1s):
 //
-//   budget        per frame, the time spent processing plus the time blocked handing it off
+//   frame cost    what one frame takes: the time spent processing plus the time blocked
+//                 handing it off
 //   utilization   the share of the window the thread was busy rather than waiting for input
 //
 // Decided from the two together:
 //
-//   raise    saturated AND not consuming the full input rate. The budget sets the target
+//   raise    fully busy AND losing input. The frame cost sets the target
 //            level; the rise is one step per window, and only after a second window agrees
-//   lower    anything else, once the recovery hold passes - 20% at a time
+//   lower    anything else, once the recovery hold passes - 20% at a time, down to what
+//            the frame cost allows rather than straight off
 //
-// Two traps this is shaped around:
+// Three traps this is shaped around:
 //
 //   * Judge against the INPUT rate, never the output rate the level aims at. Skipping
 //     lowers that output target, so the filter would keep meeting a bar it just lowered
 //     while the upstream queue grew.
 //   * Busy is not overloaded. The encoder queue is two frames deep, so the handoff blocks
 //     even on a chain that keeps up. Idle time in the window is what tells them apart.
+//   * A level that works erases its own evidence. Handoff time falls to zero once the
+//     level is right, so a step down is measured where the filter is the bottleneck and
+//     probed where the encoder is, with the hold backing off while probes keep failing.
 //
 // Computation only: no clock, no logging, no FPS filter. The caller supplies the time and
 // applies the result, which is what makes the tuning ratios testable.
@@ -44,7 +49,9 @@ public:
 	static constexpr int64_t kEvaluationIntervalMs	 = 1000;
 	// how long a level must stand before it may drop
 	static constexpr int64_t kRecoveryHoldIntervalMs = 5000;
-	// aim at 90% of what the budget allows
+	// ceiling the hold backs off to while probes keep failing
+	static constexpr int64_t kRecoveryHoldMaxMs		 = 30000;
+	// aim at 90% of what the frame cost allows
 	static constexpr double kSafetyMarginRatio		 = 0.9;
 	// busy this much of a window counts as saturated
 	static constexpr double kSaturationRatio		 = 0.95;
@@ -75,8 +82,7 @@ public:
 		double expected_input_fps = 0.0;
 		double actual_input_fps	  = 0.0;
 
-		// The cadence to divide down; the skip count is how far.
-		double cadence_fps = 0.0;
+		double max_output_fps = 0.0;
 
 		// Log-only - see the note above on why the output rate is not judged against.
 		double expected_output_fps = 0.0;
@@ -106,7 +112,7 @@ public:
 
 	// A round that produced no frame; the time waits for one that does.
 	void AddProcessingTime(int64_t elapsed_us);
-	// Busy time belonging to no particular frame. Counts toward the window, not the budget.
+	// Busy time belonging to no particular frame. Counts toward the window, not the frame cost.
 	void AddBusyTime(int64_t elapsed_us);
 	// Measurable only after the frame leaves, so it lands one frame late in the average.
 	void AddHandoffTime(int64_t elapsed_us);
@@ -132,7 +138,13 @@ private:
 	// One bad window is a hiccup, so the level only rises once the diagnosis repeats.
 	int32_t _bottleneck_count = 0;
 
-	// The per-frame budget, split so the log can name the bottleneck.
+	// Grows while probes keep failing, back to the base interval as soon as one stands.
+	int64_t _recovery_hold_ms = kRecoveryHoldIntervalMs;
+
+	// The level the outstanding step down was taken from, or 0 when there is none.
+	int32_t _probe_origin_level = 0;
+
+	// The per-frame cost, split so the log can name the bottleneck.
 	double _weighted_avg_frame_processing_time_us = 0.0;
 	double _weighted_avg_frame_handoff_time_us	  = 0.0;
 
