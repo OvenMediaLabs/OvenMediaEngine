@@ -130,7 +130,7 @@ namespace cmn
 		X264,	   // SW
 		NVENC,	   // HW
 		XMA,	   // HW
-		NILOGAN,   // HW
+		NETINT,	   // HW
 		LIBVPX,	   // SW
 		LIBAOM,	   // SW
 		FDKAAC,	   // SW
@@ -148,7 +148,7 @@ namespace cmn
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, X264);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NVENC);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, XMA);
-			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NILOGAN);
+			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, NETINT);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBVPX);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, LIBAOM);
 			OV_CASE_RETURN_ENUM_STRING(MediaCodecModuleId, FDKAAC);
@@ -505,9 +505,9 @@ namespace cmn
 		{
 			return cmn::MediaCodecModuleId::NVENC;
 		}
-		else if (name.HasSuffix("_NILOGAN") || name.HasSuffix("NILOGAN"))
+		else if (name.HasSuffix("_NI") || name.HasSuffix("NI"))
 		{
-			return cmn::MediaCodecModuleId::NILOGAN;
+			return cmn::MediaCodecModuleId::NETINT;
 		}
 		else if (name.HasSuffix("_XMA") || name.HasSuffix("XMA"))
 		{
@@ -544,7 +544,7 @@ namespace cmn
 			OV_CASE_RETURN(MediaCodecModuleId::DEFAULT, "default");
 			OV_CASE_RETURN(MediaCodecModuleId::OPENH264, "openh264");
 			OV_CASE_RETURN(MediaCodecModuleId::NVENC, "nv");
-			OV_CASE_RETURN(MediaCodecModuleId::NILOGAN, "nilogan");
+			OV_CASE_RETURN(MediaCodecModuleId::NETINT, "ni");
 			OV_CASE_RETURN(MediaCodecModuleId::XMA, "xma");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBVPX, "libvpx");
 			OV_CASE_RETURN(MediaCodecModuleId::LIBAOM, "libaom");
@@ -566,7 +566,7 @@ namespace cmn
 		{
 			case cmn::MediaCodecModuleId::NVENC:
 			case cmn::MediaCodecModuleId::XMA:
-			case cmn::MediaCodecModuleId::NILOGAN:
+			case cmn::MediaCodecModuleId::NETINT:
 				return true;
 			default:
 				break;

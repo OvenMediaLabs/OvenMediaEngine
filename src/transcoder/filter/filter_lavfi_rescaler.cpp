@@ -57,7 +57,7 @@ bool FilterLavfiRescaler::BuildDescription(ov::String &desc)
 			desc.Clear();
 		}
 		break;
-		case cmn::MediaCodecModuleId::NILOGAN:	
+		case cmn::MediaCodecModuleId::NETINT:	
 		default: {
 			logtw("Unsupported input module: %s", cmn::GetCodecModuleIdString(input_module_id));
 			desc.Clear();

@@ -38,18 +38,18 @@ public:
 	ov::String GetDeviceBusId(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
 
 protected:
-	bool CheckSupportedNILOGAN();
+	bool CheckSupportedNI();
 	bool CheckSupportedNV();
 	bool CheckSupportedXMA();
 
-	std::shared_ptr<HwDeviceContext> GetDeviceContextNILOGAN(cmn::DeviceId gpu_id = 0);
+	std::shared_ptr<HwDeviceContext> GetDeviceContextNI(cmn::DeviceId gpu_id = 0);
 	std::shared_ptr<HwDeviceContext> GetDeviceContextNV(cmn::DeviceId gpu_id = 0);
 
-	bool IsSupportedNILOGAN(cmn::DeviceId gpu_id = 0);
+	bool IsSupportedNI(cmn::DeviceId gpu_id = 0);
 	bool IsSupportedNV(cmn::DeviceId gpu_id = 0);
 	bool IsSupportedXMA(cmn::DeviceId gpu_id = 0);
 
-	int32_t GetDeviceCountNILOGAN();
+	int32_t GetDeviceCountNI();
 	int32_t GetDeviceCountNV();
 	int32_t GetDeviceCountXMA();
 
@@ -63,9 +63,9 @@ protected:
 	ov::String _device_display_name_xma[MAX_DEVICE_COUNT];
 	ov::String _device_bus_id_xma[MAX_DEVICE_COUNT];
 	
-	std::shared_ptr<HwDeviceContext> _device_context_nilogan[MAX_DEVICE_COUNT];
-	ov::String _device_display_name_nilogan[MAX_DEVICE_COUNT];
-	int32_t _device_count_nilogan;
+	std::shared_ptr<HwDeviceContext> _device_context_ni[MAX_DEVICE_COUNT];
+	ov::String _device_display_name_ni[MAX_DEVICE_COUNT];
+	int32_t _device_count_ni;
 
 	std::shared_ptr<HwDeviceContext> _device_context_nv[MAX_DEVICE_COUNT];
 	ov::String _device_display_name_nv[MAX_DEVICE_COUNT];

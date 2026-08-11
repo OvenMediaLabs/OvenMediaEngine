@@ -56,7 +56,7 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDec
 		{
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "XMA", ALL_GPU_ID));
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "NV", ALL_GPU_ID));
-			desire_modules.push_back(ov::String::FormatString("%s:%d", "NILOGAN", ALL_GPU_ID));
+			desire_modules.push_back(ov::String::FormatString("%s:%d", "NI", ALL_GPU_ID));
 		}
 
 		desire_modules.push_back(ov::String::FormatString("%s:%d", DEFAULT_MODULE_NAME, ALL_GPU_ID));

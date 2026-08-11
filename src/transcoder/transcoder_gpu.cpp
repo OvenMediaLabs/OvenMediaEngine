@@ -31,7 +31,7 @@ TranscodeGPU::TranscodeGPU()
 {
 	for (int i = 0; i < MAX_DEVICE_COUNT; i++)
 	{
-		_device_context_nilogan[i].reset();
+		_device_context_ni[i].reset();
 		_device_context_nv[i].reset();
 	}
 	_initialized = false;
@@ -69,10 +69,10 @@ bool TranscodeGPU::Initialize()
 		logtd("No supported Xilinx Media accelerator");
 	}
 
-	// NILOGAN
-	if (CheckSupportedNILOGAN() == true)
+	// NI
+	if (CheckSupportedNI() == true)
 	{
-		logti("Supported Netint VPU accelerator. Number of devices(%d)", GetDeviceCount(cmn::MediaCodecModuleId::NILOGAN));
+		logti("Supported Netint VPU accelerator. Number of devices(%d)", GetDeviceCount(cmn::MediaCodecModuleId::NETINT));
 	}
 	else
 	{
@@ -96,7 +96,7 @@ bool TranscodeGPU::Uninitialize()
 	for (int i = 0; i < MAX_DEVICE_COUNT; i++)
 	{
 		_device_context_nv[i].reset();
-		_device_context_nilogan[i].reset();
+		_device_context_ni[i].reset();
 	}
 
 	_supported_devices.clear();
@@ -112,8 +112,8 @@ bool TranscodeGPU::IsSupported(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id)
 {
 	switch (id)
 	{
-		case cmn::MediaCodecModuleId::NILOGAN:
-			return IsSupportedNILOGAN(gpu_id);
+		case cmn::MediaCodecModuleId::NETINT:
+			return IsSupportedNI(gpu_id);
 		case cmn::MediaCodecModuleId::NVENC:
 			return IsSupportedNV(gpu_id);
 		case cmn::MediaCodecModuleId::XMA:
@@ -129,8 +129,8 @@ int32_t TranscodeGPU::GetDeviceCount(cmn::MediaCodecModuleId id)
 {
 	switch (id)
 	{
-		case cmn::MediaCodecModuleId::NILOGAN:
-			return GetDeviceCountNILOGAN();
+		case cmn::MediaCodecModuleId::NETINT:
+			return GetDeviceCountNI();
 		case cmn::MediaCodecModuleId::NVENC:
 			return GetDeviceCountNV();
 		case cmn::MediaCodecModuleId::XMA:
@@ -146,8 +146,8 @@ std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContext(cmn::MediaCodecM
 {
 	switch (id)
 	{
-		case cmn::MediaCodecModuleId::NILOGAN:
-			return GetDeviceContextNILOGAN(gpu_id);
+		case cmn::MediaCodecModuleId::NETINT:
+			return GetDeviceContextNI(gpu_id);
 		case cmn::MediaCodecModuleId::NVENC:
 			return GetDeviceContextNV(gpu_id);
 		case cmn::MediaCodecModuleId::XMA:
@@ -179,8 +179,8 @@ ov::String TranscodeGPU::GetDeviceDisplayName(cmn::MediaCodecModuleId id, cmn::D
 
 	switch (id)
 	{
-		case cmn::MediaCodecModuleId::NILOGAN:
-			return _device_display_name_nilogan[gpu_id];
+		case cmn::MediaCodecModuleId::NETINT:
+			return _device_display_name_ni[gpu_id];
 		case cmn::MediaCodecModuleId::NVENC:
 			return _device_display_name_nv[gpu_id];
 		case cmn::MediaCodecModuleId::XMA:
@@ -211,9 +211,9 @@ ov::String TranscodeGPU::GetDeviceBusId(cmn::MediaCodecModuleId id, cmn::DeviceI
 	return "Unknown";
 }
 
-int32_t TranscodeGPU::GetDeviceCountNILOGAN()
+int32_t TranscodeGPU::GetDeviceCountNI()
 {
-	return _device_count_nilogan;
+	return _device_count_ni;
 }
 
 int32_t TranscodeGPU::GetDeviceCountNV()
@@ -434,21 +434,21 @@ bool TranscodeGPU::CheckSupportedXMA()
 #endif
 }
 
-bool TranscodeGPU::CheckSupportedNILOGAN()
+bool TranscodeGPU::CheckSupportedNI()
 {
-	_device_count_nilogan = 0;
+	_device_count_ni = 0;
 
 	return false;
 }
 
-std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNILOGAN(cmn::DeviceId gpu_id)
+std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNI(cmn::DeviceId gpu_id)
 {
 	if (gpu_id >= MAX_DEVICE_COUNT)
 	{
 		return nullptr;
 	}
 
-	return _device_context_nilogan[gpu_id];
+	return _device_context_ni[gpu_id];
 }
 
 std::shared_ptr<HwDeviceContext> TranscodeGPU::GetDeviceContextNV(cmn::DeviceId gpu_id)
@@ -473,9 +473,9 @@ int32_t TranscodeGPU::GetDeviceIdNV(cmn::DeviceId gpu_id)
 	return _device_cuda_id_nv[gpu_id];
 }
 
-bool TranscodeGPU::IsSupportedNILOGAN(cmn::DeviceId gpu_id)
+bool TranscodeGPU::IsSupportedNI(cmn::DeviceId gpu_id)
 {
-	if (_device_count_nilogan == 0 || gpu_id >= _device_count_nilogan)
+	if (_device_count_ni == 0 || gpu_id >= _device_count_ni)
 	{
 		return false;
 	}
