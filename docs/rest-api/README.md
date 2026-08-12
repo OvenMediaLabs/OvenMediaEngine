@@ -59,17 +59,17 @@ In order to use the API server, you must configure `<Managers>` as well as port 
 				<Name>*</Name>
 			</Names>
 			<TLS>
-				<CertPath>ovenmedialabs_com.crt</CertPath>
-				<KeyPath>ovenmedialabs_com.key</KeyPath>
-				<ChainCertPath>ovenmedialabs_com_chain.crt</ChainCertPath>
+				<CertPath>ovenmedia_com.crt</CertPath>
+				<KeyPath>ovenmedia_com.key</KeyPath>
+				<ChainCertPath>ovenmedia_com_chain.crt</ChainCertPath>
 			</TLS>
 		</Host>
 		<API>
 			<AccessToken>your_access_token</AccessToken>
 			<CrossDomains>
-				<Url>*.ovenmedialabs.com</Url>
-				<Url>http://*.sub-domain.ovenmedialabs.com</Url>
-				<Url>http?://ovenmedialabs.*</Url>
+				<Url>*.ovenmedia.com</Url>
+				<Url>http://*.sub-domain.ovenmedia.com</Url>
+				<Url>http?://ovenmedia.*</Url>
 			</CrossDomains>
 		</API>
 	</Managers>
@@ -94,7 +94,7 @@ For more information about HTTP Basic authentication, refer to the URL below.&#x
 
 #### CrossDomains
 
-To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.ovenmedialabs.com, all schemes can be accepted.
+To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.ovenmedia.com, all schemes can be accepted.
 
 
 

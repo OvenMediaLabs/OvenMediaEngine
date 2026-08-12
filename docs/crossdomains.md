@@ -11,7 +11,7 @@ CrossDomain settings are available for HTTP-based APIs, HLS, LLHLS and Thumbnail
 ```xml
 <CrossDomains>
     <Url>*</Url>
-    <Url>*.ovenmedialabs.com</Url>
+    <Url>*.ovenmedia.com</Url>
     <Url>http://*.ovenplayer.com</Url>
     <Url>https://demo.ovenplayer.com</Url>
     <Header>
@@ -20,7 +20,7 @@ CrossDomain settings are available for HTTP-based APIs, HLS, LLHLS and Thumbnail
     </Header>
     <Header>
         <Key>custom-header</Key>
-        <Value>ovenmedialabs</Value>
+        <Value>ovenmedia</Value>
     </Header>
 </CrossDomains>
 ```

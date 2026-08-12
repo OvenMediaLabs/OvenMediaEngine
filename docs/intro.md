@@ -100,8 +100,8 @@ We always hope that OvenMediaEngine will give you good inspiration.
   * _Without TLS:_ [_http://demo.ovenplayer.com_](http://demo.ovenplayer.com)
   * _With TLS:_ [_https://demo.ovenplayer.com_](https://demo.ovenplayer.com)
 * [OvenPlayer Github](https://github.com/OvenMediaLabs/OvenPlayer)
-* [OvenMedia Labs Website](https://www.ovenmedialabs.com)
+* [OvenMedia Labs Website](https://ovenmedia.com)
 
 ## License
 
-OvenMediaEngine is licensed under the [AGPL-3.0-only](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/LICENSE). However, if you need another license, please feel free to email us at [contact@ovenmedialabs.com](mailto:contact@ovenmedialabs.com).
+OvenMediaEngine is licensed under the [AGPL-3.0-only](https://github.com/OvenMediaLabs/OvenMediaEngine/blob/master/LICENSE). However, if you need another license, please feel free to email us at [contact@ovenmedia.com](mailto:contact@ovenmedia.com).

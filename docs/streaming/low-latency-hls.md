@@ -154,7 +154,7 @@ You can dump the LLHLS stream for VoD. You can enable it by setting the followin
                 <Playlist>abr.m3u8</Playlist>
             </Playlists>
     
-            <OutputPath>/service/www/ome-dev.ovenmedialabs.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
+            <OutputPath>/service/www/ome-dev.ovenmedia.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
         </Dump>
     </Dumps>
     ...

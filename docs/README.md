@@ -1,7 +1,7 @@
 # `docs/` — OvenMediaEngine docs source
 
 This folder holds the **MDX source** for the OvenMediaEngine user
-guide published at <https://ovenmedialabs.com/docs/ome/>.
+guide published at <https://ovenmedia.com/docs/ome/>.
 
 ## Editing
 
