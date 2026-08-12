@@ -505,7 +505,7 @@ namespace cmn
 		{
 			return cmn::MediaCodecModuleId::NVENC;
 		}
-		else if (name.HasSuffix("_NI") || name.HasSuffix("NI"))
+		else if (name.HasSuffix("_NI") || name.HasSuffix("NI") || name.HasSuffix("_NETINT") || name.HasSuffix("NETINT"))
 		{
 			return cmn::MediaCodecModuleId::NETINT;
 		}
