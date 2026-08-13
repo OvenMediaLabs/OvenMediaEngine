@@ -21,6 +21,12 @@ namespace cfg
 				protected:
 					bool _webrtc_auto_abr		  = true;
 
+					// Expose audio-only renditions inside video playlists that share their audio
+					// codec, so a video WebRTC session can switch to audio-only on the same
+					// PeerConnection. Off by default: it changes the playlist advertised to a
+					// video session that also declares an audio-only rendition.
+					bool _webrtc_audio_only_fallback = false;
+
 					// If this option is true, ts publisher will use this playlist
 					bool _enable_ts_packaging	  = false;
 
@@ -33,6 +39,7 @@ namespace cfg
 
 				public:
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsWebRtcAutoAbr, _webrtc_auto_abr);
+					CFG_DECLARE_CONST_REF_GETTER_OF(IsWebRtcAudioOnlyFallback, _webrtc_audio_only_fallback);
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetHlsChunklistPathDepth, _hls_chunklist_path_depth);
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsTsPackagingEnabled, _enable_ts_packaging);
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsSubtitlesEnabled, _enable_subtitles);
@@ -41,6 +48,7 @@ namespace cfg
 					void MakeList() override
 					{
 						Register<Optional>("WebRtcAutoAbr", &_webrtc_auto_abr);
+						Register<Optional>("WebRtcAudioOnlyFallback", &_webrtc_audio_only_fallback);
 						Register<Optional>({"HLSChunklistPathDepth", "hlsChunklistPathDepth"}, &_hls_chunklist_path_depth);
 						Register<Optional>("EnableTsPackaging", &_enable_ts_packaging);
 						Register<Optional>("EnableSubtitles", &_enable_subtitles);

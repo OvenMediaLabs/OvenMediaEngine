@@ -50,6 +50,13 @@ TS files used in HLS must have A/V pre-muxed, so the `EnableTsPackaging` option 
 			[Default] : true
 			-->
 			<WebRtcAutoAbr>true</WebRtcAutoAbr> 
+			<!-- 
+			Add audio-only renditions into the video WebRTC playlists that share their
+			audio codec, so a player can switch to them without renegotiation.
+			Automatic ABR never selects them. See WebRTC Streaming for details.
+			[Default] : false
+			-->
+			<WebRtcAudioOnlyFallback>false</WebRtcAudioOnlyFallback>
 			<EnableTsPackaging>true</EnableTsPackaging>
 		</Options>
 		<Rendition>
