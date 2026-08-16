@@ -378,8 +378,17 @@ endif()
 
 # Whisper GGML
 if(PKG_WHISPER_FOUND)
+    # Static whisper splits ggml into ggml + ggml-base + ggml-cpu; all three
+    # must follow libwhisper.a on the link line (test binaries surface the
+    # miss; the main binary only survived by link order).
+    find_library(GGML_LIB       ggml            HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
+    find_library(GGML_BASE_LIB  ggml-base       HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
     find_library(GGML_CPU_LIB   ggml-cpu        HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
-    set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${GGML_CPU_LIB}")
+    foreach(_ggml_lib IN ITEMS "${GGML_LIB}" "${GGML_CPU_LIB}" "${GGML_BASE_LIB}")
+        if(_ggml_lib)
+            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${_ggml_lib}")
+        endif()
+    endforeach()
     set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES gomp)
     
     if(OME_HWACCEL_NVIDIA)  
@@ -410,6 +419,8 @@ if(PKG_WHISPER_FOUND)
         endif()      
     endif()  
     
+    unset(GGML_LIB CACHE)
+    unset(GGML_BASE_LIB CACHE)
     unset(GGML_CPU_LIB CACHE)    
     unset(NV_CUBLAS_LIB CACHE)
     unset(NV_CUBLASLT_LIB CACHE)
