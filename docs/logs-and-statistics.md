@@ -1,4 +1,8 @@
-# Logs and Statistics
+---
+title: Logs and Statistics
+description: "Monitor OvenMediaEngine in real time through configurable log files and runtime statistics via Logger.xml."
+sidebar_position: 61
+---
 
 ## Logs
 
@@ -11,6 +15,11 @@ You can set up Logger.xml as shown in the following example: OvenMediaEngine pri
 	<!-- Log file location -->
 	<Path>/var/log/ovenmediaengine</Path>
 
+	<!-- Optional: disable the per-line file sink. stdout/stderr is
+	     unaffected. Useful when logs are shipped via the container
+	     runtime's stdout capture. Default: enabled. -->
+	<!-- <File enabled="false"/> -->
+
 	<!-- Disable some SRT internal logs -->
 	<Tag name="SRT" level="critical" />
 	<Tag name="Monitor" level="critical" />
@@ -20,6 +29,12 @@ You can set up Logger.xml as shown in the following example: OvenMediaEngine pri
 </Logger>
 
 ```
+
+### Disabling the file sink
+
+Every log line is also written to stdout/stderr regardless of the file sink. If your deployment ships logs via your container runtime's stdout capture (e.g. Docker → Loki/Promtail/Alloy, journald, Kubernetes), the on-disk file is duplicate state — and OvenMediaEngine rotates its log file daily without ever deleting old rotations, so the directory grows unbounded.
+
+Set `<File enabled="false"/>` on the `<Logger>` element to skip the file sink entirely. With it disabled, OvenMediaEngine does not create the log directory and does not open or rotate any file; stdout/stderr behavior is unchanged. The setting defaults to `true` (the historical behavior) when the element is omitted.
 
 OvenMediaEngine generates log files. If you start OvenMediaEngine by `systemctl start ovenmediaengine`, the log file is generated to the following path.
 
@@ -161,6 +176,10 @@ OvenMediaEngine collects the following metrics for each host, application, and s
 
 You can get the current statistics using the REST API. See [Stat API ](rest-api/v1/statistics/current.md)for the statistics REST API.
 
-{% hint style="warning" %}
+
+:::warning
+
 Files such as webrtc\_stat.log and hls\_rtsp\_xxxx.log that were previously output are deprecated in the current version. We are developing a formal stats file, which will be open in the future.
-{% endhint %}
+
+:::
+

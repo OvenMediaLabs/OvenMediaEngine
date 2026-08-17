@@ -7,22 +7,7 @@
 #  Copyright (c) 2023 AirenSoft. All rights reserved.
 #
 #==============================================================================
-VERSION="v0.1"
-
-# Configurations
-IMAGE_NAME=airensoft/ovenmediaengine:latest
-CONTAINER_NAME=${CONTAINER_NAME:-ovenemediaengine}
-PREFIX=${PREFIX:-/usr/share/ovenmediaengine/}
-PREFIX=$(realpath "${PREFIX}")/
-
-CONF_PATH=${PREFIX}conf
-LOGS_PATH=${PREFIX}logs
-CRASH_DUMPS_PATH=${PREFIX}dumps
-
-SERVER_XML_PATH="${CONF_PATH}/Server.xml"
-LOGGER_XML_PATH="${CONF_PATH}/Logger.xml"
-
-DOCKER=${DOCKER:-$(which docker)}
+VERSION="v0.4"
 
 prepare_colors()
 {
@@ -134,7 +119,7 @@ need_to_report()
 	local ARGS=("$@")
 	loge "• ERROR: ${ARGS[@]}"
 	loge "• This may be a bug of this launcher, and should not be occurred."
-	loge "• Please report this issue to https://github.com/AirenSoft/OvenMediaEngine/issues"
+	loge "• Please report this issue to https://github.com/OvenMediaLabs/OvenMediaEngine/issues"
 	exit 1
 }
 
@@ -146,10 +131,37 @@ banner()
 	logi "${COLOR_YELLOW} ▄██████▀███▄ "
 	logi "${COLOR_YELLOW}█████▀ ▄██████${COLOR_RESET}  ${COLOR_YELLOW}OvenMediaEngine${COLOR_RESET} Launcher ${VERSION}"
 	logi "${COLOR_YELLOW}███▄▄▄▄▀▀▀▀███"
-	logi "${COLOR_YELLOW}██████▀ ▄█████${COLOR_RESET}  ${COLOR_BLUE}https://github.com/AirenSoft/OvenMediaEngine"
+	logi "${COLOR_YELLOW}██████▀ ▄█████${COLOR_RESET}  ${COLOR_BLUE}https://github.com/OvenMediaLabs/OvenMediaEngine"
 	logi "${COLOR_YELLOW} ▀███▄██████▀ "
 	logi
 }
+
+# Configurations
+IMAGE_NAME=ovenmedialabs/ovenmediaengine:latest
+CONTAINER_NAME=${CONTAINER_NAME:-ovenmediaengine}
+PREFIX=${PREFIX:-/usr/share/ovenmediaengine/}
+
+if command -v realpath > /dev/null 2>&1
+then
+	PREFIX=$(realpath "${PREFIX}")/
+else
+	if command -v readlink > /dev/null 2>&1
+	then
+		PREFIX=$(readlink -f "$(dirname ${PREFIX})")/$(basename "${PREFIX}")/
+	else
+		[ -z "${DOCKER}" ] && die "• ERROR: realpath/readlink not found"
+	fi
+fi
+
+CONF_PATH=${PREFIX}conf
+LOGS_PATH=${PREFIX}logs
+CRASH_DUMPS_PATH=${PREFIX}dumps
+OME_MEDIA_ROOT=${OME_MEDIA_ROOT:-/dev/null}
+
+SERVER_XML_PATH="${CONF_PATH}/Server.xml"
+LOGGER_XML_PATH="${CONF_PATH}/Logger.xml"
+
+DOCKER=${DOCKER:-$(which docker)}
 
 run()
 {
@@ -192,7 +204,7 @@ run()
 check_docker_is_available()
 {
 	[ -z "${DOCKER}" ] && die "• ERROR: Docker not found"
-	[ "$("${DOCKER}" ps 2>/dev/null)" ] && return
+	command -v "${DOCKER}" >/dev/null 2>&1 && return
 
 	loge "• Could not run ${DOCKER}"
 	exit 1
@@ -237,6 +249,23 @@ _setup()
 {
 	prepare_dir_if_needed()
 	{
+		if [ ! -d "${CONF_PATH}" ]
+		then
+			logi "• Creating configuration directory ${PRESET_HIGHLIGHT}${CONF_PATH}"
+			run mkdir -p "${CONF_PATH}"
+		fi
+	}
+
+	pull_image()
+	{
+		logi "• Pulling ${PRESET_HIGHLIGHT}${IMAGE_NAME}"
+		run "${DOCKER}" pull "${IMAGE_NAME}" || die "• ERROR: Could not pull the latest image"
+	}
+
+	copy_config_files()
+	{
+		local DO_COPY=false
+
 		# Check if the configuration file exists
 		if check_already_setup
 		then
@@ -261,46 +290,49 @@ _setup()
 				esac
 			done
 
-			[ "${ANSWER}" != "y" ] && die "• ERROR: Aborted"
-
-			local BAK_CONF_PATH="${CONF_PATH}_$(date +%Y%m%d%H%M%S)"
-			logi "• Backing up configuration files to ${PRESET_HIGHLIGHT}${BAK_CONF_PATH}"
-			{
-				run mkdir -p "${BAK_CONF_PATH}" &&
-				run mv "${CONF_PATH}"/* "${BAK_CONF_PATH}"
-			} || die "• ERROR: Could not create backup"
+			if [ "${ANSWER}" == "y" ]
+			then
+				local BAK_CONF_PATH="${CONF_PATH}_$(date +%Y%m%d%H%M%S)"
+				DO_COPY=true
+				logi "• Backing up configuration files to ${PRESET_HIGHLIGHT}${BAK_CONF_PATH}"
+				{
+					run mkdir -p "${BAK_CONF_PATH}" &&
+					run mv "${CONF_PATH}"/* "${BAK_CONF_PATH}"
+				} || die "• ERROR: Could not create backup"
+			else
+				logi "• OvenMediaEngine will use the existing configuration files"
+			fi
+		else
+			DO_COPY=true
 		fi
 
-		logi "• Creating configuration directory ${PRESET_HIGHLIGHT}${CONF_PATH}"
-		run mkdir -p "${CONF_PATH}"
-	}
-
-	pull_image()
-	{
-		logi "• Pulling ${PRESET_HIGHLIGHT}${IMAGE_NAME}"
-		run "${DOCKER}" pull "${IMAGE_NAME}" || die "• ERROR: Could not pull the latest image"
-	}
-
-	copy_config_files()
-	{
-		run "${DOCKER}" run \
-			--rm \
-			--mount=type=bind,source="${CONF_PATH}",target=/tmp/conf \
-			"${IMAGE_NAME}" \
-			/bin/bash -c 'cp /opt/ovenmediaengine/bin/origin_conf/* /tmp/conf/'
+		if ${DO_COPY}
+		then
+			logi "• Copying configuration to ${PRESET_HIGHLIGHT}${CONF_PATH}" &&
+			run "${DOCKER}" run \
+				--rm \
+				--mount=type=bind,source="${CONF_PATH}",target=/tmp/conf \
+				"${IMAGE_NAME}" \
+				/bin/bash -c 'cp /opt/ovenmediaengine/bin/origin_conf/* /tmp/conf/'
+		fi
 	}
 
 	{
 		prepare_dir_if_needed &&
-		logi "• Copying configuration to ${PRESET_HIGHLIGHT}${CONF_PATH}" &&
 		copy_config_files
 	} || die "• ERROR: Could not copy configuration file"
 	
-	logi "• Copying logs directory"
-	run mkdir -p "${LOGS_PATH}" || { loge "• Could not create logs directory"; exit 1; }
+	if [ ! -d "${LOGS_PATH}" ]
+	then
+		logi "• Creating logs directory"
+		run mkdir -p "${LOGS_PATH}" || { loge "• Could not create logs directory"; exit 1; }
+	fi
 
-	logi "• Copying crash dump directory"
-	run mkdir -p "${CRASH_DUMPS_PATH}" || { loge "• Could not create crash dump directory"; exit 1; }
+	if [ ! -d "${CRASH_DUMPS_PATH}" ]
+	then
+		logi "• Creating crash dump directory"
+		run mkdir -p "${CRASH_DUMPS_PATH}" || { loge "• Could not create crash dump directory"; exit 1; }
+	fi
 
 	HIDE_POST_SETUP_MESSAGE=${HIDE_POST_SETUP_MESSAGE:-false}
 
@@ -409,8 +441,13 @@ _start()
 
 				for( INDEX = 1; INDEX <= NF; INDEX++ ) {
 					if( $INDEX ~ /<([^ ]+)/ ) {
-						match( $INDEX, /<([^ ]+)/, RESULT )
-						TAG_NAME = RESULT[1]
+						START_INDEX = index($INDEX, "<") + 1
+						END_INDEX = index(substr($INDEX, START_INDEX), " ") - 1
+						if (END_INDEX == -1) {
+							# No space found, so the tag ends at the next ">"
+							END_INDEX = length($INDEX) - START_INDEX + 1
+						}
+						TAG_NAME = substr($INDEX, START_INDEX, END_INDEX)
 
 						if( !IS_BIND ) {
 							if( TAG_NAME == "Bind" ) {
@@ -441,7 +478,17 @@ _start()
 
 							if( IS_PORT ) {
 								# C-DATA
-								REMAINED = substr($INDEX, 0, length($INDEX) - RLENGTH)
+
+								# Find the position of the closing tag
+								CLOSE_INDEX = index($INDEX, "</")
+								if( CLOSE_INDEX > 0 ) {
+									# Extract content before the closing tag
+									REMAINED = substr($INDEX, 1, CLOSE_INDEX - 1)
+								} else {
+									# No closing tag found, take the entire content
+									REMAINED = $INDEX
+								}
+
 								if( length(REMAINED) > 0 ) {
 									logd( REMAINED COLOR_GREEN " // C-DATA before close tag, " COLOR_BLUE PARENTS[PARENT_INDEX - 1] COLOR_RESET "/" COLOR_BLUE PARENTS[PARENT_INDEX] ", Module: " MODULES[MODULE_INDEX] "\n" )
 
@@ -455,7 +502,12 @@ _start()
 
 							CURRENT_PARENT = PARENTS[PARENT_INDEX]
 
-							if( ( CURRENT_PARENT == "Providers" ) || ( CURRENT_PARENT == "Publishers" ) || ( TAG_NAME == "Providers" ) || ( TAG_NAME == "Publishers" ) ) {
+							if( ( CURRENT_PARENT == "Providers" ) ||
+								( CURRENT_PARENT == "Publishers" ) ||
+								( CURRENT_PARENT == "Managers" ) ||
+								( TAG_NAME == "Providers" ) ||
+								( TAG_NAME == "Publishers" ) ||
+								( TAG_NAME == "Managers" ) ) {
 								MODULE_INDEX--
 							}
 							
@@ -483,12 +535,19 @@ _start()
 								logd(COLOR_BLUE "<" TAG_NAME ">" COLOR_GREEN " // Open, Parent: " PARENTS[PARENT_INDEX - 1] ", Module: " MODULES[MODULE_INDEX] "\n" )
 								INDENT = INDENT "  "
 
-								if( ( CURRENT_PARENT == "Providers" ) || ( CURRENT_PARENT == "Publishers" ) || ( TAG_NAME == "Providers" ) || ( TAG_NAME == "Publishers" ) ) {
+								if( ( CURRENT_PARENT == "Providers" ) ||
+									( CURRENT_PARENT == "Publishers" ) ||
+									( CURRENT_PARENT == "Managers" ) ||
+									( TAG_NAME == "Providers" ) ||
+									( TAG_NAME == "Publishers" ) ||
+									( TAG_NAME == "Managers" ) ) {
 									MODULES[++MODULE_INDEX] = TAG_NAME
 								}
 							}
 
-							if(( CURRENT_PARENT == "Providers" ) || ( CURRENT_PARENT == "Publishers" )) {
+							if( ( CURRENT_PARENT == "Providers" ) ||
+								( CURRENT_PARENT == "Publishers" ) ||
+								( CURRENT_PARENT == "Managers" ) ) {
 								print "MODULE|" CURRENT_PARENT "|" TAG_NAME "\n"
 							}
 						}
@@ -503,6 +562,12 @@ _start()
 				}
 			}
 		')
+
+	if [ "${BIND_LIST[@]}" = '' ]
+	then
+		loge "• There is no Bind list. Please check the settings."
+		exit 1
+	fi
 
 	# Above code is to parse the XML file and extract the port information, such as:
 	#
@@ -586,6 +651,7 @@ _start()
 		case "${TYPE}" in
 			Providers) DESCRIPTION="${NAME} Provider" ;;
 			Publishers) DESCRIPTION="${NAME} Publisher" ;;
+			Managers) DESCRIPTION="${NAME} (Manager)" ;;
 			*)
 				# Above awk command should not generate this case
 				need_to_report "Not supported type: ${TYPE}"
@@ -593,20 +659,44 @@ _start()
 		esac
 
 		# Parse [<IP>:]<START>[-<END>][/<PROTOCOL>] format
-		[[ ! "${VALUE}" =~ ^(\[?([^\]]+)\]?:)?([0-9]+)(-([0-9]+))?(/(.+))?$ ]] && die "• ERROR: Invalid setting found: '${VALUE}' in ${TYPE}/${NAME}"
+		{
+			[[ ! "${VALUE}" =~ ^(\[?([^\]]+)\]?:)?((([0-9]+)(-([0-9]+))?)(,(([0-9]+)(-([0-9]+))?))*)(\/(.+))?$ ]] &&
+			die "• ERROR: Invalid setting found: '${VALUE}' in ${TYPE}/${NAME}" ;
+		}
 
 		local IP="${BASH_REMATCH[2]}"
-		local START_PORT="${BASH_REMATCH[3]}"
-		local END_PORT="${BASH_REMATCH[5]}"
-		local PROTOCOL="${BASH_REMATCH[7]}"
-		PROTOCOL=${PROTOCOL^^}
+		local PORT_RANGE="${BASH_REMATCH[3]}"
+		local PROTOCOL="${BASH_REMATCH[14]}"
+		PROTOCOL=$(echo -n "${PROTOCOL}" | tr '[:lower:]' '[:upper:]')
 
-		[ ! -z "${END_PORT}" ] && END_PORT="-${END_PORT}"
+		# Some protocol uses UDP by default (#1339)
+		case "${NAME}" in
+			SRT) PROTOCOL=${PROTOCOL:-SRT} ;;
+		esac
+
+		# SRT actually uses UDP, so bind UDP port if SRT is specified
+		[ "${PROTOCOL}" = "SRT" ] && PROTOCOL="UDP"
 		[ ! -z "${PROTOCOL}" ] && PROTOCOL="/${PROTOCOL}"
 
-		PORT_LIST+=("-p ${START_PORT}${END_PORT}:${START_PORT}${END_PORT}${PROTOCOL}")
+		# Support multiple port ranges (e.g. 1935,1937-1940)
+		local PORT_RANGE_LIST=()
+		IFS=',' read -r -a PORT_RANGE_LIST <<< "${PORT_RANGE}"
+		local USED_PORT_LIST=
+		for PORT_RANGE in "${PORT_RANGE_LIST[@]}"
+		do
+			local START_PORT=${PORT_RANGE%%-*}
+			local END_PORT=
 
-		logi "  - ${COLOR_GREEN}${DESCRIPTION}${COLOR_RESET} is configured to use ${COLOR_MAGENTA}${START_PORT}${END_PORT}${PROTOCOL}${COLOR_RESET} (${PORT_TYPE})"
+			[[ "$PORT_RANGE" == *"-"* ]] && END_PORT=${PORT_RANGE##*-}
+			[ ! -z "${END_PORT}" ] && END_PORT="-${END_PORT}"
+
+			PORT_LIST+=("-p ${START_PORT}${END_PORT}:${START_PORT}${END_PORT}${PROTOCOL}")
+			
+			[ ! -z "${USED_PORT_LIST}" ] && USED_PORT_LIST="${USED_PORT_LIST}, "
+			USED_PORT_LIST="${USED_PORT_LIST}${START_PORT}${END_PORT}${PROTOCOL}"
+		done
+
+		logi "  - ${COLOR_GREEN}${DESCRIPTION}${COLOR_RESET} is configured to use ${COLOR_MAGENTA}${USED_PORT_LIST}${COLOR_RESET} (${PORT_TYPE})"
 
 		for INDEX in "${!MODULE_LIST[@]}"
 		do
@@ -684,10 +774,12 @@ _start()
 		-e OME_WEBRTC_SIGNALLING_TLS_PORT \
 		-e OME_WEBRTC_TCP_RELAY_PORT \
 		-e OME_WEBRTC_CANDIDATE_PORT \
+		-e OME_WEBRTC_TCP_ICE_PORT \
 		--restart=unless-stopped \
 		--mount=type=bind,source="${CONF_PATH}",target=/opt/ovenmediaengine/bin/origin_conf \
 		--mount=type=bind,source="${LOGS_PATH}",target=/var/log/ovenmediaengine \
 		--mount=type=bind,source="${CRASH_DUMPS_PATH}",target=/opt/ovenmediaengine/bin/dumps \
+		--mount=type=bind,source="${OME_MEDIA_ROOT}",target=/opt/ovenmediaengine/media \
 		--name "${CONTAINER_NAME}" "${IMAGE_NAME}" ||
 	{
 		loge "• ERROR: An error occurred while starting a container, stopping..."

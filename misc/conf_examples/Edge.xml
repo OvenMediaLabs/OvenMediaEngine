@@ -22,17 +22,32 @@
 		<HTTP2>
 			<Enable>true</Enable>
 		</HTTP2>
-
 		<LLHLS>
 			<Enable>true</Enable>
 		</LLHLS>
-
+		<DynamicAppRemoval>
+			<Enable>false</Enable>
+		</DynamicAppRemoval>
 		<!-- P2P works only in WebRTC and is experiment feature -->
 		<P2P>
 			<!-- disabled by default -->
 			<Enable>false</Enable>
 			<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 		</P2P>
+
+		<!-- jemalloc allocator tuning (effective only in jemalloc builds) -->
+		<Jemalloc>
+			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
+			<BackgroundPurge>true</BackgroundPurge>
+		</Jemalloc>
+
+		<!-- Shared worker threads that run short tasks for the modules that need them -->
+		<TaskPool>
+			<!-- Workers the pool runs on, started with the first task -->
+			<ThreadCount>4</ThreadCount>
+			<!-- Tasks that may wait to start. Reaching this rejects further tasks. -->
+			<MaxTasks>128</MaxTasks>
+		</TaskPool>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->
@@ -71,9 +86,15 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10005-10009/udp}</IceCandidate>
+					<!-- Set OME_HOST_IP to your public IP (default: * = all local IPs) -->
+					<!-- UDP ICE scales by port count: each port is handled by one thread. The default range spreads load across cores. -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10003/udp}</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_ICE_PORT:10000/tcp}</IceCandidate>
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
 					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
-					<TcpForce>true</TcpForce>
+					<TcpRelayForce>false</TcpRelayForce>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -86,6 +107,13 @@
 		<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 	</P2P>
 	-->
+
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
 
 	<VirtualHosts>
 		<!-- You can use wildcard like this to include multiple XMLs -->
@@ -122,7 +150,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -134,7 +162,7 @@
 					<UnusedStreamDeletionTimeout>60000</UnusedStreamDeletionTimeout>
 				</Properties>
 				<!--
-					<Origin>
+				<Origin>
 					<Location>/app/stream</Location>
 					<Pass>
 						<Scheme>ovt</Scheme>
@@ -221,6 +249,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<ChunkDuration>0.5</ChunkDuration>
@@ -229,7 +258,16 @@
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
 					</Publishers>
 				</Application>
 			</Applications>

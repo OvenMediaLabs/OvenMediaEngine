@@ -1,0 +1,4 @@
+LIBXRT_CORE_2 {
+  global: xrm*; xma*; xcl*;
+  local: *;
+};

@@ -1,15 +1,23 @@
-# REST API
+---
+title: REST API
+description: "Query and change OvenMediaEngine settings — virtual hosts, applications, and streams — through the REST API."
+sidebar_position: 38
+---
 
 ## Overview
 
-The REST APIs provided by OME allow you to query or change settings such as VirtualHost and Application/Stream.
+The REST APIs provided by OME allow you to query or change settings such as `VirtualHost` and `Application/Stream`.
 
-{% hint style="warning" %}
+
+:::warning
+
 There are some limitations/considerations.
 
 * If you add/change/delete the settings of the App/Output Profile by invoking the API, the app will be restarted. This means that all sessions connected to the app will be disconnected.
 * VirtualHost settings in Server.xml cannot be modified through API. This rule also applies to Application/OutputStream, etc. within that VirtualHost. So, if you call a POST/PUT/DELETE API for VirtualHost/Application/OutputProfile declared in Server.xml, it will not work with a 403 Forbidden error.
-{% endhint %}
+
+:::
+
 
 By default, OvenMediaEngine's API Server is disabled, so the following settings are required to use the API.
 
@@ -17,7 +25,7 @@ By default, OvenMediaEngine's API Server is disabled, so the following settings 
 
 ### Port Binding
 
-The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./#managers).
+The API server's port can be set in `<Bind><Managers><API>`. `<Port>` is an unsecured port and `<TLSPort>` is a secured port. To use TLSPort, TLS certificate must be set in the [Managers](./README.md#managers).
 
 ```markup
 <Server version="8">
@@ -51,17 +59,17 @@ In order to use the API server, you must configure `<Managers>` as well as port 
 				<Name>*</Name>
 			</Names>
 			<TLS>
-				<CertPath>airensoft_com.crt</CertPath>
-				<KeyPath>airensoft_com.key</KeyPath>
-				<ChainCertPath>airensoft_com_chain.crt</ChainCertPath>
+				<CertPath>ovenmedia_com.crt</CertPath>
+				<KeyPath>ovenmedia_com.key</KeyPath>
+				<ChainCertPath>ovenmedia_com_chain.crt</ChainCertPath>
 			</TLS>
 		</Host>
 		<API>
 			<AccessToken>your_access_token</AccessToken>
 			<CrossDomains>
-				<Url>*.airensoft.com</Url>
-				<Url>http://*.sub-domain.airensoft.com</Url>
-				<Url>http?://airensoft.*</Url>
+				<Url>*.ovenmedia.com</Url>
+				<Url>http://*.sub-domain.ovenmedia.com</Url>
+				<Url>http?://ovenmedia.*</Url>
 			</CrossDomains>
 		</API>
 	</Managers>
@@ -74,11 +82,11 @@ In order to use the API server, you must configure `<Managers>` as well as port 
 
 #### Host
 
-In `<Names>`, set the domain or IP that can access the API server. If \* is set, any address is used. In order to access using the TLS Port, a certificate must be set in `<TLS>`.
+In `<Names>`, set the domain or IP that can access the API server. If `*` is set, any address is used. In order to access using the TLS Port, a certificate must be set in `<TLS>`.
 
 #### AccessToken
 
-API Server uses Basic HTTP Authentication Scheme to authenticate clients. An `AccessToken` is a plaintext credential string before base64 encoding. Setting the AccessToken to the form `user-id:password` per RFC7617 allows standard browsers to pass authentication, but it is not required.
+API Server uses Basic HTTP Authentication Scheme to authenticate clients. An `AccessToken` is a plaintext credential string before base64 encoding. Setting the `AccessToken` to the form `user-id:password` per RFC7617 allows standard browsers to pass authentication, but it is not required.
 
 For more information about HTTP Basic authentication, refer to the URL below.&#x20;
 
@@ -86,29 +94,30 @@ For more information about HTTP Basic authentication, refer to the URL below.&#x
 
 #### CrossDomains
 
-To enable CORS on your API Server, you can add a setting. You can add \* to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.airensoft.com, all schemes can be accepted.
+To enable CORS on your API Server, you can add a setting. You can add `*` to allow all domains. If contains a scheme, such as https://, only that scheme can be allowed, or if the scheme is omitted, such as \*.ovenmedia.com, all schemes can be accepted.
 
-
+
+
 
 ## API Request
 
 API endpoints are provided in the following format.
 
-> <mark style="color:blue;">Method</mark> http://API.Server.Address\[:Port]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>&#x20;
+> Method http://API.Server.Address\[:Port]/v1/Resource&#x20;
 >
-> <mark style="color:blue;">Method</mark> https://API.Server.Address\[:TLSPort]/<mark style="color:orange;">v1</mark>/<mark style="color:purple;">Resource</mark>
+> Method https://API.Server.Address\[:TLSPort]/v1/Resource
 
-OvenMediaEngine supports <mark style="color:blue;">GET</mark>, <mark style="color:blue;">POST</mark>, and <mark style="color:blue;">DELETE</mark> methods, and sometimes supports <mark style="color:blue;">PATCH</mark> depending on the type of resource. For detailed API specifications, please check the subdirectory of this chapter.
+OvenMediaEngine supports GET, POST, and DELETE methods, and sometimes supports PATCH depending on the type of resource. For detailed API specifications, please check the subdirectory of this chapter.
 
 ### Action
 
 In OvenMediaEngine's REST API, action is provided in the following format.
 
-> <mark style="color:blue;">POST</mark> http://host/v1/resource<mark style="color:green;">:{action name}</mark>
+> POST http://host/v1/resource:&#x7B;action name&#x7D;
 
 For example, an action to send an ID3 Timedmeta event to an LLHLS stream is provided by the endpoint below.
 
-> <mark style="color:blue;">POST</mark> http://-/v1/vhosts/{vhost}/apps/{app}/streams/{stream}:<mark style="color:green;">sendEvent</mark>
+> POST http://-/v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;:sendEvent
 
 ### Document format
 
@@ -116,14 +125,14 @@ In this API reference document, the API endpoint is described as follows. Note t
 
 <details>
 
-<summary><mark style="color:blue;">METHOD</mark> /v1/&#x3C;API_PATH></summary>
+<summary>METHOD /v1/&#x3C;API_PATH></summary>
 
 #### Header
 
 Describe the required header values.
 
 ```http
-Haeder-Key: Value
+Header-Key: Value
 
 # Header-Key
     Description
@@ -133,7 +142,7 @@ Haeder-Key: Value
 
 Describe the request body content. The body of all APIs consists of Json content. Therefore, the `Content-Type` header value is always `application/json`, which can be omitted in the document.
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "requestId": "value"
@@ -142,7 +151,7 @@ Describe the request body content. The body of all APIs consists of Json content
 # key (required)
     The description of the key/value of the body content is provided like this.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -150,7 +159,7 @@ Responses from API endpoints are provided in the following format.
 
 <details>
 
-<summary><mark style="color:blue;">HTTP_Status_Code</mark> Code_Description</summary>
+<summary>HTTP_Status_Code Code_Description</summary>
 
 #### **Header**
 

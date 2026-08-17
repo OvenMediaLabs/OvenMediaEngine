@@ -1,0 +1,739 @@
+#!/usr/bin/env cmake -P
+#
+# InstallPrerequisites.cmake
+#
+# Installs all external libraries required by OvenMediaEngine.
+# Mirrors the logic of misc/prerequisites.sh, implemented as CMake script.
+#
+# Usage:
+#   cmake -P cmake/InstallPrerequisites.cmake [options]
+#
+# Options (set via -D on the command line before -P):
+#   -DOME_DEP_PREFIX=/opt/ovenmediaengine  Installation prefix (default)
+#   -DOME_HWACCEL_NVIDIA=ON                Enable NVIDIA nv-codec-headers + CUDA FFmpeg/Whisper support
+#   -DOME_HWACCEL_XMA=ON                   Enable Xilinx XMA FFmpeg support
+#   -DOME_ENABLE_X264=ON                   Enable libx264 (default ON)
+#   -DOME_ENABLE_JEMALLOC_LG_PAGE_MAX=ON   Build jemalloc with --with-lg-page=16 on aarch64/arm64
+#   -DOME_USE_CLANG=ON                     Install clang/lld and use as compiler (default ON)
+#   -DOME_WHISPER_STATIC=ON                Build Whisper as a static library (default OFF)
+#   -DTARGET=<name>                        Install only this target
+#
+# Example:
+#   cmake -DOME_HWACCEL_NVIDIA=ON -P cmake/InstallPrerequisites.cmake
+#   cmake -DOME_HWACCEL_XMA=ON -P cmake/InstallPrerequisites.cmake
+#
+
+cmake_minimum_required(VERSION 3.16)
+
+# ==============================================================================
+# Defaults
+# ==============================================================================
+if(NOT DEFINED OME_DEP_PREFIX)
+    set(OME_DEP_PREFIX /opt/ovenmediaengine)
+endif()
+# Internal alias used throughout this file
+set(PREFIX ${OME_DEP_PREFIX})
+if(NOT DEFINED TEMP_PATH)
+    set(TEMP_PATH "/tmp/ome_deps_$ENV{USER}")
+endif()
+if(NOT DEFINED OME_ENABLE_X264)
+    set(OME_ENABLE_X264 ON)
+endif()
+# Internal alias used throughout this file
+set(ENABLE_X264 ${OME_ENABLE_X264})
+if(NOT DEFINED OME_HWACCEL_NVIDIA)
+    set(OME_HWACCEL_NVIDIA OFF)
+endif()
+# Internal alias used throughout this file
+set(ENABLE_NVIDIA ${OME_HWACCEL_NVIDIA})
+if(NOT DEFINED OME_HWACCEL_XMA)
+    set(OME_HWACCEL_XMA OFF)
+endif()
+# Internal aliases used throughout this file
+set(ENABLE_XMA ${OME_HWACCEL_XMA})
+if(NOT DEFINED OME_USE_CLANG)
+    set(OME_USE_CLANG ON)
+endif()
+if(NOT DEFINED ENABLE_JEMALLOC_PROF)
+    set(ENABLE_JEMALLOC_PROF OFF)
+endif()
+if(NOT DEFINED OME_ENABLE_JEMALLOC_LG_PAGE_MAX)
+    set(OME_ENABLE_JEMALLOC_LG_PAGE_MAX OFF)
+endif()
+if(NOT DEFINED OME_TARGET_PROCESSOR)
+    set(OME_TARGET_PROCESSOR ${CMAKE_HOST_SYSTEM_PROCESSOR})
+endif()
+
+# Library versions - defined in a shared file so Dependencies.cmake can use the same values.
+include("${CMAKE_CURRENT_LIST_DIR}/Versions.cmake")
+
+# ------------------------------------------------------------------------------
+# Parses an OME_VER_* definition declared as either:
+#   set(OME_VER_FOO <verify-version>)
+#   set(OME_VER_FOO <verify-version>@<install-ref>)
+#
+# Usage:
+#   ome_parse_dep_version(OME_VER_SRT SRT_VERSION SRT_SOURCE_REF SRT_HAS_OVERRIDE)
+#
+# Outputs:
+#   <verify-version>  -> version string used for pkg-config validation
+#   <source-ref>      -> source ref used by the installer (version or override)
+#   <has-override>    -> ON when "@<install-ref>" was provided
+# ------------------------------------------------------------------------------
+function(ome_parse_dep_version var_name out_verify_version out_source_ref out_has_override)
+    set(_value "${${var_name}}")
+    string(FIND "${_value}" "@" _sep_index)
+
+    if(_sep_index EQUAL -1)
+        set(_verify_version "${_value}")
+        set(_source_ref "${_value}")
+        set(_has_override OFF)
+    else()
+        string(REPLACE "@" ";" _parts "${_value}")
+        list(LENGTH _parts _len)
+        if(NOT _len EQUAL 2)
+            message(FATAL_ERROR "${var_name} must be: <version> or <version>@<install-ref>")
+        endif()
+        list(GET _parts 0 _verify_version)
+        list(GET _parts 1 _source_ref)
+        set(_has_override ON)
+    endif()
+
+    set(${out_verify_version} "${_verify_version}" PARENT_SCOPE)
+    set(${out_source_ref} "${_source_ref}" PARENT_SCOPE)
+    set(${out_has_override} "${_has_override}" PARENT_SCOPE)
+endfunction()
+
+# ------------------------------------------------------------------------------
+# Selects the archive ref fragment that should be embedded into the download URL.
+#
+# Usage:
+#   ome_select_archive_ref(SRT_ARCHIVE_REF
+#       "${SRT_HAS_OVERRIDE}"
+#       "${SRT_SOURCE_REF}"
+#       "v${SRT_SOURCE_REF}")
+#
+# If an install-ref override exists, use it as-is. Otherwise, use the default
+# archive ref pattern required by that dependency's upstream source archive.
+# ------------------------------------------------------------------------------
+function(ome_select_archive_ref out_var has_override source_ref default_archive_ref)
+    if("${has_override}" STREQUAL "ON")
+        set(${out_var} "${source_ref}" PARENT_SCOPE)
+    else()
+        set(${out_var} "${default_archive_ref}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Resolve all OME_VER_* declarations into verification versions and install refs
+# before building per-dependency archive refs and source URLs below.
+ome_parse_dep_version(OME_VER_OPENSSL OPENSSL_VERSION OPENSSL_SOURCE_REF OPENSSL_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_SRTP SRTP_VERSION SRTP_SOURCE_REF SRTP_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_SRT SRT_VERSION SRT_SOURCE_REF SRT_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_OPUS OPUS_VERSION OPUS_SOURCE_REF OPUS_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_VPX VPX_VERSION VPX_SOURCE_REF VPX_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_AOM AOM_VERSION AOM_SOURCE_REF AOM_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_FDKAAC FDKAAC_VERSION FDKAAC_SOURCE_REF FDKAAC_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_NASM NASM_VERSION NASM_SOURCE_REF NASM_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_FFMPEG FFMPEG_VERSION FFMPEG_SOURCE_REF FFMPEG_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_JEMALLOC JEMALLOC_VERSION JEMALLOC_SOURCE_REF JEMALLOC_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_PCRE2 PCRE2_VERSION PCRE2_SOURCE_REF PCRE2_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_OPENH264 OPENH264_VERSION OPENH264_SOURCE_REF OPENH264_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_HIREDIS HIREDIS_VERSION HIREDIS_SOURCE_REF HIREDIS_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_NVCC_HDR NVCC_HDR_VERSION NVCC_HDR_SOURCE_REF NVCC_HDR_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_X264 X264_VERSION X264_SOURCE_REF X264_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_WEBP WEBP_VERSION WEBP_SOURCE_REF WEBP_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_SPDLOG SPDLOG_VERSION SPDLOG_SOURCE_REF SPDLOG_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_WHISPER WHISPER_VERSION WHISPER_SOURCE_REF WHISPER_HAS_OVERRIDE)
+
+# Each dependency keeps its original URL pattern. The only thing that changes
+# here is the archive ref fragment embedded into that pattern.
+ome_select_archive_ref(OPENSSL_ARCHIVE_REF "${OPENSSL_HAS_OVERRIDE}" "${OPENSSL_SOURCE_REF}" "openssl-${OPENSSL_SOURCE_REF}")
+ome_select_archive_ref(SRTP_ARCHIVE_REF "${SRTP_HAS_OVERRIDE}" "${SRTP_SOURCE_REF}" "v${SRTP_SOURCE_REF}")
+ome_select_archive_ref(SRT_ARCHIVE_REF "${SRT_HAS_OVERRIDE}" "${SRT_SOURCE_REF}" "v${SRT_SOURCE_REF}")
+ome_select_archive_ref(OPUS_ARCHIVE_REF "${OPUS_HAS_OVERRIDE}" "${OPUS_SOURCE_REF}" "refs/tags/v${OPUS_SOURCE_REF}")
+ome_select_archive_ref(VPX_ARCHIVE_REF "${VPX_HAS_OVERRIDE}" "${VPX_SOURCE_REF}" "refs/tags/v${VPX_SOURCE_REF}")
+ome_select_archive_ref(AOM_ARCHIVE_REF "${AOM_HAS_OVERRIDE}" "${AOM_SOURCE_REF}/libaom-${AOM_SOURCE_REF}" "v${AOM_SOURCE_REF}/libaom-v${AOM_SOURCE_REF}")
+ome_select_archive_ref(FDKAAC_ARCHIVE_REF "${FDKAAC_HAS_OVERRIDE}" "${FDKAAC_SOURCE_REF}" "v${FDKAAC_SOURCE_REF}")
+ome_select_archive_ref(NASM_ARCHIVE_REF "${NASM_HAS_OVERRIDE}" "${NASM_SOURCE_REF}" "refs/tags/nasm-${NASM_SOURCE_REF}")
+ome_select_archive_ref(FFMPEG_ARCHIVE_REF "${FFMPEG_HAS_OVERRIDE}" "${FFMPEG_SOURCE_REF}" "refs/tags/n${FFMPEG_SOURCE_REF}")
+ome_select_archive_ref(JEMALLOC_ARCHIVE_REF "${JEMALLOC_HAS_OVERRIDE}" "${JEMALLOC_SOURCE_REF}" "refs/tags/${JEMALLOC_SOURCE_REF}")
+ome_select_archive_ref(PCRE2_ARCHIVE_REF "${PCRE2_HAS_OVERRIDE}" "${PCRE2_SOURCE_REF}" "refs/tags/pcre2-${PCRE2_SOURCE_REF}")
+ome_select_archive_ref(OPENH264_ARCHIVE_REF "${OPENH264_HAS_OVERRIDE}" "${OPENH264_SOURCE_REF}" "refs/tags/v${OPENH264_SOURCE_REF}")
+ome_select_archive_ref(HIREDIS_ARCHIVE_REF "${HIREDIS_HAS_OVERRIDE}" "${HIREDIS_SOURCE_REF}" "refs/tags/v${HIREDIS_SOURCE_REF}")
+ome_select_archive_ref(NVCC_HDR_ARCHIVE_REF "${NVCC_HDR_HAS_OVERRIDE}" "${NVCC_HDR_SOURCE_REF}" "refs/tags/n${NVCC_HDR_SOURCE_REF}")
+ome_select_archive_ref(X264_ARCHIVE_REF "${X264_HAS_OVERRIDE}" "${X264_SOURCE_REF}/x264-${X264_SOURCE_REF}" "master/x264-${X264_SOURCE_REF}")
+ome_select_archive_ref(WEBP_ARCHIVE_REF "${WEBP_HAS_OVERRIDE}" "${WEBP_SOURCE_REF}" "refs/tags/v${WEBP_SOURCE_REF}")
+ome_select_archive_ref(SPDLOG_ARCHIVE_REF "${SPDLOG_HAS_OVERRIDE}" "${SPDLOG_SOURCE_REF}" "refs/tags/v${SPDLOG_SOURCE_REF}")
+ome_select_archive_ref(WHISPER_ARCHIVE_REF "${WHISPER_HAS_OVERRIDE}" "${WHISPER_SOURCE_REF}" "refs/tags/v${WHISPER_SOURCE_REF}")
+
+set(OPENSSL_SOURCE_URL "https://github.com/openssl/openssl/archive/${OPENSSL_ARCHIVE_REF}.tar.gz")
+set(SRTP_SOURCE_URL "https://github.com/cisco/libsrtp/archive/${SRTP_ARCHIVE_REF}.tar.gz")
+set(SRT_SOURCE_URL "https://github.com/Haivision/srt/archive/${SRT_ARCHIVE_REF}.tar.gz")
+set(OPUS_SOURCE_URL "https://archive.mozilla.org/pub/opus/opus-${OPUS_SOURCE_REF}.tar.gz")
+set(VPX_SOURCE_URL "https://codeload.github.com/webmproject/libvpx/tar.gz/${VPX_ARCHIVE_REF}")
+set(AOM_SOURCE_URL "https://gitlab.com/webmproject/libaom/-/archive/${AOM_ARCHIVE_REF}.tar.gz")
+set(FDKAAC_SOURCE_URL "https://github.com/mstorsjo/fdk-aac/archive/${FDKAAC_ARCHIVE_REF}.tar.gz")
+set(NASM_SOURCE_URL "https://github.com/netwide-assembler/nasm/archive/${NASM_ARCHIVE_REF}.tar.gz")
+set(FFMPEG_SOURCE_URL "https://github.com/FFmpeg/FFmpeg/archive/${FFMPEG_ARCHIVE_REF}.tar.gz")
+set(JEMALLOC_SOURCE_URL "https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_SOURCE_REF}/jemalloc-${JEMALLOC_SOURCE_REF}.tar.bz2")
+set(PCRE2_SOURCE_URL "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_SOURCE_REF}/pcre2-${PCRE2_SOURCE_REF}.tar.gz")
+set(OPENH264_SOURCE_URL "https://github.com/cisco/openh264/archive/${OPENH264_ARCHIVE_REF}.tar.gz")
+set(HIREDIS_SOURCE_URL "https://github.com/redis/hiredis/archive/${HIREDIS_ARCHIVE_REF}.tar.gz")
+set(NVCC_HDR_SOURCE_URL "https://github.com/FFmpeg/nv-codec-headers/releases/download/n${NVCC_HDR_SOURCE_REF}/nv-codec-headers-${NVCC_HDR_SOURCE_REF}.tar.gz")
+set(X264_SOURCE_URL "https://code.videolan.org/videolan/x264/-/archive/${X264_ARCHIVE_REF}.tar.bz2")
+set(WEBP_SOURCE_URL "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${WEBP_SOURCE_REF}.tar.gz")
+set(SPDLOG_SOURCE_URL "https://github.com/gabime/spdlog/archive/${SPDLOG_ARCHIVE_REF}.tar.gz")
+set(WHISPER_SOURCE_URL "https://github.com/ggml-org/whisper.cpp/archive/${WHISPER_ARCHIVE_REF}.tar.gz")
+
+# ==============================================================================
+# Detect OS
+# ==============================================================================
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
+    if(EXISTS /etc/os-release)
+        file(READ /etc/os-release _os_release)
+        string(REGEX MATCH "(^|\n)NAME=\"?([^\"\n]+)\"?" _m "${_os_release}")
+        set(OSNAME "${CMAKE_MATCH_2}")
+        string(REGEX MATCH "VERSION=\"?([0-9]+)" _m "${_os_release}")
+        set(OSVERSION "${CMAKE_MATCH_1}")
+    endif()
+elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+    set(OSNAME "Mac OS X")
+endif()
+
+message(STATUS "[OME Prerequisites] OS: ${OSNAME} ${OSVERSION}")
+message(STATUS "[OME Prerequisites] Prefix: ${PREFIX}")
+
+# ==============================================================================
+# Helper: run shell command and fail loudly
+# ==============================================================================
+# Download a source archive into the current directory and extract it there.
+# Retries make transient server errors (e.g. GitHub sporadically answering
+# HTTP 500) non-fatal instead of aborting a long build: 8 retries with
+# curl's default exponential backoff (1s, 2s, 4s, ...) ride out outages of
+# up to ~4 minutes, while genuine errors such as 404 still fail immediately.
+# The archive must be fetched to a file first: piping curl straight into tar
+# cannot be retried, because a retry restarts the transfer while tar has
+# already consumed the bytes of the failed attempt. tar auto-detects the
+# compression (gz/bz2) when reading from a file.
+set(_OME_FETCH "ome_fetch()
+{
+    curl -sSLf --retry 8 -o ome_source_archive \"$1\" &&
+    tar -x --strip-components=1 -f ome_source_archive &&
+    rm -f ome_source_archive
+}")
+
+macro(ome_run cmd label)
+    message(STATUS "[OME Prerequisites] Building: ${label}")
+    set(_ome_script "${TEMP_PATH}/_ome_${label}.sh")
+    file(WRITE "${_ome_script}" "#!/bin/bash\nset -e\nexport ${_COMMON_ENV}\n${_OME_FETCH}\n${cmd}\n")
+    execute_process(
+        COMMAND bash "${_ome_script}"
+        RESULT_VARIABLE _ret
+        ECHO_OUTPUT_VARIABLE
+        ECHO_ERROR_VARIABLE
+    )
+    file(REMOVE "${_ome_script}")
+    if(NOT _ret EQUAL 0)
+        message(FATAL_ERROR "[OME Prerequisites] FAILED: ${label}")
+    endif()
+endmacro()
+
+# ==============================================================================
+# Install base packages
+# ==============================================================================
+if(OSNAME MATCHES "Ubuntu")
+    ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
+        tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
+elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
+    ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
+        cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build" "dnf base packages")
+elseif(OSNAME MATCHES "Amazon Linux")
+    ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
+        cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages")
+elseif(OSNAME MATCHES "Fedora")
+    ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
+        bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages (fedora)")
+elseif(OSNAME MATCHES "Mac OS X")
+    ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja" "brew base packages")
+else()
+    message(WARNING "[OME Prerequisites] Unsupported OS: ${OSNAME}. Skipping base package installation.")
+endif()
+
+# ==============================================================================
+# Install Clang (when OME_USE_CLANG=ON, which is the default)
+# ==============================================================================
+if(OME_USE_CLANG)
+    message(STATUS "[OME Prerequisites] Installing clang/lld (OME_USE_CLANG=ON)")
+    if(OSNAME MATCHES "Ubuntu")
+        ome_run("sudo apt-get install -y clang lld" "apt clang")
+    elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
+        ome_run("sudo dnf install -y clang lld" "dnf clang")
+    elseif(OSNAME MATCHES "Amazon Linux")
+        ome_run("sudo yum install -y clang" "yum clang")
+    elseif(OSNAME MATCHES "Fedora")
+        ome_run("sudo yum install -y clang lld" "yum clang (fedora)")
+    elseif(OSNAME MATCHES "Mac OS X")
+        # Xcode CLT ships clang; nothing extra needed
+        message(STATUS "[OME Prerequisites] macOS: Xcode CLT already provides clang. Skipping.")
+    else()
+        message(WARNING "[OME Prerequisites] Unsupported OS: ${OSNAME}. Skipping clang installation.")
+    endif()
+else()
+    message(STATUS "[OME Prerequisites] OME_USE_CLANG=OFF - skipping clang installation")
+endif()
+
+# ==============================================================================
+# NVIDIA toolchain validation (fail-fast)
+#
+# Catches missing CUDA Toolkit before any time is spent building dependencies.
+# Mirrors the same check in cmake/Dependencies.cmake so that both entry points
+# (direct `cmake -P InstallPrerequisites.cmake` and the auto-reinstall path
+# triggered from the main configure) fail at the earliest possible moment.
+# ==============================================================================
+if(OME_HWACCEL_NVIDIA)
+    set(_CUDA_ROOT "/usr/local/cuda")
+    find_program(_OME_NVCC nvcc HINTS ${_CUDA_ROOT}/bin /usr/cuda/bin)
+    find_library(_OME_ML_LIB     nvidia-ml     HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDA_LIB   cuda          HINTS ${_CUDA_ROOT}/lib64 ${_CUDA_ROOT}/lib64/stubs /usr/cuda/lib64 /usr/cuda/lib64/stubs /usr/lib/x86_64-linux-gnu)
+    find_library(_OME_CUDART_LIB cudart_static HINTS ${_CUDA_ROOT}/lib64 /usr/cuda/lib64 /usr/lib/x86_64-linux-gnu)
+
+    if(NOT (_OME_NVCC AND _OME_CUDA_LIB AND _OME_CUDART_LIB AND _OME_ML_LIB))
+        message(FATAL_ERROR
+            "[OME Prerequisites] OME_HWACCEL_NVIDIA=ON but CUDA Toolkit is missing or incomplete:\n"
+            "  nvcc:             ${_OME_NVCC}\n"
+            "  libnvidia-ml:     ${_OME_ML_LIB}\n"
+            "  libcuda:          ${_OME_CUDA_LIB}\n"
+            "  libcudart_static: ${_OME_CUDART_LIB}\n"
+            "Install CUDA Toolkit: https://developer.nvidia.com/cuda-downloads\n"
+            "Or disable NVIDIA support: re-run without -DOME_HWACCEL_NVIDIA=ON"
+        )
+    endif()
+    message(STATUS "[OME Prerequisites] CUDA Toolkit found - nvcc: ${_OME_NVCC}")
+
+    # nvcc <-> host compiler compatibility probe with auto-fallback.
+    # nvcc enforces the host compiler version (e.g. CUDA 12.x rejects gcc 15+).
+    # If CMAKE_CUDA_HOST_COMPILER is preset (user-supplied or forwarded from the
+    # parent configure) only that is probed. Otherwise try the system default,
+    # then walk g++-14 / g++-13 / g++-12 / g++-11 and pick the first one nvcc
+    # accepts. The selected compiler is exported via OME_NVCC_HOST_CXX so the
+    # whisper build inherits it as CMAKE_CUDA_HOST_COMPILER.
+    set(_OME_CUDA_TEST_DIR "${TEMP_PATH}/cuda_compat_test")
+    file(REMOVE_RECURSE "${_OME_CUDA_TEST_DIR}")
+    file(MAKE_DIRECTORY "${_OME_CUDA_TEST_DIR}")
+    file(WRITE "${_OME_CUDA_TEST_DIR}/test.cu" "#include <cuda_runtime.h>\nint main(){return 0;}\n")
+
+    if(CMAKE_CUDA_HOST_COMPILER)
+        set(_OME_HOST_CANDIDATES "${CMAKE_CUDA_HOST_COMPILER}")
+    else()
+        # Empty string means "system default" (no -ccbin passed to nvcc).
+        set(_OME_HOST_CANDIDATES "" g++-14 g++-13 g++-12 g++-11)
+    endif()
+
+    set(OME_NVCC_HOST_CXX "")
+    set(_OME_HOST_PICKED "NOTFOUND")
+    set(_OME_CUDA_TEST_ERR "")
+    foreach(_cxx IN LISTS _OME_HOST_CANDIDATES)
+        set(_cxx_args "")
+        if(NOT "${_cxx}" STREQUAL "")
+            unset(_OME_FOUND_CXX CACHE)
+            find_program(_OME_FOUND_CXX NAMES "${_cxx}")
+            if(NOT _OME_FOUND_CXX)
+                continue()
+            endif()
+            set(_cxx_args "-ccbin" "${_OME_FOUND_CXX}")
+        endif()
+        execute_process(
+            COMMAND ${_OME_NVCC} ${_cxx_args} -c "${_OME_CUDA_TEST_DIR}/test.cu" -o "${_OME_CUDA_TEST_DIR}/test.o"
+            RESULT_VARIABLE _OME_CUDA_TEST_RET
+            ERROR_VARIABLE _OME_CUDA_TEST_ERR
+            OUTPUT_QUIET
+        )
+        if(_OME_CUDA_TEST_RET EQUAL 0)
+            if("${_cxx}" STREQUAL "")
+                set(_OME_HOST_PICKED "default")
+            else()
+                set(_OME_HOST_PICKED "${_OME_FOUND_CXX}")
+                set(OME_NVCC_HOST_CXX "${_OME_FOUND_CXX}")
+            endif()
+            break()
+        endif()
+    endforeach()
+    unset(_OME_FOUND_CXX CACHE)
+    file(REMOVE_RECURSE "${_OME_CUDA_TEST_DIR}")
+
+    if(_OME_HOST_PICKED STREQUAL "NOTFOUND")
+        execute_process(COMMAND ${_OME_NVCC} --version
+            OUTPUT_VARIABLE _OME_NVCC_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        execute_process(COMMAND g++ --version
+            OUTPUT_VARIABLE _OME_HOST_VER OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        message(FATAL_ERROR
+            "[OME Prerequisites] nvcc could not compile a trivial CUDA file with any C++ host compiler tried (default + g++-14/13/12/11).\n\n"
+            "Last nvcc error:\n${_OME_CUDA_TEST_ERR}\n"
+            "nvcc:\n${_OME_NVCC_VER}\n\n"
+            "system g++:\n${_OME_HOST_VER}\n\n"
+            "Most often this is a C++ host compiler incompatibility (each CUDA toolkit only supports up to a specific g++ version). Less commonly the same failure surfaces from a partially installed CUDA Toolkit (missing headers or libraries). Inspect the nvcc error above to tell which case applies.\n\n"
+            "If it is a host compiler issue, install a supported g++, for example:\n"
+            "  sudo apt install -y gcc-14 g++-14"
+        )
+    elseif("${_OME_HOST_PICKED}" STREQUAL "default")
+        message(STATUS "[OME Prerequisites] nvcc host compiler: system default works")
+    else()
+        message(STATUS "[OME Prerequisites] nvcc host compiler: auto-selected ${_OME_HOST_PICKED}")
+    endif()
+endif()
+
+# ==============================================================================
+# Individual install functions (implemented as cmake variables holding shell code)
+# ==============================================================================
+
+set(_COMMON_ENV "PATH=${PREFIX}/bin:$PATH PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:$PKG_CONFIG_PATH")
+set(_J "-j$(nproc)")
+
+# ---- NASM ----
+set(_install_nasm "
+mkdir -p ${TEMP_PATH}/nasm && cd ${TEMP_PATH}/nasm &&
+ome_fetch ${NASM_SOURCE_URL} &&
+./autogen.sh && ./configure --prefix=${PREFIX} &&
+make ${_J} && touch nasm.1 ndisasm.1 && sudo make install && rm -rf ${TEMP_PATH}/nasm
+")
+
+# ---- OpenSSL ----
+set(_install_openssl "
+mkdir -p ${TEMP_PATH}/openssl && cd ${TEMP_PATH}/openssl &&
+ome_fetch ${OPENSSL_SOURCE_URL} &&
+./config --prefix=${PREFIX} --openssldir=${PREFIX} --libdir=lib -Wl,-rpath,${PREFIX}/lib shared no-idea no-mdc2 no-rc5 no-ec2m no-ecdh no-ecdsa no-async &&
+make ${_J} && sudo make install_sw && rm -rf ${TEMP_PATH}/openssl
+")
+
+# ---- libsrtp ----
+set(_install_libsrtp "
+mkdir -p ${TEMP_PATH}/srtp && cd ${TEMP_PATH}/srtp &&
+ome_fetch ${SRTP_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-openssl --with-openssl-dir=${PREFIX} &&
+make ${_J} shared_library && sudo make install && rm -rf ${TEMP_PATH}/srtp
+")
+
+# ---- SRT ----
+set(_install_libsrt "
+mkdir -p ${TEMP_PATH}/srt && cd ${TEMP_PATH}/srt &&
+ome_fetch ${SRT_SOURCE_URL} &&
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DENABLE_SHARED=1 -DENABLE_STATIC=0 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+cmake --build build ${_J} &&
+sudo cmake --install build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/srt
+")
+
+# ---- Opus ----
+set(_install_libopus "
+mkdir -p ${TEMP_PATH}/opus && cd ${TEMP_PATH}/opus &&
+ome_fetch ${OPUS_SOURCE_URL} &&
+autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static &&
+make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/opus
+")
+
+# ---- libvpx ----
+set(_install_libvpx "
+mkdir -p ${TEMP_PATH}/vpx && cd ${TEMP_PATH}/vpx &&
+ome_fetch ${VPX_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-vp8 --enable-pic --enable-shared --disable-static --disable-vp9 --disable-debug --disable-examples --disable-docs --disable-install-bins &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/vpx
+")
+
+# ---- libaom (AV1) ----
+# Requires NASM for x86 assembly optimizations; nasm is installed earlier in _targets.
+set(_install_libaom "
+mkdir -p ${TEMP_PATH}/aom && cd ${TEMP_PATH}/aom &&
+ome_fetch ${AOM_SOURCE_URL} &&
+cmake -S . -B aom_build -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=ON -DENABLE_NASM=ON -DENABLE_DOCS=OFF -DENABLE_EXAMPLES=OFF -DENABLE_TESTS=OFF -DENABLE_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+cmake --build aom_build ${_J} &&
+sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
+")
+
+# ---- libwebp ----
+set(_install_libwebp "
+mkdir -p ${TEMP_PATH}/webp && cd ${TEMP_PATH}/webp &&
+ome_fetch ${WEBP_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-shared --disable-static &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/webp
+")
+
+# ---- fdk-aac ----
+set(_install_fdk_aac "
+mkdir -p ${TEMP_PATH}/aac && cd ${TEMP_PATH}/aac &&
+ome_fetch ${FDKAAC_SOURCE_URL} &&
+autoreconf -fiv && ./configure --prefix=${PREFIX} --enable-shared --disable-static --datadir=/tmp/aac &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/aac
+")
+
+# ---- openh264 ----
+set(_install_libopenh264 "
+mkdir -p ${TEMP_PATH}/openh264 && cd ${TEMP_PATH}/openh264 &&
+ome_fetch ${OPENH264_SOURCE_URL} &&
+sed -i -e 's|PREFIX=/usr/local|PREFIX=${PREFIX}|' Makefile &&
+make OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
+")
+
+# ---- x264 (optional) ----
+set(_install_libx264 "
+mkdir -p ${TEMP_PATH}/x264 && cd ${TEMP_PATH}/x264 &&
+ome_fetch ${X264_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-shared --enable-pic --disable-cli &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/x264
+")
+
+# ---- nv-codec-headers (optional) ----
+set(_install_ffnvcodec "
+mkdir -p ${TEMP_PATH}/nvcc-hdr && cd ${TEMP_PATH}/nvcc-hdr &&
+ome_fetch ${NVCC_HDR_SOURCE_URL} &&
+sudo make PREFIX=${PREFIX} LIBDIR=lib install
+")
+
+# ---- FFmpeg ----
+set(_FFMPEG_ADDI_LICENSE      "")
+set(_FFMPEG_ADDI_LIBS         "--disable-nvdec --disable-vaapi --disable-vdpau --disable-cuda-llvm --disable-cuvid --disable-ffnvcodec")
+set(_FFMPEG_ADDI_ENCODER      "")
+set(_FFMPEG_ADDI_DECODER      "")
+set(_FFMPEG_ADDI_FILTERS      "")
+set(_FFMPEG_ADDI_CFLAGS       "")
+set(_FFMPEG_ADDI_LDFLAGS      "")
+set(_FFMPEG_ADDI_EXTRA_LIBS   "")
+set(_FFMPEG_PATCH_CMDS        "")
+
+# scte35 patch (always applied if patch file exists)
+set(_SCTE35_PATCH "${CMAKE_CURRENT_LIST_DIR}/../misc/patches/ffmpeg_n${FFMPEG_VERSION}_scte35.patch")
+if(EXISTS "${_SCTE35_PATCH}")
+    string(APPEND _FFMPEG_PATCH_CMDS "patch -p1 < ${_SCTE35_PATCH} && \n")
+endif()
+
+if(ENABLE_X264)
+    string(APPEND _FFMPEG_ADDI_LIBS    " --enable-libx264")
+    string(APPEND _FFMPEG_ADDI_ENCODER ",libx264")
+    string(APPEND _FFMPEG_ADDI_LICENSE " --enable-gpl --enable-nonfree")
+endif()
+
+if(ENABLE_NVIDIA)
+    string(REPLACE "PATH=${PREFIX}/bin:" "PATH=/usr/local/cuda/bin:${PREFIX}/bin:" _COMMON_ENV "${_COMMON_ENV}")
+    string(APPEND _FFMPEG_ADDI_LIBS    " --enable-cuda-nvcc --enable-cuda-llvm --enable-nvenc --enable-nvdec --enable-ffnvcodec --enable-cuvid")
+    string(APPEND _FFMPEG_ADDI_ENCODER ",h264_nvenc,hevc_nvenc")
+    string(APPEND _FFMPEG_ADDI_DECODER ",h264_cuvid,hevc_cuvid")
+    string(APPEND _FFMPEG_ADDI_FILTERS ",scale_cuda,hwdownload,hwupload,hwupload_cuda")
+    string(APPEND _FFMPEG_ADDI_CFLAGS  " -I/usr/local/cuda/include")
+    string(APPEND _FFMPEG_ADDI_LDFLAGS " -L/usr/local/cuda/lib64")
+    string(APPEND _FFMPEG_ADDI_LICENSE " --enable-nonfree")
+endif()
+
+if(ENABLE_XMA)
+    set(_XMA_PATCH "${CMAKE_CURRENT_LIST_DIR}/../misc/patches/ffmpeg_n${FFMPEG_VERSION}_u30ma.patch")
+    if(EXISTS "${_XMA_PATCH}")
+        string(APPEND _FFMPEG_PATCH_CMDS "patch -p1 < ${_XMA_PATCH} && \n")
+    else()
+        message(WARNING "[OME Prerequisites] XMA patch not found: ${_XMA_PATCH}")
+    endif()
+    string(APPEND _FFMPEG_ADDI_LIBS      " --enable-x86asm --enable-libxma2api --enable-libxvbm --enable-libxrm --enable-cross-compile")
+    string(APPEND _FFMPEG_ADDI_ENCODER   ",h264_vcu_mpsoc,hevc_vcu_mpsoc")
+    string(APPEND _FFMPEG_ADDI_DECODER   ",h264_vcu_mpsoc,hevc_vcu_mpsoc")
+    string(APPEND _FFMPEG_ADDI_FILTERS   ",multiscale_xma,xvbm_convert")
+    string(APPEND _FFMPEG_ADDI_CFLAGS    " -I/opt/xilinx/xrt/include/xma2")
+    string(APPEND _FFMPEG_ADDI_LDFLAGS   " -L/opt/xilinx/xrt/lib -L/opt/xilinx/xrm/lib -Wl,-rpath,/opt/xilinx/xrt/lib,-rpath,/opt/xilinx/xrm/lib")
+    string(APPEND _FFMPEG_ADDI_EXTRA_LIBS " --extra-libs=-lxma2api --extra-libs=-lxrt_core --extra-libs=-lxrm --extra-libs=-lxrt_coreutil --extra-libs=-lpthread --extra-libs=-ldl")
+endif()
+
+set(_FFMPEG_CONFIGURE_CMD
+    "./configure"
+    "--prefix=${PREFIX}"
+    "--disable-everything --disable-programs --disable-avdevice --disable-dwt --disable-lsp --disable-faan --disable-pixelutils"
+    "--enable-shared --disable-static --enable-pic"
+    "--enable-zlib --enable-libopus --enable-libvpx --enable-libaom --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
+    "--enable-network --enable-libsrt --enable-libwebp"
+    "--extra-cflags=\"-I${PREFIX}/include${_FFMPEG_ADDI_CFLAGS}\""
+    "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -Wl,--disable-new-dtags${_FFMPEG_ADDI_LDFLAGS}\""
+    "--extra-libs=-ldl"
+    "${_FFMPEG_ADDI_EXTRA_LIBS}"
+    "${_FFMPEG_ADDI_LICENSE}"
+    "${_FFMPEG_ADDI_LIBS}"
+    "--enable-encoder=libvpx_vp8,libaom_av1,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${_FFMPEG_ADDI_ENCODER}"
+    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,av1,libaom_av1,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
+    "--enable-parser=aac,aac_latm,av1,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg"
+    "--enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt"
+    "--enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2"
+    "--enable-muxer=mp4,webm,mpegts,flv,mpjpeg"
+    "--enable-filter=asetnsamples,aresample,aformat,channelmap,channelsplit,scale,transpose,fps,settb,asettb,crop,format${_FFMPEG_ADDI_FILTERS}"
+)
+list(JOIN _FFMPEG_CONFIGURE_CMD " " _FFMPEG_CONFIGURE_LINE)
+
+set(_install_ffmpeg "
+mkdir -p ${TEMP_PATH}/ffmpeg && cd ${TEMP_PATH}/ffmpeg &&
+ome_fetch ${FFMPEG_SOURCE_URL} &&
+${_FFMPEG_PATCH_CMDS}${_FFMPEG_CONFIGURE_LINE} &&
+make ${_J} && sudo make install && sudo rm -rf ${PREFIX}/share && rm -rf ${TEMP_PATH}/ffmpeg
+")
+
+# ---- stubs ----
+set(_STUB_DIR "${CMAKE_CURRENT_LIST_DIR}/../misc/stubs")
+set(_install_stubs "
+cmake -S ${_STUB_DIR} -B ${_STUB_DIR}/build -DCMAKE_INSTALL_PREFIX=${PREFIX} &&
+cmake --build ${_STUB_DIR}/build --target stubs -j$(nproc) &&
+sudo cmake --install ${_STUB_DIR}/build --component stubs && 
+rm -rf ${_STUB_DIR}/build
+")
+
+# ---- jemalloc ----
+if(ENABLE_JEMALLOC_PROF)
+    set(_JEMALLOC_PROF_FLAG "--enable-prof")
+else()
+    set(_JEMALLOC_PROF_FLAG "")
+endif()
+string(TOLOWER "${OME_TARGET_PROCESSOR}" _OME_TARGET_PROCESSOR_LOWER)
+if(OME_ENABLE_JEMALLOC_LG_PAGE_MAX AND _OME_TARGET_PROCESSOR_LOWER MATCHES "^(aarch64|arm64)$")
+    set(_JEMALLOC_LG_PAGE_FLAG "--with-lg-page=16")
+else()
+    set(_JEMALLOC_LG_PAGE_FLAG "")
+endif()
+unset(_OME_TARGET_PROCESSOR_LOWER)
+set(_install_jemalloc "
+mkdir -p ${TEMP_PATH}/jemalloc && cd ${TEMP_PATH}/jemalloc &&
+ome_fetch ${JEMALLOC_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-shared ${_JEMALLOC_PROF_FLAG} ${_JEMALLOC_LG_PAGE_FLAG} &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/jemalloc
+")
+
+# ---- PCRE2 ----
+set(_install_libpcre2 "
+mkdir -p ${TEMP_PATH}/pcre2 && cd ${TEMP_PATH}/pcre2 &&
+ome_fetch ${PCRE2_SOURCE_URL} &&
+./configure --prefix=${PREFIX} --enable-shared --disable-static &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
+")
+
+# ---- hiredis ----
+set(_install_hiredis "
+mkdir -p ${TEMP_PATH}/hiredis && cd ${TEMP_PATH}/hiredis &&
+ome_fetch ${HIREDIS_SOURCE_URL} &&
+make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && sudo make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
+")
+
+# ---- spdlog ----
+set(_install_spdlog "
+mkdir -p ${TEMP_PATH}/spdlog && cd ${TEMP_PATH}/spdlog &&
+ome_fetch ${SPDLOG_SOURCE_URL} &&
+mkdir -p build && cd build &&
+cmake .. -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=${PREFIX}/lib -DCMAKE_POLICY_VERSION_MINIMUM=3.5 &&
+make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
+")
+
+# ---- whisper.cpp ----
+set(_WHISPER_CUDA "OFF")
+if(ENABLE_NVIDIA)
+    set(_WHISPER_CUDA "ON")
+endif()
+set(_BUILD_SHARED_LIBS "ON")
+set(_GGML_STATIC "OFF")
+if(OME_WHISPER_STATIC)
+    message(STATUS "[OME] Building Whisper/ggml as a static library")
+    set(_BUILD_SHARED_LIBS "OFF")
+    set(_GGML_STATIC "ON")
+endif()
+set(_WHISPER_CMAKE_ARGS
+    "cmake -B build -S ."
+    "-DCMAKE_BUILD_TYPE=Release"
+    "-DCMAKE_INSTALL_PREFIX=${PREFIX}"
+    "-DCMAKE_INSTALL_RPATH=${PREFIX}/lib"
+    "-DBUILD_SHARED_LIBS=${_BUILD_SHARED_LIBS}"
+    "-DWHISPER_BUILD_EXAMPLES=OFF"
+    "-DWHISPER_BUILD_TESTS=OFF"
+    "-DWHISPER_BUILD_SERVER=OFF"
+    "-DGGML_CUDA=${_WHISPER_CUDA}"
+    "-DGGML_STATIC=${_GGML_STATIC}"
+    "-DGGML_CUDA_FA_ALL_QUANTS=OFF"
+    "-DGGML_CUDA_GRAPHS=OFF"
+    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+)
+if(OME_HWACCEL_NVIDIA)
+    list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61-real\;70-real\;75-real\;80-real\;86-real\;89\"")
+    # nvcc and OME_NVCC_HOST_CXX were resolved by the probe above.
+    list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")
+    if(OME_NVCC_HOST_CXX)
+        list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_HOST_COMPILER=${OME_NVCC_HOST_CXX}")
+    endif()
+endif()
+list(JOIN _WHISPER_CMAKE_ARGS " " _WHISPER_CMAKE_LINE)
+set(_install_whisper "
+mkdir -p ${TEMP_PATH}/whisper && cd ${TEMP_PATH}/whisper &&
+ome_fetch ${WHISPER_SOURCE_URL} &&
+${_WHISPER_CMAKE_LINE} &&
+cd build && make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/whisper
+")
+
+# ==============================================================================
+# Install sequence
+# ==============================================================================
+set(_targets
+    nasm
+    openssl
+    libsrtp
+    libsrt
+    libopus
+    libopenh264
+    libvpx
+    libaom
+    libwebp
+    fdk_aac
+    ffmpeg
+    stubs
+    jemalloc
+    libpcre2
+    hiredis
+    spdlog
+    whisper
+)
+
+if(ENABLE_X264)
+    list(INSERT _targets 5 libx264)
+endif()
+
+if(ENABLE_NVIDIA)
+    list(APPEND _targets ffnvcodec)
+endif()
+
+# Override with single target if requested
+if(DEFINED TARGET)
+    if("${TARGET}" STREQUAL "ffmpeg")
+        # ffmpeg depends on codec libs; install them first in case they are missing
+        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac libaom)
+        if(ENABLE_X264)
+            list(APPEND _ffmpeg_deps libx264)
+        endif()
+        if(ENABLE_NVIDIA)
+            list(APPEND _ffmpeg_deps ffnvcodec)
+        endif()
+        set(_targets ${_ffmpeg_deps} ffmpeg)
+    elseif("${TARGET}" STREQUAL "libvpx" OR "${TARGET}" STREQUAL "libaom")
+        # libvpx/libaom require nasm as assembler
+        set(_targets nasm ${TARGET})
+    elseif("${TARGET}" STREQUAL "fdk_aac" OR "${TARGET}" STREQUAL "libx264")
+        # these also require nasm
+        set(_targets nasm ${TARGET})
+    else()
+        set(_targets ${TARGET})
+    endif()
+endif()
+
+message(STATUS "[OME Prerequisites] Install targets: ${_targets}")
+message(STATUS "[OME Prerequisites] This will build and install to: ${PREFIX}")
+message(STATUS "[OME Prerequisites] Temp directory: ${TEMP_PATH}")
+
+file(MAKE_DIRECTORY ${TEMP_PATH})
+
+foreach(_t ${_targets})
+    if(DEFINED _install_${_t})
+        ome_run("${_install_${_t}}" "${_t}")
+    else()
+        message(WARNING "[OME Prerequisites] No install script for: ${_t}")
+    endif()
+endforeach()
+
+message(STATUS "[OME Prerequisites] All dependencies installed successfully.")
+file(REMOVE_RECURSE "${TEMP_PATH}")
+message(STATUS "[OME Prerequisites] Cleaned up temp directory: ${TEMP_PATH}")
+message(STATUS "[OME Prerequisites] You can now configure and build OvenMediaEngine:")
+message(STATUS "  cmake -Bbuild -DCMAKE_BUILD_TYPE=Release .")
+message(STATUS "  cmake --build build -j\$(nproc)")

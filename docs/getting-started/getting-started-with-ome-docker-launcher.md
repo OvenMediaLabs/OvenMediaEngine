@@ -1,15 +1,19 @@
-# Getting Started with OME Docker Launcher
+---
+title: Getting Started with OME Docker Launcher
+description: "Deploy and manage OvenMediaEngine in Docker containers easily with the OME Docker Launcher tool."
+sidebar_position: 6
+---
 
 ## Overview and Features
 
 The OME Docker Launcher is a tool that simplifies the process of deploying and managing the OvenMediaEngine (OME) application using Docker containers. This tool can be used by developers and system administrators who want to quickly deploy and test the OME application in a Docker environment.
 
-<figure><img src="../.gitbook/assets/image.png" alt=""><figcaption></figcaption></figure>
+![](../images/ome-docker-launcher-overview.png)
 
 The OME Docker Launcher provides a set of commands that allow users to easily manage the OME Docker container. These commands include:
 
 * [`setup`](getting-started-with-ome-docker-launcher.md#setup)
-  * This command pulls the OME Docker image(`airensoft/ovenmediaengine:latest`) from the Docker registry and copies the necessary configuration files to a specified location. This command needs to be run before starting the OME Docker container.
+  * This command pulls the OME Docker image(`ovenmedialabs/ovenmediaengine:latest`) from the Docker registry and copies the necessary configuration files to a specified location. This command needs to be run before starting the OME Docker container.
 * [`start`](getting-started-with-ome-docker-launcher.md#start)
   * This command creates and starts the Docker container. Once the container is started, the OME application can be accessed through a web browser using the container's IP address.
 * [`sh`](getting-started-with-ome-docker-launcher.md#sh)
@@ -23,22 +27,32 @@ The OME Docker Launcher provides a set of commands that allow users to easily ma
 
 Using the OME Docker Launcher, you can easily set up and manage an OME Docker container, without having to manually configure and manage the Docker container. This can save time and effort, especially for users who are not familiar with Docker or who do not want to spend time manually setting up and configuring the OME application.
 
-{% hint style="info" %}
+
+:::info
+
 OME Docker Launcher has not been tested in various environments yet. Therefore, sharing any issues that occur while using it is always welcome.
-{% endhint %}
+
+:::
+
 
 ## Installation
 
 Run the following command in your Linux shell.
 
+```
+curl -OL 'https://raw.githubusercontent.com/OvenMediaLabs/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
+```
+
+Below is an example of execution:
+
 ```bash
-$ curl -OL 'https://raw.githubusercontent.com/AirenSoft/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
+$ curl -OL 'https://raw.githubusercontent.com/OvenMediaLabs/OvenMediaEngine/master/misc/ome_docker_launcher.sh' && chmod +x ome_docker_launcher.sh
 $ ./ome_docker_launcher.sh -h
 
  ▄██████▀███▄
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀
 
 • Usage: ./ome_docker_launcher.sh [OPTIONS] COMMAND ...
@@ -103,7 +117,7 @@ $ ./ome_docker_launcher.sh setup
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Creating configuration directory /usr/share/ovenmediaengine/conf
@@ -118,6 +132,14 @@ If you want to start OvenMediaEngine, please run ./ome_docker_launcher.sh start
 
 If you want to change the configuration of OME, you can edit the `/usr/share/ovenmediaengine/conf/Server.xml` file. This file contains the server configuration settings for OME, such as the server's IP address, port, and SSL settings. Once you have made changes to this file, you will need to restart the OME Docker container for the changes to take effect. You can do this by running the `restart` command provided by the OME Docker Launcher.
 
+#### Certificate Installation
+
+To install a certificate in OvenMediaEngine, copy the certificate files to /usr/share/ovenmediaengine/conf with the following names:
+
+<table><thead><tr><th width="219">Type</th><th>File name</th></tr></thead><tbody><tr><td>Certificate</td><td>cert.crt</td></tr><tr><td>Private Key</td><td>cert.key</td></tr><tr><td>CA Bundle</td><td>cert.ca-bundle</td></tr></tbody></table>
+
+If you want to change the file names, you can modify Server.xml.
+
 ### `start`
 
 Once the `setup` phase is complete, you can use the `start` command to run the OME Docker container. The `start` command creates and starts the Docker container, enabling the OME application to receive stream packets using protocols such as RTMP and SRT. Before running the `start` command, ensure that the necessary configuration files have been copied to the host's `/usr/share/ovenmediaengine` directory by running the `setup` command.
@@ -128,7 +150,7 @@ $ ./ome_docker_launcher.sh start
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Starting OvenMediaEngine...
@@ -137,27 +159,67 @@ $ ./ome_docker_launcher.sh start
   - SRT Provider is configured to use 9999 (Port)
   - WebRTC Provider is configured to use 3333 (Port)
   - WebRTC Provider is configured to use 3334 (TLSPort)
-  - WebRTC Provider is configured to use 10000-10004/UDP (IceCandidate)
+  - WebRTC Provider is configured to use 10000/UDP, 10000/TCP (IceCandidate)
   - WebRTC Provider is configured to use 3478 (TcpRelay)
   - OVT Publisher is configured to use 9000 (Port)
   - LLHLS Publisher is configured to use 3333 (Port)
   - LLHLS Publisher is configured to use 3334 (TLSPort)
   - WebRTC Publisher is configured to use 3333 (Port)
   - WebRTC Publisher is configured to use 3334 (TLSPort)
-  - WebRTC Publisher is configured to use 10000-10004/UDP (IceCandidate)
+  - WebRTC Publisher is configured to use 10000/UDP, 10000/TCP (IceCandidate)
   - WebRTC Publisher is configured to use 3478 (TcpRelay)
 • Starting a container: ovenemediaengine
   docker> 7235ff9f80762b6e7b27ba3a9773f5584033d55c113340dabf0779e8f5cf53bb
 • OvenMediaEngine is started successfully!
 ```
 
-{% hint style="info" %}
-The OME Docker Launcher automatically detects a list of port numbers specified in the `Server.xml` file and passes them to the Docker `-p` option. However, if you use the `include` attribute inside the `<Providers>` or `<Publishers>` element, the launcher may not detect them correctly.
-{% endhint %}
 
-{% hint style="info" %}
-If you have used an environment variable form like `${env:<ENV_NAME>}`, the OME Docker Launcher resolves the value of the `<ENV_NAME>` environment variable in the current shell. This enables you to dynamically set configuration values using environment variables.
-{% endhint %}
+:::info
+
+When running the OME Docker Launcher, you can specify the IP to be used as an ICE Candidate by using the `OME_HOST_IP` environment variable. For instance, specifying the `OME_HOST_IP` as shown below will propagate the ICE Candidate to that particular address.
+
+
+
+```sh
+$ OME_HOST_IP=1.2.3.4 ./ome_docker_launcher.sh start
+...
+• OvenMediaEngine is started successfully!
+
+$ tail -f /usr/share/ovenmediaengine/logs/ovenmediaengine.log
+...
+[2023-11-01 00:00:00.000] I [OvenMediaEngine:1] ICE | ice_port_manager.cpp:305  | ICE candidate found: 1.2.3.4:40000
+...
+```
+
+:::
+
+
+
+:::info
+
+The OME Docker Launcher automatically detects a list of port numbers specified in the `Server.xml` file and passes them to the Docker `-p` option. However, if you use the `include` attribute inside the `<Providers>` or `<Publishers>` element, the launcher may not detect them correctly.
+
+:::
+
+
+
+:::info
+
+If you have declared the following environment variable in the shell where you run the OME Docker Launcher, this value will be used to bind the port and passed into the Docker container. This enables you to dynamically set configuration values using environment variables.
+
+```
+OME_HOST_IP
+OME_RTMP_PROV_PORT
+OME_WEBRTC_CANDIDATE_IP
+OME_WEBRTC_CANDIDATE_PORT
+OME_WEBRTC_TCP_ICE_PORT
+OME_WEBRTC_SIGNALLING_PORT
+OME_WEBRTC_SIGNALLING_TLS_PORT
+OME_WEBRTC_TCP_RELAY_PORT
+```
+
+:::
+
 
 ### `sh`
 
@@ -169,7 +231,7 @@ $ ./ome_docker_launcher.sh sh
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Run a shell in the running container: ID: 7235ff9f8076
@@ -202,7 +264,7 @@ $ ./ome_docker_launcher.sh status
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Container is running: ID: 7235ff9f8076, name: ovenemediaengine
@@ -220,7 +282,7 @@ $ ./ome_docker_launcher.sh stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Stopping a container: ovenemediaengine
@@ -240,7 +302,7 @@ $ ./ome_docker_launcher.sh stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Restarting a container: ovenemediaengine
@@ -259,7 +321,7 @@ $ ./ome_docker_launcher.sh -d stop
  ▄██████▀███▄ 
 █████▀ ▄██████  OvenMediaEngine Launcher v0.1
 ███▄▄▄▄▀▀▀▀███
-██████▀ ▄█████  https://github.com/AirenSoft/OvenMediaEngine
+██████▀ ▄█████  https://github.com/OvenMediaLabs/OvenMediaEngine
  ▀███▄██████▀ 
 
 • Stopping a container: ovenemediaengine

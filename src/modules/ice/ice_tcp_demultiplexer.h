@@ -1,0 +1,84 @@
+//
+// Created by getroot on 21. 01. 28.
+//
+#pragma once
+
+#include <base/ovlibrary/ovlibrary.h>
+#include "ice_packet_identifier.h"
+
+// It only demultiplexes the stream input to ICE/TCP.
+// Use identifier for packets that are input to UDP.
+
+class IceTcpDemultiplexer
+{
+public:
+	enum class Mode
+	{
+		// TURN/TCP relay mode (non-standard, no RFC 4571 framing)
+		TURN,
+		// TCP ICE candidate mode (RFC 6544 / RFC 4571: 2-byte length prefix)
+		RFC4571,
+	};
+
+	IceTcpDemultiplexer()
+	{
+		_buffer = std::make_shared<ov::Data>(65535);
+	}
+
+	void SetMode(Mode mode)
+	{
+		_mode = mode;
+	}
+
+	// In the case of a turn channel data message, it parses the header and stores the application data.
+	class Packet
+	{
+	public:
+		Packet(IcePacketIdentifier::PacketType type, const std::shared_ptr<ov::Data> &data)
+		{
+			_type = type;
+			_data = data;
+		}
+
+		IcePacketIdentifier::PacketType GetPacketType()
+		{
+			return _type;
+		}
+
+		std::shared_ptr<ov::Data> GetData()
+		{
+			return _data;
+		}
+
+	private:
+		IcePacketIdentifier::PacketType _type = IcePacketIdentifier::PacketType::UNKNOWN;
+		[[maybe_unused]] uint16_t _channel_number = 0;	// Only use if packet is from channel data message
+		std::shared_ptr<ov::Data>	_data = nullptr;
+	};
+
+	bool AppendData(const void *data, size_t length);
+	bool AppendData(const std::shared_ptr<const ov::Data> &data);
+
+	bool IsAvailablePacket();
+	std::shared_ptr<IceTcpDemultiplexer::Packet> PopPacket();
+
+private:
+	bool ParseData();
+
+	enum class ExtractResult : int8_t
+	{
+		SUCCESS = 1,
+		NOT_ENOUGH_BUFFER = 0,
+		FAILED = -1
+	};
+	// 1 : success
+	// 0 : not enough memory
+	// -1 : error
+	ExtractResult ExtractStunMessage();
+	ExtractResult ExtractChannelMessage();
+	ExtractResult ExtractRfc4571Message();
+
+	Mode _mode = Mode::TURN;
+	std::shared_ptr<ov::Data> _buffer;
+	std::queue<std::shared_ptr<IceTcpDemultiplexer::Packet>> _packets;
+};

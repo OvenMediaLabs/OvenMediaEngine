@@ -1,0 +1,141 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2025 AirenSoft. All rights reserved.
+//
+//==============================================================================
+#include "srt_playlist.h"
+
+#include <base/info/playlist.h>
+#include <base/info/stream.h>
+#include <base/ovsocket/socket.h>
+
+#include "srt_private.h"
+
+#define OV_LOG_PREFIX_FORMAT "[%s/%s(%u)] "
+#define OV_LOG_PREFIX_VALUE _stream_info->GetApplicationName(), _stream_info->GetName().CStr(), _stream_info->GetId()
+
+namespace pub
+{
+	SrtPlaylist::SrtPlaylist(
+		const std::shared_ptr<const info::Stream> &stream_info,
+		const std::shared_ptr<const info::Playlist> &playlist_info,
+		const std::shared_ptr<SrtPlaylistSink> &sink)
+		: _stream_info(stream_info),
+		  _playlist_info(playlist_info),
+		  _sink(sink)
+	{
+		_packetizer = std::make_shared<mpegts::Packetizer>();
+	}
+
+	void SrtPlaylist::AddTrack(const std::shared_ptr<const MediaTrack> &track)
+	{
+		// Duplicated tracks will be ignored by the packetizer
+		_packetizer->AddTrack(track);
+
+		_track_info_map.emplace(track->GetId(), track);
+	}
+
+	void SrtPlaylist::AddTracks(const std::vector<std::shared_ptr<const MediaTrack>> &tracks)
+	{
+		std::for_each(tracks.begin(), tracks.end(), std::bind(&SrtPlaylist::AddTrack, this, std::placeholders::_1));
+	}
+
+	bool SrtPlaylist::Start()
+	{
+		return _packetizer->AddSink(GetSharedPtrAs<mpegts::PacketizerSink>()) && _packetizer->Start();
+	}
+
+	bool SrtPlaylist::Stop()
+	{
+		return _packetizer->Stop() && _packetizer->RemoveSink(GetSharedPtrAs<mpegts::PacketizerSink>());
+	}
+
+	void SrtPlaylist::EnqueuePacket(const std::shared_ptr<MediaPacket> &media_packet)
+	{
+		auto track_info_iterator = _track_info_map.find(media_packet->GetTrackId());
+
+		if (track_info_iterator == _track_info_map.end())
+		{
+			logte("The track is not found in the playlist map");
+			OV_ASSERT2(false);
+			return;
+		}
+
+		auto &track_info = track_info_iterator->second;
+
+		if (track_info.first_key_frame_received == false)
+		{
+			track_info.first_key_frame_received = media_packet->IsKeyFrame();
+		}
+
+		if (track_info.first_key_frame_received)
+		{
+			_packetizer->AppendFrame(media_packet);
+		}
+	}
+
+	void SrtPlaylist::SendData(const std::shared_ptr<const ov::Data> &ts_data)
+	{
+		if (_sink == nullptr)
+		{
+			return;
+		}
+
+		auto self = GetSharedPtrAs<SrtPlaylist>();
+
+		const uint8_t *src   = ts_data->GetDataAs<uint8_t>();
+		size_t         total = ts_data->GetLength();
+		size_t         offset = 0;
+
+		while (offset < total)
+		{
+			const size_t current  = _data_to_send->GetLength();
+			const size_t avail    = total - offset;
+
+			if (current + avail >= SRT_LIVE_DEF_PLSIZE)
+			{
+				// Fill the current buffer to exactly SRT_LIVE_DEF_PLSIZE and send it
+				const size_t to_fill = SRT_LIVE_DEF_PLSIZE - current;
+				_data_to_send->Append(src + offset, to_fill);
+				_sink->OnSrtPlaylistData(self, _data_to_send);
+				// Reuse a pre-reserved buffer for the next chunk
+				_data_to_send = std::make_shared<ov::Data>(SRT_LIVE_DEF_PLSIZE);
+				offset += to_fill;
+			}
+			else
+			{
+				_data_to_send->Append(src + offset, avail);
+				offset += avail;
+			}
+		}
+	}
+
+	void SrtPlaylist::OnPsi(const std::vector<std::shared_ptr<const MediaTrack>> &tracks, const std::vector<std::shared_ptr<mpegts::Packet>> &psi_packets)
+	{
+		std::shared_ptr<ov::Data> psi_data = std::make_shared<ov::Data>();
+
+		// Concatenate PSI packets
+		for (const auto &packet : psi_packets)
+		{
+			psi_data->Append(packet->GetData());
+		}
+
+		logap("OnPsi - %zu packets (total %zu bytes)", psi_packets.size(), psi_data->GetLength());
+
+		_psi_data = psi_data;
+
+		SendData(psi_data);
+	}
+
+	void SrtPlaylist::OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data)
+	{
+#if DEBUG
+		logap("OnFrame - %zu bytes", ts_data->GetLength());
+#endif	// DEBUG
+
+		SendData(ts_data);
+	}
+}  // namespace pub

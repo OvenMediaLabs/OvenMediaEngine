@@ -1,0 +1,101 @@
+#pragma once
+
+#include <base/ovlibrary/node.h>
+#include <base/ovcrypto/ovcrypto.h>
+#include <base/common_types.h>
+
+#include "modules/ice/ice_port.h"
+#include "srtp_transport.h"
+
+#define DTLS_RECORD_HEADER_LEN                  13
+#define MAX_DTLS_PACKET_LEN                     2048
+#define MIN_RTP_PACKET_LEN                      12
+
+class DtlsTransport : public ov::Node
+{
+public:
+	// Send : Srtp -> this -> Ice
+	// Recv : Ice -> {[Queue] -> Application -> Session} -> this -> Srtp
+	explicit DtlsTransport();
+	virtual ~DtlsTransport();
+
+	// Set Local Certificate
+	void SetLocalCertificate(const std::shared_ptr<Certificate> &certificate);
+
+	// Set Peer Fingerprint for verification
+	void SetPeerFingerprint(ov::String algorithm, ov::String fingerprint);
+
+	// Start DTLS
+	bool StartDTLS();
+
+	bool Stop() override;
+	//--------------------------------------------------------------------
+	// Implementation of Node
+	//--------------------------------------------------------------------
+	// Receive data from upper node, and send data to lower node.
+	bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override;
+	// Receive data from lower node, and send data to upper node.
+	bool OnDataReceivedFromNextNode(NodeType from_node, const std::shared_ptr<const ov::Data> &data) override;
+
+	// IcePort -> Publisher ->[queue] Application {thread}-> Session -> DtlsTransport -> SRTP -> RTP/RTCP
+	// ICE에서는 STUN을 제외한 모든 패킷을 위로 올린다.
+	// DTLS에서는 패킷을 받으면 DTLS인 경우 패킷을 버퍼에 쌓고(_dtls_packet_buffer) SSL_read를 호출하여 읽어서
+	// 복호화를 한 후 다음 Layer로 전송한다.
+	// DTLS가 아니고 RTP/RTCP인 경우는 SRTP로 보낸다.
+	// 그 외에는 모르는 패킷이므로 처리하지 않는다.
+	bool RecvPacket(const std::shared_ptr<ov::Data> &data);
+
+private:
+	// BIO read callback: hands the packets buffered in `_packet_buffer` to the TLS layer.
+	// Invoked only through the in-class BIO binding, and every entry path runs `_tls`
+	// operations under `_tls_lock` - hence `OV_REQUIRES` on a private method is satisfiable.
+	ssize_t Read(ov::Tls *tls, void *buffer, size_t length) OV_REQUIRES(_tls_lock);
+
+	// BIO write callback: requested when the TLS layer emits a packet; finally sent via ICE
+	ssize_t Write(ov::Tls *tls, const void *data, size_t length);
+
+	bool VerifyPeerCertificate() OV_REQUIRES(_tls_lock);
+
+private:
+	bool ContinueSSL() OV_REQUIRES(_tls_lock);
+	// Initializes the underlying TLS session and BIO and transitions to
+	// SSL_CONNECTING. Caller MUST hold _tls_lock.
+	bool InitializeTlsLocked() OV_REQUIRES(_tls_lock);
+	bool IsDtlsPacket(const std::shared_ptr<const ov::Data> data);
+	bool IsRtpPacket(const std::shared_ptr<const ov::Data> data);
+	bool SaveDtlsPacket(const std::shared_ptr<const ov::Data> data) OV_REQUIRES(_tls_lock);
+	std::shared_ptr<const ov::Data> TakeDtlsPacket() OV_REQUIRES(_tls_lock);
+
+	bool MakeSrtpKey() OV_REQUIRES(_tls_lock);
+
+	enum SSLState
+	{
+		SSL_NONE,
+		SSL_WAIT,
+		SSL_CONNECTING,
+		SSL_CONNECTED,
+		SSL_ERROR,
+		SSL_CLOSED
+	};
+
+	SSLState _state OV_GUARDED_BY(_tls_lock);
+	bool _peer_certificate_verified OV_GUARDED_BY(_tls_lock);
+	std::shared_ptr<info::Session> _session_info;
+	std::shared_ptr<IcePort> _ice_port;
+	std::shared_ptr<SrtpTransport> _srtp_transport;
+	std::shared_ptr<::Certificate> _local_certificate OV_GUARDED_BY(_tls_lock);
+	std::shared_ptr<ov::TlsContext> _tls_context OV_GUARDED_BY(_tls_lock);
+	std::shared_ptr<::Certificate> _peer_certificate OV_GUARDED_BY(_tls_lock);
+	ov::String _peer_fingerprint_algorithm OV_GUARDED_BY(_tls_lock);
+	ov::String _peer_fingerprint_value OV_GUARDED_BY(_tls_lock);
+
+	// SSL이 가져갈 패킷을 임시로 보관하는 버퍼, 동시에 1개만 저장한다.
+	std::deque<std::shared_ptr<const ov::Data>> _packet_buffer OV_GUARDED_BY(_tls_lock);
+
+	// SSL *_ssl;
+	// SSL_CTX *_ssl_ctx;
+
+	ov::Mutex _tls_lock;
+
+	ov::Tls _tls OV_GUARDED_BY(_tls_lock);
+};

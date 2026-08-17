@@ -1,0 +1,54 @@
+name: Check docs build
+
+# Builds the consuming ovenmedialabs.com site against this PR's
+# docs/ to catch broken markdown links, missing anchors, and MDX
+# errors before merge. The downstream `ovenmedialabs.com` repo is built
+# in throw mode (`onBrokenLinks: 'throw'`, etc.), so any regression
+# fails this check.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+
+jobs:
+  build-docs:
+    # Don't run if this workflow ever ends up in another repo via a
+    # merge — only the OvenMediaEngine repo should kick it off.
+    if: github.repository == 'OvenMediaLabs/OvenMediaEngine'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+        with:
+          path: upstream
+
+      - name: Check out the consuming site
+        uses: actions/checkout@v4
+        with:
+          repository: OvenMediaLabs/ovenmedialabs.com
+          ref: main
+          path: site
+
+      - name: Stage this PR's docs/ into the site
+        # `cp -r`, not a symlink: Docusaurus's content-docs plugin
+        # mis-reads the doc registry when its `path:` points through
+        # a symlink, and SSG fails with `Cannot read properties of
+        # undefined (reading 'id')` on every doc in that source.
+        run: |
+          rm -rf site/docs/ome
+          cp -R upstream/docs site/docs/ome
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build
+        working-directory: site
+        run: npm run build

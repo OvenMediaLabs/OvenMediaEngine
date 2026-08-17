@@ -1,4 +1,8 @@
-# Record
+---
+title: Record
+description: "Start and stop OvenMediaEngine stream recording through the v1 REST API, with reservation for not-yet-created streams."
+sidebar_position: 44
+---
 
 ## Start Recording
 
@@ -8,7 +12,7 @@ Start recording the stream. If the requested stream does not exist on the server
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:startRecord</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:startRecord</summary>
 
 #### **Header**
 
@@ -19,11 +23,12 @@ Authorization: Basic {credentials}
     Credentials for HTTP Basic Authentication created with <AccessToken>
 ```
 
-#### Body : Output the recorded video to a single file
+#### Body :  Single file recording&#x20;
 
-{% code overflow="wrap" %}
+#### &#x20;    &#x7B;
+
+
 ```json
-{
     "id": "{unique_record_id}",
     "stream": {
         "name": "{output_stream_name}",
@@ -43,9 +48,9 @@ Authorization: Basic {credentials}
         recorded. This value is Encodes.[Video|Audio|Data].Name in the
         OutputProfile setting.
 ```
-{% endcode %}
 
-#### Body : Output the recorded video to a file at intervals
+
+#### Body : Interval based split recording
 
 ```json
 {
@@ -56,18 +61,6 @@ Authorization: Basic {credentials}
   "interval": 60000,
   "segmentationRule": "discontinuity"
 }
-
-# id (required)
-    unique ID to identify the recording task
-    
-# stream (required)
-    ## name (required)
-        output stream name
-        
-    ## variantNames (optional)
-        Array of track names to record. If empty, all tracks will be 
-        recorded. This value is Encodes.[Video|Audio|Data].Name in the
-        OutputProfile setting.
 
 # interval (optional)
     Recording time per file (milliseconds). Not allowed to use with schedule
@@ -80,7 +73,7 @@ Authorization: Basic {credentials}
     discontinuity(default) : timestamp starts anew for each recorded file
 ```
 
-#### Body : Output the recorded video to a file at the scheduled time
+#### Body : Schedule based split recording
 
 ```json
 {
@@ -92,29 +85,31 @@ Authorization: Basic {credentials}
   "segmentationRule": "continuity"
 }
 
-# id (required)
-    unique ID to identify the recording task
-    
-# stream (required)
-    ## name (required)
-        output stream name
-        
-    ## variantNames (optional)
-        Array of track names to record. If empty, all tracks will be 
-        recorded. This value is Encodes.[Video|Audio|Data].Name in the
-        OutputProfile setting.
-
 # schedule (optional)
     <Second Minute Hour> format, same as crontab syntax
     "10 */1 *" means to output the recorded file every 10 minutes of the hour
     Not allowed to use with schedule
-    
-# segmentationRule (optional)
-    Define the policy for continuously or discontinuously timestamp 
-    in divided recorded files.
-    
-    continuity : timestamp of recorded files is continuous
-    discontinuity(default) : timestamp starts anew for each recorded file
+```
+
+#### Body : Recoding file path setting
+
+```json
+{
+  "id": "{unique_record_id}",
+  "stream": {
+    "name": "{output_stream_name}"
+  },
+  "filePath" : "/path/to/file_name.mp4"
+  "infoPath": "/path/to/file_name.xml"
+}
+
+# filePath(optional)
+    The path for recorded files can be specified. 
+    Please refer to the Recording Guide for details on using macros
+
+# infoPath(optional)
+    The path for recorded infomation file can be specified. 
+    Please refer to the Recording Guide for details on using macros
 ```
 
 </details>
@@ -123,7 +118,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -169,7 +164,7 @@ Please note that `responses` are incorrectly returned in Json array format for v
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -177,7 +172,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -200,7 +195,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
@@ -217,7 +212,7 @@ The given vhost or application name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 duplicate ID
 
@@ -229,7 +224,7 @@ duplicate ID
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:stopRecord</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:stopRecord</summary>
 
 #### **Header**
 
@@ -242,7 +237,7 @@ Authorization: Basic {credentials}
 
 #### Body&#x20;
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_record_id}"
@@ -251,7 +246,7 @@ Authorization: Basic {credentials}
 # id (required)
     unique ID to identify the recording task
 ```
-{% endcode %}
+
 
 </details>
 
@@ -259,7 +254,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -287,7 +282,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -295,7 +290,7 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -318,7 +313,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost/application name or id of recording task could not be found.
 
@@ -339,7 +334,7 @@ The given vhost/application name or id of recording task could not be found.
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:records</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:records</summary>
 
 #### **Header**
 
@@ -352,7 +347,7 @@ Authorization: Basic {credentials}
 
 #### Body&#x20;
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_record_id}"
@@ -361,7 +356,7 @@ Authorization: Basic {credentials}
 # id (optional)
     unique ID to identify the recording task. If no id is given in the request, the full list is returned.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -369,7 +364,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -381,7 +376,7 @@ Content-Type: application/json
 
 #### **Body**
 
-The `response` is <mark style="color:green;">Json array</mark> format.
+The `response` is Json array format.
 
 ```json
 {
@@ -422,7 +417,7 @@ The `response` is <mark style="color:green;">Json array</mark> format.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -445,7 +440,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
@@ -464,9 +459,4 @@ The given vhost or application name could not be found.
 
 The Recording task has the state shown in the table below. You can get the `state` in the Start Recording and Get Recording State API response.
 
-| Ready    | Preparing to start or waiting for the stream to be created. |
-| -------- | ----------------------------------------------------------- |
-| Started  | In Progress                                                 |
-| Stopping | Is stopping                                                 |
-| Stopped  | Stopped                                                     |
-| Error    | Error                                                       |
+<table data-header-hidden=""><thead><tr><th width="157"></th><th></th></tr></thead><tbody><tr><td>Ready</td><td>Preparing to start or waiting for the stream to be created.</td></tr><tr><td>Started</td><td>In Progress</td></tr><tr><td>Stopping</td><td>Is stopping</td></tr><tr><td>Stopped</td><td>Stopped</td></tr><tr><td>Error</td><td>Error</td></tr></tbody></table>

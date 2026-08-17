@@ -35,6 +35,20 @@
 			<Enable>false</Enable>
 			<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 		</P2P>
+
+		<!-- jemalloc allocator tuning (effective only in jemalloc builds) -->
+		<Jemalloc>
+			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
+			<BackgroundPurge>true</BackgroundPurge>
+		</Jemalloc>
+
+		<!-- Shared worker threads that run short tasks for the modules that need them -->
+		<TaskPool>
+			<!-- Workers the pool runs on, started with the first task -->
+			<ThreadCount>4</ThreadCount>
+			<!-- Tasks that may wait to start. Reaching this rejects further tasks. -->
+			<MaxTasks>128</MaxTasks>
+		</TaskPool>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->
@@ -84,20 +98,17 @@
 				</Signalling>
 
 				<IceCandidates>
-					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
-					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
-					<IceCandidate>*:10000-10004/udp</IceCandidate>
-
-					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
-					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
-
-					<!-- 
-						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-					-->
-					<TcpRelay>*:3478</TcpRelay>
-					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-					<TcpForce>true</TcpForce>
+					<!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+					<!-- UDP ICE scales by port count: each port is handled by one thread. Use a range to spread load across cores. -->
+					<!-- <IceCandidate>[::]:10000-10003/udp</IceCandidate> -->
+					<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> --> <!-- Include IPv6 link-local (fe80::) addresses when using [::] wildcard -->
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
+					<TcpRelay>${PublicIP}:3478</TcpRelay>
+					<TcpRelayForce>false</TcpRelayForce>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -126,23 +137,24 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<!-- Uncomment the line below to use IPv6 ICE Candidate -->
-					<!-- <IceCandidate>[::]:10000-10004/udp</IceCandidate> -->
-					<IceCandidate>*:10000-10004/udp</IceCandidate>
-					
-					<!-- Uncomment the line below to use a link local address when specifying an address with IPv6 wildcard (::) -->
-					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> -->
-
-					<!-- 
-						If you want to stream WebRTC over TCP, specify IP:Port for TURN server.
-						This uses the TURN protocol, which delivers the stream from the built-in TURN server to the player's TURN client over TCP. 
-					-->
-					<TcpRelay>*:3478</TcpRelay>
-					<!-- TcpForce is an option to force the use of TCP rather than UDP in WebRTC streaming. (You can omit ?transport=tcp accordingly.) If <TcpRelay> is not set, playback may fail. -->
-					<TcpForce>true</TcpForce>
+					<!-- ${PublicIP} is resolved via <StunServer>. Falls back to all local IPs if STUN fails. -->
+					<!-- UDP ICE scales by port count: each port is handled by one thread. Use a range to spread load across cores. -->
+					<!-- <IceCandidate>[::]:10000-10003/udp</IceCandidate> -->
+					<IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${PublicIP}:10000/tcp</IceCandidate>
+					<!-- <EnableLinkLocalAddress>true</EnableLinkLocalAddress> --> <!-- Include IPv6 link-local (fe80::) addresses when using [::] wildcard -->
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
+					<TcpRelay>${PublicIP}:3478</TcpRelay>
+					<TcpRelayForce>false</TcpRelayForce>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
+			<SRT>
+				<Port>9998</Port>
+				<WorkerCount>1</WorkerCount>
+			</SRT>
 		</Publishers>
 	</Bind>
 
@@ -201,6 +213,13 @@
 	</Alert>
 	-->
 
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
+
 	<VirtualHosts>
 		<!-- You can use wildcard like this to include multiple XMLs -->
 		<VirtualHost include="VHost*.xml" />
@@ -238,7 +257,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -250,7 +269,7 @@
 				<Timeout>3000</Timeout>
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</AdmissionWebhooks>
 			-->
@@ -297,11 +316,6 @@
 			</OriginMapStore>
 			-->
 
-			<!-- Default CORS Settings -->
-			<CrossDomains>
-				<Url>*</Url>
-			</CrossDomains>
-
 			<!-- Settings for applications -->
 			<Applications>
 				<Application>
@@ -309,55 +323,60 @@
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
-						<!-- Enable this configuration if you want to hardware acceleration using GPU -->
-						<HardwareAcceleration>false</HardwareAcceleration>
+						<!-- Common setting for decoders. Decodes is optional. -->
+						<Decodes>
+							<!-- Number of threads for the decoder. -->
+							<ThreadCount>2</ThreadCount>
+							<!-- 
+							By default, OME decodes all video frames. 
+							With OnlyKeyframes, only keyframes are decoded, massively improving performance.
+							Thumbnails are generated only on keyframes, they may not generate at your requested fps!
+							-->
+							<OnlyKeyframes>false</OnlyKeyframes>
+						</Decodes>
+
+						<!--  'HWAccels' option is deprecated. -->
+
 						<OutputProfile>
 							<Name>bypass_stream</Name>
 							<OutputStreamName>${OriginStreamName}</OutputStreamName>
 
-							<!-- 
-							You can provide ABR with Playlist. Currently, ABR is supported in LLHLS and WebRTC.
-							
 							<Playlist>
-								<Name>Paid</Name>
-								You can play this playlist with 
-								LLHLS : http[s]://<domain>[:port]/<app>/<stream>/<FileName>.m3u8 
-								WebRTC : ws[s]://<domain>[:port]/<app>/<stream>/<FileName>
-								Note that the keywords "playlist" and "chunklist" MUST NOT be included in FileName.
-								<FileName>premium</FileName>
-
-								Options is optional. 
+								<Name>default</Name>
+								<FileName>master</FileName>
 								<Options>
-									WebRtcAutoAbr : Default value is true
-									<WebRtcAutoAbr>true</WebRtcAutoAbr> 
+									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
-								
-								<Rendition>
-									<Name>bypass</Name>
-									<Video>bypass_video</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>480p</Name>
-									<Video>480p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
+								<RenditionTemplate>
+									<Name>${Height}p</Name>
+									<VideoTemplate> <!-- Filter by video properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>bypass_video</VariantName>
+										<VideoIndexHint>0</VideoIndexHint>
+										<MaxWidth>1080</MaxWidth>
+										<MinWidth>240</MinWidth>
+										<MaxHeight>720</MaxHeight>
+										<MinHeight>240</MinHeight>
+										<MaxFPS>30</MaxFPS>
+										<MinFPS>30</MinFPS>
+										<MaxBitrate>2000000</MaxBitrate>
+										<MinBitrate>500000</MinBitrate> -->
+									</VideoTemplate>
+									<AudioTemplate> <!-- Filter by audio properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>aac_audio</VariantName>
+										<MaxBitrate>128000</MaxBitrate>
+										<MinBitrate>128000</MinBitrate>
+										<MaxSamplerate>48000</MaxSamplerate>
+										<MinSamplerate>48000</MinSamplerate>
+										<MaxChannel>2</MaxChannel>
+										<MinChannel>2</MinChannel>
+										<AudioIndexHint>0</AudioIndexHint> -->
+									</AudioTemplate>
+								</RenditionTemplate>
 							</Playlist>
-							<Playlist>
-								<Name>free</Name>
-								<FileName>free</FileName>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-							</Playlist>
-							-->
 
 							<Encodes>
 								<Video>
@@ -390,7 +409,7 @@
 									<Codec>h264</Codec>
 									<Bitrate>5024000</Bitrate>
 									<Width>1920</Width>
-									<Height>1280</Height>
+									<Height>1080</Height>
 									<Framerate>30</Framerate>
 									<KeyFrameInterval>30</KeyFrameInterval>
 									<BFrames>0</BFrames>
@@ -452,7 +471,6 @@
 					</OutputProfiles>
 					<Providers>
 						<OVT />
-						<WebRTC />
 						<RTMP />
 						<SRT />
 						<MPEGTS>
@@ -482,6 +500,11 @@
 								<Url>*</Url>
 							</CrossDomains>
 						</WebRTC>
+
+						<Schedule>
+							<MediaRootDir>/opt/ovenmediaengine/media</MediaRootDir>
+							<ScheduleFilesDir>/opt/ovenmediaengine/media</ScheduleFilesDir>
+						</Schedule>
 					</Providers>
 					<Publishers>
 						<AppWorkerCount>1</AppWorkerCount>
@@ -492,6 +515,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<ChunkDuration>0.5</ChunkDuration>
@@ -504,10 +528,50 @@
 								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
 								<MaxDuration>3600</MaxDuration>
 							</DVR>
+							<DRM>
+								<Enable>false</Enable>
+								<InfoFile>path/to/file.xml</InfoFile>
+							</DRM>
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<!-- <DVR>
+								<Enable>true</Enable>
+								<EventPlaylistType>false</EventPlaylistType>
+								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
+								<MaxDuration>600</MaxDuration>
+							</DVR> -->
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
+
+						<!--
+						<Push>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</Push>
+						<FILE>
+							<RootPath>/prefix/path/to</RootPath>
+							<StreamMap>
+								<Enable>false</Enable>
+								<Path>path/to/file.xml</Path>
+							</StreamMap>
+						</FILE>
+						<Thumbnail>
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+						</Thumbnail>						
+						-->
 					</Publishers>
 				</Application>
 			</Applications>

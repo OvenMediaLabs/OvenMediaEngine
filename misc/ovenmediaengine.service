@@ -4,14 +4,16 @@ After=network-online.target
 
 [Service]
 Type=forking
+User=root
+Group=root
 PIDFile=/var/run/ovenmediaengine.pid
 WorkingDirectory=/usr/share/ovenmediaengine
-ExecStart=/usr/bin/OvenMediaEngine -d
+ExecStart=/usr/share/ovenmediaengine/ome_launcher.sh -d
 Restart=always
 RestartSec=2
 RestartPreventExitStatus=1
 StandardOutput=null
-StandardError=syslog+console
+StandardError=null
 LimitNOFILE=65535
 
 [Install]

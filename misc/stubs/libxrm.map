@@ -1,0 +1,4 @@
+LIBXRM_1 {
+  global: xrm*; xma*; xcl*;
+  local: *;
+};

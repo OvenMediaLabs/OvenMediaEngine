@@ -1,4 +1,8 @@
-# SignedPolicy
+---
+title: SignedPolicy
+description: "Limit OvenMediaEngine stream access with SignedPolicy — time-limited, privilege-scoped signed URLs for publishing and playback."
+sidebar_position: 30
+---
 
 ## Overview
 
@@ -12,27 +16,39 @@ scheme://domain.com:port/app/stream?policy=<>&signature=<>
 
 ### Policy
 
-Policy is in json format and provides the following properties.
+Policy is in JSON format and provides the following properties.
 
 ```
 {
     "url_activate":1399711581,                                    
     "url_expire":1399721581,                                    
     "stream_expire":1399821581,                                    
-    "allow_ip":"192.168.100.5/32"
+    "allow_ip":"192.168.100.5/32",
+    "real_ip":"111.111.111.111/32"
 }
 ```
 
-| Key                                                    | Value                                   | Description                                                                                |
-| ------------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------ |
-| <p>url_expire</p><p><strong>(Required)</strong></p>    | \<Number> Milliseconds since unix epoch | <p>The time the URL expires<br>Reject on request after the expiration</p>                  |
-| <p>url_activate</p><p><strong>(Optional)</strong></p>  | \<Number> Milliseconds since unix epoch | <p>The time the URL activates<br>Reject on request before activation</p>                   |
-| <p>stream_expire</p><p><strong>(Optional)</strong></p> | \<Number> Milliseconds since unix epoch | <p>The time the Stream expires<br>Transmission and playback stop when the time expires</p> |
-| <p>allow_ip</p><p><strong>(Optional)</strong></p>      | \<String> IPv4 CIDR                     | Allowed IP address range, 192.168.0.0/24                                                   |
+<table><thead><tr><th width="156.33333333333331">Key</th><th width="162">Value</th><th>Description</th></tr></thead><tbody><tr><td><p>url_expire</p><p><strong>(Required)</strong></p></td><td>&#x3C;Number> Milliseconds since unix epoch</td><td><strong>The time the URL expires</strong><br />Reject on request after the expiration</td></tr><tr><td><p>url_activate</p><p><strong>(Optional)</strong></p></td><td>&#x3C;Number> Milliseconds since unix epoch</td><td><strong>The time the URL activates</strong><br />Reject on request before activation</td></tr><tr><td><p>stream_expire</p><p><strong>(Optional)</strong></p></td><td>&#x3C;Number> Milliseconds since unix epoch</td><td><strong>The time the Stream expires</strong><br />Transmission and playback stop when the time expires</td></tr><tr><td><p>allow_ip</p><p><strong>(Optional)</strong></p></td><td>&#x3C;String> IPv4 CIDR</td><td><p><strong>Allowed IP Address Range</strong></p><p>Check the IP address of the client connected to the server</p></td></tr><tr><td>real_ip<br /><strong>(Optional)</strong></td><td>&#x3C;String> IPv4 CIDR</td><td><p><strong>Allowed IP Address Range</strong></p><p>Check the IP address of the client forwarded by the proxy server</p></td></tr></tbody></table>
 
-{% hint style="info" %}
+
+:::info
+
 **url\_expire** means the time the URL is valid, so if you connect before the URL expires, you can continue to use it, and sessions that have already been connected will not be deleted even if the time expires. However, **stream\_expire** forcibly terminates the session when the time expires even if it is already playing.
-{% endhint %}
+
+:::
+
+
+
+:::info
+
+If `real_ip` is in the policy, OME searches for and checks the values ​​in the following order.
+
+1. The value of the **X-REAL-IP** header&#x20;
+2. The value of the first item of **X-FORWARDED-FOR**&#x20;
+3. The IP of the client that actually connected
+
+:::
+
 
 ### Signature
 
@@ -48,19 +64,57 @@ Base64URL.Encode(
 )
 ```
 
-{% hint style="danger" %}
+
+:::danger
+
 The URL entered into HMAC to generate the Signature must include :port.
 
 When creating a signature, you cannot omit the default port such as http port 80, https port 443, or rtmp port 1935. This is because when OvenMediaEngine creates a signature for checking the signature, it is created by putting the port value.
-{% endhint %}
 
-{% hint style="danger" %}
-When using SignedPolicy with SRT providers, only use the **streamid** portion of the URL, e.g. srt://myserver:9999?streamid=**srt://myserver:9999/app/stream?policy=abc123**
-{% endhint %}
+This also applies when using a domain name instead of an IP address. For example:
+
+* `wss://stream.example.com:3334/app/stream` (correct)
+* `wss://stream.example.com/app/stream` (incorrect — signature will not match)
+
+:::
+
+
+
+:::danger
+
+When using SignedPolicy with [SRT providers](../live-source/srt.md), only use the **streamid** portion of the URL, e.g. srt://myserver:9999?streamid=**srt://myserver:9999/app/stream?policy=abc123**
+
+:::
+
+
+
+:::danger
+
+When using SignedPolicy with [SRT publishers](../streaming/srt.md), you must generate the SignedPolicy using the  `streamid`.
+
+
+
+For example, to generate a SignedPolicy for the URL `srt://1.2.3.4:9998?streamid=default/app/stream`, you can use the following command:
+
+```bash
+$ ./simple_signed_policy_url_generator.sh ome_is_the_best \
+    srt://default/app/stream signature policy 600
+[URL] srt://default/app/stream?policy=__POLICY__&signature=__SIGNATURE__
+[Percent encoded URL] srt%3A//default/app/stream%3Fpolicy%3D__POLICY__%26signature%3D__SIGNATURE__
+```
+
+
+
+When the SignedPolicy is applied, the final SRT URL becomes `srt://1.2.3.4:9998?streamid=default%2Fapp%2Fstream%3Fpolicy%3D__POLICY__%26signature%3D__SIGNATURE__`.
+
+:::
+
+
+
 
 ## Configuration
 
-To enable SignedPolicy, you need to add the following \<SignedPolicy> setting in Server.xml under \<VirtualHost>.
+To enable SignedPolicy, you need to add the following `<SignedPolicy>` setting in `Server.xml` under `<VirtualHost>`.
 
 ```
 <VirtualHost>
@@ -77,12 +131,7 @@ To enable SignedPolicy, you need to add the following \<SignedPolicy> setting in
 </VirtualHost>
 ```
 
-| Key                   | Description                                                                                                                                                                   |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PolicyQueryKeyName    | The query string key name in the URL pointing to the policy value                                                                                                             |
-| SignatureQueryKeyName | The query string key name in the URL pointing to the signature value                                                                                                          |
-| SecretKey             | The secret key used when encoding with HMAC-SHA1                                                                                                                              |
-| Enables               | List of providers and publishers to enable SignedPolicy. Currently, SignedPolicy supports rtmp among providers, and among publishers, WebRTC, LLHLS, Thumbnail are supported. |
+<table><thead><tr><th width="290">Key</th><th>Description</th></tr></thead><tbody><tr><td>PolicyQueryKeyName</td><td>The query string key name in the URL pointing to the policy value.</td></tr><tr><td>SignatureQueryKeyName</td><td>The query string key name in the URL pointing to the signature value.</td></tr><tr><td>SecretKey</td><td>The secret key used when encoding with HMAC-SHA1.</td></tr><tr><td>Enables</td><td>List of providers and publishers to enable SignedPolicy. Currently, SignedPolicy supports rtmp among providers, and among publishers, WebRTC, LLHLS, Thumbnail are supported.</td></tr></tbody></table>
 
 ## Make SignedPolicy URL with a script
 
@@ -94,37 +143,37 @@ We provide a script that can easily generate SignedPolicy URL. The script can be
 
 Here's how to use this script:
 
-{% code overflow="wrap" %}
+
 ```
 ./signed_policy_generator.sh [HMAC_KEY] [BASE_URL] [SIGNATURE_QUERY_KEY_NAME] [POLICY_QUERY_KEY_NAME] [POLICY]
 ```
-{% endcode %}
+
 
 For example, you can use it like this:
 
-![](<../.gitbook/assets/image (17).png>)
+![](../images/signedpolicy-signature.png)
 
 ## Make SignedPolicy URL manually
 
-{% hint style="success" %}
-We hope to provide SignedPolicy URL Generator Library in various languages. If you have created the SignedPolicy URL Generator Library in another language, please send a Pull Request to our [GITHUB](https://github.com/AirenSoft/OvenMediaEngine/pulls). Thank you for your open source contributions.
-{% endhint %}
+
+:::tip
+
+We hope to provide SignedPolicy URL Generator Library in various languages. If you have created the SignedPolicy URL Generator Library in another language, please send a Pull Request to our [GITHUB](https://github.com/OvenMediaLabs/OvenMediaEngine/pulls). Thank you for your open source contributions.
+
+:::
+
 
 ### Encoding policy
 
 In order to include the policy in the URL, it must be encoded with [Base64URL](https://tools.ietf.org/html/rfc4648#section-5).
 
-{% code title="Plain {Policy}" %}
-```
+``` title="Plain {Policy}"
 {"url_expire":1399721581}
 ```
-{% endcode %}
 
-{% code title="Base64URL Encoded {Policy}" %}
-```
+``` title="Base64URL Encoded {Policy}"
 eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ
 ```
-{% endcode %}
 
 Policy encoded with Base64URL is added as a query string to the existing streaming URL. (The query string key is set in Server.xml.)
 
@@ -136,27 +185,23 @@ ws://192.168.0.100:3333/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ
 
 Signature hashes the entire URL including the policy in HMAC (SHA-1) method, encodes it as Base64URL, and includes it in the query string.
 
-{% code title="URL input to signature generation" %}
-```
+``` title="URL input to signature generation"
 ws://192.168.0.100:3333/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ
 ```
-{% endcode %}
 
 Create a hash using the secret key (1kU^b6 in the example) and the URL above using HMAC-SHA1.
 
-{% code title="Base64URL encoded { HMAC-SHA1 <KEY : 1kU^b6> (URL) }" %}
-```
+``` title="Base64URL encoded { HMAC-SHA1 <KEY : 1kU^b6> (URL) }"
 dvVdBpoxAeCPl94Kt5RoiqLI0YE
 ```
-{% endcode %}
 
 If you include it as a signature query string (query string key is set in Server.xml), the following SignedPolicy URL is finally generated.
 
-{% code title="URL with signature" overflow="wrap" %}
+
 ```
-ws://192.168.0.100/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&signature=dvVdBpoxAeCPl94Kt5RoiqLI0YE
+ws://192.168.0.100:3333/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&signature=dvVdBpoxAeCPl94Kt5RoiqLI0YE
 ```
-{% endcode %}
+
 
 ## Usage examples
 
@@ -164,8 +209,8 @@ ws://192.168.0.100/app/stream?policy=eyJ1cmxfZXhwaXJlIjoxMzk5NzIxNTgxfQ&signatur
 
 Generate SignedPolicy URL with the script.
 
-![](<../.gitbook/assets/image (23).png>)
+![](../images/signedpolicy-obs-1.png)
 
 Separate the URL based on "app" as shown in the example below and enter all the parts under the stream in the Stream Key.
 
-![](<../.gitbook/assets/image (25).png>)
+![](../images/signedpolicy-obs-2.png)

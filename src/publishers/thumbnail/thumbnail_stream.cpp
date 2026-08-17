@@ -1,0 +1,146 @@
+#include "thumbnail_stream.h"
+
+#include <algorithm>
+#include <regex>
+
+#include "base/publisher/application.h"
+#include "base/publisher/stream.h"
+#include "thumbnail_private.h"
+
+std::shared_ptr<ThumbnailStream> ThumbnailStream::Create(const std::shared_ptr<pub::Application> application,
+														 const info::Stream &info)
+{
+	auto stream = std::make_shared<ThumbnailStream>(application, info);
+	return stream;
+}
+
+ThumbnailStream::ThumbnailStream(const std::shared_ptr<pub::Application> application,
+								 const info::Stream &info)
+	: Stream(application, info)
+{
+}
+
+ThumbnailStream::~ThumbnailStream()
+{
+	logtt("ThumbnailStream(%s/%s) has been terminated finally",
+		  GetApplicationName(), GetName().CStr());
+}
+
+bool ThumbnailStream::Start()
+{
+	logtt("ThumbnailStream(%u) has been started", GetId());
+
+	if (GetState() != Stream::State::CREATED)
+	{
+		return false;
+	}
+
+	// Check if there is a supported codec
+	bool found = false;
+	for (const auto &[id, track] : GetTracks())
+	{
+		if ((track->GetCodecId() == cmn::MediaCodecId::Png ||
+			 track->GetCodecId() == cmn::MediaCodecId::Jpeg ||
+			 track->GetCodecId() == cmn::MediaCodecId::Webp ||
+			 track->GetCodecId() == cmn::MediaCodecId::Avif))
+		{
+			found = true;
+			break;
+		}
+	}
+
+	if (found == false)
+	{
+		logtw("Stream [%s/%s] was not created because there were no supported codecs by the Thumbnail Publisher.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+		return false;
+	}
+
+	return Stream::Start();
+}
+
+bool ThumbnailStream::Stop()
+{
+	logtt("ThumbnailStream(%u) has been stopped", GetId());
+
+	return Stream::Stop();
+}
+
+void ThumbnailStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	// if not started return
+	if (GetState() != Stream::State::STARTED)
+	{
+		return;
+	}
+	
+	auto track = GetTrack(media_packet->GetTrackId());
+	if (track == nullptr)
+	{
+		logtw("Could not find track. id: %d", media_packet->GetTrackId());
+		return;
+	}
+
+	if (!(track->GetCodecId() == cmn::MediaCodecId::Png ||
+		  track->GetCodecId() == cmn::MediaCodecId::Jpeg ||
+		  track->GetCodecId() == cmn::MediaCodecId::Webp ||
+		  track->GetCodecId() == cmn::MediaCodecId::Avif))
+	{
+		// Could not support codec for image
+		return;
+	}
+
+	std::lock_guard<std::shared_mutex> lock(_encoded_frame_mutex);
+	if (media_packet->GetData() != nullptr)
+	{
+		_encoded_frames[track->GetCodecId()] = media_packet->GetData()->Clone();
+	}
+}
+
+void ThumbnailStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
+{
+	// Nothing..
+}
+
+std::shared_ptr<ov::Data> ThumbnailStream::GetVideoFrameByCodecId(cmn::MediaCodecId codec_id, int64_t timeout_ms)
+{
+	// There is no track for this codec, so the image will never arrive
+	auto tracks = GetTracks();
+	if (std::any_of(tracks.begin(), tracks.end(), [codec_id](const auto &item) {
+			return (item.second != nullptr) && (item.second->GetCodecId() == codec_id);
+		}) == false)
+	{
+		logtd("There is no %s track in the stream [%s/%s]",
+			  cmn::GetCodecIdString(codec_id), GetApplicationName(), GetName().CStr());
+
+		return nullptr;
+	}
+
+	ov::StopWatch	watch;
+
+	watch.Start();
+
+	do
+	{
+		if (true)
+		{
+			std::shared_lock<std::shared_mutex> lock(_encoded_frame_mutex);
+			auto it = _encoded_frames.find(codec_id);
+			if (it != _encoded_frames.end())
+			{
+				return it->second;
+			}
+		}
+
+		if( (timeout_ms > 0) && (watch.Elapsed() < timeout_ms))
+		{
+			usleep(100 * 1000);	 // 100ms
+		}
+		else
+		{
+			break;
+		}
+
+	} while (true);
+
+	return nullptr;
+}

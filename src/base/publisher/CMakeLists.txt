@@ -1,0 +1,14 @@
+ome_add_static_library(base_publisher
+    PUBLIC_DEPS
+        base_info
+    DEPS
+        ovsocket
+        monitoring
+        config
+        mediarouter
+        ovlibrary
+        ovcrypto
+        http
+        base_event
+        managed_queue
+)

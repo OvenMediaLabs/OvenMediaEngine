@@ -1,0 +1,14 @@
+ome_add_static_library(api_server
+    SOURCES_DIRS_R
+        controllers
+        converters
+        helpers
+    DEPS
+        http
+        json_serdes
+        monitoring
+        config
+        ovlibrary
+        ovcrypto
+        orchestrator
+)

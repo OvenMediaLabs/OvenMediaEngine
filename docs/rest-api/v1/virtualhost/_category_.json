@@ -1,0 +1,8 @@
+{
+  "label": "VirtualHost",
+  "position": 40,
+  "link": {
+    "type": "doc",
+    "id": "README"
+  }
+}

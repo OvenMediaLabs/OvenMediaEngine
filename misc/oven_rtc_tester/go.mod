@@ -1,4 +1,4 @@
-module github.com/airensoft/OvenMediaEngine/OvenRtcTester
+module github.com/OvenMediaLabs/OvenMediaEngine/OvenRtcTester
 
 go 1.17
 

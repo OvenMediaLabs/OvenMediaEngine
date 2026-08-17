@@ -1,0 +1,324 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2019 AirenSoft. All rights reserved.
+//
+//==============================================================================
+#pragma once
+#include <base/info/host.h>
+#include <base/mediarouter/mediarouter_interface.h>
+#include <base/provider/provider.h>
+#include <base/publisher/publisher.h>
+#include <modules/http/http_error.h>
+
+#include "virtual_host.h"
+#include "module.h"
+
+namespace ocst
+{
+	class Error : public ov::Error
+	{
+	public:
+		Error(CommonErrorCode code, const char *message)
+			: ov::Error("Orchestrator", ov::ToUnderlyingType(code), message)
+		{
+		}
+
+		template <typename... Targs>
+		Error(CommonErrorCode code, const char *format, Targs... args)
+			: ov::Error("Orchestrator", ov::ToUnderlyingType(code), ov::String::FormatString(format, args...))
+		{
+		}
+
+		static std::shared_ptr<Error> CreateError(CommonErrorCode code, const char *message)
+		{
+			return std::make_shared<Error>(code, message);
+		}
+
+		template <typename... Targs>
+		static std::shared_ptr<Error> CreateError(CommonErrorCode code, const char *format, Targs... args)
+		{
+			return std::make_shared<Error>(code, format, args...);
+		}
+
+		CommonErrorCode GetCommonErrorCode() const
+		{
+			return static_cast<CommonErrorCode>(GetCode());
+		}
+
+		std::shared_ptr<http::HttpError> ToHttpError() const
+		{
+			return http::HttpError::CreateError(
+				http::StatusCodeFromCommonError(GetCommonErrorCode()),
+				GetMessage().CStr());
+		}
+	};
+
+	class Orchestrator : public ov::Singleton<Orchestrator>, 
+							public Application::CallbackInterface
+	{
+	public:
+		/// Register the module
+		///
+		/// @param module Module to register. May be called before or after `StartServer()`; in the
+		/// latter case, the module is back-filled with `OnCreateHost()` / `OnCreateApplication()`
+		/// for every existing vhost / application before being inserted.
+		///
+		/// @return `false` if the module is null, already registered (or registered as a different
+		/// type), or a back-fill notification returned false; true otherwise.
+		bool RegisterModule(const std::shared_ptr<ModuleInterface> &module);
+
+		/// Unregister the module
+		///
+		/// @param module Module to unregister
+		///
+		/// @return If the module is not already registered, false is returned. Otherwise, true is returned.
+		bool UnregisterModule(const std::shared_ptr<ModuleInterface> &module);
+
+		// Create VirtualHost in the settings and instruct application creation to all registered modules.
+		// Modules registered before this call are notified through the normal create path; modules
+		// registered after this call (`RegisterModule()` post-`StartServer()`) are back-filled.
+		bool StartServer(const std::shared_ptr<const cfg::Server> &server_config);
+		Result Release();
+
+		Result CreateVirtualHost(const cfg::vhost::VirtualHost &vhost_cfg);
+		Result CreateVirtualHost(const info::Host &vhost_info);
+		Result ReloadCertificate(const std::shared_ptr<VirtualHost> &vhost);
+
+		Result DeleteVirtualHost(const info::Host &vhost_info);
+		CommonErrorCode ReloadCertificate(const ov::String &vhost_name);
+		CommonErrorCode ReloadAllCertificates();
+
+		std::optional<info::Host> GetHostInfo(ov::String vhost_name);
+
+		bool CreateVirtualHosts(const std::vector<cfg::vhost::VirtualHost> &vhost_conf_list);
+
+		/// Create an application and notify the modules
+		///
+		/// @param vhost_name A name of VirtualHost
+		/// @param app_config Application configuration to create
+		///
+		/// @return Creation result
+		///
+		/// @note Automatically DeleteApplication() when application creation fails
+		Result CreateApplication(const info::Host &vhost_info, const cfg::vhost::app::Application &app_config, bool is_dynamic = false);
+		Result CreateApplication(const ov::String &vhost_name, const info::Application &app_info);
+		/// Delete the application and notify the modules
+		///
+		/// @param app_info Application information to delete
+		///
+		/// @return
+		///
+		/// @note If an error occurs during deletion, do not recreate the application
+		Result DeleteApplication(const info::Application &app_info);
+		Result DeleteApplication(const ov::String &vhost_name, info::application_id_t app_id);
+
+		ov::String GetVhostNameFromDomain(const ov::String &domain_name) const;
+
+		/// Generate an application name for vhost/app
+		///
+		/// @param vhost_name A name of VirtualHost
+		/// @param app_name An application name
+		///
+		/// @return A new application name corresponding to vhost/app
+		info::VHostAppName ResolveApplicationName(const ov::String &vhost_name, const ov::String &app_name) const;
+
+		///  Generate an application name for domain/app
+		///
+		/// @param domain_name A name of the domain
+		/// @param app_name An application name
+		///
+		/// @return A new application name corresponding to domain/app
+		info::VHostAppName ResolveApplicationNameFromDomain(const ov::String &domain_name, const ov::String &app_name) const;
+
+		const info::Application &GetApplicationInfo(const ov::String &vhost_name, const ov::String &app_name) const;
+		const info::Application &GetApplicationInfo(const info::VHostAppName &vhost_app_name) const;
+
+		/// Pull a stream using specified URLs with offset
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		/// @param url_list URLs to pull. All URLs in the list must use the same scheme,
+		/// because one pull request is dispatched to a single provider module
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		/// @param properties Additional pull stream properties
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrls(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			const std::vector<ov::String> &url_list, off_t offset,
+			const std::shared_ptr<pvd::PullStreamProperties> &properties = nullptr);
+
+		/// Pull a stream using specified URL with offset
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		/// @param url URL to pull
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrl(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			const ov::String &url, off_t offset)
+		{
+			return RequestPullStreamWithUrls(request_from, vhost_app_name, stream_name, {url}, offset);
+		}
+
+		/// Pull a stream using specified URL
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		/// @param url URL to pull
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithUrl(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			const ov::String &url)
+		{
+			return RequestPullStreamWithUrl(request_from, vhost_app_name, stream_name, url, 0);
+		}
+
+		/// Pull a stream using Origin map with offset
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		/// @param offset Parameters to be used when you want to pull from a certain point (available only when the provider supports that)
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithOriginMap(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+			off_t offset);
+
+		/// Pull a stream using Origin map with offset
+		///
+		/// @param request_from Source from which `RequestPullStream()` invoked (Mainly provided when requested by Publisher)
+		/// @param vhost_app_name When the URL is pulled, its stream is created in this `vhost_name` and `app_name`
+		/// @param stream_name When the URL is pulled, its stream is created in this `stream_name`
+		///
+		/// @return `nullptr` if the pull request succeeds, otherwise an error describing the failure
+		std::shared_ptr<Error> RequestPullStreamWithOriginMap(
+			const std::shared_ptr<const ov::Url> &request_from,
+			const info::VHostAppName &vhost_app_name, const ov::String &stream_name)
+		{
+			return RequestPullStreamWithOriginMap(request_from, vhost_app_name, stream_name, 0);
+		}
+		
+		/// Release Pulled Stream
+		CommonErrorCode TerminateStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name, bool api_requested = false);
+
+		/// Find Provider from ProviderType
+		std::shared_ptr<pvd::Provider> GetProviderFromType(const ProviderType type);
+		/// Find Publisher from PublisherType
+		std::shared_ptr<pub::Publisher> GetPublisherFromType(const PublisherType type);
+		/// Get the Transcoder module
+		std::shared_ptr<TranscoderModuleInterface> GetTranscoderModule();
+
+		/// Find Provider Stream from StreamInfo
+		std::shared_ptr<pvd::Stream> GetProviderStream(const std::shared_ptr<const info::Stream> &stream_info);
+		/// Find Publisher Stream from StreamInfo
+		std::shared_ptr<pub::Stream> GetPublisherStream(PublisherType publisher_type, const std::shared_ptr<const info::Stream> &stream_info);
+
+		// OriginMapStore
+		// key : <app/stream>
+		// value : ovt://host:port/<app/stream>
+		CommonErrorCode IsExistStreamInOriginMapStore(const info::VHostAppName &vhost_app_name, const ov::String &stream_name) const;
+		std::shared_ptr<ov::Url> GetOriginUrlFromOriginMapStore(const info::VHostAppName &vhost_app_name, const ov::String &stream_name) const;
+		CommonErrorCode RegisterStreamToOriginMapStore(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+		CommonErrorCode UnregisterStreamFromOriginMapStore(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+
+		// Mirror Stream
+		bool CheckIfStreamExist(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+		CommonErrorCode MirrorStream(std::shared_ptr<MediaRouterStreamTap> &stream_tap, const info::VHostAppName &vhost_app_name, const ov::String &stream_name, MediaRouterInterface::MirrorPosition posision);
+		CommonErrorCode UnmirrorStream(const std::shared_ptr<MediaRouterStreamTap> &stream_tap);
+
+		//--------------------------------------------------------------------
+		// Implementation of ocst::Application::CallbackInterface
+		//--------------------------------------------------------------------
+		bool OnStreamCreated(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
+		bool OnStreamDeleted(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
+		bool OnStreamPrepared(const info::Application &app_info, const std::shared_ptr<info::Stream> &info) override;
+
+	private:
+		void DeleteUnusedDynamicApplications();
+
+		info::application_id_t GetNextAppId();
+
+		std::shared_ptr<pvd::Provider> GetProviderForScheme(const ov::String &scheme);
+		std::shared_ptr<PullProviderModuleInterface> GetProviderModuleForScheme(const ov::String &scheme);
+		std::shared_ptr<pvd::Provider> GetProviderForUrl(const ov::String &url);
+
+		// Deletes the application and notifies the modules, without acquiring `_late_module_registration_mutex` itself.
+		// The caller MUST already hold `_late_module_registration_mutex`.
+		// This helper is intended for call paths that already execute inside that critical section,
+ 		// while `DeleteApplication()` is the locking wrapper for the standalone call path.
+		//
+		// @param vhost_name Name of the virtual host the application belongs to
+		// @param app_id Id of the application to delete
+		//
+		// @return Deletion result
+		Result DeleteApplicationInternal(const ov::String &vhost_name, info::application_id_t app_id);
+
+		std::shared_ptr<VirtualHost> GetVirtualHost(const ov::String &vhost_name);
+		std::shared_ptr<const VirtualHost> GetVirtualHost(const ov::String &vhost_name) const;
+		std::shared_ptr<VirtualHost> GetVirtualHost(const info::VHostAppName &vhost_app_name);
+		std::shared_ptr<const VirtualHost> GetVirtualHost(const info::VHostAppName &vhost_app_name) const;
+
+		Result CreateApplicationTemplate(const info::Host &host_info, const cfg::vhost::app::Application &app_config);
+
+		std::shared_ptr<Application> GetApplication(const info::VHostAppName &vhost_app_name) const;
+		const info::Application &GetApplicationInfo(const ov::String &vhost_name, info::application_id_t app_id) const;
+
+		std::vector<std::shared_ptr<VirtualHost>> GetVirtualHostList() const;
+		std::vector<Module> GetModuleList() const;
+
+		bool GetUrlListForLocation(const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name, Origin &matched_origin, std::vector<ov::String> &url_list);
+
+		// Server Info
+		std::shared_ptr<const cfg::Server> 	_server_config;
+
+		std::shared_ptr<MediaRouterInterface> _media_router;
+
+		std::atomic<info::application_id_t> _last_application_id{info::MinApplicationId};
+
+		// Modules
+		std::vector<Module> _module_list;
+		mutable std::shared_mutex _module_list_mutex;
+
+		// Flipped at the start of `StartServer()`, before any vhost/app is created. While `false`,
+		// `RegisterModule()` only inserts; while `true`, it back-fills the new module with existing
+		// vhosts and apps.
+		std::atomic<bool> _server_started{false};
+
+		// Serializes `RegisterModule()`'s late back-fill against the module-notification blocks in
+		// `Create/DeleteVirtualHost()` and `Create/DeleteApplication()`, so a registered module
+		// observes a consistent view of vhost/app create-delete events going through those
+		// runtime paths. Pairing is best-effort outside those paths:
+		//   - `Release()` (shutdown) calls `DeleteApplication()` per app but does not call
+		//     `DeleteVirtualHost()`, so prior `OnCreateHost()` is not paired with `OnDeleteHost()`.
+		//   - `UnregisterModule()` removes the module without replaying any `OnDelete*()`.
+		// Callers shutting down or unregistering at runtime are responsible for any cleanup the
+		// module needs.
+		mutable std::mutex _late_module_registration_mutex;
+
+		// key: vhost_name
+		std::map<ov::String, std::shared_ptr<VirtualHost>> _virtual_host_map;
+		// ordered vhost list
+		std::vector<std::shared_ptr<VirtualHost>> _virtual_host_list;
+		mutable std::shared_mutex _virtual_host_mutex;
+
+		std::shared_ptr<pvd::Stream> GetProviderStream(const info::VHostAppName &vhost_app_name, const ov::String &stream_name);
+
+		// Module Timer : It is called periodically by the timer
+		ov::DelayQueue _timer{"Orchestrator"};
+	};
+}  // namespace ocst

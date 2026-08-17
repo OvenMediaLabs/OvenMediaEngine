@@ -1,12 +1,18 @@
-# Push Publishing (Beta)
+---
+title: Push Publishing
+description: "Push OvenMediaEngine streams to external destinations over RTMP, SRT, or MPEG-2 TS with the Push publisher."
+sidebar_position: 37
+---
 
-OvenMediaEngine supports **Push Publishing** function that can retransmit live streams to other systems. The protocol supported for retransmission uses RTMP or MPEGTS. Because, most services and products support this protocol. also, one output stream can be transmitted to multiple destinations at the same time. You can start and stop pushing the output stream through REST API. Note that the only codecs that can be retransmitted in RTMP and MPEGTS protocol are H264 and AAC.
+OvenMediaEngine supports Push Publishing function that can restreaming live streams to other systems. The protocol supports widely used protocols such as [SRT](live-source/srt.md), [RTMP](live-source/rtmp.md), and MPEG-2 TS.
+
+The `StreamMap` feature has been added, and it now automatically re-streaming based on predefined conditions. You can also use the Rest API to control and monitor it.
 
 ## Configuration
 
-### RTMPPush Publisher
+### Push Publisher
 
-To use RTMP Push Publishing, you need to declare the `<RTMPPush>` publisher in the configuration. There are no other detailed options.
+To use Push Publishing, you need to declare the **`<Push>`** publisher in the configuration. `<StreamMap>` is optional. It is used when automatic push is needed.
 
 ```xml
 <Applications>
@@ -14,40 +20,114 @@ To use RTMP Push Publishing, you need to declare the `<RTMPPush>` publisher in t
      ...
     <Publishers>
       ... 
-      <RTMPPush>
-      </RTMPPush>
-    </Publishers>
-  </Application>
-</Applications>
-```
-
-### MPEGTSPush Publisher
-
-To use MPEGTS Push Publishing, you need to declare the `<MPEGTSPush>` publisher in the configuration. There are no other detailed options.
-
-```markup
-<Applications>
-  <Application>
-     ...
-    <Publishers>
+      <Push>
+         <!-- [Optional] -->
+         <StreamMap>
+           <Enable>false</Enable>
+           <Path>path/to/map.xml</Path>
+         </StreamMap>
+      </Push>
       ...
-      <MPEGTSPush>
-      </MPEGTSPush>
     </Publishers>
   </Application>
 </Applications>
 ```
 
-{% hint style="info" %}
-Only H264 and AAC are supported codecs.
-{% endhint %}
 
-### Start & Stop Push
+:::info
 
-For control of push, use the REST API. RTMP, MPEGTS push can be requested based on the output stream name (specified in the JSON body), and you can selectively transfer all/some tracks. In addition, you must specify the URL and Stream Key of the external server to be transmitted. It can send multiple Pushes simultaneously for the same stream. If transmission is interrupted due to network or other problems, it automatically reconnects.
+The RTMP protocol only supports H264 and AAC codecs.
 
-For how to use the API, please refer to the link below.
+:::
 
-{% content-ref url="rest-api/v1/virtualhost/application/push.md" %}
+
+### StreamMap
+
+`<StreamMap>` is used to automatically push content based on user-defined conditions. The XML file path must be specified relative to `<ApplicationPath>/conf`.
+
+`<StreamName>` is used to match output stream names and supports wildcard characters.
+
+`<VariantNames>` can be used to select specific tracks. Multiple variants can be specified by separating them with commas (,). \
+If multiple tracks with the same `VariantName` exist in the output stream, a specific track can be selected by appending a `:[Index]` suffix.
+
+`<Protocol>` supports `rtmp`, `mpegts`, and `srt`. The destination address is specified in the `<Url>` and `<StreamKey>` fields, and macros can be used.
+
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<PushInfo>
+  <!-- RTMP -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>true</Enable>
+
+    <!-- [Must] -->
+    <StreamName>stream_a_*</StreamName>
+    
+    <!-- [Optional] -->
+    <VariantNames>video_h264,audio_aac</VariantNames>
+    <!-- Select a specific track among tracks with the same VariantName -->
+    <!-- <VariantNames>video_h264:0,audio_aac:1</VariantNames> -->
+    
+    <!-- [Must] -->
+    <Protocol>rtmp</Protocol>
+    
+    <!-- [Must] -->
+    <Url>rtmp://1.2.3.4:1935/app/${SourceStream}</Url>
+    <!-- <Url>rtmp://1.2.3.4:1935/app/${<a data-footnote-ref="" href="#user-content-fn-1">Stream</a>}</Url> --> 
+    
+    <!-- [Optional] -->
+    <!-- <StreamKey>some-stream-key</StreamKey> -->
+<strong>  </Push>  
+</strong>
+  <!-- SRT -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>true</Enable>
+
+    <!-- [Must] -->
+    <StreamName>stream_b_*</StreamName>
+
+    <!-- [Optional] -->
+    <VariantNames></VariantNames>
+
+    <!-- [Must] -->
+    <Protocol>srt</Protocol>
+
+    <!-- [Must] -->
+    <Url>srt://1.2.3.4:9999?streamid=srt%3A%2F%2F1.2.3.4%3A9999%2Fapp%2Fstream</Url>
+  </Push>
+
+  <!-- MPEG-TS -->
+  <Push>
+    <!-- [Must] -->
+    <Enable>false</Enable>
+
+    <!-- [Must] -->
+    <StreamName>stream_c_*</StreamName>
+
+    <!-- [Must] -->
+    <Protocol>mpegts</Protocol>
+
+    <!-- [Must] -->
+    <Url>udp://1.2.3.4:2400</Url>
+  </Push>    
+</PushInfo>
+```
+
+
+| Macro           | Description        |
+| --------------- | ------------------ |
+| $&#x7B;Application&#x7D;  | Application name   |
+| $&#x7B;SourceStream&#x7D; | Source stream name |
+| $&#x7B;Stream&#x7D;       | Output stream name |
+
+## REST API
+
+Push can be controlled using the REST API. Please refer to the documentation below for more details.
+
+
 [push.md](rest-api/v1/virtualhost/application/push.md)
-{% endcontent-ref %}
+
+
+[^1]: 

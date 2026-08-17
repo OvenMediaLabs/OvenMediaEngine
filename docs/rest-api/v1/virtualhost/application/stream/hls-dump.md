@@ -1,4 +1,8 @@
-# HLS Dump
+---
+title: HLS Dump
+description: "Start and stop dumping OvenMediaEngine HLS segments to storage through the v1 REST API."
+sidebar_position: 49
+---
 
 The [LLHLS Dump feature](../../../../../streaming/low-latency-hls.md#dump) can be controlled with this API.
 
@@ -8,7 +12,7 @@ The [LLHLS Dump feature](../../../../../streaming/low-latency-hls.md#dump) can b
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost name}/apps/{app}/streams/{stream}:startHlsDump</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost name&#x7D;/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;:startHlsDump</summary>
 
 #### Header
 
@@ -57,7 +61,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -91,7 +95,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json Object or does not have a required value
 
@@ -99,7 +103,7 @@ Invalid request. Body is not a Json Object or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -122,7 +126,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name or stream name could not be found.
 
@@ -145,7 +149,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Unknown error
 
@@ -157,7 +161,7 @@ Unknown error
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/&#x3C;vhost name>/apps/{app}/streams/{stream}:stopHlsDump</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x3C;vhost name>/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;:stopHlsDump</summary>
 
 #### Header
 
@@ -190,7 +194,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -224,7 +228,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json Object or does not have a required value
 
@@ -232,7 +236,7 @@ Invalid request. Body is not a Json Object or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -255,7 +259,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name or stream name could not be found.
 
@@ -278,7 +282,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 Unknown error
 

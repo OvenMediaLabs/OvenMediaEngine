@@ -1,0 +1,898 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Getroot
+//  Copyright (c) 2022 AirenSoft. All rights reserved.
+//
+//==============================================================================
+
+#include <algorithm>
+#include <cmath>
+
+#include "fmp4_packager.h"
+#include "fmp4_private.h"
+
+#include <modules/bitstream/nalu/nal_stream_converter.h>
+#include <modules/bitstream/aac/aac_converter.h>
+#include <modules/bitstream/av1/av1_parser.h>
+#include <modules/bitstream/av1/av1_types.h>
+
+#include <base/modules/data_format/id3v2/id3v2.h>
+#include <base/modules/data_format/id3v2/frames/id3v2_text_frame.h>
+
+#include <base/modules/data_format/cue_event/cue_event.h>
+
+namespace bmff
+{
+	FMP4Packager::FMP4Packager(const std::shared_ptr<FMP4Storage> &storage, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const Config &config)
+		: Packager(media_track, data_track, config.cenc_property)
+	{
+		_storage = storage;
+		_config = config;
+
+		_target_chunk_duration_ms = _config.chunk_duration_ms;
+
+		if (media_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_segmentation_info.keyframe_interval_ms = media_track->GetKeyframeIntervalDurationMs();
+		}
+
+		_segmentation_info.media_type = media_track->GetMediaType();
+		_segmentation_info.target_segment_duration_ms = _config.segment_duration_ms;
+	}
+
+	FMP4Packager::~FMP4Packager()
+	{
+		logtt("FMP4Packager has been terminated finally");
+	}
+
+	// Generate Initialization FMP4Segment
+	bool FMP4Packager::CreateInitializationSegment()
+	{
+		auto track = GetMediaTrack();
+		if (track == nullptr)
+		{
+			logte("Failed to create initialization segment. Track is null");
+			return false;
+		}
+
+		if ((track->GetCodecId() == cmn::MediaCodecId::H264) ||
+			(track->GetCodecId() == cmn::MediaCodecId::H265) ||
+			(track->GetCodecId() == cmn::MediaCodecId::Av1) ||
+			(track->GetCodecId() == cmn::MediaCodecId::Aac))
+		{
+			// Supported codecs
+		}
+		else
+		{
+			logtw("FMP4Packager::Initialize() - Unsupported codec id(%s)", cmn::GetCodecIdString(track->GetCodecId()));
+			return false;
+		}
+
+		// Create Initialization FMP4Segment
+		ov::ByteStream stream(4096);
+		
+		if (WriteFtypBox(stream) == false)
+		{
+			logte("FMP4Packager::Initialize() - Failed to write ftyp box");
+			return false;
+		}
+
+		if (WriteMoovBox(stream) == false)
+		{
+			logte("FMP4Packager::Initialize() - Failed to write moov box");
+			return false;
+		}
+
+		if (StoreInitializationSection(stream.GetDataPointer()) == false)
+		{
+			return false;
+		}
+
+		// The moov just written carries this version's tenc/pssh, so the key it was built
+		// with is the key every segment of this version is encrypted with
+		if (_storage != nullptr)
+		{
+			auto content_version = _storage->GetContentVersion();
+			_cenc_property_by_version[content_version] = GetCencProperty();
+
+			while (_cenc_property_by_version.size() > kMaxRetainedCencVersions)
+			{
+				_cenc_property_by_version.erase(_cenc_property_by_version.begin());
+			}
+		}
+
+		return true;
+	}
+
+	std::optional<CencProperty> FMP4Packager::GetCencPropertyForVersion(uint32_t content_version) const
+	{
+		auto it = _cenc_property_by_version.find(content_version);
+		if (it == _cenc_property_by_version.end())
+		{
+			return std::nullopt;
+		}
+
+		return it->second;
+	}
+
+	bool FMP4Packager::UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		if (media_track == nullptr)
+		{
+			return false;
+		}
+
+		// The same codecs CreateInitializationSegment supports; validate before mutating
+		switch (media_track->GetCodecId())
+		{
+			case cmn::MediaCodecId::H264:
+			case cmn::MediaCodecId::H265:
+			case cmn::MediaCodecId::Av1:
+			case cmn::MediaCodecId::Aac:
+				// Supported codecs
+				break;
+			default:
+				logtw("FMP4Packager::UpdateTrack() - Unsupported codec id(%s)", cmn::GetCodecIdString(media_track->GetCodecId()));
+				return false;
+		}
+
+		// Close the current content so that samples of different track versions never
+		// share a segment
+		if (Flush() == false)
+		{
+			return false;
+		}
+
+		int64_t completed_segment_number = -1;
+		if (_storage == nullptr || _storage->UpdateTrack(media_track, completed_segment_number) == false)
+		{
+			return false;
+		}
+
+		if (UpdateMediaTrack(media_track) == false)
+		{
+			// Publish the completion even on failure so the playlist can close the segment
+			_storage->NotifySegmentCompleted(completed_segment_number);
+			return false;
+		}
+
+		if (media_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_segmentation_info.keyframe_interval_ms = media_track->GetKeyframeIntervalDurationMs();
+
+			// The new content must start with a keyframe
+			_waiting_for_keyframe = true;
+			_dropped_samples_while_waiting = 0;
+		}
+
+		// This track's own boundary supersedes a cut propagated from another track
+		// or owed to a consumed marker
+		_pending_cut_timestamp_ms = -1.0;
+		_pending_marker_cut_timestamp = -1;
+		_last_boundary_timestamp_ms = GetLastSampleEndTimestampMs();
+
+		bool init_section_created = CreateInitializationSegment();
+
+		// The completion is published only after the new initialization section is
+		// stored; the playlist hints the new map, so it must be servable immediately
+		_storage->NotifySegmentCompleted(completed_segment_number);
+
+		return init_section_created;
+	}
+
+	void FMP4Packager::RequestCutForDiscontinuity(double boundary_timestamp_ms)
+	{
+		// Tracks changing together propagate to each other; a boundary within a
+		// segment length of the last handled one is the same event
+		if (_last_boundary_timestamp_ms >= 0 &&
+			std::abs(boundary_timestamp_ms - _last_boundary_timestamp_ms) <= _config.segment_duration_ms)
+		{
+			return;
+		}
+
+		if (_pending_cut_timestamp_ms < 0 || boundary_timestamp_ms < _pending_cut_timestamp_ms)
+		{
+			_pending_cut_timestamp_ms = boundary_timestamp_ms;
+		}
+	}
+
+	void FMP4Packager::RequestKeyRotation(const CencProperty &cenc_property)
+	{
+		_pending_key_rotation = cenc_property;
+	}
+
+	double FMP4Packager::GetLastSampleEndTimestampMs() const
+	{
+		return _segmentation_info.last_sample_timestamp_ms + _segmentation_info.last_sample_duration_ms;
+	}
+
+	uint32_t FMP4Packager::GetCurrentContentVersion() const
+	{
+		return (_storage != nullptr) ? _storage->GetContentVersion() : 0;
+	}
+
+	bool FMP4Packager::ReserveDataPacket(const std::shared_ptr<const MediaPacket> &media_packet)
+	{
+		if (GetDataTrack() == nullptr)
+		{
+			return false;
+		}
+
+		_reserved_data_packets.emplace(media_packet);
+		return true;
+	}
+
+	std::shared_ptr<bmff::Samples> FMP4Packager::GetDataSamples(int64_t start_timestamp, int64_t end_timestamp)
+	{
+		if (GetDataTrack() == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto rescaled_start_timestamp = ((double)start_timestamp / (double)GetMediaTrack()->GetTimeBase().GetTimescale()) * (double)GetDataTrack()->GetTimeBase().GetTimescale();
+		auto rescaled_end_timestamp = ((double)end_timestamp / (double)GetMediaTrack()->GetTimeBase().GetTimescale()) * (double)GetDataTrack()->GetTimeBase().GetTimescale();
+
+		auto samples = std::make_shared<Samples>();
+
+		while (true)
+		{
+			if (_reserved_data_packets.size() == 0)
+			{
+				break;
+			}
+
+			auto data_packet = _reserved_data_packets.front();
+
+			// Convert data pts timescale to media timescale
+			auto pts = (double)data_packet->GetPts();
+
+			logtt("track(%d), pts: %lf, start_timestamp: %lf, end_timestamp: %lf", GetMediaTrack()->GetId(), pts, rescaled_start_timestamp, rescaled_end_timestamp);
+
+			if (pts == -1)
+			{
+				// Packets that must be inserted immediately
+				auto copy_data_packet = data_packet->ClonePacket();
+				copy_data_packet->SetPts(rescaled_start_timestamp);
+				copy_data_packet->SetDts(rescaled_start_timestamp);
+				
+				samples->AppendSample(Sample(copy_data_packet));
+
+				_reserved_data_packets.pop();
+			}
+			else if (pts > rescaled_end_timestamp)
+			{
+				//Waits for a segment within a time interval.
+				break;
+			}
+			else if (pts < rescaled_start_timestamp)
+			{
+				// Too old data, ajust to start_timestamp
+				_reserved_data_packets.pop();
+			}
+			else
+			{
+				// Within the time interval
+				samples->AppendSample(data_packet);
+
+				_reserved_data_packets.pop();
+			}
+		}
+
+		return samples;
+	}
+
+	// Generate Media FMP4Segment
+	bool FMP4Packager::AppendSample(const std::shared_ptr<const MediaPacket> &media_packet)
+	{
+		logtt("MediaPacket : track(%d) pts(%" PRId64 "), dts(%" PRId64 "), duration(%" PRId64 "), flag(%d), size(%zu)", media_packet->GetTrackId(), media_packet->GetPts(), media_packet->GetDts(), media_packet->GetDuration(), ov::ToUnderlyingType(media_packet->GetFlag()), media_packet->GetDataLength());
+
+		if (_waiting_for_keyframe == true)
+		{
+			if (media_packet->GetFlag() != MediaPacketFlag::Key)
+			{
+				_dropped_samples_while_waiting++;
+				return true;
+			}
+
+			_waiting_for_keyframe = false;
+			if (_dropped_samples_while_waiting > 0)
+			{
+				logtw("track(%u) - Dropped %u non-keyframe samples until the first keyframe of the new track configuration", GetMediaTrack()->GetId(), _dropped_samples_while_waiting);
+				_dropped_samples_while_waiting = 0;
+			}
+		}
+
+		// A discontinuity propagated from another track cuts a boundary here; this
+		// sample is the first of the new domain, so it must be independent
+		if (_pending_cut_timestamp_ms >= 0)
+		{
+			double sample_timestamp_ms = (static_cast<double>(media_packet->GetDts()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+			bool independent = (media_packet->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
+
+			if (sample_timestamp_ms >= _pending_cut_timestamp_ms && independent == true)
+			{
+				if (Flush() == false)
+				{
+					return false;
+				}
+
+				if (_storage != nullptr)
+				{
+					_storage->CutSegmentForDiscontinuity();
+				}
+
+				_last_boundary_timestamp_ms = _pending_cut_timestamp_ms;
+				_pending_cut_timestamp_ms = -1.0;
+			}
+		}
+
+		// Convert bitstream format
+		auto next_frame = ConvertBitstreamFormat(media_packet);
+		if (next_frame == nullptr || next_frame->GetData() == nullptr)
+		{
+			logtw("Failed to convert bitstream format for track(%d)", GetMediaTrack()->GetId());
+			return false;
+		}
+
+		std::shared_ptr<Samples> samples = _sample_buffer.GetSamples();
+
+		auto last_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
+		double total_sample_duration = samples != nullptr ? samples->GetTotalDuration() : 0;
+		double total_sample_duration_ms = (static_cast<double>(total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+		// Calculate duration as milliseconds
+		double next_total_sample_duration = total_sample_duration + next_frame->GetDuration();
+		double next_total_sample_duration_ms = (static_cast<double>(next_total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+		bool next_frame_is_idr = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
+
+		// A marker position must end the segment at the first cuttable frame at or
+		// after it, even if the marker was already consumed by an earlier chunk of
+		// this segment or sits exactly on this frame
+		bool return_cut = false;
+		if (next_frame_is_idr == true && samples != nullptr && samples->GetTotalCount() > 0)
+		{
+			// Only positions from the current samples on; an older leftover is
+			// expired and gets discarded at the next completion instead of cutting
+			return_cut = (_pending_marker_cut_timestamp >= 0 && next_frame->GetDts() >= _pending_marker_cut_timestamp) ||
+						 (HasMarker(samples->GetStartTimestamp(), next_frame->GetDts() + 1) == true);
+		}
+
+		// Marker handling
+		constexpr uint8_t kNoMarker = 0;
+		constexpr uint8_t kFlushAsSoonAsPossible = 1;
+		constexpr uint8_t kShouldDeferSegmentFlush = 2;
+		constexpr uint8_t kShouldFlushImmediately = 3;
+
+		int64_t last_sequence_number = -1; 
+		if (last_segment != nullptr)
+		{
+			last_sequence_number = last_segment->GetNumber();
+			if (last_segment->IsCompleted() == true)
+			{
+				last_sequence_number++;
+			}
+		}
+
+		bool has_marker_in_this_sequence = HasMarkerWithSeq(last_sequence_number);
+		bool has_marker_in_next_sample = HasMarker(next_frame->GetDts(), next_frame->GetDts() + next_frame->GetDuration());
+		bool has_marker_in_curr_samples = false;
+		if (samples != nullptr)
+		{
+			has_marker_in_curr_samples = HasMarker(samples->GetStartTimestamp(), samples->GetEndTimestamp());
+		}
+
+		uint8_t marker_handling = kNoMarker;
+
+		ov::String marker_handling_desc; 
+		if (has_marker_in_this_sequence == true && has_marker_in_curr_samples == true)
+		{
+			marker_handling = kFlushAsSoonAsPossible;
+			marker_handling_desc = "Flush as soon as possible";
+		}
+		else if (has_marker_in_this_sequence == true && has_marker_in_curr_samples == false)
+		{
+			marker_handling = kShouldDeferSegmentFlush;
+			marker_handling_desc = "Defer segment flush";
+		}
+		else if (has_marker_in_this_sequence == false && has_marker_in_next_sample == true)
+		{
+			marker_handling = kShouldFlushImmediately;
+			marker_handling_desc = "Flush immediately";
+		}
+		else if (has_marker_in_this_sequence == false && has_marker_in_curr_samples == true)
+		{
+			// Too Late
+			// Never happen, it must be handled in the previous condition (has_marker_in_this_sequence == false && has_marker_in_next_sample == true)
+			logte("track(%u) - Too late, marker is included in the samples time range : sequence(%" PRId64 "), sample(%" PRId64 " - %" PRId64 ")", GetMediaTrack()->GetId(), last_sequence_number, samples->GetStartTimestamp(), samples->GetEndTimestamp());
+		}
+
+		if (marker_handling != kNoMarker)
+		{
+			logtt("track(%u) - Marker handling : %s, has marker in this sequence(%d), next sample(%d), current samples(%d)", GetMediaTrack()->GetId(), marker_handling_desc.CStr(), has_marker_in_this_sequence, has_marker_in_next_sample, has_marker_in_curr_samples);
+		}
+
+		if (samples != nullptr && samples->GetTotalCount() > 0)
+		{
+			// If the CUE-OUT/IN event is included in the samples time range, flush the samples as soon as possible.
+			// samples->GetStartTimestamp() <= CUE events < samples->GetEndTimestamp()
+			if (marker_handling == kFlushAsSoonAsPossible)
+			{
+				auto marker = GetFirstMarker();
+				if (marker == nullptr)
+				{
+					// Never reach here
+					logtc("track(%d) - Marker handling : Flush as soon as possible, but marker is null", GetMediaTrack()->GetId());
+					return false;
+				}
+
+				logtt("track(%u) - Force segment flush, has marker (start: %" PRId64 ", marker:%" PRId64 " (%s) end: %" PRId64 ")", GetMediaTrack()->GetId(), samples->GetStartTimestamp(), marker->GetTimestamp(), marker->GetTag().CStr(), samples->GetEndTimestamp());
+
+				if (marker->IsOutOfNetwork() == true)
+				{
+					// If a CUE-OUT marker is included, flush the samples immediately. This may cause the next segment to start with a non-keyframe, but it will be replaced by a new segment through another ad-insertion solution.
+					marker_handling = kShouldFlushImmediately;
+					logti("track(%u) - Force segment flush immediately, cue-out marker : sample duration (%f)", GetMediaTrack()->GetId(), samples->GetTotalDuration());
+				}
+			}
+
+			// https://datatracker.ietf.org/doc/html/draft-pantos-hls-rfc8216bis#section-4.4.3.8
+			// The duration of a Partial Segment MUST be less than or equal to the Part Target Duration.  
+			// The duration of each Partial Segment MUST be at least 85% of the Part Target Duration, 
+			// with the exception of Partial Segments with the INDEPENDENT=YES attribute 
+			// and the final Partial Segment of any Parent Segment.
+			double last_segment_duration = 0.0; 
+			if (last_segment != nullptr && last_segment->IsCompleted() == false)
+			{
+				last_segment_duration = last_segment->GetDurationMs();
+			}
+			bool can_be_last_chunk = false;
+			// https://datatracker.ietf.org/doc/html/draft-pantos-hls-rfc8216bis#section-4.4.4.9
+			// The duration of a Partial Segment MUST be less than or equal to the
+			// Part Target Duration.  The duration of each Partial Segment MUST be
+			// at least 85% of the Part Target Duration, with the exception of
+			// Partial Segments with the INDEPENDENT=YES attribute and the final
+			// Partial Segment of any Parent Segment.
+			if (	(marker_handling != kShouldDeferSegmentFlush) && // Wait marker
+					
+					(
+						(total_sample_duration_ms + last_segment_duration >= _storage->GetTargetSegmentDuration()) ||
+						// Video && next_frame_is_idr && force_segment_flush
+						(GetMediaTrack()->GetMediaType() == cmn::MediaType::Video && next_frame_is_idr && marker_handling == kFlushAsSoonAsPossible) || 
+						// Audio && force_segment_flush
+						(GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio && marker_handling == kFlushAsSoonAsPossible) ||
+						// force segment flush immediately
+						(marker_handling == kShouldFlushImmediately)
+					)
+				)
+			{
+				// Last partial segment
+				can_be_last_chunk = true;
+			}
+
+			if (return_cut == true)
+			{
+				// The marker boundary cut overrides a deferred flush
+				can_be_last_chunk = true;
+			}
+
+			logtt("track(%d), total_sample_duration_ms: %lf, next_total_sample_duration_ms: %lf, target_chunk_duration_ms: %lf, next_frame_is_idr: %d, is_last_partial_segment: %d last_segment_duration: %lf, target_segment_duration: %f", GetMediaTrack()->GetId(), total_sample_duration_ms, next_total_sample_duration_ms, _target_chunk_duration_ms, next_frame_is_idr, can_be_last_chunk, last_segment != nullptr ? last_segment->GetDurationMs() : -1, _storage->GetTargetSegmentDuration());
+
+			// - In the last partial segment, if the next frame is a keyframe, a segment is created immediately. This allows the segment to start with a keyframe.
+			// - When adding samples, if the Part Target Duration is exceeded, a chunk is created immediately.
+			// - If it exceeds 85% and the next sample is independent, a chunk is created. This makes the next chunk start independent.
+			if (	(total_sample_duration_ms >= _target_chunk_duration_ms) ||
+
+					(marker_handling == kShouldFlushImmediately) ||
+
+					(return_cut == true) ||
+
+					(can_be_last_chunk == true && GetMediaTrack()->GetMediaType() == cmn::MediaType::Video && next_frame_is_idr == true) ||
+					(can_be_last_chunk == true && GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio) ||
+
+					((next_total_sample_duration_ms > _target_chunk_duration_ms) && (total_sample_duration_ms >= _target_chunk_duration_ms * 0.85))
+				)
+			{
+				double reserve_buffer_size;
+				
+				if (GetMediaTrack()->GetMediaType() == cmn::MediaType::Video)
+				{
+					// Reserve 10 Mbps.
+					reserve_buffer_size = (_target_chunk_duration_ms / 1000.0) * ((10.0 * 1000.0 * 1000.0) / 8.0);
+				}
+				else
+				{
+					// Reserve 0.5 Mbps.
+					reserve_buffer_size = (_target_chunk_duration_ms / 1000.0) * ((0.5 * 1000.0 * 1000.0) / 8.0);
+				}
+
+				ov::ByteStream chunk_stream(reserve_buffer_size);
+				
+				auto data_samples = GetDataSamples(samples->GetStartTimestamp(), samples->GetEndTimestamp());
+				if (data_samples != nullptr)
+				{
+					if (WriteEmsgBox(chunk_stream, data_samples) == false)
+					{
+						logtw("FMP4Packager::AppendSample() - Failed to write emsg box");
+					}
+				}
+
+				if (WriteMoofBox(chunk_stream, samples) == false)
+				{
+					logte("FMP4Packager::AppendSample() - Failed to write moof box");
+					return false;
+				}
+
+				if (WriteMdatBox(chunk_stream, samples) == false)
+				{
+					logte("FMP4Packager::AppendSample() - Failed to write mdat box");
+					return false;
+				}
+
+				auto chunk = chunk_stream.GetDataPointer();
+
+				// The marker boundary cut ends the segment exactly at this frame's
+				// position, so a marker sitting on it belongs to the closing segment
+				auto pop_end_timestamp = (return_cut == true) ? std::max(samples->GetEndTimestamp(), next_frame->GetDts() + 1) : samples->GetEndTimestamp();
+				auto markers = PopMarkers(samples->GetStartTimestamp(), pop_end_timestamp);
+
+				if (return_cut == true && marker_handling != kShouldFlushImmediately)
+				{
+					for (const auto &marker : markers)
+					{
+						logti("track(%u) - Segment cut at the marker boundary (%s, timestamp: %" PRId64 ")", GetMediaTrack()->GetId(), marker->GetTag().CStr(), marker->GetTimestamp());
+					}
+				}
+
+				bool last_chunk = can_be_last_chunk && next_frame_is_idr;
+				if (marker_handling == kShouldFlushImmediately)
+				{
+					last_chunk = true;
+				}
+
+				if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
+												samples->GetStartTimestamp(),
+												total_sample_duration_ms,
+												samples->IsIndependent(),
+												last_chunk,
+												markers) == false)
+				{
+					logte("FMP4Packager::AppendSample() - Failed to store media chunk");
+					return false;
+				}
+
+				// The storage may have force-completed an overlong segment, so the
+				// pending cut is settled on the flag it reports back
+				if (last_chunk == true)
+				{
+					// A completed boundary satisfies any pending marker cut
+					_pending_marker_cut_timestamp = -1;
+
+					// A marker whose position was skipped over can never be popped by a
+					// sample range again, and a leftover would corrupt the sequence
+					// estimation of every later marker
+					for (const auto &expired_marker : PopExpiredMarkers(samples->GetStartTimestamp()))
+					{
+						logtw("track(%u) - Discarded the marker (%s, timestamp: %" PRId64 ") because its position was never reached", GetMediaTrack()->GetId(), expired_marker->GetTag().CStr(), expired_marker->GetTimestamp());
+					}
+				}
+				else
+				{
+					// A marker consumed by a mid-segment chunk still owes the segment a
+					// cut at the first cuttable frame at or after its position
+					for (const auto &marker : markers)
+					{
+						_pending_marker_cut_timestamp = std::max(_pending_marker_cut_timestamp, marker->GetTimestamp());
+					}
+				}
+
+				_sample_buffer.Reset();
+
+				// Set the average chunk duration to config.chunk_duration_ms
+				// _target_chunk_duration_ms -= total_sample_duration_ms;
+				// _target_chunk_duration_ms += _config.chunk_duration_ms;
+			}
+		}
+
+		// A DRM key rotation changes no content, so it needs no cut: it takes effect where
+		// a new segment starts on its own. Applying it here keeps every segment on a
+		// single key and leaves the segment duration pacing untouched.
+		if (_pending_key_rotation.has_value() == true)
+		{
+			auto buffered_samples = _sample_buffer.GetSamples();
+			bool buffer_is_empty = (buffered_samples == nullptr) || (buffered_samples->GetTotalCount() == 0);
+
+			auto pending_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
+			bool segment_is_starting = (pending_segment == nullptr) ||
+									   ((pending_segment->IsCompleted() == false) && (pending_segment->GetPartialCount() == 0));
+
+			// The new version starts at an independently decodable sample
+			bool independent = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
+
+			if (buffer_is_empty == true && segment_is_starting == true && independent == true)
+			{
+				_storage->StartNewContentVersionForKeyRotation();
+
+				// Rebuild the encryptor with the new key, then regenerate the
+				// initialization section so its tenc/pssh carry that key; it is stored
+				// under the version advanced above
+				UpdateCencProperty(_pending_key_rotation.value());
+				if (CreateInitializationSegment() == false)
+				{
+					// The version has no initialization section and no key to advertise,
+					// so this track cannot be played from here on
+					logtc("FMP4Packager::AppendSample() - Failed to regenerate initialization segment for key rotation, track(%u)", GetMediaTrack()->GetId());
+				}
+
+				_pending_key_rotation.reset();
+			}
+		}
+
+		if (_sample_buffer.AppendSample(next_frame) == false)
+		{
+			logte("FMP4Packager::AppendSample() - Failed to append sample");
+			return false;
+		}
+
+		samples = _sample_buffer.GetSamples();
+		total_sample_duration = samples != nullptr ? samples->GetTotalDuration() : 0;
+		total_sample_duration_ms = (static_cast<double>(total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+
+		_segmentation_info.last_sample_timestamp_ms = static_cast<double>(next_frame->GetDts()) / GetMediaTrack()->GetTimeBase().GetTimescale() * 1000.0;
+		_segmentation_info.last_sample_duration_ms = static_cast<double>(next_frame->GetDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale() * 1000.0;
+
+		last_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
+
+		if (last_segment != nullptr)
+		{
+			_segmentation_info.is_last_segment_completed = last_segment->IsCompleted();
+			_segmentation_info.last_segment_number = last_segment->GetNumber();
+			_segmentation_info.last_partial_segment_number = last_segment->GetLastPartialNumber();
+			_segmentation_info.last_segement_duration_ms = total_sample_duration_ms;
+			if (last_segment->IsCompleted() == false)
+			{
+				_segmentation_info.last_segement_duration_ms += last_segment->GetDurationMs();
+			} 
+			logtt("track(%u) - last_segment_number: %" PRId64 ", last_partial_segment_number: %" PRId64 ", last_segment_duration_ms: %f", GetMediaTrack()->GetId(), _segmentation_info.last_segment_number, _segmentation_info.last_partial_segment_number, _segmentation_info.last_segement_duration_ms);
+		}
+
+		return true;
+	}
+
+	bool FMP4Packager::Flush()
+	{
+		std::shared_ptr<Samples> samples = _sample_buffer.GetSamples();
+
+		if (samples != nullptr && samples->GetTotalCount() > 0)
+		{
+			ov::ByteStream chunk_stream(4096);
+
+			auto data_samples = GetDataSamples(samples->GetStartTimestamp(), samples->GetEndTimestamp());
+			if (data_samples != nullptr)
+			{
+				if (WriteEmsgBox(chunk_stream, data_samples) == false)
+				{
+					logtw("FMP4Packager::Flush() - Failed to write emsg box");
+				}
+			}
+
+			if (WriteMoofBox(chunk_stream, samples) == false)
+			{
+				logte("FMP4Packager::Flush() - Failed to write moof box");
+				return false;
+			}
+
+			if (WriteMdatBox(chunk_stream, samples) == false)
+			{
+				logte("FMP4Packager::Flush() - Failed to write mdat box");
+				return false;
+			}
+
+			auto chunk = chunk_stream.GetDataPointer();
+
+			// Storage expects milliseconds, samples hold durations in timescale units
+			double total_sample_duration_ms = (static_cast<double>(samples->GetTotalDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
+
+			bool last_chunk = true;
+			if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
+											samples->GetStartTimestamp(),
+											total_sample_duration_ms,
+											samples->IsIndependent(), last_chunk) == false)
+			{
+				logte("FMP4Packager::Flush() - Failed to store media chunk");
+				return false;
+			}
+
+			_sample_buffer.Reset();
+		}
+
+		return true;
+	}
+
+	// Get config
+	const FMP4Packager::Config &FMP4Packager::GetConfig() const
+	{
+		return _config;
+	}
+
+	std::optional<MarkerBox::SegmentationInfo> FMP4Packager::GetSegmentationInfo() const
+	{
+		return _segmentation_info;
+	}
+
+	bool FMP4Packager::StoreInitializationSection(const std::shared_ptr<ov::Data> &section)
+	{
+		if (section == nullptr || _storage == nullptr)
+		{
+			return false;
+		}
+
+		if (_storage->StoreInitializationSection(section) == false)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	std::shared_ptr<const MediaPacket> FMP4Packager::ConvertBitstreamFormat(const std::shared_ptr<const MediaPacket> &media_packet)
+	{
+		auto converted_packet = media_packet;
+
+		// fmp4 uses avcC format
+		if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::H264_AVCC)
+		{
+
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::HVCC)
+		{
+
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::H264_ANNEXB)
+		{
+			auto converted_data = NalStreamConverter::ConvertAnnexbToXvcc(media_packet->GetData(), media_packet->GetFragHeader());
+			if (converted_data == nullptr)
+			{
+				logtw("FMP4Packager::ConvertBitstreamFormat() - Failed to convert annexb to avcc");
+				return nullptr;
+			}
+
+			auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+			new_packet->SetData(converted_data);
+			new_packet->SetBitstreamFormat(cmn::BitstreamFormat::H264_AVCC);
+			new_packet->SetPacketType(cmn::PacketType::NALU);
+
+			converted_packet = new_packet;
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::H265_ANNEXB)
+		{
+			auto converted_data = NalStreamConverter::ConvertAnnexbToXvcc(media_packet->GetData(), media_packet->GetFragHeader());
+			if (converted_data == nullptr)
+			{
+				logtw("FMP4Packager::ConvertBitstreamFormat() - Failed to convert annexb to hvcc");
+				return nullptr;
+			}
+
+			auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+			new_packet->SetData(converted_data);
+			new_packet->SetBitstreamFormat(cmn::BitstreamFormat::HVCC);
+			new_packet->SetPacketType(cmn::PacketType::NALU);
+
+			converted_packet = new_packet;
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::AAC_ADTS)
+		{
+			auto raw_data = AacConverter::ConvertAdtsToRaw(media_packet->GetData(), nullptr);
+			if (raw_data == nullptr)
+			{
+				logtw("FMP4Packager::ConvertBitstreamFormat() - Failed to convert adts to raw");
+				return nullptr;
+			}
+
+			auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+			new_packet->SetData(raw_data);
+			new_packet->SetBitstreamFormat(cmn::BitstreamFormat::AAC_RAW);
+			new_packet->SetPacketType(cmn::PacketType::RAW);
+
+			converted_packet = new_packet;
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::AAC_RAW)
+		{
+		}
+		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::AV1_OBU)
+		{
+			// AV1 ISOBMFF v1.3.0 section 2.4:
+			// - OBU_TEMPORAL_DELIMITER, OBU_PADDING, and OBU_REDUNDANT_FRAME_HEADER
+			//   SHOULD NOT be used. We strip temporal delimiters here; padding and
+			//   redundant frame headers are not expected from our encoder pipeline.
+			// - obu_has_size_field SHALL be 1 for every OBU except the last in a sample,
+			//   which MAY omit it. `Av1Parser::ReadObu()` handles both cases: an unsized
+			//   TemporalDelimiter has an empty payload, and any other unsized OBU takes
+			//   the remainder of the buffer (so it is necessarily the terminal OBU).
+			auto data		   = media_packet->GetData();
+			const auto *base   = data->GetDataAs<uint8_t>();
+			const size_t total = data->GetLength();
+
+			if (total == 0)
+			{
+				return nullptr;
+			}
+
+			// Walk the OBUs once, copying everything except temporal delimiters. `ReadObu()`
+			// returns false on malformed input and tolerates a missing size field on the
+			// terminal OBU, so no separate size-field validation pass is needed.
+			auto filtered = std::make_shared<ov::Data>(total);
+			size_t offset = 0;
+			Av1ObuSpan obu;
+
+			while (offset < total)
+			{
+				if (Av1Parser::ReadObu(base, total, offset, obu) == false)
+				{
+					logte("FMP4Packager::ConvertBitstreamFormat() - Failed to parse AV1 OBU at offset %zu", offset);
+					return nullptr;
+				}
+
+				if (obu.header.type != Av1ObuType::TemporalDelimiter)
+				{
+					filtered->Append(base + obu.obu_offset, obu.next_offset - obu.obu_offset);
+				}
+
+				offset = obu.next_offset;
+			}
+
+			if (filtered->GetLength() == 0)
+			{
+				return nullptr;
+			}
+
+			auto new_packet = std::make_shared<MediaPacket>(*media_packet);
+			new_packet->SetData(filtered);
+			converted_packet = new_packet;
+		}
+		else
+		{
+			// Not supported yet
+		}
+
+		return converted_packet;
+	}	
+
+	bool FMP4Packager::WriteFtypBox(ov::ByteStream &data_stream)
+	{
+		ov::ByteStream stream(128);
+
+		stream.WriteText("iso6"); // major brand
+		stream.WriteBE32(0); // minor version
+		stream.WriteText("iso6mp42");  // compatible brands
+
+		{
+			switch (GetMediaTrack()->GetCodecId())
+			{
+				case cmn::MediaCodecId::H264:
+					stream.WriteText("avc1");
+					break;
+
+				case cmn::MediaCodecId::H265:
+					stream.WriteText("hvc1");
+					break;
+
+				case cmn::MediaCodecId::Av1:
+					stream.WriteText("av01");
+					break;
+
+				default:
+					// Non-video tracks (e.g. AAC) carry no video codec brand
+					break;
+			}
+		}
+
+		stream.WriteText("dashhlsfaid3");
+
+		// stream.WriteText("mp42"); // major brand
+		// stream.WriteBE32(0); // minor version
+		// stream.WriteText("isommp42iso5dash"); // compatible brands
+		
+		return WriteBox(data_stream, "ftyp", *stream.GetData());
+	}
+} // namespace bmff

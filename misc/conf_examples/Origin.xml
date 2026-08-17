@@ -32,6 +32,20 @@
 			<Enable>false</Enable>
 			<MaxClientPeersPerHostPeer>2</MaxClientPeersPerHostPeer>
 		</P2P>
+
+		<!-- jemalloc allocator tuning (effective only in jemalloc builds) -->
+		<Jemalloc>
+			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
+			<BackgroundPurge>true</BackgroundPurge>
+		</Jemalloc>
+
+		<!-- Shared worker threads that run short tasks for the modules that need them -->
+		<TaskPool>
+			<!-- Workers the pool runs on, started with the first task -->
+			<ThreadCount>4</ThreadCount>
+			<!-- Tasks that may wait to start. Reaching this rejects further tasks. -->
+			<MaxTasks>128</MaxTasks>
+		</TaskPool>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->
@@ -77,9 +91,15 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
+					<!-- Set OME_HOST_IP to your public IP (default: * = all local IPs) -->
+					<!-- UDP ICE scales by port count: each port is handled by one thread. The default range spreads load across cores. -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10003/udp}</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_ICE_PORT:10000/tcp}</IceCandidate>
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
 					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
-					<TcpForce>true</TcpForce>
+					<TcpRelayForce>false</TcpRelayForce>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
@@ -108,14 +128,27 @@
 					<WorkerCount>1</WorkerCount>
 				</Signalling>
 				<IceCandidates>
-					<IceCandidate>${env:OME_WEBRTC_CANDIDATE_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
-					<TcpRelay>${env:OME_WEBRTC_CANDIDATE_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
-					<TcpForce>true</TcpForce>
+					<!-- Set OME_HOST_IP to your public IP (default: * = all local IPs) -->
+					<!-- UDP ICE scales by port count: each port is handled by one thread. The default range spreads load across cores. -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10003/udp}</IceCandidate>
+					<!-- Direct TCP ICE (RFC 6544) -->
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_ICE_PORT:10000/tcp}</IceCandidate>
+					<!-- TURN relay for clients that do not support Direct TCP ICE -->
+					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
+					<TcpRelayForce>false</TcpRelayForce>
+					<TcpIceWorkerCount>1</TcpIceWorkerCount>
 					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
 				</IceCandidates>
 			</WebRTC>
 		</Publishers>
 	</Bind>
+
+	<!-- Default Settings for all Virtual Hosts -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
 
 	<VirtualHosts>
 		<!--
@@ -154,7 +187,7 @@
 
 				<Enables>
 					<Providers>rtmp,webrtc,srt</Providers>
-					<Publishers>webrtc,hls,llhls,dash,lldash</Publishers>
+					<Publishers>webrtc,llhls</Publishers>
 				</Enables>
 			</SignedPolicy>
 			-->
@@ -184,53 +217,48 @@
 					<!-- Application type (live/vod) -->
 					<Type>live</Type>
 					<OutputProfiles>
+						<!-- 'HWAccels' option is deprecated. -->
+
 						<OutputProfile>
 							<Name>bypass_stream</Name>
 							<OutputStreamName>${OriginStreamName}</OutputStreamName>
 
-							<!-- 
-							You can provide ABR with Playlist. Currently, ABR is supported in LLHLS and WebRTC.
-							
 							<Playlist>
-								<Name>Paid</Name>
-								You can play this playlist with 
-								LLHLS : http[s]://<domain>[:port]/<app>/<stream>/<FileName>.m3u8 
-								WebRTC : ws[s]://<domain>[:port]/<app>/<stream>/<FileName>
-								Note that the keywords "playlist" and "chunklist" MUST NOT be included in FileName.
-								<FileName>premium</FileName>
-
-								Options is optional. 
+								<Name>default</Name>
+								<FileName>master</FileName>
 								<Options>
-									WebRtcAutoAbr : Default value is true
-									<WebRtcAutoAbr>true</WebRtcAutoAbr> 
+									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
+									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>
-
-								<Rendition>
-									<Name>bypass</Name>
-									<Video>bypass_video</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>480p</Name>
-									<Video>480p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
+								<RenditionTemplate>
+									<Name>${Height}p</Name>
+									<VideoTemplate> <!-- Filter by video properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>bypass_video</VariantName>
+										<VideoIndexHint>0</VideoIndexHint>
+										<MaxWidth>1080</MaxWidth>
+										<MinWidth>240</MinWidth>
+										<MaxHeight>720</MaxHeight>
+										<MinHeight>240</MinHeight>
+										<MaxFPS>30</MaxFPS>
+										<MinFPS>30</MinFPS>
+										<MaxBitrate>2000000</MaxBitrate>
+										<MinBitrate>500000</MinBitrate> -->
+									</VideoTemplate>
+									<AudioTemplate> <!-- Filter by audio properties -->
+										<EncodingType>all</EncodingType> <!-- all, bypassed, encoded -->
+										<!-- <VariantName>aac_audio</VariantName>
+										<MaxBitrate>128000</MaxBitrate>
+										<MinBitrate>128000</MinBitrate>
+										<MaxSamplerate>48000</MaxSamplerate>
+										<MinSamplerate>48000</MinSamplerate>
+										<MaxChannel>2</MaxChannel>
+										<MinChannel>2</MinChannel>
+										<AudioIndexHint>0</AudioIndexHint> -->
+									</AudioTemplate>
+								</RenditionTemplate>
 							</Playlist>
-							<Playlist>
-								<Name>free</Name>
-								<FileName>free</FileName>
-								<Rendition>
-									<Name>720p</Name>
-									<Video>720p</Video>
-									<Audio>bypass_audio</Audio>
-								</Rendition>
-							</Playlist>
-							-->
 
 							<Encodes>
 								<Video>
@@ -291,6 +319,10 @@
 						<RTMP />
 						<SRT />
 						<RTSPPull />
+						<Schedule>
+							<MediaRootDir>/opt/ovenmediaengine/media</MediaRootDir>
+							<ScheduleFilesDir>/opt/ovenmediaengine/media</ScheduleFilesDir>
+						</Schedule>
 						<!-- <MPEGTS>
 							<StreamMap>
 									<- Set the stream name of the client connected to the port to "stream_${Port}"
@@ -319,6 +351,7 @@
 							<Rtx>false</Rtx>
 							<Ulpfec>false</Ulpfec>
 							<JitterBuffer>false</JitterBuffer>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist>
 						</WebRTC>
 						<LLHLS>
 							<OriginMode>true</OriginMode>
@@ -339,7 +372,22 @@
 							<CrossDomains>
 								<Url>*</Url>
 							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- llhls.m3u8 -->
 						</LLHLS>
+						<HLS>
+							<SegmentCount>4</SegmentCount>
+							<SegmentDuration>4</SegmentDuration>
+							<!-- <DVR>
+								<Enable>true</Enable>
+								<EventPlaylistType>false</EventPlaylistType>
+								<TempStoragePath>/tmp/ome_dvr/</TempStoragePath>
+								<MaxDuration>600</MaxDuration>
+							</DVR> -->
+							<CrossDomains>
+								<Url>*</Url>
+							</CrossDomains>
+							<CreateDefaultPlaylist>true</CreateDefaultPlaylist> <!-- ts:playlist.m3u8 -->
+						</HLS>
 					</Publishers>
 				</Application>
 			</Applications>

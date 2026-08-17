@@ -1,36 +1,66 @@
-# Getting Started with Docker
+---
+title: Getting Started with Docker
+description: "Run OvenMediaEngine from the official OvenMedia Labs Docker image with default settings in a single command."
+sidebar_position: 5
+---
 
 ## Getting Started with default settings
 
-OvenMediaEngine provides the Docker image from [AirenSoft's Docker Hub](https://hub.docker.com/r/airensoft/ovenmediaengine) (**airensoft/ovenmediaengine)** repository. After installing [Docker](https://www.docker.com), you can simply run the following command:
+OvenMediaEngine provides the Docker image from [OvenMedia Labs Docker Hub](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine) (**ovenmedialabs/ovenmediaengine)** repository. After installing [Docker](https://www.docker.com), you can simply run the following command:
 
 ```sh
 docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
--p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
+ovenmedialabs/ovenmediaengine:latest
 ```
 
-{% hint style="warning" %}
+
+:::tip[Choosing an image tag]
+
+The `ovenmedialabs/ovenmediaengine` repository provides the following tags:
+
+| Tag | Description |
+| --- | --- |
+| `latest` | The most recent stable release. Convenient, but the version it points to changes as new releases ship. |
+| `dev` | The latest development build from the `master` branch. |
+| `v0.20.5` | A specific stable release — recommended for production, so deployments stay on a fixed version. Browse the [available tags](https://hub.docker.com/r/ovenmedialabs/ovenmediaengine/tags) or the [releases page](https://github.com/OvenMediaLabs/OvenMediaEngine/releases) and pin the version you want. |
+
+For example, to run a specific release:
+
+```sh
+docker run --name ome -d -e OME_HOST_IP=Your.HOST.IP.Address \
+-p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 -p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
+ovenmedialabs/ovenmediaengine:v0.20.5
+```
+
+:::
+
+
+:::warning
+
 If a certificate is not installed in OvenMediaEngine, some functions (WebRTC Ingest, LLHLS playback) may not work due to the browser's security policy. Please refer to [Complex Configuration](getting-started-with-docker.md#getting-started-with-complex-configuration) section to install the certificate.
-{% endhint %}
+
+:::
+
 
 You can set the following environment variables.
 
 ### Environment Variables
 
-| Env                                | Default Value   |
-| ---------------------------------- | --------------- |
-| OME\_HOST\_IP                      | \*              |
-| OME\_ORIGIN\_PORT                  | 9000            |
-| OME\_RTMP\_PROV\_PORT              | 1935            |
-| OME\_SRT\_PROV\_PORT               | 9999/udp        |
-| OME\_MPEGTS\_PROV\_PORT            | 4000/udp        |
-| OME\_LLHLS\_STREAM\_PORT           | 3333            |
-| OME\_LLHLS\_STREAM\_TLS\_PORT      | 3334            |
-| OME\_WEBRTC\_SIGNALLING\_PORT      | 3333            |
-| OME\_WEBRTC\_SIGNALLING\_TLS\_PORT | 3334            |
-| OME\_WEBRTC\_TCP\_RELAY\_PORT      | 3478            |
-| OME\_WEBRTC\_CANDIDATE\_PORT       | 10000-10004/udp |
+| Env                              | Default Value     |
+| -------------------------------- | ----------------- |
+| `OME_HOST_IP`                    | `*`               |
+| `OME_ORIGIN_PORT`                | `9000`            |
+| `OME_RTMP_PROV_PORT`             | `1935`            |
+| `OME_SRT_PROV_PORT`              | `9999/udp`        |
+| `OME_MPEGTS_PROV_PORT`           | `4000/udp`        |
+| `OME_LLHLS_STREAM_PORT`          | `3333`            |
+| `OME_LLHLS_STREAM_TLS_PORT`      | `3334`            |
+| `OME_WEBRTC_SIGNALLING_PORT`     | `3333`            |
+| `OME_WEBRTC_SIGNALLING_TLS_PORT` | `3334`            |
+| `OME_WEBRTC_TCP_RELAY_PORT`      | `3478`            |
+| `OME_WEBRTC_CANDIDATE_PORT`      | `10000-10003/udp` |
+| `OME_WEBRTC_TCP_ICE_PORT`        | `10000/tcp`       |
 
 ## Getting Started with Complex Configuration
 
@@ -38,13 +68,13 @@ When you need to install a certificate in OME or apply a complex configuration, 
 
 OvenMediaEngine docker container loads configuration files from the following path.
 
-| Type               | Path / Description                                                                                                                                                                           |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server.xml         | `/opt/ovenmediaengine/bin/origin_conf/Server.xml`                                                                                                                                            |
-| Logger.xml         | `/opt/ovenmediaengine/bin/origin_conf/Logger.xml`                                                                                                                                            |
-| Server Certificate | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.crt</code><br><code></code><br><code></code>Server certificate file in PEM format. The intermediate certificate must not be included.</p> |
-| Private Key        | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.key</code><br><code></code><br><code></code>This is the private key file of the certificate.</p>                                          |
-| CA Bundle          | <p><code>/opt/ovenmediaengine/bin/origin_conf/cert.ca-bundle</code><br><code></code><br><code></code>A file containing root and intermediate certificates.</p>                               |
+| Type               | Path / Description                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Server.xml`       | `/opt/ovenmediaengine/bin/origin_conf/Server.xml`                                                                                                                  |
+| `Logger.xml`       | `/opt/ovenmediaengine/bin/origin_conf/Logger.xml`                                                                                                                  |
+| Server Certificate | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.crt`<br /><br />Server certificate file in PEM format. The intermediate certificate must not be included.</p> |
+| Private Key        | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.key`<br /><br />This is the private key file of the certificate.</p>                                          |
+| CA Bundle          | <p>`/opt/ovenmediaengine/bin/origin_conf/cert.ca-bundle`<br /><br />A file containing root and intermediate certificates.</p>                               |
 
 There are many ways to change files inside a Docker container, but this document describes how to change them using Docker's bind mounts.
 
@@ -52,7 +82,7 @@ There are many ways to change files inside a Docker container, but this document
 
 #### Create the directories
 
-{% code overflow="wrap" %}
+
 ```sh
 export OME_DOCKER_HOME=/opt/ovenmediaengine
 sudo mkdir -p $OME_DOCKER_HOME/conf
@@ -65,12 +95,12 @@ sudo chmod -R 775 $OME_DOCKER_HOME
 # If you want to use OME_HOME permanently, add the following line to the ~/.profile file for bash, for other shells, you can do it accordingly.
 echo "export OME_DOCKER_HOME=/opt/ovenmediaengine" >> ~/.profile
 ```
-{% endcode %}
+
 
 #### Copy the default configurations from Docker container
 
 ```sh
-docker run -d --name tmp-ome airensoft/ovenmediaengine:latest
+docker run -d --name tmp-ome ovenmedialabs/ovenmediaengine:latest
 docker cp tmp-ome:/opt/ovenmediaengine/bin/origin_conf/Server.xml $OME_DOCKER_HOME/conf
 docker cp tmp-ome:/opt/ovenmediaengine/bin/origin_conf/Logger.xml $OME_DOCKER_HOME/conf
 docker rm -f tmp-ome
@@ -78,7 +108,7 @@ docker rm -f tmp-ome
 
 #### Copy the certificate files to the directory
 
-Copy your PEM certificate files to the path below  if you need to enable TLS. The destination file names must match if using the default configuration. If you want to change the file name, you can do so by editing the Server.xml configuration file. See [TLS Encryption](../configuration/tls-encryption.md) for details.
+Copy your PEM certificate files to the path below if you need to enable TLS. The destination file names must match if using the default configuration. If you want to change the file name, you can do so by editing the Server.xml configuration file. See [TLS Encryption](../configuration/tls-encryption.md) for details.
 
 ```sh
 cp /your/server_certificate_file.crt $OME_DOCKER_HOME/conf/cert.crt
@@ -98,16 +128,16 @@ vi $OME_DOCKER_HOME/conf/Server.xml
 
 The command below will make your OvenMediaEngine docker container run with $OME\_DOCKER\_HOME/conf/Server.xml and $OME\_DOCKER\_HOME/conf/Logger.xml files on your host. It will also create $OME\_DOCKER\_HOME/logs/ovenmediaengine.log file.
 
-{% code overflow="wrap" %}
+
 ```sh
 docker run -d -it --name ome -e OME_HOST_IP=Your.HOST.IP.Address \
 -v $OME_DOCKER_HOME/conf:/opt/ovenmediaengine/bin/origin_conf \
 -v $OME_DOCKER_HOME/logs:/var/log/ovenmediaengine \
 -p 1935:1935 -p 9999:9999/udp -p 9000:9000 -p 3333:3333 -p 3478:3478 \
--p 10000-10009:10000-10009/udp \
-airensoft/ovenmediaengine:latest
+-p 10000-10003:10000-10003/udp -p 10000:10000/tcp \
+ovenmedialabs/ovenmediaengine:latest
 ```
-{% endcode %}
+
 
 #### Check the log file
 

@@ -1,16 +1,20 @@
-# Current
+---
+title: Current
+description: "Get current OvenMediaEngine statistics for a virtual host, application, or stream through the v1 REST API."
+sidebar_position: 55
+---
 
 Provides statistics of virtual host, application, and stream.
 
 ## Get Statistics of Virtual Host
 
-> ### Request
+> **Request**
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/stats/current/vhosts/{vhost}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/stats/current/vhosts/&#x7B;vhost&#x7D;</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -21,21 +25,21 @@ Authorization: Basic {credentials}
 
 </details>
 
-> ### Responses
+> **Responses**
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -43,14 +47,12 @@ Content-Type: application/json
     "message": "OK",
     "response": {
         "connections": {
-            "dash": 0,
             "file": 0,
-            "hls": 0,
-            "lldash": 0,
+            "hlsv3": 0,
             "llhls": 0,
-            "mpegtspush": 0,
             "ovt": 0,
-            "rtmppush": 0,
+            "push": 0,
+            "srt": 0,
             "thumbnail": 0,
             "webrtc": 0
         },
@@ -77,17 +79,17 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -100,11 +102,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -117,13 +119,13 @@ The given vhost name could not be found.
 
 ## Get Statistics of Application
 
-> ### Request
+> **Request**
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/stats/current/vhosts/{vhost}/apps/{app}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/stats/current/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -134,21 +136,21 @@ Authorization: Basic {credentials}
 
 </details>
 
-> ### Responses
+> **Responses**
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -156,14 +158,12 @@ Content-Type: application/json
     "message": "OK",
     "response": {
         "connections": {
-            "dash": 0,
             "file": 0,
-            "hls": 0,
-            "lldash": 0,
+            "hlsv3": 0,
             "llhls": 0,
-            "mpegtspush": 0,
             "ovt": 0,
-            "rtmppush": 0,
+            "push": 0,
+            "srt": 0,
             "thumbnail": 0,
             "webrtc": 0
         },
@@ -190,17 +190,17 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -213,11 +213,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -230,13 +230,13 @@ The given vhost or application name could not be found.
 
 ## Get Statistics of Stream
 
-> ### Request
+> **Request**
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/stats/current/vhosts/{vhost}/apps/{app}/streams/{stream}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/stats/current/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -247,21 +247,21 @@ Authorization: Basic {credentials}
 
 </details>
 
-> ### Responses
+> **Responses**
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -269,14 +269,12 @@ Content-Type: application/json
     "message": "OK",
     "response": {
         "connections": {
-            "dash": 0,
             "file": 0,
-            "hls": 0,
-            "lldash": 0,
+            "hlsv3": 0,
             "llhls": 0,
-            "mpegtspush": 0,
             "ovt": 0,
-            "rtmppush": 0,
+            "push": 0,
+            "srt": 0,
             "thumbnail": 0,
             "webrtc": 0
         },
@@ -303,17 +301,17 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -326,11 +324,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application or stream name could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {

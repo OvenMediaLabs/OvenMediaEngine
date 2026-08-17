@@ -38,6 +38,26 @@ TabWidth: '4'
 #     UT_Always (in configuration: Always) Use tabs whenever we need to fill whitespace that spans at least from one tab stop to the next one.
 UseTab: Always
 
+# Style of aligning consecutive assignments.
+# 
+# Consecutive will result in formattings like:
+# 
+# int a            = 1;
+# int somelongname = 2;
+# double c         = 3;
+# Nested configuration flags:
+# 
+# Alignment options.
+# 
+# They can also be read as a whole for compatibility. The choices are:
+# 
+#     None
+#     Consecutive
+#     AcrossEmptyLines
+#     AcrossComments
+#     AcrossEmptyLinesAndComments
+AlignConsecutiveAssignments: AcrossEmptyLinesAndComments
+
 # Options for aligning backslashes in escaped newlines.
 # 
 # Possible values:
@@ -273,22 +293,21 @@ IndentPPDirectives: AfterHash
 #
 #     BS_Custom (in configuration: Custom) Configure each individual brace in BraceWrapping.
 BreakBeforeBraces: Custom
-BraceWrapping: {
-    AfterClass: 'true'
-    AfterControlStatement: 'true'
-    AfterEnum : 'true'
-    AfterFunction : 'true'
-    AfterNamespace : 'true'
-    AfterStruct : 'true'
-    AfterUnion : 'true'
-    AfterExternBlock : 'true'
-    BeforeCatch : 'true'
-    BeforeElse : 'true'
-    IndentBraces : 'false'
-    SplitEmptyFunction : 'false'
-    SplitEmptyRecord : 'true'
-    SplitEmptyNamespace : 'true'
-}
+BraceWrapping:
+  AfterClass: true
+  AfterControlStatement: true
+  AfterEnum : true
+  AfterFunction : true
+  AfterNamespace : true
+  AfterStruct : true
+  AfterUnion : true
+  AfterExternBlock : true
+  BeforeCatch : true
+  BeforeElse : true
+  IndentBraces : false
+  SplitEmptyFunction : false
+  SplitEmptyRecord : true
+  SplitEmptyNamespace : true
 
 # The indentation used for namespaces.
 # 
@@ -318,6 +337,20 @@ BraceWrapping: {
 #           }
 #         }
 NamespaceIndentation: All
+
+# Pointer and reference alignment style.
+# 
+# Possible values:
+# 
+#     PAS_Left (in configuration: Left) Align pointer to the left.
+#         int* a;
+#
+#     PAS_Right (in configuration: Right) Align pointer to the right.
+#         int *a;
+#
+#     PAS_Middle (in configuration: Middle) Align pointer in the middle.
+#         int * a;
+PointerAlignment: Right
 
 # If true, clang-format will attempt to re-flow comments.
 # 

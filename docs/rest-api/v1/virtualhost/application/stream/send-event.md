@@ -1,4 +1,8 @@
-# Send Event
+---
+title: Send Event
+description: "Send timed events and metadata into a live OvenMediaEngine stream through the v1 REST API."
+sidebar_position: 47
+---
 
 It allows you to insert events into streams. Right now events only support the ID3v2 format and only the LLHLS publisher handles it. Events delivered to LLHLS Publisher are inserted as emsg boxes within the m4s container.
 
@@ -6,7 +10,7 @@ It allows you to insert events into streams. Right now events only support the I
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> v1/vhosts/{vhost}/apps/{app}/streams/{stream}:sendEvent</summary>
+<summary><span class="http-method http-method-post">POST</span> v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;/streams/&#x7B;stream&#x7D;:sendEvent</summary>
 
 #### Header
 
@@ -26,7 +30,7 @@ Authorization: Basic {credentials}
   "events":[
       {
         "frameType": "TXXX",
-        "info": "AirenSoft",
+        "info": "OvenMediaLabs",
         "data": "OvenMediaEngine"
       },
       {
@@ -60,7 +64,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -76,10 +80,6 @@ Content-Type: application/json
 {
 	"statusCode": 200,
 	"message": "OK",
-	"response": [
-		"stream",
-		"stream2"
-	]
 }
 
 # statusCode
@@ -94,7 +94,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json Object or does not have a required value
 
@@ -102,7 +102,7 @@ Invalid request. Body is not a Json Object or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -125,7 +125,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or app name could not be found.
 

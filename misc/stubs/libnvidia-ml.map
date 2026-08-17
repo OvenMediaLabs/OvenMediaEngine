@@ -1,0 +1,4 @@
+LIBNVIDIA_ML_1 {
+  global: nvml*;
+  local: *;
+};

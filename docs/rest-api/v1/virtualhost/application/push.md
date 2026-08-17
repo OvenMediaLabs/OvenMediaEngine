@@ -1,16 +1,20 @@
-# Push
+---
+title: Push
+description: "Start and stop OvenMediaEngine push publishing over SRT, RTMP, or MPEG-2 TS through the v1 REST API."
+sidebar_position: 45
+---
 
 ## Start Push Publishing
 
-Start  push publishing the stream with RTMP or MPEG2-TS. If the requested stream does not exist on the server, this task is reserved. And when the stream is created, it automatically starts push publishing.
+Start push publishing the stream with SRT, RTMP or MPEG2-TS. If the requested stream does not exist on the server, this task is reserved. And when the stream is created, it automatically starts push publishing.
 
-> ### Request
+> #### Request
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:startPush</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:startPush</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -19,9 +23,50 @@ Authorization: Basic {credentials}
     Credentials for HTTP Basic Authentication created with <AccessToken>
 ```
 
-#### Body : RTMP
+**Body : SRT**
 
-{% code overflow="wrap" %}
+```json
+{
+  "id": "{unique_push_id}",
+  "stream": {
+    "name": "{output_stream_name}",
+    "variantNames": []
+  },
+  "protocol": "srt",
+  "url": "srt://{host}[:port]?mode=caller&latency=120000&timeout=500000",
+  "streamKey": ""
+}
+
+# id (required)
+    unique ID to identify the task
+    
+# stream (required)
+    ## name (required)
+        output stream name
+        
+    ## variantNames (optional)
+        Array of track names to publsh. 
+        This value is Encodes.[Video|Audio|Data].Name in the OutputProfile
+        setting.
+        
+        If empty, all tracks will be sent.
+
+# protocol (required)
+    srt
+    
+# url (required) 
+    address of destination.
+    options can be set in query-string format.
+    
+# streamKey (optional)
+    not used with mpegts
+```
+
+In SRT Push Publisher, only the `caller` connection mode is supported.
+
+**Body : RTMP**
+
+
 ```json
 {
   "id": "{unique_push_id}",
@@ -58,9 +103,9 @@ Authorization: Basic {credentials}
 # streamKey (required)
     RTMP stream key
 ```
-{% endcode %}
 
-#### Body : MPEG2-TS
+
+**Body : MPEG2-TS**
 
 ```json
 {
@@ -100,21 +145,21 @@ Authorization: Basic {credentials}
 
 </details>
 
-> ### Responses
+> #### Responses
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
 Please note that `responses` are incorrectly returned in Json array format for version 0.15.3 and earlier.
 
@@ -162,7 +207,7 @@ Please note that `responses` are incorrectly returned in Json array format for v
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -170,17 +215,17 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -193,11 +238,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -210,7 +255,7 @@ The given vhost or application name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 duplicate ID
 
@@ -218,13 +263,13 @@ duplicate ID
 
 ## Stop Push Publishing
 
-> ### Request
+> #### Request
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:stopPush</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:stopPush</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -233,9 +278,9 @@ Authorization: Basic {credentials}
     Credentials for HTTP Basic Authentication created with <AccessToken>
 ```
 
-#### Body&#x20;
+**Body**
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_push_id}"
@@ -244,25 +289,25 @@ Authorization: Basic {credentials}
 # id (required)
     unique ID to identify the push publishing task
 ```
-{% endcode %}
+
 
 </details>
 
-> ### Responses
+> #### Responses
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -280,7 +325,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.
 
@@ -288,17 +333,17 @@ Invalid request.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -311,11 +356,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost/application name or id of recording task could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -328,13 +373,13 @@ The given vhost/application name or id of recording task could not be found.
 
 ## Get Push Publishing State
 
-> ### Request
+> #### Request
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps/{app}:pushes</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;:pushes</summary>
 
-#### **Header**
+**Header**
 
 ```http
 Authorization: Basic {credentials}
@@ -343,9 +388,9 @@ Authorization: Basic {credentials}
     Credentials for HTTP Basic Authentication created with <AccessToken>
 ```
 
-#### Body&#x20;
+**Body**
 
-{% code overflow="wrap" %}
+
 ```json
 {
     "id": "{unique_push_id}"
@@ -354,27 +399,27 @@ Authorization: Basic {credentials}
 # id (optional)
     unique ID to identify the push publishing task. If no id is given in the request, the full list is returned.
 ```
-{% endcode %}
+
 
 </details>
 
-> ### Responses
+> #### Responses
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
-#### **Header**
+**Header**
 
 ```
 Content-Type: application/json
 ```
 
-#### **Body**
+**Body**
 
-The `response` is <mark style="color:green;">Json array</mark> format.
+The `response` is Json array format.
 
 ```json
 {
@@ -427,17 +472,17 @@ The `response` is <mark style="color:green;">Json array</mark> format.
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
-#### **Header**
+**Header**
 
 ```http
 WWW-Authenticate: Basic realm=”OvenMediaEngine”
 ```
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -450,11 +495,11 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost or application name could not be found.
 
-#### **Body**
+**Body**
 
 ```json
 {
@@ -469,10 +514,11 @@ The given vhost or application name could not be found.
 
 The Push Publishing task has the state shown in the table below. You can get the `state` in the Start Push Publishing and Get Push Publishing State API response.
 
-| Ready    | Preparing to start or waiting for the stream to be created. |
-| -------- | ----------------------------------------------------------- |
-| Started  | In Progress                                                 |
-| Stopping | Is stopping                                                 |
-| Stopped  | Stopped                                                     |
-| Error    | Error                                                       |
-
+| State      | Description 						 |
+| ---------- | ----------------------------------------------------------|
+| ready      | Waiting for the stream to be created. 			 |
+| connecting | Connecting to destination			         |
+| pushing    | Connected and streaming                                   | 
+| stopping   | Disconnection / stop in progress                          |
+| stopped    | Push is disconnected / stopped                            |
+| error      | Push encountered an error                                 |

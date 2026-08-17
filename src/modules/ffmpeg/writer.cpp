@@ -1,0 +1,813 @@
+#include "writer.h"
+
+#include <cinttypes>
+
+#include <base/modules/data_format/scte35_event/scte35_event.h>
+#include <modules/bitstream/aac/aac_converter.h>
+#include <modules/bitstream/nalu/nal_stream_converter.h>
+#include <modules/bitstream/opus/opus_specific_config.h>
+#include <modules/ffmpeg/compat.h>
+#include <modules/rtmp/amf0/amf_document.h>
+
+#define OV_LOG_TAG "FFmpegWriter"
+#define OV_LOG_PREFIX_FORMAT "%s"
+#define OV_LOG_PREFIX_VALUE _log_prefix.CStr()
+
+// Redefine 'logae" to include the log prefix and also store the formatted message on the Writer
+#ifdef logae
+#	undef logae
+#endif
+#define logae(target, fmt, ...)                                                           \
+	do                                                                                    \
+	{                                                                                     \
+		auto _err_msg = ov::String::FormatString(fmt, ##__VA_ARGS__);                     \
+		logte(OV_LOG_PREFIX_FORMAT "%s", (target)->OV_LOG_PREFIX_VALUE, _err_msg.CStr()); \
+		(target)->SetErrorMessage(_err_msg);                                              \
+	} while (0)
+
+namespace ffmpeg
+{
+	std::shared_ptr<Writer> Writer::Create(const ov::String &log_prefix)
+	{
+		auto object = std::make_shared<Writer>(log_prefix);
+
+		return object;
+	}
+
+	Writer::Writer(const ov::String &log_prefix)
+		: _state(WriterStateNone), _log_prefix(log_prefix)
+	{
+	}
+
+	Writer::~Writer()
+	{
+		Stop();
+	}
+
+	void Writer::SetState(WriterState state)
+	{
+		_state.store(state);
+	}
+
+	Writer::WriterState Writer::GetState()
+	{
+		return _state.load();
+	}
+
+	void Writer::SetErrorMessage(const ov::String &message)
+	{
+		std::lock_guard<std::mutex> lock(_error_message_lock);
+		_error_message = message;
+	}
+
+	ov::String Writer::GetErrorMessage() const
+	{
+		std::lock_guard<std::mutex> lock(_error_message_lock);
+		return _error_message;
+	}
+
+	// Interrupt callback for FFmpeg I/O operations
+	// 1 = interrupt, 0 = continue
+	int Writer::InterruptCallback(void *opaque)
+	{
+		Writer *writer = (Writer *)opaque;
+		if(writer == nullptr)
+		{
+			logte("Writer is null.");
+			return 1;
+		}
+
+		auto elapsed = std::chrono::steady_clock::now() - writer->GetLastPacketSentTime();
+		if(writer->GetState() == WriterStateClosed)
+		{
+			logae(writer, "Writer was closed before I/O operation completed.");
+			return 1;
+		}
+		else if(writer->GetState() == WriterStateConnecting)
+		{
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if(elapsed_ms > writer->GetConnectionTimeout())
+			{
+				logae(writer, "Connection timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				return 1;
+			}
+		}
+		else if(writer->GetState() == WriterStateConnected)
+		{
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if(elapsed_ms > writer->GetSendTimeout())
+			{
+				logae(writer, "Send timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				return 1;
+			}
+		}
+		// Error: a racing SendPacket() flipped this after Stop() began closing; the trailer/close still runs, so bound it too.
+		else if(writer->GetState() == WriterStateClosing || writer->GetState() == WriterStateError)
+		{
+			// Nothing opened or written yet: nothing to finalize, so interrupt the pending I/O now.
+			if (writer->_need_to_flush.load() == false && writer->_need_to_close.load() == false)
+			{
+				return 1;
+			}
+
+			// Close timeout: give the final flush enough time (temporarily 2x send timeout)
+			// TODO: add a dedicated CloseTimeout
+			int64_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+			if (elapsed_ms > (int64_t)writer->GetSendTimeout() * 2)
+			{
+				logae(writer, "Close timeout occurred. %" PRId64 " milliseconds. ", elapsed_ms);
+				return 1;
+			}
+		}
+
+		return 0;
+	}
+
+	bool Writer::SetUrl(const ov::String url, const ov::String format)
+	{
+		if (!url || url.IsEmpty() == true)
+		{
+			logae(this, "Destination url is empty");
+			return false;
+		}
+
+
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+		
+		if (_av_format != nullptr)
+		{
+			logae(this, "URL is already set. url(%s)", _url.CStr());
+			return false;
+		}
+
+		_url = url;
+		_format = format;
+
+		// Create output context
+		AVFormatContext *av_format = nullptr;
+		int error = avformat_alloc_output_context2(&av_format, nullptr, (_format != nullptr) ? _format.CStr() : nullptr, _url.CStr());
+		if (error < 0)
+		{
+			logae(this, "Failed to allocate output context. %s", ffmpeg::compat::AVErrorToString(error).CStr());
+			return false;
+		}
+
+		_av_format.reset(av_format, [](AVFormatContext *av_format_ptr) {
+			if (av_format_ptr == nullptr)
+			{
+				return;
+			}
+
+			avformat_free_context(av_format_ptr);
+		});
+		_output_format_name = _av_format->oformat->name;
+
+		return true;
+	}
+
+	ov::String Writer::GetUrl()
+	{
+		std::shared_lock<std::shared_mutex> mlock(_av_format_lock);
+		return _url;
+	}
+
+	void Writer::SetTimestampMode(TimestampMode mode)
+	{
+		_timestamp_mode = mode;
+	}
+
+	Writer::TimestampMode Writer::GetTimestampMode()
+	{
+		return _timestamp_mode;
+	}
+
+	std::shared_ptr<AVStream> Writer::CreateAVStream(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		// Caller (AddTrack) must hold _av_format_lock
+		if (_av_format == nullptr)
+		{
+			logae(this, "Context is not available");
+			return nullptr;
+		}
+
+		AVStream *new_stream = avformat_new_stream(_av_format.get(), nullptr);
+		if (!new_stream)
+		{
+			logae(this, "Could not allocate stream");
+			return nullptr;
+		}
+
+		std::shared_ptr<AVStream> av_stream(new_stream, [](AVStream *av_stream) {});
+		if (!av_stream)
+		{
+			logae(this, "Could not create AVStream");
+			return nullptr;
+		}
+
+		// Convert MediaTrack to AVStream
+		if (ffmpeg::compat::ToAVStream(media_track, av_stream.get()) == false)
+		{
+			logae(this, "Could not convert track info to AVStream");
+			return nullptr;
+		}
+
+		return av_stream;
+	}
+
+	bool Writer::AddMediaTrack(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream)
+	{
+		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
+		{
+			logae(this, "Could not add track. MediaTrack or AVStream is null");
+			return false;
+		}
+
+		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
+		_av_track_map[media_track->GetId()] = std::make_pair(av_stream, media_track);
+
+		logat("Added %s track. id(%d), codec(%s), format(%s)",
+			  cmn::GetMediaTypeString(media_track->GetMediaType()),
+			  media_track->GetId(),
+			  ffmpeg::compat::GetCodecName(av_stream->codecpar->codec_id).CStr(),
+			  cmn::GetBitstreamFormatString(media_track->GetOriginBitstream()));
+
+		return true;
+	}
+
+	bool Writer::AddEventTrack(const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<AVStream> &av_stream, cmn::BitstreamFormat format)
+	{
+		if (media_track == nullptr || av_stream == nullptr || av_stream->codecpar == nullptr)
+		{
+			logae(this, "Could not add event track. MediaTrack or AVStream is null");
+			return false;
+		}
+
+		std::lock_guard<std::shared_mutex> mlock(_track_map_lock);
+		_event_track_map[std::make_pair(media_track->GetId(), format)] = std::make_pair(av_stream, media_track);
+
+		logat("Added %s track. id(%d), codec(%s), format(%s)",
+			  cmn::GetMediaTypeString(media_track->GetMediaType()),
+			  media_track->GetId(),
+			  ffmpeg::compat::GetCodecName(av_stream->codecpar->codec_id).CStr(),
+			  cmn::GetBitstreamFormatString(format));
+
+		return true;
+	}
+
+	bool Writer::AddTrack(const std::shared_ptr<const MediaTrack> &media_track)
+	{
+		// A missing Opus config is synthesized inside ToAVStream(); the track itself
+		// is a frozen snapshot here and must not be modified.
+
+		// Serialize with other context ops; concurrent AddTrack() corrupts the stream array.
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
+		if (_av_format == nullptr)
+		{
+			logae(this, "Context is not available");
+			return false;
+		}
+
+		// Video/Audio is mapped 1:1
+		if (media_track->GetMediaType() == cmn::MediaType::Video ||
+			media_track->GetMediaType() == cmn::MediaType::Audio)
+		{
+			// Audio or Video stream track
+			auto av_stream = CreateAVStream(media_track);
+			if (!av_stream)
+			{
+				return false;
+			}
+
+			if (!AddMediaTrack(media_track, av_stream))
+			{
+				// TODO(Keukhan): AVStream has been added to the AVFormat, a logic to remove the AVStream is needed in case of failure.
+				return false;
+			}
+		}
+
+		// Data tracks are handled differently depending on the Bitstream format.
+
+
+		else if (media_track->GetMediaType() == cmn::MediaType::Data)
+		{
+			// FLV(RTMP Push) - AMF0/AMF3 Metadata
+			if (_output_format_name == "flv")
+			{
+				// AMF0/AMF3 event stream track
+				auto av_stream = CreateAVStream(media_track);
+				if (!av_stream)
+				{
+					return false;
+				}
+
+				if (!AddEventTrack(media_track, av_stream, cmn::BitstreamFormat::AMF))
+				{
+					return false;
+				}
+			}
+			
+			// MP4(MPEG-4 File) -  Data is not used
+			if (_output_format_name == "mp4")
+			{
+				// Data track is not used in MP4
+			}
+		}
+
+		return true;
+	}
+
+	int32_t Writer::GetTrackCountByType(cmn::MediaType media_type)
+	{
+		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		auto track_map = _av_track_map;
+		mlock.unlock();
+
+		int32_t count = 0;
+		for (const auto &[track_id, track_pair] : track_map)
+		{
+			auto &media_track = track_pair.second;
+			if (media_track->GetMediaType() == media_type)
+			{
+				count++;
+			}
+		}
+
+		return count;
+	}
+
+	std::shared_ptr<const MediaTrack> Writer::GetTrackByTrackId(int32_t media_track_id) const
+	{
+		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+		auto track_map = _av_track_map;
+		mlock.unlock();
+
+		if (track_map.find(media_track_id) != track_map.end())
+		{
+			return track_map[media_track_id].second;
+		}
+
+		return nullptr;
+	}
+
+	bool Writer::Start()
+	{
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
+		const WriterState current_state = GetState();
+		if (current_state != WriterStateNone &&
+			current_state != WriterStateClosed)
+		{
+			logae(this, "Cannot start writer. state:%s", WriterStateToString(current_state));
+			return false;
+		}
+
+		SetState(WriterStateConnecting);
+
+		_start_time	   = -1LL;
+
+		_need_to_flush = false;
+		_need_to_close = false;
+
+		if (_av_format == nullptr)
+		{
+			SetState(WriterStateError);
+			logae(this, "Context is not available");
+			return false;
+		}
+
+		auto *av_format = _av_format.get();
+
+		// Set service & provider metadata
+		av_dict_set(&av_format->metadata, "service_provider", "OvenMediaEngine", 0);
+		av_dict_set(&av_format->metadata, "service_name", "OvenMediaEngine", 0);
+
+		av_format->flush_packets = 1;
+
+		// Set Interrupt Callback
+		_interrupt_cb = {InterruptCallback, this};
+
+		// The codec_tag value added in the ffmpeg::compat::ToAVStream function is removed when using the RTMP (FLV) format
+		// Related log. "Tag avc1 incompatible with output codec id '27'"
+		for (uint32_t i = 0; i < av_format->nb_streams; i++)
+		{
+			if (strcmp(av_format->oformat->name, "flv") == 0 && av_format->streams[i]->codecpar != nullptr)
+			{
+				av_format->streams[i]->codecpar->codec_tag = 0;
+			}
+		}
+
+		if (!(av_format->oformat->flags & AVFMT_NOFILE))
+		{
+			_last_packet_sent_time = std::chrono::steady_clock::now();
+			int error = avio_open2(&av_format->pb, av_format->url, AVIO_FLAG_WRITE, &_interrupt_cb, nullptr);
+			if (error < 0)
+			{
+				SetState(WriterStateError);
+
+				logae(this, "Failed to open output url. %s", ffmpeg::compat::AVErrorToString(error).CStr());
+
+				return false;
+			}
+		}
+
+		_need_to_close = true;
+
+		// Write header
+		_last_packet_sent_time = std::chrono::steady_clock::now();
+
+		// Disable edts box
+		AVDictionary *format_options = nullptr;
+		av_dict_set_int(&format_options, "use_editlist", 0, 0);
+
+		int error = avformat_write_header(av_format, &format_options);
+		av_dict_free(&format_options);
+		if (error < 0)
+		{
+			SetState(WriterStateError);
+			logae(this, "Could not create header");
+
+			return false;
+		}
+
+		_need_to_flush = true;
+
+		SetState(WriterStateConnected);
+
+		return true;
+	}
+
+	bool Writer::Stop()
+	{
+		// Added a state to ignore interrupts during closing.
+		SetState(WriterStateClosing);
+
+		ReleaseAVFormatContext();
+		
+		SetState(WriterStateClosed);
+				
+		return true;
+	}
+
+	void Writer::SetConnectionTimeout(int32_t timeout_ms)
+	{
+		_connection_timeout = timeout_ms;
+	}
+
+	int32_t Writer::GetConnectionTimeout() const
+	{
+		return _connection_timeout;
+	}
+
+	void Writer::SetSendTimeout(int32_t timeout_ms)
+	{
+		_send_timeout = timeout_ms;
+	}
+
+	int32_t Writer::GetSendTimeout() const
+	{
+		return _send_timeout;
+	}
+
+	bool Writer::SendPacket(const std::shared_ptr<MediaPacket> &packet, uint64_t *sent_bytes)
+	{
+		// Writer is not connected, but it's not an error. Waiting for initialization.
+		if(GetState() != WriterStateConnected)
+		{
+			logad("Writer is not initialized. state:%s", WriterStateToString(GetState()));
+			return true;
+		}
+
+		// Although the caller should check for null before calling SendPacket,
+		// It will check for null again just in case. 
+		// Even if null is passed, only a warning is issued. 
+		// It is not considered a reason to stop the Writer.
+		if (!packet)
+		{
+			logaw("Invalid packet. packet is null. Dropping.");
+			return true;
+		}
+
+		// av_stream/context are owned by _av_format; hold the lock through the write so a
+		// concurrent Stop()/Split() can't free them mid-use (UAF). Drop if already torn down.
+		std::unique_lock<std::shared_mutex> mlock(_av_format_lock);
+		if (_av_format == nullptr || GetState() != WriterStateConnected)
+		{
+			return true;
+		}
+
+		// Drop packets that do not need to be transmitted
+		auto [av_stream, media_track] = GetTrack(packet->GetTrackId(), packet->GetBitstreamFormat());
+		if (av_stream == nullptr || media_track == nullptr)
+		{
+			return true;
+		}
+
+		// Start Timestamp
+		if (_start_time == -1LL)
+		{
+			if (GetTimestampMode() == TIMESTAMP_STARTZERO_MODE)
+			{
+				_start_time = av_rescale_q(packet->GetPts(), AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, AV_TIME_BASE_Q);
+			}
+			else if (GetTimestampMode() == TIMESTAMP_PASSTHROUGH_MODE)
+			{
+				_start_time = 0LL;
+			}
+		}
+
+		// Convert 1/AV_TIME_BASE -> 1/TimeBase of MediaTrack
+		int64_t start_time = av_rescale_q(_start_time, AV_TIME_BASE_Q, AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()});
+
+		// Convert MediaPacket to AVPacket
+		AVPacket av_packet = {0};
+		if (ToAVPacket(av_packet, av_stream, packet, media_track, start_time) == false)
+		{
+			logae(this, "Failed to convert MediaPacket to AVPacket");
+			return false;
+		}
+
+		// When a packet with a higher PTS from one of several tracks is sent first, the start time is set. 
+		// If a later packet arrives but actually comes from an earlier time than the first one, it is dropped. 
+		// But this is not treated as an error.
+		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
+		{
+			logaw("Dropping packet with invalid timestamp or size. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", size:%d",
+				   media_track->GetId(), av_packet.pts, av_packet.dts, av_packet.size);
+			av_packet_unref(&av_packet);
+			return true;
+		}
+
+		std::shared_ptr<const ov::Data> new_data = nullptr;
+
+		if (_output_format_name == "flv")
+		{
+			// ANNEXB -> AVCC
+			// ADTS -> RAW
+			switch (packet->GetBitstreamFormat())
+			{
+				case cmn::BitstreamFormat::H264_AVCC:
+					// Do nothing
+					break;
+				case cmn::BitstreamFormat::H264_ANNEXB: {
+					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+				case cmn::BitstreamFormat::AAC_RAW:
+					break;
+				case cmn::BitstreamFormat::AAC_ADTS: {
+					new_data = AacConverter::ConvertAdtsToRaw(packet->GetData(), nullptr);
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to convert adts to raw. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+				case cmn::BitstreamFormat::AMF: {
+					// Related to 'com.youtube.cuepoint', 'textdata' event message
+					ov::ByteStream byte_stream(packet->GetData());
+					AmfDocument document;
+					if (document.Decode(byte_stream) == false)
+					{
+						logw(OV_LOG_TAG".Events","%sFailed to decode AMF Event", _log_prefix.CStr());
+						return true;
+					}
+
+					logi(OV_LOG_TAG".Events","%sInserted AMF Event. PTS: %" PRId64 ", %s", _log_prefix.CStr(), packet->GetPts(), document.ToString().Replace("\n", " ").CStr());
+				}
+				break;
+				default:
+					// Unsupported bitstream foramt, but it is not an error.
+					return true;
+			}
+		}
+		else if (_output_format_name == "mp4")
+		{
+			switch (packet->GetBitstreamFormat())
+			{
+				case cmn::BitstreamFormat::HVCC:
+					break;
+				case cmn::BitstreamFormat::H265_ANNEXB: {
+					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to convert annexb to hvcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+				case cmn::BitstreamFormat::H264_AVCC:
+					break;
+				case cmn::BitstreamFormat::H264_ANNEXB: {
+					new_data = NalStreamConverter::ConvertAnnexbToXvcc(packet->GetData(), packet->GetFragHeader());
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to convert annexb to avcc. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+				case cmn::BitstreamFormat::AV1_OBU:
+					// The MP4 muxer strips OBU_TEMPORAL_DELIMITER (and other muxer-unfriendly OBUs)
+					// itself via ff_av1_filter_obus(), so the packet is passed through unchanged.
+					break;
+				case cmn::BitstreamFormat::AAC_RAW:
+				case cmn::BitstreamFormat::OPUS:
+					break;
+				case cmn::BitstreamFormat::AAC_ADTS: {
+					new_data = AacConverter::ConvertAdtsToRaw(packet->GetData(), nullptr);
+					if (new_data == nullptr)
+					{
+						logae(this, "Failed to convert adts to raw. track:%d, format:%s, size:%zu",
+							media_track->GetId(),
+							cmn::GetBitstreamFormatString(packet->GetBitstreamFormat()),
+							packet->GetData()->GetLength());
+						return false;
+					}
+					av_packet.size = new_data->GetLength();
+					av_packet.data = (uint8_t *)new_data->GetDataAs<uint8_t>();
+				}
+				break;
+
+				default:
+					// Unsupported bitstream foramt, but it is not an error.
+					return true;
+			}
+		}
+		else if (_output_format_name == "mpegts") // TS, SRT
+		{
+			switch(packet->GetBitstreamFormat())
+			{
+				case cmn::BitstreamFormat::H264_ANNEXB:
+				case cmn::BitstreamFormat::H264_AVCC:
+				case cmn::BitstreamFormat::H265_ANNEXB:
+				case cmn::BitstreamFormat::HVCC:
+				case cmn::BitstreamFormat::AAC_RAW:
+				case cmn::BitstreamFormat::AAC_ADTS:
+				case cmn::BitstreamFormat::AAC_LATM:
+				case cmn::BitstreamFormat::OPUS:
+				case cmn::BitstreamFormat::MP3:
+					break;
+				default:
+					// Unsupported bitstream format, but it is not an error.
+					return true;
+			}
+		}
+
+		_last_packet_sent_time = std::chrono::steady_clock::now();
+
+		// Check DTS monotonicity. if not, drop the packet.
+		auto it = _track_last_dts_map.find(av_packet.stream_index);
+		if (it != _track_last_dts_map.end())
+		{
+			if (av_packet.dts < it->second)
+			{
+				logaw("To avoid non-monotonic DTS, the packet is dropped. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", last_dts:%" PRId64 ", size:%d",
+					   media_track->GetId(), av_packet.pts, av_packet.dts, it->second, av_packet.size);
+
+				av_packet_unref(&av_packet);
+				return true;
+			}
+		}
+
+		// Write packet
+		int error = ::av_write_frame(_av_format.get(), &av_packet);
+		if (error != 0)
+		{
+			av_packet_unref(&av_packet);
+			SetState(WriterStateError);
+
+			// On AVERROR_EXIT, the interrupt callback has already set a more specific reason
+			// (timeout / closed). Don't overwrite it.
+			if (error != AVERROR_EXIT)
+			{
+				logae(this, "Failed to write frame. %s", ffmpeg::compat::AVErrorToString(error).CStr());
+			}
+
+			return false;
+		}
+
+		// Update last DTS for the track to handle DTS monotonicity
+		_track_last_dts_map[av_packet.stream_index] = av_packet.dts;
+
+		mlock.unlock();
+
+		if (sent_bytes != nullptr)
+		{
+			*sent_bytes = av_packet.size;
+		}
+
+		return true;
+	}
+
+	std::chrono::steady_clock::time_point Writer::GetLastPacketSentTime()
+	{
+		return _last_packet_sent_time.load();
+	}
+
+	void Writer::ReleaseAVFormatContext()
+	{
+		std::lock_guard<std::shared_mutex> mlock(_av_format_lock);
+
+		// Finalize under the lock so trailer/close runs once, never racing a write.
+		if (_av_format != nullptr)
+		{
+			if (_need_to_flush)
+			{
+				// Time the flush itself (not prior idle) so a dead peer can't hang Stop().
+				_last_packet_sent_time = std::chrono::steady_clock::now();
+				av_write_trailer(_av_format.get());
+				_need_to_flush = false;
+			}
+
+			if (_need_to_close && _av_format->pb != nullptr)
+			{
+				_last_packet_sent_time = std::chrono::steady_clock::now();
+				avio_closep(&_av_format->pb);
+				_need_to_close = false;
+			}
+		}
+
+		_av_format = nullptr;
+		_need_to_flush = false;
+		_need_to_close = false;
+
+		_track_last_dts_map.clear();
+
+		{
+			std::lock_guard<std::shared_mutex> tlock(_track_map_lock);
+			_av_track_map.clear();
+			_event_track_map.clear();
+		}
+	}
+
+	std::pair<std::shared_ptr<AVStream>, std::shared_ptr<const MediaTrack>> Writer::GetTrack(int32_t track_id, cmn::BitstreamFormat format) const
+	{
+		std::shared_lock<std::shared_mutex> mlock(_track_map_lock);
+
+		// Check track for Audio/Video first
+		{
+			auto it = _av_track_map.find(track_id);
+			if (it != _av_track_map.end())
+			{
+				return it->second;
+			}
+		}
+
+		// Check track for Data/Event
+		{
+			auto it = _event_track_map.find(std::make_pair(track_id, format));
+			if (it != _event_track_map.end())
+			{
+				return it->second;
+			}
+		}
+
+		return std::make_pair(nullptr, nullptr);
+	}
+
+	bool Writer::ToAVPacket(AVPacket &av_packet, const std::shared_ptr<AVStream> av_stream, const std::shared_ptr<MediaPacket> &media_packet, const std::shared_ptr<const MediaTrack> &media_track, int64_t start_time)
+	{
+		if (av_stream == nullptr || media_packet == nullptr || media_packet->GetData() == nullptr || media_track == nullptr)
+		{
+			return false;
+		}
+
+		av_packet.stream_index = av_stream->index;
+		av_packet.flags = (media_packet->GetFlag() == MediaPacketFlag::Key) ? AV_PKT_FLAG_KEY : 0;
+		av_packet.pts = av_rescale_q(media_packet->GetPts() - start_time, AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, av_stream->time_base);
+		av_packet.dts = av_rescale_q(media_packet->GetDts() - start_time, AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, av_stream->time_base);
+		av_packet.duration = av_rescale_q(media_packet->GetDuration(), AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, av_stream->time_base);
+		av_packet.size = media_packet->GetDataLength();
+		av_packet.data = (uint8_t *)media_packet->GetData()->GetDataAs<uint8_t>();
+
+		return true;
+	}
+}  // namespace ffmpeg
+

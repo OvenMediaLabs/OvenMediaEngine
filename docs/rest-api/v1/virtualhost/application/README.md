@@ -1,4 +1,8 @@
-# Application
+---
+title: Application
+description: "List and manage OvenMediaEngine applications within a virtual host through the v1 REST API."
+sidebar_position: 42
+---
 
 ## Get Application List
 
@@ -8,7 +12,7 @@ List all application names in the virtual host.&#x20;
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps</summary>
 
 #### **Header**
 
@@ -25,7 +29,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -60,7 +64,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -83,7 +87,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name could not be found.
 
@@ -106,7 +110,7 @@ Create application in the virtual host
 
 <details>
 
-<summary><mark style="color:blue;">POST</mark> /v1/vhosts/{vhost}/apps</summary>
+<summary><span class="http-method http-method-post">POST</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps</summary>
 
 #### Header
 
@@ -119,9 +123,9 @@ Authorization: Basic {credentials}
 
 #### Body
 
-Configure applications to be created in <mark style="color:green;">Json array</mark> format.&#x20;
+Configure applications to be created in Json array format.&#x20;
 
-{% code overflow="wrap" %}
+
 ```json
 [
     {
@@ -195,7 +199,7 @@ Configure applications to be created in <mark style="color:green;">Json array</m
 # publishers (optional)
     Configure publishers. See the Streaming chapter for details. If publishers are not present in the request, they are configured with default publishers as above.
 ```
-{% endcode %}
+
 
 </details>
 
@@ -203,7 +207,7 @@ Configure applications to be created in <mark style="color:green;">Json array</m
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -215,7 +219,7 @@ Content-Type: application/json
 
 #### **Body**
 
-It responds with <mark style="color:green;">**Json array**</mark> for each request.
+It responds with **Json array** for each request.
 
 ```json
 [
@@ -253,7 +257,7 @@ It responds with <mark style="color:green;">**Json array**</mark> for each reque
 
 <details>
 
-<summary><mark style="color:blue;">207</mark> Multi-Status</summary>
+<summary><span class="http-method http-method-207">207</span> Multi-Status</summary>
 
 There might be a mixture of responses.
 
@@ -265,7 +269,7 @@ Content-Type: application/json
 
 #### **Body**
 
-It responds with <mark style="color:green;">**Json array**</mark> for each request.
+It responds with **Json array** for each request.
 
 ```json
 [
@@ -303,7 +307,7 @@ It responds with <mark style="color:green;">**Json array**</mark> for each reque
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request. Body is not a Json array or does not have a required value
 
@@ -311,7 +315,7 @@ Invalid request. Body is not a Json array or does not have a required value
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -334,7 +338,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name could not be found.
 
@@ -351,7 +355,7 @@ The given vhost name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">409</mark> Conflict</summary>
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
 An application name already exists
 
@@ -363,7 +367,7 @@ An application name already exists
 
 <details>
 
-<summary><mark style="color:blue;">GET</mark> /v1/vhosts/{vhost}/apps/{app}</summary>
+<summary><span class="http-method http-method-get">GET</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;</summary>
 
 #### **Header**
 
@@ -380,7 +384,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -465,7 +469,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -488,7 +492,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or application name could not be found.
 
@@ -511,7 +515,7 @@ Modify application settings. If this request succeeds, the Application will be r
 
 <details>
 
-<summary><mark style="color:blue;">PATCH</mark> /v1/vhosts/{vhost}/apps/{app}</summary>
+<summary><span class="http-method http-method-patch">PATCH</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;</summary>
 
 #### **Header**
 
@@ -542,7 +546,7 @@ Write the value you want to modify. However, name and outputProfiles cannot be m
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -629,7 +633,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">400</mark> Bad Request</summary>
+<summary><span class="http-method http-method-400">400</span> Bad Request</summary>
 
 Invalid request.&#x20;
 
@@ -644,7 +648,7 @@ Invalid request.&#x20;
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -667,7 +671,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or application name could not be found.
 
@@ -688,7 +692,7 @@ The given vhost name or application name could not be found.
 
 <details>
 
-<summary><mark style="color:blue;">DELETE</mark> /v1/vhosts/{vhost}/apps/{app}</summary>
+<summary><span class="http-method http-method-delete">DELETE</span> /v1/vhosts/&#x7B;vhost&#x7D;/apps/&#x7B;app&#x7D;</summary>
 
 #### **Header**
 
@@ -705,7 +709,7 @@ Authorization: Basic {credentials}
 
 <details>
 
-<summary><mark style="color:blue;">200</mark> Ok</summary>
+<summary><span class="http-method http-method-200">200</span> Ok</summary>
 
 The request has succeeded
 
@@ -733,7 +737,7 @@ Content-Type: application/json
 
 <details>
 
-<summary><mark style="color:red;">401</mark> Unauthorized</summary>
+<summary><span class="http-method http-method-401">401</span> Unauthorized</summary>
 
 Authentication required
 
@@ -756,7 +760,7 @@ WWW-Authenticate: Basic realm=”OvenMediaEngine”
 
 <details>
 
-<summary><mark style="color:red;">404</mark> Not Found</summary>
+<summary><span class="http-method http-method-404">404</span> Not Found</summary>
 
 The given vhost name or application name could not be found.
 
@@ -773,7 +777,7 @@ The given vhost name or application name could not be found.
 
 <details>
 
-<summary><mark style="color:red;">500</mark> Internal Server Error</summary>
+<summary><span class="http-method http-method-500">500</span> Internal Server Error</summary>
 
 The request failed due to an error on the server. Check the server log for the reason of the error.
 

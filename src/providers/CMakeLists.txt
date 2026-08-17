@@ -1,0 +1,9 @@
+add_subdirectory(rtmp)
+add_subdirectory(scheduled)
+add_subdirectory(ovt)
+add_subdirectory(webrtc)
+add_subdirectory(rtspc)
+add_subdirectory(srt)
+add_subdirectory(mpegts)
+add_subdirectory(multiplex)
+
