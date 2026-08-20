@@ -158,10 +158,6 @@ private:
 
 	void ConnectSsrcToTrack(uint32_t ssrc, uint32_t track_id);
 
-    time_t _first_receiver_report_time = 0; // 0 - not received RR packet
-    time_t _last_sender_report_time = 0;
-    uint64_t _send_packet_sequence_number = 0;
-
 	// Lifecycle gate: data path (send/receive) takes it shared, Stop/setup exclusive
 	std::shared_mutex _state_lock;
 	std::shared_ptr<RtpRtcpInterface> _observer;
