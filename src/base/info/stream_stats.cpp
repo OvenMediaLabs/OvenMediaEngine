@@ -57,7 +57,7 @@ namespace info
 
 		if (local_port.has_value())
 		{
-			result.AppendFormat("%s:%u", local_address.CStr(), local_port.value());
+			result.AppendFormat("%s:%" PRIu16, local_address.CStr(), local_port.value());
 		}
 		else
 		{
@@ -68,7 +68,7 @@ namespace info
 
 		if (remote_port.has_value())
 		{
-			result.AppendFormat("%s:%u", remote_address.CStr(), remote_port.value());
+			result.AppendFormat("%s:%" PRIu16, remote_address.CStr(), remote_port.value());
 		}
 		else
 		{
