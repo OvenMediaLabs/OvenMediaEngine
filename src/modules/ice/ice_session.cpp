@@ -317,13 +317,23 @@ bool IceSession::MarkNominated(const ov::SocketAddressPair& address_pair)
 // Make a nominated pair the active pair (the one we send on). Called when the
 // peer sends application data on it, so OME follows the pair the peer chose
 // and switches if the peer moves.
-bool IceSession::SelectActiveCandidatePair(const ov::SocketAddressPair& address_pair)
+bool IceSession::SelectActiveCandidatePair(const ov::SocketAddressPair &address_pair,
+										   std::shared_ptr<IceCandidatePair> *selected_pair,
+										   uint64_t *selected_version)
 {
 	ov::ScopedLock lock(_active_candidate_pair_mutex);
 
 	if (_active_candidate_pair != nullptr && _active_candidate_pair->GetAddressPair() == address_pair)
 	{
-		// Already the active pair
+		// Already the active pair: report the current selection, without a new version
+		if (selected_pair != nullptr)
+		{
+			*selected_pair = _active_candidate_pair;
+		}
+		if (selected_version != nullptr)
+		{
+			*selected_version = _active_pair_version;
+		}
 		return true;
 	}
 
@@ -338,7 +348,17 @@ bool IceSession::SelectActiveCandidatePair(const ov::SocketAddressPair& address_
 	auto previous = _active_candidate_pair;
 
 	_active_candidate_pair = candidate_pair;
+	_active_pair_version++;
 	SetState(IceConnectionState::Connected);
+
+	if (selected_pair != nullptr)
+	{
+		*selected_pair = candidate_pair;
+	}
+	if (selected_version != nullptr)
+	{
+		*selected_version = _active_pair_version;
+	}
 
 	// ToString() includes the socket (TCP/UDP + addresses), useful for tracing
 	// which path the peer moved to.

@@ -17,6 +17,7 @@
 #include "ice_types.h"
 
 class IcePort;
+class IceCandidatePair;
 
 class IcePortObserver : public ov::EnableSharedFromThis<IcePortObserver>
 {
@@ -46,6 +47,13 @@ public:
 	// delivered as the same transport state as ordinary disconnects, but Enterprise
 	// ingress alerts must classify them as PolicyExpired instead of NetworkError.
 	virtual void OnStateChanged(IcePort &port, uint32_t session_id, IceConnectionState state, bool is_expired, std::any user_data)
+	{
+		// dummy function
+	}
+	// Notifies the observer of the newly active candidate pair, on the first selection
+	// and on every switch. Called on the packet processing thread: do not block.
+	// Deliveries may race out of order; keep only the highest `selected_version`.
+	virtual void OnIceCandidatePairSelected(IcePort &port, uint32_t session_id, const std::shared_ptr<const IceCandidatePair> &candidate_pair, uint64_t selected_version, std::any user_data)
 	{
 		// dummy function
 	}

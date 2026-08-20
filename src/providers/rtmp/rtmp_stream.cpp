@@ -98,6 +98,7 @@ namespace pvd
 
 		_remote = client_socket;
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
+		SetConnectionInfo(info::ConnectionInfo::From(_remote));
 
 		_import_chunk	   = std::make_shared<RtmpChunkParser>(RTMP_DEFAULT_CHUNK_SIZE);
 		_export_chunk	   = std::make_shared<RtmpExportChunk>(false, RTMP_DEFAULT_CHUNK_SIZE);

@@ -190,6 +190,15 @@ namespace info
 		_stats->SetMediaSource(url);
 	}
 
+	std::shared_ptr<const ConnectionInfo> Stream::GetConnectionInfo() const
+	{
+		return _stats->GetConnectionInfo();
+	}
+	bool Stream::SetConnectionInfo(const std::shared_ptr<const ConnectionInfo> &connection_info)
+	{
+		return _stats->SetConnectionInfo(connection_info);
+	}
+
 	void Stream::SetOutputProfileName(ov::String name)
 	{
 		_output_profile_name = std::move(name);

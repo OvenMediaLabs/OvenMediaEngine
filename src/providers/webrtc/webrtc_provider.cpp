@@ -711,6 +711,49 @@ namespace pvd
 		}
 	}
 
+	void WebRTCProvider::OnIceCandidatePairSelected(IcePort &port, uint32_t session_id, const std::shared_ptr<const IceCandidatePair> &candidate_pair, uint64_t selected_version, std::any user_data)
+	{
+		std::shared_ptr<WebRTCStream> stream;
+
+		try
+		{
+			stream = std::any_cast<std::shared_ptr<WebRTCStream>>(user_data);
+		}
+		catch (const std::bad_any_cast &e)
+		{
+			logtc("[INTERNAL ERROR] could not convert user_data to WebRTCStream");
+			OV_ASSERT2(false);
+			return;
+		}
+
+		if (candidate_pair == nullptr)
+		{
+			return;
+		}
+
+		auto socket = candidate_pair->GetSocket();
+		if (socket == nullptr)
+		{
+			return;
+		}
+
+		// A non-direct pair goes through the built-in TURN server regardless of the socket protocol
+		auto connection_info = info::ConnectionInfo::From(
+			candidate_pair->GetAddressPair(),
+			socket->GetType(),
+			(candidate_pair->GetTransportType() != IceCandidatePair::TransportType::Direct) ? "TURN" : nullptr,
+			selected_version);
+
+		if (stream->SetConnectionInfo(connection_info) == false)
+		{
+			// A racing thread already published a newer selection
+			return;
+		}
+
+		logti("Transport selected for stream(%s/%s) : %s",
+			  stream->GetApplicationName(), stream->GetName().CStr(), connection_info->ToString().CStr());
+	}
+
 	// WHIP API
 	WhipObserver::Answer WebRTCProvider::OnSdpOffer(const std::shared_ptr<const http::svr::HttpRequest> &request,
 													const std::shared_ptr<const SessionDescription> &offer_sdp)

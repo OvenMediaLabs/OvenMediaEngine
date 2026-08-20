@@ -783,7 +783,9 @@ void IcePort::OnApplicationPacketReceived(const std::shared_ptr<ov::Socket> &rem
 	if (ice_session->IsActive(address_pair) == false)
 	{
 		auto old_state = ice_session->GetState();
-		if (ice_session->SelectActiveCandidatePair(address_pair) == false)
+		std::shared_ptr<IceCandidatePair> selected_pair;
+		uint64_t selected_version = 0;
+		if (ice_session->SelectActiveCandidatePair(address_pair, &selected_pair, &selected_version) == false)
 		{
 			// Not a STUN-validated pair, so not a trusted path
 			logtw("Received application packet from invalid peer(%s). Dropping...", address_pair.ToString().CStr());
@@ -793,6 +795,32 @@ void IcePort::OnApplicationPacketReceived(const std::shared_ptr<ov::Socket> &rem
 		if (old_state != ice_session->GetState())
 		{
 			NotifyIceSessionStateChanged(ice_session);
+		}
+
+		// Report the pair this thread selected; the version lets the consumer
+		// drop deliveries that raced out of selection order.
+		auto observer = ice_session->GetObserver();
+		if (observer != nullptr)
+		{
+#if DEBUG
+			// Catch a blocking observer during development (it runs on the packet processing thread)
+			constexpr int64_t OBSERVER_WARNING_THRESHOLD_MS = 100;
+			ov::StopWatch stop_watch;
+
+			stop_watch.Start();
+#endif	// DEBUG
+			observer->OnIceCandidatePairSelected(*this, ice_session->GetSessionID(), selected_pair, selected_version, ice_session->GetUserData());
+#if DEBUG
+			const auto elapsed_us = stop_watch.ElapsedUs();
+			if (elapsed_us >= (OBSERVER_WARNING_THRESHOLD_MS * 1000))
+			{
+				logte(
+					"[DEBUG ONLY] OnIceCandidatePairSelected() of the observer took too long: %.1fms "
+					"(threshold: %" PRId64 "ms). It blocks the packet processing thread, so it must return immediately",
+					elapsed_us / 1000.0,
+					OBSERVER_WARNING_THRESHOLD_MS);
+			}
+#endif	// DEBUG
 		}
 	}
 
