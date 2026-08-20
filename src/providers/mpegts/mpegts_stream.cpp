@@ -43,6 +43,9 @@ namespace pvd
 		SetName(stream_name);
 		_remote = client_socket;
 		SetMediaSource(ov::String::FormatString("%s://%s", ov::StringFromSocketType(client_socket->GetType()), remote_address.ToString(false).CStr()));
+
+		// The shared UDP listener socket knows no remote address; use the packet source instead
+		SetConnectionInfo(info::ConnectionInfo::From(client_socket->GetLocalAddress().get(), &remote_address, client_socket->GetType()));
 		_lifetime_epoch_msec = lifetime_epoch_msec;
 	}
 

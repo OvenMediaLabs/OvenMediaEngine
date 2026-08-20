@@ -49,6 +49,9 @@ namespace info
 		ov::String GetMediaSource() const;
 		void SetMediaSource(ov::String url);
 
+		std::shared_ptr<const ConnectionInfo> GetConnectionInfo() const;
+		bool SetConnectionInfo(const std::shared_ptr<const ConnectionInfo> &connection_info);
+
 		void SetOutputProfileName(ov::String name);
 		ov::String GetOutputProfileName() const;
 

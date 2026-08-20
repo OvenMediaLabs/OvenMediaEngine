@@ -81,7 +81,11 @@ public:
 
 	// Make a STUN-validated pair the active pair (the one we send on).
 	// False if the pair is unknown or has failed its STUN check.
-	bool SelectActiveCandidatePair(const ov::SocketAddressPair& address_pair);
+	// The out-params receive the selected pair and its selection version
+	// (increases per switch), so racing consumers can drop a stale selection.
+	bool SelectActiveCandidatePair(const ov::SocketAddressPair &address_pair,
+								   std::shared_ptr<IceCandidatePair> *selected_pair = nullptr,
+								   uint64_t *selected_version						= nullptr);
 
 	// Active candidate pair (the single pair we send on)
 	std::shared_ptr<IceCandidatePair> GetActiveCandidatePair() const;
@@ -108,6 +112,8 @@ private:
     // Candidate pairs
 	mutable ov::SharedMutex _active_candidate_pair_mutex;
     std::shared_ptr<IceCandidatePair> _active_candidate_pair OV_GUARDED_BY(_active_candidate_pair_mutex);
+	// Increases on every active-pair switch; see SelectActiveCandidatePair()
+	uint64_t _active_pair_version OV_GUARDED_BY(_active_candidate_pair_mutex) = 0;
 
 	mutable ov::SharedMutex _candidate_pairs_mutex;
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs OV_GUARDED_BY(_candidate_pairs_mutex);

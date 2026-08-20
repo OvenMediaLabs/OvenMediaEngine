@@ -11,8 +11,16 @@
 
 namespace serdes
 {
-	static void SetConnection(Json::Value &parent_object, const char *key, const void *temp, Optional optional)
+	static void SetConnection(Json::Value &parent_object, const char *key, const std::shared_ptr<const info::ConnectionInfo> &connection_info, Optional optional)
 	{
+		CONVERTER_RETURN_IF(connection_info == nullptr, Json::objectValue);
+
+		SetString(object, "transport", connection_info->transport, Optional::False);
+		SetString(object, "protocol", connection_info->protocol, Optional::True);
+		SetString(object, "localAddress", connection_info->local_address, Optional::True);
+		SetInt(object, "localPort", connection_info->local_port);
+		SetString(object, "remoteAddress", connection_info->remote_address, Optional::True);
+		SetInt(object, "remotePort", connection_info->remote_port);
 	}
 
 	static void SetTimebase(Json::Value &parent_object, const char *key, const cmn::Timebase &timebase, Optional optional)
@@ -257,8 +265,7 @@ namespace serdes
 
 		SetString(object, "sourceType", ::StringFromStreamSourceType(stream->GetSourceType()), Optional::False);
 		SetString(object, "sourceUrl", stream->GetMediaSource(), Optional::True);
-		// TODO(dimiden): Complete this function
-		SetConnection(object, "connection", stream.get(), Optional::True);
+		SetConnection(object, "connection", stream->GetConnectionInfo(), Optional::True);
 		SetTracks(object, "tracks", *stream, Optional::False);
 		SetTimestamp(object, "createdTime", common_metrics->GetCreatedTime());
 	}

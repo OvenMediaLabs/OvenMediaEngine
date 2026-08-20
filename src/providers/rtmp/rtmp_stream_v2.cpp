@@ -43,6 +43,7 @@ namespace pvd::rtmp
 		logat("Stream has been created");
 
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
+		SetConnectionInfo(info::ConnectionInfo::From(_remote));
 	}
 
 	RtmpStreamV2::~RtmpStreamV2()
