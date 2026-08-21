@@ -34,10 +34,6 @@ namespace bmff
 
 		// The name of the segment being accumulated
 		int64_t segment_number = -1;
-
-		// Published timestamps (tfdt) of this track are shifted back by this
-		// much, anchoring the published timeline on the shared boundaries
-		int64_t publish_offset_us = 0;
 	};
 
 	// What a completed segment actually was. has_marker is filled at the

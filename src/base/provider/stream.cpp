@@ -248,6 +248,7 @@ namespace pvd
 	void Stream::SendProvisionalReturnPoint(int64_t out_timestamp_ms, const cmn::BitstreamFormat &format, const std::shared_ptr<ov::Data> &out_frame, bool urgent, bool internal)
 	{
 		int64_t break_duration_ms = -1;
+		std::shared_ptr<Scte35Event> out_event;
 
 		if (format == cmn::BitstreamFormat::CUE)
 		{
@@ -266,13 +267,13 @@ namespace pvd
 			// SCTE-35 states whether it returns on its own. Without that flag an
 			// explicit splice-in follows, and inventing one here would collide
 			// with it.
-			auto scte_event = Scte35Event::Parse(out_frame);
-			if (scte_event == nullptr || scte_event->IsOutOfNetwork() == false || scte_event->IsAutoReturn() == false)
+			out_event = Scte35Event::Parse(out_frame);
+			if (out_event == nullptr || out_event->IsOutOfNetwork() == false || out_event->IsAutoReturn() == false)
 			{
 				return;
 			}
 
-			break_duration_ms = scte_event->GetDurationMsec();
+			break_duration_ms = out_event->GetDurationMsec();
 		}
 		else
 		{
@@ -294,7 +295,6 @@ namespace pvd
 		}
 		else
 		{
-			auto out_event = Scte35Event::Parse(out_frame);
 			auto return_event = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, out_event->GetID(), false,
 												   return_timestamp_ms, 0, false, true);
 			return_frame = (return_event != nullptr) ? return_event->Serialize() : nullptr;

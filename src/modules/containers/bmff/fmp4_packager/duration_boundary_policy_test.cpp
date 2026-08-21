@@ -65,7 +65,6 @@ TEST(DurationBoundaryPolicyTest, PlanIsRelativeToTheSegmentStart)
 	auto boundary = policy->GetSegmentBoundary(static_cast<int64_t>(12000000));
 	EXPECT_EQ(boundary.end_us, 16000000);
 	EXPECT_FALSE(boundary.exact);
-	EXPECT_EQ(boundary.publish_offset_us, 0);
 
 	// An unknown start plans only the numbering
 	EXPECT_LT(policy->GetSegmentBoundary(std::nullopt).end_us, 0);

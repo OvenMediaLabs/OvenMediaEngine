@@ -28,7 +28,6 @@ namespace bmff
 		boundary.end_us = segment_start_us.has_value() ? (*segment_start_us + _target_segment_duration_us) : -1;
 		boundary.exact = false;
 		boundary.segment_number = _next_segment_number;
-		boundary.publish_offset_us = 0;
 
 		return boundary;
 	}

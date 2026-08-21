@@ -90,7 +90,12 @@ namespace bmff
 		ReferenceBoundaryPolicy(const Config &config, double video_frame_rate);
 
 		SegmentBoundary GetSegmentBoundary(std::optional<int64_t> segment_start_us) override;
-		bool CanEmitChunk(int64_t chunk_end_us) const override;
+
+		// Every stored chunk lifts the high-water mark the synced tracks gate on.
+		// Taken from the stored chunk and not from the planned one: an immediate
+		// marker cut trims the plan after the gate was consulted, and a mark past
+		// the boundary that cut publishes would let a synced track emit past it.
+		void OnMediaChunk(int64_t start_timestamp_us, int64_t duration_us, bool independent, bool last_chunk) override;
 
 		// The feed the synced policies of the stream follow; created and owned
 		// by this reference

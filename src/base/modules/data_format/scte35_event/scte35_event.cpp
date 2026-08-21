@@ -133,11 +133,6 @@ int64_t Scte35Event::GetTimestampMsec() const
 	return _timestamp_msec;
 }
 
-void Scte35Event::SetTimestampMsec(int64_t timestamp_msec)
-{
-	_timestamp_msec = timestamp_msec;
-}
-
 int64_t Scte35Event::GetDurationMsec() const
 {
 	return _duration_msec;

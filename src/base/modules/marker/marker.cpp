@@ -90,19 +90,6 @@ std::shared_ptr<Marker> Marker::GetParent() const
 	return _parent;
 }
 
-void Marker::SetRealizedTimestamp(int64_t timestamp, int64_t timestamp_ms)
-{
-	_timestamp = timestamp;
-	_timestamp_ms = timestamp_ms;
-
-	// SCTE-35 tags render their times from the event itself, so it moves along
-	auto scte_event = GetScte35Event();
-	if (scte_event != nullptr)
-	{
-		scte_event->SetTimestampMsec(timestamp_ms);
-	}
-}
-
 // Getter
 cmn::BitstreamFormat Marker::GetMarkerFormat() const
 {

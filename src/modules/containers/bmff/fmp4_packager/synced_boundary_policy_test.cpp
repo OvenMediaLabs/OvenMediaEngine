@@ -67,6 +67,13 @@ namespace
 		Complete(reference, number, 0.0, timestamp_ms);
 	}
 
+	// The reference stored a chunk ending at the given position (ms), which is
+	// what lifts the mark the synced tracks gate on
+	void AppendToReference(const std::shared_ptr<bmff::ReferenceBoundaryPolicy> &reference, double chunk_end_ms)
+	{
+		reference->OnMediaChunk(0, std::llround(chunk_end_ms * 1000.0), true, false);
+	}
+
 	// A sample arriving on this track. The plan pass is where the policy sees
 	// its position, and that position is what the stall probe measures.
 	void Arrive(const std::shared_ptr<bmff::SegmentBoundaryPolicy> &policy, double dts_ms, double duration_ms = 20.0)
@@ -187,8 +194,8 @@ TEST(SyncedBoundaryPolicyTest, ChunkGateFollowsTheHighWaterMark)
 	auto policy = MakeSynced(reference);
 
 	RealizeBoundary(reference, 0, 4000.0);
-	// The reference appended up to 5000 ms
-	EXPECT_TRUE(reference->CanEmitChunk(5000000));
+	// The reference stored up to 5000 ms
+	AppendToReference(reference, 5000.0);
 
 	EXPECT_TRUE(policy->CanEmitChunk(4800000));
 	EXPECT_TRUE(policy->CanEmitChunk(5000000));
@@ -200,8 +207,8 @@ TEST(SyncedBoundaryPolicyTest, StalledReferenceFallsBackToSelfPacing)
 	auto reference = MakeReference();
 	auto policy = MakeSynced(reference);
 
-	// The reference appended up to 1000 ms, then stalled
-	EXPECT_TRUE(reference->CanEmitChunk(1000000));
+	// The reference stored up to 1000 ms, then stalled
+	AppendToReference(reference, 1000.0);
 
 	// The samples of this track keep arriving from where the reference stopped.
 	// The lag is measured on them: the gate holds every emission at the
@@ -419,11 +426,13 @@ TEST(ReferenceBoundaryPolicyTest, PublishesRealizedBoundaries)
 	EXPECT_EQ(PlanAt(policy, 1400.0).segment_number, 6);
 }
 
-TEST(ReferenceBoundaryPolicyTest, AppendProgressLiftsTheHighWaterMark)
+TEST(ReferenceBoundaryPolicyTest, StoredProgressLiftsTheHighWaterMark)
 {
 	auto policy = MakeReference();
 
-	EXPECT_TRUE(policy->CanEmitChunk(1234000));
+	// The mark follows the stored chunk, so a plan trimmed after the gate was
+	// consulted can never leave the mark past what was really published
+	policy->OnMediaChunk(1000000, 234000, true, false);
 	EXPECT_EQ(policy->GetBoundaryFeed()->GetHighWaterMarkUs(), 1234000);
 }
 

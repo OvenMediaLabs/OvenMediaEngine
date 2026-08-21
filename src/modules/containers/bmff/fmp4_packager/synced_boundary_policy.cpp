@@ -199,12 +199,14 @@ namespace bmff
 		return plan;
 	}
 
-	bool ReferenceBoundaryPolicy::CanEmitChunk(int64_t chunk_end_us) const
+	void ReferenceBoundaryPolicy::OnMediaChunk(int64_t start_timestamp_us, int64_t duration_us, bool independent, bool last_chunk)
 	{
-		// The reference is never held back; its append progress is the high-water
-		// mark every synced track gates its own chunks on
-		_boundary_feed->UpdateHighWaterMark(chunk_end_us);
-		return true;
+		(void)independent;
+		(void)last_chunk;
+
+		// The reference is never held back, so its stored progress is the mark
+		// every synced track gates its own chunks on
+		_boundary_feed->UpdateHighWaterMark(start_timestamp_us + duration_us);
 	}
 
 	CompletionResult ReferenceBoundaryPolicy::DoOnSegmentCompleted(const CompletedSegment &completed, const std::vector<std::shared_ptr<Marker>> &covered_markers)

@@ -37,10 +37,6 @@ public:
 	void SetParent(const std::shared_ptr<Marker> &parent);
 	std::shared_ptr<Marker> GetParent() const;
 
-	// Move the marker's advertised time onto another position (e.g. a realized
-	// cut), for renderers that advertise realized positions
-	void SetRealizedTimestamp(int64_t timestamp, int64_t timestamp_ms);
-
 private:
 	Marker(cmn::BitstreamFormat marker_format, int64_t timestamp, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
 	bool Init();

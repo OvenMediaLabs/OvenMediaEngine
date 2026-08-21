@@ -301,12 +301,11 @@ namespace bmff
 		}
 
 		auto last_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
-		double total_sample_duration = samples != nullptr ? samples->GetTotalDuration() : 0;
-		double total_sample_duration_ms = (static_cast<double>(total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
-		// Calculate duration as milliseconds
+		// Set from the samples actually taken, where the chunk is stored
+		double total_sample_duration_ms = 0.0;
 		bool next_frame_is_idr = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
 
-		if (samples != nullptr && _boundary_policy != nullptr)
+		if (_boundary_policy != nullptr)
 		{
 			// https://datatracker.ietf.org/doc/html/draft-pantos-hls-rfc8216bis#section-4.4.3.8
 			// The duration of a Partial Segment MUST be less than or equal to the Part Target Duration.  
@@ -328,7 +327,7 @@ namespace bmff
 			{
 				segment_start_timestamp = last_segment->GetStartTimestamp();
 			}
-			else if (samples != nullptr && samples->GetTotalDuration() > 0)
+			else if (samples->GetTotalDuration() > 0)
 			{
 				segment_start_timestamp = samples->GetStartTimestamp();
 			}
@@ -458,10 +457,6 @@ namespace bmff
 			logte("FMP4Packager::AppendSample() - Failed to append sample");
 			return false;
 		}
-
-		samples = _sample_buffer.GetSamples();
-		total_sample_duration = samples != nullptr ? samples->GetTotalDuration() : 0;
-		total_sample_duration_ms = (static_cast<double>(total_sample_duration) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
 
 		double timescale = GetMediaTrack()->GetTimeBase().GetTimescale();
 		_last_sample_end_timestamp_ms = static_cast<double>(next_frame->GetDts() + next_frame->GetDuration()) / timescale * 1000.0;

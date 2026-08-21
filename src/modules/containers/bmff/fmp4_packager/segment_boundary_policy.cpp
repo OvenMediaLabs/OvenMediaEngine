@@ -306,6 +306,9 @@ namespace bmff
 
 		SettledMarkers settled;
 
+		// The breaks discarded below; their return points go with them
+		std::vector<std::shared_ptr<Marker>> discarded_breaks;
+
 		for (auto it = _pending_markers.begin(); it != _pending_markers.end();)
 		{
 			if (it->first > end_us + kSettleSlackUs)
@@ -338,6 +341,11 @@ namespace bmff
 				logtw("%s - Discarded the marker (%s, %" PRId64 " ms) because its position is more than a segment behind",
 					  _log_context.CStr(), it->second->GetTag().CStr(), it->second->GetTimestampMs());
 
+				if (it->second->IsOutOfNetwork() == true)
+				{
+					discarded_breaks.push_back(it->second);
+				}
+
 				// The chain must not keep validating against a marker that never cut
 				if (it->second == _last_inserted_marker)
 				{
@@ -347,6 +355,29 @@ namespace bmff
 			}
 
 			it = _pending_markers.erase(it);
+		}
+
+		// A break that never rendered has no return to render either: a lone IN
+		// would announce a return from a break the playlist never opened
+		for (auto it = _pending_markers.begin(); (discarded_breaks.empty() == false) && (it != _pending_markers.end());)
+		{
+			auto parent = it->second->GetParent();
+			if (parent != nullptr && std::find(discarded_breaks.begin(), discarded_breaks.end(), parent) != discarded_breaks.end())
+			{
+				logtw("%s - Dropped the return point (%s, %" PRId64 " ms) of the discarded break",
+					  _log_context.CStr(), it->second->GetTag().CStr(), it->second->GetTimestampMs());
+
+				if (it->second == _last_inserted_marker)
+				{
+					_last_inserted_marker = nullptr;
+					_last_inserted_cut_us = -1;
+				}
+
+				it = _pending_markers.erase(it);
+				continue;
+			}
+
+			++it;
 		}
 
 		_pending_marker_count.store(_pending_markers.size(), std::memory_order_relaxed);
@@ -623,12 +654,16 @@ namespace bmff
 			completed_by_split == false && emit_count > 1)
 		{
 			// The lowest presentation timestamp from each position on, to test a
-			// candidate cut against everything it would keep
-			std::vector<int64_t> lowest_kept_pts_us(emit_count, 0);
+			// candidate cut against everything it would keep. Spans the whole
+			// buffer, not the emit window: the samples past that window stay
+			// behind as well, and a cut that displays after one of them is the
+			// overlap this block exists to prevent.
+			const size_t buffered_count = sample_list.size();
+			std::vector<int64_t> lowest_kept_pts_us(buffered_count, 0);
 			int64_t lowest_us = 0;
-			for (size_t index = emit_count; index-- > 0;)
+			for (size_t index = buffered_count; index-- > 0;)
 			{
-				lowest_us = (index + 1 == emit_count) ? sample_list[index].timing.pts_us : std::min(lowest_us, sample_list[index].timing.pts_us);
+				lowest_us = (index + 1 == buffered_count) ? sample_list[index].timing.pts_us : std::min(lowest_us, sample_list[index].timing.pts_us);
 				lowest_kept_pts_us[index] = lowest_us;
 			}
 
