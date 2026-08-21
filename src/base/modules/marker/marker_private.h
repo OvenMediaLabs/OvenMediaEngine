@@ -8,4 +8,4 @@
 //==============================================================================
 #pragma once
 
-#define OV_LOG_TAG                          "MarkerBox"
+#define OV_LOG_TAG                          "Marker"

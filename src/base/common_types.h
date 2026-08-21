@@ -123,6 +123,27 @@ enum class RtcBWEType : uint8_t
 	All,
 };
 
+enum class LLHlsSegmentationMode : uint8_t
+{
+	// Each segment accumulates to the configured duration
+	Duration,
+	// The reference track (the first video track) cuts at its keyframes
+	// nearest the configured cadence and every other track cuts at the
+	// boundaries it realizes, so the segment grid and numbering agree
+	// across tracks
+	Synced,
+};
+
+enum class LLHlsCueOutCutMode : uint8_t
+{
+	// Cut right at the CUE-OUT even off a non-keyframe; an ad insertor
+	// replaces the break content anyway (server-side ad insertion)
+	Immediate,
+	// Cut at the first keyframe at or after the CUE-OUT, so the original
+	// content keeps playing cleanly (client-side ad insertion)
+	Keyframe,
+};
+
 enum class FrameType : int8_t
 {
 	EmptyFrame,

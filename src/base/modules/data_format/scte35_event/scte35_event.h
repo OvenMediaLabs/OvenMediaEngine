@@ -41,6 +41,9 @@ public:
 	uint32_t GetID() const;
 	bool IsOutOfNetwork() const;
 	int64_t GetTimestampMsec() const;
+	// The event moves onto the realized cut position, so every tag rendered
+	// from it matches the actual boundary
+	void SetTimestampMsec(int64_t timestamp_msec);
 	int64_t GetDurationMsec() const;
 	bool IsAutoReturn() const;
 	// A provisional IN announces the planned return point and may still be

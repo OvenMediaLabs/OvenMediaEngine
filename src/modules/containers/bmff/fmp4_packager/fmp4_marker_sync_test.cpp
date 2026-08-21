@@ -7,522 +7,509 @@
 //==============================================================================
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cstdlib>
-#include <map>
-#include <vector>
-
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
 #include <base/modules/data_format/cue_event/cue_event.h>
 
-#include "fmp4_packager.h"
-#include "fmp4_storage.h"
+#include "duration_boundary_policy.h"
+#include "fmp4_test_fixtures.h"
 
-// Cue markers must keep every track on the same segment sequence: the OUT marker
-// cuts all tracks at its timestamp, the IN marker returns them to the shared
-// segment grid, and the pacing gives each track exactly one extra boundary per
-// marker. This holds when the keyframe interval is strictly shorter than the
-// segment duration and divides it evenly; these tests drive the supported
-// configurations with the real packagers and verify the invariants over many
-// cues. An OUT and its return(IN) arrive as separate events.
+// Markers under the boundary policy: the policy owns the pending markers, cuts
+// the segments at their positions (a CUE-OUT right there or at the next
+// keyframe, per the configured mode; a CUE-IN always at the next keyframe),
+// attaches them to the segments that covered them, and clamps or refuses
+// positions that have already passed.
 
 namespace
 {
+	constexpr uint64_t kSegmentDurationMs = 4000;
 	constexpr double kChunkDurationMs = 400.0;
-	constexpr uint32_t kCueDurationMs = 20000;
-	constexpr int64_t kCueIntervalMs = 30000;
-	constexpr size_t kCueCount = 12;
-	constexpr double kFrameJitterMs = 45.0;	 // integer-ms timestamps wobble up to one frame
+	constexpr int kGopFrames = 30;	// keyframes at multiples of 1000 ms at 30 fps
+	constexpr uint32_t kCueDurationMs = 10000;
 
-	class NullStorageObserver : public bmff::FMp4StorageObserver
+	bmff::SegmentBoundaryPolicy::Config MakeConfig(LLHlsCueOutCutMode cue_out_cut_mode = LLHlsCueOutCutMode::Immediate)
 	{
-	public:
-		void OnFMp4StorageInitialized(const int32_t &track_id) override {}
-		void OnMediaSegmentCreated(const int32_t &track_id, const uint32_t &segment_number) override {}
-		void OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &segment_number, const uint32_t &chunk_number, bool last_chunk) override {}
-		void OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t &segment_number) override {}
-		void OnMediaSegmentCompleted(const int32_t &track_id, const uint32_t &segment_number) override {}
-	};
-
-	struct TrackPipeline
-	{
-		std::shared_ptr<MediaTrack> track;
-		std::shared_ptr<bmff::FMP4Storage> storage;
-		std::shared_ptr<bmff::FMP4Packager> packager;
-	};
-
-	TrackPipeline MakePipeline(const std::shared_ptr<MediaTrack> &track, const std::shared_ptr<bmff::FMp4StorageObserver> &observer, double segment_duration_ms)
-	{
-		bmff::FMP4Storage::Config storage_config;
-		storage_config.max_segments = 100000;  // keep everything for inspection
-		storage_config.segment_duration_ms = static_cast<uint64_t>(segment_duration_ms);
-
-		bmff::FMP4Packager::Config packager_config;
-		packager_config.chunk_duration_ms = kChunkDurationMs;
-		packager_config.segment_duration_ms = segment_duration_ms;
-
-		TrackPipeline pipeline;
-		pipeline.track = track;
-		pipeline.storage = std::make_shared<bmff::FMP4Storage>(observer, track, storage_config, "marker_sync_test");
-		pipeline.packager = std::make_shared<bmff::FMP4Packager>(pipeline.storage, track, nullptr, packager_config);
-		return pipeline;
+		bmff::SegmentBoundaryPolicy::Config config;
+		config.segment_duration_ms = kSegmentDurationMs;
+		config.chunk_duration_ms = kChunkDurationMs;
+		config.cue_out_cut_mode = cue_out_cut_mode;
+		config.log_context = "marker_test";
+		return config;
 	}
 
-	std::shared_ptr<MediaTrack> MakeVideoTrack(int gop_frames)
+	using fmp4_test::TrackPipeline;
+
+	TrackPipeline MakeVideoPipeline(LLHlsCueOutCutMode cue_out_cut_mode)
 	{
-		auto track = std::make_shared<MediaTrack>();
-		track->SetId(0);
-		track->SetMediaType(cmn::MediaType::Video);
-		track->SetCodecId(cmn::MediaCodecId::H264);
-		track->SetTimeBase(1, 1000);
-		track->SetFrameRateByConfig(30.0);
-		track->SetKeyFrameIntervalByConfig(gop_frames);
-		return track;
+		auto track = fmp4_test::MakeVideoTrack(0, 30.0, kGopFrames);
+		auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(cue_out_cut_mode), false);
+		return fmp4_test::MakePipeline(track, std::make_shared<fmp4_test::NullStorageObserver>(), policy,
+									   kSegmentDurationMs, kChunkDurationMs, "marker_test");
 	}
 
-	std::shared_ptr<MediaTrack> MakeAudioTrack()
+	// Drive 30 fps video frames through [from_ms, to_ms)
+	void Drive(TrackPipeline &pipeline, int64_t from_ms, int64_t to_ms, int64_t *frame_index)
 	{
-		auto track = std::make_shared<MediaTrack>();
-		track->SetId(1);
-		track->SetMediaType(cmn::MediaType::Audio);
-		track->SetCodecId(cmn::MediaCodecId::Aac);
-		track->SetTimeBase(1, 1000);
-		return track;
-	}
-
-	std::shared_ptr<MediaPacket> MakeVideoFrame(int64_t dts, int64_t duration, bool keyframe)
-	{
-		auto data = std::make_shared<ov::Data>();
-		uint8_t byte = 0x00;
-		data->Append(&byte, 1);
-		return std::make_shared<MediaPacket>(cmn::MediaType::Video, 0, data, dts, dts, duration,
-											 keyframe ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag,
-											 cmn::BitstreamFormat::H264_AVCC, cmn::PacketType::NALU);
-	}
-
-	std::shared_ptr<MediaPacket> MakeAudioFrame(int64_t dts, int64_t duration)
-	{
-		auto data = std::make_shared<ov::Data>();
-		uint8_t byte = 0x00;
-		data->Append(&byte, 1);
-		return std::make_shared<MediaPacket>(cmn::MediaType::Audio, 1, data, dts, dts, duration,
-											 MediaPacketFlag::Key, cmn::BitstreamFormat::AAC_RAW, cmn::PacketType::RAW);
-	}
-
-	// Same protocol as LLHlsStream::InsertMarkerToAllPackagers: one sequence number,
-	// estimated by the video packager and lifted to the highest current sequence,
-	// shared by every track
-	bool InsertCueMarker(const TrackPipeline &video, const TrackPipeline &audio, CueEvent::CueType type, int64_t timestamp_ms, uint32_t duration_ms, bool provisional = false)
-	{
-		auto data = CueEvent::Create(type, duration_ms, 0, provisional)->Serialize();
-
-		int64_t estimated_seq = video.packager->GetEstimatedSequenceNumber(timestamp_ms);
-		int64_t max_current_seq = std::max(video.packager->GetCurrentSequenceNumber(), audio.packager->GetCurrentSequenceNumber());
-
-		for (const auto &pipeline : {video, audio})
-		{
-			auto marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, timestamp_ms, timestamp_ms, data);
-			auto [can_insert, message] = pipeline.packager->CanInsertMarker(marker);
-			if (can_insert == false)
-			{
-				ADD_FAILURE() << "CanInsertMarker failed: " << message.CStr();
-				return false;
-			}
-		}
-
-		if (max_current_seq > estimated_seq)
-		{
-			estimated_seq = max_current_seq;
-		}
-
-		for (const auto &pipeline : {video, audio})
-		{
-			auto marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, timestamp_ms, timestamp_ms, data);
-			marker->SetDesiredSequenceNumber(estimated_seq);
-			if (pipeline.packager->InsertMarker(marker) == false)
-			{
-				ADD_FAILURE() << "InsertMarker failed at " << timestamp_ms;
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	struct MarkerObservation
-	{
-		int64_t segment_number = -1;
-		double segment_start_ms = 0.0;
-		double segment_duration_ms = 0.0;
-	};
-
-	// cue index (by order of appearance) -> observation
-	std::map<size_t, MarkerObservation> CollectMarkers(const TrackPipeline &pipeline, CueEvent::CueType type)
-	{
-		std::map<size_t, MarkerObservation> observations;
-		size_t index = 0;
-
-		for (int64_t number = 0; number <= pipeline.storage->GetLastSegmentNumber(); number++)
-		{
-			auto segment = pipeline.storage->GetSegment(number);
-			if (segment == nullptr || segment->HasMarker() == false)
-			{
-				continue;
-			}
-
-			for (const auto &marker : segment->GetMarkers())
-			{
-				auto cue_event = marker->GetCueEvent();
-				if (cue_event == nullptr || cue_event->GetCueType() != type)
-				{
-					continue;
-				}
-
-				observations[index++] = {segment->GetNumber(), static_cast<double>(segment->GetStartTimestamp()), segment->GetDurationMs()};
-			}
-		}
-
-		return observations;
-	}
-
-	void RunScenario(double segment_duration_ms, int gop_frames)
-	{
-		const double gop_ms = gop_frames * 100.0 / 3.0;
-		SCOPED_TRACE(::testing::Message() << "segment " << segment_duration_ms << " ms, gop " << gop_ms << " ms");
-
-		auto observer = std::make_shared<NullStorageObserver>();
-		auto video = MakePipeline(MakeVideoTrack(gop_frames), observer, segment_duration_ms);
-		auto audio = MakePipeline(MakeAudioTrack(), observer, segment_duration_ms);
-
-		// Marker events are stamped one keyframe interval ahead of the media time
-		const int64_t marker_lead_ms = static_cast<int64_t>(gop_ms);
-
-		std::vector<int64_t> cue_out_timestamps;
-		for (size_t index = 0; index < kCueCount; index++)
-		{
-			cue_out_timestamps.push_back(3000 + static_cast<int64_t>(index) * kCueIntervalMs + marker_lead_ms);
-		}
-
-		const int64_t total_duration_ms = cue_out_timestamps.back() + kCueDurationMs + 2 * static_cast<int64_t>(segment_duration_ms) + 5000;
-
-		// RTMP-style integer millisecond timestamps
-		int64_t video_index = 0;
-		int64_t audio_index = 0;
-		size_t cue_index = 0;
-
 		while (true)
 		{
-			const int64_t video_dts = video_index * 100 / 3;
-			const int64_t audio_dts = audio_index * 64 / 3;
-			const int64_t now_ms = std::min(video_dts, audio_dts);
-
-			if (now_ms >= total_duration_ms)
+			const int64_t dts = (*frame_index) * 100 / 3;
+			if (dts >= to_ms)
 			{
 				break;
 			}
-
-			// The OUT and its paired provisional IN arrive back to back, markers
-			// ahead of the media time
-			if (cue_index < kCueCount && now_ms >= cue_out_timestamps[cue_index] - marker_lead_ms)
+			if (dts >= from_ms)
 			{
-				ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::OUT, cue_out_timestamps[cue_index], kCueDurationMs));
-				ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::IN, cue_out_timestamps[cue_index] + kCueDurationMs, 0, true));
-
-				// An explicit IN for the same return point must replace the pending
-				// one harmlessly, on the same sequence
-				ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::IN, cue_out_timestamps[cue_index] + kCueDurationMs, 0));
-				cue_index++;
+				const int64_t duration = ((*frame_index) + 1) * 100 / 3 - dts;
+				ASSERT_TRUE(pipeline.packager->AppendSample(fmp4_test::MakeVideoFrame(0, dts, duration, ((*frame_index) % kGopFrames) == 0)));
 			}
-
-			if (video_dts <= audio_dts)
-			{
-				const int64_t duration = (video_index + 1) * 100 / 3 - video_dts;
-				ASSERT_TRUE(video.packager->AppendSample(MakeVideoFrame(video_dts, duration, (video_index % gop_frames) == 0)));
-				video_index++;
-			}
-			else
-			{
-				const int64_t duration = (audio_index + 1) * 64 / 3 - audio_dts;
-				ASSERT_TRUE(audio.packager->AppendSample(MakeAudioFrame(audio_dts, duration)));
-				audio_index++;
-			}
-		}
-
-		ASSERT_EQ(cue_index, kCueCount);
-
-		auto video_out = CollectMarkers(video, CueEvent::CueType::OUT);
-		auto audio_out = CollectMarkers(audio, CueEvent::CueType::OUT);
-		auto video_in = CollectMarkers(video, CueEvent::CueType::IN);
-		auto audio_in = CollectMarkers(audio, CueEvent::CueType::IN);
-
-		ASSERT_EQ(video_out.size(), kCueCount);
-		ASSERT_EQ(audio_out.size(), kCueCount);
-		ASSERT_EQ(video_in.size(), kCueCount);
-		ASSERT_EQ(audio_in.size(), kCueCount);
-
-		for (size_t index = 0; index < kCueCount; index++)
-		{
-			const double out_ts = static_cast<double>(cue_out_timestamps[index]);
-			const double in_ts = out_ts + kCueDurationMs;
-
-			const auto &v_out = video_out[index];
-			const auto &a_out = audio_out[index];
-
-			// The OUT marker cuts every track at its timestamp, on the same sequence
-			EXPECT_EQ(v_out.segment_number, a_out.segment_number) << "OUT marker of cue " << index << " landed on different sequences";
-			EXPECT_NEAR(v_out.segment_start_ms + v_out.segment_duration_ms, out_ts, kFrameJitterMs) << "video was not cut at cue " << index;
-			EXPECT_NEAR(a_out.segment_start_ms + a_out.segment_duration_ms, out_ts, kFrameJitterMs) << "audio was not cut at cue " << index;
-
-			const auto &v_in = video_in[index];
-			const auto &a_in = audio_in[index];
-
-			// The IN marker lands on the same sequence on every track. Audio returns
-			// at the timestamp itself, video at the first keyframe at or after it.
-			EXPECT_EQ(v_in.segment_number, a_in.segment_number) << "IN marker of cue " << index << " landed on different sequences";
-			EXPECT_NEAR(a_in.segment_start_ms + a_in.segment_duration_ms, in_ts, kFrameJitterMs) << "audio did not return at cue " << index;
-
-			const double v_in_end = v_in.segment_start_ms + v_in.segment_duration_ms;
-			EXPECT_GE(v_in_end, in_ts - kFrameJitterMs) << "video returned before cue " << index << " ended";
-			EXPECT_LE(v_in_end, in_ts + gop_ms + kFrameJitterMs) << "video return exceeded one keyframe interval at cue " << index;
-		}
-
-		// The sequences must not drift apart over the whole run
-		EXPECT_LE(std::abs(video.storage->GetLastSegmentNumber() - audio.storage->GetLastSegmentNumber()), 1);
-
-		// A segment waiting for a marker may stretch up to one keyframe interval
-		// past the target, but the force-completion threshold (twice the target)
-		// must never be reached
-		for (const auto &pipeline : {video, audio})
-		{
-			for (int64_t number = 0; number <= pipeline.storage->GetLastSegmentNumber(); number++)
-			{
-				auto segment = pipeline.storage->GetSegment(number);
-				if (segment == nullptr || segment->IsCompleted() == false)
-				{
-					continue;
-				}
-
-				EXPECT_LE(segment->GetDurationMs(), segment_duration_ms + gop_ms + kFrameJitterMs)
-					<< "track " << pipeline.track->GetId() << " segment " << number << " was force-completed or overstretched";
-			}
+			(*frame_index)++;
 		}
 	}
-}  // namespace
 
-// One cue driven through the real packagers with an adjustable feed end
-namespace
-{
-	struct SingleCueRun
+	std::shared_ptr<Marker> MakeCueMarker(CueEvent::CueType type, int64_t timestamp_ms, uint32_t duration_ms, bool provisional = false)
 	{
-		TrackPipeline video;
-		TrackPipeline audio;
+		auto data = CueEvent::Create(type, duration_ms, 0, provisional)->Serialize();
+		return Marker::CreateMarker(cmn::BitstreamFormat::CUE, timestamp_ms, timestamp_ms, data);
+	}
 
-		void Feed(int gop_frames, int64_t until_ms, int64_t out_ts_ms, uint32_t duration_ms, int64_t extension_at_ms, int64_t extension_ts_ms, bool paired_in_provisional)
+	bool InsertCue(const TrackPipeline &pipeline, CueEvent::CueType type, int64_t timestamp_ms, uint32_t duration_ms, bool provisional = false)
+	{
+		auto marker = MakeCueMarker(type, timestamp_ms, duration_ms, provisional);
+		auto [can_insert, message] = pipeline.policy->CanInsertMarker(marker);
+		if (can_insert == false)
 		{
-			const int64_t marker_lead_ms = static_cast<int64_t>(gop_frames * 100.0 / 3.0);
-
-			int64_t video_index = 0;
-			int64_t audio_index = 0;
-			bool cue_sent = false;
-			bool extension_sent = (extension_at_ms < 0);
-
-			while (true)
-			{
-				const int64_t video_dts = video_index * 100 / 3;
-				const int64_t audio_dts = audio_index * 64 / 3;
-				const int64_t now_ms = std::min(video_dts, audio_dts);
-
-				if (now_ms >= until_ms)
-				{
-					break;
-				}
-
-				if (cue_sent == false && now_ms >= out_ts_ms - marker_lead_ms)
-				{
-					ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::OUT, out_ts_ms, duration_ms));
-					ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::IN, out_ts_ms + duration_ms, 0, paired_in_provisional));
-					cue_sent = true;
-				}
-
-				if (extension_sent == false && now_ms >= extension_at_ms)
-				{
-					ASSERT_TRUE(InsertCueMarker(video, audio, CueEvent::CueType::IN, extension_ts_ms, 0));
-					extension_sent = true;
-				}
-
-				if (video_dts <= audio_dts)
-				{
-					const int64_t duration = (video_index + 1) * 100 / 3 - video_dts;
-					ASSERT_TRUE(video.packager->AppendSample(MakeVideoFrame(video_dts, duration, (video_index % gop_frames) == 0)));
-					video_index++;
-				}
-				else
-				{
-					const int64_t duration = (audio_index + 1) * 64 / 3 - audio_dts;
-					ASSERT_TRUE(audio.packager->AppendSample(MakeAudioFrame(audio_dts, duration)));
-					audio_index++;
-				}
-			}
+			return false;
 		}
-	};
+		return pipeline.policy->InsertMarker(marker);
+	}
+
+	using fmp4_test::FindSegmentCovering;
 }  // namespace
 
-TEST(FMP4MarkerSyncTest, ProvisionalInCanBeExtended)
+//------------------------------------------------------------------------------
+// Insertion rules (policy level)
+//------------------------------------------------------------------------------
+
+TEST(MarkerPolicyTest, FirstMarkerMustBeOut)
 {
-	constexpr double kSegmentMs = 1600.0;
-	constexpr int kGopFrames = 24;	// 800 ms
-	constexpr double kGopMs = 800.0;
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
 
-	auto observer = std::make_shared<NullStorageObserver>();
-	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
+	auto in_marker = MakeCueMarker(CueEvent::CueType::IN, 5000, 0);
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(in_marker)));
 
-	// OUT at 4.8 s with a planned 20 s break; at 15 s the operator moves the
-	// return point 5 s later than planned
-	const int64_t out_ts = 4800;
-	const int64_t planned_in_ts = out_ts + 20000;
-	const int64_t extended_in_ts = planned_in_ts + 5000;
-	run.Feed(kGopFrames, extended_in_ts + 10000, out_ts, 20000, 15000, extended_in_ts, true);
-
-	auto video_in = CollectMarkers(run.video, CueEvent::CueType::IN);
-	auto audio_in = CollectMarkers(run.audio, CueEvent::CueType::IN);
-
-	// Exactly one IN, at the extended position, on the same sequence
-	ASSERT_EQ(video_in.size(), 1u);
-	ASSERT_EQ(audio_in.size(), 1u);
-	EXPECT_EQ(video_in[0].segment_number, audio_in[0].segment_number);
-	EXPECT_NEAR(audio_in[0].segment_start_ms + audio_in[0].segment_duration_ms, extended_in_ts, kFrameJitterMs);
-
-	const double v_in_end = video_in[0].segment_start_ms + video_in[0].segment_duration_ms;
-	EXPECT_GE(v_in_end, extended_in_ts - kFrameJitterMs);
-	EXPECT_LE(v_in_end, extended_in_ts + kGopMs + kFrameJitterMs);
+	auto out_marker = MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs);
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(out_marker)));
 }
 
-TEST(FMP4MarkerSyncTest, ConfirmedInRejectsExtension)
+TEST(MarkerPolicyTest, BreakMustBeLongEnoughToReturnFrom)
 {
-	constexpr double kSegmentMs = 1600.0;
-	constexpr int kGopFrames = 24;
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
 
-	auto observer = std::make_shared<NullStorageObserver>();
-	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
-
-	// The IN of an autoReturn OUT is confirmed: the return point may only move earlier
-	const int64_t out_ts = 4800;
-	const int64_t planned_in_ts = out_ts + 20000;
-	run.Feed(kGopFrames, 15000, out_ts, 20000, -1, 0, false);
-
-	auto data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
-	auto marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts + 5000, planned_in_ts + 5000, data);
-	auto [can_insert, message] = run.video.packager->CanInsertMarker(marker);
-	EXPECT_FALSE(can_insert);
-
-	// Moving it earlier stays allowed
-	auto earlier_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts - 5000, planned_in_ts - 5000, data);
-	auto [can_insert_earlier, message_earlier] = run.video.packager->CanInsertMarker(earlier_marker);
-	EXPECT_TRUE(can_insert_earlier);
+	// 1.5 segments is the minimum gap an IN needs after its OUT
+	auto short_out = MakeCueMarker(CueEvent::CueType::OUT, 5000, 3000);
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(short_out)));
 }
 
-TEST(FMP4MarkerSyncTest, ProvisionalInRejectsProvisionalExtension)
+TEST(MarkerPolicyTest, OutAfterOutIsRejected)
 {
-	constexpr double kSegmentMs = 1600.0;
-	constexpr int kGopFrames = 24;
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
 
-	auto observer = std::make_shared<NullStorageObserver>();
-	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
-
-	// A duplicate OUT sent mid-break is rejected, but its provisional companion IN
-	// still arrives; it must not move the pending return point
-	const int64_t out_ts = 4800;
-	const int64_t planned_in_ts = out_ts + 20000;
-	run.Feed(kGopFrames, 15000, out_ts, 20000, -1, 0, true);
-
-	auto provisional_data = CueEvent::Create(CueEvent::CueType::IN, 0, 0, true)->Serialize();
-	auto provisional_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts + 5000, planned_in_ts + 5000, provisional_data);
-	auto [can_insert, message] = run.video.packager->CanInsertMarker(provisional_marker);
-	EXPECT_FALSE(can_insert);
-
-	// An explicit IN may still extend the pending provisional return point
-	auto explicit_data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
-	auto explicit_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts + 5000, planned_in_ts + 5000, explicit_data);
-	auto [can_insert_explicit, message_explicit] = run.video.packager->CanInsertMarker(explicit_marker);
-	EXPECT_TRUE(can_insert_explicit);
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 9000, kCueDurationMs))));
 }
 
-TEST(FMP4MarkerSyncTest, EmittedInRejectsDuplicate)
+TEST(MarkerPolicyTest, InPairsWithItsOut)
 {
-	constexpr double kSegmentMs = 1600.0;
-	constexpr int kGopFrames = 24;
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
 
-	auto observer = std::make_shared<NullStorageObserver>();
-	SingleCueRun run{MakePipeline(MakeVideoTrack(kGopFrames), observer, kSegmentMs), MakePipeline(MakeAudioTrack(), observer, kSegmentMs)};
+	auto out_marker = MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs);
+	ASSERT_TRUE(policy->InsertMarker(out_marker));
 
-	// Feed well past the return point so both markers were emitted into segments
-	const int64_t out_ts = 4800;
-	const int64_t planned_in_ts = out_ts + 20000;
-	run.Feed(kGopFrames, planned_in_ts + 10000, out_ts, 20000, -1, 0, true);
+	// Too close to the OUT: the break could not be packaged
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::IN, 7000, 0))));
 
-	ASSERT_EQ(CollectMarkers(run.video, CueEvent::CueType::IN).size(), 1u);
+	auto in_marker = MakeCueMarker(CueEvent::CueType::IN, 15000, 0);
+	ASSERT_TRUE(policy->InsertMarker(in_marker));
+	EXPECT_EQ(in_marker->GetParent(), out_marker);
 
-	// A late duplicate of the emitted IN has no open break left to modify
-	auto data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
-	auto duplicate_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts, planned_in_ts, data);
-	auto [can_insert, message] = run.video.packager->CanInsertMarker(duplicate_marker);
-	EXPECT_FALSE(can_insert);
+	// An explicit IN may replace the pending one with an earlier return point,
+	// keeping the pairing
+	auto earlier_in = MakeCueMarker(CueEvent::CueType::IN, 12000, 0);
+	ASSERT_TRUE(policy->InsertMarker(earlier_in));
+	EXPECT_EQ(earlier_in->GetParent(), out_marker);
 
-	// An earlier IN is equally stale after the emission
-	auto earlier_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts - 5000, planned_in_ts - 5000, data);
-	auto [can_insert_earlier, message_earlier] = run.video.packager->CanInsertMarker(earlier_marker);
-	EXPECT_FALSE(can_insert_earlier);
-
-	// The next break still opens normally
-	auto out_data = CueEvent::Create(CueEvent::CueType::OUT, 20000, 0)->Serialize();
-	auto next_out_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, planned_in_ts + 20000, planned_in_ts + 20000, out_data);
-	auto [can_insert_out, message_out] = run.video.packager->CanInsertMarker(next_out_marker);
-	EXPECT_TRUE(can_insert_out);
+	// A later explicit IN may not extend the pending explicit one
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::IN, 14000, 0))));
 }
 
-TEST(FMP4MarkerSyncTest, TimeModeKeyframeIntervalGapValidation)
+//------------------------------------------------------------------------------
+// Cut positions (through the packager)
+//------------------------------------------------------------------------------
+
+TEST(MarkerPolicyTest, OutCutsImmediatelyMidGop)
 {
-	// In TIME mode KeyFrameInterval is milliseconds; the marker gap validation
-	// used to read it as a frame count, inflating the required gap about 30x
-	// and rejecting every marker
-	auto track = std::make_shared<MediaTrack>();
-	track->SetId(0);
-	track->SetMediaType(cmn::MediaType::Video);
-	track->SetCodecId(cmn::MediaCodecId::H264);
-	track->SetTimeBase(1, 1000);
-	track->SetFrameRateByConfig(30.0);
-	track->SetKeyFrameIntervalTypeByConfig(cmn::KeyFrameIntervalType::TIME);
-	track->SetKeyFrameIntervalByConfig(1000);  // 1 second
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
 
-	auto observer = std::make_shared<NullStorageObserver>();
-	auto pipeline = MakePipeline(track, observer, 1600.0);
+	Drive(pipeline, 0, 3000, &frame_index);
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 4210, kCueDurationMs));
+	Drive(pipeline, 3000, 8000, &frame_index);
 
-	// 1.6 s segments with a 1 s keyframe interval round up to 2 s per cut, so
-	// the required gap is 3 s: a 20 s cue passes, a 2 s cue does not
-	auto long_cue = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 5000, 5000, CueEvent::Create(CueEvent::CueType::OUT, 20000, 0)->Serialize());
-	auto [accepted, accept_message] = pipeline.packager->CanInsertMarker(long_cue);
-	EXPECT_TRUE(accepted) << accept_message.CStr();
+	// The segment ends right at the marker, mid-GOP: at the first frame at or
+	// after 4210, well before the next keyframe at 5000
+	auto segment = FindSegmentCovering(pipeline, 4210.0);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 4210.0, 100.0 / 3.0 + 1.0);
 
-	auto short_cue = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 5000, 5000, CueEvent::Create(CueEvent::CueType::OUT, 2000, 0)->Serialize());
-	auto [short_cue_accepted, reject_message] = pipeline.packager->CanInsertMarker(short_cue);
-	EXPECT_FALSE(short_cue_accepted) << reject_message.CStr();
+	// The closing segment carries the marker
+	ASSERT_TRUE(segment->HasMarker());
+	EXPECT_EQ(segment->GetMarkers().front()->GetTimestampMs(), 4210);
 }
 
-TEST(FMP4MarkerSyncTest, HalfSegmentGop)
+TEST(MarkerPolicyTest, OutCutsAtKeyframeWhenConfigured)
 {
-	// 1.6 s segments, 0.8 s keyframe interval
-	RunScenario(1600.0, 24);
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 3000, &frame_index);
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 4210, kCueDurationMs));
+	Drive(pipeline, 3000, 8000, &frame_index);
+
+	// Client-side ad insertion: the original keeps playing, so the cut waits
+	// for the first keyframe at or after the marker
+	auto segment = FindSegmentCovering(pipeline, 4210.0);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 5000.0, 1.0);
+	EXPECT_TRUE(segment->HasMarker());
 }
 
-TEST(FMP4MarkerSyncTest, HalfSegmentGopLarge)
+TEST(MarkerPolicyTest, InCutsAtKeyframe)
 {
-	// 3.2 s segments, 1.6 s keyframe interval
-	RunScenario(3200.0, 48);
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 3000, &frame_index);
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 4210, kCueDurationMs));
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::IN, 4210 + kCueDurationMs, 0, true));
+	Drive(pipeline, 3000, 20000, &frame_index);
+
+	// The return point cuts at the first keyframe at or after it
+	auto segment = FindSegmentCovering(pipeline, 4210.0 + kCueDurationMs);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 15000.0, 1.0);
+	ASSERT_TRUE(segment->HasMarker());
+
+	// The IN rides the segment paired with its OUT
+	auto in_marker = segment->GetMarkers().back();
+	ASSERT_NE(in_marker->GetParent(), nullptr);
+	EXPECT_EQ(in_marker->GetParent()->GetTimestampMs(), 4210);
 }
 
-TEST(FMP4MarkerSyncTest, QuarterSegmentGop)
+TEST(MarkerPolicyTest, MarkerSegmentIsDiscountedFromThePacing)
 {
-	// 4 s segments, 1 s keyframe interval
-	RunScenario(4000.0, 30);
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 3000, &frame_index);
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 4210, kCueDurationMs));
+	Drive(pipeline, 3000, 10000, &frame_index);
+
+	// The marker cut ended a segment early; the next one fills only up to the
+	// original cadence position, so the track returns to the 4-second grid
+	auto segment = FindSegmentCovering(pipeline, 6000.0);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 8000.0, 100.0 / 3.0 + 1.0);
 }
+
+TEST(MarkerPolicyTest, MarkerInsideAKeyframeSpanDoesNotCutEarly)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 4500, &frame_index);
+
+	// 5010 ms falls inside the keyframe's own span [5000, 5033): the cut waits
+	// for the next keyframe so the closing segment covers the position; the
+	// keyframe at 5000 must not close a segment that ends before the marker
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 5010, kCueDurationMs));
+	Drive(pipeline, 4500, 9000, &frame_index);
+
+	auto segment = FindSegmentCovering(pipeline, 4500.0);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 6000.0, 1.0);
+	EXPECT_TRUE(segment->HasMarker());
+}
+
+TEST(MarkerPolicyTest, ExplicitReturnCancelsTheScheduledOne)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 3000, &frame_index);
+
+	// The break announces its length, so its return point is scheduled at
+	// 4210 + 10000; an explicit return then arrives for 9000 instead
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 4210, kCueDurationMs));
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::IN, 4210 + kCueDurationMs, 0, true));
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::IN, 9000, 0));
+
+	Drive(pipeline, 3000, 20000, &frame_index);
+
+	// The break returns where the explicit return said
+	auto returned = FindSegmentCovering(pipeline, 9000.0);
+	ASSERT_NE(returned, nullptr);
+	EXPECT_NEAR(static_cast<double>(returned->GetStartTimestamp()) + returned->GetDurationMs(), 9000.0, 1.0);
+	ASSERT_TRUE(returned->HasMarker());
+	auto in_marker = returned->GetMarkers().back();
+	ASSERT_NE(in_marker->GetParent(), nullptr);
+	EXPECT_EQ(in_marker->GetParent()->GetTimestampMs(), 4210);
+
+	// The scheduled one was cancelled, so nothing cuts at its position
+	auto at_scheduled = FindSegmentCovering(pipeline, 4210.0 + kCueDurationMs);
+	ASSERT_NE(at_scheduled, nullptr);
+	EXPECT_FALSE(at_scheduled->HasMarker());
+}
+
+//------------------------------------------------------------------------------
+// Late markers
+//------------------------------------------------------------------------------
+
+TEST(MarkerPolicyTest, LateMarkerKeepsItsAdvertisedTime)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 10000, &frame_index);
+
+	// The position has passed, but by less than a segment: only the cut moves
+	// onto the nearest position that can still cut; the advertised time stays
+	auto marker = MakeCueMarker(CueEvent::CueType::OUT, 7000, kCueDurationMs);
+	ASSERT_TRUE(std::get<0>(pipeline.policy->CanInsertMarker(marker)));
+	ASSERT_TRUE(pipeline.policy->InsertMarker(marker));
+	EXPECT_EQ(marker->GetTimestampMs(), 7000);
+
+	Drive(pipeline, 10000, 14000, &frame_index);
+
+	// The marker rides the segment its cut landed in, not the one its
+	// advertised time points into
+	auto segment = FindSegmentCovering(pipeline, 9900.0);
+	ASSERT_NE(segment, nullptr);
+	EXPECT_TRUE(segment->HasMarker());
+}
+
+TEST(MarkerPolicyTest, TooLateMarkerIsRefused)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 10000, &frame_index);
+
+	// More than a segment late: refused so the caller learns the position is gone
+	auto marker = MakeCueMarker(CueEvent::CueType::OUT, 3000, kCueDurationMs);
+	EXPECT_FALSE(std::get<0>(pipeline.policy->CanInsertMarker(marker)));
+	EXPECT_FALSE(pipeline.policy->InsertMarker(marker));
+}
+
+//------------------------------------------------------------------------------
+// Discontinuity and the marker chain
+//------------------------------------------------------------------------------
+
+TEST(MarkerPolicyTest, DiscontinuitySettlesTheCoveredMarkers)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+
+	// The force-closed segment covers the marker's position; it still rides it
+	bmff::CompletedSegment forced;
+	forced.number = 0;
+	forced.start_timestamp_us = 4000000;
+	forced.duration_us = 2000000;
+	auto result = policy->OnDiscontinuity(forced);
+
+	ASSERT_EQ(result.markers.size(), 1u);
+	EXPECT_EQ(result.markers.front()->GetTimestampMs(), 5000);
+}
+
+TEST(MarkerPolicyTest, MarkerInAHoleRidesTheNextSegment)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+
+	// The keyframe wait after a track change left a hole: the segment starts
+	// past the marker's position. The marker still rides it.
+	bmff::CompletedSegment completed;
+	completed.number = 0;
+	completed.start_timestamp_us = 5500000;
+	completed.duration_us = 4000000;
+	auto result = policy->OnSegmentCompleted(completed);
+	ASSERT_EQ(result.markers.size(), 1u);
+	EXPECT_EQ(result.markers.front()->GetTimestampMs(), 5000);
+
+	// It cut nothing, so the pacing keeps the plain cadence instead of
+	// discounting this segment
+	EXPECT_DOUBLE_EQ(policy->GetSegmentBoundary(static_cast<int64_t>(0)).end_us / 1000.0, 4000.0);
+}
+
+TEST(MarkerPolicyTest, MarkerFurtherBehindThanASegmentIsDiscarded)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+
+	// More than a segment behind the settled range: the advertised time no
+	// longer describes where it would land, so it is dropped and the chain is
+	// released for the next break
+	bmff::CompletedSegment completed;
+	completed.number = 0;
+	completed.start_timestamp_us = 12000000;
+	completed.duration_us = 4000000;
+	auto result = policy->OnSegmentCompleted(completed);
+	EXPECT_TRUE(result.markers.empty());
+
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 20000, kCueDurationMs))));
+}
+
+TEST(MarkerPolicyTest, ExplicitInReplacesTheProvisionalReturnPoint)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+
+	// The provisional IN advertises 16000, but its cut follows the OUT: 15000
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::IN, 16000, 0, true)));
+
+	// An explicit IN may still replace it; the pending lookup must use the cut
+	// position, not the advertised time
+	auto explicit_in = MakeCueMarker(CueEvent::CueType::IN, 16500, 0);
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(explicit_in)));
+	EXPECT_TRUE(policy->InsertMarker(explicit_in));
+}
+
+TEST(MarkerPolicyTest, DiscontinuityOverridesAMarkerAimingAtTheSameCut)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 5000, &frame_index);
+
+	// Both aim at the 6000 ms keyframe: the break must take it, so the boundary
+	// lands aligned across the renditions; the marker rides the closed segment
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 5100, kCueDurationMs));
+	pipeline.packager->RequestCutForDiscontinuity(5050.0);
+
+	Drive(pipeline, 5000, 11000, &frame_index);
+
+	auto cut_segment = FindSegmentCovering(pipeline, 5500.0);
+	ASSERT_NE(cut_segment, nullptr);
+	EXPECT_DOUBLE_EQ(static_cast<double>(cut_segment->GetStartTimestamp()) + cut_segment->GetDurationMs(), 6000.0);
+	EXPECT_TRUE(cut_segment->HasMarker());
+
+	auto next_segment = FindSegmentCovering(pipeline, 6500.0);
+	ASSERT_NE(next_segment, nullptr);
+	EXPECT_TRUE(next_segment->IsDiscontinuityPoint());
+}
+
+TEST(MarkerPolicyTest, PendingBreakRidesAnEarlierMarkerCut)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 5000, &frame_index);
+
+	// The marker cuts mid-GOP at 5010, before the break at 5500. The track that
+	// broke closes once, so this track must close once too: the break rides the
+	// marker cut instead of adding a second boundary.
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 5010, kCueDurationMs));
+	pipeline.packager->RequestCutForDiscontinuity(5500.0);
+
+	Drive(pipeline, 5000, 12000, &frame_index);
+
+	int discontinuity_count = 0;
+	std::shared_ptr<bmff::FMP4Segment> break_segment;
+	for (int64_t number = 0; number <= pipeline.storage->GetLastSegmentNumber(); number++)
+	{
+		auto segment = std::static_pointer_cast<bmff::FMP4Segment>(pipeline.storage->GetSegment(number));
+		if (segment == nullptr || segment->IsDiscontinuityPoint() == false)
+		{
+			continue;
+		}
+
+		discontinuity_count++;
+		break_segment = segment;
+	}
+
+	// Exactly one break, and it starts where the marker cut landed
+	ASSERT_EQ(discontinuity_count, 1);
+	ASSERT_NE(break_segment, nullptr);
+	EXPECT_NEAR(static_cast<double>(break_segment->GetStartTimestamp()), 5010.0, 100.0 / 3.0 + 1.0);
+}
+
+TEST(MarkerPolicyTest, PropagatedDiscontinuityCutsAtTheNextKeyframe)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	int64_t frame_index = 0;
+
+	Drive(pipeline, 0, 6000, &frame_index);
+
+	// Another track changed at 6500 ms; this track cuts at its next keyframe
+	// (7000). A second report of the same event is absorbed.
+	pipeline.packager->RequestCutForDiscontinuity(6500.0);
+	pipeline.packager->RequestCutForDiscontinuity(6800.0);
+
+	Drive(pipeline, 6000, 12000, &frame_index);
+
+	auto cut_segment = FindSegmentCovering(pipeline, 6500.0);
+	ASSERT_NE(cut_segment, nullptr);
+	EXPECT_DOUBLE_EQ(static_cast<double>(cut_segment->GetStartTimestamp()) + cut_segment->GetDurationMs(), 7000.0);
+
+	auto next_segment = FindSegmentCovering(pipeline, 7500.0);
+	ASSERT_NE(next_segment, nullptr);
+	EXPECT_TRUE(next_segment->IsDiscontinuityPoint());
+	EXPECT_EQ(next_segment->GetNumber(), cut_segment->GetNumber() + 1);
+}
+
+//------------------------------------------------------------------------------
+// Emission timing robustness
+//------------------------------------------------------------------------------
+
+TEST(EmissionTimingTest, FractionalTicksKeepThePartCadence)
+{
+	// 60 fps in a 90 kHz timebase: 1500-tick frames stamp as 16.66..67 ms, so
+	// per-sample sums pass the part target by float noise alone. The emission
+	// decisions must not flip on it: every part stays 24 frames, every segment
+	// stays exactly on target.
+	auto track = fmp4_test::MakeVideoTrack(0, 60.0, 120, 90000);
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+	auto pipeline = fmp4_test::MakePipeline(track, std::make_shared<fmp4_test::NullStorageObserver>(), policy,
+										   kSegmentDurationMs, kChunkDurationMs, "timing_test");
+	auto &storage = pipeline.storage;
+	auto &packager = pipeline.packager;
+
+	for (int64_t index = 0; index < 60 * 12; index++)
+	{
+		ASSERT_TRUE(packager->AppendSample(fmp4_test::MakeVideoFrame(0, index * 1500, 1500, (index % 120) == 0)));
+	}
+
+	int completed = 0;
+	for (int64_t number = 0; number <= storage->GetLastSegmentNumber(); number++)
+	{
+		auto segment = std::static_pointer_cast<bmff::FMP4Segment>(storage->GetSegment(number));
+		if (segment == nullptr || segment->IsCompleted() == false)
+		{
+			continue;
+		}
+
+		completed++;
+		EXPECT_DOUBLE_EQ(segment->GetDurationMs(), static_cast<double>(kSegmentDurationMs)) << "segment " << number;
+		EXPECT_EQ(segment->GetPartialCount(), kSegmentDurationMs / static_cast<uint64_t>(kChunkDurationMs)) << "segment " << number;
+	}
+	EXPECT_GE(completed, 2);
+}
+

@@ -17,7 +17,9 @@
 
 #include "monitoring/monitoring.h"
 
+#include "modules/containers/bmff/fmp4_packager/duration_boundary_policy.h"
 #include "modules/containers/bmff/fmp4_packager/fmp4_packager.h"
+#include "modules/containers/bmff/fmp4_packager/synced_boundary_policy.h"
 #include "modules/containers/webvtt/webvtt_packager.h"
 #include "llhls_master_playlist.h"
 #include "llhls_chunklist.h"
@@ -106,6 +108,17 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
+	// Synced segmentation: the reference track's policy realizes the boundaries
+	// and every synced track's policy follows it
+	std::shared_ptr<bmff::ReferenceBoundaryPolicy> _reference_boundary_policy;
+
+	// The track the rest of the stream follows: the first packaged video track,
+	// or the first packaged audio track without video. In synced segmentation
+	// its policy realizes the boundaries every other track adopts, and the
+	// WebVTT segments mirror its numbering and ranges.
+	std::shared_ptr<const MediaTrack> GetReferenceTrack() const;
+	LLHlsSegmentationMode GetSegmentationMode() const;
+
 	// Everything the DRM info file states for the matched stream
 	struct DrmInfo
 	{
@@ -164,6 +177,7 @@ private:
 	std::shared_ptr<base::modules::SegmentStorage> GetStorage(const int32_t &track_id) const;
 	// Get storage of a fMP4 media track (VTT tracks use a different storage type)
 	std::shared_ptr<bmff::FMP4Storage> GetFmp4Storage(const int32_t &track_id) const;
+	std::shared_ptr<bmff::SegmentBoundaryPolicy> GetBoundaryPolicy(const int32_t &track_id) const;
 	// Get Playlist with the track id
 	std::shared_ptr<LLHlsChunklist> GetChunklistWriter(const int32_t &track_id) const;
 
@@ -211,7 +225,7 @@ private:
 	std::tuple<bool, ov::String> ConcludeLive();
 	bool IsConcluded() const;
 
-	bool InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
+	bool InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
 
 	// Warn only once when markers arrive while the keyframe interval does not
 	// divide the segment duration
@@ -226,6 +240,10 @@ private:
 	mutable std::shared_mutex _storage_map_lock;
 	std::map<int32_t, std::shared_ptr<bmff::FMP4Packager>> _packager_map;
 	mutable std::shared_mutex _packager_map_lock;
+	// Decides where this track's segments end; assembled per track like the
+	// packager and the storage, and handed to both
+	std::map<int32_t, std::shared_ptr<bmff::SegmentBoundaryPolicy>> _boundary_policy_map;
+	mutable std::shared_mutex _boundary_policy_map_lock;
 	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _chunklist_map;
 	mutable std::shared_mutex _chunklist_map_lock;
 
@@ -329,7 +347,8 @@ private:
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> GetVttPackagers() const;
 
 	bool _vtt_enabled = false;
-	int32_t _vtt_reference_track_id = -1; // track id of the reference track for VTT
+	// Decided at Start() among the tracks that are actually packaged
+	int32_t _reference_track_id = -1;
 
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
 	mutable std::shared_mutex _vtt_packagers_lock;
