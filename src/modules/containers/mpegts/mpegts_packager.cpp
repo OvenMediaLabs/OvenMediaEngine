@@ -7,6 +7,8 @@
 //
 //==============================================================================
 #include "mpegts_packager.h"
+
+#include <algorithm>
 #include "mpegts_private.h"
 
 #include <cmath>
@@ -20,6 +22,9 @@ namespace mpegts
         _packager_id = packager_id;
         _config = config;
 		_next_target_duration_ms = config.target_duration_ms;
+
+		// Until the main track is known, the cadence is the configured duration
+		SetCutCadenceMs(config.target_duration_ms, 0.0);
     }
 
     Packager::~Packager()
@@ -118,6 +123,13 @@ namespace mpegts
             // Create SampleBuffer
             _sample_buffers.emplace(track->GetId(), std::make_shared<SampleBuffer>(track));
         }
+
+		// Video cuts only at keyframes, so the real cadence follows its interval
+		auto main_track_it = _media_tracks.find(_main_track_id);
+		if (main_track_it != _media_tracks.end() && main_track_it->second->GetMediaType() == cmn::MediaType::Video)
+		{
+			SetCutCadenceMs(_config.target_duration_ms, main_track_it->second->GetKeyframeIntervalDurationMs());
+		}
 
         _psi_packets = psi_packets;
         _psi_packet_data = MergeTsPacketData(psi_packets);
@@ -430,6 +442,7 @@ namespace mpegts
 		if (track_id == _main_track_id)
 		{
 			_last_sample_end_timestamp_ms = static_cast<double>(sample._dts + sample._duration) / TIMEBASE_DBL * 1000.0;
+			SetMediaPositionMs(_last_sample_end_timestamp_ms);
 		}
 
 		CreateSegmentIfReady();
@@ -479,27 +492,6 @@ namespace mpegts
 
 			markers = PopMarkers(main_segment_end_timestamp);
 			force_create = true;
-
-			// If the last marker is a cue-out marker, insert a cue-in marker automatically after duration of cue-out marker
-			auto last_marker = markers.back();
-			auto next_marker = GetFirstMarker();
-			if (last_marker->GetTag().UpperCaseString() == "CUEEVENT-OUT" && (next_marker == nullptr || next_marker->GetTag().UpperCaseString() != "CUEEVENT-IN"))
-			{
-				auto cue_out_event = last_marker->GetCueEvent();
-				if (cue_out_event != nullptr)
-				{
-					auto duration_msec = cue_out_event->GetDurationMsec();
-					auto main_track = GetMediaTrack(_main_track_id);
-					int64_t cue_in_timestamp = (main_segment_end_timestamp - 1) + (static_cast<double>(duration_msec) / 1000.0 * mpegts::TIMEBASE_DBL);
-					int64_t cue_in_timestamp_ms = (static_cast<double>(main_segment_base_timestamp - 1) / mpegts::TIMEBASE_DBL * 1000.0) + duration_msec;
-
-					auto cue_in_marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, cue_in_timestamp, cue_in_timestamp_ms, CueEvent::Create(CueEvent::CueType::IN, 0)->Serialize());
-					if (cue_in_marker != nullptr)
-					{
-						InsertMarker(cue_in_marker);
-					}
-				}
-			}
 		}
 
 		if (force_create == false)
@@ -657,8 +649,13 @@ namespace mpegts
             }
         }
 
+		// A segment that came out long makes the next one shorter, but the catch
+		// up must never stretch a segment past the duration the playlist
+		// advertises: a marker cut is a short segment on purpose, and paying it
+		// back would break EXT-X-TARGETDURATION.
 		_next_target_duration_ms -= segment->GetDurationMs();
 		_next_target_duration_ms += _config.target_duration_ms;
+		_next_target_duration_ms = std::min(_next_target_duration_ms, static_cast<double>(_config.target_duration_ms));
 
         AddSegment(segment);
     }

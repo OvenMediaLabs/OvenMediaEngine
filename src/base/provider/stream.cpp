@@ -15,6 +15,8 @@
 #include "base/provider/pull_provider/stream_props.h"
 #include "base/provider/pull_provider/stream.h"
 #include <base/event/command/commands.h>
+#include <base/modules/data_format/cue_event/cue_event.h>
+#include <base/modules/data_format/scte35_event/scte35_event.h>
 
 namespace pvd
 {
@@ -142,6 +144,45 @@ namespace pvd
 		return _max_generated_timestamp_ms;
 	}
 
+	void Stream::UpdateLastTimestampStat(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<const MediaPacket> &packet)
+	{
+		if (track == nullptr ||
+			(track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio))
+		{
+			return;
+		}
+
+		// dts, because packets arrive in decode order so it is monotonic even
+		// with B-frames; a source that leaves dts unset falls back to pts
+		int64_t source_timestamp = (packet->GetDts() >= 0) ? packet->GetDts() : packet->GetPts();
+		double timescale = track->GetTimeBase().GetTimescale();
+		if (source_timestamp < 0 || timescale <= 0)
+		{
+			return;
+		}
+
+		int64_t media_timestamp_ms = static_cast<int64_t>(source_timestamp / timescale * 1000.0);
+
+		// Most packets do not advance the clock (only the leading track does);
+		// they must not pay for the mutex
+		if (media_timestamp_ms <= _last_media_timestamp_ms_hint.load(std::memory_order_relaxed))
+		{
+			return;
+		}
+
+		ov::LockGuard lock(_timestamp_mutex);
+
+		// The clock is the newest position over every media track: a lagging
+		// track cannot pull it backward, and per-track timestamps only move
+		// forward, so a running maximum is that position
+		if (media_timestamp_ms > _last_media_timestamp_ms)
+		{
+			_last_media_timestamp_ms = media_timestamp_ms;
+			_last_media_timestamp_ms_hint.store(media_timestamp_ms, std::memory_order_relaxed);
+			_elapsed_from_last_media_timestamp.Restart();
+		}
+	}
+
 	bool Stream::SendDataFrame(int64_t timestamp_in_ms, int64_t duration, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal, const MediaPacketFlag packet_flag)
 	{
 		if (frame == nullptr)
@@ -175,24 +216,9 @@ namespace pvd
 #endif	// DEBUG
 		}
 
+		// The requested position goes out as-is; whoever consumes the event
+		// settles a position the media has already passed
 		auto timestamp_in_tb = static_cast<int64_t>(timestamp_in_ms * data_track->GetTimeBase().GetTimescale() / 1000.0);
-
-		if (format == cmn::BitstreamFormat::SCTE35 || format == cmn::BitstreamFormat::CUE)
-		{
-			// SCTE35 and CUE should be in the same sequence number in HLS. However, A and V can differ by up to the maximum keyframe interval duration, so the sequence number may be different when observed at the same time. Therefore, it should be put in advance, and delayed when creating a segment to be entered in the same number.
-
-			// Get Duration of keyframe interval
-			auto first_video_track = GetFirstTrackByType(cmn::MediaType::Video);
-			if (first_video_track != nullptr)
-			{
-				double keyframe_interval_duration_ms = first_video_track->GetKeyframeIntervalDurationMs();
-				double keyframe_interval_duration = keyframe_interval_duration_ms / 1000.0 * data_track->GetTimeBase().GetTimescale();
-				timestamp_in_tb += std::ceil(keyframe_interval_duration);
-
-				logti("SendDataFrame - %s/%s(%u) - timestamp: %" PRId64 " tb, keyframe_interval_duration_ms: %f ms, keyframe_interval_duration: %f tb, keyframe_interval: %f, framerate: %f",
-				GetApplicationName(), GetName().CStr(), GetId(), timestamp_in_tb, keyframe_interval_duration_ms, std::ceil(keyframe_interval_duration), first_video_track->GetKeyFrameInterval(), first_video_track->GetFrameRate());
-			}
-		}
 
 		auto event_message = std::make_shared<MediaPacket>(cmn::MediaType::Data,
 															data_track->GetId(),
@@ -208,8 +234,82 @@ namespace pvd
 		// Mark as internal created packet
 		// stream_actions.controller, mediarouter_event_generator, etc use this flag to identify internally created packets.
 		event_message->SetInternalCreated(internal);
-		
-		return SendFrame(event_message);
+
+		if (SendFrame(event_message) == false)
+		{
+			return false;
+		}
+
+		SendProvisionalReturnPoint(timestamp_in_ms, format, frame, urgent, internal);
+
+		return true;
+	}
+
+	void Stream::SendProvisionalReturnPoint(int64_t out_timestamp_ms, const cmn::BitstreamFormat &format, const std::shared_ptr<ov::Data> &out_frame, bool urgent, bool internal)
+	{
+		int64_t break_duration_ms = -1;
+		std::shared_ptr<Scte35Event> out_event;
+
+		if (format == cmn::BitstreamFormat::CUE)
+		{
+			// A cue break has no other signal to end it, so its length is the
+			// contract
+			auto cue_event = CueEvent::Parse(out_frame);
+			if (cue_event == nullptr || cue_event->GetCueType() != CueEvent::CueType::OUT)
+			{
+				return;
+			}
+
+			break_duration_ms = cue_event->GetDurationMsec();
+		}
+		else if (format == cmn::BitstreamFormat::SCTE35)
+		{
+			// SCTE-35 states whether it returns on its own. Without that flag an
+			// explicit splice-in follows, and inventing one here would collide
+			// with it.
+			out_event = Scte35Event::Parse(out_frame);
+			if (out_event == nullptr || out_event->IsOutOfNetwork() == false || out_event->IsAutoReturn() == false)
+			{
+				return;
+			}
+
+			break_duration_ms = out_event->GetDurationMsec();
+		}
+		else
+		{
+			return;
+		}
+
+		if (break_duration_ms <= 0)
+		{
+			return;
+		}
+
+		const int64_t return_timestamp_ms = out_timestamp_ms + break_duration_ms;
+		std::shared_ptr<ov::Data> return_frame;
+
+		if (format == cmn::BitstreamFormat::CUE)
+		{
+			auto return_event = CueEvent::Create(CueEvent::CueType::IN, 0, 0, true);
+			return_frame = (return_event != nullptr) ? return_event->Serialize() : nullptr;
+		}
+		else
+		{
+			auto return_event = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, out_event->GetID(), false,
+												   return_timestamp_ms, 0, false, true);
+			return_frame = (return_event != nullptr) ? return_event->Serialize() : nullptr;
+		}
+
+		if (return_frame == nullptr)
+		{
+			logtw("Could not build the return point of the break. %s/%s(%u)", GetApplicationName(), GetName().CStr(), GetId());
+			return;
+		}
+
+		logti("%s/%s(%u) - The break at %" PRId64 " ms returns at %" PRId64 " ms; sending the return point",
+			  GetApplicationName(), GetName().CStr(), GetId(), out_timestamp_ms, return_timestamp_ms);
+
+		SendDataFrame(return_timestamp_ms, -1, format, cmn::PacketType::EVENT, return_frame, urgent, internal, MediaPacketFlag::NoFlag);
 	}
 
 	bool Stream::SendDataFrame(int64_t timestamp, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal, const MediaPacketFlag packet_flag)
@@ -377,18 +477,7 @@ namespace pvd
 		_last_pkt_received_time_us = std::chrono::duration_cast<std::chrono::microseconds>(
 			std::chrono::steady_clock::now().time_since_epoch()).count();
 
-		auto master_clock_track = GetMediaTrackByOrder(cmn::MediaType::Video, 0);
-		if (master_clock_track == nullptr)
-		{
-			master_clock_track = GetMediaTrackByOrder(cmn::MediaType::Audio, 0);
-		}
-
-		if (master_clock_track != nullptr && packet->GetTrackId() == master_clock_track->GetId())
-		{
-			ov::LockGuard lock(_timestamp_mutex);
-			_last_media_timestamp_ms = packet->GetPts() / GetTrack(packet->GetTrackId())->GetTimeBase().GetTimescale() * 1000.0;
-			_elapsed_from_last_media_timestamp.Restart();
-		}
+		UpdateLastTimestampStat(GetTrack(packet->GetTrackId()), packet);
 
 		return _application->SendFrame(GetSharedPtr(), packet);
 	}

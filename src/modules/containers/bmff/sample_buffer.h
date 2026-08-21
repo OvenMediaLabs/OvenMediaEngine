@@ -24,6 +24,10 @@ namespace bmff
 
         bool AppendSample(const std::shared_ptr<const MediaPacket> &media_packet);
         std::shared_ptr<Samples> GetSamples() const;
+        // Detach exactly the first count samples for emission; the rest stay
+        // buffered. A request that cannot be fulfilled exactly (empty buffer,
+        // count of 0, or more than is buffered) returns nullptr, never a part.
+        std::shared_ptr<Samples> PopFront(size_t count);
         void Reset();
 
     private:

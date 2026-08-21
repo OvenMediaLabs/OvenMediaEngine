@@ -13,6 +13,25 @@
 
 namespace bmff
 {
+    // Ticks on the track's timebase to integer microseconds. A duration must be
+    // stamped as the difference of two converted endpoints, so consecutive
+    // durations telescope exactly to end minus start.
+    inline int64_t TicksToUs(int64_t ticks, double timescale)
+    {
+        return static_cast<int64_t>((static_cast<double>(ticks) / timescale) * 1000000.0);
+    }
+
+    // The timing facts of one sample, all a boundary policy needs to plan an
+    // emission. Integer microseconds: sums and comparisons are exact.
+    struct SampleTiming
+    {
+        int64_t dts_us = 0;
+        int64_t pts_us = 0;
+        int64_t duration_us = 0;
+        // Whether a segment or chunk may start at this sample
+        bool independent = false;
+    };
+
     struct Sample
     {
         // For CENC
@@ -78,6 +97,9 @@ namespace bmff
 
         std::shared_ptr<const MediaPacket> _media_packet;
         SampleAuxInfo _sai;
+
+        // Stamped once when the sample enters the buffer
+        SampleTiming timing;
     };
 
     class Samples
@@ -88,7 +110,10 @@ namespace bmff
         const std::vector<Sample> &GetList() const;
         // Get Data At
         const Sample &GetAt(size_t index) const;
-        void PopFront();
+        // Detach exactly the first count samples as a new Samples; the
+        // aggregates of both sides stay consistent. count must be within
+        // 1..GetTotalCount(); anything else returns nullptr, never a part.
+        std::shared_ptr<Samples> PopFront(size_t count);
         // Get Start Timestamp
         int64_t GetStartTimestamp() const;
         // Get End Timestamp
@@ -103,6 +128,10 @@ namespace bmff
         bool IsEmpty() const;
         // Is Independent
         bool IsIndependent() const;
+        // Sum of the stamped durations (µs), maintained on append and pop
+        int64_t GetTotalTimingDurationUs() const;
+        // The highest stamped pts (µs), maintained on append and pop
+        int64_t GetHighestPtsUs() const;
     private:
         std::vector<Sample> _samples;
 
@@ -112,5 +141,7 @@ namespace bmff
         uint64_t _total_size = 0;
         uint32_t _total_count = 0;
         bool _independent = false;
+        int64_t _total_timing_duration_us = 0;
+        int64_t _highest_pts_us = 0;
     };
 }

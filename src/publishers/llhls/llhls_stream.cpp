@@ -190,7 +190,6 @@ bool LLHlsStream::Start()
 	}
 
 	_packager_config.chunk_duration_ms = llhls_config.GetChunkDuration() * 1000.0;
-	_packager_config.segment_duration_ms = llhls_config.GetSegmentDuration() * 1000.0;
 	// cenc property will be set in AddPackager
 
 	_storage_config.max_segments = llhls_config.GetSegmentCount();
@@ -203,7 +202,6 @@ bool LLHlsStream::Start()
 	_storage_config.dvr_enabled = dvr_config.IsEnabled();
 	_storage_config.dvr_storage_path = dvr_config.GetTempStoragePath();
 	_storage_config.dvr_duration_sec = dvr_config.GetMaxDuration();
-	_storage_config.server_time_based_segment_numbering = llhls_config.IsServerTimeBasedSegmentNumbering();
 
 	_configured_part_hold_back = llhls_config.GetPartHoldBack();
 	_preload_hint_enabled = llhls_config.IsPreloadHintEnabled();
@@ -211,7 +209,8 @@ bool LLHlsStream::Start()
 	// Find data track
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
-	// Find the first video track and audio track with supported codec, and set the reference track id for VTT track.
+	// Find the first video track and audio track with supported codec; the
+	// reference track the rest of the stream follows is one of them
 	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
 	for (const auto &[id, track] : GetTracks())
 	{
@@ -232,7 +231,7 @@ bool LLHlsStream::Start()
 			break;
 		}
 	}
-	_vtt_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
+	_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
 
 	// Add packager for each track
 	for (const auto &[id, track] : GetTracks())
@@ -1281,10 +1280,11 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE || media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
 	{
-		// Marker alignment across tracks requires the keyframe interval to be
-		// strictly shorter than the segment duration and to divide it evenly;
-		// an equal interval also breaks the alignment
-		if (_cue_alignment_warned == false)
+		// In duration mode, marker alignment across tracks requires the keyframe
+		// interval to be strictly shorter than the segment duration and to divide
+		// it evenly; an equal interval also breaks the alignment. Synced mode
+		// follows the reference's realized cuts, so any interval aligns.
+		if (_cue_alignment_warned == false && GetSegmentationMode() == LLHlsSegmentationMode::Duration)
 		{
 			auto video_track = GetFirstTrackByType(cmn::MediaType::Video);
 			if (video_track != nullptr)
@@ -1309,7 +1309,7 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 		// milliseconds scale
 		auto timestamp_ms = static_cast<double>(media_packet->GetDts()) / data_track->GetTimeBase().GetTimescale() * 1000.0;
 		std::shared_ptr<ov::Data> data = media_packet->GetData() != nullptr ? media_packet->GetData()->Clone() : nullptr;
-		if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), timestamp_ms, data) == false)
+		if (InsertMarkerToPolicies(media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), timestamp_ms, data) == false)
 		{
 			logte("Failed to insert marker to all packagers (track_id: %u, bitstream_format: %d, timestamp: %" PRId64 ")", media_packet->GetTrackId(), ov::ToUnderlyingType(media_packet->GetBitstreamFormat()), media_packet->GetDts());
 			return;
@@ -1339,15 +1339,36 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 }
 
-std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const
+std::shared_ptr<const MediaTrack> LLHlsStream::GetReferenceTrack() const
 {
-	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
-	if (data_track == nullptr)
+	if (_reference_track_id < 0)
 	{
-		return {false, "Could not find data track"};
+		return nullptr;
 	}
 
-	// Insert marker to all packagers
+	return GetTrack(_reference_track_id);
+}
+
+LLHlsSegmentationMode LLHlsStream::GetSegmentationMode() const
+{
+	return GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher().GetSegmentationMode();
+}
+
+
+bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data)
+{
+	auto data_track = GetTrack(data_track_id);
+	if (data_track == nullptr)
+	{
+		logtw("Could not find track. id: %d", data_track_id);
+		return false;
+	}
+
+	// Every accepting track must take it, or none does. So the insert is decided
+	// for all of them first: a track refusing after another one already took the
+	// marker would leave that rendition carrying a tag the others do not.
+	std::vector<std::pair<std::shared_ptr<bmff::SegmentBoundaryPolicy>, bmff::SegmentBoundaryPolicy::PreparedMarker>> prepared;
+
 	for (const auto &it : GetTracks())
 	{
 		auto track = it.second;
@@ -1357,115 +1378,32 @@ std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat b
 			continue;
 		}
 
-		// Get Packager
-		auto packager = GetPackager(track->GetId());
-		if (packager == nullptr)
+		auto boundary_policy = GetBoundaryPolicy(track->GetId());
+		if (boundary_policy == nullptr || boundary_policy->AcceptsMarkers() == false)
 		{
-			logtt("Could not find packager. track id: %d", track->GetId());
 			continue;
 		}
 
-		auto timestamp_media_scale = static_cast<double>(timestamp_ms) / data_track->GetTimeBase().GetTimescale() * track->GetTimeBase().GetTimescale();
-		auto marker = Marker::CreateMarker(bitstream_format, timestamp_media_scale, timestamp_ms, data);
+		auto marker = Marker::CreateMarker(bitstream_format, timestamp_ms, timestamp_ms, data);
 		if (marker == nullptr)
 		{
 			logte("(%s/%s) Failed to create the marker", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			return {false, "Failed to create the marker"};
+			return false;
 		}
 
-		auto [result, message] = packager->CanInsertMarker(marker);
-		if (result == false)
+		auto plan = boundary_policy->PrepareMarker(marker);
+		if (plan.has_value() == false)
 		{
-			logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
-			return {false, message};
+			logte("Failed to insert marker (timestamp: %" PRId64 " ms, tag: %s, track: %u)", marker->GetTimestampMs(), marker->GetTag().CStr(), track->GetId());
+			return false;
 		}
+
+		prepared.emplace_back(boundary_policy, plan.value());
 	}
 
-	return {true, ""};
-}
-
-bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data)
-{
-	auto data_track = GetTrack(data_track_id);
-	if (data_track == nullptr)
+	for (auto &[boundary_policy, plan] : prepared)
 	{
-		logtw("Could not find track. id: %d", data_track_id);
-		return false;
-	}
-
-	auto first_video_media_track = GetFirstTrackByType(cmn::MediaType::Video);
-	auto first_video_packager = (first_video_media_track != nullptr) ? GetPackager(first_video_media_track->GetId()) : nullptr;
-
-	// The estimate comes from the video packager because video owns the coarsest
-	// cut granularity; without a video track it falls back to the highest
-	// current sequence number below
-	int64_t estimated_seq = (first_video_packager != nullptr) ? first_video_packager->GetEstimatedSequenceNumber(timestamp_ms) : -1;
-	int64_t max_current_seq = 0;
-	// 0: check if it can insert
-	// 1: insert
-	for (int i = 0; i < 2; i++)
-	{
-		if (i == 1)
-		{
-			logtd("InsertMarkerToAllPackagers - Estimated sequence number: %" PRId64 " Max current sequence number: %" PRId64 "", estimated_seq, max_current_seq);
-
-			if (max_current_seq > estimated_seq)
-			{
-				logtw("Estimated sequence number is smaller than the current sequence number. estimated_seq: %" PRId64 ", max_current_seq: %" PRId64 "", estimated_seq, max_current_seq);
-				estimated_seq = max_current_seq;
-			}
-		}
-
-		// Insert marker to all packagers
-		for (const auto &it : GetTracks())
-		{
-			auto track = it.second;
-			// Only video and audio tracks are supported
-			if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
-			{
-				continue;
-			}
-
-			// Get Packager
-			auto packager = GetPackager(track->GetId());
-			if (packager == nullptr)
-			{
-				logtt("Could not find packager. track id: %d", track->GetId());
-				continue;
-			}
-
-			auto timestamp_media_scale = static_cast<double>(timestamp_ms) / data_track->GetTimeBase().GetTimescale() * track->GetTimeBase().GetTimescale();
-			auto marker = Marker::CreateMarker(bitstream_format, timestamp_media_scale, timestamp_ms, data);
-			if (marker == nullptr)
-			{
-				logte("(%s/%s) Failed to create the marker", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-				return false;
-			}
-
-			if (i == 0)	 // check
-			{
-				max_current_seq = std::max(max_current_seq, packager->GetCurrentSequenceNumber());
-				auto [result, msg] = packager->CanInsertMarker(marker);
-				if (result == false)
-				{
-					logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s, msg: %s)", marker->GetTimestamp(), marker->GetTag().CStr(), msg.CStr());
-					return false;
-				}
-			}
-			else
-			{
-				logtd("Packager(%u) - Insert marker: %s Estimated sequence number: %" PRId64 "", track->GetId(), marker->GetTag().CStr(), estimated_seq);
-
-				marker->SetDesiredSequenceNumber(estimated_seq);
-				auto result = packager->InsertMarker(marker);
-				if (result == false)
-				{
-					// We checked it can be inserted, so it should not fail
-					logtc("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
-					return false;
-				}
-			}
-		}
+		boundary_policy->CommitMarker(plan);
 	}
 
 	return true;
@@ -1938,12 +1876,67 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 		logte("LLHlsStream::AddPackager() - CENC is not supported for this codec(%s), this track will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()));
 	}
 
+	// The boundary policy decides where each segment of this track ends and
+	// what it is named. Server-time based numbering starts from the wall clock.
+	auto llhls_config = GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher();
+	bool server_time_based_segment_numbering = llhls_config.IsServerTimeBasedSegmentNumbering();
+
+	bmff::SegmentBoundaryPolicy::Config policy_config;
+	policy_config.segment_duration_ms = _storage_config.segment_duration_ms;
+	policy_config.chunk_duration_ms = packager_config.chunk_duration_ms;
+	policy_config.cue_out_cut_mode = llhls_config.GetCueOutCutMode();
+	// Video cuts only at keyframes; audio can cut at any frame
+	policy_config.keyframe_interval_ms = (media_track->GetMediaType() == cmn::MediaType::Video) ? media_track->GetKeyframeIntervalDurationMs() : 0.0;
+	policy_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), media_track->GetId());
+	if (server_time_based_segment_numbering == true)
+	{
+		policy_config.initial_segment_number = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / static_cast<double>(_storage_config.segment_duration_ms);
+	}
+
+	std::shared_ptr<bmff::SegmentBoundaryPolicy> boundary_policy;
+
+	auto reference_track = (GetSegmentationMode() == LLHlsSegmentationMode::Synced) ? GetReferenceTrack() : nullptr;
+	if (reference_track != nullptr)
+	{
+		// The reference aims at multiples of the segment duration on its own
+		// frame cadence; the realized cuts land on its keyframes and every other
+		// track follows them. Created on the first track, whichever it is.
+		if (_reference_boundary_policy == nullptr)
+		{
+			auto reference_config = policy_config;
+			reference_config.chunk_duration_ms = std::round(ComputeOptimalPartDuration(reference_track));
+			// The cadence must be the reference's own; policy_config carries the
+			// one of whichever track this call is for
+			reference_config.keyframe_interval_ms = (reference_track->GetMediaType() == cmn::MediaType::Video) ? reference_track->GetKeyframeIntervalDurationMs() : 0.0;
+			reference_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), reference_track->GetId());
+			_reference_boundary_policy = std::make_shared<bmff::ReferenceBoundaryPolicy>(reference_config, reference_track->GetFrameRate());
+		}
+
+		if (media_track->GetId() == reference_track->GetId())
+		{
+			boundary_policy = _reference_boundary_policy;
+		}
+		else
+		{
+			boundary_policy = std::make_shared<bmff::SyncedBoundaryPolicy>(_reference_boundary_policy, policy_config);
+		}
+	}
+	else
+	{
+		boundary_policy = std::make_shared<bmff::DurationBoundaryPolicy>(policy_config, server_time_based_segment_numbering);
+	}
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_boundary_policy_map_lock);
+		_boundary_policy_map.emplace(media_track->GetId(), boundary_policy);
+	}
+
 	// Create Storage
-	auto storage = std::make_shared<bmff::FMP4Storage>(bmff::FMp4StorageObserver::GetSharedPtr(), media_track, _storage_config, tag);
+	auto storage = std::make_shared<bmff::FMP4Storage>(bmff::FMp4StorageObserver::GetSharedPtr(), media_track, _storage_config, tag, boundary_policy);
 
 	// Create fMP4 Packager
 	packager_config.cenc_property = cenc_property;
-	auto packager = std::make_shared<bmff::FMP4Packager>(storage, media_track, data_track, packager_config);
+	auto packager = std::make_shared<bmff::FMP4Packager>(storage, boundary_policy, media_track, data_track, packager_config);
 
 	// Create Initialization Segment
 	if (packager->CreateInitializationSegment() == false)
@@ -2026,7 +2019,7 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// Chunklist
 	auto segment_duration = std::round(static_cast<double>(_storage_config.segment_duration_ms) / 1000.0);
 	auto chunk_duration = static_cast<double>(_packager_config.chunk_duration_ms) / 1000.0;
-	auto refer_track = GetTrack(_vtt_reference_track_id);
+	auto refer_track = GetTrack(_reference_track_id);
 	if (refer_track != nullptr)
 	{
 		chunk_duration = std::round(ComputeOptimalPartDuration(refer_track)) / 1000.0;
@@ -2086,6 +2079,18 @@ std::shared_ptr<bmff::FMP4Storage> LLHlsStream::GetFmp4Storage(const int32_t &tr
 }
 
 // Get fMP4 packager with the track id
+std::shared_ptr<bmff::SegmentBoundaryPolicy> LLHlsStream::GetBoundaryPolicy(const int32_t &track_id) const
+{
+	std::shared_lock<std::shared_mutex> lock(_boundary_policy_map_lock);
+	auto it = _boundary_policy_map.find(track_id);
+	if (it == _boundary_policy_map.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
+}
+
 std::shared_ptr<bmff::FMP4Packager> LLHlsStream::GetPackager(const int32_t &track_id) const
 {
 	std::shared_lock<std::shared_mutex> lock(_packager_map_lock);
@@ -2348,7 +2353,7 @@ void LLHlsStream::OnMediaSegmentCreated(const int32_t &track_id, const uint32_t 
 
 	playlist->CreateSegmentInfo(segment_info);
 
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		// If this is a VTT reference track, we need to create a chunklist for vtt chunklists as well
 		for (const auto &it : _vtt_packagers)
@@ -2502,7 +2507,7 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
 
 	// Make Subtitle
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		// If this is a VTT reference track, we need to create a chunklist for vtt chunklists as well
 		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
@@ -2570,7 +2575,7 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 		return;
 	}
 
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
 		// If this is a VTT reference track, we need to delete a chunklist for vtt chunklists as well
