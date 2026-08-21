@@ -204,57 +204,90 @@ namespace bmff
 		return {true, ""};
 	}
 
-	bool SegmentBoundaryPolicy::InsertMarker(const std::shared_ptr<Marker> &marker)
+	std::optional<SegmentBoundaryPolicy::PreparedMarker> SegmentBoundaryPolicy::PrepareMarker(const std::shared_ptr<Marker> &marker) const
 	{
 		auto [can_insert, message] = CanInsertMarker(marker);
 		if (can_insert == false)
 		{
 			logte("%s - Failed to insert the marker : %s", _log_context.CStr(), message.CStr());
-			return false;
+			return std::nullopt;
 		}
 
-		std::lock_guard<std::shared_mutex> lock(_markers_guard);
+		std::shared_lock<std::shared_mutex> lock(_markers_guard);
+
+		PreparedMarker prepared;
+		prepared.marker = marker;
 
 		// The position the marker cuts at: a provisional IN follows its OUT, a
 		// late position moves onto the nearest one that can still cut; the
 		// advertised time stays as received
-		int64_t effective_us = EffectiveCutUs(marker);
-		if (effective_us < 0)
+		prepared.cut_us = EffectiveCutUs(marker);
+		if (prepared.cut_us < 0)
 		{
 			logte("%s - The position of the marker has already passed by more than a segment : %s (%" PRId64 " ms)", _log_context.CStr(), marker->GetTag().CStr(), marker->GetTimestampMs());
-			return false;
-		}
-		if (effective_us != marker->GetTimestampMs() * 1000)
-		{
-			logti("%s - Marker (%s) at %" PRId64 " ms cuts at %.3f ms; the advertised time is kept",
-				  _log_context.CStr(), marker->GetTag().CStr(), marker->GetTimestampMs(), static_cast<double>(effective_us) / 1000.0);
+			return std::nullopt;
 		}
 
-		bool is_out = (marker->IsOutOfNetwork() == true);
-
-		if (_last_inserted_marker != nullptr && is_out == false)
+		if (_last_inserted_marker != nullptr && marker->IsOutOfNetwork() == false)
 		{
-			bool last_is_out = (_last_inserted_marker->IsOutOfNetwork() == true);
-
-			if (last_is_out == false)
+			if (_last_inserted_marker->IsOutOfNetwork() == false)
 			{
 				// This IN replaces the pending one (duplicate, earlier return
 				// point, or a provisional one being confirmed or moved) and keeps
 				// its break
-				_pending_markers.erase(_last_inserted_cut_us);
-				marker->SetParent(_last_inserted_marker->GetParent());
+				prepared.replaces_cut_us = _last_inserted_cut_us;
+				prepared.parent = _last_inserted_marker->GetParent();
 			}
 			else
 			{
 				// The return point of the break the last OUT opened
-				marker->SetParent(_last_inserted_marker);
+				prepared.parent = _last_inserted_marker;
 			}
 		}
 
-		_pending_markers[effective_us] = marker;
-		_last_inserted_marker = marker;
-		_last_inserted_cut_us = effective_us;
+		return prepared;
+	}
+
+	void SegmentBoundaryPolicy::CommitMarker(const PreparedMarker &prepared)
+	{
+		if (prepared.marker == nullptr || prepared.cut_us < 0)
+		{
+			return;
+		}
+
+		if (prepared.cut_us != prepared.marker->GetTimestampMs() * 1000)
+		{
+			logti("%s - Marker (%s) at %" PRId64 " ms cuts at %.3f ms; the advertised time is kept",
+				  _log_context.CStr(), prepared.marker->GetTag().CStr(), prepared.marker->GetTimestampMs(), static_cast<double>(prepared.cut_us) / 1000.0);
+		}
+
+		std::lock_guard<std::shared_mutex> lock(_markers_guard);
+
+		if (prepared.parent != nullptr)
+		{
+			prepared.marker->SetParent(prepared.parent);
+		}
+
+		if (prepared.replaces_cut_us >= 0)
+		{
+			_pending_markers.erase(prepared.replaces_cut_us);
+		}
+
+		_pending_markers[prepared.cut_us] = prepared.marker;
+		_last_inserted_marker = prepared.marker;
+		_last_inserted_cut_us = prepared.cut_us;
 		_pending_marker_count.store(_pending_markers.size(), std::memory_order_relaxed);
+	}
+
+	bool SegmentBoundaryPolicy::InsertMarker(const std::shared_ptr<Marker> &marker)
+	{
+		auto prepared = PrepareMarker(marker);
+		if (prepared.has_value() == false)
+		{
+			return false;
+		}
+
+		CommitMarker(*prepared);
 
 		return true;
 	}

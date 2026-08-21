@@ -99,7 +99,6 @@ public:
 	//////////////////////////
 	// Check marker can be inserted
 	//////////////////////////
-	std::tuple<bool, ov::String> CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const;
 
 	/// Origin Mode Session Management
 	std::shared_ptr<LLHlsSession> GetSessionFromPool();

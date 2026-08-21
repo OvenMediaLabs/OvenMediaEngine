@@ -1339,48 +1339,6 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 }
 
-std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const
-{
-	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
-	if (data_track == nullptr)
-	{
-		return {false, "Could not find data track"};
-	}
-
-	// Every track that takes markers directly must accept it
-	for (const auto &it : GetTracks())
-	{
-		auto track = it.second;
-		// Only video and audio tracks are supported
-		if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
-		{
-			continue;
-		}
-
-		auto boundary_policy = GetBoundaryPolicy(track->GetId());
-		if (boundary_policy == nullptr || boundary_policy->AcceptsMarkers() == false)
-		{
-			continue;
-		}
-
-		auto marker = Marker::CreateMarker(bitstream_format, timestamp_ms, timestamp_ms, data);
-		if (marker == nullptr)
-		{
-			logte("(%s/%s) Failed to create the marker", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			return {false, "Failed to create the marker"};
-		}
-
-		auto [result, message] = boundary_policy->CanInsertMarker(marker);
-		if (result == false)
-		{
-			logte("Failed to insert marker (timestamp: %" PRId64 " ms, tag: %s)", marker->GetTimestampMs(), marker->GetTag().CStr());
-			return {false, message};
-		}
-	}
-
-	return {true, ""};
-}
-
 std::shared_ptr<const MediaTrack> LLHlsStream::GetReferenceTrack() const
 {
 	if (_reference_track_id < 0)
@@ -1396,6 +1354,7 @@ LLHlsSegmentationMode LLHlsStream::GetSegmentationMode() const
 	return GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher().GetSegmentationMode();
 }
 
+
 bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data)
 {
 	auto data_track = GetTrack(data_track_id);
@@ -1405,13 +1364,10 @@ bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamF
 		return false;
 	}
 
-	// Every accepting track must take it, or none does
-	auto [can_insert, message] = CanInsertMarker(bitstream_format, timestamp_ms, data);
-	if (can_insert == false)
-	{
-		logte("Failed to insert marker (timestamp: %" PRId64 " ms, msg: %s)", timestamp_ms, message.CStr());
-		return false;
-	}
+	// Every accepting track must take it, or none does. So the insert is decided
+	// for all of them first: a track refusing after another one already took the
+	// marker would leave that rendition carrying a tag the others do not.
+	std::vector<std::pair<std::shared_ptr<bmff::SegmentBoundaryPolicy>, bmff::SegmentBoundaryPolicy::PreparedMarker>> prepared;
 
 	for (const auto &it : GetTracks())
 	{
@@ -1435,12 +1391,19 @@ bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamF
 			return false;
 		}
 
-		if (boundary_policy->InsertMarker(marker) == false)
+		auto plan = boundary_policy->PrepareMarker(marker);
+		if (plan.has_value() == false)
 		{
-			// We checked it can be inserted, so it should not fail
-			logtc("Failed to insert marker (timestamp: %" PRId64 " ms, tag: %s)", marker->GetTimestampMs(), marker->GetTag().CStr());
+			logte("Failed to insert marker (timestamp: %" PRId64 " ms, tag: %s, track: %u)", marker->GetTimestampMs(), marker->GetTag().CStr(), track->GetId());
 			return false;
 		}
+
+		prepared.emplace_back(boundary_policy, plan.value());
+	}
+
+	for (auto &[boundary_policy, plan] : prepared)
+	{
+		boundary_policy->CommitMarker(plan);
 	}
 
 	return true;

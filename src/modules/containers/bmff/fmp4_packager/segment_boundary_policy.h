@@ -110,8 +110,32 @@ namespace bmff
 		// later than that it is refused.
 		std::tuple<bool, ov::String> CanInsertMarker(const std::shared_ptr<Marker> &marker) const;
 
-		// (input) Insert a marker. The advertised time stays as received; a
-		// late position only moves where the cut lands.
+		// A validated insert, ready to be applied
+		struct PreparedMarker
+		{
+			std::shared_ptr<Marker> marker;
+			// The position the cut lands at
+			int64_t cut_us = -1;
+			// The pending return point this one takes the place of; negative when
+			// it replaces nothing
+			int64_t replaces_cut_us = -1;
+			// The break this marker belongs to
+			std::shared_ptr<Marker> parent;
+		};
+
+		// (input) Validate a marker and work out what inserting it would do,
+		// without changing anything. A caller inserting the same marker into
+		// several tracks prepares all of them first, so it learns that every one
+		// accepts before any one of them changes.
+		std::optional<PreparedMarker> PrepareMarker(const std::shared_ptr<Marker> &marker) const;
+
+		// (input) Apply a prepared insert. Cannot fail: the position was already
+		// decided, and the state it was decided against may only have moved on.
+		void CommitMarker(const PreparedMarker &prepared);
+
+		// (input) Insert a marker, preparing and applying in one step. The
+		// advertised time stays as received; a late position only moves where the
+		// cut lands.
 		bool InsertMarker(const std::shared_ptr<Marker> &marker);
 
 		// (input) The timeline breaks at the first cuttable frame at or after

@@ -142,6 +142,36 @@ TEST(MarkerPolicyTest, InPairsWithItsOut)
 	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::IN, 14000, 0))));
 }
 
+TEST(MarkerPolicyTest, PreparingAMarkerChangesNothingUntilItIsCommitted)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	auto prepared = policy->PrepareMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs));
+	ASSERT_TRUE(prepared.has_value());
+
+	// The break is not open yet: its return point is still refused, and a
+	// settlement covering the position carries nothing
+	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::IN, 15000, 0))));
+
+	bmff::CompletedSegment completed;
+	completed.number = 0;
+	completed.start_timestamp_us = 4000000;
+	completed.duration_us = 4000000;
+	EXPECT_TRUE(policy->OnSegmentCompleted(completed).markers.empty());
+
+	// Applying it opens the break
+	policy->CommitMarker(prepared.value());
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::IN, 15000, 0))));
+
+	bmff::CompletedSegment next;
+	next.number = 1;
+	next.start_timestamp_us = 4000000;
+	next.duration_us = 4000000;
+	auto result = policy->OnSegmentCompleted(next);
+	ASSERT_EQ(result.markers.size(), 1u);
+	EXPECT_EQ(result.markers.front()->GetTimestampMs(), 5000);
+}
+
 //------------------------------------------------------------------------------
 // Cut positions (through the packager)
 //------------------------------------------------------------------------------
