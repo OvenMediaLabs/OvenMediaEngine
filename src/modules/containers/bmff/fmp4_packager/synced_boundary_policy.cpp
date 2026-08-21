@@ -246,14 +246,19 @@ namespace bmff
 
 	bool SyncedBoundaryPolicy::IsInFallback() const
 	{
-		int64_t head_us = _head_timestamp_us.load(std::memory_order_relaxed);
+		// Measured on the arriving samples, never on what this track was allowed
+		// to emit: the gate caps the emission at the reference's mark, so an
+		// emission-based probe could never show the reference falling behind
+		int64_t head_us = GetNewestSampleEndUs();
 		if (head_us < 0)
 		{
 			return false;
 		}
 
-		int64_t high_water_mark_us = _boundary_feed->GetHighWaterMarkUs();
-		int64_t reference_lag_us = head_us - std::max(high_water_mark_us, static_cast<int64_t>(0));
+		// Before the reference reports anything there is no mark to measure
+		// against, so this track's own start stands in for it
+		int64_t reference_position_us = std::max(_boundary_feed->GetHighWaterMarkUs(), GetFirstSampleEndUs());
+		int64_t reference_lag_us = head_us - reference_position_us;
 		return reference_lag_us > (_segment_duration_us * kStallThresholdFactor);
 	}
 
@@ -337,14 +342,6 @@ namespace bmff
 
 	bool SyncedBoundaryPolicy::CanEmitChunk(int64_t chunk_end_us) const
 	{
-		// Track the newest position this track tried to emit; it is the lag
-		// probe for the stalled-reference fallback. This track is the only
-		// writer, so a guarded store is enough.
-		if (chunk_end_us > _head_timestamp_us.load(std::memory_order_relaxed))
-		{
-			_head_timestamp_us.store(chunk_end_us, std::memory_order_relaxed);
-		}
-
 		// Until the lattice exists, nothing may emit: the first segment's number
 		// must come from the lattice, or every later segment inherits the
 		// initial guess
@@ -367,7 +364,7 @@ namespace bmff
 			if (_fallback_logged.exchange(true) == false)
 			{
 				logtw("%s - The reference track stalled %.0f ms behind; pacing this track alone until it returns",
-					  _log_context.CStr(), (_head_timestamp_us.load(std::memory_order_relaxed) - std::max(_boundary_feed->GetHighWaterMarkUs(), static_cast<int64_t>(0))) / 1000.0);
+					  _log_context.CStr(), (GetNewestSampleEndUs() - std::max(_boundary_feed->GetHighWaterMarkUs(), GetFirstSampleEndUs())) / 1000.0);
 			}
 			return true;
 		}
@@ -438,14 +435,23 @@ namespace bmff
 
 		if (consumed_count == 0)
 		{
+			// The storage published this number, so the numbering must move past
+			// it even though no boundary was realized (an early cut on a track
+			// change, or self-pacing while the reference is stalled). Leaving it
+			// behind makes every later segment collide with what is already out,
+			// and the collisions never stop. The boundary this segment did not
+			// reach is spent with it, the markers it relays included.
+			if (completed.number >= 0 && _last_consumed_segment_number < completed.number)
+			{
+				_last_consumed_segment_number = completed.number;
+			}
+
 			if (IsInFallback() == false)
 			{
-				// An early cut (a flush on a track change racing the reference)
-				// leaves this completion without a boundary; the next completion
-				// catches up, but the interim numbering is worth reporting
-				logtw("%s - A segment completed at %.3f ms before its boundary was realized; the numbering catches up on the next completion",
+				logtw("%s - A segment completed at %.3f ms before its boundary was realized; that boundary is skipped, so the markers it carries do not reach this track",
 					  _log_context.CStr(), segment_end_us / 1000.0);
 			}
+
 			return completion_result;
 		}
 
@@ -471,8 +477,8 @@ namespace bmff
 		// boundary and the markers it relays when the reference published it
 		auto completion_result = DoOnSegmentCompleted(completed, covered_markers);
 
-		// Even when no boundary was realized (the reference's cut is behind),
-		// the force-closed number is spent; the anchor may never point below it
+		// A force-close with no lattice to anchor on still spends its number; a
+		// completion that realized no boundary spent its own above
 		if (IsAnchored() == false || _last_consumed_segment_number < completed.number)
 		{
 			_last_consumed_segment_number = completed.number;

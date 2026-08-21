@@ -424,6 +424,11 @@ namespace bmff
 			_newest_sample_end_us.store(next_frame_end_us, std::memory_order_relaxed);
 		}
 
+		if (_first_sample_end_us.load(std::memory_order_relaxed) < 0)
+		{
+			_first_sample_end_us.store(next_frame_end_us, std::memory_order_relaxed);
+		}
+
 		const auto &sample_list = buffered.GetList();
 
 		// A propagated timeline break waits for a cuttable frame like every
@@ -458,7 +463,10 @@ namespace bmff
 		bool marker_close_asap = false;
 		int64_t marker_cut_us = -1;
 		auto [pending_cut_us, pending_marker] = GetFirstPendingCut();
-		if (pending_marker != nullptr)
+		// A position at or before this segment's start needs no cut of its own:
+		// the segment already begins at or after it, so cutting would only leave
+		// a fragment behind. The settlement attaches the marker to it.
+		if (pending_marker != nullptr && pending_cut_us > segment_start_us)
 		{
 			marker_cut_us = pending_cut_us;
 			bool is_out = (pending_marker->IsOutOfNetwork() == true);

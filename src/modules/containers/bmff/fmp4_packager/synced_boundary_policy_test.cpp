@@ -67,6 +67,20 @@ namespace
 		Complete(reference, number, 0.0, timestamp_ms);
 	}
 
+	// A sample arriving on this track. The plan pass is where the policy sees
+	// its position, and that position is what the stall probe measures.
+	void Arrive(const std::shared_ptr<bmff::SegmentBoundaryPolicy> &policy, double dts_ms, double duration_ms = 20.0)
+	{
+		bmff::Samples nothing_buffered;
+		bmff::SampleTiming timing;
+		timing.dts_us = std::llround(dts_ms * 1000.0);
+		timing.pts_us = timing.dts_us;
+		timing.duration_us = std::llround(duration_ms * 1000.0);
+		timing.independent = true;
+
+		policy->GetChunkPlan(nothing_buffered, timing, 0, 0);
+	}
+
 	// The plan for a segment starting at the given position (ms)
 	bmff::SegmentBoundary PlanAt(const std::shared_ptr<bmff::SegmentBoundaryPolicy> &policy, double start_ms)
 	{
@@ -189,14 +203,70 @@ TEST(SyncedBoundaryPolicyTest, StalledReferenceFallsBackToSelfPacing)
 	// The reference appended up to 1000 ms, then stalled
 	EXPECT_TRUE(reference->CanEmitChunk(1000000));
 
-	// Within the stall threshold: held
-	EXPECT_FALSE(policy->CanEmitChunk(1000000 + static_cast<int64_t>(kSegmentDurationMs) * 1000));
+	// The samples of this track keep arriving from where the reference stopped.
+	// The lag is measured on them: the gate holds every emission at the
+	// reference's mark, so what this track was allowed to emit can never show
+	// the reference falling behind.
+	Arrive(policy, 1000.0);
+	Arrive(policy, 1000.0 + kSegmentDurationMs);
 	EXPECT_FALSE(policy->IsInFallback());
+	EXPECT_FALSE(policy->CanEmitChunk(1000000 + static_cast<int64_t>(kSegmentDurationMs) * 1000));
 
 	// Past the threshold: the gate opens and the track paces itself
-	EXPECT_TRUE(policy->CanEmitChunk(1000000 + static_cast<int64_t>(kSegmentDurationMs) * 2000 + 1000));
+	Arrive(policy, 1000.0 + kSegmentDurationMs * 2 + 100);
 	EXPECT_TRUE(policy->IsInFallback());
+	EXPECT_TRUE(policy->CanEmitChunk(1000000 + static_cast<int64_t>(kSegmentDurationMs) * 1000));
 	EXPECT_EQ(PlanAt(policy, 1000.0).end_us, 1000000 + static_cast<int64_t>(kSegmentDurationMs) * 1000);
+}
+
+TEST(SyncedBoundaryPolicyTest, AnAbsoluteMediaClockIsNotMistakenForAStall)
+{
+	auto reference = MakeReference();
+	auto policy = MakeSynced(reference);
+
+	// The media clock starts wherever the source is: an hour in here, and the
+	// reference has not reported anything yet
+	Arrive(policy, 3600000.0);
+	EXPECT_FALSE(policy->IsInFallback());
+
+	// A segment of samples later it is still not a stall
+	Arrive(policy, 3604000.0);
+	EXPECT_FALSE(policy->IsInFallback());
+
+	// Two segments without a word from the reference is
+	Arrive(policy, 3608100.0);
+	EXPECT_TRUE(policy->IsInFallback());
+}
+
+TEST(SyncedBoundaryPolicyTest, ACompletionWithoutItsBoundarySpendsTheNumber)
+{
+	auto reference = MakeReference();
+	auto policy = MakeSynced(reference);
+
+	// The first boundary names this track's first segment
+	RealizeBoundary(reference, 10, 4000.0);
+	EXPECT_EQ(PlanAt(policy, 0.0).segment_number, 10);
+	Complete(policy, 10, 0.0, 4000.0);
+
+	// The next segment is cut early, before the reference realized the boundary
+	// that was to close it (a flush on this track's own configuration change)
+	EXPECT_EQ(PlanAt(policy, 4000.0).segment_number, 11);
+	Complete(policy, 11, 4000.0, 1000.0);
+
+	// The number went out with that segment, so it is spent: reusing it would
+	// collide with what the storage already published, and every later segment
+	// with it
+	EXPECT_EQ(PlanAt(policy, 5000.0).segment_number, 12);
+
+	// The skipped boundary arrives late. It is spent too, so the numbering stays
+	// with the reference instead of running a segment ahead of it forever.
+	RealizeBoundary(reference, 11, 8000.0);
+	RealizeBoundary(reference, 12, 12000.0);
+	EXPECT_EQ(PlanAt(policy, 5000.0).segment_number, 12);
+	EXPECT_EQ(PlanAt(policy, 5000.0).end_us, 12000000 - 1);
+
+	Complete(policy, 12, 5000.0, 7000.0);
+	EXPECT_EQ(PlanAt(policy, 12000.0).segment_number, 13);
 }
 
 TEST(SyncedBoundaryPolicyTest, NumbersComeFromTheLattice)

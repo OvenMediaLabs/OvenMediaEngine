@@ -1280,10 +1280,11 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE || media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
 	{
-		// Marker alignment across tracks requires the keyframe interval to be
-		// strictly shorter than the segment duration and to divide it evenly;
-		// an equal interval also breaks the alignment
-		if (_cue_alignment_warned == false)
+		// In duration mode, marker alignment across tracks requires the keyframe
+		// interval to be strictly shorter than the segment duration and to divide
+		// it evenly; an equal interval also breaks the alignment. Synced mode
+		// follows the reference's realized cuts, so any interval aligns.
+		if (_cue_alignment_warned == false && GetSegmentationMode() == LLHlsSegmentationMode::Duration)
 		{
 			auto video_track = GetFirstTrackByType(cmn::MediaType::Video);
 			if (video_track != nullptr)
@@ -1941,6 +1942,9 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 		{
 			auto reference_config = policy_config;
 			reference_config.chunk_duration_ms = std::round(ComputeOptimalPartDuration(reference_track));
+			// The cadence must be the reference's own; policy_config carries the
+			// one of whichever track this call is for
+			reference_config.keyframe_interval_ms = (reference_track->GetMediaType() == cmn::MediaType::Video) ? reference_track->GetKeyframeIntervalDurationMs() : 0.0;
 			reference_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), reference_track->GetId());
 			_reference_boundary_policy = std::make_shared<bmff::ReferenceBoundaryPolicy>(reference_config, reference_track->GetFrameRate());
 		}

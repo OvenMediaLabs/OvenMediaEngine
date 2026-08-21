@@ -164,10 +164,6 @@ namespace bmff
 
 		std::shared_ptr<const BoundaryFeed> _boundary_feed;
 
-		// The newest sample position this track tried to emit, to detect a
-		// stalled reference (updated from CanEmitChunk). Single-threaded today,
-		// atomic for the same reason as the feed's mark.
-		mutable std::atomic<int64_t> _head_timestamp_us{-1};
 		mutable std::atomic<bool> _fallback_logged{false};
 
 		// The segment number of the newest consumed boundary. Consumption is

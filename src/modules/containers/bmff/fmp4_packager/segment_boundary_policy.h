@@ -188,6 +188,23 @@ namespace bmff
 			return {};
 		}
 
+		// The newest sample position this track has seen. A policy that has to
+		// pace itself while another track stalls measures the lag with it: it
+		// advances with every arriving sample, even while nothing may be emitted.
+		int64_t GetNewestSampleEndUs() const
+		{
+			return _newest_sample_end_us.load(std::memory_order_relaxed);
+		}
+
+		// Where this track's media started. A lag measured against a track that
+		// has reported nothing yet is measured from here: the media clock starts
+		// wherever the source is, so measuring from zero would read the very
+		// first sample as hours of lag.
+		int64_t GetFirstSampleEndUs() const
+		{
+			return _first_sample_end_us.load(std::memory_order_relaxed);
+		}
+
 		int64_t _segment_duration_us = 0;
 		int64_t _chunk_duration_us = 0;
 		// The cadence this track really cuts at: the segment duration rounded up
@@ -261,6 +278,10 @@ namespace bmff
 		// would do; atomic keeps it safe for a reader on another thread, which
 		// the marker insertion path becomes when it is driven from an API.
 		std::atomic<int64_t> _newest_sample_end_us{-1};
+
+		// The first sample position this track saw; written once, on the same
+		// pass and for the same reason as the newest one
+		std::atomic<int64_t> _first_sample_end_us{-1};
 
 		// Where a propagated timeline break waits to cut, and where the last one
 		// landed (the dedup floor); media-thread only
