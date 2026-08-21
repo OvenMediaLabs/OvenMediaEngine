@@ -469,7 +469,7 @@ set(_install_libopenh264 "
 mkdir -p ${TEMP_PATH}/openh264 && cd ${TEMP_PATH}/openh264 &&
 ome_fetch ${OPENH264_SOURCE_URL} &&
 sed -i -e 's|PREFIX=/usr/local|PREFIX=${PREFIX}|' Makefile &&
-make OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
+make ${_J} OS=linux && sudo make install && rm -rf ${TEMP_PATH}/openh264
 ")
 
 # ---- x264 (optional) ----
