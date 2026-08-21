@@ -698,8 +698,34 @@ namespace cfg
 			case DataType::Xml:
 				return GetValueFromXml(value_type, name.GetName(_type), true, resolve_path, original_value);
 
-			case DataType::Json:
-				return GetValueFromJson(value_type, name.GetName(_type), true, resolve_path, omit_json, original_value);
+			case DataType::Json: {
+				const auto &json_name = name.GetName(_type);
+
+				if (
+					// This item has a deprecated alias
+					(name.deprecated_json_name.IsEmpty() == false) &&
+					// `isMember()` below is only valid on an object
+					_json.isObject())
+				{
+					if (_json.isMember(json_name.CStr()))
+					{
+						// The current name is present, so use it as-is.
+						// Warn if the deprecated key is also present, because it is ignored.
+						if (_json.isMember(name.deprecated_json_name.CStr()))
+						{
+							logtw("The deprecated JSON key \"%s\" is ignored because \"%s\" is also present", name.deprecated_json_name.CStr(), json_name.CStr());
+						}
+					}
+					else if (_json.isMember(name.deprecated_json_name.CStr()))
+					{
+						// The current name is absent - fall back to the deprecated JSON name
+						logtw("The JSON key \"%s\" is deprecated. Use \"%s\" instead", name.deprecated_json_name.CStr(), json_name.CStr());
+						return GetValueFromJson(value_type, name.deprecated_json_name, true, resolve_path, omit_json, original_value);
+					}
+				}
+
+				return GetValueFromJson(value_type, json_name, true, resolve_path, omit_json, original_value);
+			}
 		}
 
 		OV_ASSERT2(false);

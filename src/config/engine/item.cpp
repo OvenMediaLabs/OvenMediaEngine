@@ -237,6 +237,13 @@ namespace cfg
 
 		_children_for_xml.insert_or_assign(name.xml_name, child);
 		_children_for_json.insert_or_assign(name.json_name, child);
+
+		if (name.deprecated_json_name.IsEmpty() == false)
+		{
+			// Register the deprecated JSON name as well so that the unknown item check accepts it
+			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
+		}
+
 		_children.push_back(child);
 
 		if (prev_child != nullptr)

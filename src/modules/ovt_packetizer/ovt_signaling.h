@@ -15,7 +15,7 @@
 				"fileName" : "llhls_abr.oven",
 				"options" :	// Optional
 				{
-					"webrtcAutoAbr" : true // default true
+					"webrtcAutoAbr" : true // default false
 				},
 				"renditions":
 				[

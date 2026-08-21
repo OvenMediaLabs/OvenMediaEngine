@@ -639,8 +639,13 @@ components:
     Options:
       type: object
       properties:
+        webrtcAutoAbr:
+          type: boolean
+        # Deprecated alias of webrtcAutoAbr. It is still accepted on requests for backward compatibility
+        # but is no longer included in responses, and will be removed in a future release.
         webRtcAutoAbr:
           type: boolean
+          deprecated: true
         hlsChunklistPathDepth:
           type: integer
           format: int32
