@@ -13,9 +13,9 @@
 			{
 				"name" : "for llhls",
 				"fileName" : "llhls_abr.oven",
-				"options" :	// Required - the receiver rejects a playlist whose options is not an object
+				"options" :	// Required - the receiver rejects the entire describe payload if options is not an object
 				{
-					"webrtcAutoAbr" : true // default false
+					"webrtcAutoAbr" : true // the receiver assumes false when this key is omitted
 				},
 				"renditions":
 				[

@@ -726,13 +726,13 @@ namespace cfg
 						// Warn if the deprecated key is also present, because it is ignored.
 						if (_json.isMember(name.deprecated_json_name.CStr()))
 						{
-							logtw("The deprecated JSON key \"%s\" is ignored because \"%s\" is also present%s", deprecated_key_path().CStr(), json_name.CStr(), file_suffix().CStr());
+							logtw("The deprecated JSON key \"%s\"%s is ignored because \"%s\" is also present", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
 						}
 					}
 					else if (_json.isMember(name.deprecated_json_name.CStr()))
 					{
 						// The current name is absent - fall back to the deprecated JSON name
-						logtw("The JSON key \"%s\" is deprecated. Use \"%s\" instead%s", deprecated_key_path().CStr(), json_name.CStr(), file_suffix().CStr());
+						logtw("The JSON key \"%s\"%s is deprecated. Use \"%s\" instead", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
 						return GetValueFromJson(value_type, name.deprecated_json_name, true, resolve_path, omit_json, original_value);
 					}
 				}
