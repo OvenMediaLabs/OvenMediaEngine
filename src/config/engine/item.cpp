@@ -209,8 +209,8 @@ namespace cfg
 			}
 			catch (...)
 			{
-				// This does not roll back the partial mutations MakeList() made before throwing.
-				// Resetting the guard only makes the next call rerun MakeList() from scratch
+				// This does not roll back the partial mutations `MakeList()` made before throwing.
+				// Resetting the guard only makes the next call rerun `MakeList()` from scratch
 				// (deterministically re-registering, or re-throwing at, every child)
 				// instead of treating the partially built child list as complete.
 				_last_target = nullptr;
