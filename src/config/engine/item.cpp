@@ -269,10 +269,33 @@ namespace cfg
 		}
 
 		_children_for_xml.insert_or_assign(name.xml_name, child);
+
+		{
+			// A canonical name must not displace another child's deprecated alias:
+			// the same JSON key would then feed two children (one directly, one via the alias fallback)
+			// with no diagnostic anywhere. Compare by ItemName, not by pointer,
+			// because MakeList() reruns re-register the same logical child with a fresh instance.
+			auto existing = _children_for_json.find(name.json_name);
+			if ((existing != _children_for_json.end()) &&
+				((existing->second->GetItemName() == name) == false) &&
+				(existing->second->GetItemName().deprecated_json_name == name.json_name))
+			{
+				throw CreateConfigError("The JSON name \"%s\" of %s conflicts with the deprecated alias of %s", name.json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
+			}
+		}
 		_children_for_json.insert_or_assign(name.json_name, child);
 
 		if (name.deprecated_json_name.IsEmpty() == false)
 		{
+			// A deprecated alias must not collide with a JSON key that another child already uses,
+			// whether as its canonical name or as its own alias
+			auto existing = _children_for_json.find(name.deprecated_json_name);
+			if ((existing != _children_for_json.end()) &&
+				((existing->second->GetItemName() == name) == false))
+			{
+				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s conflicts with the JSON name of %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
+			}
+
 			// Register the deprecated JSON name as well so that the unknown item check accepts it
 			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
 		}

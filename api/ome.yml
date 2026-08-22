@@ -644,6 +644,7 @@ components:
         webRtcAutoAbr:
           type: boolean
           deprecated: true
+          writeOnly: true
           description: Deprecated alias of webrtcAutoAbr. It is still accepted on requests for backward compatibility (ignored when webrtcAutoAbr is also present) but is no longer included in responses, and will be removed in a future release.
         hlsChunklistPathDepth:
           type: integer
