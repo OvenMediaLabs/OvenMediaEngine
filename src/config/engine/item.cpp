@@ -240,6 +240,20 @@ namespace cfg
 
 		if (name.deprecated_json_name.IsEmpty() == false)
 		{
+			// The deprecated JSON alias works only for scalar leaf values:
+			// an Attribute value lives under "$" so the alias lookup never matches it,
+			// and for a List child the alias name propagates into the element DataSources
+			// and `IsSourceOf()` silently drops every element.
+			auto type = child->GetType();
+
+			OV_ASSERT2(
+				(type == ValueType::String) ||
+				(type == ValueType::Integer) ||
+				(type == ValueType::Long) ||
+				(type == ValueType::Boolean) ||
+				(type == ValueType::Double) ||
+				(type == ValueType::Text));
+
 			// Register the deprecated JSON name as well so that the unknown item check accepts it
 			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
 		}

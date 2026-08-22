@@ -34,6 +34,7 @@ namespace cfg
 		ItemName(const char *xml_name, const char *json_name);
 		// deprecated_json_name is an old JSON name kept for backward compatibility.
 		// It is still accepted on input (never emitted on output), and will be removed in a future release.
+		// Supported only for scalar leaf values; see the assertion in `Item::AddChild()`.
 		ItemName(const char *xml_name, const char *json_name, const char *deprecated_json_name);
 
 		ov::String ToString() const;

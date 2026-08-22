@@ -109,10 +109,10 @@ namespace cfg
 		auto &item_name = GetItemName();
 
 		Json::Value original_value;
-		auto value			  = data_source.GetValue(GetType(), item_name, ResolvePath(), OmitJsonName(), &original_value);
-		auto name			  = item_name.GetName(DataType::Json);
+		auto value		= data_source.GetValue(GetType(), item_name, ResolvePath(), OmitJsonName(), &original_value, item_path);
+		auto name		= item_name.GetName(DataType::Json);
 
-		ov::String child_path = ov::String::FormatString(
+		auto child_path = ov::String::FormatString(
 			"%s%s%s",
 			item_path.CStr(),
 			item_path.IsEmpty() ? "" : ".",
