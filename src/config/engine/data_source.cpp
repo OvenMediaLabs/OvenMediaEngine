@@ -704,37 +704,35 @@ namespace cfg
 				if (
 					// This item has a deprecated alias
 					(name.deprecated_json_name.IsEmpty() == false) &&
-					// `isMember()` below is only valid on an object
+					// `isMember()` below asserts on non-object values other than null
 					_json.isObject())
 				{
-					// Full path of the deprecated key for the warnings below, such as "playlists.options.webRtcAutoAbr in Server.json"
-					auto deprecated_key_location = [&]() -> ov::String {
-						ov::String location = ov::String::FormatString(
+					// Full path of the deprecated key for the warnings below, such as "playlists.options.webRtcAutoAbr"
+					auto deprecated_key_path = [&]() -> ov::String {
+						return ov::String::FormatString(
 							"%s%s%s",
 							item_path.CStr(), item_path.IsEmpty() ? "" : ".", name.deprecated_json_name.CStr());
-
+					};
+					// " in <file>" when the JSON comes from a file, empty otherwise
+					auto file_suffix = [&]() -> ov::String {
 						auto file_name = GetFileName();
-						if (file_name.IsEmpty() == false)
-						{
-							location.AppendFormat(" in %s", file_name.CStr());
-						}
-
-						return location;
+						return file_name.IsEmpty() ? ov::String() : ov::String::FormatString(" in %s", file_name.CStr());
 					};
 
 					if (_json.isMember(json_name.CStr()))
 					{
-						// The current name is present, so use it as-is.
+						// The current name is present, so use it as-is. Key presence decides, not the value:
+						// an explicit null under the current name still wins over the deprecated key.
 						// Warn if the deprecated key is also present, because it is ignored.
 						if (_json.isMember(name.deprecated_json_name.CStr()))
 						{
-							logtw("The deprecated JSON key \"%s\" is ignored because \"%s\" is also present", deprecated_key_location().CStr(), json_name.CStr());
+							logtw("The deprecated JSON key \"%s\" is ignored because \"%s\" is also present%s", deprecated_key_path().CStr(), json_name.CStr(), file_suffix().CStr());
 						}
 					}
 					else if (_json.isMember(name.deprecated_json_name.CStr()))
 					{
 						// The current name is absent - fall back to the deprecated JSON name
-						logtw("The JSON key \"%s\" is deprecated. Use \"%s\" instead", deprecated_key_location().CStr(), json_name.CStr());
+						logtw("The JSON key \"%s\" is deprecated. Use \"%s\" instead%s", deprecated_key_path().CStr(), json_name.CStr(), file_suffix().CStr());
 						return GetValueFromJson(value_type, name.deprecated_json_name, true, resolve_path, omit_json, original_value);
 					}
 				}

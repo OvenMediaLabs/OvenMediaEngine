@@ -13,7 +13,7 @@
 			{
 				"name" : "for llhls",
 				"fileName" : "llhls_abr.oven",
-				"options" :	// Optional
+				"options" :	// Required - the receiver rejects a playlist whose options is not an object
 				{
 					"webrtcAutoAbr" : true // default false
 				},
