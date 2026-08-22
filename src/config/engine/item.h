@@ -36,6 +36,7 @@ namespace cfg
 	class Item
 	{
 	protected:
+		MAY_THROWS(cfg::ConfigError)
 		static ov::String ChildToString(int indent_count, const std::shared_ptr<const Child> &child, size_t index, size_t child_count);
 
 		friend class SetValueHelper;
@@ -57,6 +58,7 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		void FromJson(const Json::Value &value, bool allow_optional = false);
 
+		MAY_THROWS(cfg::ConfigError)
 		Item &operator=(const Item &item);
 
 		const ItemName &GetItemName() const
@@ -79,6 +81,7 @@ namespace cfg
 			_is_parsed = is_parsed;
 		}
 
+		MAY_THROWS(cfg::ConfigError)
 		void EnsureBuilt() const
 		{
 			RebuildListIfNeeded();
@@ -94,6 +97,7 @@ namespace cfg
 			_is_read_only = is_read_only;
 		}
 
+		MAY_THROWS(cfg::ConfigError)
 		template <typename Ttype = Child>
 		std::shared_ptr<Ttype> GetMember(const void *member_pointer)
 		{
@@ -110,12 +114,14 @@ namespace cfg
 			return nullptr;
 		}
 
+		MAY_THROWS(cfg::ConfigError)
 		template <typename Ttype>
 		std::shared_ptr<List<Ttype>> GetListMember(const std::vector<Ttype> *member_pointer)
 		{
 			return GetMember<List<Ttype>>(member_pointer);
 		}
 
+		MAY_THROWS(cfg::ConfigError)
 		void SetValue(const void *member_pointer, const Variant &value, bool is_parent_optional)
 		{
 			RebuildListIfNeeded();
@@ -136,11 +142,13 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		void ValidateOmitJsonNameRules() const;
 
+		MAY_THROWS(cfg::ConfigError)
 		virtual ov::String ToString() const
 		{
 			return ToString(0);
 		}
 
+		MAY_THROWS(cfg::ConfigError)
 		virtual ov::String ToString(int indent_count) const;
 
 		// Add `original_value` to `object[child_name]` based on `value_type`.
@@ -217,19 +225,25 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		void ValidateOmitJsonNameRule(const ov::String &item_path, const ov::String &name) const;
 
+		MAY_THROWS(cfg::ConfigError)
 		void RebuildListIfNeeded() const;
+		MAY_THROWS(cfg::ConfigError)
 		void RebuildListIfNeeded();
 
+		MAY_THROWS(cfg::ConfigError)
 		virtual void MakeList() = 0;
 
+		MAY_THROWS(cfg::ConfigError)
 		void AddChild(const ItemName &name, ValueType type, const ov::String &type_name,
 					  Optional is_optional, cfg::ResolvePath resolve_path, cfg::OmitJsonName omit_json_name,
 					  OptionalCallback optional_callback, ValidationCallback validation_callback,
 					  void *member_raw_pointer, std::any member_pointer);
 
+		MAY_THROWS(cfg::ConfigError)
 		void AddChild(const std::shared_ptr<Child> &child);
 
 		// For primitive types
+		MAY_THROWS(cfg::ConfigError)
 		template <
 			typename Tannot1 = void, typename Tannot2 = void, typename Tannot3 = void,
 			typename Ttype, std::enable_if_t<!std::is_base_of_v<Item, Ttype> && !std::is_base_of_v<Text, Ttype>, int> = 0>
@@ -244,6 +258,7 @@ namespace cfg
 		}
 
 		// For Text
+		MAY_THROWS(cfg::ConfigError)
 		template <
 			typename Tannot1 = void, typename Tannot2 = void, typename Tannot3 = void,
 			typename Ttype, std::enable_if_t<std::is_base_of_v<Text, Ttype>, int> = 0>
@@ -258,6 +273,7 @@ namespace cfg
 		}
 
 		// For Item
+		MAY_THROWS(cfg::ConfigError)
 		template <
 			typename Tannot1 = void, typename Tannot2 = void, typename Tannot3 = void,
 			typename Ttype, std::enable_if_t<std::is_base_of_v<Item, Ttype>, int> = 0>
@@ -274,6 +290,7 @@ namespace cfg
 		}
 
 		// For std::vector<Ttype>
+		MAY_THROWS(cfg::ConfigError)
 		template <
 			typename Tannot1 = void, typename Tannot2 = void, typename Tannot3 = void,
 			typename Ttype>

@@ -13,6 +13,7 @@
 
 namespace serdes
 {
+	MAY_THROWS(cfg::ConfigError)
 	Json::Value JsonFromOutputProfile(const cfg::vhost::app::oprf::OutputProfile &output_profile);
 
 	MAY_THROWS(cfg::ConfigError)

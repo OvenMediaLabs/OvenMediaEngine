@@ -31,6 +31,7 @@ namespace cfg
 					  OptionalCallback optional_callback, ValidationCallback validation_callback,
 					  void *member_raw_pointer, std::any member_pointer, ValueType list_item_type);
 
+		MAY_THROWS(cfg::ConfigError)
 		void AddChildValueList(const std::vector<DataSource> &data_source_list);
 
 		virtual void CopyFrom(const std::shared_ptr<const ListInterface> &another_list);
@@ -42,6 +43,7 @@ namespace cfg
 		// virtual void AddChildrenToJson(Json::Value &object, ValueType value_type, OmitRule omit_name, const ov::String &child_name, const std::any &child_target, const Json::Value &original_value, bool include_default_values) const = 0;
 		virtual void CopyToJsonValue(Json::Value &object, bool original_value, bool include_default_values) const = 0;
 
+		MAY_THROWS(cfg::ConfigError)
 		virtual ov::String ToString(int indent_count, const std::shared_ptr<const Child> &child) const			  = 0;
 
 		virtual size_t GetCount() const																			  = 0;

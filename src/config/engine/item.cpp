@@ -203,7 +203,16 @@ namespace cfg
 
 			_last_target = this;
 
-			MakeList();
+			try
+			{
+				MakeList();
+			}
+			catch (...)
+			{
+				// Reset the guard so the next call rebuilds the list again instead of leaving a partially built child list behind
+				_last_target = nullptr;
+				throw;
+			}
 		}
 	}
 
@@ -224,6 +233,30 @@ namespace cfg
 		std::shared_ptr<const Child> prev_child;
 		auto name = child->GetItemName();
 
+		if (name.deprecated_json_name.IsEmpty() == false)
+		{
+			// The deprecated JSON alias works only for scalar leaf values:
+			// an Attribute value lives under "$" so the alias lookup never matches it,
+			// and for a List child the alias name propagates into the element DataSources
+			// and `IsSourceOf()` silently drops every element.
+			const auto type = child->GetType();
+			const bool supported =
+				(type == ValueType::String) ||
+				(type == ValueType::Integer) ||
+				(type == ValueType::Long) ||
+				(type == ValueType::Boolean) ||
+				(type == ValueType::Double) ||
+				(type == ValueType::Text);
+
+			if (supported == false)
+			{
+				// Validate before mutating any state, and fail loudly in every build.
+				// The startup schema validation (ValidateOmitJsonNameRules) rebuilds every item type,
+				// so an invalid registration refuses server startup instead of silently dropping the deprecated key at runtime.
+				throw CreateConfigError("The deprecated JSON alias \"%s\" is not supported for this value type: %s", name.deprecated_json_name.CStr(), name.ToString().CStr());
+			}
+		}
+
 		for (auto child_iterator = _children.begin(); child_iterator != _children.end(); ++child_iterator)
 		{
 			auto &child = *child_iterator;
@@ -240,22 +273,6 @@ namespace cfg
 
 		if (name.deprecated_json_name.IsEmpty() == false)
 		{
-			// The deprecated JSON alias works only for scalar leaf values:
-			// an Attribute value lives under "$" so the alias lookup never matches it,
-			// and for a List child the alias name propagates into the element DataSources
-			// and `IsSourceOf()` silently drops every element.
-#ifdef DEBUG
-			auto type = child->GetType();
-
-			OV_ASSERT2(
-				(type == ValueType::String) ||
-				(type == ValueType::Integer) ||
-				(type == ValueType::Long) ||
-				(type == ValueType::Boolean) ||
-				(type == ValueType::Double) ||
-				(type == ValueType::Text));
-#endif	// DEBUG
-
 			// Register the deprecated JSON name as well so that the unknown item check accepts it
 			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
 		}
