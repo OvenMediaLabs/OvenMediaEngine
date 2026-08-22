@@ -209,7 +209,10 @@ namespace cfg
 			}
 			catch (...)
 			{
-				// Reset the guard so the next call rebuilds the list again instead of leaving a partially built child list behind
+				// This does not roll back the partial mutations MakeList() made before throwing.
+				// Resetting the guard only makes the next call rerun MakeList() from scratch
+				// (deterministically re-registering, or re-throwing at, every child)
+				// instead of treating the partially built child list as complete.
 				_last_target = nullptr;
 				throw;
 			}
@@ -233,12 +236,15 @@ namespace cfg
 		std::shared_ptr<const Child> prev_child;
 		auto name = child->GetItemName();
 
+		// All validations run before any mutation, so a throw never leaves the maps
+		// and _children inconsistent with each other
 		if (name.deprecated_json_name.IsEmpty() == false)
 		{
-			// The deprecated JSON alias works only for scalar leaf values:
+			// The deprecated JSON alias is restricted to scalar leaf values:
 			// an Attribute value lives under "$" so the alias lookup never matches it,
-			// and for a List child the alias name propagates into the element DataSources
-			// and `IsSourceOf()` silently drops every element.
+			// a List child propagates the alias name into the element DataSources
+			// and `IsSourceOf()` silently drops every element,
+			// and an Item child is rejected as well because no use case needs that path and it is untested.
 			const auto type = child->GetType();
 			const bool supported =
 				(type == ValueType::String) ||
@@ -250,10 +256,40 @@ namespace cfg
 
 			if (supported == false)
 			{
-				// Validate before mutating any state, and fail loudly in every build.
-				// The startup schema validation (ValidateOmitJsonNameRules) rebuilds every item type,
-				// so an invalid registration refuses server startup instead of silently dropping the deprecated key at runtime.
-				throw CreateConfigError("The deprecated JSON alias \"%s\" is not supported for this value type: %s", name.deprecated_json_name.CStr(), name.ToString().CStr());
+				// Fail loudly in every build. The startup schema validation (ValidateOmitJsonNameRules)
+				// rebuilds every item type, so an invalid registration refuses server startup
+				// instead of silently dropping the deprecated key at runtime.
+				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s is not supported for this value type: %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), StringFromValueType(type));
+			}
+
+			if (name.deprecated_json_name == name.json_name)
+			{
+				// An alias identical to the canonical name would make every legitimate use of the key
+				// log a bogus "deprecated key is ignored" warning
+				throw CreateConfigError("The deprecated JSON alias of %s must differ from its JSON name \"%s\"", name.ToString().CStr(), name.json_name.CStr());
+			}
+
+			// A deprecated alias must not collide with a JSON key that another child already uses,
+			// whether as its canonical name or as its own alias. Compare by ItemName, not by pointer,
+			// because MakeList() reruns re-register the same logical child with a fresh instance.
+			auto existing = _children_for_json.find(name.deprecated_json_name);
+			if ((existing != _children_for_json.end()) &&
+				((existing->second->GetItemName() == name) == false))
+			{
+				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s conflicts with a JSON key already used by %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
+			}
+		}
+
+		{
+			// A canonical name must not displace another child's deprecated alias:
+			// the same JSON key would then feed two children (one directly, one via the alias fallback)
+			// with no diagnostic anywhere
+			auto existing = _children_for_json.find(name.json_name);
+			if ((existing != _children_for_json.end()) &&
+				((existing->second->GetItemName() == name) == false) &&
+				(existing->second->GetItemName().deprecated_json_name == name.json_name))
+			{
+				throw CreateConfigError("The JSON name \"%s\" of %s conflicts with the deprecated alias of %s", name.json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
 			}
 		}
 
@@ -269,33 +305,10 @@ namespace cfg
 		}
 
 		_children_for_xml.insert_or_assign(name.xml_name, child);
-
-		{
-			// A canonical name must not displace another child's deprecated alias:
-			// the same JSON key would then feed two children (one directly, one via the alias fallback)
-			// with no diagnostic anywhere. Compare by ItemName, not by pointer,
-			// because MakeList() reruns re-register the same logical child with a fresh instance.
-			auto existing = _children_for_json.find(name.json_name);
-			if ((existing != _children_for_json.end()) &&
-				((existing->second->GetItemName() == name) == false) &&
-				(existing->second->GetItemName().deprecated_json_name == name.json_name))
-			{
-				throw CreateConfigError("The JSON name \"%s\" of %s conflicts with the deprecated alias of %s", name.json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
-			}
-		}
 		_children_for_json.insert_or_assign(name.json_name, child);
 
 		if (name.deprecated_json_name.IsEmpty() == false)
 		{
-			// A deprecated alias must not collide with a JSON key that another child already uses,
-			// whether as its canonical name or as its own alias
-			auto existing = _children_for_json.find(name.deprecated_json_name);
-			if ((existing != _children_for_json.end()) &&
-				((existing->second->GetItemName() == name) == false))
-			{
-				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s conflicts with the JSON name of %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
-			}
-
 			// Register the deprecated JSON name as well so that the unknown item check accepts it
 			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
 		}
