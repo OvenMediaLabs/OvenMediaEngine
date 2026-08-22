@@ -32,6 +32,10 @@ namespace cfg
 	public:
 		ItemName(const char *xml_name);
 		ItemName(const char *xml_name, const char *json_name);
+		// deprecated_json_name is an old JSON name kept for backward compatibility.
+		// It is still accepted on input (never emitted on output), and will be removed in a future release.
+		// Supported only for scalar leaf values; `Item::AddChild()` throws a ConfigError otherwise.
+		ItemName(const char *xml_name, const char *json_name, const char *deprecated_json_name);
 
 		ov::String ToString() const;
 
@@ -51,11 +55,14 @@ namespace cfg
 
 		bool operator==(const ItemName &name) const
 		{
-			return (xml_name == name.xml_name) && (json_name == name.json_name);
+			return (xml_name == name.xml_name) &&
+				   (json_name == name.json_name) &&
+				   (deprecated_json_name == name.deprecated_json_name);
 		}
 
 		ov::String xml_name;
 		ov::String json_name;
+		ov::String deprecated_json_name;
 
 	protected:
 		ItemName()					= default;

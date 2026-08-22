@@ -691,15 +691,54 @@ namespace cfg
 		return {};
 	}
 
-	Variant DataSource::GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value) const
+	Variant DataSource::GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value, const ov::String &item_path) const
 	{
 		switch (_type)
 		{
 			case DataType::Xml:
 				return GetValueFromXml(value_type, name.GetName(_type), true, resolve_path, original_value);
 
-			case DataType::Json:
-				return GetValueFromJson(value_type, name.GetName(_type), true, resolve_path, omit_json, original_value);
+			case DataType::Json: {
+				const auto &json_name = name.GetName(_type);
+
+				if (
+					// This item has a deprecated alias
+					(name.deprecated_json_name.IsEmpty() == false) &&
+					// `isMember()` below asserts on non-object values other than null
+					_json.isObject())
+				{
+					// Full path of the deprecated key for the warnings below, such as "playlists.options.webRtcAutoAbr"
+					auto deprecated_key_path = [&]() -> ov::String {
+						return ov::String::FormatString(
+							"%s%s%s",
+							item_path.CStr(), item_path.IsEmpty() ? "" : ".", name.deprecated_json_name.CStr());
+					};
+					// " in <file>" when the JSON comes from a file, empty otherwise
+					auto file_suffix = [&]() -> ov::String {
+						auto file_name = GetFileName();
+						return file_name.IsEmpty() ? ov::String() : ov::String::FormatString(" in %s", file_name.CStr());
+					};
+
+					if (_json.isMember(json_name.CStr()))
+					{
+						// The current name is present, so use it as-is. Key presence decides, not the value:
+						// an explicit null under the current name still wins over the deprecated key.
+						// Warn if the deprecated key is also present, because it is ignored.
+						if (_json.isMember(name.deprecated_json_name.CStr()))
+						{
+							logtw("The deprecated JSON key \"%s\"%s is ignored because \"%s\" is also present", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
+						}
+					}
+					else if (_json.isMember(name.deprecated_json_name.CStr()))
+					{
+						// The current name is absent - fall back to the deprecated JSON name
+						logtw("The JSON key \"%s\"%s is deprecated. Use \"%s\" instead", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
+						return GetValueFromJson(value_type, name.deprecated_json_name, true, resolve_path, omit_json, original_value);
+					}
+				}
+
+				return GetValueFromJson(value_type, json_name, true, resolve_path, omit_json, original_value);
+			}
 		}
 
 		OV_ASSERT2(false);
@@ -773,7 +812,7 @@ namespace cfg
 	bool DataSource::GetIncludeFileList(ov::String *pattern, std::vector<ov::String> *include_file_list) const
 	{
 		Json::Value dummy_value;
-		auto include_file_pattern = GetValue(ValueType::Attribute, "include", false, false, &dummy_value);
+		auto include_file_pattern = GetValue(ValueType::Attribute, "include", false, false, &dummy_value, "");
 
 		if (include_file_pattern.HasValue())
 		{
