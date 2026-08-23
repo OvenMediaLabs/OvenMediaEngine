@@ -228,6 +228,17 @@ bool H264SeiInserter::IsInsertable(const std::shared_ptr<info::Stream> &stream,
 		return true;
 	};
 
+	if (packet->GetData() == nullptr)
+	{
+		if (should_warn() == true)
+		{
+			logtw("%s SEI insertion needs a packet with data. track(%u)",
+				  LogPrefix(stream).CStr(), packet->GetTrackId());
+		}
+
+		return false;
+	}
+
 	if (track->GetCodecId() != cmn::MediaCodecId::H264)
 	{
 		// H.265 needs its own NAL header and a different timecode SEI, not implemented
