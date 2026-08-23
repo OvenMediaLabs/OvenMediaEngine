@@ -12,6 +12,7 @@
 #include <modules/bitstream/h264/h264_sei.h>
 #include <base/modules/data_format/amf_event/amf_event.h>
 #include <base/modules/data_format/id3v2/frames/id3v2_frames.h>
+#include <base/modules/data_format/sei_event/sei_event.h>
 #include <base/modules/data_format/id3v2/id3v2.h>
 #include <base/modules/data_format/webvtt/webvtt_frame.h>
 

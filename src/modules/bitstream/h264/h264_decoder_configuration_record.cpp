@@ -234,24 +234,53 @@ bool AVCDecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigur
 		return false;
 	}
 
-	if (ProfileIndication() != other_config->ProfileIndication())
+	if ((Version() != other_config->Version()) ||
+		(ProfileIndication() != other_config->ProfileIndication()) ||
+		(Compatibility() != other_config->Compatibility()) ||
+		(LevelIndication() != other_config->LevelIndication()) ||
+		(LengthMinusOne() != other_config->LengthMinusOne()) ||
+		(ChromaFormat() != other_config->ChromaFormat()) ||
+		(BitDepthLumaMinus8() != other_config->BitDepthLumaMinus8()) ||
+		(BitDepthChromaMinus8() != other_config->BitDepthChromaMinus8()))
 	{
 		return false;
 	}
 
-	if (LevelIndication() != other_config->LevelIndication())
+	if ((NumOfSPS() != other_config->NumOfSPS()) ||
+		(NumOfPPS() != other_config->NumOfPPS()) ||
+		(NumOfSPSExt() != other_config->NumOfSPSExt()))
 	{
 		return false;
 	}
 
-	if(GetWidth() != other_config->GetWidth())
+	for (uint8_t i = 0; i < NumOfSPS(); i++)
 	{
-		return false;
+		auto sps	   = GetSPSData(i);
+		auto other_sps = other_config->GetSPSData(i);
+		if ((sps == nullptr) || (other_sps == nullptr) || (sps->IsEqual(other_sps) == false))
+		{
+			return false;
+		}
 	}
 
-	if(GetHeight() != other_config->GetHeight())
+	for (uint8_t i = 0; i < NumOfPPS(); i++)
 	{
-		return false;
+		auto pps	   = GetPPSData(i);
+		auto other_pps = other_config->GetPPSData(i);
+		if ((pps == nullptr) || (other_pps == nullptr) || (pps->IsEqual(other_pps) == false))
+		{
+			return false;
+		}
+	}
+
+	for (uint8_t i = 0; i < NumOfSPSExt(); i++)
+	{
+		auto sps_ext	   = GetSPSExtData(i);
+		auto other_sps_ext = other_config->GetSPSExtData(i);
+		if ((sps_ext == nullptr) || (other_sps_ext == nullptr) || (sps_ext->IsEqual(other_sps_ext) == false))
+		{
+			return false;
+		}
 	}
 
 	return true;
