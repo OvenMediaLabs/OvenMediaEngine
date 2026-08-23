@@ -44,10 +44,10 @@ public:
 		const cmn::BitstreamFormat format,
 		const size_t nal_index);
 
-	// RBSP -> bitstream: inserts emulation_prevention_three_byte(0x03)
+	// Whole NAL units, header included: inserts emulation_prevention_three_byte(0x03)
 	static std::shared_ptr<ov::Data> EmulationPreventionBytes(const std::shared_ptr<ov::Data>& nal);
 
-	// bitstream -> RBSP: removes emulation_prevention_three_byte(0x03)
+	// Whole NAL units, header included: removes emulation_prevention_three_byte(0x03)
 	static std::shared_ptr<ov::Data> RemoveEmulationPreventionBytes(const std::shared_ptr<const ov::Data>& nal);
 
 private:

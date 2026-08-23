@@ -129,11 +129,22 @@ std::shared_ptr<SEIEvent> SEIEvent::Deserialize(const std::shared_ptr<const ov::
 		return nullptr;
 	}
 
-	auto sei_event = std::make_shared<SEIEvent>();
-
-	if (json.isMember("seiType") && json["seiType"].isString())
+	// seiType is what makes this an SEI event, so it is required. An unknown name is let through:
+	// the consumer names it in the line it logs when it discards the event, which says more than
+	// dropping it here would.
+	if ((json.isMember("seiType") == false) || (json["seiType"].isString() == false))
 	{
-		sei_event->_sei_type = json["seiType"].asString().c_str();
+		logte("An SEI event needs a seiType (%zu bytes)", data->GetLength());
+		return nullptr;
+	}
+
+	auto sei_event		 = std::make_shared<SEIEvent>();
+	sei_event->_sei_type = json["seiType"].asString().c_str();
+
+	if (sei_event->_sei_type.IsEmpty() == true)
+	{
+		logte("An SEI event needs a seiType that is not empty");
+		return nullptr;
 	}
 
 	if (json.isMember("data") && json["data"].isString())

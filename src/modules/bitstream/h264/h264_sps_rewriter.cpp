@@ -71,6 +71,6 @@ std::shared_ptr<ov::Data> H264SpsRewriter::EnablePicStructPresent(const std::sha
 		return nullptr;
 	}
 
-	// An RBSP, not a NAL: NalUnitInsertor escapes what it is given
+	// Unescaped, NAL header included: NalUnitInsertor escapes whatever it is given
 	return NalUnitInsertor::RemoveEmulationPreventionBytes(patched);
 }

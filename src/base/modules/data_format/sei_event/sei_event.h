@@ -78,7 +78,8 @@ public:
 	// reach an output.
 	std::shared_ptr<ov::Data> Serialize() const;
 
-	// Rebuilds the event from what Serialize() wrote; nullptr when the data is not that JSON
+	// Rebuilds the event from what Serialize() wrote; nullptr when the data is not that JSON, or
+	// carries no seiType
 	static std::shared_ptr<SEIEvent> Deserialize(const std::shared_ptr<const ov::Data> &data);
 
 	// Which SEI message this event asks for

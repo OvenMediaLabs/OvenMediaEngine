@@ -17,8 +17,8 @@
 class H264SpsRewriter
 {
 public:
-	// In: the SPS NAL as it appears in the bitstream. Out: the patched SPS as an RBSP, NAL header
-	// kept, because NalUnitInsertor escapes whatever it is given.
+	// In: the SPS NAL as it appears in the bitstream. Out: the same NAL unescaped - header still
+	// there, so not a bare RBSP - because NalUnitInsertor escapes whatever NAL it is given.
 	//
 	// nullptr when the flag is already 1, the SPS does not parse, or there is no VUI to carry it.
 	static std::shared_ptr<ov::Data> EnablePicStructPresent(const std::shared_ptr<const ov::Data> &sps_nal);
