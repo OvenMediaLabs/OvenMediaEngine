@@ -188,6 +188,31 @@ TEST(H264SeiPicTiming, RoundTripsAClockTimestamp)
 	EXPECT_EQ(out.GetTimecodeString(), "19:51:57:42");
 }
 
+// A pic_timing an encoder wrote with pic_struct 3 and the timecode on the bottom field: slot 0
+// absent, slot 1 present. Field order is ITU-T H.264 D.1.2 and the widths come from
+// NvencLikeContext(): cpb u(16) 1234, dpb u(6) 7, pic_struct u(4) 3, then the two slots.
+TEST(H264SeiPicTiming, KeepsTheSlotOfAnAbsentClockTimestamp)
+{
+	auto context			   = NvencLikeContext();
+	context.pic_struct_present = true;
+
+	auto payload = MakeData({0x04, 0xD2, 0x1C, 0xD0, 0x18, 0x55, 0xCE, 0x73, 0x00, 0x00, 0x00});
+
+	H264SeiPicTiming parsed;
+	ASSERT_TRUE(H264SEI::ParsePicTiming(payload, context, parsed));
+	ASSERT_EQ(parsed.pic_struct, 3);
+	ASSERT_EQ(parsed.clock_timestamps.size(), 2U);
+
+	EXPECT_FALSE(parsed.clock_timestamps[0].present) << "the top field carries no timestamp";
+	EXPECT_TRUE(parsed.clock_timestamps[1].present);
+	EXPECT_EQ(parsed.clock_timestamps[1].GetTimecodeString(), "19:51:57:42");
+
+	// Re-serializing has to put the timecode back on the bottom field, not move it to the top
+	auto again = H264SEI::SerializePicTiming(parsed, context);
+	ASSERT_NE(again, nullptr);
+	EXPECT_TRUE(again->IsEqual(payload));
+}
+
 // The message an encoder writes while pic_struct_present_flag is 0 carries only the delays. Reading
 // it as if pic_struct were there walks off the end of the payload, which is what happens when the
 // SPS has since been patched and the pre-patch context is not kept.

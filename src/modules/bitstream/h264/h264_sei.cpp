@@ -252,8 +252,8 @@ bool H264SEI::ParsePicTiming(const std::shared_ptr<const ov::Data> &payload,
 
 		if (clock_timestamp_flag == 0)
 		{
-			// This slot carries no timestamp. Keep the slot count aligned with NumClockTS by
-			// not appending, callers rely on clock_timestamps.size() < NumClockTS meaning absent.
+			// Keep the slot: SerializePicTiming() reads the vector index as the slot number
+			pic_timing.clock_timestamps.emplace_back().present = false;
 			continue;
 		}
 
@@ -374,7 +374,8 @@ std::shared_ptr<ov::Data> H264SEI::SerializePicTiming(const H264SeiPicTiming &pi
 
 		for (uint8_t index = 0; index < num_clock_ts; index++)
 		{
-			if (index >= pic_timing.clock_timestamps.size())
+			if ((index >= pic_timing.clock_timestamps.size()) ||
+				(pic_timing.clock_timestamps[index].present == false))
 			{
 				// clock_timestamp_flag = 0, this slot carries no timestamp
 				writer.WriteBits(1, 0);

@@ -25,6 +25,9 @@
 // One clock_timestamp[i] entry inside pic_timing.
 struct H264SeiClockTimestamp
 {
+	// clock_timestamp_flag. False is a slot that carries no timestamp; it still holds its place in
+	// H264SeiPicTiming::clock_timestamps, which is indexed by slot number.
+	bool present = true;
 	// 0 = progressive, 1 = interlaced, 2 = unknown, 3 = reserved
 	uint8_t ct_type = 0;
 	// nuit_field_based_flag
@@ -64,7 +67,8 @@ struct H264SeiPicTiming
 	// Present only when pic_struct_present_flag is 1. 0 = progressive frame (NumClockTS = 1).
 	uint8_t pic_struct = 0;
 
-	// Size is NumClockTS, derived from pic_struct (H.264 Table D-1)
+	// Indexed by slot number, NumClockTS of them (H.264 Table D-1). A slot with `present` false,
+	// or one past the end of the vector, carries no timestamp.
 	std::vector<H264SeiClockTimestamp> clock_timestamps;
 
 	// ITU-T H.264 Table D-1
