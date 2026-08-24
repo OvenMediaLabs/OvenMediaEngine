@@ -234,14 +234,14 @@ bool AVCDecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigur
 		return false;
 	}
 
+	// chroma_format and the bit depths are left out: only Parse() fills them in, so comparing them
+	// would make a parsed and a built record differ forever on a High profile stream. All three
+	// are coded in the SPS, which is compared byte for byte below.
 	if ((Version() != other_config->Version()) ||
 		(ProfileIndication() != other_config->ProfileIndication()) ||
 		(Compatibility() != other_config->Compatibility()) ||
 		(LevelIndication() != other_config->LevelIndication()) ||
-		(LengthMinusOne() != other_config->LengthMinusOne()) ||
-		(ChromaFormat() != other_config->ChromaFormat()) ||
-		(BitDepthLumaMinus8() != other_config->BitDepthLumaMinus8()) ||
-		(BitDepthChromaMinus8() != other_config->BitDepthChromaMinus8()))
+		(LengthMinusOne() != other_config->LengthMinusOne()))
 	{
 		return false;
 	}
