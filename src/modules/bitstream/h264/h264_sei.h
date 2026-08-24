@@ -124,6 +124,21 @@ struct H264SeiSpsContext
 	}
 };
 
+struct H264SeiTimecodeZone
+{
+	// "UTC", "Z" or an empty string, "Local", or a fixed offset written "+09:00", "-0500" or
+	// "+09". False when the text is none of those, and `zone` is then left as it was.
+	static bool Parse(const ov::String &text, H264SeiTimecodeZone &zone);
+
+	// Round trips through Parse()
+	ov::String ToString() const;
+
+	// The zone the server itself runs in, DST included
+	bool local = false;
+	// Ignored while `local` is set. UTC is an offset of zero, and no offset observes DST.
+	int32_t offset_seconds = 0;
+};
+
 class H264SEI
 {
 public:

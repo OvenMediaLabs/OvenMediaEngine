@@ -71,6 +71,14 @@ bool SEIEvent::IsValid(const pugi::xml_node &xml)
 		return false;
 	}
 
+	// Caught here rather than at insertion time, where the only way to report it would be a log
+	// line per stream
+	H264SeiTimecodeZone timezone;
+	if (H264SeiTimecodeZone::Parse(xml.child_value("Timezone"), timezone) == false)
+	{
+		return false;
+	}
+
 	return true;
 }
 
@@ -82,14 +90,19 @@ std::shared_ptr<SEIEvent> SEIEvent::Parse(const pugi::xml_node &xml)
 		sei_type = "UserDataUnregistered";
 	}
 
-	// Both optional: child_value() gives "" when the element is absent
+	// All optional: child_value() gives "" when the element is absent
 	ov::String payload_data = xml.child_value("Data");
 	bool keyframe_only		= (::strcmp(xml.child_value("KeyframeOnly"), "true") == 0);
+
+	// IsValid() already turned away anything Parse() cannot read, so an empty zone is the default
+	H264SeiTimecodeZone timezone;
+	H264SeiTimecodeZone::Parse(xml.child_value("Timezone"), timezone);
 
 	auto sei_event = std::make_shared<SEIEvent>();
 	sei_event->SetSeiType(sei_type);
 	sei_event->SetData(payload_data);
 	sei_event->SetKeyframeOnly(keyframe_only);
+	sei_event->SetTimezone(timezone);
 
 	return sei_event;
 }
@@ -109,6 +122,7 @@ std::shared_ptr<ov::Data> SEIEvent::Serialize() const
 	json["seiType"]		 = H264SEI::PayloadTypeToString(payload_type).CStr();
 	json["data"]		 = _data.CStr();
 	json["keyframeOnly"] = _keyframe_only;
+	json["timezone"]	 = _timezone.ToString().CStr();
 
 	// ${EpochTime} is left as it is: H264SeiInserter substitutes it at insertion time, so the
 	// value is when the message entered the stream rather than when the event was queued.
@@ -155,6 +169,15 @@ std::shared_ptr<SEIEvent> SEIEvent::Deserialize(const std::shared_ptr<const ov::
 	if (json.isMember("keyframeOnly") && json["keyframeOnly"].isBool())
 	{
 		sei_event->_keyframe_only = json["keyframeOnly"].asBool();
+	}
+
+	if (json.isMember("timezone") && json["timezone"].isString())
+	{
+		if (H264SeiTimecodeZone::Parse(json["timezone"].asString().c_str(), sei_event->_timezone) == false)
+		{
+			logtw("Ignoring an SEI event timezone that could not be read: %s",
+				  json["timezone"].asString().c_str());
+		}
 	}
 
 	return sei_event;

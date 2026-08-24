@@ -217,3 +217,102 @@ TEST(H264SeiPicTiming, NumClockTsFollowsTableD1)
 	EXPECT_EQ(H264SeiPicTiming::NumClockTSFromPicStruct(8), 3);	 // frame tripling
 	EXPECT_EQ(H264SeiPicTiming::NumClockTSFromPicStruct(9), 0);	 // reserved
 }
+
+// ---------------------------------------------------------------------------
+// H264SeiTimecodeZone
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	H264SeiTimecodeZone ParsedZone(const char *text)
+	{
+		// Deliberately not the default, so a Parse() that fails silently is visible
+		H264SeiTimecodeZone zone;
+		zone.local			= true;
+		zone.offset_seconds = 1;
+
+		EXPECT_TRUE(H264SeiTimecodeZone::Parse(text, zone)) << text;
+
+		return zone;
+	}
+}  // namespace
+
+// The same stream has to carry the same timecode on every node it runs on, so the server's own
+// zone is opt in rather than the fallback
+TEST(H264SeiTimecodeZone, UtcIsTheDefault)
+{
+	H264SeiTimecodeZone zone;
+	EXPECT_FALSE(zone.local);
+	EXPECT_EQ(zone.offset_seconds, 0);
+	EXPECT_EQ(zone.ToString(), "UTC");
+
+	// An absent <Timezone> reads as an empty string
+	for (const char *text : {"", "  ", "UTC", "utc", "Z", "z", "+00:00", "-00:00", "+0000", "+00"})
+	{
+		auto parsed = ParsedZone(text);
+		EXPECT_FALSE(parsed.local) << text;
+		EXPECT_EQ(parsed.offset_seconds, 0) << text;
+		EXPECT_EQ(parsed.ToString(), "UTC") << text;
+	}
+}
+
+TEST(H264SeiTimecodeZone, LocalHasToBeAskedFor)
+{
+	for (const char *text : {"Local", "local", "LOCAL", "  Local  "})
+	{
+		auto parsed = ParsedZone(text);
+		EXPECT_TRUE(parsed.local) << text;
+		EXPECT_EQ(parsed.ToString(), "Local") << text;
+	}
+}
+
+TEST(H264SeiTimecodeZone, ReadsAFixedOffset)
+{
+	for (const char *text : {"+09:00", "+0900", "+09"})
+	{
+		auto zone = ParsedZone(text);
+		EXPECT_FALSE(zone.local) << text;
+		EXPECT_EQ(zone.offset_seconds, 9 * 3600) << text;
+		EXPECT_EQ(zone.ToString(), "+09:00") << text;
+	}
+
+	// Every offset the sample EventInfo.xml puts in front of a user
+	EXPECT_EQ(ParsedZone("+05:30").offset_seconds, (5 * 3600) + (30 * 60));
+	EXPECT_EQ(ParsedZone("+05:45").offset_seconds, (5 * 3600) + (45 * 60));
+	EXPECT_EQ(ParsedZone("-03:00").offset_seconds, -3 * 3600);
+	EXPECT_EQ(ParsedZone("-05:00").offset_seconds, -5 * 3600);
+
+	EXPECT_EQ(ParsedZone("-09:30").ToString(), "-09:30");
+	EXPECT_EQ(ParsedZone("+14:00").offset_seconds, 14 * 3600) << "the widest offset in use";
+}
+
+TEST(H264SeiTimecodeZone, RejectsWhatItCannotRead)
+{
+	H264SeiTimecodeZone zone;
+
+	for (const char *text : {"Asia/Seoul", "KST", "GMT", "9", "09:00", "+9:00", "+09:0",
+							 "+ab:cd", "+09:60", "+15:00", "-15:00", "+09:00:00"})
+	{
+		EXPECT_FALSE(H264SeiTimecodeZone::Parse(text, zone)) << text;
+	}
+
+	// A rejected text leaves the value alone
+	zone.local			= false;
+	zone.offset_seconds = 3600;
+	EXPECT_FALSE(H264SeiTimecodeZone::Parse("Asia/Seoul", zone));
+	EXPECT_FALSE(zone.local);
+	EXPECT_EQ(zone.offset_seconds, 3600);
+}
+
+TEST(H264SeiTimecodeZone, ToStringRoundTrips)
+{
+	for (const char *text : {"Local", "UTC", "+09:00", "-05:00", "+05:45", "-09:30", "+14:00"})
+	{
+		auto zone = ParsedZone(text);
+
+		H264SeiTimecodeZone again;
+		ASSERT_TRUE(H264SeiTimecodeZone::Parse(zone.ToString(), again)) << text;
+		EXPECT_EQ(again.local, zone.local) << text;
+		EXPECT_EQ(again.offset_seconds, zone.offset_seconds) << text;
+	}
+}

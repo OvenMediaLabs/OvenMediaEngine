@@ -24,6 +24,16 @@
 class H264TimecodeGenerator
 {
 public:
+	explicit H264TimecodeGenerator(const H264SeiTimecodeZone &timezone = {})
+		: _timezone(timezone)
+	{
+	}
+
+	const H264SeiTimecodeZone &GetTimezone() const
+	{
+		return _timezone;
+	}
+
 	// True for the 1000/1001 rates (29.97, 59.94), where SMPTE drop frame counting is what keeps
 	// the timecode aligned with elapsed time. Derived from the rate, never configured.
 	static bool IsDropFrameRate(double fps);
@@ -41,8 +51,11 @@ public:
 	bool Generate(int64_t pts, double timebase_expr, double fps, H264SeiClockTimestamp &timestamp);
 
 private:
-	// Seconds elapsed since midnight, local time
-	static double GetTimeOfDaySeconds();
+	// Seconds elapsed since midnight in `_timezone`
+	double GetTimeOfDaySeconds() const;
+
+	// Fixed for the life of the generator: changing it would move the anchor
+	H264SeiTimecodeZone _timezone;
 
 	bool _anchored		 = false;
 	int64_t _anchor_pts	 = 0;
@@ -61,6 +74,11 @@ private:
 class H264SeiInserter
 {
 public:
+	explicit H264SeiInserter(const H264SeiTimecodeZone &timezone = {})
+		: _generator(timezone)
+	{
+	}
+
 	// OME Specific UUID
 	// 464d4c47-5241-494e-434f-4c4f-55524201
 	static constexpr uint8_t OME_USER_DATA_UUID[16] = {0x46, 0x4D, 0x4C, 0x47, 0x52, 0x41, 0x49, 0x4E, 0x43, 0x4F, 0x4C, 0x4F, 0x55, 0x52, 0x42, 0x01};

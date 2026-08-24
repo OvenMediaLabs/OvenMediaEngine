@@ -57,6 +57,8 @@ stamps every picture, so there is nothing to repeat.
 	<EventFormat>sei</EventFormat>
 	<Values>
 		<SeiType>PictureTiming</SeiType>
+		<!-- Optional. UTC (the default), Local, or a fixed offset: +09:00, -0500, +09 -->
+		<Timezone>UTC</Timezone>
 	</Values>
 </Event>
 */
@@ -111,8 +113,21 @@ public:
 		return _keyframe_only;
 	}
 
+	void SetTimezone(const H264SeiTimecodeZone &timezone)
+	{
+		_timezone = timezone;
+	}
+
+	// Which wall clock a pic_timing timecode counts from. Carried for every SEI type, but only
+	// pic_timing has a time of day to read.
+	const H264SeiTimecodeZone &GetTimezone() const
+	{
+		return _timezone;
+	}
+
 private:
 	ov::String _sei_type;
 	ov::String _data;
 	bool _keyframe_only = false;
+	H264SeiTimecodeZone _timezone;
 };

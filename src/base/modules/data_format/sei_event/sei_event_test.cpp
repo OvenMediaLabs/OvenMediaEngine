@@ -102,6 +102,57 @@ TEST(SeiEvent, XmlDefaultsToUserDataUnregistered)
 	EXPECT_FALSE(parsed->IsKeyframeOnly());
 }
 
+TEST(SeiEvent, XmlDefaultsToUtc)
+{
+	auto document = XmlValues("<Values><SeiType>PictureTiming</SeiType></Values>");
+	ASSERT_NE(document, nullptr);
+
+	auto parsed = SEIEvent::Parse(document->child("Values"));
+	ASSERT_NE(parsed, nullptr);
+	EXPECT_FALSE(parsed->GetTimezone().local) << "an absent <Timezone> is UTC, not the server's zone";
+	EXPECT_EQ(parsed->GetTimezone().offset_seconds, 0);
+}
+
+TEST(SeiEvent, XmlReadsTheTimezone)
+{
+	struct
+	{
+		const char *text;
+		bool local;
+		int32_t offset_seconds;
+	} const cases[] = {
+		{"UTC", false, 0},
+		{"Local", true, 0},
+		{"+09:00", false, 9 * 3600},
+		{"-05:00", false, -5 * 3600},
+	};
+
+	for (const auto &entry : cases)
+	{
+		auto document = XmlValues(ov::String::FormatString(
+									  "<Values><SeiType>PictureTiming</SeiType><Timezone>%s</Timezone></Values>",
+									  entry.text)
+									  .CStr());
+		ASSERT_NE(document, nullptr) << entry.text;
+
+		auto values = document->child("Values");
+		ASSERT_TRUE(SEIEvent::IsValid(values)) << entry.text;
+
+		auto parsed = SEIEvent::Parse(values);
+		ASSERT_NE(parsed, nullptr) << entry.text;
+		EXPECT_EQ(parsed->GetTimezone().local, entry.local) << entry.text;
+		EXPECT_EQ(parsed->GetTimezone().offset_seconds, entry.offset_seconds) << entry.text;
+	}
+}
+
+// Caught at config load, where the XML is printed, rather than at insertion time
+TEST(SeiEvent, XmlRejectsATimezoneItCannotRead)
+{
+	auto document = XmlValues("<Values><SeiType>PictureTiming</SeiType><Timezone>Asia/Seoul</Timezone></Values>");
+	ASSERT_NE(document, nullptr);
+	EXPECT_FALSE(SEIEvent::IsValid(document->child("Values")));
+}
+
 TEST(SeiEvent, XmlReadsKeyframeOnly)
 {
 	auto document = XmlValues("<Values><SeiType>PictureTiming</SeiType><KeyframeOnly>true</KeyframeOnly></Values>");
@@ -124,10 +175,14 @@ TEST(SeiEvent, XmlReadsKeyframeOnly)
 
 TEST(SeiEvent, SurvivesTheJsonRoundTrip)
 {
+	H264SeiTimecodeZone timezone;
+	ASSERT_TRUE(H264SeiTimecodeZone::Parse("+09:00", timezone));
+
 	auto source = std::make_shared<SEIEvent>();
 	source->SetSeiType("PictureTiming");
 	source->SetData("CurrentTime:${EpochTime}");
 	source->SetKeyframeOnly(true);
+	source->SetTimezone(timezone);
 
 	auto bytes = source->Serialize();
 	ASSERT_NE(bytes, nullptr);
@@ -138,6 +193,28 @@ TEST(SeiEvent, SurvivesTheJsonRoundTrip)
 	EXPECT_TRUE(parsed->IsKeyframeOnly()) << "KeyframeOnly has to reach the consumer";
 	// ${EpochTime} is substituted at insertion time, not here
 	EXPECT_EQ(parsed->GetData(), "CurrentTime:${EpochTime}");
+
+	EXPECT_FALSE(parsed->GetTimezone().local) << "the timezone has to reach the consumer";
+	EXPECT_EQ(parsed->GetTimezone().offset_seconds, 9 * 3600);
+}
+
+// The default, and an event written by a build that had no timezone field at all
+TEST(SeiEvent, DeserializeFallsBackToUtc)
+{
+	auto source = std::make_shared<SEIEvent>();
+	source->SetSeiType("PictureTiming");
+	EXPECT_FALSE(SEIEvent::Deserialize(source->Serialize())->GetTimezone().local);
+
+	auto as_data = [](const char *text) {
+		return std::make_shared<ov::Data>(text, ::strlen(text));
+	};
+
+	EXPECT_FALSE(SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming"})"))->GetTimezone().local);
+
+	// An unreadable zone is not worth dropping the event over
+	auto parsed = SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming", "timezone": "Asia/Seoul"})"));
+	ASSERT_NE(parsed, nullptr);
+	EXPECT_FALSE(parsed->GetTimezone().local);
 }
 
 TEST(SeiEvent, SerializeFallsBackToUserDataUnregistered)

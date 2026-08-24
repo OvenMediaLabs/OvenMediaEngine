@@ -9,6 +9,8 @@
 
 #include "h264_sei.h"
 
+#include <ctype.h>
+
 #include <base/ovlibrary/bit_reader.h>
 #include <base/ovlibrary/bit_writer.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -414,4 +416,81 @@ std::shared_ptr<ov::Data> H264SEI::SerializePicTiming(const H264SeiPicTiming &pi
 	}
 
 	return writer.GetDataObject();
+}
+
+bool H264SeiTimecodeZone::Parse(const ov::String &text, H264SeiTimecodeZone &zone)
+{
+	auto value = text.Trim();
+	auto upper = value.UpperCaseString();
+
+	// An absent setting reads as UTC, so a stream carries the same timecode wherever it runs
+	if ((value.IsEmpty() == true) || (upper == "UTC") || (upper == "Z"))
+	{
+		zone.local			= false;
+		zone.offset_seconds = 0;
+
+		return true;
+	}
+
+	if (upper == "LOCAL")
+	{
+		zone.local			= true;
+		zone.offset_seconds = 0;
+
+		return true;
+	}
+
+	const char sign = value[0];
+	if ((sign != '+') && (sign != '-'))
+	{
+		return false;
+	}
+
+	// +HH, +HHMM and +HH:MM all reduce to the same digits
+	auto digits = value.Substring(1).Replace(":", "");
+	if ((digits.GetLength() != 2) && (digits.GetLength() != 4))
+	{
+		return false;
+	}
+
+	for (size_t i = 0; i < digits.GetLength(); i++)
+	{
+		if (::isdigit(static_cast<unsigned char>(digits[i])) == 0)
+		{
+			return false;
+		}
+	}
+
+	const int32_t hours   = ((digits[0] - '0') * 10) + (digits[1] - '0');
+	const int32_t minutes = (digits.GetLength() == 4) ? (((digits[2] - '0') * 10) + (digits[3] - '0')) : 0;
+	const int32_t offset  = (hours * 3600) + (minutes * 60);
+
+	// +14:00 is the widest offset anywhere in use
+	if ((minutes > 59) || (offset > (14 * 3600)))
+	{
+		return false;
+	}
+
+	zone.local			= false;
+	zone.offset_seconds = (sign == '-') ? -offset : offset;
+
+	return true;
+}
+
+ov::String H264SeiTimecodeZone::ToString() const
+{
+	if (local == true)
+	{
+		return "Local";
+	}
+
+	if (offset_seconds == 0)
+	{
+		return "UTC";
+	}
+
+	const int32_t magnitude = (offset_seconds < 0) ? -offset_seconds : offset_seconds;
+
+	return ov::String::FormatString("%c%02d:%02d", (offset_seconds < 0) ? '-' : '+',
+									magnitude / 3600, (magnitude % 3600) / 60);
 }

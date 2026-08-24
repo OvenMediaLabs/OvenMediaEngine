@@ -250,3 +250,39 @@ TEST(H264TimecodeGenerator, FrameNumbersDoNotGoBackwards)
 		previous = current;
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The timezone the anchor is read in
+// ---------------------------------------------------------------------------
+
+TEST(H264TimecodeGenerator, DefaultsToUtc)
+{
+	EXPECT_FALSE(H264TimecodeGenerator().GetTimezone().local);
+	EXPECT_EQ(H264TimecodeGenerator().GetTimezone().offset_seconds, 0);
+}
+
+TEST(H264TimecodeGenerator, TheTimezoneMovesTheAnchor)
+{
+	H264SeiTimecodeZone utc;
+	ASSERT_TRUE(H264SeiTimecodeZone::Parse("UTC", utc));
+
+	H264SeiTimecodeZone plus_nine;
+	ASSERT_TRUE(H264SeiTimecodeZone::Parse("+09:00", plus_nine));
+
+	H264TimecodeGenerator utc_generator(utc);
+	H264TimecodeGenerator shifted_generator(plus_nine);
+
+	H264SeiClockTimestamp from_utc;
+	H264SeiClockTimestamp from_shifted;
+	ASSERT_TRUE(utc_generator.Generate(0, k90kHz, 30.0, from_utc));
+	ASSERT_TRUE(shifted_generator.Generate(0, k90kHz, 30.0, from_shifted));
+
+	auto seconds_of_day = [](const H264SeiClockTimestamp &timestamp) {
+		return (((timestamp.hours * 60) + timestamp.minutes) * 60) + timestamp.seconds;
+	};
+
+	// Both anchors are the same instant read in two zones, so they sit exactly nine hours apart.
+	// The two clock reads are not quite the same instant, hence the second of slack.
+	const int32_t difference = ((seconds_of_day(from_shifted) - seconds_of_day(from_utc)) + 86400) % 86400;
+	EXPECT_NEAR(difference, 9 * 3600, 1);
+}

@@ -19,7 +19,7 @@
 
 namespace
 {
-	constexpr double SECONDS_PER_DAY = 24.0 * 60.0 * 60.0;
+	constexpr int64_t SECONDS_PER_DAY = 24 * 60 * 60;
 
 	// Log prefix shared with the rest of MediaRouter and Transcoder
 	ov::String LogPrefix(const std::shared_ptr<info::Stream> &stream)
@@ -88,18 +88,33 @@ void H264TimecodeGenerator::FrameNumberToTimecode(int64_t frame_number, int32_t 
 	hours	= static_cast<uint8_t>((counted / (nominal_fps * 3600LL)) % 24);
 }
 
-double H264TimecodeGenerator::GetTimeOfDaySeconds()
+double H264TimecodeGenerator::GetTimeOfDaySeconds() const
 {
 	struct timespec now = {};
 	::clock_gettime(CLOCK_REALTIME, &now);
 
-	struct tm broken_down = {};
-	::localtime_r(&now.tv_sec, &broken_down);
+	const double fraction = now.tv_nsec / 1000000000.0;
 
-	return (broken_down.tm_hour * 3600.0) +
-		   (broken_down.tm_min * 60.0) +
-		   broken_down.tm_sec +
-		   (now.tv_nsec / 1000000000.0);
+	if (_timezone.local == true)
+	{
+		struct tm broken_down = {};
+		::localtime_r(&now.tv_sec, &broken_down);
+
+		return (broken_down.tm_hour * 3600.0) +
+			   (broken_down.tm_min * 60.0) +
+			   broken_down.tm_sec +
+			   fraction;
+	}
+
+	// Unix time counts no leap seconds, so every day is exactly SECONDS_PER_DAY long and a fixed
+	// offset needs no time zone database
+	int64_t seconds_of_day = (now.tv_sec + _timezone.offset_seconds) % SECONDS_PER_DAY;
+	if (seconds_of_day < 0)
+	{
+		seconds_of_day += SECONDS_PER_DAY;
+	}
+
+	return seconds_of_day + fraction;
 }
 
 void H264TimecodeGenerator::Reset()
@@ -132,7 +147,7 @@ bool H264TimecodeGenerator::Generate(int64_t pts, double timebase_expr, double f
 	{
 		_anchor_pts = pts;
 
-		// Local time of day at the first stamped picture
+		// Time of day at the first stamped picture, read in the configured zone
 		_anchor_value = GetTimeOfDaySeconds();
 
 		_anchored	   = true;
@@ -356,8 +371,9 @@ bool H264SeiInserter::InsertPicTiming(const std::shared_ptr<info::Stream> &strea
 		// Drop any stale anchor so the timecode starts from this picture
 		_generator.Reset();
 
-		logti("%s Started stamping pic_timing on every picture. track(%u)",
-			  _log_prefix.CStr(), packet->GetTrackId());
+		logti("%s Started stamping pic_timing on every picture. track(%u), timezone(%s)",
+			  _log_prefix.CStr(), packet->GetTrackId(),
+			  _generator.GetTimezone().ToString().CStr());
 	}
 
 	// Parsing the fragment header walks the whole bitstream, so it is done once here and handed
