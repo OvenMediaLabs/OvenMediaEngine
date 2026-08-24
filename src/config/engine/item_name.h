@@ -33,7 +33,8 @@ namespace cfg
 		ItemName(const char *xml_name);
 		ItemName(const char *xml_name, const char *json_name);
 		// deprecated_json_name is an old JSON name kept for backward compatibility.
-		// It is still accepted on input (never emitted on output), and will be removed in a future release.
+		// During the deprecation window it is accepted on input and emitted on output alongside the current name,
+		// and will be removed in a future release.
 		// Supported only for scalar leaf values; `Item::AddChild()` throws a ConfigError otherwise.
 		ItemName(const char *xml_name, const char *json_name, const char *deprecated_json_name);
 
@@ -69,4 +70,12 @@ namespace cfg
 
 		bool _created_from_xml_name = false;
 	};
+
+	// Joins an item path and a child name into a dotted path, such as "playlists.options"
+	inline ov::String MakeChildPath(const ov::String &parent_path, const ov::String &child_name)
+	{
+		return parent_path.IsEmpty()
+				   ? child_name
+				   : ov::String::FormatString("%s.%s", parent_path.CStr(), child_name.CStr());
+	}
 }  // namespace cfg
