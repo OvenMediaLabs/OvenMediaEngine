@@ -25,9 +25,13 @@
 
 namespace pvd
 {
-	std::shared_ptr<MpegTsStream> MpegTsStream::Create(StreamSourceType source_type, uint32_t client_id, const info::VHostAppName &vhost_app_name, const ov::String &stream_name, const std::shared_ptr<ov::Socket> &client_socket, const ov::SocketAddress &remote_address, uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)
+	std::shared_ptr<MpegTsStream> MpegTsStream::Create(
+		StreamSourceType source_type, uint32_t client_id,
+		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+		const std::shared_ptr<ov::Socket> &client_socket, const ov::SocketAddressPair &address_pair,
+		uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)
 	{
-		auto stream = std::make_shared<MpegTsStream>(source_type, client_id, vhost_app_name, stream_name, client_socket, remote_address, lifetime_epoch_msec, provider);
+		auto stream = std::make_shared<MpegTsStream>(source_type, client_id, vhost_app_name, stream_name, client_socket, address_pair, lifetime_epoch_msec, provider);
 		if (stream != nullptr)
 		{
 			stream->Start();
@@ -35,17 +39,27 @@ namespace pvd
 		return stream;
 	}
 
-	MpegTsStream::MpegTsStream(StreamSourceType source_type, uint32_t client_id, const info::VHostAppName &vhost_app_name, const ov::String &stream_name, std::shared_ptr<ov::Socket> client_socket, const ov::SocketAddress &remote_address, uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)
+	MpegTsStream::MpegTsStream(
+		StreamSourceType source_type, uint32_t client_id,
+		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
+		std::shared_ptr<ov::Socket> client_socket, const ov::SocketAddressPair &address_pair,
+		uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)
 		: PushStream(source_type, client_id, provider),
 
 		  _vhost_app_name(vhost_app_name)
 	{
 		SetName(stream_name);
 		_remote = client_socket;
-		SetMediaSource(ov::String::FormatString("%s://%s", ov::StringFromSocketType(client_socket->GetType()), remote_address.ToString(false).CStr()));
+		SetMediaSource(ov::String::FormatString("%s://%s", ov::StringFromSocketType(client_socket->GetType()), address_pair.GetRemoteAddress().ToString(false).CStr()));
 
-		// The shared UDP listener socket knows no remote address; use the packet source instead
-		SetConnectionInfo(info::ConnectionInfo::From(client_socket->GetLocalAddress().get(), &remote_address, client_socket->GetType()));
+		// The pair's local side is the per-datagram destination (pktinfo) for the shared UDP
+		// listener; fall back to the bind address when it is unavailable.
+		// The shared_ptr keeps the fallback alive across the statements below.
+		auto bind_address		  = client_socket->GetLocalAddress();
+		const auto *local_address = address_pair.GetLocalAddress().IsValid()
+										? &address_pair.GetLocalAddress()
+										: bind_address.get();
+		SetConnectionInfo(info::ConnectionInfo::From(local_address, &address_pair.GetRemoteAddress(), client_socket->GetType()));
 		_lifetime_epoch_msec = lifetime_epoch_msec;
 	}
 
