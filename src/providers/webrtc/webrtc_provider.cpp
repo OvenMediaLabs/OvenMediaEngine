@@ -737,11 +737,10 @@ namespace pvd
 			return;
 		}
 
-		// A non-direct pair goes through the built-in TURN server regardless of the socket protocol
 		auto connection_info = info::ConnectionInfo::From(
 			candidate_pair->GetAddressPair(),
 			socket->GetType(),
-			(candidate_pair->GetTransportType() != IceCandidatePair::TransportType::Direct) ? "TURN" : nullptr,
+			candidate_pair->GetReportedTransport(),
 			selected_version);
 
 		if (stream->SetConnectionInfo(connection_info) == false)

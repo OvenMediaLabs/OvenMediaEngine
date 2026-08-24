@@ -77,16 +77,21 @@ void IceCandidatePair::SetTurnDataChannel(uint16_t channel_number)
 
 void IceCandidatePair::SetTurnSendIndication(const ov::SocketAddress &turn_peer_address)
 {
-    {
-        ov::LockGuard<ov::Mutex> lock(_turn_peer_address_mutex);
-        _turn_peer_address = turn_peer_address;
-    }
-    _transport_type.store(TransportType::TurnSendIndication);
+	{
+		ov::LockGuard<ov::Mutex> lock(_turn_peer_address_mutex);
+		_turn_peer_address = turn_peer_address;
+	}
+	_transport_type.store(TransportType::TurnSendIndication);
 }
 
 IceCandidatePair::TransportType IceCandidatePair::GetTransportType() const
 {
-    return _transport_type.load();
+	return _transport_type.load();
+}
+
+const char *IceCandidatePair::GetReportedTransport() const
+{
+	return (GetTransportType() != TransportType::Direct) ? "TURN" : nullptr;
 }
 
 uint16_t IceCandidatePair::GetTurnChannelNumber() const

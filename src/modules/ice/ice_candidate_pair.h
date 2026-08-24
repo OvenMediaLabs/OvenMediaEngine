@@ -46,14 +46,17 @@ public:
     void OnReceivedBindingRequest();
     void OnReceivedBindingResponse();
 
-    // Valid candidate pair
-    bool IsConnectable() const;
+	// Valid candidate pair
+	bool IsConnectable() const;
 
 	// Outgoing framing for this pair. Set when TURN ChannelData / Send
 	// Indication is received on this pair; defaults to Direct.
 	void SetTurnDataChannel(uint16_t channel_number);
 	void SetTurnSendIndication(const ov::SocketAddress &turn_peer_address);
 	TransportType GetTransportType() const;
+	// The transport label to report for this pair: nullptr means "use the socket protocol",
+	// "TURN" means OME's built-in TURN server relays it
+	const char *GetReportedTransport() const;
 	uint16_t GetTurnChannelNumber() const;
 	ov::SocketAddress GetTurnPeerAddress() const;
 

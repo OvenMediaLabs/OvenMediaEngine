@@ -299,7 +299,17 @@ namespace pvd
 			return;
 		}
 
-		auto stream = MpegTsStream::Create(StreamSourceType::Srt, channel_id, vhost_app_name, stream_name, remote, *remote->GetRemoteAddress(), life_time, GetSharedPtrAs<pvd::PushProvider>());
+		// An accepted SRT socket can miss its local address when `srt_getsockname()` failed
+		ov::SocketAddressPair address_pair(
+			(remote->GetLocalAddress() != nullptr) ? *remote->GetLocalAddress() : ov::SocketAddress(),
+			*remote->GetRemoteAddress());
+
+		auto stream = MpegTsStream::Create(
+			StreamSourceType::Srt, channel_id,
+			vhost_app_name, stream_name,
+			remote, address_pair,
+			life_time, GetSharedPtrAs<pvd::PushProvider>());
+
 		stream->SetRequestedUrl(requested_url);
 		stream->SetFinalUrl(final_url);
 

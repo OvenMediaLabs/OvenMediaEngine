@@ -275,3 +275,19 @@ TEST_F(IcePortTest, ApplicationPacketReportsSelectedPair)
 	EXPECT_EQ(observer->selected_pairs.size(), 2u);
 	EXPECT_TRUE(s->GetActiveCandidatePair()->GetAddressPair() == pair_b);
 }
+
+// The reported transport label follows the pair's TURN framing:
+// Direct -> nullptr (socket protocol), relayed -> "TURN"
+TEST_F(IcePortTest, ReportedTransportFollowsTurnFraming)
+{
+	IceCandidatePair direct_pair(Pair(10200, 20000), nullptr);
+	EXPECT_EQ(direct_pair.GetReportedTransport(), nullptr);
+
+	IceCandidatePair channel_pair(Pair(13478, 20001), nullptr);
+	channel_pair.SetTurnDataChannel(0x4000);
+	EXPECT_STREQ(channel_pair.GetReportedTransport(), "TURN");
+
+	IceCandidatePair indication_pair(Pair(13478, 20002), nullptr);
+	indication_pair.SetTurnSendIndication(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 30000));
+	EXPECT_STREQ(indication_pair.GetReportedTransport(), "TURN");
+}
