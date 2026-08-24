@@ -1923,6 +1923,7 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	}
 	else
 	{
+		// Server-time numbering paces every segment as one wall-clock slot
 		boundary_policy = std::make_shared<bmff::DurationBoundaryPolicy>(policy_config, server_time_based_segment_numbering);
 	}
 

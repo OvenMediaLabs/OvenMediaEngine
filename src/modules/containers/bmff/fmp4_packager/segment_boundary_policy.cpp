@@ -676,14 +676,14 @@ namespace bmff
 			}
 		}
 
-		// The chunk has to end here, and the reordering has not resolved at this
-		// frame: some frame still buffered displays after one that is about to
-		// go out, so the part would cover a different stretch of presentation
-		// time than it declares. Move the cut back to the last frame where it
-		// had resolved and leave the rest for the next part.
+		// A part cut mid-reorder covers different presentation time than its
+		// declared duration says, and players that compare the two (Shaka)
+		// report the mismatch. So the cut moves back to the last position where
+		// the reordering had resolved; the samples left behind ride the next
+		// part. An immediate marker cut is exempt: it cuts exactly where asked.
 		bool reorder_resolved = (next_frame.pts_us > buffered.GetHighestPtsUs());
 
-		if (boundary.exact == true && reorder_resolved == false && no_marker == true &&
+		if (reorder_resolved == false && no_marker == true &&
 			completed_by_split == false && emit_count > 1)
 		{
 			// The lowest presentation timestamp from each position on, to test a

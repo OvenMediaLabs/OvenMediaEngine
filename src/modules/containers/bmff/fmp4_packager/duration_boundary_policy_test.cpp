@@ -25,14 +25,14 @@ namespace
 {
 	constexpr uint64_t kSegmentDurationMs = 4000;
 
-	std::shared_ptr<bmff::DurationBoundaryPolicy> MakePolicy(int64_t initial_segment_number = 0, bool keep_pacing_over_discontinuity = false)
+	std::shared_ptr<bmff::DurationBoundaryPolicy> MakePolicy(int64_t initial_segment_number = 0, bool wall_clock_slot_pacing = false)
 	{
 		bmff::SegmentBoundaryPolicy::Config config;
 		config.segment_duration_ms = kSegmentDurationMs;
 		config.chunk_duration_ms = 400.0;
 		config.initial_segment_number = initial_segment_number;
 		config.log_context = "test";
-		return std::make_shared<bmff::DurationBoundaryPolicy>(config, keep_pacing_over_discontinuity);
+		return std::make_shared<bmff::DurationBoundaryPolicy>(config, wall_clock_slot_pacing);
 	}
 
 	bmff::CompletionResult Complete(const std::shared_ptr<bmff::DurationBoundaryPolicy> &policy, int64_t number, double start_ms, double duration_ms)
@@ -149,6 +149,25 @@ TEST(DurationBoundaryPolicyTest, MarkerLandingOnTheTargetKeepsTheCadence)
 	EXPECT_DOUBLE_EQ(TargetMs(policy), 4000.0);
 
 	Complete(policy, 1, 4000.0, 4000.0);
+	EXPECT_DOUBLE_EQ(TargetMs(policy), 4000.0);
+}
+
+TEST(DurationBoundaryPolicyTest, SlotPacingCountsAMarkerSegmentAsAFullSlot)
+{
+	auto policy = MakePolicy(0, true);
+
+	// Server-time numbering: every number is one wall-clock slot, so the marker
+	// segment is not discounted and the next segment stretches to finish the
+	// slot. Discounting would leave the numbering one slot ahead of the wall
+	// clock per marker, and a server started later never pairs with it again.
+	auto marker = Marker::CreateMarker(cmn::BitstreamFormat::CUE, 1400, 1400, CueEvent::Create(CueEvent::CueType::OUT, 10000, 0, false)->Serialize());
+	ASSERT_TRUE(policy->InsertMarker(marker));
+
+	auto completion_result = Complete(policy, 0, 0.0, 1400.0);
+	ASSERT_EQ(completion_result.markers.size(), 1u);
+	EXPECT_DOUBLE_EQ(TargetMs(policy), 6600.0);
+
+	Complete(policy, 1, 1400.0, 6600.0);
 	EXPECT_DOUBLE_EQ(TargetMs(policy), 4000.0);
 }
 

@@ -19,10 +19,13 @@ namespace bmff
 	class DurationBoundaryPolicy : public SegmentBoundaryPolicy
 	{
 	public:
-		// keep_pacing_over_discontinuity: server-time based segment numbering
-		// relies on the catch-up pacing to keep segment numbers aligned to the
-		// wall clock, so a discontinuity must not reset the drift
-		DurationBoundaryPolicy(const Config &config, bool keep_pacing_over_discontinuity);
+		// wall_clock_slot_pacing: server-time based segment numbering treats
+		// every segment number as one wall-clock slot, so every completion counts
+		// a full cadence step (no marker discount, no reset on a discontinuity)
+		// and the catch-up pacing finishes each slot. Otherwise a server started
+		// later derives its numbers fresh from the wall clock and never matches
+		// the ones already running.
+		DurationBoundaryPolicy(const Config &config, bool wall_clock_slot_pacing);
 
 		SegmentBoundary GetSegmentBoundary(std::optional<int64_t> segment_start_us) override;
 
@@ -31,7 +34,7 @@ namespace bmff
 		CompletionResult DoOnDiscontinuity(const CompletedSegment &completed, const std::vector<std::shared_ptr<Marker>> &covered_markers) override;
 
 	private:
-		bool _keep_pacing_over_discontinuity = false;
+		bool _wall_clock_slot_pacing = false;
 
 		// The pacing ledger: the ideal timeline advances by the configured
 		// duration per segment, the actual one by what each segment really was;

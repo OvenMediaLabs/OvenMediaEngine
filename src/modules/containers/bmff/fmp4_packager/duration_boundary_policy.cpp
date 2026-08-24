@@ -11,9 +11,9 @@
 
 namespace bmff
 {
-	DurationBoundaryPolicy::DurationBoundaryPolicy(const Config &config, bool keep_pacing_over_discontinuity)
+	DurationBoundaryPolicy::DurationBoundaryPolicy(const Config &config, bool wall_clock_slot_pacing)
 		: SegmentBoundaryPolicy(config),
-		  _keep_pacing_over_discontinuity(keep_pacing_over_discontinuity),
+		  _wall_clock_slot_pacing(wall_clock_slot_pacing),
 		  _target_segment_duration_us(static_cast<int64_t>(config.segment_duration_ms) * 1000)
 	{
 	}
@@ -41,7 +41,15 @@ namespace bmff
 		// of the cadence, or the ledger would stretch the following segments to
 		// catch up with a step that never happened. A marker cut that landed on
 		// the target (or past it) added no boundary, so it counts as usual.
-		const bool added_a_boundary = (completed.has_marker == true &&
+		//
+		// Under wall-clock slot pacing there is no discount: every number is one
+		// slot, so the marker segment spends its slot and the next one stretches
+		// to finish it. Discounting would leave this server's numbering one slot
+		// ahead of the wall clock per marker, and a server started later (a
+		// failback after a failover) starts from the wall clock and would never
+		// pair with it again.
+		const bool added_a_boundary = (_wall_clock_slot_pacing == false &&
+									   completed.has_marker == true &&
 									   completed.duration_us < _target_segment_duration_us);
 
 		_total_expected_duration_us += _segment_duration_us;
@@ -62,7 +70,7 @@ namespace bmff
 
 	CompletionResult DurationBoundaryPolicy::DoOnDiscontinuity(const CompletedSegment &completed, const std::vector<std::shared_ptr<Marker>> &covered_markers)
 	{
-		if (_keep_pacing_over_discontinuity == true)
+		if (_wall_clock_slot_pacing == true)
 		{
 			// Server-time numbering: every segment number is one wall-clock slot,
 			// so even a force-completed segment counts a full cadence step and

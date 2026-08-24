@@ -82,12 +82,12 @@ namespace fmp4_test
 		return pipeline;
 	}
 
-	inline std::shared_ptr<MediaPacket> MakeVideoFrame(uint32_t track_id, int64_t dts, int64_t duration, bool keyframe)
+	inline std::shared_ptr<MediaPacket> MakeVideoFrame(uint32_t track_id, int64_t dts, int64_t duration, bool keyframe, int64_t pts = -1)
 	{
 		auto data = std::make_shared<ov::Data>();
 		uint8_t byte = 0x00;
 		data->Append(&byte, 1);
-		return std::make_shared<MediaPacket>(cmn::MediaType::Video, track_id, data, dts, dts, duration,
+		return std::make_shared<MediaPacket>(cmn::MediaType::Video, track_id, data, (pts >= 0) ? pts : dts, dts, duration,
 											 keyframe ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag,
 											 cmn::BitstreamFormat::H264_AVCC, cmn::PacketType::NALU);
 	}

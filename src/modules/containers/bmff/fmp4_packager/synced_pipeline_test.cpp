@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <vector>
 
@@ -31,6 +32,7 @@ namespace
 	constexpr double kChunkDurationMs = 400.0;
 	constexpr int kGopFrames = 30;	// 1 s at 30 fps
 	constexpr double kAudioFrameMs = 64.0 / 3.0;
+	constexpr double kVideoFrameMs = 100.0 / 3.0;
 
 	using fmp4_test::TrackPipeline;
 
@@ -41,7 +43,7 @@ namespace
 		TrackPipeline audio;  // synced
 	};
 
-	SyncedRig MakeRig()
+	SyncedRig MakeRig(LLHlsCueOutCutMode cue_out_cut_mode = LLHlsCueOutCutMode::Keyframe)
 	{
 		SyncedRig rig;
 
@@ -50,6 +52,7 @@ namespace
 		bmff::SegmentBoundaryPolicy::Config policy_config;
 		policy_config.segment_duration_ms = static_cast<uint64_t>(kSegmentDurationMs);
 		policy_config.chunk_duration_ms = kChunkDurationMs;
+		policy_config.cue_out_cut_mode = cue_out_cut_mode;
 
 		auto video_track = fmp4_test::MakeVideoTrack(0, 30.0, kGopFrames);
 		auto reference_config = policy_config;
@@ -226,12 +229,15 @@ static std::map<size_t, MarkerObservation> CollectMarkers(const TrackPipeline &p
 	return observations;
 }
 
-TEST(SyncedPipelineTest, MarkersRideTheRealizedBoundary)
+// The marker protocol on the realized boundaries, in both cut modes: the OUT
+// cuts where its mode dictates, the IN (a return point) cuts at the first
+// keyframe at or after it, and every synced track carries the same marker on
+// the same segment number.
+static void ExpectMarkersRideTheBoundary(LLHlsCueOutCutMode cut_mode)
 {
-	auto rig = MakeRig();
+	auto rig = MakeRig(cut_mode);
 
-	// Both cues sit mid-GOP (keyframes are at multiples of 1000); with the
-	// immediate cut mode the reference cuts right at them
+	// Both cues sit mid-GOP (keyframes are at multiples of 1000)
 	std::vector<int64_t> cue_out_timestamps = {13210, 33210};
 	DriveInterleaved(rig, 60000, 0, 0, 0, cue_out_timestamps, 10000);
 
@@ -249,18 +255,38 @@ TEST(SyncedPipelineTest, MarkersRideTheRealizedBoundary)
 			EXPECT_EQ(video_markers[index].segment_number, audio_markers[index].segment_number) << "cue " << index;
 			EXPECT_EQ(video_markers[index].marker, audio_markers[index].marker) << "cue " << index;
 
-			// The OUT cuts right at its position; the IN (a return point) cuts
-			// at the first keyframe at or after it
 			double requested_ms = static_cast<double>((type == CueEvent::CueType::OUT) ? cue_out_timestamps[index] : cue_out_timestamps[index] + 10000);
 			double realized_ms = video_markers[index].segment_end_ms;
-			EXPECT_GE(realized_ms, requested_ms - 0.1) << "cue " << index;
-			EXPECT_LT(realized_ms, requested_ms + 1000.0) << "cue " << index;
+
+			if (type == CueEvent::CueType::OUT && cut_mode == LLHlsCueOutCutMode::Immediate)
+			{
+				// An immediate OUT cuts at the first sample boundary at or after
+				// its position, mid-GOP included (samples are not splittable)
+				EXPECT_GE(realized_ms, requested_ms) << "cue " << index;
+				EXPECT_LT(realized_ms, requested_ms + kVideoFrameMs + 1.0) << "cue " << index;
+			}
+			else
+			{
+				// A keyframe cut waits for the first keyframe at or after the position
+				double next_keyframe_ms = std::ceil(requested_ms / 1000.0) * 1000.0;
+				EXPECT_NEAR(realized_ms, next_keyframe_ms, 0.1) << "cue " << index;
+			}
 
 			// The audio cut lands on the same boundary within one audio frame
 			EXPECT_GE(audio_markers[index].segment_end_ms, realized_ms - 0.1) << "cue " << index;
 			EXPECT_LT(audio_markers[index].segment_end_ms, realized_ms + kAudioFrameMs * 2.0 + 1.0) << "cue " << index;
 		}
 	}
+}
+
+TEST(SyncedPipelineTest, MarkersRideTheRealizedBoundary)
+{
+	ExpectMarkersRideTheBoundary(LLHlsCueOutCutMode::Keyframe);
+}
+
+TEST(SyncedPipelineTest, ImmediateCutRealizesTheMarkerMidGop)
+{
+	ExpectMarkersRideTheBoundary(LLHlsCueOutCutMode::Immediate);
 }
 
 TEST(SyncedPipelineTest, LateStartingAudioAdoptsTheSlotNumbering)

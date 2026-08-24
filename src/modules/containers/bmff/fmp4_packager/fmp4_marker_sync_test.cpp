@@ -27,7 +27,7 @@ namespace
 	constexpr int kGopFrames = 30;	// keyframes at multiples of 1000 ms at 30 fps
 	constexpr uint32_t kCueDurationMs = 10000;
 
-	bmff::SegmentBoundaryPolicy::Config MakeConfig(LLHlsCueOutCutMode cue_out_cut_mode = LLHlsCueOutCutMode::Immediate)
+	bmff::SegmentBoundaryPolicy::Config MakeConfig(LLHlsCueOutCutMode cue_out_cut_mode = LLHlsCueOutCutMode::Keyframe)
 	{
 		bmff::SegmentBoundaryPolicy::Config config;
 		config.segment_duration_ms = kSegmentDurationMs;
@@ -506,8 +506,198 @@ TEST(MarkerPolicyTest, PropagatedDiscontinuityCutsAtTheNextKeyframe)
 }
 
 //------------------------------------------------------------------------------
+// Duration mode across tracks
+//------------------------------------------------------------------------------
+
+namespace
+{
+	TrackPipeline MakeAudioPipeline()
+	{
+		auto track = fmp4_test::MakeAudioTrack(1);
+		auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+		return fmp4_test::MakePipeline(track, std::make_shared<fmp4_test::NullStorageObserver>(), policy,
+									   kSegmentDurationMs, kChunkDurationMs, "marker_test_audio");
+	}
+
+	// The markers of one cue type, in playlist order: the segment they ride and
+	// where that segment ends
+	std::vector<std::pair<std::shared_ptr<Marker>, double>> MarkersOn(const TrackPipeline &pipeline, CueEvent::CueType type)
+	{
+		std::vector<std::pair<std::shared_ptr<Marker>, double>> found;
+
+		for (int64_t number = 0; number <= pipeline.storage->GetLastSegmentNumber(); number++)
+		{
+			auto segment = std::static_pointer_cast<bmff::FMP4Segment>(pipeline.storage->GetSegment(number));
+			if (segment == nullptr || segment->HasMarker() == false)
+			{
+				continue;
+			}
+
+			for (const auto &marker : segment->GetMarkers())
+			{
+				auto cue_event = marker->GetCueEvent();
+				if (cue_event != nullptr && cue_event->GetCueType() == type)
+				{
+					found.emplace_back(marker, static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs());
+				}
+			}
+		}
+
+		return found;
+	}
+}  // namespace
+
+TEST(MarkerPolicyTest, EveryTrackCarriesEveryMarkerInDurationMode)
+{
+	// The shipping default: duration mode, keyframe cuts, video and audio side
+	// by side. Segment numbers may differ between the tracks; what must hold is
+	// that every rendition carries every tag, paired and in place.
+	auto video = MakeVideoPipeline(LLHlsCueOutCutMode::Keyframe);
+	auto audio = MakeAudioPipeline();
+
+	const std::vector<int64_t> cue_out_timestamps = {13210, 33210, 53210};
+
+	int64_t video_index = 0;
+	int64_t audio_index = 0;
+	size_t cue_step = 0;  // two steps per cue: the OUT, then its return point
+
+	while (true)
+	{
+		const int64_t video_dts = video_index * 100 / 3;
+		const int64_t audio_dts = audio_index * 64 / 3;
+		const int64_t now_ms = std::min(video_dts, audio_dts);
+
+		if (now_ms >= 70000)
+		{
+			break;
+		}
+
+		// Like the stream: the marker goes to every accepting track, or none
+		const size_t cue_index = cue_step / 2;
+		if (cue_index < cue_out_timestamps.size())
+		{
+			const bool is_out = (cue_step % 2 == 0);
+			const int64_t position = cue_out_timestamps[cue_index] + (is_out ? 0 : static_cast<int64_t>(kCueDurationMs));
+			if (now_ms >= position - 1000)
+			{
+				for (auto *pipeline : {&video, &audio})
+				{
+					ASSERT_TRUE(InsertCue(*pipeline, is_out ? CueEvent::CueType::OUT : CueEvent::CueType::IN, position, is_out ? kCueDurationMs : 0));
+				}
+				cue_step++;
+			}
+		}
+
+		if (video_dts <= audio_dts)
+		{
+			const int64_t duration = (video_index + 1) * 100 / 3 - video_dts;
+			ASSERT_TRUE(video.packager->AppendSample(fmp4_test::MakeVideoFrame(0, video_dts, duration, (video_index % kGopFrames) == 0)));
+			video_index++;
+		}
+		else
+		{
+			const int64_t duration = (audio_index + 1) * 64 / 3 - audio_dts;
+			ASSERT_TRUE(audio.packager->AppendSample(fmp4_test::MakeAudioFrame(1, audio_dts, duration)));
+			audio_index++;
+		}
+	}
+
+	ASSERT_EQ(cue_step, cue_out_timestamps.size() * 2);
+
+	for (auto *pipeline : {&video, &audio})
+	{
+		auto outs = MarkersOn(*pipeline, CueEvent::CueType::OUT);
+		auto ins = MarkersOn(*pipeline, CueEvent::CueType::IN);
+		ASSERT_EQ(outs.size(), cue_out_timestamps.size());
+		ASSERT_EQ(ins.size(), cue_out_timestamps.size());
+
+		for (size_t index = 0; index < cue_out_timestamps.size(); index++)
+		{
+			// Each tag rides the segment that ends at its cut: video at the next
+			// keyframe (1000 ms GOP), audio at the next audio frame
+			const double out_position = static_cast<double>(cue_out_timestamps[index]);
+			EXPECT_GE(outs[index].second, out_position) << "cue " << index;
+			EXPECT_LT(outs[index].second, out_position + 1100.0) << "cue " << index;
+
+			const double in_position = out_position + kCueDurationMs;
+			EXPECT_GE(ins[index].second, in_position) << "cue " << index;
+			EXPECT_LT(ins[index].second, in_position + 1100.0) << "cue " << index;
+
+			// The return point belongs to its break
+			ASSERT_NE(ins[index].first->GetParent(), nullptr) << "cue " << index;
+			EXPECT_EQ(ins[index].first->GetParent()->GetTimestampMs(), cue_out_timestamps[index]) << "cue " << index;
+		}
+	}
+}
+
+//------------------------------------------------------------------------------
 // Emission timing robustness
 //------------------------------------------------------------------------------
+
+TEST(EmissionTimingTest, PartCutsWaitForTheReorderToResolve)
+{
+	// Decode order I P B B: a cut right after the P would emit a frame that
+	// displays after the B frames still buffered, so the part would cover
+	// different presentation time than its declared duration says. Cuts may
+	// land only where everything emitted displays before everything kept.
+	auto track = fmp4_test::MakeVideoTrack(0, 10.0, 40);
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+	auto pipeline = fmp4_test::MakePipeline(track, std::make_shared<fmp4_test::NullStorageObserver>(), policy,
+										   kSegmentDurationMs, kChunkDurationMs, "reorder_test");
+
+	constexpr int64_t kFrameMs = 100;
+	constexpr int64_t kGroupMs = 300;  // one P B B reorder group
+	constexpr int64_t kGopMs = 4000;
+
+	for (int64_t index = 0; index < 120; index++)
+	{
+		int64_t dts = index * kFrameMs;
+		int64_t local = index % 40;
+		bool keyframe = (local == 0);
+
+		int64_t pts;
+		if (keyframe == true)
+		{
+			pts = dts;
+		}
+		else if ((local - 1) % 3 == 0)
+		{
+			// The P displays after the two B frames that follow it in decode order
+			pts = dts + 2 * kFrameMs;
+		}
+		else
+		{
+			pts = dts - kFrameMs;
+		}
+
+		ASSERT_TRUE(pipeline.packager->AppendSample(fmp4_test::MakeVideoFrame(0, dts, kFrameMs, keyframe, pts)));
+	}
+
+	int checked_partials = 0;
+	for (int64_t number = 0; number <= pipeline.storage->GetLastSegmentNumber(); number++)
+	{
+		auto segment = std::static_pointer_cast<bmff::FMP4Segment>(pipeline.storage->GetSegment(number));
+		if (segment == nullptr || segment->IsCompleted() == false)
+		{
+			continue;
+		}
+
+		for (uint64_t index = 0; index < segment->GetPartialCount(); index++)
+		{
+			auto partial = segment->GetPartialSegment(index);
+			ASSERT_NE(partial, nullptr);
+
+			// Resolved positions are the group boundaries: the GOP start, and
+			// one frame past each group start within it
+			int64_t local_offset = partial->GetStartTimestamp() % kGopMs;
+			EXPECT_TRUE(local_offset == 0 || (local_offset % kGroupMs) == kFrameMs)
+				<< "the partial at " << partial->GetStartTimestamp() << " splits a reorder group";
+			checked_partials++;
+		}
+	}
+
+	EXPECT_GE(checked_partials, 20);
+}
 
 TEST(EmissionTimingTest, FractionalTicksKeepThePartCadence)
 {
