@@ -107,6 +107,40 @@ TEST(H264Sei, SplitRejectsTruncatedInput)
 	EXPECT_FALSE(H264SEI::SplitMessages(nullptr, parsed));
 }
 
+// Annex B allows trailing_zero_8bits after any NAL, and NalUnitFragmentHeader::Parse folds them
+// into its length, so rbsp_trailing_bits() is not always the last byte
+TEST(H264Sei, SplitIgnoresTrailingZeroBytes)
+{
+	for (size_t zeros = 1; zeros <= 3; zeros++)
+	{
+		// pic_timing with a 2 byte payload, then rbsp_trailing_bits(), then the padding
+		std::vector<uint8_t> rbsp = {0x01, 0x02, 0xAA, 0xBB, 0x80};
+		rbsp.insert(rbsp.end(), zeros, 0x00);
+
+		std::vector<H264SEI::Message> parsed;
+		ASSERT_TRUE(H264SEI::SplitMessages(MakeData(rbsp), parsed)) << "zeros: " << zeros;
+		ASSERT_EQ(parsed.size(), 1U) << "zeros: " << zeros;
+		EXPECT_TRUE(parsed[0].Is(H264SEI::PayloadType::PICTURE_TIMING));
+		EXPECT_TRUE(parsed[0].payload->IsEqual(MakeData({0xAA, 0xBB})));
+	}
+}
+
+// The trim must not reach into a payload that ends in 0x00
+TEST(H264Sei, SplitKeepsPayloadZeroBytes)
+{
+	std::vector<H264SEI::Message> parsed;
+
+	ASSERT_TRUE(H264SEI::SplitMessages(MakeData({0x01, 0x03, 0xAA, 0x00, 0x00, 0x80}), parsed));
+	ASSERT_EQ(parsed.size(), 1U);
+	EXPECT_TRUE(parsed[0].payload->IsEqual(MakeData({0xAA, 0x00, 0x00})));
+
+	// And the same payload with no rbsp_trailing_bits() at all
+	parsed.clear();
+	ASSERT_TRUE(H264SEI::SplitMessages(MakeData({0x01, 0x03, 0xAA, 0x00, 0x00}), parsed));
+	ASSERT_EQ(parsed.size(), 1U);
+	EXPECT_TRUE(parsed[0].payload->IsEqual(MakeData({0xAA, 0x00, 0x00})));
+}
+
 // ---------------------------------------------------------------------------
 // pic_timing codec
 // ---------------------------------------------------------------------------

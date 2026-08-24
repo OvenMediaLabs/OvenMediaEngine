@@ -81,9 +81,21 @@ bool H264SEI::SplitMessages(const std::shared_ptr<const ov::Data> &rbsp, std::ve
 		return false;
 	}
 
-	const auto *buffer	= rbsp->GetDataAs<uint8_t>();
-	const size_t length = rbsp->GetLength();
-	size_t position		= 0;
+	const auto *buffer = rbsp->GetDataAs<uint8_t>();
+	size_t length	   = rbsp->GetLength();
+	size_t position	   = 0;
+
+	// NalUnitFragmentHeader::Parse folds trailing_zero_8bits into the NAL, so trim it back off
+	// when that uncovers rbsp_trailing_bits()
+	size_t trimmed = length;
+	while ((trimmed > 0) && (buffer[trimmed - 1] == 0x00))
+	{
+		trimmed--;
+	}
+	if ((trimmed > 0) && (buffer[trimmed - 1] == 0x80))
+	{
+		length = trimmed;
+	}
 
 	while (position < length)
 	{
