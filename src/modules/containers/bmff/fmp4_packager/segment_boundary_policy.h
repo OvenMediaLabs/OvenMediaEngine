@@ -228,8 +228,9 @@ namespace bmff
 		int64_t _segment_duration_us = 0;
 		int64_t _chunk_duration_us = 0;
 		// The cadence this track really cuts at: the segment duration rounded up
-		// to whole keyframe intervals. A break must be 1.5 of it to return from,
-		// and a position it has passed by more than one is beyond saving.
+		// to whole keyframe intervals. A break must span at least one of it to
+		// return from, and a position it has passed by more than one is beyond
+		// saving.
 		int64_t _cut_cadence_us = 0;
 		LLHlsCueOutCutMode _cue_out_cut_mode = LLHlsCueOutCutMode::Keyframe;
 		ov::String _log_context;

@@ -34,9 +34,10 @@ namespace mpegts
 			return {false, ov::String::FormatString("The position of the marker has already passed by more than the cut cadence : %s (%" PRId64 " ms)", marker->GetTag().CStr(), marker->GetTimestampMs())};
 		}
 
-		// A break must be long enough to return from; without a configured cadence
-		// the duration and spacing checks stay permissive
-		auto required_gap = _cut_cadence_ms * 1.5;
+		// A break must span at least one cadence, or the return could land on the
+		// very cut that opened it; without a configured cadence the duration and
+		// spacing checks stay permissive
+		auto required_gap = _cut_cadence_ms;
 		if (curr_out_of_network_value == true)
 		{
 			// Duration check
@@ -49,9 +50,9 @@ namespace mpegts
 				}
 
 				auto duration_ms = cue_event->GetDurationMsec();
-				if (duration_ms <= required_gap)
+				if (duration_ms < required_gap)
 				{
-					return {false, ov::String::FormatString("Duration of the marker must be greater than %f ms : %s", required_gap, marker->GetTag().CStr())};
+					return {false, ov::String::FormatString("Duration of the marker must be at least %f ms : %s", required_gap, marker->GetTag().CStr())};
 				}
 			}
 			else if (marker->GetMarkerFormat() == cmn::BitstreamFormat::SCTE35)
@@ -63,9 +64,9 @@ namespace mpegts
 				}
 
 				auto duration_ms = scte_event->GetDurationMsec();
-				if (duration_ms <= required_gap)
+				if (duration_ms < required_gap)
 				{
-					return {false, ov::String::FormatString("Duration of the marker must be greater than %f ms : %s", required_gap, marker->GetTag().CStr())};
+					return {false, ov::String::FormatString("Duration of the marker must be at least %f ms : %s", required_gap, marker->GetTag().CStr())};
 				}
 			}
 		}

@@ -226,6 +226,38 @@ TEST(SyncedBoundaryPolicyTest, StalledReferenceFallsBackToSelfPacing)
 	EXPECT_EQ(PlanAt(policy, 1000.0).end_us, 1000000 + static_cast<int64_t>(kSegmentDurationMs) * 1000);
 }
 
+TEST(SyncedBoundaryPolicyTest, TheOpeningAnchorFreesTheFollowersAtTheFirstChunk)
+{
+	auto reference = MakeReference(0.0, 10);
+	auto policy = MakeSynced(reference);
+
+	// Nothing published yet: held
+	EXPECT_FALSE(policy->CanEmitChunk(400000));
+
+	// The reference stores its first chunk: segment 10 opened at 0. That anchor
+	// alone names the followers' first segments; the mark still caps emission.
+	AppendToReference(reference, 500.0);
+	EXPECT_TRUE(policy->CanEmitChunk(400000));
+	EXPECT_FALSE(policy->CanEmitChunk(600000));
+	EXPECT_EQ(PlanAt(policy, 0.0).segment_number, 10);
+}
+
+TEST(SyncedBoundaryPolicyTest, MediaBeforeTheOpeningAnchorJoinsTheFirstSlot)
+{
+	auto reference = MakeReference(0.0, 10);
+	auto policy = MakeSynced(reference);
+
+	// The reference's first chunk starts at 1000 ms; this track's media starts
+	// at 900 ms. The head start joins segment 10 instead of opening a short
+	// segment 9 of its own.
+	reference->OnMediaChunk(1000000, 500000, true, false);
+	EXPECT_EQ(PlanAt(policy, 900.0).segment_number, 10);
+
+	// A real boundary keeps the rule for everything after it
+	Complete(reference, 10, 1000.0, 4000.0);
+	EXPECT_EQ(PlanAt(policy, 5100.0).segment_number, 11);
+}
+
 TEST(SyncedBoundaryPolicyTest, AnAbsoluteMediaClockIsNotMistakenForAStall)
 {
 	auto reference = MakeReference();

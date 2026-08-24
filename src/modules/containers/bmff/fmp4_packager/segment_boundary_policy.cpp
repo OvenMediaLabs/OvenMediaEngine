@@ -109,8 +109,10 @@ namespace bmff
 		}
 		bool is_out = out_of_network.value();
 
-		// A break must be long enough to return from
-		const int64_t required_gap_us = (_cut_cadence_us * 3) / 2;
+		// A break must span at least one cadence: the return lands at the first
+		// cuttable position after the break, so a shorter one could land the
+		// return on the very cut that opened it, a zero-length break
+		const int64_t required_gap_us = _cut_cadence_us;
 		if (is_out == true)
 		{
 			int64_t duration_ms = GetEventDurationMs(marker);
@@ -119,9 +121,9 @@ namespace bmff
 				return {false, ov::String::FormatString("Failed to get the event from the marker : %s", marker->GetTag().CStr())};
 			}
 
-			if (duration_ms * 1000 <= required_gap_us)
+			if (duration_ms * 1000 < required_gap_us)
 			{
-				return {false, ov::String::FormatString("Duration of the marker must be greater than %f ms : %s", static_cast<double>(required_gap_us) / 1000.0, marker->GetTag().CStr())};
+				return {false, ov::String::FormatString("Duration of the marker must be at least %f ms : %s", static_cast<double>(required_gap_us) / 1000.0, marker->GetTag().CStr())};
 			}
 		}
 
@@ -347,6 +349,25 @@ namespace bmff
 			if (it->first > end_us + kSettleSlackUs)
 			{
 				break;
+			}
+
+			// A break discarded earlier in this very pass takes its return point
+			// with it, even one this segment would otherwise settle; the map order
+			// guarantees the break was visited first (its cut is never later)
+			auto parent = it->second->GetParent();
+			if (parent != nullptr && std::find(discarded_breaks.begin(), discarded_breaks.end(), parent) != discarded_breaks.end())
+			{
+				logtw("%s - Dropped the return point (%s, %" PRId64 " ms) of the discarded break",
+					  _log_context.CStr(), it->second->GetTag().CStr(), it->second->GetTimestampMs());
+
+				if (it->second == _last_inserted_marker)
+				{
+					_last_inserted_marker = nullptr;
+					_last_inserted_cut_us = -1;
+				}
+
+				it = _pending_markers.erase(it);
+				continue;
 			}
 
 			if (it->first >= start_us)

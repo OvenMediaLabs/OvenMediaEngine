@@ -63,7 +63,14 @@ namespace cfg
 						Register<Optional>("OriginMode", &_origin_mode);
 						Register<Optional>("ServerTimeBasedSegmentNumbering", &_server_time_based_segment_numbering);
 						Register<Optional>("SegmentCount", &_segment_count);
-						Register<Optional>("SegmentDuration", &_segment_duration);
+						// The segmentation cadence divides by this everywhere
+						Register<Optional>("SegmentDuration", &_segment_duration, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
+								if (_segment_duration <= 0)
+								{
+									return CreateConfigErrorPtr("SegmentDuration must be greater than 0");
+								}
+								return nullptr;
+							});
 						Register<Optional>("CrossDomains", &_cross_domains);
 						Register<Optional>({"DVR", "dvr"}, &_dvr);
 						Register<Optional>("Dumps", &_dumps);

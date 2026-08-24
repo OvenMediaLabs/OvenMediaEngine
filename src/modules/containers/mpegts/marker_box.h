@@ -25,9 +25,9 @@ namespace mpegts
 		std::tuple<bool, ov::String> CanInsertMarker(const std::shared_ptr<Marker> &marker) const;
 
 		// The cadence this packager cuts at: the segment duration rounded up to
-		// whole keyframe intervals (the interval may be unknown, 0). A break
-		// must be 1.5 of it to return from, and a position passed by more than
-		// one is beyond saving. The checks stay permissive until this is set.
+		// whole keyframe intervals (the interval may be unknown, 0). A break must
+		// span at least one of it to return from, and a position passed by more
+		// than one is beyond saving. The checks stay permissive until this is set.
 		void SetCutCadenceMs(double segment_duration_ms, double keyframe_interval_ms);
 
 		// Where this packager's media stands, so a position it has already

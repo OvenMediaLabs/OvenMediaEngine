@@ -105,9 +105,14 @@ TEST(MarkerPolicyTest, BreakMustBeLongEnoughToReturnFrom)
 {
 	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
 
-	// 1.5 segments is the minimum gap an IN needs after its OUT
+	// One cadence is the minimum break: a shorter one could return on the very
+	// cut that opened it
 	auto short_out = MakeCueMarker(CueEvent::CueType::OUT, 5000, 3000);
 	EXPECT_FALSE(std::get<0>(policy->CanInsertMarker(short_out)));
+
+	// Exactly one cadence packages (the common 15 s break at a 10 s or 15 s
+	// cadence must not be refused)
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, 4000))));
 }
 
 TEST(MarkerPolicyTest, OutAfterOutIsRejected)
@@ -403,6 +408,27 @@ TEST(MarkerPolicyTest, MarkerFurtherBehindThanASegmentIsDiscarded)
 	auto result = policy->OnSegmentCompleted(completed);
 	EXPECT_TRUE(result.markers.empty());
 
+	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 20000, kCueDurationMs))));
+}
+
+TEST(MarkerPolicyTest, AReturnPointNeverOutlivesItsDiscardedBreak)
+{
+	auto policy = std::make_shared<bmff::DurationBoundaryPolicy>(MakeConfig(), false);
+
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 5000, kCueDurationMs)));
+	ASSERT_TRUE(policy->InsertMarker(MakeCueMarker(CueEvent::CueType::IN, 15000, 0)));
+
+	// The media resumed past the OUT (a hole after a track change): the OUT is
+	// discarded, and the IN inside this very segment goes with it, or the
+	// playlist would carry a return from a break it never opened
+	bmff::CompletedSegment completed;
+	completed.number = 0;
+	completed.start_timestamp_us = 12000000;
+	completed.duration_us = 4000000;
+	auto result = policy->OnSegmentCompleted(completed);
+	EXPECT_TRUE(result.markers.empty());
+
+	// The chain is released for the next break
 	EXPECT_TRUE(std::get<0>(policy->CanInsertMarker(MakeCueMarker(CueEvent::CueType::OUT, 20000, kCueDurationMs))));
 }
 

@@ -204,6 +204,25 @@ namespace bmff
 		(void)independent;
 		(void)last_chunk;
 
+		// The first chunk already fixes where and under which number the first
+		// segment opened, and that anchor is all a synced track needs to name its
+		// own first segment. Waiting for the first completion instead would hold
+		// every synced track for a whole segment; the high-water mark still caps
+		// how far they may emit.
+		if (_opening_anchor_published == false)
+		{
+			_opening_anchor_published = true;
+
+			if (_boundary_feed->HasBoundaries() == false)
+			{
+				BoundaryFeed::Boundary opening;
+				opening.segment_number = _next_segment_number - 1;
+				opening.timestamp_us = start_timestamp_us;
+				opening.opening = true;
+				_boundary_feed->PublishBoundary(opening);
+			}
+		}
+
 		// The reference is never held back, so its stored progress is the mark
 		// every synced track gates its own chunks on
 		_boundary_feed->UpdateHighWaterMark(start_timestamp_us + duration_us);
@@ -275,6 +294,13 @@ namespace bmff
 		auto closed_by = _boundary_feed->GetBoundaryAfterTimestamp(segment_start_us);
 		if (closed_by.has_value() == true)
 		{
+			// No segment ended on an opening anchor: media starting before it
+			// belongs to the slot it opens, never to a short slot of its own
+			if (closed_by->opening == true)
+			{
+				return closed_by->segment_number;
+			}
+
 			return closed_by->segment_number - 1;
 		}
 

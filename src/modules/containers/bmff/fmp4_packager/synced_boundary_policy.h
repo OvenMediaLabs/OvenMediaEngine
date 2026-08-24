@@ -36,6 +36,11 @@ namespace bmff
 			// The markers the reference's segment consumed; every synced track
 			// attaches them to its own segment of the same number
 			std::vector<std::shared_ptr<Marker>> markers;
+			// A boundary published when the reference OPENED its first segment,
+			// so the synced tracks can name theirs without waiting a whole
+			// segment for the first completion. No segment ended here: media
+			// before it belongs to the slot it opens, not to a slot of its own.
+			bool opening = false;
 		};
 
 		explicit BoundaryFeed(const ov::String &log_context);
@@ -112,6 +117,10 @@ namespace bmff
 	private:
 		std::shared_ptr<BoundaryFeed> _boundary_feed;
 		double _video_frame_rate = 0;
+
+		// Whether the opening anchor went out with the first stored chunk; the
+		// reference's media thread is the only writer
+		bool _opening_anchor_published = false;
 	};
 
 	// A synced track's policy: computes no boundaries of its own. Each segment
