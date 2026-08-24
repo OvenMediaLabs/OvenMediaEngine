@@ -3,11 +3,14 @@
 //  OvenMediaEngine - Unit Tests
 //
 //  Covers: H264TimecodeGenerator - drop frame detection, frame number to
-//  timecode conversion, and PTS anchoring against a quantized timebase
+//  timecode conversion, PTS anchoring against a quantized timebase - and the
+//  SPS patch state H264SeiInserter keeps per track
 //
 //==============================================================================
 #include <gtest/gtest.h>
 #include <modules/bitstream/h264/h264_sei_inserter.h>
+#include <modules/bitstream/nalu/nal_header.h>
+#include <modules/bitstream/nalu/nal_unit_insertor.h>
 
 namespace
 {
@@ -285,4 +288,205 @@ TEST(H264TimecodeGenerator, TheTimezoneMovesTheAnchor)
 	// The two clock reads are not quite the same instant, hence the second of slack.
 	const int32_t difference = ((seconds_of_day(from_shifted) - seconds_of_day(from_utc)) + 86400) % 86400;
 	EXPECT_NEAR(difference, 9 * 3600, 1);
+}
+
+// ---------------------------------------------------------------------------
+// H264SeiInserter
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	// The 1920x1080 60 fps NVENC parameter sets the rewriter test uses. This SPS already carries
+	// pic_struct_present_flag = 1.
+	const std::vector<uint8_t> kSps = {
+		0x67, 0x42, 0xC0, 0x2A, 0x95, 0xA0, 0x1E, 0x00, 0x89, 0xF9, 0x70, 0x11,
+		0x00, 0x00, 0x03, 0x03, 0xE8, 0x00, 0x01, 0xD4, 0xC0, 0xE0, 0x00, 0x00,
+		0x13, 0x12, 0xD0, 0x00, 0x04, 0xC4, 0xB5, 0xBB, 0xCB, 0x82, 0x80};
+	const std::vector<uint8_t> kPps		 = {0x68, 0xCE, 0x3C, 0x80};
+	const std::vector<uint8_t> kIdrSlice = {0x65, 0x88, 0x84, 0x00, 0x21, 0xFF};
+
+	std::shared_ptr<ov::Data> AsData(const std::vector<uint8_t> &bytes)
+	{
+		return std::make_shared<ov::Data>(bytes.data(), bytes.size());
+	}
+
+	// What MakeSpsContext() builds inside the inserter
+	H264SeiSpsContext SpsContextOf(const std::vector<uint8_t> &sps_nal)
+	{
+		H264SPS sps;
+		H264SeiSpsContext context;
+
+		if (H264Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps) == false)
+		{
+			return context;
+		}
+
+		context.cpb_dpb_delays_present	= sps.IsCpbDpbDelaysPresent();
+		context.cpb_removal_delay_length = sps.GetCpbRemovalDelayLength();
+		context.dpb_output_delay_length	= sps.GetDpbOutputDelayLength();
+		context.time_offset_length		= sps.GetTimeOffsetLength();
+		context.pic_struct_present		= sps.IsPicStructPresent();
+		context.frame_mbs_only			= sps.IsFrameMbsOnly();
+		context.log2_max_frame_num		= sps.GetLog2MaxFrameNum();
+		context.separate_colour_plane	= sps.IsSeparateColourPlane();
+
+		return context;
+	}
+
+	// How an encoder that leaves pic_struct_present_flag off emits the same parameter set
+	std::shared_ptr<ov::Data> SpsWithoutPicStruct()
+	{
+		H264SPS sps;
+		if (H264Parser::ParseSPS(kSps.data(), kSps.size(), sps) == false)
+		{
+			return nullptr;
+		}
+
+		const size_t bit_pos = sps.GetPicStructPresentFlagBitPos();
+		if (bit_pos == 0)
+		{
+			return nullptr;
+		}
+
+		auto cleared = AsData(kSps);
+		cleared->GetWritableDataAs<uint8_t>()[bit_pos / 8] &= static_cast<uint8_t>(~(0x80 >> (bit_pos % 8)));
+
+		return cleared;
+	}
+
+	// A pic_timing the encoder wrote itself, as it would appear in the bitstream
+	std::shared_ptr<ov::Data> PicTimingSeiNal(uint8_t pic_struct)
+	{
+		H264SeiPicTiming pic_timing;
+		pic_timing.pic_struct = pic_struct;
+
+		H264SEI sei;
+		sei.SetPayloadType(H264SEI::PayloadType::PICTURE_TIMING);
+		sei.SetPayloadData(H264SEI::SerializePicTiming(pic_timing, SpsContextOf(kSps)));
+
+		auto nal = std::make_shared<ov::Data>();
+		nal->Append(NalHeader::CreateH264(static_cast<uint8_t>(H264NalUnitType::Sei)));
+		nal->Append(sei.Serialize());
+
+		return NalUnitInsertor::EmulationPreventionBytes(nal);
+	}
+
+	std::shared_ptr<ov::Data> AccessUnit(const std::vector<std::shared_ptr<ov::Data>> &nals)
+	{
+		const uint8_t start_code[4] = {0x00, 0x00, 0x00, 0x01};
+
+		auto data = std::make_shared<ov::Data>();
+		for (const auto &nal : nals)
+		{
+			data->Append(start_code, sizeof(start_code));
+			data->Append(nal);
+		}
+
+		return data;
+	}
+
+	std::shared_ptr<MediaPacket> MakePacket(const std::shared_ptr<ov::Data> &access_unit, int64_t pts)
+	{
+		return std::make_shared<MediaPacket>(cmn::MediaType::Video, 0, access_unit, pts, pts, 0,
+											 MediaPacketFlag::Key,
+											 cmn::BitstreamFormat::H264_ANNEXB,
+											 cmn::PacketType::NALU);
+	}
+
+	std::shared_ptr<MediaTrack> MakeTrack()
+	{
+		auto track = std::make_shared<MediaTrack>();
+
+		track->SetId(0);
+		track->SetMediaType(cmn::MediaType::Video);
+		track->SetCodecId(cmn::MediaCodecId::H264);
+		track->SetTimeBase(1, 90000);
+		track->SetFrameRateByConfig(60.0);
+
+		return track;
+	}
+
+	std::shared_ptr<info::Stream> MakeStream()
+	{
+		auto stream = std::make_shared<info::Stream>(StreamSourceType::Rtmp);
+		stream->SetName("test");
+
+		return stream;
+	}
+
+	// pic_struct of the first pic_timing in the access unit
+	std::optional<uint32_t> PicStructOf(const std::shared_ptr<const ov::Data> &access_unit)
+	{
+		NalUnitFragmentHeader fragment_header;
+		if (NalUnitFragmentHeader::Parse(access_unit, fragment_header) == false)
+		{
+			return std::nullopt;
+		}
+
+		const auto *fragment = fragment_header.GetFragmentHeader();
+		const auto *buffer	 = access_unit->GetDataAs<uint8_t>();
+		const auto context	 = SpsContextOf(kSps);
+
+		for (size_t i = 0; i < fragment->GetCount(); i++)
+		{
+			auto nal = fragment->GetFragment(i);
+			if (nal.has_value() == false)
+			{
+				continue;
+			}
+
+			const size_t offset = std::get<0>(nal.value());
+			const size_t length = std::get<1>(nal.value());
+			if (static_cast<H264NalUnitType>(buffer[offset] & kH264NalUnitTypeMask) != H264NalUnitType::Sei)
+			{
+				continue;
+			}
+
+			auto rbsp = NalUnitInsertor::RemoveEmulationPreventionBytes(
+				std::make_shared<ov::Data>(buffer + offset + 1, length - 1));
+
+			std::vector<H264SEI::Message> messages;
+			if (H264SEI::SplitMessages(rbsp, messages) == false)
+			{
+				continue;
+			}
+
+			for (const auto &message : messages)
+			{
+				H264SeiPicTiming pic_timing;
+				if ((message.Is(H264SEI::PayloadType::PICTURE_TIMING) == true) &&
+					(H264SEI::ParsePicTiming(message.payload, context, pic_timing) == true))
+				{
+					return pic_timing.pic_struct;
+				}
+			}
+		}
+
+		return std::nullopt;
+	}
+}  // namespace
+
+// PatchSps() turns pic_struct_present_flag on, so the Replace path has to read the encoder's own
+// message with the pre-patch value. That memory must not outlive the SPS it came from: an encoder
+// reconfigured mid-stream to emit an already-flagged SPS writes a real pic_struct, and overwriting
+// it loses field pairing and frame doubling.
+TEST(H264SeiInserter, ForgetsThePatchWhenAnSpsArrivesAlreadyFlagged)
+{
+	H264SeiInserter inserter;
+
+	auto stream = MakeStream();
+	auto track	= MakeTrack();
+
+	auto sps_without_flag = SpsWithoutPicStruct();
+	ASSERT_NE(sps_without_flag, nullptr);
+
+	auto patched = MakePacket(AccessUnit({sps_without_flag, AsData(kPps), AsData(kIdrSlice)}), 0);
+	ASSERT_TRUE(inserter.InsertPicTiming(stream, track, patched));
+
+	auto flagged = MakePacket(
+		AccessUnit({AsData(kSps), AsData(kPps), PicTimingSeiNal(3), AsData(kIdrSlice)}), 1500);
+	ASSERT_TRUE(inserter.InsertPicTiming(stream, track, flagged));
+
+	// 3 is "top field, bottom field"; DetectPictureStructure() would have said 0
+	EXPECT_EQ(PicStructOf(flagged->GetData()), 3U);
 }

@@ -576,6 +576,7 @@ bool H264SeiInserter::PatchSps(const std::shared_ptr<MediaPacket> &packet,
 	const auto format = packet->GetBitstreamFormat();
 
 	bool patched = false;
+	bool saw_sps = false;
 
 	// One pass per SPS: each patch rebuilds the access unit, so the scan restarts
 	for (size_t guard = 0; guard < 8; guard++)
@@ -609,6 +610,8 @@ bool H264SeiInserter::PatchSps(const std::shared_ptr<MediaPacket> &packet,
 			{
 				continue;
 			}
+
+			saw_sps = true;
 
 			auto sps_nal = std::make_shared<ov::Data>(buffer + offset, length);
 			// nullptr when the flag is already set
@@ -663,7 +666,13 @@ bool H264SeiInserter::PatchSps(const std::shared_ptr<MediaPacket> &packet,
 	{
 		// The cached context came from the unpatched SPS
 		_sps_context.pic_struct_present = true;
-		_patched_sps					 = true;
+	}
+
+	// Sticky across access units that carry no SPS, but an SPS that arrived already flagged holds
+	// the encoder's own pic_struct and must not be read as patched
+	if (saw_sps == true)
+	{
+		_patched_sps = patched;
 	}
 
 	return true;
