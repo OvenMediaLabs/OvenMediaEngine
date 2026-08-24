@@ -273,4 +273,4 @@ You can configure SRT's socket options of the OvenMediaEngine server using `<Opt
 ...
 ```
 
-For more information on SRT socket options, please refer to [https://github.com/Haivision/srt/blob/v1.5.2/docs/API/API-socket-options.md#list-of-options](https://github.com/Haivision/srt/blob/v1.5.2/docs/API/API-socket-options.md#list-of-options).
+For more information on SRT socket options, please refer to [https://github.com/Haivision/srt/blob/v1.5.6/docs/API/API-socket-options.md#list-of-options](https://github.com/Haivision/srt/blob/v1.5.6/docs/API/API-socket-options.md#list-of-options).
