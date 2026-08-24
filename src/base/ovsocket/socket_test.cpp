@@ -375,7 +375,10 @@ namespace
 			}
 			for (auto s : list)
 			{
-				::srt_close(s);
+				if (s != SRT_INVALID_SOCK)
+				{
+					::srt_close(s);
+				}
 			}
 		}
 
@@ -1206,6 +1209,7 @@ protected:
 		events->Attach(client);
 		if (client->MakeNonBlocking(events) == false)
 		{
+			client->Close();
 			return nullptr;
 		}
 
@@ -1620,6 +1624,7 @@ protected:
 		events->Attach(client);
 		if (client->MakeNonBlocking(events) == false)
 		{
+			client->Close();
 			return nullptr;
 		}
 		if (Connected(client, client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC)) == false)
