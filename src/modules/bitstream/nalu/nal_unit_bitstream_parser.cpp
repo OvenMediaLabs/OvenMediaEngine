@@ -83,10 +83,11 @@ void NalUnitBitstreamParser::NextPosition()
 {
     _position ++;
 
-    // skip emulation_prevention_three_byte
-    if (*_position == 0x03 &&
-        BytesConsumed() >= 3 && 
-        BytesRemained() >= 1 &&
+    // skip emulation_prevention_three_byte. The bounds come first: *_position and
+    // *(_position + 1) are both read below
+    if (BytesRemained() >= 2 &&
+        BytesConsumed() >= 3 &&
+        *_position == 0x03 &&
                 *(_position - 2) == 0x00 && 
                 *(_position - 1) == 0x00 && 
                 (*(_position + 1) | 0b11) == 0b11)

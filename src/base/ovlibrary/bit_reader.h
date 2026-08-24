@@ -204,7 +204,7 @@ protected:
 			return true;
 		}
 
-		if (static_cast<size_t>((bits + 7) / 8) > static_cast<size_t>(_capacity - (_position - _buffer)))
+		if (bits > BitsRemained())
 		{
 			return false;
 		}
