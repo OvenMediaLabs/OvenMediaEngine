@@ -11,6 +11,8 @@
 
 #include <ctype.h>
 
+#include <algorithm>
+
 #include <base/ovlibrary/bit_reader.h>
 #include <base/ovlibrary/bit_writer.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -502,8 +504,12 @@ ov::String H264SeiTimecodeZone::ToString() const
 		return "UTC";
 	}
 
-	const int32_t magnitude = (offset_seconds < 0) ? -offset_seconds : offset_seconds;
+	// Parse() only takes whole minutes up to 14:00, so clamp rather than emit what it would
+	// reject. In int64 first: -INT32_MIN does not fit an int32.
+	constexpr int64_t kMaxOffset = 14 * 3600;
+	const int32_t clamped	= static_cast<int32_t>(std::clamp<int64_t>(offset_seconds, -kMaxOffset, kMaxOffset));
+	const int32_t magnitude = (clamped < 0) ? -clamped : clamped;
 
-	return ov::String::FormatString("%c%02d:%02d", (offset_seconds < 0) ? '-' : '+',
+	return ov::String::FormatString("%c%02d:%02d", (clamped < 0) ? '-' : '+',
 									magnitude / 3600, (magnitude % 3600) / 60);
 }

@@ -198,23 +198,30 @@ TEST(SeiEvent, SurvivesTheJsonRoundTrip)
 	EXPECT_EQ(parsed->GetTimezone().offset_seconds, 9 * 3600);
 }
 
-// The default, and an event written by a build that had no timezone field at all
+// Every way of asking for no particular zone: the default, an event from a build that had no
+// timezone field, and one naming a zone this build cannot resolve
 TEST(SeiEvent, DeserializeFallsBackToUtc)
 {
-	auto source = std::make_shared<SEIEvent>();
-	source->SetSeiType("PictureTiming");
-	EXPECT_FALSE(SEIEvent::Deserialize(source->Serialize())->GetTimezone().local);
-
 	auto as_data = [](const char *text) {
 		return std::make_shared<ov::Data>(text, ::strlen(text));
 	};
 
-	EXPECT_FALSE(SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming"})"))->GetTimezone().local);
+	auto source = std::make_shared<SEIEvent>();
+	source->SetSeiType("PictureTiming");
+
+	// Serialize() always writes a timezone, so this is the default coming back
+	auto round_tripped = SEIEvent::Deserialize(source->Serialize());
+	ASSERT_NE(round_tripped, nullptr);
+	EXPECT_FALSE(round_tripped->GetTimezone().local);
+
+	auto without_field = SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming"})"));
+	ASSERT_NE(without_field, nullptr);
+	EXPECT_FALSE(without_field->GetTimezone().local);
 
 	// An unreadable zone is not worth dropping the event over
-	auto parsed = SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming", "timezone": "Asia/Seoul"})"));
-	ASSERT_NE(parsed, nullptr);
-	EXPECT_FALSE(parsed->GetTimezone().local);
+	auto unreadable = SEIEvent::Deserialize(as_data(R"({"seiType": "PictureTiming", "timezone": "Asia/Seoul"})"));
+	ASSERT_NE(unreadable, nullptr);
+	EXPECT_FALSE(unreadable->GetTimezone().local);
 }
 
 TEST(SeiEvent, SerializeFallsBackToUserDataUnregistered)

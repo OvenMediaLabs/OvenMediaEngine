@@ -290,6 +290,30 @@ TEST(H264TimecodeGenerator, TheTimezoneMovesTheAnchor)
 	EXPECT_NEAR(difference, 9 * 3600, 1);
 }
 
+// The one branch that reads the tz database. Compared against localtime_r() here rather than a
+// fixed offset, so the assertion holds whatever zone the machine runs in.
+TEST(H264TimecodeGenerator, LocalReadsTheServerClock)
+{
+	H264SeiTimecodeZone local;
+	ASSERT_TRUE(H264SeiTimecodeZone::Parse("Local", local));
+	ASSERT_TRUE(local.local);
+
+	H264SeiClockTimestamp timestamp;
+	ASSERT_TRUE(H264TimecodeGenerator(local).Generate(0, k90kHz, 30.0, timestamp));
+
+	struct timespec now = {};
+	::clock_gettime(CLOCK_REALTIME, &now);
+
+	struct tm broken_down = {};
+	ASSERT_NE(::localtime_r(&now.tv_sec, &broken_down), nullptr);
+
+	const int32_t expected = (((broken_down.tm_hour * 60) + broken_down.tm_min) * 60) + broken_down.tm_sec;
+	const int32_t stamped  = (((timestamp.hours * 60) + timestamp.minutes) * 60) + timestamp.seconds;
+
+	// The two clock reads are not quite the same instant, hence the second of slack
+	EXPECT_NEAR(((stamped - expected) + 86400) % 86400, 0, 1);
+}
+
 // ---------------------------------------------------------------------------
 // H264SeiInserter
 // ---------------------------------------------------------------------------

@@ -8,6 +8,8 @@
 #include <gtest/gtest.h>
 #include <modules/bitstream/h264/h264_sei.h>
 
+#include <limits>
+
 namespace
 {
 	std::shared_ptr<ov::Data> MakeData(const std::vector<uint8_t> &bytes)
@@ -373,5 +375,22 @@ TEST(H264SeiTimecodeZone, ToStringRoundTrips)
 		ASSERT_TRUE(H264SeiTimecodeZone::Parse(zone.ToString(), again)) << text;
 		EXPECT_EQ(again.local, zone.local) << text;
 		EXPECT_EQ(again.offset_seconds, zone.offset_seconds) << text;
+	}
+}
+
+// offset_seconds is a plain public field, so ToString() has to cope with values Parse() would
+// never have produced instead of emitting something Parse() then rejects
+TEST(H264SeiTimecodeZone, ToStringStaysParseableForAnyOffset)
+{
+	for (int32_t offset : {30, 54000, 360000, -360000,
+						   std::numeric_limits<int32_t>::min(),
+						   std::numeric_limits<int32_t>::max()})
+	{
+		H264SeiTimecodeZone zone;
+		zone.offset_seconds = offset;
+
+		H264SeiTimecodeZone again;
+		EXPECT_TRUE(H264SeiTimecodeZone::Parse(zone.ToString(), again))
+			<< offset << " -> " << zone.ToString().CStr();
 	}
 }

@@ -75,9 +75,9 @@ public:
 	SEIEvent()	= default;
 	~SEIEvent() = default;
 
-	// {"seiType", "data", "keyframeOnly"} as JSON, carried on the event packet. EventConsumer is
-	// the only reader: it builds the real SEI message from these fields, so these bytes never
-	// reach an output.
+	// {"seiType", "data", "keyframeOnly", "timezone"} as JSON, carried on the event packet. The
+	// consumer that builds the real SEI message from these fields is not in the tree yet, so
+	// nothing reads this today and these bytes never reach an output.
 	std::shared_ptr<ov::Data> Serialize() const;
 
 	// Rebuilds the event from what Serialize() wrote; nullptr when the data is not that JSON, or

@@ -134,10 +134,12 @@ struct H264SeiTimecodeZone
 	// "+09". False when the text is none of those, and `zone` is then left as it was.
 	static bool Parse(const ov::String &text, H264SeiTimecodeZone &zone);
 
-	// Round trips through Parse()
+	// Always parseable by Parse(); an exact round trip for the offsets Parse() produces, which are
+	// whole minutes within +/-14:00
 	ov::String ToString() const;
 
-	// The zone the server itself runs in, DST included
+	// The zone the server itself runs in, at the offset in effect when the anchor is taken - a DST
+	// change mid-stream is not followed
 	bool local = false;
 	// Ignored while `local` is set. UTC is an offset of zero, and no offset observes DST.
 	int32_t offset_seconds = 0;
