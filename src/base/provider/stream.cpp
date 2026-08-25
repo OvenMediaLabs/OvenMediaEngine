@@ -15,8 +15,6 @@
 #include "base/provider/pull_provider/stream_props.h"
 #include "base/provider/pull_provider/stream.h"
 #include <base/event/command/commands.h>
-#include <base/modules/data_format/cue_event/cue_event.h>
-#include <base/modules/data_format/scte35_event/scte35_event.h>
 
 namespace pvd
 {
@@ -240,76 +238,7 @@ namespace pvd
 			return false;
 		}
 
-		SendProvisionalReturnPoint(timestamp_in_ms, format, frame, urgent, internal);
-
 		return true;
-	}
-
-	void Stream::SendProvisionalReturnPoint(int64_t out_timestamp_ms, const cmn::BitstreamFormat &format, const std::shared_ptr<ov::Data> &out_frame, bool urgent, bool internal)
-	{
-		int64_t break_duration_ms = -1;
-		std::shared_ptr<Scte35Event> out_event;
-
-		if (format == cmn::BitstreamFormat::CUE)
-		{
-			// A cue break has no other signal to end it, so its length is the
-			// contract
-			auto cue_event = CueEvent::Parse(out_frame);
-			if (cue_event == nullptr || cue_event->GetCueType() != CueEvent::CueType::OUT)
-			{
-				return;
-			}
-
-			break_duration_ms = cue_event->GetDurationMsec();
-		}
-		else if (format == cmn::BitstreamFormat::SCTE35)
-		{
-			// SCTE-35 states whether it returns on its own. Without that flag an
-			// explicit splice-in follows, and inventing one here would collide
-			// with it.
-			out_event = Scte35Event::Parse(out_frame);
-			if (out_event == nullptr || out_event->IsOutOfNetwork() == false || out_event->IsAutoReturn() == false)
-			{
-				return;
-			}
-
-			break_duration_ms = out_event->GetDurationMsec();
-		}
-		else
-		{
-			return;
-		}
-
-		if (break_duration_ms <= 0)
-		{
-			return;
-		}
-
-		const int64_t return_timestamp_ms = out_timestamp_ms + break_duration_ms;
-		std::shared_ptr<ov::Data> return_frame;
-
-		if (format == cmn::BitstreamFormat::CUE)
-		{
-			auto return_event = CueEvent::Create(CueEvent::CueType::IN, 0, 0, true);
-			return_frame = (return_event != nullptr) ? return_event->Serialize() : nullptr;
-		}
-		else
-		{
-			auto return_event = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, out_event->GetID(), false,
-												   return_timestamp_ms, 0, false, true);
-			return_frame = (return_event != nullptr) ? return_event->Serialize() : nullptr;
-		}
-
-		if (return_frame == nullptr)
-		{
-			logtw("Could not build the return point of the break. %s/%s(%u)", GetApplicationName(), GetName().CStr(), GetId());
-			return;
-		}
-
-		logti("%s/%s(%u) - The break at %" PRId64 " ms returns at %" PRId64 " ms; sending the return point",
-			  GetApplicationName(), GetName().CStr(), GetId(), out_timestamp_ms, return_timestamp_ms);
-
-		SendDataFrame(return_timestamp_ms, -1, format, cmn::PacketType::EVENT, return_frame, urgent, internal, MediaPacketFlag::NoFlag);
 	}
 
 	bool Stream::SendDataFrame(int64_t timestamp, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal, const MediaPacketFlag packet_flag)

@@ -70,15 +70,6 @@ namespace pvd
 		bool SendDataFrame(int64_t timestamp_in_ms, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal = false, const MediaPacketFlag packet_flag = MediaPacketFlag::NoFlag);
 		bool SendDataFrame(int64_t timestamp, int64_t duration, const cmn::BitstreamFormat &format, const cmn::PacketType &packet_type, const std::shared_ptr<ov::Data> &frame, bool urgent, bool internal, const MediaPacketFlag packet_flag);
 
-	protected:
-		// A break that announces its own length gets its return point right
-		// away, so whoever packages it knows where the break ends without
-		// waiting for a second event. Sent as a provisional return: an explicit
-		// one arriving later replaces it.
-		void SendProvisionalReturnPoint(int64_t out_timestamp_ms, const cmn::BitstreamFormat &format, const std::shared_ptr<ov::Data> &out_frame, bool urgent, bool internal);
-
-	public:
-
 		bool SendSubtitleFrame(const ov::String &label, int64_t timestamp_in_ms, int64_t duration_ms, const cmn::BitstreamFormat &format, const std::shared_ptr<ov::Data> &frame, bool urgent);
 
 		// Provider can override this function to handle the event if needed.
