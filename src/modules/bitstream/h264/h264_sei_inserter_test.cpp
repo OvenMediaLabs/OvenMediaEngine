@@ -197,9 +197,18 @@ TEST(H264TimecodeGenerator, FrameNumbersAdvanceByOneOnAQuantizedTimebase)
 	for (const double fps : {60.0, 50.0, 30.0, 25.0, 24.0, 60000.0 / 1001.0, 30000.0 / 1001.0})
 	{
 		H264TimecodeGenerator generator;
-		const auto pts_list = QuantizedPts(fps, 300);
+		// Long enough to cross a minute boundary whatever time of day the anchor lands on, so the
+		// drop frame skip is exercised on every run rather than only when the clock lines up
+		const auto pts_list = QuantizedPts(fps, static_cast<size_t>(65.0 * fps));
 
-		int64_t previous = -1;
+		// SMPTE 12M skips the lowest frame numbers at the start of every minute except every
+		// tenth: 2 per minute at 30 nominal, 4 at 60
+		const int32_t nominal_rate = static_cast<int32_t>(::lround(
+			H264TimecodeGenerator::IsDropFrameRate(fps) ? (fps * 1.001) : fps));
+		const int64_t max_step = 1 + (nominal_rate / 15);
+
+		int64_t previous  = -1;
+		int64_t skips	  = 0;
 		for (size_t i = 0; i < pts_list.size(); i++)
 		{
 			H264SeiClockTimestamp timestamp;
@@ -222,11 +231,21 @@ TEST(H264TimecodeGenerator, FrameNumbersAdvanceByOneOnAQuantizedTimebase)
 				else
 				{
 					EXPECT_GE(current - previous, 1) << "fps " << fps << ", picture " << i;
-					EXPECT_LE(current - previous, 3) << "fps " << fps << ", picture " << i;
+					EXPECT_LE(current - previous, max_step) << "fps " << fps << ", picture " << i;
+
+					if (current - previous > 1)
+					{
+						skips++;
+					}
 				}
 			}
 
 			previous = current;
+		}
+
+		if (H264TimecodeGenerator::IsDropFrameRate(fps) == true)
+		{
+			EXPECT_GT(skips, 0) << "fps " << fps << ": the window has to cross a minute boundary";
 		}
 	}
 }
