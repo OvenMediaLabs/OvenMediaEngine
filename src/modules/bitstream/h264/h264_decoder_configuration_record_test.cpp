@@ -37,15 +37,17 @@ namespace
 
 	// ISO/IEC 14496-15 5.2.4.1: the chroma format, the bit depths and the SPS extension count are
 	// written only for profile_idc 100/110/122/144, which is the asymmetry this file is about.
-	std::shared_ptr<ov::Data> MakeAvcC(const std::vector<uint8_t> &sps, const std::vector<uint8_t> &pps)
+	std::shared_ptr<ov::Data> MakeAvcC(const std::vector<uint8_t> &sps, const std::vector<uint8_t> &pps,
+									   uint8_t version = 0x01, uint8_t length_minus_one = 3,
+									   bool with_sps_ext = false)
 	{
 		std::vector<uint8_t> out;
 
-		out.push_back(0x01);	// configurationVersion
-		out.push_back(sps[1]);	// AVCProfileIndication
-		out.push_back(sps[2]);	// profile_compatibility
-		out.push_back(sps[3]);	// AVCLevelIndication
-		out.push_back(0xFF);	// 111111b + lengthSizeMinusOne(3)
+		out.push_back(version);	 // configurationVersion
+		out.push_back(sps[1]);	 // AVCProfileIndication
+		out.push_back(sps[2]);	 // profile_compatibility
+		out.push_back(sps[3]);	 // AVCLevelIndication
+		out.push_back(static_cast<uint8_t>(0xFC | length_minus_one));  // 111111b + lengthSizeMinusOne
 		out.push_back(0xE1);	// 111b + numOfSequenceParameterSets(1)
 		out.push_back(static_cast<uint8_t>(sps.size() >> 8));
 		out.push_back(static_cast<uint8_t>(sps.size() & 0xFF));
@@ -61,7 +63,17 @@ namespace
 			out.push_back(0xFC | 0x01);	 // 111111b + chroma_format(1, 4:2:0)
 			out.push_back(0xF8 | 0x00);	 // 11111b + bit_depth_luma_minus8(0)
 			out.push_back(0xF8 | 0x00);	 // 11111b + bit_depth_chroma_minus8(0)
-			out.push_back(0x00);		 // numOfSequenceParameterSetExt
+
+			if (with_sps_ext == true)
+			{
+				out.push_back(0x01);				  // numOfSequenceParameterSetExt
+				out.push_back(0x00); out.push_back(0x02);  // sequenceParameterSetExtLength
+				out.push_back(0x6D); out.push_back(0x01);
+			}
+			else
+			{
+				out.push_back(0x00);
+			}
 		}
 
 		return AsData(out);
@@ -190,4 +202,33 @@ TEST(AVCDecoderConfigurationRecord, RejectsNullptrAndAnotherRecordType)
 	};
 
 	EXPECT_FALSE(record->Equals(std::make_shared<ForeignRecord>()));
+}
+
+// configurationVersion, lengthSizeMinusOne and the SPS extensions are filled in by Parse() alone,
+// exactly like the chroma format and the bit depths, so comparing any of them would make a parsed
+// record differ from a built one for good
+TEST(AVCDecoderConfigurationRecord, IgnoresTheFieldsOnlyParseCanFill)
+{
+	struct Case
+	{
+		const char *name;
+		uint8_t version;
+		uint8_t length_minus_one;
+		bool with_sps_ext;
+	};
+
+	for (const auto &test : {Case{"a non-conformant configurationVersion", 0x00, 3, false},
+							 Case{"a two byte NAL length prefix", 0x01, 1, false},
+							 Case{"an SPS extension the built record cannot carry", 0x01, 3, true}})
+	{
+		auto parsed = std::make_shared<AVCDecoderConfigurationRecord>();
+		ASSERT_TRUE(parsed->Parse(MakeAvcC(kHighProfileSps, kPps, test.version,
+										   test.length_minus_one, test.with_sps_ext)))
+			<< test.name;
+
+		auto built = BuiltRecord(kHighProfileSps);
+		ASSERT_NE(built, nullptr);
+
+		EXPECT_TRUE(parsed->Equals(built)) << test.name;
+	}
 }

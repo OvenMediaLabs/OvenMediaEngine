@@ -234,21 +234,20 @@ bool AVCDecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigur
 		return false;
 	}
 
-	// chroma_format and the bit depths are left out: only Parse() fills them in, so comparing them
-	// would make a parsed and a built record differ forever on a High profile stream. All three
-	// are coded in the SPS, which is compared byte for byte below.
-	if ((Version() != other_config->Version()) ||
-		(ProfileIndication() != other_config->ProfileIndication()) ||
+	// Only what both sides can carry. configurationVersion, lengthSizeMinusOne, the chroma format,
+	// the bit depths and the SPS extensions are filled in by Parse() alone - AddSPS()/AddPPS()
+	// leave them at their defaults - so comparing them would make a record parsed from a sequence
+	// header and one built from the very same parameter sets differ forever. What decoding depends
+	// on is the profile, the level and the parameter sets themselves.
+	if ((ProfileIndication() != other_config->ProfileIndication()) ||
 		(Compatibility() != other_config->Compatibility()) ||
-		(LevelIndication() != other_config->LevelIndication()) ||
-		(LengthMinusOne() != other_config->LengthMinusOne()))
+		(LevelIndication() != other_config->LevelIndication()))
 	{
 		return false;
 	}
 
 	if ((NumOfSPS() != other_config->NumOfSPS()) ||
-		(NumOfPPS() != other_config->NumOfPPS()) ||
-		(NumOfSPSExt() != other_config->NumOfSPSExt()))
+		(NumOfPPS() != other_config->NumOfPPS()))
 	{
 		return false;
 	}
@@ -268,16 +267,6 @@ bool AVCDecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigur
 		auto pps	   = GetPPSData(i);
 		auto other_pps = other_config->GetPPSData(i);
 		if ((pps == nullptr) || (other_pps == nullptr) || (pps->IsEqual(other_pps) == false))
-		{
-			return false;
-		}
-	}
-
-	for (uint8_t i = 0; i < NumOfSPSExt(); i++)
-	{
-		auto sps_ext	   = GetSPSExtData(i);
-		auto other_sps_ext = other_config->GetSPSExtData(i);
-		if ((sps_ext == nullptr) || (other_sps_ext == nullptr) || (sps_ext->IsEqual(other_sps_ext) == false))
 		{
 			return false;
 		}
