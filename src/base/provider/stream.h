@@ -8,6 +8,9 @@
 //==============================================================================
 #pragma once
 
+#include <map>
+#include <mutex>
+
 #include <base/common_types.h>
 #include <base/info/stream.h>
 #include <base/ovlibrary/lip_sync_clock.h>
@@ -90,9 +93,14 @@ namespace pvd
 		// separated for testing)
 		void UpdateLastTimestampStat(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<const MediaPacket> &packet);
 
-		// A media position this far below the clock is a restarted source, not a
-		// lagging track: no live A/V lead reaches it, while a restart clears it
+		// A track going this far back against its own previous position is a
+		// restarted source, not jitter
 		static constexpr int64_t kClockReanchorThresholdMs = 10000;
+
+		// The newest position of each track on its own, so a restart is told
+		// apart from a track that simply runs behind the others
+		std::mutex _track_timestamp_guard;
+		std::map<uint32_t, int64_t> _last_track_timestamp_ms;
 
 		// The newest dts (ms) over every media track, plus the wall time passed
 		// since it arrived (see GetCurrentTimestampMs)

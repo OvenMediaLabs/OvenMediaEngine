@@ -91,3 +91,33 @@ TEST(ProviderStreamClockTest, UnsetDtsFallsBackToPts)
 
 	EXPECT_EQ(stream.GetClockMs(), 700);
 }
+
+TEST(ProviderStreamClockTest, RestartedTrackReanchorsTheClock)
+{
+	ClockTestStream stream;
+	stream.AddTrack(MakeTrack(0, cmn::MediaType::Video, 90000));
+
+	stream.FeedPacket(0, 90 * 60000, 90 * 60000, true);
+	ASSERT_EQ(stream.GetClockMs(), 60000);
+
+	// The same track restarts from zero: holding the old maximum would stamp
+	// every event far ahead of the media from here on
+	stream.FeedPacket(0, 0, 0, true);
+	EXPECT_EQ(stream.GetClockMs(), 0);
+}
+
+TEST(ProviderStreamClockTest, PermanentlyLaggingTrackDoesNotReanchor)
+{
+	ClockTestStream stream;
+	stream.AddTrack(MakeTrack(0, cmn::MediaType::Video, 90000));
+	stream.AddTrack(MakeTrack(1, cmn::MediaType::Audio, 48000));
+
+	// Audio runs a minute behind video for the whole stream. Each track only
+	// moves forward on its own, so neither packet is a restart.
+	for (int64_t second = 0; second < 3; second++)
+	{
+		stream.FeedPacket(0, 90000 * (70 + second), 90000 * (70 + second), true);
+		stream.FeedPacket(1, 48000 * (10 + second), 48000 * (10 + second));
+		EXPECT_EQ(stream.GetClockMs(), (70 + second) * 1000);
+	}
+}

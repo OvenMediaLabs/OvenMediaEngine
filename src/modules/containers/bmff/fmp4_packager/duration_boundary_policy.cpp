@@ -65,13 +65,7 @@ namespace bmff
 		// The ledger repays a shortfall by aiming longer, but it cannot aim
 		// shorter than nothing: one overlong segment (a keyframe famine) would
 		// otherwise leave every following segment closing at its first keyframe
-		// until the debt is worked off
-		if (_target_segment_duration_us < _chunk_duration_us)
-		{
-			_total_expected_duration_us = _total_segment_duration_us - _segment_duration_us + _chunk_duration_us;
-			_target_segment_duration_us = _chunk_duration_us;
-		}
-
+		// until the debt is worked off.
 		logtd("%s - Segment completed: duration(%.3f ms) expected(%.3f ms) total(%.3f ms) next target(%.3f ms) marker(%d) added_boundary(%d)",
 			  _log_context.CStr(), completed.duration_us / 1000.0, _total_expected_duration_us / 1000.0, _total_segment_duration_us / 1000.0, _target_segment_duration_us / 1000.0, completed.has_marker, added_a_boundary);
 

@@ -811,15 +811,12 @@ namespace bmff
 			}
 		}
 
-		// A pending break rides a marker cut, which every rendition makes at the
-		// same position: the track that broke closes once, so a rendition that
-		// closed twice would carry the break on a different segment number than
-		// the rest. Any other close is this track's alone, so the break waits for
-		// its own position instead of being stamped a segment early.
-		bool rides_a_shared_cut = (marker_cut_now == true || marker_close_asap == true);
-		decision.discontinuity = (break_reached == true || rides_a_shared_cut == true) &&
-								 (_pending_discontinuity_cut_us.load(std::memory_order_relaxed) >= 0) &&
-								 decision.completes_segment;
+		// The break is stamped where it actually happened, on the first close at
+		// or after its position. Riding an earlier close instead would consume
+		// the break on the tracks that received it while the track that changed
+		// still closes at its own position, leaving that rendition one segment
+		// ahead of the others.
+		decision.discontinuity = break_reached && decision.completes_segment;
 
 		return decision;
 	}

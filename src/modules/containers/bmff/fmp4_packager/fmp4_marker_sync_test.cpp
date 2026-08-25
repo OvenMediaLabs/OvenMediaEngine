@@ -472,16 +472,38 @@ TEST(MarkerPolicyTest, DiscontinuityOverridesAMarkerAimingAtTheSameCut)
 	EXPECT_TRUE(next_segment->IsDiscontinuityPoint());
 }
 
-TEST(MarkerPolicyTest, PendingBreakRidesAnEarlierMarkerCut)
+TEST(MarkerPolicyTest, MarkerAtTheBufferHeadClosesOnTheStoredPart)
+{
+	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
+	int64_t frame_index = 0;
+
+	// A chunk boundary: what came before is stored, the buffer is empty
+	Drive(pipeline, 0, 2400, &frame_index);
+
+	// The marker lands at the head of what comes next, so no buffered sample
+	// belongs before it. None of them may join this segment: the ad insertor
+	// replaces from the marker, and content past it would be overwritten.
+	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 2400, kCueDurationMs));
+	Drive(pipeline, 2400, 8000, &frame_index);
+
+	auto segment = FindSegmentCovering(pipeline, 2000.0);
+	ASSERT_NE(segment, nullptr);
+	double end_ms = static_cast<double>(segment->GetStartTimestamp()) + segment->GetDurationMs();
+	EXPECT_NEAR(end_ms, 2400.0, 100.0 / 3.0 + 1.0);
+	EXPECT_TRUE(segment->HasMarker());
+}
+
+TEST(MarkerPolicyTest, PendingBreakStampsAtItsOwnPosition)
 {
 	auto pipeline = MakeVideoPipeline(LLHlsCueOutCutMode::Immediate);
 	int64_t frame_index = 0;
 
 	Drive(pipeline, 0, 5000, &frame_index);
 
-	// The marker cuts mid-GOP at 5010, before the break at 5500. The track that
-	// broke closes once, so this track must close once too: the break rides the
-	// marker cut instead of adding a second boundary.
+	// The marker cuts mid-GOP at 5010, before the break at 5500. The break waits
+	// for its own position: the track whose configuration changed closes there
+	// whatever else happened earlier, so a track that stamped the break on the
+	// 5010 cut would end up one segment behind it.
 	ASSERT_TRUE(InsertCue(pipeline, CueEvent::CueType::OUT, 5010, kCueDurationMs));
 	pipeline.packager->RequestCutForDiscontinuity(5500.0);
 
@@ -501,10 +523,11 @@ TEST(MarkerPolicyTest, PendingBreakRidesAnEarlierMarkerCut)
 		break_segment = segment;
 	}
 
-	// Exactly one break, and it starts where the marker cut landed
+	// Exactly one break, and it starts at or after the position it was requested
+	// at, never on the earlier marker cut
 	ASSERT_EQ(discontinuity_count, 1);
 	ASSERT_NE(break_segment, nullptr);
-	EXPECT_NEAR(static_cast<double>(break_segment->GetStartTimestamp()), 5010.0, 100.0 / 3.0 + 1.0);
+	EXPECT_GE(static_cast<double>(break_segment->GetStartTimestamp()), 5500.0);
 }
 
 TEST(MarkerPolicyTest, PropagatedDiscontinuityCutsAtTheNextKeyframe)

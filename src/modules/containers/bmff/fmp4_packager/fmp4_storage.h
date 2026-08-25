@@ -232,9 +232,6 @@ namespace bmff
 		bool SaveMediaSegmentToFile(const std::shared_ptr<FMP4Segment> &segment);
 		std::shared_ptr<FMP4Segment> LoadMediaSegmentFromFile(uint32_t segment_number) const;
 
-		// first_chunk_start_timestamp_us: the first sample position of the new
-		// segment, std::nullopt when it is pre-created ahead of its first chunk;
-		// the boundary policy names the segment from what it has settled
 		// first_chunk_start_timestamp_us names the very first segment, whose
 		// number a synced track derives from where it joins. Every later segment
 		// is pre-created before its first chunk arrives and numbered from the

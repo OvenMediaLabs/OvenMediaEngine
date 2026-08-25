@@ -104,7 +104,6 @@ namespace bmff
 		// closes, a break spans at least one cadence). A position already passed
 		// is accepted up to one segment late.
 		std::tuple<bool, ov::String> CanInsertMarker(const std::shared_ptr<Marker> &marker) const;
-
 		// A validated insert, ready to be applied
 		struct PreparedMarker
 		{

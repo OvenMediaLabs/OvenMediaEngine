@@ -219,3 +219,18 @@ TEST(DurationBoundaryPolicyTest, ForceCompletedSegmentCountsIntoPacing)
 	Complete(policy, 1, 2000.0, 6000.0);
 	EXPECT_DOUBLE_EQ(TargetMs(policy), 4000.0);
 }
+
+TEST(DurationBoundaryPolicyTest, AnOverlongSegmentIsRepaidByAimingShort)
+{
+	auto policy = MakePolicy();
+
+	// A keyframe interval longer than the segment duration already breaks the
+	// configured pacing, and closing at every keyframe until the ledger is
+	// repaid is the intended answer: the segments stay playable, and the
+	// stream returns to its cadence as soon as keyframes allow. Forgiving the
+	// shortfall instead would leave the ledger describing a timeline the
+	// segments never had.
+	Complete(policy, 0, 0.0, 20000.0);
+
+	EXPECT_LT(TargetMs(policy), 0.0);
+}

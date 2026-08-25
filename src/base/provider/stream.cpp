@@ -161,36 +161,53 @@ namespace pvd
 
 		int64_t media_timestamp_ms = static_cast<int64_t>(source_timestamp / timescale * 1000.0);
 
-		int64_t hint_ms = _last_media_timestamp_ms_hint.load(std::memory_order_relaxed);
+		// A restart is a track going backward against its own previous position.
+		// Comparing against the newest position over all tracks instead would
+		// make a permanently lagging track look like a restart on every packet.
+		bool track_restarted = false;
+		{
+			std::lock_guard<std::mutex> track_lock(_track_timestamp_guard);
+			auto it = _last_track_timestamp_ms.find(track->GetId());
+			if (it != _last_track_timestamp_ms.end())
+			{
+				track_restarted = ((it->second - media_timestamp_ms) >= kClockReanchorThresholdMs);
+				it->second = media_timestamp_ms;
+			}
+			else
+			{
+				_last_track_timestamp_ms.emplace(track->GetId(), media_timestamp_ms);
+			}
+		}
 
 		// Most packets do not advance the clock (only the leading track does);
-		// they must not pay for the mutex. A position far below the clock is not
-		// a lagging track, so it takes the mutex to re-anchor.
-		if (media_timestamp_ms <= hint_ms && (hint_ms - media_timestamp_ms) < kClockReanchorThresholdMs)
+		// they must not pay for the mutex
+		if (track_restarted == false && media_timestamp_ms <= _last_media_timestamp_ms_hint.load(std::memory_order_relaxed))
 		{
 			return;
 		}
 
-		ov::LockGuard lock(_timestamp_mutex);
-
-		// The clock is the newest position over every media track, so a lagging
-		// track cannot pull it backward. A source whose timestamps restart lower
-		// (a re-published stream reusing this object, a track with its own epoch)
-		// re-anchors instead: holding the old maximum would stamp every event and
-		// marker far ahead of the media for the life of the stream.
-		bool reanchor = (_last_media_timestamp_ms >= 0 && (_last_media_timestamp_ms - media_timestamp_ms) >= kClockReanchorThresholdMs);
-		if (reanchor == true)
+		int64_t previous_ms = -1;
 		{
-			logti("%s/%s(%u) Media timestamp went backward by %" PRId64 " ms; re-anchoring the stream clock to %" PRId64 " ms",
-				  GetApplicationName(), GetName().CStr(), GetId(), _last_media_timestamp_ms - media_timestamp_ms, media_timestamp_ms);
+			ov::LockGuard lock(_timestamp_mutex);
+
+			// The clock is the newest position over every media track, so a
+			// lagging track cannot pull it backward. A track that restarted lower
+			// re-anchors it: holding the old maximum would stamp every event and
+			// marker far ahead of the media for the life of the stream.
+			if (media_timestamp_ms > _last_media_timestamp_ms || track_restarted == true)
+			{
+				previous_ms = _last_media_timestamp_ms;
+				_last_media_timestamp_ms = media_timestamp_ms;
+				_last_media_timestamp_ms_hint.store(media_timestamp_ms, std::memory_order_relaxed);
+				_elapsed_from_last_media_timestamp.Restart();
+				_max_generated_timestamp_ms = -1LL;
+			}
 		}
 
-		if (media_timestamp_ms > _last_media_timestamp_ms || reanchor == true)
+		if (track_restarted == true && previous_ms >= 0)
 		{
-			_last_media_timestamp_ms = media_timestamp_ms;
-			_last_media_timestamp_ms_hint.store(media_timestamp_ms, std::memory_order_relaxed);
-			_elapsed_from_last_media_timestamp.Restart();
-			_max_generated_timestamp_ms = -1LL;
+			logti("%s/%s(%u) Track %u restarted %" PRId64 " ms back; the stream clock is re-anchored to %" PRId64 " ms",
+				  GetApplicationName(), GetName().CStr(), GetId(), track->GetId(), previous_ms - media_timestamp_ms, media_timestamp_ms);
 		}
 	}
 
