@@ -435,6 +435,9 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 		// int64_t is used to avoid overflow for extreme cases
 		int64_t coded_width	   = (pic_width_in_mbs_minus1 + 1) * 16;
 		int64_t coded_height   = (2 - sps._frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16;
+		// TODO: the crop unit is SubWidthC and SubHeightC * (2 - frame_mbs_only_flag), not 2 on both
+		// axes (ITU-T H.264 7.4.2.1.1). Only progressive 4:2:0 is right here - 4:2:2, 4:4:4 and
+		// interlaced come out short. Fixing it moves a reported resolution, so it lands on its own.
 		int64_t crop_x		   = 2 * crop_left + 2 * crop_right;
 		int64_t crop_y		   = 2 * crop_top + 2 * crop_bottom;
 		int64_t display_width  = coded_width - crop_x;
