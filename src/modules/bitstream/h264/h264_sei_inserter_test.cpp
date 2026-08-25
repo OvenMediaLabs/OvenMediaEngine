@@ -328,6 +328,8 @@ namespace
 		0x13, 0x12, 0xD0, 0x00, 0x04, 0xC4, 0xB5, 0xBB, 0xCB, 0x82, 0x80};
 	const std::vector<uint8_t> kPps		 = {0x68, 0xCE, 0x3C, 0x80};
 	const std::vector<uint8_t> kIdrSlice = {0x65, 0x88, 0x84, 0x00, 0x21, 0xFF};
+	// NAL type 7, but there is nothing behind the header for ParseSPS to read
+	const std::vector<uint8_t> kTruncatedSps = {0x67, 0x64};
 
 	std::shared_ptr<ov::Data> AsData(const std::vector<uint8_t> &bytes)
 	{
@@ -379,20 +381,35 @@ namespace
 	}
 
 	// A pic_timing the encoder wrote itself, as it would appear in the bitstream
-	std::shared_ptr<ov::Data> PicTimingSeiNal(uint8_t pic_struct)
+	std::shared_ptr<ov::Data> PicTimingSeiNal(const H264SeiSpsContext &context, uint8_t pic_struct)
 	{
 		H264SeiPicTiming pic_timing;
 		pic_timing.pic_struct = pic_struct;
 
 		H264SEI sei;
 		sei.SetPayloadType(H264SEI::PayloadType::PICTURE_TIMING);
-		sei.SetPayloadData(H264SEI::SerializePicTiming(pic_timing, SpsContextOf(kSps)));
+		sei.SetPayloadData(H264SEI::SerializePicTiming(pic_timing, context));
 
 		auto nal = std::make_shared<ov::Data>();
 		nal->Append(NalHeader::CreateH264(static_cast<uint8_t>(H264NalUnitType::Sei)));
 		nal->Append(sei.Serialize());
 
 		return NalUnitInsertor::EmulationPreventionBytes(nal);
+	}
+
+	std::shared_ptr<ov::Data> PicTimingSeiNal(uint8_t pic_struct)
+	{
+		return PicTimingSeiNal(SpsContextOf(kSps), pic_struct);
+	}
+
+	// What the encoder emits while its own SPS still has pic_struct_present_flag off: the delays
+	// and nothing else
+	std::shared_ptr<ov::Data> DelayOnlyPicTimingSeiNal()
+	{
+		auto context			   = SpsContextOf(kSps);
+		context.pic_struct_present = false;
+
+		return PicTimingSeiNal(context, 0);
 	}
 
 	std::shared_ptr<ov::Data> AccessUnit(const std::vector<std::shared_ptr<ov::Data>> &nals)
@@ -513,4 +530,30 @@ TEST(H264SeiInserter, ForgetsThePatchWhenAnSpsArrivesAlreadyFlagged)
 
 	// 3 is "top field, bottom field"; DetectPictureStructure() would have said 0
 	EXPECT_EQ(PicStructOf(flagged->GetData()), 3U);
+}
+
+// The patch state has to survive an SPS this parser cannot read. DecideSeiPlacement() does not
+// refresh _sps_context from one either, so clearing it would read the encoder's delay-only
+// pic_timing as if it carried pic_struct - which lands on a pic_struct of 8 (frame tripling) when
+// the delay widths happen to leave 7 padding bits, and fails the parse otherwise.
+TEST(H264SeiInserter, KeepsThePatchStateWhenAnSpsCannotBeParsed)
+{
+	H264SeiInserter inserter;
+
+	auto stream = MakeStream();
+	auto track	= MakeTrack();
+
+	auto sps_without_flag = SpsWithoutPicStruct();
+	ASSERT_NE(sps_without_flag, nullptr);
+
+	auto patched = MakePacket(AccessUnit({sps_without_flag, AsData(kPps), AsData(kIdrSlice)}), 0);
+	ASSERT_TRUE(inserter.InsertPicTiming(stream, track, patched));
+
+	auto broken = MakePacket(AccessUnit({AsData(kTruncatedSps), AsData(kPps),
+										 DelayOnlyPicTimingSeiNal(), AsData(kIdrSlice)}),
+							 1500);
+	ASSERT_TRUE(inserter.InsertPicTiming(stream, track, broken))
+		<< "the encoder's message has to be read the way it was written";
+
+	EXPECT_EQ(PicStructOf(broken->GetData()), 0U) << "a progressive frame, not what the padding says";
 }

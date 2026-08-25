@@ -611,10 +611,19 @@ bool H264SeiInserter::PatchSps(const std::shared_ptr<MediaPacket> &packet,
 				continue;
 			}
 
+			// An SPS this parser cannot read says nothing about the patch state, and
+			// DecideSeiPlacement() will not refresh _sps_context from it either
+			H264SPS sps;
+			if (H264Parser::ParseSPS(buffer + offset, length, sps) == false)
+			{
+				continue;
+			}
+
 			saw_sps = true;
 
 			auto sps_nal = std::make_shared<ov::Data>(buffer + offset, length);
-			// nullptr when the flag is already set
+			// nullptr for an SPS that already carries the flag, one with no VUI to hold it, and one
+			// whose flag sits outside the NAL. Only a non-null result means this module patched it.
 			auto result = H264SpsRewriter::EnablePicStructPresent(sps_nal);
 			if (result != nullptr)
 			{
