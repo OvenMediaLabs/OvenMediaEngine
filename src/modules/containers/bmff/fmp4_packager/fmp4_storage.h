@@ -73,6 +73,10 @@ namespace bmff
 		// without a configuration change (another track of the stream changed)
 		void CutSegmentForDiscontinuity();
 
+		// Completes the segment in progress at a marker position with nothing
+		// left to append; the buffered samples open the next one
+		void CutSegmentAtMarker();
+
 		// Start a new content version for a DRM key rotation, so the segments encrypted
 		// with the new key are addressed separately from the old key. Called when a new
 		// segment is about to start: no segment is cut, no discontinuity is marked, and
@@ -101,7 +105,9 @@ namespace bmff
 		// change, a boundary propagated from another track) and report the event
 		// to the boundary policy. Returns the completed segment number, or -1 if
 		// there was nothing to complete.
-		int64_t CompleteLastSegment();
+		// as_discontinuity settles the closed segment as a timeline break; a
+		// marker cut settles it as an ordinary completion
+		int64_t CompleteLastSegment(bool as_discontinuity);
 
 		// Flag the pre-created empty segment as the start of a new discontinuity domain
 		void MarkPendingSegmentDiscontinuity();
@@ -229,6 +235,10 @@ namespace bmff
 		// first_chunk_start_timestamp_us: the first sample position of the new
 		// segment, std::nullopt when it is pre-created ahead of its first chunk;
 		// the boundary policy names the segment from what it has settled
+		// first_chunk_start_timestamp_us names the very first segment, whose
+		// number a synced track derives from where it joins. Every later segment
+		// is pre-created before its first chunk arrives and numbered from the
+		// previous one, so it passes nothing.
 		std::shared_ptr<FMP4Segment> CreateNextSegment(std::optional<int64_t> first_chunk_start_timestamp_us = std::nullopt);
 
 		std::shared_ptr<const MediaTrack> GetTrack() const;

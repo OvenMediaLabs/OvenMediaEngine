@@ -8,6 +8,7 @@
 //==============================================================================
 #pragma once
 
+#include <mutex>
 #include <optional>
 
 #include <base/common_types.h>
@@ -225,6 +226,8 @@ private:
 	bool IsConcluded() const;
 
 	bool InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
+	// Serializes the decide-then-apply sequence above across concurrent inserts
+	std::mutex _marker_insert_guard;
 
 	// Warn only once when markers arrive while the keyframe interval does not
 	// divide the segment duration

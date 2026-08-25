@@ -28,8 +28,9 @@ namespace mpegts
 		// The media passed the position by more than a segment: the cut would land
 		// nowhere near the time the marker advertises
 		const double media_position_ms = _media_position_ms.load(std::memory_order_relaxed);
-		if (media_position_ms >= 0 && _cut_cadence_ms > 0 &&
-			(media_position_ms - static_cast<double>(marker->GetTimestampMs())) > _cut_cadence_ms)
+		const double cut_cadence_ms = _cut_cadence_ms.load(std::memory_order_relaxed);
+		if (media_position_ms >= 0 && cut_cadence_ms > 0 &&
+			(media_position_ms - static_cast<double>(marker->GetTimestampMs())) > cut_cadence_ms)
 		{
 			return {false, ov::String::FormatString("The position of the marker has already passed by more than the cut cadence : %s (%" PRId64 " ms)", marker->GetTag().CStr(), marker->GetTimestampMs())};
 		}
@@ -37,7 +38,7 @@ namespace mpegts
 		// A break must span at least one cadence, or the return could land on the
 		// very cut that opened it; without a configured cadence the duration and
 		// spacing checks stay permissive
-		auto required_gap = _cut_cadence_ms;
+		auto required_gap = cut_cadence_ms;
 		if (curr_out_of_network_value == true)
 		{
 			// Duration check
@@ -255,13 +256,15 @@ namespace mpegts
 
 	void MarkerBox::SetCutCadenceMs(double segment_duration_ms, double keyframe_interval_ms)
 	{
-		_cut_cadence_ms = segment_duration_ms;
+		double cut_cadence_ms = segment_duration_ms;
 
 		if (keyframe_interval_ms > 0)
 		{
 			double intervals = std::ceil(segment_duration_ms / keyframe_interval_ms);
-			_cut_cadence_ms = std::max(_cut_cadence_ms, intervals * keyframe_interval_ms);
+			cut_cadence_ms = std::max(cut_cadence_ms, intervals * keyframe_interval_ms);
 		}
+
+		_cut_cadence_ms.store(cut_cadence_ms, std::memory_order_relaxed);
 	}
 
 	void MarkerBox::SetMediaPositionMs(double media_position_ms)

@@ -33,7 +33,10 @@ namespace bmff
 
 		OV_ASSERT2(boundary_policy != nullptr);
 		_boundary_policy = boundary_policy;
-		_initial_segment_number = _boundary_policy->GetSegmentBoundary(std::nullopt).segment_number;
+		if (_boundary_policy != nullptr)
+		{
+			_initial_segment_number = _boundary_policy->GetSegmentBoundary(std::nullopt).segment_number;
+		}
 	}
 
 	FMP4Storage::~FMP4Storage()
@@ -255,7 +258,7 @@ namespace bmff
 		// Close the old content (the buffered samples were already flushed). The
 		// completion is reported to the caller instead of the observer here, so that
 		// it can be published after the new initialization section is stored.
-		completed_segment_number = CompleteLastSegment();
+		completed_segment_number = CompleteLastSegment(true);
 
 		std::atomic_store(&_track, track);
 
@@ -293,9 +296,18 @@ namespace bmff
 
 	void FMP4Storage::CutSegmentForDiscontinuity()
 	{
-		auto completed_segment_number = CompleteLastSegment();
+		auto completed_segment_number = CompleteLastSegment(true);
 
 		MarkPendingSegmentDiscontinuity();
+
+		NotifySegmentCompleted(completed_segment_number);
+	}
+
+	void FMP4Storage::CutSegmentAtMarker()
+	{
+		// The segment ends on what is already stored: every buffered sample
+		// belongs after the marker, so none of it may join this segment
+		auto completed_segment_number = CompleteLastSegment(false);
 
 		NotifySegmentCompleted(completed_segment_number);
 	}
@@ -337,13 +349,22 @@ namespace bmff
 		}
 	}
 
-	int64_t FMP4Storage::CompleteLastSegment()
+	int64_t FMP4Storage::CompleteLastSegment(bool as_discontinuity)
 	{
+		if (_boundary_policy == nullptr)
+		{
+			return -1;
+		}
+
 		auto segment = GetLastSegmentInternal();
 		if (segment == nullptr || segment->IsCompleted() == true || segment->GetPartialCount() == 0)
 		{
-			// Nothing was in progress, but the timeline still broke here
-			_boundary_policy->OnDiscontinuity({});
+			if (as_discontinuity == true)
+			{
+				// Nothing was in progress, but the timeline still broke here
+				_boundary_policy->OnDiscontinuity({});
+			}
+
 			return -1;
 		}
 
@@ -354,9 +375,11 @@ namespace bmff
 		completed_segment.start_timestamp_us = (timescale > 0) ? TicksToUs(segment->GetStartTimestamp(), timescale) : 0;
 		completed_segment.duration_us = std::llround(segment->GetDurationMs() * 1000.0);
 
-		// Settled like a completion: the markers the force-closed segment covered
-		// still ride it
-		auto completion_result = _boundary_policy->OnDiscontinuity(completed_segment);
+		// The markers the closed segment covered still ride it. A marker cut is
+		// an ordinary completion at the announced position, so only a timeline
+		// break settles as a discontinuity.
+		auto completion_result = (as_discontinuity == true) ? _boundary_policy->OnDiscontinuity(completed_segment)
+															: _boundary_policy->OnSegmentCompleted(completed_segment);
 		if (completion_result.markers.empty() == false)
 		{
 			segment->AddMarkers(completion_result.markers);
@@ -470,6 +493,11 @@ namespace bmff
 
 	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment(std::optional<int64_t> first_chunk_start_timestamp_us)
 	{
+		if (_boundary_policy == nullptr)
+		{
+			return nullptr;
+		}
+
 		auto track = GetTrack();
 
 		// The policy owns the numbering; the storage only guards its own segment
@@ -567,6 +595,11 @@ namespace bmff
 
 	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, bool discontinuity)
 	{
+		if (_boundary_policy == nullptr)
+		{
+			return false;
+		}
+
 		double timescale = GetTrack()->GetTimeBase().GetTimescale();
 		int64_t start_timestamp_us = (timescale > 0) ? TicksToUs(start_timestamp, timescale) : -1;
 
@@ -574,6 +607,10 @@ namespace bmff
 		if (segment == nullptr || segment->IsCompleted() == true)
 		{
 			segment = CreateNextSegment(start_timestamp_us);
+			if (segment == nullptr)
+			{
+				return false;
+			}
 		}
 
 		if (segment->AppendPartialData(chunk, start_timestamp, duration_ms, independent) == false)

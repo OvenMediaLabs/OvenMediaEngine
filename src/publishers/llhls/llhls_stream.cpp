@@ -1364,6 +1364,11 @@ bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamF
 		return false;
 	}
 
+	// One insert at a time: two markers decided concurrently would both validate
+	// against the same state and then both apply, producing the OUT-then-OUT
+	// chain the policy validation exists to make impossible
+	std::lock_guard<std::mutex> insert_lock(_marker_insert_guard);
+
 	// Every accepting track must take it, or none does. So the insert is decided
 	// for all of them first: a track refusing after another one already took the
 	// marker would leave that rendition carrying a tag the others do not.
@@ -1903,6 +1908,16 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 		// track follows them. Created on the first track, whichever it is.
 		if (_reference_boundary_policy == nullptr)
 		{
+			if (server_time_based_segment_numbering == true)
+			{
+				// Synced segmentation cuts on the reference's keyframes, so its
+				// boundaries cannot be held on wall-clock slots. Two servers
+				// started at different times number from their own first cut and
+				// never pair again.
+				logtw("(%s/%s) ServerTimeBasedSegmentNumbering is ignored in synced segmentation mode; use duration segmentation for identical numbering across servers",
+					  GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+
 			auto reference_config = policy_config;
 			reference_config.chunk_duration_ms = std::round(ComputeOptimalPartDuration(reference_track));
 			// The cadence must be the reference's own; policy_config carries the

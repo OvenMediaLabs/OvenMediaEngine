@@ -136,12 +136,12 @@ enum class LLHlsSegmentationMode : uint8_t
 
 enum class LLHlsCueOutCutMode : uint8_t
 {
-	// Cut right at the CUE-OUT even off a non-keyframe; an ad insertor
-	// replaces the break content anyway (server-side ad insertion)
-	Immediate,
 	// Cut at the first keyframe at or after the CUE-OUT, so the original
 	// content keeps playing cleanly (client-side ad insertion)
 	Keyframe,
+	// Cut right at the CUE-OUT even off a non-keyframe; an ad insertor
+	// replaces the break content anyway (server-side ad insertion)
+	Immediate,
 };
 
 enum class FrameType : int8_t

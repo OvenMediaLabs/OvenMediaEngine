@@ -161,23 +161,36 @@ namespace pvd
 
 		int64_t media_timestamp_ms = static_cast<int64_t>(source_timestamp / timescale * 1000.0);
 
+		int64_t hint_ms = _last_media_timestamp_ms_hint.load(std::memory_order_relaxed);
+
 		// Most packets do not advance the clock (only the leading track does);
-		// they must not pay for the mutex
-		if (media_timestamp_ms <= _last_media_timestamp_ms_hint.load(std::memory_order_relaxed))
+		// they must not pay for the mutex. A position far below the clock is not
+		// a lagging track, so it takes the mutex to re-anchor.
+		if (media_timestamp_ms <= hint_ms && (hint_ms - media_timestamp_ms) < kClockReanchorThresholdMs)
 		{
 			return;
 		}
 
 		ov::LockGuard lock(_timestamp_mutex);
 
-		// The clock is the newest position over every media track: a lagging
-		// track cannot pull it backward, and per-track timestamps only move
-		// forward, so a running maximum is that position
-		if (media_timestamp_ms > _last_media_timestamp_ms)
+		// The clock is the newest position over every media track, so a lagging
+		// track cannot pull it backward. A source whose timestamps restart lower
+		// (a re-published stream reusing this object, a track with its own epoch)
+		// re-anchors instead: holding the old maximum would stamp every event and
+		// marker far ahead of the media for the life of the stream.
+		bool reanchor = (_last_media_timestamp_ms >= 0 && (_last_media_timestamp_ms - media_timestamp_ms) >= kClockReanchorThresholdMs);
+		if (reanchor == true)
+		{
+			logti("%s/%s(%u) Media timestamp went backward by %" PRId64 " ms; re-anchoring the stream clock to %" PRId64 " ms",
+				  GetApplicationName(), GetName().CStr(), GetId(), _last_media_timestamp_ms - media_timestamp_ms, media_timestamp_ms);
+		}
+
+		if (media_timestamp_ms > _last_media_timestamp_ms || reanchor == true)
 		{
 			_last_media_timestamp_ms = media_timestamp_ms;
 			_last_media_timestamp_ms_hint.store(media_timestamp_ms, std::memory_order_relaxed);
 			_elapsed_from_last_media_timestamp.Restart();
+			_max_generated_timestamp_ms = -1LL;
 		}
 	}
 

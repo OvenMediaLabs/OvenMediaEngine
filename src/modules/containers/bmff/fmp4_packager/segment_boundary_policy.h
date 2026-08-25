@@ -27,9 +27,7 @@ namespace bmff
 		// Where the segment ends
 		int64_t end_us = -1;
 
-		// true: the segment ends exactly at end_us and samples past it belong to
-		// the next segment. false: it ends at the first cuttable frame at or
-		// after end_us.
+		// Whether end_us is the exact end or the aim to cut at or after
 		bool exact = false;
 
 		// The name of the segment being accumulated
@@ -102,12 +100,9 @@ namespace bmff
 			return true;
 		}
 
-		// (input) Validate a marker against the pending chain: the first marker
-		// must open a break (OUT), a break must be long enough to return from,
-		// and a pending return point (IN) may only be modified within its rules.
-		// A marker whose position has already passed is accepted up to one
-		// segment late, cutting at the nearest position that can still cut;
-		// later than that it is refused.
+		// (input) Validate a marker against the pending chain (OUT opens, IN
+		// closes, a break spans at least one cadence). A position already passed
+		// is accepted up to one segment late.
 		std::tuple<bool, ov::String> CanInsertMarker(const std::shared_ptr<Marker> &marker) const;
 
 		// A validated insert, ready to be applied
@@ -128,6 +123,7 @@ namespace bmff
 		// several tracks prepares all of them first, so it learns that every one
 		// accepts before any one of them changes.
 		std::optional<PreparedMarker> PrepareMarker(const std::shared_ptr<Marker> &marker) const;
+
 
 		// (input) Apply a prepared insert. Cannot fail: the position was already
 		// decided, and the state it was decided against may only have moved on.
@@ -154,17 +150,14 @@ namespace bmff
 			(void)last_chunk;
 		}
 
-		// (decision) The boundary of the segment that starts at segment_start_us
-		// (std::nullopt while its first sample is not known yet; only the
-		// numbering is meaningful then; a negative start is a real position).
-		// The policy owns the numbering: it names the segment from what it has
-		// settled so far. A pure query: asked repeatedly as the plan firms up.
+		// (decision) The boundary and number of the segment starting at
+		// segment_start_us (std::nullopt: only the numbering is meaningful).
+		// A pure query, asked repeatedly as the plan firms up.
 		virtual SegmentBoundary GetSegmentBoundary(std::optional<int64_t> segment_start_us) = 0;
 
 		// (decision) May a chunk ending at chunk_end_us be emitted now? Only
-		// when every boundary up to that position is already decided: a chunk,
-		// once emitted, cannot be cut retroactively when a boundary turns out
-		// to land inside it. Consulted by GetChunkPlan.
+		// when every boundary up to that position is decided; an emitted chunk
+		// cannot be cut retroactively.
 		virtual bool CanEmitChunk(int64_t chunk_end_us) const
 		{
 			(void)chunk_end_us;
@@ -251,12 +244,15 @@ namespace bmff
 			}
 		}
 
-		// The position the marker's cut lands at, computed with _markers_guard
-		// held. The marker itself is never modified. A provisional IN follows
-		// its OUT: one break length after the OUT's advertised time. A late
-		// position is clamped forward: cuts can still happen at or after the
-		// newest sample this track has seen. Negative when the position is too
-		// late even for that.
+		// The same three steps without locking, for a caller already holding
+		// _markers_guard. InsertMarker uses them to decide and apply as one.
+		std::tuple<bool, ov::String> CanInsertMarkerUnlocked(const std::shared_ptr<Marker> &marker) const;
+		std::optional<PreparedMarker> PrepareMarkerUnlocked(const std::shared_ptr<Marker> &marker) const;
+		void CommitMarkerUnlocked(const PreparedMarker &prepared);
+
+		// The position the marker's cut lands at, with _markers_guard held; the
+		// marker is never modified. A late position is clamped forward, and
+		// negative when it is too late even for that.
 		int64_t EffectiveCutUs(const std::shared_ptr<Marker> &marker) const;
 
 		// The break length the marker's event declares, -1 when it has none
@@ -277,10 +273,8 @@ namespace bmff
 		};
 
 		// Consume the markers this settlement takes over. A position the media
-		// never reached (a hole left by the keyframe wait after a track change)
-		// still rides the next segment, up to a segment length behind; older
-		// than that the advertised time no longer describes where it landed, so
-		// it is discarded.
+		// never reached still rides the next segment, up to a segment length
+		// behind; older than that it is discarded.
 		SettledMarkers PopMarkersForSettlement(int64_t start_us, int64_t end_us);
 
 		// The markers this track owes cuts to, keyed by the position the cut
@@ -305,8 +299,10 @@ namespace bmff
 		std::atomic<int64_t> _first_sample_end_us{-1};
 
 		// Where a propagated timeline break waits to cut, and where the last one
-		// landed (the dedup floor); media-thread only
-		int64_t _pending_discontinuity_cut_us = -1;
-		int64_t _last_discontinuity_us = -1;
+		// landed (the dedup floor). A track changing configuration requests the
+		// cut on the other tracks' policies from the notification thread, so both
+		// are read and written across threads.
+		std::atomic<int64_t> _pending_discontinuity_cut_us{-1};
+		std::atomic<int64_t> _last_discontinuity_us{-1};
 	};
 }  // namespace bmff

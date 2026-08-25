@@ -64,7 +64,7 @@ namespace cfg
 						Register<Optional>("ServerTimeBasedSegmentNumbering", &_server_time_based_segment_numbering);
 						Register<Optional>("SegmentCount", &_segment_count);
 						// The segmentation cadence divides by this everywhere
-						Register<Optional>("SegmentDuration", &_segment_duration, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
+						Register<Optional>("SegmentDuration", &_segment_duration, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 								if (_segment_duration <= 0)
 								{
 									return CreateConfigErrorPtr("SegmentDuration must be greater than 0");

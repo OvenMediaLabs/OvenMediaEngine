@@ -327,7 +327,7 @@ namespace bmff
 			{
 				segment_start_timestamp = last_segment->GetStartTimestamp();
 			}
-			else if (samples->GetTotalDuration() > 0)
+			else if (samples->GetTotalCount() > 0)
 			{
 				segment_start_timestamp = samples->GetStartTimestamp();
 			}
@@ -349,6 +349,15 @@ namespace bmff
 				if (_storage != nullptr)
 				{
 					_storage->CutSegmentForDiscontinuity();
+				}
+			}
+			else if (decision.completes_segment == true && decision.emit_count == 0)
+			{
+				// A marker cut with every buffered sample belonging after it: the
+				// segment closes on what is already stored
+				if (_storage != nullptr)
+				{
+					_storage->CutSegmentAtMarker();
 				}
 			}
 			else if (decision.emit_count > 0)

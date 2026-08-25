@@ -102,6 +102,11 @@ namespace bmff
 	{
 		std::shared_lock<std::shared_mutex> lock(_markers_guard);
 
+		return CanInsertMarkerUnlocked(marker);
+	}
+
+	std::tuple<bool, ov::String> SegmentBoundaryPolicy::CanInsertMarkerUnlocked(const std::shared_ptr<Marker> &marker) const
+	{
 		auto out_of_network = marker->IsOutOfNetwork();
 		if (out_of_network.has_value() == false)
 		{
@@ -208,14 +213,19 @@ namespace bmff
 
 	std::optional<SegmentBoundaryPolicy::PreparedMarker> SegmentBoundaryPolicy::PrepareMarker(const std::shared_ptr<Marker> &marker) const
 	{
-		auto [can_insert, message] = CanInsertMarker(marker);
+		std::shared_lock<std::shared_mutex> lock(_markers_guard);
+
+		return PrepareMarkerUnlocked(marker);
+	}
+
+	std::optional<SegmentBoundaryPolicy::PreparedMarker> SegmentBoundaryPolicy::PrepareMarkerUnlocked(const std::shared_ptr<Marker> &marker) const
+	{
+		auto [can_insert, message] = CanInsertMarkerUnlocked(marker);
 		if (can_insert == false)
 		{
 			logte("%s - Failed to insert the marker : %s", _log_context.CStr(), message.CStr());
 			return std::nullopt;
 		}
-
-		std::shared_lock<std::shared_mutex> lock(_markers_guard);
 
 		PreparedMarker prepared;
 		prepared.marker = marker;
@@ -265,6 +275,11 @@ namespace bmff
 
 		std::lock_guard<std::shared_mutex> lock(_markers_guard);
 
+		CommitMarkerUnlocked(prepared);
+	}
+
+	void SegmentBoundaryPolicy::CommitMarkerUnlocked(const PreparedMarker &prepared)
+	{
 		if (prepared.parent != nullptr)
 		{
 			prepared.marker->SetParent(prepared.parent);
@@ -283,13 +298,18 @@ namespace bmff
 
 	bool SegmentBoundaryPolicy::InsertMarker(const std::shared_ptr<Marker> &marker)
 	{
-		auto prepared = PrepareMarker(marker);
+		// Deciding and applying under one exclusive lock: two inserts racing here
+		// would both validate against the same state and then both apply, leaving
+		// the OUT-then-OUT chain the validation exists to make impossible
+		std::lock_guard<std::shared_mutex> lock(_markers_guard);
+
+		auto prepared = PrepareMarkerUnlocked(marker);
 		if (prepared.has_value() == false)
 		{
 			return false;
 		}
 
-		CommitMarker(*prepared);
+		CommitMarkerUnlocked(*prepared);
 
 		return true;
 	}
@@ -298,9 +318,10 @@ namespace bmff
 	{
 		// Tracks changing together propagate to each other; a boundary within a
 		// segment length of the last handled one is the same event
-		if (_last_discontinuity_us >= 0)
+		int64_t last_discontinuity_us = _last_discontinuity_us.load(std::memory_order_relaxed);
+		if (last_discontinuity_us >= 0)
 		{
-			int64_t delta_us = boundary_timestamp_us - _last_discontinuity_us;
+			int64_t delta_us = boundary_timestamp_us - last_discontinuity_us;
 			if (delta_us < 0)
 			{
 				delta_us = -delta_us;
@@ -311,9 +332,13 @@ namespace bmff
 			}
 		}
 
-		if (_pending_discontinuity_cut_us < 0 || boundary_timestamp_us < _pending_discontinuity_cut_us)
+		int64_t pending_us = _pending_discontinuity_cut_us.load(std::memory_order_relaxed);
+		while (pending_us < 0 || boundary_timestamp_us < pending_us)
 		{
-			_pending_discontinuity_cut_us = boundary_timestamp_us;
+			if (_pending_discontinuity_cut_us.compare_exchange_weak(pending_us, boundary_timestamp_us, std::memory_order_relaxed) == true)
+			{
+				break;
+			}
 		}
 	}
 
@@ -473,8 +498,8 @@ namespace bmff
 		if (discontinuity == true)
 		{
 			// The break landed; a propagated cut near it is the same event
-			_pending_discontinuity_cut_us = -1;
-			_last_discontinuity_us = (completed.number >= 0) ? segment_end_us : _newest_sample_end_us.load(std::memory_order_relaxed);
+			_pending_discontinuity_cut_us.store(-1, std::memory_order_relaxed);
+			_last_discontinuity_us.store((completed.number >= 0) ? segment_end_us : _newest_sample_end_us.load(std::memory_order_relaxed), std::memory_order_relaxed);
 		}
 
 		auto completion_result = (discontinuity == true) ? DoOnDiscontinuity(settled, covered_markers)
@@ -518,7 +543,8 @@ namespace bmff
 
 		// A propagated timeline break waits for a cuttable frame like every
 		// other reason to close
-		bool break_reached = (_pending_discontinuity_cut_us >= 0 && next_frame.dts_us >= _pending_discontinuity_cut_us);
+		int64_t pending_discontinuity_cut_us = _pending_discontinuity_cut_us.load(std::memory_order_relaxed);
+		bool break_reached = (pending_discontinuity_cut_us >= 0 && next_frame.dts_us >= pending_discontinuity_cut_us);
 
 		if (sample_list.empty() == true)
 		{
@@ -632,11 +658,12 @@ namespace bmff
 				samples_before_marker++;
 			}
 
-			if (samples_before_marker > 0)
-			{
-				emit_count = samples_before_marker;
-				emit_duration_us = duration_before_marker_us;
-			}
+			// Also when nothing precedes the marker: the segment then ends on
+			// what is already stored, and the whole buffer opens the next one.
+			// Letting it out here would write content from after the break into
+			// the segment the break is supposed to end.
+			emit_count = samples_before_marker;
+			emit_duration_us = duration_before_marker_us;
 		}
 
 		// Samples past an exact boundary belong to the next segment, so the
@@ -784,10 +811,12 @@ namespace bmff
 			}
 		}
 
-		// A pending break rides whichever close comes first, whatever caused it.
+		// A reached break rides whichever close comes first, whatever caused it.
 		// The track that broke closes once, so a rendition that closed twice
 		// would carry the break on a different segment number than the rest.
-		decision.discontinuity = (_pending_discontinuity_cut_us >= 0) && decision.completes_segment;
+		// Requiring the position to have been reached keeps a rendition from
+		// stamping the break a segment before its content actually changes.
+		decision.discontinuity = break_reached && decision.completes_segment;
 
 		return decision;
 	}

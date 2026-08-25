@@ -44,7 +44,7 @@ namespace mpegts
 		mutable std::shared_mutex _markers_guard;
 		std::shared_ptr<Marker> _last_inserted_marker;
 
-		double _cut_cadence_ms = -1.0;
+		std::atomic<double> _cut_cadence_ms{-1.0};
 		// Written from the media thread, read by the insertion path
 		std::atomic<double> _media_position_ms{-1.0};
 	};

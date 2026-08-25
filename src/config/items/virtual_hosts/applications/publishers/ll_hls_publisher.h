@@ -56,7 +56,7 @@ namespace cfg
 						Register<Optional>("EnablePreloadHint", &_enable_preload_hint);
 						Register<Optional>({"DRM", "drm"}, &_drm);
 
-						Register<Optional>("SegmentationMode", &_segmentation_mode, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
+						Register<Optional>("SegmentationMode", &_segmentation_mode, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 								if (_segmentation_mode.LowerCaseString() == "synced")
 								{
 									_segmentation_mode_type = LLHlsSegmentationMode::Synced;
@@ -76,7 +76,7 @@ namespace cfg
 						// Whether a CUE-OUT cuts right at its position (an ad insertor
 						// replaces the break anyway) or at the next keyframe (the
 						// original content keeps playing, client-side ad insertion)
-						Register<Optional>("CueOutCutMode", &_cue_out_cut_mode, [=]() -> std::shared_ptr<ConfigError> { return nullptr; }, [=]() -> std::shared_ptr<ConfigError> {
+						Register<Optional>("CueOutCutMode", &_cue_out_cut_mode, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 								if (_cue_out_cut_mode.LowerCaseString() == "keyframe" || _cue_out_cut_mode.IsEmpty())
 								{
 									_cue_out_cut_mode_type = LLHlsCueOutCutMode::Keyframe;
