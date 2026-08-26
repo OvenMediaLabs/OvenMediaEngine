@@ -180,7 +180,8 @@ set(PCRE2_SOURCE_URL "https://github.com/PCRE2Project/pcre2/releases/download/pc
 set(OPENH264_SOURCE_URL "https://github.com/cisco/openh264/archive/${OPENH264_ARCHIVE_REF}.tar.gz")
 set(HIREDIS_SOURCE_URL "https://github.com/redis/hiredis/archive/${HIREDIS_ARCHIVE_REF}.tar.gz")
 set(NVCC_HDR_SOURCE_URL "https://github.com/FFmpeg/nv-codec-headers/releases/download/n${NVCC_HDR_SOURCE_REF}/nv-codec-headers-${NVCC_HDR_SOURCE_REF}.tar.gz")
-set(X264_SOURCE_URL "https://code.videolan.org/videolan/x264/-/archive/${X264_ARCHIVE_REF}.tar.bz2")
+# TODO: restore the official https://code.videolan.org/videolan/x264/-/archive/${X264_ARCHIVE_REF}.tar.bz2
+set(X264_SOURCE_URL "https://github.com/mirror/x264/archive/${X264_SOURCE_REF}.tar.gz")
 set(WEBP_SOURCE_URL "https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${WEBP_SOURCE_REF}.tar.gz")
 set(SPDLOG_SOURCE_URL "https://github.com/gabime/spdlog/archive/${SPDLOG_ARCHIVE_REF}.tar.gz")
 set(WHISPER_SOURCE_URL "https://github.com/ggml-org/whisper.cpp/archive/${WHISPER_ARCHIVE_REF}.tar.gz")
