@@ -26,6 +26,10 @@ namespace api
 {
 	namespace v1
 	{
+		// An event scheduled ahead of the media holds the stream's event channel
+		// until it is reached, so the reservation is bounded
+		static constexpr int64_t kMaxEventStartOffsetMs = 300000;
+
 		void StreamActionsController::PrepareHandlers()
 		{
 			RegisterPost(R"((hlsDumps))", &StreamActionsController::OnPostHLSDumps);
@@ -283,6 +287,7 @@ namespace api
 			//   "eventFormat": "id3v2",
 			//   "eventType": "video",
 			//	 "urgent": false,
+			//	 "startOffset": 3000,
 			//   "events":[
 			//       {
 			//         "frameType": "TXXX",
@@ -329,10 +334,42 @@ namespace api
 				throw http::HttpError(http::StatusCode::BadRequest, "eventFormat(string) and events(array) are required");
 			}
 
+			// startOffset (Optional, milliseconds) - schedules the event that far
+			// ahead of the position the media has reached now
+			int64_t start_offset_ms = 0;
+			if (request_body.isMember("startOffset") == true)
+			{
+				if (request_body["startOffset"].isInt64() == false)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "startOffset must be an integer in milliseconds");
+				}
+
+				start_offset_ms = request_body["startOffset"].asInt64();
+				if (start_offset_ms < 0)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "startOffset must not be negative");
+				}
+
+				if (start_offset_ms > kMaxEventStartOffsetMs)
+				{
+					throw http::HttpError(http::StatusCode::BadRequest, "startOffset must not exceed %" PRId64 " ms", kMaxEventStartOffsetMs);
+				}
+			}
+
+			// Every format shares one position, so an event carries the same time
+			// wherever it ends up
+			int64_t timestamp = source_stream->GetCurrentTimestampMs();
+			if (timestamp < 0)
+			{
+				throw http::HttpError(http::StatusCode::Conflict,
+									  "Media is not started yet: [%s/%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
+			}
+			timestamp += start_offset_ms;
+
 			cmn::BitstreamFormat event_format	  = cmn::BitstreamFormat::Unknown;
 			ov::String event_format_string		  = request_body["eventFormat"].asString().c_str();
 			std::shared_ptr<ov::Data> events_data = nullptr;
-			int64_t timestamp					  = -1;
 
 			if (event_format_string.UpperCaseString() == "ID3V2")
 			{

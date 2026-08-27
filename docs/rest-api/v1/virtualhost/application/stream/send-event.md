@@ -27,6 +27,7 @@ Authorization: Basic {credentials}
 {
   "eventFormat": "id3v2",
   "eventType": "video",
+  "startOffset": 0,
   "events":[
       {
         "frameType": "TXXX",
@@ -46,6 +47,9 @@ Authorization: Basic {credentials}
   Select one of event, video, and audio. event inserts an event into every track. 
   video inserts events only on tracks of video type. 
   audio inserts events only on tracks of audio type.
+# startOffset (Optional, Default : 0)
+  How long (in ms) from the current stream position to delay the event. 
+  Negative values are not allowed, and the maximum is 300000.
 # events
   It accepts only Json array format and can contain multiple events.
  
@@ -135,6 +139,23 @@ The given vhost name or app name could not be found.
 {
     "statusCode": 404,
     "message": "Could not find the application: [default/non-exists] (404)"
+}
+```
+
+</details>
+
+<details>
+
+<summary><span class="http-method http-method-409">409</span> Conflict</summary>
+
+The stream has not started sending media yet, so there is no position to place the event at.
+
+#### **Body**
+
+```json
+{
+    "statusCode": 409,
+    "message": "Media is not started yet: [default/app/stream] (409)"
 }
 ```
 
