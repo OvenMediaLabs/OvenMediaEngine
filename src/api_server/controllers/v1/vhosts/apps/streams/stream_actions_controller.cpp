@@ -362,7 +362,7 @@ namespace api
 			if (timestamp < 0)
 			{
 				throw http::HttpError(http::StatusCode::Conflict,
-									  "Media is not started yet: [%s/%s/%s]",
+									  "Media has not started yet: [%s/%s/%s]",
 									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
 			}
 			timestamp += start_offset_ms;

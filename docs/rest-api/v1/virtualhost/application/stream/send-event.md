@@ -155,7 +155,7 @@ The stream has not started sending media yet, so there is no position to place t
 ```json
 {
     "statusCode": 409,
-    "message": "Media is not started yet: [default/app/stream] (409)"
+    "message": "Media has not started yet: [default/app/stream] (409)"
 }
 ```
 
