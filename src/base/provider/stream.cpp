@@ -142,6 +142,20 @@ namespace pvd
 		return _max_generated_timestamp_ms;
 	}
 
+	bool Stream::ClaimEventTimestampMs(int64_t timestamp_ms)
+	{
+		ov::LockGuard lock(_timestamp_mutex);
+
+		if (timestamp_ms <= _last_event_timestamp_ms)
+		{
+			return false;
+		}
+
+		_last_event_timestamp_ms = timestamp_ms;
+
+		return true;
+	}
+
 	void Stream::UpdateLastTimestampStat(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<const MediaPacket> &packet)
 	{
 		if (track == nullptr ||

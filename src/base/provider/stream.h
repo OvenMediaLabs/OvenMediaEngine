@@ -86,6 +86,11 @@ namespace pvd
 
 		int64_t GetCurrentTimestampMs();
 
+		// Claims the position an event is placed at. Events are consumed in the
+		// order they are sent, so a position at or before the one already claimed
+		// is refused instead of being placed out of order
+		bool ClaimEventTimestampMs(int64_t timestamp_ms);
+
 
 	protected:
 		// Record the newest media position from a passing packet;
@@ -111,6 +116,9 @@ namespace pvd
 		std::atomic<int64_t> _last_media_timestamp_ms_hint{-1LL};
 		ov::StopWatch _elapsed_from_last_media_timestamp OV_GUARDED_BY(_timestamp_mutex);
 		int64_t _max_generated_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
+		// The furthest position an event has been placed at, so a later event
+		// never lands before it (see ClaimEventTimestampMs)
+		int64_t _last_event_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
 
 		Stream(const std::shared_ptr<pvd::Application> &application, StreamSourceType source_type);
 		Stream(const std::shared_ptr<pvd::Application> &application, info::stream_id_t stream_id, StreamSourceType source_type);

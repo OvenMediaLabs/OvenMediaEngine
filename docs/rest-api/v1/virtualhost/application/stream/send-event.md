@@ -49,7 +49,9 @@ Authorization: Basic {credentials}
   audio inserts events only on tracks of audio type.
 # startOffset (Optional, Default : 0)
   How long (in ms) from the current stream position to delay the event. 
-  Negative values are not allowed, and the maximum is 300000.
+  Negative values are not allowed, and the maximum is 300000. 
+  Events are placed in the order they are sent, so an event that would land 
+  at or before the previous one is refused.
 # events
   It accepts only Json array format and can contain multiple events.
  
@@ -148,7 +150,7 @@ The given vhost name or app name could not be found.
 
 <summary><span class="http-method http-method-409">409</span> Conflict</summary>
 
-The stream has not started sending media yet, so there is no position to place the event at.
+The stream has not started sending media yet, so there is no position to place the event at, or the event would land at or before one already sent.
 
 #### **Body**
 
@@ -156,6 +158,13 @@ The stream has not started sending media yet, so there is no position to place t
 {
     "statusCode": 409,
     "message": "Media has not started yet: [default/app/stream] (409)"
+}
+```
+
+```json
+{
+    "statusCode": 409,
+    "message": "An event is already placed at or after this position, so events must be sent in order: [default/app/stream] (409)"
 }
 ```
 

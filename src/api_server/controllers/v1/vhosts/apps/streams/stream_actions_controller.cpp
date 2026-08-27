@@ -422,6 +422,16 @@ namespace api
 				urgent = request_body["urgent"].asBool();
 			}
 
+			// Events are consumed in the order they are sent, so one must not be
+			// placed before an event already on its way. Claimed only once the
+			// request is known to be sound, so a refused request leaves no mark
+			if (source_stream->ClaimEventTimestampMs(timestamp) == false)
+			{
+				throw http::HttpError(http::StatusCode::Conflict,
+									  "An event is already placed at or after this position, so events must be sent in order: [%s/%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr(), stream->GetName().CStr());
+			}
+
 			if (source_stream->SendDataFrame(timestamp, event_format, event_type, events_data, urgent, true) == false)
 			{
 				throw http::HttpError(http::StatusCode::InternalServerError,
