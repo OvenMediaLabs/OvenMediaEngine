@@ -8,6 +8,10 @@
 //==============================================================================
 #include "alert.h"
 
+#include <algorithm>
+
+#include <modules/address/address_utilities.h>
+
 #include "../monitoring_private.h"
 #include "monitoring/monitoring.h"
 #include "notification.h"
@@ -20,6 +24,51 @@ namespace mon::alrt
 	Alert::~Alert()
 	{
 		Stop();
+	}
+
+	static Json::Value MakeServerInfo(const std::shared_ptr<const cfg::Server> &server_config)
+	{
+		Json::Value server_info;
+
+		server_info["serverID"] = server_config->GetID().CStr();
+
+		if (server_config->GetName().IsEmpty() == false)
+		{
+			server_info["serverName"] = server_config->GetName().CStr();
+		}
+
+		auto hostname = ov::Platform::GetHostname();
+		if (hostname.empty() == false)
+		{
+			server_info["hostname"] = hostname;
+		}
+
+		auto address_utilities = ov::AddressUtilities::GetInstance();
+
+		// The public IP addresses resolved from the stun server (if configured) come first,
+		// followed by the local interface addresses.
+		auto ip_list	= address_utilities->GetIPv4List();
+		auto ipv6_list	= address_utilities->GetIPv6List(false);
+		ip_list.insert(ip_list.end(), ipv6_list.begin(), ipv6_list.end());
+
+		Json::Value ip_addresses{Json::arrayValue};
+		std::vector<ov::String> appended;
+		for (const auto &ip : ip_list)
+		{
+			// A mapped address can also appear as a local interface address, so deduplicate
+			if (std::find(appended.begin(), appended.end(), ip) == appended.end())
+			{
+				appended.push_back(ip);
+				ip_addresses.append(ip.CStr());
+			}
+		}
+
+		if (ip_addresses.empty() == false)
+		{
+			server_info["ipAddresses"] = ip_addresses;
+		}
+
+		return server_info;
 	}
 
 	bool Alert::Start(const std::shared_ptr<const cfg::Server> &server_config)
@@ -50,6 +99,7 @@ namespace mon::alrt
 		}
 
 		_server_config = server_config;
+		_server_info   = MakeServerInfo(server_config);
 
 		_rules_updater = std::make_shared<AlertRulesUpdater>(alert);
 		_rules_updater->UpdateIfNeeded();
@@ -240,7 +290,7 @@ namespace mon::alrt
 
 			auto alert		  = _server_config->GetAlert();
 
-			auto message_body = notification_data->ToJsonString();
+			auto message_body = notification_data->ToJsonString(_server_info);
 			if (message_body.IsEmpty())
 			{
 				logte("Message body is empty");

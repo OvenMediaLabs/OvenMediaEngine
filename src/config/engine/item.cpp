@@ -201,9 +201,13 @@ namespace cfg
 		{
 			logat("[%s] Rebuilding a list of children (last: %p, current: %p)", _item_name.ToString().CStr(), _last_target, this);
 
-			_last_target = this;
-
 			MakeList();
+
+			// Commit the guard only after `MakeList()` succeeds, so a throw leaves the guard untouched
+			// and the next call reruns the rebuild from scratch instead of treating the partially built
+			// child list as complete. (`MakeList()` implementations must not re-enter
+			// `RebuildListIfNeeded()` on the same item - they only call `Register()`.)
+			_last_target = this;
 		}
 	}
 
@@ -224,6 +228,58 @@ namespace cfg
 		std::shared_ptr<const Child> prev_child;
 		auto name = child->GetItemName();
 
+		// All validations run before any mutation, so a throw never leaves the maps
+		// and _children inconsistent with each other
+		if (name.deprecated_json_name.IsEmpty() == false)
+		{
+			// The deprecated JSON alias is restricted to scalar leaf values:
+			// an Attribute value lives under "$" so the alias lookup never matches it,
+			// a List child propagates the alias name into the element DataSources
+			// and `IsSourceOf()` silently drops every element,
+			// and an Item child is rejected as well because no use case needs that path and it is untested.
+			const auto type = child->GetType();
+
+			if (IsScalarValueType(type) == false)
+			{
+				// Fail loudly in every build.
+				// `ValidateOmitJsonNameRules()` at startup rebuilds every item type reachable from cfg::Server,
+				// so an invalid registration in that tree refuses server startup;
+				// a standalone-loaded item root would fail lazily at its first rebuild instead.
+				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s is not supported for this value type: %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), StringFromValueType(type));
+			}
+
+			if (name.deprecated_json_name == name.json_name)
+			{
+				// An alias identical to the canonical name would make every legitimate use of the key
+				// log a bogus "deprecated key is ignored" warning
+				throw CreateConfigError("The deprecated JSON alias of %s must differ from its JSON name \"%s\"", name.ToString().CStr(), name.json_name.CStr());
+			}
+
+			// A deprecated alias must not collide with a JSON key that another child already uses,
+			// whether as its canonical name or as its own alias. Compare by ItemName, not by pointer,
+			// because MakeList() reruns re-register the same logical child with a fresh instance.
+			auto existing = _children_for_json.find(name.deprecated_json_name);
+			if ((existing != _children_for_json.end()) &&
+				((existing->second->GetItemName() == name) == false))
+			{
+				throw CreateConfigError("The deprecated JSON alias \"%s\" of %s conflicts with a JSON key already used by %s", name.deprecated_json_name.CStr(), name.ToString().CStr(), existing->second->GetItemName().ToString().CStr());
+			}
+		}
+
+		// The iterator is reused for the insert below; the dedup loop only touches _children,
+		// so it stays valid
+		auto existing_json_entry = _children_for_json.find(name.json_name);
+
+		// A canonical name must not displace another child's deprecated alias:
+		// the same JSON key would then feed two children (one directly, one via the alias fallback)
+		// with no diagnostic anywhere
+		if ((existing_json_entry != _children_for_json.end()) &&
+			((existing_json_entry->second->GetItemName() == name) == false) &&
+			(existing_json_entry->second->GetItemName().deprecated_json_name == name.json_name))
+		{
+			throw CreateConfigError("The JSON name \"%s\" of %s conflicts with the deprecated alias of %s", name.json_name.CStr(), name.ToString().CStr(), existing_json_entry->second->GetItemName().ToString().CStr());
+		}
+
 		for (auto child_iterator = _children.begin(); child_iterator != _children.end(); ++child_iterator)
 		{
 			auto &child = *child_iterator;
@@ -236,7 +292,22 @@ namespace cfg
 		}
 
 		_children_for_xml.insert_or_assign(name.xml_name, child);
-		_children_for_json.insert_or_assign(name.json_name, child);
+
+		if (existing_json_entry != _children_for_json.end())
+		{
+			existing_json_entry->second = child;
+		}
+		else
+		{
+			_children_for_json.emplace(name.json_name, child);
+		}
+
+		if (name.deprecated_json_name.IsEmpty() == false)
+		{
+			// Register the deprecated JSON name as well so that the unknown item check accepts it
+			_children_for_json.insert_or_assign(name.deprecated_json_name, child);
+		}
+
 		_children.push_back(child);
 
 		if (prev_child != nullptr)
@@ -359,7 +430,7 @@ namespace cfg
 	{
 		RebuildListIfNeeded();
 
-		auto child_path = item_path.IsEmpty() ? name : ov::String::FormatString("%s.%s", item_path.CStr(), name.CStr());
+		auto child_path = MakeChildPath(item_path, name);
 
 		// Check omit rule for children
 		for (const auto &child : _children)
@@ -646,7 +717,7 @@ namespace cfg
 						[[fallthrough]];
 					case ValueType::Attribute:
 						[[fallthrough]];
-					case ValueType::Text:
+					case ValueType::Text: {
 						if (original_value)
 						{
 							SetOriginalJsonValue(value_type, value, child_name, child->GetOriginalValue());
@@ -655,7 +726,23 @@ namespace cfg
 						{
 							SetCurrentJsonValue(value_type, value, child_name, child->GetMemberPointer());
 						}
+
+						auto &deprecated_json_name = child->GetItemName().deprecated_json_name;
+						if (deprecated_json_name.IsEmpty() == false)
+						{
+							// Emit the deprecated key with the same value during the deprecation window,
+							// so response-only readers keep working until the key is removed
+							if (original_value)
+							{
+								SetOriginalJsonValue(value_type, value, deprecated_json_name, child->GetOriginalValue());
+							}
+							else
+							{
+								SetCurrentJsonValue(value_type, value, deprecated_json_name, child->GetMemberPointer());
+							}
+						}
 						break;
+					}
 
 					case ValueType::Item: {
 						Item *child_item = nullptr;

@@ -16,7 +16,7 @@ namespace http
 		bool TableConnector::GetHeaderField(size_t index, HeaderField &header_field)
 		{
 			// StaticTable : 1 ~ 61
-			if (index < _static_table->GetNumberOfTableEntries())
+			if (index <= _static_table->GetNumberOfTableEntries())
 			{
 				return _static_table->GetHeaderField(index, header_field);
 			}

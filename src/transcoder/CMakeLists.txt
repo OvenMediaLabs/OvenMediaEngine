@@ -6,6 +6,7 @@ ome_add_static_library(transcoder
         analyzer
         filter
     DEPS
+        avif_container
         bitstream
         ffmpeg_wrapper
         monitoring

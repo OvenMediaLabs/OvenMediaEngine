@@ -92,6 +92,8 @@ bool MediaTrack::Update(const MediaTrack &media_track)
 	_resolution_conf = media_track._resolution_conf;
 	_b_frames = media_track._b_frames.load();
 	_colorspace = media_track._colorspace.load();
+	_color_matrix = media_track._color_matrix.load();
+	_color_range = media_track._color_range.load();
 	_preset = media_track._preset;
 	_profile = media_track._profile;
 	_thread_count = media_track._thread_count.load();
@@ -717,7 +719,8 @@ bool MediaTrack::IsValid() const
 		break;
 		case MediaCodecId::Jpeg:
 		case MediaCodecId::Png:
-		case MediaCodecId::Webp: {
+		case MediaCodecId::Webp:
+		case MediaCodecId::Avif: {
 			if (IsValidResolution() && IsValidTimeBase())
 			{
 				_is_valid = true;
@@ -831,6 +834,13 @@ double MediaTrack::GetKeyFrameInterval() const
 
 double MediaTrack::GetKeyframeIntervalDurationMs() const
 {
+	// A TIME interval is already milliseconds, and it only ever comes from the
+	// configuration; the resolved getter falls back to a measured frame count
+	if (GetKeyFrameIntervalTypeByConfig() == cmn::KeyFrameIntervalType::TIME)
+	{
+		return GetKeyFrameIntervalByConfig();
+	}
+
 	double keyframe_interval = std::ceil(GetKeyFrameInterval());
 	double framerate = std::ceil(GetFrameRate());
 

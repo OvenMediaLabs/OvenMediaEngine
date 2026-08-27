@@ -8,9 +8,9 @@
 //==============================================================================
 #include "cue_event.h"
 
-std::shared_ptr<CueEvent> CueEvent::Create(CueType cue_type, uint32_t duration_sec, uint32_t elapsed_msec)
+std::shared_ptr<CueEvent> CueEvent::Create(CueType cue_type, uint32_t duration_sec, uint32_t elapsed_msec, bool provisional)
 {
-	return std::make_shared<CueEvent>(cue_type, duration_sec, elapsed_msec);
+	return std::make_shared<CueEvent>(cue_type, duration_sec, elapsed_msec, provisional);
 }
 
 std::shared_ptr<CueEvent> CueEvent::Parse(const std::shared_ptr<const ov::Data> &data)
@@ -22,7 +22,8 @@ std::shared_ptr<CueEvent> CueEvent::Parse(const std::shared_ptr<const ov::Data> 
 
 	ov::ByteStream stream(data);
 
-	if (data->GetLength() != 9)
+	// The provisional flag is appended only when set; older payloads are 9 bytes
+	if (data->GetLength() != 9 && data->GetLength() != 10)
 	{
 		return nullptr;
 	}
@@ -42,7 +43,13 @@ std::shared_ptr<CueEvent> CueEvent::Parse(const std::shared_ptr<const ov::Data> 
 	uint32_t duration_msec = stream.ReadBE32();
 	uint32_t elapsed_msec = stream.ReadBE32();
 
-	return Create(cue_type, duration_msec, elapsed_msec);
+	bool provisional = false;
+	if (data->GetLength() == 10)
+	{
+		provisional = stream.Read8() == 1;
+	}
+
+	return Create(cue_type, duration_msec, elapsed_msec, provisional);
 }
 
 CueEvent::CueType CueEvent::GetCueTypeByName(ov::String type)
@@ -63,20 +70,28 @@ CueEvent::CueType CueEvent::GetCueTypeByName(ov::String type)
 	return CueType::Unknown;
 }
 
-CueEvent::CueEvent(CueType cue_type, uint32_t duration_sec, uint32_t elapsed_msec)
+CueEvent::CueEvent(CueType cue_type, uint32_t duration_sec, uint32_t elapsed_msec, bool provisional)
 {
 	_cue_type = cue_type;
 	_duration_msec = duration_sec;
 	_elapsed_msec = elapsed_msec;
+	_provisional = provisional;
 }
 
 std::shared_ptr<ov::Data> CueEvent::Serialize() const
 {
-	ov::ByteStream stream(5);
+	ov::ByteStream stream(10);
 
 	stream.Write8(static_cast<uint8_t>(_cue_type));
 	stream.WriteBE32(_duration_msec);
 	stream.WriteBE32(_elapsed_msec);
+
+	// Appended only when set, so unrelated events stay wire-identical to
+	// older versions
+	if (_provisional == true)
+	{
+		stream.Write8(1);
+	}
 
 	return stream.GetDataPointer();
 }
@@ -109,4 +124,9 @@ uint32_t CueEvent::GetDurationMsec() const
 uint32_t CueEvent::GetElapsedMsec() const
 {
 	return _elapsed_msec;
+}
+
+bool CueEvent::IsProvisional() const
+{
+	return _provisional;
 }

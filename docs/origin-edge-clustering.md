@@ -255,7 +255,7 @@ This means that existing settings do not need to be updated when extending Origi
         </RedisServer>
         
         <!-- This is only needed for the origin server and used to register the ovt address of the stream.  -->
-        <OriginHostName>ome-dev.ovenmedialabs.com</OriginHostName>
+        <OriginHostName>ome-dev.ovenmedia.com</OriginHostName>
     </OriginMapStore>
     ...
 </VirtualHost>

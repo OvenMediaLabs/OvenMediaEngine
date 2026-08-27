@@ -34,10 +34,16 @@ namespace mon::alrt
 	{
 	}
 
-	ov::String NotificationData::ToJsonString() const
+	ov::String NotificationData::ToJsonString(const Json::Value &server_info) const
 	{
 		// Make request message
 		Json::Value jv_root;
+
+		// Server info
+		if (server_info.isNull() == false)
+		{
+			jv_root["serverInfo"] = server_info;
+		}
 
 		// Type
 		jv_root["type"] = StringFromType(_type);

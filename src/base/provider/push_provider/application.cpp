@@ -27,20 +27,55 @@ namespace pvd
 			return false;
 		}
 
-		int packet_silence_timeout_ms = 0;
-		auto cfg_provider_list = GetConfig().GetProviders().GetProviderList();
-		for (const auto &cfg_provider : cfg_provider_list)
-		{
-			if (cfg_provider->GetType() == GetParentProvider()->GetProviderType())
-			{
-				packet_silence_timeout_ms = cfg_provider->GetPacketSilenceTimeoutMs();
-				break;
-			}
-		}
-		
-		stream->SetPacketSilenceTimeoutMs(packet_silence_timeout_ms);
+		stream->SetPacketSilenceTimeoutMs(GetConfiguredPacketSilenceTimeoutMs(GetParentProvider()->GetProviderType()));
 
 		return AddStream(stream);
+	}
+
+	time_t PushApplication::GetConfiguredPacketSilenceTimeoutMs(ProviderType provider_type, bool *is_configured)
+	{
+		if (is_configured != nullptr)
+		{
+			*is_configured = false;
+		}
+
+		for (const auto &provider_cfg : GetConfig().GetProviders().GetProviderList())
+		{
+			if (provider_cfg->GetType() == provider_type)
+			{
+				if (is_configured != nullptr)
+				{
+					*is_configured = provider_cfg->IsPacketSilenceTimeoutMsConfigured();
+				}
+
+				return provider_cfg->GetPacketSilenceTimeoutMs();
+			}
+		}
+
+		return 0;
+	}
+
+	time_t PushApplication::GetConfiguredFirstMediaWaitTimeoutMs(ProviderType provider_type, bool *is_configured)
+	{
+		if (is_configured != nullptr)
+		{
+			*is_configured = false;
+		}
+
+		for (const auto &provider_cfg : GetConfig().GetProviders().GetProviderList())
+		{
+			if (provider_cfg->GetType() == provider_type)
+			{
+				if (is_configured != nullptr)
+				{
+					*is_configured = provider_cfg->IsFirstMediaWaitTimeoutMsConfigured();
+				}
+
+				return provider_cfg->GetFirstMediaWaitTimeoutMs();
+			}
+		}
+
+		return 0;
 	}
 
 	bool PushApplication::DeleteAllStreams()

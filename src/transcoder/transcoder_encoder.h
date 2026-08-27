@@ -62,6 +62,12 @@ public:
 	void SetEncoderId(int32_t encoder_id);
 	void SetCompleteHandler(CompleteHandler complete_handler);
 	void Complete(TranscodeResult result, std::shared_ptr<MediaPacket> packet);
+	// KeyframeGridRestore: a track change can shift the keyframe cadence (a
+	// reinitialized codec session opens with an immediate keyframe). When armed,
+	// one keyframe is forced where the previous cadence would have produced
+	// one, then the codec continues from there. FRAME mode mirrors the codec's
+	// own frame counting; TIME mode projects from the last keyframe timestamp.
+	void ArmKeyframeGridRestore();
 	std::shared_ptr<MediaTrack> &GetRefTrack();
 	cmn::Timebase GetTimebase() const;
 
@@ -127,6 +133,9 @@ protected:
 	bool Reinitialize();
 	bool ComputeForceKeyframe(const std::shared_ptr<const MediaFrame> &frame);
 	void SetupForceKeyframeByTime();
+	bool ComputeKeyframeGridRestore(const std::shared_ptr<const MediaFrame> &frame);
+	bool ComputeTimeModeGridRestore(const std::shared_ptr<const MediaFrame> &frame, const std::shared_ptr<MediaTrack> &track);
+	bool ComputeFrameModeGridRestore(const std::shared_ptr<MediaTrack> &track);
 
 protected:
 	int32_t _encoder_id = -1;
@@ -147,4 +156,16 @@ protected:
 	int64_t _accumulate_frame_duration = -1;
 	// Time interval from the last inserted keyframe
 	int64_t _last_keyframe_delta_time = 0;
+
+	// KeyframeGridRestore state. The last output keyframe position is tracked
+	// in Complete(); the frame counter and the restore target are touched only
+	// by the codec thread. Arming is best-effort: a restore firing may absorb a
+	// re-arm racing in from another thread, and the next track change re-arms.
+	std::atomic<int64_t> _last_keyframe_pts{-1};
+	std::atomic<bool> _keyframe_grid_restore_armed{false};
+	int64_t _keyframe_grid_restore_target_pts = -1;
+	// FRAME mode cadence mirror. The value counts the frames of the current
+	// cadence cycle including its opening keyframe, so it rests at N right
+	// before the next cadence position.
+	int32_t _frames_since_cadence_keyframe = 0;
 };

@@ -1234,29 +1234,26 @@ bool TranscoderStream::CreateEncoders(std::shared_ptr<MediaFrame> buffer)
 
 bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<info::Stream> output_stream, std::shared_ptr<MediaTrack> output_track)
 {
-	bool is_recreated = false;
-
 	// Check if an identical encoder already exists.
+	// An encoder that must reinitialize its codec session on an input change
+	// (e.g. a hardware frame pool swap) detects it per frame on its own thread
+	// (NeedReinitForFrame), so no encoder is ever torn down here.
 	if (auto encoder = GetEncoder(encoder_id); encoder != nullptr)
 	{
-		if (encoder->GetModuleID() == cmn::MediaCodecModuleId::NVENC)
+		logtd("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
+
+		// This track reuses an identical encoder that was previously created.
+		// No new encoder is created; only encoder-related information is updated on the track
+		UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
+
+		// The track change behind this call may have disturbed the pipeline
+		// (decoder or filter recreation); restore the keyframe cadence once
+		if (output_track->GetMediaType() == cmn::MediaType::Video)
 		{
-			logtd("%s Identical encoder already exists. but, it will be recreated because the encoder is %s. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), cmn::GetCodecModuleIdString(encoder->GetModuleID()), encoder_id, output_track->GetId());
-			encoder->Stop();
-			encoder.reset();
-
-			is_recreated = true;
+			encoder->ArmKeyframeGridRestore();
 		}
-		else
-		{
-			logtd("%s Identical encoder already exists; reusing existing instance. Encoder(%d) -> OutputTrack(%d)", _log_prefix.CStr(), encoder_id, output_track->GetId());
 
-			// This track reuses an identical encoder that was previously created.
-			// No new encoder is created; only encoder-related information is updated on the track
-			UPDATE_OUTPUT_TRACK_CODEC_INFO(output_track, encoder);
-
-			return true;
-		}
+		return true;
 	}
 
 	// Get a list of available encoder candidates(modules)
@@ -1338,14 +1335,7 @@ bool TranscoderStream::CreateEncoder(MediaTrackId encoder_id, std::shared_ptr<in
 			break;
 	}
 
-	if (is_recreated)
-	{
-		logtd("%s Encoder has been recreated. %s", _log_prefix.CStr(), description.CStr());
-	}
-	else
-	{
-		logtd("%s Encoder has been created. %s", _log_prefix.CStr(), description.CStr());
-	}
+	logtd("%s Encoder has been created. %s", _log_prefix.CStr(), description.CStr());
 
 	return true;
 }
@@ -1549,6 +1539,8 @@ void TranscoderStream::UpdateInputTrack(std::shared_ptr<MediaFrame> buffer)
 		case cmn::MediaType::Video: {
 			input_track->SetResolution(buffer->GetWidth(), buffer->GetHeight());
 			input_track->SetColorspace(buffer->GetFormat<cmn::VideoPixelFormatId>());
+			input_track->SetColorMatrix(buffer->GetColorMatrix());
+			input_track->SetColorRange(buffer->GetColorRange());
 		}
 		break;
 		case cmn::MediaType::Audio: {
@@ -1629,7 +1621,7 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 	// No pipeline rebuild here: every element handles the change at its own
 	// consumption position without losing queued data. The decoder re-inits on an
 	// in-band format change (GetFramedPacket), the filter re-inits when the frame
-	// format changes (IsNeedUpdate), and encoders are rewired by ChangeOutputFormat.
+	// format changes (IsFormatChanged), and encoders are rewired by ChangeOutputFormat.
 	// Bypass tracks are re-parsed by the outbound mediarouter.
 	logti("%s Input track(%d) configuration has been changed. version(%u) -> version(%u)",
 		  _log_prefix.CStr(), track_id, current->GetVersion(), packet_track->GetVersion());
@@ -1678,13 +1670,26 @@ void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, cons
 
 	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
 	{
-		logte("%s Failed to recreate decoder for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
-			  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
+		logte("%s Failed to recreate decoder for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+			  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
+			  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
+
+#if NOTIFICATION_ENABLED
+		TranscoderAlerts::UpdateErrorWithoutCount(
+			TranscoderAlerts::ErrorType::CREATION_ERROR_DECODER,
+			nullptr,
+			_input_stream,
+			input_track,
+			nullptr,
+			nullptr);
+#endif
+
 		return;
 	}
 
-	logti("%s Decoder has been recreated for the changed codec. Id(%d), InputTrack(%d), Codec(%s)",
-		  _log_prefix.CStr(), decoder_id.value(), track_id, cmn::GetCodecIdString(input_track->GetCodecId()));
+	logti("%s Decoder has been recreated for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+		  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
+		  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
 }
 
 void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
@@ -1718,9 +1723,15 @@ void TranscoderStream::BypassPacket(const std::shared_ptr<MediaPacket> &packet)
 		auto packet_track = packet->GetTrack();
 		auto input_timebase = (packet_track != nullptr) ? packet_track->GetTimeBase() : input_track->GetTimeBase();
 
-		double scale = input_timebase.GetExpr() / output_track->GetTimeBase().GetExpr();
-		clone->SetPts(static_cast<int64_t>((double)clone->GetPts() * scale));
-		clone->SetDts(static_cast<int64_t>((double)clone->GetDts() * scale));
+		// Rescale with integers: the double scale is inexact for common ratios
+		// (e.g. 48000 -> 90000 gives 1.8749999999999998) and the cast truncates instead of
+		// rounding, so packets can land a tick off (48000 -> 90000 is worst-case: always 1 tick low).
+		const cmn::Rational input_tb(input_timebase.GetNum(), input_timebase.GetDen());
+		const cmn::Rational output_tb(output_track->GetTimeBase().GetNum(), output_track->GetTimeBase().GetDen());
+
+		clone->SetPts(clone->GetPts() != -1L ? cmn::Rational::Rescale(clone->GetPts(), input_tb, output_tb) : -1L);
+		clone->SetDts(clone->GetDts() != -1L ? cmn::Rational::Rescale(clone->GetDts(), input_tb, output_tb) : -1L);
+
 		clone->SetTrackId(output_track->GetId());
 
 		SendFrame(output_stream, std::move(clone));

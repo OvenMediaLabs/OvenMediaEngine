@@ -57,7 +57,7 @@ bool FilterLavfiRescaler::BuildDescription(ov::String &desc)
 			desc.Clear();
 		}
 		break;
-		case cmn::MediaCodecModuleId::NILOGAN:	
+		case cmn::MediaCodecModuleId::NETINT:	
 		default: {
 			logtw("Unsupported input module: %s", cmn::GetCodecModuleIdString(input_module_id));
 			desc.Clear();
@@ -80,6 +80,8 @@ bool FilterLavfiRescaler::InitializeSourceFilter()
 	src_params.push_back(ov::String::FormatString("pix_fmt=%s", ffmpeg::compat::GetAVPixelFormatName(ffmpeg::compat::ToAVPixelFormat(_src_pixfmt)).CStr()));
 	src_params.push_back(ov::String::FormatString("time_base=%s", _input_track->GetTimeBase().GetStringExpr().CStr()));
 	src_params.push_back(ov::String::FormatString("pixel_aspect=%d/%d", 1, 1));
+	src_params.push_back(ov::String::FormatString("colorspace=%d", static_cast<int32_t>(ffmpeg::compat::ToAVColorSpace(_input_track->GetColorMatrix()))));
+	src_params.push_back(ov::String::FormatString("range=%d", static_cast<int32_t>(ffmpeg::compat::ToAVColorRange(_input_track->GetColorRange()))));
 
 	_src_args = ov::String::Join(src_params, ":");
 
@@ -215,14 +217,6 @@ bool FilterLavfiRescaler::Initialize()
 		return false;
 	}
 
-#if _SKIP_FRAMES_ENABLED
-	// Set initial Skip Frames
-	_skip_frames_conf = _output_track->GetSkipFramesByConfig();
-	_skip_frames	  = _skip_frames_conf;
-#endif
-
-	_is_first_frame = true;
-
 	SetState(State::STARTED);
 
 	return true;
@@ -329,8 +323,6 @@ std::shared_ptr<MediaFrame> FilterLavfiRescaler::ReceiveFrame()
 			continue;
 		}
 
-		// Convert duration to output track timebase
-		output_frame->SetDuration((int64_t)((double)output_frame->GetDuration() * _input_track->GetTimeBase().GetExpr() / _output_track->GetTimeBase().GetExpr()));
 		output_frame->SetSourceId(_source_id);
 
 #if _SIMULATE_PROCESSING_DELAY_ENABLED

@@ -154,7 +154,7 @@ You can dump the LLHLS stream for VoD. You can enable it by setting the followin
                 <Playlist>abr.m3u8</Playlist>
             </Playlists>
     
-            <OutputPath>/service/www/ome-dev.ovenmedialabs.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
+            <OutputPath>/service/www/ome-dev.ovenmedia.com/html/${VHostName}_${AppName}_${StreamName}/${YYYY}_${MM}_${DD}_${hh}_${mm}_${ss}</OutputPath>
         </Dump>
     </Dumps>
     ...
@@ -271,13 +271,6 @@ To assign labels to audio signals in the SRT Provider, configure the `<AudioMap>
 OvenMediaEngine encrypts LLHLS streams with Common Encryption (CENC) and signals the keys in the playlists, so players can obtain a license and decrypt the content. Widevine, FairPlay and PlayReady are supported.
 
 Encryption keys are described in a separate DRM info file, which lets you apply different keys to different streams and change them without editing `Server.xml`.
-
-
-:::warning
-
-Only H.264 video and AAC audio are encrypted. A track of any other codec is delivered without encryption, so a stream that has to be fully protected must be transcoded to H.264 and AAC.
-
-:::
 
 
 ### Enabling DRM

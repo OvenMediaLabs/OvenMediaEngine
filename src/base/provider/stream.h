@@ -8,6 +8,9 @@
 //==============================================================================
 #pragma once
 
+#include <map>
+#include <mutex>
+
 #include <base/common_types.h>
 #include <base/info/stream.h>
 #include <base/ovlibrary/lip_sync_clock.h>
@@ -83,7 +86,32 @@ namespace pvd
 
 		int64_t GetCurrentTimestampMs();
 
+
 	protected:
+		// Record the newest media position from a passing packet;
+		// GetCurrentTimestampMs answers from it (called from SendFrame,
+		// separated for testing)
+		void UpdateLastTimestampStat(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<const MediaPacket> &packet);
+
+		// A track going this far back against its own previous position is a
+		// restarted source, not jitter
+		static constexpr int64_t kClockReanchorThresholdMs = 10000;
+
+		// The newest position of each track on its own, so a restart is told
+		// apart from a track that simply runs behind the others
+		std::mutex _track_timestamp_guard;
+		std::map<uint32_t, int64_t> _last_track_timestamp_ms;
+
+		// The newest dts (ms) over every media track, plus the wall time passed
+		// since it arrived (see GetCurrentTimestampMs)
+		mutable ov::Mutex _timestamp_mutex;
+		int64_t _last_media_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
+		// Lock-free mirror of _last_media_timestamp_ms so packets that do not
+		// advance the clock skip the mutex on the ingest hot path
+		std::atomic<int64_t> _last_media_timestamp_ms_hint{-1LL};
+		ov::StopWatch _elapsed_from_last_media_timestamp OV_GUARDED_BY(_timestamp_mutex);
+		int64_t _max_generated_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
+
 		Stream(const std::shared_ptr<pvd::Application> &application, StreamSourceType source_type);
 		Stream(const std::shared_ptr<pvd::Application> &application, info::stream_id_t stream_id, StreamSourceType source_type);
 		Stream(const std::shared_ptr<pvd::Application> &application, const info::Stream &stream_info);
@@ -111,7 +139,7 @@ namespace pvd
 		bool ChangeTrack(const std::shared_ptr<MediaTrack> &new_track);
 
 		bool SetState(State state);
-		bool SendFrame(const std::shared_ptr<MediaPacket> &packet);
+		virtual bool SendFrame(const std::shared_ptr<MediaPacket> &packet);
 
 		int64_t AdjustTimestampByBase(uint32_t track_id, int64_t &pts, int64_t &dts, int64_t max_timestamp, int64_t duration = 0);
 
@@ -181,10 +209,6 @@ namespace pvd
 		ov::StopWatch						_first_rtp_received_time;
 
 		mutable ov::Mutex _source_stream_timestamp_mutex;
-		mutable ov::Mutex _timestamp_mutex;
-		int64_t _last_media_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
-		ov::StopWatch _elapsed_from_last_media_timestamp OV_GUARDED_BY(_timestamp_mutex);
-		int64_t _max_generated_timestamp_ms OV_GUARDED_BY(_timestamp_mutex) = -1LL;
 
 		std::shared_ptr<pvd::Application> _application = nullptr;
 	};

@@ -130,6 +130,21 @@ TEST(BitReader, ReadBitsAcrossBytes)
 	EXPECT_EQ(val, 0x03u);  // 0b 0_0000_0011
 }
 
+TEST(BitReader, ReadPastTheEndOfAPartiallyConsumedByteFails)
+{
+	const uint8_t buf[] = {0x03, 0x84, 0x0C};
+	BitReader r(buf, sizeof(buf));
+
+	uint32_t delay = 0;
+	ASSERT_TRUE(r.ReadBits(16, delay));
+	ASSERT_TRUE(r.ReadBits(6, delay));
+
+	// 2 bits left, so a 4 bit read has to fail instead of reading one byte past the buffer
+	uint8_t nibble = 0;
+	EXPECT_FALSE(r.ReadBits(4, nibble));
+	EXPECT_EQ(r.BitsRemained(), 2u);
+}
+
 // ---------------------------------------------------------------------------
 // ReadString
 // ---------------------------------------------------------------------------

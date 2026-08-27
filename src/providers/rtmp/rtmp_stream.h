@@ -37,6 +37,7 @@ namespace pvd
 		~RtmpStream() final;
 
 		bool Stop() override;
+		void CloseTransport() override;
 
 		// bool ConvertToVideoData(const std::shared_ptr<ov::Data> &data, int64_t &cts);
 		// bool ConvertToAudioData(const std::shared_ptr<ov::Data> &data);

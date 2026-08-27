@@ -12,7 +12,7 @@
 using namespace cmn;
 
 #define PTS_INCREMENT_LIMIT 15
-#define MAX_QUEUE_SIZE 5
+#define MAX_QUEUE_SIZE 2
 #define ENABLE_QUEUE_EXCEED_WAIT true
 
 TranscodeFilter::TranscodeFilter()
@@ -148,7 +148,14 @@ std::shared_ptr<FilterBase> TranscodeFilter::CreateBaseFilter()
 	base->SetInputTrack(GetInputTrack());
 	base->SetOutputStreamInfo(GetOutputStreamInfo());
 	base->SetOutputTrack(GetOutputTrack());
-	base->SetSourceId(ov::Random::GenerateInt32());
+
+	// 0 is the encoders' "no frame seen yet" sentinel, so never assign it as an id
+	int32_t source_id = 0;
+	while (source_id == 0)
+	{
+		source_id = ov::Random::GenerateInt32();
+	}
+	base->SetSourceId(source_id);
 
 	// Fault Injection for testing
 	if (TranscodeFaultInjector::GetInstance()->IsEnabled() && (GetInputStreamInfo() != GetOutputStreamInfo()))
@@ -187,6 +194,10 @@ bool TranscodeFilter::Initialize()
 	}
 
 	ov::LockGuard lock(_mutex);
+	if (_filter_base != nullptr)
+	{
+		base->InheritContinuity(_filter_base.get());
+	}
 	_filter_base = base;
 
 	return true;
@@ -215,6 +226,16 @@ void TranscodeFilter::ThreadLoop()
 		// Recreate the (Rescaler/Resampler) filter if needed.
 		if (_setup_pending.exchange(false) == true)
 		{
+			// The outgoing filter still parks a frame in its FPS queue; deliver it
+			// before the swap or one output frame is lost at every boundary
+			if (auto old_base = GetBaseFilter(); old_base != nullptr)
+			{
+				for (auto &flushed_frame : old_base->FlushBuffered())
+				{
+					OnComplete(TranscodeResult::DataReady, std::move(flushed_frame));
+				}
+			}
+
 			if (Initialize() == false)
 			{
 				logte("[%s] Failed to reconfigure filter", _input_stream_info->GetUri().CStr());
@@ -227,6 +248,33 @@ void TranscodeFilter::ThreadLoop()
 		if (base == nullptr)
 		{
 			continue;
+		}
+
+		// The input format is compared per frame at the consumption position, so a
+		// format change is applied exactly at its boundary frame even when frames
+		// of the previous format are still queued behind it.
+		if (IsFormatChanged(base, media_frame) == true)
+		{
+			// Deliver the frame parked in the outgoing filter before the swap
+			for (auto &flushed_frame : base->FlushBuffered())
+			{
+				OnComplete(TranscodeResult::DataReady, std::move(flushed_frame));
+			}
+
+			UpdateInputTrackByFrame(base, media_frame);
+
+			if (Initialize() == false)
+			{
+				logte("[%s] Failed to reconfigure filter", _input_stream_info->GetUri().CStr());
+
+				break;
+			}
+
+			base = GetBaseFilter();
+			if (base == nullptr)
+			{
+				continue;
+			}
 		}
 
 		// Feed the frame into the filter graph.
@@ -243,12 +291,33 @@ void TranscodeFilter::ThreadLoop()
 		while (!_kill_flag)
 		{
 			auto recv = base->PopCompletedFrameInternal();
-			if (recv.result == TranscodeResult::Again)
+			if (recv.result == TranscodeResult::DataReady)
 			{
+				OnComplete(recv.result, std::move(recv.frame));
+
+				// Keep draining to check whether more frames are pending.
+				continue;
+			}
+			else if (recv.result == TranscodeResult::Again)
+			{
+				// The filter has no more frames to hand over; leave the loop.
 				break;
 			}
+			else if (recv.result == TranscodeResult::DataError)
+			{
+				logte("[%s] Error occurred while draining filtered frames. reason(%s)", _input_stream_info->GetUri().CStr(), recv.error.CStr());
 
-			OnComplete(recv.result, std::move(recv.frame));
+				// Report the error, then stop draining rather than asking the filter
+				// again - it would keep returning the same error.
+				OnComplete(recv.result, std::move(recv.frame));
+				break;
+			}
+			else
+			{
+				// Unhandled result; leave the loop rather than spinning forever.
+				logtw("[%s] Unexpected result while draining filtered frames. result(%d)", _input_stream_info->GetUri().CStr(), static_cast<int32_t>(recv.result));
+				break;
+			}
 		}
 	}
 }
@@ -274,6 +343,12 @@ void TranscodeFilter::Stop()
 
 bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 {
+	if (IsReadyToProcess() == false)
+	{
+		return false;
+	}
+
+	// Check if the filter needs to be updated
 	if (IsNeedUpdate(buffer) == true)
 	{
 		logtd("[%s] Filter needs to be updated. reinitialize the filter. track:%u, pts:%" PRId64,
@@ -282,14 +357,54 @@ bool TranscodeFilter::SendBuffer(std::shared_ptr<MediaFrame> buffer)
 		_setup_pending = true;
 	}
 
+	// Enqueue the buffer to the input buffer queue for processing by the worker thread.
 	_input_buffer.Enqueue(std::move(buffer));
+
+	return true;
+}
+
+bool TranscodeFilter::IsReadyToProcess()
+{
+	ov::SharedLockGuard lock(_mutex);
+
+	if (_filter_base == nullptr)
+	{
+		// This case can only occur if the TranscoderFilter object has been destroyed, so it
+		// should not happen. However, we handle the exception just in case.
+		return false;
+	}
+
+	auto state = _filter_base->GetState();
+	if (state == FilterBase::State::ERROR)
+	{
+		// Reported once per failure. Frames are rejected from here on and the worker stops
+		// reporting, so this is the last signal that the track went dark.
+		if (_failure_reported.exchange(true) == false)
+		{
+			logtw("[%s] Filter has failed, so frames are dropped from now on. track:%u",
+				  _input_stream_info->GetUri().CStr(), GetInputTrack()->GetId());
+		}
+
+		return false;
+	}
+
+	if (state == FilterBase::State::STOPPED)
+	{
+		// Expected while the filter is being torn down.
+		logtd("[%s] Filter is not ready to process frames. track:%u",
+			  _input_stream_info->GetUri().CStr(), GetInputTrack()->GetId());
+
+		return false;
+	}
+
+	_failure_reported = false;
 
 	return true;
 }
 
 bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 {
-	ov::SharedLockGuard lock(_mutex);
+	ov::LockGuard lock(_mutex);
 
 	// Single track(paired with encoder) does not need to be updated.
 	if (_filter_base == nullptr || _filter_base->IsSingleTrack() == true)
@@ -319,53 +434,9 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 		return true;
 	}
 
-	// Check #2 - Resolution changed. but, this is not warned because it can be a normal case.
-	if (GetInputTrack()->GetMediaType() == MediaType::Video)
-	{
-		if (buffer->GetWidth() != (int32_t)_filter_base->GetInputWidth() ||
-			buffer->GetHeight() != (int32_t)_filter_base->GetInputHeight())
-		{
-			logtd("[%s] input video frame resolution has been changed. track:%u. Size:%dx%d -> %dx%d",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId(),
-				  _filter_base->GetInputWidth(),
-				  _filter_base->GetInputHeight(),
-				  buffer->GetWidth(),
-				  buffer->GetHeight());
-
-			GetInputTrack()->SetResolution(buffer->GetWidth(), buffer->GetHeight());
-
-			return true;
-		}
-	}
-
-	// Check #2-audio - Input audio properties changed (e.g. a scheduled item switch).
-	// The audio buffer source rejects mismatched frames, so the filter must be rebuilt.
-	if (GetInputTrack()->GetMediaType() == MediaType::Audio)
-	{
-		if (buffer->GetSampleRate() != _filter_base->GetInputSampleRate() ||
-			buffer->GetChannels().GetLayout() != _filter_base->GetInputChannelLayout() ||
-			buffer->GetFormat<cmn::AudioSample::Format>() != _filter_base->GetInputSampleFormat())
-		{
-			logtd("[%s] input audio frame properties have been changed. track:%u. %dHz/%s -> %dHz/%s",
-				  _input_stream_info->GetUri().CStr(),
-				  GetInputTrack()->GetId(),
-				  _filter_base->GetInputSampleRate(),
-				  cmn::AudioChannel::GetLayoutName(_filter_base->GetInputChannelLayout()),
-				  buffer->GetSampleRate(),
-				  buffer->GetChannels().GetName());
-
-			GetInputTrack()->SetSampleRate(buffer->GetSampleRate());
-			GetInputTrack()->SetChannel(buffer->GetChannels());
-			GetInputTrack()->SetSampleFormat(buffer->GetFormat<cmn::AudioSample::Format>());
-
-			return true;
-		}
-	}
-
-	// Check #3 - Filter error state
-	//  When using an XMA scaler, resource allocation failures may occur intermittently.
-	//  Avoid problems in this way until the underlying problem is resolved.
+	// Check #2 - Filter error state
+	//  Rarely reached, because SendBuffer() already rejects frames in the ERROR state.
+	//  TODO(Keukhan): Will be removed together with the XMA code.
 	if (_filter_base->GetState() == FilterBase::State::ERROR &&
 		GetInputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA &&
 		GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
@@ -379,6 +450,86 @@ bool TranscodeFilter::IsNeedUpdate(std::shared_ptr<MediaFrame> buffer)
 	return false;
 }
 
+bool TranscodeFilter::IsFormatChanged(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame) const
+{
+	// Single track(paired with encoder) does not need to be updated.
+	if (base->IsSingleTrack() == true)
+	{
+		return false;
+	}
+
+	switch (frame->GetMediaType())
+	{
+		case MediaType::Video:
+			// The pixel format is compared with the decoder-side label, so hardware
+			// frames (e.g. CUDA) do not falsely mismatch the downloaded host format
+			return (frame->GetWidth() != base->GetInputWidth() ||
+					frame->GetHeight() != base->GetInputHeight() ||
+					frame->GetFormat<cmn::VideoPixelFormatId>() != base->GetInputFramePixelFormat() ||
+					frame->GetColorMatrix() != base->GetInputColorMatrix() ||
+					frame->GetColorRange() != base->GetInputColorRange());
+
+		case MediaType::Audio:
+			return (frame->GetSampleRate() != base->GetInputSampleRate() ||
+					frame->GetChannels().GetLayout() != base->GetInputChannelLayout() ||
+					frame->GetFormat<cmn::AudioSample::Format>() != base->GetInputSampleFormat());
+
+		default:
+			return false;
+	}
+}
+
+// Update the input track with the properties of the frame so that the filter is
+// rebuilt to match the frame that triggered the change.
+void TranscodeFilter::UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame)
+{
+	auto input_track = GetInputTrack();
+	auto output_track = GetOutputTrack();
+
+	switch (frame->GetMediaType())
+	{
+		case MediaType::Video:
+			logtd("[%s] input video frame properties have been changed. track:%u -> %u. %dx%d/%s(%s,%s) -> %dx%d/%s(%s,%s)",
+				  _input_stream_info->GetUri().CStr(),
+				  input_track->GetId(),
+				  output_track->GetId(),
+				  base->GetInputWidth(),
+				  base->GetInputHeight(),
+				  cmn::GetVideoPixelFormatIdString(base->GetInputFramePixelFormat()),
+				  cmn::GetColorMatrixString(base->GetInputColorMatrix()),
+				  cmn::GetColorRangeString(base->GetInputColorRange()),
+				  frame->GetWidth(),
+				  frame->GetHeight(),
+				  cmn::GetVideoPixelFormatIdString(frame->GetFormat<cmn::VideoPixelFormatId>()),
+				  cmn::GetColorMatrixString(frame->GetColorMatrix()),
+				  cmn::GetColorRangeString(frame->GetColorRange()));
+
+			input_track->SetResolution(frame->GetWidth(), frame->GetHeight());
+			input_track->SetColorspace(frame->GetFormat<cmn::VideoPixelFormatId>());
+			input_track->SetColorMatrix(frame->GetColorMatrix());
+			input_track->SetColorRange(frame->GetColorRange());
+			break;
+
+		case MediaType::Audio:
+			logtd("[%s] input audio frame properties have been changed. track:%u -> %u. %dHz/%s -> %dHz/%s",
+				  _input_stream_info->GetUri().CStr(),
+				  input_track->GetId(),
+				  output_track->GetId(),
+				  base->GetInputSampleRate(),
+				  cmn::AudioChannel::GetLayoutName(base->GetInputChannelLayout()),
+				  frame->GetSampleRate(),
+				  frame->GetChannels().GetName());
+
+			input_track->SetSampleRate(frame->GetSampleRate());
+			input_track->SetChannel(frame->GetChannels());
+			input_track->SetSampleFormat(frame->GetFormat<cmn::AudioSample::Format>());
+			break;
+
+		default:
+			break;
+	}
+}
+
 void TranscodeFilter::SetCompleteHandler(CompleteHandler complete_handler)
 {
 	_complete_handler = std::move(complete_handler);
@@ -386,6 +537,7 @@ void TranscodeFilter::SetCompleteHandler(CompleteHandler complete_handler)
 
 void TranscodeFilter::OnComplete(TranscodeResult result, std::shared_ptr<MediaFrame> frame)
 {
+	auto handoff_start = std::chrono::steady_clock::now();
 
 	// Fault Injection for testing
 	if (TranscodeFaultInjector::GetInstance()->IsEnabled())
@@ -421,6 +573,12 @@ void TranscodeFilter::OnComplete(TranscodeResult result, std::shared_ptr<MediaFr
 	if (_complete_handler)
 	{
 		_complete_handler(result, _id, frame);
+	}
+
+	auto handoff_time_us = ov::Clock::GetElapsedMicroSecondsFromNow(handoff_start);
+	if (auto base = GetBaseFilter(); base != nullptr)
+	{
+		base->AddHandoffTime(handoff_time_us);
 	}
 }
 

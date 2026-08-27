@@ -68,7 +68,8 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		Variant GetRootValue(ValueType value_type, bool resolve_path, bool omit_json, Json::Value *original_value) const;
 		MAY_THROWS(cfg::ConfigError)
-		Variant GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value) const;
+		// item_path is used only to locate the item in diagnostics such as the deprecated-key warnings
+		Variant GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value, const ov::String &item_path) const;
 
 		// Create a data source from this context
 		DataSource NewDataSource(const ov::String &file_name, const ItemName &root_name) const

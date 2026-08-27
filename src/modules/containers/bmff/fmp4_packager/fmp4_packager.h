@@ -12,25 +12,23 @@
 
 #include <base/info/media_track.h>
 #include <base/mediarouter/media_buffer.h>
-#include <base/modules/marker/marker_box.h>
 
 #include "../bmff_packager.h"
 #include "fmp4_storage.h"
 
 namespace bmff
 {
-	class FMP4Packager : public Packager, public MarkerBox
+	class FMP4Packager : public Packager
 	{
 	public:
 		struct Config
 		{
 			double chunk_duration_ms = 500.0;
-			double segment_duration_ms = 6000.0;
-			
+
 			CencProperty cenc_property;
 		};
 
-		FMP4Packager(const std::shared_ptr<FMP4Storage> &storage, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const Config &config);
+		FMP4Packager(const std::shared_ptr<FMP4Storage> &storage, const std::shared_ptr<SegmentBoundaryPolicy> &boundary_policy, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<const MediaTrack> &data_track, const Config &config);
 
 		~FMP4Packager();
 
@@ -42,12 +40,10 @@ namespace bmff
 		// the initialization segment, and waits for a keyframe to start the new content.
 		bool UpdateTrack(const std::shared_ptr<const MediaTrack> &media_track);
 
-		// Another track of the stream changes at the given timestamp; cut a segment
-		// boundary there so that every rendition carries an aligned discontinuity.
-		// Video cuts at the first keyframe from the boundary, audio at the next frame.
-		// If a sample beyond the boundary arrived before this track's own change
-		// event, the cut would fire first and add an extra discontinuity domain;
-		// current runtime-change sources cannot interleave that way.
+		// Another track of the stream changes at the given timestamp; the boundary
+		// policy cuts an aligned boundary there so every rendition carries the
+		// discontinuity at the same position. Video cuts at the first keyframe
+		// from the boundary, audio at the next frame.
 		void RequestCutForDiscontinuity(double boundary_timestamp_ms);
 
 		// Rotate the DRM key from the next segment on. Nothing is cut: where the next
@@ -84,9 +80,6 @@ namespace bmff
 	private:
 		const Config &GetConfig() const;
 
-		MarkerBox::SegmentationInfo _segmentation_info;
-		std::optional<MarkerBox::SegmentationInfo> GetSegmentationInfo() const override;
-
 		std::shared_ptr<bmff::Samples> GetDataSamples(int64_t start_timestamp, int64_t end_timestamp);
 
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &segment);
@@ -98,18 +91,23 @@ namespace bmff
 		Config _config;
 		std::shared_ptr<FMP4Storage> _storage = nullptr;
 
+		// Decides what to emit and where the segments end; assembled by the stream
+		std::shared_ptr<SegmentBoundaryPolicy> _boundary_policy = nullptr;
+
+		// Handed to the policy when nothing is buffered, so the empty passes do
+		// not allocate
+		std::shared_ptr<Samples> _no_samples = std::make_shared<Samples>();
+
 		double _target_chunk_duration_ms = 0.0;
+
+		// End position of the newest appended sample (ms), reported to the stream
+		// as the boundary position when this track's change propagates
+		double _last_sample_end_timestamp_ms = 0.0;
 
 		// After a track change, video samples are dropped until the first keyframe so
 		// that the discontinuity segment always starts independent
 		bool _waiting_for_keyframe = false;
 		uint32_t _dropped_samples_while_waiting = 0;
-
-		// Negative when no cut is pending
-		double _pending_cut_timestamp_ms = -1.0;
-		// Timestamp of the last boundary this packager handled (own track change or
-		// an applied cut), to ignore re-propagation of the same boundary event
-		double _last_boundary_timestamp_ms = -1.0;
 
 		// A DRM key rotation requested from the stream, applied where the next segment
 		// starts on its own

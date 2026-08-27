@@ -8,13 +8,53 @@
 //==============================================================================
 #include <base/ovcrypto/aes.h>
 
+#include <algorithm>
+
 #include "bmff_private.h"
 #include "cenc.h"
 #include "modules/bitstream/h264/h264_parser.h"
 #include "modules/bitstream/h264/h264_decoder_configuration_record.h"
+#include "modules/bitstream/h265/h265_parser.h"
+#include "modules/bitstream/h265/h265_decoder_configuration_record.h"
 
 namespace bmff
 {
+    void CencProperty::Complete()
+    {
+        auto has_fairplay_pssh = std::any_of(pssh_box_list.begin(), pssh_box_list.end(),
+                                             [](const PsshBox &pssh_box) { return pssh_box.drm_system == DRMSystem::FairPlay; });
+
+        if (fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh == false)
+        {
+            pssh_box_list.push_back(PsshBox(SYSTEM_ID_FAIRPLAY_UUID, {key_id}, nullptr));
+        }
+
+        if (scheme == CencProtectScheme::Cenc)
+        {
+            crypt_bytes_block = 0;
+            skip_bytes_block = 0;
+            per_sample_iv_size = 16;
+        }
+        else if (scheme == CencProtectScheme::Cbcs)
+        {
+            crypt_bytes_block = 1;
+            skip_bytes_block = 9;
+            per_sample_iv_size = 0;
+        }
+    }
+
+    // senc BytesOfClearData is 16-bit, so split clear runs larger than 65535 across subsamples.
+    static void AppendCencSubSample(std::vector<Sample::SubSample> &sub_samples, uint32_t clear_bytes, uint32_t cipher_bytes)
+    {
+        while (clear_bytes > 0xFFFF)
+        {
+            sub_samples.emplace_back(static_cast<uint16_t>(0xFFFF), 0);
+            clear_bytes -= 0xFFFF;
+        }
+
+        sub_samples.emplace_back(static_cast<uint16_t>(clear_bytes), cipher_bytes);
+    }
+
     Encryptor::Encryptor(const std::shared_ptr<const MediaTrack> &media_track, const CencProperty &cenc_property)
     {
         _cenc_property = cenc_property;
@@ -69,6 +109,27 @@ namespace bmff
             return false;
         }
 
+        // saiz can describe up to MAX_SENC_AUX_INFO_SIZE bytes of aux info per sample
+        uint8_t stored_iv_size = 0;
+        if (_cenc_property.per_sample_iv_size != 0 && _cenc_property.iv != nullptr)
+        {
+            stored_iv_size = static_cast<uint8_t>(_cenc_property.iv->GetLength());
+        }
+
+        const auto aux_info_size = Sample::SampleAuxInfo::CalcSencAuxInfoSize(stored_iv_size, sub_samples.size());
+        if (aux_info_size > Sample::SampleAuxInfo::MAX_SENC_AUX_INFO_SIZE)
+        {
+            if (_aux_info_size_error_logged == false)
+            {
+                _aux_info_size_error_logged = true;
+                logte("SENC aux info size (%zu) exceeds the saiz limit (%zu). Subsample count (%zu) is too large to be packaged. "
+                      "Reduce the number of slices per frame of the input stream. (This message is logged only once)",
+                      aux_info_size, Sample::SampleAuxInfo::MAX_SENC_AUX_INFO_SIZE, sub_samples.size());
+            }
+
+            return false;
+        }
+
         auto clear_data = clear_sample._media_packet->GetData();
         auto cipher_data = std::make_shared<ov::Data>(clear_data->GetLength());
 
@@ -119,6 +180,12 @@ namespace bmff
 	bool Encryptor::GenerateSubSamplesFromH264(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples)
 	{
 		auto avcc = std::static_pointer_cast<AVCDecoderConfigurationRecord>(_media_track->GetDecoderConfigurationRecord());
+		if (avcc == nullptr)
+		{
+			logte("AVC decoder configuration record is null");
+			return false;
+		}
+
 		auto nal_length_size = avcc->LengthMinusOne() + 1;
 
         uint32_t total_bytes = 0;
@@ -188,11 +255,18 @@ namespace bmff
 					// Calc subsample
 					// Clear bytes : Nal Length Size(1 or 2 or 4) + Nal Header Length(1) + Slice Header Size
 					// Protected bytes : Nal Length - Clear bytes
-					clear_bytes += nal_length_size + H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
-					cipher_bytes = nal_length - (H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes());
+					const size_t header_bytes = H264_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
+					if (header_bytes > nal_length)
+					{
+						logte("Slice header size (%zu) is greater than NAL length (%zu)", header_bytes, nal_length);
+						return false;
+					}
+
+					clear_bytes += nal_length_size + header_bytes;
+					cipher_bytes = nal_length - header_bytes;
                     total_bytes += clear_bytes + cipher_bytes;
                     
-					sub_samples.emplace_back(clear_bytes, cipher_bytes);
+					AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);
 
                     logtt("VCL NAL Unit Type : %d, Clear Bytes : %u, Protected Bytes : %u", ov::ToUnderlyingType(nal_header.GetNalUnitType()), clear_bytes, cipher_bytes);
 
@@ -217,7 +291,7 @@ namespace bmff
         if (clear_bytes > 0)
         {
             logtt("Last NAL Unit is not a video slice, clear bytes : %u", clear_bytes);
-            sub_samples.emplace_back(clear_bytes, cipher_bytes);
+            AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);
             total_bytes += clear_bytes;
         }
 
@@ -234,10 +308,131 @@ namespace bmff
 
 	bool Encryptor::GenerateSubSamplesFromH265(const std::shared_ptr<const MediaPacket> &media_packet, std::vector<Sample::SubSample> &sub_samples)
 	{
-		(void)media_packet;
-		(void)sub_samples;
-		// HEVC subsample encryption is not supported in the OSS version
-		return false;
+		auto hvcc = std::static_pointer_cast<HEVCDecoderConfigurationRecord>(_media_track->GetDecoderConfigurationRecord());
+		if (hvcc == nullptr)
+		{
+			logte("HEVC decoder configuration record is null");
+			return false;
+		}
+
+		auto nal_length_size = hvcc->LengthSizeMinusOne() + 1;
+
+		uint32_t total_bytes = 0;
+		uint32_t clear_bytes = 0;
+		uint32_t cipher_bytes = 0;
+
+		ov::ByteStream read_stream(media_packet->GetData());
+		while (read_stream.Remained() > 0)
+		{
+			size_t nal_length = 0;
+			switch (nal_length_size)
+			{
+				case 1:
+					if (read_stream.IsRemained(1) == false)
+					{
+						logte("NAL length size is 1, but buffer length is less than 1");
+						return false;
+					}
+
+					nal_length = read_stream.Read8();
+					break;
+				case 2:
+					if (read_stream.IsRemained(2) == false)
+					{
+						logte("NAL length size is 2, but buffer length is less than 2");
+						return false;
+					}
+
+					nal_length = read_stream.ReadBE16();
+					break;
+				case 4:
+					if (read_stream.IsRemained(4) == false)
+					{
+						logte("NAL length size is 4, but buffer length is less than 4");
+						return false;
+					}
+
+					nal_length = read_stream.ReadBE32();
+					break;
+				default:
+					logte("Invalid length size (%d)", nal_length_size);
+					return false;
+			}
+
+			if (read_stream.IsRemained(nal_length) == false)
+			{
+				logte("NAL length (%zu) is greater than buffer length (%zu)", nal_length, read_stream.Remained());
+				return false;
+			}
+
+			auto nalu = read_stream.GetRemainData(nal_length);
+			read_stream.Skip(nal_length);
+
+			H265NalUnitHeader nal_header;
+			if (H265Parser::ParseNalUnitHeader(nalu->GetDataAs<uint8_t>(), nalu->GetLength(), nal_header) == true)
+			{
+				if (nal_header.IsVideoSlice() == true)
+				{
+					// Get Slice Header Size
+					// TODO: NAL header parsed twice (also inside ParseSliceHeader). Dedup later.
+					H265SliceHeader slice_header;
+					if (H265Parser::ParseSliceHeader(nalu->GetDataAs<uint8_t>(), nalu->GetLength(), slice_header, hvcc) == false)
+					{
+						logte("Failed to parse H265 slice header");
+						return false;
+					}
+
+					// Clear bytes : Nal Length Size(1 or 2 or 4) + Nal Header Length(2) + Slice Header Size
+					// Protected bytes : Nal Length - (Nal Header Length + Slice Header Size)
+					const size_t header_bytes = H265_NAL_UNIT_HEADER_SIZE + slice_header.GetHeaderSizeInBytes();
+					if (header_bytes > nal_length)
+					{
+						logte("Slice header size (%zu) is greater than NAL length (%zu)", header_bytes, nal_length);
+						return false;
+					}
+
+					clear_bytes += nal_length_size + header_bytes;
+					cipher_bytes = nal_length - header_bytes;
+					total_bytes += clear_bytes + cipher_bytes;
+
+					AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);
+
+					logtt("VCL NAL Unit Type : %d, Clear Bytes : %u, Protected Bytes : %u", ov::ToUnderlyingType(nal_header.GetNalUnitType()), clear_bytes, cipher_bytes);
+
+					clear_bytes = 0;
+					cipher_bytes = 0;
+				}
+				else
+				{
+					// Not a video slice
+					// it will be added to the subsample of VCL NAL Unit
+					clear_bytes += nal_length_size + nal_length;
+
+					logtt("NonVCL NAL Unit Type : %d, Clear Bytes : %u", ov::ToUnderlyingType(nal_header.GetNalUnitType()), clear_bytes);
+				}
+			}
+			else
+			{
+				logtc("Failed to parse H265 NAL Unit Header");
+			}
+		}
+
+		if (clear_bytes > 0)
+		{
+			logtt("Last NAL Unit is not a video slice, clear bytes : %u", clear_bytes);
+			AppendCencSubSample(sub_samples, clear_bytes, cipher_bytes);
+			total_bytes += clear_bytes;
+		}
+
+		if (total_bytes != media_packet->GetDataLength())
+		{
+			logte("Total subsample bytes (%u) is not equal to sample data length (%zu)", total_bytes, media_packet->GetDataLength());
+			return false;
+		}
+
+		logtt("Subsample count : %zu Total subsamples : %u / %zu", sub_samples.size(), total_bytes, media_packet->GetDataLength());
+
+		return true;
 	}
 
 	bool Encryptor::EncryptInternal(const std::shared_ptr<const ov::Data> &clear_sample_data, std::shared_ptr<ov::Data> &encrypted_sample_data, const std::vector<Sample::SubSample> &sub_samples)

@@ -146,6 +146,18 @@ bool FilterLavfiResampler::Initialize()
 	return true;
 }
 
+bool FilterLavfiResampler::IsSourceParametersMatched(const std::shared_ptr<MediaFrame> &media_frame) const
+{
+	if (media_frame->GetSampleRate() == _src_samplerate &&
+		media_frame->GetChannels().GetLayout() == _src_channel_layout &&
+		media_frame->GetFormat<cmn::AudioSample::Format>() == _src_sample_format)
+	{
+		return true;
+	}
+
+	return false;
+}
+
 bool FilterLavfiResampler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 {
 	if (GetState() == State::ERROR)
@@ -153,23 +165,45 @@ bool FilterLavfiResampler::SendFrame(std::shared_ptr<MediaFrame> media_frame)
 		return false;
 	}
 
+	if (media_frame == nullptr)
+	{
+		return false;
+	}
+
+	// Drop a frame that does not match the source parameters.
+	if (IsSourceParametersMatched(media_frame) == false)
+	{
+		logtw("Input audio frame parameters do not match the expected source parameters. %dHz/%s/%s (expected: %dHz/%s/%s)",
+			  media_frame->GetSampleRate(), media_frame->GetChannels().GetName(),
+			  cmn::AudioSample(media_frame->GetFormat<cmn::AudioSample::Format>()).GetName(),
+			  _src_samplerate, cmn::AudioChannel::GetLayoutName(_src_channel_layout),
+			  cmn::AudioSample(_src_sample_format).GetName());
+
+		return false;
+	}
+
 	ffmpeg::CodecResult result = _graph.PushFrame(media_frame, false);
-	if (result == ffmpeg::CodecResult::NoMemory)
+
+	switch (result)
 	{
-		logte("Could not allocate the frame data");
-		SetState(State::ERROR);
-
-		return false;
+		case ffmpeg::CodecResult::Ok:
+			return true;
+		case ffmpeg::CodecResult::Eof:
+		case ffmpeg::CodecResult::Again:
+		case ffmpeg::CodecResult::InvalidData:
+			// Drop only this frame; the filter graph is still usable
+			logtw("Could not send the frame to the audio filtergraph: %s", _graph.GetLastErrorString().CStr());
+			return true;
+		case ffmpeg::CodecResult::NoMemory:
+			logte("Could not allocate the frame data");
+			SetState(State::ERROR);
+			return false;
+		case ffmpeg::CodecResult::Error:
+		default:
+			logte("An error occurred while feeding the audio filtergraph: %s", _graph.GetLastErrorString().CStr());
+			SetState(State::ERROR);
+			return false;
 	}
-	else if (result != ffmpeg::CodecResult::Ok)
-	{
-		logte("An error occurred while feeding the audio filtergraph: %s", _graph.GetLastErrorString().CStr());
-		SetState(State::ERROR);
-
-		return false;
-	}
-
-	return true;
 }
 
 std::shared_ptr<MediaFrame> FilterLavfiResampler::ReceiveFrame()

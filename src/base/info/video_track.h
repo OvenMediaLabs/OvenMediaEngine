@@ -45,6 +45,12 @@ public:
 	void SetColorspace(cmn::VideoPixelFormatId colorspace);
 	cmn::VideoPixelFormatId GetColorspace() const;	
 
+	void SetColorMatrix(cmn::ColorMatrix color_matrix);
+	cmn::ColorMatrix GetColorMatrix() const;
+
+	void SetColorRange(cmn::ColorRange color_range);
+	cmn::ColorRange GetColorRange() const;
+
 	void SetPreset(ov::String preset);
 	ov::String GetPreset() const;
 
@@ -116,6 +122,10 @@ protected:
 	// Colorspace of video
 	// This variable is temporarily used in the Pixel Format defined by FFMPEG.
 	std::atomic<cmn::VideoPixelFormatId> _colorspace = cmn::VideoPixelFormatId::None;	
+
+	// Color matrix coefficients and range of the video (set by decoded frames)
+	std::atomic<cmn::ColorMatrix> _color_matrix = cmn::ColorMatrix::Unspecified;
+	std::atomic<cmn::ColorRange> _color_range = cmn::ColorRange::Unspecified;
 
 	// Preset for encoder (set by user)
 	ov::String _preset OV_GUARDED_BY(_video_mutex);

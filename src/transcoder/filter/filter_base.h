@@ -61,6 +61,25 @@ public:
 	virtual void Uninitialize() = 0;
 	virtual FilterResult ProcessFrameInternal(const std::shared_ptr<MediaFrame> &media_frame) = 0;
 	virtual FilterResult PopCompletedFrameInternal() = 0;
+	// Deliver frames still parked inside the filter before this instance is
+	// replaced by a reconfiguration; the default has nothing parked
+	virtual std::vector<std::shared_ptr<MediaFrame>> FlushBuffered()
+	{
+		return {};
+	}
+	// Carry timing continuity (e.g. the CFR output slot position) over from the
+	// filter instance this one replaces; the default carries nothing
+	virtual void InheritContinuity(const FilterBase *previous)
+	{
+		(void)previous;
+	}
+
+	// How long the handoff of a completed frame blocked the filter thread. A full
+	// queue on the far side throttles the filter as much as slow filtering does.
+	virtual void AddHandoffTime(int64_t elapsed_us)
+	{
+		(void)elapsed_us;
+	}
 
 	int32_t GetInputWidth() const
 	{
@@ -70,6 +89,24 @@ public:
 	int32_t GetInputHeight() const
 	{
 		return _src_height;
+	}
+
+	// Properties of the frames arriving from the decoder. Unlike _src_pixfmt,
+	// _src_frame_pixfmt keeps the decoder-side format label (e.g. CUDA for
+	// hardware frames), so it can be compared against incoming frames directly.
+	cmn::VideoPixelFormatId GetInputFramePixelFormat() const
+	{
+		return _src_frame_pixfmt;
+	}
+
+	cmn::ColorMatrix GetInputColorMatrix() const
+	{
+		return _src_color_matrix;
+	}
+
+	cmn::ColorRange GetInputColorRange() const
+	{
+		return _src_color_range;
 	}
 
 	int32_t GetInputSampleRate() const
@@ -112,6 +149,15 @@ public:
 	void SetInputTrack(std::shared_ptr<MediaTrack> input_track)
 	{
 		_input_track = input_track;
+
+		// Captured here so that every filter implementation gets the decoder-side
+		// snapshot without having to set it in its own Initialize()
+		if (input_track != nullptr && input_track->GetMediaType() == cmn::MediaType::Video)
+		{
+			_src_frame_pixfmt = input_track->GetColorspace();
+			_src_color_matrix = input_track->GetColorMatrix();
+			_src_color_range = input_track->GetColorRange();
+		}
 	}
 
 	void SetOutputStreamInfo(std::shared_ptr<info::Stream> output_stream_info)
@@ -185,6 +231,11 @@ protected:
 	int32_t 	_src_width = 0;
 	int32_t 	_src_height = 0;
 
+	// Decoder-side snapshot captured by SetInputTrack()
+	cmn::VideoPixelFormatId _src_frame_pixfmt = cmn::VideoPixelFormatId::None;
+	cmn::ColorMatrix _src_color_matrix = cmn::ColorMatrix::Unspecified;
+	cmn::ColorRange _src_color_range = cmn::ColorRange::Unspecified;
+
 	int32_t 	_src_samplerate = 0;
 	cmn::AudioChannel::Layout _src_channel_layout = cmn::AudioChannel::Layout::LayoutUnknown;
 	cmn::AudioSample::Format _src_sample_format = cmn::AudioSample::Format::None;
@@ -203,7 +254,4 @@ protected:
 	bool _use_hwframe_transfer = false;
 
 	int32_t _source_id = 0;
-
-	// Output frames drained from the backend pipeline, served by PopCompletedFrameInternal().
-	std::queue<std::shared_ptr<MediaFrame>> _output_frames;
 };

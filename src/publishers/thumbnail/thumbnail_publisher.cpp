@@ -199,7 +199,7 @@ bool ThumbnailPublisher::OnDeletePublisherApplication(const std::shared_ptr<pub:
 
 std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 {
-	ov::String thumbnail_url_pattern = R"(.+thumb\.(jpg|png|webp)$)";
+	ov::String thumbnail_url_pattern = R"(.+thumb\.(jpg|png|webp|avif)$)";
 
 	auto http_interceptor = std::make_shared<ThumbnailInterceptor>();
 
@@ -340,6 +340,10 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 		{
 			media_codec_id = cmn::MediaCodecId::Png;
 		}
+		else if (request_url->File().LowerCaseString().IndexOf(".avif") >= 0)
+		{
+			media_codec_id = cmn::MediaCodecId::Avif;
+		}
 		else if (request_url->File().LowerCaseString().IndexOf(".webp") >= 0)
 		{
 			media_codec_id = cmn::MediaCodecId::Webp;
@@ -351,18 +355,19 @@ std::shared_ptr<ThumbnailInterceptor> ThumbnailPublisher::CreateInterceptor()
 			return http::svr::NextHandler::DoNotCall;	
 		}
 
-		// Wait O seconds for thumbnail image to be received
-		auto endcoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 5000);
-		if (endcoded_video_frame == nullptr)
+		// Do not wait here, this handler runs on the socket worker thread
+		// TODO(Keukhan): PullStream() and AdmissionWebhooks still block it, handle this on a worker thread
+		auto encoded_video_frame = std::static_pointer_cast<ThumbnailStream>(stream)->GetVideoFrameByCodecId(media_codec_id, 0);
+		if (encoded_video_frame == nullptr)
 		{
 			response->AppendString(ov::String::FormatString("There is no thumbnail image"));
-			response->SetStatusCode(http::StatusCode::NotFound);					
+			response->SetStatusCode(http::StatusCode::NotFound);
 			return http::svr::NextHandler::DoNotCall;
 		}
 
 		response->SetHeader("Content-Type", MimeTypeFromMediaCodecId(media_codec_id));
 		response->SetStatusCode(http::StatusCode::OK);
-		response->AppendData(endcoded_video_frame->Clone());
+		response->AppendData(encoded_video_frame);
 		auto sent_size = response->Response();
 		exchange->Release();
 
@@ -429,6 +434,8 @@ ov::String ThumbnailPublisher::MimeTypeFromMediaCodecId(const cmn::MediaCodecId 
 			return "image/png";
 		case cmn::MediaCodecId::Webp:
 			return "image/webp";
+		case cmn::MediaCodecId::Avif:
+			return "image/avif";
 		default:
 			return "application/octet-stream";
 	}

@@ -40,6 +40,14 @@
 			<!-- Run memory decay/purge on a background thread instead of the allocating thread. Enabled by default. -->
 			<BackgroundPurge>true</BackgroundPurge>
 		</Jemalloc>
+
+		<!-- Shared worker threads that run short tasks for the modules that need them -->
+		<TaskPool>
+			<!-- Workers the pool runs on, started with the first task -->
+			<ThreadCount>4</ThreadCount>
+			<!-- Tasks that may wait to start. Reaching this rejects further tasks. -->
+			<MaxTasks>128</MaxTasks>
+		</TaskPool>
 	</Modules>
 
 	<!-- Settings for the ports to bind -->

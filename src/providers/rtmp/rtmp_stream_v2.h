@@ -50,6 +50,14 @@ namespace pvd::rtmp
 		// Implementation of PushStream
 		//--------------------------------------------------------------------
 		bool Stop() override;
+		void CloseTransport() override;
+
+		// Ends the wait sized for the first media packet, using this stream's application.
+		// `RtmpChunkHandler` calls this when media starts flowing.
+		void EndFirstMediaWait()
+		{
+			PushStream::EndFirstMediaWait(_vhost_app_name);
+		}
 
 		PushStreamType GetPushStreamType() override
 		{

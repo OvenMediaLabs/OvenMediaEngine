@@ -19,7 +19,7 @@
 #include "base/mediarouter/media_buffer.h"
 #include "base/mediarouter/media_type.h"
 #include "base/modules/data_format/amf_event/amf_event.h"
-#include "base/modules/data_format/amf_event/sei_event.h"
+#include "base/modules/data_format/sei_event/sei_event.h"
 
 namespace mr
 {

@@ -58,7 +58,14 @@ namespace ffmpeg
 		static AVPixelFormat ToAVPixelFormat(cmn::VideoPixelFormatId pixel_format);
 		static cmn::VideoPixelFormatId ToVideoPixelFormat(int32_t pixel_format);
 		static enum AVColorRange ToAVColorRange(cmn::ColorRange color_range);
+		static cmn::ColorRange ToColorRange(enum AVColorRange color_range);
+		static enum AVColorSpace ToAVColorSpace(cmn::ColorMatrix color_matrix);
+		static cmn::ColorMatrix ToColorMatrix(enum AVColorSpace color_space);
 		static AVPixelFormat GetAVPixelFormatOfHWDevice(cmn::MediaCodecModuleId module_id, cmn::DeviceId gpu_id, bool is_sw_format = true);
+		static int GetPlaneCount(AVPixelFormat pixel_format);
+		static int GetPlaneCount(cmn::VideoPixelFormatId pixel_format);
+		static AVPixelFormat GetSampleAVPixelFormat(const AVFrame *frame);
+		static cmn::VideoPixelFormatId GetSampleVideoPixelFormat(const AVFrame *frame);
 
 		// OME-typed variant of GetAVPixelFormatOfHWDevice(). Returns cmn::VideoPixelFormatId::None when
 		// the device has no matching pixel format.
@@ -203,6 +210,8 @@ namespace ffmpeg
 					media_frame->SetWidth(frame->width);
 					media_frame->SetHeight(frame->height);
 					media_frame->SetFormat((int32_t)ffmpeg::compat::ToVideoPixelFormat(frame->format));
+					media_frame->SetColorMatrix(ffmpeg::compat::ToColorMatrix(frame->colorspace));
+					media_frame->SetColorRange(ffmpeg::compat::ToColorRange(frame->color_range));
 					media_frame->SetPts((frame->pts == AV_NOPTS_VALUE) ? -1LL : frame->pts);
 					media_frame->SetDuration(frame->duration);
 
@@ -594,41 +603,6 @@ namespace ffmpeg
 			}
 
 			return false;
-		}
-
-		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidSWFormat(std::shared_ptr<const MediaFrame> frame)
-		{
-			if (frame == nullptr || frame->GetPrivData() == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto av_frame = static_cast<AVFrame*>(frame->GetPrivData());
-			return GetHWFramesConstraintsValidSWFormat(av_frame);
-		}
-
-		static cmn::VideoPixelFormatId GetHWFramesConstraintsValidSWFormat(AVFrame* frame)
-		{
-			if (frame == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			if (frame->hw_frames_ctx == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto constraints = ::av_hwdevice_get_hwframe_constraints(frame->hw_frames_ctx, nullptr);
-			if (constraints == nullptr)
-			{
-				return cmn::VideoPixelFormatId::None;
-			}
-
-			auto valid_sw_formats = *(constraints->valid_sw_formats);
-			::av_hwframe_constraints_free(&constraints);
-
-			return ToVideoPixelFormat(valid_sw_formats);
 		}
 
 	};

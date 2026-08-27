@@ -28,6 +28,9 @@
 
 #include "mediarouter_stream.h"
 
+#include <algorithm>
+#include <map>
+
 #include <base/event/media_event.h>
 #include <base/event/command/update_language.h>
 #include <base/ovlibrary/ovlibrary.h>
@@ -41,6 +44,7 @@ using namespace cmn;
 MediaRouteStream::MediaRouteStream(const std::shared_ptr<info::Stream> &stream, cmn::MediaRouterStreamType type, uint32_t worker_id)
 	: _worker_id(worker_id),
 	  _stream(stream),
+	  _stats(stream->GetStats()),
 	  _packets_queue(nullptr, 600)
 {
 	SetType(type);
@@ -90,6 +94,8 @@ void MediaRouteStream::SetBufferRetentionDuration(int delay_ms)
 void MediaRouteStream::OnStreamPrepared(bool completed)
 {
 	_is_stream_prepared = completed;
+
+	_stats->SetPrepared(completed);
 }
 
 bool MediaRouteStream::IsStreamPrepared()
@@ -111,7 +117,7 @@ void MediaRouteStream::Flush()
 
 	_is_all_tracks_parsed = false;
 
-	_is_stream_prepared = false;
+	OnStreamPrepared(false);
 	_prepared_notified = false;
 }
 
@@ -152,14 +158,18 @@ bool MediaRouteStream::IsStreamReady()
 // negotiated tracks (e.g. a simulcast layer or audio) never arrives, the stream hangs. Warn so it is visible.
 void MediaRouteStream::CheckUnpreparedTrackTimeout()
 {
-	auto now = std::chrono::steady_clock::now();
+	if (_stats->HasFirstMediaTime() == false)
+	{
+		return;
+	}
 
 	// Anchor at the first media packet so connection/handshake delay is excluded; full silence is the provider's job.
-	if (_first_media_recv_time_set == false)
+	auto media_start_time = _stats->GetFirstMediaTimeSteady();
+	auto now = std::chrono::steady_clock::now();
+	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - media_start_time).count();
+
+	if (elapsed_ms < MEDIA_ROUTE_STREAM_TRACK_PREPARE_TIMEOUT_MS)
 	{
-		_first_media_recv_time = now;
-		_last_unprepared_warn_time = now;
-		_first_media_recv_time_set = true;
 		return;
 	}
 
@@ -169,8 +179,6 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 		return;
 	}
 	_last_unprepared_warn_time = now;
-
-	auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - _first_media_recv_time).count();
 
 	const auto &tracks = _stream->GetTracks();
 	for (const auto &track_it : tracks)
@@ -282,6 +290,8 @@ void MediaRouteStream::DropNonDecodingPackets()
 
 void MediaRouteStream::Push(const std::shared_ptr<MediaPacket> &media_packet)
 {
+	_stats->SetFirstMediaTime();
+
 	_packets_queue.Enqueue(media_packet, media_packet->IsHighPriority());
 }
 
@@ -426,21 +436,8 @@ std::shared_ptr<MediaPacket> MediaRouteStream::PopAndNormalize()
 	MediaRouterStats::Update(static_cast<uint8_t>(_type), IsStreamPrepared(), _packets_queue, GetStream(), media_track, pop_media_packet);
 
 	// Mirror Buffer
-	_mirror_buffer.emplace_back(std::make_shared<MirrorBufferItem>(pop_media_packet));
-
-	// Delete old packets
-	for (auto it = _mirror_buffer.begin(); it != _mirror_buffer.end();)
-	{
-		auto item = *it;
-		if (item->GetElapsedMilliseconds() > MEDIA_ROUTE_STREAM_MAX_MIRROR_BUFFER_SIZE_MS)
-		{
-			it = _mirror_buffer.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
+	int64_t dts_us = (int64_t)((double)pop_media_packet->GetDts() * 1000000.0 * media_track->GetTimeBase().GetExpr());
+	RetainMirrorBuffer(_mirror_buffers, pop_media_packet, dts_us);
 
 	return pop_media_packet;
 }
@@ -663,8 +660,138 @@ void MediaRouteStream::PublishWorkingVersion(TrackAuthorState &state, uint32_t t
 		  cmn::GetCodecIdString(new_version->GetCodecId()));
 }
 
-std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::GetMirrorBuffer()
+MediaRouteStream::MirrorBufferMap MediaRouteStream::GetMirrorBuffers()
 {
-	return _mirror_buffer;
+	return _mirror_buffers;
+}
+
+void MediaRouteStream::RetainMirrorBuffer(MirrorBufferMap &mirror_buffers, std::shared_ptr<MediaPacket> &media_packet, int64_t dts_us)
+{
+	auto &track_buffer = mirror_buffers[media_packet->GetTrackId()];
+	constexpr int64_t retention_us = MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS * 1000;
+
+	if (media_packet->GetMediaType() == cmn::MediaType::Video)
+	{
+		if (media_packet->IsKeyFrame())
+		{
+			// A new keyframe supersedes the track's previous GOP
+			track_buffer.clear();
+		}
+		else
+		{
+			if (track_buffer.empty())
+			{
+				// Nothing is decodable without a keyframe; stay empty until the next one
+				return;
+			}
+
+			auto &leading_keyframe = track_buffer.front();
+			if (dts_us - leading_keyframe->dts_us > retention_us)
+			{
+				// The GOP has grown past the retention window; discard it whole
+				// and wait for the next keyframe
+				track_buffer.clear();
+				return;
+			}
+		}
+
+		track_buffer.emplace_back(std::make_shared<MirrorBufferItem>(media_packet, dts_us));
+		return;
+	}
+
+	// Non-video keeps the last retention window of content
+	track_buffer.emplace_back(std::make_shared<MirrorBufferItem>(media_packet, dts_us));
+
+	size_t first_kept_index = 0;
+	while (dts_us - track_buffer[first_kept_index]->dts_us > retention_us)
+	{
+		first_kept_index++;
+	}
+
+	track_buffer.erase(track_buffer.begin(), track_buffer.begin() + first_kept_index);
+}
+
+std::vector<std::shared_ptr<MediaRouteStream::MirrorBufferItem>> MediaRouteStream::BuildPastData(const MirrorBufferMap &mirror_buffers)
+{
+	bool has_video = false;
+	int64_t earliest_keyframe_dts_us = 0;
+	std::vector<const std::vector<std::shared_ptr<MirrorBufferItem>> *> video_buffers;
+
+	// Pick the video tracks to include, and find the earliest keyframe DTS
+	// among them; it becomes the cut point that aligns the non-video tracks
+	for (const auto &[track_id, track_buffer] : mirror_buffers)
+	{
+		if (track_buffer.empty())
+		{
+			continue;
+		}
+
+		auto &leading_item = track_buffer.front();
+		if (leading_item->packet->GetMediaType() != cmn::MediaType::Video)
+		{
+			continue;
+		}
+
+		// A stalled track may still hold an old GOP; the retention policy could
+		// not clear it because it only runs when a packet arrives
+		if (leading_item->GetElapsedMilliseconds() > MEDIA_ROUTE_STREAM_MIRROR_RETENTION_MS)
+		{
+			logtw("Past data of video track #%u is older than the retention window, so it is skipped", track_id);
+			continue;
+		}
+
+		video_buffers.push_back(&track_buffer);
+
+		if (has_video == false || leading_item->dts_us < earliest_keyframe_dts_us)
+		{
+			earliest_keyframe_dts_us = leading_item->dts_us;
+			has_video = true;
+		}
+	}
+
+	std::vector<std::shared_ptr<MirrorBufferItem>> past_data;
+
+	// The included video tracks go in whole, each starting at its keyframe
+	for (const auto *video_buffer : video_buffers)
+	{
+		past_data.insert(past_data.end(), video_buffer->begin(), video_buffer->end());
+	}
+
+	// Non-video tracks follow, cut at the alignment point
+	for (const auto &[track_id, track_buffer] : mirror_buffers)
+	{
+		if (track_buffer.empty())
+		{
+			continue;
+		}
+
+		auto &leading_item = track_buffer.front();
+		if (leading_item->packet->GetMediaType() == cmn::MediaType::Video)
+		{
+			continue;
+		}
+
+		// Without a video track to align with, keep the last base window of content
+		auto &newest_item = track_buffer.back();
+		auto cut_dts_us = has_video ? earliest_keyframe_dts_us
+									: newest_item->dts_us - (MEDIA_ROUTE_STREAM_MIRROR_BASE_BACKFILL_MS * 1000);
+
+		for (auto &item : track_buffer)
+		{
+			if (item->dts_us >= cut_dts_us)
+			{
+				past_data.push_back(item);
+			}
+		}
+	}
+
+	// Interleave the tracks by DTS so the backfill flows like a naturally muxed
+	// stream; the per-track order is already monotonic and stays intact
+	std::stable_sort(past_data.begin(), past_data.end(),
+					 [](const auto &left, const auto &right) {
+						 return left->dts_us < right->dts_us;
+					 });
+
+	return past_data;
 }
 

@@ -47,8 +47,13 @@ namespace http
 
 			int32_t Http2Response::SendHeader()
 			{
+				// All streams on this connection share one HPACK encoder. Encoding this
+				// block and putting its frames on the wire must not be split by another
+				// stream, otherwise the peer replays the table updates in a different
+				// order and resolves our indexes to the wrong entries.
+				ov::LockGuard<ov::Mutex> block_lock(_hpack_encoder->GetHeaderBlockLock());
+
 				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(65535);
-				size_t sent_size = 0;
 
 				// :status header field is must on top
 				auto header_field = _hpack_encoder->Encode({":status", ov::Converter::ToString(static_cast<uint16_t>(GetStatusCode()))}, hpack::Encoder::EncodingType::LiteralWithIndexing);
@@ -60,33 +65,23 @@ namespace http
 					{
 						// https://httpwg.org/http2-spec/draft-ietf-httpbis-http2bis.html#section-8.2
 						// Field names MUST be converted to lowercase when constructing an HTTP/2 message.
-						auto header_field = _hpack_encoder->Encode({name.LowerCaseString(), value}, hpack::Encoder::EncodingType::LiteralWithIndexing);
+						auto name_lower = name.LowerCaseString();
+
+						auto header_field = _hpack_encoder->Encode({name_lower, value}, hpack::Encoder::GetEncodingTypeOf(name_lower));
 						header_block->Append(header_field);
 					}
 				}
 
 				logtt("[Http2Response] Send header block : size(%zu)", header_block->GetLength());
 
-				std::shared_ptr<ov::Data> head_block_fragment;
-				bool fragmented = false;
-				
-				if (header_block->GetLength() > MAX_HTTP2_HEADER_SIZE)
-				{
-					head_block_fragment = header_block->Subdata(0, MAX_HTTP2_HEADER_SIZE);
-					fragmented = true;
-				}
-				else
-				{
-					head_block_fragment = header_block;
-					fragmented = false;
-				}
-				
-				// Send Headers frame
-				auto headers_frame = std::make_shared<prot::h2::Http2HeadersFrame>(_stream_id);
-				headers_frame->SetHeaderBlockFragment(head_block_fragment);
+				auto block_size = header_block->GetLength();
+				auto fragment_size = std::min(block_size, static_cast<size_t>(MAX_HTTP2_HEADER_SIZE));
 
-				// Set flags
-				if (fragmented == false)
+				// Headers frame
+				auto headers_frame = std::make_shared<prot::h2::Http2HeadersFrame>(_stream_id);
+				headers_frame->SetHeaderBlockFragment(header_block->Subdata(0, fragment_size));
+
+				if (fragment_size == block_size)
 				{
 					headers_frame->SetEndHeaders();
 				}
@@ -96,44 +91,34 @@ namespace http
 					headers_frame->SetEndStream();
 				}
 
-				if (Send(headers_frame) == false)
+				// RFC 7540 §6.2/§6.10: no other frame may appear between HEADERS and its
+				// CONTINUATION frames, so the whole sequence goes out as a single write.
+				// ToData() returns a freshly allocated buffer, so appending to it is safe.
+				auto wire_data = headers_frame->ToData();
+
+				auto offset = fragment_size;
+				while (offset < block_size)
+				{
+					fragment_size = std::min(block_size - offset, static_cast<size_t>(MAX_HTTP2_HEADER_SIZE));
+
+					auto continuation_frame = std::make_shared<prot::h2::Http2ContinuationFrame>(_stream_id);
+					continuation_frame->SetHeaderBlockFragment(header_block->Subdata(offset, fragment_size));
+
+					offset += fragment_size;
+					if (offset == block_size)
+					{
+						continuation_frame->SetEndHeaders();
+					}
+
+					wire_data->Append(continuation_frame->ToData());
+				}
+
+				if (HttpResponse::Send(wire_data) == false)
 				{
 					return -1;
 				}
 
-				sent_size += head_block_fragment->GetLength();
-
-				// Send Continuation frames if header block is fragmented
-				if (fragmented == true)
-				{
-					auto remaining_size = header_block->GetLength() - MAX_HTTP2_HEADER_SIZE;
-					auto remaining_data = header_block->Subdata(MAX_HTTP2_HEADER_SIZE, remaining_size);
-
-					while (remaining_size > 0)
-					{
-						auto fragment_size = remaining_size > MAX_HTTP2_HEADER_SIZE ? MAX_HTTP2_HEADER_SIZE : remaining_size;
-						auto fragment_data = remaining_data->Subdata(0, fragment_size);
-
-						auto continuation_frame = std::make_shared<prot::h2::Http2ContinuationFrame>(_stream_id);
-						continuation_frame->SetHeaderBlockFragment(fragment_data);
-
-						if (remaining_size - fragment_size == 0)
-						{
-							continuation_frame->SetEndHeaders();
-						}
-
-						if (Send(continuation_frame) == false)
-						{
-							return -1;
-						}
-
-						sent_size += fragment_size;
-						remaining_size -= fragment_size;
-						remaining_data = remaining_data->Subdata(fragment_size, remaining_size);
-					}
-				}
-
-				return sent_size;
+				return block_size;
 			}
 
 			int32_t Http2Response::SendPayload()

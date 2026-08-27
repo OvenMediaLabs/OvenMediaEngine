@@ -9,7 +9,7 @@
 #pragma once
 
 #include <base/common_types.h>
-#include <base/modules/marker/marker_box.h>
+#include <base/modules/marker/marker.h>
 
 namespace base
 {

@@ -13,7 +13,9 @@
 #include "../../protocol/http2/frames/http2_frames.h"
 #include "../../hpack/encoder.h"
 
-#define MAX_HTTP2_HEADER_SIZE (1024 * 1024)
+// SETTINGS_MAX_FRAME_SIZE floor (RFC 7540 §6.5.2). The advertised value can
+// never go below this, so frames capped here are always legal to send.
+#define MAX_HTTP2_HEADER_SIZE (16384)
 #define MAX_HTTP2_DATA_SIZE (16384)
 
 namespace http

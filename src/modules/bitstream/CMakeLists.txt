@@ -8,7 +8,9 @@ ome_add_static_library(bitstream
         h265
         av1
         mp3
-    DEPS ovlibrary
+    DEPS
+        base_info
+        ovlibrary
 )
 
 if(OME_BUILD_TESTS)

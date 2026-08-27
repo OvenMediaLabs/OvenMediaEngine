@@ -43,6 +43,7 @@ namespace pvd::rtmp
 		logat("Stream has been created");
 
 		SetMediaSource(_remote->GetRemoteAddressAsUrl());
+		SetConnectionInfo(info::ConnectionInfo::From(_remote));
 	}
 
 	RtmpStreamV2::~RtmpStreamV2()
@@ -86,6 +87,14 @@ namespace pvd::rtmp
 		_is_post_published = false;
 
 		return PushStream::Stop();
+	}
+
+	void RtmpStreamV2::CloseTransport()
+	{
+		if ((_remote != nullptr) && (_remote->GetState() == ov::SocketState::Connected))
+		{
+			_remote->Close();
+		}
 	}
 
 	bool RtmpStreamV2::CheckStreamExpired() const
@@ -391,6 +400,11 @@ namespace pvd::rtmp
 		SetName(final_url->Stream());
 		_chunk_handler.UpdateNamePath(GetNamePath());
 		_chunk_handler.UpdateQueueAlias();
+
+		// A source may send nothing between here and its first media,
+		// which is the window `FirstMediaWaitTimeoutMs` sizes.
+		// Without that option this applies `PacketSilenceTimeoutMs`.
+		ApplyConfiguredFirstMediaWaitTimeoutMs(_vhost_app_name);
 
 		return true;
 	}

@@ -80,9 +80,9 @@ Add your certificate files to as follows:
                 <Name>*</Name>
             </Names>
             <TLS>
-                <CertPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.crt</CertPath>
-                <KeyPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.key</KeyPath>
-                <ChainCertPath>/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.ca-bundle</ChainCertPath>
+                <CertPath>/etc/pki/ovenmedia.com/_ovenmedia_com.crt</CertPath>
+                <KeyPath>/etc/pki/ovenmedia.com/_ovenmedia_com.key</KeyPath>
+                <ChainCertPath>/etc/pki/ovenmedia.com/_ovenmedia_com.ca-bundle</ChainCertPath>
             </TLS>
         </Host>
         ...

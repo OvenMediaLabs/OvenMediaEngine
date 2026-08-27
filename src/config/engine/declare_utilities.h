@@ -10,6 +10,7 @@
 
 // auto &GetInt() { return int_value; }
 #define CFG_DECLARE_REF_GETTER_OF(getter_name, variable_name) \
+	MAY_THROWS(cfg::ConfigError)                              \
 	auto &getter_name(bool *is_configured = nullptr)          \
 	{                                                         \
 		if (is_configured != nullptr)                         \
@@ -22,6 +23,7 @@
 
 // const auto &GetInt() const { return int_value; }
 #define CFG_DECLARE_CONST_REF_GETTER_OF(getter_name, variable_name) \
+	MAY_THROWS(cfg::ConfigError)                                    \
 	const auto &getter_name(bool *is_configured = nullptr) const    \
 	{                                                               \
 		if (is_configured != nullptr)                               \
@@ -34,6 +36,7 @@
 
 // virtual decltype(variable_name) GetInt() { return int_value; }
 #define CFG_DECLARE_VIRTUAL_REF_GETTER_OF(getter_name, variable_name)           \
+	MAY_THROWS(cfg::ConfigError)                                                \
 	virtual decltype(variable_name) &getter_name(bool *is_configured = nullptr) \
 	{                                                                           \
 		if (is_configured != nullptr)                                           \
@@ -46,6 +49,7 @@
 
 // virtual const decltype(variable_name) GetInt() const { return int_value; }
 #define CFG_DECLARE_VIRTUAL_CONST_REF_GETTER_OF(getter_name, variable_name)                 \
+	MAY_THROWS(cfg::ConfigError)                                                            \
 	virtual const decltype(variable_name) &getter_name(bool *is_configured = nullptr) const \
 	{                                                                                       \
 		if (is_configured != nullptr)                                                       \
@@ -58,6 +62,7 @@
 
 // auto GetInt() override { return int_value; }
 #define CFG_DECLARE_OVERRIDED_GETTER_OF(getter_name, variable_name) \
+	MAY_THROWS(cfg::ConfigError)                                    \
 	auto getter_name(bool *is_configured = nullptr) override        \
 	{                                                               \
 		if (is_configured != nullptr)                               \
@@ -70,6 +75,7 @@
 
 // auto GetInt() const override { return int_value; }
 #define CFG_DECLARE_OVERRIDED_CONST_GETTER_OF(getter_name, variable_name) \
+	MAY_THROWS(cfg::ConfigError)                                          \
 	auto getter_name(bool *is_configured = nullptr) const override        \
 	{                                                                     \
 		if (is_configured != nullptr)                                     \

@@ -222,8 +222,7 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 
 		if (sps._chroma_format_idc == 3)
 		{
-			// separate_colour_plane_flag
-			if (!parser.Skip(1))
+			if (!parser.ReadBit(sps._separate_colour_plane_flag))
 			{
 				return false;
 			}
@@ -300,6 +299,12 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 	}
 
 	if (!parser.ReadUEV(sps._log2_max_frame_num_minus4))
+	{
+		return false;
+	}
+
+	// ITU-T H.264 7.4.2.1.1: the range is [0, 12]
+	if (sps._log2_max_frame_num_minus4 > 12)
 	{
 		return false;
 	}
@@ -430,6 +435,9 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 		// int64_t is used to avoid overflow for extreme cases
 		int64_t coded_width	   = (pic_width_in_mbs_minus1 + 1) * 16;
 		int64_t coded_height   = (2 - sps._frame_mbs_only_flag) * (pic_height_in_map_units_minus1 + 1) * 16;
+		// TODO: the crop unit is SubWidthC and SubHeightC * (2 - frame_mbs_only_flag), not 2 on both
+		// axes (ITU-T H.264 7.4.2.1.1). Only progressive 4:2:0 is right here - 4:2:2, 4:4:4 and
+		// interlaced come out short. Fixing it moves a reported resolution, so it lands on its own.
 		int64_t crop_x		   = 2 * crop_left + 2 * crop_right;
 		int64_t crop_y		   = 2 * crop_top + 2 * crop_bottom;
 		int64_t display_width  = coded_width - crop_x;
@@ -468,7 +476,8 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 
 	if (!ParseVUI(parser, sps))
 	{
-		logtw("Could not parsed VUI parameters of SPS");
+		// The VUI is optional, so a partial parse is not an error
+		logtd("Could not parse the VUI parameters of the SPS");
 	}
 
 	return true;
@@ -616,12 +625,14 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 				uint32_t num_units_in_tick, time_scale;
 				uint8_t fixed_frame_rate_flag;
 
-				if (!parser.ReadUEV(num_units_in_tick))
+				// ITU-T H.264 E.1.1: both are u(32), not ue(v). Reading them as Exp-Golomb
+				// desynchronizes the bit position for everything that follows in the VUI.
+				if (!parser.ReadU32(num_units_in_tick))
 				{
 					return false;
 				}
 
-				if (!parser.ReadUEV(time_scale))
+				if (!parser.ReadU32(time_scale))
 				{
 					return false;
 				}
@@ -639,8 +650,115 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 				}
 			}
 		}
-		// Currently skip the remaining part of VUI parameters
+
+		if (!parser.ReadBit(sps._nal_hrd_parameters_present_flag))
+		{
+			return false;
+		}
+
+		if (sps._nal_hrd_parameters_present_flag)
+		{
+			if (!ParseHrdParameters(parser, sps))
+			{
+				// Without the widths the delays cannot be coded, so do not claim they are there
+				sps._nal_hrd_parameters_present_flag = 0;
+				sps._vcl_hrd_parameters_present_flag = 0;
+				return false;
+			}
+		}
+
+		if (!parser.ReadBit(sps._vcl_hrd_parameters_present_flag))
+		{
+			return false;
+		}
+
+		if (sps._vcl_hrd_parameters_present_flag)
+		{
+			// When both are present they must specify the same lengths, so overwriting is safe.
+			if (!ParseHrdParameters(parser, sps))
+			{
+				// Without the widths the delays cannot be coded, so do not claim they are there
+				sps._nal_hrd_parameters_present_flag = 0;
+				sps._vcl_hrd_parameters_present_flag = 0;
+				return false;
+			}
+		}
+
+		if (sps._nal_hrd_parameters_present_flag || sps._vcl_hrd_parameters_present_flag)
+		{
+			if (uint8_t low_delay_hrd_flag; !parser.ReadBit(low_delay_hrd_flag))
+			{
+				return false;
+			}
+		}
+
+		// Remember where the flag sits so that it can be flipped without rewriting the whole SPS.
+		// pic_struct_present_flag is coded unconditionally whenever a VUI is present, so enabling
+		// it never changes the length of the RBSP.
+		sps._pic_struct_present_flag_bit_pos = parser.BitsConsumed();
+
+		if (!parser.ReadBit(sps._pic_struct_present_flag))
+		{
+			return false;
+		}
+
+		// bitstream_restriction_flag and its sub-fields are not needed yet, so parsing stops here.
 	}
+
+	return true;
+}
+
+// ITU-T H.264 E.1.2 hrd_parameters()
+bool H264Parser::ParseHrdParameters(NalUnitBitstreamParser &parser, H264SPS &sps)
+{
+	uint32_t cpb_cnt_minus1;
+	if (!parser.ReadUEV(cpb_cnt_minus1))
+	{
+		return false;
+	}
+
+	// cpb_cnt_minus1 is in [0, 31]
+	if (cpb_cnt_minus1 > 31)
+	{
+		return false;
+	}
+
+	// bit_rate_scale(4) + cpb_size_scale(4)
+	if (!parser.Skip(8))
+	{
+		return false;
+	}
+
+	for (uint32_t i = 0; i <= cpb_cnt_minus1; i++)
+	{
+		uint32_t bit_rate_value_minus1, cpb_size_value_minus1;
+		uint8_t cbr_flag;
+
+		if (!parser.ReadUEV(bit_rate_value_minus1) ||
+			!parser.ReadUEV(cpb_size_value_minus1) ||
+			!parser.ReadBit(cbr_flag))
+		{
+			return false;
+		}
+	}
+
+	uint8_t initial_cpb_removal_delay_length_minus1;
+	uint8_t cpb_removal_delay_length_minus1;
+	uint8_t dpb_output_delay_length_minus1;
+	uint8_t time_offset_length;
+	if (!parser.ReadBits(5, initial_cpb_removal_delay_length_minus1) ||
+		!parser.ReadBits(5, cpb_removal_delay_length_minus1) ||
+		!parser.ReadBits(5, dpb_output_delay_length_minus1) ||
+		!parser.ReadBits(5, time_offset_length))
+	{
+		return false;
+	}
+
+	// Committed only once every field is in: ReadBits() zeroes its output before it fails, so a
+	// half read would leave a 1 bit delay width behind and every pic_timing would be misaligned
+	sps._cpb_removal_delay_length_minus1 = cpb_removal_delay_length_minus1;
+	sps._dpb_output_delay_length_minus1	 = dpb_output_delay_length_minus1;
+	sps._time_offset_length				 = time_offset_length;
 
 	return true;
 }
@@ -804,16 +922,14 @@ bool H264Parser::ParseSliceHeader(const uint8_t *nalu, size_t length, H264SliceH
 		return false;
 	}
 
-	// TODO ?? interlaced source is not supported
-	// separate_colour_plane_flag ??
-	// if (sps._separate_colour_plane_flag)
-	// {
-	// 	uint8_t colour_plane_id;
-	// 	if (!parser.ReadBits(2, colour_plane_id))
-	// 	{
-	// 		return false;
-	// 	}
-	// }
+	if (sps.IsSeparateColourPlane() == true)
+	{
+		uint8_t colour_plane_id;
+		if (!parser.ReadBits(2, colour_plane_id))
+		{
+			return false;
+		}
+	}
 
 	uint32_t frame_num = 0;
 	if (!parser.ReadBits(sps._log2_max_frame_num_minus4 + 4, frame_num))

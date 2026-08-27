@@ -28,6 +28,13 @@ namespace cfg
 	{
 	}
 
+	ItemName::ItemName(const char *xml_name, const char *json_name, const char *deprecated_json_name)
+		: xml_name(xml_name),
+		  json_name(json_name),
+		  deprecated_json_name(deprecated_json_name)
+	{
+	}
+
 	ov::String ItemName::ToString() const
 	{
 		ov::String name = xml_name.CStr();

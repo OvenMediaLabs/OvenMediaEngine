@@ -28,7 +28,7 @@ Thumbnails are published via HTTP(s). Set the port for thumbnails as follows. Th
 
 ### Encoding
 
-To publish thumbnails, you need to set up an encoding profile. You can choose **JPG, PNG** and **WEBP** as the format.  You can set the Framerate and Resolution. Please refer to the sample below.
+To publish thumbnails, you need to set up an encoding profile. You can choose **JPG, PNG, WEBP** and **AVIF** as the format.  You can set the Framerate and Resolution. Please refer to the sample below.
 
 ```markup
 <OutputProfiles>
@@ -53,7 +53,13 @@ To publish thumbnails, you need to set up an encoding profile. You can choose **
                 <Framerate>1</Framerate>
                 <Width>1280</Width>
                 <Height>720</Height>
-            </Image>            
+            </Image>
+            <Image>
+                <Codec>avif</Codec>
+                <Framerate>1</Framerate>
+                <Width>1280</Width>
+                <Height>720</Height>
+            </Image>
         </Encodes>
     </OutputProfile>
 </OutputProfiles>
@@ -63,7 +69,7 @@ To publish thumbnails, you need to set up an encoding profile. You can choose **
 
 #### Supported image codecs
 
-<table><thead><tr><th width="149">Encode Type</th><th width="177.33333333333331">Codec</th><th>Codec of Configuration</th></tr></thead><tbody><tr><td>Image</td><td>JPEG</td><td>jpeg</td></tr><tr><td></td><td>PNG</td><td>png</td></tr><tr><td></td><td>WEBP</td><td>webp</td></tr></tbody></table>
+<table><thead><tr><th width="149">Encode Type</th><th width="177.33333333333331">Codec</th><th>Codec of Configuration</th></tr></thead><tbody><tr><td>Image</td><td>JPEG</td><td>jpeg</td></tr><tr><td></td><td>PNG</td><td>png</td></tr><tr><td></td><td>WEBP</td><td>webp</td></tr><tr><td></td><td>AVIF</td><td>avif</td></tr></tbody></table>
 
 
 :::warning
@@ -92,9 +98,11 @@ Declaring a thumbnail publisher. Cross-domain settings are available as a detail
 
 When the setting is made for the thumbnail and the stream is input, you can view the thumbnail through the following URL.
 
-| Method | URL Pattern                                                                                        |
-| ------ | -------------------------------------------------------------------------------------------------- |
-| GET    | http(s)://\<ome\_hos&#x74;_>:\<port>/\<app\_name>/\<output\_stream\_name>/thumb.\<jpg\|png\|webp>_ |
+| Method | URL Pattern                                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `http[s]://{OvenMediaEngine Host}[:{Thumbnail Port}]/{App Name}/{Output Stream Name}/thumb.{jpg\|png\|webp\|avif}` |
+
+The extension selects which image encoding profile is served, so request `thumb.avif` only if the output profile has an `<Image>` encode with `<Codec>avif</Codec>`. The response is returned with the matching MIME type (`image/jpeg`, `image/png`, `image/webp` or `image/avif`).
 
 ## Advanced&#x20;
 

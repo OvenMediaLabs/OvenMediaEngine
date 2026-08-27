@@ -29,7 +29,8 @@ bool ThumbnailInterceptor::IsInterceptorForRequest(const std::shared_ptr<const h
 
 	if ((target.IndexOf(".jpg") >= 0) ||
 		(target.IndexOf(".png") >= 0) ||
-		(target.IndexOf(".webp") >= 0))
+		(target.IndexOf(".webp") >= 0) ||
+		(target.IndexOf(".avif") >= 0))
 	{
 		return true;
 	}

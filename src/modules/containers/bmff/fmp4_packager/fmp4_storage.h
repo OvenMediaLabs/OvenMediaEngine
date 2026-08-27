@@ -9,10 +9,11 @@
 #pragma once
 
 #include "fmp4_structure.h"
+#include "segment_boundary_policy.h"
 #include <base/common_types.h>
 #include <base/info/media_track.h>
 #include <base/modules/container/segment_storage.h>
-#include <base/modules/marker/marker_box.h>
+#include <base/modules/marker/marker.h>
 
 namespace bmff
 {
@@ -37,10 +38,10 @@ namespace bmff
 			bool dvr_enabled = false;
 			ov::String dvr_storage_path;
 			uint64_t dvr_duration_sec = 0;
-			bool server_time_based_segment_numbering = false;
 		};
 
-		FMP4Storage(const std::shared_ptr<FMp4StorageObserver> &observer, const std::shared_ptr<const MediaTrack> &track, const Config &config, const ov::String &stream_tag);
+		// boundary_policy decides where each segment ends
+		FMP4Storage(const std::shared_ptr<FMp4StorageObserver> &observer, const std::shared_ptr<const MediaTrack> &track, const Config &config, const ov::String &stream_tag, const std::shared_ptr<SegmentBoundaryPolicy> &boundary_policy);
 
 		virtual ~FMP4Storage();
 
@@ -56,7 +57,7 @@ namespace bmff
 		std::tuple<int64_t, int64_t> GetLastPartialSegmentNumber() const override;
 		
 		bool StoreInitializationSection(const std::shared_ptr<ov::Data> &section);
-		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers = {});
+		bool AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, bool discontinuity = false);
 
 		// Switch to a new version of the track at a runtime configuration change.
 		// Completes the in-progress segment and creates subsequent segments with the
@@ -72,6 +73,10 @@ namespace bmff
 		// without a configuration change (another track of the stream changed)
 		void CutSegmentForDiscontinuity();
 
+		// Completes the segment in progress at a marker position with nothing
+		// left to append; the buffered samples open the next one
+		void CutSegmentAtMarker();
+
 		// Start a new content version for a DRM key rotation, so the segments encrypted
 		// with the new key are addressed separately from the old key. Called when a new
 		// segment is about to start: no segment is cut, no discontinuity is marked, and
@@ -82,8 +87,6 @@ namespace bmff
 		uint64_t GetMinPartialDurationMs() const override;
 
 		ov::String GetContainerExtension() const override { return "m4s"; }
-
-		double GetTargetSegmentDuration() const;
 
 		// Monotonic identifier stamped on initialization sections and segments. Both a
 		// track configuration change and a DRM key rotation advance it, because each
@@ -98,12 +101,13 @@ namespace bmff
 		std::shared_ptr<FMP4Segment> GetSegmentInternal(int64_t segment_number) const;
 		std::shared_ptr<FMP4Segment> GetLastSegmentInternal() const;
 
-		// Force the in-progress segment to complete at a track change boundary.
-		// Returns the completed segment number, or -1 if there was nothing to complete.
-		int64_t CompleteLastSegment();
-
-		// Reset the segment duration pacing after a boundary cut
-		void RealignSegmentDurationPacing();
+		// Force the in-progress segment to complete at a discontinuity (track
+		// change, a boundary propagated from another track) and report the event
+		// to the boundary policy. Returns the completed segment number, or -1 if
+		// there was nothing to complete.
+		// as_discontinuity settles the closed segment as a timeline break; a
+		// marker cut settles it as an ordinary completion
+		int64_t CompleteLastSegment(bool as_discontinuity);
 
 		// Flag the pre-created empty segment as the start of a new discontinuity domain
 		void MarkPendingSegmentDiscontinuity();
@@ -228,7 +232,11 @@ namespace bmff
 		bool SaveMediaSegmentToFile(const std::shared_ptr<FMP4Segment> &segment);
 		std::shared_ptr<FMP4Segment> LoadMediaSegmentFromFile(uint32_t segment_number) const;
 
-		std::shared_ptr<FMP4Segment> CreateNextSegment();
+		// first_chunk_start_timestamp_us names the very first segment, whose
+		// number a synced track derives from where it joins. Every later segment
+		// is pre-created before its first chunk arrives and numbered from the
+		// previous one, so it passes nothing.
+		std::shared_ptr<FMP4Segment> CreateNextSegment(std::optional<int64_t> first_chunk_start_timestamp_us = std::nullopt);
 
 		std::shared_ptr<const MediaTrack> GetTrack() const;
 
@@ -254,16 +262,15 @@ namespace bmff
 		std::map<int64_t, std::shared_ptr<FMP4Segment>> _segments;
 		mutable std::shared_mutex _segments_lock;
 
-		int64_t _initial_segment_number = 0;
 		[[maybe_unused]] int64_t _start_timestamp_delta = -1;
 
 		double _max_chunk_duration_ms = 0;
 		double _min_chunk_duration_ms = static_cast<double>(std::numeric_limits<uint64_t>::max());
 
-		double _target_segment_duration_ms = 0;
-
-		double _total_segment_duration_ms = 0;
-		double _total_expected_duration_ms = 0;
+		// Decides where each segment ends and paces the following targets
+		std::shared_ptr<SegmentBoundaryPolicy> _boundary_policy;
+		// Where the policy's numbering starts, for before the first segment exists
+		int64_t _initial_segment_number = 0;
 
 		std::shared_ptr<FMp4StorageObserver> _observer;
 

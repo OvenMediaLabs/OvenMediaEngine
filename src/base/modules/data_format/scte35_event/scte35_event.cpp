@@ -11,9 +11,9 @@
 #include <modules/containers/mpegts/mpegts_section.h>
 #include <modules/containers/mpegts/scte35/mpegts_splice_insert.h>
 
-std::shared_ptr<Scte35Event> Scte35Event::Create(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return)
+std::shared_ptr<Scte35Event> Scte35Event::Create(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return, bool provisional)
 {
-	return std::make_shared<Scte35Event>(splice_command_type, id, out_of_network, timestamp_msec, duration_msec, auto_return);
+	return std::make_shared<Scte35Event>(splice_command_type, id, out_of_network, timestamp_msec, duration_msec, auto_return, provisional);
 }
 
 std::shared_ptr<Scte35Event> Scte35Event::Create(const std::shared_ptr<const mpegts::SpliceInfo> &splice_info)
@@ -43,7 +43,7 @@ std::shared_ptr<Scte35Event> Scte35Event::Create(const std::shared_ptr<const mpe
 				  splice_insert->GetAutoReturn());
 }
 
-Scte35Event::Scte35Event(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return)
+Scte35Event::Scte35Event(mpegts::SpliceCommandType splice_command_type, uint32_t id, bool out_of_network, int64_t timestamp_msec, int64_t duration_msec, bool auto_return, bool provisional)
 {
 	_splice_command_type = splice_command_type;
 	_id = id;
@@ -51,6 +51,7 @@ Scte35Event::Scte35Event(mpegts::SpliceCommandType splice_command_type, uint32_t
 	_timestamp_msec = timestamp_msec;
 	_duration_msec = duration_msec;
 	_auto_return = auto_return;
+	_provisional = provisional;
 }
 
 std::shared_ptr<Scte35Event> Scte35Event::Parse(const std::shared_ptr<const ov::Data> &data)
@@ -81,7 +82,14 @@ std::shared_ptr<Scte35Event> Scte35Event::Parse(const std::shared_ptr<const ov::
 	int64_t duration_msec = stream.ReadBE64();
 	bool auto_return = stream.Read8() == 1;
 
-	return Create(splice_command_type, id, out_of_network, timestamp_msec, duration_msec, auto_return);
+	// The provisional flag is appended only when set; older payloads are 23 bytes
+	bool provisional = false;
+	if (data->GetLength() >= 24)
+	{
+		provisional = stream.Read8() == 1;
+	}
+
+	return Create(splice_command_type, id, out_of_network, timestamp_msec, duration_msec, auto_return, provisional);
 }
 
 std::shared_ptr<ov::Data> Scte35Event::Serialize() const
@@ -93,6 +101,13 @@ std::shared_ptr<ov::Data> Scte35Event::Serialize() const
 	stream.WriteBE64(_timestamp_msec);
 	stream.WriteBE64(_duration_msec);
 	stream.Write8(_auto_return ? 1 : 0);
+
+	// Appended only when set, so unrelated events stay wire-identical to
+	// older versions
+	if (_provisional == true)
+	{
+		stream.Write8(1);
+	}
 
 	return stream.GetDataPointer();
 }
@@ -126,6 +141,11 @@ int64_t Scte35Event::GetDurationMsec() const
 bool Scte35Event::IsAutoReturn() const
 {
 	return _auto_return;
+}
+
+bool Scte35Event::IsProvisional() const
+{
+	return _provisional;
 }
 
 std::shared_ptr<ov::Data> Scte35Event::MakeScteData() const

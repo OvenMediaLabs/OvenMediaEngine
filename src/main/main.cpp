@@ -17,6 +17,7 @@
 #include <mediarouter/mediarouter.h>
 #include <modules/address/address_utilities.h>
 #include <modules/sdp/sdp_regex_pattern.h>
+#include <modules/task_pool/task_pool.h>
 #include <monitoring/monitoring.h>
 #include <orchestrator/orchestrator.h>
 #include <providers/providers.h>
@@ -71,6 +72,13 @@ int main(int argc, char *argv[])
 	auto orchestrator  = ocst::Orchestrator::GetInstance();
 
 	logti("Server ID : %s", server_config->GetID().CStr());
+
+	// Before any module posts a task, because the workers already running are not resized to
+	// a new thread count
+	if (ov::TaskPool::GetInstance()->Initialize() == false)
+	{
+		logtw("Could not read the server configuration, so the task pool uses its default values");
+	}
 
 	// Get public IP
 	bool stun_server_parsed;
@@ -381,6 +389,10 @@ static void CheckKernelVersion()
 
 static bool Uninitialize()
 {
+	// Before the socket pools, because a task may still be using a socket
+	logti("Stopping the task pool...");
+	ov::TaskPool::GetInstance()->Stop();
+
 	logti("Uninitializing TCP socket pool...");
 	ov::SocketPool::GetTcpPool()->Uninitialize();
 	logti("Uninitializing UDP socket pool...");

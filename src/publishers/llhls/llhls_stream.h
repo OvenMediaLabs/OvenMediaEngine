@@ -8,6 +8,9 @@
 //==============================================================================
 #pragma once
 
+#include <mutex>
+#include <optional>
+
 #include <base/common_types.h>
 #include <base/publisher/stream.h>
 #include <base/info/dump.h>
@@ -17,7 +20,9 @@
 
 #include "monitoring/monitoring.h"
 
+#include "modules/containers/bmff/fmp4_packager/duration_boundary_policy.h"
 #include "modules/containers/bmff/fmp4_packager/fmp4_packager.h"
+#include "modules/containers/bmff/fmp4_packager/synced_boundary_policy.h"
 #include "modules/containers/webvtt/webvtt_packager.h"
 #include "llhls_master_playlist.h"
 #include "llhls_chunklist.h"
@@ -97,7 +102,6 @@ public:
 	//////////////////////////
 	// Check marker can be inserted
 	//////////////////////////
-	std::tuple<bool, ov::String> CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const;
 
 	/// Origin Mode Session Management
 	std::shared_ptr<LLHlsSession> GetSessionFromPool();
@@ -106,13 +110,49 @@ private:
 	bool Start() override;
 	bool Stop() override;
 
-	// Parse the DRM info file into the ordered key list for the matched stream and
-	// its auto key rotation period. A single flat key yields a one-entry list.
-	bool GetDrmInfo(const ov::String &file_path, std::vector<bmff::CencProperty> &cenc_key_list, uint64_t &key_rotation_period_ms);
+	// Synced segmentation: the reference track's policy realizes the boundaries
+	// and every synced track's policy follows it
+	std::shared_ptr<bmff::ReferenceBoundaryPolicy> _reference_boundary_policy;
 
-	// Rotate the DRM key to the next key in the list, from the next segment of each
-	// track. Triggered by the auto rotation period and by a RotateDrmKey event. The
-	// keys form a cycle; a single configured key is kept as is.
+	// The track the rest of the stream follows: the first packaged video track,
+	// or the first packaged audio track without video. In synced segmentation
+	// its policy realizes the boundaries every other track adopts, and the
+	// WebVTT segments mirror its numbering and ranges.
+	std::shared_ptr<const MediaTrack> GetReferenceTrack() const;
+	LLHlsSegmentationMode GetSegmentationMode() const;
+
+	// Everything the DRM info file states for the matched stream
+	struct DrmInfo
+	{
+		// What <DRMProvider> states, settled on one spelling. Left out, the file means
+		// "manual", the provider that keeps its keys in the file itself.
+		ov::String provider;
+		// How the media is encrypted, and which DRM systems the stream offers
+		bmff::CencProtectScheme scheme = bmff::CencProtectScheme::None;
+		bmff::DRMSystem drm_system	   = bmff::DRMSystem::None;
+		// What <KeyRotationPeriod> states, in seconds of stream time. Left out, the keys
+		// never change; 0 rotates only when asked to; above 0 rotates on that period.
+		std::optional<uint64_t> rotation_period_sec;
+
+		// Keys the manual provider rotates through, in order. A single flat key yields a
+		// one-entry list, and the list stays empty when the keys are served from elsewhere
+		// instead.
+		std::vector<bmff::CencProperty> key_list;
+
+		// Where to ask for the key of each period, for a provider that serves them
+		ov::String kms_url;
+		ov::String kms_token;
+		ov::String content_id;
+	};
+
+	// Parse the DRM info file into what it states for the matched stream. Parsed as a
+	// whole, so a file that fails midway commits nothing.
+	bool GetDrmInfo(const ov::String &file_path, DrmInfo &drm_info);
+
+	// Rotate the DRM key, from the next segment of each track. Triggered by the auto
+	// rotation period and by a RotateDrmKey event. The keys of the file are walked as a
+	// cycle, and a provider that serves keys hands over the one already fetched for the
+	// next period, if it is ready.
 	void RotateDrmKey();
 
 	// Trigger an auto key rotation once the media time crosses a period boundary.
@@ -139,6 +179,7 @@ private:
 	std::shared_ptr<base::modules::SegmentStorage> GetStorage(const int32_t &track_id) const;
 	// Get storage of a fMP4 media track (VTT tracks use a different storage type)
 	std::shared_ptr<bmff::FMP4Storage> GetFmp4Storage(const int32_t &track_id) const;
+	std::shared_ptr<bmff::SegmentBoundaryPolicy> GetBoundaryPolicy(const int32_t &track_id) const;
 	// Get Playlist with the track id
 	std::shared_ptr<LLHlsChunklist> GetChunklistWriter(const int32_t &track_id) const;
 
@@ -186,7 +227,13 @@ private:
 	std::tuple<bool, ov::String> ConcludeLive();
 	bool IsConcluded() const;
 
-	bool InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
+	bool InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data);
+	// Serializes the decide-then-apply sequence above across concurrent inserts
+	std::mutex _marker_insert_guard;
+
+	// Warn only once when markers arrive while the keyframe interval does not
+	// divide the segment duration
+	bool _cue_alignment_warned = false;
 
 	// Config
 	bmff::FMP4Packager::Config _packager_config;
@@ -197,6 +244,10 @@ private:
 	mutable std::shared_mutex _storage_map_lock;
 	std::map<int32_t, std::shared_ptr<bmff::FMP4Packager>> _packager_map;
 	mutable std::shared_mutex _packager_map_lock;
+	// Decides where this track's segments end; assembled per track like the
+	// packager and the storage, and handed to both
+	std::map<int32_t, std::shared_ptr<bmff::SegmentBoundaryPolicy>> _boundary_policy_map;
+	mutable std::shared_mutex _boundary_policy_map_lock;
 	std::map<int32_t, std::shared_ptr<LLHlsChunklist>> _chunklist_map;
 	mutable std::shared_mutex _chunklist_map_lock;
 
@@ -276,22 +327,44 @@ private:
 	bmff::CencProperty _cenc_property;
 	ov::String _key_uri; // string, only for FairPlay
 
-	// Path of the DRM info file, re-read on each rotation so operators can append
-	// keys to the list while the stream runs
+	// Path of the DRM info file, read once as the stream starts
 	ov::String _drm_info_path;
-	// Ordered keys the stream rotates through (manual provider). One entry when there
-	// is no rotation. _cenc_property mirrors the current key. Guarded by _cenc_lock.
-	std::vector<bmff::CencProperty> _cenc_key_list;
-	size_t _current_key_index = 0;
-	// Auto key rotation period in media time; 0 disables auto rotation, while a
-	// RotateDrmKey event still rotates. Guarded by _cenc_lock.
-	uint64_t _key_rotation_period_ms = 0;
-	// Media time of the last applied rotation, to space out auto rotations. Guarded by _cenc_lock.
+	// Media time of the last rotation boundary, to space out auto rotations. Advanced
+	// whether or not a key was there to rotate to, so a period without one is skipped
+	// rather than retried at every segment. Guarded by _cenc_lock.
 	int64_t _last_key_rotation_media_time_ms = -1;
-	// A rotation with a single configured key is reported once, not every period.
+	// A rotation the configuration cannot serve is reported once, not every period.
 	// Guarded by _cenc_lock.
-	bool _single_key_rotation_warned = false;
+	bool _rotation_unavailable_warned = false;
+
+	// Guarded by _cenc_lock.
+	DrmInfo _drm_info;
+	// Key period the current key belongs to, advanced by one on every rotation.
+	// Guarded by _cenc_lock.
+	uint64_t _key_period_index = 0;
+	// Key of the next period, held until a rotation applies it. Guarded by _cenc_lock.
+	std::optional<bmff::CencProperty> _prefetched_key;
+	// A key request is on its way. Guarded by _cenc_lock.
+	bool _key_request_in_flight = false;
+	// Media time before which no further key request is made, so a source that is failing
+	// is not asked once per segment. Guarded by _cenc_lock.
+	int64_t _next_key_request_media_time_ms = 0;
+
 	mutable std::shared_mutex _cenc_lock;
+
+	// Hands the new key to every track and refreshes the master playlists
+	void ApplyRotatedKey(const bmff::CencProperty &cenc_property);
+
+	// Returns the key a period should use, waiting for it, so it runs while the stream
+	// starts or on a task pool worker, never on the media thread. The keys of the file are
+	// read from it, and a provider that serves its keys is asked for them.
+	bool RequestKeyOfPeriod(uint64_t key_period_index, bmff::CencProperty &cenc_property);
+	// Hands the request for the key of the next period to a task pool worker unless one is
+	// already waiting or on its way. Returns at once, so it can run on the media thread.
+	void PrefetchNextKeyIfNeeded(int64_t media_time_ms);
+	// Stores a key that PrefetchNextKeyIfNeeded asked for. Runs on the task pool worker that
+	// made the request.
+	void OnKeyPrefetched(uint64_t key_period_index, bool succeeded, const bmff::CencProperty &cenc_property, int64_t requested_media_time_ms);
 
 	// Highest content version already advertised to each track's chunklist, so a new
 	// version's EXT-X-KEY is registered once when its first segment appears.
@@ -314,7 +387,8 @@ private:
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> GetVttPackagers() const;
 
 	bool _vtt_enabled = false;
-	int32_t _vtt_reference_track_id = -1; // track id of the reference track for VTT
+	// Decided at Start() among the tracks that are actually packaged
+	int32_t _reference_track_id = -1;
 
 	std::map<int32_t, std::shared_ptr<webvtt::Packager>> _vtt_packagers;
 	mutable std::shared_mutex _vtt_packagers_lock;

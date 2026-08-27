@@ -58,6 +58,17 @@ namespace cfg
 	};
 
 	const char *StringFromValueType(ValueType type);
+
+	// Scalar leaf values - the types whose JSON value is read directly by `DataSource::GetValue()`
+	inline bool IsScalarValueType(ValueType type)
+	{
+		return (type == ValueType::String) ||
+			   (type == ValueType::Integer) ||
+			   (type == ValueType::Long) ||
+			   (type == ValueType::Boolean) ||
+			   (type == ValueType::Double) ||
+			   (type == ValueType::Text);
+	}
 	//--------------------------------------------------------------------
 
 	enum class CheckUnknownItems

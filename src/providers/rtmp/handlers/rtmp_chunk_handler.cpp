@@ -13,6 +13,7 @@
 #include <modules/rtmp_v2/rtmp.h>
 #include <orchestrator/orchestrator.h>
 
+#include "../rtmp_media_frame.h"
 #include "../rtmp_provider_private.h"
 #include "../rtmp_stream_v2.h"
 #include "../tracks/rtmp_audio_track.h"
@@ -108,6 +109,7 @@ namespace pvd::rtmp
 			OV_CASE_RETURN(cmn::MediaCodecId::Jpeg, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Png, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Webp, false);
+			OV_CASE_RETURN(cmn::MediaCodecId::Avif, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::WebVTT, false);
 			OV_CASE_RETURN(cmn::MediaCodecId::Whisper, false);
 		}
@@ -1517,13 +1519,19 @@ namespace pvd::rtmp
 		}
 
 		std::map<int, std::shared_ptr<RtmpTrack>> rtmp_track_to_send_map;
-		const bool is_ex_header = parser.IsExHeader();
-		const bool is_published = _stream->IsPublished();
+		const bool is_ex_header	 = parser.IsExHeader();
+		const bool is_published	 = _stream->IsPublished();
+
+		// A multitrack message parses into one entry per track,
+		// and any one of them holding a coded frame ends the wait for the first media.
+		bool has_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
-			auto track_id	= parsed_data->track_id;
-			auto rtmp_track = _stream->GetRtmpTrack(track_id);
+			has_media_frame = has_media_frame || HasAudioFrame(*parsed_data);
+
+			auto track_id		= parsed_data->track_id;
+			auto rtmp_track		= _stream->GetRtmpTrack(track_id);
 
 			if (rtmp_track == nullptr)
 			{
@@ -1590,6 +1598,13 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
+			if (has_media_frame)
+			{
+				// Media is flowing now, so the wait sized for the first frame is over,
+				// even though publishing may still be waiting for the other track or for enough packets.
+				_stream->EndFirstMediaWait();
+			}
+
 			if (_stream->IsReadyToPublish() == false)
 			{
 				return true;
@@ -1639,11 +1654,17 @@ namespace pvd::rtmp
 		}
 
 		std::map<int, std::shared_ptr<RtmpTrack>> rtmp_track_to_send_map;
-		const bool is_ex_header = parser.IsExHeader();
-		const bool is_published = _stream->IsPublished();
+		const bool is_ex_header	 = parser.IsExHeader();
+		const bool is_published	 = _stream->IsPublished();
+
+		// A multitrack message parses into one entry per track,
+		// and any one of them holding a coded frame ends the wait for the first media.
+		bool has_media_frame = false;
 
 		for (auto &parsed_data : parser.GetDataList())
 		{
+			has_media_frame = has_media_frame || HasVideoFrame(*parsed_data);
+
 			// Currently, metadata is not handled separately.
 			// If an RTMP client that sends metadata is found later, it will be added.
 #if DEBUG
@@ -1743,6 +1764,13 @@ namespace pvd::rtmp
 
 		if (is_published == false)
 		{
+			if (has_media_frame)
+			{
+				// Media is flowing now, so the wait sized for the first frame is over,
+				// even though publishing may still be waiting for the other track or for enough packets.
+				_stream->EndFirstMediaWait();
+			}
+
 			if (_stream->IsReadyToPublish() == false)
 			{
 				return true;

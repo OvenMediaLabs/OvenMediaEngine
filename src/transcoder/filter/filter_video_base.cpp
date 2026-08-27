@@ -11,7 +11,6 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
-#include "../transcoder_gpu.h"
 #include "../transcoder_private.h"
 #include "../transcoder_stream_internal.h"
 
@@ -22,8 +21,10 @@ bool FilterVideoBase::InitializeFpsFilter()
 	_fps_filter.SetInputFrameRate(_input_track->GetFrameRate());
 
 	// Configure skip frames
-	int32_t skip_frames_config = _output_track->GetSkipFramesByConfig();
 #if _SKIP_FRAMES_ENABLED
+	int32_t skip_frames_config = _output_track->GetSkipFramesByConfig();
+	_skip_frames_controller.Configure(skip_frames_config);
+
 	int32_t skip_frames = (skip_frames_config >= FilterFps::SkipFramesMin) ? skip_frames_config : FilterFps::SkipFramesDisabled;
 	_fps_filter.SetSkipFrames(skip_frames);
 
@@ -62,59 +63,24 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 		}
 	}
 
-	if (media_frame != nullptr)
+	if (media_frame == nullptr)
 	{
-		_fps_filter.Push(media_frame);
-	}
-
-	static constexpr double kProcessingTimeEmaAlpha = 0.1;
-
-	while (auto frame = _fps_filter.Pop())
-	{
-		auto start_time = std::chrono::steady_clock::now();
-
-		if (_is_first_frame && GetOutputTrack()->GetCodecModuleId() == cmn::MediaCodecModuleId::XMA)
-		{
-			// Some hardware (e.g. Xilinx U30) may expand their memory pool while processing the first frame, which is not thread safe.
-			// The first frame is processed under the device mutex to prevent allocation failures.
-			ov::ScopedLock first_frame_lock(TranscodeGPU::GetInstance()->GetDeviceMutex());
- 			_is_first_frame = false;
-			if(SendFrame(frame) == false)
-			{
-				logte("[%s] Failed to push frame into backend pipeline.", GetLogPrefix().CStr());
-				return FilterResult::Error();
-			}				
-
-		}
-		else
-		{
-			if (SendFrame(frame) == false)
-			{
-				logte("[%s] Failed to push frame into backend pipeline.", GetLogPrefix().CStr());
-				return FilterResult::Error();
-			}
-		}
-
-		// Drain every frame produced by this push into the output queue.
-		while (auto completed_frame = ReceiveFrame())
-		{
-			_output_frames.push(std::move(completed_frame));
-		}
-
-		if (GetState() == State::ERROR)
-		{
-			return FilterResult::Error();
-		}
-
-		auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
-
-		// Update the weighted average frame processing time
-		// It includes the time taken for filtering + overlay + delivery to the encoder (including waiting time if there is a load on the encoder).
-		_weighted_avg_frame_processing_time_us = (_weighted_avg_frame_processing_time_us * (1.0 - kProcessingTimeEmaAlpha)) + (elapsed_time_us * kProcessingTimeEmaAlpha);
+		return FilterResult::Error("Received frame is null");
 	}
 
 #if _SKIP_FRAMES_ENABLED
-	UpdateSkipFrames();
+	auto start_time = std::chrono::steady_clock::now();
+#endif
+
+	if (_fps_filter.Push(media_frame) == false)
+	{
+		logtw("[%s] Dropped a frame because the FPS filter is full.", GetLogPrefix().CStr());
+	}
+
+#if _SKIP_FRAMES_ENABLED
+	// The push runs on the filter thread like everything else, so it counts toward how
+	// busy the thread was this window.
+	_skip_frames_controller.AddBusyTime(ov::Clock::GetElapsedMicroSecondsFromNow(start_time));
 #endif
 
 	return FilterResult::NoOutput();
@@ -122,147 +88,194 @@ FilterResult FilterVideoBase::ProcessFrameInternal(const std::shared_ptr<MediaFr
 
 FilterResult FilterVideoBase::PopCompletedFrameInternal()
 {
-	if (_output_frames.empty())
+	if (GetState() == FilterBase::State::ERROR)
 	{
-		return FilterResult::NoOutput();
+#if _SKIP_FRAMES_ENABLED
+		_skip_frames_controller.DiscardPending();
+#endif
+
+		return FilterResult::Error("The filter is in the error state");
 	}
 
-	auto output_frame = std::move(_output_frames.front());
-	_output_frames.pop();
+#if _SKIP_FRAMES_ENABLED
+	auto start_time = std::chrono::steady_clock::now();
+#endif
 
-	return FilterResult::Ready(std::move(output_frame));
+	while (true)
+	{
+		auto completed_frame = ReceiveFrame();
+		if (completed_frame != nullptr)
+		{
+#if _SKIP_FRAMES_ENABLED
+			_skip_frames_controller.CommitFrame(ov::Clock::GetElapsedMicroSecondsFromNow(start_time));
+#endif
+
+			return FilterResult::Ready(std::move(completed_frame));
+		}
+
+		if (GetState() == FilterBase::State::ERROR)
+		{
+#if _SKIP_FRAMES_ENABLED
+			_skip_frames_controller.DiscardPending();
+#endif
+
+			return FilterResult::Error("The backend rescaler has failed");
+		}
+
+		// Drain FPS filter to get completed frames.
+		auto frame = _fps_filter.Pop();
+		if (frame == nullptr)
+		{
+#if _SKIP_FRAMES_ENABLED
+			_skip_frames_controller.AddProcessingTime(ov::Clock::GetElapsedMicroSecondsFromNow(start_time));
+
+			// Update skip frames based on the current processing time and framerate.
+			UpdateSkipFrames();
+#endif
+
+			return FilterResult::NoOutput();
+		}
+
+		if (SendFrame(frame) == false)
+		{
+			// A fatal failure is carried in the filter state and reported by the check at the
+			// top of the next round. Anything else only dropped this frame.
+			logtw("[%s] Dropped a frame that could not be pushed into the backend rescaler.", GetLogPrefix().CStr());
+		}
+	}
+}
+
+std::vector<std::shared_ptr<MediaFrame>> FilterVideoBase::FlushBuffered()
+{
+	std::vector<std::shared_ptr<MediaFrame>> flushed_frames;
+
+	// Push the frames parked in the FPS filter through the rescaler graph
+	while (true)
+	{
+		auto parked_frame = _fps_filter.Flush();
+		if (parked_frame == nullptr)
+		{
+			break;
+		}
+
+		if (SendFrame(parked_frame) == false)
+		{
+			logtw("[%s] Dropped a parked frame that could not be pushed into the backend rescaler.", GetLogPrefix().CStr());
+		}
+	}
+
+	// Drain whatever the graph completes
+	while (true)
+	{
+		auto completed_frame = ReceiveFrame();
+		if (completed_frame == nullptr)
+		{
+			break;
+		}
+
+		flushed_frames.push_back(std::move(completed_frame));
+	}
+
+	return flushed_frames;
+}
+
+void FilterVideoBase::InheritContinuity(const FilterBase *previous)
+{
+	auto previous_video = dynamic_cast<const FilterVideoBase *>(previous);
+	if (previous_video == nullptr)
+	{
+		return;
+	}
+	// The slot position only transfers within the same output cadence
+	if (_fps_filter.GetOutputFrameRate() != previous_video->_fps_filter.GetOutputFrameRate())
+	{
+		return;
+	}
+
+	// A frame lost around the swap (e.g. still inside the decoder at a format
+	// change) leaves a slot hole no instance can see on its own; carrying the
+	// slot position lets the new filter refill it
+	_fps_filter.SetContinuationPts(previous_video->_fps_filter.GetNextPts());
+
+#if _SKIP_FRAMES_ENABLED
+	// The encoder does not empty out because this filter was replaced, so the load the
+	// outgoing controller measured still describes the pipeline.
+	_skip_frames_controller.InheritFrom(previous_video->_skip_frames_controller);
+
+	_fps_filter.SetSkipFrames(_skip_frames_controller.GetSkipFrames());
+#endif
 }
 
 #if _SKIP_FRAMES_ENABLED
-#define _SKIP_FRAMES_EVALUATION_INTERVAL_MS 	1000	// 1s
-#define _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS 	5000	// 5s
-#define _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO 	0.9f	// 90%
+void FilterVideoBase::AddHandoffTime(int64_t elapsed_us)
+{
+	// Called on the filter thread, so no synchronization is needed.
+	_skip_frames_controller.AddHandoffTime(elapsed_us);
+}
 
 void FilterVideoBase::UpdateSkipFrames()
 {
 	// Skip frame is disabled.
-	if (_skip_frames_conf < 0)
+	if (_skip_frames_controller.IsEnabled() == false)
 	{
 		return;
 	}
 
 	// Static skip frames set by the user.
-	if (_skip_frames_conf > 0)
+	if (_skip_frames_controller.IsAutomatic() == false)
 	{
-		if (_fps_filter.GetSkipFrames() != _skip_frames_conf)
+		auto configured = _skip_frames_controller.GetConfiguredSkipFrames();
+		if (_fps_filter.GetSkipFrames() != configured)
 		{
-			_fps_filter.SetSkipFrames(_skip_frames_conf);
-			logti("[%s] Changed skip frames to user config value: %d", GetLogPrefix().CStr(), _fps_filter.GetSkipFrames());
+			_fps_filter.SetSkipFrames(configured);
+			logti("[%s] SkipFrames %d, fixed by config.", GetLogPrefix().CStr(), _fps_filter.GetSkipFrames());
 		}
 		return;
 	}
 
-	// Automatic skip frame adjustment.
+	// Automatic skip frame adjustment. The controller owns the decision; this applies it
+	// and reports it, because the log prefix and the FPS filter live here.
+	SkipFramesController::Observation observation;
+	observation.expected_input_fps	= _fps_filter.GetInputFrameRate();
+	observation.actual_input_fps	= _fps_filter.GetInputFramesPerSecond();
+	observation.max_output_fps		= _fps_filter.GetOutputFrameRate();
+	observation.expected_output_fps	= _fps_filter.GetExpectedOutputFramesPerSecond();
+	observation.actual_output_fps	= _fps_filter.GetOutputFramesPerSecond();
 
-	auto curr_time = ov::Time::GetTimestampInMs();
-
-	if (_skip_frames_last_check_time == 0 || _skip_frames_last_changed_time == 0)
-	{
-		_skip_frames_last_check_time   = curr_time;
-		_skip_frames_last_changed_time = curr_time;
-	}
-
-	auto elapsed_check_time = curr_time - _skip_frames_last_check_time;
-	auto elapsed_stable_time = curr_time - _skip_frames_last_changed_time;
-
-	// Checking every 1 second is sufficient for skip frame adjustment
-	if (elapsed_check_time <= _SKIP_FRAMES_EVALUATION_INTERVAL_MS)
-	{
-		return;
-	}
-	_skip_frames_last_check_time = curr_time;
-
-	// Remain for debugging and future improvement for queue-based skip frame adjustment
-	// -----------------------------------------------------------------------------
-	// double actual_input_fps			   = _fps_filter.GetInputFramesPerSecond();
-	// double expected_input_fps		   = _fps_filter.GetInputFrameRate();
-
-	// double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
-
-	// int64_t queue_waiting_deviation_us = _input_buffer.GetWaitingTimeInUs();
-	// double expected_frame_interval_us  = (expected_input_fps > 0.0) ? (1000000.0 / expected_input_fps) : 0.0;
-	// bool is_queue_overload			   = (expected_frame_interval_us > 0.0) &&
-	// 						 (queue_waiting_deviation_us > expected_frame_interval_us * _SKIP_FRAMES_QUEUE_BACKLOG_RATIO);
-	// bool is_queue_stable = (expected_frame_interval_us > 0.0) &&
-	// 					   (queue_waiting_deviation_us < expected_frame_interval_us * _SKIP_FRAMES_QUEUE_RECOVERY_RATIO);
-
-	double fixed_output_fps			   = _fps_filter.GetOutputFrameRate();
-	double expected_output_fps		   = _fps_filter.GetExpectedOutputFramesPerSecond();
-	double actual_output_fps		   = _fps_filter.GetOutputFramesPerSecond();
-
-	if (_weighted_avg_frame_processing_time_us <= 0.0 || fixed_output_fps <= 0.0)
+	// Monotonic, not wall clock: the busy time this is divided against comes from
+	// steady_clock, and a system clock step would make the two disagree - stalling the
+	// evaluation while busy time piles up, then charging all of it to one window.
+	auto result = _skip_frames_controller.Evaluate(ov::Time::GetMonotonicTimestamp(), observation);
+	if (result.has_value() == false)
 	{
 		return;
 	}
 
-	// Calculate the maximum possible frames per second.
-	double max_frames_per_second = (1000000.0 / _weighted_avg_frame_processing_time_us);
-	// To ensure stability, set a margin and use OO% of the calculated maximum FPS.
-	double ideal_frames_per_second = max_frames_per_second * _SKIP_FRAMES_ENSURE_FPS_MARGIN_RATIO;
+	auto previous_skip_frames = _fps_filter.GetSkipFrames();
 
-	if (ideal_frames_per_second <= 0.0)
+	// All four lines lead with "SkipFrames <level>" so one grep follows a track through
+	// every state. Warn only where output actually degrades.
+	switch (result->decision)
 	{
-		// If the ideal FPS is not a positive value, skip frame cannot be performed.
-		return;
-	}
+		case SkipFramesController::Decision::Bottleneck:
+			logtw("[%s] SkipFrames %d -> %d, pipeline cannot keep up. %s", GetLogPrefix().CStr(), previous_skip_frames, result->skip_frames, result->metrics.CStr());
+			_fps_filter.SetSkipFrames(result->skip_frames);
+			break;
 
-	// Calculate number of skip frames value to match the ideal FPS.
-	auto next_skip_frames = static_cast<int32_t>(std::ceil(fixed_output_fps / ideal_frames_per_second - 1.0));
-	if (next_skip_frames > fixed_output_fps - 1)
-	{
-		next_skip_frames = static_cast<int32_t>(std::floor(fixed_output_fps - 1));
-	}
-	else if (next_skip_frames < FilterFps::SkipFramesMin)
-	{
-		next_skip_frames = FilterFps::SkipFramesMin;
-	}
+		case SkipFramesController::Decision::Recovery:
+			logti("[%s] SkipFrames %d -> %d, capacity came back. %s", GetLogPrefix().CStr(), previous_skip_frames, result->skip_frames, result->metrics.CStr());
+			_fps_filter.SetSkipFrames(result->skip_frames);
+			break;
 
-	ov::String common_log = ov::String::FormatString("Possible FPS: %.2f/%.2f(ideal), Output FPS: %.2f/%.2f/%.2f", max_frames_per_second, ideal_frames_per_second, fixed_output_fps, expected_output_fps, actual_output_fps);
+		// Both no-ops, and they fire once per second per track. Trace, so a debug-level
+		// deployment is not buried under a line per track per second.
+		case SkipFramesController::Decision::HoldRecovery:
+			logtt("[%s] SkipFrames %d, waiting out the recovery hold. %s", GetLogPrefix().CStr(), result->skip_frames, result->metrics.CStr());
+			break;
 
-	// Increase skip frames immediately when bottleneck occurs.
-	if (_skip_frames < next_skip_frames)
-	{
-		logtw("[%s] Changed SkipFrames %d -> %d (Bottleneck). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
-
-		_skip_frames = next_skip_frames;
-		_fps_filter.SetSkipFrames(_skip_frames);
-
-		_skip_frames_last_changed_time = curr_time;
-	}
-	// Decrease skip frames slowly when the system is recovering.
-	else if ((_skip_frames > next_skip_frames))
-	{
-		if (elapsed_stable_time > _SKIP_FRAMES_RECOVERY_HOLD_INTERVAL_MS)
-		{
-			// Decay 20% per step (rate-limited)
-			int32_t rate_limited_next = _skip_frames - std::max(1, _skip_frames / 5);
-			next_skip_frames = std::max(rate_limited_next, next_skip_frames);
-			if (next_skip_frames < FilterFps::SkipFramesMin)
-			{
-				next_skip_frames = FilterFps::SkipFramesMin;
-			}
-
-			logti("[%s] Changed SkipFrames %d -> %d (Recovery). %s", GetLogPrefix().CStr(), _skip_frames, next_skip_frames, common_log.CStr());
-
-			_skip_frames = next_skip_frames;
-			_fps_filter.SetSkipFrames(_skip_frames);
-
-			_skip_frames_last_changed_time = curr_time;
-		}
-		else
-		{
-			logtt("[%s] Hold SkipFrames %d (Waiting for recovery). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
-		}
-	}
-	// Keep skip frames unchanged when the system is stable.
-	else
-	{
-		logtt("[%s] Unchanged SkipFrames %d (Stable). %s", GetLogPrefix().CStr(), _skip_frames, common_log.CStr());
+		case SkipFramesController::Decision::Unchanged:
+			logtt("[%s] SkipFrames %d, steady. %s", GetLogPrefix().CStr(), result->skip_frames, result->metrics.CStr());
+			break;
 	}
 }
 #endif // _SKIP_FRAMES_ENABLED

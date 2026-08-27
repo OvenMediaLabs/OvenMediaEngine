@@ -228,9 +228,9 @@ The Domain has `<Names>` and `<TLS>`. `<Names>` can be either a domain or an IP 
             <!--
                 You can specify domain names/IP addresses
 
-                <Name>stream1.ovenmedialabs.com</Name>
-                <Name>stream2.ovenmedialabs.com</Name>
-                <Name>*.sub.ovenmedialabs.com</Name>
+                <Name>stream1.ovenmedia.com</Name>
+                <Name>stream2.ovenmedia.com</Name>
+                <Name>*.sub.ovenmedia.com</Name>
                 <Name>192.168.0.160</Name>
             -->
             <Name>*</Name>
@@ -577,9 +577,9 @@ Finally, `Server.xml` is configured as follows:
             <AccessToken>ome-access-token</AccessToken>
 
             <CrossDomains>
-                <Url>*.ovenmedialabs.com</Url>
-                <Url>http://*.sub-domain.ovenmedialabs.com</Url>
-                <Url>http?://ovenmedialabs.*</Url>
+                <Url>*.ovenmedia.com</Url>
+                <Url>http://*.sub-domain.ovenmedia.com</Url>
+                <Url>http?://ovenmedia.*</Url>
             </CrossDomains>
         </API>
     </Managers>
@@ -600,9 +600,9 @@ Finally, `Server.xml` is configured as follows:
             <Host>
                 <Names>
                     <!-- Host names
-                        <Name>stream1.ovenmedialabs.com</Name>
-                        <Name>stream2.ovenmedialabs.com</Name>
-                        <Name>*.sub.ovenmedialabs.com</Name>
+                        <Name>stream1.ovenmedia.com</Name>
+                        <Name>stream2.ovenmedia.com</Name>
+                        <Name>*.sub.ovenmedia.com</Name>
                         <Name>192.168.0.1</Name>
                     -->
                     <Name>*</Name>

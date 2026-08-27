@@ -184,7 +184,7 @@ namespace pvd
 		// Implementation of PhysicalPortObserver
 		//--------------------------------------------------------------------
 		void OnConnected(const std::shared_ptr<ov::Socket> &remote) override;
-		bool OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address);
+		bool OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair);
 
 		void OnDatagramReceived(const std::shared_ptr<ov::Socket> &remote,
 								const ov::SocketAddressPair &address_pair,

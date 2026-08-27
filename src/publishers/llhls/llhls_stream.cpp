@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 #include <base/ovlibrary/hex.h>
 #include <base/publisher/application.h>
@@ -18,9 +19,7 @@
 
 #include <pugixml-1.9/src/pugixml.hpp>
 
-#include <base/modules/data_format/cue_event/cue_event.h>
-
-#include <pugixml-1.9/src/pugixml.hpp>
+#include <modules/task_pool/task_pool.h>
 
 #include "llhls_application.h"
 #include "llhls_private.h"
@@ -158,23 +157,39 @@ bool LLHlsStream::Start()
 	{
 		_drm_info_path = drm_config.GetDrmInfoPath();
 
-		// Parsed into locals and committed only on success, so a file that fails midway
-		// leaves no keys behind for a later rotation to pick up
-		std::vector<bmff::CencProperty> key_list;
-		uint64_t rotation_period_ms = 0;
-		if (GetDrmInfo(_drm_info_path, key_list, rotation_period_ms) == true && key_list.empty() == false)
+		// Parsed into a local and committed only on success, so a file that fails midway
+		// leaves no keys behind for a later rotation to pick up. A file that says nothing
+		// about this stream leaves the provider unset and the stream unprotected.
+		DrmInfo drm_info;
+		if ((GetDrmInfo(_drm_info_path, drm_info) == true) && (drm_info.provider.IsEmpty() == false))
 		{
-			_cenc_key_list = std::move(key_list);
-			_key_rotation_period_ms = rotation_period_ms;
+			_drm_info = std::move(drm_info);
 
-			// The first key in the list is the current one; rotations advance the index
-			_current_key_index = 0;
-			_cenc_property = _cenc_key_list[_current_key_index];
+			// Which period the stream is on. A key list is walked from its first entry.
+			_key_period_index = 0;
+
+			bmff::CencProperty cenc_property;
+			if (RequestKeyOfPeriod(_key_period_index, cenc_property) == true)
+			{
+				_cenc_property = cenc_property;
+
+				// The key of the next period is asked for right away, so that the very
+				// first rotation has a full period of room for a slow source. Later
+				// periods are topped up from the media path as each rotation uses one up.
+				PrefetchNextKeyIfNeeded(0);
+			}
+			else
+			{
+				logte("LLHlsStream(%s/%s) - Could not get the first DRM key, the stream is not protected", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+
+				// Cleared so that a stream left without a key does not keep looking for a
+				// rotation it has nothing to rotate to
+				_drm_info = DrmInfo();
+			}
 		}
 	}
 
 	_packager_config.chunk_duration_ms = llhls_config.GetChunkDuration() * 1000.0;
-	_packager_config.segment_duration_ms = llhls_config.GetSegmentDuration() * 1000.0;
 	// cenc property will be set in AddPackager
 
 	_storage_config.max_segments = llhls_config.GetSegmentCount();
@@ -187,7 +202,6 @@ bool LLHlsStream::Start()
 	_storage_config.dvr_enabled = dvr_config.IsEnabled();
 	_storage_config.dvr_storage_path = dvr_config.GetTempStoragePath();
 	_storage_config.dvr_duration_sec = dvr_config.GetMaxDuration();
-	_storage_config.server_time_based_segment_numbering = llhls_config.IsServerTimeBasedSegmentNumbering();
 
 	_configured_part_hold_back = llhls_config.GetPartHoldBack();
 	_subtitle_hold_back_ms = llhls_config.GetSubtitleHoldBackMs();
@@ -196,7 +210,8 @@ bool LLHlsStream::Start()
 	// Find data track
 	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
 
-	// Find the first video track and audio track with supported codec, and set the reference track id for VTT track.
+	// Find the first video track and audio track with supported codec; the
+	// reference track the rest of the stream follows is one of them
 	std::shared_ptr<const MediaTrack> first_video_track = nullptr, first_audio_track = nullptr;
 	for (const auto &[id, track] : GetTracks())
 	{
@@ -217,7 +232,7 @@ bool LLHlsStream::Start()
 			break;
 		}
 	}
-	_vtt_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
+	_reference_track_id = first_video_track ? first_video_track->GetId() : first_audio_track ? first_audio_track->GetId() : -1;
 
 	// Add packager for each track
 	for (const auto &[id, track] : GetTracks())
@@ -400,10 +415,11 @@ bool LLHlsStream::IsConcluded() const
 	return _concluded;
 }
 
-bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::CencProperty> &cenc_key_list, uint64_t &key_rotation_period_ms)
+bool LLHlsStream::GetDrmInfo(const ov::String &file_path, DrmInfo &drm_info)
 {
-	cenc_key_list.clear();
-	key_rotation_period_ms = 0;
+	drm_info = DrmInfo();
+
+	auto &cenc_key_list = drm_info.key_list;
 
 	ov::String final_path = ov::GetFilePath(file_path, cfg::ConfigManager::GetInstance()->GetConfigPath());
 
@@ -437,10 +453,42 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 			app_name == GetApplication()->GetVHostAppName().GetAppName() &&
 			match_result.IsMatched())
 		{
-			ov::String drm_provider = drm_node.child_value("DRMProvider");
-
-			if (drm_provider.IsEmpty() || drm_provider.LowerCaseString() == "manual")
+			// Settled on one spelling here, so that everything below compares against a
+			// single name. Left out, the file means the provider that keeps its keys in
+			// the file itself.
+			ov::String drm_provider = ov::String(drm_node.child_value("DRMProvider")).Trim().LowerCaseString();
+			if (drm_provider.IsEmpty())
 			{
+				drm_provider = "manual";
+			}
+
+			drm_info.provider = drm_provider;
+
+			// Both providers rotate, so the period is read before the provider is known.
+			// Stating 0 asks for rotation on request only, while leaving the element out
+			// asks for a single key that never changes.
+			ov::String rotation_period_value = ov::String(drm_node.child_value("KeyRotationPeriod")).Trim();
+			if (rotation_period_value.IsEmpty() == false)
+			{
+				// Digits only, so a value such as "1h" is reported instead of being read
+				// as the number it happens to start with
+				auto is_seconds = std::all_of(rotation_period_value.CStr(), rotation_period_value.CStr() + rotation_period_value.GetLength(),
+											  [](char character) { return ::isdigit(static_cast<unsigned char>(character)) != 0; });
+
+				if (is_seconds == false)
+				{
+					logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds, so it is read as if it were not stated and the key is not rotated.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
+				}
+				else
+				{
+					auto rotation_period_sec	= ov::Converter::ToInt64(rotation_period_value.CStr());
+					drm_info.rotation_period_sec = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) : 0;
+				}
+			}
+
+			if (drm_provider == "manual")
+			{
+
 				ov::String cenc_protect_scheme = drm_node.child_value("CencProtectScheme");
 				if (cenc_protect_scheme.IsEmpty())
 				{
@@ -461,27 +509,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 				{
 					logte("LLHlsStream(%s/%s) - Failed to load DRM info file(%s) because CencProtectScheme(%s) is not supported", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), cenc_protect_scheme.CStr());
 					return false;
-				}
-
-				// Auto key rotation period (seconds). Absent or 0 keeps a single key for
-				// the whole stream; a RotateDrmKey event still rotates regardless.
-				ov::String rotation_period_value = ov::String(drm_node.child_value("KeyRotationPeriod")).Trim();
-				if (rotation_period_value.IsEmpty() == false)
-				{
-					// Digits only, so a value such as "1h" is reported instead of being read
-					// as the number it happens to start with
-					auto is_seconds = std::all_of(rotation_period_value.CStr(), rotation_period_value.CStr() + rotation_period_value.GetLength(),
-												  [](char character) { return ::isdigit(static_cast<unsigned char>(character)) != 0; });
-
-					if (is_seconds == false)
-					{
-						logtw("LLHlsStream(%s/%s) - DRM info file(%s) has KeyRotationPeriod(%s), which is not a number of seconds. The key is not rotated automatically.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_path.CStr(), rotation_period_value.CStr());
-					}
-					else
-					{
-						auto rotation_period_sec = ov::Converter::ToInt64(rotation_period_value.CStr());
-						key_rotation_period_ms = (rotation_period_sec > 0) ? static_cast<uint64_t>(rotation_period_sec) * 1000 : 0;
-					}
 				}
 
 				// A <Keys> block lists the ordered keys the stream rotates through. A
@@ -556,7 +583,6 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 						return false;
 					}
 
-					bool has_fairplay_pssh_box = false;
 					for (pugi::xml_node pssh_node = key_node.child("Pssh"); pssh_node; pssh_node = pssh_node.next_sibling("Pssh"))
 					{
 						auto pssh_box_data = ov::Hex::Decode(pssh_node.child_value());
@@ -566,37 +592,13 @@ bool LLHlsStream::GetDrmInfo(const ov::String &file_path, std::vector<bmff::Cenc
 							return false;
 						}
 
-						auto pssh_box = bmff::PsshBox(pssh_box_data);
-						cenc_property.pssh_box_list.push_back(pssh_box);
-
-						if (pssh_box.drm_system == bmff::DRMSystem::FairPlay)
-						{
-							has_fairplay_pssh_box = true;
-						}
+						cenc_property.pssh_box_list.push_back(bmff::PsshBox(pssh_box_data));
 					}
 
 					cenc_property.fairplay_key_uri = fairplay_key_url;
 					cenc_property.keyformat = keyformat;
 
-					// If a FairPlay key URI is set but no FairPlay pssh was given, add a default one
-					if (cenc_property.fairplay_key_uri.IsEmpty() == false && has_fairplay_pssh_box == false)
-					{
-						cenc_property.pssh_box_list.push_back(bmff::PsshBox("94ce86fb-07ff-4f43-adb8-93d2fa968ca2", {cenc_property.key_id}, nullptr));
-					}
-
-					// Set profiles
-					if (cenc_property.scheme == bmff::CencProtectScheme::Cenc)
-					{
-						cenc_property.crypt_bytes_block = 0;
-						cenc_property.skip_bytes_block = 0;
-						cenc_property.per_sample_iv_size = 16;
-					}
-					else if (cenc_property.scheme == bmff::CencProtectScheme::Cbcs)
-					{
-						cenc_property.crypt_bytes_block = 1;
-						cenc_property.skip_bytes_block = 9;
-						cenc_property.per_sample_iv_size = 0;
-					}
+					cenc_property.Complete();
 
 					cenc_key_list.push_back(cenc_property);
 				}
@@ -1288,63 +1290,42 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE || media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
 	{
+		// In duration mode, marker alignment across tracks requires the keyframe
+		// interval to be strictly shorter than the segment duration and to divide
+		// it evenly; an equal interval also breaks the alignment. Synced mode
+		// follows the reference's realized cuts, so any interval aligns.
+		if (_cue_alignment_warned == false && GetSegmentationMode() == LLHlsSegmentationMode::Duration)
+		{
+			auto video_track = GetFirstTrackByType(cmn::MediaType::Video);
+			if (video_track != nullptr)
+			{
+				auto keyframe_interval_ms = video_track->GetKeyframeIntervalDurationMs();
+				auto segment_duration_ms = static_cast<double>(_storage_config.segment_duration_ms);
+				if (keyframe_interval_ms > 0)
+				{
+					auto remainder_ms = std::fmod(segment_duration_ms, keyframe_interval_ms);
+					bool divides = (remainder_ms <= 1.0) || ((keyframe_interval_ms - remainder_ms) <= 1.0);
+					bool shorter = keyframe_interval_ms < (segment_duration_ms - 1.0);
+					if (divides == false || shorter == false)
+					{
+						logtw("LLHlsStream(%s/%s) - The keyframe interval (%.0f ms) must be shorter than the segment duration (%.0f ms) and divide it evenly. CUE/SCTE-35 markers cannot be kept aligned across renditions with this configuration. Adjust the encoder GOP or <SegmentDuration>.",
+							  GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), keyframe_interval_ms, segment_duration_ms);
+						_cue_alignment_warned = true;
+					}
+				}
+			}
+		}
+
 		// milliseconds scale
 		auto timestamp_ms = static_cast<double>(media_packet->GetDts()) / data_track->GetTimeBase().GetTimescale() * 1000.0;
 		std::shared_ptr<ov::Data> data = media_packet->GetData() != nullptr ? media_packet->GetData()->Clone() : nullptr;
-		if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), timestamp_ms, data) == false)
+		if (InsertMarkerToPolicies(media_packet->GetTrackId(), media_packet->GetBitstreamFormat(), timestamp_ms, data) == false)
 		{
 			logte("Failed to insert marker to all packagers (track_id: %u, bitstream_format: %d, timestamp: %" PRId64 ")", media_packet->GetTrackId(), ov::ToUnderlyingType(media_packet->GetBitstreamFormat()), media_packet->GetDts());
 			return;
 		}
 
-		// Parse data
-		if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::CUE)
-		{
-			auto cue_event = CueEvent::Parse(media_packet->GetData());
-			if (cue_event == nullptr)
-			{
-				logte("Failed to parse cue event");
-				return;
-			}
-
-			if (cue_event->GetCueType() == CueEvent::CueType::OUT)
-			{
-				// Make CUE-IN event
-				auto cue_out_duration_ms = cue_event->GetDurationMsec();
-				auto cue_in_timestamp_ms = timestamp_ms + cue_out_duration_ms;
-				auto cue_in_data = CueEvent::Create(CueEvent::CueType::IN)->Serialize();
-
-				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::CUE, cue_in_timestamp_ms, cue_in_data) == false)
-				{
-					logte("Failed to insert CUE-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), cue_in_timestamp_ms);
-					return;
-				}
-			}
-		}
-		else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::SCTE35)
-		{
-			auto scte35_event = Scte35Event::Parse(media_packet->GetData());
-			if (scte35_event == nullptr)
-			{
-				logte("Failed to parse scte35 event (track_id: %u, timestamp: %" PRId64 ")", media_packet->GetTrackId(), media_packet->GetDts());
-				return;
-			}
-
-			if (scte35_event->IsOutOfNetwork() == true)
-			{
-				// Make SCTE35-IN event
-				auto scte_out_duration_ms = scte35_event->GetDurationMsec();
-				auto scte_in_timestamp_ms = timestamp_ms + scte_out_duration_ms;
-				auto scte_in_data = Scte35Event::Create(mpegts::SpliceCommandType::SPLICE_INSERT, scte35_event->GetID(), false, scte_in_timestamp_ms, scte_out_duration_ms, false)->Serialize();
-
-				// xxx-OUT marker will create one more segment, so we need to shift the sequence number by 1
-				if (InsertMarkerToAllPackagers(media_packet->GetTrackId(), cmn::BitstreamFormat::SCTE35, scte_in_timestamp_ms, scte_in_data) == false)
-				{
-					logte("Failed to insert SCTE35-IN marker to all packagers (track_id: %u, timestamp: %f)", media_packet->GetTrackId(), scte_in_timestamp_ms);
-					return;
-				}
-			}
-		}
+		// An OUT and its return(IN) arrive as separate events
 	}
 	else if (media_packet->GetBitstreamFormat() == cmn::BitstreamFormat::WebVTT)
 	{
@@ -1368,18 +1349,41 @@ void LLHlsStream::SendDataFrame(const std::shared_ptr<MediaPacket> &media_packet
 	}
 }
 
-std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data) const
+std::shared_ptr<const MediaTrack> LLHlsStream::GetReferenceTrack() const
 {
-	auto data_track = GetFirstTrackByType(cmn::MediaType::Data);
-	if (data_track == nullptr)
+	if (_reference_track_id < 0)
 	{
-		return {false, "Could not find data track"};
+		return nullptr;
 	}
 
-	auto first_video_media_track = GetFirstTrackByType(cmn::MediaType::Video);
-	auto first_video_packager = GetPackager(first_video_media_track->GetId());
+	return GetTrack(_reference_track_id);
+}
 
-	// Insert marker to all packagers
+LLHlsSegmentationMode LLHlsStream::GetSegmentationMode() const
+{
+	return GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher().GetSegmentationMode();
+}
+
+
+bool LLHlsStream::InsertMarkerToPolicies(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data)
+{
+	auto data_track = GetTrack(data_track_id);
+	if (data_track == nullptr)
+	{
+		logtw("Could not find track. id: %d", data_track_id);
+		return false;
+	}
+
+	// One insert at a time: two markers decided concurrently would both validate
+	// against the same state and then both apply, producing the OUT-then-OUT
+	// chain the policy validation exists to make impossible
+	std::lock_guard<std::mutex> insert_lock(_marker_insert_guard);
+
+	// Every accepting track must take it, or none does. So the insert is decided
+	// for all of them first: a track refusing after another one already took the
+	// marker would leave that rendition carrying a tag the others do not.
+	std::vector<std::pair<std::shared_ptr<bmff::SegmentBoundaryPolicy>, bmff::SegmentBoundaryPolicy::PreparedMarker>> prepared;
+
 	for (const auto &it : GetTracks())
 	{
 		auto track = it.second;
@@ -1389,113 +1393,32 @@ std::tuple<bool, ov::String> LLHlsStream::CanInsertMarker(cmn::BitstreamFormat b
 			continue;
 		}
 
-		// Get Packager
-		auto packager = GetPackager(track->GetId());
-		if (packager == nullptr)
+		auto boundary_policy = GetBoundaryPolicy(track->GetId());
+		if (boundary_policy == nullptr || boundary_policy->AcceptsMarkers() == false)
 		{
-			logtt("Could not find packager. track id: %d", track->GetId());
 			continue;
 		}
 
-		auto timestamp_media_scale = static_cast<double>(timestamp_ms) / data_track->GetTimeBase().GetTimescale() * track->GetTimeBase().GetTimescale();
-		auto marker = Marker::CreateMarker(bitstream_format, timestamp_media_scale, timestamp_ms, data);
+		auto marker = Marker::CreateMarker(bitstream_format, timestamp_ms, timestamp_ms, data);
 		if (marker == nullptr)
 		{
 			logte("(%s/%s) Failed to create the marker", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			return {false, "Failed to create the marker"};
+			return false;
 		}
 
-		auto [result, message] = packager->CanInsertMarker(marker);
-		if (result == false)
+		auto plan = boundary_policy->PrepareMarker(marker);
+		if (plan.has_value() == false)
 		{
-			logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
-			return {false, message};
+			logte("Failed to insert marker (timestamp: %" PRId64 " ms, tag: %s, track: %u)", marker->GetTimestampMs(), marker->GetTag().CStr(), track->GetId());
+			return false;
 		}
+
+		prepared.emplace_back(boundary_policy, plan.value());
 	}
 
-	return {true, ""};
-}
-
-bool LLHlsStream::InsertMarkerToAllPackagers(uint32_t data_track_id, cmn::BitstreamFormat bitstream_format, int64_t timestamp_ms, const std::shared_ptr<ov::Data> &data)
-{
-	auto data_track = GetTrack(data_track_id);
-	if (data_track == nullptr)
+	for (auto &[boundary_policy, plan] : prepared)
 	{
-		logtw("Could not find track. id: %d", data_track_id);
-		return false;
-	}
-
-	auto first_video_media_track = GetFirstTrackByType(cmn::MediaType::Video);
-	auto first_video_packager = GetPackager(first_video_media_track->GetId());
-
-	// Create marker
-	int64_t estimated_seq = first_video_packager->GetEstimatedSequenceNumber(timestamp_ms);
-	int64_t max_current_seq = 0;
-	// 0: check if it can insert
-	// 1: insert
-	for (int i = 0; i < 2; i++)
-	{
-		if (i == 1)
-		{
-			logtd("InsertMarkerToAllPackagers - Estimated sequence number: %" PRId64 " Max current sequence number: %" PRId64 "", estimated_seq, max_current_seq);
-
-			if (max_current_seq > estimated_seq)
-			{
-				logtw("Estimated sequence number is smaller than the current sequence number. estimated_seq: %" PRId64 ", max_current_seq: %" PRId64 "", estimated_seq, max_current_seq);
-				estimated_seq = max_current_seq;
-			}
-		}
-
-		// Insert marker to all packagers
-		for (const auto &it : GetTracks())
-		{
-			auto track = it.second;
-			// Only video and audio tracks are supported
-			if (track->GetMediaType() != cmn::MediaType::Video && track->GetMediaType() != cmn::MediaType::Audio)
-			{
-				continue;
-			}
-
-			// Get Packager
-			auto packager = GetPackager(track->GetId());
-			if (packager == nullptr)
-			{
-				logtt("Could not find packager. track id: %d", track->GetId());
-				continue;
-			}
-
-			auto timestamp_media_scale = static_cast<double>(timestamp_ms) / data_track->GetTimeBase().GetTimescale() * track->GetTimeBase().GetTimescale();
-			auto marker = Marker::CreateMarker(bitstream_format, timestamp_media_scale, timestamp_ms, data);
-			if (marker == nullptr)
-			{
-				logte("(%s/%s) Failed to create the marker", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-				return false;
-			}
-
-			if (i == 0)	 // check
-			{
-				max_current_seq = std::max(max_current_seq, packager->GetCurrentSequenceNumber());
-				auto [result, msg] = packager->CanInsertMarker(marker);
-				if (result == false)
-				{
-					logte("Failed to insert marker (timestamp: %" PRId64 ", tag: %s, msg: %s)", marker->GetTimestamp(), marker->GetTag().CStr(), msg.CStr());
-					return false;
-				}
-			}
-			else
-			{
-				logtd("Packager(%u) - Insert marker: %s Estimated sequence number: %" PRId64 "", track->GetId(), marker->GetTag().CStr(), estimated_seq);
-
-				marker->SetDesiredSequenceNumber(estimated_seq);
-				auto result = packager->InsertMarker(marker);
-				if (result == false)
-				{
-					// We checked it can be inserted, so it should not fail
-					logtc("Failed to insert marker (timestamp: %" PRId64 ", tag: %s)", marker->GetTimestamp(), marker->GetTag().CStr());
-					return false;
-				}
-			}
-		}
+		boundary_policy->CommitMarker(plan);
 	}
 
 	return true;
@@ -1531,56 +1454,8 @@ void LLHlsStream::OnEvent(const std::shared_ptr<MediaEvent> &event)
 	}
 }
 
-void LLHlsStream::RotateDrmKey()
+void LLHlsStream::ApplyRotatedKey(const bmff::CencProperty &cenc_property)
 {
-	// Re-read the DRM info file outside the lock so operators can append keys to the
-	// list while the stream runs. Keep the current list if the re-read fails.
-	std::vector<bmff::CencProperty> reloaded_list;
-	uint64_t reloaded_period_ms = 0;
-	bool reloaded = false;
-	if (_drm_info_path.IsEmpty() == false)
-	{
-		reloaded = (GetDrmInfo(_drm_info_path, reloaded_list, reloaded_period_ms) == true) && (reloaded_list.empty() == false);
-	}
-
-	bmff::CencProperty next_property;
-	size_t next_index = 0;
-	{
-		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
-
-		if (reloaded == true)
-		{
-			_cenc_key_list = reloaded_list;
-			_key_rotation_period_ms = reloaded_period_ms;
-		}
-
-		if (_cenc_key_list.empty() == true)
-		{
-			// No DRM configured on this stream
-			return;
-		}
-
-		if (_cenc_key_list.size() == 1)
-		{
-			// The auto rotation period retries every period, so warn once. The file is
-			// re-read above, so appended keys are picked up on a later attempt.
-			if (_single_key_rotation_warned == false)
-			{
-				_single_key_rotation_warned = true;
-				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but only one key is configured; keeping it. Add more keys to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
-			}
-			return;
-		}
-
-		// The configured keys form a cycle, so rotation continues for the life of the
-		// stream. Appending keys to the DRM info file lengthens the cycle; the file is
-		// re-read above on every rotation.
-		_current_key_index = (_current_key_index + 1) % _cenc_key_list.size();
-		_cenc_property = _cenc_key_list[_current_key_index];
-		next_property = _cenc_property;
-		next_index = _current_key_index;
-	}
-
 	// Every track picks the new key up where its next segment starts, so no boundary has
 	// to be negotiated between them
 	std::shared_lock<std::shared_mutex> packager_lock(_packager_map_lock);
@@ -1590,7 +1465,7 @@ void LLHlsStream::RotateDrmKey()
 	for (const auto &[track_id, packager] : packager_map)
 	{
 		// A track whose codec CENC cannot encrypt stays clear
-		auto track_property = next_property;
+		auto track_property = cenc_property;
 		if (bmff::IsCencSupportedCodec(GetTrack(track_id)->GetCodecId()) == false)
 		{
 			track_property.scheme = bmff::CencProtectScheme::None;
@@ -1604,45 +1479,202 @@ void LLHlsStream::RotateDrmKey()
 		std::unique_lock<std::mutex> guard(_master_playlists_lock);
 		_master_playlists.clear();
 	}
+}
 
-	logti("LLHlsStream(%s/%s) - DRM key rotation to key index %zu will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), next_index);
+bool LLHlsStream::RequestKeyOfPeriod(uint64_t key_period_index, bmff::CencProperty &cenc_property)
+{
+	DrmInfo drm_info;
+	{
+		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
+		drm_info = _drm_info;
+	}
+
+	const auto &drm_provider = drm_info.provider;
+
+	if (drm_provider == "manual")
+	{
+		// The keys were read from the DRM info file when the stream started
+		if (drm_info.key_list.empty() == true)
+		{
+			return false;
+		}
+
+		// The keys form a cycle, so a period past the end of the list starts over
+		cenc_property = drm_info.key_list[key_period_index % drm_info.key_list.size()];
+
+		return true;
+	}
+
+
+	logte("LLHlsStream(%s/%s) - Could not get the DRM key because DRMProvider(%s) is not supported", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), drm_info.provider.CStr());
+
+	return false;
+}
+
+void LLHlsStream::PrefetchNextKeyIfNeeded(int64_t media_time_ms)
+{
+	uint64_t next_index = 0;
+	{
+		std::lock_guard<std::shared_mutex> lock(_cenc_lock);
+
+		// A file that states no rotation keeps one key for the whole stream, so there is
+		// nothing to hold ready. Stating 0 rotates only when asked to, and that request
+		// still needs a key waiting for it.
+		if (_drm_info.rotation_period_sec.has_value() == false)
+		{
+			return;
+		}
+
+		// A list of one key has no next key either, and the list is read once as the
+		// stream starts, so it never gains one
+		if ((_drm_info.key_list.empty() == false) && (_drm_info.key_list.size() == 1))
+		{
+			return;
+		}
+
+		if ((_prefetched_key.has_value() == true) || (_key_request_in_flight == true))
+		{
+			return;
+		}
+
+		if (media_time_ms < _next_key_request_media_time_ms)
+		{
+			return;
+		}
+
+		_key_request_in_flight = true;
+
+		next_index = _key_period_index + 1;
+	}
+
+	// The request waits on a remote service, so it runs on a shared worker rather than on
+	// the thread that carries media. The worker may outlive this stream.
+	std::weak_ptr<LLHlsStream> weak_stream = pub::Stream::GetSharedPtrAs<LLHlsStream>();
+
+	auto posted = ov::TaskPool::GetInstance()->Post([weak_stream, next_index, media_time_ms]() {
+		auto stream = weak_stream.lock();
+		if (stream == nullptr)
+		{
+			return;
+		}
+
+		bmff::CencProperty cenc_property;
+		auto succeeded = stream->RequestKeyOfPeriod(next_index, cenc_property);
+
+		stream->OnKeyPrefetched(next_index, succeeded, cenc_property, media_time_ms);
+	});
+
+	if (posted == false)
+	{
+		// Nothing will report the outcome, so the slot is released here
+		OnKeyPrefetched(next_index, false, {}, media_time_ms);
+	}
+}
+
+void LLHlsStream::OnKeyPrefetched(uint64_t key_period_index, bool succeeded, const bmff::CencProperty &cenc_property, int64_t requested_media_time_ms)
+{
+	{
+		std::lock_guard<std::shared_mutex> lock(_cenc_lock);
+
+		_key_request_in_flight = false;
+
+		if (succeeded == false)
+		{
+			// Held off for a while, so that a source that is failing is not asked again at
+			// every segment
+			_next_key_request_media_time_ms = requested_media_time_ms + kKeyRequestRetryIntervalMs;
+			return;
+		}
+
+		if (_key_period_index + 1 != key_period_index)
+		{
+			// The stream moved on to another period while the request was on its way
+			return;
+		}
+
+		// Already completed where the key was requested
+		_prefetched_key = cenc_property;
+	}
+
+	logti("LLHlsStream(%s/%s) - Fetched the DRM key of period %" PRIu64 " ahead of the rotation", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_period_index);
+}
+
+void LLHlsStream::RotateDrmKey()
+{
+	// The key of the next period is fetched ahead of the rotation, because the request can
+	// block. Only what is already there is applied.
+	bmff::CencProperty next_property;
+	uint64_t applied_index = 0;
+	{
+		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+
+		if (_drm_info.rotation_period_sec.has_value() == false)
+		{
+			// Every period would hand out the same key, so there is nothing to rotate to
+			if (_rotation_unavailable_warned == false)
+			{
+				_rotation_unavailable_warned = true;
+				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but no key rotation period is configured; keeping the current key. Add KeyRotationPeriod to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+			return;
+		}
+
+		if (_drm_info.key_list.size() == 1)
+		{
+			if (_rotation_unavailable_warned == false)
+			{
+				_rotation_unavailable_warned = true;
+				logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but only one key is configured; keeping it. Add more keys to the DRM info file to rotate.", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+			_prefetched_key.reset();
+			return;
+		}
+
+		if (_prefetched_key.has_value() == false)
+		{
+			logtw("LLHlsStream(%s/%s) - DRM key rotation was requested but the key of the next period is not ready yet, so the current key is kept", GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			return;
+		}
+
+		_key_period_index++;
+		_cenc_property = _prefetched_key.value();
+		_prefetched_key.reset();
+
+		next_property = _cenc_property;
+		applied_index = _key_period_index;
+	}
+
+	ApplyRotatedKey(next_property);
+
+	logti("LLHlsStream(%s/%s) - DRM key rotation to key period %" PRIu64 " will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), applied_index);
 }
 
 void LLHlsStream::CheckAutoKeyRotation(int64_t media_time_ms)
 {
-	uint64_t period_ms = 0;
-	int64_t last_rotation_ms = -1;
-	{
-		std::shared_lock<std::shared_mutex> lock(_cenc_lock);
-		period_ms = _key_rotation_period_ms;
-		last_rotation_ms = _last_key_rotation_media_time_ms;
-	}
-
-	if (period_ms == 0)
-	{
-		// Auto rotation disabled
-		return;
-	}
-
-	// Anchor the period to the first media time seen; don't rotate on the first call
-	if (last_rotation_ms < 0)
+	// Read and advanced under one lock, so that two callers cannot both find the same
+	// boundary uncrossed and rotate on it
 	{
 		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+
+		// Left out, or stated as 0 to rotate only when asked to
+		if (_drm_info.rotation_period_sec.value_or(0) == 0)
+		{
+			return;
+		}
+
+		// Anchor the period to the first media time seen; don't rotate on the first call
 		if (_last_key_rotation_media_time_ms < 0)
 		{
 			_last_key_rotation_media_time_ms = media_time_ms;
+			return;
 		}
-		return;
-	}
 
-	if (media_time_ms - last_rotation_ms < static_cast<int64_t>(period_ms))
-	{
-		return;
-	}
+		if (media_time_ms - _last_key_rotation_media_time_ms < static_cast<int64_t>(_drm_info.rotation_period_sec.value() * 1000))
+		{
+			return;
+		}
 
-	// Advance the anchor before rotating so the same boundary is not retriggered
-	{
-		std::unique_lock<std::shared_mutex> lock(_cenc_lock);
+		// Advanced before rotating so the same boundary is not retriggered
 		_last_key_rotation_media_time_ms = media_time_ms;
 	}
 
@@ -1859,12 +1891,78 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 		logte("LLHlsStream::AddPackager() - CENC is not supported for this codec(%s), this track will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()));
 	}
 
+	// The boundary policy decides where each segment of this track ends and
+	// what it is named. Server-time based numbering starts from the wall clock.
+	auto llhls_config = GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher();
+	bool server_time_based_segment_numbering = llhls_config.IsServerTimeBasedSegmentNumbering();
+
+	bmff::SegmentBoundaryPolicy::Config policy_config;
+	policy_config.segment_duration_ms = _storage_config.segment_duration_ms;
+	policy_config.chunk_duration_ms = packager_config.chunk_duration_ms;
+	policy_config.cue_out_cut_mode = llhls_config.GetCueOutCutMode();
+	// Video cuts only at keyframes; audio can cut at any frame
+	policy_config.keyframe_interval_ms = (media_track->GetMediaType() == cmn::MediaType::Video) ? media_track->GetKeyframeIntervalDurationMs() : 0.0;
+	policy_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), media_track->GetId());
+	if (server_time_based_segment_numbering == true)
+	{
+		policy_config.initial_segment_number = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / static_cast<double>(_storage_config.segment_duration_ms);
+	}
+
+	std::shared_ptr<bmff::SegmentBoundaryPolicy> boundary_policy;
+
+	auto reference_track = (GetSegmentationMode() == LLHlsSegmentationMode::Synced) ? GetReferenceTrack() : nullptr;
+	if (reference_track != nullptr)
+	{
+		// The reference aims at multiples of the segment duration on its own
+		// frame cadence; the realized cuts land on its keyframes and every other
+		// track follows them. Created on the first track, whichever it is.
+		if (_reference_boundary_policy == nullptr)
+		{
+			if (server_time_based_segment_numbering == true)
+			{
+				// Synced segmentation cuts on the reference's keyframes, so its
+				// boundaries cannot be held on wall-clock slots. Two servers
+				// started at different times number from their own first cut and
+				// never pair again.
+				logtw("(%s/%s) ServerTimeBasedSegmentNumbering is ignored in synced segmentation mode; use duration segmentation for identical numbering across servers",
+					  GetApplication()->GetVHostAppName().CStr(), GetName().CStr());
+			}
+
+			auto reference_config = policy_config;
+			reference_config.chunk_duration_ms = std::round(ComputeOptimalPartDuration(reference_track));
+			// The cadence must be the reference's own; policy_config carries the
+			// one of whichever track this call is for
+			reference_config.keyframe_interval_ms = (reference_track->GetMediaType() == cmn::MediaType::Video) ? reference_track->GetKeyframeIntervalDurationMs() : 0.0;
+			reference_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), reference_track->GetId());
+			_reference_boundary_policy = std::make_shared<bmff::ReferenceBoundaryPolicy>(reference_config, reference_track->GetFrameRate());
+		}
+
+		if (media_track->GetId() == reference_track->GetId())
+		{
+			boundary_policy = _reference_boundary_policy;
+		}
+		else
+		{
+			boundary_policy = std::make_shared<bmff::SyncedBoundaryPolicy>(_reference_boundary_policy, policy_config);
+		}
+	}
+	else
+	{
+		// Server-time numbering paces every segment as one wall-clock slot
+		boundary_policy = std::make_shared<bmff::DurationBoundaryPolicy>(policy_config, server_time_based_segment_numbering);
+	}
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_boundary_policy_map_lock);
+		_boundary_policy_map.emplace(media_track->GetId(), boundary_policy);
+	}
+
 	// Create Storage
-	auto storage = std::make_shared<bmff::FMP4Storage>(bmff::FMp4StorageObserver::GetSharedPtr(), media_track, _storage_config, tag);
+	auto storage = std::make_shared<bmff::FMP4Storage>(bmff::FMp4StorageObserver::GetSharedPtr(), media_track, _storage_config, tag, boundary_policy);
 
 	// Create fMP4 Packager
 	packager_config.cenc_property = cenc_property;
-	auto packager = std::make_shared<bmff::FMP4Packager>(storage, media_track, data_track, packager_config);
+	auto packager = std::make_shared<bmff::FMP4Packager>(storage, boundary_policy, media_track, data_track, packager_config);
 
 	// Create Initialization Segment
 	if (packager->CreateInitializationSegment() == false)
@@ -1947,7 +2045,7 @@ bool LLHlsStream::AddVttPackager(const std::shared_ptr<const MediaTrack> &track)
 	// Chunklist
 	auto segment_duration = std::round(static_cast<double>(_storage_config.segment_duration_ms) / 1000.0);
 	auto chunk_duration = static_cast<double>(_packager_config.chunk_duration_ms) / 1000.0;
-	auto refer_track = GetTrack(_vtt_reference_track_id);
+	auto refer_track = GetTrack(_reference_track_id);
 	if (refer_track != nullptr)
 	{
 		chunk_duration = std::round(ComputeOptimalPartDuration(refer_track)) / 1000.0;
@@ -2007,6 +2105,18 @@ std::shared_ptr<bmff::FMP4Storage> LLHlsStream::GetFmp4Storage(const int32_t &tr
 }
 
 // Get fMP4 packager with the track id
+std::shared_ptr<bmff::SegmentBoundaryPolicy> LLHlsStream::GetBoundaryPolicy(const int32_t &track_id) const
+{
+	std::shared_lock<std::shared_mutex> lock(_boundary_policy_map_lock);
+	auto it = _boundary_policy_map.find(track_id);
+	if (it == _boundary_policy_map.end())
+	{
+		return nullptr;
+	}
+
+	return it->second;
+}
+
 std::shared_ptr<bmff::FMP4Packager> LLHlsStream::GetPackager(const int32_t &track_id) const
 {
 	std::shared_lock<std::shared_mutex> lock(_packager_map_lock);
@@ -2276,7 +2386,7 @@ void LLHlsStream::OnMediaSegmentCreated(const int32_t &track_id, const uint32_t 
 
 	playlist->CreateSegmentInfo(segment_info);
 
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		// If this is a VTT reference track, we need to create a chunklist for vtt chunklists as well
 		for (const auto &it : _vtt_packagers)
@@ -2467,17 +2577,21 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 		_master_playlists.clear();
 	}
 
-	// Drive auto key rotation off the media timeline at each new segment
-	if (chunk_number == 0)
+	// Drive auto key rotation off the media timeline, then top up the key of the next period
+	// so that a rotation always has one ready. A rotation takes effect where a new segment
+	// starts whenever it is decided, so this point carries no meaning of its own; it is
+	// simply where the check runs once per segment instead of once per chunk.
+	if (last_chunk == true)
 	{
 		auto media_time_ms = static_cast<int64_t>((static_cast<double>(partial_segment->GetStartTimestamp()) / GetTrack(track_id)->GetTimeBase().GetTimescale()) * 1000.0);
 		CheckAutoKeyRotation(media_time_ms);
+		PrefetchNextKeyIfNeeded(media_time_ms);
 	}
 
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
 
 	// Make Subtitle
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		// If this is a VTT reference track, we need to create a chunklist for vtt chunklists as well
 		std::shared_lock<std::shared_mutex> vtt_packagers_lock(_vtt_packagers_lock);
@@ -2561,7 +2675,7 @@ void LLHlsStream::OnMediaSegmentDeleted(const int32_t &track_id, const uint32_t 
 		return;
 	}
 
-	if (IsVttEnabled() && track_id == _vtt_reference_track_id)
+	if (IsVttEnabled() && track_id == _reference_track_id)
 	{
 		// Drop any hold-back-deferred job still targeting this segment - it is being evicted from
 		// the DVR window, so finalizing it later would re-insert an already-removed segment.

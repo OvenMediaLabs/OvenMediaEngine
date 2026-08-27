@@ -74,7 +74,7 @@ These are the types of supported decoding and encoding codecs.
 
 **Image**
 
-* Jpeg, Png, WebP
+* Jpeg, Png, WebP, AVIF
 
 </div>
 
@@ -85,7 +85,7 @@ These are the types of supported decoding and encoding codecs.
 ### **Hardware accelerators**
 
 Hardware acceleration is no longer supported in the open-source version in releases after **v0.20.5**.<br/>
-For more information, see our official announcement: [Discontinuing Hardware Acceleration in OvenMediaEngine](https://ovenmedialabs.com/blog/discontinuing-hardware-acceleration-ome)
+For more information, see our official announcement: [Discontinuing Hardware Acceleration in OvenMediaEngine](https://ovenmedia.com/blog/discontinuing-hardware-acceleration-ome)
 
 
 

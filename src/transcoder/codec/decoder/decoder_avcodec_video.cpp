@@ -73,6 +73,28 @@ bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 			  _codec.GetWidth(), _codec.GetHeight(),
 			  _analyzer.GetWidth(), _analyzer.GetHeight());
 
+		// Drain the frames still delayed inside the codec session and hand them
+		// downstream before teardown, so the resolution change loses no frame.
+		// This is the last chance to recover them, so a corrupt frame is skipped
+		// instead of aborting (bounded against a codec stuck on invalid data)
+		if (::avcodec_send_packet(_codec.Get(), nullptr) == 0)
+		{
+			for (int attempt = 0; attempt < 64; attempt++)
+			{
+				auto received = ReceiveFrame();
+				if (received.result == TranscodeResult::DataReady || received.result == TranscodeResult::FormatChanged)
+				{
+					Complete(received.result, std::move(received.frame));
+					continue;
+				}
+				if (received.result == TranscodeResult::NoData)
+				{
+					continue;
+				}
+				break;
+			}
+		}
+
 		Uninitialize();
 
 		if (Initialize() == false)
@@ -146,8 +168,9 @@ DecodeResult AVCodecVideoDecoder::ReceiveFrame()
 {
 	auto received = _codec.ReceiveFrame();
 	auto result = received.result;
-	if (result == ffmpeg::CodecResult::Again)
+	if (result == ffmpeg::CodecResult::Again || result == ffmpeg::CodecResult::Eof)
 	{
+		// Eof only appears while draining for a reinit; the session reopens right after
 		return DecodeResult::NoOutput();
 	}
 	else if (result == ffmpeg::CodecResult::InvalidData)

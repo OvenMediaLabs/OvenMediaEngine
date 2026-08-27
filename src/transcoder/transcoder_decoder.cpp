@@ -56,7 +56,7 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDec
 		{
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "XMA", ALL_GPU_ID));
 			desire_modules.push_back(ov::String::FormatString("%s:%d", "NV", ALL_GPU_ID));
-			desire_modules.push_back(ov::String::FormatString("%s:%d", "NILOGAN", ALL_GPU_ID));
+			desire_modules.push_back(ov::String::FormatString("%s:%d", "NI", ALL_GPU_ID));
 		}
 
 		desire_modules.push_back(ov::String::FormatString("%s:%d", DEFAULT_MODULE_NAME, ALL_GPU_ID));
@@ -304,12 +304,34 @@ void TranscodeDecoder::ThreadLoop()
 		while (!_kill_flag)
 		{
 			auto received = ReceiveFrame();
-			if (received.result == TranscodeResult::Again)
+			if (received.result == TranscodeResult::FormatChanged ||
+				received.result == TranscodeResult::DataReady)
 			{
+				Complete(received.result, std::move(received.frame));
+
+				// Keep draining to check whether more frames are pending.
+				continue;
+			}
+			else if (received.result == TranscodeResult::Again)
+			{
+				// The decoder is not ready to hand over a frame; leave the loop.
 				break;
 			}
-			
-			Complete(received.result, std::move(received.frame));
+			else if (received.result == TranscodeResult::NoData ||
+					 received.result == TranscodeResult::DataError)
+			{
+				Complete(received.result, std::move(received.frame));
+
+				// The frame handed over is empty or missing, so stop draining rather than
+				// asking the decoder again - it would keep returning the same result.
+				break;
+			}
+			else
+			{
+				// Unexpected result; stop draining.
+				logtw("Unexpected result from ReceiveFrame(): %d", ov::ToUnderlyingType(received.result));
+				break;
+			}
 		}
 	}
 

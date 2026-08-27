@@ -79,7 +79,7 @@ rm -rf ${DIR}
 
 ```bash title="Install SRT"
 PREFIX=/opt/ovenmediaengine && \
-SRT_VERSION=1.5.2 && \
+SRT_VERSION=1.5.6 && \
 DIR=/tmp/srt && \
 mkdir -p ${DIR} && \
 cd ${DIR} && \

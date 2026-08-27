@@ -55,7 +55,10 @@ private:
 
 	void ThreadLoop();
 
+	bool IsReadyToProcess();
 	bool IsNeedUpdate(std::shared_ptr<MediaFrame> buffer);
+	bool IsFormatChanged(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame) const;
+	void UpdateInputTrackByFrame(const std::shared_ptr<FilterBase> &base, const std::shared_ptr<MediaFrame> &frame);
 
 	int32_t _id;
 
@@ -77,6 +80,7 @@ private:
 	ov::ManagedQueue<std::shared_ptr<MediaFrame>> _input_buffer;
 
 	std::atomic<bool> _setup_pending{false};
+	std::atomic<bool> _failure_reported{false};
 
 	mutable ov::SharedMutex _mutex;
 	std::shared_ptr<FilterBase> _filter_base OV_GUARDED_BY(_mutex);

@@ -30,7 +30,7 @@
 #     OME_VER_WEBP
 set(OME_VER_OPENSSL         3.0.7)
 set(OME_VER_SRTP            2.4.2)
-set(OME_VER_SRT             1.5.2)
+set(OME_VER_SRT             1.5.6)
 set(OME_VER_OPUS            1.3.1)
 set(OME_VER_VPX             1.11.0)
 set(OME_VER_AOM             3.12.0)

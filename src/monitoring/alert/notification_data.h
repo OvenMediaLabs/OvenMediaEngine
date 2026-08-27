@@ -88,7 +88,7 @@ namespace mon::alrt
 		NotificationData(const Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String source_uri, const std::shared_ptr<StreamMetrics> &stream_metric);
 		NotificationData(const Type &type, const std::vector<std::shared_ptr<Message>> &message_list, const ov::String &source_uri, const std::map<uint32_t, std::shared_ptr<QueueMetrics>> &queue_metric_list);
 		NotificationData(const Type &type, const std::vector<std::shared_ptr<Message>> &message_list);
-		ov::String ToJsonString() const;
+		ov::String ToJsonString(const Json::Value &server_info) const;
 
 		void SetSourceUri(const ov::String &source_uri)
 		{

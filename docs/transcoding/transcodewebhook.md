@@ -249,7 +249,7 @@ The `outputProfiles` section in the JSON structure mirrors the configuration in 
           "name": "abr",
           "options": {
             "enableTsPackaging": true,
-            "webRtcAutoAbr": true,
+            "webrtcAutoAbr": true,
             "hlsChunklistPathDepth": -1
           },
           "renditions": [
@@ -280,6 +280,8 @@ The `outputProfiles` section in the JSON structure mirrors the configuration in 
   ]
 }
 ```
+
+> **Note**: `webRtcAutoAbr` is a deprecated alias of `webrtcAutoAbr`. During the deprecation window it is accepted for backward compatibility (a response that contains both keys with different values is rejected), and will be removed in a future release.
 
 #### tracksets (optional)
 

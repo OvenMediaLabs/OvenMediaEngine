@@ -597,6 +597,9 @@ namespace pvd
 			return false;
 		}
 
+		// This provider calls `PublishChannel()` before this,
+		// and channel creation leaves the silence timeout alone,
+		// so the value `JoinStream()` applied is the one this channel runs on.
 		if (OnChannelCreated(stream->GetId(), stream) == false)
 		{
 			return false;
@@ -706,6 +709,48 @@ namespace pvd
 			default:
 				break;
 		}
+	}
+
+	void WebRTCProvider::OnIceCandidatePairSelected(IcePort &port, uint32_t session_id, const std::shared_ptr<const IceCandidatePair> &candidate_pair, uint64_t selected_version, std::any user_data)
+	{
+		std::shared_ptr<WebRTCStream> stream;
+
+		try
+		{
+			stream = std::any_cast<std::shared_ptr<WebRTCStream>>(user_data);
+		}
+		catch (const std::bad_any_cast &e)
+		{
+			logtc("[INTERNAL ERROR] could not convert user_data to WebRTCStream");
+			OV_ASSERT2(false);
+			return;
+		}
+
+		if (candidate_pair == nullptr)
+		{
+			return;
+		}
+
+		auto socket = candidate_pair->GetSocket();
+		if (socket == nullptr)
+		{
+			return;
+		}
+
+		auto connection_info = info::ConnectionInfo::From(
+			candidate_pair->GetAddressPair(),
+			socket->GetType(),
+			candidate_pair->GetReportedTransport(),
+			selected_version);
+
+		if (stream->SetConnectionInfo(connection_info) == false)
+		{
+			// A racing thread already published a newer selection
+			return;
+		}
+
+		logti("Transport selected for stream(%s/%s) : %s",
+			  stream->GetApplicationName(), stream->GetName().CStr(), connection_info->ToString().CStr());
 	}
 
 	// WHIP API
@@ -891,6 +936,9 @@ namespace pvd
 			return {http::StatusCode::InternalServerError, "Could not publish stream"};
 		}
 
+		// This provider calls `PublishChannel()` before this,
+		// and channel creation leaves the silence timeout alone,
+		// so the value `JoinStream()` applied is the one this channel runs on.
 		if (OnChannelCreated(stream->GetId(), stream) == false)
 		{
 			return {http::StatusCode::InternalServerError, "Could not publish stream"};

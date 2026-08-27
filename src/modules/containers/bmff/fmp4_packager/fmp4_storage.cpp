@@ -13,11 +13,13 @@
 #include <base/modules/data_format/cue_event/cue_event.h>
 
 #include "fmp4_storage.h"
+
+#include <cmath>
 #include "fmp4_private.h"
 
 namespace bmff
 {
-	FMP4Storage::FMP4Storage(const std::shared_ptr<FMp4StorageObserver> &observer, const std::shared_ptr<const MediaTrack> &track, const FMP4Storage::Config &config, const ov::String &stream_tag)
+	FMP4Storage::FMP4Storage(const std::shared_ptr<FMp4StorageObserver> &observer, const std::shared_ptr<const MediaTrack> &track, const FMP4Storage::Config &config, const ov::String &stream_tag, const std::shared_ptr<SegmentBoundaryPolicy> &boundary_policy)
 	{
 		_config = config;
 		_track = track;
@@ -27,15 +29,13 @@ namespace bmff
 		// legacy URL keeps mapping to the first initialization section
 		_content_version = track->GetVersion();
 
-		// Keep one more to prevent download failure due to timing issue
-		_target_segment_duration_ms = static_cast<int64_t>(_config.segment_duration_ms);
 		_stream_tag = stream_tag;
 
-		_initial_segment_number = 0;
-		if (_config.server_time_based_segment_numbering == true)
+		OV_ASSERT2(boundary_policy != nullptr);
+		_boundary_policy = boundary_policy;
+		if (_boundary_policy != nullptr)
 		{
-			// last segment number = current epoch time / segment duration
-			_initial_segment_number = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / _target_segment_duration_ms;
+			_initial_segment_number = _boundary_policy->GetSegmentBoundary(std::nullopt).segment_number;
 		}
 	}
 
@@ -200,6 +200,8 @@ namespace bmff
 		auto last_segment = GetLastSegment();
 		if (last_segment == nullptr)
 		{
+			// Nothing exists yet: one before where the numbering will start
+			// (server-time numbering starts high, so a plain -1 would be wrong)
 			return _initial_segment_number - 1;
 		}
 
@@ -256,9 +258,7 @@ namespace bmff
 		// Close the old content (the buffered samples were already flushed). The
 		// completion is reported to the caller instead of the observer here, so that
 		// it can be published after the new initialization section is stored.
-		completed_segment_number = CompleteLastSegment();
-
-		RealignSegmentDurationPacing();
+		completed_segment_number = CompleteLastSegment(true);
 
 		std::atomic_store(&_track, track);
 
@@ -296,11 +296,18 @@ namespace bmff
 
 	void FMP4Storage::CutSegmentForDiscontinuity()
 	{
-		auto completed_segment_number = CompleteLastSegment();
-
-		RealignSegmentDurationPacing();
+		auto completed_segment_number = CompleteLastSegment(true);
 
 		MarkPendingSegmentDiscontinuity();
+
+		NotifySegmentCompleted(completed_segment_number);
+	}
+
+	void FMP4Storage::CutSegmentAtMarker()
+	{
+		// The segment ends on what is already stored: every buffered sample
+		// belongs after the marker, so none of it may join this segment
+		auto completed_segment_number = CompleteLastSegment(false);
 
 		NotifySegmentCompleted(completed_segment_number);
 	}
@@ -342,41 +349,47 @@ namespace bmff
 		}
 	}
 
-	int64_t FMP4Storage::CompleteLastSegment()
+	int64_t FMP4Storage::CompleteLastSegment(bool as_discontinuity)
 	{
-		auto segment = GetLastSegmentInternal();
-		if (segment == nullptr || segment->IsCompleted() == true || segment->GetPartialCount() == 0)
+		if (_boundary_policy == nullptr)
 		{
 			return -1;
 		}
 
-		segment->SetCompleted();
+		auto segment = GetLastSegmentInternal();
+		if (segment == nullptr || segment->IsCompleted() == true || segment->GetPartialCount() == 0)
+		{
+			if (as_discontinuity == true)
+			{
+				// Nothing was in progress, but the timeline still broke here
+				_boundary_policy->OnDiscontinuity({});
+			}
 
-		_total_segment_duration_ms += segment->GetDurationMs();
+			return -1;
+		}
+
+		double timescale = GetTrack()->GetTimeBase().GetTimescale();
+
+		CompletedSegment completed_segment;
+		completed_segment.number = segment->GetNumber();
+		completed_segment.start_timestamp_us = (timescale > 0) ? TicksToUs(segment->GetStartTimestamp(), timescale) : 0;
+		completed_segment.duration_us = std::llround(segment->GetDurationMs() * 1000.0);
+
+		// The markers the closed segment covered still ride it. A marker cut is
+		// an ordinary completion at the announced position, so only a timeline
+		// break settles as a discontinuity.
+		auto completion_result = (as_discontinuity == true) ? _boundary_policy->OnDiscontinuity(completed_segment)
+															: _boundary_policy->OnSegmentCompleted(completed_segment);
+		if (completion_result.markers.empty() == false)
+		{
+			segment->AddMarkers(completion_result.markers);
+		}
+
+		segment->SetCompleted();
 
 		CreateNextSegment();
 
 		return segment->GetNumber();
-	}
-
-	void FMP4Storage::RealignSegmentDurationPacing()
-	{
-		// Server-time based numbering relies on the catch-up pacing to keep segment
-		// numbers aligned to the wall clock, so the drift must not be reset
-		if (_config.server_time_based_segment_numbering == true)
-		{
-			return;
-		}
-
-		// A boundary segment can be completed short of the target. Without this reset
-		// the pacing would stretch the next segment past EXT-X-TARGETDURATION to catch up.
-		_total_expected_duration_ms = _total_segment_duration_ms;
-		_target_segment_duration_ms = _config.segment_duration_ms;
-	}
-
-	double FMP4Storage::GetTargetSegmentDuration() const
-	{
-		return _target_segment_duration_ms;
 	}
 
 	ov::String FMP4Storage::GetDVRDirectory() const
@@ -478,12 +491,35 @@ namespace bmff
 		return segment;
 	}
 
-	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment()
+	std::shared_ptr<FMP4Segment> FMP4Storage::CreateNextSegment(std::optional<int64_t> first_chunk_start_timestamp_us)
 	{
+		if (_boundary_policy == nullptr)
+		{
+			return nullptr;
+		}
+
 		auto track = GetTrack();
 
+		// The policy owns the numbering; the storage only guards its own segment
+		// map. A number at or below one already published cannot be materialized
+		// again, so it is reported as a defect and stepped past.
+		auto plan = _boundary_policy->GetSegmentBoundary(first_chunk_start_timestamp_us);
+		int64_t segment_number = plan.segment_number;
+
+		bool has_segments = false;
+		{
+			std::shared_lock<std::shared_mutex> lock(_segments_lock);
+			has_segments = (_segments.empty() == false);
+		}
+		if (has_segments == true && segment_number <= GetLastSegmentNumber())
+		{
+			logte("LLHLS stream (%s) / track (%u) - segment numbering conflicted (next %" PRId64 ", already published %" PRId64 "); renumbered to continue, renditions may pair segments wrongly in SSAI",
+				  _stream_tag.CStr(), GetTrack()->GetId(), segment_number, GetLastSegmentNumber());
+			segment_number = GetLastSegmentNumber() + 1;
+		}
+
 		// Create next segment
-		auto segment = std::make_shared<FMP4Segment>(GetLastSegmentNumber() + 1, _config.segment_duration_ms, track->GetTimeBase().GetExpr());
+		auto segment = std::make_shared<FMP4Segment>(segment_number, _config.segment_duration_ms, track->GetTimeBase().GetExpr());
 		segment->SetTrackVersion(GetContentVersion());
 		segment->SetCodecsParameter(track->GetCodecsParameter());
 		{
@@ -557,12 +593,24 @@ namespace bmff
 		}
 	}
 
-	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, const std::vector<std::shared_ptr<Marker>> &markers)
+	bool FMP4Storage::AppendMediaChunk(const std::shared_ptr<ov::Data> &chunk, int64_t start_timestamp, double duration_ms, bool independent, bool last_chunk, bool discontinuity)
 	{
+		if (_boundary_policy == nullptr)
+		{
+			return false;
+		}
+
+		double timescale = GetTrack()->GetTimeBase().GetTimescale();
+		int64_t start_timestamp_us = (timescale > 0) ? TicksToUs(start_timestamp, timescale) : -1;
+
 		auto segment = GetLastSegmentInternal();
 		if (segment == nullptr || segment->IsCompleted() == true)
 		{
-			segment = CreateNextSegment();
+			segment = CreateNextSegment(start_timestamp_us);
+			if (segment == nullptr)
+			{
+				return false;
+			}
 		}
 
 		if (segment->AppendPartialData(chunk, start_timestamp, duration_ms, independent) == false)
@@ -570,106 +618,40 @@ namespace bmff
 			return false;
 		}
 
-		segment->AddMarkers(markers);
-
-		if (segment->GetDurationMs() > _config.segment_duration_ms * 2)
-		{
-			// Force to complete the segment
-			last_chunk = true;
-			// Too long segment buffered
-			logte("LLHLS stream (%s) / track (%d) - the duration of the segment being created exceeded twice the target segment duration (%.1lf ms | expected: %" PRIu64 ") because there were no IDR frames for a long time. This segment is forcibly created and may not play normally.", 
-			_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _config.segment_duration_ms);
-		}
+		_boundary_policy->OnMediaChunk(start_timestamp_us, std::llround(duration_ms * 1000.0), independent, last_chunk);
 
 		// Complete Segment if segment duration is over and new chunk data is independent(new segment should be started with independent chunk)
 		if (last_chunk == true)
 		{
+			// The settlement before the next segment is pre-created: the policy's
+			// numbering must see this completion before it names the next segment
+			CompletedSegment completed_segment;
+			completed_segment.number = segment->GetNumber();
+			completed_segment.start_timestamp_us = (timescale > 0) ? TicksToUs(segment->GetStartTimestamp(), timescale) : 0;
+			completed_segment.duration_us = std::llround(segment->GetDurationMs() * 1000.0);
+			auto completion_result = (discontinuity == true) ? _boundary_policy->OnDiscontinuity(completed_segment)
+															 : _boundary_policy->OnSegmentCompleted(completed_segment);
+
+			// Markers realized on boundaries decided elsewhere, in addition to
+			// the ones the packager consumed from its own sample range
+			segment->AddMarkers(completion_result.markers);
+
 			segment->SetCompleted();
+
 			CreateNextSegment();
 
-			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), GetTrack()->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
-			
-			_total_expected_duration_ms += _config.segment_duration_ms;
-			_total_segment_duration_ms += segment->GetDurationMs();
+			if (discontinuity == true)
+			{
+				// The chunklist renders the break before the segment that follows it
+				MarkPendingSegmentDiscontinuity();
+			}
 
-			// When there is a marker, it comes out smaller than or equal to the expected Segment.
-			// Depending on the conditions, Audio may come out smaller or equal, but Video may come out smaller, equal or larger.
-			// If Audio comes out smaller and Video comes out the equal, the Sequnce is broken.
-			// Therefore, in this case, the algorithm is configured to come out smaller unconditionally.
+			logtt("Segment[%" PRId64 "] is created : track(%u), duration(%f) chunks(%lu)", segment->GetNumber(), GetTrack()->GetId(),segment->GetDurationMs(), segment->GetPartialCount());
+
 			if (segment->HasMarker() == true)
 			{
 				logtd("LLHLS stream (%s) / track (%u) - segment[%" PRId64 "] has markers %s", _stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetMarkers().back()->GetTag().CStr());
-
-				_total_expected_duration_ms -= _config.segment_duration_ms;
-				
-				// auto last_marker = segment->GetMarkers().back();
-				// if (last_marker != nullptr && last_marker->IsOutOfNetwork() == true)
-				// {
-				// 	// We can initialize the all time variables here
-				// 	_total_expected_duration_ms = 0;
-				// 	_total_segment_duration_ms = 0;
-				// }
-				// else if (last_marker != nullptr && last_marker->IsOutOfNetwork() == false)
-				// {
-				// 	_total_expected_duration_ms -= _config.segment_duration_ms;
-				// }
 			}
-
-			double next_target_duration = _total_expected_duration_ms - _total_segment_duration_ms + _config.segment_duration_ms;
-
-			logtt("LLHLS stream (%s) / track (%u) - segment_seq(%" PRId64 ") segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f",
-				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetNumber(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration);
-
-			if (next_target_duration >= static_cast<double>(_config.segment_duration_ms)/2.0)
-			{
-				_target_segment_duration_ms = next_target_duration;
-			}
-			else
-			{
-				_target_segment_duration_ms = next_target_duration; //static_cast<double>(_config.segment_duration_ms / 2);
-			}
-
-			// Make CUE-OUT-CONT
-			// TODO(Getroot): Later it will be added with server option
-			// if (segment->HasMarker())
-			// {
-			// 	for (const auto &it : segment->GetMarkers())
-			// 	{
-			// 		if (it.tag.UpperCaseString() == "CUEEVENT-OUT")
-			// 		{
-			// 			// Get duration
-			// 			auto cue_out_event = ::CueEvent::Parse(it.data);
-			// 			if (cue_out_event != nullptr)
-			// 			{
-			// 				_is_cue_out_on = true;
-			// 				_cue_out_duration_msec = cue_out_event->GetDurationMsec();
-			// 				_cue_out_elapsed_msec = 0;
-			// 			}
-
-			// 		}
-			// 		else if (it.tag.UpperCaseString() == "CUEEVENT-IN")
-			// 		{
-			// 			_is_cue_out_on = false;
-			// 			_cue_out_duration_msec = 0;
-			// 			_cue_out_elapsed_msec = 0;
-			// 		}
-			// 	}
-			// }
-			// else if (segment->HasMarker() == false && _is_cue_out_on == true)
-			// {
-			// 	_cue_out_elapsed_msec += segment->GetDuration();
-
-			// 	// Make CUE-OUT-CONT
-			// 	Marker marker;
-			// 	marker.timestamp = segment->GetStartTimestamp() + segment->GetDuration();
-			// 	marker.tag = "CUEEVENT-OUT-CONT";
-			// 	marker.data = CueEvent::Create(::CueEvent::CueType::CONT, _cue_out_duration_msec, _cue_out_elapsed_msec)->Serialize();
-
-			// 	segment->SetMarkers({ marker });
-			// }
-
-			logtt("LLHLS stream (%s) / track (%u) - segment_duration_ms: %f total_expected_duration_ms: %f, total_segment_duration_ms: %f, next_target_duration: %f, target_segment_duration: %f has_marker: %d",
-				_stream_tag.CStr(), GetTrack()->GetId(), segment->GetDurationMs(), _total_expected_duration_ms, _total_segment_duration_ms, next_target_duration, _target_segment_duration_ms, segment->HasMarker());
 		}
 
 		_max_chunk_duration_ms = std::max(_max_chunk_duration_ms, duration_ms);

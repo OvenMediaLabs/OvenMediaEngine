@@ -234,24 +234,42 @@ bool AVCDecoderConfigurationRecord::Equals(const std::shared_ptr<DecoderConfigur
 		return false;
 	}
 
-	if (ProfileIndication() != other_config->ProfileIndication())
+	// Only what both sides can carry. configurationVersion, lengthSizeMinusOne, the chroma format,
+	// the bit depths and the SPS extensions are filled in by Parse() alone - AddSPS()/AddPPS()
+	// leave them at their defaults - so comparing them would make a record parsed from a sequence
+	// header and one built from the very same parameter sets differ forever. What decoding depends
+	// on is the profile, the level and the parameter sets themselves.
+	if ((ProfileIndication() != other_config->ProfileIndication()) ||
+		(Compatibility() != other_config->Compatibility()) ||
+		(LevelIndication() != other_config->LevelIndication()))
 	{
 		return false;
 	}
 
-	if (LevelIndication() != other_config->LevelIndication())
+	if ((NumOfSPS() != other_config->NumOfSPS()) ||
+		(NumOfPPS() != other_config->NumOfPPS()))
 	{
 		return false;
 	}
 
-	if(GetWidth() != other_config->GetWidth())
+	for (uint8_t i = 0; i < NumOfSPS(); i++)
 	{
-		return false;
+		auto sps	   = GetSPSData(i);
+		auto other_sps = other_config->GetSPSData(i);
+		if ((sps == nullptr) || (other_sps == nullptr) || (sps->IsEqual(other_sps) == false))
+		{
+			return false;
+		}
 	}
 
-	if(GetHeight() != other_config->GetHeight())
+	for (uint8_t i = 0; i < NumOfPPS(); i++)
 	{
-		return false;
+		auto pps	   = GetPPSData(i);
+		auto other_pps = other_config->GetPPSData(i);
+		if ((pps == nullptr) || (other_pps == nullptr) || (pps->IsEqual(other_pps) == false))
+		{
+			return false;
+		}
 	}
 
 	return true;

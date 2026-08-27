@@ -88,27 +88,23 @@ namespace ffmpeg
 			return nullptr;
 		}
 
+		// av_hwframe_transfer_data() copies pixel data only, so carry over the
+		// properties needed by the filter graph
 		host->pts = _frame->pts;
+		host->colorspace = _frame->colorspace;
+		host->color_range = _frame->color_range;
 
 		return std::make_shared<FFmpegMediaFrameData>(host);
 	}
 
 	int FFmpegMediaFrameData::GetPlaneCount() const
 	{
-		// Host pixel planes only;
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0)
-		{
-			return 0;
-		}
-
-		int planes = ::av_pix_fmt_count_planes(static_cast<AVPixelFormat>(_frame->format));
-		return (planes < 0) ? 0 : planes;
+		return ffmpeg::compat::GetPlaneCount(ffmpeg::compat::GetSampleAVPixelFormat(_frame));
 	}
 
-	const uint8_t *FFmpegMediaFrameData::GetPlaneData(int plane) const
+	uint8_t *FFmpegMediaFrameData::GetPlaneData(int plane)
 	{
-		// Host pixel planes only; a hardware frame has no CPU-side data.
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0 ||
+		if (_frame == nullptr || _frame->width <= 0 || _frame->height <= 0 ||
 			plane < 0 || plane >= AV_NUM_DATA_POINTERS)
 		{
 			return nullptr;
@@ -119,8 +115,7 @@ namespace ffmpeg
 
 	int FFmpegMediaFrameData::GetStride(int plane) const
 	{
-		// Host pixel planes only; a hardware frame has no CPU-side data.
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0 ||
+		if (_frame == nullptr || _frame->width <= 0 || _frame->height <= 0 ||
 			plane < 0 || plane >= AV_NUM_DATA_POINTERS)
 		{
 			return 0;
@@ -131,12 +126,7 @@ namespace ffmpeg
 
 	cmn::VideoPixelFormatId FFmpegMediaFrameData::GetPixelFormat() const
 	{
-		if (_frame == nullptr || _frame->hw_frames_ctx != nullptr || _frame->width <= 0 || _frame->height <= 0)
-		{
-			return cmn::VideoPixelFormatId::None;
-		}
-
-		return ffmpeg::compat::ToVideoPixelFormat(_frame->format);
+		return ffmpeg::compat::GetSampleVideoPixelFormat(_frame);
 	}
 
 	void FFmpegMediaFrameData::FillZero()

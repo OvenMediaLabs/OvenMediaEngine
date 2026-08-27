@@ -8,8 +8,6 @@
 //==============================================================================
 #include "data_source.h"
 
-#include <unistd.h>
-
 #include <fstream>
 #include <regex>
 
@@ -43,14 +41,11 @@ namespace cfg
 
 		if (::strcmp(key, "HOSTNAME") == 0)
 		{
-			ov::String hostname;
+			auto hostname = ov::Platform::GetHostname();
 
-			if (hostname.SetCapacity(HOST_NAME_MAX))
+			if (hostname.empty() == false)
 			{
-				if (::gethostname(hostname.GetBuffer(), hostname.GetCapacity()) == 0)
-				{
-					return hostname;
-				}
+				return hostname.c_str();
 			}
 		}
 
@@ -377,6 +372,12 @@ namespace cfg
 		return Json::nullValue;
 	}
 
+	// `isMember()` asserts on non-object values other than null, so the guard lives here
+	bool HasJsonMember(const Json::Value &value, const ov::String &name)
+	{
+		return value.isObject() && value.isMember(name.CStr());
+	}
+
 	Json::Value GetJsonAttribute(const Json::Value &value, const ov::String &attribute_name)
 	{
 		if (value.isObject() && value.isMember("$"))
@@ -696,15 +697,52 @@ namespace cfg
 		return {};
 	}
 
-	Variant DataSource::GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value) const
+	Variant DataSource::GetValue(ValueType value_type, const ItemName &name, bool resolve_path, bool omit_json, Json::Value *original_value, const ov::String &item_path) const
 	{
 		switch (_type)
 		{
 			case DataType::Xml:
 				return GetValueFromXml(value_type, name.GetName(_type), true, resolve_path, original_value);
 
-			case DataType::Json:
-				return GetValueFromJson(value_type, name.GetName(_type), true, resolve_path, omit_json, original_value);
+			case DataType::Json: {
+				const auto &json_name = name.GetName(_type);
+
+				// This item has a deprecated alias
+				if (name.deprecated_json_name.IsEmpty() == false)
+				{
+					// Full path of the deprecated key for the diagnostics below, such as "playlists.options.webRtcAutoAbr"
+					auto deprecated_key_path = [&]() -> ov::String {
+						return MakeChildPath(item_path, name.deprecated_json_name);
+					};
+					// " in <file>" when the JSON comes from a file, empty otherwise
+					auto file_suffix = [&]() -> ov::String {
+						auto file_name = GetFileName();
+						return file_name.IsEmpty() ? ov::String() : ov::String::FormatString(" in %s", file_name.CStr());
+					};
+
+					const bool has_current	  = HasJsonMember(_json, json_name);
+					const bool has_deprecated = HasJsonMember(_json, name.deprecated_json_name);
+
+					if (has_current && has_deprecated)
+					{
+						// The two values must match. ToJson emits both keys during the deprecation window,
+						// so an equal pair is a normal echo of our own output and passes silently,
+						// while different values (an explicit null counts as a value) mean the request contradicts itself.
+						if (_json[json_name.CStr()] != _json[name.deprecated_json_name.CStr()])
+						{
+							throw CreateConfigError("The deprecated JSON key \"%s\"%s conflicts with \"%s\": the two values differ", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
+						}
+					}
+					else if (has_deprecated)
+					{
+						// The current name is absent - fall back to the deprecated JSON name
+						logtw("The JSON key \"%s\"%s is deprecated. Use \"%s\" instead", deprecated_key_path().CStr(), file_suffix().CStr(), json_name.CStr());
+						return GetValueFromJson(value_type, name.deprecated_json_name, true, resolve_path, omit_json, original_value);
+					}
+				}
+
+				return GetValueFromJson(value_type, json_name, true, resolve_path, omit_json, original_value);
+			}
 		}
 
 		OV_ASSERT2(false);
@@ -778,7 +816,7 @@ namespace cfg
 	bool DataSource::GetIncludeFileList(ov::String *pattern, std::vector<ov::String> *include_file_list) const
 	{
 		Json::Value dummy_value;
-		auto include_file_pattern = GetValue(ValueType::Attribute, "include", false, false, &dummy_value);
+		auto include_file_pattern = GetValue(ValueType::Attribute, "include", false, false, &dummy_value, "");
 
 		if (include_file_pattern.HasValue())
 		{

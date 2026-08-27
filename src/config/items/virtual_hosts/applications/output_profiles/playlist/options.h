@@ -40,7 +40,10 @@ namespace cfg
 				protected:
 					void MakeList() override
 					{
-						Register<Optional>("WebRtcAutoAbr", &_webrtc_auto_abr);
+						// The JSON name "webrtcAutoAbr" is specified explicitly to follow the all-lowercase "webrtc" convention.
+						// Deprecated: during the deprecation window the auto-derived old name "webRtcAutoAbr" is accepted
+						// on input and emitted on output alongside the new name, and will be removed in a future release.
+						Register<Optional>({"WebRtcAutoAbr", "webrtcAutoAbr", "webRtcAutoAbr"}, &_webrtc_auto_abr);
 						Register<Optional>({"HLSChunklistPathDepth", "hlsChunklistPathDepth"}, &_hls_chunklist_path_depth);
 						Register<Optional>("EnableTsPackaging", &_enable_ts_packaging);
 						Register<Optional>("EnableSubtitles", &_enable_subtitles);

@@ -18,8 +18,6 @@
 
 namespace pvd
 {
-	static constexpr time_t DEFAULT_PUSH_CHANNEL_PACKET_SILENCE_TIMEOUT_MS = 3000;
-
     class PushProvider : public Provider
     {
     public:

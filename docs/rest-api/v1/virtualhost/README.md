@@ -110,13 +110,13 @@ Configure virtual hosts to be created in Json array format.&#x20;
         "name": "vhost",
         "host": {
             "names": [
-                "ome-dev.ovenmedialabs.com",
-                "prod.ovenmedialabs.com"
+                "ome-dev.ovenmedia.com",
+                "prod.ovenmedia.com"
             ],
             "tls": {
-                "certPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.crt",
-                "chainCertPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.ca-bundle",
-                "keyPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.key"
+                "certPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.crt",
+                "chainCertPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.ca-bundle",
+                "keyPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.key"
             }
         },
 
@@ -157,7 +157,7 @@ Configure virtual hosts to be created in Json array format.&#x20;
         },
 
         "originMapStore": {
-            "originHostName": "ome-dev.ovenmedialabs.com",
+            "originHostName": "ome-dev.ovenmedia.com",
             "redisServer": {
                 "auth": "!@#ovenmediaengine",
                 "host": "redis.server:6379"
@@ -231,13 +231,13 @@ It responds with **Json array** for each request.
 
             "host": {
                 "names": [
-                    "ome-dev.ovenmedialabs.com",
-                    "prod.ovenmedialabs.com"
+                    "ome-dev.ovenmedia.com",
+                    "prod.ovenmedia.com"
                 ],
                 "tls": {
-                    "certPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.crt",
-                    "chainCertPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.ca-bundle",
-                    "keyPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.key"
+                    "certPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.crt",
+                    "chainCertPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.ca-bundle",
+                    "keyPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.key"
                 }
             },
             "signedPolicy": {
@@ -274,7 +274,7 @@ It responds with **Json array** for each request.
                 ]
             },
             "originMapStore": {
-                "originHostName": "ome-dev.ovenmedialabs.com",
+                "originHostName": "ome-dev.ovenmedia.com",
                 "redisServer": {
                     "auth": "!@#ovenmediaengine",
                     "host": "redis.server:6379"
@@ -445,13 +445,13 @@ Content-Type: application/json
 
         "host": {
             "names": [
-                "ome-dev.ovenmedialabs.com",
+                "ome-dev.ovenmedia.com",
                 "*"
             ],
             "tls": {
-                "certPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.crt",
-                "chainCertPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.ca-bundle",
-                "keyPath": "/etc/pki/ovenmedialabs.com/_ovenmedialabs_com.key"
+                "certPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.crt",
+                "chainCertPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.ca-bundle",
+                "keyPath": "/etc/pki/ovenmedia.com/_ovenmedia_com.key"
             }
         },
         
@@ -492,7 +492,7 @@ Content-Type: application/json
         },
 
         "originMapStore": {
-            "originHostName": "ome-dev.ovenmedialabs.com",
+            "originHostName": "ome-dev.ovenmedia.com",
             "redisServer": {
                 "auth": "!@#ovenmediaengine",
                 "host": "redis.server:6379"

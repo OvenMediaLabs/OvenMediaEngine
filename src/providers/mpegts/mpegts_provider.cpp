@@ -339,13 +339,13 @@ namespace pvd
 			return;
 		}
 
-		OnConnected(remote, *remote->GetRemoteAddress());
+		OnConnected(remote, ov::SocketAddressPair(*remote->GetLocalAddress(), *remote->GetRemoteAddress()));
 	}
 
-	bool MpegTsProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &remote_address)
+	bool MpegTsProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair)
 	{
-		auto local_port = remote->GetLocalAddress()->Port();
-		auto channel_id = remote->GetNativeHandle();
+		auto local_port		  = remote->GetLocalAddress()->Port();
+		auto channel_id		  = remote->GetNativeHandle();
 
 		auto stream_port_item = GetStreamPortItem(local_port);
 		if (stream_port_item == nullptr || stream_port_item->IsAttached() == false)
@@ -353,11 +353,19 @@ namespace pvd
 			return false;
 		}
 
-		auto stream = MpegTsStream::Create(StreamSourceType::Mpegts, channel_id, stream_port_item->GetVhostAppName(), stream_port_item->GetOutputStreamName(), remote, remote_address, 0, GetSharedPtrAs<PushProvider>());
+		auto stream = MpegTsStream::Create(
+			StreamSourceType::Mpegts, channel_id,
+			stream_port_item->GetVhostAppName(), stream_port_item->GetOutputStreamName(),
+			remote, address_pair, 0, GetSharedPtrAs<PushProvider>());
+
 		if (PushProvider::OnChannelCreated(remote->GetNativeHandle(), stream) == true)
 		{
 			logti("A MPEG-TS client has connected");  // %s", remote->ToString().CStr());
 			stream_port_item->OnClientConnected(channel_id);
+
+			// Apply the configured `PacketSilenceTimeoutMs` to the pre-publish window,
+			// now that the application is known.
+			stream->ApplyConfiguredPacketSilenceTimeoutMs(stream_port_item->GetVhostAppName());
 		}
 
 		return true;
@@ -380,7 +388,7 @@ namespace pvd
 		// UDP
 		if (stream_port_item->IsClientConnected() == false)
 		{
-			if (OnConnected(remote, address_pair.GetRemoteAddress()) == false)
+			if (OnConnected(remote, address_pair) == false)
 			{
 				return;
 			}
