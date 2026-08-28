@@ -115,7 +115,7 @@ namespace info
 			return _metrics;
 		}
 
-		std::vector<cmn::MediaCodecId> GetSupportedCodecs() const
+		const std::vector<cmn::MediaCodecId> &GetSupportedCodecs() const
 		{
 			return _supported_codecs;
 		}
