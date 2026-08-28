@@ -205,16 +205,23 @@ namespace pvd
 			ov::LockGuard lock(_timestamp_mutex);
 
 			// The clock is the newest position over every media track, so a
-			// lagging track cannot pull it backward. A track that restarted lower
-			// re-anchors it: holding the old maximum would stamp every event and
-			// marker far ahead of the media for the life of the stream.
+			// lagging track cannot pull it backward. A track that restarted
+			// lower re-anchors it instead.
 			if (media_timestamp_ms > _last_media_timestamp_ms || track_restarted == true)
 			{
 				previous_ms = _last_media_timestamp_ms;
 				_last_media_timestamp_ms = media_timestamp_ms;
 				_last_media_timestamp_ms_hint.store(media_timestamp_ms, std::memory_order_relaxed);
 				_elapsed_from_last_media_timestamp.Restart();
+			}
+
+			// A re-anchor discards the timeline, and the positions handed out on
+			// it go with it: keeping them would stamp every event far ahead of
+			// the media for the life of the stream.
+			if (track_restarted == true)
+			{
 				_max_generated_timestamp_ms = -1LL;
+				_last_event_timestamp_ms = -1LL;
 			}
 		}
 
