@@ -171,8 +171,9 @@ namespace bmff
 			int64_t boundary_us = origin_us + (multiple * _segment_duration_us);
 
 			// The aimed position must be a real frame position, so the realized
-			// cut can land exactly on it when the keyframe cadence allows. The
-			// cadence is counted from the origin, where this stream's frames are
+			// cut can land exactly on it when the keyframe cadence allows.
+			// Frames are counted from the origin, which is itself a frame of
+			// this stream
 			if (_video_frame_rate > 0)
 			{
 				double frame_index = std::round(static_cast<double>(boundary_us - origin_us) * _video_frame_rate / 1000000.0);

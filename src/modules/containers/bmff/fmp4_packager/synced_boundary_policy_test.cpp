@@ -443,6 +443,23 @@ TEST(ReferenceBoundaryPolicyTest, BoundaryFollowsTheSegmentStart)
 	EXPECT_NEAR(PlanAt(policy, 3900.0).end_us, 4000000.0, 10.0);
 }
 
+TEST(ReferenceBoundaryPolicyTest, BoundariesStartWhereTheStreamDid)
+{
+	auto policy = MakeReference(30.0);
+
+	// A stream whose timeline opens away from zero: its frames sit at that
+	// offset, so the aimed positions start there instead of on multiples of
+	// the segment duration
+	EXPECT_NEAR(PlanAt(policy, 500.0).end_us, 4500000.0, 10.0);
+
+	// and keep the segment duration between them
+	EXPECT_NEAR(PlanAt(policy, 5000.0).end_us, 8500000.0, 10.0);
+
+	// A segment starting at a marker cut targets the same one, so the track
+	// returns to the cadence by itself here too
+	EXPECT_NEAR(PlanAt(policy, 6000.0).end_us, 8500000.0, 10.0);
+}
+
 TEST(ReferenceBoundaryPolicyTest, PublishesRealizedBoundaries)
 {
 	auto policy = MakeReference();
