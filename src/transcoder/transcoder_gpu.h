@@ -25,8 +25,6 @@ public:
 	bool Initialize();
 	bool Uninitialize();
 
-	bool IsSupported(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
-
 	int32_t GetDeviceCount(cmn::MediaCodecModuleId id);
 
 	std::shared_ptr<HwDeviceContext> GetDeviceContext(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id = 0);
@@ -44,10 +42,6 @@ protected:
 
 	std::shared_ptr<HwDeviceContext> GetDeviceContextNI(cmn::DeviceId gpu_id = 0);
 	std::shared_ptr<HwDeviceContext> GetDeviceContextNV(cmn::DeviceId gpu_id = 0);
-
-	bool IsSupportedNI(cmn::DeviceId gpu_id = 0);
-	bool IsSupportedNV(cmn::DeviceId gpu_id = 0);
-	bool IsSupportedXMA(cmn::DeviceId gpu_id = 0);
 
 	int32_t GetDeviceCountNI();
 	int32_t GetDeviceCountNV();

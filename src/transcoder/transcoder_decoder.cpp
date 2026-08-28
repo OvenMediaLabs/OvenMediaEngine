@@ -93,10 +93,22 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeDec
 		{
 			for (int device_id = 0; device_id < TranscodeGPU::GetInstance()->GetDeviceCount(module_id); device_id++)
 			{
-				if ((gpu_id == ALL_GPU_ID || gpu_id == device_id) && TranscodeGPU::GetInstance()->IsSupported(module_id, device_id) == true)
+				if (gpu_id != ALL_GPU_ID && gpu_id != device_id)
 				{
-					candidate_modules->push_back(std::make_shared<info::CodecCandidate>(track->GetCodecId(), module_id, device_id));
+					continue;
 				}
+
+				if (tc::TranscodeModules::GetInstance()->GetModule(/*coder_type=*/false, track->GetCodecId(), module_id, device_id) == nullptr)
+				{
+					logtd("%s:%d cannot decode %s. Skip this module",
+						  cmn::GetCodecModuleIdString(module_id),
+						  device_id,
+						  cmn::GetCodecIdString(track->GetCodecId()));
+
+					continue;
+				}
+
+				candidate_modules->push_back(std::make_shared<info::CodecCandidate>(track->GetCodecId(), module_id, device_id));
 			}
 		}
 

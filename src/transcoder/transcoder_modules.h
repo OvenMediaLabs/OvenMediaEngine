@@ -36,11 +36,16 @@ namespace tc
 
 			for (const auto &codec : _modules)
 			{
-				if (codec->GetMediaType() == media_type &&
-					codec->GetModuleId() == module_id &&
-					codec->GetDeviceId() == device_id &&
-					(coder_type ? codec->isEncoder() : codec->isDecoder()) &&
-					std::find(codec->GetSupportedCodecs().begin(), codec->GetSupportedCodecs().end(), codec_id) != codec->GetSupportedCodecs().end())
+				if (codec->GetMediaType() != media_type ||
+					codec->GetModuleId() != module_id ||
+					codec->GetDeviceId() != device_id ||
+					(coder_type ? codec->isEncoder() : codec->isDecoder()) == false)
+				{
+					continue;
+				}
+
+				const auto &supported_codecs = codec->GetSupportedCodecs();
+				if (std::find(supported_codecs.begin(), supported_codecs.end(), codec_id) != supported_codecs.end())
 				{
 					return codec;
 				}

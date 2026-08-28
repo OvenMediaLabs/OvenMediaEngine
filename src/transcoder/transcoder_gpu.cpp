@@ -108,23 +108,6 @@ bool TranscodeGPU::Uninitialize()
 	return true;
 }
 
-bool TranscodeGPU::IsSupported(cmn::MediaCodecModuleId id, cmn::DeviceId gpu_id)
-{
-	switch (id)
-	{
-		case cmn::MediaCodecModuleId::NETINT:
-			return IsSupportedNI(gpu_id);
-		case cmn::MediaCodecModuleId::NVENC:
-			return IsSupportedNV(gpu_id);
-		case cmn::MediaCodecModuleId::XMA:
-			return IsSupportedXMA(gpu_id);
-		default:
-			break;
-	}
-
-	return false;
-}
-
 int32_t TranscodeGPU::GetDeviceCount(cmn::MediaCodecModuleId id)
 {
 	switch (id)
@@ -254,6 +237,15 @@ bool TranscodeGPU::CheckSupportedNV()
 	{
 		logte("Failed to get device count: %s", nvmlErrorString(result));
 		return false;
+	}
+
+	// Every per-device array is MAX_DEVICE_COUNT long, so a host with more GPUs than
+	// that must not be enumerated past the end.
+	if (nvml_device_count > static_cast<unsigned int>(MAX_DEVICE_COUNT))
+	{
+		logtw("NVML reports %u devices, but only %d can be used", nvml_device_count, MAX_DEVICE_COUNT);
+
+		nvml_device_count = MAX_DEVICE_COUNT;
 	}
 
 	// Get CUDA device count
@@ -471,31 +463,4 @@ int32_t TranscodeGPU::GetDeviceIdNV(cmn::DeviceId gpu_id)
 	}
 
 	return _device_cuda_id_nv[gpu_id];
-}
-
-bool TranscodeGPU::IsSupportedNI(cmn::DeviceId gpu_id)
-{
-	if (_device_count_ni == 0 || gpu_id >= _device_count_ni)
-	{
-		return false;
-	}
-
-	return true;
-}
-
-bool TranscodeGPU::IsSupportedNV(cmn::DeviceId gpu_id)
-{
-	// Supported iff this slot was successfully initialized. Indices are sparse
-	// (by NVML device id), so a count comparison is not enough.
-	return gpu_id >= 0 && gpu_id < MAX_DEVICE_COUNT && _device_context_nv[gpu_id] != nullptr;
-}
-
-bool TranscodeGPU::IsSupportedXMA(cmn::DeviceId gpu_id)
-{
-	if (_device_count_xma == 0 || gpu_id >= _device_count_xma)
-	{
-		return false;
-	}
-
-	return true;
 }

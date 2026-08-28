@@ -47,7 +47,7 @@ namespace tc
 		// Audio Codecs
 		// --------------------------------------------------------------------------
 		Register(info::CodecModule("FFmpeg Audio Codecs", cmn::MediaType::Audio, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
-						   {cmn::MediaCodecId::Aac, cmn::MediaCodecId::Mp2, cmn::MediaCodecId::Opus},
+						   {cmn::MediaCodecId::Aac, cmn::MediaCodecId::Mp2, cmn::MediaCodecId::Mp3, cmn::MediaCodecId::Opus},
 						   true, true, false, false));
 
 		Register(info::CodecModule("Fraunhofer FDK AAC", cmn::MediaType::Audio, cmn::MediaCodecModuleId::FDKAAC, 0, "-",
@@ -56,6 +56,10 @@ namespace tc
 
 		Register(info::CodecModule("Opus Interactive Audio Codec", cmn::MediaType::Audio, cmn::MediaCodecModuleId::LIBOPUS, 0, "-",
 						   {cmn::MediaCodecId::Opus},
+						   true, false, true, false));
+
+		Register(info::CodecModule("Whisper Speech-to-Text", cmn::MediaType::Audio, cmn::MediaCodecModuleId::DEFAULT, 0, "-",
+						   {cmn::MediaCodecId::Whisper},
 						   true, false, true, false));
 
 		// --------------------------------------------------------------------------

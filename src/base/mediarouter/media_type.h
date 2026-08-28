@@ -622,6 +622,17 @@ namespace cmn
 		return "Unknown";
 	}
 
+	static ov::String GetCodecIdListString(const std::vector<cmn::MediaCodecId> &codecs)
+	{
+		std::vector<ov::String> names;
+		for (const auto &codec : codecs)
+		{
+			names.push_back(GetCodecIdString(codec));
+		}
+
+		return names.empty() ? ov::String("-") : ov::String::Join(names, ",");
+	}
+
 	static cmn::MediaCodecId GetCodecIdByName(ov::String name)
 	{
 		name.MakeUpper();
