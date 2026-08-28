@@ -121,6 +121,13 @@ namespace bmff
 		// Whether the opening anchor went out with the first stored chunk; the
 		// reference's media thread is the only writer
 		bool _opening_anchor_published = false;
+
+		// Where the aimed positions start counting. The frames of a stream sit
+		// at their own offset, and counting from zero would aim between two of
+		// them on every segment; taking the first segment start as the origin
+		// puts every aimed position on a frame this stream actually has.
+		// Negative until the first start is known, which counts from zero.
+		int64_t _grid_origin_us = -1;
 	};
 
 	// A synced track's policy: computes no boundaries of its own. Each segment

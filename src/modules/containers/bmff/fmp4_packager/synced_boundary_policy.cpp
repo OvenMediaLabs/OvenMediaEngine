@@ -160,18 +160,23 @@ namespace bmff
 		// (within half a frame) belongs to that boundary, not before it
 		const int64_t tolerance_us = (_video_frame_rate > 0) ? std::llround(500000.0 / _video_frame_rate) : 500;
 
-		int64_t multiple = std::max(static_cast<int64_t>(1), position_us / _segment_duration_us);
+		const int64_t origin_us = (_grid_origin_us >= 0) ? _grid_origin_us : 0;
+
+		// The origin itself is a boundary, so the search starts at it; the check
+		// below rejects it when the segment already starts there
+		int64_t multiple = std::max(static_cast<int64_t>(0), (position_us - origin_us) / _segment_duration_us);
 
 		while (true)
 		{
-			int64_t boundary_us = multiple * _segment_duration_us;
+			int64_t boundary_us = origin_us + (multiple * _segment_duration_us);
 
 			// The aimed position must be a real frame position, so the realized
-			// cut can land exactly on it when the keyframe cadence allows
+			// cut can land exactly on it when the keyframe cadence allows. The
+			// cadence is counted from the origin, where this stream's frames are
 			if (_video_frame_rate > 0)
 			{
-				double frame_index = std::round(static_cast<double>(boundary_us) * _video_frame_rate / 1000000.0);
-				boundary_us = std::llround(frame_index * 1000000.0 / _video_frame_rate);
+				double frame_index = std::round(static_cast<double>(boundary_us - origin_us) * _video_frame_rate / 1000000.0);
+				boundary_us = origin_us + std::llround(frame_index * 1000000.0 / _video_frame_rate);
 			}
 
 			if (boundary_us > position_us + tolerance_us)
@@ -192,6 +197,13 @@ namespace bmff
 		{
 			plan.end_us = -1;
 			return plan;
+		}
+
+		// The first start this reference sees fixes where the aimed positions
+		// begin for the stream
+		if (_grid_origin_us < 0)
+		{
+			_grid_origin_us = *segment_start_us;
 		}
 
 		plan.end_us = NextBoundaryUs(*segment_start_us) - kBoundaryBiasUs;

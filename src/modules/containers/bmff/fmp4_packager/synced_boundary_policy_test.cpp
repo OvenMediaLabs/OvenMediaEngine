@@ -420,6 +420,10 @@ TEST(ReferenceBoundaryPolicyTest, BoundaryFollowsTheSegmentStart)
 {
 	auto policy = MakeReference(30.0, 7);
 
+	// The aimed positions start where the stream's first segment did; this one
+	// opened at zero, so they fall on plain multiples of the segment duration
+	PlanAt(policy, 0.0);
+
 	// Unknown start: only the numbering is planned. The planned boundaries sit
 	// a microsecond under the true position so a rounding ulp cannot push the
 	// cut past the intended frame.
@@ -442,6 +446,9 @@ TEST(ReferenceBoundaryPolicyTest, BoundaryFollowsTheSegmentStart)
 TEST(ReferenceBoundaryPolicyTest, PublishesRealizedBoundaries)
 {
 	auto policy = MakeReference();
+
+	// The stream's first segment opened at zero, so the aimed positions start there
+	PlanAt(policy, 0.0);
 
 	// A marker cut completed the segment early, at 1400
 	Complete(policy, 5, 0.0, 1400.0);
