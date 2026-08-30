@@ -295,7 +295,7 @@ namespace ffmpeg
 			{
 				is_scale_cuda = true;
 			}
-			else if (strstr(filter->name, "hwupload_cuda") != nullptr)
+			else if (strstr(filter->name, "hwupload") != nullptr)
 			{
 				is_hwupload_cuda = true;
 			}
@@ -310,7 +310,7 @@ namespace ffmpeg
 				continue;
 			}
 
-			if (strstr(filter->name, "scale_cuda") == nullptr && strstr(filter->name, "hwupload_cuda") == nullptr)
+			if (strstr(filter->name, "scale_cuda") == nullptr && strstr(filter->name, "hwupload") == nullptr)
 			{
 				continue;
 			}
