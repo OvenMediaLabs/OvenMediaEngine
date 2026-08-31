@@ -272,6 +272,8 @@ namespace api
 				throw http::HttpError(http::StatusCode::InternalServerError, "Could not remove the schedule file %s", schedule_file_path.CStr());
 			}
 
+			logti("Scheduled channel is requested to be deleted by the REST API : %s/%s", app->GetVHostAppName().CStr(), stream->GetName().CStr());
+
 			return {http::StatusCode::OK};
 		}
 	}  // namespace v1

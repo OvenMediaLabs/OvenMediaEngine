@@ -19,7 +19,13 @@ namespace pvd
 	{
 		if (preserve == false)
 		{
-			return ov::DeleteFile(file_path);
+			if (ov::DeleteFile(file_path) == false)
+			{
+				return false;
+			}
+
+			logti("Schedule file deleted : %s", file_path.CStr());
+			return true;
 		}
 
 		auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -40,7 +46,13 @@ namespace pvd
 			target_path = ov::String::FormatString("%s.%s_%d", file_path.CStr(), timestamp, suffix);
 		}
 
-		return ::rename(file_path.CStr(), target_path.CStr()) == 0;
+		if (::rename(file_path.CStr(), target_path.CStr()) != 0)
+		{
+			return false;
+		}
+
+		logti("Schedule file preserved : %s -> %s", file_path.CStr(), target_path.CStr());
+		return true;
 	}
 
 	std::shared_ptr<AVFormatContext> Schedule::Item::LoadContext()
