@@ -45,7 +45,7 @@ namespace serdes
 
 		// playlist
 		auto json_playlist = json_body["playlist"];
-		if (json_playlist.empty() == false || json_playlist.isArray() == true)
+		if (json_playlist.empty() == false && json_playlist.isArray() == true)
 		{
 			for (uint32_t i = 0; i < json_playlist.size(); i++)
 			{

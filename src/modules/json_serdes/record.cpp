@@ -93,7 +93,7 @@ namespace serdes
 
 		// <Required>
 		auto json_stream = json_body["stream"];
-		if (json_stream.empty() == false || json_stream.isObject() == true)
+		if (json_stream.empty() == false && json_stream.isObject() == true)
 		{
 			// <Required>
 			auto json_stream_name = json_stream["name"];
