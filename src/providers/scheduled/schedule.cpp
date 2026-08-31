@@ -11,6 +11,9 @@
 #include "schedule_private.h"
 #include <base/ovlibrary/files.h>
 
+#include <chrono>
+#include <cstdio>
+#include <ctime>
 #include <unistd.h>
 
 namespace pvd
@@ -399,20 +402,38 @@ namespace pvd
 				ov::String characteristics;
 				
 				auto public_name_object = audio_map_item_object["name"];
-				if (public_name_object.isNull() == false || public_name_object.isString() == true)
+				if (public_name_object.isNull() == false)
 				{
+					if (public_name_object.isString() == false)
+					{
+						_last_error = "audioMap name must be a string";
+						return false;
+					}
+
 					public_name = public_name_object.asString().c_str();
 				}
 
 				auto language_object = audio_map_item_object["language"];
-				if (language_object.isNull() == false || language_object.isString() == true)
+				if (language_object.isNull() == false)
 				{
+					if (language_object.isString() == false)
+					{
+						_last_error = "audioMap language must be a string";
+						return false;
+					}
+
 					language = language_object.asString().c_str();
 				}
 
 				auto characteristics_object = audio_map_item_object["characteristics"];
-				if (characteristics_object.isNull() == false || characteristics_object.isString() == true)
+				if (characteristics_object.isNull() == false)
 				{
+					if (characteristics_object.isString() == false)
+					{
+						_last_error = "audioMap characteristics must be a string";
+						return false;
+					}
+
 					characteristics = characteristics_object.asString().c_str();
 				}
 
@@ -422,15 +443,27 @@ namespace pvd
 
 		// error_tolerance_duration_ms
 		auto error_tolerance_duration_ms_object = stream_object["errorToleranceDurationMs"];
-		if (error_tolerance_duration_ms_object.isNull() == false || error_tolerance_duration_ms_object.isInt() == true)
+		if (error_tolerance_duration_ms_object.isNull() == false)
 		{
-			_stream._error_tolerance_duration_ms = error_tolerance_duration_ms_object.asInt();
+			if (error_tolerance_duration_ms_object.isIntegral() == false)
+			{
+				_last_error = "errorToleranceDurationMs must be an integer";
+				return false;
+			}
+
+			_stream._error_tolerance_duration_ms = error_tolerance_duration_ms_object.asInt64();
 		}
 
 		// max_fallback_duration_ms
 		auto max_fallback_duration_ms_object = stream_object["maxFallbackDurationMs"];
-		if (max_fallback_duration_ms_object.isNull() == false || max_fallback_duration_ms_object.isInt() == true)
+		if (max_fallback_duration_ms_object.isNull() == false)
 		{
+			if (max_fallback_duration_ms_object.isIntegral() == false)
+			{
+				_last_error = "maxFallbackDurationMs must be an integer";
+				return false;
+			}
+
 			_stream._max_fallback_duration_ms = max_fallback_duration_ms_object.asInt64();
 		}
 
@@ -510,8 +543,14 @@ namespace pvd
 			}
 
 			auto repeat_object = program_object["repeat"];
-			if (repeat_object.isNull() == false || repeat_object.isBool() == true)
+			if (repeat_object.isNull() == false)
 			{
+				if (repeat_object.isBool() == false)
+				{
+					_last_error = "repeat must be a boolean";
+					return false;
+				}
+
 				repeat = repeat_object.asBool();
 			}
 
@@ -597,22 +636,40 @@ namespace pvd
 
 			// start
 			auto start_object = item_object["start"];
-			if (start_object.isNull() == false || start_object.isInt() == true)
+			if (start_object.isNull() == false)
 			{
-				start_time_ms_conf = start_object.asInt();
+				if (start_object.isIntegral() == false)
+				{
+					_last_error = "start must be an integer";
+					return false;
+				}
+
+				start_time_ms_conf = start_object.asInt64();
 			}
 
 			// duration
 			auto duration_object = item_object["duration"];
-			if (duration_object.isNull() == false || duration_object.isInt() == true)
+			if (duration_object.isNull() == false)
 			{
-				duration_ms_conf = duration_object.asInt();
+				if (duration_object.isIntegral() == false)
+				{
+					_last_error = "duration must be an integer";
+					return false;
+				}
+
+				duration_ms_conf = duration_object.asInt64();
 			}
 
 			// fallbackOnErr
 			auto fallback_on_err_object = item_object["fallbackOnErr"];
-			if (fallback_on_err_object.isNull() == false || fallback_on_err_object.isBool() == true)
+			if (fallback_on_err_object.isNull() == false)
 			{
+				if (fallback_on_err_object.isBool() == false)
+				{
+					_last_error = "fallbackOnErr must be a boolean";
+					return false;
+				}
+
 				fallback_on_err = fallback_on_err_object.asBool();
 			}
 
