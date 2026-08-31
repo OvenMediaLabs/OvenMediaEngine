@@ -21,8 +21,12 @@ namespace pvd
 {
 	bool RemoveScheduleFile(const ov::String &file_path, bool preserve)
 	{
-		// Already removed elsewhere, the goal state is reached
-		if (::access(file_path.CStr(), F_OK) != 0 && errno == ENOENT)
+		// Removed elsewhere also reaches the goal state, including losing a removal race
+		auto file_gone = [&file_path]() -> bool {
+			return ::access(file_path.CStr(), F_OK) != 0 && errno == ENOENT;
+		};
+
+		if (file_gone())
 		{
 			return true;
 		}
@@ -31,7 +35,7 @@ namespace pvd
 		{
 			if (ov::DeleteFile(file_path) == false)
 			{
-				return false;
+				return file_gone();
 			}
 
 			logti("Schedule file deleted : %s", file_path.CStr());
@@ -58,7 +62,7 @@ namespace pvd
 
 		if (::rename(file_path.CStr(), target_path.CStr()) != 0)
 		{
-			return false;
+			return file_gone();
 		}
 
 		logti("Schedule file preserved : %s -> %s", file_path.CStr(), target_path.CStr());
