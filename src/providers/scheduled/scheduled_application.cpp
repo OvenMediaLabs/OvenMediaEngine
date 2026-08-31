@@ -130,10 +130,12 @@ namespace pvd
                 continue;
             }
 
-            // Same as deleting the channel via the DELETE API. If the file is left as is, the channel will be recreated on the next tick
+            // Same as deleting the channel via the DELETE API. If the file were left as is, the channel would be recreated on the next tick, so remove the channel only when its file is removed
             if (RemoveScheduleFile(schedule_file_info._file_path, _preserve_removed_schedule_file) == false)
             {
-                logtw("Failed to remove schedule file : %s", schedule_file_info._file_path.CStr());
+                logtw("Failed to remove schedule file, will retry on the next tick : %s", schedule_file_info._file_path.CStr());
+                ++it;
+                continue;
             }
 
             if (RemoveSchedule(schedule_file_info) == true)
