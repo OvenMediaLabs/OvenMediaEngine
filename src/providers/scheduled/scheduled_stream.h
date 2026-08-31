@@ -43,6 +43,9 @@ namespace pvd
         // Get current program
         bool GetCurrentProgram(std::shared_ptr<Schedule::Program> &curr_program, std::shared_ptr<Schedule::Item> &curr_item, int64_t &curr_item_pos) const;
 
+        // Checked by the schedule watcher to remove the channel when MaxFallbackDurationMs is exceeded
+        bool IsMaxFallbackDurationExceeded() const;
+
     private:
         void WorkerThread();
 
@@ -109,6 +112,9 @@ namespace pvd
 
         // Fallback
         std::shared_ptr<Schedule::Program> _fallback_program;
+
+        // Monotonic time (ms) when fallback started, -1 : not in fallback
+        std::atomic<int64_t> _fallback_entered_at_ms{-1};
 
         std::map<int, int> _origin_id_track_id_map;
 

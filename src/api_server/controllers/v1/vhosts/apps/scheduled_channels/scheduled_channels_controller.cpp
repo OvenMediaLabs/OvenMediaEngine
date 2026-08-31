@@ -267,9 +267,9 @@ namespace api
 			auto schedule_file_path = ov::String::FormatString("%s/%s.%s", schedule_files_dir.CStr(), stream->GetName().CStr(), pvd::ScheduleFileExtension);
 
 			// Delete schedule file
-			if (ov::DeleteFile(schedule_file_path) == false)
+			if (pvd::RemoveScheduleFile(schedule_file_path, schedule_config.IsPreserveRemovedScheduleFile()) == false)
 			{
-				throw http::HttpError(http::StatusCode::InternalServerError, "Could not delete the schedule file %s", schedule_file_path.CStr());
+				throw http::HttpError(http::StatusCode::InternalServerError, "Could not remove the schedule file %s", schedule_file_path.CStr());
 			}
 
 			return {http::StatusCode::OK};

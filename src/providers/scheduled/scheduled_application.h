@@ -54,6 +54,7 @@ namespace pvd
         ov::String _media_root_dir;
         ov::String _schedule_files_path;
         ov::Regex _schedule_file_name_regex;
+        bool _preserve_removed_schedule_file = false;
 
         // File name hash -> ScheduleFileInfo
         std::map<size_t, ScheduleFileInfo> _schedule_file_info_db;

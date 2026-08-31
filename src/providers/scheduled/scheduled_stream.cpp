@@ -88,9 +88,41 @@ namespace pvd
         return true;
     }
 
+    bool ScheduledStream::IsMaxFallbackDurationExceeded() const
+    {
+        auto schedule = PeekSchedule();
+        if (schedule == nullptr)
+        {
+            return false;
+        }
+
+        auto max_fallback_duration_ms = schedule->GetStream()._max_fallback_duration_ms;
+        if (max_fallback_duration_ms <= 0)
+        {
+            return false;
+        }
+
+        auto fallback_entered_at_ms = _fallback_entered_at_ms.load();
+        if (fallback_entered_at_ms == -1)
+        {
+            return false;
+        }
+
+        return (ov::Time::GetMonotonicTimestamp() - fallback_entered_at_ms) >= max_fallback_duration_ms;
+    }
+
     bool ScheduledStream::UpdateSchedule(const std::shared_ptr<Schedule> &schedule)
     {
         std::lock_guard<std::shared_mutex> lock(_schedule_mutex);
+
+        // If MaxFallbackDurationMs is changed while in fallback, count from now
+        if (_schedule != nullptr && schedule != nullptr &&
+            _schedule->GetStream()._max_fallback_duration_ms != schedule->GetStream()._max_fallback_duration_ms &&
+            _fallback_entered_at_ms.load() != -1)
+        {
+            _fallback_entered_at_ms.store(ov::Time::GetMonotonicTimestamp());
+        }
+
         _schedule = schedule;
 
         _schedule_updated.SetEvent();
@@ -349,6 +381,12 @@ namespace pvd
     ScheduledStream::PlaybackResult ScheduledStream::PlayFallbackOrWait()
     {
         logti("Scheduled Channel %s/%s: Start fallback program", GetApplicationName(), GetName().CStr());
+
+        // Keeps running until a scheduled item actually plays again
+        if (_fallback_entered_at_ms.load() == -1)
+        {
+            _fallback_entered_at_ms.store(ov::Time::GetMonotonicTimestamp());
+        }
 
         PlaybackResult result = PlaybackResult::PLAY_NEXT_ITEM;
 
@@ -638,6 +676,12 @@ namespace pvd
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f, dts_ms %f, dts_gap %" PRId64 "", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
 
             SendFrame(media_packet);
+
+            if (fallback_item == false)
+            {
+                // A scheduled item is playing, fallback is over
+                _fallback_entered_at_ms.store(-1);
+            }
 
             _last_packet_map[track_id] = media_packet;
 
@@ -1087,6 +1131,12 @@ namespace pvd
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
 
             SendFrame(media_packet);
+
+            if (fallback_item == false)
+            {
+                // A scheduled item is playing, fallback is over
+                _fallback_entered_at_ms.store(-1);
+            }
 
             // dts to real time (ms)
             auto single_file_dts_ms = static_cast<double>(single_file_dts) * track->GetTimeBase().GetExpr() * static_cast<double>(1000);

@@ -25,6 +25,7 @@
         <AudioTrack>true</AudioTrack> <!-- optional, default : true -->
 
 		<ErrorToleranceDurationMs>1000</ErrorToleranceDurationMs>
+		<MaxFallbackDurationMs>60000</MaxFallbackDurationMs> <!-- optional, delete the channel if fallback lasts longer than this, <= 0 : unlimited -->
     </Stream>
 
     <FallbackProgram>
@@ -47,6 +48,9 @@
 namespace pvd
 {
 	constexpr const char *ScheduleFileExtension = "sch";
+
+	// Deletes a schedule file, or renames it to <path>.<timestamp> when preserve is true
+	bool RemoveScheduleFile(const ov::String &file_path, bool preserve);
 
 	class Schedule
 	{
@@ -131,6 +135,9 @@ namespace pvd
 			std::vector<info::AudioMapItem> _audio_map;
 
 			int64_t _error_tolerance_duration_ms = 500;
+
+			// Delete the channel if fallback lasts longer than this, <= 0 : unlimited
+			int64_t _max_fallback_duration_ms = 0;
 		};
 
 		class Program

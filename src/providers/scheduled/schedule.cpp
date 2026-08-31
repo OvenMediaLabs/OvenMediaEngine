@@ -11,8 +11,38 @@
 #include "schedule_private.h"
 #include <base/ovlibrary/files.h>
 
+#include <unistd.h>
+
 namespace pvd
 {
+	bool RemoveScheduleFile(const ov::String &file_path, bool preserve)
+	{
+		if (preserve == false)
+		{
+			return ov::DeleteFile(file_path);
+		}
+
+		auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		struct tm local_time;
+		::localtime_r(&now, &local_time);
+
+		char timestamp[32];
+		::strftime(timestamp, sizeof(timestamp), "%Y%m%dT%H%M%S", &local_time);
+
+		auto target_path = ov::String::FormatString("%s.%s", file_path.CStr(), timestamp);
+		for (int suffix = 1; ::access(target_path.CStr(), F_OK) == 0; suffix++)
+		{
+			if (suffix > 100)
+			{
+				return false;
+			}
+
+			target_path = ov::String::FormatString("%s.%s_%d", file_path.CStr(), timestamp, suffix);
+		}
+
+		return ::rename(file_path.CStr(), target_path.CStr()) == 0;
+	}
+
 	std::shared_ptr<AVFormatContext> Schedule::Item::LoadContext()
 	{
 		ov::StopWatch sw;
@@ -385,6 +415,13 @@ namespace pvd
 			_stream._error_tolerance_duration_ms = error_tolerance_duration_ms_object.asInt();
 		}
 
+		// max_fallback_duration_ms
+		auto max_fallback_duration_ms_object = stream_object["maxFallbackDurationMs"];
+		if (max_fallback_duration_ms_object.isNull() == false || max_fallback_duration_ms_object.isInt() == true)
+		{
+			_stream._max_fallback_duration_ms = max_fallback_duration_ms_object.asInt64();
+		}
+
 		return true;
 	}
 
@@ -722,6 +759,13 @@ namespace pvd
 		if (error_tolerance_duration_ms_node)
 		{
 			_stream._error_tolerance_duration_ms = error_tolerance_duration_ms_node.text().as_llong();
+		}
+
+		// max_fallback_duration_ms
+		auto max_fallback_duration_ms_node = stream_node.child("MaxFallbackDurationMs");
+		if (max_fallback_duration_ms_node)
+		{
+			_stream._max_fallback_duration_ms = max_fallback_duration_ms_node.text().as_llong();
 		}
 
 		return true;
@@ -1085,6 +1129,9 @@ namespace pvd
 		// ErrorToleranceDurationMs
 		stream_node.append_child("ErrorToleranceDurationMs").text().set(_stream._error_tolerance_duration_ms);
 
+		// MaxFallbackDurationMs
+		stream_node.append_child("MaxFallbackDurationMs").text().set(_stream._max_fallback_duration_ms);
+
 		// FallbackProgram
 		if (_fallback_program != nullptr)
 		{
@@ -1155,6 +1202,9 @@ namespace pvd
 
 		// error_tolerance_duration_ms
 		stream_object["errorToleranceDurationMs"] = _stream._error_tolerance_duration_ms;
+
+		// max_fallback_duration_ms
+		stream_object["maxFallbackDurationMs"] = _stream._max_fallback_duration_ms;
 
 		root_object["stream"] = stream_object;
 

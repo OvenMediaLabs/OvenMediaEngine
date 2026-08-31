@@ -17,6 +17,7 @@ To use this feature, activate Schedule Provider as follows.
     <Schedule>
         <MediaRootDir>/opt/ovenmediaengine/media</MediaRootDir>
         <ScheduleFilesDir>/opt/ovenmediaengine/media</ScheduleFilesDir>
+        <PreserveRemovedScheduleFile>false</PreserveRemovedScheduleFile> <!-- optional, default: false -->
     </Schedule>
     ...
 </Providers>
@@ -27,6 +28,9 @@ Root path where media files are located. If you specify a relative path, the dir
 
 `<ScheduleFileDir>`\
 Root path where the schedule file is located. If you specify a relative path, the directory where the config file is located is root.
+
+`<PreserveRemovedScheduleFile> (optional, default: false)`\
+When OvenMediaEngine removes a schedule file, such as when the channel is deleted with the DELETE API or by `<MaxFallbackDurationMs>`, setting this to true renames the file by appending the removal time, for example `today.sch.20260831T204512`, instead of deleting it. A renamed file is not loaded as a channel. Renaming it back to the original .sch name recreates the channel.
 
 ## Schedule Files
 
@@ -54,9 +58,10 @@ Scheduled Channel creates/updates/deletes streams by creating/editing/deleting f
                 <Language>ja</Language>
             </Item>
         </AudioMap>
+        <MaxFallbackDurationMs>60000</MaxFallbackDurationMs> <!-- optional, default: 0 (unlimited) -->
     </Stream>
 
-    <FallbackProgram> <!-- Not yet supported -->
+    <FallbackProgram>
         <Item url="file://sample.mp4" start="0" duration="60000" />
     </FallbackProgram>
 
@@ -65,7 +70,7 @@ Scheduled Channel creates/updates/deletes streams by creating/editing/deleting f
     </Program>
     <Program name="2" scheduled="2022-03-14T15:10:0.0+09:00" repeat="true">
         <Item url="file://sample.mp4" start="0" duration="60000" />
-        <Item url="stream://default/app/stream1" duration="60000" /> <!-- Not yet supported -->
+        <Item url="stream://default/app/stream1" duration="60000" />
         <Item url="file://sample.mp4" start="60000" duration="120000" />
     </Program>
 </Schedule>
@@ -88,6 +93,9 @@ Determines whether to use the audio track. If `AudioTrack` is set to true and th
 
 `<Stream>/<AudioMap> (optional, default: false)`\
 To enable multiple audio tracks (multilingual audio) in Scheduled Channel, enable `AudioMap`. It is important that all scheduled live sources and file sources provide audio tracks equal to or greater than the number of audio tracks defined in `AudioMap`. If you define 3 `AudioMaps`, but the file source or live source provides less than 3 audio tracks, the Program will generate an error. If you provide more audio tracks than the defined `AudioMaps`, they will be mapped in order and the rest will be ignored.
+
+`<Stream>/<MaxFallbackDurationMs> (optional, default: 0)`\
+Automatically deletes the channel when fallback lasts longer than this duration, in milliseconds. The result is the same as deleting the channel with the DELETE API, so the schedule file is also removed according to `<PreserveRemovedScheduleFile>`. The duration is measured while no scheduled program item is playing, which includes the time before the first program starts, and it starts over whenever a scheduled item plays again. Changing the value while fallback is running also restarts the count. If set to 0 or not set, the channel is never deleted automatically.
 
 `<FallbackProgram> (optional)`\
 It is a program that switches automatically when there is no program scheduled at the current time or an error occurs in an item. If the program is updated at the current time or the item returns to normal, it will fail back to the original program. Both files and live can be used for items in FallbackProgram. However, it is recommended to use a stable file.
@@ -174,6 +182,8 @@ This function is a scheduling channel, but it can be used for applications such 
 ```
 
 This channel normally plays `default/app/input`, but when live input is stopped, it plays the file in `<FallbackProgram>`. This will last forever until the .sch file is deleted. One trick was to set the origin program's schedule time to year 2000 so that this stream would play unconditionally.
+
+If the channel should end by itself when the live input stops for a long time, such as when the broadcast is over, set `<Stream>/<MaxFallbackDurationMs>`. The channel is then deleted automatically, together with its schedule file, once fallback lasts longer than the set duration.
 
 
 :::warning
