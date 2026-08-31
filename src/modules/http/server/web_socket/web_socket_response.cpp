@@ -43,7 +43,7 @@ namespace http
 
 				size_t length = (data == nullptr) ? 0LL : data->GetLength();
 
-				if (length < 0x7D)
+				if (length <= 0x7D)
 				{
 					// frame-payload-length    = ( %x00-7D )
 					//                         / ( %x7E frame-payload-length-16 )
@@ -52,7 +52,7 @@ namespace http
 					//                         ; respectively
 					header.payload_length = static_cast<uint8_t>(length);
 				}
-				else if (length < 0xFFFF)
+				else if (length <= 0xFFFF)
 				{
 					// frame-payload-length-16 = %x0000-FFFF ; 16 bits in length
 					header.payload_length = 126;
