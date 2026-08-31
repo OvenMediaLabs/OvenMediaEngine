@@ -11,6 +11,7 @@
 #include "schedule_private.h"
 #include <base/ovlibrary/files.h>
 
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -20,6 +21,12 @@ namespace pvd
 {
 	bool RemoveScheduleFile(const ov::String &file_path, bool preserve)
 	{
+		// Already removed elsewhere, the goal state is reached
+		if (::access(file_path.CStr(), F_OK) != 0 && errno == ENOENT)
+		{
+			return true;
+		}
+
 		if (preserve == false)
 		{
 			if (ov::DeleteFile(file_path) == false)
