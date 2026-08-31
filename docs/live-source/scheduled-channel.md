@@ -26,7 +26,7 @@ To use this feature, activate Schedule Provider as follows.
 `<MediaRootDir>`\
 Root path where media files are located. If you specify a relative path, the directory where the config file is located is root.
 
-`<ScheduleFileDir>`\
+`<ScheduleFilesDir>`\
 Root path where the schedule file is located. If you specify a relative path, the directory where the config file is located is root.
 
 `<PreserveRemovedScheduleFile> (optional, default: false)`\
@@ -34,7 +34,7 @@ When OvenMediaEngine removes a schedule file, such as when the channel is delete
 
 ## Schedule Files
 
-Scheduled Channel creates/updates/deletes streams by creating/editing/deleting files with the .sch extension in the ScheduleFileDir path. Schedule files (`.sch`) use the following XML format. When a `{Stream Name}.sch` file is created in ScheduleFileDir, OvenMediaEngine analyzes the file and creates a Schedule Channel with `{Stream Name}`. If the contents of `{Stream Name}.sch` are changed, the Schedule Channel is updated, and if the file is deleted, the stream is deleted.
+Scheduled Channel creates/updates/deletes streams by creating/editing/deleting files with the .sch extension in the ScheduleFilesDir path. Schedule files (`.sch`) use the following XML format. When a `{Stream Name}.sch` file is created in ScheduleFilesDir, OvenMediaEngine analyzes the file and creates a Schedule Channel with `{Stream Name}`. If the contents of `{Stream Name}.sch` are changed, the Schedule Channel is updated, and if the file is deleted, the stream is deleted.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
