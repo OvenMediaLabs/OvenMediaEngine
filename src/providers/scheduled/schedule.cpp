@@ -10,6 +10,7 @@
 #include "schedule.h"
 #include "schedule_private.h"
 #include <base/ovlibrary/files.h>
+#include <modules/task_pool/task_pool.h>
 
 namespace pvd
 {
@@ -59,10 +60,22 @@ namespace pvd
 
 		ov::String file_path_copy = _file_path;
 		_format_context.reset(ctx, [file_path_copy](AVFormatContext *ctx) {
-			if (ctx)
+			if (ctx == nullptr)
 			{
+				return;
+			}
+
+			// Closing can block on the storage the file lives on, so it must not
+			// run on whichever thread happens to drop the last reference (the
+			// playback thread swapping schedules, or the API thread updating one)
+			auto close = [ctx, file_path_copy]() mutable {
 				logti("LoadContext: Closing format context : %s", file_path_copy.CStr());
 				::avformat_close_input(&ctx);
+			};
+
+			if (ov::TaskPool::GetInstance()->Post(close) == false)
+			{
+				close();
 			}
 		});
 

@@ -5,6 +5,7 @@ ome_add_static_library(scheduled_provider
         mediarouter
         orchestrator
         ovlibrary
+        task_pool
 )
 
 if(OME_BUILD_TESTS)
