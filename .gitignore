@@ -7,6 +7,7 @@ intermediates
 logs
 build
 run
+.work
 
 # Ignore local temporary build trees (e.g. compile_commands / test builds)
 __temp_build/
