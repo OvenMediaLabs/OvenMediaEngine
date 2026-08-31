@@ -24,7 +24,9 @@ namespace bmff
 	// All positions are integer microseconds on the shared media clock.
 	struct SegmentBoundary
 	{
-		// Where the segment ends
+		// Where the segment ends. Meaningful only when the plan was asked with a
+		// segment start; without one it carries no position, and a stream whose
+		// timeline runs below zero ends its segments there too
 		int64_t end_us = -1;
 
 		// Whether end_us is the exact end or the aim to cut at or after

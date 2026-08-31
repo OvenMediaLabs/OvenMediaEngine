@@ -80,18 +80,19 @@ namespace bmff
 	};
 
 	// The reference track's policy in synced segmentation. It aims each cut at
-	// fixed timeline positions (multiples of the configured duration snapped to
-	// its own frame cadence), lands on the first cuttable frame at or after
-	// them, and publishes every realized boundary to the feed every synced
-	// track follows. The fixed positions make the grid deterministic, and a
-	// marker cut re-anchors simply by the next segment starting where it starts.
+	// fixed timeline positions (the segment duration apart, counted from where
+	// the stream's first segment started and snapped to its own frame cadence),
+	// lands on the first cuttable frame at or after them, and publishes every
+	// realized boundary to the feed every synced track follows. The fixed
+	// spacing makes the positions deterministic, and a marker cut re-anchors
+	// simply by the next segment starting where it starts.
 	class ReferenceBoundaryPolicy : public SegmentBoundaryPolicy
 	{
 	public:
 		// video_frame_rate: the cadence the aimed positions snap to, so every
-		// position is a real frame (0 keeps plain multiples). The feed the
-		// realized boundaries are published to is created and owned here; the
-		// synced tracks read it through GetBoundaryFeed().
+		// position is a real frame (0 keeps them a plain segment duration
+		// apart). The feed the realized boundaries are published to is created
+		// and owned here; the synced tracks read it through GetBoundaryFeed().
 		ReferenceBoundaryPolicy(const Config &config, double video_frame_rate);
 
 		SegmentBoundary GetSegmentBoundary(std::optional<int64_t> segment_start_us) override;
@@ -106,8 +107,9 @@ namespace bmff
 		// by this reference
 		std::shared_ptr<const BoundaryFeed> GetBoundaryFeed() const;
 
-		// The first aimed position at or after the given one (µs), snapped to
-		// the frame cadence. Public for tests.
+		// The first aimed position past the given one (µs), snapped to the frame
+		// cadence. A position within half a frame of one belongs to it, so that
+		// one is not returned. Public for tests.
 		int64_t NextBoundaryUs(int64_t position_us) const;
 
 	protected:
@@ -125,9 +127,10 @@ namespace bmff
 		// Where the aimed positions start counting. The frames of a stream sit
 		// at their own offset, and counting from zero would aim between two of
 		// them on every segment; taking the first segment start as the origin
-		// puts every aimed position on a frame this stream actually has.
-		// Negative until the first start is known, which counts from zero.
-		int64_t _grid_origin_us = -1;
+		// puts every aimed position on a frame this stream actually has. Unset
+		// until that start is known, which counts from zero. A first start can
+		// be negative, so the unset state cannot be a value of its own.
+		std::optional<int64_t> _origin_us;
 	};
 
 	// A synced track's policy: computes no boundaries of its own. Each segment

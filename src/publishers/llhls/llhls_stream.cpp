@@ -1903,9 +1903,10 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	auto reference_track = (GetSegmentationMode() == LLHlsSegmentationMode::Synced) ? GetReferenceTrack() : nullptr;
 	if (reference_track != nullptr)
 	{
-		// The reference aims at multiples of the segment duration on its own
-		// frame cadence; the realized cuts land on its keyframes and every other
-		// track follows them. Created on the first track, whichever it is.
+		// The reference aims a segment duration apart from where its first
+		// segment started, on its own frame cadence; the realized cuts land on
+		// its keyframes and every other track follows them. Created on the
+		// first track, whichever it is.
 		if (_reference_boundary_policy == nullptr)
 		{
 			if (server_time_based_segment_numbering == true)

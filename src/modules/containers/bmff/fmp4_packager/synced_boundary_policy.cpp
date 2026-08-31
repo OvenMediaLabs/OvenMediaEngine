@@ -160,7 +160,7 @@ namespace bmff
 		// (within half a frame) belongs to that boundary, not before it
 		const int64_t tolerance_us = (_video_frame_rate > 0) ? std::llround(500000.0 / _video_frame_rate) : 500;
 
-		const int64_t origin_us = (_grid_origin_us >= 0) ? _grid_origin_us : 0;
+		const int64_t origin_us = _origin_us.value_or(0);
 
 		// The origin itself is a boundary, so the search starts at it; the check
 		// below rejects it when the segment already starts there
@@ -201,10 +201,10 @@ namespace bmff
 		}
 
 		// The first start this reference sees fixes where the aimed positions
-		// begin for the stream
-		if (_grid_origin_us < 0)
+		// begin for the stream, whatever its sign
+		if (_origin_us.has_value() == false)
 		{
-			_grid_origin_us = *segment_start_us;
+			_origin_us = *segment_start_us;
 		}
 
 		plan.end_us = NextBoundaryUs(*segment_start_us) - kBoundaryBiasUs;

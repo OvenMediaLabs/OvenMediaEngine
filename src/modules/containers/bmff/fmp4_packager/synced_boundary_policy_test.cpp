@@ -460,6 +460,16 @@ TEST(ReferenceBoundaryPolicyTest, BoundariesStartWhereTheStreamDid)
 	EXPECT_NEAR(PlanAt(policy, 6000.0).end_us, 8500000.0, 10.0);
 }
 
+TEST(ReferenceBoundaryPolicyTest, ATimelineBelowZeroFixesTheOriginToo)
+{
+	auto policy = MakeReference(30.0);
+
+	// A first start below zero is a position like any other, so the aimed
+	// positions follow it instead of counting from zero
+	EXPECT_NEAR(PlanAt(policy, -500.0).end_us, 3500000.0, 10.0);
+	EXPECT_NEAR(PlanAt(policy, 4000.0).end_us, 7500000.0, 10.0);
+}
+
 TEST(ReferenceBoundaryPolicyTest, PublishesRealizedBoundaries)
 {
 	auto policy = MakeReference();
