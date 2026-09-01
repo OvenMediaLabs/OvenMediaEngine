@@ -36,9 +36,12 @@ namespace bmff
 		// keyframe intervals, so the shortest packageable break follows that
 		// rounded cadence instead of the configured duration
 		_cut_cadence_us = _segment_duration_us;
-		if (config.keyframe_interval_ms > 0)
+		// Judged after the conversion: an interval that rounds away to nothing
+		// cannot divide the duration
+		int64_t keyframe_interval_us = static_cast<int64_t>(config.keyframe_interval_ms * 1000.0 + 0.5);
+		if (keyframe_interval_us > 0)
 		{
-			_keyframe_interval_us = static_cast<int64_t>(config.keyframe_interval_ms * 1000.0 + 0.5);
+			_keyframe_interval_us = keyframe_interval_us;
 			int64_t intervals = (_segment_duration_us + _keyframe_interval_us - 1) / _keyframe_interval_us;
 			_cut_cadence_us = std::max(_cut_cadence_us, intervals * _keyframe_interval_us);
 		}
