@@ -41,9 +41,8 @@ namespace bmff
 		int64_t keyframe_interval_us = static_cast<int64_t>(config.keyframe_interval_ms * 1000.0 + 0.5);
 		if (keyframe_interval_us > 0)
 		{
-			_keyframe_interval_us = keyframe_interval_us;
-			int64_t intervals = (_segment_duration_us + _keyframe_interval_us - 1) / _keyframe_interval_us;
-			_cut_cadence_us = std::max(_cut_cadence_us, intervals * _keyframe_interval_us);
+			int64_t intervals = (_segment_duration_us + keyframe_interval_us - 1) / keyframe_interval_us;
+			_cut_cadence_us = std::max(_cut_cadence_us, intervals * keyframe_interval_us);
 		}
 	}
 
@@ -792,26 +791,6 @@ namespace bmff
 				logte("%s - No cuttable position (keyframe or boundary) appeared for %.3f ms, twice the target %.3f ms; the segment is closed here and may not play normally",
 					  _log_context.CStr(), (last_segment_duration_us + emitted_duration_us) / 1000.0, _segment_duration_us / 1000.0);
 				decision.completes_segment = true;
-			}
-		}
-
-		// A cut lands on the first cuttable position at or after the plan, so
-		// overshooting by less than the distance to that position is the cadence
-		// working. Passing one by is what is worth reporting
-		if (decision.completes_segment == true && target_segment_duration_us > 0)
-		{
-			int64_t closed_at_us = last_segment_duration_us;
-			for (size_t index = 0; index < emit_count; index++)
-			{
-				closed_at_us += sample_list[index].timing.duration_us;
-			}
-
-			int64_t reach_us = std::max(next_frame.duration_us, _keyframe_interval_us);
-			if (closed_at_us > target_segment_duration_us + reach_us)
-			{
-				logtw("%s - Segment closed at %.3f ms, %.3f ms past its %.3f ms plan; the next cuttable position was expected within %.3f ms (start %.3f ms)",
-					  _log_context.CStr(), closed_at_us / 1000.0, (closed_at_us - target_segment_duration_us) / 1000.0,
-					  target_segment_duration_us / 1000.0, reach_us / 1000.0, segment_start_us / 1000.0);
 			}
 		}
 
