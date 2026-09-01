@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -84,12 +85,20 @@ namespace
 		return config;
 	}
 
-	// An exited worker disappears here, unlike one that is merely idle
-	size_t CountProcessThreads()
+	// An exited worker disappears here, unlike one that is merely idle. Nullopt on a
+	// platform without a readable /proc, so the caller can skip instead of aborting
+	std::optional<size_t> CountProcessThreads()
 	{
+		std::error_code error;
+		std::filesystem::directory_iterator entries("/proc/self/task", error);
+		if (error)
+		{
+			return std::nullopt;
+		}
+
 		size_t count = 0;
 
-		for ([[maybe_unused]] const auto &entry : std::filesystem::directory_iterator("/proc/self/task"))
+		for ([[maybe_unused]] const auto &entry : entries)
 		{
 			count++;
 		}
@@ -541,7 +550,12 @@ TEST(TaskPool, ADedicatedWorkerLeavesOnceItsQueueRunsDry)
 {
 	ov::TaskPool pool;
 
-	const auto baseline = CountProcessThreads();
+	const auto counted = CountProcessThreads();
+	if (counted.has_value() == false)
+	{
+		GTEST_SKIP() << "No readable /proc/self/task on this platform";
+	}
+	const size_t baseline = *counted;
 
 	std::promise<void> first_done;
 	auto first_future = first_done.get_future();
@@ -553,11 +567,11 @@ TEST(TaskPool, ADedicatedWorkerLeavesOnceItsQueueRunsDry)
 
 	// Only the worker's exit brings the thread count back down
 	auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
-	while ((CountProcessThreads() > baseline) && (std::chrono::steady_clock::now() < deadline))
+	while ((CountProcessThreads().value_or(baseline) > baseline) && (std::chrono::steady_clock::now() < deadline))
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
-	EXPECT_EQ(CountProcessThreads(), baseline);
+	EXPECT_EQ(CountProcessThreads().value_or(baseline), baseline);
 
 	// A post after the worker left starts a fresh one and still runs
 	std::promise<void> second_done;
