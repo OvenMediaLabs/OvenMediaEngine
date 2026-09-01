@@ -226,8 +226,8 @@ namespace bmff
 		// return from, and a position it has passed by more than one is beyond
 		// saving.
 		int64_t _cut_cadence_us = 0;
-		// The keyframe interval, an upper bound on how far the next cuttable
-		// position is; zero where every frame can cut
+		// The nominal keyframe interval, how far the next cuttable position is
+		// expected to be; zero where every frame can cut
 		int64_t _keyframe_interval_us = 0;
 		LLHlsCueOutCutMode _cue_out_cut_mode = LLHlsCueOutCutMode::Keyframe;
 		ov::String _log_context;
