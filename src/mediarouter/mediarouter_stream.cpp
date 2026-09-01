@@ -131,22 +131,35 @@ bool MediaRouteStream::IsStreamReady()
 
 	auto tracks = _stream->GetTracks();
 
+	bool all_tracks_ready = true;
+
+	// Evaluate every track (no early return) so each ready track is recorded even
+	// while another track still blocks the stream
 	for (const auto &track_it : tracks)
 	{
 		auto track = track_it.second;
 
 		// The map entry is the latest published version of this track; while a
 		// track stays undescribed no version has been published yet
-		if (track->IsValid() == false)
+		if ((track->IsValid() == false) ||
+			(_stream->HasTrackQualityMeasured(track->GetId()) == false))
 		{
-			return false;
+			all_tracks_ready = false;
+			continue;
 		}
 
-		// If the track is an outbound track, it is necessary to check the quality.
-		if (_stream->HasTrackQualityMeasured(track->GetId()) == false)
+		// Record readiness on the shared stats; modules holding setup-time track
+		// versions (e.g. the provider) read this fact instead of judging validity
+		auto stats = _stream->GetTrackStats(track->GetId());
+		if (stats != nullptr)
 		{
-			return false;
+			stats->SetReady();
 		}
+	}
+
+	if (all_tracks_ready == false)
+	{
+		return false;
 	}
 
 	_is_all_tracks_parsed = true;
@@ -185,8 +198,9 @@ void MediaRouteStream::CheckUnpreparedTrackTimeout()
 	{
 		auto track = track_it.second;
 
-		// Mirror IsStreamReady(): a track blocks prepare until it is both valid and quality-measured
-		if (track->IsValid() == true && _stream->HasTrackQualityMeasured(track->GetId()) == true)
+		// Readiness is recorded by IsStreamReady(), which always runs before this check
+		auto stats = _stream->GetTrackStats(track->GetId());
+		if (stats != nullptr && stats->IsReady() == true)
 		{
 			continue;
 		}

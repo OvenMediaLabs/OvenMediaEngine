@@ -63,6 +63,11 @@ public:
 	bool IsQualityMeasured() const;
 	void SetQualityMeasured();
 
+	// Set to true by the mediarouter once the track becomes ready (valid and
+	// quality-measured, see MediaRouteStream::IsStreamReady); never goes back to false
+	bool IsReady() const;
+	void SetReady();
+
 	// B-frames detected in the bitstream by the config author
 	void SetHasBframes(bool has_bframe);
 	bool HasBframes() const;
@@ -113,6 +118,8 @@ private:
 	std::atomic<int64_t> _last_received_timestamp = -1;
 
 	std::atomic<bool> _quality_measured = false;
+
+	std::atomic<bool> _ready = false;
 
 	std::atomic<bool> _has_bframe = false;
 

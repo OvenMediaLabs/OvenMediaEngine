@@ -223,6 +223,16 @@ void TrackStats::SetQualityMeasured()
 	_quality_measured = true;
 }
 
+bool TrackStats::IsReady() const
+{
+	return _ready;
+}
+
+void TrackStats::SetReady()
+{
+	_ready = true;
+}
+
 void TrackStats::SetHasBframes(bool has_bframe)
 {
 	_has_bframe = has_bframe;
