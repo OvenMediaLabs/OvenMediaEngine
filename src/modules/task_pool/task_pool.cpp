@@ -160,8 +160,6 @@ namespace ov
 			return false;
 		}
 
-		DedicatedWorker *worker = nullptr;
-
 		{
 			std::lock_guard<std::mutex> lock(_mutex);
 
@@ -216,11 +214,11 @@ namespace ov
 			}
 
 			slot->task_queue.push(std::move(task));
-			worker = slot.get();
-		}
 
-		// Wakes a keep-alive worker; a no-op otherwise
-		worker->condition.notify_one();
+			// Notified under the lock: Stop() destroys the worker objects under this same
+			// lock, so a notify after releasing it could hit a destroyed condition
+			slot->condition.notify_one();
+		}
 
 		return true;
 	}
