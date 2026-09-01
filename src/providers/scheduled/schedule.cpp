@@ -65,15 +65,15 @@ namespace pvd
 				return;
 			}
 
-			// Closing can block on the storage the file lives on, so it must not
-			// run on whichever thread happens to drop the last reference (the
-			// playback thread swapping schedules, or the API thread updating one)
+			// Closing can block on the storage the file lives on, so it goes to a dedicated
+			// worker instead of the releasing thread (normally the playback thread) or the
+			// shared workers. When the pool cannot take it, the close runs right here.
 			auto close = [ctx, file_path_copy]() mutable {
 				logti("LoadContext: Closing format context : %s", file_path_copy.CStr());
 				::avformat_close_input(&ctx);
 			};
 
-			if (ov::TaskPool::GetInstance()->Post(close) == false)
+			if (ov::TaskPool::GetInstance()->PostDedicated("SchedCtxClose", close) == false)
 			{
 				close();
 			}

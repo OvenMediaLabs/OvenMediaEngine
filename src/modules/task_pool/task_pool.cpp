@@ -53,7 +53,6 @@ namespace ov
 
 		_config = config;
 
-		// A pool that cannot hold a task or run one is not a pool
 		if (_config.thread_count == 0)
 		{
 			_config.thread_count = 1;
@@ -98,8 +97,6 @@ namespace ov
 	{
 		_rejected_count++;
 
-		// A full queue rejects everything that follows, and that is exactly when the log
-		// must not be flooded
 		auto now = std::chrono::steady_clock::now();
 		if ((now - _last_reject_log_time) < std::chrono::seconds(1))
 		{
@@ -129,8 +126,7 @@ namespace ov
 				return false;
 			}
 
-			// The workers are started by the first task and stay until the pool stops, so a
-			// pool nobody uses holds no threads
+			// Started lazily by the first task
 			if (_workers.empty())
 			{
 				AddWorkers(_config.thread_count);
@@ -156,6 +152,79 @@ namespace ov
 		return true;
 	}
 
+	bool TaskPool::PostDedicated(const ov::String &worker_name, Task task, bool keep_alive)
+	{
+		if (task == nullptr)
+		{
+			OV_ASSERT2(task != nullptr);
+			return false;
+		}
+
+		DedicatedWorker *worker = nullptr;
+
+		{
+			std::lock_guard<std::mutex> lock(_mutex);
+
+			if (_stopped)
+			{
+				return false;
+			}
+
+			auto &slot = _dedicated_workers[worker_name];
+			const bool created_now = (slot == nullptr);
+			if (created_now)
+			{
+				slot = std::make_unique<DedicatedWorker>();
+				slot->keep_alive = keep_alive;
+			}
+
+			if (slot->task_queue.size() >= _config.max_tasks)
+			{
+				ReportRejection();
+				return false;
+			}
+
+			if (slot->running == false)
+			{
+				// The previous worker has left for lack of work; joined before a new one starts
+				if (slot->thread.joinable())
+				{
+					slot->thread.join();
+				}
+
+				try
+				{
+					slot->thread = std::thread(&TaskPool::DedicatedWorkerThreadProc, this, slot.get());
+
+					// A thread name holds 15 characters; a longer worker name keeps its front
+					::pthread_setname_np(slot->thread.native_handle(), worker_name.Substring(0, 15).CStr());
+
+					slot->running = true;
+				}
+				catch (const std::system_error &e)
+				{
+					// Post() must not throw at a caller that only expects false back
+					logte("Could not start the dedicated worker '%s': %s", worker_name.CStr(), e.what());
+
+					if (created_now)
+					{
+						_dedicated_workers.erase(worker_name);
+					}
+
+					return false;
+				}
+			}
+
+			slot->task_queue.push(std::move(task));
+			worker = slot.get();
+		}
+
+		// Wakes a keep-alive worker; a no-op otherwise
+		worker->condition.notify_one();
+
+		return true;
+	}
+
 	size_t TaskPool::GetPendingCount() const
 	{
 		std::lock_guard<std::mutex> lock(_mutex);
@@ -172,8 +241,7 @@ namespace ov
 
 	void TaskPool::Stop()
 	{
-		// Held for the whole call so that a second caller waits for the workers to be gone
-		// instead of returning while the first one is still joining them
+		// A second caller waits here until the workers are joined
 		std::lock_guard<std::mutex> stop_lock(_stop_mutex);
 
 		std::vector<std::thread> workers;
@@ -186,8 +254,7 @@ namespace ov
 				return;
 			}
 
-			// Joining its own thread would throw, and the workers left unjoined by that would
-			// take the process down with them
+			// Joining its own thread would throw
 			auto current_thread_id = std::this_thread::get_id();
 			for (const auto &worker : _workers)
 			{
@@ -197,24 +264,103 @@ namespace ov
 					return;
 				}
 			}
+			for (const auto &[name, worker] : _dedicated_workers)
+			{
+				if (worker->thread.get_id() == current_thread_id)
+				{
+					logte("A task tried to stop the pool it runs on, which it cannot do");
+					return;
+				}
+			}
 
 			_stopped = true;
 
-			// Dropped rather than run, because whatever they were going to use may already
-			// be on its way down
+			// Dropped, not run; what they would touch may already be shutting down
 			std::queue<Task> empty_queue;
 			_task_queue.swap(empty_queue);
+
+			for (auto &[name, worker] : _dedicated_workers)
+			{
+				std::queue<Task> empty_worker_queue;
+				worker->task_queue.swap(empty_worker_queue);
+			}
 
 			workers.swap(_workers);
 		}
 
 		_condition.notify_all();
+		for (auto &[name, worker] : _dedicated_workers)
+		{
+			worker->condition.notify_all();
+		}
 
 		for (auto &worker : workers)
 		{
 			if (worker.joinable())
 			{
 				worker.join();
+			}
+		}
+
+		// Joined before the map releases what the workers use
+		for (auto &[name, worker] : _dedicated_workers)
+		{
+			if (worker->thread.joinable())
+			{
+				worker->thread.join();
+			}
+		}
+
+		{
+			std::lock_guard<std::mutex> lock(_mutex);
+			_dedicated_workers.clear();
+		}
+	}
+
+	void TaskPool::DedicatedWorkerThreadProc(DedicatedWorker *worker)
+	{
+		while (true)
+		{
+			Task task;
+
+			{
+				std::unique_lock<std::mutex> lock(_mutex);
+
+				if (worker->keep_alive)
+				{
+					worker->condition.wait(lock, [this, worker]() {
+						return _stopped || (worker->task_queue.empty() == false);
+					});
+				}
+
+				if (_stopped)
+				{
+					break;
+				}
+
+				if (worker->task_queue.empty())
+				{
+					// Only reached without keep_alive: the queue ran dry, the worker leaves
+					worker->running = false;
+					break;
+				}
+
+				task = std::move(worker->task_queue.front());
+				worker->task_queue.pop();
+			}
+
+			// A task of one module must not be able to take down a worker the others share
+			try
+			{
+				task();
+			}
+			catch (const std::exception &e)
+			{
+				logte("A task has thrown an exception: %s", e.what());
+			}
+			catch (...)
+			{
+				logte("A task has thrown an unknown exception");
 			}
 		}
 	}

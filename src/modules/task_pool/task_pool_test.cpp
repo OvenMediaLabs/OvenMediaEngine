@@ -4,7 +4,7 @@
 //
 //  src/modules/task_pool/task_pool_test.cpp
 //  Covers: TaskPool (posting, results, worker isolation, queue limit, concurrent
-//          posting, stop)
+//          posting, stop, dedicated workers)
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -13,14 +13,15 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <set>
+#include <vector>
 
 namespace
 {
 	constexpr auto kWaitTimeout = std::chrono::seconds(5);
 
-	// Blocks the workers so that the queue can be observed while they are busy. The wait is
-	// bounded because a failed assertion returns before the gate is opened, and a worker left
-	// waiting for good would hang the whole binary once the pool joins it.
+	// Blocks a worker until opened; the wait is bounded so a failed test cannot hang the binary
 	class TaskGate
 	{
 	public:
@@ -39,9 +40,7 @@ namespace
 		std::shared_future<void> _future{_promise.get_future()};
 	};
 
-	// Leaves every worker blocked on the gate, so that what follows sees a pool that takes
-	// tasks but runs none of them. The counter is shared with the tasks rather than held on
-	// the stack, because a task still counts up after a failed wait gives up on it.
+	// The counter is on the heap because a task may outlive a failed wait
 	struct StartCounter
 	{
 		std::mutex mutex;
@@ -84,6 +83,19 @@ namespace
 
 		return config;
 	}
+
+	// An exited worker disappears here, unlike one that is merely idle
+	size_t CountProcessThreads()
+	{
+		size_t count = 0;
+
+		for ([[maybe_unused]] const auto &entry : std::filesystem::directory_iterator("/proc/self/task"))
+		{
+			count++;
+		}
+
+		return count;
+	}
 }  // namespace
 
 TEST(TaskPool, RunsPostedTask)
@@ -124,8 +136,7 @@ TEST(TaskPool, SubmitReportsAnExceptionThrownByTheTask)
 	EXPECT_THROW(future.get(), std::runtime_error);
 }
 
-// A callable that is not a temporary is deduced as a reference, which the return type has to
-// survive
+// A non-temporary callable is deduced as a reference, which the return type has to survive
 TEST(TaskPool, SubmitTakesACallableThatIsNotATemporary)
 {
 	ov::TaskPool pool;
@@ -159,8 +170,6 @@ TEST(TaskPool, StartsTheWorkersWithTheFirstTask)
 	EXPECT_EQ(pool.GetThreadCount(), 4u);
 }
 
-// Every worker has to be able to run at the same time, otherwise a task that waits would
-// hold up the tasks of every other module
 TEST(TaskPool, RunsTasksOnEveryWorkerAtOnce)
 {
 	// Declared before the pool so that the workers are joined while the gate still exists
@@ -257,8 +266,6 @@ TEST(TaskPool, RunsEveryTaskPostedFromManyThreadsAtOnce)
 	EXPECT_EQ(pool.GetPendingCount(), 0u);
 }
 
-// Whatever a running task is holding must still be valid until it returns, so Stop() cannot
-// come back while one is in the middle of its work
 TEST(TaskPool, StopWaitsForARunningTask)
 {
 	TaskGate gate;
@@ -332,8 +339,7 @@ TEST(TaskPool, TakesNoTaskAfterItIsStopped)
 	EXPECT_THROW(future.get(), std::future_error);
 }
 
-// Stopping from a task would have the pool join the very thread that asks, which takes the
-// process down rather than just failing
+// Stop() from a task would join the very thread that asks
 TEST(TaskPool, RefusesToStopFromItsOwnTask)
 {
 	ov::TaskPool pool;
@@ -366,4 +372,225 @@ TEST(TaskPool, StopIsSafeToCallTwice)
 
 	pool.Stop();
 	pool.Stop();
+}
+
+//------------------------------------------------------------------------------
+// Dedicated workers
+//------------------------------------------------------------------------------
+
+TEST(TaskPool, ADedicatedWorkerRunsTasksInOrderOnOneThread)
+{
+	ov::TaskPool pool;
+	TaskGate gate;
+
+	std::mutex mutex;
+	std::vector<int> order;
+	std::set<std::thread::id> thread_ids;
+	std::promise<void> done_promise;
+	auto done_future = done_promise.get_future();
+
+	// The first task holds the worker so the rest pile up behind it
+	ASSERT_TRUE(pool.PostDedicated("worker-a", [&]() {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			thread_ids.insert(std::this_thread::get_id());
+		}
+
+		gate.Wait();
+	}));
+
+	for (int index = 0; index < 5; index++)
+	{
+		ASSERT_TRUE(pool.PostDedicated("worker-a", [&, index]() {
+			std::lock_guard<std::mutex> lock(mutex);
+			order.push_back(index);
+			thread_ids.insert(std::this_thread::get_id());
+
+			if (index == 4)
+			{
+				done_promise.set_value();
+			}
+		}));
+	}
+
+	gate.Open();
+
+	ASSERT_EQ(done_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	std::lock_guard<std::mutex> lock(mutex);
+	EXPECT_EQ(order, (std::vector<int>{0, 1, 2, 3, 4}));
+	EXPECT_EQ(thread_ids.size(), 1u);
+}
+
+TEST(TaskPool, ABlockedDedicatedWorkerLeavesTheSharedWorkersFree)
+{
+	ov::TaskPool pool;
+	pool.Configure(MakeConfig(1, 8));
+
+	TaskGate gate;
+
+	// The dedicated worker is held on the gate for the whole test
+	ASSERT_TRUE(pool.PostDedicated("worker-b", [&gate]() {
+		gate.Wait();
+	}));
+
+	// The shared worker still takes and runs work
+	std::promise<void> shared_promise;
+	auto shared_future = shared_promise.get_future();
+
+	ASSERT_TRUE(pool.Post([&shared_promise]() {
+		shared_promise.set_value();
+	}));
+	EXPECT_EQ(shared_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	gate.Open();
+}
+
+TEST(TaskPool, TheSameNameSharesOneDedicatedWorker)
+{
+	ov::TaskPool pool;
+	TaskGate gate;
+
+	std::mutex mutex;
+	std::set<std::thread::id> thread_ids;
+	std::promise<void> done_promise;
+	auto done_future = done_promise.get_future();
+
+	// The first task holds the worker so both land on the same one
+	ASSERT_TRUE(pool.PostDedicated("worker-c", [&]() {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			thread_ids.insert(std::this_thread::get_id());
+		}
+
+		gate.Wait();
+	}));
+	ASSERT_TRUE(pool.PostDedicated("worker-c", [&]() {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			thread_ids.insert(std::this_thread::get_id());
+		}
+		done_promise.set_value();
+	}));
+
+	gate.Open();
+
+	ASSERT_EQ(done_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	std::lock_guard<std::mutex> lock(mutex);
+	EXPECT_EQ(thread_ids.size(), 1u);
+}
+
+TEST(TaskPool, ADedicatedWorkerRejectsATaskOnceTooManyAreWaiting)
+{
+	ov::TaskPool pool;
+	pool.Configure(MakeConfig(1, 2));
+
+	TaskGate gate;
+
+	// The queue is filled only after the first task is known to be running, off the queue
+	std::promise<void> started_promise;
+	auto started_future = started_promise.get_future();
+
+	ASSERT_TRUE(pool.PostDedicated("worker-d", [&gate, &started_promise]() {
+		started_promise.set_value();
+		gate.Wait();
+	}));
+	ASSERT_EQ(started_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	ASSERT_TRUE(pool.PostDedicated("worker-d", []() {}));
+	ASSERT_TRUE(pool.PostDedicated("worker-d", []() {}));
+
+	EXPECT_FALSE(pool.PostDedicated("worker-d", []() {}));
+
+	gate.Open();
+}
+
+TEST(TaskPool, TakesNoDedicatedTaskAfterItIsStopped)
+{
+	ov::TaskPool pool;
+
+	ASSERT_TRUE(pool.PostDedicated("worker-e", []() {}));
+
+	pool.Stop();
+
+	EXPECT_FALSE(pool.PostDedicated("worker-e", []() {}));
+}
+
+TEST(TaskPool, StopWaitsForARunningDedicatedTask)
+{
+	auto pool = std::make_unique<ov::TaskPool>();
+
+	std::atomic<bool> finished{false};
+	std::promise<void> started_promise;
+	auto started_future = started_promise.get_future();
+
+	ASSERT_TRUE(pool->PostDedicated("worker-f", [&]() {
+		started_promise.set_value();
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		finished = true;
+	}));
+
+	ASSERT_EQ(started_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	pool->Stop();
+	EXPECT_TRUE(finished.load());
+}
+
+TEST(TaskPool, ADedicatedWorkerLeavesOnceItsQueueRunsDry)
+{
+	ov::TaskPool pool;
+
+	const auto baseline = CountProcessThreads();
+
+	std::promise<void> first_done;
+	auto first_future = first_done.get_future();
+
+	ASSERT_TRUE(pool.PostDedicated("worker-g", [&first_done]() {
+		first_done.set_value();
+	}));
+	ASSERT_EQ(first_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	// Only the worker's exit brings the thread count back down
+	auto deadline = std::chrono::steady_clock::now() + kWaitTimeout;
+	while ((CountProcessThreads() > baseline) && (std::chrono::steady_clock::now() < deadline))
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+	EXPECT_EQ(CountProcessThreads(), baseline);
+
+	// A post after the worker left starts a fresh one and still runs
+	std::promise<void> second_done;
+	auto second_future = second_done.get_future();
+
+	ASSERT_TRUE(pool.PostDedicated("worker-g", [&second_done]() {
+		second_done.set_value();
+	}));
+	EXPECT_EQ(second_future.wait_for(kWaitTimeout), std::future_status::ready);
+}
+
+TEST(TaskPool, AKeepAliveDedicatedWorkerStaysBetweenTasks)
+{
+	ov::TaskPool pool;
+
+	std::promise<std::thread::id> first_id;
+	auto first_future = first_id.get_future();
+
+	ASSERT_TRUE(pool.PostDedicated("worker-h", [&first_id]() {
+		first_id.set_value(std::this_thread::get_id());
+	}, true));
+	ASSERT_EQ(first_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	// Long enough that a worker which leaves when idle would be gone by now
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+	std::promise<std::thread::id> second_id;
+	auto second_future = second_id.get_future();
+
+	ASSERT_TRUE(pool.PostDedicated("worker-h", [&second_id]() {
+		second_id.set_value(std::this_thread::get_id());
+	}, true));
+	ASSERT_EQ(second_future.wait_for(kWaitTimeout), std::future_status::ready);
+
+	EXPECT_EQ(first_future.get(), second_future.get());
 }

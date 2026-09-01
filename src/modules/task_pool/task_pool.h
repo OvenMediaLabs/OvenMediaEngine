@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -24,35 +25,12 @@
 
 namespace ov
 {
-	// Runs short tasks on shared worker threads so that modules do not have to own a thread
-	// each. It is meant for work that mostly waits, such as a name lookup or a request to a
-	// remote service, rather than for work that keeps a CPU busy.
+	// Shared worker threads for short tasks that mostly wait (a name lookup, a remote
+	// request). GetInstance() gives the pool the modules share; PostDedicated gives a
+	// module a worker of its own.
 	//
-	// The workers start with the first task and stay until the pool stops.
-	//
-	// GetInstance() gives the pool the modules share. A caller that needs workers of its own,
-	// for work it does not want to leave behind other modules, can construct one instead.
-	//
-	//     // Run it and move on
-	//     ov::TaskPool::GetInstance()->Post([]() { DoWork(); });
-	//
-	//     // Run it and pick the result up later
-	//     auto future = ov::TaskPool::GetInstance()->Submit([]() { return DoWork(); });
-	//     auto result = future.get();
-	//
-	// A task must never wait for another task of this pool to finish, and must never call
-	// Stop(): every worker could end up waiting and none would be left to run what they wait
-	// for, and Stop() from a task would join the thread it runs on.
-	//
-	// A posted task cannot be cancelled and outlives the call that posted it, so it must not
-	// capture a raw `this` of anything that can go away while it waits to run. Capture a
-	// std::weak_ptr and check it instead.
-	//
-	//     std::weak_ptr<Stream> weak_stream = stream;
-	//     ov::TaskPool::GetInstance()->Post([weak_stream]() {
-	//         auto stream = weak_stream.lock();
-	//         if (stream != nullptr) { ... }
-	//     });
+	// A task must not wait for another task of this pool and must not call Stop().
+	// A task outlives the call that posted it, so capture a std::weak_ptr, not a raw this.
 	class TaskPool : public Singleton<TaskPool>
 	{
 	public:
@@ -60,32 +38,33 @@ namespace ov
 
 		struct Config
 		{
-			// Workers the pool runs on. Sized for tasks that wait rather than compute, so it
-			// does not follow the core count.
+			// Sized for tasks that wait, not for the core count
 			size_t thread_count = 4;
-			// Tasks that may wait to start. Reaching this means the producers outrun the
-			// workers, and further tasks are rejected rather than queued without end.
+			// Tasks over this are rejected, not queued without end
 			size_t max_tasks = 128;
 		};
 
 		TaskPool();
 		~TaskPool() override;
 
-		// Applies the <TaskPool> settings of the server configuration. The workers already
-		// running are not resized to a new thread count, so this belongs in the startup path
-		// before any module posts a task.
+		// Applies <Modules><TaskPool> from the server configuration; call before any task is posted
 		bool Initialize();
 
-		// Applies a configuration directly, for callers that do not take it from the server
-		// configuration. The workers already running are left as they are.
+		// Applies a configuration directly; workers already running are not resized
 		void Configure(const Config &config);
 
-		// Hands the task to a worker and returns without waiting for it. Returns false when
-		// the pool is stopped, when the queue is full, or when no worker could be started.
+		// Runs the task on a shared worker. Returns false when stopped or the queue is full
 		bool Post(Task task);
 
-		// Posts a task and hands back its result through a future. When the task cannot be
-		// posted, or the pool stops before it runs, the future reports a broken promise.
+		// Runs the task on a dedicated worker named worker_name, tasks in posted order.
+		// Long-blocking work belongs here, off the shared workers. Callers using the same
+		// name share one worker. The worker leaves once its queue runs dry and the next
+		// post starts a new one; keep_alive keeps it parked instead. The flag of the post
+		// that creates the worker stays.
+		bool PostDedicated(const ov::String &worker_name, Task task, bool keep_alive = false);
+
+		// Posts a task and returns its result as a future; a task that never runs breaks
+		// the promise
 		template <typename Func>
 		auto Submit(Func &&func) -> std::future<std::invoke_result_t<Func>>
 		{
@@ -101,36 +80,46 @@ namespace ov
 			return future;
 		}
 
-		// Tasks waiting to start, not counting the ones already running
+		// Tasks waiting to start
 		size_t GetPendingCount() const;
-		// Workers running right now, which is zero until the first task arrives
+		// Shared workers running now; they start with the first task
 		size_t GetThreadCount() const;
 
-		// Lets the running tasks finish and drops the ones still waiting. The pool does not
-		// take tasks again afterwards, so this belongs in the shutdown path.
+		// Lets running tasks finish and drops the waiting ones; the pool takes no task afterwards
 		void Stop();
 
 	protected:
+		struct DedicatedWorker
+		{
+			std::queue<Task> task_queue;
+			// Only a keep-alive worker waits on this
+			std::condition_variable condition;
+			std::thread thread;
+			bool keep_alive = false;
+			// Cleared by the worker itself when it leaves for lack of work
+			bool running = false;
+		};
+
 		void WorkerThreadProc();
-		// Adds up to `count` workers and returns how many started. The caller holds _mutex.
+		void DedicatedWorkerThreadProc(DedicatedWorker *worker);
+		// Returns how many started. The caller holds _mutex
 		size_t AddWorkers(size_t count);
-		// Counts a rejected task and reports the count at most once a second. The caller
-		// holds _mutex.
+		// Reports rejections at most once a second. The caller holds _mutex
 		void ReportRejection();
 
 		mutable std::mutex _mutex;
 		std::condition_variable _condition;
 
-		// Serializes Stop() itself, so that a caller which finds the pool already stopped
-		// still waits until the workers are joined
+		// A second Stop() waits here until the first has joined the workers
 		std::mutex _stop_mutex;
 
 		Config _config;
 		std::queue<Task> _task_queue;
 		std::vector<std::thread> _workers;
 
-		// A full queue rejects every task that follows, so the rejections are counted and
-		// reported at intervals rather than one log line each
+		// The worker objects must outlive their threads, so Stop() joins before clearing
+		std::map<ov::String, std::unique_ptr<DedicatedWorker>> _dedicated_workers;
+
 		size_t _rejected_count = 0;
 		std::chrono::steady_clock::time_point _last_reject_log_time;
 
