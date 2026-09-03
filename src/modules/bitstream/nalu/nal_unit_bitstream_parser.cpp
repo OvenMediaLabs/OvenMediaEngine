@@ -44,15 +44,22 @@ bool NalUnitBitstreamParser::ReadUEV(uint32_t &value)
 
     if (zero_bit_count > 0)
     {
-        uint32_t rest;
-        if (ReadBits(zero_bit_count, rest) == false)
-        {
-            return false;
-        }
+		// 31 leading zeros already span the whole `uint32_t` range.
+		// A longer code cannot be represented, and the shift itself would be undefined.
+		if (zero_bit_count > 31)
+		{
+			return false;
+		}
 
-        value = (1 << zero_bit_count) - 1 + rest;
-    }
-    else
+		uint32_t rest;
+		if (ReadBits(zero_bit_count, rest) == false)
+		{
+			return false;
+		}
+
+		value = (1U << zero_bit_count) - 1 + rest;
+	}
+	else
     {
         value = 0;
     }
