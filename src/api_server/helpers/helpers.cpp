@@ -376,7 +376,7 @@ namespace api
 		auto orchestrator = ocst::Orchestrator::GetInstance();
 		auto result		  = orchestrator->CreateApplication(*vhost, app_config);
 
-		if (result != ocst::Result::Succeeded)
+		if (result == ocst::Result::Failed)
 		{
 			// The old application is already deleted, so bring it back with its previous config
 			if (orchestrator->CreateApplication(*vhost, app->GetConfig(), app->IsDynamicApp()) != ocst::Result::Succeeded)
