@@ -11,8 +11,6 @@
 #include <modules/http/http.h>
 #include <modules/json_serdes/converters.h>
 
-#include "../api_private.h"
-
 namespace api
 {
 	std::map<uint32_t, std::shared_ptr<mon::HostMetrics>> GetVirtualHostList()
@@ -373,21 +371,8 @@ namespace api
 			"application",
 			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr()));
 
-		auto orchestrator = ocst::Orchestrator::GetInstance();
-		auto result		  = orchestrator->CreateApplication(*vhost, app_config);
-
-		if (result == ocst::Result::Failed)
-		{
-			// The old application is already deleted, so bring it back with its previous config
-			if (orchestrator->CreateApplication(*vhost, app->GetConfig(), app->IsDynamicApp()) != ocst::Result::Succeeded)
-			{
-				logte("Could not restore the application after a failed recreation: [%s/%s]",
-					  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr());
-			}
-		}
-
 		ThrowIfOrchestratorNotSucceeded(
-			result,
+			ocst::Orchestrator::GetInstance()->CreateApplication(*vhost, app_config),
 			"create",
 			"application",
 			ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr()));
