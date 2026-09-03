@@ -7,9 +7,9 @@
 //
 //==============================================================================
 
-//  Bitstream writers shared by the parser test suites, so that every suite
-//  agrees on what bytes a NAL unit holds. Escaping is not duplicated here:
-//  tests call `NalUnitInsertor::EmulationPreventionBytes()` directly.
+//  Bitstream writers shared by the parser test suites, so that no suite carries its own copy.
+//  `ApplyEmulationPrevention()` is a wrapper over `NalUnitInsertor::EmulationPreventionBytes()`,
+//  not a second implementation of the escaping rule.
 
 #pragma once
 
