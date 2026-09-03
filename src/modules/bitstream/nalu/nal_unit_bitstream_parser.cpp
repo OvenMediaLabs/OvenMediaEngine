@@ -60,10 +60,6 @@ bool NalUnitBitstreamParser::ReadUEV(uint32_t &value)
 
 		value = (1U << zero_bit_count) - 1 + rest;
 	}
-	else
-	{
-		value = 0;
-	}
 
 	return true;
 }
