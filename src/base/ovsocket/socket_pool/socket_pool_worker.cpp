@@ -137,7 +137,7 @@ namespace ov
 		_gc_candidates.clear();
 
 		OV_SAFE_FUNC(_epoll, InvalidSocket, ::close, );
-		OV_SAFE_FUNC(_srt_epoll, InvalidSocket, ::srt_close, );
+		OV_SAFE_FUNC(_srt_epoll, InvalidSocket, ::srt_epoll_release, );
 
 		return true;
 	}
