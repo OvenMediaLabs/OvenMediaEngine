@@ -622,9 +622,7 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 
 			if (timing_info_present_flag)
 			{
-				uint32_t num_units_in_tick, time_scale;
-				uint8_t fixed_frame_rate_flag;
-
+				uint32_t num_units_in_tick;
 				// ITU-T H.264 E.1.1: both are u(32), not ue(v). Reading them as Exp-Golomb
 				// desynchronizes the bit position for everything that follows in the VUI.
 				if (!parser.ReadU32(num_units_in_tick))
@@ -632,23 +630,24 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 					return false;
 				}
 
+				uint32_t time_scale;
 				if (!parser.ReadU32(time_scale))
 				{
 					return false;
 				}
 
+				uint8_t fixed_frame_rate_flag;
 				if (!parser.ReadBit(fixed_frame_rate_flag))
 				{
 					return false;
 				}
 
-				if (fixed_frame_rate_flag)
-				{
-					// Doubling in 32-bit arithmetic turns `num_units_in_tick` `0x80000000` into a zero divisor.
-					const auto divisor = static_cast<uint64_t>(num_units_in_tick) * 2;
+				// ITU-T H.264 E.2.1 derives the clock tick from `num_units_in_tick` and `time_scale` alone.
+				// `fixed_frame_rate_flag` only constrains how evenly the output times are spaced.
+				// Doubling in 32-bit arithmetic turns `num_units_in_tick` `0x80000000` into a zero divisor.
+				const auto divisor = static_cast<uint64_t>(num_units_in_tick) * 2;
 
-					sps._fps		   = (divisor != 0) ? static_cast<unsigned int>(time_scale / divisor) : 0;
-				}
+				sps._fps		   = (divisor != 0) ? static_cast<unsigned int>(time_scale / divisor) : 0;
 			}
 		}
 

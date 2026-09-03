@@ -77,7 +77,8 @@ namespace
 	}
 
 	// A 640x320 Baseline SPS whose VUI carries the given timing_info
-	std::vector<uint8_t> MakeSpsNal(uint32_t num_units_in_tick, uint32_t time_scale)
+	std::vector<uint8_t> MakeSpsNal(uint32_t num_units_in_tick, uint32_t time_scale,
+									uint8_t fixed_frame_rate_flag = 1)
 	{
 		ov::BitWriter w(64);
 
@@ -102,10 +103,10 @@ namespace
 		w.WriteBits(1, 0);	// video_signal_type_present_flag
 		w.WriteBits(1, 0);	// chroma_loc_info_present_flag
 
-		w.WriteBits(1, 1);					 // timing_info_present_flag
-		w.WriteBits(32, num_units_in_tick);	 // num_units_in_tick, u(32)
-		w.WriteBits(32, time_scale);		 // time_scale, u(32)
-		w.WriteBits(1, 1);					 // fixed_frame_rate_flag
+		w.WriteBits(1, 1);						// timing_info_present_flag
+		w.WriteBits(32, num_units_in_tick);		// num_units_in_tick, u(32)
+		w.WriteBits(32, time_scale);			// time_scale, u(32)
+		w.WriteBits(1, fixed_frame_rate_flag);	// fixed_frame_rate_flag
 
 		w.WriteBits(1, 0);	// nal_hrd_parameters_present_flag
 		w.WriteBits(1, 0);	// vcl_hrd_parameters_present_flag
@@ -162,4 +163,16 @@ TEST(H264Parser, ReportsZeroFpsWhenNumUnitsInTickIsZero)
 	ASSERT_TRUE(H264Parser::ParseSPS(nal.data(), nal.size(), sps));
 
 	EXPECT_EQ(sps.GetFps(), 0U);
+}
+
+// ITU-T H.264 E.2.1 defines the clock tick without reference to `fixed_frame_rate_flag`,
+// so an encoder that will not promise evenly spaced output times still carries a derivable frame rate
+TEST(H264Parser, DerivesTheFrameRateWithoutFixedFrameRateFlag)
+{
+	const auto nal = MakeSpsNal(1001, 60000, 0);
+
+	H264SPS sps;
+	ASSERT_TRUE(H264Parser::ParseSPS(nal.data(), nal.size(), sps));
+
+	EXPECT_EQ(sps.GetFps(), 29U);
 }
