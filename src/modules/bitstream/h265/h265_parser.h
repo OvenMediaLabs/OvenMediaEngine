@@ -159,7 +159,7 @@ public:
 
     float GetFps() const
     {
-		// The tick count stays 0 when the SPS carries no VUI
+		// `timing_info` is optional, so the tick count can still be 0 here
 		if (_vui_parameters._num_units_in_tick == 0)
 		{
 			return 0.0f;

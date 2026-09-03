@@ -44,15 +44,16 @@ bool NalUnitBitstreamParser::ReadUEV(uint32_t &value)
 
     if (zero_bit_count > 0)
     {
-		// 31 leading zeros already span the whole `uint32_t` range.
-		// A longer code cannot be represented, and the shift itself would be undefined.
+		// codeNum tops out at 2^32 - 2 with 31 leading zeros, which is the range every ue(v)
+		// syntax element is defined over. A longer code is out of range, and the shift below
+		// would be undefined.
 		if (zero_bit_count > 31)
 		{
 			return false;
 		}
 
 		uint32_t rest;
-		if (ReadBits(zero_bit_count, rest) == false)
+		if (ReadBits(static_cast<uint8_t>(zero_bit_count), rest) == false)
 		{
 			return false;
 		}

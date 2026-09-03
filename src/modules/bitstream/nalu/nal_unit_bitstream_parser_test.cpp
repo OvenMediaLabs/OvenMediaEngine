@@ -95,14 +95,19 @@ TEST(NalUnitBitstreamParser, ReadsTheLargestExpGolombCode)
 	EXPECT_EQ(value, 0xFFFFFFFEU);
 }
 
-// 32 leading zeros put codeNum at 2^32 - 1 + rest, past what the caller can hold
+// 32 leading zeros put codeNum at 2^32 - 1 + rest. 2^32 - 1 still fits a uint32_t, but it is
+// past the 2^32 - 2 that ue(v) is defined over, so the whole length is rejected rather than
+// only the values that overflow.
 TEST(NalUnitBitstreamParser, RejectsAnExpGolombCodeOutOfTheUint32Range)
 {
-	const auto bitstream = MakeUevBitstream(32, 1);
-	NalUnitBitstreamParser parser(bitstream.data(), bitstream.size());
+	for (uint64_t rest : {static_cast<uint64_t>(0), static_cast<uint64_t>(1)})
+	{
+		const auto bitstream = MakeUevBitstream(32, rest);
+		NalUnitBitstreamParser parser(bitstream.data(), bitstream.size());
 
-	uint32_t value = 0;
-	EXPECT_FALSE(parser.ReadUEV(value));
+		uint32_t value = 0;
+		EXPECT_FALSE(parser.ReadUEV(value)) << "rest: " << rest;
+	}
 }
 
 // A zero run this long once wrapped the bit count into the uint8_t width parameter of ReadBits(),
