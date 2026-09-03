@@ -43,7 +43,9 @@ namespace
 
 		for (int i = leading_zero_bits - 1; i >= 0; i--)
 		{
-			write_bit(static_cast<int>((rest >> i) & 1));
+			// rest carries the low 64 bits, and shifting a uint64_t by 64 or more is undefined.
+			// Every position above that is zero.
+			write_bit((i < 64) ? static_cast<int>((rest >> i) & 1) : 0);
 		}
 
 		bytes.insert(bytes.end(), 8, 0x00);
