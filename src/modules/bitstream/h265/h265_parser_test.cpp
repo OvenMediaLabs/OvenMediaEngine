@@ -1248,9 +1248,26 @@ TEST(H265Parser, SliceHeaderRejectsExcessiveOffsetLen)
 // division by it
 TEST(H265Parser, ReportsZeroFpsWhenTheSpsCarriesNoVui)
 {
+	const auto sps_nal = BuildSps(false);
+
 	H265SPS sps;
+	ASSERT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
 
 	EXPECT_EQ(sps.GetVuiParameters()._num_units_in_tick, 0U);
+	EXPECT_FLOAT_EQ(sps.GetFps(), 0.0f);
+}
+
+// vui_num_units_in_tick is stored without a range check, so a stream can carry timing_info whose
+// tick count is 0
+TEST(H265Parser, ReportsZeroFpsWhenTheVuiTickCountIsZero)
+{
+	const auto sps_nal = BuildSps(false, 0, 3, {}, 0, 0, 0, {true, true, 0, 60000});
+
+	H265SPS sps;
+	ASSERT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	EXPECT_EQ(sps.GetVuiParameters()._num_units_in_tick, 0U);
+	EXPECT_EQ(sps.GetVuiParameters()._time_scale, 60000U);
 	EXPECT_FLOAT_EQ(sps.GetFps(), 0.0f);
 }
 
