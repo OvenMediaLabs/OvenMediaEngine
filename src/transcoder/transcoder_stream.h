@@ -87,11 +87,7 @@ private:
 	}
 
 	// Set the stream state
-	void SetState(State state)
-	{
-		logt("Transcoder", "%s stream state changed: %s -> %s", _log_prefix.CStr(), GetStateString(_state), GetStateString(state));
-		_state.exchange(state);
-	}
+	void SetState(State state);
 
 	State GetState() const
 	{

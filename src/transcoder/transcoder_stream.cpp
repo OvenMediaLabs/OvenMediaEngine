@@ -2276,3 +2276,21 @@ void TranscoderStream::NotifyDeleteStreams()
 	}
 }
 
+void TranscoderStream::SetState(State state)
+{
+	auto prev_state = _state.exchange(state);
+	if (prev_state == state)
+	{
+		return;
+	}
+
+	auto message = ov::String::FormatString("%s stream state changed: %s -> %s", _log_prefix.CStr(), GetStateString(prev_state), GetStateString(state));
+	if (state == State::ERROR)
+	{
+		logte("%s", message.CStr());
+	}
+	else
+	{
+		logti("%s", message.CStr());
+	}
+}
