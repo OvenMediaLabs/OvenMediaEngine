@@ -79,7 +79,15 @@ namespace api
 						"application",
 						ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app_config.GetName().CStr()));
 
-					auto app	  = GetApplication(vhost, app_config.GetName().CStr());
+					auto app = GetApplication(vhost, app_config.GetName().CStr());
+
+					if (app == nullptr)
+					{
+						throw http::HttpError(http::StatusCode::InternalServerError,
+											  "Could not find the application after creating it: [%s/%s]",
+											  vhost->GetName().CStr(), app_config.GetName().CStr());
+					}
+
 					auto app_json = ::serdes::JsonFromApplication(app);
 
 					Json::Value response;
@@ -185,6 +193,12 @@ namespace api
 				ov::String::FormatString("%s/%s", vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr()));
 
 			auto app_metrics = GetApplication(vhost, app_config.GetName().CStr());
+
+			if (app_metrics == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::InternalServerError, "Could not find the application after recreating it: [%s/%s]",
+									  vhost->GetName().CStr(), app_config.GetName().CStr());
+			}
 
 			return ::serdes::JsonFromApplication(app_metrics);
 		}

@@ -137,7 +137,15 @@ namespace api
 			std::shared_ptr<mon::ApplicationMetrics> new_app;
 			Json::Value new_app_json;
 
-			new_app		 = GetApplication(vhost, app->GetVHostAppName().GetAppName().CStr());
+			new_app = GetApplication(vhost, app->GetVHostAppName().GetAppName().CStr());
+
+			if (new_app == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::InternalServerError,
+									  "Could not find the application after recreating it: [%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr());
+			}
+
 			new_app_json = new_app->GetConfig().ToJson();
 
 			for (auto &response_profile : response)
@@ -253,11 +261,17 @@ namespace api
 
 			auto new_app = GetApplication(vhost, app->GetVHostAppName().GetAppName().CStr());
 
+			if (new_app == nullptr)
+			{
+				throw http::HttpError(http::StatusCode::InternalServerError, "Could not find the application after recreating it: [%s/%s]",
+									  vhost->GetName().CStr(), app->GetVHostAppName().GetAppName().CStr());
+			}
+
 			Json::Value value;
 
 			if (FindOutputProfile(new_app, profile_name, &value) < 0)
 			{
-				http::HttpError(http::StatusCode::InternalServerError, "Output profile is modified, but not found");
+				throw http::HttpError(http::StatusCode::InternalServerError, "Output profile is modified, but not found");
 			}
 
 			return value;

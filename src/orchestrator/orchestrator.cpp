@@ -1555,7 +1555,9 @@ namespace ocst
 		}
 
 		logte("Trying to rollback for the application [%s]", app_info.GetVHostAppName().CStr());
-		return DeleteApplication(app_info);
+		DeleteApplication(app_info);
+
+		return Result::Failed;
 	}
 
 	std::shared_ptr<Application> Orchestrator::GetApplication(const info::VHostAppName &vhost_app_name) const
