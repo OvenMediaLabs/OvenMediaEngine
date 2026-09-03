@@ -24,36 +24,34 @@ bool NalUnitBitstreamParser::ReadU32(uint32_t &value)
 
 bool NalUnitBitstreamParser::ReadUEV(uint32_t &value)
 {
-	value = 0;
-    int zero_bit_count = 0;
-    uint8_t bit;
-    while (true)
-    {
-        if (ReadBit(bit) == false)
-        {
-            return false;
-        }
-		
-        if (bit == 0)
-        {
-            zero_bit_count++;
-        }
-        else
-        {
-            break;
-        }
-    }
+	value			   = 0;
+	int zero_bit_count = 0;
+	uint8_t bit;
 
-    if (zero_bit_count > 0)
-    {
-		// codeNum tops out at 2^32 - 2 with 31 leading zeros, which is the range every ue(v)
-		// syntax element is defined over. A longer code is out of range, and the shift below
-		// would be undefined.
-		if (zero_bit_count > 31)
+	while (true)
+	{
+		if (ReadBit(bit) == false)
 		{
 			return false;
 		}
 
+		if (bit == 0)
+		{
+			// 31 leading zeros already put codeNum at 2^32 - 2, the maximum any `ue(v)` element takes.
+			// Refusing as the run is counted avoids walking a longer one first.
+			if (++zero_bit_count > 31)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if (zero_bit_count > 0)
+	{
 		uint32_t rest;
 		if (ReadBits(static_cast<uint8_t>(zero_bit_count), rest) == false)
 		{
@@ -63,11 +61,11 @@ bool NalUnitBitstreamParser::ReadUEV(uint32_t &value)
 		value = (1U << zero_bit_count) - 1 + rest;
 	}
 	else
-    {
-        value = 0;
-    }
+	{
+		value = 0;
+	}
 
-    return true;
+	return true;
 }
 
 bool NalUnitBitstreamParser::ReadSEV(int32_t &value)
