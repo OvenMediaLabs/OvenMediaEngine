@@ -1183,3 +1183,13 @@ TEST(H265Parser, SliceHeaderRejectsExcessiveOffsetLen)
 	slice = BuildWppIdrSlice(/*num_entry_point_offsets=*/2, /*offset_len_minus1=*/H265_MAX_OFFSET_LEN_MINUS1 + 1);
 	EXPECT_FALSE(H265Parser::ParseSliceHeader(slice.data(), slice.size(), shd, record));
 }
+
+// An SPS with no VUI leaves num_units_in_tick at 0, and the frame rate is a plain integer
+// division by it
+TEST(H265Parser, ReportsZeroFpsWhenTheSpsCarriesNoVui)
+{
+	H265SPS sps;
+
+	EXPECT_EQ(sps.GetVuiParameters()._num_units_in_tick, 0U);
+	EXPECT_FLOAT_EQ(sps.GetFps(), 0.0f);
+}
