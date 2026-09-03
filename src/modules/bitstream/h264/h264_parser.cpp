@@ -644,9 +644,10 @@ bool H264Parser::ParseVUI(NalUnitBitstreamParser &parser, H264SPS &sps)
 
 				if (fixed_frame_rate_flag)
 				{
-					sps._fps = (num_units_in_tick != 0)
-								   ? (time_scale / (2 * num_units_in_tick))
-								   : 0;
+					// Doubling in 32-bit arithmetic turns `num_units_in_tick` `0x80000000` into a zero divisor.
+					const auto divisor = static_cast<uint64_t>(num_units_in_tick) * 2;
+
+					sps._fps		   = (divisor != 0) ? static_cast<unsigned int>(time_scale / divisor) : 0;
 				}
 			}
 		}

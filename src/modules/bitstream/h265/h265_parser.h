@@ -159,7 +159,13 @@ public:
 
     float GetFps() const
     {
-        return _vui_parameters._time_scale / _vui_parameters._num_units_in_tick;
+		// The tick count stays 0 when the SPS carries no VUI
+		if (_vui_parameters._num_units_in_tick == 0)
+		{
+			return 0.0f;
+		}
+
+		return _vui_parameters._time_scale / _vui_parameters._num_units_in_tick;
     }
 
     uint32_t GetId() const
