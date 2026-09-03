@@ -125,6 +125,16 @@ namespace
 		uint32_t num_long_term_ref_pics_sps = 0;
 	};
 
+	// vui_timing_info (Rec. ITU-T H.265 E.2.1). Absent unless vui_present is set, which is how
+	// an encoder that carries no timing information emits the SPS.
+	struct VuiTimingInfo
+	{
+		bool vui_present		   = false;
+		bool timing_info_present   = false;
+		uint32_t num_units_in_tick = 0;
+		uint32_t time_scale		   = 0;
+	};
+
 	// ---- Minimal VPS (Rec. ITU-T H.265 7.3.2.1). Only needed so a record becomes valid. ----
 	std::vector<uint8_t> BuildVps()
 	{
@@ -168,7 +178,8 @@ namespace
 								  const SpsOverrides &overrides				 = {},
 								  uint32_t log2_max_pic_order_cnt_lsb_minus4 = 0,
 								  uint32_t sps_id							 = 0,
-								  uint32_t max_sub_layers_minus1			 = 0)
+								  uint32_t max_sub_layers_minus1			 = 0,
+								  const VuiTimingInfo &vui					 = {})
 	{
 		ov::BitWriter w(64);
 		w.WriteBits(4, 0);						// sps_video_parameter_set_id
@@ -265,9 +276,32 @@ namespace
 				w.WriteBits(1, 0);	// used_by_curr_pic_lt_sps_flag[i]
 			}
 		}
-		w.WriteBits(1, 0);	// sps_temporal_mvp_enabled_flag
-		w.WriteBits(1, 0);	// strong_intra_smoothing_enabled_flag
-		w.WriteBits(1, 0);	// vui_parameters_present_flag
+		w.WriteBits(1, 0);						  // sps_temporal_mvp_enabled_flag
+		w.WriteBits(1, 0);						  // strong_intra_smoothing_enabled_flag
+		w.WriteBits(1, vui.vui_present ? 1 : 0);  // vui_parameters_present_flag
+		if (vui.vui_present)
+		{
+			w.WriteBits(1, 0);	// aspect_ratio_info_present_flag
+			w.WriteBits(1, 0);	// overscan_info_present_flag
+			w.WriteBits(1, 0);	// video_signal_type_present_flag
+			w.WriteBits(1, 0);	// chroma_loc_info_present_flag
+			w.WriteBits(1, 0);	// neutral_chroma_indication_flag
+			w.WriteBits(1, 0);	// field_seq_flag
+			w.WriteBits(1, 0);	// frame_field_info_present_flag
+			w.WriteBits(1, 0);	// default_display_window_flag
+
+			w.WriteBits(1, vui.timing_info_present ? 1 : 0);  // vui_timing_info_present_flag
+			if (vui.timing_info_present)
+			{
+				w.WriteBits(32, vui.num_units_in_tick);	 // vui_num_units_in_tick
+				w.WriteBits(32, vui.time_scale);		 // vui_time_scale
+				w.WriteBits(1, 0);						 // vui_poc_proportional_to_timing_flag
+				w.WriteBits(1, 0);						 // vui_hrd_parameters_present_flag
+			}
+
+			w.WriteBits(1, 0);	// bitstream_restriction_flag
+		}
+
 		w.WriteBits(1, 0);	// sps_extension_flag
 
 		WriteTrailing(w);
@@ -1232,4 +1266,18 @@ TEST(H265Parser, ParsesAnSpsWithSubLayerProfileTierLevel)
 	EXPECT_EQ(sps.GetWidth(), 320U);
 	EXPECT_EQ(sps.GetHeight(), 240U);
 	EXPECT_EQ(sps.GetMaxSubLayersMinus1(), 1U);
+}
+
+
+// GetFps() returns a float, so the division must not truncate first
+TEST(H265Parser, DerivesANonIntegerFrameRateFromTheVui)
+{
+	const auto sps_nal = BuildSps(false, 0, 3, {}, 0, 0, 0, {true, true, 2002, 60000});
+
+	H265SPS sps;
+	ASSERT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	EXPECT_EQ(sps.GetVuiParameters()._num_units_in_tick, 2002U);
+	EXPECT_EQ(sps.GetVuiParameters()._time_scale, 60000U);
+	EXPECT_NEAR(sps.GetFps(), 29.97f, 0.01f);
 }

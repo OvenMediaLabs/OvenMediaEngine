@@ -165,7 +165,7 @@ public:
 			return 0.0f;
 		}
 
-		return _vui_parameters._time_scale / _vui_parameters._num_units_in_tick;
+		return static_cast<float>(_vui_parameters._time_scale) / _vui_parameters._num_units_in_tick;
     }
 
     uint32_t GetId() const
