@@ -1,5 +1,7 @@
 #include "nal_unit_bitstream_parser.h"
 
+#include <algorithm>
+
 NalUnitBitstreamParser::NalUnitBitstreamParser(const uint8_t *bitstream, size_t length)
 	: BitReader(bitstream, length)
 {
@@ -83,8 +85,22 @@ bool NalUnitBitstreamParser::ReadSEV(int32_t &value)
 
 bool NalUnitBitstreamParser::Skip(uint32_t count)
 {
-    uint64_t dummy;
-	return ReadBits(count, dummy);
+	// `ReadBits()` takes the width as a `uint8_t` and rejects a width wider than its output.
+	// Anything larger is consumed in 64 bit steps.
+	while (count > 0)
+	{
+		const auto step = static_cast<uint8_t>(std::min<uint32_t>(count, 64));
+
+		uint64_t dummy;
+		if (ReadBits(step, dummy) == false)
+		{
+			return false;
+		}
+
+		count -= step;
+	}
+
+	return true;
 }
 
 void NalUnitBitstreamParser::NextPosition()

@@ -165,30 +165,56 @@ namespace
 	// (delta_poc_s0_minus1=0, used_by_curr_pic_s0_flag=1), num_positive_pics=0
 	// -> NumDeltaPocs == 1. log2_diff selects CtbLog2SizeY (= 3 + log2_diff).
 	std::vector<uint8_t> BuildSps(bool sao_enabled, uint32_t num_strps = 0, uint32_t log2_diff = 3,
-								  const SpsOverrides &overrides = {},
+								  const SpsOverrides &overrides				 = {},
 								  uint32_t log2_max_pic_order_cnt_lsb_minus4 = 0,
-								  uint32_t sps_id = 0)
+								  uint32_t sps_id							 = 0,
+								  uint32_t max_sub_layers_minus1			 = 0)
 	{
 		ov::BitWriter w(64);
-		w.WriteBits(4, 0);	// sps_video_parameter_set_id
-		w.WriteBits(3, 0);	// sps_max_sub_layers_minus1
-		w.WriteBits(1, 0);	// sps_temporal_id_nesting_flag
+		w.WriteBits(4, 0);						// sps_video_parameter_set_id
+		w.WriteBits(3, max_sub_layers_minus1);	// sps_max_sub_layers_minus1
+		w.WriteBits(1, 0);						// sps_temporal_id_nesting_flag
 
-		// profile_tier_level (max_sub_layers_minus1 == 0 -> 96 bits)
-		w.WriteBits(2, 0);			 // general_profile_space
-		w.WriteBits(1, 0);			 // general_tier_flag
-		w.WriteBits(5, 1);			 // general_profile_idc (Main)
-		w.WriteBits(32, 0x60000000); // general_profile_compatibility_flags
-		w.WriteBits(32, 0);			 // general_constraint_indicator_flags (hi 32)
-		w.WriteBits(16, 0);			 // general_constraint_indicator_flags (lo 16)
-		w.WriteBits(8, 93);			 // general_level_idc (3.1)
+		// profile_tier_level, general part (96 bits)
+		w.WriteBits(2, 0);			  // general_profile_space
+		w.WriteBits(1, 0);			  // general_tier_flag
+		w.WriteBits(5, 1);			  // general_profile_idc (Main)
+		w.WriteBits(32, 0x60000000);  // general_profile_compatibility_flags
+		w.WriteBits(32, 0);			  // general_constraint_indicator_flags (hi 32)
+		w.WriteBits(16, 0);			  // general_constraint_indicator_flags (lo 16)
+		w.WriteBits(8, 93);			  // general_level_idc (3.1)
 
-		WriteUE(w, sps_id);	// sps_seq_parameter_set_id
-		WriteUE(w, 1);	// chroma_format_idc (4:2:0)
+		// profile_tier_level, sub-layer part. The parser skips 88 bits per present profile.
+		for (uint32_t i = 0; i < max_sub_layers_minus1; i++)
+		{
+			w.WriteBits(1, 1);	// sub_layer_profile_present_flag[i]
+			w.WriteBits(1, 1);	// sub_layer_level_present_flag[i]
+		}
+
+		if (max_sub_layers_minus1 > 0)
+		{
+			for (uint32_t i = max_sub_layers_minus1; i < 8; i++)
+			{
+				w.WriteBits(2, 0);	// reserved_zero_2bits[i]
+			}
+		}
+
+		for (uint32_t i = 0; i < max_sub_layers_minus1; i++)
+		{
+			// sub_layer_profile_space(2) + tier_flag(1) + profile_idc(5)
+			// + profile_compatibility_flag(32) + 4 constraint flags + reserved(44)
+			w.WriteBits(44, 0);
+			w.WriteBits(44, 0);
+
+			w.WriteBits(8, 93);	 // sub_layer_level_idc[i]
+		}
+
+		WriteUE(w, sps_id);				   // sps_seq_parameter_set_id
+		WriteUE(w, 1);					   // chroma_format_idc (4:2:0)
 		WriteUE(w, overrides.pic_width);   // pic_width_in_luma_samples
 		WriteUE(w, overrides.pic_height);  // pic_height_in_luma_samples
-		w.WriteBits(1, 0);	// conformance_window_flag
-		WriteUE(w, 0);	// bit_depth_luma_minus8
+		w.WriteBits(1, 0);				   // conformance_window_flag
+		WriteUE(w, 0);					   // bit_depth_luma_minus8
 		WriteUE(w, 0);	// bit_depth_chroma_minus8
 		WriteUE(w, log2_max_pic_order_cnt_lsb_minus4);	// log2_max_pic_order_cnt_lsb_minus4
 
@@ -1192,4 +1218,18 @@ TEST(H265Parser, ReportsZeroFpsWhenTheSpsCarriesNoVui)
 
 	EXPECT_EQ(sps.GetVuiParameters()._num_units_in_tick, 0U);
 	EXPECT_FLOAT_EQ(sps.GetFps(), 0.0f);
+}
+
+// An HEVC profile_tier_level carrying sub-layer profile info makes the parser skip 88 bits at
+// once, which is wider than a single ReadBits() call can take
+TEST(H265Parser, ParsesAnSpsWithSubLayerProfileTierLevel)
+{
+	const auto sps_nal = BuildSps(false, 0, 3, {}, 0, 0, 1);
+
+	H265SPS sps;
+	ASSERT_TRUE(H265Parser::ParseSPS(sps_nal.data(), sps_nal.size(), sps));
+
+	EXPECT_EQ(sps.GetWidth(), 320U);
+	EXPECT_EQ(sps.GetHeight(), 240U);
+	EXPECT_EQ(sps.GetMaxSubLayersMinus1(), 1U);
 }

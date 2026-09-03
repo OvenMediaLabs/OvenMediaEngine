@@ -57,8 +57,8 @@ namespace
 TEST(NalUnitBitstreamParser, SkipsAnEmulationPreventionByte)
 {
 	// 00 00 03 01: the 0x03 is an escape, so 0x01 is the byte that follows the two zeros
-	const uint8_t nal[]			   = {0x67, 0x00, 0x00, 0x03, 0x01};
-	const uint8_t unescaped[]	   = {0x67, 0x00, 0x00, 0x01};
+	const uint8_t nal[]		  = {0x67, 0x00, 0x00, 0x03, 0x01};
+	const uint8_t unescaped[] = {0x67, 0x00, 0x00, 0x01};
 	NalUnitBitstreamParser parser(nal, sizeof(nal));
 
 	for (size_t i = 0; i < sizeof(unescaped); i++)
@@ -122,4 +122,26 @@ TEST(NalUnitBitstreamParser, RejectsALongZeroRunInsteadOfWrappingTheBitCount)
 		uint32_t value = 0;
 		EXPECT_FALSE(parser.ReadUEV(value)) << "leading_zero_bits: " << leading_zero_bits;
 	}
+}
+
+// Skip() forwards the count to ReadBits(), whose width parameter is a uint8_t capped at the
+// width of its output. 88 is the count h265_parser.cpp uses for a sub-layer profile_tier_level.
+TEST(NalUnitBitstreamParser, SkipsACountWiderThanOneReadBitsCall)
+{
+	for (uint32_t count : {1U, 8U, 64U, 65U, 88U, 255U, 256U, 264U, 1024U})
+	{
+		std::vector<uint8_t> bytes(256, 0xAA);
+		NalUnitBitstreamParser parser(bytes.data(), bytes.size());
+
+		ASSERT_TRUE(parser.Skip(count)) << "count: " << count;
+		EXPECT_EQ(parser.BitsConsumed(), count) << "count: " << count;
+	}
+}
+
+TEST(NalUnitBitstreamParser, RejectsASkipPastTheEndOfTheBitstream)
+{
+	const uint8_t bytes[] = {0xAA, 0xBB, 0xCC, 0xDD};
+	NalUnitBitstreamParser parser(bytes, sizeof(bytes));
+
+	EXPECT_FALSE(parser.Skip((sizeof(bytes) * 8) + 1));
 }
