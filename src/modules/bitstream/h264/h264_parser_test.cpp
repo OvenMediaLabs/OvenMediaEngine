@@ -21,6 +21,7 @@
 // ./__temp_build/tests/bin/ome_test_modules --gtest_filter='H264Parser.*'
 
 #include <base/ovlibrary/bit_writer.h>
+#include <modules/bitstream/nalu/nal_unit_test_helpers.h>
 #include <gtest/gtest.h>
 #include <modules/bitstream/h264/h264_parser.h>
 
@@ -28,53 +29,9 @@
 
 namespace
 {
-	// ue(v) (ITU-T H.264 9.1)
-	void WriteUE(ov::BitWriter &w, uint32_t value)
-	{
-		uint64_t code_num = static_cast<uint64_t>(value) + 1;
-		int numbits		  = 0;
-		while ((code_num >> (numbits + 1)) != 0)
-		{
-			numbits++;
-		}
-
-		if (numbits > 0)
-		{
-			w.WriteBits(numbits, 0);
-		}
-		w.WriteBits(numbits + 1, code_num);
-	}
-
-	// rbsp_trailing_bits(): stop bit '1' then zero-pad to a byte boundary
-	void WriteTrailing(ov::BitWriter &w)
-	{
-		w.WriteBits(1, 1);
-		while ((w.GetBitCount() % 8) != 0)
-		{
-			w.WriteBits(1, 0);
-		}
-	}
-
-	std::vector<uint8_t> ApplyEmulationPrevention(const std::vector<uint8_t> &rbsp)
-	{
-		std::vector<uint8_t> out;
-		out.reserve(rbsp.size() + 4);
-
-		size_t zeros = 0;
-		for (uint8_t byte : rbsp)
-		{
-			if ((zeros >= 2) && (byte <= 0x03))
-			{
-				out.push_back(0x03);
-				zeros = 0;
-			}
-
-			out.push_back(byte);
-			zeros = (byte == 0x00) ? (zeros + 1) : 0;
-		}
-
-		return out;
-	}
+	using ome_test::ApplyEmulationPrevention;
+	using ome_test::WriteTrailing;
+	using ome_test::WriteUE;
 
 	// A 640x320 Baseline SPS whose VUI carries the given timing_info
 	std::vector<uint8_t> MakeSpsNal(uint32_t num_units_in_tick, uint32_t time_scale,

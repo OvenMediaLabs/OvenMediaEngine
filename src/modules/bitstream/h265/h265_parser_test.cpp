@@ -21,6 +21,7 @@
 
 #include <base/ovlibrary/bit_writer.h>
 #include <base/ovlibrary/data.h>
+#include <modules/bitstream/nalu/nal_unit_test_helpers.h>
 #include <modules/bitstream/h265/h265_decoder_configuration_record.h>
 #include <modules/bitstream/h265/h265_parser.h>
 
@@ -29,62 +30,11 @@
 
 namespace
 {
-	// ---- Exp-Golomb writers (Rec. ITU-T H.265 9.2) ----
-	void WriteUE(ov::BitWriter &w, uint32_t v)
-	{
-		uint64_t n = static_cast<uint64_t>(v) + 1;
-		int numbits = 0;
-		while ((n >> (numbits + 1)) != 0)
-		{
-			numbits++;
-		}
-		if (numbits > 0)
-		{
-			w.WriteBits(numbits, 0);
-		}
-		w.WriteBits(numbits + 1, n);
-	}
-
-	void WriteSE(ov::BitWriter &w, int32_t v)
-	{
-		uint32_t code = (v <= 0) ? static_cast<uint32_t>(-2 * static_cast<int64_t>(v))
-								 : static_cast<uint32_t>(2 * static_cast<int64_t>(v) - 1);
-		WriteUE(w, code);
-	}
-
-	// rbsp_trailing_bits(): stop bit '1' then zero-pad to a byte boundary.
-	void WriteTrailing(ov::BitWriter &w)
-	{
-		w.WriteBits(1, 1);
-		while (w.GetBitCount() % 8 != 0)
-		{
-			w.WriteBits(1, 0);
-		}
-	}
-
-	std::vector<uint8_t> ToBytes(ov::BitWriter &w)
-	{
-		return std::vector<uint8_t>(w.GetData(), w.GetData() + w.GetDataSize());
-	}
-
-	// Insert emulation_prevention_three_byte into an RBSP payload to form an EBSP.
-	std::vector<uint8_t> ApplyEmulationPrevention(const std::vector<uint8_t> &rbsp)
-	{
-		std::vector<uint8_t> out;
-		out.reserve(rbsp.size() + 4);
-		size_t zeros = 0;
-		for (uint8_t b : rbsp)
-		{
-			if (zeros >= 2 && b <= 0x03)
-			{
-				out.push_back(0x03);
-				zeros = 0;
-			}
-			out.push_back(b);
-			zeros = (b == 0x00) ? zeros + 1 : 0;
-		}
-		return out;
-	}
+	using ome_test::ApplyEmulationPrevention;
+	using ome_test::ToBytes;
+	using ome_test::WriteSE;
+	using ome_test::WriteTrailing;
+	using ome_test::WriteUE;
 
 	// Build a NAL unit: 2-byte header (nal_type) + emulation-prevented RBSP.
 	std::vector<uint8_t> MakeNal(uint8_t nal_type, const std::vector<uint8_t> &rbsp)
