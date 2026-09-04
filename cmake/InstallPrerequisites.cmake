@@ -261,9 +261,11 @@ else()
 endif()
 
 # ==============================================================================
-# Install Clang (when OME_USE_CLANG=ON, which is the default)
+# Install Clang (OME_USE_CLANG=ON, the default; not for a single-target install)
 # ==============================================================================
-if(OME_USE_CLANG)
+if(DEFINED TARGET)
+    message(STATUS "[OME Prerequisites] TARGET=${TARGET} - building that dependency only, skipping clang")
+elseif(OME_USE_CLANG)
     message(STATUS "[OME Prerequisites] Installing clang/lld (OME_USE_CLANG=ON)")
     if(OSNAME MATCHES "Ubuntu")
         ome_run("sudo apt-get install -y clang lld" "apt clang")
