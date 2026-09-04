@@ -108,7 +108,24 @@ endif()
 # The flag is only meaningful on Clang; GCC and MSVC ignore the
 # annotations entirely (they expand to nothing),
 # so we gate the option on the active compiler instead of erroring out.
+# Too old a Clang is the one case that does error: the annotations are active
+# there but the compiler rejects them, so the build cannot proceed either way.
 # ------------------------------------------------------------------------------
+# ov::ScopedLock annotates a variadic constructor. Clang accepts a pack
+# expansion inside a capability attribute only from 21 onwards, and the
+# rejection lands in a header nearly every file includes.
+set(OME_TSA_MIN_CLANG_VERSION 21)
+if(OME_THREAD_SAFETY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+        AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS ${OME_TSA_MIN_CLANG_VERSION})
+    message(FATAL_ERROR
+        "[OME] OME_THREAD_SAFETY=ON requires Clang ${OME_TSA_MIN_CLANG_VERSION} "
+        "or newer; this is ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}. "
+        "Install a newer Clang (apt.llvm.org) and select it with "
+        "-DOME_USE_CLANG=OFF -DCMAKE_C_COMPILER=clang-${OME_TSA_MIN_CLANG_VERSION} "
+        "-DCMAKE_CXX_COMPILER=clang++-${OME_TSA_MIN_CLANG_VERSION}, or configure "
+        "with -DOME_THREAD_SAFETY=OFF.")
+endif()
+
 if(OME_THREAD_SAFETY AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wthread-safety)
     add_compile_definitions(OME_THREAD_SAFETY)
