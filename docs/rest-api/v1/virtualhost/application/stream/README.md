@@ -319,7 +319,7 @@ Content-Type: application/json
 		"input": {
 			"createdTime": "2026-07-29T15:04:21.879+09:00",
 			"sourceType": "Rtmp",
-			"sourceUrl": "tcp://192.168.0.200:41008",
+			"sourceUrl": "TCP://192.168.0.200:41008",
 			"connection": {
 				"transport": "TCP",
 				"protocol": "TCP",
@@ -1090,6 +1090,7 @@ components:
         sources; for WebRTC, only after ICE has selected a candidate pair.
       required:
         - transport
+        - protocol
       properties:
         transport:
           type: string

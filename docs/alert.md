@@ -93,6 +93,7 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
 		}
 	],
 	"sourceInfo":{
+		"name":"stream",
 		"createdTime":"2023-04-07T21:15:24.487+09:00",
 		"sourceType":"Rtmp",
 		"sourceUrl":"TCP://192.168.0.220:10639",
