@@ -320,6 +320,14 @@ Content-Type: application/json
 			"createdTime": "2026-07-29T15:04:21.879+09:00",
 			"sourceType": "Rtmp",
 			"sourceUrl": "tcp://192.168.0.200:41008",
+			"connection": {
+				"transport": "TCP",
+				"protocol": "TCP",
+				"localAddress": "192.168.0.160",
+				"localPort": 1935,
+				"remoteAddress": "192.168.0.200",
+				"remotePort": 41008
+			},
 			"tracks": [
 				{
 					"id": 0,
@@ -475,6 +483,13 @@ Content-Type: application/json
 ```
 keyFrameInterval is GOP size
 ```
+
+Notes on the `connection` object
+
+- `connection` describes the network connection the input stream arrives on. It is present for WebRTC, RTMP, SRT and MPEG-TS inputs and omitted for other source types.
+- `transport` is the transport the sender uses: `UDP`, `TCP`, `SRT` or `TURN`. `protocol` is the protocol of the underlying socket (`UDP`, `TCP` or `SRT`). The two differ only for WebRTC through the built-in TURN server, where `transport` is `TURN` and `protocol` shows whether the sender reached the TURN server over UDP or TCP.
+- `localAddress`/`localPort` are the OvenMediaEngine side of the connection and `remoteAddress`/`remotePort` are the sender side. With TURN they describe the leg between the sender and the TURN server. An address and its port are omitted together when they are not known.
+- For WebRTC, `connection` appears once ICE has selected a candidate pair, so it is absent while the connection is still being set up. When ICE later switches to another pair, the values follow the new pair.
 
 Notes on the track fields
 
@@ -1061,10 +1076,48 @@ components:
         sourceUrl:
           type: string
           description: Omitted when the provider has no source address.
+        connection:
+          $ref: '#/components/schemas/Connection'
         tracks:
           type: array
           items:
             $ref: '#/components/schemas/Track'
+
+    Connection:
+      type: object
+      description: >-
+        Network connection the input stream arrives on. Present only for WebRTC, RTMP, SRT and MPEG-TS
+        sources; for WebRTC, only after ICE has selected a candidate pair.
+      required:
+        - transport
+      properties:
+        transport:
+          type: string
+          description: Transport used by the sender. TURN means a WebRTC sender relayed through the built-in TURN server.
+          enum:
+            - UDP
+            - TCP
+            - SRT
+            - TURN
+        protocol:
+          type: string
+          description: Protocol of the underlying socket. Differs from transport only when transport is TURN.
+          enum:
+            - UDP
+            - TCP
+            - SRT
+        localAddress:
+          type: string
+          description: Address on the OvenMediaEngine side. Omitted when not known.
+        localPort:
+          type: integer
+          description: Port on the OvenMediaEngine side. Omitted when not known.
+        remoteAddress:
+          type: string
+          description: Address on the sender side. Omitted when not known.
+        remotePort:
+          type: integer
+          description: Port on the sender side. Omitted when not known.
 ```
 
 </details>

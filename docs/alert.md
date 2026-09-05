@@ -96,6 +96,14 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
 		"createdTime":"2023-04-07T21:15:24.487+09:00",
 		"sourceType":"Rtmp",
 		"sourceUrl":"TCP://192.168.0.220:10639",
+		"connection":{
+			"transport":"TCP",
+			"protocol":"TCP",
+			"localAddress":"192.168.0.160",
+			"localPort":1935,
+			"remoteAddress":"192.168.0.220",
+			"remotePort":10639
+		},
 		"tracks":[
 			{
 				"id":0,
@@ -142,7 +150,7 @@ Here is a detailed explanation of each element of JSON payload:
 | serverInfo | Information identifying the server that sent the notification. This is useful for distinguishing alerts when multiple OvenMediaEngine instances report to the same notification server.<br />`serverID`: Unique ID of the server. It is generated when the server first starts and is persisted in the `Server.id` file in the configuration directory. The configuration directory must be writable for the ID to remain stable across restarts; otherwise (e.g. a read-only ConfigMap mount on Kubernetes) a new ID is generated at every startup.<br />`serverName`: The value of `<Server><Name>` in the configuration. Omitted if not set.<br />`hostname`: The OS hostname of the machine running OvenMediaEngine. On Kubernetes this is the pod name, and on Docker it is the container ID unless `--hostname` is specified. Omitted in the rare case that the hostname cannot be retrieved from the OS.<br />`ipAddresses`: IP addresses of the server, captured at server startup. The public IP addresses resolved from `<StunServer>` (if configured) come first, followed by the local interface addresses (excluding loopback and IPv6 link-local addresses). Omitted when no address is available. |
 | sourceUri  | URI information of the detected source.<br />`INGRESS`: #&#x3C;vhost>#&#x3C;application>/&#x3C;input_stream>                                                                      |
 | messages   | List of messages detected by the Rules.                                                                                                                                           |
-| sourceInfo | Detailed information about the source at the time of detection. It is identical to the response of the REST API's source information query for the detected source.               |
+| sourceInfo | Detailed information about the source, captured when the notification is sent. It is the stream `name` plus the fields of the `input` object in the [Stream REST API](rest-api/v1/virtualhost/application/stream/README.md#get-stream-info) response, at the top level, so it also includes `connection`. For a WebRTC source, `connection` is present only after ICE has selected a candidate pair, so the notification sent when the stream is created normally does not have it yet, while later ones do. A later ICE candidate pair switch changes the value returned by the REST API and is reflected in later notifications, but does not trigger a notification of its own. |
 | type       | It represents the format of the JSON payload. The information of the JSON elements can vary depending on the value of the type.                                                   |
 
 #### Messages

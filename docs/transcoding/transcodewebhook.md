@@ -54,6 +54,8 @@ When the Control Server responds with error status codes such as 400 Bad Request
 ### **Request (OME → Control Server)**
 
 OvenMediaEngine sends requests to the Control Server in the following format.
+The `stream` object is the stream `name` plus the fields of the `input` object in the [Stream REST API](../rest-api/v1/virtualhost/application/stream/README.md#get-stream-info) response, including `connection`, with `virtualHost` and `application` added.
+`connection` is the connection in use when the request is sent. OvenMediaEngine sends this request once per input stream, after the input tracks have been parsed, so a later ICE candidate pair switch is not reported through the webhook. For WebRTC the request goes out only after media has started flowing, so `connection` is present.
 
 ```
 POST /configured/target/url/ HTTP/1.1
@@ -69,6 +71,14 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
     "application": "app",
     "sourceType": "Rtmp",
     "sourceUrl": "TCP://192.168.0.220:2216",
+    "connection": {
+      "transport": "TCP",
+      "protocol": "TCP",
+      "localAddress": "192.168.0.160",
+      "localPort": 1935,
+      "remoteAddress": "192.168.0.220",
+      "remotePort": 2216
+    },
     "createdTime": "2025-06-05T14:43:54.001+09:00",
     "tracks": [
       {
