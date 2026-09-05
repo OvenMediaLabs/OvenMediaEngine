@@ -1109,16 +1109,16 @@ components:
             - SRT
         localAddress:
           type: string
-          description: Address on the OvenMediaEngine side. Omitted when not known.
+          description: Address on the OvenMediaEngine side. Omitted together with localPort when the local address is not known.
         localPort:
           type: integer
-          description: Port on the OvenMediaEngine side. Omitted when not known.
+          description: Port on the OvenMediaEngine side. Omitted together with localAddress when the local address is not known.
         remoteAddress:
           type: string
-          description: Address on the sender side. Omitted when not known.
+          description: Address on the sender side. Omitted together with remotePort when the remote address is not known.
         remotePort:
           type: integer
-          description: Port on the sender side. Omitted when not known.
+          description: Port on the sender side. Omitted together with remoteAddress when the remote address is not known.
 ```
 
 </details>
