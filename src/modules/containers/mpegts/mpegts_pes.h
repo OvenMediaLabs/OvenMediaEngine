@@ -111,6 +111,9 @@ namespace mpegts
 		}
 
 	private:
+		// Unit-test access to the private timestamp parser (see mpegts_pes_test.cpp)
+		friend class PesTest;
+
 		bool HasOptionalHeader() const;
 		bool HasOptionalData() const;
 		bool ParsePesHeader(BitReader *parser);
