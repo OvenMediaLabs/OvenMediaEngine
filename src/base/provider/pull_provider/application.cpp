@@ -212,7 +212,7 @@ namespace pvd
 							{
 								// Media arrived after the reconnect -> the stream has recovered. Log it once and
 								// drop the marker; from here the timer runs off last_recv again.
-								logti("Media resumed on %s/%s(%u) after re-pulling a silent origin", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+								logti("%s/%s(%u) stream has resumed receiving media after reconnecting", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
 								last_reconnect_time.erase(reconnect_it);
 							}
 							else
