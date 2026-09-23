@@ -769,6 +769,12 @@ namespace mpegts
 		_pes_draft_map.erase(pes->PID());
 		lock2.unlock();
 
+		if (pes->HasNonStandardStartBits() && _non_standard_start_bits_warned == false)
+		{
+			_non_standard_start_bits_warned = true;
+			logaw("Ignoring non-standard PTS/DTS start bits (PID: %d, got: %02X, expected: %02X)", pes->PID(), pes->NonStandardStartBits(), pes->ExpectedStartBits());
+		}
+
 		if (pes->SetEndOfData() == false)
 		{
 			return false;

@@ -1,8 +1,6 @@
 #include "mpegts_pes.h"
 #include "mpegts_private.h"
 
-#include <atomic>
-
 namespace mpegts
 {
 	Pes::Pes(uint16_t pid)
@@ -378,29 +376,13 @@ namespace mpegts
 		// m: marker_bit (should be 1)
 		// T: timestamp
 		auto prefix = parser->ReadBits<uint8_t>(4);
-
-		// Some encoders (e.g. Moblin/libsrt) set the high bit of the 4-bit PTS/DTS
-		// prefix, sending 0b1010 instead of the spec's 0b0010. ffmpeg, SRS and
-		// srt-live-server ignore the prefix entirely and read only the timestamp
-		// bits; match that leniency by validating only the meaningful low 3 bits so
-		// these otherwise-valid streams still ingest instead of being rejected.
-		// The low 3 bits still tell PTS-only (0b010), PTS-of-pair (0b011) and
-		// DTS (0b001) apart, and the marker bits below still guard against corruption.
-		if ((prefix & 0b0111) != (start_bits & 0b0111))
+		if (prefix != start_bits && _non_standard_start_bits == false)
 		{
-			logte("Invalid PTS_DTS start bits: %d (%02X), expected: %d (%02X)", prefix, prefix, start_bits, start_bits);
-			return false;
-		}
-
-		if (prefix != start_bits)
-		{
-			// A Pes is built per PES packet, so warn only once per process instead of
-			// ~70-100 times a second for as long as the stream stays connected.
-			static std::atomic<bool> warned{false};
-			if (warned.exchange(true) == false)
-			{
-				logtw("Tolerating non-standard PTS_DTS start bits: %d (%02X), expected: %d (%02X)", prefix, prefix, start_bits, start_bits);
-			}
+			// The prefix only repeats pts_dts_flags, so it is not validated. Some encoders
+			// leak the upper bits of a timestamp wider than 33 bits into it
+			_non_standard_start_bits = true;
+			_observed_start_bits = prefix;
+			_expected_start_bits = start_bits;
 		}
 
 		int64_t ts = parser->ReadBits<int64_t>(3) << 30;
@@ -592,6 +574,21 @@ namespace mpegts
 	int64_t Pes::Dts() const
 	{
 		return _dts;
+	}
+
+	bool Pes::HasNonStandardStartBits() const
+	{
+		return _non_standard_start_bits;
+	}
+
+	uint8_t Pes::NonStandardStartBits() const
+	{
+		return _observed_start_bits;
+	}
+
+	uint8_t Pes::ExpectedStartBits() const
+	{
+		return _expected_start_bits;
 	}
 
 	int64_t Pes::Pcr() const
