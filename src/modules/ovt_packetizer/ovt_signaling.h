@@ -15,7 +15,7 @@ namespace ovt
 	// It is never a gate. A peer at any value is accepted, and a lower one only means the sender may
 	// hold back something added later; refusing on it would put the older side, the one that knows less,
 	// in charge of the judgment.
-	// It counts up in any release whose behaviour changes, including a parser fix, because the value
+	// It counts up in any release whose behavior changes, including a parser fix, because the value
 	// exists so that a later release can say "peers at or below N mishandle this, so do not send it".
 	// It is not the OME release version and not the OVT1/OVT2 number.
 	// A peer that cannot be told apart is the one this field is for, so it ships from the first release:

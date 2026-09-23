@@ -12,18 +12,10 @@
 // and an operator has no way to empty the describe list.
 // It only reaches the `ovt.required` array of a describe. The other channel, the PT 40 set a session
 // learns at packetization, is built from what the media actually carries and has no setting.
-static const std::vector<ov::String> &ConfiguredRequiredMediaTypes(const cfg::vhost::app::Application &app_config) MAY_THROWS(cfg::ConfigError)
-{
-	static const std::vector<ov::String> none;
-
-	bool required_configured = false;
-	const auto &required	 = app_config.GetPublishers().GetOvtPublisher().GetCompatibility().GetRequired(&required_configured);
-
-	bool list_configured	 = false;
-	const auto &names		 = required.GetMediaTypeList(&list_configured);
-
-	return (required_configured && (list_configured == false)) ? none : names;
-}
+// The media types whose codecs an edge has to know to take the stream.
+// What an edge must understand follows from what this build can send, so it is fixed here
+// rather than configured: an operator has no way to know which codecs a stream will carry.
+static const std::set<cmn::MediaType> REQUIRED_MEDIA_TYPES = {cmn::MediaType::Video, cmn::MediaType::Audio};
 
 std::shared_ptr<OvtPublisher> OvtPublisher::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 {
@@ -162,14 +154,6 @@ std::shared_ptr<pub::Application> OvtPublisher::OnCreatePublisherApplication(con
 	{
 		return nullptr;
 	}
-
-	// The operator needs one place to check the policy against what they configured.
-	// This is the setting, not the tokens a describe ends up carrying: those depend on the tracks
-	// that stream has, so they only exist per describe.
-	const auto &required_media_types = ConfiguredRequiredMediaTypes(application_info.GetConfig());
-	logti("OVT publisher of %s requires an edge to know the codecs of these media types: %s",
-		  application_info.GetVHostAppName().CStr(),
-		  required_media_types.empty() ? "(none)" : ov::String::Join(required_media_types, ", ").CStr());
 
 	return OvtApplication::Create(OvtPublisher::GetSharedPtrAs<pub::Publisher>(), application_info);
 }
@@ -343,45 +327,33 @@ void OvtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 			continue;
 		}
 
-		// `HandleDescribeRequest()` reads the publisher configuration, and the `cfg` getters throw when
-		// the config tree no longer holds a member they name. The throw stops here rather than leaving
-		// the socket worker, which has no handler of its own.
-		try
+		if (ovt::IsApplication(app, ovt::APPLICATION_DESCRIBE))
 		{
-			if (ovt::IsApplication(app, ovt::APPLICATION_DESCRIBE))
-			{
-				HandleDescribeRequest(remote, request_id, url);
-			}
-			else if (ovt::IsApplication(app, ovt::APPLICATION_PLAY))
-			{
-				// The edge names the tracks it will register. It can only do that after seeing a
-				// describe, so this is the one message that carries a selection. An OVT1 edge names none.
-				size_t ignored			 = 0;
-				auto requested_track_ids = context->is_ovt2
-											   ? ovt::ParseTrackIdArray(root["ovt"]["trackIds"], &ignored)
-											   : std::nullopt;
-				if (ignored > 0)
-				{
-					logtw("Ignored %zu non-integer entries in the play request's trackIds from %s",
-						  ignored, remote->ToString().CStr());
-				}
-
-				HandlePlayRequest(remote, request_id, url, requested_track_ids);
-			}
-			else if (ovt::IsApplication(app, ovt::APPLICATION_STOP))
-			{
-				HandleStopRequest(remote, 0, request_id, url);
-			}
-			else
-			{
-				ResponseResult(remote, 0, app.CStr(), request_id, 404, "Unknown application");
-			}
+			HandleDescribeRequest(remote, request_id, url);
 		}
-		catch (const cfg::ConfigError &e)
+		else if (ovt::IsApplication(app, ovt::APPLICATION_PLAY))
 		{
-			logte("Could not read the OVT publisher configuration while answering %s from %s : %s",
-				  app.CStr(), remote->ToString().CStr(), e.What());
-			ResponseResult(remote, 0, app.CStr(), request_id, 500, "Server Internals Error");
+			// The edge names the tracks it will register. It can only do that after seeing a
+			// describe, so this is the one message that carries a selection. An OVT1 edge names none.
+			size_t ignored			 = 0;
+			auto requested_track_ids = context->is_ovt2
+										   ? ovt::ParseTrackIdArray(root["ovt"]["trackIds"], &ignored)
+										   : std::nullopt;
+			if (ignored > 0)
+			{
+				logtw("Ignored %zu non-integer entries in the play request's trackIds from %s",
+					  ignored, remote->ToString().CStr());
+			}
+
+			HandlePlayRequest(remote, request_id, url, requested_track_ids);
+		}
+		else if (ovt::IsApplication(app, ovt::APPLICATION_STOP))
+		{
+			HandleStopRequest(remote, 0, request_id, url);
+		}
+		else
+		{
+			ResponseResult(remote, 0, app.CStr(), request_id, 404, "Unknown application");
 		}
 	}
 }
@@ -487,22 +459,7 @@ void OvtPublisher::SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, u
 	SendResponse(remote, session_id, ov::Json::Stringify(root));
 }
 
-std::set<cmn::MediaType> OvtPublisher::GetRequiredMediaTypes(const std::shared_ptr<OvtStream> &stream) MAY_THROWS(cfg::ConfigError)
-{
-	std::set<cmn::MediaType> media_types;
-	for (const auto &name : ConfiguredRequiredMediaTypes(stream->GetApplication()->GetConfig()))
-	{
-		auto media_type = cmn::GetMediaTypeByName(name);
-		if (media_type.has_value())
-		{
-			media_types.insert(*media_type);
-		}
-	}
-
-	return media_types;
-}
-
-void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remote, const uint32_t request_id, const std::shared_ptr<const ov::Url> &url) MAY_THROWS(cfg::ConfigError)
+void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remote, const uint32_t request_id, const std::shared_ptr<const ov::Url> &url)
 {
 	auto orchestrator = ocst::Orchestrator::GetInstance();
 
@@ -598,7 +555,7 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 
 	// The required set names the codecs of the tracks the edge is about to see;
 	// an edge that does not know one of them refuses the stream before any media flows
-	auto required = OvtStream::CollectRequiredTokens(description, GetRequiredMediaTypes(stream));
+	auto required = OvtStream::CollectRequiredTokens(description, REQUIRED_MEDIA_TYPES);
 
 	Json::Value root;
 	root["id"]			= request_id;

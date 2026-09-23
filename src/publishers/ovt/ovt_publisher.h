@@ -86,15 +86,13 @@ private:
 
 	// Reads the publisher configuration through the `cfg` getters, which throw on a member
 	// the config tree no longer holds
-	void HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url) MAY_THROWS(cfg::ConfigError);
+	void HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url);
 	// The filter one edge's request resolves to:
 	// OVT1 or OVT2 from the connection, TrackSet from the URL, and, on a play, the edge's own selection.
 	// Returns false when the URL names a TrackSet the stream does not have.
 	bool ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<OvtStream> &stream, const ov::String &track_set_name, const std::optional<std::set<uint32_t>> &requested_track_ids, OvtTrackFilter &filter);
 	void SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id,
 						  const std::shared_ptr<OvtStream> &stream, const std::optional<std::set<uint32_t>> &allowed_track_ids);
-	// Media types whose codecs go into `ovt.required`, from the application's Compatibility setting
-	std::set<cmn::MediaType> GetRequiredMediaTypes(const std::shared_ptr<OvtStream> &stream) MAY_THROWS(cfg::ConfigError);
 	void HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url, const std::optional<std::set<uint32_t>> &requested_track_ids);
 	void HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id, const std::shared_ptr<const ov::Url> &url);
 
