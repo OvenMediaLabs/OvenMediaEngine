@@ -197,6 +197,11 @@ private:
 	// Map uri a segment of the given version references; the initial version keeps
 	// the version-less name, tracks without a fMP4 packager have none
 	ov::String GetMapUriForTrackVersion(const int32_t &track_id, uint32_t track_version) const;
+
+	// Register the CENC key a content version was encrypted with on the chunklist,
+	// once per version, so its EXT-X-KEY can be advertised
+	void RegisterCencPropertyForVersion(const int32_t &track_id, const std::shared_ptr<LLHlsChunklist> &playlist, const std::shared_ptr<bmff::FMP4Packager> &packager, uint32_t content_version);
+
 	ov::String GetSegmentName(const int32_t &track_id, const int64_t &segment_number) const;
 	ov::String GetPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number) const;
 	ov::String GetNextPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number, bool last_chunk) const;

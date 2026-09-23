@@ -130,7 +130,7 @@ bool LLHlsChunklist::CreateSegmentInfo(const SegmentInfo &info)
 	return true;
 }
 
-bool LLHlsChunklist::CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri)
+bool LLHlsChunklist::CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri, std::optional<uint32_t> next_partial_track_version)
 {
 	std::shared_ptr<SegmentInfo> segment = GetSegmentInfo(segment_sequence);
 	if (segment == nullptr)
@@ -152,6 +152,7 @@ bool LLHlsChunklist::CompleteSegmentInfo(uint32_t segment_sequence, const ov::St
 		}
 
 		_upcoming_map_uri = next_partial_map_uri;
+		_upcoming_content_version = next_partial_track_version;
 	}
 
 	UpdateCacheForDefaultChunklist();
@@ -218,11 +219,12 @@ ov::String LLHlsChunklist::MakeCodecsUnionInternal(uint32_t min_track_version) c
 	return codecs_union;
 }
 
-void LLHlsChunklist::SetUpcomingMapUri(const ov::String &map_uri)
+void LLHlsChunklist::SetUpcomingMapUri(const ov::String &map_uri, std::optional<uint32_t> track_version)
 {
 	{
 		std::lock_guard<std::shared_mutex> lock(_segments_guard);
 		_upcoming_map_uri = map_uri;
+		_upcoming_content_version = track_version;
 	}
 
 	UpdateCacheForDefaultChunklist();
@@ -276,6 +278,7 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 				 _last_started_track_version.value() != info.GetTrackVersion()))
 			{
 				_upcoming_map_uri.Clear();
+				_upcoming_content_version.reset();
 			}
 
 			_last_started_track_version = info.GetTrackVersion();
@@ -286,6 +289,14 @@ bool LLHlsChunklist::AppendPartialSegmentInfo(uint32_t segment_sequence, const S
 			segment->SetCompleted();
 			_last_completed_segment_sequence = segment_sequence;
 			_first_segment = false;
+
+			// The map of the partial hinted next. A key rotation opening the next
+			// segment makes it differ from this segment's, and the hint reads it
+			if (info.GetUpcomingMapUri().IsEmpty() == false)
+			{
+				_upcoming_map_uri = info.GetUpcomingMapUri();
+				_upcoming_content_version = info.GetUpcomingTrackVersion();
+			}
 		}
 	
 		_last_segment_sequence = segment_sequence;
@@ -770,6 +781,13 @@ ov::String LLHlsChunklist::MakeChunklist(const ov::String &query_string, bool sk
 			// initialization section too so clients can fetch it ahead
 			if (_upcoming_map_uri.IsEmpty() == false && _upcoming_map_uri != current_map_uri)
 			{
+				// The key of the hinted partial goes out with its map, so a client can
+				// fetch the license before the partial arrives
+				if (_upcoming_content_version.has_value() == true)
+				{
+					emit_ext_x_key_if_changed(_upcoming_content_version.value());
+				}
+
 				playlist.AppendFormat("#EXT-X-PRELOAD-HINT:TYPE=MAP,URI=\"%s", _upcoming_map_uri.CStr());
 				if (query_string.IsEmpty() == false)
 				{

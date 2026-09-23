@@ -185,6 +185,30 @@ public:
 			return _map_uri;
 		}
 
+		// Initialization segment the partial hinted after this chunk will be packaged
+		// against. Carried on the chunk completing a segment so that the part hint and
+		// the map hint are published in the same update
+		void SetUpcomingMapUri(const ov::String &map_uri)
+		{
+			_upcoming_map_uri = map_uri;
+		}
+
+		const ov::String &GetUpcomingMapUri() const
+		{
+			return _upcoming_map_uri;
+		}
+
+		// Content version of that hinted partial, so its key can be advertised with the hint
+		void SetUpcomingTrackVersion(uint32_t track_version)
+		{
+			_upcoming_track_version = track_version;
+		}
+
+		const std::optional<uint32_t> &GetUpcomingTrackVersion() const
+		{
+			return _upcoming_track_version;
+		}
+
 		// Version of the track configuration this segment was packaged against
 		void SetTrackVersion(uint32_t track_version)
 		{
@@ -254,6 +278,8 @@ public:
 		bool _completed = false;
 		bool _discontinuity = false;
 		ov::String _map_uri;
+		ov::String _upcoming_map_uri;
+		std::optional<uint32_t> _upcoming_track_version;
 		uint32_t _track_version = 0;
 		ov::String _codecs_parameter;
 
@@ -297,12 +323,12 @@ public:
 	// The last partial advertised a next part that will never exist, so its next url
 	// is redirected to the first part of the following segment. The map that part
 	// will be packaged against is hinted as TYPE=MAP until the part is listed.
-	bool CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri);
+	bool CompleteSegmentInfo(uint32_t segment_sequence, const ov::String &next_partial_url, const ov::String &next_partial_map_uri, std::optional<uint32_t> next_partial_track_version = std::nullopt);
 
 	// Map the first partial of the next discontinuity domain will be packaged
 	// against, emitted as a TYPE=MAP preload hint while it differs from the last
 	// listed map. Set it only once the initialization section is servable.
-	void SetUpcomingMapUri(const ov::String &map_uri);
+	void SetUpcomingMapUri(const ov::String &map_uri, std::optional<uint32_t> track_version = std::nullopt);
 
 	// The chunklist describes which codecs its own segments contain, learned from
 	// the segments it was fed; the master playlist CODECS attribute is built from
@@ -359,6 +385,9 @@ private:
 	// Map of the hinted-but-not-yet-listed partial. Emitted as a TYPE=MAP preload
 	// hint while it differs from the last listed map. Guarded by _segments_guard.
 	ov::String _upcoming_map_uri;
+	// Content version of that partial. Its EXT-X-KEY is emitted with the map hint when
+	// it is known and differs from the key in effect, so a license can be fetched ahead
+	std::optional<uint32_t> _upcoming_content_version;
 
 	// Called with _segments_guard held; versions are non-decreasing along segments
 	ov::String MakeCodecsUnionInternal(uint32_t min_track_version) const;
