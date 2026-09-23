@@ -10,6 +10,9 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
+#include <array>
+#include <optional>
+
 namespace cmn
 {
 	enum class MediaRouterStreamType : int8_t
@@ -68,6 +71,17 @@ namespace cmn
 		AVIF,		  // a complete AVIF file: one AV1 still inside a HEIF container
 	};
 
+	// Every `BitstreamFormat` except `Unknown`, in declaration order. See `ALL_MEDIA_CODEC_IDS`.
+	inline constexpr std::array ALL_BITSTREAM_FORMATS = {
+		BitstreamFormat::H264_AVCC, BitstreamFormat::H264_ANNEXB, BitstreamFormat::H264_RTP_RFC_6184, BitstreamFormat::HVCC,
+		BitstreamFormat::H265_ANNEXB, BitstreamFormat::H265_RTP_RFC_7798, BitstreamFormat::VP8, BitstreamFormat::VP8_RTP_RFC_7741,
+		BitstreamFormat::AAC_RAW, BitstreamFormat::AAC_MPEG4_GENERIC, BitstreamFormat::AAC_ADTS, BitstreamFormat::AAC_LATM,
+		BitstreamFormat::OPUS, BitstreamFormat::OPUS_RTP_RFC_7587, BitstreamFormat::MP3, BitstreamFormat::JPEG,
+		BitstreamFormat::PNG, BitstreamFormat::WEBP, BitstreamFormat::ID3v2, BitstreamFormat::OVEN_EVENT,
+		BitstreamFormat::CUE, BitstreamFormat::AMF, BitstreamFormat::SEI, BitstreamFormat::SCTE35,
+		BitstreamFormat::WebVTT, BitstreamFormat::MP2, BitstreamFormat::AV1_OBU, BitstreamFormat::AV1_RTP_AOM,
+		BitstreamFormat::AVIF};
+
 	enum class PacketType : int8_t
 	{
 		Unknown = -1,
@@ -85,6 +99,11 @@ namespace cmn
 		VIDEO_EVENT,
 		AUDIO_EVENT,
 	};
+
+	// Every `PacketType` except `Unknown`, in declaration order. See `ALL_MEDIA_CODEC_IDS`.
+	inline constexpr std::array ALL_PACKET_TYPES = {
+		PacketType::OVT, PacketType::RAW, PacketType::SEQUENCE_HEADER, PacketType::NALU,
+		PacketType::EVENT, PacketType::VIDEO_EVENT, PacketType::AUDIO_EVENT};
 
 	enum class PictureType : uint8_t
 	{
@@ -118,6 +137,15 @@ namespace cmn
 		Mp2,
 		Avif
 	};
+
+	// Every `MediaCodecId`, in declaration order.
+	// A new codec is added here as well, so that code which must visit them all
+	// (the OVT required token vocabulary, for one) does not keep a copy of its own.
+	inline constexpr std::array ALL_MEDIA_CODEC_IDS = {
+		MediaCodecId::None, MediaCodecId::H264, MediaCodecId::H265, MediaCodecId::Vp8, MediaCodecId::Vp9,
+		MediaCodecId::Av1, MediaCodecId::Flv, MediaCodecId::Aac, MediaCodecId::Mp3, MediaCodecId::Opus,
+		MediaCodecId::Jpeg, MediaCodecId::Png, MediaCodecId::Webp, MediaCodecId::WebVTT, MediaCodecId::Whisper,
+		MediaCodecId::Mp2, MediaCodecId::Avif};
 
 	// DeviceId is used to identify a hwardware accelerator device.
 	typedef int32_t DeviceId;
@@ -700,6 +728,116 @@ namespace cmn
 		return cmn::MediaCodecId::None;
 	}
 
+	// Protocol-side reverse of the `Get*String()` names:
+	// exact, case-sensitive `==` on the string each forward function emits,
+	// and `nullopt` for anything else.
+	// Not a config parser; `GetCodecIdByName()` keeps its prefix matching for that job.
+	static std::optional<cmn::MediaCodecId> GetCodecIdByExactName(const ov::String &name)
+	{
+		OV_IF_RETURN(name == "None", cmn::MediaCodecId::None);
+		OV_IF_RETURN(name == "H264", cmn::MediaCodecId::H264);
+		OV_IF_RETURN(name == "H265", cmn::MediaCodecId::H265);
+		OV_IF_RETURN(name == "VP8", cmn::MediaCodecId::Vp8);
+		OV_IF_RETURN(name == "VP9", cmn::MediaCodecId::Vp9);
+		OV_IF_RETURN(name == "AV1", cmn::MediaCodecId::Av1);
+		OV_IF_RETURN(name == "FLV", cmn::MediaCodecId::Flv);
+		OV_IF_RETURN(name == "AAC", cmn::MediaCodecId::Aac);
+		OV_IF_RETURN(name == "MP3", cmn::MediaCodecId::Mp3);
+		OV_IF_RETURN(name == "OPUS", cmn::MediaCodecId::Opus);
+		OV_IF_RETURN(name == "JPEG", cmn::MediaCodecId::Jpeg);
+		OV_IF_RETURN(name == "PNG", cmn::MediaCodecId::Png);
+		OV_IF_RETURN(name == "WEBP", cmn::MediaCodecId::Webp);
+		OV_IF_RETURN(name == "WebVTT", cmn::MediaCodecId::WebVTT);
+		OV_IF_RETURN(name == "WHISPER", cmn::MediaCodecId::Whisper);
+		OV_IF_RETURN(name == "MP2", cmn::MediaCodecId::Mp2);
+		OV_IF_RETURN(name == "AVIF", cmn::MediaCodecId::Avif);
+
+		return std::nullopt;
+	}
+
+	// Nb is an end marker, not a media type, so "Unknown" maps only to `Unknown`
+	static std::optional<cmn::MediaType> GetMediaTypeByName(const ov::String &name)
+	{
+		OV_IF_RETURN(name == "Unknown", cmn::MediaType::Unknown);
+		OV_IF_RETURN(name == "Video", cmn::MediaType::Video);
+		OV_IF_RETURN(name == "Audio", cmn::MediaType::Audio);
+		OV_IF_RETURN(name == "Data", cmn::MediaType::Data);
+		OV_IF_RETURN(name == "Subtitle", cmn::MediaType::Subtitle);
+		OV_IF_RETURN(name == "Attachment", cmn::MediaType::Attachment);
+
+		return std::nullopt;
+	}
+
+	static std::optional<cmn::BitstreamFormat> GetBitstreamFormatByName(const ov::String &name)
+	{
+		OV_IF_RETURN(name == "Unknown", cmn::BitstreamFormat::Unknown);
+		OV_IF_RETURN(name == "AVCC", cmn::BitstreamFormat::H264_AVCC);
+		OV_IF_RETURN(name == "H264_ANNEXB", cmn::BitstreamFormat::H264_ANNEXB);
+		OV_IF_RETURN(name == "H264_RTP_RFC_6184", cmn::BitstreamFormat::H264_RTP_RFC_6184);
+		OV_IF_RETURN(name == "HVCC", cmn::BitstreamFormat::HVCC);
+		OV_IF_RETURN(name == "H265_ANNEXB", cmn::BitstreamFormat::H265_ANNEXB);
+		OV_IF_RETURN(name == "H265_RTP_RFC_7798", cmn::BitstreamFormat::H265_RTP_RFC_7798);
+		OV_IF_RETURN(name == "VP8", cmn::BitstreamFormat::VP8);
+		OV_IF_RETURN(name == "VP8_RTP_RFC_7741", cmn::BitstreamFormat::VP8_RTP_RFC_7741);
+		OV_IF_RETURN(name == "AAC_RAW", cmn::BitstreamFormat::AAC_RAW);
+		OV_IF_RETURN(name == "AAC_MPEG4_GENERIC", cmn::BitstreamFormat::AAC_MPEG4_GENERIC);
+		OV_IF_RETURN(name == "AAC_ADTS", cmn::BitstreamFormat::AAC_ADTS);
+		OV_IF_RETURN(name == "AAC_LATM", cmn::BitstreamFormat::AAC_LATM);
+		OV_IF_RETURN(name == "OPUS", cmn::BitstreamFormat::OPUS);
+		OV_IF_RETURN(name == "OPUS_RTP_RFC_7587", cmn::BitstreamFormat::OPUS_RTP_RFC_7587);
+		OV_IF_RETURN(name == "MP3", cmn::BitstreamFormat::MP3);
+		OV_IF_RETURN(name == "JPEG", cmn::BitstreamFormat::JPEG);
+		OV_IF_RETURN(name == "PNG", cmn::BitstreamFormat::PNG);
+		OV_IF_RETURN(name == "WEBP", cmn::BitstreamFormat::WEBP);
+		OV_IF_RETURN(name == "ID3v2", cmn::BitstreamFormat::ID3v2);
+		OV_IF_RETURN(name == "OVEN_EVENT", cmn::BitstreamFormat::OVEN_EVENT);
+		OV_IF_RETURN(name == "CUE", cmn::BitstreamFormat::CUE);
+		OV_IF_RETURN(name == "AMF", cmn::BitstreamFormat::AMF);
+		OV_IF_RETURN(name == "SEI", cmn::BitstreamFormat::SEI);
+		OV_IF_RETURN(name == "SCTE35", cmn::BitstreamFormat::SCTE35);
+		OV_IF_RETURN(name == "WebVTT", cmn::BitstreamFormat::WebVTT);
+		OV_IF_RETURN(name == "MP2", cmn::BitstreamFormat::MP2);
+		OV_IF_RETURN(name == "AV1_OBU", cmn::BitstreamFormat::AV1_OBU);
+		OV_IF_RETURN(name == "AV1_RTP_AOM", cmn::BitstreamFormat::AV1_RTP_AOM);
+		OV_IF_RETURN(name == "AVIF", cmn::BitstreamFormat::AVIF);
+
+		return std::nullopt;
+	}
+
+	// Protocol name of a packet type.
+	// `GetMediaPacketTypeString()` is the log form and returns "Unknown" for EVENT,
+	// so it cannot serve as a protocol name; this one gives every enumerator its own name.
+	constexpr const char *GetPacketTypeString(cmn::PacketType packet_type)
+	{
+		switch (packet_type)
+		{
+			OV_CASE_RETURN_ENUM_STRING(PacketType, Unknown);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, OVT);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, RAW);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, SEQUENCE_HEADER);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, NALU);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, EVENT);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, VIDEO_EVENT);
+			OV_CASE_RETURN_ENUM_STRING(PacketType, AUDIO_EVENT);
+		}
+
+		return "Unknown";
+	}
+
+	static std::optional<cmn::PacketType> GetPacketTypeByName(const ov::String &name)
+	{
+		OV_IF_RETURN(name == "Unknown", cmn::PacketType::Unknown);
+		OV_IF_RETURN(name == "OVT", cmn::PacketType::OVT);
+		OV_IF_RETURN(name == "RAW", cmn::PacketType::RAW);
+		OV_IF_RETURN(name == "SEQUENCE_HEADER", cmn::PacketType::SEQUENCE_HEADER);
+		OV_IF_RETURN(name == "NALU", cmn::PacketType::NALU);
+		OV_IF_RETURN(name == "EVENT", cmn::PacketType::EVENT);
+		OV_IF_RETURN(name == "VIDEO_EVENT", cmn::PacketType::VIDEO_EVENT);
+		OV_IF_RETURN(name == "AUDIO_EVENT", cmn::PacketType::AUDIO_EVENT);
+
+		return std::nullopt;
+	}
+
 	static constexpr const char *GetKeyFrameIntervalTypeToString(cmn::KeyFrameIntervalType type)
 	{
 		switch (type)
@@ -1085,10 +1223,21 @@ namespace cmn
 
 		void SetFormat(Format fmt)
 		{
+			// A value cast in from outside (ffmpeg sample formats past `DblP`, a wire integer) is `None`.
+			// Every enumerator is listed below without a default,
+			// so a new one shows up as a `-Wswitch` warning here,
+			// and does not build at all in `ovt_wire.cpp` until it gets a wire value;
+			// its name row in the OVT wire baseline test is added by hand.
+			if ((fmt < Format::None) || (fmt >= Format::Nb))
+			{
+				fmt = Format::None;
+			}
+
 			_format = fmt;
 
 			switch (_format)
 			{
+				OV_MEDIA_TYPE_SET_VALUE(Format::None, _name = "none", _sample_size = 0);
 				OV_MEDIA_TYPE_SET_VALUE(Format::U8, _name = "u8", _sample_size = 1);
 				OV_MEDIA_TYPE_SET_VALUE(Format::S16, _name = "s16", _sample_size = 2);
 				OV_MEDIA_TYPE_SET_VALUE(Format::S32, _name = "s32", _sample_size = 4);
@@ -1099,9 +1248,8 @@ namespace cmn
 				OV_MEDIA_TYPE_SET_VALUE(Format::S32P, _name = "s32p", _sample_size = 4);
 				OV_MEDIA_TYPE_SET_VALUE(Format::FltP, _name = "fltp", _sample_size = 4);
 				OV_MEDIA_TYPE_SET_VALUE(Format::DblP, _name = "dblp", _sample_size = 8);
-
-				default:
-					OV_MEDIA_TYPE_SET_VALUE(Format::None, _name = "none", _sample_size = 0);
+				// End marker; the range check above keeps it from arriving here
+				OV_MEDIA_TYPE_SET_VALUE(Format::Nb, _name = "none", _sample_size = 0);
 			}
 		}
 
@@ -1148,6 +1296,23 @@ namespace cmn
 		// Sample format name
 		std::string _name	 = "none";
 	};
+
+	static std::optional<cmn::AudioSample::Format> GetAudioSampleFormatByName(const ov::String &name)
+	{
+		OV_IF_RETURN(name == "none", cmn::AudioSample::Format::None);
+		OV_IF_RETURN(name == "u8", cmn::AudioSample::Format::U8);
+		OV_IF_RETURN(name == "s16", cmn::AudioSample::Format::S16);
+		OV_IF_RETURN(name == "s32", cmn::AudioSample::Format::S32);
+		OV_IF_RETURN(name == "flt", cmn::AudioSample::Format::Flt);
+		OV_IF_RETURN(name == "dbl", cmn::AudioSample::Format::Dbl);
+		OV_IF_RETURN(name == "u8p", cmn::AudioSample::Format::U8P);
+		OV_IF_RETURN(name == "s16p", cmn::AudioSample::Format::S16P);
+		OV_IF_RETURN(name == "s32p", cmn::AudioSample::Format::S32P);
+		OV_IF_RETURN(name == "fltp", cmn::AudioSample::Format::FltP);
+		OV_IF_RETURN(name == "dblp", cmn::AudioSample::Format::DblP);
+
+		return std::nullopt;
+	}
 
 	template <typename... Args>
 	static constexpr uint32_t MakeAudioChannelLayout(Args... channels)
@@ -1219,6 +1384,33 @@ namespace cmn
 			LayoutOctagonal		  = MakeAudioChannelLayout(Channel::FrontLeft, Channel::FrontRight, Channel::FrontCenter, Channel::SideLeft, Channel::SideRight, Channel::BackLeft, Channel::BackRight, Channel::BackCenter),
 		};
 
+		// Every `Layout` except `LayoutUnknown`, in declaration order.
+		// A layout value is the OR of its channel bits, so the wire number and the enum value are the
+		// same thing and there is nothing to map. What this list is for is the membership test:
+		// a number that is not one of these is a layout this build does not define.
+		inline static constexpr std::array ALL_AUDIO_CHANNEL_LAYOUTS = {
+			Layout::LayoutMono, Layout::LayoutStereo, Layout::Layout2Point1, Layout::Layout21,
+			Layout::LayoutSurround, Layout::Layout3Point1, Layout::Layout4Point0, Layout::Layout4Point1,
+			Layout::Layout22, Layout::LayoutQuad, Layout::Layout5Point0, Layout::Layout5Point1,
+			Layout::Layout5Point0Back, Layout::Layout5Point1Back, Layout::Layout6Point0, Layout::Layout6Point0Front,
+			Layout::LayoutHexagonal, Layout::Layout6Point1, Layout::Layout6Point1Back, Layout::Layout6Point1Front,
+			Layout::Layout7Point0, Layout::Layout7Point0Front, Layout::Layout7Point1, Layout::Layout7Point1Wide,
+			Layout::Layout7Point1WideBack, Layout::LayoutOctagonal};
+
+		// The layout for a channel bitmask, or `nullopt` when this build defines no such layout.
+		static constexpr std::optional<Layout> GetLayoutByValue(uint32_t value)
+		{
+			for (auto layout : ALL_AUDIO_CHANNEL_LAYOUTS)
+			{
+				if (static_cast<uint32_t>(layout) == value)
+				{
+					return layout;
+				}
+			}
+
+			return std::nullopt;
+		}
+
 		constexpr static const char *GetLayoutName(Layout layout)
 		{
 			switch (layout)
@@ -1266,9 +1458,10 @@ namespace cmn
 
 		AudioChannel &operator=(const AudioChannel &audio_channel) noexcept
 		{
-			_layout = audio_channel._layout;
-			_count	= audio_channel._count;
-			_name	= audio_channel._name;
+			_layout			 = audio_channel._layout;
+			_count			 = audio_channel._count;
+			_name			 = audio_channel._name;
+			_unmapped_layout = audio_channel._unmapped_layout;
 
 			return *this;
 		}
@@ -1335,6 +1528,20 @@ namespace cmn
 			}
 		}
 
+		// The channel bitmask as received, kept only when this build defines no layout for it.
+		// A relay re-sends it unchanged: a value it does not know may be a layout a newer build added,
+		// and the audio parsers downstream only tell mono from stereo, so letting them overwrite it
+		// would cost the next hop the original.
+		void SetUnmappedLayout(std::optional<uint32_t> wire)
+		{
+			_unmapped_layout = wire;
+		}
+
+		std::optional<uint32_t> GetUnmappedLayout() const
+		{
+			return _unmapped_layout;
+		}
+
 		// channel layout
 		AudioChannel::Layout GetLayout() const
 		{
@@ -1362,6 +1569,8 @@ namespace cmn
 		Layout _layout	  = Layout::LayoutStereo;
 		uint32_t _count	  = 2;
 		std::string _name = "stereo";
+		// Set only where a wire value crosses into this build without a layout of its own
+		std::optional<uint32_t> _unmapped_layout;
 	};
 
 	struct Resolution

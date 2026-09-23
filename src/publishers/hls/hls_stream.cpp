@@ -896,7 +896,17 @@ bool HlsStream::CreatePackagers()
 			auto video_variant_name = rendition->GetVideoVariantName();
 			auto audio_variant_name = rendition->GetAudioVariantName();
 			auto video_index_hint = rendition->GetVideoIndexHint();
-			auto audio_index_hint = rendition->GetAudioIndexHint();
+			auto audio_index_hint	  = rendition->GetAudioIndexHint();
+
+			// A track id confirmed against this stream picks the track; otherwise the index hint does, as before
+			bool video_id_unconfirmed = false;
+			bool audio_id_unconfirmed = false;
+			auto video_track_by_id	  = GetRenditionTrack(*rendition, cmn::MediaType::Video, &video_id_unconfirmed);
+			auto audio_track_by_id	  = GetRenditionTrack(*rendition, cmn::MediaType::Audio, &audio_id_unconfirmed);
+			if (video_id_unconfirmed || audio_id_unconfirmed)
+			{
+				logtw("HLS Stream(%s/%s) - The track id of the rendition %s in %s did not match a track; falling back to the index hint", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), rendition->GetName().CStr(), playlist->GetFileName().CStr());
+			}
 
 			if (video_variant_name.IsEmpty() == false && GetMediaTrackGroup(video_variant_name) == nullptr)
 			{
@@ -1017,9 +1027,9 @@ bool HlsStream::CreatePackagers()
 			{
 				auto video_track_group = GetMediaTrackGroup(video_variant_name);
 
-				if (video_index_hint != -1)
+				if ((video_track_by_id != nullptr) || (video_index_hint != -1))
 				{
-					auto track = video_track_group->GetTrack(video_index_hint);
+					auto track = (video_track_by_id != nullptr) ? video_track_by_id : video_track_group->GetTrack(video_index_hint);
 					if (track == nullptr)
 					{
 						logtw("HLS Stream(%s/%s) - The video track index %d in the rendition %s is not found in the track list, it will be ignored", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), video_index_hint, playlist->GetFileName().CStr());
@@ -1062,9 +1072,10 @@ bool HlsStream::CreatePackagers()
 			if (audio_variant_name.IsEmpty() == false)
 			{
 				auto audio_track_group = GetMediaTrackGroup(audio_variant_name);
+				// -1 keeps its whole-group meaning whatever the rendition carries as an id
 				if (audio_index_hint != -1)
 				{
-					auto track = audio_track_group->GetTrack(audio_index_hint);
+					auto track = (audio_track_by_id != nullptr) ? audio_track_by_id : audio_track_group->GetTrack(audio_index_hint);
 					if (track == nullptr)
 					{
 						logtw("HLS Stream(%s/%s) - The audio track index %d in the rendition %s is not found in the track list, it will be ignored", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), audio_index_hint, playlist->GetFileName().CStr());

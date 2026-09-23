@@ -25,6 +25,8 @@ public:
 
 	void SetChannel(cmn::AudioChannel channel);
 	void SetChannelLayout(cmn::AudioChannel::Layout channel_layout);
+	// The channel bitmask as received, for a value this build defines no layout for
+	void SetUnmappedChannelLayout(std::optional<uint32_t> wire);
 	void SetChannelCount(uint32_t channel_count);
 	cmn::AudioChannel GetChannel() const;
 	bool IsValidChannel() const;

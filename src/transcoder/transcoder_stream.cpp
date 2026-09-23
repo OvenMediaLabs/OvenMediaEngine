@@ -944,6 +944,9 @@ std::shared_ptr<info::Stream> TranscoderStream::CreateOutputStream(const cfg::vh
 				}
 			}
 
+			// Tracks and playlist exist together here, so the renditions are pinned to their tracks now
+			output_stream->ResolveRenditionTrackIds(playlist_info);
+
 			logtd("[%s] Playlist(%s) has been created", _log_prefix.CStr(), playlist_info->GetName().CStr());
 			logti("[%s] %s", _log_prefix.CStr(), playlist_info->ToString().CStr());
 

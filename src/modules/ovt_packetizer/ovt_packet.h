@@ -13,6 +13,19 @@
 #include <base/common_types.h>
 #include <base/ovlibrary/ovlibrary.h>
 
+// V (2 bits) names the OVT header layout; 1 is the layout below.
+// A value, once used, is reserved for good and never reused,
+// because an old peer would read the new layout as the old one.
+// The first layout with V != 1 must carry its own extension field
+// (the Reserved bits or a version byte after OVT[0]),
+// so that the two remaining values do not become the ceiling.
+// Its fixed header must be at least 18 bytes:
+// an OVT1 peer does not parse before 18 bytes have arrived,
+// so a shorter header would only be refused later.
+// Reserved (5 bits) is sent as 0 and never read,
+// so packet-level flags can be added here without touching V.
+// Structured extensions go into a payload type instead.
+//
 //  0                   1                   2                   3
 //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -28,6 +41,11 @@
 
 // [SessionID] - Reserved
 // Designed for the purpose of classifying each session when two or more sessions are connected with the same 5tuple in the future. Currently not used because the client connects to the server using a different port.
+// It is kept for that multiplexing use and for nothing else.
+// Every response carries 0: `OvtPublisher::SendResponse()` takes a session id and does not write it,
+// and its local packetizer leaves the field at 0.
+// Only what a session writes itself (media, notifications, the required set) carries an id,
+// and the edge does not read that either.
 
 /***********************************************
  * Protocol Specification
@@ -140,15 +158,23 @@
 
  **********************************************/
 
-
-#define OVT_VERSION							1
-#define OVT_FIXED_HEADER_SIZE				18
+// V field of the current header layout. See the notes above the header diagram before changing it.
+#define OVT_VERSION 1
+#define OVT_FIXED_HEADER_SIZE 18
 #define OVT_DEFAULT_MAX_PACKET_SIZE			32768
 #define OVT_DEFAULT_MAX_PAYLOAD_SIZE		OVT_DEFAULT_MAX_PACKET_SIZE - OVT_FIXED_HEADER_SIZE;
 
-#define OVT_PAYLOAD_TYPE_MESSAGE_REQUEST	10
-#define OVT_PAYLOAD_TYPE_MESSAGE_RESPONSE	20
-#define OVT_PAYLOAD_TYPE_MEDIA_PACKET		30
+// Every protocol value is written out explicitly;
+// none of these may rely on the implicit enum numbering.
+// 0 is never assigned. Nothing in the code depends on that any more, but every release up to
+// v0.21.0.0 read it as "no header", so the value stays reserved.
+enum class OvtPayloadType : uint8_t
+{
+	MessageRequest	= 10,  // Edge -> Origin request
+	MessageResponse = 20,  // Response to a request, and Origin-initiated messages (notify, stop)
+	MediaPacket		= 30,  // Serialized MediaPacket
+	Required		= 40,  // Origin -> Edge: the required tokens a session must know before its next media packet
+};
 
 // Using MediaPacket (De)Packetizer
 #define MEDIA_PACKET_HEADER_SIZE			(32+64+64+64+8+8+8+8+32)/8
@@ -178,7 +204,7 @@ public:
 	const uint8_t*	Payload() const;
 
 	void 		SetMarker(bool marker_bit);
-	void 		SetPayloadType(uint8_t payload_type);
+	void 		SetPayloadType(OvtPayloadType payload_type);
 	void 		SetSequenceNumber(uint16_t sequence_number);
 	void 		SetTimestampNow();
 	void 		SetTimestamp(uint64_t timestamp);
@@ -191,18 +217,27 @@ public:
 	size_t GetDataLength() const;
 
 private:
+	// Raw byte off the wire; `LoadHeader()` stores it as-is and the depacketizer maps it through `FromOvtWire()`
+	void 		SetRawPayloadType(uint8_t payload_type);
 	void 		SetPayloadLength(size_t payload_length);
 
 	bool 		_is_packet_available = false;
 
-	uint8_t		_version;
-	uint8_t 	_marker;
-	uint8_t 	_payload_type;
-	uint16_t 	_sequence_number;
-	uint64_t 	_timestamp;
-	uint32_t 	_session_id;
-	uint16_t 	_payload_length;
+	// Initialized here so that every constructor starts from a defined state:
+	// `OvtPacket(const ov::Data &)` only calls `Load()`, which may reject the header
+	// before it assigns anything.
+	uint8_t		_version = OVT_VERSION;
+	uint8_t 	_marker = 0;
+	uint8_t 	_payload_type = 0;
+	// Whether this object carries a header: `LoadHeader()` accepted one on the parse path,
+	// or `SetPayloadType()` wrote one on the build path. `_payload_type` cannot answer this:
+	// a peer that writes payload type 0 would make the state read as "no header".
+	bool		_header_loaded = false;
+	uint16_t 	_sequence_number = 0;
+	uint64_t 	_timestamp = 0;
+	uint32_t 	_session_id = 0;
+	uint16_t 	_payload_length = 0;
 
-	uint8_t *					_buffer;
+	uint8_t *					_buffer = nullptr;
 	std::shared_ptr<ov::Data>	_data;
 };

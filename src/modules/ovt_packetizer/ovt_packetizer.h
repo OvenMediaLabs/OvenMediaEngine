@@ -13,7 +13,7 @@ public:
 	OvtPacketizer(const std::shared_ptr<OvtPacketizerInterface> &stream);
 	~OvtPacketizer();
 
-	bool PacketizeMessage(uint8_t payload_type, uint64_t timestamp, const std::shared_ptr<ov::Data> &message);
+	bool PacketizeMessage(OvtPayloadType payload_type, uint64_t timestamp, const std::shared_ptr<ov::Data> &message);
 	// Packetizing the MediaPacket
 	bool PacketizeMediaPacket(uint64_t timestamp, const std::shared_ptr<MediaPacket> &media_packet);
 

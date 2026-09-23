@@ -77,6 +77,14 @@ namespace pub
 			ERROR,
 		};
 
+		// Why the stream is being stopped.
+		// A publisher that tells its peers about the stop reads it inside `Stop()`.
+		enum class StopCause : uint8_t
+		{
+			StreamDeleted,
+			ApplicationStopped,
+		};
+
 		struct DefaultPlaylistInfo
 		{
 			// Playlist name
@@ -148,8 +156,7 @@ namespace pub
 		bool IsStalePacket(const std::shared_ptr<MediaPacket> &media_packet) const;
 
 		bool EnterStart();
-		bool EnterStop();
-		
+		bool EnterStop(StopCause cause);
 
 		bool WaitUntilStart(uint32_t timeout_ms);
 
@@ -180,6 +187,11 @@ namespace pub
 		virtual bool Start();
 		virtual bool Stop();
 
+		StopCause GetStopCause() const
+		{
+			return _stop_cause;
+		}
+
 		// Called before the first packet of a new track version is delivered.
 		// A publisher that supports mid-stream configuration changes must override this.
 		virtual void OnTrackChanged(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
@@ -198,6 +210,8 @@ namespace pub
 		
 		std::shared_mutex _stream_worker_lock;
 		std::vector<std::shared_ptr<StreamWorker>>	_stream_workers;
+
+		std::atomic<StopCause> _stop_cause = StopCause::StreamDeleted;
 		std::shared_ptr<Application> _application;
 
 		session_id_t _last_issued_session_id;

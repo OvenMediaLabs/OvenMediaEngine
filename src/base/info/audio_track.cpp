@@ -81,6 +81,12 @@ void AudioTrack::SetChannelLayout(AudioChannel::Layout channel_layout)
 	_channel_layout.SetLayout(channel_layout);
 }
 
+void AudioTrack::SetUnmappedChannelLayout(std::optional<uint32_t> wire)
+{
+	ov::ScopedLock lock(_audio_mutex);
+	_channel_layout.SetUnmappedLayout(wire);
+}
+
 bool AudioTrack::IsValidChannel() const
 {
 	ov::SharedLockGuard lock(_audio_mutex);
