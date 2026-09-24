@@ -49,7 +49,6 @@ private:
 
 	bool AddOriginMap(const ov::String &app_stream_name, const ov::String &origin_host);
 	bool AddOriginMapCandidate(const ov::String &app_stream_name, const ov::String &origin_host);
-	bool DeleteOriginMap(const ov::String &app_stream_name);
 
 	ov::String _redis_ip;
 	uint16_t _redis_port;
@@ -59,7 +58,8 @@ private:
 
 	std::map<ov::String, ov::String> _origin_map;
 	std::map<ov::String, ov::String> _origin_map_candidates;
-	std::deque<ov::String> _origin_map_remove_candidates;
+	std::map<ov::String, uint64_t> _session_map;
+	std::deque<std::pair<ov::String, uint64_t>> _origin_map_remove_candidates;
 	std::recursive_mutex _origin_map_mutex;
 
 	redisContext *_redis_context = nullptr;
