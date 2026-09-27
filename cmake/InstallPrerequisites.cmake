@@ -135,6 +135,7 @@ ome_parse_dep_version(OME_VER_AOM AOM_VERSION AOM_SOURCE_REF AOM_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_DAV1D DAV1D_VERSION DAV1D_SOURCE_REF DAV1D_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FDKAAC FDKAAC_VERSION FDKAAC_SOURCE_REF FDKAAC_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_NASM NASM_VERSION NASM_SOURCE_REF NASM_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_MESON MESON_VERSION MESON_SOURCE_REF MESON_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FFMPEG FFMPEG_VERSION FFMPEG_SOURCE_REF FFMPEG_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_JEMALLOC JEMALLOC_VERSION JEMALLOC_SOURCE_REF JEMALLOC_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_PCRE2 PCRE2_VERSION PCRE2_SOURCE_REF PCRE2_HAS_OVERRIDE)
@@ -177,6 +178,7 @@ set(AOM_SOURCE_URL "https://gitlab.com/webmproject/libaom/-/archive/${AOM_ARCHIV
 set(DAV1D_SOURCE_URL "https://code.videolan.org/videolan/dav1d/-/archive/${DAV1D_ARCHIVE_REF}.tar.gz")
 set(FDKAAC_SOURCE_URL "https://github.com/mstorsjo/fdk-aac/archive/${FDKAAC_ARCHIVE_REF}.tar.gz")
 set(NASM_SOURCE_URL "https://github.com/netwide-assembler/nasm/archive/${NASM_ARCHIVE_REF}.tar.gz")
+set(MESON_SOURCE_URL "https://github.com/mesonbuild/meson/releases/download/${MESON_SOURCE_REF}/meson-${MESON_SOURCE_REF}.tar.gz")
 set(FFMPEG_SOURCE_URL "https://github.com/FFmpeg/FFmpeg/archive/${FFMPEG_ARCHIVE_REF}.tar.gz")
 set(JEMALLOC_SOURCE_URL "https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_SOURCE_REF}/jemalloc-${JEMALLOC_SOURCE_REF}.tar.bz2")
 set(PCRE2_SOURCE_URL "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_SOURCE_REF}/pcre2-${PCRE2_SOURCE_REF}.tar.gz")
@@ -247,18 +249,18 @@ endmacro()
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
     ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
-        tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build meson" "apt base packages")
+        tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build python3" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build meson" "dnf base packages")
+        cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build python3" "dnf base packages")
 elseif(OSNAME MATCHES "Amazon Linux")
     ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build meson" "yum base packages")
+        cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages")
 elseif(OSNAME MATCHES "Fedora")
     ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
-        bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build meson" "yum base packages (fedora)")
+        bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages (fedora)")
 elseif(OSNAME MATCHES "Mac OS X")
-    ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja meson" "brew base packages")
+    ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja python3" "brew base packages")
 else()
     message(WARNING "[OME Prerequisites] Unsupported OS: ${OSNAME}. Skipping base package installation.")
 endif()
@@ -453,12 +455,15 @@ sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
 ")
 
 # ---- dav1d (AV1 decoder) ----
-# dav1d builds only with meson (>= 0.49), installed with the base packages.
+# dav1d builds only with meson (>= 0.54). Distro packages are older on some supported
+# platforms (Ubuntu 18.04/20.04), so a pinned release runs from its tarball with python3.
 # Requires NASM (>= 2.14) for x86 assembly; nasm is installed earlier in _targets.
 set(_install_libdav1d "
-mkdir -p ${TEMP_PATH}/dav1d && cd ${TEMP_PATH}/dav1d &&
+mkdir -p ${TEMP_PATH}/dav1d/_meson && cd ${TEMP_PATH}/dav1d/_meson &&
+ome_fetch ${MESON_SOURCE_URL} &&
+cd ${TEMP_PATH}/dav1d &&
 ome_fetch ${DAV1D_SOURCE_URL} &&
-meson setup dav1d_build --prefix=${PREFIX} --libdir=lib --buildtype=release --default-library=shared -Denable_tools=false -Denable_tests=false -Denable_examples=false &&
+python3 _meson/meson.py setup dav1d_build --prefix=${PREFIX} --libdir=lib --buildtype=release --default-library=shared -Denable_tools=false -Denable_tests=false -Denable_examples=false &&
 ninja -C dav1d_build ${_J} &&
 sudo ninja -C dav1d_build install && rm -rf ${TEMP_PATH}/dav1d
 ")
