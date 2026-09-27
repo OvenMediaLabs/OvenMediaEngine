@@ -35,7 +35,7 @@ bool AVCodecVideoDecoder::Initialize()
 			decoder_name = "vp8";
 			break;
 		case cmn::MediaCodecId::Av1:
-			decoder_name = "libaom-av1";
+			decoder_name = "libdav1d";
 			break;
 		default:
 			logte("Unsupported codec for video decoder: %s", cmn::GetCodecIdString(GetCodecID()));
@@ -51,6 +51,12 @@ bool AVCodecVideoDecoder::Initialize()
 	_codec.SetTimeBase(GetTimebase());
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount());
 	_codec.SetThreadTypeFrame();
+
+	// dav1d-only: keeps latency from growing as the thread count increases
+	if (GetCodecID() == cmn::MediaCodecId::Av1)
+	{
+		_codec.SetOption("max_frame_delay", static_cast<int64_t>(2));
+	}
 
 	if (_codec.Open() == false)
 	{
