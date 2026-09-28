@@ -26,6 +26,7 @@ namespace cfg
 					double _part_hold_back	  = 0;	// it will be set to 3 * chunk_duration automatically
 					bool _enable_preload_hint = true;
 					Drm _drm;
+					double _subtitle_hold_back_ms = 0;
 
 					ov::String _segmentation_mode;
 					LLHlsSegmentationMode _segmentation_mode_type = LLHlsSegmentationMode::Duration;
@@ -43,6 +44,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetPartHoldBack, _part_hold_back)
 					CFG_DECLARE_CONST_REF_GETTER_OF(IsPreloadHintEnabled, _enable_preload_hint)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetDrm, _drm)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetSubtitleHoldBackMs, _subtitle_hold_back_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetSegmentationMode, _segmentation_mode_type)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetCueOutCutMode, _cue_out_cut_mode_type)
 
@@ -55,6 +57,7 @@ namespace cfg
 						Register<Optional>("PartHoldBack", &_part_hold_back);
 						Register<Optional>("EnablePreloadHint", &_enable_preload_hint);
 						Register<Optional>({"DRM", "drm"}, &_drm);
+						Register<Optional>("SubtitleHoldBack", &_subtitle_hold_back_ms);
 
 						Register<Optional>("SegmentationMode", &_segmentation_mode, nullptr, [=]() -> std::shared_ptr<ConfigError> {
 								if (_segmentation_mode.LowerCaseString() == "synced")
