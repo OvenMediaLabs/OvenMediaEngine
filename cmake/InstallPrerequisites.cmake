@@ -459,7 +459,7 @@ sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
 # platforms (Ubuntu 18.04/20.04), so a pinned release runs from its tarball with python3.
 # Requires NASM (>= 2.14) for x86 assembly; nasm is installed earlier in _targets.
 set(_install_libdav1d "
-mkdir -p ${TEMP_PATH}/dav1d/_meson && cd ${TEMP_PATH}/dav1d/_meson &&
+rm -rf ${TEMP_PATH}/dav1d && mkdir -p ${TEMP_PATH}/dav1d/_meson && cd ${TEMP_PATH}/dav1d/_meson &&
 ome_fetch ${MESON_SOURCE_URL} &&
 cd ${TEMP_PATH}/dav1d &&
 ome_fetch ${DAV1D_SOURCE_URL} &&
