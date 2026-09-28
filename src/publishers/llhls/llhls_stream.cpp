@@ -816,6 +816,19 @@ bool LLHlsStream::DumpInitSegment(const std::shared_ptr<mdl::Dump> &item, const 
 		return false;
 	}
 
+	auto chunklist = GetChunklistWriter(track_id);
+	if (chunklist == nullptr)
+	{
+		logtw("Could not find chunklist for track_id = %d", track_id);
+		return false;
+	}
+
+	// Nothing to dump when the chunklist references no initialization segment
+	if (chunklist->HasMapUri() == false)
+	{
+		return true;
+	}
+
 	auto storage = GetFmp4Storage(track_id);
 	if (storage == nullptr)
 	{
@@ -2335,18 +2348,19 @@ bool LLHlsStream::CheckPlaylistReady()
 
 	storage_lock.unlock();
 
+	// Copy to avoid taking _chunklist_map_lock again in DumpInitSegment()
 	std::shared_lock<std::shared_mutex> chunklist_lock(_chunklist_map_lock);
+	auto chunklist_map = _chunklist_map;
+	chunklist_lock.unlock();
 
 	double min_part_hold_back = (static_cast<double>(_max_chunk_duration_ms) / 1000.0f) * 3.0f;
 	double final_part_hold_back = std::max(min_part_hold_back, _configured_part_hold_back);
-	for (const auto &[track_id, chunklist] : _chunklist_map)
+	for (const auto &[track_id, chunklist] : chunklist_map)
 	{
 		chunklist->SetPartHoldBack(final_part_hold_back);
 
 		DumpInitSegmentOfAllItems(chunklist->GetTrack()->GetId());
 	}
-
-	chunklist_lock.unlock();
 
 	logti("LLHlsStream(%s/%s) - Ready to play : Part Hold Back = %f", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_part_hold_back);
 

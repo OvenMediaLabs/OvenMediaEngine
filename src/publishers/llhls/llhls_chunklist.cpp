@@ -112,6 +112,12 @@ const ov::String& LLHlsChunklist::GetUrl() const
 	return _url;
 }
 
+bool LLHlsChunklist::HasMapUri() const
+{
+	// _map_uri is fixed at construction
+	return _map_uri.IsEmpty() == false;
+}
+
 void LLHlsChunklist::SetPartHoldBack(const float &part_hold_back)
 {
 	_part_hold_back = part_hold_back;

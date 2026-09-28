@@ -305,6 +305,9 @@ public:
 
 	const ov::String& GetUrl() const;
 
+	// Whether the chunklist references an initialization segment (EXT-X-MAP)
+	bool HasMapUri() const;
+
 	// Set all renditions info for ABR
 	void SetRenditions(const std::map<int32_t, std::shared_ptr<LLHlsChunklist>> &renditions);
 
