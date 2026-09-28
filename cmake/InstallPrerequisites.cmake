@@ -252,10 +252,10 @@ if(OSNAME MATCHES "Ubuntu")
         tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build python3" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build python3" "dnf base packages")
+        cmake libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "dnf base packages")
 elseif(OSNAME MATCHES "Amazon Linux")
     ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages")
+        cmake libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages")
 elseif(OSNAME MATCHES "Fedora")
     ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
         bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages (fedora)")
