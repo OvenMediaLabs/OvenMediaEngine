@@ -2736,6 +2736,8 @@ int64_t LLHlsStream::GetMinimumLastSegmentNumber() const
 
 std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::Dump> &info)
 {
+	// Same order as CheckPlaylistReady(): _playlist_ready_lock, then _dumps_lock
+	std::shared_lock<std::shared_mutex> lock_playlist_ready(_playlist_ready_lock);
 	std::lock_guard<std::shared_mutex> lock(_dumps_lock);
 
 	for (const auto &it : _dumps)
@@ -2756,8 +2758,6 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 	auto dump_info = std::make_shared<mdl::Dump>(info);
 	dump_info->SetEnabled(true);
 
-	// lock playlist ready
-	std::shared_lock<std::shared_mutex> lock_playlist_ready(_playlist_ready_lock);
 	if (IsReadyToPlay() == false)
 	{
 		// If the playlist is not ready, add it to the queue and wait for the playlist to be ready.

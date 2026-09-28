@@ -489,6 +489,28 @@ TEST(LLHlsChunklist, DumpedOutputKeepsEveryVersionKey)
 	}
 }
 
+TEST(LLHlsChunklist, HasMapUriMatchesEmittedMap)
+{
+	auto with_map = CreateChunklist(CreateVideoTrack());
+	AppendSegment(with_map, 0, 1, kInitialMapUri);
+
+	EXPECT_TRUE(with_map->HasMapUri());
+	EXPECT_NE(with_map->ToString("", false, false, false).IndexOf("#EXT-X-MAP"), -1);
+	EXPECT_NE(with_map->ToString("", false, false, false, true, 0).IndexOf("#EXT-X-MAP"), -1);
+
+	// A track without an initialization segment (e.g. WebVTT)
+	auto subtitle_track = std::make_shared<MediaTrack>();
+	subtitle_track->SetId(2);
+	subtitle_track->SetMediaType(cmn::MediaType::Subtitle);
+	subtitle_track->SetPublicName("subtitle");
+	auto without_map = std::make_shared<LLHlsChunklist>("chunklist_2_subtitle_key_llhls.m3u8", subtitle_track, 10, 6, 0.5, "", true);
+	AppendSegment(without_map, 0, 1, "");
+
+	EXPECT_FALSE(without_map->HasMapUri());
+	EXPECT_EQ(without_map->ToString("", false, false, false).IndexOf("#EXT-X-MAP"), -1);
+	EXPECT_EQ(without_map->ToString("", false, false, false, true, 0).IndexOf("#EXT-X-MAP"), -1);
+}
+
 TEST(LLHlsChunklist, ClearVersionEndsTheKeyScope)
 {
 	auto chunklist = CreateChunklist(CreateVideoTrack());
