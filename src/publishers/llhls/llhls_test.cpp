@@ -375,6 +375,36 @@ TEST(LLHlsChunklist, UpcomingVersionKeepingTheKeyHintsMapWithoutRepeatingKey)
 	EXPECT_EQ(CountOccurrences(playlist, KeyIdAttribute(kKeyIdA)), 1);
 }
 
+TEST(LLHlsChunklist, ClearUpcomingVersionHintsMapWithMethodNone)
+{
+	auto chunklist = CreateChunklist(CreateVideoTrack());
+	chunklist->EnableCenc(1, MakeCencProperty(kKeyIdA));
+	// The track changed to a codec CENC cannot encrypt, so the upcoming version is
+	// produced in the clear and registered before its map is hinted
+	chunklist->EnableCenc(2, bmff::CencProperty());
+
+	AppendSegment(chunklist, 0, 1, kInitialMapUri);
+	AppendSegment(chunklist, 1, 1, kInitialMapUri, false, "", kSecondMapUri, 2);
+
+	auto playlist = chunklist->ToString("", false, false, false);
+
+	// The update that hints the clear map ends the scope of the key ahead of the hint
+	auto none_index = playlist.IndexOf("#EXT-X-KEY:METHOD=NONE");
+	auto map_hint_index = playlist.IndexOf("#EXT-X-PRELOAD-HINT:TYPE=MAP,URI=\"init_1_video_key_v2_llhls.m4s\"");
+	EXPECT_NE(none_index, -1);
+	EXPECT_NE(map_hint_index, -1);
+	EXPECT_LT(playlist.IndexOf("seg_1_1_video_key_llhls.m4s"), none_index);
+	EXPECT_LT(none_index, map_hint_index);
+	EXPECT_EQ(CountOccurrences(playlist, ov::String("#EXT-X-KEY:METHOD=NONE")), 1);
+
+	// Once the clear version is listed, METHOD=NONE precedes its segment, once
+	AppendSegment(chunklist, 2, 2, kSecondMapUri, true);
+	playlist = chunklist->ToString("", false, false, false);
+	EXPECT_EQ(playlist.IndexOf("#EXT-X-PRELOAD-HINT:TYPE=MAP"), -1);
+	EXPECT_EQ(CountOccurrences(playlist, ov::String("#EXT-X-KEY:METHOD=NONE")), 1);
+	EXPECT_LT(playlist.IndexOf("#EXT-X-KEY:METHOD=NONE"), playlist.IndexOf("seg_1_2_video_key_llhls.m4s"));
+}
+
 TEST(LLHlsChunklist, CompletingChunkWithUnchangedMapDoesNotHintMap)
 {
 	auto chunklist = CreateChunklist(CreateVideoTrack());

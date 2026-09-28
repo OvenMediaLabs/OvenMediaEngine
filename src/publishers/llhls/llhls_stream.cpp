@@ -1637,7 +1637,7 @@ void LLHlsStream::RotateDrmKey()
 	ApplyRotatedKey(next_property);
 
 	auto key_id_hex = (next_property.key_id != nullptr) ? next_property.key_id->ToHexString().UpperCaseString() : ov::String("-");
-	logti("LLHlsStream(%s/%s) - DRM key rotated: KEYID 0x%s, period %" PRIu64, GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_id_hex.CStr(), applied_index);
+	logti("LLHlsStream(%s/%s) - DRM key rotation requested: KEYID 0x%s, period %" PRIu64, GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_id_hex.CStr(), applied_index);
 }
 
 void LLHlsStream::CheckAutoKeyRotation(int64_t media_time_ms)
@@ -1732,18 +1732,19 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 		return;
 	}
 
-	// The chunklist advertises the EXT-X-KEY for the new content version as its first
-	// segment appears (OnMediaChunkUpdated), using the packager's actual encryption
-	// state. When the codec changes to one CENC cannot encrypt (e.g. H265, AV1), the
-	// current policy keeps the track producing clear output, so no key is registered
-	// for that version and the playlist stops advertising EXT-X-KEY.
+	// The new initialization section is stored from here, safe to hint its map. The
+	// key the new version was packaged with is registered first, so the update that
+	// hints the map also advertises it. When the codec changes to one CENC cannot
+	// encrypt (e.g. AV1), the current policy keeps the track producing clear output,
+	// and the version is registered with a scheme of None, which the chunklist
+	// advertises as METHOD=NONE.
 	// TODO: when the DRM-failure policy is decided, this may change to blocking the
 	// track update instead of producing clear output.
-
-	// The new initialization section is stored from here, safe to hint its map
 	if (has_published_content == true && chunklist != nullptr)
 	{
-		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, packager->GetCurrentContentVersion()), packager->GetCurrentContentVersion());
+		auto content_version = packager->GetCurrentContentVersion();
+		RegisterCencPropertyForVersion(track_id, chunklist, packager, content_version);
+		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, content_version), content_version);
 	}
 
 	// Players keep renditions in sync by their discontinuity sequences, so every
@@ -1879,7 +1880,8 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	if (cenc_property.scheme != bmff::CencProtectScheme::None && bmff::IsCencSupportedCodec(media_track->GetCodecId()) == false)
 	{
 		cenc_property.scheme = bmff::CencProtectScheme::None;
-		logte("LLHlsStream::AddPackager() - CENC is not supported for this codec(%s), this track will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()));
+		// DRM is configured for this stream, but this track cannot be encrypted at all
+		logtc("LLHlsStream(%s/%s) - DRM is enabled but the codec(%s) of track(%u) cannot be encrypted with CENC. The track is served without protection", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), cmn::GetCodecIdString(media_track->GetCodecId()), media_track->GetId());
 	}
 
 	// The boundary policy decides where each segment of this track ends and

@@ -52,7 +52,8 @@ namespace bmff
 
 		if (_cenc_property.scheme != CencProtectScheme::None && IsCencSupportedCodec(media_track->GetCodecId()) == false)
 		{
-			logte("CENC is not supported for the changed codec(%s), track(%u) will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()), media_track->GetId());
+			// DRM is configured for this track, but the output cannot be encrypted from here on
+			logtc("DRM is enabled but the changed codec(%s) of track(%u) cannot be encrypted with CENC. The track is served without protection from this version on", cmn::GetCodecIdString(media_track->GetCodecId()), media_track->GetId());
 			_cenc_property.scheme = CencProtectScheme::None;
 		}
 
@@ -80,7 +81,8 @@ namespace bmff
 
 		if (_cenc_property.scheme != CencProtectScheme::None && IsCencSupportedCodec(_media_track->GetCodecId()) == false)
 		{
-			logte("CENC is not supported for the codec(%s), track(%u) will be excluded from CENC protection", cmn::GetCodecIdString(_media_track->GetCodecId()), _media_track->GetId());
+			// DRM is configured for this track, but the output cannot be encrypted
+			logtc("DRM is enabled but the codec(%s) of track(%u) cannot be encrypted with CENC. The track is served without protection", cmn::GetCodecIdString(_media_track->GetCodecId()), _media_track->GetId());
 			_cenc_property.scheme = CencProtectScheme::None;
 		}
 
