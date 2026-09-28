@@ -453,6 +453,7 @@ Content-Type: application/json
 						"fileName": "llhls",
 						"options": {
 							"webrtcAutoAbr": true,
+							"webrtcAudioOnlyFallback": false,
 							"hlsChunklistPathDepth": -1,
 							"enableTsPackaging": false
 						},
@@ -1013,11 +1014,16 @@ components:
           type: object
           required:
             - webrtcAutoAbr
+            - webrtcAudioOnlyFallback
             - hlsChunklistPathDepth
             - enableTsPackaging
           properties:
             webrtcAutoAbr:
               type: boolean
+            webrtcAudioOnlyFallback:
+              type: boolean
+              default: false
+              description: Include audio-only renditions in WebRTC video playlists with a matching audio codec, allowing manual switching without renegotiation.
             hlsChunklistPathDepth:
               type: integer
             enableTsPackaging:

@@ -645,6 +645,10 @@ components:
           type: boolean
           deprecated: true
           description: Deprecated alias of webrtcAutoAbr. During the deprecation window it is accepted on requests (a request that sends both keys with different values is rejected) and included in responses alongside webrtcAutoAbr, and will be removed in a future release.
+        webrtcAudioOnlyFallback:
+          type: boolean
+          default: false
+          description: Include audio-only renditions in WebRTC video playlists with a matching audio codec, allowing manual switching without renegotiation.
         hlsChunklistPathDepth:
           type: integer
           format: int32
@@ -956,10 +960,14 @@ components:
           description: Omitted when the rendition has no audio variant.
     StreamPlaylistOptions:
       type: object
-      required: [webrtcAutoAbr,hlsChunklistPathDepth,enableTsPackaging]
+      required: [webrtcAutoAbr,webrtcAudioOnlyFallback,hlsChunklistPathDepth,enableTsPackaging]
       properties:
         webrtcAutoAbr:
           type: boolean
+        webrtcAudioOnlyFallback:
+          type: boolean
+          default: false
+          description: Include audio-only renditions in WebRTC video playlists with a matching audio codec, allowing manual switching without renegotiation.
         hlsChunklistPathDepth:
           type: integer
           format: int32

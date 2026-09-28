@@ -234,6 +234,7 @@ namespace serdes
 		CONVERTER_RETURN_IF(false, Json::objectValue);
 
 		object["webrtcAutoAbr"] = playlist->IsWebRtcAutoAbr();
+		object["webrtcAudioOnlyFallback"] = playlist->IsWebRtcAudioOnlyFallback();
 		object["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
 		object["enableTsPackaging"] = playlist->IsTsPackagingEnabled();
 	}

@@ -220,6 +220,8 @@ If `<Options>/<WebRtcAutoAbr>` is set to true, OvenMediaEngine will measure the 
 
 If `<Options>/<WebRtcAudioOnlyFallback>` is set to true, OvenMediaEngine cross-adds any audio-only rendition of the playlist (a `<Rendition>` with no `<Video>`) into every video playlist (codec bucket) that shares its audio codec. A WebRTC player can then switch to the audio-only rendition on the same PeerConnection without renegotiation — for example to keep audio while dropping video bandwidth when the player is in the background. The option is off by default. Automatic ABR never switches to the audio-only rendition; it is reachable only by an explicit rendition change, and a session that has switched to it stays there until the player switches back.
 
+Switching back from audio-only to a video rendition takes effect at that rendition's next keyframe. The switch does not request a keyframe, so video can take up to one GOP (keyframe interval) to resume.
+
 ```xml
 <Playlist>
     <Name>for webrtc</Name>

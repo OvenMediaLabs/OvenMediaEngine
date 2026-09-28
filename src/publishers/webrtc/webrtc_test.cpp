@@ -2,7 +2,7 @@
 //
 //  OvenMediaEngine
 //
-//  Copyright (c) 2026 AirenSoft. All rights reserved.
+//  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -249,7 +249,6 @@ TEST(RtcMasterPlaylist, VideoOnlyRenditionsNoAudioTrack)
 TEST(RtcMasterPlaylist, AudioOnlyFallbackDisabledNoCrossAdd)
 {
 	RtcMasterPlaylist master("m", "m");
-	master.SetWebRtcAudioOnlyFallback(false);  // explicit; this is the default
 	master.AddRendition(MakeRendition("video", MediaCodecId::H264, 2000000, MediaCodecId::Opus, 128000));
 	master.AddRendition(MakeRendition("audio", MediaCodecId::None, 0, MediaCodecId::Opus, 48000));
 
