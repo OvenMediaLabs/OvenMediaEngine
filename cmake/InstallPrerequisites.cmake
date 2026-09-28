@@ -257,8 +257,8 @@ elseif(OSNAME MATCHES "Amazon Linux")
     ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
         cmake libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages")
 elseif(OSNAME MATCHES "Fedora")
-    ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
-        bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages (fedora)")
+    ome_run("sudo yum install -y gcc-c++ make autoconf libtool bzip2 zlib-devel tcl cmake \
+        bc libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages (fedora)")
 elseif(OSNAME MATCHES "Mac OS X")
     ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja python3" "brew base packages")
 else()
