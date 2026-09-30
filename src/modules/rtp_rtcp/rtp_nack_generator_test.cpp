@@ -155,7 +155,7 @@ TEST(RtpNackGenerator, RetryNotDoubleFiredWithinInterval)
 	ASSERT_EQ(first_round.size(), 1u);
 
 	auto immediate_again = gen.BuildPendingNack();
-	EXPECT_TRUE(immediate_again.empty()) << "should not retry before retry_interval (ewma + 4 * dev) elapses";
+	EXPECT_TRUE(immediate_again.empty()) << "should not retry before retry_interval (rtt + margin) elapses";
 }
 
 // RTT longer than the initial retry interval: the first loss event needs a
