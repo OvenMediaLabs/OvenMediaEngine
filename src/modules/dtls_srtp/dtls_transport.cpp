@@ -94,6 +94,12 @@ bool DtlsTransport::InitializeTlsLocked()
 					case BIO_CTRL_FLUSH:
 						return 1;
 
+					// OpenSSL fragments handshake messages to this size.
+					// The fallback it queries after repeated retransmission timeouts stays the same.
+					case BIO_CTRL_DGRAM_QUERY_MTU:
+					case BIO_CTRL_DGRAM_GET_FALLBACK_MTU:
+						return DTLS_HANDSHAKE_MTU;
+
 					default:
 						return 0;
 				}
