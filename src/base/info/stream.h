@@ -140,7 +140,23 @@ namespace info
 		std::shared_ptr<const MediaTrack> GetTrackByVariant(const ov::String &variant_name, uint32_t order) const;
 
 		bool AddPlaylist(const std::shared_ptr<const Playlist> &playlist);
+
+		// Drops every playlist so a re-describe can install the new origin's set
+		void ClearPlaylists();
+
 		std::shared_ptr<const Playlist> GetPlaylist(const ov::String &file_name) const;
+
+		// Fills each rendition's track ids from this stream's groups:
+		// video for any hint (`-1` means group 0), audio only for a hint >= 0 (`-1` means the whole group).
+		// A side that does not resolve stays empty and is logged;
+		// the stream is never failed for it.
+		void ResolveRenditionTrackIds(const std::shared_ptr<Playlist> &playlist) const;
+
+		// The track a rendition side refers to by id, confirmed against this stream:
+		// the track must exist, carry the rendition's variant name and be of `media_type`.
+		// nullptr when there is no id or the confirmation fails;
+		// `id_unconfirmed` is set only in the latter case so the caller can count it.
+		std::shared_ptr<const MediaTrack> GetRenditionTrack(const Rendition &rendition, cmn::MediaType media_type, bool *id_unconfirmed = nullptr) const;
 		// Returns a snapshot: playlists are still inserted after the stream is published,
 		// so handing out a reference would let a caller iterate while another thread inserts.
 		std::map<ov::String, std::shared_ptr<const Playlist>> GetPlaylists() const;

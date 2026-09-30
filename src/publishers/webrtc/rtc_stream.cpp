@@ -404,14 +404,31 @@ std::shared_ptr<RtcMasterPlaylist> RtcStream::CreateRtcMasterPlaylist(const ov::
 			video_index_hint = 0;
 		}
 
+		// -1 still means "group 0" here,
+		// so an audio side without a track id (the -1 case) stays an index reference
 		auto audio_index_hint = rendition->GetAudioIndexHint();
 		if (audio_index_hint < 0)
 		{
 			audio_index_hint = 0;
 		}
 
-		auto video_track = GetTrackByVariant(rendition->GetVideoVariantName(), video_index_hint);
-		auto audio_track = GetTrackByVariant(rendition->GetAudioVariantName(), audio_index_hint);
+		// A confirmed track id picks the track; otherwise the index hint does, as before
+		bool video_id_unconfirmed = false;
+		bool audio_id_unconfirmed = false;
+		auto video_track		  = GetRenditionTrack(*rendition, cmn::MediaType::Video, &video_id_unconfirmed);
+		auto audio_track		  = GetRenditionTrack(*rendition, cmn::MediaType::Audio, &audio_id_unconfirmed);
+		if (video_id_unconfirmed || audio_id_unconfirmed)
+		{
+			logtw("RtcStream(%s/%s) - The track id of the rendition(%s) in the %s playlist did not match a track; falling back to the index hint", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), rendition->GetName().CStr(), playlist->GetFileName().CStr());
+		}
+		if (video_track == nullptr)
+		{
+			video_track = GetTrackByVariant(rendition->GetVideoVariantName(), video_index_hint);
+		}
+		if (audio_track == nullptr)
+		{
+			audio_track = GetTrackByVariant(rendition->GetAudioVariantName(), audio_index_hint);
+		}
 
 		if (video_track == nullptr && audio_track == nullptr)
 		{

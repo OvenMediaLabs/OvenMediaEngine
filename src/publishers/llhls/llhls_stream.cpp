@@ -693,7 +693,23 @@ std::shared_ptr<LLHlsMasterPlaylist> LLHlsStream::CreateMasterPlaylist(const std
 		{
 			video_index_hint = 0;
 		}
-		auto video_track = GetFirstTrackByVariant(rendition->GetVideoVariantName());
+
+		// A confirmed track id picks the video track and the master playlist entry it maps to;
+		// otherwise the group's first track and the index hint do, as before
+		bool video_id_unconfirmed = false;
+		auto video_track		  = GetRenditionTrack(*rendition, cmn::MediaType::Video, &video_id_unconfirmed);
+		if (video_track != nullptr)
+		{
+			video_index_hint = video_track->GetGroupIndex();
+		}
+		else
+		{
+			if (video_id_unconfirmed)
+			{
+				logtw("LLHlsStream(%s/%s) - The video track id of the rendition %s in %s did not match a track; falling back to the index hint", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), rendition->GetName().CStr(), playlist->GetFileName().CStr());
+			}
+			video_track = GetFirstTrackByVariant(rendition->GetVideoVariantName());
+		}
 
 		// LLHLS Audio does not use audio_index_hint because it has multilingual support
 		auto audio_track = GetFirstTrackByVariant(rendition->GetAudioVariantName());

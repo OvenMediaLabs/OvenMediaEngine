@@ -27,9 +27,12 @@ OvtPacket::OvtPacket(const ov::Data &data)
 
 OvtPacket::OvtPacket(OvtPacket &src)
 {
-	_version			 = OVT_VERSION;
+	// `_version` and `_header_loaded` are copied like the rest: `Version()` reports what the packet
+	// carried, and a copy answers the header queries the same way the original does.
+	_version			 = src._version;
 	_marker				 = src._marker;
 	_payload_type		 = src._payload_type;
+	_header_loaded		 = src._header_loaded;
 	_timestamp			 = src._timestamp;
 	_sequence_number	 = src._sequence_number;
 	_session_id			 = src._session_id;
@@ -49,6 +52,7 @@ bool OvtPacket::LoadHeader(const ov::Data &data)
 {
 	if (data.GetLength() < OVT_FIXED_HEADER_SIZE)
 	{
+		_header_loaded		 = false;
 		_is_packet_available = false;
 		return false;
 	}
@@ -56,9 +60,23 @@ bool OvtPacket::LoadHeader(const ov::Data &data)
 	auto buffer = data.GetDataAs<uint8_t>();
 
 	uint8_t version = (buffer[0] & 0xC0) >> 6;
+	// Stored so `Version()` reports what the packet carried, not what this build writes
+	_version		= version;
 	if (version != OVT_VERSION)
 	{
 		loge("ERROR", "Version : %d, %d", buffer[0], version);
+		_header_loaded		 = false;
+		_is_packet_available = false;
+		return false;
+	}
+
+	// Checked before any header field is stored, so a rejected header leaves `IsHeaderAvailable()` false
+	// and the caller tells "cannot parse" from "not enough bytes yet".
+	auto payload_length = ByteReader<uint16_t>::ReadBigEndian(&buffer[16]);
+	if (payload_length > OVT_DEFAULT_MAX_PACKET_SIZE - OVT_FIXED_HEADER_SIZE)
+	{
+		loge("ERROR", "Invalid payload length : %u", payload_length);
+		_header_loaded		 = false;
 		_is_packet_available = false;
 		return false;
 	}
@@ -74,19 +92,12 @@ bool OvtPacket::LoadHeader(const ov::Data &data)
 
 	// Read header
 	SetMarker(buffer[0] & 0x20);
-	SetPayloadType(ByteReader<uint8_t>::ReadBigEndian(&buffer[1]));
+	SetRawPayloadType(ByteReader<uint8_t>::ReadBigEndian(&buffer[1]));
 	SetSequenceNumber(ByteReader<uint16_t>::ReadBigEndian(&buffer[2]));
 	SetTimestamp(ByteReader<uint64_t>::ReadBigEndian(&buffer[4]));
 	SetSessionId(ByteReader<uint32_t>::ReadBigEndian(&buffer[12]));
-
-	uint16_t payload_length = ByteReader<uint16_t>::ReadBigEndian(&buffer[16]);
-	if (payload_length > OVT_DEFAULT_MAX_PACKET_SIZE - OVT_FIXED_HEADER_SIZE)
-	{
-		loge("ERROR", "Invalid payload length : %u", payload_length);
-		_is_packet_available = false;
-		return false;
-	}
 	SetPayloadLength(payload_length);
+	_header_loaded = true;
 
 	if (PayloadLength() == 0)
 	{
@@ -123,9 +134,12 @@ bool OvtPacket::Load(const ov::Data &data)
 	return true;
 }
 
+// True once this object carries a header: `LoadHeader()` accepted one, or `SetPayloadType()` wrote one.
+// A rejected or never loaded header reads as unavailable,
+// which is how the depacketizer tells "cannot parse" from "not enough bytes yet".
 bool OvtPacket::IsHeaderAvailable() const
 {
-	return _payload_type > 0;
+	return _header_loaded;
 }
 
 bool OvtPacket::IsPacketAvailable() const
@@ -207,7 +221,16 @@ void OvtPacket::SetMarker(bool marker_bit)
 	}
 }
 
-void OvtPacket::SetPayloadType(uint8_t payload_type)
+void OvtPacket::SetPayloadType(OvtPayloadType payload_type)
+{
+	SetRawPayloadType(ov::ToUnderlyingType(payload_type));
+
+	// The build path writes its header here rather than loading one,
+	// so this is where a built packet starts answering the header queries.
+	_header_loaded = true;
+}
+
+void OvtPacket::SetRawPayloadType(uint8_t payload_type)
 {
 	_payload_type = payload_type;
 	_buffer[1]	  = payload_type;

@@ -268,7 +268,7 @@ namespace pub
 		for (const auto &x : _streams)
 		{
 			auto stream = x.second;
-			stream->EnterStop();
+			stream->EnterStop(Stream::StopCause::ApplicationStopped);
 		}
 
 		_streams.clear();
@@ -322,7 +322,7 @@ namespace pub
 		_streams.erase(info->GetId());
 
 		// Stop stream
-		stream->EnterStop();
+		stream->EnterStop(Stream::StopCause::StreamDeleted);
 
 		return true;
 	}
