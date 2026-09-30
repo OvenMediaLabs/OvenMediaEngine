@@ -2,6 +2,7 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 #include <chrono>
+#include <deque>
 #include <map>
 #include <optional>
 #include <vector>
@@ -21,15 +22,13 @@ class RtpNackGenerator
 {
 public:
 	static constexpr size_t MAX_PENDING		= 250;
-	// Absolute safety cap when the jitter buffer never advances past a seq
-	// (e.g. very first packet of a stream lost before any frame is built).
-	// In the normal path, the jitter buffer's DropPendingUpTo callback ends
-	// pending entries far sooner than this.
+	// Floor of the absolute age cap for a pending seq the jitter buffer never
+	// advances past (e.g. very first packet of a stream lost before any frame
+	// is built). The effective cap is at least max_hold_ms so retries outlive
+	// the buffer's hold; in the normal path DropPendingUpTo ends entries first.
 	static constexpr uint32_t MAX_AGE_MS	= 500;
-	// Number of NACK retries the hold window must accommodate. The hold
-	// formula reserves room for this many retry intervals plus one final
-	// RTT for the last RTX response. 5 is conservative against burst loss
-	// where independent-probability math doesn't apply.
+	// Number of round trips the hold window reserves. 5 is conservative
+	// against burst loss where independent-probability math doesn't apply.
 	static constexpr uint32_t MAX_NACK_RETRIES = 5;
 	// Dwell time between gap detection and the initial NACK firing.
 	// Absorbs small UDP reordering so that brief out-of-order delivery
@@ -37,14 +36,21 @@ public:
 	static constexpr uint32_t INITIAL_NACK_DWELL_MS = 10;
 
 	static constexpr uint32_t HOLD_MIN_MS		= 50;
-	static constexpr uint32_t HOLD_MAX_MS_DEFAULT = 400;
-	// Initial RTT guess used as both the seed for the retry interval and
-	// the substitute EWMA value while no NACK->RTX sample has been recorded
-	// (or after long stats decay). Real value lands within a few hundred ms.
-	static constexpr double INITIAL_RTT_GUESS_MS = 15.0;
-	static constexpr double EWMA_ALPHA			= 0.125;
-	static constexpr double EWMA_DEV_ALPHA		= 0.25;
-	static constexpr double EWMA_DEV_MULTIPLIER	= 4.0;
+	// Bounds the one-off stall when a frame never recovers. 600 keeps two
+	// retransmission attempts inside the window up to a ~250ms round trip.
+	static constexpr uint32_t HOLD_MAX_MS_DEFAULT = 600;
+	// Initial RTT guess, held in the sample window until real samples push it
+	// out. Err high: an overestimate only lengthens the give-up wait on frames
+	// that never recover, while an underestimate discards recoverable ones.
+	static constexpr double INITIAL_RTT_GUESS_MS = 100.0;
+	// The RTT estimate is the max of this many recent samples. A max reacts to
+	// a slower path on the first clean sample and is immune to a stray sample
+	// that arrived faster than any real answer could.
+	static constexpr size_t RTT_WINDOW_SIZE = 8;
+	// Margin added to the RTT for the retry interval. Retries are quantized by
+	// the caller's flush cadence, so a smaller margin would fire spurious
+	// retries just ahead of an on-time RTX.
+	static constexpr uint32_t MIN_RETRY_MARGIN_MS = 20;
 	static constexpr uint32_t STATS_DECAY_MS	= 30 * 1000;
 	static constexpr uint32_t STATS_LOG_INTERVAL_MS = 5 * 1000;
 
@@ -73,11 +79,10 @@ public:
 	std::optional<uint16_t> GetLowestPendingSeq() const;
 
 	// Jitter-buffer hold window recommendation in ms.
-	//   hold = dwell + MAX_NACK_RETRIES * ewma + 4 * dev
-	// clamped to [HOLD_MIN_MS, max_hold_ms]. Each round (NACK + RTX answer)
-	// takes one ewma, so N rounds complete in N * ewma. Before the first
-	// NACK->RTX sample (or after STATS_DECAY_MS of no new sample), ewma
-	// falls back to INITIAL_RTT_GUESS_MS and dev to 0.
+	//   hold = dwell + MAX_NACK_RETRIES * rtt
+	// clamped to [HOLD_MIN_MS, max_hold_ms], where rtt is the max of the
+	// recent sample window (seeded with INITIAL_RTT_GUESS_MS). After
+	// STATS_DECAY_MS without a new sample it is raised to at least the guess.
 	uint32_t GetRecommendedHoldMs() const;
 
 private:
@@ -95,6 +100,11 @@ private:
 	void LogPeriodicStats(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
 	// Hold recommendation core; assumes _lock is already held.
 	uint32_t GetRecommendedHoldMsInternal() const OV_REQUIRES(_lock);
+	// NACK retry interval: (rtt + MIN_RETRY_MARGIN_MS) scaled by the current
+	// backoff, capped at max_hold_ms.
+	uint32_t GetRetryIntervalMsInternal() const OV_REQUIRES(_lock);
+	// Max of the recent sample window, raised to the guess after a drought.
+	double CurrentRttMsInternal() const OV_REQUIRES(_lock);
 
 	uint32_t _track_id = 0;
 	uint32_t _media_ssrc = 0;
@@ -106,14 +116,18 @@ private:
 
 	std::map<uint32_t /*extended seq*/, PendingEntry> _pending OV_GUARDED_BY(_lock);
 
-	// NACK->RTX latency stats (smoothed mean + mean-deviation, milliseconds).
-	// _ewma_ms doubles as the NACK retry interval. Seeded with the same
-	// initial RTT guess that GetRecommendedHoldMs falls back to, so retry
-	// timing and hold timing agree before the first sample lands.
-	bool _stats_initialized OV_GUARDED_BY(_lock) = false;
-	double _ewma_ms OV_GUARDED_BY(_lock) = INITIAL_RTT_GUESS_MS;
-	double _ewma_dev_ms OV_GUARDED_BY(_lock) = 0.0;
+	// Recent NACK->RTX round-trip samples in milliseconds, newest last. Only
+	// single-NACK recoveries are sampled (Karn). The initial guess sits in
+	// the window as a sample, so the estimate starts conservative and hands
+	// over to real samples only once enough of them landed.
+	std::deque<double> _rtt_window_ms OV_GUARDED_BY(_lock) = {INITIAL_RTT_GUESS_MS};
+	bool _has_rtt_sample OV_GUARDED_BY(_lock) = false;
 	std::chrono::steady_clock::time_point _last_sample_at OV_GUARDED_BY(_lock);
+
+	// Retry backoff multiplier. Doubles on every retry round and resets on a
+	// clean sample, so the interval outgrows an RTT the estimator could not
+	// measure yet (Karn's rule alone would never sample it).
+	uint32_t _retry_backoff OV_GUARDED_BY(_lock) = 1;
 
 	// Cumulative monitoring counters. Logged every STATS_LOG_INTERVAL_MS as
 	// deltas (loss / recovery snapshot) and as cumulative totals.

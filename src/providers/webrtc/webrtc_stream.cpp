@@ -353,7 +353,7 @@ namespace pvd
 			payload_attr->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
 		{
 			uint32_t media_ssrc = remote_media_desc->GetSsrc().value_or(0);
-			uint32_t max_hold_ms = 400;
+			uint32_t max_hold_ms = RtpNackGenerator::HOLD_MAX_MS_DEFAULT;
 			auto app = GetApplication();
 			if (app != nullptr)
 			{

@@ -1,7 +1,6 @@
 #include "rtp_nack_generator.h"
 
 #include <algorithm>
-#include <cmath>
 
 #define OV_LOG_TAG "RtpNack"
 
@@ -119,11 +118,12 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 					  _track_id, _media_ssrc, static_cast<uint16_t>(extended & 0xFFFF),
 					  latency_ms, it->second.retry_count);
 
-				// Karn algorithm: only sample latency when exactly one NACK was
-				// sent for this seq; retransmits introduce ambiguity.
+				// Karn: only a single-NACK recovery is an unambiguous sample.
+				// A clean sample also ends any retry backoff in force.
 				if (it->second.retry_count == 1)
 				{
 					UpdateLatencyStats(static_cast<double>(latency_ms), now);
+					_retry_backoff = 1;
 				}
 				_recovered_total++;
 			}
@@ -142,7 +142,7 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 	DiscardStale(now);
 
-	auto retry_interval = std::chrono::milliseconds(static_cast<int64_t>(_ewma_ms));
+	auto retry_interval = std::chrono::milliseconds(GetRetryIntervalMsInternal());
 	auto dwell = std::chrono::milliseconds(INITIAL_NACK_DWELL_MS);
 
 	std::vector<uint16_t> ids;
@@ -169,8 +169,8 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 		}
 		else if ((now - entry.last_nack_at) >= retry_interval)
 		{
-			// Retry every RTT until the jitter buffer ends the entry (via
-			// DropPendingUpTo) or MAX_AGE_MS absolute cap fires.
+			// Retry until the jitter buffer ends the entry (via
+			// DropPendingUpTo) or the absolute age cap fires.
 			ids.push_back(static_cast<uint16_t>(kv.first & 0xFFFF));
 			entry.last_nack_at = now;
 			entry.retry_count++;
@@ -180,14 +180,54 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 	_nacks_sent_total += ids.size();
 
+	if (retry_count_total > 0 && GetRetryIntervalMsInternal() < _hold_max_ms)
+	{
+		// One doubling per retry round, not per entry, so a burst of
+		// simultaneous retries does not blow the multiplier up at once.
+		_retry_backoff *= 2;
+	}
+
 	if (ids.empty() == false)
 	{
-		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) hold(%ums)",
+		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) "
+			  "interval(%ums) backoff(x%u) hold(%ums)",
 			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(),
-			  GetRecommendedHoldMsInternal());
+			  GetRetryIntervalMsInternal(), _retry_backoff, GetRecommendedHoldMsInternal());
 	}
 
 	return ids;
+}
+
+double RtpNackGenerator::CurrentRttMsInternal() const
+{
+	double rtt = *std::max_element(_rtt_window_ms.begin(), _rtt_window_ms.end());
+
+	if (_has_rtt_sample)
+	{
+		auto since_last_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+								 std::chrono::steady_clock::now() - _last_sample_at)
+								 .count();
+		if (since_last_ms > STATS_DECAY_MS)
+		{
+			// A sample drought means recovery is failing or loss went quiet,
+			// not that the path got faster; never fall back below the guess.
+			rtt = std::max(rtt, INITIAL_RTT_GUESS_MS);
+		}
+	}
+
+	return rtt;
+}
+
+uint32_t RtpNackGenerator::GetRetryIntervalMsInternal() const
+{
+	// The window max already carries the jitter, so a fixed margin is enough
+	// to keep the retry clear of an on-time RTX.
+	double interval = (CurrentRttMsInternal() + MIN_RETRY_MARGIN_MS) * _retry_backoff;
+	if (interval > _hold_max_ms)
+	{
+		interval = _hold_max_ms;
+	}
+	return static_cast<uint32_t>(interval);
 }
 
 uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
@@ -198,29 +238,9 @@ uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
 
 uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
 {
-	// Use real EWMA when we have a fresh sample; otherwise fall back to the
-	// initial RTT guess (same source used to seed _ewma_ms for retry interval).
-	double ewma = INITIAL_RTT_GUESS_MS;
-	double dev = 0.0;
-	if (_stats_initialized)
-	{
-		auto since_last_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-								 std::chrono::steady_clock::now() - _last_sample_at)
-								 .count();
-		if (since_last_ms <= STATS_DECAY_MS)
-		{
-			ewma = _ewma_ms;
-			dev = _ewma_dev_ms;
-		}
-	}
-
-	// Hold long enough for MAX_NACK_RETRIES rounds: each NACK fires every
-	// `ewma` and its RTX answer arrives one `ewma` later, so N rounds
-	// complete by N * ewma after the first NACK. `dev` absorbs the variance
-	// the round-trip sample already captures.
-	double hold = INITIAL_NACK_DWELL_MS
-				+ MAX_NACK_RETRIES * ewma
-				+ EWMA_DEV_MULTIPLIER * dev;
+	// Hold long enough for MAX_NACK_RETRIES rounds at the slowest recent
+	// round trip.
+	double hold = INITIAL_NACK_DWELL_MS + MAX_NACK_RETRIES * CurrentRttMsInternal();
 	if (hold < HOLD_MIN_MS) hold = HOLD_MIN_MS;
 	if (hold > _hold_max_ms) hold = _hold_max_ms;
 
@@ -288,41 +308,33 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 		double avg_retry = static_cast<double>(total_retry) / static_cast<double>(dropped);
 		logtd("DropPendingUpTo track(%u) ssrc(%u) up_to_seq(%u) dropped(%zu) range[%u..%u] "
 			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) "
-			  "ewma(%.1f) dev(%.1f) hold(%u)",
+			  "rtt(%.1f) hold(%u)",
 			  _track_id, _media_ssrc, max_seq, dropped, first_dropped_seq, last_dropped_seq,
 			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(),
-			  _ewma_ms, _ewma_dev_ms, GetRecommendedHoldMsInternal());
+			  CurrentRttMsInternal(), GetRecommendedHoldMsInternal());
 	}
 }
 
 void RtpNackGenerator::UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now)
 {
-	// A latency that rounds down to 0ms would drive _ewma_ms to 0 and make the
-	// retry interval 0, retrying on every flush. Floor the sample at 1ms.
 	if (sample_ms < 1.0)
 	{
 		sample_ms = 1.0;
 	}
 
-	if (_stats_initialized == false)
+	_rtt_window_ms.push_back(sample_ms);
+	if (_rtt_window_ms.size() > RTT_WINDOW_SIZE)
 	{
-		_ewma_ms = sample_ms;
-		_ewma_dev_ms = sample_ms / 2.0;
-		_stats_initialized = true;
-	}
-	else
-	{
-		double err = sample_ms - _ewma_ms;
-		_ewma_ms += EWMA_ALPHA * err;
-		_ewma_dev_ms += EWMA_DEV_ALPHA * (std::fabs(err) - _ewma_dev_ms);
+		_rtt_window_ms.pop_front();
 	}
 
+	_has_rtt_sample = true;
 	_last_sample_at = now;
 }
 
 void RtpNackGenerator::DiscardStale(std::chrono::steady_clock::time_point now)
 {
-	auto max_age = std::chrono::milliseconds(MAX_AGE_MS);
+	auto max_age = std::chrono::milliseconds(std::max(MAX_AGE_MS, _hold_max_ms));
 
 	for (auto it = _pending.begin(); it != _pending.end();)
 	{

@@ -99,7 +99,7 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
     <RtcpBasedTimestamp>false</RtcpBasedTimestamp>
     <Rtx>
         <Enable>true</Enable>
-        <MaxHoldMs>400</MaxHoldMs>
+        <MaxHoldMs>600</MaxHoldMs>
     </Rtx>
     <CrossDomains>
         <Url>*</Url>
@@ -122,14 +122,14 @@ When `<Rtx><Enable>true</Enable></Rtx>` is set, OvenMediaEngine negotiates NACK 
 ```xml
 <Rtx>
     <Enable>true</Enable>          <!-- default: false -->
-    <MaxHoldMs>400</MaxHoldMs>     <!-- default: 400 -->
+    <MaxHoldMs>600</MaxHoldMs>     <!-- default: 600 -->
 </Rtx>
 ```
 
 | Parameter | Description |
 |---|---|
 | `Enable` | Turn NACK + RTX on. Disabled by default. |
-| `MaxHoldMs` | Upper bound (ms) for how long the jitter buffer waits for an incomplete frame to recover before discarding it. Acts as a latency ceiling: a larger value increases recovery success in high-RTT or lossy networks at the cost of more end-to-end delay; a smaller value keeps latency tight at the cost of more discarded frames. The actual hold window is adaptive and usually lands well below this cap. Default `400`. |
+| `MaxHoldMs` | Upper bound (ms) for how long the jitter buffer holds an incomplete frame while retransmissions are outstanding before discarding it. It bounds the one-off stall when a frame never recovers and does not add steady-state delay. The hold itself adapts to the measured round-trip time, so the cap only matters on high-RTT paths: at the default, a 250 ms round trip leaves room for about two retransmission attempts. Raise it on such paths to trade a longer worst-case stall for more recovery attempts. Default `600`. |
 
 Audio NACK is not negotiated. Lost audio packets are concealed by Opus' in-band FEC where available, otherwise dropped.
 
