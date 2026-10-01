@@ -9,16 +9,17 @@
 // Per-track receive-side NACK generator (RFC 4585 Generic NACK).
 //
 // Watches incoming RTP sequence numbers for one SSRC and builds the list of
-// seqs that should be NACK'd next. A missing seq is re-requested on a fixed
-// cadence for as long as the jitter buffer holds its frame. The sender paces
-// its own retransmissions per round trip, so the receiver does not need to
-// know the RTT.
+// seqs that should be NACK'd next. A missing seq is re-requested once
+// RETRY_INTERVAL_MS has passed, for as long as the jitter buffer holds its
+// frame. The sender paces its own retransmissions per round trip, so the
+// receiver does not need to know the RTT.
 //
 // Caller (RtpRtcp) drives:
 //   - OnPacketReceived(seq) for every incoming RTP packet of the SSRC,
 //     including original payload and RTX-unwrapped packets.
-//   - BuildPendingNack() on a short cadence (e.g. 10ms tick) and sends
-//     the returned list as one RTCP NACK FCI chain.
+//   - BuildPendingNack() on each incoming packet (coalesced to a short
+//     window) and sends the returned list as one RTCP NACK FCI chain. There
+//     is no timer, so retries are only sent while packets keep arriving.
 class RtpNackGenerator
 {
 public:
@@ -32,14 +33,16 @@ public:
 	// Absorbs small UDP reordering so that brief out-of-order delivery
 	// (seq 102 before 101) doesn't trigger a spurious NACK + RTX round-trip.
 	static constexpr uint32_t INITIAL_NACK_DWELL_MS = 10;
-	// Re-request cadence for a seq still missing. Senders answer a given seq
-	// at most once per round trip, so asking more often than the RTT only
-	// costs a small RTCP packet, while asking less often delays the second
-	// attempt when the first answer was lost.
+	// Minimum spacing between requests for a seq still missing. Senders answer
+	// a given seq at most once per round trip, so asking more often than the
+	// RTT only costs a small RTCP packet, while asking less often delays the
+	// next attempt when a request or its answer was lost.
 	static constexpr uint32_t RETRY_INTERVAL_MS = 100;
 	// How long the jitter buffer holds an incomplete frame for retransmissions
 	// before discarding it (MaxHoldMs). Bounds the one-off stall when a frame
-	// never recovers; 600 fits four answered attempts up to a ~250ms round trip.
+	// never recovers. Since a sender answers a seq once per round trip, 600
+	// leaves room for about six answered attempts at a 60ms round trip and
+	// two at 250ms.
 	static constexpr uint32_t HOLD_MS_DEFAULT = 600;
 	static constexpr uint32_t STATS_LOG_INTERVAL_MS = 5 * 1000;
 
