@@ -239,8 +239,10 @@ uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
 uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
 {
 	// Hold long enough for MAX_NACK_RETRIES rounds at the slowest recent
-	// round trip.
-	double hold = INITIAL_NACK_DWELL_MS + MAX_NACK_RETRIES * CurrentRttMsInternal();
+	// round trip. While backoff is probing for a slower path the hold scales
+	// with it, so the frame outlives the retry it is waiting for; otherwise
+	// the answer would land after the frame was discarded and never sample.
+	double hold = INITIAL_NACK_DWELL_MS + MAX_NACK_RETRIES * CurrentRttMsInternal() * _retry_backoff;
 	if (hold < HOLD_MIN_MS) hold = HOLD_MIN_MS;
 	if (hold > _hold_max_ms) hold = _hold_max_ms;
 

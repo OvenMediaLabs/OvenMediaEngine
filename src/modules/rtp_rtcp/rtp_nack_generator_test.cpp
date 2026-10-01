@@ -181,7 +181,8 @@ TEST(RtpNackGenerator, BackoffLetsLongRttSampleLand)
 	std::this_thread::sleep_for(rtt);
 	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // retry fired, backoff doubles
 	gen.OnPacketReceived(101);
-	EXPECT_EQ(gen.GetRecommendedHoldMs(), hold_before);
+	// No sample yet, but the backoff already scales the hold while probing.
+	EXPECT_GT(gen.GetRecommendedHoldMs(), hold_before);
 
 	// Event 2: same RTT, but the backed-off interval outlasts it.
 	gen.OnPacketReceived(103);
@@ -232,4 +233,65 @@ TEST(RtpNackGenerator, WindowForgetsInitialGuess)
 	}
 
 	EXPECT_LT(gen.GetRecommendedHoldMs(), hold_before);
+}
+
+// RTT jumps far beyond the learned hold: every answer would now land after
+// the jitter buffer discarded the frame, so the hold must grow with the
+// backoff until an answer fits and a clean sample re-learns the round trip.
+TEST(RtpNackGenerator, HoldGrowsWithBackoffAfterRttJump)
+{
+	RtpNackGenerator gen(kTrackId, kSsrc, /*max_hold_ms=*/2000);
+	const auto dwell = std::chrono::milliseconds(RtpNackGenerator::INITIAL_NACK_DWELL_MS + 5);
+
+	// Learn a ~30ms round trip so the hold shrinks well below 250ms.
+	uint16_t base = 100;
+	for (size_t i = 0; i < RtpNackGenerator::RTT_WINDOW_SIZE; i++, base += 3)
+	{
+		gen.OnPacketReceived(base);
+		gen.OnPacketReceived(static_cast<uint16_t>(base + 2));
+		std::this_thread::sleep_for(dwell);
+		ASSERT_EQ(gen.BuildPendingNack().size(), 1u);
+		std::this_thread::sleep_for(std::chrono::milliseconds(30));
+		gen.OnPacketReceived(static_cast<uint16_t>(base + 1));
+	}
+	auto hold_learned = gen.GetRecommendedHoldMs();
+	ASSERT_LT(hold_learned, 250u);
+
+	// Event 1: the answer takes 250ms. Two retries go out first; each one
+	// must push the hold up so the frame is still held when the answer lands.
+	gen.OnPacketReceived(base);
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 2));
+	std::this_thread::sleep_for(dwell);
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);
+	std::this_thread::sleep_for(std::chrono::milliseconds(60));
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // retry, backoff x2
+	EXPECT_GT(gen.GetRecommendedHoldMs(), hold_learned);
+	std::this_thread::sleep_for(std::chrono::milliseconds(120));
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // retry, backoff x4
+	EXPECT_GE(gen.GetRecommendedHoldMs(), 250u);
+	std::this_thread::sleep_for(std::chrono::milliseconds(70));
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 1));  // answered, not a clean sample
+	base += 3;
+
+	// Event 2: the retry still fires before the answer, backoff x8.
+	gen.OnPacketReceived(base);
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 2));
+	std::this_thread::sleep_for(dwell);
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);
+	std::this_thread::sleep_for(std::chrono::milliseconds(230));
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // retry, backoff x8
+	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 1));
+	base += 3;
+
+	// Event 3: the backed-off retry now waits longer than the answer, so the
+	// 250ms sample is clean and the hold follows it.
+	gen.OnPacketReceived(base);
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 2));
+	std::this_thread::sleep_for(dwell);
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);
+	std::this_thread::sleep_for(std::chrono::milliseconds(250));
+	EXPECT_TRUE(gen.BuildPendingNack().empty());
+	gen.OnPacketReceived(static_cast<uint16_t>(base + 1));
+	EXPECT_GE(gen.GetRecommendedHoldMs(), 1200u);
 }

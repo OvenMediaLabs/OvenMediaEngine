@@ -79,10 +79,12 @@ public:
 	std::optional<uint16_t> GetLowestPendingSeq() const;
 
 	// Jitter-buffer hold window recommendation in ms.
-	//   hold = dwell + MAX_NACK_RETRIES * rtt
+	//   hold = dwell + MAX_NACK_RETRIES * rtt * backoff
 	// clamped to [HOLD_MIN_MS, max_hold_ms], where rtt is the max of the
-	// recent sample window (seeded with INITIAL_RTT_GUESS_MS). After
-	// STATS_DECAY_MS without a new sample it is raised to at least the guess.
+	// recent sample window (seeded with INITIAL_RTT_GUESS_MS) and backoff is
+	// the retry multiplier, so a frame stays long enough for the answer a
+	// backed-off retry waits for. After STATS_DECAY_MS without a new sample
+	// rtt is raised to at least the guess.
 	uint32_t GetRecommendedHoldMs() const;
 
 private:
@@ -125,8 +127,8 @@ private:
 	std::chrono::steady_clock::time_point _last_sample_at OV_GUARDED_BY(_lock);
 
 	// Retry backoff multiplier. Doubles on every retry round and resets on a
-	// clean sample, so the interval outgrows an RTT the estimator could not
-	// measure yet (Karn's rule alone would never sample it).
+	// clean sample, so the retry interval and the hold outgrow an RTT the
+	// estimator could not measure yet (Karn's rule alone would never sample it).
 	uint32_t _retry_backoff OV_GUARDED_BY(_lock) = 1;
 
 	// Cumulative monitoring counters. Logged every STATS_LOG_INTERVAL_MS as
