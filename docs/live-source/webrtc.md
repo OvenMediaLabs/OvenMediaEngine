@@ -129,7 +129,7 @@ When `<Rtx><Enable>true</Enable></Rtx>` is set, OvenMediaEngine negotiates NACK 
 | Parameter | Description |
 |---|---|
 | `Enable` | Turn NACK + RTX on. Disabled by default. |
-| `MaxHoldMs` | Upper bound (ms) for how long the jitter buffer holds an incomplete frame while retransmissions are outstanding before discarding it. It bounds the one-off stall when a frame never recovers and does not add steady-state delay. The hold itself adapts to the measured round-trip time, so the cap only matters on high-RTT paths: at the default, a 250 ms round trip leaves room for about two retransmission attempts. Raise it on such paths to trade a longer worst-case stall for more recovery attempts. Default `600`. |
+| `MaxHoldMs` | How long (ms) the jitter buffer holds an incomplete frame for retransmissions before discarding it. Missing packets are re-requested every 100 ms within this window, so a longer value allows more retransmission attempts on high-RTT paths at the cost of a longer one-off stall when a frame never recovers; it does not add steady-state delay. Default `600`. |
 
 Audio NACK is not negotiated. Lost audio packets are concealed by Opus' in-band FEC where available, otherwise dropped.
 

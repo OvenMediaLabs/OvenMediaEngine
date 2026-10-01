@@ -4,8 +4,8 @@
 
 #define OV_LOG_TAG "RtpNack"
 
-RtpNackGenerator::RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms)
-	: _track_id(track_id), _media_ssrc(media_ssrc), _hold_max_ms(max_hold_ms)
+RtpNackGenerator::RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t hold_ms)
+	: _track_id(track_id), _media_ssrc(media_ssrc), _hold_ms(hold_ms)
 {
 }
 
@@ -117,14 +117,6 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				logtd("Late seq recovered track(%u) ssrc(%u) seq(%u) latency(%ldms) retries(%u)",
 					  _track_id, _media_ssrc, static_cast<uint16_t>(extended & 0xFFFF),
 					  latency_ms, it->second.retry_count);
-
-				// Karn: only a single-NACK recovery is an unambiguous sample.
-				// A clean sample also ends any retry backoff in force.
-				if (it->second.retry_count == 1)
-				{
-					UpdateLatencyStats(static_cast<double>(latency_ms), now);
-					_retry_backoff = 1;
-				}
 				_recovered_total++;
 			}
 			_pending.erase(it);
@@ -142,7 +134,7 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 	DiscardStale(now);
 
-	auto retry_interval = std::chrono::milliseconds(GetRetryIntervalMsInternal());
+	auto retry_interval = std::chrono::milliseconds(RETRY_INTERVAL_MS);
 	auto dwell = std::chrono::milliseconds(INITIAL_NACK_DWELL_MS);
 
 	std::vector<uint16_t> ids;
@@ -180,73 +172,13 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 	_nacks_sent_total += ids.size();
 
-	if (retry_count_total > 0 && GetRetryIntervalMsInternal() < _hold_max_ms)
-	{
-		// One doubling per retry round, not per entry, so a burst of
-		// simultaneous retries does not blow the multiplier up at once.
-		_retry_backoff *= 2;
-	}
-
 	if (ids.empty() == false)
 	{
-		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) "
-			  "interval(%ums) backoff(x%u) hold(%ums)",
-			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(),
-			  GetRetryIntervalMsInternal(), _retry_backoff, GetRecommendedHoldMsInternal());
+		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) hold(%ums)",
+			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(), _hold_ms);
 	}
 
 	return ids;
-}
-
-double RtpNackGenerator::CurrentRttMsInternal() const
-{
-	double rtt = *std::max_element(_rtt_window_ms.begin(), _rtt_window_ms.end());
-
-	if (_has_rtt_sample)
-	{
-		auto since_last_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-								 std::chrono::steady_clock::now() - _last_sample_at)
-								 .count();
-		if (since_last_ms > STATS_DECAY_MS)
-		{
-			// A sample drought means recovery is failing or loss went quiet,
-			// not that the path got faster; never fall back below the guess.
-			rtt = std::max(rtt, INITIAL_RTT_GUESS_MS);
-		}
-	}
-
-	return rtt;
-}
-
-uint32_t RtpNackGenerator::GetRetryIntervalMsInternal() const
-{
-	// The window max already carries the jitter, so a fixed margin is enough
-	// to keep the retry clear of an on-time RTX.
-	double interval = (CurrentRttMsInternal() + MIN_RETRY_MARGIN_MS) * _retry_backoff;
-	if (interval > _hold_max_ms)
-	{
-		interval = _hold_max_ms;
-	}
-	return static_cast<uint32_t>(interval);
-}
-
-uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
-{
-	ov::LockGuard<ov::Mutex> lock(_lock);
-	return GetRecommendedHoldMsInternal();
-}
-
-uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
-{
-	// Hold long enough for MAX_NACK_RETRIES rounds at the slowest recent
-	// round trip. While backoff is probing for a slower path the hold scales
-	// with it, so the frame outlives the retry it is waiting for; otherwise
-	// the answer would land after the frame was discarded and never sample.
-	double hold = INITIAL_NACK_DWELL_MS + MAX_NACK_RETRIES * CurrentRttMsInternal() * _retry_backoff;
-	if (hold < HOLD_MIN_MS) hold = HOLD_MIN_MS;
-	if (hold > _hold_max_ms) hold = _hold_max_ms;
-
-	return static_cast<uint32_t>(hold);
 }
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
@@ -309,34 +241,15 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 	{
 		double avg_retry = static_cast<double>(total_retry) / static_cast<double>(dropped);
 		logtd("DropPendingUpTo track(%u) ssrc(%u) up_to_seq(%u) dropped(%zu) range[%u..%u] "
-			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) "
-			  "rtt(%.1f) hold(%u)",
+			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) hold(%u)",
 			  _track_id, _media_ssrc, max_seq, dropped, first_dropped_seq, last_dropped_seq,
-			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(),
-			  CurrentRttMsInternal(), GetRecommendedHoldMsInternal());
+			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(), _hold_ms);
 	}
-}
-
-void RtpNackGenerator::UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now)
-{
-	if (sample_ms < 1.0)
-	{
-		sample_ms = 1.0;
-	}
-
-	_rtt_window_ms.push_back(sample_ms);
-	if (_rtt_window_ms.size() > RTT_WINDOW_SIZE)
-	{
-		_rtt_window_ms.pop_front();
-	}
-
-	_has_rtt_sample = true;
-	_last_sample_at = now;
 }
 
 void RtpNackGenerator::DiscardStale(std::chrono::steady_clock::time_point now)
 {
-	auto max_age = std::chrono::milliseconds(std::max(MAX_AGE_MS, _hold_max_ms));
+	auto max_age = std::chrono::milliseconds(std::max(MAX_AGE_MS, _hold_ms));
 
 	for (auto it = _pending.begin(); it != _pending.end();)
 	{
@@ -387,7 +300,7 @@ void RtpNackGenerator::LogPeriodicStats(std::chrono::steady_clock::time_point no
 		  "totals[recv(%lu) nack(%lu) recovered(%lu) lost(%lu)] pending(%zu) hold(%ums)",
 		  _track_id, _media_ssrc, d_received, d_nacks, d_recovered, d_lost, loss_pct, recovery_pct,
 		  _received_total, _nacks_sent_total, _recovered_total, _lost_permanent_total,
-		  _pending.size(), GetRecommendedHoldMsInternal());
+		  _pending.size(), _hold_ms);
 
 	_prev_received		  = _received_total;
 	_prev_nacks_sent	  = _nacks_sent_total;
