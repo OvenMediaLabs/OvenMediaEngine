@@ -78,6 +78,13 @@ namespace pvd
 		_h264_bitstream_parser.SetConfig(H264BitstreamParser::Config{._parse_slice_type = true});
 
 		_fir_interval = config.GetFIRInterval();
+		// A zero or negative MaxHoldMs would wrap to a huge hold, so fall back
+		// to the default in that case.
+		int max_hold_ms = config.GetRtx().GetMaxHoldMs();
+		if (max_hold_ms > 0)
+		{
+			_nack_hold_ms = static_cast<uint32_t>(max_hold_ms);
+		}
 		if (config.GetRtcpBasedTimestamp() == false)
 		{
 			SetRtpTimestampMethod(RtpTimestampCalculationMethod::SINGLE_DELTA);
@@ -353,20 +360,7 @@ namespace pvd
 			payload_attr->IsRtcpFbEnabled(PayloadAttr::RtcpFbType::Nack))
 		{
 			uint32_t media_ssrc = remote_media_desc->GetSsrc().value_or(0);
-			uint32_t max_hold_ms = RtpNackGenerator::HOLD_MS_DEFAULT;
-			auto app = GetApplication();
-			if (app != nullptr)
-			{
-				// MaxHoldMs is a signed config value; a negative/zero
-				// misconfiguration would wrap to a huge cap and disable the
-				// latency bound, so fall back to the default in that case.
-				int configured = app->GetConfig().GetProviders().GetWebrtcProvider().GetRtx().GetMaxHoldMs();
-				if (configured > 0)
-				{
-					max_hold_ms = static_cast<uint32_t>(configured);
-				}
-			}
-			_rtp_rtcp->EnableNack(track->GetId(), media_ssrc, max_hold_ms);
+			_rtp_rtcp->EnableNack(track->GetId(), media_ssrc, _nack_hold_ms);
 
 			// Register RTX payloads (PT-based detection) and, when the peer
 			// pre-declared an RTX SSRC via a=ssrc-group:FID, also bind the

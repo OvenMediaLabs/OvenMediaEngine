@@ -416,7 +416,7 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 		});
 	}
 
-	logti("EnableNack track(%u) ssrc(%u)", track_id, media_ssrc);
+	logti("EnableNack track(%u) ssrc(%u) hold(%ums)", track_id, media_ssrc, max_hold_ms);
 	return true;
 }
 
