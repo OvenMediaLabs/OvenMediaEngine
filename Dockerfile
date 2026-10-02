@@ -16,6 +16,8 @@
 #
 # 2. To build using the [local source code]
 #    $ docker build -t ovenmediaengine:dev -f Dockerfile --build-arg USE_LOCAL=true .
+#    (.dockerignore excludes .git; run src/main/update_git_info.sh first to keep
+#     the full version stamp in the binary)
 #
 # 3. To build with NVIDIA/CUDA support
 #    $ docker build -t ovenmediaengine:dev -f Dockerfile --build-arg USE_GPU=true .
