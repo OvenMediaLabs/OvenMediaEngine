@@ -10,44 +10,89 @@
 
 #include <whisper.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <base/ovlibrary/ovlibrary.h>
 
+// Whisper inference runs on the CPU. The device_id parameters below are kept so
+// that the configuration schema (<Devices>, <Modules>nv:N) and the call sites
+// stay source-compatible, but they do not select a compute device.
 class WhisperModelRegistry : public ov::Singleton<WhisperModelRegistry>
 {
 public:
-// Eagerly load the given models. Optional — call at server start to preload.
-        // Each entry is a (resolved_path, cuda_device_ids) pair.
-        // An empty device_ids list means "all available CUDA devices" (from <Devices>all</Devices>).
-        // A single-element list {0} means the default (omitted <Devices>).
-        bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
+	// Eagerly load the given models. Optional — call at server start to preload.
+	// Each entry is a (resolved_path, device_ids) pair. The device list is
+	// accepted for configuration compatibility and is not used.
+	bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
 
 	// Release all loaded models. Called at server stop.
 	void Uninitialize();
 
-// Return a shared_ptr to the whisper_context for the given model path and CUDA device.
-        // If the model is not yet loaded on that device it will be loaded on-demand and cached.
-        std::shared_ptr<whisper_context> GetModelContext(const ov::String &model_path, int32_t cuda_device_id = 0);
+	// Total number of inference threads Whisper may use across every STT track.
+	// 0 (the default) means every hardware thread.
+	void SetMaxThreads(int32_t max_threads);
 
-        // Allocate a per-encoder whisper_state for the given model and CUDA device.
-        // Checks GPU memory availability before allocation to prevent ggml crash.
-        // Returns nullptr if the model is not loaded or GPU memory is insufficient.
-        whisper_state *NewState(const ov::String &model_path, int32_t cuda_device_id = 0);
+	// Hardware threads on this machine, never less than 1.
+	static int32_t GetHardwareThreads();
 
-        // Free a whisper_state previously returned by NewState.
-        void DeleteState(whisper_state *state);
+	// Threads to give one STT track when <Threads> is omitted.
+	static int32_t GetDefaultThreadCount();
+
+	// Threads an STT track should use for its next inference: its <Threads>
+	// request (0 = default) capped by an equal share of the budget among the
+	// states currently alive, and never less than 1. Re-evaluated on every
+	// call so shares follow tracks as they start and stop.
+	int32_t GetThreadShare(int32_t requested_threads) const;
+
+	// Return a shared_ptr to the whisper_context for the given model path.
+	// If the model is not yet loaded it will be loaded on-demand and cached.
+	// Loading runs outside the registry lock so other encoders keep allocating
+	// and freeing states while a model is read and warmed up.
+	std::shared_ptr<whisper_context> GetModelContext(const ov::String &model_path, int32_t device_id = 0);
+
+	// Allocate a per-encoder whisper_state for the given model.
+	// Checks available memory before allocation. Returns nullptr if the model
+	// is not loaded or memory is insufficient.
+	whisper_state *NewState(const ov::String &model_path, int32_t device_id = 0);
+
+	// Free a whisper_state previously returned by NewState.
+	void DeleteState(whisper_state *state);
 
 private:
-        // Load a single model on the specified CUDA device and cache it. Caller must hold _mutex.
-        void LoadModel(const ov::String &model_path, int32_t cuda_device_id = 0) OV_REQUIRES(_mutex);
+	// Read and warm up a model. Runs without _mutex held. Returns nullptr on
+	// failure; on success *state_memory_bytes receives the measured cost of one
+	// whisper_state (0 when it could not be measured).
+	static std::shared_ptr<whisper_context> LoadModel(const ov::String &model_path, int32_t device_id, int32_t warmup_threads, size_t *state_memory_bytes);
+
+	// Cache key for a loaded model. One CPU context is shared by every encoder,
+	// so the device id does not take part in the key.
+	static std::string MakeModelKey(const ov::String &model_path, int32_t device_id);
+
+	// Context parameters used to load a model.
+	static whisper_context_params BuildContextParams(int32_t device_id);
+
+	// True when <required_bytes> looks safe to allocate. Linux overcommits, so a
+	// too-large allocation usually ends in the OOM killer rather than a nullptr;
+	// checking up front is the only way to refuse a model gracefully.
+	static bool CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, const char *what);
 
 	ov::Mutex _mutex;
+	ov::ConditionVariable _load_done;
 	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models OV_GUARDED_BY(_mutex);
-	// GPU memory (bytes) consumed by one whisper_state for each model.
-	// Populated during GPU warmup; 0 means CPU model (no pre-check needed).
+	// Models being loaded outside the lock right now, so a second caller waits
+	// for the first instead of reading the same file twice.
+	std::unordered_set<std::string> _loading OV_GUARDED_BY(_mutex);
+	// Memory (bytes) consumed by one whisper_state for each model, measured
+	// during warmup. 0 means "unknown"; no pre-check is then possible.
 	std::unordered_map<std::string, size_t> _state_memory_bytes OV_GUARDED_BY(_mutex);
+
+	// Thread budget (0 = every hardware thread) and the number of live states
+	// sharing it. Atomics so GetThreadShare() needs no lock on the inference path.
+	std::atomic<int32_t> _max_threads{0};
+	std::atomic<int32_t> _live_states{0};
 };

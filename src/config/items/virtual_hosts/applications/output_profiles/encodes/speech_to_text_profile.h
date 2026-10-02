@@ -34,6 +34,7 @@ namespace cfg
 					int32_t _step_ms = 2000;
 					int32_t _length_ms = 10000;
 					int32_t _keep_ms = 1500;
+					int32_t _threads = 0;
 
 					bool _stt_enabled = true;
 				ov::String _modules;
@@ -106,6 +107,9 @@ namespace cfg
 
 					void SetKeepMs(int32_t keep_ms) { _keep_ms = keep_ms; }
 					int32_t GetKeepMs() const { return _keep_ms; }
+
+					void SetThreads(int32_t threads) { _threads = threads; }
+					int32_t GetThreads() const { return _threads; }
 
 					void SetSttEnabled(bool enabled) { _stt_enabled = enabled; }
 					bool IsSttEnabled() const { return _stt_enabled; }

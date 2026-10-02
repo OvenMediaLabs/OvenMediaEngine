@@ -47,6 +47,9 @@ public:
         void SetKeepMs(int32_t keep_ms);
         int32_t GetKeepMs() const;
 
+        void SetThreads(int32_t threads);
+        int32_t GetThreads() const;
+
 	void SetSttEnabled(bool enabled);
 	bool IsSttEnabled() const;
 
@@ -67,5 +70,7 @@ public:
 	std::atomic<int32_t> _step_ms = 2000;
 	std::atomic<int32_t> _length_ms = 10000;
 	std::atomic<int32_t> _keep_ms = 1500;
+	// CPU threads for speech-to-text inference (0 = derive from the hardware).
+	std::atomic<int32_t> _threads = 0;
 	std::atomic<bool> _stt_enabled = true;
 };

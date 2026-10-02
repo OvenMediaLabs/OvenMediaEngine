@@ -38,8 +38,26 @@ std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> TranscodeEnc
 	ov::String configuration = ""; 
 	std::shared_ptr<std::vector<std::shared_ptr<info::CodecCandidate>>> candidate_modules = std::make_shared<std::vector<std::shared_ptr<info::CodecCandidate>>>();
 
-	// Non-video codecs with no explicit module config always use DEFAULT.
-	// If a non-video codec (e.g. Whisper) sets <Modules>, it falls through to the normal hardware selection path.
+	// Whisper runs on the CPU. A hardware selection left over from a GPU
+	// configuration (<Modules>nv:0</Modules>) is accepted and ignored rather
+	// than leaving the track with no usable candidate.
+	if (track->GetCodecId() == cmn::MediaCodecId::Whisper)
+	{
+		if (track->GetCodecModules().Trim().IsEmpty() == false)
+		{
+			logtw("Track(%d) Codec(%s): Modules(%s) is ignored because Whisper runs on the CPU.",
+				  track->GetId(),
+				  cmn::GetCodecIdString(track->GetCodecId()),
+				  track->GetCodecModules().Trim().CStr());
+		}
+
+		candidate_modules->push_back(std::make_shared<info::CodecCandidate>(track->GetCodecId(), cmn::MediaCodecModuleId::DEFAULT, 0));
+		return candidate_modules;
+	}
+
+	// Other non-video codecs with no explicit module config always use DEFAULT.
+	// Audio codecs that set <Modules> (e.g. fdkaac, libopus) fall through to the
+	// normal module selection path below.
 	if (cmn::IsVideoCodec(track->GetCodecId()) == false && track->GetCodecModules().Trim().IsEmpty() == true)
 	{
 		candidate_modules->push_back(std::make_shared<info::CodecCandidate>(track->GetCodecId(), cmn::MediaCodecModuleId::DEFAULT, 0));
