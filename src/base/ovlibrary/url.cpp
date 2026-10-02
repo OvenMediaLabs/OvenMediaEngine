@@ -429,7 +429,7 @@ namespace ov
 
 	bool Url::UpdateSource()
 	{
-		_source = ToUrlStringInternal(true);
+		_source = ToUrlStringInternal(true, true);
 		return true;
 	}
 
@@ -612,31 +612,34 @@ namespace ov
 			 _app.CStr(), _stream.CStr(), _file.CStr(), _query_string.CStr());
 	}
 
-	ov::String Url::ToUrlString(bool include_query_string) const
+	ov::String Url::ToUrlString(bool include_query_string, bool include_user_info) const
 	{
 		SharedLockGuard lock(_mutex);
-		return ToUrlStringInternal(include_query_string);
+		return ToUrlStringInternal(include_query_string, include_user_info);
 	}
 
-	ov::String Url::ToUrlStringInternal(bool include_query_string) const
+	ov::String Url::ToUrlStringInternal(bool include_query_string, bool include_user_info) const
 	{
 		ov::String url;
 
 		url.AppendFormat("%s://", _scheme.CStr());
 
-		if (_id.IsEmpty() == false)
+		if (include_user_info)
 		{
-			url.Append(_id.CStr());
-
-			if (_password.IsEmpty())
+			if (_id.IsEmpty() == false)
 			{
-				url.Append('@');
-			}
-		}
+				url.Append(_id.CStr());
 
-		if (_password.IsEmpty() == false)
-		{
-			url.AppendFormat(":%s@", _password.CStr());
+				if (_password.IsEmpty())
+				{
+					url.Append('@');
+				}
+			}
+
+			if (_password.IsEmpty() == false)
+			{
+				url.AppendFormat(":%s@", _password.CStr());
+			}
 		}
 
 		url.Append(_host.CStr());
@@ -660,7 +663,7 @@ namespace ov
 	{
 		SharedLockGuard lock(_mutex);
 
-		auto url = ToUrlStringInternal(true);
+		auto url = ToUrlStringInternal(true, true);
 
 		url.AppendFormat(" (app: %s, stream: %s, file: %s)", _app.CStr(), _stream.CStr(), _file.CStr());
 
