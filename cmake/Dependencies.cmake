@@ -223,12 +223,15 @@ macro(ome_find_pkg var pkg version_var)
                 "  Run manually: cmake -P cmake/InstallPrerequisites.cmake")
         endif()
         if(NOT OME_SKIP_DEPENDENCY_CHECK)
+            # Start from "found" again; the probes below only ever downgrade it.
+            # Without this reset a package rejected before the reinstall (see
+            # REJECT_LIBRARY) stayed rejected even after the reinstall removed
+            # the offending library, and configure failed on a correct install.
+            set(_FP_PROBE_FOUND TRUE)
             if(_FP_PROBE_LIBRARY)
                 unset(_FP_PROBE_LIB CACHE)
                 find_library(_FP_PROBE_LIB ${_FP_PROBE_LIBRARY} HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
-                if(_FP_PROBE_LIB)
-                    set(_FP_PROBE_FOUND TRUE)
-                else()
+                if(NOT _FP_PROBE_LIB)
                     set(_FP_PROBE_FOUND FALSE)
                 endif()
             endif()
