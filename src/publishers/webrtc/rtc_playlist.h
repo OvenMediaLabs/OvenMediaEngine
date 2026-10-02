@@ -94,7 +94,7 @@ public:
 		_audio_codec_id = audio_codec_id;
 	}
 
-	// Expose the codecs this per-session playlist was built for, so the master
+	// Expose the codecs this playlist was built for, so the master
 	// playlist can cross-add audio-only renditions into matching video playlists.
 	cmn::MediaCodecId GetVideoCodecId() const { return _video_codec_id; }
 	cmn::MediaCodecId GetAudioCodecId() const { return _audio_codec_id; }
