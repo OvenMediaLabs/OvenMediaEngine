@@ -32,6 +32,14 @@ $ cmake -DOME_WHISPER_NATIVE=ON -P cmake/InstallPrerequisites.cmake
 with AVX-512 or AMX. The binary then only runs on CPUs that support the same instructions, so do
 not use it for packages you distribute to other machines.
 
+The option takes effect when whisper.cpp is installed. An installation that already matches the
+required version is kept as it is, so to switch an existing machine between the portable and the
+native build, rebuild just whisper:
+
+```
+$ cmake -DOME_WHISPER_NATIVE=ON -DTARGET=whisper -P cmake/InstallPrerequisites.cmake
+```
+
 ## Configuration
 
 STT configuration is split across two sections:
@@ -220,7 +228,7 @@ For full API reference including request/response details and error codes, see [
 
 ### Disabling STT at Startup
 
-STT can be started in the disabled (paused) state by setting `<Enable>false</Enable>` inside the `<STT>` block. In this case, no inference runs and no memory or threads are held until the stream receives an `:enableStt` call.
+STT can be started in the disabled (paused) state by setting `<Enable>false</Enable>` inside the `<STT>` block. The shared model is still loaded (or reused if another stream already loaded it), but no inference runs and no per-stream inference state or threads are held until the stream receives an `:enableStt` call.
 
 ```xml
 <STT>

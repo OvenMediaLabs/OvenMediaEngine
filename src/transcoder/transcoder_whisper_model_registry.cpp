@@ -107,6 +107,31 @@ namespace
 		return "";
 	}
 
+	// The cgroup v1 memory-controller path of this process (the
+	// "N:<controllers>:/path" line whose controller list has "memory"), or ""
+	// when unavailable.
+	std::string GetOwnCgroupV1MemoryPath()
+	{
+		std::ifstream in("/proc/self/cgroup");
+		std::string line;
+		while (std::getline(in, line))
+		{
+			const auto first  = line.find(':');
+			const auto second = (first == std::string::npos) ? std::string::npos : line.find(':', first + 1);
+			if (second == std::string::npos)
+			{
+				continue;
+			}
+
+			const std::string controllers = "," + line.substr(first + 1, second - first - 1) + ",";
+			if (controllers.find(",memory,") != std::string::npos)
+			{
+				return line.substr(second + 1);
+			}
+		}
+		return "";
+	}
+
 	// Headroom left under the memory limit of this process's own cgroup, or
 	// SIZE_MAX when it is not limited. Containers are OME's main deployment and
 	// /proc/meminfo describes the host there, not the container. Best effort:
@@ -126,14 +151,20 @@ namespace
 			}
 		}
 
-		// cgroup v1. An unlimited group reports a sentinel near PAGE_COUNTER_MAX.
-		if (ReadSizeFile("/sys/fs/cgroup/memory/memory.limit_in_bytes", &limit) && ReadSizeFile("/sys/fs/cgroup/memory/memory.usage_in_bytes", &usage))
+		// cgroup v1: the process's own group (Docker/systemd nest it under the
+		// controller root), then the root. An unlimited group reports a sentinel
+		// near PAGE_COUNTER_MAX.
+		const std::string v1_path = GetOwnCgroupV1MemoryPath();
+		for (const std::string &base : {std::string("/sys/fs/cgroup/memory") + v1_path, std::string("/sys/fs/cgroup/memory")})
 		{
-			if (limit >= (static_cast<size_t>(1) << 60))
+			if (ReadSizeFile(base + "/memory.limit_in_bytes", &limit) && ReadSizeFile(base + "/memory.usage_in_bytes", &usage))
 			{
-				return SIZE_MAX;
+				if (limit >= (static_cast<size_t>(1) << 60))
+				{
+					return SIZE_MAX;
+				}
+				return (limit > usage) ? (limit - usage) : 0;
 			}
-			return (limit > usage) ? (limit - usage) : 0;
 		}
 
 		return SIZE_MAX;
@@ -202,7 +233,7 @@ whisper_context_params WhisperModelRegistry::BuildContextParams(int32_t device_i
 	return cparams;
 }
 
-bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, const char *what)
+bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, size_t reserved_bytes, const char *what)
 {
 	if (required_bytes == 0)
 	{
@@ -218,10 +249,13 @@ bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, si
 		return true;
 	}
 
-	if (available_bytes < required_bytes)
+	// Memory a load in flight has claimed is not resident yet, so MemAvailable
+	// still counts it as free; take it off the top.
+	const size_t headroom_bytes = (available_bytes > reserved_bytes) ? (available_bytes - reserved_bytes) : 0;
+	if (headroom_bytes < required_bytes)
 	{
-		logte("Not enough memory for the Whisper %s (available=%.1f MiB, required≈%.1f MiB). path=%s",
-			  what, ToMiB(available_bytes), ToMiB(required_bytes), model_path.CStr());
+		logte("Not enough memory for the Whisper %s (available=%.1f MiB, reserved by loads in progress=%.1f MiB, required≈%.1f MiB). path=%s",
+			  what, ToMiB(available_bytes), ToMiB(reserved_bytes), ToMiB(required_bytes), model_path.CStr());
 		return false;
 	}
 
@@ -313,12 +347,18 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov:
 	}
 
 	// Reading the file and running the warmup take seconds on the CPU, so they
-	// happen without the lock: other encoders keep allocating and freeing
-	// states, and only callers of this same model wait.
+	// happen without _mutex: other encoders keep allocating and freeing states,
+	// and only callers of this same model wait. Loads are still one at a time
+	// under _load_mutex so their memory checks and RSS measurements do not
+	// interleave.
 	logti("Loading Whisper model. path=%s", model_path.CStr());
 
 	size_t state_memory_bytes = 0;
-	auto ctx				  = LoadModel(model_path, device_id, warmup_threads, &state_memory_bytes);
+	std::shared_ptr<whisper_context> ctx;
+	{
+		ov::LockGuard<ov::Mutex> load_lock(_load_mutex);
+		ctx = LoadModel(model_path, device_id, warmup_threads, &state_memory_bytes);
+	}
 
 	{
 		ov::LockGuard<ov::Mutex> lock(_mutex);
@@ -340,17 +380,31 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 {
 	*state_memory_bytes = 0;
 
-	// Required: model file size * 2 (weights + compute buffers).
-	const size_t model_file_bytes = GetFileSizeBytes(path);
-	if (CheckMemoryAvailable(path, model_file_bytes * 2, "model") == false)
+	// Required: model file size * 2 (weights + compute buffers). Claim it up
+	// front so a NewState() racing with this load sees the memory as taken
+	// before the weights are actually resident.
+	const size_t required_bytes = GetFileSizeBytes(path) * 2;
 	{
-		return nullptr;
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+		if (CheckMemoryAvailable(path, required_bytes, _reserved_bytes, "model") == false)
+		{
+			return nullptr;
+		}
+		_reserved_bytes += required_bytes;
 	}
+
+	// Give the reservation back on every exit from here on; by then the memory
+	// is either resident (and visible to MemAvailable) or was never taken.
+	auto release_reservation = [this, required_bytes]() {
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+		_reserved_bytes = (_reserved_bytes > required_bytes) ? (_reserved_bytes - required_bytes) : 0;
+	};
 
 	auto raw_ctx = whisper_init_from_file_with_params(path.CStr(), BuildContextParams(device_id));
 	if (raw_ctx == nullptr)
 	{
 		logte("Failed to load Whisper model. path=%s", path.CStr());
+		release_reservation();
 		return nullptr;
 	}
 
@@ -398,6 +452,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		logtd("Whisper warmup took %" PRId64 " ms with %d threads. path=%s", warmup_timer.Elapsed(), warmup_threads, path.CStr());
 	}
 
+	release_reservation();
 	logti("Whisper model loaded successfully. path=%s", path.CStr());
 
 	return ctx;
@@ -431,7 +486,7 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int3
 	// refuses the state instead of being OOM-killed on its first window.
 	// The mutex serializes check+alloc across all encoder threads.
 	auto mem_it = _state_memory_bytes.find(key);
-	if ((mem_it != _state_memory_bytes.end()) && (CheckMemoryAvailable(model_path, mem_it->second, "state") == false))
+	if ((mem_it != _state_memory_bytes.end()) && (CheckMemoryAvailable(model_path, mem_it->second, _reserved_bytes, "state") == false))
 	{
 		return nullptr;
 	}

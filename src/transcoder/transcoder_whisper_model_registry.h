@@ -64,10 +64,11 @@ public:
 	void DeleteState(whisper_state *state);
 
 private:
-	// Read and warm up a model. Runs without _mutex held. Returns nullptr on
-	// failure; on success *state_memory_bytes receives the measured cost of one
-	// whisper_state (0 when it could not be measured).
-	static std::shared_ptr<whisper_context> LoadModel(const ov::String &model_path, int32_t device_id, int32_t warmup_threads, size_t *state_memory_bytes);
+	// Read and warm up a model. Runs under _load_mutex but without _mutex, and
+	// reserves the model's memory in _reserved_bytes for the duration. Returns
+	// nullptr on failure; on success *state_memory_bytes receives the measured
+	// cost of one whisper_state (0 when it could not be measured).
+	std::shared_ptr<whisper_context> LoadModel(const ov::String &model_path, int32_t device_id, int32_t warmup_threads, size_t *state_memory_bytes) OV_REQUIRES(_load_mutex);
 
 	// Cache key for a loaded model. One CPU context is shared by every encoder,
 	// so the device id does not take part in the key.
@@ -76,13 +77,23 @@ private:
 	// Context parameters used to load a model.
 	static whisper_context_params BuildContextParams(int32_t device_id);
 
-	// True when <required_bytes> looks safe to allocate. Linux overcommits, so a
-	// too-large allocation usually ends in the OOM killer rather than a nullptr;
-	// checking up front is the only way to refuse a model gracefully.
-	static bool CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, const char *what);
+	// True when <required_bytes> fits in what is available after discounting
+	// <reserved_bytes> (loads in flight whose memory is not resident yet). Linux
+	// overcommits, so a too-large allocation usually ends in the OOM killer
+	// rather than a nullptr; checking up front is the only way to refuse a model
+	// gracefully.
+	static bool CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, size_t reserved_bytes, const char *what);
 
 	ov::Mutex _mutex;
 	ov::ConditionVariable _load_done;
+	// Serializes model loads with each other (never held together with _mutex
+	// for longer than a field update). Two loads interleaving would both pass
+	// the memory check before either committed its memory, and their RSS
+	// deltas would pollute each other.
+	ov::Mutex _load_mutex;
+	// Bytes a load in progress has claimed but not yet made resident; NewState()
+	// discounts them so it does not hand out the same memory twice.
+	size_t _reserved_bytes OV_GUARDED_BY(_mutex) = 0;
 	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models OV_GUARDED_BY(_mutex);
 	// Models being loaded outside the lock right now, so a second caller waits
 	// for the first instead of reading the same file twice.

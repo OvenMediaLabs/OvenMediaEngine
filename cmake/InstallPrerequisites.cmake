@@ -17,7 +17,9 @@
 #   -DOME_USE_CLANG=ON                     Install clang/lld and use as compiler (default ON)
 #   -DOME_WHISPER_STATIC=ON                Build Whisper as a static library (default OFF)
 #   -DOME_WHISPER_NATIVE=ON                Build Whisper/ggml with -march=native (default OFF,
-#                                          faster but only runs on CPUs like the build machine)
+#                                          faster but only runs on CPUs like the build machine;
+#                                          applied at install time - rerun with -DTARGET=whisper
+#                                          to switch an existing installation)
 #   -DTARGET=<name>                        Install only this target
 #
 # Example:
