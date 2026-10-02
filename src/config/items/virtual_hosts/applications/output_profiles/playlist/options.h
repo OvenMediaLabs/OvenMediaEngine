@@ -23,8 +23,8 @@ namespace cfg
 
 					// Expose audio-only renditions inside video playlists that share their audio
 					// codec, so a video WebRTC session can switch to audio-only on the same
-					// PeerConnection. Off by default: it changes the playlist advertised to a
-					// video session that also declares an audio-only rendition.
+					// PeerConnection. Off by default: when the playlist also declares an audio-only
+					// rendition, it changes the renditions advertised to a video session.
 					bool _webrtc_audio_only_fallback = false;
 
 					// If this option is true, ts publisher will use this playlist
