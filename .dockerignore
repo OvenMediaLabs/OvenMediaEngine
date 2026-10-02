@@ -11,9 +11,15 @@ Dockerfile
 docs
 dist
 api
-*.md
+**/*.md
 docker-compose.yml
 ome_favicon.svg
+bin
+intermediates
+logs
+build
+run
+.work
 misc/install_*.sh
 misc/ome_docker_launcher.sh
 misc/oven_rtc_tester
