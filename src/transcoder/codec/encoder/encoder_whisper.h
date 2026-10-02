@@ -13,6 +13,7 @@
 #include <chrono>
 #include <memory>
 
+#include <base/ovlibrary/interval_gate.h>
 #include <base/provider/stream.h>
 #include "../../transcoder_encoder.h"
 
@@ -30,7 +31,7 @@ public:
 
 	cmn::MediaCodecModuleId GetModuleID() const noexcept override
 	{
-		return cmn::MediaCodecModuleId::NVENC;
+		return cmn::MediaCodecModuleId::DEFAULT;
 	}
 
 	cmn::MediaType GetMediaType() const noexcept override
@@ -40,7 +41,8 @@ public:
 
 	bool IsHWAccel() const noexcept override
 	{
-		return true;
+		// Whisper inference runs on the CPU.
+		return false;
 	}
 
 	// ----- Supported formats -----
@@ -93,7 +95,7 @@ private:
 	bool SendLangDetectionEvent(const ov::String &label, const ov::String &language);
 
 	// The per-instance whisper_state is allocated lazily when STT is enabled and
-	// released when disabled, so STT-disabled streams hold no GPU state memory.
+	// released when disabled, so STT-disabled streams hold no state memory.
 	bool AllocWhisperState();
 	void FreeWhisperState();
 
@@ -108,10 +110,20 @@ private:
         // Per-instance inference state: isolates all mutable buffers from other instances.
         // Allocated lazily on enable, released on disable (see CodecThread).
         struct whisper_state * _whisper_state = nullptr;
-        // CUDA device index resolved in InitCodec, reused for lazy state allocation.
-        int32_t _cuda_id = 0;
-        // Throttles whisper_state allocation retries after a failure (e.g. GPU OOM).
+        // Compute device index. Whisper runs on the CPU, so this stays 0; it is kept
+        // so the registry call sites remain source-compatible.
+        int32_t _device_id = 0;
+        // Inference threads for the current window, re-read from the registry's
+        // thread budget before every inference.
+        int32_t _n_threads = 0;
+        // Set once the state's first inference has run and the registry has been
+        // told its buffers are resident (see WhisperModelRegistry::MarkStateResident).
+        bool _state_marked_resident = false;
+        // Throttles whisper_state allocation retries after a failure (e.g. OOM).
         std::chrono::steady_clock::time_point _last_state_alloc_fail_ts;
+        // Throttle the two "this stream is struggling" warnings to once a minute.
+        ov::IntervalGate _slow_inference_warn_gate{60 * 1000};
+        ov::IntervalGate _thread_share_warn_gate{60 * 1000};
 
         int32_t _n_samples_step = 0;
         int32_t _n_samples_length = 0;
