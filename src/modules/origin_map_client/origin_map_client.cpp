@@ -90,7 +90,7 @@ bool OriginMapClient::RetryRegister()
 
 bool OriginMapClient::ProcessPendingUnregisters()
 {
-	std::deque<ov::String> candidates;
+	decltype(_origin_map_remove_candidates) candidates;
 
 	{
 		std::unique_lock<std::recursive_mutex> lock(_origin_map_mutex);
@@ -102,9 +102,29 @@ bool OriginMapClient::ProcessPendingUnregisters()
 		candidates.swap(_origin_map_remove_candidates);
 	}
 
-	for (auto &app_stream_name : candidates)
+	for (auto &[app_stream_name, session_id] : candidates)
 	{
-		Unregister(app_stream_name);
+		bool do_del = false;
+		{
+			std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+			// Only unregister if the session ID matches: a different ID means the stream
+			// reconnected and RequestRegister() has already started a new session.
+			auto session_it = _session_map.find(app_stream_name);
+			if (session_it != _session_map.end() && session_it->second == session_id)
+			{
+				_origin_map_candidates.erase(app_stream_name);
+				do_del = _origin_map.erase(app_stream_name) > 0;
+				_session_map.erase(session_it);
+			}
+		}
+		if (do_del)
+		{
+			Unregister(app_stream_name);
+		}
+		else
+		{
+			logti("OriginMapStore: <%s> pending unregister skipped - stream reconnected", app_stream_name.CStr());
+		}
 	}
 
 	return true;
@@ -127,27 +147,8 @@ bool OriginMapClient::AddOriginMapCandidate(const ov::String &app_stream_name, c
 bool OriginMapClient::RequestUnregister(const ov::String &app_stream_name)
 {
 	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
-	_origin_map_remove_candidates.push_back(app_stream_name);
+	_origin_map_remove_candidates.push_back({app_stream_name, _session_map[app_stream_name]});
 	return true;
-}
-
-bool OriginMapClient::DeleteOriginMap(const ov::String &app_stream_name)
-{
-	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
-	auto origin_cand_it = _origin_map_candidates.find(app_stream_name);
-	if (origin_cand_it != _origin_map_candidates.end())
-	{
-		_origin_map_candidates.erase(origin_cand_it);
-	}
-
-	auto origin_map_it = _origin_map.find(app_stream_name);
-	if (origin_map_it != _origin_map.end())
-	{
-		_origin_map.erase(origin_map_it);
-		return true;
-	}
-
-	return false;
 }
 
 bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::String &origin_host)
@@ -213,7 +214,12 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 
 bool OriginMapClient::RequestRegister(const ov::String &app_stream_name, const ov::String &origin_host)
 {
-	return AddOriginMapCandidate(app_stream_name, origin_host);
+	std::lock_guard<std::recursive_mutex> lock(_origin_map_mutex);
+	// Increment session so any queued pending-unregister entry becomes stale and will be skipped
+	// by ProcessPendingUnregisters() when it compares session IDs.
+	_session_map[app_stream_name]++;
+	_origin_map_candidates[app_stream_name] = origin_host;
+	return true;
 }
 
 bool OriginMapClient::Update(const ov::String &app_stream_name, const ov::String &origin_host)
@@ -241,14 +247,11 @@ bool OriginMapClient::Update(const ov::String &app_stream_name, const ov::String
 
 bool OriginMapClient::Unregister(const ov::String &app_stream_name)
 {
-	if (DeleteOriginMap(app_stream_name) == true)
+	auto [reply_type, reply_str] = CommandToRedis("DEL %s", app_stream_name.CStr());
+	if (reply_type == REDIS_ERR || reply_type == REDIS_REPLY_ERROR)
 	{
-		auto [reply_type, reply_str] = CommandToRedis("DEL %s", app_stream_name.CStr());
-		if (reply_type == REDIS_ERR || reply_type == REDIS_REPLY_ERROR)
-		{
-			logte("Failed to delete origin host from redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
-			return false;
-		}
+		logte("Failed to delete origin host from redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
+		return false;
 	}
 
 	logti("OriginMapStore: <%s> stream is unregistered.", app_stream_name.CStr());
