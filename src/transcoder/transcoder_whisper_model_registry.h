@@ -63,6 +63,11 @@ public:
 	// Free a whisper_state previously returned by NewState.
 	void DeleteState(whisper_state *state);
 
+	// Tell the registry that <state> has completed its first inference. Its
+	// compute buffers are resident from then on and MemAvailable accounts for
+	// them, so the admission reservation NewState() took for it is released.
+	void MarkStateResident(whisper_state *state);
+
 private:
 	// Read and warm up a model. Runs under _load_mutex but without _mutex, and
 	// reserves the model's memory in _reserved_bytes for the duration. Returns
@@ -94,6 +99,17 @@ private:
 	// Bytes a load in progress has claimed but not yet made resident; NewState()
 	// discounts them so it does not hand out the same memory twice.
 	size_t _reserved_bytes OV_GUARDED_BY(_mutex) = 0;
+	// Admission reservation for each live state whose buffers are not resident
+	// yet (allocated, no inference run). Released by MarkStateResident() or
+	// DeleteState(); _pending_state_bytes is the running sum.
+	std::unordered_map<whisper_state *, size_t> _pending_states OV_GUARDED_BY(_mutex);
+	size_t _pending_state_bytes OV_GUARDED_BY(_mutex) = 0;
+
+	// Everything claimed but not yet visible to MemAvailable.
+	size_t ReservedBytesLocked() const OV_REQUIRES(_mutex)
+	{
+		return _reserved_bytes + _pending_state_bytes;
+	}
 	std::unordered_map<std::string, std::shared_ptr<whisper_context>> _models OV_GUARDED_BY(_mutex);
 	// Models being loaded outside the lock right now, so a second caller waits
 	// for the first instead of reading the same file twice.

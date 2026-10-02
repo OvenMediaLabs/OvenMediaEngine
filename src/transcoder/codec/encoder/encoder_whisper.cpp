@@ -124,6 +124,7 @@ bool EncoderWhisper::AllocWhisperState()
 	}
 
 	_n_threads = WhisperModelRegistry::GetInstance()->GetThreadShare(_track->GetThreads());
+	_state_marked_resident = false;
 
 	logti("Whisper state created. stream=%s, track_id=%d, label=%s, model=%s, threads=%d",
 		  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr(), _n_threads);
@@ -140,6 +141,7 @@ void EncoderWhisper::FreeWhisperState()
 		WhisperModelRegistry::GetInstance()->DeleteState(_whisper_state);
 		_whisper_state = nullptr;
 		_n_threads = 0;
+		_state_marked_resident = false;
 
 		logti("Whisper state released. stream=%s, track_id=%d, label=%s",
 			  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr());
@@ -416,6 +418,14 @@ void EncoderWhisper::ThreadLoop()
 		}
 		const int64_t inference_ms = inference_timer.Elapsed();
 		logtt("Whisper processing completed in %" PRId64 " ms", inference_ms);
+
+		// The first pass faulted the state's compute buffers in; from here on
+		// MemAvailable reflects them, so the admission reservation can go.
+		if (_state_marked_resident == false)
+		{
+			WhisperModelRegistry::GetInstance()->MarkStateResident(_whisper_state);
+			_state_marked_resident = true;
+		}
 
 		// One inference must finish within StepMs, otherwise the rolling window
 		// falls behind the live audio and subtitles drift. Warn at most once a

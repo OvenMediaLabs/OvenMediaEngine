@@ -116,6 +116,9 @@ private:
         // Inference threads for the current window, re-read from the registry's
         // thread budget before every inference.
         int32_t _n_threads = 0;
+        // Set once the state's first inference has run and the registry has been
+        // told its buffers are resident (see WhisperModelRegistry::MarkStateResident).
+        bool _state_marked_resident = false;
         // Throttles whisper_state allocation retries after a failure (e.g. OOM).
         std::chrono::steady_clock::time_point _last_state_alloc_fail_ts;
         // Throttle the two "this stream is struggling" warnings to once a minute.

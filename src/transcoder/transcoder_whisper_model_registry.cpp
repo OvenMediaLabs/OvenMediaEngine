@@ -132,42 +132,60 @@ namespace
 		return "";
 	}
 
-	// Headroom left under the memory limit of this process's own cgroup, or
-	// SIZE_MAX when it is not limited. Containers are OME's main deployment and
-	// /proc/meminfo describes the host there, not the container. Best effort:
-	// a limit set on a parent cgroup is not seen.
+	// Smallest (limit - usage) found walking from <path> up to the root of
+	// <base>, or SIZE_MAX when no level carries a numeric limit. The effective
+	// limit can sit on any ancestor: a systemd slice above the service, a pod
+	// above the container. Levels whose files are missing or read "max" are
+	// skipped; with <v1_sentinel> the near-PAGE_COUNTER_MAX value cgroup v1
+	// uses for "unlimited" is skipped as well.
+	size_t MinCgroupHeadroomBytes(const std::string &base, std::string path, const char *limit_file, const char *usage_file, bool v1_sentinel)
+	{
+		size_t headroom = SIZE_MAX;
+
+		// "/" and "" both mean the root; drop trailing slashes so the joins below stay clean.
+		while ((path.empty() == false) && (path.back() == '/'))
+		{
+			path.pop_back();
+		}
+
+		while (true)
+		{
+			size_t limit = 0, usage = 0;
+			if (ReadSizeFile(base + path + "/" + limit_file, &limit) && ReadSizeFile(base + path + "/" + usage_file, &usage))
+			{
+				const bool unlimited = v1_sentinel && (limit >= (static_cast<size_t>(1) << 60));
+				if (unlimited == false)
+				{
+					headroom = std::min(headroom, (limit > usage) ? (limit - usage) : static_cast<size_t>(0));
+				}
+			}
+
+			if (path.empty())
+			{
+				break;
+			}
+			const auto slash = path.rfind('/');
+			path			 = (slash == std::string::npos) ? std::string() : path.substr(0, slash);
+		}
+
+		return headroom;
+	}
+
+	// Headroom left under the tightest memory limit of this process's cgroup
+	// and its ancestors, or SIZE_MAX when none is set. Containers are OME's main
+	// deployment and /proc/meminfo describes the host there, not the container.
 	size_t GetCgroupAvailableMemoryBytes()
 	{
-		size_t limit = 0, usage = 0;
-
-		// cgroup v2: the process's own group first, then the namespace root
-		// (what a container with its own cgroup namespace sees).
-		const std::string own_path = GetOwnCgroupV2Path();
-		for (const std::string &base : {std::string("/sys/fs/cgroup") + own_path, std::string("/sys/fs/cgroup")})
+		// cgroup v2. Inside a container with its own cgroup namespace the
+		// process path is "/" and the root is the container's group.
+		const size_t v2 = MinCgroupHeadroomBytes("/sys/fs/cgroup", GetOwnCgroupV2Path(), "memory.max", "memory.current", false);
+		if (v2 != SIZE_MAX)
 		{
-			if (ReadSizeFile(base + "/memory.max", &limit) && ReadSizeFile(base + "/memory.current", &usage))
-			{
-				return (limit > usage) ? (limit - usage) : 0;
-			}
+			return v2;
 		}
 
-		// cgroup v1: the process's own group (Docker/systemd nest it under the
-		// controller root), then the root. An unlimited group reports a sentinel
-		// near PAGE_COUNTER_MAX.
-		const std::string v1_path = GetOwnCgroupV1MemoryPath();
-		for (const std::string &base : {std::string("/sys/fs/cgroup/memory") + v1_path, std::string("/sys/fs/cgroup/memory")})
-		{
-			if (ReadSizeFile(base + "/memory.limit_in_bytes", &limit) && ReadSizeFile(base + "/memory.usage_in_bytes", &usage))
-			{
-				if (limit >= (static_cast<size_t>(1) << 60))
-				{
-					return SIZE_MAX;
-				}
-				return (limit > usage) ? (limit - usage) : 0;
-			}
-		}
-
-		return SIZE_MAX;
+		// cgroup v1: one directory tree per controller.
+		return MinCgroupHeadroomBytes("/sys/fs/cgroup/memory", GetOwnCgroupV1MemoryPath(), "memory.limit_in_bytes", "memory.usage_in_bytes", true);
 	}
 
 	// The smaller of what the host and the cgroup allow. 0 when unknown.
@@ -249,12 +267,12 @@ bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, si
 		return true;
 	}
 
-	// Memory a load in flight has claimed is not resident yet, so MemAvailable
-	// still counts it as free; take it off the top.
+	// Memory a load in flight or a freshly allocated state has claimed is not
+	// resident yet, so MemAvailable still counts it as free; take it off the top.
 	const size_t headroom_bytes = (available_bytes > reserved_bytes) ? (available_bytes - reserved_bytes) : 0;
 	if (headroom_bytes < required_bytes)
 	{
-		logte("Not enough memory for the Whisper %s (available=%.1f MiB, reserved by loads in progress=%.1f MiB, required≈%.1f MiB). path=%s",
+		logte("Not enough memory for the Whisper %s (available=%.1f MiB, reserved by loads and new states=%.1f MiB, required≈%.1f MiB). path=%s",
 			  what, ToMiB(available_bytes), ToMiB(reserved_bytes), ToMiB(required_bytes), model_path.CStr());
 		return false;
 	}
@@ -386,7 +404,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 	const size_t required_bytes = GetFileSizeBytes(path) * 2;
 	{
 		ov::LockGuard<ov::Mutex> lock(_mutex);
-		if (CheckMemoryAvailable(path, required_bytes, _reserved_bytes, "model") == false)
+		if (CheckMemoryAvailable(path, required_bytes, ReservedBytesLocked(), "model") == false)
 		{
 			return nullptr;
 		}
@@ -464,6 +482,8 @@ void WhisperModelRegistry::Uninitialize()
 
 	_models.clear();
 	_state_memory_bytes.clear();
+	_pending_states.clear();
+	_pending_state_bytes = 0;
 	_live_states.store(0, std::memory_order_relaxed);
 
 	logti("Whisper model registry cleared.");
@@ -485,8 +505,8 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int3
 	// Check memory before whisper_init_state so an oversubscribed server
 	// refuses the state instead of being OOM-killed on its first window.
 	// The mutex serializes check+alloc across all encoder threads.
-	auto mem_it = _state_memory_bytes.find(key);
-	if ((mem_it != _state_memory_bytes.end()) && (CheckMemoryAvailable(model_path, mem_it->second, _reserved_bytes, "state") == false))
+	const size_t state_cost = (_state_memory_bytes.count(key) > 0) ? _state_memory_bytes.at(key) : 0;
+	if (CheckMemoryAvailable(model_path, state_cost, ReservedBytesLocked(), "state") == false)
 	{
 		return nullptr;
 	}
@@ -498,9 +518,31 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int3
 		return nullptr;
 	}
 
+	// The state's compute buffers only become resident on its first inference,
+	// so until then MemAvailable does not show them. Hold the measured cost as
+	// a reservation so the next NewState() does not hand the same memory out
+	// again; the encoder releases it via MarkStateResident().
+	if (state_cost > 0)
+	{
+		_pending_states[state] = state_cost;
+		_pending_state_bytes += state_cost;
+	}
+
 	_live_states.fetch_add(1, std::memory_order_relaxed);
 
 	return state;
+}
+
+void WhisperModelRegistry::MarkStateResident(whisper_state *state)
+{
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+
+	auto it = _pending_states.find(state);
+	if (it != _pending_states.end())
+	{
+		_pending_state_bytes = (_pending_state_bytes > it->second) ? (_pending_state_bytes - it->second) : 0;
+		_pending_states.erase(it);
+	}
 }
 
 void WhisperModelRegistry::DeleteState(whisper_state *state)
@@ -515,6 +557,13 @@ void WhisperModelRegistry::DeleteState(whisper_state *state)
 	}
 
 	whisper_free_state(state);
+
+	auto pending_it = _pending_states.find(state);
+	if (pending_it != _pending_states.end())
+	{
+		_pending_state_bytes = (_pending_state_bytes > pending_it->second) ? (_pending_state_bytes - pending_it->second) : 0;
+		_pending_states.erase(pending_it);
+	}
 
 	if (_live_states.fetch_sub(1, std::memory_order_relaxed) <= 0)
 	{
