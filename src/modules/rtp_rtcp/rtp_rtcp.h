@@ -77,8 +77,8 @@ public:
 
 	// Enable receive-side NACK for the given track. Creates a per-track
 	// RtpNackGenerator that observes incoming sequence numbers and drives
-	// outbound NACK feedback. max_hold_ms is the upper bound for the
-	// jitter buffer hold time recommendation (operator-tunable latency budget).
+	// outbound NACK feedback. max_hold_ms is how long the jitter buffer holds
+	// an incomplete frame for retransmissions (the operator's MaxHoldMs).
 	bool EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms);
 
 	// Register an RTX stream so that RTP packets arriving on rtx_ssrc with

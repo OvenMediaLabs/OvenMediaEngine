@@ -1,12 +1,11 @@
 #include "rtp_nack_generator.h"
 
 #include <algorithm>
-#include <cmath>
 
 #define OV_LOG_TAG "RtpNack"
 
-RtpNackGenerator::RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms)
-	: _track_id(track_id), _media_ssrc(media_ssrc), _hold_max_ms(max_hold_ms)
+RtpNackGenerator::RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t hold_ms)
+	: _track_id(track_id), _media_ssrc(media_ssrc), _hold_ms(hold_ms)
 {
 }
 
@@ -118,13 +117,6 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				logtd("Late seq recovered track(%u) ssrc(%u) seq(%u) latency(%ldms) retries(%u)",
 					  _track_id, _media_ssrc, static_cast<uint16_t>(extended & 0xFFFF),
 					  latency_ms, it->second.retry_count);
-
-				// Karn algorithm: only sample latency when exactly one NACK was
-				// sent for this seq; retransmits introduce ambiguity.
-				if (it->second.retry_count == 1)
-				{
-					UpdateLatencyStats(static_cast<double>(latency_ms), now);
-				}
 				_recovered_total++;
 			}
 			_pending.erase(it);
@@ -142,7 +134,7 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 
 	DiscardStale(now);
 
-	auto retry_interval = std::chrono::milliseconds(static_cast<int64_t>(_ewma_ms));
+	auto retry_interval = std::chrono::milliseconds(RETRY_INTERVAL_MS);
 	auto dwell = std::chrono::milliseconds(INITIAL_NACK_DWELL_MS);
 
 	std::vector<uint16_t> ids;
@@ -169,8 +161,8 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 		}
 		else if ((now - entry.last_nack_at) >= retry_interval)
 		{
-			// Retry every RTT until the jitter buffer ends the entry (via
-			// DropPendingUpTo) or MAX_AGE_MS absolute cap fires.
+			// Retry until the jitter buffer ends the entry (via
+			// DropPendingUpTo) or the absolute age cap fires.
 			ids.push_back(static_cast<uint16_t>(kv.first & 0xFFFF));
 			entry.last_nack_at = now;
 			entry.retry_count++;
@@ -183,48 +175,10 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 	if (ids.empty() == false)
 	{
 		logtd("Fire NACK track(%u) ssrc(%u) total(%zu) initial(%zu) retry(%zu) pending(%zu) hold(%ums)",
-			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(),
-			  GetRecommendedHoldMsInternal());
+			  _track_id, _media_ssrc, ids.size(), initial_count, retry_count_total, _pending.size(), _hold_ms);
 	}
 
 	return ids;
-}
-
-uint32_t RtpNackGenerator::GetRecommendedHoldMs() const
-{
-	ov::LockGuard<ov::Mutex> lock(_lock);
-	return GetRecommendedHoldMsInternal();
-}
-
-uint32_t RtpNackGenerator::GetRecommendedHoldMsInternal() const
-{
-	// Use real EWMA when we have a fresh sample; otherwise fall back to the
-	// initial RTT guess (same source used to seed _ewma_ms for retry interval).
-	double ewma = INITIAL_RTT_GUESS_MS;
-	double dev = 0.0;
-	if (_stats_initialized)
-	{
-		auto since_last_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-								 std::chrono::steady_clock::now() - _last_sample_at)
-								 .count();
-		if (since_last_ms <= STATS_DECAY_MS)
-		{
-			ewma = _ewma_ms;
-			dev = _ewma_dev_ms;
-		}
-	}
-
-	// Hold long enough for MAX_NACK_RETRIES rounds: each NACK fires every
-	// `ewma` and its RTX answer arrives one `ewma` later, so N rounds
-	// complete by N * ewma after the first NACK. `dev` absorbs the variance
-	// the round-trip sample already captures.
-	double hold = INITIAL_NACK_DWELL_MS
-				+ MAX_NACK_RETRIES * ewma
-				+ EWMA_DEV_MULTIPLIER * dev;
-	if (hold < HOLD_MIN_MS) hold = HOLD_MIN_MS;
-	if (hold > _hold_max_ms) hold = _hold_max_ms;
-
-	return static_cast<uint32_t>(hold);
 }
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
@@ -287,42 +241,15 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 	{
 		double avg_retry = static_cast<double>(total_retry) / static_cast<double>(dropped);
 		logtd("DropPendingUpTo track(%u) ssrc(%u) up_to_seq(%u) dropped(%zu) range[%u..%u] "
-			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) "
-			  "ewma(%.1f) dev(%.1f) hold(%u)",
+			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) hold(%u)",
 			  _track_id, _media_ssrc, max_seq, dropped, first_dropped_seq, last_dropped_seq,
-			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(),
-			  _ewma_ms, _ewma_dev_ms, GetRecommendedHoldMsInternal());
+			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(), _hold_ms);
 	}
-}
-
-void RtpNackGenerator::UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now)
-{
-	// A latency that rounds down to 0ms would drive _ewma_ms to 0 and make the
-	// retry interval 0, retrying on every flush. Floor the sample at 1ms.
-	if (sample_ms < 1.0)
-	{
-		sample_ms = 1.0;
-	}
-
-	if (_stats_initialized == false)
-	{
-		_ewma_ms = sample_ms;
-		_ewma_dev_ms = sample_ms / 2.0;
-		_stats_initialized = true;
-	}
-	else
-	{
-		double err = sample_ms - _ewma_ms;
-		_ewma_ms += EWMA_ALPHA * err;
-		_ewma_dev_ms += EWMA_DEV_ALPHA * (std::fabs(err) - _ewma_dev_ms);
-	}
-
-	_last_sample_at = now;
 }
 
 void RtpNackGenerator::DiscardStale(std::chrono::steady_clock::time_point now)
 {
-	auto max_age = std::chrono::milliseconds(MAX_AGE_MS);
+	auto max_age = std::chrono::milliseconds(std::max(MAX_AGE_MS, _hold_ms));
 
 	for (auto it = _pending.begin(); it != _pending.end();)
 	{
@@ -373,7 +300,7 @@ void RtpNackGenerator::LogPeriodicStats(std::chrono::steady_clock::time_point no
 		  "totals[recv(%lu) nack(%lu) recovered(%lu) lost(%lu)] pending(%zu) hold(%ums)",
 		  _track_id, _media_ssrc, d_received, d_nacks, d_recovered, d_lost, loss_pct, recovery_pct,
 		  _received_total, _nacks_sent_total, _recovered_total, _lost_permanent_total,
-		  _pending.size(), GetRecommendedHoldMsInternal());
+		  _pending.size(), _hold_ms);
 
 	_prev_received		  = _received_total;
 	_prev_nacks_sent	  = _nacks_sent_total;

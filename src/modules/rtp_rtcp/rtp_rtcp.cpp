@@ -391,21 +391,19 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 		_last_nack_flush_at[track_id] = std::chrono::steady_clock::now();
 	}
 
-	// Wire dynamic hold window into the matching frame jitter buffer. The
-	// jitter buffer uses NACK-driven RTX latency stats to decide how long
-	// to hold an incomplete frame before discarding it. We also wire the
-	// reverse direction so the jitter buffer can end NACK pending entries
-	// as soon as it advances past their seq.
+	// Wire the hold window into the matching frame jitter buffer so an
+	// incomplete frame is held for MaxHoldMs while NACK retries run. We also
+	// wire the reverse direction so the jitter buffer can end NACK pending
+	// entries as soon as it advances past their seq.
 	auto buf_it = _rtp_frame_jitter_buffers.find(track_id);
 	if (buf_it != _rtp_frame_jitter_buffers.end())
 	{
 		std::weak_ptr<RtpNackGenerator> weak_gen = generator;
 		buf_it->second->SetHoldMsProvider([weak_gen]() -> uint32_t {
 			auto gen = weak_gen.lock();
-			return gen ? gen->GetRecommendedHoldMs() : 0;
+			return gen ? gen->GetHoldMs() : 0;
 		});
-		// MaxHoldMs is the operator's latency ceiling for the whole hold,
-		// not just the NACK/RTX RTT component.
+		// The buffer's own frame-interval margin is capped at the same value.
 		buf_it->second->SetMaxHoldMs(max_hold_ms);
 		buf_it->second->SetOnProcessedSeqAdvance([weak_gen](uint16_t max_seq) {
 			auto gen = weak_gen.lock();
@@ -418,7 +416,7 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 		});
 	}
 
-	logti("EnableNack track(%u) ssrc(%u)", track_id, media_ssrc);
+	logti("EnableNack track(%u) ssrc(%u) hold(%ums)", track_id, media_ssrc, max_hold_ms);
 	return true;
 }
 

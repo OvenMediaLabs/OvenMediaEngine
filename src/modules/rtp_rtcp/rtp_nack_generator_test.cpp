@@ -124,27 +124,17 @@ TEST(RtpNackGenerator, LowestPendingTracksSmallest)
 	EXPECT_EQ(*gen.GetLowestPendingSeq(), 102);
 }
 
-// Initial RTT seeding: GetRecommendedHoldMs uses INITIAL_RTT_GUESS_MS until
-// the first sample lands, then EWMA-derived value. Result is clamped to
-// at least HOLD_MIN_MS.
-TEST(RtpNackGenerator, InitialRecommendedHoldUsesGuessClampedToMin)
+// The hold is the configured value, nothing adaptive.
+TEST(RtpNackGenerator, HoldIsTheConfiguredValue)
 {
-	RtpNackGenerator gen(kTrackId, kSsrc);
-	EXPECT_GE(gen.GetRecommendedHoldMs(), RtpNackGenerator::HOLD_MIN_MS);
+	RtpNackGenerator by_default(kTrackId, kSsrc);
+	EXPECT_EQ(by_default.GetHoldMs(), RtpNackGenerator::HOLD_MS_DEFAULT);
+
+	RtpNackGenerator configured(kTrackId, kSsrc, /*hold_ms=*/450);
+	EXPECT_EQ(configured.GetHoldMs(), 450u);
 }
 
-// MaxHoldMs constructor argument clamps GetRecommendedHoldMs upper bound.
-TEST(RtpNackGenerator, MaxHoldClamps)
-{
-	// Initial hold = dwell(10) + retries(5) * RTT_guess(15) + 4 * dev(0) = 85,
-	// which exceeds the 80ms cap, so the clamp is exercised here.
-	RtpNackGenerator gen(kTrackId, kSsrc, /*max_hold_ms=*/80);
-	EXPECT_LE(gen.GetRecommendedHoldMs(), 80u);
-	EXPECT_GE(gen.GetRecommendedHoldMs(), RtpNackGenerator::HOLD_MIN_MS);
-}
-
-// Retry interval respects ewma. Build twice within the interval -> only the
-// initial entry returns the seq once.
+// Build twice within the retry interval -> the seq is returned only once.
 TEST(RtpNackGenerator, RetryNotDoubleFiredWithinInterval)
 {
 	RtpNackGenerator gen(kTrackId, kSsrc);
@@ -155,5 +145,29 @@ TEST(RtpNackGenerator, RetryNotDoubleFiredWithinInterval)
 	ASSERT_EQ(first_round.size(), 1u);
 
 	auto immediate_again = gen.BuildPendingNack();
-	EXPECT_TRUE(immediate_again.empty()) << "should not retry before retry_interval (ewma) elapses";
+	EXPECT_TRUE(immediate_again.empty()) << "should not retry before RETRY_INTERVAL_MS elapses";
+}
+
+// Once the retry interval elapsed the seq is requested again, and keeps being
+// requested on the same cadence until it arrives.
+TEST(RtpNackGenerator, RetryFiresOnFixedInterval)
+{
+	RtpNackGenerator gen(kTrackId, kSsrc);
+	const auto interval = std::chrono::milliseconds(RtpNackGenerator::RETRY_INTERVAL_MS + 5);
+	gen.OnPacketReceived(100);
+	gen.OnPacketReceived(102);
+	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::INITIAL_NACK_DWELL_MS + 5));
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // initial NACK
+
+	std::this_thread::sleep_for(interval);
+	auto retry = gen.BuildPendingNack();
+	ASSERT_EQ(retry.size(), 1u);
+	EXPECT_EQ(retry[0], 101);
+
+	std::this_thread::sleep_for(interval);
+	ASSERT_EQ(gen.BuildPendingNack().size(), 1u);  // second retry
+
+	gen.OnPacketReceived(101);                      // answered
+	std::this_thread::sleep_for(interval);
+	EXPECT_TRUE(gen.BuildPendingNack().empty());
 }

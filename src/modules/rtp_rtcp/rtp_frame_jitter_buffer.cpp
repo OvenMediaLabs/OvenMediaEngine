@@ -158,10 +158,11 @@ uint32_t RtpFrameJitterBuffer::CurrentHoldMs()
 	{
 		return 0;
 	}
-	// NackGen's hold covers RTT variance; add the frame-interval mean plus
-	// a 4*dev margin so a publisher pacing burst (BWE throttle, encoder
-	// stall, variable fps) doesn't trip a discard before the next packet
-	// arrives. Same shape as the EWMA + 4*dev rule used inside NackGen.
+	// Add the frame-interval mean plus a 4*dev margin on top of the provided
+	// hold so a publisher pacing burst (BWE throttle, encoder stall, variable
+	// fps) doesn't trip a discard before the next packet arrives. The NACK
+	// generator provides MaxHoldMs itself, so the cap below is what applies
+	// there; the margin only matters for a provider that returns less.
 	uint32_t hold = _hold_ms_provider()
 				  + _frame_interval_ms
 				  + 4 * _frame_interval_dev_ms;
@@ -205,8 +206,7 @@ void RtpFrameJitterBuffer::UpdateFrameIntervalEstimate(uint32_t rtp_ts)
 		}
 		else
 		{
-			// EWMA with alpha = 1/8 for mean, 1/4 for deviation (same
-			// pattern as NackGen's NACK->RTX stats).
+			// EWMA with alpha = 1/8 for mean, 1/4 for deviation.
 			int64_t err = static_cast<int64_t>(interval_ms) - static_cast<int64_t>(_frame_interval_ms);
 			_frame_interval_ms = (_frame_interval_ms * 7 + interval_ms) / 8;
 			uint64_t abs_err = static_cast<uint64_t>(err < 0 ? -err : err);

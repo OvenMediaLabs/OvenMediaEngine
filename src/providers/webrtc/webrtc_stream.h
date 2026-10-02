@@ -103,6 +103,10 @@ namespace pvd
 
 		ov::StopWatch _fir_timer;
 		int _fir_interval = 3000; // ms
+		// Jitter buffer hold for NACK recovery (MaxHoldMs). Read from the
+		// provider config at construction, since the stream is not attached to
+		// its application yet when the channels are created.
+		uint32_t _nack_hold_ms = RtpNackGenerator::HOLD_MS_DEFAULT;
 
 		ov::String _session_key;
 

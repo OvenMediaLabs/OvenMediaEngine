@@ -32,7 +32,7 @@ namespace cfg
 					}
 
 					bool _enable = false;
-					int _max_hold_ms = 400;
+					int _max_hold_ms = 600;
 				};
 
 				struct WebrtcProvider : public Provider, public cmn::CrossDomainSupport
