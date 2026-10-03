@@ -43,6 +43,4 @@ public:
 	// <TrackId, Values>
 	std::map<MediaTrackId, int64_t> _last_pts;
 	std::map<MediaTrackId, int64_t> _last_pts_ms;	
-
-	uint32_t _alert_count_bframe;
 };

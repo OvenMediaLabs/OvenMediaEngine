@@ -139,13 +139,7 @@ namespace pvd
 
 		_origin_response_time_msec = stop_watch.Elapsed();
 
-		// Stream was created completly
-		_stream_metrics = StreamMetrics(*std::static_pointer_cast<info::Stream>(PullStream::GetSharedPtr()));
-		if (_stream_metrics != nullptr)
-		{
-			_stream_metrics->SetOriginConnectionTimeMSec(_origin_request_time_msec);
-			_stream_metrics->SetOriginSubscribeTimeMSec(_origin_response_time_msec);
-		}
+		SetOriginTimings(_origin_request_time_msec, _origin_response_time_msec);
 
 		return true;
 	}

@@ -168,7 +168,6 @@ namespace pvd
 		// Statistics
 		int64_t _origin_request_time_msec = 0;
 		int64_t _origin_response_time_msec = 0;
-		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
 
 		ov::StopWatch _ping_timer;
 	};
