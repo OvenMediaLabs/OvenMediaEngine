@@ -89,6 +89,5 @@ namespace pvd
 		std::shared_mutex	_packetizer_lock;
 		std::shared_ptr<OvtPacketizer>	_packetizer;
 		OvtDepacketizer _depacketizer;
-		std::shared_ptr<mon::StreamMetrics> _stream_metrics;
 	};
 }

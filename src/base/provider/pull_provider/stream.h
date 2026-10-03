@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <atomic>
+
 #include "base/common_types.h"
 #include "base/info/stream.h"
 #include "base/provider/stream.h"
@@ -52,12 +54,19 @@ namespace pvd
 		// Media data has to be processed here.
 		virtual ProcessMediaResult ProcessMediaPacket() = 0;
 
+		// Writes the origin timings measured by the latest `StartStream()` to the stream metrics.
+		// `PullApplication` calls it once the stream is registered with monitoring, after `StartStream()` returns.
+		void RecordOriginTimings();
+
 	protected:
 		PullStream(const std::shared_ptr<pvd::Application> &application, const info::Stream &stream_info, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties = nullptr);
 
 		virtual bool StartStream(const std::shared_ptr<const ov::Url> &url) = 0; // Start
 		virtual bool RestartStream(const std::shared_ptr<const ov::Url> &url) = 0; // Failover
 		virtual bool StopStream() = 0; // Stop
+
+		// Called by `StartStream()` of a provider that times its origin connection
+		void SetOriginTimings(int64_t connection_time_msec, int64_t subscribe_time_msec);
 
 		DirectionType GetDirectionType() override
 		{
@@ -79,6 +88,10 @@ namespace pvd
 		int _curr_url_index OV_GUARDED_BY(_start_stop_stream_lock) = 0;
 
 		std::shared_ptr<pvd::PullStreamProperties> _properties;
+
+		std::atomic<bool> _origin_timings_pending		  = false;
+		std::atomic<int64_t> _origin_connection_time_msec = 0;
+		std::atomic<int64_t> _origin_subscribe_time_msec  = 0;
 
 		// It can be called by multiple thread
 		ov::Mutex _start_stop_stream_lock;
