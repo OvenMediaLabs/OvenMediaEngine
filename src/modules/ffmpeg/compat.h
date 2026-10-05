@@ -275,6 +275,17 @@ namespace ffmpeg
 			return 0LL;
 		}
 
+		// The input's whole duration, or -1 when the input does not say.
+		static inline int64_t GetDurationMs(const AVFormatContext *context)
+		{
+			if ((context == nullptr) || (context->duration == AV_NOPTS_VALUE))
+			{
+				return -1;
+			}
+
+			return ::av_rescale(context->duration, 1000, AV_TIME_BASE);
+		}
+
 		static std::shared_ptr<MediaPacket> ToMediaPacket(AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(

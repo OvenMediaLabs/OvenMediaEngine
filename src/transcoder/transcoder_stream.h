@@ -150,7 +150,7 @@ private:
 	// [DECODER_ID, DECODER]
 	std::map<MediaTrackId, std::shared_ptr<TranscodeDecoder>> _decoders OV_GUARDED_BY(_decoder_map_mutex);
 
-	// Current version per input track (accessed only on the packet-push thread)
+	// Current version per input track (accessed only on the stream thread)
 	std::map<MediaTrackId, std::shared_ptr<const MediaTrack>> _last_input_tracks;
 
 	// Last decoded frame and timestamp
@@ -193,10 +193,9 @@ private:
 	void RemoveDecoders() OV_REQUIRES(_pipeline_mutex);
 
 	// Track the version per input track and log the boundary.
-	// The pipeline itself is not touched here: decoder/filter/encoder each
-	// handle the change at their own consumption position.
+	// The decoder is replaced; filter/encoders handle it at their own consumption position.
 	void HandleInputConfigChange(const std::shared_ptr<MediaPacket> &packet);
-	void RecreateDecoderForCodecChange(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track);
+	void RecreateDecoder(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track);
 
 
 	bool CreateFilters(std::shared_ptr<MediaFrame> buffer);
@@ -248,16 +247,15 @@ private:
 	ov::String MakeRenditionName(const ov::String &name_template, const std::shared_ptr<info::Playlist> &playlist_info, const std::shared_ptr<const MediaTrack> &video_track, const std::shared_ptr<const MediaTrack> &audio_track);
 
 private:
-	// Async prepare handling
-	void PrepareAsync();
-	std::thread _prepare_thread;
-	std::atomic<bool> _prepare_thread_running = false;
+	// Prepares the stream, then processes queued packets in order, off the media router's worker.
+	void StreamThreadLoop();
+	bool PrepareAsync();
+	bool StopStreamThread();
+	ov::ManagedQueue<std::shared_ptr<MediaPacket>> _inbound_queue;
+	std::thread _stream_thread;
+	std::atomic<bool> _prepare_requested = false;
+	std::atomic<bool> _initial_drop_logged = false;
 
-	// Initial buffer for ready to stream
-	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
-	bool SendBufferedPackets();
-	ov::Queue<std::shared_ptr<MediaPacket>> _initial_media_packet_buffer;
-
-	// Guards the pipeline during a rebuild (HandleInputConfigChange acquires unique_lock)
+	// Guards the pipeline during a rebuild
 	ov::SharedMutex _pipeline_mutex;
 };

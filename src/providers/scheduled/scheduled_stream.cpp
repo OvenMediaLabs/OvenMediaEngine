@@ -806,9 +806,7 @@ namespace pvd
 			return 0;
 		}
 
-		int64_t duration_ms = format_context->duration / AV_TIME_BASE * 1000;
-
-		return duration_ms;
+		return std::max<int64_t>(ffmpeg::compat::GetDurationMs(format_context.get()), 0);
 	}
 
     bool ScheduledStream::PrepareFilePlayback(const std::shared_ptr<Schedule::Item> &item)

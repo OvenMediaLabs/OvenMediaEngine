@@ -8,6 +8,8 @@
 //==============================================================================
 #pragma once
 
+#include <optional>
+
 #include "base/info/stream.h"
 #include "base/info/codec.h"
 #include "codec/codec_base.h"
@@ -78,8 +80,20 @@ public:
 	virtual bool Initialize() = 0;
 	virtual void Stop();
 
+	// Stop() after decoding the queue and flushing the codec, bounded by a timeout.
+	void DrainAndStop();
+
 protected:
 	void ThreadLoop();
+
+	// Use instead of _input_buffer.Dequeue(); it consumes the drain marker.
+	std::optional<std::shared_ptr<const MediaPacket>> DequeueInput();
+
+	// Makes the codec hand out the frames it delays.
+	virtual bool SendEOS() { return false; }
+
+	// Upper bound when draining a codec; enough for any reorder depth or hardware surface pool.
+	static constexpr int kMaxDrainFrames = 64;
 
 	virtual std::shared_ptr<MediaPacket> GetFramedPacket() { return nullptr; }
 	virtual DecodeResult SendPacket(const std::shared_ptr<MediaPacket> &packet) { (void)packet; return DecodeResult::NoOutput(); }
@@ -96,4 +110,19 @@ protected:
 
 	std::atomic<bool> _kill_flag{false};
 	std::thread _codec_thread;
+
+private:
+	// Set by DequeueInput() once the drain marker is reached.
+	std::atomic<bool> _drain_reached{false};
+
+	// Signals DrainAndStop() whether the drain completed.
+	ov::Future _drain_event;
+
+	// Video packets before the first keyframe are reported as NoData, not decoded.
+	bool _keyframe_sent = false;
+
+	// Blocks only the stream's own thread.
+	static constexpr uint32_t kDrainTimeoutMs = 1000;
+
+	void FlushCodec();
 };

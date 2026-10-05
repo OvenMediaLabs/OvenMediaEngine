@@ -29,6 +29,8 @@
 
 // max initial media packet buffer size, for OOM protection
 #define MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE 10000
+// alert threshold only, not a capacity
+#define MAX_INBOUND_QUEUE_SIZE 300
 
 std::shared_ptr<TranscoderStream> TranscoderStream::Create(const info::Application &application_info, const std::shared_ptr<info::Stream> &org_stream_info, TranscodeApplication *parent)
 {
@@ -74,6 +76,11 @@ bool TranscoderStream::Start()
 		return false;
 	}
 
+	auto urn = std::make_shared<info::ManagedQueue::URN>(_application_info.GetVHostAppName(), _input_stream->GetName(), "trs", "inbound");
+	_inbound_queue.SetUrn(urn);
+	// Packets wait here until the stream is prepared; the tighter alert applies once it starts.
+	_inbound_queue.SetThreshold(MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE);
+
 	SetState(State::PREPARING);
 
 	logti("%s stream has been started", _log_prefix.CStr());
@@ -89,10 +96,10 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 		return false;
 	}
 
-	// Prevent multiple calls to Prepare() from multiple threads
-	if (_prepare_thread_running.exchange(true))
+	// Prevent multiple preparations
+	if (_prepare_requested.exchange(true))
 	{
-		logtw("%s Prepare thread is already running", _log_prefix.CStr());
+		logtw("%s Stream preparation has already been requested", _log_prefix.CStr());
 		return false;
 	}
 
@@ -103,14 +110,13 @@ bool TranscoderStream::Prepare(const std::shared_ptr<info::Stream> &stream)
 
 	try
 	{
-		_prepare_thread = std::thread(&TranscoderStream::PrepareAsync, this);
-		// Don't detach - keep the thread joinable so we can wait for it in Stop()
+		_stream_thread = std::thread(&TranscoderStream::StreamThreadLoop, this);
+		pthread_setname_np(_stream_thread.native_handle(), "trs_stream");
 	}
 	catch (const std::system_error &e)
 	{
-		logte("%s Failed to create prepare thread: %s", _log_prefix.CStr(), e.what());
+		logte("%s Failed to create stream thread: %s", _log_prefix.CStr(), e.what());
 		SetState(State::ERROR);
-		_prepare_thread_running = false;
 		return false;
 	}
 
@@ -135,15 +141,14 @@ void TranscoderStream::BuildPrivateInputStream(const std::shared_ptr<info::Strea
 	}
 }
 
-void TranscoderStream::PrepareAsync()
+bool TranscoderStream::PrepareAsync()
 {
 	logtd("%s Async preparation started", _log_prefix.CStr());
 
 	if (GetState() != State::PREPARING)
 	{
 		logte("%s Stream is not in preparing state", _log_prefix.CStr());
-		_prepare_thread_running = false;
-		return;
+		return false;
 	}
 
 	// Transcoder Webhook
@@ -152,8 +157,7 @@ void TranscoderStream::PrepareAsync()
 	{
 		logte("%s There is no output profiles", _log_prefix.CStr());
 		SetState(State::ERROR);
-		_prepare_thread_running = false;
-		return;
+		return false;
 	}
 
 	// Create Ouput Streams & Notify to create a new stream to the media router
@@ -161,31 +165,30 @@ void TranscoderStream::PrepareAsync()
 	{
 		logte("%s Failed to create the stream", _log_prefix.CStr());
 		SetState(State::ERROR);
-		_prepare_thread_running = false;
-		return;
+		return false;
 	}
 
 	if (!PrepareInternal())
 	{
 		logte("%s Failed to prepare the stream", _log_prefix.CStr());
 		SetState(State::ERROR);
-		_prepare_thread_running = false;
-		return;
+		return false;
 	}
 
 	SetState(State::STARTED);
-	_prepare_thread_running = false;
+	_inbound_queue.SetThreshold(MAX_INBOUND_QUEUE_SIZE);
 
 	logti("%s stream has been prepared", _log_prefix.CStr());
+
+	return true;
 }
 
 bool TranscoderStream::Stop()
 {
-	if (_prepare_thread.joinable())
+	// First, so no packet is processed during teardown.
+	if (StopStreamThread() == false)
 	{
-		logtt("%s Waiting for prepare thread to complete", _log_prefix.CStr());
-		_prepare_thread.join();
-		logtt("%s Prepare thread joined", _log_prefix.CStr());
+		return false;
 	}
 
 	if (GetState() == State::STOPPED)
@@ -468,53 +471,86 @@ std::shared_ptr<info::Stream> TranscoderStream::GetOutputStreamByTrackId(MediaTr
 
 bool TranscoderStream::Push(std::shared_ptr<MediaPacket> packet)
 {
-	if (GetState() == State::STARTED)
-	{
-		SendBufferedPackets();
-
-		ProcessPacket(std::move(packet));
-	}
-	else if (GetState() == State::CREATED || GetState() == State::PREPARING)
-	{
-		BufferMediaPacketUntilReadyToPlay(packet);
-	}
-	else if (GetState() == State::ERROR)
+	auto state = GetState();
+	if (state == State::ERROR)
 	{
 		return false;
 	}
 
-	// State::STOPPED : Do nothing
+	if (state == State::STOPPED)
+	{
+		return true;
+	}
+
+	// Drop the oldest packet for OOM protection
+	if ((state != State::STARTED) && (_inbound_queue.Size() >= MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE))
+	{
+		if (_initial_drop_logged.exchange(true) == false)
+		{
+			logtw("%s Stream is not prepared yet; dropping the oldest packets beyond %d", _log_prefix.CStr(), MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE);
+		}
+
+		_inbound_queue.Dequeue(0);
+	}
+
+	_inbound_queue.Enqueue(std::move(packet));
 
 	return true;
 }
 
-void TranscoderStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet)
+void TranscoderStream::StreamThreadLoop()
 {
-	if (_initial_media_packet_buffer.Size() >= MAX_INITIAL_MEDIA_PACKET_BUFFER_SIZE)
+	ov::logger::ThreadHelper thread_helper;
+
+	if (PrepareAsync() == false)
 	{
-		// Drop the oldest packet, for OOM protection
-		_initial_media_packet_buffer.Dequeue(0);
+		return;
 	}
 
-	_initial_media_packet_buffer.Enqueue(media_packet);
-}
-
-bool TranscoderStream::SendBufferedPackets()
-{
-	logtt("SendBufferedPackets - BufferSize (%lu)", _initial_media_packet_buffer.Size());
-
-	while (_initial_media_packet_buffer.IsEmpty() == false)
+	while (true)
 	{
-		auto buffered_media_packet = _initial_media_packet_buffer.Dequeue();
-		if (buffered_media_packet.has_value() == false)
+		auto packet = _inbound_queue.Dequeue();
+		if (packet.has_value() == false)
+		{
+			if (_inbound_queue.IsStopped() == true)
+			{
+				break;
+			}
+
+			continue;
+		}
+
+		// State::ERROR takes no more packets.
+		if (GetState() != State::STARTED)
 		{
 			continue;
 		}
 
-		auto media_packet = buffered_media_packet.value();
-
-		ProcessPacket(std::move(media_packet));
+		ProcessPacket(packet.value());
 	}
+
+	logtt("%s Stream thread has ended", _log_prefix.CStr());
+}
+
+bool TranscoderStream::StopStreamThread()
+{
+	_inbound_queue.Stop();
+
+	if (_stream_thread.joinable() == false)
+	{
+		return true;
+	}
+
+	// Joining itself would deadlock, and tearing down here would pull the pipeline from under
+	// the packet in progress. Unreachable today: nothing on this thread calls Stop().
+	if (_stream_thread.get_id() == std::this_thread::get_id())
+	{
+		OV_ASSERT2(false);
+		logte("%s Stop() was called from the stream thread; teardown is skipped", _log_prefix.CStr());
+		return false;
+	}
+
+	_stream_thread.join();
 
 	return true;
 }
@@ -1618,23 +1654,14 @@ void TranscoderStream::HandleInputConfigChange(const std::shared_ptr<MediaPacket
 		return;
 	}
 
-	// No pipeline rebuild here: every element handles the change at its own
-	// consumption position without losing queued data. The decoder re-inits on an
-	// in-band format change (GetFramedPacket), the filter re-inits when the frame
-	// format changes (IsFormatChanged), and encoders are rewired by ChangeOutputFormat.
-	// Bypass tracks are re-parsed by the outbound mediarouter.
 	logti("%s Input track(%d) configuration has been changed. version(%u) -> version(%u)",
 		  _log_prefix.CStr(), track_id, current->GetVersion(), packet_track->GetVersion());
 
-	// A codec change is the one case an element cannot absorb: the decoder
-	// itself is codec-bound, so it is replaced here before the packet is decoded
-	if (current->GetCodecId() != packet_track->GetCodecId())
-	{
-		RecreateDecoderForCodecChange(track_id, packet_track);
-	}
+	// Even for the same codec: frames it holds for reordering would come out behind the new source.
+	RecreateDecoder(track_id, packet_track);
 }
 
-void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track)
+void TranscoderStream::RecreateDecoder(MediaTrackId track_id, const std::shared_ptr<const MediaTrack> &packet_track)
 {
 	auto input_track = _input_stream->GetMutableTrack(track_id);
 	if (input_track == nullptr)
@@ -1642,12 +1669,11 @@ void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, cons
 		return;
 	}
 
-	// This module's private input clone follows the new description
-	input_track->Update(*packet_track);
-
 	auto decoder_id = _composite.GetDecoderIdByInputTrackId(track_id);
 	if (decoder_id == std::nullopt)
 	{
+		// This module's private input clone follows the new description
+		input_track->Update(*packet_track);
 		return;
 	}
 
@@ -1664,13 +1690,18 @@ void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, cons
 
 	if (old_decoder != nullptr)
 	{
-		old_decoder->Stop();
+		// Its last frames are the end of the previous source.
+		old_decoder->DrainAndStop();
+
 		old_decoder.reset();
 	}
 
+	// After the drain, which still reads the old description.
+	input_track->Update(*packet_track);
+
 	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
 	{
-		logte("%s Failed to recreate decoder for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+		logte("%s Failed to recreate decoder for the changed source. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
 			  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
 			  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
 
@@ -1687,7 +1718,7 @@ void TranscoderStream::RecreateDecoderForCodecChange(MediaTrackId track_id, cons
 		return;
 	}
 
-	logti("%s Decoder has been recreated for the changed codec. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
+	logtd("%s Decoder has been recreated for the changed source. Id(%d)<Codec(%s), Module(%s), Device(%u)>, InputTrack(%d)",
 		  _log_prefix.CStr(), decoder_id.value(), cmn::GetCodecIdString(input_track->GetCodecId()),
 		  cmn::GetCodecModuleIdString(input_track->GetCodecModuleId()), input_track->GetCodecDeviceId(), track_id);
 }
@@ -1993,6 +2024,14 @@ void TranscoderStream::SetLastDecodedFrame(MediaTrackId decoder_id, std::shared_
 	auto cloned		  = decoded_frame->CloneFrame();
 
 	ov::LockGuard lock(_last_decoded_frame_mutex);
+
+	// A frame behind the last one is late (frame threads); caching it would re-anchor the fillers backward.
+	auto last_it = _last_decoded_frame_pts.find(decoder_id);
+	if ((last_it != _last_decoded_frame_pts.end()) && (pts < last_it->second))
+	{
+		return;
+	}
+
 	_last_decoded_frame_pts[decoder_id]		 = pts;
 	_last_decoded_frame_duration[decoder_id] = duration;
 	_last_decoded_frames[decoder_id]		 = std::move(cloned);

@@ -8,6 +8,8 @@
 //==============================================================================
 #include "transcoder_decoder.h"
 
+#include <chrono>
+
 #include "codec/decoder/decoder_avcodec_audio.h"
 #include "codec/decoder/decoder_avcodec_video.h"
 #include "transcoder_gpu.h"
@@ -297,12 +299,28 @@ void TranscodeDecoder::ThreadLoop()
 	// Initialize the codec (and bitstream framer) and notify the main thread.
 	if (_codec_init_event.Submit(Initialize()) == false)
 	{
+		_drain_event.Submit(false);
 		return;
 	}
 
 	while (!_kill_flag)
 	{
 		auto packet = GetFramedPacket();
+		if ((packet != nullptr) && (_keyframe_sent == false) && (GetMediaType() == cmn::MediaType::Video))
+		{
+			if (packet->GetFlag() != MediaPacketFlag::Key)
+			{
+				// Intentionally waits for a keyframe: a source with none (e.g. intra refresh) never decodes.
+				// Reported per packet, so the last picture repeats in step instead of stall-then-burst.
+				Complete(TranscodeResult::NoData, MediaFrame::Create(cmn::MediaType::Video, packet->GetDts()));
+				packet = nullptr;
+			}
+			else
+			{
+				_keyframe_sent = true;
+			}
+		}
+
 		if (packet != nullptr)
 		{
 			auto sent = SendPacket(packet);
@@ -345,9 +363,101 @@ void TranscodeDecoder::ThreadLoop()
 				break;
 			}
 		}
+
+		// Everything queued before the marker has been decoded.
+		if (_drain_reached == true)
+		{
+			FlushCodec();
+			break;
+		}
 	}
 
+	_drain_event.Submit(_drain_reached);
+
 	Uninitialize();
+}
+
+std::optional<std::shared_ptr<const MediaPacket>> TranscodeDecoder::DequeueInput()
+{
+	auto obj = _input_buffer.Dequeue();
+	if ((obj.has_value() == true) && (obj.value() == nullptr))
+	{
+		_drain_reached = true;
+		return std::nullopt;
+	}
+
+	return obj;
+}
+
+void TranscodeDecoder::FlushCodec()
+{
+	// Nothing was fed, so nothing is held.
+	if ((GetMediaType() == cmn::MediaType::Video) && (_keyframe_sent == false))
+	{
+		return;
+	}
+
+	if (SendEOS() == false)
+	{
+		return;
+	}
+
+	// Bounded, so a codec stuck on bad data cannot hold the caller.
+	int frames = 0;
+	while ((frames < kMaxDrainFrames) && (_kill_flag == false))
+	{
+		auto received = ReceiveFrame();
+		if ((received.result != TranscodeResult::DataReady) && (received.result != TranscodeResult::FormatChanged))
+		{
+			// Nothing more to hand out (or an error).
+			break;
+		}
+
+		Complete(received.result, std::move(received.frame));
+		frames++;
+	}
+
+	logtd("decoder %s flushed %d frames", cmn::GetCodecIdString(GetCodecID()), frames);
+}
+
+void TranscodeDecoder::DrainAndStop()
+{
+	if (_codec_thread.joinable() == true)
+	{
+		// A backlog this deep would only run out the timeout.
+		auto queued = _input_buffer.Size();
+		if (queued > MAX_QUEUE_SIZE)
+		{
+			logtw("decoder %s skips the drain: %zu packets queued (threshold %d); they are dropped",
+				  cmn::GetCodecIdString(GetCodecID()), queued, MAX_QUEUE_SIZE);
+		}
+		else
+		{
+			auto started = std::chrono::steady_clock::now();
+
+			// FIFO: the thread meets the marker only after every packet sent before it.
+			_input_buffer.Enqueue(nullptr);
+
+			bool drained	= _drain_event.GetFor(kDrainTimeoutMs);
+			auto elapsed_ms = static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count());
+
+			if (drained == true)
+			{
+				logtd("decoder %s drained %zu packets in %" PRId64 " ms", cmn::GetCodecIdString(GetCodecID()), queued, elapsed_ms);
+			}
+			else if (elapsed_ms < kDrainTimeoutMs)
+			{
+				// The thread ended before reaching the marker (e.g. a failed initialization).
+				logtd("decoder %s had already stopped; nothing to drain", cmn::GetCodecIdString(GetCodecID()));
+			}
+			else
+			{
+				logtw("decoder %s could not drain within %u ms; the rest is dropped", cmn::GetCodecIdString(GetCodecID()), kDrainTimeoutMs);
+			}
+		}
+	}
+
+	Stop();
 }
 
 void TranscodeDecoder::SendBuffer(std::shared_ptr<const MediaPacket> packet)

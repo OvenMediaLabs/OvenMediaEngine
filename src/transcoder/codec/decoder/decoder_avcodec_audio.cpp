@@ -64,7 +64,7 @@ bool AVCodecAudioDecoder::Initialize()
 
 std::shared_ptr<MediaPacket> AVCodecAudioDecoder::GetFramedPacket()
 {
-	auto obj = _input_buffer.Dequeue();
+	auto obj = DequeueInput();
 	if (obj.has_value() == false)
 	{
 		return nullptr;
@@ -93,7 +93,7 @@ DecodeResult AVCodecAudioDecoder::SendPacket(const std::shared_ptr<MediaPacket> 
 	}
 	else if (result == ffmpeg::CodecResult::InvalidData)
 	{
-		logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
+		logtt("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 			  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), packet->GetPts());
 
 		auto empty_frame = MediaFrame::Create(cmn::MediaType::Audio, packet->GetDts());
@@ -117,7 +117,8 @@ DecodeResult AVCodecAudioDecoder::SendPacket(const std::shared_ptr<MediaPacket> 
 DecodeResult AVCodecAudioDecoder::ReceiveFrame()
 {
 	auto received = _codec.ReceiveFrame();
-	if (received.result == ffmpeg::CodecResult::Again)
+	// Eof follows a drain (SendEOS()).
+	if (received.result == ffmpeg::CodecResult::Again || received.result == ffmpeg::CodecResult::Eof)
 	{
 		return DecodeResult::NoOutput();
 	}
@@ -171,6 +172,11 @@ DecodeResult AVCodecAudioDecoder::ReceiveFrame()
 	_last_pkt_duration = output_frame->GetDuration();
 
 	return DecodeResult::Decoded(std::move(output_frame), format_changed);
+}
+
+bool AVCodecAudioDecoder::SendEOS()
+{
+	return _codec.SendEOS() == ffmpeg::CodecResult::Ok;
 }
 
 void AVCodecAudioDecoder::Uninitialize()

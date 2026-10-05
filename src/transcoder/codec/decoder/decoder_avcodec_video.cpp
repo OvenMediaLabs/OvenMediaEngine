@@ -95,9 +95,9 @@ bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 		// downstream before teardown, so the resolution change loses no frame.
 		// This is the last chance to recover them, so a corrupt frame is skipped
 		// instead of aborting (bounded against a codec stuck on invalid data)
-		if (::avcodec_send_packet(_codec.Get(), nullptr) == 0)
+		if (_codec.SendEOS() == ffmpeg::CodecResult::Ok)
 		{
-			for (int attempt = 0; attempt < 64; attempt++)
+			for (int attempt = 0; attempt < kMaxDrainFrames; attempt++)
 			{
 				auto received = ReceiveFrame();
 				if (received.result == TranscodeResult::DataReady || received.result == TranscodeResult::FormatChanged)
@@ -126,7 +126,7 @@ bool AVCodecVideoDecoder::ReinitCodecIfNeed()
 
 std::shared_ptr<MediaPacket> AVCodecVideoDecoder::GetFramedPacket()
 {
-	auto obj = _input_buffer.Dequeue();
+	auto obj = DequeueInput();
 	if (obj.has_value() == false)
 	{
 		return nullptr;
@@ -165,7 +165,7 @@ DecodeResult AVCodecVideoDecoder::SendPacket(const std::shared_ptr<MediaPacket> 
 	auto result = _codec.SendPacket(packet);
 	if (result == ffmpeg::CodecResult::InvalidData)
 	{
-		logtd("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
+		logtt("[%s] Invalid data while sending a packet for decoding. track(%u), pts(%" PRId64 ")",
 			  _stream_info.GetUri().CStr(), GetRefTrack()->GetId(), packet->GetPts());
 
 		auto empty_frame = MediaFrame::Create(cmn::MediaType::Video, packet->GetDts());
@@ -188,7 +188,7 @@ DecodeResult AVCodecVideoDecoder::ReceiveFrame()
 	auto result = received.result;
 	if (result == ffmpeg::CodecResult::Again || result == ffmpeg::CodecResult::Eof)
 	{
-		// Eof only appears while draining for a reinit; the session reopens right after
+		// Eof follows a drain (reinit or SendEOS())
 		return DecodeResult::NoOutput();
 	}
 	else if (result == ffmpeg::CodecResult::InvalidData)
@@ -225,6 +225,11 @@ DecodeResult AVCodecVideoDecoder::ReceiveFrame()
 	}
 
 	return DecodeResult::Decoded(std::move(decoded_frame), format_changed);
+}
+
+bool AVCodecVideoDecoder::SendEOS()
+{
+	return _codec.SendEOS() == ffmpeg::CodecResult::Ok;
 }
 
 void AVCodecVideoDecoder::Uninitialize()
