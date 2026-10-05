@@ -2258,10 +2258,13 @@ void TranscoderStream::OnEncodedPacket(TranscodeResult result, MediaTrackId enco
 
 void TranscoderStream::SendFrame(std::shared_ptr<info::Stream> &stream, std::shared_ptr<MediaPacket> packet)
 {
+	// Read before the packet is moved out.
+	auto track_id = packet->GetTrackId();
+
 	if (!(_parent->SendFrame(stream, std::move(packet))))
 	{
 		logtw("%s Could not send frame to mediarouter. Stream(%s(%u)), OutputTrack(%u)",
-			  _log_prefix.CStr(), stream->GetName().CStr(), stream->GetId(), packet->GetTrackId());
+			  _log_prefix.CStr(), stream->GetName().CStr(), stream->GetId(), track_id);
 	}
 }
 
