@@ -477,7 +477,8 @@ bool TranscoderStream::Push(std::shared_ptr<MediaPacket> packet)
 		return false;
 	}
 
-	if (state == State::STOPPED)
+	// The queue stops first in Stop(); nothing would take packets from it.
+	if ((state == State::STOPPED) || (_inbound_queue.IsStopped() == true))
 	{
 		return true;
 	}
@@ -1696,7 +1697,8 @@ void TranscoderStream::RecreateDecoder(MediaTrackId track_id, const std::shared_
 		old_decoder.reset();
 	}
 
-	// After the drain, which still reads the old description.
+	// After the drain, which still reads the old description. No pipeline lock: no decoder runs for
+	// this track here, MediaTrack locks itself, and the shared-lock callbacks would drop frames.
 	input_track->Update(*packet_track);
 
 	if (CreateDecoder(decoder_id.value(), _input_stream, input_track) == false)
