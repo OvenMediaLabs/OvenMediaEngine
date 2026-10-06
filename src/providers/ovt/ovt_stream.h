@@ -59,6 +59,13 @@ namespace pvd
 		// Only for an OVT2 origin; an OVT1 origin sends no names,
 		// so every track is registered as before.
 		static std::optional<ov::String> GetTrackSkipReason(const Json::Value &json_track, const std::shared_ptr<const MediaTrack> &track);
+		// Whether a track the origin describes would land in the slot of a track of another kind.
+		// `info::Stream::UpdateTrack()` swaps a slot by id alone and `AddTrack()` filed the old track in
+		// the vector of its own kind, so replacing it would leave an audio track among the video ones.
+		// Registration, the play selection and the change notification ask this before acting on a
+		// described id. The media path makes the same comparison against the packet's own media type,
+		// which is the only kind it has.
+		bool ConflictsWithRegisteredTrack(const std::shared_ptr<const MediaTrack> &track) const;
 
 		// Whether the origin's RFC 6381 `codecs` string disagrees with this build's own derivation.
 		// False when either side has none. Static and public so a test can drive both sides of it.
@@ -99,9 +106,12 @@ namespace pvd
 			// At least one PT 40 arrived from this origin. Media path only.
 			bool required_announced						  = false;
 			// Track ids already named in a log line, so a lasting fault is reported once instead of
-			// once per packet. `describe_mismatch_logged` is written by the handshake and by the NOTIFY
-			// path, which is why it has a lock; the other two are the media path's alone.
+			// once per packet. `describe_mismatch_logged` and `notify_kind_mismatch_logged` are written
+			// by the handshake or the NOTIFY path; the rest belong to the media path alone.
+			// Only `describe_mismatch_logged` is reached by both and so has a lock.
 			std::unordered_set<uint32_t> unregistered_track_logged;
+			std::unordered_set<uint32_t> media_kind_mismatch_logged;
+			std::unordered_set<uint32_t> notify_kind_mismatch_logged;
 			std::unordered_set<uint32_t> wire_format_logged;
 
 			std::mutex describe_mismatch_lock;
@@ -151,7 +161,7 @@ namespace pvd
 		// the playlists replace the previous set,
 		// and the tracks in `allowed_track_ids` are added or changed.
 		// `nullopt` means an OVT1 origin, which names none, so every described track is registered.
-		// The track layout is settled by the first SUCCESSFUL PLAY RESPONSE, on the tracks the describe
+		// The track layout is settled by the first successful play response, on the tracks the describe
 		// carried and `allowedTrackIds` confirmed. After that, an id this stream does not already have is
 		// named in a warning rather than added, and a track the new describe no longer carries stays
 		// registered, because `info::Stream` can neither add nor remove one once shared.
@@ -198,8 +208,9 @@ namespace pvd
 		// A thread already inside the previous connection holds it alive and finishes on it.
 		std::shared_ptr<Connection> _connection = std::make_shared<Connection>();
 
-		// The track layout is settled by the first describe of this stream and never restructured
-		// afterwards. Written and read on the start / stop path only, which one lock serializes.
+		// The track layout is settled by the first successful play response of this stream and never
+		// restructured afterwards.
+		// Written and read on the start / stop path only, which one lock serializes.
 		bool _track_layout_fixed				= false;
 	};
 }

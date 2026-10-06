@@ -533,6 +533,7 @@ namespace pvd
 		std::set<uint32_t> described_ids;
 		std::set<uint32_t> registered_ids;
 		std::vector<ov::String> late_tracks;
+		std::vector<ov::String> mismatched_tracks;
 		for (const auto &new_track : _described_tracks)
 		{
 			described_ids.insert(new_track->GetId());
@@ -541,6 +542,16 @@ namespace pvd
 			{
 				logti("[%s/%s(%u)] Track(%u) was described but is not in the play response's allowedTrackIds; not registered",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), new_track->GetId());
+				continue;
+			}
+
+			// An id already held by a track of another kind is named rather than replaced.
+			if (ConflictsWithRegisteredTrack(new_track))
+			{
+				mismatched_tracks.push_back(ov::String::FormatString(
+					"%u(%s -> %s)", new_track->GetId(),
+					cmn::GetMediaTypeString(GetTrack(new_track->GetId())->GetMediaType()),
+					cmn::GetMediaTypeString(new_track->GetMediaType())));
 				continue;
 			}
 
@@ -596,6 +607,16 @@ namespace pvd
 				ghosts.size(), ov::String::Join(ghosts, ", ").CStr());
 		}
 
+		if (mismatched_tracks.empty() == false)
+		{
+			logtw(
+				"[%s/%s(%u)] %zu track(s) this origin numbers as another kind than the track already "
+				"registered under the same id: %s. They are not registered, and this origin cannot "
+				"take over those ids",
+				GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
+				mismatched_tracks.size(), ov::String::Join(mismatched_tracks, ", ").CStr());
+		}
+
 		if (late_tracks.empty() == false)
 		{
 			logtw(
@@ -608,8 +629,18 @@ namespace pvd
 
 		if (registered_ids.empty())
 		{
-			// Two different causes end up here, and the operator cannot tell them apart from the counts alone.
-			if (late_tracks.empty() == false)
+			// Three causes end up here and the counts alone do not tell them apart, so each one says
+			// which it is.
+			if (mismatched_tracks.empty() == false)
+			{
+				logte(
+					"[%s/%s(%u)] Every track this origin describes carries a different media type than "
+					"the one registered under the same id, so it cannot take over this stream. "
+					"The pull provider moves on to the next URL, or terminates the stream when "
+					"`RetryCount` is 0",
+					GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
+			}
+			else if (late_tracks.empty() == false)
 			{
 				logte(
 					"[%s/%s(%u)] None of the %zu track(s) this origin describes matches the track layout this "
@@ -1106,6 +1137,13 @@ namespace pvd
 		return invalid.empty();
 	}
 
+	bool OvtStream::ConflictsWithRegisteredTrack(const std::shared_ptr<const MediaTrack> &track) const
+	{
+		auto registered = GetTrack(track->GetId());
+
+		return (registered != nullptr) && (registered->GetMediaType() != track->GetMediaType());
+	}
+
 	std::shared_ptr<MediaTrack> OvtStream::ParseTrackFromJson(const std::shared_ptr<Connection> &connection, const Json::Value &json_track)
 	{
 		if (ValidateTrackJson(json_track) == false)
@@ -1299,6 +1337,22 @@ namespace pvd
 				continue;
 			}
 
+			// The same slot rule as registration: a notification cannot turn a video track into an
+			// audio one, because the swap goes by id and the vectors were filed by kind.
+			if (ConflictsWithRegisteredTrack(new_track))
+			{
+				auto &logged = connection->notify_kind_mismatch_logged;
+				if ((logged.size() < MAX_LOGGED_TRACK_IDS) && logged.insert(new_track->GetId()).second)
+				{
+					logtw("[%s/%s(%u)] Track(%u) change notification carries %s where %s is registered; not applied",
+						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), new_track->GetId(),
+						  cmn::GetMediaTypeString(new_track->GetMediaType()),
+						  cmn::GetMediaTypeString(GetTrack(new_track->GetId())->GetMediaType()));
+				}
+
+				continue;
+			}
+
 			if (ChangeTrack(new_track) == false)
 			{
 				continue;
@@ -1344,16 +1398,23 @@ namespace pvd
 
 		// The tracks this edge will register. `_described_tracks` is what the describe left after the
 		// skip rules ran, so a track this build cannot carry is never asked for and the origin stops
-		// building renditions around it. The skip rules read the OVT2 name fields, so they only run for
-		// an OVT2 origin; from an OVT1 one every described track is registered and the key is not sent.
+		// building renditions around it.
+		// The skip rules read the OVT2 name fields, so they only run for an OVT2 origin;
+		// from an OVT1 one every described track is registered and the key is not sent.
 		if (connection->origin_is_ovt2)
 		{
 			Json::Value track_ids(Json::arrayValue);
 			for (const auto &track : _described_tracks)
 			{
-				// Once the layout is settled, an id this stream does not have is refused at registration.
-				// Asking for it would only make the origin send media this edge drops.
+				// Registration refuses both of these, so asking for them would only make the origin
+				// send media this edge drops: an id this stream does not have once the layout is
+				// settled, and an id whose track is of another kind here.
 				if (_track_layout_fixed && (GetTrack(track->GetId()) == nullptr))
+				{
+					continue;
+				}
+
+				if (ConflictsWithRegisteredTrack(track))
 				{
 					continue;
 				}
@@ -1761,6 +1822,29 @@ namespace pvd
 								  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), logged.size());
 						}
 					}
+				}
+
+				continue;
+			}
+
+			// An OVT1 origin takes no track selection, so a track this stream refused to register still arrives.
+			// Its packets carry the origin's kind, not the one registered here,
+			// and handing them on would feed an audio stream to a video track:
+			// mediarouter normalizes on the bitstream format alone and would write an audio
+			// configuration into the video track's working copy.
+			// A byte the wire table has no entry for reads as `Unknown` and is dropped here too.
+			// A track registered as `Unknown` receives packets typed `Unknown`, which compare equal,
+			// so nothing legitimate falls into this branch.
+			auto registered_track = GetTrack(media_packet->GetTrackId());
+			if (registered_track->GetMediaType() != media_packet->GetMediaType())
+			{
+				auto &logged = connection->media_kind_mismatch_logged;
+				if ((logged.size() < MAX_LOGGED_TRACK_IDS) && logged.insert(media_packet->GetTrackId()).second)
+				{
+					logtw("[%s/%s(%u)] Dropping %s packets of track(%u), which is registered as %s",
+						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
+						  cmn::GetMediaTypeString(media_packet->GetMediaType()), media_packet->GetTrackId(),
+						  cmn::GetMediaTypeString(registered_track->GetMediaType()));
 				}
 
 				continue;
