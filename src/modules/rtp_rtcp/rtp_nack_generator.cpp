@@ -79,6 +79,7 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				if (_pending.size() >= MAX_PENDING)
 				{
 					_pending.erase(_pending.begin());
+					_lost_permanent_total++;
 					evicted++;
 				}
 
@@ -88,7 +89,9 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				entry.inserted_at = now;
 				_pending.emplace(s, entry);
 			}
+			// Skipped seqs are never requested, so they are lost for good too
 			uint32_t skipped = first - _expected_next;
+			_lost_permanent_total += skipped;
 			if (evicted > 0 || skipped > 0)
 			{
 				logtw("NACK pending full track(%u) ssrc(%u): %u packet gap, skipped its oldest %u seqs and dropped %u older pending entries (cap %zu)",
@@ -203,6 +206,7 @@ size_t RtpNackGenerator::DropPendingOlderThan(uint32_t age_ms)
 		if (age > static_cast<int64_t>(age_ms))
 		{
 			it = _pending.erase(it);
+			_lost_permanent_total++;
 			dropped++;
 		}
 		else
