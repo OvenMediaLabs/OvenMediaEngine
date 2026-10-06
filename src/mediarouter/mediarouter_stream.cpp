@@ -527,14 +527,19 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 			working->SetSampleRate(hint->GetSampleRate());
 			working->SetSampleFormat(hint->GetSample().GetFormat());
 		}
+		// The layout and the raw value are one description, so they move together.
+		// A hint that names a layout has no raw value left to relay, and `IsValid()` is false exactly
+		// when the raw value is the layout. The local layout is left alone in that case,
+		// because an audio parser may have derived a usable one the relay value must not overwrite.
 		if (hint->GetChannel().IsValid())
 		{
 			working->SetChannelLayout(hint->GetChannel().GetLayout());
+			working->SetUnmappedChannelLayout(std::nullopt);
 		}
-		// The raw value is what a relay sends on, and the author is the only side that knows it,
-		// so it is taken as given rather than only when it is set. `IsValid()` is false for a layout
-		// this build cannot name, which would otherwise leave the previous origin's value in place.
-		working->SetUnmappedChannelLayout(hint->GetChannel().GetUnmappedLayout());
+		else if (hint->GetChannel().GetUnmappedLayout().has_value())
+		{
+			working->SetUnmappedChannelLayout(hint->GetChannel().GetUnmappedLayout());
+		}
 
 		if (hint->GetAudioSamplesPerFrame() > 0)
 		{
