@@ -286,11 +286,15 @@ void OvtStream::RenumberIndexHints(Json::Value &stream)
 	{
 		for (auto &rendition : playlist["renditions"])
 		{
-			if (rendition["videoTrackId"].isUInt() && (new_index.count(rendition["videoTrackId"].asUInt()) > 0))
+			// `isMember()` first: the non-const `operator[]` would insert a null member for a side
+			// the origin could not pin, and that null would go out to the edge.
+			if (rendition.isMember("videoTrackId") && rendition["videoTrackId"].isUInt() &&
+				(new_index.count(rendition["videoTrackId"].asUInt()) > 0))
 			{
 				rendition["videoIndexHint"] = new_index[rendition["videoTrackId"].asUInt()];
 			}
-			if (rendition["audioTrackId"].isUInt() && (new_index.count(rendition["audioTrackId"].asUInt()) > 0))
+			if (rendition.isMember("audioTrackId") && rendition["audioTrackId"].isUInt() &&
+				(new_index.count(rendition["audioTrackId"].asUInt()) > 0))
 			{
 				rendition["audioIndexHint"] = new_index[rendition["audioTrackId"].asUInt()];
 			}
