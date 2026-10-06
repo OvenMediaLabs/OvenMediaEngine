@@ -53,6 +53,9 @@ namespace pvd
 		virtual ProcessMediaResult ProcessMediaPacket() = 0;
 
 	protected:
+		// Notes that the origin delivered media, then hands the packet on unchanged.
+		bool SendFrame(const std::shared_ptr<MediaPacket> &packet) override;
+
 		PullStream(const std::shared_ptr<pvd::Application> &application, const info::Stream &stream_info, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties = nullptr);
 
 		virtual bool StartStream(const std::shared_ptr<const ov::Url> &url) = 0; // Start
@@ -67,7 +70,7 @@ namespace pvd
 	private:
 		bool StopInternal() OV_REQUIRES(_start_stop_stream_lock);
 
-		// Locked body of `Resume()`: retry-count check + one `RestartStream()` attempt.
+		// Locked body of `Resume()`: retry-count check, retry budget, and one `RestartStream()` attempt.
 		// `OnSourceChanged()`/`Stream::Start()` are deliberately called by the wrapper AFTER
 		// the lock is released, so this lock is never held while entering
 		// `Application`/`MediaRouter`.
@@ -75,6 +78,10 @@ namespace pvd
 		const std::shared_ptr<const ov::Url> GetNextURL() OV_REQUIRES(_start_stop_stream_lock);
 
 		uint32_t	_restart_count OV_GUARDED_BY(_start_stop_stream_lock) = 0;
+		// Whether the session that has just ended delivered media of its own.
+		// The media path sets it and the next resume reads it once,
+		// which is what tells a session that carried the stream from one that only answered a handshake.
+		std::atomic<bool> _media_received{false};
 		std::vector<std::shared_ptr<const ov::Url>> _url_list OV_GUARDED_BY(_start_stop_stream_lock);
 		int _curr_url_index OV_GUARDED_BY(_start_stop_stream_lock) = 0;
 

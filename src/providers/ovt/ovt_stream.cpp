@@ -405,7 +405,9 @@ namespace pvd
 		}
 
 		// PT 40 announces required tokens learned after describe;
-		// an unknown one ends the stream at once, before the media that carries the value is interpreted.
+		// an unknown one ends the session at once, before the media that carries the value is interpreted.
+		// The next origin is tried, and the attempt counts against the retry budget,
+		// because the session delivered no media of its own.
 		// `Parse()` throws on a payload the parser refuses (nesting past jsoncpp's stack limit, for one),
 		// so this shares the same guard as the response path below.
 		if (message.payload_type == OvtPayloadType::Required)

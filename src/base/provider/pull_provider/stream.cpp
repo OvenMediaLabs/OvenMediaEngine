@@ -121,21 +121,44 @@ namespace pvd
 			return false;
 		}
 
-		if (RestartStream(url) == false)
+		// Only media refills the budget.
+		// A handshake that keeps succeeding while the session it opens delivers nothing is not progress,
+		// and counting it as such would leave the retry unbounded.
+		// Every attempt is counted here, the ones whose handshake then fails included.
+		if (_media_received.exchange(false))
 		{
-			StopInternal();
+			_restart_count = 0;
+		}
+		else
+		{
 			_restart_count++;
-			if (_restart_count > _url_list.size() * _properties->GetRetryCount())
+			if (_restart_count > (_url_list.size() * _properties->GetRetryCount()))
 			{
 				// If the stream state is TERMINATED, it will be deleted by the StreamMotor
 				SetState(Stream::State::TERMINATED);
+				return false;
 			}
+		}
 
+		if (RestartStream(url) == false)
+		{
+			StopInternal();
 			return false;
 		}
 
-		_restart_count = 0;
 		return true;
+	}
+
+	bool PullStream::SendFrame(const std::shared_ptr<MediaPacket> &packet)
+	{
+		// A packet this stream made for itself (an event, a subtitle) says nothing about the origin,
+		// so only what arrived from the origin refills the retry budget.
+		if (packet->IsInternalCreated() == false)
+		{
+			_media_received.store(true);
+		}
+
+		return Stream::SendFrame(packet);
 	}
 
 	const std::shared_ptr<const ov::Url> PullStream::GetNextURL()
