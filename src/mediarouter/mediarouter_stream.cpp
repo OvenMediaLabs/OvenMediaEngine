@@ -531,6 +531,11 @@ void MediaRouteStream::ApplyPacketConfigHint(TrackAuthorState &state, const std:
 		{
 			working->SetChannelLayout(hint->GetChannel().GetLayout());
 		}
+		// The raw value is what a relay sends on, and the author is the only side that knows it,
+		// so it is taken as given rather than only when it is set. `IsValid()` is false for a layout
+		// this build cannot name, which would otherwise leave the previous origin's value in place.
+		working->SetUnmappedChannelLayout(hint->GetChannel().GetUnmappedLayout());
+
 		if (hint->GetAudioSamplesPerFrame() > 0)
 		{
 			working->SetAudioSamplesPerFrame(hint->GetAudioSamplesPerFrame());

@@ -165,9 +165,12 @@ bool MediaTrack::HasSameContent(const MediaTrack &other) const
 	}
 	else if (GetMediaType() == MediaType::Audio)
 	{
+		// Two layouts this build has no name for both read `LayoutUnknown`,
+		// so the raw value is the only thing that tells them apart.
 		if (GetSample().GetFormat() != other.GetSample().GetFormat() ||
 			GetSample().GetRateNum() != other.GetSample().GetRateNum() ||
 			GetChannel().GetLayout() != other.GetChannel().GetLayout() ||
+			GetChannel().GetUnmappedLayout() != other.GetChannel().GetUnmappedLayout() ||
 			GetAudioSamplesPerFrame() != other.GetAudioSamplesPerFrame())
 		{
 			return false;
