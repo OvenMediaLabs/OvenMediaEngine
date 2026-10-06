@@ -179,12 +179,12 @@ namespace ovt
 
 	// Reason an origin gives when it stops a stream (`application: "stop"`, `message: <reason>`).
 	// Fixed strings and never numeric codes; a receiver counts a string it does not know as unknown.
+	// Only the reasons an origin actually sends. A name nothing produces would be a vocabulary
+	// the other side can never meet.
 	enum class StopReason : uint8_t
 	{
 		StreamDeleted,
 		OriginShutdown,
-		Evicted,
-		Internal,
 	};
 
 	constexpr const char *ToString(StopReason reason)
@@ -195,10 +195,6 @@ namespace ovt
 				return "stream-deleted";
 			case StopReason::OriginShutdown:
 				return "origin-shutdown";
-			case StopReason::Evicted:
-				return "evicted";
-			case StopReason::Internal:
-				return "internal";
 		}
 
 		return "internal";
@@ -206,7 +202,7 @@ namespace ovt
 
 	inline std::optional<StopReason> ParseStopReason(const ov::String &reason)
 	{
-		for (auto candidate : {StopReason::StreamDeleted, StopReason::OriginShutdown, StopReason::Evicted, StopReason::Internal})
+		for (auto candidate : {StopReason::StreamDeleted, StopReason::OriginShutdown})
 		{
 			if (reason == ToString(candidate))
 			{

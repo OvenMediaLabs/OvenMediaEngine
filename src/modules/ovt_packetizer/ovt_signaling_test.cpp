@@ -22,8 +22,6 @@ TEST(OvtSignalingTest, StopReasonStringsRoundTrip)
 	const Row rows[] = {
 		{ovt::StopReason::StreamDeleted, "stream-deleted"},
 		{ovt::StopReason::OriginShutdown, "origin-shutdown"},
-		{ovt::StopReason::Evicted, "evicted"},
-		{ovt::StopReason::Internal, "internal"},
 	};
 
 	for (const auto &row : rows)
