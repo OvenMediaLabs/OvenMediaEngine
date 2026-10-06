@@ -53,6 +53,14 @@ namespace bmff
 		// discontinuity is signaled.
 		void RequestKeyRotation(const CencProperty &cenc_property);
 
+		// Apply a pending key rotation to the segment about to start. The stream calls
+		// this from the storage callback that completes the previous segment, before
+		// that completion is published, so the new initialization section exists by
+		// the time the next partial is hinted. Returns true only when the new version
+		// and its initialization section are in place; a boundary that cannot open a
+		// version keeps the rotation pending, a failed initialization section drops it
+		bool TryApplyPendingKeyRotationAtSegmentStart();
+
 		// End timestamp of the last appended sample, the boundary position for
 		// propagating a discontinuity to the other tracks
 		double GetLastSampleEndTimestampMs() const;
@@ -112,6 +120,10 @@ namespace bmff
 		// A DRM key rotation requested from the stream, applied where the next segment
 		// starts on its own
 		std::optional<CencProperty> _pending_key_rotation;
+
+		// Whether the frame following the chunk being stored is independently
+		// decodable; read by the rotation applied from the storage callback
+		bool _next_frame_independent = false;
 
 		// CENC key material per content version, recorded when that version's
 		// initialization section is created. Only ever queried for a version whose segment

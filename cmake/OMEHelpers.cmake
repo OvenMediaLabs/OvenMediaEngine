@@ -105,6 +105,9 @@ function(ome_add_static_library target_name)
 
     add_library(${target_name} STATIC ${SRCS})
 
+    # Any source can include the generated `main/git_info.h` (via `main/main.h`), so generate it first
+    add_dependencies(${target_name} ome_git_info)
+
     target_include_directories(${target_name} PUBLIC
         ${OME_GLOBAL_INCLUDE_DIRS}
     )

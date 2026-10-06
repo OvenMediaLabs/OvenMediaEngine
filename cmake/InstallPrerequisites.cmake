@@ -132,8 +132,10 @@ ome_parse_dep_version(OME_VER_SRT SRT_VERSION SRT_SOURCE_REF SRT_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_OPUS OPUS_VERSION OPUS_SOURCE_REF OPUS_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_VPX VPX_VERSION VPX_SOURCE_REF VPX_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_AOM AOM_VERSION AOM_SOURCE_REF AOM_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_DAV1D DAV1D_VERSION DAV1D_SOURCE_REF DAV1D_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FDKAAC FDKAAC_VERSION FDKAAC_SOURCE_REF FDKAAC_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_NASM NASM_VERSION NASM_SOURCE_REF NASM_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_MESON MESON_VERSION MESON_SOURCE_REF MESON_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_FFMPEG FFMPEG_VERSION FFMPEG_SOURCE_REF FFMPEG_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_JEMALLOC JEMALLOC_VERSION JEMALLOC_SOURCE_REF JEMALLOC_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_PCRE2 PCRE2_VERSION PCRE2_SOURCE_REF PCRE2_HAS_OVERRIDE)
@@ -153,6 +155,7 @@ ome_select_archive_ref(SRT_ARCHIVE_REF "${SRT_HAS_OVERRIDE}" "${SRT_SOURCE_REF}"
 ome_select_archive_ref(OPUS_ARCHIVE_REF "${OPUS_HAS_OVERRIDE}" "${OPUS_SOURCE_REF}" "refs/tags/v${OPUS_SOURCE_REF}")
 ome_select_archive_ref(VPX_ARCHIVE_REF "${VPX_HAS_OVERRIDE}" "${VPX_SOURCE_REF}" "refs/tags/v${VPX_SOURCE_REF}")
 ome_select_archive_ref(AOM_ARCHIVE_REF "${AOM_HAS_OVERRIDE}" "${AOM_SOURCE_REF}/libaom-${AOM_SOURCE_REF}" "v${AOM_SOURCE_REF}/libaom-v${AOM_SOURCE_REF}")
+ome_select_archive_ref(DAV1D_ARCHIVE_REF "${DAV1D_HAS_OVERRIDE}" "${DAV1D_SOURCE_REF}/dav1d-${DAV1D_SOURCE_REF}" "${DAV1D_SOURCE_REF}/dav1d-${DAV1D_SOURCE_REF}")
 ome_select_archive_ref(FDKAAC_ARCHIVE_REF "${FDKAAC_HAS_OVERRIDE}" "${FDKAAC_SOURCE_REF}" "v${FDKAAC_SOURCE_REF}")
 ome_select_archive_ref(NASM_ARCHIVE_REF "${NASM_HAS_OVERRIDE}" "${NASM_SOURCE_REF}" "refs/tags/nasm-${NASM_SOURCE_REF}")
 ome_select_archive_ref(FFMPEG_ARCHIVE_REF "${FFMPEG_HAS_OVERRIDE}" "${FFMPEG_SOURCE_REF}" "refs/tags/n${FFMPEG_SOURCE_REF}")
@@ -172,8 +175,10 @@ set(SRT_SOURCE_URL "https://github.com/Haivision/srt/archive/${SRT_ARCHIVE_REF}.
 set(OPUS_SOURCE_URL "https://archive.mozilla.org/pub/opus/opus-${OPUS_SOURCE_REF}.tar.gz")
 set(VPX_SOURCE_URL "https://codeload.github.com/webmproject/libvpx/tar.gz/${VPX_ARCHIVE_REF}")
 set(AOM_SOURCE_URL "https://gitlab.com/webmproject/libaom/-/archive/${AOM_ARCHIVE_REF}.tar.gz")
+set(DAV1D_SOURCE_URL "https://code.videolan.org/videolan/dav1d/-/archive/${DAV1D_ARCHIVE_REF}.tar.gz")
 set(FDKAAC_SOURCE_URL "https://github.com/mstorsjo/fdk-aac/archive/${FDKAAC_ARCHIVE_REF}.tar.gz")
 set(NASM_SOURCE_URL "https://github.com/netwide-assembler/nasm/archive/${NASM_ARCHIVE_REF}.tar.gz")
+set(MESON_SOURCE_URL "https://github.com/mesonbuild/meson/releases/download/${MESON_SOURCE_REF}/meson-${MESON_SOURCE_REF}.tar.gz")
 set(FFMPEG_SOURCE_URL "https://github.com/FFmpeg/FFmpeg/archive/${FFMPEG_ARCHIVE_REF}.tar.gz")
 set(JEMALLOC_SOURCE_URL "https://github.com/jemalloc/jemalloc/releases/download/${JEMALLOC_SOURCE_REF}/jemalloc-${JEMALLOC_SOURCE_REF}.tar.bz2")
 set(PCRE2_SOURCE_URL "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_SOURCE_REF}/pcre2-${PCRE2_SOURCE_REF}.tar.gz")
@@ -244,18 +249,18 @@ endmacro()
 # ==============================================================================
 if(OSNAME MATCHES "Ubuntu")
     ome_run("sudo apt-get install -y build-essential autoconf automake libtool zlib1g-dev \
-        tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build" "apt base packages")
+        tclsh cmake curl pkg-config bc uuid-dev git libgomp1 ninja-build python3" "apt base packages")
 elseif(OSNAME MATCHES "Rocky|AlmaLinux|Red")
     ome_run("sudo dnf install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel which diffutils perl-IPC-Cmd git libgomp ninja-build" "dnf base packages")
+        cmake libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "dnf base packages")
 elseif(OSNAME MATCHES "Amazon Linux")
     ome_run("sudo yum install -y bc gcc-c++ autoconf libtool tcl bzip2 zlib-devel \
-        cmake libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages")
+        cmake libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages")
 elseif(OSNAME MATCHES "Fedora")
-    ome_run("sudo yum install -y gcc-c++ make autoconf libtool zlib-devel tcl cmake \
-        bc libuuid-devel perl-IPC-Cmd git libgomp ninja-build" "yum base packages (fedora)")
+    ome_run("sudo yum install -y gcc-c++ make autoconf libtool bzip2 zlib-devel tcl cmake \
+        bc libuuid-devel which diffutils patch perl perl-IPC-Cmd git libgomp ninja-build python3" "yum base packages (fedora)")
 elseif(OSNAME MATCHES "Mac OS X")
-    ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja" "brew base packages")
+    ome_run("brew install pkg-config nasm automake libtool xz cmake make ninja python3" "brew base packages")
 else()
     message(WARNING "[OME Prerequisites] Unsupported OS: ${OSNAME}. Skipping base package installation.")
 endif()
@@ -449,6 +454,20 @@ cmake --build aom_build ${_J} &&
 sudo cmake --install aom_build --prefix ${PREFIX} && rm -rf ${TEMP_PATH}/aom
 ")
 
+# ---- dav1d (AV1 decoder) ----
+# dav1d builds only with meson (>= 0.54). Distro packages are older on some supported
+# platforms (Ubuntu 18.04/20.04), so a pinned release runs from its tarball with python3.
+# Requires NASM (>= 2.14) for x86 assembly; nasm is installed earlier in _targets.
+set(_install_libdav1d "
+rm -rf ${TEMP_PATH}/dav1d && mkdir -p ${TEMP_PATH}/dav1d/_meson && cd ${TEMP_PATH}/dav1d/_meson &&
+ome_fetch ${MESON_SOURCE_URL} &&
+cd ${TEMP_PATH}/dav1d &&
+ome_fetch ${DAV1D_SOURCE_URL} &&
+python3 _meson/meson.py setup dav1d_build --prefix=${PREFIX} --libdir=lib --buildtype=release --default-library=shared -Denable_tools=false -Denable_tests=false -Denable_examples=false &&
+ninja -C dav1d_build ${_J} &&
+sudo ninja -C dav1d_build install && rm -rf ${TEMP_PATH}/dav1d
+")
+
 # ---- libwebp ----
 set(_install_libwebp "
 mkdir -p ${TEMP_PATH}/webp && cd ${TEMP_PATH}/webp &&
@@ -543,7 +562,7 @@ set(_FFMPEG_CONFIGURE_CMD
     "--prefix=${PREFIX}"
     "--disable-everything --disable-programs --disable-avdevice --disable-dwt --disable-lsp --disable-faan --disable-pixelutils"
     "--enable-shared --disable-static --enable-pic"
-    "--enable-zlib --enable-libopus --enable-libvpx --enable-libaom --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
+    "--enable-zlib --enable-libopus --enable-libvpx --enable-libaom --enable-libdav1d --enable-libfdk_aac --enable-libopenh264 --enable-openssl"
     "--enable-network --enable-libsrt --enable-libwebp"
     "--extra-cflags=\"-I${PREFIX}/include${_FFMPEG_ADDI_CFLAGS}\""
     "--extra-ldflags=\"-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -Wl,--disable-new-dtags${_FFMPEG_ADDI_LDFLAGS}\""
@@ -552,7 +571,7 @@ set(_FFMPEG_CONFIGURE_CMD
     "${_FFMPEG_ADDI_LICENSE}"
     "${_FFMPEG_ADDI_LIBS}"
     "--enable-encoder=libvpx_vp8,libaom_av1,libopus,libfdk_aac,libopenh264,mjpeg,png,libwebp${_FFMPEG_ADDI_ENCODER}"
-    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,av1,libaom_av1,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
+    "--enable-decoder=aac,aac_latm,aac_fixed,mp2,mp2float,mp3float,mp3,h264,hevc,av1,libdav1d,opus,vp8,mjpeg,png${_FFMPEG_ADDI_DECODER}"
     "--enable-parser=aac,aac_latm,av1,aac_fixed,h264,hevc,mpegaudio,opus,vp8,png,jpg"
     "--enable-protocol=tcp,udp,rtp,file,rtmp,tls,rtmps,libsrt"
     "--enable-demuxer=rtsp,flv,live_flv,mp4,mp3,image2"
@@ -676,6 +695,7 @@ set(_targets
     libopenh264
     libvpx
     libaom
+    libdav1d
     libwebp
     fdk_aac
     ffmpeg
@@ -699,7 +719,7 @@ endif()
 if(DEFINED TARGET)
     if("${TARGET}" STREQUAL "ffmpeg")
         # ffmpeg depends on codec libs; install them first in case they are missing
-        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac libaom)
+        set(_ffmpeg_deps nasm openssl libsrt libopus libvpx libwebp libopenh264 fdk_aac libaom libdav1d)
         if(ENABLE_X264)
             list(APPEND _ffmpeg_deps libx264)
         endif()
@@ -707,8 +727,8 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps ffnvcodec)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
-    elseif("${TARGET}" STREQUAL "libvpx" OR "${TARGET}" STREQUAL "libaom")
-        # libvpx/libaom require nasm as assembler
+    elseif("${TARGET}" STREQUAL "libvpx" OR "${TARGET}" STREQUAL "libaom" OR "${TARGET}" STREQUAL "libdav1d")
+        # libvpx/libaom/libdav1d require nasm as assembler
         set(_targets nasm ${TARGET})
     elseif("${TARGET}" STREQUAL "fdk_aac" OR "${TARGET}" STREQUAL "libx264")
         # these also require nasm

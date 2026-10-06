@@ -376,10 +376,13 @@ namespace mpegts
 		// m: marker_bit (should be 1)
 		// T: timestamp
 		auto prefix = parser->ReadBits<uint8_t>(4);
-		if (prefix != start_bits)
+		if (prefix != start_bits && _non_standard_start_bits == false)
 		{
-			logte("Invalid PTS_DTS start bits: %d (%02X), expected: %d (%02X)", prefix, prefix, start_bits, start_bits);
-			return false;
+			// The prefix only repeats pts_dts_flags, so it is not validated. Some encoders
+			// leak the upper bits of a timestamp wider than 33 bits into it
+			_non_standard_start_bits = true;
+			_observed_start_bits = prefix;
+			_expected_start_bits = start_bits;
 		}
 
 		int64_t ts = parser->ReadBits<int64_t>(3) << 30;
@@ -571,6 +574,21 @@ namespace mpegts
 	int64_t Pes::Dts() const
 	{
 		return _dts;
+	}
+
+	bool Pes::HasNonStandardStartBits() const
+	{
+		return _non_standard_start_bits;
+	}
+
+	uint8_t Pes::NonStandardStartBits() const
+	{
+		return _observed_start_bits;
+	}
+
+	uint8_t Pes::ExpectedStartBits() const
+	{
+		return _expected_start_bits;
 	}
 
 	int64_t Pes::Pcr() const

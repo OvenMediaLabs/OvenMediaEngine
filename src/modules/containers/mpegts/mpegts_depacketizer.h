@@ -146,6 +146,9 @@ namespace mpegts
 		int64_t _cc_break_last_warn_msec							= 0;
 		uint64_t _cc_break_count									= 0;
 
+		// Non-standard PTS/DTS start bits are reported once per stream (see CompletePes)
+		bool _non_standard_start_bits_warned = false;
+
 		// PAT
 		bool _pat_list_completed = false;
 		// program number + packet identifier list

@@ -10,6 +10,8 @@
 #define DTLS_RECORD_HEADER_LEN                  13
 #define MAX_DTLS_PACKET_LEN                     2048
 #define MIN_RTP_PACKET_LEN                      12
+// DTLS handshake datagram size (UDP payload), the same value WebRTC stacks use
+#define DTLS_HANDSHAKE_MTU                      1200
 
 class DtlsTransport : public ov::Node
 {

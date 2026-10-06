@@ -183,6 +183,46 @@ namespace bmff
 		_pending_key_rotation = cenc_property;
 	}
 
+	bool FMP4Packager::TryApplyPendingKeyRotationAtSegmentStart()
+	{
+		if (_pending_key_rotation.has_value() == false || _storage == nullptr)
+		{
+			return false;
+		}
+
+		// Every segment carries a single key, so the new version can only open a
+		// segment with nothing stored yet that starts on an independent sample
+		auto buffered_samples = _sample_buffer.GetSamples();
+		bool buffer_is_empty = (buffered_samples == nullptr) || (buffered_samples->GetTotalCount() == 0);
+
+		auto pending_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
+		bool segment_is_starting = (pending_segment == nullptr) ||
+								   ((pending_segment->IsCompleted() == false) && (pending_segment->GetPartialCount() == 0));
+
+		if (buffer_is_empty == false || segment_is_starting == false || _next_frame_independent == false)
+		{
+			return false;
+		}
+
+		_storage->StartNewContentVersionForKeyRotation();
+
+		// Rebuild the encryptor with the new key, then regenerate the initialization
+		// section so its tenc/pssh carry that key; it is stored under the version
+		// advanced above
+		UpdateCencProperty(_pending_key_rotation.value());
+		_pending_key_rotation.reset();
+
+		if (CreateInitializationSegment() == false)
+		{
+			// The version has no initialization section and no key to advertise, so this
+			// track cannot be played from here on and the caller must not hint the version
+			logtc("FMP4Packager::TryApplyPendingKeyRotationAtSegmentStart() - Failed to regenerate initialization segment for key rotation, track(%u)", GetMediaTrack()->GetId());
+			return false;
+		}
+
+		return true;
+	}
+
 	double FMP4Packager::GetLastSampleEndTimestampMs() const
 	{
 		return _last_sample_end_timestamp_ms;
@@ -411,11 +451,20 @@ namespace bmff
 
 				bool last_chunk = decision.completes_segment;
 
-				if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
-												samples->GetStartTimestamp(),
-												total_sample_duration_ms,
-												samples->IsIndependent(),
-												last_chunk, decision.discontinuity) == false)
+				// The storage publishes a completion before returning; a key rotation
+				// applied from that callback starts the new version on next_frame
+				_next_frame_independent = next_frame_is_idr;
+
+				bool store_failed = (_storage != nullptr) && (_storage->AppendMediaChunk(chunk,
+																	samples->GetStartTimestamp(),
+																	total_sample_duration_ms,
+																	samples->IsIndependent(),
+																	last_chunk, decision.discontinuity) == false);
+
+				// Only meaningful while the storage callback above runs
+				_next_frame_independent = false;
+
+				if (store_failed == true)
 				{
 					logte("FMP4Packager::AppendSample() - Failed to store media chunk");
 					return false;
@@ -427,39 +476,10 @@ namespace bmff
 			}
 		}
 
-		// A DRM key rotation changes no content, so it needs no cut: it takes effect where
-		// a new segment starts on its own. Applying it here keeps every segment on a
-		// single key and leaves the segment duration pacing untouched.
-		if (_pending_key_rotation.has_value() == true)
-		{
-			auto buffered_samples = _sample_buffer.GetSamples();
-			bool buffer_is_empty = (buffered_samples == nullptr) || (buffered_samples->GetTotalCount() == 0);
-
-			auto pending_segment = std::static_pointer_cast<FMP4Segment>(_storage->GetLastSegment());
-			bool segment_is_starting = (pending_segment == nullptr) ||
-									   ((pending_segment->IsCompleted() == false) && (pending_segment->GetPartialCount() == 0));
-
-			// The new version starts at an independently decodable sample
-			bool independent = (next_frame->GetFlag() == MediaPacketFlag::Key) || (GetMediaTrack()->GetMediaType() == cmn::MediaType::Audio);
-
-			if (buffer_is_empty == true && segment_is_starting == true && independent == true)
-			{
-				_storage->StartNewContentVersionForKeyRotation();
-
-				// Rebuild the encryptor with the new key, then regenerate the
-				// initialization section so its tenc/pssh carry that key; it is stored
-				// under the version advanced above
-				UpdateCencProperty(_pending_key_rotation.value());
-				if (CreateInitializationSegment() == false)
-				{
-					// The version has no initialization section and no key to advertise,
-					// so this track cannot be played from here on
-					logtc("FMP4Packager::AppendSample() - Failed to regenerate initialization segment for key rotation, track(%u)", GetMediaTrack()->GetId());
-				}
-
-				_pending_key_rotation.reset();
-			}
-		}
+		// A pending key rotation is applied by TryApplyPendingKeyRotationAtSegmentStart()
+		// from the storage callback of the chunk completing a segment, so that the
+		// initialization section of the new version exists before the next partial is
+		// hinted. Nothing is cut and the segment duration pacing is untouched
 
 		if (_sample_buffer.AppendSample(next_frame) == false)
 		{
@@ -508,6 +528,11 @@ namespace bmff
 			double total_sample_duration_ms = (static_cast<double>(samples->GetTotalDuration()) / GetMediaTrack()->GetTimeBase().GetTimescale()) * 1000.0;
 
 			bool last_chunk = true;
+
+			// No sample follows a flush, so a pending key rotation waits for the next
+			// segment boundary instead of opening a version here
+			_next_frame_independent = false;
+
 			if (_storage != nullptr && _storage->AppendMediaChunk(chunk,
 											samples->GetStartTimestamp(),
 											total_sample_duration_ms,

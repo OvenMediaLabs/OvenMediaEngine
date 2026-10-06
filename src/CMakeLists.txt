@@ -19,6 +19,7 @@ set(OME_GIT_INFO_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/main/update_git_info.sh")
 
 add_custom_target(ome_git_info ALL
     COMMAND bash "${OME_GIT_INFO_SCRIPT}"
+    BYPRODUCTS "${CMAKE_CURRENT_SOURCE_DIR}/main/git_info.h"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/main"
     COMMENT "[OME] Updating git_info.h"
     VERBATIM

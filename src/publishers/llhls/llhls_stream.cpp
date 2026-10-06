@@ -832,6 +832,19 @@ bool LLHlsStream::DumpInitSegment(const std::shared_ptr<mdl::Dump> &item, const 
 		return false;
 	}
 
+	auto chunklist = GetChunklistWriter(track_id);
+	if (chunklist == nullptr)
+	{
+		logtw("Could not find chunklist for track_id = %d", track_id);
+		return false;
+	}
+
+	// Nothing to dump when the chunklist references no initialization segment
+	if (chunklist->HasMapUri() == false)
+	{
+		return true;
+	}
+
 	auto storage = GetFmp4Storage(track_id);
 	if (storage == nullptr)
 	{
@@ -1602,7 +1615,7 @@ void LLHlsStream::OnKeyPrefetched(uint64_t key_period_index, bool succeeded, con
 		_prefetched_key = cenc_property;
 	}
 
-	logti("LLHlsStream(%s/%s) - Fetched the DRM key of period %" PRIu64 " ahead of the rotation", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_period_index);
+	logtd("LLHlsStream(%s/%s) - Fetched the DRM key of period %" PRIu64 " ahead of the rotation", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_period_index);
 }
 
 void LLHlsStream::RotateDrmKey()
@@ -1652,7 +1665,8 @@ void LLHlsStream::RotateDrmKey()
 
 	ApplyRotatedKey(next_property);
 
-	logti("LLHlsStream(%s/%s) - DRM key rotation to key period %" PRIu64 " will take effect from the next segment of each track", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), applied_index);
+	auto key_id_hex = (next_property.key_id != nullptr) ? next_property.key_id->ToHexString().UpperCaseString() : ov::String("-");
+	logti("LLHlsStream(%s/%s) - DRM key rotation requested: KEYID 0x%s, period %" PRIu64, GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), key_id_hex.CStr(), applied_index);
 }
 
 void LLHlsStream::CheckAutoKeyRotation(int64_t media_time_ms)
@@ -1747,18 +1761,19 @@ void LLHlsStream::OnTrackChanged(int32_t track_id, const std::shared_ptr<const M
 		return;
 	}
 
-	// The chunklist advertises the EXT-X-KEY for the new content version as its first
-	// segment appears (OnMediaChunkUpdated), using the packager's actual encryption
-	// state. When the codec changes to one CENC cannot encrypt (e.g. H265, AV1), the
-	// current policy keeps the track producing clear output, so no key is registered
-	// for that version and the playlist stops advertising EXT-X-KEY.
+	// The new initialization section is stored from here, safe to hint its map. The
+	// key the new version was packaged with is registered first, so the update that
+	// hints the map also advertises it. When the codec changes to one CENC cannot
+	// encrypt (e.g. AV1), the current policy keeps the track producing clear output,
+	// and the version is registered with a scheme of None, which the chunklist
+	// advertises as METHOD=NONE.
 	// TODO: when the DRM-failure policy is decided, this may change to blocking the
 	// track update instead of producing clear output.
-
-	// The new initialization section is stored from here, safe to hint its map
 	if (has_published_content == true && chunklist != nullptr)
 	{
-		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, packager->GetCurrentContentVersion()));
+		auto content_version = packager->GetCurrentContentVersion();
+		RegisterCencPropertyForVersion(track_id, chunklist, packager, content_version);
+		chunklist->SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, content_version), content_version);
 	}
 
 	// Players keep renditions in sync by their discontinuity sequences, so every
@@ -1894,7 +1909,8 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	if (cenc_property.scheme != bmff::CencProtectScheme::None && bmff::IsCencSupportedCodec(media_track->GetCodecId()) == false)
 	{
 		cenc_property.scheme = bmff::CencProtectScheme::None;
-		logte("LLHlsStream::AddPackager() - CENC is not supported for this codec(%s), this track will be excluded from CENC protection", cmn::GetCodecIdString(media_track->GetCodecId()));
+		// DRM is configured for this stream, but this track cannot be encrypted at all
+		logtc("LLHlsStream(%s/%s) - DRM is enabled but the codec(%s) of track(%u) cannot be encrypted with CENC. The track is served without protection", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), cmn::GetCodecIdString(media_track->GetCodecId()), media_track->GetId());
 	}
 
 	// The boundary policy decides where each segment of this track ends and
@@ -2124,6 +2140,29 @@ std::shared_ptr<bmff::SegmentBoundaryPolicy> LLHlsStream::GetBoundaryPolicy(cons
 	return it->second;
 }
 
+void LLHlsStream::RegisterCencPropertyForVersion(const int32_t &track_id, const std::shared_ptr<LLHlsChunklist> &playlist, const std::shared_ptr<bmff::FMP4Packager> &packager, uint32_t content_version)
+{
+	// The packager recorded the key when the version's initialization section was
+	// created, so this holds even when a rotation and a track change land close
+	// together. A version produced in the clear is registered with a scheme of None,
+	// from which the chunklist ends the scope of the preceding key
+	auto registered_it = _last_registered_cenc_version.find(track_id);
+	if (registered_it != _last_registered_cenc_version.end() && registered_it->second >= content_version)
+	{
+		return;
+	}
+
+	auto version_cenc_property = packager->GetCencPropertyForVersion(content_version);
+	if (version_cenc_property.has_value() == false)
+	{
+		logte("LLHlsStream(%s/%s) - No CENC key recorded for track(%d) content version %u; its segments would be advertised with the previous key", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, content_version);
+		return;
+	}
+
+	playlist->EnableCenc(content_version, version_cenc_property.value());
+	_last_registered_cenc_version[track_id] = content_version;
+}
+
 std::shared_ptr<bmff::FMP4Packager> LLHlsStream::GetPackager(const int32_t &track_id) const
 {
 	std::shared_lock<std::shared_mutex> lock(_packager_map_lock);
@@ -2325,18 +2364,19 @@ bool LLHlsStream::CheckPlaylistReady()
 
 	storage_lock.unlock();
 
+	// Copy to avoid taking _chunklist_map_lock again in DumpInitSegment()
 	std::shared_lock<std::shared_mutex> chunklist_lock(_chunklist_map_lock);
+	auto chunklist_map = _chunklist_map;
+	chunklist_lock.unlock();
 
 	double min_part_hold_back = (static_cast<double>(_max_chunk_duration_ms) / 1000.0f) * 3.0f;
 	double final_part_hold_back = std::max(min_part_hold_back, _configured_part_hold_back);
-	for (const auto &[track_id, chunklist] : _chunklist_map)
+	for (const auto &[track_id, chunklist] : chunklist_map)
 	{
 		chunklist->SetPartHoldBack(final_part_hold_back);
 
 		DumpInitSegmentOfAllItems(chunklist->GetTrack()->GetId());
 	}
-
-	chunklist_lock.unlock();
 
 	logti("LLHlsStream(%s/%s) - Ready to play : Part Hold Back = %f", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), final_part_hold_back);
 
@@ -2487,30 +2527,40 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 			partial_info.SetDiscontinuity();
 		}
 
-		// Advertise the EXT-X-KEY of the key this version was actually encrypted with.
-		// The packager recorded it when the version's initialization section was created,
-		// so this holds even when a rotation and a track change land close together. A
-		// version produced in the clear is registered with a scheme of None, from which
-		// the chunklist ends the scope of the preceding key.
-		auto content_version = segment->GetTrackVersion();
-		auto registered_it = _last_registered_cenc_version.find(track_id);
-		bool already_registered = (registered_it != _last_registered_cenc_version.end() && registered_it->second >= content_version);
-		if (already_registered == false)
+		// Advertise the EXT-X-KEY of the key this version was actually encrypted with
+		auto packager = GetPackager(track_id);
+		if (packager != nullptr)
 		{
-			auto packager = GetPackager(track_id);
-			if (packager != nullptr)
+			RegisterCencPropertyForVersion(track_id, playlist, packager, segment->GetTrackVersion());
+		}
+	}
+
+	// Drive auto key rotation off the media timeline, then top up the key of the next period
+	// so that a rotation always has one ready. This runs before the completion is published:
+	// the next segment is already pre-created and empty, so a pending rotation is applied to
+	// it here and its initialization section exists by the time the next partial is hinted
+	if (last_chunk == true)
+	{
+		auto media_time_ms = static_cast<int64_t>((static_cast<double>(partial_segment->GetStartTimestamp()) / GetTrack(track_id)->GetTimeBase().GetTimescale()) * 1000.0);
+		CheckAutoKeyRotation(media_time_ms);
+		PrefetchNextKeyIfNeeded(media_time_ms);
+
+		auto packager = GetPackager(track_id);
+		if (packager != nullptr && segment != nullptr)
+		{
+			// The version the hinted partial will be packaged against. A rotation applied
+			// here opens a new one, whose key is registered now so the update that hints
+			// its map also advertises its key and a client can fetch the license ahead.
+			// A rotation that could not open a version leaves the hint on this segment's
+			auto upcoming_version = segment->GetTrackVersion();
+			if (packager->TryApplyPendingKeyRotationAtSegmentStart() == true)
 			{
-				auto version_cenc_property = packager->GetCencPropertyForVersion(content_version);
-				if (version_cenc_property.has_value() == true)
-				{
-					playlist->EnableCenc(content_version, version_cenc_property.value());
-					_last_registered_cenc_version[track_id] = content_version;
-				}
-				else
-				{
-					logte("LLHlsStream(%s/%s) - No CENC key recorded for track(%d) content version %u; its segments would be advertised with the previous key", GetApplication()->GetVHostAppName().CStr(), GetName().CStr(), track_id, content_version);
-				}
+				upcoming_version = packager->GetCurrentContentVersion();
+				RegisterCencPropertyForVersion(track_id, playlist, packager, upcoming_version);
 			}
+
+			partial_info.SetUpcomingMapUri(GetMapUriForTrackVersion(track_id, upcoming_version));
+			partial_info.SetUpcomingTrackVersion(upcoming_version);
 		}
 	}
 
@@ -2524,17 +2574,6 @@ void LLHlsStream::OnMediaChunkUpdated(const int32_t &track_id, const uint32_t &s
 	{
 		std::unique_lock<std::mutex> guard(_master_playlists_lock);
 		_master_playlists.clear();
-	}
-
-	// Drive auto key rotation off the media timeline, then top up the key of the next period
-	// so that a rotation always has one ready. A rotation takes effect where a new segment
-	// starts whenever it is decided, so this point carries no meaning of its own; it is
-	// simply where the check runs once per segment instead of once per chunk.
-	if (last_chunk == true)
-	{
-		auto media_time_ms = static_cast<int64_t>((static_cast<double>(partial_segment->GetStartTimestamp()) / GetTrack(track_id)->GetTimeBase().GetTimescale()) * 1000.0);
-		CheckAutoKeyRotation(media_time_ms);
-		PrefetchNextKeyIfNeeded(media_time_ms);
 	}
 
 	logtt("Media chunk updated : track_id = %u, segment_number = %u, chunk_number = %d, start_timestamp = %" PRId64 ", chunk_duration = %f", track_id, segment_number, chunk_number, partial_segment->GetStartTimestamp(), chunk_duration);
@@ -2654,19 +2693,21 @@ void LLHlsStream::OnMediaSegmentCompleted(const int32_t &track_id, const uint32_
 	// The map the upcoming partial will be packaged against; at a track change
 	// boundary it differs from the completed segment's map and is hinted as TYPE=MAP
 	ov::String next_partial_map_uri;
+	std::optional<uint32_t> next_partial_track_version;
 	auto storage = GetFmp4Storage(track_id);
 	if (storage != nullptr)
 	{
 		auto last_segment = storage->GetLastSegment();
 		if (last_segment != nullptr)
 		{
-			next_partial_map_uri = GetMapUriForTrackVersion(track_id, last_segment->GetTrackVersion());
+			next_partial_track_version = last_segment->GetTrackVersion();
+			next_partial_map_uri = GetMapUriForTrackVersion(track_id, next_partial_track_version.value());
 		}
 	}
 
 	// Subtitle chunklists are not mirrored here; a configuration change of the VTT
 	// reference track is not supported yet
-	playlist->CompleteSegmentInfo(segment_number, GetNextPartialSegmentName(track_id, segment_number, 0, true), next_partial_map_uri);
+	playlist->CompleteSegmentInfo(segment_number, GetNextPartialSegmentName(track_id, segment_number, 0, true), next_partial_map_uri, next_partial_track_version);
 
 	int64_t last_msn = -1, last_psn = -1;
 	playlist->GetLastSequenceNumber(last_msn, last_psn);
@@ -2711,6 +2752,8 @@ int64_t LLHlsStream::GetMinimumLastSegmentNumber() const
 
 std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::Dump> &info)
 {
+	// Same order as CheckPlaylistReady(): _playlist_ready_lock, then _dumps_lock
+	std::shared_lock<std::shared_mutex> lock_playlist_ready(_playlist_ready_lock);
 	std::lock_guard<std::shared_mutex> lock(_dumps_lock);
 
 	for (const auto &it : _dumps)
@@ -2731,8 +2774,6 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 	auto dump_info = std::make_shared<mdl::Dump>(info);
 	dump_info->SetEnabled(true);
 
-	// lock playlist ready
-	std::shared_lock<std::shared_mutex> lock_playlist_ready(_playlist_ready_lock);
 	if (IsReadyToPlay() == false)
 	{
 		// If the playlist is not ready, add it to the queue and wait for the playlist to be ready.

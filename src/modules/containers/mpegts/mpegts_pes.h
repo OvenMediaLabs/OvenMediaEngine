@@ -84,6 +84,12 @@ namespace mpegts
 		int64_t Dts() const;
 		int64_t Pcr() const;
 
+		// Set when a PTS/DTS prefix nibble differed from the spec value. Parsing continues,
+		// the depacketizer reports it once per stream
+		bool HasNonStandardStartBits() const;
+		uint8_t NonStandardStartBits() const;
+		uint8_t ExpectedStartBits() const;
+
 		std::shared_ptr<const ov::Data> GetData();
 		const uint8_t* Payload();
 		uint32_t PayloadLength();
@@ -111,6 +117,9 @@ namespace mpegts
 		}
 
 	private:
+		// Unit-test access to the private timestamp parser (see mpegts_pes_test.cpp)
+		friend class PesTest;
+
 		bool HasOptionalHeader() const;
 		bool HasOptionalData() const;
 		bool ParsePesHeader(BitReader *parser);
@@ -155,6 +164,10 @@ namespace mpegts
 
 		int64_t _pts = -1LL;
 		int64_t _dts = -1LL;
+
+		bool _non_standard_start_bits = false;
+		uint8_t _observed_start_bits = 0;
+		uint8_t _expected_start_bits = 0;
 
 		// Extra data
 		uint64_t _pcr = 0;

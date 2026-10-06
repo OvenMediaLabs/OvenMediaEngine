@@ -331,6 +331,7 @@ ome_find_pkg(PKG_SRT            srt             OME_VER_SRT             REINSTAL
 ome_find_pkg(PKG_LIBSRTP2       libsrtp2        OME_VER_SRTP            REINSTALL_TARGET libsrtp)
 ome_find_pkg(PKG_VPX            vpx             OME_VER_VPX             REINSTALL_TARGET libvpx)
 ome_find_pkg(PKG_AOM            aom             OME_VER_AOM             REINSTALL_TARGET libaom)
+ome_find_pkg(PKG_DAV1D          dav1d           OME_VER_DAV1D           REINSTALL_TARGET libdav1d)
 ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTALL_TARGET libopus)
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
 ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)
@@ -378,8 +379,17 @@ endif()
 
 # Whisper GGML
 if(PKG_WHISPER_FOUND)
+    # Static whisper splits ggml into ggml + ggml-base + ggml-cpu; all three
+    # must follow libwhisper.a on the link line (test binaries surface the
+    # miss; the main binary only survived by link order).
+    find_library(GGML_LIB       ggml            HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
+    find_library(GGML_BASE_LIB  ggml-base       HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
     find_library(GGML_CPU_LIB   ggml-cpu        HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
-    set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${GGML_CPU_LIB}")
+    foreach(_ggml_lib IN ITEMS "${GGML_LIB}" "${GGML_CPU_LIB}" "${GGML_BASE_LIB}")
+        if(_ggml_lib)
+            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${_ggml_lib}")
+        endif()
+    endforeach()
     set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES gomp)
     
     if(OME_HWACCEL_NVIDIA)  
@@ -410,6 +420,8 @@ if(PKG_WHISPER_FOUND)
         endif()      
     endif()  
     
+    unset(GGML_LIB CACHE)
+    unset(GGML_BASE_LIB CACHE)
     unset(GGML_CPU_LIB CACHE)    
     unset(NV_CUBLAS_LIB CACHE)
     unset(NV_CUBLASLT_LIB CACHE)

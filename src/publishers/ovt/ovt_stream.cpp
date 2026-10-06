@@ -220,9 +220,10 @@ Json::Value OvtStream::BuildDescription(const ov::String &app_name, const ov::St
 		json_playlist["enableSubtitles"] = playlist->IsSubtitlesEnabled();
 
 		Json::Value json_options;
-		json_options["webrtcAutoAbr"]		  = playlist->IsWebRtcAutoAbr();
-		json_options["hlsChunklistPathDepth"] = playlist->GetHlsChunklistPathDepth();
-		json_options["enableTsPackaging"]	  = playlist->IsTsPackagingEnabled();
+		json_options["webrtcAutoAbr"]			  = playlist->IsWebRtcAutoAbr();
+		json_options["webrtcAudioOnlyFallback"]	  = playlist->IsWebRtcAudioOnlyFallback();
+		json_options["hlsChunklistPathDepth"]	  = playlist->GetHlsChunklistPathDepth();
+		json_options["enableTsPackaging"]		  = playlist->IsTsPackagingEnabled();
 
 		json_playlist["options"]			  = json_options;
 

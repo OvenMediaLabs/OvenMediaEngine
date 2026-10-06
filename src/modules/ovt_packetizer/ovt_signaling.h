@@ -231,7 +231,8 @@ namespace ovt
 				"fileName" : "llhls_abr.oven",
 				"options" :	// Required - the receiver rejects the entire describe payload if options is not an object
 				{
-					"webrtcAutoAbr" : true // the receiver assumes false when this key is omitted
+					"webrtcAutoAbr" : true, // the receiver assumes false when this key is omitted
+					"webrtcAudioOnlyFallback" : false // the receiver assumes false when this key is omitted
 				},
 				"renditions":
 				[

@@ -346,6 +346,7 @@
 								<FileName>master</FileName>
 								<Options>
 									<WebRtcAutoAbr>true</WebRtcAutoAbr>
+									<WebRtcAudioOnlyFallback>false</WebRtcAudioOnlyFallback>
 									<HLSChunklistPathDepth>0</HLSChunklistPathDepth>
 									<EnableTsPackaging>true</EnableTsPackaging>
 								</Options>

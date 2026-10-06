@@ -35,7 +35,7 @@ bool AVCodecVideoDecoder::Initialize()
 			decoder_name = "vp8";
 			break;
 		case cmn::MediaCodecId::Av1:
-			decoder_name = "libaom-av1";
+			decoder_name = "libdav1d";
 			break;
 		default:
 			logte("Unsupported codec for video decoder: %s", cmn::GetCodecIdString(GetCodecID()));
@@ -44,13 +44,31 @@ bool AVCodecVideoDecoder::Initialize()
 
 	if (_codec.AllocDecoderByName(decoder_name) == false)
 	{
-		logte("Could not allocate decoder context for %s", cmn::GetCodecIdString(GetCodecID()));
-		return false;
+		// Fallback: if the preferred decoder is not available, try an alternative decoder.
+		// For AV1, if libdav1d is not available, fall back to libaom-av1.
+		// Note: This fallback mechanism is temporary and should be removed once libdav1d is guaranteed to be available.
+		if ((GetCodecID() == cmn::MediaCodecId::Av1) && (_codec.AllocDecoderByName("libaom-av1") == true))
+		{
+			logtw("libdav1d decoder not found, falling back to libaom-av1. Rerun the prerequisites to rebuild FFmpeg with dav1d");
+			decoder_name = "libaom-av1";
+		}
+		else
+		{
+			logte("Could not allocate decoder context for %s", cmn::GetCodecIdString(GetCodecID()));
+			return false;
+		}
 	}
 
 	_codec.SetTimeBase(GetTimebase());
 	_codec.SetThreadCount(GetRefTrack()->GetThreadCount());
 	_codec.SetThreadTypeFrame();
+
+	// dav1d-only: keeps latency from growing as the thread count increases.
+	// Keyframe-only decoding uses 1 so each keyframe comes out without waiting for the next
+	if (::strcmp(decoder_name, "libdav1d") == 0)
+	{
+		_codec.SetOption("max_frame_delay", static_cast<int64_t>(GetRefTrack()->IsKeyframeDecodeOnly() ? 1 : 2));
+	}
 
 	if (_codec.Open() == false)
 	{
