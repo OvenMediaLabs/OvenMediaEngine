@@ -182,6 +182,55 @@ TEST(RtpFrameJitterBuffer, MaxHoldCapsTotalHold)
 	EXPECT_TRUE(buf.HasAvailableFrame());    // released at the capped hold, far below 250ms
 }
 
+// A large frame crawling in over a slow uplink keeps arriving past the hold
+// measured from its first packet. It must not be discarded while packets keep
+// coming, and it is emitted once complete.
+TEST(RtpFrameJitterBuffer, SlowlyArrivingFrameIsNotDiscarded)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetClockRate(kClockRate);
+	buf.SetHoldMsProvider([] { return 50u; });
+	buf.SetMaxHoldMs(60);
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));   // F2 complete, waits behind F1
+
+	// 5 more F1 packets, 40ms apart: 200ms since F1's first packet, far past
+	// the 60ms hold, but never 60ms since its last packet.
+	for (uint16_t seq = 101; seq <= 105; seq++)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(40));
+		buf.InsertPacket(MakeStampedPacket(seq, false, false));
+		EXPECT_FALSE(buf.HasAvailableFrame()) << "F1 still arriving at seq " << seq;
+	}
+
+	buf.InsertPacket(MakeStampedPacket(106, false, true));                     // F1 end
+	ASSERT_TRUE(buf.HasAvailableFrame());
+	auto frame = buf.PopAvailableFrame();
+	ASSERT_NE(frame, nullptr);
+	EXPECT_EQ(frame->Timestamp(), kTimestamp);                                 // F1, not F2
+}
+
+// The hold clock restarts on every packet of the frame: a frame with a gap is
+// discarded hold_ms after its last packet, not after its first.
+TEST(RtpFrameJitterBuffer, HoldIsMeasuredFromLastPacket)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetClockRate(kClockRate);
+	buf.SetHoldMsProvider([] { return 50u; });
+	buf.SetMaxHoldMs(60);
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));   // F2 complete
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(40));
+	buf.InsertPacket(MakeStampedPacket(102, false, true));                     // F1 end, seq 101 missing
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(30));                // 70ms since first, 30ms since last
+	EXPECT_FALSE(buf.HasAvailableFrame());
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(60));                // 90ms since last packet
+	EXPECT_TRUE(buf.HasAvailableFrame());                                      // F1 discarded, F2 flows
+}
+
 TEST(RtpFrameJitterBuffer, AdvanceProcessedSeqFiresOnEmit)
 {
 	RtpFrameJitterBuffer buf;

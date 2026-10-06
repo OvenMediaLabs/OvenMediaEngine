@@ -26,9 +26,10 @@ public:
 	static constexpr size_t MAX_PENDING		= 250;
 	// Floor of the absolute age cap for a pending seq the jitter buffer never
 	// advances past (e.g. very first packet of a stream lost before any frame
-	// is built). The effective cap is at least hold_ms so retries outlive the
-	// buffer's hold; in the normal path DropPendingUpTo ends entries first.
-	static constexpr uint32_t MAX_AGE_MS	= 500;
+	// is built). Matches the buffer's absolute frame age, so retries outlive
+	// any frame the buffer may still be holding; in the normal path
+	// DropPendingUpTo ends entries first.
+	static constexpr uint32_t MAX_AGE_MS	= 5000;
 	// Dwell time between gap detection and the initial NACK firing.
 	// Absorbs small UDP reordering so that brief out-of-order delivery
 	// (seq 102 before 101) doesn't trigger a spurious NACK + RTX round-trip.

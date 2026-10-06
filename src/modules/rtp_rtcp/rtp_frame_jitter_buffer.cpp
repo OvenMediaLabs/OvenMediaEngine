@@ -10,6 +10,7 @@ RtpFrame::RtpFrame(uint32_t timestamp)
 {
 	_timestamp = timestamp;
 	_stop_watch.Start();
+	_last_packet_at = std::chrono::steady_clock::now();
 }
 
 bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
@@ -42,7 +43,12 @@ bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 		_has_end = true;
 	}
 
-	_packets.emplace(packet->SequenceNumber(), packet);
+	// Only a packet not seen before counts as progress; a duplicate copy must
+	// not keep an incomplete frame alive.
+	if (_packets.emplace(packet->SequenceNumber(), packet).second)
+	{
+		_last_packet_at = std::chrono::steady_clock::now();
+	}
 
 	auto seq = packet->SequenceNumber();
 	if (_has_received == false || static_cast<int16_t>(seq - _max_received_seq) > 0)
@@ -110,6 +116,13 @@ bool RtpFrame::CheckCompleted()
 uint64_t RtpFrame::GetElapsed()
 {
 	return _stop_watch.Elapsed();
+}
+
+uint64_t RtpFrame::GetElapsedSinceLastPacket()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(
+			   std::chrono::steady_clock::now() - _last_packet_at)
+		.count();
 }
 
 std::shared_ptr<RtpPacket> RtpFrame::GetFirstRtpPacket()
@@ -303,8 +316,9 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		return;
 	}
 
-	// NACK-aware path: hold incomplete head frames for up to hold_ms; drop
-	// when expired so subsequent completed frames can flow.
+	// NACK-aware path: hold an incomplete head frame while it is still
+	// progressing; drop it once no packet of it arrived for hold_ms so
+	// subsequent completed frames can flow.
 	uint32_t hold_ms = CurrentHoldMs();
 	auto it = _rtp_frames.begin();
 	while (it != _rtp_frames.end())
@@ -314,21 +328,26 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		{
 			break;
 		}
-		if (frame->GetElapsed() <= hold_ms)
+		// The hold clock runs from the frame's last packet: a large keyframe
+		// crawling over a slow uplink keeps resetting it, so only a frame that
+		// stopped progressing is discarded. The age cap guards against a frame
+		// that trickles forever.
+		if (frame->GetElapsedSinceLastPacket() <= hold_ms && frame->GetElapsed() <= FRAME_MAX_AGE_MS)
 		{
 			break;
 		}
 		// Frame dropped after exhausting the NACK hold; log its extent so
 		// recovery failures can be traced.
 		logtd("Frame discarded after NACK hold %ums - ts(%u) packets(%zu) marked(%s) "
-			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums)",
+			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums) since_last(%llums)",
 			  hold_ms, frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false",
 			  frame->HasStart() ? "true" : "false",
 			  frame->GetFirstSequenceNumber(),
 			  frame->IsMarked() ? "true" : "false",
 			  frame->GetMarkerSequenceNumber(),
 			  frame->GetMaxReceivedSeq(),
-			  static_cast<unsigned long long>(frame->GetElapsed()));
+			  static_cast<unsigned long long>(frame->GetElapsed()),
+			  static_cast<unsigned long long>(frame->GetElapsedSinceLastPacket()));
 		MarkFrameProcessed(it->first, *frame);
 		it = _rtp_frames.erase(it);
 	}
