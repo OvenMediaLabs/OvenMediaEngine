@@ -1208,8 +1208,12 @@ namespace pvd
 			// only the question of whether this build defines that combination.
 			// One it does not is left `LayoutUnknown` and kept as received, so a relay hands the next hop
 			// the original: the value may be a layout a newer build added.
+			// `LayoutUnknown` is 0 and the lookup list leaves it out, so it is named here.
+			// It is a value this build defines, not one it is missing.
 			auto wire_layout = json_audio_track["layout"].asUInt();
-			auto layout = cmn::AudioChannel::GetLayoutByValue(wire_layout);
+			auto layout = (wire_layout == static_cast<uint32_t>(cmn::AudioChannel::Layout::LayoutUnknown))
+							  ? std::optional<cmn::AudioChannel::Layout>(cmn::AudioChannel::Layout::LayoutUnknown)
+							  : cmn::AudioChannel::GetLayoutByValue(wire_layout);
 			new_track->SetChannelLayout(layout.value_or(cmn::AudioChannel::Layout::LayoutUnknown));
 			new_track->SetUnmappedChannelLayout(
 				layout.has_value() ? std::nullopt : std::optional<uint32_t>(wire_layout));
