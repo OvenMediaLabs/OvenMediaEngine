@@ -19,7 +19,6 @@ using namespace cmn;
 
 MediaRouterAlert::MediaRouterAlert()
 {
-	_alert_count_bframe = 0;
 }
 
 MediaRouterAlert::~MediaRouterAlert()
@@ -86,6 +85,8 @@ bool MediaRouterAlert::DetectInvalidPacketDuration(const std::shared_ptr<info::S
 
 bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream_info, const std::shared_ptr<const MediaTrack> &media_track, const std::shared_ptr<MediaPacket> &media_packet)
 {
+	const auto track_id = media_track->GetId();
+
 	switch (media_packet->GetBitstreamFormat())
 	{
 		case cmn::BitstreamFormat::H264_ANNEXB:
@@ -94,33 +95,27 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 			[[fallthrough]];
 		case cmn::BitstreamFormat::H265_ANNEXB:
 			[[fallthrough]];
-		case cmn::BitstreamFormat::HVCC:
-			if (_alert_count_bframe < 1)	// Reduced the number of warning log outputs from 10 to 1
+		case cmn::BitstreamFormat::HVCC: {
+			// Each track is checked until its own first B-frame, which is reported once
+			auto stats = stream_info->GetTrackStats(track_id);
+			if ((stats == nullptr) || stats->HasBframes())
 			{
-				auto stats = stream_info->GetTrackStats(media_track->GetId());
-				if (stats == nullptr)
-				{
-					break;
-				}
+				break;
+			}
 
-				if (stats->GetTotalFrameCount() > 0 && _last_pts[media_track->GetId()] > media_packet->GetPts())
-				{
-					stats->SetHasBframes(true);
-				}
+			auto last_pts = _last_pts.find(track_id);
+			if ((last_pts != _last_pts.end()) && (last_pts->second > media_packet->GetPts()))
+			{
+				stats->SetHasBframes(true);
 
-				// Display a warning message that b-frame exists
-				if (stats->HasBframes() == true)
-				{
-					logtw("[%s/%s(%u)] Detected a B-frame track. track:%u",
-						  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
-						  stream_info->GetName().CStr(),
-						  stream_info->GetId(),
-						  media_track->GetId());
-
-					_alert_count_bframe++;
-				}
+				logtw("[%s/%s(%u)] Detected a B-frame track. track:%u",
+					  stream_info->GetApplicationInfo().GetVHostAppName().CStr(),
+					  stream_info->GetName().CStr(),
+					  stream_info->GetId(),
+					  track_id);
 			}
 			break;
+		}
 		case cmn::BitstreamFormat::AV1_OBU:
 			// AV1 has no B-frames in the H.264/HEVC sense
 			// (uses reference frame indexes via `frame_header_obu`).
@@ -128,7 +123,7 @@ bool MediaRouterAlert::DetectBframes(const std::shared_ptr<info::Stream> &stream
 		default:
 			break;
 	}
-	_last_pts[media_track->GetId()] = media_packet->GetPts();
+	_last_pts[track_id] = media_packet->GetPts();
 
 	return true;
 }

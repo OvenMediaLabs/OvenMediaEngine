@@ -138,6 +138,28 @@ namespace pvd
 		return true;
 	}
 
+	void PullStream::SetOriginTimings(int64_t connection_time_msec, int64_t subscribe_time_msec)
+	{
+		_origin_connection_time_msec = connection_time_msec;
+		_origin_subscribe_time_msec	 = subscribe_time_msec;
+		_origin_timings_pending		 = true;
+	}
+
+	void PullStream::RecordOriginTimings()
+	{
+		if (_origin_timings_pending.exchange(false) == false)
+		{
+			return;
+		}
+
+		auto stream_metrics = StreamMetrics(*this);
+		if (stream_metrics != nullptr)
+		{
+			stream_metrics->SetOriginConnectionTimeMSec(_origin_connection_time_msec);
+			stream_metrics->SetOriginSubscribeTimeMSec(_origin_subscribe_time_msec);
+		}
+	}
+
 	const std::shared_ptr<const ov::Url> PullStream::GetNextURL()
 	{
 		if (_url_list.size() == 0)
