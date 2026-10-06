@@ -180,6 +180,121 @@ TEST(RtpFrameBoundaryDetector, EmptyPayloadRejected)
 	EXPECT_FALSE(RtpFrameBoundaryDetector::Apply(*p, cmn::MediaCodecId::H264, 0));
 }
 
+// ---- Keyframe start detection ----
+
+TEST(RtpFrameBoundaryDetector, H264IdrAndSpsAreKeyframeStarts)
+{
+	auto idr = MakePacket({0x65, 0x88});                      // nal_type 5
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*idr, cmn::MediaCodecId::H264, 0));
+	EXPECT_TRUE(idr->IsKeyframe());
+
+	auto sps = MakePacket({0x67, 0x42, 0xc0, 0x1f});          // nal_type 7
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*sps, cmn::MediaCodecId::H264, 0));
+	EXPECT_TRUE(sps->IsKeyframe());
+
+	auto slice = MakePacket({0x21, 0x9a});                    // nal_type 1
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*slice, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(slice->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, H264StapAWithSpsIsKeyframeStart)
+{
+	// STAP-A: [size 2][PPS 0x68 0xce][size 2][SPS 0x67 0x42]
+	auto p = MakePacket({0x18, 0x00, 0x02, 0x68, 0xce, 0x00, 0x02, 0x67, 0x42});
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*p, cmn::MediaCodecId::H264, 0));
+	EXPECT_TRUE(p->IsKeyframe());
+
+	auto q = MakePacket({0x18, 0x00, 0x02, 0x68, 0xce, 0x00, 0x02, 0x21, 0x9a});   // PPS + slice
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*q, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(q->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, H264FuAOnlyFirstIdrFragmentIsKeyframeStart)
+{
+	auto start = MakePacket({0x7c, 0x85, 0x88});    // FU-A, S=1, type 5
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*start, cmn::MediaCodecId::H264, 0));
+	EXPECT_TRUE(start->IsKeyframe());
+
+	auto middle = MakePacket({0x7c, 0x05, 0x88});   // FU-A, S=0, type 5
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*middle, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(middle->IsKeyframe());
+
+	auto delta = MakePacket({0x7c, 0x81, 0x88});    // FU-A, S=1, type 1
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*delta, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(delta->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, H265IrapIsKeyframeStart)
+{
+	auto idr = MakePacket({0x26, 0x01, 0xaf});      // type 19 (IDR_W_RADL)
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*idr, cmn::MediaCodecId::H265, 0));
+	EXPECT_TRUE(idr->IsKeyframe());
+
+	auto trail = MakePacket({0x02, 0x01, 0xaf});    // type 1 (TRAIL_R)
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*trail, cmn::MediaCodecId::H265, 0));
+	EXPECT_FALSE(trail->IsKeyframe());
+
+	auto fu_start = MakePacket({0x62, 0x01, 0x93}); // FU, S=1, FuType 19
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_start, cmn::MediaCodecId::H265, 0));
+	EXPECT_TRUE(fu_start->IsKeyframe());
+
+	auto fu_mid = MakePacket({0x62, 0x01, 0x13});   // FU, S=0, FuType 19
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_mid, cmn::MediaCodecId::H265, 0));
+	EXPECT_FALSE(fu_mid->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, Vp8KeyframeFromPBit)
+{
+	// X=1 S=1 PID=0; ext I=1 L=1 T=1; 2-byte picture id; TL0PICIDX; TID byte; frame tag P=0
+	auto key = MakePacket({0x90, 0xe0, 0x80, 0x01, 0x05, 0x20, 0x50, 0x01, 0x00});
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*key, cmn::MediaCodecId::Vp8, 0));
+	EXPECT_TRUE(key->IsKeyframe());
+
+	auto delta = MakePacket({0x90, 0xe0, 0x80, 0x01, 0x05, 0x20, 0x51, 0x01, 0x00});   // P=1
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*delta, cmn::MediaCodecId::Vp8, 0));
+	EXPECT_FALSE(delta->IsKeyframe());
+
+	auto no_ext = MakePacket({0x10, 0x50, 0x01, 0x00});   // X=0 S=1 PID=0, frame tag P=0
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*no_ext, cmn::MediaCodecId::Vp8, 0));
+	EXPECT_TRUE(no_ext->IsKeyframe());
+
+	auto partition = MakePacket({0x11, 0x50});            // PID=1: not a frame start
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*partition, cmn::MediaCodecId::Vp8, 0));
+	EXPECT_FALSE(partition->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, Av1NewCodedVideoSequenceIsKeyframeStart)
+{
+	auto key = MakePacket({0x08, 0x0a, 0x0b});    // Z=0, N=1
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*key, cmn::MediaCodecId::Av1, 0));
+	EXPECT_TRUE(key->IsKeyframe());
+
+	auto delta = MakePacket({0x00, 0x32, 0x0b});  // N=0
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*delta, cmn::MediaCodecId::Av1, 0));
+	EXPECT_FALSE(delta->IsKeyframe());
+}
+
+// With DD negotiated the frame type still comes from the codec payload.
+TEST(RtpFrameBoundaryDetector, KeyframeIsStampedWithDependencyDescriptor)
+{
+	// Extensions are only readable from a parsed packet, so build then re-parse
+	auto built = MakePacket({});
+	uint8_t dd_bytes[] = {0xC0, 0x00, 0x05};       // S=1, E=1
+	auto dd = std::make_shared<RtpHeaderExtensionDependencyDescriptor>(12);
+	ASSERT_TRUE(dd->SetData(std::make_shared<ov::Data>(dd_bytes, sizeof(dd_bytes))));
+	RtpHeaderExtensions extensions;
+	extensions.AddExtention(dd);
+	built->SetExtensions(extensions);
+	uint8_t idr[] = {0x65, 0x88};
+	built->SetPayload(idr, sizeof(idr));
+
+	auto p = std::make_shared<RtpPacket>();
+	ASSERT_TRUE(p->Parse(built->GetData()));
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*p, cmn::MediaCodecId::H264, 12));
+	EXPECT_TRUE(p->IsFirstPacketOfFrame());
+	EXPECT_TRUE(p->IsKeyframe());
+}
+
 // ---- RtpHeaderExtensionDependencyDescriptor ----
 
 TEST(RtpHeaderExtensionDependencyDescriptor, ParsesMandatoryFields)

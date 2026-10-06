@@ -42,6 +42,10 @@ bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 		_end_seq = packet->SequenceNumber();
 		_has_end = true;
 	}
+	if (packet->IsKeyframe())
+	{
+		_is_keyframe = true;
+	}
 
 	// Only a packet not seen before counts as progress; a duplicate copy must
 	// not keep an incomplete frame alive.
@@ -167,67 +171,27 @@ uint64_t RtpFrameJitterBuffer::GetExtentedTimestamp(uint32_t timestamp)
 
 uint32_t RtpFrameJitterBuffer::CurrentHoldMs()
 {
-	if (!_hold_ms_provider)
-	{
-		return 0;
-	}
-	// Add the frame-interval mean plus a 4*dev margin on top of the provided
-	// hold so a publisher pacing burst (BWE throttle, encoder stall, variable
-	// fps) doesn't trip a discard before the next packet arrives. The NACK
-	// generator provides MaxHoldMs itself, so the cap below is what applies
-	// there; the margin only matters for a provider that returns less.
-	uint32_t hold = _hold_ms_provider()
-				  + _frame_interval_ms
-				  + 4 * _frame_interval_dev_ms;
-
-	// Cap the total to the configured MaxHoldMs so the frame-interval margin
-	// can't push the hold past the operator's latency budget.
-	if (_max_hold_ms != 0 && hold > _max_hold_ms)
-	{
-		hold = _max_hold_ms;
-	}
-	return hold;
+	return _hold_ms_provider ? _hold_ms_provider() : 0;
 }
 
-void RtpFrameJitterBuffer::UpdateFrameIntervalEstimate(uint32_t rtp_ts)
+bool RtpFrameJitterBuffer::HasKeyframeInBuffer()
 {
-	if (_clock_rate == 0)
+	for (const auto &[timestamp, frame] : _rtp_frames)
 	{
-		return;
-	}
-	if (_has_last_processed_rtp_ts == false)
-	{
-		_has_last_processed_rtp_ts = true;
-		_last_processed_rtp_ts = rtp_ts;
-		return;
-	}
-
-	// uint32 subtraction wraps cleanly when timestamps cycle.
-	uint32_t diff_ticks = rtp_ts - _last_processed_rtp_ts;
-	uint32_t interval_ms = static_cast<uint32_t>((static_cast<uint64_t>(diff_ticks) * 1000) / _clock_rate);
-
-	// Outlier filter: ignore jumps over 1 second (likely a cycle gap or
-	// stream resume) so a single anomaly doesn't poison the EWMA.
-	if (interval_ms <= 1000)
-	{
-		if (_frame_interval_ms == 0)
+		if (frame->IsKeyframe())
 		{
-			// First sample: seed the mean. dev keeps its conservative seed
-			// (INITIAL_FRAME_INTERVAL_DEV_GUESS_MS) so the second/third
-			// frame still inherits a large hold window.
-			_frame_interval_ms = interval_ms;
-		}
-		else
-		{
-			// EWMA with alpha = 1/8 for mean, 1/4 for deviation.
-			int64_t err = static_cast<int64_t>(interval_ms) - static_cast<int64_t>(_frame_interval_ms);
-			_frame_interval_ms = (_frame_interval_ms * 7 + interval_ms) / 8;
-			uint64_t abs_err = static_cast<uint64_t>(err < 0 ? -err : err);
-			_frame_interval_dev_ms = (_frame_interval_dev_ms * 3 + abs_err) / 4;
+			return true;
 		}
 	}
+	return false;
+}
 
-	_last_processed_rtp_ts = rtp_ts;
+void RtpFrameJitterBuffer::NotifyFrameDiscarded()
+{
+	if (_on_frame_discarded != nullptr)
+	{
+		_on_frame_discarded(HasKeyframeInBuffer());
+	}
 }
 
 bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
@@ -262,7 +226,6 @@ void RtpFrameJitterBuffer::MarkFrameProcessed(uint64_t extended_timestamp, RtpFr
 {
 	_last_processed_timestamp = extended_timestamp;
 	_has_processed_timestamp = true;
-	UpdateFrameIntervalEstimate(frame.Timestamp());
 	AdvanceProcessedSeq(frame);
 }
 
@@ -349,6 +312,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 			  static_cast<unsigned long long>(frame->GetElapsedSinceLastPacket()));
 		MarkFrameProcessed(it->first, *frame);
 		it = _rtp_frames.erase(it);
+		NotifyFrameDiscarded();
 	}
 }
 
@@ -397,6 +361,7 @@ bool RtpFrameJitterBuffer::HasAvailableFrameInternal()
 				logtd("Release held head despite prior NACK pending (hold expired): ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums)",
 					  head->Timestamp(), head_start, *lowest,
 					  static_cast<unsigned long long>(head->GetElapsed()), hold_ms);
+				NotifyFrameDiscarded();
 			}
 		}
 	}

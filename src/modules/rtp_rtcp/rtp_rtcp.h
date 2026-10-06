@@ -29,6 +29,9 @@ class RtpRtcpInterface : public ov::EnableSharedFromThis<RtpRtcpInterface>
 public:
 	virtual void OnRtpFrameReceived(const std::vector<std::shared_ptr<RtpPacket>> &rtp_packets) = 0;
 	virtual void OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info) = 0;
+	// The receive jitter buffer gave up on a video frame of the track.
+	// keyframe_arriving: a keyframe is already waiting in the buffer behind it
+	virtual void OnRtpFrameDiscarded(uint32_t track_id, bool keyframe_arriving) {}
 };
 
 class RtpRtcp : public ov::Node

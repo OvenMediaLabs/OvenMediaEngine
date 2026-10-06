@@ -33,6 +33,8 @@ public:
 	uint32_t Timestamp() { return _timestamp; }
 	size_t PacketCount() { return _packets.size(); }
 	bool HasStart() const { return _has_start; }
+	// Known from the start packet's codec header; false when the start was lost
+	bool IsKeyframe() const { return _is_keyframe; }
 	uint16_t GetMarkerSequenceNumber() const { return _end_seq; }
 	uint16_t GetFirstSequenceNumber() const { return _start_seq; }
 
@@ -52,6 +54,7 @@ private:
 
 	bool _has_start = false;
 	uint16_t _start_seq = 0;
+	bool _is_keyframe = false;
 	bool _has_end = false;
 	uint16_t _end_seq = 0;
 
@@ -79,24 +82,11 @@ public:
 	std::shared_ptr<RtpFrame> PopAvailableFrame();
 
 	// An incomplete head frame is discarded once no new packet of it has
-	// arrived for (hold_ms_provider() + frame_interval_ms) milliseconds, so a
-	// frame that is still streaming in is never cut short; the hold therefore
-	// ends at most one hold after the frame's own arrival time. The frame
-	// interval term covers the gap between losing a frame's last packet and
-	// the next frame's first packet arriving — without it low-fps streams
-	// can't NACK the lost packet in time. Unset hold_ms_provider keeps the
-	// legacy "drop incomplete predecessor on next complete" behavior.
+	// arrived for hold_ms_provider() milliseconds, so a frame that is still
+	// streaming in is never cut short; the hold therefore ends at most one
+	// hold after the frame's own arrival time. Unset hold_ms_provider keeps
+	// the legacy "drop incomplete predecessor on next complete" behavior.
 	void SetHoldMsProvider(std::function<uint32_t()> provider) { _hold_ms_provider = std::move(provider); }
-
-	// Upper bound for the total hold (the operator's MaxHoldMs latency budget).
-	// 0 = no cap. Clamps CurrentHoldMs so the frame-interval margin can't push
-	// the hold past the configured ceiling.
-	void SetMaxHoldMs(uint32_t max_hold_ms) { _max_hold_ms = max_hold_ms; }
-
-	// RTP clock rate of the track. Used to convert RTP timestamp deltas
-	// between consecutive frames into milliseconds for the frame interval
-	// estimate. Must be set before frames start flowing.
-	void SetClockRate(uint32_t clock_rate) { _clock_rate = clock_rate; }
 
 	// Callback fired whenever the jitter buffer advances its "processed up
 	// to" sequence number (after emitting or discarding a frame). The NACK
@@ -115,19 +105,30 @@ public:
 		_lowest_pending_seq_provider = std::move(provider);
 	}
 
+	// Callback fired for every frame the buffer gives up on under the NACK
+	// hold: an incomplete head discarded, or a complete head released over a
+	// lost earlier frame. keyframe_arriving tells whether a keyframe, complete
+	// or still arriving, is waiting in the buffer behind it, in which case the
+	// picture repairs itself. Whether to request one otherwise is the owner's
+	// decision.
+	void SetOnFrameDiscarded(std::function<void(bool keyframe_arriving)> callback)
+	{
+		_on_frame_discarded = std::move(callback);
+	}
+
 private:
 	// Non-locking core shared by HasAvailableFrame() and PopAvailableFrame()
 	bool HasAvailableFrameInternal() OV_REQUIRES(_lock);
 	void BurnOutExpiredFrames() OV_REQUIRES(_lock);
 	uint64_t GetExtentedTimestamp(uint32_t timestamp) OV_REQUIRES(_lock);
 	uint32_t CurrentHoldMs() OV_REQUIRES(_lock);
-	void UpdateFrameIntervalEstimate(uint32_t rtp_ts) OV_REQUIRES(_lock);
 	void AdvanceProcessedSeq(RtpFrame &frame) OV_REQUIRES(_lock);
 	// Records bookkeeping after a frame leaves the buffer (emitted or
-	// discarded): advances the processed timestamp/seq watermarks and
-	// updates the frame-interval estimate. Caller still has to erase the
-	// frame from `_rtp_frames`.
+	// discarded): advances the processed timestamp/seq watermarks. Caller
+	// still has to erase the frame from `_rtp_frames`.
 	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame) OV_REQUIRES(_lock);
+	void NotifyFrameDiscarded() OV_REQUIRES(_lock);
+	bool HasKeyframeInBuffer() OV_REQUIRES(_lock);
 
 	uint32_t _last_timestamp OV_GUARDED_BY(_lock) = 0;
 	uint32_t _timestamp_cycle OV_GUARDED_BY(_lock) = 0;
@@ -135,32 +136,10 @@ private:
 	std::function<uint32_t()> _hold_ms_provider;
 	std::function<void(uint16_t)> _on_processed_seq_advance;
 	std::function<std::optional<uint16_t>()> _lowest_pending_seq_provider;
-	uint32_t _clock_rate = 0;
-	uint32_t _max_hold_ms = 0;  // 0 = no cap
+	std::function<void(bool keyframe_arriving)> _on_frame_discarded;
 
 	bool _has_processed_seq OV_GUARDED_BY(_lock) = false;
 	uint16_t _last_processed_max_seq OV_GUARDED_BY(_lock) = 0;
-
-	// Conservative seed for the frame-interval mean-deviation. Until the
-	// EWMA collects a few real samples we have no idea what fps / pacing
-	// the publisher will use, so we err large: the first keyframe can be
-	// big and pacing-bursted, and discarding it triggers a long PLI/IDR
-	// recovery downstream. Real samples shrink this within a few frames.
-	static constexpr uint32_t INITIAL_FRAME_INTERVAL_DEV_GUESS_MS = 50;
-
-	// Smoothed frame interval (ms) and its mean-deviation, measured from
-	// the RTP timestamp delta between consecutive processed frames.
-	// CurrentHoldMs uses (mean + 4*dev) to absorb publisher pacing burst:
-	// adaptive bitrate / pacer / encoder stalls can stretch a single gap
-	// to several frame intervals, and a constant + dev term lets the hold
-	// follow that variability without any fixed magic margin. The mean
-	// starts at 0 (first sample seeds it directly) but the deviation
-	// starts large so the very first frame (e.g. the initial keyframe)
-	// has enough hold for NACK retries before EWMA has caught up.
-	bool _has_last_processed_rtp_ts OV_GUARDED_BY(_lock) = false;
-	uint32_t _last_processed_rtp_ts OV_GUARDED_BY(_lock) = 0;
-	uint32_t _frame_interval_ms OV_GUARDED_BY(_lock) = 0;
-	uint32_t _frame_interval_dev_ms OV_GUARDED_BY(_lock) = INITIAL_FRAME_INTERVAL_DEV_GUESS_MS;
 
 	// Highest extended timestamp already emitted or dropped. Rejects packets
 	// for an older timestamp (typical for late RTX after a frame has been

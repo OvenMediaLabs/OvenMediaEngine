@@ -74,7 +74,6 @@ bool RtpRtcp::AddRtpReceiver(const std::shared_ptr<MediaTrack> &track, const Rtp
 			case cmn::BitstreamFormat::AV1_RTP_AOM:
 			{
 				auto buf = std::make_shared<RtpFrameJitterBuffer>();
-				buf->SetClockRate(track->GetTimeBase().GetDen());
 				_rtp_frame_jitter_buffers[track_id] = buf;
 				break;
 			}
@@ -403,8 +402,6 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 			auto gen = weak_gen.lock();
 			return gen ? gen->GetHoldMs() : 0;
 		});
-		// The buffer's own frame-interval margin is capped at the same value.
-		buf_it->second->SetMaxHoldMs(max_hold_ms);
 		buf_it->second->SetOnProcessedSeqAdvance([weak_gen](uint16_t max_seq) {
 			auto gen = weak_gen.lock();
 			if (gen) gen->DropPendingUpTo(max_seq);
@@ -413,6 +410,16 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 			auto gen = weak_gen.lock();
 			if (!gen) return std::nullopt;
 			return gen->GetLowestPendingSeq();
+		});
+		// Report frames the buffer gives up on so the owner can decide whether
+		// to ask the sender for a keyframe. The buffer is owned by this object,
+		// and _observer is only reset under the exclusive state lock, which the
+		// receive path holds shared while the callback runs.
+		buf_it->second->SetOnFrameDiscarded([this, track_id](bool keyframe_arriving) {
+			if (_observer != nullptr)
+			{
+				_observer->OnRtpFrameDiscarded(track_id, keyframe_arriving);
+			}
 		});
 	}
 

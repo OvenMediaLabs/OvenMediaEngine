@@ -9,6 +9,11 @@
 
 #include "webrtc_stream.h"
 
+#include "modules/bitstream/av1/av1_parser.h"
+#include "modules/bitstream/h264/h264_parser.h"
+#include "modules/bitstream/h265/h265_parser.h"
+#include "modules/bitstream/vp8/vp8_parser.h"
+
 #include "base/ovlibrary/converter.h"
 #include "base/ovlibrary/random.h"
 #include "modules/rtp_rtcp/rtcp_info/sender_report.h"
@@ -1054,16 +1059,64 @@ namespace pvd
 
 		SendFrame(packet_to_send);
 
+		// The keyframe flag is only set downstream by the media router, so look at the bitstream here
+		if (track->GetMediaType() == cmn::MediaType::Video && IsKeyframe(codec_id, media_packet->GetData()))
+		{
+			logtd("Keyframe received track(%u)", track_id);
+			_keyframe_request_gate.OnKeyframeReceived(track_id, std::chrono::steady_clock::now());
+		}
+
 		// Send FIR to reduce keyframe interval
 		// _fir_interval can be 0 to disable FIR sending. The default value is 3000 ms.
 		if (_fir_interval != 0 && _fir_timer.IsElapsed(_fir_interval) && track->GetMediaType() == cmn::MediaType::Video)
 		{
 			_fir_timer.Update();
-			//_rtp_rtcp->SendPLI(first_rtp_packet->Ssrc());
+			logtd("Send FIR track(%u)", track_id);
 			_rtp_rtcp->SendFIR(track->GetId());
+			_keyframe_request_gate.OnPeriodicRequestSent(std::chrono::steady_clock::now());
 		}
 
 		// Send Receiver Report
+	}
+
+	// From RtpRtcp node: the jitter buffer gave up on a frame of this track
+	void WebRTCStream::OnRtpFrameDiscarded(uint32_t track_id, bool keyframe_arriving)
+	{
+		auto now = std::chrono::steady_clock::now();
+		bool request = _keyframe_request_gate.OnFrameDiscarded(track_id, now, std::chrono::milliseconds(_fir_interval), std::chrono::milliseconds(_nack_hold_ms), keyframe_arriving);
+		logtd("Frame discarded track(%u) keyframe_arriving(%s) request_keyframe(%s)", track_id, keyframe_arriving ? "true" : "false", request ? "true" : "false");
+		if (request == false)
+		{
+			return;
+		}
+
+		_rtp_rtcp->SendPLI(track_id);
+	}
+
+	bool WebRTCStream::IsKeyframe(cmn::MediaCodecId codec_id, const std::shared_ptr<const ov::Data> &data)
+	{
+		if (data == nullptr)
+		{
+			return false;
+		}
+		auto bytes = data->GetDataAs<uint8_t>();
+		auto length = data->GetLength();
+		switch (codec_id)
+		{
+			case cmn::MediaCodecId::H264:
+				return H264Parser::CheckAnnexBKeyframe(bytes, length);
+			case cmn::MediaCodecId::H265:
+				return H265Parser::CheckKeyframe(bytes, length);
+			case cmn::MediaCodecId::Vp8:
+			{
+				bool is_keyframe = false;
+				return VP8Parser::ParseKeyFrame(bytes, length, is_keyframe) && is_keyframe;
+			}
+			case cmn::MediaCodecId::Av1:
+				return Av1Parser::IsKeyFrame(bytes, length);
+			default:
+				return false;
+		}
 	}
 
 	// From RtpRtcp node

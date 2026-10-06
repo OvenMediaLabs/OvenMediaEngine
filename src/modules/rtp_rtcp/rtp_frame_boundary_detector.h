@@ -10,6 +10,10 @@
 //     starts (IsStartOfUnit); the jitter buffer derives the frame start from
 //     the lowest one. End-of-frame defaults to the RTP marker bit.
 //
+//   - A frame's first packet is also stamped as a keyframe start (IsKeyframe)
+//     from the codec payload header, with or without DD: IDR/SPS for H.264,
+//     IRAP/VPS/SPS for H.265, the VP8 P bit, the AV1 N bit.
+//
 // Returns false when the packet cannot be parsed (e.g. truncated payload,
 // reserved/invalid nal type). The caller is expected to drop such packets.
 class RtpFrameBoundaryDetector
@@ -24,4 +28,10 @@ private:
 	static bool ApplyH265(RtpPacket &packet);
 	static bool ApplyVp8(RtpPacket &packet);
 	static bool ApplyAv1(RtpPacket &packet);
+
+	static bool IsKeyframeStart(const RtpPacket &packet, cmn::MediaCodecId codec);
+	static bool IsH264KeyframeStart(const uint8_t *payload, size_t size);
+	static bool IsH265KeyframeStart(const uint8_t *payload, size_t size);
+	static bool IsVp8KeyframeStart(const uint8_t *payload, size_t size);
+	static bool IsAv1KeyframeStart(const uint8_t *payload);
 };

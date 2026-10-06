@@ -14,7 +14,6 @@
 namespace
 {
 constexpr uint32_t kTimestamp = 90000;
-constexpr uint32_t kClockRate = 90000;
 constexpr uint32_t kSsrc = 0x12345678;
 
 std::shared_ptr<RtpPacket> MakeStampedPacket(uint16_t seq, bool first, bool last, uint32_t ts = kTimestamp)
@@ -105,6 +104,17 @@ TEST(RtpFrame, KeepsEarliestStartAcrossReorder)
 	EXPECT_EQ(frame.GetFirstSequenceNumber(), 100);
 }
 
+TEST(RtpFrame, KeyframeFlagComesFromStartPacket)
+{
+	RtpFrame frame(kTimestamp);
+	auto start = MakeStampedPacket(100, true, false);
+	start->SetKeyframe(true);
+	frame.InsertPacket(MakeStampedPacket(101, false, true));   // end arrives first, not a keyframe packet
+	EXPECT_FALSE(frame.IsKeyframe());
+	frame.InsertPacket(start);
+	EXPECT_TRUE(frame.IsKeyframe());
+}
+
 TEST(RtpFrame, GetMaxReceivedSeqTracksHighest)
 {
 	RtpFrame frame(kTimestamp);
@@ -121,7 +131,6 @@ TEST(RtpFrame, GetMaxReceivedSeqTracksHighest)
 TEST(RtpFrameJitterBuffer, EmitsCompleteFrameImmediately)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.InsertPacket(MakeStampedPacket(100, true, false));
 	buf.InsertPacket(MakeStampedPacket(101, false, true));
 	EXPECT_TRUE(buf.HasAvailableFrame());
@@ -136,7 +145,6 @@ TEST(RtpFrameJitterBuffer, IncompleteHeadHoldsLaterCompleteFrame_Legacy)
 	// only on next completed" semantics apply: F1 incomplete, F2 complete ->
 	// HasAvailableFrame burns out F1 and returns F2.
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.InsertPacket(MakeStampedPacket(100, true, false, /*ts=*/kTimestamp));  // F1 first
 	// (F1 marker missing on purpose.)
 	buf.InsertPacket(MakeStampedPacket(102, true, true, /*ts=*/kTimestamp + 3000));   // F2 single packet
@@ -151,7 +159,6 @@ TEST(RtpFrameJitterBuffer, IncompleteHeadHoldsLaterCompleteFrame_Legacy)
 TEST(RtpFrameJitterBuffer, HoldsIncompleteHeadUntilTimeout)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.SetHoldMsProvider([] { return 50u; });
 	buf.InsertPacket(MakeStampedPacket(100, true, false));   // F1 first only
 	buf.InsertPacket(MakeStampedPacket(102, true, true, kTimestamp + 3000));   // F2 single packet
@@ -159,27 +166,9 @@ TEST(RtpFrameJitterBuffer, HoldsIncompleteHeadUntilTimeout)
 	// Within hold: F1 still present, F2 should not be emitted yet.
 	EXPECT_FALSE(buf.HasAvailableFrame());
 
-	// Effective hold = provider(50) + frame-interval mean(0) + 4*dev(seed 50)
-	// ~= 250ms, so sleep well past it before expecting F1 to be discarded.
-	std::this_thread::sleep_for(std::chrono::milliseconds(320));
-	EXPECT_TRUE(buf.HasAvailableFrame());
-}
-
-TEST(RtpFrameJitterBuffer, MaxHoldCapsTotalHold)
-{
-	// Without a cap the hold would be provider(50) + 4*dev(seed 50) ~= 250ms.
-	// SetMaxHoldMs(60) caps the total, so the incomplete head is discarded and
-	// the later frame flows well before 250ms.
-	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
-	buf.SetHoldMsProvider([] { return 50u; });
-	buf.SetMaxHoldMs(60);
-	buf.InsertPacket(MakeStampedPacket(100, true, false));   // F1 incomplete (no end)
-	buf.InsertPacket(MakeStampedPacket(102, true, true, kTimestamp + 3000));   // F2 complete
-
-	EXPECT_FALSE(buf.HasAvailableFrame());   // within the 60ms cap
+	// Past the 50ms hold with no further F1 packet: F1 is discarded, F2 flows.
 	std::this_thread::sleep_for(std::chrono::milliseconds(90));
-	EXPECT_TRUE(buf.HasAvailableFrame());    // released at the capped hold, far below 250ms
+	EXPECT_TRUE(buf.HasAvailableFrame());
 }
 
 // A large frame crawling in over a slow uplink keeps arriving past the hold
@@ -188,14 +177,12 @@ TEST(RtpFrameJitterBuffer, MaxHoldCapsTotalHold)
 TEST(RtpFrameJitterBuffer, SlowlyArrivingFrameIsNotDiscarded)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.SetHoldMsProvider([] { return 50u; });
-	buf.SetMaxHoldMs(60);
 	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start
 	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));   // F2 complete, waits behind F1
 
 	// 5 more F1 packets, 40ms apart: 200ms since F1's first packet, far past
-	// the 60ms hold, but never 60ms since its last packet.
+	// the 50ms hold, but never 50ms since its last packet.
 	for (uint16_t seq = 101; seq <= 105; seq++)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(40));
@@ -215,9 +202,7 @@ TEST(RtpFrameJitterBuffer, SlowlyArrivingFrameIsNotDiscarded)
 TEST(RtpFrameJitterBuffer, HoldIsMeasuredFromLastPacket)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.SetHoldMsProvider([] { return 50u; });
-	buf.SetMaxHoldMs(60);
 	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start
 	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));   // F2 complete
 
@@ -234,7 +219,6 @@ TEST(RtpFrameJitterBuffer, HoldIsMeasuredFromLastPacket)
 TEST(RtpFrameJitterBuffer, AdvanceProcessedSeqFiresOnEmit)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	std::optional<uint16_t> last_advanced;
 	buf.SetOnProcessedSeqAdvance([&](uint16_t s) { last_advanced = s; });
 
@@ -253,7 +237,6 @@ TEST(RtpFrameJitterBuffer, HoldsHeadCompleteUntilLowerPendingResolves)
 	// NackGen has seq 28254 pending (NACK in flight for the lost F+1 packet).
 	// HasAvailableFrame must hold F+2 until the pending recovers or expires.
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.SetHoldMsProvider([] { return 200u; });
 	std::optional<uint16_t> lowest;
 	buf.SetLowestPendingSeqProvider([&] { return lowest; });
@@ -270,7 +253,6 @@ TEST(RtpFrameJitterBuffer, HoldsHeadCompleteUntilLowerPendingResolves)
 TEST(RtpFrameJitterBuffer, HeadHoldExpiresEventually)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 	buf.SetHoldMsProvider([] { return 30u; });
 	std::optional<uint16_t> lowest = 28254;
 	buf.SetLowestPendingSeqProvider([&] { return lowest; });
@@ -278,16 +260,90 @@ TEST(RtpFrameJitterBuffer, HeadHoldExpiresEventually)
 	buf.InsertPacket(MakeStampedPacket(28255, true, true, kTimestamp));
 
 	EXPECT_FALSE(buf.HasAvailableFrame());
-	// Effective hold = provider(30) + frame-interval mean(0) + 4*dev(seed 50)
-	// ~= 230ms; sleep past it so the head releases despite the lower pending.
-	std::this_thread::sleep_for(std::chrono::milliseconds(320));
+	// Sleep past the 30ms hold so the head releases despite the lower pending.
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
 	EXPECT_TRUE(buf.HasAvailableFrame()) << "hold should release once timer elapses even with lower pending";
+}
+
+// Every frame the buffer gives up on is reported, including several stale
+// frames discarded in one pass.
+TEST(RtpFrameJitterBuffer, EveryGiveUpIsReported)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 50u; });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start only
+	buf.InsertPacket(MakeStampedPacket(110, true, false, kTimestamp + 3000));  // F2 start only
+	buf.InsertPacket(MakeStampedPacket(120, true, true, kTimestamp + 6000));   // F3 complete
+	EXPECT_FALSE(buf.HasAvailableFrame());
+	EXPECT_EQ(discards, 0);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	EXPECT_TRUE(buf.HasAvailableFrame());                                      // F1 and F2 discarded, F3 flows
+	EXPECT_EQ(discards, 2);
+}
+
+// Releasing a complete head over a lost earlier frame is a give-up too.
+TEST(RtpFrameJitterBuffer, ReleaseOverLostFrameIsReported)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 30u; });
+	std::optional<uint16_t> lowest = 28254;
+	buf.SetLowestPendingSeqProvider([&] { return lowest; });
+	int discards = 0;
+	std::optional<bool> keyframe_arriving;
+	buf.SetOnFrameDiscarded([&](bool arriving) { discards++; keyframe_arriving = arriving; });
+
+	buf.InsertPacket(MakeStampedPacket(28255, true, true, kTimestamp));
+	EXPECT_FALSE(buf.HasAvailableFrame());
+	EXPECT_EQ(discards, 0);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	EXPECT_TRUE(buf.HasAvailableFrame());
+	EXPECT_EQ(discards, 1);
+	ASSERT_TRUE(keyframe_arriving.has_value());
+	EXPECT_FALSE(*keyframe_arriving);                                          // the released head is a delta frame
+}
+
+// The report says whether a keyframe is waiting in the buffer behind the
+// given-up frame, complete or still arriving.
+TEST(RtpFrameJitterBuffer, ReportTellsWhetherKeyframeIsArriving)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 50u; });
+	std::optional<bool> keyframe_arriving;
+	buf.SetOnFrameDiscarded([&](bool arriving) { keyframe_arriving = arriving; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start only
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	auto keyframe_start = MakeStampedPacket(110, true, false, kTimestamp + 3000);   // F2 keyframe, still arriving
+	keyframe_start->SetKeyframe(true);
+	buf.InsertPacket(keyframe_start);
+	EXPECT_FALSE(buf.HasAvailableFrame());                                     // F1 discarded, F2 incomplete
+	ASSERT_TRUE(keyframe_arriving.has_value());
+	EXPECT_TRUE(*keyframe_arriving);
+}
+
+TEST(RtpFrameJitterBuffer, ReportSaysNoKeyframeWhenOnlyDeltaFramesFollow)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 50u; });
+	std::optional<bool> keyframe_arriving;
+	buf.SetOnFrameDiscarded([&](bool arriving) { keyframe_arriving = arriving; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start only
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));   // F2 delta, complete
+	EXPECT_TRUE(buf.HasAvailableFrame());                                      // F1 discarded, F2 flows
+	ASSERT_TRUE(keyframe_arriving.has_value());
+	EXPECT_FALSE(*keyframe_arriving);
 }
 
 TEST(RtpFrameJitterBuffer, DropsLatePacketForProcessedTimestamp)
 {
 	RtpFrameJitterBuffer buf;
-	buf.SetClockRate(kClockRate);
 
 	buf.InsertPacket(MakeStampedPacket(100, true, true, kTimestamp));
 	auto f = buf.PopAvailableFrame();

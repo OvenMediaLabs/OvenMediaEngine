@@ -17,6 +17,7 @@
 #include "modules/sdp/session_description.h"
 
 #include "modules/rtp_rtcp/rtp_rtcp.h"
+#include "modules/rtp_rtcp/keyframe_request_gate.h"
 #include "modules/rtp_rtcp/rtp_packetizer_interface.h"
 #include "modules/dtls_srtp/dtls_transport.h"
 #include "modules/rtp_rtcp/rtp_depacketizing_manager.h"
@@ -81,6 +82,7 @@ namespace pvd
 
 		// RtpRtcpInterface Implement
 		void OnRtpFrameReceived(const std::vector<std::shared_ptr<RtpPacket>> &rtp_packets) override;
+		void OnRtpFrameDiscarded(uint32_t track_id, bool keyframe_arriving) override;
 		void OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info) override;
 
 		// ov::Node Interface
@@ -100,9 +102,12 @@ namespace pvd
 		std::shared_ptr<RtpDepacketizingManager> GetDepacketizer(uint32_t track_id);
 
 		void OnFrame(const std::shared_ptr<const MediaTrack> &track, const std::shared_ptr<MediaPacket> &media_packet);
+		static bool IsKeyframe(cmn::MediaCodecId codec_id, const std::shared_ptr<const ov::Data> &data);
 
 		ov::StopWatch _fir_timer;
 		int _fir_interval = 3000; // ms
+		// Decides whether a frame the jitter buffer gave up on gets a PLI
+		KeyframeRequestGate _keyframe_request_gate;
 		// Jitter buffer hold for NACK recovery (MaxHoldMs). Read from the
 		// provider config at construction, since the stream is not attached to
 		// its application yet when the channels are created.
