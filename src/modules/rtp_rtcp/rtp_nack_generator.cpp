@@ -1,6 +1,6 @@
 #include "rtp_nack_generator.h"
 
-#include <algorithm>
+#include <limits>
 
 #define OV_LOG_TAG "RtpNack"
 
@@ -123,7 +123,6 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 		}
 	}
 
-	DiscardStale(now);
 	LogPeriodicStats(now);
 }
 
@@ -131,8 +130,6 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 {
 	ov::LockGuard<ov::Mutex> lock(_lock);
 	auto now = std::chrono::steady_clock::now();
-
-	DiscardStale(now);
 
 	auto retry_interval = std::chrono::milliseconds(RETRY_INTERVAL_MS);
 	auto dwell = std::chrono::milliseconds(INITIAL_NACK_DWELL_MS);
@@ -161,8 +158,8 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 		}
 		else if ((now - entry.last_nack_at) >= retry_interval)
 		{
-			// Retry until the jitter buffer ends the entry (via
-			// DropPendingUpTo) or the absolute age cap fires.
+			// Retry until the seq arrives or the jitter buffer ends the entry
+			// (via DropPendingUpTo).
 			ids.push_back(static_cast<uint16_t>(kv.first & 0xFFFF));
 			entry.last_nack_at = now;
 			entry.retry_count++;
@@ -244,32 +241,6 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 			  "retries[min(%u) max(%u) avg(%.1f)] age_ms[min(%ld) max(%ld)] pending_remain(%zu) hold(%u)",
 			  _track_id, _media_ssrc, max_seq, dropped, first_dropped_seq, last_dropped_seq,
 			  min_retry, max_retry, avg_retry, min_age_ms, max_age_ms, _pending.size(), _hold_ms);
-	}
-}
-
-void RtpNackGenerator::DiscardStale(std::chrono::steady_clock::time_point now)
-{
-	auto max_age = std::chrono::milliseconds(std::max(MAX_AGE_MS, _hold_ms));
-
-	for (auto it = _pending.begin(); it != _pending.end();)
-	{
-		// Absolute safety cap; the normal end signal is DropPendingUpTo
-		// driven by the jitter buffer.
-		if ((now - it->second.inserted_at) > max_age)
-		{
-			auto age_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-							  now - it->second.inserted_at)
-							  .count();
-			logtd("Drop unrecoverable track(%u) ssrc(%u) seq(%u) age(%ldms) retries(%u) reason(age)",
-				  _track_id, _media_ssrc, static_cast<uint16_t>(it->first & 0xFFFF),
-				  age_ms, it->second.retry_count);
-			_lost_permanent_total++;
-			it = _pending.erase(it);
-		}
-		else
-		{
-			++it;
-		}
 	}
 }
 

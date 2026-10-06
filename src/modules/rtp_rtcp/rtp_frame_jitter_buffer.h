@@ -78,19 +78,15 @@ public:
 	bool HasAvailableFrame();
 	std::shared_ptr<RtpFrame> PopAvailableFrame();
 
-	// An incomplete head frame is discarded once no packet of it has arrived
-	// for (hold_ms_provider() + frame_interval_ms) milliseconds, so a frame
-	// that is still streaming in is never cut short. The frame interval term
-	// covers the gap between losing a frame's last packet and the next frame's
-	// first packet arriving — without it low-fps streams can't NACK the lost
-	// packet in time. Unset hold_ms_provider keeps the legacy "drop incomplete
-	// predecessor on next complete" behavior.
+	// An incomplete head frame is discarded once no new packet of it has
+	// arrived for (hold_ms_provider() + frame_interval_ms) milliseconds, so a
+	// frame that is still streaming in is never cut short; the hold therefore
+	// ends at most one hold after the frame's own arrival time. The frame
+	// interval term covers the gap between losing a frame's last packet and
+	// the next frame's first packet arriving — without it low-fps streams
+	// can't NACK the lost packet in time. Unset hold_ms_provider keeps the
+	// legacy "drop incomplete predecessor on next complete" behavior.
 	void SetHoldMsProvider(std::function<uint32_t()> provider) { _hold_ms_provider = std::move(provider); }
-
-	// Absolute age cap for an incomplete head frame, measured from its first
-	// packet. Only a frame that keeps trickling packets forever reaches it;
-	// a legitimate frame on a slow uplink completes long before.
-	static constexpr uint64_t FRAME_MAX_AGE_MS = 5000;
 
 	// Upper bound for the total hold (the operator's MaxHoldMs latency budget).
 	// 0 = no cap. Clamps CurrentHoldMs so the frame-interval margin can't push

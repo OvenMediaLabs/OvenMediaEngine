@@ -328,11 +328,10 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		{
 			break;
 		}
-		// The hold clock runs from the frame's last packet: a large keyframe
+		// The hold clock runs from the frame's last new packet: a large keyframe
 		// crawling over a slow uplink keeps resetting it, so only a frame that
-		// stopped progressing is discarded. The age cap guards against a frame
-		// that trickles forever.
-		if (frame->GetElapsedSinceLastPacket() <= hold_ms && frame->GetElapsed() <= FRAME_MAX_AGE_MS)
+		// stopped progressing is discarded.
+		if (frame->GetElapsedSinceLastPacket() <= hold_ms)
 		{
 			break;
 		}

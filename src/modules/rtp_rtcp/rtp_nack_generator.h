@@ -24,12 +24,6 @@ class RtpNackGenerator
 {
 public:
 	static constexpr size_t MAX_PENDING		= 250;
-	// Floor of the absolute age cap for a pending seq the jitter buffer never
-	// advances past (e.g. very first packet of a stream lost before any frame
-	// is built). Matches the buffer's absolute frame age, so retries outlive
-	// any frame the buffer may still be holding; in the normal path
-	// DropPendingUpTo ends entries first.
-	static constexpr uint32_t MAX_AGE_MS	= 5000;
 	// Dwell time between gap detection and the initial NACK firing.
 	// Absorbs small UDP reordering so that brief out-of-order delivery
 	// (seq 102 before 101) doesn't trigger a spurious NACK + RTX round-trip.
@@ -61,8 +55,10 @@ public:
 	std::vector<uint16_t> BuildPendingNack();
 
 	// Drop pending entries whose seq <= max_seq (wrap-safe). Called by the
-	// jitter buffer when it advances past a frame so we stop chasing seqs
-	// the consumer no longer wants.
+	// jitter buffer whenever it emits or discards a frame, so we stop chasing
+	// seqs the consumer no longer wants. Together with recovery this is the
+	// only way a pending entry ends: there is no time limit, because a seq
+	// may legitimately wait behind a head frame that is still arriving.
 	void DropPendingUpTo(uint16_t max_seq);
 
 	// Lowest seq still pending NACK recovery, if any. The jitter buffer
@@ -84,7 +80,6 @@ private:
 	};
 
 	std::optional<uint32_t> ExtendSeq(uint16_t seq) const OV_REQUIRES(_lock);
-	void DiscardStale(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
 	void LogPeriodicStats(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
 
 	uint32_t _track_id = 0;
