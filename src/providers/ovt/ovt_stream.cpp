@@ -1347,6 +1347,13 @@ namespace pvd
 			Json::Value track_ids(Json::arrayValue);
 			for (const auto &track : _described_tracks)
 			{
+				// Once the layout is settled, an id this stream does not have is refused at registration.
+				// Asking for it would only make the origin send media this edge drops.
+				if (_track_layout_fixed && (GetTrack(track->GetId()) == nullptr))
+				{
+					continue;
+				}
+
 				track_ids.append(track->GetId());
 			}
 			root["ovt"]["trackIds"] = track_ids;
