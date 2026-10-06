@@ -77,7 +77,13 @@ private:
 class RtpFrameJitterBuffer
 {
 public:
+	// Resource bound against malformed input. A healthy stream never holds
+	// more than one frame plus a hold's worth of packets; this is libwebrtc's
+	// packet buffer size. Past it the incomplete head frame is given up.
+	static constexpr size_t MAX_PACKETS = 2048;
+
 	bool InsertPacket(const std::shared_ptr<RtpPacket> &packet);
+	bool IsEmpty();
 	bool HasAvailableFrame();
 	std::shared_ptr<RtpFrame> PopAvailableFrame();
 
@@ -117,6 +123,8 @@ public:
 	}
 
 private:
+	using FrameMap = std::map<uint64_t, std::shared_ptr<RtpFrame>>;
+
 	// Non-locking core shared by HasAvailableFrame() and PopAvailableFrame()
 	bool HasAvailableFrameInternal() OV_REQUIRES(_lock);
 	void BurnOutExpiredFrames() OV_REQUIRES(_lock);
@@ -129,6 +137,9 @@ private:
 	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame) OV_REQUIRES(_lock);
 	void NotifyFrameDiscarded() OV_REQUIRES(_lock);
 	bool HasKeyframeInBuffer() OV_REQUIRES(_lock);
+	// Takes a frame out of the buffer (emitted or discarded) and returns the next iterator
+	FrameMap::iterator RemoveFrame(FrameMap::iterator it) OV_REQUIRES(_lock);
+	void EnforcePacketBudget() OV_REQUIRES(_lock);
 
 	uint32_t _last_timestamp OV_GUARDED_BY(_lock) = 0;
 	uint32_t _timestamp_cycle OV_GUARDED_BY(_lock) = 0;
@@ -148,7 +159,9 @@ private:
 	uint64_t _last_processed_timestamp OV_GUARDED_BY(_lock) = 0;
 
 	// timestamp : RtpFrameInfo (ordered, so std::map)
-	std::map<uint64_t, std::shared_ptr<RtpFrame>> _rtp_frames OV_GUARDED_BY(_lock);
+	FrameMap _rtp_frames OV_GUARDED_BY(_lock);
+	size_t _packet_count OV_GUARDED_BY(_lock) = 0;
+	bool _budget_warned OV_GUARDED_BY(_lock) = false;
 
 	mutable ov::Mutex _lock;
 };

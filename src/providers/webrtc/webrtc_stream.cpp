@@ -1093,6 +1093,29 @@ namespace pvd
 		_rtp_rtcp->SendPLI(track_id);
 	}
 
+	// Only a recovery picture counts; parameter sets alone carry no picture
+	static bool HasH264Idr(const uint8_t *bitstream, size_t length)
+	{
+		size_t offset = 0;
+		while (offset < length)
+		{
+			size_t start_code_size = 0;
+			auto pos = H264Parser::FindAnnexBStartCode(bitstream + offset, length - offset, start_code_size);
+			if (pos == -1)
+			{
+				break;
+			}
+			offset += pos + start_code_size;
+			H264NalUnitHeader header;
+			if (length - offset > H264_NAL_UNIT_HEADER_SIZE && H264Parser::ParseNalUnitHeader(bitstream + offset, H264_NAL_UNIT_HEADER_SIZE, header) &&
+				header.GetNalUnitType() == H264NalUnitType::IdrSlice)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	bool WebRTCStream::IsKeyframe(cmn::MediaCodecId codec_id, const std::shared_ptr<const ov::Data> &data)
 	{
 		if (data == nullptr)
@@ -1104,7 +1127,7 @@ namespace pvd
 		switch (codec_id)
 		{
 			case cmn::MediaCodecId::H264:
-				return H264Parser::CheckAnnexBKeyframe(bytes, length);
+				return HasH264Idr(bytes, length);
 			case cmn::MediaCodecId::H265:
 				return H265Parser::CheckKeyframe(bytes, length);
 			case cmn::MediaCodecId::Vp8:

@@ -11,8 +11,9 @@
 //     the lowest one. End-of-frame defaults to the RTP marker bit.
 //
 //   - A frame's first packet is also stamped as a keyframe start (IsKeyframe)
-//     from the codec payload header, with or without DD: IDR/SPS for H.264,
-//     IRAP/VPS/SPS for H.265, the VP8 P bit, the AV1 N bit.
+//     from the codec payload header, with or without DD: an IDR slice for
+//     H.264, an IRAP slice for H.265, the VP8 P bit, the AV1 N bit.
+//     Parameter sets alone do not count, they carry no picture.
 //
 // Returns false when the packet cannot be parsed (e.g. truncated payload,
 // reserved/invalid nal type). The caller is expected to drop such packets.

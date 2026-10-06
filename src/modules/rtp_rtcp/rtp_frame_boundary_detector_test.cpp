@@ -182,29 +182,29 @@ TEST(RtpFrameBoundaryDetector, EmptyPayloadRejected)
 
 // ---- Keyframe start detection ----
 
-TEST(RtpFrameBoundaryDetector, H264IdrAndSpsAreKeyframeStarts)
+TEST(RtpFrameBoundaryDetector, H264IdrIsKeyframeStartParameterSetsAreNot)
 {
 	auto idr = MakePacket({0x65, 0x88});                      // nal_type 5
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*idr, cmn::MediaCodecId::H264, 0));
 	EXPECT_TRUE(idr->IsKeyframe());
 
-	auto sps = MakePacket({0x67, 0x42, 0xc0, 0x1f});          // nal_type 7
+	auto sps = MakePacket({0x67, 0x42, 0xc0, 0x1f});          // nal_type 7: configuration, no picture
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*sps, cmn::MediaCodecId::H264, 0));
-	EXPECT_TRUE(sps->IsKeyframe());
+	EXPECT_FALSE(sps->IsKeyframe());
 
 	auto slice = MakePacket({0x21, 0x9a});                    // nal_type 1
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*slice, cmn::MediaCodecId::H264, 0));
 	EXPECT_FALSE(slice->IsKeyframe());
 }
 
-TEST(RtpFrameBoundaryDetector, H264StapAWithSpsIsKeyframeStart)
+TEST(RtpFrameBoundaryDetector, H264StapAWithIdrIsKeyframeStart)
 {
-	// STAP-A: [size 2][PPS 0x68 0xce][size 2][SPS 0x67 0x42]
-	auto p = MakePacket({0x18, 0x00, 0x02, 0x68, 0xce, 0x00, 0x02, 0x67, 0x42});
+	// STAP-A: [size 2][PPS 0x68 0xce][size 2][IDR 0x65 0x88]
+	auto p = MakePacket({0x18, 0x00, 0x02, 0x68, 0xce, 0x00, 0x02, 0x65, 0x88});
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*p, cmn::MediaCodecId::H264, 0));
 	EXPECT_TRUE(p->IsKeyframe());
 
-	auto q = MakePacket({0x18, 0x00, 0x02, 0x68, 0xce, 0x00, 0x02, 0x21, 0x9a});   // PPS + slice
+	auto q = MakePacket({0x18, 0x00, 0x02, 0x67, 0x42, 0x00, 0x02, 0x68, 0xce});   // SPS + PPS only
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*q, cmn::MediaCodecId::H264, 0));
 	EXPECT_FALSE(q->IsKeyframe());
 }
@@ -233,6 +233,10 @@ TEST(RtpFrameBoundaryDetector, H265IrapIsKeyframeStart)
 	auto trail = MakePacket({0x02, 0x01, 0xaf});    // type 1 (TRAIL_R)
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*trail, cmn::MediaCodecId::H265, 0));
 	EXPECT_FALSE(trail->IsKeyframe());
+
+	auto sps = MakePacket({0x42, 0x01, 0x01});      // type 33 (SPS): configuration, no picture
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*sps, cmn::MediaCodecId::H265, 0));
+	EXPECT_FALSE(sps->IsKeyframe());
 
 	auto fu_start = MakePacket({0x62, 0x01, 0x93}); // FU, S=1, FuType 19
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_start, cmn::MediaCodecId::H265, 0));

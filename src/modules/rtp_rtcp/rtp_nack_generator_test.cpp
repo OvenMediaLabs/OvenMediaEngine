@@ -92,6 +92,28 @@ TEST(RtpNackGenerator, DropPendingUpToRemovesAtAndBelow)
 }
 
 // Seq wrap: highest=65530, then 5 -> gap [65531..65535, 0..4].
+TEST(RtpNackGenerator, FullPendingEvictsOldest)
+{
+	RtpNackGenerator gen(1, 0x1234);
+	gen.OnPacketReceived(100);
+	gen.OnPacketReceived(100 + RtpNackGenerator::MAX_PENDING + 1);   // fills every slot: 101..350
+	ASSERT_EQ(*gen.GetLowestPendingSeq(), 101);
+	gen.OnPacketReceived(100 + RtpNackGenerator::MAX_PENDING + 3);   // one more gap seq
+	EXPECT_EQ(*gen.GetLowestPendingSeq(), 102);                      // the oldest gave way, the new one is in
+}
+
+TEST(RtpNackGenerator, DropPendingOlderThanKeepsRecentEntries)
+{
+	RtpNackGenerator gen(1, 0x1234);
+	gen.OnPacketReceived(100);
+	gen.OnPacketReceived(102);   // 101 pending
+	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	EXPECT_EQ(gen.DropPendingOlderThan(1000), 0u);
+	EXPECT_TRUE(gen.GetLowestPendingSeq().has_value());
+	EXPECT_EQ(gen.DropPendingOlderThan(10), 1u);
+	EXPECT_FALSE(gen.GetLowestPendingSeq().has_value());
+}
+
 TEST(RtpNackGenerator, SeqWrapDetectsGap)
 {
 	RtpNackGenerator gen(kTrackId, kSsrc);

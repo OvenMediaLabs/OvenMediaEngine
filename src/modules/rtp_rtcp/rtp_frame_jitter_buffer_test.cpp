@@ -341,6 +341,42 @@ TEST(RtpFrameJitterBuffer, ReportSaysNoKeyframeWhenOnlyDeltaFramesFollow)
 	EXPECT_FALSE(*keyframe_arriving);
 }
 
+// A frame that never ends cannot pin the buffer: past the packet budget the
+// incomplete head is given up and later frames flow.
+TEST(RtpFrameJitterBuffer, PacketBudgetGivesUpNeverEndingHead)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 600u; });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	for (size_t i = 0; i <= RtpFrameJitterBuffer::MAX_PACKETS; i++)
+	{
+		buf.InsertPacket(MakeStampedPacket(static_cast<uint16_t>(i), i == 0, false));   // F1 keeps growing, never ends
+	}
+	EXPECT_EQ(discards, 1);
+	EXPECT_TRUE(buf.IsEmpty());
+
+	buf.InsertPacket(MakeStampedPacket(3000, true, true, kTimestamp + 3000));   // F2 complete
+	EXPECT_TRUE(buf.HasAvailableFrame());
+}
+
+TEST(RtpFrameJitterBuffer, PacketBudgetReleasesFramesStuckBehindHead)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 600u; });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, false));   // F1 start only, blocks everything behind
+	for (size_t i = 1; i <= RtpFrameJitterBuffer::MAX_PACKETS; i++)
+	{
+		buf.InsertPacket(MakeStampedPacket(static_cast<uint16_t>(100 + i), true, true, kTimestamp + 3000 * i));   // complete single-packet frames
+	}
+	EXPECT_EQ(discards, 1);                                   // F1 given up at the budget
+	EXPECT_TRUE(buf.HasAvailableFrame());                     // the frames behind it flow
+}
+
 TEST(RtpFrameJitterBuffer, DropsLatePacketForProcessedTimestamp)
 {
 	RtpFrameJitterBuffer buf;

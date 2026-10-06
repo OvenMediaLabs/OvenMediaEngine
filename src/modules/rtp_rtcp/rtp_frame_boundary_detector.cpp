@@ -202,12 +202,12 @@ bool RtpFrameBoundaryDetector::IsKeyframeStart(const RtpPacket &packet, cmn::Med
 	}
 }
 
-// H.264: an IDR slice (5) or an SPS (7) as a single NAL, inside a STAP-A, or
-// as the first fragment of an FU-A
+// H.264: an IDR slice (5) as a single NAL, inside a STAP-A, or as the first
+// fragment of an FU-A
 bool RtpFrameBoundaryDetector::IsH264KeyframeStart(const uint8_t *payload, size_t size)
 {
 	auto is_key_nal = [](uint8_t nal_type) {
-		return nal_type == 5 || nal_type == 7;
+		return nal_type == 5;
 	};
 
 	uint8_t nal_type = payload[0] & 0x1F;
@@ -237,12 +237,12 @@ bool RtpFrameBoundaryDetector::IsH264KeyframeStart(const uint8_t *payload, size_
 	return false;
 }
 
-// H.265: an IRAP slice (16..21), a VPS (32) or an SPS (33) as a single NAL,
-// inside an AP, or as the first fragment of an FU
+// H.265: an IRAP slice (16..21) as a single NAL, inside an AP, or as the
+// first fragment of an FU
 bool RtpFrameBoundaryDetector::IsH265KeyframeStart(const uint8_t *payload, size_t size)
 {
 	auto is_key_nal = [](uint8_t nal_type) {
-		return (nal_type >= 16 && nal_type <= 21) || nal_type == 32 || nal_type == 33;
+		return nal_type >= 16 && nal_type <= 21;
 	};
 
 	if (size < 2)

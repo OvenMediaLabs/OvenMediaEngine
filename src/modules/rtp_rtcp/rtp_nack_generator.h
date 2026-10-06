@@ -56,10 +56,15 @@ public:
 
 	// Drop pending entries whose seq <= max_seq (wrap-safe). Called by the
 	// jitter buffer whenever it emits or discards a frame, so we stop chasing
-	// seqs the consumer no longer wants. Together with recovery this is the
-	// only way a pending entry ends: there is no time limit, because a seq
-	// may legitimately wait behind a head frame that is still arriving.
+	// seqs the consumer no longer wants. There is no time limit while a frame
+	// is waiting, because a seq may legitimately wait behind a head frame
+	// that is still arriving.
 	void DropPendingUpTo(uint16_t max_seq);
+
+	// Drop pending entries older than age_ms. Called when the jitter buffer
+	// holds no frame at all: nothing can still use such an entry, and after
+	// the hold its answer is not coming. Returns how many were dropped.
+	size_t DropPendingOlderThan(uint32_t age_ms);
 
 	// Lowest seq still pending NACK recovery, if any. The jitter buffer
 	// uses this to hold a complete frame whose first packet is newer than

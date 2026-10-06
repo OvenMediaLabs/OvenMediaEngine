@@ -863,12 +863,14 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	// NACKs on a short coalescing window (every NACK_COALESCE_MS). Send is
 	// done on the socket thread so it shares a single writer with the
 	// other RTCP outputs (RR, transport-cc) on the Node chain.
+	std::shared_ptr<RtpNackGenerator> nack_generator;
 	{
 		auto nack_it = _nack_generators.find(track_id);
 		if (nack_it != _nack_generators.end())
 		{
-			nack_it->second->OnPacketReceived(packet->SequenceNumber());
-			FlushNackIfDue(track_id, nack_it->second);
+			nack_generator = nack_it->second;
+			nack_generator->OnPacketReceived(packet->SequenceNumber());
+			FlushNackIfDue(track_id, nack_generator);
 		}
 	}
 
@@ -944,6 +946,14 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			// can not happen
 			logte("Could not find jitter buffer for payload type %d", packet->PayloadType());
 			return false;
+		}
+
+		// With nothing buffered no frame can still use a pending NACK entry
+		// older than the hold, so a long pause cannot pin them (padding-only
+		// traffic never reaches the buffer, which otherwise ends them).
+		if (nack_generator != nullptr && jitter_buffer->IsEmpty())
+		{
+			nack_generator->DropPendingOlderThan(nack_generator->GetHoldMs());
 		}
 
 		// Padding-only RTP (BWE probing / keepalive) carries no codec data;

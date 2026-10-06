@@ -218,8 +218,53 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 		frame = it->second;
 	}
 
+	auto packets_before = frame->PacketCount();
 	frame->InsertPacket(packet);
+	_packet_count += frame->PacketCount() - packets_before;
+	EnforcePacketBudget();
 	return true;
+}
+
+bool RtpFrameJitterBuffer::IsEmpty()
+{
+	ov::LockGuard<ov::Mutex> lock(_lock);
+	return _rtp_frames.empty();
+}
+
+RtpFrameJitterBuffer::FrameMap::iterator RtpFrameJitterBuffer::RemoveFrame(FrameMap::iterator it)
+{
+	auto frame = it->second;
+	MarkFrameProcessed(it->first, *frame);
+	_packet_count -= std::min(_packet_count, frame->PacketCount());
+	return _rtp_frames.erase(it);
+}
+
+void RtpFrameJitterBuffer::EnforcePacketBudget()
+{
+	// Only an incomplete head can pin the buffer; a complete head drains on
+	// the next pop
+	while (_packet_count > MAX_PACKETS && _rtp_frames.empty() == false)
+	{
+		auto it = _rtp_frames.begin();
+		auto frame = it->second;
+		if (frame->IsCompleted())
+		{
+			break;
+		}
+		if (_budget_warned == false)
+		{
+			_budget_warned = true;
+			logtw("Frame buffer over %zu packets, giving up the incomplete head frame - ts(%u) packets(%zu) buffered_frames(%zu)",
+				  MAX_PACKETS, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+		}
+		else
+		{
+			logtd("Frame buffer over %zu packets, giving up the incomplete head frame - ts(%u) packets(%zu) buffered_frames(%zu)",
+				  MAX_PACKETS, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+		}
+		RemoveFrame(it);
+		NotifyFrameDiscarded();
+	}
 }
 
 void RtpFrameJitterBuffer::MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame)
@@ -273,8 +318,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 			auto frame = it->second;
 			logtt("Frame discarded - ts(%u) packets(%zu) marked(%s)",
 				  frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
-			MarkFrameProcessed(it->first, *frame);
-			it = _rtp_frames.erase(it);
+			it = RemoveFrame(it);
 		}
 		return;
 	}
@@ -310,8 +354,7 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 			  frame->GetMaxReceivedSeq(),
 			  static_cast<unsigned long long>(frame->GetElapsed()),
 			  static_cast<unsigned long long>(frame->GetElapsedSinceLastPacket()));
-		MarkFrameProcessed(it->first, *frame);
-		it = _rtp_frames.erase(it);
+		it = RemoveFrame(it);
 		NotifyFrameDiscarded();
 	}
 }
@@ -385,7 +428,6 @@ std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 		  static_cast<unsigned long long>(frame->GetElapsed()),
 		  _rtp_frames.size());
 
-	MarkFrameProcessed(it->first, *frame);
-	_rtp_frames.erase(it);
+	RemoveFrame(it);
 	return frame;
 }

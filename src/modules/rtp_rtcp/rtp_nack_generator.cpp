@@ -65,16 +65,14 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				  static_cast<uint16_t>((extended - 1) & 0xFFFF),
 				  gap_size);
 
-			uint32_t inserted = 0;
+			uint32_t evicted = 0;
 			for (uint32_t s = _expected_next; s < extended; s++)
 			{
+				// Full: the oldest entry gives way, a fresh loss matters more
 				if (_pending.size() >= MAX_PENDING)
 				{
-					uint32_t skipped = (extended - _expected_next) - inserted;
-					logtw("NACK pending full track(%u) ssrc(%u): skipping %u of %u gap seqs "
-						  "(pending cap %zu reached). Those seqs will not be NACK'd.",
-						  _track_id, _media_ssrc, skipped, gap_size, MAX_PENDING);
-					break;
+					_pending.erase(_pending.begin());
+					evicted++;
 				}
 
 				// first_nack_at / last_nack_at / retry_count are stamped
@@ -82,7 +80,11 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				PendingEntry entry;
 				entry.inserted_at = now;
 				_pending.emplace(s, entry);
-				inserted++;
+			}
+			if (evicted > 0)
+			{
+				logtw("NACK pending full track(%u) ssrc(%u): dropped the %u oldest entries for a %u packet gap (cap %zu)",
+					  _track_id, _media_ssrc, evicted, gap_size, MAX_PENDING);
 			}
 		}
 
@@ -176,6 +178,36 @@ std::vector<uint16_t> RtpNackGenerator::BuildPendingNack()
 	}
 
 	return ids;
+}
+
+size_t RtpNackGenerator::DropPendingOlderThan(uint32_t age_ms)
+{
+	ov::LockGuard<ov::Mutex> lock(_lock);
+	if (_pending.empty())
+	{
+		return 0;
+	}
+	auto now = std::chrono::steady_clock::now();
+	size_t dropped = 0;
+	for (auto it = _pending.begin(); it != _pending.end();)
+	{
+		auto age = std::chrono::duration_cast<std::chrono::milliseconds>(now - it->second.inserted_at).count();
+		if (age > static_cast<int64_t>(age_ms))
+		{
+			it = _pending.erase(it);
+			dropped++;
+		}
+		else
+		{
+			++it;
+		}
+	}
+	if (dropped > 0)
+	{
+		logtd("Dropped %zu pending seqs older than %ums with nothing buffered track(%u) ssrc(%u) pending(%zu)",
+			  dropped, age_ms, _track_id, _media_ssrc, _pending.size());
+	}
+	return dropped;
 }
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
