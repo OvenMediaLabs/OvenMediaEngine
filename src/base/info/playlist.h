@@ -10,6 +10,8 @@
 
 #include "base/common_types.h"
 
+#include <optional>
+
 namespace info
 {
 
@@ -58,6 +60,31 @@ namespace info
 			return _audio_index_hint;
 		}
 
+		// The track each side resolved to when the stream was built.
+		// A consumer confirms the id against the track it finds
+		// (same variant, right media type) before using it,
+		// and otherwise falls back to the index hint.
+		// The hint keeps its original value in any case: HLS names its files by it.
+		void SetVideoTrackId(uint32_t track_id)
+		{
+			_video_track_id = track_id;
+		}
+
+		std::optional<uint32_t> GetVideoTrackId() const
+		{
+			return _video_track_id;
+		}
+
+		void SetAudioTrackId(uint32_t track_id)
+		{
+			_audio_track_id = track_id;
+		}
+
+		std::optional<uint32_t> GetAudioTrackId() const
+		{
+			return _audio_track_id;
+		}
+
 		// equals operator
 		bool operator==(const Rendition &rhs) const
 		{
@@ -72,6 +99,11 @@ namespace info
 			}
 
 			if (_audio_variant_name != rhs._audio_variant_name)
+			{
+				return false;
+			}
+
+			if ((_video_track_id != rhs._video_track_id) || (_audio_track_id != rhs._audio_track_id))
 			{
 				return false;
 			}
@@ -91,6 +123,8 @@ namespace info
 		int _video_index_hint = -1;
 		ov::String _audio_variant_name;
 		int _audio_index_hint = -1;
+		std::optional<uint32_t> _video_track_id;
+		std::optional<uint32_t> _audio_track_id;
 	};
 
 	class Playlist

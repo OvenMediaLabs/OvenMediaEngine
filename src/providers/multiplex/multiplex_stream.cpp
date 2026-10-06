@@ -340,17 +340,19 @@ namespace pvd
                     source_track_name.CStr(), occurrence, source_track_id);
             }
         }
-		
-        // Make Playlist
-        auto playlists = _multiplex_profile->GetPlaylists();
-        for (auto &playlist : playlists)
-        {
-            AddPlaylist(playlist);
-        }
 
-        logti("Multiplex Channel : %s/%s: Started\n%s", GetApplicationName(), GetName().CStr(), _multiplex_profile->InfoStr().CStr());
+		// Make Playlist. The profile owns its playlists, so this stream gets a copy pinned to its own tracks
+		auto playlists = _multiplex_profile->GetPlaylists();
+		for (auto &playlist : playlists)
+		{
+			auto own_playlist = std::make_shared<info::Playlist>(*playlist);
+			ResolveRenditionTrackIds(own_playlist);
+			AddPlaylist(own_playlist);
+		}
 
-        return true;
+		logti("Multiplex Channel : %s/%s: Started\n%s", GetApplicationName(), GetName().CStr(), _multiplex_profile->InfoStr().CStr());
+
+		return true;
     }
 
     bool MultiplexStream::ReleaseSourceStreams()

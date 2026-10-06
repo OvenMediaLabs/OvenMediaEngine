@@ -4,6 +4,7 @@
 
 #include <base/ovlibrary/byte_io.h>
 #include "ovt_packetizer.h"
+#include "ovt_wire.h"
 
 OvtPacketizer::OvtPacketizer()
 {
@@ -21,7 +22,7 @@ OvtPacketizer::~OvtPacketizer()
 	_stream.reset();
 }
 
-bool OvtPacketizer::PacketizeMessage(uint8_t payload_type, uint64_t timestamp, const std::shared_ptr<ov::Data> &message)
+bool OvtPacketizer::PacketizeMessage(OvtPayloadType payload_type, uint64_t timestamp, const std::shared_ptr<ov::Data> &message)
 {
 	auto payload_buffer = message->GetDataAs<uint8_t>();
 	auto payload_length = message->GetLength();
@@ -106,14 +107,33 @@ bool OvtPacketizer::PacketizeMediaPacket(uint64_t timestamp, const std::shared_p
 
 	auto buffer = payload.GetWritableDataAs<uint8_t>();
 
+	// The track id stays at offset 0, where the session TrackSet filter reads it
 	ByteWriter<uint32_t>::WriteBigEndian(&buffer[0], media_packet->GetTrackId());
 	ByteWriter<uint64_t>::WriteBigEndian(&buffer[4], media_packet->GetPts());
 	ByteWriter<uint64_t>::WriteBigEndian(&buffer[12], media_packet->GetDts());
 	ByteWriter<uint64_t>::WriteBigEndian(&buffer[20], media_packet->GetDuration());
-	ByteWriter<uint8_t>::WriteBigEndian(&buffer[28], static_cast<int8_t>(media_packet->GetMediaType()));
-	ByteWriter<uint8_t>::WriteBigEndian(&buffer[29], static_cast<int8_t>(media_packet->GetFlag()));
-	ByteWriter<uint8_t>::WriteBigEndian(&buffer[30], static_cast<int8_t>(media_packet->GetBitstreamFormat()));
-	ByteWriter<uint8_t>::WriteBigEndian(&buffer[31], static_cast<int8_t>(media_packet->GetPacketType()));
+
+	// Send-side boundary of the OVT wire table (`ovt_wire.h`); the receive side is `OvtDepacketizer`.
+	// A byte the receive side preserved as unmapped goes out unchanged while its enum is still `Unknown`,
+	// so a relay does not rewrite what it did not understand.
+	// Once a later stage has set a known value, the table wins.
+	auto wire_byte = [&media_packet](auto value, auto unknown, MediaPacket::WireField field) -> uint8_t {
+		if (value == unknown)
+		{
+			auto preserved = media_packet->GetUnmappedWireValue(field);
+			if (preserved.has_value())
+			{
+				return *preserved;
+			}
+		}
+
+		return ovt::ToOvtWire(value);
+	};
+
+	ByteWriter<uint8_t>::WriteBigEndian(&buffer[28], wire_byte(media_packet->GetMediaType(), cmn::MediaType::Unknown, MediaPacket::WireField::MediaType));
+	ByteWriter<uint8_t>::WriteBigEndian(&buffer[29], wire_byte(media_packet->GetFlag(), MediaPacketFlag::Unknown, MediaPacket::WireField::Flag));
+	ByteWriter<uint8_t>::WriteBigEndian(&buffer[30], wire_byte(media_packet->GetBitstreamFormat(), cmn::BitstreamFormat::Unknown, MediaPacket::WireField::BitstreamFormat));
+	ByteWriter<uint8_t>::WriteBigEndian(&buffer[31], wire_byte(media_packet->GetPacketType(), cmn::PacketType::Unknown, MediaPacket::WireField::PacketType));
 	ByteWriter<uint32_t>::WriteBigEndian(&buffer[32], media_packet->GetDataLength());
 
 	if (media_packet->GetData() != nullptr)
@@ -131,7 +151,7 @@ bool OvtPacketizer::PacketizeMediaPacket(uint64_t timestamp, const std::shared_p
 		auto packet = std::make_shared<OvtPacket>();
 		// Session ID should be set in Session Level
 		packet->SetSessionId(0);
-		packet->SetPayloadType(OVT_PAYLOAD_TYPE_MEDIA_PACKET);
+		packet->SetPayloadType(OvtPayloadType::MediaPacket);
 		packet->SetMarker(false);
 		packet->SetTimestamp(timestamp);
 

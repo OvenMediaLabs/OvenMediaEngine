@@ -8,6 +8,7 @@
 //==============================================================================
 #include "stream.h"
 
+#include <algorithm>
 #include <random>
 
 #include "application.h"
@@ -734,6 +735,90 @@ namespace info
 
 		auto result = _playlists.emplace(playlist->GetFileName(), playlist);
 		return result.second;
+	}
+
+	void Stream::ClearPlaylists()
+	{
+		ov::ScopedLock lock(_playlists_mutex);
+		_playlists.clear();
+	}
+
+	void Stream::ResolveRenditionTrackIds(const std::shared_ptr<Playlist> &playlist) const
+	{
+		if (playlist == nullptr)
+		{
+			return;
+		}
+
+		for (const auto &rendition : playlist->GetRenditionList())
+		{
+			auto resolve = [&](const ov::String &variant_name, int index_hint, cmn::MediaType media_type) -> std::shared_ptr<const MediaTrack> {
+				auto group = GetMediaTrackGroup(variant_name);
+				if (group == nullptr)
+				{
+					logtw("Rendition(%s) of playlist(%s) refers to variant(%s), which stream %s does not have",
+						  rendition->GetName().CStr(), playlist->GetFileName().CStr(), variant_name.CStr(), GetName().CStr());
+					return nullptr;
+				}
+
+				auto track = group->GetTrack(static_cast<uint32_t>(std::max(index_hint, 0)));
+				if ((track == nullptr) || (track->GetMediaType() != media_type))
+				{
+					logtw("Rendition(%s) of playlist(%s) refers to variant(%s) index %u, which stream %s does not have as %s",
+						  rendition->GetName().CStr(), playlist->GetFileName().CStr(), variant_name.CStr(),
+						  static_cast<uint32_t>(std::max(index_hint, 0)), GetName().CStr(), cmn::GetMediaTypeString(media_type));
+					return nullptr;
+				}
+
+				return track;
+			};
+
+			if (rendition->GetVideoVariantName().IsEmpty() == false)
+			{
+				auto track = resolve(rendition->GetVideoVariantName(), rendition->GetVideoIndexHint(), cmn::MediaType::Video);
+				if (track != nullptr)
+				{
+					rendition->SetVideoTrackId(track->GetId());
+				}
+			}
+
+			if ((rendition->GetAudioVariantName().IsEmpty() == false) && (rendition->GetAudioIndexHint() >= 0))
+			{
+				auto track = resolve(rendition->GetAudioVariantName(), rendition->GetAudioIndexHint(), cmn::MediaType::Audio);
+				if (track != nullptr)
+				{
+					rendition->SetAudioTrackId(track->GetId());
+				}
+			}
+		}
+	}
+
+	std::shared_ptr<const MediaTrack> Stream::GetRenditionTrack(const Rendition &rendition, cmn::MediaType media_type, bool *id_unconfirmed) const
+	{
+		if (id_unconfirmed != nullptr)
+		{
+			*id_unconfirmed = false;
+		}
+
+		auto track_id = (media_type == cmn::MediaType::Video) ? rendition.GetVideoTrackId() : rendition.GetAudioTrackId();
+		if (track_id.has_value() == false)
+		{
+			return nullptr;
+		}
+
+		const auto &variant_name = (media_type == cmn::MediaType::Video) ? rendition.GetVideoVariantName() : rendition.GetAudioVariantName();
+		auto track				 = GetTrack(*track_id);
+		if ((track != nullptr) && (track->GetVariantName() == variant_name) && (track->GetMediaType() == media_type))
+		{
+			return track;
+		}
+
+		if (id_unconfirmed != nullptr)
+		{
+			*id_unconfirmed = true;
+		}
+
+		return nullptr;
 	}
 
 	std::shared_ptr<const Playlist> Stream::GetPlaylist(const ov::String &file_name) const
