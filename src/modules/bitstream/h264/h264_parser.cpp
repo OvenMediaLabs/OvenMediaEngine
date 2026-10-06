@@ -1,6 +1,7 @@
 #include "h264_parser.h"
 
 #include "h264_decoder_configuration_record.h"
+#include "h264_sei.h"
 
 #define OV_LOG_TAG "H264Parser"
 
@@ -115,6 +116,59 @@ bool H264Parser::CheckAnnexBKeyframe(const uint8_t *bitstream, size_t length)
 	}
 
 	return false;
+}
+
+bool H264Parser::IsRecoveryPointSei(const uint8_t *nalu, size_t length)
+{
+	if (nalu == nullptr)
+	{
+		return false;
+	}
+
+	// Skips emulation prevention bytes in place
+	NalUnitBitstreamParser parser(nalu, length);
+
+	H264NalUnitHeader header;
+	if ((ParseNalUnitHeader(parser, header) == false) || (header.GetNalUnitType() != H264NalUnitType::Sei))
+	{
+		return false;
+	}
+
+	// sei_message() (7.3.2.3.1): payloadType and payloadSize are 0xFF runs plus a last byte.
+	// The loop ends where the data does.
+	uint8_t byte = 0;
+	while (true)
+	{
+		uint32_t payload_type = 0;
+		do
+		{
+			if (parser.ReadU8(byte) == false)
+			{
+				return false;
+			}
+			payload_type += byte;
+		} while (byte == 0xFF);
+
+		if (payload_type == static_cast<uint32_t>(H264SEI::PayloadType::RECOVERY_POINT))
+		{
+			return true;
+		}
+
+		uint32_t payload_size = 0;
+		do
+		{
+			if (parser.ReadU8(byte) == false)
+			{
+				return false;
+			}
+			payload_size += byte;
+		} while (byte == 0xFF);
+
+		if ((payload_size > parser.BytesRemained()) || (parser.Skip(payload_size * 8) == false))
+		{
+			return false;
+		}
+	}
 }
 
 bool H264Parser::ParseNalUnitHeader(const uint8_t *nalu, size_t length, H264NalUnitHeader &header)

@@ -310,8 +310,8 @@ void TranscodeDecoder::ThreadLoop()
 		{
 			if (packet->GetFlag() != MediaPacketFlag::Key)
 			{
-				// Intentionally waits for a keyframe: a source with none (e.g. intra refresh) never decodes.
-				// Reported per packet, so the last picture repeats in step instead of stall-then-burst.
+				// Undecodable before a keyframe (e.g. joined mid-GOP). Reported per packet so the last picture repeats on time,
+				// instead of stalling and then bursting.
 				Complete(TranscodeResult::NoData, MediaFrame::Create(cmn::MediaType::Video, packet->GetDts()));
 				packet = nullptr;
 			}
