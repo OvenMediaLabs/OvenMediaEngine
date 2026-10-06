@@ -521,10 +521,11 @@ void TranscoderStream::StreamThreadLoop()
 			continue;
 		}
 
-		// State::ERROR takes no more packets.
+		// ERROR takes no more packets; Stop() still joins and tears down.
 		if (GetState() != State::STARTED)
 		{
-			continue;
+			_inbound_queue.Stop();
+			break;
 		}
 
 		ProcessPacket(packet.value());
