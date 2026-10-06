@@ -102,6 +102,14 @@ TEST(RtpNackGenerator, FullPendingEvictsOldest)
 	EXPECT_EQ(*gen.GetLowestPendingSeq(), 102);                      // the oldest gave way, the new one is in
 }
 
+TEST(RtpNackGenerator, HugeJumpKeepsOnlyNewestSeqs)
+{
+	RtpNackGenerator gen(1, 0x1234);
+	gen.OnPacketReceived(100);
+	gen.OnPacketReceived(10100);   // 9999 missing, only the newest 250 are kept
+	EXPECT_EQ(*gen.GetLowestPendingSeq(), 10100 - RtpNackGenerator::MAX_PENDING);
+}
+
 TEST(RtpNackGenerator, DropPendingOlderThanKeepsRecentEntries)
 {
 	RtpNackGenerator gen(1, 0x1234);

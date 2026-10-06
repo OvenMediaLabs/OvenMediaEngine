@@ -65,8 +65,15 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				  static_cast<uint16_t>((extended - 1) & 0xFFFF),
 				  gap_size);
 
+			// Only the newest MAX_PENDING seqs of a gap can be kept, so start
+			// there; a huge jump then costs no more work than a small gap
+			uint32_t first = _expected_next;
+			if (gap_size > MAX_PENDING)
+			{
+				first = extended - static_cast<uint32_t>(MAX_PENDING);
+			}
 			uint32_t evicted = 0;
-			for (uint32_t s = _expected_next; s < extended; s++)
+			for (uint32_t s = first; s < extended; s++)
 			{
 				// Full: the oldest entry gives way, a fresh loss matters more
 				if (_pending.size() >= MAX_PENDING)
@@ -81,10 +88,11 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 				entry.inserted_at = now;
 				_pending.emplace(s, entry);
 			}
-			if (evicted > 0)
+			uint32_t skipped = first - _expected_next;
+			if (evicted > 0 || skipped > 0)
 			{
-				logtw("NACK pending full track(%u) ssrc(%u): dropped the %u oldest entries for a %u packet gap (cap %zu)",
-					  _track_id, _media_ssrc, evicted, gap_size, MAX_PENDING);
+				logtw("NACK pending full track(%u) ssrc(%u): %u packet gap, skipped its oldest %u seqs and dropped %u older pending entries (cap %zu)",
+					  _track_id, _media_ssrc, gap_size, skipped, evicted, MAX_PENDING);
 			}
 		}
 

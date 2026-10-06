@@ -958,28 +958,27 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 		// Padding-only RTP (BWE probing / keepalive) carries no codec data;
 		// receive-stats / NACK gen / transport-cc above already accounted for
-		// it. Skip frame boundary stamping + jitter buffer.
-		if (packet->PayloadSize() == 0)
+		// it. It skips stamping and insertion but still runs the pop below, so
+		// a waiting frame expires on time while only padding arrives.
+		if (packet->PayloadSize() > 0)
 		{
-			return true;
-		}
+			// Frame boundary flags must be stamped before jitter buffer insertion.
+			// Unparseable payloads (bad nal_type, truncated) are dropped here so
+			// downstream never sees a broken frame.
+			if (RtpFrameBoundaryDetector::Apply(*packet, track->GetCodecId(), _dd_extension_id) == false)
+			{
+				auto pl = packet->Payload();
+				auto sz = packet->PayloadSize();
+				logtw("Drop unparseable packet track(%u) ssrc(%u) seq(%u) pt(%u) codec(%d) size(%zu) head[%02x %02x %02x %02x]",
+					  track_id, packet->Ssrc(), packet->SequenceNumber(), packet->PayloadType(),
+					  static_cast<int>(track->GetCodecId()), sz,
+					  sz > 0 ? pl[0] : 0, sz > 1 ? pl[1] : 0,
+					  sz > 2 ? pl[2] : 0, sz > 3 ? pl[3] : 0);
+				return false;
+			}
 
-		// Frame boundary flags must be stamped before jitter buffer insertion.
-		// Unparseable payloads (bad nal_type, truncated) are dropped here so
-		// downstream never sees a broken frame.
-		if (RtpFrameBoundaryDetector::Apply(*packet, track->GetCodecId(), _dd_extension_id) == false)
-		{
-			auto pl = packet->Payload();
-			auto sz = packet->PayloadSize();
-			logtw("Drop unparseable packet track(%u) ssrc(%u) seq(%u) pt(%u) codec(%d) size(%zu) head[%02x %02x %02x %02x]",
-				  track_id, packet->Ssrc(), packet->SequenceNumber(), packet->PayloadType(),
-				  static_cast<int>(track->GetCodecId()), sz,
-				  sz > 0 ? pl[0] : 0, sz > 1 ? pl[1] : 0,
-				  sz > 2 ? pl[2] : 0, sz > 3 ? pl[3] : 0);
-			return false;
+			jitter_buffer->InsertPacket(packet);
 		}
-
-		jitter_buffer->InsertPacket(packet);
 
 		auto frame = jitter_buffer->PopAvailableFrame();
 		if (frame != nullptr && _observer != nullptr)

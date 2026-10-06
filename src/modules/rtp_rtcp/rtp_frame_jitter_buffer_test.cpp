@@ -377,6 +377,22 @@ TEST(RtpFrameJitterBuffer, PacketBudgetReleasesFramesStuckBehindHead)
 	EXPECT_TRUE(buf.HasAvailableFrame());                     // the frames behind it flow
 }
 
+// A complete head waiting for a lower pending seq is released once the
+// buffer is over budget, not only when the hold expires.
+TEST(RtpFrameJitterBuffer, PacketBudgetReleasesHeadHeldForLowerPending)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 10000u; });
+	std::optional<uint16_t> lowest = 90;
+	buf.SetLowestPendingSeqProvider([&] { return lowest; });
+
+	for (size_t i = 0; i <= RtpFrameJitterBuffer::MAX_PACKETS; i++)
+	{
+		buf.InsertPacket(MakeStampedPacket(static_cast<uint16_t>(100 + i), true, true, kTimestamp + 3000 * i));   // complete frames
+	}
+	EXPECT_TRUE(buf.HasAvailableFrame());
+}
+
 TEST(RtpFrameJitterBuffer, DropsLatePacketForProcessedTimestamp)
 {
 	RtpFrameJitterBuffer buf;

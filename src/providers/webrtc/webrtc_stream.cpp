@@ -1116,6 +1116,32 @@ namespace pvd
 		return false;
 	}
 
+	// Any IRAP picture (NAL types 16..21), the same set the boundary detector marks
+	static bool HasH265Irap(const uint8_t *bitstream, size_t length)
+	{
+		size_t offset = 0;
+		while (offset < length)
+		{
+			size_t start_code_size = 0;
+			auto pos = H265Parser::FindAnnexBStartCode(bitstream + offset, length - offset, start_code_size);
+			if (pos == -1)
+			{
+				break;
+			}
+			offset += pos + start_code_size;
+			H265NalUnitHeader header;
+			if (length - offset > H265_NAL_UNIT_HEADER_SIZE && H265Parser::ParseNalUnitHeader(bitstream + offset, H265_NAL_UNIT_HEADER_SIZE, header))
+			{
+				auto nal_type = static_cast<uint8_t>(header.GetNalUnitType());
+				if (nal_type >= 16 && nal_type <= 21)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	bool WebRTCStream::IsKeyframe(cmn::MediaCodecId codec_id, const std::shared_ptr<const ov::Data> &data)
 	{
 		if (data == nullptr)
@@ -1129,7 +1155,7 @@ namespace pvd
 			case cmn::MediaCodecId::H264:
 				return HasH264Idr(bytes, length);
 			case cmn::MediaCodecId::H265:
-				return H265Parser::CheckKeyframe(bytes, length);
+				return HasH265Irap(bytes, length);
 			case cmn::MediaCodecId::Vp8:
 			{
 				bool is_keyframe = false;

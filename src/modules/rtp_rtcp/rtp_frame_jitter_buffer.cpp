@@ -394,16 +394,17 @@ bool RtpFrameJitterBuffer::HasAvailableFrameInternal()
 			if (static_cast<int16_t>(*lowest - head_start) < 0)
 			{
 				uint32_t hold_ms = CurrentHoldMs();
-				if (head->GetElapsed() <= hold_ms)
+				// Wait only while the hold runs and the buffer is within budget
+				if (head->GetElapsed() <= hold_ms && _packet_count <= MAX_PACKETS)
 				{
 					logtt("Hold complete head for prior NACK recovery: ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums)",
 						  head->Timestamp(), head_start, *lowest,
 						  static_cast<unsigned long long>(head->GetElapsed()), hold_ms);
 					return false;
 				}
-				logtd("Release held head despite prior NACK pending (hold expired): ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums)",
+				logtd("Release held head despite prior NACK pending: ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums) buffered_packets(%zu)",
 					  head->Timestamp(), head_start, *lowest,
-					  static_cast<unsigned long long>(head->GetElapsed()), hold_ms);
+					  static_cast<unsigned long long>(head->GetElapsed()), hold_ms, _packet_count);
 				NotifyFrameDiscarded();
 			}
 		}
