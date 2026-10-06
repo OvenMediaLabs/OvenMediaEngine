@@ -44,24 +44,24 @@ class MediaPacket
 {
 public:
 	// Header bytes of the OVT media packet that carry an enum.
-	// A byte the OVT wire table has no entry for is kept here as received
-	// while the enum field stays `Unknown`.
-	// The byte is never cast into the enum (the two number spaces differ).
-	//
-	// The kept byte is for the cross-check and the log that names it.
-	// Reaching the next hop is a separate question, and the four answer it differently.
-	// `BitstreamFormat`: the packet does not get that far. MediaRouter refuses an inbound packet
-	// whose format is `Unknown` (`mediarouter/mediarouter_nomalize.cpp:117`),
-	// so it never reaches an outbound packetizer.
-	// `PacketType`: the OVT provider overwrites it before the packet leaves.
-	// `MediaType`: a packet with `Unknown` falls into the else branch of the dispatch in
-	// `pub::Application::SendFrame()` (`base/publisher/application.cpp:169`) and is delivered nowhere.
-	// `Flag`: nothing drops it, so `OvtPacketizer` writes the kept byte back out to the next hop.
+	// A byte the OVT wire table has no entry for is kept here as received while the enum field stays
+	// `Unknown`, and is never cast into the enum, because the two number spaces differ.
+	// The kept byte is there for the cross-check. Whether it also reaches the next hop is per field.
 	enum class WireField : uint8_t
 	{
+		// Does not reach the next hop. A packet whose type is `Unknown` matches no branch of the
+		// dispatch in `pub::ApplicationWorker::WorkerThread()` (`base/publisher/application.cpp:171`)
+		// and is dropped there without a log.
 		MediaType,
+		// Reaches the next hop. Nothing drops it, so `OvtPacketizer` writes the kept byte back out.
 		Flag,
+		// Does not reach the next hop, and is the only one of the four that is also logged,
+		// by `OvtStream::CheckWireFormat()` in the provider.
+		// MediaRouter refuses an inbound audio or video packet whose format is `Unknown`.
+		// A `Data` track returns before that check,
+		// but the OVT publisher drops every `Data` frame, so the byte reaches no OVT packetizer.
 		BitstreamFormat,
+		// Does not reach the next hop. The OVT provider overwrites it before the packet leaves.
 		PacketType,
 
 		Nb
