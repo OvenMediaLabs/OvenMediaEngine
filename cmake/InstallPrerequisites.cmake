@@ -689,8 +689,10 @@ set(_WHISPER_CMAKE_ARGS
 # Without -march=native, pin the x86-64 baseline instead of relying on ggml's
 # defaults. AVX2/FMA/F16C is Haswell (2013) and newer.
 # aarch64 deliberately stays on the compiler default (armv8-a): raising it to
-# armv8.2-a+fp16+dotprod would be faster on server ARM but SIGILLs on Cortex-A72
-# class boards such as the Raspberry Pi 4. Use OME_WHISPER_NATIVE=ON there.
+# armv8.2-a+fp16+dotprod would be faster on server ARM (2-3x on Graviton2, where
+# the portable build cannot keep tiny.en real-time with 2 threads) but SIGILLs on
+# Cortex-A72 class boards such as the Raspberry Pi 4. Use OME_WHISPER_NATIVE=ON
+# on ARM servers.
 string(TOLOWER "${OME_TARGET_PROCESSOR}" _OME_WHISPER_PROCESSOR)
 if((NOT OME_WHISPER_NATIVE) AND _OME_WHISPER_PROCESSOR MATCHES "^(x86_64|amd64)$")
     list(APPEND _WHISPER_CMAKE_ARGS

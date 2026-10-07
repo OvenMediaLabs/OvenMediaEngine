@@ -44,7 +44,7 @@ cmake --build build/Release
 | `OME_BUILD_TESTS`                 | OFF                    | Build unit tests (requires internet access to fetch GTest v1.14.0)                                                                                                                                                                                                                                     |
 | `OME_LATENCY_PROBE`               | OFF                    | Build serving-path latency/stall instrumentation. OFF has zero runtime cost (code is not compiled). When ON, records serving-path stage timings and worker stalls to a single `latency_probe.log`; set the output directory with the `OME_LATENCY_PROBE_DIR` environment variable (default `/dev/shm`) |
 | `OME_WHISPER_STATIC`              | OFF                    | Build Whisper/ggml as a static library.                                                                                                                                                                                                                                                                |
-| `OME_WHISPER_NATIVE`              | OFF                    | Build Whisper/ggml with `-march=native`. Faster, but the binary only runs on CPUs like the build machine. |
+| `OME_WHISPER_NATIVE`              | OFF                    | Build Whisper/ggml with `-march=native`. Faster, but the binary only runs on CPUs like the build machine. Recommended on ARM servers: the portable aarch64 build is NEON-only (`armv8-a`) and 2-3x slower than native on Graviton2.                                                                                      |
 ---
 
 ## Install

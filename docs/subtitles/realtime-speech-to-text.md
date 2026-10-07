@@ -32,6 +32,14 @@ $ cmake -DOME_WHISPER_NATIVE=ON -P cmake/InstallPrerequisites.cmake
 with AVX-512 or AMX. The binary then only runs on CPUs that support the same instructions, so do
 not use it for packages you distribute to other machines.
 
+On aarch64 the portable build stays on the compiler default (`armv8-a`, NEON only) so that it also
+runs on Cortex-A72 class boards such as the Raspberry Pi 4. That costs a lot on ARM servers: on an
+8-vCPU Graviton2 (Neoverse-N1) the portable build needs about 2.6 s to transcribe a 10-second
+`tiny.en` window with 2 threads, while the `OME_WHISPER_NATIVE=ON` build (which turns on `dotprod`
+and FP16 arithmetic) needs 1.1 s. Use `OME_WHISPER_NATIVE=ON` on ARM servers such as Graviton2 and
+newer, Ampere Altra or Apple silicon, including when you build your own arm64 Docker image. The
+published arm64 image is the portable build.
+
 The option takes effect when whisper.cpp is installed. An installation that already matches the
 required version is kept as it is, so to switch an existing machine between the portable and the
 native build, rebuild just whisper:
@@ -198,6 +206,13 @@ are more accurate but need more CPU, so the model and the thread count have to b
 The numbers above target roughly twice real-time speed, which leaves headroom for the transcoding
 that shares the same CPU. Multilingual models are somewhat slower than their `.en` counterparts,
 and a server CPU with AVX-512 or AMX is faster than the baseline build.
+
+On ARM the table assumes the `OME_WHISPER_NATIVE=ON` build. Measured on an 8-vCPU Graviton2 with
+two STT tracks sharing the machine, the native build keeps up with `base.en` at 4 threads per
+track (1.1 s per 10-second window) but not with `small.en` (2.9 s), which needs the whole machine
+for a single track. The portable build does not keep up with `tiny.en` at 2 threads (2.6 s) or
+`base.en` at 4 threads (2.9 s); `small.en` takes 9 s per window and its warm-up alone delays the
+server start by about a minute.
 
 Set `<Modules><Whisper><MaxThreads>` to the total you are willing to spend on transcription. Active
 STT tracks share that budget equally and the share is recomputed as tracks start and stop, so a
