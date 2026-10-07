@@ -110,6 +110,11 @@ namespace ffmpeg
 		return ToCodecResult(::avcodec_send_packet(_context, _send_packet));
 	}
 
+	CodecResult FFmpegCodec::SendEOS()
+	{
+		return ToCodecResult(::avcodec_send_packet(_context, nullptr));
+	}
+
 	ReceiveResult FFmpegCodec::ReceiveFrame()
 	{
 		if (_receive_frame == nullptr)

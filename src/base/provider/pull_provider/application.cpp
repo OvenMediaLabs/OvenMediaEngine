@@ -331,6 +331,9 @@ namespace pvd
 			return nullptr;
 		}
 
+		// `AddStream()` registered the stream with monitoring, so its first connection timings can be recorded now
+		stream->RecordOriginTimings();
+
 		if (AddStreamToMotorInternal(stream) == false)
 		{
 			logte("Could not add stream to motor : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
@@ -353,6 +356,8 @@ namespace pvd
 		{
 			return false;
 		}
+
+		pull_stream->RecordOriginTimings();
 
 		if (AddStreamToMotorInternal(pull_stream) == false)
 		{
