@@ -286,6 +286,34 @@ namespace ffmpeg
 			return ::av_rescale(context->duration, 1000, AV_TIME_BASE);
 		}
 
+		// Input left after `pts` (stream timebase) in ms, or -1 if unknown.
+		static inline int64_t GetRemainingDurationMs(const AVFormatContext *context, const AVStream *stream, int64_t pts)
+		{
+			if ((context == nullptr) || (stream == nullptr) || (pts == AV_NOPTS_VALUE))
+			{
+				return -1;
+			}
+
+			int64_t end_us = -1;
+			if (stream->duration != AV_NOPTS_VALUE)
+			{
+				int64_t start = (stream->start_time != AV_NOPTS_VALUE) ? stream->start_time : 0;
+				end_us		  = ::av_rescale_q(start + stream->duration, stream->time_base, AV_TIME_BASE_Q);
+			}
+			else if (context->duration != AV_NOPTS_VALUE)
+			{
+				// A duration, while pts includes the start offset (MPEG-TS).
+				end_us = ((context->start_time != AV_NOPTS_VALUE) ? context->start_time : 0) + context->duration;
+			}
+
+			if (end_us < 0)
+			{
+				return -1;
+			}
+
+			return std::max<int64_t>(end_us - ::av_rescale_q(pts, stream->time_base, AV_TIME_BASE_Q), 0) / 1000;
+		}
+
 		static std::shared_ptr<MediaPacket> ToMediaPacket(AVPacket* src, cmn::MediaType media_type, cmn::BitstreamFormat format, cmn::PacketType packet_type)
 		{
 			auto packet_buffer = std::make_shared<MediaPacket>(
