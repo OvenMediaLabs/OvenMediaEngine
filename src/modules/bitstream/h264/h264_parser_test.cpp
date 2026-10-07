@@ -201,3 +201,18 @@ TEST(H264Parser, IgnoresNonSeiAndTruncatedNals)
 
 	EXPECT_FALSE(H264Parser::IsRecoveryPointSei(nullptr, 0));
 }
+
+TEST(H264Parser, FindsARecoveryPointInAnAccessUnit)
+{
+	// An SEI with a recovery point, then a non-IDR slice
+	std::vector<uint8_t> access_unit{0x00, 0x00, 0x00, 0x01};
+	const auto sei = MakeSeiNal({{6, kRecoveryPoint}});
+	access_unit.insert(access_unit.end(), sei.begin(), sei.end());
+	access_unit.insert(access_unit.end(), {0x00, 0x00, 0x01, 0x41, 0x9A, 0x00});
+
+	EXPECT_TRUE(H264Parser::CheckAnnexBRecoveryPoint(access_unit.data(), access_unit.size()));
+
+	// The same slice alone
+	const std::vector<uint8_t> slice_only{0x00, 0x00, 0x00, 0x01, 0x41, 0x9A, 0x00};
+	EXPECT_FALSE(H264Parser::CheckAnnexBRecoveryPoint(slice_only.data(), slice_only.size()));
+}

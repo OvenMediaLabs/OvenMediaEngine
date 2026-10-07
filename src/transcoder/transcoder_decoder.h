@@ -118,7 +118,7 @@ private:
 	// Signals DrainAndStop() whether the drain completed.
 	ov::Future _drain_event;
 
-	// Video packets before the first keyframe are reported as NoData, not decoded.
+	// Video packets before the first start point (keyframe or H.264 recovery point) are reported as NoData.
 	bool _keyframe_sent = false;
 
 	// Blocks only the stream's own thread.

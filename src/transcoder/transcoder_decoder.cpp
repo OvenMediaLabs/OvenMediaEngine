@@ -10,6 +10,8 @@
 
 #include <chrono>
 
+#include <modules/bitstream/h264/h264_parser.h>
+
 #include "codec/decoder/decoder_avcodec_audio.h"
 #include "codec/decoder/decoder_avcodec_video.h"
 #include "transcoder_gpu.h"
@@ -292,6 +294,23 @@ void TranscodeDecoder::Stop()
 	}
 }
 
+// A keyframe, or an H.264 recovery point SEI: open GOP and intra refresh streams start there without an IDR.
+static bool IsDecodeStartPoint(const std::shared_ptr<MediaPacket> &packet)
+{
+	if (packet->GetFlag() == MediaPacketFlag::Key)
+	{
+		return true;
+	}
+
+	const auto &data = packet->GetData();
+	if ((packet->GetBitstreamFormat() != cmn::BitstreamFormat::H264_ANNEXB) || (data == nullptr))
+	{
+		return false;
+	}
+
+	return H264Parser::CheckAnnexBRecoveryPoint(data->GetDataAs<uint8_t>(), data->GetLength());
+}
+
 void TranscodeDecoder::ThreadLoop()
 {
 	ov::logger::ThreadHelper thread_helper;
@@ -308,9 +327,9 @@ void TranscodeDecoder::ThreadLoop()
 		auto packet = GetFramedPacket();
 		if ((packet != nullptr) && (_keyframe_sent == false) && (GetMediaType() == cmn::MediaType::Video))
 		{
-			if (packet->GetFlag() != MediaPacketFlag::Key)
+			if (IsDecodeStartPoint(packet) == false)
 			{
-				// Undecodable before a keyframe (e.g. joined mid-GOP). Reported per packet so the last picture repeats on time,
+				// Undecodable before a start point (e.g. joined mid-GOP). Reported per packet so the last picture repeats on time,
 				// instead of stalling and then bursting.
 				Complete(TranscodeResult::NoData, MediaFrame::Create(cmn::MediaType::Video, packet->GetDts()));
 				packet = nullptr;

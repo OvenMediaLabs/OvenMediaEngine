@@ -163,7 +163,6 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 
 		std::shared_ptr<ov::Data> sps_nalu = nullptr, pps_nalu = nullptr;
 		bool has_idr = false;
-		bool has_recovery_point = false;
 		bool has_sps = false;
 		bool has_pps = false;
 		bool has_aud = false;
@@ -208,13 +207,6 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 				{
 					media_packet->SetFlag(MediaPacketFlag::Key);
 					has_idr = true;
-				}
-				else if ((nal_header.GetNalUnitType() == H264NalUnitType::Sei) &&
-						 (H264Parser::IsRecoveryPointSei(nalu->GetDataAs<uint8_t>(), nalu->GetLength()) == true))
-				{
-					// Recovery point: the keyframe of open GOP / intra refresh streams (as in FFmpeg)
-					media_packet->SetFlag(MediaPacketFlag::Key);
-					has_recovery_point = true;
 				}
 				else if (nal_header.GetNalUnitType() == H264NalUnitType::Sps)
 				{
@@ -288,8 +280,8 @@ bool MediaRouterNormalize::ProcessH264AVCCStream(const std::shared_ptr<info::Str
 			}
 		}
 
-		// Insert SPS/PPS if a keyframe comes without them.
-		if (((has_idr == true) || (has_recovery_point == true)) && (has_sps == false || has_pps == false))
+		// Insert SPS/PPS if there are no SPS/PPS nal units before IDR frame.
+		if (has_idr == true && (has_sps == false || has_pps == false))
 		{
 			if (InsertH264SPSPPSAnnexB(stream_info, media_track, media_packet, !has_aud) == false)
 			{
@@ -320,7 +312,7 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 	size_t offset = 0, offset_length = 0;
 	auto bitstream = media_packet->GetData()->GetDataAs<uint8_t>();
 	auto bitstream_length = media_packet->GetDataLength();
-	bool has_sps = false, has_pps = false, has_idr = false, has_aud = false, has_recovery_point = false;
+	bool has_sps = false, has_pps = false, has_idr = false, has_aud = false;
 
 	while (offset < bitstream_length)
 	{
@@ -385,13 +377,6 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 			has_idr = true;
 			media_packet->SetFlag(MediaPacketFlag::Key);
 		}
-		else if ((nal_header.GetNalUnitType() == H264NalUnitType::Sei) &&
-				 (H264Parser::IsRecoveryPointSei(bitstream + offset, offset_length) == true))
-		{
-			// Recovery point: the keyframe of open GOP / intra refresh streams (as in FFmpeg)
-			has_recovery_point = true;
-			media_packet->SetFlag(MediaPacketFlag::Key);
-		}
 		else if (nal_header.GetNalUnitType() == H264NalUnitType::Aud)
 		{
 			has_aud = true;
@@ -435,8 +420,8 @@ bool MediaRouterNormalize::ProcessH264AnnexBStream(const std::shared_ptr<info::S
 		}
 	}
 
-	// Insert SPS/PPS if a keyframe comes without them.
-	if (((has_idr == true) || (has_recovery_point == true)) && media_track->IsValid() && (has_sps == false || has_pps == false))
+	// Insert SPS/PPS if there are no SPS/PPS nal units before IDR frame.
+	if (has_idr == true && media_track->IsValid() && (has_sps == false || has_pps == false))
 	{
 		if (InsertH264SPSPPSAnnexB(stream_info, media_track, media_packet, !has_aud) == false)
 		{

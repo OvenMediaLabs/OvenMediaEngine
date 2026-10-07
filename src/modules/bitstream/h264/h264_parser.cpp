@@ -118,6 +118,19 @@ bool H264Parser::CheckAnnexBKeyframe(const uint8_t *bitstream, size_t length)
 	return false;
 }
 
+bool H264Parser::CheckAnnexBRecoveryPoint(const uint8_t *bitstream, size_t length)
+{
+	for (const auto &index : FindNaluIndexes(bitstream, length))
+	{
+		if (IsRecoveryPointSei(bitstream + index._payload_offset, index._payload_size) == true)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool H264Parser::IsRecoveryPointSei(const uint8_t *nalu, size_t length)
 {
 	if (nalu == nullptr)
