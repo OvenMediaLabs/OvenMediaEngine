@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -58,25 +59,28 @@ namespace
 		return true;
 	}
 
-	// Memory the host kernel estimates can be allocated without swapping.
-	// Returns 0 when it cannot be determined.
-	size_t GetHostAvailableMemoryBytes()
+	// Memory the host kernel estimates can be allocated without swapping, or
+	// nullopt when it cannot be determined. A reading of 0 is a real reading
+	// and must not be mistaken for "unknown".
+	std::optional<size_t> GetHostAvailableMemoryBytes()
 	{
 		auto *fp = ::fopen("/proc/meminfo", "r");
 		if (fp != nullptr)
 		{
 			char line[256];
 			size_t available_kb = 0;
+			bool matched		= false;
 			while (::fgets(line, sizeof(line), fp) != nullptr)
 			{
 				if (::sscanf(line, "MemAvailable: %zu kB", &available_kb) == 1)
 				{
+					matched = true;
 					break;
 				}
 			}
 			::fclose(fp);
 
-			if (available_kb > 0)
+			if (matched)
 			{
 				return available_kb * 1024;
 			}
@@ -84,12 +88,12 @@ namespace
 
 		const long pages	 = ::sysconf(_SC_AVPHYS_PAGES);
 		const long page_size = ::sysconf(_SC_PAGESIZE);
-		if ((pages > 0) && (page_size > 0))
+		if ((pages >= 0) && (page_size > 0))
 		{
 			return static_cast<size_t>(pages) * static_cast<size_t>(page_size);
 		}
 
-		return 0;
+		return std::nullopt;
 	}
 
 	// The cgroup v2 path of this process (the "0::/path" line), or "" when unavailable.
@@ -172,9 +176,10 @@ namespace
 	}
 
 	// Headroom left under the tightest memory limit of this process's cgroup
-	// and its ancestors, or SIZE_MAX when none is set. Containers are OME's main
-	// deployment and /proc/meminfo describes the host there, not the container.
-	size_t GetCgroupAvailableMemoryBytes()
+	// and its ancestors, or nullopt when no limit is set. Containers are OME's
+	// main deployment and /proc/meminfo describes the host there, not the
+	// container. 0 means the group is at its limit, which is a real reading.
+	std::optional<size_t> GetCgroupAvailableMemoryBytes()
 	{
 		// cgroup v2. Inside a container with its own cgroup namespace the
 		// process path is "/" and the root is the container's group.
@@ -185,20 +190,31 @@ namespace
 		}
 
 		// cgroup v1: one directory tree per controller.
-		return MinCgroupHeadroomBytes("/sys/fs/cgroup/memory", GetOwnCgroupV1MemoryPath(), "memory.limit_in_bytes", "memory.usage_in_bytes", true);
+		const size_t v1 = MinCgroupHeadroomBytes("/sys/fs/cgroup/memory", GetOwnCgroupV1MemoryPath(), "memory.limit_in_bytes", "memory.usage_in_bytes", true);
+		if (v1 != SIZE_MAX)
+		{
+			return v1;
+		}
+
+		return std::nullopt;
 	}
 
-	// The smaller of what the host and the cgroup allow. 0 when unknown.
-	size_t GetAvailableMemoryBytes()
+	// The smaller of what the host and the cgroup allow, or nullopt when
+	// neither could be read. A known 0 stays 0 so the caller rejects.
+	std::optional<size_t> GetAvailableMemoryBytes()
 	{
-		const size_t host	= GetHostAvailableMemoryBytes();
-		const size_t cgroup = GetCgroupAvailableMemoryBytes();
+		const auto host	  = GetHostAvailableMemoryBytes();
+		const auto cgroup = GetCgroupAvailableMemoryBytes();
 
-		if (host == 0)
+		if (host.has_value() == false)
 		{
-			return (cgroup == SIZE_MAX) ? 0 : cgroup;
+			return cgroup;
 		}
-		return std::min(host, cgroup);
+		if (cgroup.has_value() == false)
+		{
+			return host;
+		}
+		return std::min(*host, *cgroup);
 	}
 
 	// Resident set size of this process, or 0 when it cannot be determined.
@@ -259,13 +275,14 @@ bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, si
 		return true;
 	}
 
-	const size_t available_bytes = GetAvailableMemoryBytes();
-	if (available_bytes == 0)
+	const auto available = GetAvailableMemoryBytes();
+	if (available.has_value() == false)
 	{
 		// Could not read the available memory; do not block the allocation.
 		logtw("Could not determine available memory before allocating the Whisper %s. Proceeding. path=%s", what, model_path.CStr());
 		return true;
 	}
+	const size_t available_bytes = *available;
 
 	// Memory a load in flight or a freshly allocated state has claimed is not
 	// resident yet, so MemAvailable still counts it as free; take it off the top.
