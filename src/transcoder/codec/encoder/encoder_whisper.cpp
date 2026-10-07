@@ -334,6 +334,11 @@ void EncoderWhisper::ThreadLoop()
 				  _n_threads, requested_threads, _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr());
 		}
 
+		// Everything from here to the end of whisper_full_with_state() has to
+		// fit in one step, language detection included, so time it as a whole.
+		ov::StopWatch inference_timer;
+		inference_timer.Start();
+
 		// Auto detect language if needed.
 		if (_source_language == "auto" && _translate == false)
 		{
@@ -409,8 +414,6 @@ void EncoderWhisper::ThreadLoop()
 		logtt("Audio buffer time range for Whisper: %" PRId64 " ~ %" PRId64 " (last_commit_end_cs=%" PRId64 ")",
 			buffer_start_cs, buffer_end_cs, last_commit_end_cs);
 
-		ov::StopWatch inference_timer;
-		inference_timer.Start();
 		if (whisper_full_with_state(_whisper_ctx.get(), _whisper_state, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
 		{
 			logte("Failed to process audio samples with Whisper");

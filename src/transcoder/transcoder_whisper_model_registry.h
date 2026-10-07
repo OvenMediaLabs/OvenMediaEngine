@@ -71,8 +71,9 @@ public:
 private:
 	// Read and warm up a model. Runs under _load_mutex but without _mutex, and
 	// reserves the model's memory in _reserved_bytes for the duration. Returns
-	// nullptr on failure; on success *state_memory_bytes receives the measured
-	// cost of one whisper_state (0 when it could not be measured).
+	// nullptr on failure (including a failed warmup); on success
+	// *state_memory_bytes receives the measured cost of one whisper_state, or a
+	// conservative estimate when it could not be measured.
 	std::shared_ptr<whisper_context> LoadModel(const ov::String &model_path, int32_t device_id, int32_t warmup_threads, size_t *state_memory_bytes) OV_REQUIRES(_load_mutex);
 
 	// Cache key for a loaded model. One CPU context is shared by every encoder,
@@ -115,7 +116,7 @@ private:
 	// for the first instead of reading the same file twice.
 	std::unordered_set<std::string> _loading OV_GUARDED_BY(_mutex);
 	// Memory (bytes) consumed by one whisper_state for each model, measured
-	// during warmup. 0 means "unknown"; no pre-check is then possible.
+	// (or conservatively estimated) during warmup.
 	std::unordered_map<std::string, size_t> _state_memory_bytes OV_GUARDED_BY(_mutex);
 
 	// Thread budget (0 = every hardware thread) and the number of live states

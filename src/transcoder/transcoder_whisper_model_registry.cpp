@@ -452,7 +452,9 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 	// temporary state. The RSS delta spans both the state allocation and the
 	// pass, because ggml's compute buffers only become resident once they are
 	// written; measured this way the figure is what one real state costs, and
-	// NewState() uses it to refuse a state that would not fit.
+	// NewState() uses it to refuse a state that would not fit. A model whose
+	// warmup fails is not usable by any encoder either, so that is a load
+	// failure rather than a context with an unknown state cost.
 	{
 		ov::StopWatch warmup_timer;
 		warmup_timer.Start();
@@ -460,28 +462,47 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		const size_t rss_before = GetProcessRssBytes();
 
 		auto warmup_state = whisper_init_state(ctx.get());
-		if (warmup_state != nullptr)
+		if (warmup_state == nullptr)
 		{
-			std::vector<float> silence(WHISPER_SAMPLE_RATE, 0.0f);
-			whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-			wparams.print_progress		= false;
-			wparams.print_special		= false;
-			wparams.print_realtime		= false;
-			wparams.print_timestamps	= false;
-			wparams.n_threads			= warmup_threads;
-			wparams.language			= "en";
-			wparams.no_context			= true;
-			whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
+			logte("Failed to allocate the warmup state for the Whisper model. path=%s", path.CStr());
+			release_reservation();
+			return nullptr;
+		}
 
-			const size_t rss_after = GetProcessRssBytes();
-			*state_memory_bytes	   = (rss_after > rss_before) ? (rss_after - rss_before) : 0;
+		std::vector<float> silence(WHISPER_SAMPLE_RATE, 0.0f);
+		whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+		wparams.print_progress		= false;
+		wparams.print_special		= false;
+		wparams.print_realtime		= false;
+		wparams.print_timestamps	= false;
+		wparams.n_threads			= warmup_threads;
+		wparams.language			= "en";
+		wparams.no_context			= true;
+		const int warmup_result		= whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
 
-			whisper_free_state(warmup_state);
+		const size_t rss_after = GetProcessRssBytes();
+		whisper_free_state(warmup_state);
 
-			if (*state_memory_bytes > 0)
-			{
-				logti("Whisper state memory cost: %.1f MiB per instance. path=%s", ToMiB(*state_memory_bytes), path.CStr());
-			}
+		if (warmup_result != 0)
+		{
+			logte("Warmup inference failed for the Whisper model. path=%s", path.CStr());
+			release_reservation();
+			return nullptr;
+		}
+
+		*state_memory_bytes = (rss_after > rss_before) ? (rss_after - rss_before) : 0;
+		if (*state_memory_bytes == 0)
+		{
+			// RSS could not be read, or something else in the process shrank
+			// meanwhile. Assume one file size per state - more than any model's
+			// state really takes - so NewState() stays conservative instead of
+			// skipping its check.
+			*state_memory_bytes = GetFileSizeBytes(path);
+			logtw("Could not measure the Whisper state memory cost; assuming %.1f MiB per instance. path=%s", ToMiB(*state_memory_bytes), path.CStr());
+		}
+		else
+		{
+			logti("Whisper state memory cost: %.1f MiB per instance. path=%s", ToMiB(*state_memory_bytes), path.CStr());
 		}
 
 		logtd("Whisper warmup took %" PRId64 " ms with %d threads. path=%s", warmup_timer.Elapsed(), warmup_threads, path.CStr());
@@ -496,6 +517,17 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 void WhisperModelRegistry::Uninitialize()
 {
 	ov::LockGuard<ov::Mutex> lock(_mutex);
+
+	// A load in flight publishes into _models once it is done; let it finish
+	// so it cannot resurrect a model after this clear, and so the context is
+	// not freed underneath its warmup.
+	if (_loading.empty() == false)
+	{
+		logti("Waiting for %zu Whisper model load(s) to finish before clearing the registry.", _loading.size());
+		_load_done.Wait(lock, [this]() OV_REQUIRES(_mutex) -> bool {
+			return _loading.empty();
+		});
+	}
 
 	_models.clear();
 	_state_memory_bytes.clear();
@@ -521,7 +553,8 @@ whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int3
 
 	// Check memory before whisper_init_state so an oversubscribed server
 	// refuses the state instead of being OOM-killed on its first window.
-	// The mutex serializes check+alloc across all encoder threads.
+	// The mutex serializes check+alloc across all encoder threads. A loaded
+	// model always has a cost (measured or assumed in LoadModel()).
 	const size_t state_cost = (_state_memory_bytes.count(key) > 0) ? _state_memory_bytes.at(key) : 0;
 	if (CheckMemoryAvailable(model_path, state_cost, ReservedBytesLocked(), "state") == false)
 	{
