@@ -147,13 +147,8 @@ namespace ovt
 		return ov::Json::Stringify(root);
 	}
 
-	std::optional<std::set<uint32_t>> ParseTrackIdArray(const Json::Value &value, size_t *ignored)
+	std::optional<std::set<uint32_t>> ParseTrackIdArray(const Json::Value &value)
 	{
-		if (ignored != nullptr)
-		{
-			*ignored = 0;
-		}
-
 		if (value.isArray() == false)
 		{
 			return std::nullopt;
@@ -164,11 +159,7 @@ namespace ovt
 		{
 			if (track_id.isUInt() == false)
 			{
-				if (ignored != nullptr)
-				{
-					(*ignored)++;
-				}
-				continue;
+				return std::nullopt;
 			}
 
 			track_ids.insert(track_id.asUInt());

@@ -1558,14 +1558,7 @@ namespace pvd
 		std::optional<std::set<uint32_t>> allowed_track_ids;
 		if (connection->origin_is_ovt2)
 		{
-			size_t ignored = 0;
-			allowed_track_ids = ovt::ParseTrackIdArray(root["ovt"]["allowedTrackIds"], &ignored);
-
-			if (ignored > 0)
-			{
-				logtw("%s/%s(%u) - Ignored %zu non-integer entries in the play response's allowedTrackIds",
-					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), ignored);
-			}
+			allowed_track_ids = ovt::ParseTrackIdArray(root["ovt"]["allowedTrackIds"]);
 
 			// An origin that sent an `ovt` object said it speaks OVT2,
 			// and OVT2 answers play with this array.
@@ -1573,7 +1566,7 @@ namespace pvd
 			// set would be a guess that the subset rule above cannot stand on. The response is refused.
 			if (allowed_track_ids.has_value() == false)
 			{
-				logte("%s/%s(%u) - OVT2 origin answered play without an allowedTrackIds array",
+				logte("%s/%s(%u) - OVT2 origin answered play without a readable allowedTrackIds array",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId());
 
 				return false;

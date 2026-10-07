@@ -335,14 +335,19 @@ void OvtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 		{
 			// The edge names the tracks it will register. It can only do that after seeing a
 			// describe, so this is the one message that carries a selection. An OVT1 edge names none.
-			size_t ignored			 = 0;
-			auto requested_track_ids = context->is_ovt2
-										   ? ovt::ParseTrackIdArray(root["ovt"]["trackIds"], &ignored)
-										   : std::nullopt;
-			if (ignored > 0)
+			// An absent key is that same silence; a present one that cannot be read is refused.
+			const auto &json_track_ids = root["ovt"]["trackIds"];
+
+			std::optional<std::set<uint32_t>> requested_track_ids;
+			if (context->is_ovt2 && (json_track_ids.isNull() == false))
 			{
-				logtw("Ignored %zu non-integer entries in the play request's trackIds from %s",
-					  ignored, remote->ToString().CStr());
+				requested_track_ids = ovt::ParseTrackIdArray(json_track_ids);
+				if (requested_track_ids.has_value() == false)
+				{
+					ResponseResult(remote, 0, ovt::APPLICATION_PLAY, request_id, 404,
+								   "An invalid request : ovt.trackIds must be an array of track ids");
+					continue;
+				}
 			}
 
 			HandlePlayRequest(remote, request_id, url, requested_track_ids);

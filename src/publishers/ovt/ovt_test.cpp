@@ -877,14 +877,10 @@ TEST(OvtTrackFilterTest, LegacyRemovalOutranksTheSelection)
 }
 
 // `trackIds` of a play request and `allowedTrackIds` of its response read by the same rule:
-// no key means no selection, and one bad element never turns a selection into "everything"
+// an array of track ids, and nothing else. Duplicates collapse because the value is a set.
 TEST(OvtTrackFilterTest, TrackIdArrayShapes)
 {
 	Json::Value ovt;
-	EXPECT_FALSE(ovt::ParseTrackIdArray(ovt["trackIds"]).has_value());
-
-	ovt["trackIds"] = "0,2";
-	EXPECT_FALSE(ovt::ParseTrackIdArray(ovt["trackIds"]).has_value());
 
 	ovt["trackIds"] = Json::Value(Json::arrayValue);
 	auto empty		= ovt::ParseTrackIdArray(ovt["trackIds"]);
@@ -892,15 +888,35 @@ TEST(OvtTrackFilterTest, TrackIdArrayShapes)
 	EXPECT_TRUE(empty->empty());
 
 	ovt["trackIds"].append(0);
-	ovt["trackIds"].append("two");
 	ovt["trackIds"].append(2);
 	ovt["trackIds"].append(0);
 
-	size_t ignored = 0;
-	auto ids	   = ovt::ParseTrackIdArray(ovt["trackIds"], &ignored);
+	auto ids = ovt::ParseTrackIdArray(ovt["trackIds"]);
 	ASSERT_TRUE(ids.has_value());
-	EXPECT_EQ(ignored, 1u);
 	EXPECT_EQ(*ids, (std::set<uint32_t>{0, 2}));
+}
+
+// An unreadable shape and an absent key give the parser the same answer, so the caller tells them apart.
+// Reading one as the other would send every track to an edge that named a selection.
+TEST(OvtTrackFilterTest, AnUnreadableTrackIdArrayIsNotASelection)
+{
+	Json::Value ovt;
+	EXPECT_FALSE(ovt::ParseTrackIdArray(ovt["trackIds"]).has_value());
+	EXPECT_TRUE(ovt["trackIds"].isNull());
+
+	for (const auto &violation : {Json::Value("0,2"), Json::Value(3), Json::Value(true), Json::Value(Json::objectValue)})
+	{
+		ovt["trackIds"] = violation;
+		EXPECT_FALSE(ovt::ParseTrackIdArray(ovt["trackIds"]).has_value());
+		EXPECT_FALSE(ovt["trackIds"].isNull());
+	}
+
+	// One bad entry voids the array: dropping it alone would give the edge fewer tracks than it named
+	ovt["trackIds"] = Json::Value(Json::arrayValue);
+	ovt["trackIds"].append(0);
+	ovt["trackIds"].append("two");
+	ovt["trackIds"].append(2);
+	EXPECT_FALSE(ovt::ParseTrackIdArray(ovt["trackIds"]).has_value());
 }
 
 // The send gate discards everything up to the first marker packet, so a NOTIFY broadcast while a

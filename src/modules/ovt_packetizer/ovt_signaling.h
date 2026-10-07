@@ -167,10 +167,10 @@ namespace ovt
 	}
 
 	// A track id array of an `ovt` object: `trackIds` of a play request, `allowedTrackIds` of its response.
-	// `nullopt` means the peer named no set, which is the key being absent or holding something else.
-	// A non-integer entry is skipped rather than voiding the list, and `ignored` counts those;
-	// one malformed element must not turn a selection into "send everything".
-	std::optional<std::set<uint32_t>> ParseTrackIdArray(const Json::Value &value, size_t *ignored = nullptr);
+	// An array of unsigned integers, or `nullopt` for every other shape, a non-integer entry included.
+	// Read as "no set" it would widen the selection to every track, so a caller refuses it instead
+	// and tells an absent key apart where that key is optional.
+	std::optional<std::set<uint32_t>> ParseTrackIdArray(const Json::Value &value);
 
 	// PT 40 payload: `{"required":[...]}`
 	ov::String MakeRequiredPayload(const std::vector<ov::String> &tokens);
