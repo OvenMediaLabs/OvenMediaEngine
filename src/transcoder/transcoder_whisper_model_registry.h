@@ -30,7 +30,8 @@ public:
 	// accepted for configuration compatibility and is not used.
 	bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
 
-	// Release all loaded models. Called at server stop.
+	// Release all loaded models. Called at server stop; loads in flight are
+	// drained first and no new load is accepted afterwards.
 	void Uninitialize();
 
 	// Total number of inference threads Whisper may use across every STT track.
@@ -115,6 +116,10 @@ private:
 	// Models being loaded outside the lock right now, so a second caller waits
 	// for the first instead of reading the same file twice.
 	std::unordered_set<std::string> _loading OV_GUARDED_BY(_mutex);
+	// Set when Uninitialize() starts; GetModelContext() refuses to begin a load
+	// afterwards. The registry is torn down once, at server shutdown, and is
+	// not reused.
+	bool _shutting_down OV_GUARDED_BY(_mutex) = false;
 	// Memory (bytes) consumed by one whisper_state for each model, measured
 	// (or conservatively estimated) during warmup.
 	std::unordered_map<std::string, size_t> _state_memory_bytes OV_GUARDED_BY(_mutex);

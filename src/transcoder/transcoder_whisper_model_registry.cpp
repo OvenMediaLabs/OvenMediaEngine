@@ -377,6 +377,15 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov:
 			return it->second;
 		}
 
+		// Once Uninitialize() has begun, nothing may start a load: a retry
+		// after a failed load would otherwise slip in while the shutdown
+		// drains and publish into the cleared registry.
+		if (_shutting_down)
+		{
+			logtw("Not loading the Whisper model: the registry is shutting down. path=%s", model_path.CStr());
+			return nullptr;
+		}
+
 		_loading.insert(key);
 		warmup_threads = GetThreadShare(0);
 	}
@@ -518,9 +527,12 @@ void WhisperModelRegistry::Uninitialize()
 {
 	ov::LockGuard<ov::Mutex> lock(_mutex);
 
-	// A load in flight publishes into _models once it is done; let it finish
-	// so it cannot resurrect a model after this clear, and so the context is
-	// not freed underneath its warmup.
+	// Refuse new loads from here on, then let the loads in flight finish: they
+	// publish into _models once done, so draining them first means nothing can
+	// resurrect a model after this clear and no context is freed underneath
+	// its warmup. Waiters woken by a load that fails see the flag and give up
+	// instead of retrying.
+	_shutting_down = true;
 	if (_loading.empty() == false)
 	{
 		logti("Waiting for %zu Whisper model load(s) to finish before clearing the registry.", _loading.size());
