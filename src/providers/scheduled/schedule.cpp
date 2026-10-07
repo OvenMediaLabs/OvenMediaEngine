@@ -1408,23 +1408,26 @@ namespace pvd
 			item_node.append_attribute("forwardData").set_value(item->_forward_data);
 
 			// Fade
-			if (item->_fade.IsEnabled() == true)
+			const auto &fade = item->_fade;
+
+			if (fade._in_ms > 0)
 			{
-				item_node.append_attribute("fadeIn").set_value(item->_fade._in_ms);
-				item_node.append_attribute("fadeOut").set_value(item->_fade._out_ms);
+				item_node.append_attribute("fadeIn").set_value(fade._in_ms);
+			}
 
-				const auto &in_color  = item->_fade._in_color._text;
-				const auto &out_color = item->_fade._out_color._text;
+			if (fade._out_ms > 0)
+			{
+				item_node.append_attribute("fadeOut").set_value(fade._out_ms);
+			}
 
-				if (in_color.IsEmpty() == false)
-				{
-					item_node.append_attribute("fadeInColor").set_value(in_color.CStr());
-				}
+			if (fade._in_color._text.IsEmpty() == false)
+			{
+				item_node.append_attribute("fadeInColor").set_value(fade._in_color._text.CStr());
+			}
 
-				if (out_color.IsEmpty() == false)
-				{
-					item_node.append_attribute("fadeOutColor").set_value(out_color.CStr());
-				}
+			if (fade._out_color._text.IsEmpty() == false)
+			{
+				item_node.append_attribute("fadeOutColor").set_value(fade._out_color._text.CStr());
 			}
 		}
 
@@ -1510,23 +1513,26 @@ namespace pvd
 			item_object["forwardData"] = item->_forward_data;
 
 			// Fade
-			if (item->_fade.IsEnabled() == true)
+			const auto &fade = item->_fade;
+
+			if (fade._in_ms > 0)
 			{
-				item_object["fadeIn"] = item->_fade._in_ms;
-				item_object["fadeOut"] = item->_fade._out_ms;
+				item_object["fadeIn"] = fade._in_ms;
+			}
 
-				const auto &in_color  = item->_fade._in_color._text;
-				const auto &out_color = item->_fade._out_color._text;
+			if (fade._out_ms > 0)
+			{
+				item_object["fadeOut"] = fade._out_ms;
+			}
 
-				if (in_color.IsEmpty() == false)
-				{
-					item_object["fadeInColor"] = in_color.CStr();
-				}
+			if (fade._in_color._text.IsEmpty() == false)
+			{
+				item_object["fadeInColor"] = fade._in_color._text.CStr();
+			}
 
-				if (out_color.IsEmpty() == false)
-				{
-					item_object["fadeOutColor"] = out_color.CStr();
-				}
+			if (fade._out_color._text.IsEmpty() == false)
+			{
+				item_object["fadeOutColor"] = fade._out_color._text.CStr();
 			}
 
 			item_parent_object.append(item_object);
