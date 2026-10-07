@@ -24,6 +24,7 @@
 #include "transcoder_filter.h"
 #include "transcoder_stream_internal.h"
 #include "transcoder_composite.h"
+#include "transcoder_fade.h"
 #include "transcoder_overlays.h"
 #include "transcoder_alert.h"
 
@@ -32,6 +33,7 @@ class TranscodeApplication;
 class TranscoderStream : public ov::EnableSharedFromThis<TranscoderStream>,
 						 public TranscoderStreamInternal,
 						 public TranscoderOverlays,
+						 public TranscoderFade,
 						 public TranscoderAlerts
 {
 public:

@@ -35,6 +35,7 @@ namespace ffmpeg
 		void *GetNativeHandle() const override;
 		
 		std::shared_ptr<MediaFrameData> Clone(bool deep) const override;
+		bool MakeWritable() override;
 		bool IsHardwareFrame() const override;
 		std::shared_ptr<MediaFrameData> DownloadToHost() const override;
 		void FillZero() override;

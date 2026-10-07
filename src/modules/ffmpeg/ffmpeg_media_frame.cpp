@@ -63,6 +63,17 @@ namespace ffmpeg
 		return std::make_shared<FFmpegMediaFrameData>(cloned);
 	}
 
+	bool FFmpegMediaFrameData::MakeWritable()
+	{
+		if (_frame == nullptr)
+		{
+			return false;
+		}
+
+		// Copies the buffer if it is shared.
+		return (::av_frame_make_writable(_frame) >= 0);
+	}
+
 	bool FFmpegMediaFrameData::IsHardwareFrame() const
 	{
 		return _frame != nullptr && _frame->hw_frames_ctx != nullptr;
