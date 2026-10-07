@@ -473,7 +473,9 @@ namespace pvd
 				logti("[%s/%s(%u)] %s stopped the stream (reason: %s)",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
 					  is_answer ? "This edge" : "Origin",
-					  known_reason.has_value() ? ovt::ToString(*known_reason) : (reason.IsEmpty() ? "-" : reason.CStr()));
+					  known_reason.has_value()
+						  ? ovt::ToString(*known_reason)
+						  : (reason.IsEmpty() ? "-" : ovt::SanitizeForLog(reason).CStr()));
 
 				return PullStream::ProcessMediaResult::PROCESS_MEDIA_FINISH;
 			}
@@ -804,7 +806,7 @@ namespace pvd
 
 					logtw("[%s/%s(%u)] Rendition [%s] of playlist [%s] in the %s response has no %s side: the origin has no track left for variant [%s]",
 						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
-						  rendition_name.CStr(), playlist_file_name.CStr(), source, side,
+						  ovt::SanitizeForLog(rendition_name).CStr(), ovt::SanitizeForLog(playlist_file_name).CStr(), source, side,
 						  ovt::SanitizeForLog(json_rendition[key].asCString()).CStr());
 				};
 				removed_side("removedVideoTrackName", "video");
@@ -1016,7 +1018,9 @@ namespace pvd
 				{
 					logtw("[%s/%s(%u)] Track(%u, codec: %s) from the origin is not registered: %s",
 						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
-						  new_track->GetId(), json_track["codec"].isString() ? json_track["codec"].asCString() : "-", skip_reason->CStr());
+						  new_track->GetId(),
+						  json_track["codec"].isString() ? ovt::SanitizeForLog(json_track["codec"].asCString()).CStr() : "-",
+						  skip_reason->CStr());
 					continue;
 				}
 			}
@@ -1372,7 +1376,8 @@ namespace pvd
 			{
 				logtw("[%s/%s(%u)] Origin changed track(%u) to a codec this build does not know (codec: %s, codecId: %u)",
 					  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(), new_track->GetId(),
-					  json_track["codec"].isString() ? json_track["codec"].asCString() : "-", json_track["codecId"].asUInt());
+					  json_track["codec"].isString() ? ovt::SanitizeForLog(json_track["codec"].asCString()).CStr() : "-",
+					  json_track["codecId"].asUInt());
 			}
 
 			logti("[%s/%s(%u)] Applied origin track(%u) configuration change (version %u)",
