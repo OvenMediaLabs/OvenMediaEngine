@@ -257,6 +257,11 @@ public:
 	// returns -1 if there is no start code in the buffer
 	static int FindAnnexBStartCode(const uint8_t *bitstream, size_t length, size_t &code_size);
 	static bool CheckAnnexBKeyframe(const uint8_t *bitstream, size_t length);
+	// Whether any SEI NAL in the Annex B access unit carries a recovery point.
+	static bool CheckAnnexBRecoveryPoint(const uint8_t *bitstream, size_t length);
+	// Whether an SEI NAL carries a recovery point, where decoding can start without an IDR.
+	// nalu includes the NAL header.
+	static bool IsRecoveryPointSei(const uint8_t *nalu, size_t length);
 	static bool ParseNalUnitHeader(const uint8_t *nalu, size_t length, H264NalUnitHeader &header);
 	
     // SPS Parsers

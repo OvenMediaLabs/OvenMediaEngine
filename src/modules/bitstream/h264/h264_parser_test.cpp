@@ -8,7 +8,8 @@
 //==============================================================================
 
 //  Covers: H264Parser VUI timing_info handling, in particular the frame rate
-//          division when num_units_in_tick sits at the edge of u(32).
+//          division when num_units_in_tick sits at the edge of u(32), and
+//          recovery point SEI detection.
 //
 //  Bitstreams are hand-built with a BitWriter so the field values under test
 //  are known by construction. Syntax follows ITU-T H.264 (7.3.2.1.1 SPS,
@@ -132,4 +133,86 @@ TEST(H264Parser, DerivesTheFrameRateWithoutFixedFrameRateFlag)
 	ASSERT_TRUE(H264Parser::ParseSPS(nal.data(), nal.size(), sps));
 
 	EXPECT_EQ(sps.GetFps(), 29U);
+}
+
+namespace
+{
+	// An SEI NAL carrying the given (payloadType, payload) messages, escaped as on the wire
+	std::vector<uint8_t> MakeSeiNal(const std::vector<std::pair<uint32_t, std::vector<uint8_t>>> &messages)
+	{
+		std::vector<uint8_t> rbsp;
+		auto write_value = [&](uint32_t value) {
+			for (; value >= 0xFF; value -= 0xFF)
+			{
+				rbsp.push_back(0xFF);
+			}
+			rbsp.push_back(static_cast<uint8_t>(value));
+		};
+
+		for (const auto &[type, payload] : messages)
+		{
+			write_value(type);
+			write_value(static_cast<uint32_t>(payload.size()));
+			rbsp.insert(rbsp.end(), payload.begin(), payload.end());
+		}
+		rbsp.push_back(0x80);  // rbsp_trailing_bits
+
+		std::vector<uint8_t> nal{0x06};	 // nal_unit_type 6 (SEI)
+		const auto ebsp = ApplyEmulationPrevention(rbsp);
+		nal.insert(nal.end(), ebsp.begin(), ebsp.end());
+
+		return nal;
+	}
+
+	// recovery_frame_cnt 0, exact_match 1, broken_link 0, changing_slice_group_idc 0
+	const std::vector<uint8_t> kRecoveryPoint{0xC4};
+}  // namespace
+
+TEST(H264Parser, FindsARecoveryPointSei)
+{
+	const auto nal = MakeSeiNal({{6, kRecoveryPoint}});
+	EXPECT_TRUE(H264Parser::IsRecoveryPointSei(nal.data(), nal.size()));
+}
+
+TEST(H264Parser, FindsARecoveryPointAfterOtherMessages)
+{
+	// user_data_unregistered longer than 255 bytes, with zero runs that need escaping
+	std::vector<uint8_t> user_data(300, 0x00);
+	const auto nal = MakeSeiNal({{1, {0x00, 0x00, 0x01}}, {5, user_data}, {6, kRecoveryPoint}});
+
+	EXPECT_TRUE(H264Parser::IsRecoveryPointSei(nal.data(), nal.size()));
+}
+
+TEST(H264Parser, IgnoresSeiWithoutARecoveryPoint)
+{
+	const auto nal = MakeSeiNal({{1, {0x00, 0x00, 0x01}}, {5, std::vector<uint8_t>(20, 0x06)}});
+	EXPECT_FALSE(H264Parser::IsRecoveryPointSei(nal.data(), nal.size()));
+}
+
+TEST(H264Parser, IgnoresNonSeiAndTruncatedNals)
+{
+	// A non-IDR slice header whose first byte would read as payloadType 6
+	const std::vector<uint8_t> slice{0x41, 0x06, 0x01, 0x88};
+	EXPECT_FALSE(H264Parser::IsRecoveryPointSei(slice.data(), slice.size()));
+
+	// payloadSize says more than is there
+	const std::vector<uint8_t> truncated{0x06, 0x05, 0x10, 0x01};
+	EXPECT_FALSE(H264Parser::IsRecoveryPointSei(truncated.data(), truncated.size()));
+
+	EXPECT_FALSE(H264Parser::IsRecoveryPointSei(nullptr, 0));
+}
+
+TEST(H264Parser, FindsARecoveryPointInAnAccessUnit)
+{
+	// An SEI with a recovery point, then a non-IDR slice
+	std::vector<uint8_t> access_unit{0x00, 0x00, 0x00, 0x01};
+	const auto sei = MakeSeiNal({{6, kRecoveryPoint}});
+	access_unit.insert(access_unit.end(), sei.begin(), sei.end());
+	access_unit.insert(access_unit.end(), {0x00, 0x00, 0x01, 0x41, 0x9A, 0x00});
+
+	EXPECT_TRUE(H264Parser::CheckAnnexBRecoveryPoint(access_unit.data(), access_unit.size()));
+
+	// The same slice alone
+	const std::vector<uint8_t> slice_only{0x00, 0x00, 0x00, 0x01, 0x41, 0x9A, 0x00};
+	EXPECT_FALSE(H264Parser::CheckAnnexBRecoveryPoint(slice_only.data(), slice_only.size()));
 }

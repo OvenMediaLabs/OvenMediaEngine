@@ -73,6 +73,9 @@ namespace ffmpeg
 
 		CodecResult SendPacket(const std::shared_ptr<MediaPacket> &media_packet);
 
+		// Tells the decoder no more input follows, so it hands out the frames it delays.
+		CodecResult SendEOS();
+
 		ReceiveResult ReceiveFrame();
 
 		CodecResult SendFrame(const std::shared_ptr<const MediaFrame> &media_frame, bool force_keyframe = false);

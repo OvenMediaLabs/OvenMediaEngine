@@ -41,6 +41,7 @@ private:
 	std::shared_ptr<MediaPacket> GetFramedPacket() override;
 	DecodeResult SendPacket(const std::shared_ptr<MediaPacket> &packet) override;
 	DecodeResult ReceiveFrame() override;
+	bool SendEOS() override;
 	void Uninitialize() override;
 
 	// ----- Internal helpers -----
