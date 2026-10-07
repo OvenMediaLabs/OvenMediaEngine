@@ -470,10 +470,13 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 
 		const size_t rss_before = GetProcessRssBytes();
 
+		// On either failure below the weights are freed before the reservation
+		// is given back, so the accounting never drops below what is resident.
 		auto warmup_state = whisper_init_state(ctx.get());
 		if (warmup_state == nullptr)
 		{
 			logte("Failed to allocate the warmup state for the Whisper model. path=%s", path.CStr());
+			ctx.reset();
 			release_reservation();
 			return nullptr;
 		}
@@ -495,6 +498,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		if (warmup_result != 0)
 		{
 			logte("Warmup inference failed for the Whisper model. path=%s", path.CStr());
+			ctx.reset();
 			release_reservation();
 			return nullptr;
 		}
