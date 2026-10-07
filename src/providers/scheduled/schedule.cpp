@@ -73,31 +73,46 @@ namespace pvd
 	// Fade: item attribute parsing and validation
 	namespace
 	{
-		Schedule::Item::Fade ParseItemFade(const Json::Value &item_object)
+		bool ParseFadeMs(const Json::Value &item_object, const char *name, int64_t &value, ov::String &error)
 		{
-			Schedule::Item::Fade fade;
-
-			if (item_object["fadeIn"].isIntegral() == true)
+			const auto &object = item_object[name];
+			if (object.isNull() == false)
 			{
-				fade._in_ms = item_object["fadeIn"].asInt64();
+				if (object.isIntegral() == false)
+				{
+					error = ov::String::FormatString("%s must be an integer", name);
+					return false;
+				}
+
+				value = object.asInt64();
 			}
 
-			if (item_object["fadeOut"].isIntegral() == true)
+			return true;
+		}
+
+		bool ParseFadeColor(const Json::Value &item_object, const char *name, ov::String &value, ov::String &error)
+		{
+			const auto &object = item_object[name];
+			if (object.isNull() == false)
 			{
-				fade._out_ms = item_object["fadeOut"].asInt64();
+				if (object.isString() == false)
+				{
+					error = ov::String::FormatString("%s must be a string", name);
+					return false;
+				}
+
+				value = object.asString().c_str();
 			}
 
-			if (item_object["fadeInColor"].isString() == true)
-			{
-				fade._in_color._text = item_object["fadeInColor"].asString().c_str();
-			}
+			return true;
+		}
 
-			if (item_object["fadeOutColor"].isString() == true)
-			{
-				fade._out_color._text = item_object["fadeOutColor"].asString().c_str();
-			}
-
-			return fade;
+		bool ParseItemFade(const Json::Value &item_object, Schedule::Item::Fade &fade, ov::String &error)
+		{
+			return ParseFadeMs(item_object, "fadeIn", fade._in_ms, error) &&
+				   ParseFadeMs(item_object, "fadeOut", fade._out_ms, error) &&
+				   ParseFadeColor(item_object, "fadeInColor", fade._in_color._text, error) &&
+				   ParseFadeColor(item_object, "fadeOutColor", fade._out_color._text, error);
 		}
 
 		Schedule::Item::Fade ParseItemFade(const pugi::xml_node &item_node)
@@ -166,7 +181,7 @@ namespace pvd
 			}
 
 			// Overlong ramps are scaled down when the item plays.
-			if ((item->_duration_ms_conf > 0) && ((fade._in_ms + fade._out_ms) > item->_duration_ms_conf))
+			if ((item->_duration_ms_conf > 0) && (fade._in_ms > item->_duration_ms_conf - fade._out_ms))
 			{
 				logtw("Item fade is longer than its duration. url: %s, fadeIn: %" PRId64 ", fadeOut: %" PRId64 ", duration: %" PRId64,
 					  item->_url.CStr(), fade._in_ms, fade._out_ms, item->_duration_ms_conf);
@@ -819,7 +834,9 @@ namespace pvd
 			}
 
 			// Fade
-			if (SetItemFade(item, ParseItemFade(item_object), _last_error) == false)
+			Schedule::Item::Fade fade;
+			if ((ParseItemFade(item_object, fade, _last_error) == false) ||
+				(SetItemFade(item, fade, _last_error) == false))
 			{
 				return false;
 			}

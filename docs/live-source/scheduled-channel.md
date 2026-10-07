@@ -201,6 +201,8 @@ Each item can fade in from a solid color when it starts and fade out to a solid 
 
 The attributes can be set on the items of both `<Program>` and `<FallbackProgram>`. The items of the [REST API](../rest-api/v1/virtualhost/application/scheduledchannel-api.md) take the same parameters.
 
+`fadeOut` needs a known end: a file item, or an item with `duration`. For an item with no known end, such as a live `stream://` item without `duration`, only the fade in is applied.
+
 ## Application : Persistent Live Channel
 
 This function is a scheduling channel, but it can be used for applications such as creating a permanent stream as follows.

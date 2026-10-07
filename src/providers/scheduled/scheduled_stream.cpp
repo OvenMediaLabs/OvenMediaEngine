@@ -699,9 +699,9 @@ namespace pvd
 				// The seek can land past the start; the fade out must end where the file does.
 				int64_t play_duration_ms = item->_duration_ms;
 				int64_t remaining_ms	 = ffmpeg::compat::GetRemainingDurationMs(context.get(), origin_stream, origin_pts);
-				if ((play_duration_ms > 0) && (remaining_ms > 0))
+				if (remaining_ms > 0)
 				{
-					play_duration_ms = std::min(play_duration_ms, remaining_ms);
+					play_duration_ms = (play_duration_ms > 0) ? std::min(play_duration_ms, remaining_ms) : remaining_ms;
 				}
 
 				PublishItemFade(item, pts, track->GetTimeBase(), play_duration_ms);
