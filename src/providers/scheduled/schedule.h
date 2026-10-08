@@ -65,8 +65,7 @@ namespace pvd
 				{
 					bool operator==(const Color &rhs) const
 					{
-						// _white is derived from _text.
-						return _text == rhs._text;
+						return _white == rhs._white;
 					}
 
 					// As configured; empty is black.
