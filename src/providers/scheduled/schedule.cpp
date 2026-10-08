@@ -180,7 +180,7 @@ namespace pvd
 				return false;
 			}
 
-			// Overlong ramps are scaled down when the item plays.
+			// Only a warning; the fade is kept as configured.
 			if ((item->_duration_ms_conf > 0) && (fade._in_ms > item->_duration_ms_conf - fade._out_ms))
 			{
 				logtw("Item fade is longer than its duration. url: %s, fadeIn: %" PRId64 ", fadeOut: %" PRId64 ", duration: %" PRId64,

@@ -93,12 +93,8 @@ namespace pvd
 		bool SetDurationToAllItems(const std::shared_ptr<Schedule::Program> &program);
 		int64_t GetFileItemDurationMS(const std::shared_ptr<Schedule::Item> &item) const;
 
-		// Fade: sends the item's Fade event; duration_ms is how long it really plays.
+		// Fade: called once when an item starts; duration_ms is how long it really plays.
 		void PublishItemFade(const std::shared_ptr<Schedule::Item> &item, int64_t pts, const cmn::Timebase &timebase, int64_t duration_ms);
-
-		// Fade: the transcoder holds a fade out's color until the next item's Fade event, so after
-		// one, even an item without a fade sends that event.
-		bool _previous_item_faded_out = false;
 
         std::shared_ptr<Schedule> _schedule;
         mutable std::shared_mutex _schedule_mutex;

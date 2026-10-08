@@ -58,9 +58,6 @@ namespace pvd
             _worker_thread.join();
         }
 
-        // Fade
-        _previous_item_faded_out = false;
-
         return Stream::Stop();
     }
 
@@ -636,9 +633,9 @@ namespace pvd
 
 			auto media_packet = ffmpeg::compat::ToMediaPacket(track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
 
-            // Fade: where this packet sits in the file, for the fade out.
-            auto origin_stream = context->streams[packet.stream_index];
-            auto origin_pts    = packet.pts;
+			// Fade: where this packet sits in the file, for the fade out.
+			auto origin_stream = context->streams[packet.stream_index];
+			auto origin_pts	   = packet.pts;
 
             // Convert to fixed time base
             auto origin_tb = context->streams[packet.stream_index]->time_base;
