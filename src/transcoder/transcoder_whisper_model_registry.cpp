@@ -217,7 +217,8 @@ namespace
 
 	// Resident set size of this process, or 0 when it cannot be determined.
 	// Process-wide, so a delta taken around an allocation is only approximate
-	// while the rest of the server is working.
+	// while the rest of the server is working; the registry keeps its own
+	// state frees out of the window (see _measuring_state_cost).
 	size_t GetProcessRssBytes()
 	{
 		std::ifstream in("/proc/self/statm");
@@ -463,6 +464,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		ov::StopWatch warmup_timer;
 		warmup_timer.Start();
 
+		BeginStateCostMeasurement();
 		const size_t rss_before = GetProcessRssBytes();
 
 		// On either failure below the weights are freed before the reservation
@@ -470,6 +472,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		auto warmup_state = whisper_init_state(ctx.get());
 		if (warmup_state == nullptr)
 		{
+			EndStateCostMeasurement();
 			logte("Failed to allocate the warmup state for the Whisper model. path=%s", path.CStr());
 			ctx.reset();
 			release_reservation();
@@ -488,6 +491,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		const int warmup_result		= whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
 
 		const size_t rss_after = GetProcessRssBytes();
+		EndStateCostMeasurement();
 		whisper_free_state(warmup_state);
 
 		if (warmup_result != 0)
@@ -522,6 +526,30 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 	return ctx;
 }
 
+void WhisperModelRegistry::BeginStateCostMeasurement()
+{
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+	_measuring_state_cost = true;
+}
+
+void WhisperModelRegistry::EndStateCostMeasurement()
+{
+	// Under _mutex like DeleteState(), so whisper_free_state() never runs
+	// concurrently with whisper_init_state() on the same context.
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+	_measuring_state_cost = false;
+
+	if (_deferred_state_frees.empty() == false)
+	{
+		for (auto *state : _deferred_state_frees)
+		{
+			whisper_free_state(state);
+		}
+		logtd("Freed %zu Whisper state(s) whose release was deferred during a state cost measurement.", _deferred_state_frees.size());
+		_deferred_state_frees.clear();
+	}
+}
+
 void WhisperModelRegistry::Uninitialize()
 {
 	ov::LockGuard<ov::Mutex> lock(_mutex);
@@ -539,6 +567,15 @@ void WhisperModelRegistry::Uninitialize()
 			return _loading.empty();
 		});
 	}
+
+	// Every load has finished, so nothing is deferred any more; free whatever
+	// is left before the contexts the states belong to go away.
+	for (auto *state : _deferred_state_frees)
+	{
+		whisper_free_state(state);
+	}
+	_deferred_state_frees.clear();
+	_measuring_state_cost = false;
 
 	_models.clear();
 	_state_memory_bytes.clear();
@@ -617,7 +654,16 @@ void WhisperModelRegistry::DeleteState(whisper_state *state)
 		return;
 	}
 
-	whisper_free_state(state);
+	if (_measuring_state_cost == true)
+	{
+		// A load is measuring a state's cost from the process RSS right now;
+		// freeing would shrink its delta. Park the free until it is done.
+		_deferred_state_frees.push_back(state);
+	}
+	else
+	{
+		whisper_free_state(state);
+	}
 
 	auto pending_it = _pending_states.find(state);
 	if (pending_it != _pending_states.end())

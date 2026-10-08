@@ -112,6 +112,16 @@ private:
 	// DeleteState(); _pending_state_bytes is the running sum.
 	std::unordered_map<whisper_state *, size_t> _pending_states OV_GUARDED_BY(_mutex);
 	size_t _pending_state_bytes OV_GUARDED_BY(_mutex) = 0;
+	// True while LoadModel() measures a state's cost from the process RSS.
+	// DeleteState() parks its whisper_free_state() calls here meanwhile, so a
+	// free elsewhere cannot shrink the delta and undercount the cost; the load
+	// frees them once the measurement is over (a few seconds at most).
+	// Allocations elsewhere can only inflate the delta, which errs on the safe
+	// side.
+	bool _measuring_state_cost OV_GUARDED_BY(_mutex) = false;
+	std::vector<whisper_state *> _deferred_state_frees OV_GUARDED_BY(_mutex);
+	void BeginStateCostMeasurement();
+	void EndStateCostMeasurement();
 
 	// Everything claimed but not yet visible to MemAvailable.
 	size_t ReservedBytesLocked() const OV_REQUIRES(_mutex)
