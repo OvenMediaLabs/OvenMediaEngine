@@ -38,6 +38,10 @@ public:
 	virtual void *GetNativeHandle() const = 0;
 	
 	virtual std::shared_ptr<MediaFrameData> Clone(bool deep) const = 0;
+
+	// Detaches the frame from shared buffers so it can be written in place. false if unsupported.
+	virtual bool MakeWritable() { return false; }
+
 	virtual bool IsHardwareFrame() const = 0;
 	virtual std::shared_ptr<MediaFrameData> DownloadToHost() const = 0;
 	virtual void FillZero() = 0;

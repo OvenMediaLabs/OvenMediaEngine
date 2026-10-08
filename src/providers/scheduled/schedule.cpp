@@ -70,6 +70,127 @@ namespace pvd
 		return true;
 	}
 
+	// Fade: item attribute parsing and validation
+	namespace
+	{
+		bool ParseFadeMs(const Json::Value &item_object, const char *name, int64_t &value, ov::String &error)
+		{
+			const auto &object = item_object[name];
+			if (object.isNull() == false)
+			{
+				if (object.isIntegral() == false)
+				{
+					error = ov::String::FormatString("%s must be an integer", name);
+					return false;
+				}
+
+				value = object.asInt64();
+			}
+
+			return true;
+		}
+
+		bool ParseFadeColor(const Json::Value &item_object, const char *name, ov::String &value, ov::String &error)
+		{
+			const auto &object = item_object[name];
+			if (object.isNull() == false)
+			{
+				if (object.isString() == false)
+				{
+					error = ov::String::FormatString("%s must be a string", name);
+					return false;
+				}
+
+				value = object.asString().c_str();
+			}
+
+			return true;
+		}
+
+		// "black" (default) or "white"; anything else is an error, not black.
+		bool ResolveFadeColor(Schedule::Item::Fade::Color &color, const char *name, ov::String &error)
+		{
+			auto value = color._text.Trim().LowerCaseString();
+
+			if ((value.IsEmpty() == true) || (value == "black"))
+			{
+				color._white = false;
+				return true;
+			}
+
+			if (value == "white")
+			{
+				color._white = true;
+				return true;
+			}
+
+			error = ov::String::FormatString("Failed to parse %s \"%s\", it must be \"black\" or \"white\"", name, color._text.CStr());
+			return false;
+		}
+
+		bool SetItemFade(const std::shared_ptr<Schedule::Item> &item, Schedule::Item::Fade fade, ov::String &error)
+		{
+			if ((fade._in_ms < 0) || (fade._out_ms < 0))
+			{
+				logtw("Item fade must not be negative. url: %s, fadeIn: %" PRId64 ", fadeOut: %" PRId64 ", they will be changed to 0",
+					  item->_url.CStr(), fade._in_ms, fade._out_ms);
+
+				fade._in_ms	 = (fade._in_ms < 0) ? 0 : fade._in_ms;
+				fade._out_ms = (fade._out_ms < 0) ? 0 : fade._out_ms;
+			}
+
+			if ((ResolveFadeColor(fade._in_color, "fadeInColor", error) == false) ||
+				(ResolveFadeColor(fade._out_color, "fadeOutColor", error) == false))
+			{
+				return false;
+			}
+
+			// Only a warning; the fade is kept as configured.
+			if ((item->_duration_ms_conf > 0) && (fade._in_ms > item->_duration_ms_conf - fade._out_ms))
+			{
+				logtw("Item fade is longer than its duration. url: %s, fadeIn: %" PRId64 ", fadeOut: %" PRId64 ", duration: %" PRId64,
+					  item->_url.CStr(), fade._in_ms, fade._out_ms, item->_duration_ms_conf);
+			}
+
+			item->_fade = fade;
+
+			return true;
+		}
+	}  // namespace
+
+	bool Schedule::ReadItemFadeObject(const Json::Value &item_object, Item::Fade &fade)
+	{
+		return ParseFadeMs(item_object, "fadeIn", fade._in_ms, _last_error) &&
+			   ParseFadeMs(item_object, "fadeOut", fade._out_ms, _last_error) &&
+			   ParseFadeColor(item_object, "fadeInColor", fade._in_color._text, _last_error) &&
+			   ParseFadeColor(item_object, "fadeOutColor", fade._out_color._text, _last_error);
+	}
+
+	bool Schedule::ReadItemFadeNode(const pugi::xml_node &item_node, Item::Fade &fade)
+	{
+		if (auto attribute = item_node.attribute("fadeIn"))
+		{
+			fade._in_ms = attribute.as_llong();
+		}
+
+		if (auto attribute = item_node.attribute("fadeOut"))
+		{
+			fade._out_ms = attribute.as_llong();
+		}
+
+		if (auto attribute = item_node.attribute("fadeInColor"))
+		{
+			fade._in_color._text = attribute.as_string();
+		}
+
+		if (auto attribute = item_node.attribute("fadeOutColor"))
+		{
+			fade._out_color._text = attribute.as_string();
+		}
+
+		return true;
+	}
+
 	std::shared_ptr<AVFormatContext> Schedule::Item::LoadContext()
 	{
 		ov::StopWatch sw;
@@ -710,6 +831,14 @@ namespace pvd
 				return false;
 			}
 
+			// Fade
+			Item::Fade fade;
+			if ((ReadItemFadeObject(item_object, fade) == false) ||
+				(SetItemFade(item, fade, _last_error) == false))
+			{
+				return false;
+			}
+
 			items.push_back(item);
 		}
 
@@ -1004,6 +1133,14 @@ namespace pvd
 				return false;
 			}
 
+			// Fade
+			Item::Fade fade;
+			if ((ReadItemFadeNode(item_node, fade) == false) ||
+				(SetItemFade(item, fade, _last_error) == false))
+			{
+				return false;
+			}
+
 			items.push_back(item);
 		}
 
@@ -1269,6 +1406,29 @@ namespace pvd
 			item_node.append_attribute("start").set_value(item->_start_time_ms_conf);
 			item_node.append_attribute("duration").set_value(item->_duration_ms_conf);
 			item_node.append_attribute("forwardData").set_value(item->_forward_data);
+
+			// Fade
+			const auto &fade = item->_fade;
+
+			if (fade._in_ms > 0)
+			{
+				item_node.append_attribute("fadeIn").set_value(fade._in_ms);
+			}
+
+			if (fade._out_ms > 0)
+			{
+				item_node.append_attribute("fadeOut").set_value(fade._out_ms);
+			}
+
+			if (fade._in_color._text.IsEmpty() == false)
+			{
+				item_node.append_attribute("fadeInColor").set_value(fade._in_color._text.CStr());
+			}
+
+			if (fade._out_color._text.IsEmpty() == false)
+			{
+				item_node.append_attribute("fadeOutColor").set_value(fade._out_color._text.CStr());
+			}
 		}
 
 		return true;
@@ -1351,6 +1511,29 @@ namespace pvd
 			item_object["start"] = item->_start_time_ms_conf;
 			item_object["duration"] = item->_duration_ms_conf;
 			item_object["forwardData"] = item->_forward_data;
+
+			// Fade
+			const auto &fade = item->_fade;
+
+			if (fade._in_ms > 0)
+			{
+				item_object["fadeIn"] = fade._in_ms;
+			}
+
+			if (fade._out_ms > 0)
+			{
+				item_object["fadeOut"] = fade._out_ms;
+			}
+
+			if (fade._in_color._text.IsEmpty() == false)
+			{
+				item_object["fadeInColor"] = fade._in_color._text.CStr();
+			}
+
+			if (fade._out_color._text.IsEmpty() == false)
+			{
+				item_object["fadeOutColor"] = fade._out_color._text.CStr();
+			}
 
 			item_parent_object.append(item_object);
 		}

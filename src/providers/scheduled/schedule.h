@@ -58,6 +58,39 @@ namespace pvd
 		class Item
 		{
 		public:
+			// Fade: fadeIn/fadeOut in ms (0: none), from/to black (default) or white.
+			struct Fade
+			{
+				struct Color
+				{
+					bool operator==(const Color &rhs) const
+					{
+						return _white == rhs._white;
+					}
+
+					// As configured; empty is black.
+					ov::String _text;
+					bool _white = false;
+				};
+
+				bool operator==(const Fade &rhs) const
+				{
+					return (_in_ms == rhs._in_ms) && (_out_ms == rhs._out_ms) &&
+						   (_in_color == rhs._in_color) && (_out_color == rhs._out_color);
+				}
+
+				bool operator!=(const Fade &rhs) const
+				{
+					return !(*this == rhs);
+				}
+
+				int64_t _in_ms	= 0;
+				int64_t _out_ms = 0;
+
+				Color _in_color;
+				Color _out_color;
+			};
+
 			Item() = default;
 			~Item() = default;
 
@@ -67,6 +100,7 @@ namespace pvd
 				if (_url != rhs._url ||
 					_start_time_ms_conf != rhs._start_time_ms_conf ||
 					_duration_ms_conf != rhs._duration_ms_conf ||
+					_fade != rhs._fade ||
 				_forward_data != rhs._forward_data)
 				{
 					return false;
@@ -91,6 +125,7 @@ namespace pvd
 			// setting values
 			int64_t _start_time_ms_conf;
 			int64_t _duration_ms_conf;
+			Fade _fade;
 
 			// calculated values
 			int64_t _start_time_ms = 0;
@@ -225,6 +260,7 @@ namespace pvd
 		bool ReadFallbackProgramNode(const pugi::xml_node &schedule_node);
 		bool ReadProgramNodes(const pugi::xml_node &schedule_node);
 		bool ReadItemNodes(const pugi::xml_node &item_parent_node, std::vector<std::shared_ptr<Item>> &items);
+		bool ReadItemFadeNode(const pugi::xml_node &item_node, Item::Fade &fade);
 
 		bool WriteItemNodes(const std::vector<std::shared_ptr<Item>> &items, pugi::xml_node &item_parent_node) const;
 		bool WriteItemObjects(const std::vector<std::shared_ptr<Item>> &items, Json::Value &item_parent_object) const;
@@ -233,6 +269,7 @@ namespace pvd
 		bool ReadFallbackProgramObject(const Json::Value &root_object);
 		bool ReadProgramObjects(const Json::Value &root_object);
 		bool ReadItemObjects(const Json::Value &item_parent_object, std::vector<std::shared_ptr<Item>> &items);
+		bool ReadItemFadeObject(const Json::Value &item_object, Item::Fade &fade);
 
 			Stream MakeStream(const ov::String &name, bool bypass_transcoder, bool video_track, bool audio_track) const;
 		std::shared_ptr<Program> MakeFallbackProgram() const;
