@@ -4,31 +4,6 @@ description: "Build pre-scheduled, playlist-style live channels in OvenMediaEngi
 sidebar_position: 16
 ---
 
-export const EnterpriseBadge = () => (
-  <span
-    className="enterprise-badge"
-    aria-label="Enterprise only"
-    style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.3em',
-      marginLeft: '0.5em',
-      padding: '0.2em 0.6em',
-      border: '1px solid var(--ifm-color-primary)',
-      borderRadius: '999px',
-      color: 'var(--ifm-color-primary)',
-      fontSize: '0.5em',
-      fontWeight: 600,
-      lineHeight: 1.2,
-      verticalAlign: 'middle',
-    }}>
-    <svg viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true">
-      <path d="M3 7l4.5 3.5L12 4l4.5 6.5L21 7l-1.6 11H4.6L3 7zm1.9 13h14.2v2H4.9v-2z" />
-    </svg>
-    Enterprise
-  </span>
-);
-
 Scheduled Channel that allows you to create a live channel by scheduling pre-recorded files has been added to OvenMediaEngine. Other services or software call this Pre-recorded Live or File Live, but OvenMediaEngine plans to expand the function to organize live channels as a source, so we named it Scheduled Channel.
 
 ## Getting Started
@@ -137,8 +112,6 @@ For 'file' cases, the `start` attribute can be set in milliseconds to indicate w
 `duration` indicates the playback time of that item in milliseconds. After the duration ends, it moves to the next item.\
 Both 'start' and 'duration' are optional. If not set, `start` defaults to 0, and `duration` defaults to the file's duration; if not specified, the media file will be played until its full duration.
 
-In OvenMediaEngine Enterprise, an item can also fade in and out with the `fadeIn`, `fadeOut`, `fadeInColor` and `fadeOutColor` attributes. See [Fade](#fade).
-
 #### Supported Formats for File Live
 
 <table><thead><tr><th width="290">Title</th><th>Description</th></tr></thead><tbody><tr><td>Formats</td><td><p>MP4, TS, MP3, and more.</p><ul><li>All formats supported by FFmpeg are supported.</li></ul></td></tr></tbody></table>
@@ -183,25 +156,6 @@ A Scheduled Channel creates streams in advance and copies tracks from files or o
 
 :::
 
-## Fade <EnterpriseBadge /> \{#fade}
-
-Each item can fade in from a solid color when it starts and fade out to a solid color when it ends. Set the fade on the `<Item>` with the following attributes.
-
-```xml
-<Program name="1" scheduled="2026-10-07T20:00:00.000+09:00" repeat="true">
-    <!-- Fades in from white and out to black, 1 second each -->
-    <Item url="file://opening.mp4" duration="60000" fadeIn="1000" fadeInColor="white" fadeOut="1000" fadeOutColor="black" />
-
-    <!-- Fades in from black and out to white, 1 second each -->
-    <Item url="file://main.mp4" fadeIn="1000" fadeInColor="black" fadeOut="1000" fadeOutColor="white" />
-</Program>
-```
-
-<table><thead><tr><th width="200">Attribute</th><th>Description</th></tr></thead><tbody><tr><td><code>fadeIn</code></td><td>Length of the fade in at the start of the item, in milliseconds. Optional, default <code>0</code> (no fade in).</td></tr><tr><td><code>fadeOut</code></td><td>Length of the fade out at the end of the item, in milliseconds. Optional, default <code>0</code> (no fade out).</td></tr><tr><td><code>fadeInColor</code></td><td>Color the item fades in from: <code>black</code> or <code>white</code> (or <code>#000000</code> / <code>#ffffff</code>). Optional, default <code>black</code>.</td></tr><tr><td><code>fadeOutColor</code></td><td>Color the item fades out to: <code>black</code> or <code>white</code> (or <code>#000000</code> / <code>#ffffff</code>). Optional, default <code>black</code>.</td></tr></tbody></table>
-
-The attributes can be set on the items of both `<Program>` and `<FallbackProgram>`. The items of the [REST API](../rest-api/v1/virtualhost/application/scheduledchannel-api.md) take the same parameters.
-
-`fadeOut` needs a known end: a file item, or an item with `duration`. For an item with no known end, such as a live `stream://` item without `duration`, only the fade in is applied.
 
 ## Application : Persistent Live Channel
 
