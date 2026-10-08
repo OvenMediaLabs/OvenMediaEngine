@@ -2,6 +2,7 @@
 
 #include "base/ovlibrary/ovlibrary.h"
 #include "rtp_packet.h"
+#include <atomic>
 #include <functional>
 #include <optional>
 #include <unordered_map>
@@ -44,6 +45,7 @@ public:
 	// exact frame boundaries.
 	bool HasReceivedAny() const { return _has_received; }
 	uint16_t GetMaxReceivedSeq() const { return _max_received_seq; }
+	uint16_t GetMinReceivedSeq() const { return _min_received_seq; }
 
 private:
 	bool CheckCompleted();
@@ -60,6 +62,7 @@ private:
 
 	bool _has_received = false;
 	uint16_t _max_received_seq = 0;
+	uint16_t _min_received_seq = 0;
 
 	bool _completed = false;
 	bool _incomplete_logged = false;
@@ -84,6 +87,9 @@ public:
 
 	bool InsertPacket(const std::shared_ptr<RtpPacket> &packet);
 	bool IsEmpty();
+	// True while any frame is buffered, readable without the lock so a
+	// session tick can skip idle tracks
+	bool HasFrames() const { return _has_frames.load(std::memory_order_relaxed); }
 	bool HasAvailableFrame();
 	std::shared_ptr<RtpFrame> PopAvailableFrame();
 
@@ -111,6 +117,15 @@ public:
 		_lowest_pending_seq_provider = std::move(provider);
 	}
 
+	// Provider returning the first seq the NACK generator ever saw. A frame
+	// without its start whose packets begin at or before it can never be
+	// completed, since nothing earlier can be requested; it is given up once
+	// reordering is ruled out instead of waiting out the hold.
+	void SetFirstObservedSeqProvider(std::function<std::optional<uint16_t>()> provider)
+	{
+		_first_observed_seq_provider = std::move(provider);
+	}
+
 	// Callback fired for every frame the buffer gives up on under the NACK
 	// hold: an incomplete head discarded, or a complete head released over a
 	// lost earlier frame. keyframe_arriving tells whether a keyframe, complete
@@ -136,6 +151,7 @@ private:
 	// still has to erase the frame from `_rtp_frames`.
 	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame) OV_REQUIRES(_lock);
 	void NotifyFrameDiscarded() OV_REQUIRES(_lock);
+	bool IsBeyondRepair(const RtpFrame &frame) OV_REQUIRES(_lock);
 	bool HasKeyframeInBuffer() OV_REQUIRES(_lock);
 	// Takes a frame out of the buffer (emitted or discarded) and returns the next iterator
 	FrameMap::iterator RemoveFrame(FrameMap::iterator it) OV_REQUIRES(_lock);
@@ -147,6 +163,7 @@ private:
 	std::function<uint32_t()> _hold_ms_provider;
 	std::function<void(uint16_t)> _on_processed_seq_advance;
 	std::function<std::optional<uint16_t>()> _lowest_pending_seq_provider;
+	std::function<std::optional<uint16_t>()> _first_observed_seq_provider;
 	std::function<void(bool keyframe_arriving)> _on_frame_discarded;
 
 	bool _has_processed_seq OV_GUARDED_BY(_lock) = false;
@@ -161,6 +178,7 @@ private:
 	// timestamp : RtpFrameInfo (ordered, so std::map)
 	FrameMap _rtp_frames OV_GUARDED_BY(_lock);
 	size_t _packet_count OV_GUARDED_BY(_lock) = 0;
+	std::atomic<bool> _has_frames{false};
 	bool _budget_warned OV_GUARDED_BY(_lock) = false;
 
 	mutable ov::Mutex _lock;

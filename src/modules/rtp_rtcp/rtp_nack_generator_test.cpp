@@ -122,6 +122,15 @@ TEST(RtpNackGenerator, DropPendingOlderThanKeepsRecentEntries)
 	EXPECT_FALSE(gen.GetLowestPendingSeq().has_value());
 }
 
+TEST(RtpNackGenerator, RemembersFirstObservedSeq)
+{
+	RtpNackGenerator gen(1, 0x1234);
+	EXPECT_FALSE(gen.GetFirstObservedSeq().has_value());
+	gen.OnPacketReceived(100);
+	gen.OnPacketReceived(99);    // late packet from before the start: not a gap, not the first
+	EXPECT_EQ(*gen.GetFirstObservedSeq(), 100);
+}
+
 TEST(RtpNackGenerator, SeqWrapDetectsGap)
 {
 	RtpNackGenerator gen(kTrackId, kSsrc);

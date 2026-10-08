@@ -39,6 +39,7 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 	if (_initialized == false)
 	{
 		_initialized = true;
+		_first_seq = seq;
 		_newest_extended = static_cast<uint32_t>(seq);
 		_expected_next = static_cast<uint32_t>(seq) + 1;
 		_last_stats_log_at = now;
@@ -136,6 +137,7 @@ void RtpNackGenerator::OnPacketReceived(uint16_t seq)
 		}
 	}
 
+	UpdatePendingFlag();
 	LogPeriodicStats(now);
 }
 
@@ -214,12 +216,23 @@ size_t RtpNackGenerator::DropPendingOlderThan(uint32_t age_ms)
 			++it;
 		}
 	}
+	UpdatePendingFlag();
 	if (dropped > 0)
 	{
 		logtd("Dropped %zu pending seqs older than %ums with nothing buffered track(%u) ssrc(%u) pending(%zu)",
 			  dropped, age_ms, _track_id, _media_ssrc, _pending.size());
 	}
 	return dropped;
+}
+
+std::optional<uint16_t> RtpNackGenerator::GetFirstObservedSeq() const
+{
+	ov::LockGuard<ov::Mutex> lock(_lock);
+	if (_initialized == false)
+	{
+		return std::nullopt;
+	}
+	return _first_seq;
 }
 
 std::optional<uint16_t> RtpNackGenerator::GetLowestPendingSeq() const
@@ -276,6 +289,7 @@ void RtpNackGenerator::DropPendingUpTo(uint16_t max_seq)
 		dropped++;
 		it = _pending.erase(it);
 	}
+	UpdatePendingFlag();
 	// One line per jitter-buffer-driven drop so recovery rate and NACK->RTX
 	// timing can be traced against the buffer's processed-seq advances.
 	if (dropped > 0)

@@ -9,6 +9,7 @@
 #include <thread>
 
 #include "rtp_frame_jitter_buffer.h"
+#include "rtp_nack_generator.h"
 #include "rtp_packet.h"
 
 namespace
@@ -391,6 +392,57 @@ TEST(RtpFrameJitterBuffer, PacketBudgetReleasesHeadHeldForLowerPending)
 		buf.InsertPacket(MakeStampedPacket(static_cast<uint16_t>(100 + i), true, true, kTimestamp + 3000 * i));   // complete frames
 	}
 	EXPECT_TRUE(buf.HasAvailableFrame());
+}
+
+// A frame that lost its start before the first seq the NACK generator saw
+// can never be repaired, so it is given up as soon as a later frame begins.
+TEST(RtpFrameJitterBuffer, GivesUpFrameWhoseStartPrecedesTheStream)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 10000u; });
+	buf.SetFirstObservedSeqProvider([] { return std::optional<uint16_t>(100); });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, false, true));                    // F1: first seq of the stream, start missing
+	EXPECT_FALSE(buf.HasAvailableFrame());                                    // within the reorder dwell: not yet
+	EXPECT_EQ(discards, 0);
+
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));  // F2 begins
+	EXPECT_TRUE(buf.HasAvailableFrame());                                     // F1 given up at once, F2 flows
+	EXPECT_EQ(discards, 1);
+}
+
+// Without a later frame the give-up still happens once the reorder dwell
+// has passed, so a large first keyframe does not hold the request back.
+TEST(RtpFrameJitterBuffer, GivesUpUnrepairableFrameAfterReorderDwell)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 10000u; });
+	buf.SetFirstObservedSeqProvider([] { return std::optional<uint16_t>(100); });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, false, false));                   // still arriving, start missing
+	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::INITIAL_NACK_DWELL_MS + 10));
+	buf.InsertPacket(MakeStampedPacket(101, false, false));
+	EXPECT_FALSE(buf.HasAvailableFrame());                                    // nothing complete to emit
+	EXPECT_EQ(discards, 1);                                                   // but the hopeless frame is gone
+	EXPECT_TRUE(buf.IsEmpty());
+}
+
+TEST(RtpFrameJitterBuffer, KeepsStartlessFrameWhoseGapIsRequestable)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 10000u; });
+	buf.SetFirstObservedSeqProvider([] { return std::optional<uint16_t>(95); });   // the stream was seen from 95
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, false, true));                    // start (96..99) lost but requestable
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));
+	EXPECT_FALSE(buf.HasAvailableFrame());                                    // F1 waits for NACK within the hold
+	EXPECT_EQ(discards, 0);
 }
 
 TEST(RtpFrameJitterBuffer, DropsLatePacketForProcessedTimestamp)

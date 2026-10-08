@@ -411,6 +411,11 @@ bool RtpRtcp::EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_ho
 			if (!gen) return std::nullopt;
 			return gen->GetLowestPendingSeq();
 		});
+		buf_it->second->SetFirstObservedSeqProvider([weak_gen]() -> std::optional<uint16_t> {
+			auto gen = weak_gen.lock();
+			if (!gen) return std::nullopt;
+			return gen->GetFirstObservedSeq();
+		});
 		// Report frames the buffer gives up on so the owner can decide whether
 		// to ask the sender for a keyframe. The buffer is owned by this object,
 		// and _observer is only reset under the exclusive state lock, which the
@@ -798,6 +803,97 @@ bool RtpRtcp::OnDataReceivedFromNextNode(NodeType from_node, const std::shared_p
     return true;
 }
 
+// Push RTP packet to the list if it is not a padding-only packet
+static void PushPacketIfNeed(uint32_t track_id, std::vector<std::shared_ptr<RtpPacket>> &rtp_packets, const std::shared_ptr<RtpPacket> &rtp_packet)
+{
+	if (rtp_packet == nullptr)
+	{
+		return;
+	}
+
+	// Drop Padding-only RTP packet
+	if (rtp_packet->HasPadding() && rtp_packet->PayloadSize() == 0)
+	{
+		logtp("Drop padding-only RTP packet - track(%u) | %s", track_id, rtp_packet->Dump().CStr());
+		return;
+	}
+
+	rtp_packets.push_back(rtp_packet);
+}
+
+void RtpRtcp::DeliverFrames(uint32_t track_id, const std::shared_ptr<RtpFrameJitterBuffer> &jitter_buffer)
+{
+	std::lock_guard<std::mutex> deliver_lock(_deliver_lock);
+	while (true)
+	{
+		auto frame = jitter_buffer->PopAvailableFrame();
+		if (frame == nullptr || _observer == nullptr)
+		{
+			return;
+		}
+
+		std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
+		auto first_packet = frame->GetFirstRtpPacket();
+		if (first_packet == nullptr)
+		{
+			// can not happen
+			logtw("Could not get first rtp packet from jitter buffer - track(%u)", track_id);
+			return;
+		}
+		PushPacketIfNeed(track_id, rtp_packets, first_packet);
+		while (true)
+		{
+			auto next_packet = frame->GetNextRtpPacket();
+			if (next_packet == nullptr)
+			{
+				break;
+			}
+			PushPacketIfNeed(track_id, rtp_packets, next_packet);
+		}
+		if (rtp_packets.empty())
+		{
+			continue;
+		}
+		_observer->OnRtpFrameReceived(rtp_packets);
+	}
+}
+
+void RtpRtcp::TickOtherTracks(uint32_t arriving_track_id)
+{
+	auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	auto last_ms = _last_tick_ms.load(std::memory_order_relaxed);
+	if (now_ms - last_ms < NACK_COALESCE_MS || _last_tick_ms.compare_exchange_strong(last_ms, now_ms) == false)
+	{
+		return;
+	}
+
+	for (const auto &[track_id, generator] : _nack_generators)
+	{
+		if (track_id == arriving_track_id)
+		{
+			continue;
+		}
+		auto buf_it = _rtp_frame_jitter_buffers.find(track_id);
+		if (buf_it == _rtp_frame_jitter_buffers.end())
+		{
+			continue;
+		}
+		bool has_frames = buf_it->second->HasFrames();
+		if (generator->HasPending())
+		{
+			if (has_frames == false)
+			{
+				generator->DropPendingOlderThan(generator->GetHoldMs());
+			}
+			FlushNackIfDue(track_id, generator);
+		}
+		if (has_frames)
+		{
+			DeliverFrames(track_id, buf_it->second);
+		}
+	}
+}
+
 bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::Data> &data)
 {
 	auto packet = std::make_shared<RtpPacket>(data);
@@ -873,6 +969,7 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			FlushNackIfDue(track_id, nack_generator);
 		}
 	}
+	TickOtherTracks(track_id);
 
 	// Send ReceiverReport
 	if (stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS) && stat->IsSenderReportReceived() == true)
@@ -921,23 +1018,6 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			break;
 	}
 
-	// Lambda : Push RTP packet to the list if it is not a padding-only packet.
-	auto PushPacketIfNeed = [&](std::vector<std::shared_ptr<RtpPacket>> &rtp_packets, const std::shared_ptr<RtpPacket> &rtp_packet) {
-		if (rtp_packet == nullptr)
-		{
-			return;
-		}
-
-		// Drop Padding-only RTP packet
-		if (rtp_packet->HasPadding() && rtp_packet->PayloadSize() == 0)
-		{
-			logtp("Drop padding-only RTP packet - track(%u) | %s", track_id, rtp_packet->Dump().CStr());
-			return;
-		}
-
-		rtp_packets.push_back(rtp_packet);
-	};
-
 	if(jitter_buffer_kind == JitterBufferKind::Frame)
 	{
 		auto jitter_buffer = GetJitterBuffer(track_id);
@@ -980,39 +1060,7 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 			jitter_buffer->InsertPacket(packet);
 		}
 
-		auto frame = jitter_buffer->PopAvailableFrame();
-		if (frame != nullptr && _observer != nullptr)
-		{
-			std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
-
-			auto first_packet = frame->GetFirstRtpPacket();
-			if (first_packet == nullptr)
-			{
-				// can not happen
-				logtw("Could not get first rtp packet from jitter buffer - track(%u)", track_id);
-				return false;
-			}
-
-			PushPacketIfNeed(rtp_packets, first_packet);
-
-			while (true)
-			{
-				auto next_packet = frame->GetNextRtpPacket();
-				if (next_packet == nullptr)
-				{
-					break;
-				}
-
-				PushPacketIfNeed(rtp_packets, next_packet);
-			}
-
-			if (rtp_packets.empty())
-			{
-				return true;
-			}
-
-			_observer->OnRtpFrameReceived(rtp_packets);
-		}
+		DeliverFrames(track_id, jitter_buffer);
 	}
 	else if (jitter_buffer_kind == JitterBufferKind::Minimal)
 	{
@@ -1026,12 +1074,13 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 		jitter_buffer->InsertPacket(packet);
 
+		std::lock_guard<std::mutex> deliver_lock(_deliver_lock);
 		auto pop_packet = jitter_buffer->PopAvailablePacket();
 		if (pop_packet != nullptr)
 		{
 			std::vector<std::shared_ptr<RtpPacket>> rtp_packets;
 
-			PushPacketIfNeed(rtp_packets, pop_packet);
+			PushPacketIfNeed(track_id, rtp_packets, pop_packet);
 
 			if (rtp_packets.empty())
 			{

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <base/ovlibrary/ovlibrary.h>
+#include <atomic>
 #include <chrono>
 #include <map>
 #include <optional>
@@ -66,6 +67,14 @@ public:
 	// the hold its answer is not coming. Returns how many were dropped.
 	size_t DropPendingOlderThan(uint32_t age_ms);
 
+	// True while any seq is pending, readable without the lock so a session
+	// tick can skip idle tracks
+	bool HasPending() const { return _has_pending.load(std::memory_order_relaxed); }
+
+	// First seq this generator ever saw. Nothing before it can be detected
+	// or requested, so a frame that lost its start there is beyond repair.
+	std::optional<uint16_t> GetFirstObservedSeq() const;
+
 	// Lowest seq still pending NACK recovery, if any. The jitter buffer
 	// uses this to hold a complete frame whose first packet is newer than
 	// a pending recovery, so we don't emit out-of-order before NACK has a
@@ -85,13 +94,16 @@ private:
 	};
 
 	std::optional<uint32_t> ExtendSeq(uint16_t seq) const OV_REQUIRES(_lock);
+	void UpdatePendingFlag() OV_REQUIRES(_lock) { _has_pending.store(_pending.empty() == false, std::memory_order_relaxed); }
 	void LogPeriodicStats(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
 
 	uint32_t _track_id = 0;
 	uint32_t _media_ssrc = 0;
 	uint32_t _hold_ms = HOLD_MS_DEFAULT;
 
+	std::atomic<bool> _has_pending{false};
 	bool _initialized OV_GUARDED_BY(_lock) = false;
+	uint16_t _first_seq OV_GUARDED_BY(_lock) = 0;
 	uint32_t _newest_extended OV_GUARDED_BY(_lock) = 0;	// last seq seen in extended (uint32) form
 	uint32_t _expected_next OV_GUARDED_BY(_lock) = 0;	// next extended seq we expect
 
