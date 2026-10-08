@@ -217,17 +217,27 @@ bool RtpFrameBoundaryDetector::IsH264KeyframeStart(const uint8_t *payload, size_
 	}
 	if (nal_type == 24)
 	{
+		// Every element must fit, or a malformed aggregate could pass as a keyframe
 		size_t offset = 1;
-		while (offset + 2 < size)
+		bool found = false;
+		while (offset < size)
 		{
+			if (offset + 2 > size)
+			{
+				return false;
+			}
 			size_t nalu_size = (static_cast<size_t>(payload[offset]) << 8) | payload[offset + 1];
+			if (nalu_size == 0 || offset + 2 + nalu_size > size)
+			{
+				return false;
+			}
 			if (is_key_nal(payload[offset + 2] & 0x1F))
 			{
-				return true;
+				found = true;
 			}
 			offset += 2 + nalu_size;
 		}
-		return false;
+		return found;
 	}
 	if (nal_type == 28 && size >= 2)
 	{
@@ -255,17 +265,28 @@ bool RtpFrameBoundaryDetector::IsH265KeyframeStart(const uint8_t *payload, size_
 	}
 	if (nal_type == 48)
 	{
+		// Every element must fit and carry a two-byte NAL header, or a malformed
+		// aggregate could pass as a keyframe
 		size_t offset = 2;
-		while (offset + 2 < size)
+		bool found = false;
+		while (offset < size)
 		{
+			if (offset + 2 > size)
+			{
+				return false;
+			}
 			size_t nalu_size = (static_cast<size_t>(payload[offset]) << 8) | payload[offset + 1];
+			if (nalu_size < 2 || offset + 2 + nalu_size > size)
+			{
+				return false;
+			}
 			if (is_key_nal((payload[offset + 2] >> 1) & 0x3F))
 			{
-				return true;
+				found = true;
 			}
 			offset += 2 + nalu_size;
 		}
-		return false;
+		return found;
 	}
 	if (nal_type == 49 && size >= 3)
 	{

@@ -209,6 +209,23 @@ TEST(RtpFrameBoundaryDetector, H264StapAWithIdrIsKeyframeStart)
 	EXPECT_FALSE(q->IsKeyframe());
 }
 
+// A malformed aggregate (element longer than the payload, or empty) never
+// counts as a keyframe, even when the first bytes look like an IDR.
+TEST(RtpFrameBoundaryDetector, H264MalformedStapAIsNotKeyframe)
+{
+	auto truncated = MakePacket({0x18, 0x00, 0x10, 0x65});                 // declares 16 bytes, has 1
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*truncated, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(truncated->IsKeyframe());
+
+	auto empty = MakePacket({0x18, 0x00, 0x00, 0x00, 0x02, 0x65, 0x88});    // zero-length element before the IDR
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*empty, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(empty->IsKeyframe());
+
+	auto trailing = MakePacket({0x18, 0x00, 0x02, 0x65, 0x88, 0x00, 0x09, 0x41});   // IDR then a truncated element
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*trailing, cmn::MediaCodecId::H264, 0));
+	EXPECT_FALSE(trailing->IsKeyframe());
+}
+
 TEST(RtpFrameBoundaryDetector, H264EveryIdrFragmentIsMarkedKeyframe)
 {
 	auto start = MakePacket({0x7c, 0x85, 0x88});    // FU-A, S=1, type 5
@@ -245,6 +262,21 @@ TEST(RtpFrameBoundaryDetector, H265IrapIsKeyframeStart)
 	auto fu_mid = MakePacket({0x62, 0x01, 0x13});   // FU, S=0, FuType 19: still an IRAP fragment
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_mid, cmn::MediaCodecId::H265, 0));
 	EXPECT_TRUE(fu_mid->IsKeyframe());
+}
+
+TEST(RtpFrameBoundaryDetector, H265ApKeyframeNeedsWellFormedElements)
+{
+	auto ap = MakePacket({0x60, 0x01, 0x00, 0x03, 0x26, 0x01, 0xaf});       // AP: one IDR_W_RADL element of 3 bytes
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*ap, cmn::MediaCodecId::H265, 0));
+	EXPECT_TRUE(ap->IsKeyframe());
+
+	auto undersized = MakePacket({0x60, 0x01, 0x00, 0x01, 0x26});           // element of 1 byte, no NAL header
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*undersized, cmn::MediaCodecId::H265, 0));
+	EXPECT_FALSE(undersized->IsKeyframe());
+
+	auto truncated = MakePacket({0x60, 0x01, 0x00, 0x09, 0x26, 0x01});      // declares 9 bytes, has 2
+	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*truncated, cmn::MediaCodecId::H265, 0));
+	EXPECT_FALSE(truncated->IsKeyframe());
 }
 
 TEST(RtpFrameBoundaryDetector, Vp8KeyframeFromPBit)

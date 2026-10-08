@@ -823,7 +823,6 @@ static void PushPacketIfNeed(uint32_t track_id, std::vector<std::shared_ptr<RtpP
 
 void RtpRtcp::DeliverFrames(uint32_t track_id, const std::shared_ptr<RtpFrameJitterBuffer> &jitter_buffer)
 {
-	std::lock_guard<std::mutex> deliver_lock(_deliver_lock);
 	while (true)
 	{
 		auto frame = jitter_buffer->PopAvailableFrame();
@@ -955,6 +954,10 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 	stat->AddReceivedRtpPacket(packet);
 
+	// From here on the packet's NACK update, insertion and delivery, and the
+	// service of other tracks, run as one unit per session
+	ov::LockGuard<ov::Mutex> receive_lock(_receive_lock);
+
 	// Receive-side NACK: feed seq to per-track generator, then flush pending
 	// NACKs on a short coalescing window (every NACK_COALESCE_MS). Send is
 	// done on the socket thread so it shares a single writer with the
@@ -1074,7 +1077,6 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 
 		jitter_buffer->InsertPacket(packet);
 
-		std::lock_guard<std::mutex> deliver_lock(_deliver_lock);
 		auto pop_packet = jitter_buffer->PopAvailablePacket();
 		if (pop_packet != nullptr)
 		{
