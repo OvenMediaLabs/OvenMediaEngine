@@ -156,7 +156,6 @@ private:
 	void MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame) OV_REQUIRES(_lock);
 	void NotifyFrameDiscarded() OV_REQUIRES(_lock);
 	bool IsBeyondRepair(const RtpFrame &frame) OV_REQUIRES(_lock);
-	bool HasKeyframeInBuffer() OV_REQUIRES(_lock);
 	// Takes a frame out of the buffer (emitted or discarded) and returns the next iterator
 	FrameMap::iterator RemoveFrame(FrameMap::iterator it) OV_REQUIRES(_lock);
 	void EnforcePacketBudget() OV_REQUIRES(_lock);
@@ -182,6 +181,9 @@ private:
 	// timestamp : RtpFrameInfo (ordered, so std::map)
 	FrameMap _rtp_frames OV_GUARDED_BY(_lock);
 	size_t _packet_count OV_GUARDED_BY(_lock) = 0;
+	// Buffered frames carrying a keyframe mark, so a give-up answers
+	// "is a keyframe already here" without scanning the buffer
+	size_t _keyframe_count OV_GUARDED_BY(_lock) = 0;
 	std::atomic<bool> _has_frames{false};
 	bool _budget_warned OV_GUARDED_BY(_lock) = false;
 

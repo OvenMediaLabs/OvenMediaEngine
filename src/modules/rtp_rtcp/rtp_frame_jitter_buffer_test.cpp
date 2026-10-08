@@ -327,6 +327,37 @@ TEST(RtpFrameJitterBuffer, ReportTellsWhetherKeyframeIsArriving)
 	EXPECT_TRUE(*keyframe_arriving);
 }
 
+// The keyframe count behind the report counts a frame once however many of
+// its packets carry the mark, and drops again when the keyframe leaves.
+TEST(RtpFrameJitterBuffer, KeyframeCountFollowsFramesInAndOut)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 50u; });
+	std::optional<bool> keyframe_arriving;
+	buf.SetOnFrameDiscarded([&](bool arriving) { keyframe_arriving = arriving; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, false));                     // F1 start only
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	auto key_a = MakeStampedPacket(110, true, false, kTimestamp + 3000);       // F2 keyframe, two marked packets
+	key_a->SetKeyframe(true);
+	auto key_b = MakeStampedPacket(111, false, true, kTimestamp + 3000);
+	key_b->SetKeyframe(true);
+	buf.InsertPacket(key_a);
+	buf.InsertPacket(key_b);
+	ASSERT_TRUE(buf.HasAvailableFrame());                                      // F1 given up, F2 complete
+	ASSERT_TRUE(keyframe_arriving.has_value());
+	EXPECT_TRUE(*keyframe_arriving);
+	ASSERT_NE(buf.PopAvailableFrame(), nullptr);                               // the keyframe leaves
+
+	keyframe_arriving.reset();
+	buf.InsertPacket(MakeStampedPacket(120, true, false, kTimestamp + 6000));  // F3 start only
+	std::this_thread::sleep_for(std::chrono::milliseconds(90));
+	buf.InsertPacket(MakeStampedPacket(130, true, true, kTimestamp + 9000));   // F4 delta, complete
+	EXPECT_TRUE(buf.HasAvailableFrame());                                      // F3 given up, F4 flows
+	ASSERT_TRUE(keyframe_arriving.has_value());
+	EXPECT_FALSE(*keyframe_arriving);                                          // counted once, and gone
+}
+
 TEST(RtpFrameJitterBuffer, ReportSaysNoKeyframeWhenOnlyDeltaFramesFollow)
 {
 	RtpFrameJitterBuffer buf;

@@ -180,18 +180,6 @@ uint32_t RtpFrameJitterBuffer::CurrentHoldMs()
 	return _hold_ms_provider ? _hold_ms_provider() : 0;
 }
 
-bool RtpFrameJitterBuffer::HasKeyframeInBuffer()
-{
-	for (const auto &[timestamp, frame] : _rtp_frames)
-	{
-		if (frame->IsKeyframe())
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 bool RtpFrameJitterBuffer::IsBeyondRepair(const RtpFrame &frame)
 {
 	// Only the track's first frame can reach back before the first observed
@@ -213,7 +201,7 @@ void RtpFrameJitterBuffer::NotifyFrameDiscarded()
 {
 	if (_on_frame_discarded != nullptr)
 	{
-		_on_frame_discarded(HasKeyframeInBuffer());
+		_on_frame_discarded(_keyframe_count > 0);
 	}
 }
 
@@ -242,8 +230,13 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 	}
 
 	auto packets_before = frame->PacketCount();
+	bool keyframe_before = frame->IsKeyframe();
 	frame->InsertPacket(packet);
 	_packet_count += frame->PacketCount() - packets_before;
+	if (keyframe_before == false && frame->IsKeyframe())
+	{
+		_keyframe_count++;
+	}
 	_has_frames.store(true, std::memory_order_relaxed);
 	EnforcePacketBudget();
 	return true;
@@ -260,6 +253,10 @@ RtpFrameJitterBuffer::FrameMap::iterator RtpFrameJitterBuffer::RemoveFrame(Frame
 	auto frame = it->second;
 	MarkFrameProcessed(it->first, *frame);
 	_packet_count -= std::min(_packet_count, frame->PacketCount());
+	if (frame->IsKeyframe() && _keyframe_count > 0)
+	{
+		_keyframe_count--;
+	}
 	auto next = _rtp_frames.erase(it);
 	_has_frames.store(_rtp_frames.empty() == false, std::memory_order_relaxed);
 	return next;
