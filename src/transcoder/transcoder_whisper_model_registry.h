@@ -27,7 +27,8 @@ class WhisperModelRegistry : public ov::Singleton<WhisperModelRegistry>
 public:
 	// Eagerly load the given models. Optional — call at server start to preload.
 	// Each entry is a (resolved_path, device_ids) pair. The device list is
-	// accepted for configuration compatibility and is not used.
+	// accepted for configuration compatibility and is not used. Returns false
+	// when any of the models could not be loaded; the others stay loaded.
 	bool Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models);
 
 	// Release all loaded models. Called at server stop; loads in flight are
@@ -41,11 +42,16 @@ public:
 	// Hardware threads on this machine, never less than 1.
 	static int32_t GetHardwareThreads();
 
-	// Threads to give one STT track when <Threads> is omitted.
+	// Threads to give one STT track when <ThreadCount> is omitted.
 	static int32_t GetDefaultThreadCount();
 
-	// Threads an STT track should use for its next inference: its <Threads>
-	// request (0 = default) capped by an equal share of the budget among the
+	// A track's <ThreadCount> as an actual request: the value itself when it is
+	// positive, otherwise the default. The one place that decides what "unset"
+	// means, so the encoder and GetThreadShare() cannot disagree.
+	static int32_t ResolveRequestedThreads(int32_t configured_threads);
+
+	// Threads an STT track should use for its next inference: its request
+	// (resolved as above) capped by an equal share of the budget among the
 	// states currently alive, and never less than 1. Re-evaluated on every
 	// call so shares follow tracks as they start and stop.
 	int32_t GetThreadShare(int32_t requested_threads) const;

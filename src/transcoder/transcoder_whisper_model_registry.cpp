@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -43,7 +42,7 @@ namespace
 
 		std::string token;
 		in >> token;
-		if (token.empty())
+		if (token.empty() == true)
 		{
 			return false;
 		}
@@ -64,26 +63,25 @@ namespace
 	// and must not be mistaken for "unknown".
 	std::optional<size_t> GetHostAvailableMemoryBytes()
 	{
-		auto *fp = ::fopen("/proc/meminfo", "r");
-		if (fp != nullptr)
+		const std::string key = "MemAvailable:";
+		std::ifstream in("/proc/meminfo");
+		std::string line;
+		while (std::getline(in, line))
 		{
-			char line[256];
-			size_t available_kb = 0;
-			bool matched		= false;
-			while (::fgets(line, sizeof(line), fp) != nullptr)
+			if (line.compare(0, key.size(), key) != 0)
 			{
-				if (::sscanf(line, "MemAvailable: %zu kB", &available_kb) == 1)
-				{
-					matched = true;
-					break;
-				}
+				continue;
 			}
-			::fclose(fp);
 
-			if (matched)
+			// "MemAvailable:   12345678 kB"
+			const char *begin					  = line.c_str() + key.size();
+			char *end							  = nullptr;
+			const unsigned long long available_kb = ::strtoull(begin, &end, 10);
+			if (end != begin)
 			{
-				return available_kb * 1024;
+				return static_cast<size_t>(available_kb) * 1024;
 			}
+			break;
 		}
 
 		const long pages	 = ::sysconf(_SC_AVPHYS_PAGES);
@@ -155,7 +153,7 @@ namespace
 		while (true)
 		{
 			size_t limit = 0, usage = 0;
-			if (ReadSizeFile(base + path + "/" + limit_file, &limit) && ReadSizeFile(base + path + "/" + usage_file, &usage))
+			if ((ReadSizeFile(base + path + "/" + limit_file, &limit) == true) && (ReadSizeFile(base + path + "/" + usage_file, &usage) == true))
 			{
 				const bool unlimited = v1_sentinel && (limit >= (static_cast<size_t>(1) << 60));
 				if (unlimited == false)
@@ -164,7 +162,7 @@ namespace
 				}
 			}
 
-			if (path.empty())
+			if (path.empty() == true)
 			{
 				break;
 			}
@@ -222,17 +220,10 @@ namespace
 	// while the rest of the server is working.
 	size_t GetProcessRssBytes()
 	{
-		auto *fp = ::fopen("/proc/self/statm", "r");
-		if (fp == nullptr)
-		{
-			return 0;
-		}
-
+		std::ifstream in("/proc/self/statm");
 		size_t total_pages = 0, rss_pages = 0;
-		const int matched = ::fscanf(fp, "%zu %zu", &total_pages, &rss_pages);
-		::fclose(fp);
-
-		if (matched != 2)
+		in >> total_pages >> rss_pages;
+		if (in.fail() == true)
 		{
 			return 0;
 		}
@@ -316,12 +307,14 @@ void WhisperModelRegistry::SetMaxThreads(int32_t max_threads)
 	_max_threads.store(std::max(0, max_threads), std::memory_order_relaxed);
 }
 
+int32_t WhisperModelRegistry::ResolveRequestedThreads(int32_t configured_threads)
+{
+	return (configured_threads > 0) ? configured_threads : GetDefaultThreadCount();
+}
+
 int32_t WhisperModelRegistry::GetThreadShare(int32_t requested_threads) const
 {
-	if (requested_threads <= 0)
-	{
-		requested_threads = GetDefaultThreadCount();
-	}
+	requested_threads = ResolveRequestedThreads(requested_threads);
 
 	const int32_t max_threads = _max_threads.load(std::memory_order_relaxed);
 	const int32_t budget	  = (max_threads > 0) ? max_threads : GetHardwareThreads();
@@ -339,22 +332,24 @@ bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::
 	// fill in whatever remains. stat() each file once rather than per comparison.
 	std::vector<std::pair<size_t, ov::String>> sorted_models;
 	sorted_models.reserve(models.size());
-	for (const auto &[path, device_ids] : models)
+	for (const auto &entry : models)
 	{
-		(void)device_ids;
-		sorted_models.emplace_back(GetFileSizeBytes(path), path);
+		sorted_models.emplace_back(GetFileSizeBytes(entry.first), entry.first);
 	}
 	std::sort(sorted_models.begin(), sorted_models.end(), [](const auto &a, const auto &b) {
 		return a.first > b.first;  // descending
 	});
 
-	for (const auto &[size, path] : sorted_models)
+	bool all_loaded = true;
+	for (const auto &entry : sorted_models)
 	{
-		(void)size;
-		GetModelContext(path);
+		if (GetModelContext(entry.second) == nullptr)
+		{
+			all_loaded = false;
+		}
 	}
 
-	return true;
+	return all_loaded;
 }
 
 std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path, int32_t device_id)
@@ -380,7 +375,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov:
 		// Once Uninitialize() has begun, nothing may start a load: a retry
 		// after a failed load would otherwise slip in while the shutdown
 		// drains and publish into the cleared registry.
-		if (_shutting_down)
+		if (_shutting_down == true)
 		{
 			logtw("Not loading the Whisper model: the registry is shutting down. path=%s", model_path.CStr());
 			return nullptr;

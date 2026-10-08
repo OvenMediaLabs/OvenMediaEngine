@@ -150,7 +150,7 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
                     <SourceLanguage>auto</SourceLanguage>
                     <Translation>false</Translation>
                     <!-- Optional: CPU threads for this rendition -->
-                    <Threads>4</Threads>
+                    <ThreadCount>4</ThreadCount>
                     <!-- Optional: sliding-window tuning -->
                     <StepMs>2000</StepMs>
                     <LengthMs>10000</LengthMs>
@@ -173,7 +173,7 @@ Under `<OutputProfiles><MediaOptions><STT>`, add a `<Rendition>` for each audio-
 
 The `<STT><Rendition>` configuration includes the following options:
 
-<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only `whisper` is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is `0` (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in `&lt;Subtitles&gt;`) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., `ko`, `en`, `ja`). Set to `auto` to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to `true`, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is `2000`. Lower values reduce subtitle latency but increase CPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is `10000`. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is `1500`. Helps avoid cut-off words at window boundaries.</td></tr><tr><td>Threads</td><td>Upper bound on the CPU threads this rendition uses for inference. If omitted or `0`, a default derived from the number of hardware threads is used. The rendition actually gets this value or its equal share of `&lt;Modules&gt;&lt;Whisper&gt;&lt;MaxThreads&gt;` among the active STT tracks, whichever is smaller.</td></tr><tr><td>Modules</td><td>Deprecated. It used to select a GPU (e.g. `nv:0`). Whisper runs on the CPU, so the value is accepted for compatibility, ignored, and logged as a warning.</td></tr></tbody></table>
+<table><thead><tr><th width="192">Key</th><th>Description</th></tr></thead><tbody><tr><td>Engine</td><td>The STT engine to use. Currently, only `whisper` is supported.</td></tr><tr><td>Model</td><td>Path to the whisper.cpp model file. Can be absolute or relative to the configuration directory (where Server.xml is located).</td></tr><tr><td>InputAudioIndex</td><td>Index of the audio track in the input stream to transcribe. Default is `0` (first audio track).</td></tr><tr><td>OutputSubtitleLabel</td><td>Label of the subtitle rendition (defined in `&lt;Subtitles&gt;`) to write the transcription output to.</td></tr><tr><td>SourceLanguage</td><td>Language code of the input audio (ISO 639-1, e.g., `ko`, `en`, `ja`). Set to `auto` to enable automatic detection.</td></tr><tr><td>Translation</td><td>When set to `true`, translates the recognized text into English. Whisper currently supports translation to English only.</td></tr><tr><td>StepMs</td><td>How many milliseconds of new audio to collect before running each inference call. Default is `2000`. Lower values reduce subtitle latency but increase CPU load.</td></tr><tr><td>LengthMs</td><td>Total size of the audio window (in milliseconds) passed to Whisper per inference call. Default is `10000`. Larger windows give the model more context and improve accuracy.</td></tr><tr><td>KeepMs</td><td>Amount of audio (in milliseconds) carried over from the previous window after a context reset. Default is `1500`. Helps avoid cut-off words at window boundaries.</td></tr><tr><td>ThreadCount</td><td>Upper bound on the CPU threads this rendition uses for inference. If omitted or `0`, a default derived from the number of hardware threads is used. The rendition actually gets this value or its equal share of `&lt;Modules&gt;&lt;Whisper&gt;&lt;MaxThreads&gt;` among the active STT tracks, whichever is smaller.</td></tr><tr><td>Modules</td><td>Deprecated. It used to select a GPU (e.g. `nv:0`). Whisper runs on the CPU, so the value is accepted for compatibility, ignored, and logged as a warning.</td></tr></tbody></table>
 
 ### Model
 
@@ -217,13 +217,13 @@ server start by about a minute.
 Set `<Modules><Whisper><MaxThreads>` to the total you are willing to spend on transcription. Active
 STT tracks share that budget equally and the share is recomputed as tracks start and stop, so a
 track never keeps threads another one needs. Each track always gets at least one thread; a track
-that gets less than its `<Threads>` logs a warning.
+that gets less than its `<ThreadCount>` logs a warning.
 
 If a model turns out to be too large for the machine, OME logs:
 
 ```
 Whisper inference is slower than real time (2480 ms for a 2000 ms step) and subtitles will fall
-behind. Use a smaller model, raise <Threads>, or reduce the number of concurrent STT tracks.
+behind. Use a smaller model, raise <ThreadCount>, or reduce the number of concurrent STT tracks.
 ```
 
 Memory is checked before each model and each per-stream state is allocated — inside a container,

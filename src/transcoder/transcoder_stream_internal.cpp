@@ -433,7 +433,7 @@ std::shared_ptr<MediaTrack> TranscoderStreamInternal::CreateOutputTrack(const st
 	output_track->SetStepMs(profile.GetStepMs());
 	output_track->SetLengthMs(profile.GetLengthMs());
 	output_track->SetKeepMs(profile.GetKeepMs());
-	output_track->SetThreads(profile.GetThreads());
+	output_track->SetThreadCount(profile.GetThreadCount());
 	output_track->SetSttEnabled(profile.IsSttEnabled());
 
 	output_track->SetExtraInfo(ov::String::FormatString(

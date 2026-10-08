@@ -38,9 +38,10 @@ namespace cfg
 					int32_t _step_ms = 2000;
 					int32_t _length_ms = 10000;
 					int32_t _keep_ms = 1500;
-					// Number of CPU threads to use for inference on this rendition.
-					// 0 selects a default derived from the number of hardware threads.
-					int32_t _threads = 0;
+					// Number of CPU threads to use for inference on this rendition
+					// (same key as <Video><ThreadCount>). 0 selects a default derived
+					// from the number of hardware threads.
+					int32_t _thread_count = 0;
 					// Hardware module selection, e.g. "nv:0", "nv:1" (same format as
 					// <Video><Modules>). Whisper runs on the CPU, so this is accepted for
 					// configuration compatibility and ignored.
@@ -56,7 +57,7 @@ namespace cfg
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetStepMs, _step_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetLengthMs, _length_ms)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetKeepMs, _keep_ms)
-					CFG_DECLARE_CONST_REF_GETTER_OF(GetThreads, _threads)
+					CFG_DECLARE_CONST_REF_GETTER_OF(GetThreadCount, _thread_count)
 					CFG_DECLARE_CONST_REF_GETTER_OF(GetModules, _modules)
 
 				protected:
@@ -71,7 +72,7 @@ namespace cfg
 						Register<Optional>("StepMs", &_step_ms);
 						Register<Optional>("LengthMs", &_length_ms);
 						Register<Optional>("KeepMs", &_keep_ms);
-						Register<Optional>("Threads", &_threads);
+						Register<Optional>("ThreadCount", &_thread_count);
 						Register<Optional>("Modules", &_modules);
 					}
 				};

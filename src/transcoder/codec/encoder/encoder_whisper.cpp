@@ -123,7 +123,8 @@ bool EncoderWhisper::AllocWhisperState()
 		return false;
 	}
 
-	_n_threads = WhisperModelRegistry::GetInstance()->GetThreadShare(_track->GetThreads());
+	// Initial share for the log line below; recomputed before every window.
+	_n_threads			   = WhisperModelRegistry::GetInstance()->GetThreadShare(_track->GetThreadCount());
 	_state_marked_resident = false;
 
 	logti("Whisper state created. stream=%s, track_id=%d, label=%s, model=%s, threads=%d",
@@ -152,13 +153,9 @@ void EncoderWhisper::ThreadLoop()
 {
 	ov::logger::ThreadHelper thread_helper;
 
-	// Initialize the codec and notify the main thread. Initialize() may already
-	// have allocated the whisper_state, so release it here too rather than only
-	// at the bottom of this function, which this path never reaches.
+	// Initialize the codec and notify the main thread.
 	if (_codec_init_event.Submit(Initialize()) == false)
 	{
-		FreeWhisperState();
-		_whisper_ctx.reset();
 		return;
 	}
 
@@ -323,11 +320,11 @@ void EncoderWhisper::ThreadLoop()
 		int64_t buffer_start_cs = new_buffer_start_cs - (static_cast<double>(n_samples_old_keep) / WHISPER_SAMPLE_RATE * 100);
 		int64_t buffer_end_cs = new_buffer_end_cs;
 
-		// Threads for this window: the track's <Threads> request capped by an
-		// equal share of the server-wide budget. Re-read every window so the
+		// Threads for this window: the track's <ThreadCount> request capped by
+		// an equal share of the server-wide budget. Re-read every window so the
 		// share follows other STT tracks as they start and stop.
-		const int32_t requested_threads = (_track->GetThreads() > 0) ? _track->GetThreads() : WhisperModelRegistry::GetDefaultThreadCount();
-		_n_threads = WhisperModelRegistry::GetInstance()->GetThreadShare(_track->GetThreads());
+		const int32_t requested_threads = WhisperModelRegistry::ResolveRequestedThreads(_track->GetThreadCount());
+		_n_threads						= WhisperModelRegistry::GetInstance()->GetThreadShare(requested_threads);
 		if ((_n_threads < requested_threads) && _thread_share_warn_gate.TryConsume())
 		{
 			logtw("Whisper thread budget is shared by too many STT tracks: using %d of %d requested threads. Raise <MaxThreads> or run fewer STT tracks. stream=%s, track_id=%d, label=%s",
@@ -436,7 +433,7 @@ void EncoderWhisper::ThreadLoop()
 		if ((inference_ms > _step_ms) && _slow_inference_warn_gate.TryConsume())
 		{
 			logtw("Whisper inference is slower than real time (%" PRId64 " ms for a %d ms step) and subtitles will fall behind. "
-				  "Use a smaller model, raise <Threads>, or reduce the number of concurrent STT tracks. "
+				  "Use a smaller model, raise <ThreadCount>, or reduce the number of concurrent STT tracks. "
 				  "stream=%s, track_id=%d, label=%s, model=%s, threads=%d",
 				  inference_ms, _step_ms,
 				  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr(), _n_threads);

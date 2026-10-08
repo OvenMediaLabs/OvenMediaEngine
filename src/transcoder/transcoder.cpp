@@ -58,10 +58,11 @@ bool Transcoder::Start()
 			// Whisper runs on the CPU, so one context per model serves every STT
 			// track. <Devices> is still accepted so existing configurations keep
 			// loading, but it no longer selects anything.
-			if (entry.GetDevices().Trim().IsEmpty() == false)
+			const ov::String devices = entry.GetDevices().Trim();
+			if (devices.IsEmpty() == false)
 			{
 				logtw("Whisper preload: <Devices>%s</Devices> is ignored because Whisper runs on the CPU. path=%s",
-					  entry.GetDevices().Trim().CStr(), resolved.CStr());
+					  devices.CStr(), resolved.CStr());
 			}
 
 			preload_models.emplace_back(std::move(resolved), std::vector<int32_t>{});

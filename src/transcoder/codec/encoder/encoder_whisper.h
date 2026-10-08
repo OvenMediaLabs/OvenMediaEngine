@@ -110,20 +110,20 @@ private:
         // Per-instance inference state: isolates all mutable buffers from other instances.
         // Allocated lazily on enable, released on disable (see CodecThread).
         struct whisper_state * _whisper_state = nullptr;
-        // Compute device index. Whisper runs on the CPU, so this stays 0; it is kept
-        // so the registry call sites remain source-compatible.
-        int32_t _device_id = 0;
-        // Inference threads for the current window, re-read from the registry's
-        // thread budget before every inference.
-        int32_t _n_threads = 0;
-        // Set once the state's first inference has run and the registry has been
-        // told its buffers are resident (see WhisperModelRegistry::MarkStateResident).
-        bool _state_marked_resident = false;
-        // Throttles whisper_state allocation retries after a failure (e.g. OOM).
-        std::chrono::steady_clock::time_point _last_state_alloc_fail_ts;
-        // Throttle the two "this stream is struggling" warnings to once a minute.
-        ov::IntervalGate _slow_inference_warn_gate{60 * 1000};
-        ov::IntervalGate _thread_share_warn_gate{60 * 1000};
+	// Compute device index. Whisper runs on the CPU, so this stays 0; it is kept
+	// so the registry call sites remain source-compatible.
+	int32_t _device_id = 0;
+	// Inference threads for the current window, re-read from the registry's
+	// thread budget before every inference.
+	int32_t _n_threads = 0;
+	// Set once the state's first inference has run and the registry has been
+	// told its buffers are resident (see WhisperModelRegistry::MarkStateResident).
+	bool _state_marked_resident = false;
+	// Throttles whisper_state allocation retries after a failure (e.g. OOM).
+	std::chrono::steady_clock::time_point _last_state_alloc_fail_ts;
+	// Throttle the two "this stream is struggling" warnings to once a minute.
+	ov::IntervalGate _slow_inference_warn_gate{60 * 1000};
+	ov::IntervalGate _thread_share_warn_gate{60 * 1000};
 
         int32_t _n_samples_step = 0;
         int32_t _n_samples_length = 0;
