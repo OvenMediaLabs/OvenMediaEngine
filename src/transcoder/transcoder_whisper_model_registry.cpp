@@ -472,7 +472,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		auto warmup_state = whisper_init_state(ctx.get());
 		if (warmup_state == nullptr)
 		{
-			EndStateCostMeasurement();
+			EndStateCostMeasurement(nullptr);
 			logte("Failed to allocate the warmup state for the Whisper model. path=%s", path.CStr());
 			ctx.reset();
 			release_reservation();
@@ -491,8 +491,7 @@ std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::Strin
 		const int warmup_result		= whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
 
 		const size_t rss_after = GetProcessRssBytes();
-		EndStateCostMeasurement();
-		whisper_free_state(warmup_state);
+		EndStateCostMeasurement(warmup_state);
 
 		if (warmup_result != 0)
 		{
@@ -532,18 +531,26 @@ void WhisperModelRegistry::BeginStateCostMeasurement()
 	_measuring_state_cost = true;
 }
 
-void WhisperModelRegistry::EndStateCostMeasurement()
+void WhisperModelRegistry::EndStateCostMeasurement(whisper_state *warmup_state)
 {
-	// Under _mutex like DeleteState(), so whisper_free_state() never runs
-	// concurrently with whisper_init_state() on the same context.
+	// Under _mutex like NewState()/DeleteState(), so no whisper_init_state()
+	// or whisper_free_state() ever runs concurrently with another.
 	ov::LockGuard<ov::Mutex> lock(_mutex);
 	_measuring_state_cost = false;
 
+	if (warmup_state != nullptr)
+	{
+		whisper_free_state(warmup_state);
+	}
+
 	if (_deferred_state_frees.empty() == false)
 	{
-		for (auto *state : _deferred_state_frees)
+		for (const auto &entry : _deferred_state_frees)
 		{
-			whisper_free_state(state);
+			whisper_free_state(entry.first);
+			// The parked state's reservation is given back only now that its
+			// memory is really gone.
+			_pending_state_bytes = (_pending_state_bytes > entry.second) ? (_pending_state_bytes - entry.second) : 0;
 		}
 		logtd("Freed %zu Whisper state(s) whose release was deferred during a state cost measurement.", _deferred_state_frees.size());
 		_deferred_state_frees.clear();
@@ -570,9 +577,9 @@ void WhisperModelRegistry::Uninitialize()
 
 	// Every load has finished, so nothing is deferred any more; free whatever
 	// is left before the contexts the states belong to go away.
-	for (auto *state : _deferred_state_frees)
+	for (const auto &entry : _deferred_state_frees)
 	{
-		whisper_free_state(state);
+		whisper_free_state(entry.first);
 	}
 	_deferred_state_frees.clear();
 	_measuring_state_cost = false;
@@ -654,22 +661,27 @@ void WhisperModelRegistry::DeleteState(whisper_state *state)
 		return;
 	}
 
+	// A state that never ran an inference still holds an admission reservation
+	// (see NewState()); it goes back together with the memory itself.
+	size_t pending_bytes = 0;
+	auto pending_it		 = _pending_states.find(state);
+	if (pending_it != _pending_states.end())
+	{
+		pending_bytes = pending_it->second;
+		_pending_states.erase(pending_it);
+	}
+
 	if (_measuring_state_cost == true)
 	{
 		// A load is measuring a state's cost from the process RSS right now;
-		// freeing would shrink its delta. Park the free until it is done.
-		_deferred_state_frees.push_back(state);
+		// freeing would shrink its delta. Park the free, reservation included,
+		// until the measurement is done.
+		_deferred_state_frees.emplace_back(state, pending_bytes);
 	}
 	else
 	{
 		whisper_free_state(state);
-	}
-
-	auto pending_it = _pending_states.find(state);
-	if (pending_it != _pending_states.end())
-	{
-		_pending_state_bytes = (_pending_state_bytes > pending_it->second) ? (_pending_state_bytes - pending_it->second) : 0;
-		_pending_states.erase(pending_it);
+		_pending_state_bytes = (_pending_state_bytes > pending_bytes) ? (_pending_state_bytes - pending_bytes) : 0;
 	}
 
 	if (_live_states.fetch_sub(1, std::memory_order_relaxed) <= 0)

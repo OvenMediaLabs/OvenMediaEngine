@@ -115,13 +115,16 @@ private:
 	// True while LoadModel() measures a state's cost from the process RSS.
 	// DeleteState() parks its whisper_free_state() calls here meanwhile, so a
 	// free elsewhere cannot shrink the delta and undercount the cost; the load
-	// frees them once the measurement is over (a few seconds at most).
+	// frees them once the measurement is over (a few seconds at most). A parked
+	// state keeps its admission reservation (second) until it is really freed.
 	// Allocations elsewhere can only inflate the delta, which errs on the safe
 	// side.
 	bool _measuring_state_cost OV_GUARDED_BY(_mutex) = false;
-	std::vector<whisper_state *> _deferred_state_frees OV_GUARDED_BY(_mutex);
+	std::vector<std::pair<whisper_state *, size_t>> _deferred_state_frees OV_GUARDED_BY(_mutex);
 	void BeginStateCostMeasurement();
-	void EndStateCostMeasurement();
+	// Ends the measurement and frees the parked states plus <warmup_state>
+	// (may be null), all under _mutex like every other state alloc/free.
+	void EndStateCostMeasurement(whisper_state *warmup_state);
 
 	// Everything claimed but not yet visible to MemAvailable.
 	size_t ReservedBytesLocked() const OV_REQUIRES(_mutex)
