@@ -209,15 +209,15 @@ TEST(RtpFrameBoundaryDetector, H264StapAWithIdrIsKeyframeStart)
 	EXPECT_FALSE(q->IsKeyframe());
 }
 
-TEST(RtpFrameBoundaryDetector, H264FuAOnlyFirstIdrFragmentIsKeyframeStart)
+TEST(RtpFrameBoundaryDetector, H264EveryIdrFragmentIsMarkedKeyframe)
 {
 	auto start = MakePacket({0x7c, 0x85, 0x88});    // FU-A, S=1, type 5
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*start, cmn::MediaCodecId::H264, 0));
 	EXPECT_TRUE(start->IsKeyframe());
 
-	auto middle = MakePacket({0x7c, 0x05, 0x88});   // FU-A, S=0, type 5
+	auto middle = MakePacket({0x7c, 0x05, 0x88});   // FU-A, S=0, type 5: still an IDR fragment
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*middle, cmn::MediaCodecId::H264, 0));
-	EXPECT_FALSE(middle->IsKeyframe());
+	EXPECT_TRUE(middle->IsKeyframe());
 
 	auto delta = MakePacket({0x7c, 0x81, 0x88});    // FU-A, S=1, type 1
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*delta, cmn::MediaCodecId::H264, 0));
@@ -242,9 +242,9 @@ TEST(RtpFrameBoundaryDetector, H265IrapIsKeyframeStart)
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_start, cmn::MediaCodecId::H265, 0));
 	EXPECT_TRUE(fu_start->IsKeyframe());
 
-	auto fu_mid = MakePacket({0x62, 0x01, 0x13});   // FU, S=0, FuType 19
+	auto fu_mid = MakePacket({0x62, 0x01, 0x13});   // FU, S=0, FuType 19: still an IRAP fragment
 	ASSERT_TRUE(RtpFrameBoundaryDetector::Apply(*fu_mid, cmn::MediaCodecId::H265, 0));
-	EXPECT_FALSE(fu_mid->IsKeyframe());
+	EXPECT_TRUE(fu_mid->IsKeyframe());
 }
 
 TEST(RtpFrameBoundaryDetector, Vp8KeyframeFromPBit)
