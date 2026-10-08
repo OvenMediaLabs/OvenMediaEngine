@@ -1057,14 +1057,16 @@ namespace pvd
 			}
 		}
 
-		SendFrame(packet_to_send);
-
-		// The keyframe flag is only set downstream by the media router, so look at the bitstream here
+		// The keyframe flag is only set downstream by the media router, so look at the bitstream
+		// here. Done before SendFrame, after which the router worker owns the packet and may
+		// replace its data while normalizing
 		if (track->GetMediaType() == cmn::MediaType::Video && IsKeyframe(codec_id, media_packet->GetData()))
 		{
 			logtd("Keyframe received track(%u)", track_id);
 			_keyframe_request_gate.OnKeyframeReceived(track_id, std::chrono::steady_clock::now());
 		}
+
+		SendFrame(packet_to_send);
 
 		// Send FIR to reduce keyframe interval
 		// _fir_interval can be 0 to disable FIR sending. The default value is 3000 ms.
