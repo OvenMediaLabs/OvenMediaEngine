@@ -32,7 +32,11 @@ namespace pvd
 
 		std::shared_ptr<const SessionDescription> GetOfferSDP();
 		std::shared_ptr<SessionDescription> CreateAnswerSDP(const std::shared_ptr<const SessionDescription> &offer_sdp, const ov::String &local_ufrag, const std::set<IceCandidate> &ice_candidates);
-		
+
+		// Puts the start bitrate hint into a video payload's fmtp, replacing any value the
+		// other side offered. A libwebrtc publisher seeds its bandwidth estimate with it
+		static ov::String ApplyStartBitrateHint(const ov::String &fmtp, int kbps);
+
 	private:
 		std::shared_ptr<SessionDescription> CreateOfferSDP();
 
