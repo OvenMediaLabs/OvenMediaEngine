@@ -446,7 +446,8 @@ TEST(RtpFrameJitterBuffer, PacketBudgetReleasesHeadHeldForLowerPending)
 }
 
 // A frame that lost its start before the first seq the NACK generator saw
-// can never be repaired, so it is given up as soon as a later frame begins.
+// can never be repaired, so it is given up once the reorder dwell has passed,
+// but not before: a merely reordered start may still arrive within it.
 TEST(RtpFrameJitterBuffer, GivesUpFrameWhoseStartPrecedesTheStream)
 {
 	RtpFrameJitterBuffer buf;
@@ -456,11 +457,12 @@ TEST(RtpFrameJitterBuffer, GivesUpFrameWhoseStartPrecedesTheStream)
 	buf.SetOnFrameDiscarded([&](bool) { discards++; });
 
 	buf.InsertPacket(MakeStampedPacket(100, false, true));                    // F1: first seq of the stream, start missing
-	EXPECT_FALSE(buf.HasAvailableFrame());                                    // within the reorder dwell: not yet
+	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));  // F2 begins right away
+	EXPECT_FALSE(buf.HasAvailableFrame());                                    // within the reorder dwell F1 still waits
 	EXPECT_EQ(discards, 0);
 
-	buf.InsertPacket(MakeStampedPacket(110, true, true, kTimestamp + 3000));  // F2 begins
-	EXPECT_TRUE(buf.HasAvailableFrame());                                     // F1 given up at once, F2 flows
+	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::INITIAL_NACK_DWELL_MS + 10));
+	EXPECT_TRUE(buf.HasAvailableFrame());                                     // dwell over: F1 given up, F2 flows
 	EXPECT_EQ(discards, 1);
 }
 

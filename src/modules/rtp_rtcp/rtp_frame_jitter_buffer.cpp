@@ -358,10 +358,10 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		{
 			break;
 		}
-		// A frame whose lost start can never be requested is given up as soon
-		// as reordering is ruled out (the NACK reorder dwell has passed, or a
-		// later frame has begun); waiting out the hold would gain nothing
-		if (IsBeyondRepair(*frame) && (_rtp_frames.size() > 1 || frame->GetElapsed() > RtpNackGenerator::INITIAL_NACK_DWELL_MS))
+		// A frame whose lost start can never be requested is given up once the
+		// NACK reorder dwell has passed since its first packet, the same window
+		// a late start gets anywhere else; waiting out the hold would gain nothing
+		if (IsBeyondRepair(*frame) && frame->GetElapsed() > RtpNackGenerator::INITIAL_NACK_DWELL_MS)
 		{
 			logtd("Frame given up, its start was lost before the stream was observed - ts(%u) packets(%zu) min_recv_seq(%u) max_recv_seq(%u) elapsed(%llums)",
 				  frame->Timestamp(), frame->PacketCount(), frame->GetMinReceivedSeq(), frame->GetMaxReceivedSeq(),
