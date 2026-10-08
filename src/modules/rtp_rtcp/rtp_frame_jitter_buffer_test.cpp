@@ -362,6 +362,26 @@ TEST(RtpFrameJitterBuffer, PacketBudgetGivesUpNeverEndingHead)
 	EXPECT_TRUE(buf.HasAvailableFrame());
 }
 
+// A keyframe of several thousand packets (4K at 50 Mbps) is far inside the
+// budget and must be delivered whole.
+TEST(RtpFrameJitterBuffer, LargeFrameWithinBudgetIsDelivered)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 600u; });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	constexpr uint16_t kPackets = 4000;
+	for (uint16_t i = 0; i < kPackets; i++)
+	{
+		buf.InsertPacket(MakeStampedPacket(i, i == 0, i == kPackets - 1));
+	}
+	EXPECT_EQ(discards, 0);
+	auto frame = buf.PopAvailableFrame();
+	ASSERT_NE(frame, nullptr);
+	EXPECT_EQ(frame->PacketCount(), kPackets);
+}
+
 TEST(RtpFrameJitterBuffer, PacketBudgetReleasesFramesStuckBehindHead)
 {
 	RtpFrameJitterBuffer buf;
@@ -429,6 +449,26 @@ TEST(RtpFrameJitterBuffer, GivesUpUnrepairableFrameAfterReorderDwell)
 	EXPECT_FALSE(buf.HasAvailableFrame());                                    // nothing complete to emit
 	EXPECT_EQ(discards, 1);                                                   // but the hopeless frame is gone
 	EXPECT_TRUE(buf.IsEmpty());
+}
+
+// Past the first frame the shortcut must stay off: a start lost far along the
+// stream is requestable even though the 16-bit distance to the first seq wrapped.
+TEST(RtpFrameJitterBuffer, KeepsStartlessFrameBeyondHalfSequenceCycle)
+{
+	RtpFrameJitterBuffer buf;
+	buf.SetHoldMsProvider([] { return 10000u; });
+	buf.SetFirstObservedSeqProvider([] { return std::optional<uint16_t>(100); });
+	int discards = 0;
+	buf.SetOnFrameDiscarded([&](bool) { discards++; });
+
+	buf.InsertPacket(MakeStampedPacket(100, true, true));                     // first frame, complete
+	ASSERT_NE(buf.PopAvailableFrame(), nullptr);
+
+	buf.InsertPacket(MakeStampedPacket(40000, false, true, kTimestamp + 3000));   // start 39999 lost, seq distance wrapped
+	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::INITIAL_NACK_DWELL_MS + 10));
+	buf.InsertPacket(MakeStampedPacket(40010, true, true, kTimestamp + 6000));
+	EXPECT_FALSE(buf.HasAvailableFrame());                                    // the frame waits for NACK
+	EXPECT_EQ(discards, 0);
 }
 
 TEST(RtpFrameJitterBuffer, KeepsStartlessFrameWhoseGapIsRequestable)

@@ -10,10 +10,11 @@
 //     starts (IsStartOfUnit); the jitter buffer derives the frame start from
 //     the lowest one. End-of-frame defaults to the RTP marker bit.
 //
-//   - A frame's first packet is also stamped as a keyframe start (IsKeyframe)
-//     from the codec payload header, with or without DD: an IDR slice for
-//     H.264, an IRAP slice for H.265, the VP8 P bit, the AV1 N bit.
-//     Parameter sets alone do not count, they carry no picture.
+//   - Packets are also stamped as keyframe (IsKeyframe) from the codec payload
+//     header, with or without DD. For H.264/H.265 that is any packet carrying
+//     an IDR/IRAP NAL or the first fragment of one, so the mark survives a
+//     lost STAP-A start; for VP8 (P bit) and AV1 (N bit) only the frame's
+//     first packet carries it. Parameter sets alone do not count.
 //
 // Returns false when the packet cannot be parsed (e.g. truncated payload,
 // reserved/invalid nal type). The caller is expected to drop such packets.

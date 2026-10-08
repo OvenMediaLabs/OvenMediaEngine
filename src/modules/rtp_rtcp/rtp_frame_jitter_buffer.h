@@ -34,7 +34,9 @@ public:
 	uint32_t Timestamp() { return _timestamp; }
 	size_t PacketCount() { return _packets.size(); }
 	bool HasStart() const { return _has_start; }
-	// Known from the start packet's codec header; false when the start was lost
+	// Set once any packet carries a keyframe mark: for H.264/H.265 that is any
+	// packet with an IDR/IRAP NAL, so a lost STAP-A start does not hide it;
+	// for VP8/AV1 only the first packet carries it
 	bool IsKeyframe() const { return _is_keyframe; }
 	uint16_t GetMarkerSequenceNumber() const { return _end_seq; }
 	uint16_t GetFirstSequenceNumber() const { return _start_seq; }
@@ -80,10 +82,11 @@ private:
 class RtpFrameJitterBuffer
 {
 public:
-	// Resource bound against malformed input. A healthy stream never holds
-	// more than one frame plus a hold's worth of packets; this is libwebrtc's
-	// packet buffer size. Past it the incomplete head frame is given up.
-	static constexpr size_t MAX_PACKETS = 2048;
+	// Resource bound against malformed input: half the 16-bit sequence space,
+	// the most this buffer can keep in order at once (about 39 MB of RTP).
+	// Real frames stay far below it, a 4K keyframe at 50 Mbps is under 4000
+	// packets. Past it the incomplete head frame is given up.
+	static constexpr size_t MAX_PACKETS = 32767;
 
 	bool InsertPacket(const std::shared_ptr<RtpPacket> &packet);
 	bool IsEmpty();
@@ -120,7 +123,8 @@ public:
 	// Provider returning the first seq the NACK generator ever saw. A frame
 	// without its start whose packets begin at or before it can never be
 	// completed, since nothing earlier can be requested; it is given up once
-	// reordering is ruled out instead of waiting out the hold.
+	// reordering is ruled out instead of waiting out the hold. Only the
+	// track's first frame can be in that position.
 	void SetFirstObservedSeqProvider(std::function<std::optional<uint16_t>()> provider)
 	{
 		_first_observed_seq_provider = std::move(provider);

@@ -194,7 +194,9 @@ bool RtpFrameJitterBuffer::HasKeyframeInBuffer()
 
 bool RtpFrameJitterBuffer::IsBeyondRepair(const RtpFrame &frame)
 {
-	if (frame.HasStart() || frame.HasReceivedAny() == false || _first_observed_seq_provider == nullptr)
+	// Only the track's first frame can reach back before the first observed
+	// seq; once anything was processed the comparison would only wrap
+	if (_has_processed_timestamp || frame.HasStart() || frame.HasReceivedAny() == false || _first_observed_seq_provider == nullptr)
 	{
 		return false;
 	}
