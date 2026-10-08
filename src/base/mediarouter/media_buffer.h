@@ -49,13 +49,14 @@ public:
 	// The kept byte is there for the cross-check. Whether it also reaches the next hop is per field.
 	enum class WireField : uint8_t
 	{
-		// Does not reach the next hop. A packet whose type is `Unknown` matches no branch of the
-		// dispatch in `pub::ApplicationWorker::WorkerThread()` (`base/publisher/application.cpp:171`)
-		// and is dropped there without a log.
+		// Does not reach the next hop.
+		// The OVT provider drops a packet whose type differs from its registered track's, with a warning.
+		// On a track registered as `Unknown` the two agree, so the packet goes on to the publisher,
+		// where it matches no dispatch branch of `pub::ApplicationWorker::WorkerThread()` and is dropped without a log.
 		MediaType,
 		// Reaches the next hop. Nothing drops it, so `OvtPacketizer` writes the kept byte back out.
 		Flag,
-		// Does not reach the next hop, and is the only one of the four that is also logged,
+		// Does not reach the next hop, and is the only one of the four whose kept byte is logged,
 		// by `OvtStream::CheckWireFormat()` in the provider.
 		// MediaRouter refuses an inbound audio or video packet whose format is `Unknown`.
 		// A `Data` track returns before that check,

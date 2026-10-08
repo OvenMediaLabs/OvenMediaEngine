@@ -102,9 +102,8 @@ void OvtSession::SendTrackSnapshotIfStale()
 		return;
 	}
 
-	// An OVT1 edge reads neither the snapshot nor the OVT2 fields it carries.
-	// Its describe went out in the OVT2 form as well, and it ignored the keys it does not know,
-	// so there is nothing to catch it up with either way.
+	// An OVT1 edge is not caught up. A `v0.21.0` edge would apply the snapshot,
+	// but an older one ends the stream on any NOTIFY, and an OVT1 peer does not say which release it is.
 	if (_is_ovt2 == false)
 	{
 		_track_epoch_cursor.MarkSettled();
