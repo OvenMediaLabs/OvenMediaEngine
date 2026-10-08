@@ -107,41 +107,6 @@ namespace pvd
 			return true;
 		}
 
-		bool ParseItemFade(const Json::Value &item_object, Schedule::Item::Fade &fade, ov::String &error)
-		{
-			return ParseFadeMs(item_object, "fadeIn", fade._in_ms, error) &&
-				   ParseFadeMs(item_object, "fadeOut", fade._out_ms, error) &&
-				   ParseFadeColor(item_object, "fadeInColor", fade._in_color._text, error) &&
-				   ParseFadeColor(item_object, "fadeOutColor", fade._out_color._text, error);
-		}
-
-		Schedule::Item::Fade ParseItemFade(const pugi::xml_node &item_node)
-		{
-			Schedule::Item::Fade fade;
-
-			if (auto attribute = item_node.attribute("fadeIn"))
-			{
-				fade._in_ms = attribute.as_llong();
-			}
-
-			if (auto attribute = item_node.attribute("fadeOut"))
-			{
-				fade._out_ms = attribute.as_llong();
-			}
-
-			if (auto attribute = item_node.attribute("fadeInColor"))
-			{
-				fade._in_color._text = attribute.as_string();
-			}
-
-			if (auto attribute = item_node.attribute("fadeOutColor"))
-			{
-				fade._out_color._text = attribute.as_string();
-			}
-
-			return fade;
-		}
-
 		// "black" (default) or "white"; anything else is an error, not black.
 		bool ResolveFadeColor(Schedule::Item::Fade::Color &color, const char *name, ov::String &error)
 		{
@@ -192,6 +157,39 @@ namespace pvd
 			return true;
 		}
 	}  // namespace
+
+	bool Schedule::ReadItemFadeObject(const Json::Value &item_object, Item::Fade &fade)
+	{
+		return ParseFadeMs(item_object, "fadeIn", fade._in_ms, _last_error) &&
+			   ParseFadeMs(item_object, "fadeOut", fade._out_ms, _last_error) &&
+			   ParseFadeColor(item_object, "fadeInColor", fade._in_color._text, _last_error) &&
+			   ParseFadeColor(item_object, "fadeOutColor", fade._out_color._text, _last_error);
+	}
+
+	bool Schedule::ReadItemFadeNode(const pugi::xml_node &item_node, Item::Fade &fade)
+	{
+		if (auto attribute = item_node.attribute("fadeIn"))
+		{
+			fade._in_ms = attribute.as_llong();
+		}
+
+		if (auto attribute = item_node.attribute("fadeOut"))
+		{
+			fade._out_ms = attribute.as_llong();
+		}
+
+		if (auto attribute = item_node.attribute("fadeInColor"))
+		{
+			fade._in_color._text = attribute.as_string();
+		}
+
+		if (auto attribute = item_node.attribute("fadeOutColor"))
+		{
+			fade._out_color._text = attribute.as_string();
+		}
+
+		return true;
+	}
 
 	std::shared_ptr<AVFormatContext> Schedule::Item::LoadContext()
 	{
@@ -834,8 +832,8 @@ namespace pvd
 			}
 
 			// Fade
-			Schedule::Item::Fade fade;
-			if ((ParseItemFade(item_object, fade, _last_error) == false) ||
+			Item::Fade fade;
+			if ((ReadItemFadeObject(item_object, fade) == false) ||
 				(SetItemFade(item, fade, _last_error) == false))
 			{
 				return false;
@@ -1136,7 +1134,9 @@ namespace pvd
 			}
 
 			// Fade
-			if (SetItemFade(item, ParseItemFade(item_node), _last_error) == false)
+			Item::Fade fade;
+			if ((ReadItemFadeNode(item_node, fade) == false) ||
+				(SetItemFade(item, fade, _last_error) == false))
 			{
 				return false;
 			}

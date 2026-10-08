@@ -265,6 +265,7 @@ namespace pvd
 		bool ReadFallbackProgramNode(const pugi::xml_node &schedule_node);
 		bool ReadProgramNodes(const pugi::xml_node &schedule_node);
 		bool ReadItemNodes(const pugi::xml_node &item_parent_node, std::vector<std::shared_ptr<Item>> &items);
+		bool ReadItemFadeNode(const pugi::xml_node &item_node, Item::Fade &fade);
 
 		bool WriteItemNodes(const std::vector<std::shared_ptr<Item>> &items, pugi::xml_node &item_parent_node) const;
 		bool WriteItemObjects(const std::vector<std::shared_ptr<Item>> &items, Json::Value &item_parent_object) const;
@@ -273,6 +274,7 @@ namespace pvd
 		bool ReadFallbackProgramObject(const Json::Value &root_object);
 		bool ReadProgramObjects(const Json::Value &root_object);
 		bool ReadItemObjects(const Json::Value &item_parent_object, std::vector<std::shared_ptr<Item>> &items);
+		bool ReadItemFadeObject(const Json::Value &item_object, Item::Fade &fade);
 
 			Stream MakeStream(const ov::String &name, bool bypass_transcoder, bool video_track, bool audio_track) const;
 		std::shared_ptr<Program> MakeFallbackProgram() const;
