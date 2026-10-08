@@ -142,18 +142,18 @@ namespace pvd
 			return fade;
 		}
 
-		// "black" (default), "white", #000000 or #ffffff; anything else is an error, not black.
+		// "black" (default) or "white"; anything else is an error, not black.
 		bool ResolveFadeColor(Schedule::Item::Fade::Color &color, const char *name, ov::String &error)
 		{
 			auto value = color._text.Trim().LowerCaseString();
 
-			if ((value.IsEmpty() == true) || (value == "black") || (value == "#000000"))
+			if ((value.IsEmpty() == true) || (value == "black"))
 			{
 				color._white = false;
 				return true;
 			}
 
-			if ((value == "white") || (value == "#ffffff"))
+			if (value == "white")
 			{
 				color._white = true;
 				return true;
