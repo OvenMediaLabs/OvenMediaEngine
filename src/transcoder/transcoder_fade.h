@@ -8,12 +8,6 @@
 //==============================================================================
 #pragma once
 
-#include <stdint.h>
-
-#include <memory>
-
-#include "media_frame.h"
-
 class TranscoderFade
 {
 public:

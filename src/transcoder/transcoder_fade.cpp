@@ -9,8 +9,6 @@
 
 #include "transcoder_fade.h"
 
-#include "transcoder_private.h"
-
 TranscoderFade::TranscoderFade()
 {
 }
