@@ -101,6 +101,7 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
         <Enable>true</Enable>
         <MaxHoldMs>600</MaxHoldMs>
     </Rtx>
+    <StartBitrateHint>1000</StartBitrateHint>
     <CrossDomains>
         <Url>*</Url>
     </CrossDomains>
@@ -113,6 +114,7 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
 | `FIRInterval` | Interval (ms) for sending a Full Intra Request (FIR) to force IDR frame generation. Set to `0` to disable. |
 | `RtcpBasedTimestamp` | `false` (default): each track's RTP timestamp starts from zero independently, no waiting for RTCP SR. `true`: RTCP Sender Reports synchronize A/V timestamps on a common clock. Use `true` only when the sender reliably sends RTCP SR; otherwise stream start may be delayed up to 5 seconds. |
 | `Rtx` | NACK + RTX retransmission for video. See [NACK + RTX](#nack--rtx) below. |
+| `StartBitrateHint` | Put into the SDP that OvenMediaEngine sends as `x-google-start-bitrate`, on every video codec. A WebRTC sender that supports this parameter starts its bandwidth estimation from this value (kbps) instead of its own built-in start rate. Default `1000`. Set `0` to leave it out of the SDP. |
 | `CrossDomains` | Allowed domains for signaling requests (CORS). |
 
 #### NACK + RTX

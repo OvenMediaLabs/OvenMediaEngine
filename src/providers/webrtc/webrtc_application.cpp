@@ -199,6 +199,25 @@ namespace pvd
 		return offer_sdp;
 	}
 
+	ov::String WebRTCApplication::ApplyStartBitrateHint(const ov::String &fmtp, int kbps)
+	{
+		static const char *START_BITRATE_KEY = "x-google-start-bitrate=";
+
+		std::vector<ov::String> params;
+		for (const auto &param : fmtp.Split(";"))
+		{
+			auto trimmed = param.Trim();
+			if (trimmed.IsEmpty() || trimmed.HasPrefix(START_BITRATE_KEY))
+			{
+				continue;
+			}
+			params.push_back(trimmed);
+		}
+		params.push_back(ov::String::FormatString("%s%d", START_BITRATE_KEY, kbps));
+
+		return ov::String::Join(params, ';');
+	}
+
 	std::shared_ptr<SessionDescription> WebRTCApplication::CreateAnswerSDP(const std::shared_ptr<const SessionDescription> &offer_sdp, const ov::String &local_ufrag, const std::set<IceCandidate> &ice_candidates)
 	{
 		if(offer_sdp == nullptr)
@@ -207,6 +226,7 @@ namespace pvd
 		}
 
 		bool rtx_enabled = GetConfig().GetProviders().GetWebrtcProvider().GetRtx().IsEnabled();
+		int start_bitrate_kbps = GetConfig().GetProviders().GetWebrtcProvider().GetStartBitrateHint();
 
 		auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
 		answer_sdp->SetOrigin("OvenMediaEngine", ov::Random::GenerateUInt32(), 2, "IN", 4, "127.0.0.1");
@@ -397,6 +417,14 @@ namespace pvd
 				auto answer_payload = std::make_shared<PayloadAttr>();
 				answer_payload->SetRtpmap(offer_payload->GetId(), offer_payload->GetCodecStr(), offer_payload->GetCodecRate(), offer_payload->GetCodecParams());
 				answer_payload->SetFmtp(offer_payload->GetFmtp());
+
+				// The publisher reads the start bitrate hint from this answer
+				if (start_bitrate_kbps > 0 &&
+					offer_media_desc->GetMediaType() == MediaDescription::MediaType::Video &&
+					offer_payload->GetCodec() != PayloadAttr::SupportCodec::RTX)
+				{
+					answer_payload->SetFmtp(ApplyStartBitrateHint(answer_payload->GetFmtp(), start_bitrate_kbps));
+				}
 
 				// rtcp-fb
 
