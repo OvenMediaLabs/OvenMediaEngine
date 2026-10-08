@@ -29,6 +29,9 @@ class RtpRtcpInterface : public ov::EnableSharedFromThis<RtpRtcpInterface>
 public:
 	virtual void OnRtpFrameReceived(const std::vector<std::shared_ptr<RtpPacket>> &rtp_packets) = 0;
 	virtual void OnRtcpReceived(const std::shared_ptr<RtcpInfo> &rtcp_info) = 0;
+	// The receive jitter buffer gave up on a video frame of the track.
+	// keyframe_arriving: a keyframe is already waiting in the buffer behind it
+	virtual void OnRtpFrameDiscarded(uint32_t track_id, bool keyframe_arriving) {}
 };
 
 class RtpRtcp : public ov::Node
@@ -77,8 +80,8 @@ public:
 
 	// Enable receive-side NACK for the given track. Creates a per-track
 	// RtpNackGenerator that observes incoming sequence numbers and drives
-	// outbound NACK feedback. max_hold_ms is the upper bound for the
-	// jitter buffer hold time recommendation (operator-tunable latency budget).
+	// outbound NACK feedback. max_hold_ms is how long the jitter buffer holds
+	// an incomplete frame for retransmissions (the operator's MaxHoldMs).
 	bool EnableNack(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms);
 
 	// Register an RTX stream so that RTP packets arriving on rtx_ssrc with
@@ -132,6 +135,14 @@ private:
 	enum class RtxResult { NotRtx, Unwrapped, Drop };
 	RtxResult TryUnwrapRtx(std::shared_ptr<RtpPacket> &packet);
 
+	// Pops every frame the buffer has ready and hands it to the observer
+	void DeliverFrames(uint32_t track_id, const std::shared_ptr<RtpFrameJitterBuffer> &jitter_buffer) OV_REQUIRES(_receive_lock);
+	// Any packet of the session drives the NACK retries and the frame hold of
+	// every other NACK-enabled track, so a sparse or paused track is serviced
+	// without a timer. Runs at most once per NACK coalescing window and only
+	// touches tracks that have pending work.
+	void TickOtherTracks(uint32_t arriving_track_id) OV_REQUIRES(_receive_lock);
+
 	std::shared_ptr<RtpFrameJitterBuffer> GetJitterBuffer(uint32_t track_id);
 	std::shared_ptr<RtpMinimalJitterBuffer> GetMinimalJitterBuffer(uint32_t track_id);
 	std::shared_ptr<MediaTrack> GetTrack(uint32_t track_id) const;
@@ -160,6 +171,12 @@ private:
 
 	// Lifecycle gate: data path (send/receive) takes it shared, Stop/setup exclusive
 	std::shared_mutex _state_lock;
+	// Serializes a packet's receive processing per session from the NACK update
+	// through frame delivery, including the service of other tracks, so two
+	// receive threads (ICE candidate switch) cannot interleave one track's frames
+	// or pop a frame between a retransmission's NACK clear and its insertion
+	ov::Mutex _receive_lock;
+	std::atomic<int64_t> _last_tick_ms{0};
 	std::shared_ptr<RtpRtcpInterface> _observer;
 
 	// _rtcp_send_state_lock guards the send-side RTCP state below

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <base/ovlibrary/ovlibrary.h>
+#include <atomic>
 #include <chrono>
 #include <map>
 #include <optional>
@@ -8,47 +9,40 @@
 
 // Per-track receive-side NACK generator (RFC 4585 Generic NACK).
 //
-// Watches incoming RTP sequence numbers for one SSRC, builds the list of
-// seqs that should be NACK'd next, and tracks NACK->RTX round-trip latency
-// to recommend a jitter-buffer hold window.
+// Watches incoming RTP sequence numbers for one SSRC and builds the list of
+// seqs that should be NACK'd next. A missing seq is re-requested once
+// RETRY_INTERVAL_MS has passed, for as long as the jitter buffer holds its
+// frame. The sender paces its own retransmissions per round trip, so the
+// receiver does not need to know the RTT.
 //
 // Caller (RtpRtcp) drives:
 //   - OnPacketReceived(seq) for every incoming RTP packet of the SSRC,
 //     including original payload and RTX-unwrapped packets.
-//   - BuildPendingNack() on a short cadence (e.g. 10ms tick) and sends
-//     the returned list as one RTCP NACK FCI chain.
+//   - BuildPendingNack() on each incoming packet (coalesced to a short
+//     window) and sends the returned list as one RTCP NACK FCI chain. There
+//     is no timer, so retries are only sent while packets keep arriving.
 class RtpNackGenerator
 {
 public:
 	static constexpr size_t MAX_PENDING		= 250;
-	// Absolute safety cap when the jitter buffer never advances past a seq
-	// (e.g. very first packet of a stream lost before any frame is built).
-	// In the normal path, the jitter buffer's DropPendingUpTo callback ends
-	// pending entries far sooner than this.
-	static constexpr uint32_t MAX_AGE_MS	= 500;
-	// Number of NACK retries the hold window must accommodate. The hold
-	// formula reserves room for this many retry intervals plus one final
-	// RTT for the last RTX response. 5 is conservative against burst loss
-	// where independent-probability math doesn't apply.
-	static constexpr uint32_t MAX_NACK_RETRIES = 5;
 	// Dwell time between gap detection and the initial NACK firing.
 	// Absorbs small UDP reordering so that brief out-of-order delivery
 	// (seq 102 before 101) doesn't trigger a spurious NACK + RTX round-trip.
 	static constexpr uint32_t INITIAL_NACK_DWELL_MS = 10;
-
-	static constexpr uint32_t HOLD_MIN_MS		= 50;
-	static constexpr uint32_t HOLD_MAX_MS_DEFAULT = 400;
-	// Initial RTT guess used as both the seed for the retry interval and
-	// the substitute EWMA value while no NACK->RTX sample has been recorded
-	// (or after long stats decay). Real value lands within a few hundred ms.
-	static constexpr double INITIAL_RTT_GUESS_MS = 15.0;
-	static constexpr double EWMA_ALPHA			= 0.125;
-	static constexpr double EWMA_DEV_ALPHA		= 0.25;
-	static constexpr double EWMA_DEV_MULTIPLIER	= 4.0;
-	static constexpr uint32_t STATS_DECAY_MS	= 30 * 1000;
+	// Minimum spacing between requests for a seq still missing. Senders answer
+	// a given seq at most once per round trip, so asking more often than the
+	// RTT only costs a small RTCP packet, while asking less often delays the
+	// next attempt when a request or its answer was lost.
+	static constexpr uint32_t RETRY_INTERVAL_MS = 100;
+	// How long the jitter buffer holds an incomplete frame for retransmissions
+	// before discarding it (MaxHoldMs). Bounds the one-off stall when a frame
+	// never recovers. Since a sender answers a seq once per round trip, 600
+	// leaves room for about six answered attempts at a 60ms round trip and
+	// two at 250ms.
+	static constexpr uint32_t HOLD_MS_DEFAULT = 600;
 	static constexpr uint32_t STATS_LOG_INTERVAL_MS = 5 * 1000;
 
-	RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t max_hold_ms = HOLD_MAX_MS_DEFAULT);
+	RtpNackGenerator(uint32_t track_id, uint32_t media_ssrc, uint32_t hold_ms = HOLD_MS_DEFAULT);
 
 	uint32_t GetMediaSsrc() const { return _media_ssrc; }
 
@@ -62,9 +56,24 @@ public:
 	std::vector<uint16_t> BuildPendingNack();
 
 	// Drop pending entries whose seq <= max_seq (wrap-safe). Called by the
-	// jitter buffer when it advances past a frame so we stop chasing seqs
-	// the consumer no longer wants.
+	// jitter buffer whenever it emits or discards a frame, so we stop chasing
+	// seqs the consumer no longer wants. There is no time limit while a frame
+	// is waiting, because a seq may legitimately wait behind a head frame
+	// that is still arriving.
 	void DropPendingUpTo(uint16_t max_seq);
+
+	// Drop pending entries older than age_ms. Called when the jitter buffer
+	// holds no frame at all: nothing can still use such an entry, and after
+	// the hold its answer is not coming. Returns how many were dropped.
+	size_t DropPendingOlderThan(uint32_t age_ms);
+
+	// True while any seq is pending, readable without the lock so a session
+	// tick can skip idle tracks
+	bool HasPending() const { return _has_pending.load(std::memory_order_relaxed); }
+
+	// First seq this generator ever saw. Nothing before it can be detected
+	// or requested, so a frame that lost its start there is beyond repair.
+	std::optional<uint16_t> GetFirstObservedSeq() const;
 
 	// Lowest seq still pending NACK recovery, if any. The jitter buffer
 	// uses this to hold a complete frame whose first packet is newer than
@@ -72,13 +81,8 @@ public:
 	// chance.
 	std::optional<uint16_t> GetLowestPendingSeq() const;
 
-	// Jitter-buffer hold window recommendation in ms.
-	//   hold = dwell + MAX_NACK_RETRIES * ewma + 4 * dev
-	// clamped to [HOLD_MIN_MS, max_hold_ms]. Each round (NACK + RTX answer)
-	// takes one ewma, so N rounds complete in N * ewma. Before the first
-	// NACK->RTX sample (or after STATS_DECAY_MS of no new sample), ewma
-	// falls back to INITIAL_RTT_GUESS_MS and dev to 0.
-	uint32_t GetRecommendedHoldMs() const;
+	// Jitter-buffer hold window in ms: the configured MaxHoldMs.
+	uint32_t GetHoldMs() const { return _hold_ms; }
 
 private:
 	struct PendingEntry
@@ -90,30 +94,20 @@ private:
 	};
 
 	std::optional<uint32_t> ExtendSeq(uint16_t seq) const OV_REQUIRES(_lock);
-	void UpdateLatencyStats(double sample_ms, std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
-	void DiscardStale(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
+	void UpdatePendingFlag() OV_REQUIRES(_lock) { _has_pending.store(_pending.empty() == false, std::memory_order_relaxed); }
 	void LogPeriodicStats(std::chrono::steady_clock::time_point now) OV_REQUIRES(_lock);
-	// Hold recommendation core; assumes _lock is already held.
-	uint32_t GetRecommendedHoldMsInternal() const OV_REQUIRES(_lock);
 
 	uint32_t _track_id = 0;
 	uint32_t _media_ssrc = 0;
-	uint32_t _hold_max_ms = HOLD_MAX_MS_DEFAULT;
+	uint32_t _hold_ms = HOLD_MS_DEFAULT;
 
+	std::atomic<bool> _has_pending{false};
 	bool _initialized OV_GUARDED_BY(_lock) = false;
+	uint16_t _first_seq OV_GUARDED_BY(_lock) = 0;
 	uint32_t _newest_extended OV_GUARDED_BY(_lock) = 0;	// last seq seen in extended (uint32) form
 	uint32_t _expected_next OV_GUARDED_BY(_lock) = 0;	// next extended seq we expect
 
 	std::map<uint32_t /*extended seq*/, PendingEntry> _pending OV_GUARDED_BY(_lock);
-
-	// NACK->RTX latency stats (smoothed mean + mean-deviation, milliseconds).
-	// _ewma_ms doubles as the NACK retry interval. Seeded with the same
-	// initial RTT guess that GetRecommendedHoldMs falls back to, so retry
-	// timing and hold timing agree before the first sample lands.
-	bool _stats_initialized OV_GUARDED_BY(_lock) = false;
-	double _ewma_ms OV_GUARDED_BY(_lock) = INITIAL_RTT_GUESS_MS;
-	double _ewma_dev_ms OV_GUARDED_BY(_lock) = 0.0;
-	std::chrono::steady_clock::time_point _last_sample_at OV_GUARDED_BY(_lock);
 
 	// Cumulative monitoring counters. Logged every STATS_LOG_INTERVAL_MS as
 	// deltas (loss / recovery snapshot) and as cumulative totals.

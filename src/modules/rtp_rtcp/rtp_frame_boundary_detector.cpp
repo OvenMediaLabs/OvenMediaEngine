@@ -26,6 +26,9 @@ bool RtpFrameBoundaryDetector::Apply(RtpPacket &packet, cmn::MediaCodecId codec,
 	packet.SetFirstPacketOfFrame(false);
 	packet.SetStartOfUnit(false);
 	packet.SetLastPacketOfFrame(packet.Marker());
+	// The frame type comes from the codec payload either way; the DD parse
+	// does not decode the dependency templates
+	packet.SetKeyframe(IsKeyframeStart(packet, codec));
 
 	if (dd_extension_id != 0 && TryDependencyDescriptor(packet, dd_extension_id))
 	{
@@ -173,4 +176,172 @@ bool RtpFrameBoundaryDetector::ApplyAv1(RtpPacket &packet)
 	uint8_t agg = payload[0];
 	packet.SetStartOfUnit((agg & 0x80) == 0);
 	return true;
+}
+
+bool RtpFrameBoundaryDetector::IsKeyframeStart(const RtpPacket &packet, cmn::MediaCodecId codec)
+{
+	auto payload = packet.Payload();
+	auto size = packet.PayloadSize();
+	if (payload == nullptr || size < 1)
+	{
+		return false;
+	}
+
+	switch (codec)
+	{
+		case cmn::MediaCodecId::H264:
+			return IsH264KeyframeStart(payload, size);
+		case cmn::MediaCodecId::H265:
+			return IsH265KeyframeStart(payload, size);
+		case cmn::MediaCodecId::Vp8:
+			return IsVp8KeyframeStart(payload, size);
+		case cmn::MediaCodecId::Av1:
+			return IsAv1KeyframeStart(payload);
+		default:
+			return false;
+	}
+}
+
+// H.264: an IDR slice (5) as a single NAL, inside a STAP-A, or any fragment
+// of an FU-A carrying it, so the mark survives a lost first fragment
+bool RtpFrameBoundaryDetector::IsH264KeyframeStart(const uint8_t *payload, size_t size)
+{
+	auto is_key_nal = [](uint8_t nal_type) {
+		return nal_type == 5;
+	};
+
+	uint8_t nal_type = payload[0] & 0x1F;
+	if (nal_type >= 1 && nal_type <= 23)
+	{
+		return is_key_nal(nal_type);
+	}
+	if (nal_type == 24)
+	{
+		// Every element must fit, or a malformed aggregate could pass as a keyframe
+		size_t offset = 1;
+		bool found = false;
+		while (offset < size)
+		{
+			if (offset + 2 > size)
+			{
+				return false;
+			}
+			size_t nalu_size = (static_cast<size_t>(payload[offset]) << 8) | payload[offset + 1];
+			if (nalu_size == 0 || offset + 2 + nalu_size > size)
+			{
+				return false;
+			}
+			if (is_key_nal(payload[offset + 2] & 0x1F))
+			{
+				found = true;
+			}
+			offset += 2 + nalu_size;
+		}
+		return found;
+	}
+	if (nal_type == 28 && size >= 2)
+	{
+		return is_key_nal(payload[1] & 0x1F);
+	}
+	return false;
+}
+
+// H.265: an IRAP slice (16..21) as a single NAL, inside an AP, or any
+// fragment of an FU carrying it
+bool RtpFrameBoundaryDetector::IsH265KeyframeStart(const uint8_t *payload, size_t size)
+{
+	auto is_key_nal = [](uint8_t nal_type) {
+		return nal_type >= 16 && nal_type <= 21;
+	};
+
+	if (size < 2)
+	{
+		return false;
+	}
+	uint8_t nal_type = (payload[0] >> 1) & 0x3F;
+	if (nal_type < 48)
+	{
+		return is_key_nal(nal_type);
+	}
+	if (nal_type == 48)
+	{
+		// Every element must fit and carry a two-byte NAL header, or a malformed
+		// aggregate could pass as a keyframe
+		size_t offset = 2;
+		bool found = false;
+		while (offset < size)
+		{
+			if (offset + 2 > size)
+			{
+				return false;
+			}
+			size_t nalu_size = (static_cast<size_t>(payload[offset]) << 8) | payload[offset + 1];
+			if (nalu_size < 2 || offset + 2 + nalu_size > size)
+			{
+				return false;
+			}
+			if (is_key_nal((payload[offset + 2] >> 1) & 0x3F))
+			{
+				found = true;
+			}
+			offset += 2 + nalu_size;
+		}
+		return found;
+	}
+	if (nal_type == 49 && size >= 3)
+	{
+		return is_key_nal(payload[2] & 0x3F);
+	}
+	return false;
+}
+
+// VP8: bit 0 of the first frame data byte after the payload descriptor is
+// the P bit, 0 for a key frame; only the frame's first packet carries it
+bool RtpFrameBoundaryDetector::IsVp8KeyframeStart(const uint8_t *payload, size_t size)
+{
+	uint8_t pd = payload[0];
+	bool frame_start = (pd & 0x10) != 0 && (pd & 0x07) == 0;
+	if (frame_start == false)
+	{
+		return false;
+	}
+
+	size_t offset = 1;
+	if (pd & 0x80)  // X: extension byte present
+	{
+		if (size < 2)
+		{
+			return false;
+		}
+		uint8_t ext = payload[1];
+		offset = 2;
+		if (ext & 0x80)  // I: picture id, 1 or 2 bytes
+		{
+			if (offset >= size)
+			{
+				return false;
+			}
+			offset += (payload[offset] & 0x80) ? 2 : 1;
+		}
+		if (ext & 0x40)  // L: TL0PICIDX
+		{
+			offset += 1;
+		}
+		if (ext & 0x30)  // T or K: TID/KEYIDX byte
+		{
+			offset += 1;
+		}
+	}
+	if (offset >= size)
+	{
+		return false;
+	}
+	return (payload[offset] & 0x01) == 0;
+}
+
+// AV1: the N bit of the aggregation header marks the first packet of a new
+// coded video sequence, which begins with a key frame
+bool RtpFrameBoundaryDetector::IsAv1KeyframeStart(const uint8_t *payload)
+{
+	return (payload[0] & 0x08) != 0;
 }

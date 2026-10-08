@@ -293,3 +293,83 @@ TEST_F(RtpRtcpConcurrentReceive, MixedTrafficFromManyThreads)
 
 	EXPECT_GT(observer->_frames.load(), 0);
 }
+
+// ---- Session-wide ticking ----
+
+namespace
+{
+constexpr uint32_t kVideoBTrack = 3;
+constexpr uint32_t kVideoBSsrc = 0x44444444;
+
+std::shared_ptr<ov::Data> MakeVideoData(uint32_t ssrc, uint16_t seq, uint32_t ts)
+{
+	RtpPacket packet;
+	packet.SetPayloadType(kMediaPt);
+	packet.SetMarker(true);
+	packet.SetSequenceNumber(seq);
+	packet.SetSsrc(ssrc);
+	packet.SetTimestamp(ts);
+	const uint8_t nal[] = {0x65, 0x88, 0x84, 0x21, 0x00, 0x10, 0x20, 0x30};
+	packet.SetPayload(nal, sizeof(nal));
+	return packet.GetData();
+}
+
+// Counts RTCP NACK packets per media SSRC on the way out
+class NackSink : public ov::Node
+{
+public:
+	NackSink() : ov::Node(NodeType::Srtp) {}
+	bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override
+	{
+		if (from_node == NodeType::Rtcp && data->GetLength() >= 12)
+		{
+			auto p = data->GetDataAs<uint8_t>();
+			if ((p[0] & 0x1F) == 1 && p[1] == 205)   // RTPFB, FMT 1 = NACK
+			{
+				uint32_t media_ssrc = (static_cast<uint32_t>(p[8]) << 24) | (p[9] << 16) | (p[10] << 8) | p[11];
+				_nacks[media_ssrc]++;
+			}
+		}
+		return true;
+	}
+	bool OnDataReceivedFromNextNode(NodeType, const std::shared_ptr<const ov::Data> &) override
+	{
+		return true;
+	}
+	std::map<uint32_t, int> _nacks;
+};
+}  // namespace
+
+// A gap on a track that then goes silent is still re-requested, driven by the
+// packets of another track of the same session.
+TEST(RtpRtcpTicking, OtherTrackPacketsDriveNackRetries)
+{
+	auto observer = std::make_shared<CountingObserver>();
+	auto rtp_rtcp = std::make_shared<RtpRtcp>(observer);
+	auto sink = std::make_shared<NackSink>();
+	rtp_rtcp->RegisterNextNode(sink);
+
+	RtpRtcp::RtpTrackIdentifier a_id(kVideoTrack);
+	a_id.ssrc = kMediaSsrc;
+	RtpRtcp::RtpTrackIdentifier b_id(kVideoBTrack);
+	b_id.ssrc = kVideoBSsrc;
+	ASSERT_TRUE(rtp_rtcp->AddRtpReceiver(MakeTrack(kVideoTrack, cmn::MediaType::Video, cmn::MediaCodecId::H264, 90000, cmn::BitstreamFormat::H264_RTP_RFC_6184), a_id));
+	ASSERT_TRUE(rtp_rtcp->AddRtpReceiver(MakeTrack(kVideoBTrack, cmn::MediaType::Video, cmn::MediaCodecId::H264, 90000, cmn::BitstreamFormat::H264_RTP_RFC_6184), b_id));
+	rtp_rtcp->EnableNack(kVideoTrack, kMediaSsrc, 400);
+	rtp_rtcp->EnableNack(kVideoBTrack, kVideoBSsrc, 400);
+	ASSERT_TRUE(rtp_rtcp->Start());
+
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kMediaSsrc, 100, 1000));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kMediaSsrc, 102, 2000));   // 101 lost, A goes silent
+	EXPECT_EQ(sink->_nacks[kMediaSsrc], 0);                                                       // dwell not yet over
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(20));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kVideoBSsrc, 500, 1000));  // B's packet ticks A
+	EXPECT_EQ(sink->_nacks[kMediaSsrc], 1);
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::RETRY_INTERVAL_MS + 10));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kVideoBSsrc, 501, 2000));  // and A's retry
+	EXPECT_EQ(sink->_nacks[kMediaSsrc], 2);
+
+	rtp_rtcp->Stop();
+}

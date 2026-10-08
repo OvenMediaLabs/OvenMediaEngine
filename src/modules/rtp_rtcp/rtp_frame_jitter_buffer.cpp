@@ -1,5 +1,7 @@
 #include "rtp_frame_jitter_buffer.h"
 
+#include "rtp_nack_generator.h"
+
 #define OV_LOG_TAG "RtpVideoJitterBuffer"
 
 /************************************************************************
@@ -10,6 +12,7 @@ RtpFrame::RtpFrame(uint32_t timestamp)
 {
 	_timestamp = timestamp;
 	_stop_watch.Start();
+	_last_packet_at = std::chrono::steady_clock::now();
 }
 
 bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
@@ -41,15 +44,28 @@ bool RtpFrame::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
 		_end_seq = packet->SequenceNumber();
 		_has_end = true;
 	}
+	if (packet->IsKeyframe())
+	{
+		_is_keyframe = true;
+	}
 
-	_packets.emplace(packet->SequenceNumber(), packet);
+	// Only a packet not seen before counts as progress; a duplicate copy must
+	// not keep an incomplete frame alive.
+	if (_packets.emplace(packet->SequenceNumber(), packet).second)
+	{
+		_last_packet_at = std::chrono::steady_clock::now();
+	}
 
 	auto seq = packet->SequenceNumber();
 	if (_has_received == false || static_cast<int16_t>(seq - _max_received_seq) > 0)
 	{
 		_max_received_seq = seq;
-		_has_received = true;
 	}
+	if (_has_received == false || static_cast<int16_t>(seq - _min_received_seq) < 0)
+	{
+		_min_received_seq = seq;
+	}
+	_has_received = true;
 
 	if (_has_start && _has_end)
 	{
@@ -112,6 +128,13 @@ uint64_t RtpFrame::GetElapsed()
 	return _stop_watch.Elapsed();
 }
 
+uint64_t RtpFrame::GetElapsedSinceLastPacket()
+{
+	return std::chrono::duration_cast<std::chrono::milliseconds>(
+			   std::chrono::steady_clock::now() - _last_packet_at)
+		.count();
+}
+
 std::shared_ptr<RtpPacket> RtpFrame::GetFirstRtpPacket()
 {
 	if (IsCompleted() == false)
@@ -154,67 +177,32 @@ uint64_t RtpFrameJitterBuffer::GetExtentedTimestamp(uint32_t timestamp)
 
 uint32_t RtpFrameJitterBuffer::CurrentHoldMs()
 {
-	if (!_hold_ms_provider)
-	{
-		return 0;
-	}
-	// NackGen's hold covers RTT variance; add the frame-interval mean plus
-	// a 4*dev margin so a publisher pacing burst (BWE throttle, encoder
-	// stall, variable fps) doesn't trip a discard before the next packet
-	// arrives. Same shape as the EWMA + 4*dev rule used inside NackGen.
-	uint32_t hold = _hold_ms_provider()
-				  + _frame_interval_ms
-				  + 4 * _frame_interval_dev_ms;
-
-	// Cap the total to the configured MaxHoldMs so the frame-interval margin
-	// can't push the hold past the operator's latency budget.
-	if (_max_hold_ms != 0 && hold > _max_hold_ms)
-	{
-		hold = _max_hold_ms;
-	}
-	return hold;
+	return _hold_ms_provider ? _hold_ms_provider() : 0;
 }
 
-void RtpFrameJitterBuffer::UpdateFrameIntervalEstimate(uint32_t rtp_ts)
+bool RtpFrameJitterBuffer::IsBeyondRepair(const RtpFrame &frame)
 {
-	if (_clock_rate == 0)
+	// Only the track's first frame can reach back before the first observed
+	// seq; once anything was processed the comparison would only wrap
+	if (_has_processed_timestamp || frame.HasStart() || frame.HasReceivedAny() == false || _first_observed_seq_provider == nullptr)
 	{
-		return;
+		return false;
 	}
-	if (_has_last_processed_rtp_ts == false)
+	auto first_observed = _first_observed_seq_provider();
+	if (first_observed.has_value() == false)
 	{
-		_has_last_processed_rtp_ts = true;
-		_last_processed_rtp_ts = rtp_ts;
-		return;
+		return false;
 	}
+	// Its missing start lies before anything the NACK generator saw
+	return static_cast<int16_t>(frame.GetMinReceivedSeq() - *first_observed) <= 0;
+}
 
-	// uint32 subtraction wraps cleanly when timestamps cycle.
-	uint32_t diff_ticks = rtp_ts - _last_processed_rtp_ts;
-	uint32_t interval_ms = static_cast<uint32_t>((static_cast<uint64_t>(diff_ticks) * 1000) / _clock_rate);
-
-	// Outlier filter: ignore jumps over 1 second (likely a cycle gap or
-	// stream resume) so a single anomaly doesn't poison the EWMA.
-	if (interval_ms <= 1000)
+void RtpFrameJitterBuffer::NotifyFrameDiscarded()
+{
+	if (_on_frame_discarded != nullptr)
 	{
-		if (_frame_interval_ms == 0)
-		{
-			// First sample: seed the mean. dev keeps its conservative seed
-			// (INITIAL_FRAME_INTERVAL_DEV_GUESS_MS) so the second/third
-			// frame still inherits a large hold window.
-			_frame_interval_ms = interval_ms;
-		}
-		else
-		{
-			// EWMA with alpha = 1/8 for mean, 1/4 for deviation (same
-			// pattern as NackGen's NACK->RTX stats).
-			int64_t err = static_cast<int64_t>(interval_ms) - static_cast<int64_t>(_frame_interval_ms);
-			_frame_interval_ms = (_frame_interval_ms * 7 + interval_ms) / 8;
-			uint64_t abs_err = static_cast<uint64_t>(err < 0 ? -err : err);
-			_frame_interval_dev_ms = (_frame_interval_dev_ms * 3 + abs_err) / 4;
-		}
+		_on_frame_discarded(_keyframe_count > 0);
 	}
-
-	_last_processed_rtp_ts = rtp_ts;
 }
 
 bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet)
@@ -241,15 +229,71 @@ bool RtpFrameJitterBuffer::InsertPacket(const std::shared_ptr<RtpPacket> &packet
 		frame = it->second;
 	}
 
+	auto packets_before = frame->PacketCount();
+	bool keyframe_before = frame->IsKeyframe();
 	frame->InsertPacket(packet);
+	_packet_count += frame->PacketCount() - packets_before;
+	if (keyframe_before == false && frame->IsKeyframe())
+	{
+		_keyframe_count++;
+	}
+	_has_frames.store(true, std::memory_order_relaxed);
+	EnforcePacketBudget();
 	return true;
+}
+
+bool RtpFrameJitterBuffer::IsEmpty()
+{
+	ov::LockGuard<ov::Mutex> lock(_lock);
+	return _rtp_frames.empty();
+}
+
+RtpFrameJitterBuffer::FrameMap::iterator RtpFrameJitterBuffer::RemoveFrame(FrameMap::iterator it)
+{
+	auto frame = it->second;
+	MarkFrameProcessed(it->first, *frame);
+	_packet_count -= std::min(_packet_count, frame->PacketCount());
+	if (frame->IsKeyframe() && _keyframe_count > 0)
+	{
+		_keyframe_count--;
+	}
+	auto next = _rtp_frames.erase(it);
+	_has_frames.store(_rtp_frames.empty() == false, std::memory_order_relaxed);
+	return next;
+}
+
+void RtpFrameJitterBuffer::EnforcePacketBudget()
+{
+	// Only an incomplete head can pin the buffer; a complete head drains on
+	// the next pop
+	while (_packet_count > MAX_PACKETS && _rtp_frames.empty() == false)
+	{
+		auto it = _rtp_frames.begin();
+		auto frame = it->second;
+		if (frame->IsCompleted())
+		{
+			break;
+		}
+		if (_budget_warned == false)
+		{
+			_budget_warned = true;
+			logtw("Frame buffer over %zu packets, giving up the incomplete head frame - ts(%u) packets(%zu) buffered_frames(%zu)",
+				  MAX_PACKETS, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+		}
+		else
+		{
+			logtd("Frame buffer over %zu packets, giving up the incomplete head frame - ts(%u) packets(%zu) buffered_frames(%zu)",
+				  MAX_PACKETS, frame->Timestamp(), frame->PacketCount(), _rtp_frames.size());
+		}
+		RemoveFrame(it);
+		NotifyFrameDiscarded();
+	}
 }
 
 void RtpFrameJitterBuffer::MarkFrameProcessed(uint64_t extended_timestamp, RtpFrame &frame)
 {
 	_last_processed_timestamp = extended_timestamp;
 	_has_processed_timestamp = true;
-	UpdateFrameIntervalEstimate(frame.Timestamp());
 	AdvanceProcessedSeq(frame);
 }
 
@@ -297,14 +341,14 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 			auto frame = it->second;
 			logtt("Frame discarded - ts(%u) packets(%zu) marked(%s)",
 				  frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false");
-			MarkFrameProcessed(it->first, *frame);
-			it = _rtp_frames.erase(it);
+			it = RemoveFrame(it);
 		}
 		return;
 	}
 
-	// NACK-aware path: hold incomplete head frames for up to hold_ms; drop
-	// when expired so subsequent completed frames can flow.
+	// NACK-aware path: hold an incomplete head frame while it is still
+	// progressing; drop it once no packet of it arrived for hold_ms so
+	// subsequent completed frames can flow.
 	uint32_t hold_ms = CurrentHoldMs();
 	auto it = _rtp_frames.begin();
 	while (it != _rtp_frames.end())
@@ -314,23 +358,39 @@ void RtpFrameJitterBuffer::BurnOutExpiredFrames()
 		{
 			break;
 		}
-		if (frame->GetElapsed() <= hold_ms)
+		// A frame whose lost start can never be requested is given up once the
+		// NACK reorder dwell has passed since its first packet, the same window
+		// a late start gets anywhere else; waiting out the hold would gain nothing
+		if (IsBeyondRepair(*frame) && frame->GetElapsed() > RtpNackGenerator::INITIAL_NACK_DWELL_MS)
+		{
+			logtd("Frame given up, its start was lost before the stream was observed - ts(%u) packets(%zu) min_recv_seq(%u) max_recv_seq(%u) elapsed(%llums)",
+				  frame->Timestamp(), frame->PacketCount(), frame->GetMinReceivedSeq(), frame->GetMaxReceivedSeq(),
+				  static_cast<unsigned long long>(frame->GetElapsed()));
+			it = RemoveFrame(it);
+			NotifyFrameDiscarded();
+			continue;
+		}
+		// The hold clock runs from the frame's last new packet: a large keyframe
+		// crawling over a slow uplink keeps resetting it, so only a frame that
+		// stopped progressing is discarded.
+		if (frame->GetElapsedSinceLastPacket() <= hold_ms)
 		{
 			break;
 		}
 		// Frame dropped after exhausting the NACK hold; log its extent so
 		// recovery failures can be traced.
 		logtd("Frame discarded after NACK hold %ums - ts(%u) packets(%zu) marked(%s) "
-			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums)",
+			  "has_start(%s) start_seq(%u) has_end(%s) end_seq(%u) max_recv_seq(%u) elapsed(%llums) since_last(%llums)",
 			  hold_ms, frame->Timestamp(), frame->PacketCount(), frame->IsMarked() ? "true" : "false",
 			  frame->HasStart() ? "true" : "false",
 			  frame->GetFirstSequenceNumber(),
 			  frame->IsMarked() ? "true" : "false",
 			  frame->GetMarkerSequenceNumber(),
 			  frame->GetMaxReceivedSeq(),
-			  static_cast<unsigned long long>(frame->GetElapsed()));
-		MarkFrameProcessed(it->first, *frame);
-		it = _rtp_frames.erase(it);
+			  static_cast<unsigned long long>(frame->GetElapsed()),
+			  static_cast<unsigned long long>(frame->GetElapsedSinceLastPacket()));
+		it = RemoveFrame(it);
+		NotifyFrameDiscarded();
 	}
 }
 
@@ -369,16 +429,18 @@ bool RtpFrameJitterBuffer::HasAvailableFrameInternal()
 			if (static_cast<int16_t>(*lowest - head_start) < 0)
 			{
 				uint32_t hold_ms = CurrentHoldMs();
-				if (head->GetElapsed() <= hold_ms)
+				// Wait only while the hold runs and the buffer is within budget
+				if (head->GetElapsed() <= hold_ms && _packet_count <= MAX_PACKETS)
 				{
 					logtt("Hold complete head for prior NACK recovery: ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums)",
 						  head->Timestamp(), head_start, *lowest,
 						  static_cast<unsigned long long>(head->GetElapsed()), hold_ms);
 					return false;
 				}
-				logtd("Release held head despite prior NACK pending (hold expired): ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums)",
+				logtd("Release held head despite prior NACK pending: ts(%u) head_start(%u) lowest_pending(%u) elapsed(%llums) hold(%ums) buffered_packets(%zu)",
 					  head->Timestamp(), head_start, *lowest,
-					  static_cast<unsigned long long>(head->GetElapsed()), hold_ms);
+					  static_cast<unsigned long long>(head->GetElapsed()), hold_ms, _packet_count);
+				NotifyFrameDiscarded();
 			}
 		}
 	}
@@ -402,7 +464,6 @@ std::shared_ptr<RtpFrame> RtpFrameJitterBuffer::PopAvailableFrame()
 		  static_cast<unsigned long long>(frame->GetElapsed()),
 		  _rtp_frames.size());
 
-	MarkFrameProcessed(it->first, *frame);
-	_rtp_frames.erase(it);
+	RemoveFrame(it);
 	return frame;
 }

@@ -99,7 +99,7 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
     <RtcpBasedTimestamp>false</RtcpBasedTimestamp>
     <Rtx>
         <Enable>true</Enable>
-        <MaxHoldMs>400</MaxHoldMs>
+        <MaxHoldMs>600</MaxHoldMs>
     </Rtx>
     <CrossDomains>
         <Url>*</Url>
@@ -117,19 +117,19 @@ Direct TCP ICE and TURN relay are connection-oriented. A single port accepts man
 
 #### NACK + RTX
 
-When `<Rtx><Enable>true</Enable></Rtx>` is set, OvenMediaEngine negotiates NACK feedback (RFC 4585) and RTX retransmission (RFC 4588) for every video codec in the SDP. On packet loss the receive-side jitter buffer asks the publisher to resend missing packets, recovering most short bursts of loss without forcing a keyframe.
+When `<Rtx><Enable>true</Enable></Rtx>` is set, OvenMediaEngine negotiates NACK feedback (RFC 4585) and RTX retransmission (RFC 4588) for every video codec in the SDP. On packet loss the receive-side jitter buffer asks the publisher to resend missing packets, recovering most short bursts of loss without forcing a keyframe. If a frame still cannot be completed within `MaxHoldMs` and the track has not received a keyframe within the last `FIRInterval` (or none at all, as when the very first keyframe is hit by loss), OvenMediaEngine asks the publisher for a new keyframe right away (PLI) instead of waiting for the next FIR, so the stream starts or recovers within about one round trip. A frame lost while a recent keyframe exists is left to the next FIR, which keeps the keyframe load on a constrained uplink unchanged. With `FIRInterval` set to `0` every unrecovered frame triggers such a request.
 
 ```xml
 <Rtx>
     <Enable>true</Enable>          <!-- default: false -->
-    <MaxHoldMs>400</MaxHoldMs>     <!-- default: 400 -->
+    <MaxHoldMs>600</MaxHoldMs>     <!-- default: 600 -->
 </Rtx>
 ```
 
 | Parameter | Description |
 |---|---|
 | `Enable` | Turn NACK + RTX on. Disabled by default. |
-| `MaxHoldMs` | Upper bound (ms) for how long the jitter buffer waits for an incomplete frame to recover before discarding it. Acts as a latency ceiling: a larger value increases recovery success in high-RTT or lossy networks at the cost of more end-to-end delay; a smaller value keeps latency tight at the cost of more discarded frames. The actual hold window is adaptive and usually lands well below this cap. Default `400`. |
+| `MaxHoldMs` | How long (ms) the jitter buffer keeps waiting for an incomplete frame after its most recent packet arrived before discarding it, so a large frame that is still arriving over a slow uplink is not cut short. Missing packets are re-requested about every 100 ms for as long as their frame is waiting, so a longer value allows more retransmission attempts on high-RTT paths at the cost of a longer one-off stall when a frame never recovers; it does not add steady-state delay. Default `600`. |
 
 Audio NACK is not negotiated. Lost audio packets are concealed by Opus' in-band FEC where available, otherwise dropped.
 
