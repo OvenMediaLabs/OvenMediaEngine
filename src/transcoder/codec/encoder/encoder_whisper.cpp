@@ -9,11 +9,11 @@
 #include <orchestrator/orchestrator.h>
 #include <base/modules/data_format/webvtt/webvtt_frame.h>
 #include <base/event/command/commands.h>
+#include <base/ovlibrary/stop_watch.h>
 
 #include "encoder_whisper.h"
 #include "../../transcoder_private.h"
 #include "../../transcoder_whisper_model_registry.h"
-#include "../../transcoder_gpu.h"
 
 EncoderWhisper::EncoderWhisper(const info::Stream &stream_info)
 	: TranscodeEncoder(stream_info)
@@ -31,17 +31,6 @@ bool EncoderWhisper::SetCodecParams()
 
 bool EncoderWhisper::Configure(std::shared_ptr<MediaTrack> context)
 {
-#ifdef HWACCELS_NVIDIA_ENABLED
-	if (TranscodeGPU::GetInstance()->GetDeviceCount(cmn::MediaCodecModuleId::NVENC) == 0)
-	{
-		logtw("Whisper STT requires an NVIDIA GPU, but no NVIDIA device is available. STT track will be disabled.");
-		return false;
-	}
-#else
-	logtw("Whisper STT requires an NVIDIA GPU, but this build does not include NVIDIA support. STT track will be disabled.");
-	return false;
-#endif
-
 	auto parent_stream_info = _stream_info.GetLinkedInputStream();
 	if (parent_stream_info == nullptr)
 	{
@@ -91,18 +80,9 @@ bool EncoderWhisper::Initialize()
 		return false;
 	}
 
-	// Resolve and cache the CUDA device index for this encoder instance.
-	// _track->GetCodecDeviceId() returns the OME device index (from <Modules>nv:N</Modules>).
-	// TranscodeGPU maps it to the actual CUDA device index.
-	_cuda_id = TranscodeGPU::GetInstance()->GetExternalDeviceId(cmn::MediaCodecModuleId::NVENC, _track->GetCodecDeviceId());
-	if (_cuda_id < 0)
-	{
-		_cuda_id = 0;
-	}
-
 	// Acquire the shared model context from the registry. The model stays loaded for
 	// the encoder's lifetime; only the per-instance whisper_state is allocated dynamically.
-	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel(), _cuda_id);
+	_whisper_ctx = WhisperModelRegistry::GetInstance()->GetModelContext(_track->GetModel(), _device_id);
 	if (_whisper_ctx == nullptr)
 	{
 		// Error already logged by the registry.
@@ -126,7 +106,8 @@ bool EncoderWhisper::Initialize()
 }
 
 // Allocates the per-instance whisper_state via the registry.
-// The registry serializes allocation and pre-checks GPU memory to prevent a ggml crash.
+// The registry serializes allocation and pre-checks available memory so an
+// oversubscribed server refuses the state instead of being OOM-killed.
 bool EncoderWhisper::AllocWhisperState()
 {
 	if (_whisper_state != nullptr)
@@ -134,7 +115,7 @@ bool EncoderWhisper::AllocWhisperState()
 		return true;
 	}
 
-	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel(), _cuda_id);
+	_whisper_state = WhisperModelRegistry::GetInstance()->NewState(_track->GetModel(), _device_id);
 	if (_whisper_state == nullptr)
 	{
 		logte("Failed to create whisper state. stream=%s, track_id=%d, label=%s, model=%s",
@@ -142,19 +123,26 @@ bool EncoderWhisper::AllocWhisperState()
 		return false;
 	}
 
-	logti("Whisper state created. stream=%s, track_id=%d, label=%s, model=%s",
-		  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr());
+	// Initial share for the log line below; recomputed before every window.
+	_n_threads			   = WhisperModelRegistry::GetInstance()->GetThreadShare(_track->GetThreadCount());
+	_state_marked_resident = false;
+
+	logti("Whisper state created. stream=%s, track_id=%d, label=%s, model=%s, threads=%d",
+		  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr(), _n_threads);
 
 	return true;
 }
 
-// Releases the per-instance whisper_state and returns its GPU memory to the device.
+// Releases the per-instance whisper_state; its share of the thread budget goes
+// back to the other tracks on their next window.
 void EncoderWhisper::FreeWhisperState()
 {
 	if (_whisper_state != nullptr)
 	{
 		WhisperModelRegistry::GetInstance()->DeleteState(_whisper_state);
 		_whisper_state = nullptr;
+		_n_threads = 0;
+		_state_marked_resident = false;
 
 		logti("Whisper state released. stream=%s, track_id=%d, label=%s",
 			  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr());
@@ -204,7 +192,7 @@ void EncoderWhisper::ThreadLoop()
 			// audio is flowing.
 			if (_audio_muted.load(std::memory_order_relaxed))
 			{
-				// Disabled: release the per-instance whisper_state to free GPU
+				// Disabled: release the per-instance whisper_state to free its
 				// memory and discard the rolling-window so a later resume is clean.
 				if (_whisper_state != nullptr)
 				{
@@ -222,7 +210,7 @@ void EncoderWhisper::ThreadLoop()
 			else if (_whisper_state == nullptr)
 			{
 				// Enabled but no state yet: lazily (re)allocate it. Allocation can
-				// fail under GPU memory pressure, so retries are throttled.
+				// fail under memory pressure, so retries are throttled.
 				auto now = std::chrono::steady_clock::now();
 				if (now - _last_state_alloc_fail_ts >= std::chrono::seconds(5))
 				{
@@ -332,18 +320,33 @@ void EncoderWhisper::ThreadLoop()
 		int64_t buffer_start_cs = new_buffer_start_cs - (static_cast<double>(n_samples_old_keep) / WHISPER_SAMPLE_RATE * 100);
 		int64_t buffer_end_cs = new_buffer_end_cs;
 
+		// Threads for this window: the track's <ThreadCount> request capped by
+		// an equal share of the server-wide budget. Re-read every window so the
+		// share follows other STT tracks as they start and stop.
+		const int32_t requested_threads = WhisperModelRegistry::ResolveRequestedThreads(_track->GetThreadCount());
+		_n_threads						= WhisperModelRegistry::GetInstance()->GetThreadShare(requested_threads);
+		if ((_n_threads < requested_threads) && _thread_share_warn_gate.TryConsume())
+		{
+			logtw("Whisper thread budget is shared by too many STT tracks: using %d of %d requested threads. Raise <MaxThreads> or run fewer STT tracks. stream=%s, track_id=%d, label=%s",
+				  _n_threads, requested_threads, _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr());
+		}
+
+		// Everything from here to the end of whisper_full_with_state() has to
+		// fit in one step, language detection included, so time it as a whole.
+		ov::StopWatch inference_timer;
+		inference_timer.Start();
 
 		// Auto detect language if needed.
 		if (_source_language == "auto" && _translate == false)
 		{
-			if (whisper_pcm_to_mel_with_state(_whisper_ctx.get(), _whisper_state, pcmf32_buffer.data(), pcmf32_buffer.size(), 4) != 0)
+			if (whisper_pcm_to_mel_with_state(_whisper_ctx.get(), _whisper_state, pcmf32_buffer.data(), pcmf32_buffer.size(), _n_threads) != 0)
 			{
 				logte("Failed to process audio samples for language detection with Whisper");
 				continue;
 			}
 
 			std::vector<float> probs(whisper_lang_max_id() + 1, 0.0f);
-			const auto lang_id = whisper_lang_auto_detect_with_state(_whisper_ctx.get(), _whisper_state, 0, 4, probs.data());
+			const auto lang_id = whisper_lang_auto_detect_with_state(_whisper_ctx.get(), _whisper_state, 0, _n_threads, probs.data());
 			if (lang_id < 0)
 			{
 				logte("Failed to detect language with Whisper");
@@ -390,7 +393,7 @@ void EncoderWhisper::ThreadLoop()
 		wparams.single_segment   = false;
 		wparams.max_tokens       = 0; 
 		wparams.language         = _translate ? "en" : _source_language.CStr();
-		wparams.n_threads        = std::min(4, (int32_t) std::thread::hardware_concurrency());
+		wparams.n_threads        = _n_threads;
 		wparams.beam_search.beam_size = -1; // disable beam search
 		wparams.greedy.best_of = 1; // disable best_of
 		wparams.temperature_inc = 0.0f;
@@ -407,12 +410,34 @@ void EncoderWhisper::ThreadLoop()
 		logtt("Starting Whisper processing with %d samples", static_cast<int>(pcmf32_buffer.size()));
 		logtt("Audio buffer time range for Whisper: %" PRId64 " ~ %" PRId64 " (last_commit_end_cs=%" PRId64 ")",
 			buffer_start_cs, buffer_end_cs, last_commit_end_cs);
+
 		if (whisper_full_with_state(_whisper_ctx.get(), _whisper_state, wparams, pcmf32_buffer.data(), pcmf32_buffer.size()) != 0)
 		{
 			logte("Failed to process audio samples with Whisper");
 			continue;
 		}
-		logtt("Whisper processing completed");
+		const int64_t inference_ms = inference_timer.Elapsed();
+		logtt("Whisper processing completed in %" PRId64 " ms", inference_ms);
+
+		// The first pass faulted the state's compute buffers in; from here on
+		// MemAvailable reflects them, so the admission reservation can go.
+		if (_state_marked_resident == false)
+		{
+			WhisperModelRegistry::GetInstance()->MarkStateResident(_whisper_state);
+			_state_marked_resident = true;
+		}
+
+		// One inference must finish within StepMs, otherwise the rolling window
+		// falls behind the live audio and subtitles drift. Warn at most once a
+		// minute so a struggling stream does not flood the log.
+		if ((inference_ms > _step_ms) && _slow_inference_warn_gate.TryConsume())
+		{
+			logtw("Whisper inference is slower than real time (%" PRId64 " ms for a %d ms step) and subtitles will fall behind. "
+				  "Use a smaller model, raise <ThreadCount>, or reduce the number of concurrent STT tracks. "
+				  "stream=%s, track_id=%d, label=%s, model=%s, threads=%d",
+				  inference_ms, _step_ms,
+				  _stream_info.GetName().CStr(), _track->GetId(), _output_track_label.CStr(), _track->GetModel().CStr(), _n_threads);
+		}
 
 		ov::String result_text;
 		

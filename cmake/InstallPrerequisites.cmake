@@ -10,12 +10,16 @@
 #
 # Options (set via -D on the command line before -P):
 #   -DOME_DEP_PREFIX=/opt/ovenmediaengine  Installation prefix (default)
-#   -DOME_HWACCEL_NVIDIA=ON                Enable NVIDIA nv-codec-headers + CUDA FFmpeg/Whisper support
+#   -DOME_HWACCEL_NVIDIA=ON                Enable NVIDIA nv-codec-headers + CUDA FFmpeg support
 #   -DOME_HWACCEL_XMA=ON                   Enable Xilinx XMA FFmpeg support
 #   -DOME_ENABLE_X264=ON                   Enable libx264 (default ON)
 #   -DOME_ENABLE_JEMALLOC_LG_PAGE_MAX=ON   Build jemalloc with --with-lg-page=16 on aarch64/arm64
 #   -DOME_USE_CLANG=ON                     Install clang/lld and use as compiler (default ON)
 #   -DOME_WHISPER_STATIC=ON                Build Whisper as a static library (default OFF)
+#   -DOME_WHISPER_NATIVE=ON                Build Whisper/ggml with -march=native (default OFF,
+#                                          faster but only runs on CPUs like the build machine;
+#                                          applied at install time - rerun with -DTARGET=whisper
+#                                          to switch an existing installation)
 #   -DTARGET=<name>                        Install only this target
 #
 # Example:
@@ -60,8 +64,16 @@ endif()
 if(NOT DEFINED OME_ENABLE_JEMALLOC_LG_PAGE_MAX)
     set(OME_ENABLE_JEMALLOC_LG_PAGE_MAX OFF)
 endif()
-if(NOT DEFINED OME_TARGET_PROCESSOR)
+if("${OME_TARGET_PROCESSOR}" STREQUAL "")
     set(OME_TARGET_PROCESSOR ${CMAKE_HOST_SYSTEM_PROCESSOR})
+    if("${OME_TARGET_PROCESSOR}" STREQUAL "")
+        # CMAKE_HOST_SYSTEM_PROCESSOR is only populated by project(), so it is
+        # empty when this file runs in `cmake -P` script mode. Ask the OS instead.
+        execute_process(COMMAND uname -m
+            OUTPUT_VARIABLE OME_TARGET_PROCESSOR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    endif()
 endif()
 
 # Library versions - defined in a shared file so Dependencies.cmake can use the same values.
@@ -323,8 +335,8 @@ if(OME_HWACCEL_NVIDIA)
     # If CMAKE_CUDA_HOST_COMPILER is preset (user-supplied or forwarded from the
     # parent configure) only that is probed. Otherwise try the system default,
     # then walk g++-14 / g++-13 / g++-12 / g++-11 and pick the first one nvcc
-    # accepts. The selected compiler is exported via OME_NVCC_HOST_CXX so the
-    # whisper build inherits it as CMAKE_CUDA_HOST_COMPILER.
+    # accepts. The selected compiler is exported via OME_NVCC_HOST_CXX for CUDA
+    # builds that need a matching host compiler.
     set(_OME_CUDA_TEST_DIR "${TEMP_PATH}/cuda_compat_test")
     file(REMOVE_RECURSE "${_OME_CUDA_TEST_DIR}")
     file(MAKE_DIRECTORY "${_OME_CUDA_TEST_DIR}")
@@ -643,16 +655,24 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/spdlog
 ")
 
 # ---- whisper.cpp ----
-set(_WHISPER_CUDA "OFF")
-if(ENABLE_NVIDIA)
-    set(_WHISPER_CUDA "ON")
-endif()
+# Whisper speech-to-text runs on the CPU, so ggml is always built without CUDA
+# even when the rest of OME is built with NVIDIA support.
 set(_BUILD_SHARED_LIBS "ON")
 set(_GGML_STATIC "OFF")
 if(OME_WHISPER_STATIC)
     message(STATUS "[OME] Building Whisper/ggml as a static library")
     set(_BUILD_SHARED_LIBS "OFF")
     set(_GGML_STATIC "ON")
+endif()
+# GGML_NATIVE=ON compiles ggml with -march=native, baking the build machine's
+# instruction set into the binary. That is the fastest option when you build on
+# the machine you deploy to, and a SIGILL when the binary is built elsewhere -
+# the official Docker images are built on CI runners. Default to a portable
+# build and let people building for their own machine opt in.
+set(_GGML_NATIVE "OFF")
+if(OME_WHISPER_NATIVE)
+    message(STATUS "[OME] Building Whisper/ggml with -march=native (runs only on CPUs like this one)")
+    set(_GGML_NATIVE "ON")
 endif()
 set(_WHISPER_CMAKE_ARGS
     "cmake -B build -S ."
@@ -663,26 +683,35 @@ set(_WHISPER_CMAKE_ARGS
     "-DWHISPER_BUILD_EXAMPLES=OFF"
     "-DWHISPER_BUILD_TESTS=OFF"
     "-DWHISPER_BUILD_SERVER=OFF"
-    "-DGGML_CUDA=${_WHISPER_CUDA}"
+    "-DGGML_CUDA=OFF"
+    "-DGGML_NATIVE=${_GGML_NATIVE}"
     "-DGGML_STATIC=${_GGML_STATIC}"
-    "-DGGML_CUDA_FA_ALL_QUANTS=OFF"
-    "-DGGML_CUDA_GRAPHS=OFF"
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 )
-if(OME_HWACCEL_NVIDIA)
-    list(APPEND _WHISPER_CMAKE_ARGS "\"-DCMAKE_CUDA_ARCHITECTURES=61-real\;70-real\;75-real\;80-real\;86-real\;89\"")
-    # nvcc and OME_NVCC_HOST_CXX were resolved by the probe above.
-    list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_COMPILER=${_OME_NVCC}")
-    if(OME_NVCC_HOST_CXX)
-        list(APPEND _WHISPER_CMAKE_ARGS "-DCMAKE_CUDA_HOST_COMPILER=${OME_NVCC_HOST_CXX}")
-    endif()
+# Without -march=native, pin the x86-64 baseline instead of relying on ggml's
+# defaults. AVX2/FMA/F16C is Haswell (2013) and newer.
+# aarch64 deliberately stays on the compiler default (armv8-a): raising it to
+# armv8.2-a+fp16+dotprod would be faster on server ARM (2-3x on Graviton2, where
+# the portable build cannot keep tiny.en real-time with 2 threads) but SIGILLs on
+# Cortex-A72 class boards such as the Raspberry Pi 4. Use OME_WHISPER_NATIVE=ON
+# on ARM servers.
+string(TOLOWER "${OME_TARGET_PROCESSOR}" _OME_WHISPER_PROCESSOR)
+if((NOT OME_WHISPER_NATIVE) AND _OME_WHISPER_PROCESSOR MATCHES "^(x86_64|amd64)$")
+    list(APPEND _WHISPER_CMAKE_ARGS
+        "-DGGML_AVX=ON"
+        "-DGGML_AVX2=ON"
+        "-DGGML_FMA=ON"
+        "-DGGML_F16C=ON")
 endif()
+unset(_OME_WHISPER_PROCESSOR)
 list(JOIN _WHISPER_CMAKE_ARGS " " _WHISPER_CMAKE_LINE)
 set(_install_whisper "
 mkdir -p ${TEMP_PATH}/whisper && cd ${TEMP_PATH}/whisper &&
 ome_fetch ${WHISPER_SOURCE_URL} &&
 ${_WHISPER_CMAKE_LINE} &&
-cd build && make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/whisper
+cd build && make ${_J} &&
+sudo rm -f ${PREFIX}/lib/libggml-cuda.* ${PREFIX}/lib64/libggml-cuda.* &&
+sudo make install && rm -rf ${TEMP_PATH}/whisper
 ")
 
 # ==============================================================================

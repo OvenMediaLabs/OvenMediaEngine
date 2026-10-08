@@ -120,7 +120,7 @@ The Transcoder module is not running.
 
 ## Disable STT
 
-Pauses STT inference. Audio frames are dropped without processing, and subtitle renditions remain in the stream but stop receiving new cues. The underlying STT model and GPU allocations remain loaded.
+Pauses STT inference. Audio frames are dropped without processing, and subtitle renditions remain in the stream but stop receiving new cues. The shared STT model stays loaded, while the per-stream inference state and its share of the thread budget are released.
 
 > ### Request
 

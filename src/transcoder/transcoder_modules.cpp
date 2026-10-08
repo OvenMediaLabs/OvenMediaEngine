@@ -83,10 +83,6 @@ namespace tc
 				Register(info::CodecModule(device_name, cmn::MediaType::Video, module_id, i, bus_id,
 								   {cmn::MediaCodecId::H264, cmn::MediaCodecId::H265},
 								   false, true, true, true));
-
-				Register(info::CodecModule(device_name, cmn::MediaType::Audio, module_id, i, bus_id,
-								   {cmn::MediaCodecId::Whisper},
-								   false, false, true, true));
 			}
 		}
 #endif

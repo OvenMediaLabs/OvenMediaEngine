@@ -6,144 +6,446 @@
 //  Copyright (c) 2026 AirenSoft. All rights reserved.
 //
 //==============================================================================
-#include <algorithm>
 #include <sys/stat.h>
+#include <unistd.h>
 
-#ifdef HWACCELS_NVIDIA_ENABLED
-#include <cuda_runtime.h>
-#endif
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <fstream>
+#include <optional>
+#include <string>
+#include <thread>
+
+#include <base/ovlibrary/stop_watch.h>
 
 #include "transcoder_whisper_model_registry.h"
 #include "transcoder_private.h"
 
-bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models)
+namespace
 {
-	ov::LockGuard<ov::Mutex> lock(_mutex);
-
-#ifdef HWACCELS_NVIDIA_ENABLED
-	int device_count = 0;
-	if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0)
+	size_t GetFileSizeBytes(const ov::String &path)
 	{
-		logtw("Whisper STT requires an NVIDIA GPU, but no NVIDIA device is available. Whisper models will not be loaded.");
-		return false;
+		struct stat st{};
+		return (::stat(path.CStr(), &st) == 0) ? static_cast<size_t>(st.st_size) : 0;
 	}
-#else // HWACCELS_NVIDIA_ENABLED
-	logtw("Whisper requires NVIDIA GPU support (rebuild with OME_HWACCEL_NVIDIA=ON). Whisper models will not be loaded.");
-	return false;
-#endif // HWACCELS_NVIDIA_ENABLED
 
-	// Sort models by file size descending within each device so the largest model
-	// claims GPU memory first, leaving smaller models to fill whatever remains.
-	auto sorted_models = models;
-	std::sort(sorted_models.begin(), sorted_models.end(), [](const auto &a, const auto &b) {
-		struct stat sa{}, sb{};
-		off_t size_a = (::stat(a.first.CStr(), &sa) == 0) ? sa.st_size : 0;
-		off_t size_b = (::stat(b.first.CStr(), &sb) == 0) ? sb.st_size : 0;
-		return size_a > size_b;  // descending
-	});
-
-	for (const auto &[path, device_ids] : sorted_models)
+	// Reads the leading number from a /proc or /sys file. Returns false when the
+	// file is missing or does not start with a number (e.g. cgroup's "max").
+	bool ReadSizeFile(const std::string &path, size_t *value)
 	{
-#ifdef HWACCELS_NVIDIA_ENABLED
-		if (device_ids.empty())
+		std::ifstream in(path);
+		if (in.is_open() == false)
 		{
-			// "all" — load on every available CUDA device.
-			for (int32_t dev = 0; dev < device_count; ++dev)
+			return false;
+		}
+
+		std::string token;
+		in >> token;
+		if (token.empty() == true)
+		{
+			return false;
+		}
+
+		char *end					   = nullptr;
+		const unsigned long long parsed = ::strtoull(token.c_str(), &end, 10);
+		if (end == token.c_str())
+		{
+			return false;
+		}
+
+		*value = static_cast<size_t>(parsed);
+		return true;
+	}
+
+	// Memory the host kernel estimates can be allocated without swapping, or
+	// nullopt when it cannot be determined. A reading of 0 is a real reading
+	// and must not be mistaken for "unknown".
+	std::optional<size_t> GetHostAvailableMemoryBytes()
+	{
+		const std::string key = "MemAvailable:";
+		std::ifstream in("/proc/meminfo");
+		std::string line;
+		while (std::getline(in, line))
+		{
+			if (line.compare(0, key.size(), key) != 0)
 			{
-				LoadModel(path, dev);
+				continue;
+			}
+
+			// "MemAvailable:   12345678 kB"
+			const char *begin					  = line.c_str() + key.size();
+			char *end							  = nullptr;
+			const unsigned long long available_kb = ::strtoull(begin, &end, 10);
+			if (end != begin)
+			{
+				return static_cast<size_t>(available_kb) * 1024;
+			}
+			break;
+		}
+
+		const long pages	 = ::sysconf(_SC_AVPHYS_PAGES);
+		const long page_size = ::sysconf(_SC_PAGESIZE);
+		if ((pages >= 0) && (page_size > 0))
+		{
+			return static_cast<size_t>(pages) * static_cast<size_t>(page_size);
+		}
+
+		return std::nullopt;
+	}
+
+	// The cgroup v2 path of this process (the "0::/path" line), or "" when unavailable.
+	std::string GetOwnCgroupV2Path()
+	{
+		std::ifstream in("/proc/self/cgroup");
+		std::string line;
+		while (std::getline(in, line))
+		{
+			if (line.rfind("0::", 0) == 0)
+			{
+				return line.substr(3);
 			}
 		}
-		else
+		return "";
+	}
+
+	// The cgroup v1 memory-controller path of this process (the
+	// "N:<controllers>:/path" line whose controller list has "memory"), or ""
+	// when unavailable.
+	std::string GetOwnCgroupV1MemoryPath()
+	{
+		std::ifstream in("/proc/self/cgroup");
+		std::string line;
+		while (std::getline(in, line))
 		{
-			for (int32_t dev : device_ids)
+			const auto first  = line.find(':');
+			const auto second = (first == std::string::npos) ? std::string::npos : line.find(':', first + 1);
+			if (second == std::string::npos)
 			{
-				if (dev < 0 || dev >= device_count)
+				continue;
+			}
+
+			const std::string controllers = "," + line.substr(first + 1, second - first - 1) + ",";
+			if (controllers.find(",memory,") != std::string::npos)
+			{
+				return line.substr(second + 1);
+			}
+		}
+		return "";
+	}
+
+	// Smallest (limit - usage) found walking from <path> up to the root of
+	// <base>, or SIZE_MAX when no level carries a numeric limit. The effective
+	// limit can sit on any ancestor: a systemd slice above the service, a pod
+	// above the container. Levels whose files are missing or read "max" are
+	// skipped; with <v1_sentinel> the near-PAGE_COUNTER_MAX value cgroup v1
+	// uses for "unlimited" is skipped as well.
+	size_t MinCgroupHeadroomBytes(const std::string &base, std::string path, const char *limit_file, const char *usage_file, bool v1_sentinel)
+	{
+		size_t headroom = SIZE_MAX;
+
+		// "/" and "" both mean the root; drop trailing slashes so the joins below stay clean.
+		while ((path.empty() == false) && (path.back() == '/'))
+		{
+			path.pop_back();
+		}
+
+		while (true)
+		{
+			size_t limit = 0, usage = 0;
+			if ((ReadSizeFile(base + path + "/" + limit_file, &limit) == true) && (ReadSizeFile(base + path + "/" + usage_file, &usage) == true))
+			{
+				const bool unlimited = v1_sentinel && (limit >= (static_cast<size_t>(1) << 60));
+				if (unlimited == false)
 				{
-					logtw("Whisper preload: CUDA device %d does not exist (device_count=%d), skipping. path=%s", dev, device_count, path.CStr());
-					continue;
+					headroom = std::min(headroom, (limit > usage) ? (limit - usage) : static_cast<size_t>(0));
 				}
-				LoadModel(path, dev);
 			}
+
+			if (path.empty() == true)
+			{
+				break;
+			}
+			const auto slash = path.rfind('/');
+			path			 = (slash == std::string::npos) ? std::string() : path.substr(0, slash);
 		}
-#endif
+
+		return headroom;
+	}
+
+	// Headroom left under the tightest memory limit of this process's cgroup
+	// and its ancestors, or nullopt when no limit is set. Containers are OME's
+	// main deployment and /proc/meminfo describes the host there, not the
+	// container. 0 means the group is at its limit, which is a real reading.
+	std::optional<size_t> GetCgroupAvailableMemoryBytes()
+	{
+		// cgroup v2. Inside a container with its own cgroup namespace the
+		// process path is "/" and the root is the container's group.
+		const size_t v2 = MinCgroupHeadroomBytes("/sys/fs/cgroup", GetOwnCgroupV2Path(), "memory.max", "memory.current", false);
+		if (v2 != SIZE_MAX)
+		{
+			return v2;
+		}
+
+		// cgroup v1: one directory tree per controller.
+		const size_t v1 = MinCgroupHeadroomBytes("/sys/fs/cgroup/memory", GetOwnCgroupV1MemoryPath(), "memory.limit_in_bytes", "memory.usage_in_bytes", true);
+		if (v1 != SIZE_MAX)
+		{
+			return v1;
+		}
+
+		return std::nullopt;
+	}
+
+	// The smaller of what the host and the cgroup allow, or nullopt when
+	// neither could be read. A known 0 stays 0 so the caller rejects.
+	std::optional<size_t> GetAvailableMemoryBytes()
+	{
+		const auto host	  = GetHostAvailableMemoryBytes();
+		const auto cgroup = GetCgroupAvailableMemoryBytes();
+
+		if (host.has_value() == false)
+		{
+			return cgroup;
+		}
+		if (cgroup.has_value() == false)
+		{
+			return host;
+		}
+		return std::min(*host, *cgroup);
+	}
+
+	// Resident set size of this process, or 0 when it cannot be determined.
+	// Process-wide, so a delta taken around an allocation is only approximate
+	// while the rest of the server is working; the registry keeps its own
+	// state frees out of the window (see _measuring_state_cost).
+	size_t GetProcessRssBytes()
+	{
+		std::ifstream in("/proc/self/statm");
+		size_t total_pages = 0, rss_pages = 0;
+		in >> total_pages >> rss_pages;
+		if (in.fail() == true)
+		{
+			return 0;
+		}
+
+		const long page_size = ::sysconf(_SC_PAGESIZE);
+		return (page_size > 0) ? (rss_pages * static_cast<size_t>(page_size)) : 0;
+	}
+
+	constexpr double ToMiB(size_t bytes)
+	{
+		return static_cast<double>(bytes) / (1024.0 * 1024.0);
+	}
+}  // namespace
+
+std::string WhisperModelRegistry::MakeModelKey(const ov::String &model_path, int32_t device_id)
+{
+	// Whisper runs on the CPU, so one loaded context serves every encoder
+	// regardless of the device id the configuration asked for.
+	(void)device_id;
+
+	return model_path.CStr();
+}
+
+whisper_context_params WhisperModelRegistry::BuildContextParams(int32_t device_id)
+{
+	(void)device_id;
+
+	struct whisper_context_params cparams = whisper_context_default_params();
+	cparams.flash_attn = true;
+	cparams.use_gpu	   = false;
+
+	return cparams;
+}
+
+bool WhisperModelRegistry::CheckMemoryAvailable(const ov::String &model_path, size_t required_bytes, size_t reserved_bytes, const char *what)
+{
+	if (required_bytes == 0)
+	{
+		// Nothing to compare against (model size or state cost unknown).
+		return true;
+	}
+
+	const auto available = GetAvailableMemoryBytes();
+	if (available.has_value() == false)
+	{
+		// Could not read the available memory; do not block the allocation.
+		logtw("Could not determine available memory before allocating the Whisper %s. Proceeding. path=%s", what, model_path.CStr());
+		return true;
+	}
+	const size_t available_bytes = *available;
+
+	// Memory a load in flight or a freshly allocated state has claimed is not
+	// resident yet, so MemAvailable still counts it as free; take it off the top.
+	const size_t headroom_bytes = (available_bytes > reserved_bytes) ? (available_bytes - reserved_bytes) : 0;
+	if (headroom_bytes < required_bytes)
+	{
+		logte("Not enough memory for the Whisper %s (available=%.1f MiB, reserved by loads and new states=%.1f MiB, required≈%.1f MiB). path=%s",
+			  what, ToMiB(available_bytes), ToMiB(reserved_bytes), ToMiB(required_bytes), model_path.CStr());
+		return false;
 	}
 
 	return true;
 }
 
-// Caller must hold _mutex.
-void WhisperModelRegistry::LoadModel(const ov::String &path, int32_t cuda_device_id)
+int32_t WhisperModelRegistry::GetHardwareThreads()
 {
-	const std::string key = ov::String::FormatString("%s@%d", path.CStr(), cuda_device_id).CStr();
+	return static_cast<int32_t>(std::max(1u, std::thread::hardware_concurrency()));
+}
 
-	if (_models.count(key) > 0)
+int32_t WhisperModelRegistry::GetDefaultThreadCount()
+{
+	const int32_t hardware_threads = GetHardwareThreads();
+
+	// Whisper scales poorly past ~8 threads and shares the machine with the
+	// transcoder, so take a quarter of the machine and cap it at 8.
+	return std::min(std::clamp(hardware_threads / 4, 2, 8), hardware_threads);
+}
+
+void WhisperModelRegistry::SetMaxThreads(int32_t max_threads)
+{
+	_max_threads.store(std::max(0, max_threads), std::memory_order_relaxed);
+}
+
+int32_t WhisperModelRegistry::ResolveRequestedThreads(int32_t configured_threads)
+{
+	return (configured_threads > 0) ? configured_threads : GetDefaultThreadCount();
+}
+
+int32_t WhisperModelRegistry::GetThreadShare(int32_t requested_threads) const
+{
+	requested_threads = ResolveRequestedThreads(requested_threads);
+
+	const int32_t max_threads = _max_threads.load(std::memory_order_relaxed);
+	const int32_t budget	  = (max_threads > 0) ? max_threads : GetHardwareThreads();
+	const int32_t live_states = std::max(1, _live_states.load(std::memory_order_relaxed));
+
+	// Every live track keeps at least one thread, so with more tracks than
+	// budget the total exceeds it; the alternative is a track that never
+	// transcribes at all.
+	return std::max(1, std::min(requested_threads, budget / live_states));
+}
+
+bool WhisperModelRegistry::Preload(const std::vector<std::pair<ov::String, std::vector<int32_t>>> &models)
+{
+	// Largest first, so the biggest model claims memory before smaller ones
+	// fill in whatever remains. stat() each file once rather than per comparison.
+	std::vector<std::pair<size_t, ov::String>> sorted_models;
+	sorted_models.reserve(models.size());
+	for (const auto &entry : models)
 	{
-		logtw("Whisper model already loaded on device %d, skipping duplicate. path=%s", cuda_device_id, path.CStr());
-		return;
+		sorted_models.emplace_back(GetFileSizeBytes(entry.first), entry.first);
 	}
-	// Whisper requires a GPU for real-time live transcription.
-	// CPU inference is too slow (several times slower than real-time) and is not supported.
-#ifndef HWACCELS_NVIDIA_ENABLED
-	logte("Whisper requires NVIDIA GPU support. Rebuild with OME_HWACCEL_NVIDIA=ON. path=%s", path.CStr());
-	return;
-#endif
+	std::sort(sorted_models.begin(), sorted_models.end(), [](const auto &a, const auto &b) {
+		return a.first > b.first;  // descending
+	});
 
-	struct whisper_context_params cparams = whisper_context_default_params();
-	cparams.flash_attn = true;
-
-	// Check free GPU memory before calling whisper_init_from_file_with_params().
-	// ggml calls abort() on CUDA OOM instead of returning an error, so we must
-	// pre-flight check. Required: model file size * 2 (weights + kv cache + compute buffers).
-#ifdef HWACCELS_NVIDIA_ENABLED
+	bool all_loaded = true;
+	for (const auto &entry : sorted_models)
 	{
-		cudaSetDevice(cuda_device_id);
-
-		struct stat model_stat{};
-		size_t model_file_bytes = 0;
-		if (::stat(path.CStr(), &model_stat) == 0)
+		if (GetModelContext(entry.second) == nullptr)
 		{
-			model_file_bytes = static_cast<size_t>(model_stat.st_size);
+			all_loaded = false;
 		}
-
-		size_t required_bytes = model_file_bytes * 2;
-		size_t free_mem = 0, total_mem = 0;
-		cudaError_t cuda_err = cudaMemGetInfo(&free_mem, &total_mem);
-		if (cuda_err != cudaSuccess)
-		{
-			logte("Failed to query GPU memory for Whisper model on device %d (CUDA: %s). path=%s", cuda_device_id, cudaGetErrorString(cuda_err), path.CStr());
-			return;
-		}
-
-		if (free_mem < required_bytes)
-		{
-			logte("Not enough GPU memory for Whisper model on device %d (free=%.1f MiB, required≈%.1f MiB). path=%s",
-				cuda_device_id,
-				static_cast<double>(free_mem) / (1024.0 * 1024.0),
-				static_cast<double>(required_bytes) / (1024.0 * 1024.0),
-				path.CStr());
-			return;
-		}
-
-		logti("Whisper GPU init on device %d: free=%.1f MiB, required≈%.1f MiB. path=%s",
-			cuda_device_id,
-			static_cast<double>(free_mem) / (1024.0 * 1024.0),
-			static_cast<double>(required_bytes) / (1024.0 * 1024.0),
-			path.CStr());
 	}
-#endif
 
-	cparams.use_gpu = true;
-	cparams.gpu_device = cuda_device_id;
+	return all_loaded;
+}
 
-	// libcublas lazy-initializes its global state in two phases without thread safety.
-	// Phase 1: whisper_init_from_file_with_params() → cublasCreate().
-	// Phase 2: first GEMM call → pthread_rwlock_init (triggered by warmup below).
-	// All loads happen sequentially under _mutex, so races are prevented.
-	auto raw_ctx = whisper_init_from_file_with_params(path.CStr(), cparams);
+std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path, int32_t device_id)
+{
+	const std::string key = MakeModelKey(model_path, device_id);
+	int32_t warmup_threads = 1;
+
+	{
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+
+		// Another caller may be loading this very model; wait for it rather
+		// than reading the file twice.
+		_load_done.Wait(lock, [this, &key]() OV_REQUIRES(_mutex) -> bool {
+			return _loading.count(key) == 0;
+		});
+
+		auto it = _models.find(key);
+		if (it != _models.end())
+		{
+			return it->second;
+		}
+
+		// Once Uninitialize() has begun, nothing may start a load: a retry
+		// after a failed load would otherwise slip in while the shutdown
+		// drains and publish into the cleared registry.
+		if (_shutting_down == true)
+		{
+			logtw("Not loading the Whisper model: the registry is shutting down. path=%s", model_path.CStr());
+			return nullptr;
+		}
+
+		_loading.insert(key);
+		warmup_threads = GetThreadShare(0);
+	}
+
+	// Reading the file and running the warmup take seconds on the CPU, so they
+	// happen without _mutex: other encoders keep allocating and freeing states,
+	// and only callers of this same model wait. Loads are still one at a time
+	// under _load_mutex so their memory checks and RSS measurements do not
+	// interleave.
+	logti("Loading Whisper model. path=%s", model_path.CStr());
+
+	size_t state_memory_bytes = 0;
+	std::shared_ptr<whisper_context> ctx;
+	{
+		ov::LockGuard<ov::Mutex> load_lock(_load_mutex);
+		ctx = LoadModel(model_path, device_id, warmup_threads, &state_memory_bytes);
+	}
+
+	{
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+
+		if (ctx != nullptr)
+		{
+			_models[key]			 = ctx;
+			_state_memory_bytes[key] = state_memory_bytes;
+		}
+
+		_loading.erase(key);
+		_load_done.NotifyAll();
+	}
+
+	return ctx;
+}
+
+std::shared_ptr<whisper_context> WhisperModelRegistry::LoadModel(const ov::String &path, int32_t device_id, int32_t warmup_threads, size_t *state_memory_bytes)
+{
+	*state_memory_bytes = 0;
+
+	// Required: model file size * 2 (weights + compute buffers). Claim it up
+	// front so a NewState() racing with this load sees the memory as taken
+	// before the weights are actually resident.
+	const size_t required_bytes = GetFileSizeBytes(path) * 2;
+	{
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+		if (CheckMemoryAvailable(path, required_bytes, ReservedBytesLocked(), "model") == false)
+		{
+			return nullptr;
+		}
+		_reserved_bytes += required_bytes;
+	}
+
+	// Give the reservation back on every exit from here on; by then the memory
+	// is either resident (and visible to MemAvailable) or was never taken.
+	auto release_reservation = [this, required_bytes]() {
+		ov::LockGuard<ov::Mutex> lock(_mutex);
+		_reserved_bytes = (_reserved_bytes > required_bytes) ? (_reserved_bytes - required_bytes) : 0;
+	};
+
+	auto raw_ctx = whisper_init_from_file_with_params(path.CStr(), BuildContextParams(device_id));
 	if (raw_ctx == nullptr)
 	{
 		logte("Failed to load Whisper model. path=%s", path.CStr());
-		return;
+		release_reservation();
+		return nullptr;
 	}
 
 	// Wrap in shared_ptr with whisper_free as custom deleter.
@@ -151,118 +453,201 @@ void WhisperModelRegistry::LoadModel(const ov::String &path, int32_t cuda_device
 		whisper_free(c);
 	});
 
-	// Warmup: GPU only — force phase-2 libcublas init (first GEMM call) by running
-	// a full inference pass on 1 second of silence via a temporary state.
-	// Also measures GPU memory consumed by one state for later OOM prevention.
-	// Warmup: force phase-2 libcublas init (first GEMM call) by running a full inference
-	// pass on 1 second of silence. Also measures GPU memory consumed by one state
-	// for OOM pre-checks in NewState().
-#ifdef HWACCELS_NVIDIA_ENABLED
+	// Warmup: run a full inference pass over 1 second of silence through a
+	// temporary state. The RSS delta spans both the state allocation and the
+	// pass, because ggml's compute buffers only become resident once they are
+	// written; measured this way the figure is what one real state costs, and
+	// NewState() uses it to refuse a state that would not fit. A model whose
+	// warmup fails is not usable by any encoder either, so that is a load
+	// failure rather than a context with an unknown state cost.
 	{
-		size_t free_before = 0, free_after = 0, total = 0;
-		cudaMemGetInfo(&free_before, &total);
+		ov::StopWatch warmup_timer;
+		warmup_timer.Start();
+
+		BeginStateCostMeasurement();
+		const size_t rss_before = GetProcessRssBytes();
+
+		// On either failure below the weights are freed before the reservation
+		// is given back, so the accounting never drops below what is resident.
 		auto warmup_state = whisper_init_state(ctx.get());
-		if (warmup_state != nullptr)
+		if (warmup_state == nullptr)
 		{
-			cudaMemGetInfo(&free_after, &total);
-			size_t state_cost = (free_before > free_after) ? (free_before - free_after) : 0;
-			_state_memory_bytes[key] = state_cost;
-			logti("Whisper state memory cost: %.1f MiB per instance. path=%s",
-				static_cast<double>(state_cost) / (1024.0 * 1024.0), path.CStr());
-
-			std::vector<float> silence(WHISPER_SAMPLE_RATE, 0.0f);
-			whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-			wparams.print_progress   = false;
-			wparams.print_special    = false;
-			wparams.print_realtime   = false;
-			wparams.print_timestamps = false;
-			wparams.n_threads        = 1;
-			wparams.language         = "en";
-			wparams.no_context       = true;
-			whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
-			whisper_free_state(warmup_state);
+			EndStateCostMeasurement(nullptr);
+			logte("Failed to allocate the warmup state for the Whisper model. path=%s", path.CStr());
+			ctx.reset();
+			release_reservation();
+			return nullptr;
 		}
-	}
-#endif
 
-	_models[key] = std::move(ctx);
-	logti("Whisper model loaded successfully on device %d. path=%s", cuda_device_id, path.CStr());
+		std::vector<float> silence(WHISPER_SAMPLE_RATE, 0.0f);
+		whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+		wparams.print_progress		= false;
+		wparams.print_special		= false;
+		wparams.print_realtime		= false;
+		wparams.print_timestamps	= false;
+		wparams.n_threads			= warmup_threads;
+		wparams.language			= "en";
+		wparams.no_context			= true;
+		const int warmup_result		= whisper_full_with_state(ctx.get(), warmup_state, wparams, silence.data(), static_cast<int>(silence.size()));
+
+		const size_t rss_after = GetProcessRssBytes();
+		EndStateCostMeasurement(warmup_state);
+
+		if (warmup_result != 0)
+		{
+			logte("Warmup inference failed for the Whisper model. path=%s", path.CStr());
+			ctx.reset();
+			release_reservation();
+			return nullptr;
+		}
+
+		*state_memory_bytes = (rss_after > rss_before) ? (rss_after - rss_before) : 0;
+		if (*state_memory_bytes == 0)
+		{
+			// RSS could not be read, or something else in the process shrank
+			// meanwhile. Assume one file size per state - more than any model's
+			// state really takes - so NewState() stays conservative instead of
+			// skipping its check.
+			*state_memory_bytes = GetFileSizeBytes(path);
+			logtw("Could not measure the Whisper state memory cost; assuming %.1f MiB per instance. path=%s", ToMiB(*state_memory_bytes), path.CStr());
+		}
+		else
+		{
+			logti("Whisper state memory cost: %.1f MiB per instance. path=%s", ToMiB(*state_memory_bytes), path.CStr());
+		}
+
+		logtd("Whisper warmup took %" PRId64 " ms with %d threads. path=%s", warmup_timer.Elapsed(), warmup_threads, path.CStr());
+	}
+
+	release_reservation();
+	logti("Whisper model loaded successfully. path=%s", path.CStr());
+
+	return ctx;
+}
+
+void WhisperModelRegistry::BeginStateCostMeasurement()
+{
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+	_measuring_state_cost = true;
+}
+
+void WhisperModelRegistry::EndStateCostMeasurement(whisper_state *warmup_state)
+{
+	// Under _mutex like NewState()/DeleteState(), so no whisper_init_state()
+	// or whisper_free_state() ever runs concurrently with another.
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+	_measuring_state_cost = false;
+
+	if (warmup_state != nullptr)
+	{
+		whisper_free_state(warmup_state);
+	}
+
+	if (_deferred_state_frees.empty() == false)
+	{
+		for (const auto &entry : _deferred_state_frees)
+		{
+			whisper_free_state(entry.first);
+			// The parked state's reservation is given back only now that its
+			// memory is really gone.
+			_pending_state_bytes = (_pending_state_bytes > entry.second) ? (_pending_state_bytes - entry.second) : 0;
+		}
+		logtd("Freed %zu Whisper state(s) whose release was deferred during a state cost measurement.", _deferred_state_frees.size());
+		_deferred_state_frees.clear();
+	}
 }
 
 void WhisperModelRegistry::Uninitialize()
 {
 	ov::LockGuard<ov::Mutex> lock(_mutex);
+
+	// Refuse new loads from here on, then let the loads in flight finish: they
+	// publish into _models once done, so draining them first means nothing can
+	// resurrect a model after this clear and no context is freed underneath
+	// its warmup. Waiters woken by a load that fails see the flag and give up
+	// instead of retrying.
+	_shutting_down = true;
+	if (_loading.empty() == false)
+	{
+		logti("Waiting for %zu Whisper model load(s) to finish before clearing the registry.", _loading.size());
+		_load_done.Wait(lock, [this]() OV_REQUIRES(_mutex) -> bool {
+			return _loading.empty();
+		});
+	}
+
+	// Every load has finished, so nothing is deferred any more; free whatever
+	// is left before the contexts the states belong to go away.
+	for (const auto &entry : _deferred_state_frees)
+	{
+		whisper_free_state(entry.first);
+	}
+	_deferred_state_frees.clear();
+	_measuring_state_cost = false;
+
 	_models.clear();
 	_state_memory_bytes.clear();
+	_pending_states.clear();
+	_pending_state_bytes = 0;
+	_live_states.store(0, std::memory_order_relaxed);
+
 	logti("Whisper model registry cleared.");
 }
 
-std::shared_ptr<whisper_context> WhisperModelRegistry::GetModelContext(const ov::String &model_path, int32_t cuda_device_id)
+whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int32_t device_id)
 {
 	ov::LockGuard<ov::Mutex> lock(_mutex);
 
-	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
-
-	auto it = _models.find(key);
-	if (it != _models.end())
-	{
-		return it->second;
-	}
-
-	// Model not preloaded — load on-demand and cache it for future callers.
-	logti("Whisper model not preloaded on device %d, loading on-demand. path=%s", cuda_device_id, model_path.CStr());
-	LoadModel(model_path, cuda_device_id);
-
-	it = _models.find(key);
-	if (it == _models.end())
-	{
-		// Loading failed (error already logged inside LoadModel).
-		return nullptr;
-	}
-
-	return it->second;
-}
-
-whisper_state *WhisperModelRegistry::NewState(const ov::String &model_path, int32_t cuda_device_id)
-{
-	ov::LockGuard<ov::Mutex> lock(_mutex);
-
-	const std::string key = ov::String::FormatString("%s@%d", model_path.CStr(), cuda_device_id).CStr();
+	const std::string key = MakeModelKey(model_path, device_id);
 
 	auto model_it = _models.find(key);
 	if (model_it == _models.end())
 	{
-		logte("Cannot allocate whisper state: model not loaded on device %d. path=%s", cuda_device_id, model_path.CStr());
+		logte("Cannot allocate whisper state: model not loaded. path=%s", model_path.CStr());
 		return nullptr;
 	}
 
-#ifdef HWACCELS_NVIDIA_ENABLED
-	// Check GPU memory before calling whisper_init_state to prevent ggml crash.
-	// The mutex ensures serialize check+alloc across all encoder threads.
-	cudaSetDevice(cuda_device_id);
-	auto mem_it = _state_memory_bytes.find(key);
-	if (mem_it != _state_memory_bytes.end() && mem_it->second > 0)
+	// Check memory before whisper_init_state so an oversubscribed server
+	// refuses the state instead of being OOM-killed on its first window.
+	// The mutex serializes check+alloc across all encoder threads. A loaded
+	// model always has a cost (measured or assumed in LoadModel()).
+	const size_t state_cost = (_state_memory_bytes.count(key) > 0) ? _state_memory_bytes.at(key) : 0;
+	if (CheckMemoryAvailable(model_path, state_cost, ReservedBytesLocked(), "state") == false)
 	{
-		size_t required = mem_it->second;
-		size_t free_mem = 0, total_mem = 0;
-		if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess && free_mem < required)
-		{
-			logte("Not enough GPU memory on device %d to create Whisper state (required=%.1f MiB, free=%.1f MiB). path=%s",
-				  cuda_device_id,
-				  static_cast<double>(required) / (1024.0 * 1024.0),
-				  static_cast<double>(free_mem) / (1024.0 * 1024.0),
-				  model_path.CStr());
-			return nullptr;
-		}
+		return nullptr;
 	}
-#endif
 
 	auto *state = whisper_init_state(model_it->second.get());
 	if (state == nullptr)
 	{
 		logte("whisper_init_state failed. path=%s", model_path.CStr());
+		return nullptr;
 	}
+
+	// The state's compute buffers only become resident on its first inference,
+	// so until then MemAvailable does not show them. Hold the measured cost as
+	// a reservation so the next NewState() does not hand the same memory out
+	// again; the encoder releases it via MarkStateResident().
+	if (state_cost > 0)
+	{
+		_pending_states[state] = state_cost;
+		_pending_state_bytes += state_cost;
+	}
+
+	_live_states.fetch_add(1, std::memory_order_relaxed);
+
 	return state;
+}
+
+void WhisperModelRegistry::MarkStateResident(whisper_state *state)
+{
+	ov::LockGuard<ov::Mutex> lock(_mutex);
+
+	auto it = _pending_states.find(state);
+	if (it != _pending_states.end())
+	{
+		_pending_state_bytes = (_pending_state_bytes > it->second) ? (_pending_state_bytes - it->second) : 0;
+		_pending_states.erase(it);
+	}
 }
 
 void WhisperModelRegistry::DeleteState(whisper_state *state)
@@ -271,8 +656,37 @@ void WhisperModelRegistry::DeleteState(whisper_state *state)
 	// never run concurrently on the shared whisper context.
 	ov::LockGuard<ov::Mutex> lock(_mutex);
 
-	if (state != nullptr)
+	if (state == nullptr)
+	{
+		return;
+	}
+
+	// A state that never ran an inference still holds an admission reservation
+	// (see NewState()); it goes back together with the memory itself.
+	size_t pending_bytes = 0;
+	auto pending_it		 = _pending_states.find(state);
+	if (pending_it != _pending_states.end())
+	{
+		pending_bytes = pending_it->second;
+		_pending_states.erase(pending_it);
+	}
+
+	if (_measuring_state_cost == true)
+	{
+		// A load is measuring a state's cost from the process RSS right now;
+		// freeing would shrink its delta. Park the free, reservation included,
+		// until the measurement is done.
+		_deferred_state_frees.emplace_back(state, pending_bytes);
+	}
+	else
 	{
 		whisper_free_state(state);
+		_pending_state_bytes = (_pending_state_bytes > pending_bytes) ? (_pending_state_bytes - pending_bytes) : 0;
+	}
+
+	if (_live_states.fetch_sub(1, std::memory_order_relaxed) <= 0)
+	{
+		// Alloc/free are paired by the encoder; clamp rather than go negative.
+		_live_states.store(0, std::memory_order_relaxed);
 	}
 }

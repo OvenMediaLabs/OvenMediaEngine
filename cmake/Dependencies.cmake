@@ -52,6 +52,7 @@ endfunction()
 #                [EXTRA_ARGS ...]
 #                [VERSION_OP =|>=]
 #                [PROBE_LIBRARY library-name]
+#                [REJECT_LIBRARY library-name]
 #                [ON_MISSING FATAL|DISABLE]
 #                [ON_MISMATCH FATAL|DISABLE])
 #
@@ -64,8 +65,12 @@ endfunction()
 # OME_VER_* definition. If not found or version differs, re-runs
 # InstallPrerequisites for the specific REINSTALL_TARGET only (or the full
 # prerequisites if not specified).
+#
+# PROBE_LIBRARY treats the package as missing unless that library is installed
+# next to it; REJECT_LIBRARY is the inverse and treats it as missing when the
+# library IS installed (a build variant this configuration does not want).
 macro(ome_find_pkg var pkg version_var)
-    cmake_parse_arguments(_FP "OPTIONAL" "REINSTALL_TARGET;PROBE_LIBRARY;ON_MISSING;ON_MISMATCH;VERSION_OP" "EXTRA_ARGS" ${ARGN})
+    cmake_parse_arguments(_FP "OPTIONAL" "REINSTALL_TARGET;PROBE_LIBRARY;REJECT_LIBRARY;ON_MISSING;ON_MISMATCH;VERSION_OP" "EXTRA_ARGS" ${ARGN})
 
     ome_parse_dep_version(${version_var} _FP_VERIFY_VERSION _FP_SOURCE_REF _FP_HAS_OVERRIDE)
     if(NOT _FP_VERSION_OP)
@@ -128,6 +133,17 @@ macro(ome_find_pkg var pkg version_var)
             set(_FP_PROBE_FOUND FALSE)
         endif()
     endif()
+    if(_FP_REJECT_LIBRARY)
+        # NO_DEFAULT_PATH: only the dependency prefix counts. A distro copy of the
+        # library elsewhere is not something a reinstall can remove, so it must
+        # not keep rejecting an otherwise correct install.
+        unset(_FP_REJECT_LIB CACHE)
+        find_library(_FP_REJECT_LIB ${_FP_REJECT_LIBRARY} HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64 NO_DEFAULT_PATH)
+        if(_FP_REJECT_LIB)
+            message(STATUS "[OME] '${pkg}' is installed together with '${_FP_REJECT_LIBRARY}', which this build does not link - treating as not found")
+            set(_FP_PROBE_FOUND FALSE)
+        endif()
+    endif()
 
     if(_FP_PROBE_FOUND)
         pkg_check_modules(${var} QUIET IMPORTED_TARGET ${_FP_PKG_STRING})
@@ -176,6 +192,9 @@ macro(ome_find_pkg var pkg version_var)
             list(APPEND _FP_HWACCEL_ARGS -DOME_WHISPER_STATIC=ON)
         endif()
         list(APPEND _FP_HWACCEL_ARGS -DOME_USE_CLANG=${OME_USE_CLANG})
+        if(OME_WHISPER_NATIVE)
+            list(APPEND _FP_HWACCEL_ARGS -DOME_WHISPER_NATIVE=ON)
+        endif()
         if(OME_SKIP_DEPENDENCY_CHECK)
             # Auto-install suppressed - report only
         elseif(_FP_REINSTALL_TARGET)
@@ -205,12 +224,22 @@ macro(ome_find_pkg var pkg version_var)
                 "  Run manually: cmake -P cmake/InstallPrerequisites.cmake")
         endif()
         if(NOT OME_SKIP_DEPENDENCY_CHECK)
+            # Start from "found" again; the probes below only ever downgrade it.
+            # Without this reset a package rejected before the reinstall (see
+            # REJECT_LIBRARY) stayed rejected even after the reinstall removed
+            # the offending library, and configure failed on a correct install.
+            set(_FP_PROBE_FOUND TRUE)
             if(_FP_PROBE_LIBRARY)
                 unset(_FP_PROBE_LIB CACHE)
                 find_library(_FP_PROBE_LIB ${_FP_PROBE_LIBRARY} HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64)
-                if(_FP_PROBE_LIB)
-                    set(_FP_PROBE_FOUND TRUE)
-                else()
+                if(NOT _FP_PROBE_LIB)
+                    set(_FP_PROBE_FOUND FALSE)
+                endif()
+            endif()
+            if(_FP_REJECT_LIBRARY)
+                unset(_FP_REJECT_LIB CACHE)
+                find_library(_FP_REJECT_LIB ${_FP_REJECT_LIBRARY} HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64 NO_DEFAULT_PATH)
+                if(_FP_REJECT_LIB)
                     set(_FP_PROBE_FOUND FALSE)
                 endif()
             endif()
@@ -289,6 +318,8 @@ macro(ome_find_pkg var pkg version_var)
     unset(_FP_ON_MISSING)
     unset(_FP_ON_MISMATCH)
     unset(_FP_PROBE_LIBRARY)
+    unset(_FP_REJECT_LIBRARY)
+    unset(_FP_REJECT_LIB CACHE)
     unset(_FP_PROBE_LIB)
     unset(_FP_PROBE_FOUND)
 endmacro()
@@ -337,14 +368,13 @@ ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTAL
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
 ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)
 ome_find_pkg(PKG_SPDLOG         spdlog          OME_VER_SPDLOG          REINSTALL_TARGET spdlog)
-# When OME_HWACCEL_NVIDIA is ON, whisper must be built with GGML_CUDA=ON.
-# CUDA builds of whisper.cpp produce libggml-cuda.so in addition to libggml.so.
-# Use that as a probe: if it is absent while NVIDIA is requested, reinstall.
-if(OME_HWACCEL_NVIDIA)
-    ome_find_pkg(PKG_WHISPER    whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper PROBE_LIBRARY ggml-cuda)
-else()
-    ome_find_pkg(PKG_WHISPER    whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper)
-endif()
+# Whisper speech-to-text runs on the CPU, so it is built the same way with and
+# without NVIDIA support. A whisper left behind by a GPU build (libggml-cuda
+# next to it) references CUDA symbols this build no longer links, so rebuild it.
+ome_find_pkg(PKG_WHISPER        whisper         OME_VER_WHISPER         REINSTALL_TARGET whisper
+    REJECT_LIBRARY ggml-cuda
+    EXTRA_ARGS -DOME_TARGET_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
+)
 ome_find_pkg(PKG_LIBAVFORMAT    libavformat     OME_VER_LIBAVFORMAT     REINSTALL_TARGET ffmpeg)
 ome_find_pkg(PKG_LIBAVFILTER    libavfilter     OME_VER_LIBAVFILTER     REINSTALL_TARGET ffmpeg)
 ome_find_pkg(PKG_LIBAVCODEC     libavcodec      OME_VER_LIBAVCODEC      REINSTALL_TARGET ffmpeg)
@@ -392,42 +422,10 @@ if(PKG_WHISPER_FOUND)
         endif()
     endforeach()
     set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES gomp)
-    
-    if(OME_HWACCEL_NVIDIA)  
-        set(CUDA_ROOT "/usr/local/cuda")
 
-        find_library(NV_GGML_CUDA_LIB  ggml-cuda       HINTS ${OME_DEP_PREFIX}/lib ${OME_DEP_PREFIX}/lib64) 
-        find_library(NV_CULIBOS_LIB    culibos         HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)                
-        
-        if(OME_WHISPER_STATIC)
-            # Static CUDA Library
-            find_library(NV_CUBLAS_LIB     cublas_static   HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
-            find_library(NV_CUBLASLT_LIB   cublasLt_static HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
-            message (STATUS "[OME] Building with static CUDA libraries")            
-        else()
-            # Shared CUDA Library
-            find_library(NV_CUBLAS_LIB     cublas          HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
-            find_library(NV_CUBLASLT_LIB   cublasLt        HINTS ${CUDA_ROOT}/lib64 /usr/lib/x86_64-linux-gnu)
-            message (STATUS "[OME] Building with shared CUDA libraries")
-        endif()
-
-        if(NV_GGML_CUDA_LIB AND NV_CUBLAS_LIB AND NV_CUBLASLT_LIB)
-            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${NV_GGML_CUDA_LIB}")
-            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${NV_CUBLAS_LIB}")
-            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${NV_CUBLASLT_LIB}")
-            set_property(TARGET PkgConfig::PKG_WHISPER APPEND PROPERTY INTERFACE_LINK_LIBRARIES "${NV_CULIBOS_LIB}")
-        else()
-            message(WARNING "[OME] OME_HWACCEL_NVIDIA=ON but GGML-CUDA not found")
-        endif()      
-    endif()  
-    
     unset(GGML_LIB CACHE)
     unset(GGML_BASE_LIB CACHE)
-    unset(GGML_CPU_LIB CACHE)    
-    unset(NV_CUBLAS_LIB CACHE)
-    unset(NV_CUBLASLT_LIB CACHE)
-    unset(NV_GGML_CUDA_LIB CACHE)  
-    unset(CUDA_ROOT)      
+    unset(GGML_CPU_LIB CACHE)
 endif()
 
 # Xilinx XMA
