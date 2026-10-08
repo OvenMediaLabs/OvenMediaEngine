@@ -84,11 +84,6 @@ namespace pvd
 					return !(*this == rhs);
 				}
 
-				bool IsEnabled() const
-				{
-					return (_in_ms > 0) || (_out_ms > 0);
-				}
-
 				int64_t _in_ms	= 0;
 				int64_t _out_ms = 0;
 

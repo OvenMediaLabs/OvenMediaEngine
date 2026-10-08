@@ -11,7 +11,6 @@
 
 #include "schedule_private.h"
 
-#include <base/event/command/commands.h>
 #include <base/provider/application.h>
 
 namespace pvd
@@ -229,11 +228,6 @@ namespace pvd
 
         return false;
     }
-
-	// Fade
-	void ScheduledStream::PublishItemFade(const std::shared_ptr<Schedule::Item> &item, int64_t pts, const cmn::Timebase &timebase, int64_t duration_ms)
-	{
-	}
 
 	bool ScheduledStream::SetDurationToAllItems(const std::shared_ptr<Schedule::Program> &program)
 	{
@@ -524,9 +518,6 @@ namespace pvd
         std::map<int, int64_t> track_single_file_dts_offset_map;
         std::map<int, bool> end_of_track_map;
 
-		// Fade
-		bool item_fade_published = false;
-
         bool is_mpegts { std::strncmp(context->iformat->name, "mpegts", 6) == 0 };
 
         while (_worker_thread_running.load())
@@ -633,10 +624,6 @@ namespace pvd
 
 			auto media_packet = ffmpeg::compat::ToMediaPacket(track->GetId(), &packet, track->GetMediaType(), bitstream_format, packet_type);
 
-			// Fade: where this packet sits in the file, for the fade out.
-			auto origin_stream = context->streams[packet.stream_index];
-			auto origin_pts	   = packet.pts;
-
             // Convert to fixed time base
             auto origin_tb = context->streams[packet.stream_index]->time_base;
 
@@ -687,22 +674,6 @@ namespace pvd
             }
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f, dts_ms %f, dts_gap %" PRId64 "", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr(), time_ms, dts_gap);
-
-			// Fade
-			if (item_fade_published == false && track->GetMediaType() == cmn::MediaType::Video)
-			{
-				item_fade_published = true;
-
-				// The seek can land past the start; the fade out must end where the file does.
-				int64_t play_duration_ms = item->_duration_ms;
-				int64_t remaining_ms	 = ffmpeg::compat::GetRemainingDurationMs(context.get(), origin_stream, origin_pts);
-				if (remaining_ms > 0)
-				{
-					play_duration_ms = (play_duration_ms > 0) ? std::min(play_duration_ms, remaining_ms) : remaining_ms;
-				}
-
-				PublishItemFade(item, pts, track->GetTimeBase(), play_duration_ms);
-			}
 
             SendFrame(media_packet);
 
@@ -1024,9 +995,6 @@ namespace pvd
         std::map<int, int64_t> track_single_file_dts_offset_map;
         std::map<int, bool> end_of_track_map;
 
-		// Fade
-		bool item_fade_published = false;
-
 		// bool sent_keyframe = false;
 
         // Play
@@ -1159,13 +1127,6 @@ namespace pvd
 			double time_ms = (double)(dts * 1000.0 * track->GetTimeBase().GetExpr());
 
             logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", tb %f, dts_ms %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, track->GetTimeBase().GetExpr(), time_ms);
-
-			// Fade
-			if (item_fade_published == false && track->GetMediaType() == cmn::MediaType::Video)
-			{
-				item_fade_published = true;
-				PublishItemFade(item, pts, track->GetTimeBase(), item->_duration_ms);
-			}
 
             SendFrame(media_packet);
 
