@@ -80,7 +80,7 @@ OME has a single set of `ov::` wrapper classes, and the CMake option `OME_THREAD
 The two modes have identical `sizeof` / `alignof` / method signatures (tests guard this with `static_assert`). So you write the source once and build with `ON` only when you need the analysis.
 
 > [!IMPORTANT]
-> Even with `OME_THREAD_SAFETY=ON`, no analysis happens unless the compiler is actually Clang. OME defaults to `OME_USE_CLANG=ON`, but that falls back to the system compiler (GCC) when `clang`/`clang++` are not installed, so make sure Clang is available. If TSA ends up off, CMake prints a `NO EFFECT` warning at configure time (not during the build); look for `[OME] Clang thread-safety analysis: ENABLED` in the configure log to confirm it is on (`cmake/CompilerOptions.cmake`).
+> Even with `OME_THREAD_SAFETY=ON`, no analysis happens unless the compiler is actually Clang. OME defaults to `OME_USE_CLANG=ON`, but that falls back to the system compiler (GCC) when `clang`/`clang++` are not installed, so make sure Clang is available, and specifically Clang 21 or newer (see [2.3](#23-verifying-with-tsa-analysis)); on an older Clang, configuring with the option on stops with an error naming the requirement. If TSA ends up off, CMake prints a `NO EFFECT` warning at configure time (not during the build); look for `[OME] Clang thread-safety analysis: ENABLED` in the configure log to confirm it is on (`cmake/CompilerOptions.cmake`).
 
 ---
 
@@ -152,7 +152,7 @@ After writing new code, always build in `ON` mode (Clang) to check for violation
 
 | Option              | Default | Role                                                                                      |
 | ------------------- | ------- | ----------------------------------------------------------------------------------------- |
-| `OME_THREAD_SAFETY` | `OFF`   | When `ON` (Clang only), defines the `OME_THREAD_SAFETY` macro + enables `-Wthread-safety` |
+| `OME_THREAD_SAFETY` | `OFF`   | When `ON` (Clang 21+ only), defines `OME_THREAD_SAFETY` + enables `-Wthread-safety`       |
 | `OME_USE_CLANG`     | `ON`    | Use Clang as the compiler (required for TSA analysis)                                     |
 | `OME_BUILD_TESTS`   | `OFF`   | When `ON`, the TSA regression test is built/registered                                    |
 
@@ -165,6 +165,9 @@ cmake -B <build-dir> -G Ninja -DOME_THREAD_SAFETY=ON -DOME_BUILD_TESTS=ON
 # Build (TSA violations surface as -Wthread-safety warnings)
 cmake --build <build-dir>
 ```
+
+> [!IMPORTANT]
+> TSA needs **Clang 21 or newer**. `ov::ScopedLock` annotates a variadic constructor, and support for pack expansion in thread-safety attributes arrived in Clang 21; older Clang rejects the annotation in `tsa/mutex.h` (Clang 14 as a parse error, later versions as `attribute 'acquire_capability' does not support argument pack expansion`). Configuring with `OME_THREAD_SAFETY=ON` on an older Clang stops with an error saying so. Note that the `clang` package on Ubuntu 22.04 is Clang 14 and on Ubuntu 24.04 is Clang 18, so a newer Clang has to come from apt.llvm.org or an equivalent source. Select it explicitly, and turn `OME_USE_CLANG` off while you do, because with it on the build overwrites the compiler you pass: `-DOME_USE_CLANG=OFF -DCMAKE_C_COMPILER=clang-21 -DCMAKE_CXX_COMPILER=clang++-21`.
 
 > [!IMPORTANT]
 > TSA violations surface as compiler **warnings** (`-Wthread-safety`). OME does not use `-Werror`, so these warnings alone do not stop the build. After a change, check the build log yourself for any `warning: ... requires holding mutex ...` warnings.
@@ -601,7 +604,7 @@ Most of these fall under the limitations in [Section 7](#7-limitations-of-tsa).
 For the TSA regression test (`tsa_negative_verify`) to be registered/run, all of the following must hold:
 
 - `OME_THREAD_SAFETY=ON`
-- the compiler is Clang
+- the compiler is Clang 21 or newer
 - `OME_BUILD_TESTS=ON`
 
 If any is missing, the test is not registered. The non-Clang case is not silent: with `OME_THREAD_SAFETY=ON` on a non-Clang compiler, CMake's `NO EFFECT` configure warning explicitly states the negative-verify test is skipped. With all three enabled, the check runs automatically as part of the build.
