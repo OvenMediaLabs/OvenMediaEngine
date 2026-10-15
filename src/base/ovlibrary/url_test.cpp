@@ -221,6 +221,34 @@ TEST(OvUrl, ToUrlStringRoundTrip)
 	EXPECT_STREQ(reconstructed.CStr(), original);
 }
 
+TEST(OvUrl, ToUrlStringExcludeUserInfo)
+{
+	auto url = ov::Url::Parse("rtsp://user:pass@camera:554/h264Preview_01_main?token=abc");
+	ASSERT_NE(url, nullptr);
+	EXPECT_STREQ(url->ToUrlString().CStr(), "rtsp://user:pass@camera:554/h264Preview_01_main?token=abc");
+	EXPECT_STREQ(url->ToUrlString(true, false).CStr(), "rtsp://camera:554/h264Preview_01_main?token=abc");
+	EXPECT_STREQ(url->ToUrlString(false, false).CStr(), "rtsp://camera:554/h264Preview_01_main");
+	EXPECT_STREQ(url->Id().CStr(), "user");
+	EXPECT_STREQ(url->Password().CStr(), "pass");
+}
+
+TEST(OvUrl, ToUrlStringExcludeUserInfoIdOnly)
+{
+	// Parse() recognizes userinfo only as `id:password@`, so set the id directly
+	auto url = ov::Url::Parse("rtsp://camera:554/live");
+	ASSERT_NE(url, nullptr);
+	url->SetId("user");
+	EXPECT_STREQ(url->ToUrlString().CStr(), "rtsp://user@camera:554/live");
+	EXPECT_STREQ(url->ToUrlString(true, false).CStr(), "rtsp://camera:554/live");
+}
+
+TEST(OvUrl, ToUrlStringExcludeUserInfoNoCredentials)
+{
+	auto url = ov::Url::Parse("rtsp://camera:554/live");
+	ASSERT_NE(url, nullptr);
+	EXPECT_STREQ(url->ToUrlString(true, false).CStr(), url->ToUrlString().CStr());
+}
+
 // ---------------------------------------------------------------------------
 // operator= and copy constructor
 // ---------------------------------------------------------------------------

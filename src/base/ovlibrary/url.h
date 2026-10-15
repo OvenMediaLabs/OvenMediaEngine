@@ -85,7 +85,7 @@ namespace ov
 		bool RemoveQueryKey(const ov::String &key);
 
 		void Print() const;
-		ov::String ToUrlString(bool include_query_string = true) const;
+		ov::String ToUrlString(bool include_query_string = true, bool include_user_info = true) const;
 		ov::String ToString() const;
 
 		Url &operator=(const Url &other);
@@ -106,7 +106,7 @@ namespace ov
 		// Update _path_components/_app/_stream/_file from _path
 		bool UpdatePathComponentsFromPath() OV_REQUIRES(_mutex);
 		// Lock-free body of ToUrlString(); the public method takes the shared lock.
-		ov::String ToUrlStringInternal(bool include_query_string) const OV_REQUIRES_SHARED(_mutex);
+		ov::String ToUrlStringInternal(bool include_query_string, bool include_user_info) const OV_REQUIRES_SHARED(_mutex);
 
 		// Query-map cache helpers (lock order: `_mutex` -> `_query_map_mutex`).
 		// Marks the cached query map stale; called by mutators that change `_query_string`.

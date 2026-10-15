@@ -231,7 +231,7 @@ namespace pvd
 			return false;
 		}
 
-		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true));
+		auto describe = std::make_shared<RtspMessage>(RtspMethod::DESCRIBE, GetNextCSeq(), _curr_url->ToUrlString(true, false));
 		describe->AddHeaderField(std::make_shared<RtspHeaderField>(RtspHeaderFieldType::Accept, "application/sdp"));
 		describe->AddHeaderField(std::make_shared<RtspHeaderField>(RtspHeaderFieldType::UserAgent, RTSP_USER_AGENT_NAME));
 
@@ -644,7 +644,7 @@ namespace pvd
 			return false;
 		}
 
-		auto play = std::make_shared<RtspMessage>(RtspMethod::PLAY, GetNextCSeq(), _curr_url->ToUrlString(true));
+		auto play = std::make_shared<RtspMessage>(RtspMethod::PLAY, GetNextCSeq(), _curr_url->ToUrlString(true, false));
 		if (_authorization_field != nullptr)
 		{
 			// If authorization method is Digest, update the method and uri
@@ -702,7 +702,7 @@ namespace pvd
 			return false;
 		}
 
-		auto teardown = std::make_shared<RtspMessage>(RtspMethod::TEARDOWN, GetNextCSeq(), _curr_url->ToUrlString(true));
+		auto teardown = std::make_shared<RtspMessage>(RtspMethod::TEARDOWN, GetNextCSeq(), _curr_url->ToUrlString(true, false));
 		if (_authorization_field != nullptr)
 		{
 			// If authorization method is Digest, update the method and uri
@@ -747,7 +747,7 @@ namespace pvd
 	bool RtspcStream::Ping()
 	{
 		// GET_PARAMETER
-		auto get_parameter = std::make_shared<RtspMessage>(RtspMethod::GET_PARAMETER, GetNextCSeq(), _curr_url->ToUrlString(true));
+		auto get_parameter = std::make_shared<RtspMessage>(RtspMethod::GET_PARAMETER, GetNextCSeq(), _curr_url->ToUrlString(true, false));
 		if (_authorization_field != nullptr)
 		{
 			// If authorization method is Digest, update the method and uri
@@ -1265,7 +1265,7 @@ namespace pvd
 		}
 
 		ov::String control_url;
-		control_url = ov::String::FormatString("%s/%s", _curr_url->ToUrlString(false).CStr(), control.CStr());
+		control_url = ov::String::FormatString("%s/%s", _curr_url->ToUrlString(false, false).CStr(), control.CStr());
 		if (_curr_url->HasQueryString())
 		{
 			control_url.AppendFormat("?%s", _curr_url->Query().CStr());
