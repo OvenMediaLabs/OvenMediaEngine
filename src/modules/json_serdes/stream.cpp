@@ -52,6 +52,27 @@ namespace serdes
 			SetString(object, "codecModule", cmn::GetCodecModuleIdString(track->GetCodecModuleId()), Optional::True);
 		}
 		SetCodecStatus(object, "codecStatus", track, Optional::True);
+
+		// Only from a ready track, a provider can set a placeholder record before the real parameters arrive
+		if (track->IsValid())
+		{
+			SetString(object, "codecs", track->GetCodecsParameter(), Optional::True);
+
+			auto decoder_config = track->GetDecoderConfigurationRecord();
+			if (decoder_config != nullptr)
+			{
+				SetString(object, "profile", decoder_config->GetProfileName(), Optional::True);
+				SetString(object, "level", decoder_config->GetLevelName(), Optional::True);
+				SetString(object, "tier", decoder_config->GetTierName(), Optional::True);
+
+				auto bit_depth = decoder_config->GetBitDepth();
+				if (bit_depth > 0)
+				{
+					SetInt(object, "bitDepth", bit_depth);
+				}
+			}
+		}
+
 		SetString(object, "language", track->GetLanguage(), Optional::True);
 		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
 		auto resolution = track->GetResolution();
@@ -112,6 +133,10 @@ namespace serdes
 			SetString(object, "codecModule", cmn::GetCodecModuleIdString(track->GetCodecModuleId()), Optional::True);
 		}
 		SetCodecStatus(object, "codecStatus", track, Optional::True);
+		if (track->IsValid())
+		{
+			SetString(object, "codecs", track->GetCodecsParameter(), Optional::True);
+		}
 		SetString(object, "language", track->GetLanguage(), Optional::True);
 		SetString(object, "characteristics", track->GetCharacteristics(), Optional::True);
 		auto stats = track->GetStats();

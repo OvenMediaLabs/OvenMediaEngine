@@ -50,6 +50,10 @@ class HEVCDecoderConfigurationRecord : public DecoderConfigurationRecord
 public:
 	bool IsValid() const override;
 	ov::String GetCodecsParameter() const override;
+	ov::String GetProfileName() const override;
+	ov::String GetLevelName() const override;
+	ov::String GetTierName() const override;
+	uint8_t GetBitDepth() const override;
 	bool Parse(const std::shared_ptr<const ov::Data> &data) override;
 	bool Equals(const std::shared_ptr<DecoderConfigurationRecord> &other) override;
 

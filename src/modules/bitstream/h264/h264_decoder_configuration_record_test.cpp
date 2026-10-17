@@ -3,14 +3,24 @@
 //  OvenMediaEngine - Unit Tests
 //
 //  Covers: AVCDecoderConfigurationRecord::Equals() across a record parsed from
-//  an avcC and a record built from the same SPS/PPS NAL units
+//  an avcC and a record built from the same SPS/PPS NAL units, and the profile,
+//  level and bit depth the record reports
 //
 //==============================================================================
+#include <base/ovlibrary/bit_writer.h>
 #include <gtest/gtest.h>
 #include <modules/bitstream/h264/h264_decoder_configuration_record.h>
+#include <modules/bitstream/nalu/nal_unit_test_helpers.h>
+
+#include <algorithm>
 
 namespace
 {
+	using ome_test::ApplyEmulationPrevention;
+	using ome_test::ToBytes;
+	using ome_test::WriteTrailing;
+	using ome_test::WriteUE;
+
 	// A real 1920x1080 High profile (100) SPS, 4:2:0 8 bit, so the avcC that carries it writes
 	// chroma_format 1 and both bit depths 0.
 	const std::vector<uint8_t> kHighProfileSps = {
@@ -33,6 +43,57 @@ namespace
 	std::shared_ptr<ov::Data> AsData(const std::vector<uint8_t> &bytes)
 	{
 		return std::make_shared<ov::Data>(bytes.data(), bytes.size());
+	}
+
+	// The profiles whose SPS codes chroma_format_idc and the bit depths (ITU-T H.264 7.3.2.1.1)
+	const std::vector<uint8_t> kProfilesCodingTheChromaFormat = {100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135};
+
+	bool CodesTheChromaFormat(uint8_t profile_idc)
+	{
+		return std::find(kProfilesCodingTheChromaFormat.begin(), kProfilesCodingTheChromaFormat.end(), profile_idc) !=
+			   kProfilesCodingTheChromaFormat.end();
+	}
+
+	// A 640x320 SPS with the given profile, constraint flags, level and bit depth
+	// (ITU-T H.264 7.3.2.1.1)
+	std::vector<uint8_t> MakeSps(uint8_t profile_idc, uint8_t constraint_flags, uint8_t level_idc,
+								 uint32_t bit_depth_minus8 = 0)
+	{
+		ov::BitWriter w(64);
+
+		w.WriteBits(8, profile_idc);
+		w.WriteBits(8, constraint_flags);
+		w.WriteBits(8, level_idc);
+		WriteUE(w, 0);	// seq_parameter_set_id
+
+		if (CodesTheChromaFormat(profile_idc))
+		{
+			WriteUE(w, 1);					// chroma_format_idc (4:2:0)
+			WriteUE(w, bit_depth_minus8);	// bit_depth_luma_minus8
+			WriteUE(w, bit_depth_minus8);	// bit_depth_chroma_minus8
+			w.WriteBits(1, 0);				// qpprime_y_zero_transform_bypass_flag
+			w.WriteBits(1, 0);				// seq_scaling_matrix_present_flag
+		}
+
+		WriteUE(w, 4);		// log2_max_frame_num_minus4
+		WriteUE(w, 0);		// pic_order_cnt_type
+		WriteUE(w, 4);		// log2_max_pic_order_cnt_lsb_minus4
+		WriteUE(w, 1);		// max_num_ref_frames
+		w.WriteBits(1, 0);	// gaps_in_frame_num_value_allowed_flag
+		WriteUE(w, 39);		// pic_width_in_mbs_minus1
+		WriteUE(w, 19);		// pic_height_in_map_units_minus1
+		w.WriteBits(1, 1);	// frame_mbs_only_flag
+		w.WriteBits(1, 1);	// direct_8x8_inference_flag
+		w.WriteBits(1, 0);	// frame_cropping_flag
+		w.WriteBits(1, 0);	// vui_parameters_present_flag
+
+		WriteTrailing(w);
+
+		std::vector<uint8_t> nal = {0x67};	// nal_ref_idc(3) + nal_unit_type(7, SPS)
+		const auto ebsp = ApplyEmulationPrevention(ToBytes(w));
+		nal.insert(nal.end(), ebsp.begin(), ebsp.end());
+
+		return nal;
 	}
 
 	// ISO/IEC 14496-15 5.2.4.1: the chroma format, the bit depths and the SPS extension count are
@@ -231,4 +292,93 @@ TEST(AVCDecoderConfigurationRecord, IgnoresTheFieldsOnlyParseCanFill)
 
 		EXPECT_TRUE(parsed->Equals(built)) << test.name;
 	}
+}
+
+TEST(AVCDecoderConfigurationRecord, NamesTheProfileAndTheLevel)
+{
+	struct Case
+	{
+		uint8_t profile_idc;
+		uint8_t constraint_flags;
+		uint8_t level_idc;
+		const char *profile;
+		const char *level;
+	};
+
+	for (const auto &test : {Case{66, 0x00, 30, "Baseline", "3"},
+							 Case{66, 0x40, 31, "Constrained Baseline", "3.1"},
+							 Case{77, 0x00, 40, "Main", "4"},
+							 Case{88, 0x00, 21, "Extended", "2.1"},
+							 Case{100, 0x00, 41, "High", "4.1"},
+							 Case{100, 0x08, 42, "Progressive High", "4.2"},
+							 Case{100, 0x0C, 31, "Constrained High", "3.1"},
+							 Case{110, 0x00, 50, "High 10", "5"},
+							 Case{110, 0x08, 50, "Progressive High 10", "5"},
+							 Case{110, 0x10, 51, "High 10 Intra", "5.1"},
+							 Case{122, 0x00, 52, "High 4:2:2", "5.2"},
+							 Case{122, 0x10, 52, "High 4:2:2 Intra", "5.2"},
+							 Case{244, 0x00, 62, "High 4:4:4 Predictive", "6.2"},
+							 Case{244, 0x10, 62, "High 4:4:4 Intra", "6.2"},
+							 Case{44, 0x00, 10, "CAVLC 4:4:4 Intra", "1"},
+							 // Level 1b: 11 with constraint_set3_flag in Baseline, 9 in High
+							 Case{66, 0x10, 11, "Baseline", "1b"},
+							 Case{100, 0x00, 9, "High", "1b"},
+							 Case{100, 0x10, 11, "High", "1.1"},
+							 // Values the specification does not define have no name
+							 Case{83, 0x00, 30, "", "3"},
+							 Case{100, 0x00, 14, "High", ""},
+							 Case{100, 0x00, 0, "High", ""}})
+	{
+		auto record = BuiltRecord(MakeSps(test.profile_idc, test.constraint_flags, test.level_idc));
+		ASSERT_NE(record, nullptr) << "profile_idc " << static_cast<int>(test.profile_idc);
+
+		EXPECT_EQ(record->GetProfileName(), test.profile) << "profile_idc " << static_cast<int>(test.profile_idc);
+		EXPECT_EQ(record->GetLevelName(), test.level) << "level_idc " << static_cast<int>(test.level_idc);
+	}
+}
+
+TEST(AVCDecoderConfigurationRecord, TakesTheBitDepthFromTheSps)
+{
+	auto high10 = BuiltRecord(MakeSps(110, 0x00, 40, 2));
+	ASSERT_NE(high10, nullptr);
+	EXPECT_EQ(high10->GetBitDepth(), 10);
+
+	auto baseline = BuiltRecord(kBaselineSps);
+	ASSERT_NE(baseline, nullptr);
+	EXPECT_EQ(baseline->GetBitDepth(), 8) << "a profile that does not code the bit depth is 8 bit";
+
+	// MakeAvcC writes bit_depth_luma_minus8 0 in the trailer, so the SPS value has to win
+	auto parsed = ParsedRecord(MakeSps(110, 0x00, 40, 2));
+	ASSERT_NE(parsed, nullptr);
+	ASSERT_EQ(parsed->BitDepthLumaMinus8(), 0);
+	EXPECT_EQ(parsed->GetBitDepth(), 10);
+}
+
+// Missing one of these would misread every field that follows, the resolution included
+TEST(AVCDecoderConfigurationRecord, ReadsTheChromaFormatBlockOfEveryProfileThatCodesIt)
+{
+	for (auto profile_idc : kProfilesCodingTheChromaFormat)
+	{
+		const auto nal = MakeSps(profile_idc, 0x00, 40, 2);
+
+		H264SPS sps;
+		ASSERT_TRUE(H264Parser::ParseSPS(nal.data(), nal.size(), sps)) << "profile_idc " << static_cast<int>(profile_idc);
+
+		EXPECT_EQ(sps.GetWidth(), 640U) << "profile_idc " << static_cast<int>(profile_idc);
+		EXPECT_EQ(sps.GetHeight(), 320U) << "profile_idc " << static_cast<int>(profile_idc);
+		EXPECT_EQ(sps.GetBitDepthLuma(), 10) << "profile_idc " << static_cast<int>(profile_idc);
+	}
+}
+
+// bit_depth_luma_minus8 and bit_depth_chroma_minus8 are 0 to 6
+TEST(AVCDecoderConfigurationRecord, RejectsAnSpsWithAnOutOfRangeBitDepth)
+{
+	auto highest = MakeSps(244, 0x00, 40, 6);
+	H264SPS sps;
+	ASSERT_TRUE(H264Parser::ParseSPS(highest.data(), highest.size(), sps));
+	EXPECT_EQ(sps.GetBitDepthLuma(), 14);
+
+	auto out_of_range = MakeSps(244, 0x00, 40, 7);
+	EXPECT_FALSE(H264Parser::ParseSPS(out_of_range.data(), out_of_range.size(), sps));
+	EXPECT_EQ(BuiltRecord(out_of_range), nullptr);
 }

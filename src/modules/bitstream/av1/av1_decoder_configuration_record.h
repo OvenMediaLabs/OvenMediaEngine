@@ -53,6 +53,20 @@ public:
 	/// @return The MIME `codecs` parameter.
 	ov::String GetCodecsParameter() const override;
 
+	/// @return `Main`, `High` or `Professional` from `seq_profile`, empty for a reserved value
+	ov::String GetProfileName() const override;
+
+	/// @return The level as `X.Y` from `seq_level_idx_0`, empty for an undefined level or 31 (no level constraint)
+	ov::String GetLevelName() const override;
+
+	/// @return `Main` or `High` from `seq_tier_0`
+	ov::String GetTierName() const override;
+
+	/// Derive the effective bit depth from `high_bitdepth` and `twelve_bit` per AV1 spec section 5.5.2
+	///
+	/// @return `8`, `10`, or `12`
+	uint8_t GetBitDepth() const override;
+
 	/// Parse a serialized `AV1CodecConfigurationRecord` (`av1C` box) per AOMedia ISOBMFF binding.
 	///
 	/// @param data Pointer to the raw `av1C` blob bytes (first byte must be `0x81`).
@@ -126,11 +140,6 @@ public:
 	///
 	/// @param config_obus Buffer of zero or more concatenated AV1 OBUs. The pointer is stored as-is; pass `nullptr` to clear.
 	void SetConfigObus(const std::shared_ptr<ov::Data> &config_obus);
-
-	/// Derive the effective bit depth from `high_bitdepth` and `twelve_bit` per AV1 spec section 5.5.2.
-	///
-	/// @return `8`, `10`, or `12`.
-	uint8_t BitDepth() const;
 
 private:
 	/// Walk `_config_obus`, enforcing AV1 ISOBMFF binding v1.3.0 section 2.3.4 (Semantics) rules: a

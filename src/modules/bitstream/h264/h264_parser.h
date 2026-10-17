@@ -58,6 +58,10 @@ public:
 	{
 		return _codec_level;
 	}
+	uint8_t GetBitDepthLuma() const
+	{
+		return _bit_depth_luma;
+	}
 	unsigned int GetFps() const
 	{
 		return _fps;
@@ -144,6 +148,8 @@ private:
 	unsigned int _fps = 0;
 	unsigned int _id = 0;
     uint32_t _chroma_format_idc = 1;
+	// Inferred as 8 when the profile does not code it (ITU-T H.264 7.4.2.1.1)
+	uint8_t _bit_depth_luma = 8;
 	unsigned int _max_nr_of_reference_frames = 0;
 	uint8_t _aspect_ratio_idc = 0;
 	ASPECT_RATIO _aspect_ratio = {0, 0};

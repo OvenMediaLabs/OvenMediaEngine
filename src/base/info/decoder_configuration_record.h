@@ -25,6 +25,29 @@ public:
 	// RFC 6381
 	virtual ov::String GetCodecsParameter() const = 0;
 
+	// Profile, level and tier names as the codec specification writes them (e.g. "Main 10", "4.1", "High"),
+	// empty when the codec does not define one or the value is not one the specification defines
+	virtual ov::String GetProfileName() const
+	{
+		return "";
+	}
+
+	virtual ov::String GetLevelName() const
+	{
+		return "";
+	}
+
+	virtual ov::String GetTierName() const
+	{
+		return "";
+	}
+
+	// Luma bit depth, 0 when the codec does not define one
+	virtual uint8_t GetBitDepth() const
+	{
+		return 0;
+	}
+
 protected:
 	virtual std::shared_ptr<const ov::Data> Serialize() = 0;
 

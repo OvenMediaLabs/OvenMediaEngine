@@ -92,6 +92,10 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
           "bitrateLatest": 21845,
           "bypass": false,
           "codec": "H264",
+          "codecs": "avc1.64001f",
+          "profile": "High",
+          "level": "3.1",
+          "bitDepth": 8,
           "deltaFramesSinceLastKeyFrame": 0,
           "framerate": 30.0,
           "framerateAvg": 0.0,
@@ -118,6 +122,7 @@ X-OME-Signature: f871jd991jj1929jsjd91pqa0amm1
           "bypass": false,
           "channel": 2,
           "codec": "AAC",
+          "codecs": "mp4a.40.2",
           "samplerate": 48000
         }
       },

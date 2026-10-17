@@ -48,6 +48,9 @@ class AVCDecoderConfigurationRecord : public DecoderConfigurationRecord
 public:
 	bool IsValid() const override;
 	ov::String GetCodecsParameter() const override;
+	ov::String GetProfileName() const override;
+	ov::String GetLevelName() const override;
+	uint8_t GetBitDepth() const override;
 
 	// Instance can be initialized by putting raw data in AVCDecoderConfigurationRecord.
 	bool Parse(const std::shared_ptr<const ov::Data> &data) override;

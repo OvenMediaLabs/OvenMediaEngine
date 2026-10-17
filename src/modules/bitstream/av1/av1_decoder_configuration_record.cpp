@@ -31,7 +31,7 @@ ov::String AV1DecoderConfigurationRecord::GetCodecsParameter() const
 	// `bitDepth`: `08`, `10`, or `12`
 
 	const char tier_char = (_seq_tier_0 == 0) ? 'M' : 'H';
-	const uint8_t bit_depth = BitDepth();
+	const uint8_t bit_depth = GetBitDepth();
 
 	return ov::String::FormatString(
 		"av01.%u.%02u%c.%02u",
@@ -41,7 +41,7 @@ ov::String AV1DecoderConfigurationRecord::GetCodecsParameter() const
 		static_cast<uint32_t>(bit_depth));
 }
 
-uint8_t AV1DecoderConfigurationRecord::BitDepth() const
+uint8_t AV1DecoderConfigurationRecord::GetBitDepth() const
 {
 	if (_seq_profile == 2 && _high_bitdepth == 1)
 	{
@@ -49,6 +49,59 @@ uint8_t AV1DecoderConfigurationRecord::BitDepth() const
 	}
 
 	return _high_bitdepth ? 10 : 8;
+}
+
+ov::String AV1DecoderConfigurationRecord::GetProfileName() const
+{
+	// AV1 spec 6.4.1
+	switch (_seq_profile)
+	{
+		case 0:
+			return "Main";
+
+		case 1:
+			return "High";
+
+		case 2:
+			return "Professional";
+
+		default:
+			return "";
+	}
+}
+
+ov::String AV1DecoderConfigurationRecord::GetLevelName() const
+{
+	// AV1 spec A.3, the level is (2 + (seq_level_idx >> 2)).(seq_level_idx & 3) and levels 2.2, 2.3,
+	// 3.2, 3.3, 4.2, 4.3 and 7.x are not defined
+	const uint32_t seq_level_idx = _seq_level_idx_0;
+
+	switch (seq_level_idx)
+	{
+		case 0:
+		case 1:
+		case 4:
+		case 5:
+		case 8:
+		case 9:
+		case 12:
+		case 13:
+		case 14:
+		case 15:
+		case 16:
+		case 17:
+		case 18:
+		case 19:
+			return ov::String::FormatString("%u.%u", 2 + (seq_level_idx >> 2), seq_level_idx & 3);
+
+		default:
+			return "";
+	}
+}
+
+ov::String AV1DecoderConfigurationRecord::GetTierName() const
+{
+	return (_seq_tier_0 == 0) ? "Main" : "High";
 }
 
 bool AV1DecoderConfigurationRecord::Parse(const uint8_t *data, size_t length)

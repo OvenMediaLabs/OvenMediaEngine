@@ -476,15 +476,16 @@ bool H265Parser::ParseSPS(const uint8_t *nalu, size_t length, H265SPS &sps)
 	sps._width	= static_cast<uint32_t>(display_width);
 	sps._height = static_cast<uint32_t>(display_height);
 		  
+	// bit_depth_luma_minus8 and bit_depth_chroma_minus8 are in the range of 0 to 8 (ITU-T H.265 7.4.3.2.1)
 	uint32_t bit_depth_luma_minus8;
-	if (parser.ReadUEV(bit_depth_luma_minus8) == false)
+	if ((parser.ReadUEV(bit_depth_luma_minus8) == false) || (bit_depth_luma_minus8 > 8))
 	{
 		return false;
 	}
 	sps._bit_depth_luma_minus8 = bit_depth_luma_minus8;
 
 	uint32_t bit_depth_chroma_minus8;
-	if (parser.ReadUEV(bit_depth_chroma_minus8) == false)
+	if ((parser.ReadUEV(bit_depth_chroma_minus8) == false) || (bit_depth_chroma_minus8 > 8))
 	{
 		return false;
 	}

@@ -279,8 +279,10 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 		return false;
 	}
 
+	// ITU-T H.264 7.3.2.1.1
 	if (sps._profile == 44 || sps._profile == 83 || sps._profile == 86 || sps._profile == 100 ||
-		sps._profile == 110 || sps._profile == 118 || sps._profile == 122 || sps._profile == 244 || sps._profile == 128)
+		sps._profile == 110 || sps._profile == 118 || sps._profile == 122 || sps._profile == 244 || sps._profile == 128 ||
+		sps._profile == 138 || sps._profile == 139 || sps._profile == 134 || sps._profile == 135)
 	{
 		if (!parser.ReadUEV(sps._chroma_format_idc))
 		{
@@ -295,15 +297,17 @@ bool H264Parser::ParseSPS(const uint8_t *nalu, size_t length, H264SPS &sps)
 			}
 		}
 
+		// bit_depth_luma_minus8 and bit_depth_chroma_minus8 are in the range of 0 to 6 (ITU-T H.264 7.4.2.1.1)
 		uint32_t luma_bit_depth;
-		if (!parser.ReadUEV(luma_bit_depth))
+		if (!parser.ReadUEV(luma_bit_depth) || (luma_bit_depth > 6))
 		{
 			return false;
 		}
 		luma_bit_depth += 8;
+		sps._bit_depth_luma = static_cast<uint8_t>(luma_bit_depth);
 
 		uint32_t chroma_bit_depth;
-		if (!parser.ReadUEV(chroma_bit_depth))
+		if (!parser.ReadUEV(chroma_bit_depth) || (chroma_bit_depth > 6))
 		{
 			return false;
 		}

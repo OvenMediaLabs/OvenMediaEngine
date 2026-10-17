@@ -347,7 +347,7 @@ TEST(AV1DecoderConfigurationRecord, ParseValidMainProfile8Bit)
 	EXPECT_EQ(record.ChromaSubsamplingY(), 1);
 	EXPECT_EQ(record.ChromaSamplePosition(), 0);
 	EXPECT_EQ(record.InitialPresentationDelayPresent(), 0);
-	EXPECT_EQ(record.BitDepth(), 8);
+	EXPECT_EQ(record.GetBitDepth(), 8);
 	EXPECT_TRUE(record.IsValid());
 	EXPECT_EQ(record.GetCodecsParameter(), "av01.0.04M.08");
 }
@@ -364,7 +364,7 @@ TEST(AV1DecoderConfigurationRecord, ParseHighTier10Bit)
 	EXPECT_EQ(record.SeqProfile(), 2);
 	EXPECT_EQ(record.SeqLevelIdx0(), 8);
 	EXPECT_EQ(record.SeqTier0(), 1);
-	EXPECT_EQ(record.BitDepth(), 10);
+	EXPECT_EQ(record.GetBitDepth(), 10);
 	EXPECT_EQ(record.GetCodecsParameter(), "av01.2.08H.10");
 }
 
@@ -376,8 +376,54 @@ TEST(AV1DecoderConfigurationRecord, ParseHighTier12Bit)
 	AV1DecoderConfigurationRecord record;
 	ASSERT_TRUE(record.Parse(MakeData(bytes)));
 
-	EXPECT_EQ(record.BitDepth(), 12);
+	EXPECT_EQ(record.GetBitDepth(), 12);
 	EXPECT_EQ(record.GetCodecsParameter(), "av01.2.13H.12");
+}
+
+TEST(AV1DecoderConfigurationRecord, NamesTheProfileAndTheLevelAndReportsTheBitDepth)
+{
+	struct Case
+	{
+		uint8_t seq_profile;
+		uint8_t seq_level_idx;
+		uint8_t high_bitdepth;
+		uint8_t twelve_bit;
+		uint8_t chroma_subsampling;
+		const char *profile;
+		const char *level;
+		uint8_t bit_depth;
+	};
+
+	for (const auto &test : {Case{0, 0, 0, 0, 1, "Main", "2.0", 8},
+							 Case{0, 4, 0, 0, 1, "Main", "3.0", 8},
+							 Case{0, 9, 1, 0, 1, "Main", "4.1", 10},
+							 Case{1, 8, 1, 0, 0, "High", "4.0", 10},
+							 Case{2, 13, 1, 1, 1, "Professional", "5.1", 12},
+							 Case{0, 19, 0, 0, 1, "Main", "6.3", 8},
+							 // Levels 2.2, 2.3, 3.2, 3.3, 4.2, 4.3 and 7.x are not defined, 31 means no level constraint
+							 Case{0, 2, 0, 0, 1, "Main", "", 8},
+							 Case{0, 11, 0, 0, 1, "Main", "", 8},
+							 Case{0, 20, 0, 0, 1, "Main", "", 8},
+							 Case{0, 31, 0, 0, 1, "Main", "", 8}})
+	{
+		auto bytes = BuildAv1cHeader(test.seq_profile, test.seq_level_idx, 0, test.high_bitdepth, test.twelve_bit, 0,
+									 test.chroma_subsampling, test.chroma_subsampling, 0, false, 0);
+
+		AV1DecoderConfigurationRecord record;
+		ASSERT_TRUE(record.Parse(MakeData(bytes))) << "seq_level_idx " << static_cast<int>(test.seq_level_idx);
+
+		EXPECT_EQ(record.GetProfileName(), test.profile) << "seq_profile " << static_cast<int>(test.seq_profile);
+		EXPECT_EQ(record.GetLevelName(), test.level) << "seq_level_idx " << static_cast<int>(test.seq_level_idx);
+		EXPECT_EQ(record.GetBitDepth(), test.bit_depth) << "seq_profile " << static_cast<int>(test.seq_profile);
+		EXPECT_EQ(record.GetTierName(), "Main");
+	}
+
+	auto high_tier = BuildAv1cHeader(0, 12, 1, 0, 0, 0, 1, 1, 0, false, 0);
+
+	AV1DecoderConfigurationRecord record;
+	ASSERT_TRUE(record.Parse(MakeData(high_tier)));
+	EXPECT_EQ(record.GetTierName(), "High");
+	EXPECT_EQ(record.GetLevelName(), "5.0");
 }
 
 TEST(AV1DecoderConfigurationRecord, ParseWithInitialPresentationDelay)
@@ -540,7 +586,7 @@ TEST(AV1DecoderConfigurationRecord, ParsesFfmpegLibaomAv1Capture)
 	EXPECT_EQ(record.ChromaSubsamplingY(), 1);
 	EXPECT_EQ(record.ChromaSamplePosition(), 0);
 	EXPECT_EQ(record.InitialPresentationDelayPresent(), 0);
-	EXPECT_EQ(record.BitDepth(), 8);
+	EXPECT_EQ(record.GetBitDepth(), 8);
 
 	auto config_obus = record.ConfigObus();
 	ASSERT_NE(config_obus, nullptr);

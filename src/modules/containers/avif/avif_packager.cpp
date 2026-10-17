@@ -263,7 +263,7 @@ namespace avif
 			info.width					 = summary->max_frame_width;
 			info.height					 = summary->max_frame_height;
 			info.channels				 = (summary->monochrome != 0) ? 1 : 3;
-			info.bit_depth				 = record.BitDepth();
+			info.bit_depth				 = record.GetBitDepth();
 			info.color_primaries		 = summary->color_primaries;
 			info.transfer_characteristics = summary->transfer_characteristics;
 			info.matrix_coefficients	 = summary->matrix_coefficients;

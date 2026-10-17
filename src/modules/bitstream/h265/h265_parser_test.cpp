@@ -73,7 +73,30 @@ namespace
 		uint32_t num_positive_pics = 0;
 		bool long_term_ref_pics_present = false;
 		uint32_t num_long_term_ref_pics_sps = 0;
+		uint8_t profile_idc = 1;	// Main
+		uint8_t level_idc = 93;		// 3.1
+		uint32_t bit_depth_minus8 = 0;
+		uint8_t tier_flag = 0;
+		uint32_t compatibility_flags = 0x60000000;	// flag[1] and flag[2], flag[0] is the MSB
+		uint64_t constraint_indicator_flags = 0;	// 48 bits, general_progressive_source_flag is the MSB
 	};
+
+	// The format range extensions flags of general_constraint_indicator_flags (ITU-T H.265 7.3.3)
+	uint64_t RextFlags(bool max_12bit, bool max_10bit, bool max_8bit, bool max_422chroma, bool max_420chroma,
+					   bool max_monochrome, bool intra, bool one_picture_only)
+	{
+		const bool flags[] = {max_12bit, max_10bit, max_8bit, max_422chroma, max_420chroma,
+							  max_monochrome, intra, one_picture_only};
+
+		uint64_t value = 0;
+		for (int i = 0; i < 8; i++)
+		{
+			// After general_progressive_source, interlaced_source, non_packed_constraint and frame_only_constraint
+			value |= static_cast<uint64_t>(flags[i] ? 1 : 0) << (47 - (4 + i));
+		}
+
+		return value;
+	}
 
 	// vui_timing_info (Rec. ITU-T H.265 E.2.1). Absent unless vui_present is set, which is how
 	// an encoder that carries no timing information emits the SPS.
@@ -137,13 +160,16 @@ namespace
 		w.WriteBits(1, 0);						// sps_temporal_id_nesting_flag
 
 		// profile_tier_level, general part (96 bits)
-		w.WriteBits(2, 0);			  // general_profile_space
-		w.WriteBits(1, 0);			  // general_tier_flag
-		w.WriteBits(5, 1);			  // general_profile_idc (Main)
-		w.WriteBits(32, 0x60000000);  // general_profile_compatibility_flags
-		w.WriteBits(32, 0);			  // general_constraint_indicator_flags (hi 32)
-		w.WriteBits(16, 0);			  // general_constraint_indicator_flags (lo 16)
-		w.WriteBits(8, 93);			  // general_level_idc (3.1)
+		const auto constraint_hi = static_cast<uint32_t>(overrides.constraint_indicator_flags >> 16);
+		const auto constraint_lo = static_cast<uint32_t>(overrides.constraint_indicator_flags & 0xFFFF);
+
+		w.WriteBits(2, 0);								 // general_profile_space
+		w.WriteBits(1, overrides.tier_flag);			 // general_tier_flag
+		w.WriteBits(5, overrides.profile_idc);			 // general_profile_idc
+		w.WriteBits(32, overrides.compatibility_flags);	 // general_profile_compatibility_flags
+		w.WriteBits(32, constraint_hi);					 // general_constraint_indicator_flags (hi 32)
+		w.WriteBits(16, constraint_lo);					 // general_constraint_indicator_flags (lo 16)
+		w.WriteBits(8, overrides.level_idc);			 // general_level_idc
 
 		// profile_tier_level, sub-layer part. The parser skips 88 bits per present profile.
 		for (uint32_t i = 0; i < max_sub_layers_minus1; i++)
@@ -175,8 +201,8 @@ namespace
 		WriteUE(w, overrides.pic_width);   // pic_width_in_luma_samples
 		WriteUE(w, overrides.pic_height);  // pic_height_in_luma_samples
 		w.WriteBits(1, 0);				   // conformance_window_flag
-		WriteUE(w, 0);					   // bit_depth_luma_minus8
-		WriteUE(w, 0);	// bit_depth_chroma_minus8
+		WriteUE(w, overrides.bit_depth_minus8);  // bit_depth_luma_minus8
+		WriteUE(w, overrides.bit_depth_minus8);  // bit_depth_chroma_minus8
 		WriteUE(w, log2_max_pic_order_cnt_lsb_minus4);	// log2_max_pic_order_cnt_lsb_minus4
 
 		w.WriteBits(1, 0);	// sps_sub_layer_ordering_info_present_flag -> one iteration
@@ -637,6 +663,142 @@ TEST(H265DecoderConfig, CodecsParameterUsesHvc1)
 {
 	auto record = BuildRecord(/*sao=*/false);
 	EXPECT_TRUE(record->GetCodecsParameter().HasPrefix("hvc1"));
+}
+
+TEST(H265DecoderConfig, NamesTheProfileAndTheLevelAndReportsTheBitDepth)
+{
+	struct Case
+	{
+		uint8_t profile_idc;
+		uint8_t level_idc;
+		uint32_t bit_depth_minus8;
+		const char *profile;
+		const char *level;
+		uint8_t bit_depth;
+	};
+
+	for (const auto &test : {Case{1, 93, 0, "Main", "3.1", 8},
+							 Case{2, 120, 2, "Main 10", "4", 10},
+							 Case{3, 153, 0, "Main Still Picture", "5.1", 8},
+							 Case{1, 30, 0, "Main", "1", 8},
+							 Case{2, 186, 2, "Main 10", "6.2", 10},
+							 // Levels 6.3, 7, 7.1, 7.2 and 8.5 of the 09/2023 edition
+							 Case{2, 189, 2, "Main 10", "6.3", 10},
+							 Case{2, 210, 2, "Main 10", "7", 10},
+							 Case{2, 213, 2, "Main 10", "7.1", 10},
+							 Case{2, 216, 2, "Main 10", "7.2", 10},
+							 Case{1, 255, 0, "Main", "8.5", 8},
+							 // Values the specification does not define have no name
+							 Case{9, 123, 0, "", "4.1", 8},
+							 Case{1, 31, 0, "Main", "", 8},
+							 Case{1, 0, 0, "Main", "", 8}})
+	{
+		SpsOverrides overrides;
+		overrides.profile_idc	   = test.profile_idc;
+		overrides.level_idc		   = test.level_idc;
+		overrides.bit_depth_minus8 = test.bit_depth_minus8;
+
+		auto record = BuildRecord(/*sao=*/false, 0, 0, 3, false, false, overrides);
+		ASSERT_NE(record->GetSPS(0), nullptr) << "profile_idc " << static_cast<int>(test.profile_idc);
+
+		EXPECT_EQ(record->GetProfileName(), test.profile) << "profile_idc " << static_cast<int>(test.profile_idc);
+		EXPECT_EQ(record->GetLevelName(), test.level) << "level_idc " << static_cast<int>(test.level_idc);
+		EXPECT_EQ(record->GetBitDepth(), test.bit_depth) << "bit_depth_minus8 " << test.bit_depth_minus8;
+		EXPECT_EQ(record->GetTierName(), "Main");
+	}
+}
+
+// ITU-T H.265 Table A.2
+TEST(H265DecoderConfig, NamesTheFormatRangeExtensionsProfileByItsConstraintFlags)
+{
+	struct Case
+	{
+		uint64_t constraint_indicator_flags;
+		const char *profile;
+	};
+
+	//                       12b    10b    8b     422    420    mono   intra  1pic
+	for (const auto &test : {Case{RextFlags(true, false, false, true, true, false, false, false), "Main 12"},
+							 Case{RextFlags(true, true, false, true, false, false, false, false), "Main 4:2:2 10"},
+							 Case{RextFlags(true, false, false, true, false, false, false, false), "Main 4:2:2 12"},
+							 Case{RextFlags(true, true, true, false, false, false, false, false), "Main 4:4:4"},
+							 Case{RextFlags(true, true, false, false, false, false, false, false), "Main 4:4:4 10"},
+							 Case{RextFlags(true, false, false, true, true, true, false, false), "Monochrome 12"},
+							 Case{RextFlags(false, false, false, true, true, true, false, false), "Monochrome 16"},
+							 Case{RextFlags(true, true, true, true, true, false, true, false), "Main Intra"},
+							 Case{RextFlags(true, true, false, true, false, false, true, false), "Main 4:2:2 10 Intra"},
+							 Case{RextFlags(false, false, false, false, false, false, true, false), "Main 4:4:4 16 Intra"},
+							 Case{RextFlags(true, true, true, false, false, false, true, true), "Main 4:4:4 Still Picture"},
+							 // Combinations Table A.2 does not define
+							 Case{RextFlags(true, true, true, true, false, false, false, false), ""},
+							 Case{RextFlags(true, true, true, true, true, false, false, false), ""},
+							 Case{0, ""}})
+	{
+		SpsOverrides overrides;
+		overrides.profile_idc				 = 4;
+		overrides.constraint_indicator_flags = test.constraint_indicator_flags;
+
+		auto record = BuildRecord(/*sao=*/false, 0, 0, 3, false, false, overrides);
+		ASSERT_NE(record->GetSPS(0), nullptr) << test.profile;
+
+		EXPECT_EQ(record->GetProfileName(), test.profile) << test.profile;
+	}
+}
+
+// An encoder may leave general_profile_idc 0 and signal the profile by the compatibility flags alone
+TEST(H265DecoderConfig, NamesTheProfileFromTheCompatibilityFlagsWhenTheIdcIsZero)
+{
+	struct Case
+	{
+		uint32_t compatibility_flags;
+		uint64_t constraint_indicator_flags;
+		const char *profile;
+	};
+
+	for (const auto &test : {Case{0x60000000, 0, "Main"},
+							 Case{0x20000000, 0, "Main 10"},
+							 Case{0x08000000, RextFlags(true, false, false, true, true, false, false, false), "Main 12"},
+							 Case{0x00000000, 0, ""}})
+	{
+		SpsOverrides overrides;
+		overrides.profile_idc				 = 0;
+		overrides.compatibility_flags		 = test.compatibility_flags;
+		overrides.constraint_indicator_flags = test.constraint_indicator_flags;
+
+		auto record = BuildRecord(/*sao=*/false, 0, 0, 3, false, false, overrides);
+		ASSERT_NE(record->GetSPS(0), nullptr) << test.profile;
+
+		EXPECT_EQ(record->GetProfileName(), test.profile) << test.profile;
+	}
+}
+
+TEST(H265DecoderConfig, NamesTheHighTier)
+{
+	SpsOverrides overrides;
+	overrides.level_idc = 153;
+	overrides.tier_flag = 1;
+
+	auto record = BuildRecord(/*sao=*/false, 0, 0, 3, false, false, overrides);
+	ASSERT_NE(record->GetSPS(0), nullptr);
+
+	EXPECT_EQ(record->GetTierName(), "High");
+	EXPECT_EQ(record->GetLevelName(), "5.1");
+}
+
+// bit_depth_luma_minus8 and bit_depth_chroma_minus8 are 0 to 8
+TEST(H265Parser, RejectsAnSpsWithAnOutOfRangeBitDepth)
+{
+	SpsOverrides overrides;
+	H265SPS sps;
+
+	overrides.bit_depth_minus8 = 8;
+	auto highest			   = BuildSps(false, 0, 3, overrides);
+	ASSERT_TRUE(H265Parser::ParseSPS(highest.data(), highest.size(), sps));
+	EXPECT_EQ(sps.GetBitDepthLumaMinus8(), 8U);
+
+	overrides.bit_depth_minus8 = 9;
+	auto out_of_range		   = BuildSps(false, 0, 3, overrides);
+	EXPECT_FALSE(H265Parser::ParseSPS(out_of_range.data(), out_of_range.size(), sps));
 }
 
 // ============================================================================

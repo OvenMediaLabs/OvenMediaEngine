@@ -103,6 +103,151 @@ ov::String HEVCDecoderConfigurationRecord::GetCodecsParameter() const
 	return codecs_parameter;
 }
 
+// ITU-T H.265 Table A.2, a format range extensions profile is named by its general_max_*bit,
+// general_max_*chroma, general_intra and general_one_picture_only constraint flags
+static ov::String GetFormatRangeExtensionsProfileName(uint64_t constraint_indicator_flags)
+{
+	// general_progressive_source_flag is the most significant of the 48 bits
+	auto flag = [constraint_indicator_flags](int index) -> bool {
+		return ((constraint_indicator_flags >> (47 - index)) & 0x01) != 0;
+	};
+
+	const bool max_12bit		= flag(4);
+	const bool max_10bit		= flag(5);
+	const bool max_8bit			= flag(6);
+	const bool max_422chroma	= flag(7);
+	const bool max_420chroma	= flag(8);
+	const bool max_monochrome	= flag(9);
+	const bool intra			= flag(10);
+	const bool one_picture_only = flag(11);
+
+	ov::String name;
+
+	if (max_monochrome)
+	{
+		name = "Monochrome";
+	}
+	else
+	{
+		name = "Main";
+		name += max_420chroma ? "" : (max_422chroma ? " 4:2:2" : " 4:4:4");
+	}
+
+	name += max_8bit ? "" : (max_10bit ? " 10" : (max_12bit ? " 12" : " 16"));
+
+	if (one_picture_only)
+	{
+		name += " Still Picture";
+	}
+	else if (intra)
+	{
+		name += " Intra";
+	}
+
+	static const char *defined_profiles[] = {
+		"Monochrome", "Monochrome 10", "Monochrome 12", "Monochrome 16",
+		"Main 12", "Main 4:2:2 10", "Main 4:2:2 12", "Main 4:4:4", "Main 4:4:4 10", "Main 4:4:4 12",
+		"Main Intra", "Main 10 Intra", "Main 12 Intra", "Main 4:2:2 10 Intra", "Main 4:2:2 12 Intra",
+		"Main 4:4:4 Intra", "Main 4:4:4 10 Intra", "Main 4:4:4 12 Intra", "Main 4:4:4 16 Intra",
+		"Main 4:4:4 Still Picture", "Main 4:4:4 16 Still Picture"};
+
+	for (auto defined_profile : defined_profiles)
+	{
+		if (name == defined_profile)
+		{
+			return name;
+		}
+	}
+
+	return "";
+}
+
+ov::String HEVCDecoderConfigurationRecord::GetProfileName() const
+{
+	// ITU-T H.265 Annex A, profile_idc has no defined meaning in a non-zero profile space
+	if (_general_profile_space != 0)
+	{
+		return "";
+	}
+
+	// An encoder may leave general_profile_idc 0 and signal the profile only by
+	// general_profile_compatibility_flag[j], whose flag[0] is the most significant bit
+	uint32_t profile_idc = _general_profile_idc;
+	if (profile_idc == 0)
+	{
+		for (uint32_t j = 1; j < 32; j++)
+		{
+			if (((_general_profile_compatibility_flags >> (31 - j)) & 0x01) != 0)
+			{
+				profile_idc = j;
+				break;
+			}
+		}
+	}
+
+	switch (profile_idc)
+	{
+		case 1:
+			return "Main";
+
+		case 2:
+			return "Main 10";
+
+		case 3:
+			return "Main Still Picture";
+
+		case 4:
+			return GetFormatRangeExtensionsProfileName(_general_constraint_indicator_flags);
+
+		default:
+			return "";
+	}
+}
+
+ov::String HEVCDecoderConfigurationRecord::GetLevelName() const
+{
+	// ITU-T H.265 (09/2023) Annex A, general_level_idc is 30 times the level number
+	const uint32_t level_idc = _general_level_idc;
+
+	switch (level_idc)
+	{
+		case 30:
+		case 60:
+		case 90:
+		case 120:
+		case 150:
+		case 180:
+		case 210:
+			return ov::String::FormatString("%u", level_idc / 30);
+
+		case 63:
+		case 93:
+		case 123:
+		case 153:
+		case 156:
+		case 183:
+		case 186:
+		case 189:
+		case 213:
+		case 216:
+		case 255:
+			return ov::String::FormatString("%u.%u", level_idc / 30, (level_idc % 30) / 3);
+
+		default:
+			return "";
+	}
+}
+
+ov::String HEVCDecoderConfigurationRecord::GetTierName() const
+{
+	return (_general_tier_flag == 0) ? "Main" : "High";
+}
+
+uint8_t HEVCDecoderConfigurationRecord::GetBitDepth() const
+{
+	return _bit_depth_luma_minus8 + 8;
+}
+
 bool HEVCDecoderConfigurationRecord::Parse(const std::shared_ptr<const ov::Data> &data)
 {
 	if (data == nullptr)

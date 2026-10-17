@@ -22,6 +22,105 @@ ov::String AVCDecoderConfigurationRecord::GetCodecsParameter() const
 	return ov::String::FormatString("avc1.%02x%02x%02x", ProfileIndication(), Compatibility(), LevelIndication());
 }
 
+ov::String AVCDecoderConfigurationRecord::GetProfileName() const
+{
+	// ITU-T H.264 Annex A, constraint_set0_flag is the MSB of the compatibility byte
+	const bool constraint_set1 = (Compatibility() & 0x40) != 0;
+	const bool constraint_set3 = (Compatibility() & 0x10) != 0;
+	const bool constraint_set4 = (Compatibility() & 0x08) != 0;
+	const bool constraint_set5 = (Compatibility() & 0x04) != 0;
+
+	switch (ProfileIndication())
+	{
+		case 66:
+			return constraint_set1 ? "Constrained Baseline" : "Baseline";
+
+		case 77:
+			return "Main";
+
+		case 88:
+			return "Extended";
+
+		case 100:
+			if (constraint_set4 && constraint_set5)
+			{
+				return "Constrained High";
+			}
+
+			return constraint_set4 ? "Progressive High" : "High";
+
+		case 110:
+			if (constraint_set3)
+			{
+				return "High 10 Intra";
+			}
+
+			return constraint_set4 ? "Progressive High 10" : "High 10";
+
+		case 122:
+			return constraint_set3 ? "High 4:2:2 Intra" : "High 4:2:2";
+
+		case 244:
+			return constraint_set3 ? "High 4:4:4 Intra" : "High 4:4:4 Predictive";
+
+		case 44:
+			return "CAVLC 4:4:4 Intra";
+
+		default:
+			return "";
+	}
+}
+
+ov::String AVCDecoderConfigurationRecord::GetLevelName() const
+{
+	const uint32_t level_idc = LevelIndication();
+
+	// ITU-T H.264 A.3.1, level 1b is coded as 9, or as 11 with constraint_set3_flag in these profiles
+	const uint8_t profile_idc = ProfileIndication();
+	const bool constraint_set3 = (Compatibility() & 0x10) != 0;
+	if ((level_idc == 9) ||
+		((level_idc == 11) && constraint_set3 && ((profile_idc == 66) || (profile_idc == 77) || (profile_idc == 88))))
+	{
+		return "1b";
+	}
+
+	// ITU-T H.264 Table A-1, level_idc is 10 times the level number
+	switch (level_idc)
+	{
+		case 10:
+		case 20:
+		case 30:
+		case 40:
+		case 50:
+		case 60:
+			return ov::String::FormatString("%u", level_idc / 10);
+
+		case 11:
+		case 12:
+		case 13:
+		case 21:
+		case 22:
+		case 31:
+		case 32:
+		case 41:
+		case 42:
+		case 51:
+		case 52:
+		case 61:
+		case 62:
+			return ov::String::FormatString("%u.%u", level_idc / 10, level_idc % 10);
+
+		default:
+			return "";
+	}
+}
+
+uint8_t AVCDecoderConfigurationRecord::GetBitDepth() const
+{
+	// Taken from the SPS because the avcC fields are filled only when Parse() reads its trailer
+	return _h264_sps.GetBitDepthLuma();
+}
+
 bool AVCDecoderConfigurationRecord::Parse(const std::shared_ptr<const ov::Data> &data)
 {
 	if (data == nullptr)
