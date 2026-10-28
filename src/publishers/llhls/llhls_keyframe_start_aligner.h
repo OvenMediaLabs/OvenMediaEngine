@@ -18,13 +18,13 @@
 #include <set>
 #include <vector>
 
-// Makes every track of a stream start at the first video keyframe, so the
-// segment cadence of every track starts at the same point. A stream that
-// joined in the middle of a GOP drops the video before that keyframe and the
-// audio before its DTS. A stream whose first video packet is a keyframe passes
-// unchanged; audio arriving before that packet is only held until it arrives.
-// Used only until IsAligned(), from the single thread a stream's packets are
-// pushed on.
+// Makes audio and the first video track start at that track's first keyframe,
+// so their segment cadences start at the same point; any other video track
+// starts at its own first keyframe. A stream that joined in the middle of a GOP
+// drops the video before the keyframe and the audio before its DTS. A stream
+// whose first video packet is a keyframe passes unchanged; audio arriving
+// before that packet is only held until it arrives. Used only until
+// IsAligned(), from the single thread a stream's packets are pushed on.
 //
 // Audio that itself starts later than the keyframe is not covered: each track
 // counts its segments from its own first sample in duration mode, so that
