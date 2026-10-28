@@ -153,6 +153,7 @@ ome_parse_dep_version(OME_VER_JEMALLOC JEMALLOC_VERSION JEMALLOC_SOURCE_REF JEMA
 ome_parse_dep_version(OME_VER_PCRE2 PCRE2_VERSION PCRE2_SOURCE_REF PCRE2_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_OPENH264 OPENH264_VERSION OPENH264_SOURCE_REF OPENH264_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_HIREDIS HIREDIS_VERSION HIREDIS_SOURCE_REF HIREDIS_HAS_OVERRIDE)
+ome_parse_dep_version(OME_VER_REDIS_PLUS_PLUS REDIS_PLUS_PLUS_VERSION REDIS_PLUS_PLUS_SOURCE_REF REDIS_PLUS_PLUS_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_NVCC_HDR NVCC_HDR_VERSION NVCC_HDR_SOURCE_REF NVCC_HDR_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_X264 X264_VERSION X264_SOURCE_REF X264_HAS_OVERRIDE)
 ome_parse_dep_version(OME_VER_WEBP WEBP_VERSION WEBP_SOURCE_REF WEBP_HAS_OVERRIDE)
@@ -175,6 +176,7 @@ ome_select_archive_ref(JEMALLOC_ARCHIVE_REF "${JEMALLOC_HAS_OVERRIDE}" "${JEMALL
 ome_select_archive_ref(PCRE2_ARCHIVE_REF "${PCRE2_HAS_OVERRIDE}" "${PCRE2_SOURCE_REF}" "refs/tags/pcre2-${PCRE2_SOURCE_REF}")
 ome_select_archive_ref(OPENH264_ARCHIVE_REF "${OPENH264_HAS_OVERRIDE}" "${OPENH264_SOURCE_REF}" "refs/tags/v${OPENH264_SOURCE_REF}")
 ome_select_archive_ref(HIREDIS_ARCHIVE_REF "${HIREDIS_HAS_OVERRIDE}" "${HIREDIS_SOURCE_REF}" "refs/tags/v${HIREDIS_SOURCE_REF}")
+ome_select_archive_ref(REDIS_PLUS_PLUS_ARCHIVE_REF "${REDIS_PLUS_PLUS_HAS_OVERRIDE}" "${REDIS_PLUS_PLUS_SOURCE_REF}" "refs/tags/${REDIS_PLUS_PLUS_SOURCE_REF}")
 ome_select_archive_ref(NVCC_HDR_ARCHIVE_REF "${NVCC_HDR_HAS_OVERRIDE}" "${NVCC_HDR_SOURCE_REF}" "refs/tags/n${NVCC_HDR_SOURCE_REF}")
 ome_select_archive_ref(X264_ARCHIVE_REF "${X264_HAS_OVERRIDE}" "${X264_SOURCE_REF}/x264-${X264_SOURCE_REF}" "master/x264-${X264_SOURCE_REF}")
 ome_select_archive_ref(WEBP_ARCHIVE_REF "${WEBP_HAS_OVERRIDE}" "${WEBP_SOURCE_REF}" "refs/tags/v${WEBP_SOURCE_REF}")
@@ -196,6 +198,7 @@ set(JEMALLOC_SOURCE_URL "https://github.com/jemalloc/jemalloc/releases/download/
 set(PCRE2_SOURCE_URL "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_SOURCE_REF}/pcre2-${PCRE2_SOURCE_REF}.tar.gz")
 set(OPENH264_SOURCE_URL "https://github.com/cisco/openh264/archive/${OPENH264_ARCHIVE_REF}.tar.gz")
 set(HIREDIS_SOURCE_URL "https://github.com/redis/hiredis/archive/${HIREDIS_ARCHIVE_REF}.tar.gz")
+set(REDIS_PLUS_PLUS_SOURCE_URL "https://github.com/sewenew/redis-plus-plus/archive/${REDIS_PLUS_PLUS_ARCHIVE_REF}.tar.gz")
 set(NVCC_HDR_SOURCE_URL "https://github.com/FFmpeg/nv-codec-headers/releases/download/n${NVCC_HDR_SOURCE_REF}/nv-codec-headers-${NVCC_HDR_SOURCE_REF}.tar.gz")
 # TODO: restore the official https://code.videolan.org/videolan/x264/-/archive/${X264_ARCHIVE_REF}.tar.bz2
 set(X264_SOURCE_URL "https://github.com/mirror/x264/archive/${X264_SOURCE_REF}.tar.gz")
@@ -642,7 +645,16 @@ make ${_J} && sudo make install && rm -rf ${TEMP_PATH}/pcre2
 set(_install_hiredis "
 mkdir -p ${TEMP_PATH}/hiredis && cd ${TEMP_PATH}/hiredis &&
 ome_fetch ${HIREDIS_SOURCE_URL} &&
-make ${_J} PREFIX=${PREFIX} LIBRARY_PATH=lib && sudo make install PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
+make ${_J} USE_SSL=1 PREFIX=${PREFIX} LIBRARY_PATH=lib CPPFLAGS=-I${PREFIX}/include LDFLAGS=-L${PREFIX}/lib SSL_LDFLAGS='-L${PREFIX}/lib -Wl,-rpath,${PREFIX}/lib -lssl -lcrypto' &&
+sudo make install USE_SSL=1 PREFIX=${PREFIX} LIBRARY_PATH=lib && rm -rf ${TEMP_PATH}/hiredis
+")
+
+# ---- redis-plus-plus ----
+set(_install_redis-plus-plus "
+mkdir -p ${TEMP_PATH}/redis-plus-plus && cd ${TEMP_PATH}/redis-plus-plus &&
+ome_fetch ${REDIS_PLUS_PLUS_SOURCE_URL} &&
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=${PREFIX} -DCMAKE_INSTALL_PREFIX=${PREFIX} -DCMAKE_INSTALL_LIBDIR=lib -DREDIS_PLUS_PLUS_CXX_STANDARD=17 -DREDIS_PLUS_PLUS_USE_TLS=ON -DREDIS_PLUS_PLUS_BUILD_TEST=OFF -DREDIS_PLUS_PLUS_BUILD_STATIC=OFF -DREDIS_PLUS_PLUS_BUILD_SHARED=ON &&
+cmake --build build ${_J} && sudo cmake --install build && rm -rf ${TEMP_PATH}/redis-plus-plus
 ")
 
 # ---- spdlog ----
@@ -734,6 +746,7 @@ set(_targets
     jemalloc
     libpcre2
     hiredis
+    redis-plus-plus
     spdlog
     whisper
 )
@@ -758,6 +771,9 @@ if(DEFINED TARGET)
             list(APPEND _ffmpeg_deps ffnvcodec)
         endif()
         set(_targets ${_ffmpeg_deps} ffmpeg)
+    elseif("${TARGET}" STREQUAL "redis-plus-plus")
+        # TLS-enabled redis-plus-plus requires the hiredis SSL library.
+        set(_targets hiredis redis-plus-plus)
     elseif("${TARGET}" STREQUAL "libvpx" OR "${TARGET}" STREQUAL "libaom" OR "${TARGET}" STREQUAL "libdav1d")
         # libvpx/libaom/libdav1d require nasm as assembler
         set(_targets nasm ${TARGET})

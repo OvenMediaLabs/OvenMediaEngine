@@ -258,8 +258,11 @@ This means that existing settings do not need to be updated when extending Origi
     <OriginMapStore>
         <!-- In order to use OriginMap, you must enable OVT Publisher in Origin and OVT Provider in Edge. -->
         <RedisServer>
-            <Host>192.168.0.160:6379</Host>
+            <!-- Use the ElastiCache configuration endpoint when Cluster is true. -->
+            <Host>my-redis.xxxxxx.clustercfg.use1.cache.amazonaws.com:6379</Host>
             <Auth>!@#ovenmediaengine</Auth>
+            <Cluster>true</Cluster>
+            <Tls>true</Tls>
         </RedisServer>
         
         <!-- This is only needed for the origin server and used to register the ovt address of the stream.  -->
@@ -268,6 +271,11 @@ This means that existing settings do not need to be updated when extending Origi
     ...
 </VirtualHost>
 ```
+
+`Cluster` enables Redis Cluster slot discovery and redirect handling. Set `Host` to the
+ElastiCache configuration endpoint, not an individual node endpoint. `Tls` enables
+encryption in transit. Both options default to `false`, so existing standalone Redis
+configurations remain compatible.
 
 
 ## Dynamic Application

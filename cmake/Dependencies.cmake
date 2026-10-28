@@ -367,6 +367,7 @@ ome_find_pkg(PKG_DAV1D          dav1d           OME_VER_DAV1D           REINSTAL
 ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTALL_TARGET libopus)
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
 ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)
+ome_find_pkg(PKG_REDIS_PLUS_PLUS redis++         OME_VER_REDIS_PLUS_PLUS REINSTALL_TARGET redis-plus-plus)
 ome_find_pkg(PKG_SPDLOG         spdlog          OME_VER_SPDLOG          REINSTALL_TARGET spdlog)
 # Whisper speech-to-text runs on the CPU, so it is built the same way with and
 # without NVIDIA support. A whisper left behind by a GPU build (libggml-cuda

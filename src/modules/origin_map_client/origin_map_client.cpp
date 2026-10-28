@@ -11,7 +11,7 @@
 
 #define OV_LOG_TAG "OriginMapClient"
 
-OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String &redis_password)
+OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String &redis_password, bool redis_cluster, bool redis_tls)
 {
 	// Parse ip:port 
 	auto ip_port = redis_host.Split(":");
@@ -23,6 +23,23 @@ OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String 
 	_redis_ip = ip_port[0];
 	_redis_port = ov::Converter::ToUInt16(ip_port[1]);
 	_redis_password = redis_password;
+	_redis_cluster_enabled = redis_cluster;
+	_redis_tls_enabled = redis_tls;
+
+	_redis_connection_options.host = _redis_ip.CStr();
+	_redis_connection_options.port = _redis_port;
+	_redis_connection_options.password = _redis_password.CStr();
+	_redis_connection_options.keep_alive = true;
+	_redis_connection_options.tls.enabled = _redis_tls_enabled;
+	_redis_connection_options.tls.sni = _redis_ip.CStr();
+	// Pinned hiredis 1.0.2's redisCreateSSLContext() only loads a trust store when
+	// cacert/capath is given -- unlike newer hiredis, it has no fallback to the
+	// system default verify paths. Leaving cacert empty builds an SSL_CTX with no
+	// trust anchors, so verify_mode's default REDIS_SSL_VERIFY_PEER can never
+	// succeed and every handshake to a TLS-enabled Redis (e.g. ElastiCache
+	// Serverless) fails. Point at the system CA bundle, present on the Amazon
+	// Linux 2023 AMI this is built for.
+	_redis_connection_options.tls.cacert = "/etc/ssl/certs/ca-certificates.crt";
 
 	_update_timer.Push(
 		[this](void *paramter) -> ov::DelayQueueAction {
@@ -156,21 +173,22 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 	
 	{
 		// Check if already registered
-		auto [reply_type, reply_str] = CommandToRedis("GET %s", app_stream_name.CStr());
-		if (reply_type == REDIS_REPLY_NIL)
+		ov::String registered_origin;
+		auto result = GetValue(app_stream_name, registered_origin);
+		if (result == CommonErrorCode::NOT_FOUND)
 		{
 			// Not exist, keep going
 		}
-		else if (reply_type == REDIS_REPLY_STRING)
+		else if (result == CommonErrorCode::SUCCESS)
 		{
-			if (origin_host == reply_str)
+			if (origin_host == registered_origin)
 			{
 				// Already registered with same origin host, so no need to register again.
 				same_registered = true;
 			}
 			else
 			{
-				logte("<%s> stream is already registered with different origin host (%s)", app_stream_name.CStr(), reply_str.CStr());
+				logte("<%s> stream is already registered with different origin host (%s)", app_stream_name.CStr(), registered_origin.CStr());
 				
 				AddOriginMapCandidate(app_stream_name, origin_host);
 
@@ -179,7 +197,6 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 		}
 		else
 		{
-			logte("Failed to get origin host from redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
 			return false;
 		}
 	}
@@ -190,13 +207,12 @@ bool OriginMapClient::Register(const ov::String &app_stream_name, const ov::Stri
 		// The EXPIRE option is to prevent locking the app/stream when OvenMediaEngine unexpectedly stops.
 		// So _update_timer updates the expire time once every 2.5 seconds.
 		// If it is successful, it will return REDIS_REPLY_STATUS with "OK".
-		auto [reply_type, reply_str] = CommandToRedis("SET %s %s EX %d NX", app_stream_name.CStr(), origin_host.CStr(), ORIGIN_MAP_STORE_KEY_EXPIRE_TIME);
-		if (reply_type == REDIS_ERR || reply_type == REDIS_REPLY_ERROR)
+		auto result = SetValue(app_stream_name, origin_host, true);
+		if (result == SetResult::Error)
 		{
-			logte("Failed to register origin host to redis : %s:%d/%s/%s (err(%d):%s)", _redis_ip.CStr(), _redis_port, app_stream_name.CStr(), origin_host.CStr(), reply_type, reply_str.CStr());
 			return false;
 		}
-		else if (reply_type == REDIS_REPLY_NIL)
+		else if (result == SetResult::NotSet)
 		{
 			logte("<%s> stream is already registered.", app_stream_name.CStr());
 			AddOriginMapCandidate(app_stream_name, origin_host);
@@ -220,19 +236,13 @@ bool OriginMapClient::Update(const ov::String &app_stream_name, const ov::String
 {
 	// Set origin host to redis
 	// XX option or EXPIRE cmd are not used because if redis server is restarted, update() can restore the origin stream info.
-	auto [reply_type, reply_str] = CommandToRedis("SET %s %s EX %d", app_stream_name.CStr(), origin_host.CStr(), ORIGIN_MAP_STORE_KEY_EXPIRE_TIME);
-	if (reply_type == REDIS_REPLY_STATUS && reply_str == "OK")
+	auto result = SetValue(app_stream_name, origin_host, false);
+	if (result == SetResult::Success)
 	{
 		// Updated
 	}
-	else if (reply_type == REDIS_REPLY_NIL)
-	{
-		logte("Failed to update origin host to redis because the key does not exist : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
-		return false;
-	}
 	else
 	{
-		logte("Failed to update origin host to redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
 		return false;
 	}
 
@@ -243,10 +253,8 @@ bool OriginMapClient::Unregister(const ov::String &app_stream_name)
 {
 	if (DeleteOriginMap(app_stream_name) == true)
 	{
-		auto [reply_type, reply_str] = CommandToRedis("DEL %s", app_stream_name.CStr());
-		if (reply_type == REDIS_ERR || reply_type == REDIS_REPLY_ERROR)
+		if (DeleteValue(app_stream_name) == false)
 		{
-			logte("Failed to delete origin host from redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
 			return false;
 		}
 	}
@@ -258,131 +266,135 @@ bool OriginMapClient::Unregister(const ov::String &app_stream_name)
 
 CommonErrorCode OriginMapClient::GetOrigin(const ov::String &app_stream_name, ov::String &origin_host)
 {
-	auto [reply_type, reply_str] = CommandToRedis("GET %s", app_stream_name.CStr());
-	if (reply_type == REDIS_ERR || reply_type == REDIS_REPLY_ERROR)
+	return GetValue(app_stream_name, origin_host);
+}
+
+CommonErrorCode OriginMapClient::GetValue(const ov::String &key, ov::String &value)
+{
+	std::lock_guard<std::mutex> lock(_redis_mutex);
+	if (EnsureClient() == false)
 	{
-		logte("Failed to get origin host from redis : %s:%d (err(%d):%s)", _redis_ip.CStr(), _redis_port, reply_type, reply_str.CStr());
 		return CommonErrorCode::ERROR;
 	}
-	else if (reply_type == REDIS_REPLY_NIL)
+
+	try
 	{
+		sw::redis::OptionalString result;
+		if (_redis_cluster_enabled)
+		{
+			result = _redis_cluster->get(key.CStr());
+		}
+		else
+		{
+			result = _redis->get(key.CStr());
+		}
+
+		if (result)
+		{
+			value = result->c_str();
+			return CommonErrorCode::SUCCESS;
+		}
 		return CommonErrorCode::NOT_FOUND;
 	}
-
-	origin_host = reply_str;
-
-	return CommonErrorCode::SUCCESS;
+	catch (const sw::redis::Error &error)
+	{
+		logte("Failed to get key from Redis %s:%d: %s", _redis_ip.CStr(), _redis_port, error.what());
+		ResetClient();
+		return CommonErrorCode::ERROR;
+	}
 }
 
-bool OriginMapClient::ConnectRedis()
+OriginMapClient::SetResult OriginMapClient::SetValue(const ov::String &key, const ov::String &value, bool only_if_absent)
 {
-	std::lock_guard<std::mutex> lock(_redis_context_mutex);
-
-	if (CheckConnection() == true)
+	std::lock_guard<std::mutex> lock(_redis_mutex);
+	if (EnsureClient() == false)
 	{
+		return SetResult::Error;
+	}
+
+	try
+	{
+		const auto update_type = only_if_absent ? sw::redis::UpdateType::NOT_EXIST : sw::redis::UpdateType::ALWAYS;
+		bool result;
+		if (_redis_cluster_enabled)
+		{
+			result = _redis_cluster->set(key.CStr(), value.CStr(), std::chrono::seconds(ORIGIN_MAP_STORE_KEY_EXPIRE_TIME), update_type);
+		}
+		else
+		{
+			result = _redis->set(key.CStr(), value.CStr(), std::chrono::seconds(ORIGIN_MAP_STORE_KEY_EXPIRE_TIME), update_type);
+		}
+		return result ? SetResult::Success : SetResult::NotSet;
+	}
+	catch (const sw::redis::Error &error)
+	{
+		logte("Failed to set key in Redis %s:%d: %s", _redis_ip.CStr(), _redis_port, error.what());
+		ResetClient();
+		return SetResult::Error;
+	}
+}
+
+bool OriginMapClient::DeleteValue(const ov::String &key)
+{
+	std::lock_guard<std::mutex> lock(_redis_mutex);
+	if (EnsureClient() == false)
+	{
+		return false;
+	}
+
+	try
+	{
+		if (_redis_cluster_enabled)
+		{
+			_redis_cluster->del(key.CStr());
+		}
+		else
+		{
+			_redis->del(key.CStr());
+		}
 		return true;
 	}
-
-	// connect to redis server
-	_redis_context = redisConnect(_redis_ip.CStr(), _redis_port);
-	if (_redis_context == nullptr || _redis_context->err)
+	catch (const sw::redis::Error &error)
 	{
-		if (_redis_context == nullptr)
-		{
-			redisFree(_redis_context);
-			_redis_context = nullptr;
-		}
-
-		logte("Failed to connect to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port, _redis_context->errstr);
+		logte("Failed to delete key from Redis %s:%d: %s", _redis_ip.CStr(), _redis_port, error.what());
+		ResetClient();
 		return false;
 	}
+}
 
-	// Auth
-	if (_redis_password.IsEmpty() == false)
+bool OriginMapClient::EnsureClient()
+{
+	try
 	{
-		redisReply *reply = (redisReply *)redisCommand(_redis_context, "AUTH %s", _redis_password.CStr());
-		if (reply == nullptr || reply->type == REDIS_REPLY_ERROR)
+		if (_redis_cluster_enabled)
 		{
-			logte("Failed to auth to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port, reply!=nullptr?reply->str:"nil");
-
-			if (reply != nullptr)
+			if (_redis_cluster == nullptr)
 			{
-				freeReplyObject(reply);
+				_redis_cluster = std::make_unique<sw::redis::RedisCluster>(_redis_connection_options);
 			}
-			
-			return false;
 		}
+		else if (_redis == nullptr)
+		{
+			_redis = std::make_unique<sw::redis::Redis>(_redis_connection_options);
+		}
+		return true;
 	}
-
-	return true;
-}
-
-bool OriginMapClient::CheckConnection()
-{
-	if (_redis_context == nullptr)
+	catch (const sw::redis::Error &error)
 	{
+		logte("Failed to connect to Redis %s:%d: %s", _redis_ip.CStr(), _redis_port, error.what());
+		ResetClient();
 		return false;
 	}
-
-	// Test with PING command
-	redisReply *reply = (redisReply *)redisCommand(_redis_context, "PING");
-	if (reply == nullptr)
-	{
-		return false;
-	}
-
-	return true;
 }
 
-std::tuple<int, ov::String> OriginMapClient::CommandToRedis(const char *format, ...)
+void OriginMapClient::ResetClient()
 {
-	if (ConnectRedis() == false)
+	if (_redis_cluster_enabled)
 	{
-		logte("Failed to connect redis server : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, _redis_context!=nullptr?_redis_context->errstr:"nil");
-		return { REDIS_ERR, "Failed to connect redis server" };
-	}
-
-	std::unique_lock<std::mutex> lock(_redis_context_mutex);
-
-	va_list args;
-	va_start(args, format);
-	redisReply *reply = (redisReply *)redisvCommand(_redis_context, format, args);
-	va_end(args);
-
-	if (reply == nullptr || reply->type == REDIS_REPLY_ERROR)
-	{
-		logte("Failed to execute command to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, reply!=nullptr?reply->str:"nil");
-		return { REDIS_ERR, reply!=nullptr?reply->str:"Failed to execute command to redis" };
-	}
-
-	int reply_type = reply->type;
-	ov::String reply_str;
-	if (reply->type == REDIS_REPLY_STRING)
-	{
-		reply_str = reply->str;
-	}
-	else if (reply->type == REDIS_REPLY_INTEGER)
-	{
-		reply_str = ov::Converter::ToString((int64_t)reply->integer);
-	}
-	else if (reply->type == REDIS_REPLY_NIL)
-	{
-		reply_str = "NIL";
-	}
-	else if (reply->type == REDIS_REPLY_STATUS)
-	{
-		reply_str = reply->str;
-	}
-	else if (reply->type == REDIS_REPLY_ARRAY)
-	{
-		reply_str = ov::Converter::ToString((int)reply->elements) + " elements";
+		_redis_cluster.reset();
 	}
 	else
 	{
-		reply_str = "Unknown type";
+		_redis.reset();
 	}
-
-	freeReplyObject(reply);
-
-	return { reply_type, reply_str };
 }

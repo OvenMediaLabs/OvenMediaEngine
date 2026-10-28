@@ -37,7 +37,12 @@ namespace ocst
 		{
 			// Make ovt base url
 			auto ovt_port = cfg::ConfigManager::GetInstance()->GetServer()->GetBind().GetPublishers().GetOvt().GetPort();
-			_origin_map_client = std::make_shared<OriginMapClient>(store.GetRedisServer().GetHost(), store.GetRedisServer().GetAuth());
+			const auto &redis_server = store.GetRedisServer();
+			_origin_map_client = std::make_shared<OriginMapClient>(
+				redis_server.GetHost(),
+				redis_server.GetAuth(),
+				redis_server.IsClusterEnabled(),
+				redis_server.IsTlsEnabled());
 			_is_origin_map_store_enabled = true;
 
 			if (store.GetOriginHostName().IsEmpty() == false)

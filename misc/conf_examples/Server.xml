@@ -309,6 +309,9 @@
 				<RedisServer>
 					<Host>192.168.0.160:6379</Host>
 					<Auth>!@#ovenmediaengine</Auth>
+					Enable these for an ElastiCache cluster configuration endpoint.
+					<Cluster>false</Cluster>
+					<Tls>false</Tls>
 				</RedisServer>
 				
 				This is only needed for the origin server and used to register the ovt address of the stream. 

@@ -193,6 +193,7 @@ if(OME_BUILD_TESTS)
         PkgConfig::PKG_LIBSRTP2
         PkgConfig::PKG_LIBPCRE2_8
         PkgConfig::PKG_HIREDIS
+        PkgConfig::PKG_REDIS_PLUS_PLUS
         PkgConfig::PKG_SPDLOG
         PkgConfig::PKG_WHISPER
         ${UUID_LIB}
