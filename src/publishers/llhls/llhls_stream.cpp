@@ -203,6 +203,20 @@ bool LLHlsStream::Start()
 	_storage_config.dvr_storage_path = dvr_config.GetTempStoragePath();
 	_storage_config.dvr_duration_sec = dvr_config.GetMaxDuration();
 
+	if (llhls_config.IsServerTimeBasedSegmentNumbering() == true)
+	{
+		// Decided once so every track starts from the same number, from the time PDT
+		// is anchored to. A stream prepared before its first packet has no published
+		// time yet, so the current time stands in
+		auto start_time = GetInputStreamPublishedTime();
+		if (start_time.time_since_epoch().count() == 0)
+		{
+			start_time = std::chrono::system_clock::now();
+		}
+
+		_initial_segment_number = std::chrono::duration_cast<std::chrono::milliseconds>(start_time.time_since_epoch()).count() / static_cast<double>(_storage_config.segment_duration_ms);
+	}
+
 	_configured_part_hold_back = llhls_config.GetPartHoldBack();
 	_preload_hint_enabled = llhls_config.IsPreloadHintEnabled();
 
@@ -1969,7 +1983,7 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	}
 
 	// The boundary policy decides where each segment of this track ends and
-	// what it is named. Server-time based numbering starts from the wall clock.
+	// what it is named
 	auto llhls_config = GetApplication()->GetConfig().GetPublishers().GetLLHlsPublisher();
 	bool server_time_based_segment_numbering = llhls_config.IsServerTimeBasedSegmentNumbering();
 
@@ -1980,10 +1994,7 @@ bool LLHlsStream::AddPackager(const std::shared_ptr<const MediaTrack> &media_tra
 	// Video cuts only at keyframes; audio can cut at any frame
 	policy_config.keyframe_interval_ms = (media_track->GetMediaType() == cmn::MediaType::Video) ? media_track->GetKeyframeIntervalDurationMs() : 0.0;
 	policy_config.log_context = ov::String::FormatString("LLHLS stream (%s) / track (%u)", tag.CStr(), media_track->GetId());
-	if (server_time_based_segment_numbering == true)
-	{
-		policy_config.initial_segment_number = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() / static_cast<double>(_storage_config.segment_duration_ms);
-	}
+	policy_config.initial_segment_number = _initial_segment_number;
 
 	std::shared_ptr<bmff::SegmentBoundaryPolicy> boundary_policy;
 

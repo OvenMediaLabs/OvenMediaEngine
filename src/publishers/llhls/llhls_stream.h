@@ -243,6 +243,8 @@ private:
 	// Config
 	bmff::FMP4Packager::Config _packager_config;
 	bmff::FMP4Storage::Config _storage_config;
+	// Where the segment numbering of every track starts
+	int64_t _initial_segment_number = 0;
 
 	// Track ID : Storage
 	std::map<int32_t, std::shared_ptr<base::modules::SegmentStorage>> _storage_map;
