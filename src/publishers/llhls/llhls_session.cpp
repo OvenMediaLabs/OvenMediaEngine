@@ -158,23 +158,23 @@ bool LLHlsSession::UpdateLastRequest(uint32_t connection_id)
 		return false;
 	}
 
-	_last_request_time[connection_id] = ov::Clock::NowMSec();
+	_last_request_time[connection_id] = std::chrono::steady_clock::now();
 
 	logtt("LLHlsSession(%u) : Request updated from %u : size(%zu)", GetId(), connection_id, _last_request_time.size());
 
 	return true;
 }
 
-uint64_t LLHlsSession::GetLastRequestTime(uint32_t connection_id) const
+bool LLHlsSession::HasUsedConnectionWithin(uint32_t connection_id, int64_t msec) const
 {
 	std::shared_lock<std::shared_mutex> lock(_last_request_time_guard);
-	auto itr = _last_request_time.find(connection_id);
-	if (itr == _last_request_time.end())
+	auto item = _last_request_time.find(connection_id);
+	if (item == _last_request_time.end())
 	{
-		return 0;
+		return false;
 	}
 
-	return itr->second;
+	return ov::Clock::GetElapsedMiliSecondsFromNow(item->second) < msec;
 }
 
 std::optional<uint64_t> LLHlsSession::OnConnectionDisconnected(uint32_t connection_id)
@@ -582,12 +582,6 @@ void LLHlsSession::ResponsePlaylist(const std::shared_ptr<http::svr::HttpExchang
 		}
 
 		response->AppendData(playlist);
-
-		if (_origin_mode == false)
-		{
-			MonitorInstance->OnSessionConnected(*GetStream(), PublisherType::LLHls);
-			_number_of_players += 1;
-		}
 	}
 	else if (result == LLHlsStream::RequestResult::Accepted && holdIfAccepted == true)
 	{
@@ -686,13 +680,6 @@ void LLHlsSession::ResponseChunklist(const std::shared_ptr<http::svr::HttpExchan
 		}
 
 		response->AppendData(chunklist);
-
-		// If a client uses previously cached llhls.m3u8 and requests chunklist
-		if (_origin_mode == false && _number_of_players == 0)
-		{
-			MonitorInstance->OnSessionConnected(*GetStream(), PublisherType::LLHls);
-			_number_of_players += 1;
-		}
 	}
 	else if (result == LLHlsStream::RequestResult::Accepted && holdIfAccepted == true)
 	{

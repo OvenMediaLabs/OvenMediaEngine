@@ -39,6 +39,11 @@ namespace http
 			_user_data_map[key] = std::move(user_data);
 		}
 
+		void HttpConnection::RemoveUserData(const ov::String &key)
+		{
+			_user_data_map.erase(key);
+		}
+
 		const std::any *HttpConnection::GetUserData(const ov::String &key) const
 		{
 			auto item = _user_data_map.find(key);

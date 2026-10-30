@@ -35,7 +35,7 @@ Policy is in JSON format and provides the following properties.
 
 **url\_expire** means the time the URL is valid, so if you connect before the URL expires, you can continue to use it, and sessions that have already been connected will not be deleted even if the time expires. However, **stream\_expire** forcibly terminates the session when the time expires even if it is already playing.
 
-For LLHLS, a [playback session](../streaming/low-latency-hls.md#playback-sessions) ends when every connection from the player has been closed for about 3 seconds, for example after a network outage. The chunklist and segment URLs the player already has are then rejected, and to play again the player needs a master playlist URL whose **url\_expire** has not passed. If your players have to start again after such a break, give the master playlist URL a long enough **url\_expire**, or have your player page request a new URL when it loads the stream again.
+For LLHLS, a [playback session](../streaming/low-latency-hls.md#playback-sessions) ends when every connection from the player has been closed for about 3 seconds, for example after a network outage, or when the player has made no request for about a minute. The chunklist and segment URLs the player already has are then rejected, and to play again the player needs a master playlist URL whose **url\_expire** has not passed. If your players have to start again after such a break, give the master playlist URL a long enough **url\_expire**, or have your player page request a new URL when it loads the stream again.
 
 :::
 

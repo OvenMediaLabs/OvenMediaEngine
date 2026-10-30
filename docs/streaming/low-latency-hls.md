@@ -116,9 +116,9 @@ We have prepared a test player that you can quickly see if OvenMediaEngine is wo
 
 ### Playback Sessions
 
-An LLHLS player sends many HTTP requests, often over several connections at once. OvenMediaEngine groups them into one playback session per player: the master playlist response carries a `session` value in every chunklist and segment URL below it, and every request that carries that value belongs to the same session. A session is counted as one viewer in the statistics and in the REST API.
+An LLHLS player sends many HTTP requests, often over several connections at once. OvenMediaEngine groups them into one playback session per player: the master playlist response carries a `session` value in every chunklist and segment URL below it, and every request that carries that value belongs to the same session. A session is counted as one viewer in the statistics and in the REST API. Every master playlist request starts a new session, so a player that loads the stream again gets a new session and its earlier one ends as described below.
 
-A session ends when every connection from the player has been closed for about 3 seconds. A short network glitch inside that time keeps the session as it is. Pausing alone usually does not end a session, because most players keep their connections and go on loading while paused.
+A session ends when every connection from the player has been closed for about 3 seconds, or when the player has made no request for about a minute. A short network glitch inside that time keeps the session as it is. Pausing alone usually does not end a session, because most players keep their connections and go on loading while paused.
 
 What happens after a session ends depends on whether access control is enabled for the application:
 

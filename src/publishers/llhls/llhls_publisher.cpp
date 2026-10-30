@@ -15,6 +15,17 @@
 #include "llhls_private.h"
 #include "llhls_session.h"
 
+// Connection user data keys of LLHLS sessions, one for each session the connection carried
+static constexpr const char *kSessionUserDataPrefix = "llhls-session/";
+
+// When this connection last looked for sessions that stopped using it
+static constexpr const char *kIdleCheckUserDataKey = "llhls-idle-check";
+
+static ov::String MakeSessionUserDataKey(const info::Session::Path &path)
+{
+	return ov::String::FormatString("%s%u/%u/%u", kSessionUserDataPrefix, path._application_id, path._stream_id, path._session_id);
+}
+
 std::shared_ptr<LLHlsPublisher> LLHlsPublisher::Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router)
 {
 	auto llhls = std::make_shared<LLHlsPublisher>(server_config, router);
@@ -285,19 +296,6 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		// Check if the request is for the master playlist
 		if (access_control_enabled == true && (final_url->File().IndexOf(".m3u8") > 0 && final_url->File().IndexOf("chunklist") == -1))
 		{
-			// A player is admitted once per session, so a repeated request is served by the session it opened
-			auto opened_session = FindSessionOpenedBy(connection, requested_url);
-			if (opened_session != nullptr)
-			{
-				auto opened_stream = opened_session->GetStream();
-				auto opened_application = std::static_pointer_cast<LLHlsApplication>(opened_stream->GetApplication());
-				opened_application->GetCorsManager().SetupHttpCorsHeader(opened_application->GetVHostAppName(), request, response, {http::Method::Options, http::Method::Get, http::Method::Head});
-
-				opened_stream->SendMessage(opened_session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
-
-				return http::svr::NextHandler::DoNotCallAndDoNotResponse;
-			}
-
 			auto request_info = std::make_shared<ac::RequestInfo>(final_url, nullptr, request->GetRemote(), request);
 
 			auto [signed_policy_result, signed_policy] = Publisher::VerifyBySignedPolicy(request_info);
@@ -443,30 +441,20 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		{
 			if (final_url->File().HasSuffix(".m3u8") == true && final_url->File().HasPrefix("chunklist") == false)
 			{
-				// A repeated master playlist request on the same connection reuses its session while it is open
-				auto session_path_ptr = std::any_cast<info::Session::Path>(connection->GetUserData(stream->GetStreamId()));
-				if (session_path_ptr != nullptr)
+				// One player is one session, and a master playlist request comes without a session value, so it always starts one
+				session = LLHlsSession::Create(stream->IssueUniqueSessionId(), origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
+				if (session == nullptr)
 				{
-					session = std::static_pointer_cast<LLHlsSession>(GetSession(*session_path_ptr));
+					logte("Could not create llhls session for request: %s", request->ToString().CStr());
+					response->SetStatusCode(http::StatusCode::InternalServerError);
+					close_admission();
+					return http::svr::NextHandler::DoNotCall;
 				}
+				session->SetRequestedUrl(requested_url);
+				session->SetFinalUrl(final_url);
+				session->UpdateLastRequest(connection->GetId());
 
-				if (session == nullptr || session->GetStream() != stream || session->UpdateLastRequest(connection->GetId()) == false)
-				{
-					// New session
-					session = LLHlsSession::Create(stream->IssueUniqueSessionId(), origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
-					if (session == nullptr)
-					{
-						logte("Could not create llhls session for request: %s", request->ToString().CStr());
-						response->SetStatusCode(http::StatusCode::InternalServerError);
-						close_admission();
-						return http::svr::NextHandler::DoNotCall;
-					}
-					session->SetRequestedUrl(requested_url);
-					session->SetFinalUrl(final_url);
-					session->UpdateLastRequest(connection->GetId());
-
-					stream->RegisterSession(session);
-				}
+				stream->RegisterSession(session);
 			}
 			// chunklist_x_x.m3u8?session=<session id>_<key>
 			// x_x_x.m4s?session=<session id>_<key>
@@ -529,8 +517,10 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 				}
 			}
 
-			// It will be used in CloseHandler
-			connection->AddUserData(stream->GetStreamId(), session->GetSessionPath());
+			// Every session that used this connection is recorded, so the close handler reaches all of them
+			connection->AddUserData(MakeSessionUserDataKey(session->GetSessionPath()), session->GetSessionPath());
+
+			ReleaseSessionsIdleOn(connection, session);
 		}
 
 		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
@@ -543,6 +533,11 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		for (auto &user_data : connection->GetUserDataMap())
 		{
 			std::shared_ptr<LLHlsSession> session;
+
+			if (user_data.first.HasPrefix(kSessionUserDataPrefix) == false)
+			{
+				continue;
+			}
 
 			auto session_path_ptr = std::any_cast<info::Session::Path>(&user_data.second);
 			if (session_path_ptr == nullptr)
@@ -585,32 +580,60 @@ void LLHlsPublisher::PostCloseAdmissionWebhooks(const std::shared_ptr<const ac::
 	}
 }
 
-std::shared_ptr<LLHlsSession> LLHlsPublisher::FindSessionOpenedBy(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<const ov::Url> &requested_url)
+void LLHlsPublisher::ReleaseSessionsIdleOn(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<LLHlsSession> &current_session)
 {
-	auto requested_url_string = requested_url->ToUrlString();
+	// Looked at no more than once per grace period, so a release comes at most one grace late
+	auto now = std::chrono::steady_clock::now();
+	auto last_check = std::any_cast<std::chrono::steady_clock::time_point>(connection->GetUserData(kIdleCheckUserDataKey));
+	if ((last_check != nullptr) && ((now - *last_check) < std::chrono::milliseconds(kSessionCloseGraceMs)))
+	{
+		return;
+	}
+	connection->AddUserData(kIdleCheckUserDataKey, now);
+
+	std::vector<std::pair<ov::String, std::shared_ptr<LLHlsSession>>> idle_sessions;
 
 	for (const auto &[key, user_data] : connection->GetUserDataMap())
 	{
+		if (key.HasPrefix(kSessionUserDataPrefix) == false)
+		{
+			continue;
+		}
+
 		auto session_path = std::any_cast<info::Session::Path>(&user_data);
 		if (session_path == nullptr)
 		{
 			continue;
 		}
 
-		auto session = std::static_pointer_cast<LLHlsSession>(GetSession(*session_path));
-		if (session == nullptr || session->GetRequestedUrl() == nullptr || session->GetRequestedUrl()->ToUrlString() != requested_url_string)
+		if ((session_path->_stream_id == current_session->GetStreamId()) && (session_path->_session_id == current_session->GetId()))
 		{
 			continue;
 		}
 
-		// A closed session takes no connection, so the request opens a new one
-		if (session->UpdateLastRequest(connection->GetId()) == true)
+		// A player that stops using a shared connection is treated like one whose own connection went idle
+		auto session = std::static_pointer_cast<LLHlsSession>(GetSession(*session_path));
+		if (session == nullptr || session->HasUsedConnectionWithin(connection->GetId(), HTTP_CONNECTION_TIMEOUT_MS) == false)
 		{
-			return session;
+			idle_sessions.emplace_back(key, session);
 		}
 	}
 
-	return nullptr;
+	for (const auto &[key, session] : idle_sessions)
+	{
+		connection->RemoveUserData(key);
+
+		if (session == nullptr)
+		{
+			continue;
+		}
+
+		auto idle_since = session->OnConnectionDisconnected(connection->GetId());
+		if (idle_since.has_value())
+		{
+			CloseSessionAfterGrace(session, idle_since.value(), connection->GetSocket());
+		}
+	}
 }
 
 void LLHlsPublisher::CloseSessionAfterGrace(const std::shared_ptr<LLHlsSession> &session, uint64_t idle_since, const std::shared_ptr<const ov::Socket> &last_socket)

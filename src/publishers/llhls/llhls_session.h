@@ -9,6 +9,7 @@
 #pragma once
 
 #include <base/publisher/session.h>
+#include <chrono>
 #include <list>
 #include <optional>
 
@@ -53,7 +54,8 @@ public:
 
 	// Registers the connection, false once the session is closed
 	bool UpdateLastRequest(uint32_t connection_id);
-	uint64_t GetLastRequestTime(uint32_t connection_id) const;
+	// Whether the connection carried a request of this session within the last msec
+	bool HasUsedConnectionWithin(uint32_t connection_id, int64_t msec) const;
 	// Removes the connection. When it was the last one, returns the time the session became idle
 	std::optional<uint64_t> OnConnectionDisconnected(uint32_t connection_id);
 	// Closes the session if it has had no connection since idle_since, false when one came back meanwhile
@@ -112,7 +114,7 @@ private:
 
 	// ID list of connections requesting this session
 	// Connection ID : last request time
-	std::map<uint32_t, uint64_t> _last_request_time;
+	std::map<uint32_t, std::chrono::steady_clock::time_point> _last_request_time;
 	// When the last connection left; a closed session takes no connection again
 	uint64_t _idle_since = 0;
 	bool _closed = false;
@@ -120,6 +122,7 @@ private:
 	
 	// session life time
 	uint64_t _session_life_time = 0;
+	// Only an origin mode session counts itself as a viewer; the stream counts the others
 	uint32_t _number_of_players = 0;
 
 	// <session id>_<key> unless the session was started by a value from a URL

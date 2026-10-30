@@ -54,8 +54,8 @@ private:
 
 	// Sends the closing request on a worker, since nothing waits for its answer
 	void PostCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info);
-	// The open session this connection started with a request for the same URL
-	std::shared_ptr<LLHlsSession> FindSessionOpenedBy(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<const ov::Url> &requested_url);
+	// Takes out the sessions that share this connection but have not used it for as long as an idle connection is kept
+	void ReleaseSessionsIdleOn(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<LLHlsSession> &current_session);
 	// Closes the session once it has stayed without a connection for the grace period
 	void CloseSessionAfterGrace(const std::shared_ptr<LLHlsSession> &session, uint64_t idle_since, const std::shared_ptr<const ov::Socket> &last_socket);
 	void CloseSessionIfIdleSince(const std::shared_ptr<LLHlsSession> &session, uint64_t idle_since, const std::shared_ptr<const ov::Socket> &last_socket);
