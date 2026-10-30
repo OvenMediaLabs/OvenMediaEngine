@@ -100,12 +100,19 @@ TEST(OvUrl, EncodeSpecialChars)
 	EXPECT_TRUE(ov::String(encoded).IndexOf('&') == -1);
 }
 
-// ov::Url::Encode uses '+' for space, but ov::Url::Decode only handles
-// %XX sequences — it does NOT convert '+' back to space. This is by design.
+// ov::Url::Decode only handles %XX sequences and leaves '+' as it is, so
+// ov::Url::Encode writes a space as %20 for a value to come back unchanged
 TEST(OvUrl, DecodePercentEncodedSpace)
 {
 	auto decoded = ov::Url::Decode("hello%20world");
 	EXPECT_STREQ(decoded.CStr(), "hello world");
+}
+
+TEST(OvUrl, EncodedSpaceDecodesBack)
+{
+	auto encoded = ov::Url::Encode("key with spaces");
+	EXPECT_STREQ(encoded.CStr(), "key%20with%20spaces");
+	EXPECT_STREQ(ov::Url::Decode(encoded).CStr(), "key with spaces");
 }
 
 TEST(OvUrl, DecodePlusRemainsPlus)

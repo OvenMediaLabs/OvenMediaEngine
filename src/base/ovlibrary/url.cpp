@@ -47,11 +47,6 @@ namespace ov
 				// Append the character
 				encoded_string.Append(buf);
 			}
-			else if (buf == ' ')
-			{
-				// Append '+' character if the buffer is a space
-				encoded_string.Append('+');
-			}
 			else
 			{
 				// Escape
