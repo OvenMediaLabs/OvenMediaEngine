@@ -150,6 +150,15 @@ const ov::String &LLHlsSession::GetUserAgent() const
 	return _user_agent;
 }
 
+void LLHlsSession::CountAsViewer()
+{
+	uint32_t not_counted = 0;
+	if ((_origin_mode == false) && _number_of_players.compare_exchange_strong(not_counted, 1))
+	{
+		MonitorInstance->OnSessionConnected(*GetStream(), PublisherType::LLHls);
+	}
+}
+
 bool LLHlsSession::UpdateLastRequest(uint32_t connection_id)
 {
 	std::lock_guard<std::shared_mutex> lock(_last_request_time_guard);
@@ -582,6 +591,8 @@ void LLHlsSession::ResponsePlaylist(const std::shared_ptr<http::svr::HttpExchang
 		}
 
 		response->AppendData(playlist);
+
+		CountAsViewer();
 	}
 	else if (result == LLHlsStream::RequestResult::Accepted && holdIfAccepted == true)
 	{
@@ -680,6 +691,9 @@ void LLHlsSession::ResponseChunklist(const std::shared_ptr<http::svr::HttpExchan
 		}
 
 		response->AppendData(chunklist);
+
+		// Also a player that kept the master playlist from before
+		CountAsViewer();
 	}
 	else if (result == LLHlsStream::RequestResult::Accepted && holdIfAccepted == true)
 	{

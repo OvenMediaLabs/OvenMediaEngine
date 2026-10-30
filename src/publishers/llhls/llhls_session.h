@@ -9,6 +9,7 @@
 #pragma once
 
 #include <base/publisher/session.h>
+#include <atomic>
 #include <chrono>
 #include <list>
 #include <optional>
@@ -68,6 +69,9 @@ public:
 
 	const ov::String &GetUserAgent() const;
 
+	// Counts this session as one viewer the first time it answers a request
+	void CountAsViewer();
+
 private:
 
 	enum class RequestType : uint8_t
@@ -122,8 +126,8 @@ private:
 	
 	// session life time
 	uint64_t _session_life_time = 0;
-	// Only an origin mode session counts itself as a viewer; the stream counts the others
-	uint32_t _number_of_players = 0;
+	// The viewer this session counts, 0 or 1; set from the start in origin mode, otherwise on its first response
+	std::atomic<uint32_t> _number_of_players{0};
 
 	// <session id>_<key> unless the session was started by a value from a URL
 	ov::String _session_value;

@@ -451,7 +451,13 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 				session->SetFinalUrl(final_url);
 				session->UpdateLastRequest(connection->GetId());
 
-				stream->RegisterSession(session);
+				if (stream->RegisterSession(session) == false)
+				{
+					logtw("LLHLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+					response->SetStatusCode(http::StatusCode::NotFound);
+					close_admission();
+					return http::svr::NextHandler::DoNotCall;
+				}
 			}
 			// chunklist_x_x.m3u8?session=<session id>_<key>
 			// x_x_x.m4s?session=<session id>_<key>
@@ -507,7 +513,12 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 						session->SetRequestedUrl(requested_url);
 						session->SetFinalUrl(final_url);
 
-						stream->RegisterSession(session);
+						if (stream->RegisterSession(session) == false)
+						{
+							logtw("LLHLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+							response->SetStatusCode(http::StatusCode::NotFound);
+							return http::svr::NextHandler::DoNotCall;
+						}
 					}
 
 					session->UpdateLastRequest(connection->GetId());
@@ -518,7 +529,13 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			connection->AddUserData(MakeSessionUserDataKey(session->GetSessionPath()), session->GetSessionPath());
 		}
 
-		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
+		// No worker is left to answer once the stream is stopping
+		if (stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange)) == false)
+		{
+			logtw("LLHLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+			response->SetStatusCode(http::StatusCode::NotFound);
+			return http::svr::NextHandler::DoNotCall;
+		}
 
 		return http::svr::NextHandler::DoNotCallAndDoNotResponse;
 	});

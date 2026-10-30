@@ -107,28 +107,17 @@ bool LLHlsStream::RegisterSession(const std::shared_ptr<LLHlsSession> &session)
 		return false;
 	}
 
-	{
-		std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
-		_session_ids_by_value[session->GetSessionValue()] = session->GetId();
-	}
-
-	// A registered session is one viewer
-	MonitorInstance->OnSessionConnected(*this, PublisherType::LLHls);
+	std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
+	_session_ids_by_value[session->GetSessionValue()] = session->GetId();
 
 	return true;
 }
 
 bool LLHlsStream::UnregisterSession(const std::shared_ptr<LLHlsSession> &session)
 {
-	size_t erased_count = 0;
 	{
 		std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
-		erased_count = _session_ids_by_value.erase(session->GetSessionValue());
-	}
-
-	if (erased_count > 0)
-	{
-		MonitorInstance->OnSessionDisconnected(*this, PublisherType::LLHls);
+		_session_ids_by_value.erase(session->GetSessionValue());
 	}
 
 	return RemoveSession(session->GetId());
@@ -450,16 +439,9 @@ bool LLHlsStream::Stop()
 		}
 	}
 
-	size_t session_count = 0;
 	{
 		std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
-		session_count = _session_ids_by_value.size();
 		_session_ids_by_value.clear();
-	}
-	// An origin mode stream registers no session, so it reports nothing here
-	if (session_count > 0)
-	{
-		MonitorInstance->OnSessionsDisconnected(*this, PublisherType::LLHls, session_count);
 	}
 
 	return Stream::Stop();
