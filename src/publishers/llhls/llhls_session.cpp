@@ -1034,7 +1034,8 @@ ov::String LLHlsSession::MakeQueryStringToPropagate(const std::shared_ptr<ov::Ur
 			query_string += "&";
 		}
 
-		query_string.AppendFormat("stream_key=%s", stream_key.CStr());
+		// Written back into playlists, so it goes out encoded rather than as it was decoded
+		query_string.AppendFormat("stream_key=%s", ov::Url::Encode(stream_key).CStr());
 	}
 
 	return query_string;
