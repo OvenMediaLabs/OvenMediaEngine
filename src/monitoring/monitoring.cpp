@@ -8,6 +8,13 @@
 
 namespace mon
 {
+	// An output stream outlives its input stream for a moment, but its viewers were settled when the input stream was deleted
+	static bool IsInputStreamDeleted(const std::shared_ptr<ApplicationMetrics> &app_metric, const std::shared_ptr<StreamMetrics> &stream_metric)
+	{
+		auto input_stream = stream_metric->GetLinkedInputStream();
+		return (input_stream != nullptr) && (app_metric->GetStreamMetrics(*input_stream) == nullptr);
+	}
+
 	void Monitoring::Release()
 	{
 		std::shared_ptr<ServerMetrics> to_release;
@@ -348,8 +355,10 @@ namespace mon
 		}
 
 		std::shared_ptr<StreamMetrics> stream_metrics = nullptr;
-		//TODO(Getroot): If a session connects or disconnects at the moment the block below is executed, a race condition may occur, so it must be protected with a mutex.
 		{
+			// Settled in one step with the session counts, so a session is counted here or not at all
+			std::lock_guard<std::recursive_mutex> lock(_session_count_mutex);
+
 			// If there are sessions in the stream, the number of visitors to the app is recalculated.
 			// Calculate connections to application only if it hasn't origin stream to prevent double subtract.
 			if (stream.IsInputStream())
@@ -499,8 +508,16 @@ namespace mon
 		{
 			return;
 		}
+
+		std::lock_guard<std::recursive_mutex> lock(_session_count_mutex);
+
 		auto stream_metric = app_metric->GetStreamMetrics(stream_info);
 		if (stream_metric == nullptr)
+		{
+			return;
+		}
+
+		if (IsInputStreamDeleted(app_metric, stream_metric))
 		{
 			return;
 		}
@@ -529,8 +546,16 @@ namespace mon
 		{
 			return;
 		}
+
+		std::lock_guard<std::recursive_mutex> lock(_session_count_mutex);
+
 		auto stream_metric = app_metric->GetStreamMetrics(stream_info);
 		if (stream_metric == nullptr)
+		{
+			return;
+		}
+
+		if (IsInputStreamDeleted(app_metric, stream_metric))
 		{
 			return;
 		}
@@ -559,8 +584,16 @@ namespace mon
 		{
 			return;
 		}
+
+		std::lock_guard<std::recursive_mutex> lock(_session_count_mutex);
+
 		auto stream_metric = app_metric->GetStreamMetrics(stream_info);
 		if (stream_metric == nullptr)
+		{
+			return;
+		}
+
+		if (IsInputStreamDeleted(app_metric, stream_metric))
 		{
 			return;
 		}

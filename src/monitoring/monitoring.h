@@ -71,5 +71,7 @@ namespace mon
 		std::shared_ptr<ServerMetrics> _server_metric = nullptr;
 		mutable std::shared_mutex _alert_guard;
 		std::shared_ptr<alrt::Alert> _alert = nullptr;
+		// Session counts and stream deletion take turns; re-entered when a deletion takes out its counts
+		std::recursive_mutex _session_count_mutex;
 	};
 }  // namespace mon
