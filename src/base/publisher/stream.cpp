@@ -670,15 +670,6 @@ namespace pub
 
 	uint32_t Stream::IssueUniqueSessionId()
 	{
-		std::shared_lock<std::shared_mutex> lock(_session_map_mutex);
-
-		// A session that took its id from a client URL may already hold the next one
-		auto session_id = _next_session_id++;
-		while (_sessions.find(session_id) != _sessions.end())
-		{
-			session_id = _next_session_id++;
-		}
-
-		return session_id;
+		return _next_session_id++;
 	}
 }  // namespace pub

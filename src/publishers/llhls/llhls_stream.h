@@ -105,6 +105,12 @@ public:
 	/// Origin Mode Session Management
 	std::shared_ptr<LLHlsSession> GetSessionFromPool();
 
+	// A player's session is found by the whole session value it carries, so a number alone
+	// never leads to another player's session
+	bool RegisterSession(const std::shared_ptr<LLHlsSession> &session);
+	bool UnregisterSession(const std::shared_ptr<LLHlsSession> &session);
+	std::shared_ptr<LLHlsSession> GetSessionByValue(const ov::String &session_value);
+
 private:
 	bool Start() override;
 	bool Stop() override;
@@ -288,6 +294,10 @@ private:
 
 	std::map<ov::String, std::shared_ptr<mdl::Dump>> _dumps;
 	std::shared_mutex _dumps_lock;
+
+	// Session ids by the session value their players carry
+	std::map<ov::String, session_id_t> _session_ids_by_value;
+	std::shared_mutex _session_ids_by_value_lock;
 
 	// DRM
 	[[maybe_unused]] bool _indentity_enabled = false; // for custom license server and player purposes

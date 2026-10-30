@@ -21,14 +21,14 @@ class LLHlsSession : public pub::Session
 public:
 	static std::shared_ptr<LLHlsSession> Create(session_id_t session_id, 
 												const bool &origin_mode,
-												const ov::String &session_key, 
+												const ov::String &session_value, 
 												const std::shared_ptr<pub::Application> &application,
 												const std::shared_ptr<pub::Stream> &stream,
 												uint64_t session_life_time);
 
 	static std::shared_ptr<LLHlsSession> Create(session_id_t session_id, 
 												const bool &origin_mode,
-												const ov::String &session_key, 
+												const ov::String &session_value, 
 												const std::shared_ptr<pub::Application> &application,
 												const std::shared_ptr<pub::Stream> &stream,
 												const ov::String &user_agent,
@@ -36,7 +36,7 @@ public:
 
 	LLHlsSession(const info::Session &session_info, 
 				const bool &origin_mode,
-				const ov::String &session_key,
+				const ov::String &session_value,
 				const std::shared_ptr<pub::Application> &application, 
 				const std::shared_ptr<pub::Stream> &stream,
 				const ov::String &user_agent,
@@ -59,8 +59,10 @@ public:
 	// Closes the session if it has had no connection since idle_since, false when one came back meanwhile
 	bool CloseIfIdleSince(uint64_t idle_since);
 
-	// Get session key
-	const ov::String &GetSessionKey() const;
+	// The session value its players carry in their URLs
+	const ov::String &GetSessionValue() const;
+	// Whether the value has the form OME issues, so it is safe to write back into a playlist
+	static bool IsSessionValue(const ov::String &value);
 
 	const ov::String &GetUserAgent() const;
 
@@ -120,7 +122,8 @@ private:
 	uint64_t _session_life_time = 0;
 	uint32_t _number_of_players = 0;
 
-	ov::String _session_key;
+	// <session id>_<key> unless the session was started by a value from a URL
+	ov::String _session_value;
 
 	int _master_playlist_max_age = 0;
 	int _chunklist_max_age = 0;

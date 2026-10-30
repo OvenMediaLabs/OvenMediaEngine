@@ -100,6 +100,47 @@ std::shared_ptr<LLHlsSession> LLHlsStream::GetSessionFromPool()
 	return std::static_pointer_cast<LLHlsSession>(session);
 }
 
+bool LLHlsStream::RegisterSession(const std::shared_ptr<LLHlsSession> &session)
+{
+	if (AddSession(session) == false)
+	{
+		return false;
+	}
+
+	std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
+	_session_ids_by_value[session->GetSessionValue()] = session->GetId();
+
+	return true;
+}
+
+bool LLHlsStream::UnregisterSession(const std::shared_ptr<LLHlsSession> &session)
+{
+	{
+		std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
+		_session_ids_by_value.erase(session->GetSessionValue());
+	}
+
+	return RemoveSession(session->GetId());
+}
+
+std::shared_ptr<LLHlsSession> LLHlsStream::GetSessionByValue(const ov::String &session_value)
+{
+	session_id_t session_id = 0;
+
+	{
+		std::shared_lock<std::shared_mutex> lock(_session_ids_by_value_lock);
+		auto item = _session_ids_by_value.find(session_value);
+		if (item == _session_ids_by_value.end())
+		{
+			return nullptr;
+		}
+
+		session_id = item->second;
+	}
+
+	return std::static_pointer_cast<LLHlsSession>(GetSession(session_id));
+}
+
 
 std::shared_ptr<const pub::Stream::DefaultPlaylistInfo> LLHlsStream::GetDefaultPlaylistInfo() const
 {
@@ -396,6 +437,11 @@ bool LLHlsStream::Stop()
 			dump->SetEnabled(false);
 			dump->CompleteDump();
 		}
+	}
+
+	{
+		std::lock_guard<std::shared_mutex> lock(_session_ids_by_value_lock);
+		_session_ids_by_value.clear();
 	}
 
 	return Stream::Stop();

@@ -34,24 +34,24 @@ static void LLHlsTraceLog(char stage, uint32_t session_id, const char *file, int
 
 std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id, 
 												const bool &origin_mode,
-												const ov::String &session_key,
+												const ov::String &session_value,
 												const std::shared_ptr<pub::Application> &application,
 												const std::shared_ptr<pub::Stream> &stream,
 												uint64_t session_life_time)
 {
-	return LLHlsSession::Create(session_id, origin_mode, session_key, application, stream, nullptr, session_life_time);
+	return LLHlsSession::Create(session_id, origin_mode, session_value, application, stream, nullptr, session_life_time);
 }
 
 std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id, 
 												const bool &origin_mode,
-												const ov::String &session_key,
+												const ov::String &session_value,
 												const std::shared_ptr<pub::Application> &application,
 												const std::shared_ptr<pub::Stream> &stream,
 												const ov::String &user_agent,
 												uint64_t session_life_time)
 {
 	auto session_info = info::Session(*std::static_pointer_cast<info::Stream>(stream), session_id);
-	auto session = std::make_shared<LLHlsSession>(session_info, origin_mode, session_key, application, stream, user_agent, session_life_time);
+	auto session = std::make_shared<LLHlsSession>(session_info, origin_mode, session_value, application, stream, user_agent, session_life_time);
 
 	if (session->Start() == false)
 	{
@@ -63,7 +63,7 @@ std::shared_ptr<LLHlsSession> LLHlsSession::Create(session_id_t session_id,
 
 LLHlsSession::LLHlsSession(const info::Session &session_info, 
 							const bool &origin_mode,
-							const ov::String &session_key,
+							const ov::String &session_value,
 							const std::shared_ptr<pub::Application> &application, 
 							const std::shared_ptr<pub::Stream> &stream,
 							const ov::String &user_agent,
@@ -72,7 +72,7 @@ LLHlsSession::LLHlsSession(const info::Session &session_info,
 {
 	_origin_mode = origin_mode;
 	_session_life_time = session_life_time;
-	_session_key = session_key.IsEmpty() ? ov::Random::GenerateString(8) : session_key;
+	_session_value = session_value.IsEmpty() ? ov::String::FormatString("%u_%s", session_info.GetId(), ov::Random::GenerateString(kSessionKeyLength).CStr()) : session_value;
 
 	if (_origin_mode == true)
 	{
@@ -113,9 +113,36 @@ bool LLHlsSession::Stop()
 	return Session::Stop();
 }
 
-const ov::String &LLHlsSession::GetSessionKey() const
+const ov::String &LLHlsSession::GetSessionValue() const
 {
-	return _session_key;
+	return _session_value;
+}
+
+bool LLHlsSession::IsSessionValue(const ov::String &value)
+{
+	auto tokens = value.Split("_");
+	if ((tokens.size() != 2) || tokens[0].IsEmpty() || (tokens[1].GetLength() != kSessionKeyLength))
+	{
+		return false;
+	}
+
+	for (size_t index = 0; index < tokens[0].GetLength(); index++)
+	{
+		if (std::isdigit(static_cast<unsigned char>(tokens[0][index])) == 0)
+		{
+			return false;
+		}
+	}
+
+	for (size_t index = 0; index < tokens[1].GetLength(); index++)
+	{
+		if (std::isalnum(static_cast<unsigned char>(tokens[1][index])) == 0)
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 const ov::String &LLHlsSession::GetUserAgent() const
@@ -986,7 +1013,7 @@ bool LLHlsSession::AddPendingRequest(const std::shared_ptr<http::svr::HttpExchan
 
 ov::String LLHlsSession::MakeQueryStringToPropagate(const std::shared_ptr<ov::Url> &request_uri)
 {
-	auto query_string = ov::String::FormatString("session=%u_%s", GetId(), _session_key.CStr());
+	auto query_string = ov::String::FormatString("session=%s", _session_value.CStr());
 	if (_origin_mode == true)
 	{
 		// Origin mode doesn't need session key

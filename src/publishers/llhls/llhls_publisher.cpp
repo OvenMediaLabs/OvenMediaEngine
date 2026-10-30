@@ -371,8 +371,7 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		auto close_admission = [&]() {
 			if (admitted_by_webhooks == true)
 			{
-				auto request_info = std::make_shared<ac::RequestInfo>(requested_url, final_url, request->GetRemote(), request);
-				SendCloseAdmissionWebhooks(request_info);
+				PostCloseAdmissionWebhooks(std::make_shared<ac::RequestInfo>(requested_url, final_url, request->GetRemote(), request));
 			}
 		};
 
@@ -454,21 +453,7 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 				if (session == nullptr || session->GetStream() != stream || session->UpdateLastRequest(connection->GetId()) == false)
 				{
 					// New session
-					{
-						// A URL cannot take the issued id before the session holds it
-						std::lock_guard<std::mutex> lock(_session_lifecycle_mutex);
-
-						session = LLHlsSession::Create(stream->IssueUniqueSessionId(), origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
-						if (session != nullptr)
-						{
-							session->SetRequestedUrl(requested_url);
-							session->SetFinalUrl(final_url);
-							session->UpdateLastRequest(connection->GetId());
-
-							stream->AddSession(session);
-						}
-					}
-
+					session = LLHlsSession::Create(stream->IssueUniqueSessionId(), origin_mode, "", stream->GetApplication(), stream, request->GetHeader("USER-AGENT"), session_life_time);
 					if (session == nullptr)
 					{
 						logte("Could not create llhls session for request: %s", request->ToString().CStr());
@@ -476,6 +461,11 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 						close_admission();
 						return http::svr::NextHandler::DoNotCall;
 					}
+					session->SetRequestedUrl(requested_url);
+					session->SetFinalUrl(final_url);
+					session->UpdateLastRequest(connection->GetId());
+
+					stream->RegisterSession(session);
 				}
 			}
 			// chunklist_x_x.m3u8?session=<session id>_<key>
@@ -484,46 +474,45 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			{
 				// ?session=<session id>_<key>
 				// This collects them into one session even if one player connects through multiple connections.
-				auto query_string = final_url->GetQueryValue("session");
-				auto id_key = query_string.Split("_");
-				if (id_key.size() != 2)
+				auto session_value = final_url->GetQueryValue("session");
+				// The value is written back into playlists, so only the form OME issues is taken
+				if (LLHlsSession::IsSessionValue(session_value) == false)
 				{
 					logte("Invalid session key : %s", final_url->ToUrlString().CStr());
 					response->SetStatusCode(http::StatusCode::Unauthorized);
 					return http::svr::NextHandler::DoNotCall;
 				}
 
-				session_id_t session_id = ov::Converter::ToUInt32(id_key[0].CStr());
-				const auto &session_key = id_key[1];
-
-				session = std::static_pointer_cast<LLHlsSession>(stream->GetSession(session_id));
+				session = stream->GetSessionByValue(session_value);
 				if (access_control_enabled == true)
 				{
-					if (session != nullptr && session_key != session->GetSessionKey())
-					{
-						logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
-						response->SetStatusCode(http::StatusCode::Unauthorized);
-						return http::svr::NextHandler::DoNotCall;
-					}
-
 					// A session whose connections all left closes after a short grace, then the player must come back through the master playlist
 					if (session == nullptr || session->UpdateLastRequest(connection->GetId()) == false)
 					{
-						logtw("LLHLS session has ended, so the request is rejected : %s", final_url->ToUrlString().CStr());
+						// The number of a live session with another key means the key was made up
+						if (session == nullptr && stream->GetSession(ov::Converter::ToUInt32(session_value.CStr())) != nullptr)
+						{
+							logte("Invalid session_key : %s", final_url->ToUrlString().CStr());
+						}
+						else
+						{
+							logtw("LLHLS session has ended, so the request is rejected : %s", final_url->ToUrlString().CStr());
+						}
+
 						response->SetStatusCode(http::StatusCode::Unauthorized);
 						return http::svr::NextHandler::DoNotCall;
 					}
 				}
 				else if (session == nullptr || session->UpdateLastRequest(connection->GetId()) == false)
 				{
-					// Without access control any URL may start a session, one at a time with the other creations and closings
+					// Without access control any URL may start a session, in step with a closing that takes one out of the stream
 					std::lock_guard<std::mutex> lock(_session_lifecycle_mutex);
 
-					session = std::static_pointer_cast<LLHlsSession>(stream->GetSession(session_id));
+					session = stream->GetSessionByValue(session_value);
 					if (session == nullptr)
 					{
-						// New HTTP Connection
-						session = LLHlsSession::Create(session_id, origin_mode, session_key, stream->GetApplication(), stream, session_life_time);
+						// New HTTP Connection, numbered like any other session and found by the value it came with
+						session = LLHlsSession::Create(stream->IssueUniqueSessionId(), origin_mode, session_value, stream->GetApplication(), stream, session_life_time);
 						if (session == nullptr)
 						{
 							logte("Could not create llhls session for request: %s", request->ToString().CStr());
@@ -533,7 +522,7 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 						session->SetRequestedUrl(requested_url);
 						session->SetFinalUrl(final_url);
 
-						stream->AddSession(session);
+						stream->RegisterSession(session);
 					}
 
 					session->UpdateLastRequest(connection->GetId());
@@ -574,6 +563,26 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 	});
 
 	return http_interceptor;
+}
+
+void LLHlsPublisher::PostCloseAdmissionWebhooks(const std::shared_ptr<const ac::RequestInfo> &request_info)
+{
+	// The worker may outlive this publisher
+	std::weak_ptr<LLHlsPublisher> weak_publisher = GetSharedPtrAs<LLHlsPublisher>();
+
+	auto posted = ov::TaskPool::GetInstance()->Post([weak_publisher, request_info]() {
+		auto publisher = weak_publisher.lock();
+		if (publisher != nullptr)
+		{
+			publisher->SendCloseAdmissionWebhooks(request_info);
+		}
+	}, ov::TaskPool::Priority::Low, ov::TaskPool::kNoLimit);
+
+	// Refused only while the pool stops or has no worker, and the closing must still be sent
+	if (posted == false)
+	{
+		SendCloseAdmissionWebhooks(request_info);
+	}
 }
 
 std::shared_ptr<LLHlsSession> LLHlsPublisher::FindSessionOpenedBy(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<const ov::Url> &requested_url)
@@ -630,7 +639,7 @@ void LLHlsPublisher::CloseSessionAfterGrace(const std::shared_ptr<LLHlsSession> 
 
 void LLHlsPublisher::CloseSessionIfIdleSince(const std::shared_ptr<LLHlsSession> &session, uint64_t idle_since, const std::shared_ptr<const ov::Socket> &last_socket)
 {
-	auto stream = session->GetStream();
+	auto stream = std::static_pointer_cast<LLHlsStream>(session->GetStream());
 	if (stream == nullptr)
 	{
 		return;
@@ -643,7 +652,7 @@ void LLHlsPublisher::CloseSessionIfIdleSince(const std::shared_ptr<LLHlsSession>
 			return;
 		}
 
-		stream->RemoveSession(session->GetId());
+		stream->UnregisterSession(session);
 	}
 
 	logtt("llhls session is closed : %u", session->GetId());

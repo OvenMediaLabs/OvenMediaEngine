@@ -12,3 +12,6 @@ constexpr int64_t kKeyRequestRetryIntervalMs = 5000;
 // A player may be between connections for a moment, so a session that lost its last
 // connection waits this long before it closes
 constexpr int kSessionCloseGraceMs = 3000;
+
+// Length of the random key in a session value, <session id>_<key>
+constexpr size_t kSessionKeyLength = 8;
