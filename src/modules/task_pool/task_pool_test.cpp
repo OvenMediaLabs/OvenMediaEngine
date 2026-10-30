@@ -161,6 +161,26 @@ TEST(TaskPool, ADelayedTaskWaitsWithinTheQueueLimit)
 	EXPECT_EQ(pool.GetPendingCount(), 2u);
 }
 
+TEST(TaskPool, RunsADueDelayedTaskWhileAnotherWorkerIsBusy)
+{
+	TaskGate gate;
+	ov::TaskPool pool;
+
+	pool.Configure(MakeConfig(2, 8));
+
+	// On the heap because a task may outlive a failed wait
+	auto done = std::make_shared<std::promise<void>>();
+	auto future = done->get_future();
+
+	// Both fall due together; the worker that takes the first one is held, so only the other worker can run the second
+	ASSERT_TRUE(pool.PostDelayed(50, [&gate]() { gate.Wait(); }));
+	ASSERT_TRUE(pool.PostDelayed(50, [done]() { done->set_value(); }));
+
+	EXPECT_EQ(future.wait_for(std::chrono::seconds(2)), std::future_status::ready);
+
+	gate.Open();
+}
+
 TEST(TaskPool, TakesTheMaxGivenWithATask)
 {
 	TaskGate gate;

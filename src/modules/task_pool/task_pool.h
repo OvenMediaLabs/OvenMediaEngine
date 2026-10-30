@@ -136,6 +136,8 @@ namespace ov
 		PriorityQueue &GetQueue(Priority priority);
 		// Moves the delayed tasks whose time has come to their ready queues and returns when the next one is due. The caller holds _mutex
 		std::optional<std::chrono::steady_clock::time_point> MoveDueTasks();
+		// Whether any task is ready or waiting for its time. The caller holds _mutex
+		bool HasWaitingTasks() const;
 		// Reports rejections at most once a second. The caller holds _mutex
 		void ReportRejection();
 

@@ -450,11 +450,25 @@ namespace ov
 		return next_due;
 	}
 
+	bool TaskPool::HasWaitingTasks() const
+	{
+		for (const auto &queue : _queues)
+		{
+			if ((queue.ready.empty() == false) || (queue.delayed.empty() == false))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	void TaskPool::WorkerThreadProc()
 	{
 		while (true)
 		{
 			Task task;
+			bool wake_another = false;
 
 			{
 				std::unique_lock<std::mutex> lock(_mutex);
@@ -497,6 +511,14 @@ namespace ov
 
 				task = std::move(ready_queue->front());
 				ready_queue->pop();
+
+				// Another idle worker takes what is left, and keeps watch for the next due task while this one is busy
+				wake_another = HasWaitingTasks();
+			}
+
+			if (wake_another)
+			{
+				_condition.notify_one();
 			}
 
 			// A task of one module must not be able to take down a worker the others share
