@@ -628,7 +628,7 @@ void LLHlsPublisher::CloseSessionAfterGrace(const std::shared_ptr<LLHlsSession> 
 		}
 
 		publisher->CloseSessionIfIdleSince(session, idle_since, last_socket);
-	}, ov::TaskPool::Priority::Low, ov::TaskPool::kNoLimit);
+	}, ov::TaskPool::Priority::High, ov::TaskPool::kNoLimit);
 
 	// Refused only while the pool stops or has no worker, and the session must still close
 	if (posted == false)
@@ -659,5 +659,6 @@ void LLHlsPublisher::CloseSessionIfIdleSince(const std::shared_ptr<LLHlsSession>
 
 	auto request_info = std::make_shared<ac::RequestInfo>(session->GetRequestedUrl(), session->GetFinalUrl(), last_socket, nullptr);
 	request_info->SetUserAgent(session->GetUserAgent());
-	SendCloseAdmissionWebhooks(request_info);
+	// Sent behind the other expiries, so a slow control server cannot stretch their grace
+	PostCloseAdmissionWebhooks(request_info);
 }

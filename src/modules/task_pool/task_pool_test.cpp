@@ -189,14 +189,14 @@ TEST(TaskPool, TakesTheMaxGivenWithATask)
 	gate.Open();
 }
 
-TEST(TaskPool, RunsANormalTaskBeforeALowPriorityOne)
+TEST(TaskPool, RunsTasksInPriorityOrder)
 {
 	TaskGate gate;
 	ov::TaskPool pool;
 
 	pool.Configure(MakeConfig(1, 8));
 
-	// Both wait behind the blocked worker, so only the priority decides the order
+	// All wait behind the blocked worker, so only the priority decides the order
 	ASSERT_TRUE(OccupyWorkers(pool, gate, 1));
 
 	// On the heap because a task may outlive a failed wait
@@ -206,12 +206,13 @@ TEST(TaskPool, RunsANormalTaskBeforeALowPriorityOne)
 
 	ASSERT_TRUE(pool.Post([order]() { order->push_back("low"); }, ov::TaskPool::Priority::Low));
 	ASSERT_TRUE(pool.Post([order]() { order->push_back("normal"); }));
+	ASSERT_TRUE(pool.Post([order]() { order->push_back("high"); }, ov::TaskPool::Priority::High));
 	ASSERT_TRUE(pool.Post([done]() { done->set_value(); }, ov::TaskPool::Priority::Low));
 
 	gate.Open();
 
 	ASSERT_EQ(future.wait_for(kWaitTimeout), std::future_status::ready);
-	EXPECT_EQ(*order, (std::vector<std::string>{"normal", "low"}));
+	EXPECT_EQ(*order, (std::vector<std::string>{"high", "normal", "low"}));
 }
 
 TEST(TaskPool, SubmitReportsAnExceptionThrownByTheTask)

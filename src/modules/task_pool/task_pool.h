@@ -39,9 +39,10 @@ namespace ov
 	public:
 		using Task = std::function<void()>;
 
-		// A worker takes normal tasks first, so a low task may wait behind them
+		// A worker takes the higher priorities first, so a lower task may wait behind them
 		enum class Priority
 		{
+			High,
 			Normal,
 			Low
 		};
@@ -146,7 +147,7 @@ namespace ov
 
 		Config _config;
 		// Indexed by Priority, taken in that order
-		std::array<PriorityQueue, 2> _queues;
+		std::array<PriorityQueue, 3> _queues;
 		std::vector<std::thread> _workers;
 
 		// The worker objects must outlive their threads, so Stop() joins before clearing
