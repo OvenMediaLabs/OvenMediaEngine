@@ -188,5 +188,13 @@ namespace http
 				_close_handler(connection, reason);
 			}
 		}
+
+		void DefaultInterceptor::OnRepeat(const std::shared_ptr<HttpConnection> &connection)
+		{
+			if (_repeat_handler != nullptr)
+			{
+				_repeat_handler(connection);
+			}
+		}
 	}  // namespace svr
 }  // namespace http

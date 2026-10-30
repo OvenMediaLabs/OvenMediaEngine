@@ -18,9 +18,6 @@
 // Connection user data keys of LLHLS sessions, one for each session the connection carried
 static constexpr const char *kSessionUserDataPrefix = "llhls-session/";
 
-// When this connection last looked for sessions that stopped using it
-static constexpr const char *kIdleCheckUserDataKey = "llhls-idle-check";
-
 static ov::String MakeSessionUserDataKey(const info::Session::Path &path)
 {
 	return ov::String::FormatString("%s%u/%u/%u", kSessionUserDataPrefix, path._application_id, path._stream_id, path._session_id);
@@ -519,8 +516,6 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 
 			// Every session that used this connection is recorded, so the close handler reaches all of them
 			connection->AddUserData(MakeSessionUserDataKey(session->GetSessionPath()), session->GetSessionPath());
-
-			ReleaseSessionsIdleOn(connection, session);
 		}
 
 		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
@@ -557,6 +552,11 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		}
 	});
 
+	// Runs on each connection's own timer, so a player that stops using a shared connection is released even while other traffic keeps it open
+	http_interceptor->SetRepeatHandler([this](const std::shared_ptr<http::svr::HttpConnection> &connection) -> void {
+		ReleaseSessionsIdleOn(connection);
+	});
+
 	return http_interceptor;
 }
 
@@ -580,17 +580,8 @@ void LLHlsPublisher::PostCloseAdmissionWebhooks(const std::shared_ptr<const ac::
 	}
 }
 
-void LLHlsPublisher::ReleaseSessionsIdleOn(const std::shared_ptr<http::svr::HttpConnection> &connection, const std::shared_ptr<LLHlsSession> &current_session)
+void LLHlsPublisher::ReleaseSessionsIdleOn(const std::shared_ptr<http::svr::HttpConnection> &connection)
 {
-	// Looked at no more than once per grace period, so a release comes at most one grace late
-	auto now = std::chrono::steady_clock::now();
-	auto last_check = std::any_cast<std::chrono::steady_clock::time_point>(connection->GetUserData(kIdleCheckUserDataKey));
-	if ((last_check != nullptr) && ((now - *last_check) < std::chrono::milliseconds(kSessionCloseGraceMs)))
-	{
-		return;
-	}
-	connection->AddUserData(kIdleCheckUserDataKey, now);
-
 	std::vector<std::pair<ov::String, std::shared_ptr<LLHlsSession>>> idle_sessions;
 
 	for (const auto &[key, user_data] : connection->GetUserDataMap())
@@ -602,11 +593,6 @@ void LLHlsPublisher::ReleaseSessionsIdleOn(const std::shared_ptr<http::svr::Http
 
 		auto session_path = std::any_cast<info::Session::Path>(&user_data);
 		if (session_path == nullptr)
-		{
-			continue;
-		}
-
-		if ((session_path->_stream_id == current_session->GetStreamId()) && (session_path->_session_id == current_session->GetId()))
 		{
 			continue;
 		}

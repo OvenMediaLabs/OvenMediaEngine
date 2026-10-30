@@ -86,6 +86,16 @@ namespace http
 
 			CheckTimeout();
 
+			// The timer is shared by every connection, so a connection busy with a request waits for the next round
+			std::unique_lock<std::recursive_mutex> lock(_close_mutex, std::try_to_lock);
+			if ((lock.owns_lock() == true) && (_closed == false))
+			{
+				for (auto &interceptor : _need_to_close_interceptors)
+				{
+					interceptor->OnRepeat(GetSharedPtr());
+				}
+			}
+
 			return true;
 		}
 

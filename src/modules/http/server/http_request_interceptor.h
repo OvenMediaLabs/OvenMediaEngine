@@ -63,6 +63,11 @@ namespace http
 			/// This callback is guaranteed to be called at all times even if an error occurs.
 			virtual void OnClosed(const std::shared_ptr<HttpConnection> &connection, PhysicalPortDisconnectReason reason) = 0;
 
+			/// A callback called every few seconds for each open connection this interceptor has served
+			///
+			/// @remark It runs on the timer shared by every connection, and is skipped while the connection is busy with a request
+			virtual void OnRepeat(const std::shared_ptr<HttpConnection> &connection) {}
+
 			/// Is it cacheable?
 			virtual bool IsCacheable() const = 0;
 

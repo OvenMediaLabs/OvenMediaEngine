@@ -33,6 +33,7 @@ namespace http
 
 		using RequestHandler = std::function<NextHandler(const std::shared_ptr<HttpExchange> &exchange)>;
 		using CloseHandler = std::function<void(const std::shared_ptr<HttpConnection> &connection, PhysicalPortDisconnectReason reason)>;
+		using RepeatHandler = std::function<void(const std::shared_ptr<HttpConnection> &connection)>;
 
 		/// Default HTTP processor
 		class DefaultInterceptor : public RequestInterceptor
@@ -76,6 +77,12 @@ namespace http
 				return true;
 			}
 
+			bool SetRepeatHandler(const RepeatHandler &handler)
+			{
+				_repeat_handler = handler;
+				return true;
+			}
+
 			//--------------------------------------------------------------------
 			// Implementation of RequestInterceptor
 			//--------------------------------------------------------------------
@@ -84,6 +91,7 @@ namespace http
 			virtual bool OnDataReceived(const std::shared_ptr<HttpExchange> &exchange, const std::shared_ptr<const ov::Data> &data) override;
 			virtual InterceptorResult OnRequestCompleted(const std::shared_ptr<HttpExchange> &exchange) override;
 			virtual void OnClosed(const std::shared_ptr<HttpConnection> &stream, PhysicalPortDisconnectReason reason) override;
+			virtual void OnRepeat(const std::shared_ptr<HttpConnection> &connection) override;
 			virtual bool IsCacheable() const override;
 			
 		protected:
@@ -100,6 +108,7 @@ namespace http
 			ov::String _pattern_prefix;
 			std::vector<RequestInfo> _request_handler_list;
 			CloseHandler _close_handler = nullptr;
+			RepeatHandler _repeat_handler = nullptr;
 		};
 	}  // namespace svr
 }  // namespace http
