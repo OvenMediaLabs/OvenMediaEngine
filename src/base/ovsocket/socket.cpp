@@ -1232,7 +1232,7 @@ namespace ov
 
 				while (_dispatch_queue.empty() == false)
 				{
-					auto front = _dispatch_queue.front();
+					auto front = std::move(_dispatch_queue.front());
 					_dispatch_queue.pop_front();
 
 					bool is_close_command = front.IsCloseCommand();
@@ -1265,7 +1265,7 @@ namespace ov
 					{
 						// The data is not fully processed and will not be removed from queue
 
-						_dispatch_queue.emplace_front(front);
+						_dispatch_queue.emplace_front(std::move(front));
 
 						// Close-related commands will be processed when we receive the event from epoll later
 					}
@@ -1570,6 +1570,41 @@ namespace ov
 		return -1L;
 	}
 
+	template <typename SendFunc, typename MakeCommand>
+	bool Socket::SendInlineOrAppend(const std::shared_ptr<const Data> &data, SendFunc &&send_func, MakeCommand &&make_command)
+	{
+		{
+			LockGuard lock_guard(_dispatch_queue_lock);
+
+			// Only bypass the queue when nothing is waiting ahead of us, so packets are never reordered
+			if (_dispatch_queue.empty() && (GetState() != SocketState::Closed))
+			{
+				const ssize_t sent_bytes = send_func();
+
+				if (sent_bytes != static_cast<ssize_t>(data->GetLength()) && (sent_bytes != -1))
+				{
+					// Subdata() is a separate copy-on-write Data even at offset 0, so the caller may reuse its buffer
+					auto command = make_command(data->Subdata(sent_bytes));
+
+#ifdef OME_LATENCY_PROBE
+					if (command.type == DispatchCommand::Type::Send)
+					{
+						SendStallLog(GetNativeHandle(), static_cast<long>(sent_bytes), static_cast<long>(command.data->GetLength()));
+					}
+#endif	// OME_LATENCY_PROBE
+
+					_dispatch_queue.push_back(std::move(command));
+					_worker->EnqueueToDispatchLater(GetSharedPtr());
+				}
+
+				CallCloseCallbackIfNeeded();
+				return true;
+			}
+		}
+
+		return AppendCommand(make_command(data->Clone()), true);
+	}
+
 	bool Socket::Send(const std::shared_ptr<const Data> &data)
 	{
 		if (data == nullptr)
@@ -1586,7 +1621,10 @@ namespace ov
 			case BlockingMode::NonBlocking:
 				if (IsSendable())
 				{
-					return AppendCommand({data->Clone()}, true);
+					return SendInlineOrAppend(
+						data,
+						[&] { return SendInternal(data); },
+						[](std::shared_ptr<const Data> d) { return DispatchCommand(std::move(d)); });
 				}
 				break;
 		}
@@ -1662,11 +1700,14 @@ namespace ov
 			case BlockingMode::NonBlocking:
 				if (IsSendable())
 				{
-					return AppendCommand(
-						(GetType() == SocketType::Udp)
-							? DispatchCommand(address, data->Clone())
-							: DispatchCommand(data->Clone()),
-						true);
+					if (GetType() == SocketType::Udp)
+					{
+						return SendInlineOrAppend(
+							data,
+							[&] { return SendToInternal(address, data); },
+							[&address](std::shared_ptr<const Data> d) { return DispatchCommand(address, std::move(d)); });
+					}
+					return Send(data);
 				}
 				break;
 		}
@@ -1762,8 +1803,8 @@ namespace ov
 			return -1L;
 		}
 
-		const auto local_address  = address_pair.GetLocalAddress();
-		const auto remote_address = address_pair.GetRemoteAddress();
+		const auto &local_address  = address_pair.GetLocalAddress();
+		const auto &remote_address = address_pair.GetRemoteAddress();
 
 		const auto data_length	  = data->GetLength();
 
@@ -1791,7 +1832,7 @@ namespace ov
 				sent = ov::SendFromToInternal<in_pktinfo>(
 					GetNativeHandle(),
 					IPPROTO_IP, IP_PKTINFO,
-					address_pair.GetLocalAddress(), address_pair.GetRemoteAddress(),
+					local_address, remote_address,
 					data->GetData(), data_length,
 					&total_sent_bytes,
 					_force_stop);
@@ -1801,7 +1842,7 @@ namespace ov
 				sent = ov::SendFromToInternal<in6_pktinfo>(
 					GetNativeHandle(),
 					IPPROTO_IPV6, IPV6_PKTINFO,
-					address_pair.GetLocalAddress(), address_pair.GetRemoteAddress(),
+					local_address, remote_address,
 					data->GetData(), data_length,
 					&total_sent_bytes,
 					_force_stop);
@@ -1842,11 +1883,14 @@ namespace ov
 			case BlockingMode::NonBlocking:
 				if (IsSendable())
 				{
-					return AppendCommand(
-						(GetType() == SocketType::Udp)
-							? DispatchCommand(address_pair, data->Clone())
-							: DispatchCommand(data->Clone()),
-						true);
+					if (GetType() == SocketType::Udp)
+					{
+						return SendInlineOrAppend(
+							data,
+							[&] { return SendFromToInternal(address_pair, data); },
+							[&address_pair](std::shared_ptr<const Data> d) { return DispatchCommand(address_pair, std::move(d)); });
+					}
+					return Send(data);
 				}
 		}
 

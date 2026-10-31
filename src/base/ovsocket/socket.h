@@ -462,15 +462,7 @@ namespace ov
 			}
 
 			// Move ctor
-			DispatchCommand(DispatchCommand &&another_command)
-			{
-				std::swap(type, another_command.type);
-				std::swap(new_state, another_command.new_state);
-				std::swap(address, another_command.address);
-				std::swap(address_pair, another_command.address_pair);
-				std::swap(data, another_command.data);
-				std::swap(enqueued_time, another_command.enqueued_time);
-			}
+			DispatchCommand(DispatchCommand &&another_command) noexcept = default;
 
 			bool IsCloseCommand() const
 			{
@@ -535,6 +527,9 @@ namespace ov
 		bool SetBlockingInternal(BlockingMode mode);
 
 		bool AppendCommand(DispatchCommand command, bool dispatch_immediately);
+
+		template <typename SendFunc, typename MakeCommand>
+		bool SendInlineOrAppend(const std::shared_ptr<const Data> &data, SendFunc &&send_func, MakeCommand &&make_command);
 
 		//--------------------------------------------------------------------
 		// Implementation of SocketPoolEventInterface
