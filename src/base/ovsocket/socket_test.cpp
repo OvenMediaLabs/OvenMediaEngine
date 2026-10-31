@@ -15,11 +15,14 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -168,6 +171,23 @@ namespace
 				sent += static_cast<size_t>(written);
 			}
 			return static_cast<ssize_t>(sent);
+		}
+
+		// Each recv() is bounded by the SO_RCVTIMEO inherited from the listener
+		bool RecvExactly(void *out, size_t length)
+		{
+			auto *cursor	= static_cast<uint8_t *>(out);
+			size_t received = 0;
+			while (received < length)
+			{
+				ssize_t got = ::recv(_conn_fd, cursor + received, length - received, 0);
+				if (got <= 0)
+				{
+					return false;
+				}
+				received += static_cast<size_t>(got);
+			}
+			return true;
 		}
 
 		void CloseConnection()
@@ -1052,6 +1072,102 @@ TEST_F(SocketRecvTcpTest, NonBlockParamOnBlockingSocketWithoutDataReportsRetry)
 	ASSERT_TRUE(result.has_value());
 	EXPECT_EQ(result.value(), 0u);
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
+}
+
+// ===========================================================================
+// TCP send (non-blocking)
+// ===========================================================================
+class SocketSendTcpTest : public SocketTestBase
+{
+protected:
+	void SetUp() override
+	{
+		InitPool("test-send-tcp", ov::SocketType::Tcp);
+	}
+
+	std::shared_ptr<ov::Socket> ConnectAsyncClient(PosixTcpPeer &peer, const std::shared_ptr<SrtAsyncEvents> &events)
+	{
+		auto client = _pool->AllocSocket(ov::SocketFamily::Inet);
+		if (client == nullptr)
+		{
+			return nullptr;
+		}
+
+		// Before `MakeNonBlocking()`: setting it afterwards leaves the socket Disconnected before
+		// `Connect()`. Empirically required, root cause unclear.
+		client->SetSockOpt<int>(SO_SNDBUF, 64 * 1024);
+
+		events->Attach(client);
+		if (client->MakeNonBlocking(events) == false)
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		peer.AcceptAsync();
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
+		peer.WaitAccepted();
+
+		if (error != nullptr || peer.IsConnected() == false ||
+			WaitUntil([&]() { return client->GetState() == ov::SocketState::Connected; }) == false)
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		_client = client;
+		return client;
+	}
+};
+
+// The caller may rewrite its buffer once Send() returns: `a` hits EAGAIN with an empty queue,
+// `b` is queued behind it
+TEST_F(SocketSendTcpTest, QueuedSendIsIsolatedFromCallerBufferReuse)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "QueuedSendIsIsolatedFromCallerBufferReuse");
+
+	PosixTcpPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto events = std::make_shared<SrtAsyncEvents>();
+	auto client = ConnectAsyncClient(peer, events);
+	ASSERT_NE(client, nullptr);
+
+	// Fill the kernel buffers directly, so the dispatch queue is still empty when the next
+	// Send() gets EAGAIN. The peer reads nothing yet.
+	const std::vector<uint8_t> filler(64 * 1024, 'f');
+	size_t filled = 0;
+	while (true)
+	{
+		ssize_t written = ::send(client->GetNativeHandle(), filler.data(), filler.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+		if (written < 0)
+		{
+			ASSERT_TRUE((errno == EAGAIN) || (errno == EWOULDBLOCK));
+			break;
+		}
+		filled += static_cast<size_t>(written);
+	}
+
+	// `a` is far larger than any space the stalled peer can free, so its unsent part
+	// stays queued and `b` lands behind it.
+	const std::vector<uint8_t> original_a(8 * 1024 * 1024, 'a');
+	const std::vector<uint8_t> original_b(64 * 1024, 'b');
+	auto data_a = std::make_shared<ov::Data>(original_a.data(), original_a.size());
+	auto data_b = std::make_shared<ov::Data>(original_b.data(), original_b.size());
+	ASSERT_TRUE(client->Send(data_a));
+	ASSERT_TRUE(client->Send(data_b));
+
+	::memset(data_a->GetWritableData(), 'x', data_a->GetLength());
+	::memset(data_b->GetWritableData(), 'x', data_b->GetLength());
+
+	std::vector<uint8_t> received(filled + original_a.size() + original_b.size());
+	ASSERT_TRUE(peer.RecvExactly(received.data(), received.size()));
+
+	auto received_a = received.begin() + filled;
+	auto received_b = received_a + original_a.size();
+	EXPECT_TRUE(std::equal(original_a.begin(), original_a.end(), received_a));
+	EXPECT_TRUE(std::equal(original_b.begin(), original_b.end(), received_b));
+
+	client->Close();
 }
 
 // ===========================================================================
