@@ -533,36 +533,36 @@ uint8_t RtcSession::GetOriginPayloadTypeFromRedRtpPacket(const std::shared_ptr<c
 	return rtp_payload_type;
 }
 
-bool RtcSession::IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_packet)
+bool RtcSession::IsSelectedPacket(const RtpPacket &rtp_packet)
 {
-	auto reserved_rendition = GetNextRendition();
+	std::shared_ptr<const RtcRendition> reserved_rendition;
+	std::shared_ptr<const RtcRendition> current_rendition;
+	{
+		std::shared_lock<std::shared_mutex> change_lock(_change_rendition_lock);
+		reserved_rendition = _next_rendition;
+		current_rendition = _current_rendition;
+	}
 
 	// Check if need to change rendition
 	if (reserved_rendition != nullptr)
 	{
-		// Try to change rendition
-		// When a video packet of the next rendition is a keyframe
-		if (reserved_rendition->GetVideoTrack() != nullptr && reserved_rendition->GetVideoTrack()->GetId() == rtp_packet->GetTrackId() && rtp_packet->IsKeyframe())
+		// Change on a keyframe of the next rendition's video track, or at once if it has only audio
+		const auto &next_video_track = reserved_rendition->GetVideoTrack();
+		if (next_video_track == nullptr || (next_video_track->GetId() == rtp_packet.GetTrackId() && rtp_packet.IsKeyframe()))
 		{
 			ChangeRendition();
-		}
-		// Can change rendition immediately if next rendition has only audio track
-		else if (reserved_rendition->GetVideoTrack() == nullptr)
-		{
-			ChangeRendition();
+			current_rendition = GetCurrentRendition();
 		}
 	}
 
-	auto current_rendition = GetCurrentRendition();
-
 	// Select Track for ABR
-	auto selected_track = rtp_packet->IsVideoPacket() ? current_rendition->GetVideoTrack() : current_rendition->GetAudioTrack();
-	if (selected_track == nullptr || rtp_packet->GetTrackId() != selected_track->GetId())
+	const auto &selected_track = rtp_packet.IsVideoPacket() ? current_rendition->GetVideoTrack() : current_rendition->GetAudioTrack();
+	if (selected_track == nullptr || rtp_packet.GetTrackId() != selected_track->GetId())
 	{
 		return false;
 	}
 
-	uint32_t rtp_payload_type = rtp_packet->PayloadType();
+	uint32_t rtp_payload_type = rtp_packet.PayloadType();
 
 	if (rtp_payload_type == _audio_payload_type ||
 		// if RED is disabled, origin RTP packet is selected
@@ -594,24 +594,16 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 		return;
 	}
 
-	std::shared_ptr<RtpPacket> session_packet;
-
-	try
+	auto packet_ptr = std::any_cast<std::shared_ptr<RtpPacket>>(&packet);
+	if (packet_ptr == nullptr || *packet_ptr == nullptr)
 	{
-		session_packet = std::any_cast<std::shared_ptr<RtpPacket>>(packet);
-		if (session_packet == nullptr)
-		{
-			return;
-		}
-	}
-	catch (const std::bad_any_cast &e)
-	{
-		logtt("An incorrect type of packet was input from the stream.");
 		return;
 	}
 
+	const auto &session_packet = *packet_ptr;
+
 	// Check the packet is selected.
-	if (IsSelectedPacket(session_packet) == false)
+	if (IsSelectedPacket(*session_packet) == false)
 	{
 		return;
 	}
@@ -639,13 +631,13 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 		_rtp_rtcp->SendRtpPacket(copy_packet);
 	}
 
-	RecordRtpSent(copy_packet, session_packet->SequenceNumber(), media_transport_cc_enabled ? _wide_sequence_number : 0);
+	RecordRtpSent(*copy_packet, session_packet->SequenceNumber(), media_transport_cc_enabled ? _wide_sequence_number : 0);
 
 	if (media_transport_cc_enabled)
 	{
 		if (_bandwidth_estimator != nullptr)
 		{
-			_bandwidth_estimator->OnRtpSent(_wide_sequence_number, copy_packet);
+			_bandwidth_estimator->OnRtpSent(_wide_sequence_number, *copy_packet);
 		}
 
 		_wide_sequence_number++;
@@ -685,34 +677,29 @@ bool RtcSession::SetAbsSendTime(const std::shared_ptr<RtpPacket> &rtp_packet, ui
 	return true;
 }
 
-bool RtcSession::RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number)
+bool RtcSession::RecordRtpSent(const RtpPacket &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number)
 {
-	if (rtp_packet == nullptr)
+	if (_rtx_enabled == false || rtp_packet.IsVideoPacket() == false)
 	{
 		return false;
 	}
 
 	auto sent_log = std::make_shared<RtpSentLog>();
-	sent_log->_sequence_number = rtp_packet->SequenceNumber();
+	sent_log->_sequence_number = rtp_packet.SequenceNumber();
 	sent_log->_wide_sequence_number = wide_sequence_number;
-	sent_log->_track_id = rtp_packet->GetTrackId();
-	sent_log->_payload_type = rtp_packet->PayloadType();
+	sent_log->_track_id = rtp_packet.GetTrackId();
+	sent_log->_payload_type = rtp_packet.PayloadType();
 	sent_log->_origin_sequence_number = origin_sequence_number;
-	sent_log->_timestamp = rtp_packet->Timestamp();
-	sent_log->_marker = rtp_packet->Marker();
-	sent_log->_ssrc = rtp_packet->Ssrc();
+	sent_log->_timestamp = rtp_packet.Timestamp();
+	sent_log->_marker = rtp_packet.Marker();
+	sent_log->_ssrc = rtp_packet.Ssrc();
 
-	sent_log->_sent_bytes = rtp_packet->GetDataLength();
-	sent_log->_sent_time = std::chrono::system_clock::now();
+	sent_log->_sent_bytes = rtp_packet.GetDataLength();
 
 	auto video_rtp_key = sent_log->_sequence_number % MAX_RTP_RECORDS;
 
 	std::lock_guard<std::shared_mutex> lock(_rtp_record_map_lock);
-
-	if (rtp_packet->IsVideoPacket())
-	{
-		_video_rtp_sent_record_map[video_rtp_key] = sent_log;
-	}
+	_video_rtp_sent_record_map[video_rtp_key] = std::move(sent_log);
 
 	return true;
 }

@@ -108,7 +108,6 @@ public:
 
 	// These functions help the next node to not have to parse the packet again.
 	// Because next node receives raw data format.
-	std::shared_ptr<RtpPacket> GetLastSentRtpPacket();
 	std::shared_ptr<RtcpPacket> GetLastSentRtcpPacket();
 
 	// Implement Node Interface
@@ -153,7 +152,6 @@ private:
 	// Returns the transport-cc feedback packet to send (nullptr if not due yet)
 	std::shared_ptr<RtcpPacket> GenerateTransportCcFeedbackIfNeeded(const std::shared_ptr<RtpPacket> &packet, uint32_t receiver_ssrc, bool is_video, bool marker);
 
-	void SetLastSentRtpPacket(const std::shared_ptr<RtpPacket> &packet);
 	void SetLastSentRtcpPacket(const std::shared_ptr<RtcpPacket> &packet);
 
 	// _ssrc_to_track_id_lock guards _ssrc_to_track_id
@@ -239,8 +237,7 @@ private:
 	std::atomic<bool> _video_receiver_enabled = false;
 	std::atomic<bool> _audio_receiver_enabled = false;
 
-	// _last_sent_packet_lock guards both last-sent packet pointers below
-	std::shared_ptr<RtpPacket>		_last_sent_rtp_packet = nullptr;
+	// _last_sent_packet_lock guards _last_sent_rtcp_packet
 	std::shared_ptr<RtcpPacket>		_last_sent_rtcp_packet = nullptr;
 	mutable std::shared_mutex _last_sent_packet_lock;
 };

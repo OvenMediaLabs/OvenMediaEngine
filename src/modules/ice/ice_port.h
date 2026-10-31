@@ -234,7 +234,7 @@ private:
 	
 	// Find IceSession with peer's session id, used for sending application data 
 	std::shared_mutex _ice_sessions_with_id_lock;
-	std::map<session_id_t, std::shared_ptr<IceSession>> _ice_seesions_with_id;
+	std::unordered_map<session_id_t, std::shared_ptr<IceSession>> _ice_seesions_with_id;
 
 	// Insert item when send stun binding request
 	// Remove item when receive stun binding response or timed out

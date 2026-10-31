@@ -588,7 +588,7 @@ bool IcePort::Send(session_id_t session_id, const std::shared_ptr<const ov::Data
 
 	// The underlying socket may already be closed (e.g. by GC) before OnDisconnected callback arrives.
 	// Check socket state to avoid sending data to a closed socket.
-	auto remote = active_candidate_pair->GetSocket();
+	const auto &remote = active_candidate_pair->GetSocket();
 	if (remote == nullptr)
 	{
 		logte("IcePort::Send - Active candidate pair has no socket: %u", session_id);

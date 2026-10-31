@@ -29,7 +29,7 @@ public:
 
 	IceCandidatePair(const ov::SocketAddressPair &pair, std::shared_ptr<ov::Socket> socket);
 
-	std::shared_ptr<ov::Socket> GetSocket() const;
+	const std::shared_ptr<ov::Socket> &GetSocket() const;
 
 	// State management
 	void SetState(IceConnectionState state);
@@ -39,7 +39,7 @@ public:
 	bool CompareExchangeState(IceConnectionState expected, IceConnectionState desired);
 
 	// Socket Address Pair
-    ov::SocketAddressPair GetAddressPair() const;
+	const ov::SocketAddressPair &GetAddressPair() const;
 
 	ov::String ToString() const;
 

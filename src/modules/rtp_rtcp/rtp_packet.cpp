@@ -22,7 +22,6 @@ RtpPacket::RtpPacket()
 	_buffer[0] = RTP_VERSION << 6;
 
 	_ntp_timestamp = 0;
-	_created_time = std::chrono::system_clock::now();
 
 	_is_available = true;
 }
@@ -50,6 +49,8 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_timestamp = src._timestamp;
 	_extensions = src._extensions;
 	_extension_buffer_offset = src._extension_buffer_offset;
+	_extension_buffer_offset_count = src._extension_buffer_offset_count;
+	_extension_buffer_offset_overflow = src._extension_buffer_offset_overflow;
 	_extension_type = src._extension_type;
 	_data = src._data->Clone();
 	_buffer = _data->GetWritableDataAs<uint8_t>();
@@ -63,7 +64,6 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_is_start_of_unit = src._is_start_of_unit;
 	_is_video_packet = src._is_video_packet;
 	_rtsp_channel = src._rtsp_channel;
-	_created_time = std::chrono::system_clock::now();
 
 	_is_available = true;
 }
@@ -213,8 +213,6 @@ bool RtpPacket::Parse(const std::shared_ptr<const ov::Data> &data)
 	// Full data
 	_data = data->Clone();
 	_buffer = _data->GetWritableDataAs<uint8_t>();
-
-	_created_time = std::chrono::system_clock::now();
 
 	return true;
 }
@@ -411,10 +409,19 @@ void RtpPacket::SetExtensions(const RtpHeaderExtensions& extensions)
 	offset += 2;
 
 	// Write Extensions
-	auto extensions_map = extensions.GetMap();
+	_extension_buffer_offset_count = 0;
+	_extension_buffer_offset_overflow.clear();
+	const auto &extensions_map = extensions.GetMap();
 	for(const auto &[id, extension] : extensions_map)
 	{
-		_extension_buffer_offset[id] = offset;
+		if (_extension_buffer_offset_count < _extension_buffer_offset.size())
+		{
+			_extension_buffer_offset[_extension_buffer_offset_count++] = {id, static_cast<uint16_t>(offset)};
+		}
+		else
+		{
+			_extension_buffer_offset_overflow.push_back({id, static_cast<uint16_t>(offset)});
+		}
 
 		auto extension_data = extension->Marshal(extensions.GetHeaderType());
 		memcpy(&_buffer[offset], extension_data->GetData(), extension_data->GetLength());
@@ -502,18 +509,21 @@ uint8_t* RtpPacket::Payload() const
 
 uint8_t* RtpPacket::Extension(uint8_t id) const
 { 
-	auto it = _extension_buffer_offset.find(id);
-	if (it == _extension_buffer_offset.end())
+	for (uint8_t i = 0; i < _extension_buffer_offset_count; ++i)
 	{
-		return nullptr;
+		if (_extension_buffer_offset[i].id == id)
+		{
+			return &_buffer[_extension_buffer_offset[i].offset];
+		}
 	}
 
-	auto offset = it->second;
+	for (const auto &extension : _extension_buffer_offset_overflow)
+	{
+		if (extension.id == id)
+		{
+			return &_buffer[extension.offset];
+		}
+	}
 
-	return &_buffer[offset];
-}
-
-std::chrono::system_clock::time_point RtpPacket::GetCreatedTime()
-{
-	return _created_time;
+	return nullptr;
 }

@@ -62,7 +62,7 @@ public:
 	explicit RtcBandwidthEstimator(const std::shared_ptr<RtcBandwidthEstimatorObserver> &observer);
 	virtual ~RtcBandwidthEstimator();
 
-	void OnRtpSent(uint16_t wide_seq_no, const std::shared_ptr<const RtpPacket> &rtp_packet);
+	void OnRtpSent(uint16_t wide_seq_no, const RtpPacket &rtp_packet);
 	void OnTransportCc(const std::shared_ptr<const TransportCc> &transport_cc);
 	void OnRemb(const std::shared_ptr<const REMB> &remb);
 
