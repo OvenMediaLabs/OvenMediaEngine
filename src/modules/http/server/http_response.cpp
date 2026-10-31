@@ -270,20 +270,6 @@ namespace http
 			return _response_data_size;
 		}
 
-		// Get Response Data List
-		std::vector<std::shared_ptr<const ov::Data>> HttpResponse::GetResponseDataList() const
-		{
-			ov::LockGuard lock(_response_mutex);
-			return _response_data_list;
-		}
-
-		// Get Response Header
-		std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> HttpResponse::GetResponseHeaderList() const
-		{
-			ov::LockGuard lock(_response_mutex);
-			return _response_header;
-		}
-
 		void HttpResponse::ResetResponseData()
 		{
 			ov::LockGuard lock(_response_mutex);
@@ -402,19 +388,18 @@ namespace http
 				return false;
 			}
 
-			std::shared_ptr<const ov::Data> send_data;
-
 			// Atomic snapshot; the encrypt/send path below must not touch `_tls_data` directly
 			auto tls_data = GetTlsData();
 
 			if (tls_data == nullptr)
 			{
-				send_data = data->Clone();
+				return _client_socket->Send(data);
 			}
 			else
 			{
 				ov::LockGuard<ov::Mutex> lock(tls_data->GetSequentialSendMutex());
 
+				std::shared_ptr<const ov::Data> send_data;
 				if (tls_data->Encrypt(data, &send_data) == false)
 				{
 					logte("Failed to encrypt data: %s", _client_socket->ToString().CStr());
@@ -431,8 +416,6 @@ namespace http
 
 				return result;
 			}
-
-			return _client_socket->Send(send_data);
 		}
 
 		bool HttpResponse::Close()

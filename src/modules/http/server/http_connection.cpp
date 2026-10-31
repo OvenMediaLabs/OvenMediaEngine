@@ -310,7 +310,7 @@ namespace http
 				return;
 			}
 
-			auto process_data = data->Clone();
+			auto process_data = data;
 			while (process_data->GetLength() > 0)
 			{
 				ssize_t processed_length = 0;

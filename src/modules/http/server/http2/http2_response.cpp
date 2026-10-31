@@ -53,24 +53,26 @@ namespace http
 				// order and resolves our indexes to the wrong entries.
 				ov::LockGuard<ov::Mutex> block_lock(_hpack_encoder->GetHeaderBlockLock());
 
-				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(65535);
+				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(1024);
 
 				// :status header field is must on top
 				auto header_field = _hpack_encoder->Encode({":status", ov::Converter::ToString(static_cast<uint16_t>(GetStatusCode()))}, hpack::Encoder::EncodingType::LiteralWithIndexing);
 				header_block->Append(header_field);
 
-				for (const auto &[name, values] : GetResponseHeaderList())
-				{
-					for (const auto &value : values)
+				VisitResponseHeaderList([&](const auto &header_list) {
+					for (const auto &[name, values] : header_list)
 					{
-						// https://httpwg.org/http2-spec/draft-ietf-httpbis-http2bis.html#section-8.2
-						// Field names MUST be converted to lowercase when constructing an HTTP/2 message.
-						auto name_lower = name.LowerCaseString();
+						for (const auto &value : values)
+						{
+							// https://httpwg.org/http2-spec/draft-ietf-httpbis-http2bis.html#section-8.2
+							// Field names MUST be converted to lowercase when constructing an HTTP/2 message.
+							auto name_lower = name.LowerCaseString();
 
-						auto header_field = _hpack_encoder->Encode({name_lower, value}, hpack::Encoder::GetEncodingTypeOf(name_lower));
-						header_block->Append(header_field);
+							auto header_field = _hpack_encoder->Encode({name_lower, value}, hpack::Encoder::GetEncodingTypeOf(name_lower));
+							header_block->Append(header_field);
+						}
 					}
-				}
+				});
 
 				logtt("[Http2Response] Send header block : size(%zu)", header_block->GetLength());
 
@@ -127,51 +129,57 @@ namespace http
 
 				uint32_t sent_bytes = 0;
 
-				auto response_data_list = GetResponseDataList();
-				for (size_t i = 0; i < response_data_list.size(); ++i)
-				{
-					const auto &data = response_data_list[i];
-					size_t offset = 0;
-					auto data_fragment = data;
-					while (offset + MAX_HTTP2_DATA_SIZE < data->GetLength())
+				const bool all_sent = VisitResponseDataList([&](const auto &response_data_list) -> bool {
+					for (size_t i = 0; i < response_data_list.size(); ++i)
 					{
-						data_fragment = data->Subdata(offset, MAX_HTTP2_DATA_SIZE);
+						const auto &data = response_data_list[i];
+						size_t offset = 0;
+						auto data_fragment = data;
+						while (offset + MAX_HTTP2_DATA_SIZE < data->GetLength())
+						{
+							data_fragment = data->Subdata(offset, MAX_HTTP2_DATA_SIZE);
 
+							auto payload_frame = std::make_shared<prot::h2::Http2DataFrame>(_stream_id);
+							payload_frame->SetData(data_fragment);
+
+							if (Send(payload_frame) == false)
+							{
+								logte("Failed to send payload");
+								return false;
+							}
+
+							offset += MAX_HTTP2_DATA_SIZE;
+						}
+
+						// Last fragment
 						auto payload_frame = std::make_shared<prot::h2::Http2DataFrame>(_stream_id);
+						data_fragment = data->Subdata(offset);
 						payload_frame->SetData(data_fragment);
+
+						// End Stream
+						if (_keep_stream == false && (i == response_data_list.size() - 1))
+						{
+							payload_frame->SetEndStream();
+						}
 
 						if (Send(payload_frame) == false)
 						{
 							logte("Failed to send payload");
-							ResetResponseData();
-							return -1;
+							return false;
 						}
 
-						offset += MAX_HTTP2_DATA_SIZE;
+						sent_bytes += data->GetLength();
 					}
 
-					// Last fragment
-					auto payload_frame = std::make_shared<prot::h2::Http2DataFrame>(_stream_id);
-					data_fragment = data->Subdata(offset);
-					payload_frame->SetData(data_fragment);
-
-					// End Stream
-					if (_keep_stream == false && (i == response_data_list.size() - 1))
-					{
-						payload_frame->SetEndStream();
-					}
-
-					if (Send(payload_frame) == false)
-					{
-						logte("Failed to send payload");
-						ResetResponseData();
-						return -1;
-					}
-
-					sent_bytes += data->GetLength();
-				}
+					return true;
+				});
 
 				ResetResponseData();
+
+				if (all_sent == false)
+				{
+					return -1;
+				}
 
 				logtt("All datas are sent...");
 
