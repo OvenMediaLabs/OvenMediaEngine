@@ -82,6 +82,8 @@ private:
 	bool PushToPacer(const std::shared_ptr<MediaPacket> &media_packet,
 					 std::chrono::steady_clock::time_point arrival_time);
 	void BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPacket> &media_packet);
+	// Returns false when no session exists, after dropping the buffered packets.
+	bool FlushInitialMediaPackets();
 	bool SendBufferedPackets();
 	void PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_packet);
 	void PacketizeAudioFrame(const std::shared_ptr<MediaPacket> &media_packet);
