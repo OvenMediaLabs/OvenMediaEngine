@@ -9,6 +9,8 @@
 
 #include "datagram_socket.h"
 
+#include <unistd.h>
+
 #include "client_socket.h"
 #include "socket_private.h"
 
@@ -44,12 +46,47 @@ namespace ov
 			   ((callback == nullptr) || (callback(GetSharedPtrAs<Socket>()) == nullptr));
 	}
 
-	// Applies `SO_SNDBUF` or `SO_RCVBUF` (`option`) and reads back what the kernel actually granted.
+	// Asks the kernel what it would really grant for `requested_size` by applying the request to a
+	// throw-away socket of the same family.
 	//
 	// Linux doubles the requested value (to account for bookkeeping overhead) and caps it at
-	// `net.core.wmem_max` / `net.core.rmem_max`, so the value read back is `2 * min(requested, *mem_max)`.
-	// A read-back value below the request therefore means the sysctl cap got in the way: the socket was
-	// granted less than half of what was asked for. The caller (`PhysicalPort`) reports that once per port
+	// `net.core.wmem_max` / `net.core.rmem_max`, so neither the request nor the current value of the
+	// live socket can be compared directly, and the sysctl may be unreadable inside a container.
+	// Returns `0` if the probe fails.
+	static int ProbeAttainableBufferSize(SocketFamily family, int option, int requested_size)
+	{
+		const int domain = (family == SocketFamily::Inet6) ? AF_INET6 : AF_INET;
+		const int fd	 = ::socket(domain, SOCK_DGRAM, 0);
+
+		if (fd < 0)
+		{
+			return 0;
+		}
+
+		int attainable_size = 0;
+		socklen_t length	= sizeof(attainable_size);
+
+		if ((::setsockopt(fd, SOL_SOCKET, option, &requested_size, sizeof(requested_size)) != 0) ||
+			(::getsockopt(fd, SOL_SOCKET, option, &attainable_size, &length) != 0))
+		{
+			attainable_size = 0;
+		}
+
+		::close(fd);
+
+		return attainable_size;
+	}
+
+	// Grows `SO_SNDBUF` or `SO_RCVBUF` (`option`) to what the kernel grants for `requested_size`,
+	// and reads back the effective value.
+	//
+	// The buffer is never shrunk: the request is only applied if the kernel would grant more than the
+	// socket currently has (see `ProbeAttainableBufferSize()`). This keeps the outcome independent of
+	// the order in which binders of a shared port ask for their sizes (the largest request wins), and
+	// protects a host whose `*mem_default` is already above `*mem_max` from being downsized.
+	//
+	// A read-back value below the request means the sysctl cap got in the way: the socket was granted
+	// less than half of what was asked for. The caller (`PhysicalPort`) reports that once per port
 	// instead of once per `SO_REUSEPORT` socket, so this only logs at debug level.
 	//
 	// A buffer size is a tuning hint, so a failure here is logged but does not fail `Prepare()`.
@@ -65,9 +102,16 @@ namespace ov
 
 		int current_size = 0;
 
-		if (GetSockOpt(option, &current_size) && (current_size >= requested_size))
+		if (GetSockOpt(option, &current_size) == false)
 		{
-			logad("%s is already %d bytes (requested: %d bytes)", option_name, current_size, requested_size);
+			current_size = 0;
+		}
+
+		const int attainable_size = ProbeAttainableBufferSize(_family, option, requested_size);
+
+		if ((current_size > 0) && (attainable_size > 0) && (attainable_size <= current_size))
+		{
+			logad("%s stays at %d bytes (requested: %d bytes, which the kernel would grant as %d bytes)", option_name, current_size, requested_size, attainable_size);
 			return true;
 		}
 

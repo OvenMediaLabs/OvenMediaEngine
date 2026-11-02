@@ -39,8 +39,9 @@ namespace ov
 					 int send_buffer_size = 0,
 					 int recv_buffer_size = 0);
 
-		// Grows `SO_SNDBUF` / `SO_RCVBUF` to at least the given sizes (bytes). `0` leaves the respective
-		// buffer alone, and a buffer is never shrunk. Can be called after `Prepare()`.
+		// Grows `SO_SNDBUF` / `SO_RCVBUF` to what the kernel grants for the given sizes (bytes). `0` leaves
+		// the respective buffer alone, and a buffer is never shrunk, so the largest request wins regardless
+		// of the order in which the requests arrive. Can be called after `Prepare()`.
 		bool SetBufferSizes(int send_buffer_size, int recv_buffer_size);
 
 		// The `SO_SNDBUF` / `SO_RCVBUF` value the kernel reports for this socket (`0` if unavailable)

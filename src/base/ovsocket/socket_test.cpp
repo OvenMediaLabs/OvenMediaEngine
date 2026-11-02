@@ -1873,25 +1873,6 @@ TEST_F(SrtConcurrencyTest, CloseRacesEpollStorm)
 
 namespace
 {
-	// `net.core.rmem_max` / `net.core.wmem_max` cap what a socket may ask for (Linux only).
-	// Returns `0` when the sysctl cannot be read (non-Linux or sandboxed `/proc`).
-	int ReadSysctlInt(const char *path)
-	{
-		FILE *file = ::fopen(path, "r");
-		if (file == nullptr)
-		{
-			return 0;
-		}
-
-		int value = 0;
-		if (::fscanf(file, "%d", &value) != 1)
-		{
-			value = 0;
-		}
-		::fclose(file);
-		return value;
-	}
-
 	// Reads `SO_SNDBUF` / `SO_RCVBUF` straight from the fd, bypassing `ov::Socket`.
 	int RawBufferSize(int fd, int option)
 	{
@@ -1913,6 +1894,25 @@ namespace
 			return 0;
 		}
 		int value = RawBufferSize(fd, option);
+		::close(fd);
+		return value;
+	}
+
+	// What the kernel really grants for `requested` on a fresh UDP socket. On Linux this is
+	// `2 * min(requested, net.core.*mem_max)`, but the sysctl may be unreadable (sandboxed `/proc`),
+	// so ask the kernel instead of computing it.
+	int AttainableBufferSize(int option, int requested)
+	{
+		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+		if (fd < 0)
+		{
+			return 0;
+		}
+		int value = 0;
+		if (::setsockopt(fd, SOL_SOCKET, option, &requested, sizeof(requested)) == 0)
+		{
+			value = RawBufferSize(fd, option);
+		}
 		::close(fd);
 		return value;
 	}
@@ -1977,17 +1977,19 @@ TEST_F(DatagramSocketBufferTest, ZeroKeepsKernelDefault)
 }
 
 // A requested size is applied to the socket. The kernel may grant more (Linux doubles the
-// request for bookkeeping) or cap it at `net.core.*mem_max`, so assert the lower bound.
+// request for bookkeeping) or cap it at `net.core.*mem_max`, so compare with what a raw socket gets.
 TEST_F(DatagramSocketBufferTest, RequestedSizeIsApplied)
 {
-	constexpr int REQUESTED = 1024 * 1024;
+	constexpr int REQUESTED	  = 1024 * 1024;
 
-	const int default_send	= KernelDefaultBufferSize(SO_SNDBUF);
-	const int default_recv	= KernelDefaultBufferSize(SO_RCVBUF);
-	const int wmem_max		= ReadSysctlInt("/proc/sys/net/core/wmem_max");
-	const int rmem_max		= ReadSysctlInt("/proc/sys/net/core/rmem_max");
+	const int default_send	  = KernelDefaultBufferSize(SO_SNDBUF);
+	const int default_recv	  = KernelDefaultBufferSize(SO_RCVBUF);
+	const int attainable_send = AttainableBufferSize(SO_SNDBUF, REQUESTED);
+	const int attainable_recv = AttainableBufferSize(SO_RCVBUF, REQUESTED);
+	ASSERT_GT(attainable_send, 0);
+	ASSERT_GT(attainable_recv, 0);
 
-	auto socket				= PrepareSocket(REQUESTED, REQUESTED);
+	auto socket = PrepareSocket(REQUESTED, REQUESTED);
 	ASSERT_NE(socket, nullptr);
 
 	const int fd			 = socket->GetNativeHandle();
@@ -1998,18 +2000,16 @@ TEST_F(DatagramSocketBufferTest, RequestedSizeIsApplied)
 	EXPECT_EQ(effective_send, RawBufferSize(fd, SO_SNDBUF));
 	EXPECT_EQ(effective_recv, RawBufferSize(fd, SO_RCVBUF));
 
-	// At least the request, unless the sysctl cap is lower than the request
-	const int expected_send = (wmem_max > 0) ? std::min(REQUESTED, wmem_max) : REQUESTED;
-	const int expected_recv = (rmem_max > 0) ? std::min(REQUESTED, rmem_max) : REQUESTED;
-	EXPECT_GE(effective_send, expected_send);
-	EXPECT_GE(effective_recv, expected_recv);
+	// Exactly what the kernel grants for the request (or the untouched default if that is already larger)
+	EXPECT_EQ(effective_send, std::max(attainable_send, default_send));
+	EXPECT_EQ(effective_recv, std::max(attainable_recv, default_recv));
 
-	// ...and in any case larger than the default when the request was larger than the default
-	if (REQUESTED > default_send)
+	// ...and larger than the default when the kernel can grant more than the default
+	if (attainable_send > default_send)
 	{
 		EXPECT_GT(effective_send, default_send);
 	}
-	if (REQUESTED > default_recv)
+	if (attainable_recv > default_recv)
 	{
 		EXPECT_GT(effective_recv, default_recv);
 	}
@@ -2028,6 +2028,37 @@ TEST_F(DatagramSocketBufferTest, SmallerThanCurrentDoesNotShrink)
 
 	EXPECT_EQ(socket->GetSendBufferSize(), default_send);
 	EXPECT_EQ(socket->GetRecvBufferSize(), default_recv);
+}
+
+// Growing a socket twice must end at the size of the largest request no matter which request came
+// first. `PhysicalPortManager` relies on this when provider and publisher share the same ICE port.
+// Linux doubles each request, so comparing the live socket's value with a raw request would make
+// the result depend on the order of the requests.
+TEST_F(DatagramSocketBufferTest, LargestRequestWinsRegardlessOfOrder)
+{
+	constexpr int SMALL		   = 1024 * 1024;
+	constexpr int LARGE		   = 1536 * 1024;
+
+	const int attainable_large = AttainableBufferSize(SO_RCVBUF, LARGE);
+	const int default_recv	   = KernelDefaultBufferSize(SO_RCVBUF);
+	const int expected		   = std::max(attainable_large, default_recv);
+	ASSERT_GT(attainable_large, 0);
+
+	auto small_first = PrepareSocket(0, SMALL);
+	auto large_first = PrepareSocket(0, LARGE);
+	ASSERT_NE(small_first, nullptr);
+	ASSERT_NE(large_first, nullptr);
+
+	EXPECT_TRUE(small_first->SetBufferSizes(0, LARGE));
+	EXPECT_TRUE(large_first->SetBufferSizes(0, SMALL));
+
+	EXPECT_EQ(small_first->GetRecvBufferSize(), expected);
+	EXPECT_EQ(large_first->GetRecvBufferSize(), expected);
+
+	// Asking again for the same or a smaller size is a no-op
+	EXPECT_TRUE(small_first->SetBufferSizes(0, LARGE));
+	EXPECT_TRUE(small_first->SetBufferSizes(0, SMALL));
+	EXPECT_EQ(small_first->GetRecvBufferSize(), expected);
 }
 
 // Each socket is sized independently - what `PhysicalPort` relies on for its `SO_REUSEPORT` pool.
