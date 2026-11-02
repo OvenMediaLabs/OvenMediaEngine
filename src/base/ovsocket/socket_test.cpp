@@ -2020,8 +2020,14 @@ TEST_F(DatagramSocketBufferTest, SmallerThanCurrentDoesNotShrink)
 {
 	const int default_send = KernelDefaultBufferSize(SO_SNDBUF);
 	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
-	ASSERT_GT(default_send, 4096);
-	ASSERT_GT(default_recv, 4096);
+	const int attainable_send = AttainableBufferSize(SO_SNDBUF, 4096);
+	const int attainable_recv = AttainableBufferSize(SO_RCVBUF, 4096);
+	ASSERT_GT(attainable_send, 0);
+	ASSERT_GT(attainable_recv, 0);
+	if ((attainable_send > default_send) || (attainable_recv > default_recv))
+	{
+		GTEST_SKIP() << "Kernel defaults are smaller than the grant for a 4096-byte request";
+	}
 
 	auto socket = PrepareSocket(4096, 4096);
 	ASSERT_NE(socket, nullptr);

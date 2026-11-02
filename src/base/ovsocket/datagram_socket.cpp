@@ -109,7 +109,13 @@ namespace ov
 
 		const int attainable_size = ProbeAttainableBufferSize(_family, option, requested_size);
 
-		if ((current_size > 0) && (attainable_size > 0) && (attainable_size <= current_size))
+		if (attainable_size <= 0)
+		{
+			logaw("Could not determine attainable %s for %d bytes; leaving the current buffer unchanged", option_name, requested_size);
+			return false;
+		}
+
+		if ((current_size > 0) && (attainable_size <= current_size))
 		{
 			logad("%s stays at %d bytes (requested: %d bytes, which the kernel would grant as %d bytes)", option_name, current_size, requested_size, attainable_size);
 			return true;
