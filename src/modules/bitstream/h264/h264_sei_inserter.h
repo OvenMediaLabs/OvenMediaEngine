@@ -28,6 +28,7 @@ public:
 		: _timezone(timezone)
 	{
 	}
+	virtual ~H264TimecodeGenerator() = default;
 
 	const H264SeiTimecodeZone &GetTimezone() const
 	{
@@ -50,10 +51,12 @@ public:
 	// already set, ct_type included, is left alone.
 	bool Generate(int64_t pts, double timebase_expr, double fps, H264SeiClockTimestamp &timestamp);
 
-private:
-	// Seconds elapsed since midnight in `_timezone`
-	double GetTimeOfDaySeconds() const;
+protected:
+	// Seconds elapsed since midnight in `_timezone`. Virtual so a test can pin the anchor instead
+	// of depending on when it runs.
+	virtual double GetTimeOfDaySeconds() const;
 
+private:
 	// Fixed for the life of the generator: changing it would move the anchor
 	H264SeiTimecodeZone _timezone;
 
