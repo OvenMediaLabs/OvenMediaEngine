@@ -24,13 +24,28 @@ namespace ov
 		~DatagramSocket() override = default;
 
 		// Bind to a specific port
+		//
+		// `send_buffer_size` / `recv_buffer_size` are applied as `SO_SNDBUF` / `SO_RCVBUF` (in bytes).
+		// `0` keeps the kernel default (`net.core.wmem_default` / `net.core.rmem_default`).
 		bool Prepare(int port,
 					 SetAdditionalOptionsCallback callback,
-					 DatagramCallback datagram_callback);
+					 DatagramCallback datagram_callback,
+					 int send_buffer_size = 0,
+					 int recv_buffer_size = 0);
 		// Bind to the address specified by address
 		bool Prepare(const SocketAddress &address,
 					 SetAdditionalOptionsCallback callback,
-					 DatagramCallback datagram_callback);
+					 DatagramCallback datagram_callback,
+					 int send_buffer_size = 0,
+					 int recv_buffer_size = 0);
+
+		// Grows `SO_SNDBUF` / `SO_RCVBUF` to at least the given sizes (bytes). `0` leaves the respective
+		// buffer alone, and a buffer is never shrunk. Can be called after `Prepare()`.
+		bool SetBufferSizes(int send_buffer_size, int recv_buffer_size);
+
+		// The `SO_SNDBUF` / `SO_RCVBUF` value the kernel reports for this socket (`0` if unavailable)
+		int GetSendBufferSize() const;
+		int GetRecvBufferSize() const;
 
 		using Socket::Close;
 		using Socket::Connect;
@@ -44,6 +59,7 @@ namespace ov
 
 	protected:
 		bool SetSocketOptions(SetAdditionalOptionsCallback callback);
+		bool SetBufferSize(int option, int requested_size);
 
 		//--------------------------------------------------------------------
 		// Overriding of Socket

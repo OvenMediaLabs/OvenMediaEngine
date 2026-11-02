@@ -25,6 +25,9 @@ namespace cfg
 				int _tcp_relay_worker_count{};
 				int _ice_worker_count{};
 				int _tcp_ice_worker_count{};
+				// SO_SNDBUF / SO_RCVBUF (bytes) of the UDP ICE sockets. 0 == kernel default
+				int _send_buffer_size{};
+				int _recv_buffer_size{};
 				bool _tcp_relay_force = false;
 				ov::String _default_transport = "UDPTCP";
 
@@ -37,6 +40,8 @@ namespace cfg
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetTcpRelayWorkerCount, _tcp_relay_worker_count);
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetIceWorkerCount, _ice_worker_count);
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetTcpIceWorkerCount, _tcp_ice_worker_count);
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetSendBufferSize, _send_buffer_size);
+			CFG_DECLARE_CONST_REF_GETTER_OF(GetRecvBufferSize, _recv_buffer_size);
 			CFG_DECLARE_CONST_REF_GETTER_OF(IsTcpRelayForce, _tcp_relay_force)
 			CFG_DECLARE_CONST_REF_GETTER_OF(GetDefaultTransport, _default_transport)
 			protected:
@@ -50,6 +55,22 @@ namespace cfg
 					Register<Optional>("TcpRelayWorkerCount", &_tcp_relay_worker_count);
 					Register<Optional>("IceWorkerCount", &_ice_worker_count);
 					Register<Optional>("TcpIceWorkerCount", &_tcp_ice_worker_count);
+					Register<Optional>("SendBufferSize", &_send_buffer_size, nullptr,
+									   [=]() -> std::shared_ptr<ConfigError> {
+										   if (_send_buffer_size < 0)
+										   {
+											   return CreateConfigErrorPtr("SendBufferSize must be 0 (kernel default) or greater: %d", _send_buffer_size);
+										   }
+										   return nullptr;
+									   });
+					Register<Optional>("RecvBufferSize", &_recv_buffer_size, nullptr,
+									   [=]() -> std::shared_ptr<ConfigError> {
+										   if (_recv_buffer_size < 0)
+										   {
+											   return CreateConfigErrorPtr("RecvBufferSize must be 0 (kernel default) or greater: %d", _recv_buffer_size);
+										   }
+										   return nullptr;
+									   });
 					Register<Optional>("TcpRelayForce", &_tcp_relay_force);
 				Register<Optional>("DefaultTransport", &_default_transport, nullptr,
 								   [=]() -> std::shared_ptr<ConfigError> {

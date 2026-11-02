@@ -69,7 +69,11 @@ bool IcePortManager::CreateIceCandidates(
 	auto tcp_ice_worker_count = ice_candidates_config.GetTcpIceWorkerCount(&is_tcp_parsed);
 	tcp_ice_worker_count	  = is_tcp_parsed ? tcp_ice_worker_count : PHYSICAL_PORT_USE_DEFAULT_COUNT;
 
-	if (_ice_port->CreateIceCandidates(server_name, server_config, ice_candidate_list, ice_worker_count, tcp_ice_worker_count) == false)
+	// `SO_SNDBUF` / `SO_RCVBUF` for the UDP ICE sockets - 0 (the default) keeps the kernel default
+	auto udp_send_buffer_size = ice_candidates_config.GetSendBufferSize();
+	auto udp_recv_buffer_size = ice_candidates_config.GetRecvBufferSize();
+
+	if (_ice_port->CreateIceCandidates(server_name, server_config, ice_candidate_list, ice_worker_count, tcp_ice_worker_count, udp_send_buffer_size, udp_recv_buffer_size) == false)
 	{
 		Release(observer);
 

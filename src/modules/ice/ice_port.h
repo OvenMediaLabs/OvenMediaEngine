@@ -59,7 +59,9 @@ public:
 	~IcePort() override;
 
 	bool CreateTurnServer(const ov::SocketAddress &address, ov::SocketType socket_type, int tcp_relay_worker_count);
-	bool CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count = 0);
+	// `udp_send_buffer_size` / `udp_recv_buffer_size` are `SO_SNDBUF` / `SO_RCVBUF` (bytes) for the UDP ICE sockets.
+	// `0` keeps the kernel default. They are not applied to TCP ICE ports, which rely on kernel autotuning.
+	bool CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count = 0, int udp_send_buffer_size = 0, int udp_recv_buffer_size = 0);
 	bool Close();
 
 	ov::String GenerateUfrag();
@@ -79,7 +81,7 @@ public:
 	ov::String ToString() const;
 
 protected:
-	std::shared_ptr<PhysicalPort> CreatePhysicalPort(const ov::SocketAddress &address, ov::SocketType type, int ice_worker_count);
+	std::shared_ptr<PhysicalPort> CreatePhysicalPort(const ov::SocketAddress &address, ov::SocketType type, int ice_worker_count, int send_buffer_size = 0, int recv_buffer_size = 0);
 
 	bool ParseIceCandidate(const ov::String &ice_candidate, std::vector<ov::String> *ip_list, ov::SocketType *socket_type, int *start_port, int *end_port);
 

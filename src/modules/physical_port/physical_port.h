@@ -47,6 +47,12 @@ public:
 
 	bool Close();
 
+	// Grows `SO_SNDBUF` / `SO_RCVBUF` of every datagram socket of a UDP port to at least the given sizes
+	// (bytes, `0` == leave alone). Buffers are never shrunk, so when several binders share one UDP port
+	// (e.g. WebRTC provider and publisher ICE candidates on the same port) the largest request wins
+	// regardless of which one created the port. No-op for TCP/SRT ports.
+	bool GrowDatagramBufferSizes(int send_buffer_size, int recv_buffer_size);
+
 	void IncreaseRefCount()
 	{
 		_ref_count++;
@@ -103,7 +109,13 @@ protected:
 							  const ov::SocketAddress &address,
 							  int worker_count,
 							  bool thread_per_socket,
+							  int send_buffer_size,
+							  int recv_buffer_size,
 							  const OnSocketCreated on_socket_created);
+
+	// Logs the `SO_SNDBUF` / `SO_RCVBUF` sizes the kernel granted to the datagram sockets and warns
+	// when they are capped below what was requested (`net.core.wmem_max` / `net.core.rmem_max`)
+	void LogDatagramBufferSizes(int send_buffer_size, int recv_buffer_size) const;
 
 	// For TCP physical port
 	void OnClientConnectionStateChanged(const std::shared_ptr<ov::ClientSocket> &client, ov::SocketConnectionState state, const std::shared_ptr<ov::Error> &error);

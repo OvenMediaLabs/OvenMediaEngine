@@ -36,6 +36,8 @@ OvenMediaEngine supports WebRTC ingest from web browsers and any encoder that im
         <TcpIceWorkerCount>1</TcpIceWorkerCount>
         <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
         <DefaultTransport>udptcp</DefaultTransport>
+        <!-- <SendBufferSize>4194304</SendBufferSize> -->  <!-- SO_SNDBUF of the UDP ICE sockets (bytes), 0 = kernel default -->
+        <!-- <RecvBufferSize>4194304</RecvBufferSize> -->  <!-- SO_RCVBUF of the UDP ICE sockets (bytes), 0 = kernel default -->
     </IceCandidates>
 </WebRTC>
 ```
@@ -84,6 +86,34 @@ OvenMediaEngine handles each transport type independently, but they scale across
 ```
 
 Direct TCP ICE and TURN relay are connection-oriented. A single port accepts many connections that are distributed across `<TcpIceWorkerCount>` / `<TcpRelayWorkerCount>` threads, so those scale on one port without adding ports.
+
+#### UDP Socket Buffer Size
+
+| Configuration | Default | Description |
+|---|---|---|
+| `<RecvBufferSize>` | 0 (kernel default) | `SO_RCVBUF` of every UDP ICE socket, in bytes. |
+| `<SendBufferSize>` | 0 (kernel default) | `SO_SNDBUF` of every UDP ICE socket, in bytes. |
+
+All sessions on a UDP ICE port share one kernel socket (one per worker thread), which by default has only `net.core.rmem_default` bytes of receive buffer (212992 on Ubuntu). A single 1080p keyframe burst from one publisher can overflow that buffer while the port's thread is busy, which shows up as packet loss and NACK storms on an otherwise healthy link. Raise `<RecvBufferSize>` on ingest ports to absorb such bursts. 4 MiB (`4194304`) is a good starting point; use more for many concurrent high-bitrate publishers on one port.
+
+```xml
+<IceCandidates>
+    <IceCandidate>${PublicIP}:10000-10003/udp</IceCandidate>
+    <RecvBufferSize>4194304</RecvBufferSize>
+    <SendBufferSize>4194304</SendBufferSize>
+</IceCandidates>
+```
+
+The kernel caps the value at `net.core.rmem_max` / `net.core.wmem_max` (also 212992 by default on many distributions), so the sysctl must be raised too, otherwise the setting has no effect:
+
+```bash
+sudo sysctl -w net.core.rmem_max=4194304 net.core.wmem_max=4194304
+# persist across reboots
+echo "net.core.rmem_max=4194304" | sudo tee -a /etc/sysctl.conf
+echo "net.core.wmem_max=4194304" | sudo tee -a /etc/sysctl.conf
+```
+
+At startup OvenMediaEngine logs the effective size the kernel granted for each UDP ICE port. Linux reports twice the requested value (the extra accounts for bookkeeping overhead), so `recv: 8388608 bytes (requested: 4194304)` is the expected result. If the log shows a warning that the buffer is capped below what was requested, raise the sysctl above. The option is not applied to TCP ICE or TURN relay ports; TCP buffers are autotuned by the kernel.
 
 #### Default Transport
 

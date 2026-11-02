@@ -64,6 +64,13 @@ std::shared_ptr<PhysicalPort> PhysicalPortManager::CreatePort(const char *name,
 	else
 	{
 		port = item->second;
+
+		// Several binders may share one UDP port (e.g. WebRTC provider and publisher ICE candidates on the
+		// same port). Socket buffers are never shrunk, so the largest request wins regardless of creation order.
+		if (type == ov::SocketType::Udp)
+		{
+			port->GrowDatagramBufferSizes(send_buffer_size, recv_buffer_size);
+		}
 	}
 
 	if (port != nullptr)

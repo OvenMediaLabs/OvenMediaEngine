@@ -41,7 +41,7 @@ IcePort::~IcePort()
 	Close();
 }
 
-bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count)
+bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &server_config, const RtcIceCandidateList &ice_candidate_list, int ice_worker_count, int tcp_ice_worker_count, int udp_send_buffer_size, int udp_recv_buffer_size)
 {
 	std::lock_guard<std::recursive_mutex> lock_guard(_physical_port_list_mutex);
 
@@ -92,7 +92,14 @@ bool IcePort::CreateIceCandidates(const char *server_name, const cfg::Server &se
 				int worker_count = (socket_type == ov::SocketType::Tcp)
 								   ? tcp_ice_worker_count
 								   : ice_worker_count;
-				auto physical_port = CreatePhysicalPort(ice_address, socket_type, worker_count);
+
+				// Socket buffer sizes are only applied to UDP: all sessions on a UDP ICE port share one socket
+				// (per worker), so a burst from one publisher can overflow the kernel default. TCP ICE sockets are
+				// left to kernel autotuning, which `SO_RCVBUF` / `SO_SNDBUF` would disable.
+				int send_buffer_size = (socket_type == ov::SocketType::Udp) ? udp_send_buffer_size : 0;
+				int recv_buffer_size = (socket_type == ov::SocketType::Udp) ? udp_recv_buffer_size : 0;
+
+				auto physical_port	 = CreatePhysicalPort(ice_address, socket_type, worker_count, send_buffer_size, recv_buffer_size);
 				if (physical_port == nullptr)
 				{
 					logte("Could not create physical port for %s/%s", ice_address.ToString().CStr(), transport.CStr());
@@ -202,9 +209,9 @@ bool IcePort::CreateTurnServer(const ov::SocketAddress &address, ov::SocketType 
 	return true;
 }
 
-std::shared_ptr<PhysicalPort> IcePort::CreatePhysicalPort(const ov::SocketAddress &address, ov::SocketType type, int worker_count)
+std::shared_ptr<PhysicalPort> IcePort::CreatePhysicalPort(const ov::SocketAddress &address, ov::SocketType type, int worker_count, int send_buffer_size, int recv_buffer_size)
 {
-	auto physical_port = PhysicalPortManager::GetInstance()->CreatePort("ICE", type, address, worker_count);
+	auto physical_port = PhysicalPortManager::GetInstance()->CreatePort("ICE", type, address, worker_count, false, send_buffer_size, recv_buffer_size);
 	if (physical_port != nullptr)
 	{
 		if (physical_port->AddObserver(this))

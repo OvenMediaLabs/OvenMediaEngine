@@ -88,10 +88,21 @@ bool PhysicalPort::Create(const char *name,
 
 	_name = name;
 
-	logtt("Trying to start physical port [%s] on %s/%s (worker: %d, send_buffer_size: %d, recv_buffer_size: %d)...",
-		  name,
-		  address.ToString().CStr(), ov::StringFromSocketType(type),
-		  worker_count, send_buffer_size, recv_buffer_size);
+	// Buffer sizes only apply to TCP (`ServerSocket`) and UDP (`DatagramSocket`); SRT manages its own buffers
+	if (type == ov::SocketType::Srt)
+	{
+		logtt("Trying to start physical port [%s] on %s/%s (worker: %d)...",
+			  name,
+			  address.ToString().CStr(), ov::StringFromSocketType(type),
+			  worker_count);
+	}
+	else
+	{
+		logtt("Trying to start physical port [%s] on %s/%s (worker: %d, send_buffer_size: %d, recv_buffer_size: %d)...",
+			  name,
+			  address.ToString().CStr(), ov::StringFromSocketType(type),
+			  worker_count, send_buffer_size, recv_buffer_size);
+	}
 
 	bool result = false;
 
@@ -103,7 +114,7 @@ bool PhysicalPort::Create(const char *name,
 			break;
 
 		case ov::SocketType::Udp:
-			result = CreateDatagramSocket(name, type, address, worker_count, thread_per_socket, on_socket_created);
+			result = CreateDatagramSocket(name, type, address, worker_count, thread_per_socket, send_buffer_size, recv_buffer_size, on_socket_created);
 			break;
 
 		case ov::SocketType::Unknown:
@@ -164,12 +175,96 @@ bool PhysicalPort::CreateServerSocket(
 	return false;
 }
 
+bool PhysicalPort::GrowDatagramBufferSizes(int send_buffer_size, int recv_buffer_size)
+{
+	if ((_type != ov::SocketType::Udp) || _datagram_sockets.empty())
+	{
+		return false;
+	}
+
+	if ((send_buffer_size <= 0) && (recv_buffer_size <= 0))
+	{
+		// Nothing requested
+		return true;
+	}
+
+	bool result = true;
+
+	for (auto &socket : _datagram_sockets)
+	{
+		result = socket->SetBufferSizes(send_buffer_size, recv_buffer_size) && result;
+	}
+
+	LogDatagramBufferSizes(send_buffer_size, recv_buffer_size);
+
+	return result;
+}
+
+void PhysicalPort::LogDatagramBufferSizes(int send_buffer_size, int recv_buffer_size) const
+{
+	if (_datagram_sockets.empty())
+	{
+		return;
+	}
+
+	const auto address					 = _address.ToString();
+
+	// Every socket in the `SO_REUSEPORT` pool was prepared with the same sizes, so the first one is representative
+	auto &socket						 = _datagram_sockets.front();
+
+	const int effective_send_buffer_size = socket->GetSendBufferSize();
+	const int effective_recv_buffer_size = socket->GetRecvBufferSize();
+
+	if ((send_buffer_size <= 0) && (recv_buffer_size <= 0))
+	{
+		// Nothing was requested - the sockets run at the kernel defaults
+		logtd("UDP socket buffer sizes for %s (%zu socket(s)): send: %d bytes, recv: %d bytes (kernel defaults)",
+			  address.CStr(), _datagram_sockets.size(),
+			  effective_send_buffer_size, effective_recv_buffer_size);
+		return;
+	}
+
+	auto describe = [](int effective_size, int requested_size) -> ov::String {
+		if (requested_size > 0)
+		{
+			return ov::String::FormatString("%d bytes (requested: %d)", effective_size, requested_size);
+		}
+
+		return ov::String::FormatString("%d bytes (kernel default)", effective_size);
+	};
+
+	logti("UDP socket buffer sizes for %s (%zu socket(s)): send: %s, recv: %s",
+		  address.CStr(), _datagram_sockets.size(),
+		  describe(effective_send_buffer_size, send_buffer_size).CStr(),
+		  describe(effective_recv_buffer_size, recv_buffer_size).CStr());
+
+	// Linux reports `2 * min(requested, net.core.*mem_max)`, so an effective size below the request means
+	// the sysctl cap granted less than half of what was asked for - the operator must raise the cap.
+	if ((send_buffer_size > 0) && (effective_send_buffer_size < send_buffer_size))
+	{
+		logtw(
+			"UDP send buffer for %s is capped at %d bytes by the kernel although %d bytes were requested. "
+			"Raise the limit with `sysctl -w net.core.wmem_max=%d` (and persist it in /etc/sysctl.conf)",
+			address.CStr(), effective_send_buffer_size, send_buffer_size, send_buffer_size);
+	}
+
+	if ((recv_buffer_size > 0) && (effective_recv_buffer_size < recv_buffer_size))
+	{
+		logtw(
+			"UDP receive buffer for %s is capped at %d bytes by the kernel although %d bytes were requested. "
+			"Raise the limit with `sysctl -w net.core.rmem_max=%d` (and persist it in /etc/sysctl.conf)",
+			address.CStr(), effective_recv_buffer_size, recv_buffer_size, recv_buffer_size);
+	}
+}
+
 bool PhysicalPort::CreateDatagramSocket(
 	const char *name,
 	ov::SocketType type,
 	const ov::SocketAddress &address,
 	int worker_count,
 	bool thread_per_socket,
+	int send_buffer_size,
+	int recv_buffer_size,
 	const OnSocketCreated on_socket_created)
 {
 	_socket_pool = ov::SocketPool::Create(GetSocketPoolName(type, name, address), type, thread_per_socket);
@@ -225,7 +320,8 @@ bool PhysicalPort::CreateDatagramSocket(
 			continue;
 		}
 
-		if (socket->Prepare(address, reuseport_callback, datagram_callback) == false)
+		// Buffer sizes are per socket, so they are applied to every socket in the `SO_REUSEPORT` pool
+		if (socket->Prepare(address, reuseport_callback, datagram_callback, send_buffer_size, recv_buffer_size) == false)
 		{
 			logtw("Failed to prepare datagram socket %d/%d for %s",
 				  index + 1, worker_count, address.ToString().CStr());
@@ -252,6 +348,8 @@ bool PhysicalPort::CreateDatagramSocket(
 
 		_type	 = type;
 		_address = address;
+
+		LogDatagramBufferSizes(send_buffer_size, recv_buffer_size);
 		return true;
 	}
 
@@ -269,7 +367,7 @@ bool PhysicalPort::CreateDatagramSocket(
 
 	auto socket = _socket_pool->AllocSocket<ov::DatagramSocket>(address.GetFamily());
 
-	if ((socket != nullptr) && socket->Prepare(address, on_socket_created, datagram_callback))
+	if ((socket != nullptr) && socket->Prepare(address, on_socket_created, datagram_callback, send_buffer_size, recv_buffer_size))
 	{
 		logti("Created fallback datagram socket fd=%d, address=%s",
 			  socket->GetNativeHandle(), address.ToString().CStr());
@@ -277,6 +375,8 @@ bool PhysicalPort::CreateDatagramSocket(
 		_datagram_sockets.push_back(socket);
 		_type	 = type;
 		_address = address;
+
+		LogDatagramBufferSizes(send_buffer_size, recv_buffer_size);
 		return true;
 	}
 

@@ -272,6 +272,9 @@ The `WorkerCount` in `<Bind>` can set the thread responsible for sending and rec
                 <TcpRelayForce>false</TcpRelayForce>
                 <TcpIceWorkerCount>1</TcpIceWorkerCount>
                 <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                <!-- SO_SNDBUF / SO_RCVBUF (bytes) of the UDP ICE sockets, 0 = kernel default. Also raise net.core.wmem_max / rmem_max. -->
+                <!-- <SendBufferSize>4194304</SendBufferSize> -->
+                <!-- <RecvBufferSize>4194304</RecvBufferSize> -->
             </IceCandidates>
     ...
 </Bind>

@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -1864,4 +1865,186 @@ TEST_F(SrtConcurrencyTest, CloseRacesEpollStorm)
 	}
 
 	EXPECT_EQ(closed_from_ome, TOTAL_CLOSES);
+}
+
+// ===========================================================================
+// DatagramSocket socket buffer sizes (`SO_SNDBUF` / `SO_RCVBUF`)
+// ===========================================================================
+
+namespace
+{
+	// `net.core.rmem_max` / `net.core.wmem_max` cap what a socket may ask for (Linux only).
+	// Returns `0` when the sysctl cannot be read (non-Linux or sandboxed `/proc`).
+	int ReadSysctlInt(const char *path)
+	{
+		FILE *file = ::fopen(path, "r");
+		if (file == nullptr)
+		{
+			return 0;
+		}
+
+		int value = 0;
+		if (::fscanf(file, "%d", &value) != 1)
+		{
+			value = 0;
+		}
+		::fclose(file);
+		return value;
+	}
+
+	// Reads `SO_SNDBUF` / `SO_RCVBUF` straight from the fd, bypassing `ov::Socket`.
+	int RawBufferSize(int fd, int option)
+	{
+		int value	  = 0;
+		socklen_t len = sizeof(value);
+		if (::getsockopt(fd, SOL_SOCKET, option, &value, &len) != 0)
+		{
+			return 0;
+		}
+		return value;
+	}
+
+	// The kernel default a fresh UDP socket gets (`net.core.rmem_default` / `wmem_default` on Linux).
+	int KernelDefaultBufferSize(int option)
+	{
+		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+		if (fd < 0)
+		{
+			return 0;
+		}
+		int value = RawBufferSize(fd, option);
+		::close(fd);
+		return value;
+	}
+}  // namespace
+
+class DatagramSocketBufferTest : public SocketTestBase
+{
+protected:
+	void SetUp() override
+	{
+		InitPool("test-dgram-buf", ov::SocketType::Udp);
+	}
+
+	void TearDown() override
+	{
+		for (auto &socket : _sockets)
+		{
+			_pool->ReleaseSocket(socket);
+		}
+		_sockets.clear();
+
+		SocketTestBase::TearDown();
+	}
+
+	// Binds a `DatagramSocket` on an ephemeral loopback port with the given buffer sizes.
+	std::shared_ptr<ov::DatagramSocket> PrepareSocket(int send_buffer_size, int recv_buffer_size)
+	{
+		auto socket = _pool->AllocSocket<ov::DatagramSocket>(ov::SocketFamily::Inet);
+		if (socket == nullptr)
+		{
+			return nullptr;
+		}
+
+		auto on_datagram = [](const std::shared_ptr<ov::DatagramSocket> &, const ov::SocketAddressPair &, const std::shared_ptr<ov::Data> &) {};
+
+		if (socket->Prepare(LoopbackAddress(0), nullptr, on_datagram, send_buffer_size, recv_buffer_size) == false)
+		{
+			_pool->ReleaseSocket(socket);
+			return nullptr;
+		}
+
+		_sockets.push_back(socket);
+		return socket;
+	}
+
+	std::vector<std::shared_ptr<ov::DatagramSocket>> _sockets;
+};
+
+// `0` must leave the kernel defaults untouched so existing configs behave exactly as before.
+TEST_F(DatagramSocketBufferTest, ZeroKeepsKernelDefault)
+{
+	const int default_send = KernelDefaultBufferSize(SO_SNDBUF);
+	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
+	ASSERT_GT(default_send, 0);
+	ASSERT_GT(default_recv, 0);
+
+	auto socket = PrepareSocket(0, 0);
+	ASSERT_NE(socket, nullptr);
+
+	EXPECT_EQ(socket->GetSendBufferSize(), default_send);
+	EXPECT_EQ(socket->GetRecvBufferSize(), default_recv);
+}
+
+// A requested size is applied to the socket. The kernel may grant more (Linux doubles the
+// request for bookkeeping) or cap it at `net.core.*mem_max`, so assert the lower bound.
+TEST_F(DatagramSocketBufferTest, RequestedSizeIsApplied)
+{
+	constexpr int REQUESTED = 1024 * 1024;
+
+	const int default_send	= KernelDefaultBufferSize(SO_SNDBUF);
+	const int default_recv	= KernelDefaultBufferSize(SO_RCVBUF);
+	const int wmem_max		= ReadSysctlInt("/proc/sys/net/core/wmem_max");
+	const int rmem_max		= ReadSysctlInt("/proc/sys/net/core/rmem_max");
+
+	auto socket				= PrepareSocket(REQUESTED, REQUESTED);
+	ASSERT_NE(socket, nullptr);
+
+	const int fd			 = socket->GetNativeHandle();
+	const int effective_send = socket->GetSendBufferSize();
+	const int effective_recv = socket->GetRecvBufferSize();
+
+	// The getters report what the kernel reports
+	EXPECT_EQ(effective_send, RawBufferSize(fd, SO_SNDBUF));
+	EXPECT_EQ(effective_recv, RawBufferSize(fd, SO_RCVBUF));
+
+	// At least the request, unless the sysctl cap is lower than the request
+	const int expected_send = (wmem_max > 0) ? std::min(REQUESTED, wmem_max) : REQUESTED;
+	const int expected_recv = (rmem_max > 0) ? std::min(REQUESTED, rmem_max) : REQUESTED;
+	EXPECT_GE(effective_send, expected_send);
+	EXPECT_GE(effective_recv, expected_recv);
+
+	// ...and in any case larger than the default when the request was larger than the default
+	if (REQUESTED > default_send)
+	{
+		EXPECT_GT(effective_send, default_send);
+	}
+	if (REQUESTED > default_recv)
+	{
+		EXPECT_GT(effective_recv, default_recv);
+	}
+}
+
+// A request smaller than the current size must never shrink the buffer.
+TEST_F(DatagramSocketBufferTest, SmallerThanCurrentDoesNotShrink)
+{
+	const int default_send = KernelDefaultBufferSize(SO_SNDBUF);
+	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
+	ASSERT_GT(default_send, 4096);
+	ASSERT_GT(default_recv, 4096);
+
+	auto socket = PrepareSocket(4096, 4096);
+	ASSERT_NE(socket, nullptr);
+
+	EXPECT_EQ(socket->GetSendBufferSize(), default_send);
+	EXPECT_EQ(socket->GetRecvBufferSize(), default_recv);
+}
+
+// Each socket is sized independently - what `PhysicalPort` relies on for its `SO_REUSEPORT` pool.
+TEST_F(DatagramSocketBufferTest, EachSocketIsSizedIndependently)
+{
+	constexpr int REQUESTED = 512 * 1024;
+
+	auto sized				= PrepareSocket(0, REQUESTED);
+	auto unsized			= PrepareSocket(0, 0);
+	ASSERT_NE(sized, nullptr);
+	ASSERT_NE(unsized, nullptr);
+
+	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
+	EXPECT_EQ(unsized->GetRecvBufferSize(), default_recv);
+
+	if (REQUESTED > default_recv)
+	{
+		EXPECT_GT(sized->GetRecvBufferSize(), unsized->GetRecvBufferSize());
+	}
 }

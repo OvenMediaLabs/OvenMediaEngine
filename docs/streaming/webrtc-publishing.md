@@ -44,6 +44,8 @@ Add `<WebRTC>` under `<Bind><Publishers>` in `Server.xml`:
             <TcpIceWorkerCount>1</TcpIceWorkerCount>     <!-- Direct TCP ICE scales with this value -->
             <TcpRelayWorkerCount>1</TcpRelayWorkerCount> <!-- TURN relay scales with this value -->
             <DefaultTransport>udptcp</DefaultTransport>  <!-- udptcp (default) | udp | tcp | relay | all -->
+            <!-- <SendBufferSize>4194304</SendBufferSize> -->  <!-- SO_SNDBUF of the UDP ICE sockets (bytes), 0 = kernel default -->
+            <!-- <RecvBufferSize>4194304</RecvBufferSize> -->  <!-- SO_RCVBUF of the UDP ICE sockets (bytes), 0 = kernel default -->
         </IceCandidates>
     </WebRTC>
     ...
@@ -95,6 +97,17 @@ OvenMediaEngine handles each transport type independently, but they scale across
 Each port in the range is bound separately and assigned to its own thread. Around 4 ports is a good starting point on a multi-core server.
 
 Direct TCP ICE and TURN relay are connection-oriented. A single port accepts many connections that are distributed across `<TcpIceWorkerCount>` / `<TcpRelayWorkerCount>` threads, so those scale on one port without adding ports.
+
+#### UDP Socket Buffer Size
+
+| Configuration | Default | Description |
+|---|---|---|
+| `<SendBufferSize>` | 0 (kernel default) | `SO_SNDBUF` of every UDP ICE socket, in bytes. |
+| `<RecvBufferSize>` | 0 (kernel default) | `SO_RCVBUF` of every UDP ICE socket, in bytes. |
+
+All viewers on a UDP ICE port share one kernel socket (one per worker thread). By default it has only `net.core.wmem_default` bytes of send buffer (212992 on Ubuntu), so a keyframe fan-out to many viewers can momentarily fill it. Raise `<SendBufferSize>` on busy publishing ports; `<RecvBufferSize>` matters mostly for ingest (see [WebRTC Ingest](../live-source/webrtc.md#udp-socket-buffer-size)). 4 MiB (`4194304`) is a good starting point.
+
+The kernel caps the value at `net.core.wmem_max` / `net.core.rmem_max`, so raise those sysctls as well (`sudo sysctl -w net.core.wmem_max=4194304 net.core.rmem_max=4194304`). OvenMediaEngine logs the effective size per UDP ICE port at startup and warns when the kernel capped it below the request. Linux reports twice the requested value, which is expected. The option is not applied to TCP ICE or TURN relay ports.
 
 #### Default Transport
 
