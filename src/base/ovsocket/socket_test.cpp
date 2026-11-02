@@ -2018,8 +2018,8 @@ TEST_F(DatagramSocketBufferTest, RequestedSizeIsApplied)
 // A request smaller than the current size must never shrink the buffer.
 TEST_F(DatagramSocketBufferTest, SmallerThanCurrentDoesNotShrink)
 {
-	const int default_send = KernelDefaultBufferSize(SO_SNDBUF);
-	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
+	const int default_send	  = KernelDefaultBufferSize(SO_SNDBUF);
+	const int default_recv	  = KernelDefaultBufferSize(SO_RCVBUF);
 	const int attainable_send = AttainableBufferSize(SO_SNDBUF, 4096);
 	const int attainable_recv = AttainableBufferSize(SO_RCVBUF, 4096);
 	ASSERT_GT(attainable_send, 0);
