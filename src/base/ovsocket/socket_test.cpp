@@ -2077,10 +2077,16 @@ TEST_F(DatagramSocketBufferTest, EachSocketIsSizedIndependently)
 	ASSERT_NE(sized, nullptr);
 	ASSERT_NE(unsized, nullptr);
 
-	const int default_recv = KernelDefaultBufferSize(SO_RCVBUF);
-	EXPECT_EQ(unsized->GetRecvBufferSize(), default_recv);
+	const int default_recv	  = KernelDefaultBufferSize(SO_RCVBUF);
+	const int attainable_recv = AttainableBufferSize(SO_RCVBUF, REQUESTED);
+	ASSERT_GT(attainable_recv, 0);
 
-	if (REQUESTED > default_recv)
+	// The unsized socket keeps the default, the sized one gets what the kernel grants for the
+	// request (or keeps the default if the kernel cannot grant more, e.g. `rmem_max < rmem_default`)
+	EXPECT_EQ(unsized->GetRecvBufferSize(), default_recv);
+	EXPECT_EQ(sized->GetRecvBufferSize(), std::max(attainable_recv, default_recv));
+
+	if (attainable_recv > default_recv)
 	{
 		EXPECT_GT(sized->GetRecvBufferSize(), unsized->GetRecvBufferSize());
 	}
