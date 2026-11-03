@@ -276,6 +276,10 @@ When omitted, OvenMediaEngine tries `/etc/ssl/certs/ca-certificates.crt` (Debian
 `/etc/pki/tls/certs/ca-bundle.crt` (RHEL/Amazon Linux), `/etc/ssl/ca-bundle.pem` (SUSE) and
 `/etc/ssl/cert.pem` (Alpine/macOS) in that order, and uses the first one that exists.
 
+{% hint style="warning" %}
+With the pinned hiredis/redis++ versions, TLS verifies that the server certificate is signed by a trusted CA, but **does not verify that it was issued for the Redis host you connect to**. Any certificate from a CA in the bundle would be accepted. To limit this, set `CaCert` to a bundle that contains only the CA that issued your server certificate (for ElastiCache, the [Amazon Trust Services root CAs](https://www.amazontrust.com/repository/)) instead of the full system bundle, and keep the Redis endpoint on a private network.
+{% endhint %}
+
 
 ## Dynamic Application
 
