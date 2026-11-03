@@ -22,6 +22,7 @@ namespace cfg
 				CFG_DECLARE_CONST_REF_GETTER_OF(GetAuth, _auth)
 				CFG_DECLARE_CONST_REF_GETTER_OF(IsClusterEnabled, _cluster)
 				CFG_DECLARE_CONST_REF_GETTER_OF(IsTlsEnabled, _tls)
+				CFG_DECLARE_CONST_REF_GETTER_OF(GetCaCert, _ca_cert)
 
 			protected:
 				void MakeList() override
@@ -39,12 +40,14 @@ namespace cfg
 					Register<Optional>("Auth", &_auth);
 					Register<Optional>("Cluster", &_cluster);
 					Register<Optional>("Tls", &_tls);
+					Register<Optional>("CaCert", &_ca_cert);
 				}
 
 				ov::String _host;
 				ov::String _auth;
 				bool _cluster = false;
 				bool _tls = false;
+				ov::String _ca_cert;
 			};
 		}  // namespace orgn
 	}  // namespace vhost

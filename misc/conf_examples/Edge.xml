@@ -208,6 +208,8 @@
 					Enable these for an ElastiCache cluster configuration endpoint.
 					<Cluster>false</Cluster>
 					<Tls>false</Tls>
+					Optional CA bundle used to verify the server when Tls is true. If omitted, common system CA bundle paths are tried.
+					<CaCert>/etc/ssl/certs/ca-certificates.crt</CaCert>
 				</RedisServer>
 			</OriginMapStore>
 			-->

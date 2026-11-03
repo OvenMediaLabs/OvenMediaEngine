@@ -42,7 +42,8 @@ namespace ocst
 				redis_server.GetHost(),
 				redis_server.GetAuth(),
 				redis_server.IsClusterEnabled(),
-				redis_server.IsTlsEnabled());
+				redis_server.IsTlsEnabled(),
+				redis_server.GetCaCert());
 			_is_origin_map_store_enabled = true;
 
 			if (store.GetOriginHostName().IsEmpty() == false)

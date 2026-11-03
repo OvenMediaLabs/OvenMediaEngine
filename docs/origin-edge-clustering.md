@@ -255,6 +255,8 @@ This means that existing settings do not need to be updated when extending Origi
             <Auth>!@#ovenmediaengine</Auth>
             <Cluster>true</Cluster>
             <Tls>true</Tls>
+            <!-- Optional. If omitted, common system CA bundle paths are tried. -->
+            <CaCert>/etc/ssl/certs/ca-certificates.crt</CaCert>
         </RedisServer>
         
         <!-- This is only needed for the origin server and used to register the ovt address of the stream.  -->
@@ -268,6 +270,11 @@ This means that existing settings do not need to be updated when extending Origi
 ElastiCache configuration endpoint, not an individual node endpoint. `Tls` enables
 encryption in transit. Both options default to `false`, so existing standalone Redis
 configurations remain compatible.
+
+`CaCert` is the CA bundle used to verify the server certificate when `Tls` is `true`.
+When omitted, OvenMediaEngine tries `/etc/ssl/certs/ca-certificates.crt` (Debian/Ubuntu),
+`/etc/pki/tls/certs/ca-bundle.crt` (RHEL/Amazon Linux), `/etc/ssl/ca-bundle.pem` (SUSE) and
+`/etc/ssl/cert.pem` (Alpine/macOS) in that order, and uses the first one that exists.
 
 
 ## Dynamic Application

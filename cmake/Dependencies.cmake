@@ -42,6 +42,23 @@ function(ome_parse_dep_version var_name out_verify_version out_source_ref out_ha
 endfunction()
 
 # ------------------------------------------------------------------------------
+# Internal: marks <var> as not found when it was requested with REQUIRE_LINKED
+# but the library does not appear in its pkg-config link flags.
+# Used for build options that the version number cannot reveal, e.g. a redis++
+# built without TLS (its .pc then lacks `Requires: hiredis_ssl`).
+# ------------------------------------------------------------------------------
+macro(_ome_fp_check_required_linked var)
+    if(${var}_FOUND AND _FP_REQUIRE_LINKED)
+        list(FIND ${var}_LIBRARIES "${_FP_REQUIRE_LINKED}" _fp_linked_index)
+        if(_fp_linked_index EQUAL -1)
+            message(STATUS "[OME] '${_FP_PKG_NAME}' found but not linked with '${_FP_REQUIRE_LINKED}' - treating as not found")
+            set(${var}_FOUND FALSE)
+        endif()
+        unset(_fp_linked_index)
+    endif()
+endmacro()
+
+# ------------------------------------------------------------------------------
 # Helper: import a pkg-config package and create a canonical CMake imported
 # target called PkgConfig::<PKG_VAR> (same as ome_target_pkg_config uses).
 #
@@ -52,6 +69,7 @@ endfunction()
 #                [EXTRA_ARGS ...]
 #                [VERSION_OP =|>=]
 #                [PROBE_LIBRARY library-name]
+#                [REQUIRE_LINKED library-name]
 #                [ON_MISSING FATAL|DISABLE]
 #                [ON_MISMATCH FATAL|DISABLE])
 #
@@ -65,7 +83,7 @@ endfunction()
 # InstallPrerequisites for the specific REINSTALL_TARGET only (or the full
 # prerequisites if not specified).
 macro(ome_find_pkg var pkg version_var)
-    cmake_parse_arguments(_FP "OPTIONAL" "REINSTALL_TARGET;PROBE_LIBRARY;ON_MISSING;ON_MISMATCH;VERSION_OP" "EXTRA_ARGS" ${ARGN})
+    cmake_parse_arguments(_FP "OPTIONAL" "REINSTALL_TARGET;PROBE_LIBRARY;REQUIRE_LINKED;ON_MISSING;ON_MISMATCH;VERSION_OP" "EXTRA_ARGS" ${ARGN})
 
     ome_parse_dep_version(${version_var} _FP_VERIFY_VERSION _FP_SOURCE_REF _FP_HAS_OVERRIDE)
     if(NOT _FP_VERSION_OP)
@@ -143,6 +161,7 @@ macro(ome_find_pkg var pkg version_var)
                 endif()
             endforeach()
         endif()
+        _ome_fp_check_required_linked(${var})
     endif()
 
     if((NOT _FP_PROBE_FOUND) OR (NOT ${var}_FOUND))
@@ -225,6 +244,7 @@ macro(ome_find_pkg var pkg version_var)
                         endif()
                     endforeach()
                 endif()
+                _ome_fp_check_required_linked(${var})
             endif()
 
             if(_FP_PROBE_FOUND AND ${var}_FOUND)
@@ -255,7 +275,7 @@ macro(ome_find_pkg var pkg version_var)
     if(${var}_FOUND)
         message(STATUS "${_FP_STATUS_PREFIX} - found ${${var}_VERSION}")
     elseif(_FP_FOUND_BUT_MISMATCH)
-        set(_FP_FAIL_MESSAGE "${_FP_STATUS_PREFIX} - found ${_FP_FOUND_VERSION}, version mismatch")
+        set(_FP_FAIL_MESSAGE "${_FP_STATUS_PREFIX} - found ${_FP_FOUND_VERSION}, version or build option mismatch")
         if(_FP_ON_MISMATCH STREQUAL "FATAL")
             message(FATAL_ERROR "${_FP_FAIL_MESSAGE}\n"
                 "  Run manually: cmake -P cmake/InstallPrerequisites.cmake")
@@ -288,6 +308,7 @@ macro(ome_find_pkg var pkg version_var)
     unset(_FP_ON_MISSING)
     unset(_FP_ON_MISMATCH)
     unset(_FP_PROBE_LIBRARY)
+    unset(_FP_REQUIRE_LINKED)
     unset(_FP_PROBE_LIB)
     unset(_FP_PROBE_FOUND)
 endmacro()
@@ -334,8 +355,9 @@ ome_find_pkg(PKG_AOM            aom             OME_VER_AOM             REINSTAL
 ome_find_pkg(PKG_DAV1D          dav1d           OME_VER_DAV1D           REINSTALL_TARGET libdav1d)
 ome_find_pkg(PKG_OPUS           opus            OME_VER_OPUS            REINSTALL_TARGET libopus)
 ome_find_pkg(PKG_LIBPCRE2_8     libpcre2-8      OME_VER_PCRE2           REINSTALL_TARGET libpcre2)
-ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis)
-ome_find_pkg(PKG_REDIS_PLUS_PLUS redis++         OME_VER_REDIS_PLUS_PLUS REINSTALL_TARGET redis-plus-plus)
+# hiredis and redis++ must both be built with TLS (hiredis USE_SSL=1, redis++ REDIS_PLUS_PLUS_USE_TLS=ON).
+ome_find_pkg(PKG_HIREDIS        hiredis         OME_VER_HIREDIS         REINSTALL_TARGET hiredis PROBE_LIBRARY hiredis_ssl)
+ome_find_pkg(PKG_REDIS_PLUS_PLUS redis++         OME_VER_REDIS_PLUS_PLUS REINSTALL_TARGET redis-plus-plus REQUIRE_LINKED hiredis_ssl)
 ome_find_pkg(PKG_SPDLOG         spdlog          OME_VER_SPDLOG          REINSTALL_TARGET spdlog)
 # When OME_HWACCEL_NVIDIA is ON, whisper must be built with GGML_CUDA=ON.
 # CUDA builds of whisper.cpp produce libggml-cuda.so in addition to libggml.so.
