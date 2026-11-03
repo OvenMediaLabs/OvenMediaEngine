@@ -9,7 +9,14 @@
 
 #include "origin_map_client.h"
 
+#include <cstring>
+
 #define OV_LOG_TAG "OriginMapClient"
+
+namespace
+{
+	constexpr timeval kRedisTimeout{3, 0};
+}
 
 OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String &redis_password)
 {
@@ -33,6 +40,12 @@ OriginMapClient::OriginMapClient(const ov::String &redis_host, const ov::String 
 		},
 		500);
 	_update_timer.Start();
+}
+
+OriginMapClient::~OriginMapClient()
+{
+	_update_timer.Stop();
+	redisFree(_redis_context);
 }
 
 bool OriginMapClient::NofifyStreamsAlive()
@@ -285,40 +298,45 @@ CommonErrorCode OriginMapClient::GetOrigin(const ov::String &app_stream_name, ov
 
 bool OriginMapClient::ConnectRedis()
 {
-	std::lock_guard<std::mutex> lock(_redis_context_mutex);
-
-	if (CheckConnection() == true)
+	if (CheckConnection())
 	{
 		return true;
 	}
 
-	// connect to redis server
-	_redis_context = redisConnect(_redis_ip.CStr(), _redis_port);
+	redisFree(_redis_context);
+	_redis_context = redisConnectWithTimeout(_redis_ip.CStr(), _redis_port, kRedisTimeout);
 	if (_redis_context == nullptr || _redis_context->err)
 	{
-		if (_redis_context == nullptr)
-		{
-			redisFree(_redis_context);
-			_redis_context = nullptr;
-		}
-
-		logte("Failed to connect to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port, _redis_context->errstr);
+		logte("Failed to connect to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port,
+			  _redis_context != nullptr ? _redis_context->errstr : "cannot allocate context");
+		redisFree(_redis_context);
+		_redis_context = nullptr;
 		return false;
 	}
 
-	// Auth
+	// Bound AUTH, PING and stream commands when a connected peer stops responding.
+	if (redisSetTimeout(_redis_context, kRedisTimeout) != REDIS_OK)
+	{
+		logte("Failed to set redis command timeout: %s", _redis_context->errstr);
+		redisFree(_redis_context);
+		_redis_context = nullptr;
+		return false;
+	}
+
 	if (_redis_password.IsEmpty() == false)
 	{
-		redisReply *reply = (redisReply *)redisCommand(_redis_context, "AUTH %s", _redis_password.CStr());
-		if (reply == nullptr || reply->type == REDIS_REPLY_ERROR)
+		auto *reply = static_cast<redisReply *>(redisCommand(_redis_context, "AUTH %s", _redis_password.CStr()));
+		const bool authenticated = reply != nullptr && reply->type == REDIS_REPLY_STATUS && reply->str != nullptr && std::strcmp(reply->str, "OK") == 0;
+		if (authenticated == false)
 		{
-			logte("Failed to auth to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port, reply!=nullptr?reply->str:"nil");
-
-			if (reply != nullptr)
-			{
-				freeReplyObject(reply);
-			}
-			
+			logte("Failed to auth to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port,
+				  reply != nullptr && reply->str != nullptr ? reply->str : _redis_context->errstr);
+		}
+		freeReplyObject(reply);
+		if (authenticated == false)
+		{
+			redisFree(_redis_context);
+			_redis_context = nullptr;
 			return false;
 		}
 	}
@@ -333,35 +351,39 @@ bool OriginMapClient::CheckConnection()
 		return false;
 	}
 
-	// Test with PING command
-	redisReply *reply = (redisReply *)redisCommand(_redis_context, "PING");
-	if (reply == nullptr)
-	{
-		return false;
-	}
-
-	return true;
+	auto *reply = static_cast<redisReply *>(redisCommand(_redis_context, "PING"));
+	const bool connected = reply != nullptr && reply->type == REDIS_REPLY_STATUS && reply->str != nullptr && std::strcmp(reply->str, "PONG") == 0;
+	freeReplyObject(reply);
+	return connected;
 }
 
 std::tuple<int, ov::String> OriginMapClient::CommandToRedis(const char *format, ...)
 {
+	ov::LockGuard lock(_redis_context_mutex);
 	if (ConnectRedis() == false)
 	{
-		logte("Failed to connect redis server : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, _redis_context!=nullptr?_redis_context->errstr:"nil");
+		logte("Failed to connect redis server : %s:%d", _redis_ip.CStr(), _redis_port);
 		return { REDIS_ERR, "Failed to connect redis server" };
 	}
-
-	std::unique_lock<std::mutex> lock(_redis_context_mutex);
 
 	va_list args;
 	va_start(args, format);
 	redisReply *reply = (redisReply *)redisvCommand(_redis_context, format, args);
 	va_end(args);
 
-	if (reply == nullptr || reply->type == REDIS_REPLY_ERROR)
+	if (reply == nullptr)
 	{
-		logte("Failed to execute command to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, reply!=nullptr?reply->str:"nil");
-		return { REDIS_ERR, reply!=nullptr?reply->str:"Failed to execute command to redis" };
+		logte("Failed to execute command to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, _redis_context->errstr);
+		redisFree(_redis_context);
+		_redis_context = nullptr;
+		return { REDIS_ERR, "Failed to execute command to redis" };
+	}
+	if (reply->type == REDIS_REPLY_ERROR)
+	{
+		ov::String error = reply->str;
+		logte("Failed to execute command to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, error.CStr());
+		freeReplyObject(reply);
+		return { REDIS_ERR, error };
 	}
 
 	int reply_type = reply->type;

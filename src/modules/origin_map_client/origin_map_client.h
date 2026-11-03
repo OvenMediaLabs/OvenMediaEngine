@@ -23,6 +23,7 @@ public:
 	// redis_host: redis server host (ex: 192.168.0.160:6379)
 	// redis_password: redis server password (ex: password!@#)
 	OriginMapClient(const ov::String &redis_host, const ov::String &redis_password);
+	~OriginMapClient();
 
 	// Non-blocking request to register origin host
 	bool RequestRegister(const ov::String &app_stream_name, const ov::String &origin_host); 
@@ -38,8 +39,8 @@ private:
 	bool Update(const ov::String &app_stream_name, const ov::String &origin_host);
 	bool Unregister(const ov::String &app_stream_name);
 
-	bool CheckConnection();
-	bool ConnectRedis();
+	bool CheckConnection() OV_REQUIRES(_redis_context_mutex);
+	bool ConnectRedis() OV_REQUIRES(_redis_context_mutex);
 
 	bool NofifyStreamsAlive();
 	bool RetryRegister();
@@ -62,6 +63,6 @@ private:
 	std::deque<std::pair<ov::String, uint64_t>> _origin_map_remove_candidates;
 	std::recursive_mutex _origin_map_mutex;
 
-	redisContext *_redis_context = nullptr;
-	std::mutex _redis_context_mutex;
+	ov::Mutex _redis_context_mutex;
+	redisContext *_redis_context OV_GUARDED_BY(_redis_context_mutex) = nullptr;
 };
