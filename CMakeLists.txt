@@ -110,6 +110,7 @@ option(OME_SKIP_DEPENDENCY_CHECK    "Skip auto-install of missing/wrong-version 
 option(OME_SANITIZE_THREAD          "Enable ThreadSanitizer (TSan) - Debug only"         OFF)
 option(OME_THREAD_SAFETY            "Enable Clang thread-safety analysis"                OFF)
 option(OME_BUILD_TESTS              "Build unit tests (requires GTest)"                  OFF)
+option(OME_BUILD_INTEGRATION_TESTS  "Enable local recording integration tests"           OFF)
 option(OME_LATENCY_PROBE            "Build serving-path latency/stall instrumentation"  OFF)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     option(OME_WHISPER_STATIC       "Build Whisper/ggml as a static library"             ON)
@@ -227,6 +228,20 @@ endif()
 
 add_subdirectory(src)
 
+if(OME_BUILD_INTEGRATION_TESTS)
+    if(NOT OME_BUILD_TESTS)
+        message(FATAL_ERROR "OME_BUILD_INTEGRATION_TESTS requires OME_BUILD_TESTS=ON")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    find_program(OME_TEST_FFMPEG NAMES ffmpeg REQUIRED)
+    find_program(OME_TEST_FFPROBE NAMES ffprobe REQUIRED)
+    add_test(NAME FfmpegWriterRecordingIntegration
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/integration/writer_recording.py
+            --ome $<TARGET_FILE:OvenMediaEngine>
+            --ffmpeg ${OME_TEST_FFMPEG} --ffprobe ${OME_TEST_FFPROBE})
+    set_tests_properties(FfmpegWriterRecordingIntegration PROPERTIES
+        LABELS integration TIMEOUT 120 RUN_SERIAL TRUE)
+endif()
 
 # ==============================================================================
 # Install rules
