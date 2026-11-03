@@ -92,7 +92,13 @@ protected:
 		packet->SetPayloadType(kVideoPayloadType);
 		packet->SetSequenceNumber(sequence_number);
 		history->StoreRtpPacket(packet);
-		ASSERT_TRUE(session->RecordRtpSent(packet, sequence_number, 0));
+		// Seed the sent-packet lookup; this test exercises NACK processing.
+		auto sent = std::make_shared<RtcSession::RtpSentLog>();
+		sent->_track_id = kVideoTrackId;
+		sent->_payload_type = kVideoPayloadType;
+		sent->_origin_sequence_number = sequence_number;
+		sent->_sequence_number = sequence_number;
+		session->_video_rtp_sent_record_map[sequence_number % MAX_RTP_RECORDS] = sent;
 	}
 
 	void ReceiveNack(const std::vector<uint16_t> &lost_ids)
