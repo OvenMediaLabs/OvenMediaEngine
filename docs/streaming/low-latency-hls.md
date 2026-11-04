@@ -109,9 +109,9 @@ When you create a stream, as shown above, you can play LLHLS with the following 
 > `http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/llhls.m3u8`
 
 The `Server.xml` shipped with OvenMediaEngine declares a playlist with the file name `master` in the `OutputProfile` of the `app` application.
-If you use the same output profile, you can also start streaming with the following URL:
+With the shipped `Server.xml`, you can also start streaming with the following URL:
 
-`http://{OvenMediaEngine Host}:{LLHLS Port}/app/{Stream Name}/master.m3u8`
+`http://{OvenMediaEngine Host}:3333/app/{Stream Name}/master.m3u8`
 
 We have prepared a test player that you can quickly see if OvenMediaEngine is working. Please refer to the [Test Player](../quick-start/test-player.md) for more information.
 
