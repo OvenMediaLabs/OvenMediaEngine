@@ -576,46 +576,6 @@ namespace ffmpeg
 			return default_format;
 		}
 
-		static bool IsSupportCodec(ov::String format, cmn::MediaCodecId codec_id)
-		{
-			if (format == "mp4")
-			{
-				if (codec_id == cmn::MediaCodecId::H264 ||
-					codec_id == cmn::MediaCodecId::H265 ||
-					codec_id == cmn::MediaCodecId::Aac ||
-					codec_id == cmn::MediaCodecId::Mp3)
-				{
-					return true;
-				}
-			}
-			else if (format == "mpegts")
-			{
-				if (codec_id == cmn::MediaCodecId::H264 ||
-					codec_id == cmn::MediaCodecId::H265 ||
-					codec_id == cmn::MediaCodecId::Vp8 ||
-					codec_id == cmn::MediaCodecId::Vp9 ||
-					codec_id == cmn::MediaCodecId::Aac ||
-					codec_id == cmn::MediaCodecId::Mp2 ||
-					codec_id == cmn::MediaCodecId::Mp3 ||
-					codec_id == cmn::MediaCodecId::Opus)
-				{
-					return true;
-				}
-			}
-			else if (format == "webm")
-			{
-				if (
-					codec_id == cmn::MediaCodecId::Vp8 ||
-					codec_id == cmn::MediaCodecId::Vp9 ||
-					codec_id == cmn::MediaCodecId::Opus)
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
-
 	};
 
 }  // namespace ffmpeg

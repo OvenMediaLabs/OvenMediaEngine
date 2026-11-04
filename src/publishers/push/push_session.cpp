@@ -447,11 +447,8 @@ namespace pub
 		{
 			if (codec_id == cmn::MediaCodecId::H264 ||
 				codec_id == cmn::MediaCodecId::H265 ||
-				codec_id == cmn::MediaCodecId::Vp8 ||
-				codec_id == cmn::MediaCodecId::Vp9 ||
 				codec_id == cmn::MediaCodecId::Aac ||
 				codec_id == cmn::MediaCodecId::Mp3 ||
-				codec_id == cmn::MediaCodecId::Opus || 
 				codec_id == cmn::MediaCodecId::None)
 			{
 				return true;

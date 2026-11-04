@@ -21,7 +21,7 @@ This is useful when you want to avoid exposing internal paths for security reaso
 
 * `<RootPath>` is **optional** and allows the use of **relative paths** in API requests. It applies to both `<FilePath>` and `<InfoPath>`
 
-The `FilePath` must end with `.ts` or `.mp4` to specify the container format.
+The `FilePath` must end with `.ts`, `.mp4`, or `.webm` to specify the container format.
 
 ```xml
 Server.xml
@@ -43,7 +43,7 @@ Server.xml
 
 #### \* Supported format and codecs
 
-<table><thead><tr><th width="290">Format</th><th>Codec</th></tr></thead><tbody><tr><td>TS</td><td>H.264, H.265, AAC</td></tr><tr><td>MP4</td><td>H.264, H.265, AAC</td></tr></tbody></table>
+<table><thead><tr><th width="290">Format</th><th>Extension</th><th>Codec</th></tr></thead><tbody><tr><td>TS</td><td>.ts</td><td>H.264, H.265, AAC, MP3</td></tr><tr><td>MP4</td><td>.mp4</td><td>H.264, H.265, AV1, AAC, Opus</td></tr><tr><td>WebM</td><td>.webm</td><td>VP8, VP9, AV1, Opus</td></tr></tbody></table>
 
 ## Recording via REST API
 

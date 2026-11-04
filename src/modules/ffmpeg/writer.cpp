@@ -671,7 +671,6 @@ namespace ffmpeg
 				case cmn::BitstreamFormat::AAC_RAW:
 				case cmn::BitstreamFormat::AAC_ADTS:
 				case cmn::BitstreamFormat::AAC_LATM:
-				case cmn::BitstreamFormat::OPUS:
 				case cmn::BitstreamFormat::MP3:
 					break;
 				default:
