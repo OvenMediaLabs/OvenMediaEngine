@@ -6,14 +6,14 @@ sidebar_position: 26
 
 :::warning
 
-`MaxDuration`HLS is still in development and some features such as SignedPolicy and AdmissionWebhooks are not supported.
+HLS is still in development and some features such as SignedPolicy and AdmissionWebhooks are not supported.
 
 :::
 
 
 HLS based on MPEG-2 TS containers is still useful because it provides high compatibility, including support for older devices. Therefore, OvenMediaEngine decided to officially support HLS version 7+ based on fragmented MP4 containers, called LL-HLS, as well as HLS version 3+ based on MPEG-2 TS containers.
 
-<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td><p>MPEG-2 TS</p><p>(Only supports Audio/Video muxed)</p></td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td><p>H.264, H.265, AAC</p><ul><li>Apple Safari does not support H.265 (HEVC) in MPEG-TS format.</li></ul></td></tr><tr><td>Default URL Pattern</td><td><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:master.m3u8`</p><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/master.m3u8?format=ts`</p></td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td><p>MPEG-2 TS</p><p>(Only supports Audio/Video muxed)</p></td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td><p>H.264, H.265, AAC</p><ul><li>Apple Safari does not support H.265 (HEVC) in MPEG-TS format.</li></ul></td></tr><tr><td>Default URL Pattern</td><td><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:playlist.m3u8`</p><p>`http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/playlist.m3u8?format=ts`</p></td></tr></tbody></table>
 
 
 
@@ -108,17 +108,19 @@ If your input stream is already h.264/aac, you can use the input stream as is li
 </OutputProfile>
 ```
 
-HLS Publisher basically creates a `master.m3u8` Playlist using the first video track and the first audio track. When you create a stream, as shown above, you can play HLS with the following URL:
+HLS Publisher basically creates a `playlist.m3u8` Playlist with the first supported video track, all tracks of the variant that the first supported audio track belongs to, and the first data track.
+When you create a stream, as shown above, you can play HLS with the following URL:
 
-> `http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:mster.m3u8`
+> `http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:playlist.m3u8`
 >
-> `http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/master.m3u8?format=ts`
+> `http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/playlist.m3u8?format=ts`
 
-If you use the default configuration, you can start streaming with the following URL:
+The `Server.xml` shipped with OvenMediaEngine declares a playlist with the file name `master` and `EnableTsPackaging` set to `true` in the `OutputProfile` of the `app` application, but it does not bind a port for HLS (`<Bind><Publishers><HLS>`).
+If you use the same output profile and bind a port for HLS as shown above, you can also start streaming with the following URL:
 
-`http://{OvenMediaEngine Host}:3333/{App Name}/{Stream Name}/ts:master.m3u8`
+`http://{OvenMediaEngine Host}:{HLS Port}/app/{Stream Name}/ts:master.m3u8`
 
-`http://{OvenMediaEngine Host}:3333/{App Name}/{Stream Name}/master.m3u8?format=ts`
+`http://{OvenMediaEngine Host}:{HLS Port}/app/{Stream Name}/master.m3u8?format=ts`
 
 We have prepared a test player that you can quickly see if OvenMediaEngine is working. Please refer to the [Test Player](../quick-start/test-player.md) for more information.
 
@@ -128,7 +130,8 @@ HLS can deliver adaptive bitrate streaming. OME encodes the same source with mul
 
 See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for how to configure renditions.
 
-HLS Publisher basically creates the `master.m3u8` Playlist using the first video track and the first audio track. If you want to create a new playlist for ABR, you can add it to Server.xml as follows:
+HLS Publisher basically creates the `playlist.m3u8` Playlist with the first supported video track, all tracks of the variant that the first supported audio track belongs to, and the first data track.
+If you want to create a new playlist for ABR, you can add it to Server.xml as follows:
 
 
 :::info
