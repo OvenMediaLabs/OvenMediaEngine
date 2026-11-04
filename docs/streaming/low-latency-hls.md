@@ -8,7 +8,7 @@ Apple supports Low-Latency HLS (LLHLS), which enables low-latency video streamin
 
 LLHLS is an extension of HLS, so legacy HLS players can play LLHLS streams. However, the legacy HLS player plays the stream without using the low-latency function.
 
-<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AV1, AAC</td></tr><tr><td>Default URL Pattern</td><td>`http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8`</td></tr></tbody></table>
+<table><thead><tr><th width="290">Title</th><th>Descriptions</th></tr></thead><tbody><tr><td>Container</td><td>fMP4 (Audio, Video)</td></tr><tr><td>Security</td><td>TLS (HTTPS)</td></tr><tr><td>Transport</td><td>HTTP/1.1, HTTP/2</td></tr><tr><td>Codec</td><td>H.264, H.265, AV1, AAC</td></tr><tr><td>Default URL Pattern</td><td>`http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/llhls.m3u8`</td></tr></tbody></table>
 
 ## Configuration
 
@@ -106,11 +106,12 @@ If your input stream is already h.264/aac, you can use the input stream as is li
 
 When you create a stream, as shown above, you can play LLHLS with the following URL:
 
-> `http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/master.m3u8`
+> `http[s]://{OvenMediaEngine Host}[:{LLHLS Port}]/{App Name}/{Stream Name}/llhls.m3u8`
 
-If you use the default configuration, you can start streaming with the following URL:
+The `Server.xml` shipped with OvenMediaEngine declares a playlist with the file name `master` in the `OutputProfile` of the `app` application.
+If you use the same output profile, you can also start streaming with the following URL:
 
-`http://{OvenMediaEngine Host}:3333/app/{Stream Name}/master.m3u8`
+`http://{OvenMediaEngine Host}:{LLHLS Port}/app/{Stream Name}/master.m3u8`
 
 We have prepared a test player that you can quickly see if OvenMediaEngine is working. Please refer to the [Test Player](../quick-start/test-player.md) for more information.
 
