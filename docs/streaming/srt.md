@@ -81,7 +81,7 @@ The SRT URL to be used in the player is structured as follows:
 srt://{OvenMediaEngine Host}:{SRT Port}?streamid={streamid}
 ```
 
-SRT Publisher creates a default playlist named `playlist` with all tracks of the variants that the first video track and the first audio track belong to, and all data tracks.
+SRT Publisher creates a default playlist named `playlist` with all supported tracks of the variants that the first supported video track and the first supported audio track belong to, and all data tracks.
 The `Server.xml` shipped with OvenMediaEngine declares a playlist with the file name `master` and `EnableTsPackaging` set to `true` in the `OutputProfile` of the `app` application, but it does not add `<SRT />` to the `<Publishers>` of that application.
 If you use the same output profile and add `<SRT />` to the `<Publishers>` of the application, you can also use `master` as the `{Playlist Name}`.
 The SRT Publisher also needs a port in `<Bind><Publishers><SRT>`, which the configuration used by the Docker image does not have.

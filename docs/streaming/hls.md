@@ -108,7 +108,7 @@ If your input stream is already h.264/aac, you can use the input stream as is li
 </OutputProfile>
 ```
 
-HLS Publisher basically creates a `playlist.m3u8` Playlist with all tracks of the variants that the first video track and the first audio track belong to.
+HLS Publisher basically creates a `playlist.m3u8` Playlist with the first supported video track, all tracks of the variant that the first supported audio track belongs to, and the first data track.
 When you create a stream, as shown above, you can play HLS with the following URL:
 
 > `http[s]://{OvenMediaEngine Host}[:{HLS Port}]/{App Name}/{Stream Name}/ts:playlist.m3u8`
@@ -130,7 +130,7 @@ HLS can deliver adaptive bitrate streaming. OME encodes the same source with mul
 
 See the [Adaptive Bitrates Streaming](../transcoding/abr.md#adaptive-bitrate-streaming-abr) section for how to configure renditions.
 
-HLS Publisher basically creates the `playlist.m3u8` Playlist with all tracks of the variants that the first video track and the first audio track belong to.
+HLS Publisher basically creates the `playlist.m3u8` Playlist with the first supported video track, all tracks of the variant that the first supported audio track belongs to, and the first data track.
 If you want to create a new playlist for ABR, you can add it to Server.xml as follows:
 
 
