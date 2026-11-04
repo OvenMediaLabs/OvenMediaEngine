@@ -637,7 +637,6 @@ namespace pub
 				codec_id == cmn::MediaCodecId::H265 ||
 				codec_id == cmn::MediaCodecId::Av1 ||
 				codec_id == cmn::MediaCodecId::Aac ||
-				codec_id == cmn::MediaCodecId::Mp3 ||
 				codec_id == cmn::MediaCodecId::Opus)
 			{
 				return true;
