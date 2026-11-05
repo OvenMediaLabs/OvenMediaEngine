@@ -447,6 +447,12 @@ namespace http
 
 				_websocket_frame.reset();
 			}
+			else if (read_bytes < 0)
+			{
+				// Could not parse the frame
+				Close(PhysicalPortDisconnectReason::Error);
+				return -1;
+			}
 
 			return read_bytes;
 		}

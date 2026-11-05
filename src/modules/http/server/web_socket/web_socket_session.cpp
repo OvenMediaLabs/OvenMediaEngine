@@ -159,6 +159,13 @@ namespace http
 							return false;
 						}
 
+						if (_fragmented_message->GetLength() + payload->GetLength() > MAX_WEBSOCKET_FRAME_SIZE)
+						{
+							logtw("The fragmented message exceeds %lld bytes: %s", MAX_WEBSOCKET_FRAME_SIZE, ToString().CStr());
+							SetStatus(Status::Error);
+							return false;
+						}
+
 						_fragmented_message->Append(payload);
 
 						if (header.fin)

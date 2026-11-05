@@ -12,9 +12,6 @@
 
 #include "./web_socket_private.h"
 
-// Currently, OME does not handle websocket frame larger than 1 MB
-#define MAX_WEBSOCKET_FRAME_SIZE (1024LL * 1024LL)
-
 #define WEB_SOCKET_PROCESS(step, func)                            \
 	do                                                            \
 	{                                                             \
@@ -256,6 +253,12 @@ namespace http
 
 						consumed_bytes = 0;
 						break;
+				}
+
+				if (_payload_length > MAX_WEBSOCKET_FRAME_SIZE)
+				{
+					logte("Payload length is too large: %" PRIu64 " (max: %lld)", _payload_length, MAX_WEBSOCKET_FRAME_SIZE);
+					return -1;
 				}
 
 				// To optimize the speed, masking is processed with a multiple of 8, which is set to a multiple of 8 in advance to prevent buffer reallocation
