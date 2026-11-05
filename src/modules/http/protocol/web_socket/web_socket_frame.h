@@ -10,6 +10,9 @@
 
 #include <base/ovlibrary/ovlibrary.h>
 
+// Currently, OME does not handle a websocket frame or message larger than 1 MB
+#define MAX_WEBSOCKET_FRAME_SIZE (1024LL * 1024LL)
+
 namespace http
 {
 	namespace prot

@@ -108,8 +108,9 @@ namespace http
 					return false;
 				}
 				const std::shared_ptr<const ov::Data> payload = frame->GetPayload();
+				const auto &header = frame->GetHeader();
 
-				switch (static_cast<FrameOpcode>(frame->GetHeader().opcode))
+				switch (static_cast<FrameOpcode>(header.opcode))
 				{
 					case FrameOpcode::ConnectionClose:
 						// The client requested close the connection
@@ -129,14 +130,65 @@ namespace http
 						logtt("A pong frame is received:\n%s", payload->Dump().CStr());
 						break;
 
-					default:
+					case FrameOpcode::Text:
+					case FrameOpcode::Binary:
 						logtt("%s:\n%s", frame->ToString().CStr(), payload->Dump("Frame", 0L, 1024L, nullptr).CStr());
-						if (interceptor->OnDataReceived(GetSharedPtr(), payload) == false)
+
+						if (_fragmented_message != nullptr)
 						{
+							logtw("A new message started before the fragmented message was completed: %s", ToString().CStr());
 							SetStatus(Status::Error);
 							return false;
 						}
+
+						if (header.fin)
+						{
+							return OnMessageReceived(interceptor, payload);
+						}
+
+						_fragmented_message = payload->Clone();
 						break;
+
+					case FrameOpcode::Continuation:
+						logtt("%s:\n%s", frame->ToString().CStr(), payload->Dump("Frame", 0L, 1024L, nullptr).CStr());
+
+						if (_fragmented_message == nullptr)
+						{
+							logtw("A continuation frame was received without a fragmented message: %s", ToString().CStr());
+							SetStatus(Status::Error);
+							return false;
+						}
+
+						if (_fragmented_message->GetLength() + payload->GetLength() > MAX_WEBSOCKET_FRAME_SIZE)
+						{
+							logtw("The fragmented message exceeds %lld bytes: %s", MAX_WEBSOCKET_FRAME_SIZE, ToString().CStr());
+							SetStatus(Status::Error);
+							return false;
+						}
+
+						_fragmented_message->Append(payload);
+
+						if (header.fin)
+						{
+							return OnMessageReceived(interceptor, std::exchange(_fragmented_message, nullptr));
+						}
+						break;
+
+					default:
+						logtw("An unknown opcode %d was received: %s", header.opcode, ToString().CStr());
+						SetStatus(Status::Error);
+						return false;
+				}
+
+				return true;
+			}
+
+			bool WebSocketSession::OnMessageReceived(const std::shared_ptr<RequestInterceptor> &interceptor, const std::shared_ptr<const ov::Data> &message)
+			{
+				if (interceptor->OnDataReceived(GetSharedPtr(), message) == false)
+				{
+					SetStatus(Status::Error);
+					return false;
 				}
 
 				return true;
