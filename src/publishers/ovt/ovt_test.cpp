@@ -900,6 +900,11 @@ TEST(OvtDescribeTest, RebuildCollapsesDeclaredDuplicatesUnderAFilter)
 	const auto lines = OvtStream::DescribeRenditionChanges(changes);
 	ASSERT_EQ(lines.size(), 1u);
 	EXPECT_EQ(lines[0], ov::String("Playlist [abr] rendition [b] for this edge: removed, same tracks as rendition [a]"));
+
+	// A kept rendition without a name still makes the other one a duplicate
+	auto unnamed = BuildRenditionFixture("abr", {{"", "360p", 1, "aac", std::nullopt}, {"b", "360p", 1, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(unnamed["stream"], {1, 2, 3});
+	EXPECT_EQ(RenditionNames(unnamed["stream"]), (std::vector<ov::String>{""}));
 }
 
 // A side pinned to one track of its variant is emptied when only that track is gone,
@@ -1079,6 +1084,28 @@ TEST(OvtDescribeTest, RemovalCauseNamesTheTerm)
 	unknown["codec"]	= "no-such-codec";
 	EXPECT_EQ(OvtStream::RemovalCause(legacy, unknown), ov::String("OVT1 codec filter"));
 	EXPECT_TRUE(OvtStream::RemovalCause(legacy, video).IsEmpty());
+}
+
+// A relay passes on names its upstream sent, so a control character never reaches a log line
+TEST(OvtDescribeTest, RenditionChangeLinesSanitizeNames)
+{
+	OvtStream::RenditionChange change;
+	change.type			  = OvtStream::RenditionChange::Type::DuplicateRemoved;
+	change.playlist		  = "p\nq";
+	change.rendition	  = "r\x1b";
+	change.kept_rendition = "k\r";
+	change.lost_sides	  = {{cmn::MediaType::Audio, "a\nb", std::nullopt, true}};
+
+	const auto lines = OvtStream::DescribeRenditionChanges({change});
+	ASSERT_EQ(lines.size(), 1u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [p.q] rendition [r.] for this edge: removed, same tracks as rendition [k.] after losing audio (variant [a.b])"));
+
+	Json::Value track;
+	track["id"] = 0;
+	OvtTrackFilter filter;
+	filter.track_set_name = "t\nx";
+	filter.track_set_ids  = std::set<uint32_t>{1};
+	EXPECT_EQ(OvtStream::RemovalCause(filter, track), ov::String("TrackSet [t.x]"));
 }
 
 // A rendition side without a track id keeps its group meaning, and the rebuild must not turn that

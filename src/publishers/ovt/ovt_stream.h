@@ -78,9 +78,10 @@ public:
 	// The `playlists` array a PLAY response carries, rebuilt for the confirmed track set.
 	// It runs the same `RebuildRenditions()` rule the describe uses, so the edge's renditions end up
 	// consistent with the tracks it will actually receive.
-	// The changes are logged only when the set differs from what a describe sends under `filter`,
-	// since the describe logged its own.
-	Json::Value BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed);
+	// `described_track_ids` is what this connection's describe of the stream sent, nullopt when it described none.
+	// The changes are logged unless it is the same set, since that describe logged its own.
+	Json::Value BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed,
+										const std::optional<std::set<uint32_t>> &described_track_ids);
 
 	// `ovt.required` of a describe:
 	// the codec token of every track whose media type is in `required_media_types`, sorted and unique.

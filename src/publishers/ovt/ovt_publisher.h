@@ -43,7 +43,8 @@ private:
 		// and one for a message of a payload type an origin does not take
 		bool media_dropped			 = false;
 		bool unknown_message_dropped = false;
-		// What this connection described last: the stream, the instance of it, and its track epoch then.
+		// What this connection described last: the stream, the instance of it, its track epoch then,
+		// and the track ids it sent, whose playlist changes that describe already logged.
 		// The play that follows hands the epoch to its session, which uses it to spot a NOTIFY that went out
 		// while the session was still behind the send gate.
 		// A different key is another stream, which a connection may play.
@@ -51,11 +52,13 @@ private:
 		ov::String described_stream_key;
 		std::optional<info::stream_id_t> described_stream_id;
 		uint32_t track_epoch = 0;
+		std::set<uint32_t> described_track_ids;
 	};
 
-	// Records which stream this connection described and its track epoch at that moment,
+	// Records which stream this connection described, its track epoch at that moment and the track ids sent,
 	// once the response is on its way
-	void RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch);
+	void RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch,
+								 const std::set<uint32_t> &track_ids);
 
 	//--------------------------------------------------------------------
 	// Implementation of Publisher
@@ -92,7 +95,8 @@ private:
 	// Returns false when the URL names a TrackSet the stream does not have.
 	bool ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<OvtStream> &stream, const ov::String &track_set_name, const std::optional<std::set<uint32_t>> &requested_track_ids, OvtTrackFilter &filter);
 	void SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id,
-						  const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids);
+						  const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids,
+						  const std::optional<std::set<uint32_t>> &described_track_ids);
 	void HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url, const std::optional<std::set<uint32_t>> &requested_track_ids);
 	void HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id, const std::shared_ptr<const ov::Url> &url);
 

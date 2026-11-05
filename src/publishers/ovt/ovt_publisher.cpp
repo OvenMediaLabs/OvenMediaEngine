@@ -423,7 +423,8 @@ bool OvtPublisher::ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote,
 // was written before the edge made its selection, so only this one has renditions that match the
 // tracks the edge ends up with. A session that kept every track keeps the describe's copy.
 void OvtPublisher::SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id,
-									const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids)
+									const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids,
+									const std::optional<std::set<uint32_t>> &described_track_ids)
 {
 	Json::Value root;
 	root["id"]			= request_id;
@@ -454,7 +455,7 @@ void OvtPublisher::SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, u
 		// through the rendition pruning for nothing.
 		if (confirmed != every_track_id)
 		{
-			root["ovt"]["playlists"] = stream->BuildPlaylistsForTracks(filter, confirmed);
+			root["ovt"]["playlists"] = stream->BuildPlaylistsForTracks(filter, confirmed, described_track_ids);
 		}
 
 		if (ids.empty())
@@ -542,6 +543,11 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 	// An empty track set answers 200 with an empty `tracks`, which is what v0.21.0.0 did.
 	// An OVT2 edge is told why in `ovt.reason` below and stops instead of waiting for media.
 	const bool no_deliverable_track = description["stream"]["tracks"].empty();
+	std::set<uint32_t> described_track_ids;
+	for (const auto &track : description["stream"]["tracks"])
+	{
+		described_track_ids.insert(track["id"].asUInt());
+	}
 	if (no_deliverable_track)
 	{
 		logtw("(%s/%s) has no track this edge can receive", vhost_app_name.CStr(), url->Stream().CStr());
@@ -555,7 +561,7 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 		{
 			OvtStream::RenumberIndexHints(description["stream"]);
 		}
-		RememberDescribedStream(remote, stream_key, stream->GetId(), described_epoch);
+		RememberDescribedStream(remote, stream_key, stream->GetId(), described_epoch, described_track_ids);
 		ResponseResult(remote, 0, "describe", request_id, 200, "ok", description);
 		return;
 	}
@@ -581,16 +587,18 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 		root["ovt"]["required"].append(token.CStr());
 	}
 
-	RememberDescribedStream(remote, stream_key, stream->GetId(), described_epoch);
+	RememberDescribedStream(remote, stream_key, stream->GetId(), described_epoch, described_track_ids);
 	SendResponse(remote, 0, ov::Json::Stringify(root));
 }
 
-void OvtPublisher::RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch)
+void OvtPublisher::RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch,
+										   const std::set<uint32_t> &track_ids)
 {
 	auto context				  = GetRemoteContext(remote->GetNativeHandle());
 	context->described_stream_key = stream_key;
 	context->described_stream_id  = stream_id;
 	context->track_epoch		  = track_epoch;
+	context->described_track_ids  = track_ids;
 }
 
 void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url, const std::optional<std::set<uint32_t>> &requested_track_ids)
@@ -662,9 +670,9 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 	}
 
 	// Only this connection's describe of this stream says what the edge already knows
-	auto described_epoch = (context->described_stream_id == stream->GetId())
-							   ? std::optional<uint32_t>(context->track_epoch)
-							   : std::nullopt;
+	const auto described		   = (context->described_stream_id == stream->GetId());
+	const auto described_epoch	   = described ? std::optional<uint32_t>(context->track_epoch) : std::nullopt;
+	const auto described_track_ids = described ? std::optional<std::set<uint32_t>>(context->described_track_ids) : std::nullopt;
 	session->SetPeer(context->is_ovt2, described_epoch);
 
 	if (allowed_track_ids.has_value())
@@ -677,7 +685,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 
 	LinkRemoteWithStream(remote->GetNativeHandle(), stream);
 
-	SendPlayResponse(remote, session->GetId(), request_id, stream, filter, allowed_track_ids);
+	SendPlayResponse(remote, session->GetId(), request_id, stream, filter, allowed_track_ids, described_track_ids);
 
 	stream->AddSession(session);
 }

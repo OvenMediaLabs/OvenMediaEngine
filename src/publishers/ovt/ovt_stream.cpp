@@ -44,8 +44,8 @@ namespace
 		RenditionLoss loss = RenditionLoss::None;
 		// No side has a track left, so the rendition is removed
 		bool emptied = false;
-		// The rendition that keeps the same `resolved` set; empty when this one keeps it
-		ov::String duplicate_of;
+		// The name of the rendition that keeps the same `resolved` set; nullopt when this one keeps it
+		std::optional<ov::String> duplicate_of;
 	};
 }  // namespace
 
@@ -683,10 +683,10 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 
 				change.type = RenditionChange::Type::RenditionRemoved;
 			}
-			else if (candidate.duplicate_of.IsEmpty() == false)
+			else if (candidate.duplicate_of.has_value())
 			{
 				change.type			  = RenditionChange::Type::DuplicateRemoved;
-				change.kept_rendition = candidate.duplicate_of;
+				change.kept_rendition = *candidate.duplicate_of;
 				pruned++;
 			}
 			else
@@ -736,7 +736,7 @@ std::vector<ov::String> OvtStream::DescribeRenditionChanges(const std::vector<Re
 	const auto describe_side = [](const RenditionChange::LostSide &side) {
 		const auto *kind = (side.media_type == cmn::MediaType::Video) ? "video" : "audio";
 		auto text		 = side.emptied ? ov::String(kind) : ov::String::FormatString("some %s tracks", kind);
-		text.AppendFormat(" (variant [%s]", side.variant.CStr());
+		text.AppendFormat(" (variant [%s]", ovt::SanitizeForLog(side.variant).CStr());
 		if (side.track_id.has_value())
 		{
 			text.AppendFormat(", track %u", *side.track_id);
@@ -761,7 +761,9 @@ std::vector<ov::String> OvtStream::DescribeRenditionChanges(const std::vector<Re
 			rewritten_playlists.insert(change.playlist);
 		}
 
-		const auto prefix = ov::String::FormatString("Playlist [%s] rendition [%s] for this edge", change.playlist.CStr(), change.rendition.CStr());
+		// A relay passes on the names its upstream sent, so each is sanitized like the edge's own warnings
+		const auto playlist = ovt::SanitizeForLog(change.playlist);
+		const auto prefix	= ov::String::FormatString("Playlist [%s] rendition [%s] for this edge", playlist.CStr(), ovt::SanitizeForLog(change.rendition).CStr());
 		switch (change.type)
 		{
 			case RenditionChange::Type::SideEmptied: {
@@ -777,11 +779,11 @@ std::vector<ov::String> OvtStream::DescribeRenditionChanges(const std::vector<Re
 
 			case RenditionChange::Type::DuplicateRemoved:
 				lines.push_back(ov::String::FormatString("%s: removed, same tracks as rendition [%s]%s%s",
-														 prefix.CStr(), change.kept_rendition.CStr(), lost.IsEmpty() ? "" : " after losing ", lost.CStr()));
+														 prefix.CStr(), ovt::SanitizeForLog(change.kept_rendition).CStr(), lost.IsEmpty() ? "" : " after losing ", lost.CStr()));
 				break;
 
 			case RenditionChange::Type::PlaylistRemoved:
-				lines.push_back(ov::String::FormatString("Playlist [%s] for this edge: removed, no rendition left", change.playlist.CStr()));
+				lines.push_back(ov::String::FormatString("Playlist [%s] for this edge: removed, no rendition left", playlist.CStr()));
 				rewritten_playlists.erase(change.playlist);
 				break;
 		}
@@ -804,7 +806,7 @@ ov::String OvtStream::RemovalCause(const OvtTrackFilter &filter, const Json::Val
 	const auto track_id = track["id"].asUInt();
 	if (filter.track_set_ids.has_value() && (filter.track_set_ids->count(track_id) == 0))
 	{
-		return ov::String::FormatString("TrackSet [%s]", filter.track_set_name.CStr());
+		return ov::String::FormatString("TrackSet [%s]", ovt::SanitizeForLog(filter.track_set_name).CStr());
 	}
 
 	if (filter.requested_track_ids.has_value() && (filter.requested_track_ids->count(track_id) == 0))
@@ -848,7 +850,7 @@ void OvtStream::LogRenditionChanges(const char *path, const OvtTrackFilter &filt
 			const auto cause = RemovalCause(filter, track);
 			if (cause != CAUSE_OVT1_CODEC_FILTER)
 			{
-				logtw("%s: Track %u (variant [%s]) is not sent to this edge: %s", prefix.CStr(), track_id, track["name"].asCString(), cause.CStr());
+				logtw("%s: Track %u (variant [%s]) is not sent to this edge: %s", prefix.CStr(), track_id, ovt::SanitizeForLog(track["name"].asCString()).CStr(), cause.CStr());
 			}
 		}
 	}
@@ -943,31 +945,18 @@ std::optional<std::set<uint32_t>> OvtStream::ResolveAllowedTrackIds(const OvtTra
 	return allowed;
 }
 
-Json::Value OvtStream::BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed)
+Json::Value OvtStream::BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed,
+												const std::optional<std::set<uint32_t>> &described_track_ids)
 {
 	Json::Value description;
 	GenerateDescription(description);
 
-	// The tracks a describe sends under the same filter: it has no edge selection yet
-	auto describe_filter = filter;
-	describe_filter.requested_track_ids.reset();
-
 	Json::Value &stream = description["stream"];
-	std::set<uint32_t> described;
-	for (const auto &track : stream["tracks"])
-	{
-		if (RemovalCause(describe_filter, track).IsEmpty())
-		{
-			described.insert(track["id"].asUInt());
-		}
-	}
-
-	const auto tracks = stream["tracks"];
+	const auto tracks	= stream["tracks"];
 	std::vector<RenditionChange> changes;
 	RebuildRenditions(stream, allowed, &changes);
 
-	// The describe already logged the changes of its own set, so only a set that differs from it is logged again
-	if (allowed != described)
+	if (described_track_ids != allowed)
 	{
 		LogRenditionChanges("play", filter, tracks, allowed, changes);
 	}
