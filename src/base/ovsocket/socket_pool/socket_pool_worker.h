@@ -123,7 +123,7 @@ namespace ov
 		inline static Mutex _connection_callback_queue_mutex;
 		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};
 		inline static bool _is_first_connection_callback_queue_start = false;
-		Mutex _connection_timed_out_queue_mutex;
+		mutable Mutex _connection_timed_out_queue_mutex;
 		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue OV_GUARDED_BY(_connection_timed_out_queue_mutex);
 
 		// Common variables

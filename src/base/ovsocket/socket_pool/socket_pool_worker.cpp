@@ -131,7 +131,10 @@ namespace ov
 			_sockets_to_call_close_callback.clear();
 		}
 
-		_connection_timed_out_queue.clear();
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+			_connection_timed_out_queue.clear();
+		}
 
 		_gc_candidates.clear();
 
@@ -1060,14 +1063,25 @@ namespace ov
 
 	String SocketPoolWorker::ToString() const
 	{
-		String description;
+		size_t socket_map_size;
+		size_t insert_queue_size;
+		size_t timed_out_queue_size;
 
-		LockGuard lock(_socket_map_mutex);
+		{
+			LockGuard lock(_socket_map_mutex);
+			socket_map_size	  = _socket_map.size();
+			insert_queue_size = _sockets_to_insert.size();
+		}
+
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+			timed_out_queue_size = _connection_timed_out_queue.size();
+		}
+
+		String description;
 		description.AppendFormat(
 			"<SocketPoolWorker: %p, socket_map: %zu, insert queue: %zu, connection queue: %zu>",
-			this, _socket_map.size(),
-			_sockets_to_insert.size(),
-			_connection_timed_out_queue.size());
+			this, socket_map_size, insert_queue_size, timed_out_queue_size);
 
 		return description;
 	}
