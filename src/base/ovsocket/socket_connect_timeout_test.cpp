@@ -224,6 +224,48 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connecting);
 }
 
+// A non-blocking TCP connect that completes before its timeout is not reported as timed out afterwards
+TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectIsNotTimedOutAfterConnecting)
+{
+	constexpr int SHORT_TIMEOUT_MSEC = 300;
+	// Past the timeout, plus a few ticks of the worker that reports it
+	constexpr int OBSERVE_MSEC		 = SHORT_TIMEOUT_MSEC + 500;
+
+	// Accepts nothing, but the kernel completes the handshake into its backlog
+	int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+	ASSERT_GE(listen_fd, 0);
+	ome_test::ScopeExit listen_closer([&]() { ::close(listen_fd); });
+
+	sockaddr_in sa{};
+	sa.sin_family	   = AF_INET;
+	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	socklen_t len	   = sizeof(sa);
+	ASSERT_EQ(::bind(listen_fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)), 0);
+	ASSERT_EQ(::listen(listen_fd, 8), 0);
+	ASSERT_EQ(::getsockname(listen_fd, reinterpret_cast<sockaddr *>(&sa), &len), 0);
+
+	auto pool = ov::SocketPool::Create("test-conn-in-time", ov::SocketType::Tcp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
+
+	auto events = std::make_shared<ConnectEvents>();
+	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(client, nullptr);
+	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
+	ASSERT_TRUE(client->MakeNonBlocking(events));
+
+	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", ntohs(sa.sin_port)), SHORT_TIMEOUT_MSEC);
+	ASSERT_EQ(error, nullptr);
+	EXPECT_TRUE(ome_test::WaitUntil([&]() { return events->_connected == 1; }));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(OBSERVE_MSEC));
+
+	EXPECT_EQ(events->_connected.load(), 1);
+	EXPECT_EQ(events->_connect_failed.load(), 0);
+	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
+}
+
 // A blocking TCP connect that never completes fails with a timeout error once its timeout passes
 TEST(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
 {
