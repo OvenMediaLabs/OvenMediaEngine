@@ -25,51 +25,13 @@
 
 namespace
 {
+	using ome_test::BindToLoopback;
 	using ome_test::ScopeExit;
+	using ome_test::SendDatagram;
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
 
 	constexpr int QUIET_MSEC		= 300;
-
-	// Binds a UDP socket to an ephemeral loopback port and returns the port (0 on failure)
-	uint16_t BindToLoopback(const std::shared_ptr<ov::Socket> &socket)
-	{
-		if (socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) == false)
-		{
-			return 0;
-		}
-
-		sockaddr_in address{};
-		socklen_t length = sizeof(address);
-
-		if (::getsockname(socket->GetNativeHandle(), reinterpret_cast<sockaddr *>(&address), &length) != 0)
-		{
-			return 0;
-		}
-
-		return ntohs(address.sin_port);
-	}
-
-	bool SendDatagram(uint16_t port)
-	{
-		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-
-		if (fd < 0)
-		{
-			return false;
-		}
-
-		sockaddr_in address{};
-		address.sin_family		= AF_INET;
-		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		address.sin_port		= htons(port);
-
-		const char payload[]	= "x";
-		auto sent				= ::sendto(fd, payload, sizeof(payload), 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
-		::close(fd);
-
-		return (sent == sizeof(payload));
-	}
 
 	// A motor that is stopped once, by `Stop()` or on destruction, since stopping twice closes its epoll handle twice
 	class RunningMotor
