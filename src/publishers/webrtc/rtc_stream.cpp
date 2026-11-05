@@ -907,7 +907,11 @@ void RtcStream::PacketizeVideoFrame(const std::shared_ptr<MediaPacket> &media_pa
 
 	auto frame_type	   = (media_packet->GetFlag() == MediaPacketFlag::Key) ? FrameType::VideoFrameKey : FrameType::VideoFrameDelta;
 	// video timescale is always 90000hz in WebRTC
-	auto timestamp	   = ((double)media_packet->GetPts() * media_track->GetTimeBase().GetExpr() * 90000);
+	// Go through int64_t before narrowing: a double -> uint32_t conversion past
+	// 2^32 (13.26 h of stream time at 90 kHz) is undefined, and on aarch64 it
+	// saturates at 0xFFFFFFFF, freezing every frame's RTP timestamp. int64_t ->
+	// uint32_t wraps modulo 2^32, which is what RTP timestamps are meant to do.
+	auto timestamp	   = static_cast<int64_t>((double)media_packet->GetPts() * media_track->GetTimeBase().GetExpr() * 90000);
 	auto ntp_timestamp = ov::Converter::SecondsToNtpTs((double)media_packet->GetPts() * media_track->GetTimeBase().GetExpr());
 	auto data		   = media_packet->GetData();
 	auto fragmentation = media_packet->GetFragHeader();
