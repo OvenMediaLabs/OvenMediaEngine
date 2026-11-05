@@ -61,6 +61,8 @@ namespace http
 				}
 
 			private:
+				bool OnMessageReceived(const std::shared_ptr<RequestInterceptor> &interceptor, const std::shared_ptr<const ov::Data> &message);
+
 				// key : data<int or string>
 				std::map<ov::String, std::variant<bool, uint64_t, ov::String>> _data_map;
 				
@@ -69,6 +71,9 @@ namespace http
 
 				std::shared_ptr<HttpRequest> _request;
 				std::shared_ptr<WebSocketResponse> _ws_response;
+
+				// Fragments received so far, until a frame with FIN completes the message
+				std::shared_ptr<ov::Data> _fragmented_message;
 			};
 		}  // namespace ws
 	} // namespace svr
