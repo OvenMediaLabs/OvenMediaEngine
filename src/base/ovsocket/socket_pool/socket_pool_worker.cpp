@@ -113,8 +113,6 @@ namespace ov
 			_epoll_thread.join();
 		}
 
-		_socket_count = 0;
-
 		{
 			LockGuard lock(_sockets_to_dispatch_mutex);
 			_sockets_to_dispatch.clear();
@@ -1027,8 +1025,6 @@ namespace ov
 			LockGuard lock(_socket_map_mutex);
 			RemoveFromSocketMap(socket);
 		}
-
-		DecreaseSocketCount();
 
 		return (error == nullptr);
 	}

@@ -446,6 +446,24 @@ TEST(SocketPoolWorkerTest, CloseAfterCloseStartedMovesToClosed)
 	pool->Uninitialize();
 }
 
+// A socket closed without ever joining epoll no longer counts toward its worker,
+// so the idle thread-per-socket worker is released
+TEST(SocketPoolWorkerTest, SocketClosedOutsideEpollReleasesWorker)
+{
+	auto pool = ov::SocketPool::Create("test-count-close", ov::SocketType::Tcp, true);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1);
+
+	EXPECT_TRUE(socket->CloseImmediately());
+	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }));
+
+	pool->Uninitialize();
+}
+
 // `CloseImmediately()` moves the socket to `Closed`, so a later `Close()` of a blocking socket returns at once
 TEST(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 {

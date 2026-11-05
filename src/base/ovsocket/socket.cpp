@@ -140,6 +140,8 @@ namespace ov
 			// Only the owner reference is left, since a syscall in flight is made through a `shared_ptr` of this socket
 			OV_ASSERT2(io_ref == 1);
 
+			_worker->DecreaseSocketCount();
+
 			CloseNativeHandle(GetType(), GetNativeHandle());
 		}
 		else
@@ -2711,6 +2713,7 @@ namespace ov
 		// so `AddToWorker()` either registers the socket before this removes it, or sees the mark and does not register it.
 		// It also runs before the shutdown below, which would otherwise raise events for this socket in the worker.
 		DeleteFromWorker();
+		_worker->DecreaseSocketCount();
 
 		switch (GetType())
 		{

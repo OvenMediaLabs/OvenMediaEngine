@@ -111,9 +111,9 @@ namespace ov
 	protected:
 		std::shared_ptr<SocketPool> _pool;
 
-		// The number of sockets is determined in advance and managed separately for processing
-		// Because excessive concentration may not be properly distributed to the worker,
-		// the number of sockets can be specified in advance so that they can be distributed properly.
+		// Sockets allocated from this worker and not yet closed, used to pick the least busy worker.
+		// `SocketPool` increments it on allocation and decrements it again when the socket cannot be created.
+		// Otherwise the first close of the socket decrements it, or the destructor of a socket that was never closed.
 		std::atomic<int> _socket_count{0};
 
 		// Sockets registered to epoll, updated as soon as `AddToEpoll()`/`DeleteFromEpoll()` is called.
