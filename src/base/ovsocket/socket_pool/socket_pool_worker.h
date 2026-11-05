@@ -114,6 +114,7 @@ namespace ov
 		// Sockets allocated from this worker and not yet closed, used to pick the least busy worker.
 		// `SocketPool` increments it on allocation and decrements it again when the socket cannot be created.
 		// Otherwise the first close of the socket decrements it, or the destructor of a socket that was never closed.
+		// A socket with a close callback to run is decremented by this worker after the callback instead.
 		std::atomic<int> _socket_count{0};
 
 		// Sockets registered to epoll, updated as soon as `AddToEpoll()`/`DeleteFromEpoll()` is called.

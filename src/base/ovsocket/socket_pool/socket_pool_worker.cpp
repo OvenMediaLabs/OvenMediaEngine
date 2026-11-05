@@ -976,6 +976,9 @@ namespace ov
 		for (auto close_item : close_list)
 		{
 			close_item.second->OnClosed();
+
+			// The socket stays counted until its close callback has run
+			DecreaseSocketCount();
 		}
 	}
 

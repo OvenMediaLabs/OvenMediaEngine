@@ -128,6 +128,7 @@ namespace
 	{
 	public:
 		std::function<void()> on_readable;
+		std::function<void()> on_closed;
 		std::atomic<int> readable_count{0};
 
 		void OnConnected(const std::shared_ptr<const ov::SocketError> &error) override
@@ -146,6 +147,10 @@ namespace
 
 		void OnClosed() override
 		{
+			if (on_closed != nullptr)
+			{
+				on_closed();
+			}
 		}
 	};
 }  // namespace
@@ -589,6 +594,46 @@ TEST(SocketPoolWorkerTest, SocketClosedInEpollReleasesWorker)
 	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
 
 	pool->Uninitialize();
+}
+
+// A thread-per-socket worker is not released as idle while the close callback of its socket is still to run
+TEST(SocketPoolWorkerTest, WorkerIsNotReleasedBeforeCloseCallback)
+{
+	// Several ticks of the 1 s timer that releases idle workers
+	constexpr int RELEASE_WAIT_MSEC = 5000;
+	constexpr int HOLD_MSEC			= 2500;
+
+	auto pool = ov::SocketPool::Create("test-close-callback", ov::SocketType::Tcp, true);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+	ScopeExit pool_closer([&]() { pool->Uninitialize(); });
+
+	uint16_t listen_port = 0;
+	int listen_fd		 = ListenOnLoopback(&listen_port);
+	ASSERT_GE(listen_fd, 0);
+	ScopeExit listen_closer([&]() { ::close(listen_fd); });
+
+	// The gate holds the worker inside the close callback
+	WorkerGate worker_gate;
+	auto events		  = std::make_shared<TestEvents>();
+	events->on_closed = worker_gate.MakeCallback();
+
+	auto socket		  = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
+
+	ASSERT_TRUE(socket->MakeNonBlocking(events));
+	ASSERT_EQ(socket->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listen_port), WAIT_TIMEOUT_MSEC), nullptr);
+	ASSERT_TRUE(WaitUntil([&]() { return socket->GetState() == ov::SocketState::Connected; }));
+
+	EXPECT_TRUE(socket->CloseImmediately());
+	ASSERT_TRUE(worker_gate.WaitEntered());
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(HOLD_MSEC));
+	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1) << "The worker was released before the close callback returned";
+
+	worker_gate.Release();
+	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
 }
 
 // An uninitialized thread-per-socket pool creates no worker, so none is left running without an owner to stop it

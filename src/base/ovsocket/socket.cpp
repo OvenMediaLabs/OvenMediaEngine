@@ -2471,6 +2471,8 @@ namespace ov
 					}
 				}
 
+				CallCloseCallbackIfNeeded();
+
 				return result;
 			}
 
@@ -2713,13 +2715,26 @@ namespace ov
 		}
 
 		_close_reason = close_reason;
-		std::atomic_store(&_post_callback, std::atomic_exchange(&_callback, {}));
+
+		// Only a socket that reported its connection gets a close callback.
+		// It stays counted until the worker runs that callback, so the worker is not released as idle before that.
+		auto post_callback	   = std::atomic_exchange(&_callback, {});
+		const bool keeps_count = (post_callback != nullptr) && _connection_event_fired;
+
+		if (keeps_count)
+		{
+			std::atomic_store(&_post_callback, std::move(post_callback));
+		}
 
 		// `DeleteFromWorker()` takes `_worker_mutex` after `IO_REF_CLOSING` is set above,
 		// so `AddToWorker()` either registers the socket before this removes it, or sees the mark and does not register it.
 		// It also runs before the shutdown below, which would otherwise raise events for this socket in the worker.
 		DeleteFromWorker();
-		_worker->DecreaseSocketCount();
+
+		if (keeps_count == false)
+		{
+			_worker->DecreaseSocketCount();
+		}
 
 		switch (GetType())
 		{
@@ -2774,7 +2789,7 @@ namespace ov
 	{
 		auto post_callback = std::atomic_exchange(&_post_callback, {});
 
-		if ((post_callback != nullptr) && _connection_event_fired)
+		if (post_callback != nullptr)
 		{
 			_worker->EnqueueToCloseCallbackLater(GetSharedPtr(), post_callback);
 		}

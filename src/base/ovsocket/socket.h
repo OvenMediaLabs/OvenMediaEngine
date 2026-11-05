@@ -544,8 +544,8 @@ namespace ov
 		DispatchResult HalfClose();
 		DispatchResult WaitForHalfClose();
 
-		// CloseInternal() doesn't call the _callback directly
-		// So, we need to call CallCloseCallbackIfNeeded() after calling this api to do connection callback
+		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it,
+		// and the socket stays counted on its worker until the worker has run that callback.
 		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
