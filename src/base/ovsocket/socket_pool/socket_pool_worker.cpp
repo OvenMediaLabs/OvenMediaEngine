@@ -789,20 +789,11 @@ namespace ov
 			event->events |= EPOLLOUT;
 		}
 
-		// NOTE: Do not unconditionally translate `SRT_EPOLL_ERR` to `EPOLLERR`.
-		//
-		// libsrt raises `SRT_EPOLL_ERR` together with the terminal-state
-		// transitions (`SRTS_BROKEN` / `SRTS_CLOSED` / `SRTS_NONEXIST`), and
-		// those transitions fire for BOTH a real network break AND a graceful
-		// peer `srt_close()` (the `UMSG_SHUTDOWN` handler in libsrt sets
-		// `m_bBroken = true` and notifies the epoll listener with
-		// `SRT_EPOLL_ERR`). The two cases are indistinguishable at the
-		// socket layer.
-		//
-		// We treat `SRT_EPOLL_ERR` accompanying these terminal states as a
-		// disconnect signal only (the matching `case` below sets `EPOLLHUP`).
-		// For any other state we still raise `EPOLLERR` so genuine errors
-		// that occur outside of a clean state transition are not silenced.
+		// libsrt raises `SRT_EPOLL_ERR` when a connection breaks or is closed locally.
+		// A graceful peer close also counts as a break, since `processCtrlShutdown()` marks the socket broken.
+		// The libsrt GC (`checkBrokenSockets()`) may then move a broken socket on to `SRTS_CLOSED` or `SRTS_NONEXIST`.
+		// All three terminal states become `EPOLLHUP` below, so a normal disconnect is not handled as an error.
+		// `SRT_EPOLL_ERR` in any other state becomes `EPOLLERR`.
 		const bool is_srt_terminal_state =
 			(status == SRTS_BROKEN) ||
 			(status == SRTS_CLOSED) ||
@@ -820,24 +811,8 @@ namespace ov
 				break;
 
 			case SRTS_NONEXIST:
-				event->events |= EPOLLHUP;
-				break;
-
 			case SRTS_BROKEN:
-				// The client is disconnected - "unexpected" here means OME did not initiate the close,
-				// NOT that the peer's close was abnormal.
-				// libsrt transitions to `SRTS_BROKEN` for BOTH a real network break
-				// AND a graceful peer `srt_close()`
-				// (the `SHUTDOWN` message handler in libsrt sets `m_bBroken = true`).
-				// The two cases are indistinguishable at this level,
-				// so signal a plain disconnect (`EPOLLHUP`) instead of escalating to an error event.
-				event->events |= EPOLLHUP;
-				break;
-
 			case SRTS_CLOSED:
-				// The client is disconnected - OME itself called `srt_close()`
-				// (graceful close initiated locally; `SRTS_CLOSED` only happens
-				// after a local `srt_close()` completes, never from a remote shutdown).
 				event->events |= EPOLLHUP;
 				break;
 
