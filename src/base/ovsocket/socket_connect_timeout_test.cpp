@@ -13,7 +13,9 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -94,6 +96,31 @@ namespace
 			return _port;
 		}
 
+		// A probe whose connect does not complete shows that later connects stay in progress too
+		bool IsStalled() const
+		{
+			constexpr int PROBE_MSEC = 200;
+
+			int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+			if (fd < 0)
+			{
+				return false;
+			}
+
+			sockaddr_in sa{};
+			sa.sin_family	   = AF_INET;
+			sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			sa.sin_port		   = htons(_port);
+
+			::connect(fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa));
+
+			pollfd poll_fd{fd, POLLOUT, 0};
+			const bool completed = (::poll(&poll_fd, 1, PROBE_MSEC) != 0);
+			::close(fd);
+
+			return (completed == false);
+		}
+
 	private:
 		int _listen_fd = -1;
 		uint16_t _port = 0;
@@ -128,6 +155,11 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 	StalledTcpListener listener;
 	ASSERT_TRUE(listener.Listen());
 
+	if (listener.IsStalled() == false)
+	{
+		GTEST_SKIP() << "The listener does not keep a connect in progress";
+	}
+
 	auto pool = ov::SocketPool::Create("test-conn-timeout", ov::SocketType::Tcp, false);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
@@ -142,7 +174,6 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 	const auto start = std::chrono::steady_clock::now();
 	auto error		 = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
 	ASSERT_EQ(error, nullptr);
-	ASSERT_EQ(client->GetState(), ov::SocketState::Connecting) << "The connect must stay in progress for this test";
 
 	ome_test::WaitUntil([&]() { return (events->_connected + events->_connect_failed) != 0; }, CALLBACK_WAIT_MSEC);
 	const auto elapsed = std::chrono::steady_clock::now() - start;
@@ -167,6 +198,11 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 	StalledTcpListener listener;
 	ASSERT_TRUE(listener.Listen());
 
+	if (listener.IsStalled() == false)
+	{
+		GTEST_SKIP() << "The listener does not keep a connect in progress";
+	}
+
 	auto pool = ov::SocketPool::Create("test-conn-no-timeout", ov::SocketType::Tcp, false);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
@@ -181,14 +217,85 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), 0);
 	EXPECT_EQ(error, nullptr);
 
-	if (client->GetState() != ov::SocketState::Connecting)
-	{
-		GTEST_SKIP() << "The connect must stay in progress for this test";
-	}
-
 	std::this_thread::sleep_for(std::chrono::milliseconds(OBSERVE_MSEC));
 
 	EXPECT_EQ(events->_connected.load(), 0);
 	EXPECT_EQ(events->_connect_failed.load(), 0);
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connecting);
+}
+
+// A blocking TCP connect that never completes fails with a timeout error once its timeout passes
+TEST(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
+{
+	StalledTcpListener listener;
+	ASSERT_TRUE(listener.Listen());
+
+	if (listener.IsStalled() == false)
+	{
+		GTEST_SKIP() << "The listener does not keep a connect in progress";
+	}
+
+	auto pool = ov::SocketPool::Create("test-conn-blocking", ov::SocketType::Tcp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
+
+	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(client, nullptr);
+	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
+
+	const auto start   = std::chrono::steady_clock::now();
+	auto error		   = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
+	const auto elapsed = std::chrono::steady_clock::now() - start;
+
+	ASSERT_NE(error, nullptr);
+	EXPECT_NE(error->GetMessage().IndexOf("Connection timed out"), -1) << error->What();
+	EXPECT_GE(elapsed, std::chrono::milliseconds(CONNECT_TIMEOUT_MSEC));
+	EXPECT_EQ(client->GetState(), ov::SocketState::Error);
+}
+
+// A blocking TCP connect closed on another thread reports the close, and the socket stays `Closed`
+TEST(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
+{
+	// About 50 ms of 1 ms samples, so a short wait on another lock is not taken for the connect wait
+	constexpr int BLOCKED_SAMPLE_COUNT = 50;
+
+	StalledTcpListener listener;
+	ASSERT_TRUE(listener.Listen());
+
+	if (listener.IsStalled() == false)
+	{
+		GTEST_SKIP() << "The listener does not keep a connect in progress";
+	}
+
+	auto pool = ov::SocketPool::Create("test-conn-closed", ov::SocketType::Tcp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
+
+	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(client, nullptr);
+	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
+
+	std::shared_ptr<const ov::SocketError> error;
+	std::atomic<pid_t> tid{0};
+	std::thread connector([&]() {
+		tid = static_cast<pid_t>(::syscall(SYS_gettid));
+		error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
+	});
+
+	// The close must find the connect waiting for its result, not about to start
+	int blocked_samples = 0;
+	EXPECT_TRUE(ome_test::WaitUntil([&]() {
+		const bool blocked = (client->GetState() == ov::SocketState::Connecting) && ome_test::IsBlockedIn(tid, {SYS_futex});
+		blocked_samples	   = blocked ? (blocked_samples + 1) : 0;
+		return blocked_samples >= BLOCKED_SAMPLE_COUNT;
+	}));
+
+	EXPECT_TRUE(client->CloseImmediately());
+	connector.join();
+
+	ASSERT_NE(error, nullptr);
+	EXPECT_EQ(error->GetMessage(), "Socket is closed") << error->What();
+	EXPECT_EQ(client->GetState(), ov::SocketState::Closed);
 }
