@@ -149,11 +149,20 @@ namespace ov
 		Mutex _sockets_to_call_close_callback_mutex;
 		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<SocketAsyncInterface>> _sockets_to_call_close_callback OV_GUARDED_BY(_sockets_to_call_close_callback_mutex);
 
-		// Related to epoll
+		// Related to epoll.
+		// `_epoll` and `_srt_epoll` are written only by `PrepareEpoll()`, before the worker is shared, and never reset,
+		// since other threads read them through `GetNativeHandle()`.
+		// `Uninitialize()` closes them under `_epoll_mutex`, and `AddToEpoll()`/`DeleteFromEpoll()` call into them
+		// under the same lock only while `_epoll_closed` is false, so no call reaches a released number.
 		socket_t _epoll		 = InvalidSocket;
 
 		// Related to SRT
 		SRTSOCKET _srt_epoll = InvalidSocket;
+
+		// No socket or worker lock is taken while it is held.
+		// Logging still takes the logger locks, including `SrtLogHandler()` called by libsrt inside an SRT epoll call.
+		Mutex _epoll_mutex;
+		bool _epoll_closed OV_GUARDED_BY(_epoll_mutex) = false;
 		std::vector<SRT_EPOLL_EVENT> _srt_epoll_events;
 	};
 

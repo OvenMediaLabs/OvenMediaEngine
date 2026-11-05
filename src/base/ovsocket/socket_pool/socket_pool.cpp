@@ -24,13 +24,13 @@ namespace ov
 
 	SocketPool::~SocketPool()
 	{
-		// Verify that the epoll is closed normally
+		// Verify that every worker thread was stopped
 		LockGuard lock_guard(_worker_list_mutex);
 
 #if DEBUG
 		for (auto &worker : _worker_list)
 		{
-			OV_ASSERT(worker->_epoll == InvalidSocket, "Epoll is not uninitialized");
+			OV_ASSERT(worker->_stop_epoll_thread, "Worker is not uninitialized");
 		}
 #endif	// DEBUG
 	}

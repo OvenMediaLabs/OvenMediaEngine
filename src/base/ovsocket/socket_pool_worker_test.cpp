@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -198,6 +199,25 @@ namespace
 		void OnClosed() override
 		{
 		}
+	};
+
+	// Closes the socket when the test returns, including through a failed `ASSERT_*`,
+	// since `~Socket` aborts in debug builds on a socket that was never closed
+	class SocketCloser
+	{
+	public:
+		explicit SocketCloser(std::shared_ptr<ov::Socket> socket)
+			: _socket(std::move(socket))
+		{
+		}
+
+		~SocketCloser()
+		{
+			_socket->CloseImmediately();
+		}
+
+	private:
+		std::shared_ptr<ov::Socket> _socket;
 	};
 }  // namespace
 
@@ -444,6 +464,134 @@ TEST(SocketPoolWorkerTest, CloseAfterCloseStartedMovesToClosed)
 	EXPECT_FALSE(socket->HasCommand());
 
 	pool->Uninitialize();
+}
+
+// A socket cannot be added to a worker that has stopped, and leaves no entry in it
+TEST(SocketPoolWorkerTest, AddToStoppedWorkerFails)
+{
+	auto pool = ov::SocketPool::Create("test-add-stopped", ov::SocketType::Udp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+
+	pool->Uninitialize();
+
+	EXPECT_FALSE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
+	EXPECT_EQ(socket->GetBlockingMode(), ov::BlockingMode::Blocking);
+
+	auto description = socket->GetSocketPoolWorker()->ToString();
+	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+
+	socket->CloseImmediately();
+}
+
+// The worker's epoll handle is closed by `Uninitialize()` even while a socket still holds the worker,
+// and an add that follows is refused before it reaches the number that another file now uses
+TEST(SocketPoolWorkerTest, EpollHandleIsClosedByUninitialize)
+{
+	auto pool = ov::SocketPool::Create("test-epoll-lifetime", ov::SocketType::Udp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	SocketCloser closer(socket);
+
+	const int epoll_handle = socket->GetSocketPoolWorker()->GetNativeHandle();
+	ASSERT_NE(::fcntl(epoll_handle, F_GETFD), -1);
+
+	pool->Uninitialize();
+
+	EXPECT_EQ(::fcntl(epoll_handle, F_GETFD), -1);
+
+	// The number now names an epoll instance of the test, which may already have taken the free number.
+	// `F_DUPFD` takes the number only while it is free, where `dup2()` would close a file another thread opened there.
+	int other_epoll = ::epoll_create1(0);
+	ASSERT_GE(other_epoll, 0);
+
+	if (other_epoll != epoll_handle)
+	{
+		ASSERT_EQ(::fcntl(other_epoll, F_DUPFD, epoll_handle), epoll_handle);
+		::close(other_epoll);
+	}
+
+	// A plain thread, so that an add that reaches the test's epoll and waits for its first event fails this test
+	auto added_promise = std::make_shared<std::promise<bool>>();
+	auto added		   = added_promise->get_future();
+	std::thread adder([socket, added_promise]() {
+		added_promise->set_value(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
+	});
+
+	if (added.wait_for(std::chrono::milliseconds(WAIT_TIMEOUT_MSEC)) == std::future_status::ready)
+	{
+		adder.join();
+		EXPECT_FALSE(added.get());
+	}
+	else
+	{
+		adder.detach();
+		ADD_FAILURE() << "MakeNonBlocking() reached the epoll number of the stopped worker";
+	}
+
+	const int result	 = ::epoll_ctl(epoll_handle, EPOLL_CTL_DEL, socket->GetNativeHandle(), nullptr);
+	const int error_code = errno;
+	EXPECT_EQ(result, -1);
+	EXPECT_EQ(error_code, ENOENT);
+
+	socket->CloseImmediately();
+	::close(epoll_handle);
+}
+
+// A socket that leaves the worker after `Uninitialize()` does not call into the closed epoll number,
+// which another epoll instance now uses
+TEST(SocketPoolWorkerTest, DeleteAfterUninitializeSkipsReusedNumber)
+{
+	auto pool = ov::SocketPool::Create("test-epoll-late-delete", ov::SocketType::Udp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	SocketCloser closer(socket);
+	ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
+	auto port = BindToLoopback(socket);
+	ASSERT_NE(port, 0);
+
+	const int epoll_handle = socket->GetSocketPoolWorker()->GetNativeHandle();
+
+	// Not closable, so the stopping worker does not close it, and the socket still counts itself added to the worker
+	socket->SetState(ov::SocketState::Disconnected);
+	pool->Uninitialize();
+
+	int other_epoll = ::epoll_create1(0);
+	ASSERT_GE(other_epoll, 0);
+
+	if (other_epoll != epoll_handle)
+	{
+		ASSERT_EQ(::fcntl(other_epoll, F_DUPFD, epoll_handle), epoll_handle);
+		::close(other_epoll);
+	}
+
+	// The test epoll watches the socket's file under the socket's number.
+	// A duplicate keeps the file open, so the registration outlives the socket's own descriptor.
+	int file = ::dup(socket->GetNativeHandle());
+	ASSERT_GE(file, 0);
+
+	epoll_event event{};
+	event.events = EPOLLIN;
+	ASSERT_EQ(::epoll_ctl(epoll_handle, EPOLL_CTL_ADD, socket->GetNativeHandle(), &event), 0);
+
+	EXPECT_TRUE(socket->CloseImmediately());
+
+	// The registration is still there, so the test epoll reports the datagram
+	ASSERT_TRUE(SendDatagram(port));
+	epoll_event ready{};
+	EXPECT_EQ(::epoll_wait(epoll_handle, &ready, 1, WAIT_TIMEOUT_MSEC), 1);
+
+	::close(file);
+	::close(epoll_handle);
 }
 
 // A socket closed without ever joining epoll no longer counts toward its worker,

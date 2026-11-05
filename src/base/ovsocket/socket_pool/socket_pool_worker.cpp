@@ -99,14 +99,12 @@ namespace ov
 
 	bool SocketPoolWorker::Uninitialize()
 	{
-		if (GetNativeHandle() == InvalidSocket)
+		if (_stop_epoll_thread.exchange(true))
 		{
-			logae("Epoll is not initialized (%s)", StringFromSocketType(GetType()));
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
+			logae("Worker is not running (%s)", StringFromSocketType(GetType()));
+			OV_ASSERT2(false);
 			return false;
 		}
-
-		_stop_epoll_thread = true;
 
 		if (_epoll_thread.joinable())
 		{
@@ -130,8 +128,21 @@ namespace ov
 
 		_gc_candidates.clear();
 
-		OV_SAFE_FUNC(_epoll, InvalidSocket, ::close, );
-		OV_SAFE_FUNC(_srt_epoll, InvalidSocket, ::srt_epoll_release, );
+		{
+			LockGuard lock(_epoll_mutex);
+
+			if (_epoll != InvalidSocket)
+			{
+				::close(_epoll);
+			}
+
+			if (_srt_epoll != InvalidSocket)
+			{
+				::srt_epoll_release(_srt_epoll);
+			}
+
+			_epoll_closed = true;
+		}
 
 		return true;
 	}
@@ -596,46 +607,57 @@ namespace ov
 
 		std::shared_ptr<Error> error;
 
-		switch (GetType())
+		logat("Trying to add socket #%d to epoll...", native_handle);
+
 		{
-			case SocketType::Tcp:
-			case SocketType::Udp: {
-				epoll_event event{};
+			LockGuard lock(_epoll_mutex);
 
-				// EPOLLIN: input event
-				// EPOLLOUT: output event
-				// EPOLLERR: error event
-				// EPOLLHUP: hang up
-				// EPOLLPRI: for urgent data (OOB)
-				// EPOLLRDHUP : Disconnected or half-closing
-				// EPOLLET: Edge trigger
-				event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
-				event.data.u64 = (static_cast<uint64_t>(generation) << 32) | static_cast<uint32_t>(native_handle);
-
-				logat("Trying to add socket #%d to epoll...", native_handle);
-
-				if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
-				{
-					error = Error::CreateErrorFromErrno();
-				}
-
-				break;
+			if (_epoll_closed)
+			{
+				error = Error::CreateError("Socket", "The worker has stopped");
 			}
-
-			case SocketType::Srt: {
-				int events = SRT_EPOLL_IN | SRT_EPOLL_OUT | SRT_EPOLL_ERR | SRT_EPOLL_ET;
-
-				if (::srt_epoll_add_usock(_srt_epoll, native_handle, &events) == SRT_ERROR)
+			else
+			{
+				switch (GetType())
 				{
-					error = SrtError::CreateErrorFromSrt();
+					case SocketType::Tcp:
+					case SocketType::Udp: {
+						epoll_event event{};
+
+						// EPOLLIN: input event
+						// EPOLLOUT: output event
+						// EPOLLERR: error event
+						// EPOLLHUP: hang up
+						// EPOLLPRI: for urgent data (OOB)
+						// EPOLLRDHUP : Disconnected or half-closing
+						// EPOLLET: Edge trigger
+						event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
+						event.data.u64 = (static_cast<uint64_t>(generation) << 32) | static_cast<uint32_t>(native_handle);
+
+						if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
+						{
+							error = Error::CreateErrorFromErrno();
+						}
+
+						break;
+					}
+
+					case SocketType::Srt: {
+						int events = SRT_EPOLL_IN | SRT_EPOLL_OUT | SRT_EPOLL_ERR | SRT_EPOLL_ET;
+
+						if (::srt_epoll_add_usock(_srt_epoll, native_handle, &events) == SRT_ERROR)
+						{
+							error = SrtError::CreateErrorFromSrt();
+						}
+
+						break;
+					}
+
+					default:
+						error = Error::CreateError("Socket", "Not implemented");
+						break;
 				}
-
-				break;
 			}
-
-			default:
-				error = Error::CreateError("Socket", "Not implemented");
-				break;
 		}
 
 		if (error != nullptr)
@@ -651,6 +673,9 @@ namespace ov
 
 	int SocketPoolWorker::EpollWait(std::vector<std::shared_ptr<Socket>> &polled_sockets, int timeout_msec)
 	{
+		// Runs only on the worker thread, which `Uninitialize()` joins before it closes the epoll,
+		// so the handle is read without `_epoll_mutex`
+
 		// Reset errno
 		errno = 0;
 
@@ -969,30 +994,39 @@ namespace ov
 
 		logat("Trying to unregister a socket #%d from epoll...", native_handle);
 
-		switch (GetType())
 		{
-			case SocketType::Udp:
-			case SocketType::Tcp: {
-				if (::epoll_ctl(_epoll, EPOLL_CTL_DEL, native_handle, nullptr) == -1)
+			LockGuard lock(_epoll_mutex);
+
+			// A closed epoll has nothing to remove.
+			// The kernel dropped the TCP/UDP registrations, and libsrt tolerates the released ID left on the socket.
+			if (_epoll_closed == false)
+			{
+				switch (GetType())
 				{
-					error = Error::CreateErrorFromErrno();
+					case SocketType::Udp:
+					case SocketType::Tcp: {
+						if (::epoll_ctl(_epoll, EPOLL_CTL_DEL, native_handle, nullptr) == -1)
+						{
+							error = Error::CreateErrorFromErrno();
+						}
+
+						break;
+					}
+
+					case SocketType::Srt: {
+						if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
+						{
+							error = SrtError::CreateErrorFromSrt();
+						}
+
+						break;
+					}
+
+					default:
+						error = Error::CreateError("Socket", "Not implemented");
+						break;
 				}
-
-				break;
 			}
-
-			case SocketType::Srt: {
-				if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
-				{
-					error = SrtError::CreateErrorFromSrt();
-				}
-
-				break;
-			}
-
-			default:
-				error = Error::CreateError("Socket", "Not implemented");
-				break;
 		}
 
 		if (error == nullptr)
