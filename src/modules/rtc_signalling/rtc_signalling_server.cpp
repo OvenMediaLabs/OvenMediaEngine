@@ -858,6 +858,8 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 				{
 					NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
 				}
+				// A stop finds the session only by the current offer, so the previous offer's session ends now
+				StopAnsweredSession(ws_session, info);
 				info->offer_sdp		  = sdp;
 				info->answer_received = false;
 
@@ -1217,21 +1219,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 
 std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info)
 {
-	bool result = true;
-
-	if (info->answer_sdp != nullptr)
-	{
-		auto observers = std::atomic_load(&_observers);
-		for (const auto &observer : *observers)
-		{
-			logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
-
-			if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
-			{
-				result = false;
-			}
-		}
-	}
+	bool result = StopAnsweredSession(ws_session, info);
 
 	// Stopping an offer that got an answer ends the session above, not the negotiation
 	if (info->answer_received == false)
@@ -1317,6 +1305,32 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 	}
 
 	return nullptr;
+}
+
+bool RtcSignallingServer::StopAnsweredSession(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<RtcSignallingInfo> &info)
+{
+	if (info->answer_sdp == nullptr)
+	{
+		return true;
+	}
+
+	bool result = true;
+
+	auto observers = std::atomic_load(&_observers);
+	for (const auto &observer : *observers)
+	{
+		logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
+
+		if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
+		{
+			result = false;
+		}
+	}
+
+	// The session is gone, so it is not stopped again
+	info->answer_sdp = nullptr;
+
+	return result;
 }
 
 void RtcSignallingServer::NotifyNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const SessionDescription> &offer_sdp,
