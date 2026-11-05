@@ -18,6 +18,9 @@
 
 namespace
 {
+	// The cause `OvtStream::RemovalCause()` names for a track an OVT1 edge cannot carry
+	constexpr char CAUSE_OVT1_CODEC_FILTER[] = "OVT1 codec filter";
+
 	// One rendition of a playlist while `OvtStream::RebuildRenditions()` decides whether it stays
 	struct RenditionCandidate
 	{
@@ -794,7 +797,7 @@ ov::String OvtStream::RemovalCause(const OvtTrackFilter &filter, const Json::Val
 
 	if (filter.legacy_edge && (IsCarriableByLegacyEdge(track) == false))
 	{
-		return "OVT1 codec filter";
+		return CAUSE_OVT1_CODEC_FILTER;
 	}
 
 	return "";
@@ -824,7 +827,12 @@ void OvtStream::LogRenditionChanges(const char *path, const OvtTrackFilter &filt
 		const auto track_id = track["id"].asUInt();
 		if ((allowed.count(track_id) == 0) && (lost_variants.count(track["name"].asCString()) > 0))
 		{
-			logtw("%s: Track %u (variant [%s]) is not sent to this edge: %s", prefix.CStr(), track_id, track["name"].asCString(), RemovalCause(filter, track).CStr());
+			// `GetDescription()` already logs every track the OVT1 codec filter removes
+			const auto cause = RemovalCause(filter, track);
+			if (cause != CAUSE_OVT1_CODEC_FILTER)
+			{
+				logtw("%s: Track %u (variant [%s]) is not sent to this edge: %s", prefix.CStr(), track_id, track["name"].asCString(), cause.CStr());
+			}
 		}
 	}
 

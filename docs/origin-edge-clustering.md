@@ -267,10 +267,12 @@ HLS (TS) and SRT on the Edge use such a playlist only when it has `<EnableTsPack
 
 A playlist that lost tracks is still served with HTTP 200, so check the logs instead of the HTTP status:
 
-* When a playlist changes for an Edge, the Origin logs warnings of two kinds, each starting with the Edge's address.
-  A track line names a track the Edge does not receive from a variant a rendition lost, and its cause: `TrackSet [name]`, `OVT1 codec filter`, or `edge trackIds`.
+* When a playlist changes for an Edge, the Origin logs warnings of two kinds, each naming the stream, the request (describe or play) and the Edge's address.
+  A track line names a track the Edge does not receive from a variant a rendition lost, and its cause: `TrackSet [name]` or `edge trackIds`.
+  A track an OVT1 Edge cannot carry has its own line, `Track(...) ... is not sent to an OVT1 edge`.
   A rendition or playlist line says what it lost and whether it was removed, with the variant (and the track, if it was pinned) to match against the track lines.
-  A playlist with an Edge default file name that lost tracks gets one more line, because it takes the place of the Edge's own default playlist.
+  A rendition that keeps both sides but loses some tracks of a side without a pinned track (for example, some languages) is not logged unless it is removed.
+  A playlist with an Edge default file name gets one more line when one of these lines names it, because it takes the place of the Edge's own default playlist.
 * The Edge logs a warning for every rendition it receives that lost its video or audio on the Origin.
 * The `CODECS` and `RESOLUTION` attributes of the Edge's master playlist also show which renditions lost a track.
 

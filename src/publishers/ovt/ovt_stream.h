@@ -139,7 +139,7 @@ public:
 
 private:
 	// Logs a warning for every change, after one for each track of a lost variant that `allowed` leaves out,
-	// with its cause. `path` is the request the playlists answer.
+	// with its cause; `GetDescription()` logs the OVT1 codec filter's own. `path` is the request the playlists answer.
 	void LogRenditionChanges(const char *path, const OvtTrackFilter &filter, const Json::Value &tracks, const std::set<uint32_t> &allowed,
 							 const std::vector<RenditionChange> &changes);
 
