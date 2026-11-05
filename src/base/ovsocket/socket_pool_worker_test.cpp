@@ -591,6 +591,19 @@ TEST(SocketPoolWorkerTest, SocketClosedInEpollReleasesWorker)
 	pool->Uninitialize();
 }
 
+// An uninitialized thread-per-socket pool creates no worker, so none is left running without an owner to stop it
+TEST(SocketPoolWorkerTest, UninitializedPoolCreatesNoWorker)
+{
+	auto pool = ov::SocketPool::Create("test-no-worker", ov::SocketType::Tcp, true);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	pool->Uninitialize();
+
+	EXPECT_EQ(pool->AllocSocket(ov::SocketFamily::Inet), nullptr);
+	EXPECT_NE(pool->ToString().IndexOf("workers: 0"), -1);
+}
+
 // `CloseImmediately()` moves the socket to `Closed`, so a later `Close()` of a blocking socket returns at once
 TEST(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 {
