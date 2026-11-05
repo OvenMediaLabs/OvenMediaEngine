@@ -767,23 +767,33 @@ bool OvtStream::ResolveTrackSetTrackIds(const ov::String &track_set_name, std::s
 	return true;
 }
 
-bool OvtStream::RemoveSessionByConnectorId(int connector_id)
+bool OvtStream::RemoveSessionByConnectorId(ov::socket_id_t connector_id)
 {
-	auto sessions = GetAllSessions();
+	auto session_id = GetSessionIdByConnectorId(connector_id);
 
-	logtt("RemoveSessionByConnectorId : all(%zu) connector(%d)", sessions.size(), connector_id);
+	logtt("RemoveSessionByConnectorId : connector(%" PRIu64 ")", connector_id.GetValue());
 
-	for (const auto &item : sessions)
+	if (session_id.has_value() == false)
+	{
+		return false;
+	}
+
+	RemoveSession(session_id.value());
+
+	return true;
+}
+
+std::optional<session_id_t> OvtStream::GetSessionIdByConnectorId(ov::socket_id_t connector_id)
+{
+	for (const auto &item : GetAllSessions())
 	{
 		auto session = std::static_pointer_cast<OvtSession>(item.second);
-		logtt("session : %d %d", session->GetId(), session->GetConnector()->GetNativeHandle());
 
-		if (session->GetConnector()->GetNativeHandle() == connector_id)
+		if (session->GetConnector()->GetId() == connector_id)
 		{
-			RemoveSession(session->GetId());
-			return true;
+			return session->GetId();
 		}
 	}
 
-	return false;
+	return std::nullopt;
 }

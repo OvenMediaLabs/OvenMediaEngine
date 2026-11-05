@@ -75,7 +75,7 @@ namespace pvd
 			_stream_name = stream_name;
 		}
 
-		void OnClientConnected(uint32_t client_id)
+		void OnClientConnected(channel_id_t client_id)
 		{
 			_client_connected = true;
 			_client_id = client_id;
@@ -102,7 +102,7 @@ namespace pvd
 			return _client_connected.load();
 		}
 
-		uint32_t GetClientId()
+		channel_id_t GetClientId()
 		{
 			return _client_id.load();
 		}
@@ -117,7 +117,7 @@ namespace pvd
 
 		std::atomic<bool> _attached = false;
 		std::atomic<bool> _client_connected = false;
-		std::atomic<uint32_t> _client_id = 0;
+		std::atomic<channel_id_t> _client_id{};
 	};
 
 	class MpegTsProvider : public PushProvider, protected PhysicalPortObserver

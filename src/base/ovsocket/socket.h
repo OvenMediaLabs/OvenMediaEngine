@@ -213,7 +213,6 @@ namespace ov
 
 		// A TCP/UDP number can belong to another socket once this one releases it,
 		// so identify a socket by `GetId()` and use the handle through the methods of this class.
-		// SRT IDs can still serve as keys, since libsrt does not reuse them soon.
 		int GetNativeHandle() const
 		{
 			return _socket.GetNativeHandle();

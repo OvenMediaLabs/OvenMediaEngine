@@ -245,7 +245,7 @@ private:
 	// Demultiplexer for data input through TCP
 	// remote's ID : Demultiplexer
 	std::shared_mutex _demultiplexers_lock;
-	std::map<int, std::shared_ptr<IceTcpDemultiplexer>> _demultiplexers;
+	std::map<ov::socket_id_t, std::shared_ptr<IceTcpDemultiplexer>> _demultiplexers;
 
 	// TCP ports that serve as direct ICE candidates (RFC 6544).
 	// Connections arriving on these ports use RFC 4571 framing instead of TURN framing.

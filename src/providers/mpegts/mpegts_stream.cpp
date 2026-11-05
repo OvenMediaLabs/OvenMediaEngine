@@ -26,7 +26,7 @@
 namespace pvd
 {
 	std::shared_ptr<MpegTsStream> MpegTsStream::Create(
-		StreamSourceType source_type, uint32_t client_id,
+		StreamSourceType source_type, channel_id_t client_id,
 		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 		const std::shared_ptr<ov::Socket> &client_socket, const ov::SocketAddressPair &address_pair,
 		uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)
@@ -40,7 +40,7 @@ namespace pvd
 	}
 
 	MpegTsStream::MpegTsStream(
-		StreamSourceType source_type, uint32_t client_id,
+		StreamSourceType source_type, channel_id_t client_id,
 		const info::VHostAppName &vhost_app_name, const ov::String &stream_name,
 		std::shared_ptr<ov::Socket> client_socket, const ov::SocketAddressPair &address_pair,
 		uint64_t lifetime_epoch_msec, const std::shared_ptr<PushProvider> &provider)

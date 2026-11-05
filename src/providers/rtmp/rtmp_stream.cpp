@@ -81,7 +81,7 @@ Process of publishing
 
 namespace pvd
 {
-	std::shared_ptr<RtmpStream> RtmpStream::Create(StreamSourceType source_type, uint32_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
+	std::shared_ptr<RtmpStream> RtmpStream::Create(StreamSourceType source_type, channel_id_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
 	{
 		auto stream = std::make_shared<RtmpStream>(source_type, client_id, client_socket, provider);
 		if (stream != nullptr)
@@ -91,7 +91,7 @@ namespace pvd
 		return stream;
 	}
 
-	RtmpStream::RtmpStream(StreamSourceType source_type, uint32_t client_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider)
+	RtmpStream::RtmpStream(StreamSourceType source_type, channel_id_t client_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider)
 		: PushStream(source_type, client_id, provider)
 	{
 		logat("Stream has been created");
@@ -190,8 +190,8 @@ namespace pvd
 
 		if ((_remained_data != nullptr) && (_remained_data->GetLength() > RTMP_MAX_PACKET_SIZE))
 		{
-			logae("The packet is ignored because the size is too large: [%u]), packet size: %zu, threshold: %d",
-				  GetChannelId(), _remained_data->GetLength(), RTMP_MAX_PACKET_SIZE);
+			logae("The packet is ignored because the size is too large: [%" PRIu64 "]), packet size: %zu, threshold: %d",
+				  GetChannelId().GetValue(), _remained_data->GetLength(), RTMP_MAX_PACKET_SIZE);
 
 			return false;
 		}

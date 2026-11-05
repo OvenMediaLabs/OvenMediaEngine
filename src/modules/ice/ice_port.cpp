@@ -658,7 +658,7 @@ void IcePort::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 	}
 
 	std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
-	_demultiplexers[remote->GetNativeHandle()] = demultiplexer;
+	_demultiplexers[remote->GetId()] = demultiplexer;
 }
 
 void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error)
@@ -668,10 +668,10 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 	{
 		std::lock_guard<std::shared_mutex> lock_guard(_demultiplexers_lock);
 
-		auto it = _demultiplexers.find(remote->GetNativeHandle());
+		auto it = _demultiplexers.find(remote->GetId());
 		if (it != _demultiplexers.end())
 		{
-			_demultiplexers.erase(remote->GetNativeHandle());
+			_demultiplexers.erase(remote->GetId());
 		}
 	}
 
@@ -693,7 +693,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 		for (const auto &[session_id, ice_session] : _ice_seesions_with_id)
 		{
 			auto active_socket = ice_session->GetActiveSocket();
-			if (active_socket != nullptr && active_socket->GetNativeHandle() == remote->GetNativeHandle())
+			if (active_socket != nullptr && active_socket->GetId() == remote->GetId())
 			{
 				sessions_to_disconnect.push_back(session_id);
 			}
@@ -710,7 +710,7 @@ void IcePort::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, Physical
 void IcePort::OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data)
 {
 	std::shared_lock<std::shared_mutex> lock(_demultiplexers_lock);
-	auto it = _demultiplexers.find(remote->GetNativeHandle());
+	auto it = _demultiplexers.find(remote->GetId());
 	if (it == _demultiplexers.end())
 	{
 		// If the client disconnects at this time, it cannot be found.

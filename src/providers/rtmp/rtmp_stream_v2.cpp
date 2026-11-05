@@ -23,7 +23,7 @@
 
 namespace pvd::rtmp
 {
-	std::shared_ptr<RtmpStreamV2> RtmpStreamV2::Create(StreamSourceType source_type, uint32_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
+	std::shared_ptr<RtmpStreamV2> RtmpStreamV2::Create(StreamSourceType source_type, channel_id_t client_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider)
 	{
 		auto stream = std::make_shared<RtmpStreamV2>(source_type, client_id, client_socket, provider);
 
@@ -32,7 +32,7 @@ namespace pvd::rtmp
 		return stream;
 	}
 
-	RtmpStreamV2::RtmpStreamV2(StreamSourceType source_type, uint32_t client_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider)
+	RtmpStreamV2::RtmpStreamV2(StreamSourceType source_type, channel_id_t client_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider)
 		: PushStream(source_type, client_id, provider),
 
 		  _handshake_handler(this),

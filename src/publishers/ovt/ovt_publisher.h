@@ -101,12 +101,12 @@ private:
 
 	void SendResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, const ov::String &payload);
 
-	bool LinkRemoteWithStream(int remote_id, std::shared_ptr<OvtStream> &stream);
-	bool UnlinkRemoteFromStream(int remote_id);
-	void RemoveSessions(int remote_id);
+	bool LinkRemoteWithStream(ov::socket_id_t remote_id, std::shared_ptr<OvtStream> &stream);
+	bool UnlinkRemoteFromStream(ov::socket_id_t remote_id);
+	void RemoveSessions(ov::socket_id_t remote_id);
 
-	std::shared_ptr<RemoteContext> GetRemoteContext(int remote_id);
-	bool RemoveRemoteContext(int remote_id);
+	std::shared_ptr<RemoteContext> GetRemoteContext(ov::socket_id_t remote_id);
+	bool RemoveRemoteContext(ov::socket_id_t remote_id);
 	// Adds the origin's `ovt` object to a response going to an OVT2 edge
 	void AppendOvtObject(const std::shared_ptr<ov::Socket> &remote, Json::Value &root);
 
@@ -115,8 +115,8 @@ private:
 
 	// remote id : per-connection state
 	std::mutex _remotes_lock;
-	std::map<int, std::shared_ptr<RemoteContext>> _remotes;
+	std::map<ov::socket_id_t, std::shared_ptr<RemoteContext>> _remotes;
 	// When a client is disconnected ungracefully, this map helps to find stream and delete the session quickly
-	std::multimap<int, std::shared_ptr<OvtStream>> _remote_stream_map;
+	std::multimap<ov::socket_id_t, std::shared_ptr<OvtStream>> _remote_stream_map;
 	std::shared_mutex _remote_stream_map_lock;
 };
