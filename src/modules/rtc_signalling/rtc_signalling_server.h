@@ -97,6 +97,8 @@ protected:
 		std::shared_ptr<const SessionDescription> offer_sdp;
 		// Peer SDP (SDP of host/client peer)
 		std::shared_ptr<const SessionDescription> answer_sdp;
+		// Whether offer_sdp got an answer. answer_sdp may still hold the answer to an earlier offer
+		bool answer_received = false;
 
 		// candidates of OME/host peer
 		std::vector<RtcIceCandidate> local_candidates;
@@ -150,6 +152,9 @@ protected:
 	std::shared_ptr<const ov::Error> DispatchOfferP2P(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info);
 	std::shared_ptr<const ov::Error> DispatchCandidateP2P(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info);
 	std::shared_ptr<const ov::Error> DispatchStop(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info);
+
+	void NotifyNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const SessionDescription> &offer_sdp,
+								   RtcSignallingObserver::NegotiationResult result);
 
 protected:
 	const cfg::Server _server_config;

@@ -4,7 +4,8 @@
 //
 //  Covers: IcePort session registry (id / ufrag / address-pair maps) and
 //  RemoveSession() cleanup, in particular that RemoveSession() erases EVERY
-//  address pair registered for a session (not just the active one).
+//  address pair registered for a session (not just the active one), and
+//  ufrags reserved for offers, which answer binding requests arriving before the answer
 //
 //==============================================================================
 #include "ice_port.h"
@@ -43,7 +44,34 @@ protected:
 	}
 	bool AddUfrag(IcePort &p, const ov::String &u, const std::shared_ptr<IceSession> &s)
 	{
-		return p.AddIceSession(u, s);
+		std::map<ov::SocketAddressPair, IcePort::DeferredBindingRequest> deferred_binding_requests;
+		return p.AddIceSession(u, s, &deferred_binding_requests);
+	}
+
+	// Registers the session by ufrag and returns how many deferred binding requests it took over, -1 on failure
+	int AddUfragTakingOver(IcePort &p, const ov::String &u, const std::shared_ptr<IceSession> &s)
+	{
+		std::map<ov::SocketAddressPair, IcePort::DeferredBindingRequest> deferred_binding_requests;
+		if (p.AddIceSession(u, s, &deferred_binding_requests) == false)
+		{
+			return -1;
+		}
+		return static_cast<int>(deferred_binding_requests.size());
+	}
+
+	std::shared_ptr<IceSession> FindOrReserved(IcePort &p, const ov::String &u, std::optional<ov::String> *reserved_pwd)
+	{
+		return p.FindIceSessionOrReservedUfrag(u, reserved_pwd);
+	}
+
+	bool Defer(IcePort &p, const ov::String &u, const ov::SocketAddressPair &ap, const ov::String &peer_ufrag)
+	{
+		return p.DeferBindingRequest(u, ap, IcePort::DeferredBindingRequest{nullptr, IcePort::GateInfo{}, peer_ufrag});
+	}
+
+	size_t ReservedUfragCount(IcePort &p)
+	{
+		return p._reserved_ufrags.size();
 	}
 	bool AddPair(IcePort &p, const ov::SocketAddressPair &ap, const std::shared_ptr<IceSession> &s)
 	{
@@ -274,6 +302,92 @@ TEST_F(IcePortTest, ApplicationPacketReportsSelectedPair)
 	InjectAppPacket(port, unvalidated);
 	EXPECT_EQ(observer->selected_pairs.size(), 2u);
 	EXPECT_TRUE(s->GetActiveCandidatePair()->GetAddressPair() == pair_b);
+}
+
+// A ufrag is found reserved until its session takes it over with its deferred
+// binding requests, and is never found as neither
+TEST_F(IcePortTest, ReservedUfragIsTakenOverBySession)
+{
+	IcePort port;
+	StopSweeper(port);
+
+	auto ufrag = port.ReserveOfferUfrag("local-pwd");
+	ASSERT_FALSE(ufrag.IsEmpty());
+
+	std::optional<ov::String> reserved_pwd;
+	EXPECT_EQ(FindOrReserved(port, ufrag, &reserved_pwd), nullptr);
+	ASSERT_TRUE(reserved_pwd.has_value());
+	EXPECT_STREQ(reserved_pwd->CStr(), "local-pwd");
+
+	// The same path twice counts once
+	EXPECT_TRUE(Defer(port, ufrag, Pair(10000, 20000), "peer"));
+	EXPECT_TRUE(Defer(port, ufrag, Pair(10000, 20000), "peer"));
+	EXPECT_TRUE(Defer(port, ufrag, Pair(10001, 20001), "peer"));
+
+	auto s = MakeSession(1, ufrag);
+	EXPECT_EQ(AddUfragTakingOver(port, ufrag, s), 2);
+	EXPECT_EQ(ReservedUfragCount(port), 0u);
+
+	// Now found as the session, no longer reserved
+	reserved_pwd.reset();
+	EXPECT_EQ(FindOrReserved(port, ufrag, &reserved_pwd), s);
+	EXPECT_FALSE(reserved_pwd.has_value());
+	EXPECT_FALSE(Defer(port, ufrag, Pair(10002, 20002), "peer"));
+
+	// Releasing a ufrag the session took over leaves the session alone
+	port.ReleaseOfferUfrag(ufrag);
+	EXPECT_EQ(FindUfrag(port, ufrag), s);
+}
+
+// A ufrag whose answer never arrives is released, and releasing again is a no-op
+TEST_F(IcePortTest, ReleaseOfferUfrag)
+{
+	IcePort port;
+	StopSweeper(port);
+
+	auto ufrag_a = port.ReserveOfferUfrag("pwd-a");
+	auto ufrag_b = port.ReserveOfferUfrag("pwd-b");
+	EXPECT_TRUE(ufrag_a != ufrag_b);
+	EXPECT_EQ(ReservedUfragCount(port), 2u);
+
+	port.ReleaseOfferUfrag(ufrag_a);
+	port.ReleaseOfferUfrag(ufrag_a);
+	EXPECT_EQ(ReservedUfragCount(port), 1u);
+
+	std::optional<ov::String> reserved_pwd;
+	EXPECT_EQ(FindOrReserved(port, ufrag_a, &reserved_pwd), nullptr);
+	EXPECT_FALSE(reserved_pwd.has_value());
+	EXPECT_FALSE(Defer(port, ufrag_a, Pair(10000, 20000), "peer"));
+
+	EXPECT_EQ(FindOrReserved(port, ufrag_b, &reserved_pwd), nullptr);
+	ASSERT_TRUE(reserved_pwd.has_value());
+	EXPECT_STREQ(reserved_pwd->CStr(), "pwd-b");
+}
+
+// When the answer arrives, a deferred binding request whose peer ufrag differs is not sent
+TEST_F(IcePortTest, AddSessionSkipsDeferredRequestOfAnotherPeer)
+{
+	IcePort port;
+	StopSweeper(port);
+
+	auto ufrag = port.ReserveOfferUfrag("local-pwd");
+	auto path  = Pair(10000, 20000);
+	ASSERT_TRUE(Defer(port, ufrag, path, "stranger"));
+
+	auto offer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	offer_sdp->SetIceUfrag(ufrag);
+	offer_sdp->SetIcePwd("local-pwd");
+	auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
+	answer_sdp->SetIceUfrag("peer");
+	answer_sdp->SetIcePwd("peer-pwd");
+
+	port.AddSession(nullptr, 1, IceSession::Role::CONTROLLING, offer_sdp, answer_sdp, 600000, 0, std::any{});
+
+	auto s = FindUfrag(port, ufrag);
+	ASSERT_NE(s, nullptr);
+	EXPECT_EQ(ReservedUfragCount(port), 0u);
+	EXPECT_EQ(s->FindCandidatePair(path), nullptr);
+	EXPECT_EQ(FindPair(port, path), nullptr);
 }
 
 // The reported transport label follows the pair's TURN framing:

@@ -479,6 +479,11 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 					// Forces the session to be cleaned up by sending a stop command
 					DispatchStop(ws_session, info);
 				}
+				else if (info->answer_received == false)
+				{
+					// A stopped client may still have requested another offer
+					NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
+				}
 
 				logti("Client is disconnected: %s (%s / %s, ufrag: local: %s, remote: %s)",
 					  ws_session->ToString().CStr(),
@@ -772,6 +777,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 				if (_p2p_manager.RegisterAsHostPeer(peer_info) == false)
 				{
 					OV_ASSERT2(false);
+					NotifyNegotiationFinished(ws_session, sdp, RtcSignallingObserver::NegotiationResult::Failed);
 					return std::make_shared<http::HttpError>(http::StatusCode::InternalServerError, "Could not add peer as host");
 				}
 				else
@@ -847,13 +853,20 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 					}
 				}
 
-				info->offer_sdp = sdp;
+				// The previous offer on this connection is replaced
+				if (info->answer_received == false)
+				{
+					NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
+				}
+				info->offer_sdp		  = sdp;
+				info->answer_received = false;
 
 				ws_session->GetWebSocketResponse()->Send(response_json.ToString());
 			}
 			else
 			{
 				logtw("Could not create SDP for stream %s", info->stream_name.CStr());
+				NotifyNegotiationFinished(ws_session, sdp, RtcSignallingObserver::NegotiationResult::Failed);
 				error = std::make_shared<http::HttpError>(http::StatusCode::NotFound, "Cannot create offer");
 			}
 		}
@@ -928,6 +941,12 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 		{
 			info->answer_sdp = answer_sdp;
 
+			// A repeated answer to the same offer does not finish the negotiation again
+			bool is_first_answer  = (info->answer_received == false);
+			info->answer_received = true;
+
+			std::shared_ptr<const ov::Error> error = nullptr;
+
 			auto observers	 = std::atomic_load(&_observers);
 			for (const auto &observer : *observers)
 			{
@@ -936,8 +955,20 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 				// TODO : Improved to return detailed error cause
 				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
 				{
-					return std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
+					error = std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
+					break;
 				}
+			}
+
+			if (is_first_answer)
+			{
+				NotifyNegotiationFinished(ws_session, info->offer_sdp,
+										  (error == nullptr) ? RtcSignallingObserver::NegotiationResult::Completed : RtcSignallingObserver::NegotiationResult::Failed);
+			}
+
+			if (error != nullptr)
+			{
+				return error;
 			}
 		}
 		else
@@ -1202,6 +1233,12 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 		}
 	}
 
+	// Stopping an offer that got an answer ends the session above, not the negotiation
+	if (info->answer_received == false)
+	{
+		NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
+	}
+
 	{
 		std::shared_ptr<RtcPeerInfo> peer_info = info->peer_info;
 
@@ -1280,4 +1317,19 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 	}
 
 	return nullptr;
+}
+
+void RtcSignallingServer::NotifyNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const SessionDescription> &offer_sdp,
+													RtcSignallingObserver::NegotiationResult result)
+{
+	if (offer_sdp == nullptr)
+	{
+		return;
+	}
+
+	auto observers = std::atomic_load(&_observers);
+	for (const auto &observer : *observers)
+	{
+		observer->OnNegotiationFinished(ws_session, offer_sdp, result);
+	}
 }
