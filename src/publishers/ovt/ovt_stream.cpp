@@ -21,6 +21,16 @@ namespace
 	// The cause `OvtStream::RemovalCause()` names for a track an OVT1 edge cannot carry
 	constexpr char CAUSE_OVT1_CODEC_FILTER[] = "OVT1 codec filter";
 
+	// How far the filter moved a rendition from its declaration, from least to most
+	enum class RenditionLoss
+	{
+		None,
+		// A side without a pinned track kept only some of its variant's tracks
+		SomeTracks,
+		// A side lost every track it referred to
+		WholeSide,
+	};
+
 	// One rendition of a playlist while `OvtStream::RebuildRenditions()` decides whether it stays
 	struct RenditionCandidate
 	{
@@ -30,6 +40,8 @@ namespace
 		std::set<uint32_t> resolved;
 		// The sides that lost tracks to the filter; empty when the filter left the rendition untouched
 		std::vector<OvtStream::RenditionChange::LostSide> lost_sides;
+		// The largest of those losses; duplicates go to the rendition with the smallest
+		RenditionLoss loss = RenditionLoss::None;
 		// No side has a track left, so the rendition is removed
 		bool emptied = false;
 		// The rendition that keeps the same `resolved` set; empty when this one keeps it
@@ -561,8 +573,8 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 	// A variant the stream has no track for is left as the unfiltered describe has it.
 	// A rendition with no track left goes, and so does one whose resolved track set repeats another's
 	// (the master playlist would list the same tracks twice).
-	// The set goes first to a rendition that lost no track to the filter, then to the earliest one,
-	// so a declared one-sided rendition outlasts one the filter changed.
+	// The set goes to the rendition the filter moved least from its declaration, then to the earliest one,
+	// so a declared one-sided rendition outlasts one that lost a side.
 	// The index hints keep their values here: HLS names its files by them.
 	size_t pruned	 = 0;
 	Json::Value kept_playlists(Json::arrayValue);
@@ -608,6 +620,7 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 					if (ids.size() < described_track_counts[variant])
 					{
 						candidate.lost_sides.push_back({media_type, variant, std::nullopt, false});
+						candidate.loss = std::max(candidate.loss, RenditionLoss::SomeTracks);
 					}
 					return;
 				}
@@ -617,6 +630,7 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 				rendition.removeMember(id_key);
 				rendition[removed_key] = variant.CStr();
 				candidate.lost_sides.push_back({media_type, variant, pinned, true});
+				candidate.loss = RenditionLoss::WholeSide;
 			};
 
 			rebuild_side("videoTrackName", "videoIndexHint", "videoTrackId", "removedVideoTrackName", cmn::MediaType::Video);
@@ -627,25 +641,27 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 			candidates.push_back(std::move(candidate));
 		}
 
-		std::vector<std::pair<std::set<uint32_t>, ov::String>> claimed;
-		for (const bool untouched_pass : {true, false})
+		std::vector<RenditionCandidate *> claim_order;
+		for (auto &candidate : candidates)
 		{
-			for (auto &candidate : candidates)
+			if (candidate.emptied == false)
 			{
-				if (candidate.emptied || (candidate.lost_sides.empty() != untouched_pass))
-				{
-					continue;
-				}
-
-				const auto owner = std::find_if(claimed.begin(), claimed.end(), [&](const auto &entry) { return entry.first == candidate.resolved; });
-				if (owner != claimed.end())
-				{
-					candidate.duplicate_of = owner->second;
-					continue;
-				}
-
-				claimed.emplace_back(candidate.resolved, candidate.rendition["name"].asCString());
+				claim_order.push_back(&candidate);
 			}
+		}
+		std::stable_sort(claim_order.begin(), claim_order.end(), [](const auto *a, const auto *b) { return a->loss < b->loss; });
+
+		std::vector<std::pair<std::set<uint32_t>, ov::String>> claimed;
+		for (auto *candidate : claim_order)
+		{
+			const auto owner = std::find_if(claimed.begin(), claimed.end(), [&](const auto &entry) { return entry.first == candidate->resolved; });
+			if (owner != claimed.end())
+			{
+				candidate->duplicate_of = owner->second;
+				continue;
+			}
+
+			claimed.emplace_back(candidate->resolved, candidate->rendition["name"].asCString());
 		}
 
 		Json::Value kept_renditions(Json::arrayValue);
@@ -677,8 +693,7 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 				kept_renditions.append(candidate.rendition);
 
 				// A kept rendition is worth a line only when it lost a whole side
-				const auto lost_a_side = std::any_of(candidate.lost_sides.begin(), candidate.lost_sides.end(), [](const auto &side) { return side.emptied; });
-				if (lost_a_side == false)
+				if (candidate.loss != RenditionLoss::WholeSide)
 				{
 					continue;
 				}

@@ -271,8 +271,8 @@ A playlist that lost tracks is still served with HTTP 200, so check the logs ins
   A track line names a track the Edge does not receive from a variant a rendition lost, and its cause: `TrackSet [name]` or `edge trackIds`.
   A track an OVT1 Edge cannot carry has its own line, `Track(...) ... is not sent to an OVT1 edge`.
   A rendition or playlist line says what it lost and whether it was removed, with the variant (and the track, if it was pinned) to match against the track lines.
-  A rendition that keeps both sides but loses some tracks of a side without a pinned track (for example, some languages) is not logged unless it is removed.
-  A playlist with an Edge default file name gets one more line when one of these lines names it, because it takes the place of the Edge's own default playlist.
+  A kept rendition that loses only some tracks of a side without a pinned track (for example, some languages) is not logged.
+  A playlist with an Edge default file name that is still sent gets one more line when one of its renditions is logged as losing tracks, because it takes the place of the Edge's own default playlist.
 * The Edge logs a warning for every rendition it receives that lost its video or audio on the Origin.
 * The `CODECS` and `RESOLUTION` attributes of the Edge's master playlist also show which renditions lost a track.
 
@@ -291,7 +291,7 @@ How a rendition refers to tracks:
 
 Duplicates and default file names:
 
-* When two renditions of a playlist end up with the same tracks, only one is kept: the one that lost no track to the TrackSet, otherwise the earlier one.
+* When two renditions of a playlist end up with the same tracks, only one is kept: the one the TrackSet changed least (no track lost, then only some tracks of a side without a pinned track, then a whole side), and among those the earlier one.
 * An Origin playlist whose file name is an Edge default (`llhls` for LLHLS, `webrtc_default` for WebRTC) replaces that default playlist on the Edge, and loses tracks like any other playlist.
   Give an Edge default file name only to a playlist that uses the TrackSet's tracks alone; otherwise the Edge's default URL serves a playlist that lost tracks.
 * The HLS (TS) and SRT default, `playlist`, is a reserved word that a `<FileName>` must not contain (see [ABR](transcoding/abr.md)).

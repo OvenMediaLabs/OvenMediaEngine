@@ -937,9 +937,9 @@ TEST(OvtDescribeTest, RebuildEmptiesAPinnedSideWhoseTrackIsGone)
 	EXPECT_EQ(gone_changes[1].lost_sides[0].track_id, std::optional<uint32_t>(3));
 }
 
-// A side without a pinned track that kept only some of its variant's tracks was changed by the filter,
-// so a duplicate it makes yields to the rendition the filter left untouched
-TEST(OvtDescribeTest, RebuildCountsANarrowedGroupSideAsChanged)
+// Duplicates go to the rendition the filter changed least: an untouched one first,
+// then one whose side without a pinned track kept only some tracks, then one that lost a whole side
+TEST(OvtDescribeTest, RebuildKeepsTheDuplicateTheFilterChangedLeast)
 {
 	// `multi` takes every aac track; `ko` is pinned to track 2, the one the TrackSet keeps
 	auto contents = BuildRenditionFixture("llhls", {{"multi", "720p", 0, "aac", std::nullopt}, {"ko", "720p", 0, "aac", 2}});
@@ -956,6 +956,11 @@ TEST(OvtDescribeTest, RebuildCountsANarrowedGroupSideAsChanged)
 	const auto lines = OvtStream::DescribeRenditionChanges(changes);
 	ASSERT_EQ(lines.size(), 2u);
 	EXPECT_EQ(lines[0], ov::String("Playlist [llhls] rendition [multi] for this edge: removed, same tracks as rendition [ko] after losing some audio tracks (variant [aac])"));
+
+	// TrackSet { 360p, aac(en) }: both renditions lose an aac track, and source loses its video too
+	auto declared_audio = BuildRenditionFixture("llhls", {{"source", "720p", 0, "aac", std::nullopt}, {"audio", "", std::nullopt, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(declared_audio["stream"], {1, 3});
+	EXPECT_EQ(RenditionNames(declared_audio["stream"]), (std::vector<ov::String>{"audio"}));
 }
 
 // Every kind of change gets one log line naming what was lost,

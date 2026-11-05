@@ -129,7 +129,8 @@ public:
 	// A `Data` track carries no codec and always passes.
 	static bool IsCarriableByLegacyEdge(const Json::Value &track);
 	// Keeps only `allowed` in `stream["tracks"]` and rebuilds every rendition around what remains.
-	// Returns the number of renditions and playlists removed, and lists each edit the filter made in `changes`.
+	// Returns the number of renditions and playlists removed.
+	// `changes` lists each removal and each kept rendition that lost a whole side, except declarations that named no track.
 	static size_t RebuildRenditions(Json::Value &stream, const std::set<uint32_t> &allowed, std::vector<RenditionChange> *changes = nullptr);
 	// The origin log lines for `changes`: what happened to each rendition and playlist.
 	// The causes are on the track lines `LogRenditionChanges()` writes next to them.
