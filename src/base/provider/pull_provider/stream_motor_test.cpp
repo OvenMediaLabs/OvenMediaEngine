@@ -8,6 +8,7 @@
 //==============================================================================
 #include <arpa/inet.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <base/provider/pull_provider/stream.h>
 #include <base/provider/pull_provider/stream_motor.h>
 #include <base/provider/pull_provider/stream_props.h>
@@ -24,25 +25,11 @@
 
 namespace
 {
-	constexpr int WAIT_TIMEOUT_MSEC = 2000;
+	using ome_test::ScopeExit;
+	using ome_test::WAIT_TIMEOUT_MSEC;
+	using ome_test::WaitUntil;
+
 	constexpr int QUIET_MSEC		= 300;
-
-	bool WaitUntil(const std::function<bool()> &condition)
-	{
-		auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(WAIT_TIMEOUT_MSEC);
-
-		while (condition() == false)
-		{
-			if (std::chrono::steady_clock::now() >= deadline)
-			{
-				return false;
-			}
-
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-
-		return true;
-	}
 
 	// Binds a UDP socket to an ephemeral loopback port and returns the port (0 on failure)
 	uint16_t BindToLoopback(const std::shared_ptr<ov::Socket> &socket)
@@ -83,24 +70,6 @@ namespace
 
 		return (sent == sizeof(payload));
 	}
-
-	// Runs `cleanup` on every way out of the scope, so a failed assertion leaves no running thread behind
-	class ScopeExit
-	{
-	public:
-		explicit ScopeExit(std::function<void()> cleanup)
-			: _cleanup(std::move(cleanup))
-		{
-		}
-
-		~ScopeExit()
-		{
-			_cleanup();
-		}
-
-	private:
-		std::function<void()> _cleanup;
-	};
 
 	// A motor that is stopped once, by `Stop()` or on destruction, since stopping twice closes its epoll handle twice
 	class RunningMotor

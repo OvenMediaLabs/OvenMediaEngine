@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
@@ -33,52 +34,18 @@
 
 namespace
 {
-	constexpr int WAIT_TIMEOUT_MSEC	   = 2000;
+	using ome_test::IsBlockedIn;
+	using ome_test::ScopeExit;
+	using ome_test::WAIT_TIMEOUT_MSEC;
+	using ome_test::WaitUntil;
+
 	constexpr int RACE_ITERATIONS	   = 200;
 	constexpr char OTHER_PAYLOAD[]	   = "OTHER";
 	constexpr size_t OTHER_PAYLOAD_LEN = sizeof(OTHER_PAYLOAD) - 1;
 
-	bool WaitUntil(const std::function<bool()> &condition)
-	{
-		auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(WAIT_TIMEOUT_MSEC);
-
-		while (condition() == false)
-		{
-			if (std::chrono::steady_clock::now() >= deadline)
-			{
-				return false;
-			}
-
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-
-		return true;
-	}
-
 	bool IsOpen(int fd)
 	{
 		return ::fcntl(fd, F_GETFD) != -1;
-	}
-
-	// Whether the thread is blocked in one of `syscalls`, read from `/proc/self/task/<tid>/syscall`
-	bool IsBlockedIn(pid_t tid, std::initializer_list<long> syscalls)
-	{
-		char path[64];
-		::snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
-
-		auto file = ::fopen(path, "r");
-
-		if (file == nullptr)
-		{
-			return false;
-		}
-
-		long number = -1;
-		auto read	= ::fscanf(file, "%ld", &number);
-		::fclose(file);
-
-		// A running thread reads as "running", which `fscanf()` does not parse as a number
-		return (read == 1) && (std::find(syscalls.begin(), syscalls.end(), number) != syscalls.end());
 	}
 
 	// Runs `blocking_call` on another thread, closes `socket` once the call is blocked in one of `syscalls`,
@@ -408,6 +375,7 @@ TEST(SocketHandleTest, CloseWakesBlockedAccept)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
 	ASSERT_TRUE(socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)));
 	ASSERT_TRUE(socket->Listen());
 
@@ -435,6 +403,7 @@ TEST(SocketHandleTest, CloseWakesBlockedRecvFrom)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
 	ASSERT_TRUE(socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)));
 
 	const int number = socket->GetNativeHandle();
@@ -546,6 +515,7 @@ TEST(SocketHandleTest, HandleOutlivesCloseWhileSyscallIsInFlight)
 	{
 		auto socket = pool->AllocSocket<HoldingSocket>(ov::SocketFamily::Inet);
 		ASSERT_NE(socket, nullptr);
+		ScopeExit closer([&]() { socket->CloseImmediately(); });
 
 		const int number = socket->GetNativeHandle();
 

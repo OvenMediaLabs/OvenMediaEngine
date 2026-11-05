@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
@@ -130,36 +131,25 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 	auto pool = ov::SocketPool::Create("test-conn-timeout", ov::SocketType::Tcp, false);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
+	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto events = std::make_shared<ConnectEvents>();
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(client, nullptr);
+	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
 	ASSERT_TRUE(client->MakeNonBlocking(events));
 
-	auto started_at = std::chrono::steady_clock::now();
-	auto error		= client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
+	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
 	ASSERT_EQ(error, nullptr);
 	ASSERT_EQ(client->GetState(), ov::SocketState::Connecting) << "The connect must stay in progress for this test";
 
-	auto deadline = started_at + std::chrono::milliseconds(CALLBACK_WAIT_MSEC);
-	while ((events->_connected + events->_connect_failed == 0) && (std::chrono::steady_clock::now() < deadline))
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	}
+	ome_test::WaitUntil([&]() { return (events->_connected + events->_connect_failed) != 0; }, CALLBACK_WAIT_MSEC);
 
 	EXPECT_EQ(events->_connected.load(), 0);
 	EXPECT_EQ(events->_connect_failed.load(), 1) << "No connect timeout callback within " << CALLBACK_WAIT_MSEC << "ms";
 
 	// The callback runs before the worker dispatches the queued close that sets the state
-	while ((client->GetState() != ov::SocketState::Error) && (std::chrono::steady_clock::now() < deadline))
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	}
-
-	EXPECT_EQ(client->GetState(), ov::SocketState::Error);
-
-	client->CloseImmediately();
-	pool->Uninitialize();
+	EXPECT_TRUE(ome_test::WaitUntil([&]() { return client->GetState() == ov::SocketState::Error; }));
 }
 
 // A non-blocking TCP connect without a timeout is never timed out by the worker
@@ -173,10 +163,12 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 	auto pool = ov::SocketPool::Create("test-conn-no-timeout", ov::SocketType::Tcp, false);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
+	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto events = std::make_shared<ConnectEvents>();
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(client, nullptr);
+	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
 	ASSERT_TRUE(client->MakeNonBlocking(events));
 
 	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), 0);
@@ -184,8 +176,6 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 
 	if (client->GetState() != ov::SocketState::Connecting)
 	{
-		client->CloseImmediately();
-		pool->Uninitialize();
 		GTEST_SKIP() << "The connect must stay in progress for this test";
 	}
 
@@ -194,7 +184,4 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 	EXPECT_EQ(events->_connected.load(), 0);
 	EXPECT_EQ(events->_connect_failed.load(), 0);
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connecting);
-
-	client->CloseImmediately();
-	pool->Uninitialize();
 }

@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
@@ -28,25 +29,11 @@
 namespace
 {
 	constexpr int SOCKET_COUNT		   = 50;
-	constexpr int WAIT_TIMEOUT_MSEC	   = 2000;
+	using ome_test::ScopeExit;
+	using ome_test::WAIT_TIMEOUT_MSEC;
+	using ome_test::WaitUntil;
+
 	constexpr const char *EMPTY_WORKER = "socket_map: 0,";
-
-	bool WaitUntil(const std::function<bool()> &condition)
-	{
-		auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(WAIT_TIMEOUT_MSEC);
-
-		while (condition() == false)
-		{
-			if (std::chrono::steady_clock::now() >= deadline)
-			{
-				return false;
-			}
-
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-
-		return true;
-	}
 
 	bool AllExpired(const std::vector<std::weak_ptr<ov::Socket>> &sockets)
 	{
@@ -200,25 +187,6 @@ namespace
 		{
 		}
 	};
-
-	// Closes the socket when the test returns, including through a failed `ASSERT_*`,
-	// since `~Socket` aborts in debug builds on a socket that was never closed
-	class SocketCloser
-	{
-	public:
-		explicit SocketCloser(std::shared_ptr<ov::Socket> socket)
-			: _socket(std::move(socket))
-		{
-		}
-
-		~SocketCloser()
-		{
-			_socket->CloseImmediately();
-		}
-
-	private:
-		std::shared_ptr<ov::Socket> _socket;
-	};
 }  // namespace
 
 // A socket closed right after it is added to a worker is released, leaving no entry in the worker's socket map.
@@ -236,6 +204,8 @@ TEST(SocketPoolWorkerTest, SocketClosedRightAfterAddIsReleased)
 	{
 		auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 		ASSERT_NE(socket, nullptr);
+		ScopeExit closer([&]() { socket->CloseImmediately(); });
+
 		ASSERT_TRUE(socket->MakeNonBlocking(events));
 		ASSERT_TRUE(socket->CloseImmediately());
 
@@ -259,6 +229,7 @@ TEST(SocketPoolWorkerTest, FailedAddLeavesNoEntry)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
 
 	// A regular file accepts `O_NONBLOCK`, but `epoll_ctl(EPOLL_CTL_ADD)` rejects it with `EPERM`
 	int file = ::open("/proc/self/stat", O_RDONLY);
@@ -271,7 +242,6 @@ TEST(SocketPoolWorkerTest, FailedAddLeavesNoEntry)
 	auto description = pool->ToString();
 	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
 
-	socket->CloseImmediately();
 	pool->Uninitialize();
 }
 
@@ -290,6 +260,18 @@ TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchIsSkipped)
 	auto gate		   = pool->AllocSocket(ov::SocketFamily::Inet);
 	auto first		   = pool->AllocSocket(ov::SocketFamily::Inet);
 	auto second		   = pool->AllocSocket(ov::SocketFamily::Inet);
+
+	// Closes what an early return leaves open, since `first` and `second` are handed to the callbacks below
+	ScopeExit closer([&]() {
+		for (auto &socket : {gate, first, second})
+		{
+			if (socket != nullptr)
+			{
+				socket->CloseImmediately();
+			}
+		}
+	});
+
 	ASSERT_NE(gate, nullptr);
 	ASSERT_NE(first, nullptr);
 	ASSERT_NE(second, nullptr);
@@ -384,6 +366,8 @@ TEST(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 
 	auto gate				 = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(gate, nullptr);
+	ScopeExit gate_closer([&]() { gate->CloseImmediately(); });
+
 	ASSERT_TRUE(gate->MakeNonBlocking(gate_events));
 	ASSERT_EQ(gate->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listen_port), WAIT_TIMEOUT_MSEC), nullptr);
 	ASSERT_TRUE(WaitUntil([&]() { return gate->GetState() == ov::SocketState::Connected; }));
@@ -395,6 +379,12 @@ TEST(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
+	ScopeExit socket_closer([&]() {
+		if (socket != nullptr)
+		{
+			socket->CloseImmediately();
+		}
+	});
 
 	// A plain thread, not `std::async()`, so that a hang fails this test instead of blocking it on the future
 	auto added_promise = std::make_shared<std::promise<bool>>();
@@ -452,6 +442,8 @@ TEST(SocketPoolWorkerTest, CloseAfterCloseStartedMovesToClosed)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
+
 	ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
 	ASSERT_NE(BindToLoopback(socket), 0);
 
@@ -497,7 +489,7 @@ TEST(SocketPoolWorkerTest, EpollHandleIsClosedByUninitialize)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
-	SocketCloser closer(socket);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
 
 	const int epoll_handle = socket->GetSocketPoolWorker()->GetNativeHandle();
 	ASSERT_NE(::fcntl(epoll_handle, F_GETFD), -1);
@@ -554,7 +546,7 @@ TEST(SocketPoolWorkerTest, DeleteAfterUninitializeSkipsReusedNumber)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
-	SocketCloser closer(socket);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
 	ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
 	auto port = BindToLoopback(socket);
 	ASSERT_NE(port, 0);
@@ -598,6 +590,9 @@ TEST(SocketPoolWorkerTest, DeleteAfterUninitializeSkipsReusedNumber)
 // so the idle thread-per-socket worker is released
 TEST(SocketPoolWorkerTest, SocketClosedOutsideEpollReleasesWorker)
 {
+	// Several ticks of the 1 s timer that releases idle workers
+	constexpr int RELEASE_WAIT_MSEC = 5000;
+
 	auto pool = ov::SocketPool::Create("test-count-close", ov::SocketType::Tcp, true);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
@@ -607,7 +602,7 @@ TEST(SocketPoolWorkerTest, SocketClosedOutsideEpollReleasesWorker)
 	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1);
 
 	EXPECT_TRUE(socket->CloseImmediately());
-	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }));
+	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
 
 	pool->Uninitialize();
 }
@@ -621,7 +616,7 @@ TEST(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
-	ASSERT_EQ(socket->GetBlockingMode(), ov::BlockingMode::Blocking);
+	EXPECT_EQ(socket->GetBlockingMode(), ov::BlockingMode::Blocking);
 
 	ASSERT_TRUE(socket->CloseImmediately());
 	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);

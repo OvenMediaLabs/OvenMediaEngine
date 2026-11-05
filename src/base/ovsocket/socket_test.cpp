@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
 #include <srt/srt.h>
@@ -684,26 +685,6 @@ namespace
 	bool WaitSrtConnected(const std::shared_ptr<ov::Socket> &socket)
 	{
 		return WaitUntil([&]() { return ::srt_getsockstate(socket->GetNativeHandle()) == SRTS_CONNECTED; });
-	}
-
-	// Whether the thread is blocked in `syscall_number`, read from `/proc/self/task/<tid>/syscall`
-	bool IsBlockedIn(pid_t tid, long syscall_number)
-	{
-		char path[64];
-		::snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
-
-		auto file = ::fopen(path, "r");
-		if (file == nullptr)
-		{
-			return false;
-		}
-
-		long number = -1;
-		auto read	= ::fscanf(file, "%ld", &number);
-		::fclose(file);
-
-		// A running thread reads as "running", which `fscanf()` does not parse as a number
-		return (read == 1) && (number == syscall_number);
 	}
 
 	// Waits until libsrt reports the socket readable (a message has reached its
@@ -1452,7 +1433,7 @@ TEST_F(SocketRecvSrtTest, CloseWakesBlockedRecv)
 	// Consecutive samples tell that wait apart from a short lock wait on the way to it.
 	int blocked_samples = 0;
 	EXPECT_TRUE(WaitUntil([&]() {
-		blocked_samples = ((*tid != 0) && IsBlockedIn(*tid, SYS_futex)) ? (blocked_samples + 1) : 0;
+		blocked_samples = ((*tid != 0) && ome_test::IsBlockedIn(*tid, {SYS_futex})) ? (blocked_samples + 1) : 0;
 		return blocked_samples >= BLOCKED_SAMPLE_COUNT;
 	}));
 	EXPECT_EQ(returned_future.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
