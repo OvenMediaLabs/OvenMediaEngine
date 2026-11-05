@@ -139,17 +139,24 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
 	ASSERT_TRUE(client->MakeNonBlocking(events));
 
-	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
+	const auto start = std::chrono::steady_clock::now();
+	auto error		 = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
 	ASSERT_EQ(error, nullptr);
 	ASSERT_EQ(client->GetState(), ov::SocketState::Connecting) << "The connect must stay in progress for this test";
 
 	ome_test::WaitUntil([&]() { return (events->_connected + events->_connect_failed) != 0; }, CALLBACK_WAIT_MSEC);
+	const auto elapsed = std::chrono::steady_clock::now() - start;
 
 	EXPECT_EQ(events->_connected.load(), 0);
 	EXPECT_EQ(events->_connect_failed.load(), 1) << "No connect timeout callback within " << CALLBACK_WAIT_MSEC << "ms";
+	EXPECT_GE(elapsed, std::chrono::milliseconds(CONNECT_TIMEOUT_MSEC));
 
 	// The callback runs before the worker dispatches the queued close that sets the state
 	EXPECT_TRUE(ome_test::WaitUntil([&]() { return client->GetState() == ov::SocketState::Error; }));
+
+	// The close does not report the connect again
+	EXPECT_EQ(events->_connected.load(), 0);
+	EXPECT_EQ(events->_connect_failed.load(), 1);
 }
 
 // A non-blocking TCP connect without a timeout is never timed out by the worker
