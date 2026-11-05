@@ -1,0 +1,278 @@
+//==============================================================================
+//
+//  OvenMediaEngine
+//
+//  Created by Hyunjun Jang
+//  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
+//
+//==============================================================================
+#include <arpa/inet.h>
+#include <base/ovlibrary/ovlibrary.h>
+#include <base/ovsocket/ovsocket.h>
+#include <fcntl.h>
+#include <gtest/gtest.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
+
+namespace
+{
+	constexpr int SOCKET_COUNT		   = 50;
+	constexpr int WAIT_TIMEOUT_MSEC	   = 2000;
+	constexpr const char *EMPTY_WORKER = "socket_map: 0,";
+
+	bool WaitUntil(const std::function<bool()> &condition)
+	{
+		auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(WAIT_TIMEOUT_MSEC);
+
+		while (condition() == false)
+		{
+			if (std::chrono::steady_clock::now() >= deadline)
+			{
+				return false;
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+
+		return true;
+	}
+
+	bool AllExpired(const std::vector<std::weak_ptr<ov::Socket>> &sockets)
+	{
+		for (auto &socket : sockets)
+		{
+			if (socket.expired() == false)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	// Binds a UDP socket to an ephemeral loopback port and returns the port (0 on failure)
+	uint16_t BindToLoopback(const std::shared_ptr<ov::Socket> &socket)
+	{
+		if (socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) == false)
+		{
+			return 0;
+		}
+
+		sockaddr_in address{};
+		socklen_t length = sizeof(address);
+
+		if (::getsockname(socket->GetNativeHandle(), reinterpret_cast<sockaddr *>(&address), &length) != 0)
+		{
+			return 0;
+		}
+
+		return ntohs(address.sin_port);
+	}
+
+	bool SendDatagram(uint16_t port)
+	{
+		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+
+		if (fd < 0)
+		{
+			return false;
+		}
+
+		sockaddr_in address{};
+		address.sin_family		= AF_INET;
+		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		address.sin_port		= htons(port);
+
+		const char payload[]	= "x";
+		auto sent				= ::sendto(fd, payload, sizeof(payload), 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
+
+		::close(fd);
+
+		return (sent == sizeof(payload));
+	}
+
+	class TestEvents : public ov::SocketAsyncInterface
+	{
+	public:
+		std::function<void()> on_readable;
+		std::atomic<int> readable_count{0};
+
+		void OnConnected(const std::shared_ptr<const ov::SocketError> &error) override
+		{
+		}
+
+		void OnReadable() override
+		{
+			readable_count++;
+
+			if (on_readable != nullptr)
+			{
+				on_readable();
+			}
+		}
+
+		void OnClosed() override
+		{
+		}
+	};
+}  // namespace
+
+// A socket closed right after it is added to a worker is released, leaving no entry in the worker's socket map.
+// SRT is used because adding an SRT socket does not wait for the worker's first epoll event.
+TEST(SocketPoolWorkerTest, SocketClosedRightAfterAddIsReleased)
+{
+	auto pool = ov::SocketPool::Create("test-close-leak", ov::SocketType::Srt, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto events = std::make_shared<TestEvents>();
+	std::vector<std::weak_ptr<ov::Socket>> closed_sockets;
+
+	for (int index = 0; index < SOCKET_COUNT; index++)
+	{
+		auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+		ASSERT_NE(socket, nullptr);
+		ASSERT_TRUE(socket->MakeNonBlocking(events));
+		ASSERT_TRUE(socket->CloseImmediately());
+
+		closed_sockets.push_back(socket);
+	}
+
+	EXPECT_TRUE(WaitUntil([&]() { return AllExpired(closed_sockets); }));
+
+	auto description = pool->ToString();
+	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+
+	pool->Uninitialize();
+}
+
+// When the worker cannot add a socket to epoll, the socket is not left in the worker's socket map.
+TEST(SocketPoolWorkerTest, FailedAddLeavesNoEntry)
+{
+	auto pool = ov::SocketPool::Create("test-add-fail", ov::SocketType::Tcp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+
+	// A regular file accepts `O_NONBLOCK`, but `epoll_ctl(EPOLL_CTL_ADD)` rejects it with `EPERM`
+	int file = ::open("/proc/self/stat", O_RDONLY);
+	ASSERT_GE(file, 0);
+	ASSERT_EQ(::dup2(file, socket->GetNativeHandle()), socket->GetNativeHandle());
+	::close(file);
+
+	EXPECT_FALSE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
+
+	auto description = pool->ToString();
+	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+
+	socket->CloseImmediately();
+	pool->Uninitialize();
+}
+
+// When a callback closes another socket polled in the same batch and drops its last reference,
+// the worker still holds that socket until its event is handled, and skips the event as closed.
+TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchIsSkipped)
+{
+	auto pool = ov::SocketPool::Create("test-batch-close", ov::SocketType::Udp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto gate_events   = std::make_shared<TestEvents>();
+	auto first_events  = std::make_shared<TestEvents>();
+	auto second_events = std::make_shared<TestEvents>();
+
+	auto gate		   = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto first		   = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto second		   = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(gate, nullptr);
+	ASSERT_NE(first, nullptr);
+	ASSERT_NE(second, nullptr);
+
+	// `Bind()` instead of `Connect()`, since a connected socket queues a close callback that keeps it alive
+	ASSERT_TRUE(gate->MakeNonBlocking(gate_events));
+	ASSERT_TRUE(first->MakeNonBlocking(first_events));
+	ASSERT_TRUE(second->MakeNonBlocking(second_events));
+
+	auto gate_port	 = BindToLoopback(gate);
+	auto first_port	 = BindToLoopback(first);
+	auto second_port = BindToLoopback(second);
+	ASSERT_NE(gate_port, 0);
+	ASSERT_NE(first_port, 0);
+	ASSERT_NE(second_port, 0);
+
+	// The gate holds the worker inside its callback while both other sockets become readable,
+	// so the next `epoll_wait()` returns them in one batch, `first` before `second`
+	std::promise<void> gate_entered;
+	std::promise<void> gate_released;
+	auto gate_released_future = gate_released.get_future().share();
+
+	gate_events->on_readable  = [&gate_entered, gate_released_future]() {
+		 gate_entered.set_value();
+		 gate_released_future.wait();
+	};
+
+	// From here, the test reaches each socket only through the callback of the other, which closes it.
+	// So whichever event the batch returns first closes the other socket, whose event is then skipped,
+	// while the worker's copy of the batch still holds it.
+	std::weak_ptr<ov::Socket> first_watcher	 = first;
+	std::weak_ptr<ov::Socket> second_watcher = second;
+	auto holder_mutex						 = std::make_shared<std::mutex>();
+	auto first_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(first));
+	auto second_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(second));
+
+	auto close_holder						 = [holder_mutex](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder) {
+		   return [holder_mutex, holder]() {
+			   std::shared_ptr<ov::Socket> socket;
+			   {
+				   std::lock_guard<std::mutex> lock(*holder_mutex);
+				   socket = std::move(*holder);
+			   }
+
+			   if (socket != nullptr)
+			   {
+				   socket->CloseImmediately();
+			   }
+		   };
+	};
+	first_events->on_readable  = close_holder(second_holder);
+	second_events->on_readable = close_holder(first_holder);
+
+	ASSERT_TRUE(SendDatagram(gate_port));
+	ASSERT_EQ(gate_entered.get_future().wait_for(std::chrono::milliseconds(WAIT_TIMEOUT_MSEC)), std::future_status::ready);
+
+	ASSERT_TRUE(SendDatagram(first_port));
+	ASSERT_TRUE(SendDatagram(second_port));
+	gate_released.set_value();
+
+	EXPECT_TRUE(WaitUntil([&]() { return first_watcher.expired() || second_watcher.expired(); }));
+	EXPECT_EQ(first_events->readable_count.load() + second_events->readable_count.load(), 1);
+
+	for (const auto &holder : {first_holder, second_holder})
+	{
+		std::shared_ptr<ov::Socket> socket;
+		{
+			std::lock_guard<std::mutex> lock(*holder_mutex);
+			socket = std::move(*holder);
+		}
+
+		if (socket != nullptr)
+		{
+			socket->CloseImmediately();
+		}
+	}
+
+	gate->CloseImmediately();
+	pool->Uninitialize();
+}

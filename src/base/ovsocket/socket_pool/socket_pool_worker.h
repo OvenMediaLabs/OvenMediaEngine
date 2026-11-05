@@ -23,6 +23,13 @@ namespace ov
 
 		OV_SOCKET_DECLARE_PRIVATE_TOKEN();
 
+		struct SocketEntry
+		{
+			// Tells a TCP/UDP registration apart from an earlier one that used the same native handle
+			uint32_t generation = 0;
+			std::shared_ptr<Socket> socket;
+		};
+
 	public:
 		// SocketPoolWorker can only be created within SocketPool
 		SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool);
@@ -74,8 +81,6 @@ namespace ov
 
 		bool PrepareEpoll();
 
-		void MergeSocketList();
-
 		void GarbageCollection();
 
 		void CallbackTimedOutConnections();
@@ -83,10 +88,17 @@ namespace ov
 		void ThreadProc();
 
 		bool AddToEpoll(const std::shared_ptr<Socket> &socket);
-		int EpollWait(int timeout_msec = Infinite);
+		// `polled_sockets` holds at least `EpollMaxEvents` entries.
+		// `polled_sockets[i]` is set to the socket of the i-th returned event, or `nullptr` if it was already deleted,
+		// in which case the caller skips the event (`_epoll_events[i]` is not filled for SRT).
+		int EpollWait(std::vector<std::shared_ptr<Socket>> &polled_sockets, int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);
 
-		bool ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event) OV_REQUIRES(_socket_map_mutex);
+		// Erases the entry only if it still belongs to `socket`.
+		// The caller's `socket` keeps the object alive, so the erase never runs its destructor under the lock.
+		void RemoveFromSocketMap(const std::shared_ptr<Socket> &socket) OV_REQUIRES(_socket_map_mutex);
+
+		void ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
 
 		void AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket);
 		void EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket);
@@ -104,16 +116,13 @@ namespace ov
 		// the number of sockets can be specified in advance so that they can be distributed properly.
 		std::atomic<int> _socket_count{0};
 
-		// A list of sockets created/deleted from AddToWorker()/DeleteFromEpoll()
-		//
-		// If DeleteFromEpoll() is called in thread #1 immediately after EpollWait() is called in thread #2,
-		// Since there is no longer a reference to std::shared_ptr<Socket>, the socket will be released,
-		// and after EpollWait() code will refer to the released socket.
-		// To avoid this issue, _socket_map must ensure that it is modified only in the last part of ThreadProc().
+		// Sockets registered to epoll, updated as soon as `AddToEpoll()`/`DeleteFromEpoll()` is called.
+		// `EpollWait()` copies the sockets of the polled events from here under the lock,
+		// so a socket deleted by another thread stays alive until its events are handled.
 		mutable Mutex _socket_map_mutex;
 		// key: native handle of SocketWrapper
-		std::map<int, std::shared_ptr<Socket>> _socket_map OV_GUARDED_BY(_socket_map_mutex);
-		std::queue<std::shared_ptr<Socket>> _sockets_to_insert OV_GUARDED_BY(_socket_map_mutex);
+		std::unordered_map<int, SocketEntry> _socket_map OV_GUARDED_BY(_socket_map_mutex);
+		uint32_t _last_generation OV_GUARDED_BY(_socket_map_mutex) = 0;
 
 		// Socket failed to send data for too long must be forced to shut down in the future
 		StopWatch _gc_interval;
