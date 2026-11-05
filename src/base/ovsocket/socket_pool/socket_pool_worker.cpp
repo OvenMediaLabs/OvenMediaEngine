@@ -298,17 +298,9 @@ namespace ov
 	{
 		logger::ThreadHelper thread_helper;
 
-		if (_is_first_connection_callback_queue_start == false)
-		{
-			LockGuard lock(_connection_callback_queue_mutex);
-
-			if (_is_first_connection_callback_queue_start == false)
-			{
-				_is_first_connection_callback_queue_start = true;
-
-				_connection_callback_queue.Start();
-			}
-		}
+		std::call_once(_connection_callback_queue_start_flag, []() {
+			_connection_callback_queue.Start();
+		});
 
 		_gc_interval.Start();
 
