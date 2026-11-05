@@ -16,6 +16,11 @@
 #include "monitoring/monitoring.h"
 #include <base/ovlibrary/tsa/mutex.h>
 
+namespace ov
+{
+	class Socket;
+}
+
 namespace pvd
 {
 	class Application;
@@ -37,7 +42,7 @@ namespace pvd
 		bool Stop() override;
 		bool Resume(); // Resume with another URL
 
-		// Defines the event detection method to process media packets in Pull Stream. 
+		// Defines the event detection method to process media packets in `PullStream`.
 		// There are EPOLL event method by socket and INTERVAL event method called at regular time.	
 		enum class ProcessMediaEventTrigger {
 			TRIGGER_EPOLL,
@@ -45,12 +50,12 @@ namespace pvd
 		};
 		virtual ProcessMediaEventTrigger GetProcessMediaEventTriggerMode() = 0;
 
-		// It is used to detect event by StreamMotor and then StreamMotor calls ProcessMediaPacket
-		// Internally it is used for epoll
-		virtual int GetFileDescriptorForDetectingEvent() = 0;
+		// It is used to detect event by `StreamMotor` and then `StreamMotor` calls `ProcessMediaPacket()`
+		// Internally it is used for epoll. Returns `nullptr` when the stream has no socket.
+		virtual std::shared_ptr<ov::Socket> GetSocketForDetectingEvent() = 0;
 
 		// If this stream belongs to the Pull provider, 
-		// this function is called periodically by the StreamMotor of application. 
+		// this function is called periodically by the `StreamMotor` of application.
 		// Media data has to be processed here.
 		virtual ProcessMediaResult ProcessMediaPacket() = 0;
 

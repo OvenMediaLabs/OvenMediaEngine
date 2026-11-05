@@ -1723,14 +1723,9 @@ namespace pvd
 		return true;
 	}
 
-	int OvtStream::GetFileDescriptorForDetectingEvent()
+	std::shared_ptr<ov::Socket> OvtStream::GetSocketForDetectingEvent()
 	{
-		auto client_socket = std::atomic_load(&_connection)->socket;
-		if (client_socket == nullptr)
-		{
-			return -1;
-		}
-		return client_socket->GetNativeHandle();
+		return std::atomic_load(&_connection)->socket;
 	}
 
 	PullStream::ProcessMediaResult OvtStream::ProcessMediaPacket()
