@@ -459,7 +459,7 @@ namespace ov
 		return true;
 	}
 
-	bool Socket::DeleteFromWorker()
+	void Socket::DeleteFromWorker()
 	{
 		LockGuard lock_guard(_worker_mutex);
 
@@ -470,8 +470,6 @@ namespace ov
 			_added_to_worker = false;
 			_worker->DeleteFromEpoll(GetSharedPtr());
 		}
-
-		return true;
 	}
 
 	bool Socket::MakeBlocking()
@@ -494,10 +492,9 @@ namespace ov
 		// Prevent to call the callback while change blocking mode
 		auto old_callback = std::atomic_exchange(&_callback, {});
 
-		if (
-			SetBlockingInternal(BlockingMode::Blocking) &&
-			DeleteFromWorker())
+		if (SetBlockingInternal(BlockingMode::Blocking))
 		{
+			DeleteFromWorker();
 			_blocking_mode = BlockingMode::Blocking;
 			return true;
 		}
@@ -925,9 +922,9 @@ namespace ov
 						if (use_timeout)
 						{
 							// Restore blocking state
-							if (
-								(DeleteFromWorker() == false) ||
-								(SetBlockingInternal(BlockingMode::Blocking) == false))
+							DeleteFromWorker();
+
+							if (SetBlockingInternal(BlockingMode::Blocking) == false)
 							{
 								return DoConnectionCallback(SocketError::CreateError("Socket cannot be changed to blocking mode: %s", ToString().CStr()));
 							}
@@ -976,9 +973,9 @@ namespace ov
 						}
 
 						// Restore blocking state
-						if (
-							(DeleteFromWorker() == false) ||
-							(SetBlockingInternal(BlockingMode::Blocking) == false))
+						DeleteFromWorker();
+
+						if (SetBlockingInternal(BlockingMode::Blocking) == false)
 						{
 							socket_error = (socket_error == nullptr) ? SocketError::CreateError("Socket cannot be changed to blocking mode: %s", ToString().CStr()) : socket_error;
 						}

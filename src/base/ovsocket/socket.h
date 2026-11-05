@@ -557,7 +557,7 @@ namespace ov
 
 		// ClientSocket doesn't need to wait the first epoll event
 		bool AddToWorker(bool need_to_wait_first_epoll_event);
-		bool DeleteFromWorker();
+		void DeleteFromWorker();
 
 		// When using epoll ET mode, the first event occurs immediately after EPOLL_CTL_ADD. (except SRT epoll)
 		// This API is used for waiting the event, and MUST be called in SocketPoolWorker::ThreadProc() thread
