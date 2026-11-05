@@ -268,14 +268,18 @@ namespace ov
 
 	void SocketPoolWorker::CallbackTimedOutConnections()
 	{
-		if (_connection_timed_out_queue.size() <= 0)
-		{
-			return;
-		}
+		decltype(_connection_timed_out_queue) timed_out_queue;
 
-		_connection_timed_out_queue_mutex.Lock();
-		auto timed_out_queue = std::move(_connection_timed_out_queue);
-		_connection_timed_out_queue_mutex.Unlock();
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+
+			if (_connection_timed_out_queue.empty())
+			{
+				return;
+			}
+
+			std::swap(timed_out_queue, _connection_timed_out_queue);
+		}
 
 		auto socket_error = SocketError::CreateError("Connection timed out (by worker)");
 
@@ -950,15 +954,16 @@ namespace ov
 
 	void SocketPoolWorker::CallCloseCallbackIfNeeded()
 	{
-		if (_sockets_to_call_close_callback.empty())
-		{
-			return;
-		}
-
 		decltype(_sockets_to_call_close_callback) close_list;
 
 		{
 			LockGuard lock(_sockets_to_call_close_callback_mutex);
+
+			if (_sockets_to_call_close_callback.empty())
+			{
+				return;
+			}
+
 			std::swap(close_list, _sockets_to_call_close_callback);
 		}
 
