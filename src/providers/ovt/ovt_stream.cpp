@@ -767,23 +767,21 @@ namespace pvd
 					rendition->SetAudioTrackId(json_rendition["audioTrackId"].asUInt());
 				}
 			
-				// The origin names the variant it had to drop from this side. The rendition is kept as it
-				// arrived, because the origin already decided it is worth sending; this only says why it
-				// is one-sided, which the empty name alone cannot. The origin stamps the marker for any
-				// reason it could not fill the side, so the cause is left to the origin's own log.
-				auto removed_side = [&](const char *key, const char *side) {
+				// The origin names the variant of the track it removed from this side.
+				// The rendition is kept as it arrived and plays its other side only; the cause is in the origin's log.
+				auto removed_side = [&](const char *key, const char *side, const char *remaining) {
 					if (json_rendition[key].isString() == false)
 					{
 						return;
 					}
 
-					logtw("[%s/%s(%u)] Rendition [%s] of playlist [%s] in the %s response has no %s side: the origin has no track left for variant [%s]",
+					logtw("[%s/%s(%u)] Rendition [%s] of playlist [%s] in the %s response has no %s side: the origin removed what it referred to (variant [%s]) for this edge, so the rendition plays %s only; the origin log has the cause",
 						  GetApplicationInfo().GetVHostAppName().CStr(), GetName().CStr(), GetId(),
 						  ovt::SanitizeForLog(rendition_name).CStr(), ovt::SanitizeForLog(playlist_file_name).CStr(), source, side,
-						  ovt::SanitizeForLog(json_rendition[key].asCString()).CStr());
+						  ovt::SanitizeForLog(json_rendition[key].asCString()).CStr(), remaining);
 				};
-				removed_side("removedVideoTrackName", "video");
-				removed_side("removedAudioTrackName", "audio");
+				removed_side("removedVideoTrackName", "video", "audio");
+				removed_side("removedAudioTrackName", "audio", "video");
 
 				playlist->AddRendition(rendition);
 			}

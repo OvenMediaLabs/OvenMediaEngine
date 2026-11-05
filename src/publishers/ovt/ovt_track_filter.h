@@ -9,6 +9,7 @@
 #pragma once
 
 #include <base/mediarouter/media_type.h>
+#include <base/ovlibrary/string.h>
 #include <modules/ovt_packetizer/ovt_wire.h>
 
 #include <cstdint>
@@ -22,6 +23,9 @@
 struct OvtTrackFilter
 {
 	bool legacy_edge = false;
+	// These two only label the origin log
+	ov::String track_set_name;
+	ov::String edge;
 	std::optional<std::set<uint32_t>> track_set_ids;
 	std::optional<std::set<uint32_t>> requested_track_ids;
 

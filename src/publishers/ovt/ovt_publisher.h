@@ -92,7 +92,7 @@ private:
 	// Returns false when the URL names a TrackSet the stream does not have.
 	bool ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<OvtStream> &stream, const ov::String &track_set_name, const std::optional<std::set<uint32_t>> &requested_track_ids, OvtTrackFilter &filter);
 	void SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id,
-						  const std::shared_ptr<OvtStream> &stream, const std::optional<std::set<uint32_t>> &allowed_track_ids);
+						  const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids);
 	void HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t request_id, const std::shared_ptr<const ov::Url> &url, const std::optional<std::set<uint32_t>> &requested_track_ids);
 	void HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id, const std::shared_ptr<const ov::Url> &url);
 

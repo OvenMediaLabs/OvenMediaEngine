@@ -399,6 +399,7 @@ bool OvtPublisher::ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote,
 {
 	filter.legacy_edge		   = (GetRemoteContext(remote->GetNativeHandle())->is_ovt2 == false);
 	filter.requested_track_ids = requested_track_ids;
+	filter.edge				   = remote->GetRemoteAddressAsUrl();
 
 	if (track_set_name.IsEmpty() == false)
 	{
@@ -408,7 +409,8 @@ bool OvtPublisher::ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote,
 			return false;
 		}
 
-		filter.track_set_ids = std::move(track_ids);
+		filter.track_set_name = track_set_name;
+		filter.track_set_ids  = std::move(track_ids);
 	}
 
 	return true;
@@ -421,7 +423,7 @@ bool OvtPublisher::ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote,
 // was written before the edge made its selection, so only this one has renditions that match the
 // tracks the edge ends up with. A session that kept every track keeps the describe's copy.
 void OvtPublisher::SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, uint32_t request_id,
-									const std::shared_ptr<OvtStream> &stream, const std::optional<std::set<uint32_t>> &allowed_track_ids)
+									const std::shared_ptr<OvtStream> &stream, const OvtTrackFilter &filter, const std::optional<std::set<uint32_t>> &allowed_track_ids)
 {
 	Json::Value root;
 	root["id"]			= request_id;
@@ -452,7 +454,7 @@ void OvtPublisher::SendPlayResponse(const std::shared_ptr<ov::Socket> &remote, u
 		// through the rendition pruning for nothing.
 		if (confirmed != every_track_id)
 		{
-			root["ovt"]["playlists"] = stream->BuildPlaylistsForTracks(confirmed);
+			root["ovt"]["playlists"] = stream->BuildPlaylistsForTracks(filter, confirmed);
 		}
 
 		if (ids.empty())
@@ -675,7 +677,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 
 	LinkRemoteWithStream(remote->GetNativeHandle(), stream);
 
-	SendPlayResponse(remote, session->GetId(), request_id, stream, allowed_track_ids);
+	SendPlayResponse(remote, session->GetId(), request_id, stream, filter, allowed_track_ids);
 
 	stream->AddSession(session);
 }
