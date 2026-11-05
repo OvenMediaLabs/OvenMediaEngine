@@ -434,12 +434,30 @@ TEST(SocketPoolWorkerTest, CloseAfterNativeCloseMovesToClosed)
 	ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
 	ASSERT_NE(BindToLoopback(socket), 0);
 
-	// `CloseImmediately()` keeps the current state, as the worker's close keeps `Disconnected`/`Error`
-	ASSERT_TRUE(socket->CloseImmediately());
-	ASSERT_NE(socket->GetState(), ov::SocketState::Closed);
+	// The same close as the worker's on `EPOLLHUP`, which leaves the socket `Disconnected`
+	ASSERT_TRUE(socket->CloseImmediatelyWithState(ov::SocketState::Disconnected));
+	ASSERT_EQ(socket->GetState(), ov::SocketState::Disconnected);
 
 	EXPECT_TRUE(socket->Close());
 	EXPECT_TRUE(WaitUntil([&]() { return socket->GetState() == ov::SocketState::Closed; }));
+
+	pool->Uninitialize();
+}
+
+// `CloseImmediately()` moves the socket to `Closed`, so a later `Close()` of a blocking socket returns at once
+TEST(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
+{
+	auto pool = ov::SocketPool::Create("test-close-now", ov::SocketType::Tcp, false);
+	ASSERT_NE(pool, nullptr);
+	ASSERT_TRUE(pool->Initialize(1));
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	ASSERT_EQ(socket->GetBlockingMode(), ov::BlockingMode::Blocking);
+
+	ASSERT_TRUE(socket->CloseImmediately());
+	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
+	EXPECT_FALSE(socket->Close());
 
 	pool->Uninitialize();
 }

@@ -2244,6 +2244,11 @@ namespace ov
 			LockGuard lock_guard(_dispatch_queue_lock);
 
 			result = CloseInternal(_state);
+
+			if (result)
+			{
+				SetState(SocketState::Closed);
+			}
 		}
 
 		CallCloseCallbackIfNeeded();
