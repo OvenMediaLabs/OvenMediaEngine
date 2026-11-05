@@ -1041,6 +1041,12 @@ TEST(OvtDescribeTest, RebuildDropsEmptyDeclarationsUnlogged)
 	EXPECT_EQ(RenditionNames(blank["stream"]), (std::vector<ov::String>{"low"}));
 	EXPECT_TRUE(blank_changes.empty());
 
+	auto only_blank = BuildRenditionFixture("abr", {{"blank", "", std::nullopt, "", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> only_blank_changes;
+	EXPECT_EQ(OvtStream::RebuildRenditions(only_blank["stream"], {1, 2}, &only_blank_changes), 2u);
+	EXPECT_EQ(only_blank["stream"]["playlists"].size(), 0u);
+	EXPECT_TRUE(only_blank_changes.empty());
+
 	auto none = BuildRenditionFixture("abr", {});
 	std::vector<OvtStream::RenditionChange> none_changes;
 	EXPECT_EQ(OvtStream::RebuildRenditions(none["stream"], {1, 2}, &none_changes), 1u);

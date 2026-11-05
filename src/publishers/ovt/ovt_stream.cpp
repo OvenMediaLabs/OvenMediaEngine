@@ -665,7 +665,8 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 		}
 
 		Json::Value kept_renditions(Json::arrayValue);
-		for (auto &candidate : candidates)
+		bool logged_rendition = false;
+		for (const auto &candidate : candidates)
 		{
 			RenditionChange change{RenditionChange::Type::SideEmptied, playlist_name, candidate.rendition["name"].asCString(), candidate.lost_sides, ""};
 
@@ -699,6 +700,7 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 				}
 			}
 
+			logged_rendition = true;
 			if (changes != nullptr)
 			{
 				changes->push_back(std::move(change));
@@ -708,8 +710,8 @@ size_t OvtStream::RebuildRenditions(Json::Value &stream, const std::set<uint32_t
 		if (kept_renditions.empty())
 		{
 			pruned++;
-			// A playlist declared without renditions lost nothing to the filter either
-			if ((changes != nullptr) && (candidates.empty() == false))
+			// A playlist none of whose renditions was logged lost nothing to the filter either
+			if ((changes != nullptr) && logged_rendition)
 			{
 				changes->push_back({RenditionChange::Type::PlaylistRemoved, playlist_name, "", {}, ""});
 			}
