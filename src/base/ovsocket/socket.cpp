@@ -312,6 +312,12 @@ namespace ov
 				return true;
 			}
 
+			if (_native_socket_closed)
+			{
+				// Another thread closed the socket before it is added
+				return false;
+			}
+
 			if (GetType() == SocketType::Srt)
 			{
 				// SRT doesn't generates any epoll events after ::srt_epoll_add_usock()
@@ -333,7 +339,8 @@ namespace ov
 
 		if (need_to_wait_first_epoll_event)
 		{
-			return WaitForFirstEpollEvent();
+			// `CloseInternal()` also wakes this up, and then the socket must not be reported as added
+			return WaitForFirstEpollEvent() && (_native_socket_closed == false);
 		}
 
 		return true;
@@ -2143,7 +2150,9 @@ namespace ov
 			case BlockingMode::Blocking: {
 				bool result = true;
 
-				if (GetState() != SocketState::Error)
+				// A half-close is skipped once another close has started releasing the native socket,
+				// since its descriptor number may be reused
+				if ((GetState() != SocketState::Error) && (_native_socket_closed == false))
 				{
 					if (HalfClose() == DispatchResult::Error)
 					{
@@ -2183,6 +2192,16 @@ namespace ov
 						logtw("[SockProfiler] Close() - %s, Queue: %zu, Lock: %dms, Total: %dms", ToString().CStr(), _dispatch_queue.size(), lock_elapsed, total_elapsed);
 					}
 				});
+
+				// Another close has released the native socket and cleared the queue under this lock,
+				// so no command is queued for it and only the state is left to update
+				if (_native_socket_closed)
+				{
+					_has_close_command = true;
+					SetState(new_state);
+
+					return true;
+				}
 
 				if (_has_close_command == false)
 				{
@@ -2342,6 +2361,13 @@ namespace ov
 
 		if (_socket.IsValid())
 		{
+			// Marked under `_worker_mutex`, so `AddToWorker()` either registers the socket
+			// before `DeleteFromWorker()` removes it, or sees the mark and does not register it
+			{
+				LockGuard lock(_worker_mutex);
+				_native_socket_closed = true;
+			}
+
 			DeleteFromWorker();
 
 			switch (GetType())
@@ -2363,6 +2389,10 @@ namespace ov
 			}
 
 			_socket.SetValid(false);
+
+			// Once the socket is out of epoll, the worker may never deliver its first epoll event.
+			// So a waiting `AddToWorker()` is woken up here.
+			_first_epoll_event_received.SetEvent();
 
 			if (_dispatch_queue.size() > 0)
 			{

@@ -556,7 +556,7 @@ namespace ov
 
 		std::atomic<SocketState> _state = SocketState::Closed;
 
-		BlockingMode _blocking_mode = BlockingMode::Blocking;
+		std::atomic<BlockingMode> _blocking_mode{BlockingMode::Blocking};
 
 		// Used to reschedule deferred accept/read handling when processing must be retried later.
 		// This is a software-side retry marker, not a real pending kernel read event.
@@ -567,6 +567,8 @@ namespace ov
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
+		// Set by `CloseInternal()` under `_worker_mutex` before it closes the native socket, and never cleared
+		std::atomic<bool> _native_socket_closed{false};
 
 		std::atomic<bool> _end_of_stream = false;
 
