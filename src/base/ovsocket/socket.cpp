@@ -959,11 +959,19 @@ namespace ov
 						}
 						else
 						{
-							// Timed out
-							int so_error;
-							GetSockOpt(SO_ERROR, &so_error);
+							// Timed out, or closed on another thread while waiting.
+							// A close that starts after the check fails the read of `SO_ERROR` instead.
+							int so_error = 0;
 
-							socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
+							if ((IsValid() == false) || (GetSockOpt(SO_ERROR, &so_error) == false))
+							{
+								socket_error = SocketError::CreateError("Socket is closed");
+							}
+							else
+							{
+								socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
+							}
+
 							logat("%s", socket_error->What());
 						}
 
