@@ -434,7 +434,7 @@ namespace ov
 
 									case PostProcessMethod::GarbageCollection:
 										logat("Need to do garbage collection for %s", socket->ToString().CStr());
-										_gc_candidates[socket->GetNativeHandle()] = socket;
+										_gc_candidates[socket->GetId()] = socket;
 										break;
 
 									case PostProcessMethod::Error:
@@ -508,7 +508,7 @@ namespace ov
 
 					if (need_to_close)
 					{
-						_gc_candidates.erase(socket->GetNativeHandle());
+						_gc_candidates.erase(socket->GetId());
 
 						logat("CloseImmediatelyWithState(%s) for %s", StringFromSocketState(new_state), socket->ToString().CStr());
 						socket->CloseImmediatelyWithState(new_state);
@@ -912,7 +912,7 @@ namespace ov
 					if (socket->IsClosable())
 					{
 						logat("Need to do garbage collection for %s (dispatch_later)", socket->ToString().CStr());
-						_gc_candidates[socket->GetNativeHandle()] = socket;
+						_gc_candidates[socket->GetId()] = socket;
 					}
 					else
 					{
@@ -1006,7 +1006,7 @@ namespace ov
 			switch (error->GetCode())
 			{
 				case EBADF:
-					// Socket is closed somewhere in OME
+					// Not expected: a socket leaves the worker before its handle is released
 
 					// Do not print 'Bad file descriptor' error log
 					break;

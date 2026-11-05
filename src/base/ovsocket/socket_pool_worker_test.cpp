@@ -422,8 +422,9 @@ TEST(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 	pool->Uninitialize();
 }
 
-// `Close()` on a non-blocking socket whose native socket is already closed only moves the socket to `Closed`
-TEST(SocketPoolWorkerTest, CloseAfterNativeCloseMovesToClosed)
+// `Close()` on a non-blocking socket that another close has already run on moves the socket to `Closed` at once,
+// without queueing a command
+TEST(SocketPoolWorkerTest, CloseAfterCloseStartedMovesToClosed)
 {
 	auto pool = ov::SocketPool::Create("test-close-after", ov::SocketType::Udp, false);
 	ASSERT_NE(pool, nullptr);
@@ -439,7 +440,8 @@ TEST(SocketPoolWorkerTest, CloseAfterNativeCloseMovesToClosed)
 	ASSERT_EQ(socket->GetState(), ov::SocketState::Disconnected);
 
 	EXPECT_TRUE(socket->Close());
-	EXPECT_TRUE(WaitUntil([&]() { return socket->GetState() == ov::SocketState::Closed; }));
+	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
+	EXPECT_FALSE(socket->HasCommand());
 
 	pool->Uninitialize();
 }

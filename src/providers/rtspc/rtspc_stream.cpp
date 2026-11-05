@@ -918,7 +918,7 @@ namespace pvd
 
 	int RtspcStream::GetFileDescriptorForDetectingEvent()
 	{
-		return _signalling_socket->GetSocket().GetNativeHandle();
+		return _signalling_socket->GetNativeHandle();
 	}
 
 	PullStream::ProcessMediaResult RtspcStream::ProcessMediaPacket()

@@ -37,6 +37,9 @@ namespace ov
 {
 	// socket type
 	typedef int socket_t;
+	// A type of its own, so a socket ID is not mixed up with a native handle number or another integer.
+	// `Socket` issues it from a process-wide counter that starts at 1, so it is never reused while the process runs.
+	using socket_id_t = StrongType<uint64_t, struct SocketIdTag>;
 
 	// A socket value when not initialized
 	const int InvalidSocket = -1;

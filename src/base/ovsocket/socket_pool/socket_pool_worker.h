@@ -126,7 +126,8 @@ namespace ov
 
 		// Socket failed to send data for too long must be forced to shut down in the future
 		StopWatch _gc_interval;
-		std::map<int, std::shared_ptr<Socket>> _gc_candidates;
+		// Worker thread only
+		std::map<socket_id_t, std::shared_ptr<Socket>> _gc_candidates;
 
 		// A queue for handling errors such as connection timeout in nonblocking mode.
 		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};

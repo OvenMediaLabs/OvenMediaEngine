@@ -13,6 +13,7 @@
 #include <netinet/in.h>
 #include <srt/srt.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -20,6 +21,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -47,7 +49,7 @@ namespace
 	{
 		sockaddr_in sa{};
 		socklen_t len = sizeof(sa);
-		if (::getsockname(socket->GetSocket().GetNativeHandle(), reinterpret_cast<sockaddr *>(&sa), &len) != 0)
+		if (::getsockname(socket->GetNativeHandle(), reinterpret_cast<sockaddr *>(&sa), &len) != 0)
 		{
 			return 0;
 		}
@@ -682,6 +684,26 @@ namespace
 	bool WaitSrtConnected(const std::shared_ptr<ov::Socket> &socket)
 	{
 		return WaitUntil([&]() { return ::srt_getsockstate(socket->GetNativeHandle()) == SRTS_CONNECTED; });
+	}
+
+	// Whether the thread is blocked in `syscall_number`, read from `/proc/self/task/<tid>/syscall`
+	bool IsBlockedIn(pid_t tid, long syscall_number)
+	{
+		char path[64];
+		::snprintf(path, sizeof(path), "/proc/self/task/%d/syscall", tid);
+
+		auto file = ::fopen(path, "r");
+		if (file == nullptr)
+		{
+			return false;
+		}
+
+		long number = -1;
+		auto read	= ::fscanf(file, "%ld", &number);
+		::fclose(file);
+
+		// A running thread reads as "running", which `fscanf()` does not parse as a number
+		return (read == 1) && (number == syscall_number);
 	}
 
 	// Waits until libsrt reports the socket readable (a message has reached its
@@ -1397,6 +1419,57 @@ TEST_F(SocketRecvSrtTest, BrokenLinkFiresCloseCallbackAsDisconnected)
 
 	ASSERT_TRUE(WaitUntil([&]() { return events->Closed() == 1; }, std::chrono::milliseconds(SRT_BROKEN_LINK_WAIT_MSEC)));
 	EXPECT_EQ(client->GetState(), ov::SocketState::Disconnected);
+}
+
+// A close on another thread wakes a blocking SRT receive, which reports the close instead of a libsrt error
+TEST_F(SocketRecvSrtTest, CloseWakesBlockedRecv)
+{
+	// About 50 ms of 1 ms samples
+	constexpr int BLOCKED_SAMPLE_COUNT = 50;
+
+	Watchdog watchdog(std::chrono::seconds(30), "CloseWakesBlockedRecv");
+
+	SrtPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto client = ConnectClient(peer);
+	ASSERT_NE(client, nullptr);
+	ASSERT_TRUE(client->SetSockOpt<bool>(SRTO_RCVSYN, true));
+
+	std::promise<ov::String> returned;
+	auto returned_future = returned.get_future();
+	auto tid			 = std::make_shared<std::atomic<pid_t>>(0);
+
+	std::thread receiver([client, promise = std::move(returned), tid]() mutable {
+		*tid = static_cast<pid_t>(::syscall(SYS_gettid));
+
+		char buffer[1500];
+		auto result = client->Recv(buffer, sizeof(buffer));
+
+		promise.set_value(result.has_value() ? ov::String("data") : result.error()->GetMessage());
+	});
+
+	// libsrt waits for data on a condition variable, so a blocked receive stays in `futex()`.
+	// Consecutive samples tell that wait apart from a short lock wait on the way to it.
+	int blocked_samples = 0;
+	EXPECT_TRUE(WaitUntil([&]() {
+		blocked_samples = ((*tid != 0) && IsBlockedIn(*tid, SYS_futex)) ? (blocked_samples + 1) : 0;
+		return blocked_samples >= BLOCKED_SAMPLE_COUNT;
+	}));
+	EXPECT_EQ(returned_future.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
+
+	client->CloseImmediately();
+
+	if (returned_future.wait_for(std::chrono::milliseconds(LOOPBACK_TIMEOUT_MSEC)) != std::future_status::ready)
+	{
+		ADD_FAILURE() << "Recv() is still blocked on a closed SRT socket";
+
+		// Breaks the connection from the peer, so the receive returns before libsrt is cleaned up
+		peer.CloseConnection();
+	}
+
+	receiver.join();
+
+	EXPECT_EQ(returned_future.get(), "Socket is closed");
 }
 
 // ===========================================================================

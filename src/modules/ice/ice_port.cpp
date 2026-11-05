@@ -445,7 +445,7 @@ bool IcePort::RemoveSession(session_id_t session_id)
 		// closed here: the UDP socket is the process-wide shared listener.
 		for (const auto &remote : ice_session->GetCandidatePairSockets())
 		{
-			if (remote->GetSocket().GetType() == ov::SocketType::Tcp)
+			if (remote->GetType() == ov::SocketType::Tcp)
 			{
 				remote->CloseIfNeeded();
 			}

@@ -218,6 +218,13 @@ namespace ov
 					client->CloseImmediately();
 				}
 			}
+			else
+			{
+				// No worker was available, so no `ClientSocket` took the accepted handle
+				logae("Could not allocate a socket for client: %s", remote_address.ToString(false).CStr());
+
+				CloseNativeHandle(client_socket.GetType(), client_socket.GetNativeHandle());
+			}
 		}
 	}
 

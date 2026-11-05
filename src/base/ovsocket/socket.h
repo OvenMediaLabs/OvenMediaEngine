@@ -61,6 +61,10 @@ namespace ov
 
 	class Socket : public EnableSharedFromThis<Socket>, public SocketPoolEventInterface
 	{
+	protected:
+		// Bit 31 of `_io_ref`
+		static constexpr uint32_t IO_REF_CLOSING = 0x80000000U;
+
 	public:
 		// Called when the server socket is created
 		using SetAdditionalOptionsCallback = std::function<std::shared_ptr<ov::Error>(const std::shared_ptr<ov::Socket> &socket)>;
@@ -78,6 +82,38 @@ namespace ov
 			PartialDispatched,
 			// An error occurred
 			Error
+		};
+
+		// Fails once a close has started; with `allow_closing`, it succeeds until the handle is released.
+		// For TCP/UDP it also holds the handle open during the syscall, so its number cannot be reused under it.
+		class IoGuard
+		{
+		public:
+			explicit IoGuard(const Socket &socket, bool allow_closing = false)
+				: _socket(socket),
+				  _acquired(allow_closing ? socket.PinNativeHandle() : socket.BeginIo())
+			{
+			}
+
+			IoGuard(const IoGuard &) = delete;
+			IoGuard &operator=(const IoGuard &) = delete;
+
+			~IoGuard()
+			{
+				if (_acquired)
+				{
+					_socket.EndIo();
+				}
+			}
+
+			bool IsAcquired() const
+			{
+				return _acquired;
+			}
+
+		private:
+			const Socket &_socket;
+			const bool _acquired;
 		};
 
 	public:
@@ -169,14 +205,23 @@ namespace ov
 
 		void SetState(SocketState state);
 
-		SocketWrapper GetSocket() const
+		// Whether a native handle is assigned and no close has started
+		bool IsValid() const
 		{
-			return _socket;
+			return (_io_ref.load(std::memory_order_acquire) & IO_REF_CLOSING) == 0;
 		}
 
+		// A TCP/UDP number can belong to another socket once this one releases it,
+		// so identify a socket by `GetId()` and use the handle through the methods of this class.
+		// SRT IDs can still serve as keys, since libsrt does not reuse them soon.
 		int GetNativeHandle() const
 		{
 			return _socket.GetNativeHandle();
+		}
+
+		socket_id_t GetId() const
+		{
+			return _id;
 		}
 
 		SocketType GetType() const;
@@ -274,6 +319,11 @@ namespace ov
 		{
 			return _has_close_command;
 		}
+
+		// Registers this socket in an epoll instance the caller owns (TCP/UDP only)
+		bool AddToExternalEpoll(int epoll_fd, epoll_event *event);
+		// Removes this socket from that epoll instance. For a released handle this only succeeds, since closing the handle removes it.
+		bool DeleteFromExternalEpoll(int epoll_fd);
 
 #ifdef OME_LATENCY_PROBE
 		// Latency probe (OME_LATENCY_PROBE only): kernel software RX timestamp (ms) of the most
@@ -548,10 +598,26 @@ namespace ov
 
 		DispatchResult DispatchEventsInternal();
 
+		// Called once a native handle is assigned, before the socket is shared
+		void SetNativeHandleOpened();
+		bool BeginIo() const;
+		bool PinNativeHandle() const;
+		void EndIo() const;
+		void ReleaseNativeHandle() const;
+		// Closes a handle that no syscall can be using any more
+		static void CloseNativeHandle(SocketType type, int native_handle);
+
 	protected:
 		std::shared_ptr<SocketPoolWorker> _worker;
 
+		const socket_id_t _id;
+
 		SocketWrapper _socket;
+		// The owner reference (1) plus the syscalls in flight on `_socket`.
+		// `IO_REF_CLOSING` stays set until a handle is assigned and again once a close starts.
+		// The reference that drops the count to zero while it is set releases the handle.
+		// An SRT ID is closed by `CloseInternal()` at once, so for SRT the release does nothing.
+		mutable std::atomic<uint32_t> _io_ref{IO_REF_CLOSING};
 		SocketFamily _family;
 
 		std::atomic<SocketState> _state = SocketState::Closed;
@@ -567,8 +633,6 @@ namespace ov
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
-		// Set by `CloseInternal()` under `_worker_mutex` before it closes the native socket, and never cleared
-		std::atomic<bool> _native_socket_closed{false};
 
 		std::atomic<bool> _end_of_stream = false;
 
@@ -584,9 +648,8 @@ namespace ov
 
 		// A temporary variable used to send callback without mutex lock
 		std::shared_ptr<SocketAsyncInterface> _post_callback;
-		// Atomic: a second `CloseInternal()` can rewrite this while the close callback
-		// thread is still reading the first close's value (no common lock on that pair)
-		std::atomic<SocketState> _close_reason{SocketState::Closed};
+		// Written by the first `CloseInternal()` before the `_post_callback` handoff, and read by the close callback
+		SocketState _close_reason = SocketState::Closed;
 
 		std::atomic<bool> _force_stop = false;
 

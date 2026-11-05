@@ -98,11 +98,6 @@ namespace ov
 			}
 		}
 
-		void SetValid(bool valid)
-		{
-			_valid = valid;
-		}
-
 		const bool IsValid() const noexcept
 		{
 			return _valid;
