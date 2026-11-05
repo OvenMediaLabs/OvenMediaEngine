@@ -12,15 +12,14 @@
 #include "socket_pool.h"
 
 #ifdef OME_LATENCY_PROBE
-#include <sched.h>
-#include <sys/prctl.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <unistd.h>
+#	include <base/ovlibrary/latency_probe.h>
+#	include <sched.h>
+#	include <sys/prctl.h>
+#	include <sys/resource.h>
+#	include <sys/syscall.h>
+#	include <unistd.h>
 
-#include <chrono>
-
-#include <base/ovlibrary/latency_probe.h>
+#	include <chrono>
 
 // Latency probe (OME_LATENCY_PROBE only): log when EpollWait returned WITH events but only after a
 // long wall time (>20ms). Events were ready yet the thread took that long to return them =>

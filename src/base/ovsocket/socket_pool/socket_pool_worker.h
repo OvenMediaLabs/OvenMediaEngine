@@ -141,7 +141,7 @@ namespace ov
 		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<SocketAsyncInterface>> _sockets_to_call_close_callback OV_GUARDED_BY(_sockets_to_call_close_callback_mutex);
 
 		// Related to epoll
-		socket_t _epoll = InvalidSocket;
+		socket_t _epoll		 = InvalidSocket;
 
 		// Related to SRT
 		SRTSOCKET _srt_epoll = InvalidSocket;
