@@ -754,7 +754,10 @@ namespace ov
 						if (_blocking_mode == BlockingMode::NonBlocking)
 						{
 							// Don't wait for the connection if this socket is non-blocking mode
-							_worker->EnqueueToCheckConnectionTimeOut(GetSharedPtr(), timeout_msec);
+							if (use_timeout)
+							{
+								_worker->EnqueueToCheckConnectionTimeOut(GetSharedPtr(), timeout_msec);
+							}
 							return nullptr;
 						}
 

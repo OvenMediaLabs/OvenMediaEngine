@@ -862,6 +862,13 @@ namespace ov
 	void SocketPoolWorker::AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket)
 	{
 		LockGuard lock(_connection_timed_out_queue_mutex);
+
+		// `Uninitialize()` clears the queue under this lock after it sets the flag, so a push after that is dropped
+		if (_stop_epoll_thread)
+		{
+			return;
+		}
+
 		_connection_timed_out_queue.push_back(socket);
 	}
 
