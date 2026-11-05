@@ -432,7 +432,8 @@ namespace ov
 
 			if (GetType() == SocketType::Srt)
 			{
-				// SRT doesn't generates any epoll events after ::srt_epoll_add_usock()
+				// libsrt raises `SRT_EPOLL_OUT` on `srt_epoll_add_usock()` only for a connected socket with free send buffer space,
+				// so a listening or connecting SRT socket has no first event to wait for
 				need_to_wait_first_epoll_event = false;
 			}
 
