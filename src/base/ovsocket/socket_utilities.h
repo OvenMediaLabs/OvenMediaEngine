@@ -14,10 +14,6 @@
 
 namespace ov
 {
-	class Socket;
-
-	String GetStat(Socket socket);
-
 #define _SOCK_ADDRESS_CONVERTER(function_name, argument_type, return_type, const_type)            \
 	inline static const_type return_type *function_name(const_type argument_type *value) noexcept \
 	{                                                                                             \
