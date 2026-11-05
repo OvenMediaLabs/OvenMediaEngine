@@ -161,11 +161,15 @@ namespace ov
 	{
 		logat("Trying to uninitialize socket pool...");
 
+		// Joined first, so the timer thread never drops the last reference to this pool through a worker it released
+		_timer.Stop();
+
 		std::vector<std::shared_ptr<SocketPoolWorker>> worker_list;
 
 		{
 			LockGuard lock_guard(_worker_list_mutex);
-			worker_list = std::move(_worker_list);
+			_uninitialized = true;
+			worker_list	   = std::move(_worker_list);
 		}
 
 		return UninitializeWorkers(worker_list);

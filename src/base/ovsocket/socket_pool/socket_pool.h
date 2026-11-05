@@ -129,6 +129,11 @@ namespace ov
 		{
 			LockGuard lock_guard(_worker_list_mutex);
 
+			if (_uninitialized)
+			{
+				return nullptr;
+			}
+
 			if (_thread_per_socket)
 			{
 				auto instance = CreateWorker(GetSharedPtr());
@@ -181,6 +186,8 @@ namespace ov
 
 		mutable Mutex _worker_list_mutex;
 		std::vector<std::shared_ptr<SocketPoolWorker>> _worker_list OV_GUARDED_BY(_worker_list_mutex);
+		// Set when `Uninitialize()` takes the workers, so no worker is created or handed out after that
+		bool _uninitialized OV_GUARDED_BY(_worker_list_mutex) = false;
 
 		// Worker releaser
 		ov::DelayQueue _timer{"SocketPoolWorkerReleaser"};
