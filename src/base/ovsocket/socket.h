@@ -334,7 +334,8 @@ namespace ov
 		}
 
 		// Whether a close is queued or has started, or no handle was ever assigned.
-		// After a close starts, the handle stays open until the syscalls in flight return.
+		// After a close starts, a TCP/UDP handle stays open until the syscalls in flight return,
+		// but an SRT ID is closed at once.
 		bool IsClosing() const
 		{
 			return _has_close_command || (IsValid() == false);

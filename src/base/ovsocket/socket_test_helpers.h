@@ -132,7 +132,8 @@ namespace ome_test
 		return (sent == sizeof(payload));
 	}
 
-	// Waits until data is queued on `native_handle`, so the next `epoll_wait()` of an epoll watching it reports it
+	// Waits until `poll()` reports data queued on `native_handle`.
+	// It does not wait for an epoll watching the handle to be woken.
 	inline bool WaitUntilReadable(int native_handle)
 	{
 		return WaitUntil([native_handle]() {

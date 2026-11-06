@@ -2693,7 +2693,8 @@ namespace ov
 		_close_reason = close_reason;
 
 		// Only a socket that reported its connection gets a close callback.
-		// `CallCloseCallbackIfNeeded()` hands it to the worker with `_count_slot`, so the worker stays counted until it runs.
+		// `CallCloseCallbackIfNeeded()` hands it to the worker with `_count_slot`,
+		// which keeps the worker counted until the worker runs it or, once stopped, drops it.
 		auto post_callback			  = std::atomic_exchange(&_callback, {});
 		const bool has_close_callback = (post_callback != nullptr) && _connection_event_fired;
 
