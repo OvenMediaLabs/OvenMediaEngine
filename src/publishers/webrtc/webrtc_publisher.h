@@ -58,6 +58,10 @@ public:
 					   const std::shared_ptr<const SessionDescription> &offer_sdp,
 					   const std::shared_ptr<const SessionDescription> &answer_sdp) override;
 
+	void OnNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session,
+							   const std::shared_ptr<const SessionDescription> &offer_sdp,
+							   NegotiationResult result) override;
+
 protected:
 	bool StartSignallingServer(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config);
 	bool StartICEPorts(const cfg::Server &server_config, const cfg::bind::cmm::Webrtc &webrtc_bind_config);

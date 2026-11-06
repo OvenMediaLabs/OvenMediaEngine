@@ -41,7 +41,7 @@ namespace http
 		{
 			_status = exchange->_status;
 			_connection = exchange->_connection;
-			_extra = exchange->_extra;
+			_extra = exchange->GetExtra();
 			_keep_alive = exchange->_keep_alive;
 		}
 

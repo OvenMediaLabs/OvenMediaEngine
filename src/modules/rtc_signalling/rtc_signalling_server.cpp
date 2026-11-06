@@ -472,19 +472,16 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 			if (info != nullptr)
 			{
-				if (info->id != P2P_INVALID_PEER_ID)
-				{
-					// The client is disconnected without send "close" command
-
-					// Forces the session to be cleaned up by sending a stop command
-					DispatchStop(ws_session, info);
-				}
+				auto answer_sdp = std::atomic_load(&info->answer_sdp);
 
 				logti("Client is disconnected: %s (%s / %s, ufrag: local: %s, remote: %s)",
 					  ws_session->ToString().CStr(),
 					  info->vhost_app_name.CStr(), info->stream_name.CStr(),
 					  (info->offer_sdp != nullptr) ? info->offer_sdp->GetIceUfrag().CStr() : "(N/A)",
-					  (info->answer_sdp != nullptr) ? info->answer_sdp->GetIceUfrag().CStr() : "(N/A)");
+					  (answer_sdp != nullptr) ? answer_sdp->GetIceUfrag().CStr() : "(N/A)");
+
+				// Cleans up what the client left without "stop", even after an earlier "stop" and a new offer
+				DispatchStop(ws_session, info);
 			}
 			else
 			{
@@ -576,9 +573,11 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 					return false;
 				}
 
+				auto answer_sdp = std::atomic_load(&info->answer_sdp);
+
 				return (info->vhost_app_name == vhost_app_name) &&
 					   (info->stream_name == stream_name) &&
-					   ((info->answer_sdp != nullptr) && (*(info->answer_sdp) == *peer_sdp));
+					   ((answer_sdp != nullptr) && (*answer_sdp == *peer_sdp));
 			});
 	}
 
@@ -603,9 +602,11 @@ bool RtcSignallingServer::Disconnect(const info::VHostAppName &vhost_app_name, c
 					return false;
 				}
 
+				auto answer_sdp = std::atomic_load(&info->answer_sdp);
+
 				return (info->vhost_app_name == vhost_app_name) &&
 					   (info->stream_name == stream_name) &&
-					   ((info->answer_sdp != nullptr) && (*(info->answer_sdp) == *peer_sdp));
+					   ((answer_sdp != nullptr) && (*answer_sdp == *peer_sdp));
 			});
 	}
 
@@ -711,6 +712,14 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 	std::shared_ptr<RtcPeerInfo> host_peer = nullptr;
 
+	// A new offer replaces the previous one on this connection. Its negotiation or session ends first,
+	// since stopping the session relies on the routing this request overwrites
+	if (info->answer_received == false)
+	{
+		NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
+	}
+	StopAnsweredSession(ws_session, info);
+
 	std::shared_ptr<RtcPeerInfo> peer_info = _p2p_manager.CreatePeerInfo(info->id, ws_session);
 
 	if (peer_info == nullptr)
@@ -772,6 +781,7 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 				if (_p2p_manager.RegisterAsHostPeer(peer_info) == false)
 				{
 					OV_ASSERT2(false);
+					NotifyNegotiationFinished(ws_session, sdp, RtcSignallingObserver::NegotiationResult::Failed);
 					return std::make_shared<http::HttpError>(http::StatusCode::InternalServerError, "Could not add peer as host");
 				}
 				else
@@ -847,13 +857,15 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 					}
 				}
 
-				info->offer_sdp = sdp;
+				info->offer_sdp		  = sdp;
+				info->answer_received = false;
 
 				ws_session->GetWebSocketResponse()->Send(response_json.ToString());
 			}
 			else
 			{
 				logtw("Could not create SDP for stream %s", info->stream_name.CStr());
+				NotifyNegotiationFinished(ws_session, sdp, RtcSignallingObserver::NegotiationResult::Failed);
 				error = std::make_shared<http::HttpError>(http::StatusCode::NotFound, "Cannot create offer");
 			}
 		}
@@ -926,7 +938,13 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 
 		if (answer_sdp->FromString(sdp_value["sdp"].asCString()))
 		{
-			info->answer_sdp = answer_sdp;
+			std::atomic_store(&info->answer_sdp, std::shared_ptr<const SessionDescription>(answer_sdp));
+
+			// A repeated answer to the same offer does not finish the negotiation again
+			bool is_first_answer  = (info->answer_received == false);
+			info->answer_received = true;
+
+			std::shared_ptr<const ov::Error> error = nullptr;
 
 			auto observers	 = std::atomic_load(&_observers);
 			for (const auto &observer : *observers)
@@ -934,10 +952,22 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchAnswer(const std::
 				logtt("Trying to callback OnAddRemoteDescription to %p (%s / %s)...", observer.get(), info->vhost_app_name.CStr(), info->stream_name.CStr());
 
 				// TODO : Improved to return detailed error cause
-				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
+				if (observer->OnAddRemoteDescription(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, answer_sdp) == false)
 				{
-					return std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
+					error = std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
+					break;
 				}
+			}
+
+			if (is_first_answer)
+			{
+				NotifyNegotiationFinished(ws_session, info->offer_sdp,
+										  (error == nullptr) ? RtcSignallingObserver::NegotiationResult::Completed : RtcSignallingObserver::NegotiationResult::Failed);
+			}
+
+			if (error != nullptr)
+			{
+				return error;
 			}
 		}
 		else
@@ -995,12 +1025,14 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchChangeRendition(co
 		auto_abr = object.GetBoolValue("auto");
 	}
 
-	if (info->answer_sdp != nullptr)
+	auto answer_sdp = std::atomic_load(&info->answer_sdp);
+
+	if (answer_sdp != nullptr)
 	{
 		auto observers = std::atomic_load(&_observers);
 		for (const auto &observer : *observers)
 		{
-			if (observer->OnChangeRendition(ws_session, has_rendition_name, rendition_name, has_auto_abr, auto_abr, info->offer_sdp, info->answer_sdp) == false)
+			if (observer->OnChangeRendition(ws_session, has_rendition_name, rendition_name, has_auto_abr, auto_abr, info->offer_sdp, answer_sdp) == false)
 			{
 				return std::make_shared<http::HttpError>(http::StatusCode::Forbidden, "Forbidden");
 			}
@@ -1186,20 +1218,12 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchCandidateP2P(const
 
 std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info)
 {
-	bool result = true;
+	bool result = StopAnsweredSession(ws_session, info);
 
-	if (info->answer_sdp != nullptr)
+	// Stopping an offer that got an answer ends the session above, not the negotiation
+	if (info->answer_received == false)
 	{
-		auto observers = std::atomic_load(&_observers);
-		for (const auto &observer : *observers)
-		{
-			logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
-
-			if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, info->answer_sdp) == false)
-			{
-				result = false;
-			}
-		}
+		NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
 	}
 
 	{
@@ -1280,4 +1304,47 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchStop(const std::sh
 	}
 
 	return nullptr;
+}
+
+bool RtcSignallingServer::StopAnsweredSession(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<RtcSignallingInfo> &info)
+{
+	auto answer_sdp = std::atomic_load(&info->answer_sdp);
+
+	if (answer_sdp == nullptr)
+	{
+		return true;
+	}
+
+	bool result = true;
+
+	auto observers = std::atomic_load(&_observers);
+	for (const auto &observer : *observers)
+	{
+		logtt("Trying to callback OnStopCommand to %p for client %d (%s / %s)...", observer.get(), info->id, info->vhost_app_name.CStr(), info->stream_name.CStr());
+
+		if (observer->OnStopCommand(ws_session, info->vhost_app_name, info->host_name, info->stream_name, info->offer_sdp, answer_sdp) == false)
+		{
+			result = false;
+		}
+	}
+
+	// The session is gone, so it is not stopped again
+	std::atomic_store(&info->answer_sdp, std::shared_ptr<const SessionDescription>());
+
+	return result;
+}
+
+void RtcSignallingServer::NotifyNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const SessionDescription> &offer_sdp,
+													RtcSignallingObserver::NegotiationResult result)
+{
+	if (offer_sdp == nullptr)
+	{
+		return;
+	}
+
+	auto observers = std::atomic_load(&_observers);
+	for (const auto &observer : *observers)
+	{
+		observer->OnNegotiationFinished(ws_session, offer_sdp, result);
+	}
 }

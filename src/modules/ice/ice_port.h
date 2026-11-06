@@ -15,6 +15,7 @@
 
 #include <vector>
 #include <memory>
+#include <optional>
 #include <unordered_set>
 #include <limits>
 
@@ -63,6 +64,12 @@ public:
 	bool Close();
 
 	ov::String GenerateUfrag();
+
+	// Issues the ufrag of an offer OME sends, so binding requests that arrive before the answer are answered
+	// AddSession() takes it over when the answer arrives
+	ov::String ReserveOfferUfrag(const ov::String &local_pwd);
+	// No-op if the session already took the ufrag over or it was released
+	void ReleaseOfferUfrag(const ov::String &local_ufrag);
 
 	// Issue unique session id
 	session_id_t IssueUniqueSessionId();
@@ -155,19 +162,70 @@ private:
 		ov::String _transaction_id;
 		std::shared_ptr<IceSession> _ice_session;
 		std::chrono::time_point<std::chrono::steady_clock>	_requested_time;
+
+		// What it takes to send the request again until it is answered, no data if it is not sent again
+		std::shared_ptr<ov::Socket> _remote;
+		ov::SocketAddressPair _address_pair;
+		GateInfo _gate_info;
+		std::shared_ptr<const ov::Data> _data;
+		// Whether CheckTimedOut() already found it unanswered
+		bool _seen_unanswered = false;
+	};
+
+	// A binding request OME sends once the answer arrives, on the path the peer's
+	// request came in before the answer
+	struct DeferredBindingRequest
+	{
+		std::shared_ptr<ov::Socket> remote;
+		GateInfo gate_info;
+		// Verified against the answer once it arrives
+		ov::String peer_ufrag;
+	};
+
+	// A peer checks at most this many candidate pairs by default (RFC 8445 6.1.2.5),
+	// so an offer keeps no more paths than this until its answer arrives
+	static constexpr size_t kMaxDeferredBindingRequests = 100;
+
+	// The ufrag of an offer OME sent, reserved until the answer arrives
+	struct ReservedUfrag
+	{
+		ov::String local_pwd;
+		// Holds at most kMaxDeferredBindingRequests
+		std::map<ov::SocketAddressPair, DeferredBindingRequest> deferred_binding_requests;
+		// Whether reaching the limit was logged
+		bool limit_reported = false;
+	};
+
+	enum class DeferResult : uint8_t
+	{
+		Deferred,
+		// The answer arrived in the meantime
+		NotReserved,
+		// The offer already holds kMaxDeferredBindingRequests paths
+		Full
 	};
 
 	std::atomic<session_id_t> _session_id_counter;
 
 	// Add IceSession
 	bool AddIceSession(session_id_t session_id, const std::shared_ptr<IceSession> &ice_session);
-	bool AddIceSession(const ov::String &local_ufrag, const std::shared_ptr<IceSession> &ice_session);
+	// Also ends the reservation of local_ufrag, adds the paths of the session's peer to the session,
+	// and hands all deferred binding requests to the caller
+	bool AddIceSession(const ov::String &local_ufrag, const std::shared_ptr<IceSession> &ice_session, std::map<ov::SocketAddressPair, DeferredBindingRequest> *deferred_binding_requests);
 	bool AddIceSession(const ov::SocketAddressPair &pair, const std::shared_ptr<IceSession> &ice_session);
 
 	// Get IceSession
 	std::shared_ptr<IceSession> FindIceSession(session_id_t session_id);
 	std::shared_ptr<IceSession> FindIceSession(const ov::String &local_ufrag);
 	std::shared_ptr<IceSession> FindIceSession(const ov::SocketAddressPair &pair);
+	// If there is no session for local_ufrag yet, fills the password reserved with it
+	std::shared_ptr<IceSession> FindIceSessionOrReservedUfrag(const ov::String &local_ufrag, std::optional<ov::String> *reserved_pwd);
+
+	// Caller holds _ice_sessions_with_ufrag_lock
+	bool IsUfragInUse(const ov::String &ufrag) const;
+	DeferResult DeferBindingRequest(const ov::String &local_ufrag, const ov::SocketAddressPair &address_pair, const DeferredBindingRequest &request);
+	// Closes the TCP connection of a path dropped before it reached a session, unless an offer or a session still uses it
+	void CloseUnusedTcpSocket(const std::shared_ptr<ov::Socket> &remote);
 
 	bool StoreIceSessionWithTransactionId(const std::shared_ptr<IceSession> &ice_session, const ov::String &transaction_id);
 	std::shared_ptr<IceSession> FindIceSessionWithTransactionId(const ov::String &transaction_id);
@@ -185,7 +243,10 @@ private:
 									 GateInfo &packet_info, const std::shared_ptr<const ov::Data> &data);
 
 	bool SendStunMessage(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, StunMessage &message, const std::shared_ptr<const ov::Data> &integrity_key = nullptr);
+	// Frames a serialized STUN message for the gate it goes through and sends it
+	bool SendStunData(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, const GateInfo &packet_info, const std::shared_ptr<const ov::Data> &source_data);
 	bool SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const std::shared_ptr<IceSession> &info);
+	bool SendStunBindingResponse(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &request, const ov::String &local_pwd);
 
 	const std::shared_ptr<const ov::Data> CreateDataIndication(const ov::SocketAddress &peer_address, const std::shared_ptr<const ov::Data> &data);
 	const std::shared_ptr<const ov::Data> CreateChannelDataMessage(uint16_t channel_number, const std::shared_ptr<const ov::Data> &data);
@@ -199,6 +260,9 @@ private:
 	// [Server] <-- 4. Binding Success Response --- [Player]
 	// (State: Connected)
 	bool OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
+	// False if the answer arrived in the meantime
+	bool OnReceivedStunBindingRequestBeforeAnswer(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message,
+												  const ov::String &local_ufrag, const ov::String &peer_ufrag, const ov::String &local_pwd);
 	bool OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
 	bool OnReceivedTurnAllocateRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
 	bool OnReceivedTurnRefreshRequest(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &packet_info, const StunMessage &message);
@@ -226,7 +290,11 @@ private:
 	// key: offer ufrag
 	std::shared_mutex _ice_sessions_with_ufrag_lock;
 	std::map<const ov::String, std::shared_ptr<IceSession>> _ice_sessions_with_ufrag;
-	
+	// Ufrags reserved for offers until the answer arrives. Shares the lock above so a
+	// ufrag is always found, either reserved or as its session
+	// key: offer ufrag
+	std::map<ov::String, ReservedUfrag> _reserved_ufrags;
+
 	// Find IceSession with connected CandidatePair, used when receiving TURN channel data and application data
 	// key: SocketAddressPair
 	std::shared_mutex _ice_sessions_with_address_pair_lock;

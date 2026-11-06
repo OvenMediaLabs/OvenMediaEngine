@@ -79,6 +79,10 @@ namespace pvd
 						   const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name,
 						   const std::shared_ptr<const SessionDescription> &offer_sdp,
 						   const std::shared_ptr<const SessionDescription> &answer_sdp) override;
+
+		void OnNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session,
+								   const std::shared_ptr<const SessionDescription> &offer_sdp,
+								   NegotiationResult result) override;
 		//--------------------------------------------------------------------
 
 		//--------------------------------------------------------------------

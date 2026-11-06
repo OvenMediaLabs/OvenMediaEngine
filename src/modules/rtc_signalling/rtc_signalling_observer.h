@@ -49,4 +49,20 @@ public:
 							   const info::VHostAppName &vhost_app_name, const ov::String &host_name, const ov::String &stream_name,
 							   const std::shared_ptr<const SessionDescription> &offer_sdp,
 							   const std::shared_ptr<const SessionDescription> &answer_sdp) = 0;
+
+	enum class NegotiationResult
+	{
+		// The answer was accepted
+		Completed,
+		// The answer was rejected, or the offer could not be sent
+		Failed,
+		// The offer ended without an answer: the client stopped, left, or requested another offer
+		Abandoned
+	};
+
+	// Called when the offer stops waiting for its answer
+	// May be called more than once for the same offer, always with the same result
+	virtual void OnNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session,
+									   const std::shared_ptr<const SessionDescription> &offer_sdp,
+									   NegotiationResult result) {}
 };
