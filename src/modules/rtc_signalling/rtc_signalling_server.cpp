@@ -716,6 +716,14 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 
 	std::shared_ptr<RtcPeerInfo> host_peer = nullptr;
 
+	// A new offer replaces the previous one on this connection. Its negotiation or session ends first,
+	// since stopping the session relies on the routing this request overwrites
+	if (info->answer_received == false)
+	{
+		NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
+	}
+	StopAnsweredSession(ws_session, info);
+
 	std::shared_ptr<RtcPeerInfo> peer_info = _p2p_manager.CreatePeerInfo(info->id, ws_session);
 
 	if (peer_info == nullptr)
@@ -853,13 +861,6 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 					}
 				}
 
-				// The previous offer on this connection is replaced
-				if (info->answer_received == false)
-				{
-					NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
-				}
-				// A stop finds the session only by the current offer, so the previous offer's session ends now
-				StopAnsweredSession(ws_session, info);
 				info->offer_sdp		  = sdp;
 				info->answer_received = false;
 
