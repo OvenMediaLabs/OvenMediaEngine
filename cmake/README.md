@@ -7,10 +7,10 @@
 
 ## Quick Start
 
-### Debug Build (default)
+### Debug Build
 
 ```bash
-cmake -B build/Debug -G Ninja -DOME_DEP_PREFIX=/opt/ovenmediaengine_getroot
+cmake -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DOME_DEP_PREFIX=/opt/ovenmediaengine_getroot
 cmake --build build/Debug
 ```
 
@@ -30,7 +30,7 @@ cmake --build build/Release
 
 | Option                            | Default                | Description                                                                                                                                                                                                                                                                                            |
 | --------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CMAKE_BUILD_TYPE`                | `Debug`                | `Debug` / `Release`                                                                                                                                                                                                                                                                                    |
+| `CMAKE_BUILD_TYPE`                | `Release`              | `Debug` / `Release`                                                                                                                                                                                                                                                                                    |
 | `OME_USE_CLANG`                   | ON                     | Use Clang/Clang++ compiler. Set to OFF to use the system default (GCC)                                                                                                                                                                                                                                 |
 | `OME_DEP_PREFIX`                  | `/opt/ovenmediaengine` | Installation prefix for external dependencies                                                                                                                                                                                                                                                          |
 | `OME_SANITIZE_THREAD`             | OFF                    | Enable ThreadSanitizer (TSan). Debug builds only                                                                                                                                                                                                                                                       |
