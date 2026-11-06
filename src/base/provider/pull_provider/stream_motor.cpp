@@ -115,7 +115,7 @@ namespace pvd
 		{
 			ov::LockGuard lock(_streams_map_guard);
 
-			// A resumed stream is added again while it is still here, and may have reconnected with another socket
+			// A resumed stream may still be here, possibly with another socket
 			RemoveEntry(stream->GetId());
 
 			if (event_socket != nullptr)

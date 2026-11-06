@@ -139,7 +139,8 @@ namespace ome_test
 		int _fd;
 	};
 
-	// Moves `fd` to `number`, and returns the descriptor at `number`, or at another number if `number` was taken.
+	// Moves `fd` to `number`, and returns the descriptor at `number`,
+	// or at another number if `number` was taken (invalid on failure).
 	// `F_DUPFD` takes the number only while it is free, where `dup2()` would close a file another thread opened there.
 	inline UniqueFd TakeNumber(UniqueFd fd, int number)
 	{
@@ -201,7 +202,7 @@ namespace ome_test
 			}
 		}
 
-	private:
+	protected:
 		std::shared_ptr<ov::SocketPool> _pool;
 	};
 

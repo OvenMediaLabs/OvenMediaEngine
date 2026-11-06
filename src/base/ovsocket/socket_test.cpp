@@ -827,8 +827,7 @@ class SocketTestBase : public ome_test::PoolTest
 protected:
 	void InitPool(const char *name, ov::SocketType type)
 	{
-		_pool = CreatePool(name, type);
-		ASSERT_NE(_pool, nullptr);
+		ASSERT_NE(CreatePool(name, type), nullptr);
 	}
 
 	void TearDown() override
@@ -841,7 +840,6 @@ protected:
 		PoolTest::TearDown();
 	}
 
-	std::shared_ptr<ov::SocketPool> _pool;
 	std::shared_ptr<ov::Socket> _client;
 };
 

@@ -6,7 +6,6 @@
 //  Copyright (c) 2026 OvenMediaLabs. All rights reserved.
 //
 //==============================================================================
-#include <arpa/inet.h>
 #include <base/ovsocket/ovsocket.h>
 #include <base/ovsocket/socket_test_helpers.h>
 #include <base/provider/pull_provider/stream.h>
@@ -14,15 +13,11 @@
 #include <base/provider/pull_provider/stream_props.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
-#include <netinet/in.h>
 #include <sys/epoll.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <set>
@@ -37,7 +32,6 @@ namespace
 	using ome_test::SendDatagram;
 	using ome_test::TakeNumber;
 	using ome_test::UniqueFd;
-	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
 	using ome_test::WaitUntilReadable;
 
