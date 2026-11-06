@@ -15,6 +15,7 @@
 
 namespace
 {
+	// Leave room for a stalled call and successful reconnect before the 10-second origin key TTL expires.
 	constexpr timeval kRedisTimeout{3, 0};
 }
 
@@ -303,14 +304,13 @@ bool OriginMapClient::ConnectRedis()
 		return true;
 	}
 
-	redisFree(_redis_context);
+	DisconnectRedis();
 	_redis_context = redisConnectWithTimeout(_redis_ip.CStr(), _redis_port, kRedisTimeout);
 	if (_redis_context == nullptr || _redis_context->err)
 	{
 		logte("Failed to connect to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port,
 			  _redis_context != nullptr ? _redis_context->errstr : "cannot allocate context");
-		redisFree(_redis_context);
-		_redis_context = nullptr;
+		DisconnectRedis();
 		return false;
 	}
 
@@ -318,8 +318,7 @@ bool OriginMapClient::ConnectRedis()
 	if (redisSetTimeout(_redis_context, kRedisTimeout) != REDIS_OK)
 	{
 		logte("Failed to set redis command timeout: %s", _redis_context->errstr);
-		redisFree(_redis_context);
-		_redis_context = nullptr;
+		DisconnectRedis();
 		return false;
 	}
 
@@ -331,14 +330,11 @@ bool OriginMapClient::ConnectRedis()
 		{
 			logte("Failed to auth to redis server. ip: %s, port: %d, err: %s", _redis_ip.CStr(), _redis_port,
 				  reply != nullptr && reply->str != nullptr ? reply->str : _redis_context->errstr);
-		}
-		freeReplyObject(reply);
-		if (authenticated == false)
-		{
-			redisFree(_redis_context);
-			_redis_context = nullptr;
+			freeReplyObject(reply);
+			DisconnectRedis();
 			return false;
 		}
+		freeReplyObject(reply);
 	}
 
 	return true;
@@ -352,9 +348,19 @@ bool OriginMapClient::CheckConnection()
 	}
 
 	auto *reply = static_cast<redisReply *>(redisCommand(_redis_context, "PING"));
-	const bool connected = reply != nullptr && reply->type == REDIS_REPLY_STATUS && reply->str != nullptr && std::strcmp(reply->str, "PONG") == 0;
+	if (reply == nullptr)
+	{
+		return false;
+	}
+
 	freeReplyObject(reply);
-	return connected;
+	return true;
+}
+
+void OriginMapClient::DisconnectRedis()
+{
+	redisFree(_redis_context);
+	_redis_context = nullptr;
 }
 
 std::tuple<int, ov::String> OriginMapClient::CommandToRedis(const char *format, ...)
@@ -368,14 +374,13 @@ std::tuple<int, ov::String> OriginMapClient::CommandToRedis(const char *format, 
 
 	va_list args;
 	va_start(args, format);
-	redisReply *reply = (redisReply *)redisvCommand(_redis_context, format, args);
+	auto *reply = static_cast<redisReply *>(redisvCommand(_redis_context, format, args));
 	va_end(args);
 
 	if (reply == nullptr)
 	{
 		logte("Failed to execute command to redis : %s:%d (err:%s)", _redis_ip.CStr(), _redis_port, _redis_context->errstr);
-		redisFree(_redis_context);
-		_redis_context = nullptr;
+		DisconnectRedis();
 		return { REDIS_ERR, "Failed to execute command to redis" };
 	}
 	if (reply->type == REDIS_REPLY_ERROR)

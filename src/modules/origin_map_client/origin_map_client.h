@@ -41,6 +41,7 @@ private:
 
 	bool CheckConnection() OV_REQUIRES(_redis_context_mutex);
 	bool ConnectRedis() OV_REQUIRES(_redis_context_mutex);
+	void DisconnectRedis() OV_REQUIRES(_redis_context_mutex);
 
 	bool NofifyStreamsAlive();
 	bool RetryRegister();

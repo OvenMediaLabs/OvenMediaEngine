@@ -17,12 +17,15 @@ namespace
 	using namespace std::chrono_literals;
 	const std::string kOrigin = "ovt://127.0.0.1:9000/app/stream";
 
-	// Answer only AUTH, PING and GET. Leave one command unanswered while keeping
-	// its TCP connection open; close it after six seconds so a regression cannot hang.
+	// Answer only AUTH, PING and GET. A selected command can remain unanswered;
+	// close its connection after six seconds so a timeout regression cannot hang.
 	class RedisPeer
 	{
 	public:
-		explicit RedisPeer(const char *stall) : _stall(stall) {}
+		explicit RedisPeer(const char *stalled_command, const char *error_reply = "")
+			: _stalled_command(stalled_command), _error_reply(error_reply)
+		{
+		}
 
 		~RedisPeer()
 		{
@@ -57,13 +60,32 @@ namespace
 				return false;
 			}
 			_port = ntohs(address.sin_port);
-			_thread = std::thread([this] { Run(); });
+			_thread = std::thread([this]
+			{
+				Run();
+			});
 			return true;
 		}
 
-		ov::String Host() const { return ov::String::FormatString("127.0.0.1:%u", _port); }
-		bool Stalled() const { return _stalled; }
-		int Connections() const { return _connections; }
+		ov::String Host() const
+		{
+			return ov::String::FormatString("127.0.0.1:%u", _port);
+		}
+
+		bool Stalled() const
+		{
+			return _stalled;
+		}
+
+		int Connections() const
+		{
+			return _connections;
+		}
+
+		void ClearError()
+		{
+			_reply_with_error = false;
+		}
 
 	private:
 		void Run()
@@ -116,7 +138,7 @@ namespace
 				ASSERT_GT(request->elements, 0u);
 				ASSERT_EQ(request->element[0]->type, REDIS_REPLY_STRING);
 				const std::string command = request->element[0]->str;
-				if (command == _stall && _stalled == false)
+				if (command == _stalled_command && _stalled == false)
 				{
 					_stalled = true;
 					// A timed-out client closes this connection before reconnecting. Poll
@@ -126,7 +148,11 @@ namespace
 					return;
 				}
 				std::string reply;
-				if (command == "AUTH")
+				if (_reply_with_error && _error_reply.empty() == false && command != "AUTH")
+				{
+					reply = _error_reply;
+				}
+				else if (command == "AUTH")
 				{
 					reply = "+OK\r\n";
 				}
@@ -143,28 +169,23 @@ namespace
 			}
 		}
 
-		const std::string _stall;
+		const std::string _stalled_command;
+		const std::string _error_reply;
 		int _listener = -1;
 		uint16_t _port = 0;
 		std::atomic<bool> _stop{false};
 		std::atomic<bool> _stalled{false};
+		std::atomic<bool> _reply_with_error{true};
 		std::atomic<int> _connections{0};
 		std::thread _thread;
 	};
 
-	class OriginMapClientTimeout : public testing::TestWithParam<const char *> {};
-
-	TEST_P(OriginMapClientTimeout, RecoversAfterAnUnansweredCommand)
+	TEST(OriginMapClientTimeout, RecoversAfterStalledAuth)
 	{
-		RedisPeer peer(GetParam());
+		RedisPeer peer("AUTH");
 		ASSERT_TRUE(peer.Start());
-		OriginMapClient client(peer.Host(), std::string(GetParam()) == "AUTH" ? "password" : "");
+		OriginMapClient client(peer.Host(), "password");
 		ov::String origin;
-		const bool ping = std::string(GetParam()) == "PING";
-		if (ping)
-		{
-			ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
-		}
 
 		const auto started = std::chrono::steady_clock::now();
 		const auto result = client.GetOrigin("app/stream", origin);
@@ -173,12 +194,83 @@ namespace
 		// Leave scheduling margin around the three-second timeout, but fail before
 		// the peer's six-second fallback close can release an unbounded operation.
 		EXPECT_LT(elapsed, 5s);
-		EXPECT_EQ(result, ping ? CommonErrorCode::SUCCESS : CommonErrorCode::ERROR);
+		EXPECT_EQ(result, CommonErrorCode::ERROR);
 
 		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
 		EXPECT_EQ(origin, kOrigin.c_str());
 		EXPECT_EQ(peer.Connections(), 2);
 	}
 
-	INSTANTIATE_TEST_SUITE_P(Redis, OriginMapClientTimeout, testing::Values("AUTH", "PING", "GET"));
+	TEST(OriginMapClientTimeout, RecoversAfterStalledPing)
+	{
+		RedisPeer peer("PING");
+		ASSERT_TRUE(peer.Start());
+		OriginMapClient client(peer.Host(), "");
+		ov::String origin;
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
+
+		const auto started = std::chrono::steady_clock::now();
+		const auto result = client.GetOrigin("app/stream", origin);
+		const auto elapsed = std::chrono::steady_clock::now() - started;
+		ASSERT_TRUE(peer.Stalled());
+		EXPECT_LT(elapsed, 5s);
+		EXPECT_EQ(result, CommonErrorCode::SUCCESS);
+		EXPECT_EQ(origin, kOrigin.c_str());
+		EXPECT_EQ(peer.Connections(), 2);
+
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
+		EXPECT_EQ(origin, kOrigin.c_str());
+		EXPECT_EQ(peer.Connections(), 2);
+	}
+
+	TEST(OriginMapClientTimeout, RecoversAfterStalledGet)
+	{
+		RedisPeer peer("GET");
+		ASSERT_TRUE(peer.Start());
+		OriginMapClient client(peer.Host(), "");
+		ov::String origin;
+
+		const auto started = std::chrono::steady_clock::now();
+		const auto result = client.GetOrigin("app/stream", origin);
+		const auto elapsed = std::chrono::steady_clock::now() - started;
+		ASSERT_TRUE(peer.Stalled());
+		EXPECT_LT(elapsed, 5s);
+		EXPECT_EQ(result, CommonErrorCode::ERROR);
+
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
+		EXPECT_EQ(origin, kOrigin.c_str());
+		EXPECT_EQ(peer.Connections(), 2);
+	}
+
+	TEST(OriginMapClientConnection, KeepsConnectionWhileRedisIsLoading)
+	{
+		RedisPeer peer("", "-LOADING Redis is loading the dataset in memory\r\n");
+		ASSERT_TRUE(peer.Start());
+		OriginMapClient client(peer.Host(), "");
+		ov::String origin;
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::ERROR);
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::ERROR);
+		EXPECT_EQ(peer.Connections(), 1);
+
+		peer.ClearError();
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
+		EXPECT_EQ(origin, kOrigin.c_str());
+		EXPECT_EQ(peer.Connections(), 1);
+	}
+
+	TEST(OriginMapClientConnection, KeepsConnectionWhileRedisIsBusy)
+	{
+		RedisPeer peer("", "-BUSY Redis is busy running a script\r\n");
+		ASSERT_TRUE(peer.Start());
+		OriginMapClient client(peer.Host(), "");
+		ov::String origin;
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::ERROR);
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::ERROR);
+		EXPECT_EQ(peer.Connections(), 1);
+
+		peer.ClearError();
+		ASSERT_EQ(client.GetOrigin("app/stream", origin), CommonErrorCode::SUCCESS);
+		EXPECT_EQ(origin, kOrigin.c_str());
+		EXPECT_EQ(peer.Connections(), 1);
+	}
 }
