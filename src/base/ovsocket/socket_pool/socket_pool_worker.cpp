@@ -97,19 +97,24 @@ namespace ov
 		return true;
 	}
 
+	void SocketPoolWorker::RequestStop()
+	{
+		_stop_epoll_thread = true;
+	}
+
 	bool SocketPoolWorker::Uninitialize()
 	{
-		if (_stop_epoll_thread.exchange(true))
+		RequestStop();
+
+		// The thread stays joinable after `RequestStop()` until it is joined here
+		if (_epoll_thread.joinable() == false)
 		{
 			logae("Worker is not running (%s)", StringFromSocketType(GetType()));
 			OV_ASSERT2(false);
 			return false;
 		}
 
-		if (_epoll_thread.joinable())
-		{
-			_epoll_thread.join();
-		}
+		_epoll_thread.join();
 
 		{
 			LockGuard lock(_sockets_to_dispatch_mutex);

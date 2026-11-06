@@ -36,6 +36,9 @@ namespace ov
 		~SocketPoolWorker() override;
 
 		bool Initialize();
+		// Asks the worker thread to exit after its current epoll wait, without joining it.
+		// Calling it on every worker before `Uninitialize()` lets their waits overlap instead of adding up.
+		void RequestStop();
 		bool Uninitialize();
 
 		int GetNativeHandle() const;

@@ -76,11 +76,12 @@ namespace ov
 						}
 					}
 
-					for (auto worker : release_worker_list)
+					for (auto &worker : release_worker_list)
 					{
 						logat("Releasing idle worker: %s", worker->ToString().CStr());
-						worker->Uninitialize();
 					}
+
+					UninitializeWorkers(release_worker_list);
 
 					return ov::DelayQueueAction::Repeat;
 				},
@@ -149,7 +150,12 @@ namespace ov
 
 	bool SocketPool::UninitializeWorkers(const std::vector<std::shared_ptr<SocketPoolWorker>> &worker_list)
 	{
-		for (auto worker : worker_list)
+		for (auto &worker : worker_list)
+		{
+			worker->RequestStop();
+		}
+
+		for (auto &worker : worker_list)
 		{
 			worker->Uninitialize();
 		}
