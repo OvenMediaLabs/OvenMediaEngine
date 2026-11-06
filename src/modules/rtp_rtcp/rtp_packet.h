@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include <memory>
 #include <base/ovlibrary/ovlibrary.h>
@@ -112,9 +113,6 @@ public:
 	std::shared_ptr<ov::Data> GetData() const;
 	size_t GetDataLength() const;
 
-	// Created time
-	std::chrono::system_clock::time_point GetCreatedTime();
-
 	// Dump print
 	ov::String	Dump();
 
@@ -170,18 +168,22 @@ protected:
 	size_t		_extension_size;
 	std::map<uint8_t, ov::Data> _extensions;
 
-	// extension ID : data offset
 	RtpHeaderExtension::HeaderType _extension_type;
-	std::map<uint8_t, off_t> _extension_buffer_offset;
+	struct ExtensionOffset
+	{
+		uint8_t id = 0;
+		uint16_t offset = 0;
+	};
+	// Extension id : data offset. The first 14 are kept inline, the rest in the overflow
+	std::array<ExtensionOffset, 14> _extension_buffer_offset{};
+	uint8_t _extension_buffer_offset_count = 0;
+	std::vector<ExtensionOffset> _extension_buffer_offset_overflow;
 
 	bool		_is_available = false;
 
 	// std::vector<uint8_t>	_buffer;
 	uint8_t *					_buffer = nullptr;
 	std::shared_ptr<ov::Data>	_data = nullptr;
-
-	// created time
-	std::chrono::system_clock::time_point _created_time;
 
 	// Extensions for OME specific
 	uint32_t	_track_id = 0;

@@ -21,8 +21,8 @@ public:
 	bool	Release();
 	bool	SetKey(srtp_ssrc_type_t type, uint64_t crypto_suite, std::shared_ptr<ov::Data> key);
 
-	bool	ProtectRtp(std::shared_ptr<ov::Data> data);
-    bool	ProtectRtcp(std::shared_ptr<ov::Data> data);
+	bool	ProtectRtp(const std::shared_ptr<ov::Data> &data);
+    bool	ProtectRtcp(const std::shared_ptr<ov::Data> &data);
 	bool	UnprotectRtp(const std::shared_ptr<ov::Data> &data);
     bool	UnprotectRtcp(const std::shared_ptr<ov::Data> &data);
 

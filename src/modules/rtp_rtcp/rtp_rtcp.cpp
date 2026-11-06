@@ -139,8 +139,7 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 		auto it = _rtcp_sr_generators.find(rtp_packet->Ssrc());
 		if(it != _rtcp_sr_generators.end())
 		{
-			auto rtcp_sr_generator = it->second;
-			rtcp_sr_generator->AddRTPPacketInfo(rtp_packet);
+			it->second->AddRTPPacketInfo(rtp_packet);
 		}
 
 		if(_rtcp_sent_count == 0 || _rtcp_send_stop_watch.Elapsed() > SDES_CYCLE_MS)
@@ -183,7 +182,6 @@ bool RtpRtcp::SendRtpPacket(const std::shared_ptr<RtpPacket> &rtp_packet)
 	}
 
 	// Send RTP
-	SetLastSentRtpPacket(rtp_packet);
 	return SendDataToNextNode(NodeType::Rtp, rtp_packet->GetData());
 }
 
@@ -706,12 +704,6 @@ std::shared_ptr<RtcpPacket> RtpRtcp::GenerateTransportCcFeedbackIfNeeded(const s
 	return nullptr;
 }
 
-void RtpRtcp::SetLastSentRtpPacket(const std::shared_ptr<RtpPacket> &packet)
-{
-	std::lock_guard<std::shared_mutex> lock(_last_sent_packet_lock);
-	_last_sent_rtp_packet = packet;
-}
-
 void RtpRtcp::SetLastSentRtcpPacket(const std::shared_ptr<RtcpPacket> &packet)
 {
 	std::lock_guard<std::shared_mutex> lock(_last_sent_packet_lock);
@@ -1149,12 +1141,6 @@ bool RtpRtcp::OnRtcpReceived(NodeType from_node, const std::shared_ptr<const ov:
 	}
 	
 	return true;
-}
-
-std::shared_ptr<RtpPacket> RtpRtcp::GetLastSentRtpPacket()
-{
-	std::shared_lock<std::shared_mutex> lock(_last_sent_packet_lock);
-	return _last_sent_rtp_packet;
 }
 
 std::shared_ptr<RtcpPacket> RtpRtcp::GetLastSentRtcpPacket()

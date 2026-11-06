@@ -1077,9 +1077,9 @@ std::shared_ptr<RtpPacketizer> RtcStream::GetPacketizer(uint32_t id)
 	return it->second;
 }
 
-ov::String RtcStream::GetRtpHistoryKey(uint32_t track_id, uint8_t payload_type)
+uint64_t RtcStream::GetRtpHistoryKey(uint32_t track_id, uint8_t payload_type)
 {
-	return ov::String::FormatString("%u:%u", track_id, payload_type);
+	return (static_cast<uint64_t>(track_id) << 8) | static_cast<uint64_t>(payload_type);
 }
 
 void RtcStream::AddRtpHistory(const std::shared_ptr<const MediaTrack> &track)
@@ -1108,13 +1108,13 @@ void RtcStream::AddRtpHistory(const std::shared_ptr<const MediaTrack> &track)
 std::shared_ptr<RtpHistory> RtcStream::GetHistory(uint32_t track_id, uint8_t origin_payload_type)
 {
 	auto key = GetRtpHistoryKey(track_id, origin_payload_type);
-
-	if (_rtp_history_map.find(key) == _rtp_history_map.end())
+	auto it = _rtp_history_map.find(key);
+	if (it == _rtp_history_map.end())
 	{
 		return nullptr;
 	}
 
-	return _rtp_history_map[key];
+	return it->second;
 }
 
 std::shared_ptr<RtxRtpPacket> RtcStream::GetRtxRtpPacket(uint32_t track_id, uint8_t origin_payload_type, uint16_t origin_sequence_number)

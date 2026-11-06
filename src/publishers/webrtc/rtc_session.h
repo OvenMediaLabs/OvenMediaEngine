@@ -111,7 +111,7 @@ private:
 	bool ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info);
 	bool ProcessTransportCc(const std::shared_ptr<RtcpInfo> &rtcp_info);
 	bool ProcessRemb(const std::shared_ptr<RtcpInfo> &rtcp_info);
-	bool IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_packet);
+	bool IsSelectedPacket(const RtpPacket &rtp_packet);
 
 	uint8_t GetOriginPayloadTypeFromRedRtpPacket(const std::shared_ptr<const RedRtpPacket> &red_rtp_packet);
 
@@ -184,7 +184,6 @@ private:
 		bool _marker = false;
 
 		uint32_t _sent_bytes = 0;
-		std::chrono::system_clock::time_point _sent_time;
 
 		ov::String ToString()
 		{
@@ -195,7 +194,7 @@ private:
 	// video sequence number % MAX_RTP_RECORDS : RtpSentRecord	
 	std::unordered_map<uint16_t, std::shared_ptr<RtpSentLog>> _video_rtp_sent_record_map;
 	std::shared_mutex _rtp_record_map_lock;
-	bool RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number);
+	bool RecordRtpSent(const RtpPacket &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number);
 	std::shared_ptr<RtpSentLog> TraceRtpSentByVideoSeqNo(uint16_t sequence_number);
 	/////////////////////////////// For NACK
 

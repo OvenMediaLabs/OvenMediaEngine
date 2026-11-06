@@ -48,14 +48,14 @@ void RtcBandwidthEstimator::Signal(RtcBandwidthEstimatorSignal::State state)
 	_observer->OnSignal(signal);
 }
 
-void RtcBandwidthEstimator::OnRtpSent(uint16_t wide_seq_no, const std::shared_ptr<const RtpPacket> &rtp_packet)
+void RtcBandwidthEstimator::OnRtpSent(uint16_t wide_seq_no, const RtpPacket &rtp_packet)
 {
 	std::lock_guard<std::shared_mutex> lock(_rtp_history_guard);
 	_rtp_history[wide_seq_no % kMaxRtpPacketHistory] = RtpHistory{
 		.wide_sequence_number = wide_seq_no,
-		.payload_type = rtp_packet->PayloadType(),
-		.timestamp = rtp_packet->Timestamp(),
-		.packet_size = rtp_packet->GetDataLength(),
+		.payload_type = rtp_packet.PayloadType(),
+		.timestamp = rtp_packet.Timestamp(),
+		.packet_size = rtp_packet.GetDataLength(),
 		.sent_time = std::chrono::steady_clock::now()
 	};
 }

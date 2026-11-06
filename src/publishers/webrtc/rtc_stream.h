@@ -92,7 +92,7 @@ private:
 	void AddPacketizer(const std::shared_ptr<const MediaTrack> &track);
 	std::shared_ptr<RtpPacketizer> GetPacketizer(uint32_t track_id);
 
-	ov::String GetRtpHistoryKey(uint32_t track_id, uint8_t payload_type);
+	uint64_t GetRtpHistoryKey(uint32_t track_id, uint8_t payload_type);
 	void AddRtpHistory(const std::shared_ptr<const MediaTrack> &track);
 	std::shared_ptr<RtpHistory> GetHistory(uint32_t track_id, uint8_t origin_payload_type);
 
@@ -111,8 +111,8 @@ private:
 	std::shared_mutex _packetizers_lock;
 	std::map<uint32_t, std::shared_ptr<RtpPacketizer>> _packetizers;
 
-	// RtpHistoryKey string, RtpHistory
-	std::map<ov::String, std::shared_ptr<RtpHistory>> _rtp_history_map;
+	// RtpHistoryKey, RtpHistory
+	std::map<uint64_t, std::shared_ptr<RtpHistory>> _rtp_history_map;
 
 	uint32_t _video_ssrc		= 0;
 	uint32_t _video_rtx_ssrc	= 0;

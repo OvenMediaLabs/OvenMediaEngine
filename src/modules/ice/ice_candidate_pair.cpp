@@ -13,7 +13,7 @@ IceCandidatePair::IceCandidatePair(const ov::SocketAddressPair &pair, std::share
 {
 }
 
-std::shared_ptr<ov::Socket> IceCandidatePair::GetSocket() const
+const std::shared_ptr<ov::Socket> &IceCandidatePair::GetSocket() const
 {
     return _socket;
 }
@@ -35,7 +35,7 @@ bool IceCandidatePair::CompareExchangeState(IceConnectionState expected, IceConn
 }
 
 // Socket Address Pair
-ov::SocketAddressPair IceCandidatePair::GetAddressPair() const
+const ov::SocketAddressPair &IceCandidatePair::GetAddressPair() const
 {
     return _socket_address_pair;
 }

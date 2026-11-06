@@ -86,7 +86,7 @@ bool SrtpAdapter::SetKey(srtp_ssrc_type_t type, uint64_t crypto_suite, std::shar
 	return true;
 }
 
-bool SrtpAdapter::ProtectRtp(std::shared_ptr<ov::Data> data)
+bool SrtpAdapter::ProtectRtp(const std::shared_ptr<ov::Data> &data)
 {
 	ov::LockGuard lock(_session_lock);
 
@@ -123,7 +123,7 @@ bool SrtpAdapter::ProtectRtp(std::shared_ptr<ov::Data> data)
 	return true;
 }
 
-bool SrtpAdapter::ProtectRtcp(std::shared_ptr<ov::Data> data)
+bool SrtpAdapter::ProtectRtcp(const std::shared_ptr<ov::Data> &data)
 {
 	ov::LockGuard lock(_session_lock);
 

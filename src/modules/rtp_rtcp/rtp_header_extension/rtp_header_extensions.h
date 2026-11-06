@@ -27,7 +27,7 @@ public:
 		return _total_data_length;
 	}
 
-	std::map<uint8_t, std::shared_ptr<RtpHeaderExtension>> GetMap() const
+	const std::map<uint8_t, std::shared_ptr<RtpHeaderExtension>> &GetMap() const
 	{
 		return _extension_map;
 	}
