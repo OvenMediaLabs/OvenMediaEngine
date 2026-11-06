@@ -16,13 +16,17 @@
 #include <gtest/gtest.h>
 
 #include <modules/ffmpeg/writer.h>
+#include <modules/bitstream/aac/audio_specific_config.h>
+#include <modules/bitstream/h264/h264_decoder_configuration_record.h>
 
 #include <unistd.h>
 
 #include <atomic>
 #include <cstdio>
 #include <filesystem>
+#include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -280,6 +284,163 @@ TEST(FfmpegWriter, SendPacketBeforeStartIsDropped)
 	// Not started yet: SendPacket must not be treated as an error (returns true, drops).
 	EXPECT_TRUE(writer->SendPacket(MakeVideoPacket(1, 0, 0, true)));
 }
+
+// Exercise the actual muxer: SendPacket returns true even when it drops a packet.
+// FILE recording and push publishing share the same timestamp normalization.
+using TimestampScenario = std::tuple<std::string, int64_t>;
+class FfmpegWriterTimestamps
+	: public testing::TestWithParam<std::tuple<std::string, ffmpeg::Writer::TimestampMode, TimestampScenario>> {};
+
+TEST_P(FfmpegWriterTimestamps, PreservesOpeningKeyframeAndAudioOffsets)
+{
+	// A decodable 16x16 black H.264 IDR and AAC stereo silence. Generated with:
+	// ffmpeg -f lavfi -i color=black:size=16x16:rate=30 -frames:v 1 -c:v libx264 -bf 2 -f h264 frame.h264
+	// ffmpeg -f lavfi -i anullsrc=r=48000:cl=stereo -frames:a 1 -c:a aac -f adts silence.aac
+	// Keep SPS/PPS and IDR (without SEI), and the final AAC frame without ADTS.
+	static const uint8_t sps[] = {0x67, 0x64, 0x00, 0x0a, 0xac, 0xd9, 0x5e, 0xc0,
+		0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0xf0, 0x3c, 0x48, 0x96, 0x58};
+	static const uint8_t pps[] = {0x68, 0xeb, 0xe3, 0xcb, 0x22, 0xc0};
+	static const uint8_t idr[] = {0x00, 0x00, 0x00, 0x0f, 0x65, 0x88, 0x84, 0x00,
+		0x27, 0xff, 0xfe, 0xf5, 0xb1, 0x7c, 0x0a, 0x6a, 0xe9, 0xeb, 0x81};
+	static const uint8_t asc[] = {0x11, 0x90};
+	static const uint8_t silence[] = {0x21, 0x10, 0x04, 0x60, 0x8c, 0x1c};
+
+	const auto &[format, mode, scenario] = GetParam();
+	const auto &[layout, composition_offset] = scenario;
+	const bool has_video = layout != "audio_only";
+	const bool has_audio = layout != "video_only";
+	const bool audio_first = layout == "audio_first";
+	// Existing MP4 behavior: Writer::Start() disables edit lists, so it rebases each
+	// track independently. FLV and MPEGTS retain the leading audio timestamp.
+	const double expected_video_lead = audio_first && format != "mp4" ? 1024 / 48000.0 : 0.0;
+	TempFile tmp(format.c_str());
+	auto writer = ffmpeg::Writer::Create();
+	ASSERT_TRUE(writer->SetUrl(tmp.Path(), format.c_str()));
+	writer->SetTimestampMode(mode);
+
+	auto video = MakeVideoTrack(1);
+	video->SetResolution(16, 16);
+	video->SetOriginBitstream(cmn::BitstreamFormat::H264_AVCC);
+	auto avcc = std::make_shared<AVCDecoderConfigurationRecord>();
+	ASSERT_TRUE(avcc->AddSPS(std::make_shared<ov::Data>(sps, sizeof(sps))));
+	ASSERT_TRUE(avcc->AddPPS(std::make_shared<ov::Data>(pps, sizeof(pps))));
+	video->SetDecoderConfigurationRecord(avcc);
+	if (has_video)
+	{
+		ASSERT_TRUE(writer->AddTrack(video));
+	}
+
+	auto audio = MakeAudioTrack(2);
+	audio->SetOriginBitstream(cmn::BitstreamFormat::AAC_RAW);
+	auto aac = std::make_shared<AudioSpecificConfig>();
+	ASSERT_TRUE(aac->Parse(std::make_shared<ov::Data>(asc, sizeof(asc))));
+	audio->SetDecoderConfigurationRecord(aac);
+	if (has_audio)
+	{
+		ASSERT_TRUE(writer->AddTrack(audio));
+	}
+	ASSERT_TRUE(writer->Start()) << writer->GetErrorMessage().CStr();
+
+	// The input starts near one second, with different video/audio timebases.
+	// Audio-first starts one AAC frame earlier; check the muxer's offset policy.
+	std::vector<std::shared_ptr<MediaPacket>> packets;
+	if (has_audio)
+	{
+		for (int64_t timestamp : {46976, 48000, 49024})
+		{
+			// Only video-first start-zero mode deliberately receives late audio
+			// older than the origin. Other cases keep per-track DTS monotonic.
+			if (timestamp < 48000 && !audio_first &&
+				(layout != "video_first" || mode == ffmpeg::Writer::TIMESTAMP_PASSTHROUGH_MODE))
+			{
+				continue;
+			}
+			packets.push_back(std::make_shared<MediaPacket>(cmn::MediaType::Audio, 2,
+				silence, sizeof(silence), timestamp, timestamp, 1024,
+				MediaPacketFlag::Key, cmn::BitstreamFormat::AAC_RAW, cmn::PacketType::RAW));
+		}
+	}
+	if (has_video)
+	{
+		auto keyframe = std::make_shared<MediaPacket>(cmn::MediaType::Video, 1,
+			idr, sizeof(idr), 90000 + composition_offset, 90000, 3000,
+			MediaPacketFlag::Key, cmn::BitstreamFormat::H264_AVCC, cmn::PacketType::NALU);
+		packets.insert(packets.begin() + (audio_first ? 1 : 0), keyframe);
+	}
+	for (const auto &packet : packets)
+	{
+		uint64_t sent_bytes = 0;
+		ASSERT_TRUE(writer->SendPacket(packet, &sent_bytes));
+		const bool clipped = layout == "video_first" && mode == ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE &&
+			packet->GetMediaType() == cmn::MediaType::Audio && packet->GetDts() < 48000;
+		EXPECT_EQ(sent_bytes, clipped ? 0 : packet->GetData()->GetLength());
+	}
+	ASSERT_TRUE(writer->Stop());
+
+	AVFormatContext *raw_input = nullptr;
+	ASSERT_GE(avformat_open_input(&raw_input, tmp.Path().CStr(), nullptr, nullptr), 0);
+	auto input = std::shared_ptr<AVFormatContext>(raw_input, [](AVFormatContext *p) { avformat_close_input(&p); });
+	ASSERT_GE(avformat_find_stream_info(input.get(), nullptr), 0);
+	auto packet = std::shared_ptr<AVPacket>(av_packet_alloc(), [](AVPacket *p) { av_packet_free(&p); });
+	ASSERT_NE(packet, nullptr);
+	int video_packets = 0;
+	double video_dts = 0;
+	std::vector<double> audio_dts;
+	int read_result;
+	while ((read_result = av_read_frame(input.get(), packet.get())) >= 0)
+	{
+		ASSERT_NE(packet->pts, AV_NOPTS_VALUE);
+		ASSERT_NE(packet->dts, AV_NOPTS_VALUE);
+		auto stream = input->streams[packet->stream_index];
+		if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+			++video_packets;
+			video_dts = packet->dts * av_q2d(stream->time_base);
+			EXPECT_TRUE(packet->flags & AV_PKT_FLAG_KEY);
+			EXPECT_NEAR((packet->pts - packet->dts) * av_q2d(stream->time_base), composition_offset / 90000.0, 0.001);
+			if (mode == ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE && format != "mpegts")
+			{
+				EXPECT_NEAR(video_dts, expected_video_lead, 0.001);
+			}
+			else if (format == "flv")
+			{
+				EXPECT_DOUBLE_EQ(video_dts, 1.0);
+			}
+		}
+		else if (stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+		{
+			audio_dts.push_back(packet->dts * av_q2d(stream->time_base));
+			EXPECT_EQ(packet->pts, packet->dts);
+		}
+		av_packet_unref(packet.get());
+	}
+	EXPECT_EQ(read_result, AVERROR_EOF);
+	EXPECT_EQ(video_packets, has_video ? 1 : 0);
+	ASSERT_EQ(audio_dts.size(), has_audio ? (audio_first ? 3 : 2) : 0);
+	if (has_audio)
+	{
+		if (mode == ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE && format != "mpegts")
+		{
+			EXPECT_NEAR(audio_dts.front(), 0.0, 0.001);
+		}
+		for (size_t i = 1; i < audio_dts.size(); ++i)
+		{
+			EXPECT_NEAR(audio_dts[i] - audio_dts[i - 1], 1024 / 48000.0, 0.001);
+		}
+		if (has_video)
+		{
+			EXPECT_NEAR(video_dts - audio_dts.front(), expected_video_lead, 0.001);
+		}
+	}
+}
+
+INSTANTIATE_TEST_SUITE_P(Muxers, FfmpegWriterTimestamps,
+	testing::Combine(testing::Values("mp4", "flv", "mpegts"),
+		testing::Values(ffmpeg::Writer::TIMESTAMP_STARTZERO_MODE, ffmpeg::Writer::TIMESTAMP_PASSTHROUGH_MODE),
+		testing::Values(TimestampScenario{"video_first", 0}, TimestampScenario{"video_first", 6000},
+			TimestampScenario{"audio_first", 0}, TimestampScenario{"audio_first", 6000},
+			TimestampScenario{"video_only", 0}, TimestampScenario{"video_only", 6000},
+			TimestampScenario{"audio_only", 0})));
 
 // ---------------------------------------------------------------------------
 // Thread-safety: SendPacket racing with Stop must not crash or corrupt state.

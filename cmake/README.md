@@ -155,6 +155,10 @@ Each module group compiles into a separate binary with a ctest label:
 
 ### Filtering tests
 
+Local recording checks are separately opt-in with
+`-DOME_BUILD_INTEGRATION_TESTS=ON`. They require Python and external FFmpeg tools;
+see [the integration test instructions](../tests/integration/README.md).
+
 ```bash
 # List all tests
 ctest --test-dir build/Debug -N
