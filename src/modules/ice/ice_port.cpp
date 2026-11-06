@@ -418,6 +418,17 @@ bool IcePort::AddIceSession(const ov::String &local_ufrag, const std::shared_ptr
 		{
 			*deferred_binding_requests = std::move(reserved_item->second.deferred_binding_requests);
 			_reserved_ufrags.erase(reserved_item);
+
+			// The session takes its peer's paths over under the same lock, so their connections are always
+			// seen in use by either the reservation or the session (CloseUnusedTcpSocket)
+			auto peer_sdp = ice_session->GetPeerSdp();
+			for (const auto &[address_pair, request] : *deferred_binding_requests)
+			{
+				if ((peer_sdp != nullptr) && (request.peer_ufrag == peer_sdp->GetIceUfrag()))
+				{
+					ice_session->OnReceivedStunBindingRequest(address_pair, request.remote);
+				}
+			}
 		}
 
 		return true;
@@ -522,6 +533,9 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 		return;
 	}
 
+	auto old_state = new_session->GetState();
+
+	// The session also takes over the paths its peer checked before the answer
 	std::map<ov::SocketAddressPair, DeferredBindingRequest> deferred_binding_requests;
 	if (AddIceSession(local_ufrag, new_session, &deferred_binding_requests) == false)
 	{
@@ -531,6 +545,11 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 	}
 
 	logti("Added session: %d (ufrag: %s:%s)", session_id, local_ufrag.CStr(), peer_ufrag.CStr());
+
+	if (old_state != new_session->GetState())
+	{
+		NotifyIceSessionStateChanged(new_session);
+	}
 
 	// Our binding requests need the peer's credentials from the answer, so they were deferred
 	// The peer may wait for them without sending more, so send them now
@@ -548,16 +567,8 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 
 		logtd("Session %u: sending the binding request deferred until the answer to %s", session_id, address_pair.ToString().CStr());
 
-		auto old_state = new_session->GetState();
-		new_session->OnReceivedStunBindingRequest(address_pair, request.remote);
-
 		// Register this validated pair so app packets on it resolve the session
 		AddIceSession(address_pair, new_session);
-
-		if (old_state != new_session->GetState())
-		{
-			NotifyIceSessionStateChanged(new_session);
-		}
 
 		SendStunBindingRequest(request.remote, address_pair, request.gate_info, new_session);
 	}

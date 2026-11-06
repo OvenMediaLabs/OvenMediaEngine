@@ -209,7 +209,8 @@ private:
 
 	// Add IceSession
 	bool AddIceSession(session_id_t session_id, const std::shared_ptr<IceSession> &ice_session);
-	// Also ends the reservation of local_ufrag and hands its deferred binding requests to the caller
+	// Also ends the reservation of local_ufrag, adds the paths of the session's peer to the session,
+	// and hands all deferred binding requests to the caller
 	bool AddIceSession(const ov::String &local_ufrag, const std::shared_ptr<IceSession> &ice_session, std::map<ov::SocketAddressPair, DeferredBindingRequest> *deferred_binding_requests);
 	bool AddIceSession(const ov::SocketAddressPair &pair, const std::shared_ptr<IceSession> &ice_session);
 
