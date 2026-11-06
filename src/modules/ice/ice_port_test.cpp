@@ -10,9 +10,17 @@
 //==============================================================================
 #include "ice_port.h"
 
+#include <arpa/inet.h>
 #include <base/ovsocket/ovsocket.h>
 #include <gtest/gtest.h>
+#include <modules/ice/stun/attributes/stun_attributes.h>
+#include <modules/ice/stun/stun_message.h>
 #include <modules/sdp/session_description.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <cstring>
 
 #include "ice_candidate_pair.h"
 #include "ice_session.h"
@@ -119,6 +127,180 @@ protected:
 		gate_info.packet_type = IcePacketIdentifier::PacketType::RTP_RTCP;
 		p.OnApplicationPacketReceived(nullptr, ap, gate_info, std::make_shared<ov::Data>());
 	}
+
+	// Feed a STUN packet into the (private) entry point as if it arrived on remote
+	void InjectStunPacket(IcePort &p, const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &ap, const std::shared_ptr<const ov::Data> &data)
+	{
+		IcePort::GateInfo gate_info;
+		gate_info.packet_type = IcePacketIdentifier::PacketType::STUN;
+		p.OnStunPacketReceived(remote, ap, gate_info, data);
+	}
+
+	// A binding request from the peer, signed with OME's password
+	static std::shared_ptr<const ov::Data> MakeBindingRequest(const ov::String &user_name, const ov::String &pwd, const uint8_t *transaction_id)
+	{
+		StunMessage message;
+		message.SetHeader(StunClass::Request, StunMethod::Binding, transaction_id);
+
+		auto user_name_attr = std::make_shared<StunUserNameAttribute>();
+		user_name_attr->SetText(user_name);
+		message.AddAttribute(user_name_attr);
+
+		return message.Serialize(pwd.ToData(false));
+	}
+};
+
+// A loopback ov::Socket that plays OME's UDP ICE port
+class IceUdpSocket
+{
+public:
+	~IceUdpSocket()
+	{
+		if (_socket != nullptr)
+		{
+			_socket->CloseIfNeeded();
+		}
+
+		if (_pool != nullptr)
+		{
+			_pool->Uninitialize();
+		}
+	}
+
+	bool Open()
+	{
+		_pool = ov::SocketPool::Create("ice-port-test", ov::SocketType::Udp, false);
+		if (_pool == nullptr)
+		{
+			return false;
+		}
+
+		if (_pool->Initialize(1) == false)
+		{
+			return false;
+		}
+
+		_socket = _pool->AllocSocket(ov::SocketFamily::Inet);
+		if (_socket == nullptr)
+		{
+			return false;
+		}
+
+		if (_socket->MakeBlocking() == false)
+		{
+			return false;
+		}
+
+		if (_socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) == false)
+		{
+			return false;
+		}
+
+		sockaddr_in address{};
+		socklen_t length = sizeof(address);
+		if (::getsockname(_socket->GetSocket().GetNativeHandle(), reinterpret_cast<sockaddr *>(&address), &length) != 0)
+		{
+			return false;
+		}
+
+		_port = ntohs(address.sin_port);
+
+		return true;
+	}
+
+	const std::shared_ptr<ov::Socket> &GetSocket() const
+	{
+		return _socket;
+	}
+
+	uint16_t Port() const
+	{
+		return _port;
+	}
+
+private:
+	std::shared_ptr<ov::SocketPool> _pool;
+	std::shared_ptr<ov::Socket> _socket;
+	uint16_t _port = 0;
+};
+
+// A loopback UDP socket that plays the peer
+class UdpPeer
+{
+public:
+	~UdpPeer()
+	{
+		if (_fd >= 0)
+		{
+			::close(_fd);
+		}
+	}
+
+	bool Open()
+	{
+		_fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+		if (_fd < 0)
+		{
+			return false;
+		}
+
+		sockaddr_in address{};
+		address.sin_family		= AF_INET;
+		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		address.sin_port		= 0;
+
+		if (::bind(_fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0)
+		{
+			return false;
+		}
+
+		timeval timeout = {3, 0};
+		if (::setsockopt(_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+		{
+			return false;
+		}
+
+		socklen_t length = sizeof(address);
+		if (::getsockname(_fd, reinterpret_cast<sockaddr *>(&address), &length) != 0)
+		{
+			return false;
+		}
+
+		_port = ntohs(address.sin_port);
+
+		return true;
+	}
+
+	uint16_t Port() const
+	{
+		return _port;
+	}
+
+	// Receives one datagram as a STUN message, nullptr on timeout
+	std::shared_ptr<StunMessage> ReceiveStun()
+	{
+		uint8_t buffer[2048];
+		auto length = ::recv(_fd, buffer, sizeof(buffer), 0);
+		if (length <= 0)
+		{
+			return nullptr;
+		}
+
+		auto data = std::make_shared<ov::Data>(buffer, length);
+		ov::ByteStream stream(data.get());
+
+		auto message = std::make_shared<StunMessage>();
+		if (message->Parse(stream) == false)
+		{
+			return nullptr;
+		}
+
+		return message;
+	}
+
+private:
+	int _fd = -1;
+	uint16_t _port = 0;
 };
 
 // Records every OnIceCandidatePairSelected() delivery for assertions
@@ -388,6 +570,63 @@ TEST_F(IcePortTest, AddSessionSkipsDeferredRequestOfAnotherPeer)
 	EXPECT_EQ(ReservedUfragCount(port), 0u);
 	EXPECT_EQ(s->FindCandidatePair(path), nullptr);
 	EXPECT_EQ(FindPair(port, path), nullptr);
+}
+
+// A binding request that arrives before the answer is answered at once, and when the answer
+// arrives OME sends its own binding request on that path without the peer asking again
+TEST_F(IcePortTest, BindingRequestBeforeAnswer)
+{
+	IceUdpSocket ice_socket;
+	ASSERT_TRUE(ice_socket.Open());
+	UdpPeer peer;
+	ASSERT_TRUE(peer.Open());
+
+	IcePort port;
+	StopSweeper(port);
+
+	auto path  = Pair(ice_socket.Port(), peer.Port());
+	auto ufrag = port.ReserveOfferUfrag("local-pwd");
+
+	const uint8_t transaction_id[OV_STUN_TRANSACTION_ID_LENGTH] = {'b', 'e', 'f', 'o', 'r', 'e', 'a', 'n', 's', 'w', 'e', 'r'};
+	InjectStunPacket(port, ice_socket.GetSocket(), path, MakeBindingRequest(ov::String::FormatString("%s:peer", ufrag.CStr()), "local-pwd", transaction_id));
+
+	auto response = peer.ReceiveStun();
+	ASSERT_NE(response, nullptr);
+	EXPECT_EQ(response->GetClass(), StunClass::SuccessResponse);
+	EXPECT_EQ(::memcmp(response->GetTransactionId(), transaction_id, OV_STUN_TRANSACTION_ID_LENGTH), 0);
+	EXPECT_TRUE(response->CheckIntegrity("local-pwd"));
+
+	auto mapped_address = response->GetAttribute<StunXorMappedAddressAttribute>(StunAttributeType::XorMappedAddress);
+	ASSERT_NE(mapped_address, nullptr);
+	EXPECT_TRUE(mapped_address->GetAddress() == path.GetRemoteAddress());
+
+	// The answer arrives
+	auto offer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	offer_sdp->SetIceUfrag(ufrag);
+	offer_sdp->SetIcePwd("local-pwd");
+	auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
+	answer_sdp->SetIceUfrag("peer");
+	answer_sdp->SetIcePwd("peer-pwd");
+
+	port.AddSession(nullptr, 1, IceSession::Role::CONTROLLING, offer_sdp, answer_sdp, 600000, 0, std::any{});
+
+	auto request = peer.ReceiveStun();
+	ASSERT_NE(request, nullptr);
+	EXPECT_EQ(request->GetClass(), StunClass::Request);
+	EXPECT_TRUE(request->CheckIntegrity("peer-pwd"));
+	EXPECT_NE(request->GetAttribute<StunIceControllingAttribute>(StunAttributeType::IceControlling), nullptr);
+
+	// USERNAME is "<peer ufrag>:<OME ufrag>"
+	ov::String to_ufrag;
+	ov::String from_ufrag;
+	ASSERT_TRUE(request->GetUfrags(&to_ufrag, &from_ufrag));
+	EXPECT_STREQ(to_ufrag.CStr(), "peer");
+	EXPECT_STREQ(from_ufrag.CStr(), ufrag.CStr());
+
+	auto s = FindUfrag(port, ufrag);
+	ASSERT_NE(s, nullptr);
+	EXPECT_NE(s->FindCandidatePair(path), nullptr);
+	EXPECT_EQ(FindPair(port, path), s);
 }
 
 // The reported transport label follows the pair's TURN framing:
