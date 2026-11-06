@@ -127,6 +127,23 @@ namespace pub
 
 		_psi_data = psi_data;
 
+		SendPsi();
+	}
+
+	void SrtPlaylist::SendPsi()
+	{
+		auto psi_data = _psi_data->Clone();
+		auto packets  = psi_data->GetWritableDataAs<uint8_t>();
+
+		// PAT and PMT are on different PIDs and always sent together, so they share one counter
+		for (size_t offset = 0; offset + mpegts::MPEGTS_MIN_PACKET_SIZE <= psi_data->GetLength(); offset += mpegts::MPEGTS_MIN_PACKET_SIZE)
+		{
+			packets[offset + 3] = (packets[offset + 3] & 0xF0) | _psi_continuity_counter;
+		}
+
+		_psi_continuity_counter = (_psi_continuity_counter + 1) % 16;
+		_last_psi_sent_msec = ov::Clock::NowMSec();
+
 		SendData(psi_data);
 	}
 
@@ -135,6 +152,14 @@ namespace pub
 #if DEBUG
 		logap("OnFrame - %zu bytes", ts_data->GetLength());
 #endif	// DEBUG
+
+		// Repeat PAT/PMT so receivers that start reading mid-stream find the service:
+		// before every video key frame, and at least every 100 ms (like FFmpeg and GStreamer muxers)
+		if ((media_packet->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame()) ||
+			(ov::Clock::NowMSec() - _last_psi_sent_msec >= 100))
+		{
+			SendPsi();
+		}
 
 		SendData(ts_data);
 	}

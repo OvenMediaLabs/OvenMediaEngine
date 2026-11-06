@@ -93,6 +93,8 @@ namespace pub
 
 	private:
 		void SendData(const std::shared_ptr<const ov::Data> &ts_data);
+		// Sends the stored PAT/PMT again with the next continuity counter
+		void SendPsi();
 
 	private:
 		std::shared_ptr<const info::Stream> _stream_info;
@@ -105,6 +107,9 @@ namespace pub
 		std::shared_ptr<SrtPlaylistSink> _sink;
 
 		std::shared_ptr<const ov::Data> _psi_data;
+		// Continuity counter of the PAT/PMT packets, advanced on every resend
+		uint8_t _psi_continuity_counter = 0;
+		uint64_t _last_psi_sent_msec = 0;
 		std::shared_ptr<ov::Data> _data_to_send = std::make_shared<ov::Data>();
 	};
 }  // namespace pub
