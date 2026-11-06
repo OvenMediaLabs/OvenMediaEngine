@@ -30,6 +30,7 @@ namespace
 	using ome_test::SendDatagram;
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
+	using ome_test::WaitUntilReadable;
 
 	constexpr int QUIET_MSEC		= 300;
 
@@ -154,6 +155,7 @@ TEST(StreamMotorTest, ReconnectedStreamLeavesOldSocket)
 
 	// An event on the old socket no longer reaches the stream
 	ASSERT_TRUE(SendDatagram(old_port));
+	ASSERT_TRUE(WaitUntilReadable(old_socket->GetNativeHandle()));
 	std::this_thread::sleep_for(std::chrono::milliseconds(QUIET_MSEC));
 	EXPECT_EQ(motor->GetStreamCount(), 1u);
 

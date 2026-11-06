@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <base/ovsocket/ovsocket.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -108,7 +109,8 @@ namespace ome_test
 		return ntohs(address.sin_port);
 	}
 
-	// Sends one datagram to a loopback port
+	// Sends one datagram to a loopback port.
+	// The kernel can deliver it after this returns, so a test that relies on the arrival calls `WaitUntilReadable()`.
 	inline bool SendDatagram(uint16_t port)
 	{
 		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
@@ -128,5 +130,14 @@ namespace ome_test
 		::close(fd);
 
 		return (sent == sizeof(payload));
+	}
+
+	// Waits until data is queued on `native_handle`, so the next `epoll_wait()` of an epoll watching it reports it
+	inline bool WaitUntilReadable(int native_handle)
+	{
+		return WaitUntil([native_handle]() {
+			pollfd entry{native_handle, POLLIN, 0};
+			return (::poll(&entry, 1, 0) == 1) && ((entry.revents & POLLIN) != 0);
+		});
 	}
 }  // namespace ome_test

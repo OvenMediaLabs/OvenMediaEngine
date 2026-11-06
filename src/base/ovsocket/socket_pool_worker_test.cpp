@@ -34,6 +34,7 @@ namespace
 	using ome_test::SendDatagram;
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
+	using ome_test::WaitUntilReadable;
 
 	constexpr const char *EMPTY_WORKER = "socket_map: 0,";
 
@@ -218,6 +219,7 @@ TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUntilI
 	auto pool = ov::SocketPool::Create("test-batch-close", ov::SocketType::Udp, false);
 	ASSERT_NE(pool, nullptr);
 	ASSERT_TRUE(pool->Initialize(1));
+	ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto gate_events   = std::make_shared<TestEvents>();
 	auto first_events  = std::make_shared<TestEvents>();
@@ -227,7 +229,8 @@ TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUntilI
 	auto first		   = pool->AllocSocket(ov::SocketFamily::Inet);
 	auto second		   = pool->AllocSocket(ov::SocketFamily::Inet);
 
-	// Closes what an early return leaves open, since `first` and `second` are handed to the callbacks below
+	// Closes the sockets on every way out, including an early return.
+	// `first` and `second` move to the holders below, which are closed the same way.
 	ScopeExit closer([&]() {
 		for (auto &socket : {gate, first, second})
 		{
@@ -264,27 +267,42 @@ TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUntilI
 	// which only the worker's copy of the batch then holds until its own event is handled.
 	std::weak_ptr<ov::Socket> first_watcher	 = first;
 	std::weak_ptr<ov::Socket> second_watcher = second;
+	auto first_handle						 = first->GetNativeHandle();
+	auto second_handle						 = second->GetNativeHandle();
 	auto holder_mutex						 = std::make_shared<std::mutex>();
 	auto first_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(first));
 	auto second_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(second));
 	auto alive_after_close					 = std::make_shared<std::atomic<bool>>(false);
 
-	auto close_holder						 = [holder_mutex, alive_after_close](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder,
-																	 const std::weak_ptr<ov::Socket> &watcher) {
-		   return [holder_mutex, alive_after_close, holder, watcher]() {
-			   std::shared_ptr<ov::Socket> socket;
-			   {
-				   std::lock_guard<std::mutex> lock(*holder_mutex);
-				   socket = std::move(*holder);
-			   }
+	// Takes a socket out of its holder, so only one of the callbacks and the cleanup below gets it
+	auto take = [holder_mutex](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder) {
+		std::lock_guard<std::mutex> lock(*holder_mutex);
+		return std::move(*holder);
+	};
 
-			   if (socket != nullptr)
-			   {
-				   socket->CloseImmediately();
-				   socket.reset();
-				   *alive_after_close = (watcher.expired() == false);
-			   }
-		   };
+	ScopeExit holder_closer([take, first_holder, second_holder]() {
+		for (const auto &holder : {first_holder, second_holder})
+		{
+			auto socket = take(holder);
+
+			if (socket != nullptr)
+			{
+				socket->CloseImmediately();
+			}
+		}
+	});
+
+	auto close_holder = [take, alive_after_close](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder, const std::weak_ptr<ov::Socket> &watcher) {
+		return [take, alive_after_close, holder, watcher]() {
+			auto socket = take(holder);
+
+			if (socket != nullptr)
+			{
+				socket->CloseImmediately();
+				socket.reset();
+				*alive_after_close = (watcher.expired() == false);
+			}
+		};
 	};
 	first_events->on_readable  = close_holder(second_holder, second_watcher);
 	second_events->on_readable = close_holder(first_holder, first_watcher);
@@ -294,28 +312,13 @@ TEST(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUntilI
 
 	ASSERT_TRUE(SendDatagram(first_port));
 	ASSERT_TRUE(SendDatagram(second_port));
+	ASSERT_TRUE(WaitUntilReadable(first_handle));
+	ASSERT_TRUE(WaitUntilReadable(second_handle));
 	worker_gate.Release();
 
 	EXPECT_TRUE(WaitUntil([&]() { return first_watcher.expired() || second_watcher.expired(); }));
 	EXPECT_TRUE(alive_after_close->load());
 	EXPECT_EQ(first_events->readable_count.load() + second_events->readable_count.load(), 1);
-
-	for (const auto &holder : {first_holder, second_holder})
-	{
-		std::shared_ptr<ov::Socket> socket;
-		{
-			std::lock_guard<std::mutex> lock(*holder_mutex);
-			socket = std::move(*holder);
-		}
-
-		if (socket != nullptr)
-		{
-			socket->CloseImmediately();
-		}
-	}
-
-	gate->CloseImmediately();
-	pool->Uninitialize();
 }
 
 // A socket closed by another thread before the worker delivers its first epoll event
