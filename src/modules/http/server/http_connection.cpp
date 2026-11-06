@@ -78,9 +78,10 @@ namespace http
 		{
 			if (_connection_type == ConnectionType::WebSocket)
 			{
-				if (_websocket_session != nullptr)
+				auto websocket_session = std::atomic_load(&_websocket_session);
+				if (websocket_session != nullptr)
 				{
-					_websocket_session->Ping();
+					websocket_session->Ping();
 				}
 			}
 
@@ -182,7 +183,7 @@ namespace http
 
 		std::shared_ptr<ws::WebSocketSession> HttpConnection::GetWebSocketSession() const
 		{
-			return _websocket_session;
+			return std::atomic_load(&_websocket_session);
 		}
 		
 		// Get Interceptor
@@ -253,8 +254,9 @@ namespace http
 		{
 			_connection_type = ConnectionType::WebSocket;
 					
-			_websocket_session = std::make_shared<ws::WebSocketSession>(_http_transaction);
-			_websocket_session->Upgrade();
+			auto websocket_session = std::make_shared<ws::WebSocketSession>(_http_transaction);
+			std::atomic_store(&_websocket_session, websocket_session);
+			websocket_session->Upgrade();
 
 			return true;
 		}
@@ -283,10 +285,7 @@ namespace http
 				_websocket_frame.reset();
 			}
 
-			if (_websocket_session != nullptr)
-			{
-				_websocket_session.reset();
-			}
+			std::atomic_store(&_websocket_session, std::shared_ptr<ws::WebSocketSession>());
 			
 			std::unique_lock<std::mutex> map_guard(_http_stream_map_guard);
 			_http_stream_map.clear();
@@ -405,7 +404,8 @@ namespace http
 
 		ssize_t HttpConnection::OnWebSocketDataReceived(const std::shared_ptr<const ov::Data> &data)
 		{
-			if (_websocket_session == nullptr)
+			auto websocket_session = std::atomic_load(&_websocket_session);
+			if (websocket_session == nullptr)
 			{
 				return -1;
 			}
@@ -418,22 +418,22 @@ namespace http
 			ssize_t read_bytes = 0;
 			if (_websocket_frame->Process(data, &read_bytes))
 			{
-				if (_websocket_session->OnFrameReceived(_websocket_frame) == false)
+				if (websocket_session->OnFrameReceived(_websocket_frame) == false)
 				{
 					Close(PhysicalPortDisconnectReason::Error);
 					return -1;
 				}
 
-				if (_websocket_session->GetStatus() == HttpExchange::Status::Exchanging)
+				if (websocket_session->GetStatus() == HttpExchange::Status::Exchanging)
 				{
 					// Normal
 				}
-				else if (_websocket_session->GetStatus() == HttpExchange::Status::Completed)
+				else if (websocket_session->GetStatus() == HttpExchange::Status::Completed)
 				{
 					Close(PhysicalPortDisconnectReason::Disconnect);
 					return -1;
 				}
-				else if (_websocket_session->GetStatus() == HttpExchange::Status::Error)
+				else if (websocket_session->GetStatus() == HttpExchange::Status::Error)
 				{
 					Close(PhysicalPortDisconnectReason::Error);
 					return -1;

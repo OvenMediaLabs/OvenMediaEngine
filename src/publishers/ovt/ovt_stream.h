@@ -12,6 +12,38 @@
 class OvtStream final : public pub::Stream, public OvtPacketizerInterface
 {
 public:
+	// One edit `RebuildRenditions()` made to a playlist
+	struct RenditionChange
+	{
+		enum class Type
+		{
+			// The rendition stays with its other side
+			SideEmptied,
+			RenditionRemoved,
+			// The tracks are the same as `kept_rendition`'s
+			DuplicateRemoved,
+			PlaylistRemoved,
+		};
+
+		// A side that lost tracks to the filter
+		struct LostSide
+		{
+			cmn::MediaType media_type = cmn::MediaType::Unknown;
+			ov::String variant;
+			// The track the side was pinned to, if any
+			std::optional<uint32_t> track_id;
+			// False when a side without a pinned track kept some of its variant's tracks
+			bool emptied = true;
+		};
+
+		Type type = Type::SideEmptied;
+		ov::String playlist;
+		ov::String rendition;
+		std::vector<LostSide> lost_sides;
+		ov::String kept_rendition;
+	};
+
+public:
 	static std::shared_ptr<OvtStream> Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,
 											 uint32_t worker_count);
@@ -47,7 +79,10 @@ public:
 	// The `playlists` array a PLAY response carries, rebuilt for the confirmed track set.
 	// It runs the same `RebuildRenditions()` rule the describe uses, so the edge's renditions end up
 	// consistent with the tracks it will actually receive.
-	Json::Value BuildPlaylistsForTracks(const std::set<uint32_t> &allowed);
+	// `described_track_ids` is what this connection's describe of the stream sent, nullopt when it described none.
+	// The changes are logged unless it is the same set, since that describe logged its own.
+	Json::Value BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed,
+										const std::optional<std::set<uint32_t>> &described_track_ids);
 
 	// `ovt.required` of a describe:
 	// the codec token of every track whose media type is in `required_media_types`, sorted and unique.
@@ -97,9 +132,21 @@ public:
 	static bool IsCarriableByLegacyEdge(const Json::Value &track);
 	// Keeps only `allowed` in `stream["tracks"]` and rebuilds every rendition around what remains.
 	// Returns the number of renditions and playlists removed.
-	static size_t RebuildRenditions(Json::Value &stream, const std::set<uint32_t> &allowed);
+	// `changes` lists each removal and each kept rendition that lost a whole side;
+	// a rendition that names no variant, or a playlist that had only such renditions, is left out.
+	static size_t RebuildRenditions(Json::Value &stream, const std::set<uint32_t> &allowed, std::vector<RenditionChange> *changes = nullptr);
+	// The origin log lines for `changes`: what happened to each rendition and playlist.
+	// The causes are on the track lines `LogRenditionChanges()` writes next to them.
+	static std::vector<ov::String> DescribeRenditionChanges(const std::vector<RenditionChange> &changes);
+	// Why `filter` removes the describe track entry `track`, worded for the origin log; empty when it passes
+	static ov::String RemovalCause(const OvtTrackFilter &filter, const Json::Value &track);
 
 private:
+	// Logs a warning for every change, after one for each track of a lost variant that `allowed` leaves out,
+	// with its cause; `GetDescription()` logs the OVT1 codec filter's own. `path` is the request the playlists answer.
+	void LogRenditionChanges(const char *path, const OvtTrackFilter &filter, const Json::Value &tracks, const std::set<uint32_t> &allowed,
+							 const std::vector<RenditionChange> &changes);
+
 	bool Start() override;
 	bool Stop() override;
 	// Tells every session that this stream is stopping and why

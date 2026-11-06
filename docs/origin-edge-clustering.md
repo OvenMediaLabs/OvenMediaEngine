@@ -234,6 +234,80 @@ A TrackSet can also be requested through the standard `<Origin>` mapping. For ex
 </Origin>
 ```
 
+#### Playlists on a TrackSet Edge
+
+An Edge that pulls a TrackSet receives the Origin's playlists with only the TrackSet's tracks in them.
+Every track the TrackSet does not select is left out of every playlist, even a declared one.
+
+For example, the Origin declares the playlist `abr` with two renditions, and the TrackSet selects `video_720` and `aac`:
+
+| Rendition | On the Origin            | On the Edge                     |
+| --------- | ------------------------ | ------------------------------- |
+| `1080p`   | `video_1080` + `aac`     | `aac` only (audio-only)         |
+| `720p`    | `video_720` + `aac`      | `video_720` + `aac` (unchanged) |
+
+A rendition loses only the tracks the TrackSet does not select, so `1080p` becomes an audio-only rendition instead of disappearing.
+A rendition with no track left is removed, and so is a playlist with no rendition left.
+
+To get the playlist you expect on the Edge, declare on the Origin a playlist whose renditions use only the TrackSet's tracks:
+
+```xml
+<Playlist>
+	<Name>edge</Name>
+	<FileName>edge_abr</FileName>
+	<Rendition>
+		<Name>720p</Name>
+		<Video>video_720</Video>
+		<Audio>aac</Audio>
+	</Rendition>
+</Playlist>
+```
+
+HLS (TS) and SRT on the Edge use such a playlist only when it has `<EnableTsPackaging>true</EnableTsPackaging>` in its `<Options>`.
+
+A playlist that lost tracks is still served with HTTP 200, so check the logs instead of the HTTP status:
+
+* When a playlist changes for an Edge, the Origin logs warnings of two kinds, each naming the stream, the request (describe or play) and the Edge's address.
+  A track line names a track the Edge does not receive from a variant a rendition lost, and its cause: `TrackSet [name]` or `edge trackIds`.
+  A track an OVT1 Edge cannot carry has its own line, `Track(...) ... is not sent to an OVT1 edge`.
+  A rendition or playlist line says what it lost and whether it was removed, with the variant (and the track, if it was pinned) to match against the track lines.
+  A kept rendition that loses only some tracks of a side without a pinned track (for example, some languages) is not logged.
+  A playlist with an Edge default file name that is still sent gets one more line when one of its renditions is logged as losing tracks, because it takes the place of the Edge's own default playlist.
+* The Edge logs a warning for every rendition it receives that lost its video or audio on the Origin.
+* The `CODECS` and `RESOLUTION` attributes of the Edge's master playlist also show which renditions lost a track.
+
+Up to v0.21.0, the Origin sent no playlist to a TrackSet Edge, so it only had its own default playlists.
+
+##### Details
+
+How a rendition refers to tracks:
+
+* A video side always refers to one track: the one at its `VideoIndexHint`, or index 0 when the hint is omitted.
+* An audio side refers to one track only when `AudioIndexHint` is set; without it, the side keeps any selected track of its audio encode.
+* A `<RenditionTemplate>` sets the audio side to the first track of its audio encode.
+  For a TrackSet that selects one track of a multi-track audio encode (for example, one language), use `<Rendition>` without `<AudioIndexHint>` instead.
+* A side whose encode has no track in the stream at all is left as it is, as on the Origin.
+  A rendition with no other side is still removed, because it has no track left.
+
+Duplicates and default file names:
+
+* When two renditions of a playlist end up with the same tracks, only one is kept: the one the TrackSet changed least (no track lost, then only some tracks of a side without a pinned track, then a whole side), and among those the earlier one.
+* An Origin playlist whose file name is an Edge default (`llhls` for LLHLS, `webrtc_default` for WebRTC) replaces that default playlist on the Edge, and loses tracks like any other playlist.
+  Give an Edge default file name only to a playlist that uses the TrackSet's tracks alone; otherwise the Edge's default URL serves a playlist that lost tracks.
+* The HLS (TS) and SRT default, `playlist`, is a reserved word that a `<FileName>` must not contain (see [ABR](transcoding/abr.md)).
+  If an Origin playlist is declared with it anyway, it replaces the HLS (TS) and SRT default playlist on the Edge in the same way.
+  Without `<EnableTsPackaging>true</EnableTsPackaging>`, HLS (TS) and SRT then have no default playlist to serve.
+
+Each publisher then applies its own rules to the playlist:
+
+* SRT plays only the first supported rendition of a playlist.
+  If that rendition lost its video, SRT outputs audio only even when a later rendition still has video, so adding an audio track to a TrackSet can change an SRT output from video to audio only.
+* LLHLS leaves out renditions whose codec it does not support, such as Opus, and WebRTC does not play AAC.
+  Put in the TrackSet every audio codec the Edge's publishers need (AAC for LLHLS and HLS, Opus for WebRTC); for example, when a TrackSet selects AAC but not Opus, a WebRTC playlist on the Edge has no audio.
+* Players handle an audio-only entry in a master playlist differently; hls.js, for one, skips it when a video entry exists.
+* If an Edge publisher has `<CreateDefaultPlaylist>false</CreateDefaultPlaylist>` and every playlist of the stream is removed, that publisher does not serve the stream.
+  If tracks it supports remain but only playlists it cannot use are left (for example, Opus-only ones for LLHLS), it still serves the stream, but those playlists have no rendition it can play.
+
 #### Validation and error behavior
 
 * An empty `TrackSet` (no `<Video>` and no `<Audio>` entries) is rejected at configuration load. Every TrackSet must reference at least one encode.

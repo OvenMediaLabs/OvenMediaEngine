@@ -129,6 +129,7 @@ namespace http
 			///////////////////////
 			// For Websocket
 			///////////////////////
+			// Accessed only with std::atomic_load/std::atomic_store, since GetWebSocketSession() is called from other threads
 			std::shared_ptr<ws::WebSocketSession> _websocket_session = nullptr;
 			// Websocket Frame
 			std::shared_ptr<prot::ws::Frame> _websocket_frame = nullptr;

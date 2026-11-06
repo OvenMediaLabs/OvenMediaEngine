@@ -27,6 +27,9 @@
 
 class RtcStream final : public pub::Stream, public RtpPacketizerInterface
 {
+	// Unit-test access (see rtc_session_test.cpp)
+	friend class RtcSessionNackTest;
+
 public:
 	static std::shared_ptr<RtcStream> Create(const std::shared_ptr<pub::Application> application,
 											 const info::Stream &info,

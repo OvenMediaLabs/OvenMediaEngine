@@ -95,8 +95,11 @@ protected:
 
 		// Offer SDP (SDP of OME/host peer)
 		std::shared_ptr<const SessionDescription> offer_sdp;
-		// Peer SDP (SDP of host/client peer)
+		// Peer SDP (SDP of host/client peer), cleared once the session it started is stopped
+		// Accessed only with std::atomic_load/std::atomic_store, since Disconnect() reads it from other threads
 		std::shared_ptr<const SessionDescription> answer_sdp;
+		// Whether offer_sdp got an answer, still set after the session is stopped
+		bool answer_received = false;
 
 		// candidates of OME/host peer
 		std::vector<RtcIceCandidate> local_candidates;
@@ -150,6 +153,12 @@ protected:
 	std::shared_ptr<const ov::Error> DispatchOfferP2P(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info);
 	std::shared_ptr<const ov::Error> DispatchCandidateP2P(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const ov::JsonObject &object, std::shared_ptr<RtcSignallingInfo> &info);
 	std::shared_ptr<const ov::Error> DispatchStop(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, std::shared_ptr<RtcSignallingInfo> &info);
+
+	// Stops the session started by the answer on this connection, if any
+	bool StopAnsweredSession(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<RtcSignallingInfo> &info);
+
+	void NotifyNegotiationFinished(const std::shared_ptr<http::svr::ws::WebSocketSession> &ws_session, const std::shared_ptr<const SessionDescription> &offer_sdp,
+								   RtcSignallingObserver::NegotiationResult result);
 
 protected:
 	const cfg::Server _server_config;

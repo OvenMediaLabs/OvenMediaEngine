@@ -13,6 +13,7 @@
 #include <modules/ovt_packetizer/ovt_wire.h>
 
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "ovt_stream.h"
@@ -254,6 +255,17 @@ TEST(OvtDescribeTest, CodecsCarriesTheDerivedString)
 
 namespace
 {
+	// One rendition of `BuildRenditionFixture()`: an empty variant leaves the side out,
+	// and a side pinned to a track carries its id
+	struct RenditionSpec
+	{
+		const char *name;
+		const char *video;
+		std::optional<uint32_t> video_id;
+		const char *audio;
+		std::optional<uint32_t> audio_id;
+	};
+
 	// Two video variants and a two-language audio group,
 	// with the `abr` playlist whose renditions pick audio by index.
 	// Track ids are what `ResolveRenditionTrackIds()` would assign.
@@ -299,6 +311,58 @@ namespace
 
 		std::map<ov::String, std::shared_ptr<const info::Playlist>> playlists = {{"abr", playlist}};
 		return OvtStream::BuildDescription("app", "stream", "origin-uuid", playlists, tracks);
+	}
+
+	// Tracks { 0: 720p, 1: 360p, 2: aac (ko), 3: aac (en), 4: opus } and one playlist named `file_name`
+	Json::Value BuildRenditionFixture(const char *file_name, const std::vector<RenditionSpec> &specs)
+	{
+		auto make = [](uint32_t id, cmn::MediaType type, const char *variant, cmn::MediaCodecId codec) {
+			auto track = std::make_shared<MediaTrack>();
+			track->SetId(id);
+			track->SetMediaType(type);
+			track->SetVariantName(variant);
+			track->SetCodecId(codec);
+			track->SetTimeBase(1, 90000);
+			return track;
+		};
+
+		std::map<int32_t, std::shared_ptr<const MediaTrack>> tracks = {
+			{0, make(0, cmn::MediaType::Video, "720p", cmn::MediaCodecId::H264)},
+			{1, make(1, cmn::MediaType::Video, "360p", cmn::MediaCodecId::H264)},
+			{2, make(2, cmn::MediaType::Audio, "aac", cmn::MediaCodecId::Aac)},
+			{3, make(3, cmn::MediaType::Audio, "aac", cmn::MediaCodecId::Aac)},
+			{4, make(4, cmn::MediaType::Audio, "opus", cmn::MediaCodecId::Opus)},
+		};
+
+		auto playlist = std::make_shared<info::Playlist>(file_name, file_name, false);
+		for (const auto &spec : specs)
+		{
+			auto rendition = std::make_shared<info::Rendition>(spec.name, spec.video, spec.audio);
+			if (spec.video_id.has_value())
+			{
+				rendition->SetVideoIndexHint(0);
+				rendition->SetVideoTrackId(*spec.video_id);
+			}
+			if (spec.audio_id.has_value())
+			{
+				rendition->SetAudioIndexHint(0);
+				rendition->SetAudioTrackId(*spec.audio_id);
+			}
+			playlist->AddRendition(rendition);
+		}
+
+		std::map<ov::String, std::shared_ptr<const info::Playlist>> playlists = {{file_name, playlist}};
+		return OvtStream::BuildDescription("app", "stream", "origin-uuid", playlists, tracks);
+	}
+
+	std::vector<ov::String> RenditionNames(const Json::Value &stream)
+	{
+		std::vector<ov::String> names;
+		for (const auto &rendition : stream["playlists"][0]["renditions"])
+		{
+			names.emplace_back(rendition["name"].asCString());
+		}
+		return names;
 	}
 }  // namespace
 
@@ -387,20 +451,21 @@ TEST(OvtDescribeTest, RebuildRenditionsForTrackSet)
 	EXPECT_EQ(renditions[1]["audioTrackId"].asUInt(), 3u);
 }
 
-// Two renditions that resolve to the same tracks after filtering collapse into one
+// Two renditions that resolve to the same tracks after filtering collapse into one,
+// and the one the filter left untouched is the one that stays
 TEST(OvtDescribeTest, RebuildRenditionsPrunesDuplicates)
 {
 	auto contents		= BuildTrackSetFixture();
 	Json::Value &stream = contents["stream"];
 
-	// Audio only: 360p_en loses its video and becomes { 3 }, the same as audio_en
+	// Audio only: 360p_en loses its video and becomes { 3 }, the same as the declared audio_en
 	auto pruned			= OvtStream::RebuildRenditions(stream, {3});
 
 	EXPECT_EQ(pruned, 2u);
 	const auto &renditions = stream["playlists"][0]["renditions"];
 	ASSERT_EQ(renditions.size(), 1u);
-	EXPECT_STREQ(renditions[0]["name"].asCString(), "360p_en");
-	EXPECT_STREQ(renditions[0]["videoTrackName"].asCString(), "");
+	EXPECT_STREQ(renditions[0]["name"].asCString(), "audio_en");
+	EXPECT_FALSE(renditions[0].isMember("removedVideoTrackName"));
 	EXPECT_EQ(renditions[0]["audioTrackId"].asUInt(), 3u);
 }
 
@@ -494,19 +559,11 @@ TEST(OvtDescribeTest, AnEmptiedSideNamesTheVariantItLost)
 	EXPECT_STREQ(renditions[0]["removedAudioTrackName"].asCString(), "aac");
 	EXPECT_FALSE(renditions[0].isMember("removedVideoTrackName"));
 
-	EXPECT_STREQ(renditions[1]["name"].asCString(), "360p_en");
-	EXPECT_STREQ(renditions[1]["videoTrackName"].asCString(), "");
-	EXPECT_STREQ(renditions[1]["removedVideoTrackName"].asCString(), "360p");
+	// `360p_en` lost its video and resolves to the same single track as `audio_en`, which was written audio-only:
+	// the declared one stays, with no marker, and the one that lost its video goes
+	EXPECT_STREQ(renditions[1]["name"].asCString(), "audio_en");
+	EXPECT_FALSE(renditions[1].isMember("removedVideoTrackName"));
 	EXPECT_FALSE(renditions[1].isMember("removedAudioTrackName"));
-
-	// `audio_en` was written audio-only, so neither side was emptied and it carries no marker.
-	// It is gone all the same: `360p_en` lost its video and now resolves to the same single track,
-	// so the duplicate rule drops whichever comes second. One-sided renditions are kept on purpose
-	// (decision: the origin decides what is worth sending), and this is the cost of that.
-	for (const auto &rendition : renditions)
-	{
-		EXPECT_STRNE(rendition["name"].asCString(), "audio_en");
-	}
 }
 
 TEST(OvtDescribeTest, RenumbersHintsForFilteredDescribe)
@@ -779,6 +836,276 @@ TEST(OvtDescribeTest, PlayRebuildFollowsTheConfirmedSet)
 	EXPECT_STREQ(renditions[0]["videoTrackName"].asCString(), "");
 	EXPECT_FALSE(renditions[0].isMember("videoTrackId"));
 	EXPECT_EQ(renditions[0]["audioTrackId"].asUInt(), 3u);
+}
+
+// A declared one-sided rendition outlasts one the filter emptied into the same tracks,
+// whatever the declaration order, and the survivors keep their declared order
+TEST(OvtDescribeTest, RebuildKeepsTheDeclaredRenditionOverOneThatLostASide)
+{
+	// TrackSet { 360p, aac }: source loses its 720p video and becomes the same as radio
+	const std::set<uint32_t> low_only = {1, 2, 3};
+
+	auto source_first				  = BuildRenditionFixture("llhls", {{"source", "720p", 0, "aac", std::nullopt}, {"radio", "", std::nullopt, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> changes;
+	EXPECT_EQ(OvtStream::RebuildRenditions(source_first["stream"], low_only, &changes), 1u);
+	EXPECT_EQ(RenditionNames(source_first["stream"]), (std::vector<ov::String>{"radio"}));
+	ASSERT_EQ(changes.size(), 1u);
+	EXPECT_EQ(changes[0].type, OvtStream::RenditionChange::Type::DuplicateRemoved);
+	EXPECT_EQ(changes[0].rendition, ov::String("source"));
+	EXPECT_EQ(changes[0].kept_rendition, ov::String("radio"));
+	ASSERT_EQ(changes[0].lost_sides.size(), 1u);
+	EXPECT_EQ(changes[0].lost_sides[0].media_type, cmn::MediaType::Video);
+	EXPECT_EQ(changes[0].lost_sides[0].track_id, std::optional<uint32_t>(0));
+
+	// The default URL now plays audio only, so the default-name warning follows the duplicate removal too
+	const auto lines = OvtStream::DescribeRenditionChanges(changes);
+	ASSERT_EQ(lines.size(), 2u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [llhls] rendition [source] for this edge: removed, same tracks as rendition [radio] after losing video (variant [720p], track 0)"));
+	EXPECT_EQ(lines[1], ov::String("Playlist [llhls] for this edge: it has an edge default file name, so the edge does not build its own default playlist for it"));
+
+	auto radio_first = BuildRenditionFixture("llhls", {{"radio", "", std::nullopt, "aac", std::nullopt}, {"source", "720p", 0, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(radio_first["stream"], low_only);
+	EXPECT_EQ(RenditionNames(radio_first["stream"]), (std::vector<ov::String>{"radio"}));
+
+	auto with_low = BuildRenditionFixture("order", {{"source", "720p", 0, "aac", std::nullopt},
+													{"radio", "", std::nullopt, "aac", std::nullopt},
+													{"low", "360p", 1, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(with_low["stream"], low_only);
+	EXPECT_EQ(RenditionNames(with_low["stream"]), (std::vector<ov::String>{"radio", "low"}));
+}
+
+// The WebRTC audio-only fallback a playlist declares stays, and the emptied source goes
+TEST(OvtDescribeTest, RebuildKeepsTheDeclaredAudioFallback)
+{
+	auto contents = BuildRenditionFixture("webrtc", {{"source", "720p", 0, "opus", std::nullopt},
+													 {"low", "360p", 1, "opus", std::nullopt},
+													 {"audio", "", std::nullopt, "opus", std::nullopt}});
+
+	OvtStream::RebuildRenditions(contents["stream"], {1, 4});
+	EXPECT_EQ(RenditionNames(contents["stream"]), (std::vector<ov::String>{"low", "audio"}));
+}
+
+// Two renditions the operator declared with the same tracks still collapse once a filter is active
+TEST(OvtDescribeTest, RebuildCollapsesDeclaredDuplicatesUnderAFilter)
+{
+	auto contents = BuildRenditionFixture("abr", {{"a", "360p", 1, "aac", std::nullopt}, {"b", "360p", 1, "aac", std::nullopt}});
+
+	std::vector<OvtStream::RenditionChange> changes;
+	OvtStream::RebuildRenditions(contents["stream"], {1, 2, 3}, &changes);
+	EXPECT_EQ(RenditionNames(contents["stream"]), (std::vector<ov::String>{"a"}));
+	ASSERT_EQ(changes.size(), 1u);
+	EXPECT_EQ(changes[0].type, OvtStream::RenditionChange::Type::DuplicateRemoved);
+	EXPECT_TRUE(changes[0].lost_sides.empty());
+
+	const auto lines = OvtStream::DescribeRenditionChanges(changes);
+	ASSERT_EQ(lines.size(), 1u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [abr] rendition [b] for this edge: removed, same tracks as rendition [a]"));
+
+	// A kept rendition without a name still makes the other one a duplicate
+	auto unnamed = BuildRenditionFixture("abr", {{"", "360p", 1, "aac", std::nullopt}, {"b", "360p", 1, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(unnamed["stream"], {1, 2, 3});
+	EXPECT_EQ(RenditionNames(unnamed["stream"]), (std::vector<ov::String>{""}));
+}
+
+// A side pinned to one track of its variant is emptied when only that track is gone,
+// and the change names that track
+TEST(OvtDescribeTest, RebuildEmptiesAPinnedSideWhoseTrackIsGone)
+{
+	// ko pinned to track 2; the TrackSet keeps only the other aac track (en)
+	auto contents = BuildRenditionFixture("lang", {{"r_ko", "360p", 1, "aac", 2}, {"r_en", "360p", 1, "aac", 3}});
+
+	std::vector<OvtStream::RenditionChange> changes;
+	OvtStream::RebuildRenditions(contents["stream"], {1, 3}, &changes);
+
+	const auto &renditions = contents["stream"]["playlists"][0]["renditions"];
+	ASSERT_EQ(renditions.size(), 2u);
+	EXPECT_STREQ(renditions[0]["audioTrackName"].asCString(), "");
+	EXPECT_STREQ(renditions[0]["removedAudioTrackName"].asCString(), "aac");
+	EXPECT_EQ(renditions[1]["audioTrackId"].asUInt(), 3u);
+
+	ASSERT_EQ(changes.size(), 1u);
+	EXPECT_EQ(changes[0].type, OvtStream::RenditionChange::Type::SideEmptied);
+	EXPECT_EQ(changes[0].lost_sides[0].track_id, std::optional<uint32_t>(2));
+
+	const auto lines = OvtStream::DescribeRenditionChanges(changes);
+	ASSERT_EQ(lines.size(), 1u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [lang] rendition [r_ko] for this edge: lost audio (variant [aac], track 2); plays video only"));
+
+	// With the whole variant gone, each pinned side still names its own track
+	auto all_gone = BuildRenditionFixture("lang", {{"r_ko", "360p", 1, "aac", 2}, {"r_en", "360p", 1, "aac", 3}});
+	std::vector<OvtStream::RenditionChange> gone_changes;
+	OvtStream::RebuildRenditions(all_gone["stream"], {1}, &gone_changes);
+	ASSERT_EQ(gone_changes.size(), 2u);
+	EXPECT_EQ(gone_changes[0].type, OvtStream::RenditionChange::Type::SideEmptied);
+	EXPECT_EQ(gone_changes[0].lost_sides[0].track_id, std::optional<uint32_t>(2));
+	EXPECT_EQ(gone_changes[1].type, OvtStream::RenditionChange::Type::DuplicateRemoved);
+	EXPECT_EQ(gone_changes[1].lost_sides[0].track_id, std::optional<uint32_t>(3));
+}
+
+// Duplicates go to the rendition the filter changed least: an untouched one first,
+// then one whose side without a pinned track kept only some tracks, then one that lost a whole side
+TEST(OvtDescribeTest, RebuildKeepsTheDuplicateTheFilterChangedLeast)
+{
+	// `multi` takes every aac track; `ko` is pinned to track 2, the one the TrackSet keeps
+	auto contents = BuildRenditionFixture("llhls", {{"multi", "720p", 0, "aac", std::nullopt}, {"ko", "720p", 0, "aac", 2}});
+
+	std::vector<OvtStream::RenditionChange> changes;
+	OvtStream::RebuildRenditions(contents["stream"], {0, 2}, &changes);
+	EXPECT_EQ(RenditionNames(contents["stream"]), (std::vector<ov::String>{"ko"}));
+
+	ASSERT_EQ(changes.size(), 1u);
+	EXPECT_EQ(changes[0].type, OvtStream::RenditionChange::Type::DuplicateRemoved);
+	EXPECT_FALSE(changes[0].lost_sides[0].emptied);
+
+	// The default-name line follows, since the edge's default URL serves this changed playlist
+	const auto lines = OvtStream::DescribeRenditionChanges(changes);
+	ASSERT_EQ(lines.size(), 2u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [llhls] rendition [multi] for this edge: removed, same tracks as rendition [ko] after losing some audio tracks (variant [aac])"));
+
+	// TrackSet { 360p, aac(en) }: both renditions lose an aac track, and source loses its video too
+	auto declared_audio = BuildRenditionFixture("llhls", {{"source", "720p", 0, "aac", std::nullopt}, {"audio", "", std::nullopt, "aac", std::nullopt}});
+	OvtStream::RebuildRenditions(declared_audio["stream"], {1, 3});
+	EXPECT_EQ(RenditionNames(declared_audio["stream"]), (std::vector<ov::String>{"audio"}));
+}
+
+// Every kind of change gets one log line naming what was lost,
+// and a default-name playlist left one-sided gets one more
+TEST(OvtDescribeTest, DescribeRenditionChangesNamesEachChange)
+{
+	auto contents = BuildRenditionFixture("llhls", {{"source", "720p", 0, "aac", std::nullopt}, {"hd", "720p", 0, "", std::nullopt}});
+
+	std::vector<OvtStream::RenditionChange> changes;
+	OvtStream::RebuildRenditions(contents["stream"], {1, 2, 3}, &changes);
+
+	const auto lines = OvtStream::DescribeRenditionChanges(changes);
+	ASSERT_EQ(lines.size(), 3u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [llhls] rendition [source] for this edge: lost video (variant [720p], track 0); plays audio only"));
+	EXPECT_EQ(lines[1], ov::String("Playlist [llhls] rendition [hd] for this edge: removed, no track left after losing video (variant [720p], track 0)"));
+	EXPECT_EQ(lines[2], ov::String("Playlist [llhls] for this edge: it has an edge default file name, so the edge does not build its own default playlist for it"));
+
+	// Nothing left: the rendition names both sides it lost, and the playlist itself goes
+	auto nothing = BuildRenditionFixture("abr", {{"source", "720p", 0, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> removed;
+	OvtStream::RebuildRenditions(nothing["stream"], {1}, &removed);
+	const auto removed_lines = OvtStream::DescribeRenditionChanges(removed);
+	ASSERT_EQ(removed_lines.size(), 2u);
+	EXPECT_EQ(removed_lines[0], ov::String("Playlist [abr] rendition [source] for this edge: removed, no track left after losing video (variant [720p], track 0) and audio (variant [aac])"));
+	EXPECT_EQ(removed_lines[1], ov::String("Playlist [abr] for this edge: removed, no rendition left"));
+
+	// A default-name playlist that goes entirely gets no default-name line: the edge builds its own default
+	auto default_gone = BuildRenditionFixture("llhls", {{"source", "720p", 0, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> gone;
+	OvtStream::RebuildRenditions(default_gone["stream"], {1}, &gone);
+	const auto gone_lines = OvtStream::DescribeRenditionChanges(gone);
+	ASSERT_EQ(gone_lines.size(), 2u);
+	EXPECT_EQ(gone_lines[1], ov::String("Playlist [llhls] for this edge: removed, no rendition left"));
+}
+
+// A side naming a variant the stream has no track for is left as the unfiltered describe has it:
+// the filter did not remove anything from it
+TEST(OvtDescribeTest, RebuildLeavesAVariantWithoutTracksAlone)
+{
+	auto contents = BuildRenditionFixture("abr", {{"low", "360p", 1, "absent", std::nullopt}});
+
+	std::vector<OvtStream::RenditionChange> changes;
+	OvtStream::RebuildRenditions(contents["stream"], {1, 2}, &changes);
+
+	const auto &renditions = contents["stream"]["playlists"][0]["renditions"];
+	ASSERT_EQ(renditions.size(), 1u);
+	EXPECT_STREQ(renditions[0]["audioTrackName"].asCString(), "absent");
+	EXPECT_FALSE(renditions[0].isMember("removedAudioTrackName"));
+	EXPECT_TRUE(changes.empty());
+
+	// Once the filter also empties the other side, nothing playable is left and the rendition goes
+	auto nothing_left = BuildRenditionFixture("abr", {{"source", "720p", 0, "absent", std::nullopt}, {"low", "360p", 1, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> removed;
+	OvtStream::RebuildRenditions(nothing_left["stream"], {1, 2}, &removed);
+	EXPECT_EQ(RenditionNames(nothing_left["stream"]), (std::vector<ov::String>{"low"}));
+	ASSERT_EQ(removed.size(), 1u);
+	EXPECT_EQ(removed[0].type, OvtStream::RenditionChange::Type::RenditionRemoved);
+	const auto removed_lines = OvtStream::DescribeRenditionChanges(removed);
+	ASSERT_EQ(removed_lines.size(), 1u);
+	EXPECT_EQ(removed_lines[0], ov::String("Playlist [abr] rendition [source] for this edge: removed, no track left after losing video (variant [720p], track 0)"));
+
+	// A rendition that names only such variants has nothing to play either, filter or not
+	auto only_absent = BuildRenditionFixture("abr", {{"radio", "", std::nullopt, "absent", std::nullopt}, {"low", "360p", 1, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> absent_changes;
+	OvtStream::RebuildRenditions(only_absent["stream"], {1, 2}, &absent_changes);
+	const auto lines = OvtStream::DescribeRenditionChanges(absent_changes);
+	ASSERT_EQ(lines.size(), 1u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [abr] rendition [radio] for this edge: removed, no track left"));
+}
+
+// A rendition that names no variant and a playlist without renditions lost nothing to the filter,
+// so they go without a change
+TEST(OvtDescribeTest, RebuildDropsEmptyDeclarationsUnlogged)
+{
+	auto blank = BuildRenditionFixture("abr", {{"blank", "", std::nullopt, "", std::nullopt}, {"low", "360p", 1, "aac", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> blank_changes;
+	OvtStream::RebuildRenditions(blank["stream"], {1, 2}, &blank_changes);
+	EXPECT_EQ(RenditionNames(blank["stream"]), (std::vector<ov::String>{"low"}));
+	EXPECT_TRUE(blank_changes.empty());
+
+	auto only_blank = BuildRenditionFixture("abr", {{"blank", "", std::nullopt, "", std::nullopt}});
+	std::vector<OvtStream::RenditionChange> only_blank_changes;
+	EXPECT_EQ(OvtStream::RebuildRenditions(only_blank["stream"], {1, 2}, &only_blank_changes), 2u);
+	EXPECT_EQ(only_blank["stream"]["playlists"].size(), 0u);
+	EXPECT_TRUE(only_blank_changes.empty());
+
+	auto none = BuildRenditionFixture("abr", {});
+	std::vector<OvtStream::RenditionChange> none_changes;
+	EXPECT_EQ(OvtStream::RebuildRenditions(none["stream"], {1, 2}, &none_changes), 1u);
+	EXPECT_EQ(none["stream"]["playlists"].size(), 0u);
+	EXPECT_TRUE(none_changes.empty());
+}
+
+// The describe and the play response name a removed track by the same function, from the JSON entry they send
+TEST(OvtDescribeTest, RemovalCauseNamesTheTerm)
+{
+	Json::Value video;
+	video["id"]			   = 0;
+	video["codec"]		   = "H264";
+	video["mediaTypeName"] = "Video";
+
+	Json::Value unrequested = video;
+	unrequested["id"]		= 3;
+
+	OvtTrackFilter filter;
+	filter.track_set_name	   = "low_only";
+	filter.track_set_ids	   = std::set<uint32_t>{1, 3};
+	filter.requested_track_ids = std::set<uint32_t>{1};
+
+	EXPECT_EQ(OvtStream::RemovalCause(filter, video), ov::String("TrackSet [low_only]"));
+	EXPECT_EQ(OvtStream::RemovalCause(filter, unrequested), ov::String("edge trackIds"));
+
+	OvtTrackFilter legacy;
+	legacy.legacy_edge	= true;
+	Json::Value unknown = video;
+	unknown["codec"]	= "no-such-codec";
+	EXPECT_EQ(OvtStream::RemovalCause(legacy, unknown), ov::String("OVT1 codec filter"));
+	EXPECT_TRUE(OvtStream::RemovalCause(legacy, video).IsEmpty());
+}
+
+// A relay passes on names its upstream sent, so a control character never reaches a log line
+TEST(OvtDescribeTest, RenditionChangeLinesSanitizeNames)
+{
+	OvtStream::RenditionChange change;
+	change.type			  = OvtStream::RenditionChange::Type::DuplicateRemoved;
+	change.playlist		  = "p\nq";
+	change.rendition	  = "r\x1b";
+	change.kept_rendition = "k\r";
+	change.lost_sides	  = {{cmn::MediaType::Audio, "a\nb", std::nullopt, true}};
+
+	const auto lines = OvtStream::DescribeRenditionChanges({change});
+	ASSERT_EQ(lines.size(), 1u);
+	EXPECT_EQ(lines[0], ov::String("Playlist [p.q] rendition [r.] for this edge: removed, same tracks as rendition [k.] after losing audio (variant [a.b])"));
+
+	Json::Value track;
+	track["id"] = 0;
+	OvtTrackFilter filter;
+	filter.track_set_name = "t\nx";
+	filter.track_set_ids  = std::set<uint32_t>{1};
+	EXPECT_EQ(OvtStream::RemovalCause(filter, track), ov::String("TrackSet [t.x]"));
 }
 
 // A rendition side without a track id keeps its group meaning, and the rebuild must not turn that

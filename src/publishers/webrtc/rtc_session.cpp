@@ -824,7 +824,7 @@ bool RtcSession::ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info)
 			auto copy_rtx_packet = std::make_shared<RtxRtpPacket>(*rtx_packet);
 			copy_rtx_packet->SetSequenceNumber(_rtx_sequence_number++);
 			copy_rtx_packet->SetOriginalSequenceNumber(sent_log->_sequence_number);
-			return _rtp_rtcp->SendRtpPacket(copy_rtx_packet);
+			_rtp_rtcp->SendRtpPacket(copy_rtx_packet);
 		}
 	}
 

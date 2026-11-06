@@ -58,17 +58,21 @@ namespace http
 			template <typename T>
 			void SetExtra(std::shared_ptr<T> extra)
 			{
+				std::lock_guard<std::mutex> lock_guard(_extra_mutex);
 				_extra = std::move(extra);
 			}
 
 			std::any GetExtra() const
 			{
+				std::lock_guard<std::mutex> lock_guard(_extra_mutex);
 				return _extra;
 			}
 
 			template <typename T>
 			std::shared_ptr<T> GetExtraAs() const
 			{
+				std::lock_guard<std::mutex> lock_guard(_extra_mutex);
+
 				try
 				{
 					return std::any_cast<std::shared_ptr<T>>(_extra);
@@ -97,6 +101,8 @@ namespace http
 			std::shared_ptr<HttpConnection> _connection = nullptr;
 			Status _status = Status::None;
 			bool _keep_alive = true; // HTTP/1.1 default
+			// The extra is read from other threads, such as a scan over every connection
+			mutable std::mutex _extra_mutex;
 			std::any _extra;
 			std::shared_ptr<RequestInterceptor> _interceptor = nullptr; // Cached interceptor
 		};
