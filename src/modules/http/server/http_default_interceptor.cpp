@@ -8,6 +8,8 @@
 //==============================================================================
 #include "http_default_interceptor.h"
 
+#include <algorithm>
+
 #include "./http_server_private.h"
 #include "http_exchange.h"
 
@@ -94,10 +96,7 @@ namespace http
 			auto response = exchange->GetResponse();
 			int handler_count = 0;
 
-			// A variable to handle 403 Method not allowed
-			bool regex_found = false;
-
-			auto uri = ov::Url::Parse(request->GetUri());
+			const auto &uri = request->GetParsedUri();
 
 			if (uri == nullptr)
 			{
@@ -114,6 +113,11 @@ namespace http
 
 			for (auto &request_info : _request_handler_list)
 			{
+				if (!HTTP_CHECK_METHOD(request_info.method, request->GetMethod()))
+				{
+					continue;
+				}
+
 #if DEBUG
 				logtt("Check if url [%s] is matches [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
@@ -129,26 +133,21 @@ namespace http
 					logtt("Matches: url [%s], pattern: [%s]", uri_target.CStr(), request_info.pattern_string.CStr());
 #endif	// DEBUG
 
-					regex_found = true;
+					handler_count++;
 
-					if (HTTP_CHECK_METHOD(request_info.method, request->GetMethod()))
+					request->SetMatchResult(matches);
+
+					auto request_result = request_info.handler(exchange);
+					if (request_result == NextHandler::DoNotCall)
 					{
-						handler_count++;
-
-						request->SetMatchResult(matches);
-						
-						auto request_result = request_info.handler(exchange);
-						if (request_result == NextHandler::DoNotCall)
-						{
-							break;
-						}
-						else if (request_result == NextHandler::DoNotCallAndDoNotResponse)
-						{
-							return InterceptorResult::Moved;
-						}
-
-						// Call the next handler
+						break;
 					}
+					else if (request_result == NextHandler::DoNotCallAndDoNotResponse)
+					{
+						return InterceptorResult::Moved;
+					}
+
+					// Call the next handler
 				}
 				else
 				{
@@ -160,20 +159,11 @@ namespace http
 
 			if (handler_count == 0)
 			{
-				if (regex_found)
-				{
-					// Handler matching the pattern was found, but no matching method was found
-					response->SetStatusCode(StatusCode::MethodNotAllowed);
-				}
-				else
-				{
-					// Handler not found
-					response->SetStatusCode(StatusCode::NotFound);
-				}
-			}
-			else
-			{
-				// Everything is OK
+				const bool other_method_matches = std::any_of(_request_handler_list.begin(), _request_handler_list.end(), [&](const auto &request_info) {
+					return !HTTP_CHECK_METHOD(request_info.method, request->GetMethod()) && (request_info.pattern.Matches(uri_target).GetError() == nullptr);
+				});
+
+				response->SetStatusCode(other_method_matches ? StatusCode::MethodNotAllowed : StatusCode::NotFound);
 			}
 
 			response->Response();

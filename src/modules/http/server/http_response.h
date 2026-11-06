@@ -75,10 +75,21 @@ namespace http
 		protected:
 			bool IsHeaderSent() const;
 			
-			// Get Response Data List
-			std::vector<std::shared_ptr<const ov::Data>> GetResponseDataList() const;
-			// Get Response Header
-			std::unordered_map<ov::String, std::vector<ov::String>, ov::CaseInsensitiveHash, ov::CaseInsensitiveEqual> GetResponseHeaderList() const;
+			// `visitor` runs under `_response_mutex`; the reference it receives must not escape it
+			template <typename Visitor>
+			decltype(auto) VisitResponseDataList(Visitor &&visitor) const
+			{
+				ov::LockGuard lock(_response_mutex);
+				return std::forward<Visitor>(visitor)(_response_data_list);
+			}
+
+			template <typename Visitor>
+			decltype(auto) VisitResponseHeaderList(Visitor &&visitor) const
+			{
+				ov::LockGuard lock(_response_mutex);
+				return std::forward<Visitor>(visitor)(_response_header);
+			}
+
 			void ResetResponseData();
 
 			// Can be used for response without content-length

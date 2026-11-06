@@ -57,7 +57,7 @@ namespace http
 
 			int32_t Http1Response::SendHeader()
 			{
-				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(65535);
+				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(1024);
 				ov::ByteStream stream(response.get());
 
 				// Load once so the status line cannot mix two different status codes
@@ -74,24 +74,22 @@ namespace http
 				// RFC7230 - 3.1.2.  Status Line
 				// status-line = HTTP-version SP status-code SP reason-phrase CRLF
 				// TODO(dimiden): Replace this HTTP version with the version that received from the request
-				stream.Append(ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(status_code), StringFromStatusCode(status_code)).ToData(false));
+				const auto status_line = ov::String::FormatString("HTTP/1.1 %d %s\r\n", ov::ToUnderlyingType(status_code), StringFromStatusCode(status_code));
+				stream.Append(status_line.CStr(), status_line.GetLength());
 
 				// RFC7230 - 3.2.  Header Fields
-				for (const auto &pair : GetResponseHeaderList())
-				{
-					auto key_data = pair.first.ToData(false);
-					const std::vector<ov::String> &value_list = pair.second;
-
-					for (const auto &value : value_list)
+				VisitResponseHeaderList([&stream](const auto &header_list) {
+					for (const auto &[key, values] : header_list)
 					{
-						auto value_data = value.ToData(false);
-
-						stream.Append(key_data);
-						stream.Append(": ", 2);
-						stream.Append(value_data);
-						stream.Append("\r\n", 2);
+						for (const auto &value : values)
+						{
+							stream.Append(key.CStr(), key.GetLength());
+							stream.Append(": ", 2);
+							stream.Append(value.CStr(), value.GetLength());
+							stream.Append("\r\n", 2);
+						}
 					}
-				}
+				});
 
 				stream.Append("\r\n", 2);
 
@@ -107,39 +105,26 @@ namespace http
 
 			int32_t Http1Response::SendPayload()
 			{
-				bool sent = true;
-
 				logtt("Trying to send datas...");
 
 				uint32_t sent_bytes = 0;
-				for (const auto &data : GetResponseDataList())
+				const bool all_sent = VisitResponseDataList([&](const auto &data_list) -> bool {
+					for (const auto &data : data_list)
+					{
+						const bool ok = _chunked_transfer ? SendChunkedData(data) : Send(data);
+						if (!ok)
+						{
+							logte("Could not send %sdata : %zu bytes", _chunked_transfer ? "chunked " : "", data->GetLength());
+							return false;
+						}
+						sent_bytes += data->GetLength();
+					}
+					return true;
+				});
+
+				if (all_sent == false)
 				{
-					if (_chunked_transfer)
-					{
-						sent &= SendChunkedData(data);
-						if (sent == true)
-						{
-							sent_bytes += data->GetLength();
-						}
-						else
-						{
-							logte("Could not send chunked data : %zu bytes", data->GetLength());
-							return -1;
-						}
-					}
-					else
-					{
-						sent &= Send(data);
-						if (sent == true)
-						{
-							sent_bytes += data->GetLength();
-						}
-						else
-						{
-							logte("Could not send data : %zu bytes", data->GetLength());
-							return -1;
-						}
-					}
+					return -1;
 				}
 
 				ResetResponseData();
