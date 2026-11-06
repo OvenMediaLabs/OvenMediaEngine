@@ -58,6 +58,7 @@ namespace pub
 		std::shared_ptr<SessionMessage> PopSessionMessage();
 		ov::Queue<std::shared_ptr<SessionMessage>> _session_message_queue;
 
+		std::atomic<uint32_t> _session_count{0};
 		std::atomic<bool> _stop_thread_flag;
 		std::thread _worker_thread;
 
@@ -203,6 +204,7 @@ namespace pub
 
 	private:
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
+		std::atomic<uint32_t> _session_count{0};
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
 		std::shared_mutex _session_map_mutex;
 
