@@ -472,24 +472,14 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 			if (info != nullptr)
 			{
-				if (info->id != P2P_INVALID_PEER_ID)
-				{
-					// The client is disconnected without send "close" command
-
-					// Forces the session to be cleaned up by sending a stop command
-					DispatchStop(ws_session, info);
-				}
-				else if (info->answer_received == false)
-				{
-					// A stopped client may still have requested another offer
-					NotifyNegotiationFinished(ws_session, info->offer_sdp, RtcSignallingObserver::NegotiationResult::Abandoned);
-				}
-
 				logti("Client is disconnected: %s (%s / %s, ufrag: local: %s, remote: %s)",
 					  ws_session->ToString().CStr(),
 					  info->vhost_app_name.CStr(), info->stream_name.CStr(),
 					  (info->offer_sdp != nullptr) ? info->offer_sdp->GetIceUfrag().CStr() : "(N/A)",
 					  (info->answer_sdp != nullptr) ? info->answer_sdp->GetIceUfrag().CStr() : "(N/A)");
+
+				// Cleans up what the client left without "stop", even after an earlier "stop" and a new offer
+				DispatchStop(ws_session, info);
 			}
 			else
 			{
