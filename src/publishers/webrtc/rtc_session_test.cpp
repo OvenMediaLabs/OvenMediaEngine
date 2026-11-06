@@ -86,19 +86,30 @@ protected:
 
 	void LogSentVideoPacket(uint16_t sequence_number)
 	{
+		auto packet = MakePacket(sequence_number, true);
+		history->StoreRtpPacket(packet);
+		ASSERT_TRUE(session->RecordRtpSent(packet, sequence_number, 0));
+	}
+
+	static std::shared_ptr<RtpPacket> MakePacket(uint16_t sequence_number, bool video)
+	{
 		auto packet = std::make_shared<RtpPacket>();
 		packet->SetTrackId(kVideoTrackId);
-		packet->SetVideoPacket(true);
+		packet->SetVideoPacket(video);
 		packet->SetPayloadType(kVideoPayloadType);
 		packet->SetSequenceNumber(sequence_number);
-		history->StoreRtpPacket(packet);
-		// Seed the sent-packet lookup; this test exercises NACK processing.
-		auto sent = std::make_shared<RtcSession::RtpSentLog>();
-		sent->_track_id = kVideoTrackId;
-		sent->_payload_type = kVideoPayloadType;
-		sent->_origin_sequence_number = sequence_number;
-		sent->_sequence_number = sequence_number;
-		session->_video_rtp_sent_record_map[sequence_number % MAX_RTP_RECORDS] = sent;
+		return packet;
+	}
+
+	bool RecordPacket(bool rtx, const std::shared_ptr<RtpPacket> &packet)
+	{
+		session->_rtx_enabled = rtx;
+		return session->RecordRtpSent(packet, 10, 0);
+	}
+
+	bool HasRecord(uint16_t sequence_number)
+	{
+		return session->TraceRtpSentByVideoSeqNo(sequence_number) != nullptr;
 	}
 
 	void ReceiveNack(const std::vector<uint16_t> &lost_ids)
@@ -139,4 +150,22 @@ TEST_F(RtcSessionNackTest, RetransmitsEveryLostPacketInOneNack)
 		// RFC 4588: the RTX payload starts with the original sequence number.
 		EXPECT_EQ(ByteReader<uint16_t>::ReadBigEndian(rtx.Payload()), 10 + i);
 	}
+}
+
+TEST_F(RtcSessionNackTest, DoesNotRecordVideoWhenRtxIsDisabled)
+{
+	EXPECT_FALSE(RecordPacket(false, MakePacket(10, true)));
+	EXPECT_FALSE(HasRecord(10));
+}
+
+TEST_F(RtcSessionNackTest, DoesNotRecordAudioWhenRtxIsEnabled)
+{
+	EXPECT_FALSE(RecordPacket(true, MakePacket(10, false)));
+	EXPECT_FALSE(HasRecord(10));
+}
+
+TEST_F(RtcSessionNackTest, RejectsNullPacket)
+{
+	EXPECT_FALSE(RecordPacket(true, nullptr));
+	EXPECT_FALSE(HasRecord(10));
 }
