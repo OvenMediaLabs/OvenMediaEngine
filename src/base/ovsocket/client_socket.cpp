@@ -45,13 +45,6 @@ namespace ov
 	{
 	}
 
-	bool ClientSocket::Create(const SocketType type, const SocketFamily family)
-	{
-		// The constructor has already taken the accepted handle. Never failing here keeps `AllocSocket()` from
-		// returning nullptr after this socket took the handle, so the caller can close the handle on nullptr.
-		return true;
-	}
-
 	bool ClientSocket::StoreSrtStreamId()
 	{
 		if (GetType() != ov::SocketType::Srt)

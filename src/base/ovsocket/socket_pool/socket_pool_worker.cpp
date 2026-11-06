@@ -60,6 +60,48 @@ static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long n
 
 namespace ov
 {
+	// The high 32 bits of a TCP/UDP epoll event.
+	// They tell a registration apart from an earlier one that used the same native handle.
+	static uint32_t ToEventTag(socket_id_t socket_id)
+	{
+		return static_cast<uint32_t>(socket_id.GetValue());
+	}
+
+	SocketCountSlot::SocketCountSlot(SocketPoolWorker *worker)
+		: _worker(worker)
+	{
+		_worker->IncreaseSocketCount();
+	}
+
+	SocketCountSlot::SocketCountSlot(SocketCountSlot &&other) noexcept
+		: _worker(std::exchange(other._worker, nullptr))
+	{
+	}
+
+	SocketCountSlot &SocketCountSlot::operator=(SocketCountSlot &&other) noexcept
+	{
+		if (this != &other)
+		{
+			Reset();
+			_worker = std::exchange(other._worker, nullptr);
+		}
+
+		return *this;
+	}
+
+	SocketCountSlot::~SocketCountSlot()
+	{
+		Reset();
+	}
+
+	void SocketCountSlot::Reset()
+	{
+		if (_worker != nullptr)
+		{
+			std::exchange(_worker, nullptr)->DecreaseSocketCount();
+		}
+	}
+
 	SocketPoolWorker::SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool)
 		: _pool(pool)
 	{
@@ -117,6 +159,22 @@ namespace ov
 		_epoll_thread.join();
 
 		{
+			LockGuard lock(_epoll_mutex);
+
+			if (_epoll != InvalidSocket)
+			{
+				::close(_epoll);
+			}
+
+			if (_srt_epoll != InvalidSocket)
+			{
+				::srt_epoll_release(_srt_epoll);
+			}
+
+			_stopped = true;
+		}
+
+		{
 			LockGuard lock(_sockets_to_dispatch_mutex);
 			_sockets_to_dispatch.clear();
 		}
@@ -132,22 +190,6 @@ namespace ov
 		}
 
 		_gc_candidates.clear();
-
-		{
-			LockGuard lock(_epoll_mutex);
-
-			if (_epoll != InvalidSocket)
-			{
-				::close(_epoll);
-			}
-
-			if (_srt_epoll != InvalidSocket)
-			{
-				::srt_epoll_release(_srt_epoll);
-			}
-
-			_epoll_closed = true;
-		}
 
 		return true;
 	}
@@ -223,7 +265,8 @@ namespace ov
 
 	bool SocketPoolWorker::PrepareSocket(std::shared_ptr<Socket> socket, const SocketFamily family)
 	{
-		return socket->Create(GetType(), family);
+		// A socket built around an accepted handle is already created, so it never fails here after taking the handle
+		return socket->IsValid() || socket->Create(GetType(), family);
 	}
 
 	void SocketPoolWorker::GarbageCollection()
@@ -558,25 +601,19 @@ namespace ov
 
 		for (auto &socket_item : socket_map)
 		{
-			auto socket = socket_item.second.socket;
+			auto socket = socket_item.second;
 
 			// Close immediately (Do not half-close)
 			if (socket->IsClosable())
 			{
 				socket->CloseImmediatelyWithState(SocketState::Closed);
-
-				// Do connection callback, etc...
-				socket->DispatchEvents();
 			}
 		}
 	}
 
 	bool SocketPoolWorker::AddToEpoll(const std::shared_ptr<Socket> &socket)
 	{
-		OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-
-		auto native_handle  = socket->GetNativeHandle();
-		uint32_t generation = 0;
+		auto native_handle = socket->GetNativeHandle();
 		std::shared_ptr<Socket> registered_socket;
 
 		// Registered before adding to epoll, since epoll reports the current readiness at once
@@ -592,14 +629,13 @@ namespace ov
 
 			auto &entry = _socket_map[native_handle];
 
-			if (entry.socket == nullptr)
+			if (entry == nullptr)
 			{
-				generation = ++_last_generation;
-				entry	   = {generation, socket};
+				entry = socket;
 			}
 			else
 			{
-				registered_socket = entry.socket;
+				registered_socket = entry;
 			}
 		}
 
@@ -617,7 +653,7 @@ namespace ov
 		{
 			LockGuard lock(_epoll_mutex);
 
-			if (_epoll_closed)
+			if (_stopped)
 			{
 				error = Error::CreateError("Socket", "The worker has stopped");
 			}
@@ -637,7 +673,7 @@ namespace ov
 						// EPOLLRDHUP : Disconnected or half-closing
 						// EPOLLET: Edge trigger
 						event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
-						event.data.u64 = (static_cast<uint64_t>(generation) << 32) | static_cast<uint32_t>(native_handle);
+						event.data.u64 = (static_cast<uint64_t>(ToEventTag(socket->GetId())) << 32) | static_cast<uint32_t>(native_handle);
 
 						if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
 						{
@@ -684,14 +720,6 @@ namespace ov
 		// Reset errno
 		errno = 0;
 
-		if (GetNativeHandle() == InvalidSocket)
-		{
-			logae("Epoll is not initialized");
-
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-			return -1;
-		}
-
 		std::shared_ptr<Error> error;
 		int event_count = 0;
 
@@ -718,9 +746,9 @@ namespace ov
 						// so it is non-negative and converts back to `int` unchanged.
 						auto socket_iterator = _socket_map.find(static_cast<int>(static_cast<uint32_t>(key)));
 						bool is_same_socket	 = (socket_iterator != _socket_map.end()) &&
-											  (socket_iterator->second.generation == static_cast<uint32_t>(key >> 32));
+											  (ToEventTag(socket_iterator->second->GetId()) == static_cast<uint32_t>(key >> 32));
 
-						polled_sockets[index] = is_same_socket ? socket_iterator->second.socket : nullptr;
+						polled_sockets[index] = is_same_socket ? socket_iterator->second : nullptr;
 					}
 				}
 				else
@@ -756,13 +784,13 @@ namespace ov
 					{
 						LockGuard lock(_socket_map_mutex);
 
-						// An SRT event carries only the socket ID, and libsrt reissues an ID only after its ID counter wraps.
-						// So the ID alone identifies the socket, without a generation check.
+						// An SRT event carries only the SRT handle, which libsrt reissues only after its counter wraps.
+						// So the handle alone identifies the socket, without the tag of a TCP/UDP event.
 						for (int index = 0; index < event_count; index++)
 						{
 							auto socket_iterator  = _socket_map.find(_srt_epoll_events[index].fd);
 
-							polled_sockets[index] = (socket_iterator != _socket_map.end()) ? socket_iterator->second.socket : nullptr;
+							polled_sockets[index] = (socket_iterator != _socket_map.end()) ? socket_iterator->second : nullptr;
 						}
 					}
 
@@ -858,10 +886,15 @@ namespace ov
 	{
 		LockGuard lock(_sockets_to_dispatch_mutex);
 
+		if (_stopped)
+		{
+			return;
+		}
+
 		_sockets_to_dispatch[socket] = socket;
 	}
 
-	void SocketPoolWorker::EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback)
+	void SocketPoolWorker::EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback, SocketCountSlot count_slot)
 	{
 		OV_ASSERT2(socket != nullptr);
 		OV_ASSERT2(callback != nullptr);
@@ -870,7 +903,12 @@ namespace ov
 		{
 			LockGuard lock(_sockets_to_call_close_callback_mutex);
 
-			_sockets_to_call_close_callback[socket] = callback;
+			if (_stopped)
+			{
+				return;
+			}
+
+			_sockets_to_call_close_callback[socket] = {std::move(callback), std::move(count_slot)};
 		}
 	}
 
@@ -878,8 +916,7 @@ namespace ov
 	{
 		LockGuard lock(_connection_timed_out_queue_mutex);
 
-		// `Uninitialize()` clears the queue under this lock after it sets the flag, so a push after that is dropped
-		if (_stop_epoll_thread)
+		if (_stopped)
 		{
 			return;
 		}
@@ -978,25 +1015,15 @@ namespace ov
 			std::swap(close_list, _sockets_to_call_close_callback);
 		}
 
-		for (auto close_item : close_list)
+		for (auto &close_item : close_list)
 		{
-			close_item.second->OnClosed();
-
-			// The socket stays counted until its close callback has run
-			DecreaseSocketCount();
+			close_item.second.callback->OnClosed();
+			close_item.second.count_slot.Reset();
 		}
 	}
 
 	bool SocketPoolWorker::DeleteFromEpoll(const std::shared_ptr<Socket> &socket)
 	{
-		if (GetNativeHandle() == InvalidSocket)
-		{
-			logae("Epoll is not initialized");
-
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-			return false;
-		}
-
 		std::shared_ptr<Error> error;
 		auto native_handle = socket->GetNativeHandle();
 
@@ -1007,7 +1034,7 @@ namespace ov
 
 			// A closed epoll has nothing to remove.
 			// The kernel dropped the TCP/UDP registrations, and libsrt tolerates the released ID left on the socket.
-			if (_epoll_closed == false)
+			if (_stopped == false)
 			{
 				switch (GetType())
 				{
@@ -1045,12 +1072,6 @@ namespace ov
 		{
 			switch (error->GetCode())
 			{
-				case EBADF:
-					// Not expected: a socket leaves the worker before its handle is released
-
-					// Do not print 'Bad file descriptor' error log
-					break;
-
 				case ENOENT:
 					// In some cases, such as when an error occurs while the socket is connecting
 					break;
@@ -1075,7 +1096,7 @@ namespace ov
 	{
 		auto socket_iterator = _socket_map.find(socket->GetNativeHandle());
 
-		if ((socket_iterator != _socket_map.end()) && (socket_iterator->second.socket == socket))
+		if ((socket_iterator != _socket_map.end()) && (socket_iterator->second == socket))
 		{
 			_socket_map.erase(socket_iterator);
 		}

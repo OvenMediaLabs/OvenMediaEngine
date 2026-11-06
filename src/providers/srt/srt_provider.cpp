@@ -213,7 +213,7 @@ namespace pvd
 
 		auto requested_url = final_url;
 
-		channel_id_t channel_id(remote->GetId().GetValue());
+		auto channel_id = GetChannelId(remote);
 
 		//TODO(Getroot): For security enhancement,
 		// it should be checked whether the actual ip:port is the same as the ip:port of streamid (after dns resolve if it is domain).
@@ -324,7 +324,7 @@ namespace pvd
 									 const ov::SocketAddress &address,
 									 const std::shared_ptr<const ov::Data> &data)
 	{
-		channel_id_t channel_id(remote->GetId().GetValue());
+		auto channel_id = GetChannelId(remote);
 		PushProvider::OnDataReceived(channel_id, data);
 	}
 
@@ -339,7 +339,7 @@ namespace pvd
 	{
 		logti("SrtProvider::OnDisonnected : %s [%s]", remote->ToString().CStr(), remote->GetStreamId().CStr());
 
-		auto channel = GetChannel(channel_id_t(remote->GetId().GetValue()));
+		auto channel = GetChannel(GetChannelId(remote));
 		if (channel == nullptr)
 		{
 			// It probably rejected on OnConnected
@@ -370,6 +370,6 @@ namespace pvd
 
 		logti("The SRT client has disconnected: [%s/%s], remote: %s", channel->GetApplicationName(), channel->GetName().CStr(), remote->ToString().CStr());
 
-		PushProvider::OnChannelDeleted(channel_id_t(remote->GetId().GetValue()));
+		PushProvider::OnChannelDeleted(GetChannelId(remote));
 	}
 }  // namespace pvd

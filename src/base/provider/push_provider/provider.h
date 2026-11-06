@@ -58,6 +58,12 @@ namespace pvd
 		bool OnChannelDeleted(const std::shared_ptr<pvd::PushStream> &channel);
 		std::shared_ptr<PushStream> GetChannel(channel_id_t channel_id);
 
+		// The channel of a connection, identified by the socket ID, which is never reused
+		static channel_id_t GetChannelId(const std::shared_ptr<ov::Socket> &socket)
+		{
+			return channel_id_t(socket->GetId().GetValue());
+		}
+
 		virtual void OnTimedOut(const std::shared_ptr<PushStream> &channel) {}
 
     private:

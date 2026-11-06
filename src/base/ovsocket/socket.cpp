@@ -140,8 +140,6 @@ namespace ov
 			// Only the owner reference is left, since a syscall in flight is made through a `shared_ptr` of this socket
 			OV_ASSERT2(io_ref == 1);
 
-			_worker->DecreaseSocketCount();
-
 			CloseNativeHandle(GetType(), GetNativeHandle());
 		}
 		else
@@ -309,17 +307,7 @@ namespace ov
 			return true;
 		} while (false);
 
-		// An error occurred - reset all variables
-		{
-			auto state = _state.load();
-
-			LockGuard lock_guard(_dispatch_queue_lock);
-			if (CloseInternal(state))
-			{
-				SetState(SocketState::Closed);
-			}
-		}
-
+		// No handle was assigned, so there is nothing to close
 		return false;
 	}
 
@@ -1445,8 +1433,7 @@ namespace ov
 				break;
 		}
 
-		// Check if the socket is closed
-		return (_has_close_command == false);
+		return (IsClosing() == false);
 	}
 
 	ssize_t Socket::HandleSendError(const ssize_t result, const size_t total_sent)
@@ -1460,9 +1447,6 @@ namespace ov
 				STATS_COUNTER_INCREASE_RETRY();
 				return total_sent;
 
-			case EBADF:
-				// Not expected: a closed socket fails its guard before reaching the syscall
-				[[fallthrough]];
 			case EPIPE:
 				// Broken pipe - maybe peer is disconnected
 				[[fallthrough]];
@@ -2122,10 +2106,6 @@ namespace ov
 					switch (socket_error->GetCode())
 					{
 						// Errors that can occur under normal circumstances do not output
-						case EBADF:
-							// Not expected: a closed socket fails its guard before reaching the syscall
-							break;
-
 						case ECONNRESET:
 							// Peer is disconnected
 							new_state = SocketState::Disconnected;
@@ -2421,7 +2401,7 @@ namespace ov
 			return Close();
 		}
 
-		return IsClosing() || Close();
+		return _has_close_command || Close();
 	}
 
 	bool Socket::CloseWithState(SocketState new_state)
@@ -2668,10 +2648,6 @@ namespace ov
 
 				switch (error->GetCode())
 				{
-					case EBADF:
-						// Not expected: a closed socket fails its guard before reaching the syscall
-						break;
-
 					case EAGAIN:
 						// Peer doesn't send ACK/FIN yet - ignores this
 						return DispatchResult::Dispatched;
@@ -2717,11 +2693,11 @@ namespace ov
 		_close_reason = close_reason;
 
 		// Only a socket that reported its connection gets a close callback.
-		// It stays counted until the worker runs that callback, so the worker is not released as idle before that.
-		auto post_callback	   = std::atomic_exchange(&_callback, {});
-		const bool keeps_count = (post_callback != nullptr) && _connection_event_fired;
+		// `CallCloseCallbackIfNeeded()` hands it to the worker with `_count_slot`, so the worker stays counted until it runs.
+		auto post_callback			  = std::atomic_exchange(&_callback, {});
+		const bool has_close_callback = (post_callback != nullptr) && _connection_event_fired;
 
-		if (keeps_count)
+		if (has_close_callback)
 		{
 			std::atomic_store(&_post_callback, std::move(post_callback));
 		}
@@ -2731,9 +2707,9 @@ namespace ov
 		// It also runs before the shutdown below, which would otherwise raise events for this socket in the worker.
 		DeleteFromWorker();
 
-		if (keeps_count == false)
+		if (has_close_callback == false)
 		{
-			_worker->DecreaseSocketCount();
+			_count_slot.Reset();
 		}
 
 		switch (GetType())
@@ -2789,9 +2765,10 @@ namespace ov
 	{
 		auto post_callback = std::atomic_exchange(&_post_callback, {});
 
+		// Only the caller that takes `_post_callback` reaches `_count_slot` here, and `CloseInternal()` left it alone
 		if (post_callback != nullptr)
 		{
-			_worker->EnqueueToCloseCallbackLater(GetSharedPtr(), post_callback);
+			_worker->EnqueueToCloseCallbackLater(GetSharedPtr(), post_callback, std::move(_count_slot));
 		}
 	}
 

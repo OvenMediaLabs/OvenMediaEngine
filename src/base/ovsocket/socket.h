@@ -44,6 +44,25 @@ namespace ov
 	class Socket;
 	class SocketPoolWorker;
 
+	// Counts one socket on a worker until it is reset or destroyed, so the count drops exactly once
+	class SocketCountSlot
+	{
+	public:
+		SocketCountSlot() = default;
+		explicit SocketCountSlot(SocketPoolWorker *worker);
+		SocketCountSlot(SocketCountSlot &&other) noexcept;
+		SocketCountSlot &operator=(SocketCountSlot &&other) noexcept;
+		SocketCountSlot(const SocketCountSlot &)			= delete;
+		SocketCountSlot &operator=(const SocketCountSlot &) = delete;
+		~SocketCountSlot();
+
+		void Reset();
+
+	private:
+		// The holder keeps the worker alive: a socket through its `_worker`, a queue entry by living in the worker
+		SocketPoolWorker *_worker = nullptr;
+	};
+
 	class SocketAsyncInterface
 	{
 	public:
@@ -314,9 +333,11 @@ namespace ov
 			_end_of_stream = true;
 		}
 
+		// Whether a close is queued or has started, or no handle was ever assigned.
+		// After a close starts, the handle stays open until the syscalls in flight return.
 		bool IsClosing() const
 		{
-			return _has_close_command;
+			return _has_close_command || (IsValid() == false);
 		}
 
 		// Registers this socket in an epoll instance the caller owns (TCP/UDP only)
@@ -508,7 +529,7 @@ namespace ov
 		};
 
 	protected:
-		virtual bool Create(const SocketType type, const SocketFamily family);
+		bool Create(const SocketType type, const SocketFamily family);
 
 		// Internal version of MakeNonBlocking() - It doesn't check state
 		bool MakeNonBlockingInternal(std::shared_ptr<SocketAsyncInterface> callback, bool need_to_wait_first_epoll_event);
@@ -544,8 +565,9 @@ namespace ov
 		DispatchResult HalfClose();
 		DispatchResult WaitForHalfClose();
 
-		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it,
-		// and the socket stays counted on its worker until the worker has run that callback.
+		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it.
+		// A socket with a close callback stays counted on its worker until the worker has run it,
+		// or until a stopped worker has dropped it.
 		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
@@ -608,6 +630,9 @@ namespace ov
 
 	protected:
 		std::shared_ptr<SocketPoolWorker> _worker;
+		// Set by `SocketPoolWorker::AllocSocket()`. The first close resets it, unless the socket has a close callback,
+		// which takes it to the worker's queue until the worker has run the callback or, once stopped, dropped it.
+		SocketCountSlot _count_slot;
 
 		const socket_id_t _id;
 

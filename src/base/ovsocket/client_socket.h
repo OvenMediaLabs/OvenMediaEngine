@@ -29,8 +29,6 @@ namespace ov
 		String ToString() const override;
 
 	protected:
-		bool Create(const SocketType type, const SocketFamily family) override;
-
 		bool SetSocketOptions();
 		bool StoreSrtStreamId();	// Only available if socket is SRT
 		bool RetrieveLocalAddress();

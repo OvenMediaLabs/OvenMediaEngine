@@ -220,7 +220,7 @@ namespace pvd
 
 	void RtmpProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote)
 	{
-		channel_id_t channel_id(remote->GetId().GetValue());
+		auto channel_id = GetChannelId(remote);
 		auto stream = _is_ertmp_enabled
 						  ? CreateStream<rtmp::RtmpStreamV2>(channel_id, remote, GetSharedPtrAs<pvd::PushProvider>())
 						  : CreateStream<RtmpStream>(channel_id, remote, GetSharedPtrAs<pvd::PushProvider>());
@@ -239,14 +239,14 @@ namespace pvd
 		DumpDataToFile(remote, address, data);
 #endif	// DEBUG
 
-		PushProvider::OnDataReceived(channel_id_t(remote->GetId().GetValue()), data);
+		PushProvider::OnDataReceived(GetChannelId(remote), data);
 	}
 
 	void RtmpProvider::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
 									  PhysicalPortDisconnectReason reason,
 									  const std::shared_ptr<const ov::Error> &error)
 	{
-		auto channel = GetChannel(channel_id_t(remote->GetId().GetValue()));
+		auto channel = GetChannel(GetChannelId(remote));
 		if (channel == nullptr)
 		{
 			if (reason == PhysicalPortDisconnectReason::Disconnect)
@@ -270,6 +270,6 @@ namespace pvd
 			  channel->GetNamePath().CStr(),
 			  remote->ToString().CStr());
 
-		PushProvider::OnChannelDeleted(channel_id_t(remote->GetId().GetValue()));
+		PushProvider::OnChannelDeleted(GetChannelId(remote));
 	}
 }  // namespace pvd
