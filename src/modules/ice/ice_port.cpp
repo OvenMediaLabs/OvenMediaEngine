@@ -298,19 +298,40 @@ bool IcePort::IsUfragInUse(const ov::String &ufrag) const
 		   (_reserved_ufrags.find(ufrag) != _reserved_ufrags.end());
 }
 
-bool IcePort::DeferBindingRequest(const ov::String &local_ufrag, const ov::SocketAddressPair &address_pair, const DeferredBindingRequest &request)
+IcePort::DeferResult IcePort::DeferBindingRequest(const ov::String &local_ufrag, const ov::SocketAddressPair &address_pair, const DeferredBindingRequest &request)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+	bool report_limit = false;
 
-	auto item = _reserved_ufrags.find(local_ufrag);
-	if (item == _reserved_ufrags.end())
 	{
-		return false;
+		std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+
+		auto item = _reserved_ufrags.find(local_ufrag);
+		if (item == _reserved_ufrags.end())
+		{
+			return DeferResult::NotReserved;
+		}
+
+		auto &reserved_ufrag			= item->second;
+		auto &deferred_binding_requests = reserved_ufrag.deferred_binding_requests;
+
+		if ((deferred_binding_requests.find(address_pair) != deferred_binding_requests.end()) ||
+			(deferred_binding_requests.size() < IceSession::kMaxCandidatePairs))
+		{
+			deferred_binding_requests.insert_or_assign(address_pair, request);
+			return DeferResult::Deferred;
+		}
+
+		report_limit				  = (reserved_ufrag.limit_reported == false);
+		reserved_ufrag.limit_reported = true;
 	}
 
-	item->second.deferred_binding_requests.insert_or_assign(address_pair, request);
+	if (report_limit)
+	{
+		logtw("Offer ufrag %s holds %zu paths before the answer, the most a peer checks, so new paths such as %s are ignored",
+			  local_ufrag.CStr(), IceSession::kMaxCandidatePairs, address_pair.ToString().CStr());
+	}
 
-	return true;
+	return DeferResult::Full;
 }
 
 bool IcePort::AddIceSession(session_id_t session_id, const std::shared_ptr<IceSession> &ice_session)
@@ -468,7 +489,10 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 		logtd("Session %u: sending the binding request deferred until the answer to %s", session_id, address_pair.ToString().CStr());
 
 		auto old_state = new_session->GetState();
-		new_session->OnReceivedStunBindingRequest(address_pair, request.remote);
+		if (new_session->OnReceivedStunBindingRequest(address_pair, request.remote) == false)
+		{
+			continue;
+		}
 
 		// Register this validated pair so app packets on it resolve the session
 		AddIceSession(address_pair, new_session);
@@ -1167,7 +1191,11 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 
 	// Add the candidate to the session
 	auto old_state = ice_session->GetState();
-	ice_session->OnReceivedStunBindingRequest(address_pair, remote);
+	if (ice_session->OnReceivedStunBindingRequest(address_pair, remote) == false)
+	{
+		// The session holds as many pairs as a peer checks, so a new path is not answered
+		return false;
+	}
 
 	// Register this validated pair so app packets on it resolve the session
 	AddIceSession(address_pair, ice_session);
@@ -1227,9 +1255,16 @@ bool IcePort::OnReceivedStunBindingRequestBeforeAnswer(const std::shared_ptr<ov:
 	}
 
 	// Our own request waits for the answer, which also verifies the peer ufrag (AddSession)
-	if (DeferBindingRequest(local_ufrag, address_pair, DeferredBindingRequest{remote, gate_info, peer_ufrag}) == false)
+	auto result = DeferBindingRequest(local_ufrag, address_pair, DeferredBindingRequest{remote, gate_info, peer_ufrag});
+	if (result == DeferResult::NotReserved)
 	{
 		return false;
+	}
+
+	if (result == DeferResult::Full)
+	{
+		// Not answered, as a session that holds as many pairs does not
+		return true;
 	}
 
 	logtt("[%s] Answering STUN binding request before the answer: %s:%s", address_pair.ToString().CStr(), local_ufrag.CStr(), peer_ufrag.CStr());

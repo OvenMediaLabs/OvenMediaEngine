@@ -178,7 +178,19 @@ private:
 	struct ReservedUfrag
 	{
 		ov::String local_pwd;
+		// Holds at most IceSession::kMaxCandidatePairs, as the session that takes them over does
 		std::map<ov::SocketAddressPair, DeferredBindingRequest> deferred_binding_requests;
+		// Whether reaching the limit was logged
+		bool limit_reported = false;
+	};
+
+	enum class DeferResult : uint8_t
+	{
+		Deferred,
+		// The answer arrived in the meantime
+		NotReserved,
+		// The offer already holds IceSession::kMaxCandidatePairs paths
+		Full
 	};
 
 	std::atomic<session_id_t> _session_id_counter;
@@ -198,8 +210,7 @@ private:
 
 	// Caller holds _ice_sessions_with_ufrag_lock
 	bool IsUfragInUse(const ov::String &ufrag) const;
-	// False if the ufrag is no longer reserved
-	bool DeferBindingRequest(const ov::String &local_ufrag, const ov::SocketAddressPair &address_pair, const DeferredBindingRequest &request);
+	DeferResult DeferBindingRequest(const ov::String &local_ufrag, const ov::SocketAddressPair &address_pair, const DeferredBindingRequest &request);
 
 	bool StoreIceSessionWithTransactionId(const std::shared_ptr<IceSession> &ice_session, const ov::String &transaction_id);
 	std::shared_ptr<IceSession> FindIceSessionWithTransactionId(const ov::String &transaction_id);

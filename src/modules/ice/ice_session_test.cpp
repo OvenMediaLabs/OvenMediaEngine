@@ -3,7 +3,8 @@
 //  OvenMediaEngine - Unit Tests
 //
 //  Covers: IceSession nomination / active-pair selection
-//  (MarkNominated, SelectActiveCandidatePair, IsActive)
+//  (MarkNominated, SelectActiveCandidatePair, IsActive), and the limit on
+//  candidate pairs a session holds
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -165,4 +166,19 @@ TEST(IceSessionNomination, RejectFailedOrUnknownWhileActive)
 	EXPECT_FALSE(session->SelectActiveCandidatePair(b));
 	EXPECT_TRUE(session->IsActive(a));
 	EXPECT_EQ(session->GetState(), IceConnectionState::Connected);
+}
+
+// A session holds at most kMaxCandidatePairs, and the pairs it has still take requests
+TEST(IceSessionCandidatePairs, HoldsAtMostMaxPairs)
+{
+	auto session = MakeSession();
+	for (size_t index = 0; index < IceSession::kMaxCandidatePairs; index++)
+	{
+		ASSERT_TRUE(session->OnReceivedStunBindingRequest(MakePair(10000, static_cast<uint16_t>(20000 + index)), nullptr));
+	}
+
+	auto extra = MakePair(10000, 30000);
+	EXPECT_FALSE(session->OnReceivedStunBindingRequest(extra, nullptr));
+	EXPECT_EQ(session->FindCandidatePair(extra), nullptr);
+	EXPECT_TRUE(session->OnReceivedStunBindingRequest(MakePair(10000, 20000), nullptr));
 }

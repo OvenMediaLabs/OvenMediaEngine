@@ -72,9 +72,10 @@ protected:
 		return p.FindIceSessionOrReservedUfrag(u, reserved_pwd);
 	}
 
+	// True if the request was deferred
 	bool Defer(IcePort &p, const ov::String &u, const ov::SocketAddressPair &ap, const ov::String &peer_ufrag)
 	{
-		return p.DeferBindingRequest(u, ap, IcePort::DeferredBindingRequest{nullptr, IcePort::GateInfo{}, peer_ufrag});
+		return p.DeferBindingRequest(u, ap, IcePort::DeferredBindingRequest{nullptr, IcePort::GateInfo{}, peer_ufrag}) == IcePort::DeferResult::Deferred;
 	}
 
 	size_t ReservedUfragCount(IcePort &p)
@@ -544,6 +545,25 @@ TEST_F(IcePortTest, ReleaseOfferUfrag)
 	EXPECT_EQ(FindOrReserved(port, ufrag_b, &reserved_pwd), nullptr);
 	ASSERT_TRUE(reserved_pwd.has_value());
 	EXPECT_STREQ(reserved_pwd->CStr(), "pwd-b");
+}
+
+// A reserved ufrag keeps at most as many paths as a session holds, and the paths it has still update
+TEST_F(IcePortTest, ReservedUfragHoldsAtMostMaxPaths)
+{
+	IcePort port;
+	StopSweeper(port);
+
+	auto ufrag = port.ReserveOfferUfrag("local-pwd");
+	for (size_t index = 0; index < IceSession::kMaxCandidatePairs; index++)
+	{
+		ASSERT_TRUE(Defer(port, ufrag, Pair(10000, static_cast<uint16_t>(20000 + index)), "peer"));
+	}
+
+	EXPECT_FALSE(Defer(port, ufrag, Pair(10000, 30000), "peer"));
+	EXPECT_TRUE(Defer(port, ufrag, Pair(10000, 20000), "peer"));
+
+	auto s = MakeSession(1, ufrag);
+	EXPECT_EQ(AddUfragTakingOver(port, ufrag, s), static_cast<int>(IceSession::kMaxCandidatePairs));
 }
 
 // When the answer arrives, a deferred binding request whose peer ufrag differs is not sent
