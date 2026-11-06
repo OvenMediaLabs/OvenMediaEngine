@@ -38,6 +38,9 @@ class RtcStream;
 
 class RtcSession : public pub::Session, public RtpRtcpInterface, public ov::Node, public RtcBandwidthEstimatorObserver
 {
+	// Unit-test access (see rtc_session_test.cpp)
+	friend class RtcSessionNackTest;
+
 public:
 	static std::shared_ptr<RtcSession> Create(const std::shared_ptr<WebRtcPublisher> &publisher,
 											  const std::shared_ptr<pub::Application> &application,
