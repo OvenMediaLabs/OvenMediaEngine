@@ -96,6 +96,7 @@ protected:
 		// Offer SDP (SDP of OME/host peer)
 		std::shared_ptr<const SessionDescription> offer_sdp;
 		// Peer SDP (SDP of host/client peer), cleared once the session it started is stopped
+		// Accessed only with std::atomic_load/std::atomic_store, since Disconnect() reads it from other threads
 		std::shared_ptr<const SessionDescription> answer_sdp;
 		// Whether offer_sdp got an answer, still set after the session is stopped
 		bool answer_received = false;
