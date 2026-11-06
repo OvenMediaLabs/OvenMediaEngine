@@ -476,7 +476,7 @@ namespace
 			{
 				return false;
 			}
-			_port = ntohs(sa.sin_port);
+			_port		= ntohs(sa.sin_port);
 
 			sa.sin_port = htons(peer_port);
 			if (::connect(_back, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)) != 0)
@@ -484,7 +484,7 @@ namespace
 				return false;
 			}
 
-			_running = true;
+			_running	  = true;
 			_front_thread = std::thread([this]() { FrontLoop(); });
 			_back_thread  = std::thread([this]() { BackLoop(); });
 			return true;
@@ -533,14 +533,14 @@ namespace
 			{
 				sockaddr_in from{};
 				socklen_t from_len = sizeof(from);
-				ssize_t n = ::recvfrom(_front, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr *>(&from), &from_len);
+				ssize_t n		   = ::recvfrom(_front, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr *>(&from), &from_len);
 				if (n < 0)
 				{
 					continue;
 				}
 				{
 					std::lock_guard<std::mutex> lock(_client_mutex);
-					_client	   = from;
+					_client		= from;
 					_has_client = true;
 				}
 				if (_forwarding)
@@ -822,14 +822,13 @@ namespace
 // on teardown (so an early `ASSERT` failure does not trip the `~Socket` "not
 // closed" assertion).
 // ---------------------------------------------------------------------------
-class SocketTestBase : public ::testing::Test
+class SocketTestBase : public ome_test::PoolTest
 {
 protected:
 	void InitPool(const char *name, ov::SocketType type)
 	{
-		_pool = ov::SocketPool::Create(name, type, false);
+		_pool = CreatePool(name, type);
 		ASSERT_NE(_pool, nullptr);
-		ASSERT_TRUE(_pool->Initialize(1));
 	}
 
 	void TearDown() override
@@ -838,10 +837,8 @@ protected:
 		{
 			_client->Close();
 		}
-		if (_pool != nullptr)
-		{
-			_pool->Uninitialize();
-		}
+
+		PoolTest::TearDown();
 	}
 
 	std::shared_ptr<ov::SocketPool> _pool;
@@ -1752,7 +1749,7 @@ TEST_F(SrtConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 			peer.Send(i, payload, sizeof(payload));
 
 			char buffer[1500] = {0};
-			size_t received = 0;
+			size_t received	  = 0;
 			if (RecvSrtMessage(clients[i], buffer, sizeof(buffer), &received) &&
 				(received == sizeof(payload)) &&
 				(::memcmp(buffer, payload, sizeof(payload)) == 0))
@@ -1858,8 +1855,8 @@ TEST_F(SrtConcurrencyTest, CloseRacesEpollStorm)
 {
 	Watchdog watchdog(std::chrono::seconds(120), "SrtCloseRacesEpollStorm");
 
-	constexpr int ROUNDS		= 25;
-	constexpr int SOCKET_COUNT	= 8;
+	constexpr int ROUNDS	   = 25;
+	constexpr int SOCKET_COUNT = 8;
 	constexpr int TOTAL_CLOSES = ROUNDS * SOCKET_COUNT;
 
 	SrtPeer peer;

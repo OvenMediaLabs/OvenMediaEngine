@@ -202,7 +202,6 @@ namespace pvd
 
 		// Connect
 		auto signalling_socket = signalling_socket_pool->AllocSocket(socket_address.GetFamily());
-		std::atomic_store(&_signalling_socket, signalling_socket);
 
 		if (signalling_socket == nullptr)
 		{
@@ -211,6 +210,8 @@ namespace pvd
 
 			return false;
 		}
+
+		std::atomic_store(&_signalling_socket, signalling_socket);
 
 		signalling_socket->MakeBlocking();
 
@@ -818,9 +819,7 @@ namespace pvd
 		}
 
 		// Send
-		auto signalling_socket = std::atomic_load(&_signalling_socket);
-
-		return (signalling_socket != nullptr) && signalling_socket->Send(message->GetMessage());
+		return std::atomic_load(&_signalling_socket)->Send(message->GetMessage());
 	}
 
 	std::shared_ptr<RtspMessage> RtspcStream::ReceiveResponse(uint32_t cseq, uint64_t timeout_ms)
@@ -889,13 +888,6 @@ namespace pvd
 		uint8_t buffer[65535];
 
 		auto signalling_socket = std::atomic_load(&_signalling_socket);
-
-		if (signalling_socket == nullptr)
-		{
-			logte("[%s/%s] Could not receive packet : socket is null", GetApplicationName(), GetName().CStr());
-			SetState(State::ERROR);
-			return false;
-		}
 
 		if (non_block == false && timeout_msec != 0)
 		{
@@ -1251,9 +1243,7 @@ namespace pvd
 			ByteWriter<uint16_t>::WriteBigEndian(&ptr[2], data->GetLength());
 			channel_data->Append(data);
 
-			auto signalling_socket = std::atomic_load(&_signalling_socket);
-
-			return (signalling_socket != nullptr) && signalling_socket->Send(channel_data);
+			return std::atomic_load(&_signalling_socket)->Send(channel_data);
 		}
 		else
 		{

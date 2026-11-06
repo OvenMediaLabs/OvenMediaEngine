@@ -10,7 +10,6 @@
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
 #include <base/ovsocket/socket_test_helpers.h>
-#include <fcntl.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
 #include <poll.h>
@@ -22,6 +21,7 @@
 #include <chrono>
 #include <memory>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -35,56 +35,27 @@ namespace
 	class StalledTcpListener
 	{
 	public:
-		~StalledTcpListener()
-		{
-			for (auto fd : _filler_fds)
-			{
-				::close(fd);
-			}
-
-			if (_listen_fd >= 0)
-			{
-				::close(_listen_fd);
-			}
-		}
-
 		bool Listen()
 		{
-			_listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
-			if (_listen_fd < 0)
+			_listen_fd = ome_test::ListenOnLoopback(&_port, 0);
+
+			if (_listen_fd.Get() < 0)
 			{
 				return false;
 			}
 
-			sockaddr_in sa{};
-			sa.sin_family	   = AF_INET;
-			sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-			sa.sin_port		   = 0;
-
-			if ((::bind(_listen_fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)) != 0) ||
-				(::listen(_listen_fd, 0) != 0))
-			{
-				return false;
-			}
-
-			socklen_t len = sizeof(sa);
-			if (::getsockname(_listen_fd, reinterpret_cast<sockaddr *>(&sa), &len) != 0)
-			{
-				return false;
-			}
-			_port = ntohs(sa.sin_port);
+			const auto address = GetAddress();
 
 			for (int index = 0; index < BACKLOG_FILLER_COUNT; index++)
 			{
-				int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-				if (fd < 0)
+				ome_test::UniqueFd fd(::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0));
+				if (fd.Get() < 0)
 				{
 					return false;
 				}
 
-				::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK);
-				::connect(fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa));
-				_filler_fds.push_back(fd);
+				::connect(fd.Get(), reinterpret_cast<const sockaddr *>(&address), sizeof(address));
+				_filler_fds.push_back(std::move(fd));
 			}
 
 			std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -101,30 +72,35 @@ namespace
 		{
 			constexpr int PROBE_MSEC = 200;
 
-			int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-			if (fd < 0)
+			ome_test::UniqueFd fd(::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0));
+			if (fd.Get() < 0)
 			{
 				return false;
 			}
 
-			sockaddr_in sa{};
-			sa.sin_family	   = AF_INET;
-			sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-			sa.sin_port		   = htons(_port);
+			const auto address = GetAddress();
+			::connect(fd.Get(), reinterpret_cast<const sockaddr *>(&address), sizeof(address));
 
-			::connect(fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa));
-
-			pollfd poll_fd{fd, POLLOUT, 0};
+			pollfd poll_fd{fd.Get(), POLLOUT, 0};
 			const bool completed = (::poll(&poll_fd, 1, PROBE_MSEC) != 0);
-			::close(fd);
 
 			return (completed == false);
 		}
 
 	private:
-		int _listen_fd = -1;
+		sockaddr_in GetAddress() const
+		{
+			sockaddr_in address{};
+			address.sin_family		= AF_INET;
+			address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			address.sin_port		= htons(_port);
+
+			return address;
+		}
+
+		ome_test::UniqueFd _listen_fd;
 		uint16_t _port = 0;
-		std::vector<int> _filler_fds;
+		std::vector<ome_test::UniqueFd> _filler_fds;
 	};
 
 	class ConnectEvents : public ov::SocketAsyncInterface
@@ -146,11 +122,15 @@ namespace
 		std::atomic<int> _connected{0};
 		std::atomic<int> _connect_failed{0};
 	};
+
+	class SocketConnectTimeoutTest : public ome_test::PoolTest
+	{
+	};
 }  // namespace
 
 // A non-blocking TCP connect that never completes must be reported as a failure
 // through `OnConnected()` once its timeout passes.
-TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
+TEST_F(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 {
 	StalledTcpListener listener;
 	ASSERT_TRUE(listener.Listen());
@@ -160,10 +140,8 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 		GTEST_SKIP() << "The listener does not keep a connect in progress";
 	}
 
-	auto pool = ov::SocketPool::Create("test-conn-timeout", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-conn-timeout", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
-	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto events = std::make_shared<ConnectEvents>();
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
@@ -191,7 +169,7 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectReportsTimeout)
 }
 
 // A non-blocking TCP connect without a timeout is never timed out by the worker
-TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
+TEST_F(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 {
 	constexpr int OBSERVE_MSEC = 500;
 
@@ -203,10 +181,8 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 		GTEST_SKIP() << "The listener does not keep a connect in progress";
 	}
 
-	auto pool = ov::SocketPool::Create("test-conn-no-timeout", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-conn-no-timeout", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
-	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto events = std::make_shared<ConnectEvents>();
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
@@ -225,29 +201,19 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectWithoutTimeoutIsNotTimedOut)
 }
 
 // A non-blocking TCP connect that completes before its timeout is not reported as timed out afterwards
-TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectIsNotTimedOutAfterConnecting)
+TEST_F(SocketConnectTimeoutTest, NonBlockingTcpConnectIsNotTimedOutAfterConnecting)
 {
 	constexpr int SHORT_TIMEOUT_MSEC = 300;
 	// Past the timeout, plus a few ticks of the worker that reports it
 	constexpr int OBSERVE_MSEC		 = SHORT_TIMEOUT_MSEC + 500;
 
 	// Accepts nothing, but the kernel completes the handshake into its backlog
-	int listen_fd = ::socket(AF_INET, SOCK_STREAM, 0);
-	ASSERT_GE(listen_fd, 0);
-	ome_test::ScopeExit listen_closer([&]() { ::close(listen_fd); });
+	uint16_t listen_port			 = 0;
+	auto listen_fd					 = ome_test::ListenOnLoopback(&listen_port, 8);
+	ASSERT_GE(listen_fd.Get(), 0);
 
-	sockaddr_in sa{};
-	sa.sin_family	   = AF_INET;
-	sa.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	socklen_t len	   = sizeof(sa);
-	ASSERT_EQ(::bind(listen_fd, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)), 0);
-	ASSERT_EQ(::listen(listen_fd, 8), 0);
-	ASSERT_EQ(::getsockname(listen_fd, reinterpret_cast<sockaddr *>(&sa), &len), 0);
-
-	auto pool = ov::SocketPool::Create("test-conn-in-time", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-conn-in-time", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
-	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto events = std::make_shared<ConnectEvents>();
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
@@ -255,7 +221,7 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectIsNotTimedOutAfterConnecting
 	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
 	ASSERT_TRUE(client->MakeNonBlocking(events));
 
-	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", ntohs(sa.sin_port)), SHORT_TIMEOUT_MSEC);
+	auto error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listen_port), SHORT_TIMEOUT_MSEC);
 	ASSERT_EQ(error, nullptr);
 	EXPECT_TRUE(ome_test::WaitUntil([&]() { return events->_connected == 1; }));
 
@@ -267,7 +233,7 @@ TEST(SocketConnectTimeoutTest, NonBlockingTcpConnectIsNotTimedOutAfterConnecting
 }
 
 // A blocking TCP connect that never completes fails with a timeout error once its timeout passes
-TEST(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
+TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
 {
 	StalledTcpListener listener;
 	ASSERT_TRUE(listener.Listen());
@@ -277,10 +243,8 @@ TEST(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
 		GTEST_SKIP() << "The listener does not keep a connect in progress";
 	}
 
-	auto pool = ov::SocketPool::Create("test-conn-blocking", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-conn-blocking", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
-	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(client, nullptr);
@@ -297,7 +261,7 @@ TEST(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
 }
 
 // A blocking TCP connect closed on another thread reports the close, and the socket stays `Closed`
-TEST(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
+TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 {
 	// About 50 ms of 1 ms samples, so a short wait on another lock is not taken for the connect wait
 	constexpr int BLOCKED_SAMPLE_COUNT = 50;
@@ -310,10 +274,8 @@ TEST(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 		GTEST_SKIP() << "The listener does not keep a connect in progress";
 	}
 
-	auto pool = ov::SocketPool::Create("test-conn-closed", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-conn-closed", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
-	ome_test::ScopeExit pool_closer([&]() { pool->Uninitialize(); });
 
 	auto client = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(client, nullptr);
@@ -322,7 +284,7 @@ TEST(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 	std::shared_ptr<const ov::SocketError> error;
 	std::atomic<pid_t> tid{0};
 	std::thread connector([&]() {
-		tid = static_cast<pid_t>(::syscall(SYS_gettid));
+		tid	  = static_cast<pid_t>(::syscall(SYS_gettid));
 		error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
 	});
 

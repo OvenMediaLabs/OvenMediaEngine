@@ -35,7 +35,10 @@
 namespace
 {
 	using ome_test::IsBlockedIn;
+	using ome_test::ListenOnLoopback;
 	using ome_test::ScopeExit;
+	using ome_test::TakeNumber;
+	using ome_test::UniqueFd;
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
 
@@ -101,17 +104,10 @@ namespace
 	public:
 		explicit ConnectedPair(const std::shared_ptr<ov::SocketPool> &pool)
 		{
-			sockaddr_in address{};
-			address.sin_family		= AF_INET;
-			address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-			socklen_t length		= sizeof(address);
+			uint16_t port = 0;
+			_listen_fd	  = ListenOnLoopback(&port);
 
-			_listen_fd				= ::socket(AF_INET, SOCK_STREAM, 0);
-
-			if ((_listen_fd < 0) ||
-				(::bind(_listen_fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) ||
-				(::listen(_listen_fd, 1) != 0) ||
-				(::getsockname(_listen_fd, reinterpret_cast<sockaddr *>(&address), &length) != 0))
+			if (_listen_fd.Get() < 0)
 			{
 				return;
 			}
@@ -119,12 +115,12 @@ namespace
 			socket = pool->AllocSocket(ov::SocketFamily::Inet);
 
 			if ((socket == nullptr) ||
-				(socket->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", ntohs(address.sin_port)), WAIT_TIMEOUT_MSEC) != nullptr))
+				(socket->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", port), WAIT_TIMEOUT_MSEC) != nullptr))
 			{
 				return;
 			}
 
-			peer_fd = ::accept(_listen_fd, nullptr, nullptr);
+			peer_fd = UniqueFd(::accept(_listen_fd.Get(), nullptr, nullptr));
 		}
 
 		~ConnectedPair()
@@ -133,28 +129,18 @@ namespace
 			{
 				socket->CloseImmediately();
 			}
-
-			if (peer_fd >= 0)
-			{
-				::close(peer_fd);
-			}
-
-			if (_listen_fd >= 0)
-			{
-				::close(_listen_fd);
-			}
 		}
 
 		bool IsConnected() const
 		{
-			return (socket != nullptr) && (peer_fd >= 0);
+			return (socket != nullptr) && (peer_fd.Get() >= 0);
 		}
 
 		std::shared_ptr<ov::Socket> socket;
-		int peer_fd = -1;
+		UniqueFd peer_fd;
 
 	private:
-		int _listen_fd = -1;
+		UniqueFd _listen_fd;
 	};
 
 	// A socket pair whose read end already holds `OTHER_PAYLOAD`, standing in for another connection
@@ -163,46 +149,41 @@ namespace
 	public:
 		OtherConnection()
 		{
-			if (::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0)
+			int pair[2];
+
+			if (::socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0)
 			{
-				fds[0] = fds[1] = -1;
 				return;
 			}
 
-			if (::send(fds[1], OTHER_PAYLOAD, OTHER_PAYLOAD_LEN, 0) != static_cast<ssize_t>(OTHER_PAYLOAD_LEN))
-			{
-				::close(fds[0]);
-				::close(fds[1]);
-				fds[0] = fds[1] = -1;
-			}
-		}
+			fds[0] = UniqueFd(pair[0]);
+			fds[1] = UniqueFd(pair[1]);
 
-		~OtherConnection()
-		{
-			for (auto fd : fds)
+			if (::send(fds[1].Get(), OTHER_PAYLOAD, OTHER_PAYLOAD_LEN, 0) != static_cast<ssize_t>(OTHER_PAYLOAD_LEN))
 			{
-				if (fd >= 0)
-				{
-					::close(fd);
-				}
+				fds[0].Reset();
+				fds[1].Reset();
 			}
 		}
 
 		bool IsValid() const
 		{
-			return fds[0] >= 0;
+			return fds[0].Get() >= 0;
 		}
 
-		int fds[2]{-1, -1};
+		UniqueFd fds[2];
+	};
+
+	class SocketHandleTest : public ome_test::PoolTest
+	{
 	};
 }  // namespace
 
 // A socket closed as `Disconnected` never uses its number again, even after the number names another connection
-TEST(SocketHandleTest, ClosedSocketDoesNotUseReusedNumber)
+TEST_F(SocketHandleTest, ClosedSocketDoesNotUseReusedNumber)
 {
-	auto pool = ov::SocketPool::Create("test-stale-number", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-stale-number", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	{
 		ConnectedPair pair(pool);
@@ -217,9 +198,9 @@ TEST(SocketHandleTest, ClosedSocketDoesNotUseReusedNumber)
 		ASSERT_TRUE(pair.socket->CloseImmediatelyWithState(ov::SocketState::Disconnected));
 		ASSERT_FALSE(IsOpen(number));
 
-		// The number now names the other connection.
-		// `F_DUPFD` takes the number only while it is free, where `dup2()` would close a file another thread opened there.
-		ASSERT_EQ(::fcntl(other.fds[0], F_DUPFD, number), number);
+		// The number now names the other connection
+		auto taken = TakeNumber(UniqueFd(::dup(other.fds[0].Get())), number);
+		ASSERT_EQ(taken.Get(), number);
 
 		char buffer[16]{};
 		int receive_buffer_size = 0;
@@ -236,20 +217,17 @@ TEST(SocketHandleTest, ClosedSocketDoesNotUseReusedNumber)
 		ASSERT_EQ(::getsockopt(number, SOL_SOCKET, SO_RCVBUF, &current_size, &option_length), 0);
 		EXPECT_EQ(current_size, receive_buffer_size);
 		EXPECT_EQ(::recv(number, buffer, sizeof(buffer), MSG_PEEK | MSG_DONTWAIT), static_cast<ssize_t>(OTHER_PAYLOAD_LEN));
-		EXPECT_EQ(::recv(other.fds[1], buffer, sizeof(buffer), MSG_DONTWAIT), -1);
-
-		::close(number);
+		EXPECT_EQ(::recv(other.fds[1].Get(), buffer, sizeof(buffer), MSG_DONTWAIT), -1);
 	}
-
-	pool->Uninitialize();
 }
 
-// A receive running on another thread while the socket is closed never reads from a connection that reuses the number
-TEST(SocketHandleTest, NumberIsNotReusedWhileRecvIsInFlight)
+// A receive running on another thread while the socket is closed never reads from a connection that reuses the number.
+// The race is narrow, so a broken guard fails this test only sometimes;
+// `ClosedSocketDoesNotUseReusedNumber` and `HandleOutlivesCloseWhileSyscallIsInFlight` check the guard deterministically.
+TEST_F(SocketHandleTest, NumberIsNotReusedWhileRecvIsInFlight)
 {
-	auto pool = ov::SocketPool::Create("test-reuse-race", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-reuse-race", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	int hits   = 0;
 	int reused = 0;
@@ -295,7 +273,7 @@ TEST(SocketHandleTest, NumberIsNotReusedWhileRecvIsInFlight)
 
 			while (stop == false)
 			{
-				int fd = ::dup(other.fds[0]);
+				int fd = ::dup(other.fds[0].Get());
 
 				if (fd == number)
 				{
@@ -333,16 +311,13 @@ TEST(SocketHandleTest, NumberIsNotReusedWhileRecvIsInFlight)
 
 	EXPECT_EQ(hits, 0);
 	EXPECT_EQ(reused, RACE_ITERATIONS);
-
-	pool->Uninitialize();
 }
 
 // A close wakes a receive blocked on another thread, and the number is released once that receive returns
-TEST(SocketHandleTest, CloseWakesBlockedRecv)
+TEST_F(SocketHandleTest, CloseWakesBlockedRecv)
 {
-	auto pool = ov::SocketPool::Create("test-wake-recv", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-wake-recv", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	{
 		ConnectedPair pair(pool);
@@ -351,10 +326,10 @@ TEST(SocketHandleTest, CloseWakesBlockedRecv)
 		const int number = pair.socket->GetNativeHandle();
 
 		auto returned	 = CloseWhileBlocked(pair.socket, {SYS_recvfrom, SYS_recvmsg}, [socket = pair.socket]() {
-			   char buffer[16];
-			   auto result = socket->Recv(buffer, sizeof(buffer), false);
+			char buffer[16];
+			auto result = socket->Recv(buffer, sizeof(buffer), false);
 
-			   return result.has_value() ? ov::String("data") : result.error()->GetMessage();
+			return result.has_value() ? ov::String("data") : result.error()->GetMessage();
 		});
 
 		ASSERT_TRUE(returned.has_value()) << "Recv() is still blocked on a closed socket";
@@ -362,16 +337,13 @@ TEST(SocketHandleTest, CloseWakesBlockedRecv)
 		EXPECT_EQ(pair.socket->GetState(), ov::SocketState::Closed);
 		EXPECT_FALSE(IsOpen(number));
 	}
-
-	pool->Uninitialize();
 }
 
 // A close wakes an accept blocked on another thread, and the number is released once that accept returns
-TEST(SocketHandleTest, CloseWakesBlockedAccept)
+TEST_F(SocketHandleTest, CloseWakesBlockedAccept)
 {
-	auto pool = ov::SocketPool::Create("test-wake-accept", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-wake-accept", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
@@ -382,24 +354,21 @@ TEST(SocketHandleTest, CloseWakesBlockedAccept)
 	const int number = socket->GetNativeHandle();
 
 	auto returned	 = CloseWhileBlocked(socket, {SYS_accept, SYS_accept4}, [socket]() {
-		   ov::SocketAddress client;
+		ov::SocketAddress client;
 
-		   return socket->Accept(&client).IsValid() ? ov::String("accepted") : ov::String("not accepted");
+		return socket->Accept(&client).IsValid() ? ov::String("accepted") : ov::String("not accepted");
 	});
 
 	ASSERT_TRUE(returned.has_value()) << "Accept() is still blocked on a closed socket";
 	EXPECT_EQ(returned.value(), "not accepted");
 	EXPECT_FALSE(IsOpen(number));
-
-	pool->Uninitialize();
 }
 
 // A close wakes a UDP receive blocked on another thread, and the number is released once that receive returns
-TEST(SocketHandleTest, CloseWakesBlockedRecvFrom)
+TEST_F(SocketHandleTest, CloseWakesBlockedRecvFrom)
 {
-	auto pool = ov::SocketPool::Create("test-wake-recvfrom", ov::SocketType::Udp, false);
+	auto pool = CreatePool("test-wake-recvfrom", ov::SocketType::Udp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
@@ -409,30 +378,27 @@ TEST(SocketHandleTest, CloseWakesBlockedRecvFrom)
 	const int number = socket->GetNativeHandle();
 
 	auto returned	 = CloseWhileBlocked(socket, {SYS_recvfrom, SYS_recvmsg}, [socket]() {
-		   auto data  = std::make_shared<ov::Data>(1500);
-		   auto error = socket->RecvFrom(data, nullptr, false);
+		auto data  = std::make_shared<ov::Data>(1500);
+		auto error = socket->RecvFrom(data, nullptr, false);
 
-		   return (error != nullptr) ? error->GetMessage() : ov::String("data");
+		return (error != nullptr) ? error->GetMessage() : ov::String("data");
 	});
 
 	ASSERT_TRUE(returned.has_value()) << "RecvFrom() is still blocked on a closed socket";
 	EXPECT_EQ(returned.value(), "Socket is closed");
 	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
 	EXPECT_FALSE(IsOpen(number));
-
-	pool->Uninitialize();
 }
 
 // A closed socket cannot join an epoll instance of the caller,
 // and removing it once released leaves alone the file that now holds its number in that instance
-TEST(SocketHandleTest, ExternalEpollRegistrationAfterClose)
+TEST_F(SocketHandleTest, ExternalEpollRegistrationAfterClose)
 {
-	auto pool = ov::SocketPool::Create("test-external-epoll", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-external-epoll", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
-	int epoll_fd = ::epoll_create1(0);
-	ASSERT_GE(epoll_fd, 0);
+	UniqueFd epoll_fd(::epoll_create1(0));
+	ASSERT_GE(epoll_fd.Get(), 0);
 
 	{
 		ConnectedPair pair(pool);
@@ -441,9 +407,9 @@ TEST(SocketHandleTest, ExternalEpollRegistrationAfterClose)
 		epoll_event event{};
 		event.events = EPOLLIN;
 
-		ASSERT_TRUE(pair.socket->AddToExternalEpoll(epoll_fd, &event));
-		EXPECT_TRUE(pair.socket->DeleteFromExternalEpoll(epoll_fd));
-		ASSERT_TRUE(pair.socket->AddToExternalEpoll(epoll_fd, &event));
+		ASSERT_TRUE(pair.socket->AddToExternalEpoll(epoll_fd.Get(), &event));
+		EXPECT_TRUE(pair.socket->DeleteFromExternalEpoll(epoll_fd.Get()));
+		ASSERT_TRUE(pair.socket->AddToExternalEpoll(epoll_fd.Get(), &event));
 
 		// Opened before the close, so it cannot take the number the close frees
 		OtherConnection other;
@@ -454,28 +420,23 @@ TEST(SocketHandleTest, ExternalEpollRegistrationAfterClose)
 		ASSERT_TRUE(pair.socket->CloseImmediately());
 		ASSERT_FALSE(IsOpen(number));
 
-		EXPECT_FALSE(pair.socket->AddToExternalEpoll(epoll_fd, &event));
+		EXPECT_FALSE(pair.socket->AddToExternalEpoll(epoll_fd.Get(), &event));
 
 		// The number now names the other connection, registered in the same epoll instance
-		ASSERT_EQ(::fcntl(other.fds[0], F_DUPFD, number), number);
-		ASSERT_EQ(::epoll_ctl(epoll_fd, EPOLL_CTL_ADD, number, &event), 0);
+		auto taken = TakeNumber(UniqueFd(::dup(other.fds[0].Get())), number);
+		ASSERT_EQ(taken.Get(), number);
+		ASSERT_EQ(::epoll_ctl(epoll_fd.Get(), EPOLL_CTL_ADD, number, &event), 0);
 
-		EXPECT_TRUE(pair.socket->DeleteFromExternalEpoll(epoll_fd));
-		EXPECT_EQ(::epoll_ctl(epoll_fd, EPOLL_CTL_MOD, number, &event), 0);
-
-		::close(number);
+		EXPECT_TRUE(pair.socket->DeleteFromExternalEpoll(epoll_fd.Get()));
+		EXPECT_EQ(::epoll_ctl(epoll_fd.Get(), EPOLL_CTL_MOD, number, &event), 0);
 	}
-
-	::close(epoll_fd);
-	pool->Uninitialize();
 }
 
 // Socket IDs are not reused, unlike the numbers of native handles
-TEST(SocketHandleTest, IdIsNotReused)
+TEST_F(SocketHandleTest, IdIsNotReused)
 {
-	auto pool = ov::SocketPool::Create("test-socket-id", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-socket-id", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
 	auto first = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(first, nullptr);
@@ -491,26 +452,22 @@ TEST(SocketHandleTest, IdIsNotReused)
 	{
 		// Another thread took the number first, so the ID is not compared against a reused number
 		EXPECT_TRUE(second->CloseImmediately());
-		pool->Uninitialize();
 		GTEST_SKIP();
 	}
 
 	EXPECT_NE(second->GetId(), first_id);
 	EXPECT_TRUE(second->CloseImmediately());
-
-	pool->Uninitialize();
 }
 
 // A close leaves the handle open while a syscall is in flight, and the last one to return closes it.
 // Meanwhile the socket can still leave an epoll instance of the caller.
-TEST(SocketHandleTest, HandleOutlivesCloseWhileSyscallIsInFlight)
+TEST_F(SocketHandleTest, HandleOutlivesCloseWhileSyscallIsInFlight)
 {
-	auto pool = ov::SocketPool::Create("test-in-flight", ov::SocketType::Tcp, false);
+	auto pool = CreatePool("test-in-flight", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
-	ASSERT_TRUE(pool->Initialize(1));
 
-	int epoll_fd = ::epoll_create1(0);
-	ASSERT_GE(epoll_fd, 0);
+	UniqueFd epoll_fd(::epoll_create1(0));
+	ASSERT_GE(epoll_fd.Get(), 0);
 
 	{
 		auto socket = pool->AllocSocket<HoldingSocket>(ov::SocketFamily::Inet);
@@ -521,7 +478,7 @@ TEST(SocketHandleTest, HandleOutlivesCloseWhileSyscallIsInFlight)
 
 		epoll_event event{};
 		event.events = EPOLLIN;
-		ASSERT_TRUE(socket->AddToExternalEpoll(epoll_fd, &event));
+		ASSERT_TRUE(socket->AddToExternalEpoll(epoll_fd.Get(), &event));
 
 		auto in_flight = socket->Hold();
 
@@ -529,17 +486,14 @@ TEST(SocketHandleTest, HandleOutlivesCloseWhileSyscallIsInFlight)
 		EXPECT_FALSE(socket->IsValid());
 		EXPECT_TRUE(IsOpen(number));
 
-		EXPECT_FALSE(socket->AddToExternalEpoll(epoll_fd, &event));
-		EXPECT_TRUE(socket->DeleteFromExternalEpoll(epoll_fd));
+		EXPECT_FALSE(socket->AddToExternalEpoll(epoll_fd.Get(), &event));
+		EXPECT_TRUE(socket->DeleteFromExternalEpoll(epoll_fd.Get()));
 
 		// Removed by the call above while the handle is still open
-		EXPECT_EQ(::epoll_ctl(epoll_fd, EPOLL_CTL_DEL, number, nullptr), -1);
+		EXPECT_EQ(::epoll_ctl(epoll_fd.Get(), EPOLL_CTL_DEL, number, nullptr), -1);
 		EXPECT_EQ(errno, ENOENT);
 
 		in_flight.reset();
 		EXPECT_FALSE(IsOpen(number));
 	}
-
-	::close(epoll_fd);
-	pool->Uninitialize();
 }

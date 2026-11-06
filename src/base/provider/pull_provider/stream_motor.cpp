@@ -55,112 +55,93 @@ namespace pvd
 		{
 			_thread.join();
 		}
-		close(_epoll_fd);
 
 		// Taken out under the lock and stopped outside it, so no lock is held while a stream stops
 		decltype(_streams) streams;
 		{
 			ov::LockGuard lock(_streams_map_guard);
 
-			std::swap(streams, _streams);
-			_event_sockets.clear();
-		}
-
-		for (const auto &[id, stream] : streams)
-		{
-			stream->Stop();
-		}
-
-		return true;
-	}
-
-	bool StreamMotor::AddStreamToEpoll(const std::shared_ptr<PullStream> &stream)
-	{
-		auto socket = stream->GetSocketForDetectingEvent();
-		if(socket == nullptr)
-		{
-			logte("Failed to add stream : %s/%s(%u) Stream failed to provide the socket for event detection", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-			return false;
-		}
-
-		struct epoll_event event;
-		event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
-		event.data.u32 = stream->GetId();
-
-		// Registered under the lock, so a `DelStream()` either finds the socket to remove or has already erased the stream
-		ov::LockGuard lock(_streams_map_guard);
-
-		if (_streams.find(stream->GetId()) == _streams.end())
-		{
-			return false;
-		}
-
-		auto item = _event_sockets.find(stream->GetId());
-
-		if (item != _event_sockets.end())
-		{
-			if (item->second == socket)
+			// Reset once closed, so a second `Stop()` never closes a number that another file has taken since
+			if (_epoll_fd != -1)
 			{
-				return true;
+				close(_epoll_fd);
+				_epoll_fd = -1;
 			}
 
-			// The stream has reconnected with another socket
-			item->second->DeleteFromExternalEpoll(_epoll_fd);
-			_event_sockets.erase(item);
+			std::swap(streams, _streams);
 		}
 
-		if (socket->AddToExternalEpoll(_epoll_fd, &event) == false)
+		for (const auto &[id, entry] : streams)
 		{
-			logte("%s/%s(%u) Stream could not be added to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
-			return false;
+			entry.stream->Stop();
 		}
-
-		_event_sockets[stream->GetId()] = socket;
 
 		return true;
 	}
 
-	bool StreamMotor::DelStreamFromEpoll(const std::shared_ptr<PullStream> &stream)
+	bool StreamMotor::RemoveEntry(uint32_t stream_id)
 	{
-		// The socket registered by `AddStreamToEpoll()`, which may no longer be the socket the stream holds
-		auto item = _event_sockets.find(stream->GetId());
+		auto item = _streams.find(stream_id);
 
-		if (item == _event_sockets.end())
+		if (item == _streams.end())
 		{
-			return true;
-		}
-
-		auto socket = item->second;
-		_event_sockets.erase(item);
-
-		if (socket->DeleteFromExternalEpoll(_epoll_fd) == false)
-		{
-			logte("%s/%s(%u) Stream could not be deleted to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
 			return false;
 		}
+
+		const auto &[stream, event_socket] = item->second;
+
+		if ((event_socket != nullptr) && (event_socket->DeleteFromExternalEpoll(_epoll_fd) == false))
+		{
+			logte("%s/%s(%u) Stream could not be deleted to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
+		}
+
+		_streams.erase(item);
 
 		return true;
 	}
 
 	bool StreamMotor::AddStream(const std::shared_ptr<PullStream> &stream)
 	{
+		const bool by_epoll						 = (stream->GetProcessMediaEventTriggerMode() == PullStream::ProcessMediaEventTrigger::TRIGGER_EPOLL);
+		std::shared_ptr<ov::Socket> event_socket = by_epoll ? stream->GetSocketForDetectingEvent() : nullptr;
+
+		if (by_epoll && (event_socket == nullptr))
 		{
-			ov::LockGuard lock(_streams_map_guard);
-			_streams[stream->GetId()] = stream;
+			logte("Failed to add stream : %s/%s(%u) Stream failed to provide the socket for event detection", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
 		}
 
-		switch (stream->GetProcessMediaEventTriggerMode())
+		bool added = (by_epoll == false);
+
 		{
-			case PullStream::ProcessMediaEventTrigger::TRIGGER_EPOLL:
-				if (!AddStreamToEpoll(stream))
+			ov::LockGuard lock(_streams_map_guard);
+
+			// A resumed stream is added again while it is still here, and may have reconnected with another socket
+			RemoveEntry(stream->GetId());
+
+			if (event_socket != nullptr)
+			{
+				struct epoll_event event;
+				event.events   = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+				event.data.u32 = stream->GetId();
+
+				added		   = event_socket->AddToExternalEpoll(_epoll_fd, &event);
+
+				if (added == false)
 				{
-					DelStream(stream);
-					return false;
+					logte("%s/%s(%u) Stream could not be added to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
 				}
-				break;
-			case PullStream::ProcessMediaEventTrigger::TRIGGER_INTERVAL:
-			default:
-				break;
+			}
+
+			if (added)
+			{
+				_streams[stream->GetId()] = {stream, event_socket};
+			}
+		}
+
+		if (added == false)
+		{
+			stream->Stop();
+			return false;
 		}
 
 		logti("%s/%s(%u) stream has added to %u StreamMotor", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), GetId());
@@ -172,22 +153,11 @@ namespace pvd
 	{
 		{
 			ov::LockGuard lock(_streams_map_guard);
-			if(_streams.find(stream->GetId()) == _streams.end())
+
+			if (RemoveEntry(stream->GetId()) == false)
 			{
 				// may be already deleted
 				return false;
-			}
-			_streams.erase(stream->GetId());
-
-			// Removed under the same lock, so an `AddStream()` that follows registers the stream again
-			switch (stream->GetProcessMediaEventTriggerMode())
-			{
-				case PullStream::ProcessMediaEventTrigger::TRIGGER_EPOLL:
-					DelStreamFromEpoll(stream);
-					break;
-				case PullStream::ProcessMediaEventTrigger::TRIGGER_INTERVAL:
-				default:
-					break;
 			}
 		}
 
@@ -241,7 +211,7 @@ namespace pvd
 						continue;
 					}
 
-					stream = it->second;
+					stream = it->second.stream;
 				}
 
 				if (OV_CHECK_FLAG(events, EPOLLHUP) || OV_CHECK_FLAG(events, EPOLLRDHUP))
@@ -278,8 +248,9 @@ namespace pvd
 			}
 
 			ov::SharedLockGuard lock(_streams_map_guard);
-			for (const auto &[stream_id, stream] : _streams)
+			for (const auto &[stream_id, entry] : _streams)
 			{
+				const auto &stream = entry.stream;
 
 				if (stream->GetProcessMediaEventTriggerMode() != PullStream::ProcessMediaEventTrigger::TRIGGER_INTERVAL)
 					continue;
