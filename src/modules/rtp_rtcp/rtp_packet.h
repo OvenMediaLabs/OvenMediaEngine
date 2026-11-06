@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 #include <memory>
 #include <base/ovlibrary/ovlibrary.h>
@@ -172,7 +173,15 @@ protected:
 
 	// extension ID : data offset
 	RtpHeaderExtension::HeaderType _extension_type;
-	std::map<uint8_t, off_t> _extension_buffer_offset;
+	struct ExtensionOffset
+	{
+		uint8_t id = 0;
+		off_t offset = 0;
+	};
+	// Keep common extension sets inline; two-byte headers can contain more IDs.
+	std::array<ExtensionOffset, 14> _extension_buffer_offset{};
+	uint8_t _extension_buffer_offset_count = 0;
+	std::vector<ExtensionOffset> _extension_buffer_offset_overflow;
 
 	bool		_is_available = false;
 
