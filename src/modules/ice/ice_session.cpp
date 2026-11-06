@@ -105,10 +105,6 @@ void IceSession::SetCandidatePairTurnDataChannel(const ov::SocketAddressPair& ad
 		// TURN ChannelBind/ChannelData can arrive before the relayed STUN
 		// connectivity check that would otherwise create the pair.
 		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
-		if (candidate_pair == nullptr)
-		{
-			return;
-		}
 	}
 
 	candidate_pair->SetTurnDataChannel(channel_number);
@@ -120,10 +116,6 @@ void IceSession::SetCandidatePairTurnSendIndication(const ov::SocketAddressPair&
 	if (candidate_pair == nullptr)
 	{
 		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
-		if (candidate_pair == nullptr)
-		{
-			return;
-		}
 	}
 
 	candidate_pair->SetTurnSendIndication(turn_peer_address);
@@ -195,33 +187,20 @@ std::vector<std::shared_ptr<ov::Socket>> IceSession::GetCandidatePairSockets() c
 
 std::shared_ptr<IceCandidatePair> IceSession::CreateAndAddCandidatePair(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
 {
+	ov::ScopedLock lock(_candidate_pairs_mutex);
+
+	// Avoid TOCTOU: another thread may have inserted the same address_pair
+	// after FindCandidatePair() and before this function acquires the lock.
+	auto it = _candidate_pairs.find(address_pair);
+	if (it != _candidate_pairs.end())
 	{
-		ov::ScopedLock lock(_candidate_pairs_mutex);
-
-		// Avoid TOCTOU: another thread may have inserted the same address_pair
-		// after FindCandidatePair() and before this function acquires the lock.
-		auto it = _candidate_pairs.find(address_pair);
-		if (it != _candidate_pairs.end())
-		{
-			return it->second;
-		}
-
-		if (_candidate_pairs.size() < kMaxCandidatePairs)
-		{
-			auto candidate_pair = std::make_shared<IceCandidatePair>(address_pair, socket);
-			_candidate_pairs.insert(std::make_pair(address_pair, candidate_pair));
-
-			return candidate_pair;
-		}
+		return it->second;
 	}
 
-	if (_candidate_pair_limit_reported.exchange(true) == false)
-	{
-		logtw("IceSession(%u) holds %zu candidate pairs, the most a peer checks, so new paths such as %s are ignored",
-			  _session_id, kMaxCandidatePairs, address_pair.ToString().CStr());
-	}
+	auto candidate_pair = std::make_shared<IceCandidatePair>(address_pair, socket);
+	_candidate_pairs.insert(std::make_pair(address_pair, candidate_pair));
 
-	return nullptr;
+	return candidate_pair;
 }
 
 void IceSession::RemoveCandidatePair(const ov::SocketAddressPair& address_pair)
@@ -232,17 +211,13 @@ void IceSession::RemoveCandidatePair(const ov::SocketAddressPair& address_pair)
 }
 
 // Candidate pairs
-bool IceSession::OnReceivedStunBindingRequest(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
+void IceSession::OnReceivedStunBindingRequest(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
 {
 	auto candidate_pair = FindCandidatePair(address_pair);
 	if (candidate_pair == nullptr)
 	{
 		// new candidate pair
 		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
-		if (candidate_pair == nullptr)
-		{
-			return false;
-		}
 	}
 
 	// candidate state
@@ -250,7 +225,7 @@ bool IceSession::OnReceivedStunBindingRequest(const ov::SocketAddressPair& addre
 
 	if (candidate_pair->GetState() == IceConnectionState::New)
 	{
-		candidate_pair->SetState(IceConnectionState::Checking);
+		candidate_pair->SetState(IceConnectionState::Checking);	
 
 		// Global state
 		if (GetState() == IceConnectionState::New)
@@ -258,8 +233,6 @@ bool IceSession::OnReceivedStunBindingRequest(const ov::SocketAddressPair& addre
 			SetState(IceConnectionState::Checking);
 		}
 	}
-
-	return true;
 }
 
 void IceSession::OnReceivedStunBindingResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket)
@@ -269,10 +242,6 @@ void IceSession::OnReceivedStunBindingResponse(const ov::SocketAddressPair& addr
 	{
 		// new candidate pair
 		candidate_pair = CreateAndAddCandidatePair(address_pair, socket);
-		if (candidate_pair == nullptr)
-		{
-			return;
-		}
 	}
 
 	// candidate state

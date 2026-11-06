@@ -284,12 +284,70 @@ ov::String IcePort::ReserveOfferUfrag(const ov::String &local_pwd)
 
 void IcePort::ReleaseOfferUfrag(const ov::String &local_ufrag)
 {
-	std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+	std::map<ov::SocketAddressPair, DeferredBindingRequest> deferred_binding_requests;
 
-	if (_reserved_ufrags.erase(local_ufrag) > 0)
 	{
-		logtt("Released offer ufrag: %s", local_ufrag.CStr());
+		std::lock_guard<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+
+		auto item = _reserved_ufrags.find(local_ufrag);
+		if (item == _reserved_ufrags.end())
+		{
+			return;
+		}
+
+		deferred_binding_requests = std::move(item->second.deferred_binding_requests);
+		_reserved_ufrags.erase(item);
 	}
+
+	logtt("Released offer ufrag: %s", local_ufrag.CStr());
+
+	// The paths kept for the offer never reach a session
+	for (const auto &[address_pair, request] : deferred_binding_requests)
+	{
+		CloseUnusedTcpSocket(request.remote);
+	}
+}
+
+void IcePort::CloseUnusedTcpSocket(const std::shared_ptr<ov::Socket> &remote)
+{
+	// The UDP socket is shared by every peer
+	if ((remote == nullptr) || (remote->GetType() != ov::SocketType::Tcp))
+	{
+		return;
+	}
+
+	{
+		std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_ufrag_lock);
+
+		for (const auto &[local_ufrag, reserved_ufrag] : _reserved_ufrags)
+		{
+			for (const auto &[address_pair, request] : reserved_ufrag.deferred_binding_requests)
+			{
+				if (request.remote == remote)
+				{
+					return;
+				}
+			}
+		}
+	}
+
+	{
+		std::shared_lock<std::shared_mutex> lock_guard(_ice_sessions_with_id_lock);
+
+		for (const auto &[session_id, ice_session] : _ice_seesions_with_id)
+		{
+			for (const auto &socket : ice_session->GetCandidatePairSockets())
+			{
+				if (socket == remote)
+				{
+					return;
+				}
+			}
+		}
+	}
+
+	logtd("Closing %s, which no offer or session uses", remote->ToString().CStr());
+	remote->CloseIfNeeded();
 }
 
 bool IcePort::IsUfragInUse(const ov::String &ufrag) const
@@ -315,7 +373,7 @@ IcePort::DeferResult IcePort::DeferBindingRequest(const ov::String &local_ufrag,
 		auto &deferred_binding_requests = reserved_ufrag.deferred_binding_requests;
 
 		if ((deferred_binding_requests.find(address_pair) != deferred_binding_requests.end()) ||
-			(deferred_binding_requests.size() < IceSession::kMaxCandidatePairs))
+			(deferred_binding_requests.size() < kMaxDeferredBindingRequests))
 		{
 			deferred_binding_requests.insert_or_assign(address_pair, request);
 			return DeferResult::Deferred;
@@ -328,7 +386,7 @@ IcePort::DeferResult IcePort::DeferBindingRequest(const ov::String &local_ufrag,
 	if (report_limit)
 	{
 		logtw("Offer ufrag %s holds %zu paths before the answer, the most a peer checks, so new paths such as %s are ignored",
-			  local_ufrag.CStr(), IceSession::kMaxCandidatePairs, address_pair.ToString().CStr());
+			  local_ufrag.CStr(), kMaxDeferredBindingRequests, address_pair.ToString().CStr());
 	}
 
 	return DeferResult::Full;
@@ -477,22 +535,21 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 	// Our binding requests need the peer's credentials from the answer, so they were deferred
 	// The peer may wait for them without sending more, so send them now
 	// OME sent the offer, so it is controlling here and has no USE-CANDIDATE from the peer to handle
+	std::vector<std::shared_ptr<ov::Socket>> rejected_sockets;
 	for (auto &[address_pair, request] : deferred_binding_requests)
 	{
 		if (request.peer_ufrag != peer_ufrag)
 		{
 			logtw("Rejecting STUN binding request from %s that arrived before the answer: peer ufrag mismatch (received: %s, expected: %s)",
 				  address_pair.ToString().CStr(), request.peer_ufrag.CStr(), peer_ufrag.CStr());
+			rejected_sockets.push_back(request.remote);
 			continue;
 		}
 
 		logtd("Session %u: sending the binding request deferred until the answer to %s", session_id, address_pair.ToString().CStr());
 
 		auto old_state = new_session->GetState();
-		if (new_session->OnReceivedStunBindingRequest(address_pair, request.remote) == false)
-		{
-			continue;
-		}
+		new_session->OnReceivedStunBindingRequest(address_pair, request.remote);
 
 		// Register this validated pair so app packets on it resolve the session
 		AddIceSession(address_pair, new_session);
@@ -503,6 +560,11 @@ void IcePort::AddSession(const std::shared_ptr<IcePortObserver> &observer, sessi
 		}
 
 		SendStunBindingRequest(request.remote, address_pair, request.gate_info, new_session);
+	}
+
+	for (const auto &socket : rejected_sockets)
+	{
+		CloseUnusedTcpSocket(socket);
 	}
 }
 
@@ -628,21 +690,43 @@ bool IcePort::RemoveTransaction(const ov::String &transaction_id)
 
 void IcePort::CheckTimedOut()
 {
-	// Remove expired transction items
+	// Remove expired transction items. A request still unanswered since the last check is sent
+	// again, since a peer that already got a response from OME may wait for it without asking again
+	std::vector<BindingRequestInfo> unanswered_requests;
 	{
 		std::lock_guard<std::shared_mutex> brt_lock(_binding_requests_with_transaction_id_lock);
 
 		for (auto it = _binding_requests_with_transaction_id.begin(); it != _binding_requests_with_transaction_id.end();)
 		{
-			if (it->second.IsExpired())
+			auto &request_info = it->second;
+
+			if (request_info.IsExpired())
 			{
 				it = _binding_requests_with_transaction_id.erase(it);
 			}
 			else
 			{
+				if ((request_info._data != nullptr) && request_info._seen_unanswered)
+				{
+					unanswered_requests.push_back(request_info);
+				}
+
+				request_info._seen_unanswered = true;
 				++it;
 			}
 		}
+	}
+
+	for (const auto &request_info : unanswered_requests)
+	{
+		// The session may have ended in the meantime
+		if (FindIceSession(request_info._ice_session->GetSessionID()) == nullptr)
+		{
+			continue;
+		}
+
+		logtt("Sending binding request %s again to %s", request_info._transaction_id.CStr(), request_info._address_pair.ToString().CStr());
+		SendStunData(request_info._remote, request_info._address_pair, request_info._gate_info, request_info._data);
 	}
 
 	// Collect terminated sessions for thread safety
@@ -1191,11 +1275,7 @@ bool IcePort::OnReceivedStunBindingRequest(const std::shared_ptr<ov::Socket> &re
 
 	// Add the candidate to the session
 	auto old_state = ice_session->GetState();
-	if (ice_session->OnReceivedStunBindingRequest(address_pair, remote) == false)
-	{
-		// The session holds as many pairs as a peer checks, so a new path is not answered
-		return false;
-	}
+	ice_session->OnReceivedStunBindingRequest(address_pair, remote);
 
 	// Register this validated pair so app packets on it resolve the session
 	AddIceSession(address_pair, ice_session);
@@ -1263,7 +1343,8 @@ bool IcePort::OnReceivedStunBindingRequestBeforeAnswer(const std::shared_ptr<ov:
 
 	if (result == DeferResult::Full)
 	{
-		// Not answered, as a session that holds as many pairs does not
+		// A peer that checks more paths than this is not answered
+		CloseUnusedTcpSocket(remote);
 		return true;
 	}
 
@@ -1364,18 +1445,30 @@ bool IcePort::SendStunBindingRequest(const std::shared_ptr<ov::Socket> &remote, 
 
 	logtt("Send Stun Binding Request : %s", address_pair.ToString().CStr());
 
-	// Store binding request transction
+	// TODO: apply SASLprep(password)
+	auto data = message.Serialize(ice_session->GetPeerSdp()->GetIcePwd().ToData(false));
+	if (data == nullptr)
 	{
-		std::lock_guard<std::shared_mutex> brt_lock(_binding_requests_with_transaction_id_lock);
-
-		ov::String transaction_id_key((char *)(&transaction_id[0]), OV_STUN_TRANSACTION_ID_LENGTH);
-		_binding_requests_with_transaction_id.emplace(transaction_id_key, BindingRequestInfo(transaction_id_key, ice_session));
-
-		logtt("Send Binding Request to(%s) id(%s)", address_pair.ToString().CStr(), transaction_id_key.CStr());
+		return false;
 	}
 
-	// TODO: apply SASLprep(password)
-	SendStunMessage(remote, address_pair, gate_info, message, ice_session->GetPeerSdp()->GetIcePwd().ToData(false));
+	// Store binding request transction, with what it takes to send it again (CheckTimedOut)
+	ov::String transaction_id_key((char *)(&transaction_id[0]), OV_STUN_TRANSACTION_ID_LENGTH);
+	BindingRequestInfo request_info(transaction_id_key, ice_session);
+	request_info._remote	   = remote;
+	request_info._address_pair = address_pair;
+	request_info._gate_info	   = gate_info;
+	request_info._data		   = data;
+
+	{
+		std::lock_guard<std::shared_mutex> brt_lock(_binding_requests_with_transaction_id_lock);
+		_binding_requests_with_transaction_id.emplace(transaction_id_key, std::move(request_info));
+	}
+
+	logtt("Send Binding Request to(%s) id(%s)", address_pair.ToString().CStr(), transaction_id_key.CStr());
+	logtt("Send message: [%s/%s]\n%s", gate_info.ToString().CStr(), address_pair.ToString().CStr(), message.ToString().CStr());
+
+	SendStunData(remote, address_pair, gate_info, data);
 
 	return true;
 }
@@ -1431,7 +1524,7 @@ bool IcePort::OnReceivedStunBindingResponse(const std::shared_ptr<ov::Socket> &r
 
 bool IcePort::SendStunMessage(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, GateInfo &gate_info, StunMessage &message, const std::shared_ptr<const ov::Data> &integrity_key)
 {
-	std::shared_ptr<const ov::Data> source_data, send_data;
+	std::shared_ptr<const ov::Data> source_data;
 
 	if (integrity_key == nullptr)
 	{
@@ -1443,6 +1536,18 @@ bool IcePort::SendStunMessage(const std::shared_ptr<ov::Socket> &remote, const o
 	}
 
 	logtt("Send message: [%s/%s]\n%s", gate_info.ToString().CStr(), address_pair.ToString().CStr(), message.ToString().CStr());
+
+	return SendStunData(remote, address_pair, gate_info, source_data);
+}
+
+bool IcePort::SendStunData(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair, const GateInfo &gate_info, const std::shared_ptr<const ov::Data> &source_data)
+{
+	if (source_data == nullptr)
+	{
+		return false;
+	}
+
+	std::shared_ptr<const ov::Data> send_data;
 
 	if (gate_info.input_method == IcePort::GateInfo::GateType::DIRECT)
 	{

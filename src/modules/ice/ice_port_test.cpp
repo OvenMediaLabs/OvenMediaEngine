@@ -82,6 +82,11 @@ protected:
 	{
 		return p._reserved_ufrags.size();
 	}
+
+	static size_t MaxDeferredBindingRequests()
+	{
+		return IcePort::kMaxDeferredBindingRequests;
+	}
 	bool AddPair(IcePort &p, const ov::SocketAddressPair &ap, const std::shared_ptr<IceSession> &s)
 	{
 		return p.AddIceSession(ap, s);
@@ -148,6 +153,27 @@ protected:
 		message.AddAttribute(user_name_attr);
 
 		return message.Serialize(pwd.ToData(false));
+	}
+
+	// The peer's success response to a binding request from OME, signed with the peer's password
+	static std::shared_ptr<const ov::Data> MakeBindingResponse(const uint8_t *transaction_id, const ov::String &pwd)
+	{
+		StunMessage message;
+		message.SetHeader(StunClass::SuccessResponse, StunMethod::Binding, transaction_id);
+
+		return message.Serialize(pwd.ToData(false));
+	}
+
+	// True if the request was deferred on remote
+	bool DeferOn(IcePort &p, const ov::String &u, const ov::SocketAddressPair &ap, const std::shared_ptr<ov::Socket> &remote)
+	{
+		return p.DeferBindingRequest(u, ap, IcePort::DeferredBindingRequest{remote, IcePort::GateInfo{}, "peer"}) == IcePort::DeferResult::Deferred;
+	}
+
+	// Runs the periodic check the sweeper runs
+	void Sweep(IcePort &p)
+	{
+		p.CheckTimedOut();
 	}
 };
 
@@ -280,8 +306,20 @@ public:
 	// Receives one datagram as a STUN message, nullptr on timeout
 	std::shared_ptr<StunMessage> ReceiveStun()
 	{
+		return Receive(0);
+	}
+
+	// Same as ReceiveStun() without waiting, nullptr if nothing has arrived
+	std::shared_ptr<StunMessage> ReceiveStunNow()
+	{
+		return Receive(MSG_DONTWAIT);
+	}
+
+private:
+	std::shared_ptr<StunMessage> Receive(int flags)
+	{
 		uint8_t buffer[2048];
-		auto length = ::recv(_fd, buffer, sizeof(buffer), 0);
+		auto length = ::recv(_fd, buffer, sizeof(buffer), flags);
 		if (length <= 0)
 		{
 			return nullptr;
@@ -299,9 +337,60 @@ public:
 		return message;
 	}
 
-private:
 	int _fd = -1;
 	uint16_t _port = 0;
+};
+
+// Unconnected TCP ov::Sockets, enough to stand for the TCP connections of ICE paths
+class TcpSockets
+{
+public:
+	~TcpSockets()
+	{
+		for (auto &socket : _sockets)
+		{
+			socket->CloseIfNeeded();
+		}
+
+		if (_pool != nullptr)
+		{
+			_pool->Uninitialize();
+		}
+	}
+
+	bool Open()
+	{
+		_pool = ov::SocketPool::Create("ice-port-test-tcp", ov::SocketType::Tcp, false);
+		if (_pool == nullptr)
+		{
+			return false;
+		}
+
+		return _pool->Initialize(1);
+	}
+
+	// A blocking socket, so closing it takes effect at once
+	std::shared_ptr<ov::Socket> Alloc()
+	{
+		auto socket = _pool->AllocSocket(ov::SocketFamily::Inet);
+		if (socket == nullptr)
+		{
+			return nullptr;
+		}
+
+		if (socket->MakeBlocking() == false)
+		{
+			return nullptr;
+		}
+
+		_sockets.push_back(socket);
+
+		return socket;
+	}
+
+private:
+	std::shared_ptr<ov::SocketPool> _pool;
+	std::vector<std::shared_ptr<ov::Socket>> _sockets;
 };
 
 // Records every OnIceCandidatePairSelected() delivery for assertions
@@ -547,14 +636,14 @@ TEST_F(IcePortTest, ReleaseOfferUfrag)
 	EXPECT_STREQ(reserved_pwd->CStr(), "pwd-b");
 }
 
-// A reserved ufrag keeps at most as many paths as a session holds, and the paths it has still update
+// A reserved ufrag keeps a limited number of paths, and the paths it has still update
 TEST_F(IcePortTest, ReservedUfragHoldsAtMostMaxPaths)
 {
 	IcePort port;
 	StopSweeper(port);
 
 	auto ufrag = port.ReserveOfferUfrag("local-pwd");
-	for (size_t index = 0; index < IceSession::kMaxCandidatePairs; index++)
+	for (size_t index = 0; index < MaxDeferredBindingRequests(); index++)
 	{
 		ASSERT_TRUE(Defer(port, ufrag, Pair(10000, static_cast<uint16_t>(20000 + index)), "peer"));
 	}
@@ -563,7 +652,7 @@ TEST_F(IcePortTest, ReservedUfragHoldsAtMostMaxPaths)
 	EXPECT_TRUE(Defer(port, ufrag, Pair(10000, 20000), "peer"));
 
 	auto s = MakeSession(1, ufrag);
-	EXPECT_EQ(AddUfragTakingOver(port, ufrag, s), static_cast<int>(IceSession::kMaxCandidatePairs));
+	EXPECT_EQ(AddUfragTakingOver(port, ufrag, s), static_cast<int>(MaxDeferredBindingRequests()));
 }
 
 // When the answer arrives, a deferred binding request whose peer ufrag differs is not sent
@@ -647,6 +736,94 @@ TEST_F(IcePortTest, BindingRequestBeforeAnswer)
 	ASSERT_NE(s, nullptr);
 	EXPECT_NE(s->FindCandidatePair(path), nullptr);
 	EXPECT_EQ(FindPair(port, path), s);
+}
+
+// A binding request from OME is sent again while unanswered, since a peer that already got a
+// response may wait for it without asking again, and no longer once it is answered
+TEST_F(IcePortTest, UnansweredBindingRequestIsSentAgain)
+{
+	IceUdpSocket ice_socket;
+	ASSERT_TRUE(ice_socket.Open());
+	UdpPeer peer;
+	ASSERT_TRUE(peer.Open());
+
+	IcePort port;
+	StopSweeper(port);
+
+	auto path  = Pair(ice_socket.Port(), peer.Port());
+	auto ufrag = port.ReserveOfferUfrag("local-pwd");
+
+	const uint8_t transaction_id[OV_STUN_TRANSACTION_ID_LENGTH] = {'r', 'e', 't', 'r', 'a', 'n', 's', 'm', 'i', 't', '0', '1'};
+	InjectStunPacket(port, ice_socket.GetSocket(), path, MakeBindingRequest(ov::String::FormatString("%s:peer", ufrag.CStr()), "local-pwd", transaction_id));
+	ASSERT_NE(peer.ReceiveStun(), nullptr);
+
+	auto offer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	offer_sdp->SetIceUfrag(ufrag);
+	offer_sdp->SetIcePwd("local-pwd");
+	auto answer_sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Answer);
+	answer_sdp->SetIceUfrag("peer");
+	answer_sdp->SetIcePwd("peer-pwd");
+
+	port.AddSession(nullptr, 1, IceSession::Role::CONTROLLING, offer_sdp, answer_sdp, 600000, 0, std::any{});
+
+	auto request = peer.ReceiveStun();
+	ASSERT_NE(request, nullptr);
+
+	// Sent again only once it was found unanswered at an earlier check
+	Sweep(port);
+	EXPECT_EQ(peer.ReceiveStunNow(), nullptr);
+	Sweep(port);
+	auto resent = peer.ReceiveStun();
+	ASSERT_NE(resent, nullptr);
+	EXPECT_EQ(::memcmp(resent->GetTransactionId(), request->GetTransactionId(), OV_STUN_TRANSACTION_ID_LENGTH), 0);
+
+	// The response makes OME nominate the path with another request
+	InjectStunPacket(port, ice_socket.GetSocket(), path, MakeBindingResponse(request->GetTransactionId(), "peer-pwd"));
+	auto nomination = peer.ReceiveStun();
+	ASSERT_NE(nomination, nullptr);
+	EXPECT_NE(nomination->GetAttribute<StunUseCandidateAttribute>(StunAttributeType::UseCandidate), nullptr);
+	InjectStunPacket(port, ice_socket.GetSocket(), path, MakeBindingResponse(nomination->GetTransactionId(), "peer-pwd"));
+
+	Sweep(port);
+	Sweep(port);
+	EXPECT_EQ(peer.ReceiveStunNow(), nullptr);
+}
+
+// The TCP connection of a path dropped before it reached a session is closed once no offer or
+// session uses it
+TEST_F(IcePortTest, ReleaseOfferUfragClosesUnusedTcpConnection)
+{
+	TcpSockets tcp_sockets;
+	ASSERT_TRUE(tcp_sockets.Open());
+	auto used_by_two_offers = tcp_sockets.Alloc();
+	auto used_by_one_offer	= tcp_sockets.Alloc();
+	auto used_by_session	= tcp_sockets.Alloc();
+	ASSERT_NE(used_by_two_offers, nullptr);
+	ASSERT_NE(used_by_one_offer, nullptr);
+	ASSERT_NE(used_by_session, nullptr);
+
+	IcePort port;
+	StopSweeper(port);
+
+	auto ufrag_a = port.ReserveOfferUfrag("pwd-a");
+	auto ufrag_b = port.ReserveOfferUfrag("pwd-b");
+	ASSERT_TRUE(DeferOn(port, ufrag_a, Pair(10000, 20000), used_by_two_offers));
+	ASSERT_TRUE(DeferOn(port, ufrag_b, Pair(10000, 20001), used_by_two_offers));
+	ASSERT_TRUE(DeferOn(port, ufrag_a, Pair(10000, 20002), used_by_one_offer));
+	ASSERT_TRUE(DeferOn(port, ufrag_a, Pair(10000, 20003), used_by_session));
+
+	auto s = MakeSession(1, "ufragS");
+	ASSERT_TRUE(AddId(port, 1, s));
+	s->OnReceivedStunBindingRequest(Pair(10001, 20004), used_by_session);
+
+	port.ReleaseOfferUfrag(ufrag_a);
+	EXPECT_EQ(used_by_one_offer->GetState(), ov::SocketState::Closed);
+	EXPECT_NE(used_by_two_offers->GetState(), ov::SocketState::Closed);
+	EXPECT_NE(used_by_session->GetState(), ov::SocketState::Closed);
+
+	port.ReleaseOfferUfrag(ufrag_b);
+	EXPECT_EQ(used_by_two_offers->GetState(), ov::SocketState::Closed);
+	EXPECT_NE(used_by_session->GetState(), ov::SocketState::Closed);
 }
 
 // The reported transport label follows the pair's TURN framing:

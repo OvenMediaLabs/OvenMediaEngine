@@ -23,10 +23,6 @@ public:
 		CONTROLLING
 	};
 
-	// A peer checks at most this many candidate pairs by default (RFC 8445 6.1.2.5),
-	// so a session never holds more
-	static constexpr size_t kMaxCandidatePairs = 100;
-
 	IceSession(session_id_t session_id, IceSession::Role role, 
 				const std::shared_ptr<const SessionDescription> &local_sdp, const std::shared_ptr<const SessionDescription> &peer_sdp,
 				int expired_ms, uint64_t life_time_epoch_ms, 
@@ -73,8 +69,7 @@ public:
 	std::vector<std::shared_ptr<ov::Socket>> GetCandidatePairSockets() const;
 
 	// Candidate pairs
-	// False if address_pair is a new pair and the session already holds kMaxCandidatePairs
-	bool OnReceivedStunBindingRequest(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
+	void OnReceivedStunBindingRequest(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 	void OnReceivedStunBindingResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 	void OnReceivedStunBindingErrorResponse(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 
@@ -102,7 +97,6 @@ public:
 private:
 
 	// Manage candidate pairs
-	// nullptr once the session holds kMaxCandidatePairs
 	std::shared_ptr<IceCandidatePair> CreateAndAddCandidatePair(const ov::SocketAddressPair& address_pair, const std::shared_ptr<ov::Socket>& socket);
 	void RemoveCandidatePair(const ov::SocketAddressPair& address_pair);
 
@@ -123,8 +117,6 @@ private:
 
 	mutable ov::SharedMutex _candidate_pairs_mutex;
     std::map<ov::SocketAddressPair, std::shared_ptr<IceCandidatePair>> _candidate_pairs OV_GUARDED_BY(_candidate_pairs_mutex);
-	// Whether reaching kMaxCandidatePairs was logged
-	std::atomic<bool> _candidate_pair_limit_reported{false};
 
 	mutable ov::SharedMutex _expire_time_mutex;
 	std::chrono::time_point<std::chrono::steady_clock> _expire_time OV_GUARDED_BY(_expire_time_mutex);
