@@ -57,7 +57,7 @@ namespace http
 
 			int32_t Http1Response::SendHeader()
 			{
-				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(65535);
+				std::shared_ptr<ov::Data> response = std::make_shared<ov::Data>(1024);
 				ov::ByteStream stream(response.get());
 
 				// Load once so the status line cannot mix two different status codes

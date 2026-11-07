@@ -53,7 +53,7 @@ namespace http
 				// order and resolves our indexes to the wrong entries.
 				ov::LockGuard<ov::Mutex> block_lock(_hpack_encoder->GetHeaderBlockLock());
 
-				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(65535);
+				std::shared_ptr<ov::Data> header_block = std::make_shared<ov::Data>(1024);
 
 				// :status header field is must on top
 				auto header_field = _hpack_encoder->Encode({":status", ov::Converter::ToString(static_cast<uint16_t>(GetStatusCode()))}, hpack::Encoder::EncodingType::LiteralWithIndexing);
