@@ -21,8 +21,11 @@ private:
 	uint32_t	_last_timestamp = 0;
 	uint64_t	_last_ntptime = 0;
     uint32_t    _rtcp_generated_count = 0;
+	// Totals since the first packet, wrapping at 32 bits like the SR fields
     uint32_t    _packet_count = 0;
     uint32_t    _octec_count = 0;
+	// Whether a packet was sent since the last SR, so an idle track sends no SR
+	bool		_has_unreported_packets = false;
 
 	std::chrono::steady_clock::time_point _created_time;
     std::chrono::steady_clock::time_point _last_generated_time;

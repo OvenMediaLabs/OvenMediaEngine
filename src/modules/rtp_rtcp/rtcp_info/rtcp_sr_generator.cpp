@@ -15,16 +15,17 @@ void RtcpSRGenerator::AddRTPPacketInfo(const std::shared_ptr<RtpPacket> &rtp_pac
     _octec_count += rtp_packet->PayloadSize();
 	_last_timestamp = rtp_packet->Timestamp();
 	_last_ntptime = rtp_packet->NTPTimestamp();
+	_has_unreported_packets = true;
 }
 
 bool RtcpSRGenerator::IsAvailableRtcpSRPacket() const
 {
-	return _packet_count > 0 ? true : false;
+	return _has_unreported_packets;
 }
 
 std::shared_ptr<RtcpPacket> RtcpSRGenerator::PopRtcpSRPacket()
 {
-	if(_packet_count <= 0)
+	if (_has_unreported_packets == false)
 	{
 		return nullptr; 
 	}
@@ -50,9 +51,8 @@ std::shared_ptr<RtcpPacket> RtcpSRGenerator::PopRtcpSRPacket()
 	auto rtcp_packet = std::make_shared<RtcpPacket>();
 	rtcp_packet->Build(report);
 
-	// Reset RTCP information
-	_packet_count = 0;
-	_octec_count = 0;
+	// The counts keep running, only the new packet mark is cleared
+	_has_unreported_packets = false;
 	_last_generated_time = std::chrono::steady_clock::now();
 	_rtcp_generated_count++;
 
