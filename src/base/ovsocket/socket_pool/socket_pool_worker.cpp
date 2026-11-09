@@ -438,6 +438,17 @@ namespace ov
 						}
 					}
 
+					if (socket->GetBlockingMode() == BlockingMode::Blocking)
+					{
+						// Blocking mode handles only connection events, and a blocking connect decides its result once woken
+						if (OV_CHECK_FLAG(events, EPOLLOUT) && (socket->GetState() == SocketState::Connecting))
+						{
+							socket->WakeConnectWaiter();
+						}
+
+						continue;
+					}
+
 					bool need_to_close	  = false;
 					SocketState new_state = SocketState::Closed;
 
@@ -466,12 +477,6 @@ namespace ov
 								event_callback->OnConnectedEvent(SocketError::CreateError("Unknown error occurred: %s", StringFromEpollEvent(event).CStr()));
 							}
 						}
-					}
-
-					if (socket->GetBlockingMode() == BlockingMode::Blocking)
-					{
-						// Blocking mode handles only connection events
-						continue;
 					}
 
 					if (need_to_close == false)

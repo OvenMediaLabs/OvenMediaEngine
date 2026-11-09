@@ -64,39 +64,6 @@ static void SendStallLog(int handle, long sent_now, long left)
 
 namespace ov
 {
-	// Used to wait for connection
-	class ConnectHelper : public SocketAsyncInterface
-	{
-	public:
-		void OnConnected(const std::shared_ptr<const SocketError> &error) override
-		{
-			std::atomic_store_explicit(&_error, error, std::memory_order_release);
-			_epoll_event.SetEvent();
-		}
-
-		void OnReadable() override
-		{
-		}
-
-		void OnClosed() override
-		{
-		}
-
-		bool WaitForConnect(int timeout)
-		{
-			return _epoll_event.Wait(timeout);
-		}
-
-		std::shared_ptr<const SocketError> GetError() const
-		{
-			return std::atomic_load_explicit(&_error, std::memory_order_acquire);
-		}
-
-	protected:
-		Event _epoll_event{true};
-		std::shared_ptr<const SocketError> _error;
-	};
-
 	static socket_id_t IssueSocketId()
 	{
 		static std::atomic<uint64_t> last_id{0};
@@ -826,7 +793,6 @@ namespace ov
 		}
 
 		std::shared_ptr<const SocketError> socket_error;
-		std::shared_ptr<ConnectHelper> connect_helper;
 
 		// To set connection timeout
 		bool use_timeout = (timeout_msec > 0 && timeout_msec < Infinite);
@@ -845,9 +811,6 @@ namespace ov
 						{
 							return DoConnectionCallback(SocketError::CreateError("Socket cannot be changed to nonblocking mode: %s", ToString().CStr()));
 						}
-
-						connect_helper = std::make_shared<ConnectHelper>();
-						std::atomic_store(&_callback, std::shared_ptr<SocketAsyncInterface>(connect_helper));
 					}
 				}
 
@@ -899,19 +862,14 @@ namespace ov
 
 				if (result == 0)
 				{
-					if (_blocking_mode == BlockingMode::Blocking)
+					if ((_blocking_mode == BlockingMode::Blocking) && use_timeout)
 					{
-						std::atomic_store(&_callback, {});
+						// Restore blocking state
+						DeleteFromWorker();
 
-						if (use_timeout)
+						if (SetBlockingInternal(BlockingMode::Blocking) == false)
 						{
-							// Restore blocking state
-							DeleteFromWorker();
-
-							if (SetBlockingInternal(BlockingMode::Blocking) == false)
-							{
-								return DoConnectionCallback(SocketError::CreateError("Socket cannot be changed to blocking mode: %s", ToString().CStr()));
-							}
+							return DoConnectionCallback(SocketError::CreateError("Socket cannot be changed to blocking mode: %s", ToString().CStr()));
 						}
 					}
 
@@ -934,33 +892,41 @@ namespace ov
 						}
 
 						// Blocking mode
-						if (connect_helper->WaitForConnect(timeout_msec))
-						{
-							socket_error = connect_helper->GetError();
-						}
-						else
-						{
-							// Timed out, closed on another thread, or completed while the worker was too busy to report it.
-							// A close that starts after the check fails the read of `SO_ERROR` instead.
-							int so_error = 0;
+						// Woken once the worker sees the connect complete, or by a close
+						_connect_event.Wait(timeout_msec);
 
-							if ((IsOpen() == false) || (GetSockOpt(SO_ERROR, &so_error) == false))
+						{
+							// A close also takes this lock, so the socket stays open while this thread decides the result
+							LockGuard lock(_dispatch_queue_lock);
+
+							if (IsOpen() == false)
 							{
 								socket_error = SocketError::CreateError("Socket is closed");
 							}
-							else if (HasConnectCompleted() == false)
+							else
 							{
-								socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
-							}
-							else if (so_error != 0)
-							{
-								socket_error = SocketError::CreateError(so_error, "Socket error occurred: %s", ::strerror(so_error));
-							}
+								// `SO_ERROR` is read after the completion check, so a connect failing in between is reported as a timeout
+								const bool completed = HasConnectCompleted();
+								int so_error		 = 0;
 
-							if (socket_error != nullptr)
-							{
-								logat("%s", socket_error->What());
+								if (GetSockOpt(SO_ERROR, &so_error) == false)
+								{
+									socket_error = SocketError::CreateError("Unknown error occurred: could not read SO_ERROR");
+								}
+								else if (completed == false)
+								{
+									socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
+								}
+								else if (so_error != 0)
+								{
+									socket_error = SocketError::CreateError(so_error, "Socket error occurred: %s", ::strerror(so_error));
+								}
 							}
+						}
+
+						if (socket_error != nullptr)
+						{
+							logat("%s", socket_error->What());
 						}
 
 						// Restore blocking state
@@ -1448,6 +1414,11 @@ namespace ov
 		pollfd poll_fd{GetNativeHandle(), POLLOUT, 0};
 
 		return (::poll(&poll_fd, 1, 0) > 0) && ((poll_fd.revents & (POLLOUT | POLLERR | POLLHUP)) != 0);
+	}
+
+	void Socket::WakeConnectWaiter()
+	{
+		_connect_event.SetEvent();
 	}
 
 	ssize_t Socket::HandleSendError(const size_t total_sent)
@@ -2439,30 +2410,55 @@ namespace ov
 		{
 			case BlockingMode::Blocking: {
 				bool result = true;
+				bool closed_at_once = false;
 
-				if (GetState() != SocketState::Error)
 				{
-					if (HalfClose() == DispatchResult::Error)
+					// A socket that has not connected has nothing to flush, so it is closed here at once.
+					// A connect sets its state under this lock, so one that starts or is in progress reports the close.
+					LockGuard lock(_dispatch_queue_lock);
+					const auto state = GetState();
+
+					if ((state == SocketState::Created) || (state == SocketState::Connecting))
 					{
-						result = false;
-					}
-					if (WaitForHalfClose() == DispatchResult::Error)
-					{
-						result = false;
+						closed_at_once = true;
+
+						if (CloseInternal(new_state))
+						{
+							SetState(new_state);
+						}
+						else
+						{
+							result = false;
+						}
 					}
 				}
 
-				// Close regardless of result
+				if (closed_at_once == false)
 				{
-					LockGuard lock_guard(_dispatch_queue_lock);
-
-					if (CloseInternal(new_state))
+					if (GetState() != SocketState::Error)
 					{
-						SetState(new_state);
+						if (HalfClose() == DispatchResult::Error)
+						{
+							result = false;
+						}
+						if (WaitForHalfClose() == DispatchResult::Error)
+						{
+							result = false;
+						}
 					}
-					else
+
+					// Close regardless of result
 					{
-						result = false;
+						LockGuard lock_guard(_dispatch_queue_lock);
+
+						if (CloseInternal(new_state))
+						{
+							SetState(new_state);
+						}
+						else
+						{
+							result = false;
+						}
 					}
 				}
 
@@ -2715,6 +2711,9 @@ namespace ov
 		}
 
 		_close_reason = close_reason;
+
+		// A blocking connect waiting on it sees the socket closed once the close releases `_dispatch_queue_lock`
+		WakeConnectWaiter();
 
 		// Only a socket that reported its connection gets a close callback
 		auto post_callback			  = std::atomic_exchange(&_callback, {});

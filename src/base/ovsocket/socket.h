@@ -566,6 +566,8 @@ namespace ov
 
 		bool IsSendable() const;
 		bool HasConnectCompleted() const;
+		// Wakes the blocking connect waiting on this socket, which then decides its result itself
+		void WakeConnectWaiter();
 		ssize_t HandleSendError(const size_t total_sent);
 
 		bool DispatchEventsAfterAppendCommand();
@@ -670,6 +672,8 @@ namespace ov
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
+		// Set when the worker sees a blocking connect complete, or when the socket closes
+		Event _connect_event{true};
 
 		std::atomic<bool> _end_of_stream = false;
 

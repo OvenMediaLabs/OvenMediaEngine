@@ -19,6 +19,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -127,6 +128,8 @@ namespace
 
 	class SocketConnectTimeoutTest : public ome_test::PoolTest
 	{
+	protected:
+		void CheckBlockingConnectClosedWhileWaiting(const std::function<bool(ov::Socket &)> &close_socket);
 	};
 }  // namespace
 
@@ -262,8 +265,9 @@ TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectReportsTimeout)
 	EXPECT_EQ(client->GetState(), ov::SocketState::Error);
 }
 
-// A blocking TCP connect closed on another thread reports the close, and the socket stays `Closed`
-TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
+// A blocking TCP connect closed on another thread ends its wait at the close,
+// reports the close, and the socket stays `Closed`
+void SocketConnectTimeoutTest::CheckBlockingConnectClosedWhileWaiting(const std::function<bool(ov::Socket &)> &close_socket)
 {
 	// About 50 ms of 1 ms samples, so a short wait on another lock is not taken for the connect wait
 	constexpr int BLOCKED_SAMPLE_COUNT = 50;
@@ -286,10 +290,13 @@ TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 	ome_test::ScopeExit client_closer([&]() { client->CloseImmediately(); });
 
 	std::shared_ptr<const ov::SocketError> error;
+	std::chrono::steady_clock::duration connect_elapsed{};
 	std::atomic<pid_t> tid{0};
 	std::thread connector([&]() {
-		tid	  = static_cast<pid_t>(::syscall(SYS_gettid));
-		error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CLOSED_CONNECT_TIMEOUT_MSEC);
+		tid				 = static_cast<pid_t>(::syscall(SYS_gettid));
+		const auto start = std::chrono::steady_clock::now();
+		error			 = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CLOSED_CONNECT_TIMEOUT_MSEC);
+		connect_elapsed	 = std::chrono::steady_clock::now() - start;
 	});
 
 	// The close must find the connect waiting for its result, not about to start
@@ -300,10 +307,21 @@ TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 		return blocked_samples >= BLOCKED_SAMPLE_COUNT;
 	}));
 
-	EXPECT_TRUE(client->CloseImmediately());
+	EXPECT_TRUE(close_socket(*client));
 	connector.join();
 
 	ASSERT_NE(error, nullptr);
 	EXPECT_EQ(error->GetMessage(), "Socket is closed") << error->What();
+	EXPECT_LT(connect_elapsed, std::chrono::milliseconds(CLOSED_CONNECT_TIMEOUT_MSEC));
 	EXPECT_EQ(client->GetState(), ov::SocketState::Closed);
+}
+
+TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedImmediatelyWhileWaiting)
+{
+	CheckBlockingConnectClosedWhileWaiting([](ov::Socket &socket) { return socket.CloseImmediately(); });
+}
+
+TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedByCloseWhileWaiting)
+{
+	CheckBlockingConnectClosedWhileWaiting([](ov::Socket &socket) { return socket.Close(); });
 }
