@@ -11,6 +11,7 @@
 #include <base/ovsocket/socket_test_helpers.h>
 #include <fcntl.h>
 #include <gtest/gtest.h>
+#include <poll.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -106,16 +107,19 @@ namespace
 		std::atomic<bool> _is_released{false};
 	};
 
-	// Counts readable events and runs the callbacks a test sets for them
+	// Counts connection results and readable events, and runs the callbacks a test sets for them
 	class TestEvents : public ov::SocketAsyncInterface
 	{
 	public:
 		std::function<void()> on_readable;
 		std::function<void()> on_closed;
 		std::atomic<int> readable_count{0};
+		std::atomic<int> connected_count{0};
+		std::atomic<int> connect_failed_count{0};
 
 		void OnConnected(const std::shared_ptr<const ov::SocketError> &error) override
 		{
+			(error == nullptr) ? connected_count++ : connect_failed_count++;
 		}
 
 		void OnReadable() override
@@ -365,6 +369,79 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 		adder.detach();
 		ADD_FAILURE() << "MakeNonBlocking() is still waiting for the first epoll event of a closed socket";
 	}
+}
+
+// A connect that completes while another socket's callback holds the worker past its timeout is reported as connected,
+// since the worker polls the completion together with the timeout
+TEST_F(SocketPoolWorkerTest, ConnectCompletedWhileWorkerIsHeldIsNotTimedOut)
+{
+	constexpr int CONNECT_TIMEOUT_MSEC = 200;
+	// Past the timeout, plus some room for the queue that reports it to the worker
+	constexpr int HOLD_MSEC			   = CONNECT_TIMEOUT_MSEC + 500;
+
+	auto pool						   = CreatePool("test-connect-in-batch", ov::SocketType::Tcp);
+	ASSERT_NE(pool, nullptr);
+
+	// Accepts only the gate, but the kernel completes the handshake of the client into its backlog
+	uint16_t listen_port = 0;
+	auto listen_fd		 = ListenOnLoopback(&listen_port, 8);
+	ASSERT_GE(listen_fd.Get(), 0);
+	const auto endpoint = ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listen_port);
+
+	// Declared before the sockets, so they are closed first and the peer's FIN reaches no callback
+	UniqueFd peer_fd;
+
+	WorkerGate worker_gate;
+	auto gate_events		 = std::make_shared<TestEvents>();
+	gate_events->on_readable = worker_gate.MakeCallback();
+	auto client_events		 = std::make_shared<TestEvents>();
+
+	auto gate				 = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto client				 = pool->AllocSocket(ov::SocketFamily::Inet);
+
+	ScopeExit closer([&]() {
+		worker_gate.Release();
+
+		for (const auto &socket : {gate, client})
+		{
+			if (socket != nullptr)
+			{
+				socket->CloseImmediately();
+			}
+		}
+	});
+
+	ASSERT_NE(gate, nullptr);
+	ASSERT_NE(client, nullptr);
+
+	// Added to the worker before the gate holds it, since an add waits for the worker's first epoll event
+	ASSERT_TRUE(gate->MakeNonBlocking(gate_events));
+	ASSERT_TRUE(client->MakeNonBlocking(client_events));
+
+	ASSERT_EQ(gate->Connect(endpoint, WAIT_TIMEOUT_MSEC), nullptr);
+	ASSERT_TRUE(WaitUntil([&]() { return gate->GetState() == ov::SocketState::Connected; }));
+
+	peer_fd = UniqueFd(::accept(listen_fd.Get(), nullptr, nullptr));
+	ASSERT_GE(peer_fd.Get(), 0);
+	ASSERT_EQ(::send(peer_fd.Get(), "x", 1, 0), 1);
+	ASSERT_TRUE(worker_gate.WaitEntered());
+
+	ASSERT_EQ(client->Connect(endpoint, CONNECT_TIMEOUT_MSEC), nullptr);
+	ASSERT_EQ(client->GetState(), ov::SocketState::Connecting);
+
+	const int client_handle = client->GetNativeHandle();
+	ASSERT_TRUE(WaitUntil([client_handle]() {
+		pollfd entry{client_handle, POLLOUT, 0};
+		return (::poll(&entry, 1, 0) == 1) && ((entry.revents & POLLOUT) != 0);
+	}));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(HOLD_MSEC));
+	worker_gate.Release();
+
+	EXPECT_TRUE(WaitUntil([&]() { return (client_events->connected_count + client_events->connect_failed_count) > 0; }));
+	EXPECT_EQ(client_events->connected_count.load(), 1);
+	EXPECT_EQ(client_events->connect_failed_count.load(), 0);
+	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
 }
 
 // `Close()` on a non-blocking socket that another close has already run on

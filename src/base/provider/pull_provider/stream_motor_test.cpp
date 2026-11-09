@@ -14,10 +14,13 @@
 #include <fcntl.h>
 #include <gtest/gtest.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <iterator>
 #include <memory>
 #include <set>
@@ -100,6 +103,79 @@ namespace
 		}
 	};
 
+	// A playing stream that holds the motor's worker in each of its first `HOLD_COUNT` packet calls until `Release()`,
+	// and drains its socket in the calls after them
+	class HoldingPullStream : public SocketPullStream
+	{
+	public:
+		static constexpr int HOLD_COUNT = 2;
+
+		HoldingPullStream()
+		{
+			SetState(State::PLAYING);
+
+			for (int index = 0; index < HOLD_COUNT; index++)
+			{
+				_entered_futures[index]	 = _entered[index].get_future();
+				_released_futures[index] = _released[index].get_future().share();
+			}
+		}
+
+		bool WaitEntered(int index)
+		{
+			return _entered_futures[index].wait_for(std::chrono::milliseconds(ome_test::WAIT_TIMEOUT_MSEC)) == std::future_status::ready;
+		}
+
+		void Release(int index)
+		{
+			if (_is_released[index].exchange(true) == false)
+			{
+				_released[index].set_value();
+			}
+		}
+
+		void ReleaseAll()
+		{
+			for (int index = 0; index < HOLD_COUNT; index++)
+			{
+				Release(index);
+			}
+		}
+
+		ProcessMediaResult ProcessMediaPacket() override
+		{
+			const int index = _call_count++;
+
+			if (index < HOLD_COUNT)
+			{
+				_entered[index].set_value();
+				_released_futures[index].wait();
+			}
+			else
+			{
+				char buffer[64];
+				while (::recv(socket->GetNativeHandle(), buffer, sizeof(buffer), MSG_DONTWAIT) > 0)
+				{
+				}
+			}
+
+			return ProcessMediaResult::PROCESS_MEDIA_TRY_AGAIN;
+		}
+
+		int GetCallCount() const
+		{
+			return _call_count;
+		}
+
+	private:
+		std::promise<void> _entered[HOLD_COUNT];
+		std::future<void> _entered_futures[HOLD_COUNT];
+		std::promise<void> _released[HOLD_COUNT];
+		std::shared_future<void> _released_futures[HOLD_COUNT];
+		std::atomic<bool> _is_released[HOLD_COUNT] = {};
+		std::atomic<int> _call_count{0};
+	};
+
 	class StreamMotorTest : public ome_test::PoolTest
 	{
 	};
@@ -155,6 +231,70 @@ TEST_F(StreamMotorTest, ReAddedStreamDropsOldSocketFromEpoll)
 	// An event on the new socket does, and the motor deletes the stream that is not playing
 	ASSERT_TRUE(SendDatagram(new_port));
 	EXPECT_TRUE(WaitUntil([&]() { return motor.GetStreamCount() == 0; }));
+}
+
+// An event of the old socket that the worker has already polled does not reach the stream added again with a new socket
+TEST_F(StreamMotorTest, PolledEventOfOldSocketDoesNotReachReAddedStream)
+{
+	auto pool = CreatePool("test-motor-stale-event", ov::SocketType::Udp);
+	ASSERT_NE(pool, nullptr);
+
+	auto holder_socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto old_socket	   = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto new_socket	   = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto holder		   = std::make_shared<HoldingPullStream>();
+	pvd::StreamMotor motor{1};
+
+	ScopeExit cleanup([&]() {
+		holder->ReleaseAll();
+		motor.Stop();
+
+		for (const auto &socket : {holder_socket, old_socket, new_socket})
+		{
+			if (socket != nullptr)
+			{
+				socket->CloseImmediately();
+			}
+		}
+	});
+
+	ASSERT_NE(holder_socket, nullptr);
+	ASSERT_NE(old_socket, nullptr);
+	ASSERT_NE(new_socket, nullptr);
+
+	auto holder_port = BindToLoopback(holder_socket);
+	auto old_port	 = BindToLoopback(old_socket);
+	ASSERT_NE(holder_port, 0);
+	ASSERT_NE(old_port, 0);
+	ASSERT_NE(BindToLoopback(new_socket), 0);
+
+	ASSERT_TRUE(motor.Start());
+
+	auto stream = std::make_shared<SocketPullStream>();
+	holder->SetId(1);
+	holder->socket = holder_socket;
+	stream->SetId(2);
+	stream->socket = old_socket;
+	ASSERT_TRUE(motor.AddStream(holder));
+	ASSERT_TRUE(motor.AddStream(stream));
+
+	// The old socket becomes readable while the first hold keeps the worker busy. The holder's socket stays readable,
+	// and epoll queues a level-triggered event again as it reports it, so the next batch has the holder's event first.
+	ASSERT_TRUE(SendDatagram(holder_port));
+	ASSERT_TRUE(holder->WaitEntered(0));
+	ASSERT_TRUE(SendDatagram(old_port));
+	ASSERT_TRUE(WaitUntilReadable(old_socket->GetNativeHandle()));
+	holder->Release(0);
+
+	// The second hold stops the worker between the two events of that batch while the stream is added again
+	ASSERT_TRUE(holder->WaitEntered(1));
+	stream->socket = new_socket;
+	ASSERT_TRUE(motor.AddStream(stream));
+	holder->Release(1);
+
+	// A third call comes from a later batch, so the event of the old socket has been handled by then
+	EXPECT_TRUE(WaitUntil([&]() { return holder->GetCallCount() > HoldingPullStream::HOLD_COUNT; }));
+	EXPECT_EQ(motor.GetStreamCount(), 2u);
 }
 
 // A stream whose socket was closed is still deleted, and the motor drops its reference to that socket

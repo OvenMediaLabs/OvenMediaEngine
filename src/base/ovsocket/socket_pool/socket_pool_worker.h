@@ -100,7 +100,8 @@ namespace ov
 
 		void GarbageCollection();
 
-		void CallbackTimedOutConnections();
+		std::deque<std::shared_ptr<Socket>> TakeTimedOutConnections();
+		void CallbackTimedOutConnections(const std::deque<std::shared_ptr<Socket>> &timed_out_connections);
 
 		void ThreadProc();
 

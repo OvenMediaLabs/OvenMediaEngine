@@ -381,6 +381,30 @@ TEST_F(SocketHandleTest, CloseWakesBlockedRecvFrom)
 	EXPECT_FALSE(IsFdOpen(number));
 }
 
+// A close wakes a UDP receive that asks for the address pair, which reports the close without a source address
+TEST_F(SocketHandleTest, CloseWakesBlockedRecvFromWithAddressPair)
+{
+	auto pool = CreatePool("test-wake-recvfrom-pair", ov::SocketType::Udp);
+	ASSERT_NE(pool, nullptr);
+
+	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
+	ASSERT_NE(socket, nullptr);
+	ScopeExit closer([&]() { socket->CloseImmediately(); });
+	ASSERT_TRUE(socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)));
+
+	auto returned = CloseWhileBlocked(socket, {SYS_recvfrom, SYS_recvmsg}, [socket]() {
+		auto data = std::make_shared<ov::Data>(1500);
+		ov::SocketAddressPair address_pair;
+		auto error = socket->RecvFrom(data, &address_pair, false);
+
+		return (error != nullptr) ? error->GetMessage() : ov::String("data");
+	});
+
+	ASSERT_TRUE(returned.has_value()) << "RecvFrom() is still blocked on a closed socket";
+	EXPECT_EQ(returned.value(), "Socket is closed");
+	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
+}
+
 // A closed socket cannot join an epoll instance of the caller,
 // and removing it once released leaves alone the file that now holds its number in that instance
 TEST_F(SocketHandleTest, ExternalEpollRegistrationAfterClose)

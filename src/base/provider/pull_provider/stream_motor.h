@@ -49,6 +49,8 @@ namespace pvd
 
 		// Removes the stream's entry and its epoll registration, and returns false if there is no entry
 		bool RemoveEntry(uint32_t stream_id) OV_REQUIRES(_streams_map_guard);
+		// With `event_socket`, deletes the stream only while its entry still holds that socket
+		bool DelStream(const std::shared_ptr<PullStream> &stream, const std::shared_ptr<ov::Socket> &event_socket);
 
 		void WorkerThread();
 

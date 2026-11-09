@@ -2278,6 +2278,13 @@ namespace ov
 					&msg,
 					((_blocking_mode == BlockingMode::NonBlocking) || non_block) ? MSG_DONTWAIT : 0);
 
+				if ((read_bytes <= 0L) && (IsOpen() == false))
+				{
+					// Woken or failed by a close on another thread, which leaves no source address to parse
+					data->SetLength(0L);
+					return SocketError::CreateError("Socket is closed");
+				}
+
 				if (read_bytes < 0L)
 				{
 					auto error = Error::CreateErrorFromErrno();
@@ -2330,12 +2337,6 @@ namespace ov
 				OV_ASSERT2(false);
 				socket_error = SocketError::CreateError("Unknown socket type");
 				break;
-		}
-
-		if ((data->GetLength() == 0L) && (IsOpen() == false))
-		{
-			// Woken or failed by a close on another thread
-			return SocketError::CreateError("Socket is closed");
 		}
 
 		if (socket_error != nullptr)

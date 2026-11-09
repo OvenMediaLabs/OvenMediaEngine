@@ -15,6 +15,18 @@
 
 namespace pvd
 {
+	// The data of an epoll event: the stream ID in the low 32 bits and the low 32 bits of the registered socket's ID above it,
+	// so an event of an earlier registration of the same stream is told apart
+	static uint64_t MakeEventKey(uint32_t stream_id, ov::socket_id_t socket_id)
+	{
+		return (static_cast<uint64_t>(static_cast<uint32_t>(socket_id.GetValue())) << 32) | stream_id;
+	}
+
+	static uint32_t StreamIdOfEventKey(uint64_t key)
+	{
+		return static_cast<uint32_t>(key);
+	}
+
 	StreamMotor::StreamMotor(uint32_t id)
 	{
 		_id = id;
@@ -127,7 +139,7 @@ namespace pvd
 				{
 					struct epoll_event event;
 					event.events   = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
-					event.data.u32 = stream->GetId();
+					event.data.u64 = MakeEventKey(stream->GetId(), event_socket->GetId());
 
 					error		   = event_socket->AddToExternalEpoll(_epoll_fd, &event);
 				}
@@ -154,14 +166,23 @@ namespace pvd
 
 	bool StreamMotor::DelStream(const std::shared_ptr<PullStream> &stream)
 	{
+		return DelStream(stream, nullptr);
+	}
+
+	bool StreamMotor::DelStream(const std::shared_ptr<PullStream> &stream, const std::shared_ptr<ov::Socket> &event_socket)
+	{
 		{
 			ov::LockGuard lock(_streams_map_guard);
 
-			if (RemoveEntry(stream->GetId()) == false)
+			auto item = _streams.find(stream->GetId());
+
+			// may be already deleted, or added again with another socket
+			if ((item == _streams.end()) || ((event_socket != nullptr) && (item->second.event_socket != event_socket)))
 			{
-				// may be already deleted
 				return false;
 			}
+
+			RemoveEntry(stream->GetId());
 		}
 
 		logti("%s/%s(%u) stream has deleted from %u StreamMotor", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), GetId());
@@ -201,15 +222,23 @@ namespace pvd
 
 			for(int i=0; i<event_count; i++)
 			{
-				auto stream_id = epoll_events[i].data.u32;
+				auto key = epoll_events[i].data.u64;
 				auto events = epoll_events[i].events;
 
 				std::shared_ptr<PullStream> stream;
+				std::shared_ptr<ov::Socket> event_socket;
 
 				{
 					ov::SharedLockGuard lock(_streams_map_guard);
+					auto stream_id = StreamIdOfEventKey(key);
 					auto it = _streams.find(stream_id);
 					if(it == _streams.end())
+					{
+						continue;
+					}
+
+					event_socket = it->second.event_socket;
+					if ((event_socket == nullptr) || (MakeEventKey(stream_id, event_socket->GetId()) != key))
 					{
 						continue;
 					}
@@ -220,7 +249,7 @@ namespace pvd
 				if (OV_CHECK_FLAG(events, EPOLLHUP) || OV_CHECK_FLAG(events, EPOLLRDHUP))
 				{
 					logti("An error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-					DelStream(stream);
+					DelStream(stream, event_socket);
 				}
 				else if(OV_CHECK_FLAG(events, EPOLLIN))
 				{
@@ -235,18 +264,18 @@ namespace pvd
 						}
 						else
 						{
-							DelStream(stream);
+							DelStream(stream, event_socket);
 						}
 					}
 					else
 					{
-						DelStream(stream);
+						DelStream(stream, event_socket);
 					}
 				}
 				else
 				{
 					logti("An unexpected error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-					DelStream(stream);
+					DelStream(stream, event_socket);
 				}
 			}
 
