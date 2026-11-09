@@ -80,13 +80,10 @@ namespace http
 				// Callback the payload
 				if (_message_handler != nullptr)
 				{
-					if (_message_handler(websocket_session, data) == false)
-					{
-						return -1;
-					}
+					return _message_handler(websocket_session, data);
 				}
 
-				return data->GetLength();
+				return true;
 			}
 
 			InterceptorResult Interceptor::OnRequestCompleted(const std::shared_ptr<HttpExchange> &exchange)
