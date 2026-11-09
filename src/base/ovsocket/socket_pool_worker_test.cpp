@@ -367,8 +367,8 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 	}
 }
 
-// `Close()` on a non-blocking socket that another close has already run on moves the socket to `Closed` at once,
-// without queueing a command
+// `Close()` on a non-blocking socket that another close has already run on
+// moves the socket to `Closed` at once, without queueing a command
 TEST_F(SocketPoolWorkerTest, CloseAfterCloseStartedMovesToClosed)
 {
 	auto pool = CreatePool("test-close-after", ov::SocketType::Udp);

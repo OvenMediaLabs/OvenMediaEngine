@@ -350,7 +350,7 @@ namespace ov
 			_end_of_stream = true;
 		}
 
-		// Whether a close is queued
+		// Whether a close has been requested
 		bool IsClosing() const
 		{
 			return _has_close_command;

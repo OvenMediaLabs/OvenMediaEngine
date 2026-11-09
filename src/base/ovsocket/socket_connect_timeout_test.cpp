@@ -267,6 +267,8 @@ TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 {
 	// About 50 ms of 1 ms samples, so a short wait on another lock is not taken for the connect wait
 	constexpr int BLOCKED_SAMPLE_COUNT = 50;
+	// Long enough that the samples end before the connect times out by itself, even on a loaded machine
+	constexpr int CLOSED_CONNECT_TIMEOUT_MSEC = 3000;
 
 	StalledTcpListener listener;
 	ASSERT_TRUE(listener.Listen());
@@ -287,7 +289,7 @@ TEST_F(SocketConnectTimeoutTest, BlockingTcpConnectClosedWhileWaiting)
 	std::atomic<pid_t> tid{0};
 	std::thread connector([&]() {
 		tid	  = static_cast<pid_t>(::syscall(SYS_gettid));
-		error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CONNECT_TIMEOUT_MSEC);
+		error = client->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listener.Port()), CLOSED_CONNECT_TIMEOUT_MSEC);
 	});
 
 	// The close must find the connect waiting for its result, not about to start
