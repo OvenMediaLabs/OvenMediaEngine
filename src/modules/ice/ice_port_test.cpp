@@ -12,6 +12,7 @@
 
 #include <arpa/inet.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <gtest/gtest.h>
 #include <modules/ice/stun/attributes/stun_attributes.h>
 #include <modules/ice/stun/stun_message.h>
@@ -218,21 +219,9 @@ public:
 			return false;
 		}
 
-		if (_socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) == false)
-		{
-			return false;
-		}
+		_port = ome_test::BindToLoopback(_socket);
 
-		sockaddr_in address{};
-		socklen_t length = sizeof(address);
-		if (::getsockname(_socket->GetSocket().GetNativeHandle(), reinterpret_cast<sockaddr *>(&address), &length) != 0)
-		{
-			return false;
-		}
-
-		_port = ntohs(address.sin_port);
-
-		return true;
+		return _port != 0;
 	}
 
 	const std::shared_ptr<ov::Socket> &GetSocket() const
