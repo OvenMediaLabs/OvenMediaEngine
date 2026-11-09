@@ -115,6 +115,8 @@ namespace ov
 		void EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket);
 		void EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback, SocketCountSlot count_slot);
 		void EnqueueToCheckConnectionTimeOut(const std::shared_ptr<Socket> &socket, int timeout_msec);
+		// The process-wide queue that reports a non-blocking connect timeout to its worker
+		static DelayQueue &GetConnectionCallbackQueue();
 
 		void DispatchSocketEventsIfNeeded();
 		void CallCloseCallbackIfNeeded();
@@ -138,9 +140,6 @@ namespace ov
 		// Worker thread only
 		std::map<socket_id_t, std::shared_ptr<Socket>> _gc_candidates;
 
-		// A queue for handling errors such as connection timeout in nonblocking mode.
-		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};
-		inline static std::once_flag _connection_callback_queue_start_flag;
 		// Sockets whose non-blocking connect timed out, for the worker thread to report
 		mutable Mutex _connection_timed_out_queue_mutex;
 		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue OV_GUARDED_BY(_connection_timed_out_queue_mutex);

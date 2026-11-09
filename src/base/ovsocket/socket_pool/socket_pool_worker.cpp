@@ -340,10 +340,6 @@ namespace ov
 	{
 		logger::ThreadHelper thread_helper;
 
-		std::call_once(_connection_callback_queue_start_flag, []() {
-			_connection_callback_queue.Start();
-		});
-
 		_gc_interval.Start();
 
 		while (_stop_epoll_thread == false)
@@ -922,7 +918,7 @@ namespace ov
 	{
 		std::weak_ptr<SocketPoolWorker> weak_this = GetSharedPtr();
 
-		_connection_callback_queue.Push(
+		GetConnectionCallbackQueue().Push(
 			[weak_this, socket](void *parameter) -> DelayQueueAction {
 				auto shared_this = weak_this.lock();
 
@@ -935,6 +931,15 @@ namespace ov
 			},
 			nullptr,
 			timeout_msec);
+	}
+
+	DelayQueue &SocketPoolWorker::GetConnectionCallbackQueue()
+	{
+		// Built on first use, after the logger, so it is destroyed and its thread joined before the logger
+		static DelayQueue queue{"ConnectionCB"};
+		[[maybe_unused]] static const bool started = queue.Start();
+
+		return queue;
 	}
 
 	void SocketPoolWorker::DispatchSocketEventsIfNeeded()
