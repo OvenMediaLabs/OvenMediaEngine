@@ -350,7 +350,7 @@ namespace ov
 			_end_of_stream = true;
 		}
 
-		// Whether a close has been requested
+		// Whether a non-blocking close has been requested; a blocking close and `CloseImmediately()` do not set it
 		bool IsClosing() const
 		{
 			return _has_close_command;

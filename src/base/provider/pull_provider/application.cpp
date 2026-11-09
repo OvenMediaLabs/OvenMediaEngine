@@ -377,7 +377,8 @@ namespace pvd
 
 	bool PullApplication::DeleteAllStreams()
 	{
-		// Taken out under the lock and stopped outside it, since stopping a motor joins its thread
+		// Taken out under the lock and stopped outside it,
+		// so no lock is held while each motor joins its thread and stops its streams
 		decltype(_stream_motors) stream_motors;
 		{
 			std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);

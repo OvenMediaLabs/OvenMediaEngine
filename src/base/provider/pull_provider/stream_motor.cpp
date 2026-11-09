@@ -15,7 +15,7 @@
 
 namespace pvd
 {
-	// The data of an epoll event: the stream ID in the low 32 bits and the low 32 bits of the registered socket's ID above it,
+	// The data of an epoll event: the stream ID in the low 32 bits, and the low 32 bits of the registered socket's ID above it,
 	// so an event of an earlier registration of the same stream is told apart
 	static uint64_t MakeEventKey(uint32_t stream_id, ov::socket_id_t socket_id)
 	{
@@ -100,6 +100,13 @@ namespace pvd
 			return false;
 		}
 
+		EraseEntry(item);
+
+		return true;
+	}
+
+	void StreamMotor::EraseEntry(std::map<uint32_t, Entry>::iterator item)
+	{
 		const auto &[stream, event_socket] = item->second;
 
 		if (event_socket != nullptr)
@@ -113,8 +120,6 @@ namespace pvd
 		}
 
 		_streams.erase(item);
-
-		return true;
 	}
 
 	bool StreamMotor::AddStream(const std::shared_ptr<PullStream> &stream)
@@ -166,10 +171,24 @@ namespace pvd
 
 	bool StreamMotor::DelStream(const std::shared_ptr<PullStream> &stream)
 	{
-		return DelStream(stream, nullptr);
+		{
+			ov::LockGuard lock(_streams_map_guard);
+
+			if (RemoveEntry(stream->GetId()) == false)
+			{
+				// may be already deleted
+				return false;
+			}
+		}
+
+		logti("%s/%s(%u) stream has deleted from %u StreamMotor", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), GetId());
+
+		stream->Stop();
+
+		return true;
 	}
 
-	bool StreamMotor::DelStream(const std::shared_ptr<PullStream> &stream, const std::shared_ptr<ov::Socket> &event_socket)
+	bool StreamMotor::DelStreamRegisteredWith(const std::shared_ptr<PullStream> &stream, const std::shared_ptr<ov::Socket> &event_socket)
 	{
 		{
 			ov::LockGuard lock(_streams_map_guard);
@@ -177,12 +196,12 @@ namespace pvd
 			auto item = _streams.find(stream->GetId());
 
 			// may be already deleted, or added again with another socket
-			if ((item == _streams.end()) || ((event_socket != nullptr) && (item->second.event_socket != event_socket)))
+			if ((item == _streams.end()) || (item->second.event_socket != event_socket))
 			{
 				return false;
 			}
 
-			RemoveEntry(stream->GetId());
+			EraseEntry(item);
 		}
 
 		logti("%s/%s(%u) stream has deleted from %u StreamMotor", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), GetId());
@@ -249,7 +268,7 @@ namespace pvd
 				if (OV_CHECK_FLAG(events, EPOLLHUP) || OV_CHECK_FLAG(events, EPOLLRDHUP))
 				{
 					logti("An error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-					DelStream(stream, event_socket);
+					DelStreamRegisteredWith(stream, event_socket);
 				}
 				else if(OV_CHECK_FLAG(events, EPOLLIN))
 				{
@@ -264,18 +283,18 @@ namespace pvd
 						}
 						else
 						{
-							DelStream(stream, event_socket);
+							DelStreamRegisteredWith(stream, event_socket);
 						}
 					}
 					else
 					{
-						DelStream(stream, event_socket);
+						DelStreamRegisteredWith(stream, event_socket);
 					}
 				}
 				else
 				{
 					logti("An unexpected error (%u) occurred while epoll_waiting the %s - %s/%s(%u) stream.", events, stream->GetApplicationTypeName(), stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-					DelStream(stream, event_socket);
+					DelStreamRegisteredWith(stream, event_socket);
 				}
 			}
 

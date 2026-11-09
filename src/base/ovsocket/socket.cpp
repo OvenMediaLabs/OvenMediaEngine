@@ -891,7 +891,7 @@ namespace ov
 
 				if (IsOpen() == false)
 				{
-					// A shutdown may not abort a blocking connect (recent kernels refuse it with `EBUSY`),
+					// A shutdown may not abort a blocking connect (some kernels refuse it with `EBUSY`),
 					// so a close during it keeps the handle open until the connect returns and is reported here
 					return DoConnectionCallback(SocketError::CreateError("Socket is closed"));
 				}
