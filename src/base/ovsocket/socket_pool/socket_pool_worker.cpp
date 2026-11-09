@@ -60,6 +60,13 @@ static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long n
 
 namespace ov
 {
+	namespace
+	{
+		// A thread-per-socket worker has one socket, which an epoll reports at most once per wait,
+		// so one slot is enough in theory, and 4 leaves some room
+		constexpr int THREAD_PER_SOCKET_MAX_EVENTS = 4;
+	}  // namespace
+
 	// The data of a TCP/UDP epoll event: the native handle in the low 32 bits and the low 32 bits of the socket ID above it,
 	// so an event of an earlier registration that used the same handle is told apart
 	static uint64_t MakeEventKey(int native_handle, socket_id_t socket_id)
@@ -109,7 +116,11 @@ namespace ov
 	}
 
 	SocketPoolWorker::SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool)
-		: _pool(pool)
+		: _pool(pool),
+		  _max_events(pool->IsThreadPerSocket() ? THREAD_PER_SOCKET_MAX_EVENTS : EpollMaxEvents),
+		  _epoll_events((pool->GetType() == SocketType::Srt) ? 0 : _max_events),
+		  _polled_events(_max_events),
+		  _srt_epoll_events((pool->GetType() == SocketType::Srt) ? _max_events : 0)
 	{
 		OV_ASSERT2(_pool != nullptr);
 	}
@@ -222,12 +233,7 @@ namespace ov
 			case SocketType::Tcp:
 				_epoll = ::epoll_create1(0);
 
-				if (_epoll != InvalidSocket)
-				{
-					_epoll_events.resize(EpollMaxEvents);
-					_polled_events.resize(EpollMaxEvents);
-				}
-				else
+				if (_epoll == InvalidSocket)
 				{
 					error = Error::CreateErrorFromErrno();
 				}
@@ -240,8 +246,6 @@ namespace ov
 				if (_srt_epoll != SRT_INVALID_SOCK)
 				{
 					srt_epoll_set(_srt_epoll, SRT_EPOLL_ENABLE_EMPTY);
-					_srt_epoll_events.resize(EpollMaxEvents);
-					_polled_events.resize(EpollMaxEvents);
 				}
 				else
 				{
@@ -708,7 +712,7 @@ namespace ov
 		{
 			case SocketType::Udp:
 			case SocketType::Tcp:
-				event_count = ::epoll_wait(_epoll, _epoll_events.data(), EpollMaxEvents, timeout_msec);
+				event_count = ::epoll_wait(_epoll, _epoll_events.data(), _max_events, timeout_msec);
 
 				if (event_count == 0)
 				{
@@ -755,7 +759,7 @@ namespace ov
 				break;
 
 			case SocketType::Srt:
-				event_count = ::srt_epoll_uwait(_srt_epoll, _srt_epoll_events.data(), EpollMaxEvents, timeout_msec);
+				event_count = ::srt_epoll_uwait(_srt_epoll, _srt_epoll_events.data(), _max_events, timeout_msec);
 				if (event_count == 0)
 				{
 					// timed out

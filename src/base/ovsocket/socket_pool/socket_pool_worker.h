@@ -149,6 +149,8 @@ namespace ov
 		// Asks the thread to leave its loop, after which it closes the sockets in its map.
 		// `AddToEpoll()` refuses a socket once it is set, so no socket joins the map after that.
 		std::atomic<bool> _stop_epoll_thread = true;
+		// The size of the epoll buffers below, and the most events one wait returns
+		const int _max_events;
 		// The kernel buffer of a TCP/UDP worker
 		std::vector<epoll_event> _epoll_events;
 		// Keeps the socket of each polled event alive until the event is handled
