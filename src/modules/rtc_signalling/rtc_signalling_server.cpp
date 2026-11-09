@@ -411,10 +411,11 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 
 			ov::JsonObject object = ov::Json::Parse(message);
 
+			// An invalid message is dropped without an answer, and the connection stays open
 			if (object.IsNull())
 			{
 				logtw("Invalid request message from %s", ws_session->ToString().CStr());
-				return false;
+				return true;
 			}
 
 			auto &payload = object.GetJsonValue();
@@ -422,7 +423,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 			if ((payload.isObject() == false) || (payload.isMember("command") == false))
 			{
 				logtw("Invalid request message from %s", ws_session->ToString().CStr());
-				return false;
+				return true;
 			}
 
 			auto &command_value = payload["command"];
@@ -441,7 +442,7 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 				}
 				else
 				{
-					logte("An error occurred while dispatch command %s for stream [%s/%s]: %s, disconnecting...", command.CStr(), info->vhost_app_name.CStr(), info->stream_name.CStr(), error->What());
+					logte("An error occurred while dispatch command %s for stream [%s/%s]: %s", command.CStr(), info->vhost_app_name.CStr(), info->stream_name.CStr(), error->What());
 				}
 
 				ov::JsonObject response_json;
@@ -451,10 +452,9 @@ bool RtcSignallingServer::SetupWebSocketHandler(std::shared_ptr<http::svr::ws::I
 				value["error"] = error->GetMessage().CStr();
 
 				ws_session->GetWebSocketResponse()->Send(response_json.ToString());
-
-				return false;
 			}
 
+			// An error answers this request only, so the connection stays open for the next one
 			return true;
 		});
 
@@ -765,6 +765,9 @@ std::shared_ptr<const ov::Error> RtcSignallingServer::DispatchRequestOffer(const
 		bool tcp_relay = false;
 		// None of the hosts can accept this client, so the peer will be connectioned to OME
 		auto observers = std::atomic_load(&_observers);
+
+		// An earlier offer on this connection left its candidates here
+		info->local_candidates.clear();
 
 		std::find_if(observers->begin(), observers->end(), [ws_session, info, &sdp, vhost_app_name, stream_name, &tcp_relay](auto &observer) -> bool {
 			// Ask observer to fill local_candidates
