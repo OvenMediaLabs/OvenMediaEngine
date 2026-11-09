@@ -3,8 +3,8 @@
 //  OvenMediaEngine - Unit Tests
 //
 //  Covers: H264TimecodeGenerator - drop frame detection, frame number to
-//  timecode conversion, PTS anchoring against a quantized timebase - and the
-//  SPS patch state H264SeiInserter keeps per track
+//  timecode conversion, PTS anchoring against a quantized timebase - the SPS
+//  patch state H264SeiInserter keeps per track, and the user data layout
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -495,18 +495,19 @@ namespace
 		return stream;
 	}
 
-	// pic_struct of the first pic_timing in the access unit
-	std::optional<uint32_t> PicStructOf(const std::shared_ptr<const ov::Data> &access_unit)
+	// Every SEI message in the access unit, in bitstream order
+	std::vector<H264SEI::Message> SeiMessagesOf(const std::shared_ptr<const ov::Data> &access_unit)
 	{
+		std::vector<H264SEI::Message> messages;
+
 		NalUnitFragmentHeader fragment_header;
 		if (NalUnitFragmentHeader::Parse(access_unit, fragment_header) == false)
 		{
-			return std::nullopt;
+			return messages;
 		}
 
 		const auto *fragment = fragment_header.GetFragmentHeader();
 		const auto *buffer	 = access_unit->GetDataAs<uint8_t>();
-		const auto context	 = SpsContextOf(kSps);
 
 		for (size_t i = 0; i < fragment->GetCount(); i++)
 		{
@@ -526,26 +527,65 @@ namespace
 			auto rbsp = NalUnitInsertor::RemoveEmulationPreventionBytes(
 				std::make_shared<ov::Data>(buffer + offset + 1, length - 1));
 
-			std::vector<H264SEI::Message> messages;
-			if (H264SEI::SplitMessages(rbsp, messages) == false)
+			std::vector<H264SEI::Message> nal_messages;
+			if (H264SEI::SplitMessages(rbsp, nal_messages) == false)
 			{
 				continue;
 			}
 
-			for (const auto &message : messages)
+			messages.insert(messages.end(), nal_messages.begin(), nal_messages.end());
+		}
+
+		return messages;
+	}
+
+	// pic_struct of the first pic_timing in the access unit
+	std::optional<uint32_t> PicStructOf(const std::shared_ptr<const ov::Data> &access_unit)
+	{
+		const auto context = SpsContextOf(kSps);
+
+		for (const auto &message : SeiMessagesOf(access_unit))
+		{
+			H264SeiPicTiming pic_timing;
+			if ((message.Is(H264SEI::PayloadType::PICTURE_TIMING) == true) &&
+				(H264SEI::ParsePicTiming(message.payload, context, pic_timing) == true))
 			{
-				H264SeiPicTiming pic_timing;
-				if ((message.Is(H264SEI::PayloadType::PICTURE_TIMING) == true) &&
-					(H264SEI::ParsePicTiming(message.payload, context, pic_timing) == true))
-				{
-					return pic_timing.pic_struct;
-				}
+				return pic_timing.pic_struct;
 			}
 		}
 
 		return std::nullopt;
 	}
 }  // namespace
+
+// The user data reaches the bitstream exactly as given: UUID and timecode, then the data with
+// nothing after it
+TEST(H264SeiInserter, InsertsUserDataWithoutATerminatingNul)
+{
+	auto stream = MakeStream();
+	auto track	= MakeTrack();
+	auto packet = MakePacket(AccessUnit({AsData(kSps), AsData(kPps), AsData(kIdrSlice)}), 0);
+
+	const ov::String data = "e2e_exact_data";
+	ASSERT_TRUE(H264SeiInserter::InsertUserData(stream, track, packet, data));
+
+	std::shared_ptr<ov::Data> payload;
+	for (const auto &message : SeiMessagesOf(packet->GetData()))
+	{
+		if (message.Is(H264SEI::PayloadType::USER_DATA_UNREGISTERED) == true)
+		{
+			payload = message.payload;
+		}
+	}
+	ASSERT_NE(payload, nullptr);
+
+	constexpr size_t kUuidLength   = sizeof(H264SeiInserter::OME_USER_DATA_UUID);
+	constexpr size_t kHeaderLength = kUuidLength + sizeof(uint64_t);
+
+	ASSERT_EQ(payload->GetLength(), kHeaderLength + data.GetLength());
+	EXPECT_TRUE(payload->Subdata(0, kUuidLength)->IsEqual(H264SeiInserter::OME_USER_DATA_UUID, kUuidLength));
+	EXPECT_TRUE(payload->Subdata(kHeaderLength)->IsEqual(data.CStr(), data.GetLength()));
+}
 
 // PatchSps() turns pic_struct_present_flag on, so the Replace path has to read the encoder's own
 // message with the pre-patch value. That memory must not outlive the SPS it came from: an encoder

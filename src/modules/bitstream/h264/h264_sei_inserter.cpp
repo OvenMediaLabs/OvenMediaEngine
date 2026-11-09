@@ -415,7 +415,8 @@ bool H264SeiInserter::InsertUserData(const std::shared_ptr<info::Stream> &stream
 	uint8_t time_code[sizeof(uint64_t)] = {0};
 	ByteWriter<uint64_t>::WriteBigEndian(time_code, static_cast<uint64_t>(current_time));
 	payload->Append(time_code, sizeof(time_code));
-	payload->Append(payload_data.ToData());
+	// Without the string's terminating NUL, so the viewer gets the data exactly as it was sent
+	payload->Append(payload_data.ToData(false));
 
 	H264SEI sei;
 	sei.SetPayloadType(H264SEI::PayloadType::USER_DATA_UNREGISTERED);
