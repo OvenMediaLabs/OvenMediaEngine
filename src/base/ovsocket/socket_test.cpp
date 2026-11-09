@@ -193,8 +193,8 @@ namespace
 		std::thread _accept_thread;
 	};
 
-	// A plain POSIX UDP socket that the test uses to send datagrams to the
-	// `ov::Socket` under test.
+	// A plain POSIX UDP socket that exchanges datagrams with the `ov::Socket`
+	// under test.
 	class PosixUdpPeer
 	{
 	public:
@@ -245,6 +245,14 @@ namespace
 			da.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 			da.sin_port		   = htons(dst_port);
 			return ::sendto(_fd, data, length, 0, reinterpret_cast<sockaddr *>(&da), sizeof(da));
+		}
+
+		// Receives one datagram, waiting at most `LOOPBACK_TIMEOUT_MSEC`.
+		ssize_t Recv(void *data, size_t length)
+		{
+			timeval tv = {LOOPBACK_TIMEOUT_MSEC / 1000, (LOOPBACK_TIMEOUT_MSEC % 1000) * 1000};
+			::setsockopt(_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+			return ::recv(_fd, data, length, 0);
 		}
 
 	private:
@@ -1131,6 +1139,54 @@ TEST_F(SocketRecvUdpTest, StaysUsableAfterZeroLengthDatagram)
 	EXPECT_EQ(data_result.value(), sizeof(payload));
 	EXPECT_STREQ(buffer, payload);
 }
+
+// ===========================================================================
+// UDP send (non-blocking)
+// ===========================================================================
+namespace ov
+{
+	class SocketSendUdpTest : public SocketTestBase
+	{
+	protected:
+		void SetUp() override
+		{
+			InitPool("test-send-udp", SocketType::Udp);
+		}
+
+		// Queues a datagram without dispatching it
+		static void QueueSendFromTo(const std::shared_ptr<Socket> &socket, const SocketAddressPair &address_pair, const void *data, size_t length)
+		{
+			socket->AppendCommand(Socket::DispatchCommand(address_pair, std::make_shared<Data>(data, length)), false);
+		}
+	};
+
+	// When the pool worker drains the queue (`OnDataWritableEvent()`), a datagram that fails
+	// with a hard error (here `EMSGSIZE`: it is over the UDP size limit) is dropped, and the
+	// datagram behind it still goes out.
+	TEST_F(SocketSendUdpTest, QueuedHardErrorDropsOnlyThatDatagram)
+	{
+		PosixUdpPeer peer;
+		ASSERT_TRUE(peer.Open());
+
+		auto socket = _pool->AllocSocket(SocketFamily::Inet);
+		ASSERT_NE(socket, nullptr);
+		ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<SrtAsyncEvents>()));
+
+		const SocketAddressPair address_pair(LoopbackAddress(0), LoopbackAddress(peer.Port()));
+		const std::vector<uint8_t> oversized(64 * 1024, 'x');
+		const char payload[] = "after-error";
+		QueueSendFromTo(socket, address_pair, oversized.data(), oversized.size());
+		QueueSendFromTo(socket, address_pair, payload, sizeof(payload));
+
+		EXPECT_EQ(static_cast<SocketPoolEventInterface &>(*socket).OnDataWritableEvent(), PostProcessMethod::Nothing);
+
+		char buffer[64] = {0};
+		EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(payload)));
+		EXPECT_STREQ(buffer, payload);
+
+		socket->CloseImmediatelyWithState(SocketState::Closed);
+	}
+}  // namespace ov
 
 // ===========================================================================
 // SRT

@@ -1249,7 +1249,8 @@ namespace ov
 
 		if (sent_bytes == -1)
 		{
-			return DispatchResult::Error;
+			// On a UDP socket a send error concerns one datagram: drop it and go on to the next command
+			return (GetType() == SocketType::Udp) ? DispatchResult::Dispatched : DispatchResult::Error;
 		}
 
 		if (sent_bytes > 0)
@@ -1436,7 +1437,7 @@ namespace ov
 		return (IsClosing() == false);
 	}
 
-	ssize_t Socket::HandleSendError(const ssize_t result, const size_t total_sent)
+	ssize_t Socket::HandleSendError(const size_t total_sent)
 	{
 		const auto error = Error::CreateErrorFromErrno();
 
@@ -1455,12 +1456,12 @@ namespace ov
 				break;
 
 			default:
-				logaw("Could not send data: %zd (%s)", result, error->What());
+				logaw("Could not send data: %s", error->What());
 				break;
 		}
 
 		STATS_COUNTER_INCREASE_ERROR();
-		return result;
+		return -1L;
 	}
 
 	ssize_t Socket::SendData(const std::shared_ptr<const Data> &data)
@@ -1484,7 +1485,7 @@ namespace ov
 
 			if (sent < 0L)
 			{
-				return HandleSendError(sent, total_sent_bytes);
+				return HandleSendError(total_sent_bytes);
 			}
 
 			OV_ASSERT2(static_cast<ssize_t>(remaining_bytes) >= sent);
@@ -1634,7 +1635,7 @@ namespace ov
 
 			if (sent < 0L)
 			{
-				return HandleSendError(sent, total_sent_bytes);
+				return HandleSendError(total_sent_bytes);
 			}
 
 			OV_ASSERT2(static_cast<ssize_t>(remaining_bytes) >= sent);
@@ -1821,7 +1822,7 @@ namespace ov
 
 		if (sent == false)
 		{
-			return HandleSendError(sent, total_sent_bytes);
+			return HandleSendError(total_sent_bytes);
 		}
 
 		return total_sent_bytes;
