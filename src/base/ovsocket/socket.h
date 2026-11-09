@@ -67,6 +67,8 @@ namespace ov
 
 	protected:
 		friend class SocketPoolWorker;
+		// Unit-test access to AppendCommand() (see socket_test.cpp)
+		friend class SocketSendUdpTest;
 
 		OV_SOCKET_DECLARE_PRIVATE_TOKEN();
 
@@ -479,7 +481,7 @@ namespace ov
 		DispatchResult DispatchEventInternal(DispatchCommand &command) OV_REQUIRES(_dispatch_queue_lock);
 
 		bool IsSendable() const;
-		ssize_t HandleSendError(const ssize_t result, const size_t total_sent);
+		ssize_t HandleSendError(const size_t total_sent);
 
 		bool DispatchEventsAfterAppendCommand();
 
