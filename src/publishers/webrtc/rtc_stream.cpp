@@ -352,16 +352,18 @@ std::shared_ptr<const RtcPlaylist> RtcStream::GetRtcPlaylist(const ov::String &f
 
 std::shared_ptr<const RtcMasterPlaylist> RtcStream::GetRtcMasterPlaylist(const ov::String &file_name)
 {
-	if (file_name.IsEmpty())
+	// An empty file name means the default playlist, which does not exist when CreateDefaultPlaylist is off
+	const auto &playlist_name = file_name.IsEmpty() ? _default_playlist_name : file_name;
+	if (playlist_name.IsEmpty())
 	{
-		return GetRtcMasterPlaylist(_default_playlist_name);
+		return nullptr;
 	}
 
 	std::shared_ptr<const RtcMasterPlaylist> rtc_master_playlist;
 
 	//lock
 	std::shared_lock<std::shared_mutex> lock(_rtc_master_playlist_map_lock);
-	auto it = _rtc_master_playlist_map.find(file_name);
+	auto it = _rtc_master_playlist_map.find(playlist_name);
 	if (it != _rtc_master_playlist_map.end())
 	{
 		rtc_master_playlist = it->second;
@@ -370,7 +372,7 @@ std::shared_ptr<const RtcMasterPlaylist> RtcStream::GetRtcMasterPlaylist(const o
 
 	if (rtc_master_playlist == nullptr)
 	{
-		rtc_master_playlist = CreateRtcMasterPlaylist(file_name);
+		rtc_master_playlist = CreateRtcMasterPlaylist(playlist_name);
 		if (rtc_master_playlist == nullptr)
 		{
 			return nullptr;
@@ -378,7 +380,7 @@ std::shared_ptr<const RtcMasterPlaylist> RtcStream::GetRtcMasterPlaylist(const o
 
 		// lock
 		std::lock_guard<std::shared_mutex> lock(_rtc_master_playlist_map_lock);
-		_rtc_master_playlist_map[file_name] = rtc_master_playlist;
+		_rtc_master_playlist_map[playlist_name] = rtc_master_playlist;
 	}
 
 	return rtc_master_playlist;
