@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <filesystem>
 #include <future>
@@ -59,6 +60,24 @@ namespace
 		return numbers;
 	}
 
+	// Starts `motor` and returns the number of the epoll instance it opened, or -1
+	int StartAndGetEpollNumber(pvd::StreamMotor &motor)
+	{
+		const auto before = OpenEpollNumbers();
+
+		if (motor.Start() == false)
+		{
+			return -1;
+		}
+
+		const auto after = OpenEpollNumbers();
+
+		std::vector<int> opened;
+		std::set_difference(after.begin(), after.end(), before.begin(), before.end(), std::back_inserter(opened));
+
+		return (opened.size() == 1) ? opened.front() : -1;
+	}
+
 	// A stream that is never `PLAYING`, so the motor deletes it on the first readable event of its socket
 	class SocketPullStream : public pvd::PullStream
 	{
@@ -68,8 +87,9 @@ namespace
 		{
 		}
 
-		// Read only by `StreamMotor::AddStream()`, which the test thread calls
+		// Set on the test thread before each `StreamMotor::AddStream()`, which publishes it to the motor's worker
 		std::shared_ptr<ov::Socket> socket;
+		std::atomic<int> stop_count{0};
 
 		ProcessMediaEventTrigger GetProcessMediaEventTriggerMode() override
 		{
@@ -99,6 +119,7 @@ namespace
 
 		bool StopStream() override
 		{
+			stop_count++;
 			return true;
 		}
 	};
@@ -211,7 +232,8 @@ TEST_F(StreamMotorTest, ReAddedStreamDropsOldSocketFromEpoll)
 	ASSERT_NE(old_port, 0);
 	ASSERT_NE(new_port, 0);
 
-	ASSERT_TRUE(motor.Start());
+	const int motor_epoll = StartAndGetEpollNumber(motor);
+	ASSERT_GE(motor_epoll, 0);
 
 	auto stream	   = std::make_shared<SocketPullStream>();
 
@@ -221,6 +243,12 @@ TEST_F(StreamMotorTest, ReAddedStreamDropsOldSocketFromEpoll)
 	stream->socket = new_socket;
 	ASSERT_TRUE(motor.AddStream(stream));
 	ASSERT_EQ(motor.GetStreamCount(), 1u);
+
+	// The old socket is no longer registered in the motor's epoll
+	const int result = ::epoll_ctl(motor_epoll, EPOLL_CTL_DEL, old_socket->GetNativeHandle(), nullptr);
+	const int error	 = errno;
+	EXPECT_EQ(result, -1);
+	EXPECT_EQ(error, ENOENT);
 
 	// An event on the old socket no longer reaches the stream
 	ASSERT_TRUE(SendDatagram(old_port));
@@ -295,6 +323,7 @@ TEST_F(StreamMotorTest, PolledEventOfOldSocketDoesNotReachReAddedStream)
 	// A third call comes from a later batch, so the event of the old socket has been handled by then
 	EXPECT_TRUE(WaitUntil([&]() { return holder->GetCallCount() > HoldingPullStream::HOLD_COUNT; }));
 	EXPECT_EQ(motor.GetStreamCount(), 2u);
+	EXPECT_EQ(stream->stop_count.load(), 0);
 }
 
 // A stream whose socket was closed is still deleted, and the motor drops its reference to that socket
@@ -381,14 +410,8 @@ TEST_F(StreamMotorTest, SecondStopLeavesReusedNumber)
 	pvd::StreamMotor motor{1};
 	ScopeExit cleanup([&]() { motor.Stop(); });
 
-	const auto before = OpenEpollNumbers();
-	ASSERT_TRUE(motor.Start());
-	const auto after = OpenEpollNumbers();
-
-	std::vector<int> opened;
-	std::set_difference(after.begin(), after.end(), before.begin(), before.end(), std::back_inserter(opened));
-	ASSERT_EQ(opened.size(), 1u);
-	const int number = opened.front();
+	const int number = StartAndGetEpollNumber(motor);
+	ASSERT_GE(number, 0);
 
 	EXPECT_TRUE(motor.Stop());
 

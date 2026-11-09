@@ -47,6 +47,12 @@ namespace
 		return ov::String::FormatString("socket_map: %zu,", count);
 	}
 
+	// The text `SocketPoolWorker::ToString()` reports for a connection timeout queue of `count` entries
+	ov::String ConnectionQueueOf(size_t count)
+	{
+		return ov::String::FormatString("connection queue: %zu>", count);
+	}
+
 	bool AllExpired(const std::vector<std::weak_ptr<ov::Socket>> &sockets)
 	{
 		for (auto &socket : sockets)
@@ -376,8 +382,6 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 TEST_F(SocketPoolWorkerTest, ConnectCompletedWhileWorkerIsHeldIsNotTimedOut)
 {
 	constexpr int CONNECT_TIMEOUT_MSEC = 200;
-	// Past the timeout, plus some room for the queue that reports it to the worker
-	constexpr int HOLD_MSEC			   = CONNECT_TIMEOUT_MSEC + 500;
 
 	auto pool						   = CreatePool("test-connect-in-batch", ov::SocketType::Tcp);
 	ASSERT_NE(pool, nullptr);
@@ -435,7 +439,8 @@ TEST_F(SocketPoolWorkerTest, ConnectCompletedWhileWorkerIsHeldIsNotTimedOut)
 		return (::poll(&entry, 1, 0) == 1) && ((entry.revents & POLLOUT) != 0);
 	}));
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(HOLD_MSEC));
+	// The pool has one worker, so the held worker is the client's
+	ASSERT_TRUE(WaitUntil([&]() { return client->GetSocketPoolWorker()->ToString().IndexOf(ConnectionQueueOf(1)) != -1; }));
 	worker_gate.Release();
 
 	EXPECT_TRUE(WaitUntil([&]() { return (client_events->connected_count + client_events->connect_failed_count) > 0; }));
