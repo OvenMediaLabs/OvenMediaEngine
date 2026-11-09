@@ -36,25 +36,13 @@
 
 namespace
 {
+	using ome_test::LocalPortOf;
+
 	constexpr int LOOPBACK_TIMEOUT_MSEC = 3000;
 
 	ov::SocketAddress LoopbackAddress(uint16_t port)
 	{
 		return ov::SocketAddress::CreateAndGetFirst("127.0.0.1", port);
-	}
-
-	// Reads the local port bound to a socket directly from its `fd`. Unlike
-	// `Socket::GetLocalAddress()` (only populated by `Bind()`), this also works for
-	// a UDP socket whose local port was assigned implicitly by `Connect()`.
-	uint16_t LocalPortOf(const std::shared_ptr<ov::Socket> &socket)
-	{
-		sockaddr_in sa{};
-		socklen_t len = sizeof(sa);
-		if (::getsockname(socket->GetNativeHandle(), reinterpret_cast<sockaddr *>(&sa), &len) != 0)
-		{
-			return 0;
-		}
-		return ntohs(sa.sin_port);
 	}
 
 	// Reads exactly `want` bytes into `out`. A TCP stream may legally arrive across

@@ -345,7 +345,7 @@ namespace pvd
 	bool MpegTsProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair)
 	{
 		auto local_port		  = remote->GetLocalAddress()->Port();
-		auto channel_id = GetChannelId(remote);
+		auto channel_id		  = GetChannelId(remote);
 
 		auto stream_port_item = GetStreamPortItem(local_port);
 		if (stream_port_item == nullptr || stream_port_item->IsAttached() == false)

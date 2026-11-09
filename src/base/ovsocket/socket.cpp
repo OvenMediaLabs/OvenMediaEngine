@@ -196,17 +196,12 @@ namespace ov
 
 	void Socket::ReleaseNativeHandle() const
 	{
-		// The last reference can be dropped between a syscall and the read of the `errno` it set
-		const auto saved_errno = errno;
-
 		// For SRT, `CloseInternal()` has already called `srt_close()`: it is what wakes a blocked SRT call,
 		// and libsrt does not reuse the ID soon
 		if (GetType() != SocketType::Srt)
 		{
 			CloseNativeHandle(GetType(), GetNativeHandle());
 		}
-
-		errno = saved_errno;
 	}
 
 	void Socket::CloseNativeHandle(SocketType type, int native_handle)
@@ -232,7 +227,7 @@ namespace ov
 		CHECK_STATE(== SocketState::Closed, false);
 
 		// `_socket` keeps its number for the life of the object, even after the release, so a socket is created only once
-		if (_socket.IsValid())
+		if (_socket.GetNativeHandle() != InvalidSocket)
 		{
 			logae("Socket is already created: %d", GetNativeHandle());
 			return false;
@@ -412,7 +407,7 @@ namespace ov
 				return true;
 			}
 
-			if (IsValid() == false)
+			if (IsOpen() == false)
 			{
 				// Another thread closed the socket before it is added
 				return false;
@@ -441,7 +436,7 @@ namespace ov
 		if (need_to_wait_first_epoll_event)
 		{
 			// `CloseInternal()` also wakes this up, and then the socket must not be reported as added
-			return WaitForFirstEpollEvent() && IsValid();
+			return WaitForFirstEpollEvent() && IsOpen();
 		}
 
 		return true;
@@ -684,7 +679,7 @@ namespace ov
 
 					if (client_socket == InvalidSocket)
 					{
-						if (IsValid() == false)
+						if (IsOpen() == false)
 						{
 							// Woken by a close on another thread
 							return SocketWrapper();
@@ -745,7 +740,7 @@ namespace ov
 
 				if (client_socket == SRT_INVALID_SOCK)
 				{
-					if (IsValid() == false)
+					if (IsOpen() == false)
 					{
 						// Failed by a close on another thread
 						return SocketWrapper();
@@ -800,7 +795,7 @@ namespace ov
 				// A close sets its state under this lock, so a connect that finishes during the close cannot overwrite it
 				LockGuard lock(_dispatch_queue_lock);
 
-				if (IsValid() == false)
+				if (IsOpen() == false)
 				{
 					return SocketError::CreateError("Socket is closed");
 				}
@@ -861,7 +856,7 @@ namespace ov
 					// A close sets its state under this lock, so this cannot overwrite it
 					LockGuard lock(_dispatch_queue_lock);
 
-					is_closed = (IsValid() == false);
+					is_closed = (IsOpen() == false);
 
 					if (is_closed == false)
 					{
@@ -894,7 +889,7 @@ namespace ov
 					}
 				}
 
-				if (IsValid() == false)
+				if (IsOpen() == false)
 				{
 					// A shutdown may not abort a blocking connect (recent kernels refuse it with `EBUSY`),
 					// so a close during it keeps the handle open until the connect returns and is reported here
@@ -948,7 +943,7 @@ namespace ov
 							// A close that starts after the check fails the read of `SO_ERROR` instead.
 							int so_error = 0;
 
-							if ((IsValid() == false) || (GetSockOpt(SO_ERROR, &so_error) == false))
+							if ((IsOpen() == false) || (GetSockOpt(SO_ERROR, &so_error) == false))
 							{
 								socket_error = SocketError::CreateError("Socket is closed");
 							}
@@ -977,18 +972,15 @@ namespace ov
 				break;
 			}
 
-			case SocketType::Srt: {
-				IoGuard io_guard(*this);
-
-				if (io_guard.IsAcquired() == false)
-				{
-					socket_error = SocketError::CreateError("Socket is closed");
-				}
-				else if (
-					SetSockOpt(SRTO_CONNTIMEO, timeout_msec) &&
+			case SocketType::Srt:
+				if (SetSockOpt(SRTO_CONNTIMEO, timeout_msec) &&
 					(::srt_connect(GetNativeHandle(), endpoint, endpoint.GetSockAddrInLength()) != SRT_ERROR))
 				{
 					socket_error = nullptr;
+				}
+				else if (IsOpen() == false)
+				{
+					socket_error = SocketError::CreateError("Socket is closed");
 				}
 				else
 				{
@@ -996,7 +988,6 @@ namespace ov
 				}
 
 				break;
-			}
 
 			default:
 				socket_error = SocketError::CreateError("Not implemented");
@@ -1153,7 +1144,7 @@ namespace ov
 				// So a connect that completes during the close is not reported, and one reported here gets its close callback.
 				LockGuard lock(_dispatch_queue_lock);
 
-				if (IsValid() == false)
+				if (IsOpen() == false)
 				{
 					return true;
 				}
@@ -1307,7 +1298,7 @@ namespace ov
 
 					bool is_close_command = front.IsCloseCommand();
 
-					if ((IsValid() == false) && (is_close_command == false))
+					if ((IsOpen() == false) && (is_close_command == false))
 					{
 						// If the socket is closed during dispatching, the rest of the data will not be sent.
 						logat("Some commands have not been dispatched: %zu commands", _dispatch_queue.size());
@@ -1434,7 +1425,7 @@ namespace ov
 				break;
 		}
 
-		return (IsClosing() == false);
+		return IsOpen() && (IsClosing() == false);
 	}
 
 	ssize_t Socket::HandleSendError(const size_t total_sent)
@@ -2069,7 +2060,7 @@ namespace ov
 			}
 		}
 
-		if ((read_bytes <= 0L) && (IsValid() == false))
+		if ((read_bytes <= 0L) && (IsOpen() == false))
 		{
 			// Woken or failed by a close on another thread
 			return tl::make_unexpected(SocketError::CreateError("Socket is closed"));
@@ -2341,7 +2332,7 @@ namespace ov
 				break;
 		}
 
-		if ((data->GetLength() == 0L) && (IsValid() == false))
+		if ((data->GetLength() == 0L) && (IsOpen() == false))
 		{
 			// Woken or failed by a close on another thread
 			return SocketError::CreateError("Socket is closed");
@@ -2402,7 +2393,7 @@ namespace ov
 			return Close();
 		}
 
-		return _has_close_command || Close();
+		return IsClosing() || Close();
 	}
 
 	bool Socket::CloseWithState(SocketState new_state)
@@ -2471,7 +2462,7 @@ namespace ov
 
 				// A close already ran under this lock and cleared the queue, so nothing is queued:
 				// only the state moves to `new_state`, unless it is already `Closed`
-				if (IsValid() == false)
+				if (IsOpen() == false)
 				{
 					_has_close_command = true;
 
@@ -2558,43 +2549,52 @@ namespace ov
 		return result;
 	}
 
-	bool Socket::AddToExternalEpoll(int epoll_fd, epoll_event *event)
+	std::shared_ptr<Error> Socket::AddToExternalEpoll(int epoll_fd, epoll_event *event)
 	{
 		if (GetType() == SocketType::Srt)
 		{
 			OV_ASSERT(false, "SRT socket cannot be registered in an epoll instance");
-			return false;
+			return Error::CreateError("Socket", "SRT socket cannot be registered in an epoll instance");
 		}
 
 		IoGuard io_guard(*this);
 
 		if (io_guard.IsAcquired() == false)
 		{
-			errno = EBADF;
-			return false;
+			return Error::CreateError("Socket", "Socket is closed");
 		}
 
-		return (::epoll_ctl(epoll_fd, EPOLL_CTL_ADD, GetNativeHandle(), event) == 0);
+		if (::epoll_ctl(epoll_fd, EPOLL_CTL_ADD, GetNativeHandle(), event) != 0)
+		{
+			return Error::CreateErrorFromErrno();
+		}
+
+		return nullptr;
 	}
 
-	bool Socket::DeleteFromExternalEpoll(int epoll_fd)
+	std::shared_ptr<Error> Socket::DeleteFromExternalEpoll(int epoll_fd)
 	{
 		if (GetType() == SocketType::Srt)
 		{
 			OV_ASSERT(false, "SRT socket cannot be registered in an epoll instance");
-			return false;
+			return Error::CreateError("Socket", "SRT socket cannot be registered in an epoll instance");
 		}
 
-		// Pinned rather than guarded: a closing socket still has to leave the epoll instance
-		IoGuard io_guard(*this, true);
+		// A closing socket still has to leave the epoll instance
+		auto io_guard = IoGuard::Pin(*this);
 
 		if (io_guard.IsAcquired() == false)
 		{
 			// Released: the thread that dropped the last reference closes the handle, which removes it from the epoll instance
-			return true;
+			return nullptr;
 		}
 
-		return (::epoll_ctl(epoll_fd, EPOLL_CTL_DEL, GetNativeHandle(), nullptr) == 0) || (errno == ENOENT);
+		if ((::epoll_ctl(epoll_fd, EPOLL_CTL_DEL, GetNativeHandle(), nullptr) != 0) && (errno != ENOENT))
+		{
+			return Error::CreateErrorFromErrno();
+		}
+
+		return nullptr;
 	}
 
 	Socket::DispatchResult Socket::HalfClose()
@@ -2693,9 +2693,7 @@ namespace ov
 
 		_close_reason = close_reason;
 
-		// Only a socket that reported its connection gets a close callback.
-		// `CallCloseCallbackIfNeeded()` hands it to the worker with `_count_slot`,
-		// which keeps the worker counted until the worker runs it or, once stopped, drops it.
+		// Only a socket that reported its connection gets a close callback
 		auto post_callback			  = std::atomic_exchange(&_callback, {});
 		const bool has_close_callback = (post_callback != nullptr) && _connection_event_fired;
 

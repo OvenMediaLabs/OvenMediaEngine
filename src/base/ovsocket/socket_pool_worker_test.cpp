@@ -37,7 +37,14 @@ namespace
 	using ome_test::WaitUntil;
 	using ome_test::WaitUntilReadable;
 
-	constexpr const char *EMPTY_WORKER = "socket_map: 0,";
+	// How long the idle worker timer, which runs every second, may take to release a worker
+	constexpr int RELEASE_WAIT_MSEC = 5000;
+
+	// The text `SocketPoolWorker::ToString()` reports for a socket map of `count` entries
+	ov::String SocketMapOf(size_t count)
+	{
+		return ov::String::FormatString("socket_map: %zu,", count);
+	}
 
 	bool AllExpired(const std::vector<std::weak_ptr<ov::Socket>> &sockets)
 	{
@@ -99,6 +106,7 @@ namespace
 		std::atomic<bool> _is_released{false};
 	};
 
+	// Counts readable events and runs the callbacks a test sets for them
 	class TestEvents : public ov::SocketAsyncInterface
 	{
 	public:
@@ -159,7 +167,7 @@ TEST_F(SocketPoolWorkerTest, SocketClosedRightAfterAddIsReleased)
 	EXPECT_TRUE(WaitUntil([&]() { return AllExpired(closed_sockets); }));
 
 	auto description = pool->ToString();
-	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+	EXPECT_NE(description.IndexOf(SocketMapOf(0)), -1) << description.CStr();
 }
 
 // When the worker cannot add a socket to epoll, the socket is not left in the worker's socket map.
@@ -180,7 +188,7 @@ TEST_F(SocketPoolWorkerTest, FailedAddLeavesNoEntry)
 	EXPECT_FALSE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
 
 	auto description = pool->ToString();
-	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+	EXPECT_NE(description.IndexOf(SocketMapOf(0)), -1) << description.CStr();
 }
 
 // When a callback closes another socket polled in the same batch and drops its last reference,
@@ -190,18 +198,27 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 	auto pool = CreatePool("test-batch-close", ov::SocketType::Udp);
 	ASSERT_NE(pool, nullptr);
 
-	auto gate_events   = std::make_shared<TestEvents>();
-	auto first_events  = std::make_shared<TestEvents>();
-	auto second_events = std::make_shared<TestEvents>();
+	// Each socket in `pair` is taken by exactly one of the callbacks below or the cleanup
+	struct SocketPair
+	{
+		std::mutex mutex;
+		std::shared_ptr<ov::Socket> sockets[2];
 
-	auto gate		   = pool->AllocSocket(ov::SocketFamily::Inet);
-	auto first		   = pool->AllocSocket(ov::SocketFamily::Inet);
-	auto second		   = pool->AllocSocket(ov::SocketFamily::Inet);
+		std::shared_ptr<ov::Socket> Take(int index)
+		{
+			std::lock_guard lock(mutex);
+			return std::move(sockets[index]);
+		}
+	};
 
-	// Closes the sockets on every way out, including an early return.
-	// `first` and `second` move to the holders below, which are closed the same way.
+	auto pair						= std::make_shared<SocketPair>();
+	auto gate						= pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[0]				= pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[1]				= pool->AllocSocket(ov::SocketFamily::Inet);
+
+	// Closes the sockets on every way out, including an early return
 	ScopeExit closer([&]() {
-		for (auto &socket : {gate, first, second})
+		for (auto &socket : {gate, pair->Take(0), pair->Take(1)})
 		{
 			if (socket != nullptr)
 			{
@@ -211,59 +228,40 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 	});
 
 	ASSERT_NE(gate, nullptr);
-	ASSERT_NE(first, nullptr);
-	ASSERT_NE(second, nullptr);
+	ASSERT_NE(pair->sockets[0], nullptr);
+	ASSERT_NE(pair->sockets[1], nullptr);
 
 	// The gate holds the worker inside its callback while both other sockets become readable,
 	// so the next `epoll_wait()` returns them in one batch
 	WorkerGate worker_gate;
+	auto gate_events		 = std::make_shared<TestEvents>();
 	gate_events->on_readable = worker_gate.MakeCallback();
+
+	std::shared_ptr<TestEvents> events[2] = {std::make_shared<TestEvents>(), std::make_shared<TestEvents>()};
 
 	// `Bind()` instead of `Connect()`, since a connected socket queues a close callback that keeps it alive
 	ASSERT_TRUE(gate->MakeNonBlocking(gate_events));
-	ASSERT_TRUE(first->MakeNonBlocking(first_events));
-	ASSERT_TRUE(second->MakeNonBlocking(second_events));
+	ASSERT_TRUE(pair->sockets[0]->MakeNonBlocking(events[0]));
+	ASSERT_TRUE(pair->sockets[1]->MakeNonBlocking(events[1]));
 
 	auto gate_port	 = BindToLoopback(gate);
-	auto first_port	 = BindToLoopback(first);
-	auto second_port = BindToLoopback(second);
+	auto first_port	 = BindToLoopback(pair->sockets[0]);
+	auto second_port = BindToLoopback(pair->sockets[1]);
 	ASSERT_NE(gate_port, 0);
 	ASSERT_NE(first_port, 0);
 	ASSERT_NE(second_port, 0);
 
-	// From here, the test reaches each socket only through the callback of the other, which closes it.
-	// So whichever event the batch returns first closes the other socket,
-	// which only the worker's copy of the batch then holds until its own event is handled.
-	std::weak_ptr<ov::Socket> first_watcher	 = first;
-	std::weak_ptr<ov::Socket> second_watcher = second;
-	auto first_handle						 = first->GetNativeHandle();
-	auto second_handle						 = second->GetNativeHandle();
-	auto holder_mutex						 = std::make_shared<std::mutex>();
-	auto first_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(first));
-	auto second_holder						 = std::make_shared<std::shared_ptr<ov::Socket>>(std::move(second));
-	auto alive_after_close					 = std::make_shared<std::atomic<bool>>(false);
+	std::weak_ptr<ov::Socket> watchers[2] = {pair->sockets[0], pair->sockets[1]};
+	auto first_handle					  = pair->sockets[0]->GetNativeHandle();
+	auto second_handle					  = pair->sockets[1]->GetNativeHandle();
+	auto alive_after_close				  = std::make_shared<std::atomic<bool>>(false);
 
-	// Takes a socket out of its holder, so only one of the callbacks and the cleanup below gets it
-	auto take								 = [holder_mutex](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder) {
-		std::lock_guard<std::mutex> lock(*holder_mutex);
-		return std::move(*holder);
-	};
-
-	ScopeExit holder_closer([take, first_holder, second_holder]() {
-		for (const auto &holder : {first_holder, second_holder})
-		{
-			auto socket = take(holder);
-
-			if (socket != nullptr)
-			{
-				socket->CloseImmediately();
-			}
-		}
-	});
-
-	auto close_holder = [take, alive_after_close](const std::shared_ptr<std::shared_ptr<ov::Socket>> &holder, const std::weak_ptr<ov::Socket> &watcher) {
-		return [take, alive_after_close, holder, watcher]() {
-			auto socket = take(holder);
+	// Whichever event the batch returns first closes the other socket,
+	// which only the worker's copy of the batch then holds until its own event is handled
+	for (int index : {0, 1})
+	{
+		events[index]->on_readable = [pair, alive_after_close, other = 1 - index, watcher = watchers[1 - index]]() {
+			auto socket = pair->Take(other);
 
 			if (socket != nullptr)
 			{
@@ -272,9 +270,7 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 				*alive_after_close = (watcher.expired() == false);
 			}
 		};
-	};
-	first_events->on_readable  = close_holder(second_holder, second_watcher);
-	second_events->on_readable = close_holder(first_holder, first_watcher);
+	}
 
 	ASSERT_TRUE(SendDatagram(gate_port));
 	ASSERT_TRUE(worker_gate.WaitEntered());
@@ -285,9 +281,9 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 	ASSERT_TRUE(WaitUntilReadable(second_handle));
 	worker_gate.Release();
 
-	EXPECT_TRUE(WaitUntil([&]() { return first_watcher.expired() || second_watcher.expired(); }));
+	EXPECT_TRUE(WaitUntil([&]() { return watchers[0].expired() || watchers[1].expired(); }));
 	EXPECT_TRUE(alive_after_close->load());
-	EXPECT_EQ(first_events->readable_count.load() + second_events->readable_count.load(), 1);
+	EXPECT_EQ(events[0]->readable_count.load() + events[1]->readable_count.load(), 1);
 }
 
 // A socket closed by another thread before the worker delivers its first epoll event
@@ -300,6 +296,9 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 	uint16_t listen_port = 0;
 	auto listen_fd		 = ListenOnLoopback(&listen_port);
 	ASSERT_GE(listen_fd.Get(), 0);
+
+	// Declared before the gate, so the gate is closed first and the peer's FIN reaches no callback
+	UniqueFd peer_fd;
 
 	// The gate holds the worker inside its callback, so no first epoll event is delivered meanwhile
 	WorkerGate worker_gate;
@@ -314,7 +313,7 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 	ASSERT_EQ(gate->Connect(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", listen_port), WAIT_TIMEOUT_MSEC), nullptr);
 	ASSERT_TRUE(WaitUntil([&]() { return gate->GetState() == ov::SocketState::Connected; }));
 
-	UniqueFd peer_fd(::accept(listen_fd.Get(), nullptr, nullptr));
+	peer_fd = UniqueFd(::accept(listen_fd.Get(), nullptr, nullptr));
 	ASSERT_GE(peer_fd.Get(), 0);
 	ASSERT_EQ(::send(peer_fd.Get(), "x", 1, 0), 1);
 	ASSERT_TRUE(worker_gate.WaitEntered());
@@ -337,7 +336,7 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 
 	// The socket is in the worker's map, so the close below waits on `_worker_mutex` until the add finishes,
 	// and runs before the first epoll event whether or not `MakeNonBlocking()` is already waiting
-	bool added_to_map = WaitUntil([&]() { return pool->ToString().IndexOf("socket_map: 2,") != -1; });
+	bool added_to_map = WaitUntil([&]() { return pool->ToString().IndexOf(SocketMapOf(2)) != -1; });
 	EXPECT_TRUE(added_to_map);
 
 	// Closed only once the socket is in the map, so the close lands between the add and the first epoll event
@@ -359,16 +358,13 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 		socket.reset();
 
 		EXPECT_TRUE(WaitUntil([&]() { return AllExpired(closed_sockets); }));
-		EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("socket_map: 1,") != -1; }));
+		EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf(SocketMapOf(1)) != -1; }));
 	}
 	else
 	{
 		adder.detach();
 		ADD_FAILURE() << "MakeNonBlocking() is still waiting for the first epoll event of a closed socket";
 	}
-
-	// The gate is closed before its peer, so the peer's FIN reaches no callback
-	gate->CloseImmediately();
 }
 
 // `Close()` on a non-blocking socket that another close has already run on moves the socket to `Closed` at once,
@@ -409,7 +405,7 @@ TEST_F(SocketPoolWorkerTest, AddToStoppedWorkerFails)
 	EXPECT_EQ(socket->GetBlockingMode(), ov::BlockingMode::Blocking);
 
 	auto description = socket->GetSocketPoolWorker()->ToString();
-	EXPECT_NE(description.IndexOf(EMPTY_WORKER), -1) << description.CStr();
+	EXPECT_NE(description.IndexOf(SocketMapOf(0)), -1) << description.CStr();
 
 	socket->CloseImmediately();
 }
@@ -506,27 +502,21 @@ TEST_F(SocketPoolWorkerTest, DeleteAfterUninitializeSkipsReusedNumber)
 // so the idle thread-per-socket worker is released
 TEST_F(SocketPoolWorkerTest, SocketClosedOutsideEpollReleasesWorker)
 {
-	// Several ticks of the 1 s timer that releases idle workers
-	constexpr int RELEASE_WAIT_MSEC = 5000;
-
-	auto pool						= CreatePool("test-count-close", ov::SocketType::Tcp, true);
+	auto pool = CreatePool("test-count-close", ov::SocketType::Tcp, true);
 	ASSERT_NE(pool, nullptr);
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
 	ASSERT_NE(socket, nullptr);
-	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1);
+	EXPECT_EQ(pool->GetWorkerCount(), 1);
 
 	EXPECT_TRUE(socket->CloseImmediately());
-	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
+	EXPECT_TRUE(WaitUntil([&]() { return pool->GetWorkerCount() == 0; }, RELEASE_WAIT_MSEC));
 }
 
 // A socket closed after joining epoll stops counting toward its worker too, so the idle worker is released
 TEST_F(SocketPoolWorkerTest, SocketClosedInEpollReleasesWorker)
 {
-	// Several ticks of the 1 s timer that releases idle workers
-	constexpr int RELEASE_WAIT_MSEC = 5000;
-
-	auto pool						= CreatePool("test-count-epoll", ov::SocketType::Udp, true);
+	auto pool = CreatePool("test-count-epoll", ov::SocketType::Udp, true);
 	ASSERT_NE(pool, nullptr);
 
 	auto socket = pool->AllocSocket(ov::SocketFamily::Inet);
@@ -534,20 +524,18 @@ TEST_F(SocketPoolWorkerTest, SocketClosedInEpollReleasesWorker)
 	ScopeExit closer([&]() { socket->CloseImmediately(); });
 
 	ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<TestEvents>()));
-	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1);
+	EXPECT_EQ(pool->GetWorkerCount(), 1);
 
 	EXPECT_TRUE(socket->CloseImmediately());
-	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
+	EXPECT_TRUE(WaitUntil([&]() { return pool->GetWorkerCount() == 0; }, RELEASE_WAIT_MSEC));
 }
 
 // A thread-per-socket worker is not released as idle while the close callback of its socket is still to run
 TEST_F(SocketPoolWorkerTest, WorkerIsNotReleasedBeforeCloseCallback)
 {
-	// Several ticks of the 1 s timer that releases idle workers
-	constexpr int RELEASE_WAIT_MSEC = 5000;
-	constexpr int HOLD_MSEC			= 2500;
+	constexpr int HOLD_MSEC = 2500;
 
-	auto pool						= CreatePool("test-close-callback", ov::SocketType::Tcp, true);
+	auto pool = CreatePool("test-close-callback", ov::SocketType::Tcp, true);
 	ASSERT_NE(pool, nullptr);
 
 	uint16_t listen_port = 0;
@@ -571,10 +559,10 @@ TEST_F(SocketPoolWorkerTest, WorkerIsNotReleasedBeforeCloseCallback)
 	ASSERT_TRUE(worker_gate.WaitEntered());
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(HOLD_MSEC));
-	EXPECT_NE(pool->ToString().IndexOf("workers: 1"), -1) << "The worker was released before the close callback returned";
+	EXPECT_EQ(pool->GetWorkerCount(), 1) << "The worker was released before the close callback returned";
 
 	worker_gate.Release();
-	EXPECT_TRUE(WaitUntil([&]() { return pool->ToString().IndexOf("workers: 0") != -1; }, RELEASE_WAIT_MSEC));
+	EXPECT_TRUE(WaitUntil([&]() { return pool->GetWorkerCount() == 0; }, RELEASE_WAIT_MSEC));
 }
 
 // An uninitialized thread-per-socket pool creates no worker, so none is left running without an owner to stop it
@@ -586,7 +574,7 @@ TEST_F(SocketPoolWorkerTest, UninitializedPoolCreatesNoWorker)
 	pool->Uninitialize();
 
 	EXPECT_EQ(pool->AllocSocket(ov::SocketFamily::Inet), nullptr);
-	EXPECT_NE(pool->ToString().IndexOf("workers: 0"), -1);
+	EXPECT_EQ(pool->GetWorkerCount(), 0);
 }
 
 // `CloseImmediately()` moves the socket to `Closed`, so a later `Close()` of a blocking socket returns at once

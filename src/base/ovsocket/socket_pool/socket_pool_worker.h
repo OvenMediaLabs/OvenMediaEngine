@@ -24,11 +24,18 @@ namespace ov
 
 		OV_SOCKET_DECLARE_PRIVATE_TOKEN();
 
+		// A close callback for the worker thread to run, with the slot that keeps the socket counted until then
 		struct CloseCallbackEntry
 		{
 			std::shared_ptr<SocketAsyncInterface> callback;
-			// Keeps the socket counted until the worker has run the callback or, once stopped, dropped it
 			SocketCountSlot count_slot;
+		};
+
+		// One event `EpollWait()` returned, with the socket it belongs to
+		struct PolledEvent
+		{
+			std::shared_ptr<Socket> socket;
+			epoll_event event;
 		};
 
 	public:
@@ -48,15 +55,9 @@ namespace ov
 		template <typename Tsocket = Socket, typename... Targuments>
 		std::shared_ptr<Tsocket> AllocSocket(SocketCountSlot count_slot, const SocketFamily family, Targuments... args)
 		{
-			auto socket			= std::make_shared<Tsocket>(Socket::PrivateToken{nullptr}, this->GetSharedPtr(), args...);
-			socket->_count_slot = std::move(count_slot);
+			auto socket = MakeSocket<Tsocket>(std::move(count_slot), args...);
 
-			if (PrepareSocket(socket, family))
-			{
-				return socket;
-			}
-
-			return nullptr;
+			return PrepareSocket(socket, family) ? socket : nullptr;
 		}
 
 		bool ReleaseSocket(const std::shared_ptr<Socket> &socket);
@@ -70,6 +71,16 @@ namespace ov
 							const std::shared_ptr<SocketPoolWorker> &worker2)
 		{
 			return worker1->_socket_count < worker2->_socket_count;
+		}
+
+		// Builds a socket without creating a handle, so a socket around an open handle takes it here
+		template <typename Tsocket, typename... Targuments>
+		std::shared_ptr<Tsocket> MakeSocket(SocketCountSlot count_slot, Targuments... args)
+		{
+			auto socket			= std::make_shared<Tsocket>(Socket::PrivateToken{nullptr}, this->GetSharedPtr(), args...);
+			socket->_count_slot = std::move(count_slot);
+
+			return socket;
 		}
 
 		bool PrepareSocket(std::shared_ptr<Socket> socket, const SocketFamily family);
@@ -94,15 +105,9 @@ namespace ov
 		void ThreadProc();
 
 		bool AddToEpoll(const std::shared_ptr<Socket> &socket);
-		// `polled_sockets` holds at least `EpollMaxEvents` entries.
-		// `polled_sockets[i]` is set to the socket of the i-th returned event, or `nullptr` if it was already deleted,
-		// in which case the caller skips the event (`_epoll_events[i]` is not filled for SRT).
-		int EpollWait(std::vector<std::shared_ptr<Socket>> &polled_sockets, int timeout_msec = Infinite);
+		// Fills `_polled_events` with the events of the sockets still registered, and returns their count
+		int EpollWait(int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);
-
-		// Erases the entry only if it still belongs to `socket`.
-		// The caller's `socket` keeps the object alive, so the erase never runs its destructor under the lock.
-		void RemoveFromSocketMap(const std::shared_ptr<Socket> &socket) OV_REQUIRES(_socket_map_mutex);
 
 		void ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
 
@@ -136,6 +141,7 @@ namespace ov
 		// A queue for handling errors such as connection timeout in nonblocking mode.
 		inline static DelayQueue _connection_callback_queue{"ConnectionCB"};
 		inline static std::once_flag _connection_callback_queue_start_flag;
+		// Sockets whose non-blocking connect timed out, for the worker thread to report
 		mutable Mutex _connection_timed_out_queue_mutex;
 		std::deque<std::shared_ptr<Socket>> _connection_timed_out_queue OV_GUARDED_BY(_connection_timed_out_queue_mutex);
 
@@ -144,7 +150,10 @@ namespace ov
 		// Asks the thread to leave its loop, after which it closes the sockets in its map.
 		// `AddToEpoll()` refuses a socket once it is set, so no socket joins the map after that.
 		std::atomic<bool> _stop_epoll_thread = true;
+		// The kernel buffer of a TCP/UDP worker
 		std::vector<epoll_event> _epoll_events;
+		// Keeps the socket of each polled event alive until the event is handled
+		std::vector<PolledEvent> _polled_events;
 		int _last_epoll_event_count = 0;
 
 		// Occasionally, events on sockets need to be dispatched, even without events from epolls.
@@ -152,6 +161,7 @@ namespace ov
 		Mutex _sockets_to_dispatch_mutex;
 		std::unordered_map<std::shared_ptr<Socket>, std::shared_ptr<Socket>> _sockets_to_dispatch OV_GUARDED_BY(_sockets_to_dispatch_mutex);
 
+		// Close callbacks for the worker thread to run
 		Mutex _sockets_to_call_close_callback_mutex;
 		std::unordered_map<std::shared_ptr<Socket>, CloseCallbackEntry> _sockets_to_call_close_callback OV_GUARDED_BY(_sockets_to_call_close_callback_mutex);
 
@@ -171,6 +181,7 @@ namespace ov
 		// Set by `Uninitialize()` after the join, when it closes the epoll, and before it clears the queues.
 		// Every queue push checks it under the queue's lock and drops its input, so a stopped worker holds no socket.
 		std::atomic<bool> _stopped = false;
+		// The libsrt buffer of an SRT worker
 		std::vector<SRT_EPOLL_EVENT> _srt_epoll_events;
 	};
 

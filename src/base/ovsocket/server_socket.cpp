@@ -189,7 +189,7 @@ namespace ov
 
 			logat("Trying to allocate a socket for client: %s", remote_address.ToString(false).CStr());
 
-			auto client = _pool->AllocSocket<ClientSocket>(remote_address.GetFamily(), GetSharedPtrAs<ServerSocket>(), client_socket, remote_address);
+			auto client = _pool->AdoptSocket<ClientSocket>(client_socket, GetSharedPtrAs<ServerSocket>(), remote_address);
 
 			if (client != nullptr)
 			{
@@ -220,10 +220,7 @@ namespace ov
 			}
 			else
 			{
-				// No worker was available, so no `ClientSocket` took the accepted handle
 				logae("Could not allocate a socket for client: %s", remote_address.ToString(false).CStr());
-
-				CloseNativeHandle(client_socket.GetType(), client_socket.GetNativeHandle());
 			}
 		}
 	}

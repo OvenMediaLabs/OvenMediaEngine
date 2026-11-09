@@ -105,15 +105,20 @@ namespace ov
 			Error
 		};
 
-		// Fails once a close has started; with `allow_closing`, it succeeds until the handle is released.
+		// Fails once a close has started.
 		// For TCP/UDP it also holds the handle open during the syscall, so its number cannot be reused under it.
 		class IoGuard
 		{
 		public:
-			explicit IoGuard(const Socket &socket, bool allow_closing = false)
-				: _socket(socket),
-				  _acquired(allow_closing ? socket.PinNativeHandle() : socket.BeginIo())
+			explicit IoGuard(const Socket &socket)
+				: IoGuard(socket, socket.BeginIo())
 			{
+			}
+
+			// Succeeds until the handle is released, even after a close has started
+			static IoGuard Pin(const Socket &socket)
+			{
+				return IoGuard(socket, socket.PinNativeHandle());
 			}
 
 			IoGuard(const IoGuard &) = delete;
@@ -130,6 +135,13 @@ namespace ov
 			bool IsAcquired() const
 			{
 				return _acquired;
+			}
+
+		private:
+			IoGuard(const Socket &socket, bool acquired)
+				: _socket(socket),
+				  _acquired(acquired)
+			{
 			}
 
 		private:
@@ -226,8 +238,11 @@ namespace ov
 
 		void SetState(SocketState state);
 
+		// Closes a handle that no syscall can be using any more
+		static void CloseNativeHandle(SocketType type, int native_handle);
+
 		// Whether a native handle is assigned and no close has started
-		bool IsValid() const
+		bool IsOpen() const
 		{
 			return (_io_ref.load(std::memory_order_acquire) & IO_REF_CLOSING) == 0;
 		}
@@ -335,18 +350,16 @@ namespace ov
 			_end_of_stream = true;
 		}
 
-		// Whether a close is queued or has started, or no handle was ever assigned.
-		// After a close starts, a TCP/UDP handle stays open until the syscalls in flight return,
-		// but an SRT ID is closed at once.
+		// Whether a close is queued
 		bool IsClosing() const
 		{
-			return _has_close_command || (IsValid() == false);
+			return _has_close_command;
 		}
 
 		// Registers this socket in an epoll instance the caller owns (TCP/UDP only)
-		bool AddToExternalEpoll(int epoll_fd, epoll_event *event);
+		std::shared_ptr<Error> AddToExternalEpoll(int epoll_fd, epoll_event *event);
 		// Removes this socket from that epoll instance. For a released handle this only succeeds, since closing the handle removes it.
-		bool DeleteFromExternalEpoll(int epoll_fd);
+		std::shared_ptr<Error> DeleteFromExternalEpoll(int epoll_fd);
 
 #ifdef OME_LATENCY_PROBE
 		// Latency probe (OME_LATENCY_PROBE only): kernel software RX timestamp (ms) of the most
@@ -568,9 +581,7 @@ namespace ov
 		DispatchResult HalfClose();
 		DispatchResult WaitForHalfClose();
 
-		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it.
-		// A socket with a close callback stays counted on its worker until the worker has run it,
-		// or until a stopped worker has dropped it.
+		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it
 		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
@@ -628,12 +639,10 @@ namespace ov
 		bool PinNativeHandle() const;
 		void EndIo() const;
 		void ReleaseNativeHandle() const;
-		// Closes a handle that no syscall can be using any more
-		static void CloseNativeHandle(SocketType type, int native_handle);
 
 	protected:
 		std::shared_ptr<SocketPoolWorker> _worker;
-		// Set by `SocketPoolWorker::AllocSocket()`. The first close resets it, unless the socket has a close callback,
+		// Set by the worker that builds the socket. The first close resets it, unless the socket has a close callback,
 		// which takes it to the worker's queue until the worker has run the callback or, once stopped, dropped it.
 		SocketCountSlot _count_slot;
 

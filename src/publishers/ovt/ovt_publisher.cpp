@@ -375,7 +375,7 @@ void OvtPublisher::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
 								  const std::shared_ptr<const ov::Error> &error)
 {
 	logti("OvtProvider is disconnected(%d) : %s", static_cast<uint8_t>(reason), remote->ToString().CStr());
-	// A close of any reason, including an error close reported as `Disconnect`, leaves no session on this connection
+	// A closed connection leaves none of its sessions
 	RemoveSessions(remote->GetId());
 	UnlinkRemoteFromStream(remote->GetId());
 	RemoveRemoteContext(remote->GetId());
@@ -387,8 +387,7 @@ void OvtPublisher::RemoveSessions(ov::socket_id_t remote_id)
 	auto streams = _remote_stream_map.equal_range(remote_id);
 	for (auto it = streams.first; it != streams.second; ++it)
 	{
-		auto stream = it->second;
-		stream->RemoveSessionByConnectorId(remote_id);
+		it->second.stream->RemoveSession(it->second.session_id);
 	}
 }
 
@@ -657,7 +656,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 	}
 
 	// A connection keeps one session per stream, so a repeated PLAY is refused and the existing session stays
-	if (stream->GetSessionIdByConnectorId(remote->GetId()).has_value())
+	if (FindPlayedSession(remote->GetId(), stream).has_value())
 	{
 		ov::String msg;
 		msg.Format("(%s/%s) is already played on this connection", vhost_app_name.CStr(), url->Stream().CStr());
@@ -688,7 +687,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 			  vhost_app_name.CStr(), url->Stream().CStr());
 	}
 
-	LinkRemoteWithStream(remote->GetId(), stream);
+	LinkRemoteWithStream(remote->GetId(), stream, session->GetId());
 
 	SendPlayResponse(remote, session->GetId(), request_id, stream, filter, allowed_track_ids, described_track_ids);
 
@@ -712,7 +711,12 @@ void OvtPublisher::HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, 
 	logti("Edge %s requested stop of %s/%s", remote->ToString().CStr(), vhost_app_name.CStr(), url->Stream().CStr());
 	ResponseResult(remote, session_id, "stop", request_id, 200, "ok");
 
-	stream->RemoveSessionByConnectorId(remote->GetId());
+	auto played_session_id = UnlinkPlayedStream(remote->GetId(), stream);
+
+	if (played_session_id.has_value())
+	{
+		stream->RemoveSession(played_session_id.value());
+	}
 }
 
 void OvtPublisher::ResponseResult(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, const ov::String app, uint32_t request_id, uint32_t code, const ov::String &msg)
@@ -770,12 +774,11 @@ void OvtPublisher::SendResponse(const std::shared_ptr<ov::Socket> &remote, uint3
 	remote->Send(response);
 }
 
-bool OvtPublisher::LinkRemoteWithStream(ov::socket_id_t remote_id, std::shared_ptr<OvtStream> &stream)
+bool OvtPublisher::LinkRemoteWithStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream, session_id_t session_id)
 {
-	// For ungraceful disconnect
-	// one remote id can be join multiple streams.
+	// A connection can play several streams
 	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
-	_remote_stream_map.insert(std::pair<ov::socket_id_t, std::shared_ptr<OvtStream>>(remote_id, stream));
+	_remote_stream_map.emplace(remote_id, PlayedStream{stream, session_id});
 
 	return true;
 }
@@ -786,4 +789,38 @@ bool OvtPublisher::UnlinkRemoteFromStream(ov::socket_id_t remote_id)
 	_remote_stream_map.erase(remote_id);
 
 	return true;
+}
+
+std::optional<session_id_t> OvtPublisher::FindPlayedSession(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream)
+{
+	std::shared_lock<std::shared_mutex> lock(_remote_stream_map_lock);
+	auto played_streams = _remote_stream_map.equal_range(remote_id);
+
+	for (auto it = played_streams.first; it != played_streams.second; ++it)
+	{
+		if (it->second.stream == stream)
+		{
+			return it->second.session_id;
+		}
+	}
+
+	return std::nullopt;
+}
+
+std::optional<session_id_t> OvtPublisher::UnlinkPlayedStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream)
+{
+	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
+	auto played_streams = _remote_stream_map.equal_range(remote_id);
+
+	for (auto it = played_streams.first; it != played_streams.second; ++it)
+	{
+		if (it->second.stream == stream)
+		{
+			auto session_id = it->second.session_id;
+			_remote_stream_map.erase(it);
+			return session_id;
+		}
+	}
+
+	return std::nullopt;
 }

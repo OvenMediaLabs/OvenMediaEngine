@@ -38,6 +38,7 @@ namespace pvd
 		bool DelStream(const std::shared_ptr<PullStream> &stream);
 
 	private:
+		// A stream in this motor, with the socket it registered for events
 		struct Entry
 		{
 			std::shared_ptr<PullStream> stream;
@@ -53,11 +54,13 @@ namespace pvd
 
 		uint32_t _id;
 
+		// Watches the sockets of the streams processed by epoll. -1 before `Start()` and after `Stop()`.
 		int _epoll_fd = -1;
 
 		std::atomic<bool> _stop_thread_flag;
 		std::thread _thread;
 		ov::SharedMutex _streams_map_guard;
+		// key: stream ID
 		std::map<uint32_t, Entry> _streams OV_GUARDED_BY(_streams_map_guard);
 	};
 }

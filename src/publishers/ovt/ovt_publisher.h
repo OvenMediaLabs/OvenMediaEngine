@@ -55,6 +55,13 @@ private:
 		std::set<uint32_t> described_track_ids;
 	};
 
+	// A stream a connection plays, with the session that plays it
+	struct PlayedStream
+	{
+		std::shared_ptr<OvtStream> stream;
+		session_id_t session_id;
+	};
+
 	// Records which stream this connection described, its track epoch at that moment and the track ids sent,
 	// once the response is on its way
 	void RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch,
@@ -105,8 +112,12 @@ private:
 
 	void SendResponse(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, const ov::String &payload);
 
-	bool LinkRemoteWithStream(ov::socket_id_t remote_id, std::shared_ptr<OvtStream> &stream);
+	bool LinkRemoteWithStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream, session_id_t session_id);
 	bool UnlinkRemoteFromStream(ov::socket_id_t remote_id);
+	// The session of `stream` that this connection plays
+	std::optional<session_id_t> FindPlayedSession(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream);
+	// Unlinks `stream` from the connection and returns the session that played it
+	std::optional<session_id_t> UnlinkPlayedStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream);
 	void RemoveSessions(ov::socket_id_t remote_id);
 
 	std::shared_ptr<RemoteContext> GetRemoteContext(ov::socket_id_t remote_id);
@@ -120,7 +131,7 @@ private:
 	// remote id : per-connection state
 	std::mutex _remotes_lock;
 	std::map<ov::socket_id_t, std::shared_ptr<RemoteContext>> _remotes;
-	// When a client is disconnected ungracefully, this map helps to find stream and delete the session quickly
-	std::multimap<ov::socket_id_t, std::shared_ptr<OvtStream>> _remote_stream_map;
+	// remote id : the streams the connection plays, with their sessions
+	std::multimap<ov::socket_id_t, PlayedStream> _remote_stream_map;
 	std::shared_mutex _remote_stream_map_lock;
 };

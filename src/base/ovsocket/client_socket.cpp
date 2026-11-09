@@ -31,7 +31,7 @@ namespace ov
 {
 	ClientSocket::ClientSocket(
 		PrivateToken token, const std::shared_ptr<SocketPoolWorker> &worker,
-		const std::shared_ptr<ServerSocket> &server_socket, SocketWrapper client_socket, const SocketAddress &remote_address)
+		SocketWrapper client_socket, const std::shared_ptr<ServerSocket> &server_socket, const SocketAddress &remote_address)
 		: Socket(token, worker, client_socket, remote_address),
 
 		  _server_socket(server_socket)

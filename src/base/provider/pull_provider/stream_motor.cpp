@@ -90,9 +90,14 @@ namespace pvd
 
 		const auto &[stream, event_socket] = item->second;
 
-		if ((event_socket != nullptr) && (event_socket->DeleteFromExternalEpoll(_epoll_fd) == false))
+		if (event_socket != nullptr)
 		{
-			logte("%s/%s(%u) Stream could not be deleted to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
+			auto error = event_socket->DeleteFromExternalEpoll(_epoll_fd);
+
+			if (error != nullptr)
+			{
+				logte("%s/%s(%u) Stream could not be deleted from the epoll: %s", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), error->What());
+			}
 		}
 
 		_streams.erase(item);
@@ -104,13 +109,7 @@ namespace pvd
 	{
 		const bool by_epoll						 = (stream->GetProcessMediaEventTriggerMode() == PullStream::ProcessMediaEventTrigger::TRIGGER_EPOLL);
 		std::shared_ptr<ov::Socket> event_socket = by_epoll ? stream->GetSocketForDetectingEvent() : nullptr;
-
-		if (by_epoll && (event_socket == nullptr))
-		{
-			logte("Failed to add stream : %s/%s(%u) Stream failed to provide the socket for event detection", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId());
-		}
-
-		bool added = (by_epoll == false);
+		std::shared_ptr<ov::Error> error;
 
 		{
 			ov::LockGuard lock(_streams_map_guard);
@@ -118,28 +117,32 @@ namespace pvd
 			// A resumed stream may still be here, possibly with another socket
 			RemoveEntry(stream->GetId());
 
-			if (event_socket != nullptr)
+			if (by_epoll)
 			{
-				struct epoll_event event;
-				event.events   = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
-				event.data.u32 = stream->GetId();
-
-				added		   = event_socket->AddToExternalEpoll(_epoll_fd, &event);
-
-				if (added == false)
+				if (event_socket == nullptr)
 				{
-					logte("%s/%s(%u) Stream could not be added to the epoll (err : %d)", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), errno);
+					error = ov::Error::CreateError("StreamMotor", "Stream failed to provide the socket for event detection");
+				}
+				else
+				{
+					struct epoll_event event;
+					event.events   = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP;
+					event.data.u32 = stream->GetId();
+
+					error		   = event_socket->AddToExternalEpoll(_epoll_fd, &event);
 				}
 			}
 
-			if (added)
+			if (error == nullptr)
 			{
 				_streams[stream->GetId()] = {stream, event_socket};
 			}
 		}
 
-		if (added == false)
+		if (error != nullptr)
 		{
+			logte("%s/%s(%u) Could not add the stream: %s", stream->GetApplicationName(), stream->GetName().CStr(), stream->GetId(), error->What());
+
 			stream->Stop();
 			return false;
 		}

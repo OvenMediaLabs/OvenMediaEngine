@@ -105,8 +105,8 @@ namespace
 	};
 }  // namespace
 
-// A stream added again with another socket leaves the motor's epoll with its old socket
-TEST_F(StreamMotorTest, ReconnectedStreamLeavesOldSocket)
+// Adding a stream again with another socket removes its old socket from the motor's epoll
+TEST_F(StreamMotorTest, ReAddedStreamDropsOldSocketFromEpoll)
 {
 	auto pool = CreatePool("test-motor-swap", ov::SocketType::Udp);
 	ASSERT_NE(pool, nullptr);

@@ -206,14 +206,10 @@ namespace ome_test
 		std::shared_ptr<ov::SocketPool> _pool;
 	};
 
-	// Binds a UDP socket to an ephemeral loopback port and returns the port (0 on failure)
-	inline uint16_t BindToLoopback(const std::shared_ptr<ov::Socket> &socket)
+	// Reads the local port from the handle (0 on failure).
+	// Unlike `Socket::GetLocalAddress()`, it also sees a port that `Connect()` assigned implicitly.
+	inline uint16_t LocalPortOf(const std::shared_ptr<ov::Socket> &socket)
 	{
-		if (socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) == false)
-		{
-			return 0;
-		}
-
 		sockaddr_in address{};
 		socklen_t length = sizeof(address);
 
@@ -225,13 +221,19 @@ namespace ome_test
 		return ntohs(address.sin_port);
 	}
 
+	// Binds a UDP socket to an ephemeral loopback port and returns the port (0 on failure)
+	inline uint16_t BindToLoopback(const std::shared_ptr<ov::Socket> &socket)
+	{
+		return socket->Bind(ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0)) ? LocalPortOf(socket) : 0;
+	}
+
 	// Sends one datagram to a loopback port.
 	// The kernel can deliver it after this returns, so a test that relies on the arrival calls `WaitUntilReadable()`.
 	inline bool SendDatagram(uint16_t port)
 	{
-		int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+		UniqueFd fd(::socket(AF_INET, SOCK_DGRAM, 0));
 
-		if (fd < 0)
+		if (fd.Get() < 0)
 		{
 			return false;
 		}
@@ -242,8 +244,7 @@ namespace ome_test
 		address.sin_port		= htons(port);
 
 		const char payload[]	= "x";
-		auto sent				= ::sendto(fd, payload, sizeof(payload), 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
-		::close(fd);
+		auto sent				= ::sendto(fd.Get(), payload, sizeof(payload), 0, reinterpret_cast<sockaddr *>(&address), sizeof(address));
 
 		return (sent == sizeof(payload));
 	}

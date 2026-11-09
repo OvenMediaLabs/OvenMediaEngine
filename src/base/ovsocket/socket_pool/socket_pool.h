@@ -97,6 +97,22 @@ namespace ov
 			return (worker != nullptr) ? worker->AllocSocket<Tsocket>(std::move(count_slot), family, args...) : nullptr;
 		}
 
+		// Takes over a handle that is already open, such as an accepted one.
+		// The new socket owns it, or it is closed when no worker is available.
+		template <typename Tsocket, typename... Targuments>
+		std::shared_ptr<Tsocket> AdoptSocket(SocketWrapper handle, Targuments... args)
+		{
+			auto [worker, count_slot] = GetLeastBusyWorker();
+
+			if (worker == nullptr)
+			{
+				Socket::CloseNativeHandle(handle.GetType(), handle.GetNativeHandle());
+				return nullptr;
+			}
+
+			return worker->MakeSocket<Tsocket>(std::move(count_slot), handle, args...);
+		}
+
 		bool ReleaseSocket(const std::shared_ptr<Socket> &socket)
 		{
 			return socket->GetSocketPoolWorker()->ReleaseSocket(socket);

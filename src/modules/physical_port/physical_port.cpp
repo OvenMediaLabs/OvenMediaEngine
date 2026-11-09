@@ -339,7 +339,7 @@ void PhysicalPort::OnClientConnectionStateChanged(const std::shared_ptr<ov::Clie
 
 void PhysicalPort::OnClientData(const std::shared_ptr<ov::ClientSocket> &client, const std::shared_ptr<const ov::Data> &data)
 {
-	if (client->IsValid())
+	if (client->IsOpen())
 	{
 		// Notify observers
 		auto func = std::bind(

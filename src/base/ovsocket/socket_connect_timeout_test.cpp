@@ -100,9 +100,11 @@ namespace
 
 		ome_test::UniqueFd _listen_fd;
 		uint16_t _port = 0;
+		// The connections that keep the accept queue full
 		std::vector<ome_test::UniqueFd> _filler_fds;
 	};
 
+	// Counts the connection callbacks by result
 	class ConnectEvents : public ov::SocketAsyncInterface
 	{
 	public:

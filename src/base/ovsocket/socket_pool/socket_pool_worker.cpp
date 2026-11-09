@@ -60,11 +60,17 @@ static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long n
 
 namespace ov
 {
-	// The high 32 bits of a TCP/UDP epoll event.
-	// They tell a registration apart from an earlier one that used the same native handle.
-	static uint32_t ToEventTag(socket_id_t socket_id)
+	// The data of a TCP/UDP epoll event: the native handle in the low 32 bits and the low 32 bits of the socket ID above it,
+	// so an event of an earlier registration that used the same handle is told apart
+	static uint64_t MakeEventKey(int native_handle, socket_id_t socket_id)
 	{
-		return static_cast<uint32_t>(socket_id.GetValue());
+		return (static_cast<uint64_t>(static_cast<uint32_t>(socket_id.GetValue())) << 32) | static_cast<uint32_t>(native_handle);
+	}
+
+	// A handle accepted by `epoll_ctl()` is non-negative, so it converts back to `int` unchanged
+	static int NativeHandleOfEventKey(uint64_t key)
+	{
+		return static_cast<int>(static_cast<uint32_t>(key));
 	}
 
 	SocketCountSlot::SocketCountSlot(SocketPoolWorker *worker)
@@ -219,6 +225,7 @@ namespace ov
 				if (_epoll != InvalidSocket)
 				{
 					_epoll_events.resize(EpollMaxEvents);
+					_polled_events.resize(EpollMaxEvents);
 				}
 				else
 				{
@@ -233,8 +240,8 @@ namespace ov
 				if (_srt_epoll != SRT_INVALID_SOCK)
 				{
 					srt_epoll_set(_srt_epoll, SRT_EPOLL_ENABLE_EMPTY);
-					_epoll_events.resize(EpollMaxEvents);
 					_srt_epoll_events.resize(EpollMaxEvents);
+					_polled_events.resize(EpollMaxEvents);
 				}
 				else
 				{
@@ -265,8 +272,7 @@ namespace ov
 
 	bool SocketPoolWorker::PrepareSocket(std::shared_ptr<Socket> socket, const SocketFamily family)
 	{
-		// A socket built around an accepted handle is already created, so it never fails here after taking the handle
-		return socket->IsValid() || socket->Create(GetType(), family);
+		return socket->Create(GetType(), family);
 	}
 
 	void SocketPoolWorker::GarbageCollection()
@@ -340,9 +346,6 @@ namespace ov
 
 		_gc_interval.Start();
 
-		// Keeps the socket of each polled event alive until the event is handled
-		std::vector<std::shared_ptr<Socket>> polled_sockets(EpollMaxEvents);
-
 		while (_stop_epoll_thread == false)
 		{
 #ifdef OME_LATENCY_PROBE
@@ -354,7 +357,7 @@ namespace ov
 			::getrusage(RUSAGE_THREAD, &ru_ew_start);
 #endif	// OME_LATENCY_PROBE
 
-			int count = EpollWait(polled_sockets, 100);
+			int count = EpollWait(100);
 
 #ifdef OME_LATENCY_PROBE
 			auto ew_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - ew_start).count();
@@ -382,14 +385,8 @@ namespace ov
 
 				for (int index = 0; index < count; index++)
 				{
-					auto &event = _epoll_events[index];
-					auto socket = std::move(polled_sockets[index]);
-
-					if (socket == nullptr)
-					{
-						// The socket was deleted from epoll after it was polled
-						continue;
-					}
+					auto &event = _polled_events[index].event;
+					auto socket = std::move(_polled_events[index].socket);
 
 					auto event_callback = socket->GetSharedPtrAs<SocketPoolEventInterface>();
 					auto events			= event.events;
@@ -614,7 +611,6 @@ namespace ov
 	bool SocketPoolWorker::AddToEpoll(const std::shared_ptr<Socket> &socket)
 	{
 		auto native_handle = socket->GetNativeHandle();
-		std::shared_ptr<Socket> registered_socket;
 
 		// Registered before adding to epoll, since epoll reports the current readiness at once
 		{
@@ -629,21 +625,10 @@ namespace ov
 
 			auto &entry = _socket_map[native_handle];
 
-			if (entry == nullptr)
-			{
-				entry = socket;
-			}
-			else
-			{
-				registered_socket = entry;
-			}
-		}
+			// A socket leaves the map before its handle is released
+			OV_ASSERT(entry == nullptr, "Descriptor %d is still registered by another socket: %s", native_handle, entry->ToString().CStr());
 
-		// A socket leaves the map before its handle is released, so another socket holding the number is a bug elsewhere
-		if (registered_socket != nullptr)
-		{
-			logae("Descriptor %d is still registered by another socket: %s", native_handle, registered_socket->ToString().CStr());
-			return false;
+			entry = socket;
 		}
 
 		std::shared_ptr<Error> error;
@@ -673,7 +658,7 @@ namespace ov
 						// EPOLLRDHUP : Disconnected or half-closing
 						// EPOLLET: Edge trigger
 						event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
-						event.data.u64 = (static_cast<uint64_t>(ToEventTag(socket->GetId())) << 32) | static_cast<uint32_t>(native_handle);
+						event.data.u64 = MakeEventKey(native_handle, socket->GetId());
 
 						if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
 						{
@@ -706,13 +691,13 @@ namespace ov
 			logae("Could not add to epoll for descriptor %d (error: %s)", native_handle, error->What());
 
 			LockGuard lock(_socket_map_mutex);
-			RemoveFromSocketMap(socket);
+			_socket_map.erase(native_handle);
 		}
 
 		return (error == nullptr);
 	}
 
-	int SocketPoolWorker::EpollWait(std::vector<std::shared_ptr<Socket>> &polled_sockets, int timeout_msec)
+	int SocketPoolWorker::EpollWait(int timeout_msec)
 	{
 		// Runs only on the worker thread, which `Uninitialize()` joins before it closes the epoll,
 		// so the handle is read without `_epoll_mutex`
@@ -738,18 +723,22 @@ namespace ov
 					// polled successfully
 					LockGuard lock(_socket_map_mutex);
 
+					int polled_count = 0;
+
 					for (int index = 0; index < event_count; index++)
 					{
-						auto key			 = _epoll_events[index].data.u64;
+						const auto &event	 = _epoll_events[index];
+						auto native_handle	 = NativeHandleOfEventKey(event.data.u64);
+						auto socket_iterator = _socket_map.find(native_handle);
 
-						// The low 32 bits are the fd stored by `AddToEpoll()`. That fd was accepted by `epoll_ctl()`,
-						// so it is non-negative and converts back to `int` unchanged.
-						auto socket_iterator = _socket_map.find(static_cast<int>(static_cast<uint32_t>(key)));
-						bool is_same_socket	 = (socket_iterator != _socket_map.end()) &&
-											  (ToEventTag(socket_iterator->second->GetId()) == static_cast<uint32_t>(key >> 32));
-
-						polled_sockets[index] = is_same_socket ? socket_iterator->second : nullptr;
+						if ((socket_iterator != _socket_map.end()) &&
+							(MakeEventKey(native_handle, socket_iterator->second->GetId()) == event.data.u64))
+						{
+							_polled_events[polled_count++] = {socket_iterator->second, event};
+						}
 					}
+
+					event_count = polled_count;
 				}
 				else
 				{
@@ -781,27 +770,32 @@ namespace ov
 				else if (event_count > 0)
 				{
 					// polled successfully
+					int polled_count = 0;
+
 					{
 						LockGuard lock(_socket_map_mutex);
 
 						// An SRT event carries only the SRT handle, which libsrt reissues only after its counter wraps.
-						// So the handle alone identifies the socket, without the tag of a TCP/UDP event.
+						// So the handle alone identifies the socket, without the socket ID of a TCP/UDP event key.
 						for (int index = 0; index < event_count; index++)
 						{
-							auto socket_iterator  = _socket_map.find(_srt_epoll_events[index].fd);
+							auto socket_iterator = _socket_map.find(_srt_epoll_events[index].fd);
 
-							polled_sockets[index] = (socket_iterator != _socket_map.end()) ? socket_iterator->second : nullptr;
+							if (socket_iterator != _socket_map.end())
+							{
+								_srt_epoll_events[polled_count]		  = _srt_epoll_events[index];
+								_polled_events[polled_count++].socket = socket_iterator->second;
+							}
 						}
 					}
 
 					// Make a list of `epoll_event` from `SRT_EPOLL_EVENT`
-					for (int index = 0; index < event_count; index++)
+					for (int index = 0; index < polled_count; index++)
 					{
-						if (polled_sockets[index] != nullptr)
-						{
-							ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_epoll_events[index]));
-						}
+						ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_polled_events[index].event));
 					}
+
+					event_count = polled_count;
 				}
 				else
 				{
@@ -1086,20 +1080,10 @@ namespace ov
 
 		{
 			LockGuard lock(_socket_map_mutex);
-			RemoveFromSocketMap(socket);
+			_socket_map.erase(socket->GetNativeHandle());
 		}
 
 		return (error == nullptr);
-	}
-
-	void SocketPoolWorker::RemoveFromSocketMap(const std::shared_ptr<Socket> &socket)
-	{
-		auto socket_iterator = _socket_map.find(socket->GetNativeHandle());
-
-		if ((socket_iterator != _socket_map.end()) && (socket_iterator->second == socket))
-		{
-			_socket_map.erase(socket_iterator);
-		}
 	}
 
 	bool SocketPoolWorker::ReleaseSocket(const std::shared_ptr<Socket> &socket)
