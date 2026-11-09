@@ -314,7 +314,7 @@ namespace ov
 		}
 	}
 
-	std::deque<std::shared_ptr<Socket>> SocketPoolWorker::TakeTimedOutConnections()
+	void SocketPoolWorker::CallbackTimedOutConnections()
 	{
 		decltype(_connection_timed_out_queue) timed_out_queue;
 
@@ -323,21 +323,17 @@ namespace ov
 			std::swap(timed_out_queue, _connection_timed_out_queue);
 		}
 
-		return timed_out_queue;
-	}
-
-	void SocketPoolWorker::CallbackTimedOutConnections(const std::deque<std::shared_ptr<Socket>> &timed_out_connections)
-	{
-		if (timed_out_connections.empty())
+		if (timed_out_queue.empty())
 		{
 			return;
 		}
 
 		auto socket_error = SocketError::CreateError("Connection timed out (by worker)");
 
-		for (auto socket : timed_out_connections)
+		for (auto socket : timed_out_queue)
 		{
-			if (socket->GetState() == SocketState::Connecting)
+			// A completed connect reports its result through its pending `EPOLLOUT` instead
+			if ((socket->GetState() == SocketState::Connecting) && (socket->HasConnectCompleted() == false))
 			{
 				socket->OnConnectedEvent(socket_error);
 			}
@@ -360,10 +356,6 @@ namespace ov
 			struct rusage ru_ew_start;
 			::getrusage(RUSAGE_THREAD, &ru_ew_start);
 #endif	// OME_LATENCY_PROBE
-
-			// Connections that timed out before this wait are reported after the events it returns,
-			// so a connect whose completion this wait reports is not reported as timed out
-			auto timed_out_connections = TakeTimedOutConnections();
 
 			int count = EpollWait(100);
 
@@ -389,6 +381,8 @@ namespace ov
 			}
 			else
 			{
+				CallbackTimedOutConnections();
+
 				for (int index = 0; index < count; index++)
 				{
 					auto &event = _polled_events[index].event;
@@ -575,8 +569,6 @@ namespace ov
 					}
 				}
 			}
-
-			CallbackTimedOutConnections(timed_out_connections);
 
 			DispatchSocketEventsIfNeeded();
 			CallCloseCallbackIfNeeded();

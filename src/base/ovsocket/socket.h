@@ -565,6 +565,7 @@ namespace ov
 		DispatchResult DispatchEventInternal(DispatchCommand &command) OV_REQUIRES(_dispatch_queue_lock);
 
 		bool IsSendable() const;
+		bool HasConnectCompleted() const;
 		ssize_t HandleSendError(const size_t total_sent);
 
 		bool DispatchEventsAfterAppendCommand();

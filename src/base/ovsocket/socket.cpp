@@ -10,6 +10,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <poll.h>
 #include <sys/fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -939,7 +940,7 @@ namespace ov
 						}
 						else
 						{
-							// Timed out, or closed on another thread while waiting.
+							// Timed out, closed on another thread, or completed while the worker was too busy to report it.
 							// A close that starts after the check fails the read of `SO_ERROR` instead.
 							int so_error = 0;
 
@@ -947,12 +948,19 @@ namespace ov
 							{
 								socket_error = SocketError::CreateError("Socket is closed");
 							}
-							else
+							else if (HasConnectCompleted() == false)
 							{
 								socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
 							}
+							else if (so_error != 0)
+							{
+								socket_error = SocketError::CreateError(so_error, "Socket error occurred: %s", ::strerror(so_error));
+							}
 
-							logat("%s", socket_error->What());
+							if (socket_error != nullptr)
+							{
+								logat("%s", socket_error->What());
+							}
 						}
 
 						// Restore blocking state
@@ -1426,6 +1434,20 @@ namespace ov
 		}
 
 		return IsOpen() && (IsClosing() == false);
+	}
+
+	bool Socket::HasConnectCompleted() const
+	{
+		IoGuard io_guard(*this);
+
+		if (io_guard.IsAcquired() == false)
+		{
+			return false;
+		}
+
+		pollfd poll_fd{GetNativeHandle(), POLLOUT, 0};
+
+		return (::poll(&poll_fd, 1, 0) > 0) && ((poll_fd.revents & (POLLOUT | POLLERR | POLLHUP)) != 0);
 	}
 
 	ssize_t Socket::HandleSendError(const size_t total_sent)

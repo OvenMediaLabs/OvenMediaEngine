@@ -378,7 +378,7 @@ TEST_F(SocketPoolWorkerTest, SocketClosedBeforeFirstEventStopsWaiting)
 }
 
 // A connect that completes while another socket's callback holds the worker past its timeout is reported as connected,
-// since the worker polls the completion together with the timeout
+// since the worker does not report a timeout for a socket that is already writable
 TEST_F(SocketPoolWorkerTest, ConnectCompletedWhileWorkerIsHeldIsNotTimedOut)
 {
 	constexpr int CONNECT_TIMEOUT_MSEC = 200;
