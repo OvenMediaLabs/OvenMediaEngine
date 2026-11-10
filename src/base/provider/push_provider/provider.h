@@ -58,7 +58,8 @@ namespace pvd
 		bool OnChannelDeleted(const std::shared_ptr<pvd::PushStream> &channel);
 		std::shared_ptr<PushStream> GetChannel(channel_id_t channel_id);
 
-		// The channel of a connection, identified by the socket ID, which is never reused
+		// The channel of a socket, identified by its socket ID.
+		// A datagram listener (MPEG-TS/UDP) gives every sender on its port the same channel.
 		static channel_id_t GetChannelId(const std::shared_ptr<ov::Socket> &socket)
 		{
 			return channel_id_t(socket->GetId().GetValue());
