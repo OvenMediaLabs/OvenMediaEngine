@@ -2414,7 +2414,7 @@ namespace ov
 
 				{
 					// A socket that has not connected has nothing to flush, so it is closed here at once.
-					// A connect sets its state under this lock, so one that starts or is in progress reports the close.
+					// A connect sets its state under this lock, so one in progress reports the close.
 					LockGuard lock(_dispatch_queue_lock);
 					const auto state = GetState();
 
