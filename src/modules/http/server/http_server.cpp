@@ -178,7 +178,7 @@ namespace http
 				return;
 			}
 
-			if (remote->IsClosing() == false)
+			if (remote->HasCloseCommand() == false)
 			{
 				client->OnDataReceived(data);
 			}

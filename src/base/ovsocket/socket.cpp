@@ -892,42 +892,7 @@ namespace ov
 						}
 
 						// Blocking mode
-						// Woken once the worker sees the connect complete, or by a close
-						_connect_event.Wait(timeout_msec);
-
-						{
-							// A close also takes this lock, so the socket stays open while this thread decides the result
-							LockGuard lock(_dispatch_queue_lock);
-
-							if (IsOpen() == false)
-							{
-								socket_error = SocketError::CreateError("Socket is closed");
-							}
-							else
-							{
-								// `SO_ERROR` is read after the completion check, so a connect failing in between is reported as a timeout
-								const bool completed = HasConnectCompleted();
-								int so_error		 = 0;
-
-								if (GetSockOpt(SO_ERROR, &so_error) == false)
-								{
-									socket_error = SocketError::CreateError("Unknown error occurred: could not read SO_ERROR");
-								}
-								else if (completed == false)
-								{
-									socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
-								}
-								else if (so_error != 0)
-								{
-									socket_error = SocketError::CreateError(so_error, "Socket error occurred: %s", ::strerror(so_error));
-								}
-							}
-						}
-
-						if (socket_error != nullptr)
-						{
-							logat("%s", socket_error->What());
-						}
+						socket_error = WaitForConnectResult(timeout_msec);
 
 						// Restore blocking state
 						DeleteFromWorker();
@@ -1399,7 +1364,7 @@ namespace ov
 				break;
 		}
 
-		return IsOpen() && (IsClosing() == false);
+		return IsOpen() && (HasCloseCommand() == false);
 	}
 
 	bool Socket::HasConnectCompleted() const
@@ -1419,6 +1384,50 @@ namespace ov
 	void Socket::WakeConnectWaiter()
 	{
 		_connect_event.SetEvent();
+	}
+
+	std::shared_ptr<const SocketError> Socket::WaitForConnectResult(int timeout_msec)
+	{
+		std::shared_ptr<const SocketError> socket_error;
+
+		// Woken once the worker sees the connect complete, or by a close
+		_connect_event.Wait(timeout_msec);
+
+		{
+			// A close also takes this lock, so the socket stays open while this thread decides the result
+			LockGuard lock(_dispatch_queue_lock);
+
+			if (IsOpen() == false)
+			{
+				socket_error = SocketError::CreateError("Socket is closed");
+			}
+			else
+			{
+				// `SO_ERROR` is read after the completion check, so a connect failing in between is reported as a timeout
+				const bool completed = HasConnectCompleted();
+				int so_error		 = 0;
+
+				if (GetSockOpt(SO_ERROR, &so_error) == false)
+				{
+					socket_error = SocketError::CreateError("Unknown error occurred: could not read SO_ERROR");
+				}
+				else if (completed == false)
+				{
+					socket_error = SocketError::CreateError(so_error, "Connection timed out (%d ms elapsed, SO_ERROR: %d)", timeout_msec, so_error);
+				}
+				else if (so_error != 0)
+				{
+					socket_error = SocketError::CreateError(so_error, "Socket error occurred: %s", ::strerror(so_error));
+				}
+			}
+		}
+
+		if (socket_error != nullptr)
+		{
+			logat("%s", socket_error->What());
+		}
+
+		return socket_error;
 	}
 
 	ssize_t Socket::HandleSendError(const size_t total_sent)
@@ -2387,7 +2396,7 @@ namespace ov
 			return Close();
 		}
 
-		return IsClosing() || Close();
+		return HasCloseCommand() || Close();
 	}
 
 	bool Socket::CloseWithState(SocketState new_state)
@@ -2421,15 +2430,7 @@ namespace ov
 					if ((state == SocketState::Created) || (state == SocketState::Connecting))
 					{
 						closed_at_once = true;
-
-						if (CloseInternal(new_state))
-						{
-							SetState(new_state);
-						}
-						else
-						{
-							result = false;
-						}
+						result		   = CloseAndSetState(new_state);
 					}
 				}
 
@@ -2448,18 +2449,9 @@ namespace ov
 					}
 
 					// Close regardless of result
-					{
-						LockGuard lock_guard(_dispatch_queue_lock);
+					LockGuard lock(_dispatch_queue_lock);
 
-						if (CloseInternal(new_state))
-						{
-							SetState(new_state);
-						}
-						else
-						{
-							result = false;
-						}
-					}
+					result = CloseAndSetState(new_state) && result;
 				}
 
 				CallCloseCallbackIfNeeded();
@@ -2555,12 +2547,7 @@ namespace ov
 		{
 			LockGuard lock_guard(_dispatch_queue_lock);
 
-			result = CloseInternal(new_state);
-
-			if (result)
-			{
-				SetState(new_state);
-			}
+			result = CloseAndSetState(new_state);
 		}
 
 		CallCloseCallbackIfNeeded();
@@ -2779,6 +2766,18 @@ namespace ov
 		EndIo();
 
 		logat("Socket is closed successfully");
+
+		return true;
+	}
+
+	bool Socket::CloseAndSetState(SocketState new_state)
+	{
+		if (CloseInternal(new_state) == false)
+		{
+			return false;
+		}
+
+		SetState(new_state);
 
 		return true;
 	}

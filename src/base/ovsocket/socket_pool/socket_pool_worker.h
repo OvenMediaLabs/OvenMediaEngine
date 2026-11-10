@@ -108,6 +108,8 @@ namespace ov
 		// Fills `_polled_events` with the events of the sockets still registered, and returns their count
 		int EpollWait(int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);
+		// Erases the entry of `native_handle` only while it still holds `socket`
+		void EraseFromSocketMap(int native_handle, const std::shared_ptr<Socket> &socket);
 
 		void ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
 

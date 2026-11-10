@@ -14,6 +14,7 @@
 
 #include "socket_address.h"
 #include "socket_address_pair.h"
+#include "socket_pool/socket_count_slot.h"
 #include "socket_wrapper.h"
 
 #if !IS_MACOS
@@ -43,25 +44,6 @@ namespace ov
 	// Forward declaration
 	class Socket;
 	class SocketPoolWorker;
-
-	// Counts one socket on a worker until it is reset or destroyed, so the count drops exactly once
-	class SocketCountSlot
-	{
-	public:
-		SocketCountSlot() = default;
-		explicit SocketCountSlot(SocketPoolWorker *worker);
-		SocketCountSlot(SocketCountSlot &&other) noexcept;
-		SocketCountSlot &operator=(SocketCountSlot &&other) noexcept;
-		SocketCountSlot(const SocketCountSlot &)			= delete;
-		SocketCountSlot &operator=(const SocketCountSlot &) = delete;
-		~SocketCountSlot();
-
-		void Reset();
-
-	private:
-		// The holder keeps the worker alive: a socket through its `_worker`, a queue entry by living in the worker
-		SocketPoolWorker *_worker = nullptr;
-	};
 
 	class SocketAsyncInterface
 	{
@@ -351,7 +333,7 @@ namespace ov
 		}
 
 		// Whether a non-blocking close has been requested; a blocking close and `CloseImmediately()` do not set it
-		bool IsClosing() const
+		bool HasCloseCommand() const
 		{
 			return _has_close_command;
 		}
@@ -568,6 +550,8 @@ namespace ov
 		bool HasConnectCompleted() const;
 		// Wakes the blocking connect waiting on this socket, which then decides its result itself
 		void WakeConnectWaiter();
+		// Waits until a blocking connect in progress completes, closes or times out, and returns its error
+		std::shared_ptr<const SocketError> WaitForConnectResult(int timeout_msec);
 		ssize_t HandleSendError(const size_t total_sent);
 
 		bool DispatchEventsAfterAppendCommand();
@@ -586,6 +570,8 @@ namespace ov
 
 		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it
 		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
+		// Closes and moves to `new_state`, unless another close came first
+		bool CloseAndSetState(SocketState new_state) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
 		// callback is performed outside the lock_guard to prevent acquiring the lock.

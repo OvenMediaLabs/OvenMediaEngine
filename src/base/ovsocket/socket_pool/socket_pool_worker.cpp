@@ -80,41 +80,6 @@ namespace ov
 		return static_cast<int>(static_cast<uint32_t>(key));
 	}
 
-	SocketCountSlot::SocketCountSlot(SocketPoolWorker *worker)
-		: _worker(worker)
-	{
-		_worker->IncreaseSocketCount();
-	}
-
-	SocketCountSlot::SocketCountSlot(SocketCountSlot &&other) noexcept
-		: _worker(std::exchange(other._worker, nullptr))
-	{
-	}
-
-	SocketCountSlot &SocketCountSlot::operator=(SocketCountSlot &&other) noexcept
-	{
-		if (this != &other)
-		{
-			Reset();
-			_worker = std::exchange(other._worker, nullptr);
-		}
-
-		return *this;
-	}
-
-	SocketCountSlot::~SocketCountSlot()
-	{
-		Reset();
-	}
-
-	void SocketCountSlot::Reset()
-	{
-		if (_worker != nullptr)
-		{
-			std::exchange(_worker, nullptr)->DecreaseSocketCount();
-		}
-	}
-
 	SocketPoolWorker::SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool)
 		: _pool(pool),
 		  _max_events(pool->IsThreadPerSocket() ? THREAD_PER_SOCKET_MAX_EVENTS : EpollMaxEvents),
@@ -695,8 +660,7 @@ namespace ov
 		{
 			logae("Could not add to epoll for descriptor %d (error: %s)", native_handle, error->What());
 
-			LockGuard lock(_socket_map_mutex);
-			_socket_map.erase(native_handle);
+			EraseFromSocketMap(native_handle, socket);
 		}
 
 		return (error == nullptr);
@@ -1092,12 +1056,21 @@ namespace ov
 			}
 		}
 
-		{
-			LockGuard lock(_socket_map_mutex);
-			_socket_map.erase(socket->GetNativeHandle());
-		}
+		EraseFromSocketMap(native_handle, socket);
 
 		return (error == nullptr);
+	}
+
+	void SocketPoolWorker::EraseFromSocketMap(int native_handle, const std::shared_ptr<Socket> &socket)
+	{
+		LockGuard lock(_socket_map_mutex);
+
+		auto it = _socket_map.find(native_handle);
+
+		if ((it != _socket_map.end()) && (it->second == socket))
+		{
+			_socket_map.erase(it);
+		}
 	}
 
 	bool SocketPoolWorker::ReleaseSocket(const std::shared_ptr<Socket> &socket)
