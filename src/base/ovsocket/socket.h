@@ -14,6 +14,7 @@
 
 #include "socket_address.h"
 #include "socket_address_pair.h"
+#include "socket_pool/socket_count_slot.h"
 #include "socket_wrapper.h"
 
 #if !IS_MACOS
@@ -61,6 +62,10 @@ namespace ov
 
 	class Socket : public EnableSharedFromThis<Socket>, public SocketPoolEventInterface
 	{
+	protected:
+		// Bit 31 of `_io_ref`
+		static constexpr uint32_t IO_REF_CLOSING = 0x80000000U;
+
 	public:
 		// Called when the server socket is created
 		using SetAdditionalOptionsCallback = std::function<std::shared_ptr<ov::Error>(const std::shared_ptr<ov::Socket> &socket)>;
@@ -80,6 +85,50 @@ namespace ov
 			PartialDispatched,
 			// An error occurred
 			Error
+		};
+
+		// Fails once a close has started.
+		// For TCP/UDP it also holds the handle open during the syscall, so its number cannot be reused under it.
+		class IoGuard
+		{
+		public:
+			explicit IoGuard(const Socket &socket)
+				: IoGuard(socket, socket.BeginIo())
+			{
+			}
+
+			// Succeeds until the handle is released, even after a close has started
+			static IoGuard Pin(const Socket &socket)
+			{
+				return IoGuard(socket, socket.PinNativeHandle());
+			}
+
+			IoGuard(const IoGuard &) = delete;
+			IoGuard &operator=(const IoGuard &) = delete;
+
+			~IoGuard()
+			{
+				if (_acquired)
+				{
+					_socket.EndIo();
+				}
+			}
+
+			bool IsAcquired() const
+			{
+				return _acquired;
+			}
+
+		private:
+			IoGuard(const Socket &socket, bool acquired)
+				: _socket(socket),
+				  _acquired(acquired)
+			{
+			}
+
+		private:
+			const Socket &_socket;
+			const bool _acquired;
 		};
 
 	public:
@@ -171,14 +220,25 @@ namespace ov
 
 		void SetState(SocketState state);
 
-		SocketWrapper GetSocket() const
+		// Closes a handle that no syscall can be using any more
+		static void CloseNativeHandle(SocketType type, int native_handle);
+
+		// Whether a native handle is assigned and no close has started
+		bool IsOpen() const
 		{
-			return _socket;
+			return (_io_ref.load(std::memory_order_acquire) & IO_REF_CLOSING) == 0;
 		}
 
+		// A TCP/UDP number can belong to another socket once this one releases it,
+		// so identify a socket by `GetId()` and use the handle through the methods of this class.
 		int GetNativeHandle() const
 		{
 			return _socket.GetNativeHandle();
+		}
+
+		socket_id_t GetId() const
+		{
+			return _id;
 		}
 
 		SocketType GetType() const;
@@ -272,10 +332,16 @@ namespace ov
 			_end_of_stream = true;
 		}
 
-		bool IsClosing() const
+		// Whether a non-blocking close has been requested; a blocking close and `CloseImmediately()` do not set it
+		bool HasCloseCommand() const
 		{
 			return _has_close_command;
 		}
+
+		// Registers this socket in an epoll instance the caller owns (TCP/UDP only)
+		std::shared_ptr<Error> AddToExternalEpoll(int epoll_fd, epoll_event *event);
+		// Removes this socket from that epoll instance. For a released handle this only succeeds, since closing the handle removes it.
+		std::shared_ptr<Error> DeleteFromExternalEpoll(int epoll_fd);
 
 #ifdef OME_LATENCY_PROBE
 		// Latency probe (OME_LATENCY_PROBE only): kernel software RX timestamp (ms) of the most
@@ -461,7 +527,7 @@ namespace ov
 		};
 
 	protected:
-		virtual bool Create(const SocketType type, const SocketFamily family);
+		bool Create(const SocketType type, const SocketFamily family);
 
 		// Internal version of MakeNonBlocking() - It doesn't check state
 		bool MakeNonBlockingInternal(std::shared_ptr<SocketAsyncInterface> callback, bool need_to_wait_first_epoll_event);
@@ -481,6 +547,11 @@ namespace ov
 		DispatchResult DispatchEventInternal(DispatchCommand &command) OV_REQUIRES(_dispatch_queue_lock);
 
 		bool IsSendable() const;
+		bool HasConnectCompleted() const;
+		// Wakes the blocking connect waiting on this socket, which then decides its result itself
+		void WakeConnectWaiter();
+		// Waits until a blocking connect in progress completes, closes or times out, and returns its error
+		std::shared_ptr<const SocketError> WaitForConnectResult(int timeout_msec);
 		ssize_t HandleSendError(const size_t total_sent);
 
 		bool DispatchEventsAfterAppendCommand();
@@ -497,9 +568,10 @@ namespace ov
 		DispatchResult HalfClose();
 		DispatchResult WaitForHalfClose();
 
-		// CloseInternal() doesn't call the _callback directly
-		// So, we need to call CallCloseCallbackIfNeeded() after calling this api to do connection callback
+		// Does not call the close callback itself: every caller runs `CallCloseCallbackIfNeeded()` after it
 		virtual bool CloseInternal(SocketState close_reason) OV_REQUIRES(_dispatch_queue_lock);
+		// Closes and moves to `new_state`, unless another close came first
+		bool CloseAndSetState(SocketState new_state) OV_REQUIRES(_dispatch_queue_lock);
 
 		// Since the resource is usually cleaned inside the OnClosed() callback,
 		// callback is performed outside the lock_guard to prevent acquiring the lock.
@@ -510,7 +582,7 @@ namespace ov
 
 		// ClientSocket doesn't need to wait the first epoll event
 		bool AddToWorker(bool need_to_wait_first_epoll_event);
-		bool DeleteFromWorker();
+		void DeleteFromWorker();
 
 		// When using epoll ET mode, the first event occurs immediately after EPOLL_CTL_ADD. (except SRT epoll)
 		// This API is used for waiting the event, and MUST be called in SocketPoolWorker::ThreadProc() thread
@@ -550,15 +622,32 @@ namespace ov
 
 		DispatchResult DispatchEventsInternal();
 
+		// Called once a native handle is assigned, before the socket is shared
+		void SetNativeHandleOpened();
+		bool BeginIo() const;
+		bool PinNativeHandle() const;
+		void EndIo() const;
+		void ReleaseNativeHandle() const;
+
 	protected:
 		std::shared_ptr<SocketPoolWorker> _worker;
+		// Set by the worker that builds the socket. The first close resets it, unless the socket has a close callback,
+		// which takes it to the worker's queue until the worker has run the callback or, once stopped, dropped it.
+		SocketCountSlot _count_slot;
+
+		const socket_id_t _id;
 
 		SocketWrapper _socket;
+		// The owner reference (1) plus the syscalls in flight on `_socket`.
+		// `IO_REF_CLOSING` stays set until a handle is assigned and again once a close starts.
+		// The reference that drops the count to zero while it is set releases the handle.
+		// An SRT ID is closed by `CloseInternal()` at once, so for SRT the release does nothing.
+		mutable std::atomic<uint32_t> _io_ref{IO_REF_CLOSING};
 		SocketFamily _family;
 
 		std::atomic<SocketState> _state = SocketState::Closed;
 
-		BlockingMode _blocking_mode = BlockingMode::Blocking;
+		std::atomic<BlockingMode> _blocking_mode{BlockingMode::Blocking};
 
 		// Used to reschedule deferred accept/read handling when processing must be retried later.
 		// This is a software-side retry marker, not a real pending kernel read event.
@@ -569,6 +658,8 @@ namespace ov
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};
+		// Set when the worker sees a blocking connect complete, or when the socket closes
+		Event _connect_event{true};
 
 		std::atomic<bool> _end_of_stream = false;
 
@@ -584,9 +675,8 @@ namespace ov
 
 		// A temporary variable used to send callback without mutex lock
 		std::shared_ptr<SocketAsyncInterface> _post_callback;
-		// Atomic: a second `CloseInternal()` can rewrite this while the close callback
-		// thread is still reading the first close's value (no common lock on that pair)
-		std::atomic<SocketState> _close_reason{SocketState::Closed};
+		// Written by the first `CloseInternal()` before the `_post_callback` handoff, and read by the close callback
+		SocketState _close_reason = SocketState::Closed;
 
 		std::atomic<bool> _force_stop = false;
 

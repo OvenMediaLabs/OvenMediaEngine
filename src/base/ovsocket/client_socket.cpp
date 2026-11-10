@@ -31,7 +31,7 @@ namespace ov
 {
 	ClientSocket::ClientSocket(
 		PrivateToken token, const std::shared_ptr<SocketPoolWorker> &worker,
-		const std::shared_ptr<ServerSocket> &server_socket, SocketWrapper client_socket, const SocketAddress &remote_address)
+		SocketWrapper client_socket, const std::shared_ptr<ServerSocket> &server_socket, const SocketAddress &remote_address)
 		: Socket(token, worker, client_socket, remote_address),
 
 		  _server_socket(server_socket)
@@ -45,26 +45,18 @@ namespace ov
 	{
 	}
 
-	bool ClientSocket::Create(const SocketType type, const SocketFamily family)
-	{
-		auto server_socket = _server_socket.lock();
-
-		if (server_socket != nullptr)
-		{
-			// Do not need to create a socket - socket is already created
-			return true;
-		}
-
-		OV_ASSERT2(false);
-
-		return false;
-	}
-
 	bool ClientSocket::StoreSrtStreamId()
 	{
 		if (GetType() != ov::SocketType::Srt)
 		{
 			return true;
+		}
+
+		IoGuard io_guard(*this);
+
+		if (io_guard.IsAcquired() == false)
+		{
+			return false;
 		}
 
 		char stream_id_buff[512];
@@ -83,6 +75,13 @@ namespace ov
 	{
 		// get local address
 		sockaddr_storage local_addr{};
+
+		IoGuard io_guard(*this);
+
+		if (io_guard.IsAcquired() == false)
+		{
+			return false;
+		}
 
 		if (GetType() == ov::SocketType::Srt)
 		{
@@ -277,20 +276,22 @@ namespace ov
 
 	bool ClientSocket::CloseInternal(SocketState close_reason)
 	{
-		auto server_socket = _server_socket.lock();
+		// The close runs even when the server socket is gone
+		const bool result = Socket::CloseInternal(close_reason);
 
-		if (server_socket == nullptr)
-		{
-			OV_ASSERT2("_server_socket must not be nullptr");
-			return false;
-		}
-
-		if (Socket::CloseInternal(close_reason))
+		if (result)
 		{
 			SetState(SocketState::Closed);
 		}
 
-		return server_socket->OnClientDisconnected(GetSharedPtrAs<ClientSocket>());
+		auto server_socket = _server_socket.lock();
+
+		if (server_socket != nullptr)
+		{
+			server_socket->OnClientDisconnected(GetSharedPtrAs<ClientSocket>());
+		}
+
+		return result;
 	}
 
 	String ClientSocket::ToString() const

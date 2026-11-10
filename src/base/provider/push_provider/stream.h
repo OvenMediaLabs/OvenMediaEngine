@@ -14,7 +14,13 @@
 namespace pvd
 {
 	class PushProvider;
-	
+
+	// A type of its own, so a channel ID is not mixed up with a socket ID, a stream ID or another integer.
+	// It identifies a channel within one `PushProvider`, which picks the value:
+	// RTMP, MPEG-TS and SRT use `ov::Socket::GetId()`, and WebRTC uses the stream ID.
+	// No bits carry a separate meaning, and a value only has to be unique among the channels of its provider.
+	using channel_id_t = ov::StrongType<uint64_t, struct ChannelIdTag>;
+
 	class PushStream : public Stream
 	{
 	public:
@@ -29,12 +35,12 @@ namespace pvd
 		bool Terminate() override;
 
 		virtual bool OnDataReceived(const std::shared_ptr<const ov::Data> &data) = 0;
-		uint32_t GetChannelId();
+		channel_id_t GetChannelId();
 		bool DoesBelongApplication();
 		virtual PushStreamType GetPushStreamType() = 0;
 
-		uint32_t GetRelatedChannelId();
-		void SetRelatedChannelId(uint32_t related_channel_id);
+		channel_id_t GetRelatedChannelId();
+		void SetRelatedChannelId(channel_id_t related_channel_id);
 
 		bool IsReadyToReceiveStreamData();
 		bool IsPublished();
@@ -115,9 +121,9 @@ namespace pvd
 		}
 
 	protected:
-		PushStream(StreamSourceType source_type, ov::String channel_name, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider);
+		PushStream(StreamSourceType source_type, ov::String channel_name, channel_id_t channel_id, const std::shared_ptr<PushProvider> &provider);
 		PushStream(StreamSourceType source_type, ov::String channel_name, const std::shared_ptr<PushProvider> &provider);
-		PushStream(StreamSourceType source_type, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider);
+		PushStream(StreamSourceType source_type, channel_id_t channel_id, const std::shared_ptr<PushProvider> &provider);
 		PushStream(StreamSourceType source_type, const std::shared_ptr<PushProvider> &provider);
 
 		// app name, stream name, tracks
@@ -145,9 +151,9 @@ namespace pvd
 		// Records that something `GetSilenceState()` reads has changed
 		void CountStateChange();
 
-		uint32_t _channel_id						   = 0;
+		channel_id_t _channel_id;
 		// If it's type is DATA, related channel is Signalling, or vice versa.
-		uint32_t		_related_channel_id = 0; 
+		channel_id_t		_related_channel_id; 
 		// Published?
 		bool			_is_published = false;
 		// Time elapsed since the last OnDataReceived function was called

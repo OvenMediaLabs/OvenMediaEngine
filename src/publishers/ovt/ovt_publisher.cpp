@@ -163,7 +163,7 @@ bool OvtPublisher::OnDeletePublisherApplication(const std::shared_ptr<pub::Appli
 	return true;
 }
 
-std::shared_ptr<OvtPublisher::RemoteContext> OvtPublisher::GetRemoteContext(int remote_id)
+std::shared_ptr<OvtPublisher::RemoteContext> OvtPublisher::GetRemoteContext(ov::socket_id_t remote_id)
 {
 	std::lock_guard<std::mutex> guard(_remotes_lock);
 
@@ -180,7 +180,7 @@ std::shared_ptr<OvtPublisher::RemoteContext> OvtPublisher::GetRemoteContext(int 
 	return context;
 }
 
-bool OvtPublisher::RemoveRemoteContext(int remote_id)
+bool OvtPublisher::RemoveRemoteContext(ov::socket_id_t remote_id)
 {
 	std::lock_guard<std::mutex> guard(_remotes_lock);
 	_remotes.erase(remote_id);
@@ -189,7 +189,7 @@ bool OvtPublisher::RemoveRemoteContext(int remote_id)
 
 void OvtPublisher::AppendOvtObject(const std::shared_ptr<ov::Socket> &remote, Json::Value &root)
 {
-	if (GetRemoteContext(remote->GetNativeHandle())->is_ovt2)
+	if (GetRemoteContext(remote->GetId())->is_ovt2)
 	{
 		root["ovt"] = ovt::MakeResponseOvtObject();
 	}
@@ -205,14 +205,14 @@ void OvtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,
 								  const ov::SocketAddress &address,
 								  const std::shared_ptr<const ov::Data> &data)
 {
-	auto context = GetRemoteContext(remote->GetNativeHandle());
+	auto context = GetRemoteContext(remote->GetId());
 	auto depacketizer = context->depacketizer;
 
 	if (depacketizer->AppendPacket(data) == false)
 	{
 		// The depacketizer does not consume bytes it cannot parse, so an unparsable connection is closed.
 		ResponseResult(remote, 0, "unknown", 0, 500, "Server Internals Error");
-		RemoveSessions(remote->GetNativeHandle());
+		RemoveSessions(remote->GetId());
 		remote->Close();
 		return;
 	}
@@ -375,29 +375,25 @@ void OvtPublisher::OnDisconnected(const std::shared_ptr<ov::Socket> &remote,
 								  const std::shared_ptr<const ov::Error> &error)
 {
 	logti("OvtProvider is disconnected(%d) : %s", static_cast<uint8_t>(reason), remote->ToString().CStr());
-	// disconnect means when the stream disconnects itself.
-	if (reason != PhysicalPortDisconnectReason::Disconnect)
-	{
-		RemoveSessions(remote->GetNativeHandle());
-	}
-	UnlinkRemoteFromStream(remote->GetNativeHandle());
-	RemoveRemoteContext(remote->GetNativeHandle());
+	// A closed connection leaves none of its sessions
+	RemoveSessions(remote->GetId());
+	UnlinkRemoteFromStream(remote->GetId());
+	RemoveRemoteContext(remote->GetId());
 }
 
-void OvtPublisher::RemoveSessions(int remote_id)
+void OvtPublisher::RemoveSessions(ov::socket_id_t remote_id)
 {
 	std::shared_lock<std::shared_mutex> lock(_remote_stream_map_lock);
 	auto streams = _remote_stream_map.equal_range(remote_id);
 	for (auto it = streams.first; it != streams.second; ++it)
 	{
-		auto stream = it->second;
-		stream->RemoveSessionByConnectorId(remote_id);
+		it->second.stream->RemoveSession(it->second.session_id);
 	}
 }
 
 bool OvtPublisher::ResolveTrackFilter(const std::shared_ptr<ov::Socket> &remote, const std::shared_ptr<OvtStream> &stream, const ov::String &track_set_name, const std::optional<std::set<uint32_t>> &requested_track_ids, OvtTrackFilter &filter)
 {
-	filter.legacy_edge		   = (GetRemoteContext(remote->GetNativeHandle())->is_ovt2 == false);
+	filter.legacy_edge		   = (GetRemoteContext(remote->GetId())->is_ovt2 == false);
 	filter.requested_track_ids = requested_track_ids;
 	filter.edge				   = remote->GetRemoteAddressAsUrl();
 
@@ -594,7 +590,7 @@ void OvtPublisher::HandleDescribeRequest(const std::shared_ptr<ov::Socket> &remo
 void OvtPublisher::RememberDescribedStream(const std::shared_ptr<ov::Socket> &remote, const ov::String &stream_key, info::stream_id_t stream_id, uint32_t track_epoch,
 										   const std::set<uint32_t> &track_ids)
 {
-	auto context				  = GetRemoteContext(remote->GetNativeHandle());
+	auto context				  = GetRemoteContext(remote->GetId());
 	context->described_stream_key = stream_key;
 	context->described_stream_id  = stream_id;
 	context->track_epoch		  = track_epoch;
@@ -626,7 +622,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 	// The describe and this play can land on two different instances of the same stream.
 	// The edge takes its tracks and playlists from the describe, so a changed instance is refused.
 	auto stream_key = ov::String::FormatString("%s/%s", vhost_app_name.CStr(), url->Stream().CStr());
-	auto context	= GetRemoteContext(remote->GetNativeHandle());
+	auto context	= GetRemoteContext(remote->GetId());
 	if (context->described_stream_id.has_value() && (context->described_stream_key == stream_key) &&
 		(*context->described_stream_id != stream->GetId()))
 	{
@@ -659,8 +655,16 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 		logtw("(%s/%s) has no track this edge can receive", vhost_app_name.CStr(), url->Stream().CStr());
 	}
 
-	// Session ID is remote socket's ID
-	auto session = OvtSession::Create(app, stream, remote->GetNativeHandle(), remote);
+	// A connection keeps one session per stream, so a repeated PLAY is refused and the existing session stays
+	if (FindPlayedSession(remote->GetId(), stream).has_value())
+	{
+		ov::String msg;
+		msg.Format("(%s/%s) is already played on this connection", vhost_app_name.CStr(), url->Stream().CStr());
+		ResponseResult(remote, 0, "play", request_id, 409, msg);
+		return;
+	}
+
+	auto session = OvtSession::Create(app, stream, stream->IssueUniqueSessionId(), remote);
 	if (session == nullptr)
 	{
 		ov::String msg;
@@ -683,7 +687,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 			  vhost_app_name.CStr(), url->Stream().CStr());
 	}
 
-	LinkRemoteWithStream(remote->GetNativeHandle(), stream);
+	LinkRemoteWithStream(remote->GetId(), stream, session->GetId());
 
 	SendPlayResponse(remote, session->GetId(), request_id, stream, filter, allowed_track_ids, described_track_ids);
 
@@ -707,8 +711,12 @@ void OvtPublisher::HandleStopRequest(const std::shared_ptr<ov::Socket> &remote, 
 	logti("Edge %s requested stop of %s/%s", remote->ToString().CStr(), vhost_app_name.CStr(), url->Stream().CStr());
 	ResponseResult(remote, session_id, "stop", request_id, 200, "ok");
 
-	// Session ID is remote socket's ID
-	stream->RemoveSession(remote->GetNativeHandle());
+	auto played_session_id = UnlinkPlayedStream(remote->GetId(), stream);
+
+	if (played_session_id.has_value())
+	{
+		stream->RemoveSession(played_session_id.value());
+	}
 }
 
 void OvtPublisher::ResponseResult(const std::shared_ptr<ov::Socket> &remote, uint32_t session_id, const ov::String app, uint32_t request_id, uint32_t code, const ov::String &msg)
@@ -766,20 +774,53 @@ void OvtPublisher::SendResponse(const std::shared_ptr<ov::Socket> &remote, uint3
 	remote->Send(response);
 }
 
-bool OvtPublisher::LinkRemoteWithStream(int remote_id, std::shared_ptr<OvtStream> &stream)
+bool OvtPublisher::LinkRemoteWithStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream, session_id_t session_id)
 {
-	// For ungraceful disconnect
-	// one remote id can be join multiple streams.
+	// A connection can play several streams
 	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
-	_remote_stream_map.insert(std::pair<int, std::shared_ptr<OvtStream>>(remote_id, stream));
+	_remote_stream_map.emplace(remote_id, PlayedStream{stream, session_id});
 
 	return true;
 }
 
-bool OvtPublisher::UnlinkRemoteFromStream(int remote_id)
+bool OvtPublisher::UnlinkRemoteFromStream(ov::socket_id_t remote_id)
 {
 	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
 	_remote_stream_map.erase(remote_id);
 
 	return true;
+}
+
+std::optional<session_id_t> OvtPublisher::FindPlayedSession(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream)
+{
+	std::shared_lock<std::shared_mutex> lock(_remote_stream_map_lock);
+	auto played_streams = _remote_stream_map.equal_range(remote_id);
+
+	for (auto it = played_streams.first; it != played_streams.second; ++it)
+	{
+		if (it->second.stream == stream)
+		{
+			return it->second.session_id;
+		}
+	}
+
+	return std::nullopt;
+}
+
+std::optional<session_id_t> OvtPublisher::UnlinkPlayedStream(ov::socket_id_t remote_id, const std::shared_ptr<OvtStream> &stream)
+{
+	std::lock_guard<std::shared_mutex> guard(_remote_stream_map_lock);
+	auto played_streams = _remote_stream_map.equal_range(remote_id);
+
+	for (auto it = played_streams.first; it != played_streams.second; ++it)
+	{
+		if (it->second.stream == stream)
+		{
+			auto session_id = it->second.session_id;
+			_remote_stream_map.erase(it);
+			return session_id;
+		}
+	}
+
+	return std::nullopt;
 }

@@ -91,9 +91,11 @@ namespace pvd
 			_rtp_rtcp->Stop();
 		}
 
-		if (_signalling_socket != nullptr)
+		auto signalling_socket = std::atomic_load(&_signalling_socket);
+
+		if (signalling_socket != nullptr)
 		{
-			_signalling_socket->Close();
+			signalling_socket->Close();
 		}
 	}
 
@@ -199,19 +201,21 @@ namespace pvd
 		auto socket_address = ov::SocketAddress::CreateAndGetFirst(_curr_url->Host(), _curr_url->Port() == 0 ? 554 : _curr_url->Port());
 
 		// Connect
-		_signalling_socket = signalling_socket_pool->AllocSocket(socket_address.GetFamily());
-		if (_signalling_socket == nullptr)
+		auto signalling_socket = signalling_socket_pool->AllocSocket(socket_address.GetFamily());
+
+		if (signalling_socket == nullptr)
 		{
 			SetState(State::ERROR);
 			logte("To create client socket is failed.");
 
-			_signalling_socket = nullptr;
 			return false;
 		}
 
-		_signalling_socket->MakeBlocking();
+		std::atomic_store(&_signalling_socket, signalling_socket);
 
-		auto error = _signalling_socket->Connect(socket_address, 3000);
+		signalling_socket->MakeBlocking();
+
+		auto error = signalling_socket->Connect(socket_address, 3000);
 		if (error != nullptr)
 		{
 			SetState(State::ERROR);
@@ -815,7 +819,7 @@ namespace pvd
 		}
 
 		// Send
-		return _signalling_socket->Send(message->GetMessage());
+		return std::atomic_load(&_signalling_socket)->Send(message->GetMessage());
 	}
 
 	std::shared_ptr<RtspMessage> RtspcStream::ReceiveResponse(uint32_t cseq, uint64_t timeout_ms)
@@ -883,13 +887,15 @@ namespace pvd
 	{
 		uint8_t buffer[65535];
 
+		auto signalling_socket = std::atomic_load(&_signalling_socket);
+
 		if (non_block == false && timeout_msec != 0)
 		{
 			struct timeval tv = {timeout_msec / 1000, (timeout_msec % 1000) * 1000};
-			_signalling_socket->SetRecvTimeout(tv);
+			signalling_socket->SetRecvTimeout(tv);
 		}
 
-		auto result = _signalling_socket->Recv(buffer, 65535, non_block);
+		auto result = signalling_socket->Recv(buffer, 65535, non_block);
 		if (result.has_value() == false)
 		{
 			logte("[%s/%s] An error occurred while receiving packet: %s", GetApplicationName(), GetName().CStr(), result.error()->What());
@@ -916,9 +922,9 @@ namespace pvd
 		return true;
 	}
 
-	int RtspcStream::GetFileDescriptorForDetectingEvent()
+	std::shared_ptr<ov::Socket> RtspcStream::GetSocketForDetectingEvent()
 	{
-		return _signalling_socket->GetSocket().GetNativeHandle();
+		return std::atomic_load(&_signalling_socket);
 	}
 
 	PullStream::ProcessMediaResult RtspcStream::ProcessMediaPacket()
@@ -1237,7 +1243,7 @@ namespace pvd
 			ByteWriter<uint16_t>::WriteBigEndian(&ptr[2], data->GetLength());
 			channel_data->Append(data);
 
-			return _signalling_socket->Send(channel_data);
+			return std::atomic_load(&_signalling_socket)->Send(channel_data);
 		}
 		else
 		{

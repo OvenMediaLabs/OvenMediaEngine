@@ -32,13 +32,13 @@ namespace pvd
 		}
 	}  // namespace
 
-	PushStream::PushStream(StreamSourceType source_type, ov::String channel_name, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider)
+	PushStream::PushStream(StreamSourceType source_type, ov::String channel_name, channel_id_t channel_id, const std::shared_ptr<PushProvider> &provider)
 		: PushStream(source_type, channel_id, provider)
 	{
 		SetName(channel_name);
 	}
 
-	PushStream::PushStream(StreamSourceType source_type, uint32_t channel_id, const std::shared_ptr<PushProvider> &provider)
+	PushStream::PushStream(StreamSourceType source_type, channel_id_t channel_id, const std::shared_ptr<PushProvider> &provider)
 		: Stream(source_type)
 	{
 		SetId(pvd::Application::IssueUniqueStreamId());
@@ -58,7 +58,7 @@ namespace pvd
 		auto id = pvd::Application::IssueUniqueStreamId();
 		SetId(id);
 		// If the channel id is not given, use the stream id as the channel id
-		_channel_id = id;
+		_channel_id = channel_id_t(id);
 		_provider = provider;
 	}
 
@@ -73,17 +73,17 @@ namespace pvd
 		return Stream::Terminate();
 	}
 
-	uint32_t PushStream::GetChannelId()
+	channel_id_t PushStream::GetChannelId()
 	{
 		return _channel_id;
 	}
 
-	uint32_t PushStream::GetRelatedChannelId()
+	channel_id_t PushStream::GetRelatedChannelId()
 	{
 		return _related_channel_id;
 	}
 
-	void PushStream::SetRelatedChannelId(uint32_t related_channel_id)
+	void PushStream::SetRelatedChannelId(channel_id_t related_channel_id)
 	{
 		_related_channel_id = related_channel_id;
 	}

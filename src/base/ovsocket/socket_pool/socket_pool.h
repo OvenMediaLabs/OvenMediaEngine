@@ -92,21 +92,25 @@ namespace ov
 		template <typename Tsocket = ov::Socket, typename... Targuments>
 		std::shared_ptr<Tsocket> AllocSocket(const SocketFamily family, Targuments... args)
 		{
-			std::shared_ptr<SocketPoolWorker> worker = GetLeastBusyWorker();
-			if (worker != nullptr)
+			auto [worker, count_slot] = GetLeastBusyWorker();
+
+			return (worker != nullptr) ? worker->AllocSocket<Tsocket>(std::move(count_slot), family, args...) : nullptr;
+		}
+
+		// Takes over a handle that is already open, such as an accepted one.
+		// The new socket owns it, or it is closed when no worker is available.
+		template <typename Tsocket, typename... Targuments>
+		std::shared_ptr<Tsocket> AdoptSocket(SocketWrapper handle, Targuments... args)
+		{
+			auto [worker, count_slot] = GetLeastBusyWorker();
+
+			if (worker == nullptr)
 			{
-				auto socket = worker->AllocSocket<Tsocket>(family, args...);
-
-				if (socket == nullptr)
-				{
-					// Rollback
-					worker->DecreaseSocketCount();
-				}
-
-				return socket;
+				Socket::CloseNativeHandle(handle.GetType(), handle.GetNativeHandle());
+				return nullptr;
 			}
 
-			return nullptr;
+			return worker->MakeSocket<Tsocket>(std::move(count_slot), handle, args...);
 		}
 
 		bool ReleaseSocket(const std::shared_ptr<Socket> &socket)
@@ -124,35 +128,40 @@ namespace ov
 		}
 
 	protected:
-		// This method will increase the number of sockets for that worker by 1
-		std::shared_ptr<SocketPoolWorker> GetLeastBusyWorker()
+		// The slot counts the new socket on the worker under the list lock,
+		// so the next pick sees it and an idle thread-per-socket worker is not released before the socket takes it
+		std::pair<std::shared_ptr<SocketPoolWorker>, SocketCountSlot> GetLeastBusyWorker()
 		{
 			LockGuard lock_guard(_worker_list_mutex);
+
+			if (_uninitialized)
+			{
+				return {};
+			}
 
 			if (_thread_per_socket)
 			{
 				auto instance = CreateWorker(GetSharedPtr());
-				if (instance != nullptr)
+				if (instance == nullptr)
 				{
-					instance->IncreaseSocketCount();
-					_worker_list.push_back(instance);
+					return {};
 				}
 
-				return instance;
+				_worker_list.push_back(instance);
+
+				return {instance, SocketCountSlot(instance.get())};
 			}
 
 			if (_worker_list.size() == 0)
 			{
 				OV_ASSERT(_initialized, "Worker list is not initialized");
-				return nullptr;
+				return {};
 			}
 
 			// Use the worker with the smallest number of sockets currently being processed
 			auto worker = *std::min_element(_worker_list.begin(), _worker_list.end(), SocketPoolWorker::Compare);
 
-			worker->IncreaseSocketCount();
-
-			return worker;
+			return {worker, SocketCountSlot(worker.get())};
 		}
 
 		std::shared_ptr<SocketPoolWorker> CreateWorker(const std::shared_ptr<ov::SocketPool> &pool)
@@ -181,6 +190,8 @@ namespace ov
 
 		mutable Mutex _worker_list_mutex;
 		std::vector<std::shared_ptr<SocketPoolWorker>> _worker_list OV_GUARDED_BY(_worker_list_mutex);
+		// Set when `Uninitialize()` takes the workers, so no worker is created or handed out after that
+		bool _uninitialized OV_GUARDED_BY(_worker_list_mutex) = false;
 
 		// Worker releaser
 		ov::DelayQueue _timer{"SocketPoolWorkerReleaser"};

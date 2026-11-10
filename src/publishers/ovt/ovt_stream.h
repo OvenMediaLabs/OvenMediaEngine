@@ -59,8 +59,6 @@ public:
 
 	bool OnOvtPacketized(std::shared_ptr<OvtPacket> &packet) override;
 
-	bool RemoveSessionByConnectorId(int connector_id);
-
 	// Resolves the set of allowed track ids for the named TrackSet.
 	// Returns false if the TrackSet does not exist on this stream.
 	bool ResolveTrackSetTrackIds(const ov::String &track_set_name, std::set<uint32_t> &out_track_ids);

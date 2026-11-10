@@ -345,7 +345,7 @@ namespace pvd
 	bool MpegTsProvider::OnConnected(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddressPair &address_pair)
 	{
 		auto local_port		  = remote->GetLocalAddress()->Port();
-		auto channel_id		  = remote->GetNativeHandle();
+		auto channel_id		  = GetChannelId(remote);
 
 		auto stream_port_item = GetStreamPortItem(local_port);
 		if (stream_port_item == nullptr || stream_port_item->IsAttached() == false)
@@ -358,7 +358,7 @@ namespace pvd
 			stream_port_item->GetVhostAppName(), stream_port_item->GetOutputStreamName(),
 			remote, address_pair, 0, GetSharedPtrAs<PushProvider>());
 
-		if (PushProvider::OnChannelCreated(remote->GetNativeHandle(), stream) == true)
+		if (PushProvider::OnChannelCreated(channel_id, stream) == true)
 		{
 			logti("A MPEG-TS client has connected");  // %s", remote->ToString().CStr());
 			stream_port_item->OnClientConnected(channel_id);
@@ -376,7 +376,7 @@ namespace pvd
 											const std::shared_ptr<const ov::Data> &data)
 	{
 		auto local_port = remote->GetLocalAddress()->Port();
-		auto channel_id = remote->GetNativeHandle();
+		auto channel_id = GetChannelId(remote);
 
 		auto stream_port_item = GetStreamPortItem(local_port);
 		if (stream_port_item == nullptr)
@@ -421,7 +421,7 @@ namespace pvd
 										PhysicalPortDisconnectReason reason,
 										const std::shared_ptr<const ov::Error> &error)
 	{
-		auto channel = GetChannel(remote->GetNativeHandle());
+		auto channel = GetChannel(GetChannelId(remote));
 		if (channel == nullptr)
 		{
 			logte("Failed to find channel to delete stream (remote : ");  //%s)", remote->ToString().CStr());
@@ -432,6 +432,6 @@ namespace pvd
 			  channel->GetApplicationName(), channel->GetName().CStr());
 		//remote->ToString().CStr());
 
-		PushProvider::OnChannelDeleted(remote->GetNativeHandle());
+		PushProvider::OnChannelDeleted(GetChannelId(remote));
 	}
 }  // namespace pvd

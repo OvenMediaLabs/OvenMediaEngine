@@ -49,7 +49,7 @@ namespace pvd
 			return ProcessMediaEventTrigger::TRIGGER_EPOLL;
 		}
 
-		int GetFileDescriptorForDetectingEvent() override;
+		std::shared_ptr<ov::Socket> GetSocketForDetectingEvent() override;
 		// If this stream belongs to the Pull provider, 
 		// this function is called periodically by the StreamMotor of application. 
 		// Media data has to be processed here.

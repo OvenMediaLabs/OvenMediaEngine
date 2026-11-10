@@ -20,7 +20,7 @@ namespace ov
 
 		ClientSocket(
 			PrivateToken token, const std::shared_ptr<SocketPoolWorker> &worker,
-			const std::shared_ptr<ServerSocket> &server_socket, SocketWrapper client_socket, const SocketAddress &remote_address);
+			SocketWrapper client_socket, const std::shared_ptr<ServerSocket> &server_socket, const SocketAddress &remote_address);
 
 		~ClientSocket() override;
 
@@ -29,8 +29,6 @@ namespace ov
 		String ToString() const override;
 
 	protected:
-		bool Create(const SocketType type, const SocketFamily family) override;
-
 		bool SetSocketOptions();
 		bool StoreSrtStreamId();	// Only available if socket is SRT
 		bool RetrieveLocalAddress();

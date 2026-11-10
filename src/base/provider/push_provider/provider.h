@@ -42,7 +42,7 @@ namespace pvd
 		std::shared_ptr<PushApplication> GetApplicationByName(const info::VHostAppName &vhost_app_name);
 
 		// To be interleaved mode, a channel must have application/stream and track informaiton
-		virtual bool PublishChannel(uint32_t channel_id, const info::VHostAppName &vhost_app_name, const std::shared_ptr<PushStream> &channel);
+		virtual bool PublishChannel(channel_id_t channel_id, const info::VHostAppName &vhost_app_name, const std::shared_ptr<PushStream> &channel);
 
     protected:
 		PushProvider(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
@@ -52,11 +52,18 @@ namespace pvd
 
 		// [Interleaved protocols such as RTSP/TCP, RTMP, MPEG-TS]
 		// - OnChannelCreated() -> [Collect app/stream name and track informaiton] -> PublishChannel() -> OnChannelDeleted(Signalling)
-		bool OnChannelCreated(uint32_t channel_id, const std::shared_ptr<pvd::PushStream> &channel);
-		bool OnDataReceived(uint32_t channel_id, const std::shared_ptr<const ov::Data> &data);
-		bool OnChannelDeleted(uint32_t channel_id);
+		bool OnChannelCreated(channel_id_t channel_id, const std::shared_ptr<pvd::PushStream> &channel);
+		bool OnDataReceived(channel_id_t channel_id, const std::shared_ptr<const ov::Data> &data);
+		bool OnChannelDeleted(channel_id_t channel_id);
 		bool OnChannelDeleted(const std::shared_ptr<pvd::PushStream> &channel);
-		std::shared_ptr<PushStream> GetChannel(uint32_t channel_id);
+		std::shared_ptr<PushStream> GetChannel(channel_id_t channel_id);
+
+		// The channel of a socket, identified by its socket ID.
+		// A datagram listener (MPEG-TS/UDP) gives every sender on its port the same channel.
+		static channel_id_t GetChannelId(const std::shared_ptr<ov::Socket> &socket)
+		{
+			return channel_id_t(socket->GetId().GetValue());
+		}
 
 		virtual void OnTimedOut(const std::shared_ptr<PushStream> &channel) {}
 
@@ -69,6 +76,6 @@ namespace pvd
 		// All streams (signalling streams + data streams)
 		std::shared_mutex _channels_lock;
 		// channel_id : stream
-		std::map<uint32_t, std::shared_ptr<PushStream>>	_channels;
+		std::map<channel_id_t, std::shared_ptr<PushStream>>	_channels;
     };
 }

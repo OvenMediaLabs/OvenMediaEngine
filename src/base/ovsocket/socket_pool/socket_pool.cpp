@@ -24,15 +24,6 @@ namespace ov
 
 	SocketPool::~SocketPool()
 	{
-		// Verify that the epoll is closed normally
-		LockGuard lock_guard(_worker_list_mutex);
-
-#if DEBUG
-		for (auto &worker : _worker_list)
-		{
-			OV_ASSERT(worker->_epoll == InvalidSocket, "Epoll is not uninitialized");
-		}
-#endif	// DEBUG
 	}
 
 	SocketType SocketPool::GetType() const
@@ -76,11 +67,12 @@ namespace ov
 						}
 					}
 
-					for (auto worker : release_worker_list)
+					for (auto &worker : release_worker_list)
 					{
 						logat("Releasing idle worker: %s", worker->ToString().CStr());
-						worker->Uninitialize();
 					}
+
+					UninitializeWorkers(release_worker_list);
 
 					return ov::DelayQueueAction::Repeat;
 				},
@@ -149,7 +141,12 @@ namespace ov
 
 	bool SocketPool::UninitializeWorkers(const std::vector<std::shared_ptr<SocketPoolWorker>> &worker_list)
 	{
-		for (auto worker : worker_list)
+		for (auto &worker : worker_list)
+		{
+			worker->RequestStop();
+		}
+
+		for (auto &worker : worker_list)
 		{
 			worker->Uninitialize();
 		}
@@ -161,11 +158,15 @@ namespace ov
 	{
 		logat("Trying to uninitialize socket pool...");
 
+		// Joined first, so the timer thread never drops the last reference to this pool through a worker it released
+		_timer.Stop();
+
 		std::vector<std::shared_ptr<SocketPoolWorker>> worker_list;
 
 		{
 			LockGuard lock_guard(_worker_list_mutex);
-			worker_list = std::move(_worker_list);
+			_uninitialized = true;
+			worker_list	   = std::move(_worker_list);
 		}
 
 		return UninitializeWorkers(worker_list);

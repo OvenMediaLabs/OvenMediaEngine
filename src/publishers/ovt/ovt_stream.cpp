@@ -1018,24 +1018,3 @@ bool OvtStream::ResolveTrackSetTrackIds(const ov::String &track_set_name, std::s
 
 	return true;
 }
-
-bool OvtStream::RemoveSessionByConnectorId(int connector_id)
-{
-	auto sessions = GetAllSessions();
-
-	logtt("RemoveSessionByConnectorId : all(%zu) connector(%d)", sessions.size(), connector_id);
-
-	for (const auto &item : sessions)
-	{
-		auto session = std::static_pointer_cast<OvtSession>(item.second);
-		logtt("session : %d %d", session->GetId(), session->GetConnector()->GetNativeHandle());
-
-		if (session->GetConnector()->GetNativeHandle() == connector_id)
-		{
-			RemoveSession(session->GetId());
-			return true;
-		}
-	}
-
-	return false;
-}

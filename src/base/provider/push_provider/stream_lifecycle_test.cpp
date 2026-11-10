@@ -164,7 +164,7 @@ namespace
 	class StubPushStream : public pvd::PushStream
 	{
 	public:
-		StubPushStream(uint32_t channel_id, const std::shared_ptr<pvd::PushProvider> &provider)
+		StubPushStream(pvd::channel_id_t channel_id, const std::shared_ptr<pvd::PushProvider> &provider)
 			: PushStream(StreamSourceType::Rtmp, channel_id, provider)
 		{
 		}
@@ -215,7 +215,7 @@ namespace
 	// which is the state every concrete push provider hands to `OnDataReceived()`.
 	struct Fixture
 	{
-		static constexpr uint32_t CHANNEL_ID = 7;
+		static constexpr pvd::channel_id_t CHANNEL_ID{7};
 
 		Fixture()
 		{
@@ -359,7 +359,7 @@ TEST(PushStreamLifecycle, DataForAnUnknownChannelIsRejected)
 {
 	Fixture f;
 
-	EXPECT_FALSE(f.provider->OnDataReceived(Fixture::CHANNEL_ID + 1, f.MakeData()));
+	EXPECT_FALSE(f.provider->OnDataReceived(pvd::channel_id_t(Fixture::CHANNEL_ID.GetValue() + 1), f.MakeData()));
 	EXPECT_FALSE(f.channel->_handler_ran);
 }
 

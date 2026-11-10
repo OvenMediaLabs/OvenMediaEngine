@@ -17,7 +17,7 @@
 #include "base/mediarouter/mediarouter_application_connector.h"
 #include "stream.h"
 
-#include <shared_mutex>
+#include <base/ovlibrary/tsa/mutex.h>
 
 #define MAX_EPOLL_EVENTS						1024
 #define EPOLL_TIMEOUT_MSEC						100
@@ -38,18 +38,32 @@ namespace pvd
 		bool DelStream(const std::shared_ptr<PullStream> &stream);
 
 	private:
-		bool AddStreamToEpoll(const std::shared_ptr<PullStream> &stream);
-		bool DelStreamFromEpoll(const std::shared_ptr<PullStream> &stream);
+		// A stream in this motor, with the socket it registered for events
+		struct Entry
+		{
+			std::shared_ptr<PullStream> stream;
+			// The socket registered in `_epoll_fd`, which may no longer be the one the stream holds.
+			// `nullptr` for a stream that is processed by interval.
+			std::shared_ptr<ov::Socket> event_socket;
+		};
+
+		// Removes the stream's entry and its epoll registration, and returns false if there is no entry
+		bool RemoveEntry(uint32_t stream_id) OV_REQUIRES(_streams_map_guard);
+		void EraseEntry(std::map<uint32_t, Entry>::iterator item) OV_REQUIRES(_streams_map_guard);
+		// Deletes the stream only while its entry still holds `event_socket`
+		bool DelStreamRegisteredWith(const std::shared_ptr<PullStream> &stream, const std::shared_ptr<ov::Socket> &event_socket);
 
 		void WorkerThread();
 
 		uint32_t _id;
 
-		int _epoll_fd;
+		// Watches the sockets of the streams processed by epoll. -1 before `Start()` and after `Stop()`.
+		int _epoll_fd = -1;
 
 		std::atomic<bool> _stop_thread_flag;
 		std::thread _thread;
-		std::shared_mutex _streams_map_guard;
-		std::map<uint32_t, std::shared_ptr<PullStream>> _streams;
+		ov::SharedMutex _streams_map_guard;
+		// key: stream ID
+		std::map<uint32_t, Entry> _streams OV_GUARDED_BY(_streams_map_guard);
 	};
 }

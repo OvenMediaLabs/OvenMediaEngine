@@ -592,7 +592,7 @@ namespace pvd
 		stream->SetFinalUrl(final_url);
 
 		// The stream of the webrtc provider has already completed signaling at this point.
-		if (PublishChannel(stream->GetId(), final_vhost_app_name, stream) == false)
+		if (PublishChannel(channel_id_t(stream->GetId()), final_vhost_app_name, stream) == false)
 		{
 			return false;
 		}
@@ -600,7 +600,7 @@ namespace pvd
 		// This provider calls `PublishChannel()` before this,
 		// and channel creation leaves the silence timeout alone,
 		// so the value `JoinStream()` applied is the one this channel runs on.
-		if (OnChannelCreated(stream->GetId(), stream) == false)
+		if (OnChannelCreated(channel_id_t(stream->GetId()), stream) == false)
 		{
 			return false;
 		}
@@ -939,7 +939,7 @@ namespace pvd
 		stream->SetRequestedUrl(requested_url);
 		stream->SetFinalUrl(final_url);
 
-		if (PublishChannel(stream->GetId(), final_vhost_app_name, stream) == false)
+		if (PublishChannel(channel_id_t(stream->GetId()), final_vhost_app_name, stream) == false)
 		{
 			return {http::StatusCode::InternalServerError, "Could not publish stream"};
 		}
@@ -947,7 +947,7 @@ namespace pvd
 		// This provider calls `PublishChannel()` before this,
 		// and channel creation leaves the silence timeout alone,
 		// so the value `JoinStream()` applied is the one this channel runs on.
-		if (OnChannelCreated(stream->GetId(), stream) == false)
+		if (OnChannelCreated(channel_id_t(stream->GetId()), stream) == false)
 		{
 			return {http::StatusCode::InternalServerError, "Could not publish stream"};
 		}
@@ -1006,7 +1006,7 @@ namespace pvd
 			return;
 		}
 
-		PushProvider::OnDataReceived(stream->GetId(), data);
+		PushProvider::OnDataReceived(channel_id_t(stream->GetId()), data);
 	}
 
 	std::shared_ptr<Certificate> WebRTCProvider::CreateCertificate()

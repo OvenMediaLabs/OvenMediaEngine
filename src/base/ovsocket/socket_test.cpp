@@ -9,10 +9,12 @@
 #include <arpa/inet.h>
 #include <base/ovlibrary/ovlibrary.h>
 #include <base/ovsocket/ovsocket.h>
+#include <base/ovsocket/socket_test_helpers.h>
 #include <gtest/gtest.h>
 #include <netinet/in.h>
 #include <srt/srt.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -20,6 +22,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -33,25 +36,13 @@
 
 namespace
 {
+	using ome_test::LocalPortOf;
+
 	constexpr int LOOPBACK_TIMEOUT_MSEC = 3000;
 
 	ov::SocketAddress LoopbackAddress(uint16_t port)
 	{
 		return ov::SocketAddress::CreateAndGetFirst("127.0.0.1", port);
-	}
-
-	// Reads the local port bound to a socket directly from its `fd`. Unlike
-	// `Socket::GetLocalAddress()` (only populated by `Bind()`), this also works for
-	// a UDP socket whose local port was assigned implicitly by `Connect()`.
-	uint16_t LocalPortOf(const std::shared_ptr<ov::Socket> &socket)
-	{
-		sockaddr_in sa{};
-		socklen_t len = sizeof(sa);
-		if (::getsockname(socket->GetSocket().GetNativeHandle(), reinterpret_cast<sockaddr *>(&sa), &len) != 0)
-		{
-			return 0;
-		}
-		return ntohs(sa.sin_port);
 	}
 
 	// Reads exactly `want` bytes into `out`. A TCP stream may legally arrive across
@@ -481,7 +472,7 @@ namespace
 			{
 				return false;
 			}
-			_port = ntohs(sa.sin_port);
+			_port		= ntohs(sa.sin_port);
 
 			sa.sin_port = htons(peer_port);
 			if (::connect(_back, reinterpret_cast<sockaddr *>(&sa), sizeof(sa)) != 0)
@@ -489,7 +480,7 @@ namespace
 				return false;
 			}
 
-			_running = true;
+			_running	  = true;
 			_front_thread = std::thread([this]() { FrontLoop(); });
 			_back_thread  = std::thread([this]() { BackLoop(); });
 			return true;
@@ -538,14 +529,14 @@ namespace
 			{
 				sockaddr_in from{};
 				socklen_t from_len = sizeof(from);
-				ssize_t n = ::recvfrom(_front, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr *>(&from), &from_len);
+				ssize_t n		   = ::recvfrom(_front, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr *>(&from), &from_len);
 				if (n < 0)
 				{
 					continue;
 				}
 				{
 					std::lock_guard<std::mutex> lock(_client_mutex);
-					_client	   = from;
+					_client		= from;
 					_has_client = true;
 				}
 				if (_forwarding)
@@ -827,14 +818,12 @@ namespace
 // on teardown (so an early `ASSERT` failure does not trip the `~Socket` "not
 // closed" assertion).
 // ---------------------------------------------------------------------------
-class SocketTestBase : public ::testing::Test
+class SocketTestBase : public ome_test::PoolTest
 {
 protected:
 	void InitPool(const char *name, ov::SocketType type)
 	{
-		_pool = ov::SocketPool::Create(name, type, false);
-		ASSERT_NE(_pool, nullptr);
-		ASSERT_TRUE(_pool->Initialize(1));
+		ASSERT_NE(CreatePool(name, type), nullptr);
 	}
 
 	void TearDown() override
@@ -843,13 +832,10 @@ protected:
 		{
 			_client->Close();
 		}
-		if (_pool != nullptr)
-		{
-			_pool->Uninitialize();
-		}
+
+		PoolTest::TearDown();
 	}
 
-	std::shared_ptr<ov::SocketPool> _pool;
 	std::shared_ptr<ov::Socket> _client;
 };
 
@@ -1455,6 +1441,57 @@ TEST_F(SocketRecvSrtTest, BrokenLinkFiresCloseCallbackAsDisconnected)
 	EXPECT_EQ(client->GetState(), ov::SocketState::Disconnected);
 }
 
+// A close on another thread wakes a blocking SRT receive, which reports the close instead of a libsrt error
+TEST_F(SocketRecvSrtTest, CloseWakesBlockedRecv)
+{
+	// About 50 ms of 1 ms samples
+	constexpr int BLOCKED_SAMPLE_COUNT = 50;
+
+	Watchdog watchdog(std::chrono::seconds(30), "CloseWakesBlockedRecv");
+
+	SrtPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto client = ConnectClient(peer);
+	ASSERT_NE(client, nullptr);
+	ASSERT_TRUE(client->SetSockOpt<bool>(SRTO_RCVSYN, true));
+
+	std::promise<ov::String> returned;
+	auto returned_future = returned.get_future();
+	auto tid			 = std::make_shared<std::atomic<pid_t>>(0);
+
+	std::thread receiver([client, promise = std::move(returned), tid]() mutable {
+		*tid = static_cast<pid_t>(::syscall(SYS_gettid));
+
+		char buffer[1500];
+		auto result = client->Recv(buffer, sizeof(buffer));
+
+		promise.set_value(result.has_value() ? ov::String("data") : result.error()->GetMessage());
+	});
+
+	// libsrt waits for data on a condition variable, so a blocked receive stays in `futex()`.
+	// Consecutive samples tell that wait apart from a short lock wait on the way to it.
+	int blocked_samples = 0;
+	EXPECT_TRUE(WaitUntil([&]() {
+		blocked_samples = ((*tid != 0) && ome_test::IsBlockedIn(*tid, {SYS_futex})) ? (blocked_samples + 1) : 0;
+		return blocked_samples >= BLOCKED_SAMPLE_COUNT;
+	}));
+	EXPECT_EQ(returned_future.wait_for(std::chrono::milliseconds(0)), std::future_status::timeout);
+
+	client->CloseImmediately();
+
+	if (returned_future.wait_for(std::chrono::milliseconds(LOOPBACK_TIMEOUT_MSEC)) != std::future_status::ready)
+	{
+		ADD_FAILURE() << "Recv() is still blocked on a closed SRT socket";
+
+		// Breaks the connection from the peer, so the receive returns before libsrt is cleaned up
+		peer.CloseConnection();
+	}
+
+	receiver.join();
+
+	EXPECT_EQ(returned_future.get(), "Socket is closed");
+}
+
 // ===========================================================================
 // Concurrency / stress
 //
@@ -1754,7 +1791,7 @@ TEST_F(SrtConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 			peer.Send(i, payload, sizeof(payload));
 
 			char buffer[1500] = {0};
-			size_t received = 0;
+			size_t received	  = 0;
 			if (RecvSrtMessage(clients[i], buffer, sizeof(buffer), &received) &&
 				(received == sizeof(payload)) &&
 				(::memcmp(buffer, payload, sizeof(payload)) == 0))
@@ -1860,8 +1897,8 @@ TEST_F(SrtConcurrencyTest, CloseRacesEpollStorm)
 {
 	Watchdog watchdog(std::chrono::seconds(120), "SrtCloseRacesEpollStorm");
 
-	constexpr int ROUNDS		= 25;
-	constexpr int SOCKET_COUNT	= 8;
+	constexpr int ROUNDS	   = 25;
+	constexpr int SOCKET_COUNT = 8;
 	constexpr int TOTAL_CLOSES = ROUNDS * SOCKET_COUNT;
 
 	SrtPeer peer;

@@ -49,9 +49,9 @@ namespace
 			return ProcessMediaEventTrigger::TRIGGER_EPOLL;
 		}
 
-		int GetFileDescriptorForDetectingEvent() override
+		std::shared_ptr<ov::Socket> GetSocketForDetectingEvent() override
 		{
-			return -1;
+			return nullptr;
 		}
 
 		ProcessMediaResult ProcessMediaPacket() override
@@ -158,9 +158,9 @@ namespace
 			return ProcessMediaEventTrigger::TRIGGER_EPOLL;
 		}
 
-		int GetFileDescriptorForDetectingEvent() override
+		std::shared_ptr<ov::Socket> GetSocketForDetectingEvent() override
 		{
-			return -1;
+			return nullptr;
 		}
 
 		ProcessMediaResult ProcessMediaPacket() override

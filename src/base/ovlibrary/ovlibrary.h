@@ -42,6 +42,7 @@
 #include "./stack_trace.h"
 #include "./stop_watch.h"
 #include "./string.h"
+#include "./strong_type.h"
 #include "./constexpr_utilities.h"
 #include "./time.h"
 #include "./type.h"

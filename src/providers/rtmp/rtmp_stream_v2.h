@@ -41,9 +41,9 @@ namespace pvd::rtmp
 		friend class RtmpTrack;
 
 	public:
-		static std::shared_ptr<RtmpStreamV2> Create(StreamSourceType source_type, uint32_t channel_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider);
+		static std::shared_ptr<RtmpStreamV2> Create(StreamSourceType source_type, channel_id_t channel_id, const std::shared_ptr<ov::Socket> &client_socket, const std::shared_ptr<PushProvider> &provider);
 
-		explicit RtmpStreamV2(StreamSourceType source_type, uint32_t channel_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider);
+		explicit RtmpStreamV2(StreamSourceType source_type, channel_id_t channel_id, std::shared_ptr<ov::Socket> client_socket, const std::shared_ptr<PushProvider> &provider);
 		~RtmpStreamV2() final;
 
 		//--------------------------------------------------------------------

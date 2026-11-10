@@ -12,15 +12,14 @@
 #include "socket_pool.h"
 
 #ifdef OME_LATENCY_PROBE
-#include <sched.h>
-#include <sys/prctl.h>
-#include <sys/resource.h>
-#include <sys/syscall.h>
-#include <unistd.h>
+#	include <base/ovlibrary/latency_probe.h>
+#	include <sched.h>
+#	include <sys/prctl.h>
+#	include <sys/resource.h>
+#	include <sys/syscall.h>
+#	include <unistd.h>
 
-#include <chrono>
-
-#include <base/ovlibrary/latency_probe.h>
+#	include <chrono>
 
 // Latency probe (OME_LATENCY_PROBE only): log when EpollWait returned WITH events but only after a
 // long wall time (>20ms). Events were ready yet the thread took that long to return them =>
@@ -61,8 +60,32 @@ static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long n
 
 namespace ov
 {
+	namespace
+	{
+		// A thread-per-socket worker has one socket, which an epoll reports at most once per wait,
+		// so one slot is enough in theory, and 4 leaves some room
+		constexpr int THREAD_PER_SOCKET_MAX_EVENTS = 4;
+	}  // namespace
+
+	// The data of a TCP/UDP epoll event: the native handle in the low 32 bits and the low 32 bits of the socket ID above it,
+	// so an event of an earlier registration that used the same handle is told apart
+	static uint64_t MakeEventKey(int native_handle, socket_id_t socket_id)
+	{
+		return (static_cast<uint64_t>(static_cast<uint32_t>(socket_id.GetValue())) << 32) | static_cast<uint32_t>(native_handle);
+	}
+
+	// A handle accepted by `epoll_ctl()` is non-negative, so it converts back to `int` unchanged
+	static int NativeHandleOfEventKey(uint64_t key)
+	{
+		return static_cast<int>(static_cast<uint32_t>(key));
+	}
+
 	SocketPoolWorker::SocketPoolWorker(PrivateToken token, const std::shared_ptr<SocketPool> &pool)
-		: _pool(pool)
+		: _pool(pool),
+		  _max_events(pool->IsThreadPerSocket() ? THREAD_PER_SOCKET_MAX_EVENTS : EpollMaxEvents),
+		  _epoll_events((pool->GetType() == SocketType::Srt) ? 0 : _max_events),
+		  _polled_events(_max_events),
+		  _srt_epoll_events((pool->GetType() == SocketType::Srt) ? _max_events : 0)
 	{
 		OV_ASSERT2(_pool != nullptr);
 	}
@@ -98,46 +121,57 @@ namespace ov
 		return true;
 	}
 
+	void SocketPoolWorker::RequestStop()
+	{
+		_stop_epoll_thread = true;
+	}
+
 	bool SocketPoolWorker::Uninitialize()
 	{
-		if (GetNativeHandle() == InvalidSocket)
+		RequestStop();
+
+		// The thread stays joinable after `RequestStop()` until it is joined here
+		if (_epoll_thread.joinable() == false)
 		{
-			logae("Epoll is not initialized (%s)", StringFromSocketType(GetType()));
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
+			logae("Worker is not running (%s)", StringFromSocketType(GetType()));
+			OV_ASSERT2(false);
 			return false;
 		}
 
-		_stop_epoll_thread = true;
+		_epoll_thread.join();
 
-		if (_epoll_thread.joinable())
 		{
-			_epoll_thread.join();
+			LockGuard lock(_epoll_mutex);
+
+			if (_epoll != InvalidSocket)
+			{
+				::close(_epoll);
+			}
+
+			if (_srt_epoll != InvalidSocket)
+			{
+				::srt_epoll_release(_srt_epoll);
+			}
+
+			_stopped = true;
 		}
 
-		_socket_count = 0;
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
-			_socket_map.clear();
-
-			decltype(_sockets_to_insert)().swap(_sockets_to_insert);
-		}
-
-		{
-			std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+			LockGuard lock(_sockets_to_dispatch_mutex);
 			_sockets_to_dispatch.clear();
 		}
 
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock(_sockets_to_call_close_callback_mutex);
 			_sockets_to_call_close_callback.clear();
 		}
 
-		_connection_timed_out_queue.clear();
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+			_connection_timed_out_queue.clear();
+		}
 
 		_gc_candidates.clear();
-
-		OV_SAFE_FUNC(_epoll, InvalidSocket, ::close, );
-		OV_SAFE_FUNC(_srt_epoll, InvalidSocket, ::srt_epoll_release, );
 
 		return true;
 	}
@@ -164,11 +198,7 @@ namespace ov
 			case SocketType::Tcp:
 				_epoll = ::epoll_create1(0);
 
-				if (_epoll != InvalidSocket)
-				{
-					_epoll_events.resize(EpollMaxEvents);
-				}
-				else
+				if (_epoll == InvalidSocket)
 				{
 					error = Error::CreateErrorFromErrno();
 				}
@@ -181,8 +211,6 @@ namespace ov
 				if (_srt_epoll != SRT_INVALID_SOCK)
 				{
 					srt_epoll_set(_srt_epoll, SRT_EPOLL_ENABLE_EMPTY);
-					_epoll_events.resize(EpollMaxEvents);
-					_srt_epoll_events.resize(EpollMaxEvents);
 				}
 				else
 				{
@@ -214,21 +242,6 @@ namespace ov
 	bool SocketPoolWorker::PrepareSocket(std::shared_ptr<Socket> socket, const SocketFamily family)
 	{
 		return socket->Create(GetType(), family);
-	}
-
-	void SocketPoolWorker::MergeSocketList()
-	{
-		std::lock_guard lock_guard(_socket_map_mutex);
-
-		decltype(_sockets_to_insert) insert_queue;
-
-		std::swap(insert_queue, _sockets_to_insert);
-		while (insert_queue.empty() == false)
-		{
-			auto socket = insert_queue.front();
-			insert_queue.pop();
-			_socket_map[socket->GetNativeHandle()] = socket;
-		}
 	}
 
 	void SocketPoolWorker::GarbageCollection()
@@ -268,20 +281,24 @@ namespace ov
 
 	void SocketPoolWorker::CallbackTimedOutConnections()
 	{
-		if (_connection_timed_out_queue.size() <= 0)
+		decltype(_connection_timed_out_queue) timed_out_queue;
+
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+			std::swap(timed_out_queue, _connection_timed_out_queue);
+		}
+
+		if (timed_out_queue.empty())
 		{
 			return;
 		}
-
-		_connection_timed_out_queue_mutex.lock();
-		auto timed_out_queue = std::move(_connection_timed_out_queue);
-		_connection_timed_out_queue_mutex.unlock();
 
 		auto socket_error = SocketError::CreateError("Connection timed out (by worker)");
 
 		for (auto socket : timed_out_queue)
 		{
-			if (socket->GetState() == SocketState::Connecting)
+			// A completed connect reports its result through its pending `EPOLLOUT` instead
+			if ((socket->GetState() == SocketState::Connecting) && (socket->HasConnectCompleted() == false))
 			{
 				socket->OnConnectedEvent(socket_error);
 			}
@@ -291,18 +308,6 @@ namespace ov
 	void SocketPoolWorker::ThreadProc()
 	{
 		logger::ThreadHelper thread_helper;
-
-		if (_is_first_connection_callback_queue_start == false)
-		{
-			std::lock_guard lock(_connection_callback_queue_mutex);
-
-			if (_is_first_connection_callback_queue_start == false)
-			{
-				_is_first_connection_callback_queue_start = true;
-
-				_connection_callback_queue.Start();
-			}
-		}
 
 		_gc_interval.Start();
 
@@ -345,22 +350,12 @@ namespace ov
 
 				for (int index = 0; index < count; index++)
 				{
-					auto &event		 = _epoll_events[index];
+					auto &event = _polled_events[index].event;
+					auto socket = std::move(_polled_events[index].socket);
 
-					auto socket_data = reinterpret_cast<Socket *>(event.data.ptr);
-
-					if (socket_data == nullptr)
-					{
-						OV_ASSERT(socket_data != nullptr, "Could not convert event.data.ptr to ov::Socket *");
-						logae("Could not convert socket data");
-						continue;
-					}
-
-					auto socket			= socket_data->GetSharedPtr();
-					auto event_callback = socket_data->GetSharedPtrAs<SocketPoolEventInterface>();
+					auto event_callback = socket->GetSharedPtrAs<SocketPoolEventInterface>();
 					auto events			= event.events;
 
-					OV_ASSERT2(socket != nullptr);
 					OV_ASSERT2(event_callback != nullptr);
 
 					logap("Epoll event #%d (total: %d): %s, events: %s (%d, 0x%x), %s",
@@ -408,6 +403,17 @@ namespace ov
 						}
 					}
 
+					if (socket->GetBlockingMode() == BlockingMode::Blocking)
+					{
+						// Blocking mode handles only connection events, and a blocking connect decides its result once woken
+						if (OV_CHECK_FLAG(events, EPOLLOUT) && (socket->GetState() == SocketState::Connecting))
+						{
+							socket->WakeConnectWaiter();
+						}
+
+						continue;
+					}
+
 					bool need_to_close	  = false;
 					SocketState new_state = SocketState::Closed;
 
@@ -438,12 +444,6 @@ namespace ov
 						}
 					}
 
-					if (socket->GetBlockingMode() == BlockingMode::Blocking)
-					{
-						// Blocking mode handles only connection events
-						continue;
-					}
-
 					if (need_to_close == false)
 					{
 						if (OV_CHECK_FLAG(events, EPOLLOUT))
@@ -458,7 +458,7 @@ namespace ov
 
 									case PostProcessMethod::GarbageCollection:
 										logat("Need to do garbage collection for %s", socket->ToString().CStr());
-										_gc_candidates[socket->GetNativeHandle()] = socket;
+										_gc_candidates[socket->GetId()] = socket;
 										break;
 
 									case PostProcessMethod::Error:
@@ -532,7 +532,7 @@ namespace ov
 
 					if (need_to_close)
 					{
-						_gc_candidates.erase(socket->GetNativeHandle());
+						_gc_candidates.erase(socket->GetId());
 
 						logat("CloseImmediatelyWithState(%s) for %s", StringFromSocketState(new_state), socket->ToString().CStr());
 						socket->CloseImmediatelyWithState(new_state);
@@ -543,8 +543,6 @@ namespace ov
 			DispatchSocketEventsIfNeeded();
 			CallCloseCallbackIfNeeded();
 			GarbageCollection();
-
-			MergeSocketList();
 
 #ifdef OME_LATENCY_PROBE
 			auto iteration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - iteration_started).count();
@@ -564,8 +562,8 @@ namespace ov
 		// Clean up all sockets
 		decltype(_socket_map) socket_map;
 		{
-			std::lock_guard lock_guard(_socket_map_mutex);
-			socket_map = std::move(_socket_map);
+			LockGuard lock(_socket_map_mutex);
+			std::swap(socket_map, _socket_map);
 		}
 
 		for (auto &socket_item : socket_map)
@@ -576,70 +574,93 @@ namespace ov
 			if (socket->IsClosable())
 			{
 				socket->CloseImmediatelyWithState(SocketState::Closed);
-
-				// Do connection callback, etc...
-				socket->DispatchEvents();
 			}
 		}
 	}
 
 	bool SocketPoolWorker::AddToEpoll(const std::shared_ptr<Socket> &socket)
 	{
-		OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-
 		auto native_handle = socket->GetNativeHandle();
+
+		// Registered before adding to epoll, since epoll reports the current readiness at once
+		{
+			LockGuard lock(_socket_map_mutex);
+
+			// The worker thread takes the map under this lock once it sees the flag, so a socket added after that sees it too
+			if (_stop_epoll_thread)
+			{
+				logae("Could not add descriptor %d to a stopped worker", native_handle);
+				return false;
+			}
+
+			auto &entry = _socket_map[native_handle];
+
+			// A socket leaves the map before its handle is released
+			OV_ASSERT(entry == nullptr, "Descriptor %d is still registered by another socket: %s", native_handle, entry->ToString().CStr());
+
+			entry = socket;
+		}
+
 		std::shared_ptr<Error> error;
 
-		switch (GetType())
+		logat("Trying to add socket #%d to epoll...", native_handle);
+
 		{
-			case SocketType::Tcp:
-			case SocketType::Udp: {
-				epoll_event event{};
+			LockGuard lock(_epoll_mutex);
 
-				// EPOLLIN: input event
-				// EPOLLOUT: output event
-				// EPOLLERR: error event
-				// EPOLLHUP: hang up
-				// EPOLLPRI: for urgent data (OOB)
-				// EPOLLRDHUP : Disconnected or half-closing
-				// EPOLLET: Edge trigger
-				event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
-				event.data.ptr = socket.get();
-
-				logat("Trying to add socket #%d to epoll...", native_handle);
-
-				if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
-				{
-					error = Error::CreateErrorFromErrno();
-				}
-
-				break;
+			if (_stopped)
+			{
+				error = Error::CreateError("Socket", "The worker has stopped");
 			}
-
-			case SocketType::Srt: {
-				int events = SRT_EPOLL_IN | SRT_EPOLL_OUT | SRT_EPOLL_ERR | SRT_EPOLL_ET;
-
-				if (::srt_epoll_add_usock(_srt_epoll, native_handle, &events) == SRT_ERROR)
+			else
+			{
+				switch (GetType())
 				{
-					error = SrtError::CreateErrorFromSrt();
+					case SocketType::Tcp:
+					case SocketType::Udp: {
+						epoll_event event{};
+
+						// EPOLLIN: input event
+						// EPOLLOUT: output event
+						// EPOLLERR: error event
+						// EPOLLHUP: hang up
+						// EPOLLPRI: for urgent data (OOB)
+						// EPOLLRDHUP : Disconnected or half-closing
+						// EPOLLET: Edge trigger
+						event.events   = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLET;
+						event.data.u64 = MakeEventKey(native_handle, socket->GetId());
+
+						if (::epoll_ctl(_epoll, EPOLL_CTL_ADD, native_handle, &event) == -1)
+						{
+							error = Error::CreateErrorFromErrno();
+						}
+
+						break;
+					}
+
+					case SocketType::Srt: {
+						int events = SRT_EPOLL_IN | SRT_EPOLL_OUT | SRT_EPOLL_ERR | SRT_EPOLL_ET;
+
+						if (::srt_epoll_add_usock(_srt_epoll, native_handle, &events) == SRT_ERROR)
+						{
+							error = SrtError::CreateErrorFromSrt();
+						}
+
+						break;
+					}
+
+					default:
+						error = Error::CreateError("Socket", "Not implemented");
+						break;
 				}
-
-				break;
 			}
-
-			default:
-				error = Error::CreateError("Socket", "Not implemented");
-				break;
 		}
 
-		if (error == nullptr)
-		{
-			std::lock_guard lock_guard(_socket_map_mutex);
-			_sockets_to_insert.push(socket);
-		}
-		else
+		if (error != nullptr)
 		{
 			logae("Could not add to epoll for descriptor %d (error: %s)", native_handle, error->What());
+
+			EraseFromSocketMap(native_handle, socket);
 		}
 
 		return (error == nullptr);
@@ -647,16 +668,11 @@ namespace ov
 
 	int SocketPoolWorker::EpollWait(int timeout_msec)
 	{
+		// Runs only on the worker thread, which `Uninitialize()` joins before it closes the epoll,
+		// so the handle is read without `_epoll_mutex`
+
 		// Reset errno
 		errno = 0;
-
-		if (GetNativeHandle() == InvalidSocket)
-		{
-			logae("Epoll is not initialized");
-
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-			return -1;
-		}
 
 		std::shared_ptr<Error> error;
 		int event_count = 0;
@@ -665,7 +681,7 @@ namespace ov
 		{
 			case SocketType::Udp:
 			case SocketType::Tcp:
-				event_count = ::epoll_wait(_epoll, _epoll_events.data(), EpollMaxEvents, timeout_msec);
+				event_count = ::epoll_wait(_epoll, _epoll_events.data(), _max_events, timeout_msec);
 
 				if (event_count == 0)
 				{
@@ -674,6 +690,24 @@ namespace ov
 				else if (event_count > 0)
 				{
 					// polled successfully
+					LockGuard lock(_socket_map_mutex);
+
+					int polled_count = 0;
+
+					for (int index = 0; index < event_count; index++)
+					{
+						const auto &event	 = _epoll_events[index];
+						auto native_handle	 = NativeHandleOfEventKey(event.data.u64);
+						auto socket_iterator = _socket_map.find(native_handle);
+
+						if ((socket_iterator != _socket_map.end()) &&
+							(MakeEventKey(native_handle, socket_iterator->second->GetId()) == event.data.u64))
+						{
+							_polled_events[polled_count++] = {socket_iterator->second, event};
+						}
+					}
+
+					event_count = polled_count;
 				}
 				else
 				{
@@ -694,7 +728,7 @@ namespace ov
 				break;
 
 			case SocketType::Srt:
-				event_count = ::srt_epoll_uwait(_srt_epoll, _srt_epoll_events.data(), EpollMaxEvents, timeout_msec);
+				event_count = ::srt_epoll_uwait(_srt_epoll, _srt_epoll_events.data(), _max_events, timeout_msec);
 				if (event_count == 0)
 				{
 					// timed out
@@ -705,24 +739,32 @@ namespace ov
 				else if (event_count > 0)
 				{
 					// polled successfully
-					MergeSocketList();
+					int polled_count = 0;
 
-					// Make a list of epoll_event from SRT_EPOLL_EVENTs
 					{
-						std::lock_guard lock_guard(_socket_map_mutex);
+						LockGuard lock(_socket_map_mutex);
 
-						int epoll_event_count = 0;
-
+						// An SRT event carries only the SRT handle, which libsrt reissues only after its counter wraps.
+						// So the handle alone identifies the socket, without the socket ID of a TCP/UDP event key.
 						for (int index = 0; index < event_count; index++)
 						{
-							if (ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_epoll_events[epoll_event_count])))
+							auto socket_iterator = _socket_map.find(_srt_epoll_events[index].fd);
+
+							if (socket_iterator != _socket_map.end())
 							{
-								epoll_event_count++;
+								_srt_epoll_events[polled_count]		  = _srt_epoll_events[index];
+								_polled_events[polled_count++].socket = socket_iterator->second;
 							}
 						}
-
-						event_count = epoll_event_count;
 					}
+
+					// Make a list of `epoll_event` from `SRT_EPOLL_EVENT`
+					for (int index = 0; index < polled_count; index++)
+					{
+						ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_polled_events[index].event));
+					}
+
+					event_count = polled_count;
 				}
 				else
 				{
@@ -750,21 +792,12 @@ namespace ov
 		return _last_epoll_event_count;
 	}
 
-	bool SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
+	void SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
 	{
-		SRTSOCKET srt_socket = srt_event.fd;
+		auto srt_socket = srt_event.fd;
+		auto status		= ::srt_getsockstate(srt_socket);
 
-		auto socket_iterator = _socket_map.find(srt_socket);
-		if (socket_iterator == _socket_map.end())
-		{
-			// In case it is deleted from socket_map just after `srt_epoll_uwait()`
-			return false;
-		}
-
-		SRT_SOCKSTATUS status = ::srt_getsockstate(srt_socket);
-
-		event->data.ptr		  = _socket_map[srt_socket].get();
-		event->events		  = 0;
+		event->events	= 0;
 
 		if (OV_CHECK_FLAG(srt_event.events, SRT_EPOLL_IN))
 		{
@@ -775,20 +808,11 @@ namespace ov
 			event->events |= EPOLLOUT;
 		}
 
-		// NOTE: Do not unconditionally translate `SRT_EPOLL_ERR` to `EPOLLERR`.
-		//
-		// libsrt raises `SRT_EPOLL_ERR` together with the terminal-state
-		// transitions (`SRTS_BROKEN` / `SRTS_CLOSED` / `SRTS_NONEXIST`), and
-		// those transitions fire for BOTH a real network break AND a graceful
-		// peer `srt_close()` (the `UMSG_SHUTDOWN` handler in libsrt sets
-		// `m_bBroken = true` and notifies the epoll listener with
-		// `SRT_EPOLL_ERR`). The two cases are indistinguishable at the
-		// socket layer.
-		//
-		// We treat `SRT_EPOLL_ERR` accompanying these terminal states as a
-		// disconnect signal only (the matching `case` below sets `EPOLLHUP`).
-		// For any other state we still raise `EPOLLERR` so genuine errors
-		// that occur outside of a clean state transition are not silenced.
+		// libsrt raises `SRT_EPOLL_ERR` when a connection breaks or is closed locally.
+		// A graceful peer close also counts as a break, since `processCtrlShutdown()` marks the socket broken.
+		// The libsrt GC (`checkBrokenSockets()`) may then move a broken socket on to `SRTS_CLOSED` or `SRTS_NONEXIST`.
+		// All three terminal states become `EPOLLHUP` below, so a normal disconnect is not handled as an error.
+		// `SRT_EPOLL_ERR` in any other state becomes `EPOLLERR`.
 		const bool is_srt_terminal_state =
 			(status == SRTS_BROKEN) ||
 			(status == SRTS_CLOSED) ||
@@ -806,24 +830,8 @@ namespace ov
 				break;
 
 			case SRTS_NONEXIST:
-				event->events |= EPOLLHUP;
-				break;
-
 			case SRTS_BROKEN:
-				// The client is disconnected - "unexpected" here means OME did not initiate the close,
-				// NOT that the peer's close was abnormal.
-				// libsrt transitions to `SRTS_BROKEN` for BOTH a real network break
-				// AND a graceful peer `srt_close()`
-				// (the `SHUTDOWN` message handler in libsrt sets `m_bBroken = true`).
-				// The two cases are indistinguishable at this level,
-				// so signal a plain disconnect (`EPOLLHUP`) instead of escalating to an error event.
-				event->events |= EPOLLHUP;
-				break;
-
 			case SRTS_CLOSED:
-				// The client is disconnected - OME itself called `srt_close()`
-				// (graceful close initiated locally; `SRTS_CLOSED` only happens
-				// after a local `srt_close()` completes, never from a remote shutdown).
 				event->events |= EPOLLHUP;
 				break;
 
@@ -835,33 +843,47 @@ namespace ov
 				logat("Not handled SRT status %d for socket #%d", status, srt_socket);
 				break;
 		}
-
-		return true;
 	}
 
 	void SocketPoolWorker::EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket)
 	{
-		std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+		LockGuard lock(_sockets_to_dispatch_mutex);
+
+		if (_stopped)
+		{
+			return;
+		}
 
 		_sockets_to_dispatch[socket] = socket;
 	}
 
-	void SocketPoolWorker::EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback)
+	void SocketPoolWorker::EnqueueToCloseCallbackLater(const std::shared_ptr<Socket> &socket, std::shared_ptr<SocketAsyncInterface> callback, SocketCountSlot count_slot)
 	{
 		OV_ASSERT2(socket != nullptr);
 		OV_ASSERT2(callback != nullptr);
 
 		if (callback != nullptr)
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock(_sockets_to_call_close_callback_mutex);
 
-			_sockets_to_call_close_callback[socket] = callback;
+			if (_stopped)
+			{
+				return;
+			}
+
+			_sockets_to_call_close_callback[socket] = {std::move(callback), std::move(count_slot)};
 		}
 	}
 
 	void SocketPoolWorker::AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket)
 	{
-		std::lock_guard lock_guard(_connection_timed_out_queue_mutex);
+		LockGuard lock(_connection_timed_out_queue_mutex);
+
+		if (_stopped)
+		{
+			return;
+		}
+
 		_connection_timed_out_queue.push_back(socket);
 	}
 
@@ -869,7 +891,7 @@ namespace ov
 	{
 		std::weak_ptr<SocketPoolWorker> weak_this = GetSharedPtr();
 
-		_connection_callback_queue.Push(
+		GetConnectionCallbackQueue().Push(
 			[weak_this, socket](void *parameter) -> DelayQueueAction {
 				auto shared_this = weak_this.lock();
 
@@ -884,13 +906,22 @@ namespace ov
 			timeout_msec);
 	}
 
+	DelayQueue &SocketPoolWorker::GetConnectionCallbackQueue()
+	{
+		// Built on first use, after the logger, so it is destroyed and its thread joined before the logger
+		static DelayQueue queue{"ConnectionCB"};
+		[[maybe_unused]] static const bool started = queue.Start();
+
+		return queue;
+	}
+
 	void SocketPoolWorker::DispatchSocketEventsIfNeeded()
 	{
 		// Move _extra_epoll_events to events to avoid blocking
 		decltype(_sockets_to_dispatch) socket_list;
 
 		{
-			std::lock_guard lock_guard(_sockets_to_dispatch_mutex);
+			LockGuard lock(_sockets_to_dispatch_mutex);
 
 			if (_sockets_to_dispatch.empty())
 			{
@@ -918,7 +949,7 @@ namespace ov
 					if (socket->IsClosable())
 					{
 						logat("Need to do garbage collection for %s (dispatch_later)", socket->ToString().CStr());
-						_gc_candidates[socket->GetNativeHandle()] = socket;
+						_gc_candidates[socket->GetId()] = socket;
 					}
 					else
 					{
@@ -943,63 +974,66 @@ namespace ov
 
 	void SocketPoolWorker::CallCloseCallbackIfNeeded()
 	{
-		if (_sockets_to_call_close_callback.empty())
-		{
-			return;
-		}
-
 		decltype(_sockets_to_call_close_callback) close_list;
 
 		{
-			std::lock_guard lock_guard(_sockets_to_call_close_callback_mutex);
+			LockGuard lock(_sockets_to_call_close_callback_mutex);
+
+			if (_sockets_to_call_close_callback.empty())
+			{
+				return;
+			}
+
 			std::swap(close_list, _sockets_to_call_close_callback);
 		}
 
-		for (auto close_item : close_list)
+		for (auto &close_item : close_list)
 		{
-			close_item.second->OnClosed();
+			close_item.second.callback->OnClosed();
+			close_item.second.count_slot.Reset();
 		}
 	}
 
 	bool SocketPoolWorker::DeleteFromEpoll(const std::shared_ptr<Socket> &socket)
 	{
-		if (GetNativeHandle() == InvalidSocket)
-		{
-			logae("Epoll is not initialized");
-
-			OV_ASSERT2(GetNativeHandle() != InvalidSocket);
-			return false;
-		}
-
 		std::shared_ptr<Error> error;
 		auto native_handle = socket->GetNativeHandle();
 
 		logat("Trying to unregister a socket #%d from epoll...", native_handle);
 
-		switch (GetType())
 		{
-			case SocketType::Udp:
-			case SocketType::Tcp: {
-				if (::epoll_ctl(_epoll, EPOLL_CTL_DEL, native_handle, nullptr) == -1)
+			LockGuard lock(_epoll_mutex);
+
+			// A closed epoll has nothing to remove.
+			// The kernel dropped the TCP/UDP registrations, and libsrt tolerates the released ID left on the socket.
+			if (_stopped == false)
+			{
+				switch (GetType())
 				{
-					error = Error::CreateErrorFromErrno();
+					case SocketType::Udp:
+					case SocketType::Tcp: {
+						if (::epoll_ctl(_epoll, EPOLL_CTL_DEL, native_handle, nullptr) == -1)
+						{
+							error = Error::CreateErrorFromErrno();
+						}
+
+						break;
+					}
+
+					case SocketType::Srt: {
+						if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
+						{
+							error = SrtError::CreateErrorFromSrt();
+						}
+
+						break;
+					}
+
+					default:
+						error = Error::CreateError("Socket", "Not implemented");
+						break;
 				}
-
-				break;
 			}
-
-			case SocketType::Srt: {
-				if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
-				{
-					error = SrtError::CreateErrorFromSrt();
-				}
-
-				break;
-			}
-
-			default:
-				error = Error::CreateError("Socket", "Not implemented");
-				break;
 		}
 
 		if (error == nullptr)
@@ -1010,12 +1044,6 @@ namespace ov
 		{
 			switch (error->GetCode())
 			{
-				case EBADF:
-					// Socket is closed somewhere in OME
-
-					// Do not print 'Bad file descriptor' error log
-					break;
-
 				case ENOENT:
 					// In some cases, such as when an error occurs while the socket is connecting
 					break;
@@ -1028,13 +1056,21 @@ namespace ov
 			}
 		}
 
-		{
-			std::lock_guard lock_guard(_socket_map_mutex);
-			_socket_map.erase(socket->GetNativeHandle());
-			DecreaseSocketCount();
-		}
+		EraseFromSocketMap(native_handle, socket);
 
 		return (error == nullptr);
+	}
+
+	void SocketPoolWorker::EraseFromSocketMap(int native_handle, const std::shared_ptr<Socket> &socket)
+	{
+		LockGuard lock(_socket_map_mutex);
+
+		auto it = _socket_map.find(native_handle);
+
+		if ((it != _socket_map.end()) && (it->second == socket))
+		{
+			_socket_map.erase(it);
+		}
 	}
 
 	bool SocketPoolWorker::ReleaseSocket(const std::shared_ptr<Socket> &socket)
@@ -1049,14 +1085,23 @@ namespace ov
 
 	String SocketPoolWorker::ToString() const
 	{
-		String description;
+		size_t socket_map_size;
+		size_t timed_out_queue_size;
 
-		std::lock_guard lock_guard(_socket_map_mutex);
+		{
+			LockGuard lock(_socket_map_mutex);
+			socket_map_size = _socket_map.size();
+		}
+
+		{
+			LockGuard lock(_connection_timed_out_queue_mutex);
+			timed_out_queue_size = _connection_timed_out_queue.size();
+		}
+
+		String description;
 		description.AppendFormat(
-			"<SocketPoolWorker: %p, socket_map: %zu, insert queue: %zu, connection queue: %zu>",
-			this, _socket_map.size(),
-			_sockets_to_insert.size(),
-			_connection_timed_out_queue.size());
+			"<SocketPoolWorker: %p, socket_map: %zu, connection queue: %zu>",
+			this, socket_map_size, timed_out_queue_size);
 
 		return description;
 	}

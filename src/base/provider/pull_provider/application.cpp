@@ -377,13 +377,19 @@ namespace pvd
 
 	bool PullApplication::DeleteAllStreams()
 	{
-		for(const auto &x : _stream_motors)
+		// Taken out under the lock and stopped outside it,
+		// so no lock is held while each motor joins its thread and stops its streams
+		decltype(_stream_motors) stream_motors;
 		{
-			auto motor = x.second;
-			motor->Stop();
+			std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
+
+			std::swap(stream_motors, _stream_motors);
 		}
 
-		_stream_motors.clear();
+		for (const auto &[id, motor] : stream_motors)
+		{
+			motor->Stop();
+		}
 
 		return Application::DeleteAllStreams();
 	}

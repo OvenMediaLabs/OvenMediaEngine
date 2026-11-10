@@ -790,7 +790,7 @@ namespace pvd::rtmp
 								"error",
 								"NetStream.Publish.Rejected",
 								"Authentication Failed.",
-								_stream->GetChannelId());
+								_stream->GetChannelId().GetValue());
 
 				return false;
 			}
@@ -813,7 +813,7 @@ namespace pvd::rtmp
 							"status",
 							"NetStream.Publish.Start",
 							"Publishing",
-							_stream->GetChannelId()) == false)
+							_stream->GetChannelId().GetValue()) == false)
 		{
 			logae("OnAmfPublish - Failed to send AmfOnStatus(%u, %u, %s, %s)",
 				  header->basic_header.chunk_stream_id,
@@ -839,10 +839,10 @@ namespace pvd::rtmp
 			}
 
 			// TODO: check if the chunk stream id is already exist, and generates new rtmp_stream_id and client_id.
-			if (SendAmfOnFCPublish(_stream->GetChannelId()) == false)
+			if (SendAmfOnFCPublish(_stream->GetChannelId().GetValue()) == false)
 			{
-				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish(%u)",
-					  _stream->GetChannelId());
+				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish(%" PRIu64 ")",
+					  _stream->GetChannelId().GetValue());
 
 				return false;
 			}
