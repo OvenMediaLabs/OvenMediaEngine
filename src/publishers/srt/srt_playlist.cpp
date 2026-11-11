@@ -154,7 +154,7 @@ namespace pub
 #endif	// DEBUG
 
 		// Repeat PAT/PMT so receivers that start reading mid-stream find the service:
-		// before every video key frame, and at least every 100 ms (like FFmpeg and GStreamer muxers)
+		// before every video key frame, and about every 100 ms (like FFmpeg and GStreamer muxers)
 		if ((media_packet->GetMediaType() == cmn::MediaType::Video && media_packet->IsKeyFrame()) ||
 			(ov::Clock::NowMSec() - _last_psi_sent_msec >= 100))
 		{

@@ -73,11 +73,6 @@ namespace pub
 		void OnFrame(const std::shared_ptr<const MediaPacket> &media_packet, const std::shared_ptr<const ov::Data> &ts_data) override;
 		//--------------------------------------------------------------------
 
-		const std::shared_ptr<const ov::Data> &GetPsiData() const
-		{
-			return _psi_data;
-		}
-
 	private:
 		struct TrackInfo
 		{
