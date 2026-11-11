@@ -25,6 +25,9 @@ namespace pvd
     constexpr int kScheduledVideoTimebase = 90000;
 	constexpr int kScheduledAudioTimebase = 90000;
 
+	// Beyond this lag (e.g. stalled I/O), the timeline is rebased instead of bursting to catch up
+	constexpr int64_t kScheduledMaxPlaybackLagUs = 1000 * 1000;
+
     class ScheduledStream : public Stream
     {
     public:
@@ -122,6 +125,7 @@ namespace pvd
 		[[maybe_unused]] int64_t _biggest_timestamp = -1LL;
 
         ov::StopWatch _realtime_clock;
+		// Per-track dts (us) that maps to _realtime_clock 0; lowered by the lag when the timeline is rebased
 		std::map<uint32_t, int64_t> _global_track_offset_us_map;
         ov::StopWatch _failback_check_clock;
 

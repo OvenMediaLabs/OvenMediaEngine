@@ -520,6 +520,9 @@ namespace pvd
 
         bool is_mpegts { std::strncmp(context->iformat->name, "mpegts", 6) == 0 };
 
+        // Tracks are interleaved, so the lag is measured from the track furthest ahead
+        int64_t max_zero_based_dts = std::numeric_limits<int64_t>::min();
+
         while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
@@ -721,12 +724,26 @@ namespace pvd
                 }
             }
             
+            max_zero_based_dts = std::max(max_zero_based_dts, global_zero_based_dts);
+
             int64_t elapsed = _realtime_clock.ElapsedUs();
+            // Packet is ahead of the clock: wait until it is time to send
             if (elapsed < global_zero_based_dts)
             {
                 int64_t wait_time = global_zero_based_dts - elapsed;
                 // logti("Scheduled Channel : %s/%s: Track(%d) Current(%" PRId64 ") DTS(%" PRId64 ") Wait(%" PRId64 ")", GetApplicationName(), GetName().CStr(), track_id, elapsed, global_zero_based_dts, wait_time);
                 std::this_thread::sleep_for(std::chrono::microseconds(wait_time));
+            }
+            // Packet is far behind the clock (e.g. slow I/O): move the timeline forward so playback continues at normal speed instead of sending a burst
+            else if (elapsed - max_zero_based_dts > kScheduledMaxPlaybackLagUs)
+            {
+                int64_t lag = elapsed - max_zero_based_dts;
+                logtw("Scheduled Channel : %s/%s: Playback is %" PRId64 " ms behind the realtime clock. Rebasing the timeline instead of catching up", GetApplicationName(), GetName().CStr(), lag / 1000);
+                for (auto &[offset_track_id, offset_us] : _global_track_offset_us_map)
+                {
+                    offset_us -= lag;
+                }
+                max_zero_based_dts += lag;
             }
         }
 
