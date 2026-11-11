@@ -125,7 +125,6 @@ namespace pvd
 		[[maybe_unused]] int64_t _biggest_timestamp = -1LL;
 
         ov::StopWatch _realtime_clock;
-		// Per-track dts (us) that maps to _realtime_clock 0; lowered by the lag when the timeline is rebased
 		std::map<uint32_t, int64_t> _global_track_offset_us_map;
         ov::StopWatch _failback_check_clock;
 
