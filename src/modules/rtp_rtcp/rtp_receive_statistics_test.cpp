@@ -28,14 +28,6 @@ void Receive(RtpReceiveStatistics &statistics, uint16_t seq)
 	statistics.AddReceivedRtpPacket(packet);
 }
 
-void Receive(RtpReceiveStatistics &statistics, std::initializer_list<uint16_t> seqs)
-{
-	for (auto seq : seqs)
-	{
-		Receive(statistics, seq);
-	}
-}
-
 // Receives first..last except the listed sequence numbers
 void ReceiveRange(RtpReceiveStatistics &statistics, uint16_t first, uint16_t last, std::initializer_list<uint16_t> missing = {})
 {
@@ -149,24 +141,33 @@ TEST(RtpReceiveStatistics, DuplicateMakesLostNegative)
 	EXPECT_EQ(block->GetFractionLost(), 0);
 }
 
-TEST(RtpReceiveStatistics, SingleLargeJumpIsIgnored)
+// Consecutive packets far behind are still late, not a restart that resets the counts
+TEST(RtpReceiveStatistics, LateBurstIsNotLoss)
 {
 	RtpReceiveStatistics statistics(kSsrc, kVideoRate);
+	ReceiveRange(statistics, 0, 99);
+	ReceiveRange(statistics, 110, 299);
 	ReceiveRange(statistics, 100, 109);
-	Receive(statistics, {30000, 110});
 
-	auto block = statistics.GenerateReportBlock();
-	EXPECT_EQ(block->GetExtendedHighestSequenceNum(), 110u);
-	EXPECT_EQ(CumulativeLost(block), 0);
+	auto first = statistics.GenerateReportBlock();
+	EXPECT_EQ(first->GetExtendedHighestSequenceNum(), 299u);
+	EXPECT_EQ(CumulativeLost(first), 0);
+
+	ReceiveRange(statistics, 300, 399);
+	auto second = statistics.GenerateReportBlock();
+	EXPECT_EQ(second->GetExtendedHighestSequenceNum(), 399u);
+	EXPECT_EQ(CumulativeLost(second), 0);
+	EXPECT_EQ(second->GetFractionLost(), 0);
 }
 
-TEST(RtpReceiveStatistics, ConfirmedLargeJumpRestartsCounting)
+TEST(RtpReceiveStatistics, LongGapCountsAsLost)
 {
 	RtpReceiveStatistics statistics(kSsrc, kVideoRate);
-	ReceiveRange(statistics, 100, 109, {105});
-	Receive(statistics, {30000, 30001, 30002});
+	ReceiveRange(statistics, 1000, 1999);
+	ReceiveRange(statistics, 6000, 6999);
 
 	auto block = statistics.GenerateReportBlock();
-	EXPECT_EQ(block->GetExtendedHighestSequenceNum(), 30002u);
-	EXPECT_EQ(CumulativeLost(block), 0);
+	EXPECT_EQ(block->GetExtendedHighestSequenceNum(), 6999u);
+	EXPECT_EQ(CumulativeLost(block), 4000);
+	EXPECT_EQ(block->GetFractionLost(), (4000 << 8) / 6000);
 }

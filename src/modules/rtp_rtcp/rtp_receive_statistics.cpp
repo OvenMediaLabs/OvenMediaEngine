@@ -24,9 +24,9 @@ bool RtpReceiveStatistics::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket>
 		_media_ssrc = packet->Ssrc();
 		InitSeq(packet->SequenceNumber());
 	}
-	else if (UpdateSeq(packet->SequenceNumber()) == false)
+	else
 	{
-		return false;
+		UpdateSeq(packet->SequenceNumber());
 	}
 
 	UpdateStat(packet);
@@ -74,40 +74,32 @@ void RtpReceiveStatistics::InitSeq(uint16_t seq)
 {
 	_init_seq = seq;
 	_highest_seq = seq;
-	_bad_seq = RTP_SEQ_MOD + 1;
 	_cycles = 0;
 	_received_packets = 0;
 	_received_packets_prior = 0;
 	_expected_packets_prior = 0;
 }
 
-// RFC 3550 A.1
-bool RtpReceiveStatistics::UpdateSeq(uint16_t seq)
+// Ahead within half of the 16-bit space is newer, anything else is late or a duplicate
+// No restart check as in RFC 3550 A.1, since a restarted sender comes with a new SSRC
+void RtpReceiveStatistics::UpdateSeq(uint16_t seq)
 {
 	uint16_t distance_from_highest = static_cast<uint16_t>(seq - _highest_seq);
+	bool is_newer = (distance_from_highest != 0) && (distance_from_highest < RTP_SEQ_MOD / 2);
 
-	if (distance_from_highest < MAX_DROPOUT)
+	if (is_newer == false)
 	{
-		// In order, possibly after a gap
-		if (seq < _highest_seq)
-		{
-			_cycles += RTP_SEQ_MOD;
-		}
-		_highest_seq = seq;
+		// Counted as received without moving the highest
+		// A gap longer than half the space cannot be told apart from this
+		return;
 	}
-	else if (distance_from_highest <= RTP_SEQ_MOD - MAX_MISORDER)
-	{
-		// Large jump: the sender restarted only if the next packet follows it
-		if (seq != _bad_seq)
-		{
-			_bad_seq = (seq + 1) % RTP_SEQ_MOD;
-			return false;
-		}
-		InitSeq(seq);
-	}
-	// Otherwise a duplicate or a late packet, counted as received without moving the highest
 
-	return true;
+	// Possibly after a gap, which counts as lost
+	if (seq < _highest_seq)
+	{
+		_cycles += RTP_SEQ_MOD;
+	}
+	_highest_seq = seq;
 }
 
 bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)

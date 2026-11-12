@@ -6,8 +6,6 @@
 
 
 #define RTP_SEQ_MOD	(1<<16)
-#define MAX_DROPOUT	3000
-#define	MAX_MISORDER 100
 
 class RtpReceiveStatistics
 {
@@ -16,8 +14,7 @@ public:
 	// So if receiver_ssrc is 0, it will be generated randomly. It can be used to create RR packet
 	RtpReceiveStatistics(uint32_t media_ssrc, uint32_t clock_rate, uint32_t receiver_ssrc = 0);
 
-	// Only packets of the media stream itself, not ones that arrived through RTX.
-	// Returns false if the packet is not counted (a sequence jump not yet confirmed)
+	// Only packets of the media stream itself, not ones that arrived through RTX
 	bool AddReceivedRtpPacket(const std::shared_ptr<RtpPacket> &packet);
 	bool AddReceivedRtcpSenderReport(const std::shared_ptr<SenderReport> &report);
 
@@ -36,8 +33,7 @@ public:
 
 private:
 	void InitSeq(uint16_t seq) OV_REQUIRES(_lock);
-	// Returns false while a large sequence jump waits for the next packet to confirm it
-	bool UpdateSeq(uint16_t seq) OV_REQUIRES(_lock);
+	void UpdateSeq(uint16_t seq) OV_REQUIRES(_lock);
 	bool UpdateStat(const std::shared_ptr<RtpPacket> &packet) OV_REQUIRES(_lock);
 	uint32_t	_media_ssrc OV_GUARDED_BY(_lock) = 0;
 	uint32_t	_receiver_ssrc = 0;		// random generated local ssrc, for ReceiverReport, FIR ...
@@ -55,8 +51,6 @@ private:
 	uint16_t	_highest_seq OV_GUARDED_BY(_lock) = 0;
 	uint64_t	_cycles OV_GUARDED_BY(_lock) = 0;
 	uint32_t	_init_seq OV_GUARDED_BY(_lock) = 0;
-	// Sequence number that would confirm a large jump, out of the 16-bit range when none is pending
-	uint32_t	_bad_seq OV_GUARDED_BY(_lock) = RTP_SEQ_MOD + 1;
 	uint64_t	_received_packets OV_GUARDED_BY(_lock) = 0;
 	uint64_t	_expected_packets_prior OV_GUARDED_BY(_lock) = 0;
 	uint64_t	_received_packets_prior OV_GUARDED_BY(_lock) = 0;
