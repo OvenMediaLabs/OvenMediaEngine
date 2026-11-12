@@ -542,8 +542,8 @@ bool RtcSession::IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_pa
 	if (reserved_rendition != nullptr)
 	{
 		// Try to change rendition
-		// When a video packet of the next rendition is a keyframe
-		if (reserved_rendition->GetVideoTrack() != nullptr && reserved_rendition->GetVideoTrack()->GetId() == rtp_packet->GetTrackId() && rtp_packet->IsKeyframe())
+		// At the first packet of a keyframe of the next rendition, so the viewer gets the whole frame
+		if (reserved_rendition->GetVideoTrack() != nullptr && reserved_rendition->GetVideoTrack()->GetId() == rtp_packet->GetTrackId() && rtp_packet->IsKeyframe() && rtp_packet->IsFirstPacketOfFrame())
 		{
 			ChangeRendition();
 		}
