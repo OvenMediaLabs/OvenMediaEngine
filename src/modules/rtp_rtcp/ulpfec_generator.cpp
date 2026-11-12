@@ -110,13 +110,16 @@ void UlpfecGenerator::Encode()
 
 	// A mask reaches 48 packets from its base, so a longer frame is split into even blocks
 	const size_t block_count = (frame_packet_count + kMaxProtectedPacketsLBitSet - 1) / kMaxProtectedPacketsLBitSet;
-	const size_t block_size	 = (frame_packet_count + block_count - 1) / block_count;
 
-	for (size_t block_start = 0; block_start < frame_packet_count; block_start += block_size)
+	// The frame's FEC packets are shared out among its blocks, so a long frame gets no more than a short one per packet;
+	// each block gets at least one and at most kMaxFecPacketsPerBlock, since no block exceeds 48 packets
+	const size_t frame_fec_packet_count = (frame_packet_count + kMediaPacketsPerFecPacket - 1) / kMediaPacketsPerFecPacket;
+
+	for (size_t block_index = 0; block_index < block_count; block_index++)
 	{
-		const size_t block_end			= std::min(block_start + block_size, frame_packet_count);
-		const size_t block_packet_count = block_end - block_start;
-		const size_t fec_packet_count	= (block_packet_count + kMediaPacketsPerFecPacket - 1) / kMediaPacketsPerFecPacket;
+		const size_t block_start	  = (frame_packet_count * block_index) / block_count;
+		const size_t block_end		  = (frame_packet_count * (block_index + 1)) / block_count;
+		const size_t fec_packet_count = (frame_fec_packet_count / block_count) + ((block_index < (frame_fec_packet_count % block_count)) ? 1 : 0);
 
 		// Each packet gets its own set of FEC packets while there are enough sets, so any two lost packets come back;
 		// a longer block reuses the sets in turn

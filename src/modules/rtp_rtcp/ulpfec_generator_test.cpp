@@ -321,12 +321,16 @@ TEST(UlpfecGenerator, TwoNeighboringLostPacketsComeBack)
 
 TEST(UlpfecGenerator, AFrameLongerThanAMaskIsSplitIntoBlocks)
 {
-	// More than 48 packets, so one mask cannot reach them all
-	auto session = PacketizeH264Frames({{FrameType::VideoFrameKey, 120000}});
-	auto stream = SplitRed(session->packets, 0);
+	// More than 48 packets, so one mask cannot reach them all; the frame still gets one FEC packet per seven
+	for (size_t frame_size : {70000, 120000, 300000})
+	{
+		auto session = PacketizeH264Frames({{FrameType::VideoFrameKey, frame_size}});
+		auto stream = SplitRed(session->packets, 0);
 
-	ASSERT_GT(stream.media.size(), 48u);
-	ExpectEveryPacketRecovers(stream);
+		ASSERT_GT(stream.media.size(), 48u);
+		EXPECT_EQ(stream.fec.size(), (stream.media.size() + 6) / 7) << stream.media.size() << " media packets";
+		ExpectEveryPacketRecovers(stream);
+	}
 }
 
 TEST(UlpfecGenerator, FecPacketsTravelWithTheFrameTheyProtect)
