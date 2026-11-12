@@ -9,6 +9,8 @@ class RedRtpPacket : public RtpPacket
 public:
 	RedRtpPacket();
 	RedRtpPacket(uint8_t red_payload_type, RtpPacket &src);
+	// The header of `header_source` with an empty block of `block_payload_type`
+	RedRtpPacket(uint8_t red_payload_type, uint8_t block_payload_type, const RtpPacket &header_source);
 	RedRtpPacket(RedRtpPacket &src);
 	~RedRtpPacket();
 

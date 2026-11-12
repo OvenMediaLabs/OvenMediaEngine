@@ -237,7 +237,7 @@ bool RtpPacketizer::PacketizeVideo(cmn::MediaCodecId video_type,
 	return true;
 }
 
-bool RtpPacketizer::GenerateRedAndFecPackets(std::shared_ptr<RtpPacket> packet)
+bool RtpPacketizer::GenerateRedAndFecPackets(const std::shared_ptr<RtpPacket> &packet)
 {
 	// Send RED
 	auto red_packet = PackageAsRed(packet);
@@ -246,31 +246,42 @@ bool RtpPacketizer::GenerateRedAndFecPackets(std::shared_ptr<RtpPacket> packet)
 	// Because FEC packet should not affect the sequence number of the RTP packet.
 	AssignSequenceNumber(red_packet.get(), true);
 
-	_ulpfec_generator.AddRtpPacketAndGenerateFec(red_packet);
+	_ulpfec_generator.AddMediaPacket(packet, red_packet->SequenceNumber());
+
+	// Adjust completed red packet's payload offset and size for RTX packet
 	red_packet->PackageAsRtp();
 	_stream->OnRtpPacketized(red_packet);
 
-	while(_ulpfec_generator.IsAvailableFecPackets())
+	if (_ulpfec_generator.IsAvailableFecPackets() == false)
 	{
-		auto red_fec_packet = AllocatePacket(true);
+		return true;
+	}
 
-		// RED packet is for only video 
-		red_fec_packet->SetVideoPacket(true);
+	// FEC packets go with their frame (track, timestamps, the extensions a session stamps) but mark no frame boundary
+	_framemarking_extension->Reset();
 
-		// Timestamp is same as last packet
-		red_fec_packet->SetTimestamp(packet->Timestamp());
+	auto fec_header = AllocatePacket();
+	fec_header->SetTimestamp(packet->Timestamp());
+	fec_header->SetNTPTimestamp(packet->NTPTimestamp());
+	fec_header->SetTrackId(_track_id);
+	fec_header->SetVideoPacket(true);
+	fec_header->SetExtensions(_rtp_extensions);
 
-		// Sequence Number
-		AssignSequenceNumber(red_fec_packet.get(), true);
+	while (_ulpfec_generator.IsAvailableFecPackets())
+	{
+		auto fec_packet = std::make_shared<RedRtpPacket>(_red_payload_type, _ulpfec_payload_type, *fec_header);
+		fec_packet->SetUlpfec(true, _payload_type);
 
-		_ulpfec_generator.NextPacket(red_fec_packet.get());
+		if (_ulpfec_generator.NextPacket(fec_packet.get()) == false)
+		{
+			continue;
+		}
 
-		// Adjust completed red packet's payload offset and size for RTX packet
-		std::dynamic_pointer_cast<RedRtpPacket>(red_fec_packet)->PackageAsRtp();
+		AssignSequenceNumber(fec_packet.get(), true);
+		fec_packet->PackageAsRtp();
 
-		// Send ULPFEC
-		_rtp_packet_count ++;
-		_stream->OnRtpPacketized(red_fec_packet);
+		_rtp_packet_count++;
+		_stream->OnRtpPacketized(fec_packet);
 	}
 
 	return true;
@@ -332,28 +343,14 @@ std::shared_ptr<RedRtpPacket> RtpPacketizer::PackageAsRed(std::shared_ptr<RtpPac
 	return std::make_shared<RedRtpPacket>(_red_payload_type, *rtp_packet);
 }
 
-std::shared_ptr<RtpPacket> RtpPacketizer::AllocatePacket(bool ulpfec)
+std::shared_ptr<RtpPacket> RtpPacketizer::AllocatePacket()
 {
-	if(ulpfec)
-	{
-		auto red_packet = std::make_shared<RedRtpPacket>();
-		red_packet->SetSsrc(_ssrc);
-		red_packet->SetCsrcs(_csrcs);
-		red_packet->SetPayloadType(_ulpfec_payload_type);
-		red_packet->SetUlpfec(true, _payload_type);
-		red_packet->PackageAsRed(_red_payload_type);
-		
-		return red_packet;
-	}
-	else
-	{
-		auto rtp_packet = std::make_shared<RtpPacket>();
-		rtp_packet->SetSsrc(_ssrc);
-		rtp_packet->SetCsrcs(_csrcs);
-		rtp_packet->SetPayloadType(_payload_type);
+	auto rtp_packet = std::make_shared<RtpPacket>();
+	rtp_packet->SetSsrc(_ssrc);
+	rtp_packet->SetCsrcs(_csrcs);
+	rtp_packet->SetPayloadType(_payload_type);
 
-		return rtp_packet;
-	}
+	return rtp_packet;
 }
 
 bool RtpPacketizer::AssignSequenceNumber(RtpPacket *packet, bool red)

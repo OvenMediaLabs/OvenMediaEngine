@@ -43,7 +43,7 @@ private:
 	void SetVideoCodec(cmn::MediaCodecId codec_type);
 	void SetAudioCodec(cmn::MediaCodecId codec_type);
 	// Basic
-	std::shared_ptr<RtpPacket> AllocatePacket(bool ulpfec=false);
+	std::shared_ptr<RtpPacket> AllocatePacket();
 	std::shared_ptr<RedRtpPacket> PackageAsRed(std::shared_ptr<RtpPacket> rtp_packet);
 	bool AssignSequenceNumber(RtpPacket *packet, bool red = false);
 	bool MarkerBit(FrameType frame_type, int8_t payload_type);
@@ -58,7 +58,7 @@ private:
 	                    const FragmentationHeader *fragmentation,
 	                    const RTPVideoHeader *video_header);
 
-	bool GenerateRedAndFecPackets(std::shared_ptr<RtpPacket> packet);
+	bool GenerateRedAndFecPackets(const std::shared_ptr<RtpPacket> &packet);
 
 	// Audio Pakcet Sender Interface
 	bool PacketizeAudio(FrameType frame_type,
