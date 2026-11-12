@@ -897,10 +897,12 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 {
 	auto packet = std::make_shared<RtpPacket>(data);
 
-	if (TryUnwrapRtx(packet) == RtxResult::Drop)
+	auto rtx_result = TryUnwrapRtx(packet);
+	if (rtx_result == RtxResult::Drop)
 	{
 		return false;
 	}
+	bool arrived_through_rtx = (rtx_result == RtxResult::Unwrapped);
 
 	std::optional<uint32_t> track_id_opt = GetTrackId(packet->Ssrc());
 	if (track_id_opt.has_value() == false)
@@ -952,7 +954,11 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	// For RTCP Receiver Report
 	auto stat = GetOrCreateReceiveStatistics(track_id, packet->Ssrc(), track->GetTimeBase().GetDen());
 
-	stat->AddReceivedRtpPacket(packet);
+	// The receiver report counts what arrived on the media stream itself, so the loss stays visible after repair
+	if (arrived_through_rtx == false)
+	{
+		stat->AddReceivedRtpPacket(packet);
+	}
 
 	// From here on the packet's NACK update, insertion and delivery, and the
 	// service of other tracks, run as one unit per session

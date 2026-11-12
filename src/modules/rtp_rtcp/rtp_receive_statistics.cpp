@@ -1,5 +1,7 @@
 #include "rtp_receive_statistics.h"
 
+#include <algorithm>
+
 RtpReceiveStatistics::RtpReceiveStatistics(uint32_t media_ssrc, uint32_t clock_rate, uint32_t receiver_ssrc)
 {
 	_media_ssrc = media_ssrc;
@@ -22,9 +24,9 @@ bool RtpReceiveStatistics::AddReceivedRtpPacket(const std::shared_ptr<RtpPacket>
 		_media_ssrc = packet->Ssrc();
 		InitSeq(packet->SequenceNumber());
 	}
-	else
+	else if (UpdateSeq(packet->SequenceNumber()) == false)
 	{
-		UpdateSeq(packet->SequenceNumber());
+		return false;
 	}
 
 	UpdateStat(packet);
@@ -72,24 +74,38 @@ void RtpReceiveStatistics::InitSeq(uint16_t seq)
 {
 	_init_seq = seq;
 	_highest_seq = seq;
+	_bad_seq = RTP_SEQ_MOD + 1;
 	_cycles = 0;
 	_received_packets = 0;
 	_received_packets_prior = 0;
 	_expected_packets_prior = 0;
 }
 
+// RFC 3550 A.1
 bool RtpReceiveStatistics::UpdateSeq(uint16_t seq)
 {
-	// Wrapped
-	if (seq < _highest_seq && _highest_seq - seq > RTP_SEQ_MOD / 2)
-	{
-		_cycles += RTP_SEQ_MOD;
-	}
-	
-	// TODO(Getroot): Check "large jump", "probation" and "reordered/duplicate"
-	_highest_seq = seq;
+	uint16_t distance_from_highest = static_cast<uint16_t>(seq - _highest_seq);
 
-	//logi("DEBUG", "RTP: UpdateSeq - extended seq(%u) cycles(%u), highest_seq(%u)", _cycles + _highest_seq, _cycles, _highest_seq);
+	if (distance_from_highest < MAX_DROPOUT)
+	{
+		// In order, possibly after a gap
+		if (seq < _highest_seq)
+		{
+			_cycles += RTP_SEQ_MOD;
+		}
+		_highest_seq = seq;
+	}
+	else if (distance_from_highest <= RTP_SEQ_MOD - MAX_MISORDER)
+	{
+		// Large jump: the sender restarted only if the next packet follows it
+		if (seq != _bad_seq)
+		{
+			_bad_seq = (seq + 1) % RTP_SEQ_MOD;
+			return false;
+		}
+		InitSeq(seq);
+	}
+	// Otherwise a duplicate or a late packet, counted as received without moving the highest
 
 	return true;
 }
@@ -145,30 +161,27 @@ bool RtpReceiveStatistics::IsSenderReportReceived()
 std::shared_ptr<ReportBlock> RtpReceiveStatistics::GenerateReportBlock()
 {
 	ov::LockGuard lock(_lock);
-	int32_t extented_highest_seq = _cycles + _highest_seq;
-	int32_t expected_packet_count = extented_highest_seq - _init_seq + 1;
 
-	int32_t expected_packet_count_interval = expected_packet_count - _expected_packets_prior;
-	_expected_packets_prior = expected_packet_count;
-	int32_t received_packet_count_interval = _received_packets - _received_packets_prior;
+	// RFC 3550 A.3
+	uint32_t extended_highest_seq = _cycles + _highest_seq;
+	int64_t expected_packets = static_cast<int64_t>(extended_highest_seq) - _init_seq + 1;
+
+	int64_t expected_packets_interval = expected_packets - _expected_packets_prior;
+	int64_t received_packets_interval = static_cast<int64_t>(_received_packets) - _received_packets_prior;
+	int64_t lost_packets_interval = expected_packets_interval - received_packets_interval;
+	_expected_packets_prior = expected_packets;
 	_received_packets_prior = _received_packets;
 
-	int32_t packet_lost_interval = expected_packet_count_interval - received_packet_count_interval;
-
-	// fraction lost
-	int8_t fraction_lost = ((double)packet_lost_interval / (double)expected_packet_count_interval) * 256.0;
-
-	// cumulative lost
-	int32_t packet_lost = expected_packet_count - _received_packets;
-	uint32_t cumulative_packet_lost = 0;
-	if (packet_lost < 0)
+	// An interval with late or duplicate packets has no loss, not a negative one
+	uint8_t fraction_lost = 0;
+	if (expected_packets_interval > 0 && lost_packets_interval > 0)
 	{
-		cumulative_packet_lost = 0x800000 | (packet_lost & 0x7FFFFF);
+		fraction_lost = static_cast<uint8_t>((lost_packets_interval << 8) / expected_packets_interval);
 	}
-	else
-	{
-		cumulative_packet_lost = packet_lost & 0x7FFFFF;
-	}
+
+	// Duplicates can make it negative; saturates at the limits of the 24-bit signed field
+	int64_t lost_packets = std::clamp<int64_t>(expected_packets - _received_packets, -0x800000, 0x7FFFFF);
+	uint32_t cumulative_packet_lost = static_cast<uint32_t>(lost_packets) & 0xFFFFFF;
 
 	// delay since last SR (DLSR)
 	uint32_t dlsr = 0;
@@ -183,7 +196,7 @@ std::shared_ptr<ReportBlock> RtpReceiveStatistics::GenerateReportBlock()
 	
 	_report_block_timer.Update();
 
-	auto report_block = std::make_shared<ReportBlock>(_media_ssrc, fraction_lost, cumulative_packet_lost, extented_highest_seq, _interarrival_jitter, _last_sr_timestamp, dlsr);
+	auto report_block = std::make_shared<ReportBlock>(_media_ssrc, fraction_lost, cumulative_packet_lost, extended_highest_seq, _interarrival_jitter, _last_sr_timestamp, dlsr);
 
 	// Reset interval values
 	_last_sr_timestamp = 0;
