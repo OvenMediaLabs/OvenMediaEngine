@@ -49,14 +49,15 @@ private:
 	bool		_first OV_GUARDED_BY(_lock) = true;
 
 	// https://tools.ietf.org/html/rfc3550#page-75
+	// Counts are 64-bit so they never wrap; the report fields are cut to their width when written
 	uint16_t	_highest_seq OV_GUARDED_BY(_lock) = 0;
-	uint32_t	_cycles OV_GUARDED_BY(_lock) = 0;
+	uint64_t	_cycles OV_GUARDED_BY(_lock) = 0;
 	uint32_t	_init_seq OV_GUARDED_BY(_lock) = 0;
 	// Sequence number that would confirm a large jump, out of the 16-bit range when none is pending
 	uint32_t	_bad_seq OV_GUARDED_BY(_lock) = RTP_SEQ_MOD + 1;
-	uint32_t	_received_packets OV_GUARDED_BY(_lock) = 0;
-	int64_t		_expected_packets_prior OV_GUARDED_BY(_lock) = 0;
-	uint32_t	_received_packets_prior OV_GUARDED_BY(_lock) = 0;
+	uint64_t	_received_packets OV_GUARDED_BY(_lock) = 0;
+	uint64_t	_expected_packets_prior OV_GUARDED_BY(_lock) = 0;
+	uint64_t	_received_packets_prior OV_GUARDED_BY(_lock) = 0;
 	uint32_t	_interarrival_jitter OV_GUARDED_BY(_lock) = 0;
 
 	uint32_t 	_last_rtp_timestamp OV_GUARDED_BY(_lock) = 0;
