@@ -22,6 +22,14 @@ RedRtpPacket::RedRtpPacket(uint8_t red_payload_type, RtpPacket &src)
 	SetPayload(src.Payload(), src.PayloadSize());
 }
 
+RedRtpPacket::RedRtpPacket(uint8_t red_payload_type, uint8_t block_payload_type, const RtpPacket &header_source)
+	: RtpPacket(header_source)
+{
+	SetPayloadType(block_payload_type);
+	PackageAsRed(red_payload_type);
+	_payload_size = 0;
+}
+
 RedRtpPacket::RedRtpPacket(RedRtpPacket &src)
 	: RtpPacket(src)
 {

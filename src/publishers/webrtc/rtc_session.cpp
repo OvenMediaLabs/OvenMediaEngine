@@ -14,6 +14,7 @@
 #include "modules/rtp_rtcp/rtcp_info/nack.h"
 #include "modules/rtp_rtcp/rtcp_info/remb.h"
 #include "modules/rtp_rtcp/rtcp_info/transport_cc.h"
+#include "modules/rtp_rtcp/ulpfec_generator.h"
 #include "rtc_application.h"
 #include "rtc_common_types.h"
 #include "rtc_private.h"
@@ -541,8 +542,8 @@ bool RtcSession::IsSelectedPacket(const std::shared_ptr<const RtpPacket> &rtp_pa
 	if (reserved_rendition != nullptr)
 	{
 		// Try to change rendition
-		// When a video packet of the next rendition is a keyframe
-		if (reserved_rendition->GetVideoTrack() != nullptr && reserved_rendition->GetVideoTrack()->GetId() == rtp_packet->GetTrackId() && rtp_packet->IsKeyframe())
+		// At the first packet of a keyframe of the next rendition, so the viewer gets the whole frame
+		if (reserved_rendition->GetVideoTrack() != nullptr && reserved_rendition->GetVideoTrack()->GetId() == rtp_packet->GetTrackId() && rtp_packet->IsKeyframe() && rtp_packet->IsFirstPacketOfFrame())
 		{
 			ChangeRendition();
 		}
@@ -621,6 +622,12 @@ void RtcSession::SendOutgoingData(const std::any &packet)
 
 	auto &media_rtp_sequence_number = copy_packet->IsVideoPacket() ? _video_rtp_sequence_number : _audio_rtp_sequence_number;
 	copy_packet->SetSequenceNumber(media_rtp_sequence_number++);
+
+	if (copy_packet->IsUlpfec())
+	{
+		// The FEC header names its packets in the stream's numbering, and the frame's packets went out just before it
+		UlpfecGenerator::ShiftSequenceNumberBase(copy_packet.get(), static_cast<uint16_t>(copy_packet->SequenceNumber() - session_packet->SequenceNumber()));
+	}
 
 	// Set transport-wide sequence number
 	bool media_transport_cc_enabled = copy_packet->IsVideoPacket() ? _video_transport_cc_enabled : _audio_transport_cc_enabled;
@@ -824,6 +831,13 @@ bool RtcSession::ProcessNACK(const std::shared_ptr<RtcpInfo> &rtcp_info)
 			auto copy_rtx_packet = std::make_shared<RtxRtpPacket>(*rtx_packet);
 			copy_rtx_packet->SetSequenceNumber(_rtx_sequence_number++);
 			copy_rtx_packet->SetOriginalSequenceNumber(sent_log->_sequence_number);
+
+			if (copy_rtx_packet->IsUlpfec())
+			{
+				// The retransmitted payload is the stream's FEC packet, which names its packets in the stream's numbering
+				UlpfecGenerator::ShiftSequenceNumberBase(copy_rtx_packet.get(), static_cast<uint16_t>(sent_log->_sequence_number - sent_log->_origin_sequence_number));
+			}
+
 			_rtp_rtcp->SendRtpPacket(copy_rtx_packet);
 		}
 	}
