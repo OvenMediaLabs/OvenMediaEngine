@@ -91,6 +91,7 @@ private:
 	void ResponseSegment(const std::shared_ptr<http::svr::HttpExchange> &exchange, const ov::String &file_name, const int32_t &track_id, const int64_t &segment_number);
 	void ResponsePartialSegment(const std::shared_ptr<http::svr::HttpExchange> &exchange, const ov::String &file_name, const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number, bool holdIfAccepted = true);
 
+	friend class LLHlsSegmentResponse;
 	void ResponseData(const std::shared_ptr<http::svr::HttpExchange> &exchange);
 
 	void OnPlaylistUpdated(const int32_t &track_id, const int64_t &msn, const int64_t &part);
