@@ -21,6 +21,8 @@ public:
 	bool AddReceivedRtpPacket(const std::shared_ptr<RtpPacket> &packet);
 	bool AddReceivedRtcpSenderReport(const std::shared_ptr<SenderReport> &report);
 
+	// False until a packet of the media stream itself is counted, so RTX alone never starts a report
+	bool HasReceivedRtpPacket();
 	bool HasElapsedSinceLastReportBlock(uint32_t milliseconds);
 	bool IsSenderReportReceived();
 

@@ -980,8 +980,10 @@ bool RtpRtcp::OnRtpReceived(NodeType from_node, const std::shared_ptr<const ov::
 	}
 	TickOtherTracks(track_id);
 
-	// Send ReceiverReport
-	if (stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS) && stat->IsSenderReportReceived() == true)
+	// Send ReceiverReport. RTX alone has no sequence numbers of the media stream to report on
+	if (stat->HasReceivedRtpPacket() == true &&
+		stat->HasElapsedSinceLastReportBlock(RECEIVER_REPORT_CYCLE_MS) &&
+		stat->IsSenderReportReceived() == true)
 	{
 		auto report = std::make_shared<ReceiverReport>();
 		report->SetRtpSsrc(packet->Ssrc());

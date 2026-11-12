@@ -146,6 +146,12 @@ bool RtpReceiveStatistics::UpdateStat(const std::shared_ptr<RtpPacket> &packet)
 	return true;
 }
 
+bool RtpReceiveStatistics::HasReceivedRtpPacket()
+{
+	ov::LockGuard lock(_lock);
+	return _first == false;
+}
+
 bool RtpReceiveStatistics::HasElapsedSinceLastReportBlock(uint32_t milliseconds)
 {
 	ov::LockGuard lock(_lock);
