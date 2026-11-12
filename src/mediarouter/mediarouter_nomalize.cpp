@@ -1019,8 +1019,8 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 
 	media_packet->SetFlag(is_key_frame ? MediaPacketFlag::Key : MediaPacketFlag::NoFlag);
 
-	// One time: parse width, height
-	if (media_track->IsValid() == true)
+	// Only a key frame carries the picture size, and any key frame may change it
+	if (is_key_frame == false)
 	{
 		return true;
 	}
@@ -1028,8 +1028,17 @@ bool MediaRouterNormalize::ProcessVP8Stream(const std::shared_ptr<info::Stream> 
 	VP8Parser parser;
 	if (VP8Parser::Parse(media_packet->GetData()->GetDataAs<uint8_t>(), media_packet->GetDataLength(), parser) == false)
 	{
-		logte("Could not parse VP8 header");
-		return false;
+		if (media_track->IsValid() == false)
+		{
+			logte("[%s/%s/%s] Could not parse VP8 key frame header, dropping the frame",
+				  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+			return false;
+		}
+
+		// The size is already known, so the frame passes with the last size
+		logtw("[%s/%s/%s] Could not parse VP8 key frame header, keeping the last picture size",
+			  stream_info->GetApplicationName(), stream_info->GetName().CStr(), media_track->GetVariantName().CStr());
+		return true;
 	}
 
 	media_track->SetResolution(parser.GetWidth(), parser.GetHeight());
