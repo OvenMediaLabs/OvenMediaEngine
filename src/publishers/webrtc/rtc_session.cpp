@@ -694,7 +694,7 @@ bool RtcSession::SetAbsSendTime(const std::shared_ptr<RtpPacket> &rtp_packet, ui
 
 bool RtcSession::RecordRtpSent(const std::shared_ptr<const RtpPacket> &rtp_packet, uint16_t origin_sequence_number, uint16_t wide_sequence_number)
 {
-	if (rtp_packet == nullptr)
+	if (rtp_packet == nullptr || _rtx_enabled == false || rtp_packet->IsVideoPacket() == false)
 	{
 		return false;
 	}

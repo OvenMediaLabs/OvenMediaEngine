@@ -50,6 +50,8 @@ RtpPacket::RtpPacket(const RtpPacket &src)
 	_timestamp = src._timestamp;
 	_extensions = src._extensions;
 	_extension_buffer_offset = src._extension_buffer_offset;
+	_extension_buffer_offset_count = src._extension_buffer_offset_count;
+	_extension_buffer_offset_overflow = src._extension_buffer_offset_overflow;
 	_extension_type = src._extension_type;
 	_data = src._data->Clone();
 	_buffer = _data->GetWritableDataAs<uint8_t>();
@@ -411,10 +413,19 @@ void RtpPacket::SetExtensions(const RtpHeaderExtensions& extensions)
 	offset += 2;
 
 	// Write Extensions
+	_extension_buffer_offset_count = 0;
+	_extension_buffer_offset_overflow.clear();
 	auto extensions_map = extensions.GetMap();
 	for(const auto &[id, extension] : extensions_map)
 	{
-		_extension_buffer_offset[id] = offset;
+		if (_extension_buffer_offset_count < _extension_buffer_offset.size())
+		{
+			_extension_buffer_offset[_extension_buffer_offset_count++] = {id, static_cast<off_t>(offset)};
+		}
+		else
+		{
+			_extension_buffer_offset_overflow.push_back({id, static_cast<off_t>(offset)});
+		}
 
 		auto extension_data = extension->Marshal(extensions.GetHeaderType());
 		memcpy(&_buffer[offset], extension_data->GetData(), extension_data->GetLength());
@@ -502,15 +513,22 @@ uint8_t* RtpPacket::Payload() const
 
 uint8_t* RtpPacket::Extension(uint8_t id) const
 { 
-	auto it = _extension_buffer_offset.find(id);
-	if (it == _extension_buffer_offset.end())
+	for (uint8_t i = 0; i < _extension_buffer_offset_count; ++i)
 	{
-		return nullptr;
+		if (_extension_buffer_offset[i].id == id)
+		{
+			return &_buffer[_extension_buffer_offset[i].offset];
+		}
 	}
 
-	auto offset = it->second;
-
-	return &_buffer[offset];
+	for (const auto &extension : _extension_buffer_offset_overflow)
+	{
+		if (extension.id == id)
+		{
+			return &_buffer[extension.offset];
+		}
+	}
+	return nullptr;
 }
 
 std::chrono::system_clock::time_point RtpPacket::GetCreatedTime()
