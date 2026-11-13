@@ -534,6 +534,12 @@ namespace pvd
 			audio_track = audio_track_object.asBool();
 		}
 
+		if (video_track == false && audio_track == false)
+		{
+			_last_error = "videoTrack and audioTrack cannot both be false";
+			return false;
+		}
+
 		_stream = MakeStream(name, bypass_transcoder, video_track, audio_track);
 
 		// audioMap
@@ -975,6 +981,12 @@ namespace pvd
 		if (audio_track_node)
 		{
 			audio_track = audio_track_node.text().as_bool();
+		}
+
+		if (video_track == false && audio_track == false)
+		{
+			_last_error = "VideoTrack and AudioTrack cannot both be false";
+			return false;
 		}
 
 		_stream = MakeStream(name, bypass_transcoder, video_track, audio_track);

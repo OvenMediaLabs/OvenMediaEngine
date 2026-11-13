@@ -90,7 +90,7 @@ Set to true if transcoding is not desired.
 Determines whether to use the video track. If `VideoTrack` is set to true and there's no video track in the Item, an error will occur.
 
 `<Stream>/<AudioTrack> (optional, default: true)`\
-Determines whether to use the audio track. If `AudioTrack` is set to true and there's no audio track in the Item, an error will occur.
+Determines whether to use the audio track. If `AudioTrack` is set to true and there's no audio track in the Item, an error will occur. `VideoTrack` and `AudioTrack` cannot both be false; such a schedule is rejected and the channel is not created.
 
 `<Stream>/<AudioMap> (optional, default: false)`\
 To enable multiple audio tracks (multilingual audio) in Scheduled Channel, enable `AudioMap`. It is important that all scheduled live sources and file sources provide audio tracks equal to or greater than the number of audio tracks defined in `AudioMap`. If you define 3 `AudioMaps`, but the file source or live source provides less than 3 audio tracks, the Program will generate an error. If you provide more audio tracks than the defined `AudioMaps`, they will be mapped in order and the rest will be ignored.

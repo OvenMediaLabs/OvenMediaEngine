@@ -435,3 +435,33 @@ TEST(ScheduledLiveStartPolicy, NextKeyframeTakesNothingAndDoesNotPace)
 	EXPECT_FALSE(plan.starts_at_keyframe);
 	EXPECT_TRUE(plan.replay.empty());
 }
+
+namespace
+{
+	class ScheduledStreamXml : public ScheduledLiveStartPointXml
+	{
+	};
+}  // namespace
+
+TEST(ScheduledStreamJson, RejectsNeitherVideoNorAudio)
+{
+	Json::Value root;
+	root["stream"]["name"]		 = "none";
+	root["stream"]["videoTrack"] = false;
+	root["stream"]["audioTrack"] = false;
+
+	Json::Value item;
+	item["url"] = "stream://app/live";
+	root["fallbackProgram"]["items"].append(item);
+
+	auto [schedule, error] = Schedule::CreateFromJsonObject(root, "");
+	EXPECT_EQ(schedule, nullptr);
+	EXPECT_NE(error.IndexOf("cannot both be false"), -1) << error.CStr();
+}
+
+TEST_F(ScheduledStreamXml, RejectsNeitherVideoNorAudio)
+{
+	auto [schedule, error] = LoadStreamXml("<VideoTrack>false</VideoTrack><AudioTrack>false</AudioTrack>");
+	EXPECT_EQ(schedule, nullptr);
+	EXPECT_NE(error.IndexOf("cannot both be false"), -1) << error.CStr();
+}
