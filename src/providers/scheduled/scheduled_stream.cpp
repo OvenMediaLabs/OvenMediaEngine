@@ -664,10 +664,7 @@ namespace pvd
 			logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
-			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
-			{
-				_global_track_offset_us_map[track_id] = dts_us;
-			}
+			InitGlobalTrackOffset(track_id, dts_us);
 
 			int64_t global_zero_based_dts = dts_us - _global_track_offset_us_map[track_id];
 			max_zero_based_dts			  = std::max(max_zero_based_dts, global_zero_based_dts);
@@ -1137,10 +1134,7 @@ namespace pvd
             AdjustTimestampByBase(track_id, pts, dts, std::numeric_limits<int64_t>::max(), duration);
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
-			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
-			{
-				_global_track_offset_us_map[track_id] = dts_us;
-			}
+			InitGlobalTrackOffset(track_id, dts_us);
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
 			media_packet->SetDuration(-1); // It will be calculated in MediaRouter
@@ -1422,6 +1416,24 @@ namespace pvd
 
         return stream_tap;
     }
+
+	void ScheduledStream::InitGlobalTrackOffset(uint32_t track_id, int64_t dts_us)
+	{
+		if (_global_track_offset_us_map.find(track_id) != _global_track_offset_us_map.end())
+		{
+			return;
+		}
+
+		// All tracks share one output timeline, so a track first seen in a later item
+		// joins the existing timeline instead of starting from zero
+		auto offset_us = dts_us;
+		for (const auto &[id, existing_offset_us] : _global_track_offset_us_map)
+		{
+			offset_us = std::min(offset_us, existing_offset_us);
+		}
+
+		_global_track_offset_us_map[track_id] = offset_us;
+	}
 
     int ScheduledStream::FindTrackIdByOriginId(int origin_id) const
     {

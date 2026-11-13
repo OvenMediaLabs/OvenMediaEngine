@@ -93,6 +93,7 @@ namespace pvd
         bool CheckStreamItemAvailable(const std::shared_ptr<Schedule::Item> &item);
         
         int FindTrackIdByOriginId(int origin_id) const;
+		void InitGlobalTrackOffset(uint32_t track_id, int64_t dts_us);
 
 		bool SetDurationToAllItems(const std::shared_ptr<Schedule::Program> &program);
 		int64_t GetFileItemDurationMS(const std::shared_ptr<Schedule::Item> &item) const;
