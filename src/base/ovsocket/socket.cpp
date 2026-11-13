@@ -1583,7 +1583,8 @@ namespace ov
 
 				if (sent_bytes != static_cast<ssize_t>(data->GetLength()) && (sent_bytes != -1))
 				{
-					// Subdata() is a separate copy-on-write Data even at offset 0, so the caller may reuse its buffer
+					// Subdata() makes a new Data, also at offset 0. As a result, a write through the caller's Data makes a copy first. Until the socket sends
+					// or discards the new Data, pointers from before Send() can change its bytes. Until then, do not release or change reference-only memory
 					auto command = make_command(data->Subdata(sent_bytes));
 
 #ifdef OME_LATENCY_PROBE

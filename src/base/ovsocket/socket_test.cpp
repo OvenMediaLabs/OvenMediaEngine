@@ -1162,8 +1162,8 @@ protected:
 	}
 };
 
-// The caller may rewrite its buffer once Send() returns: `a` hits EAGAIN with an empty queue,
-// `b` is queued behind it
+// The caller writes through GetWritableData() after Send() returns. `a` gets EAGAIN with an empty
+// queue, and `b` goes into the queue behind `a`
 TEST_F(SocketSendTcpTest, QueuedSendIsIsolatedFromCallerBufferReuse)
 {
 	Watchdog watchdog(std::chrono::seconds(30), "QueuedSendIsIsolatedFromCallerBufferReuse");
