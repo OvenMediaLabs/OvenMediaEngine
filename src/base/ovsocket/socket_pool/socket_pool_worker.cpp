@@ -311,12 +311,23 @@ namespace ov
 
 	void SocketPoolWorker::CheckRemovedSrtSockets()
 	{
-		// Sockets still queued from the last check would be queued twice
-		if ((GetType() != SocketType::Srt) || (_removed_srt_sockets.empty() == false) ||
-			((_srt_removal_check_interval.IsElapsed(SRT_REMOVAL_CHECK_INTERVAL_MSEC) && _srt_removal_check_interval.Update()) == false))
+		if (GetType() != SocketType::Srt)
 		{
 			return;
 		}
+
+		// Sockets still queued from the last check would be queued twice
+		if (_removed_srt_sockets.empty() == false)
+		{
+			return;
+		}
+
+		if (_srt_removal_check_interval.IsElapsed(SRT_REMOVAL_CHECK_INTERVAL_MSEC) == false)
+		{
+			return;
+		}
+
+		_srt_removal_check_interval.Update();
 
 		std::vector<std::shared_ptr<Socket>> sockets;
 
@@ -352,7 +363,7 @@ namespace ov
 
 		if (_removed_srt_sockets.empty() == false)
 		{
-			logti("Closing %zu SRT socket(s) that libsrt removed without a disconnect event", _removed_srt_sockets.size());
+			logti("Closing %zu SRT connection(s) whose disconnect was missed", _removed_srt_sockets.size());
 		}
 	}
 
@@ -1096,6 +1107,12 @@ namespace ov
 					}
 
 					case SocketType::Srt: {
+						// libsrt dropped the subscriptions of a socket it removed, and logs an error for a removal it cannot find
+						if (::srt_getsockstate(native_handle) == SRTS_NONEXIST)
+						{
+							break;
+						}
+
 						if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
 						{
 							error = SrtError::CreateErrorFromSrt();

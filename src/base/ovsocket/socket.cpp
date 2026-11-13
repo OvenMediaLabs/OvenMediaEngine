@@ -2070,9 +2070,9 @@ namespace ov
 
 		if (socket_error != nullptr)
 		{
-			if (
-				(read_bytes == 0L) ||
-				((_socket.GetType() == SocketType::Srt) && (socket_error->GetCode() == SRT_ECONNLOST)))
+			if ((read_bytes == 0L) ||
+				((_socket.GetType() == SocketType::Srt) &&
+				 ((socket_error->GetCode() == SRT_ECONNLOST) || (socket_error->GetCode() == SRT_EINVSOCK))))
 			{
 				logtt("Remote is disconnected with error: %s", socket_error->What());
 
@@ -2087,6 +2087,9 @@ namespace ov
 				// so the receiver cannot tell the two cases apart at the API level.
 				// Close with `Disconnected` (same posture as TCP RST) instead of `Error`
 				// so downstream does not treat this as an unambiguous transport failure.
+				//
+				// `SRT_EINVSOCK` is the same break read late: OME has not closed the socket,
+				// so libsrt's garbage collector closed it after the connection broke.
 				CloseWithState(SocketState::Disconnected);
 
 				return tl::make_unexpected(socket_error);
@@ -2132,22 +2135,15 @@ namespace ov
 				}
 				else
 				{
-					auto new_state = SocketState::Error;
-
 					switch (socket_error->GetCode())
 					{
-						case SRT_EINVSOCK:
-							// OME has not closed it, so libsrt's garbage collector closed it after the connection broke
-							new_state = SocketState::Disconnected;
-							break;
-
 						default:
 							logae("An error occurred while read data: %s\nStack trace: %s",
 								  socket_error->What(),
 								  StackTrace::GetStackTrace().CStr());
 					}
 
-					CloseWithState(new_state);
+					CloseWithState(SocketState::Error);
 				}
 			}
 		}

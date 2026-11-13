@@ -22,6 +22,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <future>
 #include <map>
 #include <memory>
@@ -1621,8 +1622,8 @@ namespace
 			return true;
 		}
 
-		// Connects a caller and returns the handle of the socket OME accepted for it
-		SRTSOCKET Connect(SRTSOCKET *caller)
+		// Connects a caller, after `configure` sets its options, and returns the handle of the socket OME accepted for it
+		SRTSOCKET Connect(SRTSOCKET *caller, const std::function<void(SRTSOCKET)> &configure = nullptr)
 		{
 			*caller = ::srt_create_socket();
 			if (*caller == SRT_INVALID_SOCK)
@@ -1635,6 +1636,10 @@ namespace
 			::srt_setsockopt(*caller, 0, SRTO_TRANSTYPE, &live, sizeof(live));
 			int yes = 1;
 			::srt_setsockopt(*caller, 0, SRTO_MESSAGEAPI, &yes, sizeof(yes));
+			if (configure != nullptr)
+			{
+				configure(*caller);
+			}
 
 			sockaddr_in target{};
 			target.sin_family	   = AF_INET;
@@ -1833,6 +1838,74 @@ TEST_F(SocketRecvSrtTest, RemovedSocketWithQueuedCloseIsReportedOnce)
 	EXPECT_EQ(victim_socket->GetState(), ov::SocketState::Closed);
 
 	// Past another check, the close is still reported once and the holder is still open
+	std::this_thread::sleep_for(std::chrono::milliseconds(SRT_REMOVAL_CHECK_PASS_MSEC));
+	EXPECT_EQ(listener.CloseCount(victim), 1);
+	EXPECT_FALSE(listener.ClosedState(holder).has_value());
+}
+
+// A socket whose close is queued behind a send waiting for buffer space is closed soon after libsrt removes it,
+// although the removed socket never raises the event that would resume the send
+TEST_F(SocketRecvSrtTest, RemovedSocketWithCloseBehindStalledSendIsClosed)
+{
+	// Far more than the send buffer and the caller's receive buffer together hold
+	constexpr size_t STALLED_SEND_BYTES = 64 * 1024 * 1024;
+	// How long the send buffer must stay unchanged to count as stalled
+	constexpr int SEND_STALL_SETTLE_MSEC = 300;
+
+	Watchdog watchdog(std::chrono::seconds(30), "RemovedSocketWithCloseBehindStalledSendIsClosed");
+
+	SrtListenerHarness listener(_pool);
+	ASSERT_TRUE(listener.Start());
+
+	// The caller never reads and turns its too-late drop off,
+	// so OME's sender keeps every unacknowledged packet and its send buffer stays full
+	SRTSOCKET victim_caller = SRT_INVALID_SOCK;
+	const auto victim		= listener.Connect(&victim_caller, [](SRTSOCKET caller) {
+		  int no = 0;
+		  ::srt_setsockopt(caller, 0, SRTO_TLPKTDROP, &no, sizeof(no));
+	  });
+	ASSERT_NE(victim, SRT_INVALID_SOCK);
+	auto victim_socket = listener.Client(victim);
+	ASSERT_NE(victim_socket, nullptr);
+
+	auto data = std::make_shared<ov::Data>(STALLED_SEND_BYTES);
+	ASSERT_TRUE(data->SetLength(STALLED_SEND_BYTES));
+	ASSERT_TRUE(victim_socket->Send(data));
+
+	auto send_buffer_bytes = [&]() {
+		size_t blocks = 0;
+		size_t bytes  = 0;
+		return (::srt_getsndbuffer(victim, &blocks, &bytes) == SRT_ERROR) ? 0 : bytes;
+	};
+	ASSERT_TRUE(WaitUntil([&]() {
+		const auto before = send_buffer_bytes();
+		std::this_thread::sleep_for(std::chrono::milliseconds(SEND_STALL_SETTLE_MSEC));
+		return (before > 0) && (send_buffer_bytes() == before);
+	}));
+
+	// The close waits behind the stalled send, and only a writable event would resume them
+	ASSERT_TRUE(victim_socket->Close());
+	ASSERT_TRUE(victim_socket->HasCloseCommand());
+	std::this_thread::sleep_for(std::chrono::milliseconds(SEND_STALL_SETTLE_MSEC));
+	ASSERT_TRUE(victim_socket->HasCloseCommand());
+
+	SRTSOCKET holder_caller = SRT_INVALID_SOCK;
+	const auto holder		= listener.Connect(&holder_caller);
+	ASSERT_NE(holder, SRT_INVALID_SOCK);
+
+	listener.HoldOnNextMessage(holder);
+	const char payload[] = "srt-hold-worker";
+	ASSERT_NE(::srt_sendmsg2(holder_caller, payload, sizeof(payload), nullptr), SRT_ERROR);
+	ASSERT_TRUE(WaitUntil([&]() { return listener.IsHolding(); }));
+
+	::srt_close(victim_caller);
+	ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(victim) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+
+	listener.Release();
+
+	// Without the removal check, only the expiry of the stalled send would close it, seconds later
+	ASSERT_TRUE(WaitUntil([&]() { return listener.ClosedState(victim).has_value(); }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+
 	std::this_thread::sleep_for(std::chrono::milliseconds(SRT_REMOVAL_CHECK_PASS_MSEC));
 	EXPECT_EQ(listener.CloseCount(victim), 1);
 	EXPECT_FALSE(listener.ClosedState(holder).has_value());
