@@ -617,6 +617,10 @@ namespace ov
 		bool AddToWorker(bool need_to_wait_first_epoll_event);
 		void DeleteFromWorker();
 
+		void SetWritableEventEnabled(bool enabled) OV_REQUIRES(_dispatch_queue_lock);
+		// For an event without `EPOLLIN` only
+		void DisableWritableEventIfIdle();
+
 		// When using epoll ET mode, the first event occurs immediately after EPOLL_CTL_ADD. (except SRT epoll)
 		// This API is used for waiting the event, and MUST be called in SocketPoolWorker::ThreadProc() thread
 		bool NeedToWaitFirstEpollEvent() const
@@ -688,6 +692,7 @@ namespace ov
 
 		Mutex _worker_mutex;
 		bool _added_to_worker OV_GUARDED_BY(_worker_mutex) = false;
+		bool _writable_event_enabled OV_GUARDED_BY(_worker_mutex) = true;
 
 		std::atomic<bool> _need_to_wait_first_epoll_event{true};
 		Event _first_epoll_event_received{true};

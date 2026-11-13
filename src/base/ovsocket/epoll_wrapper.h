@@ -38,6 +38,7 @@ static inline int epoll_create1(int)
 // epoll_ctl flags
 constexpr int EPOLL_CTL_ADD = 1;
 constexpr int EPOLL_CTL_DEL = 2;
+constexpr int EPOLL_CTL_MOD = 3;
 
 // epoll_event event values
 constexpr int EPOLLIN = 0x0001;
