@@ -186,6 +186,7 @@ private:
 	// Get storage of a fMP4 media track (VTT tracks use a different storage type)
 	std::shared_ptr<bmff::FMP4Storage> GetFmp4Storage(const int32_t &track_id) const;
 	std::shared_ptr<bmff::SegmentBoundaryPolicy> GetBoundaryPolicy(const int32_t &track_id) const;
+	friend class LLHlsSegmentResponse;
 	// Get Playlist with the track id
 	std::shared_ptr<LLHlsChunklist> GetChunklistWriter(const int32_t &track_id) const;
 
@@ -210,6 +211,7 @@ private:
 	// once per version, so its EXT-X-KEY can be advertised
 	void RegisterCencPropertyForVersion(const int32_t &track_id, const std::shared_ptr<LLHlsChunklist> &playlist, const std::shared_ptr<bmff::FMP4Packager> &packager, uint32_t content_version);
 
+	friend class LLHlsSegmentRequest;
 	ov::String GetSegmentName(const int32_t &track_id, const int64_t &segment_number) const;
 	ov::String GetPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number) const;
 	ov::String GetNextPartialSegmentName(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number, bool last_chunk) const;

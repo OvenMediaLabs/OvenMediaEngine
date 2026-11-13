@@ -17,6 +17,8 @@
 #define SERVER_ID_STORAGE_FILE "Server.id"
 #define LICENSE_STORAGE_FILE "License"
 
+class LLHlsSegmentResponse;
+
 namespace cfg
 {
 	class ConfigManager : public ov::Singleton<ConfigManager>
@@ -48,6 +50,7 @@ namespace cfg
 		MAY_THROWS(cfg::ConfigError)
 		void CheckLegacyConfigs(ov::String config_path);
 
+		friend class ::LLHlsSegmentResponse;
 		MAY_THROWS(cfg::ConfigError)
 		void LoadLoggerConfig(const ov::String &config_path);
 
