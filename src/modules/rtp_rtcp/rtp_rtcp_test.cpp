@@ -2,7 +2,7 @@
 //
 //  OvenMediaEngine - Unit Tests
 //
-//  Covers: RtpRtcp receive path under concurrent same-track delivery
+//  Covers: RtpRtcp receive path under concurrent same-track delivery, receiver reports
 //
 //==============================================================================
 #include <gtest/gtest.h>
@@ -14,6 +14,8 @@
 
 #include "base/info/media_track.h"
 #include "base/ovlibrary/log.h"
+#include "rtcp_info/receiver_report.h"
+#include "rtcp_info/sender_report.h"
 #include "rtp_header_extension/rtp_header_extension_transport_cc.h"
 #include "rtp_header_extension/rtp_header_extensions.h"
 #include "rtp_packet.h"
@@ -370,6 +372,124 @@ TEST(RtpRtcpTicking, OtherTrackPacketsDriveNackRetries)
 	std::this_thread::sleep_for(std::chrono::milliseconds(RtpNackGenerator::RETRY_INTERVAL_MS + 10));
 	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kVideoBSsrc, 501, 2000));  // and A's retry
 	EXPECT_EQ(sink->_nacks[kMediaSsrc], 2);
+
+	rtp_rtcp->Stop();
+}
+
+// ---- Receiver report ----
+
+namespace
+{
+// Keeps the last RTCP receiver report sent out
+class ReceiverReportSink : public ov::Node
+{
+public:
+	ReceiverReportSink() : ov::Node(NodeType::Srtp) {}
+	bool OnDataReceivedFromPrevNode(NodeType from_node, const std::shared_ptr<ov::Data> &data) override
+	{
+		if (from_node != NodeType::Rtcp)
+		{
+			return true;
+		}
+
+		RtcpPacket packet;
+		size_t block_size = 0;
+		if (packet.Parse(data->GetDataAs<uint8_t>(), data->GetLength(), block_size) == false || packet.GetType() != RtcpPacketType::RR)
+		{
+			return true;
+		}
+
+		auto report = std::make_shared<ReceiverReport>();
+		if (report->Parse(packet))
+		{
+			_last_report = report;
+		}
+		return true;
+	}
+	bool OnDataReceivedFromNextNode(NodeType, const std::shared_ptr<const ov::Data> &) override
+	{
+		return true;
+	}
+	std::shared_ptr<ReceiverReport> _last_report;
+};
+
+std::shared_ptr<ov::Data> MakeSenderReportData(uint32_t ssrc)
+{
+	auto report = std::make_shared<SenderReport>();
+	report->SetSenderSsrc(ssrc);
+	report->SetMsw(1);
+	report->SetLsw(1);
+
+	RtcpPacket packet;
+	packet.Build(report);
+	return packet.GetData();
+}
+}  // namespace
+
+// Repairs and probes sent through RTX do not count as received on the media stream
+TEST(RtpRtcpReceiverReport, RtxDoesNotHideLoss)
+{
+	auto observer = std::make_shared<CountingObserver>();
+	auto rtp_rtcp = std::make_shared<RtpRtcp>(observer);
+	auto sink = std::make_shared<ReceiverReportSink>();
+	rtp_rtcp->RegisterNextNode(sink);
+
+	RtpRtcp::RtpTrackIdentifier id(kVideoTrack);
+	id.ssrc = kMediaSsrc;
+	ASSERT_TRUE(rtp_rtcp->AddRtpReceiver(MakeTrack(kVideoTrack, cmn::MediaType::Video, cmn::MediaCodecId::H264, 90000, cmn::BitstreamFormat::H264_RTP_RFC_6184), id));
+	rtp_rtcp->RegisterRtxStream(kRtxSsrc, kMediaSsrc, kRtxPt, kMediaPt);
+	ASSERT_TRUE(rtp_rtcp->Start());
+
+	// 103 and 106 are lost on the media stream
+	for (uint16_t seq : {100, 101, 102, 104, 105, 107, 108, 109})
+	{
+		rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kMediaSsrc, seq, seq * 3000));
+	}
+
+	// RTX repairs 103 and 106, and the publisher probes bandwidth by repeating 101, 102, 104
+	uint16_t rtx_seq = 1;
+	for (uint16_t original_seq : {103, 106, 101, 102, 104})
+	{
+		rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeRtxData(rtx_seq, original_seq, original_seq * 3000));
+		rtx_seq++;
+	}
+
+	// A receiver report goes out on the first packet after an SR and the report interval
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeSenderReportData(kMediaSsrc));
+	std::this_thread::sleep_for(std::chrono::milliseconds(RECEIVER_REPORT_CYCLE_MS + 10));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeVideoData(kMediaSsrc, 110, 110 * 3000));
+
+	ASSERT_NE(sink->_last_report, nullptr);
+	auto block = sink->_last_report->GetReportBlock(0);
+	ASSERT_NE(block, nullptr);
+	EXPECT_EQ(block->GetSrcSsrc(), kMediaSsrc);
+	EXPECT_EQ(block->GetExtendedHighestSequenceNum(), 110u);
+	EXPECT_EQ(block->GetCumulativeLost(), 2u);
+	EXPECT_EQ(block->GetFractionLost(), (2 << 8) / 11);
+
+	rtp_rtcp->Stop();
+}
+
+// Before any packet of the media stream arrives there is nothing to report, even if RTX and SR do
+TEST(RtpRtcpReceiverReport, NoReportBeforeMediaPacket)
+{
+	auto observer = std::make_shared<CountingObserver>();
+	auto rtp_rtcp = std::make_shared<RtpRtcp>(observer);
+	auto sink = std::make_shared<ReceiverReportSink>();
+	rtp_rtcp->RegisterNextNode(sink);
+
+	RtpRtcp::RtpTrackIdentifier id(kVideoTrack);
+	id.ssrc = kMediaSsrc;
+	ASSERT_TRUE(rtp_rtcp->AddRtpReceiver(MakeTrack(kVideoTrack, cmn::MediaType::Video, cmn::MediaCodecId::H264, 90000, cmn::BitstreamFormat::H264_RTP_RFC_6184), id));
+	rtp_rtcp->RegisterRtxStream(kRtxSsrc, kMediaSsrc, kRtxPt, kMediaPt);
+	ASSERT_TRUE(rtp_rtcp->Start());
+
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeRtxData(1, 100, 100 * 3000));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeSenderReportData(kMediaSsrc));
+	std::this_thread::sleep_for(std::chrono::milliseconds(RECEIVER_REPORT_CYCLE_MS + 10));
+	rtp_rtcp->OnDataReceivedFromNextNode(NodeType::Srtp, MakeRtxData(2, 101, 101 * 3000));
+
+	EXPECT_EQ(sink->_last_report, nullptr);
 
 	rtp_rtcp->Stop();
 }
