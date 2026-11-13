@@ -2132,15 +2132,22 @@ namespace ov
 				}
 				else
 				{
+					auto new_state = SocketState::Error;
+
 					switch (socket_error->GetCode())
 					{
+						case SRT_EINVSOCK:
+							// OME has not closed it, so libsrt's garbage collector closed it after the connection broke
+							new_state = SocketState::Disconnected;
+							break;
+
 						default:
 							logae("An error occurred while read data: %s\nStack trace: %s",
 								  socket_error->What(),
 								  StackTrace::GetStackTrace().CStr());
 					}
 
-					CloseWithState(SocketState::Error);
+					CloseWithState(new_state);
 				}
 			}
 		}

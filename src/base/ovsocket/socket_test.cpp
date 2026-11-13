@@ -1359,11 +1359,10 @@ TEST_F(SocketRecvSrtTest, NoDataReportsRetry)
 // intact, the following reads must converge on a failure, and a failed socket
 // must never report a spurious success afterwards.
 //
-// The failure is `Disconnected` (`SRT_ECONNLOST`) when `Recv()` observes the
-// broken socket before libsrt's GC, and `Error` (`SRT_EINVSOCK`) when the GC,
-// which every `srt_close()` in the process wakes, has already moved the
-// drained socket to `SRTS_CLOSED`. The order is decided by thread scheduling,
-// so both are accepted and the outcome is recorded.
+// The failure is `Disconnected` whether `Recv()` observes the broken socket
+// before libsrt's GC (`SRT_ECONNLOST`) or after the GC, which every `srt_close()`
+// in the process wakes, has already moved the drained socket to `SRTS_CLOSED`
+// (`SRT_EINVSOCK`). The order is decided by thread scheduling.
 //
 // Two messages are sent and the second is left unread until after the peer
 // closes: the GC leaves a broken socket alone while unread packets remain, which
@@ -1398,10 +1397,7 @@ TEST_F(SocketRecvSrtTest, GracefulPeerCloseReportsFailure)
 	EXPECT_EQ(::memcmp(buffer, second, sizeof(second)), 0);
 
 	EXPECT_TRUE(RecvUntilFailure(client));
-	auto state = client->GetState();
-	EXPECT_TRUE((state == ov::SocketState::Disconnected) || (state == ov::SocketState::Error))
-		<< ov::StringFromSocketState(state);
-	RecordProperty("state", ov::StringFromSocketState(state));
+	EXPECT_EQ(client->GetState(), ov::SocketState::Disconnected) << ov::StringFromSocketState(client->GetState());
 	EXPECT_FALSE(client->Recv(buffer, sizeof(buffer)).has_value());
 }
 
@@ -2233,11 +2229,9 @@ TEST_F(SrtConcurrencyTest, ManyIndependentSocketsReceiveConcurrently)
 // spurious success afterwards, and the storm of simultaneous `srt_close()`
 // calls must not hang or crash.
 //
-// The failure surfaces as `Disconnected` (`SRT_ECONNLOST`) only if `Recv()` runs
-// before libsrt's GC thread moves the broken socket to `SRTS_CLOSED`; every
-// `srt_close()` in the process wakes that GC, and afterwards `srt_recvmsg2()`
-// fails with `SRT_EINVSOCK`, which `Recv()` classifies as `Error`. Both
-// outcomes are therefore accepted and the split is recorded.
+// The failure is `Disconnected` whether `Recv()` runs before libsrt's GC thread
+// moves the broken socket to `SRTS_CLOSED` (`SRT_ECONNLOST`) or after it
+// (`SRT_EINVSOCK`); every `srt_close()` in the process wakes that GC.
 TEST_F(SrtConcurrencyTest, RecvRacesPeerDisconnectStorm)
 {
 	Watchdog watchdog(std::chrono::seconds(30), "SrtRecvRacesPeerDisconnectStorm");
@@ -2302,10 +2296,9 @@ TEST_F(SrtConcurrencyTest, RecvRacesPeerDisconnectStorm)
 	}
 
 	EXPECT_EQ(failed.load(), SOCKET_COUNT);
-	EXPECT_EQ(disconnected.load() + errored.load(), SOCKET_COUNT);
+	EXPECT_EQ(disconnected.load(), SOCKET_COUNT);
+	EXPECT_EQ(errored.load(), 0);
 	EXPECT_EQ(spurious_success.load(), 0);
-	RecordProperty("disconnected", disconnected.load());
-	RecordProperty("errored", errored.load());
 }
 
 // Non-blocking sockets spread over several workers are closed from the OME side

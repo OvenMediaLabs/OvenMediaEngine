@@ -31,7 +31,7 @@ namespace ov
 			SocketCountSlot count_slot;
 		};
 
-		// One event `EpollWait()` returned, with the socket it belongs to
+		// One event to handle, from `EpollWait()` or `PollRemovedSrtSockets()`, with the socket it belongs to
 		struct PolledEvent
 		{
 			std::shared_ptr<Socket> socket;
@@ -102,6 +102,14 @@ namespace ov
 
 		void CallbackTimedOutConnections();
 
+		// A connected SRT socket can end without a disconnect event:
+		// libsrt drops the pending events of a socket it removes,
+		// and raises none for a socket that was already broken when it was added to epoll.
+		// So once a second the connected SRT sockets that libsrt no longer knows are queued to be closed.
+		void CheckRemovedSrtSockets();
+		// Puts the queued sockets into `_polled_events` as `EPOLLHUP` events, and returns their count
+		int PollRemovedSrtSockets();
+
 		void ThreadProc();
 
 		bool AddToEpoll(const std::shared_ptr<Socket> &socket);
@@ -131,7 +139,7 @@ namespace ov
 		std::atomic<int> _socket_count{0};
 
 		// Sockets registered to epoll, updated as soon as `AddToEpoll()`/`DeleteFromEpoll()` is called.
-		// `EpollWait()` copies the sockets of the polled events from here under the lock,
+		// `EpollWait()` and `CheckRemovedSrtSockets()` copy sockets from here under the lock,
 		// so a socket deleted by another thread stays alive until its events are handled.
 		mutable Mutex _socket_map_mutex;
 		// key: native handle of SocketWrapper
@@ -141,6 +149,10 @@ namespace ov
 		StopWatch _gc_interval;
 		// Worker thread only
 		std::map<socket_id_t, std::shared_ptr<Socket>> _gc_candidates;
+
+		StopWatch _srt_removal_check_interval;
+		// Worker thread only
+		std::deque<std::shared_ptr<Socket>> _removed_srt_sockets;
 
 		// Sockets whose non-blocking connect timed out, for the worker thread to report
 		mutable Mutex _connection_timed_out_queue_mutex;
