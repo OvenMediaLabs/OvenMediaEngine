@@ -353,7 +353,15 @@ namespace pvd
                 while (_worker_thread_running.load())
                 {
                     auto result = PlayItem(_current_item);
-                    if (result == PlaybackResult::ERROR)
+                    if (result == PlaybackResult::RECOVERY)
+                    {
+                        // Restart pacing and pick the item again by the current time.
+                        // A fresh clock, as Restart() keeps the accumulated pause duration.
+                        _realtime_clock = ov::StopWatch();
+                        _global_track_offset_us_map.clear();
+                        first_item = true;
+                    }
+                    else if (result == PlaybackResult::ERROR)
                     {
                         if (_current_item->_fallback_on_err == true)
                         {
@@ -523,6 +531,9 @@ namespace pvd
 
         bool is_mpegts { std::strncmp(context->iformat->name, "mpegts", 6) == 0 };
 
+        // Tracks are interleaved, so the lag is measured from the track furthest ahead
+        int64_t max_zero_based_dts = std::numeric_limits<int64_t>::min();
+
         while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
@@ -659,6 +670,18 @@ namespace pvd
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
 			{
 				_global_track_offset_us_map[track_id] = dts_us;
+			}
+
+			int64_t global_zero_based_dts = dts_us - _global_track_offset_us_map[track_id];
+			max_zero_based_dts			  = std::max(max_zero_based_dts, global_zero_based_dts);
+
+			// Far behind the clock (e.g. stalled I/O): rejoin the schedule at the current time instead of bursting to catch up
+			int64_t lag_us = _realtime_clock.ElapsedUs() - max_zero_based_dts;
+			if (fallback_item == false && lag_us >= kScheduledRecoveryLagUs)
+			{
+				logtw("Scheduled Channel : %s/%s: Playback is %" PRId64 " ms behind the realtime clock. Recovering to the current schedule position", GetApplicationName(), GetName().CStr(), lag_us / 1000);
+				result = PlaybackResult::RECOVERY;
+				break;
 			}
 
             media_packet->SetPts(pts);
