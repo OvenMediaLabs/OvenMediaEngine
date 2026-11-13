@@ -97,7 +97,7 @@ namespace http
 			// A variable to handle 403 Method not allowed
 			bool regex_found = false;
 
-			auto uri = ov::Url::Parse(request->GetUri());
+			const auto &uri = request->GetParsedUri();
 
 			if (uri == nullptr)
 			{
