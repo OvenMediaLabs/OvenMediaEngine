@@ -298,6 +298,22 @@ TEST(ScheduledLiveStartPointJson, RoundTrip)
 	EXPECT_EQ(reloaded->GetStream()._live_start_point, Schedule::LiveStartPoint::NextKeyframe);
 }
 
+// A running channel rejects a <Stream> change, so the value must be part of the comparison
+TEST(ScheduledLiveStartPointJson, IsComparedAsPartOfTheStream)
+{
+	auto [latest, latest_error] = LoadJsonLiveStartPoint("LatestKeyframe");
+	ASSERT_NE(latest, nullptr) << latest_error.CStr();
+
+	auto [next, next_error] = LoadJsonLiveStartPoint("NextKeyframe");
+	ASSERT_NE(next, nullptr) << next_error.CStr();
+
+	auto [same, same_error] = LoadJsonLiveStartPoint("LatestKeyframe");
+	ASSERT_NE(same, nullptr) << same_error.CStr();
+
+	EXPECT_TRUE(latest->GetStream() != next->GetStream());
+	EXPECT_TRUE(latest->GetStream() == same->GetStream());
+}
+
 TEST_F(ScheduledLiveStartPointXml, DefaultsToLatestKeyframe)
 {
 	auto [schedule, error] = LoadStreamXml("");

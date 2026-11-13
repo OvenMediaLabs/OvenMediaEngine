@@ -87,8 +87,9 @@ namespace pvd
 																const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
 																const LiveStartPolicy &policy);
 
-		// Holds a packet until its time on the channel clock
-		void WaitForChannelClock(uint32_t track_id, int64_t dts_us);
+		// Holds a packet until its time on the channel clock. Returns how the item ends
+		// when the channel stops, the program changes or the original item returns meanwhile
+		std::optional<PlaybackResult> WaitForChannelClock(uint32_t track_id, int64_t dts_us, bool fallback_item);
         
         std::shared_ptr<Schedule> GetSchedule() const;
         bool CheckCurrentProgramChanged();
@@ -134,6 +135,7 @@ namespace pvd
         ov::StopWatch _realtime_clock;
 		std::map<uint32_t, int64_t> _global_track_offset_us_map;
         ov::StopWatch _failback_check_clock;
+		static constexpr int64_t kFailbackCheckIntervalMs = 1000;
 
         std::map<uint32_t, std::shared_ptr<MediaPacket>> _last_packet_map;
     };

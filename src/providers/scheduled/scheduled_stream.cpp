@@ -212,7 +212,7 @@ namespace pvd
 				_failback_check_clock.Start();
 			}
 
-			if (_failback_check_clock.Elapsed() < 1000)
+			if (_failback_check_clock.Elapsed() < kFailbackCheckIntervalMs)
 			{
 				return false;
 			}
@@ -722,7 +722,12 @@ namespace pvd
                 }
             }
 
-            WaitForChannelClock(track_id, dts_us);
+            auto interrupted = WaitForChannelClock(track_id, dts_us, fallback_item);
+            if (interrupted.has_value())
+            {
+                result = interrupted.value();
+                break;
+            }
         }
 
         _current_item_position_ms = 0;
@@ -1024,6 +1029,9 @@ namespace pvd
 		// Source dts of each track's previous packet, on the track timebase
 		std::map<int, int64_t> last_source_dts_map;
 
+		// Shortest positive dts interval of each track in this item, on the track timebase
+		std::map<int, int64_t> shortest_interval_map;
+
         // Play
         while (_worker_thread_running.load())
         {
@@ -1134,12 +1142,24 @@ namespace pvd
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
 
 			// A live audio or video packet often has no duration, and the next item starts where
-			// this item's last packet ends, so the track's last interval stands in for it.
-			// Data packets are sparse, so their gaps are not durations.
+			// this item's last packet ends. The track's shortest interval stands in for it, so a
+			// stall before that packet is not counted. Data packets are sparse, so their gaps are not durations
 			if (is_media && duration <= 0)
 			{
 				auto last_source_dts_it = last_source_dts_map.find(track_id);
-				duration				= (last_source_dts_it != last_source_dts_map.end()) ? std::max<int64_t>(dts - last_source_dts_it->second, 0) : 0;
+				if (last_source_dts_it != last_source_dts_map.end())
+				{
+					int64_t interval = dts - last_source_dts_it->second;
+					auto shortest_it = shortest_interval_map.find(track_id);
+
+					if ((interval > 0) && ((shortest_it == shortest_interval_map.end()) || (interval < shortest_it->second)))
+					{
+						shortest_interval_map[track_id] = interval;
+					}
+				}
+
+				auto shortest_it = shortest_interval_map.find(track_id);
+				duration		 = (shortest_it != shortest_interval_map.end()) ? shortest_it->second : 0;
 			}
 			last_source_dts_map[track_id] = dts;
 
@@ -1203,9 +1223,15 @@ namespace pvd
                 }
             }
 
-			if (live_start_policy->PacesToChannelClock())
+			// Data can be timestamped ahead, such as an event with a start offset, so it goes out as it comes
+			if (is_media && live_start_policy->PacesToChannelClock())
 			{
-				WaitForChannelClock(track_id, dts_us);
+				auto interrupted = WaitForChannelClock(track_id, dts_us, fallback_item);
+				if (interrupted.has_value())
+				{
+					result = interrupted.value();
+					break;
+				}
 			}
         }
 
@@ -1254,18 +1280,69 @@ namespace pvd
 		return plan;
 	}
 
-	void ScheduledStream::WaitForChannelClock(uint32_t track_id, int64_t dts_us)
+	std::optional<ScheduledStream::PlaybackResult> ScheduledStream::WaitForChannelClock(uint32_t track_id, int64_t dts_us, bool fallback_item)
 	{
 		auto offset_it = _global_track_offset_us_map.find(track_id);
 		if (offset_it == _global_track_offset_us_map.end())
 		{
-			return;
+			return std::nullopt;
 		}
 
-		int64_t wait_us = (dts_us - offset_it->second) - _realtime_clock.ElapsedUs();
-		if (wait_us > 0)
+		int64_t due_us	 = dts_us - offset_it->second;
+		bool woken_early = false;
+
+		while (true)
 		{
-			std::this_thread::sleep_for(std::chrono::microseconds(wait_us));
+			int64_t wait_us = due_us - _realtime_clock.ElapsedUs();
+			if (wait_us <= 0)
+			{
+				return std::nullopt;
+			}
+
+			// Woken before the packet's time, so check what the playback loop checks for every packet
+			if (woken_early)
+			{
+				if (_worker_thread_running.load() == false)
+				{
+					return PlaybackResult::PLAY_NEXT_ITEM;
+				}
+
+				if (CheckCurrentProgramChanged() == true)
+				{
+					return PlaybackResult::PLAY_NEXT_PROGRAM;
+				}
+
+				if (fallback_item && (CheckCurrentItemAvailable() == true))
+				{
+					return PlaybackResult::FAILBACK;
+				}
+			}
+
+			auto now	 = std::chrono::steady_clock::now();
+			auto wake_at = now + std::chrono::microseconds(wait_us);
+
+			// Nothing signals the start of the next program, so wake at its scheduled time
+			auto schedule	  = PeekSchedule();
+			auto next_program = (schedule != nullptr) ? schedule->GetNextProgram() : nullptr;
+			if (next_program != nullptr)
+			{
+				auto until_next_program = next_program->_scheduled_time - std::chrono::system_clock::now();
+				if (until_next_program < std::chrono::microseconds(wait_us))
+				{
+					wake_at = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(until_next_program);
+				}
+			}
+
+			// Wake when CheckCurrentItemAvailable() checks the original item next
+			if (fallback_item)
+			{
+				int64_t until_check_ms = _failback_check_clock.IsStart() ? std::max<int64_t>(kFailbackCheckIntervalMs - _failback_check_clock.Elapsed(), 0) : 0;
+				wake_at				   = std::min(wake_at, now + std::chrono::milliseconds(until_check_ms));
+			}
+
+			// Channel stop and schedule updates set this event
+			_schedule_updated.Wait(wake_at);
+			woken_early = true;
 		}
 	}
 

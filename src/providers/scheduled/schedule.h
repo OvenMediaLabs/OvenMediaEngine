@@ -163,7 +163,8 @@ namespace pvd
 				if (_name != rhs._name ||
 					_bypass_transcoder != rhs._bypass_transcoder ||
 					_video_track != rhs._video_track ||
-				_audio_track != rhs._audio_track)
+					_audio_track != rhs._audio_track ||
+					_live_start_point != rhs._live_start_point)
 				{
 					return false;
 				}
