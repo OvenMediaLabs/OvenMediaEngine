@@ -1078,18 +1078,23 @@ namespace pvd
                 continue;
             }
 
-            if (end_of_track_map.find(track_id) != end_of_track_map.end())
-            {
-                // End of track
-                if (end_of_track_map.at(track_id) == true)
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                end_of_track_map[track_id] = false;
-            }
+			// Data packets are sparse, so only audio and video decide when the item ends
+			bool is_media = (media_packet->GetMediaType() == cmn::MediaType::Video || media_packet->GetMediaType() == cmn::MediaType::Audio);
+			if (is_media)
+			{
+				if (end_of_track_map.find(track_id) != end_of_track_map.end())
+				{
+					// End of track
+					if (end_of_track_map.at(track_id) == true)
+					{
+						continue;
+					}
+				}
+				else
+				{
+					end_of_track_map[track_id] = false;
+				}
+			}
 
             auto track = GetTrack(track_id);
             if (track == nullptr)
@@ -1120,13 +1125,17 @@ namespace pvd
             if (track_first_packet_map.find(track_id) == track_first_packet_map.end())
             {
                 track_first_packet_map[track_id] = true;
-                track_single_file_dts_offset_map[track_id] = dts;
+
+				// The replay that goes out at once at channel start is not part of the item's length
+				int64_t pacing_lead = Rescale(start_plan.pacing_lead_us, track->GetTimeBase().GetDen(), 1000000 * track->GetTimeBase().GetNum());
+                track_single_file_dts_offset_map[track_id] = dts + pacing_lead;
             }
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
 
-			// A live packet often has no duration, and the next item starts where this item's
-			// last packet ends, so the track's last interval stands in for it
-			if (duration <= 0)
+			// A live audio or video packet often has no duration, and the next item starts where
+			// this item's last packet ends, so the track's last interval stands in for it.
+			// Data packets are sparse, so their gaps are not durations.
+			if (is_media && duration <= 0)
 			{
 				auto last_source_dts_it = last_source_dts_map.find(track_id);
 				duration				= (last_source_dts_it != last_source_dts_map.end()) ? std::max<int64_t>(dts - last_source_dts_it->second, 0) : 0;
@@ -1159,12 +1168,14 @@ namespace pvd
             // dts to real time (ms)
             auto single_file_dts_ms = static_cast<double>(single_file_dts) * track->GetTimeBase().GetExpr() * static_cast<double>(1000);
 
-            std::unique_lock<std::shared_mutex> lock(_current_mutex);
-            _current_item_position_ms = single_file_dts_ms;
-            lock.unlock();
+			if (is_media)
+			{
+				std::unique_lock<std::shared_mutex> lock(_current_mutex);
+				_current_item_position_ms = std::max(single_file_dts_ms, 0.0);
+			}
 
             // Get current play time
-            if (item->_duration_ms >= 0)
+            if (is_media && item->_duration_ms >= 0)
             {
                 if (single_file_dts_ms > item->_duration_ms)
                 {
