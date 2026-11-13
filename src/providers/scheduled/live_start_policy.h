@@ -30,9 +30,6 @@ namespace pvd
 
 			// Source time from the first replayed packet to the newest one
 			int64_t replay_span_us = 0;
-
-			// The channel clock counts the replayed packets as already due by this much
-			int64_t pacing_lead_us = 0;
 		};
 
 		static std::shared_ptr<LiveStartPolicy> Create(Schedule::LiveStartPoint point);
@@ -46,9 +43,7 @@ namespace pvd
 		virtual bool PacesToChannelClock() const = 0;
 
 		// past_data: the requested frames, oldest first, on the timebases of source
-		// channel_start: nothing has been played on the channel before this item
 		virtual StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &past_data,
-							   const std::shared_ptr<info::Stream> &source,
-							   bool channel_start) const = 0;
+							   const std::shared_ptr<info::Stream> &source) const = 0;
 	};
 }  // namespace pvd

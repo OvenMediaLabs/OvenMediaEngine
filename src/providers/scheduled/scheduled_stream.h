@@ -85,8 +85,7 @@ namespace pvd
 		// nullopt when they did not arrive within the error tolerance.
 		std::optional<LiveStartPolicy::StartPlan> PlanLiveStart(const std::shared_ptr<Schedule::Item> &item,
 																const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
-																const LiveStartPolicy &policy,
-																bool channel_start);
+																const LiveStartPolicy &policy);
 
 		// Holds a packet until its time on the channel clock
 		void WaitForChannelClock(uint32_t track_id, int64_t dts_us);

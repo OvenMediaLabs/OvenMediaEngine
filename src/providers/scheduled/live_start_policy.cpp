@@ -29,8 +29,7 @@ namespace pvd
 		}
 
 		// Starts from the source's latest keyframe. The item is paced on the channel clock,
-		// so it runs behind its source by the time since that keyframe; at channel start there
-		// is nothing to continue from, so the buffered frames go out at once.
+		// so it runs behind its source by the time since that keyframe
 		class LatestKeyframePolicy : public LiveStartPolicy
 		{
 		public:
@@ -45,8 +44,7 @@ namespace pvd
 			}
 
 			StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &past_data,
-						   const std::shared_ptr<info::Stream> &source,
-						   bool channel_start) const override
+						   const std::shared_ptr<info::Stream> &source) const override
 			{
 				StartPlan plan;
 
@@ -81,11 +79,6 @@ namespace pvd
 
 				plan.replay_span_us = newest_us - keyframe_us;
 
-				if (channel_start)
-				{
-					plan.pacing_lead_us = plan.replay_span_us;
-				}
-
 				return plan;
 			}
 		};
@@ -105,8 +98,7 @@ namespace pvd
 			}
 
 			StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &,
-						   const std::shared_ptr<info::Stream> &,
-						   bool) const override
+						   const std::shared_ptr<info::Stream> &) const override
 			{
 				return {};
 			}

@@ -383,27 +383,12 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
 	EXPECT_TRUE(policy->PacesToChannelClock());
 
 	auto keyframe = Video(0, true);
-	auto plan	  = policy->Plan({Audio(-20), keyframe, Audio(10), Audio(31), Video(33), Video(66)}, MakeSource(), false);
+	auto plan	  = policy->Plan({Audio(-20), keyframe, Audio(10), Audio(31), Video(33), Video(66)}, MakeSource());
 
 	EXPECT_TRUE(plan.starts_at_keyframe);
 	ASSERT_EQ(plan.replay.size(), 5u);
 	EXPECT_EQ(plan.replay.front(), keyframe);
 	EXPECT_EQ(plan.replay_span_us, 66000);
-
-	// Continues the channel's timeline, so the clock does not lead
-	EXPECT_EQ(plan.pacing_lead_us, 0);
-}
-
-TEST(ScheduledLiveStartPolicy, LatestKeyframeLeadsTheClockAtChannelStart)
-{
-	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
-	ASSERT_NE(policy, nullptr);
-
-	auto plan = policy->Plan({Video(0, true), Audio(10), Video(33), Video(66)}, MakeSource(), true);
-
-	EXPECT_TRUE(plan.starts_at_keyframe);
-	EXPECT_EQ(plan.replay_span_us, 66000);
-	EXPECT_EQ(plan.pacing_lead_us, plan.replay_span_us);
 }
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)
@@ -415,11 +400,10 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)
 								  std::vector<std::shared_ptr<MediaPacket>>{Audio(0), Audio(21)},
 								  std::vector<std::shared_ptr<MediaPacket>>{}})
 	{
-		auto plan = policy->Plan(past_data, MakeSource(), true);
+		auto plan = policy->Plan(past_data, MakeSource());
 
 		EXPECT_FALSE(plan.starts_at_keyframe);
 		EXPECT_TRUE(plan.replay.empty());
-		EXPECT_EQ(plan.pacing_lead_us, 0);
 	}
 }
 
@@ -431,7 +415,7 @@ TEST(ScheduledLiveStartPolicy, NextKeyframeTakesNothingAndDoesNotPace)
 	EXPECT_FALSE(policy->NeedsPastData());
 	EXPECT_FALSE(policy->PacesToChannelClock());
 
-	auto plan = policy->Plan({Video(0, true), Audio(10)}, MakeSource(), true);
+	auto plan = policy->Plan({Video(0, true), Audio(10)}, MakeSource());
 	EXPECT_FALSE(plan.starts_at_keyframe);
 	EXPECT_TRUE(plan.replay.empty());
 }

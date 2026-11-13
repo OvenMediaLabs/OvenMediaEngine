@@ -103,7 +103,7 @@ Sets where a live item (`stream://`) starts in its source when the channel switc
 
 | Value | Description |
 | --- | --- |
-| `LatestKeyframe` | Starts from the source's latest keyframe, so the picture continues without a freeze on every output, including bypassed video. Until the next item, the live item runs behind its source by the time since that keyframe, which is at most one keyframe interval. When the channel starts with a live item, it starts without this delay. |
+| `LatestKeyframe` | Starts from the source's latest keyframe, so the picture continues without a freeze on every output, including bypassed video. Until the next item, the live item runs behind its source by the time since that keyframe, which is at most one keyframe interval. When the channel starts with a live item, that item starts like `NextKeyframe`. |
 | `NextKeyframe` | Starts with the frame that arrives at the switch, without delay. Audio starts at once, but the picture freezes until the source's next keyframe, for up to one keyframe interval. Live items started this way in earlier versions. |
 
 Set the keyframe interval of live sources to 1 or 2 seconds to keep the delay or the freeze short.

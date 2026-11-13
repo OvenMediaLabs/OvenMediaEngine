@@ -970,16 +970,20 @@ namespace pvd
         ScheduledStream::PlaybackResult result = PlaybackResult::PLAY_NEXT_ITEM;
 
 		// Like the other stream settings, fixed when the channel is created
-		auto live_start_point  = _channel_info._live_start_point;
+		auto live_start_point = _channel_info._live_start_point;
+
+		// The first item of the channel has no picture before it to continue from
+		if (_realtime_clock.IsStart() == false)
+		{
+			live_start_point = Schedule::LiveStartPoint::NextKeyframe;
+		}
+
 		auto live_start_policy = LiveStartPolicy::Create(live_start_point);
 		if (live_start_policy == nullptr)
 		{
 			logte("Scheduled Channel : %s/%s: Unknown live start point %d", GetApplicationName(), GetName().CStr(), static_cast<int>(live_start_point));
 			return PlaybackResult::ERROR;
 		}
-
-		// Nothing has been played on the channel before this item
-		bool channel_start = (_realtime_clock.IsStart() == false);
 
         auto stream_tap = PrepareStreamPlayback(item, live_start_policy->NeedsPastData());
         if (stream_tap == nullptr)
@@ -991,7 +995,7 @@ namespace pvd
 		LiveStartPolicy::StartPlan start_plan;
 		if (live_start_policy->NeedsPastData())
 		{
-			auto planned = PlanLiveStart(item, stream_tap, *live_start_policy, channel_start);
+			auto planned = PlanLiveStart(item, stream_tap, *live_start_policy);
 			if (planned.has_value() == false)
 			{
 				ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
@@ -1125,10 +1129,7 @@ namespace pvd
             if (track_first_packet_map.find(track_id) == track_first_packet_map.end())
             {
                 track_first_packet_map[track_id] = true;
-
-				// The replay that goes out at once at channel start is not part of the item's length
-				int64_t pacing_lead = Rescale(start_plan.pacing_lead_us, track->GetTimeBase().GetDen(), 1000000 * track->GetTimeBase().GetNum());
-                track_single_file_dts_offset_map[track_id] = dts + pacing_lead;
+                track_single_file_dts_offset_map[track_id] = dts;
             }
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
 
@@ -1147,7 +1148,7 @@ namespace pvd
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
 			{
-				_global_track_offset_us_map[track_id] = dts_us + start_plan.pacing_lead_us;
+				_global_track_offset_us_map[track_id] = dts_us;
 			}
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
@@ -1219,8 +1220,7 @@ namespace pvd
 
 	std::optional<LiveStartPolicy::StartPlan> ScheduledStream::PlanLiveStart(const std::shared_ptr<Schedule::Item> &item,
 																			 const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
-																			 const LiveStartPolicy &policy,
-																			 bool channel_start)
+																			 const LiveStartPolicy &policy)
 	{
 		// The source sends its buffered frames with its next packet, so they are as late as any packet
 		auto past_data = stream_tap->TakePastData(_channel_info._error_tolerance_duration_ms);
@@ -1237,12 +1237,12 @@ namespace pvd
 						 }),
 						 past_data->end());
 
-		auto plan = policy.Plan(past_data.value(), stream_tap->GetStreamInfo(), channel_start);
+		auto plan = policy.Plan(past_data.value(), stream_tap->GetStreamInfo());
 
 		if (plan.starts_at_keyframe)
 		{
 			logti("Scheduled Channel : %s/%s: %s starts from its latest keyframe, %" PRId64 " ms behind the source",
-				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), (plan.replay_span_us - plan.pacing_lead_us) / 1000);
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), plan.replay_span_us / 1000);
 		}
 		else if (_channel_info._video_track)
 		{
