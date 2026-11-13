@@ -17,11 +17,14 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <future>
 #include <map>
@@ -162,6 +165,23 @@ namespace
 				sent += static_cast<size_t>(written);
 			}
 			return static_cast<ssize_t>(sent);
+		}
+
+		// Each recv() is bounded by the SO_RCVTIMEO inherited from the listener
+		bool RecvExactly(void *out, size_t length)
+		{
+			auto *cursor	= static_cast<uint8_t *>(out);
+			size_t received = 0;
+			while (received < length)
+			{
+				ssize_t got = ::recv(_conn_fd, cursor + received, length - received, 0);
+				if (got <= 0)
+				{
+					return false;
+				}
+				received += static_cast<size_t>(got);
+			}
+			return true;
 		}
 
 		void CloseConnection()
@@ -1097,6 +1117,102 @@ TEST_F(SocketRecvTcpTest, NonBlockParamOnBlockingSocketWithoutDataReportsRetry)
 }
 
 // ===========================================================================
+// TCP send (non-blocking)
+// ===========================================================================
+class SocketSendTcpTest : public SocketTestBase
+{
+protected:
+	void SetUp() override
+	{
+		InitPool("test-send-tcp", ov::SocketType::Tcp);
+	}
+
+	std::shared_ptr<ov::Socket> ConnectAsyncClient(PosixTcpPeer &peer, const std::shared_ptr<SrtAsyncEvents> &events)
+	{
+		auto client = _pool->AllocSocket(ov::SocketFamily::Inet);
+		if (client == nullptr)
+		{
+			return nullptr;
+		}
+
+		// Before `MakeNonBlocking()`: setting it afterwards leaves the socket Disconnected before
+		// `Connect()`. Empirically required, root cause unclear.
+		client->SetSockOpt<int>(SO_SNDBUF, 64 * 1024);
+
+		events->Attach(client);
+		if (client->MakeNonBlocking(events) == false)
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		peer.AcceptAsync();
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
+		peer.WaitAccepted();
+
+		if (error != nullptr || peer.IsConnected() == false ||
+			WaitUntil([&]() { return client->GetState() == ov::SocketState::Connected; }) == false)
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		_client = client;
+		return client;
+	}
+};
+
+// The caller writes through GetWritableData() after Send() returns. `a` gets EAGAIN with an empty
+// queue, and `b` goes into the queue behind `a`
+TEST_F(SocketSendTcpTest, QueuedSendIsIsolatedFromCallerBufferReuse)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "QueuedSendIsIsolatedFromCallerBufferReuse");
+
+	PosixTcpPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto events = std::make_shared<SrtAsyncEvents>();
+	auto client = ConnectAsyncClient(peer, events);
+	ASSERT_NE(client, nullptr);
+
+	// Fill the kernel buffers directly, so the dispatch queue is still empty when the next
+	// Send() gets EAGAIN. The peer reads nothing yet.
+	const std::vector<uint8_t> filler(64 * 1024, 'f');
+	size_t filled = 0;
+	while (true)
+	{
+		ssize_t written = ::send(client->GetNativeHandle(), filler.data(), filler.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+		if (written < 0)
+		{
+			ASSERT_TRUE((errno == EAGAIN) || (errno == EWOULDBLOCK));
+			break;
+		}
+		filled += static_cast<size_t>(written);
+	}
+
+	// `a` is far larger than any space the stalled peer can free, so its unsent part
+	// stays queued and `b` lands behind it.
+	const std::vector<uint8_t> original_a(8 * 1024 * 1024, 'a');
+	const std::vector<uint8_t> original_b(64 * 1024, 'b');
+	auto data_a = std::make_shared<ov::Data>(original_a.data(), original_a.size());
+	auto data_b = std::make_shared<ov::Data>(original_b.data(), original_b.size());
+	ASSERT_TRUE(client->Send(data_a));
+	ASSERT_TRUE(client->Send(data_b));
+
+	::memset(data_a->GetWritableData(), 'x', data_a->GetLength());
+	::memset(data_b->GetWritableData(), 'x', data_b->GetLength());
+
+	std::vector<uint8_t> received(filled + original_a.size() + original_b.size());
+	ASSERT_TRUE(peer.RecvExactly(received.data(), received.size()));
+
+	auto received_a = received.begin() + filled;
+	auto received_b = received_a + original_a.size();
+	EXPECT_TRUE(std::equal(original_a.begin(), original_a.end(), received_a));
+	EXPECT_TRUE(std::equal(original_b.begin(), original_b.end(), received_b));
+
+	client->Close();
+}
+
+// ===========================================================================
 // UDP
 // ===========================================================================
 
@@ -1194,6 +1310,37 @@ namespace ov
 		{
 			socket->AppendCommand(Socket::DispatchCommand(address_pair, std::make_shared<Data>(data, length)), false);
 		}
+
+		// Sends two datagrams through `send` on a socket with nothing queued. Each send must leave the queue empty,
+		// and the peer must get each datagram whole. A datagram sent twice would arrive in place of the second one.
+		template <typename Tsend>
+		void ExpectEachDatagramSentOnce(Tsend send)
+		{
+			PosixUdpPeer peer;
+			ASSERT_TRUE(peer.Open());
+
+			auto socket = _pool->AllocSocket(SocketFamily::Inet);
+			ASSERT_NE(socket, nullptr);
+			ome_test::ScopeExit closer([&]() { socket->CloseImmediatelyWithState(SocketState::Closed); });
+			ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<SrtAsyncEvents>()));
+
+			const char first[]	= "first-datagram";
+			const char second[] = "second";
+			{
+				// Keeps the pool worker from sending a queued datagram before `HasCommand()` sees it
+				LockGuard lock_guard(socket->_dispatch_queue_lock);
+				EXPECT_TRUE(send(socket, peer.Port(), first, sizeof(first)));
+				EXPECT_FALSE(socket->HasCommand());
+				EXPECT_TRUE(send(socket, peer.Port(), second, sizeof(second)));
+				EXPECT_FALSE(socket->HasCommand());
+			}
+
+			char buffer[64] = {0};
+			EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(first)));
+			EXPECT_STREQ(buffer, first);
+			EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(second)));
+			EXPECT_STREQ(buffer, second);
+		}
 	};
 
 	// When the pool worker drains the queue (`OnDataWritableEvent()`), a datagram that fails
@@ -1221,6 +1368,20 @@ namespace ov
 		EXPECT_STREQ(buffer, payload);
 
 		socket->CloseImmediatelyWithState(SocketState::Closed);
+	}
+
+	TEST_F(SocketSendUdpTest, SendToWithEmptyQueueSendsEachDatagramOnce)
+	{
+		ExpectEachDatagramSentOnce([](const std::shared_ptr<Socket> &socket, uint16_t port, const void *data, size_t length) {
+			return socket->SendTo(LoopbackAddress(port), data, length);
+		});
+	}
+
+	TEST_F(SocketSendUdpTest, SendFromToWithEmptyQueueSendsEachDatagramOnce)
+	{
+		ExpectEachDatagramSentOnce([](const std::shared_ptr<Socket> &socket, uint16_t port, const void *data, size_t length) {
+			return socket->SendFromTo(SocketAddressPair(LoopbackAddress(0), LoopbackAddress(port)), data, length);
+		});
 	}
 }  // namespace ov
 
