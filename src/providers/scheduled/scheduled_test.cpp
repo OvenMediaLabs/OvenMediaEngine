@@ -73,7 +73,65 @@ namespace
 
 		std::filesystem::path _dir;
 	};
+
+	// Items of 10s each; the program started `elapsed_ms` ago.
+	std::shared_ptr<Schedule::Program> MakeProgram(int item_count, int64_t elapsed_ms, bool repeat)
+	{
+		auto program			 = std::make_shared<Schedule::Program>();
+		program->_scheduled_time = std::chrono::system_clock::now() - std::chrono::milliseconds(elapsed_ms);
+		program->_repeat		 = repeat;
+
+		for (int i = 0; i < item_count; i++)
+		{
+			auto item		   = std::make_shared<Schedule::Item>();
+			item->_url				  = ov::String::FormatString("file://item%d.mp4", i);
+			item->_start_time_ms_conf = 0;
+			item->_duration_ms		  = 10000;
+			program->_items.push_back(item);
+		}
+
+		program->_total_item_duration_ms = item_count * 10000;
+
+		return program;
+	}
 }  // namespace
+
+TEST(ScheduledProgramPosition, ReentryPicksTheItemAtTheCurrentTime)
+{
+	auto program = MakeProgram(3, 15000, /*repeat=*/true);
+
+	auto first = program->GetFirstItemWithPosition();
+	ASSERT_NE(first, nullptr);
+	EXPECT_STREQ(first->_url.CStr(), "file://item1.mp4");
+	EXPECT_STREQ(program->GetNextItem()->_url.CStr(), "file://item2.mp4");
+
+	// Reposition on the same program, now 25s in
+	program->_scheduled_time -= std::chrono::milliseconds(10000);
+
+	auto again = program->GetFirstItemWithPosition();
+	ASSERT_NE(again, nullptr);
+	EXPECT_STREQ(again->_url.CStr(), "file://item2.mp4");
+	EXPECT_NEAR(again->_start_time_ms, 5000, 100);
+	EXPECT_STREQ(program->GetNextItem()->_url.CStr(), "file://item0.mp4");
+}
+
+TEST(ScheduledProgramPosition, RepeatProgramWrapsPastTheLastItem)
+{
+	auto program = MakeProgram(2, 25000, /*repeat=*/true);
+
+	auto first = program->GetFirstItemWithPosition();
+	ASSERT_NE(first, nullptr);
+	EXPECT_STREQ(first->_url.CStr(), "file://item0.mp4");
+	EXPECT_NEAR(first->_start_time_ms, 5000, 100);
+}
+
+TEST(ScheduledProgramPosition, NonRepeatProgramIsOffAirPastTheLastItem)
+{
+	auto program = MakeProgram(2, 25000, /*repeat=*/false);
+
+	EXPECT_EQ(program->GetFirstItemWithPosition(), nullptr);
+	EXPECT_TRUE(program->IsOffAir());
+}
 
 TEST(ScheduledFadeJson, RoundTrip)
 {
