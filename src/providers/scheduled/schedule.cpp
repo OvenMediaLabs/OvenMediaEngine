@@ -20,6 +20,32 @@
 
 namespace pvd
 {
+	const char *Schedule::LiveStartPointToString(LiveStartPoint point)
+	{
+		switch (point)
+		{
+			case LiveStartPoint::LatestKeyframe:
+				return "LatestKeyframe";
+			case LiveStartPoint::NextKeyframe:
+				return "NextKeyframe";
+		}
+
+		return "Unknown";
+	}
+
+	std::optional<Schedule::LiveStartPoint> Schedule::LiveStartPointFromString(const ov::String &value)
+	{
+		for (auto point : {LiveStartPoint::LatestKeyframe, LiveStartPoint::NextKeyframe})
+		{
+			if (value.UpperCaseString() == ov::String(LiveStartPointToString(point)).UpperCaseString())
+			{
+				return point;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	bool RemoveScheduleFile(const ov::String &file_path, bool preserve)
 	{
 		// Removed elsewhere also reaches the goal state, including losing a removal race
@@ -612,6 +638,22 @@ namespace pvd
 			_stream._max_fallback_duration_ms = max_fallback_duration_ms_object.asInt64();
 		}
 
+		// live_start_point
+		auto live_start_point_object = stream_object["liveStartPoint"];
+		if (live_start_point_object.isNull() == false)
+		{
+			auto live_start_point = live_start_point_object.isString()
+										? LiveStartPointFromString(live_start_point_object.asString().c_str())
+										: std::nullopt;
+			if (live_start_point.has_value() == false)
+			{
+				_last_error = "liveStartPoint must be LatestKeyframe or NextKeyframe";
+				return false;
+			}
+
+			_stream._live_start_point = live_start_point.value();
+		}
+
 		return true;
 	}
 
@@ -868,7 +910,11 @@ namespace pvd
 
 		if (ReadStreamNode(schedule_node) == false)
 		{
-			_last_error = "Failed to read Stream node";
+			// Keep the reason the stream node gave, if any
+			if (_last_error.IsEmpty())
+			{
+				_last_error = "Failed to read Stream node";
+			}
 			return false;
 		}
 
@@ -988,6 +1034,20 @@ namespace pvd
 		if (max_fallback_duration_ms_node)
 		{
 			_stream._max_fallback_duration_ms = max_fallback_duration_ms_node.text().as_llong();
+		}
+
+		// live_start_point
+		auto live_start_point_node = stream_node.child("LiveStartPoint");
+		if (live_start_point_node)
+		{
+			auto live_start_point = LiveStartPointFromString(ov::String(live_start_point_node.text().as_string()).Trim());
+			if (live_start_point.has_value() == false)
+			{
+				_last_error = "LiveStartPoint must be LatestKeyframe or NextKeyframe";
+				return false;
+			}
+
+			_stream._live_start_point = live_start_point.value();
 		}
 
 		return true;
@@ -1362,6 +1422,9 @@ namespace pvd
 		// MaxFallbackDurationMs
 		stream_node.append_child("MaxFallbackDurationMs").text().set(_stream._max_fallback_duration_ms);
 
+		// LiveStartPoint
+		stream_node.append_child("LiveStartPoint").text().set(LiveStartPointToString(_stream._live_start_point));
+
 		// FallbackProgram
 		if (_fallback_program != nullptr)
 		{
@@ -1458,6 +1521,9 @@ namespace pvd
 
 		// max_fallback_duration_ms
 		stream_object["maxFallbackDurationMs"] = _stream._max_fallback_duration_ms;
+
+		// live_start_point
+		stream_object["liveStartPoint"] = LiveStartPointToString(_stream._live_start_point);
 
 		root_object["stream"] = stream_object;
 

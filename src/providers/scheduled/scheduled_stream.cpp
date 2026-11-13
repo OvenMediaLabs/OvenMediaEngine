@@ -13,6 +13,9 @@
 
 #include <base/provider/application.h>
 
+#include <algorithm>
+#include <deque>
+
 namespace pvd
 {
     // Implementation of ScheduledStream
@@ -658,8 +661,6 @@ namespace pvd
 				_global_track_offset_us_map[track_id] = dts_us;
 			}
 
-			int64_t global_zero_based_dts = dts_us - _global_track_offset_us_map[track_id];
-
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
             media_packet->SetDuration(-1); // Duration will be calculated in MediaRouter
@@ -720,14 +721,8 @@ namespace pvd
                     break;
                 }
             }
-            
-            int64_t elapsed = _realtime_clock.ElapsedUs();
-            if (elapsed < global_zero_based_dts)
-            {
-                int64_t wait_time = global_zero_based_dts - elapsed;
-                // logti("Scheduled Channel : %s/%s: Track(%d) Current(%" PRId64 ") DTS(%" PRId64 ") Wait(%" PRId64 ")", GetApplicationName(), GetName().CStr(), track_id, elapsed, global_zero_based_dts, wait_time);
-                std::this_thread::sleep_for(std::chrono::microseconds(wait_time));
-            }
+
+            WaitForChannelClock(track_id, dts_us);
         }
 
         _current_item_position_ms = 0;
@@ -974,12 +969,39 @@ namespace pvd
 
         ScheduledStream::PlaybackResult result = PlaybackResult::PLAY_NEXT_ITEM;
 
-        auto stream_tap = PrepareStreamPlayback(item);
+		// Like the other stream settings, fixed when the channel is created
+		auto live_start_point  = _channel_info._live_start_point;
+		auto live_start_policy = LiveStartPolicy::Create(live_start_point);
+		if (live_start_policy == nullptr)
+		{
+			logte("Scheduled Channel : %s/%s: Unknown live start point %d", GetApplicationName(), GetName().CStr(), static_cast<int>(live_start_point));
+			return PlaybackResult::ERROR;
+		}
+
+		// Nothing has been played on the channel before this item
+		bool channel_start = (_realtime_clock.IsStart() == false);
+
+        auto stream_tap = PrepareStreamPlayback(item, live_start_policy->NeedsPastData());
         if (stream_tap == nullptr)
         {
             logte("Scheduled Channel : %s/%s: Failed to prepare stream playback. Try to play next item", GetApplicationName(), GetName().CStr());
             return PlaybackResult::ERROR;
         }
+
+		LiveStartPolicy::StartPlan start_plan;
+		if (live_start_policy->NeedsPastData())
+		{
+			auto planned = PlanLiveStart(item, stream_tap, *live_start_policy, channel_start);
+			if (planned.has_value() == false)
+			{
+				ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
+				return PlaybackResult::ERROR;
+			}
+
+			start_plan = std::move(planned.value());
+		}
+
+		std::deque<std::shared_ptr<MediaPacket>> replay_queue(start_plan.replay.begin(), start_plan.replay.end());
 
         if (_realtime_clock.IsStart() == false)
         {
@@ -995,7 +1017,8 @@ namespace pvd
         std::map<int, int64_t> track_single_file_dts_offset_map;
         std::map<int, bool> end_of_track_map;
 
-		// bool sent_keyframe = false;
+		// Source dts of each track's previous packet, on the track timebase
+		std::map<int, int64_t> last_source_dts_map;
 
         // Play
         while (_worker_thread_running.load())
@@ -1014,8 +1037,17 @@ namespace pvd
                     break;
                 }
             }
-			
-            auto media_packet = stream_tap->Pop(_channel_info._error_tolerance_duration_ms);
+
+            std::shared_ptr<MediaPacket> media_packet = nullptr;
+            if (replay_queue.empty() == false)
+            {
+                media_packet = replay_queue.front();
+                replay_queue.pop_front();
+            }
+            else
+            {
+                media_packet = stream_tap->Pop(_channel_info._error_tolerance_duration_ms);
+            }
             if (media_packet == nullptr)
             {
                 if (CheckCurrentProgramChanged() == true)
@@ -1059,27 +1091,6 @@ namespace pvd
                 end_of_track_map[track_id] = false;
             }
 
-            // Transcoder will make bogus frame if it can't be decoded
-			// if (GetRepresentationType() == StreamRepresentationType::Relay && sent_keyframe == false)
-            // {
-			// 	if (media_packet->GetMediaType() == cmn::MediaType::Video)
-			// 	{
-			// 		if (media_packet->GetFlag() != MediaPacketFlag::Key)
-			// 		{
-			// 			// Skip until key frame
-			// 			continue;
-			// 		}
-			// 		else
-			// 		{
-			// 			sent_keyframe = true;
-			// 		}
-			// 	}
-			// 	else 
-			// 	{
-			// 		continue; // Skip until key frame
-			// 	}
-			// }
-
             auto track = GetTrack(track_id);
             if (track == nullptr)
             {
@@ -1113,12 +1124,21 @@ namespace pvd
             }
             auto single_file_dts = dts - track_single_file_dts_offset_map[track_id];
 
+			// A live packet often has no duration, and the next item starts where this item's
+			// last packet ends, so the track's last interval stands in for it
+			if (duration <= 0)
+			{
+				auto last_source_dts_it = last_source_dts_map.find(track_id);
+				duration				= (last_source_dts_it != last_source_dts_map.end()) ? std::max<int64_t>(dts - last_source_dts_it->second, 0) : 0;
+			}
+			last_source_dts_map[track_id] = dts;
+
             AdjustTimestampByBase(track_id, pts, dts, std::numeric_limits<int64_t>::max(), duration);
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
 			{
-				_global_track_offset_us_map[track_id] = dts_us;
+				_global_track_offset_us_map[track_id] = dts_us + start_plan.pacing_lead_us;
 			}
             media_packet->SetPts(pts);
             media_packet->SetDts(dts);
@@ -1170,6 +1190,11 @@ namespace pvd
                     break;
                 }
             }
+
+			if (live_start_policy->PacesToChannelClock())
+			{
+				WaitForChannelClock(track_id, dts_us);
+			}
         }
 
         _current_item_position_ms = 0;
@@ -1180,6 +1205,58 @@ namespace pvd
 
         return result;
     }
+
+	std::optional<LiveStartPolicy::StartPlan> ScheduledStream::PlanLiveStart(const std::shared_ptr<Schedule::Item> &item,
+																			 const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
+																			 const LiveStartPolicy &policy,
+																			 bool channel_start)
+	{
+		// The source sends its buffered frames with its next packet, so they are as late as any packet
+		auto past_data = stream_tap->TakePastData(_channel_info._error_tolerance_duration_ms);
+		if (past_data.has_value() == false)
+		{
+			logtw("Scheduled Channel : %s/%s: Failed to receive the buffered frames of %s within %" PRId64 " ms. Try to play next item",
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), _channel_info._error_tolerance_duration_ms);
+			return std::nullopt;
+		}
+
+		// Only the tracks this channel plays
+		past_data->erase(std::remove_if(past_data->begin(), past_data->end(), [this](const std::shared_ptr<MediaPacket> &packet) {
+							 return FindTrackIdByOriginId(packet->GetTrackId()) < 0;
+						 }),
+						 past_data->end());
+
+		auto plan = policy.Plan(past_data.value(), stream_tap->GetStreamInfo(), channel_start);
+
+		if (plan.starts_at_keyframe)
+		{
+			logti("Scheduled Channel : %s/%s: %s starts from its latest keyframe, %" PRId64 " ms behind the source",
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), (plan.replay_span_us - plan.pacing_lead_us) / 1000);
+		}
+		else if (_channel_info._video_track)
+		{
+			logtw("Scheduled Channel : %s/%s: No keyframe of %s is buffered, so the picture may freeze until its next keyframe. "
+				  "Its keyframe interval may be too long",
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr());
+		}
+
+		return plan;
+	}
+
+	void ScheduledStream::WaitForChannelClock(uint32_t track_id, int64_t dts_us)
+	{
+		auto offset_it = _global_track_offset_us_map.find(track_id);
+		if (offset_it == _global_track_offset_us_map.end())
+		{
+			return;
+		}
+
+		int64_t wait_us = (dts_us - offset_it->second) - _realtime_clock.ElapsedUs();
+		if (wait_us > 0)
+		{
+			std::this_thread::sleep_for(std::chrono::microseconds(wait_us));
+		}
+	}
 
     bool ScheduledStream::CheckStreamItemAvailable(const std::shared_ptr<Schedule::Item> &item)
     {
@@ -1252,11 +1329,14 @@ namespace pvd
         return true;
     }
 
-    std::shared_ptr<MediaRouterStreamTap> ScheduledStream::PrepareStreamPlayback(const std::shared_ptr<Schedule::Item> &item)
+    std::shared_ptr<MediaRouterStreamTap> ScheduledStream::PrepareStreamPlayback(const std::shared_ptr<Schedule::Item> &item, bool need_past_data)
     {
         auto stream_tap = MediaRouterStreamTap::Create();
-		// This is commented out because it is likely to cause problems every time a live item is switched. It seems that various tests will be needed.
-		// stream_tap->SetNeedPastData(true);
+		stream_tap->SetNeedPastData(need_past_data);
+
+		// Started before it is mirrored: a tap that is not started rejects packets,
+		// and the router hands over the past data only once
+		stream_tap->Start();
 
         auto stream_url = ov::Url::Parse(item->_url);
         if (stream_url == nullptr)
@@ -1312,6 +1392,7 @@ namespace pvd
 				{
 					logte("%s/%s: Video track of the tapped stream was rejected",
 						  GetApplicationName(), GetName().CStr());
+					ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
 					return nullptr;
 				}
 
@@ -1342,6 +1423,7 @@ namespace pvd
 				{
 					logte("%s/%s: Audio track of the tapped stream was rejected",
 						  GetApplicationName(), GetName().CStr());
+					ocst::Orchestrator::GetInstance()->UnmirrorStream(stream_tap);
 					return nullptr;
 				}
 
@@ -1396,8 +1478,6 @@ namespace pvd
         }
 
         OnSourceChanged();
-
-        stream_tap->Start();
 
         return stream_tap;
     }

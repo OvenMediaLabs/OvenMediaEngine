@@ -52,6 +52,41 @@ bool MediaRouterStreamTap::DoesNeedPastData() const
 	return _need_past_data;
 }
 
+void MediaRouterStreamTap::SetPastDataDelivered()
+{
+	{
+		std::lock_guard<std::mutex> lock(_past_data_mutex);
+		_past_data_delivered = true;
+	}
+
+	_past_data_condition.notify_all();
+}
+
+std::optional<std::vector<std::shared_ptr<MediaPacket>>> MediaRouterStreamTap::TakePastData(int timeout_in_msec)
+{
+	{
+		std::unique_lock<std::mutex> lock(_past_data_mutex);
+		if (_past_data_condition.wait_for(lock, std::chrono::milliseconds(timeout_in_msec), [this]() { return _past_data_delivered; }) == false)
+		{
+			return std::nullopt;
+		}
+	}
+
+	std::vector<std::shared_ptr<MediaPacket>> past_data;
+	while (true)
+	{
+		auto packet = _backfill_buffer.Dequeue(0);
+		if (packet.has_value() == false)
+		{
+			break;
+		}
+
+		past_data.push_back(packet.value());
+	}
+
+	return past_data;
+}
+
 void MediaRouterStreamTap::Start()
 {
     _is_started = true;

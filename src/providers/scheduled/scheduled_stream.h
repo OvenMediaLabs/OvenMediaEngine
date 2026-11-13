@@ -13,6 +13,7 @@
 #include <mediarouter/mediarouter_stream_tap.h>
 #include <base/provider/stream.h>
 
+#include "live_start_policy.h"
 #include "schedule.h"
 
 namespace pvd
@@ -78,7 +79,17 @@ namespace pvd
         bool PrepareFilePlayback(const std::shared_ptr<Schedule::Item> &item);
         
         PlaybackResult PlayStream(const std::shared_ptr<Schedule::Item> &item, bool fallback_item);
-        std::shared_ptr<MediaRouterStreamTap> PrepareStreamPlayback(const std::shared_ptr<Schedule::Item> &item);
+        std::shared_ptr<MediaRouterStreamTap> PrepareStreamPlayback(const std::shared_ptr<Schedule::Item> &item, bool need_past_data);
+
+		// Takes the source's buffered frames and plans how the live item starts.
+		// nullopt when they did not arrive within the error tolerance.
+		std::optional<LiveStartPolicy::StartPlan> PlanLiveStart(const std::shared_ptr<Schedule::Item> &item,
+																const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
+																const LiveStartPolicy &policy,
+																bool channel_start);
+
+		// Holds a packet until its time on the channel clock
+		void WaitForChannelClock(uint32_t track_id, int64_t dts_us);
         
         std::shared_ptr<Schedule> GetSchedule() const;
         bool CheckCurrentProgramChanged();
