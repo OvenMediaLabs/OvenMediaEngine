@@ -445,18 +445,20 @@ namespace pub
 		// When setting schedule parameter, perform segmentation recording.
 		else if (record->GetSchedule().IsEmpty() != true)
 		{
+			auto now = std::chrono::system_clock::now();
+
 			if (record->IsNextScheduleTimeEmpty() == true)
 			{
-				if (record->UpdateNextScheduleTime() == false)
+				if (record->UpdateNextScheduleTime(now) == false)
 				{
 					logae("Failed to update next schedule time. request to stop recording.");
 				}
 			}
-			else if (record->GetNextScheduleTime() <= std::chrono::system_clock::now())
+			else if (record->GetNextScheduleTime() <= now)
 			{
 				_is_splitting.store(true);
 
-				if (record->UpdateNextScheduleTime() == false)
+				if (record->UpdateNextScheduleTime(now) == false)
 				{
 					logae("Failed to update next schedule time. request to stop recording.");
 				}
