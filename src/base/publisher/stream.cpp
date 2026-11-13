@@ -71,6 +71,7 @@ namespace pub
 			session->Stop();
 		}
 		_sessions.clear();
+		_session_count.store(0, std::memory_order_relaxed);
 		logtt("All sessions(%zu) of %s has been stopped successfully", _sessions.size(), worker_name.CStr());
 
 		return true;
@@ -86,6 +87,7 @@ namespace pub
 
 		std::lock_guard<std::shared_mutex> lock(_session_map_mutex);
 		_sessions[session->GetId()] = session;
+		_session_count.store(_sessions.size(), std::memory_order_relaxed);
 
 		return true;
 	}
@@ -107,6 +109,7 @@ namespace pub
 
 		auto session = _sessions[id];
 		_sessions.erase(id);
+		_session_count.store(_sessions.size(), std::memory_order_relaxed);
 		lock.unlock();
 
 		session->Stop();
@@ -129,6 +132,10 @@ namespace pub
 
 	void StreamWorker::SendPacket(const std::any &packet)
 	{
+		if (_session_count.load(std::memory_order_relaxed) == 0)
+		{
+			return;
+		}
 		_packet_queue.Enqueue(packet);
 		_queue_event.Notify();
 	}
@@ -401,6 +408,7 @@ namespace pub
 			session->Stop();
 		}
 		_sessions.clear();
+		_session_count.store(0, std::memory_order_relaxed);
 
 		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
 
@@ -508,19 +516,25 @@ namespace pub
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
+		bool result = true;
 		if(_worker_count > 0)
 		{
 			auto worker = GetWorkerBySessionID(session->GetId());
 			if(worker == nullptr)
 			{
 				logte("Cannot find worker for session : %u", session->GetId());
-				return false;
+				result = false;
 			}
-
-			return worker->AddSession(session);
+			else
+			{
+				result = worker->AddSession(session);
+			}
 		}
 
-		return true;
+		// Counted only once its worker has it, so a sender that sees the count can deliver to it
+		_session_count.store(_sessions.size(), std::memory_order_release);
+
+		return result;
 	}
 
 	bool Stream::RemoveSession(session_id_t id)
@@ -534,6 +548,7 @@ namespace pub
 				return false;
 			}
 			_sessions.erase(session_iterator);
+			_session_count.store(_sessions.size(), std::memory_order_release);
 		}
 
 		if(_worker_count > 0)
@@ -570,12 +585,16 @@ namespace pub
 
 	uint32_t Stream::GetSessionCount()
 	{
-		std::shared_lock<std::shared_mutex> session_lock(_session_map_mutex);
-		return _sessions.size();
+		return _session_count.load(std::memory_order_acquire);
 	}
 
 	bool Stream::BroadcastPacket(const std::any &packet)
 	{
+		if (_session_count.load(std::memory_order_acquire) == 0)
+		{
+			return true;
+		}
+
 		if(_worker_count > 0)
 		{
 			std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);

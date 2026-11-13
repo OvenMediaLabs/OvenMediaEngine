@@ -776,9 +776,9 @@ void RtcStream::SendVideoFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		return;
 	}
 
-	if (_initial_media_packet_buffer.IsEmpty() == false)
+	if (FlushInitialMediaPackets() == false)
 	{
-		SendBufferedPackets();
+		return;
 	}
 
 	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
@@ -801,9 +801,9 @@ void RtcStream::SendAudioFrame(const std::shared_ptr<MediaPacket> &media_packet)
 		return;
 	}
 
-	if (_initial_media_packet_buffer.IsEmpty() == false)
+	if (FlushInitialMediaPackets() == false)
 	{
-		SendBufferedPackets();
+		return;
 	}
 
 	if (_pacer_enabled && PushToPacer(media_packet, arrival_time))
@@ -838,6 +838,24 @@ void RtcStream::BufferMediaPacketUntilReadyToPlay(const std::shared_ptr<MediaPac
 	}
 
 	_initial_media_packet_buffer.Enqueue(media_packet);
+}
+
+bool RtcStream::FlushInitialMediaPackets()
+{
+	const bool has_session = (GetSessionCount() > 0);
+	if (_initial_media_packet_buffer.IsEmpty() == false)
+	{
+		if (has_session)
+		{
+			SendBufferedPackets();
+		}
+		else
+		{
+			_initial_media_packet_buffer.Clear();
+		}
+	}
+
+	return has_session;
 }
 
 bool RtcStream::SendBufferedPackets()
