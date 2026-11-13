@@ -23,8 +23,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -655,6 +657,51 @@ namespace
 		std::atomic<int> _connect_failed{0};
 		std::atomic<size_t> _received_bytes{0};
 		std::atomic<int> _closed{0};
+	};
+
+	// Holds the worker in the first `OnReadable()` after `Arm()` until `Release()`,
+	// so a test can keep the worker from fetching libsrt epoll events for a while
+	class GatedSrtAsyncEvents : public SrtAsyncEvents
+	{
+	public:
+		void Arm()
+		{
+			_armed = true;
+		}
+
+		void Release()
+		{
+			{
+				std::lock_guard<std::mutex> lock(_mutex);
+				_released = true;
+			}
+			_cv.notify_all();
+		}
+
+		bool IsHolding() const
+		{
+			return _holding.load();
+		}
+
+		void OnReadable() override
+		{
+			SrtAsyncEvents::OnReadable();
+
+			if (_armed.exchange(false))
+			{
+				_holding = true;
+				std::unique_lock<std::mutex> lock(_mutex);
+				_cv.wait(lock, [this]() { return _released; });
+				_holding = false;
+			}
+		}
+
+	private:
+		std::atomic<bool> _armed{false};
+		std::atomic<bool> _holding{false};
+		std::mutex _mutex;
+		std::condition_variable _cv;
+		bool _released = false;
 	};
 
 	// Polls `predicate` every millisecond until it holds or `timeout` elapses.
@@ -1385,7 +1432,13 @@ TEST_F(SocketRecvSrtTest, GracefulPeerCloseFiresCloseCallbackAsDisconnected)
 // libsrt declares a silent peer dead only after 16 expiration timer events at
 // least 300 ms apart, so a cut link takes about 5 s to reach `SRTS_BROKEN`
 // regardless of `SRTO_PEERIDLETIMEO`; the waits below allow for that.
-constexpr int SRT_BROKEN_LINK_WAIT_MSEC = 15000;
+constexpr int SRT_BROKEN_LINK_WAIT_MSEC	  = 15000;
+// libsrt's garbage collector removes a closed socket one to two seconds after it ends
+constexpr int SRT_REMOVAL_WAIT_MSEC		  = 10000;
+// The removal check runs once a second, and the close callbacks follow in the same worker iteration
+constexpr int SRT_REMOVAL_CLOSE_WAIT_MSEC = 3000;
+// Longer than one removal check interval
+constexpr int SRT_REMOVAL_CHECK_PASS_MSEC = 1500;
 
 // A link that dies without any shutdown handshake (the relay drops every
 // datagram) must expire into `SRTS_BROKEN`, which `Recv()` reports as
@@ -1439,6 +1492,373 @@ TEST_F(SocketRecvSrtTest, BrokenLinkFiresCloseCallbackAsDisconnected)
 
 	ASSERT_TRUE(WaitUntil([&]() { return events->Closed() == 1; }, std::chrono::milliseconds(SRT_BROKEN_LINK_WAIT_MSEC)));
 	EXPECT_EQ(client->GetState(), ov::SocketState::Disconnected);
+}
+
+// libsrt removes a broken socket one to two seconds after it breaks, and with it the disconnect event
+// the worker has not fetched yet. The worker is held past that point here, and must still close the socket.
+TEST_F(SocketRecvSrtTest, SocketRemovedWithoutDisconnectEventIsClosed)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "SocketRemovedWithoutDisconnectEventIsClosed");
+
+	SrtPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto events = std::make_shared<GatedSrtAsyncEvents>();
+	auto client = ConnectAsyncClientVia(peer, peer.Port(), events);
+	ASSERT_NE(client, nullptr);
+	const auto handle = client->GetNativeHandle();
+
+	// Releases the worker even when an assertion below ends the test early
+	struct ReleaseOnExit
+	{
+		GatedSrtAsyncEvents &events;
+		~ReleaseOnExit()
+		{
+			events.Release();
+		}
+	} release_on_exit{*events};
+
+	events->Arm();
+	const char payload[] = "srt-dropped-notification";
+	ASSERT_EQ(peer.Send(payload, sizeof(payload)), static_cast<int>(sizeof(payload)));
+	ASSERT_TRUE(WaitUntil([&]() { return events->IsHolding(); }));
+	ASSERT_EQ(events->ReceivedBytes(), sizeof(payload));
+
+	// The read buffer is empty, so libsrt does not delay removing the socket once the peer shuts it down
+	peer.CloseConnection();
+	ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(handle) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+
+	events->Release();
+
+	ASSERT_TRUE(WaitUntil([&]() { return events->Closed() == 1; }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+	EXPECT_EQ(client->GetState(), ov::SocketState::Disconnected);
+}
+
+namespace
+{
+	// Accepts SRT callers on an OME listener in the test pool. The data callback can hold the worker on the first
+	// message of one caller, which keeps the worker from fetching libsrt events while the test acts on another.
+	// The callbacks share their state through a `shared_ptr`,
+	// since the worker may still run them after the harness is gone.
+	class SrtListenerHarness
+	{
+	private:
+		struct State
+		{
+			std::mutex mutex;
+			std::condition_variable cv;
+			bool released = false;
+			std::vector<SRTSOCKET> accepted;
+			std::map<SRTSOCKET, std::shared_ptr<ov::ClientSocket>> clients;
+			std::map<SRTSOCKET, ov::SocketConnectionState> closed;
+			std::map<SRTSOCKET, int> close_count;
+			std::atomic<SRTSOCKET> hold_handle{SRT_INVALID_SOCK};
+			std::atomic<bool> holding{false};
+		};
+
+	public:
+		explicit SrtListenerHarness(const std::shared_ptr<ov::SocketPool> &pool)
+			: _server(pool->AllocSocket<ov::ServerSocket>(ov::SocketFamily::Inet, pool))
+		{
+		}
+
+		~SrtListenerHarness()
+		{
+			Release();
+
+			for (auto caller : _callers)
+			{
+				::srt_close(caller);
+			}
+
+			if (_server != nullptr)
+			{
+				_server->Close();
+			}
+		}
+
+		bool Start()
+		{
+			if (_server == nullptr)
+			{
+				return false;
+			}
+
+			auto state		   = _state;
+
+			auto on_connection = [state](const std::shared_ptr<ov::ClientSocket> &client, ov::SocketConnectionState connection_state, const std::shared_ptr<ov::Error> &) {
+				std::lock_guard<std::mutex> lock(state->mutex);
+				if (connection_state == ov::SocketConnectionState::Connected)
+				{
+					state->accepted.push_back(client->GetNativeHandle());
+					state->clients[client->GetNativeHandle()] = client;
+				}
+				else
+				{
+					state->closed[client->GetNativeHandle()] = connection_state;
+					state->close_count[client->GetNativeHandle()]++;
+				}
+			};
+
+			auto on_data = [state](const std::shared_ptr<ov::ClientSocket> &client, const std::shared_ptr<ov::Data> &) {
+				if (client->GetNativeHandle() == state->hold_handle.load())
+				{
+					state->hold_handle = SRT_INVALID_SOCK;
+					state->holding	   = true;
+					std::unique_lock<std::mutex> lock(state->mutex);
+					state->cv.wait(lock, [&]() { return state->released; });
+					state->holding = false;
+				}
+			};
+
+			if (_server->Prepare(LoopbackAddress(0), nullptr, on_connection, on_data, 0, 0, 4) == false)
+			{
+				return false;
+			}
+
+			sockaddr_in address{};
+			int length = sizeof(address);
+			if (::srt_getsockname(_server->GetNativeHandle(), reinterpret_cast<sockaddr *>(&address), &length) == SRT_ERROR)
+			{
+				return false;
+			}
+			_port = address.sin_port;
+			return true;
+		}
+
+		// Connects a caller and returns the handle of the socket OME accepted for it
+		SRTSOCKET Connect(SRTSOCKET *caller)
+		{
+			*caller = ::srt_create_socket();
+			if (*caller == SRT_INVALID_SOCK)
+			{
+				return SRT_INVALID_SOCK;
+			}
+			_callers.push_back(*caller);
+
+			int live = SRTT_LIVE;
+			::srt_setsockopt(*caller, 0, SRTO_TRANSTYPE, &live, sizeof(live));
+			int yes = 1;
+			::srt_setsockopt(*caller, 0, SRTO_MESSAGEAPI, &yes, sizeof(yes));
+
+			sockaddr_in target{};
+			target.sin_family	   = AF_INET;
+			target.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			target.sin_port		   = _port;
+
+			size_t accepted_before = AcceptedCount();
+			if (::srt_connect(*caller, reinterpret_cast<sockaddr *>(&target), sizeof(target)) == SRT_ERROR)
+			{
+				return SRT_INVALID_SOCK;
+			}
+			if (WaitUntil([&]() { return AcceptedCount() > accepted_before; }) == false)
+			{
+				return SRT_INVALID_SOCK;
+			}
+
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			return _state->accepted.back();
+		}
+
+		// The next message on `accepted` holds the worker until `Release()`
+		void HoldOnNextMessage(SRTSOCKET accepted)
+		{
+			_state->hold_handle = accepted;
+		}
+
+		bool IsHolding() const
+		{
+			return _state->holding.load();
+		}
+
+		void Release()
+		{
+			{
+				std::lock_guard<std::mutex> lock(_state->mutex);
+				_state->released = true;
+			}
+			_state->cv.notify_all();
+		}
+
+		// The OME socket accepted for the caller whose handle is `accepted`
+		std::shared_ptr<ov::ClientSocket> Client(SRTSOCKET accepted) const
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			auto item = _state->clients.find(accepted);
+			return (item != _state->clients.end()) ? item->second : nullptr;
+		}
+
+		// How many times the connection callback reported `accepted` closed
+		int CloseCount(SRTSOCKET accepted) const
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			auto item = _state->close_count.find(accepted);
+			return (item != _state->close_count.end()) ? item->second : 0;
+		}
+
+		// The state the connection callback reported when `accepted` closed, if it did
+		std::optional<ov::SocketConnectionState> ClosedState(SRTSOCKET accepted) const
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			auto item = _state->closed.find(accepted);
+			return (item != _state->closed.end()) ? std::optional<ov::SocketConnectionState>(item->second) : std::nullopt;
+		}
+
+		size_t AcceptedCount() const
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			return _state->accepted.size();
+		}
+
+	private:
+		std::shared_ptr<State> _state = std::make_shared<State>();
+		std::shared_ptr<ov::ServerSocket> _server;
+		uint16_t _port = 0;
+		std::vector<SRTSOCKET> _callers;
+	};
+}  // namespace
+
+// Through a listener, the path SRT ingest takes: while another caller holds the worker,
+// libsrt removes disconnected sockets together with their pending events, and each disconnect must still be reported
+TEST_F(SocketRecvSrtTest, AcceptedSocketRemovedWithoutDisconnectEventIsReported)
+{
+	constexpr int VICTIM_COUNT = 3;
+
+	Watchdog watchdog(std::chrono::seconds(30), "AcceptedSocketRemovedWithoutDisconnectEventIsReported");
+
+	SrtListenerHarness listener(_pool);
+	ASSERT_TRUE(listener.Start());
+
+	std::vector<SRTSOCKET> victim_callers(VICTIM_COUNT, SRT_INVALID_SOCK);
+	std::vector<SRTSOCKET> victims;
+	for (auto &caller : victim_callers)
+	{
+		victims.push_back(listener.Connect(&caller));
+		ASSERT_NE(victims.back(), SRT_INVALID_SOCK);
+	}
+
+	SRTSOCKET holder_caller = SRT_INVALID_SOCK;
+	const auto holder		= listener.Connect(&holder_caller);
+	ASSERT_NE(holder, SRT_INVALID_SOCK);
+
+	listener.HoldOnNextMessage(holder);
+	const char payload[] = "srt-hold-worker";
+	ASSERT_NE(::srt_sendmsg2(holder_caller, payload, sizeof(payload), nullptr), SRT_ERROR);
+	ASSERT_TRUE(WaitUntil([&]() { return listener.IsHolding(); }));
+
+	// The victims have nothing to read, so libsrt does not delay removing them once their callers shut them down
+	for (auto caller : victim_callers)
+	{
+		::srt_close(caller);
+	}
+	for (auto victim : victims)
+	{
+		ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(victim) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+	}
+
+	listener.Release();
+
+	for (auto victim : victims)
+	{
+		ASSERT_TRUE(WaitUntil([&]() { return listener.ClosedState(victim).has_value(); }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+		EXPECT_EQ(listener.ClosedState(victim).value(), ov::SocketConnectionState::Disconnected);
+	}
+
+	// Past another check, each victim is still reported once and the live holder is still open
+	std::this_thread::sleep_for(std::chrono::milliseconds(SRT_REMOVAL_CHECK_PASS_MSEC));
+	for (auto victim : victims)
+	{
+		EXPECT_EQ(listener.CloseCount(victim), 1);
+	}
+	EXPECT_FALSE(listener.ClosedState(holder).has_value());
+}
+
+// A read that finds the socket already removed by libsrt (the worker was held in the middle of reading it)
+// reports a disconnect, not an error
+TEST_F(SocketRecvSrtTest, AcceptedSocketReadAfterRemovalReportsDisconnect)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "AcceptedSocketReadAfterRemovalReportsDisconnect");
+
+	SrtListenerHarness listener(_pool);
+	ASSERT_TRUE(listener.Start());
+
+	SRTSOCKET caller	= SRT_INVALID_SOCK;
+	const auto accepted = listener.Connect(&caller);
+	ASSERT_NE(accepted, SRT_INVALID_SOCK);
+
+	listener.HoldOnNextMessage(accepted);
+	const char payload[] = "srt-hold-in-read";
+	ASSERT_NE(::srt_sendmsg2(caller, payload, sizeof(payload), nullptr), SRT_ERROR);
+	ASSERT_TRUE(WaitUntil([&]() { return listener.IsHolding(); }));
+
+	::srt_close(caller);
+	ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(accepted) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+
+	listener.Release();
+
+	ASSERT_TRUE(WaitUntil([&]() { return listener.ClosedState(accepted).has_value(); }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+	EXPECT_EQ(listener.ClosedState(accepted).value(), ov::SocketConnectionState::Disconnected);
+}
+
+// A close OME queued for a socket that libsrt removed meanwhile still completes,
+// and the disconnect is reported once, as OME's own close
+TEST_F(SocketRecvSrtTest, RemovedSocketWithQueuedCloseIsReportedOnce)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "RemovedSocketWithQueuedCloseIsReportedOnce");
+
+	SrtListenerHarness listener(_pool);
+	ASSERT_TRUE(listener.Start());
+
+	SRTSOCKET victim_caller = SRT_INVALID_SOCK;
+	const auto victim		= listener.Connect(&victim_caller);
+	ASSERT_NE(victim, SRT_INVALID_SOCK);
+	auto victim_socket = listener.Client(victim);
+	ASSERT_NE(victim_socket, nullptr);
+
+	SRTSOCKET holder_caller = SRT_INVALID_SOCK;
+	const auto holder		= listener.Connect(&holder_caller);
+	ASSERT_NE(holder, SRT_INVALID_SOCK);
+
+	listener.HoldOnNextMessage(holder);
+	const char payload[] = "srt-hold-worker";
+	ASSERT_NE(::srt_sendmsg2(holder_caller, payload, sizeof(payload), nullptr), SRT_ERROR);
+	ASSERT_TRUE(WaitUntil([&]() { return listener.IsHolding(); }));
+
+	::srt_close(victim_caller);
+	ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(victim) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+
+	// Queued only: the held worker runs it after the release
+	ASSERT_TRUE(victim_socket->Close());
+	ASSERT_TRUE(victim_socket->HasCloseCommand());
+
+	listener.Release();
+
+	ASSERT_TRUE(WaitUntil([&]() { return listener.ClosedState(victim).has_value(); }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+	EXPECT_EQ(listener.ClosedState(victim).value(), ov::SocketConnectionState::Disconnect);
+	EXPECT_EQ(victim_socket->GetState(), ov::SocketState::Closed);
+
+	// Past another check, the close is still reported once and the holder is still open
+	std::this_thread::sleep_for(std::chrono::milliseconds(SRT_REMOVAL_CHECK_PASS_MSEC));
+	EXPECT_EQ(listener.CloseCount(victim), 1);
+	EXPECT_FALSE(listener.ClosedState(holder).has_value());
+}
+
+// The removal check closes only sockets libsrt no longer knows: an idle live connection stays open
+TEST_F(SocketRecvSrtTest, IdleSocketIsNotClosedByRemovalCheck)
+{
+	Watchdog watchdog(std::chrono::seconds(15), "IdleSocketIsNotClosedByRemovalCheck");
+
+	SrtPeer peer;
+	ASSERT_TRUE(peer.Listen());
+	auto events = std::make_shared<SrtAsyncEvents>();
+	auto client = ConnectAsyncClientVia(peer, peer.Port(), events);
+	ASSERT_NE(client, nullptr);
+
+	// Several check intervals pass
+	std::this_thread::sleep_for(std::chrono::milliseconds(3 * SRT_REMOVAL_CHECK_PASS_MSEC));
+
+	EXPECT_EQ(events->Closed(), 0);
+	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
+	EXPECT_EQ(::srt_getsockstate(client->GetNativeHandle()), SRTS_CONNECTED);
 }
 
 // A close on another thread wakes a blocking SRT receive, which reports the close instead of a libsrt error
