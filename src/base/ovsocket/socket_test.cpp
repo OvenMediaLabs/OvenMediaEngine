@@ -1310,6 +1310,37 @@ namespace ov
 		{
 			socket->AppendCommand(Socket::DispatchCommand(address_pair, std::make_shared<Data>(data, length)), false);
 		}
+
+		// Sends two datagrams through `send` on a socket with nothing queued. Each send must leave the queue empty,
+		// and the peer must get each datagram whole. A datagram sent twice would arrive in place of the second one.
+		template <typename Tsend>
+		void ExpectEachDatagramSentOnce(Tsend send)
+		{
+			PosixUdpPeer peer;
+			ASSERT_TRUE(peer.Open());
+
+			auto socket = _pool->AllocSocket(SocketFamily::Inet);
+			ASSERT_NE(socket, nullptr);
+			ome_test::ScopeExit closer([&]() { socket->CloseImmediatelyWithState(SocketState::Closed); });
+			ASSERT_TRUE(socket->MakeNonBlocking(std::make_shared<SrtAsyncEvents>()));
+
+			const char first[]	= "first-datagram";
+			const char second[] = "second";
+			{
+				// Keeps the pool worker from sending a queued datagram before `HasCommand()` sees it
+				LockGuard lock_guard(socket->_dispatch_queue_lock);
+				EXPECT_TRUE(send(socket, peer.Port(), first, sizeof(first)));
+				EXPECT_FALSE(socket->HasCommand());
+				EXPECT_TRUE(send(socket, peer.Port(), second, sizeof(second)));
+				EXPECT_FALSE(socket->HasCommand());
+			}
+
+			char buffer[64] = {0};
+			EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(first)));
+			EXPECT_STREQ(buffer, first);
+			EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(second)));
+			EXPECT_STREQ(buffer, second);
+		}
 	};
 
 	// When the pool worker drains the queue (`OnDataWritableEvent()`), a datagram that fails
@@ -1337,6 +1368,20 @@ namespace ov
 		EXPECT_STREQ(buffer, payload);
 
 		socket->CloseImmediatelyWithState(SocketState::Closed);
+	}
+
+	TEST_F(SocketSendUdpTest, SendToWithEmptyQueueSendsEachDatagramOnce)
+	{
+		ExpectEachDatagramSentOnce([](const std::shared_ptr<Socket> &socket, uint16_t port, const void *data, size_t length) {
+			return socket->SendTo(LoopbackAddress(port), data, length);
+		});
+	}
+
+	TEST_F(SocketSendUdpTest, SendFromToWithEmptyQueueSendsEachDatagramOnce)
+	{
+		ExpectEachDatagramSentOnce([](const std::shared_ptr<Socket> &socket, uint16_t port, const void *data, size_t length) {
+			return socket->SendFromTo(SocketAddressPair(LoopbackAddress(0), LoopbackAddress(port)), data, length);
+		});
 	}
 }  // namespace ov
 

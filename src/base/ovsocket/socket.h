@@ -72,7 +72,7 @@ namespace ov
 
 	protected:
 		friend class SocketPoolWorker;
-		// Unit-test access to AppendCommand() (see socket_test.cpp)
+		// Unit-test access to AppendCommand() and `_dispatch_queue_lock` (see socket_test.cpp)
 		friend class SocketSendUdpTest;
 
 		OV_SOCKET_DECLARE_PRIVATE_TOKEN();
