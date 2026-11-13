@@ -626,7 +626,7 @@ void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr
 	bool is_resized = false;
 	if (state.published != nullptr && media_type == MediaType::Video && media_packet->IsKeyFrame())
 	{
-		is_resized = (working->GetResolution() == state.published->GetResolution()) == false;
+		is_resized = (working->GetResolution() != state.published->GetResolution());
 	}
 
 	// Rebuild candidates only on cheap triggers: first packet, an adopted hint,

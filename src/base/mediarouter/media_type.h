@@ -1620,6 +1620,11 @@ namespace cmn
 			return width == other.width && height == other.height;
 		}
 
+		bool operator!=(const Resolution &other) const
+		{
+			return (*this == other) == false;
+		}
+
 		ov::String ToString()
 		{
 			return ov::String::FormatString("%dx%d", width, height);
