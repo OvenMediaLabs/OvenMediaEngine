@@ -622,12 +622,20 @@ void MediaRouteStream::StampTrack(TrackAuthorState &state, const std::shared_ptr
 		return;
 	}
 
+	// A picture size parsed without a DCR (e.g. VP8) can only change at a key frame
+	bool is_resized = false;
+	if (state.published != nullptr && media_type == MediaType::Video && media_packet->IsKeyFrame())
+	{
+		is_resized = (working->GetResolution() != state.published->GetResolution());
+	}
+
 	// Rebuild candidates only on cheap triggers: first packet, an adopted hint,
-	// or the DCR object was replaced since the last check. Comparing against the
-	// last observed pointer re-arms the trigger after a content-equal
-	// replacement (e.g. a re-sent identical sequence header)
+	// the DCR object was replaced since the last check, or a key frame resized
+	// the picture. Comparing against the last observed pointer re-arms the
+	// trigger after a content-equal replacement (e.g. a re-sent identical
+	// sequence header)
 	auto working_dcr = working->GetDecoderConfigurationRecord();
-	if (state.published == nullptr || working_dcr != state.last_dcr || state.recheck)
+	if (state.published == nullptr || working_dcr != state.last_dcr || state.recheck || is_resized)
 	{
 		PublishWorkingVersion(state, media_packet->GetTrackId());
 	}
