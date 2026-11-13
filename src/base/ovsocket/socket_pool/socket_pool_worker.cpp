@@ -65,6 +65,9 @@ namespace ov
 		// A thread-per-socket worker has one socket, which an epoll reports at most once per wait,
 		// so one slot is enough in theory, and 4 leaves some room
 		constexpr int THREAD_PER_SOCKET_MAX_EVENTS = 4;
+
+		// libsrt's garbage collector removes ended sockets about once a second
+		constexpr int SRT_REMOVAL_CHECK_INTERVAL_MSEC = 1000;
 	}  // namespace
 
 	// The data of a TCP/UDP epoll event: the native handle in the low 32 bits and the low 32 bits of the socket ID above it,
@@ -172,6 +175,7 @@ namespace ov
 		}
 
 		_gc_candidates.clear();
+		_removed_srt_sockets.clear();
 
 		return true;
 	}
@@ -305,14 +309,94 @@ namespace ov
 		}
 	}
 
+	void SocketPoolWorker::CheckRemovedSrtSockets()
+	{
+		if (GetType() != SocketType::Srt)
+		{
+			return;
+		}
+
+		// Sockets still queued from the last check would be queued twice
+		if (_removed_srt_sockets.empty() == false)
+		{
+			return;
+		}
+
+		if (_srt_removal_check_interval.IsElapsed(SRT_REMOVAL_CHECK_INTERVAL_MSEC) == false)
+		{
+			return;
+		}
+
+		_srt_removal_check_interval.Update();
+
+		std::vector<std::shared_ptr<Socket>> sockets;
+
+		{
+			LockGuard lock(_socket_map_mutex);
+
+			sockets.reserve(_socket_map.size());
+
+			for (const auto &item : _socket_map)
+			{
+				sockets.push_back(item.second);
+			}
+		}
+
+		for (auto &socket : sockets)
+		{
+			// Only a connected socket loses its disconnect this way: a listener ends only by OME's own close
+			if (socket->GetState() != SocketState::Connected)
+			{
+				continue;
+			}
+
+			const auto status = ::srt_getsockstate(socket->GetNativeHandle());
+
+			// A socket OME has started closing is reported by that close. A queued close is not waited for:
+			// it may sit behind a send that needs an event the removed socket never raises.
+			if ((status == SRTS_NONEXIST) && socket->IsOpen())
+			{
+				logat("libsrt removed %s", socket->ToString().CStr());
+				_removed_srt_sockets.push_back(std::move(socket));
+			}
+		}
+
+		if (_removed_srt_sockets.empty() == false)
+		{
+			logti("Closing %zu SRT connection(s) whose disconnect was missed", _removed_srt_sockets.size());
+		}
+	}
+
+	int SocketPoolWorker::PollRemovedSrtSockets()
+	{
+		int count = 0;
+
+		while ((_removed_srt_sockets.empty() == false) && (count < _max_events))
+		{
+			auto &polled_event = _polled_events[count++];
+
+			polled_event.socket = std::move(_removed_srt_sockets.front());
+			_removed_srt_sockets.pop_front();
+
+			// A removed socket has nothing left to read, so it takes the path of a disconnect alone
+			polled_event.event		  = {};
+			polled_event.event.events = EPOLLHUP;
+		}
+
+		return count;
+	}
+
 	void SocketPoolWorker::ThreadProc()
 	{
 		logger::ThreadHelper thread_helper;
 
 		_gc_interval.Start();
+		_srt_removal_check_interval.Start();
 
 		while (_stop_epoll_thread == false)
 		{
+			CheckRemovedSrtSockets();
+
 #ifdef OME_LATENCY_PROBE
 			// Measure how long EpollWait itself takes and whether the thread was preempted
 			// during it. If it returns WITH events (count>0) after a long wall time, the
@@ -322,7 +406,9 @@ namespace ov
 			::getrusage(RUSAGE_THREAD, &ru_ew_start);
 #endif	// OME_LATENCY_PROBE
 
-			int count = EpollWait(100);
+			// Removed SRT sockets are handled in place of the next wait,
+			// and their close callbacks run at the end of this iteration
+			int count = _removed_srt_sockets.empty() ? EpollWait(100) : PollRemovedSrtSockets();
 
 #ifdef OME_LATENCY_PROBE
 			auto ew_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - ew_start).count();
@@ -1021,6 +1107,12 @@ namespace ov
 					}
 
 					case SocketType::Srt: {
+						// libsrt dropped the subscriptions of a socket it removed, and logs an error for a removal it cannot find
+						if (::srt_getsockstate(native_handle) == SRTS_NONEXIST)
+						{
+							break;
+						}
+
 						if (::srt_epoll_remove_usock(_srt_epoll, native_handle) == SRT_ERROR)
 						{
 							error = SrtError::CreateErrorFromSrt();
