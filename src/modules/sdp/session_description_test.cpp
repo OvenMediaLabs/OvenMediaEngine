@@ -145,3 +145,73 @@ TEST(SdpParse, EmptyStringProducesEmptySdp)
 	sdp->FromString("");
 	EXPECT_TRUE(sdp->GetMediaList().empty());
 }
+
+// ---------------------------------------------------------------------------
+// End of the SDP body
+// ---------------------------------------------------------------------------
+
+// SDP of an RTSP source (DESCRIBE answer) whose body ends with an empty line
+// after the last attribute of the last media section, as some VMS gateways send it.
+static const char *kRtspSdpWithTrailingEmptyLine =
+	"v=0\r\n"
+	"o=- 10007716 10007716 IN IP4 0.0.0.0\r\n"
+	"s=hikvision\r\n"
+	"c=IN IP4 0.0.0.0\r\n"
+	"a=range:npt=now-\r\n"
+	"a=control:rtsp://192.0.2.10:554/stream\r\n"
+	"t=0 0\r\n"
+	"m=video 0 RTP/AVP 96\r\n"
+	"c=IN IP4 0.0.0.0\r\n"
+	"a=rtpmap:96 H265/90000\r\n"
+	"a=control:trackID=video\r\n"
+	"a=range:npt=now-\r\n"
+	"\r\n";
+
+TEST(SdpParse, LastMediaIsKeptWhenTheBodyEndsWithAnEmptyLine)
+{
+	ASSERT_TRUE(SDPRegexPattern::GetInstance()->Compile());
+	auto sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	ASSERT_TRUE(sdp->FromString(kRtspSdpWithTrailingEmptyLine));
+
+	ASSERT_EQ(sdp->GetMediaList().size(), 1u);
+	auto payload = sdp->GetFirstMedia()->GetPayload(96);
+	ASSERT_NE(payload, nullptr);
+	EXPECT_STREQ(payload->GetCodecStr().CStr(), "H265");
+}
+
+TEST(SdpParse, EveryMediaIsKeptWhenTheBodyEndsWithEmptyLines)
+{
+	ASSERT_TRUE(SDPRegexPattern::GetInstance()->Compile());
+	auto sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	ASSERT_TRUE(sdp->FromString(
+		"v=0\r\n"
+		"o=- 1 1 IN IP4 0.0.0.0\r\n"
+		"s=-\r\n"
+		"t=0 0\r\n"
+		"m=video 0 RTP/AVP 96\r\n"
+		"a=rtpmap:96 H264/90000\r\n"
+		"a=control:trackID=0\r\n"
+		"m=audio 0 RTP/AVP 97\r\n"
+		"a=rtpmap:97 MPEG4-GENERIC/48000/2\r\n"
+		"a=control:trackID=1\r\n"
+		"\r\n"
+		"\r\n"));
+
+	EXPECT_EQ(sdp->GetMediaList().size(), 2u);
+}
+
+TEST(SdpParse, LastMediaIsKeptWhenTheLastLineHasNoLineBreak)
+{
+	ASSERT_TRUE(SDPRegexPattern::GetInstance()->Compile());
+	auto sdp = std::make_shared<SessionDescription>(SessionDescription::SdpType::Offer);
+	ASSERT_TRUE(sdp->FromString(
+		"v=0\r\n"
+		"o=- 1 1 IN IP4 0.0.0.0\r\n"
+		"s=-\r\n"
+		"t=0 0\r\n"
+		"m=video 0 RTP/AVP 96\r\n"
+		"a=rtpmap:96 H264/90000\r\n"
+		"a=control:trackID=0"));
+
+	EXPECT_EQ(sdp->GetMediaList().size(), 1u);
+}
