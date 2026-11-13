@@ -288,6 +288,9 @@ namespace pvd
 			return nullptr;
 		}
 
+		// Called again on the same program when playback is repositioned to the current time
+		_current_item_index = 0;
+
 		auto now = std::chrono::system_clock::now();
 		auto time_elapsed_ms_from_scheduled = std::chrono::duration_cast<std::chrono::milliseconds>(now - _scheduled_time).count();
 		int64_t position_ms = time_elapsed_ms_from_scheduled;
@@ -298,6 +301,12 @@ namespace pvd
 			if (position_ms < 1000)
 			{
 				position_ms = 0;
+			}
+			else if (_repeat == false && position_ms >= _total_item_duration_ms)
+			{
+				// All items have already played
+				_off_air = true;
+				return nullptr;
 			}
 			else
 			{
