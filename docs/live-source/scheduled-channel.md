@@ -59,6 +59,7 @@ Scheduled Channel creates/updates/deletes streams by creating/editing/deleting f
             </Item>
         </AudioMap>
         <MaxFallbackDurationMs>60000</MaxFallbackDurationMs> <!-- optional, default: 0 (unlimited) -->
+        <LiveStartPoint>LatestKeyframe</LiveStartPoint> <!-- optional, default: LatestKeyframe -->
     </Stream>
 
     <FallbackProgram>
@@ -89,13 +90,25 @@ Set to true if transcoding is not desired.
 Determines whether to use the video track. If `VideoTrack` is set to true and there's no video track in the Item, an error will occur.
 
 `<Stream>/<AudioTrack> (optional, default: true)`\
-Determines whether to use the audio track. If `AudioTrack` is set to true and there's no audio track in the Item, an error will occur.
+Determines whether to use the audio track. If `AudioTrack` is set to true and there's no audio track in the Item, an error will occur. `VideoTrack` and `AudioTrack` cannot both be false; such a schedule is rejected and the channel is not created.
 
 `<Stream>/<AudioMap> (optional, default: false)`\
 To enable multiple audio tracks (multilingual audio) in Scheduled Channel, enable `AudioMap`. It is important that all scheduled live sources and file sources provide audio tracks equal to or greater than the number of audio tracks defined in `AudioMap`. If you define 3 `AudioMaps`, but the file source or live source provides less than 3 audio tracks, the Program will generate an error. If you provide more audio tracks than the defined `AudioMaps`, they will be mapped in order and the rest will be ignored.
 
 `<Stream>/<MaxFallbackDurationMs> (optional, default: 0)`\
 Automatically deletes the channel when fallback lasts longer than this duration, in milliseconds. The result is the same as deleting the channel with the DELETE API, so the schedule file is also removed according to `<PreserveRemovedScheduleFile>`. The duration is measured while no scheduled program item is playing, which includes the time before the first program starts, and it starts over whenever a scheduled item plays again. Changing the value while fallback is running also restarts the count. If set to 0 or not set, the channel is never deleted automatically.
+
+`<Stream>/<LiveStartPoint> (optional, default: LatestKeyframe)`\
+Sets where a live item (`stream://`) starts in its source when the channel switches to it. A picture can only be shown from a keyframe, so a live item that starts with whatever frame arrives at the switch has no picture until the source's next keyframe.
+
+| Value | Description |
+| --- | --- |
+| `LatestKeyframe` | Starts from the source's latest keyframe, so the picture continues without a freeze on every output, including bypassed video. Until the next item, the live item runs behind its source by the time since that keyframe, which is at most one keyframe interval. When the channel starts with a live item, that item starts like `NextKeyframe`. |
+| `NextKeyframe` | Starts with the frame that arrives at the switch, without delay. Audio starts at once, but the picture freezes until the source's next keyframe, for up to one keyframe interval. Live items started this way in earlier versions. |
+
+Set the keyframe interval of live sources to 1 or 2 seconds to keep the delay or the freeze short.
+
+**Warning:** If the keyframe interval of a live source is longer than 10 seconds, there may be no keyframe to start from at the switch. `LatestKeyframe` then starts like `NextKeyframe`, so the picture freezes until the source's next keyframe, and a warning is logged.
 
 `<FallbackProgram> (optional)`\
 It is a program that switches automatically when there is no program scheduled at the current time or an error occurs in an item. If the program is updated at the current time or the item returns to normal, it will fail back to the original program. Both files and live can be used for items in FallbackProgram. However, it is recommended to use a stable file.

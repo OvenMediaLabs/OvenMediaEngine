@@ -910,6 +910,8 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 						{
 							stream_tap->PushBackfill(item->packet);
 						}
+
+						stream_tap->SetPastDataDelivered();
 					}
 					else
 					{
@@ -994,6 +996,8 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 						{
 							stream_tap->PushBackfill(item->packet);
 						}
+
+						stream_tap->SetPastDataDelivered();
 					}
 					else
 					{

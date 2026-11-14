@@ -43,6 +43,11 @@ public:
 	void SetNeedPastData(bool need_past_data);
 	bool DoesNeedPastData() const;
 
+	// Waits up to timeout_in_msec for the requested past data and takes all of it.
+	// nullopt if it did not arrive in time. Call it before a waiting Pop(): Pop() may wait
+	// for a live packet while the past data arrives and return that packet first.
+	std::optional<std::vector<std::shared_ptr<MediaPacket>>> TakePastData(int timeout_in_msec);
+
     // If the stream is Tapped, MediaPacket will be popped from the buffer.
     // If the stream is not Tapped and the buffers are empty, nullptr will be returned immediately without waiting.
     // The backfill buffer is drained before the live buffer; backfill is always older than any live packet.
@@ -65,6 +70,9 @@ private:
     void SetStreamInfo(const std::shared_ptr<info::Stream> &stream_info);
     void SetState(State state);
 
+    // The router calls this once the whole past data is enqueued
+    void SetPastDataDelivered();
+
     uint32_t IssueUniqueId();
 
     std::shared_ptr<info::Stream> _tapped_stream_info;
@@ -77,6 +85,10 @@ private:
     std::atomic<bool> _is_started = false;
 
 	std::atomic<bool> _need_past_data = false;
+
+	std::mutex _past_data_mutex;
+	std::condition_variable _past_data_condition;
+	bool _past_data_delivered = false;
 
     uint32_t _id = 0;
 };
