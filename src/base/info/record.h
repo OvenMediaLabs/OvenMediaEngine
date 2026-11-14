@@ -74,7 +74,8 @@ namespace info
 		std::chrono::system_clock::time_point GetNextScheduleTime() const;
 		void SetNextScheduleTime(const std::chrono::system_clock::time_point &next);
 		bool IsNextScheduleTimeEmpty();
-		bool UpdateNextScheduleTime();
+		// Pass the same `now` used for the due check; mixing clocks can re-arm the boundary just consumed.
+		bool UpdateNextScheduleTime(std::chrono::system_clock::time_point now);
 
 		// set by user
 		void SetSegmentationRule(ov::String rule);
