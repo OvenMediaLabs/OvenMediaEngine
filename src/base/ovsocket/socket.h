@@ -565,6 +565,11 @@ namespace ov
 
 		bool IsSendable() const;
 		bool HasConnectCompleted() const;
+		// Whether `OnConnectedEvent()` has reported the connection to the callback
+		bool IsConnectionReported() const
+		{
+			return _connection_event_fired;
+		}
 		// Wakes the blocking connect waiting on this socket, which then decides its result itself
 		void WakeConnectWaiter();
 		// Waits until a blocking connect in progress completes, closes or times out, and returns its error

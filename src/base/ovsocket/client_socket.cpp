@@ -163,6 +163,8 @@ namespace ov
 		StoreSrtStreamId();
 
 		return
+			// An SRT socket that libsrt removed right after the accept has no local address, and is never reported
+			(GetLocalAddress() != nullptr) &&
 			// Set socket options
 			SetSocketOptions() &&
 			AppendCommand(DispatchCommand(DispatchCommand::Type::Connected), false) &&
@@ -197,6 +199,14 @@ namespace ov
 
 	void ClientSocket::OnReadable()
 	{
+		// The worker dispatches the queued connection event on `EPOLLOUT` without `EPOLLHUP`.
+		// An event can report the socket readable first: libsrt raises `SRT_EPOLL_IN` and `SRT_EPOLL_OUT` one by one,
+		// and a TCP event with `EPOLLHUP` skips the writable part.
+		if (IsConnectionReported() == false)
+		{
+			DispatchEvents();
+		}
+
 		auto server_socket = _server_socket.lock();
 
 		if (server_socket == nullptr)

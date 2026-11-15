@@ -16,12 +16,16 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <functional>
 #include <future>
+#include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -672,4 +676,146 @@ TEST_F(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 	ASSERT_TRUE(socket->CloseImmediately());
 	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
 	EXPECT_FALSE(socket->Close());
+}
+
+namespace
+{
+	// Records, per accepted client, the order of its connection reports ('C' connected, 'X' closed) and data ('D')
+	class ClientEventLog
+	{
+	public:
+		void Append(const std::shared_ptr<ov::ClientSocket> &client, char event)
+		{
+			std::lock_guard lock(_mutex);
+			_events[client->GetId()].push_back(event);
+		}
+
+		std::vector<std::string> Sequences()
+		{
+			std::lock_guard lock(_mutex);
+			std::vector<std::string> sequences;
+
+			for (const auto &[id, events] : _events)
+			{
+				sequences.push_back(events);
+			}
+
+			return sequences;
+		}
+
+		size_t CountOf(char event)
+		{
+			std::lock_guard lock(_mutex);
+			size_t count = 0;
+
+			for (const auto &[id, events] : _events)
+			{
+				count += std::count(events.begin(), events.end(), event);
+			}
+
+			return count;
+		}
+
+	private:
+		std::mutex _mutex;
+		std::map<ov::socket_id_t, std::string> _events;
+	};
+
+	// A loopback TCP client that sends `payload` (if any) and is reset on close
+	UniqueFd ConnectAndSend(uint16_t port, const char *payload)
+	{
+		UniqueFd fd(::socket(AF_INET, SOCK_STREAM, 0));
+
+		sockaddr_in address{};
+		address.sin_family		= AF_INET;
+		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		address.sin_port		= htons(port);
+
+		if ((fd.Get() < 0) || (::connect(fd.Get(), reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0))
+		{
+			return UniqueFd();
+		}
+
+		if ((payload != nullptr) && (::send(fd.Get(), payload, ::strlen(payload), MSG_NOSIGNAL) != static_cast<ssize_t>(::strlen(payload))))
+		{
+			return UniqueFd();
+		}
+
+		linger reset{1, 0};
+		::setsockopt(fd.Get(), SOL_SOCKET, SO_LINGER, &reset, sizeof(reset));
+
+		return fd;
+	}
+
+	// While the worker is held inside the first client's data callback, a second client connects and is reset,
+	// so the worker's first event for the second client already carries `EPOLLHUP`.
+	// Returns the event sequences once both clients are closed.
+	void RunResetBeforeFirstPoll(const std::shared_ptr<ov::SocketPool> &pool, const char *second_payload,
+								 std::vector<std::string> *sequences)
+	{
+		auto log = std::make_shared<ClientEventLog>();
+		WorkerGate worker_gate;
+		auto gate = worker_gate.MakeCallback();
+
+		auto server = pool->AllocSocket<ov::ServerSocket>(ov::SocketFamily::Inet, pool);
+		ASSERT_NE(server, nullptr);
+		ScopeExit closer([&]() { server->CloseImmediately(); });
+
+		ASSERT_TRUE(server->Prepare(
+			ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0), nullptr,
+			[log](const std::shared_ptr<ov::ClientSocket> &client, ov::SocketConnectionState state, const std::shared_ptr<ov::Error> &) {
+				log->Append(client, (state == ov::SocketConnectionState::Connected) ? 'C' : 'X');
+			},
+			[log, gate](const std::shared_ptr<ov::ClientSocket> &client, const std::shared_ptr<const ov::Data> &) {
+				log->Append(client, 'D');
+				gate();
+			},
+			0, 0, 16));
+
+		auto port = ome_test::LocalPortOf(server);
+		ASSERT_NE(port, 0);
+
+		auto first = ConnectAndSend(port, "x");
+		ASSERT_GE(first.Get(), 0);
+		ASSERT_TRUE(worker_gate.WaitEntered());
+
+		{
+			auto second = ConnectAndSend(port, second_payload);
+			ASSERT_GE(second.Get(), 0);
+		}
+
+		// The reset reaches the accepted socket in the kernel before the worker runs again
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		worker_gate.Release();
+
+		ASSERT_TRUE(WaitUntil([&]() { return log->CountOf('X') == 1; }));
+		first.Reset();
+		ASSERT_TRUE(WaitUntil([&]() { return log->CountOf('X') == 2; }));
+
+		*sequences = log->Sequences();
+	}
+}  // namespace
+
+// A client reset before the worker first polls it is still reported connected before its data, and then closed
+TEST_F(SocketPoolWorkerTest, ClientResetBeforeFirstPollIsReportedConnectedBeforeItsData)
+{
+	auto pool = CreatePool("test-rst-data", ov::SocketType::Tcp);
+	ASSERT_NE(pool, nullptr);
+
+	std::vector<std::string> sequences;
+	RunResetBeforeFirstPoll(pool, "y", &sequences);
+
+	EXPECT_EQ(sequences, (std::vector<std::string>{"CDX", "CDX"}));
+}
+
+// A client reset before the worker first polls it, with no data, is still reported connected and then closed
+TEST_F(SocketPoolWorkerTest, ClientResetBeforeFirstPollWithoutDataIsReportedConnectedAndClosed)
+{
+	auto pool = CreatePool("test-rst-none", ov::SocketType::Tcp);
+	ASSERT_NE(pool, nullptr);
+
+	std::vector<std::string> sequences;
+	RunResetBeforeFirstPoll(pool, nullptr, &sequences);
+
+	EXPECT_EQ(sequences, (std::vector<std::string>{"CDX", "CX"}));
 }
