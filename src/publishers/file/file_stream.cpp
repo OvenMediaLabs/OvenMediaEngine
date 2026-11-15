@@ -106,7 +106,10 @@ namespace pub
 			return nullptr;
 		}
 
-		AddSession(session);
+		if (AddSession(session) == false)
+		{
+			return nullptr;
+		}
 
 		return session;
 	}
