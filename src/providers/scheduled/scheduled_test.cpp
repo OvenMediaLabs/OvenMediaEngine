@@ -134,6 +134,40 @@ TEST(ScheduledProgramPosition, NonRepeatProgramIsOffAirPastTheLastItem)
 	EXPECT_TRUE(program->IsOffAir());
 }
 
+TEST(ScheduledStallTolerance, DefaultsToTenSeconds)
+{
+	auto [schedule, error] = LoadJson(JsonItem(Json::objectValue));
+	ASSERT_NE(schedule, nullptr) << error.CStr();
+	EXPECT_EQ(schedule->GetStream()._stall_tolerance_duration_ms, 10000);
+}
+
+TEST(ScheduledStallTolerance, JsonRoundTrip)
+{
+	Json::Value root;
+	root["stream"]["name"]					   = "stall_tolerance";
+	root["stream"]["stallToleranceDurationMs"] = 0;
+	root["fallbackProgram"]["items"].append(JsonItem(Json::objectValue));
+
+	auto [schedule, error] = Schedule::CreateFromJsonObject(root, "");
+	ASSERT_NE(schedule, nullptr) << error.CStr();
+	EXPECT_EQ(schedule->GetStream()._stall_tolerance_duration_ms, 0);
+
+	Json::Value saved;
+	ASSERT_EQ(schedule->ToJsonObject(saved), CommonErrorCode::SUCCESS);
+	EXPECT_EQ(saved["stream"]["stallToleranceDurationMs"].asInt64(), 0);
+}
+
+TEST(ScheduledStallTolerance, JsonRejectsNonInteger)
+{
+	Json::Value root;
+	root["stream"]["name"]					   = "stall_tolerance";
+	root["stream"]["stallToleranceDurationMs"] = "10s";
+	root["fallbackProgram"]["items"].append(JsonItem(Json::objectValue));
+
+	auto [schedule, error] = Schedule::CreateFromJsonObject(root, "");
+	EXPECT_EQ(schedule, nullptr);
+}
+
 TEST(ScheduledFadeJson, RoundTrip)
 {
 	Json::Value fade;
@@ -586,4 +620,23 @@ TEST_F(ScheduledStreamXml, RejectsNeitherVideoNorAudio)
 	auto [schedule, error] = LoadStreamXml("<VideoTrack>false</VideoTrack><AudioTrack>false</AudioTrack>");
 	EXPECT_EQ(schedule, nullptr);
 	EXPECT_NE(error.IndexOf("cannot both be false"), -1) << error.CStr();
+}
+
+TEST_F(ScheduledStreamXml, StallToleranceRoundTrip)
+{
+	auto path = Path("stall_tolerance.xml");
+	std::ofstream(path.CStr())
+		<< "<Schedule><Stream><Name>stall_tolerance</Name><StallToleranceDurationMs>20000</StallToleranceDurationMs></Stream>"
+		<< "<FallbackProgram><Item url=\"stream://app/live\" /></FallbackProgram></Schedule>";
+
+	auto [schedule, error] = Schedule::CreateFromXMLFile(path, "");
+	ASSERT_NE(schedule, nullptr) << error.CStr();
+	EXPECT_EQ(schedule->GetStream()._stall_tolerance_duration_ms, 20000);
+
+	auto saved_path = Path("saved.xml");
+	ASSERT_EQ(schedule->SaveToXMLFile(saved_path), CommonErrorCode::SUCCESS);
+
+	auto [reloaded, reload_error] = Schedule::CreateFromXMLFile(saved_path, "");
+	ASSERT_NE(reloaded, nullptr) << reload_error.CStr();
+	EXPECT_EQ(reloaded->GetStream()._stall_tolerance_duration_ms, 20000);
 }

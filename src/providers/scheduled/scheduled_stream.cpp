@@ -534,6 +534,13 @@ namespace pvd
         // Tracks are interleaved, so the lag is measured from the track furthest ahead
         int64_t max_zero_based_dts = std::numeric_limits<int64_t>::min();
 
+        // Fallback items always catch up. Read per item, so an updated schedule file applies from the next item
+        int64_t stall_tolerance_ms = 0;
+        if (auto schedule = PeekSchedule(); schedule != nullptr && fallback_item == false)
+        {
+            stall_tolerance_ms = schedule->GetStream()._stall_tolerance_duration_ms;
+        }
+
         while (_worker_thread_running.load())
         {
             if (CheckCurrentProgramChanged() == true)
@@ -677,7 +684,7 @@ namespace pvd
 
 			// Far behind the clock (e.g. stalled I/O): rejoin the schedule at the current time instead of bursting to catch up
 			int64_t lag_us = _realtime_clock.ElapsedUs() - max_zero_based_dts;
-			if (fallback_item == false && lag_us >= kScheduledRecoveryLagUs)
+			if (stall_tolerance_ms > 0 && lag_us / 1000 >= stall_tolerance_ms)
 			{
 				logtw("Scheduled Channel : %s/%s: Playback is %" PRId64 " ms behind the realtime clock. Recovering to the current schedule position", GetApplicationName(), GetName().CStr(), lag_us / 1000);
 				result = PlaybackResult::RECOVERY;

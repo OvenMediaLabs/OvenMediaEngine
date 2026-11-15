@@ -27,6 +27,7 @@
 		<ErrorToleranceDurationMs>1000</ErrorToleranceDurationMs>
 		<MaxFallbackDurationMs>60000</MaxFallbackDurationMs> <!-- optional, delete the channel if fallback lasts longer than this, <= 0 : unlimited -->
 		<LiveStartPoint>LatestKeyframe</LiveStartPoint> <!-- optional, LatestKeyframe (default) | NextKeyframe -->
+		<StallToleranceDurationMs>10000</StallToleranceDurationMs> <!-- optional, a file item this far behind or more rejoins the schedule at the current time, <= 0 : always catch up -->
     </Stream>
 
     <FallbackProgram>
@@ -190,6 +191,10 @@ namespace pvd
 			int64_t _max_fallback_duration_ms = 0;
 
 			LiveStartPoint _live_start_point = LiveStartPoint::LatestKeyframe;
+
+			// A file item this far behind or more rejoins the schedule at the current time, <= 0 : always catch up
+			// Keep it at several seconds, as smaller values also trigger on normal open and seek delays
+			int64_t _stall_tolerance_duration_ms = 10000;
 		};
 
 		class Program

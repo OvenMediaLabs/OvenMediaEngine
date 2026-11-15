@@ -26,9 +26,6 @@ namespace pvd
     constexpr int kScheduledVideoTimebase = 90000;
 	constexpr int kScheduledAudioTimebase = 90000;
 
-	// Beyond this lag (e.g. stalled I/O), playback rejoins the schedule at the current time
-	constexpr int64_t kScheduledRecoveryLagUs = 10 * 1000 * 1000;
-
     class ScheduledStream : public Stream
     {
     public:
