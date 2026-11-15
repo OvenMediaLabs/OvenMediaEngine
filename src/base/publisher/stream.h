@@ -202,8 +202,10 @@ namespace pub
 		void LogInbandRecoverableTrackChange(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
 
 	private:
+		// The caller holds `_stream_worker_lock`
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
+		// Taken after `_stream_worker_lock` when both are held
 		std::shared_mutex _session_map_mutex;
 
 		uint32_t _worker_count;
