@@ -14,8 +14,8 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Client"
 
-#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
-#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
+#define OV_LOG_PREFIX_FORMAT "[" OV_SOCKET_TOKEN_FORMAT "] "
+#define OV_LOG_PREFIX_VALUE OV_SOCKET_TOKEN_VALUE(this)
 
 // If no packet is sent during this time, the connection is disconnected
 #define CLIENT_SOCKET_SEND_TIMEOUT (60 * 1000)

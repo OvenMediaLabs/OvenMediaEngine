@@ -13,54 +13,18 @@
 #include "physical_port_private.h"
 
 //
-// Format: <Name> + "-" + <Type> + <Port>
+// Format: <Name> + "-" + <Type> + <Port>, where <Type> is `ov::SocketTypeLetter()`
 //
 // Example: APISvr-T1234 ("APISvr", IPv6, TCP, Port 1234)
 // Example: APISvr-t1234 ("APISvr", IPv4, TCP, Port 1234)
-// Example: APISvr-U1234 ("APISvr", IPv6, UCP, Port 1234)
-// Example: APISvr-u1234 ("APISvr", IPv4, UCP, Port 1234)
+// Example: APISvr-U1234 ("APISvr", IPv6, UDP, Port 1234)
+// Example: APISvr-u1234 ("APISvr", IPv4, UDP, Port 1234)
 static ov::String GetSocketPoolName(const ov::SocketType type, const char *name, const ov::SocketAddress &address)
 {
 	ov::String pool_name(name);
-	char family_name;
 
 	pool_name = pool_name.Substring(0, 6);
-
-	switch (type)
-	{
-		case ov::SocketType::Tcp:
-			family_name = 'T';
-			break;
-
-		case ov::SocketType::Udp:
-			family_name = 'U';
-			break;
-
-		case ov::SocketType::Srt:
-			family_name = 'S';
-			break;
-
-		default:
-			family_name = '?';
-			break;
-	}
-
-	switch (address.GetFamily())
-	{
-		case ov::SocketFamily::Inet:
-			family_name = ::tolower(family_name);
-			break;
-
-		case ov::SocketFamily::Inet6:
-			family_name = ::toupper(family_name);
-			break;
-
-		default:
-			family_name = '?';
-			break;
-	}
-
-	pool_name.AppendFormat("-%c%d", family_name, address.Port());
+	pool_name.AppendFormat("-%c%d", ov::SocketTypeLetter(type, address.GetFamily()), address.Port());
 
 	return pool_name;
 }
@@ -198,10 +162,10 @@ bool PhysicalPort::CreateDatagramSocket(
 	auto reuseport_callback = [on_socket_created](const std::shared_ptr<ov::Socket> &socket) -> std::shared_ptr<ov::Error> {
 		if (socket->SetSockOpt<int>(SO_REUSEPORT, 1) == false)
 		{
-			logtw("Failed to set SO_REUSEPORT on socket fd %d", socket->GetNativeHandle());
+			logtw("Failed to set SO_REUSEPORT on socket " OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(socket));
 			return ov::Error::CreateError(
 				"PhyPort",
-				"Failed to set SO_REUSEPORT on socket fd %d", socket->GetNativeHandle());
+				"Failed to set SO_REUSEPORT on socket " OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(socket));
 		}
 
 		return (on_socket_created != nullptr)
@@ -234,8 +198,8 @@ bool PhysicalPort::CreateDatagramSocket(
 			continue;
 		}
 
-		logtd("Created SO_REUSEPORT datagram socket fd=%d, socket %d/%d, address=%s",
-			  socket->GetNativeHandle(), index + 1, worker_count,
+		logtd("Created SO_REUSEPORT datagram socket " OV_SOCKET_TOKEN_FORMAT ", socket %d/%d, address=%s",
+			  OV_SOCKET_TOKEN_VALUE(socket), index + 1, worker_count,
 			  address.ToString().CStr());
 
 		_datagram_sockets.push_back(socket);
@@ -271,8 +235,8 @@ bool PhysicalPort::CreateDatagramSocket(
 
 	if ((socket != nullptr) && socket->Prepare(address, on_socket_created, datagram_callback))
 	{
-		logti("Created fallback datagram socket fd=%d, address=%s",
-			  socket->GetNativeHandle(), address.ToString().CStr());
+		logti("Created fallback datagram socket " OV_SOCKET_TOKEN_FORMAT ", address=%s",
+			  OV_SOCKET_TOKEN_VALUE(socket), address.ToString().CStr());
 
 		_datagram_sockets.push_back(socket);
 		_type	 = type;
@@ -484,7 +448,7 @@ ov::String PhysicalPort::ToString() const
 				description.Append(", ");
 			}
 
-			description.AppendFormat("fd: %d", _datagram_sockets[index]->GetNativeHandle());
+			description.AppendFormat(OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(_datagram_sockets[index]));
 		}
 
 		description.Append(']');

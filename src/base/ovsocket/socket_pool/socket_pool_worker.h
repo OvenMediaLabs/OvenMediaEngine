@@ -119,7 +119,7 @@ namespace ov
 		// Erases the entry of `native_handle` only while it still holds `socket`
 		void EraseFromSocketMap(int native_handle, const std::shared_ptr<Socket> &socket);
 
-		void ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
+		void ConvertSrtEventToEpollEvent(const Socket &socket, const SRT_EPOLL_EVENT &srt_event, epoll_event *event);
 
 		void AddToConnectionTimedOutQueue(const std::shared_ptr<Socket> &socket);
 		void EnqueueToDispatchLater(const std::shared_ptr<Socket> &socket);

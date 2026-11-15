@@ -1222,8 +1222,10 @@ bool IcePort::MarkNominated(const std::shared_ptr<const ov::Socket> &remote, con
 		}
 	}
 
-	logti("Session %u nominated candidate: %s%s (socket fd: %d)", ice_session->GetSessionID(),
+	logti("Session %u nominated candidate: %s%s (socket " OV_SOCKET_TOKEN_FORMAT ")", ice_session->GetSessionID(),
 		  address_pair.ToString().CStr(), transport,
+		  (remote != nullptr) ? remote->GetTypeLetter() : '?',
+		  (remote != nullptr) ? remote->GetId().GetValue() : 0,
 		  (remote != nullptr) ? remote->GetNativeHandle() : -1);
 
 	return true;

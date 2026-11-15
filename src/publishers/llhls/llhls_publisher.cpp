@@ -279,7 +279,10 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		}
 		auto requested_url = final_url;
 
-		logtt("LLHLS requested(connection : %u, fd : %d): %s", connection->GetId(), connection->GetSocket()->GetNativeHandle(), request->GetUri().CStr());
+		logtt("LLHLS requested(connection : %u, socket : " OV_SOCKET_TOKEN_FORMAT "): %s",
+			  connection->GetId(),
+			  OV_SOCKET_TOKEN_VALUE(connection->GetSocket()),
+			  request->GetUri().CStr());
 
 		auto vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(final_url->Host(), final_url->App());
 

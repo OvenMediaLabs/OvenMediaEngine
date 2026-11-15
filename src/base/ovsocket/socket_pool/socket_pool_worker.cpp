@@ -53,8 +53,11 @@ static void SpwStallLog(long long stall_ms, int event_count, long nivcsw, long n
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Pool.Worker"
 
-#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
-#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
+// A worker appears in logs as `e<type><handle>`, such as `et5`, `eu7` or `es2`.
+// <type> is the lower-case letter of `SocketTypeLetter()`, since one pool may serve both IPv4 and IPv6.
+// <handle> is the epoll fd, or for SRT the libsrt epoll ID, which can be the same small number as an epoll fd.
+#define OV_LOG_PREFIX_FORMAT "[e%c%d] "
+#define OV_LOG_PREFIX_VALUE SocketTypeLetter(GetType(), SocketFamily::Inet), GetNativeHandle()
 
 #define SOCKET_POOL_WORKER_GC_INTERVAL 1000
 
@@ -467,7 +470,7 @@ namespace ov
 							socket->SetFirstEpollEventReceived();
 
 							// EPOLLOUT events might occur immediately after added to epoll
-							logat("EPOLLOUT is ignored for #%d - this event might occurs immediately after added to epoll", socket->GetNativeHandle());
+							logat("EPOLLOUT is ignored for " OV_SOCKET_TOKEN_FORMAT " - this event might occurs immediately after added to epoll", OV_SOCKET_TOKEN_VALUE(socket));
 
 							continue;
 						}
@@ -675,21 +678,21 @@ namespace ov
 			// The worker thread takes the map under this lock once it sees the flag, so a socket added after that sees it too
 			if (_stop_epoll_thread)
 			{
-				logae("Could not add descriptor %d to a stopped worker", native_handle);
+				logae("Could not add socket " OV_SOCKET_TOKEN_FORMAT " to a stopped worker", OV_SOCKET_TOKEN_VALUE(socket));
 				return false;
 			}
 
 			auto &entry = _socket_map[native_handle];
 
 			// A socket leaves the map before its handle is released
-			OV_ASSERT(entry == nullptr, "Descriptor %d is still registered by another socket: %s", native_handle, entry->ToString().CStr());
+			OV_ASSERT(entry == nullptr, "The handle of " OV_SOCKET_TOKEN_FORMAT " is still registered by another socket: %s", OV_SOCKET_TOKEN_VALUE(socket), entry->ToString().CStr());
 
 			entry = socket;
 		}
 
 		std::shared_ptr<Error> error;
 
-		logat("Trying to add socket #%d to epoll...", native_handle);
+		logat("Trying to add socket " OV_SOCKET_TOKEN_FORMAT " to epoll...", OV_SOCKET_TOKEN_VALUE(socket));
 
 		{
 			LockGuard lock(_epoll_mutex);
@@ -744,7 +747,7 @@ namespace ov
 
 		if (error != nullptr)
 		{
-			logae("Could not add to epoll for descriptor %d (error: %s)", native_handle, error->What());
+			logae("Could not add socket " OV_SOCKET_TOKEN_FORMAT " to epoll (error: %s)", OV_SOCKET_TOKEN_VALUE(socket), error->What());
 
 			EraseFromSocketMap(native_handle, socket);
 		}
@@ -847,7 +850,7 @@ namespace ov
 					// Make a list of `epoll_event` from `SRT_EPOLL_EVENT`
 					for (int index = 0; index < polled_count; index++)
 					{
-						ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_polled_events[index].event));
+						ConvertSrtEventToEpollEvent(*_polled_events[index].socket, _srt_epoll_events[index], &(_polled_events[index].event));
 					}
 
 					event_count = polled_count;
@@ -878,7 +881,7 @@ namespace ov
 		return _last_epoll_event_count;
 	}
 
-	void SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
+	void SocketPoolWorker::ConvertSrtEventToEpollEvent(const Socket &socket, const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
 	{
 		auto srt_socket = srt_event.fd;
 		auto status		= ::srt_getsockstate(srt_socket);
@@ -926,7 +929,7 @@ namespace ov
 				break;
 
 			default:
-				logat("Not handled SRT status %d for socket #%d", status, srt_socket);
+				logat("Not handled SRT status %d for socket " OV_SOCKET_TOKEN_FORMAT, status, OV_SOCKET_TOKEN_VALUE_REF(socket));
 				break;
 		}
 	}
@@ -1085,7 +1088,7 @@ namespace ov
 		std::shared_ptr<Error> error;
 		auto native_handle = socket->GetNativeHandle();
 
-		logat("Trying to unregister a socket #%d from epoll...", native_handle);
+		logat("Trying to unregister a socket " OV_SOCKET_TOKEN_FORMAT " from epoll...", OV_SOCKET_TOKEN_VALUE(socket));
 
 		{
 			LockGuard lock(_epoll_mutex);
@@ -1130,7 +1133,7 @@ namespace ov
 
 		if (error == nullptr)
 		{
-			logat("Socket #%d is unregistered", native_handle);
+			logat("Socket " OV_SOCKET_TOKEN_FORMAT " is unregistered", OV_SOCKET_TOKEN_VALUE(socket));
 		}
 		else
 		{
@@ -1141,8 +1144,8 @@ namespace ov
 					break;
 
 				default:
-					logaw("Could not delete the socket #%d from epoll: %s\n%s",
-						  native_handle,
+					logaw("Could not delete the socket " OV_SOCKET_TOKEN_FORMAT " from epoll: %s\n%s",
+						  OV_SOCKET_TOKEN_VALUE(socket),
 						  error->What(),
 						  StackTrace::GetStackTrace().CStr());
 			}

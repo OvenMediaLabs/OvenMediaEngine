@@ -24,6 +24,7 @@
 
 #include <sys/socket.h>
 
+#include <cinttypes>
 #include <functional>
 #include <map>
 #include <memory>
@@ -34,6 +35,17 @@
 #endif	// OME_LATENCY_PROBE
 
 #include <tl/expected.hpp>
+
+// A socket appears in logs as one token, `<type><id>@<handle>`, such as `t1052@23` or `s1054@693254711`.
+// - <type>: `ov::SocketTypeLetter()`, the same letter as in socket pool thread names such as `SPAPISvr-t1935`
+// - <id>: `Socket::GetId()`, which push provider channels and OVT publisher remotes are keyed by, and which is never reused
+// - <handle>: the fd, or the SRT socket ID that libsrt logs as `@<handle>`, and `-1` until a handle is created
+// A closed socket keeps printing its handle, which another socket may get later, so the id comes first.
+// Search for a socket with `[tuTUsS?]1052@`, since `t1052` alone also matches a pool on port 1052.
+#define OV_SOCKET_TOKEN_FORMAT "%c%" PRIu64 "@%d"
+// Takes a pointer, such as `this` or a `std::shared_ptr<Socket>`
+#define OV_SOCKET_TOKEN_VALUE(socket) (socket)->GetTypeLetter(), (socket)->GetId().GetValue(), (socket)->GetNativeHandle()
+#define OV_SOCKET_TOKEN_VALUE_REF(socket) OV_SOCKET_TOKEN_VALUE(&(socket))
 
 // Failure to send data for the specified time period will be considered an error.
 // For example, it can occur when EAGAIN continues to occur for a period of time, or when the peer's TCP window is full and no longer receives data.
@@ -242,6 +254,11 @@ namespace ov
 		}
 
 		SocketType GetType() const;
+		// The type letter of `OV_SOCKET_TOKEN_FORMAT`
+		char GetTypeLetter() const
+		{
+			return SocketTypeLetter(GetType(), _family);
+		}
 		std::shared_ptr<SocketAsyncInterface> GetAsyncInterface()
 		{
 			return std::atomic_load(&_callback);
@@ -643,7 +660,7 @@ namespace ov
 		// The reference that drops the count to zero while it is set releases the handle.
 		// An SRT ID is closed by `CloseInternal()` at once, so for SRT the release does nothing.
 		mutable std::atomic<uint32_t> _io_ref{IO_REF_CLOSING};
-		SocketFamily _family;
+		SocketFamily _family = SocketFamily::Unknown;
 
 		std::atomic<SocketState> _state = SocketState::Closed;
 

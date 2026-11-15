@@ -190,7 +190,7 @@ namespace http
 
 		void HttpServer::OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error)
 		{
-			logtt("HttpServer::OnDisconnected : %d", remote->GetNativeHandle());
+			logtt("HttpServer::OnDisconnected : " OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(remote));
 
 			std::shared_ptr<HttpConnection> connection;
 
@@ -201,7 +201,7 @@ namespace http
 				if (client_iterator == _connection_list.end())
 				{
 					// If an error occurs during TCP or HTTP connection processing, it may not exist in _connection_list.
-					logtc("Could not find HTTP connection : %d / size(%zu)", remote->GetNativeHandle(), _connection_list.size());
+					logtc("Could not find HTTP connection : " OV_SOCKET_TOKEN_FORMAT " / size(%zu)", OV_SOCKET_TOKEN_VALUE(remote), _connection_list.size());
 					return;
 				}
 
