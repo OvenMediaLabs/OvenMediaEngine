@@ -84,7 +84,7 @@ namespace
 
 		for (int i = 0; i < item_count; i++)
 		{
-			auto item		   = std::make_shared<Schedule::Item>();
+			auto item				  = std::make_shared<Schedule::Item>();
 			item->_url				  = ov::String::FormatString("file://item%d.mp4", i);
 			item->_start_time_ms_conf = 0;
 			item->_duration_ms		  = 10000;
