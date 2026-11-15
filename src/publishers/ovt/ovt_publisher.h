@@ -16,6 +16,9 @@
 
 class OvtPublisher : public pub::Publisher, public PhysicalPortObserver
 {
+	// Unit-test access to the per-connection state (see ovt_publisher_test.cpp)
+	friend class OvtPublisherRemoteTest;
+
 public:
 	static std::shared_ptr<OvtPublisher> Create(const cfg::Server &server_config, const std::shared_ptr<MediaRouterInterface> &router);
 
