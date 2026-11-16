@@ -314,6 +314,9 @@ namespace pvd
 			return nullptr;
 		}
 
+		// Called again on the same program when playback recovers to the current time
+		_current_item_index = 0;
+
 		auto now = std::chrono::system_clock::now();
 		auto time_elapsed_ms_from_scheduled = std::chrono::duration_cast<std::chrono::milliseconds>(now - _scheduled_time).count();
 		int64_t position_ms = time_elapsed_ms_from_scheduled;
@@ -324,6 +327,12 @@ namespace pvd
 			if (position_ms < 1000)
 			{
 				position_ms = 0;
+			}
+			else if (_repeat == false && position_ms >= _total_item_duration_ms)
+			{
+				// All items have already played
+				_off_air = true;
+				return nullptr;
 			}
 			else
 			{
@@ -658,6 +667,19 @@ namespace pvd
 			}
 
 			_stream._live_start_point = live_start_point.value();
+		}
+
+		// stall_tolerance_duration_ms
+		auto stall_tolerance_duration_ms_object = stream_object["stallToleranceDurationMs"];
+		if (stall_tolerance_duration_ms_object.isNull() == false)
+		{
+			if (stall_tolerance_duration_ms_object.isIntegral() == false)
+			{
+				_last_error = "stallToleranceDurationMs must be an integer";
+				return false;
+			}
+
+			_stream._stall_tolerance_duration_ms = stall_tolerance_duration_ms_object.asInt64();
 		}
 
 		return true;
@@ -1062,6 +1084,13 @@ namespace pvd
 			_stream._live_start_point = live_start_point.value();
 		}
 
+		// stall_tolerance_duration_ms
+		auto stall_tolerance_duration_ms_node = stream_node.child("StallToleranceDurationMs");
+		if (stall_tolerance_duration_ms_node)
+		{
+			_stream._stall_tolerance_duration_ms = stall_tolerance_duration_ms_node.text().as_llong();
+		}
+
 		return true;
 	}
 
@@ -1437,6 +1466,9 @@ namespace pvd
 		// LiveStartPoint
 		stream_node.append_child("LiveStartPoint").text().set(LiveStartPointToString(_stream._live_start_point));
 
+		// StallToleranceDurationMs
+		stream_node.append_child("StallToleranceDurationMs").text().set(_stream._stall_tolerance_duration_ms);
+
 		// FallbackProgram
 		if (_fallback_program != nullptr)
 		{
@@ -1536,6 +1568,9 @@ namespace pvd
 
 		// live_start_point
 		stream_object["liveStartPoint"] = LiveStartPointToString(_stream._live_start_point);
+
+		// stall_tolerance_duration_ms
+		stream_object["stallToleranceDurationMs"] = _stream._stall_tolerance_duration_ms;
 
 		root_object["stream"] = stream_object;
 

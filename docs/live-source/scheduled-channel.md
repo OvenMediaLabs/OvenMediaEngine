@@ -60,6 +60,7 @@ Scheduled Channel creates/updates/deletes streams by creating/editing/deleting f
         </AudioMap>
         <MaxFallbackDurationMs>60000</MaxFallbackDurationMs> <!-- optional, default: 0 (unlimited) -->
         <LiveStartPoint>LatestKeyframe</LiveStartPoint> <!-- optional, default: LatestKeyframe -->
+        <StallToleranceDurationMs>10000</StallToleranceDurationMs> <!-- optional, default: 10000 -->
     </Stream>
 
     <FallbackProgram>
@@ -111,6 +112,9 @@ Set the keyframe interval of live sources to 1 or 2 seconds to keep the delay or
 **Warning:** If the keyframe interval of a live source is longer than 10 seconds, there may be no keyframe to start from at the switch. `LatestKeyframe` then starts like `NextKeyframe`, so the picture freezes until the source's next keyframe, and a warning is logged.
 
 With `LatestKeyframe`, if consecutive items play the same live source, each item starts again from the source's latest keyframe, so up to one keyframe interval may be shown again. Put a continuous live source in a single item instead.
+
+`<Stream>/<StallToleranceDurationMs> (optional, default: 10000)`\
+When reading a file stalls, for example on slow network storage, the channel falls behind and then sends the delayed media in a burst to catch up. If it falls this many milliseconds or more behind, it skips the missed part and resumes from where the schedule is now. Set it to 0 or less to always catch up. Fallback items always catch up.
 
 `<FallbackProgram> (optional)`\
 It is a program that switches automatically when there is no program scheduled at the current time or an error occurs in an item. If the program is updated at the current time or the item returns to normal, it will fail back to the original program. Both files and live can be used for items in FallbackProgram. However, it is recommended to use a stable file.

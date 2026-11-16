@@ -55,7 +55,9 @@ namespace pvd
             PLAY_NEXT_ITEM,
             PLAY_NEXT_PROGRAM,
             ERROR,
-            FAILBACK
+            FAILBACK,
+            // The item fell too far behind, so playback resumes from the current schedule position
+            RECOVERY
         };
 
         // If there is no current program
