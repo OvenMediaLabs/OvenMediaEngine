@@ -288,7 +288,15 @@ namespace pvd
 		auto it = _stream_motors.find(motor_id);
 		if (it == _stream_motors.end())
 		{
-			logte("Could not find StreamMotor to remove stream : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			if (_stream_motors_taken)
+			{
+				logtd("StreamMotor of stream %s/%s(%u) was already taken to delete all streams", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			}
+			else
+			{
+				logte("Could not find StreamMotor to remove stream : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			}
+
 			return false;
 		}
 		else
@@ -384,6 +392,7 @@ namespace pvd
 			std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
 
 			std::swap(stream_motors, _stream_motors);
+			_stream_motors_taken = true;
 		}
 
 		for (const auto &[id, motor] : stream_motors)

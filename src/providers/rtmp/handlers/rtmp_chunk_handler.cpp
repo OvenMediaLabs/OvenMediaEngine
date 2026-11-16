@@ -841,8 +841,9 @@ namespace pvd::rtmp
 			// TODO: check if the chunk stream id is already exist, and generates new rtmp_stream_id and client_id.
 			if (SendAmfOnFCPublish(_stream->GetChannelId().GetValue()) == false)
 			{
-				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish(%" PRIu64 ")",
-					  _stream->GetChannelId().GetValue());
+				auto socket = _stream->GetSocket();
+				logae("OnAmfFCPublish - Failed to send AmfOnFCPublish to " OV_SOCKET_TOKEN_FORMAT,
+					  OV_SOCKET_TOKEN_VALUE(socket));
 
 				return false;
 			}

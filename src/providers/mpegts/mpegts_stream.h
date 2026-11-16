@@ -33,6 +33,10 @@ namespace pvd
 		bool Stop() override;
 
 		const std::shared_ptr<ov::Socket>&	GetClientSock();
+		std::shared_ptr<ov::Socket> GetSocket() const override
+		{
+			return _remote;
+		}
 
 		// ------------------------------------------
 		// Implementation of PushStream
