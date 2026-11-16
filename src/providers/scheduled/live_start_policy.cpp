@@ -29,7 +29,7 @@ namespace pvd
 		}
 
 		// Starts from the source's latest keyframe, so the item runs behind its source by the
-		// time the keyframe has waited
+		// source time buffered since that keyframe
 		class LatestKeyframePolicy : public LiveStartPolicy
 		{
 		public:
@@ -53,22 +53,33 @@ namespace pvd
 					return plan;
 				}
 
-				plan.starts_at_keyframe		= true;
-				plan.keyframe_received_time = keyframe_it->received_time;
+				plan.starts_at_keyframe = true;
 
-				int64_t keyframe_us = DtsUs(keyframe_it->packet, source);
+				int64_t keyframe_us		  = DtsUs(keyframe_it->packet, source);
+				int64_t release_offset_us = 0;
 
-				// Kept in the router's timestamp order, so the item's timeline starts at the keyframe. A packet that
-				// arrived before the one ahead of it in this order goes out right after that one
+				// The buffered frames are the source's past, so they go out by their timestamps, not by how they
+				// arrived; a stall or a burst of the source before the switch does not show. Kept in the router's
+				// timestamp order, so the item's timeline starts at the keyframe
 				for (const auto &tapped : past_data)
 				{
+					const auto &packet = tapped.packet;
+					int64_t dts_us	   = DtsUs(packet, source);
+
 					// Other tracks start with the keyframe
-					if (tapped.packet->GetMediaType() != cmn::MediaType::Video && DtsUs(tapped.packet, source) < keyframe_us)
+					if (packet->GetMediaType() != cmn::MediaType::Video && dts_us < keyframe_us)
 					{
 						continue;
 					}
 
-					plan.replay.push_back(tapped);
+					// Data can be stamped ahead, such as an event with a start offset, so it goes out with the packet before it
+					if (packet->GetMediaType() == cmn::MediaType::Video || packet->GetMediaType() == cmn::MediaType::Audio)
+					{
+						release_offset_us	= std::max(release_offset_us, dts_us - keyframe_us);
+						plan.replay_span_us = release_offset_us;
+					}
+
+					plan.replay.push_back(ReplayPacket{packet, release_offset_us});
 				}
 
 				return plan;

@@ -21,17 +21,25 @@ namespace pvd
 	class LiveStartPolicy
 	{
 	public:
+		struct ReplayPacket
+		{
+			std::shared_ptr<MediaPacket> packet;
+
+			// When it goes out, counted from the start of the item
+			int64_t release_offset_us = 0;
+		};
+
 		struct StartPlan
 		{
 			// The item starts at a keyframe; false when no keyframe was buffered
 			bool starts_at_keyframe = false;
 
 			// Played first, in order, before the packets that arrive from now on
-			std::vector<MediaRouterStreamTap::TappedPacket> replay;
+			std::vector<ReplayPacket> replay;
 
-			// When the keyframe reached the server. The playback loop holds every packet of the
-			// item as long after its arrival as the keyframe has waited when the item starts
-			std::chrono::steady_clock::time_point keyframe_received_time;
+			// Source time from the keyframe to the newest replayed audio or video packet. The packets that
+			// arrive from now on go out this long after they arrive, so they continue where the replay ends
+			int64_t replay_span_us = 0;
 		};
 
 		static std::shared_ptr<LiveStartPolicy> Create(Schedule::LiveStartPoint point);

@@ -434,26 +434,42 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
 	ASSERT_EQ(plan.replay.size(), 5u);
 	EXPECT_EQ(plan.replay.front().packet, keyframe);
 
-	// The delay of the item is measured from when the keyframe reached the server
-	EXPECT_EQ(plan.keyframe_received_time, past_data[1].received_time);
+	// Each packet goes out at its timestamp's distance from the keyframe
+	std::vector<int64_t> release_offsets;
+	for (const auto &replayed : plan.replay)
+	{
+		release_offsets.push_back(replayed.release_offset_us);
+	}
+	EXPECT_EQ(release_offsets, (std::vector<int64_t>{0, 10000, 31000, 33000, 66000}));
+	EXPECT_EQ(plan.replay_span_us, 66000);
 }
 
-// The replay keeps the router's timestamp order, so the item's timeline starts at the keyframe,
-// and each packet keeps its received time for its release
-TEST(ScheduledLiveStartPolicy, LatestKeyframeKeepsTheGivenOrder)
+// A source that stalled and then sent its backlog at once still replays evenly
+TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysByTimestampsHoweverItArrived)
 {
 	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
 	ASSERT_NE(policy, nullptr);
 
-	auto past_data = Received({Video(0, true), Audio(10), Video(33), Data(15000)});
-	auto plan	   = policy->Plan(past_data, MakeSource());
+	auto burst_time = std::chrono::steady_clock::time_point{};
+	auto plan		= policy->Plan({TappedPacket{Video(0, true), burst_time}, TappedPacket{Video(33), burst_time}, TappedPacket{Video(66), burst_time}}, MakeSource());
 
-	ASSERT_EQ(plan.replay.size(), past_data.size());
-	for (size_t index = 0; index < past_data.size(); index++)
-	{
-		EXPECT_EQ(plan.replay[index].packet, past_data[index].packet);
-		EXPECT_EQ(plan.replay[index].received_time, past_data[index].received_time);
-	}
+	ASSERT_EQ(plan.replay.size(), 3u);
+	EXPECT_EQ(plan.replay[0].release_offset_us, 0);
+	EXPECT_EQ(plan.replay[1].release_offset_us, 33000);
+	EXPECT_EQ(plan.replay[2].release_offset_us, 66000);
+}
+
+// Data can be stamped ahead, such as an event with a start offset, so it goes out with the packet before it
+TEST(ScheduledLiveStartPolicy, LatestKeyframeDoesNotHoldDataForItsStamp)
+{
+	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
+	ASSERT_NE(policy, nullptr);
+
+	auto plan = policy->Plan(Received({Video(0, true), Audio(10), Video(33), Data(15000)}), MakeSource());
+
+	ASSERT_EQ(plan.replay.size(), 4u);
+	EXPECT_EQ(plan.replay[3].release_offset_us, 33000);
+	EXPECT_EQ(plan.replay_span_us, 33000);
 }
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)

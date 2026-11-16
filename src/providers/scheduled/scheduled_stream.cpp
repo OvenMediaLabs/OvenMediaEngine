@@ -1010,20 +1010,19 @@ namespace pvd
 			start_plan = std::move(planned.value());
 		}
 
-		std::deque<MediaRouterStreamTap::TappedPacket> replay_queue(start_plan.replay.begin(), start_plan.replay.end());
+		std::deque<LiveStartPolicy::ReplayPacket> replay_queue(start_plan.replay.begin(), start_plan.replay.end());
 
-		// Every packet goes out this long after it reached the server, so the item stays behind its source
-		// by what the keyframe has waited. Timing by arrival rather than by timestamps on the channel clock
-		// keeps that delay fixed: a source whose clock runs fast or whose timestamps jump ahead would be
-		// held longer and longer, piling up in the tap until the item ends
-		std::chrono::steady_clock::duration release_delay{0};
+		// The replay goes out by its timestamps from now, and each packet that arrives from now on goes out
+		// as long after its arrival as the replay lasts, so the item stays behind its source by that fixed
+		// delay. The live part is timed by arrival rather than by timestamps on the channel clock: a source
+		// whose clock runs fast or whose timestamps jump ahead would be held longer and longer, piling up in the tap
+		auto item_start_time = std::chrono::steady_clock::now();
+		auto release_delay	 = std::chrono::microseconds(start_plan.replay_span_us);
+
 		if (start_plan.starts_at_keyframe)
 		{
-			release_delay = std::chrono::steady_clock::now() - start_plan.keyframe_received_time;
-
 			logti("Scheduled Channel : %s/%s: %s starts from its latest keyframe, %" PRId64 " ms behind the source",
-				  GetApplicationName(), GetName().CStr(), item->_url.CStr(),
-				  static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(release_delay).count()));
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), start_plan.replay_span_us / 1000);
 		}
 
         if (_realtime_clock.IsStart() == false)
@@ -1064,18 +1063,32 @@ namespace pvd
                 }
             }
 
-            std::optional<MediaRouterStreamTap::TappedPacket> tapped;
+            std::shared_ptr<MediaPacket> media_packet = nullptr;
+
+            // When the packet goes out; none for an item that does not start at a keyframe, as received
+            std::optional<std::chrono::steady_clock::time_point> release_time;
+
             if (replay_queue.empty() == false)
             {
-                tapped = replay_queue.front();
+                const auto &replayed = replay_queue.front();
+                media_packet		 = replayed.packet;
+                release_time		 = item_start_time + std::chrono::microseconds(replayed.release_offset_us);
                 replay_queue.pop_front();
             }
             else
             {
-                tapped = stream_tap->PopWithReceivedTime(_channel_info._error_tolerance_duration_ms);
+                auto tapped = stream_tap->PopWithReceivedTime(_channel_info._error_tolerance_duration_ms);
+                if (tapped.has_value())
+                {
+                    media_packet = tapped->packet;
+
+                    if (start_plan.starts_at_keyframe)
+                    {
+                        release_time = tapped->received_time + release_delay;
+                    }
+                }
             }
 
-            std::shared_ptr<MediaPacket> media_packet = tapped.has_value() ? tapped->packet : nullptr;
             if (media_packet == nullptr)
             {
                 if (CheckCurrentProgramChanged() == true)
@@ -1130,6 +1143,17 @@ namespace pvd
                 logtw("Scheduled Channel : %s/%s: Failed to find track %d", GetApplicationName(), GetName().CStr(), track_id);
                 continue;
             }
+
+			// Held before it is stamped and sent, so a packet that never goes out does not move the next item's start
+			if (release_time.has_value())
+			{
+				auto interrupted = WaitUntil(release_time.value(), fallback_item);
+				if (interrupted.has_value())
+				{
+					result = interrupted.value();
+					break;
+				}
+			}
 
             auto origin_tb = stream_tap->GetStreamInfo()->GetTrack(origin_track_id)->GetTimeBase();
 
@@ -1238,17 +1262,6 @@ namespace pvd
                     break;
                 }
             }
-
-			// Timed by arrival, so a packet stamped ahead, such as an event with a start offset, is not held for its stamp
-			if (release_delay.count() > 0)
-			{
-				auto interrupted = WaitUntil(tapped->received_time + release_delay, fallback_item);
-				if (interrupted.has_value())
-				{
-					result = interrupted.value();
-					break;
-				}
-			}
         }
 
         _current_item_position_ms = 0;
