@@ -489,6 +489,7 @@ bool WebRtcPublisher::OnAddRemoteDescription(const std::shared_ptr<http::svr::ws
 		session->SetFinalUrl(final_url);
 		if (stream->AddSession(session) == false)
 		{
+			session->Stop();
 			return false;
 		}
 

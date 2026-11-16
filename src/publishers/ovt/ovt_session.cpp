@@ -52,7 +52,11 @@ bool OvtSession::Start()
 bool OvtSession::Stop()
 {
 	logtt("OvtSession(%d) has stopped", GetId());
-	_connector->Close();
+
+	if (_connector != nullptr)
+	{
+		_connector->Close();
+	}
 	
 	return Session::Stop();
 }
@@ -342,6 +346,11 @@ void OvtSession::SetAllowedTrackIds(const std::set<uint32_t> &allowed_track_ids)
 const std::shared_ptr<ov::Socket> OvtSession::GetConnector()
 {
 	return _connector;
+}
+
+void OvtSession::ReleaseConnector()
+{
+	_connector = nullptr;
 }
 
 void OvtSession::OnMessageReceived(const std::any &message)

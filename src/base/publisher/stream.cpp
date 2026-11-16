@@ -510,11 +510,9 @@ namespace pub
 		std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
 
 		// `Stop()` marks the stream stopped under this lock before it takes the sessions out to stop them,
-		// so a session that arrives later is stopped here, outside the lock, as `Stop()` stops the others
+		// so a session that arrives later is refused here and its caller disposes of it
 		if (_state == State::STOPPED)
 		{
-			worker_lock.unlock();
-			session->Stop();
 			return false;
 		}
 
