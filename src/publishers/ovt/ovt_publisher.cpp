@@ -696,7 +696,7 @@ void OvtPublisher::HandlePlayRequest(const std::shared_ptr<ov::Socket> &remote, 
 	if (stream->AddSession(session) == false)
 	{
 		logtw("OVT session could not start because the stream is stopping : %s/%s", vhost_app_name.CStr(), url->Stream().CStr());
-		stream->NotifyStop(session);
+		stream->NotifyRefusedSession(session);
 		UnlinkPlayedStream(remote->GetId(), stream);
 		session->ReleaseConnector();
 	}

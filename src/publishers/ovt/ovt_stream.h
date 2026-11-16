@@ -76,7 +76,7 @@ public:
 	std::optional<std::set<uint32_t>> ResolveAllowedTrackIds(const OvtTrackFilter &filter);
 
 	// Tells a session that `AddSession()` refused that this stream stopped, as `Stop()` tells the others
-	void NotifyStop(const std::shared_ptr<OvtSession> &session);
+	void NotifyRefusedSession(const std::shared_ptr<OvtSession> &session);
 
 	// The `playlists` array a PLAY response carries, rebuilt for the confirmed track set.
 	// It runs the same `RebuildRenditions()` rule the describe uses, so the edge's renditions end up

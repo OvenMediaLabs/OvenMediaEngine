@@ -956,7 +956,7 @@ std::optional<std::set<uint32_t>> OvtStream::ResolveAllowedTrackIds(const OvtTra
 	return allowed;
 }
 
-void OvtStream::NotifyStop(const std::shared_ptr<OvtSession> &session)
+void OvtStream::NotifyRefusedSession(const std::shared_ptr<OvtSession> &session)
 {
 	session->SendMessageDirect(OvtPayloadType::MessageResponse, MakeStopPayload(GetStopReason()));
 }
