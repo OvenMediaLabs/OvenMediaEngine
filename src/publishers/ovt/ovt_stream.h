@@ -151,8 +151,8 @@ private:
 
 	bool Start() override;
 	bool Stop() override;
-	// Tells every session that this stream is stopping and why
-	void NotifyStop(ovt::StopReason reason);
+	// Tells every session `Stop()` took out that this stream is stopping and why
+	void OnStopping(const std::map<session_id_t, std::shared_ptr<pub::Session>> &sessions) override;
 	ovt::StopReason GetStopReason() const;
 	static ov::String MakeStopPayload(ovt::StopReason reason);
 
