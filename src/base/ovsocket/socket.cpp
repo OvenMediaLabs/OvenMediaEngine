@@ -355,6 +355,8 @@ namespace ov
 					_worker->EnqueueToDispatchLater(GetSharedPtr());
 					return true;
 
+				case DispatchResult::Disconnected:
+					[[fallthrough]];
 				case DispatchResult::Error:
 					break;
 			}
@@ -1178,10 +1180,15 @@ namespace ov
 			return DispatchResult::Dispatched;
 		}
 
-		if (sent_bytes == -1)
+		if (sent_bytes < 0)
 		{
-			// On a UDP socket a send error concerns one datagram: drop it and go on to the next command
-			return (GetType() == SocketType::Udp) ? DispatchResult::Dispatched : DispatchResult::Error;
+			if (GetType() == SocketType::Udp)
+			{
+				// On a UDP socket a send error concerns one datagram: drop it and go on to the next command
+				return DispatchResult::Dispatched;
+			}
+
+			return (sent_bytes == SEND_DISCONNECTED) ? DispatchResult::Disconnected : DispatchResult::Error;
 		}
 
 		if (sent_bytes > 0)
@@ -1272,10 +1279,10 @@ namespace ov
 					}
 					else
 					{
-						// An error occurred
+						// The command failed, as an error or as a disconnect
 						if (is_close_command)
 						{
-							// Ignore errors that occurred during close
+							// Ignore failures that occurred during close
 							result = DispatchResult::Dispatched;
 							continue;
 						}
@@ -1326,6 +1333,9 @@ namespace ov
 
 			case DispatchResult::PartialDispatched:
 				return PostProcessMethod::GarbageCollection;
+
+			case DispatchResult::Disconnected:
+				return PostProcessMethod::Disconnected;
 
 			case DispatchResult::Error:
 				break;
@@ -1443,11 +1453,14 @@ namespace ov
 				return total_sent;
 
 			case EPIPE:
-				// Broken pipe - maybe peer is disconnected
+				// Broken pipe - the peer reset the connection after closing its side,
+				// an earlier call already reported a reset or a timeout,
+				// or a close on another thread shut the socket down during this send
 				[[fallthrough]];
 			case ECONNRESET:
-				// Connection reset - maybe peer is disconnected
-				break;
+				// Connection reset by the peer
+				STATS_COUNTER_INCREASE_ERROR();
+				return SEND_DISCONNECTED;
 
 			default:
 				logaw("Could not send data: %s", error->What());
@@ -1524,15 +1537,29 @@ namespace ov
 			{
 				const auto error = SrtError::CreateErrorFromSrt();
 
-				if (error->GetCode() == SRT_EASYNCSND)
+				switch (error->GetCode())
 				{
-					// Socket buffer is full - retry later
-					STATS_COUNTER_INCREASE_RETRY();
-					return total_sent_bytes;
+					case SRT_EASYNCSND:
+						// Socket buffer is full - retry later
+						STATS_COUNTER_INCREASE_RETRY();
+						return total_sent_bytes;
+
+					case SRT_ECONNLOST:
+						// The connection broke, which includes a graceful peer close,
+						// or a close on another thread ran while this send waited
+						[[fallthrough]];
+					case SRT_EINVSOCK:
+						// libsrt's garbage collector removed it after the connection broke,
+						// or a close on another thread ran before this send
+						STATS_COUNTER_INCREASE_ERROR();
+						return SEND_DISCONNECTED;
+
+					default:
+						break;
 				}
 
 				STATS_COUNTER_INCREASE_ERROR();
-				logaw("Could not send data: %d (%s)", sent, SrtError::CreateErrorFromSrt()->What());
+				logaw("Could not send data: %d (%s)", sent, error->What());
 				return sent;
 			}
 
@@ -2387,7 +2414,9 @@ namespace ov
 		// Dispatch ALL commands
 		while (HasCommand())
 		{
-			if (DispatchEvents() == DispatchResult::Error)
+			const auto result = DispatchEvents();
+
+			if ((result == DispatchResult::Disconnected) || (result == DispatchResult::Error))
 			{
 				return false;
 			}
@@ -2553,6 +2582,19 @@ namespace ov
 
 		{
 			LockGuard lock_guard(_dispatch_queue_lock);
+
+			if (new_state == SocketState::Disconnected)
+			{
+				// OME decided to close before the worker found the connection gone, so the queued close is the reason
+				for (const auto &command : _dispatch_queue)
+				{
+					if (command.type == DispatchCommand::Type::Close)
+					{
+						new_state = command.new_state;
+						break;
+					}
+				}
+			}
 
 			result = CloseAndSetState(new_state);
 		}

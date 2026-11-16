@@ -239,6 +239,9 @@ namespace ov
 		// Do garbage collection
 		GarbageCollection,
 
+		// The connection is gone - close the socket immediately as disconnected, unless a close is queued
+		Disconnected,
+
 		// An error occurred - close the socket immediately
 		Error
 	};

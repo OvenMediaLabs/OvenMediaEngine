@@ -81,6 +81,8 @@ namespace ov
 	protected:
 		// Bit 31 of `_io_ref`
 		static constexpr uint32_t IO_REF_CLOSING = 0x80000000U;
+		// Returned by the send functions when the connection is gone, instead of `-1`
+		static constexpr ssize_t SEND_DISCONNECTED = -2;
 
 	public:
 		// Called when the server socket is created
@@ -99,6 +101,8 @@ namespace ov
 			Dispatched,
 			// Command is dispatched, and some data is remained
 			PartialDispatched,
+			// The peer is gone
+			Disconnected,
 			// An error occurred
 			Error
 		};
@@ -323,6 +327,7 @@ namespace ov
 		bool Close();
 
 		bool CloseImmediately();
+		// When `new_state` is `Disconnected` and a close is queued, closes with the state of the queued close
 		bool CloseImmediatelyWithState(SocketState new_state);
 
 		bool HasCommand() const
