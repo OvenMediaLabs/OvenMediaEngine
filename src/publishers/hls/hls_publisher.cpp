@@ -444,7 +444,12 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 					session->SetRequestedUrl(requested_url);
 					session->SetFinalUrl(final_url);
 
-					stream->AddSession(session);
+					if (stream->AddSession(session) == false)
+					{
+						logtw("HLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+						response->SetStatusCode(http::StatusCode::NotFound);
+						return http::svr::NextHandler::DoNotCall;
+					}
 				}
 			}
 			// medialist_x_hls.m3u8?session=<session id>_<key>
@@ -489,7 +494,13 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 						}
 						session->SetRequestedUrl(requested_url);
 						session->SetFinalUrl(final_url);
-						stream->AddSession(session);
+
+						if (stream->AddSession(session) == false)
+						{
+							logtw("HLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+							response->SetStatusCode(http::StatusCode::NotFound);
+							return http::svr::NextHandler::DoNotCall;
+						}
 					}
 				}
 				else
