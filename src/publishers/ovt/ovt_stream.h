@@ -9,6 +9,8 @@
 #include "ovt_required_set.h"
 #include "ovt_track_filter.h"
 
+class OvtSession;
+
 class OvtStream final : public pub::Stream, public OvtPacketizerInterface
 {
 public:
@@ -72,6 +74,9 @@ public:
 
 	// Track ids a PLAY may deliver under `filter`, from the current tracks. nullopt means no filtering.
 	std::optional<std::set<uint32_t>> ResolveAllowedTrackIds(const OvtTrackFilter &filter);
+
+	// Tells a session that `AddSession()` refused that this stream stopped, as `Stop()` tells the others
+	void NotifyStop(const std::shared_ptr<OvtSession> &session);
 
 	// The `playlists` array a PLAY response carries, rebuilt for the confirmed track set.
 	// It runs the same `RebuildRenditions()` rule the describe uses, so the edge's renditions end up
@@ -148,6 +153,8 @@ private:
 	bool Stop() override;
 	// Tells every session that this stream is stopping and why
 	void NotifyStop(ovt::StopReason reason);
+	ovt::StopReason GetStopReason() const;
+	static ov::String MakeStopPayload(ovt::StopReason reason);
 
 	// Relays the origin's already-parsed track configuration to connected edges
 	// so a runtime change (codec, resolution, decoder config) is applied there.

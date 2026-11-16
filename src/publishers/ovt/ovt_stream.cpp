@@ -124,7 +124,7 @@ bool OvtStream::Stop()
 		}
 	}
 
-	NotifyStop((GetStopCause() == StopCause::ApplicationStopped) ? ovt::StopReason::OriginShutdown : ovt::StopReason::StreamDeleted);
+	NotifyStop(GetStopReason());
 
 	std::unique_lock<std::shared_mutex> mlock(_packetizer_lock);
 	if (_packetizer != nullptr)
@@ -143,12 +143,9 @@ bool OvtStream::Stop()
 // so a session still behind the `_sent_ready` gate receives it as well.
 void OvtStream::NotifyStop(ovt::StopReason reason)
 {
-	Json::Value root;
-	root["application"] = ovt::APPLICATION_STOP;
-	root["message"]		= ovt::ToString(reason);
-	auto payload		= ov::Json::Stringify(root);
+	auto payload  = MakeStopPayload(reason);
 
-	auto sessions		= GetAllSessions();
+	auto sessions = GetAllSessions();
 	for (const auto &[session_id, session] : sessions)
 	{
 		std::static_pointer_cast<OvtSession>(session)->SendMessageDirect(OvtPayloadType::MessageResponse, payload);
@@ -158,6 +155,20 @@ void OvtStream::NotifyStop(ovt::StopReason reason)
 	{
 		logti("Notified %zu edge session(s) that %s/%s stopped (%s)", sessions.size(), GetApplicationName(), GetName().CStr(), ovt::ToString(reason));
 	}
+}
+
+ovt::StopReason OvtStream::GetStopReason() const
+{
+	return (GetStopCause() == StopCause::ApplicationStopped) ? ovt::StopReason::OriginShutdown : ovt::StopReason::StreamDeleted;
+}
+
+ov::String OvtStream::MakeStopPayload(ovt::StopReason reason)
+{
+	Json::Value root;
+	root["application"] = ovt::APPLICATION_STOP;
+	root["message"]		= ovt::ToString(reason);
+
+	return ov::Json::Stringify(root);
 }
 
 void OvtStream::GenerateDescription(Json::Value &out_description)
@@ -943,6 +954,11 @@ std::optional<std::set<uint32_t>> OvtStream::ResolveAllowedTrackIds(const OvtTra
 	}
 
 	return allowed;
+}
+
+void OvtStream::NotifyStop(const std::shared_ptr<OvtSession> &session)
+{
+	session->SendMessageDirect(OvtPayloadType::MessageResponse, MakeStopPayload(GetStopReason()));
 }
 
 Json::Value OvtStream::BuildPlaylistsForTracks(const OvtTrackFilter &filter, const std::set<uint32_t> &allowed,
