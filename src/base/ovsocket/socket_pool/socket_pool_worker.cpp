@@ -550,6 +550,11 @@ namespace ov
 										_gc_candidates[socket->GetId()] = socket;
 										break;
 
+									case PostProcessMethod::Disconnected:
+										new_state	  = SocketState::Disconnected;
+										need_to_close = true;
+										break;
+
 									case PostProcessMethod::Error:
 										new_state	  = SocketState::Error;
 										need_to_close = true;
@@ -1039,6 +1044,18 @@ namespace ov
 					{
 						logat("Need to do garbage collection for %s (dispatch_later)", socket->ToString().CStr());
 						_gc_candidates[socket->GetId()] = socket;
+					}
+					else
+					{
+						// Socket is already closed
+					}
+					break;
+
+				case Socket::DispatchResult::Disconnected:
+					if (socket->IsClosable())
+					{
+						logat("Socket %s will be closed by dispatcher (disconnected)", socket->ToString().CStr());
+						socket->CloseImmediatelyWithState(SocketState::Disconnected);
 					}
 					else
 					{

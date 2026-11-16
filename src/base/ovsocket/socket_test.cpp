@@ -11,8 +11,10 @@
 #include <base/ovsocket/ovsocket.h>
 #include <base/ovsocket/socket_test_helpers.h>
 #include <gtest/gtest.h>
+#include <linux/sockios.h>
 #include <netinet/in.h>
 #include <srt/srt.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -175,6 +177,46 @@ namespace
 				::close(_conn_fd);
 				_conn_fd = -1;
 			}
+		}
+
+		// Reads until nothing arrives for a while, which frees the send buffer of the `ov::Socket`
+		void Drain()
+		{
+			// How long nothing must arrive for the connection to count as drained
+			constexpr int QUIET_MSEC = 200;
+
+			WaitAccepted();
+			if (_conn_fd < 0)
+			{
+				return;
+			}
+
+			std::vector<uint8_t> buffer(1024 * 1024);
+			pollfd entry{_conn_fd, POLLIN, 0};
+			while ((::poll(&entry, 1, QUIET_MSEC) == 1) && (::recv(_conn_fd, buffer.data(), buffer.size(), 0) > 0))
+			{
+			}
+		}
+
+		// Drains the connection before closing it,
+		// so the close sends a FIN instead of the reset that unread data would cause
+		void DrainAndCloseConnection()
+		{
+			Drain();
+			CloseConnection();
+		}
+
+		// Closes the connection with a reset (`SO_LINGER` 0),
+		// so the next send of the `ov::Socket` fails with `ECONNRESET`
+		void ResetConnection()
+		{
+			WaitAccepted();
+			if (_conn_fd >= 0)
+			{
+				linger option{1, 0};
+				::setsockopt(_conn_fd, SOL_SOCKET, SO_LINGER, &option, sizeof(option));
+			}
+			CloseConnection();
 		}
 
 	private:
@@ -661,7 +703,7 @@ namespace
 	};
 
 	// Holds the worker in the first `OnReadable()` after `Arm()` until `Release()`,
-	// so a test can keep the worker from fetching libsrt epoll events for a while
+	// so a test can keep the worker from fetching epoll events for a while
 	class GatedSrtAsyncEvents : public SrtAsyncEvents
 	{
 	public:
@@ -705,6 +747,38 @@ namespace
 		bool _released = false;
 	};
 
+	// Records the state of a watched socket when its own close callback runs.
+	// A close made off the worker reports at the end of the worker's current iteration,
+	// so closing the probe while the worker is held samples the watched socket at the end of that iteration.
+	class StateProbeEvents : public SrtAsyncEvents
+	{
+	public:
+		void Watch(const std::shared_ptr<ov::Socket> &socket)
+		{
+			_watched = socket;
+		}
+
+		void OnClosed() override
+		{
+			auto socket = _watched.lock();
+			if (socket != nullptr)
+			{
+				_watched_state = socket->GetState();
+			}
+
+			SrtAsyncEvents::OnClosed();
+		}
+
+		ov::SocketState WatchedState() const
+		{
+			return _watched_state.load();
+		}
+
+	private:
+		std::weak_ptr<ov::Socket> _watched;
+		std::atomic<ov::SocketState> _watched_state{ov::SocketState::Created};
+	};
+
 	// Polls `predicate` every millisecond until it holds or `timeout` elapses.
 	template <typename Tpredicate>
 	bool WaitUntil(Tpredicate predicate, std::chrono::milliseconds timeout = std::chrono::milliseconds(LOOPBACK_TIMEOUT_MSEC))
@@ -719,6 +793,15 @@ namespace
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 		return true;
+	}
+
+	// Waits until `poll()` for `events` on `fd` reports any of `revents`
+	bool WaitUntilPolled(int fd, short events, short revents)
+	{
+		return WaitUntil([&]() {
+			pollfd entry{fd, events, 0};
+			return (::poll(&entry, 1, 0) == 1) && ((entry.revents & revents) != 0);
+		});
 	}
 
 	// An asynchronous `srt_connect()` returns before the handshake completes; this
@@ -859,6 +942,72 @@ namespace
 	private:
 		std::vector<std::shared_ptr<ov::Socket>> &_sockets;
 	};
+
+	// Far more than the socket buffers of both ends hold, so a send of it stalls
+	constexpr size_t STALLED_SEND_BYTES = 64 * 1024 * 1024;
+
+	std::shared_ptr<ov::Data> MakeStalledSendData()
+	{
+		auto data = std::make_shared<ov::Data>(STALLED_SEND_BYTES);
+		return data->SetLength(STALLED_SEND_BYTES) ? data : nullptr;
+	}
+
+	// The sockets of a send that the held worker retries:
+	// the callback of `holder` holds the worker, `victim` sends, and `probe` samples the state of `victim`
+	struct HeldSendSockets
+	{
+		std::shared_ptr<GatedSrtAsyncEvents> holder_events = std::make_shared<GatedSrtAsyncEvents>();
+		std::shared_ptr<SrtAsyncEvents> victim_events	   = std::make_shared<SrtAsyncEvents>();
+		std::shared_ptr<StateProbeEvents> probe_events	   = std::make_shared<StateProbeEvents>();
+		std::shared_ptr<ov::Socket> holder;
+		std::shared_ptr<ov::Socket> victim;
+		std::shared_ptr<ov::Socket> probe;
+	};
+
+	// Holds the worker through `send_to_holder` and stalls a send on `victim`,
+	// with a close queued behind it when `queue_close` is set.
+	// `end_connection` runs before the release, and the worker retries the send at the end of the held iteration.
+	// `probe` is closed while the worker is held, so its close callback runs at the end of that iteration,
+	// and `*state_after_retry` is the state of `victim` before the worker can fetch the hang-up event.
+	void RetrySendAfterConnectionEnds(HeldSendSockets &sockets, const std::function<bool()> &send_to_holder, bool queue_close,
+									  const std::function<void()> &end_connection, ov::SocketState *state_after_retry)
+	{
+		ome_test::ScopeExit release_on_exit([&]() { sockets.holder_events->Release(); });
+
+		sockets.probe_events->Watch(sockets.victim);
+		sockets.holder_events->Arm();
+		ASSERT_TRUE(send_to_holder());
+		ASSERT_TRUE(WaitUntil([&]() { return sockets.holder_events->IsHolding(); }));
+
+		auto data = MakeStalledSendData();
+		ASSERT_NE(data, nullptr);
+		ASSERT_TRUE(sockets.victim->Send(data));
+		ASSERT_TRUE(sockets.victim->HasCommand());
+		if (queue_close)
+		{
+			ASSERT_TRUE(sockets.victim->Close());
+		}
+
+		end_connection();
+		if (::testing::Test::HasFatalFailure())
+		{
+			return;
+		}
+
+		ASSERT_TRUE(sockets.probe->CloseImmediately());
+		sockets.holder_events->Release();
+
+		ASSERT_TRUE(WaitUntil([&]() { return sockets.probe_events->Closed() == 1; }));
+		*state_after_retry = sockets.probe_events->WatchedState();
+		ASSERT_TRUE(WaitUntil([&]() { return sockets.victim_events->Closed() == 1; }));
+	}
+
+	// Makes the peer reset the connection and waits until the client's handle reports it
+	void ResetAndWaitForHangUp(PosixTcpPeer &peer, ov::socket_t victim_fd)
+	{
+		peer.ResetConnection();
+		ASSERT_TRUE(WaitUntilPolled(victim_fd, POLLOUT, POLLERR | POLLHUP));
+	}
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -1223,6 +1372,278 @@ namespace ov
 		socket->CloseImmediatelyWithState(SocketState::Closed);
 	}
 }  // namespace ov
+
+// ===========================================================================
+// TCP send (non-blocking)
+// ===========================================================================
+class SocketSendTcpTest : public SocketTestBase
+{
+protected:
+	// Whether OME queues its own close behind the stalled send
+	enum class QueuedClose
+	{
+		None,
+		Close
+	};
+
+	void SetUp() override
+	{
+		InitPool("test-send-tcp", ov::SocketType::Tcp);
+	}
+
+	// Returns a non-blocking `ov::Socket` TCP client connected to `peer`,
+	// driven by the pool worker with its events delivered to `events`
+	std::shared_ptr<ov::Socket> ConnectAsyncClient(PosixTcpPeer &peer, const std::shared_ptr<SrtAsyncEvents> &events)
+	{
+		auto client = _pool->AllocSocket(ov::SocketFamily::Inet);
+		if (client == nullptr)
+		{
+			return nullptr;
+		}
+
+		events->Attach(client);
+		if (client->MakeNonBlocking(events) == false)
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		peer.AcceptAsync();
+		auto error = client->Connect(LoopbackAddress(peer.Port()), LOOPBACK_TIMEOUT_MSEC);
+		peer.WaitAccepted();
+
+		if ((error != nullptr) || (peer.IsConnected() == false) || (WaitUntil([&]() { return events->Connected() == 1; }) == false))
+		{
+			client->Close();
+			return nullptr;
+		}
+
+		return client;
+	}
+
+	// Retries a stalled send after `end_connection` makes the peer go away,
+	// and expects the retry itself to close the client, as `Disconnected` or as the close queued behind the send
+	void ExpectRetriedSendCloses(QueuedClose queued_close, const std::function<void(PosixTcpPeer &peer, ov::socket_t victim_fd)> &end_connection)
+	{
+		PosixTcpPeer holder_peer;
+		ASSERT_TRUE(holder_peer.Listen());
+		PosixTcpPeer victim_peer;
+		ASSERT_TRUE(victim_peer.Listen());
+		PosixTcpPeer probe_peer;
+		ASSERT_TRUE(probe_peer.Listen());
+
+		std::vector<std::shared_ptr<ov::Socket>> opened;
+		CloseOnExit close_on_exit(opened);
+
+		HeldSendSockets sockets;
+		sockets.holder = ConnectAsyncClient(holder_peer, sockets.holder_events);
+		ASSERT_NE(sockets.holder, nullptr);
+		opened.push_back(sockets.holder);
+		sockets.victim = ConnectAsyncClient(victim_peer, sockets.victim_events);
+		ASSERT_NE(sockets.victim, nullptr);
+		opened.push_back(sockets.victim);
+		sockets.probe = ConnectAsyncClient(probe_peer, sockets.probe_events);
+		ASSERT_NE(sockets.probe, nullptr);
+		opened.push_back(sockets.probe);
+
+		const char payload[]   = "tcp-hold-worker";
+		const auto victim_fd   = sockets.victim->GetNativeHandle();
+		auto state_after_retry = ov::SocketState::Created;
+
+		RetrySendAfterConnectionEnds(
+			sockets, [&]() { return holder_peer.Send(payload, sizeof(payload)) == static_cast<ssize_t>(sizeof(payload)); },
+			queued_close == QueuedClose::Close, [&]() { end_connection(victim_peer, victim_fd); }, &state_after_retry);
+		if (HasFatalFailure())
+		{
+			return;
+		}
+
+		const auto expected_state = (queued_close == QueuedClose::Close) ? ov::SocketState::Closed : ov::SocketState::Disconnected;
+		EXPECT_EQ(state_after_retry, expected_state);
+		EXPECT_EQ(sockets.victim->GetState(), expected_state);
+	}
+};
+
+// The peer resets the connection, so the retried send fails with `ECONNRESET`
+TEST_F(SocketSendTcpTest, SendToResetPeerClosesAsDisconnected)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "SendToResetPeerClosesAsDisconnected");
+
+	ExpectRetriedSendCloses(QueuedClose::None, ResetAndWaitForHangUp);
+}
+
+// The peer reads everything and closes its side, and answers the next data with a reset.
+// A reset that arrives after the peer's close makes the retried send fail with `EPIPE`.
+TEST_F(SocketSendTcpTest, SendToClosedPeerClosesAsDisconnected)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "SendToClosedPeerClosesAsDisconnected");
+
+	ExpectRetriedSendCloses(QueuedClose::None, [](PosixTcpPeer &peer, ov::socket_t victim_fd) {
+		peer.DrainAndCloseConnection();
+		ASSERT_TRUE(WaitUntilPolled(victim_fd, POLLRDHUP, POLLRDHUP));
+
+		// A byte written behind the `ov::Socket` draws the reset now, so the reset is pending when the worker retries
+		const char byte = 0;
+		ASSERT_EQ(::send(victim_fd, &byte, sizeof(byte), MSG_NOSIGNAL), static_cast<ssize_t>(sizeof(byte)));
+		ASSERT_TRUE(WaitUntilPolled(victim_fd, POLLOUT, POLLERR));
+	});
+}
+
+// A close that OME queued behind the stalled send was decided before the peer reset the connection,
+// so the retried send's failure leaves the socket in the state of that close instead of `Disconnected`
+TEST_F(SocketSendTcpTest, ResetBehindQueuedCloseWithWorkerHeldKeepsItsState)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "ResetBehindQueuedCloseWithWorkerHeldKeepsItsState");
+
+	ExpectRetriedSendCloses(QueuedClose::Close, ResetAndWaitForHangUp);
+}
+
+// Same as `ResetBehindQueuedCloseWithWorkerHeldKeepsItsState`, but the worker is not held,
+// so either the hang-up event of the reset or the retried send closes the socket
+TEST_F(SocketSendTcpTest, ResetBehindQueuedCloseWithWorkerRunningKeepsItsState)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "ResetBehindQueuedCloseWithWorkerRunningKeepsItsState");
+
+	PosixTcpPeer peer;
+	ASSERT_TRUE(peer.Listen());
+
+	std::vector<std::shared_ptr<ov::Socket>> sockets;
+	CloseOnExit close_on_exit(sockets);
+
+	auto events = std::make_shared<SrtAsyncEvents>();
+	auto client = ConnectAsyncClient(peer, events);
+	ASSERT_NE(client, nullptr);
+	sockets.push_back(client);
+
+	auto data = MakeStalledSendData();
+	ASSERT_NE(data, nullptr);
+	ASSERT_TRUE(client->Send(data));
+	ASSERT_TRUE(client->HasCommand());
+	ASSERT_TRUE(client->Close());
+
+	peer.ResetConnection();
+
+	ASSERT_TRUE(WaitUntil([&]() { return events->Closed() == 1; }));
+	EXPECT_EQ(client->GetState(), ov::SocketState::Closed);
+}
+
+// A send that stays stalled until it expires is closed by the garbage collection,
+// which keeps the state of a close that OME queued behind it
+TEST_F(SocketSendTcpTest, ExpiredSendBehindQueuedCloseKeepsItsState)
+{
+	// The garbage collection runs once a second, after the send has expired
+	constexpr int EXPIRY_MARGIN_MSEC = 5000;
+
+	Watchdog watchdog(std::chrono::seconds(30), "ExpiredSendBehindQueuedCloseKeepsItsState");
+
+	PosixTcpPeer peer;
+	ASSERT_TRUE(peer.Listen());
+
+	std::vector<std::shared_ptr<ov::Socket>> sockets;
+	CloseOnExit close_on_exit(sockets);
+
+	auto events = std::make_shared<SrtAsyncEvents>();
+	auto client = ConnectAsyncClient(peer, events);
+	ASSERT_NE(client, nullptr);
+	sockets.push_back(client);
+
+	// The peer never reads, so only the expiry ends the send
+	auto data = MakeStalledSendData();
+	ASSERT_NE(data, nullptr);
+	ASSERT_TRUE(client->Send(data));
+	ASSERT_TRUE(client->Close());
+
+	ASSERT_TRUE(WaitUntil([&]() { return events->Closed() == 1; }, std::chrono::milliseconds(OV_SOCKET_EXPIRE_TIMEOUT + EXPIRY_MARGIN_MSEC)));
+	EXPECT_EQ(client->GetState(), ov::SocketState::Closed);
+}
+
+// The peer resets the connection after the worker fetched a writable event, so the send retried on that event fails,
+// and the worker closes the socket as `Disconnected` while it handles the event
+TEST_F(SocketSendTcpTest, SendRetriedOnWritableEventClosesAsDisconnected)
+{
+	// How long the unsent bytes must stay unchanged to count as stalled
+	constexpr int SEND_STALL_SETTLE_MSEC = 300;
+
+	Watchdog watchdog(std::chrono::seconds(30), "SendRetriedOnWritableEventClosesAsDisconnected");
+
+	PosixTcpPeer first_gate_peer;
+	ASSERT_TRUE(first_gate_peer.Listen());
+	PosixTcpPeer second_gate_peer;
+	ASSERT_TRUE(second_gate_peer.Listen());
+	PosixTcpPeer victim_peer;
+	ASSERT_TRUE(victim_peer.Listen());
+	PosixTcpPeer probe_peer;
+	ASSERT_TRUE(probe_peer.Listen());
+
+	std::vector<std::shared_ptr<ov::Socket>> opened;
+	CloseOnExit close_on_exit(opened);
+
+	auto first_gate_events = std::make_shared<GatedSrtAsyncEvents>();
+	auto first_gate		   = ConnectAsyncClient(first_gate_peer, first_gate_events);
+	ASSERT_NE(first_gate, nullptr);
+	opened.push_back(first_gate);
+	auto second_gate_events = std::make_shared<GatedSrtAsyncEvents>();
+	auto second_gate		= ConnectAsyncClient(second_gate_peer, second_gate_events);
+	ASSERT_NE(second_gate, nullptr);
+	opened.push_back(second_gate);
+	auto victim_events = std::make_shared<SrtAsyncEvents>();
+	auto victim		   = ConnectAsyncClient(victim_peer, victim_events);
+	ASSERT_NE(victim, nullptr);
+	opened.push_back(victim);
+	auto probe_events = std::make_shared<StateProbeEvents>();
+	auto probe		  = ConnectAsyncClient(probe_peer, probe_events);
+	ASSERT_NE(probe, nullptr);
+	opened.push_back(probe);
+
+	probe_events->Watch(victim);
+	ome_test::ScopeExit release_on_exit([&]() {
+		first_gate_events->Release();
+		second_gate_events->Release();
+	});
+
+	// The send stalls with the worker running, so `victim` waits for a writable event with nothing else pending
+	auto data = MakeStalledSendData();
+	ASSERT_NE(data, nullptr);
+	ASSERT_TRUE(victim->Send(data));
+	auto unsent_bytes = [&]() {
+		int bytes = 0;
+		return (::ioctl(victim->GetNativeHandle(), SIOCOUTQ, &bytes) == 0) ? bytes : -1;
+	};
+	ASSERT_TRUE(WaitUntil([&]() {
+		const auto before = unsent_bytes();
+		std::this_thread::sleep_for(std::chrono::milliseconds(SEND_STALL_SETTLE_MSEC));
+		return (before > 0) && (unsent_bytes() == before);
+	}));
+
+	const char payload[] = "tcp-hold-worker";
+	first_gate_events->Arm();
+	ASSERT_EQ(first_gate_peer.Send(payload, sizeof(payload)), static_cast<ssize_t>(sizeof(payload)));
+	ASSERT_TRUE(WaitUntil([&]() { return first_gate_events->IsHolding(); }));
+
+	// The second gate becomes readable before `victim` becomes writable,
+	// so the next batch reaches the second gate first and holds the worker before the writable event of `victim`
+	second_gate_events->Arm();
+	ASSERT_EQ(second_gate_peer.Send(payload, sizeof(payload)), static_cast<ssize_t>(sizeof(payload)));
+	ASSERT_TRUE(WaitUntilPolled(second_gate->GetNativeHandle(), POLLIN, POLLIN));
+	victim_peer.Drain();
+	ASSERT_TRUE(WaitUntilPolled(victim->GetNativeHandle(), POLLOUT, POLLOUT));
+	first_gate_events->Release();
+	ASSERT_TRUE(WaitUntil([&]() { return second_gate_events->IsHolding(); }));
+
+	ResetAndWaitForHangUp(victim_peer, victim->GetNativeHandle());
+	if (HasFatalFailure())
+	{
+		return;
+	}
+
+	ASSERT_TRUE(probe->CloseImmediately());
+	second_gate_events->Release();
+
+	ASSERT_TRUE(WaitUntil([&]() { return probe_events->Closed() == 1; }));
+	EXPECT_EQ(probe_events->WatchedState(), ov::SocketState::Disconnected);
+	ASSERT_TRUE(WaitUntil([&]() { return victim_events->Closed() == 1; }));
+	EXPECT_EQ(victim->GetState(), ov::SocketState::Disconnected);
+}
 
 // ===========================================================================
 // SRT
@@ -1847,8 +2268,6 @@ TEST_F(SocketRecvSrtTest, RemovedSocketWithQueuedCloseIsReportedOnce)
 // although the removed socket never raises the event that would resume the send
 TEST_F(SocketRecvSrtTest, RemovedSocketWithCloseBehindStalledSendIsClosed)
 {
-	// Far more than the send buffer and the caller's receive buffer together hold
-	constexpr size_t STALLED_SEND_BYTES = 64 * 1024 * 1024;
 	// How long the send buffer must stay unchanged to count as stalled
 	constexpr int SEND_STALL_SETTLE_MSEC = 300;
 
@@ -1868,8 +2287,8 @@ TEST_F(SocketRecvSrtTest, RemovedSocketWithCloseBehindStalledSendIsClosed)
 	auto victim_socket = listener.Client(victim);
 	ASSERT_NE(victim_socket, nullptr);
 
-	auto data = std::make_shared<ov::Data>(STALLED_SEND_BYTES);
-	ASSERT_TRUE(data->SetLength(STALLED_SEND_BYTES));
+	auto data = MakeStalledSendData();
+	ASSERT_NE(data, nullptr);
 	ASSERT_TRUE(victim_socket->Send(data));
 
 	auto send_buffer_bytes = [&]() {
@@ -1905,6 +2324,9 @@ TEST_F(SocketRecvSrtTest, RemovedSocketWithCloseBehindStalledSendIsClosed)
 
 	// Without the removal check, only the expiry of the stalled send would close it, seconds later
 	ASSERT_TRUE(WaitUntil([&]() { return listener.ClosedState(victim).has_value(); }, std::chrono::milliseconds(SRT_REMOVAL_CLOSE_WAIT_MSEC)));
+	// The queued close decides the state, so it is reported as OME's own close
+	EXPECT_EQ(listener.ClosedState(victim).value(), ov::SocketConnectionState::Disconnect);
+	EXPECT_EQ(victim_socket->GetState(), ov::SocketState::Closed);
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(SRT_REMOVAL_CHECK_PASS_MSEC));
 	EXPECT_EQ(listener.CloseCount(victim), 1);
@@ -1928,6 +2350,83 @@ TEST_F(SocketRecvSrtTest, IdleSocketIsNotClosedByRemovalCheck)
 	EXPECT_EQ(events->Closed(), 0);
 	EXPECT_EQ(client->GetState(), ov::SocketState::Connected);
 	EXPECT_EQ(::srt_getsockstate(client->GetNativeHandle()), SRTS_CONNECTED);
+}
+
+class SocketSendSrtTest : public SocketRecvSrtTest
+{
+protected:
+	// Retries a stalled send after `end_connection` makes the peer go away,
+	// and expects the retry itself to close the client as `Disconnected`
+	void ExpectRetriedSendClosesAsDisconnected(const std::function<void(SrtPeer &peer, SRTSOCKET victim_handle)> &end_connection)
+	{
+		SrtPeer holder_peer;
+		ASSERT_TRUE(holder_peer.Listen());
+		SrtPeer victim_peer;
+		ASSERT_TRUE(victim_peer.Listen());
+		SrtPeer probe_peer;
+		ASSERT_TRUE(probe_peer.Listen());
+
+		std::vector<std::shared_ptr<ov::Socket>> opened;
+		CloseOnExit close_on_exit(opened);
+
+		HeldSendSockets sockets;
+		sockets.holder = ConnectAsyncClientVia(holder_peer, holder_peer.Port(), sockets.holder_events);
+		ASSERT_NE(sockets.holder, nullptr);
+		opened.push_back(sockets.holder);
+		sockets.victim = ConnectAsyncClientVia(victim_peer, victim_peer.Port(), sockets.victim_events);
+		ASSERT_NE(sockets.victim, nullptr);
+		opened.push_back(sockets.victim);
+		sockets.probe = ConnectAsyncClientVia(probe_peer, probe_peer.Port(), sockets.probe_events);
+		ASSERT_NE(sockets.probe, nullptr);
+		opened.push_back(sockets.probe);
+
+		const char payload[]	 = "srt-hold-worker";
+		const auto victim_handle = sockets.victim->GetNativeHandle();
+		auto state_after_retry	 = ov::SocketState::Created;
+
+		RetrySendAfterConnectionEnds(
+			sockets, [&]() { return holder_peer.Send(payload, sizeof(payload)) == static_cast<int>(sizeof(payload)); }, false,
+			[&]() { end_connection(victim_peer, victim_handle); }, &state_after_retry);
+		if (HasFatalFailure())
+		{
+			return;
+		}
+
+		EXPECT_EQ(state_after_retry, ov::SocketState::Disconnected);
+		EXPECT_EQ(sockets.victim->GetState(), ov::SocketState::Disconnected);
+	}
+};
+
+// The peer closes while data it sent waits unread, so libsrt keeps the broken socket
+// and the retried send fails with `SRT_ECONNLOST`
+TEST_F(SocketSendSrtTest, SendToClosedPeerClosesAsDisconnected)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "SendToClosedPeerClosesAsDisconnected");
+
+	ExpectRetriedSendClosesAsDisconnected([](SrtPeer &peer, SRTSOCKET victim_handle) {
+		const char payload[] = "srt-unread";
+		ASSERT_EQ(peer.Send(payload, sizeof(payload)), static_cast<int>(sizeof(payload)));
+		ASSERT_TRUE(WaitUntil([&]() {
+			int32_t unread_packets = 0;
+			int length			   = sizeof(unread_packets);
+			return (::srt_getsockflag(victim_handle, SRTO_RCVDATA, &unread_packets, &length) == 0) && (unread_packets > 0);
+		}));
+
+		peer.CloseConnection();
+		ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(victim_handle) == SRTS_BROKEN; }));
+	});
+}
+
+// The peer closes while nothing waits unread, so libsrt removes the socket before the retried send,
+// which fails with `SRT_EINVSOCK`
+TEST_F(SocketSendSrtTest, SendToRemovedSocketClosesAsDisconnected)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "SendToRemovedSocketClosesAsDisconnected");
+
+	ExpectRetriedSendClosesAsDisconnected([](SrtPeer &peer, SRTSOCKET victim_handle) {
+		peer.CloseConnection();
+		ASSERT_TRUE(WaitUntil([&]() { return ::srt_getsockstate(victim_handle) == SRTS_NONEXIST; }, std::chrono::milliseconds(SRT_REMOVAL_WAIT_MSEC)));
+	});
 }
 
 // A close on another thread wakes a blocking SRT receive, which reports the close instead of a libsrt error
