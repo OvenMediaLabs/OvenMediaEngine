@@ -432,6 +432,15 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			session = stream->GetSessionFromPool();
 			if (session == nullptr)
 			{
+				// `Stop()` takes the pooled sessions out when it marks the stream stopped
+				if (stream->GetState() == pub::Stream::State::STOPPED)
+				{
+					logtw("LLHLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+					response->SetStatusCode(http::StatusCode::NotFound);
+					close_admission();
+					return http::svr::NextHandler::DoNotCall;
+				}
+
 				logtc("Could not get llhls origin session from pool for request: %s", request->ToString().CStr());
 				response->SetStatusCode(http::StatusCode::InternalServerError);
 				close_admission();

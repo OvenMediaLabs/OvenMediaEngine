@@ -409,6 +409,14 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 			session = stream->GetSessionFromPool();
 			if (session == nullptr)
 			{
+				// `Stop()` takes the pooled sessions out when it marks the stream stopped
+				if (stream->GetState() == pub::Stream::State::STOPPED)
+				{
+					logtw("HLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+					response->SetStatusCode(http::StatusCode::NotFound);
+					return http::svr::NextHandler::DoNotCall;
+				}
+
 				logtc("Could not get hls origin session from pool for request: %s", request->ToString().CStr());
 				response->SetStatusCode(http::StatusCode::InternalServerError);
 				return http::svr::NextHandler::DoNotCall;
