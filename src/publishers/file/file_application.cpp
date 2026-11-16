@@ -166,7 +166,14 @@ namespace pub
 				session = stream->CreateSession();
 				if (session == nullptr)
 				{
-					logte("Failed to create session");
+					if (stream->GetState() == pub::Stream::State::STOPPED)
+					{
+						logtw("Could not create session because the stream is stopping : %s", stream->GetName().CStr());
+					}
+					else
+					{
+						logte("Failed to create session");
+					}
 					return;
 				}
 				userdata->SetSessionId(session->GetId());

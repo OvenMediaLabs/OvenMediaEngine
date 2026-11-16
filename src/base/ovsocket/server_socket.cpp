@@ -213,7 +213,15 @@ namespace ov
 						_client_list.erase(key);
 					}
 
-					logae("Client(%s) is connected, but could not be prepared", client->ToString().CStr());
+					// An SRT socket that libsrt removed right after the accept has no local address
+					if (client->GetLocalAddress() == nullptr)
+					{
+						logaw("Client(%s) was closed before it could be prepared", client->ToString().CStr());
+					}
+					else
+					{
+						logae("Client(%s) is connected, but could not be prepared", client->ToString().CStr());
+					}
 
 					client->CloseImmediately();
 				}

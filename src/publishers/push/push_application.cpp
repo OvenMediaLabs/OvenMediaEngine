@@ -339,7 +339,14 @@ namespace pub
 						session = stream->CreatePushSession(push);
 						if (session == nullptr)
 						{
-							logte("Could not create session");
+							if (stream->GetState() == pub::Stream::State::STOPPED)
+							{
+								logtw("Could not create session because the stream is stopping : %s", stream->GetName().CStr());
+							}
+							else
+							{
+								logte("Could not create session");
+							}
 							continue;
 						}
 
