@@ -478,21 +478,38 @@ namespace pvd
 	{
 		ov::ScopedLock lock(_source_stream_timestamp_mutex);
 
-		// Set the last timestamp of the highest value of all tracks
+		// Set the last timestamp of the highest value of the audio and video tracks
 		// In this algorithm, the timestamp of A or V jumps for synchronization.
 		// But after testing with a variety of players, this is better.
-		int64_t last_timestamp = std::numeric_limits<int64_t>::min();
-		for (const auto &[track_id, timestamp] : _last_timestamp_us_map)
-		{
-			auto track = GetTrack(track_id);
-			if (!track)
+		auto last_end_timestamp = [this](bool audio_video_only) {
+			int64_t last_timestamp = std::numeric_limits<int64_t>::min();
+			for (const auto &[track_id, timestamp] : _last_timestamp_us_map)
 			{
-				continue;
+				auto track = GetTrack(track_id);
+				if (!track)
+				{
+					continue;
+				}
+
+				if (audio_video_only && (track->GetMediaType() != cmn::MediaType::Video) && (track->GetMediaType() != cmn::MediaType::Audio))
+				{
+					continue;
+				}
+
+				const auto last_duration_it = _last_duration_us_map.find(track_id);
+				int64_t last_duration		= (last_duration_it != _last_duration_us_map.end()) ? last_duration_it->second : 0;
+				last_timestamp				= std::max<int64_t>(timestamp + last_duration, last_timestamp);
 			}
 
-			const auto last_duration_it = _last_duration_us_map.find(track_id);
-			int64_t last_duration		= (last_duration_it != _last_duration_us_map.end()) ? last_duration_it->second : 0;
-			last_timestamp				= std::max<int64_t>(timestamp + last_duration, last_timestamp);
+			return last_timestamp;
+		};
+
+		// Data and subtitles can be stamped ahead, such as an event with a start offset,
+		// so they decide only for a stream without audio and video
+		int64_t last_timestamp = last_end_timestamp(true);
+		if (last_timestamp == std::numeric_limits<int64_t>::min())
+		{
+			last_timestamp = last_end_timestamp(false);
 		}
 
 		if (last_timestamp != std::numeric_limits<int64_t>::min())
