@@ -448,7 +448,8 @@ ov::String PhysicalPort::ToString() const
 				description.Append(", ");
 			}
 
-			description.AppendFormat(OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(_datagram_sockets[index]));
+			const auto &socket = _datagram_sockets[index];
+			description.AppendFormat(OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(socket));
 		}
 
 		description.Append(']');

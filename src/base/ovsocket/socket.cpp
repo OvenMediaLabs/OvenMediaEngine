@@ -2825,7 +2825,7 @@ namespace ov
 			extra.Append(_stream_id);
 		}
 
-		// `%p` matches this dump with a core dump
+		// `%p` is the object address, for finding this socket in a core dump
 		return String::FormatString(
 			"<%s " OV_SOCKET_TOKEN_FORMAT ", %s, %s%s, %p>",
 			class_name, OV_SOCKET_TOKEN_VALUE(this),

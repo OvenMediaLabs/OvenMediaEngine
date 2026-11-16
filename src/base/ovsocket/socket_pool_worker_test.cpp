@@ -16,13 +16,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <functional>
 #include <future>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -37,6 +34,7 @@ namespace
 	using ome_test::ListenOnLoopback;
 	using ome_test::ScopeExit;
 	using ome_test::SendDatagram;
+	using ome_test::SocketEventLog;
 	using ome_test::TakeNumber;
 	using ome_test::UniqueFd;
 	using ome_test::WAIT_TIMEOUT_MSEC;
@@ -180,10 +178,10 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 		}
 	};
 
-	auto pair		 = std::make_shared<SocketPair>();
-	auto gate		 = pool->AllocSocket(ov::SocketFamily::Inet);
-	pair->sockets[0] = pool->AllocSocket(ov::SocketFamily::Inet);
-	pair->sockets[1] = pool->AllocSocket(ov::SocketFamily::Inet);
+	auto pair						= std::make_shared<SocketPair>();
+	auto gate						= pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[0]				= pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[1]				= pool->AllocSocket(ov::SocketFamily::Inet);
 
 	// Closes the sockets on every way out, including an early return
 	ScopeExit closer([&]() {
@@ -203,8 +201,8 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 	// The gate holds the worker inside its callback while both other sockets become readable,
 	// so the next `epoll_wait()` returns them in one batch
 	WorkerGate worker_gate;
-	auto gate_events					  = std::make_shared<TestEvents>();
-	gate_events->on_readable			  = worker_gate.MakeCallback();
+	auto gate_events		 = std::make_shared<TestEvents>();
+	gate_events->on_readable = worker_gate.MakeCallback();
 
 	std::shared_ptr<TestEvents> events[2] = {std::make_shared<TestEvents>(), std::make_shared<TestEvents>()};
 
@@ -576,7 +574,7 @@ TEST_F(SocketPoolWorkerTest, WorkerIsNotReleasedBeforeCloseCallback)
 {
 	constexpr int HOLD_MSEC = 2500;
 
-	auto pool				= CreatePool("test-close-callback", ov::SocketType::Tcp, true);
+	auto pool = CreatePool("test-close-callback", ov::SocketType::Tcp, true);
 	ASSERT_NE(pool, nullptr);
 
 	uint16_t listen_port = 0;
@@ -635,54 +633,13 @@ TEST_F(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 
 namespace
 {
-	// Records, per accepted client, the order of its connection reports ('C' connected, 'X' closed) and data ('D')
-	class ClientEventLog
-	{
-	public:
-		void Append(const std::shared_ptr<ov::ClientSocket> &client, char event)
-		{
-			std::lock_guard lock(_mutex);
-			_events[client->GetId()].push_back(event);
-		}
-
-		std::vector<std::string> Sequences()
-		{
-			std::lock_guard lock(_mutex);
-			std::vector<std::string> sequences;
-
-			for (const auto &[id, events] : _events)
-			{
-				sequences.push_back(events);
-			}
-
-			return sequences;
-		}
-
-		size_t CountOf(char event)
-		{
-			std::lock_guard lock(_mutex);
-			size_t count = 0;
-
-			for (const auto &[id, events] : _events)
-			{
-				count += std::count(events.begin(), events.end(), event);
-			}
-
-			return count;
-		}
-
-	private:
-		std::mutex _mutex;
-		std::map<ov::socket_id_t, std::string> _events;
-	};
-
 	// While the worker is held inside the first client's data callback, a second client connects and is reset,
 	// so the worker's first event for the second client already carries `EPOLLHUP`.
 	// Returns the event sequences once both clients are closed.
 	void RunResetBeforeFirstPoll(const std::shared_ptr<ov::SocketPool> &pool, const char *second_payload,
 								 std::vector<std::string> *sequences)
 	{
-		auto log = std::make_shared<ClientEventLog>();
+		auto log = std::make_shared<SocketEventLog>();
 		WorkerGate worker_gate;
 		auto gate	= worker_gate.MakeCallback();
 

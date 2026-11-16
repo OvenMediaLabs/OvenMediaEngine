@@ -93,7 +93,7 @@ namespace ov
 				auto error = ov::SrtError::CreateErrorFromSrt();
 				// Sometimes SRT returns an error 'Operation not supported: Invalid socket ID (0x138c) (5004)',
 				// which seems to occur when the connection is disconnected right after accept().
-				logtw("Failed to get local address: %s", error->What());
+				logtd("Failed to get local address: %s", error->What());
 				return false;
 			}
 		}

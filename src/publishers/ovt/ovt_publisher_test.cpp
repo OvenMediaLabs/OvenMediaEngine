@@ -10,10 +10,8 @@
 #include <gtest/gtest.h>
 #include <modules/physical_port/physical_port_manager.h>
 
-#include <atomic>
 #include <chrono>
 #include <functional>
-#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -27,10 +25,11 @@ namespace
 	using ome_test::ConnectAndSend;
 	using ome_test::LocalPortOf;
 	using ome_test::ScopeExit;
+	using ome_test::SocketEventLog;
 	using ome_test::WaitUntil;
 	using ome_test::WorkerGate;
 
-	// Records, per connection, the order of the port events ('C' connected, 'D' data, 'X' disconnected),
+	// Records the port events in `log` ('C' connected, 'D' data, 'X' disconnected),
 	// and runs `on_data` on every `OnDataReceived()`
 	class EventObserver : public PhysicalPortObserver
 	{
@@ -42,51 +41,25 @@ namespace
 
 		void OnConnected(const std::shared_ptr<ov::Socket> &remote) override
 		{
-			Append(remote, 'C');
+			log.Append(remote, 'C');
 		}
 
 		void OnDataReceived(const std::shared_ptr<ov::Socket> &remote, const ov::SocketAddress &address, const std::shared_ptr<const ov::Data> &data) override
 		{
-			Append(remote, 'D');
-			data_count++;
+			log.Append(remote, 'D');
 			_on_data();
 		}
 
 		void OnDisconnected(const std::shared_ptr<ov::Socket> &remote, PhysicalPortDisconnectReason reason, const std::shared_ptr<const ov::Error> &error) override
 		{
-			Append(remote, 'X');
-			disconnected_count++;
-		}
-
-		// Ordered by socket ID, which follows the order the connections were accepted
-		std::vector<std::string> Sequences()
-		{
-			std::lock_guard<std::mutex> lock(_mutex);
-			std::vector<std::string> sequences;
-
-			for (const auto &[id, events] : _events)
-			{
-				sequences.push_back(events);
-			}
-
-			return sequences;
-		}
-
-	private:
-		void Append(const std::shared_ptr<ov::Socket> &remote, char event)
-		{
-			std::lock_guard<std::mutex> lock(_mutex);
-			_events[remote->GetId()].push_back(event);
+			log.Append(remote, 'X');
 		}
 
 	public:
-		std::atomic<int> data_count{0};
-		std::atomic<int> disconnected_count{0};
+		SocketEventLog log;
 
 	private:
 		std::function<void()> _on_data;
-		std::mutex _mutex;
-		std::map<ov::socket_id_t, std::string> _events;
 	};
 }  // namespace
 
@@ -142,14 +115,14 @@ TEST_F(OvtPublisherRemoteTest, ClientResetBeforeItsConnectionIsReportedLeavesNoC
 	std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
 	worker_gate.Release();
-	ASSERT_TRUE(WaitUntil([&]() { return observer.data_count.load() == 2; }));
+	ASSERT_TRUE(WaitUntil([&]() { return observer.log.CountOf('D') == 2; }));
 
-	ASSERT_TRUE(WaitUntil([&]() { return observer.disconnected_count.load() == 1; }));
+	ASSERT_TRUE(WaitUntil([&]() { return observer.log.CountOf('X') == 1; }));
 	EXPECT_EQ(RemoteContextCount(), 1U);
 
 	first.Reset();
-	ASSERT_TRUE(WaitUntil([&]() { return observer.disconnected_count.load() == 2; }));
+	ASSERT_TRUE(WaitUntil([&]() { return observer.log.CountOf('X') == 2; }));
 
-	EXPECT_EQ(observer.Sequences(), (std::vector<std::string>{"CDX", "CDX"}));
+	EXPECT_EQ(observer.log.Sequences(), (std::vector<std::string>{"CDX", "CDX"}));
 	EXPECT_EQ(RemoteContextCount(), 0U);
 }

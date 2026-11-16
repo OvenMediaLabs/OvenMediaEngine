@@ -850,7 +850,7 @@ namespace ov
 					// Make a list of `epoll_event` from `SRT_EPOLL_EVENT`
 					for (int index = 0; index < polled_count; index++)
 					{
-						ConvertSrtEventToEpollEvent(*_polled_events[index].socket, _srt_epoll_events[index], &(_polled_events[index].event));
+						ConvertSrtEventToEpollEvent(_srt_epoll_events[index], &(_polled_events[index].event));
 					}
 
 					event_count = polled_count;
@@ -881,7 +881,7 @@ namespace ov
 		return _last_epoll_event_count;
 	}
 
-	void SocketPoolWorker::ConvertSrtEventToEpollEvent(const Socket &socket, const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
+	void SocketPoolWorker::ConvertSrtEventToEpollEvent(const SRT_EPOLL_EVENT &srt_event, epoll_event *event)
 	{
 		auto srt_socket = srt_event.fd;
 		auto status		= ::srt_getsockstate(srt_socket);
@@ -929,7 +929,7 @@ namespace ov
 				break;
 
 			default:
-				logat("Not handled SRT status %d for socket " OV_SOCKET_TOKEN_FORMAT, status, OV_SOCKET_TOKEN_VALUE_REF(socket));
+				logat("Not handled SRT status %d for socket @%d", status, srt_socket);
 				break;
 		}
 	}

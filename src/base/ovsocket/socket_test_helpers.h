@@ -29,9 +29,13 @@
 #include <functional>
 #include <future>
 #include <initializer_list>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace ome_test
 {
@@ -334,4 +338,46 @@ namespace ome_test
 
 		return fd;
 	}
+
+	// Records, per socket, the order of its events, such as 'C' connected, 'D' data and 'X' closed
+	class SocketEventLog
+	{
+	public:
+		void Append(const std::shared_ptr<ov::Socket> &socket, char event)
+		{
+			std::lock_guard lock(_mutex);
+			_events[socket->GetId()].push_back(event);
+		}
+
+		// Ordered by socket ID, which follows the order the sockets were created
+		std::vector<std::string> Sequences()
+		{
+			std::lock_guard lock(_mutex);
+			std::vector<std::string> sequences;
+
+			for (const auto &[id, events] : _events)
+			{
+				sequences.push_back(events);
+			}
+
+			return sequences;
+		}
+
+		size_t CountOf(char event)
+		{
+			std::lock_guard lock(_mutex);
+			size_t count = 0;
+
+			for (const auto &[id, events] : _events)
+			{
+				count += std::count(events.begin(), events.end(), event);
+			}
+
+			return count;
+		}
+
+	private:
+		std::mutex _mutex;
+		std::map<ov::socket_id_t, std::string> _events;
+	};
 }  // namespace ome_test

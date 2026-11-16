@@ -50,7 +50,6 @@
 	((socket) != nullptr) ? (socket)->GetTypeLetter() : '?',                \
 		((socket) != nullptr) ? (socket)->GetId().GetValue() : UINT64_C(0), \
 		((socket) != nullptr) ? (socket)->GetNativeHandle() : -1
-#define OV_SOCKET_TOKEN_VALUE_REF(socket) OV_SOCKET_TOKEN_VALUE(&(socket))
 
 // Failure to send data for the specified time period will be considered an error.
 // For example, it can occur when EAGAIN continues to occur for a period of time, or when the peer's TCP window is full and no longer receives data.
