@@ -14,8 +14,8 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Client"
 
-#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
-#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
+#define OV_LOG_PREFIX_FORMAT "[" OV_SOCKET_TOKEN_FORMAT "] "
+#define OV_LOG_PREFIX_VALUE OV_SOCKET_TOKEN_VALUE(this)
 
 // If no packet is sent during this time, the connection is disconnected
 #define CLIENT_SOCKET_SEND_TIMEOUT (60 * 1000)
@@ -93,7 +93,7 @@ namespace ov
 				auto error = ov::SrtError::CreateErrorFromSrt();
 				// Sometimes SRT returns an error 'Operation not supported: Invalid socket ID (0x138c) (5004)',
 				// which seems to occur when the connection is disconnected right after accept().
-				logte("Failed to get local address: %s", error->What());
+				logtd("Failed to get local address: %s", error->What());
 				return false;
 			}
 		}
@@ -163,6 +163,8 @@ namespace ov
 		StoreSrtStreamId();
 
 		return
+			// An SRT socket that libsrt removed right after the accept has no local address, and is never reported
+			(GetLocalAddress() != nullptr) &&
 			// Set socket options
 			SetSocketOptions() &&
 			AppendCommand(DispatchCommand(DispatchCommand::Type::Connected), false) &&
@@ -197,6 +199,14 @@ namespace ov
 
 	void ClientSocket::OnReadable()
 	{
+		// The worker dispatches the queued connection event on `EPOLLOUT` without `EPOLLHUP`.
+		// An event can report the socket readable first: libsrt raises `SRT_EPOLL_IN` and `SRT_EPOLL_OUT` one by one,
+		// and a TCP event with `EPOLLHUP` skips the writable part.
+		if (IsConnectionReported() == false)
+		{
+			DispatchEvents();
+		}
+
 		auto server_socket = _server_socket.lock();
 
 		if (server_socket == nullptr)

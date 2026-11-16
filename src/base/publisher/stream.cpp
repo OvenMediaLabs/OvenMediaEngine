@@ -101,6 +101,12 @@ namespace pub
 		std::unique_lock<std::shared_mutex> lock(_session_map_mutex);
 		if (_sessions.count(id) <= 0)
 		{
+			// `Stop()` sets the flag before it stops and clears every session under this lock
+			if (_stop_thread_flag)
+			{
+				return true;
+			}
+
 			logte("Cannot find session : %u", id);
 			return false;
 		}
@@ -371,36 +377,40 @@ namespace pub
 	{
 		logti("Try to stop %s stream [%s(%u)]", GetApplicationTypeName(), GetName().CStr(), GetId());
 
-		std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+		// The workers and the sessions are taken out together,
+		// so `RemoveSession()` finds a session with its worker or not at all
+		std::vector<std::shared_ptr<StreamWorker>> workers;
+		std::map<session_id_t, std::shared_ptr<Session>> sessions;
 
-		if (_state != State::STARTED)
 		{
-			return false;
+			std::unique_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+
+			if (_state != State::STARTED)
+			{
+				return false;
+			}
+
+			_state = State::STOPPED;
+
+			std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+			workers.swap(_stream_workers);
+			sessions.swap(_sessions);
 		}
 
-		_state = State::STOPPED;
-
-		for(const auto &worker : _stream_workers)
+		for(const auto &worker : workers)
 		{
 			worker->Stop();
 		}
 
 		logti("[%s(%u)] %s - All StreamWorker has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
 
-		_stream_workers.clear();
+		logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), sessions.size());
 
-		worker_lock.unlock();
-
-		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
-
-		logti("[%s(%u)] %s - Try to stop all sessions (%zu)", GetName().CStr(), GetId(), GetApplicationTypeName(), _sessions.size());
-
-		for(const auto &x : _sessions)
+		for(const auto &x : sessions)
 		{
 			auto session = x.second;
 			session->Stop();
 		}
-		_sessions.clear();
 
 		logti("[%s(%u)] %s stream has been stopped", GetName().CStr(), GetId(), GetApplicationTypeName());
 
@@ -484,7 +494,6 @@ namespace pub
 		{
 			return nullptr;
 		}
-		std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
 
 		size_t worker_id = session_id % _worker_count;
 		if(worker_id >= _stream_workers.size())
@@ -498,7 +507,29 @@ namespace pub
 
 	bool Stream::AddSession(std::shared_ptr<Session> session)
 	{
+		std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+
+		// `Stop()` marks the stream stopped under this lock before it takes the sessions out to stop them,
+		// so a session that arrives later is refused here and its caller disposes of it
+		if (_state == State::STOPPED)
+		{
+			return false;
+		}
+
 		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
+		std::shared_ptr<StreamWorker> worker;
+
+		// The worker is found first, so a session that is refused is never left in `_sessions`
+		if (_worker_count > 0)
+		{
+			worker = GetWorkerBySessionID(session->GetId());
+			if (worker == nullptr)
+			{
+				logte("Cannot find worker for session : %u", session->GetId());
+				return false;
+			}
+		}
 
 		if (_sessions.count(session->GetId()) > 0)
 		{
@@ -508,25 +539,17 @@ namespace pub
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
-		if(_worker_count > 0)
-		{
-			auto worker = GetWorkerBySessionID(session->GetId());
-			if(worker == nullptr)
-			{
-				logte("Cannot find worker for session : %u", session->GetId());
-				return false;
-			}
-
-			return worker->AddSession(session);
-		}
-
-		return true;
+		return (worker != nullptr) ? worker->AddSession(session) : true;
 	}
 
 	bool Stream::RemoveSession(session_id_t id)
 	{
+		std::shared_ptr<StreamWorker> worker;
+
 		{
-			std::lock_guard session_lock(_session_map_mutex);
+			std::shared_lock<std::shared_mutex> worker_lock(_stream_worker_lock);
+			std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
+
 			auto session_iterator = _sessions.find(id);
 			if (session_iterator == _sessions.end())
 			{
@@ -534,21 +557,22 @@ namespace pub
 				return false;
 			}
 			_sessions.erase(session_iterator);
-		}
 
-		if(_worker_count > 0)
-		{
-			auto worker = GetWorkerBySessionID(id);
-			if (worker == nullptr)
+			if (_worker_count == 0)
 			{
-				logte("Cannot find worker for session : %u", id);
-				return false;
+				return true;
 			}
 
-			return worker->RemoveSession(id);
+			worker = GetWorkerBySessionID(id);
 		}
 
-		return true;
+		if (worker == nullptr)
+		{
+			logte("Cannot find worker for session : %u", id);
+			return false;
+		}
+
+		return worker->RemoveSession(id);
 	}
 
 	std::shared_ptr<Session> Stream::GetSession(session_id_t id)
@@ -601,7 +625,20 @@ namespace pub
 	{
 		if(_worker_count > 0)
 		{
-			auto worker = GetWorkerBySessionID(session->GetId());
+			std::shared_ptr<StreamWorker> worker;
+
+			{
+				std::shared_lock<std::shared_mutex> lock(_stream_worker_lock);
+
+				// `Stop()` takes the workers out when it marks the stream stopped, so there is no worker to find
+				if (_state == State::STOPPED)
+				{
+					return false;
+				}
+
+				worker = GetWorkerBySessionID(session->GetId());
+			}
+
 			if(worker == nullptr)
 			{
 				logtw("Cannot find worker for session : %u", session->GetId());

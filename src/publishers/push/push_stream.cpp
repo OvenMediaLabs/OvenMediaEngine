@@ -102,7 +102,11 @@ namespace pub
 			return nullptr;
 		}
 
-		AddSession(session);
+		if (AddSession(session) == false)
+		{
+			logtw("Could not create session because the stream is stopping : %s", GetName().CStr());
+			return nullptr;
+		}
 
 		return session;
 	}

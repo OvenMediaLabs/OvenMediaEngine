@@ -164,9 +164,9 @@ namespace pub
 			if (session == nullptr || userdata->GetSessionId() == 0)
 			{
 				session = stream->CreateSession();
+				// `CreateSession()` logs why it failed
 				if (session == nullptr)
 				{
-					logte("Failed to create session");
 					return;
 				}
 				userdata->SetSessionId(session->GetId());

@@ -15,8 +15,8 @@
 #undef OV_LOG_TAG
 #define OV_LOG_TAG "Socket.Datagram"
 
-#define OV_LOG_PREFIX_FORMAT "[%p] "
-#define OV_LOG_PREFIX_VALUE this
+#define OV_LOG_PREFIX_FORMAT "[" OV_SOCKET_TOKEN_FORMAT "] "
+#define OV_LOG_PREFIX_VALUE OV_SOCKET_TOKEN_VALUE(this)
 
 namespace ov
 {

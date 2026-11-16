@@ -279,7 +279,11 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 		}
 		auto requested_url = final_url;
 
-		logtt("LLHLS requested(connection : %u, fd : %d): %s", connection->GetId(), connection->GetSocket()->GetNativeHandle(), request->GetUri().CStr());
+		const auto connection_socket = connection->GetSocket();
+		logtt("LLHLS requested(connection : %u, socket : " OV_SOCKET_TOKEN_FORMAT "): %s",
+			  connection->GetId(),
+			  OV_SOCKET_TOKEN_VALUE(connection_socket),
+			  request->GetUri().CStr());
 
 		auto vhost_app_name = ocst::Orchestrator::GetInstance()->ResolveApplicationNameFromDomain(final_url->Host(), final_url->App());
 
@@ -428,6 +432,15 @@ std::shared_ptr<LLHlsHttpInterceptor> LLHlsPublisher::CreateInterceptor()
 			session = stream->GetSessionFromPool();
 			if (session == nullptr)
 			{
+				// `Stop()` takes the pooled sessions out when it marks the stream stopped
+				if (stream->GetState() == pub::Stream::State::STOPPED)
+				{
+					logtw("LLHLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+					response->SetStatusCode(http::StatusCode::NotFound);
+					close_admission();
+					return http::svr::NextHandler::DoNotCall;
+				}
+
 				logtc("Could not get llhls origin session from pool for request: %s", request->ToString().CStr());
 				response->SetStatusCode(http::StatusCode::InternalServerError);
 				close_admission();

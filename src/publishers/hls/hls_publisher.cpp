@@ -409,6 +409,14 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 			session = stream->GetSessionFromPool();
 			if (session == nullptr)
 			{
+				// `Stop()` takes the pooled sessions out when it marks the stream stopped
+				if (stream->GetState() == pub::Stream::State::STOPPED)
+				{
+					logtw("HLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+					response->SetStatusCode(http::StatusCode::NotFound);
+					return http::svr::NextHandler::DoNotCall;
+				}
+
 				logtc("Could not get hls origin session from pool for request: %s", request->ToString().CStr());
 				response->SetStatusCode(http::StatusCode::InternalServerError);
 				return http::svr::NextHandler::DoNotCall;
@@ -444,7 +452,12 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 					session->SetRequestedUrl(requested_url);
 					session->SetFinalUrl(final_url);
 
-					stream->AddSession(session);
+					if (stream->AddSession(session) == false)
+					{
+						logtw("HLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+						response->SetStatusCode(http::StatusCode::NotFound);
+						return http::svr::NextHandler::DoNotCall;
+					}
 				}
 			}
 			// medialist_x_hls.m3u8?session=<session id>_<key>
@@ -489,7 +502,13 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 						}
 						session->SetRequestedUrl(requested_url);
 						session->SetFinalUrl(final_url);
-						stream->AddSession(session);
+
+						if (stream->AddSession(session) == false)
+						{
+							logtw("HLS session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+							response->SetStatusCode(http::StatusCode::NotFound);
+							return http::svr::NextHandler::DoNotCall;
+						}
 					}
 				}
 				else
@@ -508,7 +527,13 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 			session->UpdateLastRequest(connection->GetId());
 		}
 
-		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
+		// No worker is left to answer once the stream is stopping
+		if (stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange)) == false)
+		{
+			logtw("HLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+			response->SetStatusCode(http::StatusCode::NotFound);
+			return http::svr::NextHandler::DoNotCall;
+		}
 
 		return http::svr::NextHandler::DoNotCallAndDoNotResponse;
 	});

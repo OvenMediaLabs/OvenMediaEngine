@@ -35,6 +35,9 @@ public:
 	bool SendMessageDirect(OvtPayloadType payload_type, const ov::String &payload);
 
 	const std::shared_ptr<ov::Socket> GetConnector();
+	// Drops the connector without closing it, for a session its stream refused:
+	// the connection may carry other streams, and `Stop()` (also run by the destructor) would close it
+	void ReleaseConnector();
 
 	// Whether the edge speaks OVT2, and the track epoch its describe of this stream reflected
 	// (`nullopt` when this connection described no stream, or described another one).

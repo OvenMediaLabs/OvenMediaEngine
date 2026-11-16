@@ -24,6 +24,7 @@ namespace ov
 
 		~ClientSocket() override;
 
+		// Fails for an SRT socket with no local address, which libsrt removed right after the accept
 		bool Prepare();
 
 		String ToString() const override;

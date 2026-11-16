@@ -349,7 +349,12 @@ namespace pub
 		session->SetRequestedUrl(requested_url);
 		session->SetFinalUrl(final_url);
 
-		stream->AddSession(session);
+		// Closing the connection of a session the stream refuses lets `OnDisconnected()` remove it from `_session_map`
+		if (stream->AddSession(session) == false)
+		{
+			logtw("SRT session could not start because the stream is stopping : %s", final_url->ToUrlString().CStr());
+			session->Stop();
+		}
 	}
 
 	void SrtPublisher::OnDataReceived(const std::shared_ptr<ov::Socket> &remote,

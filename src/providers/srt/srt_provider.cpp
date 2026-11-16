@@ -299,10 +299,7 @@ namespace pvd
 			return;
 		}
 
-		// An accepted SRT socket can miss its local address when `srt_getsockname()` failed
-		ov::SocketAddressPair address_pair(
-			(remote->GetLocalAddress() != nullptr) ? *remote->GetLocalAddress() : ov::SocketAddress(),
-			*remote->GetRemoteAddress());
+		ov::SocketAddressPair address_pair(*remote->GetLocalAddress(), *remote->GetRemoteAddress());
 
 		auto stream = MpegTsStream::Create(
 			StreamSourceType::Srt, channel_id,

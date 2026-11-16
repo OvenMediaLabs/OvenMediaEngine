@@ -24,8 +24,8 @@
 #include "socket_private.h"
 #include "socket_utilities.h"
 
-#define OV_LOG_PREFIX_FORMAT "[#%d] [%p] "
-#define OV_LOG_PREFIX_VALUE (GetNativeHandle() == InvalidSocket) ? 0 : GetNativeHandle(), this
+#define OV_LOG_PREFIX_FORMAT "[" OV_SOCKET_TOKEN_FORMAT "] "
+#define OV_LOG_PREFIX_VALUE OV_SOCKET_TOKEN_VALUE(this)
 
 // Debugging purpose
 #include "socket_profiler.h"
@@ -84,6 +84,7 @@ namespace ov
 		: Socket(token, worker)
 	{
 		_socket = socket;
+		_family = remote_address.GetFamily();
 
 		if (_socket.IsValid())
 		{
@@ -203,6 +204,8 @@ namespace ov
 
 		logat("Trying to create new socket (type: %d)...", ToUnderlyingType(type));
 
+		_family = family;
+
 		switch (type)
 		{
 			case SocketType::Tcp:
@@ -236,8 +239,6 @@ namespace ov
 			_end_of_stream			= false;
 
 			_connection_event_fired = false;
-
-			_family					= family;
 
 			SetState(SocketState::Created);
 
@@ -1747,8 +1748,6 @@ namespace ov
 			*total_sent_bytes += sent;
 		}
 
-		logtp("[#%d] %zu bytes sent", socket_handle, *total_sent_bytes);
-
 		return true;
 	}
 
@@ -1806,6 +1805,11 @@ namespace ov
 					&total_sent_bytes,
 					_force_stop);
 				break;
+		}
+
+		if (sent)
+		{
+			logap("%zu bytes sent", total_sent_bytes);
 		}
 
 		if (total_sent_bytes > 0L)
@@ -2821,13 +2825,14 @@ namespace ov
 			extra.Append(_stream_id);
 		}
 
+		// `%p` is the object address, for finding this socket in a core dump
 		return String::FormatString(
-			"<%s: %p, #%d, %s, %s, %s%s>",
-			class_name, this,
-			GetNativeHandle(), StringFromSocketState(GetState()),
-			StringFromSocketType(GetType()),
+			"<%s " OV_SOCKET_TOKEN_FORMAT ", %s, %s%s, %p>",
+			class_name, OV_SOCKET_TOKEN_VALUE(this),
+			StringFromSocketState(GetState()),
 			StringFromBlockingMode(_blocking_mode),
-			extra.CStr());
+			extra.CStr(),
+			this);
 	}
 
 	String Socket::ToString() const

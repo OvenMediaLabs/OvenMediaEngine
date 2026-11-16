@@ -189,6 +189,45 @@ namespace ov
 		}
 	}
 
+	// The letter that socket pool names (thread names) and socket logs use for a socket type:
+	// t/u/s for TCP/UDP/SRT, upper case for IPv6, and `?` when the type or the family is unknown.
+	constexpr char SocketTypeLetter(SocketType type, SocketFamily family)
+	{
+		char letter = '?';
+
+		switch (type)
+		{
+			case SocketType::Tcp:
+				letter = 't';
+				break;
+
+			case SocketType::Udp:
+				letter = 'u';
+				break;
+
+			case SocketType::Srt:
+				letter = 's';
+				break;
+
+			case SocketType::Unknown:
+			default:
+				return '?';
+		}
+
+		switch (family)
+		{
+			case SocketFamily::Inet:
+				return letter;
+
+			case SocketFamily::Inet6:
+				return static_cast<char>(letter - 'a' + 'A');
+
+			case SocketFamily::Unknown:
+			default:
+				return '?';
+		}
+	}
+
 	class SocketAddressPair;
 
 	// For SocketPoolWorker callback

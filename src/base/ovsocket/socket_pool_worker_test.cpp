@@ -22,6 +22,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -29,14 +30,17 @@ namespace
 {
 	constexpr int SOCKET_COUNT = 50;
 	using ome_test::BindToLoopback;
+	using ome_test::ConnectAndSend;
 	using ome_test::ListenOnLoopback;
 	using ome_test::ScopeExit;
 	using ome_test::SendDatagram;
+	using ome_test::SocketEventLog;
 	using ome_test::TakeNumber;
 	using ome_test::UniqueFd;
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
 	using ome_test::WaitUntilReadable;
+	using ome_test::WorkerGate;
 
 	// How long the idle worker timer, which runs every second, may take to release a worker
 	constexpr int RELEASE_WAIT_MSEC = 5000;
@@ -65,53 +69,6 @@ namespace
 
 		return true;
 	}
-
-	// Holds the worker inside a socket callback until `Release()`, so the worker handles no other event meanwhile.
-	// The callback state is shared, so a callback that runs after the test returns touches no destroyed object.
-	class WorkerGate
-	{
-	public:
-		~WorkerGate()
-		{
-			Release();
-		}
-
-		// Only the first call holds the worker, so a later event on the gate socket returns at once
-		std::function<void()> MakeCallback()
-		{
-			auto entered  = _entered;
-			auto released = _released_future;
-			auto fired	  = std::make_shared<std::atomic<bool>>(false);
-
-			return [entered, released, fired]() {
-				if (fired->exchange(true) == false)
-				{
-					entered->set_value();
-					released.wait();
-				}
-			};
-		}
-
-		bool WaitEntered()
-		{
-			return _entered_future.wait_for(std::chrono::milliseconds(WAIT_TIMEOUT_MSEC)) == std::future_status::ready;
-		}
-
-		void Release()
-		{
-			if (_is_released.exchange(true) == false)
-			{
-				_released.set_value();
-			}
-		}
-
-	private:
-		std::shared_ptr<std::promise<void>> _entered = std::make_shared<std::promise<void>>();
-		std::future<void> _entered_future			 = _entered->get_future();
-		std::promise<void> _released;
-		std::shared_future<void> _released_future = _released.get_future().share();
-		std::atomic<bool> _is_released{false};
-	};
 
 	// Counts connection results and readable events, and runs the callbacks a test sets for them
 	class TestEvents : public ov::SocketAsyncInterface
@@ -672,4 +629,79 @@ TEST_F(SocketPoolWorkerTest, CloseImmediatelyMovesToClosed)
 	ASSERT_TRUE(socket->CloseImmediately());
 	EXPECT_EQ(socket->GetState(), ov::SocketState::Closed);
 	EXPECT_FALSE(socket->Close());
+}
+
+namespace
+{
+	// While the worker is held inside the first client's data callback, a second client connects and is reset,
+	// so the worker's first event for the second client already carries `EPOLLHUP`.
+	// Returns the event sequences once both clients are closed.
+	void RunResetBeforeFirstPoll(const std::shared_ptr<ov::SocketPool> &pool, const char *second_payload,
+								 std::vector<std::string> *sequences)
+	{
+		auto log = std::make_shared<SocketEventLog>();
+		WorkerGate worker_gate;
+		auto gate	= worker_gate.MakeCallback();
+
+		auto server = pool->AllocSocket<ov::ServerSocket>(ov::SocketFamily::Inet, pool);
+		ASSERT_NE(server, nullptr);
+		ScopeExit closer([&]() { server->CloseImmediately(); });
+
+		ASSERT_TRUE(server->Prepare(
+			ov::SocketAddress::CreateAndGetFirst("127.0.0.1", 0), nullptr,
+			[log](const std::shared_ptr<ov::ClientSocket> &client, ov::SocketConnectionState state, const std::shared_ptr<ov::Error> &) {
+				log->Append(client, (state == ov::SocketConnectionState::Connected) ? 'C' : 'X');
+			},
+			[log, gate](const std::shared_ptr<ov::ClientSocket> &client, const std::shared_ptr<const ov::Data> &) {
+				log->Append(client, 'D');
+				gate();
+			},
+			0, 0, 16));
+
+		auto port = ome_test::LocalPortOf(server);
+		ASSERT_NE(port, 0);
+
+		auto first = ConnectAndSend(port, "x");
+		ASSERT_GE(first.Get(), 0);
+		ASSERT_TRUE(worker_gate.WaitEntered());
+
+		{
+			auto second = ConnectAndSend(port, second_payload);
+			ASSERT_GE(second.Get(), 0);
+		}
+
+		// The reset reaches the accepted socket in the kernel before the worker runs again
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		worker_gate.Release();
+
+		ASSERT_TRUE(WaitUntil([&]() { return log->CountOf('X') == 1; }));
+		first.Reset();
+		ASSERT_TRUE(WaitUntil([&]() { return log->CountOf('X') == 2; }));
+
+		*sequences = log->Sequences();
+	}
+}  // namespace
+
+// A client reset before the worker first polls it is still reported connected before its data, and then closed
+TEST_F(SocketPoolWorkerTest, ClientResetBeforeFirstPollIsReportedConnectedBeforeItsData)
+{
+	auto pool = CreatePool("test-rst-data", ov::SocketType::Tcp);
+	ASSERT_NE(pool, nullptr);
+
+	std::vector<std::string> sequences;
+	RunResetBeforeFirstPoll(pool, "y", &sequences);
+
+	EXPECT_EQ(sequences, (std::vector<std::string>{"CDX", "CDX"}));
+}
+
+// A client reset before the worker first polls it, with no data, is still reported connected and then closed
+TEST_F(SocketPoolWorkerTest, ClientResetBeforeFirstPollWithoutDataIsReportedConnectedAndClosed)
+{
+	auto pool = CreatePool("test-rst-none", ov::SocketType::Tcp);
+	ASSERT_NE(pool, nullptr);
+
+	std::vector<std::string> sequences;
+	RunResetBeforeFirstPoll(pool, nullptr, &sequences);
+
+	EXPECT_EQ(sequences, (std::vector<std::string>{"CDX", "CX"}));
 }

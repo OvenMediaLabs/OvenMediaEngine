@@ -337,9 +337,9 @@ namespace pub
 					if (session == nullptr || push->GetSessionId() == 0)
 					{
 						session = stream->CreatePushSession(push);
+						// `CreatePushSession()` logs why it failed
 						if (session == nullptr)
 						{
-							logte("Could not create session");
 							continue;
 						}
 
