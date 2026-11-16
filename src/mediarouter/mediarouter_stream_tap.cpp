@@ -52,6 +52,41 @@ bool MediaRouterStreamTap::DoesNeedPastData() const
 	return _need_past_data;
 }
 
+void MediaRouterStreamTap::SetPastDataDelivered()
+{
+	{
+		std::lock_guard<std::mutex> lock(_past_data_mutex);
+		_past_data_delivered = true;
+	}
+
+	_past_data_condition.notify_all();
+}
+
+std::optional<std::vector<MediaRouterStreamTap::TappedPacket>> MediaRouterStreamTap::TakePastData(int timeout_in_msec)
+{
+	{
+		std::unique_lock<std::mutex> lock(_past_data_mutex);
+		if (_past_data_condition.wait_for(lock, std::chrono::milliseconds(timeout_in_msec), [this]() { return _past_data_delivered; }) == false)
+		{
+			return std::nullopt;
+		}
+	}
+
+	std::vector<TappedPacket> past_data;
+	while (true)
+	{
+		auto tapped = _backfill_buffer.Dequeue(0);
+		if (tapped.has_value() == false)
+		{
+			break;
+		}
+
+		past_data.push_back(std::move(tapped.value()));
+	}
+
+	return past_data;
+}
+
 void MediaRouterStreamTap::Start()
 {
     _is_started = true;
@@ -70,9 +105,20 @@ void MediaRouterStreamTap::Stop()
 
 std::shared_ptr<MediaPacket> MediaRouterStreamTap::Pop(int timeout_in_msec)
 {
+    auto tapped = PopWithReceivedTime(timeout_in_msec);
+    if (tapped.has_value())
+    {
+        return tapped->packet;
+    }
+
+    return nullptr;
+}
+
+std::optional<MediaRouterStreamTap::TappedPacket> MediaRouterStreamTap::PopWithReceivedTime(int timeout_in_msec)
+{
     if (_state != State::Tapped && _buffer.IsEmpty() && _backfill_buffer.IsEmpty())
     {
-        return nullptr;
+        return std::nullopt;
     }
 
     // Backfill first; it is always older than any live packet, and live packets
@@ -80,16 +126,10 @@ std::shared_ptr<MediaPacket> MediaRouterStreamTap::Pop(int timeout_in_msec)
     auto backfill = _backfill_buffer.Dequeue(0);
     if (backfill.has_value())
     {
-        return backfill.value();
+        return backfill;
     }
 
-    auto object = _buffer.Dequeue(timeout_in_msec);
-    if (object.has_value())
-    {
-        return object.value();
-    }
-
-    return nullptr;
+    return _buffer.Dequeue(timeout_in_msec);
 }
 
 std::shared_ptr<info::Stream> MediaRouterStreamTap::GetStreamInfo() const
@@ -109,15 +149,15 @@ void MediaRouterStreamTap::Destroy()
 
 bool MediaRouterStreamTap::Push(const std::shared_ptr<MediaPacket> &media_packet)
 {
-    return PushTo(_buffer, media_packet);
+    return PushTo(_buffer, media_packet, std::chrono::steady_clock::now());
 }
 
-bool MediaRouterStreamTap::PushBackfill(const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterStreamTap::PushBackfill(const std::shared_ptr<MediaPacket> &media_packet, std::chrono::steady_clock::time_point received_time)
 {
-    return PushTo(_backfill_buffer, media_packet);
+    return PushTo(_backfill_buffer, media_packet, received_time);
 }
 
-bool MediaRouterStreamTap::PushTo(ov::Queue<std::shared_ptr<MediaPacket>> &buffer, const std::shared_ptr<MediaPacket> &media_packet)
+bool MediaRouterStreamTap::PushTo(ov::Queue<TappedPacket> &buffer, const std::shared_ptr<MediaPacket> &media_packet, std::chrono::steady_clock::time_point received_time)
 {
     if (_state != State::Tapped)
     {
@@ -135,7 +175,7 @@ bool MediaRouterStreamTap::PushTo(ov::Queue<std::shared_ptr<MediaPacket>> &buffe
 		return true;
 	}
 
-    buffer.Enqueue(media_packet->ClonePacket());
+    buffer.Enqueue(TappedPacket{media_packet->ClonePacket(), received_time});
 
     return true;
 }
