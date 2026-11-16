@@ -33,6 +33,7 @@ namespace
 {
 	constexpr int SOCKET_COUNT = 50;
 	using ome_test::BindToLoopback;
+	using ome_test::ConnectAndSend;
 	using ome_test::ListenOnLoopback;
 	using ome_test::ScopeExit;
 	using ome_test::SendDatagram;
@@ -41,6 +42,7 @@ namespace
 	using ome_test::WAIT_TIMEOUT_MSEC;
 	using ome_test::WaitUntil;
 	using ome_test::WaitUntilReadable;
+	using ome_test::WorkerGate;
 
 	// How long the idle worker timer, which runs every second, may take to release a worker
 	constexpr int RELEASE_WAIT_MSEC = 5000;
@@ -69,53 +71,6 @@ namespace
 
 		return true;
 	}
-
-	// Holds the worker inside a socket callback until `Release()`, so the worker handles no other event meanwhile.
-	// The callback state is shared, so a callback that runs after the test returns touches no destroyed object.
-	class WorkerGate
-	{
-	public:
-		~WorkerGate()
-		{
-			Release();
-		}
-
-		// Only the first call holds the worker, so a later event on the gate socket returns at once
-		std::function<void()> MakeCallback()
-		{
-			auto entered  = _entered;
-			auto released = _released_future;
-			auto fired	  = std::make_shared<std::atomic<bool>>(false);
-
-			return [entered, released, fired]() {
-				if (fired->exchange(true) == false)
-				{
-					entered->set_value();
-					released.wait();
-				}
-			};
-		}
-
-		bool WaitEntered()
-		{
-			return _entered_future.wait_for(std::chrono::milliseconds(WAIT_TIMEOUT_MSEC)) == std::future_status::ready;
-		}
-
-		void Release()
-		{
-			if (_is_released.exchange(true) == false)
-			{
-				_released.set_value();
-			}
-		}
-
-	private:
-		std::shared_ptr<std::promise<void>> _entered = std::make_shared<std::promise<void>>();
-		std::future<void> _entered_future			 = _entered->get_future();
-		std::promise<void> _released;
-		std::shared_future<void> _released_future = _released.get_future().share();
-		std::atomic<bool> _is_released{false};
-	};
 
 	// Counts connection results and readable events, and runs the callbacks a test sets for them
 	class TestEvents : public ov::SocketAsyncInterface
@@ -225,10 +180,10 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 		}
 	};
 
-	auto pair						= std::make_shared<SocketPair>();
-	auto gate						= pool->AllocSocket(ov::SocketFamily::Inet);
-	pair->sockets[0]				= pool->AllocSocket(ov::SocketFamily::Inet);
-	pair->sockets[1]				= pool->AllocSocket(ov::SocketFamily::Inet);
+	auto pair		 = std::make_shared<SocketPair>();
+	auto gate		 = pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[0] = pool->AllocSocket(ov::SocketFamily::Inet);
+	pair->sockets[1] = pool->AllocSocket(ov::SocketFamily::Inet);
 
 	// Closes the sockets on every way out, including an early return
 	ScopeExit closer([&]() {
@@ -248,8 +203,8 @@ TEST_F(SocketPoolWorkerTest, SocketClosedByEarlierEventInSameBatchStaysAliveUnti
 	// The gate holds the worker inside its callback while both other sockets become readable,
 	// so the next `epoll_wait()` returns them in one batch
 	WorkerGate worker_gate;
-	auto gate_events		 = std::make_shared<TestEvents>();
-	gate_events->on_readable = worker_gate.MakeCallback();
+	auto gate_events					  = std::make_shared<TestEvents>();
+	gate_events->on_readable			  = worker_gate.MakeCallback();
 
 	std::shared_ptr<TestEvents> events[2] = {std::make_shared<TestEvents>(), std::make_shared<TestEvents>()};
 
@@ -621,7 +576,7 @@ TEST_F(SocketPoolWorkerTest, WorkerIsNotReleasedBeforeCloseCallback)
 {
 	constexpr int HOLD_MSEC = 2500;
 
-	auto pool = CreatePool("test-close-callback", ov::SocketType::Tcp, true);
+	auto pool				= CreatePool("test-close-callback", ov::SocketType::Tcp, true);
 	ASSERT_NE(pool, nullptr);
 
 	uint16_t listen_port = 0;
@@ -721,32 +676,6 @@ namespace
 		std::map<ov::socket_id_t, std::string> _events;
 	};
 
-	// A loopback TCP client that sends `payload` (if any) and is reset on close
-	UniqueFd ConnectAndSend(uint16_t port, const char *payload)
-	{
-		UniqueFd fd(::socket(AF_INET, SOCK_STREAM, 0));
-
-		sockaddr_in address{};
-		address.sin_family		= AF_INET;
-		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-		address.sin_port		= htons(port);
-
-		if ((fd.Get() < 0) || (::connect(fd.Get(), reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0))
-		{
-			return UniqueFd();
-		}
-
-		if ((payload != nullptr) && (::send(fd.Get(), payload, ::strlen(payload), MSG_NOSIGNAL) != static_cast<ssize_t>(::strlen(payload))))
-		{
-			return UniqueFd();
-		}
-
-		linger reset{1, 0};
-		::setsockopt(fd.Get(), SOL_SOCKET, SO_LINGER, &reset, sizeof(reset));
-
-		return fd;
-	}
-
 	// While the worker is held inside the first client's data callback, a second client connects and is reset,
 	// so the worker's first event for the second client already carries `EPOLLHUP`.
 	// Returns the event sequences once both clients are closed.
@@ -755,7 +684,7 @@ namespace
 	{
 		auto log = std::make_shared<ClientEventLog>();
 		WorkerGate worker_gate;
-		auto gate = worker_gate.MakeCallback();
+		auto gate	= worker_gate.MakeCallback();
 
 		auto server = pool->AllocSocket<ov::ServerSocket>(ov::SocketFamily::Inet, pool);
 		ASSERT_NE(server, nullptr);

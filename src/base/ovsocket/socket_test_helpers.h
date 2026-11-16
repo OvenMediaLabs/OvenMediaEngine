@@ -22,9 +22,12 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <functional>
+#include <future>
 #include <initializer_list>
 #include <memory>
 #include <thread>
@@ -257,5 +260,78 @@ namespace ome_test
 			pollfd entry{native_handle, POLLIN, 0};
 			return (::poll(&entry, 1, 0) == 1) && ((entry.revents & POLLIN) != 0);
 		});
+	}
+
+	// Holds the worker inside a socket callback until `Release()`, so the worker handles no other event meanwhile.
+	// The callback state is shared, so a callback that runs after the test returns touches no destroyed object.
+	class WorkerGate
+	{
+	public:
+		~WorkerGate()
+		{
+			Release();
+		}
+
+		// Only the first call holds the worker, so a later event on the gate socket returns at once
+		std::function<void()> MakeCallback()
+		{
+			auto entered  = _entered;
+			auto released = _released_future;
+			auto fired	  = std::make_shared<std::atomic<bool>>(false);
+
+			return [entered, released, fired]() {
+				if (fired->exchange(true) == false)
+				{
+					entered->set_value();
+					released.wait();
+				}
+			};
+		}
+
+		bool WaitEntered()
+		{
+			return _entered_future.wait_for(std::chrono::milliseconds(WAIT_TIMEOUT_MSEC)) == std::future_status::ready;
+		}
+
+		void Release()
+		{
+			if (_is_released.exchange(true) == false)
+			{
+				_released.set_value();
+			}
+		}
+
+	private:
+		std::shared_ptr<std::promise<void>> _entered = std::make_shared<std::promise<void>>();
+		std::future<void> _entered_future			 = _entered->get_future();
+		std::promise<void> _released;
+		std::shared_future<void> _released_future = _released.get_future().share();
+		std::atomic<bool> _is_released{false};
+	};
+
+	// A loopback TCP client that sends `payload` (if any) and is reset on close
+	inline UniqueFd ConnectAndSend(uint16_t port, const char *payload)
+	{
+		UniqueFd fd(::socket(AF_INET, SOCK_STREAM, 0));
+
+		sockaddr_in address{};
+		address.sin_family		= AF_INET;
+		address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		address.sin_port		= htons(port);
+
+		if ((fd.Get() < 0) || (::connect(fd.Get(), reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0))
+		{
+			return UniqueFd();
+		}
+
+		if ((payload != nullptr) && (::send(fd.Get(), payload, ::strlen(payload), MSG_NOSIGNAL) != static_cast<ssize_t>(::strlen(payload))))
+		{
+			return UniqueFd();
+		}
+
+		linger reset{1, 0};
+		::setsockopt(fd.Get(), SOL_SOCKET, SO_LINGER, &reset, sizeof(reset));
+
+		return fd;
 	}
 }  // namespace ome_test
