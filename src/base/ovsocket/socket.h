@@ -43,8 +43,13 @@
 // A closed socket keeps printing its handle, which another socket may get later, so the id comes first.
 // Search for a socket with `[tuTUsS?]1052@`, since `t1052` alone also matches a pool on port 1052.
 #define OV_SOCKET_TOKEN_FORMAT "%c%" PRIu64 "@%d"
-// Takes a pointer, such as `this` or a `std::shared_ptr<Socket>`
+// Takes a pointer, such as `this` or a `std::shared_ptr<Socket>`, and evaluates it more than once, so pass a variable
 #define OV_SOCKET_TOKEN_VALUE(socket) (socket)->GetTypeLetter(), (socket)->GetId().GetValue(), (socket)->GetNativeHandle()
+// Same, for a pointer that may be null, which prints `?0@-1`
+#define OV_SOCKET_TOKEN_VALUE_NULLABLE(socket)                              \
+	((socket) != nullptr) ? (socket)->GetTypeLetter() : '?',                \
+		((socket) != nullptr) ? (socket)->GetId().GetValue() : UINT64_C(0), \
+		((socket) != nullptr) ? (socket)->GetNativeHandle() : -1
 #define OV_SOCKET_TOKEN_VALUE_REF(socket) OV_SOCKET_TOKEN_VALUE(&(socket))
 
 // Failure to send data for the specified time period will be considered an error.
