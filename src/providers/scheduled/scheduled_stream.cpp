@@ -676,6 +676,14 @@ namespace pvd
 			logtt("Scheduled Channel Send Packet : %s/%s: Track %d, origin dts : %" PRId64 ", pts %" PRId64 ", dts %" PRId64 ", duration %" PRId64 ", tb %f", GetApplicationName(), GetName().CStr(), track_id, single_file_dts, pts, dts, duration, track->GetTimeBase().GetExpr());
 
 			int64_t dts_us = Rescale(dts, 1000000 * track->GetTimeBase().GetNum(), track->GetTimeBase().GetDen());
+
+			// Pacing restarts at the first packet, so opening the file after a recovery does not count as lag
+			if (_global_track_offset_us_map.empty())
+			{
+				_realtime_clock = ov::StopWatch();
+				_realtime_clock.Start();
+			}
+
 			if (_global_track_offset_us_map.find(track_id) == _global_track_offset_us_map.end())
 			{
 				_global_track_offset_us_map[track_id] = dts_us;
