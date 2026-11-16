@@ -101,7 +101,7 @@ namespace ov
 			Dispatched,
 			// Command is dispatched, and some data is remained
 			PartialDispatched,
-			// The peer is gone
+			// The connection is gone
 			Disconnected,
 			// An error occurred
 			Error
@@ -587,6 +587,8 @@ namespace ov
 
 		bool DispatchEventsAfterAppendCommand();
 
+		// The send functions below and `HandleSendError()` return the bytes sent,
+		// `SEND_DISCONNECTED` when the connection is gone, or `-1` on another error
 		ssize_t SendData(const std::shared_ptr<const Data> &data);
 		ssize_t SendSrtData(const std::shared_ptr<const Data> &data);
 
