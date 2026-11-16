@@ -61,12 +61,18 @@ namespace pub
 
 		_found_first_keyframe = false;
 
+		// A Record started via the API outlives its stream, so drop the boundary left over from the previous broadcast.
+		auto record = GetRecord();
+		if (record != nullptr)
+		{
+			record->SetNextScheduleTime({});
+		}
+
 		if (StartRecord() == false)
 		{
 			logae("Failed to start recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 
-			auto record = GetRecord();
 			if(record != nullptr)
 			{
 				record->SetState(info::Record::RecordState::Error);
