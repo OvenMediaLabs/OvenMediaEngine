@@ -357,7 +357,9 @@ namespace pvd
                     {
                         // Restart pacing and pick the item again by the current time.
                         // A fresh clock, as Restart() keeps the accumulated pause duration.
+                        // Started now, as the channel keeps running.
                         _realtime_clock = ov::StopWatch();
+                        _realtime_clock.Start();
                         _global_track_offset_us_map.clear();
                         first_item = true;
                     }
