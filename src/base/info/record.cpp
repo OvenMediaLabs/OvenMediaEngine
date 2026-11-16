@@ -224,14 +224,14 @@ namespace info
 		_schedule_next = next;
 	}
 
-	bool Record::UpdateNextScheduleTime()
+	bool Record::UpdateNextScheduleTime(std::chrono::system_clock::time_point now)
 	{
 		try
 		{
 			ov::String cron_expr = ov::String::FormatString("%s * * ?", GetSchedule().CStr());
 
 			auto cron = ov::Cron::Make(cron_expr.CStr());
-			std::time_t next = ov::Cron::Next(cron, std::time(0));
+			std::time_t next = ov::Cron::Next(cron, std::chrono::system_clock::to_time_t(now));
 			std::chrono::system_clock::time_point next_time = std::chrono::system_clock::from_time_t(next);
 
 			SetNextScheduleTime(next_time);

@@ -61,12 +61,18 @@ namespace pub
 
 		_found_first_keyframe = false;
 
+		// A Record started via the API outlives its stream, so drop the boundary left over from the previous broadcast.
+		auto record = GetRecord();
+		if (record != nullptr)
+		{
+			record->SetNextScheduleTime({});
+		}
+
 		if (StartRecord() == false)
 		{
 			logae("Failed to start recording. id(%d)", GetId());
 			SetState(SessionState::Error);
 
-			auto record = GetRecord();
 			if(record != nullptr)
 			{
 				record->SetState(info::Record::RecordState::Error);
@@ -445,18 +451,20 @@ namespace pub
 		// When setting schedule parameter, perform segmentation recording.
 		else if (record->GetSchedule().IsEmpty() != true)
 		{
+			auto now = std::chrono::system_clock::now();
+
 			if (record->IsNextScheduleTimeEmpty() == true)
 			{
-				if (record->UpdateNextScheduleTime() == false)
+				if (record->UpdateNextScheduleTime(now) == false)
 				{
 					logae("Failed to update next schedule time. request to stop recording.");
 				}
 			}
-			else if (record->GetNextScheduleTime() <= std::chrono::system_clock::now())
+			else if (record->GetNextScheduleTime() <= now)
 			{
 				_is_splitting.store(true);
 
-				if (record->UpdateNextScheduleTime() == false)
+				if (record->UpdateNextScheduleTime(now) == false)
 				{
 					logae("Failed to update next schedule time. request to stop recording.");
 				}
