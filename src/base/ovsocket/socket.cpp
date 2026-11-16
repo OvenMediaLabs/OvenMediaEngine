@@ -2585,7 +2585,7 @@ namespace ov
 
 			if (new_state == SocketState::Disconnected)
 			{
-				// OME decided to close before the worker found the connection gone, so the queued close is the reason
+				// A close that OME queued decides the state, over a disconnect or a send expiry the worker found
 				for (const auto &command : _dispatch_queue)
 				{
 					if (command.type == DispatchCommand::Type::Close)

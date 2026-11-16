@@ -1420,7 +1420,7 @@ TEST_F(SocketSendTcpTest, SendFailingBehindQueuedCloseKeepsItsState)
 }
 
 // Same as `SendFailingBehindQueuedCloseKeepsItsState`, but the worker is not held,
-// so it closes the socket on the hang-up event of the reset
+// so either the hang-up event of the reset or the retried send closes the socket
 TEST_F(SocketSendTcpTest, ResetBehindQueuedCloseKeepsItsState)
 {
 	// Far more than the socket buffers of both ends hold
