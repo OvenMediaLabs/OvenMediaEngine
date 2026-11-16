@@ -122,7 +122,7 @@ namespace pub
 
 		std::shared_ptr<const info::Playlist> GetDefaultPlaylist() const;
 
-		// Session을 추가한다.
+		// Returns false without adding the session when the stream is stopped, and the caller then disposes of the session
 		bool AddSession(std::shared_ptr<Session> session);
 		bool RemoveSession(session_id_t id);
 		std::shared_ptr<Session> GetSession(session_id_t id);

@@ -519,7 +519,13 @@ std::shared_ptr<TsHttpInterceptor> HlsPublisher::CreateInterceptor()
 			session->UpdateLastRequest(connection->GetId());
 		}
 
-		stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange));
+		// No worker is left to answer once the stream is stopping
+		if (stream->SendMessage(session, std::make_any<std::shared_ptr<http::svr::HttpExchange>>(exchange)) == false)
+		{
+			logtw("HLS request could not be served because the stream is stopping : %s", final_url->ToUrlString().CStr());
+			response->SetStatusCode(http::StatusCode::NotFound);
+			return http::svr::NextHandler::DoNotCall;
+		}
 
 		return http::svr::NextHandler::DoNotCallAndDoNotResponse;
 	});

@@ -518,6 +518,19 @@ namespace pub
 
 		std::lock_guard<std::shared_mutex> session_lock(_session_map_mutex);
 
+		std::shared_ptr<StreamWorker> worker;
+
+		// The worker is found first, so a session that is refused is never left in `_sessions`
+		if (_worker_count > 0)
+		{
+			worker = GetWorkerBySessionID(session->GetId());
+			if (worker == nullptr)
+			{
+				logte("Cannot find worker for session : %u", session->GetId());
+				return false;
+			}
+		}
+
 		if (_sessions.count(session->GetId()) > 0)
 		{
 			logtw("Session ID (%u) already exists, existing session will be overwritten", session->GetId());
@@ -526,19 +539,7 @@ namespace pub
 		// For getting session, all sessions
 		_sessions[session->GetId()] = session;
 
-		if(_worker_count > 0)
-		{
-			auto worker = GetWorkerBySessionID(session->GetId());
-			if(worker == nullptr)
-			{
-				logte("Cannot find worker for session : %u", session->GetId());
-				return false;
-			}
-
-			return worker->AddSession(session);
-		}
-
-		return true;
+		return (worker != nullptr) ? worker->AddSession(session) : true;
 	}
 
 	bool Stream::RemoveSession(session_id_t id)
@@ -628,6 +629,13 @@ namespace pub
 
 			{
 				std::shared_lock<std::shared_mutex> lock(_stream_worker_lock);
+
+				// `Stop()` takes the workers out when it marks the stream stopped, so there is no worker to find
+				if (_state == State::STOPPED)
+				{
+					return false;
+				}
+
 				worker = GetWorkerBySessionID(session->GetId());
 			}
 
