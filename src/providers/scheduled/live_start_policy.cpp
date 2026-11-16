@@ -28,8 +28,8 @@ namespace pvd
 			return ov::Converter::Rescale(packet->GetDts() * timebase.GetNum(), 1000000, timebase.GetDen());
 		}
 
-		// Starts from the source's latest keyframe. The item is paced on the channel clock,
-		// so it runs behind its source by the time since that keyframe
+		// Starts from the source's latest keyframe, so the item runs behind its source by the
+		// time the keyframe has waited
 		class LatestKeyframePolicy : public LiveStartPolicy
 		{
 		public:
@@ -38,51 +38,38 @@ namespace pvd
 				return true;
 			}
 
-			bool PacesToChannelClock() const override
-			{
-				return true;
-			}
-
-			StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &past_data,
+			StartPlan Plan(const std::vector<MediaRouterStreamTap::TappedPacket> &past_data,
 						   const std::shared_ptr<info::Stream> &source) const override
 			{
 				StartPlan plan;
 
-				auto keyframe_it = std::find_if(past_data.begin(), past_data.end(), [](const std::shared_ptr<MediaPacket> &packet) {
-					return packet->GetMediaType() == cmn::MediaType::Video;
+				auto keyframe_it = std::find_if(past_data.begin(), past_data.end(), [](const MediaRouterStreamTap::TappedPacket &tapped) {
+					return tapped.packet->GetMediaType() == cmn::MediaType::Video;
 				});
 
 				// Nothing is decodable without a keyframe; start with the packets that arrive from now on
-				if (keyframe_it == past_data.end() || (*keyframe_it)->IsKeyFrame() == false)
+				if (keyframe_it == past_data.end() || keyframe_it->packet->IsKeyFrame() == false)
 				{
 					return plan;
 				}
 
-				plan.starts_at_keyframe = true;
+				plan.starts_at_keyframe		= true;
+				plan.keyframe_received_time = keyframe_it->received_time;
 
-				int64_t keyframe_us = DtsUs(*keyframe_it, source);
-				int64_t newest_us	= keyframe_us;
+				int64_t keyframe_us = DtsUs(keyframe_it->packet, source);
 
-				for (const auto &packet : past_data)
+				// Kept in the router's timestamp order, so the item's timeline starts at the keyframe. A packet that
+				// arrived before the one ahead of it in this order goes out right after that one
+				for (const auto &tapped : past_data)
 				{
-					int64_t dts_us = DtsUs(packet, source);
-
 					// Other tracks start with the keyframe
-					if (packet->GetMediaType() != cmn::MediaType::Video && dts_us < keyframe_us)
+					if (tapped.packet->GetMediaType() != cmn::MediaType::Video && DtsUs(tapped.packet, source) < keyframe_us)
 					{
 						continue;
 					}
 
-					plan.replay.push_back(packet);
-
-					// Data can be stamped ahead, such as an event with a start offset
-					if (packet->GetMediaType() == cmn::MediaType::Video || packet->GetMediaType() == cmn::MediaType::Audio)
-					{
-						newest_us = std::max(newest_us, dts_us);
-					}
+					plan.replay.push_back(tapped);
 				}
-
-				plan.replay_span_us = newest_us - keyframe_us;
 
 				return plan;
 			}
@@ -97,12 +84,7 @@ namespace pvd
 				return false;
 			}
 
-			bool PacesToChannelClock() const override
-			{
-				return false;
-			}
-
-			StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &,
+			StartPlan Plan(const std::vector<MediaRouterStreamTap::TappedPacket> &,
 						   const std::shared_ptr<info::Stream> &) const override
 			{
 				return {};

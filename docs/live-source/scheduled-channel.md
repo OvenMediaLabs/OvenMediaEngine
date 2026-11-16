@@ -103,12 +103,14 @@ Sets where a live item (`stream://`) starts in its source when the channel switc
 
 | Value | Description |
 | --- | --- |
-| `LatestKeyframe` | Starts from the source's latest keyframe, so the picture continues without a freeze on every output, including bypassed video. Until the next item, the live item runs behind its source by the time since that keyframe, which is at most one keyframe interval. When the channel starts with a live item, that item starts like `NextKeyframe`. |
+| `LatestKeyframe` | Starts from the source's latest keyframe, so the picture continues without a freeze on every output, including bypassed video. Until the next item, the live item runs behind its source by the time since the server received that keyframe. This is at most one keyframe interval, unless the source stopped sending for a while just before the switch. When the channel starts with a live item, that item starts like `NextKeyframe`. |
 | `NextKeyframe` | Starts with the frame that arrives at the switch, without delay. Audio starts at once, but the picture freezes until the source's next keyframe, for up to one keyframe interval. Live items started this way in earlier versions. |
 
 Set the keyframe interval of live sources to 1 or 2 seconds to keep the delay or the freeze short.
 
 **Warning:** If the keyframe interval of a live source is longer than 10 seconds, there may be no keyframe to start from at the switch. `LatestKeyframe` then starts like `NextKeyframe`, so the picture freezes until the source's next keyframe, and a warning is logged.
+
+With `LatestKeyframe`, if consecutive items play the same live source, each item starts again from the source's latest keyframe, so up to one keyframe interval may be shown again. Put a continuous live source in a single item instead.
 
 `<FallbackProgram> (optional)`\
 It is a program that switches automatically when there is no program scheduled at the current time or an error occurs in an item. If the program is updated at the current time or the item returns to normal, it will fail back to the original program. Both files and live can be used for items in FallbackProgram. However, it is recommended to use a stable file.

@@ -10,6 +10,7 @@
 
 #include <base/info/stream.h>
 #include <base/mediarouter/media_buffer.h>
+#include <mediarouter/mediarouter_stream_tap.h>
 
 #include "schedule.h"
 
@@ -26,10 +27,11 @@ namespace pvd
 			bool starts_at_keyframe = false;
 
 			// Played first, in order, before the packets that arrive from now on
-			std::vector<std::shared_ptr<MediaPacket>> replay;
+			std::vector<MediaRouterStreamTap::TappedPacket> replay;
 
-			// Source time from the keyframe to the newest replayed audio or video packet
-			int64_t replay_span_us = 0;
+			// When the keyframe reached the server. The playback loop holds every packet of the
+			// item as long after its arrival as the keyframe has waited when the item starts
+			std::chrono::steady_clock::time_point keyframe_received_time;
 		};
 
 		static std::shared_ptr<LiveStartPolicy> Create(Schedule::LiveStartPoint point);
@@ -39,11 +41,8 @@ namespace pvd
 		// Whether the source's frames since its latest keyframe are requested
 		virtual bool NeedsPastData() const = 0;
 
-		// Whether packets wait for their time on the channel clock
-		virtual bool PacesToChannelClock() const = 0;
-
 		// past_data: the requested frames, oldest first, on the timebases of source
-		virtual StartPlan Plan(const std::vector<std::shared_ptr<MediaPacket>> &past_data,
+		virtual StartPlan Plan(const std::vector<MediaRouterStreamTap::TappedPacket> &past_data,
 							   const std::shared_ptr<info::Stream> &source) const = 0;
 	};
 }  // namespace pvd

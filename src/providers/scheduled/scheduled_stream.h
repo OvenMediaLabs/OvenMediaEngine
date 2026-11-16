@@ -87,9 +87,12 @@ namespace pvd
 																const std::shared_ptr<MediaRouterStreamTap> &stream_tap,
 																const LiveStartPolicy &policy);
 
-		// Holds a packet until its time on the channel clock. Returns how the item ends
-		// when the channel stops, the program changes or the original item returns meanwhile
+		// Holds a file packet until its time on the channel clock
 		std::optional<PlaybackResult> WaitForChannelClock(uint32_t track_id, int64_t dts_us, bool fallback_item);
+
+		// Holds a packet until due. Returns how the item ends when the channel stops,
+		// the program changes or the original item returns meanwhile
+		std::optional<PlaybackResult> WaitUntil(std::chrono::steady_clock::time_point due, bool fallback_item);
         
         std::shared_ptr<Schedule> GetSchedule() const;
         bool CheckCurrentProgramChanged();

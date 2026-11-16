@@ -908,7 +908,7 @@ void MediaRouteApplication::InboundWorkerThread(uint32_t worker_id)
 
 						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							stream_tap->PushBackfill(item->packet);
+							stream_tap->PushBackfill(item->packet, item->created_time);
 						}
 
 						stream_tap->SetPastDataDelivered();
@@ -994,7 +994,7 @@ void MediaRouteApplication::OutboundWorkerThread(uint32_t worker_id)
 
 						for (const auto &item : MediaRouteStream::BuildPastData(stream->GetMirrorBuffers()))
 						{
-							stream_tap->PushBackfill(item->packet);
+							stream_tap->PushBackfill(item->packet, item->created_time);
 						}
 
 						stream_tap->SetPastDataDelivered();

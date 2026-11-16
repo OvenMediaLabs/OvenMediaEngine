@@ -401,6 +401,23 @@ namespace
 	{
 		return MakePacket(cmn::MediaType::Data, kDataTrackId, dts_ms, false);
 	}
+
+	using TappedPacket = MediaRouterStreamTap::TappedPacket;
+
+	// The packets as the tap hands them over, received in the given order 1 ms apart
+	std::vector<TappedPacket> Received(const std::vector<std::shared_ptr<MediaPacket>> &packets)
+	{
+		std::vector<TappedPacket> received;
+		auto received_time = std::chrono::steady_clock::time_point{};
+
+		for (const auto &packet : packets)
+		{
+			received.push_back(TappedPacket{packet, received_time});
+			received_time += std::chrono::milliseconds(1);
+		}
+
+		return received;
+	}
 }  // namespace
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
@@ -408,28 +425,35 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
 	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
 	ASSERT_NE(policy, nullptr);
 	EXPECT_TRUE(policy->NeedsPastData());
-	EXPECT_TRUE(policy->PacesToChannelClock());
 
-	auto keyframe = Video(0, true);
-	auto plan	  = policy->Plan({Audio(-20), keyframe, Audio(10), Audio(31), Video(33), Video(66)}, MakeSource());
+	auto keyframe  = Video(0, true);
+	auto past_data = Received({Audio(-20), keyframe, Audio(10), Audio(31), Video(33), Video(66)});
+	auto plan	   = policy->Plan(past_data, MakeSource());
 
 	EXPECT_TRUE(plan.starts_at_keyframe);
 	ASSERT_EQ(plan.replay.size(), 5u);
-	EXPECT_EQ(plan.replay.front(), keyframe);
-	EXPECT_EQ(plan.replay_span_us, 66000);
+	EXPECT_EQ(plan.replay.front().packet, keyframe);
+
+	// The delay of the item is measured from when the keyframe reached the server
+	EXPECT_EQ(plan.keyframe_received_time, past_data[1].received_time);
 }
 
-// The span is how far the item runs behind its source, so data stamped ahead does not count
-TEST(ScheduledLiveStartPolicy, LatestKeyframeSpanIgnoresDataStampedAhead)
+// The replay keeps the router's timestamp order, so the item's timeline starts at the keyframe,
+// and each packet keeps its received time for its release
+TEST(ScheduledLiveStartPolicy, LatestKeyframeKeepsTheGivenOrder)
 {
 	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
 	ASSERT_NE(policy, nullptr);
 
-	auto plan = policy->Plan({Video(0, true), Data(15000), Audio(10), Video(33)}, MakeSource());
+	auto past_data = Received({Video(0, true), Audio(10), Video(33), Data(15000)});
+	auto plan	   = policy->Plan(past_data, MakeSource());
 
-	EXPECT_TRUE(plan.starts_at_keyframe);
-	EXPECT_EQ(plan.replay.size(), 4u);
-	EXPECT_EQ(plan.replay_span_us, 33000);
+	ASSERT_EQ(plan.replay.size(), past_data.size());
+	for (size_t index = 0; index < past_data.size(); index++)
+	{
+		EXPECT_EQ(plan.replay[index].packet, past_data[index].packet);
+		EXPECT_EQ(plan.replay[index].received_time, past_data[index].received_time);
+	}
 }
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)
@@ -437,9 +461,9 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)
 	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
 	ASSERT_NE(policy, nullptr);
 
-	for (const auto &past_data : {std::vector<std::shared_ptr<MediaPacket>>{Video(0), Audio(10), Video(33, true)},
-								  std::vector<std::shared_ptr<MediaPacket>>{Audio(0), Audio(21)},
-								  std::vector<std::shared_ptr<MediaPacket>>{}})
+	for (const auto &past_data : {Received({Video(0), Audio(10), Video(33, true)}),
+								  Received({Audio(0), Audio(21)}),
+								  Received({})})
 	{
 		auto plan = policy->Plan(past_data, MakeSource());
 
@@ -448,15 +472,14 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)
 	}
 }
 
-TEST(ScheduledLiveStartPolicy, NextKeyframeTakesNothingAndDoesNotPace)
+TEST(ScheduledLiveStartPolicy, NextKeyframeTakesNothing)
 {
 	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::NextKeyframe);
 	ASSERT_NE(policy, nullptr);
 
 	EXPECT_FALSE(policy->NeedsPastData());
-	EXPECT_FALSE(policy->PacesToChannelClock());
 
-	auto plan = policy->Plan({Video(0, true), Audio(10)}, MakeSource());
+	auto plan = policy->Plan(Received({Video(0, true), Audio(10)}), MakeSource());
 	EXPECT_FALSE(plan.starts_at_keyframe);
 	EXPECT_TRUE(plan.replay.empty());
 }

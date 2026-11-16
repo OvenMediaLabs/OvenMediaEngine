@@ -15,10 +15,21 @@
 #include <base/mediarouter/media_buffer.h>
 #include "mediarouter_application.h"
 
+#include <chrono>
+
 class MediaRouterStreamTap
 {
 friend class MediaRouteApplication;
 public:
+	struct TappedPacket
+	{
+		std::shared_ptr<MediaPacket> packet;
+
+		// When the packet reached the media router. Past data keeps the time it was
+		// first buffered, so past and live packets share one clock
+		std::chrono::steady_clock::time_point received_time;
+	};
+
     // The threshold only triggers a queue-size warning log; the buffer is unbounded
     static std::shared_ptr<MediaRouterStreamTap> Create(size_t threshold = 300);
 
@@ -46,12 +57,15 @@ public:
 	// Waits up to timeout_in_msec for the requested past data and takes all of it.
 	// nullopt if it did not arrive in time. Call it before a waiting Pop(): Pop() may wait
 	// for a live packet while the past data arrives and return that packet first.
-	std::optional<std::vector<std::shared_ptr<MediaPacket>>> TakePastData(int timeout_in_msec);
+	std::optional<std::vector<TappedPacket>> TakePastData(int timeout_in_msec);
 
     // If the stream is Tapped, MediaPacket will be popped from the buffer.
     // If the stream is not Tapped and the buffers are empty, nullptr will be returned immediately without waiting.
     // The backfill buffer is drained before the live buffer; backfill is always older than any live packet.
     std::shared_ptr<MediaPacket> Pop(int timeout_in_msec = 0);
+
+	// Pop() with the time the packet reached the media router; nullopt where Pop() returns nullptr
+	std::optional<TappedPacket> PopWithReceivedTime(int timeout_in_msec = 0);
 
     // return stream info reference
     std::shared_ptr<info::Stream> GetStreamInfo() const;
@@ -63,9 +77,9 @@ private:
 
     // Backfill (past data) is buffered apart from the live buffer, so its one-shot
     // burst cannot trip the live buffer's congestion warning
-    bool PushBackfill(const std::shared_ptr<MediaPacket> &media_packet);
+    bool PushBackfill(const std::shared_ptr<MediaPacket> &media_packet, std::chrono::steady_clock::time_point received_time);
 
-    bool PushTo(ov::Queue<std::shared_ptr<MediaPacket>> &buffer, const std::shared_ptr<MediaPacket> &media_packet);
+    bool PushTo(ov::Queue<TappedPacket> &buffer, const std::shared_ptr<MediaPacket> &media_packet, std::chrono::steady_clock::time_point received_time);
 
     void SetStreamInfo(const std::shared_ptr<info::Stream> &stream_info);
     void SetState(State state);
@@ -76,8 +90,8 @@ private:
     uint32_t IssueUniqueId();
 
     std::shared_ptr<info::Stream> _tapped_stream_info;
-    ov::Queue<std::shared_ptr<MediaPacket>> _buffer;
-    ov::Queue<std::shared_ptr<MediaPacket>> _backfill_buffer;
+    ov::Queue<TappedPacket> _buffer;
+    ov::Queue<TappedPacket> _backfill_buffer;
     std::atomic<State> _state = State::Idle;
 
     std::atomic<bool> _is_destroy_requested = false;

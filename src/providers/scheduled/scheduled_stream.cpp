@@ -1010,7 +1010,21 @@ namespace pvd
 			start_plan = std::move(planned.value());
 		}
 
-		std::deque<std::shared_ptr<MediaPacket>> replay_queue(start_plan.replay.begin(), start_plan.replay.end());
+		std::deque<MediaRouterStreamTap::TappedPacket> replay_queue(start_plan.replay.begin(), start_plan.replay.end());
+
+		// Every packet goes out this long after it reached the server, so the item stays behind its source
+		// by what the keyframe has waited. Timing by arrival rather than by timestamps on the channel clock
+		// keeps that delay fixed: a source whose clock runs fast or whose timestamps jump ahead would be
+		// held longer and longer, piling up in the tap until the item ends
+		std::chrono::steady_clock::duration release_delay{0};
+		if (start_plan.starts_at_keyframe)
+		{
+			release_delay = std::chrono::steady_clock::now() - start_plan.keyframe_received_time;
+
+			logti("Scheduled Channel : %s/%s: %s starts from its latest keyframe, %" PRId64 " ms behind the source",
+				  GetApplicationName(), GetName().CStr(), item->_url.CStr(),
+				  static_cast<int64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(release_delay).count()));
+		}
 
         if (_realtime_clock.IsStart() == false)
         {
@@ -1050,16 +1064,18 @@ namespace pvd
                 }
             }
 
-            std::shared_ptr<MediaPacket> media_packet = nullptr;
+            std::optional<MediaRouterStreamTap::TappedPacket> tapped;
             if (replay_queue.empty() == false)
             {
-                media_packet = replay_queue.front();
+                tapped = replay_queue.front();
                 replay_queue.pop_front();
             }
             else
             {
-                media_packet = stream_tap->Pop(_channel_info._error_tolerance_duration_ms);
+                tapped = stream_tap->PopWithReceivedTime(_channel_info._error_tolerance_duration_ms);
             }
+
+            std::shared_ptr<MediaPacket> media_packet = tapped.has_value() ? tapped->packet : nullptr;
             if (media_packet == nullptr)
             {
                 if (CheckCurrentProgramChanged() == true)
@@ -1223,11 +1239,10 @@ namespace pvd
                 }
             }
 
-			// Data can be timestamped ahead, such as an event with a start offset, so it is not held for its own time.
-			// It still goes out after the audio and video queued before it
-			if (is_media && live_start_policy->PacesToChannelClock())
+			// Timed by arrival, so a packet stamped ahead, such as an event with a start offset, is not held for its stamp
+			if (release_delay.count() > 0)
 			{
-				auto interrupted = WaitForChannelClock(track_id, dts_us, fallback_item);
+				auto interrupted = WaitUntil(tapped->received_time + release_delay, fallback_item);
 				if (interrupted.has_value())
 				{
 					result = interrupted.value();
@@ -1259,19 +1274,14 @@ namespace pvd
 		}
 
 		// Only the tracks this channel plays
-		past_data->erase(std::remove_if(past_data->begin(), past_data->end(), [this](const std::shared_ptr<MediaPacket> &packet) {
-							 return FindTrackIdByOriginId(packet->GetTrackId()) < 0;
+		past_data->erase(std::remove_if(past_data->begin(), past_data->end(), [this](const MediaRouterStreamTap::TappedPacket &tapped) {
+							 return FindTrackIdByOriginId(tapped.packet->GetTrackId()) < 0;
 						 }),
 						 past_data->end());
 
 		auto plan = policy.Plan(past_data.value(), stream_tap->GetStreamInfo());
 
-		if (plan.starts_at_keyframe)
-		{
-			logti("Scheduled Channel : %s/%s: %s starts from its latest keyframe, %" PRId64 " ms behind the source",
-				  GetApplicationName(), GetName().CStr(), item->_url.CStr(), plan.replay_span_us / 1000);
-		}
-		else if (_channel_info._video_track)
+		if ((plan.starts_at_keyframe == false) && _channel_info._video_track)
 		{
 			logtw("Scheduled Channel : %s/%s: No keyframe of %s is buffered, so the picture may freeze until its next keyframe. "
 				  "Its keyframe interval may be too long",
@@ -1289,13 +1299,19 @@ namespace pvd
 			return std::nullopt;
 		}
 
-		int64_t due_us = dts_us - offset_it->second;
-		bool waited	   = false;
+		int64_t wait_us = (dts_us - offset_it->second) - _realtime_clock.ElapsedUs();
+
+		return WaitUntil(std::chrono::steady_clock::now() + std::chrono::microseconds(wait_us), fallback_item);
+	}
+
+	std::optional<ScheduledStream::PlaybackResult> ScheduledStream::WaitUntil(std::chrono::steady_clock::time_point due, bool fallback_item)
+	{
+		bool waited = false;
 
 		while (true)
 		{
-			int64_t wait_us = due_us - _realtime_clock.ElapsedUs();
-			if (wait_us <= 0)
+			auto now = std::chrono::steady_clock::now();
+			if (now >= due)
 			{
 				return std::nullopt;
 			}
@@ -1320,8 +1336,7 @@ namespace pvd
 				return PlaybackResult::PLAY_NEXT_ITEM;
 			}
 
-			auto now	 = std::chrono::steady_clock::now();
-			auto wake_at = now + std::chrono::microseconds(wait_us);
+			auto wake_at = due;
 
 			// Nothing signals the start of the next program, so wake at its scheduled time
 			auto schedule	  = PeekSchedule();
@@ -1329,7 +1344,7 @@ namespace pvd
 			if (next_program != nullptr)
 			{
 				auto until_next_program = next_program->_scheduled_time - std::chrono::system_clock::now();
-				if (until_next_program < std::chrono::microseconds(wait_us))
+				if (until_next_program < (due - now))
 				{
 					wake_at = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(until_next_program);
 				}
