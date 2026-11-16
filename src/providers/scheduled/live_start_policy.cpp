@@ -74,7 +74,12 @@ namespace pvd
 					}
 
 					plan.replay.push_back(packet);
-					newest_us = std::max(newest_us, dts_us);
+
+					// Data can be stamped ahead, such as an event with a start offset
+					if (packet->GetMediaType() == cmn::MediaType::Video || packet->GetMediaType() == cmn::MediaType::Audio)
+					{
+						newest_us = std::max(newest_us, dts_us);
+					}
 				}
 
 				plan.replay_span_us = newest_us - keyframe_us;

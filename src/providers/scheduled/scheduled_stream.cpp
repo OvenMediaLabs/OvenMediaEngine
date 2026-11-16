@@ -1223,7 +1223,8 @@ namespace pvd
                 }
             }
 
-			// Data can be timestamped ahead, such as an event with a start offset, so it goes out as it comes
+			// Data can be timestamped ahead, such as an event with a start offset, so it is not held for its own time.
+			// It still goes out after the audio and video queued before it
 			if (is_media && live_start_policy->PacesToChannelClock())
 			{
 				auto interrupted = WaitForChannelClock(track_id, dts_us, fallback_item);
@@ -1288,8 +1289,8 @@ namespace pvd
 			return std::nullopt;
 		}
 
-		int64_t due_us	 = dts_us - offset_it->second;
-		bool woken_early = false;
+		int64_t due_us = dts_us - offset_it->second;
+		bool waited	   = false;
 
 		while (true)
 		{
@@ -1299,14 +1300,9 @@ namespace pvd
 				return std::nullopt;
 			}
 
-			// Woken before the packet's time, so check what the playback loop checks for every packet
-			if (woken_early)
+			// Woken before the packet is due, so check what the playback loop checks for every packet
+			if (waited)
 			{
-				if (_worker_thread_running.load() == false)
-				{
-					return PlaybackResult::PLAY_NEXT_ITEM;
-				}
-
 				if (CheckCurrentProgramChanged() == true)
 				{
 					return PlaybackResult::PLAY_NEXT_PROGRAM;
@@ -1316,6 +1312,12 @@ namespace pvd
 				{
 					return PlaybackResult::FAILBACK;
 				}
+			}
+
+			// Checked last, since CheckCurrentProgramChanged() clears the event a stop sets
+			if (_worker_thread_running.load() == false)
+			{
+				return PlaybackResult::PLAY_NEXT_ITEM;
 			}
 
 			auto now	 = std::chrono::steady_clock::now();
@@ -1333,8 +1335,9 @@ namespace pvd
 				}
 			}
 
-			// Wake when CheckCurrentItemAvailable() checks the original item next
-			if (fallback_item)
+			// Wake when CheckCurrentItemAvailable() checks the original item next. With no scheduled
+			// item there is nothing to fail back to, and its check clock never starts
+			if (fallback_item && (_current_item != nullptr))
 			{
 				int64_t until_check_ms = _failback_check_clock.IsStart() ? std::max<int64_t>(kFailbackCheckIntervalMs - _failback_check_clock.Elapsed(), 0) : 0;
 				wake_at				   = std::min(wake_at, now + std::chrono::milliseconds(until_check_ms));
@@ -1342,7 +1345,7 @@ namespace pvd
 
 			// Channel stop and schedule updates set this event
 			_schedule_updated.Wait(wake_at);
-			woken_early = true;
+			waited = true;
 		}
 	}
 

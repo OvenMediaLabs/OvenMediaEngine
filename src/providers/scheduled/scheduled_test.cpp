@@ -353,6 +353,7 @@ namespace
 
 	constexpr uint32_t kVideoTrackId = 0;
 	constexpr uint32_t kAudioTrackId = 1;
+	constexpr uint32_t kDataTrackId	 = 2;
 
 	std::shared_ptr<info::Stream> MakeSource()
 	{
@@ -369,6 +370,12 @@ namespace
 		audio->SetMediaType(cmn::MediaType::Audio);
 		audio->SetTimeBase(1, 48000);
 		source->AddTrack(audio);
+
+		auto data = std::make_shared<MediaTrack>();
+		data->SetId(kDataTrackId);
+		data->SetMediaType(cmn::MediaType::Data);
+		data->SetTimeBase(1, 1000);
+		source->AddTrack(data);
 
 		return source;
 	}
@@ -389,6 +396,11 @@ namespace
 	{
 		return MakePacket(cmn::MediaType::Audio, kAudioTrackId, dts_ms * 48, false);
 	}
+
+	std::shared_ptr<MediaPacket> Data(int64_t dts_ms)
+	{
+		return MakePacket(cmn::MediaType::Data, kDataTrackId, dts_ms, false);
+	}
 }  // namespace
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
@@ -405,6 +417,19 @@ TEST(ScheduledLiveStartPolicy, LatestKeyframeReplaysFromTheKeyframe)
 	ASSERT_EQ(plan.replay.size(), 5u);
 	EXPECT_EQ(plan.replay.front(), keyframe);
 	EXPECT_EQ(plan.replay_span_us, 66000);
+}
+
+// The span is how far the item runs behind its source, so data stamped ahead does not count
+TEST(ScheduledLiveStartPolicy, LatestKeyframeSpanIgnoresDataStampedAhead)
+{
+	auto policy = LiveStartPolicy::Create(Schedule::LiveStartPoint::LatestKeyframe);
+	ASSERT_NE(policy, nullptr);
+
+	auto plan = policy->Plan({Video(0, true), Data(15000), Audio(10), Video(33)}, MakeSource());
+
+	EXPECT_TRUE(plan.starts_at_keyframe);
+	EXPECT_EQ(plan.replay.size(), 4u);
+	EXPECT_EQ(plan.replay_span_us, 33000);
 }
 
 TEST(ScheduledLiveStartPolicy, LatestKeyframeWithoutKeyframeReplaysNothing)

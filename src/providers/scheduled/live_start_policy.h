@@ -28,7 +28,7 @@ namespace pvd
 			// Played first, in order, before the packets that arrive from now on
 			std::vector<std::shared_ptr<MediaPacket>> replay;
 
-			// Source time from the first replayed packet to the newest one
+			// Source time from the keyframe to the newest replayed audio or video packet
 			int64_t replay_span_us = 0;
 		};
 
