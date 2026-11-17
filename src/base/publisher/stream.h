@@ -122,7 +122,7 @@ namespace pub
 
 		std::shared_ptr<const info::Playlist> GetDefaultPlaylist() const;
 
-		// Returns false without adding the session when the stream is stopped or failed to start,
+		// Returns false without adding the session when the stream is stopped or has failed to start,
 		// and the caller then disposes of the session
 		bool AddSession(std::shared_ptr<Session> session);
 		bool RemoveSession(session_id_t id);
