@@ -1196,7 +1196,13 @@ std::tuple<LLHlsStream::RequestResult, std::shared_ptr<ov::Data>> LLHlsStream::G
 		return {RequestResult::NotFound, nullptr};
 	}
 
-	return {RequestResult::Success, segment->GetData()};
+	auto data = segment->GetData();
+	if (data == nullptr)
+	{
+		return {RequestResult::NotFound, nullptr};
+	}
+
+	return {RequestResult::Success, data};
 }
 
 std::tuple<LLHlsStream::RequestResult, std::shared_ptr<ov::Data>> LLHlsStream::GetPartial(const int32_t &track_id, const int64_t &segment_number, const int64_t &partial_number) const
@@ -2962,14 +2968,21 @@ std::tuple<bool, ov::String> LLHlsStream::StartDump(const std::shared_ptr<info::
 			return {false, "Could not dump init segment"};
 		}
 
-		// Dump from min_segment_number to last segment
 		auto storage = it.second;
 		if (storage == nullptr)
 		{
 			continue;
 		}
 
-		auto last_segment_number = storage->GetLastSegmentNumber();
+		auto last_segment = storage->GetLastSegment();
+		if (last_segment == nullptr)
+		{
+			continue;
+		}
+
+		// Dump from min_segment_number to the last completed segment; the one in progress is
+		// dumped by DumpSegmentOfAllItems when it completes
+		auto last_segment_number = last_segment->GetNumber() - (last_segment->IsCompleted() ? 0 : 1);
 		for (int64_t segment_number = min_segment_number; segment_number <= last_segment_number; segment_number++)
 		{
 			if (DumpSegment(dump_info, track_id, segment_number) == false)

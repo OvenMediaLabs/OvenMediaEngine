@@ -825,6 +825,7 @@ void LLHlsSession::ResponseSegment(const std::shared_ptr<http::svr::HttpExchange
 	{
 		// Send error response
 		response->SetStatusCode(http::StatusCode::NotFound);
+		response->SetHeader("Cache-Control", "no-cache, no-store");
 	}
 
 	ResponseData(exchange);

@@ -79,9 +79,6 @@ namespace bmff
 		{
 			_number = number;
 			_timebase_seconds = timebase_seconds;
-
-			// For performance, reserve memory for 4Mbps * target_duration (sec)
-			_data = std::make_shared<ov::Data>(((1000.0 * 1000.0 * 4.0)/8.0) * (static_cast<double>(target_duration) / 1000.0));
 		}
 
 		FMP4Segment(uint64_t number, double duration_ms, const std::shared_ptr<ov::Data> &data)
@@ -89,12 +86,40 @@ namespace bmff
 			_number = number;
 			_duration_ms = duration_ms;
 			_data = data;
-
-			SetCompleted();
+			_is_completed = true;
 		}
 
+		// Parts become views of _data so the media is held once. Built unlocked: the
+		// packager thread is the only writer, so _partials cannot change meanwhile.
 		void SetCompleted()
 		{
+			size_t length = 0;
+			for (const auto &partial : _partials)
+			{
+				length += partial->GetDataLength();
+			}
+
+			auto data = std::make_shared<ov::Data>(length);
+			for (const auto &partial : _partials)
+			{
+				data->Append(partial->GetData());
+			}
+
+			// Views only after the last Append: Append copies a buffer that is shared
+			std::deque<std::shared_ptr<FMP4Partial>> views;
+			off_t offset = 0;
+			for (const auto &partial : _partials)
+			{
+				auto partial_length = partial->GetDataLength();
+				views.emplace_back(std::make_shared<FMP4Partial>(
+					data->Subdata(offset, partial_length), partial->GetNumber(), partial->GetStartTimestamp(),
+					partial->GetDurationMs(), partial->IsIndependent(), partial->GetTimebaseSeconds()));
+				offset += partial_length;
+			}
+
+			std::unique_lock<std::shared_mutex> lock(_partials_lock);
+			_data = std::move(data);
+			_partials = std::move(views);
 			_is_completed = true;
 		}
 
@@ -152,22 +177,22 @@ namespace bmff
 			_last_partial_number = partial_count;
 
 			lock.unlock();
-			
-			// Append data
+
 			_duration_ms += duration_ms;
-			_data->Append(partial_data);
 
 			return true;
 		}
 
-		// Get Data
+		// Null until the segment is completed
 		const std::shared_ptr<ov::Data> GetData() const override
 		{
+			std::shared_lock<std::shared_mutex> lock(_partials_lock);
 			return _data;
 		}
 
 		size_t GetDataLength() const override
 		{
+			std::shared_lock<std::shared_mutex> lock(_partials_lock);
 			return _data == nullptr ? 0 : _data->GetLength();
 		}
 
@@ -241,7 +266,7 @@ namespace bmff
 		}
 
 	private:
-		bool _is_completed = false;
+		std::atomic<bool> _is_completed = false;
 
 		uint32_t _track_version = 0;
 		bool _discontinuity_point = false;
