@@ -107,6 +107,15 @@ namespace pvd
 			return true;
 		}
 
+		// A stream in `ERROR` is resumed without a stop, so the motor may still be reading its old connection
+		_connection_released = true;
+
+		{
+			ov::LockGuard lock(_connection_lock);
+			_connection_ready = false;
+			Release();
+		}
+
 		_curr_url = url;
 		_sent_sequence_header = false;
 
@@ -159,12 +168,13 @@ namespace pvd
 			return true;
 		}
 
-		if (!RequestStop())
-		{
-			// Force terminate
-			SetState(State::ERROR);
-		}
+		_connection_released = true;
 
+		ov::LockGuard lock(_connection_lock);
+
+		_connection_ready = false;
+
+		RequestStop();
 		Release();
 
 		ov::Node::Stop();
@@ -696,14 +706,20 @@ namespace pvd
 
 		_ping_timer.Start();
 
+		{
+			ov::LockGuard lock(_connection_lock);
+			_connection_released = false;
+			_connection_ready = true;
+		}
+
 		return true;
 	}
 
-	bool RtspcStream::RequestStop()
+	void RtspcStream::RequestStop()
 	{
 		if (GetState() != State::PLAYING)
 		{
-			return false;
+			return;
 		}
 
 		auto teardown = std::make_shared<RtspMessage>(RtspMethod::TEARDOWN, GetNextCSeq(), _curr_url->ToUrlString(true, false));
@@ -724,28 +740,11 @@ namespace pvd
 		}
 		teardown->AddHeaderField(std::make_shared<RtspHeaderField>(RtspHeaderFieldType::UserAgent, RTSP_USER_AGENT_NAME));
 
+		// The response is not awaited: the connection is closed right after
 		if (SendRequestMessage(teardown) == false)
 		{
-			SetState(State::ERROR);
 			logte("Could not request Stop to RTSP server (%s)", _curr_url->ToUrlString().CStr());
-			return false;
 		}
-
-		auto reply = ReceiveResponse(teardown->GetCSeq(), 3000);
-		if (reply == nullptr)
-		{
-			SetState(State::ERROR);
-			logte("No response(CSeq : %u) was received from the rtsp server(%s)", teardown->GetCSeq(), _curr_url->ToUrlString().CStr());
-			return false;
-		}
-		else if (reply->GetStatusCode() != 200)
-		{
-			SetState(State::ERROR);
-			logte("Rtsp server(%s) rejected the describe request : %d(%s)", _curr_url->ToUrlString().CStr(), reply->GetStatusCode(), reply->GetReasonPhrase().CStr());
-			return false;
-		}
-
-		return true;
 	}
 
 	bool RtspcStream::Ping()
@@ -768,7 +767,7 @@ namespace pvd
 			get_parameter->AddHeaderField(std::make_shared<RtspHeaderField>(RtspHeaderFieldType::Session, _rtsp_session_id));
 		}
 
-		if (SendRequestMessage(get_parameter, false) == false)
+		if (SendRequestMessage(get_parameter) == false)
 		{
 			SetState(State::ERROR);
 			logte("Could not request GET_PARAMETER to RTSP server (%s)", _curr_url->ToUrlString().CStr());
@@ -785,76 +784,25 @@ namespace pvd
 		return _cseq++;
 	}
 
-	bool RtspcStream::SubscribeResponse(const std::shared_ptr<RtspMessage> &request_message)
+	bool RtspcStream::SendRequestMessage(const std::shared_ptr<RtspMessage> &message)
 	{
-		ov::LockGuard<ov::Mutex> lock(_response_subscriptions_lock);
-		_response_subscriptions.emplace(request_message->GetCSeq(), std::make_shared<ResponseSubscription>(request_message));
-		return true;
-	}
-
-	std::shared_ptr<RtspcStream::ResponseSubscription> RtspcStream::PopResponseSubscription(uint32_t cseq)
-	{
-		ov::LockGuard<ov::Mutex> lock(_response_subscriptions_lock);
-		auto it = _response_subscriptions.find(cseq);
-		if (it == _response_subscriptions.end())
-		{
-			logtt("There is no request message to receive a response. (CSeq : %u)", cseq);
-			return nullptr;
-		}
-
-		auto request_response = it->second;
-
-		// Remove waited request message
-		_response_subscriptions.erase(it);
-
-		return request_response;
-	}
-
-	bool RtspcStream::SendRequestMessage(const std::shared_ptr<RtspMessage> &message, bool wait_for_response)
-	{
-		if (wait_for_response == true)
-		{
-			// Add to RequestedMap to receive reply
-			SubscribeResponse(message);
-		}
-
-		// Send
 		return std::atomic_load(&_signalling_socket)->Send(message->GetMessage());
 	}
 
 	std::shared_ptr<RtspMessage> RtspcStream::ReceiveResponse(uint32_t cseq, uint64_t timeout_ms)
 	{
-		auto request_response = PopResponseSubscription(cseq);
-		if (request_response == nullptr)
+		auto reply = ReceiveMessage(timeout_ms);
+		if (reply == nullptr)
 		{
 			return nullptr;
 		}
-
-		// When the stream is playing, another thread receives a message and notifies it.
-		if (GetState() == State::PLAYING)
+		else if (reply->GetCSeq() != cseq)
 		{
-			return request_response->WaitForResponse(timeout_ms);
-		}
-		// Otherwise, the response must be received directly from the socket.
-		else
-		{
-			auto reply = ReceiveMessage(timeout_ms);
-			// If the stream is not in the playing state, the client cannot receive unexpected CSeq.
-			if (reply == nullptr)
-			{
-				// timed out
-				return nullptr;
-			}
-			else if (reply->GetCSeq() != cseq)
-			{
-				logte("Unexpected CSeq : %u (expected : %u)", reply->GetCSeq(), cseq);
-				return nullptr;
-			}
-
-			return reply;
+			logte("Unexpected CSeq : %u (expected : %u)", reply->GetCSeq(), cseq);
+			return nullptr;
 		}
 
-		return nullptr;
+		return reply;
 	}
 
 	std::shared_ptr<RtspMessage> RtspcStream::ReceiveMessage(int64_t timeout_msec)
@@ -929,6 +877,20 @@ namespace pvd
 
 	PullStream::ProcessMediaResult RtspcStream::ProcessMediaPacket()
 	{
+		// The connection is being released or replaced. Returning without reading also keeps the motor from stopping the stream.
+		if (_connection_released)
+		{
+			return ProcessMediaResult::PROCESS_MEDIA_TRY_AGAIN;
+		}
+
+		ov::LockGuard lock(_connection_lock);
+
+		// The motor passed the check above just before a stop or a start released the connection
+		if (_connection_ready == false)
+		{
+			return ProcessMediaResult::PROCESS_MEDIA_TRY_AGAIN;
+		}
+
 		// Ping
 		if (_ping_timer.IsElapsed((_rtsp_session_timeout_sec / 2) * 1000))
 		{
@@ -952,16 +914,8 @@ namespace pvd
 				auto rtsp_message = _rtsp_demuxer.PopMessage();
 				if (rtsp_message->GetMessageType() == RtspMessageType::RESPONSE)
 				{
-					// Find Request
-					auto subscription = PopResponseSubscription(rtsp_message->GetCSeq());
-					if (subscription == nullptr)
-					{
-						// Non subscription message, ignore
-						logti("Received Message : %s", rtsp_message->DumpHeader().CStr());
-						continue;
-					}
-
-					subscription->OnResponseReceived(rtsp_message);
+					// No request in `PLAYING` waits for its response
+					logti("Received Message : %s", rtsp_message->DumpHeader().CStr());
 				}
 				else if (rtsp_message->GetMessageType() == RtspMessageType::REQUEST)
 				{
