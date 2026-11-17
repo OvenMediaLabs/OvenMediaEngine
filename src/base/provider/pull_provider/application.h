@@ -25,8 +25,10 @@ namespace pvd
 		virtual bool Start() override;
 		virtual bool Stop() override;
 
-		// For pulling
-		std::shared_ptr<pvd::Stream> CreateStream(const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties);
+		// For pulling.
+		// `rejected_by_deletion` tells whether the stream was rejected because `DeleteAllStreams()` has taken the motors.
+		std::shared_ptr<pvd::Stream> CreateStream(const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties,
+												  bool *rejected_by_deletion = nullptr);
 
 		// Delete stream
 		virtual bool DeleteStream(const std::shared_ptr<Stream> &stream) override;
@@ -41,6 +43,7 @@ namespace pvd
 	private:
 		uint32_t GetStreamMotorId(const std::shared_ptr<PullStream> &stream);
 
+		// Fails only once `DeleteAllStreams()` has taken the motors
 		bool AddStreamToMotorInternal(const std::shared_ptr<PullStream> &stream);
 		bool DeleteStreamFromMotorInternal(const std::shared_ptr<PullStream> &stream);
 	

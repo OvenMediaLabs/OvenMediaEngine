@@ -153,10 +153,19 @@ namespace pvd
 		}
 
 		// Create Stream
-		stream = app->CreateStream(stream_name, url_list, properties);
+		bool rejected_by_deletion = false;
+		stream					  = app->CreateStream(stream_name, url_list, properties, &rejected_by_deletion);
 		if (stream == nullptr)
 		{
-			logte("%s could not create [%s] stream.", app->GetApplicationTypeName(), stream_name.CStr());
+			if (rejected_by_deletion)
+			{
+				logti("%s did not create [%s] stream: the application is being deleted", app->GetApplicationTypeName(), stream_name.CStr());
+			}
+			else
+			{
+				logte("%s could not create [%s] stream.", app->GetApplicationTypeName(), stream_name.CStr());
+			}
+
 			UnlockPullStreamIfNeeded(key, item, PullingItem::PullingItemState::ERROR);
 			return nullptr;
 		}

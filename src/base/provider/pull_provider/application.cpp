@@ -325,8 +325,14 @@ namespace pvd
 		return true;
 	}
 
-	std::shared_ptr<pvd::Stream> PullApplication::CreateStream(const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties)
+	std::shared_ptr<pvd::Stream> PullApplication::CreateStream(const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties,
+															   bool *rejected_by_deletion)
 	{
+		if (rejected_by_deletion != nullptr)
+		{
+			*rejected_by_deletion = false;
+		}
+
 		auto global_retry_count = GetHostInfo().GetOrigins().GetProperties().GetRetryCount();
 		if (properties->GetRetryCount() <= 0)
 		{
@@ -350,8 +356,15 @@ namespace pvd
 
 		if (AddStreamToMotorInternal(stream) == false)
 		{
-			logte("Could not add stream to motor : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
-			DeleteStream(stream);
+			logtd("Stream %s/%s(%u) is not added: the application is deleting all streams", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
+			// `Application::DeleteAllStreams()` may have deleted it already
+			DeleteStreamIfExists(stream);
+
+			if (rejected_by_deletion != nullptr)
+			{
+				*rejected_by_deletion = true;
+			}
+
 			return nullptr;
 		}
 

@@ -22,8 +22,7 @@
 #include <memory>
 #include <string>
 
-//  Covers `PullApplication::DeleteStream()` running while `PullApplication::DeleteAllStreams()`
-//  deletes the application.
+//  Covers streams deleted or created while `PullApplication::DeleteAllStreams()` deletes the application.
 namespace
 {
 	class StubPullProvider : public pvd::PullProvider
@@ -33,6 +32,10 @@ namespace
 			: PullProvider(server_config, router)
 		{
 		}
+
+		using PullProvider::OnCreateApplication;
+		using PullProvider::OnDeleteApplication;
+		using PullProvider::PullStream;
 
 		ProviderType GetProviderType() const override
 		{
@@ -61,13 +64,16 @@ namespace
 
 		std::shared_ptr<pvd::Application> OnCreateProviderApplication(const info::Application &app_info) override
 		{
-			return nullptr;
+			return next_application;
 		}
 
 		bool OnDeleteProviderApplication(const std::shared_ptr<pvd::Application> &application) override
 		{
 			return true;
 		}
+
+		// Returned by the next `OnCreateApplication()`
+		std::shared_ptr<pvd::Application> next_application = nullptr;
 	};
 
 	class StubMediaRouter : public MediaRouterInterface
@@ -180,7 +186,28 @@ namespace
 
 		using PullApplication::CreateStream;
 
+		// Runs from `AddStream()` once the stream is in the application
+		std::function<void()> on_stream_created = nullptr;
+		int deleted_notifications				= 0;
+
 	protected:
+		bool NotifyStreamCreated(const std::shared_ptr<pvd::Stream> &stream) override
+		{
+			if (on_stream_created != nullptr)
+			{
+				on_stream_created();
+			}
+
+			return PullApplication::NotifyStreamCreated(stream);
+		}
+
+		bool NotifyStreamDeleted(const std::shared_ptr<pvd::Stream> &stream) override
+		{
+			deleted_notifications++;
+
+			return PullApplication::NotifyStreamDeleted(stream);
+		}
+
 		std::shared_ptr<pvd::PullStream> CreateStream(const uint32_t stream_id, const ov::String &stream_name,
 													  const std::vector<ov::String> &url_list,
 													  const std::shared_ptr<pvd::PullStreamProperties> &properties) override
@@ -196,6 +223,15 @@ namespace
 	// Holds a pull application built from a minimal virtual host, which has not been started
 	struct Fixture
 	{
+		~Fixture()
+		{
+			// The provider and the application hold each other until the application is deleted
+			if (registered)
+			{
+				provider->OnDeleteApplication(*application_info);
+			}
+		}
+
 		bool CreateApplication()
 		{
 			char path[]	 = "/tmp/ome_pull_application_test_XXXXXX";
@@ -256,6 +292,18 @@ namespace
 			return std::dynamic_pointer_cast<StubPullStream>(stream);
 		}
 
+		// Lets `provider` find the application, as `PullProvider::PullStream()` does
+		bool RegisterApplication()
+		{
+			provider->next_application = application;
+			registered				   = provider->OnCreateApplication(*application_info);
+			provider->next_application = nullptr;
+
+			return registered && (provider->GetApplicationById(application_info->GetId()) == application);
+		}
+
+		bool registered = false;
+
 		cfg::Server server_config;
 		std::shared_ptr<StubMediaRouter> router;
 		std::shared_ptr<StubPullProvider> provider;
@@ -263,6 +311,32 @@ namespace
 		std::shared_ptr<TestApplicationInfo> application_info;
 		std::shared_ptr<StubPullApplication> application;
 	};
+
+	// Returns the error and critical lines of a captured log
+	std::string ErrorLines(const std::string &log)
+	{
+		std::string lines;
+		size_t start = 0;
+
+		while (start < log.size())
+		{
+			size_t end = log.find('\n', start);
+			if (end == std::string::npos)
+			{
+				end = log.size();
+			}
+
+			const auto line = log.substr(start, end - start);
+			if ((line.find("] E [") != std::string::npos) || (line.find("] C [") != std::string::npos))
+			{
+				lines += line + "\n";
+			}
+
+			start = end + 1;
+		}
+
+		return lines;
+	}
 }  // namespace
 
 // A stream deleted while `DeleteAllStreams()` stops the motors it took is deleted once and logs no error.
@@ -307,14 +381,51 @@ TEST(PullApplicationDeletion, DeletingAStreamWhileTheMotorsStopLogsNoError)
 	EXPECT_EQ(log.find("Could not find stream to be removed"), std::string::npos) << log;
 }
 
-// A stream created after `DeleteAllStreams()` has taken the motors gets no motor of its own, which nothing would stop
-TEST(PullApplicationDeletion, StreamCreatedAfterTheMotorsAreTakenIsRejected)
+// A pull after `DeleteAllStreams()` has taken the motors gets no motor of its own, which nothing would stop.
+// The rejection is a normal part of deleting the application, so it logs no error.
+TEST(PullApplicationDeletion, StreamPulledAfterTheMotorsAreTakenIsRejectedWithoutError)
+{
+	Fixture fixture;
+	ASSERT_TRUE(fixture.CreateApplication());
+	ASSERT_TRUE(fixture.RegisterApplication());
+
+	EXPECT_TRUE(fixture.application->DeleteAllStreams());
+
+	auto properties = std::make_shared<pvd::PullStreamProperties>();
+
+	testing::internal::CaptureStderr();
+	auto stream			  = fixture.provider->PullStream(nullptr, *fixture.application_info, "late", {"ovt://127.0.0.1:1/app/stream"}, 0, properties);
+	const std::string log = testing::internal::GetCapturedStderr();
+
+	EXPECT_EQ(stream, nullptr);
+	EXPECT_TRUE(fixture.application->GetStreams().empty());
+	EXPECT_EQ(fixture.application->deleted_notifications, 1);
+	EXPECT_EQ(ErrorLines(log), "") << log;
+}
+
+// A stream that `Application::DeleteAllStreams()` deletes between `AddStream()` and the motor rejection
+// is deleted once, and its rejection logs no error.
+TEST(PullApplicationDeletion, StreamDeletedBeforeItIsRejectedLogsNoError)
 {
 	Fixture fixture;
 	ASSERT_TRUE(fixture.CreateApplication());
 
-	EXPECT_TRUE(fixture.application->DeleteAllStreams());
+	auto application = fixture.application;
+	bool deleted_all = false;
 
-	EXPECT_EQ(fixture.CreateStream("late"), nullptr);
-	EXPECT_TRUE(fixture.application->GetStreams().empty());
+	application->on_stream_created = [&]() {
+		deleted_all = application->DeleteAllStreams();
+	};
+
+	testing::internal::CaptureStderr();
+	auto stream			  = fixture.CreateStream("late");
+	const std::string log = testing::internal::GetCapturedStderr();
+
+	application->on_stream_created = nullptr;
+
+	EXPECT_TRUE(deleted_all);
+	EXPECT_EQ(stream, nullptr);
+	EXPECT_TRUE(application->GetStreams().empty());
+	EXPECT_EQ(application->deleted_notifications, 1);
+	EXPECT_EQ(ErrorLines(log), "") << log;
 }

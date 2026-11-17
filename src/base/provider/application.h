@@ -66,6 +66,9 @@ namespace pvd
 		virtual bool NotifyStreamCreated(const std::shared_ptr<Stream> &stream);
 		virtual bool NotifyStreamDeleted(const std::shared_ptr<Stream> &stream);
 
+		// Same as `Application::DeleteStream()`, but returns false without logging if the application no longer has the stream
+		bool DeleteStreamIfExists(const std::shared_ptr<Stream> &stream);
+
 		
 	private:
 		std::shared_ptr<Provider> _provider;
