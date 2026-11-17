@@ -1812,6 +1812,54 @@ TEST_F(SocketSendTcpTest, SendRetriedOnWritableEventClosesAsDisconnected)
 	EXPECT_EQ(victim->GetState(), ov::SocketState::Disconnected);
 }
 
+// A send that finds the peer gone with nothing queued ahead queues no remainder,
+// and the hang-up event of the reset then closes the socket as `Disconnected`
+TEST_F(SocketSendTcpTest, InlineSendToResetPeerQueuesNothing)
+{
+	Watchdog watchdog(std::chrono::seconds(30), "InlineSendToResetPeerQueuesNothing");
+
+	PosixTcpPeer holder_peer;
+	ASSERT_TRUE(holder_peer.Listen());
+	PosixTcpPeer victim_peer;
+	ASSERT_TRUE(victim_peer.Listen());
+
+	std::vector<std::shared_ptr<ov::Socket>> opened;
+	CloseOnExit close_on_exit(opened);
+
+	auto holder_events = std::make_shared<GatedSrtAsyncEvents>();
+	auto holder		   = ConnectAsyncClient(holder_peer, holder_events);
+	ASSERT_NE(holder, nullptr);
+	opened.push_back(holder);
+	auto victim_events = std::make_shared<SrtAsyncEvents>();
+	auto victim		   = ConnectAsyncClient(victim_peer, victim_events);
+	ASSERT_NE(victim, nullptr);
+	opened.push_back(victim);
+
+	ome_test::ScopeExit release_on_exit([&]() { holder_events->Release(); });
+
+	// The held worker cannot close `victim` on the hang-up event before the send
+	const char payload[] = "tcp-hold-worker";
+	holder_events->Arm();
+	ASSERT_EQ(holder_peer.Send(payload, sizeof(payload)), static_cast<ssize_t>(sizeof(payload)));
+	ASSERT_TRUE(WaitUntil([&]() { return holder_events->IsHolding(); }));
+
+	ResetAndWaitForHangUp(victim_peer, victim->GetNativeHandle());
+	if (HasFatalFailure())
+	{
+		return;
+	}
+
+	const char bytes[] = "inline-send-to-reset-peer";
+	auto data		   = std::make_shared<ov::Data>(bytes, sizeof(bytes));
+	EXPECT_TRUE(victim->Send(data));
+	EXPECT_FALSE(victim->HasCommand());
+
+	holder_events->Release();
+
+	ASSERT_TRUE(WaitUntil([&]() { return victim_events->Closed() == 1; }));
+	EXPECT_EQ(victim->GetState(), ov::SocketState::Disconnected);
+}
+
 // ===========================================================================
 // SRT
 //

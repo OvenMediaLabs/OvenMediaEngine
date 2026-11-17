@@ -1609,7 +1609,7 @@ namespace ov
 			{
 				const ssize_t sent_bytes = send_func();
 
-				if (sent_bytes != static_cast<ssize_t>(data->GetLength()) && (sent_bytes != -1))
+				if (sent_bytes != static_cast<ssize_t>(data->GetLength()) && (sent_bytes >= 0))
 				{
 					// Subdata() makes a new Data, also at offset 0. As a result, a write through the caller's Data makes a copy first. Until the socket sends
 					// or discards the new Data, pointers from before Send() can change its bytes. Until then, do not release or change reference-only memory
