@@ -113,7 +113,7 @@ bool OvtStream::Stop()
 
 	if (GetLinkedInputStream() != nullptr && GetLinkedInputStream()->IsFromOriginMapStore() == false)
 	{
-		// Unegister stream if OriginMapStore is enabled.
+		// Unregister the stream from `OriginMapStore` unless it was pulled from there.
 		// A failure here is logged and nothing more: the rest of the stop, here and in `Stream::Stop()`,
 		// is the teardown every edge depends on (the packetizer, the stop notification, the sessions and their sockets),
 		// and leaving it undone strands them on a stream the origin has already dropped.

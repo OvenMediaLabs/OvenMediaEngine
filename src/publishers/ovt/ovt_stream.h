@@ -75,7 +75,7 @@ public:
 	// Track ids a PLAY may deliver under `filter`, from the current tracks. nullopt means no filtering.
 	std::optional<std::set<uint32_t>> ResolveAllowedTrackIds(const OvtTrackFilter &filter);
 
-	// Tells a session that `AddSession()` refused that this stream stopped, as `Stop()` tells the others
+	// Tells a session that `AddSession()` refused that this stream stopped, as `OnStopping()` tells the others
 	void NotifyRefusedSession(const std::shared_ptr<OvtSession> &session);
 
 	// The `playlists` array a PLAY response carries, rebuilt for the confirmed track set.

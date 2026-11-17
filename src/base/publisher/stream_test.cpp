@@ -96,7 +96,7 @@ TEST(PublisherStreamStopTest, StoppingHookReceivesEverySession)
 	EXPECT_EQ(stream->StoppingCount(), 1);
 	EXPECT_EQ(stream->StoppingSessionIds(), (std::set<session_id_t>{1, 2}));
 
-	// A session after the stop is refused, so it is never left without the hook
+	// A session after the stop is refused, so no accepted session misses the hook
 	EXPECT_FALSE(stream->AddSession(MakeSession(stream, 3)));
 	EXPECT_EQ(stream->StoppingCount(), 1);
 }

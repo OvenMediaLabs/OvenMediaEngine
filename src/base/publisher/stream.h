@@ -188,6 +188,7 @@ namespace pub
 		virtual bool Stop();
 		// Called by `Stop()` with the sessions it took out, before it stops the workers and the sessions.
 		// `AddSession()` refuses once the stream is stopped, so no session joins after this hand-off.
+		// Runs under `EnterStop()` with the workers still running, so it must not block or call `EnterStart()`/`EnterStop()`.
 		virtual void OnStopping(const std::map<session_id_t, std::shared_ptr<Session>> &sessions) {}
 
 		StopCause GetStopCause() const
