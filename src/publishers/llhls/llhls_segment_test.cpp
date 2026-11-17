@@ -484,4 +484,14 @@ TEST_P(LLHlsSegmentResponse, InProgressSegmentIsNotFoundUntilCompleted)
 	EXPECT_EQ(completed->Body(), parts);
 }
 
+TEST_P(LLHlsSegmentResponse, InProgressSegmentNotFoundIsNotCacheable)
+{
+	const auto segment_number = FeedUntilSegmentInProgress();
+	ASSERT_GE(segment_number, 0);
+
+	auto in_progress = RequestSegment(segment_number);
+	EXPECT_EQ(in_progress->GetStatusCode(), http::StatusCode::NotFound);
+	EXPECT_NE(in_progress->Head().find("\r\nCache-Control: no-cache, no-store\r\n"), std::string::npos) << in_progress->Head();
+}
+
 INSTANTIATE_TEST_SUITE_P(Numbering, LLHlsSegmentResponse, testing::Bool(), NumberingName);
