@@ -113,9 +113,9 @@ bool OvtStream::Stop()
 
 	if (GetLinkedInputStream() != nullptr && GetLinkedInputStream()->IsFromOriginMapStore() == false)
 	{
-		// Unegister stream if OriginMapStore is enabled.
-		// A failure here is logged and nothing more: the rest of this function is the teardown every
-		// edge depends on (the stop notification, sessions, the socket, the packetizer),
+		// Unregister the stream from `OriginMapStore` unless it was pulled from there.
+		// A failure here is logged and nothing more: the rest of the stop, here and in `Stream::Stop()`,
+		// is the teardown every edge depends on (the packetizer, the stop notification, the sessions and their sockets),
 		// and leaving it undone strands them on a stream the origin has already dropped.
 		auto result = ocst::Orchestrator::GetInstance()->UnregisterStreamFromOriginMapStore(GetApplicationInfo().GetVHostAppName(), GetName());
 		if (result == CommonErrorCode::ERROR)
@@ -123,8 +123,6 @@ bool OvtStream::Stop()
 			logtw("Failed to unregister stream from origin map store : %s/%s", GetApplicationName(), GetName().CStr());
 		}
 	}
-
-	NotifyStop(GetStopReason());
 
 	std::unique_lock<std::shared_mutex> mlock(_packetizer_lock);
 	if (_packetizer != nullptr)
@@ -141,11 +139,11 @@ bool OvtStream::Stop()
 // so the origin reuses that name and carries the reason in `message`.
 // Sent to each session directly rather than broadcast,
 // so a session still behind the `_sent_ready` gate receives it as well.
-void OvtStream::NotifyStop(ovt::StopReason reason)
+void OvtStream::OnStopping(const std::map<session_id_t, std::shared_ptr<pub::Session>> &sessions)
 {
-	auto payload  = MakeStopPayload(reason);
+	auto reason	 = GetStopReason();
+	auto payload = MakeStopPayload(reason);
 
-	auto sessions = GetAllSessions();
 	for (const auto &[session_id, session] : sessions)
 	{
 		std::static_pointer_cast<OvtSession>(session)->SendMessageDirect(OvtPayloadType::MessageResponse, payload);

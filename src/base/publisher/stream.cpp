@@ -397,6 +397,8 @@ namespace pub
 			sessions.swap(_sessions);
 		}
 
+		OnStopping(sessions);
+
 		for(const auto &worker : workers)
 		{
 			worker->Stop();
