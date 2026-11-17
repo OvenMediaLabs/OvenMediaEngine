@@ -122,7 +122,8 @@ namespace pub
 
 		std::shared_ptr<const info::Playlist> GetDefaultPlaylist() const;
 
-		// Returns false without adding the session when the stream is stopped, and the caller then disposes of the session
+		// Returns false without adding the session when the stream is stopped or failed to start,
+		// and the caller then disposes of the session
 		bool AddSession(std::shared_ptr<Session> session);
 		bool RemoveSession(session_id_t id);
 		std::shared_ptr<Session> GetSession(session_id_t id);
@@ -167,12 +168,6 @@ namespace pub
 		std::shared_ptr<Application> GetApplication() const;
 		const char * GetApplicationTypeName() const;
 
-		// Set the stream state
-		void SetState(State state)
-		{
-			_state = state;
-		}
-
 		State GetState() const
 		{
 			return _state;
@@ -206,13 +201,15 @@ namespace pub
 		void LogInbandRecoverableTrackChange(int32_t track_id, const std::shared_ptr<const MediaTrack> &old_track, const std::shared_ptr<const MediaTrack> &new_track);
 
 	private:
+		void StopWorkersAndSessions(const std::vector<std::shared_ptr<StreamWorker>> &workers, const std::map<session_id_t, std::shared_ptr<Session>> &sessions);
+
 		// The caller holds `_stream_worker_lock`
 		std::shared_ptr<StreamWorker> GetWorkerBySessionID(session_id_t session_id);
 		std::map<session_id_t, std::shared_ptr<Session>> _sessions;
 		// Taken after `_stream_worker_lock` when both are held
 		std::shared_mutex _session_map_mutex;
 
-		uint32_t _worker_count;
+		uint32_t _worker_count = 0;
 		
 		std::shared_mutex _stream_worker_lock;
 		std::vector<std::shared_ptr<StreamWorker>>	_stream_workers;

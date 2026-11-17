@@ -293,11 +293,8 @@ bool RtcStream::Start()
 
 bool RtcStream::Stop()
 {
-	if (GetState() != State::STARTED)
-	{
-		return false;
-	}
-
+	// The pacer and the packetizers are released in every state,
+	// since the packetizers a failed `Start()` created hold this stream
 	if (_pacer_scheduler)
 	{
 		_pacer_scheduler->Stop();
@@ -310,6 +307,11 @@ bool RtcStream::Stop()
 
 	std::lock_guard<std::shared_mutex> lock(_packetizers_lock);
 	_packetizers.clear();
+
+	if (GetState() != State::STARTED)
+	{
+		return false;
+	}
 
 	return Stream::Stop();
 }
