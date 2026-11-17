@@ -25,6 +25,8 @@
 
 #include <modules/rtsp/header_fields/rtsp_header_fields.h>
 
+#include <atomic>
+
 #define RTSP_USER_AGENT_NAME				"OvenMediaEngine"
 #define DEFAULT_RTSP_SESSION_TIMEOUT_SEC	30
 namespace pvd
@@ -33,6 +35,9 @@ namespace pvd
 
 	class RtspcStream final : public pvd::PullStream, public RtpRtcpInterface, public ov::Node
 	{
+		// Unit-test access to the stop path (see `rtspc_test.cpp`)
+		friend class RtspcStreamTest;
+
 	public:
 		static std::shared_ptr<RtspcStream> Create(const std::shared_ptr<pvd::PullApplication> &application, const uint32_t stream_id, const ov::String &stream_name, const std::vector<ov::String> &url_list, const std::shared_ptr<pvd::PullStreamProperties> &properties);
 
@@ -60,45 +65,6 @@ namespace pvd
 	private:
 		std::shared_ptr<pvd::RtspcProvider> GetRtspcProvider();
 
-		class ResponseSubscription
-		{
-		public:
-			ResponseSubscription(const std::shared_ptr<RtspMessage> &message)
-			{
-				_request = message;
-				_reqeust_stop_watch.Start();
-			}
-
-			std::shared_ptr<RtspMessage> WaitForResponse(uint64_t timeout_ms)
-			{
-				// Semaphore Wait
-				if(_event.WaitFor(timeout_ms) == false)
-				{
-					return nullptr;
-				}
-
-				return _response;
-			}
-
-			void OnResponseReceived(const std::shared_ptr<RtspMessage> &message)
-			{
-				_response = message;
-				_round_trip_time_ms = _reqeust_stop_watch.Elapsed();
-
-				// Notify
-				_event.Notify();
-			}
-
-		private:
-			ov::StopWatch _reqeust_stop_watch;
-			ov::Semaphore _event;
-
-			int64_t _round_trip_time_ms = 0;
-
-			std::shared_ptr<RtspMessage> _request = nullptr;
-			std::shared_ptr<RtspMessage> _response = nullptr;
-		};
-
 		bool StartStream(const std::shared_ptr<const ov::Url> &url) override; // Start
 		bool RestartStream(const std::shared_ptr<const ov::Url> &url) override; // Failover
 		bool StopStream() override; // Stop
@@ -107,14 +73,15 @@ namespace pvd
 		bool RequestDescribe();
 		bool RequestSetup();
 		bool RequestPlay();
-		bool RequestStop();
+		void RequestStop() OV_REQUIRES(_connection_lock);
 		void Release();
 
-		bool Ping(); // Send GET_PARAMETER
+		bool Ping() OV_REQUIRES(_connection_lock); // Send GET_PARAMETER
 
 		int32_t GetNextCSeq();
 
-		bool SendRequestMessage(const std::shared_ptr<RtspMessage> &message, bool wait_for_response = true);
+		bool SendRequestMessage(const std::shared_ptr<RtspMessage> &message);
+		// Reads the response directly from the socket: only the handshake before `PLAYING` waits for one
 		std::shared_ptr<RtspMessage> ReceiveResponse(uint32_t cseq, uint64_t timeout_ms);
 
 		// Blocking, it is used before playing state
@@ -128,15 +95,22 @@ namespace pvd
 
 		ov::String GenerateControlUrl(ov::String control);
 
-		bool SubscribeResponse(const std::shared_ptr<RtspMessage> &request_message);
-		std::shared_ptr<ResponseSubscription> PopResponseSubscription(uint32_t cseq);
-
 		std::vector<std::shared_ptr<const ov::Url>> _url_list;
 		std::shared_ptr<const ov::Url> _curr_url;
 		std::shared_ptr<RtspHeaderAuthorizationField> _authorization_field = nullptr;
 
 		std::shared_ptr<ov::Socket> _signalling_socket;
-		
+
+		// Held by `ProcessMediaPacket()` on the motor's worker, and by a stop, a start and the end of a handshake,
+		// so the connection is never released or replaced while its media is being read
+		ov::Mutex _connection_lock;
+		// Whether `ProcessMediaPacket()` may use the connection: set once a handshake reaches `PLAYING`,
+		// cleared by a stop or a start
+		bool _connection_ready OV_GUARDED_BY(_connection_lock) = false;
+		// Set by a stop or a start before it takes `_connection_lock`, and cleared once a handshake reaches `PLAYING`.
+		// While set, `ProcessMediaPacket()` returns without the lock, so the motor's worker cannot keep retaking it.
+		std::atomic<bool> _connection_released = false;
+
 		// Values from RTSP
 		int32_t	_cseq = 0;
 
@@ -150,9 +124,6 @@ namespace pvd
 		// ssrc, rtp channel id (rtcp channel id = rtp_channel_id + 1)
 		std::map<uint32_t, uint8_t> _ssrc_channel_id_map;
 
-		// CSeq : RequestMessage
-		ov::Mutex _response_subscriptions_lock;
-		std::unordered_map<uint32_t, std::shared_ptr<ResponseSubscription>> _response_subscriptions OV_GUARDED_BY(_response_subscriptions_lock);
 		RtspDemuxer _rtsp_demuxer;
 
 		// Rtp
