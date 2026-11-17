@@ -55,7 +55,8 @@ namespace pvd
 
 		std::shared_mutex _stream_motors_guard;
 		std::map<uint32_t, std::shared_ptr<StreamMotor>> _stream_motors;
-		// Set once `DeleteAllStreams()` has taken the motors, which then stop every stream they held
+		// Set once `DeleteAllStreams()` has taken the motors, which then stop every stream they held.
+		// No stream is added to a motor after that.
 		bool _stream_motors_taken = false;
 	};
 }

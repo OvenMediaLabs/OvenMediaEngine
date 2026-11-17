@@ -258,6 +258,12 @@ namespace pvd
 	{
 		std::unique_lock<std::shared_mutex> lock(_stream_motors_guard);
 
+		// A motor created now would never be stopped
+		if (_stream_motors_taken)
+		{
+			return false;
+		}
+
 		std::shared_ptr<StreamMotor> motor = nullptr;
 		auto motor_id = GetStreamMotorId(stream);
 		auto it = _stream_motors.find(motor_id);

@@ -306,3 +306,15 @@ TEST(PullApplicationDeletion, DeletingAStreamWhileTheMotorsStopLogsNoError)
 	EXPECT_EQ(log.find("Could not find StreamMotor"), std::string::npos) << log;
 	EXPECT_EQ(log.find("Could not find stream to be removed"), std::string::npos) << log;
 }
+
+// A stream created after `DeleteAllStreams()` has taken the motors gets no motor of its own, which nothing would stop
+TEST(PullApplicationDeletion, StreamCreatedAfterTheMotorsAreTakenIsRejected)
+{
+	Fixture fixture;
+	ASSERT_TRUE(fixture.CreateApplication());
+
+	EXPECT_TRUE(fixture.application->DeleteAllStreams());
+
+	EXPECT_EQ(fixture.CreateStream("late"), nullptr);
+	EXPECT_TRUE(fixture.application->GetStreams().empty());
+}
