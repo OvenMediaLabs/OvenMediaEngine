@@ -293,7 +293,7 @@ bool RtcStream::Start()
 
 bool RtcStream::Stop()
 {
-	// The pacer and the packetizers are released in every state,
+	// The pacers and the packetizers are released in every state,
 	// since the packetizers a failed `Start()` created hold this stream
 	if (_pacer_scheduler)
 	{
