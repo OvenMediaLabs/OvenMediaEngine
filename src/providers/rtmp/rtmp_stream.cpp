@@ -190,8 +190,8 @@ namespace pvd
 
 		if ((_remained_data != nullptr) && (_remained_data->GetLength() > RTMP_MAX_PACKET_SIZE))
 		{
-			logae("The packet is ignored because the size is too large: [%" PRIu64 "]), packet size: %zu, threshold: %d",
-				  GetChannelId().GetValue(), _remained_data->GetLength(), RTMP_MAX_PACKET_SIZE);
+			logae("The packet is ignored because the size is too large: [" OV_SOCKET_TOKEN_FORMAT "], packet size: %zu, threshold: %d",
+				  OV_SOCKET_TOKEN_VALUE(_remote), _remained_data->GetLength(), RTMP_MAX_PACKET_SIZE);
 
 			return false;
 		}

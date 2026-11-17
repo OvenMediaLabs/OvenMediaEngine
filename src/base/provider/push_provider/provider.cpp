@@ -2,12 +2,27 @@
 #include "provider.h"
 #include "provider_private.h"
 
+#include <base/ovsocket/socket.h>
+
 #include <cinttypes>
 
 namespace pvd
 {
 	namespace
 	{
+		// A channel as logs show it: the token of its socket, which carries the channel ID, or the channel ID alone
+		ov::String ChannelToString(const std::shared_ptr<PushStream> &channel)
+		{
+			auto socket = channel->GetSocket();
+
+			if (socket != nullptr)
+			{
+				return ov::String::FormatString(OV_SOCKET_TOKEN_FORMAT, OV_SOCKET_TOKEN_VALUE(socket));
+			}
+
+			return ov::String::FormatString("%" PRIu64, channel->GetChannelId().GetValue());
+		}
+
 		// Leaves `PushStream::OnDataReceived()` even if it throws
 		class ProcessingDataGuard
 		{
@@ -164,7 +179,7 @@ namespace pvd
 		if(_channels.erase(channel->GetChannelId()) == 0)
 		{
 			// probabliy, it was removed 
-			logte("%" PRIu64 " channel to be deleted cannot be found", channel->GetChannelId().GetValue());
+			logte("Channel %s to be deleted cannot be found", ChannelToString(channel).CStr());
 			return false;
 		}
 
@@ -261,7 +276,7 @@ namespace pvd
 				const auto elapsed_ms = static_cast<intmax_t>(state.elapsed_ms);
 				const auto timeout_ms = static_cast<intmax_t>(state.timeout_ms);
 
-				logtt("Checking channel %" PRIu64 ", elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", channel->GetChannelId().GetValue(),
+				logtt("Checking channel %s, elapsed %" PRIdMAX " ms, timeout %" PRIdMAX " ms", ChannelToString(channel).CStr(),
 					  elapsed_ms,
 					  timeout_ms);
 
@@ -273,7 +288,7 @@ namespace pvd
 						continue;
 					}
 
-					logtw("Channel %" PRIu64 " is timed out, %" PRIdMAX " ms elapsed since last received, deleting it", channel->GetChannelId().GetValue(), elapsed_ms);
+					logtw("Channel %s is timed out, %" PRIdMAX " ms elapsed since last received, deleting it", ChannelToString(channel).CStr(), elapsed_ms);
 
 					// Notify the channel timed out
 					OnTimedOut(channel);

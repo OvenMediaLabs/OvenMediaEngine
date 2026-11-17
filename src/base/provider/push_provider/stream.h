@@ -50,6 +50,13 @@ namespace pvd
 		// The default is a no-op: a provider may share this transport or tear it down elsewhere.
 		virtual void CloseTransport() {}
 
+		// The socket this channel receives on, or `nullptr` for a channel with no socket of its own, such as WebRTC.
+		// Logs print it with `OV_SOCKET_TOKEN_FORMAT`, so a channel can be matched with the logs of its socket.
+		virtual std::shared_ptr<ov::Socket> GetSocket() const
+		{
+			return nullptr;
+		}
+
 		// Enters and leaves `OnDataReceived()` on this channel.
 		// The time it spends there is not client silence,
 		// so `PushProvider::ChannelTaskRunner()` passes over a channel that is inside it.

@@ -38,6 +38,10 @@ namespace pvd
 
 		bool Stop() override;
 		void CloseTransport() override;
+		std::shared_ptr<ov::Socket> GetSocket() const override
+		{
+			return _remote;
+		}
 
 		// bool ConvertToVideoData(const std::shared_ptr<ov::Data> &data, int64_t &cts);
 		// bool ConvertToAudioData(const std::shared_ptr<ov::Data> &data);

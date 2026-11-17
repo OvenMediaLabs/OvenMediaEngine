@@ -256,17 +256,26 @@ namespace pvd
 
 	bool Application::DeleteStream(const std::shared_ptr<Stream> &stream)
 	{
-		std::unique_lock<std::shared_mutex> streams_lock(_streams_guard);
-
-		if(_streams.find(stream->GetId()) == _streams.end())
+		if (DeleteStreamIfExists(stream) == false)
 		{
 			logtc("Could not find stream to be removed : %s/%s(%u)", stream->GetApplicationInfo().GetVHostAppName().CStr(), stream->GetName().CStr(), stream->GetId());
 			return false;
 		}
-		_streams.erase(stream->GetId());
 
-		streams_lock.unlock();
-		
+		return true;
+	}
+
+	bool Application::DeleteStreamIfExists(const std::shared_ptr<Stream> &stream)
+	{
+		{
+			std::unique_lock<std::shared_mutex> lock(_streams_guard);
+
+			if (_streams.erase(stream->GetId()) == 0)
+			{
+				return false;
+			}
+		}
+
 		stream->Stop();
 
 		NotifyStreamDeleted(stream);

@@ -51,6 +51,10 @@ namespace pvd::rtmp
 		//--------------------------------------------------------------------
 		bool Stop() override;
 		void CloseTransport() override;
+		std::shared_ptr<ov::Socket> GetSocket() const override
+		{
+			return _remote;
+		}
 
 		// Ends the wait sized for the first media packet, using this stream's application.
 		// `RtmpChunkHandler` calls this when media starts flowing.
