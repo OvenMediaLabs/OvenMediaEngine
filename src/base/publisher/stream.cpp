@@ -389,6 +389,16 @@ namespace pub
 
 		bool ok		= Stop();
 
+		// `Stop()` skips a stream that has not started, so it is marked stopped here and a later `Start()` refuses it
+		{
+			std::lock_guard<std::shared_mutex> lock(_stream_worker_lock);
+
+			if (_state == State::CREATED)
+			{
+				_state = State::STOPPED;
+			}
+		}
+
 		Unlock();
 
 		return ok;
