@@ -515,8 +515,8 @@ namespace pvd
 
 		const auto channel_id = channel->GetChannelId();
 
-		// A UDP port's channels share the ID of its socket,
-		// so a channel deleted with its application may time out after a newer channel took the port with the same ID.
+		// A UDP port's channels share the ID of its socket, so a channel deleted with its application
+		// may time out after a newer channel took the port with the same ID.
 		stream_port_item->DisconnectClient(channel_id, [&]() { return GetChannel(channel_id) == channel; });
 	}
 

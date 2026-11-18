@@ -153,7 +153,8 @@ namespace pvd
 	class MpegTsProvider : public PushProvider, protected PhysicalPortObserver
 	{
 	public:
-		// The silence timeout of a channel that has not published, unless the operator set `PacketSilenceTimeoutMs`.
+		// The silence timeout of a channel that has not published,
+		// unless the operator set a positive `PacketSilenceTimeoutMs`.
 		// UDP has no disconnect, so a sender that stops before completing PAT/PMT would otherwise hold the port forever.
 		static constexpr time_t PRE_PUBLISH_PACKET_SILENCE_TIMEOUT_MS = 3000;
 
