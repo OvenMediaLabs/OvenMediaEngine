@@ -113,6 +113,8 @@ namespace ov
 		void ThreadProc();
 
 		bool AddToEpoll(const std::shared_ptr<Socket> &socket);
+		// The kernel reports the current readiness of the socket again
+		void ModifyEpoll(const std::shared_ptr<Socket> &socket, bool need_writable_event);
 		// Fills `_polled_events` with the events of the sockets still registered, and returns their count
 		int EpollWait(int timeout_msec = Infinite);
 		bool DeleteFromEpoll(const std::shared_ptr<Socket> &socket);

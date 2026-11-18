@@ -401,7 +401,8 @@ namespace ov
 				return false;
 			}
 
-			_added_to_worker = true;
+			_added_to_worker		= true;
+			_writable_event_enabled = true;
 		}
 
 		if (need_to_wait_first_epoll_event)
@@ -423,6 +424,40 @@ namespace ov
 			// The handle is still open here: a close removes the socket before it drops the owner reference.
 			_added_to_worker = false;
 			_worker->DeleteFromEpoll(GetSharedPtr());
+		}
+	}
+
+	void Socket::SetWritableEventEnabled(bool enabled)
+	{
+		// The kernel reports a UDP socket writable after every datagram it sends, which wakes the worker for nothing.
+		// A send on a TCP or SRT socket raises no event unless the send buffer was full, so those keep the event.
+		if (GetType() != SocketType::Udp)
+		{
+			return;
+		}
+
+		LockGuard lock_guard(_worker_mutex);
+
+		// A socket added to the worker again still waits for the first event of that registration
+		if ((enabled == false) && _need_to_wait_first_epoll_event)
+		{
+			return;
+		}
+
+		if (_added_to_worker && (_writable_event_enabled != enabled))
+		{
+			_writable_event_enabled = enabled;
+			_worker->ModifyEpoll(GetSharedPtr(), enabled);
+		}
+	}
+
+	void Socket::DisableWritableEventIfIdle()
+	{
+		LockGuard lock_guard(_dispatch_queue_lock);
+
+		if (_dispatch_queue.empty())
+		{
+			SetWritableEventEnabled(false);
 		}
 	}
 
@@ -1289,6 +1324,11 @@ namespace ov
 					}
 
 					break;
+				}
+
+				if (_dispatch_queue.empty() == false)
+				{
+					SetWritableEventEnabled(true);
 				}
 			}
 		}

@@ -1336,6 +1336,38 @@ TEST_F(SocketRecvUdpTest, StaysUsableAfterZeroLengthDatagram)
 // ===========================================================================
 namespace ov
 {
+	// Counts the writable events the worker delivers to the socket
+	class WritableEventCountingSocket : public Socket
+	{
+	public:
+		WritableEventCountingSocket(PrivateToken token, const std::shared_ptr<SocketPoolWorker> &worker)
+			: Socket(token, worker)
+		{
+		}
+
+		int WritableEventCount() const
+		{
+			return _writable_event_count;
+		}
+
+		// While stalled, a send takes no byte and stays in the queue, as it does when the send buffer is full
+		void StallSends(bool stall)
+		{
+			_force_stop = stall;
+		}
+
+	protected:
+		PostProcessMethod OnDataWritableEvent() override
+		{
+			_writable_event_count++;
+
+			return Socket::OnDataWritableEvent();
+		}
+
+	private:
+		std::atomic<int> _writable_event_count{0};
+	};
+
 	class SocketSendUdpTest : public SocketTestBase
 	{
 	protected:
@@ -1348,6 +1380,57 @@ namespace ov
 		static void QueueSendFromTo(const std::shared_ptr<Socket> &socket, const SocketAddressPair &address_pair, const void *data, size_t length)
 		{
 			socket->AppendCommand(Socket::DispatchCommand(address_pair, std::make_shared<Data>(data, length)), false);
+		}
+
+		// Returns a non-blocking socket that has sent one datagram to `peer`, after the worker has handled the writable event of that send
+		std::shared_ptr<WritableEventCountingSocket> CreateSocketAfterFirstSend(PosixUdpPeer &peer, const SocketAddressPair &address_pair)
+		{
+			auto socket = _pool->AllocSocket<WritableEventCountingSocket>(SocketFamily::Inet);
+
+			if (socket == nullptr)
+			{
+				return nullptr;
+			}
+
+			const char payload[] = "first";
+			char buffer[64];
+
+			if ((socket->MakeNonBlocking(std::make_shared<SrtAsyncEvents>()) == false) ||
+				(socket->SendFromTo(address_pair, payload, sizeof(payload)) == false) ||
+				(peer.Recv(buffer, sizeof(buffer)) != static_cast<ssize_t>(sizeof(payload))) ||
+				(WaitUntil([&]() { return socket->WritableEventCount() > 0; }) == false) ||
+				(WaitForWorkerToCatchUp() == false))
+			{
+				socket->CloseImmediatelyWithState(SocketState::Closed);
+				return nullptr;
+			}
+
+			return socket;
+		}
+
+		// Returns once the worker has finished with every event pending before the call. With the pool's single worker:
+		// a new socket's first event comes after every pending event, and the second socket's event comes in a later batch.
+		bool WaitForWorkerToCatchUp()
+		{
+			for (int round = 0; round < 2; round++)
+			{
+				auto socket = _pool->AllocSocket(SocketFamily::Inet);
+
+				if (socket == nullptr)
+				{
+					return false;
+				}
+
+				const auto added = socket->MakeNonBlocking(std::make_shared<SrtAsyncEvents>());
+				socket->CloseImmediatelyWithState(SocketState::Closed);
+
+				if (added == false)
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 	};
 
@@ -1376,6 +1459,70 @@ namespace ov
 		EXPECT_STREQ(buffer, payload);
 
 		socket->CloseImmediatelyWithState(SocketState::Closed);
+	}
+
+	// The kernel reports a UDP socket writable after every datagram it sends.
+	// Once such an event has found nothing to read and the queue empty, the worker is not woken by the sends that follow.
+	TEST_F(SocketSendUdpTest, SendsWithEmptyQueueRaiseNoWritableEvent)
+	{
+		constexpr int DATAGRAM_COUNT = 100;
+
+		PosixUdpPeer peer;
+		ASSERT_TRUE(peer.Open());
+
+		const SocketAddressPair address_pair(LoopbackAddress(0), LoopbackAddress(peer.Port()));
+		auto socket = CreateSocketAfterFirstSend(peer, address_pair);
+		ASSERT_NE(socket, nullptr);
+		ome_test::ScopeExit close_socket([&]() { socket->CloseImmediatelyWithState(SocketState::Closed); });
+
+		const auto event_count = socket->WritableEventCount();
+		const char payload[]   = "datagram";
+		char buffer[64];
+		int received = 0;
+
+		for (int index = 0; index < DATAGRAM_COUNT; index++)
+		{
+			EXPECT_TRUE(socket->SendFromTo(address_pair, payload, sizeof(payload)));
+			received += (peer.Recv(buffer, sizeof(buffer)) == static_cast<ssize_t>(sizeof(payload))) ? 1 : 0;
+		}
+
+		EXPECT_EQ(received, DATAGRAM_COUNT);
+
+		ASSERT_TRUE(WaitForWorkerToCatchUp());
+		EXPECT_EQ(socket->WritableEventCount(), event_count);
+	}
+
+	// A datagram left in the queue is sent by the next writable event, although the socket had stopped asking for it
+	TEST_F(SocketSendUdpTest, QueuedDatagramIsSentByWritableEvent)
+	{
+		PosixUdpPeer peer;
+		ASSERT_TRUE(peer.Open());
+		PosixUdpPeer other_peer;
+		ASSERT_TRUE(other_peer.Open());
+
+		const SocketAddressPair address_pair(LoopbackAddress(0), LoopbackAddress(peer.Port()));
+		auto socket = CreateSocketAfterFirstSend(peer, address_pair);
+		ASSERT_NE(socket, nullptr);
+		ome_test::ScopeExit close_socket([&]() { socket->CloseImmediatelyWithState(SocketState::Closed); });
+
+		// A dispatch that sends nothing leaves the datagram in the queue, and schedules no retry on the worker
+		const char payload[] = "queued";
+		socket->StallSends(true);
+		QueueSendFromTo(socket, address_pair, payload, sizeof(payload));
+		socket->DispatchEvents();
+		EXPECT_TRUE(socket->HasCommand());
+		socket->StallSends(false);
+
+		// A datagram sent on the handle makes the kernel report the socket writable, as a send buffer that drains does
+		const auto other_address = LoopbackAddress(other_peer.Port());
+		const char raw_payload[] = "raw";
+		ASSERT_EQ(::sendto(socket->GetNativeHandle(), raw_payload, sizeof(raw_payload), 0, other_address, other_address.GetSockAddrInLength()),
+				  static_cast<ssize_t>(sizeof(raw_payload)));
+
+		char buffer[64] = {0};
+		EXPECT_EQ(peer.Recv(buffer, sizeof(buffer)), static_cast<ssize_t>(sizeof(payload)));
+		EXPECT_STREQ(buffer, payload);
+		EXPECT_FALSE(socket->HasCommand());
 	}
 }  // namespace ov
 
