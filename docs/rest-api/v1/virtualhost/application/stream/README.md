@@ -497,7 +497,7 @@ keyFrameInterval is GOP size
 
 Notes on the `connection` object
 
-- `connection` describes the network connection the input stream arrives on. It is present for WebRTC, RTMP, SRT and MPEG-TS inputs and omitted for other source types.
+- `connection` describes the network connection the input stream arrives on. It is present only when the stream is pushed directly to this server over WebRTC, RTMP, SRT or MPEG-TS. A stream pulled from another server over OVT has no `connection`, even if it was pushed to that server over one of these protocols. Output streams (`outputs`) never have one.
 - `transport` is the transport the sender uses: `UDP`, `TCP`, `SRT` or `TURN`. `protocol` is the protocol of the underlying socket (`UDP`, `TCP` or `SRT`). The two differ only for WebRTC through the built-in TURN server, where `transport` is `TURN` and `protocol` shows whether the sender reached the TURN server over UDP or TCP.
 - `localAddress`/`localPort` are the OvenMediaEngine side of the connection and `remoteAddress`/`remotePort` are the sender side. With TURN they describe the leg between the sender and the TURN server. An address and its port are omitted together when they are not known.
 - For WebRTC, `connection` appears once ICE has selected a candidate pair, so it is absent while the connection is still being set up. When ICE later switches to another pair, the values follow the new pair.
@@ -1125,8 +1125,9 @@ components:
     Connection:
       type: object
       description: >-
-        Network connection the input stream arrives on. Present only for WebRTC, RTMP, SRT and MPEG-TS
-        sources; for WebRTC, only after ICE has selected a candidate pair.
+        Network connection the input stream arrives on. Present only for streams pushed directly to this
+        server over WebRTC, RTMP, SRT or MPEG-TS, so a stream pulled over OVT has none; for WebRTC, only
+        after ICE has selected a candidate pair.
       required:
         - transport
         - protocol
