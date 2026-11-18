@@ -508,7 +508,9 @@ namespace ffmpeg
 		{
 			if (GetTimestampMode() == TIMESTAMP_STARTZERO_MODE)
 			{
-				_start_time = av_rescale_q(packet->GetPts(), AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, AV_TIME_BASE_Q);
+				// B-frames can put the opening keyframe's DTS before its PTS. Anchor
+				// both timestamps to DTS so the keyframe is not dropped as negative.
+				_start_time = av_rescale_q(packet->GetDts(), AVRational{media_track->GetTimeBase().GetNum(), media_track->GetTimeBase().GetDen()}, AV_TIME_BASE_Q);
 			}
 			else if (GetTimestampMode() == TIMESTAMP_PASSTHROUGH_MODE)
 			{
@@ -527,9 +529,8 @@ namespace ffmpeg
 			return false;
 		}
 
-		// When a packet with a higher PTS from one of several tracks is sent first, the start time is set. 
-		// If a later packet arrives but actually comes from an earlier time than the first one, it is dropped. 
-		// But this is not treated as an error.
+		// Packets from other tracks may arrive after the first packet but precede
+		// its decode time. Drop those packets without treating this as an error.
 		if(av_packet.pts < 0 || av_packet.dts < 0 || av_packet.size <= 0)
 		{
 			logaw("Dropping packet with invalid timestamp or size. track:%d, pts:%" PRId64 ", dts:%" PRId64 ", size:%d",
